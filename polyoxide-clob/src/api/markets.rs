@@ -165,6 +165,36 @@ impl Markets {
         )
     }
 
+    /// List simplified markets (reduced payload for performance)
+    pub fn simplified(&self) -> Request<ListMarketsResponse> {
+        Request::get(
+            self.http_client.clone(),
+            "/simplified-markets",
+            AuthMode::None,
+            self.chain_id,
+        )
+    }
+
+    /// List sampling markets
+    pub fn sampling(&self) -> Request<ListMarketsResponse> {
+        Request::get(
+            self.http_client.clone(),
+            "/sampling-markets",
+            AuthMode::None,
+            self.chain_id,
+        )
+    }
+
+    /// List sampling simplified markets
+    pub fn sampling_simplified(&self) -> Request<ListMarketsResponse> {
+        Request::get(
+            self.http_client.clone(),
+            "/sampling-simplified-markets",
+            AuthMode::None,
+            self.chain_id,
+        )
+    }
+
     /// Calculate estimated execution price for a market order
     pub async fn calculate_price(
         &self,

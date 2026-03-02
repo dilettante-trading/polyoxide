@@ -97,6 +97,21 @@ impl AccountApi {
         .await
     }
 
+    /// Get builder trades with optional filtering
+    pub fn builder_trades(&self) -> ListBuilderTrades {
+        let request = Request::get(
+            self.http_client.clone(),
+            "/builder/trades",
+            AuthMode::L2 {
+                address: self.wallet.clone().address(),
+                credentials: self.credentials.clone(),
+                signer: self.signer.clone(),
+            },
+            self.chain_id,
+        );
+        ListBuilderTrades { request }
+    }
+
     /// Get trades with optional filtering
     pub fn trades(&self) -> ListClobTrades {
         let request = Request::get(
@@ -152,6 +167,36 @@ impl ListClobTrades {
     /// Filter trades after this timestamp
     pub fn after(mut self, timestamp: impl Into<String>) -> Self {
         self.request = self.request.query("after", timestamp.into());
+        self
+    }
+
+    /// Execute the request
+    pub async fn send(self) -> Result<Vec<Trade>, ClobError> {
+        self.request.send().await
+    }
+}
+
+/// Request builder for listing builder trades with optional filters
+pub struct ListBuilderTrades {
+    request: Request<Vec<Trade>>,
+}
+
+impl ListBuilderTrades {
+    /// Filter trades after this cursor
+    pub fn after(mut self, cursor: impl Into<String>) -> Self {
+        self.request = self.request.query("after", cursor.into());
+        self
+    }
+
+    /// Filter by maker address
+    pub fn maker_address(mut self, address: impl Into<String>) -> Self {
+        self.request = self.request.query("maker_address", address.into());
+        self
+    }
+
+    /// Filter by market (condition ID)
+    pub fn market(mut self, condition_id: impl Into<String>) -> Self {
+        self.request = self.request.query("market", condition_id.into());
         self
     }
 

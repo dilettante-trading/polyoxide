@@ -77,6 +77,46 @@ async fn live_list_markets() {
 
 #[tokio::test]
 #[ignore]
+async fn live_simplified_markets() {
+    let client = public_client();
+    let resp = client
+        .markets()
+        .simplified()
+        .send()
+        .await
+        .expect("simplified markets");
+    assert!(
+        !resp.data.is_empty(),
+        "should return at least one simplified market"
+    );
+}
+
+#[tokio::test]
+#[ignore]
+async fn live_sampling_markets() {
+    let client = public_client();
+    let _resp = client
+        .markets()
+        .sampling()
+        .send()
+        .await
+        .expect("sampling markets should deserialize");
+}
+
+#[tokio::test]
+#[ignore]
+async fn live_sampling_simplified_markets() {
+    let client = public_client();
+    let _resp = client
+        .markets()
+        .sampling_simplified()
+        .send()
+        .await
+        .expect("sampling simplified markets should deserialize");
+}
+
+#[tokio::test]
+#[ignore]
 async fn live_fee_rate() {
     let token_id = find_active_token_id().await;
     let client = public_client();
@@ -371,6 +411,21 @@ async fn live_list_trades_with_filter() {
         .send()
         .await
         .expect("trades with after filter should deserialize");
+}
+
+/// ── Authenticated: Account — builder trades ────────────────────
+
+#[tokio::test]
+#[ignore]
+async fn live_builder_trades() {
+    let client = authenticated_client();
+    let _trades = client
+        .account_api()
+        .expect("account_api")
+        .builder_trades()
+        .send()
+        .await
+        .expect("builder_trades should deserialize");
 }
 
 // ── Authenticated: Account — heartbeat ──────────────────────────
