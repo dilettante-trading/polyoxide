@@ -4,7 +4,7 @@ use polyoxide_core::{
 
 use crate::{
     account::{Account, Credentials},
-    api::{account::AccountApi, orders::OrderResponse, Health, Markets, Orders},
+    api::{account::AccountApi, auth::Auth, orders::OrderResponse, Health, Markets, Orders},
     core::chain::Chain,
     error::ClobError,
     request::{AuthMode, Request},
@@ -106,6 +106,22 @@ impl Clob {
             .ok_or_else(|| ClobError::validation("Account required for account API"))?;
 
         Ok(AccountApi {
+            http_client: self.http_client.clone(),
+            wallet: account.wallet().clone(),
+            credentials: account.credentials().clone(),
+            signer: account.signer().clone(),
+            chain_id: self.chain_id,
+        })
+    }
+
+    /// Get auth namespace for API key management
+    pub fn auth(&self) -> Result<Auth, ClobError> {
+        let account = self
+            .account
+            .as_ref()
+            .ok_or_else(|| ClobError::validation("Account required for auth API"))?;
+
+        Ok(Auth {
             http_client: self.http_client.clone(),
             wallet: account.wallet().clone(),
             credentials: account.credentials().clone(),
