@@ -788,6 +788,71 @@ mod tests {
         assert!(user.address.is_none());
         assert!(user.id.is_none());
         assert!(user.name.is_none());
+        assert!(user.created_at.is_none());
+        assert!(user.profile_image.is_none());
+        assert!(user.display_username_public.is_none());
+        assert!(user.bio.is_none());
+        assert!(user.pseudonym.is_none());
+        assert!(user.x_username.is_none());
+        assert!(user.verified_badge.is_none());
+        assert!(user.users.is_empty());
+    }
+
+    #[test]
+    fn test_user_response_full_profile() {
+        let json = r#"{
+            "proxyWallet": "0xproxy",
+            "address": "0xsigner",
+            "id": "u1",
+            "name": "polytrader",
+            "createdAt": "2024-01-15T10:00:00Z",
+            "profileImage": "https://example.com/avatar.png",
+            "displayUsernamePublic": true,
+            "bio": "DeFi enthusiast",
+            "pseudonym": "poly_anon",
+            "xUsername": "polytrader_x",
+            "verifiedBadge": true,
+            "users": [
+                {"id": "uid-1", "creator": true, "mod": false},
+                {"id": "uid-2", "creator": false, "mod": true}
+            ]
+        }"#;
+        let user: crate::api::user::UserResponse = serde_json::from_str(json).unwrap();
+        assert_eq!(user.proxy.as_deref(), Some("0xproxy"));
+        assert_eq!(user.name.as_deref(), Some("polytrader"));
+        assert_eq!(user.created_at.as_deref(), Some("2024-01-15T10:00:00Z"));
+        assert_eq!(
+            user.profile_image.as_deref(),
+            Some("https://example.com/avatar.png")
+        );
+        assert_eq!(user.display_username_public, Some(true));
+        assert_eq!(user.bio.as_deref(), Some("DeFi enthusiast"));
+        assert_eq!(user.pseudonym.as_deref(), Some("poly_anon"));
+        assert_eq!(user.x_username.as_deref(), Some("polytrader_x"));
+        assert_eq!(user.verified_badge, Some(true));
+        assert_eq!(user.users.len(), 2);
+        assert!(user.users[0].creator);
+        assert!(!user.users[0].moderator);
+        assert!(!user.users[1].creator);
+        assert!(user.users[1].moderator);
+    }
+
+    #[test]
+    fn test_user_info_deserialization() {
+        let json = r#"{"id": "uid-1", "creator": true, "mod": false}"#;
+        let info: crate::api::user::UserInfo = serde_json::from_str(json).unwrap();
+        assert_eq!(info.id.as_deref(), Some("uid-1"));
+        assert!(info.creator);
+        assert!(!info.moderator);
+    }
+
+    #[test]
+    fn test_user_info_defaults() {
+        let json = r#"{}"#;
+        let info: crate::api::user::UserInfo = serde_json::from_str(json).unwrap();
+        assert!(info.id.is_none());
+        assert!(!info.creator);
+        assert!(!info.moderator);
     }
 
     // ── Cursor / PaginatedResponse ──────────────────────────────
