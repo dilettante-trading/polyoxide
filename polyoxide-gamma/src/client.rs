@@ -4,8 +4,8 @@ use polyoxide_core::{
 
 use crate::{
     api::{
-        comments::Comments, events::Events, health::Health, markets::Markets, series::Series,
-        sports::Sports, tags::Tags, user::User,
+        comments::Comments, events::Events, health::Health, markets::Markets,
+        search::Search, series::Series, sports::Sports, tags::Tags, user::User,
     },
     error::GammaError,
 };
@@ -67,6 +67,13 @@ impl Gamma {
     /// Get comments namespace
     pub fn comments(&self) -> Comments {
         Comments {
+            http_client: self.http_client.clone(),
+        }
+    }
+
+    /// Get search namespace
+    pub fn search(&self) -> Search {
+        Search {
             http_client: self.http_client.clone(),
         }
     }
@@ -219,6 +226,7 @@ mod tests {
         let _tags = gamma.tags();
         let _sports = gamma.sports();
         let _comments = gamma.comments();
+        let _search = gamma.search();
         let _user = gamma.user();
         let _health = gamma.health();
     }

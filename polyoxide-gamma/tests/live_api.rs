@@ -378,6 +378,25 @@ async fn live_list_comments() {
     let _ = comments;
 }
 
+// ── Search ──────────────────────────────────────────────────────
+
+#[tokio::test]
+#[ignore]
+async fn live_public_search() {
+    let gamma = client();
+    let results = gamma
+        .search()
+        .public_search("bitcoin")
+        .search_profiles(true)
+        .limit_per_type(5)
+        .send()
+        .await
+        .expect("public search");
+    // Search may return empty results for some queries,
+    // but deserialization must succeed.
+    let _ = results;
+}
+
 // ── User ────────────────────────────────────────────────────────
 
 #[tokio::test]
