@@ -242,10 +242,7 @@ async fn live_trader_leaderboard() {
         .send()
         .await
         .expect("trader leaderboard");
-    assert!(
-        !leaderboard.is_empty(),
-        "should return at least one trader"
-    );
+    assert!(!leaderboard.is_empty(), "should return at least one trader");
 }
 
 // ── Builders: volume ────────────────────────────────────────────

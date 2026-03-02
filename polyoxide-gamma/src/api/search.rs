@@ -15,8 +15,8 @@ pub struct Search {
 impl Search {
     /// Search profiles, events, and tags
     pub fn public_search(&self, query: impl Into<String>) -> PublicSearch {
-        let request = Request::new(self.http_client.clone(), "/public-search")
-            .query("q", query.into());
+        let request =
+            Request::new(self.http_client.clone(), "/public-search").query("q", query.into());
         PublicSearch { request }
     }
 }

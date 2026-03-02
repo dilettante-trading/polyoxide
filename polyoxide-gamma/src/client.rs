@@ -4,8 +4,8 @@ use polyoxide_core::{
 
 use crate::{
     api::{
-        comments::Comments, events::Events, health::Health, markets::Markets,
-        search::Search, series::Series, sports::Sports, tags::Tags, user::User,
+        comments::Comments, events::Events, health::Health, markets::Markets, search::Search,
+        series::Series, sports::Sports, tags::Tags, user::User,
     },
     error::GammaError,
 };
