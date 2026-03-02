@@ -253,6 +253,67 @@ async fn live_get_markets_by_token_ids() {
     );
 }
 
+// ── Health: server time ─────────────────────────────────────────
+
+#[tokio::test]
+#[ignore]
+async fn live_server_time() {
+    let client = public_client();
+    let resp = client
+        .health()
+        .server_time()
+        .send()
+        .await
+        .expect("server_time should succeed");
+
+    let time: f64 = resp.time.parse().expect("time should be a number");
+    assert!(time > 0.0, "server time {time} should be positive");
+}
+
+// ── Markets: spread ────────────────────────────────────────────
+
+#[tokio::test]
+#[ignore]
+async fn live_spread() {
+    let token_id = find_active_token_id().await;
+    let client = public_client();
+
+    let resp = client
+        .markets()
+        .spread(&token_id)
+        .send()
+        .await
+        .expect("spread should succeed");
+
+    let spread: f64 = resp.spread.parse().expect("spread should be a number");
+    assert!(spread >= 0.0, "spread {spread} should be non-negative");
+}
+
+// ── Markets: last trade price ──────────────────────────────────
+
+#[tokio::test]
+#[ignore]
+async fn live_last_trade_price() {
+    let token_id = find_active_token_id().await;
+    let client = public_client();
+
+    let resp = client
+        .markets()
+        .last_trade_price(&token_id)
+        .send()
+        .await
+        .expect("last_trade_price should succeed");
+
+    let price: f64 = resp
+        .last_trade_price
+        .parse()
+        .expect("last_trade_price should be a number");
+    assert!(
+        (0.0..=1.0).contains(&price),
+        "last trade price {price} should be between 0 and 1"
+    );
+}
+
 // ── Authenticated: Account ──────────────────────────────────────
 
 #[tokio::test]

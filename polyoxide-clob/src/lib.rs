@@ -64,10 +64,11 @@ pub use account::{Account, AccountConfig, Credentials, Signer, Wallet};
 pub use api::{
     account::{BalanceAllowanceResponse, ListClobTrades, Trade},
     auth::{ApiKeyInfo, ApiKeyResponse, ReadonlyApiKeyResponse, ValidateKeyResponse},
-    health::Health,
+    health::{Health, ServerTimeResponse},
     markets::{
-        BookParams, LastTradePriceResponse, ListMarketsResponse, Market, MarketToken,
-        MidpointResponse, OrderBook, OrderLevel, PriceResponse, SpreadResponse,
+        BookParams, CalculatePriceResponse, LastTradePriceResponse, ListMarketsResponse,
+        LiveActivityEvent, Market, MarketToken, MidpointResponse, OrderBook, OrderLevel,
+        PriceResponse, SpreadResponse,
     },
     orders::{BatchCancelResponse, CancelResponse, OpenOrder, OrderResponse},
 };

@@ -127,6 +127,69 @@ impl Markets {
         .query("token_id", token_id.into())
     }
 
+    /// Get bid-ask spread for a token
+    pub fn spread(&self, token_id: impl Into<String>) -> Request<SpreadResponse> {
+        Request::get(
+            self.http_client.clone(),
+            "/spread",
+            AuthMode::None,
+            self.chain_id,
+        )
+        .query("token_id", token_id.into())
+    }
+
+    /// Get last trade price for a token
+    pub fn last_trade_price(
+        &self,
+        token_id: impl Into<String>,
+    ) -> Request<LastTradePriceResponse> {
+        Request::get(
+            self.http_client.clone(),
+            "/last-trade-price",
+            AuthMode::None,
+            self.chain_id,
+        )
+        .query("token_id", token_id.into())
+    }
+
+    /// Get live activity events for a market
+    pub fn live_activity(
+        &self,
+        condition_id: impl Into<String>,
+    ) -> Request<Vec<LiveActivityEvent>> {
+        Request::get(
+            self.http_client.clone(),
+            format!(
+                "/live-activity/events/{}",
+                urlencoding::encode(&condition_id.into())
+            ),
+            AuthMode::None,
+            self.chain_id,
+        )
+    }
+
+    /// Calculate estimated execution price for a market order
+    pub async fn calculate_price(
+        &self,
+        token_id: impl Into<String>,
+        side: OrderSide,
+        amount: impl Into<String>,
+    ) -> Result<CalculatePriceResponse, ClobError> {
+        Request::<CalculatePriceResponse>::post(
+            self.http_client.clone(),
+            "/calculate-price".to_string(),
+            AuthMode::None,
+            self.chain_id,
+        )
+        .body(&CalculatePriceParams {
+            token_id: token_id.into(),
+            side,
+            amount: amount.into(),
+        })?
+        .send()
+        .await
+    }
+
     /// Get order books for multiple tokens
     pub async fn order_books(&self, params: &[BookParams]) -> Result<Vec<OrderBook>, ClobError> {
         Request::<Vec<OrderBook>>::post(
@@ -329,6 +392,28 @@ pub struct LastTradePriceResponse {
     pub timestamp: String,
 }
 
+/// A live activity event for a market
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct LiveActivityEvent {
+    pub condition_id: String,
+    #[serde(flatten)]
+    pub extra: serde_json::Value,
+}
+
+/// Parameters for the calculate-price endpoint
+#[derive(Debug, Clone, Serialize)]
+pub struct CalculatePriceParams {
+    pub token_id: String,
+    pub side: OrderSide,
+    pub amount: String,
+}
+
+/// Response from the calculate-price endpoint
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct CalculatePriceResponse {
+    pub price: String,
+}
+
 fn deserialize_tick_size<'de, D>(deserializer: D) -> Result<String, D::Error>
 where
     D: serde::Deserializer<'de>,
@@ -424,5 +509,38 @@ mod tests {
         assert_eq!(resp.token_id, "token-1");
         assert_eq!(resp.last_trade_price, "0.55");
         assert_eq!(resp.timestamp, "1700000000");
+    }
+
+    #[test]
+    fn live_activity_event_deserializes_with_extra_fields() {
+        let json = r#"{
+            "condition_id": "0xabc123",
+            "event_type": "trade",
+            "amount": 100
+        }"#;
+        let event: LiveActivityEvent = serde_json::from_str(json).unwrap();
+        assert_eq!(event.condition_id, "0xabc123");
+        assert_eq!(event.extra["event_type"], "trade");
+        assert_eq!(event.extra["amount"], 100);
+    }
+
+    #[test]
+    fn calculate_price_params_serializes() {
+        let params = CalculatePriceParams {
+            token_id: "token-1".into(),
+            side: OrderSide::Buy,
+            amount: "100.0".into(),
+        };
+        let json = serde_json::to_value(&params).unwrap();
+        assert_eq!(json["token_id"], "token-1");
+        assert_eq!(json["side"], "BUY");
+        assert_eq!(json["amount"], "100.0");
+    }
+
+    #[test]
+    fn calculate_price_response_deserializes() {
+        let json = r#"{"price": "0.52"}"#;
+        let resp: CalculatePriceResponse = serde_json::from_str(json).unwrap();
+        assert_eq!(resp.price, "0.52");
     }
 }

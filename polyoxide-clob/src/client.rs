@@ -79,6 +79,7 @@ impl Clob {
     pub fn health(&self) -> Health {
         Health {
             http_client: self.http_client.clone(),
+            chain_id: self.chain_id,
         }
     }
 
