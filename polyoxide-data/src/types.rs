@@ -403,6 +403,33 @@ pub struct Position {
     pub negative_risk: bool,
 }
 
+/// Time period for aggregation
+#[cfg_attr(feature = "specta", derive(specta::Type))]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, Default)]
+#[serde(rename_all = "UPPERCASE")]
+pub enum TimePeriod {
+    /// Daily aggregation (default)
+    #[default]
+    Day,
+    /// Weekly aggregation
+    Week,
+    /// Monthly aggregation
+    Month,
+    /// All time aggregation
+    All,
+}
+
+impl std::fmt::Display for TimePeriod {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            Self::Day => write!(f, "DAY"),
+            Self::Week => write!(f, "WEEK"),
+            Self::Month => write!(f, "MONTH"),
+            Self::All => write!(f, "ALL"),
+        }
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;

@@ -3,6 +3,9 @@ use serde::{Deserialize, Serialize};
 
 use crate::error::DataApiError;
 
+// Re-export for backwards compatibility
+pub use crate::types::TimePeriod;
+
 /// Builders namespace for builder-related operations
 #[derive(Clone)]
 pub struct BuildersApi {
@@ -52,32 +55,6 @@ impl GetBuilderLeaderboard {
     /// Execute the request
     pub async fn send(self) -> Result<Vec<BuilderRanking>, DataApiError> {
         self.request.send().await
-    }
-}
-
-/// Time period for aggregation
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, Default)]
-#[serde(rename_all = "UPPERCASE")]
-pub enum TimePeriod {
-    /// Daily aggregation (default)
-    #[default]
-    Day,
-    /// Weekly aggregation
-    Week,
-    /// Monthly aggregation
-    Month,
-    /// All time aggregation
-    All,
-}
-
-impl std::fmt::Display for TimePeriod {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        match self {
-            Self::Day => write!(f, "DAY"),
-            Self::Week => write!(f, "WEEK"),
-            Self::Month => write!(f, "MONTH"),
-            Self::All => write!(f, "ALL"),
-        }
     }
 }
 

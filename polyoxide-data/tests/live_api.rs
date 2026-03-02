@@ -229,6 +229,25 @@ async fn live_live_volume() {
         .expect("live volume should deserialize");
 }
 
+// ── Trader Leaderboard ──────────────────────────────────────────
+
+#[tokio::test]
+#[ignore]
+async fn live_trader_leaderboard() {
+    let client = client();
+    let leaderboard = client
+        .leaderboard()
+        .get()
+        .limit(5)
+        .send()
+        .await
+        .expect("trader leaderboard");
+    assert!(
+        !leaderboard.is_empty(),
+        "should return at least one trader"
+    );
+}
+
 // ── Builders: volume ────────────────────────────────────────────
 
 #[tokio::test]

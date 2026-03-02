@@ -7,6 +7,7 @@ use crate::{
         builders::BuildersApi,
         health::Health,
         holders::Holders,
+        leaderboard::LeaderboardApi,
         live_volume::LiveVolumeApi,
         open_interest::OpenInterestApi,
         trades::Trades,
@@ -92,6 +93,13 @@ impl DataApi {
     /// Get builders namespace
     pub fn builders(&self) -> BuildersApi {
         BuildersApi {
+            http_client: self.http_client.clone(),
+        }
+    }
+
+    /// Get leaderboard namespace
+    pub fn leaderboard(&self) -> LeaderboardApi {
+        LeaderboardApi {
             http_client: self.http_client.clone(),
         }
     }
