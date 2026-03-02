@@ -1,3 +1,5 @@
+use std::collections::HashMap;
+
 use polyoxide_core::HttpClient;
 use serde::{Deserialize, Serialize};
 
@@ -33,6 +35,20 @@ impl Orders {
         )
     }
 
+    /// Get a specific order by ID
+    pub fn get(&self, order_id: impl Into<String>) -> Request<OpenOrder> {
+        Request::get(
+            self.http_client.clone(),
+            format!("/data/order/{}", urlencoding::encode(&order_id.into())),
+            AuthMode::L2 {
+                address: self.wallet.address(),
+                credentials: self.credentials.clone(),
+                signer: self.signer.clone(),
+            },
+            self.chain_id,
+        )
+    }
+
     /// Cancel an order
     pub fn cancel(&self, order_id: impl Into<String>) -> CancelOrderRequest {
         CancelOrderRequest {
@@ -45,6 +61,80 @@ impl Orders {
             chain_id: self.chain_id,
             order_id: order_id.into(),
         }
+    }
+
+    /// Cancel all open orders
+    pub async fn cancel_all(&self) -> Result<BatchCancelResponse, ClobError> {
+        Request::<BatchCancelResponse>::delete(
+            self.http_client.clone(),
+            "/cancel-all",
+            AuthMode::L2 {
+                address: self.wallet.address(),
+                credentials: self.credentials.clone(),
+                signer: self.signer.clone(),
+            },
+            self.chain_id,
+        )
+        .send()
+        .await
+    }
+
+    /// Cancel all orders for a specific market and asset
+    pub async fn cancel_market(
+        &self,
+        market: impl Into<String>,
+        asset_id: impl Into<String>,
+    ) -> Result<BatchCancelResponse, ClobError> {
+        #[derive(Serialize)]
+        struct Body {
+            market: String,
+            asset_id: String,
+        }
+
+        Request::<BatchCancelResponse>::delete(
+            self.http_client.clone(),
+            "/cancel-market-orders",
+            AuthMode::L2 {
+                address: self.wallet.address(),
+                credentials: self.credentials.clone(),
+                signer: self.signer.clone(),
+            },
+            self.chain_id,
+        )
+        .body(&Body {
+            market: market.into(),
+            asset_id: asset_id.into(),
+        })?
+        .send()
+        .await
+    }
+
+    /// Cancel multiple orders by ID (up to 3000)
+    pub async fn cancel_many(
+        &self,
+        order_ids: impl Into<Vec<String>>,
+    ) -> Result<BatchCancelResponse, ClobError> {
+        #[derive(Serialize)]
+        #[serde(rename_all = "camelCase")]
+        struct Body {
+            order_ids: Vec<String>,
+        }
+
+        Request::<BatchCancelResponse>::delete(
+            self.http_client.clone(),
+            "/orders",
+            AuthMode::L2 {
+                address: self.wallet.address(),
+                credentials: self.credentials.clone(),
+                signer: self.signer.clone(),
+            },
+            self.chain_id,
+        )
+        .body(&Body {
+            order_ids: order_ids.into(),
+        })?
+        .send()
+        .await
     }
 }
 
@@ -110,4 +200,116 @@ pub struct CancelResponse {
     pub error_msg: Option<String>,
     pub canceled_order_id: Option<String>,
     pub message: Option<String>,
+}
+
+/// Response from batch cancel operations
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all(deserialize = "camelCase"))]
+pub struct BatchCancelResponse {
+    #[serde(default)]
+    pub canceled: Vec<String>,
+    #[serde(default)]
+    pub not_canceled: HashMap<String, String>,
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use alloy::primitives::Address;
+    use std::str::FromStr;
+
+    #[test]
+    fn open_order_deserializes_with_flattened_signed_order() {
+        let json = r#"{
+            "id": "order-abc",
+            "market": "0xcondition123",
+            "assetId": "0xtoken456",
+            "salt": "999",
+            "maker": "0x0000000000000000000000000000000000000001",
+            "signer": "0x0000000000000000000000000000000000000002",
+            "taker": "0x0000000000000000000000000000000000000000",
+            "tokenId": "0xtoken456",
+            "makerAmount": "1000",
+            "takerAmount": "500",
+            "expiration": "0",
+            "nonce": "0",
+            "feeRateBps": "100",
+            "side": "BUY",
+            "signatureType": 0,
+            "signature": "0xsig",
+            "status": "LIVE",
+            "createdAt": "2024-01-01T00:00:00Z",
+            "updatedAt": null
+        }"#;
+        let order: OpenOrder = serde_json::from_str(json).unwrap();
+        assert_eq!(order.id, "order-abc");
+        assert_eq!(order.market, "0xcondition123");
+        assert_eq!(order.asset_id, "0xtoken456");
+        assert_eq!(order.status, "LIVE");
+        assert_eq!(order.order.signature, "0xsig");
+        assert_eq!(order.order.order.maker_amount, "1000");
+        assert_eq!(
+            order.order.order.maker,
+            Address::from_str("0x0000000000000000000000000000000000000001").unwrap()
+        );
+        assert!(order.updated_at.is_none());
+    }
+
+    #[test]
+    fn order_response_deserializes() {
+        let json = r#"{
+            "success": true,
+            "errorMsg": null,
+            "orderId": "order-789",
+            "transactionHashes": ["0xhash1", "0xhash2"]
+        }"#;
+        let resp: OrderResponse = serde_json::from_str(json).unwrap();
+        assert!(resp.success);
+        assert!(resp.error_msg.is_none());
+        assert_eq!(resp.order_id.as_deref(), Some("order-789"));
+        assert_eq!(resp.transaction_hashes.len(), 2);
+    }
+
+    #[test]
+    fn order_response_defaults_transaction_hashes() {
+        let json = r#"{"success": false, "errorMsg": "bad order"}"#;
+        let resp: OrderResponse = serde_json::from_str(json).unwrap();
+        assert!(!resp.success);
+        assert_eq!(resp.error_msg.as_deref(), Some("bad order"));
+        assert!(resp.transaction_hashes.is_empty());
+    }
+
+    #[test]
+    fn batch_cancel_response_deserializes() {
+        let json = r#"{
+            "canceled": ["order-1", "order-2"],
+            "notCanceled": {"order-3": "insufficient balance"}
+        }"#;
+        let resp: BatchCancelResponse = serde_json::from_str(json).unwrap();
+        assert_eq!(resp.canceled, vec!["order-1", "order-2"]);
+        assert_eq!(resp.not_canceled.len(), 1);
+        assert_eq!(
+            resp.not_canceled.get("order-3").unwrap(),
+            "insufficient balance"
+        );
+    }
+
+    #[test]
+    fn batch_cancel_response_defaults_empty() {
+        let json = r#"{}"#;
+        let resp: BatchCancelResponse = serde_json::from_str(json).unwrap();
+        assert!(resp.canceled.is_empty());
+        assert!(resp.not_canceled.is_empty());
+    }
+
+    #[test]
+    fn batch_cancel_response_serializes() {
+        let resp = BatchCancelResponse {
+            canceled: vec!["a".into(), "b".into()],
+            not_canceled: HashMap::from([("c".into(), "error".into())]),
+        };
+        let json = serde_json::to_value(&resp).unwrap();
+        assert_eq!(json["canceled"], serde_json::json!(["a", "b"]));
+        assert_eq!(json["not_canceled"]["c"], "error");
+    }
 }

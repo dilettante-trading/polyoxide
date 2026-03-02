@@ -68,9 +68,9 @@ pub use api::{
         ListMarketsResponse, Market, MarketToken, MidpointResponse, OrderBook, OrderLevel,
         PriceResponse,
     },
-    orders::{CancelResponse, OpenOrder, OrderResponse},
+    orders::{BatchCancelResponse, CancelResponse, OpenOrder, OrderResponse},
 };
-pub use client::{Clob, ClobBuilder, CreateOrderParams};
+pub use client::{Clob, ClobBuilder, CreateOrderParams, SignedOrderPayload};
 pub use error::ClobError;
 pub use types::{
     Order, OrderKind, OrderSide, ParseTickSizeError, PartialCreateOrderOptions, SignatureType,

@@ -375,6 +375,45 @@ impl Clob {
         }
     }
 
+    /// Post multiple signed orders (up to 15)
+    pub async fn post_orders(
+        &self,
+        orders: &[SignedOrderPayload],
+    ) -> Result<Vec<OrderResponse>, ClobError> {
+        let account = self
+            .account
+            .as_ref()
+            .ok_or_else(|| ClobError::validation("Account required to post orders"))?;
+
+        let auth = AuthMode::L2 {
+            address: account.address(),
+            credentials: account.credentials().clone(),
+            signer: account.signer().clone(),
+        };
+
+        let payload: Vec<_> = orders
+            .iter()
+            .map(|o| {
+                serde_json::json!({
+                    "order": o.order,
+                    "owner": account.credentials().key,
+                    "orderType": o.order_type,
+                    "postOnly": o.post_only,
+                })
+            })
+            .collect();
+
+        Request::post(
+            self.http_client.clone(),
+            "/orders".to_string(),
+            auth,
+            self.chain_id,
+        )
+        .body(&payload)?
+        .send()
+        .await
+    }
+
     /// Post a signed order
     pub async fn post_order(
         &self,
@@ -477,6 +516,14 @@ impl CreateOrderParams {
         }
         Ok(())
     }
+}
+
+/// Payload for batch order submission via [`Clob::post_orders`]
+#[derive(Debug, Clone)]
+pub struct SignedOrderPayload {
+    pub order: SignedOrder,
+    pub order_type: OrderKind,
+    pub post_only: bool,
 }
 
 /// Builder for CLOB client
