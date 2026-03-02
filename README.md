@@ -73,11 +73,27 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         .chain(Chain::PolygonMainnet)
         .build()?;
 
-    // Get markets
-    let markets = client.gamma.markets().list().send().await?;
+    // List open markets via Gamma API
+    let markets = client.gamma.markets()
+        .list()
+        .open(true)
+        .limit(10)
+        .send()
+        .await?;
 
-    // Get balance
-    let balance = client.clob.balance_allowance().await?;
+    // Get user positions via Data API
+    let positions = client.data
+        .user("0x1234...")
+        .list_positions()
+        .send()
+        .await?;
+
+    // Check balance via CLOB API (requires auth)
+    let balance = client.clob
+        .account_api()?
+        .balance_allowance("token_id")
+        .send()
+        .await?;
 
     Ok(())
 }
@@ -122,9 +138,9 @@ use alloy::primitives::U256;
 async fn main() -> Result<(), Box<dyn std::error::Error>> {
     // Setup account with builder credentials
     let builder_config = BuilderConfig::new(
-        std::env::var("POLYMARKET_API_KEY")?,
-        std::env::var("POLYMARKET_API_SECRET")?,
-        None,
+        std::env::var("BUILDER_API_KEY")?,
+        std::env::var("BUILDER_SECRET")?,
+        std::env::var("BUILDER_PASS_PHRASE").ok(),
     );
     let account = BuilderAccount::new(
         std::env::var("POLYMARKET_PRIVATE_KEY")?,

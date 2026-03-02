@@ -34,7 +34,7 @@ cargo fmt --all -- --check
 cargo fmt --all
 ```
 
-CI runs format, clippy, test, and build in that order. Clippy uses `-D warnings` (all warnings are errors).
+CI runs two jobs: **format** (standalone), then **lint & test** (clippy, `cargo nextest run`, doctest — sequentially in one job). Clippy uses `-D warnings` (all warnings are errors).
 
 ```bash
 # Run live integration tests (hit real APIs, skipped in CI)
@@ -50,7 +50,7 @@ polyoxide-core          (shared: auth, HTTP client, errors, macros)
 ├── polyoxide-relay     (gasless transactions via Polygon relayer)
 ├── polyoxide-gamma     (read-only market data API)
 ├── polyoxide-data      (read-only user positions/trades API)
-└── polyoxide-clob      (order book trading, depends on core + gamma)
+└── polyoxide-clob      (order book trading, depends on core; gamma optional, default-on)
     └── polyoxide        (unified client re-exporting clob/gamma/data, feature-gated)
         └── polyoxide-cli (CLI tool using clap)
 ```
@@ -59,9 +59,9 @@ polyoxide-core          (shared: auth, HTTP client, errors, macros)
 
 ## Key Patterns
 
-**Builder pattern** — All clients use builders: `Clob::builder(...)`, `Gamma::builder()`, `DataApi::builder()`, `Polymarket::builder(account)`.
+**Builder pattern** — All clients use builders: `ClobBuilder::new()`, `Clob::builder(private_key, credentials)`, `Gamma::builder()`, `DataApi::builder()`, `RelayClient::default_builder()`, `Polymarket::builder(account)`.
 
-**API namespaces** — Clients organize endpoints into namespaces: `clob.markets()`, `clob.orders()`, `gamma.markets().list().open(true).send().await?`, `data.user(addr).list_positions().send().await?`.
+**API namespaces** — Clients organize endpoints into namespaces: `clob.markets()`, `clob.orders()`, `clob.account_api()`, `clob.health()`, `gamma.markets()`, `gamma.events()`, `gamma.search()`, `data.user(addr)`, `data.trades()`, `data.leaderboard()`. Example: `gamma.markets().list().open(true).send().await?`, `data.user(addr).list_positions().send().await?`.
 
 **Request builder fluency** — Query parameters are chained with builder methods before `.send().await?`.
 
@@ -98,7 +98,7 @@ Each crate follows a consistent layout:
 - `types.rs` — domain types
 - `api/` — namespace modules, one file per API group (markets, orders, etc.)
 
-**WebSocket** support lives in `polyoxide-clob/src/ws/` (not core), feature-gated behind `ws` (enabled by default in polyoxide-clob). Two channels: `WebSocket::connect_market(asset_ids)` (public) and `WebSocket::connect_user(condition_ids, credentials)` (authenticated). Implements `futures_util::Stream`.
+**WebSocket** support lives in `polyoxide-clob/src/ws/` (not core), feature-gated behind `ws` (not enabled by default in polyoxide-clob; default = `["gamma"]`). Two channels: `WebSocket::connect_market(asset_ids)` (public) and `WebSocket::connect_user(condition_ids, credentials)` (authenticated). Implements `futures_util::Stream`. `WebSocketBuilder` provides auto-ping keep-alive for long-running connections.
 
 ## Publishing Order
 
