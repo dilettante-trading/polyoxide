@@ -45,32 +45,9 @@ mod protocol {
     }
 }
 
-/// Sign an order with EIP-712
-pub async fn sign_order<S: AlloySigner>(
-    order: &ClobOrder,
-    signer: &S,
-    chain_id: u64,
-) -> Result<String, ClobError> {
-    let chain = Chain::from_chain_id(chain_id)
-        .ok_or_else(|| ClobError::Crypto(format!("Unsupported chain ID: {}", chain_id)))?;
-    let contracts = chain.contracts();
-
-    let verifying_contract = if order.neg_risk {
-        contracts.neg_risk_exchange
-    } else {
-        contracts.exchange
-    };
-
-    // Create EIP-712 domain
-    let domain = protocol::EIP712Domain {
-        name: "Polymarket CTF Exchange".to_string(),
-        version: "1".to_string(),
-        chainId: U256::from(chain_id),
-        verifyingContract: verifying_contract,
-    };
-
-    // Convert order to struct
-    let order_struct = protocol::Order {
+/// Convert a CLOB order to the EIP-712 protocol struct for hashing/signing.
+fn order_to_protocol(order: &ClobOrder) -> Result<protocol::Order, ClobError> {
+    Ok(protocol::Order {
         salt: U256::from_str_radix(&order.salt, 10)
             .map_err(|e| ClobError::Crypto(format!("Invalid salt: {}", e)))?,
         maker: order.maker,
@@ -97,28 +74,10 @@ pub async fn sign_order<S: AlloySigner>(
             SignatureType::PolyProxy => 1,
             SignatureType::PolyGnosisSafe => 2,
         },
-    };
-
-    // Compute struct hash and domain separator (Alloy's eip712_hash_struct already performs keccak256)
-    let struct_hash = order_struct.eip712_hash_struct();
-    let domain_separator = domain.eip712_hash_struct();
-
-    // Compute final hash
-    let mut message = Vec::new();
-    message.extend_from_slice(b"\x19\x01");
-    message.extend_from_slice(domain_separator.as_slice());
-    message.extend_from_slice(struct_hash.as_slice());
-    let digest = keccak256(&message);
-
-    // Sign the digest
-    let signature = signer.sign_hash(&digest).await?;
-
-    Ok(format!("0x{}", hex::encode(signature.as_bytes())))
+    })
 }
 
 /// Compute the EIP-712 digest for an order (without signing).
-/// This is useful for testing and verification purposes.
-#[cfg(test)]
 fn compute_order_digest(
     order: &ClobOrder,
     chain_id: u64,
@@ -140,35 +99,7 @@ fn compute_order_digest(
         verifyingContract: verifying_contract,
     };
 
-    let order_struct = protocol::Order {
-        salt: U256::from_str_radix(&order.salt, 10)
-            .map_err(|e| ClobError::Crypto(format!("Invalid salt: {}", e)))?,
-        maker: order.maker,
-        signer: order.signer,
-        taker: order.taker,
-        tokenId: U256::from_str_radix(&order.token_id, 10)
-            .map_err(|e| ClobError::Crypto(format!("Invalid token_id: {}", e)))?,
-        makerAmount: U256::from_str_radix(&order.maker_amount, 10)
-            .map_err(|e| ClobError::Crypto(format!("Invalid maker_amount: {}", e)))?,
-        takerAmount: U256::from_str_radix(&order.taker_amount, 10)
-            .map_err(|e| ClobError::Crypto(format!("Invalid taker_amount: {}", e)))?,
-        expiration: U256::from_str_radix(&order.expiration, 10)
-            .map_err(|e| ClobError::Crypto(format!("Invalid expiration: {}", e)))?,
-        nonce: U256::from_str_radix(&order.nonce, 10)
-            .map_err(|e| ClobError::Crypto(format!("Invalid nonce: {}", e)))?,
-        feeRateBps: U256::from_str_radix(&order.fee_rate_bps, 10)
-            .map_err(|e| ClobError::Crypto(format!("Invalid fee_rate_bps: {}", e)))?,
-        side: match order.side {
-            crate::types::OrderSide::Buy => 0,
-            crate::types::OrderSide::Sell => 1,
-        },
-        signatureType: match order.signature_type {
-            SignatureType::Eoa => 0,
-            SignatureType::PolyProxy => 1,
-            SignatureType::PolyGnosisSafe => 2,
-        },
-    };
-
+    let order_struct = order_to_protocol(order)?;
     let struct_hash = order_struct.eip712_hash_struct();
     let domain_separator = domain.eip712_hash_struct();
 
@@ -177,6 +108,17 @@ fn compute_order_digest(
     message.extend_from_slice(domain_separator.as_slice());
     message.extend_from_slice(struct_hash.as_slice());
     Ok(keccak256(&message))
+}
+
+/// Sign an order with EIP-712
+pub async fn sign_order<S: AlloySigner>(
+    order: &ClobOrder,
+    signer: &S,
+    chain_id: u64,
+) -> Result<String, ClobError> {
+    let digest = compute_order_digest(order, chain_id)?;
+    let signature = signer.sign_hash(&digest).await?;
+    Ok(format!("0x{}", hex::encode(signature.as_bytes())))
 }
 
 /// Sign CLOB auth message for API key creation
@@ -248,6 +190,52 @@ mod tests {
             signature_type: SignatureType::Eoa,
             neg_risk,
         }
+    }
+
+    #[test]
+    fn order_to_protocol_valid_order() {
+        let order = make_test_order(false);
+        let result = order_to_protocol(&order);
+        assert!(result.is_ok());
+        let proto = result.unwrap();
+        assert_eq!(proto.salt, U256::from(123456789u64));
+        assert_eq!(proto.maker, order.maker);
+        assert_eq!(proto.signer, order.signer);
+        assert_eq!(proto.taker, Address::ZERO);
+        assert_eq!(proto.tokenId, U256::from(100u64));
+        assert_eq!(proto.makerAmount, U256::from(5000000u64));
+        assert_eq!(proto.takerAmount, U256::from(10000000u64));
+        assert_eq!(proto.expiration, U256::ZERO);
+        assert_eq!(proto.nonce, U256::ZERO);
+        assert_eq!(proto.feeRateBps, U256::from(100u64));
+        assert_eq!(proto.side, 0); // Buy
+        assert_eq!(proto.signatureType, 0); // Eoa
+    }
+
+    #[test]
+    fn order_to_protocol_sell_side() {
+        let mut order = make_test_order(false);
+        order.side = OrderSide::Sell;
+        let proto = order_to_protocol(&order).unwrap();
+        assert_eq!(proto.side, 1);
+    }
+
+    #[test]
+    fn order_to_protocol_signature_types() {
+        let mut order = make_test_order(false);
+
+        order.signature_type = SignatureType::PolyProxy;
+        assert_eq!(order_to_protocol(&order).unwrap().signatureType, 1);
+
+        order.signature_type = SignatureType::PolyGnosisSafe;
+        assert_eq!(order_to_protocol(&order).unwrap().signatureType, 2);
+    }
+
+    #[test]
+    fn order_to_protocol_invalid_field() {
+        let mut order = make_test_order(false);
+        order.maker_amount = "not_a_number".to_string();
+        assert!(order_to_protocol(&order).is_err());
     }
 
     #[test]
