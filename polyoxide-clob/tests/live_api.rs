@@ -8,13 +8,20 @@
 //! cargo test -p polyoxide-clob --test live_api -- --ignored
 //! ```
 
-use polyoxide_clob::{Clob, OrderSide};
+use polyoxide_clob::{Account, Clob, OrderSide};
 use polyoxide_core::QueryBuilder;
 use polyoxide_gamma::Gamma;
 use std::time::Duration;
 
 fn public_client() -> Clob {
     Clob::public()
+}
+
+fn authenticated_client() -> Clob {
+    dotenvy::dotenv().ok();
+    let account =
+        Account::from_env().expect("POLYMARKET_* env vars required for authenticated tests");
+    Clob::from_account(account).expect("authenticated clob client")
 }
 
 /// Find a token_id with an active order book using Gamma.
@@ -244,4 +251,78 @@ async fn live_get_markets_by_token_ids() {
         !resp.data.is_empty(),
         "should return at least one market for the given token_id"
     );
+}
+
+// ── Authenticated: Account ──────────────────────────────────────
+
+#[tokio::test]
+#[ignore]
+async fn live_usdc_balance() {
+    let client = authenticated_client();
+    let resp = client
+        .account_api()
+        .expect("account_api")
+        .usdc_balance()
+        .send()
+        .await
+        .expect("usdc_balance should deserialize");
+
+    let balance: f64 = resp.balance.parse().expect("balance should be a number");
+    assert!(balance >= 0.0, "balance {balance} should be non-negative");
+}
+
+#[tokio::test]
+#[ignore]
+async fn live_balance_allowance() {
+    let token_id = find_active_token_id().await;
+    let client = authenticated_client();
+    let _resp = client
+        .account_api()
+        .expect("account_api")
+        .balance_allowance(&token_id)
+        .send()
+        .await
+        .expect("balance_allowance should deserialize");
+}
+
+#[tokio::test]
+#[ignore]
+async fn live_list_trades() {
+    let client = authenticated_client();
+    let _trades = client
+        .account_api()
+        .expect("account_api")
+        .trades()
+        .send()
+        .await
+        .expect("trades should deserialize");
+}
+
+#[tokio::test]
+#[ignore]
+async fn live_list_trades_with_filter() {
+    let client = authenticated_client();
+    let _trades = client
+        .account_api()
+        .expect("account_api")
+        .trades()
+        .after("0")
+        .send()
+        .await
+        .expect("trades with after filter should deserialize");
+}
+
+// ── Authenticated: Orders ───────────────────────────────────────
+
+#[tokio::test]
+#[ignore]
+async fn live_list_open_orders() {
+    let client = authenticated_client();
+    let _orders = client
+        .orders()
+        .expect("orders")
+        .list()
+        .send()
+        .await
+        .expect("list open orders should deserialize");
 }
