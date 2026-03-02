@@ -66,6 +66,24 @@ fn quota(count: u32, period: Duration) -> Quota {
         .allow_burst(NonZeroU32::new(count).unwrap())
 }
 
+/// Create an endpoint rate limit configuration.
+fn endpoint_limit(
+    path_prefix: &'static str,
+    method: Option<Method>,
+    match_mode: MatchMode,
+    burst_count: u32,
+    burst_period: Duration,
+    sustained: Option<(u32, Duration)>,
+) -> EndpointLimit {
+    EndpointLimit {
+        path_prefix,
+        method,
+        match_mode,
+        burst: DirectLimiter::direct(quota(burst_count, burst_period)),
+        sustained: sustained.map(|(count, period)| DirectLimiter::direct(quota(count, period))),
+    }
+}
+
 impl RateLimiter {
     /// Await the appropriate limiter(s) for this endpoint.
     ///
@@ -115,101 +133,36 @@ impl RateLimiter {
     pub fn clob_default() -> Self {
         let ten_sec = Duration::from_secs(10);
         let ten_min = Duration::from_secs(600);
+        let p = MatchMode::Prefix;
 
         Self {
             inner: Arc::new(RateLimiterInner {
                 default: DirectLimiter::direct(quota(9_000, ten_sec)),
                 limits: vec![
-                    // POST /order — dual window (Prefix: matches /order/{id})
-                    EndpointLimit {
-                        path_prefix: "/order",
-                        method: Some(Method::POST),
-                        match_mode: MatchMode::Prefix,
-                        burst: DirectLimiter::direct(quota(3_500, ten_sec)),
-                        sustained: Some(DirectLimiter::direct(quota(36_000, ten_min))),
-                    },
-                    // DELETE /order (Prefix: matches /order/{id})
-                    EndpointLimit {
-                        path_prefix: "/order",
-                        method: Some(Method::DELETE),
-                        match_mode: MatchMode::Prefix,
-                        burst: DirectLimiter::direct(quota(3_000, ten_sec)),
-                        sustained: None,
-                    },
-                    // Auth (Prefix: matches /auth/derive-api-key etc.)
-                    EndpointLimit {
-                        path_prefix: "/auth",
-                        method: None,
-                        match_mode: MatchMode::Prefix,
-                        burst: DirectLimiter::direct(quota(100, ten_sec)),
-                        sustained: None,
-                    },
+                    // POST /order — dual window (matches /order/{id})
+                    endpoint_limit(
+                        "/order",
+                        Some(Method::POST),
+                        p,
+                        3_500,
+                        ten_sec,
+                        Some((36_000, ten_min)),
+                    ),
+                    // DELETE /order (matches /order/{id})
+                    endpoint_limit("/order", Some(Method::DELETE), p, 3_000, ten_sec, None),
+                    // Auth (matches /auth/derive-api-key etc.)
+                    endpoint_limit("/auth", None, p, 100, ten_sec, None),
                     // Ledger
-                    EndpointLimit {
-                        path_prefix: "/trades",
-                        method: None,
-                        match_mode: MatchMode::Prefix,
-                        burst: DirectLimiter::direct(quota(900, ten_sec)),
-                        sustained: None,
-                    },
-                    EndpointLimit {
-                        path_prefix: "/data/",
-                        method: None,
-                        match_mode: MatchMode::Prefix,
-                        burst: DirectLimiter::direct(quota(900, ten_sec)),
-                        sustained: None,
-                    },
-                    // Market data endpoints
-                    // /prices-history before /price to avoid prefix collision
-                    EndpointLimit {
-                        path_prefix: "/prices-history",
-                        method: None,
-                        match_mode: MatchMode::Prefix,
-                        burst: DirectLimiter::direct(quota(1_500, ten_sec)),
-                        sustained: None,
-                    },
-                    EndpointLimit {
-                        path_prefix: "/markets",
-                        method: None,
-                        match_mode: MatchMode::Prefix,
-                        burst: DirectLimiter::direct(quota(1_500, ten_sec)),
-                        sustained: None,
-                    },
-                    EndpointLimit {
-                        path_prefix: "/book",
-                        method: None,
-                        match_mode: MatchMode::Prefix,
-                        burst: DirectLimiter::direct(quota(1_500, ten_sec)),
-                        sustained: None,
-                    },
-                    EndpointLimit {
-                        path_prefix: "/price",
-                        method: None,
-                        match_mode: MatchMode::Prefix,
-                        burst: DirectLimiter::direct(quota(1_500, ten_sec)),
-                        sustained: None,
-                    },
-                    EndpointLimit {
-                        path_prefix: "/midpoint",
-                        method: None,
-                        match_mode: MatchMode::Prefix,
-                        burst: DirectLimiter::direct(quota(1_500, ten_sec)),
-                        sustained: None,
-                    },
-                    EndpointLimit {
-                        path_prefix: "/neg-risk",
-                        method: None,
-                        match_mode: MatchMode::Prefix,
-                        burst: DirectLimiter::direct(quota(1_500, ten_sec)),
-                        sustained: None,
-                    },
-                    EndpointLimit {
-                        path_prefix: "/tick-size",
-                        method: None,
-                        match_mode: MatchMode::Prefix,
-                        burst: DirectLimiter::direct(quota(1_500, ten_sec)),
-                        sustained: None,
-                    },
+                    endpoint_limit("/trades", None, p, 900, ten_sec, None),
+                    endpoint_limit("/data/", None, p, 900, ten_sec, None),
+                    // Market data — /prices-history before /price to avoid prefix collision
+                    endpoint_limit("/prices-history", None, p, 1_500, ten_sec, None),
+                    endpoint_limit("/markets", None, p, 1_500, ten_sec, None),
+                    endpoint_limit("/book", None, p, 1_500, ten_sec, None),
+                    endpoint_limit("/price", None, p, 1_500, ten_sec, None),
+                    endpoint_limit("/midpoint", None, p, 1_500, ten_sec, None),
+                    endpoint_limit("/neg-risk", None, p, 1_500, ten_sec, None),
+                    endpoint_limit("/tick-size", None, p, 1_500, ten_sec, None),
                 ],
             }),
         }
@@ -225,46 +178,17 @@ impl RateLimiter {
     /// - /tags: 200/10s
     pub fn gamma_default() -> Self {
         let ten_sec = Duration::from_secs(10);
+        let p = MatchMode::Prefix;
 
         Self {
             inner: Arc::new(RateLimiterInner {
                 default: DirectLimiter::direct(quota(4_000, ten_sec)),
                 limits: vec![
-                    EndpointLimit {
-                        path_prefix: "/comments",
-                        method: None,
-                        match_mode: MatchMode::Prefix,
-                        burst: DirectLimiter::direct(quota(200, ten_sec)),
-                        sustained: None,
-                    },
-                    EndpointLimit {
-                        path_prefix: "/tags",
-                        method: None,
-                        match_mode: MatchMode::Prefix,
-                        burst: DirectLimiter::direct(quota(200, ten_sec)),
-                        sustained: None,
-                    },
-                    EndpointLimit {
-                        path_prefix: "/markets",
-                        method: None,
-                        match_mode: MatchMode::Prefix,
-                        burst: DirectLimiter::direct(quota(300, ten_sec)),
-                        sustained: None,
-                    },
-                    EndpointLimit {
-                        path_prefix: "/public-search",
-                        method: None,
-                        match_mode: MatchMode::Prefix,
-                        burst: DirectLimiter::direct(quota(350, ten_sec)),
-                        sustained: None,
-                    },
-                    EndpointLimit {
-                        path_prefix: "/events",
-                        method: None,
-                        match_mode: MatchMode::Prefix,
-                        burst: DirectLimiter::direct(quota(500, ten_sec)),
-                        sustained: None,
-                    },
+                    endpoint_limit("/comments", None, p, 200, ten_sec, None),
+                    endpoint_limit("/tags", None, p, 200, ten_sec, None),
+                    endpoint_limit("/markets", None, p, 300, ten_sec, None),
+                    endpoint_limit("/public-search", None, p, 350, ten_sec, None),
+                    endpoint_limit("/events", None, p, 500, ten_sec, None),
                 ],
             }),
         }
@@ -277,32 +201,15 @@ impl RateLimiter {
     /// - /positions and /closed-positions: 150/10s
     pub fn data_default() -> Self {
         let ten_sec = Duration::from_secs(10);
+        let p = MatchMode::Prefix;
 
         Self {
             inner: Arc::new(RateLimiterInner {
                 default: DirectLimiter::direct(quota(1_000, ten_sec)),
                 limits: vec![
-                    EndpointLimit {
-                        path_prefix: "/closed-positions",
-                        method: None,
-                        match_mode: MatchMode::Prefix,
-                        burst: DirectLimiter::direct(quota(150, ten_sec)),
-                        sustained: None,
-                    },
-                    EndpointLimit {
-                        path_prefix: "/positions",
-                        method: None,
-                        match_mode: MatchMode::Prefix,
-                        burst: DirectLimiter::direct(quota(150, ten_sec)),
-                        sustained: None,
-                    },
-                    EndpointLimit {
-                        path_prefix: "/trades",
-                        method: None,
-                        match_mode: MatchMode::Prefix,
-                        burst: DirectLimiter::direct(quota(200, ten_sec)),
-                        sustained: None,
-                    },
+                    endpoint_limit("/closed-positions", None, p, 150, ten_sec, None),
+                    endpoint_limit("/positions", None, p, 150, ten_sec, None),
+                    endpoint_limit("/trades", None, p, 200, ten_sec, None),
                 ],
             }),
         }
