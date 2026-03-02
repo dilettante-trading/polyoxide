@@ -139,10 +139,7 @@ impl Markets {
     }
 
     /// Get last trade price for a token
-    pub fn last_trade_price(
-        &self,
-        token_id: impl Into<String>,
-    ) -> Request<LastTradePriceResponse> {
+    pub fn last_trade_price(&self, token_id: impl Into<String>) -> Request<LastTradePriceResponse> {
         Request::get(
             self.http_client.clone(),
             "/last-trade-price",

@@ -49,9 +49,7 @@ impl Notifications {
             self.l2_auth(),
             self.chain_id,
         )
-        .body(&Body {
-            ids: ids.into(),
-        })?
+        .body(&Body { ids: ids.into() })?
         .send()
         .await
     }

@@ -6,7 +6,7 @@ use crate::{
     account::{Account, Credentials},
     api::{
         account::AccountApi, auth::Auth, notifications::Notifications, orders::OrderResponse,
-        Health, Markets, Orders,
+        rewards::Rewards, Health, Markets, Orders,
     },
     core::chain::Chain,
     error::ClobError,
@@ -126,6 +126,22 @@ impl Clob {
             .ok_or_else(|| ClobError::validation("Account required for notifications API"))?;
 
         Ok(Notifications {
+            http_client: self.http_client.clone(),
+            wallet: account.wallet().clone(),
+            credentials: account.credentials().clone(),
+            signer: account.signer().clone(),
+            chain_id: self.chain_id,
+        })
+    }
+
+    /// Get rewards namespace for liquidity reward operations
+    pub fn rewards(&self) -> Result<Rewards, ClobError> {
+        let account = self
+            .account
+            .as_ref()
+            .ok_or_else(|| ClobError::validation("Account required for rewards API"))?;
+
+        Ok(Rewards {
             http_client: self.http_client.clone(),
             wallet: account.wallet().clone(),
             credentials: account.credentials().clone(),

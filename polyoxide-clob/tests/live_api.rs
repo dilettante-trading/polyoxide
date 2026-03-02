@@ -417,6 +417,73 @@ async fn live_closed_only_status() {
         .expect("closed_only_status should deserialize");
 }
 
+// ── Authenticated: Rewards ─────────────────────────────────────
+
+#[tokio::test]
+#[ignore]
+async fn live_reward_earnings() {
+    let client = authenticated_client();
+    let _resp = client
+        .rewards()
+        .expect("rewards")
+        .earnings()
+        .send()
+        .await
+        .expect("earnings should deserialize");
+}
+
+#[tokio::test]
+#[ignore]
+async fn live_reward_total_earnings() {
+    let client = authenticated_client();
+    let _resp = client
+        .rewards()
+        .expect("rewards")
+        .total_earnings()
+        .send()
+        .await
+        .expect("total_earnings should deserialize");
+}
+
+#[tokio::test]
+#[ignore]
+async fn live_reward_percentages() {
+    let client = authenticated_client();
+    let _resp = client
+        .rewards()
+        .expect("rewards")
+        .percentages()
+        .send()
+        .await
+        .expect("percentages should deserialize");
+}
+
+#[tokio::test]
+#[ignore]
+async fn live_reward_market_earnings() {
+    let client = authenticated_client();
+    let _resp = client
+        .rewards()
+        .expect("rewards")
+        .market_earnings()
+        .send()
+        .await
+        .expect("market_earnings should deserialize");
+}
+
+#[tokio::test]
+#[ignore]
+async fn live_reward_current_markets() {
+    let client = authenticated_client();
+    let _resp = client
+        .rewards()
+        .expect("rewards")
+        .current_markets()
+        .send()
+        .await
+        .expect("current_markets should deserialize");
+}
+
 // ── Authenticated: Orders ───────────────────────────────────────
 
 #[tokio::test]

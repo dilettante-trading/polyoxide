@@ -64,8 +64,7 @@ pub use account::{Account, AccountConfig, Credentials, Signer, Wallet};
 pub use api::{
     account::{BalanceAllowanceResponse, ListClobTrades, Trade},
     auth::{
-        ApiKeyInfo, ApiKeyResponse, ClosedOnlyResponse, ReadonlyApiKeyResponse,
-        ValidateKeyResponse,
+        ApiKeyInfo, ApiKeyResponse, ClosedOnlyResponse, ReadonlyApiKeyResponse, ValidateKeyResponse,
     },
     health::{Health, ServerTimeResponse},
     markets::{
@@ -75,6 +74,9 @@ pub use api::{
     },
     notifications::Notification,
     orders::{BatchCancelResponse, CancelResponse, OpenOrder, OrderResponse, OrderScoringResponse},
+    rewards::{
+        RewardEarnings, RewardMarket, RewardMarketEarning, RewardPercentages, RewardTotalEarnings,
+    },
 };
 pub use client::{Clob, ClobBuilder, CreateOrderParams, SignedOrderPayload};
 pub use error::ClobError;
