@@ -1,6 +1,6 @@
 use std::collections::HashMap;
 
-use polyoxide_core::HttpClient;
+use polyoxide_core::{HttpClient, QueryBuilder};
 use serde::{Deserialize, Serialize};
 
 use crate::{
@@ -109,6 +109,39 @@ impl Orders {
         .await
     }
 
+    /// Check if an order is being scored for rewards
+    pub fn is_scoring(&self, order_id: impl Into<String>) -> Request<OrderScoringResponse> {
+        Request::get(
+            self.http_client.clone(),
+            "/order-scoring",
+            AuthMode::L2 {
+                address: self.wallet.address(),
+                credentials: self.credentials.clone(),
+                signer: self.signer.clone(),
+            },
+            self.chain_id,
+        )
+        .query("order_id", order_id.into())
+    }
+
+    /// Check if multiple orders are being scored for rewards
+    pub fn are_scoring(
+        &self,
+        order_ids: impl Into<Vec<String>>,
+    ) -> Request<Vec<OrderScoringResponse>> {
+        Request::get(
+            self.http_client.clone(),
+            "/orders-scoring",
+            AuthMode::L2 {
+                address: self.wallet.address(),
+                credentials: self.credentials.clone(),
+                signer: self.signer.clone(),
+            },
+            self.chain_id,
+        )
+        .query_many("order_ids", order_ids.into())
+    }
+
     /// Cancel multiple orders by ID (up to 3000)
     pub async fn cancel_many(
         &self,
@@ -200,6 +233,13 @@ pub struct CancelResponse {
     pub error_msg: Option<String>,
     pub canceled_order_id: Option<String>,
     pub message: Option<String>,
+}
+
+/// Response from order scoring check
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct OrderScoringResponse {
+    pub order_id: String,
+    pub scoring: bool,
 }
 
 /// Response from batch cancel operations
@@ -311,5 +351,25 @@ mod tests {
         let json = serde_json::to_value(&resp).unwrap();
         assert_eq!(json["canceled"], serde_json::json!(["a", "b"]));
         assert_eq!(json["not_canceled"]["c"], "error");
+    }
+
+    #[test]
+    fn order_scoring_response_deserializes() {
+        let json = r#"{"order_id": "order-1", "scoring": true}"#;
+        let resp: OrderScoringResponse = serde_json::from_str(json).unwrap();
+        assert_eq!(resp.order_id, "order-1");
+        assert!(resp.scoring);
+    }
+
+    #[test]
+    fn order_scoring_response_batch_deserializes() {
+        let json = r#"[
+            {"order_id": "order-1", "scoring": true},
+            {"order_id": "order-2", "scoring": false}
+        ]"#;
+        let resp: Vec<OrderScoringResponse> = serde_json::from_str(json).unwrap();
+        assert_eq!(resp.len(), 2);
+        assert!(resp[0].scoring);
+        assert!(!resp[1].scoring);
     }
 }

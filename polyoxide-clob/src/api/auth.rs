@@ -168,6 +168,18 @@ impl Auth {
             self.chain_id,
         )
     }
+
+    // --- Ban status ---
+
+    /// Check if the account is in closed-only mode
+    pub fn closed_only_status(&self) -> Request<ClosedOnlyResponse> {
+        Request::get(
+            self.http_client.clone(),
+            "/auth/ban-status/closed-only",
+            self.l2_auth(),
+            self.chain_id,
+        )
+    }
 }
 
 /// Response from creating or deriving an API key
@@ -197,6 +209,12 @@ pub struct ReadonlyApiKeyResponse {
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct ValidateKeyResponse {
     pub valid: bool,
+}
+
+/// Response from the closed-only ban status check
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct ClosedOnlyResponse {
+    pub closed_only: bool,
 }
 
 #[cfg(test)]
@@ -259,5 +277,16 @@ mod tests {
         assert_eq!(list.len(), 2);
         assert_eq!(list[0].api_key, "k1");
         assert_eq!(list[1].api_key, "k2");
+    }
+
+    #[test]
+    fn closed_only_response_deserializes() {
+        let json = r#"{"closed_only": true}"#;
+        let resp: ClosedOnlyResponse = serde_json::from_str(json).unwrap();
+        assert!(resp.closed_only);
+
+        let json = r#"{"closed_only": false}"#;
+        let resp: ClosedOnlyResponse = serde_json::from_str(json).unwrap();
+        assert!(!resp.closed_only);
     }
 }

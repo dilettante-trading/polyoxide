@@ -54,6 +54,49 @@ impl AccountApi {
         .query("signature_type", 1)
     }
 
+    /// Update balance allowance for a token
+    pub async fn update_balance_allowance(
+        &self,
+        token_id: impl Into<String>,
+    ) -> Result<serde_json::Value, ClobError> {
+        #[derive(Serialize)]
+        struct Body {
+            token_id: String,
+        }
+
+        Request::<serde_json::Value>::post(
+            self.http_client.clone(),
+            "/balance-allowance/update".to_string(),
+            AuthMode::L2 {
+                address: self.wallet.clone().address(),
+                credentials: self.credentials.clone(),
+                signer: self.signer.clone(),
+            },
+            self.chain_id,
+        )
+        .body(&Body {
+            token_id: token_id.into(),
+        })?
+        .send()
+        .await
+    }
+
+    /// Send a heartbeat to keep the session alive
+    pub async fn heartbeat(&self) -> Result<serde_json::Value, ClobError> {
+        Request::<serde_json::Value>::post(
+            self.http_client.clone(),
+            "/v1/heartbeats".to_string(),
+            AuthMode::L2 {
+                address: self.wallet.clone().address(),
+                credentials: self.credentials.clone(),
+                signer: self.signer.clone(),
+            },
+            self.chain_id,
+        )
+        .send()
+        .await
+    }
+
     /// Get trades with optional filtering
     pub fn trades(&self) -> ListClobTrades {
         let request = Request::get(

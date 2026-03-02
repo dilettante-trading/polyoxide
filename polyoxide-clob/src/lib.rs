@@ -63,14 +63,18 @@ pub use core::chain::{Chain, Contracts};
 pub use account::{Account, AccountConfig, Credentials, Signer, Wallet};
 pub use api::{
     account::{BalanceAllowanceResponse, ListClobTrades, Trade},
-    auth::{ApiKeyInfo, ApiKeyResponse, ReadonlyApiKeyResponse, ValidateKeyResponse},
+    auth::{
+        ApiKeyInfo, ApiKeyResponse, ClosedOnlyResponse, ReadonlyApiKeyResponse,
+        ValidateKeyResponse,
+    },
     health::{Health, ServerTimeResponse},
     markets::{
         BookParams, CalculatePriceResponse, LastTradePriceResponse, ListMarketsResponse,
         LiveActivityEvent, Market, MarketToken, MidpointResponse, OrderBook, OrderLevel,
         PriceResponse, SpreadResponse,
     },
-    orders::{BatchCancelResponse, CancelResponse, OpenOrder, OrderResponse},
+    notifications::Notification,
+    orders::{BatchCancelResponse, CancelResponse, OpenOrder, OrderResponse, OrderScoringResponse},
 };
 pub use client::{Clob, ClobBuilder, CreateOrderParams, SignedOrderPayload};
 pub use error::ClobError;

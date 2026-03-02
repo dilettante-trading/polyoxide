@@ -373,6 +373,50 @@ async fn live_list_trades_with_filter() {
         .expect("trades with after filter should deserialize");
 }
 
+// ── Authenticated: Account — heartbeat ──────────────────────────
+
+#[tokio::test]
+#[ignore]
+async fn live_heartbeat() {
+    let client = authenticated_client();
+    let _resp = client
+        .account_api()
+        .expect("account_api")
+        .heartbeat()
+        .await
+        .expect("heartbeat should succeed");
+}
+
+// ── Authenticated: Notifications ────────────────────────────────
+
+#[tokio::test]
+#[ignore]
+async fn live_list_notifications() {
+    let client = authenticated_client();
+    let _notifications = client
+        .notifications()
+        .expect("notifications")
+        .list()
+        .send()
+        .await
+        .expect("list notifications should deserialize");
+}
+
+// ── Authenticated: Auth — ban status ────────────────────────────
+
+#[tokio::test]
+#[ignore]
+async fn live_closed_only_status() {
+    let client = authenticated_client();
+    let _resp = client
+        .auth()
+        .expect("auth")
+        .closed_only_status()
+        .send()
+        .await
+        .expect("closed_only_status should deserialize");
+}
+
 // ── Authenticated: Orders ───────────────────────────────────────
 
 #[tokio::test]
