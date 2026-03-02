@@ -62,7 +62,7 @@ pub use core::chain::{Chain, Contracts};
 
 pub use account::{Account, AccountConfig, Credentials, Signer, Wallet};
 pub use api::{
-    account::{BalanceAllowanceResponse, Trade},
+    account::{BalanceAllowanceResponse, ListClobTrades, Trade},
     health::Health,
     markets::{
         ListMarketsResponse, Market, MarketToken, MidpointResponse, OrderBook, OrderLevel,
