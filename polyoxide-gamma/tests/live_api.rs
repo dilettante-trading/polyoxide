@@ -378,6 +378,106 @@ async fn live_list_comments() {
     let _ = comments;
 }
 
+// ── Comments: get and by_user ───────────────────────────────────
+
+#[tokio::test]
+#[ignore]
+async fn live_get_comment_by_id() {
+    let gamma = client();
+
+    // Discover a comment ID from listing
+    let events = gamma
+        .events()
+        .list()
+        .active(true)
+        .limit(5)
+        .send()
+        .await
+        .expect("list events");
+    let first = events.first().expect("need at least one event");
+    let event_id: i64 = first.id.parse().expect("event id should be numeric");
+
+    let comments = gamma
+        .comments()
+        .list()
+        .parent_entity_type("Event")
+        .parent_entity_id(event_id)
+        .limit(1)
+        .send()
+        .await
+        .expect("list comments");
+
+    if let Some(comment) = comments.first() {
+        let fetched = gamma
+            .comments()
+            .get(&comment.id)
+            .send()
+            .await
+            .expect("get comment by id");
+        assert_eq!(fetched.id, comment.id);
+    }
+}
+
+// ── Events: related by ID, tags, counts ────────────────────────
+
+#[tokio::test]
+#[ignore]
+async fn live_event_tags() {
+    let gamma = client();
+    let events = gamma
+        .events()
+        .list()
+        .limit(1)
+        .send()
+        .await
+        .expect("list events");
+    let first = events.first().expect("need at least one event");
+
+    let _tags = gamma
+        .events()
+        .tags(&first.id)
+        .send()
+        .await
+        .expect("get event tags");
+}
+
+// ── Markets: tags ──────────────────────────────────────────────
+
+#[tokio::test]
+#[ignore]
+async fn live_market_tags() {
+    let gamma = client();
+    let markets = gamma
+        .markets()
+        .list()
+        .limit(1)
+        .send()
+        .await
+        .expect("list markets");
+    let first = markets.first().expect("need at least one market");
+
+    let _tags = gamma
+        .markets()
+        .tags(&first.id)
+        .send()
+        .await
+        .expect("get market tags");
+}
+
+// ── Sports: market types ───────────────────────────────────────
+
+#[tokio::test]
+#[ignore]
+async fn live_sports_market_types() {
+    let gamma = client();
+    let _types = gamma
+        .sports()
+        .market_types()
+        .send()
+        .await
+        .expect("sports market types should deserialize");
+}
+
 // ── Search ──────────────────────────────────────────────────────
 
 #[tokio::test]

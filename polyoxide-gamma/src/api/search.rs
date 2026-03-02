@@ -51,6 +51,54 @@ impl PublicSearch {
         self
     }
 
+    /// Filter by event status
+    pub fn events_status(mut self, status: impl Into<String>) -> Self {
+        self.request = self.request.query("events_status", status.into());
+        self
+    }
+
+    /// Filter by event tag IDs
+    pub fn events_tag(mut self, tag_ids: impl IntoIterator<Item = impl ToString>) -> Self {
+        self.request = self.request.query_many("events_tag", tag_ids);
+        self
+    }
+
+    /// Include closed markets in results
+    pub fn keep_closed_markets(mut self, keep: bool) -> Self {
+        self.request = self.request.query("keep_closed_markets", keep);
+        self
+    }
+
+    /// Set sort order
+    pub fn sort(mut self, sort: impl Into<String>) -> Self {
+        self.request = self.request.query("sort", sort.into());
+        self
+    }
+
+    /// Include tag search results
+    pub fn search_tags(mut self, include: bool) -> Self {
+        self.request = self.request.query("search_tags", include);
+        self
+    }
+
+    /// Filter by recurrence pattern
+    pub fn recurrence(mut self, recurrence: impl Into<String>) -> Self {
+        self.request = self.request.query("recurrence", recurrence.into());
+        self
+    }
+
+    /// Exclude events with specified tag IDs
+    pub fn exclude_tag_id(mut self, tag_ids: impl IntoIterator<Item = i64>) -> Self {
+        self.request = self.request.query_many("exclude_tag_id", tag_ids);
+        self
+    }
+
+    /// Enable optimized search
+    pub fn optimized(mut self, optimized: bool) -> Self {
+        self.request = self.request.query("optimized", optimized);
+        self
+    }
+
     /// Execute the request
     pub async fn send(self) -> Result<SearchResponse, GammaError> {
         self.request.send().await
@@ -109,7 +157,15 @@ mod tests {
             .search_profiles(true)
             .limit_per_type(10)
             .page(1)
-            .cache(false);
+            .cache(false)
+            .events_status("active")
+            .events_tag(vec![1i64, 2])
+            .keep_closed_markets(false)
+            .sort("volume")
+            .search_tags(true)
+            .recurrence("daily")
+            .exclude_tag_id(vec![99i64])
+            .optimized(true);
     }
 
     #[test]

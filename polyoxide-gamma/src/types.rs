@@ -433,6 +433,15 @@ pub struct CommentPosition {
     pub shares: String,
 }
 
+/// Generic count response (used for tweet count, comment count, etc.)
+#[cfg_attr(feature = "specta", derive(specta::Type))]
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct CountResponse {
+    #[cfg_attr(feature = "specta", specta(type = f64))]
+    pub count: u64,
+}
+
 /// Pagination cursor for list operations
 #[cfg_attr(feature = "specta", derive(specta::Type))]
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -853,6 +862,15 @@ mod tests {
         assert!(info.id.is_none());
         assert!(!info.creator);
         assert!(!info.moderator);
+    }
+
+    // ── CountResponse ────────────────────────────────────────────
+
+    #[test]
+    fn test_count_response() {
+        let json = r#"{"count": 42}"#;
+        let resp: CountResponse = serde_json::from_str(json).unwrap();
+        assert_eq!(resp.count, 42);
     }
 
     // ── Cursor / PaginatedResponse ──────────────────────────────

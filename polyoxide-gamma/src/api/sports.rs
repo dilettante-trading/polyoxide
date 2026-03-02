@@ -17,6 +17,11 @@ impl Sports {
         Request::new(self.http_client.clone(), "/sports")
     }
 
+    /// Get available sports market types
+    pub fn market_types(&self) -> Request<serde_json::Value, GammaError> {
+        Request::new(self.http_client.clone(), "/sports/market-types")
+    }
+
     /// List teams with optional filtering
     pub fn list_teams(&self) -> ListTeams {
         ListTeams {

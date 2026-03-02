@@ -1,6 +1,9 @@
 use polyoxide_core::{HttpClient, QueryBuilder, Request};
 
-use crate::{error::GammaError, types::Market};
+use crate::{
+    error::GammaError,
+    types::{Market, Tag},
+};
 
 /// Markets namespace for market-related operations
 #[derive(Clone)]
@@ -10,19 +13,23 @@ pub struct Markets {
 
 impl Markets {
     /// Get a specific market by ID
-    pub fn get(&self, id: impl Into<String>) -> Request<Market, GammaError> {
-        Request::new(
-            self.http_client.clone(),
-            format!("/markets/{}", urlencoding::encode(&id.into())),
-        )
+    pub fn get(&self, id: impl Into<String>) -> GetMarket {
+        GetMarket {
+            request: Request::new(
+                self.http_client.clone(),
+                format!("/markets/{}", urlencoding::encode(&id.into())),
+            ),
+        }
     }
 
     /// Get a market by its slug
-    pub fn get_by_slug(&self, slug: impl Into<String>) -> Request<Market, GammaError> {
-        Request::new(
-            self.http_client.clone(),
-            format!("/markets/slug/{}", urlencoding::encode(&slug.into())),
-        )
+    pub fn get_by_slug(&self, slug: impl Into<String>) -> GetMarket {
+        GetMarket {
+            request: Request::new(
+                self.http_client.clone(),
+                format!("/markets/slug/{}", urlencoding::encode(&slug.into())),
+            ),
+        }
     }
 
     /// List markets with optional filtering
@@ -30,6 +37,32 @@ impl Markets {
         ListMarkets {
             request: Request::new(self.http_client.clone(), "/markets"),
         }
+    }
+
+    /// Get tags for a market
+    pub fn tags(&self, id: impl Into<String>) -> Request<Vec<Tag>, GammaError> {
+        Request::new(
+            self.http_client.clone(),
+            format!("/markets/{}/tags", urlencoding::encode(&id.into())),
+        )
+    }
+}
+
+/// Request builder for getting a single market
+pub struct GetMarket {
+    request: Request<Market, GammaError>,
+}
+
+impl GetMarket {
+    /// Include tag data in response
+    pub fn include_tag(mut self, include: bool) -> Self {
+        self.request = self.request.query("include_tag", include);
+        self
+    }
+
+    /// Execute the request
+    pub async fn send(self) -> Result<Market, GammaError> {
+        self.request.send().await
     }
 }
 
@@ -285,5 +318,16 @@ mod tests {
     fn test_get_by_slug_accepts_string_and_str() {
         let _req1 = gamma().markets().get_by_slug("my-slug");
         let _req2 = gamma().markets().get_by_slug(String::from("my-slug"));
+    }
+
+    #[test]
+    fn test_get_market_with_include_tag() {
+        let _req = gamma().markets().get("12345").include_tag(true);
+    }
+
+    #[test]
+    fn test_market_tags_accepts_str_and_string() {
+        let _req1 = gamma().markets().tags("12345");
+        let _req2 = gamma().markets().tags(String::from("12345"));
     }
 }

@@ -1,6 +1,9 @@
 use polyoxide_core::{HttpClient, QueryBuilder, Request};
 
-use crate::{error::GammaError, types::Event};
+use crate::{
+    error::GammaError,
+    types::{CountResponse, Event, Tag},
+};
 
 /// Events namespace for event-related operations
 #[derive(Clone)]
@@ -17,19 +20,23 @@ impl Events {
     }
 
     /// Get an event by ID
-    pub fn get(&self, id: impl Into<String>) -> Request<Event, GammaError> {
-        Request::new(
-            self.http_client.clone(),
-            format!("/events/{}", urlencoding::encode(&id.into())),
-        )
+    pub fn get(&self, id: impl Into<String>) -> GetEvent {
+        GetEvent {
+            request: Request::new(
+                self.http_client.clone(),
+                format!("/events/{}", urlencoding::encode(&id.into())),
+            ),
+        }
     }
 
     /// Get an event by slug
-    pub fn get_by_slug(&self, slug: impl Into<String>) -> Request<Event, GammaError> {
-        Request::new(
-            self.http_client.clone(),
-            format!("/events/slug/{}", urlencoding::encode(&slug.into())),
-        )
+    pub fn get_by_slug(&self, slug: impl Into<String>) -> GetEvent {
+        GetEvent {
+            request: Request::new(
+                self.http_client.clone(),
+                format!("/events/slug/{}", urlencoding::encode(&slug.into())),
+            ),
+        }
     }
 
     /// Get related events by slug
@@ -38,6 +45,54 @@ impl Events {
             self.http_client.clone(),
             format!("/events/slug/{}/related", urlencoding::encode(&slug.into())),
         )
+    }
+
+    /// Get tags for an event
+    pub fn tags(&self, id: impl Into<String>) -> Request<Vec<Tag>, GammaError> {
+        Request::new(
+            self.http_client.clone(),
+            format!("/events/{}/tags", urlencoding::encode(&id.into())),
+        )
+    }
+
+    /// Get tweet count for an event
+    pub fn tweet_count(&self, id: impl Into<String>) -> Request<CountResponse, GammaError> {
+        Request::new(
+            self.http_client.clone(),
+            format!("/events/{}/tweet-count", urlencoding::encode(&id.into())),
+        )
+    }
+
+    /// Get comment count for an event
+    pub fn comment_count(&self, id: impl Into<String>) -> Request<CountResponse, GammaError> {
+        Request::new(
+            self.http_client.clone(),
+            format!("/events/{}/comments/count", urlencoding::encode(&id.into())),
+        )
+    }
+}
+
+/// Request builder for getting a single event
+pub struct GetEvent {
+    request: Request<Event, GammaError>,
+}
+
+impl GetEvent {
+    /// Include chat data in response
+    pub fn include_chat(mut self, include: bool) -> Self {
+        self.request = self.request.query("include_chat", include);
+        self
+    }
+
+    /// Include template data in response
+    pub fn include_template(mut self, include: bool) -> Self {
+        self.request = self.request.query("include_template", include);
+        self
+    }
+
+    /// Execute the request
+    pub async fn send(self) -> Result<Event, GammaError> {
+        self.request.send().await
     }
 }
 
@@ -267,5 +322,30 @@ mod tests {
     fn test_get_related_by_slug_accepts_str_and_string() {
         let _req1 = gamma().events().get_related_by_slug("slug");
         let _req2 = gamma().events().get_related_by_slug(String::from("slug"));
+    }
+
+    #[test]
+    fn test_get_event_with_query_params() {
+        let _req = gamma()
+            .events()
+            .get("evt-123")
+            .include_chat(true)
+            .include_template(false);
+    }
+
+    #[test]
+    fn test_event_tags_accepts_str_and_string() {
+        let _req1 = gamma().events().tags("evt-123");
+        let _req2 = gamma().events().tags(String::from("evt-123"));
+    }
+
+    #[test]
+    fn test_event_tweet_count() {
+        let _req = gamma().events().tweet_count("evt-123");
+    }
+
+    #[test]
+    fn test_event_comment_count() {
+        let _req = gamma().events().comment_count("evt-123");
     }
 }

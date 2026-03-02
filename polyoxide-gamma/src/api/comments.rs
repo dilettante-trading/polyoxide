@@ -15,6 +15,25 @@ impl Comments {
             request: Request::new(self.http_client.clone(), "/comments"),
         }
     }
+
+    /// Get a comment by ID
+    pub fn get(&self, id: impl Into<String>) -> Request<Comment, GammaError> {
+        Request::new(
+            self.http_client.clone(),
+            format!("/comments/{}", urlencoding::encode(&id.into())),
+        )
+    }
+
+    /// Get comments by user address
+    pub fn by_user(&self, address: impl Into<String>) -> Request<Vec<Comment>, GammaError> {
+        Request::new(
+            self.http_client.clone(),
+            format!(
+                "/comments/user_address/{}",
+                urlencoding::encode(&address.into())
+            ),
+        )
+    }
 }
 
 /// Request builder for listing comments
@@ -74,5 +93,41 @@ impl ListComments {
     /// Execute the request
     pub async fn send(self) -> Result<Vec<Comment>, GammaError> {
         self.request.send().await
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use crate::Gamma;
+
+    fn gamma() -> Gamma {
+        Gamma::new().unwrap()
+    }
+
+    #[test]
+    fn test_get_comment_accepts_str_and_string() {
+        let _req1 = gamma().comments().get("c-123");
+        let _req2 = gamma().comments().get(String::from("c-123"));
+    }
+
+    #[test]
+    fn test_by_user_accepts_str_and_string() {
+        let _req1 = gamma().comments().by_user("0xabc");
+        let _req2 = gamma().comments().by_user(String::from("0xabc"));
+    }
+
+    #[test]
+    fn test_list_comments_full_chain() {
+        let _req = gamma()
+            .comments()
+            .list()
+            .limit(10)
+            .offset(0)
+            .order("createdAt")
+            .ascending(false)
+            .parent_entity_type("Event")
+            .parent_entity_id(42)
+            .get_positions(true)
+            .holders_only(false);
     }
 }
