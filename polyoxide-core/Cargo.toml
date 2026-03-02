@@ -25,4 +25,7 @@ tracing = { workspace = true }
 url = { workspace = true }
 governor = { workspace = true }
 fastrand = { workspace = true }
-tokio = { workspace = true }
+tokio = { workspace = true, features = ["time"] }
+
+[dev-dependencies]
+tokio = { workspace = true, features = ["macros", "rt-multi-thread"] }

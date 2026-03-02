@@ -18,7 +18,7 @@ path = "src/main.rs"
 polyoxide-clob = { workspace = true, features = ["ws"] }
 polyoxide-data = { workspace = true }
 polyoxide-gamma = { workspace = true }
-tokio = { workspace = true }
+tokio = { workspace = true, features = ["macros", "rt-multi-thread", "time", "net"] }
 clap = { version = "4.5", features = ["derive", "env"] }
 clap_complete = "4.5"
 serde_json = { workspace = true }
