@@ -20,6 +20,17 @@ use super::{
 /// Maximum number of subscriptions per WebSocket connection.
 const MAX_SUBSCRIPTIONS_PER_CONNECTION: usize = 500;
 
+/// Validate that the subscription count does not exceed the per-connection limit.
+fn validate_subscription_count(count: usize) -> Result<(), WebSocketError> {
+    if count > MAX_SUBSCRIPTIONS_PER_CONNECTION {
+        return Err(WebSocketError::InvalidMessage(format!(
+            "Too many subscriptions ({}), max {}",
+            count, MAX_SUBSCRIPTIONS_PER_CONNECTION
+        )));
+    }
+    Ok(())
+}
+
 /// WebSocket client for Polymarket real-time updates.
 ///
 /// Provides streaming access to market data (order book, prices) and user-specific
@@ -69,13 +80,7 @@ impl WebSocket {
     /// }
     /// ```
     pub async fn connect_market(asset_ids: Vec<String>) -> Result<Self, WebSocketError> {
-        if asset_ids.len() > MAX_SUBSCRIPTIONS_PER_CONNECTION {
-            return Err(WebSocketError::InvalidMessage(format!(
-                "Too many subscriptions ({}), max {}",
-                asset_ids.len(),
-                MAX_SUBSCRIPTIONS_PER_CONNECTION
-            )));
-        }
+        validate_subscription_count(asset_ids.len())?;
         let (mut ws, _) = connect_async(WS_MARKET_URL).await?;
 
         let subscription = MarketSubscription::new(asset_ids);
@@ -114,13 +119,7 @@ impl WebSocket {
         market_ids: Vec<String>,
         credentials: ApiCredentials,
     ) -> Result<Self, WebSocketError> {
-        if market_ids.len() > MAX_SUBSCRIPTIONS_PER_CONNECTION {
-            return Err(WebSocketError::InvalidMessage(format!(
-                "Too many subscriptions ({}), max {}",
-                market_ids.len(),
-                MAX_SUBSCRIPTIONS_PER_CONNECTION
-            )));
-        }
+        validate_subscription_count(market_ids.len())?;
         let (mut ws, _) = connect_async(WS_USER_URL).await?;
 
         let subscription = UserSubscription::new(market_ids, credentials);
@@ -278,13 +277,7 @@ impl WebSocketBuilder {
         self,
         asset_ids: Vec<String>,
     ) -> Result<WebSocketWithPing, WebSocketError> {
-        if asset_ids.len() > MAX_SUBSCRIPTIONS_PER_CONNECTION {
-            return Err(WebSocketError::InvalidMessage(format!(
-                "Too many subscriptions ({}), max {}",
-                asset_ids.len(),
-                MAX_SUBSCRIPTIONS_PER_CONNECTION
-            )));
-        }
+        validate_subscription_count(asset_ids.len())?;
         let (mut ws, _) = connect_async(&self.market_url).await?;
 
         let subscription = MarketSubscription::new(asset_ids);
@@ -304,13 +297,7 @@ impl WebSocketBuilder {
         market_ids: Vec<String>,
         credentials: ApiCredentials,
     ) -> Result<WebSocketWithPing, WebSocketError> {
-        if market_ids.len() > MAX_SUBSCRIPTIONS_PER_CONNECTION {
-            return Err(WebSocketError::InvalidMessage(format!(
-                "Too many subscriptions ({}), max {}",
-                market_ids.len(),
-                MAX_SUBSCRIPTIONS_PER_CONNECTION
-            )));
-        }
+        validate_subscription_count(market_ids.len())?;
         let (mut ws, _) = connect_async(&self.user_url).await?;
 
         let subscription = UserSubscription::new(market_ids, credentials);
@@ -446,6 +433,24 @@ impl WebSocketWithPing {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn test_validate_subscription_count_within_limit() {
+        assert!(validate_subscription_count(0).is_ok());
+        assert!(validate_subscription_count(1).is_ok());
+        assert!(validate_subscription_count(MAX_SUBSCRIPTIONS_PER_CONNECTION).is_ok());
+    }
+
+    #[test]
+    fn test_validate_subscription_count_exceeds_limit() {
+        let result = validate_subscription_count(MAX_SUBSCRIPTIONS_PER_CONNECTION + 1);
+        assert!(result.is_err());
+        let err = result.unwrap_err();
+        assert!(
+            err.to_string().contains("Too many subscriptions"),
+            "expected subscription error, got: {err}"
+        );
+    }
 
     #[test]
     fn test_builder_default_urls_are_wss() {
