@@ -539,6 +539,66 @@ async fn live_reward_current_markets() {
         .expect("current_markets should deserialize");
 }
 
+// ── Authenticated: RFQ ─────────────────────────────────────────
+
+#[tokio::test]
+#[ignore]
+async fn live_rfq_config() {
+    let client = authenticated_client();
+    let _config = client
+        .rfq()
+        .expect("rfq")
+        .config()
+        .send()
+        .await
+        .expect("rfq config should deserialize");
+}
+
+#[tokio::test]
+#[ignore]
+async fn live_rfq_list_requests() {
+    let client = authenticated_client();
+    let resp = client
+        .rfq()
+        .expect("rfq")
+        .list_requests()
+        .limit(5)
+        .send()
+        .await
+        .expect("list rfq requests should deserialize");
+
+    // Just verify pagination structure
+    assert!(resp.data.len() <= 5);
+}
+
+#[tokio::test]
+#[ignore]
+async fn live_rfq_requester_quotes() {
+    let client = authenticated_client();
+    let _resp = client
+        .rfq()
+        .expect("rfq")
+        .requester_quotes()
+        .limit(5)
+        .send()
+        .await
+        .expect("requester quotes should deserialize");
+}
+
+#[tokio::test]
+#[ignore]
+async fn live_rfq_quoter_quotes() {
+    let client = authenticated_client();
+    let _resp = client
+        .rfq()
+        .expect("rfq")
+        .quoter_quotes()
+        .limit(5)
+        .send()
+        .await
+        .expect("quoter quotes should deserialize");
+}
+
 // ── Authenticated: Orders ───────────────────────────────────────
 
 #[tokio::test]

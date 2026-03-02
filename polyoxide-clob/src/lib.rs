@@ -77,6 +77,10 @@ pub use api::{
     rewards::{
         RewardEarnings, RewardMarket, RewardMarketEarning, RewardPercentages, RewardTotalEarnings,
     },
+    rfq::{
+        CreateRfqQuoteParams, CreateRfqRequestParams, RfqConfig, RfqPaginatedResponse, RfqQuote,
+        RfqQuoteResponse, RfqRequest, RfqRequestResponse,
+    },
 };
 pub use client::{Clob, ClobBuilder, CreateOrderParams, SignedOrderPayload};
 pub use error::ClobError;
