@@ -66,8 +66,8 @@ pub use api::{
     auth::{ApiKeyInfo, ApiKeyResponse, ReadonlyApiKeyResponse, ValidateKeyResponse},
     health::Health,
     markets::{
-        ListMarketsResponse, Market, MarketToken, MidpointResponse, OrderBook, OrderLevel,
-        PriceResponse,
+        BookParams, LastTradePriceResponse, ListMarketsResponse, Market, MarketToken,
+        MidpointResponse, OrderBook, OrderLevel, PriceResponse, SpreadResponse,
     },
     orders::{BatchCancelResponse, CancelResponse, OpenOrder, OrderResponse},
 };

@@ -3,6 +3,7 @@ use rust_decimal::Decimal;
 use serde::{Deserialize, Serialize};
 
 use crate::{
+    error::ClobError,
     request::{AuthMode, Request},
     types::OrderSide,
 };
@@ -125,6 +126,77 @@ impl Markets {
         )
         .query("token_id", token_id.into())
     }
+
+    /// Get order books for multiple tokens
+    pub async fn order_books(&self, params: &[BookParams]) -> Result<Vec<OrderBook>, ClobError> {
+        Request::<Vec<OrderBook>>::post(
+            self.http_client.clone(),
+            "/books".to_string(),
+            AuthMode::None,
+            self.chain_id,
+        )
+        .body(params)?
+        .send()
+        .await
+    }
+
+    /// Get prices for multiple tokens
+    pub async fn prices(&self, params: &[BookParams]) -> Result<Vec<PriceResponse>, ClobError> {
+        Request::<Vec<PriceResponse>>::post(
+            self.http_client.clone(),
+            "/prices".to_string(),
+            AuthMode::None,
+            self.chain_id,
+        )
+        .body(params)?
+        .send()
+        .await
+    }
+
+    /// Get midpoints for multiple tokens
+    pub async fn midpoints(
+        &self,
+        params: &[BookParams],
+    ) -> Result<Vec<MidpointResponse>, ClobError> {
+        Request::<Vec<MidpointResponse>>::post(
+            self.http_client.clone(),
+            "/midpoints".to_string(),
+            AuthMode::None,
+            self.chain_id,
+        )
+        .body(params)?
+        .send()
+        .await
+    }
+
+    /// Get spreads for multiple tokens
+    pub async fn spreads(&self, params: &[BookParams]) -> Result<Vec<SpreadResponse>, ClobError> {
+        Request::<Vec<SpreadResponse>>::post(
+            self.http_client.clone(),
+            "/spreads".to_string(),
+            AuthMode::None,
+            self.chain_id,
+        )
+        .body(params)?
+        .send()
+        .await
+    }
+
+    /// Get last trade prices for multiple tokens
+    pub async fn last_trade_prices(
+        &self,
+        params: &[BookParams],
+    ) -> Result<Vec<LastTradePriceResponse>, ClobError> {
+        Request::<Vec<LastTradePriceResponse>>::post(
+            self.http_client.clone(),
+            "/last-trades-prices".to_string(),
+            AuthMode::None,
+            self.chain_id,
+        )
+        .body(params)?
+        .send()
+        .await
+    }
 }
 
 /// Market information
@@ -232,6 +304,31 @@ pub struct TickSizeResponse {
     pub minimum_tick_size: String,
 }
 
+/// Parameters for batch pricing requests
+#[derive(Debug, Clone, Serialize)]
+pub struct BookParams {
+    pub token_id: String,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub side: Option<OrderSide>,
+}
+
+/// Spread response (bid-ask spread for a token)
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct SpreadResponse {
+    pub token_id: String,
+    pub spread: String,
+    pub bid: String,
+    pub ask: String,
+}
+
+/// Last trade price response
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct LastTradePriceResponse {
+    pub token_id: String,
+    pub last_trade_price: String,
+    pub timestamp: String,
+}
+
 fn deserialize_tick_size<'de, D>(deserializer: D) -> Result<String, D::Error>
 where
     D: serde::Deserializer<'de>,
@@ -277,5 +374,55 @@ mod tests {
         let json = r#"{}"#;
         let result = serde_json::from_str::<FeeRateResponse>(json);
         assert!(result.is_err(), "Should reject empty JSON object");
+    }
+
+    #[test]
+    fn book_params_serializes() {
+        let params = BookParams {
+            token_id: "token-1".into(),
+            side: Some(OrderSide::Buy),
+        };
+        let json = serde_json::to_value(&params).unwrap();
+        assert_eq!(json["token_id"], "token-1");
+        assert_eq!(json["side"], "BUY");
+    }
+
+    #[test]
+    fn book_params_omits_none_side() {
+        let params = BookParams {
+            token_id: "token-1".into(),
+            side: None,
+        };
+        let json = serde_json::to_value(&params).unwrap();
+        assert_eq!(json["token_id"], "token-1");
+        assert!(json.get("side").is_none());
+    }
+
+    #[test]
+    fn spread_response_deserializes() {
+        let json = r#"{
+            "token_id": "token-1",
+            "spread": "0.02",
+            "bid": "0.48",
+            "ask": "0.50"
+        }"#;
+        let resp: SpreadResponse = serde_json::from_str(json).unwrap();
+        assert_eq!(resp.token_id, "token-1");
+        assert_eq!(resp.spread, "0.02");
+        assert_eq!(resp.bid, "0.48");
+        assert_eq!(resp.ask, "0.50");
+    }
+
+    #[test]
+    fn last_trade_price_response_deserializes() {
+        let json = r#"{
+            "token_id": "token-1",
+            "last_trade_price": "0.55",
+            "timestamp": "1700000000"
+        }"#;
+        let resp: LastTradePriceResponse = serde_json::from_str(json).unwrap();
+        assert_eq!(resp.token_id, "token-1");
+        assert_eq!(resp.last_trade_price, "0.55");
+        assert_eq!(resp.timestamp, "1700000000");
     }
 }

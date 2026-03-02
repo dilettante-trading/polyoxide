@@ -96,7 +96,7 @@ impl<T> Request<T> {
     }
 
     /// Set request body
-    pub fn body<B: serde::Serialize>(mut self, body: &B) -> Result<Self, ClobError> {
+    pub fn body<B: serde::Serialize + ?Sized>(mut self, body: &B) -> Result<Self, ClobError> {
         self.body = Some(serde_json::to_value(body)?);
         Ok(self)
     }
