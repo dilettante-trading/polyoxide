@@ -1,3 +1,5 @@
+//! CLI subcommand definitions for the `polyoxide` binary.
+
 mod common;
 
 pub mod completions;

@@ -20,6 +20,11 @@ use polyoxide_gamma::Gamma;
 
 const DEFAULT_BASE_URL: &str = "https://clob.polymarket.com";
 
+/// CLOB (Central Limit Order Book) trading client for Polymarket.
+///
+/// Provides authenticated order creation, signing, and submission, plus read-only
+/// market data and order book access. Use [`Clob::public()`] for unauthenticated
+/// read-only access, or [`Clob::builder()`] for full trading capabilities.
 #[derive(Clone)]
 pub struct Clob {
     pub(crate) http_client: HttpClient,
@@ -234,6 +239,7 @@ impl Clob {
             Some(0),
         ))
     }
+    /// Sign an order using the configured account's EIP-712 signer.
     pub async fn sign_order(&self, order: &Order) -> Result<SignedOrder, ClobError> {
         let account = self
             .account
@@ -450,6 +456,7 @@ pub struct CreateOrderParams {
 }
 
 impl CreateOrderParams {
+    /// Validate price and size are finite and within expected ranges.
     pub fn validate(&self) -> Result<(), ClobError> {
         if !self.price.is_finite() || !self.size.is_finite() {
             return Err(ClobError::validation(

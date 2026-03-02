@@ -12,6 +12,7 @@ pub enum WalletType {
 }
 
 impl WalletType {
+    /// Returns the API string representation ("SAFE" or "PROXY").
     pub fn as_str(&self) -> &'static str {
         match self {
             WalletType::Safe => "SAFE",
@@ -52,6 +53,7 @@ sol! {
     }
 }
 
+/// Serializable transaction submission payload sent to the relayer.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct TransactionRequest {
     #[serde(rename = "type")]
@@ -65,6 +67,9 @@ pub struct TransactionRequest {
     // Add signature params if needed
 }
 
+/// Response from the relayer after submitting a transaction.
+///
+/// The `transaction_hash` is `None` until the transaction is mined on-chain.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct RelayerTransactionResponse {
     #[serde(rename = "transactionID")]
@@ -73,6 +78,7 @@ pub struct RelayerTransactionResponse {
     pub transaction_hash: Option<String>,
 }
 
+/// Deserialize a nonce that may be represented as either a JSON number or string.
 pub fn deserialize_nonce<'de, D>(deserializer: D) -> Result<u64, D::Error>
 where
     D: serde::Deserializer<'de>,
@@ -103,12 +109,14 @@ where
     deserializer.deserialize_any(NonceVisitor)
 }
 
+/// Response from the relayer's nonce endpoint.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct NonceResponse {
     #[serde(deserialize_with = "deserialize_nonce")]
     pub nonce: u64,
 }
 
+/// Response from the relayer's transaction status endpoint.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct TransactionStatusResponse {
     pub state: String,

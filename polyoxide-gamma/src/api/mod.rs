@@ -1,3 +1,5 @@
+//! API namespace modules for the Gamma market data client.
+
 pub mod comments;
 pub mod events;
 pub mod health;

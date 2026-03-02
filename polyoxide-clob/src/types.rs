@@ -9,6 +9,7 @@ use thiserror::Error;
 #[error("invalid tick size: {0}. Valid values are 0.1, 0.01, 0.001, or 0.0001")]
 pub struct ParseTickSizeError(String);
 
+/// Side of an order (buy or sell).
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Deserialize)]
 #[serde(rename_all = "UPPERCASE")]
 pub enum OrderSide {
@@ -72,8 +73,7 @@ impl fmt::Display for OrderKind {
     }
 }
 
-/// Signature type
-/// Signature type
+/// Signature type for order signing (EOA, Proxy, or Gnosis Safe).
 #[derive(Debug, Default, Clone, Copy, PartialEq, Eq)]
 pub enum SignatureType {
     #[default]
@@ -140,6 +140,7 @@ pub enum TickSize {
 }
 
 impl TickSize {
+    /// Returns the tick size as an `f64` value.
     pub fn as_f64(&self) -> f64 {
         match self {
             Self::Tenth => 0.1,
@@ -149,6 +150,7 @@ impl TickSize {
         }
     }
 
+    /// Returns the number of decimal places for this tick size.
     pub fn decimals(&self) -> u32 {
         match self {
             Self::Tenth => 1,

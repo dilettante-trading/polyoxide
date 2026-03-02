@@ -25,6 +25,10 @@ const SAFE_INIT_CODE_HASH: &str =
 const PROXY_INIT_CODE_HASH: &str =
     "d21df8dc65880a8606f09fe0ce3df9b8869287ab0b058be05aa9e8af6330a00b";
 
+/// Client for submitting gasless transactions through Polymarket's relayer service.
+///
+/// Supports both Safe and Proxy wallet types. Handles EIP-712 transaction signing,
+/// nonce management, and multi-send batching automatically.
 #[derive(Debug, Clone)]
 pub struct RelayClient {
     http_client: HttpClient,
@@ -59,6 +63,7 @@ impl RelayClient {
         Self::builder()?.with_account(account).build()
     }
 
+    /// Returns the signer's Ethereum address, or `None` if no account is configured.
     pub fn address(&self) -> Option<Address> {
         self.account.as_ref().map(|a| a.address())
     }
@@ -116,6 +121,7 @@ impl RelayClient {
         }
     }
 
+    /// Fetch the current transaction nonce for an address from the relayer.
     pub async fn get_nonce(&self, address: Address) -> Result<u64, RelayError> {
         let url = self.http_client.base_url.join(&format!(
             "nonce?address={}&type={}",
@@ -152,6 +158,7 @@ impl RelayClient {
         }
     }
 
+    /// Query the status of a previously submitted relay transaction.
     pub async fn get_transaction(
         &self,
         transaction_id: &str,
@@ -194,6 +201,7 @@ impl RelayClient {
         }
     }
 
+    /// Check whether a Safe wallet has been deployed on-chain.
     pub async fn get_deployed(&self, safe_address: Address) -> Result<bool, RelayError> {
         #[derive(serde::Deserialize)]
         struct DeployedResponse {
@@ -248,6 +256,7 @@ impl RelayClient {
         Address::from_slice(&hash[12..])
     }
 
+    /// Derive the expected Safe wallet address for the configured account via CREATE2.
     pub fn get_expected_safe(&self) -> Result<Address, RelayError> {
         let account = self.account.as_ref().ok_or(RelayError::MissingSigner)?;
         Ok(self.derive_safe_address(account.address()))
@@ -275,6 +284,7 @@ impl RelayClient {
         Ok(Address::from_slice(&hash[12..]))
     }
 
+    /// Derive the expected Proxy wallet address for the configured account via CREATE2.
     pub fn get_expected_proxy_wallet(&self) -> Result<Address, RelayError> {
         let account = self.account.as_ref().ok_or(RelayError::MissingSigner)?;
         self.derive_proxy_wallet(account.address())
@@ -465,6 +475,7 @@ impl RelayClient {
         format!("0x{}", hex::encode(packed))
     }
 
+    /// Sign and submit transactions through the relayer with default gas settings.
     pub async fn execute(
         &self,
         transactions: Vec<SafeTransaction>,
@@ -473,6 +484,10 @@ impl RelayClient {
         self.execute_with_gas(transactions, metadata, None).await
     }
 
+    /// Sign and submit transactions through the relayer with an optional gas limit override.
+    ///
+    /// For Safe wallets, transactions are batched via MultiSend. For Proxy wallets,
+    /// they are encoded into the proxy's calldata format.
     pub async fn execute_with_gas(
         &self,
         transactions: Vec<SafeTransaction>,
@@ -799,6 +814,7 @@ impl RelayClient {
         Ok(safe_gas_limit)
     }
 
+    /// Submit a gasless CTF position redemption without gas estimation.
     pub async fn submit_gasless_redemption(
         &self,
         condition_id: [u8; 32],
@@ -808,6 +824,10 @@ impl RelayClient {
             .await
     }
 
+    /// Submit a gasless CTF position redemption, optionally estimating gas first.
+    ///
+    /// When `estimate_gas` is true, simulates the redemption against the configured
+    /// RPC endpoint to determine a safe gas limit before submission.
     pub async fn submit_gasless_redemption_with_gas_estimation(
         &self,
         condition_id: [u8; 32],
@@ -954,6 +974,10 @@ impl RelayClient {
     }
 }
 
+/// Builder for configuring a [`RelayClient`].
+///
+/// Defaults to Polygon mainnet (chain ID 137) with the production relayer URL.
+/// Use [`Default::default()`] to also read `RELAYER_URL` and `CHAIN_ID` from the environment.
 pub struct RelayClientBuilder {
     base_url: String,
     chain_id: u64,
@@ -980,6 +1004,7 @@ impl Default for RelayClientBuilder {
 }
 
 impl RelayClientBuilder {
+    /// Create a new builder with default settings (Polygon mainnet, production relayer URL).
     pub fn new() -> Result<Self, RelayError> {
         let mut base_url = Url::parse("https://relayer-v2.polymarket.com")?;
         if !base_url.path().ends_with('/') {
@@ -995,11 +1020,13 @@ impl RelayClientBuilder {
         })
     }
 
+    /// Set the target chain ID (default: 137 for Polygon mainnet).
     pub fn chain_id(mut self, chain_id: u64) -> Self {
         self.chain_id = chain_id;
         self
     }
 
+    /// Set a custom relayer API base URL.
     pub fn url(mut self, url: &str) -> Result<Self, RelayError> {
         let mut base_url = Url::parse(url)?;
         if !base_url.path().ends_with('/') {
@@ -1009,11 +1036,13 @@ impl RelayClientBuilder {
         Ok(self)
     }
 
+    /// Attach a [`BuilderAccount`] for authenticated relay operations.
     pub fn with_account(mut self, account: BuilderAccount) -> Self {
         self.account = Some(account);
         self
     }
 
+    /// Set the wallet type (default: [`WalletType::Safe`]).
     pub fn wallet_type(mut self, wallet_type: WalletType) -> Self {
         self.wallet_type = wallet_type;
         self
@@ -1025,6 +1054,9 @@ impl RelayClientBuilder {
         self
     }
 
+    /// Build the [`RelayClient`].
+    ///
+    /// Returns an error if the chain ID is unsupported or the base URL is invalid.
     pub fn build(self) -> Result<RelayClient, RelayError> {
         let mut base_url = Url::parse(&self.base_url)?;
         if !base_url.path().ends_with('/') {

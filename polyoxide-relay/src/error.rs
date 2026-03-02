@@ -1,5 +1,9 @@
 use thiserror::Error;
 
+/// Error types for relay operations.
+///
+/// Wraps underlying HTTP, serialization, and signing errors, plus relay-specific
+/// API failures and rate limiting.
 #[derive(Error, Debug)]
 pub enum RelayError {
     #[error("Reqwest error: {0}")]

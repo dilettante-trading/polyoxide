@@ -2,6 +2,7 @@ use alloy::primitives::{address, Address};
 use polyoxide_core::{current_timestamp, Base64Format, Signer};
 use reqwest::header::{HeaderMap, HeaderValue};
 
+/// On-chain contract addresses and RPC configuration for a specific chain.
 #[derive(Clone, Debug)]
 pub struct ContractConfig {
     pub safe_factory: Address,
@@ -11,6 +12,9 @@ pub struct ContractConfig {
     pub rpc_url: &'static str,
 }
 
+/// Returns contract addresses for a supported chain, or `None` for unknown chain IDs.
+///
+/// Supported chains: Polygon mainnet (137), Amoy testnet (80002).
 pub fn get_contract_config(chain_id: u64) -> Option<ContractConfig> {
     match chain_id {
         137 => Some(ContractConfig {
@@ -31,6 +35,10 @@ pub fn get_contract_config(chain_id: u64) -> Option<ContractConfig> {
     }
 }
 
+/// API credentials for authenticating relay requests.
+///
+/// The `Debug` implementation redacts all secret fields to prevent accidental
+/// leakage in logs.
 #[derive(Clone)]
 pub struct BuilderConfig {
     pub key: String,
@@ -52,6 +60,7 @@ impl std::fmt::Debug for BuilderConfig {
 }
 
 impl BuilderConfig {
+    /// Create a new builder config with the given API credentials.
     pub fn new(key: String, secret: String, passphrase: Option<String>) -> Self {
         Self {
             key,
@@ -60,6 +69,9 @@ impl BuilderConfig {
         }
     }
 
+    /// Generate HMAC-authenticated headers for Relay v1 requests.
+    ///
+    /// Uses the raw secret string for HMAC signing with standard base64 output.
     pub fn generate_headers(
         &self,
         method: &str,
@@ -97,6 +109,9 @@ impl BuilderConfig {
         Ok(headers)
     }
 
+    /// Generate HMAC-authenticated headers for Relay v2 requests.
+    ///
+    /// Uses base64-decoded secret for HMAC signing with URL-safe base64 output.
     pub fn generate_relayer_v2_headers(
         &self,
         method: &str,

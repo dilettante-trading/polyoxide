@@ -3,6 +3,11 @@ use crate::error::RelayError;
 use alloy::primitives::Address;
 use alloy::signers::local::PrivateKeySigner;
 
+/// Account credentials for authenticated relay operations.
+///
+/// Combines a private key signer (for EIP-712 transaction signing) with optional
+/// builder API credentials (for HMAC-authenticated relay submission). The `Debug`
+/// implementation redacts the private key to prevent accidental leakage in logs.
 #[derive(Clone)]
 pub struct BuilderAccount {
     pub(crate) signer: PrivateKeySigner,
@@ -19,6 +24,9 @@ impl std::fmt::Debug for BuilderAccount {
 }
 
 impl BuilderAccount {
+    /// Create a new account from a hex-encoded private key and optional builder config.
+    ///
+    /// Accepts keys with or without a `0x` prefix.
     pub fn new(
         private_key: impl Into<String>,
         config: Option<BuilderConfig>,
@@ -31,14 +39,17 @@ impl BuilderAccount {
         Ok(Self { signer, config })
     }
 
+    /// Returns the Ethereum address derived from the private key.
     pub fn address(&self) -> Address {
         self.signer.address()
     }
 
+    /// Returns a reference to the underlying private key signer.
     pub fn signer(&self) -> &PrivateKeySigner {
         &self.signer
     }
 
+    /// Returns the builder API config, if one was provided.
     pub fn config(&self) -> Option<&BuilderConfig> {
         self.config.as_ref()
     }
