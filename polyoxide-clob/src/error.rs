@@ -35,6 +35,7 @@ impl ClobError {
     }
 
     /// Create service error (external dependency failure)
+    #[cfg_attr(not(feature = "gamma"), allow(dead_code))]
     pub(crate) fn service(msg: impl Into<String>) -> Self {
         Self::Api(ApiError::Api {
             status: 0,

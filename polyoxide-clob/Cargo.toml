@@ -11,7 +11,8 @@ keywords = ["polymarket", "prediction-markets", "trading", "clob"]
 categories = ["api-bindings", "web-programming::http-client"]
 
 [features]
-default = []
+default = ["gamma"]
+gamma = ["dep:polyoxide-gamma"]
 ws = ["dep:tokio-tungstenite", "dep:futures-util", "tokio/net", "tokio/macros"]
 
 [dependencies]
@@ -23,7 +24,7 @@ alloy = { version = "1.1.2", features = [
 ] }
 polyoxide-core = { workspace = true }
 reqwest = { workspace = true }
-polyoxide-gamma = { workspace = true }
+polyoxide-gamma = { workspace = true, optional = true }
 serde = { workspace = true }
 serde_json = { workspace = true }
 thiserror = { workspace = true }

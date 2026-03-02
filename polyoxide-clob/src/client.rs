@@ -15,6 +15,7 @@ use crate::{
     },
 };
 use alloy::primitives::Address;
+#[cfg(feature = "gamma")]
 use polyoxide_gamma::Gamma;
 
 const DEFAULT_BASE_URL: &str = "https://clob.polymarket.com";
@@ -24,6 +25,7 @@ pub struct Clob {
     pub(crate) http_client: HttpClient,
     pub(crate) chain_id: u64,
     pub(crate) account: Option<Account>,
+    #[cfg(feature = "gamma")]
     pub(crate) gamma: Gamma,
 }
 
@@ -293,28 +295,44 @@ impl Clob {
         if let Some(funder) = funder {
             Ok(funder)
         } else if signature_type.is_proxy() {
-            // Fetch proxy from Gamma
-            let profile = self
-                .gamma
-                .user()
-                .get(account.address().to_string())
-                .send()
-                .await
-                .map_err(|e| ClobError::service(format!("Failed to fetch user profile: {}", e)))?;
+            #[cfg(feature = "gamma")]
+            {
+                // Fetch proxy from Gamma
+                let profile = self
+                    .gamma
+                    .user()
+                    .get(account.address().to_string())
+                    .send()
+                    .await
+                    .map_err(|e| {
+                        ClobError::service(format!("Failed to fetch user profile: {}", e))
+                    })?;
 
-            profile
-                .proxy
-                .ok_or_else(|| {
-                    ClobError::validation(format!(
-                        "Signature type {:?} requires proxy, but none found for {}",
-                        signature_type,
-                        account.address()
-                    ))
-                })?
-                .parse::<Address>()
-                .map_err(|e| {
-                    ClobError::validation(format!("Invalid proxy address format from Gamma: {}", e))
-                })
+                profile
+                    .proxy
+                    .ok_or_else(|| {
+                        ClobError::validation(format!(
+                            "Signature type {:?} requires proxy, but none found for {}",
+                            signature_type,
+                            account.address()
+                        ))
+                    })?
+                    .parse::<Address>()
+                    .map_err(|e| {
+                        ClobError::validation(format!(
+                            "Invalid proxy address format from Gamma: {}",
+                            e
+                        ))
+                    })
+            }
+            #[cfg(not(feature = "gamma"))]
+            {
+                Err(ClobError::validation(format!(
+                    "Signature type {:?} requires the `gamma` feature to resolve proxy address; \
+                     enable `polyoxide-clob/gamma` or provide an explicit `funder` address",
+                    signature_type
+                )))
+            }
         } else {
             Ok(account.address())
         }
@@ -461,6 +479,7 @@ pub struct ClobBuilder {
     pool_size: usize,
     chain: Chain,
     account: Option<Account>,
+    #[cfg(feature = "gamma")]
     gamma: Option<Gamma>,
     retry_config: Option<RetryConfig>,
 }
@@ -474,6 +493,7 @@ impl ClobBuilder {
             pool_size: DEFAULT_POOL_SIZE,
             chain: Chain::PolygonMainnet,
             account: None,
+            #[cfg(feature = "gamma")]
             gamma: None,
             retry_config: None,
         }
@@ -510,6 +530,7 @@ impl ClobBuilder {
     }
 
     /// Set Gamma client
+    #[cfg(feature = "gamma")]
     pub fn gamma(mut self, gamma: Gamma) -> Self {
         self.gamma = Some(gamma);
         self
@@ -532,6 +553,7 @@ impl ClobBuilder {
         }
         let http_client = builder.build()?;
 
+        #[cfg(feature = "gamma")]
         let gamma = if let Some(gamma) = self.gamma {
             gamma
         } else {
@@ -548,6 +570,7 @@ impl ClobBuilder {
             http_client,
             chain_id: self.chain.chain_id(),
             account: self.account,
+            #[cfg(feature = "gamma")]
             gamma,
         })
     }
