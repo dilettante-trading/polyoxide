@@ -11,14 +11,15 @@ use hmac::{Hmac, Mac};
 use sha2::Sha256;
 use std::time::{SystemTime, UNIX_EPOCH};
 
-/// Get current Unix timestamp in seconds
+/// Get current Unix timestamp in seconds.
 ///
-/// Uses `unwrap_or_default()` to safely handle potential system time errors
-/// by falling back to epoch (0) rather than panicking.
+/// # Panics
+///
+/// Panics if the system clock is set before the Unix epoch (1970-01-01).
 pub fn current_timestamp() -> u64 {
     SystemTime::now()
         .duration_since(UNIX_EPOCH)
-        .unwrap_or_default()
+        .expect("system time must not be before Unix epoch")
         .as_secs()
 }
 
