@@ -25,6 +25,81 @@ const SAFE_INIT_CODE_HASH: &str =
 const PROXY_INIT_CODE_HASH: &str =
     "d21df8dc65880a8606f09fe0ce3df9b8869287ab0b058be05aa9e8af6330a00b";
 
+// Safe/Proxy wallet operation types
+const CALL_OPERATION: u8 = 0;
+const DELEGATE_CALL_OPERATION: u8 = 1;
+
+// Proxy wallet call type for ProxyTransaction struct
+const PROXY_CALL_TYPE_CODE: u8 = 1;
+
+// multiSend(bytes) function selector
+const MULTISEND_SELECTOR: [u8; 4] = [0x8d, 0x80, 0xff, 0x0a];
+
+// ── Relay submission request bodies ─────────────────────────────────
+
+#[derive(Serialize)]
+struct SafeSigParams {
+    #[serde(rename = "gasPrice")]
+    gas_price: String,
+    operation: String,
+    #[serde(rename = "safeTxnGas")]
+    safe_tx_gas: String,
+    #[serde(rename = "baseGas")]
+    base_gas: String,
+    #[serde(rename = "gasToken")]
+    gas_token: String,
+    #[serde(rename = "refundReceiver")]
+    refund_receiver: String,
+}
+
+#[derive(Serialize)]
+struct SafeSubmitBody {
+    #[serde(rename = "type")]
+    type_: String,
+    from: String,
+    to: String,
+    #[serde(rename = "proxyWallet")]
+    proxy_wallet: String,
+    data: String,
+    signature: String,
+    #[serde(rename = "signatureParams")]
+    signature_params: SafeSigParams,
+    value: String,
+    nonce: String,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    metadata: Option<String>,
+}
+
+#[derive(Serialize)]
+struct ProxySigParams {
+    #[serde(rename = "relayerFee")]
+    relayer_fee: String,
+    #[serde(rename = "gasLimit")]
+    gas_limit: String,
+    #[serde(rename = "gasPrice")]
+    gas_price: String,
+    #[serde(rename = "relayHub")]
+    relay_hub: String,
+    relay: String,
+}
+
+#[derive(Serialize)]
+struct ProxySubmitBody {
+    #[serde(rename = "type")]
+    type_: String,
+    from: String,
+    to: String,
+    #[serde(rename = "proxyWallet")]
+    proxy_wallet: String,
+    data: String,
+    signature: String,
+    #[serde(rename = "signatureParams")]
+    signature_params: ProxySigParams,
+    nonce: String,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    metadata: Option<String>,
+}
+
 /// Client for submitting gasless transactions through Polymarket's relayer service.
 ///
 /// Supports both Safe and Proxy wallet types. Handles EIP-712 transaction signing,
@@ -68,6 +143,41 @@ impl RelayClient {
         self.account.as_ref().map(|a| a.address())
     }
 
+    /// Send a GET request with retry-on-429 logic.
+    ///
+    /// Handles rate limiting, retries with exponential backoff, and error
+    /// responses. Returns the successful response for the caller to parse.
+    async fn get_with_retry(&self, path: &str, url: &Url) -> Result<reqwest::Response, RelayError> {
+        let mut attempt = 0u32;
+        loop {
+            self.http_client.acquire_rate_limit(path, None).await;
+            let resp = self.http_client.client.get(url.clone()).send().await?;
+            let retry_after = retry_after_header(&resp);
+
+            if let Some(backoff) =
+                self.http_client
+                    .should_retry(resp.status(), attempt, retry_after.as_deref())
+            {
+                attempt += 1;
+                tracing::warn!(
+                    "Rate limited (429) on {}, retry {} after {}ms",
+                    path,
+                    attempt,
+                    backoff.as_millis()
+                );
+                tokio::time::sleep(backoff).await;
+                continue;
+            }
+
+            if !resp.status().is_success() {
+                let text = resp.text().await?;
+                return Err(RelayError::Api(format!("{} failed: {}", path, text)));
+            }
+
+            return Ok(resp);
+        }
+    }
+
     /// Measure the round-trip time (RTT) to the Relay API.
     ///
     /// Makes a GET request to the API base URL and returns the latency.
@@ -85,40 +195,10 @@ impl RelayClient {
     /// # }
     /// ```
     pub async fn ping(&self) -> Result<Duration, RelayError> {
-        let mut attempt = 0u32;
-        loop {
-            self.http_client.acquire_rate_limit("/", None).await;
-            let start = Instant::now();
-            let response = self
-                .http_client
-                .client
-                .get(self.http_client.base_url.clone())
-                .send()
-                .await?;
-            let latency = start.elapsed();
-            let retry_after = retry_after_header(&response);
-
-            if let Some(backoff) =
-                self.http_client
-                    .should_retry(response.status(), attempt, retry_after.as_deref())
-            {
-                attempt += 1;
-                tracing::warn!(
-                    "Rate limited (429) on ping, retry {} after {}ms",
-                    attempt,
-                    backoff.as_millis()
-                );
-                tokio::time::sleep(backoff).await;
-                continue;
-            }
-
-            if !response.status().is_success() {
-                let text = response.text().await?;
-                return Err(RelayError::Api(format!("Ping failed: {}", text)));
-            }
-
-            return Ok(latency);
-        }
+        let url = self.http_client.base_url.clone();
+        let start = Instant::now();
+        let _resp = self.get_with_retry("/", &url).await?;
+        Ok(start.elapsed())
     }
 
     /// Fetch the current transaction nonce for an address from the relayer.
@@ -128,34 +208,9 @@ impl RelayClient {
             address,
             self.wallet_type.as_str()
         ))?;
-        let mut attempt = 0u32;
-        loop {
-            self.http_client.acquire_rate_limit("/nonce", None).await;
-            let resp = self.http_client.client.get(url.clone()).send().await?;
-            let retry_after = retry_after_header(&resp);
-
-            if let Some(backoff) =
-                self.http_client
-                    .should_retry(resp.status(), attempt, retry_after.as_deref())
-            {
-                attempt += 1;
-                tracing::warn!(
-                    "Rate limited (429) on get_nonce, retry {} after {}ms",
-                    attempt,
-                    backoff.as_millis()
-                );
-                tokio::time::sleep(backoff).await;
-                continue;
-            }
-
-            if !resp.status().is_success() {
-                let text = resp.text().await?;
-                return Err(RelayError::Api(format!("get_nonce failed: {}", text)));
-            }
-
-            let data = resp.json::<NonceResponse>().await?;
-            return Ok(data.nonce);
-        }
+        let resp = self.get_with_retry("/nonce", &url).await?;
+        let data = resp.json::<NonceResponse>().await?;
+        Ok(data.nonce)
     }
 
     /// Query the status of a previously submitted relay transaction.
@@ -167,38 +222,10 @@ impl RelayClient {
             .http_client
             .base_url
             .join(&format!("transaction?id={}", transaction_id))?;
-        let mut attempt = 0u32;
-        loop {
-            self.http_client
-                .acquire_rate_limit("/transaction", None)
-                .await;
-            let resp = self.http_client.client.get(url.clone()).send().await?;
-            let retry_after = retry_after_header(&resp);
-
-            if let Some(backoff) =
-                self.http_client
-                    .should_retry(resp.status(), attempt, retry_after.as_deref())
-            {
-                attempt += 1;
-                tracing::warn!(
-                    "Rate limited (429) on get_transaction, retry {} after {}ms",
-                    attempt,
-                    backoff.as_millis()
-                );
-                tokio::time::sleep(backoff).await;
-                continue;
-            }
-
-            if !resp.status().is_success() {
-                let text = resp.text().await?;
-                return Err(RelayError::Api(format!("get_transaction failed: {}", text)));
-            }
-
-            return resp
-                .json::<TransactionStatusResponse>()
-                .await
-                .map_err(Into::into);
-        }
+        let resp = self.get_with_retry("/transaction", &url).await?;
+        resp.json::<TransactionStatusResponse>()
+            .await
+            .map_err(Into::into)
     }
 
     /// Check whether a Safe wallet has been deployed on-chain.
@@ -211,34 +238,9 @@ impl RelayClient {
             .http_client
             .base_url
             .join(&format!("deployed?address={}", safe_address))?;
-        let mut attempt = 0u32;
-        loop {
-            self.http_client.acquire_rate_limit("/deployed", None).await;
-            let resp = self.http_client.client.get(url.clone()).send().await?;
-            let retry_after = retry_after_header(&resp);
-
-            if let Some(backoff) =
-                self.http_client
-                    .should_retry(resp.status(), attempt, retry_after.as_deref())
-            {
-                attempt += 1;
-                tracing::warn!(
-                    "Rate limited (429) on get_deployed, retry {} after {}ms",
-                    attempt,
-                    backoff.as_millis()
-                );
-                tokio::time::sleep(backoff).await;
-                continue;
-            }
-
-            if !resp.status().is_success() {
-                let text = resp.text().await?;
-                return Err(RelayError::Api(format!("get_deployed failed: {}", text)));
-            }
-
-            let data = resp.json::<DeployedResponse>().await?;
-            return Ok(data.deployed);
-        }
+        let resp = self.get_with_retry("/deployed", &url).await?;
+        let data = resp.json::<DeployedResponse>().await?;
+        Ok(data.deployed)
     }
 
     fn derive_safe_address(&self, owner: Address) -> Address {
@@ -303,43 +305,13 @@ impl RelayClient {
             .http_client
             .base_url
             .join(&format!("relay-payload?address={}&type=PROXY", address))?;
-        let mut attempt = 0u32;
-        loop {
-            self.http_client
-                .acquire_rate_limit("/relay-payload", None)
-                .await;
-            let resp = self.http_client.client.get(url.clone()).send().await?;
-            let retry_after = retry_after_header(&resp);
-
-            if let Some(backoff) =
-                self.http_client
-                    .should_retry(resp.status(), attempt, retry_after.as_deref())
-            {
-                attempt += 1;
-                tracing::warn!(
-                    "Rate limited (429) on get_relay_payload, retry {} after {}ms",
-                    attempt,
-                    backoff.as_millis()
-                );
-                tokio::time::sleep(backoff).await;
-                continue;
-            }
-
-            if !resp.status().is_success() {
-                let text = resp.text().await?;
-                return Err(RelayError::Api(format!(
-                    "get_relay_payload failed: {}",
-                    text
-                )));
-            }
-
-            let data = resp.json::<RelayPayload>().await?;
-            let relay_address: Address = data
-                .address
-                .parse()
-                .map_err(|e| RelayError::Api(format!("Invalid relay address: {}", e)))?;
-            return Ok((relay_address, data.nonce));
-        }
+        let resp = self.get_with_retry("/relay-payload", &url).await?;
+        let data = resp.json::<RelayPayload>().await?;
+        let relay_address: Address = data
+            .address
+            .parse()
+            .map_err(|e| RelayError::Api(format!("Invalid relay address: {}", e)))?;
+        Ok((relay_address, data.nonce))
     }
 
     /// Create the proxy struct hash for signing (EIP-712 style but with specific fields)
@@ -399,13 +371,11 @@ impl RelayClient {
 
         let proxy_txns: Vec<ProxyTransaction> = txns
             .iter()
-            .map(|tx| {
-                ProxyTransaction {
-                    typeCode: 1, // 1 = Call (CallType.Call)
-                    to: tx.to,
-                    value: tx.value,
-                    data: tx.data.clone(),
-                }
+            .map(|tx| ProxyTransaction {
+                typeCode: PROXY_CALL_TYPE_CODE,
+                to: tx.to,
+                value: tx.value,
+                data: tx.data.clone(),
             })
             .collect();
 
@@ -431,9 +401,7 @@ impl RelayClient {
             encoded_txns.extend_from_slice(&packed);
         }
 
-        // encoded_txns now needs to be wrapped in multiSend(bytes)
-        // selector: 8d80ff0a
-        let mut data = hex::decode("8d80ff0a").expect("valid hex constant");
+        let mut data = MULTISEND_SELECTOR.to_vec();
 
         // Use alloy to encode `(bytes)` tuple.
         let multisend_data = (Bytes::from(encoded_txns),).abi_encode();
@@ -441,7 +409,7 @@ impl RelayClient {
 
         SafeTransaction {
             to: self.contract_config.safe_multisend,
-            operation: 1, // DelegateCall
+            operation: DELEGATE_CALL_OPERATION,
             data: data.into(),
             value: U256::ZERO,
         }
@@ -553,48 +521,14 @@ impl RelayClient {
             .map_err(|e| RelayError::Signer(e.to_string()))?;
         let packed_sig = self.split_and_pack_sig_safe(signature);
 
-        #[derive(Serialize)]
-        struct SigParams {
-            #[serde(rename = "gasPrice")]
-            gas_price: String,
-            operation: String,
-            #[serde(rename = "safeTxnGas")]
-            safe_tx_gas: String,
-            #[serde(rename = "baseGas")]
-            base_gas: String,
-            #[serde(rename = "gasToken")]
-            gas_token: String,
-            #[serde(rename = "refundReceiver")]
-            refund_receiver: String,
-        }
-
-        #[derive(Serialize)]
-        struct Body {
-            #[serde(rename = "type")]
-            type_: String,
-            from: String,
-            to: String,
-            #[serde(rename = "proxyWallet")]
-            proxy_wallet: String,
-            data: String,
-            signature: String,
-            #[serde(rename = "signatureParams")]
-            signature_params: SigParams,
-            #[serde(rename = "value")]
-            value: String,
-            nonce: String,
-            #[serde(skip_serializing_if = "Option::is_none")]
-            metadata: Option<String>,
-        }
-
-        let body = Body {
+        let body = SafeSubmitBody {
             type_: "SAFE".to_string(),
             from: from_address.to_string(),
             to: safe_tx.to.to_string(),
             proxy_wallet: safe_address.to_string(),
             data: safe_tx.data.to_string(),
             signature: packed_sig,
-            signature_params: SigParams {
+            signature_params: SafeSigParams {
                 gas_price: "0".to_string(),
                 operation: safe_tx.operation.to_string(),
                 safe_tx_gas: "0".to_string(),
@@ -640,14 +574,10 @@ impl RelayClient {
         let gas_price = U256::ZERO;
         let gas_limit = U256::from(gas_limit.unwrap_or(10_000_000u64));
 
-        // Create struct hash for signing
-        // In original code, "to" was set to proxy_wallet I think? Or proxy_factory?
-        // Let's use proxy_wallet as "to" for now (based on safe logic) but verify if it should be factory.
-        // Actually, Python client says `const to = proxyWalletFactory`.
-        // So we must use proxy_factory as "to".
+        // The "to" field must be proxy_factory per the Python relayer client reference.
         let struct_hash = self.create_proxy_struct_hash(
             from_address,
-            proxy_factory, // CORRECTED: Use proxy_factory
+            proxy_factory,
             &encoded_data,
             tx_fee,
             gas_price,
@@ -665,44 +595,14 @@ impl RelayClient {
             .map_err(|e| RelayError::Signer(e.to_string()))?;
         let packed_sig = self.split_and_pack_sig_proxy(signature);
 
-        #[derive(Serialize)]
-        struct SigParams {
-            #[serde(rename = "relayerFee")]
-            relayer_fee: String,
-            #[serde(rename = "gasLimit")]
-            gas_limit: String,
-            #[serde(rename = "gasPrice")]
-            gas_price: String,
-            #[serde(rename = "relayHub")]
-            relay_hub: String,
-            relay: String,
-        }
-
-        #[derive(Serialize)]
-        struct Body {
-            #[serde(rename = "type")]
-            type_: String,
-            from: String,
-            to: String,
-            #[serde(rename = "proxyWallet")]
-            proxy_wallet: String,
-            data: String,
-            signature: String,
-            #[serde(rename = "signatureParams")]
-            signature_params: SigParams,
-            nonce: String,
-            #[serde(skip_serializing_if = "Option::is_none")]
-            metadata: Option<String>,
-        }
-
-        let body = Body {
+        let body = ProxySubmitBody {
             type_: "PROXY".to_string(),
             from: from_address.to_string(),
             to: proxy_factory.to_string(),
             proxy_wallet: proxy_wallet.to_string(),
             data: format!("0x{}", hex::encode(&encoded_data)),
             signature: packed_sig,
-            signature_params: SigParams {
+            signature_params: ProxySigParams {
                 relayer_fee: "0".to_string(),
                 gas_limit: gas_limit.to_string(),
                 gas_price: "0".to_string(),
@@ -874,7 +774,7 @@ impl RelayClient {
             to: ctf_exchange,
             value: U256::ZERO,
             data: data.into(),
-            operation: 0, // 0 = Call (Not DelegateCall)
+            operation: CALL_OPERATION,
         };
 
         // 6. Use the execute_with_gas method
@@ -1098,6 +998,19 @@ mod tests {
     fn test_hex_constants_are_valid() {
         hex::decode(SAFE_INIT_CODE_HASH).expect("SAFE_INIT_CODE_HASH should be valid hex");
         hex::decode(PROXY_INIT_CODE_HASH).expect("PROXY_INIT_CODE_HASH should be valid hex");
+    }
+
+    #[test]
+    fn test_multisend_selector_matches_expected() {
+        // multiSend(bytes) selector = keccak256("multiSend(bytes)")[..4] = 0x8d80ff0a
+        assert_eq!(MULTISEND_SELECTOR, [0x8d, 0x80, 0xff, 0x0a]);
+    }
+
+    #[test]
+    fn test_operation_constants() {
+        assert_eq!(CALL_OPERATION, 0);
+        assert_eq!(DELEGATE_CALL_OPERATION, 1);
+        assert_eq!(PROXY_CALL_TYPE_CODE, 1);
     }
 
     #[test]
