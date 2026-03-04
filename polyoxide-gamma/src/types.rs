@@ -10,6 +10,7 @@ use serde::{Deserialize, Serialize};
 pub struct Market {
     pub id: String,
     pub condition_id: String,
+    #[serde(rename = "questionID")]
     pub question_id: Option<String>,
     pub slug: Option<String>,
     #[serde(default)]
@@ -25,6 +26,7 @@ pub struct Market {
     pub question: String,
     pub min_incentive_size: Option<String>,
     pub max_incentive_spread: Option<String>,
+    #[serde(rename = "submitted_by")]
     pub submitted_by: Option<String>,
     #[serde(rename = "volume24hr")] // lowercase 'hr' to match API
     pub volume_24hr: Option<f64>,
@@ -96,7 +98,7 @@ pub struct Market {
     pub curation_order: Option<i64>,
     pub volume_num: Option<f64>,
     pub liquidity_num: Option<f64>,
-    pub has_review_dates: Option<bool>,
+    pub has_reviewed_dates: Option<bool>,
     pub ready_for_cron: Option<bool>,
     pub comments_enabled: Option<bool>,
     pub game_start_time: Option<String>,
@@ -149,7 +151,7 @@ pub struct Market {
     pub accepting_orders_timestamp: Option<String>,
     pub competitive: Option<f64>,
     pub rewards_min_size: Option<f64>,
-    pub rewards_max_spreads: Option<f64>,
+    pub rewards_max_spread: Option<f64>,
     pub spread: Option<f64>,
     pub automatically_resolved: Option<bool>,
     pub automatically_active: Option<bool>,
@@ -222,6 +224,7 @@ pub struct Event {
     pub subcategory: Option<String>,
     pub is_template: Option<bool>,
     pub template_variables: Option<String>,
+    #[serde(rename = "published_at")]
     pub published_at: Option<String>,
     pub created_by: Option<String>,
     pub updated_by: Option<String>,
@@ -260,7 +263,7 @@ pub struct Event {
     pub show_all_outcomes: Option<bool>,
     pub show_market_images: Option<bool>,
     pub automatically_resolved: Option<bool>,
-    #[serde(rename = "enalbeNegRisk")]
+    #[serde(rename = "enableNegRisk")]
     pub enable_neg_risk: Option<bool>,
     pub automatically_active: Option<bool>,
     pub event_date: Option<String>,
@@ -299,6 +302,31 @@ pub struct SeriesInfo {
     pub id: String,
     pub slug: String,
     pub title: String,
+    pub ticker: Option<String>,
+    pub series_type: Option<String>,
+    pub recurrence: Option<String>,
+    pub image: Option<String>,
+    pub icon: Option<String>,
+    pub layout: Option<String>,
+    pub active: Option<bool>,
+    pub closed: Option<bool>,
+    pub archived: Option<bool>,
+    pub new: Option<bool>,
+    pub featured: Option<bool>,
+    pub restricted: Option<bool>,
+    pub published_at: Option<String>,
+    pub created_by: Option<String>,
+    pub updated_by: Option<String>,
+    pub created_at: Option<String>,
+    pub updated_at: Option<String>,
+    pub comments_enabled: Option<bool>,
+    pub competitive: Option<String>,
+    #[serde(rename = "volume24hr")]
+    pub volume_24hr: Option<f64>,
+    pub start_date: Option<String>,
+    #[cfg_attr(feature = "specta", specta(type = Option<f64>))]
+    pub comment_count: Option<i64>,
+    pub requires_translation: Option<bool>,
 }
 
 /// Series data (tournament/season grouping)
@@ -680,24 +708,215 @@ mod tests {
     }
 
     #[test]
-    fn test_event_enable_neg_risk_typo_rename() {
-        // API has typo: "enalbeNegRisk"
+    fn test_event_enable_neg_risk_rename() {
         let json = r#"{
             "id": "evt-1",
-            "enalbeNegRisk": true
+            "enableNegRisk": true
         }"#;
         let event: Event = serde_json::from_str(json).unwrap();
         assert_eq!(event.enable_neg_risk, Some(true));
     }
 
+    #[test]
+    fn test_event_published_at_snake_case() {
+        let json = r#"{
+            "id": "evt-1",
+            "published_at": "2024-01-01T00:00:00Z"
+        }"#;
+        let event: Event = serde_json::from_str(json).unwrap();
+        assert_eq!(event.published_at.as_deref(), Some("2024-01-01T00:00:00Z"));
+    }
+
+    #[test]
+    fn test_market_question_id_capital() {
+        let json = r#"{
+            "id": "1",
+            "conditionId": "0xcond",
+            "description": "Test",
+            "question": "Test?",
+            "marketMakerAddress": "0xaddr",
+            "questionID": "0xabc123"
+        }"#;
+        let market: Market = serde_json::from_str(json).unwrap();
+        assert_eq!(market.question_id.as_deref(), Some("0xabc123"));
+    }
+
+    #[test]
+    fn test_market_has_reviewed_dates() {
+        let json = r#"{
+            "id": "1",
+            "conditionId": "0xcond",
+            "description": "Test",
+            "question": "Test?",
+            "marketMakerAddress": "0xaddr",
+            "hasReviewedDates": true
+        }"#;
+        let market: Market = serde_json::from_str(json).unwrap();
+        assert_eq!(market.has_reviewed_dates, Some(true));
+    }
+
+    #[test]
+    fn test_market_rewards_max_spread_singular() {
+        let json = r#"{
+            "id": "1",
+            "conditionId": "0xcond",
+            "description": "Test",
+            "question": "Test?",
+            "marketMakerAddress": "0xaddr",
+            "rewardsMaxSpread": 0.05
+        }"#;
+        let market: Market = serde_json::from_str(json).unwrap();
+        assert_eq!(market.rewards_max_spread, Some(0.05));
+    }
+
+    #[test]
+    fn test_market_submitted_by_snake_case() {
+        let json = r#"{
+            "id": "1",
+            "conditionId": "0xcond",
+            "description": "Test",
+            "question": "Test?",
+            "marketMakerAddress": "0xaddr",
+            "submitted_by": "0xdeadbeef"
+        }"#;
+        let market: Market = serde_json::from_str(json).unwrap();
+        assert_eq!(market.submitted_by.as_deref(), Some("0xdeadbeef"));
+    }
+
     // ── SeriesInfo ──────────────────────────────────────────────
 
     #[test]
-    fn test_series_info() {
+    fn test_series_info_minimal() {
         let json = r#"{"id": "s1", "slug": "nfl-2025", "title": "NFL 2025"}"#;
         let si: SeriesInfo = serde_json::from_str(json).unwrap();
         assert_eq!(si.slug, "nfl-2025");
         assert_eq!(si.title, "NFL 2025");
+        assert!(si.ticker.is_none());
+        assert!(si.active.is_none());
+    }
+
+    #[test]
+    fn test_series_info_full() {
+        let json = r#"{
+            "id": "2",
+            "ticker": "nba",
+            "slug": "nba",
+            "title": "NBA",
+            "seriesType": "single",
+            "recurrence": "daily",
+            "image": "https://example.com/nba.png",
+            "icon": "https://example.com/nba-icon.png",
+            "layout": "default",
+            "active": true,
+            "closed": false,
+            "archived": false,
+            "new": false,
+            "featured": false,
+            "restricted": true,
+            "publishedAt": "2023-01-30T17:13:39Z",
+            "createdBy": "15",
+            "updatedBy": "15",
+            "createdAt": "2022-10-13T00:36:01Z",
+            "updatedAt": "2026-03-04T12:03:42Z",
+            "commentsEnabled": false,
+            "competitive": "0",
+            "volume24hr": 11.07,
+            "startDate": "2021-01-01T17:00:00Z",
+            "commentCount": 6274,
+            "requiresTranslation": false
+        }"#;
+        let si: SeriesInfo = serde_json::from_str(json).unwrap();
+        assert_eq!(si.ticker.as_deref(), Some("nba"));
+        assert_eq!(si.series_type.as_deref(), Some("single"));
+        assert_eq!(si.active, Some(true));
+        assert_eq!(si.closed, Some(false));
+        assert_eq!(si.volume_24hr, Some(11.07));
+        assert_eq!(si.comment_count, Some(6274));
+        assert_eq!(si.requires_translation, Some(false));
+    }
+
+    // ── Negative tests: old/wrong field names are rejected ─────
+
+    #[test]
+    fn test_market_old_question_id_ignored() {
+        // camelCase "questionId" should NOT match — API uses "questionID"
+        let json = r#"{
+            "id": "1",
+            "conditionId": "0xcond",
+            "description": "Test",
+            "question": "Test?",
+            "marketMakerAddress": "0xaddr",
+            "questionId": "0xwrong"
+        }"#;
+        let market: Market = serde_json::from_str(json).unwrap();
+        assert!(market.question_id.is_none());
+    }
+
+    #[test]
+    fn test_market_old_has_review_dates_ignored() {
+        // "hasReviewDates" should NOT match — API uses "hasReviewedDates"
+        let json = r#"{
+            "id": "1",
+            "conditionId": "0xcond",
+            "description": "Test",
+            "question": "Test?",
+            "marketMakerAddress": "0xaddr",
+            "hasReviewDates": true
+        }"#;
+        let market: Market = serde_json::from_str(json).unwrap();
+        assert!(market.has_reviewed_dates.is_none());
+    }
+
+    #[test]
+    fn test_market_old_rewards_max_spreads_ignored() {
+        // "rewardsMaxSpreads" (plural) should NOT match — API uses "rewardsMaxSpread"
+        let json = r#"{
+            "id": "1",
+            "conditionId": "0xcond",
+            "description": "Test",
+            "question": "Test?",
+            "marketMakerAddress": "0xaddr",
+            "rewardsMaxSpreads": 0.05
+        }"#;
+        let market: Market = serde_json::from_str(json).unwrap();
+        assert!(market.rewards_max_spread.is_none());
+    }
+
+    #[test]
+    fn test_event_old_enalbe_neg_risk_ignored() {
+        // Old typo "enalbeNegRisk" should NOT match after fix
+        let json = r#"{
+            "id": "evt-1",
+            "enalbeNegRisk": true
+        }"#;
+        let event: Event = serde_json::from_str(json).unwrap();
+        assert!(event.enable_neg_risk.is_none());
+    }
+
+    #[test]
+    fn test_event_camel_published_at_ignored() {
+        // camelCase "publishedAt" should NOT match — Event API uses "published_at"
+        let json = r#"{
+            "id": "evt-1",
+            "publishedAt": "2024-01-01T00:00:00Z"
+        }"#;
+        let event: Event = serde_json::from_str(json).unwrap();
+        assert!(event.published_at.is_none());
+    }
+
+    #[test]
+    fn test_market_camel_submitted_by_ignored() {
+        // camelCase "submittedBy" should NOT match — API uses "submitted_by"
+        let json = r#"{
+            "id": "1",
+            "conditionId": "0xcond",
+            "description": "Test",
+            "question": "Test?",
+            "marketMakerAddress": "0xaddr",
+            "submittedBy": "0xwrong"
+        }"#;
+        let market: Market = serde_json::from_str(json).unwrap();
+        assert!(market.submitted_by.is_none());
     }
 
     // ── SeriesData ──────────────────────────────────────────────
