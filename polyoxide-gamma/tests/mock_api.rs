@@ -48,6 +48,145 @@ async fn list_markets_with_query_params() {
 }
 
 #[tokio::test]
+async fn list_markets_open_false_sends_closed_true() {
+    let mut server = Server::new_async().await;
+
+    let mock = server
+        .mock("GET", "/markets")
+        .match_query(Matcher::AllOf(vec![Matcher::UrlEncoded(
+            "closed".into(),
+            "true".into(),
+        )]))
+        .with_status(200)
+        .with_header("content-type", "application/json")
+        .with_body("[]")
+        .create_async()
+        .await;
+
+    let gamma = test_gamma(&server);
+    let markets = gamma.markets().list().open(false).send().await.unwrap();
+
+    assert!(markets.is_empty());
+    mock.assert_async().await;
+}
+
+#[tokio::test]
+async fn market_deserializes_volume_renamed_fields() {
+    let mut server = Server::new_async().await;
+
+    let mock = server
+        .mock("GET", "/markets/vol-test")
+        .with_status(200)
+        .with_header("content-type", "application/json")
+        .with_body(
+            r#"{
+                "id": "vol-test",
+                "conditionId": "0xcond",
+                "question": "Volume test?",
+                "description": "Testing serde renames",
+                "marketMakerAddress": "0xaddr",
+                "volume24hr": 1500.5,
+                "volume1wk": 10000.0,
+                "volume1mo": 50000.0,
+                "volume1yr": 200000.0,
+                "denomationToken": "USDC",
+                "volume24hrAmm": 100.0,
+                "volume1wkClob": 9900.0
+            }"#,
+        )
+        .create_async()
+        .await;
+
+    let gamma = test_gamma(&server);
+    let market = gamma.markets().get("vol-test").send().await.unwrap();
+
+    assert_eq!(market.volume_24hr, Some(1500.5));
+    assert_eq!(market.volume_1wk, Some(10000.0));
+    assert_eq!(market.volume_1mo, Some(50000.0));
+    assert_eq!(market.volume_1yr, Some(200000.0));
+    assert_eq!(market.denomination_token, Some("USDC".into()));
+    assert_eq!(market.volume_24hr_amm, Some(100.0));
+    assert_eq!(market.volume_1wk_clob, Some(9900.0));
+
+    mock.assert_async().await;
+}
+
+#[tokio::test]
+async fn list_events_with_query_params() {
+    let mut server = Server::new_async().await;
+
+    let mock = server
+        .mock("GET", "/events")
+        .match_query(Matcher::AllOf(vec![
+            Matcher::UrlEncoded("limit".into(), "3".into()),
+            Matcher::UrlEncoded("active".into(), "true".into()),
+        ]))
+        .with_status(200)
+        .with_header("content-type", "application/json")
+        .with_body(
+            r#"[{
+                "id": "evt-1",
+                "title": "Test Event",
+                "slug": "test-event"
+            }]"#,
+        )
+        .create_async()
+        .await;
+
+    let gamma = test_gamma(&server);
+    let events = gamma
+        .events()
+        .list()
+        .limit(3)
+        .active(true)
+        .send()
+        .await
+        .unwrap();
+
+    assert_eq!(events.len(), 1);
+    assert_eq!(events[0].id, "evt-1");
+    assert_eq!(events[0].title, Some("Test Event".into()));
+
+    mock.assert_async().await;
+}
+
+#[tokio::test]
+async fn get_event_by_id() {
+    let mut server = Server::new_async().await;
+
+    let mock = server
+        .mock("GET", "/events/evt-42")
+        .with_status(200)
+        .with_header("content-type", "application/json")
+        .with_body(
+            r#"{
+                "id": "evt-42",
+                "title": "Single Event",
+                "slug": "single-event",
+                "markets": [{
+                    "id": "mkt-nested",
+                    "conditionId": "0xcond",
+                    "question": "Nested?",
+                    "description": "Nested market",
+                    "marketMakerAddress": "0xaddr"
+                }]
+            }"#,
+        )
+        .create_async()
+        .await;
+
+    let gamma = test_gamma(&server);
+    let event = gamma.events().get("evt-42").send().await.unwrap();
+
+    assert_eq!(event.id, "evt-42");
+    assert_eq!(event.title, Some("Single Event".into()));
+    assert_eq!(event.markets.len(), 1);
+    assert_eq!(event.markets[0].id, "mkt-nested");
+
+    mock.assert_async().await;
+}
+
+#[tokio::test]
 async fn get_market_by_id() {
     let mut server = Server::new_async().await;
 
