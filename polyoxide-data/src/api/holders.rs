@@ -80,6 +80,9 @@ pub struct Holder {
     pub profile_image: Option<String>,
     /// Optimized profile image URL
     pub profile_image_optimized: Option<String>,
+    /// Whether the user is verified
+    #[serde(default)]
+    pub verified: Option<bool>,
 }
 
 #[cfg(test)]
@@ -101,7 +104,8 @@ mod tests {
                     "outcomeIndex": 0,
                     "name": "Holder One",
                     "profileImage": "https://example.com/img.png",
-                    "profileImageOptimized": "https://example.com/img_opt.png"
+                    "profileImageOptimized": "https://example.com/img_opt.png",
+                    "verified": true
                 },
                 {
                     "proxyWallet": "0xholder2",
@@ -113,7 +117,8 @@ mod tests {
                     "outcomeIndex": 1,
                     "name": null,
                     "profileImage": null,
-                    "profileImageOptimized": null
+                    "profileImageOptimized": null,
+                    "verified": false
                 }
             ]
         }"#;
@@ -129,6 +134,7 @@ mod tests {
         assert_eq!(h1.outcome_index, 0);
         assert_eq!(h1.display_username_public, Some(true));
         assert_eq!(h1.name, Some("Holder One".to_string()));
+        assert_eq!(h1.verified, Some(true));
 
         let h2 = &mh.holders[1];
         assert_eq!(h2.proxy_wallet, "0xholder2");
@@ -138,6 +144,7 @@ mod tests {
         assert!((h2.amount - 1000.0).abs() < f64::EPSILON);
         assert_eq!(h2.outcome_index, 1);
         assert!(h2.name.is_none());
+        assert_eq!(h2.verified, Some(false));
     }
 
     #[test]
@@ -146,5 +153,17 @@ mod tests {
         let mh: MarketHolders = serde_json::from_str(json).unwrap();
         assert_eq!(mh.token, "empty_token");
         assert!(mh.holders.is_empty());
+    }
+
+    #[test]
+    fn holder_without_verified_field() {
+        let json = r#"{
+            "proxyWallet": "0xholder",
+            "amount": 100.0,
+            "outcomeIndex": 0
+        }"#;
+        let h: Holder = serde_json::from_str(json).unwrap();
+        assert_eq!(h.proxy_wallet, "0xholder");
+        assert!(h.verified.is_none());
     }
 }

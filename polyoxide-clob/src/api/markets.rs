@@ -344,6 +344,11 @@ pub struct OrderBook {
     pub asks: Vec<OrderLevel>,
     pub timestamp: String,
     pub hash: String,
+    pub min_order_size: Option<String>,
+    pub tick_size: Option<String>,
+    #[serde(default)]
+    pub neg_risk: Option<bool>,
+    pub last_trade_price: Option<String>,
 }
 
 /// Price response
@@ -569,5 +574,47 @@ mod tests {
         let json = r#"{"price": "0.52"}"#;
         let resp: CalculatePriceResponse = serde_json::from_str(json).unwrap();
         assert_eq!(resp.price, "0.52");
+    }
+
+    #[test]
+    fn order_book_deserializes_with_new_fields() {
+        let json = r#"{
+            "market": "0xcond",
+            "asset_id": "0xtoken",
+            "bids": [{"price": "0.48", "size": "100"}],
+            "asks": [{"price": "0.52", "size": "200"}],
+            "timestamp": "1700000000",
+            "hash": "abc123",
+            "min_order_size": "5",
+            "tick_size": "0.001",
+            "neg_risk": false,
+            "last_trade_price": "0.50"
+        }"#;
+        let ob: OrderBook = serde_json::from_str(json).unwrap();
+        assert_eq!(ob.market, "0xcond");
+        assert_eq!(ob.bids.len(), 1);
+        assert_eq!(ob.asks.len(), 1);
+        assert_eq!(ob.min_order_size.as_deref(), Some("5"));
+        assert_eq!(ob.tick_size.as_deref(), Some("0.001"));
+        assert_eq!(ob.neg_risk, Some(false));
+        assert_eq!(ob.last_trade_price.as_deref(), Some("0.50"));
+    }
+
+    #[test]
+    fn order_book_deserializes_without_new_fields() {
+        let json = r#"{
+            "market": "0xcond",
+            "asset_id": "0xtoken",
+            "bids": [],
+            "asks": [],
+            "timestamp": "1700000000",
+            "hash": "abc123"
+        }"#;
+        let ob: OrderBook = serde_json::from_str(json).unwrap();
+        assert_eq!(ob.market, "0xcond");
+        assert!(ob.min_order_size.is_none());
+        assert!(ob.tick_size.is_none());
+        assert!(ob.neg_risk.is_none());
+        assert!(ob.last_trade_price.is_none());
     }
 }

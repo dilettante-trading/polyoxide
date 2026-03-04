@@ -310,7 +310,9 @@ async fn cancel_many_sends_flat_array_body() {
         ))
         .with_status(200)
         .with_header("content-type", "application/json")
-        .with_body(r#"{"canceled": ["order-1", "order-2"], "notCanceled": {"order-3": "not found"}}"#)
+        .with_body(
+            r#"{"canceled": ["order-1", "order-2"], "notCanceled": {"order-3": "not found"}}"#,
+        )
         .create_async()
         .await;
 
