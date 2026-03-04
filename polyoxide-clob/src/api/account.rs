@@ -224,7 +224,25 @@ pub struct Trade {
     #[serde(default)]
     pub bucket_index: Option<u32>,
     pub owner: Address,
+    pub maker_address: Option<String>,
+    #[serde(default)]
+    pub maker_orders: Vec<MakerOrder>,
     pub transaction_hash: String,
+    pub trader_side: Option<String>,
+}
+
+/// Individual maker order within a trade
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct MakerOrder {
+    pub order_id: String,
+    pub owner: String,
+    pub maker_address: String,
+    pub matched_amount: String,
+    pub price: String,
+    pub fee_rate_bps: String,
+    pub asset_id: String,
+    pub outcome: String,
+    pub side: OrderSide,
 }
 
 /// Paginated response from `GET /data/trades`
@@ -311,6 +329,10 @@ mod tests {
         assert_eq!(trade.price, "0.55");
         assert!(trade.last_update.is_none());
         assert!(trade.bucket_index.is_none());
+        // New fields default to None/empty when absent
+        assert!(trade.maker_address.is_none());
+        assert!(trade.maker_orders.is_empty());
+        assert!(trade.trader_side.is_none());
     }
 
     #[test]
@@ -330,12 +352,31 @@ mod tests {
             "outcome": "No",
             "bucket_index": 3,
             "owner": "0x0000000000000000000000000000000000000002",
-            "transaction_hash": "0xhash456"
+            "maker_address": "0xmaker",
+            "maker_orders": [{
+                "order_id": "mo-1",
+                "owner": "0xowner",
+                "maker_address": "0xmaker",
+                "matched_amount": "50",
+                "price": "0.72",
+                "fee_rate_bps": "100",
+                "asset_id": "0xasset",
+                "outcome": "No",
+                "side": "BUY"
+            }],
+            "transaction_hash": "0xhash456",
+            "trader_side": "TAKER"
         }"#;
         let trade: Trade = serde_json::from_str(json).unwrap();
         assert_eq!(trade.side, OrderSide::Sell);
         assert_eq!(trade.last_update.as_deref(), Some("1700002000"));
         assert_eq!(trade.bucket_index, Some(3));
+        assert_eq!(trade.maker_address.as_deref(), Some("0xmaker"));
+        assert_eq!(trade.maker_orders.len(), 1);
+        assert_eq!(trade.maker_orders[0].order_id, "mo-1");
+        assert_eq!(trade.maker_orders[0].matched_amount, "50");
+        assert_eq!(trade.maker_orders[0].side, OrderSide::Buy);
+        assert_eq!(trade.trader_side.as_deref(), Some("TAKER"));
     }
 
     #[test]

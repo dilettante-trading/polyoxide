@@ -147,11 +147,7 @@ impl Orders {
         &self,
         order_ids: impl Into<Vec<String>>,
     ) -> Result<BatchCancelResponse, ClobError> {
-        #[derive(Serialize)]
-        #[serde(rename_all = "camelCase")]
-        struct Body {
-            order_ids: Vec<String>,
-        }
+        let ids: Vec<String> = order_ids.into();
 
         Request::<BatchCancelResponse>::delete(
             self.http_client.clone(),
@@ -163,9 +159,7 @@ impl Orders {
             },
             self.chain_id,
         )
-        .body(&Body {
-            order_ids: order_ids.into(),
-        })?
+        .body(&ids)?
         .send()
         .await
     }
@@ -209,6 +203,15 @@ pub struct OpenOrder {
     #[serde(flatten)]
     pub order: SignedOrder,
     pub status: String,
+    pub owner: Option<String>,
+    pub maker_address: Option<String>,
+    pub original_size: Option<String>,
+    pub size_matched: Option<String>,
+    pub price: Option<String>,
+    #[serde(default)]
+    pub associate_trades: Vec<String>,
+    pub outcome: Option<String>,
+    pub order_type: Option<String>,
     pub created_at: String,
     pub updated_at: Option<String>,
 }
@@ -219,9 +222,13 @@ pub struct OpenOrder {
 pub struct OrderResponse {
     pub success: bool,
     pub error_msg: Option<String>,
+    #[serde(rename(deserialize = "orderID"))]
     pub order_id: Option<String>,
-    #[serde(default)]
+    #[serde(default, rename(deserialize = "transactionsHashes"))]
     pub transaction_hashes: Vec<String>,
+    pub status: Option<String>,
+    pub taking_amount: Option<String>,
+    pub making_amount: Option<String>,
 }
 
 /// Response from order scoring check
@@ -292,6 +299,55 @@ mod tests {
             Address::from_str("0x0000000000000000000000000000000000000001").unwrap()
         );
         assert!(order.updated_at.is_none());
+        // New fields default to None/empty when absent
+        assert!(order.owner.is_none());
+        assert!(order.maker_address.is_none());
+        assert!(order.original_size.is_none());
+        assert!(order.price.is_none());
+        assert!(order.associate_trades.is_empty());
+    }
+
+    #[test]
+    fn open_order_with_full_fields() {
+        let json = r#"{
+            "id": "order-full",
+            "market": "0xcond",
+            "assetId": "0xtoken",
+            "salt": "1",
+            "maker": "0x0000000000000000000000000000000000000001",
+            "signer": "0x0000000000000000000000000000000000000002",
+            "taker": "0x0000000000000000000000000000000000000000",
+            "tokenId": "0xtoken",
+            "makerAmount": "1000",
+            "takerAmount": "500",
+            "expiration": "0",
+            "nonce": "0",
+            "feeRateBps": "100",
+            "side": "BUY",
+            "signatureType": 0,
+            "signature": "0xsig",
+            "status": "LIVE",
+            "owner": "0xowner",
+            "makerAddress": "0xmaker",
+            "originalSize": "200.5",
+            "sizeMatched": "100.0",
+            "price": "0.55",
+            "associateTrades": ["trade-1", "trade-2"],
+            "outcome": "Yes",
+            "orderType": "GTC",
+            "createdAt": "2024-01-01T00:00:00Z",
+            "updatedAt": "2024-01-02T00:00:00Z"
+        }"#;
+        let order: OpenOrder = serde_json::from_str(json).unwrap();
+        assert_eq!(order.owner.as_deref(), Some("0xowner"));
+        assert_eq!(order.maker_address.as_deref(), Some("0xmaker"));
+        assert_eq!(order.original_size.as_deref(), Some("200.5"));
+        assert_eq!(order.size_matched.as_deref(), Some("100.0"));
+        assert_eq!(order.price.as_deref(), Some("0.55"));
+        assert_eq!(order.associate_trades, vec!["trade-1", "trade-2"]);
+        assert_eq!(order.outcome.as_deref(), Some("Yes"));
+        assert_eq!(order.order_type.as_deref(), Some("GTC"));
+        assert_eq!(order.updated_at.as_deref(), Some("2024-01-02T00:00:00Z"));
     }
 
     #[test]
@@ -299,14 +355,20 @@ mod tests {
         let json = r#"{
             "success": true,
             "errorMsg": null,
-            "orderId": "order-789",
-            "transactionHashes": ["0xhash1", "0xhash2"]
+            "orderID": "order-789",
+            "transactionsHashes": ["0xhash1", "0xhash2"],
+            "status": "LIVE",
+            "takingAmount": "500",
+            "makingAmount": "1000"
         }"#;
         let resp: OrderResponse = serde_json::from_str(json).unwrap();
         assert!(resp.success);
         assert!(resp.error_msg.is_none());
         assert_eq!(resp.order_id.as_deref(), Some("order-789"));
         assert_eq!(resp.transaction_hashes.len(), 2);
+        assert_eq!(resp.status.as_deref(), Some("LIVE"));
+        assert_eq!(resp.taking_amount.as_deref(), Some("500"));
+        assert_eq!(resp.making_amount.as_deref(), Some("1000"));
     }
 
     #[test]
@@ -316,6 +378,10 @@ mod tests {
         assert!(!resp.success);
         assert_eq!(resp.error_msg.as_deref(), Some("bad order"));
         assert!(resp.transaction_hashes.is_empty());
+        assert!(resp.order_id.is_none());
+        assert!(resp.status.is_none());
+        assert!(resp.taking_amount.is_none());
+        assert!(resp.making_amount.is_none());
     }
 
     #[test]

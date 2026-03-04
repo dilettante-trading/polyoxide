@@ -64,7 +64,7 @@ pub use account::{Account, AccountConfig, Credentials, Signer, Wallet};
 pub use api::{
     account::{
         BalanceAllowanceResponse, BuilderTrade, ListBuilderTrades, ListBuilderTradesResponse,
-        ListClobTrades, ListTradesResponse, Trade,
+        ListClobTrades, ListTradesResponse, MakerOrder, Trade,
     },
     auth::{
         ApiKeyInfo, ApiKeyResponse, ClosedOnlyResponse, ReadonlyApiKeyResponse, ValidateKeyResponse,

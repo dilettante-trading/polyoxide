@@ -202,13 +202,7 @@ async fn trades_hits_data_trades_endpoint() {
         .await;
 
     let clob = test_authed_clob(&server);
-    let resp = clob
-        .account_api()
-        .unwrap()
-        .trades()
-        .send()
-        .await
-        .unwrap();
+    let resp = clob.account_api().unwrap().trades().send().await.unwrap();
 
     assert_eq!(resp.data.len(), 1);
     assert_eq!(resp.data[0].id, "t1");
@@ -301,5 +295,39 @@ async fn builder_trades_returns_paginated_response() {
     assert_eq!(resp.data[0].trade_type, "LIMIT");
     assert_eq!(resp.data[0].size_usdc, "55.00");
     assert_eq!(resp.next_cursor.as_deref(), Some("cursor1"));
+    mock.assert_async().await;
+}
+
+#[tokio::test]
+async fn cancel_many_sends_flat_array_body() {
+    let mut server = Server::new_async().await;
+
+    let mock = server
+        .mock("DELETE", "/orders")
+        .match_header("POLY_API_KEY", "test-key")
+        .match_body(Matcher::JsonString(
+            r#"["order-1", "order-2", "order-3"]"#.into(),
+        ))
+        .with_status(200)
+        .with_header("content-type", "application/json")
+        .with_body(r#"{"canceled": ["order-1", "order-2"], "notCanceled": {"order-3": "not found"}}"#)
+        .create_async()
+        .await;
+
+    let clob = test_authed_clob(&server);
+    let resp = clob
+        .orders()
+        .unwrap()
+        .cancel_many(vec![
+            "order-1".to_string(),
+            "order-2".to_string(),
+            "order-3".to_string(),
+        ])
+        .await
+        .unwrap();
+
+    assert_eq!(resp.canceled, vec!["order-1", "order-2"]);
+    assert_eq!(resp.not_canceled.len(), 1);
+    assert_eq!(resp.not_canceled.get("order-3").unwrap(), "not found");
     mock.assert_async().await;
 }
