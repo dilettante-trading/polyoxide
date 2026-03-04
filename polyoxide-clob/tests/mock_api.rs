@@ -1,5 +1,5 @@
 use mockito::{Matcher, Server};
-use polyoxide_clob::{Account, ClobBuilder, Credentials};
+use polyoxide_clob::{Account, ClobBuilder, ClobError, Credentials};
 
 fn test_public_clob(server: &mockito::ServerGuard) -> polyoxide_clob::Clob {
     ClobBuilder::new().base_url(server.url()).build().unwrap()
@@ -110,6 +110,60 @@ async fn authenticated_request_sends_poly_address() {
 
     let clob = test_authed_clob(&server);
     let _orders = clob.orders().unwrap().list().send().await.unwrap();
+
+    mock.assert_async().await;
+}
+
+#[tokio::test]
+async fn authenticated_401_returns_authentication_error() {
+    let mut server = Server::new_async().await;
+
+    let mock = server
+        .mock("GET", "/data/orders")
+        .with_status(401)
+        .with_header("content-type", "application/json")
+        .with_body(r#"{"error": "invalid api key"}"#)
+        .create_async()
+        .await;
+
+    let clob = test_authed_clob(&server);
+    let err = clob.orders().unwrap().list().send().await.unwrap_err();
+
+    match err {
+        ClobError::Api(polyoxide_core::ApiError::Authentication(msg)) => {
+            assert_eq!(msg, "invalid api key");
+        }
+        other => panic!("Expected Authentication error, got: {:?}", other),
+    }
+
+    mock.assert_async().await;
+}
+
+#[tokio::test]
+async fn cancel_order_sends_delete_with_body() {
+    let mut server = Server::new_async().await;
+
+    let mock = server
+        .mock("DELETE", "/order")
+        .match_header("POLY_API_KEY", "test-key")
+        .match_body(Matcher::JsonString(r#"{"orderID": "order-123"}"#.into()))
+        .with_status(200)
+        .with_header("content-type", "application/json")
+        .with_body(r#"{"success": true, "canceledOrderId": "order-123"}"#)
+        .create_async()
+        .await;
+
+    let clob = test_authed_clob(&server);
+    let resp = clob
+        .orders()
+        .unwrap()
+        .cancel("order-123")
+        .send()
+        .await
+        .unwrap();
+
+    assert!(resp.success);
+    assert_eq!(resp.canceled_order_id, Some("order-123".into()));
 
     mock.assert_async().await;
 }
