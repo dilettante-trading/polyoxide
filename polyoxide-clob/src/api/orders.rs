@@ -22,7 +22,7 @@ pub struct Orders {
 
 impl Orders {
     /// List user's orders
-    pub fn list(&self) -> Request<Vec<OpenOrder>> {
+    pub fn list(&self) -> Request<ListOrdersResponse> {
         Request::get(
             self.http_client.clone(),
             "/data/orders",
@@ -181,7 +181,7 @@ pub struct CancelOrderRequest {
 
 impl CancelOrderRequest {
     /// Execute the cancel request
-    pub async fn send(self) -> Result<CancelResponse, ClobError> {
+    pub async fn send(self) -> Result<BatchCancelResponse, ClobError> {
         #[derive(serde::Serialize)]
         struct CancelRequest {
             #[serde(rename = "orderID")]
@@ -224,17 +224,6 @@ pub struct OrderResponse {
     pub transaction_hashes: Vec<String>,
 }
 
-/// Response from canceling an order
-#[derive(Debug, Clone, Serialize, Deserialize)]
-#[serde(rename_all(deserialize = "camelCase"))]
-pub struct CancelResponse {
-    #[serde(default)]
-    pub success: bool,
-    pub error_msg: Option<String>,
-    pub canceled_order_id: Option<String>,
-    pub message: Option<String>,
-}
-
 /// Response from order scoring check
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct OrderScoringResponse {
@@ -242,7 +231,10 @@ pub struct OrderScoringResponse {
     pub scoring: bool,
 }
 
-/// Response from batch cancel operations
+/// Response from cancel and batch cancel operations.
+///
+/// The Polymarket API returns this shape for all cancel endpoints:
+/// `DELETE /order`, `DELETE /orders`, `DELETE /cancel-all`, `DELETE /cancel-market-orders`.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(rename_all(deserialize = "camelCase"))]
 pub struct BatchCancelResponse {
@@ -250,6 +242,13 @@ pub struct BatchCancelResponse {
     pub canceled: Vec<String>,
     #[serde(default)]
     pub not_canceled: HashMap<String, String>,
+}
+
+/// Paginated response from `GET /data/orders`
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct ListOrdersResponse {
+    pub data: Vec<OpenOrder>,
+    pub next_cursor: Option<String>,
 }
 
 #[cfg(test)]
@@ -351,6 +350,53 @@ mod tests {
         let json = serde_json::to_value(&resp).unwrap();
         assert_eq!(json["canceled"], serde_json::json!(["a", "b"]));
         assert_eq!(json["not_canceled"]["c"], "error");
+    }
+
+    #[test]
+    fn list_orders_response_deserializes() {
+        let json = r#"{
+            "data": [{
+                "id": "order-abc",
+                "market": "0xcondition123",
+                "assetId": "0xtoken456",
+                "salt": "1",
+                "maker": "0x0000000000000000000000000000000000000001",
+                "signer": "0x0000000000000000000000000000000000000002",
+                "taker": "0x0000000000000000000000000000000000000000",
+                "tokenId": "0xtoken456",
+                "makerAmount": "1000",
+                "takerAmount": "500",
+                "expiration": "0",
+                "nonce": "0",
+                "feeRateBps": "100",
+                "side": "BUY",
+                "signatureType": 0,
+                "signature": "0xsig",
+                "status": "LIVE",
+                "createdAt": "2024-01-01T00:00:00Z"
+            }],
+            "next_cursor": "MQ=="
+        }"#;
+        let resp: ListOrdersResponse = serde_json::from_str(json).unwrap();
+        assert_eq!(resp.data.len(), 1);
+        assert_eq!(resp.data[0].id, "order-abc");
+        assert_eq!(resp.next_cursor.as_deref(), Some("MQ=="));
+    }
+
+    #[test]
+    fn list_orders_response_empty() {
+        let json = r#"{"data": [], "next_cursor": "LTE="}"#;
+        let resp: ListOrdersResponse = serde_json::from_str(json).unwrap();
+        assert!(resp.data.is_empty());
+        assert_eq!(resp.next_cursor.as_deref(), Some("LTE="));
+    }
+
+    #[test]
+    fn list_orders_response_null_cursor() {
+        let json = r#"{"data": [], "next_cursor": null}"#;
+        let resp: ListOrdersResponse = serde_json::from_str(json).unwrap();
+        assert!(resp.data.is_empty());
+        assert!(resp.next_cursor.is_none());
     }
 
     #[test]

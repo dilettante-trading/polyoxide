@@ -32,14 +32,14 @@ async fn server_time_unauthenticated() {
         .mock("GET", "/time")
         .with_status(200)
         .with_header("content-type", "application/json")
-        .with_body(r#"{"time": "1700000000"}"#)
+        .with_body("1700000000")
         .create_async()
         .await;
 
     let clob = test_public_clob(&server);
     let resp = clob.health().server_time().send().await.unwrap();
 
-    assert_eq!(resp.time, "1700000000");
+    assert_eq!(resp.time, 1700000000);
     mock.assert_async().await;
 }
 
@@ -80,14 +80,15 @@ async fn authenticated_request_sends_l2_headers() {
         .match_header("POLY_TIMESTAMP", Matcher::Any)
         .with_status(200)
         .with_header("content-type", "application/json")
-        .with_body("[]")
+        .with_body(r#"{"data": [], "next_cursor": "LTE="}"#)
         .create_async()
         .await;
 
     let clob = test_authed_clob(&server);
-    let orders = clob.orders().unwrap().list().send().await.unwrap();
+    let resp = clob.orders().unwrap().list().send().await.unwrap();
 
-    assert!(orders.is_empty());
+    assert!(resp.data.is_empty());
+    assert_eq!(resp.next_cursor.as_deref(), Some("LTE="));
     mock.assert_async().await;
 }
 
@@ -104,7 +105,7 @@ async fn authenticated_request_sends_poly_address() {
         )
         .with_status(200)
         .with_header("content-type", "application/json")
-        .with_body("[]")
+        .with_body(r#"{"data": [], "next_cursor": "LTE="}"#)
         .create_async()
         .await;
 
@@ -149,7 +150,7 @@ async fn cancel_order_sends_delete_with_body() {
         .match_body(Matcher::JsonString(r#"{"orderID": "order-123"}"#.into()))
         .with_status(200)
         .with_header("content-type", "application/json")
-        .with_body(r#"{"success": true, "canceledOrderId": "order-123"}"#)
+        .with_body(r#"{"canceled": ["order-123"], "notCanceled": {}}"#)
         .create_async()
         .await;
 
@@ -162,8 +163,8 @@ async fn cancel_order_sends_delete_with_body() {
         .await
         .unwrap();
 
-    assert!(resp.success);
-    assert_eq!(resp.canceled_order_id, Some("order-123".into()));
+    assert_eq!(resp.canceled, vec!["order-123"]);
+    assert!(resp.not_canceled.is_empty());
 
     mock.assert_async().await;
 }

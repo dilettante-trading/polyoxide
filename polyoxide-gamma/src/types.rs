@@ -229,7 +229,7 @@ pub struct Event {
     pub updated_at: Option<String>,
     pub comments_enabled: Option<bool>,
     pub competitive: Option<f64>,
-    #[serde(rename = "volume24h")] // API uses '24h' not '24hr' for events
+    #[serde(rename = "volume24hr")]
     pub volume_24hr: Option<f64>,
     #[serde(rename = "volume1wk")]
     pub volume_1wk: Option<f64>,
@@ -660,13 +660,23 @@ mod tests {
 
     #[test]
     fn test_event_volume_24h_rename() {
-        // Events use "volume24h" not "volume24hr"
+        let json = r#"{
+            "id": "evt-1",
+            "volume24hr": 5000.0
+        }"#;
+        let event: Event = serde_json::from_str(json).unwrap();
+        assert_eq!(event.volume_24hr, Some(5000.0));
+    }
+
+    #[test]
+    fn test_event_volume_24h_old_key_ignored() {
+        // The old key "volume24h" should NOT deserialize into volume_24hr
         let json = r#"{
             "id": "evt-1",
             "volume24h": 5000.0
         }"#;
         let event: Event = serde_json::from_str(json).unwrap();
-        assert_eq!(event.volume_24hr, Some(5000.0));
+        assert_eq!(event.volume_24hr, None);
     }
 
     #[test]

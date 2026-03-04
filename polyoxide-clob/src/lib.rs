@@ -73,7 +73,9 @@ pub use api::{
         PriceResponse, SpreadResponse,
     },
     notifications::Notification,
-    orders::{BatchCancelResponse, CancelResponse, OpenOrder, OrderResponse, OrderScoringResponse},
+    orders::{
+        BatchCancelResponse, ListOrdersResponse, OpenOrder, OrderResponse, OrderScoringResponse,
+    },
     rewards::{
         RewardEarnings, RewardMarket, RewardMarketEarning, RewardPercentages, RewardTotalEarnings,
     },

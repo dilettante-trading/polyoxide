@@ -59,10 +59,23 @@ impl Health {
     }
 }
 
-/// Response from the server time endpoint
-#[derive(Debug, Clone, Serialize, Deserialize)]
+/// Response from the server time endpoint.
+///
+/// The live API returns a bare integer (e.g. `1700000000`), not a JSON object.
+/// This type handles that format via a custom `Deserialize` implementation.
+#[derive(Debug, Clone, Serialize)]
 pub struct ServerTimeResponse {
-    pub time: String,
+    pub time: i64,
+}
+
+impl<'de> Deserialize<'de> for ServerTimeResponse {
+    fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
+    where
+        D: serde::Deserializer<'de>,
+    {
+        let time = i64::deserialize(deserializer)?;
+        Ok(ServerTimeResponse { time })
+    }
 }
 
 #[cfg(test)]
@@ -71,8 +84,20 @@ mod tests {
 
     #[test]
     fn server_time_response_deserializes() {
-        let json = r#"{"time": "1700000000"}"#;
+        let json = "1700000000";
         let resp: ServerTimeResponse = serde_json::from_str(json).unwrap();
-        assert_eq!(resp.time, "1700000000");
+        assert_eq!(resp.time, 1700000000);
+    }
+
+    #[test]
+    fn server_time_response_rejects_json_object() {
+        let json = r#"{"time": 1700000000}"#;
+        assert!(serde_json::from_str::<ServerTimeResponse>(json).is_err());
+    }
+
+    #[test]
+    fn server_time_response_rejects_string() {
+        let json = r#""1700000000""#;
+        assert!(serde_json::from_str::<ServerTimeResponse>(json).is_err());
     }
 }

@@ -306,8 +306,11 @@ async fn live_server_time() {
         .await
         .expect("server_time should succeed");
 
-    let time: f64 = resp.time.parse().expect("time should be a number");
-    assert!(time > 0.0, "server time {time} should be positive");
+    assert!(
+        resp.time > 0,
+        "server time {} should be positive",
+        resp.time
+    );
 }
 
 // ── Markets: spread ────────────────────────────────────────────
