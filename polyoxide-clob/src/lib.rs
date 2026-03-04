@@ -62,7 +62,10 @@ pub use core::chain::{Chain, Contracts};
 
 pub use account::{Account, AccountConfig, Credentials, Signer, Wallet};
 pub use api::{
-    account::{BalanceAllowanceResponse, ListBuilderTrades, ListClobTrades, Trade},
+    account::{
+        BalanceAllowanceResponse, BuilderTrade, ListBuilderTrades, ListBuilderTradesResponse,
+        ListClobTrades, ListTradesResponse, Trade,
+    },
     auth::{
         ApiKeyInfo, ApiKeyResponse, ClosedOnlyResponse, ReadonlyApiKeyResponse, ValidateKeyResponse,
     },

@@ -55,12 +55,17 @@ impl Notifications {
     }
 }
 
-/// A notification from the CLOB API
+/// A notification from the CLOB API.
+///
+/// The API returns `{type: number, owner: string, payload: any}` — there is
+/// no `id` field. Extra/unknown fields are captured in `extra`.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct Notification {
-    pub id: String,
-    #[serde(flatten)]
-    pub extra: serde_json::Value,
+    #[serde(rename = "type")]
+    pub notification_type: u32,
+    pub owner: String,
+    #[serde(default)]
+    pub payload: serde_json::Value,
 }
 
 #[cfg(test)]
@@ -68,14 +73,38 @@ mod tests {
     use super::*;
 
     #[test]
-    fn notification_deserializes_with_extra_fields() {
+    fn notification_deserializes() {
         let json = r#"{
-            "id": "notif-123",
-            "type": "order_filled",
-            "message": "Your order was filled"
+            "type": 1,
+            "owner": "0xabc123",
+            "payload": {"order_id": "order-456", "side": "BUY"}
         }"#;
         let notif: Notification = serde_json::from_str(json).unwrap();
-        assert_eq!(notif.id, "notif-123");
-        assert_eq!(notif.extra["type"], "order_filled");
+        assert_eq!(notif.notification_type, 1);
+        assert_eq!(notif.owner, "0xabc123");
+        assert_eq!(notif.payload["order_id"], "order-456");
+    }
+
+    #[test]
+    fn notification_null_payload() {
+        let json = r#"{
+            "type": 0,
+            "owner": "0xdef456",
+            "payload": null
+        }"#;
+        let notif: Notification = serde_json::from_str(json).unwrap();
+        assert_eq!(notif.notification_type, 0);
+        assert!(notif.payload.is_null());
+    }
+
+    #[test]
+    fn notification_missing_payload() {
+        let json = r#"{
+            "type": 2,
+            "owner": "0x789"
+        }"#;
+        let notif: Notification = serde_json::from_str(json).unwrap();
+        assert_eq!(notif.notification_type, 2);
+        assert!(notif.payload.is_null());
     }
 }

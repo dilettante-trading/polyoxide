@@ -168,3 +168,138 @@ async fn cancel_order_sends_delete_with_body() {
 
     mock.assert_async().await;
 }
+
+#[tokio::test]
+async fn trades_hits_data_trades_endpoint() {
+    let mut server = Server::new_async().await;
+
+    let mock = server
+        .mock("GET", "/data/trades")
+        .match_header("POLY_API_KEY", "test-key")
+        .with_status(200)
+        .with_header("content-type", "application/json")
+        .with_body(
+            r#"{
+                "data": [{
+                    "id": "t1",
+                    "taker_order_id": "o1",
+                    "market": "0xcond",
+                    "asset_id": "0xtoken",
+                    "side": "BUY",
+                    "size": "100",
+                    "fee_rate_bps": "0",
+                    "price": "0.55",
+                    "status": "MATCHED",
+                    "match_time": "1700000000",
+                    "outcome": "Yes",
+                    "owner": "0x0000000000000000000000000000000000000001",
+                    "transaction_hash": "0xhash"
+                }],
+                "next_cursor": "abc123"
+            }"#,
+        )
+        .create_async()
+        .await;
+
+    let clob = test_authed_clob(&server);
+    let resp = clob
+        .account_api()
+        .unwrap()
+        .trades()
+        .send()
+        .await
+        .unwrap();
+
+    assert_eq!(resp.data.len(), 1);
+    assert_eq!(resp.data[0].id, "t1");
+    assert_eq!(resp.next_cursor.as_deref(), Some("abc123"));
+    mock.assert_async().await;
+}
+
+#[tokio::test]
+async fn balance_allowance_returns_flat_response() {
+    let mut server = Server::new_async().await;
+
+    let mock = server
+        .mock("GET", "/balance-allowance")
+        .match_query(Matcher::AllOf(vec![Matcher::UrlEncoded(
+            "asset_type".into(),
+            "COLLATERAL".into(),
+        )]))
+        .match_header("POLY_API_KEY", "test-key")
+        .with_status(200)
+        .with_header("content-type", "application/json")
+        .with_body(r#"{"balance": "1000.50", "allowance": "999999"}"#)
+        .create_async()
+        .await;
+
+    let clob = test_authed_clob(&server);
+    let resp = clob
+        .account_api()
+        .unwrap()
+        .usdc_balance()
+        .send()
+        .await
+        .unwrap();
+
+    assert_eq!(resp.balance, "1000.50");
+    assert_eq!(resp.allowance, "999999");
+    mock.assert_async().await;
+}
+
+#[tokio::test]
+async fn builder_trades_returns_paginated_response() {
+    let mut server = Server::new_async().await;
+
+    let mock = server
+        .mock("GET", "/builder/trades")
+        .match_header("POLY_API_KEY", "test-key")
+        .with_status(200)
+        .with_header("content-type", "application/json")
+        .with_body(
+            r#"{
+                "data": [{
+                    "id": "bt-1",
+                    "tradeType": "LIMIT",
+                    "takerOrderHash": "0xhash",
+                    "builder": "0xbuilder",
+                    "market": "0xcond",
+                    "assetId": "0xtoken",
+                    "side": "BUY",
+                    "size": "100",
+                    "sizeUsdc": "55.00",
+                    "price": "0.55",
+                    "status": "MATCHED",
+                    "outcome": "Yes",
+                    "outcomeIndex": 0,
+                    "owner": "0xowner",
+                    "maker": "0xmaker",
+                    "transactionHash": "0xtx",
+                    "matchTime": "1700000000",
+                    "fee": "0.01",
+                    "feeUsdc": "0.55",
+                    "createdAt": "2024-01-01T00:00:00Z",
+                    "updatedAt": null
+                }],
+                "next_cursor": "cursor1"
+            }"#,
+        )
+        .create_async()
+        .await;
+
+    let clob = test_authed_clob(&server);
+    let resp = clob
+        .account_api()
+        .unwrap()
+        .builder_trades()
+        .send()
+        .await
+        .unwrap();
+
+    assert_eq!(resp.data.len(), 1);
+    assert_eq!(resp.data[0].id, "bt-1");
+    assert_eq!(resp.data[0].trade_type, "LIMIT");
+    assert_eq!(resp.data[0].size_usdc, "55.00");
+    assert_eq!(resp.next_cursor.as_deref(), Some("cursor1"));
+    mock.assert_async().await;
+}
