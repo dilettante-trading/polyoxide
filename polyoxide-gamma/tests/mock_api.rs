@@ -30,7 +30,14 @@ async fn list_markets_with_query_params() {
         .await;
 
     let gamma = test_gamma(&server);
-    let markets = gamma.markets().list().limit(5).open(true).send().await.unwrap();
+    let markets = gamma
+        .markets()
+        .list()
+        .limit(5)
+        .open(true)
+        .send()
+        .await
+        .unwrap();
 
     assert_eq!(markets.len(), 1);
     assert_eq!(markets[0].id, "mkt-1");
@@ -82,12 +89,7 @@ async fn error_404_returns_api_error() {
         .await;
 
     let gamma = test_gamma(&server);
-    let err = gamma
-        .markets()
-        .get("nonexistent")
-        .send()
-        .await
-        .unwrap_err();
+    let err = gamma.markets().get("nonexistent").send().await.unwrap_err();
 
     match err {
         GammaError::Api(polyoxide_core::ApiError::Api { status, message }) => {

@@ -2,10 +2,7 @@ use mockito::{Matcher, Server};
 use polyoxide_clob::{Account, ClobBuilder, Credentials};
 
 fn test_public_clob(server: &mockito::ServerGuard) -> polyoxide_clob::Clob {
-    ClobBuilder::new()
-        .base_url(server.url())
-        .build()
-        .unwrap()
+    ClobBuilder::new().base_url(server.url()).build().unwrap()
 }
 
 fn test_authed_clob(server: &mockito::ServerGuard) -> polyoxide_clob::Clob {
@@ -60,7 +57,10 @@ async fn health_ping_returns_latency() {
     let clob = test_public_clob(&server);
     let latency = clob.health().ping().await.unwrap();
 
-    assert!(latency.as_millis() < 5000, "Latency should be reasonable for local mock");
+    assert!(
+        latency.as_millis() < 5000,
+        "Latency should be reasonable for local mock"
+    );
     mock.assert_async().await;
 }
 
@@ -72,7 +72,10 @@ async fn authenticated_request_sends_l2_headers() {
         .mock("GET", "/data/orders")
         .match_header("POLY_API_KEY", "test-key")
         .match_header("POLY_PASSPHRASE", "test-pass")
-        .match_header("POLY_ADDRESS", Matcher::Regex(r"^0x[0-9a-fA-F]{40}$".into()))
+        .match_header(
+            "POLY_ADDRESS",
+            Matcher::Regex(r"^0x[0-9a-fA-F]{40}$".into()),
+        )
         .match_header("POLY_SIGNATURE", Matcher::Any)
         .match_header("POLY_TIMESTAMP", Matcher::Any)
         .with_status(200)

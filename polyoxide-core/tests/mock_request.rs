@@ -24,10 +24,7 @@ impl RequestError for TestError {
     }
 }
 
-fn test_request(
-    server: &mockito::ServerGuard,
-    path: &str,
-) -> Request<TestResponse, TestError> {
+fn test_request(server: &mockito::ServerGuard, path: &str) -> Request<TestResponse, TestError> {
     let http = HttpClientBuilder::new(server.url()).build().unwrap();
     Request::new(http, path)
 }
@@ -83,7 +80,7 @@ async fn exhausts_retries_returns_rate_limit_error() {
         .with_status(429)
         .with_header("retry-after", "0")
         .with_body(r#"{"error": "slow down"}"#)
-        .expect_at_least(2)
+        .expect(2)
         .create_async()
         .await;
 
@@ -151,9 +148,87 @@ async fn from_response_parses_json_error_field() {
 
     match err.0 {
         ApiError::Validation(msg) => {
-            assert_eq!(msg, "bad input", "Should extract 'error' field from JSON, not raw body");
+            assert_eq!(
+                msg, "bad input",
+                "Should extract 'error' field from JSON, not raw body"
+            );
         }
         other => panic!("Expected Validation error, got: {:?}", other),
+    }
+
+    mock.assert_async().await;
+}
+
+#[tokio::test]
+async fn error_401_returns_authentication_error() {
+    let mut server = Server::new_async().await;
+
+    let mock = server
+        .mock("GET", "/unauthorized")
+        .with_status(401)
+        .with_header("content-type", "application/json")
+        .with_body(r#"{"error": "unauthorized"}"#)
+        .expect(1)
+        .create_async()
+        .await;
+
+    let req = test_request(&server, "/unauthorized");
+    let err = req.send().await.unwrap_err();
+
+    match err.0 {
+        ApiError::Authentication(msg) => {
+            assert_eq!(msg, "unauthorized");
+        }
+        other => panic!("Expected Authentication error, got: {:?}", other),
+    }
+
+    mock.assert_async().await;
+}
+
+#[tokio::test]
+async fn error_403_returns_authentication_error() {
+    let mut server = Server::new_async().await;
+
+    let mock = server
+        .mock("GET", "/forbidden")
+        .with_status(403)
+        .with_header("content-type", "application/json")
+        .with_body(r#"{"error": "forbidden"}"#)
+        .expect(1)
+        .create_async()
+        .await;
+
+    let req = test_request(&server, "/forbidden");
+    let err = req.send().await.unwrap_err();
+
+    match err.0 {
+        ApiError::Authentication(msg) => {
+            assert_eq!(msg, "forbidden");
+        }
+        other => panic!("Expected Authentication error for 403, got: {:?}", other),
+    }
+
+    mock.assert_async().await;
+}
+
+#[tokio::test]
+async fn error_408_returns_timeout_error() {
+    let mut server = Server::new_async().await;
+
+    let mock = server
+        .mock("GET", "/timeout")
+        .with_status(408)
+        .with_body(r#"{"error": "request timeout"}"#)
+        .expect(1)
+        .create_async()
+        .await;
+
+    let req = test_request(&server, "/timeout");
+    let err = req.send().await.unwrap_err();
+
+    match err.0 {
+        ApiError::Timeout => {}
+        other => panic!("Expected Timeout error, got: {:?}", other),
     }
 
     mock.assert_async().await;
