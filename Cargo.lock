@@ -2989,6 +2989,7 @@ dependencies = [
 name = "polyoxide-data"
 version = "0.10.0"
 dependencies = [
+ "mockito",
  "polyoxide-core",
  "reqwest",
  "serde",

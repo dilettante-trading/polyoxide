@@ -24,4 +24,5 @@ url = { workspace = true }
 specta = { version = "=2.0.0-rc.20", features = ["derive", "serde"], optional = true }
 
 [dev-dependencies]
+mockito = { workspace = true }
 tokio = { workspace = true, features = ["macros", "rt-multi-thread"] }
