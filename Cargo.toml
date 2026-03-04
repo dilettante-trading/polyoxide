@@ -40,6 +40,7 @@ tokio-tungstenite = { version = "0.26", features = ["rustls-tls-native-roots"] }
 rust_decimal = { version = "1.37", features = ["serde-with-str"] }
 governor = { version = "0.8", features = ["std"] }
 fastrand = "2"
+mockito = "1.7"
 
 [profile.release]
 opt-level = 3

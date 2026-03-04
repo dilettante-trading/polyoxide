@@ -26,5 +26,6 @@ urlencoding = "2.1"
 specta = { version = "=2.0.0-rc.20", features = ["derive", "serde", "chrono"], optional = true }
 
 [dev-dependencies]
+mockito = { workspace = true }
 tokio = { workspace = true, features = ["macros", "rt-multi-thread"] }
 tracing-subscriber = { version = "0.3", features = ["env-filter"] }
