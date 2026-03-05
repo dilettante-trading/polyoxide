@@ -1026,3 +1026,337 @@ async fn error_408_returns_timeout() {
     );
     mock.assert_async().await;
 }
+
+// ── Order creation flow tests ──
+
+#[tokio::test]
+async fn create_order_fetches_metadata_and_builds_order() {
+    let mut server = Server::new_async().await;
+
+    let neg_risk_mock = server
+        .mock("GET", "/neg-risk")
+        .match_query(Matcher::UrlEncoded("token_id".into(), "0xtoken".into()))
+        .with_status(200)
+        .with_header("content-type", "application/json")
+        .with_body(r#"{"neg_risk": false}"#)
+        .create_async()
+        .await;
+
+    let tick_size_mock = server
+        .mock("GET", "/tick-size")
+        .match_query(Matcher::UrlEncoded("token_id".into(), "0xtoken".into()))
+        .with_status(200)
+        .with_header("content-type", "application/json")
+        .with_body(r#"{"minimum_tick_size": "0.01"}"#)
+        .create_async()
+        .await;
+
+    let fee_rate_mock = server
+        .mock("GET", "/fee-rate")
+        .match_query(Matcher::UrlEncoded("token_id".into(), "0xtoken".into()))
+        .with_status(200)
+        .with_header("content-type", "application/json")
+        .with_body(r#"{"base_fee": 100}"#)
+        .create_async()
+        .await;
+
+    let clob = test_authed_clob(&server);
+    let params = polyoxide_clob::CreateOrderParams {
+        token_id: "0xtoken".into(),
+        price: 0.55,
+        size: 100.0,
+        side: polyoxide_clob::OrderSide::Buy,
+        order_type: polyoxide_clob::OrderKind::Gtc,
+        post_only: false,
+        expiration: None,
+        funder: None,
+        signature_type: None,
+    };
+
+    let order = clob.create_order(&params, None).await.unwrap();
+
+    // Verify order fields
+    assert_eq!(order.token_id, "0xtoken");
+    assert_eq!(order.side, polyoxide_clob::OrderSide::Buy);
+    assert_eq!(order.fee_rate_bps, "100");
+    assert!(!order.neg_risk);
+    // Buy: maker_amount = cost (55 * 10^6), taker_amount = shares (100 * 10^6)
+    assert_eq!(order.maker_amount, "55000000");
+    assert_eq!(order.taker_amount, "100000000");
+
+    neg_risk_mock.assert_async().await;
+    tick_size_mock.assert_async().await;
+    fee_rate_mock.assert_async().await;
+}
+
+#[tokio::test]
+async fn create_order_with_provided_options_skips_metadata_fetch() {
+    let mut server = Server::new_async().await;
+
+    // Only fee_rate should be fetched — neg_risk and tick_size provided via options
+    let fee_rate_mock = server
+        .mock("GET", "/fee-rate")
+        .match_query(Matcher::UrlEncoded("token_id".into(), "0xtoken".into()))
+        .with_status(200)
+        .with_header("content-type", "application/json")
+        .with_body(r#"{"base_fee": 50}"#)
+        .create_async()
+        .await;
+
+    // These should NOT be called
+    let neg_risk_mock = server
+        .mock("GET", "/neg-risk")
+        .expect(0)
+        .create_async()
+        .await;
+    let tick_size_mock = server
+        .mock("GET", "/tick-size")
+        .expect(0)
+        .create_async()
+        .await;
+
+    let clob = test_authed_clob(&server);
+    let params = polyoxide_clob::CreateOrderParams {
+        token_id: "0xtoken".into(),
+        price: 0.50,
+        size: 200.0,
+        side: polyoxide_clob::OrderSide::Sell,
+        order_type: polyoxide_clob::OrderKind::Gtc,
+        post_only: false,
+        expiration: Some(9999999999),
+        funder: None,
+        signature_type: None,
+    };
+
+    let options = polyoxide_clob::PartialCreateOrderOptions {
+        neg_risk: Some(true),
+        tick_size: Some(polyoxide_clob::TickSize::Hundredth),
+    };
+
+    let order = clob.create_order(&params, Some(options)).await.unwrap();
+
+    assert_eq!(order.side, polyoxide_clob::OrderSide::Sell);
+    assert!(order.neg_risk);
+    assert_eq!(order.fee_rate_bps, "50");
+    // Sell: maker_amount = shares (200 * 10^6), taker_amount = cost (100 * 10^6)
+    assert_eq!(order.maker_amount, "200000000");
+    assert_eq!(order.taker_amount, "100000000");
+    assert_eq!(order.expiration, "9999999999");
+
+    fee_rate_mock.assert_async().await;
+    neg_risk_mock.assert_async().await;
+    tick_size_mock.assert_async().await;
+}
+
+#[tokio::test]
+async fn create_order_without_account_errors() {
+    let server = Server::new_async().await;
+
+    let clob = test_public_clob(&server);
+    let params = polyoxide_clob::CreateOrderParams {
+        token_id: "0xtoken".into(),
+        price: 0.50,
+        size: 100.0,
+        side: polyoxide_clob::OrderSide::Buy,
+        order_type: polyoxide_clob::OrderKind::Gtc,
+        post_only: false,
+        expiration: None,
+        funder: None,
+        signature_type: None,
+    };
+
+    let err = clob.create_order(&params, None).await.unwrap_err();
+    assert!(
+        matches!(err, ClobError::Api(polyoxide_core::ApiError::Validation(_))),
+        "Expected Validation error for missing account, got: {:?}",
+        err
+    );
+}
+
+#[tokio::test]
+async fn create_market_order_with_explicit_price() {
+    let mut server = Server::new_async().await;
+
+    let neg_risk_mock = server
+        .mock("GET", "/neg-risk")
+        .match_query(Matcher::UrlEncoded("token_id".into(), "0xtoken".into()))
+        .with_status(200)
+        .with_header("content-type", "application/json")
+        .with_body(r#"{"neg_risk": true}"#)
+        .create_async()
+        .await;
+
+    let tick_size_mock = server
+        .mock("GET", "/tick-size")
+        .match_query(Matcher::UrlEncoded("token_id".into(), "0xtoken".into()))
+        .with_status(200)
+        .with_header("content-type", "application/json")
+        .with_body(r#"{"minimum_tick_size": "0.01"}"#)
+        .create_async()
+        .await;
+
+    let fee_rate_mock = server
+        .mock("GET", "/fee-rate")
+        .match_query(Matcher::UrlEncoded("token_id".into(), "0xtoken".into()))
+        .with_status(200)
+        .with_header("content-type", "application/json")
+        .with_body(r#"{"base_fee": 100}"#)
+        .create_async()
+        .await;
+
+    // Order book should NOT be called when price is provided
+    let book_mock = server.mock("GET", "/book").expect(0).create_async().await;
+
+    let clob = test_authed_clob(&server);
+    let params = polyoxide_clob::types::MarketOrderArgs {
+        token_id: "0xtoken".into(),
+        amount: 100.0,
+        side: polyoxide_clob::OrderSide::Buy,
+        price: Some(0.50),
+        fee_rate_bps: None,
+        nonce: None,
+        funder: None,
+        signature_type: None,
+        order_type: None,
+    };
+
+    let order = clob.create_market_order(&params, None).await.unwrap();
+
+    assert_eq!(order.token_id, "0xtoken");
+    assert!(order.neg_risk);
+    assert_eq!(order.expiration, "0");
+    assert_eq!(order.maker_amount, "100000000");
+    assert_eq!(order.taker_amount, "200000000");
+
+    neg_risk_mock.assert_async().await;
+    tick_size_mock.assert_async().await;
+    fee_rate_mock.assert_async().await;
+    book_mock.assert_async().await;
+}
+
+#[tokio::test]
+async fn create_market_order_fetches_orderbook_for_price() {
+    let mut server = Server::new_async().await;
+
+    let neg_risk_mock = server
+        .mock("GET", "/neg-risk")
+        .match_query(Matcher::UrlEncoded("token_id".into(), "0xtoken".into()))
+        .with_status(200)
+        .with_header("content-type", "application/json")
+        .with_body(r#"{"neg_risk": false}"#)
+        .create_async()
+        .await;
+
+    let tick_size_mock = server
+        .mock("GET", "/tick-size")
+        .match_query(Matcher::UrlEncoded("token_id".into(), "0xtoken".into()))
+        .with_status(200)
+        .with_header("content-type", "application/json")
+        .with_body(r#"{"minimum_tick_size": "0.01"}"#)
+        .create_async()
+        .await;
+
+    let fee_rate_mock = server
+        .mock("GET", "/fee-rate")
+        .match_query(Matcher::UrlEncoded("token_id".into(), "0xtoken".into()))
+        .with_status(200)
+        .with_header("content-type", "application/json")
+        .with_body(r#"{"base_fee": 100}"#)
+        .create_async()
+        .await;
+
+    // Order book IS fetched when price is None
+    let book_mock = server
+        .mock("GET", "/book")
+        .match_query(Matcher::UrlEncoded("token_id".into(), "0xtoken".into()))
+        .with_status(200)
+        .with_header("content-type", "application/json")
+        .with_body(
+            r#"{
+                "market": "0xcond",
+                "asset_id": "0xtoken",
+                "bids": [{"price": "0.48", "size": "500"}],
+                "asks": [{"price": "0.52", "size": "500"}],
+                "timestamp": "1700000000",
+                "hash": "abc123"
+            }"#,
+        )
+        .create_async()
+        .await;
+
+    let clob = test_authed_clob(&server);
+    let params = polyoxide_clob::types::MarketOrderArgs {
+        token_id: "0xtoken".into(),
+        amount: 100.0,
+        side: polyoxide_clob::OrderSide::Buy,
+        price: None, // will be fetched from orderbook asks
+        fee_rate_bps: None,
+        nonce: None,
+        funder: None,
+        signature_type: None,
+        order_type: None,
+    };
+
+    let order = clob.create_market_order(&params, None).await.unwrap();
+
+    assert_eq!(order.token_id, "0xtoken");
+    assert_eq!(order.expiration, "0");
+
+    neg_risk_mock.assert_async().await;
+    tick_size_mock.assert_async().await;
+    fee_rate_mock.assert_async().await;
+    book_mock.assert_async().await;
+}
+
+#[tokio::test]
+async fn create_market_order_insufficient_liquidity() {
+    let mut server = Server::new_async().await;
+
+    // Order book with very little liquidity
+    let _book_mock = server
+        .mock("GET", "/book")
+        .match_query(Matcher::UrlEncoded("token_id".into(), "0xtoken".into()))
+        .with_status(200)
+        .with_header("content-type", "application/json")
+        .with_body(
+            r#"{
+                "market": "0xcond",
+                "asset_id": "0xtoken",
+                "bids": [],
+                "asks": [{"price": "0.50", "size": "1"}],
+                "timestamp": "1700000000",
+                "hash": "abc123"
+            }"#,
+        )
+        .create_async()
+        .await;
+
+    let clob = test_authed_clob(&server);
+
+    let options = polyoxide_clob::PartialCreateOrderOptions {
+        neg_risk: Some(false),
+        tick_size: Some(polyoxide_clob::TickSize::Hundredth),
+    };
+
+    let params = polyoxide_clob::types::MarketOrderArgs {
+        token_id: "0xtoken".into(),
+        amount: 1000.0, // way more than available
+        side: polyoxide_clob::OrderSide::Buy,
+        price: None,
+        fee_rate_bps: None,
+        nonce: None,
+        funder: None,
+        signature_type: None,
+        order_type: None,
+    };
+
+    let err = clob
+        .create_market_order(&params, Some(options))
+        .await
+        .unwrap_err();
+    assert!(
+        matches!(err, ClobError::Api(polyoxide_core::ApiError::Validation(_))),
+        "Expected Validation error for insufficient liquidity, got: {:?}",
+        err
+    );
+}
