@@ -114,4 +114,43 @@ mod tests {
         assert!(service_msg.contains("service failure"));
         assert!(validation_msg.contains("validation failure"));
     }
+
+    #[test]
+    fn test_crypto_error() {
+        let err = ClobError::Crypto("signing failed".into());
+        assert!(err.to_string().contains("signing failed"));
+        assert!(matches!(err, ClobError::Crypto(_)));
+    }
+
+    #[test]
+    fn test_alloy_error() {
+        let err = ClobError::Alloy("hex decode failed".into());
+        assert!(err.to_string().contains("hex decode failed"));
+        assert!(matches!(err, ClobError::Alloy(_)));
+    }
+
+    #[test]
+    fn test_invalid_tick_size_from_str() {
+        let err: Result<crate::types::TickSize, _> = "0.5".try_into();
+        let clob_err = ClobError::from(err.unwrap_err());
+        assert!(matches!(clob_err, ClobError::InvalidTickSize(_)));
+        assert!(clob_err.to_string().contains("0.5"));
+    }
+
+    #[test]
+    fn test_from_serde_json_error() {
+        let json_err = serde_json::from_str::<String>("not valid json").unwrap_err();
+        let clob_err = ClobError::from(json_err);
+        assert!(matches!(
+            clob_err,
+            ClobError::Api(ApiError::Serialization(_))
+        ));
+    }
+
+    #[test]
+    fn test_from_url_parse_error() {
+        let url_err = url::Url::parse("://bad").unwrap_err();
+        let clob_err = ClobError::from(url_err);
+        assert!(matches!(clob_err, ClobError::Api(ApiError::Url(_))));
+    }
 }

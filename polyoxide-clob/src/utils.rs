@@ -265,4 +265,137 @@ mod tests {
         let salt2 = generate_salt();
         assert_ne!(salt, salt2, "Two random salts should differ");
     }
+
+    // ── calculate_market_order_amounts ──
+
+    #[test]
+    fn test_calculate_market_order_amounts_sell() {
+        // 100 shares at 0.50 price → maker=shares, taker=USDC
+        let (maker, taker) =
+            calculate_market_order_amounts(100.0, 0.50, OrderSide::Sell, TickSize::Hundredth);
+        assert_eq!(maker, "100000000"); // 100 shares * 10^6
+        assert_eq!(taker, "50000000"); // 100 * 0.50 = 50 USDC * 10^6
+    }
+
+    #[test]
+    fn test_calculate_market_order_amounts_zero_price() {
+        let (maker, taker) =
+            calculate_market_order_amounts(100.0, 0.0, OrderSide::Buy, TickSize::Hundredth);
+        assert_eq!(maker, "0");
+        assert_eq!(taker, "0");
+    }
+
+    #[test]
+    fn test_calculate_market_order_amounts_sell_zero_price() {
+        let (maker, taker) =
+            calculate_market_order_amounts(100.0, 0.0, OrderSide::Sell, TickSize::Hundredth);
+        assert_eq!(maker, "0");
+        assert_eq!(taker, "0");
+    }
+
+    #[test]
+    fn test_calculate_market_order_amounts_tenth_tick() {
+        // With Tenth tick size, price rounds to 1 decimal
+        let (maker, taker) =
+            calculate_market_order_amounts(100.0, 0.5, OrderSide::Buy, TickSize::Tenth);
+        assert_eq!(maker, "100000000");
+        assert_eq!(taker, "200000000");
+    }
+
+    #[test]
+    fn test_calculate_market_order_amounts_thousandth_tick() {
+        let (maker, taker) =
+            calculate_market_order_amounts(100.0, 0.555, OrderSide::Buy, TickSize::Thousandth);
+        assert_eq!(maker, "100000000");
+        // taker = 100 / 0.555 = 180.180180... truncated to 6 decimals
+        let taker_val: u64 = taker.parse().unwrap();
+        assert!(taker_val > 180_000_000); // ~180.18 shares
+    }
+
+    #[test]
+    fn test_calculate_order_amounts_tenth_tick() {
+        let (maker, taker) = calculate_order_amounts(0.5, 100.0, OrderSide::Buy, TickSize::Tenth);
+        assert_eq!(maker, "50000000");
+        assert_eq!(taker, "100000000");
+    }
+
+    #[test]
+    fn test_calculate_order_amounts_thousandth_tick() {
+        let (maker, taker) =
+            calculate_order_amounts(0.555, 100.0, OrderSide::Buy, TickSize::Thousandth);
+        assert_eq!(maker, "55500000");
+        assert_eq!(taker, "100000000");
+    }
+
+    // ── calculate_market_price ──
+
+    #[test]
+    fn test_calculate_market_price_sell_simple() {
+        use rust_decimal_macros::dec;
+        let levels = vec![OrderLevel {
+            price: dec!(0.50),
+            size: dec!(200),
+        }];
+        // Sell: sum += size. 200 >= 100 → price = 0.50
+        let price = calculate_market_price(&levels, 100.0, OrderSide::Sell);
+        assert_eq!(price, Some(0.50));
+    }
+
+    #[test]
+    fn test_calculate_market_price_buy_multiple_levels() {
+        use rust_decimal_macros::dec;
+        let levels = vec![
+            OrderLevel {
+                price: dec!(0.50),
+                size: dec!(100),
+            }, // sum = 50
+            OrderLevel {
+                price: dec!(0.55),
+                size: dec!(100),
+            }, // sum = 105
+            OrderLevel {
+                price: dec!(0.60),
+                size: dec!(100),
+            }, // sum = 165
+        ];
+        // Buy: sum += price*size. Need 100 USDC.
+        // Level 1: 0.50*100=50 (sum=50 < 100)
+        // Level 2: 0.55*100=55 (sum=105 >= 100) → price = 0.55
+        let price = calculate_market_price(&levels, 100.0, OrderSide::Buy);
+        assert_eq!(price, Some(0.55));
+    }
+
+    // ── rounding helpers ──
+
+    #[test]
+    fn test_round_to_zero() {
+        assert_eq!(round_to_zero(1.999999, 6), 1.999999);
+        assert_eq!(round_to_zero(1.9999999, 6), 1.999999);
+        assert_eq!(round_to_zero(-1.9999999, 6), -1.999999);
+        assert_eq!(round_to_zero(0.0, 6), 0.0);
+    }
+
+    #[test]
+    fn test_round_bankers_decimals() {
+        // 2 decimal places — f64 representation means epsilon-based half
+        // detection treats these as half-way cases, rounding to even digit
+        assert_eq!(round_bankers(1.235, 2), 1.24); // 124 is even
+        assert_eq!(round_bankers(1.245, 2), 1.24); // 124 is even
+        assert_eq!(round_bankers(1.265, 2), 1.26); // 126 is even
+    }
+
+    #[test]
+    fn test_round_bankers_negative() {
+        assert_eq!(round_bankers(-0.5, 0), 0.0);
+        assert_eq!(round_bankers(-1.5, 0), -2.0);
+        assert_eq!(round_bankers(-2.5, 0), -2.0);
+    }
+
+    #[test]
+    fn test_to_raw_amount() {
+        assert_eq!(to_raw_amount(1.0, 6), "1000000");
+        assert_eq!(to_raw_amount(0.5, 6), "500000");
+        assert_eq!(to_raw_amount(0.0, 6), "0");
+        assert_eq!(to_raw_amount(123.456789, 6), "123456789");
+    }
 }
