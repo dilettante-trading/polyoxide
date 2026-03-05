@@ -63,22 +63,29 @@ pub struct Holder {
     /// Proxy wallet address
     pub proxy_wallet: String,
     /// User bio
+    #[serde(default)]
     pub bio: Option<String>,
     /// Asset identifier (token ID)
+    #[serde(default)]
     pub asset: Option<String>,
     /// User pseudonym
+    #[serde(default)]
     pub pseudonym: Option<String>,
     /// Amount held
     pub amount: f64,
     /// Whether username is displayed publicly
+    #[serde(default)]
     pub display_username_public: Option<bool>,
     /// Outcome index (0 or 1 for binary markets)
     pub outcome_index: u32,
     /// User display name
+    #[serde(default)]
     pub name: Option<String>,
     /// User profile image URL
+    #[serde(default)]
     pub profile_image: Option<String>,
     /// Optimized profile image URL
+    #[serde(default)]
     pub profile_image_optimized: Option<String>,
     /// Whether the user is verified
     #[serde(default)]

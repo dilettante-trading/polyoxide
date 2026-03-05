@@ -139,8 +139,10 @@ pub struct ClosedPosition {
     /// Market slug
     pub slug: String,
     /// Market icon URL
+    #[serde(default)]
     pub icon: Option<String>,
     /// Event slug
+    #[serde(default)]
     pub event_slug: Option<String>,
     /// Outcome name (e.g., "Yes", "No")
     pub outcome: String,
@@ -151,6 +153,7 @@ pub struct ClosedPosition {
     /// Opposite outcome asset ID
     pub opposite_asset: String,
     /// Market end date
+    #[serde(default)]
     pub end_date: Option<String>,
 }
 
@@ -219,24 +222,32 @@ pub struct Trade {
     /// Market slug
     pub slug: String,
     /// Market icon URL
+    #[serde(default)]
     pub icon: Option<String>,
     /// Event slug
+    #[serde(default)]
     pub event_slug: Option<String>,
     /// Outcome name (e.g., "Yes", "No")
     pub outcome: String,
     /// Outcome index (0 or 1 for binary markets)
     pub outcome_index: u32,
     /// User display name
+    #[serde(default)]
     pub name: Option<String>,
     /// User pseudonym
+    #[serde(default)]
     pub pseudonym: Option<String>,
     /// User bio
+    #[serde(default)]
     pub bio: Option<String>,
     /// User profile image URL
+    #[serde(default)]
     pub profile_image: Option<String>,
     /// Optimized profile image URL
+    #[serde(default)]
     pub profile_image_optimized: Option<String>,
     /// Transaction hash
+    #[serde(default)]
     pub transaction_hash: Option<String>,
 }
 
@@ -316,33 +327,47 @@ pub struct Activity {
     /// USD value
     pub usdc_size: f64,
     /// On-chain transaction hash
+    #[serde(default)]
     pub transaction_hash: Option<String>,
     /// Execution price
+    #[serde(default)]
     pub price: Option<f64>,
     /// Asset identifier (token ID)
+    #[serde(default)]
     pub asset: Option<String>,
     // ! Deserialize into String because the API can return an empty string
     /// Trade side (BUY or SELL)
+    #[serde(default)]
     pub side: Option<String>,
     /// Outcome index (0 or 1 for binary markets)
+    #[serde(default)]
     pub outcome_index: Option<u32>,
     /// Market title
+    #[serde(default)]
     pub title: Option<String>,
     /// Market slug
+    #[serde(default)]
     pub slug: Option<String>,
     /// Market icon URL
+    #[serde(default)]
     pub icon: Option<String>,
     /// Outcome name (e.g., "Yes", "No")
+    #[serde(default)]
     pub outcome: Option<String>,
     /// User display name
+    #[serde(default)]
     pub name: Option<String>,
     /// User pseudonym
+    #[serde(default)]
     pub pseudonym: Option<String>,
     /// User bio
+    #[serde(default)]
     pub bio: Option<String>,
     /// User profile image URL
+    #[serde(default)]
     pub profile_image: Option<String>,
     /// Optimized profile image URL
+    #[serde(default)]
     pub profile_image_optimized: Option<String>,
 }
 
@@ -386,8 +411,10 @@ pub struct Position {
     /// Market slug
     pub slug: String,
     /// Market icon URL
+    #[serde(default)]
     pub icon: Option<String>,
     /// Event slug
+    #[serde(default)]
     pub event_slug: Option<String>,
     /// Outcome name (e.g., "Yes", "No")
     pub outcome: String,
@@ -398,6 +425,7 @@ pub struct Position {
     /// Opposite outcome asset ID
     pub opposite_asset: String,
     /// Market end date
+    #[serde(default)]
     pub end_date: Option<String>,
     /// Whether this is a negative risk market
     pub negative_risk: bool,
