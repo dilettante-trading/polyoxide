@@ -853,3 +853,176 @@ async fn server_502_not_retried() {
     }
     mock.assert_async().await;
 }
+
+// ── Error scenario & edge case tests ──
+
+#[tokio::test]
+async fn error_400_returns_validation_error() {
+    let mut server = Server::new_async().await;
+
+    let mock = server
+        .mock("GET", "/time")
+        .with_status(400)
+        .with_header("content-type", "application/json")
+        .with_body(r#"{"error": "invalid parameters"}"#)
+        .create_async()
+        .await;
+
+    let clob = test_public_clob(&server);
+    let err = clob.health().server_time().send().await.unwrap_err();
+
+    match err {
+        ClobError::Api(polyoxide_core::ApiError::Validation(msg)) => {
+            assert_eq!(msg, "invalid parameters");
+        }
+        other => panic!("Expected Validation error, got: {:?}", other),
+    }
+    mock.assert_async().await;
+}
+
+#[tokio::test]
+async fn error_403_returns_authentication_error() {
+    let mut server = Server::new_async().await;
+
+    let mock = server
+        .mock("GET", "/time")
+        .with_status(403)
+        .with_header("content-type", "application/json")
+        .with_body(r#"{"error": "forbidden"}"#)
+        .create_async()
+        .await;
+
+    let clob = test_public_clob(&server);
+    let err = clob.health().server_time().send().await.unwrap_err();
+
+    match err {
+        ClobError::Api(polyoxide_core::ApiError::Authentication(msg)) => {
+            assert_eq!(msg, "forbidden");
+        }
+        other => panic!("Expected Authentication error, got: {:?}", other),
+    }
+    mock.assert_async().await;
+}
+
+#[tokio::test]
+async fn error_message_field_fallback() {
+    let mut server = Server::new_async().await;
+
+    // JSON body with "message" instead of "error"
+    let mock = server
+        .mock("GET", "/time")
+        .with_status(500)
+        .with_header("content-type", "application/json")
+        .with_body(r#"{"message": "something broke"}"#)
+        .create_async()
+        .await;
+
+    let clob = test_public_clob(&server);
+    let err = clob.health().server_time().send().await.unwrap_err();
+
+    match err {
+        ClobError::Api(polyoxide_core::ApiError::Api { status, message }) => {
+            assert_eq!(status, 500);
+            assert_eq!(message, "something broke");
+        }
+        other => panic!("Expected Api error, got: {:?}", other),
+    }
+    mock.assert_async().await;
+}
+
+#[tokio::test]
+async fn error_html_body_uses_raw_text() {
+    let mut server = Server::new_async().await;
+
+    // Non-JSON body (e.g. HTML error page from a proxy)
+    let mock = server
+        .mock("GET", "/time")
+        .with_status(503)
+        .with_header("content-type", "text/html")
+        .with_body("<html><body>Service Unavailable</body></html>")
+        .create_async()
+        .await;
+
+    let clob = test_public_clob(&server);
+    let err = clob.health().server_time().send().await.unwrap_err();
+
+    match err {
+        ClobError::Api(polyoxide_core::ApiError::Api { status, message }) => {
+            assert_eq!(status, 503);
+            assert!(message.contains("Service Unavailable"));
+        }
+        other => panic!("Expected Api error, got: {:?}", other),
+    }
+    mock.assert_async().await;
+}
+
+#[tokio::test]
+async fn error_empty_body() {
+    let mut server = Server::new_async().await;
+
+    let mock = server
+        .mock("GET", "/time")
+        .with_status(500)
+        .with_body("")
+        .create_async()
+        .await;
+
+    let clob = test_public_clob(&server);
+    let err = clob.health().server_time().send().await.unwrap_err();
+
+    // Empty body should still produce an error, not panic
+    assert!(matches!(
+        err,
+        ClobError::Api(polyoxide_core::ApiError::Api { status: 500, .. })
+    ));
+    mock.assert_async().await;
+}
+
+#[tokio::test]
+async fn deserialization_failure_on_malformed_json() {
+    let mut server = Server::new_async().await;
+
+    // Status 200 but body is invalid JSON for the expected type
+    let mock = server
+        .mock("GET", "/time")
+        .with_status(200)
+        .with_header("content-type", "application/json")
+        .with_body(r#"{"not_the_right_field": true}"#)
+        .create_async()
+        .await;
+
+    let clob = test_public_clob(&server);
+    let err = clob.health().server_time().send().await.unwrap_err();
+
+    assert!(
+        matches!(
+            err,
+            ClobError::Api(polyoxide_core::ApiError::Serialization(_))
+        ),
+        "Expected Serialization error, got: {:?}",
+        err
+    );
+    mock.assert_async().await;
+}
+
+#[tokio::test]
+async fn error_408_returns_timeout() {
+    let mut server = Server::new_async().await;
+
+    let mock = server
+        .mock("GET", "/time")
+        .with_status(408)
+        .with_body("Request Timeout")
+        .create_async()
+        .await;
+
+    let clob = test_public_clob(&server);
+    let err = clob.health().server_time().send().await.unwrap_err();
+
+    assert!(
+        matches!(err, ClobError::Api(polyoxide_core::ApiError::Timeout)),
+        "Expected Timeout error, got: {:?}",
+        err
+    );
+    mock.assert_async().await;
+}
