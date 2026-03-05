@@ -1,5 +1,6 @@
 use mockito::{Matcher, Server};
 use polyoxide_clob::{Account, ClobBuilder, ClobError, Credentials};
+use polyoxide_core::RetryConfig;
 
 fn test_public_clob(server: &mockito::ServerGuard) -> polyoxide_clob::Clob {
     ClobBuilder::new().base_url(server.url()).build().unwrap()
@@ -736,5 +737,119 @@ async fn builder_trade_err_msg_rename() {
     );
     assert_eq!(resp.data[0].status, "FAILED");
     assert!(resp.next_cursor.is_none());
+    mock.assert_async().await;
+}
+
+// ── Request retry & error tests ──
+
+fn test_public_clob_fast_retry(server: &mockito::ServerGuard) -> polyoxide_clob::Clob {
+    ClobBuilder::new()
+        .base_url(server.url())
+        .with_retry_config(RetryConfig {
+            max_retries: 2,
+            initial_backoff_ms: 1, // 1ms backoff for fast tests
+            max_backoff_ms: 5,
+        })
+        .build()
+        .unwrap()
+}
+
+#[tokio::test]
+async fn retry_429_exhausted_returns_rate_limit_error() {
+    let mut server = Server::new_async().await;
+
+    // Return 429 on every request (max_retries=2, so 3 total attempts: 0, 1, 2)
+    let mock = server
+        .mock("GET", "/time")
+        .with_status(429)
+        .with_body("rate limited")
+        .expect(3)
+        .create_async()
+        .await;
+
+    let clob = test_public_clob_fast_retry(&server);
+    let err = clob.health().server_time().send().await.unwrap_err();
+
+    // After exhausting retries, the 429 is returned as a RateLimit error
+    assert!(
+        matches!(err, ClobError::Api(polyoxide_core::ApiError::RateLimit(_))),
+        "Expected RateLimit error, got: {:?}",
+        err
+    );
+    // Verify it was retried exactly max_retries times (3 total requests)
+    mock.assert_async().await;
+}
+
+#[tokio::test]
+async fn retry_429_with_retry_after_header() {
+    let mut server = Server::new_async().await;
+
+    // 429 with Retry-After header — should still retry and exhaust
+    let mock = server
+        .mock("GET", "/time")
+        .with_status(429)
+        .with_header("Retry-After", "0.001")
+        .with_body("rate limited")
+        .expect(3)
+        .create_async()
+        .await;
+
+    let clob = test_public_clob_fast_retry(&server);
+    let err = clob.health().server_time().send().await.unwrap_err();
+
+    assert!(matches!(
+        err,
+        ClobError::Api(polyoxide_core::ApiError::RateLimit(_))
+    ));
+    // Retry-After header respected — still 3 total requests
+    mock.assert_async().await;
+}
+
+#[tokio::test]
+async fn server_500_not_retried() {
+    let mut server = Server::new_async().await;
+
+    let mock = server
+        .mock("GET", "/time")
+        .with_status(500)
+        .with_body(r#"{"error": "internal server error"}"#)
+        .expect(1)
+        .create_async()
+        .await;
+
+    let clob = test_public_clob_fast_retry(&server);
+    let err = clob.health().server_time().send().await.unwrap_err();
+
+    match err {
+        ClobError::Api(polyoxide_core::ApiError::Api { status, .. }) => {
+            assert_eq!(status, 500);
+        }
+        other => panic!("Expected Api error with status 500, got: {:?}", other),
+    }
+    // Only called once — 500 is not retried
+    mock.assert_async().await;
+}
+
+#[tokio::test]
+async fn server_502_not_retried() {
+    let mut server = Server::new_async().await;
+
+    let mock = server
+        .mock("GET", "/time")
+        .with_status(502)
+        .with_body("Bad Gateway")
+        .expect(1)
+        .create_async()
+        .await;
+
+    let clob = test_public_clob_fast_retry(&server);
+    let err = clob.health().server_time().send().await.unwrap_err();
+
+    match err {
+        ClobError::Api(polyoxide_core::ApiError::Api { status, .. }) => {
+            assert_eq!(status, 502);
+        }
+        other => panic!("Expected Api error with status 502, got: {:?}", other),
+    }
     mock.assert_async().await;
 }
