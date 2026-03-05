@@ -61,7 +61,12 @@ polyoxide-core          (shared: auth, HTTP client, errors, macros)
 
 **Builder pattern** — All clients use builders: `ClobBuilder::new()`, `Clob::builder(private_key, credentials)`, `Gamma::builder()`, `DataApi::builder()`, `RelayClient::default_builder()`, `Polymarket::builder(account)`.
 
-**API namespaces** — Clients organize endpoints into namespaces: `clob.markets()`, `clob.orders()`, `clob.account_api()`, `clob.health()`, `gamma.markets()`, `gamma.events()`, `gamma.search()`, `data.user(addr)`, `data.trades()`, `data.leaderboard()`. Example: `gamma.markets().list().open(true).send().await?`, `data.user(addr).list_positions().send().await?`.
+**API namespaces** — Clients organize endpoints into namespaces:
+- CLOB: `clob.markets()`, `clob.orders()`, `clob.account_api()`, `clob.health()`, `clob.auth()`, `clob.rewards()`, `clob.rfq()`, `clob.notifications()`
+- Gamma: `gamma.markets()`, `gamma.events()`, `gamma.series()`, `gamma.tags()`, `gamma.comments()`, `gamma.sports()`, `gamma.search()`, `gamma.user()`, `gamma.health()`
+- Data: `data.users()`, `data.trades()`, `data.holders()`, `data.leaderboard()`, `data.builders()`, `data.live_volume()`, `data.open_interest()`, `data.health()`
+
+Example: `gamma.markets().list().open(true).send().await?`, `data.leaderboard().list().send().await?`.
 
 **Request builder fluency** — Query parameters are chained with builder methods before `.send().await?`.
 
@@ -88,6 +93,8 @@ Relay operations additionally need `BUILDER_API_KEY`, `BUILDER_SECRET`, `BUILDER
 Each crate has live integration tests in `tests/live_api.rs` gated with `#[ignore]` so CI skips them. They hit the real Polymarket APIs. Run with `-- --ignored` flag.
 
 Read-only crates (gamma, data) use `Gamma::builder().build()` / `DataApi::builder().build()` directly. CLOB tests use `Clob::public()` for unauthenticated endpoints.
+
+Mock HTTP tests use `mockito` (workspace dev-dependency). Each crate with mock tests has a `tests/mock_api.rs` file with helper functions like `test_public_clob(server)` that point clients at the mock server URL.
 
 ## Module Organization
 

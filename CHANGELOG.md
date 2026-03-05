@@ -1,3 +1,64 @@
+## [0.11.0] - 2026-03-05
+
+### 🚀 Features
+
+- *(clob)* Add RFQ namespace for request-for-quote trading
+- *(clob)* Add rewards namespace for liquidity reward tracking
+- *(clob)* Add auth namespace for API key management
+- *(clob)* Add batch order operations and single order lookup
+- *(clob)* Add batch pricing endpoints for books, prices, midpoints, spreads, and last trades
+- *(clob)* Add single pricing, live activity, calculate price, and server time endpoints
+- *(clob)* Add heartbeat, notifications, order scoring, and ban status endpoints
+- *(clob)* Add simplified/sampling market lists and builder trades endpoint
+- *(clob)* Add `ListClobTrades` request builder with filter methods
+- *(gamma)* Add missing endpoints and query params across all namespaces
+- *(gamma)* Add public search endpoint for profiles, events, and tags
+- *(gamma)* Complete `UserResponse` with profile, bio, and badge fields
+- *(data)* Add trader leaderboard endpoint and move `TimePeriod` to types
+
+### 🐛 Bug Fixes
+
+- *(clob)* Fix 5 critical deserialization crashes against live API
+- *(clob)* Add missing fields to `OpenOrder`, `OrderResponse`, and `Trade` types
+- *(clob)* Add missing fields to `OrderBook` type
+- *(gamma)* Correct 6 serde renames and expand `SeriesInfo` to match live API
+- *(gamma)* Align SDK types with real Polymarket API responses
+- *(data)* Add missing `verified` field to `Holder` type
+- *(core)* Replace silent epoch fallback with explicit panic in `current_timestamp`
+- *(cli)* Use `floor_char_boundary` for safe UTF-8 string truncation
+
+### 🚜 Refactor
+
+- *(clob)* Make gamma dependency optional behind `gamma` feature flag
+- *(clob)* Extract WebSocket subscription validation helper
+- *(clob)* Deduplicate EIP-712 order conversion and digest computation
+- *(core)* Simplify rate limiter config with `endpoint_limit` helper
+- *(relay)* Extract retry helper, named constants, and module-level types
+
+### 🧪 Tests
+
+- *(clob)* Add 73 new tests: WebSocket message types, utils, error, mock API (retry, errors, order creation), rejection and edge cases
+- *(gamma)* Add mock tests for open() inversion, volume serde renames, and events namespace
+- *(data)* Add 12 mock HTTP tests bootstrapping polyoxide-data coverage
+- *(core)* Fix retry mock strictness and add 401/403/408 error tests
+- *(cli)* Add multibyte and emoji edge case tests for truncate
+- Add mockito HTTP mock tests for core, gamma, and clob
+
+### 📚 Documentation
+
+- Add docstrings across workspace, complete relay crate coverage
+- Fix incorrect API examples and update project documentation
+
+### ⚙️ Build
+
+- Add mockito workspace dev-dependency for HTTP mock tests
+- Move futures-util from workspace deps to per-crate
+- Specify per-crate tokio features instead of workspace-wide
+
+### 💅 Style
+
+- Apply rustfmt to gamma and data
+
 ## [0.10.0] - 2026-03-01
 
 ### ⚠️ Breaking Changes
