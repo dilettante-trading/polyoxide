@@ -203,24 +203,16 @@ pub struct OpenOrder {
     #[serde(flatten)]
     pub order: SignedOrder,
     pub status: String,
-    #[serde(default)]
     pub owner: Option<String>,
-    #[serde(default)]
     pub maker_address: Option<String>,
-    #[serde(default)]
     pub original_size: Option<String>,
-    #[serde(default)]
     pub size_matched: Option<String>,
-    #[serde(default)]
     pub price: Option<String>,
     #[serde(default)]
     pub associate_trades: Vec<String>,
-    #[serde(default)]
     pub outcome: Option<String>,
-    #[serde(default)]
     pub order_type: Option<String>,
     pub created_at: String,
-    #[serde(default)]
     pub updated_at: Option<String>,
 }
 
@@ -229,17 +221,13 @@ pub struct OpenOrder {
 #[serde(rename_all(deserialize = "camelCase"))]
 pub struct OrderResponse {
     pub success: bool,
-    #[serde(default)]
     pub error_msg: Option<String>,
-    #[serde(default, rename(deserialize = "orderID"))]
+    #[serde(rename(deserialize = "orderID"))]
     pub order_id: Option<String>,
     #[serde(default, rename(deserialize = "transactionsHashes"))]
     pub transaction_hashes: Vec<String>,
-    #[serde(default)]
     pub status: Option<String>,
-    #[serde(default)]
     pub taking_amount: Option<String>,
-    #[serde(default)]
     pub making_amount: Option<String>,
 }
 
@@ -267,7 +255,6 @@ pub struct BatchCancelResponse {
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct ListOrdersResponse {
     pub data: Vec<OpenOrder>,
-    #[serde(default)]
     pub next_cursor: Option<String>,
 }
 

@@ -224,12 +224,10 @@ pub struct Trade {
     #[serde(default)]
     pub bucket_index: Option<u32>,
     pub owner: Address,
-    #[serde(default)]
     pub maker_address: Option<String>,
     #[serde(default)]
     pub maker_orders: Vec<MakerOrder>,
     pub transaction_hash: String,
-    #[serde(default)]
     pub trader_side: Option<String>,
 }
 
@@ -251,7 +249,6 @@ pub struct MakerOrder {
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct ListTradesResponse {
     pub data: Vec<Trade>,
-    #[serde(default)]
     pub next_cursor: Option<String>,
 }
 
@@ -283,11 +280,9 @@ pub struct BuilderTrade {
     pub bucket_index: Option<u32>,
     pub fee: String,
     pub fee_usdc: String,
-    #[serde(default, rename = "err_msg")]
+    #[serde(rename = "err_msg")]
     pub err_msg: Option<String>,
-    #[serde(default)]
     pub created_at: Option<String>,
-    #[serde(default)]
     pub updated_at: Option<String>,
 }
 
@@ -295,7 +290,6 @@ pub struct BuilderTrade {
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct ListBuilderTradesResponse {
     pub data: Vec<BuilderTrade>,
-    #[serde(default)]
     pub next_cursor: Option<String>,
 }
 
