@@ -333,3 +333,408 @@ async fn cancel_many_sends_flat_array_body() {
     assert_eq!(resp.not_canceled.get("order-3").unwrap(), "not found");
     mock.assert_async().await;
 }
+
+#[tokio::test]
+async fn order_book_decimal_serde() {
+    let mut server = Server::new_async().await;
+
+    let mock = server
+        .mock("GET", "/book")
+        .match_query(Matcher::AllOf(vec![Matcher::UrlEncoded(
+            "token_id".into(),
+            "0xtoken".into(),
+        )]))
+        .with_status(200)
+        .with_header("content-type", "application/json")
+        .with_body(
+            r#"{
+                "market": "0xcond",
+                "asset_id": "0xtoken",
+                "bids": [{"price": "0.48", "size": "100.5"}],
+                "asks": [{"price": "0.52", "size": "200.25"}],
+                "timestamp": "1700000000",
+                "hash": "abc123",
+                "min_order_size": "5",
+                "tick_size": "0.001",
+                "neg_risk": false,
+                "last_trade_price": "0.50"
+            }"#,
+        )
+        .create_async()
+        .await;
+
+    let clob = test_public_clob(&server);
+    let ob = clob.markets().order_book("0xtoken").send().await.unwrap();
+
+    assert_eq!(ob.market, "0xcond");
+    assert_eq!(ob.bids.len(), 1);
+    assert_eq!(ob.bids[0].price, rust_decimal::Decimal::new(48, 2));
+    assert_eq!(ob.bids[0].size, rust_decimal::Decimal::new(1005, 1));
+    assert_eq!(ob.asks[0].price, rust_decimal::Decimal::new(52, 2));
+    assert_eq!(ob.asks[0].size, rust_decimal::Decimal::new(20025, 2));
+    assert_eq!(ob.min_order_size.as_deref(), Some("5"));
+    assert_eq!(ob.neg_risk, Some(false));
+    mock.assert_async().await;
+}
+
+#[tokio::test]
+async fn tick_size_string_response() {
+    let mut server = Server::new_async().await;
+
+    let mock = server
+        .mock("GET", "/tick-size")
+        .match_query(Matcher::AllOf(vec![Matcher::UrlEncoded(
+            "token_id".into(),
+            "0xtoken".into(),
+        )]))
+        .with_status(200)
+        .with_header("content-type", "application/json")
+        .with_body(r#"{"minimum_tick_size": "0.01"}"#)
+        .create_async()
+        .await;
+
+    let clob = test_public_clob(&server);
+    let resp = clob.markets().tick_size("0xtoken").send().await.unwrap();
+
+    assert_eq!(resp.minimum_tick_size, "0.01");
+    mock.assert_async().await;
+}
+
+#[tokio::test]
+async fn tick_size_number_response() {
+    let mut server = Server::new_async().await;
+
+    // API sometimes returns tick_size as a number instead of a string
+    let mock = server
+        .mock("GET", "/tick-size")
+        .match_query(Matcher::AllOf(vec![Matcher::UrlEncoded(
+            "token_id".into(),
+            "0xtoken".into(),
+        )]))
+        .with_status(200)
+        .with_header("content-type", "application/json")
+        .with_body(r#"{"minimum_tick_size": 0.01}"#)
+        .create_async()
+        .await;
+
+    let clob = test_public_clob(&server);
+    let resp = clob.markets().tick_size("0xtoken").send().await.unwrap();
+
+    // Custom deserializer converts number to string
+    assert_eq!(resp.minimum_tick_size, "0.01");
+    mock.assert_async().await;
+}
+
+#[tokio::test]
+async fn get_order_flatten_rename() {
+    let mut server = Server::new_async().await;
+
+    let mock = server
+        .mock("GET", "/data/order/order-123")
+        .match_header("POLY_API_KEY", "test-key")
+        .with_status(200)
+        .with_header("content-type", "application/json")
+        .with_body(
+            r#"{
+                "id": "order-123",
+                "market": "0xcond",
+                "assetId": "0xtoken",
+                "salt": "999",
+                "maker": "0x0000000000000000000000000000000000000001",
+                "signer": "0x0000000000000000000000000000000000000002",
+                "taker": "0x0000000000000000000000000000000000000000",
+                "tokenId": "0xtoken",
+                "makerAmount": "1000",
+                "takerAmount": "500",
+                "expiration": "0",
+                "nonce": "0",
+                "feeRateBps": "100",
+                "side": "BUY",
+                "signatureType": 0,
+                "signature": "0xsig",
+                "status": "LIVE",
+                "owner": "0xowner",
+                "makerAddress": "0xmaker",
+                "originalSize": "200.5",
+                "sizeMatched": "100.0",
+                "price": "0.55",
+                "associateTrades": ["trade-1"],
+                "outcome": "Yes",
+                "orderType": "GTC",
+                "createdAt": "2024-01-01T00:00:00Z",
+                "updatedAt": "2024-01-02T00:00:00Z"
+            }"#,
+        )
+        .create_async()
+        .await;
+
+    let clob = test_authed_clob(&server);
+    let order = clob
+        .orders()
+        .unwrap()
+        .get("order-123")
+        .send()
+        .await
+        .unwrap();
+
+    assert_eq!(order.id, "order-123");
+    assert_eq!(order.asset_id, "0xtoken");
+    // Flattened SignedOrder fields
+    assert_eq!(order.order.signature, "0xsig");
+    assert_eq!(order.order.order.maker_amount, "1000");
+    // camelCase rename fields
+    assert_eq!(order.owner.as_deref(), Some("0xowner"));
+    assert_eq!(order.maker_address.as_deref(), Some("0xmaker"));
+    assert_eq!(order.original_size.as_deref(), Some("200.5"));
+    assert_eq!(order.size_matched.as_deref(), Some("100.0"));
+    assert_eq!(order.associate_trades, vec!["trade-1"]);
+    assert_eq!(order.order_type.as_deref(), Some("GTC"));
+    mock.assert_async().await;
+}
+
+#[tokio::test]
+async fn prices_history_renamed_fields() {
+    let mut server = Server::new_async().await;
+
+    let mock = server
+        .mock("GET", "/prices-history")
+        .match_query(Matcher::AllOf(vec![Matcher::UrlEncoded(
+            "market".into(),
+            "0xtoken".into(),
+        )]))
+        .with_status(200)
+        .with_header("content-type", "application/json")
+        .with_body(
+            r#"{
+                "history": [
+                    {"t": 1700000000, "p": 0.55},
+                    {"t": 1700001000, "p": 0.60}
+                ]
+            }"#,
+        )
+        .create_async()
+        .await;
+
+    let clob = test_public_clob(&server);
+    let resp = clob
+        .markets()
+        .prices_history("0xtoken")
+        .send()
+        .await
+        .unwrap();
+
+    assert_eq!(resp.history.len(), 2);
+    // Validates #[serde(rename = "t")] -> timestamp, #[serde(rename = "p")] -> price
+    assert_eq!(resp.history[0].timestamp, 1700000000);
+    assert!((resp.history[0].price - 0.55).abs() < f64::EPSILON);
+    assert_eq!(resp.history[1].timestamp, 1700001000);
+    assert!((resp.history[1].price - 0.60).abs() < f64::EPSILON);
+    mock.assert_async().await;
+}
+
+#[tokio::test]
+async fn calculate_price_post_body() {
+    let mut server = Server::new_async().await;
+
+    let mock = server
+        .mock("POST", "/calculate-price")
+        .match_body(Matcher::JsonString(
+            r#"{"token_id": "0xtoken", "side": "BUY", "amount": "100"}"#.into(),
+        ))
+        .with_status(200)
+        .with_header("content-type", "application/json")
+        .with_body(r#"{"price": "0.52"}"#)
+        .create_async()
+        .await;
+
+    let clob = test_public_clob(&server);
+    let resp = clob
+        .markets()
+        .calculate_price("0xtoken", polyoxide_clob::OrderSide::Buy, "100")
+        .await
+        .unwrap();
+
+    assert_eq!(resp.price, "0.52");
+    mock.assert_async().await;
+}
+
+#[tokio::test]
+async fn cancel_all_sends_delete_no_body() {
+    let mut server = Server::new_async().await;
+
+    let mock = server
+        .mock("DELETE", "/cancel-all")
+        .match_header("POLY_API_KEY", "test-key")
+        .match_header("POLY_SIGNATURE", Matcher::Any)
+        .match_header("POLY_TIMESTAMP", Matcher::Any)
+        .with_status(200)
+        .with_header("content-type", "application/json")
+        .with_body(r#"{"canceled": ["o1", "o2"], "notCanceled": {}}"#)
+        .create_async()
+        .await;
+
+    let clob = test_authed_clob(&server);
+    let resp = clob.orders().unwrap().cancel_all().await.unwrap();
+
+    assert_eq!(resp.canceled, vec!["o1", "o2"]);
+    assert!(resp.not_canceled.is_empty());
+    mock.assert_async().await;
+}
+
+#[tokio::test]
+async fn cancel_market_sends_delete_with_body() {
+    let mut server = Server::new_async().await;
+
+    let mock = server
+        .mock("DELETE", "/cancel-market-orders")
+        .match_header("POLY_API_KEY", "test-key")
+        .match_body(Matcher::JsonString(
+            r#"{"market": "0xcond", "asset_id": "0xtoken"}"#.into(),
+        ))
+        .with_status(200)
+        .with_header("content-type", "application/json")
+        .with_body(r#"{"canceled": ["o1"], "notCanceled": {}}"#)
+        .create_async()
+        .await;
+
+    let clob = test_authed_clob(&server);
+    let resp = clob
+        .orders()
+        .unwrap()
+        .cancel_market("0xcond", "0xtoken")
+        .await
+        .unwrap();
+
+    assert_eq!(resp.canceled, vec!["o1"]);
+    mock.assert_async().await;
+}
+
+#[tokio::test]
+async fn order_scoring_query_param() {
+    let mut server = Server::new_async().await;
+
+    let mock = server
+        .mock("GET", "/order-scoring")
+        .match_header("POLY_API_KEY", "test-key")
+        .match_query(Matcher::AllOf(vec![Matcher::UrlEncoded(
+            "order_id".into(),
+            "oid-1".into(),
+        )]))
+        .with_status(200)
+        .with_header("content-type", "application/json")
+        .with_body(r#"{"order_id": "oid-1", "scoring": true}"#)
+        .create_async()
+        .await;
+
+    let clob = test_authed_clob(&server);
+    let resp = clob
+        .orders()
+        .unwrap()
+        .is_scoring("oid-1")
+        .send()
+        .await
+        .unwrap();
+
+    assert_eq!(resp.order_id, "oid-1");
+    assert!(resp.scoring);
+    mock.assert_async().await;
+}
+
+#[tokio::test]
+async fn orders_scoring_query_many() {
+    let mut server = Server::new_async().await;
+
+    // query_many adds multiple params with the same key: order_ids=oid-1&order_ids=oid-2
+    let mock = server
+        .mock("GET", "/orders-scoring")
+        .match_header("POLY_API_KEY", "test-key")
+        .match_query(Matcher::AllOf(vec![
+            Matcher::Regex("order_ids=oid-1".into()),
+            Matcher::Regex("order_ids=oid-2".into()),
+        ]))
+        .with_status(200)
+        .with_header("content-type", "application/json")
+        .with_body(
+            r#"[
+                {"order_id": "oid-1", "scoring": true},
+                {"order_id": "oid-2", "scoring": false}
+            ]"#,
+        )
+        .create_async()
+        .await;
+
+    let clob = test_authed_clob(&server);
+    let resp = clob
+        .orders()
+        .unwrap()
+        .are_scoring(vec!["oid-1".to_string(), "oid-2".to_string()])
+        .send()
+        .await
+        .unwrap();
+
+    assert_eq!(resp.len(), 2);
+    assert!(resp[0].scoring);
+    assert!(!resp[1].scoring);
+    mock.assert_async().await;
+}
+
+#[tokio::test]
+async fn builder_trade_err_msg_rename() {
+    let mut server = Server::new_async().await;
+
+    let mock = server
+        .mock("GET", "/builder/trades")
+        .match_header("POLY_API_KEY", "test-key")
+        .with_status(200)
+        .with_header("content-type", "application/json")
+        .with_body(
+            r#"{
+                "data": [{
+                    "id": "bt-err",
+                    "tradeType": "LIMIT",
+                    "takerOrderHash": "0xhash",
+                    "builder": "0xbuilder",
+                    "market": "0xcond",
+                    "assetId": "0xtoken",
+                    "side": "SELL",
+                    "size": "50",
+                    "sizeUsdc": "25.00",
+                    "price": "0.50",
+                    "status": "FAILED",
+                    "outcome": "No",
+                    "outcomeIndex": 1,
+                    "owner": "0xowner",
+                    "maker": "0xmaker",
+                    "transactionHash": "0xtx",
+                    "matchTime": "1700000000",
+                    "fee": "0",
+                    "feeUsdc": "0",
+                    "err_msg": "insufficient balance",
+                    "createdAt": null,
+                    "updatedAt": null
+                }],
+                "next_cursor": null
+            }"#,
+        )
+        .create_async()
+        .await;
+
+    let clob = test_authed_clob(&server);
+    let resp = clob
+        .account_api()
+        .unwrap()
+        .builder_trades()
+        .send()
+        .await
+        .unwrap();
+
+    assert_eq!(resp.data.len(), 1);
+    // Validates #[serde(rename = "err_msg")] under #[serde(rename_all = "camelCase")]
+    assert_eq!(
+        resp.data[0].err_msg.as_deref(),
+        Some("insufficient balance")
+    );
+    assert_eq!(resp.data[0].status, "FAILED");
+    assert!(resp.next_cursor.is_none());
+    mock.assert_async().await;
+}
