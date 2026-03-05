@@ -221,7 +221,7 @@ fn print_user_summary(msg: &UserMessage) {
         UserMessage::Order(order) => {
             println!(
                 "[ORDER] id={} type={:?} side={} price={} size={} matched={}",
-                &order.id[..8.min(order.id.len())],
+                &order.id[..order.id.floor_char_boundary(8)],
                 order.order_type,
                 order.side,
                 order.price,
@@ -232,7 +232,7 @@ fn print_user_summary(msg: &UserMessage) {
         UserMessage::Trade(trade) => {
             println!(
                 "[TRADE] id={} side={} price={} size={} status={:?}",
-                &trade.id[..8.min(trade.id.len())],
+                &trade.id[..trade.id.floor_char_boundary(8)],
                 trade.side,
                 trade.price,
                 trade.size,

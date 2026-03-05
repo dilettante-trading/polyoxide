@@ -177,7 +177,7 @@ fn print_message(channel: &Channel, format: OutputFormat) -> Result<()> {
 }
 
 fn truncate(s: &str, max_len: usize) -> &str {
-    &s[..s.len().min(max_len)]
+    &s[..s.floor_char_boundary(max_len)]
 }
 
 fn print_market_summary(msg: &MarketMessage) {
