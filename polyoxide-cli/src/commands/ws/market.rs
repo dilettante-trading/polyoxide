@@ -360,6 +360,25 @@ mod tests {
     }
 
     #[test]
+    fn truncate_multibyte_boundary() {
+        // "café" = [99, 97, 102, 195, 169] — 'é' is 2 bytes starting at index 3
+        // Truncating at 4 would split 'é' with old code; floor_char_boundary rounds down to 3
+        assert_eq!(truncate("café", 4), "caf");
+    }
+
+    #[test]
+    fn truncate_multibyte_after_boundary() {
+        // Truncating at 5 includes the full 'é'
+        assert_eq!(truncate("café", 5), "café");
+    }
+
+    #[test]
+    fn truncate_emoji() {
+        // '🎲' is 4 bytes — truncating at 2 should give empty string
+        assert_eq!(truncate("🎲dice", 2), "");
+    }
+
+    #[test]
     fn should_print_no_filters_passes_all() {
         let channel = Channel::Market(MarketMessage::Book(polyoxide_clob::ws::BookMessage {
             event_type: "book".to_string(),
