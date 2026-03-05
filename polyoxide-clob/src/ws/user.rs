@@ -382,6 +382,44 @@ mod tests {
     }
 
     #[test]
+    fn trade_status_rejects_unknown_value() {
+        let err = serde_json::from_str::<TradeStatus>(r#""UNKNOWN""#).unwrap_err();
+        assert!(err.is_data());
+    }
+
+    #[test]
+    fn order_event_type_rejects_unknown_value() {
+        let err = serde_json::from_str::<OrderEventType>(r#""INVALID""#).unwrap_err();
+        assert!(err.is_data());
+    }
+
+    #[test]
+    fn trade_status_rejects_lowercase() {
+        let err = serde_json::from_str::<TradeStatus>(r#""matched""#).unwrap_err();
+        assert!(err.is_data());
+    }
+
+    #[test]
+    fn trade_message_rejects_missing_required_field() {
+        // Missing "id" field
+        let json = r#"{
+            "event_type": "trade",
+            "asset_id": "abc",
+            "market": "0xcond",
+            "outcome": "YES",
+            "price": "0.55",
+            "size": "100",
+            "side": "BUY",
+            "status": "MATCHED",
+            "taker_order_id": "o1",
+            "maker_orders": [],
+            "timestamp": "1700000000000"
+        }"#;
+        let err = serde_json::from_str::<TradeMessage>(json).unwrap_err();
+        assert!(err.is_data());
+    }
+
+    #[test]
     fn maker_order_optional_fee_rate() {
         let json = r#"{
             "order_id": "maker-1",

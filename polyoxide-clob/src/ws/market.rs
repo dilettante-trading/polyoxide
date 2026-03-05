@@ -388,6 +388,59 @@ mod tests {
     }
 
     #[test]
+    fn book_array_with_multiple_entries_takes_first() {
+        // from_json takes only the first element from a multi-entry array
+        let json = r#"[
+            {
+                "event_type": "book",
+                "asset_id": "first",
+                "market": "0xcond",
+                "timestamp": "1",
+                "hash": "0xh1",
+                "bids": [],
+                "asks": []
+            },
+            {
+                "event_type": "book",
+                "asset_id": "second",
+                "market": "0xcond",
+                "timestamp": "2",
+                "hash": "0xh2",
+                "bids": [],
+                "asks": []
+            }
+        ]"#;
+
+        let msg = MarketMessage::from_json(json).unwrap();
+        match msg {
+            MarketMessage::Book(book) => {
+                assert_eq!(book.asset_id, "first", "Should take first entry only");
+            }
+            _ => panic!("Expected Book variant"),
+        }
+    }
+
+    #[test]
+    fn order_summary_rejects_non_numeric_price() {
+        let json = r#"{"price": "not_a_number", "size": "100"}"#;
+        let err = serde_json::from_str::<OrderSummary>(json).unwrap_err();
+        assert!(err.is_data());
+    }
+
+    #[test]
+    fn price_change_rejects_non_numeric_decimal_fields() {
+        let json = r#"{
+            "asset_id": "abc",
+            "price": "invalid",
+            "size": "100",
+            "side": "BUY",
+            "hash": "0xh"
+        }"#;
+        let err = serde_json::from_str::<PriceChange>(json).unwrap_err();
+        assert!(err.is_data());
+    }
+
+    #[test]
     fn book_message_multiple_bids_asks() {
         let json = r#"[{
             "event_type": "book",

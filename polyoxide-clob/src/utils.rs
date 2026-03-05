@@ -398,4 +398,49 @@ mod tests {
         assert_eq!(to_raw_amount(0.0, 6), "0");
         assert_eq!(to_raw_amount(123.456789, 6), "123456789");
     }
+
+    #[test]
+    fn test_calculate_market_order_amounts_negative_price_treated_as_zero() {
+        // Negative price rounds to negative, which != 0.0, so division proceeds
+        // This documents the current behavior (no explicit rejection of negatives)
+        let (maker, taker) =
+            calculate_market_order_amounts(100.0, -0.5, OrderSide::Buy, TickSize::Hundredth);
+        // -0.5 rounds to -0.5, not zero, so division: 100 / -0.5 = -200
+        let taker_val: i64 = taker.parse().unwrap();
+        assert!(
+            taker_val < 0,
+            "Negative price produces negative taker amount"
+        );
+        // This reveals that callers MUST validate price > 0 before calling
+        assert_eq!(maker, "100000000");
+    }
+
+    #[test]
+    fn test_calculate_order_amounts_small_fractional_size() {
+        // Very small size to test precision isn't lost
+        let (maker, taker) =
+            calculate_order_amounts(0.50, 0.000001, OrderSide::Buy, TickSize::Hundredth);
+        // cost = 0.50 * 0.000001 = 0.0000005 → rounds to 0 at 6 decimals
+        assert_eq!(taker, "1"); // 0.000001 * 10^6 = 1
+        assert_eq!(maker, "0"); // 0.0000005 rounds to 0 at 6 decimals → 0
+    }
+
+    #[test]
+    fn test_calculate_market_price_exact_boundary() {
+        use rust_decimal_macros::dec;
+        // Amount exactly matches the sum at a level boundary
+        let levels = vec![
+            OrderLevel {
+                price: dec!(0.50),
+                size: dec!(100),
+            },
+            OrderLevel {
+                price: dec!(0.60),
+                size: dec!(100),
+            },
+        ];
+        // Buy: level 1 sum = 0.50*100 = 50. Exactly 50 requested → price = 0.50
+        let price = calculate_market_price(&levels, 50.0, OrderSide::Buy);
+        assert_eq!(price, Some(0.50));
+    }
 }

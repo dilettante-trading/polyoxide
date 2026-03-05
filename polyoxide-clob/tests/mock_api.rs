@@ -1301,6 +1301,15 @@ async fn create_market_order_fetches_orderbook_for_price() {
 
     assert_eq!(order.token_id, "0xtoken");
     assert_eq!(order.expiration, "0");
+    assert!(!order.neg_risk);
+    assert_eq!(order.fee_rate_bps, "100");
+    assert_eq!(order.side, polyoxide_clob::OrderSide::Buy);
+    // Buy market order: price calculated from asks = 0.52
+    // maker_amount = USDC (100 * 10^6), taker_amount = shares (100/0.52 truncated * 10^6)
+    let maker_val: u64 = order.maker_amount.parse().unwrap();
+    let taker_val: u64 = order.taker_amount.parse().unwrap();
+    assert_eq!(maker_val, 100_000_000); // 100 USDC
+    assert!(taker_val > 192_000_000, "taker should be ~192.3 shares"); // 100/0.52 ≈ 192.3
 
     neg_risk_mock.assert_async().await;
     tick_size_mock.assert_async().await;
