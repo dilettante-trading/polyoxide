@@ -29,6 +29,15 @@ pub fn get_field(py: Python<'_>, value: &Value, field: &str) -> PyResult<Py<PyAn
     }
 }
 
+/// Get a field from a serde_json::Value by exact JSON key name.
+/// Used for fields with custom serde renames (e.g. "questionID", "submitted_by").
+pub fn get_field_exact(py: Python<'_>, value: &Value, key: &str) -> PyResult<Py<PyAny>> {
+    match value.get(key) {
+        Some(v) => value_to_pyobject(py, v),
+        None => Ok(py.None()),
+    }
+}
+
 /// Convert a serde_json::Value to a Python object using pythonize
 pub fn value_to_pyobject(py: Python<'_>, value: &Value) -> PyResult<Py<PyAny>> {
     Ok(pythonize::pythonize(py, value)?.unbind())
