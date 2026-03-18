@@ -150,6 +150,7 @@ impl RelayClient {
     async fn get_with_retry(&self, path: &str, url: &Url) -> Result<reqwest::Response, RelayError> {
         let mut attempt = 0u32;
         loop {
+            let _permit = self.http_client.acquire_concurrency().await;
             self.http_client.acquire_rate_limit(path, None).await;
             let resp = self.http_client.client.get(url.clone()).send().await?;
             let retry_after = retry_after_header(&resp);
@@ -165,6 +166,7 @@ impl RelayClient {
                     attempt,
                     backoff.as_millis()
                 );
+                drop(_permit);
                 tokio::time::sleep(backoff).await;
                 continue;
             }
@@ -793,6 +795,7 @@ impl RelayClient {
         let mut attempt = 0u32;
 
         loop {
+            let _permit = self.http_client.acquire_concurrency().await;
             self.http_client
                 .acquire_rate_limit(&path, Some(&reqwest::Method::POST))
                 .await;
@@ -843,6 +846,7 @@ impl RelayClient {
                     attempt,
                     backoff.as_millis()
                 );
+                drop(_permit);
                 tokio::time::sleep(backoff).await;
                 continue;
             }
