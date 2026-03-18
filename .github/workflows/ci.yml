@@ -40,3 +40,19 @@ jobs:
       - run: cargo clippy --all-targets --all-features -- -D warnings
       - run: cargo nextest run --all-features --workspace
       - run: cargo test --doc --all-features --workspace
+
+  python:
+    name: Python Bindings
+    runs-on: ubuntu-latest
+    needs: [format]
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+      - uses: mozilla-actions/sccache-action@v0.0.9
+        with:
+          version: "v0.14.0"
+      - uses: astral-sh/setup-uv@v6
+      - run: uv sync
+        working-directory: polyoxide-py
+      - run: uv run pytest tests/ -v
+        working-directory: polyoxide-py

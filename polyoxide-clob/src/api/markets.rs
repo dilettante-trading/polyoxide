@@ -293,18 +293,19 @@ impl Markets {
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct Market {
     pub condition_id: String,
-    pub question_id: String,
+    pub question_id: Option<String>,
     pub tokens: Vec<MarketToken>,
     pub rewards: Option<serde_json::Value>,
-    pub minimum_order_size: f64,
-    pub minimum_tick_size: f64,
-    pub description: String,
+    pub minimum_order_size: Option<f64>,
+    pub minimum_tick_size: Option<f64>,
+    pub description: Option<String>,
     pub category: Option<String>,
     pub end_date_iso: Option<String>,
-    pub question: String,
+    pub question: Option<String>,
     pub active: bool,
     pub closed: bool,
     pub archived: bool,
+    pub accepting_orders: Option<bool>,
     pub neg_risk: Option<bool>,
     pub neg_risk_market_id: Option<String>,
     pub enable_order_book: Option<bool>,
@@ -410,18 +411,20 @@ pub struct BookParams {
 /// Spread response (bid-ask spread for a token)
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct SpreadResponse {
-    pub token_id: String,
+    pub token_id: Option<String>,
     pub spread: String,
-    pub bid: String,
-    pub ask: String,
+    pub bid: Option<String>,
+    pub ask: Option<String>,
 }
 
 /// Last trade price response
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct LastTradePriceResponse {
-    pub token_id: String,
-    pub last_trade_price: String,
-    pub timestamp: String,
+    pub token_id: Option<String>,
+    pub price: Option<String>,
+    pub last_trade_price: Option<String>,
+    pub side: Option<String>,
+    pub timestamp: Option<String>,
 }
 
 /// A live activity event for a market
@@ -524,10 +527,10 @@ mod tests {
             "ask": "0.50"
         }"#;
         let resp: SpreadResponse = serde_json::from_str(json).unwrap();
-        assert_eq!(resp.token_id, "token-1");
+        assert_eq!(resp.token_id.as_deref(), Some("token-1"));
         assert_eq!(resp.spread, "0.02");
-        assert_eq!(resp.bid, "0.48");
-        assert_eq!(resp.ask, "0.50");
+        assert_eq!(resp.bid.as_deref(), Some("0.48"));
+        assert_eq!(resp.ask.as_deref(), Some("0.50"));
     }
 
     #[test]
@@ -538,9 +541,9 @@ mod tests {
             "timestamp": "1700000000"
         }"#;
         let resp: LastTradePriceResponse = serde_json::from_str(json).unwrap();
-        assert_eq!(resp.token_id, "token-1");
-        assert_eq!(resp.last_trade_price, "0.55");
-        assert_eq!(resp.timestamp, "1700000000");
+        assert_eq!(resp.token_id.as_deref(), Some("token-1"));
+        assert_eq!(resp.last_trade_price.as_deref(), Some("0.55"));
+        assert_eq!(resp.timestamp.as_deref(), Some("1700000000"));
     }
 
     #[test]

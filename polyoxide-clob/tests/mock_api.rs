@@ -224,7 +224,7 @@ async fn balance_allowance_returns_flat_response() {
         .match_header("POLY_API_KEY", "test-key")
         .with_status(200)
         .with_header("content-type", "application/json")
-        .with_body(r#"{"balance": "1000.50", "allowance": "999999"}"#)
+        .with_body(r#"{"balance": "1000.50", "allowances": {"0x4bFb41d5B3570DeFd03C39a9A4D8dE6Bd8B8982E": "999999"}}"#)
         .create_async()
         .await;
 
@@ -238,7 +238,12 @@ async fn balance_allowance_returns_flat_response() {
         .unwrap();
 
     assert_eq!(resp.balance, "1000.50");
-    assert_eq!(resp.allowance, "999999");
+    assert_eq!(
+        resp.allowances
+            .get("0x4bFb41d5B3570DeFd03C39a9A4D8dE6Bd8B8982E")
+            .unwrap(),
+        "999999"
+    );
     mock.assert_async().await;
 }
 
