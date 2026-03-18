@@ -17,7 +17,7 @@ macro_rules! client_ns {
             $(#[$mattr:meta])*
             fn $method:ident ($($param:ident : $ptype:ty),* $(,)?) -> $ret:ty
             { $($body:tt)* }
-        )*
+        ),* $(,)?
     ) => {
         #[pyo3::pyclass(name = $py_async_name, skip_from_py_object)]
         pub struct $async_name {
@@ -28,6 +28,7 @@ macro_rules! client_ns {
         impl $async_name {
             $(
                 $(#[$mattr])*
+                #[allow(clippy::too_many_arguments)]
                 fn $method<'py>(
                     &self,
                     py: pyo3::Python<'py>,
@@ -50,6 +51,7 @@ macro_rules! client_ns {
         impl $sync_name {
             $(
                 $(#[$mattr])*
+                #[allow(clippy::too_many_arguments)]
                 fn $method(
                     &self,
                     py: pyo3::Python<'_>,
@@ -79,9 +81,9 @@ macro_rules! parse_enum {
     };
 }
 
-pub mod gamma;
-pub mod data;
 pub mod clob;
+pub mod data;
+pub mod gamma;
 
 pub fn register(m: &pyo3::Bound<'_, pyo3::types::PyModule>) -> pyo3::PyResult<()> {
     gamma::register(m)?;

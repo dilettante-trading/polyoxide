@@ -20,8 +20,14 @@ py_type!(PyMarket, "Market", polyoxide_gamma::types::Market,
     comment_count, featured, restricted,
 );
 
-py_type!(PyMarketToken, "MarketToken", polyoxide_gamma::types::MarketToken,
-    token_id, outcome, price, winner,
+py_type!(
+    PyMarketToken,
+    "MarketToken",
+    polyoxide_gamma::types::MarketToken,
+    token_id,
+    outcome,
+    price,
+    winner,
 );
 
 py_type!(PyEvent, "Event", polyoxide_gamma::types::Event,
@@ -45,59 +51,148 @@ py_type!(PySeriesInfo, "SeriesInfo", polyoxide_gamma::types::SeriesInfo,
     comment_count,
 );
 
-py_type!(PySeriesData, "SeriesData", polyoxide_gamma::types::SeriesData,
-    id, slug, title, description, image, icon,
-    active, closed, archived,
-    tags, volume, liquidity, events, competitive,
+py_type!(
+    PySeriesData,
+    "SeriesData",
+    polyoxide_gamma::types::SeriesData,
+    id,
+    slug,
+    title,
+    description,
+    image,
+    icon,
+    active,
+    closed,
+    archived,
+    tags,
+    volume,
+    liquidity,
+    events,
+    competitive,
 );
 
-py_type!(PyTag, "Tag", polyoxide_gamma::types::Tag,
-    id, slug, label, force_show, force_hide, is_carousel,
-    created_at, updated_at,
+py_type!(
+    PyTag,
+    "Tag",
+    polyoxide_gamma::types::Tag,
+    id,
+    slug,
+    label,
+    force_show,
+    force_hide,
+    is_carousel,
+    created_at,
+    updated_at,
 );
 
-py_type!(PySportMetadata, "SportMetadata", polyoxide_gamma::types::SportMetadata,
-    id, sport, image, resolution, ordering, tags, series,
+py_type!(
+    PySportMetadata,
+    "SportMetadata",
+    polyoxide_gamma::types::SportMetadata,
+    id,
+    sport,
+    image,
+    resolution,
+    ordering,
+    tags,
+    series,
 );
 
-py_type!(PyTeam, "Team", polyoxide_gamma::types::Team,
-    id, name, league, record, logo, abbreviation, alias,
-    created_at, updated_at,
+py_type!(
+    PyTeam,
+    "Team",
+    polyoxide_gamma::types::Team,
+    id,
+    name,
+    league,
+    record,
+    logo,
+    abbreviation,
+    alias,
+    created_at,
+    updated_at,
 );
 
-py_type!(PyComment, "Comment", polyoxide_gamma::types::Comment,
-    id, body, created_at, updated_at, deleted_at,
-    user, market_id, event_id, series_id, parent_id,
-    reactions, positions,
-    like_count, dislike_count, reply_count,
+py_type!(
+    PyComment,
+    "Comment",
+    polyoxide_gamma::types::Comment,
+    id,
+    body,
+    created_at,
+    updated_at,
+    deleted_at,
+    user,
+    market_id,
+    event_id,
+    series_id,
+    parent_id,
+    reactions,
+    positions,
+    like_count,
+    dislike_count,
+    reply_count,
 );
 
-py_type!(PyCommentUser, "CommentUser", polyoxide_gamma::types::CommentUser,
-    id, name, avatar,
+py_type!(
+    PyCommentUser,
+    "CommentUser",
+    polyoxide_gamma::types::CommentUser,
+    id,
+    name,
+    avatar,
 );
 
-py_type!(PyCommentReaction, "CommentReaction", polyoxide_gamma::types::CommentReaction,
-    user_id, reaction_type,
+py_type!(
+    PyCommentReaction,
+    "CommentReaction",
+    polyoxide_gamma::types::CommentReaction,
+    user_id,
+    reaction_type,
 );
 
-py_type!(PyCommentPosition, "CommentPosition", polyoxide_gamma::types::CommentPosition,
-    token_id, outcome, shares,
+py_type!(
+    PyCommentPosition,
+    "CommentPosition",
+    polyoxide_gamma::types::CommentPosition,
+    token_id,
+    outcome,
+    shares,
 );
 
-py_type!(PyCountResponse, "CountResponse", polyoxide_gamma::types::CountResponse,
+py_type!(
+    PyCountResponse,
+    "CountResponse",
+    polyoxide_gamma::types::CountResponse,
     count,
 );
 
-py_type!(PyCursor, "Cursor", polyoxide_gamma::types::Cursor,
+py_type!(
+    PyCursor,
+    "Cursor",
+    polyoxide_gamma::types::Cursor,
     next_cursor,
 );
 
-py_type!(PySearchResponse, "SearchResponse", polyoxide_gamma::api::search::SearchResponse,
-    profiles, events, tags,
+py_type!(
+    PySearchResponse,
+    "SearchResponse",
+    polyoxide_gamma::api::search::SearchResponse,
+    profiles,
+    events,
+    tags,
 );
 
-py_type!(PySearchProfile, "SearchProfile", polyoxide_gamma::api::search::SearchProfile,
-    address, name, profile_image, pseudonym, bio, proxy_wallet,
+py_type!(
+    PySearchProfile,
+    "SearchProfile",
+    polyoxide_gamma::api::search::SearchProfile,
+    address,
+    name,
+    profile_image,
+    pseudonym,
+    bio,
+    proxy_wallet,
 );
 
 py_type!(PyUserResponse, "UserResponse", polyoxide_gamma::api::user::UserResponse,

@@ -65,5 +65,3 @@ macro_rules! py_type {
         $crate::convert::get_field($py, $val, stringify!($field))
     };
 }
-
-pub(crate) use py_type;
