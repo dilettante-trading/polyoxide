@@ -63,9 +63,6 @@ mod tests {
         assert_eq!(snake_to_camel("_leading"), "Leading");
         assert_eq!(snake_to_camel("trailing_"), "trailing");
         assert_eq!(snake_to_camel("double__underscore"), "doubleUnderscore");
-        assert_eq!(
-            snake_to_camel("one_day_price_change"),
-            "oneDayPriceChange"
-        );
+        assert_eq!(snake_to_camel("one_day_price_change"), "oneDayPriceChange");
     }
 }
