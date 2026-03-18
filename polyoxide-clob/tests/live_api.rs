@@ -347,10 +347,11 @@ async fn live_last_trade_price() {
         .await
         .expect("last_trade_price should succeed");
 
-    let price: f64 = resp
-        .last_trade_price
-        .parse()
-        .expect("last_trade_price should be a number");
+    let price_str = resp
+        .price
+        .or(resp.last_trade_price)
+        .expect("response should have price or last_trade_price");
+    let price: f64 = price_str.parse().expect("price should be a number");
     assert!(
         (0.0..=1.0).contains(&price),
         "last trade price {price} should be between 0 and 1"
