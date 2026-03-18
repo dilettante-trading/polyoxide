@@ -1,0 +1,20 @@
+[package]
+name = "polyoxide-py"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+publish = false
+
+[lib]
+name = "_polyoxide"
+crate-type = ["cdylib"]
+
+[dependencies]
+polyoxide-gamma = { workspace = true }
+polyoxide-data = { workspace = true }
+polyoxide-clob = { path = "../polyoxide-clob", default-features = false }
+pyo3 = { workspace = true }
+pyo3-async-runtimes = { workspace = true }
+pythonize = { workspace = true }
+tokio = { workspace = true, features = ["rt-multi-thread", "macros"] }
+serde_json = { workspace = true }
