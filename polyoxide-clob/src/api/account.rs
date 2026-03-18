@@ -1,3 +1,5 @@
+use std::collections::HashMap;
+
 use alloy::primitives::Address;
 use polyoxide_core::{HttpClient, QueryBuilder};
 use serde::{Deserialize, Serialize};
@@ -297,7 +299,7 @@ pub struct ListBuilderTradesResponse {
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct BalanceAllowanceResponse {
     pub balance: String,
-    pub allowance: String,
+    pub allowances: HashMap<String, String>,
 }
 
 #[cfg(test)]
@@ -519,9 +521,12 @@ mod tests {
 
     #[test]
     fn balance_allowance_response_deserializes() {
-        let json = r#"{"balance": "1000.50", "allowance": "999999"}"#;
+        let json = r#"{"balance": "141171137", "allowances": {"0x4bFb41d5B3570DeFd03C39a9A4D8dE6Bd8B8982E": "999999"}}"#;
         let resp: BalanceAllowanceResponse = serde_json::from_str(json).unwrap();
-        assert_eq!(resp.balance, "1000.50");
-        assert_eq!(resp.allowance, "999999");
+        assert_eq!(resp.balance, "141171137");
+        assert_eq!(
+            resp.allowances.get("0x4bFb41d5B3570DeFd03C39a9A4D8dE6Bd8B8982E").unwrap(),
+            "999999"
+        );
     }
 }
