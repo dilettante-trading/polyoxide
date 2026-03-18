@@ -118,6 +118,7 @@ impl<T: DeserializeOwned, E: RequestError> Request<T, E> {
         let mut attempt = 0u32;
 
         loop {
+            let _permit = http_client.acquire_concurrency().await;
             http_client.acquire_rate_limit(&path, None).await;
 
             let mut request = http_client.client.get(url.clone());
@@ -142,6 +143,7 @@ impl<T: DeserializeOwned, E: RequestError> Request<T, E> {
                     attempt,
                     backoff.as_millis()
                 );
+                drop(_permit);
                 tokio::time::sleep(backoff).await;
                 continue;
             }

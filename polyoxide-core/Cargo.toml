@@ -25,7 +25,7 @@ tracing = { workspace = true }
 url = { workspace = true }
 governor = { workspace = true }
 fastrand = { workspace = true }
-tokio = { workspace = true, features = ["time"] }
+tokio = { workspace = true, features = ["time", "sync"] }
 
 [dev-dependencies]
 mockito = { workspace = true }
