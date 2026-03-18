@@ -111,6 +111,7 @@ pub struct DataApiBuilder {
     timeout_ms: u64,
     pool_size: usize,
     retry_config: Option<RetryConfig>,
+    max_concurrent: Option<usize>,
 }
 
 impl DataApiBuilder {
@@ -120,6 +121,7 @@ impl DataApiBuilder {
             timeout_ms: DEFAULT_TIMEOUT_MS,
             pool_size: DEFAULT_POOL_SIZE,
             retry_config: None,
+            max_concurrent: None,
         }
     }
 
@@ -147,12 +149,21 @@ impl DataApiBuilder {
         self
     }
 
+    /// Set the maximum number of concurrent in-flight requests.
+    ///
+    /// Default: 4. Prevents Cloudflare 1015 errors from request bursts.
+    pub fn max_concurrent(mut self, max: usize) -> Self {
+        self.max_concurrent = Some(max);
+        self
+    }
+
     /// Build the Data API client
     pub fn build(self) -> Result<DataApi, DataApiError> {
         let mut builder = HttpClientBuilder::new(&self.base_url)
             .timeout_ms(self.timeout_ms)
             .pool_size(self.pool_size)
-            .with_rate_limiter(RateLimiter::data_default());
+            .with_rate_limiter(RateLimiter::data_default())
+            .with_max_concurrent(self.max_concurrent.unwrap_or(4));
         if let Some(config) = self.retry_config {
             builder = builder.with_retry_config(config);
         }
@@ -201,6 +212,32 @@ mod tests {
         let config = builder.retry_config.unwrap();
         assert_eq!(config.max_retries, 5);
         assert_eq!(config.initial_backoff_ms, 1000);
+    }
+
+    #[test]
+    fn test_builder_custom_max_concurrent() {
+        let builder = DataApiBuilder::new().max_concurrent(10);
+        assert_eq!(builder.max_concurrent, Some(10));
+    }
+
+    #[tokio::test]
+    async fn test_default_concurrency_limit_is_4() {
+        let data = DataApi::new().unwrap();
+        let mut permits = Vec::new();
+        for _ in 0..4 {
+            permits.push(data.http_client.acquire_concurrency().await);
+        }
+        assert!(permits.iter().all(|p| p.is_some()));
+
+        let result = tokio::time::timeout(
+            std::time::Duration::from_millis(50),
+            data.http_client.acquire_concurrency(),
+        )
+        .await;
+        assert!(
+            result.is_err(),
+            "5th permit should block with default limit of 4"
+        );
     }
 
     #[test]

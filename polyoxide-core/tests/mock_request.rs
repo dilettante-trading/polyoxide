@@ -1,3 +1,5 @@
+use std::time::Duration;
+
 use mockito::Server;
 use polyoxide_core::{ApiError, HttpClientBuilder, Request, RequestError, RetryConfig};
 use serde::Deserialize;
@@ -229,6 +231,125 @@ async fn error_408_returns_timeout_error() {
     match err.0 {
         ApiError::Timeout => {}
         other => panic!("Expected Timeout error, got: {:?}", other),
+    }
+
+    mock.assert_async().await;
+}
+
+// ── Concurrency limiter integration ─────────────────────────────
+
+#[tokio::test]
+async fn send_raw_works_with_concurrency_limit() {
+    let mut server = Server::new_async().await;
+
+    let mock = server
+        .mock("GET", "/concurrent")
+        .with_status(200)
+        .with_header("content-type", "application/json")
+        .with_body(r#"{"value": "ok"}"#)
+        .expect(2)
+        .create_async()
+        .await;
+
+    let http = HttpClientBuilder::new(server.url())
+        .with_max_concurrent(1)
+        .build()
+        .unwrap();
+
+    // Two concurrent requests with concurrency=1 should both succeed
+    let req1 = Request::<TestResponse, TestError>::new(http.clone(), "/concurrent");
+    let req2 = Request::<TestResponse, TestError>::new(http, "/concurrent");
+
+    let (r1, r2) = tokio::join!(req1.send(), req2.send());
+    assert!(r1.is_ok());
+    assert!(r2.is_ok());
+
+    mock.assert_async().await;
+}
+
+#[tokio::test]
+async fn retry_releases_permit_during_backoff() {
+    let mut server = Server::new_async().await;
+
+    // First call returns 429 with 1s retry-after, second returns 200
+    let success_mock = server
+        .mock("GET", "/retry-permit")
+        .with_status(200)
+        .with_header("content-type", "application/json")
+        .with_body(r#"{"value": "ok"}"#)
+        .create_async()
+        .await;
+
+    let retry_mock = server
+        .mock("GET", "/retry-permit")
+        .with_status(429)
+        .with_header("retry-after", "1")
+        .expect_at_most(1)
+        .create_async()
+        .await;
+
+    let http = HttpClientBuilder::new(server.url())
+        .with_max_concurrent(1)
+        .build()
+        .unwrap();
+    let http_clone = http.clone();
+
+    // Spawn the retrying request
+    let handle = tokio::spawn(async move {
+        let req = Request::<TestResponse, TestError>::new(http, "/retry-permit");
+        req.send().await.unwrap()
+    });
+
+    // Wait for first request to hit 429 and enter backoff
+    tokio::time::sleep(Duration::from_millis(200)).await;
+
+    // Should be able to acquire permit during backoff (permit was released)
+    let result =
+        tokio::time::timeout(Duration::from_millis(100), http_clone.acquire_concurrency()).await;
+    assert!(result.is_ok(), "Should acquire permit during retry backoff");
+    // Drop permit immediately so the retry can proceed
+    drop(result);
+
+    let resp = handle.await.unwrap();
+    assert_eq!(resp.value, "ok");
+
+    retry_mock.assert_async().await;
+    success_mock.assert_async().await;
+}
+
+#[tokio::test]
+async fn concurrency_limit_serializes_requests() {
+    let mut server = Server::new_async().await;
+
+    let mock = server
+        .mock("GET", "/serial")
+        .with_status(200)
+        .with_header("content-type", "application/json")
+        .with_body(r#"{"value": "ok"}"#)
+        .expect(4)
+        .create_async()
+        .await;
+
+    let http = HttpClientBuilder::new(server.url())
+        .with_max_concurrent(2)
+        .build()
+        .unwrap();
+
+    // 4 concurrent requests with concurrency=2 should all succeed
+    let mut handles = Vec::new();
+    for _ in 0..4 {
+        let h = http.clone();
+        handles.push(tokio::spawn(async move {
+            Request::<TestResponse, TestError>::new(h, "/serial")
+                .send()
+                .await
+                .unwrap()
+        }));
+    }
+
+    for h in handles {
+        let resp = h.await.unwrap();
+        assert_eq!(resp.value, "ok");
     }
 
     mock.assert_async().await;

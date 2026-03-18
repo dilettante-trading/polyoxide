@@ -35,6 +35,7 @@ impl Health {
     /// # }
     /// ```
     pub async fn ping(&self) -> Result<Duration, DataApiError> {
+        let _permit = self.http_client.acquire_concurrency().await;
         self.http_client.acquire_rate_limit("/", None).await;
 
         let start = Instant::now();

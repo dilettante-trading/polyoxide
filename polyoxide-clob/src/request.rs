@@ -140,6 +140,7 @@ impl<T: DeserializeOwned> Request<T> {
         let mut attempt = 0u32;
 
         loop {
+            let _permit = http_client.acquire_concurrency().await;
             http_client.acquire_rate_limit(&path, Some(&method)).await;
 
             // Build the base request — rebuilt each iteration so auth timestamps are fresh
@@ -184,6 +185,7 @@ impl<T: DeserializeOwned> Request<T> {
                     attempt,
                     backoff.as_millis()
                 );
+                drop(_permit);
                 tokio::time::sleep(backoff).await;
                 continue;
             }

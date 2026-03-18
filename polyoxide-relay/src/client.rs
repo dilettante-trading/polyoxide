@@ -150,6 +150,7 @@ impl RelayClient {
     async fn get_with_retry(&self, path: &str, url: &Url) -> Result<reqwest::Response, RelayError> {
         let mut attempt = 0u32;
         loop {
+            let _permit = self.http_client.acquire_concurrency().await;
             self.http_client.acquire_rate_limit(path, None).await;
             let resp = self.http_client.client.get(url.clone()).send().await?;
             let retry_after = retry_after_header(&resp);
@@ -165,6 +166,7 @@ impl RelayClient {
                     attempt,
                     backoff.as_millis()
                 );
+                drop(_permit);
                 tokio::time::sleep(backoff).await;
                 continue;
             }
@@ -793,6 +795,7 @@ impl RelayClient {
         let mut attempt = 0u32;
 
         loop {
+            let _permit = self.http_client.acquire_concurrency().await;
             self.http_client
                 .acquire_rate_limit(&path, Some(&reqwest::Method::POST))
                 .await;
@@ -843,6 +846,7 @@ impl RelayClient {
                     attempt,
                     backoff.as_millis()
                 );
+                drop(_permit);
                 tokio::time::sleep(backoff).await;
                 continue;
             }
@@ -884,6 +888,7 @@ pub struct RelayClientBuilder {
     account: Option<BuilderAccount>,
     wallet_type: WalletType,
     retry_config: Option<RetryConfig>,
+    max_concurrent: Option<usize>,
 }
 
 impl Default for RelayClientBuilder {
@@ -917,6 +922,7 @@ impl RelayClientBuilder {
             account: None,
             wallet_type: WalletType::default(),
             retry_config: None,
+            max_concurrent: None,
         })
     }
 
@@ -954,6 +960,14 @@ impl RelayClientBuilder {
         self
     }
 
+    /// Set the maximum number of concurrent in-flight requests.
+    ///
+    /// Default: 2. Prevents Cloudflare 1015 errors from request bursts.
+    pub fn max_concurrent(mut self, max: usize) -> Self {
+        self.max_concurrent = Some(max);
+        self
+    }
+
     /// Build the [`RelayClient`].
     ///
     /// Returns an error if the chain ID is unsupported or the base URL is invalid.
@@ -967,7 +981,8 @@ impl RelayClientBuilder {
             .ok_or_else(|| RelayError::Api(format!("Unsupported chain ID: {}", self.chain_id)))?;
 
         let mut builder = HttpClientBuilder::new(base_url.as_str())
-            .with_rate_limiter(RateLimiter::relay_default());
+            .with_rate_limiter(RateLimiter::relay_default())
+            .with_max_concurrent(self.max_concurrent.unwrap_or(2));
         if let Some(config) = self.retry_config {
             builder = builder.with_retry_config(config);
         }
@@ -992,6 +1007,26 @@ mod tests {
         let client = RelayClient::builder().unwrap().build().unwrap();
         let result = client.ping().await;
         assert!(result.is_ok(), "ping failed: {:?}", result.err());
+    }
+
+    #[tokio::test]
+    async fn test_default_concurrency_limit_is_2() {
+        let client = RelayClient::builder().unwrap().build().unwrap();
+        let mut permits = Vec::new();
+        for _ in 0..2 {
+            permits.push(client.http_client.acquire_concurrency().await);
+        }
+        assert!(permits.iter().all(|p| p.is_some()));
+
+        let result = tokio::time::timeout(
+            std::time::Duration::from_millis(50),
+            client.http_client.acquire_concurrency(),
+        )
+        .await;
+        assert!(
+            result.is_err(),
+            "3rd permit should block with default limit of 2"
+        );
     }
 
     #[test]

@@ -1,6 +1,8 @@
+use std::sync::Arc;
 use std::time::Duration;
 
 use reqwest::StatusCode;
+use tokio::sync::{OwnedSemaphorePermit, Semaphore};
 use url::Url;
 
 use reqwest::header::RETRY_AFTER;
@@ -35,6 +37,7 @@ pub struct HttpClient {
     pub base_url: Url,
     rate_limiter: Option<RateLimiter>,
     retry_config: RetryConfig,
+    concurrency_limiter: Option<Arc<Semaphore>>,
 }
 
 impl HttpClient {
@@ -43,6 +46,21 @@ impl HttpClient {
         if let Some(rl) = &self.rate_limiter {
             rl.acquire(path, method).await;
         }
+    }
+
+    /// Acquire a concurrency permit, if a limiter is configured.
+    ///
+    /// The returned permit **must** be held until the HTTP response has been
+    /// received. Dropping the permit releases the concurrency slot.
+    /// Returns `None` when no concurrency limit is set.
+    pub async fn acquire_concurrency(&self) -> Option<OwnedSemaphorePermit> {
+        let sem = self.concurrency_limiter.as_ref()?;
+        Some(
+            sem.clone()
+                .acquire_owned()
+                .await
+                .expect("concurrency semaphore is never closed"),
+        )
     }
 
     /// Check if a 429 response should be retried; returns backoff duration if yes.
@@ -92,6 +110,7 @@ pub struct HttpClientBuilder {
     pool_size: usize,
     rate_limiter: Option<RateLimiter>,
     retry_config: RetryConfig,
+    max_concurrent: Option<usize>,
 }
 
 impl HttpClientBuilder {
@@ -103,6 +122,7 @@ impl HttpClientBuilder {
             pool_size: DEFAULT_POOL_SIZE,
             rate_limiter: None,
             retry_config: RetryConfig::default(),
+            max_concurrent: None,
         }
     }
 
@@ -134,6 +154,15 @@ impl HttpClientBuilder {
         self
     }
 
+    /// Set the maximum number of concurrent in-flight HTTP requests.
+    ///
+    /// Prevents Cloudflare 1015 rate-limit errors caused by request bursts
+    /// when many callers share the same client concurrently.
+    pub fn with_max_concurrent(mut self, max: usize) -> Self {
+        self.max_concurrent = Some(max);
+        self
+    }
+
     /// Build the HTTP client.
     pub fn build(self) -> Result<HttpClient, ApiError> {
         let client = reqwest::Client::builder()
@@ -150,6 +179,7 @@ impl HttpClientBuilder {
             base_url,
             rate_limiter: self.rate_limiter,
             retry_config: self.retry_config,
+            concurrency_limiter: self.max_concurrent.map(|n| Arc::new(Semaphore::new(n))),
         })
     }
 }
@@ -162,6 +192,7 @@ impl Default for HttpClientBuilder {
             pool_size: DEFAULT_POOL_SIZE,
             rate_limiter: None,
             retry_config: RetryConfig::default(),
+            max_concurrent: None,
         }
     }
 }
@@ -312,5 +343,88 @@ mod tests {
             .acquire_rate_limit("/order", Some(&reqwest::Method::POST))
             .await;
         assert!(start.elapsed() < Duration::from_millis(10));
+    }
+
+    // ── Concurrency limiter ─────────────────────────────────────
+
+    #[tokio::test]
+    async fn test_acquire_concurrency_none_when_not_configured() {
+        let client = HttpClientBuilder::new("https://example.com")
+            .build()
+            .unwrap();
+        assert!(client.acquire_concurrency().await.is_none());
+    }
+
+    #[tokio::test]
+    async fn test_acquire_concurrency_returns_permit() {
+        let client = HttpClientBuilder::new("https://example.com")
+            .with_max_concurrent(2)
+            .build()
+            .unwrap();
+        let permit = client.acquire_concurrency().await;
+        assert!(permit.is_some());
+    }
+
+    #[tokio::test]
+    async fn test_concurrency_shared_across_clones() {
+        let client = HttpClientBuilder::new("https://example.com")
+            .with_max_concurrent(1)
+            .build()
+            .unwrap();
+        let clone = client.clone();
+
+        // Hold the only permit from the original
+        let _permit = client.acquire_concurrency().await.unwrap();
+
+        // Clone should block because concurrency=1 and permit is held
+        let result =
+            tokio::time::timeout(Duration::from_millis(50), clone.acquire_concurrency()).await;
+        assert!(result.is_err(), "clone should block when permit is held");
+    }
+
+    #[tokio::test]
+    async fn test_concurrency_limits_parallel_tasks() {
+        let client = HttpClientBuilder::new("https://example.com")
+            .with_max_concurrent(2)
+            .build()
+            .unwrap();
+
+        let start = std::time::Instant::now();
+        let mut handles = Vec::new();
+        for _ in 0..4 {
+            let c = client.clone();
+            handles.push(tokio::spawn(async move {
+                let _permit = c.acquire_concurrency().await;
+                tokio::time::sleep(Duration::from_millis(50)).await;
+            }));
+        }
+        for h in handles {
+            h.await.unwrap();
+        }
+        // 4 tasks, concurrency 2, 50ms each => ~100ms minimum
+        assert!(
+            start.elapsed() >= Duration::from_millis(90),
+            "expected ~100ms, got {:?}",
+            start.elapsed()
+        );
+    }
+
+    #[tokio::test]
+    async fn test_builder_with_max_concurrent() {
+        let client = HttpClientBuilder::new("https://example.com")
+            .with_max_concurrent(5)
+            .build()
+            .unwrap();
+        // Should be able to acquire 5 permits
+        let mut permits = Vec::new();
+        for _ in 0..5 {
+            permits.push(client.acquire_concurrency().await);
+        }
+        assert!(permits.iter().all(|p| p.is_some()));
+
+        // 6th should block
+        let result =
+            tokio::time::timeout(Duration::from_millis(50), client.acquire_concurrency()).await;
+        assert!(result.is_err());
     }
 }
