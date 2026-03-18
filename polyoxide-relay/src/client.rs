@@ -888,6 +888,7 @@ pub struct RelayClientBuilder {
     account: Option<BuilderAccount>,
     wallet_type: WalletType,
     retry_config: Option<RetryConfig>,
+    max_concurrent: Option<usize>,
 }
 
 impl Default for RelayClientBuilder {
@@ -921,6 +922,7 @@ impl RelayClientBuilder {
             account: None,
             wallet_type: WalletType::default(),
             retry_config: None,
+            max_concurrent: None,
         })
     }
 
@@ -958,6 +960,14 @@ impl RelayClientBuilder {
         self
     }
 
+    /// Set the maximum number of concurrent in-flight requests.
+    ///
+    /// Default: 2. Prevents Cloudflare 1015 errors from request bursts.
+    pub fn max_concurrent(mut self, max: usize) -> Self {
+        self.max_concurrent = Some(max);
+        self
+    }
+
     /// Build the [`RelayClient`].
     ///
     /// Returns an error if the chain ID is unsupported or the base URL is invalid.
@@ -971,7 +981,8 @@ impl RelayClientBuilder {
             .ok_or_else(|| RelayError::Api(format!("Unsupported chain ID: {}", self.chain_id)))?;
 
         let mut builder = HttpClientBuilder::new(base_url.as_str())
-            .with_rate_limiter(RateLimiter::relay_default());
+            .with_rate_limiter(RateLimiter::relay_default())
+            .with_max_concurrent(self.max_concurrent.unwrap_or(2));
         if let Some(config) = self.retry_config {
             builder = builder.with_retry_config(config);
         }

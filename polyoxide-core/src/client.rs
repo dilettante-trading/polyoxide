@@ -377,11 +377,8 @@ mod tests {
         let _permit = client.acquire_concurrency().await.unwrap();
 
         // Clone should block because concurrency=1 and permit is held
-        let result = tokio::time::timeout(
-            Duration::from_millis(50),
-            clone.acquire_concurrency(),
-        )
-        .await;
+        let result =
+            tokio::time::timeout(Duration::from_millis(50), clone.acquire_concurrency()).await;
         assert!(result.is_err(), "clone should block when permit is held");
     }
 
@@ -426,11 +423,8 @@ mod tests {
         assert!(permits.iter().all(|p| p.is_some()));
 
         // 6th should block
-        let result = tokio::time::timeout(
-            Duration::from_millis(50),
-            client.acquire_concurrency(),
-        )
-        .await;
+        let result =
+            tokio::time::timeout(Duration::from_millis(50), client.acquire_concurrency()).await;
         assert!(result.is_err());
     }
 }

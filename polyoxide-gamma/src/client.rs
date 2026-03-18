@@ -99,6 +99,7 @@ pub struct GammaBuilder {
     timeout_ms: u64,
     pool_size: usize,
     retry_config: Option<RetryConfig>,
+    max_concurrent: Option<usize>,
 }
 
 impl GammaBuilder {
@@ -108,6 +109,7 @@ impl GammaBuilder {
             timeout_ms: DEFAULT_TIMEOUT_MS,
             pool_size: DEFAULT_POOL_SIZE,
             retry_config: None,
+            max_concurrent: None,
         }
     }
 
@@ -135,12 +137,21 @@ impl GammaBuilder {
         self
     }
 
+    /// Set the maximum number of concurrent in-flight requests.
+    ///
+    /// Default: 4. Prevents Cloudflare 1015 errors from request bursts.
+    pub fn max_concurrent(mut self, max: usize) -> Self {
+        self.max_concurrent = Some(max);
+        self
+    }
+
     /// Build the Gamma client
     pub fn build(self) -> Result<Gamma, GammaError> {
         let mut builder = HttpClientBuilder::new(&self.base_url)
             .timeout_ms(self.timeout_ms)
             .pool_size(self.pool_size)
-            .with_rate_limiter(RateLimiter::gamma_default());
+            .with_rate_limiter(RateLimiter::gamma_default())
+            .with_max_concurrent(self.max_concurrent.unwrap_or(4));
         if let Some(config) = self.retry_config {
             builder = builder.with_retry_config(config);
         }
@@ -209,6 +220,12 @@ mod tests {
     fn test_builder_invalid_url() {
         let result = Gamma::builder().base_url("://bad").build();
         assert!(result.is_err());
+    }
+
+    #[test]
+    fn test_builder_custom_max_concurrent() {
+        let builder = GammaBuilder::new().max_concurrent(10);
+        assert_eq!(builder.max_concurrent, Some(10));
     }
 
     #[test]

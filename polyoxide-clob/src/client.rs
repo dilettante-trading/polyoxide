@@ -604,6 +604,7 @@ pub struct ClobBuilder {
     #[cfg(feature = "gamma")]
     gamma: Option<Gamma>,
     retry_config: Option<RetryConfig>,
+    max_concurrent: Option<usize>,
 }
 
 impl ClobBuilder {
@@ -618,6 +619,7 @@ impl ClobBuilder {
             #[cfg(feature = "gamma")]
             gamma: None,
             retry_config: None,
+            max_concurrent: None,
         }
     }
 
@@ -664,12 +666,21 @@ impl ClobBuilder {
         self
     }
 
+    /// Set the maximum number of concurrent in-flight requests.
+    ///
+    /// Default: 8. Prevents Cloudflare 1015 errors from request bursts.
+    pub fn max_concurrent(mut self, max: usize) -> Self {
+        self.max_concurrent = Some(max);
+        self
+    }
+
     /// Build the CLOB client
     pub fn build(self) -> Result<Clob, ClobError> {
         let mut builder = HttpClientBuilder::new(&self.base_url)
             .timeout_ms(self.timeout_ms)
             .pool_size(self.pool_size)
-            .with_rate_limiter(RateLimiter::clob_default());
+            .with_rate_limiter(RateLimiter::clob_default())
+            .with_max_concurrent(self.max_concurrent.unwrap_or(8));
         if let Some(config) = self.retry_config {
             builder = builder.with_retry_config(config);
         }
@@ -707,6 +718,12 @@ impl Default for ClobBuilder {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn test_builder_custom_max_concurrent() {
+        let builder = ClobBuilder::new().max_concurrent(16);
+        assert_eq!(builder.max_concurrent, Some(16));
+    }
 
     #[test]
     fn test_builder_custom_retry_config() {
