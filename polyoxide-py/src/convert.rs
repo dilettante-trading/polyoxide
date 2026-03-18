@@ -54,4 +54,18 @@ mod tests {
         assert_eq!(snake_to_camel("clob_token_ids"), "clobTokenIds");
         assert_eq!(snake_to_camel("neg_risk"), "negRisk");
     }
+
+    #[test]
+    fn test_snake_to_camel_edge_cases() {
+        assert_eq!(snake_to_camel(""), "");
+        assert_eq!(snake_to_camel("a"), "a");
+        assert_eq!(snake_to_camel("already"), "already");
+        assert_eq!(snake_to_camel("_leading"), "Leading");
+        assert_eq!(snake_to_camel("trailing_"), "trailing");
+        assert_eq!(snake_to_camel("double__underscore"), "doubleUnderscore");
+        assert_eq!(
+            snake_to_camel("one_day_price_change"),
+            "oneDayPriceChange"
+        );
+    }
 }

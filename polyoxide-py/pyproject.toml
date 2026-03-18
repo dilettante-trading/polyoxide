@@ -4,12 +4,16 @@ build-backend = "maturin"
 
 [project]
 name = "polyoxide"
+dynamic = ["version"]
 requires-python = ">=3.9"
 classifiers = [
     "Programming Language :: Rust",
     "Programming Language :: Python :: Implementation :: CPython",
     "Programming Language :: Python :: 3",
 ]
+
+[dependency-groups]
+dev = ["pytest>=8", "maturin>=1.7,<2.0"]
 
 [tool.maturin]
 python-source = "python"

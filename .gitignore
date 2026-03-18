@@ -1,5 +1,11 @@
 target
 
+# Python
+.venv
+__pycache__
+*.pyc
+.pytest_cache
+
 # Secrets and credentials
 .env
 .env.*
