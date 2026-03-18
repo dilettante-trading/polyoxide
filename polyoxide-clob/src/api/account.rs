@@ -525,7 +525,9 @@ mod tests {
         let resp: BalanceAllowanceResponse = serde_json::from_str(json).unwrap();
         assert_eq!(resp.balance, "141171137");
         assert_eq!(
-            resp.allowances.get("0x4bFb41d5B3570DeFd03C39a9A4D8dE6Bd8B8982E").unwrap(),
+            resp.allowances
+                .get("0x4bFb41d5B3570DeFd03C39a9A4D8dE6Bd8B8982E")
+                .unwrap(),
             "999999"
         );
     }
