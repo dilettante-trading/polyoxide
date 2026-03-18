@@ -220,6 +220,26 @@ mod tests {
         assert_eq!(builder.max_concurrent, Some(10));
     }
 
+    #[tokio::test]
+    async fn test_default_concurrency_limit_is_4() {
+        let data = DataApi::new().unwrap();
+        let mut permits = Vec::new();
+        for _ in 0..4 {
+            permits.push(data.http_client.acquire_concurrency().await);
+        }
+        assert!(permits.iter().all(|p| p.is_some()));
+
+        let result = tokio::time::timeout(
+            std::time::Duration::from_millis(50),
+            data.http_client.acquire_concurrency(),
+        )
+        .await;
+        assert!(
+            result.is_err(),
+            "5th permit should block with default limit of 4"
+        );
+    }
+
     #[test]
     fn test_builder_build_success() {
         let data = DataApi::builder().build();

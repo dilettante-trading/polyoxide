@@ -228,6 +228,28 @@ mod tests {
         assert_eq!(builder.max_concurrent, Some(10));
     }
 
+    #[tokio::test]
+    async fn test_default_concurrency_limit_is_4() {
+        let gamma = Gamma::new().unwrap();
+        // Default concurrency limit is 4
+        let mut permits = Vec::new();
+        for _ in 0..4 {
+            permits.push(gamma.http_client.acquire_concurrency().await);
+        }
+        assert!(permits.iter().all(|p| p.is_some()));
+
+        // 5th should block
+        let result = tokio::time::timeout(
+            std::time::Duration::from_millis(50),
+            gamma.http_client.acquire_concurrency(),
+        )
+        .await;
+        assert!(
+            result.is_err(),
+            "5th permit should block with default limit of 4"
+        );
+    }
+
     #[test]
     fn test_new_creates_client() {
         let gamma = Gamma::new();

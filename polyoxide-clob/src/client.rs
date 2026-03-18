@@ -725,6 +725,26 @@ mod tests {
         assert_eq!(builder.max_concurrent, Some(16));
     }
 
+    #[tokio::test]
+    async fn test_default_concurrency_limit_is_8() {
+        let clob = Clob::public();
+        let mut permits = Vec::new();
+        for _ in 0..8 {
+            permits.push(clob.http_client.acquire_concurrency().await);
+        }
+        assert!(permits.iter().all(|p| p.is_some()));
+
+        let result = tokio::time::timeout(
+            std::time::Duration::from_millis(50),
+            clob.http_client.acquire_concurrency(),
+        )
+        .await;
+        assert!(
+            result.is_err(),
+            "9th permit should block with default limit of 8"
+        );
+    }
+
     #[test]
     fn test_builder_custom_retry_config() {
         let config = RetryConfig {

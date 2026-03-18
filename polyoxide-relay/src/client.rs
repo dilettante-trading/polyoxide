@@ -1009,6 +1009,26 @@ mod tests {
         assert!(result.is_ok(), "ping failed: {:?}", result.err());
     }
 
+    #[tokio::test]
+    async fn test_default_concurrency_limit_is_2() {
+        let client = RelayClient::builder().unwrap().build().unwrap();
+        let mut permits = Vec::new();
+        for _ in 0..2 {
+            permits.push(client.http_client.acquire_concurrency().await);
+        }
+        assert!(permits.iter().all(|p| p.is_some()));
+
+        let result = tokio::time::timeout(
+            std::time::Duration::from_millis(50),
+            client.http_client.acquire_concurrency(),
+        )
+        .await;
+        assert!(
+            result.is_err(),
+            "3rd permit should block with default limit of 2"
+        );
+    }
+
     #[test]
     fn test_hex_constants_are_valid() {
         hex::decode(SAFE_INIT_CODE_HASH).expect("SAFE_INIT_CODE_HASH should be valid hex");
