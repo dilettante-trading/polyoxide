@@ -461,6 +461,25 @@ class TestErrors:
 
 
 # ══════════════════════════════════════════════════════════════════
+# Exports
+# ══════════════════════════════════════════════════════════════════
+
+
+class TestExports:
+    def test_all_types_importable(self):
+        """Every name in __all__ should be importable."""
+        import polyoxide
+        for name in polyoxide.__all__:
+            assert hasattr(polyoxide, name), f"polyoxide.{name} not found"
+
+    def test_market_isinstance(self):
+        """Type classes should work with isinstance()."""
+        gamma = polyoxide.GammaSync()
+        markets = gamma.markets().list(limit=1)
+        assert isinstance(markets[0], polyoxide.Market)
+
+
+# ══════════════════════════════════════════════════════════════════
 # Helpers
 # ══════════════════════════════════════════════════════════════════
 
