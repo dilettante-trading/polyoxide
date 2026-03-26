@@ -275,6 +275,7 @@ jobs:
 
       - uses: actions/download-artifact@v4
         with:
+          pattern: polyoxide-cli-*
           path: artifacts
           merge-multiple: true
 
