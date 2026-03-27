@@ -63,7 +63,7 @@ jobs:
     if: |
       needs.version.outputs.should_release == 'true' &&
       github.repository == 'dilettante-trading/polyoxide'
-    needs: version
+    needs: [version, build-cli, build-python, build-python-sdist]
     runs-on: ubuntu-latest
     environment: cargo
     steps:
