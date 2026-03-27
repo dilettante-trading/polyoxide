@@ -208,6 +208,10 @@ jobs:
           echo '[target.aarch64-unknown-linux-gnu]' >> .cargo/config.toml
           echo 'linker = "aarch64-linux-gnu-gcc"' >> .cargo/config.toml
 
+      - name: Set cross CC
+        if: matrix.target == 'aarch64-unknown-linux-gnu'
+        run: echo "CC=aarch64-linux-gnu-gcc" >> $GITHUB_ENV
+
       - uses: PyO3/maturin-action@v1
         with:
           target: ${{ matrix.target }}
