@@ -179,7 +179,6 @@ jobs:
           - os: ubuntu-latest
             target: aarch64-unknown-linux-gnu
             manylinux: auto
-            before-script-linux: yum install -y cmake3 perl-IPC-Cmd && ln -sf /usr/bin/cmake3 /usr/bin/cmake
           - os: macos-latest
             target: x86_64-apple-darwin
           - os: macos-latest
@@ -196,12 +195,14 @@ jobs:
         with:
           targets: ${{ matrix.target }}
 
+      - uses: docker/setup-qemu-action@v3
+        if: matrix.target == 'aarch64-unknown-linux-gnu'
+
       - uses: PyO3/maturin-action@v1
         with:
           target: ${{ matrix.target }}
           args: --release --out dist -m polyoxide-py/Cargo.toml
           manylinux: ${{ matrix.manylinux || 'auto' }}
-          before-script-linux: ${{ matrix.before-script-linux }}
           sccache: true
 
       - uses: actions/upload-artifact@v4
