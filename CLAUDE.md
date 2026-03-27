@@ -4,7 +4,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## Project Overview
 
-Polyoxide is a Rust SDK toolkit for Polymarket APIs. It provides library crates for CLOB trading, market data (Gamma), user data, gasless relay transactions, and a standalone CLI. Hard fork of [polyte](https://github.com/roushou/polyte).
+Polyoxide is a Rust SDK toolkit for Polymarket APIs. It provides library crates for CLOB trading, market data (Gamma), user data, gasless relay transactions, Python bindings, and a standalone CLI. Hard fork of [polyte](https://github.com/roushou/polyte).
 
 ## Build & Development Commands
 
@@ -43,16 +43,17 @@ cargo test -p polyoxide-clob --test live_api -- --ignored
 
 ## Workspace Architecture
 
-Seven crates with this dependency graph:
+Eight crates with this dependency graph:
 
 ```
 polyoxide-core          (shared: auth, HTTP client, errors, macros)
 ├── polyoxide-relay     (gasless transactions via Polygon relayer)
 ├── polyoxide-gamma     (read-only market data API)
 ├── polyoxide-data      (read-only user positions/trades API)
-└── polyoxide-clob      (order book trading, depends on core; gamma optional, default-on)
-    └── polyoxide        (unified client re-exporting clob/gamma/data, feature-gated)
-        └── polyoxide-cli (CLI tool using clap)
+├── polyoxide-clob      (order book trading, depends on core; gamma optional, default-on)
+│   └── polyoxide        (unified client re-exporting clob/gamma/data, feature-gated)
+│       └── polyoxide-cli (CLI tool using clap)
+└── polyoxide-py        (Python bindings via PyO3 + maturin, publish = false)
 ```
 
 **polyoxide** (the unified crate) uses feature flags: `clob`, `gamma`, `data`, `ws` (WebSocket), `full` (all). Default = clob + gamma + data.
@@ -113,4 +114,4 @@ Each crate follows a consistent layout:
 
 ## Publishing Order
 
-Crates must be published in dependency order: core → relay → gamma → data → clob → polyoxide. The release workflow in `.github/workflows/release.yml` handles this automatically.
+Crates must be published in dependency order: core → relay → gamma → data → clob → polyoxide. The release workflow in `.github/workflows/release.yml` handles this automatically. `polyoxide-py` is `publish = false` (not on crates.io); its Python wheels are built and published to PyPI via a separate step in the release workflow.

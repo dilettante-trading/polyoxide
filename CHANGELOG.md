@@ -1,3 +1,49 @@
+## [0.12.0] - 2026-03-27
+
+### ⚠️ Breaking Changes
+
+- *(clob)* `BalanceAllowanceResponse.allowance: String` replaced with `allowances: HashMap<String, String>` to match upstream API change (#1)
+- *(clob)* Several fields on `Market` changed to `Option<T>`: `question_id`, `minimum_order_size`, `minimum_tick_size`, `description`, `question` (#1)
+- *(clob)* Several fields on `SpreadResponse` changed to `Option<T>`: `token_id`, `bid`, `ask` (#1)
+- *(clob)* Several fields on `LastTradePriceResponse` changed to `Option<T>`: `token_id`, `last_trade_price`, `timestamp`; new optional fields `price`, `side` (#1)
+
+### 🚀 Features
+
+- *(core)* Add concurrency limiter to `HttpClient` for Cloudflare connection limits (#3)
+- *(core)* Set default concurrency limits in all API client builders (#3)
+- *(relay)* Hold concurrency permit across full request lifetime (#3)
+- *(data)* Hold concurrency permit across full request lifetime (#3)
+- *(py)* Scaffold `polyoxide-py` crate with PyO3 + maturin (#2)
+- *(py)* Add Gamma, Data, and CLOB domain type wrappers via `py_type!` macro (#2)
+- *(py)* Add Gamma, Data, and CLOB clients with sync + async variants (#2)
+- *(py)* Add `.pyi` type stubs and `py.typed` marker (#4)
+- *(py)* Export all type classes from polyoxide package (#4)
+
+### 🐛 Bug Fixes
+
+- *(clob)* Update `BalanceAllowanceResponse` for upstream API field change from `allowance` to `allowances` (#1)
+- *(clob)* Make optional fields on `Market`, `SpreadResponse`, and `LastTradePriceResponse` to match upstream API (#1)
+
+### 🧪 Tests
+
+- *(core)* Add concurrency limiter integration and default verification tests (#3)
+- *(py)* Add live API tests and expand unit tests (#2)
+
+### 📚 Documentation
+
+- Add upstream Polymarket API specs for CLOB, Gamma, Data, and Relay
+- Add design and implementation plans for PyPI publishing (#4)
+
+### 🔧 CI
+
+- Add Python bindings test job (#2)
+- Add PyPI wheel build and publish to release workflow (#4)
+- Filter release artifacts to exclude Python wheels (#4)
+
+### ⚙️ Miscellaneous Tasks
+
+- Add `*.so` and `.claude-squad` directory to `.gitignore`
+
 ## [0.11.0] - 2026-03-05
 
 ### 🚀 Features
