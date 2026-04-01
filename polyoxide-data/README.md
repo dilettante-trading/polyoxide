@@ -140,4 +140,4 @@ for entry in volumes {
 
 ## License
 
-This project is licensed under the [MIT License](https://github.com/dilettante-trading/polyoxide/blob/main/LICENSE).
+Licensed under either of [MIT](../LICENSE-MIT) or [Apache-2.0](../LICENSE-APACHE) at your option.
