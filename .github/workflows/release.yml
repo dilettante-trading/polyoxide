@@ -95,8 +95,8 @@ jobs:
                 echo "$crate $VERSION published successfully"
                 break
               }
-              if echo "$OUTPUT" | grep -q "already uploaded"; then
-                echo "$crate $VERSION already uploaded, skipping"
+              if echo "$OUTPUT" | grep -qE "already uploaded|already exists"; then
+                echo "$crate $VERSION already exists, skipping"
                 break
               fi
               if [ "$attempt" -eq 6 ]; then
