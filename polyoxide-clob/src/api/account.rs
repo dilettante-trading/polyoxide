@@ -171,6 +171,12 @@ impl ListClobTrades {
         self
     }
 
+    /// Continue from a pagination cursor
+    pub fn next_cursor(mut self, cursor: impl Into<String>) -> Self {
+        self.request = self.request.query("next_cursor", cursor.into());
+        self
+    }
+
     /// Execute the request
     pub async fn send(self) -> Result<ListTradesResponse, ClobError> {
         self.request.send().await

@@ -42,7 +42,7 @@ Base URL: `https://clob.polymarket.com`
   "status": "live | matched | delayed",
   "makingAmount": "string",
   "takingAmount": "string",
-  "transactionHashes": ["string"],
+  "transactionsHashes": ["string"],
   "tradeIDs": ["string"],
   "errorMsg": "string"
 }
