@@ -1,3 +1,19 @@
+## [0.12.1] - 2026-04-01
+
+### 🐛 Bug Fixes
+
+- *(clob)* Add missing `id` and `timestamp` fields to `Notification` struct
+- *(clob)* Add `next_cursor` pagination support to `ListClobTrades` request builder
+
+### 📝 Documentation
+
+- Fix `transactionsHashes` field name in CLOB orders spec
+
+### 🔧 Other
+
+- Add MIT/Apache-2.0 dual license and PyPI package metadata
+- Skip already-published crates during crates.io release
+
 ## [0.12.0] - 2026-03-27
 
 ### ⚠️ Breaking Changes
