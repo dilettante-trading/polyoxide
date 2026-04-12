@@ -1,4 +1,4 @@
-use crate::config::BuilderConfig;
+use crate::config::{AuthConfig, BuilderConfig, RelayerApiKeyConfig};
 use crate::error::RelayError;
 use alloy::primitives::Address;
 use alloy::signers::local::PrivateKeySigner;
@@ -11,7 +11,7 @@ use alloy::signers::local::PrivateKeySigner;
 #[derive(Clone)]
 pub struct BuilderAccount {
     pub(crate) signer: PrivateKeySigner,
-    pub(crate) config: Option<BuilderConfig>,
+    pub(crate) config: Option<AuthConfig>,
 }
 
 impl std::fmt::Debug for BuilderAccount {
@@ -26,10 +26,46 @@ impl std::fmt::Debug for BuilderAccount {
 impl BuilderAccount {
     /// Create a new account from a hex-encoded private key and optional builder config.
     ///
+    /// Wraps the `BuilderConfig` in [`AuthConfig::Builder`] internally.
     /// Accepts keys with or without a `0x` prefix.
     pub fn new(
         private_key: impl Into<String>,
         config: Option<BuilderConfig>,
+    ) -> Result<Self, RelayError> {
+        let signer = private_key
+            .into()
+            .parse::<PrivateKeySigner>()
+            .map_err(|e| RelayError::Signer(format!("Failed to parse private key: {}", e)))?;
+
+        Ok(Self {
+            signer,
+            config: config.map(AuthConfig::Builder),
+        })
+    }
+
+    /// Create a new account from a hex-encoded private key and relayer API key credentials.
+    pub fn with_relayer_api_key(
+        private_key: impl Into<String>,
+        key: String,
+        address: String,
+    ) -> Result<Self, RelayError> {
+        let signer = private_key
+            .into()
+            .parse::<PrivateKeySigner>()
+            .map_err(|e| RelayError::Signer(format!("Failed to parse private key: {}", e)))?;
+
+        Ok(Self {
+            signer,
+            config: Some(AuthConfig::RelayerApiKey(RelayerApiKeyConfig::new(
+                key, address,
+            ))),
+        })
+    }
+
+    /// Create a new account from a hex-encoded private key and a pre-built [`AuthConfig`].
+    pub fn with_auth_config(
+        private_key: impl Into<String>,
+        config: Option<AuthConfig>,
     ) -> Result<Self, RelayError> {
         let signer = private_key
             .into()
@@ -49,8 +85,16 @@ impl BuilderAccount {
         &self.signer
     }
 
-    /// Returns the builder API config, if one was provided.
-    pub fn config(&self) -> Option<&BuilderConfig> {
+    /// Returns the auth config, if one was provided.
+    pub fn auth_config(&self) -> Option<&AuthConfig> {
+        self.config.as_ref()
+    }
+
+    /// Returns the auth config, if one was provided.
+    ///
+    /// This is a backward-compatible accessor. Prefer [`auth_config`](Self::auth_config)
+    /// for new code.
+    pub fn config(&self) -> Option<&AuthConfig> {
         self.config.as_ref()
     }
 }
@@ -58,6 +102,7 @@ impl BuilderAccount {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::config::AuthConfig;
 
     // A well-known test private key (DO NOT use for real funds)
     // Address: 0xac0974bec39a17e36ba4a6b4d238ff944bacb478cbed5efcae784d7bf4f2ff80 (anvil/hardhat default #0)
@@ -142,5 +187,28 @@ mod tests {
         let config = BuilderConfig::new("key".into(), "secret".into(), None);
         let account = BuilderAccount::new(TEST_PRIVATE_KEY, Some(config)).unwrap();
         assert!(account.config().is_some());
+    }
+
+    #[test]
+    fn test_with_relayer_api_key() {
+        let account = BuilderAccount::with_relayer_api_key(
+            TEST_PRIVATE_KEY,
+            "my-key".to_string(),
+            "0xaddr".to_string(),
+        )
+        .unwrap();
+        assert!(account.auth_config().is_some());
+        assert!(
+            matches!(account.auth_config(), Some(AuthConfig::RelayerApiKey(_)))
+        );
+    }
+
+    #[test]
+    fn test_new_wraps_builder_config_in_auth_config() {
+        let config = BuilderConfig::new("key".into(), "secret".into(), None);
+        let account = BuilderAccount::new(TEST_PRIVATE_KEY, Some(config)).unwrap();
+        assert!(
+            matches!(account.auth_config(), Some(AuthConfig::Builder(_)))
+        );
     }
 }
