@@ -150,6 +150,82 @@ impl BuilderConfig {
     }
 }
 
+/// Relayer API Key credentials for authenticated relay requests.
+///
+/// A simpler alternative to [`BuilderConfig`] that uses static headers
+/// instead of HMAC-signed requests. See
+/// <https://docs.polymarket.com/trading/gasless#using-relayer-api-keys>.
+///
+/// The `Debug` implementation redacts all secret fields to prevent accidental
+/// leakage in logs.
+#[derive(Clone)]
+pub struct RelayerApiKeyConfig {
+    pub key: String,
+    pub address: String,
+}
+
+impl std::fmt::Debug for RelayerApiKeyConfig {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("RelayerApiKeyConfig")
+            .field("key", &"[REDACTED]")
+            .field("address", &self.address)
+            .finish()
+    }
+}
+
+impl RelayerApiKeyConfig {
+    /// Create a new relayer API key config.
+    pub fn new(key: String, address: String) -> Self {
+        Self { key, address }
+    }
+
+    /// Generate static authentication headers for relayer API key requests.
+    pub fn generate_headers(&self) -> Result<HeaderMap, String> {
+        let mut headers = HeaderMap::new();
+        headers.insert(
+            "RELAYER_API_KEY",
+            HeaderValue::from_str(&self.key).map_err(|e| e.to_string())?,
+        );
+        headers.insert(
+            "RELAYER_API_KEY_ADDRESS",
+            HeaderValue::from_str(&self.address).map_err(|e| e.to_string())?,
+        );
+        Ok(headers)
+    }
+}
+
+/// Authentication configuration for relay requests.
+///
+/// Two authentication schemes are supported:
+/// - [`Builder`](AuthConfig::Builder) — HMAC-SHA256 signed headers (builder API credentials)
+/// - [`RelayerApiKey`](AuthConfig::RelayerApiKey) — static headers (relayer API key)
+#[derive(Clone, Debug)]
+pub enum AuthConfig {
+    /// HMAC-authenticated builder API credentials.
+    Builder(BuilderConfig),
+    /// Static relayer API key headers.
+    RelayerApiKey(RelayerApiKeyConfig),
+}
+
+impl AuthConfig {
+    /// Generate authentication headers for Relay v2 requests.
+    ///
+    /// For [`Builder`](AuthConfig::Builder), this produces HMAC-signed headers.
+    /// For [`RelayerApiKey`](AuthConfig::RelayerApiKey), this produces static headers
+    /// (the `method`, `path`, and `body` parameters are ignored).
+    pub fn generate_relayer_v2_headers(
+        &self,
+        method: &str,
+        path: &str,
+        body: Option<&str>,
+    ) -> Result<HeaderMap, String> {
+        match self {
+            AuthConfig::Builder(config) => config.generate_relayer_v2_headers(method, path, body),
+            AuthConfig::RelayerApiKey(config) => config.generate_headers(),
+        }
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -188,5 +264,61 @@ mod tests {
 
         assert!(debug_output.contains("[REDACTED]"));
         assert!(debug_output.contains("passphrase: None"));
+    }
+
+    #[test]
+    fn test_relayer_api_key_generates_correct_headers() {
+        let config = RelayerApiKeyConfig::new("my-relayer-key".to_string(), "0xabc123".to_string());
+        let headers = config.generate_headers().unwrap();
+        assert_eq!(
+            headers.get("RELAYER_API_KEY").unwrap().to_str().unwrap(),
+            "my-relayer-key"
+        );
+        assert_eq!(
+            headers
+                .get("RELAYER_API_KEY_ADDRESS")
+                .unwrap()
+                .to_str()
+                .unwrap(),
+            "0xabc123"
+        );
+        assert_eq!(headers.len(), 2);
+    }
+
+    #[test]
+    fn test_relayer_api_key_debug_redacts_secrets() {
+        let config = RelayerApiKeyConfig::new("my-relayer-key".to_string(), "0xabc123".to_string());
+        let debug_output = format!("{:?}", config);
+        assert!(debug_output.contains("[REDACTED]"));
+        assert!(
+            !debug_output.contains("my-relayer-key"),
+            "Debug leaked API key: {debug_output}"
+        );
+    }
+
+    #[test]
+    fn test_auth_config_builder_delegates_correctly() {
+        let builder = BuilderConfig::new(
+            "key".to_string(),
+            "c2VjcmV0".to_string(),
+            Some("pass".to_string()),
+        );
+        let auth = AuthConfig::Builder(builder);
+        let headers = auth
+            .generate_relayer_v2_headers("POST", "/submit", Some("{}"))
+            .unwrap();
+        assert!(headers.get("POLY_BUILDER_API_KEY").is_some());
+        assert!(headers.get("RELAYER_API_KEY").is_none());
+    }
+
+    #[test]
+    fn test_auth_config_relayer_api_key_delegates_correctly() {
+        let relayer = RelayerApiKeyConfig::new("rk".to_string(), "0xaddr".to_string());
+        let auth = AuthConfig::RelayerApiKey(relayer);
+        let headers = auth
+            .generate_relayer_v2_headers("POST", "/submit", Some("{}"))
+            .unwrap();
+        assert!(headers.get("RELAYER_API_KEY").is_some());
+        assert!(headers.get("POLY_BUILDER_API_KEY").is_none());
     }
 }
