@@ -802,13 +802,12 @@ impl RelayClient {
 
             // Generate fresh auth headers each attempt (timestamps stay current)
             let mut headers = if let Some(account) = &self.account {
-                if let Some(config) = account.config() {
-                    config
-                        .generate_relayer_v2_headers("POST", url.path(), Some(&body_str))
+                if let Some(auth) = account.auth_config() {
+                    auth.generate_relayer_v2_headers("POST", url.path(), Some(&body_str))
                         .map_err(RelayError::Api)?
                 } else {
                     return Err(RelayError::Api(
-                        "Builder config missing - cannot authenticate request".to_string(),
+                        "Auth config missing - cannot authenticate request".to_string(),
                     ));
                 }
             } else {
@@ -946,6 +945,21 @@ impl RelayClientBuilder {
     pub fn with_account(mut self, account: BuilderAccount) -> Self {
         self.account = Some(account);
         self
+    }
+
+    /// Attach relayer API key credentials for authenticated relay operations.
+    ///
+    /// This is a convenience method that creates a [`BuilderAccount`] with
+    /// [`RelayerApiKeyConfig`] internally. The `private_key` is still required
+    /// for EIP-712 transaction signing.
+    pub fn relayer_api_key(
+        self,
+        private_key: impl Into<String>,
+        key: String,
+        address: String,
+    ) -> Result<Self, RelayError> {
+        let account = BuilderAccount::with_relayer_api_key(private_key, key, address)?;
+        Ok(self.with_account(account))
     }
 
     /// Set the wallet type (default: [`WalletType::Safe`]).
