@@ -198,17 +198,19 @@ mod tests {
         )
         .unwrap();
         assert!(account.auth_config().is_some());
-        assert!(
-            matches!(account.auth_config(), Some(AuthConfig::RelayerApiKey(_)))
-        );
+        assert!(matches!(
+            account.auth_config(),
+            Some(AuthConfig::RelayerApiKey(_))
+        ));
     }
 
     #[test]
     fn test_new_wraps_builder_config_in_auth_config() {
         let config = BuilderConfig::new("key".into(), "secret".into(), None);
         let account = BuilderAccount::new(TEST_PRIVATE_KEY, Some(config)).unwrap();
-        assert!(
-            matches!(account.auth_config(), Some(AuthConfig::Builder(_)))
-        );
+        assert!(matches!(
+            account.auth_config(),
+            Some(AuthConfig::Builder(_))
+        ));
     }
 }
