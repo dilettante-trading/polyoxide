@@ -213,11 +213,12 @@ fn serialize_salt<S>(salt: &str, serializer: S) -> Result<S::Ok, S::Error>
 where
     S: serde::Serializer,
 {
-    // Parse the string as u128 and serialize it as a number
-    let val = salt
-        .parse::<u128>()
+    // Validate that the salt is a valid u128, but serialize as a string.
+    // The Polymarket API expects string-encoded salts, and u128 values
+    // exceed JSON's safe number range (serde_json rejects u128 > u64::MAX).
+    salt.parse::<u128>()
         .map_err(|_| serde::ser::Error::custom("invalid salt"))?;
-    serializer.serialize_u128(val)
+    serializer.serialize_str(salt)
 }
 
 /// Unsigned order
@@ -514,9 +515,9 @@ mod tests {
     }
 
     #[test]
-    fn salt_serialized_as_number() {
+    fn salt_serialized_as_string() {
         let order = Order {
-            salt: "12345678901234567890".to_string(),
+            salt: "340282366920938463463374607431768211455".to_string(), // u128::MAX
             maker: Address::ZERO,
             signer: Address::ZERO,
             taker: Address::ZERO,
@@ -531,11 +532,14 @@ mod tests {
             neg_risk: false,
         };
         let json = serde_json::to_value(&order).unwrap();
-        // Salt should be serialized as a number, not a string
         assert!(
-            json["salt"].is_number(),
-            "Salt should be a number: {:?}",
+            json["salt"].is_string(),
+            "Salt should be a string: {:?}",
             json["salt"]
+        );
+        assert_eq!(
+            json["salt"].as_str().unwrap(),
+            "340282366920938463463374607431768211455"
         );
     }
 }
