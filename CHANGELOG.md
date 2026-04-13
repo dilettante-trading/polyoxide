@@ -23,6 +23,7 @@
 
 - *(clob)* Update `BalanceAllowanceResponse` for upstream API field change from `allowance` to `allowances` (#1)
 - *(clob)* Make optional fields on `Market`, `SpreadResponse`, and `LastTradePriceResponse` to match upstream API (#1)
+- *(clob)* Serialize order salt as string to avoid serde_json rejection of u128 values exceeding u64::MAX
 
 ### 🧪 Tests
 
