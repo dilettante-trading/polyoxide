@@ -1,3 +1,9 @@
+## [0.12.2] - 2026-04-14
+
+### 🐛 Bug Fixes
+
+- *(clob)* Serialize order salt as string to avoid serde_json rejection of u128 values exceeding u64::MAX
+
 ## [0.12.1] - 2026-04-01
 
 ### 🐛 Bug Fixes
