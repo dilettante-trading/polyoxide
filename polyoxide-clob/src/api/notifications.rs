@@ -56,16 +56,16 @@ impl Notifications {
 }
 
 /// A notification from the CLOB API.
-///
-/// The API returns `{type: number, owner: string, payload: any}` — there is
-/// no `id` field. Extra/unknown fields are captured in `extra`.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct Notification {
+    pub id: String,
     #[serde(rename = "type")]
     pub notification_type: u32,
     pub owner: String,
     #[serde(default)]
     pub payload: serde_json::Value,
+    #[serde(default)]
+    pub timestamp: Option<String>,
 }
 
 #[cfg(test)]
@@ -75,35 +75,44 @@ mod tests {
     #[test]
     fn notification_deserializes() {
         let json = r#"{
+            "id": "notif-1",
             "type": 1,
             "owner": "0xabc123",
-            "payload": {"order_id": "order-456", "side": "BUY"}
+            "payload": {"order_id": "order-456", "side": "BUY"},
+            "timestamp": "2024-01-01T00:00:00Z"
         }"#;
         let notif: Notification = serde_json::from_str(json).unwrap();
+        assert_eq!(notif.id, "notif-1");
         assert_eq!(notif.notification_type, 1);
         assert_eq!(notif.owner, "0xabc123");
         assert_eq!(notif.payload["order_id"], "order-456");
+        assert_eq!(notif.timestamp.as_deref(), Some("2024-01-01T00:00:00Z"));
     }
 
     #[test]
     fn notification_null_payload() {
         let json = r#"{
+            "id": "notif-2",
             "type": 0,
             "owner": "0xdef456",
             "payload": null
         }"#;
         let notif: Notification = serde_json::from_str(json).unwrap();
+        assert_eq!(notif.id, "notif-2");
         assert_eq!(notif.notification_type, 0);
         assert!(notif.payload.is_null());
+        assert!(notif.timestamp.is_none());
     }
 
     #[test]
     fn notification_missing_payload() {
         let json = r#"{
+            "id": "notif-3",
             "type": 2,
             "owner": "0x789"
         }"#;
         let notif: Notification = serde_json::from_str(json).unwrap();
+        assert_eq!(notif.id, "notif-3");
         assert_eq!(notif.notification_type, 2);
         assert!(notif.payload.is_null());
     }
