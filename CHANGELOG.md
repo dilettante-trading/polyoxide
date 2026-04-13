@@ -1,3 +1,9 @@
+## [0.12.3] - 2026-04-14
+
+### 🐛 Bug Fixes
+
+- *(clob)* Serialize order salt as u128 number using serde_json `arbitrary_precision` instead of string encoding
+
 ## [0.12.2] - 2026-04-14
 
 ### 🐛 Bug Fixes
