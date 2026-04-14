@@ -807,7 +807,7 @@ impl RelayClient {
                         .map_err(RelayError::Api)?
                 } else {
                     return Err(RelayError::Api(
-                        "Auth config missing - cannot authenticate request".to_string(),
+                        "No authentication configured - provide BuilderConfig or RelayerApiKeyConfig when creating the BuilderAccount".to_string(),
                     ));
                 }
             } else {
@@ -1137,6 +1137,25 @@ mod tests {
     fn test_builder_no_account_address_is_none() {
         let client = RelayClient::builder().unwrap().build().unwrap();
         assert!(client.address().is_none());
+    }
+
+    #[test]
+    fn test_builder_relayer_api_key_attaches_account() {
+        let client = RelayClient::builder()
+            .unwrap()
+            .relayer_api_key(
+                "ac0974bec39a17e36ba4a6b4d238ff944bacb478cbed5efcae784d7bf4f2ff80",
+                "my-relayer-key".to_string(),
+                "0xabc123".to_string(),
+            )
+            .unwrap()
+            .build()
+            .unwrap();
+        let account = client.account.as_ref().expect("account should be attached");
+        assert!(matches!(
+            account.auth_config(),
+            Some(crate::config::AuthConfig::RelayerApiKey(_))
+        ));
     }
 
     // ── address derivation (CREATE2) ────────────────────────────
