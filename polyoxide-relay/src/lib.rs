@@ -16,7 +16,7 @@
 //! - **Builder API credentials** — HMAC-SHA256 signed headers (`BUILDER_API_KEY`,
 //!   `BUILDER_SECRET`, `BUILDER_PASS_PHRASE`)
 //! - **Relayer API keys** — static headers (`RELAYER_API_KEY`, `RELAYER_API_KEY_ADDRESS`),
-//!   a simpler alternative for market makers
+//!   a simpler alternative
 //!
 //! ## Example
 //!
