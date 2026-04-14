@@ -1,3 +1,4 @@
+use crate::error::RelayError;
 use alloy::primitives::{address, Address};
 use polyoxide_core::{current_timestamp, Base64Format, Signer};
 use reqwest::header::{HeaderMap, HeaderValue};
@@ -160,8 +161,8 @@ impl BuilderConfig {
 /// leakage in logs.
 #[derive(Clone)]
 pub struct RelayerApiKeyConfig {
-    pub key: String,
-    pub address: String,
+    key: String,
+    address: String,
 }
 
 impl std::fmt::Debug for RelayerApiKeyConfig {
@@ -175,8 +176,30 @@ impl std::fmt::Debug for RelayerApiKeyConfig {
 
 impl RelayerApiKeyConfig {
     /// Create a new relayer API key config.
-    pub fn new(key: String, address: String) -> Self {
-        Self { key, address }
+    ///
+    /// Returns an error if `key` or `address` is empty or whitespace-only.
+    pub fn new(key: String, address: String) -> Result<Self, RelayError> {
+        if key.trim().is_empty() {
+            return Err(RelayError::Api(
+                "RelayerApiKeyConfig: key must not be empty or whitespace".to_string(),
+            ));
+        }
+        if address.trim().is_empty() {
+            return Err(RelayError::Api(
+                "RelayerApiKeyConfig: address must not be empty or whitespace".to_string(),
+            ));
+        }
+        Ok(Self { key, address })
+    }
+
+    /// Returns the relayer API key.
+    pub fn key(&self) -> &str {
+        &self.key
+    }
+
+    /// Returns the on-chain address associated with the relayer API key.
+    pub fn address(&self) -> &str {
+        &self.address
     }
 
     /// Generate static authentication headers for relayer API key requests.
@@ -268,7 +291,8 @@ mod tests {
 
     #[test]
     fn test_relayer_api_key_generates_correct_headers() {
-        let config = RelayerApiKeyConfig::new("my-relayer-key".to_string(), "0xabc123".to_string());
+        let config =
+            RelayerApiKeyConfig::new("my-relayer-key".to_string(), "0xabc123".to_string()).unwrap();
         let headers = config.generate_headers().unwrap();
         assert_eq!(
             headers.get("RELAYER_API_KEY").unwrap().to_str().unwrap(),
@@ -287,7 +311,8 @@ mod tests {
 
     #[test]
     fn test_relayer_api_key_debug_redacts_secrets() {
-        let config = RelayerApiKeyConfig::new("my-relayer-key".to_string(), "0xabc123".to_string());
+        let config =
+            RelayerApiKeyConfig::new("my-relayer-key".to_string(), "0xabc123".to_string()).unwrap();
         let debug_output = format!("{:?}", config);
         assert!(debug_output.contains("[REDACTED]"));
         assert!(
@@ -313,12 +338,66 @@ mod tests {
 
     #[test]
     fn test_auth_config_relayer_api_key_delegates_correctly() {
-        let relayer = RelayerApiKeyConfig::new("rk".to_string(), "0xaddr".to_string());
+        let relayer = RelayerApiKeyConfig::new("rk".to_string(), "0xaddr".to_string()).unwrap();
         let auth = AuthConfig::RelayerApiKey(relayer);
         let headers = auth
             .generate_relayer_v2_headers("POST", "/submit", Some("{}"))
             .unwrap();
         assert!(headers.get("RELAYER_API_KEY").is_some());
         assert!(headers.get("POLY_BUILDER_API_KEY").is_none());
+    }
+
+    #[test]
+    fn test_relayer_api_key_new_rejects_empty_key() {
+        let result = RelayerApiKeyConfig::new(String::new(), "0xaddr".to_string());
+        assert!(result.is_err());
+    }
+
+    #[test]
+    fn test_relayer_api_key_new_rejects_whitespace_key() {
+        let result = RelayerApiKeyConfig::new("   ".to_string(), "0xaddr".to_string());
+        assert!(result.is_err());
+    }
+
+    #[test]
+    fn test_relayer_api_key_new_rejects_empty_address() {
+        let result = RelayerApiKeyConfig::new("key".to_string(), String::new());
+        assert!(result.is_err());
+    }
+
+    #[test]
+    fn test_relayer_api_key_new_rejects_whitespace_address() {
+        let result = RelayerApiKeyConfig::new("key".to_string(), "\t\n".to_string());
+        assert!(result.is_err());
+    }
+
+    #[test]
+    fn test_relayer_api_key_generate_headers_rejects_invalid_header_value() {
+        // A newline in a header value is not legal; HeaderValue::from_str must reject it.
+        let config = RelayerApiKeyConfig {
+            key: "bad\nkey".to_string(),
+            address: "0xaddr".to_string(),
+        };
+        let result = config.generate_headers();
+        assert!(result.is_err());
+    }
+
+    #[test]
+    fn test_relayer_api_key_headers_parameter_independent() {
+        let relayer = RelayerApiKeyConfig::new("rk".to_string(), "0xaddr".to_string()).unwrap();
+        let auth = AuthConfig::RelayerApiKey(relayer);
+
+        let h1 = auth
+            .generate_relayer_v2_headers("POST", "/submit", Some("{}"))
+            .unwrap();
+        let h2 = auth
+            .generate_relayer_v2_headers("GET", "/other/path", None)
+            .unwrap();
+        let h3 = auth
+            .generate_relayer_v2_headers("PUT", "/yet-another", Some("{\"a\":1}"))
+            .unwrap();
+
+        assert_eq!(h1, h2);
+        assert_eq!(h2, h3);
     }
 }
