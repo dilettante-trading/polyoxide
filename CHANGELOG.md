@@ -1,3 +1,9 @@
+## [0.12.4] - 2026-04-14
+
+### 🐛 Bug Fixes
+
+- *(clob)* Limit order salt to u64 range to prevent serialization panic and API rejection
+
 ## [0.12.3] - 2026-04-14
 
 ### 🐛 Bug Fixes
