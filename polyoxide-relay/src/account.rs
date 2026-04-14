@@ -1,17 +1,26 @@
-use crate::config::BuilderConfig;
+use crate::config::{AuthConfig, BuilderConfig, RelayerApiKeyConfig};
 use crate::error::RelayError;
 use alloy::primitives::Address;
 use alloy::signers::local::PrivateKeySigner;
 
 /// Account credentials for authenticated relay operations.
 ///
-/// Combines a private key signer (for EIP-712 transaction signing) with optional
-/// builder API credentials (for HMAC-authenticated relay submission). The `Debug`
+/// Combines a private key signer (for EIP-712 transaction signing) with an optional
+/// [`AuthConfig`] for relay submission. Two authentication schemes are supported:
+/// [`AuthConfig::Builder`] (HMAC-signed builder API credentials) and
+/// [`AuthConfig::RelayerApiKey`] (static relayer API key headers). The `Debug`
 /// implementation redacts the private key to prevent accidental leakage in logs.
 #[derive(Clone)]
 pub struct BuilderAccount {
     pub(crate) signer: PrivateKeySigner,
-    pub(crate) config: Option<BuilderConfig>,
+    pub(crate) config: Option<AuthConfig>,
+}
+
+fn parse_signer(private_key: impl Into<String>) -> Result<PrivateKeySigner, RelayError> {
+    private_key
+        .into()
+        .parse::<PrivateKeySigner>()
+        .map_err(|e| RelayError::Signer(format!("Failed to parse private key: {}", e)))
 }
 
 impl std::fmt::Debug for BuilderAccount {
@@ -26,16 +35,39 @@ impl std::fmt::Debug for BuilderAccount {
 impl BuilderAccount {
     /// Create a new account from a hex-encoded private key and optional builder config.
     ///
+    /// Wraps the `BuilderConfig` in [`AuthConfig::Builder`] internally.
     /// Accepts keys with or without a `0x` prefix.
     pub fn new(
         private_key: impl Into<String>,
         config: Option<BuilderConfig>,
     ) -> Result<Self, RelayError> {
-        let signer = private_key
-            .into()
-            .parse::<PrivateKeySigner>()
-            .map_err(|e| RelayError::Signer(format!("Failed to parse private key: {}", e)))?;
+        let signer = parse_signer(private_key)?;
+        Ok(Self {
+            signer,
+            config: config.map(AuthConfig::Builder),
+        })
+    }
 
+    /// Create a new account from a hex-encoded private key and relayer API key credentials.
+    pub fn with_relayer_api_key(
+        private_key: impl Into<String>,
+        key: String,
+        address: String,
+    ) -> Result<Self, RelayError> {
+        let signer = parse_signer(private_key)?;
+        let relayer = RelayerApiKeyConfig::new(key, address)?;
+        Ok(Self {
+            signer,
+            config: Some(AuthConfig::RelayerApiKey(relayer)),
+        })
+    }
+
+    /// Create a new account from a hex-encoded private key and a pre-built [`AuthConfig`].
+    pub fn with_auth_config(
+        private_key: impl Into<String>,
+        config: Option<AuthConfig>,
+    ) -> Result<Self, RelayError> {
+        let signer = parse_signer(private_key)?;
         Ok(Self { signer, config })
     }
 
@@ -49,8 +81,8 @@ impl BuilderAccount {
         &self.signer
     }
 
-    /// Returns the builder API config, if one was provided.
-    pub fn config(&self) -> Option<&BuilderConfig> {
+    /// Returns the auth config, if one was provided.
+    pub fn auth_config(&self) -> Option<&AuthConfig> {
         self.config.as_ref()
     }
 }
@@ -58,6 +90,7 @@ impl BuilderAccount {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::config::AuthConfig;
 
     // A well-known test private key (DO NOT use for real funds)
     // Address: 0xac0974bec39a17e36ba4a6b4d238ff944bacb478cbed5efcae784d7bf4f2ff80 (anvil/hardhat default #0)
@@ -134,13 +167,71 @@ mod tests {
     #[test]
     fn test_config_none() {
         let account = BuilderAccount::new(TEST_PRIVATE_KEY, None).unwrap();
-        assert!(account.config().is_none());
+        assert!(account.auth_config().is_none());
     }
 
     #[test]
     fn test_config_some() {
         let config = BuilderConfig::new("key".into(), "secret".into(), None);
         let account = BuilderAccount::new(TEST_PRIVATE_KEY, Some(config)).unwrap();
-        assert!(account.config().is_some());
+        assert!(account.auth_config().is_some());
+    }
+
+    #[test]
+    fn test_with_relayer_api_key() {
+        let account = BuilderAccount::with_relayer_api_key(
+            TEST_PRIVATE_KEY,
+            "my-key".to_string(),
+            "0xaddr".to_string(),
+        )
+        .unwrap();
+        assert!(account.auth_config().is_some());
+        assert!(matches!(
+            account.auth_config(),
+            Some(AuthConfig::RelayerApiKey(_))
+        ));
+    }
+
+    #[test]
+    fn test_new_wraps_builder_config_in_auth_config() {
+        let config = BuilderConfig::new("key".into(), "secret".into(), None);
+        let account = BuilderAccount::new(TEST_PRIVATE_KEY, Some(config)).unwrap();
+        assert!(matches!(
+            account.auth_config(),
+            Some(AuthConfig::Builder(_))
+        ));
+    }
+
+    #[test]
+    fn test_with_auth_config_none() {
+        let account = BuilderAccount::with_auth_config(TEST_PRIVATE_KEY, None).unwrap();
+        assert!(account.auth_config().is_none());
+    }
+
+    #[test]
+    fn test_with_auth_config_relayer_api_key_variant() {
+        let relayer =
+            crate::config::RelayerApiKeyConfig::new("rk".into(), "0xaddr".into()).unwrap();
+        let auth = AuthConfig::RelayerApiKey(relayer);
+        let account = BuilderAccount::with_auth_config(TEST_PRIVATE_KEY, Some(auth)).unwrap();
+        assert!(matches!(
+            account.auth_config(),
+            Some(AuthConfig::RelayerApiKey(_))
+        ));
+    }
+
+    #[test]
+    fn test_with_auth_config_invalid_private_key() {
+        let result = BuilderAccount::with_auth_config("not_a_valid_key", None);
+        assert!(result.is_err());
+        match result.unwrap_err() {
+            RelayError::Signer(msg) => {
+                assert!(
+                    msg.contains("Failed to parse private key"),
+                    "unexpected: {msg}"
+                );
+            }
+            other => panic!("Expected Signer error, got: {other:?}"),
+        }
     }
 }

@@ -136,7 +136,7 @@ use alloy::primitives::U256;
 
 #[tokio::main]
 async fn main() -> Result<(), Box<dyn std::error::Error>> {
-    // Setup account with builder credentials
+    // --- Option 1: Builder API credentials (HMAC-signed) ---
     let builder_config = BuilderConfig::new(
         std::env::var("BUILDER_API_KEY")?,
         std::env::var("BUILDER_SECRET")?,
@@ -146,6 +146,13 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         std::env::var("POLYMARKET_PRIVATE_KEY")?,
         Some(builder_config),
     )?;
+
+    // --- Option 2: Relayer API key (simpler alternative) ---
+    // let account = BuilderAccount::with_relayer_api_key(
+    //     std::env::var("POLYMARKET_PRIVATE_KEY")?,
+    //     std::env::var("RELAYER_API_KEY")?,
+    //     std::env::var("RELAYER_API_KEY_ADDRESS")?,
+    // )?;
 
     // Create relay client for Polygon mainnet
     let client = RelayClient::default_builder()?
