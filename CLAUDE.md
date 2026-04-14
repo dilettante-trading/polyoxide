@@ -8,6 +8,8 @@ Polyoxide is a Rust SDK toolkit for Polymarket APIs. It provides library crates 
 
 ## Build & Development Commands
 
+**MSRV:** 1.91 (set in workspace `Cargo.toml`).
+
 ```bash
 # Build entire workspace
 cargo build --all-features --workspace
@@ -65,9 +67,9 @@ polyoxide-core          (shared: auth, HTTP client, errors, macros)
 **API namespaces** — Clients organize endpoints into namespaces:
 - CLOB: `clob.markets()`, `clob.orders()`, `clob.account_api()`, `clob.health()`, `clob.auth()`, `clob.rewards()`, `clob.rfq()`, `clob.notifications()`
 - Gamma: `gamma.markets()`, `gamma.events()`, `gamma.series()`, `gamma.tags()`, `gamma.comments()`, `gamma.sports()`, `gamma.search()`, `gamma.user()`, `gamma.health()`
-- Data: `data.users()`, `data.trades()`, `data.holders()`, `data.leaderboard()`, `data.builders()`, `data.live_volume()`, `data.open_interest()`, `data.health()`
+- Data: `data.user(addr)`, `data.trades()`, `data.holders()`, `data.leaderboard()`, `data.builders()`, `data.live_volume()`, `data.open_interest()`, `data.health()`
 
-Example: `gamma.markets().list().open(true).send().await?`, `data.leaderboard().list().send().await?`.
+Example: `gamma.markets().list().open(true).send().await?`, `data.leaderboard().get().send().await?`.
 
 **Request builder fluency** — Query parameters are chained with builder methods before `.send().await?`.
 
@@ -87,7 +89,7 @@ POLYMARKET_API_SECRET         # L2 API secret (base64)
 POLYMARKET_API_PASSPHRASE     # L2 API passphrase
 ```
 
-Relay operations additionally need `BUILDER_API_KEY`, `BUILDER_SECRET`, `BUILDER_PASS_PHRASE`.
+Relay operations need either `BUILDER_API_KEY`, `BUILDER_SECRET`, `BUILDER_PASS_PHRASE` (HMAC auth) **or** `RELAYER_API_KEY`, `RELAYER_API_KEY_ADDRESS` (static key auth). Relay also reads `RELAYER_URL` and `CHAIN_ID` optionally.
 
 ## API Specs
 
@@ -103,7 +105,7 @@ Mock HTTP tests use `mockito` (workspace dev-dependency). Each crate with mock t
 
 ## Module Organization
 
-Each crate follows a consistent layout:
+Most crates follow a consistent layout:
 - `lib.rs` — public API re-exports
 - `client.rs` — main client struct + builder
 - `error.rs` — crate-specific error enum (uses `thiserror`)
