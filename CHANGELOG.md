@@ -1,3 +1,22 @@
+## [0.12.5] - 2026-04-15
+
+### 🚀 Features
+
+- *(relay)* Add relayer API key authentication as alternative to HMAC builder credentials
+- *(relay)* Add `AuthConfig` enum and `RelayerApiKeyConfig` for dual auth support
+- *(relay)* Wire `AuthConfig` into request signing and add builder convenience methods
+
+### ♻️ Refactoring
+
+- *(relay)* Encapsulate `RelayerApiKeyConfig` and validate inputs
+- *(relay)* Remove deprecated `config()` and extract `parse_signer`
+
+### 📝 Documentation
+
+- Rewrite all workspace READMEs with accurate code examples and full API coverage
+- *(relay)* Add README with both auth methods, builder pattern, and gasless redemption examples
+- Fix CLAUDE.md data API namespace, add MSRV, correct relay env vars
+
 ## [0.12.4] - 2026-04-14
 
 ### 🐛 Bug Fixes
