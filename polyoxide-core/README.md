@@ -1,31 +1,61 @@
 # polyoxide-core
 
-Core utilities and shared types for Polyoxide Polymarket API clients.
+Core infrastructure crate for the [polyoxide](https://crates.io/crates/polyoxide) workspace. Provides the shared HTTP client, error types, authentication primitives, rate limiting, request building, and macros used by `polyoxide-clob`, `polyoxide-gamma`, `polyoxide-data`, and `polyoxide-relay`.
 
-This crate provides common functionality used by both `polyoxide-clob` and `polyoxide-gamma`:
+This is an **internal** crate. End users should depend on [`polyoxide`](https://crates.io/crates/polyoxide) instead.
 
-- HTTP client configuration and building
-- Shared error types
-- Request building utilities
-- Query parameter handling
+## What's inside
 
-More information about this crate can be found in the [crate documentation](https://docs.rs/polyoxide-core/).
+| Module | Purpose |
+|---|---|
+| `client` | `HttpClient` / `HttpClientBuilder` -- configurable reqwest wrapper with base URL, connection pooling, concurrency limiting, and 429 retry logic |
+| `error` | `ApiError` -- shared error enum (Api, Authentication, Validation, RateLimit, Timeout, Network, Serialization, Url) with `from_response()` for automatic status-code mapping |
+| `auth` | `Signer` (HMAC-SHA256), `Base64Format`, `current_timestamp()` -- authentication building blocks for L2 API credentials |
+| `request` | `Request<T, E>`, `QueryBuilder` trait, `RequestError` trait -- generic GET request builder with automatic deserialization, retry, and rate-limit integration |
+| `rate_limit` | `RateLimiter` with per-endpoint burst/sustained windows and `RetryConfig` for exponential backoff with jitter. Factory methods: `clob_default()`, `gamma_default()`, `data_default()`, `relay_default()` |
+| `macros` | `impl_api_error_conversions!` -- generates `From<reqwest::Error>` and `From<url::ParseError>` for crate-specific error wrappers |
 
-## Usage
+## Error hierarchy
 
-This crate is typically used as a dependency by other Polyoxide crates and not directly by end users. If you want to interact with Polymarket APIs, use the main [`polyoxide`](https://crates.io/crates/polyoxide) crate instead.
+Each downstream crate defines its own error enum (e.g. `ClobError`, `GammaError`) with an `Api(ApiError)` variant. The `impl_api_error_conversions!` macro wires up the `From` conversions so `reqwest::Error` and `url::ParseError` flow through `ApiError` automatically:
 
-## Features
+```rust
+use polyoxide_core::{ApiError, impl_api_error_conversions};
+use thiserror::Error;
 
-- **Client Building**: Configurable HTTP client with timeout and connection pooling
-- **Error Handling**: Unified error types for API operations
-- **Request Utilities**: Builder pattern for constructing API requests
+#[derive(Error, Debug)]
+pub enum MyCrateError {
+    #[error(transparent)]
+    Api(#[from] ApiError),
+}
+
+impl_api_error_conversions!(MyCrateError);
+```
+
+## Key exports
+
+```rust
+// HTTP client
+pub use client::{HttpClient, HttpClientBuilder, DEFAULT_TIMEOUT_MS, DEFAULT_POOL_SIZE};
+
+// Errors
+pub use error::ApiError;
+
+// Auth
+pub use auth::{Signer, Base64Format, current_timestamp};
+
+// Request building
+pub use request::{Request, QueryBuilder, RequestError};
+
+// Rate limiting & retry
+pub use rate_limit::{RateLimiter, RetryConfig};
+```
 
 ## Installation
 
 ```toml
 [dependencies]
-polyoxide-core = "0.1.0"
+polyoxide-core = "0.12"
 ```
 
 ## License
