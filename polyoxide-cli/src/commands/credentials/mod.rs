@@ -22,6 +22,12 @@ enum CredentialsSubcommand {
         #[arg(value_enum)]
         target: ShowTarget,
     },
+    /// Delete credentials from the OS keychain
+    Delete {
+        /// Which service to delete credentials for
+        #[arg(value_enum)]
+        target: DeleteTarget,
+    },
 }
 
 #[derive(Subcommand)]
@@ -37,6 +43,14 @@ enum ShowTarget {
     /// Check CLOB credentials
     Clob,
     /// Check Relay credentials
+    Relay,
+}
+
+#[derive(Clone, Copy, ValueEnum)]
+enum DeleteTarget {
+    /// Delete CLOB credentials
+    Clob,
+    /// Delete Relay credentials
     Relay,
 }
 
@@ -89,30 +103,34 @@ impl CredentialsCommand {
                 ShowTarget::Clob => show_clob(),
                 ShowTarget::Relay => show_relay(),
             },
+            CredentialsSubcommand::Delete { target } => match target {
+                DeleteTarget::Clob => delete_clob(),
+                DeleteTarget::Relay => delete_relay(),
+            },
         }
     }
 }
 
 fn store_clob(args: StoreClobArgs) -> Result<()> {
     use polyoxide_core::keychain;
-    const SERVICE: &str = "polyoxide-clob";
+    let service = polyoxide_clob::KEYCHAIN_SERVICE;
 
     let mut stored = Vec::new();
 
     if let Some(val) = &args.private_key {
-        keychain::set(SERVICE, "private_key", val)?;
+        keychain::set(service, "private_key", val)?;
         stored.push("private_key");
     }
     if let Some(val) = &args.api_key {
-        keychain::set(SERVICE, "api_key", val)?;
+        keychain::set(service, "api_key", val)?;
         stored.push("api_key");
     }
     if let Some(val) = &args.api_secret {
-        keychain::set(SERVICE, "api_secret", val)?;
+        keychain::set(service, "api_secret", val)?;
         stored.push("api_secret");
     }
     if let Some(val) = &args.api_passphrase {
-        keychain::set(SERVICE, "api_passphrase", val)?;
+        keychain::set(service, "api_passphrase", val)?;
         stored.push("api_passphrase");
     }
 
@@ -130,32 +148,32 @@ fn store_clob(args: StoreClobArgs) -> Result<()> {
 
 fn store_relay(args: StoreRelayArgs) -> Result<()> {
     use polyoxide_core::keychain;
-    const SERVICE: &str = "polyoxide-relay";
+    let service = polyoxide_relay::KEYCHAIN_SERVICE;
 
     let mut stored = Vec::new();
 
     if let Some(val) = &args.private_key {
-        keychain::set(SERVICE, "private_key", val)?;
+        keychain::set(service, "private_key", val)?;
         stored.push("private_key");
     }
     if let Some(val) = &args.api_key {
-        keychain::set(SERVICE, "api_key", val)?;
+        keychain::set(service, "api_key", val)?;
         stored.push("api_key");
     }
     if let Some(val) = &args.api_secret {
-        keychain::set(SERVICE, "api_secret", val)?;
+        keychain::set(service, "api_secret", val)?;
         stored.push("api_secret");
     }
     if let Some(val) = &args.passphrase {
-        keychain::set(SERVICE, "passphrase", val)?;
+        keychain::set(service, "passphrase", val)?;
         stored.push("passphrase");
     }
     if let Some(val) = &args.relayer_api_key {
-        keychain::set(SERVICE, "relayer_api_key", val)?;
+        keychain::set(service, "relayer_api_key", val)?;
         stored.push("relayer_api_key");
     }
     if let Some(val) = &args.relayer_api_key_address {
-        keychain::set(SERVICE, "relayer_api_key_address", val)?;
+        keychain::set(service, "relayer_api_key_address", val)?;
         stored.push("relayer_api_key_address");
     }
 
@@ -171,6 +189,10 @@ fn store_relay(args: StoreRelayArgs) -> Result<()> {
     Ok(())
 }
 
+/// Check whether a keychain entry exists without leaking the value.
+///
+/// Note: the `keyring` crate has no "exists?" API, so this reads the full value
+/// and immediately discards it.
 fn check_entry(service: &str, key: &str) -> &'static str {
     match polyoxide_core::keychain::get(service, key) {
         Ok(_) => "present",
@@ -180,47 +202,76 @@ fn check_entry(service: &str, key: &str) -> &'static str {
 }
 
 fn show_clob() -> Result<()> {
-    const SERVICE: &str = "polyoxide-clob";
+    let service = polyoxide_clob::KEYCHAIN_SERVICE;
 
-    println!("Keychain credentials for {SERVICE}:");
-    println!("  private_key:     {}", check_entry(SERVICE, "private_key"));
-    println!("  api_key:         {}", check_entry(SERVICE, "api_key"));
-    println!("  api_secret:      {}", check_entry(SERVICE, "api_secret"));
+    println!("Keychain credentials for {service}:");
+    println!("  private_key:     {}", check_entry(service, "private_key"));
+    println!("  api_key:         {}", check_entry(service, "api_key"));
+    println!("  api_secret:      {}", check_entry(service, "api_secret"));
     println!(
         "  api_passphrase:  {}",
-        check_entry(SERVICE, "api_passphrase")
+        check_entry(service, "api_passphrase")
     );
     Ok(())
 }
 
 fn show_relay() -> Result<()> {
-    const SERVICE: &str = "polyoxide-relay";
+    let service = polyoxide_relay::KEYCHAIN_SERVICE;
 
-    println!("Keychain credentials for {SERVICE}:");
+    println!("Keychain credentials for {service}:");
     println!(
         "  private_key:              {}",
-        check_entry(SERVICE, "private_key")
+        check_entry(service, "private_key")
     );
     println!(
         "  api_key:                  {}",
-        check_entry(SERVICE, "api_key")
+        check_entry(service, "api_key")
     );
     println!(
         "  api_secret:               {}",
-        check_entry(SERVICE, "api_secret")
+        check_entry(service, "api_secret")
     );
     println!(
         "  passphrase:               {}",
-        check_entry(SERVICE, "passphrase")
+        check_entry(service, "passphrase")
     );
     println!(
         "  relayer_api_key:          {}",
-        check_entry(SERVICE, "relayer_api_key")
+        check_entry(service, "relayer_api_key")
     );
     println!(
         "  relayer_api_key_address:  {}",
-        check_entry(SERVICE, "relayer_api_key_address")
+        check_entry(service, "relayer_api_key_address")
     );
+    Ok(())
+}
+
+fn delete_clob() -> Result<()> {
+    use polyoxide_core::keychain;
+    let service = polyoxide_clob::KEYCHAIN_SERVICE;
+
+    for key in ["private_key", "api_key", "api_secret", "api_passphrase"] {
+        keychain::delete(service, key)?;
+    }
+    eprintln!("Deleted all CLOB credentials from keychain.");
+    Ok(())
+}
+
+fn delete_relay() -> Result<()> {
+    use polyoxide_core::keychain;
+    let service = polyoxide_relay::KEYCHAIN_SERVICE;
+
+    for key in [
+        "private_key",
+        "api_key",
+        "api_secret",
+        "passphrase",
+        "relayer_api_key",
+        "relayer_api_key_address",
+    ] {
+        keychain::delete(service, key)?;
+    }
+    eprintln!("Deleted all Relay credentials from keychain.");
     Ok(())
 }
 
@@ -338,6 +389,28 @@ mod tests {
             cli.cmd.command,
             CredentialsSubcommand::Store {
                 target: StoreTarget::Clob(_)
+            }
+        ));
+    }
+
+    #[test]
+    fn delete_clob_parses() {
+        let cli = try_parse(&["test", "delete", "clob"]).unwrap();
+        assert!(matches!(
+            cli.cmd.command,
+            CredentialsSubcommand::Delete {
+                target: DeleteTarget::Clob
+            }
+        ));
+    }
+
+    #[test]
+    fn delete_relay_parses() {
+        let cli = try_parse(&["test", "delete", "relay"]).unwrap();
+        assert!(matches!(
+            cli.cmd.command,
+            CredentialsSubcommand::Delete {
+                target: DeleteTarget::Relay
             }
         ));
     }
