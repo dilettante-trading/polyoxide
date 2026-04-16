@@ -33,6 +33,9 @@ pub mod error;
 pub mod rate_limit;
 pub mod request;
 
+#[cfg(feature = "keychain")]
+pub mod keychain;
+
 /// Maximum number of characters to include in log messages containing response bodies.
 const LOG_BODY_MAX_LEN: usize = 512;
 
@@ -56,6 +59,9 @@ pub use client::{
 pub use error::ApiError;
 pub use rate_limit::{RateLimiter, RetryConfig};
 pub use request::{QueryBuilder, Request, RequestError};
+
+#[cfg(feature = "keychain")]
+pub use keychain::KeychainError;
 
 #[cfg(test)]
 mod tests {
