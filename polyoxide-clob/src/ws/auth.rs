@@ -64,12 +64,12 @@ impl ApiCredentials {
     #[cfg(feature = "keychain")]
     pub fn from_keychain() -> Result<Self, polyoxide_core::KeychainError> {
         use polyoxide_core::keychain;
-        const SERVICE: &str = "polyoxide-clob";
 
+        let service = crate::account::KEYCHAIN_SERVICE;
         Ok(Self {
-            api_key: keychain::get(SERVICE, "api_key")?,
-            secret: keychain::get(SERVICE, "api_secret")?,
-            passphrase: keychain::get(SERVICE, "api_passphrase")?,
+            api_key: keychain::get(service, "api_key")?,
+            secret: keychain::get(service, "api_secret")?,
+            passphrase: keychain::get(service, "api_passphrase")?,
         })
     }
 }

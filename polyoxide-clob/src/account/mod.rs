@@ -29,6 +29,10 @@ pub mod env {
     pub const API_PASSPHRASE: &str = "POLYMARKET_API_PASSPHRASE";
 }
 
+/// Keychain service name for CLOB credentials.
+#[cfg(feature = "keychain")]
+pub const KEYCHAIN_SERVICE: &str = "polyoxide-clob";
+
 /// Account configuration for file-based loading
 #[derive(Clone, Serialize, Deserialize)]
 pub struct AccountConfig {
@@ -229,18 +233,17 @@ impl Account {
     #[cfg(feature = "keychain")]
     pub fn from_keychain() -> Result<Self, ClobError> {
         use polyoxide_core::keychain;
-        const SERVICE: &str = "polyoxide-clob";
 
-        let private_key = keychain::get(SERVICE, "private_key")
+        let private_key = keychain::get(KEYCHAIN_SERVICE, "private_key")
             .map_err(|e| ClobError::validation(format!("Keychain error for private_key: {e}")))?;
 
         let credentials = Credentials {
-            key: keychain::get(SERVICE, "api_key")
+            key: keychain::get(KEYCHAIN_SERVICE, "api_key")
                 .map_err(|e| ClobError::validation(format!("Keychain error for api_key: {e}")))?,
-            secret: keychain::get(SERVICE, "api_secret").map_err(|e| {
+            secret: keychain::get(KEYCHAIN_SERVICE, "api_secret").map_err(|e| {
                 ClobError::validation(format!("Keychain error for api_secret: {e}"))
             })?,
-            passphrase: keychain::get(SERVICE, "api_passphrase").map_err(|e| {
+            passphrase: keychain::get(KEYCHAIN_SERVICE, "api_passphrase").map_err(|e| {
                 ClobError::validation(format!("Keychain error for api_passphrase: {e}"))
             })?,
         };
@@ -257,14 +260,29 @@ impl Account {
     #[cfg(feature = "keychain")]
     pub fn save_to_keychain(&self) -> Result<(), ClobError> {
         use polyoxide_core::keychain;
-        const SERVICE: &str = "polyoxide-clob";
 
-        keychain::set(SERVICE, "api_key", &self.credentials.key)
+        keychain::set(KEYCHAIN_SERVICE, "api_key", &self.credentials.key)
             .map_err(|e| ClobError::validation(format!("Keychain error: {e}")))?;
-        keychain::set(SERVICE, "api_secret", &self.credentials.secret)
+        keychain::set(KEYCHAIN_SERVICE, "api_secret", &self.credentials.secret)
             .map_err(|e| ClobError::validation(format!("Keychain error: {e}")))?;
-        keychain::set(SERVICE, "api_passphrase", &self.credentials.passphrase)
-            .map_err(|e| ClobError::validation(format!("Keychain error: {e}")))?;
+        keychain::set(
+            KEYCHAIN_SERVICE,
+            "api_passphrase",
+            &self.credentials.passphrase,
+        )
+        .map_err(|e| ClobError::validation(format!("Keychain error: {e}")))?;
+        Ok(())
+    }
+
+    /// Delete L2 API credentials and private key from the OS keychain.
+    #[cfg(feature = "keychain")]
+    pub fn delete_from_keychain() -> Result<(), ClobError> {
+        use polyoxide_core::keychain;
+
+        for key in ["private_key", "api_key", "api_secret", "api_passphrase"] {
+            keychain::delete(KEYCHAIN_SERVICE, key)
+                .map_err(|e| ClobError::validation(format!("Keychain error: {e}")))?;
+        }
         Ok(())
     }
 
@@ -357,7 +375,7 @@ impl Account {
 /// keychain, since `Account` discards the raw key string after parsing.
 #[cfg(feature = "keychain")]
 pub fn save_private_key_to_keychain(private_key: &str) -> Result<(), ClobError> {
-    polyoxide_core::keychain::set("polyoxide-clob", "private_key", private_key)
+    polyoxide_core::keychain::set(KEYCHAIN_SERVICE, "private_key", private_key)
         .map_err(|e| ClobError::validation(format!("Keychain error: {e}")))?;
     Ok(())
 }
