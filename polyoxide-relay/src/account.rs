@@ -3,6 +3,10 @@ use crate::error::RelayError;
 use alloy::primitives::Address;
 use alloy::signers::local::PrivateKeySigner;
 
+/// Keychain service name for Relay credentials.
+#[cfg(feature = "keychain")]
+pub const KEYCHAIN_SERVICE: &str = "polyoxide-relay";
+
 /// Account credentials for authenticated relay operations.
 ///
 /// Combines a private key signer (for EIP-712 transaction signing) with an optional
@@ -96,16 +100,15 @@ impl BuilderAccount {
     #[cfg(feature = "keychain")]
     pub fn from_keychain() -> Result<Self, RelayError> {
         use polyoxide_core::keychain;
-        const SERVICE: &str = "polyoxide-relay";
 
-        let private_key = keychain::get(SERVICE, "private_key")
+        let private_key = keychain::get(KEYCHAIN_SERVICE, "private_key")
             .map_err(|e| RelayError::Api(format!("Keychain error for private_key: {e}")))?;
 
-        let config = match keychain::get(SERVICE, "api_key") {
+        let config = match keychain::get(KEYCHAIN_SERVICE, "api_key") {
             Ok(key) => {
-                let secret = keychain::get(SERVICE, "api_secret")
+                let secret = keychain::get(KEYCHAIN_SERVICE, "api_secret")
                     .map_err(|e| RelayError::Api(format!("Keychain error for api_secret: {e}")))?;
-                let passphrase = keychain::get(SERVICE, "passphrase").ok();
+                let passphrase = keychain::get(KEYCHAIN_SERVICE, "passphrase").ok();
                 Some(BuilderConfig::new(key, secret, passphrase))
             }
             Err(polyoxide_core::KeychainError::NotFound { .. }) => None,
@@ -124,41 +127,67 @@ impl BuilderAccount {
     #[cfg(feature = "keychain")]
     pub fn from_keychain_relayer_api_key() -> Result<Self, RelayError> {
         use polyoxide_core::keychain;
-        const SERVICE: &str = "polyoxide-relay";
 
-        let private_key = keychain::get(SERVICE, "private_key")
+        let private_key = keychain::get(KEYCHAIN_SERVICE, "private_key")
             .map_err(|e| RelayError::Api(format!("Keychain error for private_key: {e}")))?;
-        let key = keychain::get(SERVICE, "relayer_api_key")
+        let key = keychain::get(KEYCHAIN_SERVICE, "relayer_api_key")
             .map_err(|e| RelayError::Api(format!("Keychain error for relayer_api_key: {e}")))?;
-        let address = keychain::get(SERVICE, "relayer_api_key_address").map_err(|e| {
+        let address = keychain::get(KEYCHAIN_SERVICE, "relayer_api_key_address").map_err(|e| {
             RelayError::Api(format!("Keychain error for relayer_api_key_address: {e}"))
         })?;
 
         Self::with_relayer_api_key(private_key, key, address)
+    }
+
+    /// Delete all credentials from the OS keychain for this service.
+    #[cfg(feature = "keychain")]
+    pub fn delete_from_keychain() -> Result<(), RelayError> {
+        use polyoxide_core::keychain;
+
+        for key in [
+            "private_key",
+            "api_key",
+            "api_secret",
+            "passphrase",
+            "relayer_api_key",
+            "relayer_api_key_address",
+        ] {
+            keychain::delete(KEYCHAIN_SERVICE, key)
+                .map_err(|e| RelayError::Api(format!("Keychain error: {e}")))?;
+        }
+        Ok(())
     }
 }
 
 /// Save a private key to the OS keychain under the `polyoxide-relay` service.
 #[cfg(feature = "keychain")]
 pub fn save_private_key_to_keychain(private_key: &str) -> Result<(), RelayError> {
-    polyoxide_core::keychain::set("polyoxide-relay", "private_key", private_key)
+    polyoxide_core::keychain::set(KEYCHAIN_SERVICE, "private_key", private_key)
         .map_err(|e| RelayError::Api(format!("Keychain error: {e}")))?;
     Ok(())
 }
 
 /// Save builder API credentials to the OS keychain under the `polyoxide-relay` service.
+///
+/// When `config.passphrase` is `None`, any previously stored passphrase is deleted
+/// to prevent stale values from persisting.
 #[cfg(feature = "keychain")]
 pub fn save_builder_config_to_keychain(config: &BuilderConfig) -> Result<(), RelayError> {
     use polyoxide_core::keychain;
-    const SERVICE: &str = "polyoxide-relay";
 
-    keychain::set(SERVICE, "api_key", &config.key)
+    keychain::set(KEYCHAIN_SERVICE, "api_key", &config.key)
         .map_err(|e| RelayError::Api(format!("Keychain error: {e}")))?;
-    keychain::set(SERVICE, "api_secret", &config.secret)
+    keychain::set(KEYCHAIN_SERVICE, "api_secret", &config.secret)
         .map_err(|e| RelayError::Api(format!("Keychain error: {e}")))?;
-    if let Some(passphrase) = &config.passphrase {
-        keychain::set(SERVICE, "passphrase", passphrase)
-            .map_err(|e| RelayError::Api(format!("Keychain error: {e}")))?;
+    match &config.passphrase {
+        Some(passphrase) => {
+            keychain::set(KEYCHAIN_SERVICE, "passphrase", passphrase)
+                .map_err(|e| RelayError::Api(format!("Keychain error: {e}")))?;
+        }
+        None => {
+            keychain::delete(KEYCHAIN_SERVICE, "passphrase")
+                .map_err(|e| RelayError::Api(format!("Keychain error: {e}")))?;
+        }
     }
     Ok(())
 }
