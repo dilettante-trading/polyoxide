@@ -41,7 +41,7 @@ tokio-tungstenite = { version = "0.26", features = ["rustls-tls-native-roots"] }
 rust_decimal = { version = "1.37", features = ["serde-with-str"] }
 governor = { version = "0.8", features = ["std"] }
 fastrand = "2"
-keyring = "3"
+keyring = { version = "3", features = ["apple-native", "windows-native", "async-secret-service", "crypto-rust"] }
 mockito = "1.7"
 pyo3 = { version = "0.28", features = ["extension-module", "abi3-py39"] }
 pyo3-async-runtimes = { version = "0.28", features = ["tokio-runtime"] }
