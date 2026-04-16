@@ -17,6 +17,7 @@ gamma = ["dep:polyoxide-gamma", "polyoxide-clob?/gamma"]
 data = ["dep:polyoxide-data"]
 ws = ["clob", "polyoxide-clob/ws"]
 full = ["clob", "gamma", "data", "ws"]
+keychain = ["polyoxide-clob?/keychain"]
 
 [dependencies]
 polyoxide-gamma = { workspace = true, optional = true }
