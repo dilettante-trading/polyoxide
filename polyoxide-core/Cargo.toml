@@ -12,6 +12,7 @@ categories = ["api-bindings"]
 
 [features]
 default = []
+keychain = ["dep:keyring"]
 
 [dependencies]
 base64 = { workspace = true }
@@ -25,6 +26,7 @@ tracing = { workspace = true }
 url = { workspace = true }
 governor = { workspace = true }
 fastrand = { workspace = true }
+keyring = { workspace = true, optional = true }
 tokio = { workspace = true, features = ["time", "sync"] }
 
 [dev-dependencies]
