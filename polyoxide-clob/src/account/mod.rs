@@ -444,6 +444,36 @@ mod tests {
             assert_eq!(loaded.credentials().secret, "c2VjcmV0");
             assert_eq!(loaded.credentials().passphrase, "test_keychain_pass");
             assert_eq!(loaded.address(), account.address());
+
+            // Cleanup
+            Account::delete_from_keychain().unwrap();
+        }
+
+        #[test]
+        #[ignore] // Requires OS keychain daemon
+        fn keychain_delete_removes_all_entries() {
+            let private_key = "0xac0974bec39a17e36ba4a6b4d238ff944bacb478cbed5efcae784d7bf4f2ff80";
+            let credentials = Credentials {
+                key: "del_test_key".to_string(),
+                secret: "c2VjcmV0".to_string(),
+                passphrase: "del_test_pass".to_string(),
+            };
+
+            // Store then delete
+            save_private_key_to_keychain(private_key).unwrap();
+            Account::new(private_key, credentials)
+                .unwrap()
+                .save_to_keychain()
+                .unwrap();
+            Account::delete_from_keychain().unwrap();
+
+            // Verify all entries are gone
+            let err = Account::from_keychain().unwrap_err();
+            let msg = err.to_string();
+            assert!(
+                msg.contains("Keychain entry not found"),
+                "Expected NotFound after delete, got: {msg}"
+            );
         }
     }
 

@@ -396,6 +396,20 @@ mod tests {
         assert!(result.is_ok());
     }
 
+    #[cfg(feature = "keychain")]
+    #[test]
+    fn get_credentials_explicit_env_source_uses_flags() {
+        let result = get_credentials(
+            Some("key".to_string()),
+            Some("secret".to_string()),
+            Some("pass".to_string()),
+            Some(CredentialSource::Env),
+        );
+        assert!(result.is_ok());
+        let creds = result.unwrap();
+        assert_eq!(creds.api_key, "key");
+    }
+
     #[test]
     fn get_credentials_missing_key() {
         let err = get_credentials(

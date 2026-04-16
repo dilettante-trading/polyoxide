@@ -347,19 +347,96 @@ mod tests {
                     .address()
             );
             assert!(account.auth_config().is_some());
+
+            // Cleanup
+            BuilderAccount::delete_from_keychain().unwrap();
         }
 
         #[test]
         #[ignore] // Requires OS keychain daemon
         fn builder_account_keychain_no_config() {
+            // Clear any leftover builder config entries so from_keychain()
+            // exercises the "no api_key found" path.
+            use polyoxide_core::keychain;
+            let _ = keychain::delete(KEYCHAIN_SERVICE, "api_key");
+            let _ = keychain::delete(KEYCHAIN_SERVICE, "api_secret");
+            let _ = keychain::delete(KEYCHAIN_SERVICE, "passphrase");
+
             save_private_key_to_keychain(TEST_PRIVATE_KEY).unwrap();
-            // Ensure no api_key exists — attempt to get will return NotFound
-            // This test relies on a clean keychain state for the relay service.
-            // In practice, run after clearing relay entries.
-            let account = BuilderAccount::from_keychain();
-            // Should succeed (config is optional) or fail on missing private_key
-            // depending on keychain state — this test mainly verifies compilation
-            assert!(account.is_ok() || account.is_err());
+
+            let account = BuilderAccount::from_keychain().unwrap();
+            assert!(
+                account.auth_config().is_none(),
+                "Expected no auth config when api_key is absent"
+            );
+
+            // Cleanup
+            let _ = keychain::delete(KEYCHAIN_SERVICE, "private_key");
+        }
+
+        #[test]
+        #[ignore] // Requires OS keychain daemon
+        fn save_builder_config_none_passphrase_clears_stale() {
+            use polyoxide_core::keychain;
+
+            // Store config WITH passphrase
+            save_private_key_to_keychain(TEST_PRIVATE_KEY).unwrap();
+            let config_with = BuilderConfig::new("k".into(), "s".into(), Some("pp".into()));
+            save_builder_config_to_keychain(&config_with).unwrap();
+
+            // Verify passphrase is present
+            assert!(keychain::get(KEYCHAIN_SERVICE, "passphrase").is_ok());
+
+            // Overwrite with None passphrase — should delete the stale entry
+            let config_without = BuilderConfig::new("k".into(), "s".into(), None);
+            save_builder_config_to_keychain(&config_without).unwrap();
+
+            // Verify passphrase has been removed
+            let result = keychain::get(KEYCHAIN_SERVICE, "passphrase");
+            assert!(
+                matches!(result, Err(polyoxide_core::KeychainError::NotFound { .. })),
+                "Expected passphrase to be deleted, got: {result:?}"
+            );
+
+            // And from_keychain should load account without passphrase in config
+            let account = BuilderAccount::from_keychain().unwrap();
+            if let Some(AuthConfig::Builder(bc)) = account.auth_config() {
+                assert!(
+                    bc.passphrase.is_none(),
+                    "Expected passphrase=None after clearing"
+                );
+            } else {
+                panic!("Expected Builder auth config");
+            }
+
+            // Cleanup
+            BuilderAccount::delete_from_keychain().unwrap();
+        }
+
+        #[test]
+        #[ignore] // Requires OS keychain daemon
+        fn relayer_api_key_keychain_roundtrip() {
+            use polyoxide_core::keychain;
+
+            // Store relayer API key credentials
+            save_private_key_to_keychain(TEST_PRIVATE_KEY).unwrap();
+            keychain::set(KEYCHAIN_SERVICE, "relayer_api_key", "test-rk").unwrap();
+            keychain::set(KEYCHAIN_SERVICE, "relayer_api_key_address", "0xaddr").unwrap();
+
+            let account = BuilderAccount::from_keychain_relayer_api_key().unwrap();
+            assert_eq!(
+                account.address(),
+                BuilderAccount::new(TEST_PRIVATE_KEY, None)
+                    .unwrap()
+                    .address()
+            );
+            assert!(matches!(
+                account.auth_config(),
+                Some(AuthConfig::RelayerApiKey(_))
+            ));
+
+            // Cleanup
+            BuilderAccount::delete_from_keychain().unwrap();
         }
     }
 
