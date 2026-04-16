@@ -57,6 +57,23 @@ pub fn set(service: &str, key: &str, value: &str) -> Result<(), KeychainError> {
     Ok(())
 }
 
+/// Delete a credential from the OS keychain.
+///
+/// Returns `Ok(())` if the entry was deleted or did not exist.
+///
+/// # Arguments
+///
+/// * `service` - The service name (e.g., `"polyoxide-clob"`)
+/// * `key` - The key name (e.g., `"api_key"`)
+pub fn delete(service: &str, key: &str) -> Result<(), KeychainError> {
+    let entry = Entry::new(service, key)?;
+    match entry.delete_credential() {
+        Ok(()) => Ok(()),
+        Err(keyring::Error::NoEntry) => Ok(()),
+        Err(e) => Err(KeychainError::Backend(e)),
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
