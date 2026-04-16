@@ -409,8 +409,7 @@ mod tests {
         #[ignore] // Requires OS keychain daemon — run locally with `-- --ignored`
         fn keychain_roundtrip() {
             // Store credentials
-            let private_key =
-                "0xac0974bec39a17e36ba4a6b4d238ff944bacb478cbed5efcae784d7bf4f2ff80";
+            let private_key = "0xac0974bec39a17e36ba4a6b4d238ff944bacb478cbed5efcae784d7bf4f2ff80";
             let credentials = Credentials {
                 key: "test_keychain_key".to_string(),
                 secret: "c2VjcmV0".to_string(),

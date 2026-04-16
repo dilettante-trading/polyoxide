@@ -176,9 +176,8 @@ fn get_credentials(
 ) -> Result<ApiCredentials> {
     #[cfg(feature = "keychain")]
     if matches!(credential_source, Some(CredentialSource::Keychain)) {
-        return ApiCredentials::from_keychain().map_err(|e| {
-            color_eyre::eyre::eyre!("Failed to load credentials from keychain: {e}")
-        });
+        return ApiCredentials::from_keychain()
+            .map_err(|e| color_eyre::eyre::eyre!("Failed to load credentials from keychain: {e}"));
     }
 
     match (api_key, api_secret, api_passphrase) {

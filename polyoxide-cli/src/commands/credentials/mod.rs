@@ -186,7 +186,10 @@ fn show_clob() -> Result<()> {
     println!("  private_key:     {}", check_entry(SERVICE, "private_key"));
     println!("  api_key:         {}", check_entry(SERVICE, "api_key"));
     println!("  api_secret:      {}", check_entry(SERVICE, "api_secret"));
-    println!("  api_passphrase:  {}", check_entry(SERVICE, "api_passphrase"));
+    println!(
+        "  api_passphrase:  {}",
+        check_entry(SERVICE, "api_passphrase")
+    );
     Ok(())
 }
 
@@ -194,12 +197,30 @@ fn show_relay() -> Result<()> {
     const SERVICE: &str = "polyoxide-relay";
 
     println!("Keychain credentials for {SERVICE}:");
-    println!("  private_key:              {}", check_entry(SERVICE, "private_key"));
-    println!("  api_key:                  {}", check_entry(SERVICE, "api_key"));
-    println!("  api_secret:               {}", check_entry(SERVICE, "api_secret"));
-    println!("  passphrase:               {}", check_entry(SERVICE, "passphrase"));
-    println!("  relayer_api_key:          {}", check_entry(SERVICE, "relayer_api_key"));
-    println!("  relayer_api_key_address:  {}", check_entry(SERVICE, "relayer_api_key_address"));
+    println!(
+        "  private_key:              {}",
+        check_entry(SERVICE, "private_key")
+    );
+    println!(
+        "  api_key:                  {}",
+        check_entry(SERVICE, "api_key")
+    );
+    println!(
+        "  api_secret:               {}",
+        check_entry(SERVICE, "api_secret")
+    );
+    println!(
+        "  passphrase:               {}",
+        check_entry(SERVICE, "passphrase")
+    );
+    println!(
+        "  relayer_api_key:          {}",
+        check_entry(SERVICE, "relayer_api_key")
+    );
+    println!(
+        "  relayer_api_key_address:  {}",
+        check_entry(SERVICE, "relayer_api_key_address")
+    );
     Ok(())
 }
 
@@ -222,43 +243,68 @@ mod tests {
     #[test]
     fn store_clob_parses_all_flags() {
         let cli = try_parse(&[
-            "test", "store", "clob",
-            "--private-key", "0xabc",
-            "--api-key", "k",
-            "--api-secret", "s",
-            "--api-passphrase", "p",
-        ]).unwrap();
+            "test",
+            "store",
+            "clob",
+            "--private-key",
+            "0xabc",
+            "--api-key",
+            "k",
+            "--api-secret",
+            "s",
+            "--api-passphrase",
+            "p",
+        ])
+        .unwrap();
         assert!(matches!(
             cli.cmd.command,
-            CredentialsSubcommand::Store { target: StoreTarget::Clob(_) }
+            CredentialsSubcommand::Store {
+                target: StoreTarget::Clob(_)
+            }
         ));
     }
 
     #[test]
     fn store_relay_parses_builder_flags() {
         let cli = try_parse(&[
-            "test", "store", "relay",
-            "--private-key", "0xabc",
-            "--api-key", "k",
-            "--api-secret", "s",
-        ]).unwrap();
+            "test",
+            "store",
+            "relay",
+            "--private-key",
+            "0xabc",
+            "--api-key",
+            "k",
+            "--api-secret",
+            "s",
+        ])
+        .unwrap();
         assert!(matches!(
             cli.cmd.command,
-            CredentialsSubcommand::Store { target: StoreTarget::Relay(_) }
+            CredentialsSubcommand::Store {
+                target: StoreTarget::Relay(_)
+            }
         ));
     }
 
     #[test]
     fn store_relay_parses_relayer_api_key_flags() {
         let cli = try_parse(&[
-            "test", "store", "relay",
-            "--private-key", "0xabc",
-            "--relayer-api-key", "rk",
-            "--relayer-api-key-address", "0xaddr",
-        ]).unwrap();
+            "test",
+            "store",
+            "relay",
+            "--private-key",
+            "0xabc",
+            "--relayer-api-key",
+            "rk",
+            "--relayer-api-key-address",
+            "0xaddr",
+        ])
+        .unwrap();
         assert!(matches!(
             cli.cmd.command,
-            CredentialsSubcommand::Store { target: StoreTarget::Relay(_) }
+            CredentialsSubcommand::Store {
+                target: StoreTarget::Relay(_)
+            }
         ));
     }
 
@@ -267,7 +313,9 @@ mod tests {
         let cli = try_parse(&["test", "show", "clob"]).unwrap();
         assert!(matches!(
             cli.cmd.command,
-            CredentialsSubcommand::Show { target: ShowTarget::Clob }
+            CredentialsSubcommand::Show {
+                target: ShowTarget::Clob
+            }
         ));
     }
 
@@ -276,7 +324,9 @@ mod tests {
         let cli = try_parse(&["test", "show", "relay"]).unwrap();
         assert!(matches!(
             cli.cmd.command,
-            CredentialsSubcommand::Show { target: ShowTarget::Relay }
+            CredentialsSubcommand::Show {
+                target: ShowTarget::Relay
+            }
         ));
     }
 
@@ -286,7 +336,9 @@ mod tests {
         let cli = try_parse(&["test", "store", "clob"]).unwrap();
         assert!(matches!(
             cli.cmd.command,
-            CredentialsSubcommand::Store { target: StoreTarget::Clob(_) }
+            CredentialsSubcommand::Store {
+                target: StoreTarget::Clob(_)
+            }
         ));
     }
 }

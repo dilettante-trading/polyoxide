@@ -103,9 +103,8 @@ impl BuilderAccount {
 
         let config = match keychain::get(SERVICE, "api_key") {
             Ok(key) => {
-                let secret = keychain::get(SERVICE, "api_secret").map_err(|e| {
-                    RelayError::Api(format!("Keychain error for api_secret: {e}"))
-                })?;
+                let secret = keychain::get(SERVICE, "api_secret")
+                    .map_err(|e| RelayError::Api(format!("Keychain error for api_secret: {e}")))?;
                 let passphrase = keychain::get(SERVICE, "passphrase").ok();
                 Some(BuilderConfig::new(key, secret, passphrase))
             }
@@ -312,7 +311,12 @@ mod tests {
             save_builder_config_to_keychain(&config).unwrap();
 
             let account = BuilderAccount::from_keychain().unwrap();
-            assert_eq!(account.address(), BuilderAccount::new(TEST_PRIVATE_KEY, None).unwrap().address());
+            assert_eq!(
+                account.address(),
+                BuilderAccount::new(TEST_PRIVATE_KEY, None)
+                    .unwrap()
+                    .address()
+            );
             assert!(account.auth_config().is_some());
         }
 
