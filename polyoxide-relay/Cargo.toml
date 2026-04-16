@@ -10,6 +10,10 @@ description = "Rust client library for Polymarket Relayer API"
 keywords = ["polymarket", "prediction-markets", "trading", "relayer"]
 categories = ["api-bindings", "web-programming::http-client"]
 
+[features]
+default = []
+keychain = ["polyoxide-core/keychain"]
+
 [dependencies]
 alloy = { version = "1.1.2", features = [
     "network",

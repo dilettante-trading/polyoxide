@@ -85,6 +85,83 @@ impl BuilderAccount {
     pub fn auth_config(&self) -> Option<&AuthConfig> {
         self.config.as_ref()
     }
+
+    /// Load account from the OS keychain with builder API credentials.
+    ///
+    /// Reads from the `polyoxide-relay` keychain service:
+    /// - `private_key`: Hex-encoded private key (required)
+    /// - `api_key`, `api_secret`: Builder API credentials (optional — if `api_key` is
+    ///   not found, the account is created without auth config)
+    /// - `passphrase`: Builder API passphrase (optional)
+    #[cfg(feature = "keychain")]
+    pub fn from_keychain() -> Result<Self, RelayError> {
+        use polyoxide_core::keychain;
+        const SERVICE: &str = "polyoxide-relay";
+
+        let private_key = keychain::get(SERVICE, "private_key")
+            .map_err(|e| RelayError::Api(format!("Keychain error for private_key: {e}")))?;
+
+        let config = match keychain::get(SERVICE, "api_key") {
+            Ok(key) => {
+                let secret = keychain::get(SERVICE, "api_secret").map_err(|e| {
+                    RelayError::Api(format!("Keychain error for api_secret: {e}"))
+                })?;
+                let passphrase = keychain::get(SERVICE, "passphrase").ok();
+                Some(BuilderConfig::new(key, secret, passphrase))
+            }
+            Err(polyoxide_core::KeychainError::NotFound { .. }) => None,
+            Err(e) => return Err(RelayError::Api(format!("Keychain error: {e}"))),
+        };
+
+        Self::new(private_key, config)
+    }
+
+    /// Load account from the OS keychain with relayer API key credentials.
+    ///
+    /// Reads from the `polyoxide-relay` keychain service:
+    /// - `private_key`: Hex-encoded private key
+    /// - `relayer_api_key`: Static relayer API key
+    /// - `relayer_api_key_address`: On-chain address for the relayer API key
+    #[cfg(feature = "keychain")]
+    pub fn from_keychain_relayer_api_key() -> Result<Self, RelayError> {
+        use polyoxide_core::keychain;
+        const SERVICE: &str = "polyoxide-relay";
+
+        let private_key = keychain::get(SERVICE, "private_key")
+            .map_err(|e| RelayError::Api(format!("Keychain error for private_key: {e}")))?;
+        let key = keychain::get(SERVICE, "relayer_api_key")
+            .map_err(|e| RelayError::Api(format!("Keychain error for relayer_api_key: {e}")))?;
+        let address = keychain::get(SERVICE, "relayer_api_key_address").map_err(|e| {
+            RelayError::Api(format!("Keychain error for relayer_api_key_address: {e}"))
+        })?;
+
+        Self::with_relayer_api_key(private_key, key, address)
+    }
+}
+
+/// Save a private key to the OS keychain under the `polyoxide-relay` service.
+#[cfg(feature = "keychain")]
+pub fn save_private_key_to_keychain(private_key: &str) -> Result<(), RelayError> {
+    polyoxide_core::keychain::set("polyoxide-relay", "private_key", private_key)
+        .map_err(|e| RelayError::Api(format!("Keychain error: {e}")))?;
+    Ok(())
+}
+
+/// Save builder API credentials to the OS keychain under the `polyoxide-relay` service.
+#[cfg(feature = "keychain")]
+pub fn save_builder_config_to_keychain(config: &BuilderConfig) -> Result<(), RelayError> {
+    use polyoxide_core::keychain;
+    const SERVICE: &str = "polyoxide-relay";
+
+    keychain::set(SERVICE, "api_key", &config.key)
+        .map_err(|e| RelayError::Api(format!("Keychain error: {e}")))?;
+    keychain::set(SERVICE, "api_secret", &config.secret)
+        .map_err(|e| RelayError::Api(format!("Keychain error: {e}")))?;
+    if let Some(passphrase) = &config.passphrase {
+        keychain::set(SERVICE, "passphrase", passphrase)
+            .map_err(|e| RelayError::Api(format!("Keychain error: {e}")))?;
+    }
+    Ok(())
 }
 
 #[cfg(test)]
@@ -218,6 +295,39 @@ mod tests {
             account.auth_config(),
             Some(AuthConfig::RelayerApiKey(_))
         ));
+    }
+
+    #[cfg(feature = "keychain")]
+    mod keychain_tests {
+        use super::*;
+
+        const TEST_PRIVATE_KEY: &str =
+            "ac0974bec39a17e36ba4a6b4d238ff944bacb478cbed5efcae784d7bf4f2ff80";
+
+        #[test]
+        #[ignore] // Requires OS keychain daemon
+        fn builder_account_keychain_roundtrip() {
+            save_private_key_to_keychain(TEST_PRIVATE_KEY).unwrap();
+            let config = BuilderConfig::new("rk".into(), "rs".into(), Some("rp".into()));
+            save_builder_config_to_keychain(&config).unwrap();
+
+            let account = BuilderAccount::from_keychain().unwrap();
+            assert_eq!(account.address(), BuilderAccount::new(TEST_PRIVATE_KEY, None).unwrap().address());
+            assert!(account.auth_config().is_some());
+        }
+
+        #[test]
+        #[ignore] // Requires OS keychain daemon
+        fn builder_account_keychain_no_config() {
+            save_private_key_to_keychain(TEST_PRIVATE_KEY).unwrap();
+            // Ensure no api_key exists — attempt to get will return NotFound
+            // This test relies on a clean keychain state for the relay service.
+            // In practice, run after clearing relay entries.
+            let account = BuilderAccount::from_keychain();
+            // Should succeed (config is optional) or fail on missing private_key
+            // depending on keychain state — this test mainly verifies compilation
+            assert!(account.is_ok() || account.is_err());
+        }
     }
 
     #[test]

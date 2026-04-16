@@ -47,3 +47,6 @@ pub use types::{SafeTransaction, SafeTx, TransactionRequest, WalletType};
 mod account;
 
 pub use account::BuilderAccount;
+
+#[cfg(feature = "keychain")]
+pub use account::{save_builder_config_to_keychain, save_private_key_to_keychain};
