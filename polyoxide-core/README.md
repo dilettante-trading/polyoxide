@@ -14,6 +14,7 @@ This is an **internal** crate. End users should depend on [`polyoxide`](https://
 | `request` | `Request<T, E>`, `QueryBuilder` trait, `RequestError` trait -- generic GET request builder with automatic deserialization, retry, and rate-limit integration |
 | `rate_limit` | `RateLimiter` with per-endpoint burst/sustained windows and `RetryConfig` for exponential backoff with jitter. Factory methods: `clob_default()`, `gamma_default()`, `data_default()`, `relay_default()` |
 | `macros` | `impl_api_error_conversions!` -- generates `From<reqwest::Error>` and `From<url::ParseError>` for crate-specific error wrappers |
+| `keychain` | OS credential storage via `keyring` -- `get`, `set`, `delete` helpers and `KeychainError` (feature-gated behind `keychain`) |
 
 ## Error hierarchy
 

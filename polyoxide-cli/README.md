@@ -35,6 +35,7 @@ Top-level commands:
 | `gamma`       | Query Gamma API (market data)                     |
 | `data`        | Query Data API (user positions, trades, builders) |
 | `ws`          | Subscribe to WebSocket channels (real-time)       |
+| `credentials` | Manage OS keychain credentials (requires `keychain` feature) |
 | `completions` | Generate shell completions                        |
 
 All output is JSON printed to stdout.
@@ -250,11 +251,53 @@ polyoxide ws user <MARKET_ID>
 # Credentials via flags
 polyoxide ws user <MARKET_ID> --api-key KEY --api-secret SECRET --api-passphrase PASS
 
+# Credentials from OS keychain (feature `keychain`)
+polyoxide ws user <MARKET_ID> --credential-source keychain
+
 # Filter by event type: order, trade
 polyoxide ws user <MARKET_ID> --filter order
 
 # Same --format, -n, --timeout options as ws market
 polyoxide ws user <MARKET_ID> --format summary --timeout 5m
+```
+
+---
+
+### Credentials (feature `keychain`)
+
+Manage API credentials stored in the OS keychain (macOS Keychain, Windows Credential Manager, Linux Secret Service).
+
+#### `credentials store`
+
+```bash
+# Store CLOB API credentials
+polyoxide credentials store clob --private-key 0x... --api-key KEY --api-secret SECRET --api-passphrase PASS
+
+# Store Relay builder credentials
+polyoxide credentials store relay --private-key 0x... --api-key KEY --api-secret SECRET --passphrase PASS
+
+# Store Relay relayer API key credentials
+polyoxide credentials store relay --private-key 0x... --relayer-api-key KEY --relayer-api-key-address 0x...
+```
+
+#### `credentials show`
+
+```bash
+# Check which CLOB credentials are present in the keychain
+polyoxide credentials show clob
+
+# Check which Relay credentials are present
+polyoxide credentials show relay
+```
+
+#### `credentials delete`
+
+```bash
+# Delete all CLOB credentials from the keychain
+polyoxide credentials delete clob
+
+# Delete all Relay credentials from the keychain
+polyoxide credentials delete relay
 ```
 
 ---

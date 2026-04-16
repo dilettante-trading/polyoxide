@@ -68,6 +68,7 @@ use polyoxide::prelude::*;
 #[tokio::main]
 async fn main() -> Result<(), Box<dyn std::error::Error>> {
     // Load account from environment variables
+    // (or use Account::from_keychain() with the `keychain` feature)
     let account = Account::from_env()?;
 
     let client = Polymarket::builder(account)

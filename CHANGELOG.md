@@ -1,15 +1,41 @@
-## [0.12.5] - 2026-04-15
+## [0.12.5] - 2026-04-16
 
 ### 🚀 Features
 
+- *(core)* Add `keychain` module for OS credential storage (macOS Keychain, Windows Credential Manager, Linux Secret Service)
+- *(core)* Add `keychain::delete` function for credential removal
+- *(clob)* Add `Account::from_keychain()` and `Account::save_to_keychain()` for keychain-based credential loading
+- *(clob)* Add `Account::delete_from_keychain()` to remove all stored credentials
+- *(clob)* Add `ApiCredentials::from_keychain()` for WebSocket authentication
+- *(relay)* Add `BuilderAccount::from_keychain()` and `from_keychain_relayer_api_key()` for keychain-based credential loading
+- *(relay)* Add `BuilderAccount::delete_from_keychain()` to remove all stored credentials
 - *(relay)* Add relayer API key authentication as alternative to HMAC builder credentials
 - *(relay)* Add `AuthConfig` enum and `RelayerApiKeyConfig` for dual auth support
 - *(relay)* Wire `AuthConfig` into request signing and add builder convenience methods
+- *(cli)* Add `credentials store` and `credentials show` subcommands for keychain management
+- *(cli)* Add `credentials delete` subcommand to remove stored credentials
+- *(cli)* Add `--credential-source keychain` flag to `ws user` command
+
+### 🐛 Bug Fixes
+
+- *(relay)* Clear stale passphrase from keychain when saving config with `passphrase = None`
 
 ### ♻️ Refactoring
 
 - *(relay)* Encapsulate `RelayerApiKeyConfig` and validate inputs
 - *(relay)* Remove deprecated `config()` and extract `parse_signer`
+- Consolidate keychain service name strings into shared `KEYCHAIN_SERVICE` constants
+
+### ⚙️ Build
+
+- Add `keyring` dependency with `apple-native`, `windows-native`, `async-secret-service`, and `crypto-rust` backends
+- Add `keychain` feature flag to core, clob, relay, polyoxide, and cli crates
+
+### 🧪 Tests
+
+- *(clob)* Add keychain roundtrip and delete integration tests
+- *(relay)* Add keychain roundtrip, no-config, stale passphrase, and relayer API key integration tests
+- *(cli)* Add parsing tests for credentials delete and keychain credential source
 
 ### 📝 Documentation
 

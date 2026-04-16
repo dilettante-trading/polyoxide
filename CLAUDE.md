@@ -91,6 +91,8 @@ POLYMARKET_API_PASSPHRASE     # L2 API passphrase
 
 Relay operations need either `BUILDER_API_KEY`, `BUILDER_SECRET`, `BUILDER_PASS_PHRASE` (HMAC auth) **or** `RELAYER_API_KEY`, `RELAYER_API_KEY_ADDRESS` (static key auth). Relay also reads `RELAYER_URL` and `CHAIN_ID` optionally.
 
+**Keychain alternative** — With the `keychain` feature enabled, credentials can be stored in and loaded from the OS keychain instead of environment variables. Use `Account::from_keychain()` (CLOB), `BuilderAccount::from_keychain()` (Relay), or the CLI `polyoxide credentials store/show/delete` subcommands. The `keychain` feature is optional and not enabled by default.
+
 ## API Specs
 
 Upstream Polymarket API documentation lives in `docs/specs/`. See `docs/specs/INDEX.md` for the full index. These are the source of truth for endpoint contracts, rate limits, and response schemas — sourced from https://docs.polymarket.com and the official OpenAPI specs.

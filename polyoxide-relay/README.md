@@ -23,6 +23,12 @@ Or use the unified client:
 polyoxide = { version = "0.12", features = ["full"] }
 ```
 
+### Feature Flags
+
+| Feature | Default | Description |
+|---------|---------|-------------|
+| `keychain` | No | Enables OS keychain storage for credentials via `keyring` (macOS Keychain, Windows Credential Manager, Linux Secret Service) |
+
 ## Authentication
 
 Relay operations require a private key for EIP-712 transaction signing **and** one of two authentication schemes for relay submission:
@@ -51,6 +57,20 @@ let account = BuilderAccount::with_relayer_api_key(
     "your-relayer-api-key".into(),
     "0xyour-address".into(),
 )?;
+let client = RelayClient::from_account(account)?;
+```
+
+### OS Keychain (feature `keychain`)
+
+```rust
+use polyoxide_relay::{RelayClient, BuilderAccount};
+
+// Load builder credentials from the OS keychain
+let account = BuilderAccount::from_keychain()?;
+let client = RelayClient::from_account(account)?;
+
+// Or load relayer API key credentials from the OS keychain
+let account = BuilderAccount::from_keychain_relayer_api_key()?;
 let client = RelayClient::from_account(account)?;
 ```
 

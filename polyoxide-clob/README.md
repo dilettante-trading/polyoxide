@@ -29,6 +29,7 @@ cargo add polyoxide-clob
 |---------|---------|-------------|
 | `gamma` | Yes | Enables the `polyoxide-gamma` dependency, used to auto-resolve proxy wallet addresses for proxy signature types |
 | `ws` | No | Enables WebSocket support (`tokio-tungstenite`, `futures-util`) for real-time streaming |
+| `keychain` | No | Enables OS keychain storage for credentials via `keyring` (macOS Keychain, Windows Credential Manager, Linux Secret Service) |
 
 ```
 # With WebSocket support
@@ -94,6 +95,9 @@ let account = Account::from_env()?;
 
 // From a JSON file
 let account = Account::from_file("config/account.json")?;
+
+// From the OS keychain (feature `keychain`)
+let account = Account::from_keychain()?;
 
 // Direct construction
 let credentials = Credentials {
