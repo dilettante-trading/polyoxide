@@ -4,6 +4,8 @@ Base URL: `https://relayer-v2.polymarket.com`
 
 Gasless transaction relay for Polymarket. Submits transactions to Polygon via Safe or Proxy wallets without requiring users to hold MATIC for gas.
 
+Machine-readable schema: [openapi.yaml](openapi.yaml) (mirror of `https://docs.polymarket.com/api-spec/relayer-openapi.yaml`).
+
 ## Auth
 
 See [auth.md](auth.md) for details.
