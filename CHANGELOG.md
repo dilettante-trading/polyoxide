@@ -1,3 +1,22 @@
+## [0.13.1] - 2026-04-22
+
+### 🚜 Refactor
+
+- *(gamma)* Move Cloudflare probes from tests to examples
+
+### 📚 Documentation
+
+- *(gamma)* Document safe batch sizes on `query_many` methods
+
+### 🧪 Testing
+
+- *(gamma)* Add binary-search probe for batch-ID URL ceiling
+- *(gamma)* Add burst probe for Cloudflare rate-limit responses
+
+### ⚙️ Miscellaneous Tasks
+
+- Ignore `.loom/` local data directory
+
 ## [0.13.0] - 2026-04-16
 
 ### 🚀 Features
