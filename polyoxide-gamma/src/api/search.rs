@@ -58,6 +58,9 @@ impl PublicSearch {
     }
 
     /// Filter by event tag IDs
+    ///
+    /// Safe batch size: ≤ 200 per request. URLs over ~8 KB are rejected
+    /// upstream with `414 URI Too Long`.
     pub fn events_tag(mut self, tag_ids: impl IntoIterator<Item = impl ToString>) -> Self {
         self.request = self.request.query_many("events_tag", tag_ids);
         self
@@ -88,6 +91,9 @@ impl PublicSearch {
     }
 
     /// Exclude events with specified tag IDs
+    ///
+    /// Safe batch size: ≤ 500 per request. Tag IDs are short integers
+    /// (~5 B/entry); URLs over ~8 KB are rejected upstream with `414`.
     pub fn exclude_tag_id(mut self, tag_ids: impl IntoIterator<Item = i64>) -> Self {
         self.request = self.request.query_many("exclude_tag_id", tag_ids);
         self

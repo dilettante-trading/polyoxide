@@ -97,30 +97,46 @@ impl ListMarkets {
     }
 
     /// Filter by specific market IDs
+    ///
+    /// Safe batch size: ≤ 400 per request. URLs over ~8 KB are rejected
+    /// upstream with `414 URI Too Long`; empirically the ceiling is ~583.
     pub fn id(mut self, ids: impl IntoIterator<Item = i64>) -> Self {
         self.request = self.request.query_many("id", ids);
         self
     }
 
     /// Filter by market slugs
+    ///
+    /// Safe batch size: ≤ 100 per request. URL length is capped at ~8 KB
+    /// upstream; slug entries vary so pick a cap based on your longest slug.
     pub fn slug(mut self, slugs: impl IntoIterator<Item = impl ToString>) -> Self {
         self.request = self.request.query_many("slug", slugs);
         self
     }
 
     /// Filter by CLOB token IDs
+    ///
+    /// Safe batch size: ≤ 50 per request. Token IDs are 77-digit decimals
+    /// (~90 B/entry on the wire); URLs over ~8 KB are rejected with `414`.
     pub fn clob_token_ids(mut self, token_ids: impl IntoIterator<Item = impl ToString>) -> Self {
         self.request = self.request.query_many("clob_token_ids", token_ids);
         self
     }
 
     /// Filter by condition IDs
+    ///
+    /// Safe batch size: ≤ 60 per request. Condition IDs are 66-char hex
+    /// (~80 B/entry); empirically the upstream ceiling is exactly 100 before
+    /// `414 URI Too Long`.
     pub fn condition_ids(mut self, condition_ids: impl IntoIterator<Item = impl ToString>) -> Self {
         self.request = self.request.query_many("condition_ids", condition_ids);
         self
     }
 
     /// Filter by market maker addresses
+    ///
+    /// Safe batch size: ≤ 80 per request. Ethereum addresses are 42 chars
+    /// (~60 B/entry); URLs over ~8 KB are rejected upstream with `414`.
     pub fn market_maker_address(
         mut self,
         addresses: impl IntoIterator<Item = impl ToString>,
@@ -208,6 +224,9 @@ impl ListMarkets {
     }
 
     /// Filter by sports market types
+    ///
+    /// Safe batch size: ≤ 150 per request. URL length is capped at ~8 KB
+    /// upstream (`414 URI Too Long`).
     pub fn sports_market_types(mut self, types: impl IntoIterator<Item = impl ToString>) -> Self {
         self.request = self.request.query_many("sports_market_types", types);
         self
@@ -220,6 +239,9 @@ impl ListMarkets {
     }
 
     /// Filter by question identifiers
+    ///
+    /// Safe batch size: ≤ 60 per request. Question IDs are 66-char hex
+    /// (~80 B/entry); URLs over ~8 KB are rejected upstream with `414`.
     pub fn question_ids(mut self, question_ids: impl IntoIterator<Item = impl ToString>) -> Self {
         self.request = self.request.query_many("question_ids", question_ids);
         self
