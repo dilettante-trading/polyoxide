@@ -556,7 +556,7 @@ client_ns!(
         cache: Option<bool>,
         events_status: Option<String>,
         events_tag: Option<Vec<i64>>,
-        keep_closed_markets: Option<bool>,
+        keep_closed_markets: Option<i32>,
         sort: Option<String>,
         search_tags: Option<bool>,
         search_profiles: Option<bool>,
