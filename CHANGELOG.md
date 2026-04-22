@@ -1,5 +1,13 @@
 ## [0.13.1] - 2026-04-22
 
+### 🚀 Features
+
+- *(gamma)* Add `markets().get_many(ids)` for batch market lookup regardless of open/closed state
+
+### 🐛 Bug Fixes
+
+- *(gamma)* Work around the upstream `closed=false` default that silently dropped closed markets from `list().id()`, `.slug()`, and `.condition_ids()` lookups; new `get_many` helper fans out `closed=true` + `closed=false` requests in parallel and the trap is called out in the doc comments of the affected list builder methods
+
 ### 🚜 Refactor
 
 - *(gamma)* Move Cloudflare probes from tests to examples
