@@ -411,6 +411,110 @@ pub struct Position {
     pub negative_risk: bool,
 }
 
+/// A per-user position in a single market, as returned by `/v1/market-positions`.
+///
+/// Field names and types follow the upstream `MarketPositionV1` schema in
+/// `docs/specs/data/openapi.yaml`.
+#[cfg_attr(feature = "specta", derive(specta::Type))]
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct MarketPositionV1 {
+    /// Proxy wallet address of the position holder
+    pub proxy_wallet: String,
+    /// Display name of the position holder
+    pub name: String,
+    /// Profile image URL of the position holder
+    pub profile_image: Option<String>,
+    /// Whether the holder has a verified badge
+    pub verified: bool,
+    /// Outcome token asset ID
+    pub asset: String,
+    /// Condition ID of the market
+    pub condition_id: String,
+    /// Average entry price
+    pub avg_price: f64,
+    /// Position size (number of shares)
+    pub size: f64,
+    /// Current market price (OpenAPI field: `currPrice`)
+    #[serde(rename = "currPrice")]
+    pub curr_price: f64,
+    /// Current value of the position
+    pub current_value: f64,
+    /// Unrealized cash P&L
+    pub cash_pnl: f64,
+    /// Total amount bought
+    pub total_bought: f64,
+    /// Realized P&L
+    pub realized_pnl: f64,
+    /// Total P&L (cash + realized)
+    pub total_pnl: f64,
+    /// Outcome name (e.g., "Yes", "No")
+    pub outcome: String,
+    /// Outcome index (0 or 1 for binary markets)
+    pub outcome_index: u32,
+}
+
+/// Market positions grouped by outcome token.
+#[cfg_attr(feature = "specta", derive(specta::Type))]
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct MetaMarketPositionV1 {
+    /// Outcome token asset ID
+    pub token: String,
+    /// Positions for this token
+    pub positions: Vec<MarketPositionV1>,
+}
+
+/// Status filter for `/v1/market-positions`.
+#[cfg_attr(feature = "specta", derive(specta::Type))]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, Default)]
+#[serde(rename_all = "UPPERCASE")]
+pub enum MarketPositionStatus {
+    /// Only positions with size > 0.01
+    Open,
+    /// Only positions with size <= 0.01
+    Closed,
+    /// All positions regardless of size (default)
+    #[default]
+    All,
+}
+
+impl std::fmt::Display for MarketPositionStatus {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            Self::Open => write!(f, "OPEN"),
+            Self::Closed => write!(f, "CLOSED"),
+            Self::All => write!(f, "ALL"),
+        }
+    }
+}
+
+/// Sort field options for `/v1/market-positions`.
+#[cfg_attr(feature = "specta", derive(specta::Type))]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, Default)]
+#[serde(rename_all = "SCREAMING_SNAKE_CASE")]
+pub enum MarketPositionSortBy {
+    /// Sort by token count
+    Tokens,
+    /// Sort by unrealized cash P&L
+    CashPnl,
+    /// Sort by realized P&L
+    RealizedPnl,
+    /// Sort by total P&L (cash + realized). Default.
+    #[default]
+    TotalPnl,
+}
+
+impl std::fmt::Display for MarketPositionSortBy {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            Self::Tokens => write!(f, "TOKENS"),
+            Self::CashPnl => write!(f, "CASH_PNL"),
+            Self::RealizedPnl => write!(f, "REALIZED_PNL"),
+            Self::TotalPnl => write!(f, "TOTAL_PNL"),
+        }
+    }
+}
+
 /// Time period for aggregation
 #[cfg_attr(feature = "specta", derive(specta::Type))]
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, Default)]
@@ -912,5 +1016,146 @@ mod tests {
         let oi: OpenInterest = serde_json::from_str(json).unwrap();
         assert_eq!(oi.market, "0xcond");
         assert!((oi.value - 50000.0).abs() < f64::EPSILON);
+    }
+
+    #[test]
+    fn market_position_status_display_matches_serde() {
+        for variant in [
+            MarketPositionStatus::Open,
+            MarketPositionStatus::Closed,
+            MarketPositionStatus::All,
+        ] {
+            let serialized = serde_json::to_value(variant).unwrap();
+            assert_eq!(format!("\"{}\"", variant), serialized.to_string());
+        }
+    }
+
+    #[test]
+    fn market_position_status_default_is_all() {
+        assert_eq!(MarketPositionStatus::default(), MarketPositionStatus::All);
+    }
+
+    #[test]
+    fn market_position_sort_by_display_matches_serde() {
+        for variant in [
+            MarketPositionSortBy::Tokens,
+            MarketPositionSortBy::CashPnl,
+            MarketPositionSortBy::RealizedPnl,
+            MarketPositionSortBy::TotalPnl,
+        ] {
+            let serialized = serde_json::to_value(variant).unwrap();
+            assert_eq!(format!("\"{}\"", variant), serialized.to_string());
+        }
+    }
+
+    #[test]
+    fn market_position_sort_by_default_is_total_pnl() {
+        assert_eq!(
+            MarketPositionSortBy::default(),
+            MarketPositionSortBy::TotalPnl
+        );
+    }
+
+    #[test]
+    fn deserialize_market_position_v1() {
+        // Field names lifted from `MarketPositionV1` in docs/specs/data/openapi.yaml.
+        let json = r#"{
+            "proxyWallet": "0xabc",
+            "name": "Alice",
+            "profileImage": "https://example.com/a.png",
+            "verified": true,
+            "asset": "token_a",
+            "conditionId": "cond_mp",
+            "avgPrice": 0.42,
+            "size": 1234.5,
+            "currPrice": 0.51,
+            "currentValue": 629.60,
+            "cashPnl": 110.0,
+            "totalBought": 520.0,
+            "realizedPnl": 15.5,
+            "totalPnl": 125.5,
+            "outcome": "Yes",
+            "outcomeIndex": 0
+        }"#;
+
+        let pos: MarketPositionV1 = serde_json::from_str(json).unwrap();
+        assert_eq!(pos.proxy_wallet, "0xabc");
+        assert_eq!(pos.name, "Alice");
+        assert_eq!(pos.profile_image.as_deref(), Some("https://example.com/a.png"));
+        assert!(pos.verified);
+        assert_eq!(pos.asset, "token_a");
+        assert_eq!(pos.condition_id, "cond_mp");
+        assert!((pos.avg_price - 0.42).abs() < f64::EPSILON);
+        assert!((pos.size - 1234.5).abs() < f64::EPSILON);
+        assert!((pos.curr_price - 0.51).abs() < f64::EPSILON);
+        assert!((pos.current_value - 629.60).abs() < f64::EPSILON);
+        assert!((pos.cash_pnl - 110.0).abs() < f64::EPSILON);
+        assert!((pos.total_bought - 520.0).abs() < f64::EPSILON);
+        assert!((pos.realized_pnl - 15.5).abs() < f64::EPSILON);
+        assert!((pos.total_pnl - 125.5).abs() < f64::EPSILON);
+        assert_eq!(pos.outcome, "Yes");
+        assert_eq!(pos.outcome_index, 0);
+    }
+
+    #[test]
+    fn market_position_v1_roundtrip() {
+        let original = MarketPositionV1 {
+            proxy_wallet: "0xabc".into(),
+            name: "Alice".into(),
+            profile_image: None,
+            verified: false,
+            asset: "token_a".into(),
+            condition_id: "cond_mp".into(),
+            avg_price: 0.5,
+            size: 10.0,
+            curr_price: 0.6,
+            current_value: 6.0,
+            cash_pnl: 1.0,
+            total_bought: 5.0,
+            realized_pnl: 0.0,
+            total_pnl: 1.0,
+            outcome: "No".into(),
+            outcome_index: 1,
+        };
+        let json = serde_json::to_string(&original).unwrap();
+        // Ensure currPrice is used over snake_case in the wire format.
+        assert!(json.contains("\"currPrice\""));
+        let back: MarketPositionV1 = serde_json::from_str(&json).unwrap();
+        assert_eq!(back.proxy_wallet, original.proxy_wallet);
+        assert_eq!(back.outcome_index, original.outcome_index);
+        assert!((back.curr_price - original.curr_price).abs() < f64::EPSILON);
+    }
+
+    #[test]
+    fn deserialize_meta_market_position_v1() {
+        let json = r#"{
+            "token": "token_a",
+            "positions": [
+                {
+                    "proxyWallet": "0xabc",
+                    "name": "Alice",
+                    "profileImage": null,
+                    "verified": false,
+                    "asset": "token_a",
+                    "conditionId": "cond_mp",
+                    "avgPrice": 0.42,
+                    "size": 100.0,
+                    "currPrice": 0.51,
+                    "currentValue": 51.0,
+                    "cashPnl": 9.0,
+                    "totalBought": 42.0,
+                    "realizedPnl": 0.0,
+                    "totalPnl": 9.0,
+                    "outcome": "Yes",
+                    "outcomeIndex": 0
+                }
+            ]
+        }"#;
+
+        let meta: MetaMarketPositionV1 = serde_json::from_str(json).unwrap();
+        assert_eq!(meta.token, "token_a");
+        assert_eq!(meta.positions.len(), 1);
+        assert_eq!(meta.positions[0].name, "Alice");
+        assert!(meta.positions[0].profile_image.is_none());
     }
 }

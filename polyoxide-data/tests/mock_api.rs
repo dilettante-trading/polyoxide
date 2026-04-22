@@ -604,6 +604,74 @@ async fn live_volume_get() {
 }
 
 #[tokio::test]
+async fn market_positions_list_with_filters() {
+    let mut server = Server::new_async().await;
+
+    let mock = server
+        .mock("GET", "/v1/market-positions")
+        .match_query(Matcher::AllOf(vec![
+            Matcher::UrlEncoded("market".into(), "cond_mp".into()),
+            Matcher::UrlEncoded("user".into(), "0xabc".into()),
+            Matcher::UrlEncoded("status".into(), "OPEN".into()),
+            Matcher::UrlEncoded("sortBy".into(), "TOTAL_PNL".into()),
+            Matcher::UrlEncoded("sortDirection".into(), "DESC".into()),
+            Matcher::UrlEncoded("limit".into(), "25".into()),
+            Matcher::UrlEncoded("offset".into(), "0".into()),
+        ]))
+        .with_status(200)
+        .with_header("content-type", "application/json")
+        .with_body(
+            r#"[{
+                "token": "token_a",
+                "positions": [{
+                    "proxyWallet": "0xabc",
+                    "name": "Alice",
+                    "profileImage": null,
+                    "verified": false,
+                    "asset": "token_a",
+                    "conditionId": "cond_mp",
+                    "avgPrice": 0.42,
+                    "size": 100.0,
+                    "currPrice": 0.51,
+                    "currentValue": 51.0,
+                    "cashPnl": 9.0,
+                    "totalBought": 42.0,
+                    "realizedPnl": 0.0,
+                    "totalPnl": 9.0,
+                    "outcome": "Yes",
+                    "outcomeIndex": 0
+                }]
+            }]"#,
+        )
+        .create_async()
+        .await;
+
+    let data = test_data(&server);
+    let meta = data
+        .market_positions()
+        .list("cond_mp")
+        .user("0xabc")
+        .status(polyoxide_data::types::MarketPositionStatus::Open)
+        .sort_by(polyoxide_data::types::MarketPositionSortBy::TotalPnl)
+        .sort_direction(polyoxide_data::types::SortDirection::Desc)
+        .limit(25)
+        .offset(0)
+        .send()
+        .await
+        .unwrap();
+
+    assert_eq!(meta.len(), 1);
+    assert_eq!(meta[0].token, "token_a");
+    assert_eq!(meta[0].positions.len(), 1);
+    let p = &meta[0].positions[0];
+    assert_eq!(p.proxy_wallet, "0xabc");
+    assert_eq!(p.outcome, "Yes");
+    assert!((p.curr_price - 0.51).abs() < f64::EPSILON);
+    assert!((p.total_pnl - 9.0).abs() < f64::EPSILON);
+    mock.assert_async().await;
+}
+
+#[tokio::test]
 async fn error_404_returns_api_error() {
     let mut server = Server::new_async().await;
 

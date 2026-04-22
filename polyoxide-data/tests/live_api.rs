@@ -262,3 +262,34 @@ async fn live_builder_volume() {
         "should return at least one builder volume entry"
     );
 }
+
+// ── Market Positions ────────────────────────────────────────────
+
+#[tokio::test]
+#[ignore]
+async fn live_market_positions() {
+    let client = client();
+
+    // Pick a live condition_id from recent trades.
+    let trades = client
+        .trades()
+        .list()
+        .limit(1)
+        .send()
+        .await
+        .expect("trades for market_positions test");
+    assert!(
+        !trades.is_empty(),
+        "need at least one trade for market_positions test"
+    );
+    let condition_id = &trades[0].condition_id;
+
+    // Just verify the endpoint responds and deserializes.
+    let _positions = client
+        .market_positions()
+        .list(condition_id)
+        .limit(5)
+        .send()
+        .await
+        .expect("market positions should deserialize");
+}

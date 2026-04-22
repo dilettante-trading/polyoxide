@@ -9,6 +9,7 @@ use crate::{
         holders::Holders,
         leaderboard::LeaderboardApi,
         live_volume::LiveVolumeApi,
+        market_positions::MarketPositionsApi,
         open_interest::OpenInterestApi,
         trades::Trades,
         users::{UserApi, UserTraded},
@@ -100,6 +101,13 @@ impl DataApi {
     /// Get leaderboard namespace
     pub fn leaderboard(&self) -> LeaderboardApi {
         LeaderboardApi {
+            http_client: self.http_client.clone(),
+        }
+    }
+
+    /// Get market-positions namespace (`/v1/market-positions`)
+    pub fn market_positions(&self) -> MarketPositionsApi {
+        MarketPositionsApi {
             http_client: self.http_client.clone(),
         }
     }
