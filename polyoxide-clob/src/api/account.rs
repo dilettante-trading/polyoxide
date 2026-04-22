@@ -82,8 +82,30 @@ impl AccountApi {
         .await
     }
 
-    /// Send a heartbeat to keep the session alive
-    pub async fn heartbeat(&self) -> Result<serde_json::Value, ClobError> {
+    /// Send a basic heartbeat to keep the session alive
+    ///
+    /// Calls `POST /heartbeats`. No request body; returns `{"status": "ok"}` on success.
+    /// If heartbeats are not sent regularly, all open orders for the user will be
+    /// automatically canceled.
+    pub async fn heartbeat(&self) -> Result<HeartbeatResponse, ClobError> {
+        Request::<HeartbeatResponse>::post(
+            self.http_client.clone(),
+            "/heartbeats".to_string(),
+            AuthMode::L2 {
+                address: self.wallet.clone().address(),
+                credentials: self.credentials.clone(),
+                signer: self.signer.clone(),
+            },
+            self.chain_id,
+        )
+        .send()
+        .await
+    }
+
+    /// Send a v1 heartbeat with session tracking via heartbeat ID
+    ///
+    /// Calls `POST /v1/heartbeats`.
+    pub async fn heartbeat_v1(&self) -> Result<serde_json::Value, ClobError> {
         Request::<serde_json::Value>::post(
             self.http_client.clone(),
             "/v1/heartbeats".to_string(),
@@ -301,6 +323,12 @@ pub struct ListBuilderTradesResponse {
 pub struct BalanceAllowanceResponse {
     pub balance: String,
     pub allowances: HashMap<String, String>,
+}
+
+/// Response from `POST /heartbeats`
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct HeartbeatResponse {
+    pub status: String,
 }
 
 #[cfg(test)]
