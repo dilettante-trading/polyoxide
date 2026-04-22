@@ -561,6 +561,18 @@ async fn live_balance_allowance() {
 
 #[tokio::test]
 #[ignore]
+async fn live_update_balance_allowance() {
+    let client = authenticated_client();
+    let _resp = client
+        .account_api()
+        .expect("account_api")
+        .update_balance_allowance("COLLATERAL", None, None)
+        .await
+        .expect("update_balance_allowance should succeed");
+}
+
+#[tokio::test]
+#[ignore]
 async fn live_list_trades() {
     let client = authenticated_client();
     let maker = authenticated_address();

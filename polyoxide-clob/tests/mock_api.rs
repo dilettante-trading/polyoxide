@@ -1594,6 +1594,63 @@ async fn batch_prices_history_sends_request_body() {
 }
 
 #[tokio::test]
+async fn update_balance_allowance_puts_to_balance_allowance_with_query() {
+    let mut server = Server::new_async().await;
+
+    let mock = server
+        .mock("PUT", "/balance-allowance")
+        .match_header("POLY_API_KEY", "test-key")
+        .match_query(Matcher::AllOf(vec![
+            Matcher::UrlEncoded("asset_type".into(), "COLLATERAL".into()),
+            Matcher::UrlEncoded("token_id".into(), "0xtoken".into()),
+            Matcher::UrlEncoded("signature_type".into(), "1".into()),
+        ]))
+        .with_status(200)
+        .with_header("content-type", "application/json")
+        .with_body(r#"{}"#)
+        .create_async()
+        .await;
+
+    let clob = test_authed_clob(&server);
+    let resp = clob
+        .account_api()
+        .unwrap()
+        .update_balance_allowance("COLLATERAL", Some("0xtoken".into()), Some(1))
+        .await
+        .unwrap();
+    assert!(resp.is_object());
+    mock.assert_async().await;
+}
+
+#[tokio::test]
+async fn update_balance_allowance_omits_optional_query_params() {
+    let mut server = Server::new_async().await;
+
+    // Without token_id/signature_type, only asset_type should appear in the query string.
+    let mock = server
+        .mock("PUT", "/balance-allowance")
+        .match_header("POLY_API_KEY", "test-key")
+        .match_query(Matcher::UrlEncoded(
+            "asset_type".into(),
+            "CONDITIONAL".into(),
+        ))
+        .with_status(200)
+        .with_header("content-type", "application/json")
+        .with_body(r#"{}"#)
+        .create_async()
+        .await;
+
+    let clob = test_authed_clob(&server);
+    let _resp = clob
+        .account_api()
+        .unwrap()
+        .update_balance_allowance("CONDITIONAL", None, None)
+        .await
+        .unwrap();
+    mock.assert_async().await;
+}
+
+#[tokio::test]
 async fn create_market_order_insufficient_liquidity() {
     let mut server = Server::new_async().await;
 

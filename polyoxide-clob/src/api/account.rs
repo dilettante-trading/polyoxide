@@ -55,19 +55,24 @@ impl AccountApi {
         .query("signature_type", 1)
     }
 
-    /// Update balance allowance for a token
+    /// Force a refresh of the caller's balance and allowances from on-chain data.
+    ///
+    /// Calls `PUT /balance-allowance` with the following query parameters:
+    /// - `asset_type` (required): `"COLLATERAL"` or `"CONDITIONAL"`.
+    /// - `token_id` (optional): asset ID. Defaults to `"-1"` (ERC20 collateral) server-side.
+    /// - `signature_type` (optional): `0` = EOA, `1` = POLY_PROXY, `2` = POLY_GNOSIS_SAFE.
+    ///   Defaults to `0` server-side.
+    ///
+    /// Returns the raw JSON body from the server (typically `{}` on success).
     pub async fn update_balance_allowance(
         &self,
-        token_id: impl Into<String>,
+        asset_type: impl Into<String>,
+        token_id: Option<String>,
+        signature_type: Option<u8>,
     ) -> Result<serde_json::Value, ClobError> {
-        #[derive(Serialize)]
-        struct Body {
-            token_id: String,
-        }
-
-        Request::<serde_json::Value>::post(
+        let mut request = Request::<serde_json::Value>::put(
             self.http_client.clone(),
-            "/balance-allowance/update".to_string(),
+            "/balance-allowance".to_string(),
             AuthMode::L2 {
                 address: self.wallet.clone().address(),
                 credentials: self.credentials.clone(),
@@ -75,11 +80,14 @@ impl AccountApi {
             },
             self.chain_id,
         )
-        .body(&Body {
-            token_id: token_id.into(),
-        })?
-        .send()
-        .await
+        .query("asset_type", asset_type.into());
+        if let Some(token_id) = token_id {
+            request = request.query("token_id", token_id);
+        }
+        if let Some(signature_type) = signature_type {
+            request = request.query("signature_type", signature_type);
+        }
+        request.send().await
     }
 
     /// Send a basic heartbeat to keep the session alive
