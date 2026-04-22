@@ -2,8 +2,7 @@ use crate::account::BuilderAccount;
 use crate::config::{get_contract_config, BuilderConfig, ContractConfig};
 use crate::error::RelayError;
 use crate::types::{
-    NonceResponse, RelayerTransactionResponse, SafeTransaction, SafeTx, TransactionStatusResponse,
-    WalletType,
+    NonceResponse, RelayerTransaction, SafeTransaction, SafeTx, SubmitResponse, WalletType,
 };
 use alloy::hex;
 use alloy::network::TransactionBuilder;
@@ -215,19 +214,17 @@ impl RelayClient {
         Ok(data.nonce)
     }
 
-    /// Query the status of a previously submitted relay transaction.
+    /// Query the full record of a previously submitted relay transaction.
     pub async fn get_transaction(
         &self,
         transaction_id: &str,
-    ) -> Result<TransactionStatusResponse, RelayError> {
+    ) -> Result<RelayerTransaction, RelayError> {
         let url = self
             .http_client
             .base_url
             .join(&format!("transaction?id={}", transaction_id))?;
         let resp = self.get_with_retry("/transaction", &url).await?;
-        resp.json::<TransactionStatusResponse>()
-            .await
-            .map_err(Into::into)
+        resp.json::<RelayerTransaction>().await.map_err(Into::into)
     }
 
     /// Check whether a Safe wallet has been deployed on-chain.
@@ -450,7 +447,7 @@ impl RelayClient {
         &self,
         transactions: Vec<SafeTransaction>,
         metadata: Option<String>,
-    ) -> Result<RelayerTransactionResponse, RelayError> {
+    ) -> Result<SubmitResponse, RelayError> {
         self.execute_with_gas(transactions, metadata, None).await
     }
 
@@ -463,7 +460,7 @@ impl RelayClient {
         transactions: Vec<SafeTransaction>,
         metadata: Option<String>,
         gas_limit: Option<u64>,
-    ) -> Result<RelayerTransactionResponse, RelayError> {
+    ) -> Result<SubmitResponse, RelayError> {
         if transactions.is_empty() {
             return Err(RelayError::Api("No transactions to execute".into()));
         }
@@ -477,7 +474,7 @@ impl RelayClient {
         &self,
         transactions: Vec<SafeTransaction>,
         metadata: Option<String>,
-    ) -> Result<RelayerTransactionResponse, RelayError> {
+    ) -> Result<SubmitResponse, RelayError> {
         let account = self.account.as_ref().ok_or(RelayError::MissingSigner)?;
         let from_address = account.address();
 
@@ -551,7 +548,7 @@ impl RelayClient {
         transactions: Vec<SafeTransaction>,
         metadata: Option<String>,
         gas_limit: Option<u64>,
-    ) -> Result<RelayerTransactionResponse, RelayError> {
+    ) -> Result<SubmitResponse, RelayError> {
         let account = self.account.as_ref().ok_or(RelayError::MissingSigner)?;
         let from_address = account.address();
 
@@ -721,7 +718,7 @@ impl RelayClient {
         &self,
         condition_id: [u8; 32],
         index_sets: Vec<alloy::primitives::U256>,
-    ) -> Result<RelayerTransactionResponse, RelayError> {
+    ) -> Result<SubmitResponse, RelayError> {
         self.submit_gasless_redemption_with_gas_estimation(condition_id, index_sets, false)
             .await
     }
@@ -735,7 +732,7 @@ impl RelayClient {
         condition_id: [u8; 32],
         index_sets: Vec<alloy::primitives::U256>,
         estimate_gas: bool,
-    ) -> Result<RelayerTransactionResponse, RelayError> {
+    ) -> Result<SubmitResponse, RelayError> {
         // 1. Define the specific interface for redemption
         alloy::sol! {
             function redeemPositions(address collateral, bytes32 parentCollectionId, bytes32 conditionId, uint256[] indexSets);
@@ -788,7 +785,7 @@ impl RelayClient {
         &self,
         endpoint: &str,
         body: &T,
-    ) -> Result<RelayerTransactionResponse, RelayError> {
+    ) -> Result<SubmitResponse, RelayError> {
         let url = self.http_client.base_url.join(endpoint)?;
         let body_str = serde_json::to_string(body)?;
         let path = format!("/{}", endpoint);
