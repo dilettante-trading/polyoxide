@@ -61,18 +61,27 @@ impl ListTeams {
     }
 
     /// Filter by league identifier(s)
+    ///
+    /// Safe batch size: ≤ 300 per request. URLs over ~8 KB are rejected
+    /// upstream with `414 URI Too Long`.
     pub fn league(mut self, leagues: impl IntoIterator<Item = impl ToString>) -> Self {
         self.request = self.request.query_many("league", leagues);
         self
     }
 
     /// Filter by team name(s)
+    ///
+    /// Safe batch size: ≤ 200 per request. URL length is capped at ~8 KB
+    /// upstream; name entries vary so pick a cap based on your longest name.
     pub fn name(mut self, names: impl IntoIterator<Item = impl ToString>) -> Self {
         self.request = self.request.query_many("name", names);
         self
     }
 
     /// Filter by team abbreviation(s)
+    ///
+    /// Safe batch size: ≤ 300 per request. Abbreviations are short
+    /// (~3-5 B/entry); URLs over ~8 KB are rejected upstream with `414`.
     pub fn abbreviation(mut self, abbreviations: impl IntoIterator<Item = impl ToString>) -> Self {
         self.request = self.request.query_many("abbreviation", abbreviations);
         self

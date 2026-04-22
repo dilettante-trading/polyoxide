@@ -127,6 +127,9 @@ impl ListEvents {
     }
 
     /// Filter by specific event IDs
+    ///
+    /// Safe batch size: ≤ 400 per request. URLs over ~8 KB are rejected
+    /// upstream with `414 URI Too Long`.
     pub fn id(mut self, ids: impl IntoIterator<Item = i64>) -> Self {
         self.request = self.request.query_many("id", ids);
         self
@@ -139,12 +142,18 @@ impl ListEvents {
     }
 
     /// Exclude events with specified tag IDs
+    ///
+    /// Safe batch size: ≤ 500 per request. Tag IDs are short integers
+    /// (~5 B/entry); URLs over ~8 KB are rejected upstream with `414`.
     pub fn exclude_tag_id(mut self, tag_ids: impl IntoIterator<Item = i64>) -> Self {
         self.request = self.request.query_many("exclude_tag_id", tag_ids);
         self
     }
 
     /// Filter by event slugs
+    ///
+    /// Safe batch size: ≤ 100 per request. URL length is capped at ~8 KB
+    /// upstream; slug entries vary so pick a cap based on your longest slug.
     pub fn slug(mut self, slugs: impl IntoIterator<Item = impl ToString>) -> Self {
         self.request = self.request.query_many("slug", slugs);
         self

@@ -76,18 +76,27 @@ impl ListSeries {
     }
 
     /// Filter by slugs
+    ///
+    /// Safe batch size: ≤ 150 per request. URL length is capped at ~8 KB
+    /// upstream; slug entries vary so pick a cap based on your longest slug.
     pub fn slug(mut self, slugs: impl IntoIterator<Item = impl ToString>) -> Self {
         self.request = self.request.query_many("slug", slugs);
         self
     }
 
     /// Filter by category IDs
+    ///
+    /// Safe batch size: ≤ 100 per request. URLs over ~8 KB are rejected
+    /// upstream with `414 URI Too Long`.
     pub fn categories_ids(mut self, ids: impl IntoIterator<Item = impl ToString>) -> Self {
         self.request = self.request.query_many("categories_ids", ids);
         self
     }
 
     /// Filter by category labels
+    ///
+    /// Safe batch size: ≤ 150 per request. URL length is capped at ~8 KB
+    /// upstream; label entries vary so pick a cap based on your longest label.
     pub fn categories_labels(mut self, labels: impl IntoIterator<Item = impl ToString>) -> Self {
         self.request = self.request.query_many("categories_labels", labels);
         self
