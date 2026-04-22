@@ -1,5 +1,6 @@
 //! API namespace modules for the Data API client.
 
+pub mod accounting;
 pub mod builders;
 pub mod health;
 pub mod holders;

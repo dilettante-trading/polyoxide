@@ -4,6 +4,7 @@ use polyoxide_core::{
 
 use crate::{
     api::{
+        accounting::AccountingApi,
         builders::BuildersApi,
         health::Health,
         holders::Holders,
@@ -108,6 +109,13 @@ impl DataApi {
     /// Get market-positions namespace (`/v1/market-positions`)
     pub fn market_positions(&self) -> MarketPositionsApi {
         MarketPositionsApi {
+            http_client: self.http_client.clone(),
+        }
+    }
+
+    /// Get accounting namespace (`/v1/accounting/snapshot`, returns ZIP bytes)
+    pub fn accounting(&self) -> AccountingApi {
+        AccountingApi {
             http_client: self.http_client.clone(),
         }
     }

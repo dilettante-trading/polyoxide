@@ -293,3 +293,29 @@ async fn live_market_positions() {
         .await
         .expect("market positions should deserialize");
 }
+
+// ── Accounting Snapshot ─────────────────────────────────────────
+
+#[tokio::test]
+#[ignore]
+async fn live_accounting_snapshot() {
+    let client = client();
+    let bytes = client
+        .accounting()
+        .snapshot(TEST_USER)
+        .await
+        .expect("accounting snapshot should succeed");
+    // ZIP archives start with the local-file-header signature "PK\x03\x04".
+    // The Polymarket API may return a minimal archive for empty users, but the
+    // header bytes must still be present.
+    assert!(
+        bytes.len() >= 4,
+        "expected at least ZIP header bytes, got {} bytes",
+        bytes.len()
+    );
+    assert_eq!(
+        &bytes[0..2],
+        b"PK",
+        "response should start with ZIP signature"
+    );
+}

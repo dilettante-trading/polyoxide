@@ -672,6 +672,33 @@ async fn market_positions_list_with_filters() {
 }
 
 #[tokio::test]
+async fn accounting_snapshot_returns_zip_bytes() {
+    let mut server = Server::new_async().await;
+
+    // Local ZIP header bytes ("PK\x03\x04") + a couple of arbitrary bytes, to
+    // prove the helper does not touch or parse the body.
+    let body: Vec<u8> = vec![0x50, 0x4B, 0x03, 0x04, 0xAA, 0xBB, 0xCC];
+
+    let mock = server
+        .mock("GET", "/v1/accounting/snapshot")
+        .match_query(Matcher::UrlEncoded("user".into(), "0xabc123".into()))
+        .with_status(200)
+        .with_header("content-type", "application/zip")
+        .with_body(body.clone())
+        .create_async()
+        .await;
+
+    let data = test_data(&server);
+    let bytes = data
+        .accounting()
+        .snapshot("0xabc123")
+        .await
+        .expect("snapshot returns bytes");
+    assert_eq!(bytes, body);
+    mock.assert_async().await;
+}
+
+#[tokio::test]
 async fn error_404_returns_api_error() {
     let mut server = Server::new_async().await;
 
