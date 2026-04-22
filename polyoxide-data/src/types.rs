@@ -257,6 +257,12 @@ pub enum ActivityType {
     Reward,
     /// Conversion activity
     Conversion,
+    /// Maker rebate activity
+    #[serde(rename = "MAKER_REBATE")]
+    MakerRebate,
+    /// Referral reward activity
+    #[serde(rename = "REFERRAL_REWARD")]
+    ReferralReward,
 }
 
 impl std::fmt::Display for ActivityType {
@@ -268,6 +274,8 @@ impl std::fmt::Display for ActivityType {
             Self::Redeem => write!(f, "REDEEM"),
             Self::Reward => write!(f, "REWARD"),
             Self::Conversion => write!(f, "CONVERSION"),
+            Self::MakerRebate => write!(f, "MAKER_REBATE"),
+            Self::ReferralReward => write!(f, "REFERRAL_REWARD"),
         }
     }
 }
@@ -555,6 +563,8 @@ mod tests {
             ActivityType::Redeem,
             ActivityType::Reward,
             ActivityType::Conversion,
+            ActivityType::MakerRebate,
+            ActivityType::ReferralReward,
         ];
         for variant in variants {
             let serialized = serde_json::to_value(variant).unwrap();
@@ -577,6 +587,8 @@ mod tests {
             ActivityType::Redeem,
             ActivityType::Reward,
             ActivityType::Conversion,
+            ActivityType::MakerRebate,
+            ActivityType::ReferralReward,
         ] {
             let json = serde_json::to_string(&variant).unwrap();
             let deserialized: ActivityType = serde_json::from_str(&json).unwrap();
