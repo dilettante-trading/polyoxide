@@ -39,6 +39,26 @@ impl Markets {
         }
     }
 
+    /// Look up markets by ID, returning both open and closed markets.
+    ///
+    /// Unlike [`Self::list`] with `.id(…)`, which inherits the upstream
+    /// `closed=false` default and silently drops closed markets, `get_many`
+    /// issues two parallel requests (`closed=true` and `closed=false`) and
+    /// merges the results, so callers get every matching market regardless of
+    /// status. This matches the semantics of the single-market [`Self::get`]
+    /// endpoint, batched.
+    ///
+    /// Safe batch size: ≤ 400 IDs per call (same URL-length ceiling as
+    /// [`ListMarkets::id`]). The two fan-out requests are issued concurrently,
+    /// so wall-clock latency is one round-trip, not two.
+    pub fn get_many(&self, ids: impl IntoIterator<Item = i64>) -> GetManyMarkets {
+        GetManyMarkets {
+            http_client: self.http_client.clone(),
+            ids: ids.into_iter().collect(),
+            include_tag: None,
+        }
+    }
+
     /// Get tags for a market
     pub fn tags(&self, id: impl Into<String>) -> Request<Vec<Tag>, GammaError> {
         Request::new(
@@ -63,6 +83,56 @@ impl GetMarket {
     /// Execute the request
     pub async fn send(self) -> Result<Market, GammaError> {
         self.request.send().await
+    }
+}
+
+/// Request builder for batch lookup of markets by ID.
+///
+/// On [`Self::send`] this issues two parallel `/markets` requests — one with
+/// `closed=true`, one with `closed=false` — and concatenates the results. The
+/// two upstream responses are disjoint (a market is either closed or not), so
+/// merging by concatenation is exact.
+pub struct GetManyMarkets {
+    http_client: HttpClient,
+    ids: Vec<i64>,
+    include_tag: Option<bool>,
+}
+
+impl GetManyMarkets {
+    /// Include tag data in results
+    pub fn include_tag(mut self, include: bool) -> Self {
+        self.include_tag = Some(include);
+        self
+    }
+
+    /// Execute the request.
+    ///
+    /// Returns an empty vec without hitting the network when called with no
+    /// IDs. Otherwise fans out `closed=true` and `closed=false` concurrently
+    /// and fails fast if either leg errors.
+    pub async fn send(self) -> Result<Vec<Market>, GammaError> {
+        if self.ids.is_empty() {
+            return Ok(Vec::new());
+        }
+
+        let mut req_closed: Request<Vec<Market>, GammaError> =
+            Request::new(self.http_client.clone(), "/markets")
+                .query_many("id", self.ids.iter().copied())
+                .query("closed", true);
+        let mut req_open: Request<Vec<Market>, GammaError> =
+            Request::new(self.http_client, "/markets")
+                .query_many("id", self.ids.iter().copied())
+                .query("closed", false);
+
+        if let Some(include) = self.include_tag {
+            req_closed = req_closed.query("include_tag", include);
+            req_open = req_open.query("include_tag", include);
+        }
+
+        let (mut closed_markets, open_markets) =
+            tokio::try_join!(req_closed.send(), req_open.send())?;
+        closed_markets.extend(open_markets);
+        Ok(closed_markets)
     }
 }
 
@@ -100,6 +170,13 @@ impl ListMarkets {
     ///
     /// Safe batch size: ≤ 400 per request. URLs over ~8 KB are rejected
     /// upstream with `414 URI Too Long`; empirically the ceiling is ~583.
+    ///
+    /// # Note on closed markets
+    ///
+    /// The upstream `/markets` endpoint applies an implicit `closed=false`
+    /// default when no `closed` param is sent, so this filter silently drops
+    /// closed markets unless `.closed(true)` is also set. For pinpoint lookup
+    /// by ID regardless of status, use [`Markets::get_many`].
     pub fn id(mut self, ids: impl IntoIterator<Item = i64>) -> Self {
         self.request = self.request.query_many("id", ids);
         self
@@ -109,6 +186,11 @@ impl ListMarkets {
     ///
     /// Safe batch size: ≤ 100 per request. URL length is capped at ~8 KB
     /// upstream; slug entries vary so pick a cap based on your longest slug.
+    ///
+    /// # Note on closed markets
+    ///
+    /// Same trap as [`Self::id`]: upstream defaults to `closed=false`, so this
+    /// filter drops closed markets unless `.closed(true)` is also set.
     pub fn slug(mut self, slugs: impl IntoIterator<Item = impl ToString>) -> Self {
         self.request = self.request.query_many("slug", slugs);
         self
@@ -128,6 +210,11 @@ impl ListMarkets {
     /// Safe batch size: ≤ 60 per request. Condition IDs are 66-char hex
     /// (~80 B/entry); empirically the upstream ceiling is exactly 100 before
     /// `414 URI Too Long`.
+    ///
+    /// # Note on closed markets
+    ///
+    /// Same trap as [`Self::id`]: upstream defaults to `closed=false`, so this
+    /// filter drops closed markets unless `.closed(true)` is also set.
     pub fn condition_ids(mut self, condition_ids: impl IntoIterator<Item = impl ToString>) -> Self {
         self.request = self.request.query_many("condition_ids", condition_ids);
         self
@@ -351,5 +438,13 @@ mod tests {
     fn test_market_tags_accepts_str_and_string() {
         let _req1 = gamma().markets().tags("12345");
         let _req2 = gamma().markets().tags(String::from("12345"));
+    }
+
+    #[test]
+    fn test_get_many_builds_with_include_tag() {
+        let _req = gamma()
+            .markets()
+            .get_many(vec![1i64, 2, 3])
+            .include_tag(true);
     }
 }

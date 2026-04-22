@@ -135,6 +135,66 @@ async fn live_list_markets_closed_false() {
     }
 }
 
+#[tokio::test]
+#[ignore]
+async fn live_get_many_returns_both_open_and_closed() {
+    let gamma = client();
+
+    // Discover one open and one closed market ID.
+    let open = gamma
+        .markets()
+        .list()
+        .closed(false)
+        .limit(1)
+        .send()
+        .await
+        .expect("list open markets");
+    let closed = gamma
+        .markets()
+        .list()
+        .closed(true)
+        .limit(1)
+        .send()
+        .await
+        .expect("list closed markets");
+
+    let open_id: i64 = open
+        .first()
+        .expect("need an open market")
+        .id
+        .parse()
+        .expect("open market id should be numeric");
+    let closed_id: i64 = closed
+        .first()
+        .expect("need a closed market")
+        .id
+        .parse()
+        .expect("closed market id should be numeric");
+
+    let markets = gamma
+        .markets()
+        .get_many([open_id, closed_id])
+        .send()
+        .await
+        .expect("get_many should succeed");
+
+    let open_str = open_id.to_string();
+    let closed_str = closed_id.to_string();
+    let returned: Vec<&str> = markets.iter().map(|m| m.id.as_str()).collect();
+    assert!(
+        returned.contains(&open_str.as_str()),
+        "open market {open_id} missing from get_many result: {returned:?}"
+    );
+    assert!(
+        returned.contains(&closed_str.as_str()),
+        "closed market {closed_id} missing from get_many result: {returned:?}"
+    );
+    assert!(
+        markets.iter().any(|m| m.closed == Some(true)),
+        "get_many result should include the closed market with closed=true"
+    );
+}
+
 // ── Events ──────────────────────────────────────────────────────
 
 #[tokio::test]

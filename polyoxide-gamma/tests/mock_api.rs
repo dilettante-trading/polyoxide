@@ -292,6 +292,99 @@ async fn error_400_returns_validation_error() {
 }
 
 #[tokio::test]
+async fn get_many_fans_out_closed_true_and_false() {
+    let mut server = Server::new_async().await;
+
+    // Regex (not Matcher::UrlEncoded) because mockito 1.7's UrlEncoded matcher
+    // cannot assert multiple values for the same key (`id=1&id=2`) — anchored
+    // regex is the reliable way to pin a specific repeated-key query pair.
+    let mock_closed = server
+        .mock("GET", "/markets")
+        .match_query(Matcher::AllOf(vec![
+            Matcher::Regex(r"(^|&)id=1(&|$)".into()),
+            Matcher::Regex(r"(^|&)id=2(&|$)".into()),
+            Matcher::Regex(r"(^|&)closed=true(&|$)".into()),
+        ]))
+        .with_status(200)
+        .with_header("content-type", "application/json")
+        .with_body(
+            r#"[{
+                "id": "1",
+                "conditionId": "0xcond1",
+                "question": "Closed market?",
+                "description": "A closed market",
+                "marketMakerAddress": "0xaddr1",
+                "closed": true
+            }]"#,
+        )
+        .expect(1)
+        .create_async()
+        .await;
+
+    let mock_open = server
+        .mock("GET", "/markets")
+        .match_query(Matcher::AllOf(vec![
+            Matcher::Regex(r"(^|&)id=1(&|$)".into()),
+            Matcher::Regex(r"(^|&)id=2(&|$)".into()),
+            Matcher::Regex(r"(^|&)closed=false(&|$)".into()),
+        ]))
+        .with_status(200)
+        .with_header("content-type", "application/json")
+        .with_body(
+            r#"[{
+                "id": "2",
+                "conditionId": "0xcond2",
+                "question": "Open market?",
+                "description": "An open market",
+                "marketMakerAddress": "0xaddr2",
+                "closed": false
+            }]"#,
+        )
+        .expect(1)
+        .create_async()
+        .await;
+
+    let gamma = test_gamma(&server);
+    let markets = gamma.markets().get_many([1i64, 2]).send().await.unwrap();
+
+    assert_eq!(markets.len(), 2);
+    let ids: Vec<&str> = markets.iter().map(|m| m.id.as_str()).collect();
+    assert!(ids.contains(&"1"), "missing closed market in merged result");
+    assert!(ids.contains(&"2"), "missing open market in merged result");
+    assert!(
+        markets.iter().any(|m| m.closed == Some(true)),
+        "merged result should include the closed market"
+    );
+
+    mock_closed.assert_async().await;
+    mock_open.assert_async().await;
+}
+
+#[tokio::test]
+async fn get_many_empty_ids_short_circuits() {
+    let mut server = Server::new_async().await;
+
+    // Expect zero hits to /markets — an empty-id call must not touch the network.
+    let mock = server
+        .mock("GET", "/markets")
+        .with_status(500)
+        .expect(0)
+        .create_async()
+        .await;
+
+    let gamma = test_gamma(&server);
+    let markets = gamma
+        .markets()
+        .get_many(Vec::<i64>::new())
+        .send()
+        .await
+        .unwrap();
+
+    assert!(markets.is_empty());
+    mock.assert_async().await;
+}
+
+#[tokio::test]
 async fn malformed_json_returns_serialization_error() {
     let mut server = Server::new_async().await;
 
