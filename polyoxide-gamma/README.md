@@ -107,8 +107,7 @@ let events = gamma.events().list()
 let event = gamma.events().get("event_id").include_chat(true).send().await?;
 let event = gamma.events().get_by_slug("slug").send().await?;
 
-// Related events, tags, tweet count, comment count
-let related = gamma.events().get_related_by_slug("slug").send().await?;
+// Tags, tweet count, comment count
 let tags    = gamma.events().tags("event_id").send().await?;
 let tweets  = gamma.events().tweet_count("event_id").send().await?;
 let comments = gamma.events().comment_count("event_id").send().await?;

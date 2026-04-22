@@ -67,11 +67,6 @@ pub enum EventsCommand {
         /// Event slug
         slug: String,
     },
-    /// Get related events by slug
-    Related {
-        /// Event slug
-        slug: String,
-    },
 }
 
 impl EventsCommand {
@@ -151,10 +146,6 @@ impl EventsCommand {
             Self::GetBySlug { slug } => {
                 let event = gamma.events().get_by_slug(&slug).send().await?;
                 println!("{}", serde_json::to_string_pretty(&event)?);
-            }
-            Self::Related { slug } => {
-                let events = gamma.events().get_related_by_slug(&slug).send().await?;
-                println!("{}", serde_json::to_string_pretty(&events)?);
             }
         }
         Ok(())
@@ -318,19 +309,5 @@ mod tests {
             EventsCommand::GetBySlug { slug } => assert_eq!(slug, "my-event"),
             _ => panic!("expected GetBySlug variant"),
         }
-    }
-
-    #[test]
-    fn related_parses() {
-        let cmd = parse(&["test", "related", "event-slug"]);
-        match cmd {
-            EventsCommand::Related { slug } => assert_eq!(slug, "event-slug"),
-            _ => panic!("expected Related variant"),
-        }
-    }
-
-    #[test]
-    fn related_requires_slug() {
-        assert_parse_err(&["test", "related"]);
     }
 }

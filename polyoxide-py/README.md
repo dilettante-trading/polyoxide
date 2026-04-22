@@ -90,7 +90,7 @@ Constructed with optional `base_url`, `timeout_ms`, and `pool_size` keyword argu
 | Namespace | Methods |
 |-----------|---------|
 | `.markets()` | `get(id)`, `get_by_slug(slug)`, `list(...)`, `tags(id)` |
-| `.events()` | `get(id)`, `get_by_slug(slug)`, `list(...)`, `get_related_by_slug(slug)`, `tags(id)`, `tweet_count(id)`, `comment_count(id)` |
+| `.events()` | `get(id)`, `get_by_slug(slug)`, `list(...)`, `tags(id)`, `tweet_count(id)`, `comment_count(id)` |
 | `.series()` | `get(id)`, `list(...)` |
 | `.tags()` | `get(id)`, `get_by_slug(slug)`, `list(...)`, `get_related(id)`, `get_related_by_slug(slug)` |
 | `.comments()` | `get(id)`, `list(...)`, `by_user(address)` |

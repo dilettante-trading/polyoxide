@@ -39,14 +39,6 @@ impl Events {
         }
     }
 
-    /// Get related events by slug
-    pub fn get_related_by_slug(&self, slug: impl Into<String>) -> Request<Vec<Event>, GammaError> {
-        Request::new(
-            self.http_client.clone(),
-            format!("/events/slug/{}/related", urlencoding::encode(&slug.into())),
-        )
-    }
-
     /// Get tags for an event
     pub fn tags(&self, id: impl Into<String>) -> Request<Vec<Tag>, GammaError> {
         Request::new(
@@ -325,12 +317,6 @@ mod tests {
     fn test_get_by_slug_accepts_str_and_string() {
         let _req1 = gamma().events().get_by_slug("slug");
         let _req2 = gamma().events().get_by_slug(String::from("slug"));
-    }
-
-    #[test]
-    fn test_get_related_by_slug_accepts_str_and_string() {
-        let _req1 = gamma().events().get_related_by_slug("slug");
-        let _req2 = gamma().events().get_related_by_slug(String::from("slug"));
     }
 
     #[test]

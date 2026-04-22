@@ -224,16 +224,6 @@ client_ns!(
         }
         Ok(PyEvent::from(req.send().await.map_err(gamma_err)?))
     },
-    #[pyo3(signature = (slug,))]
-    fn get_related_by_slug(slug: String) -> Vec<PyEvent> {
-        let result = client
-            .events()
-            .get_related_by_slug(slug)
-            .send()
-            .await
-            .map_err(gamma_err)?;
-        Ok(result.into_iter().map(PyEvent::from).collect::<Vec<_>>())
-    },
     #[pyo3(signature = (id,))]
     fn tags(id: String) -> Vec<PyTag> {
         let result = client.events().tags(id).send().await.map_err(gamma_err)?;
