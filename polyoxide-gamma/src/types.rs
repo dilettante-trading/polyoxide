@@ -533,6 +533,111 @@ pub struct KeysetEventsResponse {
     pub next_cursor: Option<String>,
 }
 
+/// Response body from `GET /markets/{id}/description`.
+///
+/// The endpoint returns `{ "description": "..." }`. The field is modelled as
+/// `Option<String>` so markets without a description still deserialize.
+#[cfg_attr(feature = "specta", derive(specta::Type))]
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
+#[serde(rename_all = "camelCase")]
+pub struct MarketDescription {
+    pub description: Option<String>,
+}
+
+/// JSON request body for `POST /markets/information` and `POST /markets/abridged`.
+///
+/// Fields are all optional; only set the filters you need. `Vec` fields are
+/// omitted from the serialized payload when empty, and `Option` fields when
+/// `None`, so a default-constructed body serializes to `{}`.
+#[cfg_attr(feature = "specta", derive(specta::Type))]
+#[derive(Debug, Clone, Default, Serialize, Deserialize, PartialEq)]
+#[serde(rename_all = "camelCase")]
+pub struct MarketsInformationBody {
+    /// Filter by market numeric IDs.
+    #[cfg_attr(feature = "specta", specta(type = Vec<f64>))]
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub id: Vec<i64>,
+    /// Filter by market slugs.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub slug: Vec<String>,
+    /// When set, restrict to markets with this closed flag.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub closed: Option<bool>,
+    /// Filter by CLOB token IDs.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub clob_token_ids: Vec<String>,
+    /// Filter by condition IDs.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub condition_ids: Vec<String>,
+    /// Filter by market-maker contract addresses.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub market_maker_address: Vec<String>,
+    /// Minimum liquidity.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub liquidity_num_min: Option<f64>,
+    /// Maximum liquidity.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub liquidity_num_max: Option<f64>,
+    /// Minimum volume.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub volume_num_min: Option<f64>,
+    /// Maximum volume.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub volume_num_max: Option<f64>,
+    /// Minimum start date (ISO-8601).
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub start_date_min: Option<String>,
+    /// Maximum start date (ISO-8601).
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub start_date_max: Option<String>,
+    /// Minimum end date (ISO-8601).
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub end_date_min: Option<String>,
+    /// Maximum end date (ISO-8601).
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub end_date_max: Option<String>,
+    /// Include related-tag matches when filtering by `tag_id`.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub related_tags: Option<bool>,
+    /// Tag numeric id to filter by.
+    #[cfg_attr(feature = "specta", specta(type = Option<f64>))]
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub tag_id: Option<i64>,
+    /// Filter to "create your own market" markets.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub cyom: Option<bool>,
+    /// UMA resolution status filter.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub uma_resolution_status: Option<String>,
+    /// Game ID filter.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub game_id: Option<String>,
+    /// Restrict to these sports market types.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub sports_market_types: Vec<String>,
+    /// Minimum reward size.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub rewards_min_size: Option<f64>,
+    /// Filter by question IDs.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub question_ids: Vec<String>,
+    /// Include tags in response.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub include_tags: Option<bool>,
+}
+
+/// Keyset-paginated markets response from `GET /markets/keyset`.
+///
+/// `next_cursor` is `None` on the last page. Like `KeysetEventsResponse`, the
+/// upstream JSON key is `next_cursor` (snake_case), not `nextCursor`.
+#[cfg_attr(feature = "specta", derive(specta::Type))]
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct KeysetMarketsResponse {
+    #[serde(default)]
+    pub markets: Vec<Market>,
+    pub next_cursor: Option<String>,
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -1315,5 +1420,104 @@ mod tests {
         let json = serde_json::to_string(&tag).unwrap();
         let back: Tag = serde_json::from_str(&json).unwrap();
         assert_eq!(tag, back);
+    }
+
+    // ── MarketDescription ───────────────────────────────────────
+
+    #[test]
+    fn test_market_description_deserialization() {
+        let json = r#"{"description": "Will X happen?"}"#;
+        let md: MarketDescription = serde_json::from_str(json).unwrap();
+        assert_eq!(md.description.as_deref(), Some("Will X happen?"));
+    }
+
+    #[test]
+    fn test_market_description_null() {
+        let json = r#"{"description": null}"#;
+        let md: MarketDescription = serde_json::from_str(json).unwrap();
+        assert!(md.description.is_none());
+    }
+
+    // ── MarketsInformationBody ──────────────────────────────────
+
+    #[test]
+    fn test_markets_information_body_default_serializes_empty() {
+        let body = MarketsInformationBody::default();
+        let json = serde_json::to_string(&body).unwrap();
+        assert_eq!(json, "{}");
+    }
+
+    #[test]
+    fn test_markets_information_body_populated_roundtrip() {
+        let body = MarketsInformationBody {
+            id: vec![1, 2, 3],
+            slug: vec!["will-x".into(), "will-y".into()],
+            closed: Some(true),
+            clob_token_ids: vec!["tok-a".into()],
+            condition_ids: vec!["0xcond".into()],
+            market_maker_address: vec!["0xmm".into()],
+            liquidity_num_min: Some(100.0),
+            liquidity_num_max: Some(10_000.0),
+            volume_num_min: Some(50.0),
+            volume_num_max: None,
+            start_date_min: Some("2025-01-01T00:00:00Z".into()),
+            start_date_max: None,
+            end_date_min: None,
+            end_date_max: Some("2026-01-01T00:00:00Z".into()),
+            related_tags: Some(true),
+            tag_id: Some(42),
+            cyom: Some(false),
+            uma_resolution_status: Some("resolved".into()),
+            game_id: Some("game-7".into()),
+            sports_market_types: vec!["moneyline".into(), "spread".into()],
+            rewards_min_size: Some(10.0),
+            question_ids: vec!["q1".into()],
+            include_tags: Some(true),
+        };
+        let json = serde_json::to_string(&body).unwrap();
+        // Field names are camelCase (from openapi)
+        assert!(json.contains("\"clobTokenIds\""));
+        assert!(json.contains("\"marketMakerAddress\""));
+        assert!(json.contains("\"rewardsMinSize\""));
+        let back: MarketsInformationBody = serde_json::from_str(&json).unwrap();
+        assert_eq!(body, back);
+    }
+
+    #[test]
+    fn test_markets_information_body_partial_omits_empty() {
+        let body = MarketsInformationBody {
+            closed: Some(true),
+            ..Default::default()
+        };
+        let json = serde_json::to_string(&body).unwrap();
+        assert_eq!(json, r#"{"closed":true}"#);
+    }
+
+    // ── KeysetMarketsResponse ───────────────────────────────────
+
+    #[test]
+    fn test_keyset_markets_response_full() {
+        let json = r#"{
+            "markets": [{
+                "id": "1",
+                "conditionId": "0xcond",
+                "description": "desc",
+                "question": "q?",
+                "marketMakerAddress": "0xmm"
+            }],
+            "next_cursor": "abc"
+        }"#;
+        let resp: KeysetMarketsResponse = serde_json::from_str(json).unwrap();
+        assert_eq!(resp.markets.len(), 1);
+        assert_eq!(resp.markets[0].id, "1");
+        assert_eq!(resp.next_cursor.as_deref(), Some("abc"));
+    }
+
+    #[test]
+    fn test_keyset_markets_response_last_page() {
+        let json = r#"{"markets": []}"#;
+        let resp: KeysetMarketsResponse = serde_json::from_str(json).unwrap();
+        assert!(resp.markets.is_empty());
+        assert!(resp.next_cursor.is_none());
     }
 }

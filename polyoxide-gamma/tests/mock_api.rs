@@ -584,3 +584,181 @@ async fn malformed_json_returns_serialization_error() {
 
     mock.assert_async().await;
 }
+
+// ── /markets/{id}/description ──────────────────────────────────
+
+#[tokio::test]
+async fn get_market_description_returns_text() {
+    let mut server = Server::new_async().await;
+    let mock = server
+        .mock("GET", "/markets/12345/description")
+        .with_status(200)
+        .with_header("content-type", "application/json")
+        .with_body(r#"{"description": "Will X happen?"}"#)
+        .create_async()
+        .await;
+
+    let gamma = test_gamma(&server);
+    let desc = gamma
+        .markets()
+        .get_description("12345")
+        .send()
+        .await
+        .unwrap();
+    assert_eq!(desc.description.as_deref(), Some("Will X happen?"));
+    mock.assert_async().await;
+}
+
+// ── /markets/information (POST) ────────────────────────────────
+
+#[tokio::test]
+async fn query_markets_by_information_posts_body() {
+    use polyoxide_gamma::types::MarketsInformationBody;
+
+    let mut server = Server::new_async().await;
+    let mock = server
+        .mock("POST", "/markets/information")
+        .match_header("content-type", "application/json")
+        .match_body(Matcher::JsonString(
+            r#"{"id":[1,2],"closed":true}"#.to_string(),
+        ))
+        .with_status(200)
+        .with_header("content-type", "application/json")
+        .with_body(
+            r#"[{
+                "id": "1",
+                "conditionId": "0xcond",
+                "description": "Desc",
+                "question": "Q?",
+                "marketMakerAddress": "0xmm"
+            }]"#,
+        )
+        .create_async()
+        .await;
+
+    let gamma = test_gamma(&server);
+    let body = MarketsInformationBody {
+        id: vec![1, 2],
+        closed: Some(true),
+        ..Default::default()
+    };
+    let markets = gamma
+        .markets()
+        .query_by_information(&body)
+        .await
+        .unwrap();
+    assert_eq!(markets.len(), 1);
+    assert_eq!(markets[0].id, "1");
+    mock.assert_async().await;
+}
+
+// ── /markets/abridged (POST) ───────────────────────────────────
+
+#[tokio::test]
+async fn query_abridged_markets_posts_body() {
+    use polyoxide_gamma::types::MarketsInformationBody;
+
+    let mut server = Server::new_async().await;
+    let mock = server
+        .mock("POST", "/markets/abridged")
+        .match_header("content-type", "application/json")
+        .match_body(Matcher::JsonString(
+            r#"{"slug":["mkt-a"],"includeTags":true}"#.to_string(),
+        ))
+        .with_status(200)
+        .with_header("content-type", "application/json")
+        .with_body(
+            r#"[{
+                "id": "7",
+                "conditionId": "0xcond7",
+                "description": "Desc",
+                "question": "Q?",
+                "marketMakerAddress": "0xmm"
+            }]"#,
+        )
+        .create_async()
+        .await;
+
+    let gamma = test_gamma(&server);
+    let body = MarketsInformationBody {
+        slug: vec!["mkt-a".into()],
+        include_tags: Some(true),
+        ..Default::default()
+    };
+    let markets = gamma.markets().query_abridged(&body).await.unwrap();
+    assert_eq!(markets.len(), 1);
+    assert_eq!(markets[0].id, "7");
+    mock.assert_async().await;
+}
+
+// ── /markets/keyset ────────────────────────────────────────────
+
+#[tokio::test]
+async fn list_markets_keyset_returns_cursor() {
+    let mut server = Server::new_async().await;
+    let mock = server
+        .mock("GET", "/markets/keyset")
+        .match_query(Matcher::AllOf(vec![
+            Matcher::UrlEncoded("limit".into(), "2".into()),
+            Matcher::UrlEncoded("after_cursor".into(), "abc123".into()),
+            Matcher::UrlEncoded("closed".into(), "false".into()),
+        ]))
+        .with_status(200)
+        .with_header("content-type", "application/json")
+        .with_body(
+            r#"{
+                "markets": [
+                    {
+                        "id": "k1",
+                        "conditionId": "0xcond1",
+                        "description": "d1",
+                        "question": "q1",
+                        "marketMakerAddress": "0xmm1"
+                    },
+                    {
+                        "id": "k2",
+                        "conditionId": "0xcond2",
+                        "description": "d2",
+                        "question": "q2",
+                        "marketMakerAddress": "0xmm2"
+                    }
+                ],
+                "next_cursor": "next-token"
+            }"#,
+        )
+        .create_async()
+        .await;
+
+    let gamma = test_gamma(&server);
+    let resp = gamma
+        .markets()
+        .list_keyset()
+        .limit(2)
+        .after_cursor("abc123")
+        .closed(false)
+        .send()
+        .await
+        .unwrap();
+    assert_eq!(resp.markets.len(), 2);
+    assert_eq!(resp.markets[0].id, "k1");
+    assert_eq!(resp.next_cursor.as_deref(), Some("next-token"));
+    mock.assert_async().await;
+}
+
+#[tokio::test]
+async fn list_markets_keyset_last_page_has_no_cursor() {
+    let mut server = Server::new_async().await;
+    let mock = server
+        .mock("GET", "/markets/keyset")
+        .with_status(200)
+        .with_header("content-type", "application/json")
+        .with_body(r#"{"markets": []}"#)
+        .create_async()
+        .await;
+
+    let gamma = test_gamma(&server);
+    let resp = gamma.markets().list_keyset().send().await.unwrap();
+    assert!(resp.markets.is_empty());
+    assert!(resp.next_cursor.is_none());
+    mock.assert_async().await;
+}

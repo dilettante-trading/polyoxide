@@ -1,8 +1,8 @@
-use polyoxide_core::{HttpClient, QueryBuilder, Request};
+use polyoxide_core::{ApiError, HttpClient, QueryBuilder, Request, RequestError};
 
 use crate::{
     error::GammaError,
-    types::{Market, Tag},
+    types::{KeysetMarketsResponse, Market, MarketDescription, MarketsInformationBody, Tag},
 };
 
 /// Markets namespace for market-related operations
@@ -66,6 +66,87 @@ impl Markets {
             format!("/markets/{}/tags", urlencoding::encode(&id.into())),
         )
     }
+
+    /// Get a market's description text (`GET /markets/{id}/description`).
+    pub fn get_description(
+        &self,
+        id: impl Into<String>,
+    ) -> Request<MarketDescription, GammaError> {
+        Request::new(
+            self.http_client.clone(),
+            format!(
+                "/markets/{}/description",
+                urlencoding::encode(&id.into())
+            ),
+        )
+    }
+
+    /// Query markets by an information filter body (`POST /markets/information`).
+    ///
+    /// Unlike [`Self::list`], the filter parameters are passed in the request
+    /// body rather than the query string, allowing larger batches of IDs,
+    /// slugs, token IDs, etc. without hitting URL-length limits.
+    pub async fn query_by_information(
+        &self,
+        body: &MarketsInformationBody,
+    ) -> Result<Vec<Market>, GammaError> {
+        post_json(&self.http_client, "/markets/information", body).await
+    }
+
+    /// Query abridged markets by an information filter body
+    /// (`POST /markets/abridged`). Returns a reduced-payload market list.
+    pub async fn query_abridged(
+        &self,
+        body: &MarketsInformationBody,
+    ) -> Result<Vec<Market>, GammaError> {
+        post_json(&self.http_client, "/markets/abridged", body).await
+    }
+
+    /// List markets using cursor-based (keyset) pagination
+    /// (`GET /markets/keyset`).
+    ///
+    /// Prefer this over [`Self::list`] for stable paging through large result
+    /// sets. Use `next_cursor` from each response as `after_cursor` in the
+    /// next request; pagination is complete when `next_cursor` is `None`.
+    pub fn list_keyset(&self) -> ListKeysetMarkets {
+        ListKeysetMarkets {
+            request: Request::new(self.http_client.clone(), "/markets/keyset"),
+        }
+    }
+}
+
+/// POST a JSON body and deserialize a JSON response. Shared by
+/// `query_by_information` and `query_abridged`.
+async fn post_json<B: serde::Serialize, T: serde::de::DeserializeOwned>(
+    http: &HttpClient,
+    path: &str,
+    body: &B,
+) -> Result<T, GammaError> {
+    let url = http
+        .base_url
+        .join(path)
+        .map_err(|e| GammaError::Api(ApiError::from(e)))?;
+
+    http.acquire_rate_limit(path, Some(&reqwest::Method::POST))
+        .await;
+    let _permit = http.acquire_concurrency().await;
+    let response = http
+        .client
+        .post(url)
+        .json(body)
+        .send()
+        .await
+        .map_err(|e| GammaError::Api(ApiError::from(e)))?;
+
+    if !response.status().is_success() {
+        return Err(GammaError::from_response(response).await);
+    }
+
+    let text = response
+        .text()
+        .await
+        .map_err(|e| GammaError::Api(ApiError::from(e)))?;
+    serde_json::from_str(&text).map_err(|e| GammaError::Api(ApiError::from(e)))
 }
 
 /// Request builder for getting a single market
@@ -364,6 +445,183 @@ impl ListMarkets {
     }
 }
 
+/// Request builder for [`Markets::list_keyset`].
+pub struct ListKeysetMarkets {
+    request: Request<KeysetMarketsResponse, GammaError>,
+}
+
+impl ListKeysetMarkets {
+    /// Maximum number of results to return (upstream max 1000).
+    pub fn limit(mut self, limit: u32) -> Self {
+        self.request = self.request.query("limit", limit);
+        self
+    }
+
+    /// Comma-separated list of JSON field names to order by.
+    pub fn order(mut self, order: impl Into<String>) -> Self {
+        self.request = self.request.query("order", order.into());
+        self
+    }
+
+    /// Sort direction (used only when `order` is set).
+    pub fn ascending(mut self, ascending: bool) -> Self {
+        self.request = self.request.query("ascending", ascending);
+        self
+    }
+
+    /// Opaque cursor token from a previous response's `next_cursor`.
+    pub fn after_cursor(mut self, cursor: impl Into<String>) -> Self {
+        self.request = self.request.query("after_cursor", cursor.into());
+        self
+    }
+
+    /// Filter by specific market IDs.
+    pub fn id(mut self, ids: impl IntoIterator<Item = i64>) -> Self {
+        self.request = self.request.query_many("id", ids);
+        self
+    }
+
+    /// Filter by market slugs.
+    pub fn slug(mut self, slugs: impl IntoIterator<Item = impl ToString>) -> Self {
+        self.request = self.request.query_many("slug", slugs);
+        self
+    }
+
+    /// Filter by closed status (defaults to `false` upstream).
+    pub fn closed(mut self, closed: bool) -> Self {
+        self.request = self.request.query("closed", closed);
+        self
+    }
+
+    /// Filter by CLOB token IDs.
+    pub fn clob_token_ids(mut self, ids: impl IntoIterator<Item = impl ToString>) -> Self {
+        self.request = self.request.query_many("clob_token_ids", ids);
+        self
+    }
+
+    /// Filter by condition IDs.
+    pub fn condition_ids(mut self, ids: impl IntoIterator<Item = impl ToString>) -> Self {
+        self.request = self.request.query_many("condition_ids", ids);
+        self
+    }
+
+    /// Filter by question IDs.
+    pub fn question_ids(mut self, ids: impl IntoIterator<Item = impl ToString>) -> Self {
+        self.request = self.request.query_many("question_ids", ids);
+        self
+    }
+
+    /// Filter by market-maker addresses.
+    pub fn market_maker_address(
+        mut self,
+        addresses: impl IntoIterator<Item = impl ToString>,
+    ) -> Self {
+        self.request = self.request.query_many("market_maker_address", addresses);
+        self
+    }
+
+    /// Set minimum liquidity threshold.
+    pub fn liquidity_num_min(mut self, min: f64) -> Self {
+        self.request = self.request.query("liquidity_num_min", min);
+        self
+    }
+
+    /// Set maximum liquidity threshold.
+    pub fn liquidity_num_max(mut self, max: f64) -> Self {
+        self.request = self.request.query("liquidity_num_max", max);
+        self
+    }
+
+    /// Set minimum trading volume.
+    pub fn volume_num_min(mut self, min: f64) -> Self {
+        self.request = self.request.query("volume_num_min", min);
+        self
+    }
+
+    /// Set maximum trading volume.
+    pub fn volume_num_max(mut self, max: f64) -> Self {
+        self.request = self.request.query("volume_num_max", max);
+        self
+    }
+
+    /// Set earliest market start date (ISO 8601 format).
+    pub fn start_date_min(mut self, date: impl Into<String>) -> Self {
+        self.request = self.request.query("start_date_min", date.into());
+        self
+    }
+
+    /// Set latest market start date (ISO 8601 format).
+    pub fn start_date_max(mut self, date: impl Into<String>) -> Self {
+        self.request = self.request.query("start_date_max", date.into());
+        self
+    }
+
+    /// Set earliest market end date (ISO 8601 format).
+    pub fn end_date_min(mut self, date: impl Into<String>) -> Self {
+        self.request = self.request.query("end_date_min", date.into());
+        self
+    }
+
+    /// Set latest market end date (ISO 8601 format).
+    pub fn end_date_max(mut self, date: impl Into<String>) -> Self {
+        self.request = self.request.query("end_date_max", date.into());
+        self
+    }
+
+    /// Filter by tag IDs.
+    pub fn tag_id(mut self, tag_ids: impl IntoIterator<Item = i64>) -> Self {
+        self.request = self.request.query_many("tag_id", tag_ids);
+        self
+    }
+
+    /// Include related tags in response.
+    pub fn related_tags(mut self, include: bool) -> Self {
+        self.request = self.request.query("related_tags", include);
+        self
+    }
+
+    /// Filter create-your-own markets.
+    pub fn cyom(mut self, cyom: bool) -> Self {
+        self.request = self.request.query("cyom", cyom);
+        self
+    }
+
+    /// Filter markets with RFQ enabled.
+    pub fn rfq_enabled(mut self, enabled: bool) -> Self {
+        self.request = self.request.query("rfq_enabled", enabled);
+        self
+    }
+
+    /// Filter by UMA resolution status.
+    pub fn uma_resolution_status(mut self, status: impl Into<String>) -> Self {
+        self.request = self.request.query("uma_resolution_status", status.into());
+        self
+    }
+
+    /// Filter by game identifier.
+    pub fn game_id(mut self, game_id: impl Into<String>) -> Self {
+        self.request = self.request.query("game_id", game_id.into());
+        self
+    }
+
+    /// Filter by sports market types.
+    pub fn sports_market_types(mut self, types: impl IntoIterator<Item = impl ToString>) -> Self {
+        self.request = self.request.query_many("sports_market_types", types);
+        self
+    }
+
+    /// Include tag data in results.
+    pub fn include_tag(mut self, include: bool) -> Self {
+        self.request = self.request.query("include_tag", include);
+        self
+    }
+
+    /// Execute the request.
+    pub async fn send(self) -> Result<KeysetMarketsResponse, GammaError> {
+        self.request.send().await
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use crate::Gamma;
@@ -445,6 +703,48 @@ mod tests {
         let _req = gamma()
             .markets()
             .get_many(vec![1i64, 2, 3])
+            .include_tag(true);
+    }
+
+    // ── new endpoints ───────────────────────────────────────────
+
+    #[test]
+    fn test_get_description_accepts_str_and_string() {
+        let _req1 = gamma().markets().get_description("12345");
+        let _req2 = gamma().markets().get_description(String::from("12345"));
+    }
+
+    #[test]
+    fn test_list_keyset_full_chain() {
+        let _req = gamma()
+            .markets()
+            .list_keyset()
+            .limit(50)
+            .order("volume_num,liquidity_num")
+            .ascending(false)
+            .after_cursor("opaque-cursor")
+            .id(vec![1i64, 2, 3])
+            .slug(vec!["a-slug"])
+            .closed(true)
+            .clob_token_ids(vec!["tok-a"])
+            .condition_ids(vec!["0xcond"])
+            .question_ids(vec!["q1"])
+            .market_maker_address(vec!["0xmm"])
+            .liquidity_num_min(1.0)
+            .liquidity_num_max(10.0)
+            .volume_num_min(1.0)
+            .volume_num_max(10.0)
+            .start_date_min("2024-01-01")
+            .start_date_max("2025-01-01")
+            .end_date_min("2024-01-01")
+            .end_date_max("2026-01-01")
+            .tag_id(vec![1i64, 2])
+            .related_tags(true)
+            .cyom(false)
+            .rfq_enabled(true)
+            .uma_resolution_status("resolved")
+            .game_id("game-1")
+            .sports_market_types(vec!["moneyline"])
             .include_tag(true);
     }
 }

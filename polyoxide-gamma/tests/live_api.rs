@@ -195,6 +195,99 @@ async fn live_get_many_returns_both_open_and_closed() {
     );
 }
 
+#[tokio::test]
+#[ignore]
+async fn live_get_market_description() {
+    let gamma = client();
+
+    // Discover a market id.
+    let markets = gamma
+        .markets()
+        .list()
+        .limit(1)
+        .send()
+        .await
+        .expect("list markets to discover id");
+    let first = markets.first().expect("need at least one market");
+
+    let desc = gamma
+        .markets()
+        .get_description(&first.id)
+        .send()
+        .await
+        .expect("get market description");
+    // Deserialization succeeded; description may be None/empty on some markets.
+    let _ = desc;
+}
+
+#[tokio::test]
+#[ignore]
+async fn live_query_markets_by_information() {
+    use polyoxide_gamma::types::MarketsInformationBody;
+
+    let gamma = client();
+
+    // Discover a market id so we have something concrete to query.
+    let markets = gamma
+        .markets()
+        .list()
+        .limit(1)
+        .send()
+        .await
+        .expect("list markets");
+    let first = markets.first().expect("need at least one market");
+    let id: i64 = first.id.parse().expect("market id should be numeric");
+
+    let body = MarketsInformationBody {
+        id: vec![id],
+        ..Default::default()
+    };
+    let found = gamma
+        .markets()
+        .query_by_information(&body)
+        .await
+        .expect("POST /markets/information");
+    assert!(
+        found.iter().any(|m| m.id == first.id),
+        "expected market {} in response",
+        first.id
+    );
+}
+
+#[tokio::test]
+#[ignore]
+async fn live_query_abridged_markets() {
+    use polyoxide_gamma::types::MarketsInformationBody;
+
+    let gamma = client();
+    let body = MarketsInformationBody {
+        closed: Some(false),
+        ..Default::default()
+    };
+    let found = gamma
+        .markets()
+        .query_abridged(&body)
+        .await
+        .expect("POST /markets/abridged");
+    // Deserialization is the primary assertion; the array may be empty.
+    let _ = found;
+}
+
+#[tokio::test]
+#[ignore]
+async fn live_list_markets_keyset() {
+    let gamma = client();
+    let resp = gamma
+        .markets()
+        .list_keyset()
+        .limit(5)
+        .send()
+        .await
+        .expect("list markets (keyset)");
+    // Deserialization is the assertion; upstream may page differently.
+    let _ = resp;
+}
+
 // ── Events ──────────────────────────────────────────────────────
 
 #[tokio::test]
