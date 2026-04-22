@@ -892,3 +892,65 @@ async fn live_get_profile_by_address() {
         assert!(!profile.id.is_empty(), "profile id must not be empty");
     }
 }
+
+#[tokio::test]
+#[ignore]
+async fn live_get_event_creator_by_id() {
+    let gamma = client();
+    let creators = gamma
+        .events()
+        .list_creators()
+        .limit(1)
+        .send()
+        .await
+        .expect("list event creators to discover id");
+    let Some(first) = creators.first() else {
+        return; // No creators available; treat as skip.
+    };
+    let _ = gamma
+        .events()
+        .get_creator(&first.id)
+        .send()
+        .await
+        .expect("get event creator by id");
+}
+
+#[tokio::test]
+#[ignore]
+async fn live_get_related_detailed_by_id() {
+    let gamma = client();
+    let tags = gamma
+        .tags()
+        .list()
+        .limit(1)
+        .send()
+        .await
+        .expect("list tags to discover id");
+    let first = tags.first().expect("need at least one tag");
+    let _ = gamma
+        .tags()
+        .get_related_detailed(&first.id)
+        .send()
+        .await
+        .expect("get related detailed by id");
+}
+
+#[tokio::test]
+#[ignore]
+async fn live_get_related_detailed_by_slug() {
+    let gamma = client();
+    let tags = gamma
+        .tags()
+        .list()
+        .limit(1)
+        .send()
+        .await
+        .expect("list tags to discover slug");
+    let first = tags.first().expect("need at least one tag");
+    let _ = gamma
+        .tags()
+        .get_related_detailed_by_slug(&first.slug)
+        .send()
+        .await
+        .expect("get related detailed by slug");
+}
