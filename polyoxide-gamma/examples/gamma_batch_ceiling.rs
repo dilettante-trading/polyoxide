@@ -1,10 +1,9 @@
-//! TEMP probe — binary-search the max number of IDs a single Gamma `/markets`
+//! Temporary probe — binary-search the max number of IDs a single Gamma `/markets`
 //! request will accept before something upstream (Cloudflare or Polymarket)
 //! rejects it.
 //!
 //! Run:
-//!   cargo test -p polyoxide-gamma --test gamma_batch_ceiling \
-//!       -- --ignored --nocapture
+//!   cargo run -p polyoxide-gamma --example gamma_batch_ceiling
 //!
 //! Probes two parameter shapes:
 //!   - `id`             : numeric (i64 stringified, ~10 bytes each)
@@ -19,9 +18,8 @@ const BASE_URL: &str = "https://gamma-api.polymarket.com/markets";
 const UPPER_BOUND: usize = 5_000;
 const INTER_REQUEST_PAUSE_MS: u64 = 150;
 
-#[tokio::test]
-#[ignore]
-async fn find_gamma_batch_ceiling() {
+#[tokio::main]
+async fn main() {
     let client = reqwest::Client::builder()
         .timeout(Duration::from_secs(15))
         .build()

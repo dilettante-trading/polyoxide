@@ -1,4 +1,4 @@
-//! TEMP probe — burst-hit Gamma `/markets` to empirically observe what
+//! Temporary probe — burst-hit Gamma `/markets` to empirically observe what
 //! Cloudflare / Polymarket actually send when rate limits kick in.
 //!
 //! Exists to validate assumptions about our `Retry-After` parser. Delete once
@@ -6,7 +6,7 @@
 //!
 //! Run:
 //! ```sh
-//! cargo test -p polyoxide-gamma --test cf_burst_probe -- --ignored --nocapture
+//! cargo run -p polyoxide-gamma --example cf_burst_probe
 //! ```
 //!
 //! Behaviour:
@@ -22,9 +22,8 @@ const MAX_REQUESTS: u32 = 2_000;
 const BATCH_SIZE: u32 = 50;
 const SAMPLE_EVERY: u32 = 250;
 
-#[tokio::test]
-#[ignore]
-async fn cf_burst_probe_markets() {
+#[tokio::main]
+async fn main() {
     let client = reqwest::Client::builder()
         .timeout(Duration::from_secs(10))
         .build()
