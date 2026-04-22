@@ -218,8 +218,8 @@ let bal = clob.account_api()?.balance_allowance("token_id").send().await?;
 // USDC balance
 let usdc = clob.account_api()?.usdc_balance().send().await?;
 
-// Trade history with filters
-let trades = clob.account_api()?.trades()
+// Trade history with filters (maker_address is required)
+let trades = clob.account_api()?.trades("0xmaker_address")
     .market("0xcondition_id")
     .after("1700000000")
     .send()

@@ -113,8 +113,8 @@ impl AccountApi {
         ListBuilderTrades { request }
     }
 
-    /// Get trades with optional filtering
-    pub fn trades(&self) -> ListClobTrades {
+    /// Get trades for a maker address (required), with optional additional filtering
+    pub fn trades(&self, maker_address: impl Into<String>) -> ListClobTrades {
         let request = Request::get(
             self.http_client.clone(),
             "/data/trades",
@@ -124,7 +124,8 @@ impl AccountApi {
                 signer: self.signer.clone(),
             },
             self.chain_id,
-        );
+        )
+        .query("maker_address", maker_address.into());
         ListClobTrades { request }
     }
 }
@@ -138,12 +139,6 @@ impl ListClobTrades {
     /// Filter by specific trade ID
     pub fn id(mut self, id: impl Into<String>) -> Self {
         self.request = self.request.query("id", id.into());
-        self
-    }
-
-    /// Filter by maker address
-    pub fn maker_address(mut self, address: impl Into<String>) -> Self {
-        self.request = self.request.query("maker_address", address.into());
         self
     }
 

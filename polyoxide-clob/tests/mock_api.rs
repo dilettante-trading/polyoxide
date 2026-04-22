@@ -176,6 +176,10 @@ async fn trades_hits_data_trades_endpoint() {
 
     let mock = server
         .mock("GET", "/data/trades")
+        .match_query(Matcher::AllOf(vec![Matcher::UrlEncoded(
+            "maker_address".into(),
+            "0x0000000000000000000000000000000000000001".into(),
+        )]))
         .match_header("POLY_API_KEY", "test-key")
         .with_status(200)
         .with_header("content-type", "application/json")
@@ -203,7 +207,13 @@ async fn trades_hits_data_trades_endpoint() {
         .await;
 
     let clob = test_authed_clob(&server);
-    let resp = clob.account_api().unwrap().trades().send().await.unwrap();
+    let resp = clob
+        .account_api()
+        .unwrap()
+        .trades("0x0000000000000000000000000000000000000001")
+        .send()
+        .await
+        .unwrap();
 
     assert_eq!(resp.data.len(), 1);
     assert_eq!(resp.data[0].id, "t1");

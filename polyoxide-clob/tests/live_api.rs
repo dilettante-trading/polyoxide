@@ -24,6 +24,13 @@ fn authenticated_client() -> Clob {
     Clob::from_account(account).expect("authenticated clob client")
 }
 
+fn authenticated_address() -> String {
+    dotenvy::dotenv().ok();
+    let account =
+        Account::from_env().expect("POLYMARKET_* env vars required for authenticated tests");
+    format!("{:#x}", account.address())
+}
+
 /// Find a token_id with an active order book using Gamma.
 ///
 /// The CLOB `/markets` listing returns mostly resolved markets. Gamma's
@@ -394,10 +401,11 @@ async fn live_balance_allowance() {
 #[ignore]
 async fn live_list_trades() {
     let client = authenticated_client();
+    let maker = authenticated_address();
     let _trades = client
         .account_api()
         .expect("account_api")
-        .trades()
+        .trades(maker)
         .send()
         .await
         .expect("trades should deserialize");
@@ -407,10 +415,11 @@ async fn live_list_trades() {
 #[ignore]
 async fn live_list_trades_with_filter() {
     let client = authenticated_client();
+    let maker = authenticated_address();
     let _trades = client
         .account_api()
         .expect("account_api")
-        .trades()
+        .trades(maker)
         .after("0")
         .send()
         .await
