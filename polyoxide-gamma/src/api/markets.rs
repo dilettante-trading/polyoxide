@@ -68,16 +68,10 @@ impl Markets {
     }
 
     /// Get a market's description text (`GET /markets/{id}/description`).
-    pub fn get_description(
-        &self,
-        id: impl Into<String>,
-    ) -> Request<MarketDescription, GammaError> {
+    pub fn get_description(&self, id: impl Into<String>) -> Request<MarketDescription, GammaError> {
         Request::new(
             self.http_client.clone(),
-            format!(
-                "/markets/{}/description",
-                urlencoding::encode(&id.into())
-            ),
+            format!("/markets/{}/description", urlencoding::encode(&id.into())),
         )
     }
 

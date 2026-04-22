@@ -28,6 +28,14 @@ impl Sports {
             request: Request::new(self.http_client.clone(), "/teams"),
         }
     }
+
+    /// Get a team by ID (`GET /teams/{id}`).
+    pub fn get_team(&self, id: impl Into<String>) -> Request<Team, GammaError> {
+        Request::new(
+            self.http_client.clone(),
+            format!("/teams/{}", urlencoding::encode(&id.into())),
+        )
+    }
 }
 
 /// Request builder for listing teams
@@ -90,5 +98,20 @@ impl ListTeams {
     /// Execute the request
     pub async fn send(self) -> Result<Vec<Team>, GammaError> {
         self.request.send().await
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use crate::Gamma;
+
+    fn gamma() -> Gamma {
+        Gamma::new().unwrap()
+    }
+
+    #[test]
+    fn test_get_team_accepts_str_and_string() {
+        let _r1 = gamma().sports().get_team("12345");
+        let _r2 = gamma().sports().get_team(String::from("12345"));
     }
 }

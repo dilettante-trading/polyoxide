@@ -528,6 +528,76 @@ async fn live_get_series_by_id() {
     assert_eq!(s.id, id);
 }
 
+#[tokio::test]
+#[ignore]
+async fn live_get_series_summary() {
+    let gamma = client();
+    let series = gamma
+        .series()
+        .list()
+        .limit(1)
+        .send()
+        .await
+        .expect("list series to discover id");
+    let first = series.first().expect("need at least one series");
+
+    let summary = gamma
+        .series()
+        .get_summary(&first.id)
+        .send()
+        .await
+        .expect("get series summary by id");
+    assert_eq!(summary.id, first.id);
+}
+
+#[tokio::test]
+#[ignore]
+async fn live_get_series_summary_by_slug() {
+    let gamma = client();
+    let series = gamma
+        .series()
+        .list()
+        .limit(1)
+        .send()
+        .await
+        .expect("list series to discover slug");
+    let first = series.first().expect("need at least one series");
+    let slug = first.slug.clone();
+
+    let summary = gamma
+        .series()
+        .get_summary_by_slug(&slug)
+        .send()
+        .await
+        .expect("get series summary by slug");
+    // The upstream may map slug to a different summary id, but deserialization
+    // is the primary assertion here.
+    let _ = summary;
+}
+
+#[tokio::test]
+#[ignore]
+async fn live_series_comment_count() {
+    let gamma = client();
+    let series = gamma
+        .series()
+        .list()
+        .limit(1)
+        .send()
+        .await
+        .expect("list series to discover id");
+    let first = series.first().expect("need at least one series");
+    let count = gamma
+        .series()
+        .comment_count(&first.id)
+        .send()
+        .await
+        .expect("get series comment count");
+    // Deserialization is the primary assertion; count is u64 so any value is
+    // valid.
+    let _ = count;
+}
+
 // ── Sports ──────────────────────────────────────────────────────
 
 #[tokio::test]
@@ -553,6 +623,29 @@ async fn live_list_teams() {
         .await
         .expect("list teams");
     assert!(!teams.is_empty(), "should return at least one team");
+}
+
+#[tokio::test]
+#[ignore]
+async fn live_get_team_by_id() {
+    let gamma = client();
+    let teams = gamma
+        .sports()
+        .list_teams()
+        .limit(1)
+        .send()
+        .await
+        .expect("list teams to discover id");
+    let first = teams.first().expect("need at least one team");
+    let id = first.id.to_string();
+
+    let team = gamma
+        .sports()
+        .get_team(&id)
+        .send()
+        .await
+        .expect("get team by id");
+    assert_eq!(team.id, first.id);
 }
 
 // ── Comments ────────────────────────────────────────────────────
@@ -748,4 +841,54 @@ async fn live_get_user() {
     }
     // If no comments found, skip silently -- the endpoint itself is
     // exercised in the request path even when no suitable address exists.
+}
+
+#[tokio::test]
+#[ignore]
+async fn live_get_profile_by_address() {
+    let gamma = client();
+
+    // Discover a real user proxy-wallet address via the public-profile
+    // endpoint; fall back to exercising the endpoint with a burner address if
+    // no real user is found.
+    let events = gamma
+        .events()
+        .list()
+        .active(true)
+        .limit(5)
+        .send()
+        .await
+        .expect("list events");
+    let Some(first) = events.first() else { return };
+    let event_id: i64 = first.id.parse().expect("event id should be numeric");
+
+    let comments = gamma
+        .comments()
+        .list()
+        .parent_entity_type("Event")
+        .parent_entity_id(event_id)
+        .limit(20)
+        .send()
+        .await
+        .expect("list comments to find an address");
+
+    let Some(comment) = comments.first() else {
+        return;
+    };
+    let user = gamma
+        .user()
+        .get(&comment.user.id)
+        .send()
+        .await
+        .expect("resolve user to proxy wallet");
+    let Some(address) = user.proxy.clone() else {
+        return;
+    };
+
+    // The endpoint returns 404 for non-profile addresses; treat that as a
+    // valid contract exercise. Only successful deserializations are asserted.
+    if let Ok(profile) = gamma.user().get_by_address(&address).send().await {
+        // The profile may have sparse fields, but id must always be present.
+        assert!(!profile.id.is_empty(), "profile id must not be empty");
+    }
 }

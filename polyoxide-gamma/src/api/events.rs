@@ -75,10 +75,7 @@ impl Events {
     pub fn get_creator(&self, id: impl Into<String>) -> Request<EventCreator, GammaError> {
         Request::new(
             self.http_client.clone(),
-            format!(
-                "/events/creators/{}",
-                urlencoding::encode(&id.into())
-            ),
+            format!("/events/creators/{}", urlencoding::encode(&id.into())),
         )
     }
 

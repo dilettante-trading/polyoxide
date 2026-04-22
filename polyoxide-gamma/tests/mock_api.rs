@@ -433,12 +433,7 @@ async fn get_event_creator_by_id() {
         .await;
 
     let gamma = test_gamma(&server);
-    let creator = gamma
-        .events()
-        .get_creator("42")
-        .send()
-        .await
-        .unwrap();
+    let creator = gamma.events().get_creator("42").send().await.unwrap();
     assert_eq!(creator.id, "42");
     assert_eq!(creator.creator_name.as_deref(), Some("Poly"));
     mock.assert_async().await;
@@ -494,13 +489,7 @@ async fn list_events_results_returns_vec() {
         .await;
 
     let gamma = test_gamma(&server);
-    let events = gamma
-        .events()
-        .list_results()
-        .limit(3)
-        .send()
-        .await
-        .unwrap();
+    let events = gamma.events().list_results().limit(3).send().await.unwrap();
     assert_eq!(events.len(), 2);
     assert_eq!(events[0].id, "r1");
     mock.assert_async().await;
@@ -642,11 +631,7 @@ async fn query_markets_by_information_posts_body() {
         closed: Some(true),
         ..Default::default()
     };
-    let markets = gamma
-        .markets()
-        .query_by_information(&body)
-        .await
-        .unwrap();
+    let markets = gamma.markets().query_by_information(&body).await.unwrap();
     assert_eq!(markets.len(), 1);
     assert_eq!(markets[0].id, "1");
     mock.assert_async().await;
@@ -760,5 +745,137 @@ async fn list_markets_keyset_last_page_has_no_cursor() {
     let resp = gamma.markets().list_keyset().send().await.unwrap();
     assert!(resp.markets.is_empty());
     assert!(resp.next_cursor.is_none());
+    mock.assert_async().await;
+}
+
+// ── /series-summary/{id} and /series-summary/slug/{slug} ───────
+
+#[tokio::test]
+async fn get_series_summary_by_id() {
+    let mut server = Server::new_async().await;
+    let mock = server
+        .mock("GET", "/series-summary/s-1")
+        .with_status(200)
+        .with_header("content-type", "application/json")
+        .with_body(
+            r#"{
+                "id": "s-1",
+                "title": "NFL",
+                "slug": "nfl",
+                "eventDates": ["2025-09-01"],
+                "eventWeeks": [1, 2],
+                "earliest_open_week": 1
+            }"#,
+        )
+        .create_async()
+        .await;
+
+    let gamma = test_gamma(&server);
+    let summary = gamma.series().get_summary("s-1").send().await.unwrap();
+    assert_eq!(summary.id, "s-1");
+    assert_eq!(summary.title.as_deref(), Some("NFL"));
+    assert_eq!(summary.event_weeks, vec![1, 2]);
+    mock.assert_async().await;
+}
+
+#[tokio::test]
+async fn get_series_summary_by_slug() {
+    let mut server = Server::new_async().await;
+    let mock = server
+        .mock("GET", "/series-summary/slug/nfl")
+        .with_status(200)
+        .with_header("content-type", "application/json")
+        .with_body(r#"{"id": "s-1", "slug": "nfl"}"#)
+        .create_async()
+        .await;
+
+    let gamma = test_gamma(&server);
+    let summary = gamma
+        .series()
+        .get_summary_by_slug("nfl")
+        .send()
+        .await
+        .unwrap();
+    assert_eq!(summary.slug.as_deref(), Some("nfl"));
+    mock.assert_async().await;
+}
+
+// ── /series/{id}/comments/count ────────────────────────────────
+
+#[tokio::test]
+async fn get_series_comment_count() {
+    let mut server = Server::new_async().await;
+    let mock = server
+        .mock("GET", "/series/s-1/comments/count")
+        .with_status(200)
+        .with_header("content-type", "application/json")
+        .with_body(r#"{"count": 42}"#)
+        .create_async()
+        .await;
+
+    let gamma = test_gamma(&server);
+    let count = gamma.series().comment_count("s-1").send().await.unwrap();
+    assert_eq!(count.count, 42);
+    mock.assert_async().await;
+}
+
+// ── /teams/{id} ────────────────────────────────────────────────
+
+#[tokio::test]
+async fn get_team_by_id() {
+    let mut server = Server::new_async().await;
+    let mock = server
+        .mock("GET", "/teams/100")
+        .with_status(200)
+        .with_header("content-type", "application/json")
+        .with_body(
+            r#"{
+                "id": 100,
+                "name": "Team X",
+                "league": "NFL",
+                "abbreviation": "TX"
+            }"#,
+        )
+        .create_async()
+        .await;
+
+    let gamma = test_gamma(&server);
+    let team = gamma.sports().get_team("100").send().await.unwrap();
+    assert_eq!(team.id, 100);
+    assert_eq!(team.name.as_deref(), Some("Team X"));
+    mock.assert_async().await;
+}
+
+// ── /profiles/user_address/{address} ───────────────────────────
+
+#[tokio::test]
+async fn get_profile_by_address() {
+    let mut server = Server::new_async().await;
+    let mock = server
+        .mock("GET", "/profiles/user_address/0xdeadbeef")
+        .with_status(200)
+        .with_header("content-type", "application/json")
+        .with_body(
+            r#"{
+                "id": "p-1",
+                "name": "Alice",
+                "proxyWallet": "0xdeadbeef",
+                "walletActivated": true
+            }"#,
+        )
+        .create_async()
+        .await;
+
+    let gamma = test_gamma(&server);
+    let profile = gamma
+        .user()
+        .get_by_address("0xdeadbeef")
+        .send()
+        .await
+        .unwrap();
+    assert_eq!(profile.id, "p-1");
+    assert_eq!(profile.name.as_deref(), Some("Alice"));
+    assert_eq!(profile.proxy_wallet.as_deref(), Some("0xdeadbeef"));
+    assert_eq!(profile.wallet_activated, Some(true));
     mock.assert_async().await;
 }

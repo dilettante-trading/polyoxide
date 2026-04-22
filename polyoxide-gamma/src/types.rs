@@ -352,6 +352,67 @@ pub struct SeriesData {
     pub competitive: Option<String>,
 }
 
+/// Abridged series payload returned from `/series-summary/*`.
+///
+/// Note the mixed casing: `eventDates` / `eventWeeks` are camelCase while
+/// `earliest_open_week` / `earliest_open_date` are snake_case in the upstream
+/// response, so this struct does not use `#[serde(rename_all = "camelCase")]`
+/// and instead spells each field out explicitly.
+#[cfg_attr(feature = "specta", derive(specta::Type))]
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
+pub struct SeriesSummary {
+    pub id: String,
+    pub title: Option<String>,
+    pub slug: Option<String>,
+    #[serde(rename = "eventDates", default)]
+    pub event_dates: Vec<String>,
+    #[cfg_attr(feature = "specta", specta(type = Vec<f64>))]
+    #[serde(rename = "eventWeeks", default)]
+    pub event_weeks: Vec<i64>,
+    #[cfg_attr(feature = "specta", specta(type = Option<f64>))]
+    pub earliest_open_week: Option<i64>,
+    pub earliest_open_date: Option<String>,
+}
+
+/// Profile returned from `/profiles/user_address/{user_address}`.
+///
+/// All fields except `id` are optional; upstream frequently omits UTM
+/// attribution and certification fields.
+#[cfg_attr(feature = "specta", derive(specta::Type))]
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
+#[serde(rename_all = "camelCase")]
+pub struct Profile {
+    pub id: String,
+    pub name: Option<String>,
+    #[cfg_attr(feature = "specta", specta(type = Option<f64>))]
+    pub user: Option<i64>,
+    pub referral: Option<String>,
+    #[cfg_attr(feature = "specta", specta(type = Option<f64>))]
+    pub created_by: Option<i64>,
+    #[cfg_attr(feature = "specta", specta(type = Option<f64>))]
+    pub updated_by: Option<i64>,
+    pub created_at: Option<String>,
+    pub updated_at: Option<String>,
+    pub utm_source: Option<String>,
+    pub utm_medium: Option<String>,
+    pub utm_campaign: Option<String>,
+    pub utm_content: Option<String>,
+    pub utm_term: Option<String>,
+    pub wallet_activated: Option<bool>,
+    pub pseudonym: Option<String>,
+    pub display_username_public: Option<bool>,
+    pub profile_image: Option<String>,
+    pub bio: Option<String>,
+    pub proxy_wallet: Option<String>,
+    /// ImageOptimization payload; kept as raw JSON since the upstream shape
+    /// is not yet modelled in this crate.
+    #[cfg_attr(feature = "specta", specta(skip))]
+    pub profile_image_optimized: Option<serde_json::Value>,
+    pub is_close_only: Option<bool>,
+    pub is_cert_req: Option<bool>,
+    pub cert_req_date: Option<String>,
+}
+
 /// Tag for categorizing markets/events
 #[cfg_attr(feature = "specta", derive(specta::Type))]
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
@@ -1519,5 +1580,124 @@ mod tests {
         let resp: KeysetMarketsResponse = serde_json::from_str(json).unwrap();
         assert!(resp.markets.is_empty());
         assert!(resp.next_cursor.is_none());
+    }
+
+    // ── SeriesSummary ───────────────────────────────────────────
+
+    #[test]
+    fn test_series_summary_full() {
+        let json = r#"{
+            "id": "s-1",
+            "title": "NFL 2025",
+            "slug": "nfl-2025",
+            "eventDates": ["2025-09-01", "2025-09-08"],
+            "eventWeeks": [1, 2],
+            "earliest_open_week": 1,
+            "earliest_open_date": "2025-09-01"
+        }"#;
+        let s: SeriesSummary = serde_json::from_str(json).unwrap();
+        assert_eq!(s.id, "s-1");
+        assert_eq!(s.title.as_deref(), Some("NFL 2025"));
+        assert_eq!(s.event_dates.len(), 2);
+        assert_eq!(s.event_weeks, vec![1, 2]);
+        assert_eq!(s.earliest_open_week, Some(1));
+    }
+
+    #[test]
+    fn test_series_summary_minimal() {
+        let json = r#"{"id": "s-1"}"#;
+        let s: SeriesSummary = serde_json::from_str(json).unwrap();
+        assert_eq!(s.id, "s-1");
+        assert!(s.title.is_none());
+        assert!(s.event_dates.is_empty());
+        assert!(s.event_weeks.is_empty());
+    }
+
+    #[test]
+    fn test_series_summary_roundtrip_preserves_mixed_casing() {
+        let s = SeriesSummary {
+            id: "s-1".into(),
+            title: Some("T".into()),
+            slug: Some("slug".into()),
+            event_dates: vec!["2025-09-01".into()],
+            event_weeks: vec![1],
+            earliest_open_week: Some(1),
+            earliest_open_date: Some("2025-09-01".into()),
+        };
+        let json = serde_json::to_string(&s).unwrap();
+        // eventDates camelCase, earliest_open_* snake_case
+        assert!(json.contains("\"eventDates\""));
+        assert!(json.contains("\"eventWeeks\""));
+        assert!(json.contains("\"earliest_open_week\""));
+        assert!(json.contains("\"earliest_open_date\""));
+        let back: SeriesSummary = serde_json::from_str(&json).unwrap();
+        assert_eq!(s, back);
+    }
+
+    // ── Profile ─────────────────────────────────────────────────
+
+    #[test]
+    fn test_profile_minimal() {
+        let json = r#"{"id": "p-1"}"#;
+        let p: Profile = serde_json::from_str(json).unwrap();
+        assert_eq!(p.id, "p-1");
+        assert!(p.name.is_none());
+        assert!(p.proxy_wallet.is_none());
+    }
+
+    #[test]
+    fn test_profile_full() {
+        let json = r#"{
+            "id": "p-1",
+            "name": "Alice",
+            "user": 42,
+            "proxyWallet": "0xdead",
+            "utmSource": "direct",
+            "walletActivated": true,
+            "isCloseOnly": false,
+            "profileImageOptimized": {"medium": "https://cdn/p/m.png"}
+        }"#;
+        let p: Profile = serde_json::from_str(json).unwrap();
+        assert_eq!(p.name.as_deref(), Some("Alice"));
+        assert_eq!(p.user, Some(42));
+        assert_eq!(p.proxy_wallet.as_deref(), Some("0xdead"));
+        assert_eq!(p.utm_source.as_deref(), Some("direct"));
+        assert_eq!(p.wallet_activated, Some(true));
+        assert_eq!(p.is_close_only, Some(false));
+        assert!(p.profile_image_optimized.is_some());
+    }
+
+    #[test]
+    fn test_profile_roundtrip() {
+        let p = Profile {
+            id: "p-1".into(),
+            name: Some("A".into()),
+            user: Some(1),
+            referral: None,
+            created_by: None,
+            updated_by: None,
+            created_at: None,
+            updated_at: None,
+            utm_source: None,
+            utm_medium: None,
+            utm_campaign: None,
+            utm_content: None,
+            utm_term: None,
+            wallet_activated: Some(true),
+            pseudonym: None,
+            display_username_public: None,
+            profile_image: None,
+            bio: None,
+            proxy_wallet: Some("0xpw".into()),
+            profile_image_optimized: None,
+            is_close_only: None,
+            is_cert_req: None,
+            cert_req_date: None,
+        };
+        let json = serde_json::to_string(&p).unwrap();
+        assert!(json.contains("\"proxyWallet\""));
+        assert!(json.contains("\"walletActivated\""));
+        let back: Profile = serde_json::from_str(&json).unwrap();
+        assert_eq!(p, back);
     }
 }
