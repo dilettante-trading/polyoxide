@@ -1651,6 +1651,55 @@ async fn update_balance_allowance_omits_optional_query_params() {
 }
 
 #[tokio::test]
+async fn heartbeat_posts_to_heartbeats_with_l2_auth() {
+    let mut server = Server::new_async().await;
+
+    let mock = server
+        .mock("POST", "/heartbeats")
+        .match_header("POLY_API_KEY", "test-key")
+        .match_header("POLY_PASSPHRASE", "test-pass")
+        .match_header(
+            "POLY_ADDRESS",
+            Matcher::Regex(r"^0x[0-9a-fA-F]{40}$".into()),
+        )
+        .match_header("POLY_SIGNATURE", Matcher::Any)
+        .match_header("POLY_TIMESTAMP", Matcher::Any)
+        .with_status(200)
+        .with_header("content-type", "application/json")
+        .with_body(r#"{"status":"ok"}"#)
+        .create_async()
+        .await;
+
+    let clob = test_authed_clob(&server);
+    let resp = clob.account_api().unwrap().heartbeat().await.unwrap();
+
+    assert_eq!(resp.status, "ok");
+    mock.assert_async().await;
+}
+
+#[tokio::test]
+async fn heartbeat_propagates_http_error() {
+    let mut server = Server::new_async().await;
+
+    let mock = server
+        .mock("POST", "/heartbeats")
+        .with_status(401)
+        .with_header("content-type", "application/json")
+        .with_body(r#"{"error":"unauthorized"}"#)
+        .create_async()
+        .await;
+
+    let clob = test_authed_clob(&server);
+    let err = clob.account_api().unwrap().heartbeat().await.unwrap_err();
+    assert!(
+        matches!(err, ClobError::Api(_)),
+        "Expected Api error, got: {:?}",
+        err
+    );
+    mock.assert_async().await;
+}
+
+#[tokio::test]
 async fn create_market_order_insufficient_liquidity() {
     let mut server = Server::new_async().await;
 

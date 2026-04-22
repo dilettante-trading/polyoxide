@@ -879,3 +879,107 @@ async fn get_profile_by_address() {
     assert_eq!(profile.wallet_activated, Some(true));
     mock.assert_async().await;
 }
+
+#[tokio::test]
+async fn get_related_detailed_returns_vec_of_tags() {
+    let mut server = Server::new_async().await;
+
+    let mock = server
+        .mock("GET", "/tags/42/related-tags/tags")
+        .with_status(200)
+        .with_header("content-type", "application/json")
+        .with_body(
+            r#"[
+                {
+                    "id": "101",
+                    "slug": "politics",
+                    "label": "Politics",
+                    "forceShow": true,
+                    "publishedAt": "2024-01-01T00:00:00Z",
+                    "isCarousel": false
+                },
+                {
+                    "id": "102",
+                    "slug": "elections",
+                    "label": "Elections"
+                }
+            ]"#,
+        )
+        .create_async()
+        .await;
+
+    let gamma = test_gamma(&server);
+    let tags = gamma
+        .tags()
+        .get_related_detailed("42")
+        .send()
+        .await
+        .unwrap();
+    assert_eq!(tags.len(), 2);
+    assert_eq!(tags[0].id, "101");
+    assert_eq!(tags[0].slug, "politics");
+    assert_eq!(tags[0].label, "Politics");
+    assert_eq!(tags[0].force_show, Some(true));
+    assert_eq!(tags[0].is_carousel, Some(false));
+    assert_eq!(tags[1].id, "102");
+    assert_eq!(tags[1].force_show, None);
+    mock.assert_async().await;
+}
+
+#[tokio::test]
+async fn get_related_detailed_by_slug_returns_vec_of_tags() {
+    let mut server = Server::new_async().await;
+
+    let mock = server
+        .mock("GET", "/tags/slug/politics/related-tags/tags")
+        .with_status(200)
+        .with_header("content-type", "application/json")
+        .with_body(
+            r#"[
+                {
+                    "id": "55",
+                    "slug": "us-election",
+                    "label": "US Election"
+                }
+            ]"#,
+        )
+        .create_async()
+        .await;
+
+    let gamma = test_gamma(&server);
+    let tags = gamma
+        .tags()
+        .get_related_detailed_by_slug("politics")
+        .send()
+        .await
+        .unwrap();
+    assert_eq!(tags.len(), 1);
+    assert_eq!(tags[0].id, "55");
+    assert_eq!(tags[0].slug, "us-election");
+    assert_eq!(tags[0].label, "US Election");
+    mock.assert_async().await;
+}
+
+#[tokio::test]
+async fn get_related_detailed_by_slug_url_encodes_slug() {
+    let mut server = Server::new_async().await;
+
+    // Slug with characters that require URL encoding
+    let mock = server
+        .mock("GET", "/tags/slug/us%2Felection/related-tags/tags")
+        .with_status(200)
+        .with_header("content-type", "application/json")
+        .with_body("[]")
+        .create_async()
+        .await;
+
+    let gamma = test_gamma(&server);
+    let tags = gamma
+        .tags()
+        .get_related_detailed_by_slug("us/election")
+        .send()
+        .await
+        .unwrap();
+    assert!(tags.is_empty());
+    mock.assert_async().await;
+}
