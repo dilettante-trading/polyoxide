@@ -30,6 +30,9 @@ enum Commands {
     },
     /// Generate shell completions
     Completions(commands::CompletionsCommand),
+    /// Manage OS keychain credentials
+    #[cfg(feature = "keychain")]
+    Credentials(commands::CredentialsCommand),
 }
 
 #[tokio::main]
@@ -43,6 +46,8 @@ async fn main() -> Result<()> {
         Commands::Gamma { command } => command.run().await?,
         Commands::Ws { command } => command.run().await?,
         Commands::Completions(cmd) => cmd.run::<Cli>()?,
+        #[cfg(feature = "keychain")]
+        Commands::Credentials(cmd) => cmd.run()?,
     }
 
     Ok(())

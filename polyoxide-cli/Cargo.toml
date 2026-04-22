@@ -10,12 +10,18 @@ description = "CLI tool for querying Polymarket Gamma API"
 keywords = ["polymarket", "prediction-markets", "cli", "gamma"]
 categories = ["command-line-utilities"]
 
+[features]
+default = []
+keychain = ["polyoxide-clob/keychain", "dep:polyoxide-core", "dep:polyoxide-relay"]
+
 [[bin]]
 name = "polyoxide"
 path = "src/main.rs"
 
 [dependencies]
 polyoxide-clob = { workspace = true, features = ["ws"] }
+polyoxide-core = { workspace = true, optional = true, features = ["keychain"] }
+polyoxide-relay = { workspace = true, optional = true, features = ["keychain"] }
 polyoxide-data = { workspace = true }
 polyoxide-gamma = { workspace = true }
 tokio = { workspace = true, features = ["macros", "rt-multi-thread", "time", "net"] }

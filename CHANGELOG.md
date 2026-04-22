@@ -1,3 +1,66 @@
+## [0.13.0] - 2026-04-16
+
+### 🚀 Features
+
+- *(core)* Add `keychain` module for OS credential storage (macOS Keychain, Windows Credential Manager, Linux Secret Service)
+- *(core)* Add `keychain::delete` function for credential removal
+- *(clob)* Add `Account::from_keychain()` and `Account::save_to_keychain()` for keychain-based credential loading
+- *(clob)* Add `Account::delete_from_keychain()` to remove all stored credentials
+- *(clob)* Add `ApiCredentials::from_keychain()` for WebSocket authentication
+- *(relay)* Add `BuilderAccount::from_keychain()` and `from_keychain_relayer_api_key()` for keychain-based credential loading
+- *(relay)* Add `BuilderAccount::delete_from_keychain()` to remove all stored credentials
+- *(relay)* Add relayer API key authentication as alternative to HMAC builder credentials
+- *(relay)* Add `AuthConfig` enum and `RelayerApiKeyConfig` for dual auth support
+- *(relay)* Wire `AuthConfig` into request signing and add builder convenience methods
+- *(cli)* Add `credentials store` and `credentials show` subcommands for keychain management
+- *(cli)* Add `credentials delete` subcommand to remove stored credentials
+- *(cli)* Add `--credential-source keychain` flag to `ws user` command
+
+### 🐛 Bug Fixes
+
+- *(relay)* Clear stale passphrase from keychain when saving config with `passphrase = None`
+
+### ♻️ Refactoring
+
+- *(relay)* Encapsulate `RelayerApiKeyConfig` and validate inputs
+- *(relay)* Remove deprecated `config()` and extract `parse_signer`
+- Consolidate keychain service name strings into shared `KEYCHAIN_SERVICE` constants
+
+### ⚙️ Build
+
+- Add `keyring` dependency with `apple-native`, `windows-native`, `async-secret-service`, and `crypto-rust` backends
+- Add `keychain` feature flag to core, clob, relay, polyoxide, and cli crates
+
+### 🧪 Tests
+
+- *(clob)* Add keychain roundtrip and delete integration tests
+- *(relay)* Add keychain roundtrip, no-config, stale passphrase, and relayer API key integration tests
+- *(cli)* Add parsing tests for credentials delete and keychain credential source
+
+### 📝 Documentation
+
+- Rewrite all workspace READMEs with accurate code examples and full API coverage
+- *(relay)* Add README with both auth methods, builder pattern, and gasless redemption examples
+- Fix CLAUDE.md data API namespace, add MSRV, correct relay env vars
+
+## [0.12.4] - 2026-04-14
+
+### 🐛 Bug Fixes
+
+- *(clob)* Limit order salt to u64 range to prevent serialization panic and API rejection
+
+## [0.12.3] - 2026-04-14
+
+### 🐛 Bug Fixes
+
+- *(clob)* Serialize order salt as u128 number using serde_json `arbitrary_precision` instead of string encoding
+
+## [0.12.2] - 2026-04-14
+
+### 🐛 Bug Fixes
+
+- *(clob)* Serialize order salt as string to avoid serde_json rejection of u128 values exceeding u64::MAX
+
 ## [0.12.1] - 2026-04-01
 
 ### 🐛 Bug Fixes
@@ -39,6 +102,7 @@
 
 - *(clob)* Update `BalanceAllowanceResponse` for upstream API field change from `allowance` to `allowances` (#1)
 - *(clob)* Make optional fields on `Market`, `SpreadResponse`, and `LastTradePriceResponse` to match upstream API (#1)
+- *(clob)* Serialize order salt as string to avoid serde_json rejection of u128 values exceeding u64::MAX
 
 ### 🧪 Tests
 

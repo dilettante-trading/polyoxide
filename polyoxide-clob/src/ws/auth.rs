@@ -54,6 +54,24 @@ impl ApiCredentials {
             passphrase: std::env::var("POLYMARKET_API_PASSPHRASE")?,
         })
     }
+
+    /// Load credentials from the OS keychain.
+    ///
+    /// Reads from the `polyoxide-clob` keychain service:
+    /// - `api_key`
+    /// - `api_secret`
+    /// - `api_passphrase`
+    #[cfg(feature = "keychain")]
+    pub fn from_keychain() -> Result<Self, polyoxide_core::KeychainError> {
+        use polyoxide_core::keychain;
+
+        let service = crate::account::KEYCHAIN_SERVICE;
+        Ok(Self {
+            api_key: keychain::get(service, "api_key")?,
+            secret: keychain::get(service, "api_secret")?,
+            passphrase: keychain::get(service, "api_passphrase")?,
+        })
+    }
 }
 
 impl fmt::Debug for ApiCredentials {
@@ -157,6 +175,25 @@ mod tests {
         assert_eq!(deserialized.api_key, original.api_key);
         assert_eq!(deserialized.secret, original.secret);
         assert_eq!(deserialized.passphrase, original.passphrase);
+    }
+
+    #[cfg(feature = "keychain")]
+    mod keychain_tests {
+        use super::*;
+
+        #[test]
+        #[ignore] // Requires OS keychain daemon
+        fn api_credentials_from_keychain() {
+            // Pre-populate keychain (reuses values from Account tests)
+            polyoxide_core::keychain::set("polyoxide-clob", "api_key", "kc_key").unwrap();
+            polyoxide_core::keychain::set("polyoxide-clob", "api_secret", "kc_secret").unwrap();
+            polyoxide_core::keychain::set("polyoxide-clob", "api_passphrase", "kc_pass").unwrap();
+
+            let creds = ApiCredentials::from_keychain().unwrap();
+            assert_eq!(creds.api_key, "kc_key");
+            assert_eq!(creds.secret, "kc_secret");
+            assert_eq!(creds.passphrase, "kc_pass");
+        }
     }
 
     #[test]

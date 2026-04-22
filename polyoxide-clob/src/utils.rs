@@ -128,9 +128,10 @@ fn to_raw_amount(val: f64, decimals: u32) -> String {
     format!("{:.0}", raw)
 }
 
-/// Generate random salt for orders
+/// Generate random salt for orders.
+/// Uses u64 range to stay within JSON safe integer limits.
 pub fn generate_salt() -> String {
-    rand::rng().random::<u128>().to_string()
+    rand::rng().random::<u64>().to_string()
 }
 
 // Helpers for rounding
@@ -257,10 +258,9 @@ mod tests {
     }
 
     #[test]
-    fn test_generate_salt_large_range() {
-        // Salt should be a valid u128 string (can be very large)
+    fn test_generate_salt_u64_range() {
         let salt = generate_salt();
-        let _parsed: u128 = salt.parse().expect("Salt should parse as u128");
+        let _parsed: u64 = salt.parse().expect("Salt should parse as u64");
         // Two random salts should (almost certainly) differ
         let salt2 = generate_salt();
         assert_ne!(salt, salt2, "Two random salts should differ");

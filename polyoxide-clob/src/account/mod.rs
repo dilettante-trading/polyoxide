@@ -29,6 +29,10 @@ pub mod env {
     pub const API_PASSPHRASE: &str = "POLYMARKET_API_PASSPHRASE";
 }
 
+/// Keychain service name for CLOB credentials.
+#[cfg(feature = "keychain")]
+pub const KEYCHAIN_SERVICE: &str = "polyoxide-clob";
+
 /// Account configuration for file-based loading
 #[derive(Clone, Serialize, Deserialize)]
 pub struct AccountConfig {
@@ -210,6 +214,78 @@ impl Account {
         Self::new(config.private_key, config.credentials)
     }
 
+    /// Load account from the OS keychain.
+    ///
+    /// Reads from the `polyoxide-clob` keychain service:
+    /// - `private_key`: Hex-encoded private key
+    /// - `api_key`: API key
+    /// - `api_secret`: API secret (base64 encoded)
+    /// - `api_passphrase`: API passphrase
+    ///
+    /// # Example
+    ///
+    /// ```no_run
+    /// use polyoxide_clob::Account;
+    ///
+    /// let account = Account::from_keychain()?;
+    /// # Ok::<(), polyoxide_clob::ClobError>(())
+    /// ```
+    #[cfg(feature = "keychain")]
+    pub fn from_keychain() -> Result<Self, ClobError> {
+        use polyoxide_core::keychain;
+
+        let private_key = keychain::get(KEYCHAIN_SERVICE, "private_key")
+            .map_err(|e| ClobError::validation(format!("Keychain error for private_key: {e}")))?;
+
+        let credentials = Credentials {
+            key: keychain::get(KEYCHAIN_SERVICE, "api_key")
+                .map_err(|e| ClobError::validation(format!("Keychain error for api_key: {e}")))?,
+            secret: keychain::get(KEYCHAIN_SERVICE, "api_secret").map_err(|e| {
+                ClobError::validation(format!("Keychain error for api_secret: {e}"))
+            })?,
+            passphrase: keychain::get(KEYCHAIN_SERVICE, "api_passphrase").map_err(|e| {
+                ClobError::validation(format!("Keychain error for api_passphrase: {e}"))
+            })?,
+        };
+
+        Self::new(private_key, credentials)
+    }
+
+    /// Save L2 API credentials to the OS keychain.
+    ///
+    /// Stores `api_key`, `api_secret`, and `api_passphrase` in the `polyoxide-clob`
+    /// keychain service. Does **not** store the private key (it is discarded after
+    /// parsing during construction). Use [`save_private_key_to_keychain`] to store
+    /// the private key before constructing an `Account`.
+    #[cfg(feature = "keychain")]
+    pub fn save_to_keychain(&self) -> Result<(), ClobError> {
+        use polyoxide_core::keychain;
+
+        keychain::set(KEYCHAIN_SERVICE, "api_key", &self.credentials.key)
+            .map_err(|e| ClobError::validation(format!("Keychain error: {e}")))?;
+        keychain::set(KEYCHAIN_SERVICE, "api_secret", &self.credentials.secret)
+            .map_err(|e| ClobError::validation(format!("Keychain error: {e}")))?;
+        keychain::set(
+            KEYCHAIN_SERVICE,
+            "api_passphrase",
+            &self.credentials.passphrase,
+        )
+        .map_err(|e| ClobError::validation(format!("Keychain error: {e}")))?;
+        Ok(())
+    }
+
+    /// Delete L2 API credentials and private key from the OS keychain.
+    #[cfg(feature = "keychain")]
+    pub fn delete_from_keychain() -> Result<(), ClobError> {
+        use polyoxide_core::keychain;
+
+        for key in ["private_key", "api_key", "api_secret", "api_passphrase"] {
+            keychain::delete(KEYCHAIN_SERVICE, key)
+                .map_err(|e| ClobError::validation(format!("Keychain error: {e}")))?;
+        }
+        Ok(())
+    }
+
     /// Get the wallet address.
     pub fn address(&self) -> Address {
         self.wallet.address()
@@ -293,6 +369,17 @@ impl Account {
     }
 }
 
+/// Save a private key to the OS keychain under the `polyoxide-clob` service.
+///
+/// Call this before [`Account::new`] if you want the private key persisted in the
+/// keychain, since `Account` discards the raw key string after parsing.
+#[cfg(feature = "keychain")]
+pub fn save_private_key_to_keychain(private_key: &str) -> Result<(), ClobError> {
+    polyoxide_core::keychain::set(KEYCHAIN_SERVICE, "private_key", private_key)
+        .map_err(|e| ClobError::validation(format!("Keychain error: {e}")))?;
+    Ok(())
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -330,6 +417,64 @@ mod tests {
             !debug_output.contains("deadbeef"),
             "Debug should not contain the private key, got: {debug_output}"
         );
+    }
+
+    #[cfg(feature = "keychain")]
+    mod keychain_tests {
+        use super::*;
+
+        #[test]
+        #[ignore] // Requires OS keychain daemon — run locally with `-- --ignored`
+        fn keychain_roundtrip() {
+            // Store credentials
+            let private_key = "0xac0974bec39a17e36ba4a6b4d238ff944bacb478cbed5efcae784d7bf4f2ff80";
+            let credentials = Credentials {
+                key: "test_keychain_key".to_string(),
+                secret: "c2VjcmV0".to_string(),
+                passphrase: "test_keychain_pass".to_string(),
+            };
+
+            save_private_key_to_keychain(private_key).unwrap();
+            let account = Account::new(private_key, credentials).unwrap();
+            account.save_to_keychain().unwrap();
+
+            // Load back
+            let loaded = Account::from_keychain().unwrap();
+            assert_eq!(loaded.credentials().key, "test_keychain_key");
+            assert_eq!(loaded.credentials().secret, "c2VjcmV0");
+            assert_eq!(loaded.credentials().passphrase, "test_keychain_pass");
+            assert_eq!(loaded.address(), account.address());
+
+            // Cleanup
+            Account::delete_from_keychain().unwrap();
+        }
+
+        #[test]
+        #[ignore] // Requires OS keychain daemon
+        fn keychain_delete_removes_all_entries() {
+            let private_key = "0xac0974bec39a17e36ba4a6b4d238ff944bacb478cbed5efcae784d7bf4f2ff80";
+            let credentials = Credentials {
+                key: "del_test_key".to_string(),
+                secret: "c2VjcmV0".to_string(),
+                passphrase: "del_test_pass".to_string(),
+            };
+
+            // Store then delete
+            save_private_key_to_keychain(private_key).unwrap();
+            Account::new(private_key, credentials)
+                .unwrap()
+                .save_to_keychain()
+                .unwrap();
+            Account::delete_from_keychain().unwrap();
+
+            // Verify all entries are gone
+            let err = Account::from_keychain().unwrap_err();
+            let msg = err.to_string();
+            assert!(
+                msg.contains("Keychain entry not found"),
+                "Expected NotFound after delete, got: {msg}"
+            );
+        }
     }
 
     #[test]

@@ -13,6 +13,16 @@ use polyoxide_clob::ws::{ApiCredentials, Channel, UserMessage, WebSocket};
 
 use crate::commands::common::parsing::parse_duration;
 
+/// Credential source for authenticated commands
+#[cfg(feature = "keychain")]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, ValueEnum)]
+pub enum CredentialSource {
+    /// Load from environment variables (default)
+    Env,
+    /// Load from OS keychain
+    Keychain,
+}
+
 /// User event types to filter
 #[derive(Debug, Clone, Copy, PartialEq, Eq, ValueEnum)]
 pub enum UserEventType {
@@ -55,6 +65,11 @@ pub struct UserArgs {
     /// Exit after specified duration (e.g., "30s", "5m", "1h")
     #[arg(short, long, value_parser = parse_duration)]
     timeout: Option<Duration>,
+
+    /// Credential source (env or keychain)
+    #[cfg(feature = "keychain")]
+    #[arg(long, value_enum)]
+    credential_source: Option<CredentialSource>,
 }
 
 #[derive(Debug, Clone, Copy, ValueEnum, Default)]
@@ -69,7 +84,13 @@ pub enum OutputFormat {
 }
 
 pub async fn run(args: UserArgs) -> Result<()> {
-    let credentials = get_credentials(args.api_key, args.api_secret, args.api_passphrase)?;
+    let credentials = get_credentials(
+        args.api_key,
+        args.api_secret,
+        args.api_passphrase,
+        #[cfg(feature = "keychain")]
+        args.credential_source,
+    )?;
 
     let running = Arc::new(AtomicBool::new(true));
     let r = running.clone();
@@ -151,7 +172,14 @@ fn get_credentials(
     api_key: Option<String>,
     api_secret: Option<String>,
     api_passphrase: Option<String>,
+    #[cfg(feature = "keychain")] credential_source: Option<CredentialSource>,
 ) -> Result<ApiCredentials> {
+    #[cfg(feature = "keychain")]
+    if matches!(credential_source, Some(CredentialSource::Keychain)) {
+        return ApiCredentials::from_keychain()
+            .map_err(|e| color_eyre::eyre::eyre!("Failed to load credentials from keychain: {e}"));
+    }
+
     match (api_key, api_secret, api_passphrase) {
         (Some(key), Some(secret), Some(passphrase)) => {
             Ok(ApiCredentials::new(key, secret, passphrase))
@@ -258,6 +286,35 @@ mod tests {
         TestWrapper::try_parse_from(args)
     }
 
+    #[cfg(feature = "keychain")]
+    mod keychain_tests {
+        use super::*;
+
+        #[test]
+        fn credential_source_keychain_parses() {
+            let w = try_parse(&["test", "id", "--credential-source", "keychain"]).unwrap();
+            assert!(matches!(
+                w.args.credential_source,
+                Some(CredentialSource::Keychain)
+            ));
+        }
+
+        #[test]
+        fn credential_source_env_parses() {
+            let w = try_parse(&["test", "id", "--credential-source", "env"]).unwrap();
+            assert!(matches!(
+                w.args.credential_source,
+                Some(CredentialSource::Env)
+            ));
+        }
+
+        #[test]
+        fn credential_source_default_is_none() {
+            let w = try_parse(&["test", "id"]).unwrap();
+            assert!(w.args.credential_source.is_none());
+        }
+    }
+
     #[test]
     fn requires_at_least_one_market_id() {
         let result = try_parse(&["test"]);
@@ -333,37 +390,78 @@ mod tests {
             Some("key".to_string()),
             Some("secret".to_string()),
             Some("pass".to_string()),
+            #[cfg(feature = "keychain")]
+            None,
         );
         assert!(result.is_ok());
     }
 
+    #[cfg(feature = "keychain")]
+    #[test]
+    fn get_credentials_explicit_env_source_uses_flags() {
+        let result = get_credentials(
+            Some("key".to_string()),
+            Some("secret".to_string()),
+            Some("pass".to_string()),
+            Some(CredentialSource::Env),
+        );
+        assert!(result.is_ok());
+        let creds = result.unwrap();
+        assert_eq!(creds.api_key, "key");
+    }
+
     #[test]
     fn get_credentials_missing_key() {
-        let err = get_credentials(None, Some("secret".to_string()), Some("pass".to_string()))
-            .unwrap_err();
+        let err = get_credentials(
+            None,
+            Some("secret".to_string()),
+            Some("pass".to_string()),
+            #[cfg(feature = "keychain")]
+            None,
+        )
+        .unwrap_err();
         let msg = err.to_string();
         assert!(msg.contains("POLYMARKET_API_KEY"), "got: {msg}");
     }
 
     #[test]
     fn get_credentials_missing_secret() {
-        let err =
-            get_credentials(Some("key".to_string()), None, Some("pass".to_string())).unwrap_err();
+        let err = get_credentials(
+            Some("key".to_string()),
+            None,
+            Some("pass".to_string()),
+            #[cfg(feature = "keychain")]
+            None,
+        )
+        .unwrap_err();
         let msg = err.to_string();
         assert!(msg.contains("POLYMARKET_API_SECRET"), "got: {msg}");
     }
 
     #[test]
     fn get_credentials_missing_passphrase() {
-        let err =
-            get_credentials(Some("key".to_string()), Some("secret".to_string()), None).unwrap_err();
+        let err = get_credentials(
+            Some("key".to_string()),
+            Some("secret".to_string()),
+            None,
+            #[cfg(feature = "keychain")]
+            None,
+        )
+        .unwrap_err();
         let msg = err.to_string();
         assert!(msg.contains("POLYMARKET_API_PASSPHRASE"), "got: {msg}");
     }
 
     #[test]
     fn get_credentials_all_missing() {
-        let err = get_credentials(None, None, None).unwrap_err();
+        let err = get_credentials(
+            None,
+            None,
+            None,
+            #[cfg(feature = "keychain")]
+            None,
+        )
+        .unwrap_err();
         let msg = err.to_string();
         assert!(msg.contains("POLYMARKET_API_KEY"), "got: {msg}");
         assert!(msg.contains("POLYMARKET_API_SECRET"), "got: {msg}");
@@ -372,7 +470,14 @@ mod tests {
 
     #[test]
     fn get_credentials_missing_key_and_secret() {
-        let err = get_credentials(None, None, Some("pass".to_string())).unwrap_err();
+        let err = get_credentials(
+            None,
+            None,
+            Some("pass".to_string()),
+            #[cfg(feature = "keychain")]
+            None,
+        )
+        .unwrap_err();
         let msg = err.to_string();
         assert!(msg.contains("POLYMARKET_API_KEY"), "got: {msg}");
         assert!(msg.contains("POLYMARKET_API_SECRET"), "got: {msg}");

@@ -14,6 +14,7 @@ categories = ["api-bindings", "web-programming::http-client"]
 default = ["gamma"]
 gamma = ["dep:polyoxide-gamma"]
 ws = ["dep:tokio-tungstenite", "dep:futures-util", "tokio/net", "tokio/macros"]
+keychain = ["polyoxide-core/keychain"]
 
 [dependencies]
 alloy = { version = "1.1.2", features = [

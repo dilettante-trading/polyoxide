@@ -12,7 +12,7 @@ members = [
 resolver = "2"
 
 [workspace.package]
-version = "0.12.1"
+version = "0.13.0"
 edition = "2021"
 license = "MIT OR Apache-2.0"
 authors = ["Aidan Bailey"]
@@ -20,11 +20,11 @@ repository = "https://github.com/dilettante-trading/polyoxide"
 rust-version = "1.91"
 
 [workspace.dependencies]
-polyoxide-core = { path = "polyoxide-core", version = "0.12.0" }
-polyoxide-clob = { path = "polyoxide-clob", version = "0.12.0" }
-polyoxide-gamma = { path = "polyoxide-gamma", version = "0.12.0" }
-polyoxide-data = { path = "polyoxide-data", version = "0.12.0" }
-polyoxide-relay = { path = "polyoxide-relay", version = "0.12.0" }
+polyoxide-core = { path = "polyoxide-core", version = "0.13.0" }
+polyoxide-clob = { path = "polyoxide-clob", version = "0.13.0" }
+polyoxide-gamma = { path = "polyoxide-gamma", version = "0.13.0" }
+polyoxide-data = { path = "polyoxide-data", version = "0.13.0" }
+polyoxide-relay = { path = "polyoxide-relay", version = "0.13.0" }
 tokio = { version = "1.41" }
 reqwest = { version = "0.12", features = ["json", "rustls-tls"], default-features = false }
 serde = { version = "1.0", features = ["derive"] }
@@ -41,6 +41,7 @@ tokio-tungstenite = { version = "0.26", features = ["rustls-tls-native-roots"] }
 rust_decimal = { version = "1.37", features = ["serde-with-str"] }
 governor = { version = "0.8", features = ["std"] }
 fastrand = "2"
+keyring = { version = "3", features = ["apple-native", "windows-native", "async-secret-service", "crypto-rust"] }
 mockito = "1.7"
 pyo3 = { version = "0.28", features = ["extension-module", "abi3-py39"] }
 pyo3-async-runtimes = { version = "0.28", features = ["tokio-runtime"] }

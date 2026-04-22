@@ -802,13 +802,12 @@ impl RelayClient {
 
             // Generate fresh auth headers each attempt (timestamps stay current)
             let mut headers = if let Some(account) = &self.account {
-                if let Some(config) = account.config() {
-                    config
-                        .generate_relayer_v2_headers("POST", url.path(), Some(&body_str))
+                if let Some(auth) = account.auth_config() {
+                    auth.generate_relayer_v2_headers("POST", url.path(), Some(&body_str))
                         .map_err(RelayError::Api)?
                 } else {
                     return Err(RelayError::Api(
-                        "Builder config missing - cannot authenticate request".to_string(),
+                        "No authentication configured - provide BuilderConfig or RelayerApiKeyConfig when creating the BuilderAccount".to_string(),
                     ));
                 }
             } else {
@@ -946,6 +945,21 @@ impl RelayClientBuilder {
     pub fn with_account(mut self, account: BuilderAccount) -> Self {
         self.account = Some(account);
         self
+    }
+
+    /// Attach relayer API key credentials for authenticated relay operations.
+    ///
+    /// This is a convenience method that creates a [`BuilderAccount`] with
+    /// [`RelayerApiKeyConfig`] internally. The `private_key` is still required
+    /// for EIP-712 transaction signing.
+    pub fn relayer_api_key(
+        self,
+        private_key: impl Into<String>,
+        key: String,
+        address: String,
+    ) -> Result<Self, RelayError> {
+        let account = BuilderAccount::with_relayer_api_key(private_key, key, address)?;
+        Ok(self.with_account(account))
     }
 
     /// Set the wallet type (default: [`WalletType::Safe`]).
@@ -1123,6 +1137,25 @@ mod tests {
     fn test_builder_no_account_address_is_none() {
         let client = RelayClient::builder().unwrap().build().unwrap();
         assert!(client.address().is_none());
+    }
+
+    #[test]
+    fn test_builder_relayer_api_key_attaches_account() {
+        let client = RelayClient::builder()
+            .unwrap()
+            .relayer_api_key(
+                "ac0974bec39a17e36ba4a6b4d238ff944bacb478cbed5efcae784d7bf4f2ff80",
+                "my-relayer-key".to_string(),
+                "0xabc123".to_string(),
+            )
+            .unwrap()
+            .build()
+            .unwrap();
+        let account = client.account.as_ref().expect("account should be attached");
+        assert!(matches!(
+            account.auth_config(),
+            Some(crate::config::AuthConfig::RelayerApiKey(_))
+        ));
     }
 
     // ── address derivation (CREATE2) ────────────────────────────

@@ -10,9 +10,13 @@
 //!
 //! ## Authentication
 //!
-//! Relay operations require a private key for EIP-712 transaction signing and optional
-//! builder API credentials (`BUILDER_API_KEY`, `BUILDER_SECRET`, `BUILDER_PASS_PHRASE`)
-//! for authenticated relay submission.
+//! Relay operations require a private key for EIP-712 transaction signing and one of
+//! two authentication schemes for relay submission:
+//!
+//! - **Builder API credentials** — HMAC-SHA256 signed headers (`BUILDER_API_KEY`,
+//!   `BUILDER_SECRET`, `BUILDER_PASS_PHRASE`)
+//! - **Relayer API keys** — static headers (`RELAYER_API_KEY`, `RELAYER_API_KEY_ADDRESS`),
+//!   a simpler alternative
 //!
 //! ## Example
 //!
@@ -36,10 +40,15 @@ mod error;
 mod types;
 
 pub use client::RelayClient;
-pub use config::{BuilderConfig, ContractConfig};
+pub use config::{AuthConfig, BuilderConfig, ContractConfig, RelayerApiKeyConfig};
 pub use error::RelayError;
 pub use types::{SafeTransaction, SafeTx, TransactionRequest, WalletType};
 
 mod account;
 
 pub use account::BuilderAccount;
+
+#[cfg(feature = "keychain")]
+pub use account::{
+    save_builder_config_to_keychain, save_private_key_to_keychain, KEYCHAIN_SERVICE,
+};
