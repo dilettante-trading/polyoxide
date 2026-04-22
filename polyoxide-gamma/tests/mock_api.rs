@@ -385,6 +385,184 @@ async fn get_many_empty_ids_short_circuits() {
 }
 
 #[tokio::test]
+async fn list_event_creators_hits_endpoint_with_params() {
+    let mut server = Server::new_async().await;
+    let mock = server
+        .mock("GET", "/events/creators")
+        .match_query(Matcher::AllOf(vec![
+            Matcher::UrlEncoded("limit".into(), "10".into()),
+            Matcher::UrlEncoded("creator_handle".into(), "poly".into()),
+        ]))
+        .with_status(200)
+        .with_header("content-type", "application/json")
+        .with_body(
+            r#"[{
+                "id": "1",
+                "creatorName": "Polymarket",
+                "creatorHandle": "poly"
+            }]"#,
+        )
+        .create_async()
+        .await;
+
+    let gamma = test_gamma(&server);
+    let creators = gamma
+        .events()
+        .list_creators()
+        .limit(10)
+        .creator_handle("poly")
+        .send()
+        .await
+        .unwrap();
+
+    assert_eq!(creators.len(), 1);
+    assert_eq!(creators[0].id, "1");
+    assert_eq!(creators[0].creator_handle.as_deref(), Some("poly"));
+    mock.assert_async().await;
+}
+
+#[tokio::test]
+async fn get_event_creator_by_id() {
+    let mut server = Server::new_async().await;
+    let mock = server
+        .mock("GET", "/events/creators/42")
+        .with_status(200)
+        .with_header("content-type", "application/json")
+        .with_body(r#"{"id": "42", "creatorName": "Poly"}"#)
+        .create_async()
+        .await;
+
+    let gamma = test_gamma(&server);
+    let creator = gamma
+        .events()
+        .get_creator("42")
+        .send()
+        .await
+        .unwrap();
+    assert_eq!(creator.id, "42");
+    assert_eq!(creator.creator_name.as_deref(), Some("Poly"));
+    mock.assert_async().await;
+}
+
+#[tokio::test]
+async fn list_events_pagination_returns_wrapper() {
+    let mut server = Server::new_async().await;
+    let mock = server
+        .mock("GET", "/events/pagination")
+        .match_query(Matcher::AllOf(vec![
+            Matcher::UrlEncoded("limit".into(), "5".into()),
+            Matcher::UrlEncoded("include_chat".into(), "true".into()),
+        ]))
+        .with_status(200)
+        .with_header("content-type", "application/json")
+        .with_body(
+            r#"{
+                "data": [{"id": "e1"}],
+                "pagination": {"hasMore": true, "totalResults": 42}
+            }"#,
+        )
+        .create_async()
+        .await;
+
+    let gamma = test_gamma(&server);
+    let resp = gamma
+        .events()
+        .list_paginated()
+        .limit(5)
+        .include_chat(true)
+        .send()
+        .await
+        .unwrap();
+    assert_eq!(resp.data.len(), 1);
+    assert_eq!(resp.data[0].id, "e1");
+    let p = resp.pagination.unwrap();
+    assert_eq!(p.has_more, Some(true));
+    assert_eq!(p.total_results, Some(42));
+    mock.assert_async().await;
+}
+
+#[tokio::test]
+async fn list_events_results_returns_vec() {
+    let mut server = Server::new_async().await;
+    let mock = server
+        .mock("GET", "/events/results")
+        .match_query(Matcher::UrlEncoded("limit".into(), "3".into()))
+        .with_status(200)
+        .with_header("content-type", "application/json")
+        .with_body(r#"[{"id": "r1"}, {"id": "r2"}]"#)
+        .create_async()
+        .await;
+
+    let gamma = test_gamma(&server);
+    let events = gamma
+        .events()
+        .list_results()
+        .limit(3)
+        .send()
+        .await
+        .unwrap();
+    assert_eq!(events.len(), 2);
+    assert_eq!(events[0].id, "r1");
+    mock.assert_async().await;
+}
+
+#[tokio::test]
+async fn list_events_keyset_returns_cursor() {
+    let mut server = Server::new_async().await;
+    let mock = server
+        .mock("GET", "/events/keyset")
+        .match_query(Matcher::AllOf(vec![
+            Matcher::UrlEncoded("limit".into(), "2".into()),
+            Matcher::UrlEncoded("after_cursor".into(), "abc123".into()),
+            Matcher::UrlEncoded("closed".into(), "false".into()),
+        ]))
+        .with_status(200)
+        .with_header("content-type", "application/json")
+        .with_body(
+            r#"{
+                "events": [{"id": "k1", "title": "Keyset"}, {"id": "k2"}],
+                "next_cursor": "next-token"
+            }"#,
+        )
+        .create_async()
+        .await;
+
+    let gamma = test_gamma(&server);
+    let resp = gamma
+        .events()
+        .list_keyset()
+        .limit(2)
+        .after_cursor("abc123")
+        .closed(false)
+        .send()
+        .await
+        .unwrap();
+    assert_eq!(resp.events.len(), 2);
+    assert_eq!(resp.events[0].id, "k1");
+    assert_eq!(resp.events[0].title.as_deref(), Some("Keyset"));
+    assert_eq!(resp.next_cursor.as_deref(), Some("next-token"));
+    mock.assert_async().await;
+}
+
+#[tokio::test]
+async fn list_events_keyset_last_page_has_no_cursor() {
+    let mut server = Server::new_async().await;
+    let mock = server
+        .mock("GET", "/events/keyset")
+        .with_status(200)
+        .with_header("content-type", "application/json")
+        .with_body(r#"{"events": []}"#)
+        .create_async()
+        .await;
+
+    let gamma = test_gamma(&server);
+    let resp = gamma.events().list_keyset().send().await.unwrap();
+    assert!(resp.events.is_empty());
+    assert!(resp.next_cursor.is_none());
+    mock.assert_async().await;
+}
+
+#[tokio::test]
 async fn malformed_json_returns_serialization_error() {
     let mut server = Server::new_async().await;
 

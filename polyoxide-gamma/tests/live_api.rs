@@ -260,6 +260,62 @@ async fn live_get_event_by_slug() {
     assert_eq!(event.slug.as_deref(), Some(slug.as_str()));
 }
 
+#[tokio::test]
+#[ignore]
+async fn live_list_event_creators() {
+    let gamma = client();
+    let creators = gamma
+        .events()
+        .list_creators()
+        .limit(5)
+        .send()
+        .await
+        .expect("list event creators");
+    let _ = creators; // may be empty; deserialization is the assertion
+}
+
+#[tokio::test]
+#[ignore]
+async fn live_list_events_pagination() {
+    let gamma = client();
+    let resp = gamma
+        .events()
+        .list_paginated()
+        .limit(3)
+        .send()
+        .await
+        .expect("list paginated events");
+    // Data may be empty when no matching events; struct must deserialize.
+    let _ = resp;
+}
+
+#[tokio::test]
+#[ignore]
+async fn live_list_events_results() {
+    let gamma = client();
+    let _events = gamma
+        .events()
+        .list_results()
+        .limit(3)
+        .send()
+        .await
+        .expect("list event results");
+}
+
+#[tokio::test]
+#[ignore]
+async fn live_list_events_keyset() {
+    let gamma = client();
+    let resp = gamma
+        .events()
+        .list_keyset()
+        .limit(5)
+        .send()
+        .await
+        .expect("list events (keyset)");
+    let _ = resp; // events may be empty on some configurations; deserialization is the assertion
+}
+
 // ── Tags ────────────────────────────────────────────────────────
 
 #[tokio::test]

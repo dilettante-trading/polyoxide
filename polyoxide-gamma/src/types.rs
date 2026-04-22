@@ -487,6 +487,52 @@ pub struct PaginatedResponse<T> {
     pub next_cursor: Option<String>,
 }
 
+/// Event creator metadata returned from `/events/creators*` endpoints.
+#[cfg_attr(feature = "specta", derive(specta::Type))]
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
+#[serde(rename_all = "camelCase")]
+pub struct EventCreator {
+    pub id: String,
+    pub creator_name: Option<String>,
+    pub creator_handle: Option<String>,
+    pub creator_url: Option<String>,
+    pub creator_image: Option<String>,
+    pub created_at: Option<String>,
+    pub updated_at: Option<String>,
+}
+
+/// Offset-style pagination metadata accompanying `EventsPagination`.
+#[cfg_attr(feature = "specta", derive(specta::Type))]
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
+#[serde(rename_all = "camelCase")]
+pub struct Pagination {
+    pub has_more: Option<bool>,
+    #[cfg_attr(feature = "specta", specta(type = Option<f64>))]
+    pub total_results: Option<i64>,
+}
+
+/// Paginated response from `GET /events/pagination`.
+#[cfg_attr(feature = "specta", derive(specta::Type))]
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct EventsPagination {
+    #[serde(default)]
+    pub data: Vec<Event>,
+    pub pagination: Option<Pagination>,
+}
+
+/// Keyset-paginated events response from `GET /events/keyset`.
+///
+/// `next_cursor` is `None` on the last page. The upstream JSON key is
+/// `next_cursor` (snake_case), not `nextCursor`.
+#[cfg_attr(feature = "specta", derive(specta::Type))]
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct KeysetEventsResponse {
+    #[serde(default)]
+    pub events: Vec<Event>,
+    pub next_cursor: Option<String>,
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -1150,6 +1196,105 @@ mod tests {
         let json = serde_json::to_string(&token).unwrap();
         let back: MarketToken = serde_json::from_str(&json).unwrap();
         assert_eq!(token, back);
+    }
+
+    // ── EventCreator ────────────────────────────────────────────
+
+    #[test]
+    fn test_event_creator_full() {
+        let json = r#"{
+            "id": "7",
+            "creatorName": "Polymarket Sports",
+            "creatorHandle": "poly_sports",
+            "creatorUrl": "https://example.com",
+            "creatorImage": "https://example.com/a.png",
+            "createdAt": "2024-01-01T00:00:00Z",
+            "updatedAt": "2024-06-01T00:00:00Z"
+        }"#;
+        let c: EventCreator = serde_json::from_str(json).unwrap();
+        assert_eq!(c.id, "7");
+        assert_eq!(c.creator_name.as_deref(), Some("Polymarket Sports"));
+        assert_eq!(c.creator_handle.as_deref(), Some("poly_sports"));
+        assert_eq!(c.creator_url.as_deref(), Some("https://example.com"));
+    }
+
+    #[test]
+    fn test_event_creator_minimal() {
+        let json = r#"{"id": "1"}"#;
+        let c: EventCreator = serde_json::from_str(json).unwrap();
+        assert_eq!(c.id, "1");
+        assert!(c.creator_name.is_none());
+        assert!(c.creator_handle.is_none());
+        assert!(c.created_at.is_none());
+    }
+
+    #[test]
+    fn test_event_creator_roundtrip() {
+        let c = EventCreator {
+            id: "9".into(),
+            creator_name: Some("Poly".into()),
+            creator_handle: Some("poly".into()),
+            creator_url: None,
+            creator_image: None,
+            created_at: None,
+            updated_at: None,
+        };
+        let json = serde_json::to_string(&c).unwrap();
+        let back: EventCreator = serde_json::from_str(&json).unwrap();
+        assert_eq!(c, back);
+    }
+
+    // ── Pagination / EventsPagination ───────────────────────────
+
+    #[test]
+    fn test_pagination_deserialization() {
+        let json = r#"{"hasMore": true, "totalResults": 124}"#;
+        let p: Pagination = serde_json::from_str(json).unwrap();
+        assert_eq!(p.has_more, Some(true));
+        assert_eq!(p.total_results, Some(124));
+    }
+
+    #[test]
+    fn test_events_pagination_deserialization() {
+        let json = r#"{
+            "data": [{"id": "e1"}, {"id": "e2"}],
+            "pagination": {"hasMore": false, "totalResults": 2}
+        }"#;
+        let ep: EventsPagination = serde_json::from_str(json).unwrap();
+        assert_eq!(ep.data.len(), 2);
+        assert_eq!(ep.data[0].id, "e1");
+        let p = ep.pagination.unwrap();
+        assert_eq!(p.has_more, Some(false));
+        assert_eq!(p.total_results, Some(2));
+    }
+
+    #[test]
+    fn test_events_pagination_empty_data() {
+        let json = r#"{"pagination": {"hasMore": false, "totalResults": 0}}"#;
+        let ep: EventsPagination = serde_json::from_str(json).unwrap();
+        assert!(ep.data.is_empty());
+    }
+
+    // ── KeysetEventsResponse ────────────────────────────────────
+
+    #[test]
+    fn test_keyset_events_response_with_cursor() {
+        // Upstream uses snake_case next_cursor (not nextCursor).
+        let json = r#"{
+            "events": [{"id": "e1", "title": "Test"}],
+            "next_cursor": "cursor-123"
+        }"#;
+        let resp: KeysetEventsResponse = serde_json::from_str(json).unwrap();
+        assert_eq!(resp.events.len(), 1);
+        assert_eq!(resp.next_cursor.as_deref(), Some("cursor-123"));
+    }
+
+    #[test]
+    fn test_keyset_events_response_last_page() {
+        let json = r#"{"events": []}"#;
+        let resp: KeysetEventsResponse = serde_json::from_str(json).unwrap();
+        assert!(resp.events.is_empty());
+        assert!(resp.next_cursor.is_none());
     }
 
     #[test]
