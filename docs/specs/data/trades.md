@@ -32,11 +32,18 @@ Returns recent trades across the platform.
   "conditionId": "string",
   "size": 0,
   "price": 0,
-  "timestamp": "string",
+  "timestamp": 0,
   "title": "string",
   "slug": "string",
+  "icon": "string",
+  "eventSlug": "string",
   "outcome": "string",
   "outcomeIndex": 0,
+  "name": "string",
+  "pseudonym": "string",
+  "bio": "string",
+  "profileImage": "string",
+  "profileImageOptimized": "string",
   "transactionHash": "string"
 }]
 ```

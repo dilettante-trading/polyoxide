@@ -60,7 +60,7 @@ Base URL: `https://clob.polymarket.com`
 
 ## Get User Orders
 
-`GET /orders`
+`GET /data/orders`
 
 **Auth:** L2 or Builder
 
@@ -106,7 +106,7 @@ Base URL: `https://clob.polymarket.com`
 
 | Name | In | Type | Required | Description |
 |------|-----|------|----------|-------------|
-| orderID | path | string | yes | Order ID |
+| orderID | path | string | yes | Order ID (order hash) |
 
 **Response:** `OpenOrder` (same schema as items in `OrdersResponse.data`)
 
@@ -174,9 +174,15 @@ Base URL: `https://clob.polymarket.com`
 
 | Name | In | Type | Required | Description |
 |------|-----|------|----------|-------------|
+| id | query | string | no | Trade ID filter |
+| maker_address | query | string | yes | Maker address (0x-prefixed, 40 hex chars) |
+| market | query | string | no | Condition ID filter |
+| asset_id | query | string | no | Token ID filter |
+| before | query | string | no | UNIX timestamp filter |
+| after | query | string | no | UNIX timestamp filter |
 | next_cursor | query | string | no | Pagination cursor |
 
-**Response:** Paginated trade list
+**Response:** `TradesResponse` (paginated trade list)
 
 ## Get Order Scoring Status
 
@@ -184,15 +190,59 @@ Base URL: `https://clob.polymarket.com`
 
 **Auth:** L2
 
-**Response:** Order scoring status
+| Name | In | Type | Required | Description |
+|------|-----|------|----------|-------------|
+| order_id | query | string | yes | Order ID (order hash) |
+
+**Response:** `OrderScoringResponse`
+
+```json
+{"scoring": true}
+```
+
+## Get Orders Scoring (Query)
+
+`GET /orders-scoring`
+
+**Auth:** L2
+
+| Name | In | Type | Required | Description |
+|------|-----|------|----------|-------------|
+| order_ids | query | string[] | yes | Repeatable order_ids param |
+
+**Response:** `OrdersScoringResponse` — map of order ID to boolean
+
+```json
+{"0xabc...": true, "0xdef...": false}
+```
+
+## Get Orders Scoring (Body)
+
+`POST /orders-scoring`
+
+**Auth:** L2
+
+**Request:** Array of order ID strings
+
+**Response:** `OrdersScoringResponse` — map of order ID to boolean
 
 ## Get Builder Trades
 
-`GET /builder-trades`
+`GET /builder/trades`
 
 **Auth:** Builder
 
-**Response:** Builder trade list
+| Name | In | Type | Required | Description |
+|------|-----|------|----------|-------------|
+| id | query | string | no | Trade ID filter |
+| builder | query | string | no | Builder identifier (auto-set from auth) |
+| market | query | string | no | Condition ID filter |
+| asset_id | query | string | no | Token ID filter |
+| before | query | string | no | UNIX timestamp filter |
+| after | query | string | no | UNIX timestamp filter |
+| next_cursor | query | string | no | Pagination cursor |
+
+**Response:** `BuilderTradesResponse` (paginated builder trade list)
 
 ## Verification
 

@@ -55,15 +55,16 @@ List comments with optional filtering and pagination.
 
 `GET /comments/{id}`
 
-Get a single comment by its ID.
+Get comments by comment ID (returns an array).
 
 **Auth:** None
 
 | Name | In | Type | Required | Description |
 |------|-----|------|----------|-------------|
-| id | path | string | yes | Comment ID |
+| id | path | integer | yes | Comment ID |
+| get_positions | query | boolean | no | Include position data in response |
 
-**Response:** Comment object
+**Response:** Array of Comment objects
 
 ## Get Comments by User Address
 
@@ -76,6 +77,10 @@ Get all comments posted by a specific user address.
 | Name | In | Type | Required | Description |
 |------|-----|------|----------|-------------|
 | user_address | path | string | yes | User wallet address |
+| limit | query | integer | no | Maximum number of results |
+| offset | query | integer | no | Pagination offset |
+| order | query | string | no | Order field(s), comma-separated |
+| ascending | query | boolean | no | Sort direction |
 
 **Response:** Array of Comment objects
 

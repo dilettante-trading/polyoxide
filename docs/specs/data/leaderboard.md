@@ -24,12 +24,14 @@ Returns the trader leaderboard ranked by PnL or volume.
 
 ```json
 [{
-  "rank": 1,
+  "rank": "string",
   "proxyWallet": "string",
   "userName": "string",
   "vol": 0,
   "pnl": 0,
-  "profileImage": "string"
+  "profileImage": "string",
+  "xUsername": "string",
+  "verifiedBadge": false
 }]
 ```
 

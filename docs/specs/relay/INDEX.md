@@ -18,7 +18,7 @@ See [auth.md](auth.md) for details.
 
 | File | Endpoints | Auth |
 |------|-----------|------|
-| [transactions.md](transactions.md) | /submit, /transaction, /transactions, /nonce, /relay-payload, /deployed | Mixed |
+| [transactions.md](transactions.md) | /submit, /transaction, /transactions, /nonce, /relay-payload, /deployed, /relayer/api/keys | Mixed |
 | [contracts.md](contracts.md) | Contract addresses (reference, not endpoints) | N/A |
 
 ## Rate Limits

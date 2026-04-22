@@ -35,10 +35,11 @@ Base URL: `https://relayer-v2.polymarket.com`
 ```json
 {
   "transactionID": "string",
-  "transactionHash": "string",
   "state": "STATE_NEW"
 }
 ```
+
+Returns immediately with the `transactionID` and a `state` of `STATE_NEW`. The onchain `transactionHash` is **not** included in this response — poll `GET /transaction` with the returned `transactionID` to retrieve the `transactionHash` once the transaction has been broadcast.
 
 ## Get Transaction
 
@@ -49,6 +50,8 @@ Base URL: `https://relayer-v2.polymarket.com`
 | Name | In | Type | Required | Description |
 |------|-----|------|----------|-------------|
 | id | query | string | yes | Transaction ID |
+
+Poll this endpoint with the `transactionID` returned from `POST /submit` to retrieve the onchain `transactionHash` once the transaction has been broadcast.
 
 **Response:** Array of `RelayerTransaction`
 
@@ -61,8 +64,12 @@ Base URL: `https://relayer-v2.polymarket.com`
   "proxyAddress": "string",
   "data": "string",
   "nonce": "string",
+  "value": "string",
+  "signature": "string",
   "state": "STATE_NEW | STATE_EXECUTED | STATE_MINED | STATE_CONFIRMED | STATE_INVALID | STATE_FAILED",
   "type": "SAFE | PROXY",
+  "owner": "string",
+  "metadata": "string",
   "createdAt": "string",
   "updatedAt": "string"
 }]

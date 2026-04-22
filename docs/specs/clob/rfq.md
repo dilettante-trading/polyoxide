@@ -2,7 +2,7 @@
 
 Base URL: `https://clob.polymarket.com`
 
-> Note: RFQ endpoints are not fully documented in Polymarket's public API docs. Schema derived from observed API behavior.
+> Note: RFQ endpoints are not in the upstream OpenAPI spec as of this sync; this documentation is based on other sources and may be out of date.
 
 ## Create RFQ Request
 

@@ -21,6 +21,7 @@ List series (tournament/season groupings) with optional filtering and pagination
 | categories_labels | query | string[] | no | Filter by category labels (repeated param) |
 | include_chat | query | boolean | no | Include chat data in response |
 | recurrence | query | string | no | Filter by recurrence pattern |
+| exclude_events | query | boolean | no | Exclude nested event data from the response |
 
 **Response:** Array of SeriesData objects
 
@@ -76,7 +77,7 @@ Retrieve the comment count for a specific series.
 
 ## Get Series Summary by ID
 
-`GET /series-summary/{id}`
+`GET /series-summary/{id}` (marked internal in upstream OpenAPI)
 
 Return a summary view of a series including event dates and weeks.
 
@@ -102,7 +103,7 @@ Return a summary view of a series including event dates and weeks.
 
 ## Get Series Summary by Slug
 
-`GET /series-summary/slug/{slug}`
+`GET /series-summary/slug/{slug}` (marked internal in upstream OpenAPI)
 
 Return a summary view of a series by URL slug. Same shape as `GET /series-summary/{id}`.
 

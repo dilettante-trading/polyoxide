@@ -295,6 +295,65 @@ Returns current server UNIX timestamp.
 
 **Response:** `PricesHistoryResponse`
 
+## Get Batch Price History
+
+`POST /batch-prices-history`
+
+**Auth:** None
+
+**Request:** `BatchPricesHistoryRequest`
+
+```json
+{
+  "markets": ["asset_id_1", "asset_id_2"],
+  "start_ts": 1700000000,
+  "end_ts": 1700001000,
+  "interval": "1h",
+  "fidelity": 1
+}
+```
+
+- `markets` is required (max 20 entries).
+- `start_ts`, `end_ts`, `interval`, `fidelity` are optional.
+
+**Response:** `BatchPricesHistoryResponse`
+
+```json
+{
+  "history": {
+    "asset_id_1": [{"t": 1700000000, "p": 0.5}]
+  }
+}
+```
+
+## Get CLOB Market Info
+
+`GET /clob-markets/{condition_id}`
+
+**Auth:** None
+
+| Name | In | Type | Required | Description |
+|------|-----|------|----------|-------------|
+| condition_id | path | string | yes | Condition ID |
+
+Returns all CLOB-level parameters for a market in a single call (tokens, tick size, base fees, rewards, RFQ status, and fee details).
+
+**Response:** `ClobMarketDetails`
+
+## Get Market by Token
+
+`GET /markets-by-token/{token_id}`
+
+**Auth:** None
+
+| Name | In | Type | Required | Description |
+|------|-----|------|----------|-------------|
+| token_id | path | string | yes | Token ID |
+
+Returns the parent market for a given token ID.
+
+**Response:** `MarketByTokenResponse`
+
 ## Get Simplified Markets
 
 `GET /simplified-markets`

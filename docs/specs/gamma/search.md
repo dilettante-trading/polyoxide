@@ -18,8 +18,8 @@ Search across markets, events, and user profiles.
 | page | query | integer | no | Page number for pagination |
 | cache | query | boolean | no | Enable/disable caching |
 | events_status | query | string | no | Filter by event status |
-| events_tag | query | integer[] | no | Filter by event tag IDs (repeated param) |
-| keep_closed_markets | query | boolean | no | Include closed markets in results |
+| events_tag | query | string[] | no | Filter by event tag slugs (repeated param) |
+| keep_closed_markets | query | integer | no | Include closed markets in results (integer flag) |
 | sort | query | string | no | Sort order (e.g. "volume") |
 | search_tags | query | boolean | no | Include tag search results |
 | recurrence | query | string | no | Filter by recurrence pattern |

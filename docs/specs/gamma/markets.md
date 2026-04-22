@@ -142,7 +142,7 @@ Get tags associated with a market.
 
 ## Get Market Description
 
-`GET /markets/{id}/description`
+`GET /markets/{id}/description` (marked internal in upstream OpenAPI)
 
 Retrieve the description text for a specific market.
 
@@ -199,7 +199,7 @@ Cursor-based pagination for efficient navigation of large result sets. Does not 
 
 ## Query Markets by Information
 
-`POST /markets/information`
+`POST /markets/information` (marked internal in upstream OpenAPI)
 
 Query markets using detailed information filters passed in the request body. Filters too complex for URL query-string encoding.
 
@@ -239,7 +239,7 @@ Query markets using detailed information filters passed in the request body. Fil
 
 ## Query Abridged Markets
 
-`POST /markets/abridged`
+`POST /markets/abridged` (marked internal in upstream OpenAPI)
 
 Identical request body to `/markets/information`, but returns abridged (lighter-weight) market records. Suitable when only a subset of market fields is needed.
 

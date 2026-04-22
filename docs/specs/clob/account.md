@@ -39,13 +39,39 @@ Parameters same as GET. Returns empty object.
 
 Parameters same as GET. Returns `BalanceAllowanceResponse`.
 
-## Send Heartbeat
+## Send Heartbeat (Basic)
+
+`POST /heartbeats`
+
+**Auth:** L2
+
+Keeps session alive. If heartbeats are not sent regularly, all open orders for the user will be automatically canceled.
+
+**Response:** `HeartbeatResponse`
+
+```json
+{"status": "ok"}
+```
+
+## Send Heartbeat (v1)
 
 `POST /v1/heartbeats`
 
 **Auth:** L2
 
-Keeps session alive.
+Newer variant that tracks session with a heartbeat ID. The first request sends an empty `heartbeat_id`; the response returns a new ID that must be echoed in subsequent requests. Mismatched IDs are rejected.
+
+**Request:** `HeartbeatRequest`
+
+```json
+{"heartbeat_id": ""}
+```
+
+**Response:** `HeartbeatV1Response`
+
+```json
+{"heartbeat_id": "550e8400-e29b-41d4-a716-446655440000"}
+```
 
 ## Get Ban Status
 

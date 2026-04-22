@@ -38,7 +38,7 @@ Get a user's public profile by wallet address.
 
 ## Get Profile by User Address
 
-`GET /profiles/user_address/{user_address}`
+`GET /profiles/user_address/{user_address}` (marked internal in upstream OpenAPI)
 
 Retrieve public profile data for a user by their wallet address. Distinct from `/public-profile` — returns a richer schema with UTM tracking, wallet activation state, and certification-request fields.
 
