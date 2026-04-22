@@ -60,6 +60,60 @@ Get a single series by its ID.
 
 **Response:** SeriesData object (same schema as list item above, with nested `events` array populated)
 
+## Get Series Comment Count
+
+`GET /series/{id}/comments/count`
+
+Retrieve the comment count for a specific series.
+
+**Auth:** None
+
+| Name | In | Type | Required | Description |
+|------|-----|------|----------|-------------|
+| id | path | integer | yes | Series ID |
+
+**Response:** Count object — `{ "count": <int> }`.
+
+## Get Series Summary by ID
+
+`GET /series-summary/{id}`
+
+Return a summary view of a series including event dates and weeks.
+
+**Auth:** None
+
+| Name | In | Type | Required | Description |
+|------|-----|------|----------|-------------|
+| id | path | integer | yes | Series ID |
+
+**Response:** SeriesSummary object
+
+```json
+{
+  "id": "s1",
+  "title": "NFL 2025",
+  "slug": "nfl-2025",
+  "eventDates": ["2025-09-07", "2025-09-14"],
+  "eventWeeks": [1, 2],
+  "earliest_open_week": 1,
+  "earliest_open_date": "2025-09-07"
+}
+```
+
+## Get Series Summary by Slug
+
+`GET /series-summary/slug/{slug}`
+
+Return a summary view of a series by URL slug. Same shape as `GET /series-summary/{id}`.
+
+**Auth:** None
+
+| Name | In | Type | Required | Description |
+|------|-----|------|----------|-------------|
+| slug | path | string | yes | Series slug |
+
+**Response:** SeriesSummary object (same schema as `/series-summary/{id}`).
+
 ## Verification
 
 ```bash
