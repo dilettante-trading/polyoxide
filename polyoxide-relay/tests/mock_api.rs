@@ -9,11 +9,7 @@ const TEST_PRIVATE_KEY: &str = "ac0974bec39a17e36ba4a6b4d238ff944bacb478cbed5efc
 fn client_with_builder_auth(server: &mockito::ServerGuard) -> RelayClient {
     // Use a base64-encoded dummy secret ("secret" -> "c2VjcmV0") so the v2
     // HMAC header generation succeeds.
-    let config = BuilderConfig::new(
-        "builder-key".into(),
-        "c2VjcmV0".into(),
-        Some("pp".into()),
-    );
+    let config = BuilderConfig::new("builder-key".into(), "c2VjcmV0".into(), Some("pp".into()));
     let account = BuilderAccount::new(TEST_PRIVATE_KEY, Some(config)).unwrap();
     RelayClient::builder()
         .expect("builder")
@@ -25,12 +21,9 @@ fn client_with_builder_auth(server: &mockito::ServerGuard) -> RelayClient {
 }
 
 fn client_with_relayer_api_key_auth(server: &mockito::ServerGuard) -> RelayClient {
-    let account = BuilderAccount::with_relayer_api_key(
-        TEST_PRIVATE_KEY,
-        "rk-abc".into(),
-        "0xabc123".into(),
-    )
-    .unwrap();
+    let account =
+        BuilderAccount::with_relayer_api_key(TEST_PRIVATE_KEY, "rk-abc".into(), "0xabc123".into())
+            .unwrap();
     RelayClient::builder()
         .expect("builder")
         .url(&server.url())

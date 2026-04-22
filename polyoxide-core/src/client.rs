@@ -493,10 +493,7 @@ mod tests {
         let body: Vec<u8> = vec![0x50, 0x4B, 0x03, 0x04, 0x00, 0xFF, 0xFE, 0x42];
         let mock = server
             .mock("GET", "/v1/accounting/snapshot")
-            .match_query(mockito::Matcher::UrlEncoded(
-                "user".into(),
-                "0xabc".into(),
-            ))
+            .match_query(mockito::Matcher::UrlEncoded("user".into(), "0xabc".into()))
             .with_status(200)
             .with_header("content-type", "application/zip")
             .with_body(body.clone())

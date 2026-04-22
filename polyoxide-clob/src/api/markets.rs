@@ -182,10 +182,7 @@ impl Markets {
     ///
     /// Returns the condition ID and both token IDs for the market that owns
     /// the given token ID.
-    pub fn market_by_token(
-        &self,
-        token_id: impl Into<String>,
-    ) -> Request<MarketByTokenResponse> {
+    pub fn market_by_token(&self, token_id: impl Into<String>) -> Request<MarketByTokenResponse> {
         Request::get(
             self.http_client.clone(),
             format!(

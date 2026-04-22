@@ -1081,7 +1081,10 @@ mod tests {
         let pos: MarketPositionV1 = serde_json::from_str(json).unwrap();
         assert_eq!(pos.proxy_wallet, "0xabc");
         assert_eq!(pos.name, "Alice");
-        assert_eq!(pos.profile_image.as_deref(), Some("https://example.com/a.png"));
+        assert_eq!(
+            pos.profile_image.as_deref(),
+            Some("https://example.com/a.png")
+        );
         assert!(pos.verified);
         assert_eq!(pos.asset, "token_a");
         assert_eq!(pos.condition_id, "cond_mp");

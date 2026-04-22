@@ -17,10 +17,7 @@ impl AccountingApi {
     ///
     /// The returned `Vec<u8>` is the `application/zip` body verbatim; this
     /// method does not parse or validate the archive contents.
-    pub async fn snapshot(
-        &self,
-        user_address: impl Into<String>,
-    ) -> Result<Vec<u8>, DataApiError> {
+    pub async fn snapshot(&self, user_address: impl Into<String>) -> Result<Vec<u8>, DataApiError> {
         let query = [("user".to_string(), user_address.into())];
         self.http_client
             .get_bytes("/v1/accounting/snapshot", &query)

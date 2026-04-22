@@ -1523,9 +1523,7 @@ async fn live_activity_bulk_sends_array_body() {
 
     let mock = server
         .mock("POST", "/markets/live-activity")
-        .match_body(Matcher::JsonString(
-            r#"["0xcond-1", "0xcond-2"]"#.into(),
-        ))
+        .match_body(Matcher::JsonString(r#"["0xcond-1", "0xcond-2"]"#.into()))
         .with_status(200)
         .with_header("content-type", "application/json")
         .with_body(

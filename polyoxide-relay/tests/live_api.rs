@@ -31,7 +31,11 @@ fn client_with_builder_env() -> Option<RelayClient> {
 
     let config = BuilderConfig::new(key, secret, passphrase);
     let account = BuilderAccount::new(private_key, Some(config)).ok()?;
-    RelayClient::builder().ok()?.with_account(account).build().ok()
+    RelayClient::builder()
+        .ok()?
+        .with_account(account)
+        .build()
+        .ok()
 }
 
 /// Build a relay client using static relayer API key credentials from the environment.
@@ -44,7 +48,11 @@ fn client_with_relayer_api_key_env() -> Option<RelayClient> {
     let address = std::env::var("RELAYER_API_KEY_ADDRESS").ok()?;
 
     let account = BuilderAccount::with_relayer_api_key(private_key, key, address).ok()?;
-    RelayClient::builder().ok()?.with_account(account).build().ok()
+    RelayClient::builder()
+        .ok()?
+        .with_account(account)
+        .build()
+        .ok()
 }
 
 // ── Health ───────────────────────────────────────────────────────
