@@ -1,3 +1,55 @@
+## [0.14.0] - 2026-04-22
+
+### 🚀 Features
+
+- *(core)* Add `HttpClient::get_bytes` helper for endpoints that return binary responses (e.g. ZIP archives)
+- *(clob)* Add path-variant market metadata endpoints: `fee_rate_path`, `tick_size_path`, `neg_risk_path`
+- *(clob)* Add `markets().clob_market_details(condition_id)` returning structured CLOB market metadata
+- *(clob)* Add `markets().market_by_token(token_id)` for token→market lookup
+- *(clob)* Add `markets().live_activity_bulk(ids)` and `live_activity_market(condition_id)` for real-time order/trade counters
+- *(clob)* Add `markets().batch_prices_history(req)` for bulk historical price queries
+- *(gamma)* Add events endpoints: `list_creators`, `get_creator`, `list_paginated`, `list_results`, `list_keyset`
+- *(gamma)* Add markets endpoints: `get_description`, `query_by_information`, `query_abridged`, `list_keyset`
+- *(gamma)* Add `series().get_summary`, `get_summary_by_slug`, and `comment_count`
+- *(gamma)* Add `sports().get_team(id)` and `user().get_by_address(addr)`
+- *(data)* Add `data.market_positions()` namespace with `ListMarketPositions` builder
+- *(data)* Add `data.accounting().snapshot(user)` returning raw ZIP bytes
+- *(relay)* Add `list_relayer_api_keys()` and `list_transactions()` methods with per-endpoint auth dispatch
+
+### 💥 Breaking Changes
+
+- *(clob)* `update_balance_allowance` now calls `PUT /balance-allowance` with query params; signature changed to `(asset_type, token_id: Option<_>, signature_type: Option<_>)`
+- *(gamma)* `tags().get_related_detailed` now returns `Vec<Tag>` instead of a single `Tag`
+- *(gamma)* `keep_closed_markets` is typed as an integer to match the upstream contract
+- *(gamma)* Removed ghost `/events/slug/{slug}/related` endpoint that never existed upstream
+- *(clob)* `GET /trades` now requires `maker_address` per upstream contract
+- *(relay)* Response type fields aligned with upstream OpenAPI (some renames)
+
+### 🐛 Bug Fixes
+
+- *(clob)* Add `POST /heartbeats` endpoint for session keep-alive
+- *(gamma)* Probe `/status` for health pings instead of a non-existent path
+- *(data)* Add `MakerRebate` and `ReferralReward` activity variants
+
+### 📚 Documentation
+
+- *(specs)* Vendor upstream Polymarket OpenAPI YAMLs as the source of truth
+- *(specs)* Sync per-endpoint markdown docs with upstream OpenAPI (CLOB, Gamma, Data, Relay)
+
+### 🧪 Testing
+
+- *(clob)* Add mock and live coverage for all new market endpoints and the PUT balance-allowance migration
+- *(clob)* Add mock coverage for `heartbeat`
+- *(gamma)* Add mock, live, and serde roundtrip coverage for all new events/markets/series/sports/user endpoints
+- *(gamma)* Add mock and live coverage for `get_related_detailed` and `get_related_detailed_by_slug`
+- *(data)* Add mock, live, and serde coverage for market-positions and accounting snapshot
+- *(relay)* Add mock coverage for new endpoints including builder-HMAC vs static-key auth dispatch
+- *(py)* Remove stale xfail markers on CLOB market tests
+
+### 🎨 Styling
+
+- *(gamma)* Apply rustfmt to example probes
+
 ## [0.13.1] - 2026-04-22
 
 ### 🚀 Features

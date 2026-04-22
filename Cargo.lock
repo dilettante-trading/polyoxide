@@ -3478,7 +3478,7 @@ dependencies = [
 
 [[package]]
 name = "polyoxide"
-version = "0.13.1"
+version = "0.14.0"
 dependencies = [
  "polyoxide-clob",
  "polyoxide-data",
@@ -3489,7 +3489,7 @@ dependencies = [
 
 [[package]]
 name = "polyoxide-cli"
-version = "0.13.1"
+version = "0.14.0"
 dependencies = [
  "clap",
  "clap_complete",
@@ -3507,7 +3507,7 @@ dependencies = [
 
 [[package]]
 name = "polyoxide-clob"
-version = "0.13.1"
+version = "0.14.0"
 dependencies = [
  "alloy",
  "dotenvy",
@@ -3533,7 +3533,7 @@ dependencies = [
 
 [[package]]
 name = "polyoxide-core"
-version = "0.13.1"
+version = "0.14.0"
 dependencies = [
  "base64",
  "fastrand",
@@ -3553,7 +3553,7 @@ dependencies = [
 
 [[package]]
 name = "polyoxide-data"
-version = "0.13.1"
+version = "0.14.0"
 dependencies = [
  "mockito",
  "polyoxide-core",
@@ -3568,7 +3568,7 @@ dependencies = [
 
 [[package]]
 name = "polyoxide-gamma"
-version = "0.13.1"
+version = "0.14.0"
 dependencies = [
  "chrono",
  "mockito",
@@ -3586,7 +3586,7 @@ dependencies = [
 
 [[package]]
 name = "polyoxide-py"
-version = "0.13.1"
+version = "0.14.0"
 dependencies = [
  "polyoxide-clob",
  "polyoxide-data",
@@ -3600,7 +3600,7 @@ dependencies = [
 
 [[package]]
 name = "polyoxide-relay"
-version = "0.13.1"
+version = "0.14.0"
 dependencies = [
  "alloy",
  "dotenvy",
