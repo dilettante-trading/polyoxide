@@ -5,6 +5,8 @@ Staging URL: `https://clob-staging.polymarket.com`
 
 Order book trading API for Polymarket. Supports market data queries, order placement/cancellation, balance management, liquidity rewards, and real-time WebSocket streams.
 
+Machine-readable schema: [openapi.yaml](openapi.yaml) (mirror of `https://docs.polymarket.com/api-spec/clob-openapi.yaml`).
+
 ## Auth
 
 Three authentication levels. See [auth.md](auth.md) for details.

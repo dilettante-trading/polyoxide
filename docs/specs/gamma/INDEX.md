@@ -4,6 +4,8 @@ Base URL: `https://gamma-api.polymarket.com`
 
 Read-only market metadata API. Provides event/market/tag information, search, comments, sports data, and user profiles. No authentication required.
 
+Machine-readable schema: [openapi.yaml](openapi.yaml) (mirror of `https://docs.polymarket.com/api-spec/gamma-openapi.yaml`).
+
 ## Auth
 
 No authentication required for any endpoint.

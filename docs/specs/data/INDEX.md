@@ -4,6 +4,8 @@ Base URL: `https://data-api.polymarket.com`
 
 Read-only API for user positions, trades, activity, leaderboard, and market analytics. No authentication required.
 
+Machine-readable schema: [openapi.yaml](openapi.yaml) (mirror of `https://docs.polymarket.com/api-spec/data-openapi.yaml`).
+
 ## Auth
 
 No authentication required for any endpoint.
