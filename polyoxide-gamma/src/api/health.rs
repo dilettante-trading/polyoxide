@@ -12,8 +12,6 @@ pub struct Health {
 impl Health {
     /// Measure the round-trip time (RTT) to the Polymarket Gamma API.
     ///
-    /// Makes a GET request to the API root and returns the latency.
-    ///
     /// # Example
     ///
     /// ```no_run
@@ -27,13 +25,9 @@ impl Health {
     /// # }
     /// ```
     pub async fn ping(&self) -> Result<Duration, GammaError> {
+        let url = format!("{}/status", self.http_client.base_url);
         let start = Instant::now();
-        let response = self
-            .http_client
-            .client
-            .get(self.http_client.base_url.clone())
-            .send()
-            .await?;
+        let response = self.http_client.client.get(url).send().await?;
         let latency = start.elapsed();
 
         if !response.status().is_success() {
