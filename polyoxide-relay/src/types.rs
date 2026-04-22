@@ -144,6 +144,22 @@ pub struct NonceResponse {
     pub nonce: u64,
 }
 
+/// A relayer API key record returned by `GET /relayer/api/keys`.
+///
+/// Mirrors the OpenAPI `RelayerApiKey` schema.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct RelayerApiKey {
+    /// The relayer API key identifier (UUID).
+    pub api_key: String,
+    /// The on-chain address that owns this key.
+    pub address: String,
+    /// RFC3339 timestamp when the key was created.
+    pub created_at: String,
+    /// RFC3339 timestamp when the key was last updated.
+    pub updated_at: String,
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -320,5 +336,65 @@ mod tests {
         assert_eq!(resp.state, "STATE_NEW");
         assert!(resp.transaction_hash.is_none());
         assert!(resp.kind.is_none());
+    }
+
+    // ── RelayerApiKey serde ─────────────────────────────────────
+
+    #[test]
+    fn test_relayer_api_key_deserializes_openapi_example() {
+        // Example lifted from docs/specs/relay/openapi.yaml for
+        // `/relayer/api/keys` response schema.
+        let json = r#"{
+            "apiKey": "01967c03-b8c8-7000-8f68-8b8eaec6fd3d",
+            "address": "0xabc...",
+            "createdAt": "2026-02-24T18:20:11.237485Z",
+            "updatedAt": "2026-02-24T18:20:11.237485Z"
+        }"#;
+        let key: RelayerApiKey = serde_json::from_str(json).unwrap();
+        assert_eq!(key.api_key, "01967c03-b8c8-7000-8f68-8b8eaec6fd3d");
+        assert_eq!(key.address, "0xabc...");
+        assert_eq!(key.created_at, "2026-02-24T18:20:11.237485Z");
+        assert_eq!(key.updated_at, "2026-02-24T18:20:11.237485Z");
+    }
+
+    #[test]
+    fn test_relayer_api_key_roundtrip_preserves_camel_case() {
+        let key = RelayerApiKey {
+            api_key: "abc".to_string(),
+            address: "0xdef".to_string(),
+            created_at: "2026-01-01T00:00:00Z".to_string(),
+            updated_at: "2026-01-02T00:00:00Z".to_string(),
+        };
+        let serialized = serde_json::to_value(&key).unwrap();
+        assert_eq!(serialized["apiKey"], "abc");
+        assert_eq!(serialized["address"], "0xdef");
+        assert_eq!(serialized["createdAt"], "2026-01-01T00:00:00Z");
+        assert_eq!(serialized["updatedAt"], "2026-01-02T00:00:00Z");
+
+        let round: RelayerApiKey = serde_json::from_value(serialized).unwrap();
+        assert_eq!(round.api_key, "abc");
+        assert_eq!(round.updated_at, "2026-01-02T00:00:00Z");
+    }
+
+    #[test]
+    fn test_relayer_api_key_list_deserializes() {
+        let json = r#"[
+            {
+                "apiKey": "key-1",
+                "address": "0xa1",
+                "createdAt": "2026-01-01T00:00:00Z",
+                "updatedAt": "2026-01-01T00:00:00Z"
+            },
+            {
+                "apiKey": "key-2",
+                "address": "0xa2",
+                "createdAt": "2026-01-02T00:00:00Z",
+                "updatedAt": "2026-01-02T00:00:00Z"
+            }
+        ]"#;
+        let keys: Vec<RelayerApiKey> = serde_json::from_str(json).unwrap();
+        assert_eq!(keys.len(), 2);
+        assert_eq!(keys[0].api_key, "key-1");
+        assert_eq!(keys[1].api_key, "key-2");
     }
 }
