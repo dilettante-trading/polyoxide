@@ -13,14 +13,14 @@ More information about this crate can be found in the [crate documentation](http
 
 ```toml
 [dependencies]
-polyoxide-relay = "0.14"
+polyoxide-relay = "0.15"
 ```
 
 Or use the unified client:
 
 ```toml
 [dependencies]
-polyoxide = { version = "0.14", features = ["full"] }
+polyoxide = { version = "0.15", features = ["full"] }
 ```
 
 ### Feature Flags

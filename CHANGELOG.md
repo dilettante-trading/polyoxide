@@ -1,3 +1,17 @@
+## [0.15.0] - 2026-04-23
+
+### 💥 Breaking Changes
+
+- *(gamma)* `markets().query_by_information()` and `markets().query_abridged()` now return request builders; add `.send().await` and pass the body by value instead of by reference
+
+### 🚀 Features
+
+- *(gamma)* Add `limit()` / `offset()` pagination to `query_by_information` and `query_abridged` builders, sent on the URL query string because the server ignores body-level pagination; defaults to `limit=1000` to prevent silent truncation at the server's 20-row default
+
+### 🧪 Testing
+
+- *(gamma)* Add mock coverage for explicit `limit` / `offset` on `query_by_information`
+
 ## [0.14.0] - 2026-04-22
 
 ### 🚀 Features
