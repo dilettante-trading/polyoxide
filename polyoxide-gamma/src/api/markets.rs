@@ -80,20 +80,34 @@ impl Markets {
     /// Unlike [`Self::list`], the filter parameters are passed in the request
     /// body rather than the query string, allowing larger batches of IDs,
     /// slugs, token IDs, etc. without hitting URL-length limits.
-    pub async fn query_by_information(
-        &self,
-        body: &MarketsInformationBody,
-    ) -> Result<Vec<Market>, GammaError> {
-        post_json(&self.http_client, "/markets/information", body).await
+    ///
+    /// Pagination (`limit`, `offset`) is sent via query string — the upstream
+    /// server ignores those fields when present in the JSON body. A default
+    /// `limit=1000` (the upstream row ceiling) is applied so callers that
+    /// forget to paginate don't silently truncate at the server-side default
+    /// of 20. Override with [`QueryByInformation::limit`].
+    pub fn query_by_information(&self, body: MarketsInformationBody) -> QueryByInformation {
+        QueryByInformation {
+            http_client: self.http_client.clone(),
+            body,
+            limit: Some(1000),
+            offset: None,
+        }
     }
 
     /// Query abridged markets by an information filter body
     /// (`POST /markets/abridged`). Returns a reduced-payload market list.
-    pub async fn query_abridged(
-        &self,
-        body: &MarketsInformationBody,
-    ) -> Result<Vec<Market>, GammaError> {
-        post_json(&self.http_client, "/markets/abridged", body).await
+    ///
+    /// Same pagination caveat as [`Self::query_by_information`]: the default
+    /// `limit=1000` is sent on the query string to avoid the silent 20-row
+    /// server default.
+    pub fn query_abridged(&self, body: MarketsInformationBody) -> QueryAbridged {
+        QueryAbridged {
+            http_client: self.http_client.clone(),
+            body,
+            limit: Some(1000),
+            offset: None,
+        }
     }
 
     /// List markets using cursor-based (keyset) pagination
@@ -109,12 +123,17 @@ impl Markets {
     }
 }
 
-/// POST a JSON body and deserialize a JSON response. Shared by
-/// `query_by_information` and `query_abridged`.
+/// POST a JSON body (with optional query string) and deserialize a JSON
+/// response. Shared by `query_by_information` and `query_abridged`.
+///
+/// `query` carries pagination (`limit`, `offset`) because the upstream server
+/// ignores those fields when sent inside the JSON body — they must be on the
+/// URL query string to take effect.
 async fn post_json<B: serde::Serialize, T: serde::de::DeserializeOwned>(
     http: &HttpClient,
     path: &str,
     body: &B,
+    query: &[(&str, String)],
 ) -> Result<T, GammaError> {
     let url = http
         .base_url
@@ -127,6 +146,7 @@ async fn post_json<B: serde::Serialize, T: serde::de::DeserializeOwned>(
     let response = http
         .client
         .post(url)
+        .query(query)
         .json(body)
         .send()
         .await
@@ -141,6 +161,91 @@ async fn post_json<B: serde::Serialize, T: serde::de::DeserializeOwned>(
         .await
         .map_err(|e| GammaError::Api(ApiError::from(e)))?;
     serde_json::from_str(&text).map_err(|e| GammaError::Api(ApiError::from(e)))
+}
+
+/// Collect the `limit` / `offset` pair into a query slice, skipping unset
+/// values so the resulting URL contains only explicit pagination params.
+fn pagination_query(limit: Option<u32>, offset: Option<u32>) -> Vec<(&'static str, String)> {
+    let mut query = Vec::new();
+    if let Some(limit) = limit {
+        query.push(("limit", limit.to_string()));
+    }
+    if let Some(offset) = offset {
+        query.push(("offset", offset.to_string()));
+    }
+    query
+}
+
+/// Request builder for [`Markets::query_by_information`].
+///
+/// Posts a [`MarketsInformationBody`] filter to `/markets/information` and
+/// returns the matching markets. Pagination (`limit`, `offset`) is sent on
+/// the URL query string because the server ignores body-level pagination;
+/// the builder defaults `limit=1000` to prevent silent truncation.
+pub struct QueryByInformation {
+    http_client: HttpClient,
+    body: MarketsInformationBody,
+    limit: Option<u32>,
+    offset: Option<u32>,
+}
+
+impl QueryByInformation {
+    /// Override the default `limit=1000`. Upstream caps responses at 1000
+    /// rows; larger values are silently clamped.
+    pub fn limit(mut self, limit: u32) -> Self {
+        self.limit = Some(limit);
+        self
+    }
+
+    /// Paginate past the first response by offsetting into the result set.
+    pub fn offset(mut self, offset: u32) -> Self {
+        self.offset = Some(offset);
+        self
+    }
+
+    /// Execute the request.
+    pub async fn send(self) -> Result<Vec<Market>, GammaError> {
+        let query = pagination_query(self.limit, self.offset);
+        post_json(
+            &self.http_client,
+            "/markets/information",
+            &self.body,
+            &query,
+        )
+        .await
+    }
+}
+
+/// Request builder for [`Markets::query_abridged`].
+///
+/// Posts a [`MarketsInformationBody`] filter to `/markets/abridged` and
+/// returns a reduced-payload market list. Same pagination semantics as
+/// [`QueryByInformation`] — `limit` / `offset` travel on the query string.
+pub struct QueryAbridged {
+    http_client: HttpClient,
+    body: MarketsInformationBody,
+    limit: Option<u32>,
+    offset: Option<u32>,
+}
+
+impl QueryAbridged {
+    /// Override the default `limit=1000`.
+    pub fn limit(mut self, limit: u32) -> Self {
+        self.limit = Some(limit);
+        self
+    }
+
+    /// Paginate past the first response by offsetting into the result set.
+    pub fn offset(mut self, offset: u32) -> Self {
+        self.offset = Some(offset);
+        self
+    }
+
+    /// Execute the request.
+    pub async fn send(self) -> Result<Vec<Market>, GammaError> {
+        let query = pagination_query(self.limit, self.offset);
+        post_json(&self.http_client, "/markets/abridged", &self.body, &query).await
+    }
 }
 
 /// Request builder for getting a single market

@@ -608,6 +608,7 @@ async fn query_markets_by_information_posts_body() {
     let mock = server
         .mock("POST", "/markets/information")
         .match_header("content-type", "application/json")
+        .match_query(Matcher::UrlEncoded("limit".into(), "1000".into()))
         .match_body(Matcher::JsonString(
             r#"{"id":[1,2],"closed":true}"#.to_string(),
         ))
@@ -631,9 +632,49 @@ async fn query_markets_by_information_posts_body() {
         closed: Some(true),
         ..Default::default()
     };
-    let markets = gamma.markets().query_by_information(&body).await.unwrap();
+    let markets = gamma
+        .markets()
+        .query_by_information(body)
+        .send()
+        .await
+        .unwrap();
     assert_eq!(markets.len(), 1);
     assert_eq!(markets[0].id, "1");
+    mock.assert_async().await;
+}
+
+#[tokio::test]
+async fn query_markets_by_information_sends_explicit_pagination() {
+    use polyoxide_gamma::types::MarketsInformationBody;
+
+    let mut server = Server::new_async().await;
+    let mock = server
+        .mock("POST", "/markets/information")
+        .match_query(Matcher::AllOf(vec![
+            Matcher::UrlEncoded("limit".into(), "500".into()),
+            Matcher::UrlEncoded("offset".into(), "1000".into()),
+        ]))
+        .match_body(Matcher::JsonString(r#"{"id":[42]}"#.to_string()))
+        .with_status(200)
+        .with_header("content-type", "application/json")
+        .with_body("[]")
+        .create_async()
+        .await;
+
+    let gamma = test_gamma(&server);
+    let body = MarketsInformationBody {
+        id: vec![42],
+        ..Default::default()
+    };
+    let markets = gamma
+        .markets()
+        .query_by_information(body)
+        .limit(500)
+        .offset(1000)
+        .send()
+        .await
+        .unwrap();
+    assert!(markets.is_empty());
     mock.assert_async().await;
 }
 
@@ -647,6 +688,7 @@ async fn query_abridged_markets_posts_body() {
     let mock = server
         .mock("POST", "/markets/abridged")
         .match_header("content-type", "application/json")
+        .match_query(Matcher::UrlEncoded("limit".into(), "1000".into()))
         .match_body(Matcher::JsonString(
             r#"{"slug":["mkt-a"],"includeTags":true}"#.to_string(),
         ))
@@ -670,7 +712,7 @@ async fn query_abridged_markets_posts_body() {
         include_tags: Some(true),
         ..Default::default()
     };
-    let markets = gamma.markets().query_abridged(&body).await.unwrap();
+    let markets = gamma.markets().query_abridged(body).send().await.unwrap();
     assert_eq!(markets.len(), 1);
     assert_eq!(markets[0].id, "7");
     mock.assert_async().await;

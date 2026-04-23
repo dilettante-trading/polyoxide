@@ -244,7 +244,8 @@ async fn live_query_markets_by_information() {
     };
     let found = gamma
         .markets()
-        .query_by_information(&body)
+        .query_by_information(body)
+        .send()
         .await
         .expect("POST /markets/information");
     assert!(
@@ -266,7 +267,8 @@ async fn live_query_abridged_markets() {
     };
     let found = gamma
         .markets()
-        .query_abridged(&body)
+        .query_abridged(body)
+        .send()
         .await
         .expect("POST /markets/abridged");
     // Deserialization is the primary assertion; the array may be empty.
