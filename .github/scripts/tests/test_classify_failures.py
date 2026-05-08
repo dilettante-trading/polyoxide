@@ -5,7 +5,7 @@ from __future__ import annotations
 import json
 from pathlib import Path
 
-from classify_failures import TestOutcome, Verdict, classify, parse_nextest_json
+from classify_failures import Verdict, classify, parse_nextest_json
 
 FIXTURES = Path(__file__).parent / "fixtures"
 
