@@ -56,3 +56,14 @@ jobs:
         working-directory: polyoxide-py
       - run: uv run pytest tests/ -v
         working-directory: polyoxide-py
+
+  scripts:
+    name: CI Scripts
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: astral-sh/setup-uv@v6
+      - run: uv sync
+        working-directory: .github/scripts
+      - run: uv run pytest tests/ -v
+        working-directory: .github/scripts
