@@ -1,0 +1,11 @@
+openapi: 3.0.0
+info:
+  title: Test API
+  version: 1.0.0
+paths:
+  /markets:
+    get:
+      summary: List markets
+      responses:
+        '200':
+          description: OK
