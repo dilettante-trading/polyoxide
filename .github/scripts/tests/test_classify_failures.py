@@ -5,8 +5,6 @@ from __future__ import annotations
 import json
 from pathlib import Path
 
-import pytest
-
 from classify_failures import Verdict, classify
 
 FIXTURES = Path(__file__).parent / "fixtures"
