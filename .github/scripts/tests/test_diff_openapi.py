@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from pathlib import Path
 
-from diff_openapi import canonicalize
+from diff_openapi import canonicalize, detect_drift
 
 FIXTURES = Path(__file__).parent / "fixtures"
 
@@ -19,9 +19,6 @@ def test_canonicalize_distinguishes_added_endpoint() -> None:
     old = (FIXTURES / "openapi-added-endpoint" / "old.yaml").read_text()
     new = (FIXTURES / "openapi-added-endpoint" / "new.yaml").read_text()
     assert canonicalize(old) != canonicalize(new)
-
-
-from diff_openapi import detect_drift
 
 
 def test_detect_drift_no_drift_returns_clean() -> None:
