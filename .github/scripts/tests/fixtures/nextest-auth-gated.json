@@ -1,0 +1,4 @@
+{ "type": "suite", "event": "started", "test_count": 1 }
+{ "type": "test", "event": "started", "name": "live_create_order" }
+{ "type": "test", "name": "live_create_order", "event": "failed", "stdout": "thread 'live_create_order' panicked at polyoxide-clob/tests/live_api.rs:23:21:\nPOLYMARKET_* env vars required for authenticated tests: env error: NotPresent\n" }
+{ "type": "suite", "event": "failed", "passed": 0, "failed": 1, "ignored": 0, "measured": 0, "filtered_out": 0, "exec_time": 0.0 }
