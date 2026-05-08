@@ -3,8 +3,11 @@
 
 from __future__ import annotations
 
+import json
 import re
+from dataclasses import dataclass
 from enum import Enum
+from pathlib import Path
 
 
 class Verdict(str, Enum):
@@ -47,3 +50,36 @@ def classify(failure_output: str) -> Verdict:
         if pat.search(failure_output):
             return Verdict.TRANSIENT
     return Verdict.REAL
+
+
+@dataclass(frozen=True)
+class TestOutcome:
+    name: str
+    verdict: Verdict
+    output: str  # raw stdout+stderr; empty for PASS
+
+
+def parse_nextest_json(path: Path) -> list[TestOutcome]:
+    """Parse a nextest libtest-json NDJSON file into TestOutcomes.
+
+    Each line is a JSON object. We care about events with `type == "test"`
+    and `event in ("ok", "failed")`. Other events (suite-level, started)
+    are ignored.
+    """
+    outcomes: list[TestOutcome] = []
+    with path.open() as f:
+        for raw_line in f:
+            line = raw_line.strip()
+            if not line:
+                continue
+            event = json.loads(line)
+            if event.get("type") != "test":
+                continue
+            kind = event.get("event")
+            name = event.get("name", "")
+            if kind == "ok":
+                outcomes.append(TestOutcome(name=name, verdict=Verdict.PASS, output=""))
+            elif kind == "failed":
+                output = event.get("stdout", "") + event.get("stderr", "")
+                outcomes.append(TestOutcome(name=name, verdict=classify(output), output=output))
+    return outcomes
