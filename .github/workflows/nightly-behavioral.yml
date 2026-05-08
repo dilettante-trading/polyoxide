@@ -1,0 +1,144 @@
+name: Nightly behavioral smoketest
+
+on:
+  schedule:
+    - cron: "0 6 * * *"
+  workflow_dispatch: {}
+
+permissions:
+  contents: read
+  issues: write
+
+concurrency:
+  group: nightly-behavioral
+  cancel-in-progress: false
+
+env:
+  CARGO_INCREMENTAL: 0
+  CARGO_TERM_COLOR: always
+  RUST_BACKTRACE: 1
+
+jobs:
+  test:
+    name: Live tests (${{ matrix.crate }})
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    strategy:
+      fail-fast: false
+      matrix:
+        crate: [polyoxide-gamma, polyoxide-data, polyoxide-clob, polyoxide-relay]
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+      - uses: taiki-e/install-action@nextest
+      - uses: astral-sh/setup-uv@v6
+      - run: uv sync
+        working-directory: .github/scripts
+
+      - name: Run live (no-auth) tests — first pass
+        run: |
+          mkdir -p artifacts/${{ matrix.crate }}
+          cargo nextest run \
+            -p ${{ matrix.crate }} \
+            --test live_api \
+            --run-ignored only \
+            --no-fail-fast \
+            --message-format libtest-json \
+            > artifacts/${{ matrix.crate }}/first-pass.json 2>artifacts/${{ matrix.crate }}/first-pass.stderr || true
+
+      - name: Classify first-pass failures
+        run: |
+          uv run python ${{ github.workspace }}/.github/scripts/classify_failures.py classify \
+            --input artifacts/${{ matrix.crate }}/first-pass.json \
+            --output-dir artifacts/${{ matrix.crate }}/classified
+        working-directory: .github/scripts
+
+      - name: Retry transient failures
+        run: |
+          RETRY_LIST="artifacts/${{ matrix.crate }}/classified/retry-tests.txt"
+          if [ -s "$RETRY_LIST" ]; then
+            FILTER=$(awk 'BEGIN{first=1} {if(first==1){printf "test(=%s)", $0; first=0} else {printf " | test(=%s)", $0}}' "$RETRY_LIST")
+            cargo nextest run \
+              -p ${{ matrix.crate }} \
+              --test live_api \
+              --run-ignored only \
+              --no-fail-fast \
+              --message-format libtest-json \
+              --retries 2 \
+              -E "$FILTER" \
+              > artifacts/${{ matrix.crate }}/retry.json 2>artifacts/${{ matrix.crate }}/retry.stderr || true
+          else
+            echo '{"type":"suite","event":"started","test_count":0}' > artifacts/${{ matrix.crate }}/retry.json
+            echo '{"type":"suite","event":"ok","passed":0,"failed":0,"ignored":0,"measured":0,"filtered_out":0,"exec_time":0.0}' >> artifacts/${{ matrix.crate }}/retry.json
+          fi
+
+      - name: Merge first-pass + retry
+        run: |
+          uv run python ${{ github.workspace }}/.github/scripts/classify_failures.py merge \
+            --first-pass ${{ github.workspace }}/artifacts/${{ matrix.crate }}/first-pass.json \
+            --retry ${{ github.workspace }}/artifacts/${{ matrix.crate }}/retry.json \
+            --output-dir ${{ github.workspace }}/artifacts/${{ matrix.crate }}/merged
+        working-directory: .github/scripts
+
+      - name: Upload artifacts
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: behavioral-${{ matrix.crate }}
+          path: artifacts/${{ matrix.crate }}/
+
+  aggregate:
+    name: Aggregate and report
+    needs: [test]
+    if: always()
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      issues: write
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/download-artifact@v4
+        with:
+          path: all-artifacts/
+          pattern: behavioral-*
+
+      - name: Build combined report
+        id: report
+        run: |
+          REPORT_FILE=$(mktemp)
+          ANY_REAL_FAILURE="false"
+          echo "# Nightly behavioral check — $(date -u +%Y-%m-%d)" > "$REPORT_FILE"
+          echo "" >> "$REPORT_FILE"
+          for d in all-artifacts/behavioral-*; do
+            crate=$(basename "$d" | sed 's/^behavioral-//')
+            real_failures="$d/merged/real-failures.txt"
+            report_md="$d/merged/report.md"
+            if [ -s "$real_failures" ]; then
+              ANY_REAL_FAILURE="true"
+              echo "## ${crate}" >> "$REPORT_FILE"
+              echo "" >> "$REPORT_FILE"
+              cat "$report_md" >> "$REPORT_FILE"
+              echo "" >> "$REPORT_FILE"
+            fi
+          done
+          echo "any_real_failure=$ANY_REAL_FAILURE" >> "$GITHUB_OUTPUT"
+          echo "report_file=$REPORT_FILE" >> "$GITHUB_OUTPUT"
+
+      - name: File or update tracking issue
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          EXISTING=$(gh issue list --label nightly-behavioral --state open --json number --jq '.[0].number // empty')
+          if [ "${{ steps.report.outputs.any_real_failure }}" = "true" ]; then
+            BODY="$(cat ${{ steps.report.outputs.report_file }})"
+            if [ -n "$EXISTING" ]; then
+              gh issue comment "$EXISTING" --body "$BODY"
+            else
+              gh issue create \
+                --title "Nightly behavioral check failed: $(date -u +%Y-%m-%d)" \
+                --label nightly-behavioral \
+                --body "$BODY"
+            fi
+          elif [ -n "$EXISTING" ]; then
+            gh issue close "$EXISTING" --comment "Recovered $(date -u +%Y-%m-%d)"
+          fi
