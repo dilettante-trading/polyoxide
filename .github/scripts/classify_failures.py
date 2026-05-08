@@ -3,8 +3,10 @@
 
 from __future__ import annotations
 
+import argparse
 import json
 import re
+import sys
 from dataclasses import dataclass
 from enum import Enum
 from pathlib import Path
@@ -83,3 +85,98 @@ def parse_nextest_json(path: Path) -> list[TestOutcome]:
                 output = event.get("stdout", "") + event.get("stderr", "")
                 outcomes.append(TestOutcome(name=name, verdict=classify(output), output=output))
     return outcomes
+
+
+def _write_lines(path: Path, names: list[str]) -> None:
+    """Write one name per line; trailing newline only if non-empty."""
+    if names:
+        path.write_text("\n".join(names) + "\n")
+    else:
+        path.write_text("")
+
+
+def _render_report(real_failures: list[TestOutcome]) -> str:
+    if not real_failures:
+        return "All real failures resolved on retry, or no failures observed.\n"
+    lines = ["## Real failures", ""]
+    for outcome in real_failures:
+        lines.append(f"### `{outcome.name}`")
+        lines.append("")
+        lines.append("```")
+        # Truncate very long outputs to keep issue bodies manageable.
+        truncated = outcome.output if len(outcome.output) <= 4000 else outcome.output[:4000] + "\n... [truncated]"
+        lines.append(truncated.rstrip())
+        lines.append("```")
+        lines.append("")
+    return "\n".join(lines)
+
+
+def _emit_outputs(outcomes: list[TestOutcome], output_dir: Path) -> None:
+    output_dir.mkdir(parents=True, exist_ok=True)
+    retry = [o.name for o in outcomes if o.verdict == Verdict.TRANSIENT]
+    real = [o for o in outcomes if o.verdict == Verdict.REAL]
+    auth = [o.name for o in outcomes if o.verdict == Verdict.AUTH_GATED]
+    _write_lines(output_dir / "retry-tests.txt", retry)
+    _write_lines(output_dir / "real-failures.txt", [o.name for o in real])
+    _write_lines(output_dir / "auth-gated.txt", auth)
+    (output_dir / "report.md").write_text(_render_report(real))
+
+
+def _cmd_classify(args: argparse.Namespace) -> int:
+    outcomes = parse_nextest_json(args.input)
+    _emit_outputs(outcomes, args.output_dir)
+    return 0
+
+
+def _cmd_merge(args: argparse.Namespace) -> int:
+    """Merge first-pass and retry. A test is REAL iff it was REAL on first pass
+    OR was TRANSIENT on first pass and (still TRANSIENT or REAL) on retry."""
+    first = parse_nextest_json(args.first_pass)
+    retry = parse_nextest_json(args.retry)
+    by_name_retry = {o.name: o for o in retry}
+
+    merged: list[TestOutcome] = []
+    for o in first:
+        if o.verdict in (Verdict.PASS, Verdict.AUTH_GATED, Verdict.REAL):
+            merged.append(o)
+        elif o.verdict == Verdict.TRANSIENT:
+            r = by_name_retry.get(o.name)
+            if r is None or r.verdict == Verdict.PASS:
+                merged.append(TestOutcome(o.name, Verdict.PASS, ""))
+            else:
+                # Still TRANSIENT or escalated to REAL — treat as REAL in the report.
+                merged.append(TestOutcome(o.name, Verdict.REAL, r.output or o.output))
+
+    # The merge command never emits a retry list (the retry already happened).
+    output_dir = args.output_dir
+    output_dir.mkdir(parents=True, exist_ok=True)
+    real = [o for o in merged if o.verdict == Verdict.REAL]
+    auth = [o.name for o in merged if o.verdict == Verdict.AUTH_GATED]
+    _write_lines(output_dir / "retry-tests.txt", [])
+    _write_lines(output_dir / "real-failures.txt", [o.name for o in real])
+    _write_lines(output_dir / "auth-gated.txt", auth)
+    (output_dir / "report.md").write_text(_render_report(real))
+    return 0
+
+
+def main(argv: list[str] | None = None) -> int:
+    parser = argparse.ArgumentParser(description="Classify nextest failures.")
+    sub = parser.add_subparsers(dest="cmd", required=True)
+
+    p_classify = sub.add_parser("classify", help="First-pass classification.")
+    p_classify.add_argument("--input", type=Path, required=True)
+    p_classify.add_argument("--output-dir", type=Path, required=True)
+    p_classify.set_defaults(func=_cmd_classify)
+
+    p_merge = sub.add_parser("merge", help="Merge first-pass and retry results.")
+    p_merge.add_argument("--first-pass", type=Path, required=True)
+    p_merge.add_argument("--retry", type=Path, required=True)
+    p_merge.add_argument("--output-dir", type=Path, required=True)
+    p_merge.set_defaults(func=_cmd_merge)
+
+    ns = parser.parse_args(argv)
+    return ns.func(ns)
+
+
+if __name__ == "__main__":
+    sys.exit(main())
