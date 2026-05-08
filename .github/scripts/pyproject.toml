@@ -1,0 +1,17 @@
+[project]
+name = "polyoxide-ci-scripts"
+version = "0.1.0"
+description = "CI helper scripts for polyoxide nightly smoketest workflows"
+requires-python = ">=3.11"
+dependencies = [
+    "pyyaml>=6.0",
+]
+
+[dependency-groups]
+dev = [
+    "pytest>=8.0",
+]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+python_files = ["test_*.py"]
