@@ -150,3 +150,25 @@ def test_cli_check_apply_on_drift_copies_upstream_to_vendored(tmp_path: Path) ->
     )
     # Vendored file now equals upstream, byte for byte.
     assert vendored.read_bytes() == upstream_src.read_bytes()
+
+
+def test_cli_check_parse_error_exits_two(tmp_path: Path) -> None:
+    """Invalid YAML upstream should produce exit code 2 with a stderr message."""
+    bad_yaml = tmp_path / "bad.yaml"
+    bad_yaml.write_text("key: [unclosed\n")
+    out_dir = tmp_path / "out"
+    out_dir.mkdir()
+    result = subprocess.run(
+        [
+            sys.executable, str(SCRIPT), "check",
+            "--crate", "test",
+            "--upstream-yaml", str(bad_yaml),
+            "--vendored-yaml", str(FIXTURES / "openapi-no-drift" / "old.yaml"),
+            "--upstream-url", "https://example.com/test.yaml",
+            "--output-dir", str(out_dir),
+        ],
+        capture_output=True,
+        text=True,
+    )
+    assert result.returncode == 2
+    assert "YAML parse error" in result.stderr
