@@ -20,6 +20,7 @@ reqwest = { workspace = true }
 serde = { workspace = true }
 serde_json = { workspace = true }
 thiserror = { workspace = true }
+tracing = { workspace = true }
 url = { workspace = true }
 specta = { version = "=2.0.0-rc.20", features = ["derive", "serde"], optional = true }
 

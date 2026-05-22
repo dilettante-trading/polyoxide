@@ -637,3 +637,65 @@ async fn error_404_returns_api_error() {
 
     mock.assert_async().await;
 }
+
+#[tokio::test]
+async fn ping_returns_latency_on_200() {
+    let mut server = Server::new_async().await;
+
+    let mock = server
+        .mock("GET", "/")
+        .with_status(200)
+        .with_body(r#"{"data":"OK"}"#)
+        .create_async()
+        .await;
+
+    let data = test_data(&server);
+    let latency = data.health().ping().await.expect("ping should succeed");
+    assert!(
+        latency.as_millis() < 5000,
+        "latency should be reasonable for local mock"
+    );
+
+    mock.assert_async().await;
+}
+
+#[tokio::test]
+async fn ping_treats_301_redirect_as_success() {
+    let mut server = Server::new_async().await;
+
+    let mock = server
+        .mock("GET", "/")
+        .with_status(301)
+        .with_header("location", "/docs")
+        .create_async()
+        .await;
+
+    let data = test_data(&server);
+    data.health()
+        .ping()
+        .await
+        .expect("301 from root should be a successful ping");
+
+    mock.assert_async().await;
+}
+
+#[tokio::test]
+async fn ping_propagates_5xx_as_error() {
+    let mut server = Server::new_async().await;
+
+    let mock = server
+        .mock("GET", "/")
+        .with_status(503)
+        .with_body("upstream unavailable")
+        .create_async()
+        .await;
+
+    let data = test_data(&server);
+    let err = data.health().ping().await.unwrap_err();
+    assert!(
+        matches!(err, DataApiError::Api(_)),
+        "expected ApiError for 5xx, got {err:?}"
+    );
+
+    mock.assert_async().await;
+}
