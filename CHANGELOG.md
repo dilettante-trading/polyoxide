@@ -1,3 +1,13 @@
+## [0.15.1] - 2026-05-22
+
+### 🐛 Bug Fixes
+
+- *(gamma)* Fix double-slash URL in health ping — `format!("{}/status", base_url)` produced `//status` because `Url::Display` normalizes to include a trailing `/`; switched to `base_url.join("status")?`
+
+### 🧪 Tests
+
+- *(clob, data, gamma)* Add per-crate ping mock tests covering the 200 happy path, unexpected 3xx as error, and 5xx as error
+
 ## [0.15.0] - 2026-04-23
 
 ### 💥 Breaking Changes
