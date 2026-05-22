@@ -313,3 +313,64 @@ async fn malformed_json_returns_serialization_error() {
 
     mock.assert_async().await;
 }
+
+// ── Health ───────────────────────────────────────────────────────
+
+#[tokio::test]
+async fn ping_targets_root_path_without_extra_slash() {
+    let mut server = Server::new_async().await;
+
+    let mock = server
+        .mock("GET", "/")
+        .with_status(200)
+        .create_async()
+        .await;
+
+    let gamma = test_gamma(&server);
+    gamma.health().ping().await.expect("ping should succeed");
+
+    mock.assert_async().await;
+}
+
+#[tokio::test]
+async fn ping_treats_301_redirect_as_success() {
+    let mut server = Server::new_async().await;
+
+    let mock = server
+        .mock("GET", "/")
+        .with_status(301)
+        .with_header("location", "/docs")
+        .with_body(r#"<a href="/docs">Moved Permanently</a>."#)
+        .create_async()
+        .await;
+
+    let gamma = test_gamma(&server);
+    gamma
+        .health()
+        .ping()
+        .await
+        .expect("301 from root should be a successful ping");
+
+    mock.assert_async().await;
+}
+
+#[tokio::test]
+async fn ping_propagates_5xx_as_error() {
+    let mut server = Server::new_async().await;
+
+    let mock = server
+        .mock("GET", "/")
+        .with_status(503)
+        .with_body("upstream unavailable")
+        .create_async()
+        .await;
+
+    let gamma = test_gamma(&server);
+    let err = gamma.health().ping().await.unwrap_err();
+    assert!(
+        matches!(err, GammaError::Api(_)),
+        "expected ApiError for 5xx, got {err:?}"
+    );
+
+    mock.assert_async().await;
+}
