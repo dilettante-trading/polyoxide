@@ -1374,3 +1374,44 @@ async fn create_market_order_insufficient_liquidity() {
         err
     );
 }
+
+#[tokio::test]
+async fn ping_treats_301_redirect_as_success() {
+    let mut server = Server::new_async().await;
+
+    let mock = server
+        .mock("GET", "/")
+        .with_status(301)
+        .with_header("location", "/docs")
+        .create_async()
+        .await;
+
+    let clob = test_public_clob(&server);
+    clob.health()
+        .ping()
+        .await
+        .expect("301 from root should be a successful ping");
+
+    mock.assert_async().await;
+}
+
+#[tokio::test]
+async fn ping_propagates_5xx_as_error() {
+    let mut server = Server::new_async().await;
+
+    let mock = server
+        .mock("GET", "/")
+        .with_status(503)
+        .with_body("upstream unavailable")
+        .create_async()
+        .await;
+
+    let clob = test_public_clob(&server);
+    let err = clob.health().ping().await.unwrap_err();
+    assert!(
+        matches!(err, ClobError::Api(_)),
+        "expected ApiError for 5xx, got {err:?}"
+    );
+
+    mock.assert_async().await;
+}
