@@ -1,8 +1,8 @@
 use crate::account::BuilderAccount;
-use crate::config::{get_contract_config, BuilderConfig, ContractConfig};
+use crate::config::{get_contract_config, AuthConfig, BuilderConfig, ContractConfig};
 use crate::error::RelayError;
 use crate::types::{
-    NonceResponse, RelayerTransactionResponse, SafeTransaction, SafeTx, TransactionStatusResponse,
+    NonceResponse, RelayerApiKey, RelayerTransaction, SafeTransaction, SafeTx, SubmitResponse,
     WalletType,
 };
 use alloy::hex;
@@ -180,6 +180,96 @@ impl RelayClient {
         }
     }
 
+    /// Produce GET auth headers, enforcing per-endpoint auth-scheme allow-lists.
+    fn authed_get_headers(
+        &self,
+        path: &str,
+        allow_builder: bool,
+        allow_relayer_api_key: bool,
+    ) -> Result<reqwest::header::HeaderMap, RelayError> {
+        let account = self.account.as_ref().ok_or_else(|| {
+            RelayError::Api(
+                "Account missing - cannot authenticate request. Configure an account via RelayClientBuilder::with_account or ::relayer_api_key.".to_string(),
+            )
+        })?;
+        let auth = account.auth_config().ok_or_else(|| {
+            RelayError::Api(
+                "No authentication configured - provide BuilderConfig or RelayerApiKeyConfig when creating the BuilderAccount".to_string(),
+            )
+        })?;
+
+        match auth {
+            AuthConfig::Builder(cfg) => {
+                if !allow_builder {
+                    return Err(RelayError::Api(format!(
+                        "{} requires Relayer API Key auth; configure the client with relayer_api_key()",
+                        path
+                    )));
+                }
+                cfg.generate_relayer_v2_headers("GET", path, None)
+                    .map_err(RelayError::Api)
+            }
+            AuthConfig::RelayerApiKey(cfg) => {
+                if !allow_relayer_api_key {
+                    return Err(RelayError::Api(format!(
+                        "{} requires Builder HMAC auth; configure the client with BuilderConfig",
+                        path
+                    )));
+                }
+                cfg.generate_headers().map_err(RelayError::Api)
+            }
+        }
+    }
+
+    /// Send an authenticated GET request with retry-on-429 logic.
+    async fn get_with_retry_authed(
+        &self,
+        path: &str,
+        url: &Url,
+        allow_builder: bool,
+        allow_relayer_api_key: bool,
+    ) -> Result<reqwest::Response, RelayError> {
+        let mut attempt = 0u32;
+        loop {
+            let _permit = self.http_client.acquire_concurrency().await;
+            self.http_client.acquire_rate_limit(path, None).await;
+
+            // Regenerate auth headers each attempt so HMAC timestamps stay fresh.
+            let headers = self.authed_get_headers(path, allow_builder, allow_relayer_api_key)?;
+            let resp = self
+                .http_client
+                .client
+                .get(url.clone())
+                .headers(headers)
+                .send()
+                .await?;
+
+            let retry_after = retry_after_header(&resp);
+            if let Some(backoff) =
+                self.http_client
+                    .should_retry(resp.status(), attempt, retry_after.as_deref())
+            {
+                attempt += 1;
+                tracing::warn!(
+                    "Rate limited (429) on {}, retry {} after {}ms",
+                    path,
+                    attempt,
+                    backoff.as_millis()
+                );
+                drop(_permit);
+                tokio::time::sleep(backoff).await;
+                continue;
+            }
+
+            if !resp.status().is_success() {
+                let text = resp.text().await?;
+                return Err(RelayError::Api(format!("{} failed: {}", path, text)));
+            }
+
+            return Ok(resp);
+        }
+    }
+
     /// Measure the round-trip time (RTT) to the Relay API.
     ///
     /// Makes a GET request to the API base URL and returns the latency.
@@ -215,19 +305,51 @@ impl RelayClient {
         Ok(data.nonce)
     }
 
-    /// Query the status of a previously submitted relay transaction.
+    /// Query the full record of a previously submitted relay transaction.
     pub async fn get_transaction(
         &self,
         transaction_id: &str,
-    ) -> Result<TransactionStatusResponse, RelayError> {
+    ) -> Result<RelayerTransaction, RelayError> {
         let url = self
             .http_client
             .base_url
             .join(&format!("transaction?id={}", transaction_id))?;
         let resp = self.get_with_retry("/transaction", &url).await?;
-        resp.json::<TransactionStatusResponse>()
+        resp.json::<RelayerTransaction>().await.map_err(Into::into)
+    }
+
+    /// List the most recent relayer transactions owned by the authenticated user.
+    ///
+    /// Accepts either Builder HMAC auth ([`AuthConfig::Builder`]) or static Relayer
+    /// API Key auth ([`AuthConfig::RelayerApiKey`]); the client will use whichever
+    /// is configured on its [`BuilderAccount`].
+    ///
+    /// Returns an error if no account / auth is configured.
+    ///
+    /// See `GET /transactions` in `docs/specs/relay/openapi.yaml`.
+    pub async fn list_transactions(&self) -> Result<Vec<RelayerTransaction>, RelayError> {
+        let url = self.http_client.base_url.join("transactions")?;
+        let resp = self
+            .get_with_retry_authed("/transactions", &url, true, true)
+            .await?;
+        resp.json::<Vec<RelayerTransaction>>()
             .await
             .map_err(Into::into)
+    }
+
+    /// List all relayer API keys owned by the authenticated address.
+    ///
+    /// Requires static Relayer API Key auth ([`AuthConfig::RelayerApiKey`]);
+    /// returns an error if the client is configured with Builder HMAC auth
+    /// (per the OpenAPI spec, this endpoint does not accept Builder HMAC).
+    ///
+    /// See `GET /relayer/api/keys` in `docs/specs/relay/openapi.yaml`.
+    pub async fn list_relayer_api_keys(&self) -> Result<Vec<RelayerApiKey>, RelayError> {
+        let url = self.http_client.base_url.join("relayer/api/keys")?;
+        let resp = self
+            .get_with_retry_authed("/relayer/api/keys", &url, false, true)
+            .await?;
+        resp.json::<Vec<RelayerApiKey>>().await.map_err(Into::into)
     }
 
     /// Check whether a Safe wallet has been deployed on-chain.
@@ -450,7 +572,7 @@ impl RelayClient {
         &self,
         transactions: Vec<SafeTransaction>,
         metadata: Option<String>,
-    ) -> Result<RelayerTransactionResponse, RelayError> {
+    ) -> Result<SubmitResponse, RelayError> {
         self.execute_with_gas(transactions, metadata, None).await
     }
 
@@ -463,7 +585,7 @@ impl RelayClient {
         transactions: Vec<SafeTransaction>,
         metadata: Option<String>,
         gas_limit: Option<u64>,
-    ) -> Result<RelayerTransactionResponse, RelayError> {
+    ) -> Result<SubmitResponse, RelayError> {
         if transactions.is_empty() {
             return Err(RelayError::Api("No transactions to execute".into()));
         }
@@ -477,7 +599,7 @@ impl RelayClient {
         &self,
         transactions: Vec<SafeTransaction>,
         metadata: Option<String>,
-    ) -> Result<RelayerTransactionResponse, RelayError> {
+    ) -> Result<SubmitResponse, RelayError> {
         let account = self.account.as_ref().ok_or(RelayError::MissingSigner)?;
         let from_address = account.address();
 
@@ -551,7 +673,7 @@ impl RelayClient {
         transactions: Vec<SafeTransaction>,
         metadata: Option<String>,
         gas_limit: Option<u64>,
-    ) -> Result<RelayerTransactionResponse, RelayError> {
+    ) -> Result<SubmitResponse, RelayError> {
         let account = self.account.as_ref().ok_or(RelayError::MissingSigner)?;
         let from_address = account.address();
 
@@ -721,7 +843,7 @@ impl RelayClient {
         &self,
         condition_id: [u8; 32],
         index_sets: Vec<alloy::primitives::U256>,
-    ) -> Result<RelayerTransactionResponse, RelayError> {
+    ) -> Result<SubmitResponse, RelayError> {
         self.submit_gasless_redemption_with_gas_estimation(condition_id, index_sets, false)
             .await
     }
@@ -735,7 +857,7 @@ impl RelayClient {
         condition_id: [u8; 32],
         index_sets: Vec<alloy::primitives::U256>,
         estimate_gas: bool,
-    ) -> Result<RelayerTransactionResponse, RelayError> {
+    ) -> Result<SubmitResponse, RelayError> {
         // 1. Define the specific interface for redemption
         alloy::sol! {
             function redeemPositions(address collateral, bytes32 parentCollectionId, bytes32 conditionId, uint256[] indexSets);
@@ -788,7 +910,7 @@ impl RelayClient {
         &self,
         endpoint: &str,
         body: &T,
-    ) -> Result<RelayerTransactionResponse, RelayError> {
+    ) -> Result<SubmitResponse, RelayError> {
         let url = self.http_client.base_url.join(endpoint)?;
         let body_str = serde_json::to_string(body)?;
         let path = format!("/{}", endpoint);

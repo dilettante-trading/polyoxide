@@ -12,18 +12,20 @@ Returns the builder leaderboard ranked by volume.
 
 | Name | In | Type | Required | Default | Description |
 |------|-----|------|----------|---------|-------------|
-| timePeriod | query | string | no | — | DAY, WEEK, MONTH, ALL |
-| limit | query | integer (0-50) | no | — | Results per page |
+| timePeriod | query | string | no | DAY | DAY, WEEK, MONTH, ALL |
+| limit | query | integer (0-50) | no | 25 | Results per page |
 | offset | query | integer (0-1000) | no | 0 | Pagination offset |
 
 **Response:** `LeaderboardEntry[]`
 
 ```json
 [{
-  "rank": 1,
+  "rank": "string",
   "builder": "string",
   "volume": 0,
-  "activeUsers": 0
+  "activeUsers": 0,
+  "verified": false,
+  "builderLogo": "string"
 }]
 ```
 
@@ -37,9 +39,21 @@ Returns aggregate builder volume data.
 
 | Name | In | Type | Required | Default | Description |
 |------|-----|------|----------|---------|-------------|
-| timePeriod | query | string | no | — | DAY, WEEK, MONTH, ALL |
+| timePeriod | query | string | no | DAY | DAY, WEEK, MONTH, ALL |
 
 **Response:** `BuilderVolumeEntry[]`
+
+```json
+[{
+  "dt": "2025-11-15T00:00:00Z",
+  "builder": "string",
+  "builderLogo": "string",
+  "verified": false,
+  "volume": 0,
+  "activeUsers": 0,
+  "rank": "string"
+}]
+```
 
 ## Errors
 

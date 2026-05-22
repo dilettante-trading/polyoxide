@@ -24,6 +24,13 @@ fn authenticated_client() -> Clob {
     Clob::from_account(account).expect("authenticated clob client")
 }
 
+fn authenticated_address() -> String {
+    dotenvy::dotenv().ok();
+    let account =
+        Account::from_env().expect("POLYMARKET_* env vars required for authenticated tests");
+    format!("{:#x}", account.address())
+}
+
 /// Find a token_id with an active order book using Gamma.
 ///
 /// The CLOB `/markets` listing returns mostly resolved markets. Gamma's
@@ -293,6 +300,168 @@ async fn live_get_markets_by_token_ids() {
     );
 }
 
+// ── Path-parameter variants (OpenAPI parity) ────────────────────
+
+#[tokio::test]
+#[ignore]
+async fn live_fee_rate_path() {
+    let token_id = find_active_token_id().await;
+    let client = public_client();
+
+    let resp = client
+        .markets()
+        .fee_rate_path(&token_id)
+        .send()
+        .await
+        .expect("fee_rate_path should deserialize");
+
+    assert!(
+        resp.base_fee <= 10_000,
+        "fee rate {} bps seems unreasonably high",
+        resp.base_fee
+    );
+}
+
+#[tokio::test]
+#[ignore]
+async fn live_tick_size_path() {
+    let token_id = find_active_token_id().await;
+    let client = public_client();
+
+    let resp = client
+        .markets()
+        .tick_size_path(&token_id)
+        .send()
+        .await
+        .expect("tick_size_path should deserialize");
+
+    let tick: f64 = resp
+        .minimum_tick_size
+        .parse()
+        .expect("minimum_tick_size should parse");
+    assert!(tick > 0.0, "tick size {tick} should be positive");
+}
+
+#[tokio::test]
+#[ignore]
+async fn live_neg_risk_path() {
+    let token_id = find_active_token_id().await;
+    let client = public_client();
+
+    let _resp = client
+        .markets()
+        .neg_risk_path(&token_id)
+        .send()
+        .await
+        .expect("neg_risk_path should deserialize");
+}
+
+#[tokio::test]
+#[ignore]
+async fn live_clob_market_details() {
+    let client = public_client();
+    let list = client.markets().list().send().await.expect("list markets");
+    let condition_id = &list
+        .data
+        .first()
+        .expect("should have at least one market")
+        .condition_id;
+
+    let _details = client
+        .markets()
+        .clob_market_details(condition_id)
+        .send()
+        .await
+        .expect("clob_market_details should deserialize");
+}
+
+#[tokio::test]
+#[ignore]
+async fn live_market_by_token() {
+    let token_id = find_active_token_id().await;
+    let client = public_client();
+
+    let resp = client
+        .markets()
+        .market_by_token(&token_id)
+        .send()
+        .await
+        .expect("market_by_token should deserialize");
+
+    assert!(
+        !resp.condition_id.is_empty(),
+        "condition_id should be non-empty"
+    );
+    assert!(
+        !resp.primary_token_id.is_empty() || !resp.secondary_token_id.is_empty(),
+        "should have at least one token id"
+    );
+}
+
+#[tokio::test]
+#[ignore]
+async fn live_live_activity_market() {
+    let client = public_client();
+    let list = client.markets().list().send().await.expect("list markets");
+    let condition_id = &list
+        .data
+        .first()
+        .expect("should have at least one market")
+        .condition_id;
+
+    let _resp = client
+        .markets()
+        .live_activity_market(condition_id)
+        .send()
+        .await
+        .expect("live_activity_market should deserialize");
+}
+
+#[tokio::test]
+#[ignore]
+async fn live_live_activity_bulk() {
+    let client = public_client();
+    let list = client.markets().list().send().await.expect("list markets");
+    let ids: Vec<String> = list
+        .data
+        .iter()
+        .take(2)
+        .map(|m| m.condition_id.clone())
+        .collect();
+    if ids.is_empty() {
+        return;
+    }
+
+    let _resp = client
+        .markets()
+        .live_activity_bulk(ids)
+        .expect("body construction")
+        .send()
+        .await
+        .expect("live_activity_bulk should deserialize");
+}
+
+#[tokio::test]
+#[ignore]
+async fn live_batch_prices_history() {
+    let token_id = find_active_token_id().await;
+    let client = public_client();
+
+    let req = polyoxide_clob::BatchPricesHistoryRequest {
+        markets: vec![token_id],
+        interval: Some("1d".into()),
+        ..Default::default()
+    };
+
+    let _resp = client
+        .markets()
+        .batch_prices_history(&req)
+        .expect("body construction")
+        .send()
+        .await
+        .expect("batch_prices_history should deserialize");
+}
+
 // ── Health: server time ─────────────────────────────────────────
 
 #[tokio::test]
@@ -392,12 +561,25 @@ async fn live_balance_allowance() {
 
 #[tokio::test]
 #[ignore]
+async fn live_update_balance_allowance() {
+    let client = authenticated_client();
+    let _resp = client
+        .account_api()
+        .expect("account_api")
+        .update_balance_allowance("COLLATERAL", None, None)
+        .await
+        .expect("update_balance_allowance should succeed");
+}
+
+#[tokio::test]
+#[ignore]
 async fn live_list_trades() {
     let client = authenticated_client();
+    let maker = authenticated_address();
     let _trades = client
         .account_api()
         .expect("account_api")
-        .trades()
+        .trades(maker)
         .send()
         .await
         .expect("trades should deserialize");
@@ -407,10 +589,11 @@ async fn live_list_trades() {
 #[ignore]
 async fn live_list_trades_with_filter() {
     let client = authenticated_client();
+    let maker = authenticated_address();
     let _trades = client
         .account_api()
         .expect("account_api")
-        .trades()
+        .trades(maker)
         .after("0")
         .send()
         .await

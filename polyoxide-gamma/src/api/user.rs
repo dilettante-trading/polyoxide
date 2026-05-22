@@ -1,7 +1,7 @@
 use polyoxide_core::{HttpClient, QueryBuilder, Request};
 use serde::{Deserialize, Serialize};
 
-use crate::error::GammaError;
+use crate::{error::GammaError, types::Profile};
 
 /// User API namespace
 #[derive(Clone)]
@@ -14,6 +14,22 @@ impl User {
     pub fn get(&self, signer_address: impl Into<String>) -> Request<UserResponse, GammaError> {
         Request::new(self.http_client.clone(), "/public-profile")
             .query("address", signer_address.into())
+    }
+
+    /// Get a public profile by wallet address
+    /// (`GET /profiles/user_address/{user_address}`).
+    ///
+    /// `address` must be a 0x-prefixed EVM address. Responses are modelled by
+    /// [`Profile`], which is field-for-field compatible with the upstream
+    /// `Profile` schema.
+    pub fn get_by_address(&self, address: impl Into<String>) -> Request<Profile, GammaError> {
+        Request::new(
+            self.http_client.clone(),
+            format!(
+                "/profiles/user_address/{}",
+                urlencoding::encode(&address.into())
+            ),
+        )
     }
 }
 
@@ -62,4 +78,19 @@ pub struct UserInfo {
     #[serde(rename = "mod")]
     #[serde(default)]
     pub moderator: bool,
+}
+
+#[cfg(test)]
+mod tests {
+    use crate::Gamma;
+
+    fn gamma() -> Gamma {
+        Gamma::new().unwrap()
+    }
+
+    #[test]
+    fn test_get_by_address_accepts_str_and_string() {
+        let _r1 = gamma().user().get_by_address("0xdeadbeef");
+        let _r2 = gamma().user().get_by_address(String::from("0xdeadbeef"));
+    }
 }

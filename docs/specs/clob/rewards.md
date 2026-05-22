@@ -150,6 +150,31 @@ Supports extensive filtering: `q`, `tag_slug`, `event_id`, `order_by`, `position
 
 **Response:** `PaginatedMultiMarketInfo`
 
+## Get Current Rebated Fees
+
+`GET /rebates/current`
+
+**Auth:** None
+
+Returns the current rebated fees for a maker address on a given date.
+
+| Name | In | Type | Required | Description |
+|------|-----|------|----------|-------------|
+| date | query | string | yes | YYYY-MM-DD |
+| maker_address | query | string | yes | Ethereum address |
+
+**Response:** Array of `RebatedFees`
+
+```json
+[{
+  "date": "2026-02-27",
+  "condition_id": "string",
+  "asset_address": "string",
+  "maker_address": "string",
+  "rebated_fees_usdc": "0.237519"
+}]
+```
+
 ## Verification
 
 ```bash

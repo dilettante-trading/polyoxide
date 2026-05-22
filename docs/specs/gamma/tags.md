@@ -71,7 +71,7 @@ Get a single tag by its URL slug.
 
 `GET /tags/{id}/related-tags`
 
-Get tags related to the specified tag by ID.
+Get tag relationships for the specified tag by ID.
 
 **Auth:** None
 
@@ -79,15 +79,15 @@ Get tags related to the specified tag by ID.
 |------|-----|------|----------|-------------|
 | id | path | string | yes | Tag ID |
 | omit_empty | query | boolean | no | Omit tags with no events |
-| status | query | string | no | Filter by tag status |
+| status | query | string | no | Filter by tag status (`active`, `closed`, `all`) |
 
-**Response:** Array of Tag objects
+**Response:** Array of RelatedTag objects (relationship rows, not the tags themselves)
 
 ## Get Related Tags by Slug
 
 `GET /tags/slug/{slug}/related-tags`
 
-Get tags related to the specified tag by slug.
+Get tag relationships for the specified tag by slug.
 
 **Auth:** None
 
@@ -95,37 +95,41 @@ Get tags related to the specified tag by slug.
 |------|-----|------|----------|-------------|
 | slug | path | string | yes | Tag slug |
 | omit_empty | query | boolean | no | Omit tags with no events |
-| status | query | string | no | Filter by tag status |
+| status | query | string | no | Filter by tag status (`active`, `closed`, `all`) |
 
-**Response:** Array of Tag objects
+**Response:** Array of RelatedTag objects (relationship rows, not the tags themselves)
 
-## Get Related Tag Details by ID
+## Get Tags Related to a Tag by ID
 
 `GET /tags/{id}/related-tags/tags`
 
-Get detailed related tags (includes associated events) by tag ID.
+Get the tags that are related to the specified tag by ID. Returns the related Tag objects themselves (not events).
 
 **Auth:** None
 
 | Name | In | Type | Required | Description |
 |------|-----|------|----------|-------------|
 | id | path | string | yes | Tag ID |
+| omit_empty | query | boolean | no | Omit tags with no events |
+| status | query | string | no | Filter by tag status (`active`, `closed`, `all`) |
 
-**Response:** Array of Event objects (events associated with related tags)
+**Response:** Array of Tag objects
 
-## Get Related Tag Details by Slug
+## Get Tags Related to a Tag by Slug
 
 `GET /tags/slug/{slug}/related-tags/tags`
 
-Get detailed related tags (includes associated events) by tag slug.
+Get the tags that are related to the specified tag by slug. Returns the related Tag objects themselves (not events).
 
 **Auth:** None
 
 | Name | In | Type | Required | Description |
 |------|-----|------|----------|-------------|
 | slug | path | string | yes | Tag slug |
+| omit_empty | query | boolean | no | Omit tags with no events |
+| status | query | string | no | Filter by tag status (`active`, `closed`, `all`) |
 
-**Response:** Array of Event objects (events associated with related tags)
+**Response:** Array of Tag objects
 
 ## Verification
 

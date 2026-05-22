@@ -1,9 +1,6 @@
 use polyoxide_core::{HttpClient, QueryBuilder, Request};
 
-use crate::{
-    error::GammaError,
-    types::{Event, Tag},
-};
+use crate::{error::GammaError, types::Tag};
 
 /// Tags namespace for tag-related operations
 #[derive(Clone)]
@@ -59,7 +56,7 @@ impl Tags {
     }
 
     /// Get detailed related tags by tag ID (includes events)
-    pub fn get_related_detailed(&self, id: impl Into<String>) -> Request<Vec<Event>, GammaError> {
+    pub fn get_related_detailed(&self, id: impl Into<String>) -> Request<Vec<Tag>, GammaError> {
         Request::new(
             self.http_client.clone(),
             format!(
@@ -73,7 +70,7 @@ impl Tags {
     pub fn get_related_detailed_by_slug(
         &self,
         slug: impl Into<String>,
-    ) -> Request<Vec<Event>, GammaError> {
+    ) -> Request<Vec<Tag>, GammaError> {
         Request::new(
             self.http_client.clone(),
             format!(

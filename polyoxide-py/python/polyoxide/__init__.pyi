@@ -1163,11 +1163,6 @@ class GammaEvents:
     ) -> Coroutine[Any, Any, Event]:
         """Get an event by slug."""
         ...
-    def get_related_by_slug(
-        self, slug: str
-    ) -> Coroutine[Any, Any, list[Event]]:
-        """Get related events by slug."""
-        ...
     def tags(self, id: str) -> Coroutine[Any, Any, list[Tag]]:
         """Get tags for an event."""
         ...
@@ -1219,9 +1214,6 @@ class GammaEventsSync:
         include_template: bool | None = None,
     ) -> Event:
         """Get an event by slug."""
-        ...
-    def get_related_by_slug(self, slug: str) -> list[Event]:
-        """Get related events by slug."""
         ...
     def tags(self, id: str) -> list[Tag]:
         """Get tags for an event."""
@@ -1452,7 +1444,7 @@ class GammaSearch:
         cache: bool | None = None,
         events_status: str | None = None,
         events_tag: list[int] | None = None,
-        keep_closed_markets: bool | None = None,
+        keep_closed_markets: int | None = None,
         sort: str | None = None,
         search_tags: bool | None = None,
         search_profiles: bool | None = None,
@@ -1471,7 +1463,7 @@ class GammaSearchSync:
         cache: bool | None = None,
         events_status: str | None = None,
         events_tag: list[int] | None = None,
-        keep_closed_markets: bool | None = None,
+        keep_closed_markets: int | None = None,
         sort: str | None = None,
         search_tags: bool | None = None,
         search_profiles: bool | None = None,

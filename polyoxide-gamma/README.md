@@ -9,14 +9,14 @@ Read-only Rust client for the [Polymarket Gamma](https://gamma-api.polymarket.co
 
 ```toml
 [dependencies]
-polyoxide-gamma = "0.13"
+polyoxide-gamma = "0.15"
 ```
 
 Or use the unified `polyoxide` crate (includes Gamma by default):
 
 ```toml
 [dependencies]
-polyoxide = "0.13"
+polyoxide = "0.15"
 ```
 
 ## Quick start
@@ -107,8 +107,7 @@ let events = gamma.events().list()
 let event = gamma.events().get("event_id").include_chat(true).send().await?;
 let event = gamma.events().get_by_slug("slug").send().await?;
 
-// Related events, tags, tweet count, comment count
-let related = gamma.events().get_related_by_slug("slug").send().await?;
+// Tags, tweet count, comment count
 let tags    = gamma.events().tags("event_id").send().await?;
 let tweets  = gamma.events().tweet_count("event_id").send().await?;
 let comments = gamma.events().comment_count("event_id").send().await?;

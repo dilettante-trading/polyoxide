@@ -67,7 +67,7 @@ impl PublicSearch {
     }
 
     /// Include closed markets in results
-    pub fn keep_closed_markets(mut self, keep: bool) -> Self {
+    pub fn keep_closed_markets(mut self, keep: i32) -> Self {
         self.request = self.request.query("keep_closed_markets", keep);
         self
     }
@@ -166,7 +166,7 @@ mod tests {
             .cache(false)
             .events_status("active")
             .events_tag(vec![1i64, 2])
-            .keep_closed_markets(false)
+            .keep_closed_markets(0)
             .sort("volume")
             .search_tags(true)
             .recurrence("daily")

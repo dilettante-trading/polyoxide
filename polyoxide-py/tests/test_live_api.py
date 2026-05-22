@@ -9,8 +9,6 @@ Run with:
 
 import asyncio
 
-import pytest
-
 import polyoxide
 
 # ── Helpers ───────────────────────────────────────────────────────
@@ -236,7 +234,6 @@ class TestClobSyncMarkets:
         resp = clob.markets().list()
         assert resp.data is not None
 
-    @pytest.mark.xfail(reason="upstream CLOB schema drift: missing field `question_id`")
     def test_simplified(self):
         clob = polyoxide.ClobClientSync()
         resp = clob.markets().simplified()
@@ -247,7 +244,6 @@ class TestClobSyncMarkets:
         resp = clob.markets().sampling()
         assert resp is not None
 
-    @pytest.mark.xfail(reason="upstream CLOB schema drift: missing field `question_id`")
     def test_sampling_simplified(self):
         clob = polyoxide.ClobClientSync()
         resp = clob.markets().sampling_simplified()
@@ -298,7 +294,6 @@ class TestClobSyncMarkets:
         resp = clob.markets().price(token_id, "BUY")
         assert resp is not None
 
-    @pytest.mark.xfail(reason="upstream CLOB schema drift: missing field `token_id`")
     def test_spread(self):
         gamma = polyoxide.GammaSync()
         markets = gamma.markets().list(limit=20, closed=False)

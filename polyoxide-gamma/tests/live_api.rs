@@ -135,6 +135,161 @@ async fn live_list_markets_closed_false() {
     }
 }
 
+#[tokio::test]
+#[ignore]
+async fn live_get_many_returns_both_open_and_closed() {
+    let gamma = client();
+
+    // Discover one open and one closed market ID.
+    let open = gamma
+        .markets()
+        .list()
+        .closed(false)
+        .limit(1)
+        .send()
+        .await
+        .expect("list open markets");
+    let closed = gamma
+        .markets()
+        .list()
+        .closed(true)
+        .limit(1)
+        .send()
+        .await
+        .expect("list closed markets");
+
+    let open_id: i64 = open
+        .first()
+        .expect("need an open market")
+        .id
+        .parse()
+        .expect("open market id should be numeric");
+    let closed_id: i64 = closed
+        .first()
+        .expect("need a closed market")
+        .id
+        .parse()
+        .expect("closed market id should be numeric");
+
+    let markets = gamma
+        .markets()
+        .get_many([open_id, closed_id])
+        .send()
+        .await
+        .expect("get_many should succeed");
+
+    let open_str = open_id.to_string();
+    let closed_str = closed_id.to_string();
+    let returned: Vec<&str> = markets.iter().map(|m| m.id.as_str()).collect();
+    assert!(
+        returned.contains(&open_str.as_str()),
+        "open market {open_id} missing from get_many result: {returned:?}"
+    );
+    assert!(
+        returned.contains(&closed_str.as_str()),
+        "closed market {closed_id} missing from get_many result: {returned:?}"
+    );
+    assert!(
+        markets.iter().any(|m| m.closed == Some(true)),
+        "get_many result should include the closed market with closed=true"
+    );
+}
+
+#[tokio::test]
+#[ignore]
+async fn live_get_market_description() {
+    let gamma = client();
+
+    // Discover a market id.
+    let markets = gamma
+        .markets()
+        .list()
+        .limit(1)
+        .send()
+        .await
+        .expect("list markets to discover id");
+    let first = markets.first().expect("need at least one market");
+
+    let desc = gamma
+        .markets()
+        .get_description(&first.id)
+        .send()
+        .await
+        .expect("get market description");
+    // Deserialization succeeded; description may be None/empty on some markets.
+    let _ = desc;
+}
+
+#[tokio::test]
+#[ignore]
+async fn live_query_markets_by_information() {
+    use polyoxide_gamma::types::MarketsInformationBody;
+
+    let gamma = client();
+
+    // Discover a market id so we have something concrete to query.
+    let markets = gamma
+        .markets()
+        .list()
+        .limit(1)
+        .send()
+        .await
+        .expect("list markets");
+    let first = markets.first().expect("need at least one market");
+    let id: i64 = first.id.parse().expect("market id should be numeric");
+
+    let body = MarketsInformationBody {
+        id: vec![id],
+        ..Default::default()
+    };
+    let found = gamma
+        .markets()
+        .query_by_information(body)
+        .send()
+        .await
+        .expect("POST /markets/information");
+    assert!(
+        found.iter().any(|m| m.id == first.id),
+        "expected market {} in response",
+        first.id
+    );
+}
+
+#[tokio::test]
+#[ignore]
+async fn live_query_abridged_markets() {
+    use polyoxide_gamma::types::MarketsInformationBody;
+
+    let gamma = client();
+    let body = MarketsInformationBody {
+        closed: Some(false),
+        ..Default::default()
+    };
+    let found = gamma
+        .markets()
+        .query_abridged(body)
+        .send()
+        .await
+        .expect("POST /markets/abridged");
+    // Deserialization is the primary assertion; the array may be empty.
+    let _ = found;
+}
+
+#[tokio::test]
+#[ignore]
+async fn live_list_markets_keyset() {
+    let gamma = client();
+    let resp = gamma
+        .markets()
+        .list_keyset()
+        .limit(5)
+        .send()
+        .await
+        .expect("list markets (keyset)");
+    // Deserialization is the assertion; upstream may page differently.
+    let _ = resp;
+}
+
 // ── Events ──────────────────────────────────────────────────────
 
 #[tokio::test]
@@ -198,6 +353,62 @@ async fn live_get_event_by_slug() {
         .await
         .expect("get event by slug");
     assert_eq!(event.slug.as_deref(), Some(slug.as_str()));
+}
+
+#[tokio::test]
+#[ignore]
+async fn live_list_event_creators() {
+    let gamma = client();
+    let creators = gamma
+        .events()
+        .list_creators()
+        .limit(5)
+        .send()
+        .await
+        .expect("list event creators");
+    let _ = creators; // may be empty; deserialization is the assertion
+}
+
+#[tokio::test]
+#[ignore]
+async fn live_list_events_pagination() {
+    let gamma = client();
+    let resp = gamma
+        .events()
+        .list_paginated()
+        .limit(3)
+        .send()
+        .await
+        .expect("list paginated events");
+    // Data may be empty when no matching events; struct must deserialize.
+    let _ = resp;
+}
+
+#[tokio::test]
+#[ignore]
+async fn live_list_events_results() {
+    let gamma = client();
+    let _events = gamma
+        .events()
+        .list_results()
+        .limit(3)
+        .send()
+        .await
+        .expect("list event results");
+}
+
+#[tokio::test]
+#[ignore]
+async fn live_list_events_keyset() {
+    let gamma = client();
+    let resp = gamma
+        .events()
+        .list_keyset()
+        .limit(5)
+        .send()
+        .await
+        .expect("list events (keyset)");
+    let _ = resp; // events may be empty on some configurations; deserialization is the assertion
 }
 
 // ── Tags ────────────────────────────────────────────────────────
@@ -319,6 +530,76 @@ async fn live_get_series_by_id() {
     assert_eq!(s.id, id);
 }
 
+#[tokio::test]
+#[ignore]
+async fn live_get_series_summary() {
+    let gamma = client();
+    let series = gamma
+        .series()
+        .list()
+        .limit(1)
+        .send()
+        .await
+        .expect("list series to discover id");
+    let first = series.first().expect("need at least one series");
+
+    let summary = gamma
+        .series()
+        .get_summary(&first.id)
+        .send()
+        .await
+        .expect("get series summary by id");
+    assert_eq!(summary.id, first.id);
+}
+
+#[tokio::test]
+#[ignore]
+async fn live_get_series_summary_by_slug() {
+    let gamma = client();
+    let series = gamma
+        .series()
+        .list()
+        .limit(1)
+        .send()
+        .await
+        .expect("list series to discover slug");
+    let first = series.first().expect("need at least one series");
+    let slug = first.slug.clone();
+
+    let summary = gamma
+        .series()
+        .get_summary_by_slug(&slug)
+        .send()
+        .await
+        .expect("get series summary by slug");
+    // The upstream may map slug to a different summary id, but deserialization
+    // is the primary assertion here.
+    let _ = summary;
+}
+
+#[tokio::test]
+#[ignore]
+async fn live_series_comment_count() {
+    let gamma = client();
+    let series = gamma
+        .series()
+        .list()
+        .limit(1)
+        .send()
+        .await
+        .expect("list series to discover id");
+    let first = series.first().expect("need at least one series");
+    let count = gamma
+        .series()
+        .comment_count(&first.id)
+        .send()
+        .await
+        .expect("get series comment count");
+    // Deserialization is the primary assertion; count is u64 so any value is
+    // valid.
+    let _ = count;
+}
+
 // ── Sports ──────────────────────────────────────────────────────
 
 #[tokio::test]
@@ -344,6 +625,29 @@ async fn live_list_teams() {
         .await
         .expect("list teams");
     assert!(!teams.is_empty(), "should return at least one team");
+}
+
+#[tokio::test]
+#[ignore]
+async fn live_get_team_by_id() {
+    let gamma = client();
+    let teams = gamma
+        .sports()
+        .list_teams()
+        .limit(1)
+        .send()
+        .await
+        .expect("list teams to discover id");
+    let first = teams.first().expect("need at least one team");
+    let id = first.id.to_string();
+
+    let team = gamma
+        .sports()
+        .get_team(&id)
+        .send()
+        .await
+        .expect("get team by id");
+    assert_eq!(team.id, first.id);
 }
 
 // ── Comments ────────────────────────────────────────────────────
@@ -539,4 +843,116 @@ async fn live_get_user() {
     }
     // If no comments found, skip silently -- the endpoint itself is
     // exercised in the request path even when no suitable address exists.
+}
+
+#[tokio::test]
+#[ignore]
+async fn live_get_profile_by_address() {
+    let gamma = client();
+
+    // Discover a real user proxy-wallet address via the public-profile
+    // endpoint; fall back to exercising the endpoint with a burner address if
+    // no real user is found.
+    let events = gamma
+        .events()
+        .list()
+        .active(true)
+        .limit(5)
+        .send()
+        .await
+        .expect("list events");
+    let Some(first) = events.first() else { return };
+    let event_id: i64 = first.id.parse().expect("event id should be numeric");
+
+    let comments = gamma
+        .comments()
+        .list()
+        .parent_entity_type("Event")
+        .parent_entity_id(event_id)
+        .limit(20)
+        .send()
+        .await
+        .expect("list comments to find an address");
+
+    let Some(comment) = comments.first() else {
+        return;
+    };
+    let user = gamma
+        .user()
+        .get(&comment.user.id)
+        .send()
+        .await
+        .expect("resolve user to proxy wallet");
+    let Some(address) = user.proxy.clone() else {
+        return;
+    };
+
+    // The endpoint returns 404 for non-profile addresses; treat that as a
+    // valid contract exercise. Only successful deserializations are asserted.
+    if let Ok(profile) = gamma.user().get_by_address(&address).send().await {
+        // The profile may have sparse fields, but id must always be present.
+        assert!(!profile.id.is_empty(), "profile id must not be empty");
+    }
+}
+
+#[tokio::test]
+#[ignore]
+async fn live_get_event_creator_by_id() {
+    let gamma = client();
+    let creators = gamma
+        .events()
+        .list_creators()
+        .limit(1)
+        .send()
+        .await
+        .expect("list event creators to discover id");
+    let Some(first) = creators.first() else {
+        return; // No creators available; treat as skip.
+    };
+    let _ = gamma
+        .events()
+        .get_creator(&first.id)
+        .send()
+        .await
+        .expect("get event creator by id");
+}
+
+#[tokio::test]
+#[ignore]
+async fn live_get_related_detailed_by_id() {
+    let gamma = client();
+    let tags = gamma
+        .tags()
+        .list()
+        .limit(1)
+        .send()
+        .await
+        .expect("list tags to discover id");
+    let first = tags.first().expect("need at least one tag");
+    let _ = gamma
+        .tags()
+        .get_related_detailed(&first.id)
+        .send()
+        .await
+        .expect("get related detailed by id");
+}
+
+#[tokio::test]
+#[ignore]
+async fn live_get_related_detailed_by_slug() {
+    let gamma = client();
+    let tags = gamma
+        .tags()
+        .list()
+        .limit(1)
+        .send()
+        .await
+        .expect("list tags to discover slug");
+    let first = tags.first().expect("need at least one tag");
+    let _ = gamma
+        .tags()
+        .get_related_detailed_by_slug(&first.slug)
+        .send()
+        .await
+        .expect("get related detailed by slug");
 }

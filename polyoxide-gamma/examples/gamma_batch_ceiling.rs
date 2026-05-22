@@ -30,7 +30,9 @@ async fn main() {
     eprintln!("═══════════════════════════════════════════════════════════════");
 
     let id_result = binary_search_ceiling(&client, "id", |n| {
-        (0..n).map(|i| format!("{}", 1_000_000_000_i64 + i as i64)).collect()
+        (0..n)
+            .map(|i| format!("{}", 1_000_000_000_i64 + i as i64))
+            .collect()
     })
     .await;
 
@@ -46,11 +48,17 @@ async fn main() {
     eprintln!("RESULTS");
     eprintln!("  id (numeric, ~10 B/entry):");
     eprintln!("    max accepted:  {} IDs", id_result.max_ok);
-    eprintln!("    url length:    {} bytes at ceiling", id_result.url_len_at_ceiling);
+    eprintln!(
+        "    url length:    {} bytes at ceiling",
+        id_result.url_len_at_ceiling
+    );
     eprintln!("    fail status:   {}", id_result.fail_status);
     eprintln!("  condition_ids (hex, ~80 B/entry):");
     eprintln!("    max accepted:  {} IDs", cond_result.max_ok);
-    eprintln!("    url length:    {} bytes at ceiling", cond_result.url_len_at_ceiling);
+    eprintln!(
+        "    url length:    {} bytes at ceiling",
+        cond_result.url_len_at_ceiling
+    );
     eprintln!("    fail status:   {}", cond_result.fail_status);
     eprintln!("═══════════════════════════════════════════════════════════════");
 }

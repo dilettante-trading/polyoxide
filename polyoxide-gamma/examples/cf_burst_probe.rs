@@ -68,7 +68,10 @@ async fn main() {
                     if !status.is_success() {
                         eprintln!();
                         eprintln!("▼▼▼ First non-2xx at request #{idx} ▼▼▼");
-                        eprintln!("  elapsed since probe start: {:.2}s", start.elapsed().as_secs_f64());
+                        eprintln!(
+                            "  elapsed since probe start: {:.2}s",
+                            start.elapsed().as_secs_f64()
+                        );
                         eprintln!("  request latency:           {}ms", elapsed.as_millis());
                         dump(resp, true).await;
                         break 'outer;
@@ -77,7 +80,10 @@ async fn main() {
                     if !shown_first_sample || successes.is_multiple_of(SAMPLE_EVERY) {
                         shown_first_sample = true;
                         eprintln!();
-                        eprintln!("── Sample 200 at request #{idx} (latency {}ms)", elapsed.as_millis());
+                        eprintln!(
+                            "── Sample 200 at request #{idx} (latency {}ms)",
+                            elapsed.as_millis()
+                        );
                         dump(resp, false).await;
                     }
                 }

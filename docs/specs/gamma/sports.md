@@ -77,6 +77,20 @@ List sports teams with optional filtering and pagination.
 ]
 ```
 
+## Get Team by ID
+
+`GET /teams/{id}`
+
+Retrieve team information by team identifier.
+
+**Auth:** None
+
+| Name | In | Type | Required | Description |
+|------|-----|------|----------|-------------|
+| id | path | integer | yes | Team ID |
+
+**Response:** Team object (same schema as an entry from `GET /teams`).
+
 ## Verification
 
 ```bash

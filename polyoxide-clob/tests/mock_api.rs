@@ -176,6 +176,10 @@ async fn trades_hits_data_trades_endpoint() {
 
     let mock = server
         .mock("GET", "/data/trades")
+        .match_query(Matcher::AllOf(vec![Matcher::UrlEncoded(
+            "maker_address".into(),
+            "0x0000000000000000000000000000000000000001".into(),
+        )]))
         .match_header("POLY_API_KEY", "test-key")
         .with_status(200)
         .with_header("content-type", "application/json")
@@ -203,7 +207,13 @@ async fn trades_hits_data_trades_endpoint() {
         .await;
 
     let clob = test_authed_clob(&server);
-    let resp = clob.account_api().unwrap().trades().send().await.unwrap();
+    let resp = clob
+        .account_api()
+        .unwrap()
+        .trades("0x0000000000000000000000000000000000000001")
+        .send()
+        .await
+        .unwrap();
 
     assert_eq!(resp.data.len(), 1);
     assert_eq!(resp.data[0].id, "t1");
@@ -1320,6 +1330,371 @@ async fn create_market_order_fetches_orderbook_for_price() {
     tick_size_mock.assert_async().await;
     fee_rate_mock.assert_async().await;
     book_mock.assert_async().await;
+}
+
+// ── New path-parameter variants (OpenAPI parity) ─────────────────
+
+#[tokio::test]
+async fn fee_rate_path_variant() {
+    let mut server = Server::new_async().await;
+
+    let mock = server
+        .mock("GET", "/fee-rate/0xtoken")
+        .with_status(200)
+        .with_header("content-type", "application/json")
+        .with_body(r#"{"base_fee": 30}"#)
+        .create_async()
+        .await;
+
+    let clob = test_public_clob(&server);
+    let resp = clob
+        .markets()
+        .fee_rate_path("0xtoken")
+        .send()
+        .await
+        .unwrap();
+    assert_eq!(resp.base_fee, 30);
+    mock.assert_async().await;
+}
+
+#[tokio::test]
+async fn tick_size_path_variant() {
+    let mut server = Server::new_async().await;
+
+    let mock = server
+        .mock("GET", "/tick-size/0xtoken")
+        .with_status(200)
+        .with_header("content-type", "application/json")
+        .with_body(r#"{"minimum_tick_size": "0.01"}"#)
+        .create_async()
+        .await;
+
+    let clob = test_public_clob(&server);
+    let resp = clob
+        .markets()
+        .tick_size_path("0xtoken")
+        .send()
+        .await
+        .unwrap();
+    assert_eq!(resp.minimum_tick_size, "0.01");
+    mock.assert_async().await;
+}
+
+#[tokio::test]
+async fn neg_risk_path_variant() {
+    let mut server = Server::new_async().await;
+
+    let mock = server
+        .mock("GET", "/neg-risk/0xtoken")
+        .with_status(200)
+        .with_header("content-type", "application/json")
+        .with_body(r#"{"neg_risk": false}"#)
+        .create_async()
+        .await;
+
+    let clob = test_public_clob(&server);
+    let resp = clob
+        .markets()
+        .neg_risk_path("0xtoken")
+        .send()
+        .await
+        .unwrap();
+    assert!(!resp.neg_risk);
+    mock.assert_async().await;
+}
+
+#[tokio::test]
+async fn clob_market_details_returns_abbreviated_shape() {
+    let mut server = Server::new_async().await;
+
+    let mock = server
+        .mock("GET", "/clob-markets/0xcondition")
+        .with_status(200)
+        .with_header("content-type", "application/json")
+        .with_body(
+            r#"{
+                "gst": null,
+                "r": {},
+                "t": [
+                    {"t": "713210456", "o": "Yes"},
+                    {"t": "521143195", "o": "No"}
+                ],
+                "mos": 5.0,
+                "mts": 0.01,
+                "mbf": 0,
+                "tbf": 0,
+                "rfqe": false,
+                "itode": false,
+                "ibce": true,
+                "fd": {"r": null, "e": null, "to": null},
+                "oas": 0
+            }"#,
+        )
+        .create_async()
+        .await;
+
+    let clob = test_public_clob(&server);
+    let details = clob
+        .markets()
+        .clob_market_details("0xcondition")
+        .send()
+        .await
+        .unwrap();
+
+    assert_eq!(details.t.len(), 2);
+    assert_eq!(details.t[0].t, "713210456");
+    assert_eq!(details.t[0].o, "Yes");
+    assert!(!details.rfqe);
+    assert!(details.ibce);
+    mock.assert_async().await;
+}
+
+#[tokio::test]
+async fn market_by_token_returns_both_token_ids() {
+    let mut server = Server::new_async().await;
+
+    let mock = server
+        .mock("GET", "/markets-by-token/0xtoken")
+        .with_status(200)
+        .with_header("content-type", "application/json")
+        .with_body(
+            r#"{
+                "condition_id": "0xcondition",
+                "primary_token_id": "0xprimary",
+                "secondary_token_id": "0xsecondary"
+            }"#,
+        )
+        .create_async()
+        .await;
+
+    let clob = test_public_clob(&server);
+    let resp = clob
+        .markets()
+        .market_by_token("0xtoken")
+        .send()
+        .await
+        .unwrap();
+    assert_eq!(resp.condition_id, "0xcondition");
+    assert_eq!(resp.primary_token_id, "0xprimary");
+    assert_eq!(resp.secondary_token_id, "0xsecondary");
+    mock.assert_async().await;
+}
+
+#[tokio::test]
+async fn live_activity_market_returns_single_market() {
+    let mut server = Server::new_async().await;
+
+    let mock = server
+        .mock("GET", "/markets/live-activity/0xcondition")
+        .with_status(200)
+        .with_header("content-type", "application/json")
+        .with_body(
+            r#"{
+                "condition_id": "0xcondition",
+                "id": 42,
+                "question": "Will X happen?",
+                "market_slug": "will-x-happen",
+                "event_slug": "x-event",
+                "series_slug": null,
+                "icon": "",
+                "image": "",
+                "tags": ["crypto"]
+            }"#,
+        )
+        .create_async()
+        .await;
+
+    let clob = test_public_clob(&server);
+    let resp = clob
+        .markets()
+        .live_activity_market("0xcondition")
+        .send()
+        .await
+        .unwrap();
+    assert_eq!(resp.id, Some(42));
+    assert_eq!(resp.question.as_deref(), Some("Will X happen?"));
+    assert_eq!(resp.tags, vec!["crypto"]);
+    mock.assert_async().await;
+}
+
+#[tokio::test]
+async fn live_activity_bulk_sends_array_body() {
+    let mut server = Server::new_async().await;
+
+    let mock = server
+        .mock("POST", "/markets/live-activity")
+        .match_body(Matcher::JsonString(r#"["0xcond-1", "0xcond-2"]"#.into()))
+        .with_status(200)
+        .with_header("content-type", "application/json")
+        .with_body(
+            r#"[
+                {"condition_id": "0xcond-1", "id": 1, "question": "Q1", "tags": []},
+                {"condition_id": "0xcond-2", "id": 2, "question": "Q2", "tags": []}
+            ]"#,
+        )
+        .create_async()
+        .await;
+
+    let clob = test_public_clob(&server);
+    let resp = clob
+        .markets()
+        .live_activity_bulk(vec!["0xcond-1".into(), "0xcond-2".into()])
+        .unwrap()
+        .send()
+        .await
+        .unwrap();
+
+    assert_eq!(resp.len(), 2);
+    assert_eq!(resp[0].condition_id.as_deref(), Some("0xcond-1"));
+    assert_eq!(resp[1].id, Some(2));
+    mock.assert_async().await;
+}
+
+#[tokio::test]
+async fn batch_prices_history_sends_request_body() {
+    let mut server = Server::new_async().await;
+
+    let mock = server
+        .mock("POST", "/batch-prices-history")
+        .match_body(Matcher::JsonString(
+            r#"{"markets": ["0xa", "0xb"], "interval": "1d"}"#.into(),
+        ))
+        .with_status(200)
+        .with_header("content-type", "application/json")
+        .with_body(
+            r#"{
+                "history": {
+                    "0xa": [{"t": 1700000000, "p": 0.55}],
+                    "0xb": [{"t": 1700000000, "p": 0.30}]
+                }
+            }"#,
+        )
+        .create_async()
+        .await;
+
+    let clob = test_public_clob(&server);
+    let req = polyoxide_clob::BatchPricesHistoryRequest {
+        markets: vec!["0xa".into(), "0xb".into()],
+        interval: Some("1d".into()),
+        ..Default::default()
+    };
+    let resp = clob
+        .markets()
+        .batch_prices_history(&req)
+        .unwrap()
+        .send()
+        .await
+        .unwrap();
+
+    assert_eq!(resp.history.len(), 2);
+    assert_eq!(resp.history.get("0xa").unwrap()[0].t, 1_700_000_000);
+    mock.assert_async().await;
+}
+
+#[tokio::test]
+async fn update_balance_allowance_puts_to_balance_allowance_with_query() {
+    let mut server = Server::new_async().await;
+
+    let mock = server
+        .mock("PUT", "/balance-allowance")
+        .match_header("POLY_API_KEY", "test-key")
+        .match_query(Matcher::AllOf(vec![
+            Matcher::UrlEncoded("asset_type".into(), "COLLATERAL".into()),
+            Matcher::UrlEncoded("token_id".into(), "0xtoken".into()),
+            Matcher::UrlEncoded("signature_type".into(), "1".into()),
+        ]))
+        .with_status(200)
+        .with_header("content-type", "application/json")
+        .with_body(r#"{}"#)
+        .create_async()
+        .await;
+
+    let clob = test_authed_clob(&server);
+    let resp = clob
+        .account_api()
+        .unwrap()
+        .update_balance_allowance("COLLATERAL", Some("0xtoken".into()), Some(1))
+        .await
+        .unwrap();
+    assert!(resp.is_object());
+    mock.assert_async().await;
+}
+
+#[tokio::test]
+async fn update_balance_allowance_omits_optional_query_params() {
+    let mut server = Server::new_async().await;
+
+    // Without token_id/signature_type, only asset_type should appear in the query string.
+    let mock = server
+        .mock("PUT", "/balance-allowance")
+        .match_header("POLY_API_KEY", "test-key")
+        .match_query(Matcher::UrlEncoded(
+            "asset_type".into(),
+            "CONDITIONAL".into(),
+        ))
+        .with_status(200)
+        .with_header("content-type", "application/json")
+        .with_body(r#"{}"#)
+        .create_async()
+        .await;
+
+    let clob = test_authed_clob(&server);
+    let _resp = clob
+        .account_api()
+        .unwrap()
+        .update_balance_allowance("CONDITIONAL", None, None)
+        .await
+        .unwrap();
+    mock.assert_async().await;
+}
+
+#[tokio::test]
+async fn heartbeat_posts_to_heartbeats_with_l2_auth() {
+    let mut server = Server::new_async().await;
+
+    let mock = server
+        .mock("POST", "/heartbeats")
+        .match_header("POLY_API_KEY", "test-key")
+        .match_header("POLY_PASSPHRASE", "test-pass")
+        .match_header(
+            "POLY_ADDRESS",
+            Matcher::Regex(r"^0x[0-9a-fA-F]{40}$".into()),
+        )
+        .match_header("POLY_SIGNATURE", Matcher::Any)
+        .match_header("POLY_TIMESTAMP", Matcher::Any)
+        .with_status(200)
+        .with_header("content-type", "application/json")
+        .with_body(r#"{"status":"ok"}"#)
+        .create_async()
+        .await;
+
+    let clob = test_authed_clob(&server);
+    let resp = clob.account_api().unwrap().heartbeat().await.unwrap();
+
+    assert_eq!(resp.status, "ok");
+    mock.assert_async().await;
+}
+
+#[tokio::test]
+async fn heartbeat_propagates_http_error() {
+    let mut server = Server::new_async().await;
+
+    let mock = server
+        .mock("POST", "/heartbeats")
+        .with_status(401)
+        .with_header("content-type", "application/json")
+        .with_body(r#"{"error":"unauthorized"}"#)
+        .create_async()
+        .await;
+
+    let clob = test_authed_clob(&server);
+    let err = clob.account_api().unwrap().heartbeat().await.unwrap_err();
+    assert!(
+        matches!(err, ClobError::Api(_)),
+        "Expected Api error, got: {:?}",
+        err
+    );
+    mock.assert_async().await;
 }
 
 #[tokio::test]

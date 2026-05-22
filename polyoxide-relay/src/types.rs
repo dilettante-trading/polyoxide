@@ -67,15 +67,43 @@ pub struct TransactionRequest {
     // Add signature params if needed
 }
 
-/// Response from the relayer after submitting a transaction.
+/// Response from `POST /submit` after a transaction submission.
 ///
-/// The `transaction_hash` is `None` until the transaction is mined on-chain.
+/// The OpenAPI spec guarantees only `transactionID` and `state`; the onchain
+/// transaction hash must be fetched later via `GET /transaction`.
 #[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct RelayerTransactionResponse {
+pub struct SubmitResponse {
     #[serde(rename = "transactionID")]
     pub transaction_id: String,
-    #[serde(rename = "transactionHash")]
+    /// Current state of the transaction (e.g. `STATE_NEW`).
+    pub state: String,
+}
+
+/// Full relayer transaction record returned by `GET /transaction`.
+///
+/// Mirrors the OpenAPI `RelayerTransaction` schema.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct RelayerTransaction {
+    #[serde(rename = "transactionID")]
+    pub transaction_id: String,
     pub transaction_hash: Option<String>,
+    pub from: Option<String>,
+    pub to: Option<String>,
+    pub proxy_address: Option<String>,
+    pub data: Option<String>,
+    pub nonce: Option<String>,
+    pub value: Option<String>,
+    pub signature: Option<String>,
+    /// Current state (e.g. `STATE_NEW`, `STATE_MINED`, `STATE_CONFIRMED`, ...).
+    pub state: String,
+    /// Transaction type (`SAFE` or `PROXY`).
+    #[serde(rename = "type")]
+    pub kind: Option<String>,
+    pub owner: Option<String>,
+    pub metadata: Option<String>,
+    pub created_at: Option<String>,
+    pub updated_at: Option<String>,
 }
 
 /// Deserialize a nonce that may be represented as either a JSON number or string.
@@ -116,12 +144,20 @@ pub struct NonceResponse {
     pub nonce: u64,
 }
 
-/// Response from the relayer's transaction status endpoint.
+/// A relayer API key record returned by `GET /relayer/api/keys`.
+///
+/// Mirrors the OpenAPI `RelayerApiKey` schema.
 #[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct TransactionStatusResponse {
-    pub state: String,
-    #[serde(rename = "transactionHash")]
-    pub transaction_hash: Option<String>,
+#[serde(rename_all = "camelCase")]
+pub struct RelayerApiKey {
+    /// The relayer API key identifier (UUID).
+    pub api_key: String,
+    /// The on-chain address that owns this key.
+    pub address: String,
+    /// RFC3339 timestamp when the key was created.
+    pub created_at: String,
+    /// RFC3339 timestamp when the key was last updated.
+    pub updated_at: String,
 }
 
 #[cfg(test)]
@@ -246,59 +282,119 @@ mod tests {
         assert_eq!(tx.proxy_wallet, "0x123");
     }
 
-    // ── RelayerTransactionResponse serde ────────────────────────
+    // ── SubmitResponse serde ────────────────────────────────────
 
     #[test]
-    fn test_relayer_response_with_hash() {
+    fn test_submit_response_new_state() {
         let json = r#"{
             "transactionID": "tx-123",
-            "transactionHash": "0xabcdef"
+            "state": "STATE_NEW"
         }"#;
-        let resp: RelayerTransactionResponse = serde_json::from_str(json).unwrap();
+        let resp: SubmitResponse = serde_json::from_str(json).unwrap();
         assert_eq!(resp.transaction_id, "tx-123");
-        assert_eq!(resp.transaction_hash.as_deref(), Some("0xabcdef"));
+        assert_eq!(resp.state, "STATE_NEW");
     }
 
+    // ── RelayerTransaction serde ────────────────────────────────
+
     #[test]
-    fn test_relayer_response_without_hash() {
+    fn test_relayer_transaction_full() {
         let json = r#"{
-            "transactionID": "tx-456",
-            "transactionHash": null
+            "transactionID": "0190b317-a1d3-7bec-9b91-eeb6dcd3a620",
+            "transactionHash": "0x38cbfbeae8fffa4e2b187ee5978d3ee9cafc53af0363ed90a35b7ea9016535d8",
+            "from": "0x6e0c80c90ea6c15917308f820eac91ce2724b5b5",
+            "to": "0x2791bca1f2de4661ed88a30c99a7a9449aa84174",
+            "proxyAddress": "0x6d8c4e9adf5748af82dabe2c6225207770d6b4fa",
+            "data": "0xdeadbeef",
+            "nonce": "60",
+            "value": "",
+            "signature": "0xabc",
+            "state": "STATE_CONFIRMED",
+            "type": "SAFE",
+            "owner": "0x6e0c80c90ea6c15917308f820eac91ce2724b5b5",
+            "metadata": "",
+            "createdAt": "2024-07-14T21:13:08.819782Z",
+            "updatedAt": "2024-07-14T21:13:46.576639Z"
         }"#;
-        let resp: RelayerTransactionResponse = serde_json::from_str(json).unwrap();
-        assert_eq!(resp.transaction_id, "tx-456");
-        assert!(resp.transaction_hash.is_none());
+        let resp: RelayerTransaction = serde_json::from_str(json).unwrap();
+        assert_eq!(resp.transaction_id, "0190b317-a1d3-7bec-9b91-eeb6dcd3a620");
+        assert_eq!(resp.state, "STATE_CONFIRMED");
+        assert_eq!(resp.kind.as_deref(), Some("SAFE"));
+        assert_eq!(resp.nonce.as_deref(), Some("60"));
+        assert!(resp.transaction_hash.is_some());
+        assert!(resp.created_at.is_some());
     }
 
     #[test]
-    fn test_relayer_response_missing_hash_field() {
-        let json = r#"{"transactionID": "tx-789"}"#;
-        let resp: RelayerTransactionResponse = serde_json::from_str(json).unwrap();
-        assert_eq!(resp.transaction_id, "tx-789");
-        assert!(resp.transaction_hash.is_none());
-    }
-
-    // ── TransactionStatusResponse serde ─────────────────────────
-
-    #[test]
-    fn test_transaction_status_response() {
+    fn test_relayer_transaction_pending_minimal() {
         let json = r#"{
-            "state": "CONFIRMED",
-            "transactionHash": "0xabc123"
+            "transactionID": "tx-new",
+            "state": "STATE_NEW"
         }"#;
-        let resp: TransactionStatusResponse = serde_json::from_str(json).unwrap();
-        assert_eq!(resp.state, "CONFIRMED");
-        assert_eq!(resp.transaction_hash.as_deref(), Some("0xabc123"));
+        let resp: RelayerTransaction = serde_json::from_str(json).unwrap();
+        assert_eq!(resp.transaction_id, "tx-new");
+        assert_eq!(resp.state, "STATE_NEW");
+        assert!(resp.transaction_hash.is_none());
+        assert!(resp.kind.is_none());
+    }
+
+    // ── RelayerApiKey serde ─────────────────────────────────────
+
+    #[test]
+    fn test_relayer_api_key_deserializes_openapi_example() {
+        // Example lifted from docs/specs/relay/openapi.yaml for
+        // `/relayer/api/keys` response schema.
+        let json = r#"{
+            "apiKey": "01967c03-b8c8-7000-8f68-8b8eaec6fd3d",
+            "address": "0xabc...",
+            "createdAt": "2026-02-24T18:20:11.237485Z",
+            "updatedAt": "2026-02-24T18:20:11.237485Z"
+        }"#;
+        let key: RelayerApiKey = serde_json::from_str(json).unwrap();
+        assert_eq!(key.api_key, "01967c03-b8c8-7000-8f68-8b8eaec6fd3d");
+        assert_eq!(key.address, "0xabc...");
+        assert_eq!(key.created_at, "2026-02-24T18:20:11.237485Z");
+        assert_eq!(key.updated_at, "2026-02-24T18:20:11.237485Z");
     }
 
     #[test]
-    fn test_transaction_status_pending() {
-        let json = r#"{
-            "state": "PENDING",
-            "transactionHash": null
-        }"#;
-        let resp: TransactionStatusResponse = serde_json::from_str(json).unwrap();
-        assert_eq!(resp.state, "PENDING");
-        assert!(resp.transaction_hash.is_none());
+    fn test_relayer_api_key_roundtrip_preserves_camel_case() {
+        let key = RelayerApiKey {
+            api_key: "abc".to_string(),
+            address: "0xdef".to_string(),
+            created_at: "2026-01-01T00:00:00Z".to_string(),
+            updated_at: "2026-01-02T00:00:00Z".to_string(),
+        };
+        let serialized = serde_json::to_value(&key).unwrap();
+        assert_eq!(serialized["apiKey"], "abc");
+        assert_eq!(serialized["address"], "0xdef");
+        assert_eq!(serialized["createdAt"], "2026-01-01T00:00:00Z");
+        assert_eq!(serialized["updatedAt"], "2026-01-02T00:00:00Z");
+
+        let round: RelayerApiKey = serde_json::from_value(serialized).unwrap();
+        assert_eq!(round.api_key, "abc");
+        assert_eq!(round.updated_at, "2026-01-02T00:00:00Z");
+    }
+
+    #[test]
+    fn test_relayer_api_key_list_deserializes() {
+        let json = r#"[
+            {
+                "apiKey": "key-1",
+                "address": "0xa1",
+                "createdAt": "2026-01-01T00:00:00Z",
+                "updatedAt": "2026-01-01T00:00:00Z"
+            },
+            {
+                "apiKey": "key-2",
+                "address": "0xa2",
+                "createdAt": "2026-01-02T00:00:00Z",
+                "updatedAt": "2026-01-02T00:00:00Z"
+            }
+        ]"#;
+        let keys: Vec<RelayerApiKey> = serde_json::from_str(json).unwrap();
+        assert_eq!(keys.len(), 2);
+        assert_eq!(keys[0].api_key, "key-1");
+        assert_eq!(keys[1].api_key, "key-2");
     }
 }

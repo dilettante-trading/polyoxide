@@ -14,7 +14,7 @@ Returns top token holders for a market.
 |------|-----|------|----------|---------|-------------|
 | market | query | Hash64[] (`0x` + 64 hex) | yes | — | Condition ID(s) |
 | limit | query | integer (0-20) | no | 20 | Results per page |
-| minBalance | query | number (0-999999) | no | 1 | Minimum token balance |
+| minBalance | query | integer (0-999999) | no | 1 | Minimum token balance |
 
 **Response:** `MetaHolder[]`
 

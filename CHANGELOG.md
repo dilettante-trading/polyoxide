@@ -1,28 +1,95 @@
-## [0.13.1] - 2026-05-22
+## [0.15.0] - 2026-04-23
+
+### 💥 Breaking Changes
+
+- *(gamma)* `markets().query_by_information()` and `markets().query_abridged()` now return request builders; add `.send().await` and pass the body by value instead of by reference
+
+### 🚀 Features
+
+- *(gamma)* Add `limit()` / `offset()` pagination to `query_by_information` and `query_abridged` builders, sent on the URL query string because the server ignores body-level pagination; defaults to `limit=1000` to prevent silent truncation at the server's 20-row default
+
+### 🧪 Testing
+
+- *(gamma)* Add mock coverage for explicit `limit` / `offset` on `query_by_information`
+
+## [0.14.0] - 2026-04-22
+
+### 🚀 Features
+
+- *(core)* Add `HttpClient::get_bytes` helper for endpoints that return binary responses (e.g. ZIP archives)
+- *(clob)* Add path-variant market metadata endpoints: `fee_rate_path`, `tick_size_path`, `neg_risk_path`
+- *(clob)* Add `markets().clob_market_details(condition_id)` returning structured CLOB market metadata
+- *(clob)* Add `markets().market_by_token(token_id)` for token→market lookup
+- *(clob)* Add `markets().live_activity_bulk(ids)` and `live_activity_market(condition_id)` for real-time order/trade counters
+- *(clob)* Add `markets().batch_prices_history(req)` for bulk historical price queries
+- *(gamma)* Add events endpoints: `list_creators`, `get_creator`, `list_paginated`, `list_results`, `list_keyset`
+- *(gamma)* Add markets endpoints: `get_description`, `query_by_information`, `query_abridged`, `list_keyset`
+- *(gamma)* Add `series().get_summary`, `get_summary_by_slug`, and `comment_count`
+- *(gamma)* Add `sports().get_team(id)` and `user().get_by_address(addr)`
+- *(data)* Add `data.market_positions()` namespace with `ListMarketPositions` builder
+- *(data)* Add `data.accounting().snapshot(user)` returning raw ZIP bytes
+- *(relay)* Add `list_relayer_api_keys()` and `list_transactions()` methods with per-endpoint auth dispatch
+
+### 💥 Breaking Changes
+
+- *(clob)* `update_balance_allowance` now calls `PUT /balance-allowance` with query params; signature changed to `(asset_type, token_id: Option<_>, signature_type: Option<_>)`
+- *(gamma)* `tags().get_related_detailed` now returns `Vec<Tag>` instead of a single `Tag`
+- *(gamma)* `keep_closed_markets` is typed as an integer to match the upstream contract
+- *(gamma)* Removed ghost `/events/slug/{slug}/related` endpoint that never existed upstream
+- *(clob)* `GET /trades` now requires `maker_address` per upstream contract
+- *(relay)* Response type fields aligned with upstream OpenAPI (some renames)
 
 ### 🐛 Bug Fixes
 
-- *(gamma)* Accept 3xx redirects from API root in health ping — the Gamma root returns `301` to `/docs` and the shared HTTP client disables redirect-following, so `ping()` was failing
+- *(clob)* Add `POST /heartbeats` endpoint for session keep-alive
+- *(gamma)* Probe `/status` for health pings instead of a non-existent path
+- *(data)* Add `MakerRebate` and `ReferralReward` activity variants
 
-### ♻️ Refactoring
+### 📚 Documentation
 
-- *(clob)* Widen ping success gate to match gamma's tolerant 3xx handling
-- *(data)* Widen ping success gate to match gamma's tolerant 3xx handling
-- *(gamma)* Move probes from tests to examples
+- *(specs)* Vendor upstream Polymarket OpenAPI YAMLs as the source of truth
+- *(specs)* Sync per-endpoint markdown docs with upstream OpenAPI (CLOB, Gamma, Data, Relay)
 
-### 📝 Documentation
+### 🧪 Testing
+
+- *(clob)* Add mock and live coverage for all new market endpoints and the PUT balance-allowance migration
+- *(clob)* Add mock coverage for `heartbeat`
+- *(gamma)* Add mock, live, and serde roundtrip coverage for all new events/markets/series/sports/user endpoints
+- *(gamma)* Add mock and live coverage for `get_related_detailed` and `get_related_detailed_by_slug`
+- *(data)* Add mock, live, and serde coverage for market-positions and accounting snapshot
+- *(relay)* Add mock coverage for new endpoints including builder-HMAC vs static-key auth dispatch
+- *(py)* Remove stale xfail markers on CLOB market tests
+
+### 🎨 Styling
+
+- *(gamma)* Apply rustfmt to example probes
+
+## [0.13.1] - 2026-04-22
+
+### 🚀 Features
+
+- *(gamma)* Add `markets().get_many(ids)` for batch market lookup regardless of open/closed state
+
+### 🐛 Bug Fixes
+
+- *(gamma)* Work around the upstream `closed=false` default that silently dropped closed markets from `list().id()`, `.slug()`, and `.condition_ids()` lookups; new `get_many` helper fans out `closed=true` + `closed=false` requests in parallel and the trap is called out in the doc comments of the affected list builder methods
+
+### 🚜 Refactor
+
+- *(gamma)* Move Cloudflare probes from tests to examples
+
+### 📚 Documentation
 
 - *(gamma)* Document safe batch sizes on `query_many` methods
 
-### 🧪 Tests
+### 🧪 Testing
 
 - *(gamma)* Add binary-search probe for batch-ID URL ceiling
 - *(gamma)* Add burst probe for Cloudflare rate-limit responses
-- *(clob, data, gamma)* Add mock tests for ping redirect tolerance and 5xx propagation
 
-### ⚙️ Build
+### ⚙️ Miscellaneous Tasks
 
-- Add `tracing` as direct dependency in `polyoxide-data` and `polyoxide-gamma` (previously only transitively available)
+- Ignore `.loom/` local data directory
 
 ## [0.13.0] - 2026-04-16
 

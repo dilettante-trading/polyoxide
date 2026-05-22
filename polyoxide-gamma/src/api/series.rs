@@ -1,6 +1,9 @@
 use polyoxide_core::{HttpClient, QueryBuilder, Request};
 
-use crate::{error::GammaError, types::SeriesData};
+use crate::{
+    error::GammaError,
+    types::{CountResponse, SeriesData, SeriesSummary},
+};
 
 /// Series namespace for series-related operations
 #[derive(Clone)]
@@ -24,6 +27,33 @@ impl Series {
                 format!("/series/{}", urlencoding::encode(&id.into())),
             ),
         }
+    }
+
+    /// Get series summary by ID (`GET /series-summary/{id}`).
+    pub fn get_summary(&self, id: impl Into<String>) -> Request<SeriesSummary, GammaError> {
+        Request::new(
+            self.http_client.clone(),
+            format!("/series-summary/{}", urlencoding::encode(&id.into())),
+        )
+    }
+
+    /// Get series summary by slug (`GET /series-summary/slug/{slug}`).
+    pub fn get_summary_by_slug(
+        &self,
+        slug: impl Into<String>,
+    ) -> Request<SeriesSummary, GammaError> {
+        Request::new(
+            self.http_client.clone(),
+            format!("/series-summary/slug/{}", urlencoding::encode(&slug.into())),
+        )
+    }
+
+    /// Get comment count for a series (`GET /series/{id}/comments/count`).
+    pub fn comment_count(&self, id: impl Into<String>) -> Request<CountResponse, GammaError> {
+        Request::new(
+            self.http_client.clone(),
+            format!("/series/{}/comments/count", urlencoding::encode(&id.into())),
+        )
     }
 }
 
@@ -147,5 +177,25 @@ mod tests {
     #[test]
     fn test_get_series_with_include_chat() {
         let _req = gamma().series().get("s-123").include_chat(true);
+    }
+
+    #[test]
+    fn test_get_summary_accepts_str_and_string() {
+        let _r1 = gamma().series().get_summary("s-1");
+        let _r2 = gamma().series().get_summary(String::from("s-1"));
+    }
+
+    #[test]
+    fn test_get_summary_by_slug_accepts_str_and_string() {
+        let _r1 = gamma().series().get_summary_by_slug("nfl-2025");
+        let _r2 = gamma()
+            .series()
+            .get_summary_by_slug(String::from("nfl-2025"));
+    }
+
+    #[test]
+    fn test_comment_count_accepts_str_and_string() {
+        let _r1 = gamma().series().comment_count("s-1");
+        let _r2 = gamma().series().comment_count(String::from("s-1"));
     }
 }

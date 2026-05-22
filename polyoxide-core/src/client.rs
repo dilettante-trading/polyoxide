@@ -86,6 +86,62 @@ impl HttpClient {
             None
         }
     }
+
+    /// GET a URL and return the raw response body as bytes.
+    ///
+    /// Use this for endpoints that return non-JSON payloads (e.g. `application/zip`
+    /// downloads). Applies the same rate-limiting, concurrency gating, and 429
+    /// retry behavior as the JSON-oriented [`Request`](crate::Request) helper.
+    ///
+    /// Non-2xx responses are mapped to [`ApiError`] via
+    /// [`ApiError::from_response`].
+    ///
+    /// # Errors
+    ///
+    /// Returns [`ApiError`] on URL-join failure, network errors, or non-2xx
+    /// responses.
+    pub async fn get_bytes(
+        &self,
+        path: &str,
+        query: &[(String, String)],
+    ) -> Result<Vec<u8>, ApiError> {
+        let url = self.base_url.join(path)?;
+        let mut attempt = 0u32;
+
+        loop {
+            let _permit = self.acquire_concurrency().await;
+            self.acquire_rate_limit(path, None).await;
+
+            let mut request = self.client.get(url.clone());
+            if !query.is_empty() {
+                request = request.query(query);
+            }
+
+            let response = request.send().await?;
+            let status = response.status();
+            let retry_after = retry_after_header(&response);
+
+            if let Some(backoff) = self.should_retry(status, attempt, retry_after.as_deref()) {
+                attempt += 1;
+                tracing::warn!(
+                    "Rate limited (429) on {}, retry {} after {}ms",
+                    path,
+                    attempt,
+                    backoff.as_millis()
+                );
+                drop(_permit);
+                tokio::time::sleep(backoff).await;
+                continue;
+            }
+
+            if !status.is_success() {
+                return Err(ApiError::from_response(response).await);
+            }
+
+            let bytes = response.bytes().await?;
+            return Ok(bytes.to_vec());
+        }
+    }
 }
 
 /// Builder for configuring HTTP clients.
@@ -426,5 +482,72 @@ mod tests {
         let result =
             tokio::time::timeout(Duration::from_millis(50), client.acquire_concurrency()).await;
         assert!(result.is_err());
+    }
+
+    // ── get_bytes() ──────────────────────────────────────────────
+
+    #[tokio::test]
+    async fn test_get_bytes_returns_body_verbatim() {
+        let mut server = mockito::Server::new_async().await;
+        // Intentionally non-UTF-8 bytes to prove we're not assuming text.
+        let body: Vec<u8> = vec![0x50, 0x4B, 0x03, 0x04, 0x00, 0xFF, 0xFE, 0x42];
+        let mock = server
+            .mock("GET", "/v1/accounting/snapshot")
+            .match_query(mockito::Matcher::UrlEncoded("user".into(), "0xabc".into()))
+            .with_status(200)
+            .with_header("content-type", "application/zip")
+            .with_body(body.clone())
+            .create_async()
+            .await;
+
+        let client = HttpClientBuilder::new(server.url()).build().unwrap();
+        let out = client
+            .get_bytes(
+                "/v1/accounting/snapshot",
+                &[("user".to_string(), "0xabc".to_string())],
+            )
+            .await
+            .unwrap();
+        assert_eq!(out, body);
+        mock.assert_async().await;
+    }
+
+    #[tokio::test]
+    async fn test_get_bytes_maps_non_2xx_to_api_error() {
+        let mut server = mockito::Server::new_async().await;
+        let mock = server
+            .mock("GET", "/does-not-exist")
+            .with_status(404)
+            .with_header("content-type", "application/json")
+            .with_body(r#"{"error": "not found"}"#)
+            .create_async()
+            .await;
+
+        let client = HttpClientBuilder::new(server.url()).build().unwrap();
+        let err = client.get_bytes("/does-not-exist", &[]).await.unwrap_err();
+        match err {
+            ApiError::Api { status, message } => {
+                assert_eq!(status, 404);
+                assert_eq!(message, "not found");
+            }
+            other => panic!("expected ApiError::Api, got {other:?}"),
+        }
+        mock.assert_async().await;
+    }
+
+    #[tokio::test]
+    async fn test_get_bytes_no_query_params() {
+        let mut server = mockito::Server::new_async().await;
+        let mock = server
+            .mock("GET", "/raw")
+            .with_status(200)
+            .with_body(&b"hello"[..])
+            .create_async()
+            .await;
+
+        let client = HttpClientBuilder::new(server.url()).build().unwrap();
+        let out = client.get_bytes("/raw", &[]).await.unwrap();
+        assert_eq!(out, b"hello");
+        mock.assert_async().await;
     }
 }

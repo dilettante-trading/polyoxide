@@ -42,7 +42,10 @@ mod types;
 pub use client::RelayClient;
 pub use config::{AuthConfig, BuilderConfig, ContractConfig, RelayerApiKeyConfig};
 pub use error::RelayError;
-pub use types::{SafeTransaction, SafeTx, TransactionRequest, WalletType};
+pub use types::{
+    RelayerApiKey, RelayerTransaction, SafeTransaction, SafeTx, SubmitResponse, TransactionRequest,
+    WalletType,
+};
 
 mod account;
 

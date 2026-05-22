@@ -74,9 +74,11 @@ pub use api::{
     },
     health::{Health, ServerTimeResponse},
     markets::{
-        BookParams, CalculatePriceResponse, LastTradePriceResponse, ListMarketsResponse,
-        LiveActivityEvent, Market, MarketToken, MidpointResponse, OrderBook, OrderLevel,
-        PriceResponse, SpreadResponse,
+        BatchPricesHistoryRequest, BatchPricesHistoryResponse, BookParams, CalculatePriceResponse,
+        ClobMarketDetails, ClobRewards, ClobToken, FeeDetails, LastTradePriceResponse,
+        ListMarketsResponse, LiveActivityEvent, LiveActivityMarket, Market, MarketByTokenResponse,
+        MarketPrice, MarketToken, MidpointResponse, OrderBook, OrderLevel, PriceResponse,
+        SpreadResponse,
     },
     notifications::Notification,
     orders::{

@@ -55,19 +55,24 @@ impl AccountApi {
         .query("signature_type", 1)
     }
 
-    /// Update balance allowance for a token
+    /// Force a refresh of the caller's balance and allowances from on-chain data.
+    ///
+    /// Calls `PUT /balance-allowance` with the following query parameters:
+    /// - `asset_type` (required): `"COLLATERAL"` or `"CONDITIONAL"`.
+    /// - `token_id` (optional): asset ID. Defaults to `"-1"` (ERC20 collateral) server-side.
+    /// - `signature_type` (optional): `0` = EOA, `1` = POLY_PROXY, `2` = POLY_GNOSIS_SAFE.
+    ///   Defaults to `0` server-side.
+    ///
+    /// Returns the raw JSON body from the server (typically `{}` on success).
     pub async fn update_balance_allowance(
         &self,
-        token_id: impl Into<String>,
+        asset_type: impl Into<String>,
+        token_id: Option<String>,
+        signature_type: Option<u8>,
     ) -> Result<serde_json::Value, ClobError> {
-        #[derive(Serialize)]
-        struct Body {
-            token_id: String,
-        }
-
-        Request::<serde_json::Value>::post(
+        let mut request = Request::<serde_json::Value>::put(
             self.http_client.clone(),
-            "/balance-allowance/update".to_string(),
+            "/balance-allowance".to_string(),
             AuthMode::L2 {
                 address: self.wallet.clone().address(),
                 credentials: self.credentials.clone(),
@@ -75,15 +80,40 @@ impl AccountApi {
             },
             self.chain_id,
         )
-        .body(&Body {
-            token_id: token_id.into(),
-        })?
+        .query("asset_type", asset_type.into());
+        if let Some(token_id) = token_id {
+            request = request.query("token_id", token_id);
+        }
+        if let Some(signature_type) = signature_type {
+            request = request.query("signature_type", signature_type);
+        }
+        request.send().await
+    }
+
+    /// Send a basic heartbeat to keep the session alive
+    ///
+    /// Calls `POST /heartbeats`. No request body; returns `{"status": "ok"}` on success.
+    /// If heartbeats are not sent regularly, all open orders for the user will be
+    /// automatically canceled.
+    pub async fn heartbeat(&self) -> Result<HeartbeatResponse, ClobError> {
+        Request::<HeartbeatResponse>::post(
+            self.http_client.clone(),
+            "/heartbeats".to_string(),
+            AuthMode::L2 {
+                address: self.wallet.clone().address(),
+                credentials: self.credentials.clone(),
+                signer: self.signer.clone(),
+            },
+            self.chain_id,
+        )
         .send()
         .await
     }
 
-    /// Send a heartbeat to keep the session alive
-    pub async fn heartbeat(&self) -> Result<serde_json::Value, ClobError> {
+    /// Send a v1 heartbeat with session tracking via heartbeat ID
+    ///
+    /// Calls `POST /v1/heartbeats`.
+    pub async fn heartbeat_v1(&self) -> Result<serde_json::Value, ClobError> {
         Request::<serde_json::Value>::post(
             self.http_client.clone(),
             "/v1/heartbeats".to_string(),
@@ -113,8 +143,8 @@ impl AccountApi {
         ListBuilderTrades { request }
     }
 
-    /// Get trades with optional filtering
-    pub fn trades(&self) -> ListClobTrades {
+    /// Get trades for a maker address (required), with optional additional filtering
+    pub fn trades(&self, maker_address: impl Into<String>) -> ListClobTrades {
         let request = Request::get(
             self.http_client.clone(),
             "/data/trades",
@@ -124,7 +154,8 @@ impl AccountApi {
                 signer: self.signer.clone(),
             },
             self.chain_id,
-        );
+        )
+        .query("maker_address", maker_address.into());
         ListClobTrades { request }
     }
 }
@@ -138,12 +169,6 @@ impl ListClobTrades {
     /// Filter by specific trade ID
     pub fn id(mut self, id: impl Into<String>) -> Self {
         self.request = self.request.query("id", id.into());
-        self
-    }
-
-    /// Filter by maker address
-    pub fn maker_address(mut self, address: impl Into<String>) -> Self {
-        self.request = self.request.query("maker_address", address.into());
         self
     }
 
@@ -306,6 +331,12 @@ pub struct ListBuilderTradesResponse {
 pub struct BalanceAllowanceResponse {
     pub balance: String,
     pub allowances: HashMap<String, String>,
+}
+
+/// Response from `POST /heartbeats`
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct HeartbeatResponse {
+    pub status: String,
 }
 
 #[cfg(test)]
