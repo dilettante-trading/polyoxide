@@ -1,3 +1,29 @@
+## [0.13.1] - 2026-05-22
+
+### 🐛 Bug Fixes
+
+- *(gamma)* Accept 3xx redirects from API root in health ping — the Gamma root returns `301` to `/docs` and the shared HTTP client disables redirect-following, so `ping()` was failing
+
+### ♻️ Refactoring
+
+- *(clob)* Widen ping success gate to match gamma's tolerant 3xx handling
+- *(data)* Widen ping success gate to match gamma's tolerant 3xx handling
+- *(gamma)* Move probes from tests to examples
+
+### 📝 Documentation
+
+- *(gamma)* Document safe batch sizes on `query_many` methods
+
+### 🧪 Tests
+
+- *(gamma)* Add binary-search probe for batch-ID URL ceiling
+- *(gamma)* Add burst probe for Cloudflare rate-limit responses
+- *(clob, data, gamma)* Add mock tests for ping redirect tolerance and 5xx propagation
+
+### ⚙️ Build
+
+- Add `tracing` as direct dependency in `polyoxide-data` and `polyoxide-gamma` (previously only transitively available)
+
 ## [0.13.0] - 2026-04-16
 
 ### 🚀 Features
