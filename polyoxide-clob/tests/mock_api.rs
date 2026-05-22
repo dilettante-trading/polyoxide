@@ -1751,7 +1751,7 @@ async fn create_market_order_insufficient_liquidity() {
 }
 
 #[tokio::test]
-async fn ping_treats_301_redirect_as_success() {
+async fn ping_propagates_3xx_as_error() {
     let mut server = Server::new_async().await;
 
     let mock = server
@@ -1762,10 +1762,11 @@ async fn ping_treats_301_redirect_as_success() {
         .await;
 
     let clob = test_public_clob(&server);
-    clob.health()
-        .ping()
-        .await
-        .expect("301 from root should be a successful ping");
+    let err = clob.health().ping().await.unwrap_err();
+    assert!(
+        matches!(err, ClobError::Api(_)),
+        "expected ApiError for unexpected 3xx, got {err:?}"
+    );
 
     mock.assert_async().await;
 }

@@ -1045,7 +1045,7 @@ async fn ping_targets_status_endpoint() {
 }
 
 #[tokio::test]
-async fn ping_treats_301_redirect_as_success() {
+async fn ping_propagates_3xx_as_error() {
     let mut server = Server::new_async().await;
 
     let mock = server
@@ -1057,11 +1057,11 @@ async fn ping_treats_301_redirect_as_success() {
         .await;
 
     let gamma = test_gamma(&server);
-    gamma
-        .health()
-        .ping()
-        .await
-        .expect("3xx from /status should be a successful ping");
+    let err = gamma.health().ping().await.unwrap_err();
+    assert!(
+        matches!(err, GammaError::Api(_)),
+        "expected ApiError for unexpected 3xx, got {err:?}"
+    );
 
     mock.assert_async().await;
 }

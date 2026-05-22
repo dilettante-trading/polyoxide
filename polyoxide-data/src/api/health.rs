@@ -20,9 +20,7 @@ impl Health {
 
     /// Measure the round-trip time (RTT) to the Polymarket Data API.
     ///
-    /// Makes a GET request to the API root and returns the latency. Any
-    /// non-error HTTP response (including 3xx redirects) counts as a
-    /// successful ping; only 4xx/5xx are surfaced as errors.
+    /// Makes a GET request to the API root and returns the latency.
     ///
     /// # Example
     ///
@@ -49,11 +47,7 @@ impl Health {
             .await?;
         let latency = start.elapsed();
 
-        let status = response.status();
-        if status.is_redirection() {
-            tracing::debug!(%status, "Data API ping observed redirect from root");
-        }
-        if status.is_client_error() || status.is_server_error() {
+        if !response.status().is_success() {
             return Err(DataApiError::from_response(response).await);
         }
 

@@ -3563,7 +3563,6 @@ dependencies = [
  "specta",
  "thiserror 2.0.18",
  "tokio",
- "tracing",
  "url",
 ]
 
@@ -3580,7 +3579,6 @@ dependencies = [
  "specta",
  "thiserror 2.0.18",
  "tokio",
- "tracing",
  "tracing-subscriber",
  "url",
  "urlencoding",

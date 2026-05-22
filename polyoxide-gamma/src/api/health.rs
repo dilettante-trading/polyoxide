@@ -30,11 +30,7 @@ impl Health {
         let response = self.http_client.client.get(url).send().await?;
         let latency = start.elapsed();
 
-        let status = response.status();
-        if status.is_redirection() {
-            tracing::debug!(%status, "Gamma ping observed redirect from root");
-        }
-        if status.is_client_error() || status.is_server_error() {
+        if !response.status().is_success() {
             return Err(GammaError::from_response(response).await);
         }
 
