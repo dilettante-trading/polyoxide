@@ -8,7 +8,7 @@
 //! cargo test -p polyoxide-clob --test live_api -- --ignored
 //! ```
 
-use polyoxide_clob::{Account, Clob, OrderSide};
+use polyoxide_clob::{Account, Clob, ClobBuilder, OrderSide, SignatureType};
 use polyoxide_core::QueryBuilder;
 use polyoxide_gamma::Gamma;
 use std::time::Duration;
@@ -21,7 +21,14 @@ fn authenticated_client() -> Clob {
     dotenvy::dotenv().ok();
     let account =
         Account::from_env().expect("POLYMARKET_* env vars required for authenticated tests");
-    Clob::from_account(account).expect("authenticated clob client")
+    // The test account is a Polymarket proxy wallet, so authenticated read
+    // endpoints (balances, notifications, rewards) need the POLY_PROXY signature
+    // type to resolve the correct on-chain address.
+    ClobBuilder::new()
+        .with_account(account)
+        .signature_type(SignatureType::PolyProxy)
+        .build()
+        .expect("authenticated clob client")
 }
 
 fn authenticated_address() -> String {
@@ -668,7 +675,7 @@ async fn live_reward_earnings() {
     let _resp = client
         .rewards()
         .expect("rewards")
-        .earnings()
+        .earnings("2024-01-01")
         .send()
         .await
         .expect("earnings should deserialize");
@@ -681,7 +688,7 @@ async fn live_reward_total_earnings() {
     let _resp = client
         .rewards()
         .expect("rewards")
-        .total_earnings()
+        .total_earnings("2024-01-01")
         .send()
         .await
         .expect("total_earnings should deserialize");

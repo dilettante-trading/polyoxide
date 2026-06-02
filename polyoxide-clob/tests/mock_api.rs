@@ -1,5 +1,5 @@
 use mockito::{Matcher, Server};
-use polyoxide_clob::{Account, ClobBuilder, ClobError, Credentials};
+use polyoxide_clob::{Account, ClobBuilder, ClobError, Credentials, SignatureType};
 use polyoxide_core::RetryConfig;
 
 fn test_public_clob(server: &mockito::ServerGuard) -> polyoxide_clob::Clob {
@@ -7,6 +7,15 @@ fn test_public_clob(server: &mockito::ServerGuard) -> polyoxide_clob::Clob {
 }
 
 fn test_authed_clob(server: &mockito::ServerGuard) -> polyoxide_clob::Clob {
+    test_authed_clob_with_sig(server, SignatureType::Eoa)
+}
+
+/// Authed client with an explicit signature type, for endpoints that thread the
+/// configured `signature_type` into their requests.
+fn test_authed_clob_with_sig(
+    server: &mockito::ServerGuard,
+    signature_type: SignatureType,
+) -> polyoxide_clob::Clob {
     let creds = Credentials {
         key: "test-key".into(),
         secret: "c2VjcmV0".into(), // base64("secret")
@@ -21,6 +30,7 @@ fn test_authed_clob(server: &mockito::ServerGuard) -> polyoxide_clob::Clob {
     ClobBuilder::new()
         .base_url(server.url())
         .with_account(account)
+        .signature_type(signature_type)
         .build()
         .unwrap()
 }
@@ -254,6 +264,39 @@ async fn balance_allowance_returns_flat_response() {
             .unwrap(),
         "999999"
     );
+    mock.assert_async().await;
+}
+
+#[tokio::test]
+async fn balance_allowance_sends_conditional_asset_type() {
+    let mut server = Server::new_async().await;
+
+    // balance_allowance(token_id) targets a conditional (outcome) token, so the
+    // required asset_type query param must be CONDITIONAL.
+    let mock = server
+        .mock("GET", "/balance-allowance")
+        .match_query(Matcher::AllOf(vec![
+            Matcher::UrlEncoded("asset_type".into(), "CONDITIONAL".into()),
+            Matcher::UrlEncoded("token_id".into(), "0xtoken".into()),
+            Matcher::UrlEncoded("signature_type".into(), "0".into()),
+        ]))
+        .match_header("POLY_API_KEY", "test-key")
+        .with_status(200)
+        .with_header("content-type", "application/json")
+        .with_body(r#"{"balance": "0", "allowances": {}}"#)
+        .create_async()
+        .await;
+
+    let clob = test_authed_clob(&server);
+    let resp = clob
+        .account_api()
+        .unwrap()
+        .balance_allowance("0xtoken")
+        .send()
+        .await
+        .unwrap();
+
+    assert_eq!(resp.balance, "0");
     mock.assert_async().await;
 }
 
@@ -1444,7 +1487,7 @@ async fn clob_market_details_returns_abbreviated_shape() {
     assert_eq!(details.t.len(), 2);
     assert_eq!(details.t[0].t, "713210456");
     assert_eq!(details.t[0].o, "Yes");
-    assert!(!details.rfqe);
+    assert_eq!(details.rfqe, Some(false));
     assert!(details.ibce);
     mock.assert_async().await;
 }
@@ -1592,11 +1635,11 @@ async fn batch_prices_history_sends_request_body() {
 }
 
 #[tokio::test]
-async fn update_balance_allowance_puts_to_balance_allowance_with_query() {
+async fn update_balance_allowance_gets_balance_allowance_update_with_query() {
     let mut server = Server::new_async().await;
 
     let mock = server
-        .mock("PUT", "/balance-allowance")
+        .mock("GET", "/balance-allowance/update")
         .match_header("POLY_API_KEY", "test-key")
         .match_query(Matcher::AllOf(vec![
             Matcher::UrlEncoded("asset_type".into(), "COLLATERAL".into()),
@@ -1626,7 +1669,7 @@ async fn update_balance_allowance_omits_optional_query_params() {
 
     // Without token_id/signature_type, only asset_type should appear in the query string.
     let mock = server
-        .mock("PUT", "/balance-allowance")
+        .mock("GET", "/balance-allowance/update")
         .match_header("POLY_API_KEY", "test-key")
         .match_query(Matcher::UrlEncoded(
             "asset_type".into(),
@@ -1645,6 +1688,189 @@ async fn update_balance_allowance_omits_optional_query_params() {
         .update_balance_allowance("CONDITIONAL", None, None)
         .await
         .unwrap();
+    mock.assert_async().await;
+}
+
+#[tokio::test]
+async fn update_balance_allowance_tolerates_empty_body() {
+    let mut server = Server::new_async().await;
+
+    // The live endpoint returns 200 with an empty body; that must be treated as
+    // success rather than an "EOF while parsing a value" deserialization error.
+    let mock = server
+        .mock("GET", "/balance-allowance/update")
+        .match_header("POLY_API_KEY", "test-key")
+        .match_query(Matcher::UrlEncoded(
+            "asset_type".into(),
+            "COLLATERAL".into(),
+        ))
+        .with_status(200)
+        .with_body("")
+        .create_async()
+        .await;
+
+    let clob = test_authed_clob(&server);
+    let resp = clob
+        .account_api()
+        .unwrap()
+        .update_balance_allowance("COLLATERAL", None, None)
+        .await
+        .unwrap();
+    assert!(resp.is_null());
+    mock.assert_async().await;
+}
+
+#[tokio::test]
+async fn notifications_list_sends_configured_signature_type() {
+    let mut server = Server::new_async().await;
+    // A proxy-configured client must thread its signature_type into the
+    // (otherwise required-param-less) /notifications request.
+    let clob = test_authed_clob_with_sig(&server, SignatureType::PolyProxy);
+
+    let mock = server
+        .mock("GET", "/notifications")
+        .match_query(Matcher::UrlEncoded("signature_type".into(), "1".into()))
+        .match_header("POLY_API_KEY", "test-key")
+        .with_status(200)
+        .with_header("content-type", "application/json")
+        .with_body("[]")
+        .create_async()
+        .await;
+
+    let notifications = clob.notifications().unwrap().list().send().await.unwrap();
+    assert!(notifications.is_empty());
+    mock.assert_async().await;
+}
+
+#[tokio::test]
+async fn reward_earnings_sends_date_and_signature_type() {
+    let mut server = Server::new_async().await;
+    let clob = test_authed_clob(&server); // default signature_type = EOA (0)
+
+    let mock = server
+        .mock("GET", "/rewards/user")
+        .match_query(Matcher::AllOf(vec![
+            Matcher::UrlEncoded("date".into(), "2024-01-01".into()),
+            Matcher::UrlEncoded("signature_type".into(), "0".into()),
+        ]))
+        .match_header("POLY_API_KEY", "test-key")
+        .with_status(200)
+        .with_header("content-type", "application/json")
+        .with_body(r#"{"data": [], "next_cursor": "LTE=", "limit": 100, "count": 0}"#)
+        .create_async()
+        .await;
+
+    let _resp = clob
+        .rewards()
+        .unwrap()
+        .earnings("2024-01-01")
+        .send()
+        .await
+        .unwrap();
+    mock.assert_async().await;
+}
+
+#[tokio::test]
+async fn reward_percentages_sends_signature_type() {
+    let mut server = Server::new_async().await;
+    // Proxy-configured client: percentages must carry the threaded signature_type.
+    let clob = test_authed_clob_with_sig(&server, SignatureType::PolyProxy);
+
+    let mock = server
+        .mock("GET", "/rewards/user/percentages")
+        .match_query(Matcher::UrlEncoded("signature_type".into(), "1".into()))
+        .match_header("POLY_API_KEY", "test-key")
+        .with_status(200)
+        .with_header("content-type", "application/json")
+        .with_body(r#"{"maker": "0.5", "taker": "0.3"}"#)
+        .create_async()
+        .await;
+
+    let _resp = clob.rewards().unwrap().percentages().send().await.unwrap();
+    mock.assert_async().await;
+}
+
+#[tokio::test]
+async fn reward_market_earnings_sends_signature_type() {
+    let mut server = Server::new_async().await;
+    let clob = test_authed_clob(&server); // default signature_type = EOA (0)
+
+    let mock = server
+        .mock("GET", "/rewards/user/markets")
+        .match_query(Matcher::UrlEncoded("signature_type".into(), "0".into()))
+        .match_header("POLY_API_KEY", "test-key")
+        .with_status(200)
+        .with_header("content-type", "application/json")
+        .with_body(r#"{"data": [], "next_cursor": "LTE=", "limit": 100, "count": 0}"#)
+        .create_async()
+        .await;
+
+    let _resp = clob
+        .rewards()
+        .unwrap()
+        .market_earnings()
+        .send()
+        .await
+        .unwrap();
+    mock.assert_async().await;
+}
+
+#[tokio::test]
+async fn reward_total_earnings_sends_date_and_signature_type() {
+    let mut server = Server::new_async().await;
+    let clob = test_authed_clob(&server); // default signature_type = EOA (0)
+
+    let mock = server
+        .mock("GET", "/rewards/user/total")
+        .match_query(Matcher::AllOf(vec![
+            Matcher::UrlEncoded("date".into(), "2024-01-01".into()),
+            Matcher::UrlEncoded("signature_type".into(), "0".into()),
+        ]))
+        .match_header("POLY_API_KEY", "test-key")
+        .with_status(200)
+        .with_header("content-type", "application/json")
+        .with_body(r#"[{"asset_address": "0xabc", "total": "0"}]"#)
+        .create_async()
+        .await;
+
+    let _resp = clob
+        .rewards()
+        .unwrap()
+        .total_earnings("2024-01-01")
+        .send()
+        .await
+        .unwrap();
+    mock.assert_async().await;
+}
+
+#[tokio::test]
+async fn usdc_balance_threads_configured_signature_type() {
+    let mut server = Server::new_async().await;
+    // Proxy-configured client: usdc_balance must send the configured signature
+    // type (previously hardcoded to 1), proving AccountApi threads it.
+    let clob = test_authed_clob_with_sig(&server, SignatureType::PolyProxy);
+
+    let mock = server
+        .mock("GET", "/balance-allowance")
+        .match_query(Matcher::AllOf(vec![
+            Matcher::UrlEncoded("asset_type".into(), "COLLATERAL".into()),
+            Matcher::UrlEncoded("signature_type".into(), "1".into()),
+        ]))
+        .match_header("POLY_API_KEY", "test-key")
+        .with_status(200)
+        .with_header("content-type", "application/json")
+        .with_body(r#"{"balance": "0", "allowances": {}}"#)
+        .create_async()
+        .await;
+
+    let resp = clob
+        .account_api()
+        .unwrap()
+        .usdc_balance()
+        .send()
+        .await
+        .unwrap();
+    assert_eq!(resp.balance, "0");
     mock.assert_async().await;
 }
 

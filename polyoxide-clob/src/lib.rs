@@ -85,7 +85,8 @@ pub use api::{
         BatchCancelResponse, ListOrdersResponse, OpenOrder, OrderResponse, OrderScoringResponse,
     },
     rewards::{
-        RewardEarnings, RewardMarket, RewardMarketEarning, RewardPercentages, RewardTotalEarnings,
+        Paginated, RewardEarnings, RewardMarket, RewardMarketEarning, RewardPercentages,
+        RewardTotalEarnings,
     },
     rfq::{
         CreateRfqQuoteParams, CreateRfqRequestParams, RfqConfig, RfqPaginatedResponse, RfqQuote,

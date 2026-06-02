@@ -8,7 +8,7 @@ use crate::{
     account::{Credentials, Signer, Wallet},
     error::ClobError,
     request::{AuthMode, Request},
-    types::OrderSide,
+    types::{OrderSide, SignatureType},
 };
 
 /// Account API namespace for account-related operations
@@ -19,6 +19,7 @@ pub struct AccountApi {
     pub(crate) credentials: Credentials,
     pub(crate) signer: Signer,
     pub(crate) chain_id: u64,
+    pub(crate) signature_type: SignatureType,
 }
 
 impl AccountApi {
@@ -37,7 +38,9 @@ impl AccountApi {
             },
             self.chain_id,
         )
+        .query("asset_type", "CONDITIONAL")
         .query("token_id", token_id.into())
+        .query("signature_type", self.signature_type as u8)
     }
 
     pub fn usdc_balance(&self) -> Request<BalanceAllowanceResponse> {
@@ -52,12 +55,12 @@ impl AccountApi {
             self.chain_id,
         )
         .query("asset_type", "COLLATERAL")
-        .query("signature_type", 1)
+        .query("signature_type", self.signature_type as u8)
     }
 
     /// Force a refresh of the caller's balance and allowances from on-chain data.
     ///
-    /// Calls `PUT /balance-allowance` with the following query parameters:
+    /// Calls `GET /balance-allowance/update` with the following query parameters:
     /// - `asset_type` (required): `"COLLATERAL"` or `"CONDITIONAL"`.
     /// - `token_id` (optional): asset ID. Defaults to `"-1"` (ERC20 collateral) server-side.
     /// - `signature_type` (optional): `0` = EOA, `1` = POLY_PROXY, `2` = POLY_GNOSIS_SAFE.
@@ -70,9 +73,9 @@ impl AccountApi {
         token_id: Option<String>,
         signature_type: Option<u8>,
     ) -> Result<serde_json::Value, ClobError> {
-        let mut request = Request::<serde_json::Value>::put(
+        let mut request = Request::<serde_json::Value>::get(
             self.http_client.clone(),
-            "/balance-allowance".to_string(),
+            "/balance-allowance/update".to_string(),
             AuthMode::L2 {
                 address: self.wallet.clone().address(),
                 credentials: self.credentials.clone(),
@@ -87,7 +90,15 @@ impl AccountApi {
         if let Some(signature_type) = signature_type {
             request = request.query("signature_type", signature_type);
         }
-        request.send().await
+
+        // The endpoint returns 200 with an empty body on success, so parse the
+        // body manually and treat an empty body as a null JSON value rather than
+        // letting `send()` fail with "EOF while parsing a value".
+        let text = request.send_raw().await?.text().await?;
+        if text.trim().is_empty() {
+            return Ok(serde_json::Value::Null);
+        }
+        Ok(serde_json::from_str(&text)?)
     }
 
     /// Send a basic heartbeat to keep the session alive

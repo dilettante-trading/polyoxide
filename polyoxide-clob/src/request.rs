@@ -95,25 +95,6 @@ impl<T> Request<T> {
         }
     }
 
-    /// Create a new PUT request
-    pub(crate) fn put(
-        http_client: HttpClient,
-        path: impl Into<String>,
-        auth: AuthMode,
-        chain_id: u64,
-    ) -> Self {
-        Self {
-            http_client,
-            path: path.into(),
-            method: Method::PUT,
-            query: Vec::new(),
-            body: None,
-            auth,
-            chain_id,
-            _marker: PhantomData,
-        }
-    }
-
     /// Set request body
     pub fn body<B: serde::Serialize + ?Sized>(mut self, body: &B) -> Result<Self, ClobError> {
         self.body = Some(serde_json::to_value(body)?);

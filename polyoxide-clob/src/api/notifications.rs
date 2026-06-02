@@ -1,10 +1,11 @@
-use polyoxide_core::HttpClient;
+use polyoxide_core::{HttpClient, QueryBuilder};
 use serde::{Deserialize, Serialize};
 
 use crate::{
     account::{Credentials, Signer, Wallet},
     error::ClobError,
     request::{AuthMode, Request},
+    types::SignatureType,
 };
 
 /// Notifications namespace for notification operations
@@ -15,6 +16,7 @@ pub struct Notifications {
     pub(crate) credentials: Credentials,
     pub(crate) signer: Signer,
     pub(crate) chain_id: u64,
+    pub(crate) signature_type: SignatureType,
 }
 
 impl Notifications {
@@ -26,7 +28,10 @@ impl Notifications {
         }
     }
 
-    /// List notifications for the current user
+    /// List notifications for the current user.
+    ///
+    /// The CLOB API requires a `signature_type` query parameter to derive the
+    /// account address; it is taken from the client configuration.
     pub fn list(&self) -> Request<Vec<Notification>> {
         Request::get(
             self.http_client.clone(),
@@ -34,6 +39,7 @@ impl Notifications {
             self.l2_auth(),
             self.chain_id,
         )
+        .query("signature_type", self.signature_type as u8)
     }
 
     /// Drop (dismiss) notifications by ID

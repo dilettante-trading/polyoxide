@@ -1,9 +1,10 @@
-use polyoxide_core::HttpClient;
+use polyoxide_core::{HttpClient, QueryBuilder};
 use serde::{Deserialize, Serialize};
 
 use crate::{
     account::{Credentials, Signer, Wallet},
     request::{AuthMode, Request},
+    types::SignatureType,
 };
 
 /// Rewards namespace for liquidity reward operations
@@ -14,6 +15,7 @@ pub struct Rewards {
     pub(crate) credentials: Credentials,
     pub(crate) signer: Signer,
     pub(crate) chain_id: u64,
+    pub(crate) signature_type: SignatureType,
 }
 
 impl Rewards {
@@ -25,24 +27,34 @@ impl Rewards {
         }
     }
 
-    /// Get user earnings, optionally filtered by day via `.query("day", "YYYY-MM-DD")`
-    pub fn earnings(&self) -> Request<RewardEarnings> {
+    /// Get user earnings for a specific day (`GET /rewards/user`).
+    ///
+    /// `date` must be in `YYYY-MM-DD` format (required by the API). The
+    /// `signature_type` query parameter is taken from the client configuration.
+    pub fn earnings(&self, date: impl Into<String>) -> Request<RewardEarnings> {
         Request::get(
             self.http_client.clone(),
             "/rewards/user",
             self.l2_auth(),
             self.chain_id,
         )
+        .query("date", date.into())
+        .query("signature_type", self.signature_type as u8)
     }
 
-    /// Get user total accumulated earnings
-    pub fn total_earnings(&self) -> Request<RewardTotalEarnings> {
+    /// Get user total earnings for a specific day (`GET /rewards/user/total`).
+    ///
+    /// `date` must be in `YYYY-MM-DD` format (required by the API). The endpoint
+    /// returns an array of totals grouped by asset address.
+    pub fn total_earnings(&self, date: impl Into<String>) -> Request<Vec<RewardTotalEarnings>> {
         Request::get(
             self.http_client.clone(),
             "/rewards/user/total",
             self.l2_auth(),
             self.chain_id,
         )
+        .query("date", date.into())
+        .query("signature_type", self.signature_type as u8)
     }
 
     /// Get user reward percentages
@@ -53,20 +65,27 @@ impl Rewards {
             self.l2_auth(),
             self.chain_id,
         )
+        .query("signature_type", self.signature_type as u8)
     }
 
-    /// Get user earnings broken down by market
-    pub fn market_earnings(&self) -> Request<Vec<RewardMarketEarning>> {
+    /// Get user earnings broken down by market (`GET /rewards/user/markets`).
+    ///
+    /// Returns a paginated envelope; the per-market earnings are in `data`.
+    pub fn market_earnings(&self) -> Request<Paginated<RewardMarketEarning>> {
         Request::get(
             self.http_client.clone(),
             "/rewards/user/markets",
             self.l2_auth(),
             self.chain_id,
         )
+        .query("signature_type", self.signature_type as u8)
     }
 
-    /// Get currently active reward markets
-    pub fn current_markets(&self) -> Request<Vec<RewardMarket>> {
+    /// Get currently active reward markets (`GET /rewards/markets/current`).
+    ///
+    /// Returns a paginated envelope (`data`, `next_cursor`, `limit`, `count`);
+    /// the reward markets are in the `data` field.
+    pub fn current_markets(&self) -> Request<Paginated<RewardMarket>> {
         Request::get(
             self.http_client.clone(),
             "/rewards/markets/current",
@@ -124,6 +143,27 @@ pub struct RewardMarket {
     pub data: serde_json::Value,
 }
 
+/// Pagination envelope used by the rewards list endpoints
+/// (`GET /rewards/markets/current` and `GET /rewards/user/markets`).
+///
+/// These endpoints wrap results in a pagination object rather than returning a
+/// bare array, so the items live in [`Self::data`].
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct Paginated<T> {
+    /// Items for this page.
+    #[serde(default = "Vec::new")]
+    pub data: Vec<T>,
+    /// Cursor for the next page; a value of `"LTE="` indicates the last page.
+    #[serde(default)]
+    pub next_cursor: Option<String>,
+    /// Page size limit reported by the server.
+    #[serde(default)]
+    pub limit: Option<u32>,
+    /// Number of items in this page.
+    #[serde(default)]
+    pub count: Option<u32>,
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -141,6 +181,16 @@ mod tests {
         let json = r#"{"total": "42.0"}"#;
         let resp: RewardTotalEarnings = serde_json::from_str(json).unwrap();
         assert_eq!(resp.data["total"], "42.0");
+    }
+
+    #[test]
+    fn reward_total_earnings_list_deserializes() {
+        // GET /rewards/user/total returns an array of per-asset totals, not a
+        // single object. Regression test for that shape (observed live).
+        let json = r#"[{"asset_address": "0xabc", "total": "42.0"}]"#;
+        let resp: Vec<RewardTotalEarnings> = serde_json::from_str(json).unwrap();
+        assert_eq!(resp.len(), 1);
+        assert_eq!(resp[0].data["total"], "42.0");
     }
 
     #[test]
@@ -173,6 +223,44 @@ mod tests {
         let json = r#"[{"condition_id": "0xabc"}, {"condition_id": "0xdef"}]"#;
         let resp: Vec<RewardMarket> = serde_json::from_str(json).unwrap();
         assert_eq!(resp.len(), 2);
+    }
+
+    #[test]
+    fn current_markets_paginated_response_deserializes() {
+        // GET /rewards/markets/current wraps results in a pagination envelope,
+        // not a bare array. Regression test for that shape (observed live).
+        let json = r#"{
+            "limit": 500,
+            "count": 1,
+            "next_cursor": "LTE=",
+            "data": [
+                {"condition_id": "0xabc", "rewards_max_spread": 99}
+            ]
+        }"#;
+        let page: Paginated<RewardMarket> =
+            serde_json::from_str(json).expect("paginated reward markets should deserialize");
+        assert_eq!(page.data.len(), 1);
+        assert_eq!(page.count, Some(1));
+        assert_eq!(page.next_cursor.as_deref(), Some("LTE="));
+        assert_eq!(page.data[0].data["condition_id"], "0xabc");
+    }
+
+    #[test]
+    fn market_earnings_paginated_response_deserializes() {
+        // GET /rewards/user/markets wraps results in the same pagination envelope.
+        let json = r#"{
+            "limit": 100,
+            "count": 1,
+            "next_cursor": "LTE=",
+            "data": [
+                {"condition_id": "0xabc", "earnings": 0.237519}
+            ]
+        }"#;
+        let page: Paginated<RewardMarketEarning> =
+            serde_json::from_str(json).expect("paginated market earnings should deserialize");
+        assert_eq!(page.data.len(), 1);
+        assert_eq!(page.count, Some(1));
+        assert_eq!(page.data[0].data["condition_id"], "0xabc");
     }
 
     #[test]

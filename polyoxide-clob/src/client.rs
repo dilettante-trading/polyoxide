@@ -32,6 +32,7 @@ const DEFAULT_BASE_URL: &str = "https://clob.polymarket.com";
 pub struct Clob {
     pub(crate) http_client: HttpClient,
     pub(crate) chain_id: u64,
+    pub(crate) signature_type: SignatureType,
     pub(crate) account: Option<Account>,
     #[cfg(feature = "gamma")]
     pub(crate) gamma: Gamma,
@@ -115,6 +116,7 @@ impl Clob {
             credentials: account.credentials().clone(),
             signer: account.signer().clone(),
             chain_id: self.chain_id,
+            signature_type: self.signature_type,
         })
     }
 
@@ -131,6 +133,7 @@ impl Clob {
             credentials: account.credentials().clone(),
             signer: account.signer().clone(),
             chain_id: self.chain_id,
+            signature_type: self.signature_type,
         })
     }
 
@@ -163,6 +166,7 @@ impl Clob {
             credentials: account.credentials().clone(),
             signer: account.signer().clone(),
             chain_id: self.chain_id,
+            signature_type: self.signature_type,
         })
     }
 
@@ -600,6 +604,7 @@ pub struct ClobBuilder {
     timeout_ms: u64,
     pool_size: usize,
     chain: Chain,
+    signature_type: SignatureType,
     account: Option<Account>,
     #[cfg(feature = "gamma")]
     gamma: Option<Gamma>,
@@ -615,6 +620,7 @@ impl ClobBuilder {
             timeout_ms: DEFAULT_TIMEOUT_MS,
             pool_size: DEFAULT_POOL_SIZE,
             chain: Chain::PolygonMainnet,
+            signature_type: SignatureType::Eoa,
             account: None,
             #[cfg(feature = "gamma")]
             gamma: None,
@@ -650,6 +656,18 @@ impl ClobBuilder {
     /// Set chain
     pub fn chain(mut self, chain: Chain) -> Self {
         self.chain = chain;
+        self
+    }
+
+    /// Set the account signature type used to derive the on-chain address for
+    /// authenticated read endpoints (balances, notifications, rewards).
+    ///
+    /// Defaults to [`SignatureType::Eoa`]. Set this to [`SignatureType::PolyProxy`]
+    /// or [`SignatureType::PolyGnosisSafe`] when the API credentials belong to a
+    /// Polymarket proxy / Gnosis Safe wallet, so the server resolves the correct
+    /// address rather than the bare EOA.
+    pub fn signature_type(mut self, signature_type: SignatureType) -> Self {
+        self.signature_type = signature_type;
         self
     }
 
@@ -702,6 +720,7 @@ impl ClobBuilder {
         Ok(Clob {
             http_client,
             chain_id: self.chain.chain_id(),
+            signature_type: self.signature_type,
             account: self.account,
             #[cfg(feature = "gamma")]
             gamma,

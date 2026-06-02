@@ -636,20 +636,20 @@ pub struct ClobMarketDetails {
     pub mos: f64,
     /// Minimum tick size (price increment)
     pub mts: f64,
-    /// Maker base fee (basis points)
-    pub mbf: i64,
-    /// Taker base fee (basis points)
-    pub tbf: i64,
-    /// Whether RFQ is enabled for this market
-    pub rfqe: bool,
-    /// Whether taker order delay is enabled
-    pub itode: bool,
+    /// Maker base fee (basis points). Absent on resolved markets.
+    pub mbf: Option<i64>,
+    /// Taker base fee (basis points). Absent on resolved markets.
+    pub tbf: Option<i64>,
+    /// Whether RFQ is enabled for this market. Omitted by many markets.
+    pub rfqe: Option<bool>,
+    /// Whether taker order delay is enabled. Omitted by many markets.
+    pub itode: Option<bool>,
     /// Whether Blockaid check is enabled
     pub ibce: bool,
-    /// Fee curve parameters
-    pub fd: FeeDetails,
-    /// Minimum order age in seconds
-    pub oas: i32,
+    /// Fee curve parameters. Absent on resolved markets.
+    pub fd: Option<FeeDetails>,
+    /// Minimum order age in seconds. Omitted by many markets.
+    pub oas: Option<i32>,
 }
 
 /// Response for `GET /markets-by-token/{token_id}`: the condition ID and
@@ -911,15 +911,16 @@ mod tests {
         assert_eq!(parsed.t[0].o, "Yes");
         assert!((parsed.mos - 5.0).abs() < f64::EPSILON);
         assert!((parsed.mts - 0.01).abs() < f64::EPSILON);
-        assert_eq!(parsed.mbf, 0);
-        assert_eq!(parsed.tbf, 0);
-        assert!(parsed.rfqe);
-        assert!(!parsed.itode);
+        assert_eq!(parsed.mbf, Some(0));
+        assert_eq!(parsed.tbf, Some(0));
+        assert_eq!(parsed.rfqe, Some(true));
+        assert_eq!(parsed.itode, Some(false));
         assert!(parsed.ibce);
-        assert_eq!(parsed.fd.r, Some(0.02));
-        assert_eq!(parsed.fd.e, Some(2.0));
-        assert_eq!(parsed.fd.to, Some(true));
-        assert_eq!(parsed.oas, 0);
+        let fd = parsed.fd.as_ref().expect("fd present in full payload");
+        assert_eq!(fd.r, Some(0.02));
+        assert_eq!(fd.e, Some(2.0));
+        assert_eq!(fd.to, Some(true));
+        assert_eq!(parsed.oas, Some(0));
         // Free-form rewards captured via flatten
         assert!(parsed.r.extra.contains_key("minSize"));
 
@@ -927,7 +928,39 @@ mod tests {
         let back = serde_json::to_value(&parsed).unwrap();
         let again: ClobMarketDetails = serde_json::from_value(back).unwrap();
         assert_eq!(again.t.len(), 2);
-        assert_eq!(again.fd.r, Some(0.02));
+        assert_eq!(again.fd.as_ref().unwrap().r, Some(0.02));
+    }
+
+    #[test]
+    fn clob_market_details_resolved_market_deserializes() {
+        // Resolved markets return a reduced payload from GET /clob-markets/{id}
+        // that omits the fee / RFQ / order-age fields (mbf, tbf, rfqe, itode,
+        // fd, oas). Shape observed live. Regression test: those fields must be
+        // optional so resolved markets still deserialize.
+        let json = r#"{
+            "c": false,
+            "cbos": false,
+            "gst": null,
+            "ibce": true,
+            "mos": 5.0,
+            "mts": 0.01,
+            "r": {},
+            "sd": false,
+            "t": [
+                {"t": "713210456", "o": "Yes"},
+                {"t": "521143195", "o": "No"}
+            ]
+        }"#;
+        let parsed: ClobMarketDetails = serde_json::from_str(json)
+            .expect("resolved market (reduced payload) should deserialize");
+        assert_eq!(parsed.t.len(), 2);
+        assert!(parsed.ibce);
+        assert!(parsed.mbf.is_none());
+        assert!(parsed.tbf.is_none());
+        assert!(parsed.rfqe.is_none());
+        assert!(parsed.itode.is_none());
+        assert!(parsed.fd.is_none());
+        assert!(parsed.oas.is_none());
     }
 
     #[test]
