@@ -19,7 +19,8 @@ pub struct Market {
     pub rewards: Option<HashMap<String, serde_json::Value>>,
     pub minimum_order_size: Option<String>,
     pub minimum_tick_size: Option<String>,
-    pub description: String,
+    /// Optional: the reduced `POST /markets/abridged` payload omits this field.
+    pub description: Option<String>,
     pub category: Option<String>,
     pub end_date_iso: Option<String>,
     pub start_date_iso: Option<String>,
@@ -777,6 +778,26 @@ mod tests {
         assert!(market.tags.is_empty()); // #[serde(default)]
         assert!(market.slug.is_none());
         assert!(market.volume_24hr.is_none());
+    }
+
+    #[test]
+    fn test_market_abridged_without_description_deserializes() {
+        // POST /markets/abridged returns a reduced payload that omits
+        // `description`. Regression test for that schema: `description` must be
+        // optional so the abridged market list still deserializes into `Market`.
+        let json = r#"{
+            "id": "12345",
+            "conditionId": "0xabc",
+            "question": "Will X happen by end of 2025?",
+            "marketMakerAddress": "0x1234567890abcdef",
+            "slug": "will-x-happen",
+            "closed": false
+        }"#;
+        let market: Market = serde_json::from_str(json)
+            .expect("abridged market without description should deserialize");
+        assert_eq!(market.id, "12345");
+        assert_eq!(market.question, "Will X happen by end of 2025?");
+        assert!(market.description.is_none());
     }
 
     #[test]
