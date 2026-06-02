@@ -67,6 +67,7 @@ paths:
                   owner: f4f247b7-4ac7-ff29-a152-04fda0a8755a
                   orderType: GTC
                   deferExec: false
+                  postOnly: false
       responses:
         '200':
           description: Order successfully processed
@@ -159,6 +160,11 @@ paths:
                 error: could not insert order
         '503':
           description: Service unavailable - Trading disabled or cancel-only mode
+          headers:
+            Retry-After:
+              description: Seconds to wait before retrying when provided by post-only mode.
+              schema:
+                type: integer
           content:
             application/json:
               schema:
@@ -176,6 +182,14 @@ paths:
                     error: >-
                       Trading is currently cancel-only. New orders are not
                       accepted, but cancels are allowed.
+                post_only_mode:
+                  summary: Post-only mode
+                  value:
+                    error: >-
+                      post-only mode: only post-only orders and cancels are
+                      allowed
+                    code: post_only_mode
+                    retry_after_seconds: 79
     delete:
       summary: Cancel single order
       description: |
@@ -308,6 +322,7 @@ paths:
                     owner: f4f247b7-4ac7-ff29-a152-04fda0a8755a
                     orderType: GTC
                     deferExec: false
+                    postOnly: false
                   - order:
                       maker: '0x1234567890123456789012345678901234567890'
                       signer: '0x1234567890123456789012345678901234567890'
@@ -326,6 +341,7 @@ paths:
                     owner: f4f247b7-4ac7-ff29-a152-04fda0a8755a
                     orderType: GTC
                     deferExec: false
+                    postOnly: false
       responses:
         '200':
           description: >-
@@ -361,6 +377,25 @@ paths:
                       orderID: ''
                       status: delayed
                       errorMsg: 'Rate limit exceeded for tokenId: 0xdef456abc789...'
+                post_only_mode:
+                  summary: Post-only mode results
+                  value:
+                    - errorMsg: >-
+                        post-only mode: only post-only orders and cancels are
+                        allowed
+                      orderID: ''
+                      takingAmount: ''
+                      makingAmount: ''
+                      status: ''
+                      success: true
+                    - errorMsg: >-
+                        post-only mode: only post-only orders and cancels are
+                        allowed
+                      orderID: ''
+                      takingAmount: ''
+                      makingAmount: ''
+                      status: ''
+                      success: true
         '400':
           description: Bad request - Invalid order payload or validation error
           content:
@@ -416,6 +451,11 @@ paths:
                 error: could not insert order
         '503':
           description: Service unavailable - Trading disabled or cancel-only mode
+          headers:
+            Retry-After:
+              description: Seconds to wait before retrying when provided by post-only mode.
+              schema:
+                type: integer
           content:
             application/json:
               schema:
@@ -433,6 +473,14 @@ paths:
                     error: >-
                       Trading is currently cancel-only. New orders are not
                       accepted, but cancels are allowed.
+                post_only_mode:
+                  summary: Post-only mode
+                  value:
+                    error: >-
+                      post-only mode: only post-only orders and cancels are
+                      allowed
+                    code: post_only_mode
+                    retry_after_seconds: 79
     delete:
       summary: Cancel multiple orders
       description: |
@@ -659,7 +707,7 @@ paths:
                 $ref: '#/components/schemas/ErrorResponse'
               example:
                 error: Internal server error
-  /order/{orderID}:
+  /data/order/{orderID}:
     get:
       summary: Get single order by ID
       description: >
@@ -4642,7 +4690,7 @@ paths:
                 error: >-
                   Trading is currently disabled. Check polymarket.com for
                   updates
-  /trades:
+  /data/trades:
     get:
       summary: Get trades
       description: |
@@ -4776,18 +4824,19 @@ paths:
     get:
       summary: Get builder trades
       description: |
-        Retrieves originated trades for a given builder.
-        Builders can only see their own originated trades.
+        Retrieves trades attributed to a builder code.
       operationId: getBuilderTrades
       tags:
         - Trade
-      security:
-        - polyApiKey: []
-          polyAddress: []
-          polySignature: []
-          polyPassphrase: []
-          polyTimestamp: []
       parameters:
+        - name: builder_code
+          in: query
+          description: Builder code to fetch attributed trades for
+          required: true
+          schema:
+            type: string
+            pattern: ^0x[a-fA-F0-9]{64}$
+          example: '0x0000000000000000000000000000000000000000000000000000000000000001'
         - name: id
           in: query
           description: Trade ID to filter by specific trade
@@ -4795,15 +4844,6 @@ paths:
           schema:
             type: string
           example: trade-123
-        - name: builder
-          in: query
-          description: >-
-            Builder identifier (automatically set from authenticated builder, or
-            can be specified with admin token)
-          required: false
-          schema:
-            type: string
-          example: 0199bfa0-f4c1-7a98-9c2b-b29cc6d39e10
         - name: market
           in: query
           description: Market (condition ID) to filter trades
@@ -4861,7 +4901,8 @@ paths:
                       - id: trade-123
                         tradeType: TAKER
                         takerOrderHash: '0xabcdef1234567890abcdef1234567890abcdef12'
-                        builder: 0199bfa0-f4c1-7a98-9c2b-b29cc6d39e10
+                        builder: >-
+                          0x0000000000000000000000000000000000000000000000000000000000000001
                         market: >-
                           0x0000000000000000000000000000000000000000000000000000000000000001
                         assetId: >-
@@ -4891,14 +4932,6 @@ paths:
                 $ref: '#/components/schemas/ErrorResponse'
               example:
                 error: invalid builder trade params
-        '401':
-          description: Unauthorized - Invalid builder API key or authentication failed
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/ErrorResponse'
-              example:
-                error: Invalid API key
         '500':
           description: Internal server error
           content:
@@ -4942,6 +4975,14 @@ components:
   schemas:
     Order:
       type: object
+      description: >
+        Order payload submitted to the CLOB API. In CLOB V2, `expiration`
+        remains in
+
+        the POST /order wire body for GTD/order-expiry handling, but it is not
+        part
+
+        of the EIP-712 signed order struct.
       required:
         - maker
         - signer
@@ -4987,7 +5028,9 @@ components:
           example: BUY
         expiration:
           type: string
-          description: Unix timestamp when the order expires
+          description: >-
+            Unix timestamp when the order expires. Present in the API wire body;
+            not part of the CLOB V2 EIP-712 signed order struct.
           example: '1735689600'
         timestamp:
           type: string
@@ -5045,6 +5088,12 @@ components:
           type: boolean
           description: Whether to defer execution
           default: false
+        postOnly:
+          type: boolean
+          description: >-
+            Whether the order must rest on the book and not match immediately.
+            Only supported for GTC and GTD orders.
+          default: false
     SendOrderResponse:
       type: object
       required:
@@ -5099,6 +5148,12 @@ components:
         error:
           type: string
           description: Error message
+        code:
+          type: string
+          description: Machine-readable error code, when provided
+        retry_after_seconds:
+          type: integer
+          description: Number of seconds to wait before retrying, when provided
     CancelOrderPayload:
       type: object
       required:
@@ -6629,8 +6684,9 @@ components:
           example: '0xabcdef1234567890abcdef1234567890abcdef12'
         builder:
           type: string
-          description: Builder identifier
-          example: 0199bfa0-f4c1-7a98-9c2b-b29cc6d39e10
+          description: Builder code attributed to the trade
+          pattern: ^0x[a-fA-F0-9]{64}$
+          example: '0x0000000000000000000000000000000000000000000000000000000000000001'
         market:
           type: string
           description: Market (condition ID)

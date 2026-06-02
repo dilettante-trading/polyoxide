@@ -21,7 +21,7 @@ Three authentication levels. See [auth.md](auth.md) for details.
 | File | Endpoints | Auth |
 |------|-----------|------|
 | [markets.md](markets.md) | /book, /books, /price, /prices, /midpoint, /midpoints, /spread, /spreads, /last-trade-price, /last-trades-prices, /fee-rate, /tick-size, /neg-risk, /prices-history, /batch-prices-history, /clob-markets/{id}, /markets-by-token/{id}, /simplified-markets, /sampling-markets, /time | None |
-| [orders.md](orders.md) | /order, /order/{id}, /orders, /data/orders, /cancel-all, /cancel-market-orders, /trades, /order-scoring, /orders-scoring, /builder/trades | L2/Builder |
+| [orders.md](orders.md) | /order, /data/order/{id}, /orders, /data/orders, /cancel-all, /cancel-market-orders, /data/trades, /order-scoring, /orders-scoring, /builder/trades | L2/Builder |
 | [account.md](account.md) | /balance-allowance, /heartbeats, /v1/heartbeats, /auth/ban-status | L2 |
 | [rewards.md](rewards.md) | /rewards/user, /rewards/user/total, /rewards/user/percentages, /rewards/user/markets, /rewards/markets/current, /rewards/markets/{id}, /rewards/markets/multi, /rebates/current | Mixed |
 | [rfq.md](rfq.md) | /rfq/request, /rfq/quote, /rfq/quotes, /rfq/requests, /rfq/prices | L2 |

@@ -2,7 +2,7 @@
 
 Base URL: `https://clob.polymarket.com`
 
-> Note: RFQ endpoints are not in the upstream OpenAPI spec as of this sync; this documentation is based on other sources and may be out of date.
+> Note: RFQ endpoints are not in the upstream OpenAPI spec, and as of this sync every path below returns HTTP 404 at `clob.polymarket.com` (verified against the live API). They appear to have been removed or relocated; this documentation is based on other (likely stale) sources. Do not rely on these paths without upstream confirmation.
 
 ## Create RFQ Request
 

@@ -220,7 +220,7 @@ components:
       properties:
         deployed:
           type: boolean
-          description: Whether the safe is deployed
+          description: Whether the wallet is deployed
           example: true
     RelayerApiKey:
       type: object
@@ -693,18 +693,42 @@ paths:
     get:
       tags:
         - Relayer
-      summary: Check if a safe is deployed
+      summary: Check if a wallet is deployed
       description: >
-        Returns a payload that determines if a safe is deployed. Takes in the
-        user's Polymarket proxy address.
+        Returns whether the wallet at the given address is deployed onchain.
+
+
+        Use the `type` query parameter to choose which wallet type to check:
+
+
+        - Pass user's Polymarket `SAFE` address (default): Gnosis Safe
+        (SignatureType `2`).
+
+        - Pass user's Polymarket `WALLET` Deposit Wallet address: Deposit Wallet
+        (signatureType `3`). See the [Deposit Wallet
+        Guide](/trading/deposit-wallets) for setup.
+
+
+        Omitting `type` is equivalent to `type=SAFE`.
       parameters:
         - name: address
           in: query
           required: true
-          description: User's Polymarket proxy address
+          description: Address of the wallet to check
           schema:
             $ref: '#/components/schemas/Address'
           example: '0x6d8c4e9aDF5748Af82Dabe2C6225207770d6B4fa'
+        - name: type
+          in: query
+          required: false
+          description: Wallet type to check. Defaults to `SAFE` when omitted.
+          schema:
+            type: string
+            enum:
+              - SAFE
+              - WALLET
+            default: SAFE
+          example: WALLET
       responses:
         '200':
           description: Deployment status retrieved successfully

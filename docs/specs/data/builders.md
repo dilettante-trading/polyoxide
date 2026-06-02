@@ -14,6 +14,8 @@ Returns the builder leaderboard ranked by volume.
 |------|-----|------|----------|---------|-------------|
 | timePeriod | query | string | no | DAY | DAY, WEEK, MONTH, ALL |
 | limit | query | integer (0-50) | no | 25 | Results per page |
+
+> `builderCode` is the builder's onchain attribution code attached to orders (CLOB V2). Legacy builders without a registered code return an empty string.
 | offset | query | integer (0-1000) | no | 0 | Pagination offset |
 
 **Response:** `LeaderboardEntry[]`
@@ -22,6 +24,7 @@ Returns the builder leaderboard ranked by volume.
 [{
   "rank": "string",
   "builder": "string",
+  "builderCode": "string",
   "volume": 0,
   "activeUsers": 0,
   "verified": false,
@@ -47,6 +50,7 @@ Returns aggregate builder volume data.
 [{
   "dt": "2025-11-15T00:00:00Z",
   "builder": "string",
+  "builderCode": "string",
   "builderLogo": "string",
   "verified": false,
   "volume": 0,

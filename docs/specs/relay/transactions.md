@@ -117,15 +117,18 @@ Poll this endpoint with the `transactionID` returned from `POST /submit` to retr
 {"address": "string", "nonce": "string"}
 ```
 
-## Check Safe Deployment
+## Check Wallet Deployment
 
 `GET /deployed`
 
 **Auth:** None
 
+Returns whether the wallet at the given address is deployed onchain.
+
 | Name | In | Type | Required | Description |
 |------|-----|------|----------|-------------|
-| address | query | string | yes | Safe address |
+| address | query | string | yes | Address of the wallet to check |
+| type | query | string | no | Wallet type: `SAFE` (default — Gnosis Safe, signatureType 2) or `WALLET` (Deposit Wallet, signatureType 3) |
 
 **Response:**
 

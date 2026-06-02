@@ -100,7 +100,7 @@ Base URL: `https://clob.polymarket.com`
 
 ## Get Single Order
 
-`GET /order/{orderID}`
+`GET /data/order/{orderID}`
 
 **Auth:** L2 or Builder
 
@@ -166,9 +166,16 @@ Base URL: `https://clob.polymarket.com`
 
 **Response:** `CancelOrdersResponse`
 
+## Post-Only Mode
+
+When the venue is in post-only mode, order placement is rejected and only
+post-only orders and cancels are accepted. Single-order responses return
+`{"error": "post-only mode: only post-only orders and cancels are allowed"}`;
+batch endpoints return the same text per order in `errorMsg`.
+
 ## Get Trades
 
-`GET /trades`
+`GET /data/trades`
 
 **Auth:** L2
 
