@@ -1,3 +1,14 @@
+## [0.16.0] - 2026-06-02
+
+### 🐛 Bug Fixes
+
+- *(gamma)* [**breaking**] Make Market.description optional for abridged markets
+- *(clob)* [**breaking**] Align reads and schemas with the live API
+
+### 📚 Documentation
+
+- *(specs)* Refresh OpenAPI mirrors and endpoint docs from upstream
+
 ## [0.15.1] - 2026-05-22
 
 ### 🐛 Bug Fixes
