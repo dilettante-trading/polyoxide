@@ -33,6 +33,11 @@
 //! }
 //! ```
 
+/// Compiles the crate README as doctests so its examples are checked by CI.
+#[cfg(doctest)]
+#[doc = include_str!("../README.md")]
+struct ReadmeDoctests;
+
 pub mod api;
 pub mod client;
 pub mod error;

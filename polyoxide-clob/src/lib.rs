@@ -46,6 +46,13 @@
 //! }
 //! ```
 
+/// Doctest-only anchor that compiles every fenced `rust` example in the crate
+/// README, so broken examples fail CI. Exists only under `cfg(doctest)`, so it
+/// never appears in `cargo doc` output or normal builds.
+#[cfg(doctest)]
+#[doc = include_str!("../README.md")]
+struct ReadmeDoctests;
+
 pub mod account;
 pub mod api;
 pub mod client;

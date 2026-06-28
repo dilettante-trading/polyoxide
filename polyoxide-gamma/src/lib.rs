@@ -43,6 +43,13 @@
 //! }
 //! ```
 
+/// Compiles the crate README's ```rust code blocks as doctests so broken
+/// examples fail CI. Only present during doctest builds; never affects
+/// normal compilation or `cargo doc` output.
+#[cfg(doctest)]
+#[doc = include_str!("../README.md")]
+struct ReadmeDoctests;
+
 pub mod api;
 pub mod client;
 pub mod error;

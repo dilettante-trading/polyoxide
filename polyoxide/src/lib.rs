@@ -68,6 +68,16 @@
 //! }
 //! ```
 
+#[cfg(doctest)]
+#[doc = include_str!("../README.md")]
+/// Compiles the crate `README.md` code examples as doctests.
+struct ReadmeDoctests;
+
+#[cfg(doctest)]
+#[doc = include_str!("../../README.md")]
+/// Compiles the workspace root `README.md` code examples as doctests.
+struct RootReadmeDoctests;
+
 #[cfg(feature = "clob")]
 pub use polyoxide_clob;
 #[cfg(feature = "data")]

@@ -24,6 +24,12 @@
 //!
 //! Use the [`impl_api_error_conversions`] macro to reduce boilerplate in error types.
 
+// Compile the crate README's `rust` code fences as doctests so broken examples
+// fail CI. `#[cfg(doctest)]` keeps this out of normal builds and `cargo doc`.
+#[cfg(doctest)]
+#[doc = include_str!("../README.md")]
+struct ReadmeDoctests;
+
 #[macro_use]
 pub mod macros;
 

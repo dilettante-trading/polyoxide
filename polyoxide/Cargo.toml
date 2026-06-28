@@ -27,3 +27,5 @@ thiserror = { workspace = true }
 
 [dev-dependencies]
 tokio = { workspace = true, features = ["macros", "rt-multi-thread"] }
+# Needed only so the WebSocket README doctests can bring `StreamExt` into scope.
+futures-util = "0.3"

@@ -3480,6 +3480,7 @@ dependencies = [
 name = "polyoxide"
 version = "0.17.0"
 dependencies = [
+ "futures-util",
  "polyoxide-clob",
  "polyoxide-data",
  "polyoxide-gamma",

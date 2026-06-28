@@ -8,13 +8,13 @@ More information about this crate can be found in the [crate documentation](http
 
 By default, all three REST API modules are enabled:
 
-```
+```bash
 cargo add polyoxide
 ```
 
 Select only what you need:
 
-```
+```bash
 # Market data only
 cargo add polyoxide --no-default-features --features gamma
 
@@ -46,53 +46,50 @@ When `clob`, `gamma`, and `data` are all enabled, the `Polymarket` struct provid
 
 ```rust
 use polyoxide::prelude::*;
+# async fn doctest() -> Result<(), Box<dyn std::error::Error>> {
+let account = Account::from_env()?;
 
-#[tokio::main]
-async fn main() -> Result<(), Box<dyn std::error::Error>> {
-    let account = Account::from_env()?;
+let pm = Polymarket::builder(account)
+    .chain(Chain::PolygonMainnet)
+    .build()?;
 
-    let pm = Polymarket::builder(account)
-        .chain(Chain::PolygonMainnet)
-        .build()?;
+// Gamma: list open markets
+let markets = pm.gamma.markets()
+    .list()
+    .open(true)
+    .limit(10)
+    .send()
+    .await?;
 
-    // Gamma: list open markets
-    let markets = pm.gamma.markets()
-        .list()
-        .open(true)
-        .limit(10)
-        .send()
-        .await?;
+// Data: list a user's positions
+let positions = pm.data
+    .user("0xabc...")
+    .list_positions()
+    .limit(5)
+    .send()
+    .await?;
 
-    // Data: list a user's positions
-    let positions = pm.data
-        .user("0xabc...")
-        .list_positions()
-        .limit(5)
-        .send()
-        .await?;
-
-    for pos in &positions {
-        println!("{}: {} shares @ {}", pos.title, pos.size, pos.cur_price);
-    }
-
-    // CLOB: place a limit order
-    let params = CreateOrderParams {
-        token_id: "token_id".into(),
-        price: 0.52,
-        size: 100.0,
-        side: OrderSide::Buy,
-        order_type: OrderKind::Gtc,
-        post_only: false,
-        expiration: None,
-        funder: None,
-        signature_type: Some(SignatureType::PolyProxy),
-    };
-
-    let response = pm.clob.place_order(&params, None).await?;
-    println!("Order placed: {:?}", response);
-
-    Ok(())
+for pos in &positions {
+    println!("{}: {} shares @ {}", pos.title, pos.size, pos.cur_price);
 }
+
+// CLOB: place a limit order
+let params = CreateOrderParams {
+    token_id: "token_id".into(),
+    price: 0.52,
+    size: 100.0,
+    side: OrderSide::Buy,
+    order_type: OrderKind::Gtc,
+    post_only: false,
+    expiration: None,
+    funder: None,
+    signature_type: Some(SignatureType::PolyProxy),
+};
+
+let response = pm.clob.place_order(&params, None).await?;
+println!("Order placed: {:?}", response);
+# Ok(())
+# }
 ```
 
 ### Using individual crates directly
@@ -102,25 +99,31 @@ Each sub-client can be used standalone without the unified `Polymarket` wrapper.
 ```rust
 // Read-only Gamma client (no auth required)
 use polyoxide::polyoxide_gamma::Gamma;
-
+# async fn doctest() -> Result<(), Box<dyn std::error::Error>> {
 let gamma = Gamma::builder().build()?;
 let events = gamma.events().list().limit(5).send().await?;
+# Ok(())
+# }
 ```
 
 ```rust
 // Read-only Data API client (no auth required)
 use polyoxide::polyoxide_data::DataApi;
-
+# async fn doctest() -> Result<(), Box<dyn std::error::Error>> {
 let data = DataApi::builder().build()?;
 let leaders = data.leaderboard().get().send().await?;
+# Ok(())
+# }
 ```
 
 ```rust
 // Public (unauthenticated) CLOB client for read-only market data
 use polyoxide::polyoxide_clob::Clob;
-
+# async fn doctest() -> Result<(), Box<dyn std::error::Error>> {
 let clob = Clob::public();
 let book = clob.markets().order_book("token_id").send().await?;
+# Ok(())
+# }
 ```
 
 ### WebSocket (requires `ws` feature)
@@ -128,27 +131,24 @@ let book = clob.markets().order_book("token_id").send().await?;
 ```rust
 use polyoxide::prelude::*;
 use futures_util::StreamExt;
+# async fn doctest() -> Result<(), Box<dyn std::error::Error>> {
+let mut stream = ws::WebSocket::connect_market(vec![
+    "token_id".to_string(),
+]).await?;
 
-#[tokio::main]
-async fn main() -> Result<(), Box<dyn std::error::Error>> {
-    let mut stream = ws::WebSocket::connect_market(vec![
-        "token_id".to_string(),
-    ]).await?;
-
-    while let Some(msg) = stream.next().await {
-        match msg? {
-            ws::Channel::Market(ws::MarketMessage::Book(book)) => {
-                println!("Book: {} bids, {} asks", book.bids.len(), book.asks.len());
-            }
-            ws::Channel::Market(ws::MarketMessage::PriceChange(pc)) => {
-                println!("Price changes: {:?}", pc.price_changes);
-            }
-            _ => {}
+while let Some(msg) = stream.next().await {
+    match msg? {
+        ws::Channel::Market(ws::MarketMessage::Book(book)) => {
+            println!("Book: {} bids, {} asks", book.bids.len(), book.asks.len());
         }
+        ws::Channel::Market(ws::MarketMessage::PriceChange(pc)) => {
+            println!("Price changes: {:?}", pc.price_changes);
+        }
+        _ => {}
     }
-
-    Ok(())
 }
+# Ok(())
+# }
 ```
 
 For long-running connections, `WebSocketBuilder` provides automatic keep-alive pings:
@@ -156,7 +156,7 @@ For long-running connections, `WebSocketBuilder` provides automatic keep-alive p
 ```rust
 use polyoxide::prelude::*;
 use std::time::Duration;
-
+# async fn doctest() -> Result<(), Box<dyn std::error::Error>> {
 let stream = ws::WebSocketBuilder::new()
     .ping_interval(Duration::from_secs(10))
     .connect_market(vec!["token_id".to_string()])
@@ -166,6 +166,8 @@ stream.run(|msg| async move {
     println!("{:?}", msg);
     Ok(())
 }).await?;
+# Ok(())
+# }
 ```
 
 ## Environment variables

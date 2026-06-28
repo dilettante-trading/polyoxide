@@ -33,6 +33,7 @@ Relay operations require a private key for EIP-712 transaction signing **and** o
 ```rust
 use polyoxide_relay::{RelayClient, BuilderAccount, BuilderConfig};
 
+# async fn doctest() -> Result<(), Box<dyn std::error::Error>> {
 let config = BuilderConfig::new(
     "your-api-key".into(),
     "your-secret".into(),
@@ -40,6 +41,9 @@ let config = BuilderConfig::new(
 );
 let account = BuilderAccount::new("0xprivatekey...", Some(config))?;
 let client = RelayClient::from_account(account)?;
+# let _ = client;
+# Ok(())
+# }
 ```
 
 ### Relayer API Key (static headers)
@@ -47,12 +51,16 @@ let client = RelayClient::from_account(account)?;
 ```rust
 use polyoxide_relay::{RelayClient, BuilderAccount};
 
+# async fn doctest() -> Result<(), Box<dyn std::error::Error>> {
 let account = BuilderAccount::with_relayer_api_key(
     "0xprivatekey...",
     "your-relayer-api-key".into(),
     "0xyour-address".into(),
 )?;
 let client = RelayClient::from_account(account)?;
+# let _ = client;
+# Ok(())
+# }
 ```
 
 ### OS Keychain (feature `keychain`)
@@ -60,6 +68,7 @@ let client = RelayClient::from_account(account)?;
 ```rust
 use polyoxide_relay::{RelayClient, BuilderAccount};
 
+# async fn doctest() -> Result<(), Box<dyn std::error::Error>> {
 // Load builder credentials from the OS keychain
 let account = BuilderAccount::from_keychain()?;
 let client = RelayClient::from_account(account)?;
@@ -67,6 +76,9 @@ let client = RelayClient::from_account(account)?;
 // Or load relayer API key credentials from the OS keychain
 let account = BuilderAccount::from_keychain_relayer_api_key()?;
 let client = RelayClient::from_account(account)?;
+# let _ = client;
+# Ok(())
+# }
 ```
 
 ## Usage
@@ -76,6 +88,7 @@ let client = RelayClient::from_account(account)?;
 ```rust
 use polyoxide_relay::{RelayClient, BuilderAccount, BuilderConfig, WalletType};
 
+# async fn doctest() -> Result<(), Box<dyn std::error::Error>> {
 let config = BuilderConfig::new("key".into(), "secret".into(), None);
 let account = BuilderAccount::new("0xprivatekey...", Some(config))?;
 
@@ -85,21 +98,36 @@ let client = RelayClient::builder()?
     .chain_id(137)               // Polygon mainnet (default)
     .max_concurrent(2)
     .build()?;
+# let _ = client;
+# Ok(())
+# }
 ```
 
 Or pull settings from environment variables (`RELAYER_URL`, `CHAIN_ID`):
 
 ```rust
+# use polyoxide_relay::{RelayClient, BuilderAccount, BuilderConfig};
+# async fn doctest() -> Result<(), Box<dyn std::error::Error>> {
+# let config = BuilderConfig::new("key".into(), "secret".into(), None);
+# let account = BuilderAccount::new("0xprivatekey...", Some(config))?;
 let client = RelayClient::default_builder()?
     .with_account(account)
     .build()?;
+# let _ = client;
+# Ok(())
+# }
 ```
 
 ### Gasless Redemption
 
 ```rust
+# use polyoxide_relay::{RelayClient, BuilderAccount, BuilderConfig};
 use alloy::primitives::U256;
 
+# async fn doctest() -> Result<(), Box<dyn std::error::Error>> {
+# let config = BuilderConfig::new("key".into(), "secret".into(), None);
+# let account = BuilderAccount::new("0xprivatekey...", Some(config))?;
+# let client = RelayClient::from_account(account)?;
 let condition_id = [0u8; 32]; // your condition ID
 let index_sets = vec![U256::from(1)];
 
@@ -108,11 +136,21 @@ let response = client
     .await?;
 
 println!("Transaction ID: {}", response.transaction_id);
+# Ok(())
+# }
 ```
 
 ### Gasless Redemption with Gas Estimation
 
 ```rust
+# use polyoxide_relay::{RelayClient, BuilderAccount, BuilderConfig};
+# use alloy::primitives::U256;
+# async fn doctest() -> Result<(), Box<dyn std::error::Error>> {
+# let config = BuilderConfig::new("key".into(), "secret".into(), None);
+# let account = BuilderAccount::new("0xprivatekey...", Some(config))?;
+# let client = RelayClient::from_account(account)?;
+# let condition_id = [0u8; 32];
+# let index_sets = vec![U256::from(1)];
 let response = client
     .submit_gasless_redemption_with_gas_estimation(
         condition_id,
@@ -120,6 +158,9 @@ let response = client
         true, // estimate gas via RPC simulation
     )
     .await?;
+# let _ = response;
+# Ok(())
+# }
 ```
 
 ### Execute Arbitrary Transactions
@@ -128,6 +169,12 @@ let response = client
 use polyoxide_relay::SafeTransaction;
 use alloy::primitives::{Address, U256, Bytes};
 
+# use polyoxide_relay::{RelayClient, BuilderAccount, BuilderConfig};
+# async fn doctest() -> Result<(), Box<dyn std::error::Error>> {
+# let config = BuilderConfig::new("key".into(), "secret".into(), None);
+# let account = BuilderAccount::new("0xprivatekey...", Some(config))?;
+# let client = RelayClient::from_account(account)?;
+# let calldata: Vec<u8> = vec![];
 let tx = SafeTransaction {
     to: "0x...".parse().unwrap(),
     value: U256::ZERO,
@@ -136,6 +183,9 @@ let tx = SafeTransaction {
 };
 
 let response = client.execute(vec![tx], None).await?;
+# let _ = (response, Address::ZERO);
+# Ok(())
+# }
 ```
 
 ### Query Operations (no auth required)
@@ -143,6 +193,13 @@ let response = client.execute(vec![tx], None).await?;
 ```rust
 use alloy::primitives::Address;
 
+# use polyoxide_relay::{RelayClient, BuilderAccount, BuilderConfig};
+# async fn doctest() -> Result<(), Box<dyn std::error::Error>> {
+# let config = BuilderConfig::new("key".into(), "secret".into(), None);
+# let account = BuilderAccount::new("0xprivatekey...", Some(config))?;
+# let client = RelayClient::from_account(account)?;
+# let safe_address = Address::ZERO;
+# let address = Address::ZERO;
 // Check Safe deployment status
 let deployed = client.get_deployed(safe_address).await?;
 
@@ -156,16 +213,27 @@ println!("State: {}", status.state);
 // Measure API latency
 let latency = client.ping().await?;
 println!("Relay API latency: {}ms", latency.as_millis());
+# let _ = (deployed, nonce);
+# Ok(())
+# }
 ```
 
 ### Wallet Address Derivation
 
 ```rust
+# use polyoxide_relay::{RelayClient, BuilderAccount, BuilderConfig};
+# async fn doctest() -> Result<(), Box<dyn std::error::Error>> {
+# let config = BuilderConfig::new("key".into(), "secret".into(), None);
+# let account = BuilderAccount::new("0xprivatekey...", Some(config))?;
+# let client = RelayClient::from_account(account)?;
 // Derive expected Safe address via CREATE2
 let safe_address = client.get_expected_safe()?;
 
 // Derive expected Proxy wallet address via CREATE2
 let proxy_address = client.get_expected_proxy_wallet()?;
+# let _ = (safe_address, proxy_address);
+# Ok(())
+# }
 ```
 
 ## Environment Variables

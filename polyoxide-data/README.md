@@ -34,6 +34,7 @@ polyoxide = "0.17"
 ```rust
 use polyoxide_data::DataApi;
 
+# fn doctest() -> Result<(), Box<dyn std::error::Error>> {
 // Default configuration
 let data = DataApi::new()?;
 
@@ -43,13 +44,19 @@ let data = DataApi::builder()
     .pool_size(10)
     .max_concurrent(8)
     .build()?;
+# let _ = data;
+# Ok(())
+# }
 ```
 
 ### User Positions
 
 ```rust
+# use polyoxide_data::DataApi;
 use polyoxide_data::types::PositionSortBy;
 
+# async fn doctest() -> Result<(), Box<dyn std::error::Error>> {
+# let data = DataApi::builder().build()?;
 let positions = data.user("0x1234...abcd")
     .list_positions()
     .limit(10)
@@ -60,11 +67,16 @@ let positions = data.user("0x1234...abcd")
 for pos in positions {
     println!("{}: size={} pnl={}", pos.title, pos.size, pos.cash_pnl);
 }
+# Ok(())
+# }
 ```
 
 ### User Position Value
 
 ```rust
+# use polyoxide_data::DataApi;
+# async fn doctest() -> Result<(), Box<dyn std::error::Error>> {
+# let data = DataApi::builder().build()?;
 let values = data.user("0x1234...abcd")
     .positions_value()
     .send()
@@ -73,11 +85,16 @@ let values = data.user("0x1234...abcd")
 for v in values {
     println!("Total value: {}", v.value);
 }
+# Ok(())
+# }
 ```
 
 ### Closed Positions
 
 ```rust
+# use polyoxide_data::DataApi;
+# async fn doctest() -> Result<(), Box<dyn std::error::Error>> {
+# let data = DataApi::builder().build()?;
 let closed = data.user("0x1234...abcd")
     .closed_positions()
     .limit(5)
@@ -87,13 +104,18 @@ let closed = data.user("0x1234...abcd")
 for pos in closed {
     println!("{}: realized P&L = {}", pos.title, pos.realized_pnl);
 }
+# Ok(())
+# }
 ```
 
 ### User Trades
 
 ```rust
+# use polyoxide_data::DataApi;
 use polyoxide_data::types::TradeSide;
 
+# async fn doctest() -> Result<(), Box<dyn std::error::Error>> {
+# let data = DataApi::builder().build()?;
 let trades = data.user("0x1234...abcd")
     .trades()
     .side(TradeSide::Buy)
@@ -104,13 +126,18 @@ let trades = data.user("0x1234...abcd")
 for trade in trades {
     println!("{} {} @ {}", trade.title, trade.size, trade.price);
 }
+# Ok(())
+# }
 ```
 
 ### User Activity
 
 ```rust
+# use polyoxide_data::DataApi;
 use polyoxide_data::types::ActivityType;
 
+# async fn doctest() -> Result<(), Box<dyn std::error::Error>> {
+# let data = DataApi::builder().build()?;
 let activity = data.user("0x1234...abcd")
     .activity()
     .activity_type([ActivityType::Trade, ActivityType::Redeem])
@@ -121,18 +148,28 @@ let activity = data.user("0x1234...abcd")
 for a in activity {
     println!("{:?}: {} USDC", a.activity_type, a.usdc_size);
 }
+# Ok(())
+# }
 ```
 
 ### Markets Traded Count
 
 ```rust
+# use polyoxide_data::DataApi;
+# async fn doctest() -> Result<(), Box<dyn std::error::Error>> {
+# let data = DataApi::builder().build()?;
 let traded = data.user("0x1234...abcd").traded().await?;
 println!("Total markets traded: {}", traded.traded);
+# Ok(())
+# }
 ```
 
 ### Global Trades
 
 ```rust
+# use polyoxide_data::DataApi;
+# async fn doctest() -> Result<(), Box<dyn std::error::Error>> {
+# let data = DataApi::builder().build()?;
 let trades = data.trades()
     .list()
     .limit(10)
@@ -142,11 +179,16 @@ let trades = data.trades()
 for trade in trades {
     println!("{}: {} @ {}", trade.title, trade.size, trade.price);
 }
+# Ok(())
+# }
 ```
 
 ### Top Holders
 
 ```rust
+# use polyoxide_data::DataApi;
+# async fn doctest() -> Result<(), Box<dyn std::error::Error>> {
+# let data = DataApi::builder().build()?;
 let holders = data.holders()
     .list(["condition_id_1", "condition_id_2"])
     .limit(50)
@@ -157,11 +199,16 @@ let holders = data.holders()
 for market in holders {
     println!("Token {}: {} holders", market.token, market.holders.len());
 }
+# Ok(())
+# }
 ```
 
 ### Open Interest
 
 ```rust
+# use polyoxide_data::DataApi;
+# async fn doctest() -> Result<(), Box<dyn std::error::Error>> {
+# let data = DataApi::builder().build()?;
 let oi = data.open_interest()
     .get()
     .market(["condition_id_here"])
@@ -171,24 +218,34 @@ let oi = data.open_interest()
 for entry in oi {
     println!("{}: {}", entry.market, entry.value);
 }
+# Ok(())
+# }
 ```
 
 ### Live Volume
 
 ```rust
+# use polyoxide_data::DataApi;
+# async fn doctest() -> Result<(), Box<dyn std::error::Error>> {
+# let data = DataApi::builder().build()?;
 let volumes = data.live_volume().get(12345).await?;
 
 for vol in volumes {
     println!("Total volume: {}", vol.total);
 }
+# Ok(())
+# }
 ```
 
 ### Trader Leaderboard
 
 ```rust
+# use polyoxide_data::DataApi;
 use polyoxide_data::api::leaderboard::{LeaderboardCategory, LeaderboardOrderBy};
 use polyoxide_data::types::TimePeriod;
 
+# async fn doctest() -> Result<(), Box<dyn std::error::Error>> {
+# let data = DataApi::builder().build()?;
 let rankings = data.leaderboard()
     .get()
     .category(LeaderboardCategory::Politics)
@@ -201,13 +258,18 @@ let rankings = data.leaderboard()
 for trader in rankings {
     println!("#{} {} - PnL: {}", trader.rank, trader.proxy_wallet, trader.pnl);
 }
+# Ok(())
+# }
 ```
 
 ### Builder Leaderboard
 
 ```rust
+# use polyoxide_data::DataApi;
 use polyoxide_data::types::TimePeriod;
 
+# async fn doctest() -> Result<(), Box<dyn std::error::Error>> {
+# let data = DataApi::builder().build()?;
 let rankings = data.builders()
     .leaderboard()
     .time_period(TimePeriod::Week)
@@ -218,13 +280,18 @@ let rankings = data.builders()
 for b in rankings {
     println!("#{} {} - volume: {}", b.rank, b.builder, b.volume);
 }
+# Ok(())
+# }
 ```
 
 ### Builder Volume Time Series
 
 ```rust
+# use polyoxide_data::DataApi;
 use polyoxide_data::types::TimePeriod;
 
+# async fn doctest() -> Result<(), Box<dyn std::error::Error>> {
+# let data = DataApi::builder().build()?;
 let volumes = data.builders()
     .volume()
     .time_period(TimePeriod::Month)
@@ -234,16 +301,23 @@ let volumes = data.builders()
 for entry in volumes {
     println!("{}: {} - volume {}", entry.dt, entry.builder, entry.volume);
 }
+# Ok(())
+# }
 ```
 
 ### Health Check
 
 ```rust
+# use polyoxide_data::DataApi;
+# async fn doctest() -> Result<(), Box<dyn std::error::Error>> {
+# let data = DataApi::builder().build()?;
 let health = data.health().check().await?;
 println!("Status: {}", health.data);
 
 let latency = data.health().ping().await?;
 println!("API latency: {}ms", latency.as_millis());
+# Ok(())
+# }
 ```
 
 ## API Namespaces

@@ -18,7 +18,7 @@ More information about this crate can be found in the [crate documentation](http
 
 ## Installation
 
-```
+```bash
 cargo add polyoxide-clob
 ```
 
@@ -30,7 +30,7 @@ cargo add polyoxide-clob
 | `ws` | No | Enables WebSocket support (`tokio-tungstenite`, `futures-util`) for real-time streaming |
 | `keychain` | No | Enables OS keychain storage for credentials via `keyring` (macOS Keychain, Windows Credential Manager, Linux Secret Service) |
 
-```
+```bash
 # With WebSocket support
 cargo add polyoxide-clob --features ws
 
@@ -49,7 +49,7 @@ Both layers are managed through the `Account` type.
 
 ### Environment Variables
 
-```
+```text
 POLYMARKET_PRIVATE_KEY        # Hex-encoded private key
 POLYMARKET_API_KEY            # L2 API key
 POLYMARKET_API_SECRET         # L2 API secret (base64)
@@ -61,6 +61,7 @@ POLYMARKET_API_PASSPHRASE     # L2 API passphrase
 ### Client Construction
 
 ```rust
+# async fn doctest(credentials: polyoxide_clob::Credentials) -> Result<(), Box<dyn std::error::Error>> {
 use polyoxide_clob::{Account, Chain, Clob, ClobBuilder, Credentials};
 
 // Read-only client (no authentication, market data only)
@@ -74,6 +75,7 @@ let clob = Clob::from_account(account)?;
 let clob = Clob::new("0xprivate_key", credentials)?;
 
 // Full builder control
+# let account = Account::from_env()?;
 let clob = ClobBuilder::new()
     .with_account(account)
     .chain(Chain::PolygonMainnet)
@@ -82,11 +84,14 @@ let clob = ClobBuilder::new()
     .pool_size(10)
     .max_concurrent(16)       // default: 8
     .build()?;
+# Ok(())
+# }
 ```
 
 ### Account Configuration
 
 ```rust
+# fn doctest() -> Result<(), Box<dyn std::error::Error>> {
 use polyoxide_clob::{Account, Credentials};
 
 // From environment variables
@@ -105,6 +110,8 @@ let credentials = Credentials {
     passphrase: "passphrase".to_string(),
 };
 let account = Account::new("0x...", credentials)?;
+# Ok(())
+# }
 ```
 
 ### API Namespaces
@@ -124,6 +131,7 @@ The client organizes endpoints into namespaces. Public namespaces are always ava
 ### Market Data (public)
 
 ```rust
+# async fn doctest() -> Result<(), Box<dyn std::error::Error>> {
 use polyoxide_clob::{Clob, OrderSide};
 
 let clob = Clob::public();
@@ -151,11 +159,14 @@ let history = clob.markets().prices_history("token_id").send().await?;
 use polyoxide_clob::BookParams;
 let params = vec![BookParams { token_id: "t1".into(), side: None }];
 let books = clob.markets().order_books(&params).await?;
+# Ok(())
+# }
 ```
 
 ### Placing Orders (authenticated)
 
 ```rust
+# async fn doctest() -> Result<(), Box<dyn std::error::Error>> {
 use polyoxide_clob::{Account, Clob, CreateOrderParams, OrderKind, OrderSide};
 
 let account = Account::from_env()?;
@@ -183,11 +194,16 @@ if response.success {
 let order = clob.create_order(&params, None).await?;
 let signed = clob.sign_order(&order).await?;
 let response = clob.post_order(&signed, OrderKind::Gtc, false).await?;
+# Ok(())
+# }
 ```
 
 ### Order Management (authenticated)
 
 ```rust
+# use polyoxide_clob::Clob;
+# async fn doctest() -> Result<(), Box<dyn std::error::Error>> {
+# let clob = Clob::public();
 // List your orders
 let orders = clob.orders()?.list().send().await?;
 
@@ -205,11 +221,17 @@ let result = clob.orders()?.cancel_all().await?;
 
 // Check reward scoring status
 let scoring = clob.orders()?.is_scoring("order_id").send().await?;
+# Ok(())
+# }
 ```
 
 ### Account Operations (authenticated)
 
 ```rust
+# use polyoxide_clob::Clob;
+# async fn doctest() -> Result<(), Box<dyn std::error::Error>> {
+# let clob = Clob::public();
+# let builder_code = "my_builder_code";
 // Token balance and allowance
 let bal = clob.account_api()?.balance_allowance("token_id").send().await?;
 
@@ -225,11 +247,15 @@ let trades = clob.account_api()?.trades("0xmaker_address")
 
 // Builder trades (builder_code is required)
 let builder_trades = clob.account_api()?.builder_trades(builder_code).send().await?;
+# Ok(())
+# }
 ```
 
 ### Health and Latency
 
 ```rust
+# use polyoxide_clob::Clob;
+# async fn doctest() -> Result<(), Box<dyn std::error::Error>> {
 let clob = Clob::public();
 
 // Measure API round-trip time
@@ -238,6 +264,8 @@ println!("Latency: {}ms", latency.as_millis());
 
 // Server time
 let time = clob.health().server_time().send().await?;
+# Ok(())
+# }
 ```
 
 ### WebSocket (feature `ws`)
@@ -247,6 +275,7 @@ let time = clob.health().server_time().send().await?;
 Subscribe to real-time order book and price updates (no authentication required):
 
 ```rust
+# async fn doctest() -> Result<(), Box<dyn std::error::Error>> {
 use polyoxide_clob::ws::{WebSocket, Channel, MarketMessage};
 use futures_util::StreamExt;
 
@@ -265,6 +294,8 @@ while let Some(msg) = ws.next().await {
         _ => {}
     }
 }
+# Ok(())
+# }
 ```
 
 #### User Channel
@@ -272,6 +303,7 @@ while let Some(msg) = ws.next().await {
 Subscribe to authenticated order and trade updates:
 
 ```rust
+# async fn doctest() -> Result<(), Box<dyn std::error::Error>> {
 use polyoxide_clob::ws::{ApiCredentials, WebSocket, Channel, UserMessage};
 use futures_util::StreamExt;
 
@@ -293,6 +325,8 @@ while let Some(msg) = ws.next().await {
         _ => {}
     }
 }
+# Ok(())
+# }
 ```
 
 #### Auto-Ping with WebSocketBuilder
@@ -300,6 +334,7 @@ while let Some(msg) = ws.next().await {
 For long-running connections with automatic keep-alive:
 
 ```rust
+# async fn doctest() -> Result<(), Box<dyn std::error::Error>> {
 use polyoxide_clob::ws::{WebSocketBuilder, Channel};
 use std::time::Duration;
 
@@ -312,6 +347,8 @@ ws.run(|msg| async move {
     println!("Received: {:?}", msg);
     Ok(())
 }).await?;
+# Ok(())
+# }
 ```
 
 ## License

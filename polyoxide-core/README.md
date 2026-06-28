@@ -36,20 +36,21 @@ impl_api_error_conversions!(MyCrateError);
 ## Key exports
 
 ```rust
+# #![allow(unused_imports)]
 // HTTP client
-pub use client::{HttpClient, HttpClientBuilder, DEFAULT_TIMEOUT_MS, DEFAULT_POOL_SIZE};
+use polyoxide_core::{HttpClient, HttpClientBuilder, DEFAULT_TIMEOUT_MS, DEFAULT_POOL_SIZE};
 
 // Errors
-pub use error::ApiError;
+use polyoxide_core::ApiError;
 
 // Auth
-pub use auth::{Signer, Base64Format, current_timestamp};
+use polyoxide_core::{Signer, Base64Format, current_timestamp};
 
 // Request building
-pub use request::{Request, QueryBuilder, RequestError};
+use polyoxide_core::{Request, QueryBuilder, RequestError};
 
 // Rate limiting & retry
-pub use rate_limit::{RateLimiter, RetryConfig};
+use polyoxide_core::{RateLimiter, RetryConfig};
 ```
 
 ## Installation

@@ -22,13 +22,13 @@ Rust SDK toolkit for Polymarket APIs. It includes library crates for use in your
 
 ### Libraries
 
-```
+```bash
 cargo add polyoxide
 ```
 
 Or install individual APIs:
 
-```
+```bash
 # Market data only
 cargo add polyoxide --no-default-features --features gamma
 
@@ -46,13 +46,13 @@ cargo add polyoxide --no-default-features --features ws
 
 Install using cargo
 
-```
+```bash
 cargo install polyoxide-cli
 ```
 
 Or download binaries directly from Github releases
 
-```
+```bash
 curl -fsSL https://raw.githubusercontent.com/dilettante-trading/polyoxide/main/scripts/install.sh | sh
 ```
 
@@ -64,41 +64,38 @@ See more information [here](./polyoxide-cli/README.md).
 
 ```rust
 use polyoxide::prelude::*;
+# async fn doctest() -> Result<(), Box<dyn std::error::Error>> {
+// Load account from environment variables
+// (or use Account::from_keychain() with the `keychain` feature)
+let account = Account::from_env()?;
 
-#[tokio::main]
-async fn main() -> Result<(), Box<dyn std::error::Error>> {
-    // Load account from environment variables
-    // (or use Account::from_keychain() with the `keychain` feature)
-    let account = Account::from_env()?;
+let client = Polymarket::builder(account)
+    .chain(Chain::PolygonMainnet)
+    .build()?;
 
-    let client = Polymarket::builder(account)
-        .chain(Chain::PolygonMainnet)
-        .build()?;
+// List open markets via Gamma API
+let markets = client.gamma.markets()
+    .list()
+    .open(true)
+    .limit(10)
+    .send()
+    .await?;
 
-    // List open markets via Gamma API
-    let markets = client.gamma.markets()
-        .list()
-        .open(true)
-        .limit(10)
-        .send()
-        .await?;
+// Get user positions via Data API
+let positions = client.data
+    .user("0x1234...")
+    .list_positions()
+    .send()
+    .await?;
 
-    // Get user positions via Data API
-    let positions = client.data
-        .user("0x1234...")
-        .list_positions()
-        .send()
-        .await?;
-
-    // Check balance via CLOB API (requires auth)
-    let balance = client.clob
-        .account_api()?
-        .balance_allowance("token_id")
-        .send()
-        .await?;
-
-    Ok(())
-}
+// Check balance via CLOB API (requires auth)
+let balance = client.clob
+    .account_api()?
+    .balance_allowance("token_id")
+    .send()
+    .await?;
+# Ok(())
+# }
 ```
 
 ### WebSocket
@@ -106,33 +103,30 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
 ```rust
 use polyoxide::prelude::*;
 use futures_util::StreamExt;
+# async fn doctest() -> Result<(), Box<dyn std::error::Error>> {
+// Connect to market channel (no auth required)
+let mut ws = ws::WebSocket::connect_market(vec![
+    "token_id".to_string(),
+]).await?;
 
-#[tokio::main]
-async fn main() -> Result<(), Box<dyn std::error::Error>> {
-    // Connect to market channel (no auth required)
-    let mut ws = ws::WebSocket::connect_market(vec![
-        "token_id".to_string(),
-    ]).await?;
-
-    while let Some(msg) = ws.next().await {
-        match msg? {
-            ws::Channel::Market(ws::MarketMessage::Book(book)) => {
-                println!("Order book: {} bids, {} asks", book.bids.len(), book.asks.len());
-            }
-            ws::Channel::Market(ws::MarketMessage::PriceChange(pc)) => {
-                println!("Price change: {:?}", pc.price_changes);
-            }
-            _ => {}
+while let Some(msg) = ws.next().await {
+    match msg? {
+        ws::Channel::Market(ws::MarketMessage::Book(book)) => {
+            println!("Order book: {} bids, {} asks", book.bids.len(), book.asks.len());
         }
+        ws::Channel::Market(ws::MarketMessage::PriceChange(pc)) => {
+            println!("Price change: {:?}", pc.price_changes);
+        }
+        _ => {}
     }
-
-    Ok(())
 }
+# Ok(())
+# }
 ```
 
 ### Gasless Redemptions (Relay)
 
-```rust
+```rust,ignore
 use polyoxide_relay::{RelayClient, BuilderAccount, BuilderConfig, WalletType};
 use alloy::primitives::U256;
 

@@ -24,28 +24,26 @@ polyoxide = "0.15"
 ```rust
 use polyoxide_gamma::Gamma;
 
-#[tokio::main]
-async fn main() -> Result<(), polyoxide_gamma::GammaError> {
-    let gamma = Gamma::builder().build()?;
+# async fn doctest() -> Result<(), Box<dyn std::error::Error>> {
+let gamma = Gamma::builder().build()?;
 
-    // List open markets, sorted by volume
-    let markets = gamma.markets()
-        .list()
-        .open(true)
-        .order("volume")
-        .ascending(false)
-        .limit(10)
-        .send()
-        .await?;
+// List open markets, sorted by volume
+let markets = gamma.markets()
+    .list()
+    .open(true)
+    .order("volume")
+    .ascending(false)
+    .limit(10)
+    .send()
+    .await?;
 
-    for m in &markets {
-        let vol = m.volume.as_deref().unwrap_or("-");
-        let liq = m.liquidity.as_deref().unwrap_or("-");
-        println!("{}: vol={vol}, liq={liq}", m.question);
-    }
-
-    Ok(())
+for m in &markets {
+    let vol = m.volume.as_deref().unwrap_or("-");
+    let liq = m.liquidity.as_deref().unwrap_or("-");
+    println!("{}: vol={vol}, liq={liq}", m.question);
 }
+# Ok(())
+# }
 ```
 
 ## Builder configuration
@@ -56,6 +54,7 @@ async fn main() -> Result<(), polyoxide_gamma::GammaError> {
 use polyoxide_gamma::Gamma;
 use polyoxide_core::RetryConfig;
 
+# fn doctest() -> Result<(), Box<dyn std::error::Error>> {
 let gamma = Gamma::builder()
     .base_url("https://gamma-api.polymarket.com")  // default
     .timeout_ms(30_000)           // request timeout
@@ -67,6 +66,8 @@ let gamma = Gamma::builder()
         max_backoff_ms: 10_000,
     })
     .build()?;
+# Ok(())
+# }
 ```
 
 `Gamma::new()` is shorthand for `Gamma::builder().build()`.
@@ -78,6 +79,9 @@ All endpoints are read-only. Queries use a fluent builder pattern: chain filters
 ### Markets
 
 ```rust
+# use polyoxide_gamma::Gamma;
+# async fn doctest() -> Result<(), Box<dyn std::error::Error>> {
+# let gamma = Gamma::builder().build()?;
 // List with filters
 let markets = gamma.markets().list()
     .open(true)
@@ -92,6 +96,8 @@ let market = gamma.markets().get_by_slug("will-x-happen").include_tag(true).send
 
 // Get tags for a market
 let tags = gamma.markets().tags("condition_id").send().await?;
+# Ok(())
+# }
 ```
 
 `ListMarkets` supports: `limit`, `offset`, `order`, `ascending`, `id`, `slug`, `clob_token_ids`, `condition_ids`, `market_maker_address`, `liquidity_num_min/max`, `volume_num_min/max`, `start_date_min/max`, `end_date_min/max`, `tag_id`, `related_tags`, `cyom`, `uma_resolution_status`, `game_id`, `sports_market_types`, `rewards_min_size`, `question_ids`, `include_tag`, `closed`, `open`, `archived`.
@@ -99,6 +105,9 @@ let tags = gamma.markets().tags("condition_id").send().await?;
 ### Events
 
 ```rust
+# use polyoxide_gamma::Gamma;
+# async fn doctest() -> Result<(), Box<dyn std::error::Error>> {
+# let gamma = Gamma::builder().build()?;
 // List active events
 let events = gamma.events().list()
     .active(true)
@@ -113,22 +122,32 @@ let event = gamma.events().get_by_slug("slug").send().await?;
 let tags    = gamma.events().tags("event_id").send().await?;
 let tweets  = gamma.events().tweet_count("event_id").send().await?;
 let comments = gamma.events().comment_count("event_id").send().await?;
+# Ok(())
+# }
 ```
 
 ### Series
 
 ```rust
+# use polyoxide_gamma::Gamma;
+# async fn doctest() -> Result<(), Box<dyn std::error::Error>> {
+# let gamma = Gamma::builder().build()?;
 let series_list = gamma.series().list()
     .closed(false)
     .categories_labels(vec!["Sports"])
     .send().await?;
 
 let series = gamma.series().get("series_id").include_chat(true).send().await?;
+# Ok(())
+# }
 ```
 
 ### Tags
 
 ```rust
+# use polyoxide_gamma::Gamma;
+# async fn doctest() -> Result<(), Box<dyn std::error::Error>> {
+# let gamma = Gamma::builder().build()?;
 let tags = gamma.tags().list()
     .limit(50)
     .is_carousel(true)
@@ -145,11 +164,16 @@ let related = gamma.tags().get_related("42")
 
 // Related tags with full event data
 let detailed = gamma.tags().get_related_detailed("42").send().await?;
+# Ok(())
+# }
 ```
 
 ### Comments
 
 ```rust
+# use polyoxide_gamma::Gamma;
+# async fn doctest() -> Result<(), Box<dyn std::error::Error>> {
+# let gamma = Gamma::builder().build()?;
 let comments = gamma.comments().list()
     .parent_entity_type("Event")
     .parent_entity_id(42)
@@ -159,11 +183,16 @@ let comments = gamma.comments().list()
 
 let comment = gamma.comments().get("comment_id").send().await?;
 let user_comments = gamma.comments().by_user("0xaddress").send().await?;
+# Ok(())
+# }
 ```
 
 ### Sports
 
 ```rust
+# use polyoxide_gamma::Gamma;
+# async fn doctest() -> Result<(), Box<dyn std::error::Error>> {
+# let gamma = Gamma::builder().build()?;
 let sports = gamma.sports().list().send().await?;
 let market_types = gamma.sports().market_types().send().await?;
 
@@ -171,6 +200,8 @@ let teams = gamma.sports().list_teams()
     .league(vec!["NFL"])
     .limit(50)
     .send().await?;
+# Ok(())
+# }
 ```
 
 ### Search
@@ -178,6 +209,9 @@ let teams = gamma.sports().list_teams()
 ```rust
 use polyoxide_gamma::api::search::SearchResponse;
 
+# use polyoxide_gamma::Gamma;
+# async fn doctest() -> Result<(), Box<dyn std::error::Error>> {
+# let gamma = Gamma::builder().build()?;
 let results: SearchResponse = gamma.search()
     .public_search("bitcoin")
     .search_profiles(true)
@@ -187,6 +221,8 @@ let results: SearchResponse = gamma.search()
     .send().await?;
 
 // results.events, results.profiles, results.tags
+# Ok(())
+# }
 ```
 
 ### User
@@ -194,16 +230,26 @@ let results: SearchResponse = gamma.search()
 ```rust
 use polyoxide_gamma::api::user::UserResponse;
 
+# use polyoxide_gamma::Gamma;
+# async fn doctest() -> Result<(), Box<dyn std::error::Error>> {
+# let gamma = Gamma::builder().build()?;
 let profile: UserResponse = gamma.user()
     .get("0xsigner_address")
     .send().await?;
+# Ok(())
+# }
 ```
 
 ### Health
 
 ```rust
+# use polyoxide_gamma::Gamma;
+# async fn doctest() -> Result<(), Box<dyn std::error::Error>> {
+# let gamma = Gamma::builder().build()?;
 let latency = gamma.health().ping().await?;
 println!("API latency: {}ms", latency.as_millis());
+# Ok(())
+# }
 ```
 
 ## Feature flags
