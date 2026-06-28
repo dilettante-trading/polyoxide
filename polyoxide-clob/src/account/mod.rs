@@ -232,18 +232,26 @@ impl Account {
     /// ```
     #[cfg(feature = "keychain")]
     pub fn from_keychain() -> Result<Self, ClobError> {
+        Self::from_keychain_in_service(KEYCHAIN_SERVICE)
+    }
+
+    /// Implementation of [`Account::from_keychain`] parameterized by service
+    /// name. Tests pass an isolated service so they never read the real
+    /// `polyoxide-clob` entries.
+    #[cfg(feature = "keychain")]
+    fn from_keychain_in_service(service: &str) -> Result<Self, ClobError> {
         use polyoxide_core::keychain;
 
-        let private_key = keychain::get(KEYCHAIN_SERVICE, "private_key")
+        let private_key = keychain::get(service, "private_key")
             .map_err(|e| ClobError::validation(format!("Keychain error for private_key: {e}")))?;
 
         let credentials = Credentials {
-            key: keychain::get(KEYCHAIN_SERVICE, "api_key")
+            key: keychain::get(service, "api_key")
                 .map_err(|e| ClobError::validation(format!("Keychain error for api_key: {e}")))?,
-            secret: keychain::get(KEYCHAIN_SERVICE, "api_secret").map_err(|e| {
+            secret: keychain::get(service, "api_secret").map_err(|e| {
                 ClobError::validation(format!("Keychain error for api_secret: {e}"))
             })?,
-            passphrase: keychain::get(KEYCHAIN_SERVICE, "api_passphrase").map_err(|e| {
+            passphrase: keychain::get(service, "api_passphrase").map_err(|e| {
                 ClobError::validation(format!("Keychain error for api_passphrase: {e}"))
             })?,
         };
@@ -259,28 +267,40 @@ impl Account {
     /// the private key before constructing an `Account`.
     #[cfg(feature = "keychain")]
     pub fn save_to_keychain(&self) -> Result<(), ClobError> {
+        self.save_to_keychain_in_service(KEYCHAIN_SERVICE)
+    }
+
+    /// Implementation of [`Account::save_to_keychain`] parameterized by service
+    /// name. Tests pass an isolated service so they never overwrite the real
+    /// `polyoxide-clob` entries.
+    #[cfg(feature = "keychain")]
+    fn save_to_keychain_in_service(&self, service: &str) -> Result<(), ClobError> {
         use polyoxide_core::keychain;
 
-        keychain::set(KEYCHAIN_SERVICE, "api_key", &self.credentials.key)
+        keychain::set(service, "api_key", &self.credentials.key)
             .map_err(|e| ClobError::validation(format!("Keychain error: {e}")))?;
-        keychain::set(KEYCHAIN_SERVICE, "api_secret", &self.credentials.secret)
+        keychain::set(service, "api_secret", &self.credentials.secret)
             .map_err(|e| ClobError::validation(format!("Keychain error: {e}")))?;
-        keychain::set(
-            KEYCHAIN_SERVICE,
-            "api_passphrase",
-            &self.credentials.passphrase,
-        )
-        .map_err(|e| ClobError::validation(format!("Keychain error: {e}")))?;
+        keychain::set(service, "api_passphrase", &self.credentials.passphrase)
+            .map_err(|e| ClobError::validation(format!("Keychain error: {e}")))?;
         Ok(())
     }
 
     /// Delete L2 API credentials and private key from the OS keychain.
     #[cfg(feature = "keychain")]
     pub fn delete_from_keychain() -> Result<(), ClobError> {
+        Self::delete_from_keychain_in_service(KEYCHAIN_SERVICE)
+    }
+
+    /// Implementation of [`Account::delete_from_keychain`] parameterized by
+    /// service name. Tests pass an isolated service so they never delete the
+    /// real `polyoxide-clob` entries.
+    #[cfg(feature = "keychain")]
+    fn delete_from_keychain_in_service(service: &str) -> Result<(), ClobError> {
         use polyoxide_core::keychain;
 
         for key in ["private_key", "api_key", "api_secret", "api_passphrase"] {
-            keychain::delete(KEYCHAIN_SERVICE, key)
+            keychain::delete(service, key)
                 .map_err(|e| ClobError::validation(format!("Keychain error: {e}")))?;
         }
         Ok(())
@@ -375,7 +395,18 @@ impl Account {
 /// keychain, since `Account` discards the raw key string after parsing.
 #[cfg(feature = "keychain")]
 pub fn save_private_key_to_keychain(private_key: &str) -> Result<(), ClobError> {
-    polyoxide_core::keychain::set(KEYCHAIN_SERVICE, "private_key", private_key)
+    save_private_key_to_keychain_in_service(KEYCHAIN_SERVICE, private_key)
+}
+
+/// Implementation of [`save_private_key_to_keychain`] parameterized by service
+/// name. Tests pass an isolated service so they never overwrite the real
+/// `polyoxide-clob` private key.
+#[cfg(feature = "keychain")]
+fn save_private_key_to_keychain_in_service(
+    service: &str,
+    private_key: &str,
+) -> Result<(), ClobError> {
+    polyoxide_core::keychain::set(service, "private_key", private_key)
         .map_err(|e| ClobError::validation(format!("Keychain error: {e}")))?;
     Ok(())
 }
@@ -423,10 +454,16 @@ mod tests {
     mod keychain_tests {
         use super::*;
 
+        // Each test uses its OWN isolated keychain service (never the real
+        // `polyoxide-clob` service), so it can neither read, overwrite, nor
+        // delete a developer's stored credentials. Because no two tests share a
+        // service, they also can't clobber each other's entries — making them
+        // safe to run concurrently without serialization.
         #[test]
         #[ignore] // Requires OS keychain daemon — run locally with `-- --ignored`
         fn keychain_roundtrip() {
-            // Store credentials
+            const SERVICE: &str = "polyoxide-clob-test-account-roundtrip";
+
             let private_key = "0xac0974bec39a17e36ba4a6b4d238ff944bacb478cbed5efcae784d7bf4f2ff80";
             let credentials = Credentials {
                 key: "test_keychain_key".to_string(),
@@ -434,24 +471,26 @@ mod tests {
                 passphrase: "test_keychain_pass".to_string(),
             };
 
-            save_private_key_to_keychain(private_key).unwrap();
+            save_private_key_to_keychain_in_service(SERVICE, private_key).unwrap();
             let account = Account::new(private_key, credentials).unwrap();
-            account.save_to_keychain().unwrap();
+            account.save_to_keychain_in_service(SERVICE).unwrap();
 
             // Load back
-            let loaded = Account::from_keychain().unwrap();
+            let loaded = Account::from_keychain_in_service(SERVICE).unwrap();
             assert_eq!(loaded.credentials().key, "test_keychain_key");
             assert_eq!(loaded.credentials().secret, "c2VjcmV0");
             assert_eq!(loaded.credentials().passphrase, "test_keychain_pass");
             assert_eq!(loaded.address(), account.address());
 
             // Cleanup
-            Account::delete_from_keychain().unwrap();
+            Account::delete_from_keychain_in_service(SERVICE).unwrap();
         }
 
         #[test]
         #[ignore] // Requires OS keychain daemon
         fn keychain_delete_removes_all_entries() {
+            const SERVICE: &str = "polyoxide-clob-test-account-delete";
+
             let private_key = "0xac0974bec39a17e36ba4a6b4d238ff944bacb478cbed5efcae784d7bf4f2ff80";
             let credentials = Credentials {
                 key: "del_test_key".to_string(),
@@ -460,15 +499,15 @@ mod tests {
             };
 
             // Store then delete
-            save_private_key_to_keychain(private_key).unwrap();
+            save_private_key_to_keychain_in_service(SERVICE, private_key).unwrap();
             Account::new(private_key, credentials)
                 .unwrap()
-                .save_to_keychain()
+                .save_to_keychain_in_service(SERVICE)
                 .unwrap();
-            Account::delete_from_keychain().unwrap();
+            Account::delete_from_keychain_in_service(SERVICE).unwrap();
 
             // Verify all entries are gone
-            let err = Account::from_keychain().unwrap_err();
+            let err = Account::from_keychain_in_service(SERVICE).unwrap_err();
             let msg = err.to_string();
             assert!(
                 msg.contains("Keychain entry not found"),

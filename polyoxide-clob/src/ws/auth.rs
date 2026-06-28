@@ -63,9 +63,16 @@ impl ApiCredentials {
     /// - `api_passphrase`
     #[cfg(feature = "keychain")]
     pub fn from_keychain() -> Result<Self, polyoxide_core::KeychainError> {
+        Self::from_keychain_in_service(crate::account::KEYCHAIN_SERVICE)
+    }
+
+    /// Implementation of [`ApiCredentials::from_keychain`] parameterized by
+    /// service name. Tests pass an isolated service so they never read the real
+    /// `polyoxide-clob` entries.
+    #[cfg(feature = "keychain")]
+    fn from_keychain_in_service(service: &str) -> Result<Self, polyoxide_core::KeychainError> {
         use polyoxide_core::keychain;
 
-        let service = crate::account::KEYCHAIN_SERVICE;
         Ok(Self {
             api_key: keychain::get(service, "api_key")?,
             secret: keychain::get(service, "api_secret")?,
@@ -181,18 +188,29 @@ mod tests {
     mod keychain_tests {
         use super::*;
 
+        // Uses an isolated keychain service (never the real `polyoxide-clob`
+        // service), so it neither reads nor disturbs a developer's stored
+        // credentials, and can run concurrently with the `Account` keychain
+        // tests without sharing any entries.
         #[test]
         #[ignore] // Requires OS keychain daemon
         fn api_credentials_from_keychain() {
-            // Pre-populate keychain (reuses values from Account tests)
-            polyoxide_core::keychain::set("polyoxide-clob", "api_key", "kc_key").unwrap();
-            polyoxide_core::keychain::set("polyoxide-clob", "api_secret", "kc_secret").unwrap();
-            polyoxide_core::keychain::set("polyoxide-clob", "api_passphrase", "kc_pass").unwrap();
+            use polyoxide_core::keychain;
+            const SERVICE: &str = "polyoxide-clob-test-ws-apicreds";
 
-            let creds = ApiCredentials::from_keychain().unwrap();
+            keychain::set(SERVICE, "api_key", "kc_key").unwrap();
+            keychain::set(SERVICE, "api_secret", "kc_secret").unwrap();
+            keychain::set(SERVICE, "api_passphrase", "kc_pass").unwrap();
+
+            let creds = ApiCredentials::from_keychain_in_service(SERVICE).unwrap();
             assert_eq!(creds.api_key, "kc_key");
             assert_eq!(creds.secret, "kc_secret");
             assert_eq!(creds.passphrase, "kc_pass");
+
+            // Cleanup: don't leave entries behind for the next manual run.
+            let _ = keychain::delete(SERVICE, "api_key");
+            let _ = keychain::delete(SERVICE, "api_secret");
+            let _ = keychain::delete(SERVICE, "api_passphrase");
         }
     }
 

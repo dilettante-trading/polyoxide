@@ -99,16 +99,24 @@ impl BuilderAccount {
     /// - `passphrase`: Builder API passphrase (optional)
     #[cfg(feature = "keychain")]
     pub fn from_keychain() -> Result<Self, RelayError> {
+        Self::from_keychain_in_service(KEYCHAIN_SERVICE)
+    }
+
+    /// Implementation of [`BuilderAccount::from_keychain`] parameterized by
+    /// service name. Tests pass an isolated service so they never read the real
+    /// `polyoxide-relay` entries.
+    #[cfg(feature = "keychain")]
+    fn from_keychain_in_service(service: &str) -> Result<Self, RelayError> {
         use polyoxide_core::keychain;
 
-        let private_key = keychain::get(KEYCHAIN_SERVICE, "private_key")
+        let private_key = keychain::get(service, "private_key")
             .map_err(|e| RelayError::Api(format!("Keychain error for private_key: {e}")))?;
 
-        let config = match keychain::get(KEYCHAIN_SERVICE, "api_key") {
+        let config = match keychain::get(service, "api_key") {
             Ok(key) => {
-                let secret = keychain::get(KEYCHAIN_SERVICE, "api_secret")
+                let secret = keychain::get(service, "api_secret")
                     .map_err(|e| RelayError::Api(format!("Keychain error for api_secret: {e}")))?;
-                let passphrase = keychain::get(KEYCHAIN_SERVICE, "passphrase").ok();
+                let passphrase = keychain::get(service, "passphrase").ok();
                 Some(BuilderConfig::new(key, secret, passphrase))
             }
             Err(polyoxide_core::KeychainError::NotFound { .. }) => None,
@@ -126,13 +134,21 @@ impl BuilderAccount {
     /// - `relayer_api_key_address`: On-chain address for the relayer API key
     #[cfg(feature = "keychain")]
     pub fn from_keychain_relayer_api_key() -> Result<Self, RelayError> {
+        Self::from_keychain_relayer_api_key_in_service(KEYCHAIN_SERVICE)
+    }
+
+    /// Implementation of [`BuilderAccount::from_keychain_relayer_api_key`]
+    /// parameterized by service name. Tests pass an isolated service so they
+    /// never read the real `polyoxide-relay` entries.
+    #[cfg(feature = "keychain")]
+    fn from_keychain_relayer_api_key_in_service(service: &str) -> Result<Self, RelayError> {
         use polyoxide_core::keychain;
 
-        let private_key = keychain::get(KEYCHAIN_SERVICE, "private_key")
+        let private_key = keychain::get(service, "private_key")
             .map_err(|e| RelayError::Api(format!("Keychain error for private_key: {e}")))?;
-        let key = keychain::get(KEYCHAIN_SERVICE, "relayer_api_key")
+        let key = keychain::get(service, "relayer_api_key")
             .map_err(|e| RelayError::Api(format!("Keychain error for relayer_api_key: {e}")))?;
-        let address = keychain::get(KEYCHAIN_SERVICE, "relayer_api_key_address").map_err(|e| {
+        let address = keychain::get(service, "relayer_api_key_address").map_err(|e| {
             RelayError::Api(format!("Keychain error for relayer_api_key_address: {e}"))
         })?;
 
@@ -142,6 +158,14 @@ impl BuilderAccount {
     /// Delete all credentials from the OS keychain for this service.
     #[cfg(feature = "keychain")]
     pub fn delete_from_keychain() -> Result<(), RelayError> {
+        Self::delete_from_keychain_in_service(KEYCHAIN_SERVICE)
+    }
+
+    /// Implementation of [`BuilderAccount::delete_from_keychain`] parameterized
+    /// by service name. Tests pass an isolated service so they never delete the
+    /// real `polyoxide-relay` entries.
+    #[cfg(feature = "keychain")]
+    fn delete_from_keychain_in_service(service: &str) -> Result<(), RelayError> {
         use polyoxide_core::keychain;
 
         for key in [
@@ -152,7 +176,7 @@ impl BuilderAccount {
             "relayer_api_key",
             "relayer_api_key_address",
         ] {
-            keychain::delete(KEYCHAIN_SERVICE, key)
+            keychain::delete(service, key)
                 .map_err(|e| RelayError::Api(format!("Keychain error: {e}")))?;
         }
         Ok(())
@@ -162,7 +186,18 @@ impl BuilderAccount {
 /// Save a private key to the OS keychain under the `polyoxide-relay` service.
 #[cfg(feature = "keychain")]
 pub fn save_private_key_to_keychain(private_key: &str) -> Result<(), RelayError> {
-    polyoxide_core::keychain::set(KEYCHAIN_SERVICE, "private_key", private_key)
+    save_private_key_to_keychain_in_service(KEYCHAIN_SERVICE, private_key)
+}
+
+/// Implementation of [`save_private_key_to_keychain`] parameterized by service
+/// name. Tests pass an isolated service so they never overwrite the real
+/// `polyoxide-relay` private key.
+#[cfg(feature = "keychain")]
+fn save_private_key_to_keychain_in_service(
+    service: &str,
+    private_key: &str,
+) -> Result<(), RelayError> {
+    polyoxide_core::keychain::set(service, "private_key", private_key)
         .map_err(|e| RelayError::Api(format!("Keychain error: {e}")))?;
     Ok(())
 }
@@ -173,19 +208,30 @@ pub fn save_private_key_to_keychain(private_key: &str) -> Result<(), RelayError>
 /// to prevent stale values from persisting.
 #[cfg(feature = "keychain")]
 pub fn save_builder_config_to_keychain(config: &BuilderConfig) -> Result<(), RelayError> {
+    save_builder_config_to_keychain_in_service(KEYCHAIN_SERVICE, config)
+}
+
+/// Implementation of [`save_builder_config_to_keychain`] parameterized by
+/// service name. Tests pass an isolated service so they never overwrite the
+/// real `polyoxide-relay` entries.
+#[cfg(feature = "keychain")]
+fn save_builder_config_to_keychain_in_service(
+    service: &str,
+    config: &BuilderConfig,
+) -> Result<(), RelayError> {
     use polyoxide_core::keychain;
 
-    keychain::set(KEYCHAIN_SERVICE, "api_key", &config.key)
+    keychain::set(service, "api_key", &config.key)
         .map_err(|e| RelayError::Api(format!("Keychain error: {e}")))?;
-    keychain::set(KEYCHAIN_SERVICE, "api_secret", &config.secret)
+    keychain::set(service, "api_secret", &config.secret)
         .map_err(|e| RelayError::Api(format!("Keychain error: {e}")))?;
     match &config.passphrase {
         Some(passphrase) => {
-            keychain::set(KEYCHAIN_SERVICE, "passphrase", passphrase)
+            keychain::set(service, "passphrase", passphrase)
                 .map_err(|e| RelayError::Api(format!("Keychain error: {e}")))?;
         }
         None => {
-            keychain::delete(KEYCHAIN_SERVICE, "passphrase")
+            keychain::delete(service, "passphrase")
                 .map_err(|e| RelayError::Api(format!("Keychain error: {e}")))?;
         }
     }
@@ -332,14 +378,21 @@ mod tests {
         const TEST_PRIVATE_KEY: &str =
             "ac0974bec39a17e36ba4a6b4d238ff944bacb478cbed5efcae784d7bf4f2ff80";
 
+        // Each test uses its OWN isolated keychain service (never the real
+        // `polyoxide-relay` service), so it can neither read, overwrite, nor
+        // delete a developer's stored credentials. Because no two tests share a
+        // service, they also can't clobber each other's entries — making them
+        // safe to run concurrently without serialization.
         #[test]
         #[ignore] // Requires OS keychain daemon
         fn builder_account_keychain_roundtrip() {
-            save_private_key_to_keychain(TEST_PRIVATE_KEY).unwrap();
-            let config = BuilderConfig::new("rk".into(), "rs".into(), Some("rp".into()));
-            save_builder_config_to_keychain(&config).unwrap();
+            const SERVICE: &str = "polyoxide-relay-test-builder-roundtrip";
 
-            let account = BuilderAccount::from_keychain().unwrap();
+            save_private_key_to_keychain_in_service(SERVICE, TEST_PRIVATE_KEY).unwrap();
+            let config = BuilderConfig::new("rk".into(), "rs".into(), Some("rp".into()));
+            save_builder_config_to_keychain_in_service(SERVICE, &config).unwrap();
+
+            let account = BuilderAccount::from_keychain_in_service(SERVICE).unwrap();
             assert_eq!(
                 account.address(),
                 BuilderAccount::new(TEST_PRIVATE_KEY, None)
@@ -349,57 +402,60 @@ mod tests {
             assert!(account.auth_config().is_some());
 
             // Cleanup
-            BuilderAccount::delete_from_keychain().unwrap();
+            BuilderAccount::delete_from_keychain_in_service(SERVICE).unwrap();
         }
 
         #[test]
         #[ignore] // Requires OS keychain daemon
         fn builder_account_keychain_no_config() {
+            use polyoxide_core::keychain;
+            const SERVICE: &str = "polyoxide-relay-test-no-config";
+
             // Clear any leftover builder config entries so from_keychain()
             // exercises the "no api_key found" path.
-            use polyoxide_core::keychain;
-            let _ = keychain::delete(KEYCHAIN_SERVICE, "api_key");
-            let _ = keychain::delete(KEYCHAIN_SERVICE, "api_secret");
-            let _ = keychain::delete(KEYCHAIN_SERVICE, "passphrase");
+            let _ = keychain::delete(SERVICE, "api_key");
+            let _ = keychain::delete(SERVICE, "api_secret");
+            let _ = keychain::delete(SERVICE, "passphrase");
 
-            save_private_key_to_keychain(TEST_PRIVATE_KEY).unwrap();
+            save_private_key_to_keychain_in_service(SERVICE, TEST_PRIVATE_KEY).unwrap();
 
-            let account = BuilderAccount::from_keychain().unwrap();
+            let account = BuilderAccount::from_keychain_in_service(SERVICE).unwrap();
             assert!(
                 account.auth_config().is_none(),
                 "Expected no auth config when api_key is absent"
             );
 
             // Cleanup
-            let _ = keychain::delete(KEYCHAIN_SERVICE, "private_key");
+            let _ = keychain::delete(SERVICE, "private_key");
         }
 
         #[test]
         #[ignore] // Requires OS keychain daemon
         fn save_builder_config_none_passphrase_clears_stale() {
             use polyoxide_core::keychain;
+            const SERVICE: &str = "polyoxide-relay-test-clears-stale";
 
             // Store config WITH passphrase
-            save_private_key_to_keychain(TEST_PRIVATE_KEY).unwrap();
+            save_private_key_to_keychain_in_service(SERVICE, TEST_PRIVATE_KEY).unwrap();
             let config_with = BuilderConfig::new("k".into(), "s".into(), Some("pp".into()));
-            save_builder_config_to_keychain(&config_with).unwrap();
+            save_builder_config_to_keychain_in_service(SERVICE, &config_with).unwrap();
 
             // Verify passphrase is present
-            assert!(keychain::get(KEYCHAIN_SERVICE, "passphrase").is_ok());
+            assert!(keychain::get(SERVICE, "passphrase").is_ok());
 
             // Overwrite with None passphrase — should delete the stale entry
             let config_without = BuilderConfig::new("k".into(), "s".into(), None);
-            save_builder_config_to_keychain(&config_without).unwrap();
+            save_builder_config_to_keychain_in_service(SERVICE, &config_without).unwrap();
 
             // Verify passphrase has been removed
-            let result = keychain::get(KEYCHAIN_SERVICE, "passphrase");
+            let result = keychain::get(SERVICE, "passphrase");
             assert!(
                 matches!(result, Err(polyoxide_core::KeychainError::NotFound { .. })),
                 "Expected passphrase to be deleted, got: {result:?}"
             );
 
             // And from_keychain should load account without passphrase in config
-            let account = BuilderAccount::from_keychain().unwrap();
+            let account = BuilderAccount::from_keychain_in_service(SERVICE).unwrap();
             if let Some(AuthConfig::Builder(bc)) = account.auth_config() {
                 assert!(
                     bc.passphrase.is_none(),
@@ -410,20 +466,22 @@ mod tests {
             }
 
             // Cleanup
-            BuilderAccount::delete_from_keychain().unwrap();
+            BuilderAccount::delete_from_keychain_in_service(SERVICE).unwrap();
         }
 
         #[test]
         #[ignore] // Requires OS keychain daemon
         fn relayer_api_key_keychain_roundtrip() {
             use polyoxide_core::keychain;
+            const SERVICE: &str = "polyoxide-relay-test-relayer-key";
 
             // Store relayer API key credentials
-            save_private_key_to_keychain(TEST_PRIVATE_KEY).unwrap();
-            keychain::set(KEYCHAIN_SERVICE, "relayer_api_key", "test-rk").unwrap();
-            keychain::set(KEYCHAIN_SERVICE, "relayer_api_key_address", "0xaddr").unwrap();
+            save_private_key_to_keychain_in_service(SERVICE, TEST_PRIVATE_KEY).unwrap();
+            keychain::set(SERVICE, "relayer_api_key", "test-rk").unwrap();
+            keychain::set(SERVICE, "relayer_api_key_address", "0xaddr").unwrap();
 
-            let account = BuilderAccount::from_keychain_relayer_api_key().unwrap();
+            let account =
+                BuilderAccount::from_keychain_relayer_api_key_in_service(SERVICE).unwrap();
             assert_eq!(
                 account.address(),
                 BuilderAccount::new(TEST_PRIVATE_KEY, None)
@@ -436,7 +494,7 @@ mod tests {
             ));
 
             // Cleanup
-            BuilderAccount::delete_from_keychain().unwrap();
+            BuilderAccount::delete_from_keychain_in_service(SERVICE).unwrap();
         }
     }
 
