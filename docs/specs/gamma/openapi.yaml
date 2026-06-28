@@ -880,11 +880,11 @@ paths:
       parameters:
         - name: limit
           in: query
-          description: Maximum number of results to return (max 1000)
+          description: Maximum number of results to return (max 100)
           schema:
             type: integer
             minimum: 1
-            maximum: 1000
+            maximum: 100
             default: 20
         - name: order
           in: query

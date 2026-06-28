@@ -484,7 +484,7 @@ paths:
     delete:
       summary: Cancel multiple orders
       description: |
-        Cancels multiple orders by their IDs. Maximum 3000 orders per request.
+        Cancels multiple orders by their IDs. Maximum 1000 orders per request.
         Duplicate order IDs in the request are automatically ignored.
         Works even in cancel-only mode.
       operationId: cancelOrders
@@ -504,7 +504,7 @@ paths:
               type: array
               items:
                 type: string
-              maxItems: 3000
+              maxItems: 1000
             example:
               - '0xabcdef1234567890abcdef1234567890abcdef12'
               - '0xfedcba0987654321fedcba0987654321fedcba09'
@@ -559,7 +559,7 @@ paths:
                 too_many_orders:
                   summary: Too many orders
                   value:
-                    error: 'Too many orders in payload, max allowed: 3000'
+                    error: 'Too many orders in payload, max allowed: 1000'
         '401':
           description: Unauthorized - Invalid API key or authentication failed
           content:
@@ -5541,7 +5541,10 @@ components:
           description: Whether RFQ (Request for Quote) is enabled for this market
         itode:
           type: boolean
-          description: Whether taker order delay is enabled
+          description: >-
+            Whether taker order delay is enabled for this market. When true,
+            marketable orders are held for the 250 ms taker-delay window before
+            synchronous processing. This field is omitted when false.
         ibce:
           type: boolean
           description: Whether Blockaid check is enabled
