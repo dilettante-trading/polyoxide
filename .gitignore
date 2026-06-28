@@ -10,6 +10,7 @@ __pycache__
 # Secrets and credentials
 .env
 .env.*
+!.env.example
 *.pem
 *.key
 account.json
