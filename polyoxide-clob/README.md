@@ -13,7 +13,6 @@ More information about this crate can be found in the [crate documentation](http
 - **Account Management**: Balances, allowances, trade history, and session heartbeats
 - **API Key Management**: Create, list, and delete standard, read-only, and builder API keys
 - **Liquidity Rewards**: Query earnings, percentages, and reward markets
-- **RFQ Trading**: Request-for-quote creation, quoting, acceptance, and approval
 - **Notifications**: List and dismiss user notifications
 - **WebSocket**: Real-time market data and user order/trade updates (feature-gated)
 
@@ -120,7 +119,6 @@ The client organizes endpoints into namespaces. Public namespaces are always ava
 | `account_api()` | Authenticated | `clob.account_api()?` |
 | `auth()` | Authenticated | `clob.auth()?` |
 | `rewards()` | Authenticated | `clob.rewards()?` |
-| `rfq()` | Authenticated | `clob.rfq()?` |
 | `notifications()` | Authenticated | `clob.notifications()?` |
 
 ### Market Data (public)

@@ -6,7 +6,7 @@ use crate::{
     account::{Account, Credentials},
     api::{
         account::AccountApi, auth::Auth, notifications::Notifications, orders::OrderResponse,
-        rewards::Rewards, rfq::Rfq, Health, Markets, Orders,
+        rewards::Rewards, Health, Markets, Orders,
     },
     core::chain::Chain,
     error::ClobError,
@@ -134,22 +134,6 @@ impl Clob {
             signer: account.signer().clone(),
             chain_id: self.chain_id,
             signature_type: self.signature_type,
-        })
-    }
-
-    /// Get RFQ namespace for request-for-quote operations
-    pub fn rfq(&self) -> Result<Rfq, ClobError> {
-        let account = self
-            .account
-            .as_ref()
-            .ok_or_else(|| ClobError::validation("Account required for RFQ API"))?;
-
-        Ok(Rfq {
-            http_client: self.http_client.clone(),
-            wallet: account.wallet().clone(),
-            credentials: account.credentials().clone(),
-            signer: account.signer().clone(),
-            chain_id: self.chain_id,
         })
     }
 

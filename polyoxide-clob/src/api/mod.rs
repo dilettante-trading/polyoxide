@@ -7,7 +7,6 @@ pub mod markets;
 pub mod notifications;
 pub mod orders;
 pub mod rewards;
-pub mod rfq;
 
 pub use account::AccountApi;
 pub use auth::Auth;
@@ -16,4 +15,3 @@ pub use markets::Markets;
 pub use notifications::Notifications;
 pub use orders::{CancelOrderRequest, Orders};
 pub use rewards::Rewards;
-pub use rfq::Rfq;
