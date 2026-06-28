@@ -1,3 +1,22 @@
+## [0.17.0] - 2026-06-28
+
+### 🚀 Features
+
+- *(clob)* [**breaking**] Remove dead RFQ trading API
+- *(clob)* [**breaking**] Require builder_code arg for builder_trades
+
+### 📚 Documentation
+
+- *(specs)* Re-sync OpenAPI mirrors from upstream
+
+### 🧪 Testing
+
+- *(keychain)* Isolate tests in per-test keychain services
+
+### ⚙️ Miscellaneous Tasks
+
+- Add .env.example documenting auth credentials
+
 ## [0.16.0] - 2026-06-02
 
 ### 🐛 Bug Fixes
