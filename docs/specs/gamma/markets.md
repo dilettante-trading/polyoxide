@@ -62,9 +62,6 @@ List markets with optional filtering and pagination.
     "active": true,
     "closed": false,
     "marketMakerAddress": "0x1234...",
-    "tokens": [
-      {"tokenId": "71321...", "outcome": "Yes", "price": "0.55", "winner": false}
-    ],
     "tags": [],
     "volumeNum": 150000.0,
     "liquidityNum": 25000.0,
@@ -72,10 +69,8 @@ List markets with optional filtering and pagination.
     "volume1wk": 10000.0,
     "volume1mo": 50000.0,
     "volume1yr": 200000.0,
-    "negRisk": false,
     "rewardsMinSize": 10.0,
-    "rewardsMaxSpread": 0.05,
-    "commentCount": 42
+    "rewardsMaxSpread": 0.05
   }
 ]
 ```

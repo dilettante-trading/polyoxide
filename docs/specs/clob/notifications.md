@@ -16,13 +16,15 @@ Base URL: `https://clob.polymarket.com`
 
 ```json
 [{
-  "id": "string",
+  "id": 1,
   "owner": "string",
-  "type": 0,
+  "type": 2,
   "payload": {},
-  "timestamp": "string"
+  "timestamp": 1675277676
 }]
 ```
+
+`type` is an integer enum: 1=cancel, 2=fill, 3=market registered, 4=resolved, 5=reward, 6=child comment.
 
 ## Dismiss Notifications
 

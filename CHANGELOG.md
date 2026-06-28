@@ -142,9 +142,6 @@
 - *(clob)* Add `ApiCredentials::from_keychain()` for WebSocket authentication
 - *(relay)* Add `BuilderAccount::from_keychain()` and `from_keychain_relayer_api_key()` for keychain-based credential loading
 - *(relay)* Add `BuilderAccount::delete_from_keychain()` to remove all stored credentials
-- *(relay)* Add relayer API key authentication as alternative to HMAC builder credentials
-- *(relay)* Add `AuthConfig` enum and `RelayerApiKeyConfig` for dual auth support
-- *(relay)* Wire `AuthConfig` into request signing and add builder convenience methods
 - *(cli)* Add `credentials store` and `credentials show` subcommands for keychain management
 - *(cli)* Add `credentials delete` subcommand to remove stored credentials
 - *(cli)* Add `--credential-source keychain` flag to `ws user` command
@@ -155,8 +152,6 @@
 
 ### ♻️ Refactoring
 
-- *(relay)* Encapsulate `RelayerApiKeyConfig` and validate inputs
-- *(relay)* Remove deprecated `config()` and extract `parse_signer`
 - Consolidate keychain service name strings into shared `KEYCHAIN_SERVICE` constants
 
 ### ⚙️ Build
@@ -167,8 +162,25 @@
 ### 🧪 Tests
 
 - *(clob)* Add keychain roundtrip and delete integration tests
-- *(relay)* Add keychain roundtrip, no-config, stale passphrase, and relayer API key integration tests
+- *(relay)* Add keychain roundtrip, no-config, and stale passphrase integration tests
 - *(cli)* Add parsing tests for credentials delete and keychain credential source
+
+## [0.12.5] - 2026-04-15
+
+### 🚀 Features
+
+- *(relay)* Add relayer API key authentication as alternative to HMAC builder credentials
+- *(relay)* Add `AuthConfig` enum and `RelayerApiKeyConfig` for dual auth support
+- *(relay)* Wire `AuthConfig` into request signing and add builder convenience methods
+
+### ♻️ Refactoring
+
+- *(relay)* Encapsulate `RelayerApiKeyConfig` and validate inputs
+- *(relay)* Remove deprecated `config()` and extract `parse_signer`
+
+### 🧪 Tests
+
+- *(relay)* Add relayer API key integration tests
 
 ### 📝 Documentation
 

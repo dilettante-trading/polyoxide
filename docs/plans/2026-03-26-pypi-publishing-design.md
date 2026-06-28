@@ -18,10 +18,12 @@ Runs in parallel with `build-cli`. Uses `maturin build --release -m polyoxide-py
 | OS | Target | Wheels |
 |----|--------|--------|
 | ubuntu-latest | x86_64-unknown-linux-gnu | manylinux x86_64 |
-| ubuntu-latest | aarch64-unknown-linux-gnu | manylinux aarch64 |
+| ubuntu-latest | aarch64-unknown-linux-gnu | manylinux aarch64 — _deferred: aws-lc-sys cross-compilation fails_ |
 | macos-latest | x86_64-apple-darwin | macOS x86_64 |
 | macos-latest | aarch64-apple-darwin | macOS aarch64 |
 | windows-latest | x86_64-pc-windows-msvc | Windows x86_64 |
+
+> **Note:** The aarch64-unknown-linux-gnu entry is commented out in `release.yml` because aws-lc-sys cross-compilation fails, so only 4 wheel targets currently ship.
 
 Each job produces a single abi3 wheel (already configured in pyproject.toml — covers all Python >=3.9). An sdist is built once on linux x86_64.
 

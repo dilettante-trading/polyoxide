@@ -4,7 +4,7 @@
 
 **Goal:** Publish the `polyoxide` Python package to PyPI as part of the existing release workflow.
 
-**Architecture:** Add maturin wheel-build jobs (5 platform targets) and a publish job to `release.yml`. Export all type classes from `__init__.py`. Uses abi3 stable ABI so one wheel per platform covers all Python >=3.9.
+**Architecture:** Add maturin wheel-build jobs (4 platform targets — aarch64-unknown-linux-gnu deferred because aws-lc-sys cross-compilation fails) and a publish job to `release.yml`. Export all type classes from `__init__.py`. Uses abi3 stable ABI so one wheel per platform covers all Python >=3.9.
 
 **Tech Stack:** maturin, PyO3 abi3, GitHub Actions, PyPI trusted publishing or API token
 
@@ -222,9 +222,10 @@ Insert the following job after `build-cli` in `.github/workflows/release.yml`. I
           - os: ubuntu-latest
             target: x86_64-unknown-linux-gnu
             manylinux: auto
-          - os: ubuntu-latest
-            target: aarch64-unknown-linux-gnu
-            manylinux: auto
+          # TODO: aarch64-unknown-linux-gnu disabled — aws-lc-sys cross-compilation fails
+          # - os: ubuntu-latest
+          #   target: aarch64-unknown-linux-gnu
+          #   manylinux: auto
           - os: macos-latest
             target: x86_64-apple-darwin
           - os: macos-latest

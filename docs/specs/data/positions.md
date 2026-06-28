@@ -92,7 +92,7 @@ Returns closed (resolved or sold) positions for a user.
 }]
 ```
 
-Note: `ClosedPosition` has no `size`, `initialValue`, `currentValue`, `percentPnl`, `totalBought` P&L-ratio fields like `Position`; it adds `timestamp` (int64).
+Note: `ClosedPosition` shares `avgPrice`, `totalBought`, `realizedPnl`, and `curPrice` with `Position` and adds `timestamp` (int64). Relative to `Position` it lacks `size`, `initialValue`, `currentValue`, `cashPnl`, `percentPnl`, `percentRealizedPnl`, `redeemable`, `mergeable`, and `negativeRisk`.
 
 ## Get Portfolio Value
 
@@ -127,7 +127,7 @@ Returns whether a user has ever traded.
 
 `GET /activity`
 
-Returns user activity (trades, splits, merges, redemptions, rewards, conversions, maker rebates, referral rewards).
+Returns user activity (trades, splits, merges, redemptions, rewards, conversions, deposits, withdrawals, yield, maker rebates, taker rebates, referral rewards).
 
 **Auth:** None
 
@@ -136,7 +136,7 @@ Returns user activity (trades, splits, merges, redemptions, rewards, conversions
 | user | query | Address (`0x` + 40 hex) | yes | — | User wallet address |
 | market | query | Hash64[] (`0x` + 64 hex) | no | — | Filter by condition ID(s) |
 | eventId | query | integer[] | no | — | Filter by event ID(s) |
-| type | query | string[] | no | — | TRADE, SPLIT, MERGE, REDEEM, REWARD, CONVERSION, MAKER_REBATE, REFERRAL_REWARD |
+| type | query | string[] | no | — | TRADE, SPLIT, MERGE, REDEEM, REWARD, CONVERSION, DEPOSIT, WITHDRAWAL, YIELD, MAKER_REBATE, TAKER_REBATE, REFERRAL_REWARD |
 | start | query | integer | no | — | Start timestamp (Unix) |
 | end | query | integer | no | — | End timestamp (Unix) |
 | limit | query | integer (0-500) | no | 100 | Results per page |

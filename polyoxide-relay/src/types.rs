@@ -53,7 +53,15 @@ sol! {
     }
 }
 
-/// Serializable transaction submission payload sent to the relayer.
+/// Partial, legacy representation of a relayer submission payload.
+///
+/// This type is **not** the actual wire body sent to the relayer: the real
+/// `POST /submit` payloads are the private `SafeSubmitBody` / `ProxySubmitBody`
+/// structs in `client.rs` (built and serialized by the relay client's
+/// `execute_safe` / `execute_proxy` paths), which additionally carry
+/// `signatureParams`, `nonce`, `value`, and `metadata`. This struct is retained
+/// only for backwards compatibility and is exercised solely by its own serde
+/// unit tests.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct TransactionRequest {
     #[serde(rename = "type")]

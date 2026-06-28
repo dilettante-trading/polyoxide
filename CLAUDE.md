@@ -36,7 +36,7 @@ cargo fmt --all -- --check
 cargo fmt --all
 ```
 
-CI runs two jobs: **format** (standalone), then **lint & test** (clippy, `cargo nextest run`, doctest — sequentially in one job). Clippy uses `-D warnings` (all warnings are errors).
+CI runs three jobs: **format** (standalone), **lint & test** (clippy, `cargo nextest run`, doctest — sequentially in one job), and **python bindings** (`uv run pytest tests/` in `polyoxide-py`, gated on **format** passing). Clippy uses `-D warnings` (all warnings are errors).
 
 ```bash
 # Run live integration tests (hit real APIs, skipped in CI)

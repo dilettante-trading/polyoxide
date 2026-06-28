@@ -169,7 +169,7 @@ A `.pyi` stub file is included at `python/polyoxide/__init__.pyi` for editor aut
 
 ## Building from Source
 
-Requires Rust and Python 3.8+.
+Requires Rust and Python 3.9+.
 
 ```bash
 pip install maturin

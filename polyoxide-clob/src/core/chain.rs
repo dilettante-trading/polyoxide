@@ -1,8 +1,11 @@
 use alloy::primitives::{address, Address};
 
+/// Supported Polygon chains for CLOB order signing.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum Chain {
+    /// Polygon mainnet (chain ID 137).
     PolygonMainnet,
+    /// Polygon Amoy testnet (chain ID 80002).
     PolygonAmoy,
 }
 
