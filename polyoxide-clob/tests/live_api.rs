@@ -612,11 +612,20 @@ async fn live_list_trades_with_filter() {
 #[tokio::test]
 #[ignore]
 async fn live_builder_trades() {
+    dotenvy::dotenv().ok();
+    // `builder_code` is required by the endpoint and is account-specific, so it
+    // lives in the environment rather than being hard-coded. Skip when absent
+    // so a non-builder account doesn't see a spurious failure.
+    let Ok(builder_code) = std::env::var("POLYMARKET_BUILDER_CODE") else {
+        eprintln!("skipping live_builder_trades: POLYMARKET_BUILDER_CODE not set");
+        return;
+    };
+
     let client = authenticated_client();
     let _trades = client
         .account_api()
         .expect("account_api")
-        .builder_trades()
+        .builder_trades(builder_code)
         .send()
         .await
         .expect("builder_trades should deserialize");

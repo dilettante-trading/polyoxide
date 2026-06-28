@@ -223,8 +223,8 @@ let trades = clob.account_api()?.trades("0xmaker_address")
     .send()
     .await?;
 
-// Builder trades
-let builder_trades = clob.account_api()?.builder_trades().send().await?;
+// Builder trades (builder_code is required)
+let builder_trades = clob.account_api()?.builder_trades(builder_code).send().await?;
 ```
 
 ### Health and Latency

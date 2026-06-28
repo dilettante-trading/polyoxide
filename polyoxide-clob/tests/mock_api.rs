@@ -307,6 +307,7 @@ async fn builder_trades_returns_paginated_response() {
     let mock = server
         .mock("GET", "/builder/trades")
         .match_header("POLY_API_KEY", "test-key")
+        .match_query(Matcher::Any)
         .with_status(200)
         .with_header("content-type", "application/json")
         .with_body(
@@ -344,7 +345,7 @@ async fn builder_trades_returns_paginated_response() {
     let resp = clob
         .account_api()
         .unwrap()
-        .builder_trades()
+        .builder_trades("0x0000000000000000000000000000000000000000000000000000000000000001")
         .send()
         .await
         .unwrap();
@@ -354,6 +355,75 @@ async fn builder_trades_returns_paginated_response() {
     assert_eq!(resp.data[0].trade_type, "LIMIT");
     assert_eq!(resp.data[0].size_usdc, "55.00");
     assert_eq!(resp.next_cursor.as_deref(), Some("cursor1"));
+    mock.assert_async().await;
+}
+
+#[tokio::test]
+async fn builder_trades_sends_required_builder_code_query() {
+    const BUILDER_CODE: &str = "0x0000000000000000000000000000000000000000000000000000000000000001";
+    let mut server = Server::new_async().await;
+
+    // The mock only matches if builder_code is present in the query string,
+    // so a hit proves the required parameter was sent.
+    let mock = server
+        .mock("GET", "/builder/trades")
+        .match_query(Matcher::UrlEncoded(
+            "builder_code".into(),
+            BUILDER_CODE.into(),
+        ))
+        .with_status(200)
+        .with_header("content-type", "application/json")
+        .with_body(r#"{"data": [], "next_cursor": null}"#)
+        .create_async()
+        .await;
+
+    let clob = test_authed_clob(&server);
+    let resp = clob
+        .account_api()
+        .unwrap()
+        .builder_trades(BUILDER_CODE)
+        .send()
+        .await
+        .unwrap();
+
+    assert!(resp.data.is_empty());
+    mock.assert_async().await;
+}
+
+#[tokio::test]
+async fn builder_trades_sends_optional_filters() {
+    const BUILDER_CODE: &str = "0x0000000000000000000000000000000000000000000000000000000000000001";
+    let mut server = Server::new_async().await;
+
+    let mock = server
+        .mock("GET", "/builder/trades")
+        .match_query(Matcher::AllOf(vec![
+            Matcher::UrlEncoded("builder_code".into(), BUILDER_CODE.into()),
+            Matcher::UrlEncoded("id".into(), "trade-9".into()),
+            Matcher::UrlEncoded("asset_id".into(), "0xtoken".into()),
+            Matcher::UrlEncoded("before".into(), "1700000000".into()),
+            Matcher::UrlEncoded("next_cursor".into(), "MA==".into()),
+        ]))
+        .with_status(200)
+        .with_header("content-type", "application/json")
+        .with_body(r#"{"data": [], "next_cursor": null}"#)
+        .create_async()
+        .await;
+
+    let clob = test_authed_clob(&server);
+    let resp = clob
+        .account_api()
+        .unwrap()
+        .builder_trades(BUILDER_CODE)
+        .id("trade-9")
+        .asset_id("0xtoken")
+        .before("1700000000")
+        .next_cursor("MA==")
+        .send()
+        .await
+        .unwrap();
+
+    assert!(resp.data.is_empty());
     mock.assert_async().await;
 }
 
@@ -744,6 +814,7 @@ async fn builder_trade_err_msg_rename() {
     let mock = server
         .mock("GET", "/builder/trades")
         .match_header("POLY_API_KEY", "test-key")
+        .match_query(Matcher::Any)
         .with_status(200)
         .with_header("content-type", "application/json")
         .with_body(
@@ -782,7 +853,7 @@ async fn builder_trade_err_msg_rename() {
     let resp = clob
         .account_api()
         .unwrap()
-        .builder_trades()
+        .builder_trades("0x0000000000000000000000000000000000000000000000000000000000000001")
         .send()
         .await
         .unwrap();

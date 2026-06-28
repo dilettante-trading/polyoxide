@@ -140,7 +140,11 @@ impl AccountApi {
     }
 
     /// Get builder trades with optional filtering
-    pub fn builder_trades(&self) -> ListBuilderTrades {
+    /// List trades attributed to a builder code.
+    ///
+    /// `builder_code` is required by `GET /builder/trades`; the API rejects the
+    /// request with "builder code is required" when it is omitted.
+    pub fn builder_trades(&self, builder_code: impl Into<String>) -> ListBuilderTrades {
         let request = Request::get(
             self.http_client.clone(),
             "/builder/trades",
@@ -150,7 +154,8 @@ impl AccountApi {
                 signer: self.signer.clone(),
             },
             self.chain_id,
-        );
+        )
+        .query("builder_code", builder_code.into());
         ListBuilderTrades { request }
     }
 
@@ -240,6 +245,30 @@ impl ListBuilderTrades {
     /// Filter by market (condition ID)
     pub fn market(mut self, condition_id: impl Into<String>) -> Self {
         self.request = self.request.query("market", condition_id.into());
+        self
+    }
+
+    /// Filter by a specific trade ID
+    pub fn id(mut self, id: impl Into<String>) -> Self {
+        self.request = self.request.query("id", id.into());
+        self
+    }
+
+    /// Filter by asset (token ID)
+    pub fn asset_id(mut self, token_id: impl Into<String>) -> Self {
+        self.request = self.request.query("asset_id", token_id.into());
+        self
+    }
+
+    /// Filter trades before this Unix timestamp
+    pub fn before(mut self, timestamp: impl Into<String>) -> Self {
+        self.request = self.request.query("before", timestamp.into());
+        self
+    }
+
+    /// Continue from a pagination cursor
+    pub fn next_cursor(mut self, cursor: impl Into<String>) -> Self {
+        self.request = self.request.query("next_cursor", cursor.into());
         self
     }
 
