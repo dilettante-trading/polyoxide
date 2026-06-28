@@ -76,10 +76,9 @@ polyoxide gamma events list
 polyoxide gamma events list --featured --limit 10
 polyoxide gamma events list --status closed --volume-min 1000
 
-# Get event by ID, slug, or find related events
+# Get event by ID or slug
 polyoxide gamma events get <EVENT_ID>
 polyoxide gamma events get-by-slug <SLUG>
-polyoxide gamma events related <SLUG>
 ```
 
 #### `gamma tags`

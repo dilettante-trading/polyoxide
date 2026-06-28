@@ -39,7 +39,9 @@ async fn main() -> Result<(), polyoxide_gamma::GammaError> {
         .await?;
 
     for m in &markets {
-        println!("{}: vol={}, liq={}", m.question, m.volume, m.liquidity);
+        let vol = m.volume.as_deref().unwrap_or("-");
+        let liq = m.liquidity.as_deref().unwrap_or("-");
+        println!("{}: vol={vol}, liq={liq}", m.question);
     }
 
     Ok(())

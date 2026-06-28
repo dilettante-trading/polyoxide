@@ -62,4 +62,4 @@ Used for: order attribution to builder accounts.
 - `DELETE /auth/api-key` — Delete current API key (L2 auth)
 - `POST /auth/builder-api-key` — Create builder key (L2 auth)
 - `GET /auth/builder-api-key` — List builder keys (L2 auth)
-- `DELETE /auth/builder-api-key` — Revoke builder key (Builder auth)
+- `DELETE /auth/builder-api-key` — Revoke builder key (L2 auth)

@@ -112,7 +112,7 @@ let events = gamma.events().list().limit(5).send().await?;
 use polyoxide::polyoxide_data::DataApi;
 
 let data = DataApi::builder().build()?;
-let leaders = data.leaderboard().list().send().await?;
+let leaders = data.leaderboard().get().send().await?;
 ```
 
 ```rust

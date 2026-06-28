@@ -137,7 +137,7 @@ Base URL: `https://clob.polymarket.com`
 
 **Auth:** L2
 
-**Request:** Array of order ID strings (max 3,000)
+**Request:** Array of order ID strings (max 1,000)
 
 **Response:** `CancelOrdersResponse`
 

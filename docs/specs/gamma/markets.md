@@ -164,7 +164,7 @@ Cursor-based pagination for efficient navigation of large result sets. Does not 
 
 | Name | In | Type | Required | Description |
 |------|-----|------|----------|-------------|
-| limit | query | integer | no | Max results, 1–1000 (default 20) |
+| limit | query | integer | no | Max results, 1–100 (default 20) |
 | order | query | string | no | Order field(s), comma-separated |
 | ascending | query | boolean | no | Sort direction (default true) |
 | after_cursor | query | string | no | Opaque cursor token from previous response |

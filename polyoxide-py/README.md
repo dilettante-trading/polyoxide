@@ -71,7 +71,7 @@ async def main():
     # Leaderboard
     leaders = await data.leaderboard().get(limit=10, time_period="WEEK")
     for t in leaders:
-        print(t.username, t.pnl)
+        print(t.user_name, t.pnl)
 
     # User positions
     positions = await data.user("0xADDRESS").list_positions(limit=5)

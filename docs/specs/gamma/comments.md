@@ -26,27 +26,30 @@ List comments with optional filtering and pagination.
 ```json
 [
   {
-    "id": "c1",
+    "id": "1234",
     "body": "I think this market will resolve yes.",
+    "parentEntityType": "Event",
+    "parentEntityID": 12345,
+    "parentCommentID": null,
+    "userAddress": "0xabc0000000000000000000000000000000000123",
+    "replyAddress": null,
     "createdAt": "2024-06-01T10:00:00Z",
     "updatedAt": "2024-06-01T10:00:00Z",
-    "deletedAt": null,
-    "user": {
-      "id": "u1",
+    "profile": {
       "name": "trader1",
-      "avatar": null
+      "pseudonym": "Anonymous-Trader",
+      "displayUsernamePublic": true,
+      "bio": null,
+      "isMod": false,
+      "isCreator": false,
+      "proxyWallet": "0xabc0000000000000000000000000000000000123",
+      "positions": [
+        {"tokenId": "713200000000000000000000", "positionSize": "100.5"}
+      ]
     },
-    "marketId": "mkt-1",
-    "eventId": null,
-    "seriesId": null,
-    "parentId": null,
     "reactions": [],
-    "positions": [
-      {"tokenId": "t1", "outcome": "Yes", "shares": "100.5"}
-    ],
-    "likeCount": 5,
-    "dislikeCount": 1,
-    "replyCount": 3
+    "reactionCount": 5,
+    "reportCount": 0
   }
 ]
 ```
