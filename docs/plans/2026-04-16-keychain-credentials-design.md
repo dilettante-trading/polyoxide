@@ -37,6 +37,8 @@ pub enum KeychainError {
 
 `get()` maps `keyring::Error::NoEntry` to the typed `NotFound` variant; all other keyring errors pass through as `Backend`.
 
+> **Note (shipped):** A third `delete(service, key) -> Result<(), KeychainError>` function was added during implementation alongside `get`/`set`, for credential removal. This is a point-in-time design doc; the module ships three functions, not two.
+
 ### Service and key naming
 
 Each crate uses its own service name to namespace credentials:
@@ -78,6 +80,8 @@ Standalone save functions:
 - `polyoxide credentials store relay --private-key ... --api-key ... --api-secret ... [--passphrase ...]` — writes to `polyoxide-relay`.
 - `polyoxide credentials store relay --private-key ... --relayer-api-key ... --relayer-api-key-address ...` — alternative relay auth.
 - `polyoxide credentials show clob` / `polyoxide credentials show relay` — lists which keys are present/absent without printing values.
+
+> **Note (shipped):** A third `delete` sub-subcommand (`polyoxide credentials delete clob` / `polyoxide credentials delete relay`) was added during implementation alongside `store`/`show`, to remove a service's stored credentials. This is a point-in-time design doc; the subcommand ships with three actions, not two.
 
 **`ws user` enhancement** — new `--credential-source` flag:
 

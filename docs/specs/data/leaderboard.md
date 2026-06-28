@@ -12,7 +12,7 @@ Returns the trader leaderboard ranked by PnL or volume.
 
 | Name | In | Type | Required | Default | Description |
 |------|-----|------|----------|---------|-------------|
-| category | query | string | no | OVERALL | OVERALL, POLITICS, SPORTS, CRYPTO, CULTURE, MENTIONS, WEATHER, ECONOMICS, TECH, FINANCE |
+| category | query | string | no | OVERALL | OVERALL, POLITICS, SPORTS, ESPORTS, CRYPTO, CULTURE, MENTIONS, WEATHER, ECONOMICS, TECH, FINANCE |
 | timePeriod | query | string | no | DAY | DAY, WEEK, MONTH, ALL |
 | orderBy | query | string | no | PNL | PNL or VOL |
 | limit | query | integer (1-50) | no | 25 | Results per page |
@@ -40,7 +40,6 @@ Returns the trader leaderboard ranked by PnL or volume.
 | Code | Description |
 |------|-------------|
 | 400 | Invalid parameters (out-of-range values, invalid category/timePeriod) |
-| 401 | Unauthorized |
 | 500 | Internal server error |
 
 **ErrorResponse:**

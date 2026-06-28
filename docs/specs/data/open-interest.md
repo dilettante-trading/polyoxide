@@ -21,7 +21,6 @@ Returns open interest data for markets.
 | Code | Description |
 |------|-------------|
 | 400 | Invalid parameters (out-of-range values) |
-| 401 | Unauthorized |
 | 500 | Internal server error |
 
 **ErrorResponse:**

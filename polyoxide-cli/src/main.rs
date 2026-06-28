@@ -13,7 +13,7 @@ struct Cli {
 
 #[derive(Subcommand)]
 enum Commands {
-    /// Query Data API (user positions)
+    /// Query Data API (positions, trades, builders, holders, activity, and more)
     Data {
         #[command(subcommand)]
         command: commands::DataCommand,

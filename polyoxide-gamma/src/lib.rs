@@ -33,9 +33,9 @@
 //!         println!("Market: {}", market.question);
 //!     }
 //!
-//!     // Get a specific market
+//!     // Get a specific market by its numeric market id
 //!     let market = gamma.markets()
-//!         .get("condition-id")
+//!         .get("123456")
 //!         .send()
 //!         .await?;
 //!

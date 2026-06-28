@@ -36,7 +36,7 @@ pub enum DataCommand {
     },
     /// Get traded markets by user
     Traded(TradedCommand),
-    /// Query user-specific data (positions, traded count)
+    /// Query user positions (open, closed, value) and activity
     Positions(PositionsCommand),
     /// Get open interest for markets
     OpenInterest(OpenInterestCommand),

@@ -50,14 +50,12 @@ List events with optional filtering and pagination.
     "description": "Markets related to the 2025 election.",
     "startDate": "2024-01-01",
     "endDate": "2025-01-20",
-    "startDateIso": "2024-01-01T00:00:00Z",
-    "endDateIso": "2025-01-20T00:00:00Z",
     "active": true,
     "closed": false,
     "liquidity": 500000.0,
     "volume24hr": 25000.0,
     "negRisk": true,
-    "negRiskMarketId": "0xabc...",
+    "negRiskMarketID": "0xabc...",
     "markets": [],
     "tags": [],
     "series": [],
@@ -76,7 +74,7 @@ Get a single event by its ID.
 
 | Name | In | Type | Required | Description |
 |------|-----|------|----------|-------------|
-| id | path | string | yes | Event ID |
+| id | path | integer | yes | Event ID |
 | include_chat | query | boolean | no | Include chat data in response |
 | include_template | query | boolean | no | Include template data in response |
 
@@ -108,7 +106,7 @@ Get tags associated with an event.
 
 | Name | In | Type | Required | Description |
 |------|-----|------|----------|-------------|
-| id | path | string | yes | Event ID |
+| id | path | integer | yes | Event ID |
 
 **Response:** Array of Tag objects
 

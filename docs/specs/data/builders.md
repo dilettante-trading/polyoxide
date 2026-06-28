@@ -64,7 +64,6 @@ Returns aggregate builder volume data.
 | Code | Description |
 |------|-------------|
 | 400 | Invalid parameters (out-of-range values, invalid timePeriod) |
-| 401 | Unauthorized |
 | 500 | Internal server error |
 
 **ErrorResponse:**

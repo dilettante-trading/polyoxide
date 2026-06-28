@@ -18,7 +18,8 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     let index_set = U256::from(1u64 << outcome_index);
 
     // Load credentials from env
-    let pk = env::var("POLYMARKET_PRIVATE_KEY").expect("PK must be set (e.g. PK=0x...)");
+    let pk = env::var("POLYMARKET_PRIVATE_KEY")
+        .expect("POLYMARKET_PRIVATE_KEY must be set (e.g. POLYMARKET_PRIVATE_KEY=0x...)");
     let builder_key = env::var("BUILDER_API_KEY").expect("BUILDER_API_KEY must be set");
     let builder_secret = env::var("BUILDER_SECRET").expect("BUILDER_SECRET must be set");
     let builder_pass = env::var("BUILDER_PASS_PHRASE").ok();

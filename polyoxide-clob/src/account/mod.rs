@@ -23,9 +23,13 @@ use crate::{
 
 /// Environment variable names for account configuration
 pub mod env {
+    /// Environment variable holding the hex-encoded private key.
     pub const PRIVATE_KEY: &str = "POLYMARKET_PRIVATE_KEY";
+    /// Environment variable holding the L2 API key.
     pub const API_KEY: &str = "POLYMARKET_API_KEY";
+    /// Environment variable holding the L2 API secret (base64 encoded).
     pub const API_SECRET: &str = "POLYMARKET_API_SECRET";
+    /// Environment variable holding the L2 API passphrase.
     pub const API_PASSPHRASE: &str = "POLYMARKET_API_PASSPHRASE";
 }
 
@@ -222,6 +226,8 @@ impl Account {
     /// - `api_secret`: API secret (base64 encoded)
     /// - `api_passphrase`: API passphrase
     ///
+    /// Requires the `keychain` crate feature.
+    ///
     /// # Example
     ///
     /// ```no_run
@@ -265,6 +271,8 @@ impl Account {
     /// keychain service. Does **not** store the private key (it is discarded after
     /// parsing during construction). Use [`save_private_key_to_keychain`] to store
     /// the private key before constructing an `Account`.
+    ///
+    /// Requires the `keychain` crate feature.
     #[cfg(feature = "keychain")]
     pub fn save_to_keychain(&self) -> Result<(), ClobError> {
         self.save_to_keychain_in_service(KEYCHAIN_SERVICE)
@@ -287,6 +295,8 @@ impl Account {
     }
 
     /// Delete L2 API credentials and private key from the OS keychain.
+    ///
+    /// Requires the `keychain` crate feature.
     #[cfg(feature = "keychain")]
     pub fn delete_from_keychain() -> Result<(), ClobError> {
         Self::delete_from_keychain_in_service(KEYCHAIN_SERVICE)
@@ -393,6 +403,8 @@ impl Account {
 ///
 /// Call this before [`Account::new`] if you want the private key persisted in the
 /// keychain, since `Account` discards the raw key string after parsing.
+///
+/// Requires the `keychain` crate feature.
 #[cfg(feature = "keychain")]
 pub fn save_private_key_to_keychain(private_key: &str) -> Result<(), ClobError> {
     save_private_key_to_keychain_in_service(KEYCHAIN_SERVICE, private_key)

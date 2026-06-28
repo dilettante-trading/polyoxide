@@ -22,11 +22,19 @@ impl WalletType {
 }
 
 sol! {
+    /// A single transaction to execute through the relayer's Safe.
+    ///
+    /// This is the primary input to the relay client's `execute*` paths: one or
+    /// more of these are batched, signed, and submitted to `POST /submit`.
     #[derive(Debug, PartialEq, Eq)]
     struct SafeTransaction {
+        /// Target contract or recipient address.
         address to;
+        /// Call type: `0` = CALL, `1` = DELEGATECALL.
         uint8 operation;
+        /// ABI-encoded calldata for the call (empty for a plain value transfer).
         bytes data;
+        /// Native token amount (in wei) to send with the call.
         uint256 value;
     }
 
@@ -38,17 +46,31 @@ sol! {
         SafeTransaction[] transactions;
     }
 
+    /// The Gnosis Safe `execTransaction` payload that is EIP-712 signed.
+    ///
+    /// Mirrors the canonical Safe transaction struct; the relay client builds and
+    /// signs this from a [`SafeTransaction`] before submitting it.
     #[derive(Debug, PartialEq, Eq)]
     struct SafeTx {
+        /// Destination address of the Safe transaction.
         address to;
+        /// Native token amount (in wei) transferred with the call.
         uint256 value;
+        /// ABI-encoded calldata for the call.
         bytes data;
+        /// Call type: `0` = CALL, `1` = DELEGATECALL.
         uint8 operation;
+        /// Gas that should be used for the Safe transaction itself.
         uint256 safeTxGas;
+        /// Gas costs independent of execution (base fee, signature checks, refund).
         uint256 baseGas;
+        /// Gas price used for the refund calculation (`0` to disable refunds).
         uint256 gasPrice;
+        /// Token used for the gas payment (`0x0` = native token).
         address gasToken;
+        /// Address that receives the gas payment refund (`0x0` = `tx.origin`).
         address refundReceiver;
+        /// Safe nonce for replay protection.
         uint256 nonce;
     }
 }

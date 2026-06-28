@@ -1989,7 +1989,7 @@ git commit -m "docs: reference docs/specs in CLAUDE.md"
 find docs/specs -name '*.md' | sort
 ```
 
-Expected: 33 files (1 top INDEX + 10 CLOB + 10 Gamma + 9 Data + 5 Relay - but some tasks batch, so verify count)
+Expected: a top-level INDEX plus per-API spec files for CLOB, Gamma, Data, and Relay. Tasks batch multiple files per commit, so verify the actual count rather than relying on a fixed total.
 
 **Step 2: Verify all links resolve**
 

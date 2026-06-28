@@ -216,7 +216,7 @@ impl ListClosedPositions {
         self
     }
 
-    /// Set sort field (default: REALIZEDPNL)
+    /// Set sort field (default: REALIZED_PNL)
     pub fn sort_by(mut self, sort_by: ClosedPositionSortBy) -> Self {
         self.request = self.request.query("sortBy", sort_by);
         self

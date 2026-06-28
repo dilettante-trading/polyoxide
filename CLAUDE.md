@@ -54,9 +54,11 @@ polyoxide-core          (shared: auth, HTTP client, errors, macros)
 ├── polyoxide-data      (read-only user positions/trades API)
 ├── polyoxide-clob      (order book trading, depends on core; gamma optional, default-on)
 │   └── polyoxide        (unified client re-exporting clob/gamma/data, feature-gated)
-│       └── polyoxide-cli (CLI tool using clap)
+├── polyoxide-cli       (CLI tool using clap)
 └── polyoxide-py        (Python bindings via PyO3 + maturin, publish = false)
 ```
+
+Note: `polyoxide-cli` does **not** depend on the unified `polyoxide` crate. It depends directly on the component crates — `polyoxide-clob` (with `ws`), `polyoxide-data`, and `polyoxide-gamma` — plus `polyoxide-core` and `polyoxide-relay` only under the optional `keychain` feature.
 
 **polyoxide** (the unified crate) uses feature flags: `clob`, `gamma`, `data`, `ws` (WebSocket), `full` (all). Default = clob + gamma + data.
 
@@ -67,7 +69,7 @@ polyoxide-core          (shared: auth, HTTP client, errors, macros)
 **API namespaces** — Clients organize endpoints into namespaces:
 - CLOB: `clob.markets()`, `clob.orders()`, `clob.account_api()`, `clob.health()`, `clob.auth()`, `clob.rewards()`, `clob.notifications()`
 - Gamma: `gamma.markets()`, `gamma.events()`, `gamma.series()`, `gamma.tags()`, `gamma.comments()`, `gamma.sports()`, `gamma.search()`, `gamma.user()`, `gamma.health()`
-- Data: `data.user(addr)`, `data.trades()`, `data.holders()`, `data.leaderboard()`, `data.builders()`, `data.live_volume()`, `data.open_interest()`, `data.health()`
+- Data: `data.user(addr)`, `data.trades()`, `data.holders()`, `data.leaderboard()`, `data.builders()`, `data.live_volume()`, `data.open_interest()`, `data.market_positions()`, `data.accounting()`, `data.health()`
 
 Example: `gamma.markets().list().open(true).send().await?`, `data.leaderboard().get().send().await?`.
 

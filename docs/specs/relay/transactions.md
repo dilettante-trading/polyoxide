@@ -20,7 +20,7 @@ Base URL: `https://relayer-v2.polymarket.com`
   "signature": "string",
   "signatureParams": {
     "gasPrice": "string",
-    "operation": 0,
+    "operation": "string",
     "safeTxnGas": "string",
     "baseGas": "string",
     "gasToken": "string",
@@ -140,7 +140,7 @@ Returns whether the wallet at the given address is deployed onchain.
 
 `GET /relayer/api/keys`
 
-**Auth:** Relayer API Key
+**Auth:** Gamma auth or Relayer API Key
 
 **Response:** Array of `RelayerApiKey`
 

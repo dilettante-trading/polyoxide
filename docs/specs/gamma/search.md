@@ -21,6 +21,7 @@ Search across markets, events, and user profiles.
 | events_tag | query | string[] | no | Filter by event tag slugs (repeated param) |
 | keep_closed_markets | query | integer | no | Include closed markets in results (integer flag) |
 | sort | query | string | no | Sort order (e.g. "volume") |
+| ascending | query | boolean | no | Sort direction |
 | search_tags | query | boolean | no | Include tag search results |
 | recurrence | query | string | no | Filter by recurrence pattern |
 | exclude_tag_id | query | integer[] | no | Exclude events with these tag IDs (repeated param) |

@@ -329,7 +329,7 @@ pub struct Activity {
     pub price: Option<f64>,
     /// Asset identifier (token ID)
     pub asset: Option<String>,
-    // ! Deserialize into String because the API can return an empty string
+    // Deserialize into String because the API can return an empty string
     /// Trade side (BUY or SELL)
     pub side: Option<String>,
     /// Outcome index (0 or 1 for binary markets)

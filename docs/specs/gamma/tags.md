@@ -49,7 +49,7 @@ Get a single tag by its ID.
 
 | Name | In | Type | Required | Description |
 |------|-----|------|----------|-------------|
-| id | path | string | yes | Tag ID |
+| id | path | integer | yes | Tag ID |
 
 **Response:** Tag object
 
@@ -77,7 +77,7 @@ Get tag relationships for the specified tag by ID.
 
 | Name | In | Type | Required | Description |
 |------|-----|------|----------|-------------|
-| id | path | string | yes | Tag ID |
+| id | path | integer | yes | Tag ID |
 | omit_empty | query | boolean | no | Omit tags with no events |
 | status | query | string | no | Filter by tag status (`active`, `closed`, `all`) |
 
@@ -109,7 +109,7 @@ Get the tags that are related to the specified tag by ID. Returns the related Ta
 
 | Name | In | Type | Required | Description |
 |------|-----|------|----------|-------------|
-| id | path | string | yes | Tag ID |
+| id | path | integer | yes | Tag ID |
 | omit_empty | query | boolean | no | Omit tags with no events |
 | status | query | string | no | Filter by tag status (`active`, `closed`, `all`) |
 

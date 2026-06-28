@@ -8,10 +8,10 @@ use crate::ApiError;
 
 /// Query parameter builder
 pub trait QueryBuilder: Sized {
-    /// Add a query parameter
+    /// Append a query parameter in place. Implementor hook for the builder methods below.
     fn add_query(&mut self, key: String, value: String);
 
-    /// Add a query parameter
+    /// Append a query parameter and return `self` for chaining.
     fn query(mut self, key: impl Into<String>, value: impl ToString) -> Self {
         self.add_query(key.into(), value.to_string());
         self
@@ -167,6 +167,7 @@ pub struct TypedRequest<T> {
 }
 
 impl<T> TypedRequest<T> {
+    /// Create a new typed request marker.
     pub fn new() -> Self {
         Self {
             _marker: PhantomData,

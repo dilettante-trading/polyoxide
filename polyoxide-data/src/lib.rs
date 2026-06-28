@@ -4,7 +4,11 @@
 //!
 //! ## Features
 //!
-//! - User position data retrieval with filtering and pagination
+//! - User data: open/closed positions, position value, trades, activity, and markets-traded counts
+//! - Market positions (`/v1/market-positions`) and token holders
+//! - Trade history across users
+//! - Leaderboards, builder stats, open interest, and live volume
+//! - Accounting snapshots (returned as ZIP bytes)
 //! - Type-safe API with idiomatic Rust patterns
 //! - Request builder pattern for flexible, composable queries
 //!

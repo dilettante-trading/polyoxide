@@ -14,7 +14,7 @@ Get a user's public profile by wallet address.
 |------|-----|------|----------|-------------|
 | address | query | string | yes | User wallet address (signer EOA) |
 
-**Response:** UserResponse object
+**Response:** PublicProfileResponse object
 
 ```json
 {

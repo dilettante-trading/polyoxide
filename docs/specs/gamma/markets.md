@@ -40,7 +40,6 @@ List markets with optional filtering and pagination.
 | include_tag | query | boolean | no | Include tag data in results |
 | closed | query | boolean | no | Filter by closed status |
 | archived | query | boolean | no | Filter by archived status |
-| active | query | boolean | no | Filter by active status |
 
 **Response:** Array of Market objects
 
@@ -85,7 +84,7 @@ Get a single market by its numeric ID.
 
 | Name | In | Type | Required | Description |
 |------|-----|------|----------|-------------|
-| id | path | string | yes | Market ID |
+| id | path | integer | yes | Market ID |
 | include_tag | query | boolean | no | Include tag data in response |
 
 **Response:** Market object (same schema as list item above)
@@ -115,7 +114,7 @@ Get tags associated with a market.
 
 | Name | In | Type | Required | Description |
 |------|-----|------|----------|-------------|
-| id | path | string | yes | Market ID |
+| id | path | integer | yes | Market ID |
 
 **Response:** Array of Tag objects
 

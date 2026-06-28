@@ -265,8 +265,9 @@ impl WebSocketBuilder {
 
     /// Set the ping interval for keep-alive messages.
     ///
-    /// If set, the returned `WebSocketWithPing` will automatically send
-    /// ping messages at this interval.
+    /// Connections created from this builder always send keep-alive pings while
+    /// driven by [`WebSocketWithPing::run`]. This method overrides the default
+    /// 10-second interval.
     pub fn ping_interval(mut self, interval: Duration) -> Self {
         self.ping_interval = Some(interval);
         self
@@ -337,7 +338,7 @@ impl WebSocketWithPing {
     /// # Example
     ///
     /// ```no_run
-    /// use polyoxide_clob::ws::{WebSocketBuilder, Channel};
+    /// use polyoxide_clob::ws::WebSocketBuilder;
     /// use std::time::Duration;
     ///
     /// #[tokio::main]

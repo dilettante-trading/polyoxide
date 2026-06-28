@@ -5,7 +5,7 @@ use crate::{
     types::{SportMetadata, Team},
 };
 
-/// Sport namespace for sports-related operations
+/// Sports namespace for sports-related operations
 #[derive(Clone)]
 pub struct Sports {
     pub(crate) http_client: HttpClient,

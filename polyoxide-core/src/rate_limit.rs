@@ -231,8 +231,11 @@ impl RateLimiter {
 /// Configuration for retry-on-429 with exponential backoff.
 #[derive(Debug, Clone)]
 pub struct RetryConfig {
+    /// Maximum number of retry attempts after the initial request (default: 3).
     pub max_retries: u32,
+    /// Base backoff in milliseconds for the first retry, doubled each attempt (default: 500).
     pub initial_backoff_ms: u64,
+    /// Upper bound in milliseconds for the backoff delay (default: 10_000).
     pub max_backoff_ms: u64,
 }
 

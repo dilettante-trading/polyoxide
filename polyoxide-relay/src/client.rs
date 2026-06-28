@@ -754,7 +754,7 @@ impl RelayClient {
     ///
     /// ```no_run
     /// use polyoxide_relay::{RelayClient, BuilderAccount, BuilderConfig, WalletType};
-    /// use alloy::primitives::{U256, hex};
+    /// use alloy::primitives::U256;
     ///
     /// # async fn example() -> Result<(), Box<dyn std::error::Error>> {
     /// let builder_config = BuilderConfig::new(

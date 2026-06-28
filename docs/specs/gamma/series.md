@@ -14,6 +14,7 @@ List series (tournament/season groupings) with optional filtering and pagination
 |------|-----|------|----------|-------------|
 | limit | query | integer | no | Maximum number of results |
 | offset | query | integer | no | Pagination offset |
+| order | query | string | no | Order field(s), comma-separated |
 | ascending | query | boolean | no | Sort direction |
 | closed | query | boolean | no | Filter by closed status |
 | slug | query | string[] | no | Filter by slugs (repeated param) |
@@ -37,7 +38,7 @@ List series (tournament/season groupings) with optional filtering and pagination
     "active": true,
     "closed": false,
     "archived": false,
-    "tags": ["sports", "nfl"],
+    "tags": [{"id": "1", "slug": "sports", "label": "Sports"}],
     "volume": 500000.0,
     "liquidity": 100000.0,
     "events": [],
@@ -56,7 +57,7 @@ Get a single series by its ID.
 
 | Name | In | Type | Required | Description |
 |------|-----|------|----------|-------------|
-| id | path | string | yes | Series ID |
+| id | path | integer | yes | Series ID |
 | include_chat | query | boolean | no | Include chat data in response |
 
 **Response:** SeriesData object (same schema as list item above, with nested `events` array populated)

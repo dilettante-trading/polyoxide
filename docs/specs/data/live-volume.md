@@ -21,7 +21,6 @@ Returns live trading volume for an event.
 | Code | Description |
 |------|-------------|
 | 400 | Invalid parameters (missing id, non-integer, value < 1) |
-| 401 | Unauthorized |
 | 500 | Internal server error |
 
 **ErrorResponse:**

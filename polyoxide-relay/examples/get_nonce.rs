@@ -6,7 +6,7 @@ use std::env;
 async fn main() -> Result<(), Box<dyn std::error::Error>> {
     dotenv().ok();
 
-    let pk = env::var("PK").expect("PK must be set");
+    let pk = env::var("POLYMARKET_PRIVATE_KEY").expect("POLYMARKET_PRIVATE_KEY must be set");
 
     // Optional builder creds
     let builder_key = env::var("BUILDER_API_KEY").ok();

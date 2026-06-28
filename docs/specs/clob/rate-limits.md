@@ -36,12 +36,14 @@ Enforcement: sliding time window. Requests are throttled (delayed/queued) rather
 
 ## Ledger
 
+The first row is a shared cap across the listed endpoints as a group; individual endpoints may also have a tighter per-endpoint cap (e.g. `/notifications`).
+
 | Endpoint | Limit | Window |
 |----------|-------|--------|
-| `/trades`, `/orders`, `/notifications`, `/order` | 900 | 10s |
+| `/trades`, `/orders`, `/notifications`, `/order` (shared group cap) | 900 | 10s |
 | `/data/orders` | 500 | 10s |
 | `/data/trades` | 500 | 10s |
-| `/notifications` | 125 | 10s |
+| `/notifications` (per-endpoint cap) | 125 | 10s |
 
 ## Account
 

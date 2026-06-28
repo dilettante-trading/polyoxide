@@ -194,6 +194,7 @@ pub struct MarketToken {
     pub winner: Option<bool>,
 }
 
+/// Event data from the Gamma API (a group of related markets).
 #[cfg_attr(feature = "specta", derive(specta::Type))]
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]

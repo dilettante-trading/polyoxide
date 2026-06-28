@@ -43,6 +43,7 @@ impl AccountApi {
         .query("signature_type", self.signature_type as u8)
     }
 
+    /// Get the caller's USDC (collateral) balance and allowance.
     pub fn usdc_balance(&self) -> Request<BalanceAllowanceResponse> {
         Request::get(
             self.http_client.clone(),

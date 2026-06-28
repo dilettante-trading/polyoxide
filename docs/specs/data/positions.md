@@ -21,7 +21,7 @@ Returns open positions for a user.
 | limit | query | integer (0-500) | no | 100 | Results per page |
 | offset | query | integer (0-10000) | no | 0 | Pagination offset |
 | sortBy | query | string | no | TOKENS | CURRENT, INITIAL, TOKENS, CASHPNL, PERCENTPNL, TITLE, RESOLVING, PRICE, AVGPRICE |
-| sortDirection | query | string | no | — | ASC or DESC |
+| sortDirection | query | string | no | DESC | ASC or DESC |
 | title | query | string (max 100) | no | — | Filter by market title substring |
 
 **Response:** `Position[]`
@@ -66,7 +66,7 @@ Returns closed (resolved or sold) positions for a user.
 | limit | query | integer (0-50) | no | 10 | Results per page |
 | offset | query | integer (0-100000) | no | 0 | Pagination offset |
 | sortBy | query | string | no | REALIZEDPNL | REALIZEDPNL, TITLE, PRICE, AVGPRICE, TIMESTAMP |
-| sortDirection | query | string | no | — | ASC or DESC |
+| sortDirection | query | string | no | DESC | ASC or DESC |
 
 **Response:** `ClosedPosition[]`
 
@@ -141,8 +141,8 @@ Returns user activity (trades, splits, merges, redemptions, rewards, conversions
 | end | query | integer | no | — | End timestamp (Unix) |
 | limit | query | integer (0-500) | no | 100 | Results per page |
 | offset | query | integer (0-10000) | no | 0 | Pagination offset |
-| sortBy | query | string | no | — | TIMESTAMP, TOKENS, CASH |
-| sortDirection | query | string | no | — | ASC or DESC |
+| sortBy | query | string | no | TIMESTAMP | TIMESTAMP, TOKENS, CASH |
+| sortDirection | query | string | no | DESC | ASC or DESC |
 | side | query | string | no | — | BUY or SELL |
 
 **Response:** `Activity[]`

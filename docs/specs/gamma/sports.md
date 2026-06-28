@@ -17,14 +17,12 @@ No query parameters.
 ```json
 [
   {
-    "id": 1,
     "sport": "Basketball",
     "image": "https://example.com/nba.png",
     "resolution": "...",
     "ordering": "...",
     "tags": "...",
-    "series": "...",
-    "createdAt": "2024-01-01T00:00:00Z"
+    "series": "..."
   }
 ]
 ```

@@ -34,7 +34,7 @@
 
 - *(gamma)* Fix double-slash URL in health ping — `format!("{}/status", base_url)` produced `//status` because `Url::Display` normalizes to include a trailing `/`; switched to `base_url.join("status")?`
 
-### 🧪 Tests
+### 🧪 Testing
 
 - *(clob, data, gamma)* Add per-crate ping mock tests covering the 200 happy path, unexpected 3xx as error, and 5xx as error
 
@@ -150,16 +150,16 @@
 
 - *(relay)* Clear stale passphrase from keychain when saving config with `passphrase = None`
 
-### ♻️ Refactoring
+### 🚜 Refactor
 
 - Consolidate keychain service name strings into shared `KEYCHAIN_SERVICE` constants
 
-### ⚙️ Build
+### 🔧 Build
 
 - Add `keyring` dependency with `apple-native`, `windows-native`, `async-secret-service`, and `crypto-rust` backends
 - Add `keychain` feature flag to core, clob, relay, polyoxide, and cli crates
 
-### 🧪 Tests
+### 🧪 Testing
 
 - *(clob)* Add keychain roundtrip and delete integration tests
 - *(relay)* Add keychain roundtrip, no-config, and stale passphrase integration tests
@@ -173,16 +173,16 @@
 - *(relay)* Add `AuthConfig` enum and `RelayerApiKeyConfig` for dual auth support
 - *(relay)* Wire `AuthConfig` into request signing and add builder convenience methods
 
-### ♻️ Refactoring
+### 🚜 Refactor
 
 - *(relay)* Encapsulate `RelayerApiKeyConfig` and validate inputs
 - *(relay)* Remove deprecated `config()` and extract `parse_signer`
 
-### 🧪 Tests
+### 🧪 Testing
 
 - *(relay)* Add relayer API key integration tests
 
-### 📝 Documentation
+### 📚 Documentation
 
 - Rewrite all workspace READMEs with accurate code examples and full API coverage
 - *(relay)* Add README with both auth methods, builder pattern, and gasless redemption examples
@@ -213,11 +213,11 @@
 - *(clob)* Add missing `id` and `timestamp` fields to `Notification` struct
 - *(clob)* Add `next_cursor` pagination support to `ListClobTrades` request builder
 
-### 📝 Documentation
+### 📚 Documentation
 
 - Fix `transactionsHashes` field name in CLOB orders spec
 
-### 🔧 Other
+### 💼 Other
 
 - Add MIT/Apache-2.0 dual license and PyPI package metadata
 - Skip already-published crates during crates.io release
@@ -249,7 +249,7 @@
 - *(clob)* Make optional fields on `Market`, `SpreadResponse`, and `LastTradePriceResponse` to match upstream API (#1)
 - *(clob)* Serialize order salt as string to avoid serde_json rejection of u128 values exceeding u64::MAX
 
-### 🧪 Tests
+### 🧪 Testing
 
 - *(core)* Add concurrency limiter integration and default verification tests (#3)
 - *(py)* Add live API tests and expand unit tests (#2)
@@ -306,7 +306,7 @@
 - *(core)* Simplify rate limiter config with `endpoint_limit` helper
 - *(relay)* Extract retry helper, named constants, and module-level types
 
-### 🧪 Tests
+### 🧪 Testing
 
 - *(clob)* Add 73 new tests: WebSocket message types, utils, error, mock API (retry, errors, order creation), rejection and edge cases
 - *(gamma)* Add mock tests for open() inversion, volume serde renames, and events namespace
@@ -320,13 +320,13 @@
 - Add docstrings across workspace, complete relay crate coverage
 - Fix incorrect API examples and update project documentation
 
-### ⚙️ Build
+### 🔧 Build
 
 - Add mockito workspace dev-dependency for HTTP mock tests
 - Move futures-util from workspace deps to per-crate
 - Specify per-crate tokio features instead of workspace-wide
 
-### 💅 Style
+### 🎨 Styling
 
 - Apply rustfmt to gamma and data
 
@@ -347,13 +347,13 @@
 - *(core)* Add 10-second connect timeout to HTTP client
 - *(clob)* Enforce `wss://` scheme on WebSocket builder URLs to prevent plaintext connections
 
-### 🔒 Security
+### 🛡️ Security
 
 - *(clob)* Redact `private_key` in `AccountConfig` `Debug` impl to prevent secret leakage in logs
 - *(relay)* Redact signer key in `BuilderAccount` `Debug` impl, showing only address
 - Harden `.gitignore` to cover `.env.*`, `*.pem`, `*.key`, and `account.json`
 
-### 🧪 Tests
+### 🧪 Testing
 
 - *(core)* Add tests for prefix collisions, concurrency, and retry edge cases
 - *(core)* Add unit tests for `truncate_for_log` including multibyte boundary handling
@@ -368,7 +368,7 @@
 - Use cargo-nextest for parallel test execution
 - Merge lint/test jobs and remove redundant release build
 
-### 💅 Style
+### 🎨 Styling
 
 - Apply cargo fmt across workspace
 
@@ -428,7 +428,7 @@
 
 - *(core)* Make `Signer::new` infallible
 
-### 🧪 Tests
+### 🧪 Testing
 
 - *(core)* Add unit tests for Request query builder and typed request
 - *(clob)* Add unit tests for EIP-712 signing, WS types, and auth credentials
@@ -566,6 +566,7 @@
 ### ⚙️ Miscellaneous Tasks
 
 - Add changelog and publish it on Github Releases page
+
 ## [cli-v0.3.2] - 2025-12-04
 
 ### 🐛 Bug Fixes
@@ -582,11 +583,13 @@
 
 - Format
 - Remove unnecessary doc
+
 ## [cli-v0.3.1] - 2025-12-04
 
 ### 🚜 Refactor
 
 - *(cli)* Improve credential error messages for `ws user` command
+
 ## [cli-v0.3.0] - 2025-12-03
 
 ### 🚀 Features
@@ -605,6 +608,7 @@
 ### ⚙️ Miscellaneous Tasks
 
 - Remove clob examples
+
 ## [cli-v0.2.4] - 2025-12-01
 
 ### 🐛 Bug Fixes
@@ -624,6 +628,7 @@
 
 - Remove gamma examples
 - Update Event type in Gamma
+
 ## [cli-v0.2.1] - 2025-12-01
 
 ### 🚀 Features
@@ -633,6 +638,7 @@
 ### 📚 Documentation
 
 - Fix typo
+
 ## [cli-v0.2.0] - 2025-11-30
 
 ### 🚀 Features
@@ -643,6 +649,7 @@
 
 - Remove deprecated code
 - Reuse `SortOrder` enum
+
 ## [cli-v0.1.5] - 2025-11-28
 
 ### 🐛 Bug Fixes
@@ -652,6 +659,7 @@
 ### 🚜 Refactor
 
 - *(cli)* Chain builder methods for request construction
+
 ## [cli-v0.1.4] - 2025-11-28
 
 ### 🚀 Features
@@ -668,6 +676,7 @@
 
 - *(cli)* Set default values to flags
 - Enable retrieving a market by its slug
+
 ## [cli-v0.1.3] - 2025-11-28
 
 ### 🚀 Features
@@ -681,6 +690,7 @@
 ### ⚙️ Miscellaneous Tasks
 
 - Run `cargo fmt`
+
 ## [cli-v0.1.2] - 2025-11-27
 
 ### 🚀 Features
@@ -690,11 +700,13 @@
 ### ⚙️ Miscellaneous Tasks
 
 - Add more unit tests for utils
+
 ## [cli-v0.1.1] - 2025-11-27
 
 ### 🚀 Features
 
 - Enable generating shell completions
+
 ## [cli-v0.1.0] - 2025-11-27
 
 ### 🚀 Features

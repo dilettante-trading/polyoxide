@@ -84,7 +84,7 @@
 //! keep-alive pings:
 //!
 //! ```no_run
-//! use polyoxide_clob::ws::{WebSocketBuilder, Channel};
+//! use polyoxide_clob::ws::WebSocketBuilder;
 //! use std::time::Duration;
 //!
 //! #[tokio::main]

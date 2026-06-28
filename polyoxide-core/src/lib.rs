@@ -2,10 +2,13 @@
 //!
 //! Core utilities and shared types for Polyoxide Polymarket API clients.
 //!
-//! This crate provides common functionality used across `polyoxide-clob`, `polyoxide-gamma`, and `polyoxide-data`:
+//! This crate provides common functionality used across `polyoxide-clob`, `polyoxide-gamma`, `polyoxide-data`, and `polyoxide-relay`:
 //! - Shared error types and error handling
 //! - HTTP client configuration
 //! - Request builder utilities
+//! - HMAC API-credential signing ([`Signer`])
+//! - Per-endpoint rate limiting with retry/backoff ([`RateLimiter`])
+//! - Optional OS keychain credential storage (behind the `keychain` feature)
 //!
 //! ## HTTP Client
 //!

@@ -1,8 +1,8 @@
 //! OS keychain credential storage.
 //!
-//! Provides `get` and `set` functions for storing and retrieving individual
-//! credential strings from the platform keychain (macOS Keychain, Windows
-//! Credential Manager, Linux Secret Service).
+//! Provides `get`, `set`, and `delete` functions for storing, retrieving, and
+//! removing individual credential strings from the platform keychain (macOS
+//! Keychain, Windows Credential Manager, Linux Secret Service).
 //!
 //! Gated behind the `keychain` feature flag.
 

@@ -37,6 +37,7 @@ cargo add polyoxide --no-default-features --features full
 | `data`  | yes | Read-only user positions/trades via `polyoxide-data` |
 | `ws`    | no  | WebSocket streaming (implies `clob`) |
 | `full`  | no  | Enables `clob` + `gamma` + `data` + `ws` |
+| `keychain` | no | OS keychain credential storage; off by default |
 
 ## Usage
 
@@ -181,7 +182,7 @@ Authenticated operations (CLOB trading) require:
 | `POLYMARKET_API_SECRET` | L2 API secret (base64) |
 | `POLYMARKET_API_PASSPHRASE` | L2 API passphrase |
 
-`Account::from_env()` reads all four. Alternatively, use `Account::new(private_key, credentials)` or `Account::from_file(path)` for file-based config.
+`Account::from_env()` reads all four. Alternatively, use `Account::new(private_key, credentials)` or `Account::from_file(path)` for file-based config. With the `keychain` feature enabled, `Account::from_keychain()` loads the same credentials from the OS keychain instead of environment variables.
 
 ## License
 
