@@ -458,6 +458,24 @@ impl Clob {
         }
     }
 
+    /// Build the JSON submit body wrapping a single signed V2 order.
+    ///
+    /// Nests the V2 `order` under the outer wrapper keys (`owner`, `orderType`, `postOnly`)
+    /// expected by `POST /order` and each element of `POST /orders`.
+    fn order_submit_payload(
+        signed_order: &SignedOrder,
+        order_type: OrderKind,
+        post_only: bool,
+        owner_key: &str,
+    ) -> serde_json::Value {
+        serde_json::json!({
+            "order": signed_order,
+            "owner": owner_key,
+            "orderType": order_type,
+            "postOnly": post_only,
+        })
+    }
+
     /// Post multiple signed orders (up to 15)
     pub async fn post_orders(
         &self,
@@ -477,12 +495,12 @@ impl Clob {
         let payload: Vec<_> = orders
             .iter()
             .map(|o| {
-                serde_json::json!({
-                    "order": o.order,
-                    "owner": account.credentials().key,
-                    "orderType": o.order_type,
-                    "postOnly": o.post_only,
-                })
+                Self::order_submit_payload(
+                    &o.order,
+                    o.order_type,
+                    o.post_only,
+                    &account.credentials().key,
+                )
             })
             .collect();
 
@@ -516,12 +534,12 @@ impl Clob {
         };
 
         // Create the payload wrapping the signed order
-        let payload = serde_json::json!({
-            "order": signed_order,
-            "owner": account.credentials().key,
-            "orderType": order_type,
-            "postOnly": post_only,
-        });
+        let payload = Self::order_submit_payload(
+            signed_order,
+            order_type,
+            post_only,
+            &account.credentials().key,
+        );
 
         Request::post(
             self.http_client.clone(),
@@ -783,6 +801,34 @@ mod tests {
         assert_eq!(order.metadata, alloy::primitives::B256::ZERO);
         assert_eq!(order.timestamp, "1700000000000");
         assert_eq!(order.expiration, "0");
+    }
+
+    #[test]
+    fn post_order_payload_is_v2_wrapper() {
+        let signed = SignedOrder {
+            order: Order {
+                salt: "1".into(),
+                maker: Address::ZERO,
+                signer: Address::ZERO,
+                token_id: "100".into(),
+                maker_amount: "1".into(),
+                taker_amount: "1".into(),
+                side: OrderSide::Buy,
+                expiration: "0".into(),
+                signature_type: SignatureType::PolyProxy,
+                timestamp: "1700000000000".into(),
+                metadata: alloy::primitives::B256::ZERO,
+                builder: alloy::primitives::B256::from([0x11u8; 32]),
+                neg_risk: false,
+            },
+            signature: "0xabc".into(),
+        };
+        let payload = Clob::order_submit_payload(&signed, OrderKind::Gtc, false, "owner-key");
+        assert_eq!(payload["owner"], "owner-key");
+        assert_eq!(payload["orderType"], "GTC");
+        assert_eq!(payload["postOnly"], false);
+        assert_eq!(payload["order"]["builder"].as_str().unwrap().len(), 66);
+        assert!(payload["order"]["timestamp"].is_string());
     }
 
     #[test]
