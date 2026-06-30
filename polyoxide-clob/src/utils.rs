@@ -131,7 +131,16 @@ fn to_raw_amount(val: f64, decimals: u32) -> String {
 /// Generate random salt for orders.
 /// Uses u64 range to stay within JSON safe integer limits.
 pub fn generate_salt() -> String {
-    rand::rng().random::<u64>().to_string()
+    // Polymarket serializes the order `salt` as a JSON number and its backend
+    // treats it as a JavaScript-safe integer (and parses it as a signed 64-bit
+    // int). A raw `u64` above 2^53-1 is mangled by that numeric round-trip — and
+    // because `salt` is part of the EIP-712 signed order struct, the mangled value
+    // no longer matches the signature, so the exchange rejects it with
+    // "Invalid order payload". Mask the random nonce into the JS-safe range, as
+    // the official Polymarket clients do. The salt is a uniqueness nonce, not
+    // security-sensitive, so the reduced entropy is fine.
+    const JS_SAFE_INTEGER_MAX: u64 = (1 << 53) - 1;
+    (rand::rng().random::<u64>() & JS_SAFE_INTEGER_MAX).to_string()
 }
 
 // Helpers for rounding
@@ -264,6 +273,22 @@ mod tests {
         // Two random salts should (almost certainly) differ
         let salt2 = generate_salt();
         assert_ne!(salt, salt2, "Two random salts should differ");
+    }
+
+    #[test]
+    fn generate_salt_is_js_safe_integer() {
+        // Polymarket parses the order salt as a JS-safe integer / signed int64; it
+        // must stay <= 2^53-1 so the JSON-number round-trip (and therefore the
+        // EIP-712 signature over `salt`) survives. A raw u64 exceeds this ~99.95%
+        // of the time, so this loop reliably catches a regression.
+        const JS_SAFE_INTEGER_MAX: u64 = (1 << 53) - 1;
+        for _ in 0..10_000 {
+            let salt: u64 = generate_salt().parse().expect("salt parses as u64");
+            assert!(
+                salt <= JS_SAFE_INTEGER_MAX,
+                "salt {salt} exceeds JS safe-integer max {JS_SAFE_INTEGER_MAX}"
+            );
+        }
     }
 
     // ── calculate_market_order_amounts ──

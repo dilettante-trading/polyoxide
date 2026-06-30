@@ -10,6 +10,10 @@
 
 - *(clob)* Builder-program attribution: `ClobBuilder::builder_code(B256)` stamps the signed `builder` field on every order.
 
+### 🐛 Bug Fixes
+
+- *(clob)* Mask the order `salt` to the JS-safe-integer range (2^53-1) so the live CLOB V2 exchange accepts orders. A raw 64-bit salt overflows the server's numeric parse and, since `salt` is part of the EIP-712 signed struct, corrupts the signature — orders were rejected with "Invalid order payload". Matches the official Polymarket clients; verified against the live exchange.
+
 ## [0.17.0] - 2026-06-28
 
 ### 🚀 Features
