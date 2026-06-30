@@ -472,6 +472,43 @@ uint256 timestamp,bytes32 metadata,bytes32 builder)";
     }
 
     #[test]
+    fn order_digest_differs_by_builder() {
+        // The `builder` field is part of the V2 signed struct, so attribution is
+        // cryptographically bound. A regression that dropped `builder` from
+        // `order_to_protocol` or the `sol!` struct would make these digests equal.
+        let mut order_zero = make_test_order(false);
+        order_zero.builder = alloy::primitives::B256::ZERO;
+        let mut order_stamped = make_test_order(false);
+        order_stamped.builder = alloy::primitives::B256::from([0x11u8; 32]);
+
+        let digest_zero = compute_order_digest(&order_zero, 137).unwrap();
+        let digest_stamped = compute_order_digest(&order_stamped, 137).unwrap();
+
+        assert_ne!(
+            digest_zero, digest_stamped,
+            "Orders differing only by builder must produce different digests"
+        );
+    }
+
+    #[test]
+    fn order_digest_differs_by_metadata() {
+        // The `metadata` field is part of the V2 signed struct; varying it alone
+        // must change the digest, guarding against it being dropped from signing.
+        let mut order_zero = make_test_order(false);
+        order_zero.metadata = alloy::primitives::B256::ZERO;
+        let mut order_tagged = make_test_order(false);
+        order_tagged.metadata = alloy::primitives::B256::from([0x22u8; 32]);
+
+        let digest_zero = compute_order_digest(&order_zero, 137).unwrap();
+        let digest_tagged = compute_order_digest(&order_tagged, 137).unwrap();
+
+        assert_ne!(
+            digest_zero, digest_tagged,
+            "Orders differing only by metadata must produce different digests"
+        );
+    }
+
+    #[test]
     fn order_digest_rejects_unsupported_chain() {
         let order = make_test_order(false);
         let result = compute_order_digest(&order, 1);

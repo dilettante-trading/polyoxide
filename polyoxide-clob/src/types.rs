@@ -269,7 +269,13 @@ pub struct MarketOrderArgs {
     /// Worst acceptable price to fill at.
     /// If None, it will be calculated from the orderbook.
     pub price: Option<f64>,
+    /// Reserved / ignored under CLOB V2. Fees are collected on-chain at match time, not
+    /// signed into the order, so this field is not read anywhere in the order path.
+    /// (V1 vestige; retained for source compatibility — removal is a recommended follow-up.)
     pub fee_rate_bps: Option<u16>,
+    /// Reserved / ignored under CLOB V2. Order uniqueness now comes from the order
+    /// `timestamp`, so this field is not read anywhere in the order path.
+    /// (V1 vestige; retained for source compatibility — removal is a recommended follow-up.)
     pub nonce: Option<u64>,
     pub funder: Option<Address>,
     pub signature_type: Option<SignatureType>,

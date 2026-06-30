@@ -1292,6 +1292,112 @@ async fn create_order_stamps_configured_builder_code() {
 }
 
 #[tokio::test]
+async fn place_order_signs_and_submits_v2_body_with_builder_code() {
+    // Full offline path: build (create_order) -> sign (sign_order) -> submit (post_order),
+    // driven via place_order. Asserts the code-produced (not hand-built) order flows
+    // through to a coherent V2 `POST /order` body that carries the configured builder code,
+    // the V2-only fields (expiration/timestamp/metadata/builder), a non-empty signature, and
+    // none of the dropped V1 fields (taker/nonce/feeRateBps).
+    let mut server = Server::new_async().await;
+
+    // Numeric token id: signing parses token_id as a base-10 U256 (it is part of the
+    // signed struct), so an "0x..."-style id cannot be signed.
+    const TOKEN_ID: &str = "100";
+
+    let neg_risk_mock = server
+        .mock("GET", "/neg-risk")
+        .match_query(Matcher::UrlEncoded("token_id".into(), TOKEN_ID.into()))
+        .with_status(200)
+        .with_header("content-type", "application/json")
+        .with_body(r#"{"neg_risk": false}"#)
+        .create_async()
+        .await;
+
+    let tick_size_mock = server
+        .mock("GET", "/tick-size")
+        .match_query(Matcher::UrlEncoded("token_id".into(), TOKEN_ID.into()))
+        .with_status(200)
+        .with_header("content-type", "application/json")
+        .with_body(r#"{"minimum_tick_size": "0.01"}"#)
+        .create_async()
+        .await;
+
+    // The builder code configured on the client must appear in the submitted order's
+    // `builder` field as a 66-char (0x + 64 hex) string.
+    let code = alloy::primitives::B256::from([0x11u8; 32]);
+    let code_hex = format!("0x{}", hex::encode(code.as_slice()));
+    assert_eq!(code_hex.len(), 66);
+
+    // POST /order body must:
+    //   - nest the order under `order` with `builder` == configured code,
+    //   - carry a non-empty `signature` (0x-prefixed hex from the EIP-712 signer),
+    //   - include the V2-only fields expiration/timestamp/metadata,
+    //   - and NOT include the dropped V1 fields taker/nonce/feeRateBps.
+    let post_mock = server
+        .mock("POST", "/order")
+        .match_header("POLY_API_KEY", "test-key")
+        .match_body(Matcher::AllOf(vec![
+            Matcher::PartialJsonString(format!(r#"{{"order": {{"builder": "{code_hex}"}}}}"#)),
+            // `order.signature` present and non-empty (0x followed by >= 1 hex char).
+            Matcher::Regex(r#""signature"\s*:\s*"0x[0-9a-fA-F]+""#.into()),
+            // V2-only wire fields present inside the nested order object.
+            Matcher::Regex(r#""expiration""#.into()),
+            Matcher::Regex(r#""timestamp""#.into()),
+            Matcher::Regex(r#""metadata""#.into()),
+        ]))
+        .with_status(200)
+        .with_header("content-type", "application/json")
+        .with_body(r#"{"success":true,"orderID":"0xabc"}"#)
+        .expect(1)
+        .create_async()
+        .await;
+
+    let clob = test_authed_clob_with_builder_code(&server, code);
+    let params = polyoxide_clob::CreateOrderParams {
+        token_id: TOKEN_ID.into(),
+        price: 0.55,
+        size: 100.0,
+        side: polyoxide_clob::OrderSide::Buy,
+        order_type: polyoxide_clob::OrderKind::Gtc,
+        post_only: false,
+        expiration: None,
+        funder: None,
+        signature_type: None,
+    };
+
+    // Exercise the whole path: create_order -> sign_order -> post_order.
+    let order = clob.create_order(&params, None).await.unwrap();
+    let signed = clob.sign_order(&order).await.unwrap();
+    let resp = clob
+        .post_order(&signed, polyoxide_clob::OrderKind::Gtc, false)
+        .await
+        .unwrap();
+
+    assert!(resp.success);
+    assert_eq!(resp.order_id.as_deref(), Some("0xabc"));
+
+    // Defense-in-depth: serialize the actually-signed order ourselves and confirm the
+    // wire shape directly (the V1 fields are gone, the builder code carried through).
+    let body = serde_json::to_value(&signed).unwrap();
+    assert_eq!(body["builder"].as_str().unwrap(), code_hex);
+    assert!(body["signature"].as_str().unwrap().starts_with("0x"));
+    assert!(body["signature"].as_str().unwrap().len() > 2);
+    for v2_field in ["expiration", "timestamp", "metadata"] {
+        assert!(body.get(v2_field).is_some(), "missing V2 field {v2_field}");
+    }
+    for v1_field in ["taker", "nonce", "feeRateBps"] {
+        assert!(
+            body.get(v1_field).is_none(),
+            "V1 field {v1_field} must be gone"
+        );
+    }
+
+    neg_risk_mock.assert_async().await;
+    tick_size_mock.assert_async().await;
+    post_mock.assert_async().await;
+}
+
+#[tokio::test]
 async fn create_order_rejects_poly1271_without_network_io() {
     // The Poly1271 guard fires before any market-metadata I/O, so no endpoints are mocked.
     // expect(0) on the metadata endpoints proves nothing was fetched.

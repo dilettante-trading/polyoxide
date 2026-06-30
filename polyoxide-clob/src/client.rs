@@ -426,6 +426,10 @@ impl Clob {
     /// `timestamp_ms` supplies the order's uniqueness nonce (Unix ms); `builder` carries the
     /// builder-attribution code and `metadata` an opaque caller tag (both default to
     /// [`B256::ZERO`]). `expiration` travels on the wire for GTD orders but is not signed.
+    ///
+    /// Note: the public order-creation paths ([`Clob::create_order`] /
+    /// [`Clob::create_market_order`]) currently always pass `metadata` as [`B256::ZERO`]
+    /// (reserved); builder attribution is set separately via [`ClobBuilder::builder_code`].
     #[allow(clippy::too_many_arguments)]
     fn build_order_v2(
         token_id: String,
@@ -581,7 +585,11 @@ impl Clob {
     }
 }
 
-/// Parameters for creating an order
+/// Parameters for creating an order.
+///
+/// The per-order `metadata` field of the resulting V2 order is currently always
+/// [`B256::ZERO`] (reserved) and is not exposed here; builder attribution is configured
+/// once on the client via [`ClobBuilder::builder_code`], not per order.
 #[derive(Debug, Clone)]
 pub struct CreateOrderParams {
     pub token_id: String,
