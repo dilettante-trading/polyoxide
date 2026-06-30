@@ -1,3 +1,15 @@
+## [0.18.0] - 2026-06-30
+
+### 💥 Breaking Changes
+
+- *(clob)* [**breaking**] **CLOB V2 migration.** Orders are now signed with the Polymarket CLOB V2 EIP-712 scheme (domain version "2", V2 exchange contracts, 11-field signed struct). V1-shaped orders are rejected by the live exchange as of 2026-04-28. `Order`/`SignedOrder` gained `timestamp`/`metadata`/`builder` and dropped `taker`/`nonce`/`feeRateBps` from the signed struct; fees are no longer signed (collected on-chain at match).
+- *(clob)* [**breaking**] `SignatureType` gained `Poly1271` (EIP-1271; signing not yet implemented — rejected at the signing layer).
+- *(clob)* [**breaking**] `create_builder_key` now uses L2 auth and returns `BuilderApiKeyResponse { key, secret, passphrase }`.
+
+### 🚀 Features
+
+- *(clob)* Builder-program attribution: `ClobBuilder::builder_code(B256)` stamps the signed `builder` field on every order.
+
 ## [0.17.0] - 2026-06-28
 
 ### 🚀 Features

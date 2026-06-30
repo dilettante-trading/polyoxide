@@ -2,6 +2,12 @@
 
 Base URL: `https://clob.polymarket.com`
 
+> **Note (CLOB V2):** polyoxide now targets the CLOB **V2** order scheme — orders
+> are signed with EIP-712 domain version `"2"` against the V2 exchange contracts.
+> The signed order carries a `builder` `bytes32` field (builder-program
+> attribution); fees are no longer part of the signed order — they are collected
+> on-chain at match time. See [orders.md](./orders.md) for the signed-order shape.
+
 ## L1 Authentication (Private Key)
 
 Used for: creating API credentials, deriving existing credentials, locally signing orders.

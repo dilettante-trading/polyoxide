@@ -706,7 +706,28 @@ impl ClobBuilder {
     /// created by this client.
     ///
     /// Defaults to [`B256::ZERO`] (no attribution). Set this to the 32-byte code issued to
-    /// your integration to attribute order flow (and any associated builder fees).
+    /// your integration to attribute order flow (and any associated builder fees collected
+    /// on-chain at match time).
+    ///
+    /// # Examples
+    ///
+    /// ```no_run
+    /// use alloy::primitives::B256;
+    /// use polyoxide_clob::{Account, ClobBuilder};
+    ///
+    /// # fn main() -> Result<(), Box<dyn std::error::Error>> {
+    /// let account = Account::from_env()?;
+    /// // Stamp the builder code issued to your integration onto every order.
+    /// let builder_code: B256 = "0x1111111111111111111111111111111111111111111111111111111111111111"
+    ///     .parse()?;
+    /// let clob = ClobBuilder::new()
+    ///     .with_account(account)
+    ///     .builder_code(builder_code)
+    ///     .build()?;
+    /// # let _ = clob;
+    /// # Ok(())
+    /// # }
+    /// ```
     pub fn builder_code(mut self, code: B256) -> Self {
         self.builder_code = code;
         self
