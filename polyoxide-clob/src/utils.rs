@@ -128,8 +128,10 @@ fn to_raw_amount(val: f64, decimals: u32) -> String {
     format!("{:.0}", raw)
 }
 
-/// Generate random salt for orders.
-/// Uses u64 range to stay within JSON safe integer limits.
+/// Generate a random order `salt`, masked to the JavaScript-safe-integer range
+/// (`2^53 - 1`) so it survives Polymarket's numeric wire round-trip. A raw `u64`
+/// would be corrupted server-side and, because `salt` is part of the EIP-712
+/// signed order struct, would invalidate the signature (see the body note).
 pub fn generate_salt() -> String {
     // Polymarket serializes the order `salt` as a JSON number and its backend
     // treats it as a JavaScript-safe integer (and parses it as a signed 64-bit

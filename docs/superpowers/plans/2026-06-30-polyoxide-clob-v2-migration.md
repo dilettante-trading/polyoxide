@@ -623,3 +623,11 @@ git commit -m "test(clob): live V2 place-and-cancel integration test"
 - **Placeholder scan:** none — every code step has concrete content. The one deliberate deferral (`Poly1271` signing) is explicit and guarded by a validation error.
 - **Type consistency:** `ClobOrder`/`Order` fields (`timestamp: String`, `metadata: B256`, `builder: B256`, no `taker`/`nonce`/`fee_rate_bps`) are used identically across `eip712.rs` (Task 2), `types.rs` (Task 3), and `client.rs` (Tasks 4–5). `SignatureType` is `#[repr(u8)]` so `as u8` (Task 2) is valid. `build_order_v2`/`order_submit_payload`/`builder_code` names are consistent across tasks.
 - **Open risk:** the deterministic signature vector in Task 2 Step 6 is a self-consistency regression guard, not a cross-checked golden value — Task 8's live `success=true` is the real proof the V2 signature is accepted. Amoy testnet V2 addresses are unverified (mainnet-only here).
+
+---
+
+## Post-execution note (2026-06-30) — salt masking, discovered during live re-validation
+
+This plan assumed the existing `generate_salt()` (a raw `u64`) was V2-safe. **It is not.** Task 8's live re-validation rejected every order with `"Invalid order payload"` until the order `salt` was masked to the **JavaScript-safe-integer range** — `value & ((1 << 53) - 1)` — matching the official client's `to_ieee_754_int`. Polymarket parses `salt` as a JS-safe integer / signed int64; a raw `u64` (which exceeds 2^53 ~99.95% of the time) is corrupted on the wire, and because `salt` is part of the EIP-712 signed struct, that corruption invalidates the signature. None of the offline tests (typehash byte-match, deterministic signature, full-path body) caught this — only the live order did.
+
+**Fix:** `polyoxide-clob/src/utils.rs::generate_salt` masks the nonce to 53 bits, with a regression test (`generate_salt_is_js_safe_integer`). After the fix a real V2 order was **accepted by the live exchange**. Any future re-execution (or a from-scratch port) MUST keep the salt mask.

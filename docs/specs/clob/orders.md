@@ -8,6 +8,9 @@ Base URL: `https://clob.polymarket.com`
 > `builder` `bytes32` field. Fees are **not** part of the signed order — they are
 > collected on-chain at match time. The example bodies below show the legacy V1
 > field layout; the V2 wire body omits the dropped fields and adds the new ones.
+> The order `salt` is masked to the JavaScript-safe-integer range (`2^53 - 1`): a
+> larger value is corrupted by the server's numeric parse and, because `salt` is
+> signed, breaks the EIP-712 signature (`"Invalid order payload"`).
 
 ## Post Single Order
 
