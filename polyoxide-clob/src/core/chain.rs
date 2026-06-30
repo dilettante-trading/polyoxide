@@ -49,8 +49,8 @@ pub struct Contracts {
 impl Contracts {
     /// Polygon mainnet contracts (chain ID 137)
     pub const POLYGON_MAINNET: Self = Self {
-        exchange: address!("4bFb41d5B3570DeFd03C39a9A4D8dE6Bd8B8982E"),
-        neg_risk_exchange: address!("C5d563A36AE78145C45a50134d48A1215220f80a"),
+        exchange: address!("E111180000d2663C0091e4f400237545B87B996B"), // CTF Exchange V2
+        neg_risk_exchange: address!("e2222d279d744050d28e00520010520000310F59"), // NegRisk CTF Exchange V2
         neg_risk_adapter: address!("d91E80cF2E7be2e162c6513ceD06f1dD0dA35296"),
         collateral: address!("2791Bca1f2de4661ED88A30C99A7a9449Aa84174"),
         conditional_tokens: address!("4D97DCd97eC945f40cF65F87097ACe5EA0476045"),
@@ -94,6 +94,21 @@ mod tests {
 
         let amoy_contracts = Chain::PolygonAmoy.contracts();
         assert_eq!(amoy_contracts.exchange, Contracts::POLYGON_AMOY.exchange);
+    }
+
+    #[test]
+    fn polygon_mainnet_uses_v2_exchanges() {
+        let c = Contracts::POLYGON_MAINNET;
+        assert_eq!(
+            c.exchange,
+            address!("E111180000d2663C0091e4f400237545B87B996B"),
+            "CTF Exchange must be the V2 contract"
+        );
+        assert_eq!(
+            c.neg_risk_exchange,
+            address!("e2222d279d744050d28e00520010520000310F59"),
+            "NegRisk Exchange must be the V2 contract"
+        );
     }
 
     #[test]
