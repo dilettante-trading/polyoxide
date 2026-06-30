@@ -8,7 +8,9 @@
 //! cargo test -p polyoxide-clob --test live_api -- --ignored
 //! ```
 
-use polyoxide_clob::{Account, Clob, ClobBuilder, OrderSide, SignatureType};
+use polyoxide_clob::{
+    Account, Clob, ClobBuilder, CreateOrderParams, OrderKind, OrderSide, SignatureType,
+};
 use polyoxide_core::QueryBuilder;
 use polyoxide_gamma::Gamma;
 use std::time::Duration;
@@ -755,4 +757,41 @@ async fn live_list_open_orders() {
         .send()
         .await
         .expect("list open orders should deserialize");
+}
+
+// ── Authenticated: Orders — V2 re-validation (places a real-money order) ──
+
+/// End-to-end re-validation that the CLOB **V2** order shape is accepted by the
+/// live exchange: build → sign → post a small GTC buy at the best ask, then
+/// cancel it. Places a real (small) order, so it is gated behind `#[ignore]`
+/// and a funded proxy account; never runs in CI.
+#[tokio::test]
+#[ignore] // live; run with `-- --ignored`, needs funded proxy account
+async fn live_v2_place_and_cancel() {
+    let clob = authenticated_client();
+    let token_id = find_active_token_id().await;
+    let book = clob.markets().order_book(&token_id).send().await.unwrap();
+    let ask = book.asks.iter().map(|l| l.price).min().expect("asks");
+    let price: f64 = ask.to_string().parse().unwrap();
+    let params = CreateOrderParams {
+        token_id,
+        price,
+        size: 5.0,
+        side: OrderSide::Buy,
+        order_type: OrderKind::Gtc,
+        post_only: false,
+        expiration: None,
+        funder: None,
+        signature_type: Some(SignatureType::PolyProxy),
+    };
+    let order = clob.create_order(&params, None).await.unwrap();
+    let signed = clob.sign_order(&order).await.unwrap();
+    let resp = clob
+        .post_order(&signed, OrderKind::Gtc, false)
+        .await
+        .unwrap();
+    assert!(resp.success, "V2 order rejected: {:?}", resp.error_msg);
+    if let Some(id) = resp.order_id {
+        let _ = clob.orders().unwrap().cancel(id).send().await;
+    }
 }
