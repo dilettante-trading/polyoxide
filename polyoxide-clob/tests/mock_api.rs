@@ -35,6 +35,29 @@ fn test_authed_clob_with_sig(
         .unwrap()
 }
 
+/// Authed client (Hardhat account #0) with a configured builder-attribution code.
+fn test_authed_clob_with_builder_code(
+    server: &mockito::ServerGuard,
+    builder_code: alloy::primitives::B256,
+) -> polyoxide_clob::Clob {
+    let creds = Credentials {
+        key: "test-key".into(),
+        secret: "c2VjcmV0".into(), // base64("secret")
+        passphrase: "test-pass".into(),
+    };
+    let account = Account::new(
+        "0xac0974bec39a17e36ba4a6b4d238ff944bacb478cbed5efcae784d7bf4f2ff80",
+        creds,
+    )
+    .unwrap();
+    ClobBuilder::new()
+        .base_url(server.url())
+        .with_account(account)
+        .builder_code(builder_code)
+        .build()
+        .unwrap()
+}
+
 #[tokio::test]
 async fn server_time_unauthenticated() {
     let mut server = Server::new_async().await;
@@ -1216,6 +1239,95 @@ async fn create_order_fetches_metadata_and_builds_order() {
     neg_risk_mock.assert_async().await;
     tick_size_mock.assert_async().await;
     fee_rate_mock.assert_async().await;
+}
+
+#[tokio::test]
+async fn create_order_stamps_configured_builder_code() {
+    let mut server = Server::new_async().await;
+
+    let neg_risk_mock = server
+        .mock("GET", "/neg-risk")
+        .match_query(Matcher::UrlEncoded("token_id".into(), "0xtoken".into()))
+        .with_status(200)
+        .with_header("content-type", "application/json")
+        .with_body(r#"{"neg_risk": false}"#)
+        .create_async()
+        .await;
+
+    let tick_size_mock = server
+        .mock("GET", "/tick-size")
+        .match_query(Matcher::UrlEncoded("token_id".into(), "0xtoken".into()))
+        .with_status(200)
+        .with_header("content-type", "application/json")
+        .with_body(r#"{"minimum_tick_size": "0.01"}"#)
+        .create_async()
+        .await;
+
+    // A non-zero builder code configured on the client must reach the built order.
+    let code = alloy::primitives::B256::from([0x11u8; 32]);
+    let clob = test_authed_clob_with_builder_code(&server, code);
+    let params = polyoxide_clob::CreateOrderParams {
+        token_id: "0xtoken".into(),
+        price: 0.55,
+        size: 100.0,
+        side: polyoxide_clob::OrderSide::Buy,
+        order_type: polyoxide_clob::OrderKind::Gtc,
+        post_only: false,
+        expiration: None,
+        funder: None,
+        signature_type: None,
+    };
+
+    let order = clob.create_order(&params, None).await.unwrap();
+
+    assert_eq!(
+        order.builder, code,
+        "configured builder_code must reach the order"
+    );
+    // metadata is independent of builder_code and stays zero.
+    assert_eq!(order.metadata, alloy::primitives::B256::ZERO);
+
+    neg_risk_mock.assert_async().await;
+    tick_size_mock.assert_async().await;
+}
+
+#[tokio::test]
+async fn create_order_rejects_poly1271_without_network_io() {
+    // The Poly1271 guard fires before any market-metadata I/O, so no endpoints are mocked.
+    // expect(0) on the metadata endpoints proves nothing was fetched.
+    let mut server = Server::new_async().await;
+    let neg_risk_mock = server
+        .mock("GET", "/neg-risk")
+        .expect(0)
+        .create_async()
+        .await;
+    let tick_size_mock = server
+        .mock("GET", "/tick-size")
+        .expect(0)
+        .create_async()
+        .await;
+
+    let clob = test_authed_clob(&server);
+    let params = polyoxide_clob::CreateOrderParams {
+        token_id: "0xtoken".into(),
+        price: 0.55,
+        size: 100.0,
+        side: polyoxide_clob::OrderSide::Buy,
+        order_type: polyoxide_clob::OrderKind::Gtc,
+        post_only: false,
+        expiration: None,
+        funder: None,
+        signature_type: Some(SignatureType::Poly1271),
+    };
+
+    let err = clob.create_order(&params, None).await.unwrap_err();
+    assert!(
+        err.to_string().contains("Poly1271"),
+        "expected a Poly1271 rejection, got: {err}"
+    );
+
+    neg_risk_mock.assert_async().await;
+    tick_size_mock.assert_async().await;
 }
 
 #[tokio::test]

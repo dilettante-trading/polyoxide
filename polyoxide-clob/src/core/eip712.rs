@@ -5,7 +5,11 @@ use alloy::{
     sol_types::SolStruct,
 };
 
-use crate::{core::chain::Chain, error::ClobError, types::Order as ClobOrder};
+use crate::{
+    core::chain::Chain,
+    error::ClobError,
+    types::{Order as ClobOrder, SignatureType},
+};
 
 mod protocol {
     use super::*;
@@ -42,6 +46,16 @@ mod protocol {
 
 /// Convert a CLOB order to the EIP-712 protocol struct for hashing/signing.
 fn order_to_protocol(order: &ClobOrder) -> Result<protocol::Order, ClobError> {
+    // Authoritative guard at the lowest signing choke point: every signing path
+    // (`Clob::sign_order`, `Account::sign_order`, and the create_* convenience methods)
+    // funnels through here, so this closes the hand-built-order bypass. The V2 contract
+    // cannot validate a `signatureType: 3` order as an ECDSA signature.
+    if order.signature_type == SignatureType::Poly1271 {
+        return Err(ClobError::Crypto(
+            "Poly1271 (EIP-1271) signing is not yet supported; use EOA/PolyProxy/PolyGnosisSafe"
+                .into(),
+        ));
+    }
     Ok(protocol::Order {
         salt: U256::from_str_radix(&order.salt, 10)
             .map_err(|e| ClobError::Crypto(format!("Invalid salt: {}", e)))?,
@@ -150,7 +164,7 @@ pub async fn sign_clob_auth<S: AlloySigner>(
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::types::{OrderSide, SignatureType};
+    use crate::types::OrderSide;
     use alloy::primitives::address;
     use alloy::signers::local::PrivateKeySigner;
 
@@ -215,6 +229,52 @@ uint256 timestamp,bytes32 metadata,bytes32 builder)";
         let sig2 = sign_order(&order, &signer, 137).await.unwrap();
         assert_eq!(sig1, sig2);
         assert!(sig1.starts_with("0x") && sig1.len() == 132);
+        // Pin the full EIP-712 digest end-to-end (domain v2 + V2 struct encoding) against
+        // a captured golden signature for this fixed Hardhat-key order on Polygon (137).
+        // A change here means the domain separator or struct encoding drifted.
+        assert_eq!(
+            sig1,
+            "0xf631fbb8e61746f7be8f49898c4caea3ab63a576cd0a340d5c82de147d6f751d\
+42ea67b4b650be23f9d3e8e9af57ef4e96b6f7031de7917a9eb746229f279c251c"
+        );
+    }
+
+    #[test]
+    fn order_to_protocol_rejects_poly1271() {
+        // Hand-built order with Poly1271 must be rejected at the signing choke point,
+        // independent of the higher-level create_order/create_market_order guards.
+        let mut order = make_test_order(false);
+        order.signature_type = SignatureType::Poly1271;
+        let err = order_to_protocol(&order).unwrap_err();
+        assert!(
+            err.to_string().contains("Poly1271"),
+            "expected a Poly1271 rejection, got: {err}"
+        );
+    }
+
+    #[test]
+    fn compute_order_digest_rejects_poly1271() {
+        let mut order = make_test_order(false);
+        order.signature_type = SignatureType::Poly1271;
+        let result = compute_order_digest(&order, 137);
+        assert!(
+            result.is_err(),
+            "digest computation must reject Poly1271 orders"
+        );
+    }
+
+    #[tokio::test]
+    async fn sign_order_rejects_poly1271() {
+        // Full signing path: a hand-built Poly1271 order cannot be signed and emitted
+        // as an (invalid) ECDSA signature.
+        let signer = test_signer();
+        let mut order = make_test_order(false);
+        order.signature_type = SignatureType::Poly1271;
+        let result = sign_order(&order, &signer, 137).await;
+        assert!(
+            result.is_err(),
+            "signing must reject Poly1271 (EIP-1271 not yet supported)"
+        );
     }
 
     #[test]

@@ -186,6 +186,15 @@ impl Clob {
 
         params.validate()?;
 
+        // Reject Poly1271 before any network I/O (fail fast). This is a UX guard; the
+        // authoritative guarantee lives in `order_to_protocol` (signing choke point).
+        let signature_type = params.signature_type.unwrap_or_default();
+        if signature_type == SignatureType::Poly1271 {
+            return Err(ClobError::validation(
+                "Poly1271 (EIP-1271) signing is not yet supported; use EOA/PolyProxy/PolyGnosisSafe",
+            ));
+        }
+
         // Fetch market metadata (neg_risk and tick_size)
         let (neg_risk, tick_size) = self.get_market_metadata(&params.token_id, options).await?;
 
@@ -194,12 +203,6 @@ impl Clob {
             calculate_order_amounts(params.price, params.size, params.side, tick_size);
 
         // Resolve maker address
-        let signature_type = params.signature_type.unwrap_or_default();
-        if signature_type == SignatureType::Poly1271 {
-            return Err(ClobError::validation(
-                "Poly1271 (EIP-1271) signing is not yet supported; use EOA/PolyProxy/PolyGnosisSafe",
-            ));
-        }
         let maker = self
             .resolve_maker_address(params.funder, signature_type, account)
             .await?;
@@ -257,6 +260,15 @@ impl Clob {
             }
         }
 
+        // Reject Poly1271 before any network I/O (fail fast). This is a UX guard; the
+        // authoritative guarantee lives in `order_to_protocol` (signing choke point).
+        let signature_type = params.signature_type.unwrap_or_default();
+        if signature_type == SignatureType::Poly1271 {
+            return Err(ClobError::validation(
+                "Poly1271 (EIP-1271) signing is not yet supported; use EOA/PolyProxy/PolyGnosisSafe",
+            ));
+        }
+
         // Fetch market metadata (neg_risk and tick_size)
         let (neg_risk, tick_size) = self.get_market_metadata(&params.token_id, options).await?;
 
@@ -285,12 +297,6 @@ impl Clob {
             calculate_market_order_amounts(params.amount, price, params.side, tick_size);
 
         // Resolve maker address
-        let signature_type = params.signature_type.unwrap_or_default();
-        if signature_type == SignatureType::Poly1271 {
-            return Err(ClobError::validation(
-                "Poly1271 (EIP-1271) signing is not yet supported; use EOA/PolyProxy/PolyGnosisSafe",
-            ));
-        }
         let maker = self
             .resolve_maker_address(params.funder, signature_type, account)
             .await?;
