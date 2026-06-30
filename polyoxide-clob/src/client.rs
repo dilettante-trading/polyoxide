@@ -17,7 +17,7 @@ use crate::{
         generate_salt,
     },
 };
-use alloy::primitives::Address;
+use alloy::primitives::{Address, B256};
 #[cfg(feature = "gamma")]
 use polyoxide_gamma::Gamma;
 
@@ -33,6 +33,9 @@ pub struct Clob {
     pub(crate) http_client: HttpClient,
     pub(crate) chain_id: u64,
     pub(crate) signature_type: SignatureType,
+    /// Builder-attribution code stamped into the V2 order `builder` field. Defaults to
+    /// [`B256::ZERO`] (no attribution).
+    pub(crate) builder_code: B256,
     pub(crate) account: Option<Account>,
     #[cfg(feature = "gamma")]
     pub(crate) gamma: Gamma,
@@ -186,31 +189,40 @@ impl Clob {
         // Fetch market metadata (neg_risk and tick_size)
         let (neg_risk, tick_size) = self.get_market_metadata(&params.token_id, options).await?;
 
-        // Get fee rate
-        let fee_rate_bps = self.get_fee_rate(&params.token_id).await?;
-
         // Calculate amounts
         let (maker_amount, taker_amount) =
             calculate_order_amounts(params.price, params.size, params.side, tick_size);
 
         // Resolve maker address
         let signature_type = params.signature_type.unwrap_or_default();
+        if signature_type == SignatureType::Poly1271 {
+            return Err(ClobError::validation(
+                "Poly1271 (EIP-1271) signing is not yet supported; use EOA/PolyProxy/PolyGnosisSafe",
+            ));
+        }
         let maker = self
             .resolve_maker_address(params.funder, signature_type, account)
             .await?;
 
+        let timestamp_ms = std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .map(|d| d.as_millis())
+            .unwrap_or(0);
+
         // Build order
-        Ok(Self::build_order(
+        Ok(Self::build_order_v2(
             params.token_id.clone(),
             maker,
             account.address(),
             maker_amount,
             taker_amount,
-            fee_rate_bps,
             params.side,
             signature_type,
             neg_risk,
             params.expiration,
+            self.builder_code,
+            B256::ZERO,
+            timestamp_ms,
         ))
     }
 
@@ -268,31 +280,40 @@ impl Clob {
                 .ok_or_else(|| ClobError::validation("Not enough liquidity to fill market order"))?
         };
 
-        // Get fee rate
-        let fee_rate_bps = self.get_fee_rate(&params.token_id).await?;
-
         // Calculate amounts
         let (maker_amount, taker_amount) =
             calculate_market_order_amounts(params.amount, price, params.side, tick_size);
 
         // Resolve maker address
         let signature_type = params.signature_type.unwrap_or_default();
+        if signature_type == SignatureType::Poly1271 {
+            return Err(ClobError::validation(
+                "Poly1271 (EIP-1271) signing is not yet supported; use EOA/PolyProxy/PolyGnosisSafe",
+            ));
+        }
         let maker = self
             .resolve_maker_address(params.funder, signature_type, account)
             .await?;
 
+        let timestamp_ms = std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .map(|d| d.as_millis())
+            .unwrap_or(0);
+
         // Build order with expiration set to 0 for market orders
-        Ok(Self::build_order(
+        Ok(Self::build_order_v2(
             params.token_id.clone(),
             maker,
             account.address(),
             maker_amount,
             taker_amount,
-            fee_rate_bps,
             params.side,
             signature_type,
             neg_risk,
             Some(0),
+            self.builder_code,
+            B256::ZERO,
+            timestamp_ms,
         ))
     }
     /// Sign an order using the configured account's EIP-712 signer.
@@ -339,12 +360,6 @@ impl Clob {
         };
 
         Ok((neg_risk, tick_size))
-    }
-
-    /// Fetch the current fee rate for a token from the API
-    async fn get_fee_rate(&self, token_id: &str) -> Result<String, ClobError> {
-        let resp = self.markets().fee_rate(token_id).send().await?;
-        Ok(resp.base_fee.to_string())
     }
 
     /// Resolve the maker address based on funder and signature type
@@ -400,33 +415,39 @@ impl Clob {
         }
     }
 
-    /// Build an Order struct from the provided parameters
+    /// Build a V2 [`Order`] struct from the provided parameters.
+    ///
+    /// `timestamp_ms` supplies the order's uniqueness nonce (Unix ms); `builder` carries the
+    /// builder-attribution code and `metadata` an opaque caller tag (both default to
+    /// [`B256::ZERO`]). `expiration` travels on the wire for GTD orders but is not signed.
     #[allow(clippy::too_many_arguments)]
-    fn build_order(
+    fn build_order_v2(
         token_id: String,
         maker: Address,
         signer: Address,
         maker_amount: String,
         taker_amount: String,
-        fee_rate_bps: String,
         side: OrderSide,
         signature_type: SignatureType,
         neg_risk: bool,
         expiration: Option<u64>,
+        builder: B256,
+        metadata: B256,
+        timestamp_ms: u128,
     ) -> Order {
         Order {
             salt: generate_salt(),
             maker,
             signer,
-            taker: alloy::primitives::Address::ZERO,
             token_id,
             maker_amount,
             taker_amount,
-            expiration: expiration.unwrap_or(0).to_string(),
-            nonce: "0".to_string(),
-            fee_rate_bps,
             side,
+            expiration: expiration.unwrap_or(0).to_string(),
             signature_type,
+            timestamp: timestamp_ms.to_string(),
+            metadata,
+            builder,
             neg_risk,
         }
     }
@@ -589,6 +610,7 @@ pub struct ClobBuilder {
     pool_size: usize,
     chain: Chain,
     signature_type: SignatureType,
+    builder_code: B256,
     account: Option<Account>,
     #[cfg(feature = "gamma")]
     gamma: Option<Gamma>,
@@ -605,6 +627,7 @@ impl ClobBuilder {
             pool_size: DEFAULT_POOL_SIZE,
             chain: Chain::PolygonMainnet,
             signature_type: SignatureType::Eoa,
+            builder_code: B256::ZERO,
             account: None,
             #[cfg(feature = "gamma")]
             gamma: None,
@@ -652,6 +675,16 @@ impl ClobBuilder {
     /// address rather than the bare EOA.
     pub fn signature_type(mut self, signature_type: SignatureType) -> Self {
         self.signature_type = signature_type;
+        self
+    }
+
+    /// Set the builder-attribution code stamped into the `builder` field of every V2 order
+    /// created by this client.
+    ///
+    /// Defaults to [`B256::ZERO`] (no attribution). Set this to the 32-byte code issued to
+    /// your integration to attribute order flow (and any associated builder fees).
+    pub fn builder_code(mut self, code: B256) -> Self {
+        self.builder_code = code;
         self
     }
 
@@ -705,6 +738,7 @@ impl ClobBuilder {
             http_client,
             chain_id: self.chain.chain_id(),
             signature_type: self.signature_type,
+            builder_code: self.builder_code,
             account: self.account,
             #[cfg(feature = "gamma")]
             gamma,
@@ -721,6 +755,29 @@ impl Default for ClobBuilder {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn build_order_v2_sets_builder_and_timestamp() {
+        let code = alloy::primitives::B256::from([0x11u8; 32]);
+        let order = Clob::build_order_v2(
+            "100".to_string(),
+            alloy::primitives::Address::ZERO,
+            alloy::primitives::Address::ZERO,
+            "1000000".to_string(),
+            "5000000".to_string(),
+            OrderSide::Buy,
+            SignatureType::PolyProxy,
+            false,
+            Some(0),
+            code,
+            alloy::primitives::B256::ZERO,
+            1_700_000_000_000,
+        );
+        assert_eq!(order.builder, code);
+        assert_eq!(order.metadata, alloy::primitives::B256::ZERO);
+        assert_eq!(order.timestamp, "1700000000000");
+        assert_eq!(order.expiration, "0");
+    }
 
     #[test]
     fn test_builder_custom_max_concurrent() {

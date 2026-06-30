@@ -1,6 +1,6 @@
 use std::fmt;
 
-use alloy::primitives::Address;
+use alloy::primitives::{Address, B256};
 use serde::{Deserialize, Serialize};
 use thiserror::Error;
 
@@ -73,13 +73,18 @@ impl fmt::Display for OrderKind {
     }
 }
 
-/// Signature type for order signing (EOA, Proxy, or Gnosis Safe).
+/// Signature type for order signing (EOA, Proxy, Gnosis Safe, or EIP-1271).
 #[derive(Debug, Default, Clone, Copy, PartialEq, Eq)]
+#[repr(u8)]
 pub enum SignatureType {
     #[default]
     Eoa = 0,
     PolyProxy = 1,
     PolyGnosisSafe = 2,
+    /// EIP-1271 smart-contract wallet signatures (V2 orders only).
+    ///
+    /// Signing is not yet implemented; order creation rejects this variant.
+    Poly1271 = 3,
 }
 
 impl SignatureType {
@@ -108,6 +113,7 @@ impl<'de> Deserialize<'de> for SignatureType {
             0 => Ok(Self::Eoa),
             1 => Ok(Self::PolyProxy),
             2 => Ok(Self::PolyGnosisSafe),
+            3 => Ok(Self::Poly1271),
             _ => Err(serde::de::Error::custom(format!(
                 "invalid signature type: {}",
                 v
@@ -122,6 +128,7 @@ impl fmt::Display for SignatureType {
             Self::Eoa => write!(f, "eoa"),
             Self::PolyProxy => write!(f, "poly-proxy"),
             Self::PolyGnosisSafe => write!(f, "poly-gnosis-safe"),
+            Self::Poly1271 => write!(f, "poly-1271"),
         }
     }
 }
@@ -222,7 +229,13 @@ where
     serializer.serialize_u64(val)
 }
 
-/// Unsigned order
+/// Unsigned order (Polymarket CLOB V2 wire shape).
+///
+/// The signed EIP-712 struct (see `core::eip712`) covers `salt`, `maker`, `signer`,
+/// `token_id`, `maker_amount`, `taker_amount`, `side`, `signature_type`, `timestamp`,
+/// `metadata`, and `builder`. `expiration` travels on the wire (for GTD orders) but is
+/// NOT part of the signed struct. `neg_risk` is local-only (`#[serde(skip)]`) and
+/// selects the exchange vs. neg-risk-exchange verifying contract during signing.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct Order {
@@ -230,15 +243,17 @@ pub struct Order {
     pub salt: String,
     pub maker: Address,
     pub signer: Address,
-    pub taker: Address,
     pub token_id: String,
     pub maker_amount: String,
     pub taker_amount: String,
-    pub expiration: String,
-    pub nonce: String,
-    pub fee_rate_bps: String,
     pub side: OrderSide,
+    /// Wire-only (GTD expiry); NOT part of the V2 signed struct.
+    pub expiration: String,
     pub signature_type: SignatureType,
+    /// Unix milliseconds; provides order uniqueness in V2 (replaces the V1 `nonce`).
+    pub timestamp: String,
+    pub metadata: B256,
+    pub builder: B256,
     #[serde(skip)]
     pub neg_risk: bool,
 }
@@ -282,15 +297,15 @@ mod tests {
             salt: "123".to_string(),
             maker: Address::from_str("0x0000000000000000000000000000000000000001").unwrap(),
             signer: Address::from_str("0x0000000000000000000000000000000000000002").unwrap(),
-            taker: Address::ZERO,
             token_id: "456".to_string(),
             maker_amount: "1000".to_string(),
             taker_amount: "2000".to_string(),
-            expiration: "0".to_string(),
-            nonce: "789".to_string(),
-            fee_rate_bps: "0".to_string(),
             side: OrderSide::Buy,
+            expiration: "0".to_string(),
             signature_type: SignatureType::Eoa,
+            timestamp: "1700000000000".to_string(),
+            metadata: B256::ZERO,
+            builder: B256::ZERO,
             neg_risk: false,
         };
 
@@ -305,7 +320,6 @@ mod tests {
         assert!(json.get("makerAmount").is_some());
         assert!(json.get("takerAmount").is_some());
         assert!(json.get("tokenId").is_some());
-        assert!(json.get("feeRateBps").is_some());
         assert!(json.get("signatureType").is_some());
 
         // Check flattened fields
@@ -316,7 +330,54 @@ mod tests {
         assert_eq!(json["makerAmount"], "1000");
         assert_eq!(json["side"], "BUY");
         assert_eq!(json["signatureType"], 0);
-        assert_eq!(json["nonce"], "789");
+        assert_eq!(json["timestamp"], "1700000000000");
+    }
+
+    #[test]
+    fn signed_order_serializes_v2_wire_shape() {
+        let order = Order {
+            salt: "479249096354".to_string(),
+            maker: alloy::primitives::Address::ZERO,
+            signer: alloy::primitives::Address::ZERO,
+            token_id: "100".to_string(),
+            maker_amount: "1000000".to_string(),
+            taker_amount: "5000000".to_string(),
+            side: OrderSide::Buy,
+            expiration: "0".to_string(),
+            signature_type: SignatureType::PolyProxy,
+            timestamp: "1700000000000".to_string(),
+            metadata: alloy::primitives::B256::ZERO,
+            builder: alloy::primitives::B256::ZERO,
+            neg_risk: false,
+        };
+        let signed = SignedOrder {
+            order,
+            signature: "0xdead".to_string(),
+        };
+        let v = serde_json::to_value(&signed).unwrap();
+        for k in [
+            "salt",
+            "maker",
+            "signer",
+            "tokenId",
+            "makerAmount",
+            "takerAmount",
+            "side",
+            "expiration",
+            "signatureType",
+            "timestamp",
+            "metadata",
+            "builder",
+            "signature",
+        ] {
+            assert!(v.get(k).is_some(), "missing wire field {k}");
+        }
+        for k in ["taker", "nonce", "feeRateBps"] {
+            assert!(v.get(k).is_none(), "V1 field {k} must be gone");
+        }
+        assert!(v["salt"].is_number());
+        assert!(v["makerAmount"].is_string());
+        assert_eq!(v["builder"].as_str().unwrap().len(), 66);
     }
 
     #[test]
@@ -385,12 +446,19 @@ mod tests {
         assert_eq!(proxy, SignatureType::PolyProxy);
         let gnosis: SignatureType = serde_json::from_str("2").unwrap();
         assert_eq!(gnosis, SignatureType::PolyGnosisSafe);
+
+        assert_eq!(
+            serde_json::to_string(&SignatureType::Poly1271).unwrap(),
+            "3"
+        );
+        let poly1271: SignatureType = serde_json::from_str("3").unwrap();
+        assert_eq!(poly1271, SignatureType::Poly1271);
     }
 
     #[test]
     fn signature_type_rejects_invalid_u8() {
-        let result = serde_json::from_str::<SignatureType>("3");
-        assert!(result.is_err(), "Should reject invalid signature type 3");
+        let result = serde_json::from_str::<SignatureType>("4");
+        assert!(result.is_err(), "Should reject invalid signature type 4");
 
         let result = serde_json::from_str::<SignatureType>("255");
         assert!(result.is_err(), "Should reject invalid signature type 255");
@@ -416,6 +484,8 @@ mod tests {
         assert!(!SignatureType::Eoa.is_proxy());
         assert!(SignatureType::PolyProxy.is_proxy());
         assert!(SignatureType::PolyGnosisSafe.is_proxy());
+        // Poly1271 (EIP-1271) is a smart-contract wallet, not a Polymarket proxy.
+        assert!(!SignatureType::Poly1271.is_proxy());
     }
 
     #[test]
@@ -496,15 +566,15 @@ mod tests {
             salt: "1".to_string(),
             maker: Address::ZERO,
             signer: Address::ZERO,
-            taker: Address::ZERO,
             token_id: "1".to_string(),
             maker_amount: "1".to_string(),
             taker_amount: "1".to_string(),
-            expiration: "0".to_string(),
-            nonce: "0".to_string(),
-            fee_rate_bps: "0".to_string(),
             side: OrderSide::Buy,
+            expiration: "0".to_string(),
             signature_type: SignatureType::Eoa,
+            timestamp: "0".to_string(),
+            metadata: B256::ZERO,
+            builder: B256::ZERO,
             neg_risk: true,
         };
         let json = serde_json::to_value(&order).unwrap();
@@ -521,15 +591,15 @@ mod tests {
             salt: "18446744073709551615".to_string(), // u64::MAX
             maker: Address::ZERO,
             signer: Address::ZERO,
-            taker: Address::ZERO,
             token_id: "1".to_string(),
             maker_amount: "1".to_string(),
             taker_amount: "1".to_string(),
-            expiration: "0".to_string(),
-            nonce: "0".to_string(),
-            fee_rate_bps: "0".to_string(),
             side: OrderSide::Buy,
+            expiration: "0".to_string(),
             signature_type: SignatureType::Eoa,
+            timestamp: "0".to_string(),
+            metadata: B256::ZERO,
+            builder: B256::ZERO,
             neg_risk: false,
         };
         let json = serde_json::to_value(&order).unwrap();
@@ -547,15 +617,15 @@ mod tests {
             salt: "340282366920938463463374607431768211455".to_string(), // u128::MAX
             maker: Address::ZERO,
             signer: Address::ZERO,
-            taker: Address::ZERO,
             token_id: "1".to_string(),
             maker_amount: "1".to_string(),
             taker_amount: "1".to_string(),
-            expiration: "0".to_string(),
-            nonce: "0".to_string(),
-            fee_rate_bps: "0".to_string(),
             side: OrderSide::Buy,
+            expiration: "0".to_string(),
             signature_type: SignatureType::Eoa,
+            timestamp: "0".to_string(),
+            metadata: B256::ZERO,
+            builder: B256::ZERO,
             neg_risk: false,
         };
         assert!(

@@ -571,15 +571,15 @@ async fn get_order_flatten_rename() {
                 "salt": "999",
                 "maker": "0x0000000000000000000000000000000000000001",
                 "signer": "0x0000000000000000000000000000000000000002",
-                "taker": "0x0000000000000000000000000000000000000000",
                 "tokenId": "0xtoken",
                 "makerAmount": "1000",
                 "takerAmount": "500",
-                "expiration": "0",
-                "nonce": "0",
-                "feeRateBps": "100",
                 "side": "BUY",
+                "expiration": "0",
                 "signatureType": 0,
+                "timestamp": "1700000000000",
+                "metadata": "0x0000000000000000000000000000000000000000000000000000000000000000",
+                "builder": "0x0000000000000000000000000000000000000000000000000000000000000000",
                 "signature": "0xsig",
                 "status": "LIVE",
                 "owner": "0xowner",
@@ -1180,12 +1180,10 @@ async fn create_order_fetches_metadata_and_builds_order() {
         .create_async()
         .await;
 
+    // V2 order signing no longer fetches /fee-rate; assert it is NOT called.
     let fee_rate_mock = server
         .mock("GET", "/fee-rate")
-        .match_query(Matcher::UrlEncoded("token_id".into(), "0xtoken".into()))
-        .with_status(200)
-        .with_header("content-type", "application/json")
-        .with_body(r#"{"base_fee": 100}"#)
+        .expect(0)
         .create_async()
         .await;
 
@@ -1207,8 +1205,10 @@ async fn create_order_fetches_metadata_and_builds_order() {
     // Verify order fields
     assert_eq!(order.token_id, "0xtoken");
     assert_eq!(order.side, polyoxide_clob::OrderSide::Buy);
-    assert_eq!(order.fee_rate_bps, "100");
     assert!(!order.neg_risk);
+    // V2: builder code defaults to zero, timestamp is populated
+    assert_eq!(order.builder, alloy::primitives::B256::ZERO);
+    assert!(order.timestamp.parse::<u128>().unwrap() > 0);
     // Buy: maker_amount = cost (55 * 10^6), taker_amount = shares (100 * 10^6)
     assert_eq!(order.maker_amount, "55000000");
     assert_eq!(order.taker_amount, "100000000");
@@ -1222,13 +1222,11 @@ async fn create_order_fetches_metadata_and_builds_order() {
 async fn create_order_with_provided_options_skips_metadata_fetch() {
     let mut server = Server::new_async().await;
 
-    // Only fee_rate should be fetched — neg_risk and tick_size provided via options
+    // neg_risk and tick_size are provided via options, and V2 no longer fetches /fee-rate,
+    // so NO market-metadata endpoints should be called.
     let fee_rate_mock = server
         .mock("GET", "/fee-rate")
-        .match_query(Matcher::UrlEncoded("token_id".into(), "0xtoken".into()))
-        .with_status(200)
-        .with_header("content-type", "application/json")
-        .with_body(r#"{"base_fee": 50}"#)
+        .expect(0)
         .create_async()
         .await;
 
@@ -1266,7 +1264,6 @@ async fn create_order_with_provided_options_skips_metadata_fetch() {
 
     assert_eq!(order.side, polyoxide_clob::OrderSide::Sell);
     assert!(order.neg_risk);
-    assert_eq!(order.fee_rate_bps, "50");
     // Sell: maker_amount = shares (200 * 10^6), taker_amount = cost (100 * 10^6)
     assert_eq!(order.maker_amount, "200000000");
     assert_eq!(order.taker_amount, "100000000");
@@ -1324,12 +1321,10 @@ async fn create_market_order_with_explicit_price() {
         .create_async()
         .await;
 
+    // V2 order signing no longer fetches /fee-rate; assert it is NOT called.
     let fee_rate_mock = server
         .mock("GET", "/fee-rate")
-        .match_query(Matcher::UrlEncoded("token_id".into(), "0xtoken".into()))
-        .with_status(200)
-        .with_header("content-type", "application/json")
-        .with_body(r#"{"base_fee": 100}"#)
+        .expect(0)
         .create_async()
         .await;
 
@@ -1385,12 +1380,10 @@ async fn create_market_order_fetches_orderbook_for_price() {
         .create_async()
         .await;
 
+    // V2 order signing no longer fetches /fee-rate; assert it is NOT called.
     let fee_rate_mock = server
         .mock("GET", "/fee-rate")
-        .match_query(Matcher::UrlEncoded("token_id".into(), "0xtoken".into()))
-        .with_status(200)
-        .with_header("content-type", "application/json")
-        .with_body(r#"{"base_fee": 100}"#)
+        .expect(0)
         .create_async()
         .await;
 
@@ -1431,7 +1424,6 @@ async fn create_market_order_fetches_orderbook_for_price() {
     assert_eq!(order.token_id, "0xtoken");
     assert_eq!(order.expiration, "0");
     assert!(!order.neg_risk);
-    assert_eq!(order.fee_rate_bps, "100");
     assert_eq!(order.side, polyoxide_clob::OrderSide::Buy);
     // Buy market order: price calculated from asks = 0.52
     // maker_amount = USDC (100 * 10^6), taker_amount = shares (100/0.52 truncated * 10^6)

@@ -5,11 +5,7 @@ use alloy::{
     sol_types::SolStruct,
 };
 
-use crate::{
-    core::chain::Chain,
-    error::ClobError,
-    types::{Order as ClobOrder, SignatureType},
-};
+use crate::{core::chain::Chain, error::ClobError, types::Order as ClobOrder};
 
 mod protocol {
     use super::*;
@@ -27,15 +23,14 @@ mod protocol {
             uint256 salt;
             address maker;
             address signer;
-            address taker;
             uint256 tokenId;
             uint256 makerAmount;
             uint256 takerAmount;
-            uint256 expiration;
-            uint256 nonce;
-            uint256 feeRateBps;
             uint8 side;
             uint8 signatureType;
+            uint256 timestamp;
+            bytes32 metadata;
+            bytes32 builder;
         }
 
         #[derive(Debug, PartialEq, Eq)]
@@ -52,28 +47,21 @@ fn order_to_protocol(order: &ClobOrder) -> Result<protocol::Order, ClobError> {
             .map_err(|e| ClobError::Crypto(format!("Invalid salt: {}", e)))?,
         maker: order.maker,
         signer: order.signer,
-        taker: order.taker,
         tokenId: U256::from_str_radix(&order.token_id, 10)
             .map_err(|e| ClobError::Crypto(format!("Invalid token_id: {}", e)))?,
         makerAmount: U256::from_str_radix(&order.maker_amount, 10)
             .map_err(|e| ClobError::Crypto(format!("Invalid maker_amount: {}", e)))?,
         takerAmount: U256::from_str_radix(&order.taker_amount, 10)
             .map_err(|e| ClobError::Crypto(format!("Invalid taker_amount: {}", e)))?,
-        expiration: U256::from_str_radix(&order.expiration, 10)
-            .map_err(|e| ClobError::Crypto(format!("Invalid expiration: {}", e)))?,
-        nonce: U256::from_str_radix(&order.nonce, 10)
-            .map_err(|e| ClobError::Crypto(format!("Invalid nonce: {}", e)))?,
-        feeRateBps: U256::from_str_radix(&order.fee_rate_bps, 10)
-            .map_err(|e| ClobError::Crypto(format!("Invalid fee_rate_bps: {}", e)))?,
         side: match order.side {
             crate::types::OrderSide::Buy => 0,
             crate::types::OrderSide::Sell => 1,
         },
-        signatureType: match order.signature_type {
-            SignatureType::Eoa => 0,
-            SignatureType::PolyProxy => 1,
-            SignatureType::PolyGnosisSafe => 2,
-        },
+        signatureType: order.signature_type as u8,
+        timestamp: U256::from_str_radix(&order.timestamp, 10)
+            .map_err(|e| ClobError::Crypto(format!("Invalid timestamp: {}", e)))?,
+        metadata: order.metadata,
+        builder: order.builder,
     })
 }
 
@@ -94,7 +82,7 @@ fn compute_order_digest(
 
     let domain = protocol::EIP712Domain {
         name: "Polymarket CTF Exchange".to_string(),
-        version: "1".to_string(),
+        version: "2".to_string(),
         chainId: U256::from(chain_id),
         verifyingContract: verifying_contract,
     };
@@ -162,7 +150,7 @@ pub async fn sign_clob_auth<S: AlloySigner>(
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::types::OrderSide;
+    use crate::types::{OrderSide, SignatureType};
     use alloy::primitives::address;
     use alloy::signers::local::PrivateKeySigner;
 
@@ -179,17 +167,54 @@ mod tests {
             salt: "123456789".to_string(),
             maker: signer.address(),
             signer: signer.address(),
-            taker: Address::ZERO,
             token_id: "100".to_string(),
             maker_amount: "5000000".to_string(),
             taker_amount: "10000000".to_string(),
-            expiration: "0".to_string(),
-            nonce: "0".to_string(),
-            fee_rate_bps: "100".to_string(),
             side: OrderSide::Buy,
+            expiration: "0".to_string(),
             signature_type: SignatureType::Eoa,
+            timestamp: "1700000000000".to_string(),
+            metadata: alloy::primitives::B256::ZERO,
+            builder: alloy::primitives::B256::ZERO,
             neg_risk,
         }
+    }
+
+    #[test]
+    fn v2_order_type_string_matches_contract() {
+        use alloy::sol_types::SolStruct;
+        let expected = "Order(uint256 salt,address maker,address signer,uint256 tokenId,\
+uint256 makerAmount,uint256 takerAmount,uint8 side,uint8 signatureType,\
+uint256 timestamp,bytes32 metadata,bytes32 builder)";
+        assert_eq!(protocol::Order::eip712_encode_type(), expected);
+    }
+
+    #[tokio::test]
+    async fn v2_order_signature_is_deterministic() {
+        use alloy::signers::local::PrivateKeySigner;
+        let signer: PrivateKeySigner =
+            "0xac0974bec39a17e36ba4a6b4d238ff944bacb478cbed5efcae784d7bf4f2ff80"
+                .parse()
+                .unwrap();
+        let order = ClobOrder {
+            salt: "479249096354".to_string(),
+            maker: address!("0000000000000000000000000000000000000001"),
+            signer: address!("0000000000000000000000000000000000000002"),
+            token_id: "100".to_string(),
+            maker_amount: "1000000".to_string(),
+            taker_amount: "5000000".to_string(),
+            side: crate::types::OrderSide::Buy,
+            signature_type: crate::types::SignatureType::Eoa,
+            timestamp: "1700000000000".to_string(),
+            metadata: alloy::primitives::B256::ZERO,
+            builder: alloy::primitives::B256::ZERO,
+            expiration: "0".to_string(),
+            neg_risk: false,
+        };
+        let sig1 = sign_order(&order, &signer, 137).await.unwrap();
+        let sig2 = sign_order(&order, &signer, 137).await.unwrap();
+        assert_eq!(sig1, sig2);
+        assert!(sig1.starts_with("0x") && sig1.len() == 132);
     }
 
     #[test]
@@ -201,15 +226,14 @@ mod tests {
         assert_eq!(proto.salt, U256::from(123456789u64));
         assert_eq!(proto.maker, order.maker);
         assert_eq!(proto.signer, order.signer);
-        assert_eq!(proto.taker, Address::ZERO);
         assert_eq!(proto.tokenId, U256::from(100u64));
         assert_eq!(proto.makerAmount, U256::from(5000000u64));
         assert_eq!(proto.takerAmount, U256::from(10000000u64));
-        assert_eq!(proto.expiration, U256::ZERO);
-        assert_eq!(proto.nonce, U256::ZERO);
-        assert_eq!(proto.feeRateBps, U256::from(100u64));
         assert_eq!(proto.side, 0); // Buy
         assert_eq!(proto.signatureType, 0); // Eoa
+        assert_eq!(proto.timestamp, U256::from(1700000000000u64));
+        assert_eq!(proto.metadata, alloy::primitives::B256::ZERO);
+        assert_eq!(proto.builder, alloy::primitives::B256::ZERO);
     }
 
     #[test]
@@ -312,15 +336,14 @@ mod tests {
             salt: U256::from(1u64),
             maker: Address::ZERO,
             signer: Address::ZERO,
-            taker: Address::ZERO,
             tokenId: U256::from(100u64),
             makerAmount: U256::from(1000u64),
             takerAmount: U256::from(2000u64),
-            expiration: U256::ZERO,
-            nonce: U256::ZERO,
-            feeRateBps: U256::from(100u64),
             side: 0,
             signatureType: 0,
+            timestamp: U256::ZERO,
+            metadata: alloy::primitives::B256::ZERO,
+            builder: alloy::primitives::B256::ZERO,
         };
         let order_sell = protocol::Order {
             side: 1,
@@ -340,15 +363,14 @@ mod tests {
             salt: U256::from(1u64),
             maker: Address::ZERO,
             signer: Address::ZERO,
-            taker: Address::ZERO,
             tokenId: U256::from(100u64),
             makerAmount: U256::from(1000u64),
             takerAmount: U256::from(2000u64),
-            expiration: U256::ZERO,
-            nonce: U256::ZERO,
-            feeRateBps: U256::from(100u64),
             side: 0,
             signatureType: 0,
+            timestamp: U256::ZERO,
+            metadata: alloy::primitives::B256::ZERO,
+            builder: alloy::primitives::B256::ZERO,
         };
         let order2 = protocol::Order {
             makerAmount: U256::from(1001u64),
@@ -568,15 +590,14 @@ mod tests {
             salt: U256::ZERO,
             maker: Address::ZERO,
             signer: Address::ZERO,
-            taker: Address::ZERO,
             tokenId: U256::ZERO,
             makerAmount: U256::ZERO,
             takerAmount: U256::ZERO,
-            expiration: U256::ZERO,
-            nonce: U256::ZERO,
-            feeRateBps: U256::ZERO,
             side: 0,
             signatureType: 0,
+            timestamp: U256::ZERO,
+            metadata: alloy::primitives::B256::ZERO,
+            builder: alloy::primitives::B256::ZERO,
         };
         let proxy = protocol::Order {
             signatureType: 1,
