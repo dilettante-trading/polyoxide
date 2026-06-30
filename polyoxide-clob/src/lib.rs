@@ -77,7 +77,8 @@ pub use api::{
         ListClobTrades, ListTradesResponse, MakerOrder, Trade,
     },
     auth::{
-        ApiKeyInfo, ApiKeyResponse, ClosedOnlyResponse, ReadonlyApiKeyResponse, ValidateKeyResponse,
+        ApiKeyInfo, ApiKeyResponse, BuilderApiKeyResponse, ClosedOnlyResponse,
+        ReadonlyApiKeyResponse, ValidateKeyResponse,
     },
     health::{Health, ServerTimeResponse},
     markets::{

@@ -139,12 +139,12 @@ impl Auth {
 
     // --- Builder API keys ---
 
-    /// Create a new builder API key (L1 auth)
-    pub fn create_builder_key(&self, nonce: u32) -> Request<ApiKeyResponse> {
+    /// Create a new builder API key (L2 auth)
+    pub fn create_builder_key(&self) -> Request<BuilderApiKeyResponse> {
         Request::post(
             self.http_client.clone(),
             "/auth/builder-api-key".to_string(),
-            self.l1_auth(nonce),
+            self.l2_auth(),
             self.chain_id,
         )
     }
@@ -198,6 +198,14 @@ pub struct ApiKeyInfo {
     pub api_key: String,
 }
 
+/// Response from `POST /auth/builder-api-key` (note: `key`, not `apiKey`).
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct BuilderApiKeyResponse {
+    pub key: String,
+    pub secret: String,
+    pub passphrase: String,
+}
+
 /// Response from creating a read-only API key
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(rename_all(deserialize = "camelCase"))]
@@ -232,6 +240,15 @@ mod tests {
         assert_eq!(resp.api_key, "key-123");
         assert_eq!(resp.secret, "secret-456");
         assert_eq!(resp.passphrase, "pass-789");
+    }
+
+    #[test]
+    fn builder_api_key_response_deserializes_key_field() {
+        let json = r#"{"key":"019894b9-cb40-79c4-b2bd-6aecb6f8c6c5","secret":"c2VjcmV0","passphrase":"pass"}"#;
+        let resp: BuilderApiKeyResponse = serde_json::from_str(json).unwrap();
+        assert_eq!(resp.key, "019894b9-cb40-79c4-b2bd-6aecb6f8c6c5");
+        assert_eq!(resp.secret, "c2VjcmV0");
+        assert_eq!(resp.passphrase, "pass");
     }
 
     #[test]
