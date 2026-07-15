@@ -1,3 +1,32 @@
+## [0.18.1] - 2026-07-15
+
+### 🚀 Features
+
+- *(clob)* Add PricesHistoryQuery + prices_history_with for time-bounded history
+- *(cli)* Scaffold clob prices download command group
+- *(cli)* Prices download domain types (format, target, manifest)
+- *(cli)* Prices download selection helpers (file parse, dedupe, token ids)
+- *(cli)* Gamma-based market discovery for prices download
+- *(cli)* Dataset writers (csv/jsonl) with atomic temp-then-rename
+- *(cli)* Rate-limited, retrying single-market price fetch
+- *(cli)* Write prices download run manifest as jsonl
+- *(cli)* Orchestrate concurrent resumable prices download + manifest
+- *(cli)* Feature-gated Parquet dataset writer
+
+### 🐛 Bug Fixes
+
+- *(cli)* Validate token ids for path safety; guard closed/open + fidelity
+
+### 📚 Documentation
+
+- Skip README doctests that require non-default features
+- *(cli)* Design spec for clob prices download (bulk ML dataset)
+- *(cli)* Implementation plan for clob prices download
+
+### 🧪 Testing
+
+- *(cli)* Live prices download test + document clob command group
+
 ## [0.18.0] - 2026-06-30
 
 ### 💥 Breaking Changes
