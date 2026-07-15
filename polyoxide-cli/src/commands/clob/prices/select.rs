@@ -1,6 +1,7 @@
 use std::path::Path;
 
 use color_eyre::eyre::{Context, Result};
+use polyoxide_gamma::Gamma;
 
 use crate::commands::clob::prices::types::Target;
 
@@ -33,10 +34,61 @@ pub fn read_ids_file(path: &Path) -> Result<Vec<String>> {
 
 /// Parse a Gamma `clobTokenIds` field, which is a JSON-encoded string array
 /// such as `"[\"111\",\"222\"]"`.
-#[allow(dead_code)] // used by the download orchestration in a later task
 pub fn parse_clob_token_ids(raw: &str) -> Result<Vec<String>> {
     serde_json::from_str::<Vec<String>>(raw)
         .with_context(|| format!("parsing clob_token_ids: {raw}"))
+}
+
+/// Gamma market-discovery filters. All fields optional.
+#[derive(Debug, Clone, Default)]
+pub struct DiscoverFilters {
+    pub closed: Option<bool>,
+    pub open: Option<bool>,
+    pub min_volume: Option<f64>,
+    pub min_liquidity: Option<f64>,
+    pub tag_id: Option<i64>,
+    pub limit: Option<u32>,
+}
+
+/// Discover token ids via `gamma.markets().list()`, applying the given filters.
+///
+/// Each returned market's `clob_token_ids` (a JSON-encoded string array) is
+/// parsed and flattened. Markets with a missing or unparseable field are
+/// skipped with a warning to stderr.
+pub async fn discover_targets(gamma: &Gamma, filters: &DiscoverFilters) -> Result<Vec<String>> {
+    let mut req = gamma.markets().list();
+    if let Some(closed) = filters.closed {
+        req = req.closed(closed);
+    }
+    if let Some(open) = filters.open {
+        req = req.open(open);
+    }
+    if let Some(v) = filters.min_volume {
+        req = req.volume_num_min(v);
+    }
+    if let Some(l) = filters.min_liquidity {
+        req = req.liquidity_num_min(l);
+    }
+    if let Some(tag) = filters.tag_id {
+        req = req.tag_id(tag);
+    }
+    if let Some(limit) = filters.limit {
+        req = req.limit(limit);
+    }
+
+    let markets = req.send().await.context("gamma market discovery")?;
+
+    let mut ids = Vec::new();
+    for market in markets {
+        match market.clob_token_ids.as_deref() {
+            Some(raw) => match parse_clob_token_ids(raw) {
+                Ok(parsed) => ids.extend(parsed),
+                Err(e) => eprintln!("warning: skipping market {}: {e}", market.id),
+            },
+            None => eprintln!("warning: skipping market {} (no clob_token_ids)", market.id),
+        }
+    }
+    Ok(ids)
 }
 
 #[cfg(test)]

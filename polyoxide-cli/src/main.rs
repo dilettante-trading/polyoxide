@@ -1,7 +1,7 @@
 use clap::{Parser, Subcommand};
 use color_eyre::eyre::Result;
 
-mod commands;
+use polyoxide_cli::commands;
 
 #[derive(Parser)]
 #[command(name = "polyoxide")]
