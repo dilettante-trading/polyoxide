@@ -85,8 +85,17 @@ impl Markets {
         .query("token_id", token_id.into())
     }
 
-    /// Get historical prices for a token
+    /// Get historical prices for a token (no extra filters).
     pub fn prices_history(&self, token_id: impl Into<String>) -> Request<PricesHistoryResponse> {
+        self.prices_history_with(token_id, &PricesHistoryQuery::default())
+    }
+
+    /// Get historical prices for a token with optional interval/fidelity/time bounds.
+    pub fn prices_history_with(
+        &self,
+        token_id: impl Into<String>,
+        params: &PricesHistoryQuery,
+    ) -> Request<PricesHistoryResponse> {
         Request::get(
             self.http_client.clone(),
             "/prices-history",
@@ -94,6 +103,10 @@ impl Markets {
             self.chain_id,
         )
         .query("market", token_id.into())
+        .query_opt("interval", params.interval.as_deref())
+        .query_opt("fidelity", params.fidelity)
+        .query_opt("startTs", params.start_ts)
+        .query_opt("endTs", params.end_ts)
     }
 
     /// Get neg_risk status for a token
@@ -487,6 +500,23 @@ pub struct PriceHistoryPoint {
     /// Price at this point in time
     #[serde(rename = "p")]
     pub price: f64,
+}
+
+/// Optional query parameters for the `/prices-history` endpoint.
+///
+/// All fields are optional; only `Some` values are sent. See
+/// `docs/specs/clob/markets.md` for the accepted `interval` values and the
+/// `fidelity` (minutes) meaning.
+#[derive(Debug, Clone, Default)]
+pub struct PricesHistoryQuery {
+    /// Aggregation window: `max`, `all`, `1m`, `1w`, `1d`, `6h`, or `1h`.
+    pub interval: Option<String>,
+    /// Resolution in minutes (upstream default is 1).
+    pub fidelity: Option<i32>,
+    /// Inclusive start of the window as a UNIX timestamp (seconds).
+    pub start_ts: Option<i64>,
+    /// Inclusive end of the window as a UNIX timestamp (seconds).
+    pub end_ts: Option<i64>,
 }
 
 /// Response from the prices-history endpoint
