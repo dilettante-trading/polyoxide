@@ -10,7 +10,6 @@ use polyoxide_clob::{Clob, ClobError, PriceHistoryPoint, PricesHistoryQuery};
 /// The typed client abstracts away HTTP status codes and the `Retry-After`
 /// header, so every error is treated as retryable up to `max_retries`. This is
 /// a deliberate simplification over per-status handling (see spec).
-#[allow(dead_code)] // used by the download orchestration in a later task
 pub async fn fetch_one(
     clob: &Clob,
     token_id: &str,

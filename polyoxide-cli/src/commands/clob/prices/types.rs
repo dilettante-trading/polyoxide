@@ -17,7 +17,6 @@ pub enum OutputFormat {
 
 impl OutputFormat {
     /// File extension (without a dot) for this format.
-    #[allow(dead_code)] // wired up by the download orchestration in a later task
     pub fn extension(self) -> &'static str {
         match self {
             OutputFormat::Csv => "csv",
@@ -28,7 +27,6 @@ impl OutputFormat {
 }
 
 /// A single market to download, identified by its CLOB token id.
-#[allow(dead_code)] // constructed by the download orchestration in a later task
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct Target {
     pub token_id: String,
@@ -38,7 +36,6 @@ impl Target {
     /// Output file path for this target: `<out_dir>/<token_id>.<ext>`.
     ///
     /// Token ids are decimal integer strings, so they are filesystem-safe as-is.
-    #[allow(dead_code)] // wired up by the download orchestration in a later task
     pub fn output_path(&self, out_dir: &Path, format: OutputFormat) -> PathBuf {
         out_dir.join(format!("{}.{}", self.token_id, format.extension()))
     }
@@ -46,7 +43,6 @@ impl Target {
 
 /// One manifest row per considered market. `status` is `ok` | `empty` |
 /// `failed` | `skipped`.
-#[allow(dead_code)] // constructed by the download orchestration in a later task
 #[derive(Debug, Clone, Serialize)]
 pub struct ManifestRecord {
     pub token_id: String,

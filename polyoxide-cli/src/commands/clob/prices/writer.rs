@@ -67,7 +67,6 @@ impl DatasetWriter for JsonlWriter {
 }
 
 /// Return the writer for a format. Parquet is handled in a later task.
-#[allow(dead_code)] // used by the download orchestration in a later task
 pub fn writer_for(format: OutputFormat) -> Box<dyn DatasetWriter> {
     match format {
         OutputFormat::Csv => Box::new(CsvWriter),

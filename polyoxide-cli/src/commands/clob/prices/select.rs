@@ -6,7 +6,6 @@ use polyoxide_gamma::Gamma;
 use crate::commands::clob::prices::types::Target;
 
 /// Deduplicate token ids into `Target`s, preserving first-seen order.
-#[allow(dead_code)] // used by the download orchestration in a later task
 pub fn dedupe_targets(ids: impl IntoIterator<Item = String>) -> Vec<Target> {
     let mut seen = std::collections::HashSet::new();
     let mut out = Vec::new();
@@ -20,7 +19,6 @@ pub fn dedupe_targets(ids: impl IntoIterator<Item = String>) -> Vec<Target> {
 
 /// Read a newline-delimited token-id file. Blank lines and lines whose first
 /// non-whitespace character is `#` are ignored; other lines are trimmed.
-#[allow(dead_code)] // used by the download orchestration in a later task
 pub fn read_ids_file(path: &Path) -> Result<Vec<String>> {
     let contents = std::fs::read_to_string(path)
         .with_context(|| format!("reading token id file {}", path.display()))?;
@@ -40,6 +38,9 @@ pub fn parse_clob_token_ids(raw: &str) -> Result<Vec<String>> {
 }
 
 /// Gamma market-discovery filters. All fields optional.
+///
+/// Note: `closed` and `open` both set the same upstream `closed` filter; if both
+/// are Some, `open` is applied last and wins.
 #[derive(Debug, Clone, Default)]
 pub struct DiscoverFilters {
     pub closed: Option<bool>,
