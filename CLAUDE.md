@@ -60,6 +60,12 @@ polyoxide-core          (shared: auth, HTTP client, errors, macros)
 
 Note: `polyoxide-cli` does **not** depend on the unified `polyoxide` crate. It depends directly on the component crates — `polyoxide-clob` (with `ws`), `polyoxide-data`, and `polyoxide-gamma` — plus `polyoxide-core` and `polyoxide-relay` only under the optional `keychain` feature.
 
+The CLI's `clob` command group currently exposes `clob prices download` — a bulk,
+resumable, rate-limited downloader for CLOB historical price data
+(`GET /prices-history`) that writes per-market CSV/JSONL/Parquet dataset files
+plus a `manifest.jsonl`. Parquet output requires building the CLI with the
+`parquet` feature.
+
 **polyoxide** (the unified crate) uses feature flags: `clob`, `gamma`, `data`, `ws` (WebSocket), `full` (all). Default = clob + gamma + data.
 
 ## Key Patterns

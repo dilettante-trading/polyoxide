@@ -685,6 +685,43 @@ async fn prices_history_renamed_fields() {
 }
 
 #[tokio::test]
+async fn prices_history_with_query_params() {
+    let mut server = Server::new_async().await;
+
+    let mock = server
+        .mock("GET", "/prices-history")
+        .match_query(Matcher::AllOf(vec![
+            Matcher::UrlEncoded("market".into(), "0xtoken".into()),
+            Matcher::UrlEncoded("interval".into(), "max".into()),
+            Matcher::UrlEncoded("fidelity".into(), "1".into()),
+            Matcher::UrlEncoded("startTs".into(), "1700000000".into()),
+            Matcher::UrlEncoded("endTs".into(), "1700900000".into()),
+        ]))
+        .with_status(200)
+        .with_header("content-type", "application/json")
+        .with_body(r#"{"history":[{"t":1700000000,"p":0.5}]}"#)
+        .create_async()
+        .await;
+
+    let clob = test_public_clob(&server);
+    let query = polyoxide_clob::PricesHistoryQuery {
+        interval: Some("max".into()),
+        fidelity: Some(1),
+        start_ts: Some(1_700_000_000),
+        end_ts: Some(1_700_900_000),
+    };
+    let resp = clob
+        .markets()
+        .prices_history_with("0xtoken", &query)
+        .send()
+        .await
+        .unwrap();
+
+    assert_eq!(resp.history.len(), 1);
+    mock.assert_async().await;
+}
+
+#[tokio::test]
 async fn calculate_price_post_body() {
     let mut server = Server::new_async().await;
 

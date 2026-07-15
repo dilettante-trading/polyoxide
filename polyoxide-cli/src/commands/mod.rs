@@ -2,11 +2,13 @@
 
 mod common;
 
+pub mod clob;
 pub mod completions;
 pub mod data;
 pub mod gamma;
 pub mod ws;
 
+pub use clob::ClobCommand;
 pub use completions::CompletionsCommand;
 pub use data::DataCommand;
 pub use gamma::GammaCommand;
