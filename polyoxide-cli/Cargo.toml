@@ -13,6 +13,7 @@ categories = ["command-line-utilities"]
 [features]
 default = []
 keychain = ["polyoxide-clob/keychain", "dep:polyoxide-core", "dep:polyoxide-relay"]
+parquet = ["dep:arrow", "dep:parquet"]
 
 [[bin]]
 name = "polyoxide"
@@ -31,3 +32,12 @@ serde_json = { workspace = true }
 color-eyre = "0.6"
 futures-util = "0.3"
 ctrlc = "3.4"
+governor = { workspace = true }
+tempfile = "3"
+arrow = { version = "54", optional = true }
+parquet = { version = "54", optional = true }
+
+[dev-dependencies]
+mockito = { workspace = true }
+tempfile = "3"
+tokio = { workspace = true, features = ["macros", "rt-multi-thread", "time"] }

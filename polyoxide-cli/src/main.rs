@@ -18,6 +18,11 @@ enum Commands {
         #[command(subcommand)]
         command: commands::DataCommand,
     },
+    /// Query CLOB API (order book, historical prices)
+    Clob {
+        #[command(subcommand)]
+        command: commands::ClobCommand,
+    },
     /// Query Gamma API (market data)
     Gamma {
         #[command(subcommand)]
@@ -43,6 +48,7 @@ async fn main() -> Result<()> {
 
     match cli.command {
         Commands::Data { command } => command.run().await?,
+        Commands::Clob { command } => command.run().await?,
         Commands::Gamma { command } => command.run().await?,
         Commands::Ws { command } => command.run().await?,
         Commands::Completions(cmd) => cmd.run::<Cli>()?,
@@ -152,5 +158,49 @@ mod tests {
     fn ws_user_requires_market_ids() {
         let result = try_parse(&["polyoxide", "ws", "user"]);
         assert!(result.is_err());
+    }
+
+    #[test]
+    fn clob_subcommand_requires_nested_subcommand() {
+        let result = try_parse(&["polyoxide", "clob"]);
+        assert!(result.is_err());
+    }
+
+    #[test]
+    fn clob_prices_download_parses_with_token_id() {
+        let cli = try_parse(&[
+            "polyoxide",
+            "clob",
+            "prices",
+            "download",
+            "--token-id",
+            "0xabc",
+        ])
+        .unwrap();
+        assert!(matches!(cli.command, super::Commands::Clob { .. }));
+    }
+
+    #[test]
+    fn clob_prices_download_defaults_interval_max() {
+        use crate::commands::clob::{prices::PricesCommand, ClobCommand};
+        let cli = try_parse(&[
+            "polyoxide",
+            "clob",
+            "prices",
+            "download",
+            "--token-id",
+            "0xabc",
+        ])
+        .unwrap();
+        let super::Commands::Clob {
+            command: ClobCommand::Prices { command },
+        } = cli.command
+        else {
+            panic!("expected clob prices");
+        };
+        let PricesCommand::Download(args) = command;
+        assert_eq!(args.interval, "max");
+        assert_eq!(args.fidelity, 1);
+        assert_eq!(args.concurrency, 4);
     }
 }
