@@ -100,7 +100,7 @@ let balance = client.clob
 
 ### WebSocket
 
-```rust
+```rust,ignore
 use polyoxide::prelude::*;
 use futures_util::StreamExt;
 # async fn doctest() -> Result<(), Box<dyn std::error::Error>> {

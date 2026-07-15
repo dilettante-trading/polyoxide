@@ -129,7 +129,7 @@ let book = clob.markets().order_book("token_id").send().await?;
 
 ### WebSocket (requires `ws` feature)
 
-```rust
+```rust,ignore
 use polyoxide::prelude::*;
 use futures_util::StreamExt;
 # async fn doctest() -> Result<(), Box<dyn std::error::Error>> {
@@ -154,7 +154,7 @@ while let Some(msg) = stream.next().await {
 
 For long-running connections, `WebSocketBuilder` provides automatic keep-alive pings:
 
-```rust
+```rust,ignore
 use polyoxide::prelude::*;
 use std::time::Duration;
 # async fn doctest() -> Result<(), Box<dyn std::error::Error>> {

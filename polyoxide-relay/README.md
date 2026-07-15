@@ -65,7 +65,7 @@ let client = RelayClient::from_account(account)?;
 
 ### OS Keychain (feature `keychain`)
 
-```rust
+```rust,ignore
 use polyoxide_relay::{RelayClient, BuilderAccount};
 
 # async fn doctest() -> Result<(), Box<dyn std::error::Error>> {

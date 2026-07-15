@@ -101,7 +101,7 @@ let account = Account::from_env()?;
 let account = Account::from_file("config/account.json")?;
 
 // From the OS keychain (feature `keychain`)
-let account = Account::from_keychain()?;
+// let account = Account::from_keychain()?;
 
 // Direct construction
 let credentials = Credentials {
