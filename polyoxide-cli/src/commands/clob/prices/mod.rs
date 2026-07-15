@@ -1,5 +1,6 @@
 pub mod download;
 pub mod fetch;
+pub mod manifest;
 pub mod select;
 pub mod types;
 pub mod writer;
