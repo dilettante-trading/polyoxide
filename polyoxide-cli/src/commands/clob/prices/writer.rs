@@ -66,12 +66,69 @@ impl DatasetWriter for JsonlWriter {
     }
 }
 
-/// Return the writer for a format. Parquet is handled in a later task.
+/// Apache Parquet writer (`token_id: Utf8`, `timestamp: Int64`, `price: Float64`).
+///
+/// Buffers the whole file in memory before writing it out, because
+/// `ArrowWriter` requires `Write + Send` and the sink here is `&mut dyn Write`.
+/// Fine for per-market datasets; revisit if pulling very large high-fidelity ranges.
+#[cfg(feature = "parquet")]
+pub struct ParquetWriter;
+
+#[cfg(feature = "parquet")]
+impl DatasetWriter for ParquetWriter {
+    fn serialize(
+        &self,
+        out: &mut dyn Write,
+        token_id: &str,
+        points: &[PriceHistoryPoint],
+    ) -> io::Result<()> {
+        use std::sync::Arc;
+
+        use arrow::array::{Float64Array, Int64Array, StringArray};
+        use arrow::datatypes::{DataType, Field, Schema};
+        use arrow::record_batch::RecordBatch;
+        use parquet::arrow::ArrowWriter;
+
+        let schema = Arc::new(Schema::new(vec![
+            Field::new("token_id", DataType::Utf8, false),
+            Field::new("timestamp", DataType::Int64, false),
+            Field::new("price", DataType::Float64, false),
+        ]));
+        let ids = StringArray::from_iter_values(std::iter::repeat_n(token_id, points.len()));
+        let ts = Int64Array::from(points.iter().map(|p| p.timestamp).collect::<Vec<_>>());
+        let px = Float64Array::from(points.iter().map(|p| p.price).collect::<Vec<_>>());
+        let batch = RecordBatch::try_new(
+            schema.clone(),
+            vec![Arc::new(ids), Arc::new(ts), Arc::new(px)],
+        )
+        .map_err(io::Error::other)?;
+
+        // ArrowWriter requires `W: Write + Send`, but `out` here is `&mut dyn
+        // Write` (not `Send`). Serialize into an in-memory buffer and copy it
+        // out rather than writing through `out` directly.
+        let mut buf = Vec::new();
+        let mut writer = ArrowWriter::try_new(&mut buf, schema, None).map_err(io::Error::other)?;
+        writer.write(&batch).map_err(io::Error::other)?;
+        writer.close().map_err(io::Error::other)?;
+        out.write_all(&buf)?;
+        Ok(())
+    }
+}
+
+/// Return the writer for a format.
+///
+/// Callers must reject `Parquet` on builds without the `parquet` feature before
+/// calling this (see the guard in `run_with_clients`); doing otherwise panics.
 pub fn writer_for(format: OutputFormat) -> Box<dyn DatasetWriter> {
     match format {
         OutputFormat::Csv => Box::new(CsvWriter),
         OutputFormat::Jsonl => Box::new(JsonlWriter),
-        OutputFormat::Parquet => Box::new(CsvWriter), // replaced in a later task
+        #[cfg(feature = "parquet")]
+        OutputFormat::Parquet => Box::new(ParquetWriter),
+        #[cfg(not(feature = "parquet"))]
+        OutputFormat::Parquet => {
+            unreachable!("writer_for(Parquet) requires the caller to reject Parquet without the `parquet` feature")
+        }
     }
 }
 
@@ -162,5 +219,16 @@ mod tests {
         let text = std::fs::read_to_string(&path).unwrap();
         assert!(text.starts_with("token_id,timestamp,price\n"));
         assert!(!text.contains("stale"));
+    }
+
+    #[cfg(feature = "parquet")]
+    #[test]
+    fn parquet_writes_readable_file() {
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("0xabc.parquet");
+        atomic_write(&ParquetWriter, &path, "0xabc", &points()).unwrap();
+        // File exists and has the Parquet magic header "PAR1".
+        let bytes = std::fs::read(&path).unwrap();
+        assert_eq!(&bytes[0..4], b"PAR1");
     }
 }

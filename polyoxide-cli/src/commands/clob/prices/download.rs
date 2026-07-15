@@ -154,6 +154,12 @@ impl DownloadArgs {
         // `buffer_unordered(0)` never polls, which would hang forever. This fn is
         // also called directly by tests, so guard here rather than relying on clap.
         color_eyre::eyre::ensure!(self.concurrency > 0, "--concurrency must be >= 1");
+        #[cfg(not(feature = "parquet"))]
+        if self.format == OutputFormat::Parquet {
+            return Err(color_eyre::eyre::eyre!(
+                "--format parquet requires building with the `parquet` feature"
+            ));
+        }
 
         // 1. Resolve the target list: explicit ids ∪ file ids ∪ discovery.
         let mut raw_ids: Vec<String> = self.token_ids.clone();
