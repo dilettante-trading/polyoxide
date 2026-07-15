@@ -11,7 +11,7 @@ use polyoxide_gamma::Gamma;
 use crate::commands::clob::prices::fetch::fetch_one;
 use crate::commands::clob::prices::manifest::write_manifest;
 use crate::commands::clob::prices::select::{
-    dedupe_targets, discover_targets, read_ids_file, DiscoverFilters,
+    dedupe_targets, discover_targets, read_ids_file, validate_token_id, DiscoverFilters,
 };
 use crate::commands::clob::prices::types::{ManifestRecord, OutputFormat, Target};
 use crate::commands::clob::prices::writer::{atomic_write, writer_for};
@@ -60,8 +60,8 @@ pub struct DownloadArgs {
     #[arg(long)]
     pub discover: bool,
 
-    /// Discovery: only closed (`true`) or only open (`false`) markets.
-    #[arg(long)]
+    /// Discovery: only closed markets.
+    #[arg(long, conflicts_with = "open")]
     pub closed: Option<bool>,
 
     /// Discovery: only open markets (`true`).
@@ -89,7 +89,7 @@ pub struct DownloadArgs {
     pub interval: String,
 
     /// Resolution in minutes.
-    #[arg(long, default_value_t = 1)]
+    #[arg(long, default_value_t = 1, value_parser = clap::value_parser!(i32).range(1..))]
     pub fidelity: i32,
 
     /// Inclusive window start (UNIX seconds).
@@ -181,6 +181,10 @@ impl DownloadArgs {
             raw_ids.extend(discover_targets(gamma, &filters).await?);
         }
         let targets = dedupe_targets(raw_ids);
+
+        for t in &targets {
+            validate_token_id(&t.token_id)?;
+        }
 
         if targets.is_empty() {
             return Err(color_eyre::eyre::eyre!(

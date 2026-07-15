@@ -92,10 +92,35 @@ pub async fn discover_targets(gamma: &Gamma, filters: &DiscoverFilters) -> Resul
     Ok(ids)
 }
 
+/// Reject token ids that aren't safe to use as a bare filename (they're
+/// interpolated directly into an output path).
+pub fn validate_token_id(id: &str) -> Result<()> {
+    if id.is_empty()
+        || id.contains('/')
+        || id.contains('\\')
+        || id.contains("..")
+        || id.contains('\0')
+    {
+        return Err(color_eyre::eyre::eyre!(
+            "invalid token id {id:?}: must be non-empty and contain no path separators or '..'"
+        ));
+    }
+    Ok(())
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
     use std::io::Write;
+
+    #[test]
+    fn validate_token_id_rejects_path_traversal() {
+        assert!(validate_token_id("12345").is_ok());
+        assert!(validate_token_id("").is_err());
+        assert!(validate_token_id("../etc/passwd").is_err());
+        assert!(validate_token_id("a/b").is_err());
+        assert!(validate_token_id("a\\b").is_err());
+    }
 
     #[test]
     fn dedupe_preserves_first_seen_order() {

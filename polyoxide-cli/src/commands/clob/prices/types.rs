@@ -35,7 +35,8 @@ pub struct Target {
 impl Target {
     /// Output file path for this target: `<out_dir>/<token_id>.<ext>`.
     ///
-    /// Token ids are decimal integer strings, so they are filesystem-safe as-is.
+    /// Token ids are validated upstream (in `select::validate_token_id`) to be
+    /// safe as a bare filename before reaching this path.
     pub fn output_path(&self, out_dir: &Path, format: OutputFormat) -> PathBuf {
         out_dir.join(format!("{}.{}", self.token_id, format.extension()))
     }
