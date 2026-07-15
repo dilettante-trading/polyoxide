@@ -1,6 +1,7 @@
 pub mod download;
 pub mod select;
 pub mod types;
+pub mod writer;
 
 use clap::Subcommand;
 use color_eyre::eyre::Result;
