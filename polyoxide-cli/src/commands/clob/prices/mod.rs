@@ -1,4 +1,5 @@
 pub mod download;
+pub mod select;
 pub mod types;
 
 use clap::Subcommand;
