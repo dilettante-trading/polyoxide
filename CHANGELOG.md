@@ -1,3 +1,10 @@
+## [0.18.2] - 2026-07-24
+
+### 🐛 Bug Fixes
+
+- *(clob)* Remove live_activity endpoint hitting nonexistent path
+- *(data)* Tolerate unrecognized ActivityType/TradeSide values
+
 ## [0.18.1] - 2026-07-15
 
 ### 🚀 Features
