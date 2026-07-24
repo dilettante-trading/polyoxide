@@ -253,6 +253,116 @@ async fn user_activity_type_rename() {
 }
 
 #[tokio::test]
+async fn activity_type_filter_drops_unknown_variant() {
+    let mut server = Server::new_async().await;
+
+    let mock = server
+        .mock("GET", "/activity")
+        .match_query(Matcher::AllOf(vec![
+            Matcher::UrlEncoded("user".into(), "0xaddr".into()),
+            Matcher::UrlEncoded("type".into(), "TRADE".into()),
+        ]))
+        .with_status(200)
+        .with_header("content-type", "application/json")
+        .with_body("[]")
+        .create_async()
+        .await;
+
+    let data = test_data(&server);
+    let activities = data
+        .user("0xaddr")
+        .activity()
+        .activity_type([
+            polyoxide_data::types::ActivityType::Trade,
+            polyoxide_data::types::ActivityType::Unknown,
+        ])
+        .send()
+        .await
+        .unwrap();
+
+    assert!(activities.is_empty());
+    // The mock only matches if "type" was exactly "TRADE" (no "UNKNOWN" appended).
+    mock.assert_async().await;
+}
+
+#[tokio::test]
+async fn activity_response_with_future_type_does_not_poison_page() {
+    let mut server = Server::new_async().await;
+
+    let mock = server
+        .mock("GET", "/activity")
+        .match_query(Matcher::UrlEncoded("user".into(), "0xaddr".into()))
+        .with_status(200)
+        .with_header("content-type", "application/json")
+        .with_body(
+            r#"[{
+                "proxyWallet": "0xaddr",
+                "timestamp": 1700003000,
+                "conditionId": "cond_act",
+                "type": "TRADE",
+                "size": 10.0,
+                "usdcSize": 7.50,
+                "transactionHash": "0xacthash",
+                "price": 0.75,
+                "asset": "token_act",
+                "side": "BUY",
+                "outcomeIndex": 0,
+                "title": "Activity market",
+                "slug": "activity-market",
+                "icon": null,
+                "outcome": "Yes",
+                "name": null,
+                "pseudonym": null,
+                "bio": null,
+                "profileImage": null,
+                "profileImageOptimized": null
+            }, {
+                "proxyWallet": "0xaddr",
+                "timestamp": 1700004000,
+                "conditionId": "cond_future",
+                "type": "SOME_FUTURE_TYPE_UPSTREAM_ADDED",
+                "size": 1.0,
+                "usdcSize": 1.0,
+                "transactionHash": null,
+                "price": null,
+                "asset": null,
+                "side": "",
+                "outcomeIndex": null,
+                "title": null,
+                "slug": null,
+                "icon": null,
+                "outcome": null,
+                "name": null,
+                "pseudonym": null,
+                "bio": null,
+                "profileImage": null,
+                "profileImageOptimized": null
+            }]"#,
+        )
+        .create_async()
+        .await;
+
+    let data = test_data(&server);
+    let activities = data
+        .user("0xaddr")
+        .activity()
+        .send()
+        .await
+        .expect("unrecognized activity type should not fail the whole page");
+
+    assert_eq!(activities.len(), 2);
+    assert_eq!(
+        activities[0].activity_type,
+        polyoxide_data::types::ActivityType::Trade
+    );
+    assert_eq!(
+        activities[1].activity_type,
+        polyoxide_data::types::ActivityType::Unknown
+    );
+    mock.assert_async().await;
+}
+
+#[tokio::test]
 async fn closed_positions_sort_and_pagination() {
     let mut server = Server::new_async().await;
 

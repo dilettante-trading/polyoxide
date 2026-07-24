@@ -46,6 +46,8 @@ fn parse_activity_type(s: &str) -> PyResult<polyoxide_data::types::ActivityType>
     parse_enum!(s, ActivityType,
         Trade => "TRADE", Split => "SPLIT", Merge => "MERGE",
         Redeem => "REDEEM", Reward => "REWARD", Conversion => "CONVERSION",
+        MakerRebate => "MAKER_REBATE", ReferralReward => "REFERRAL_REWARD",
+        TakerRebate => "TAKER_REBATE",
     )
 }
 

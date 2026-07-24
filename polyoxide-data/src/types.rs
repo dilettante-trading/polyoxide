@@ -163,6 +163,11 @@ pub enum TradeSide {
     Buy,
     /// Sell order
     Sell,
+    /// Unrecognized trade side (forward-compat). `Trade::side` is deserialized
+    /// from live API responses, so an unexpected value falls back here instead
+    /// of failing the whole page. Never construct this to send in a request filter.
+    #[serde(other)]
+    Unknown,
 }
 
 impl std::fmt::Display for TradeSide {
@@ -170,6 +175,7 @@ impl std::fmt::Display for TradeSide {
         match self {
             Self::Buy => write!(f, "BUY"),
             Self::Sell => write!(f, "SELL"),
+            Self::Unknown => write!(f, "UNKNOWN"),
         }
     }
 }
@@ -263,6 +269,14 @@ pub enum ActivityType {
     /// Referral reward activity
     #[serde(rename = "REFERRAL_REWARD")]
     ReferralReward,
+    /// Taker rebate activity
+    #[serde(rename = "TAKER_REBATE")]
+    TakerRebate,
+    /// Unrecognized activity type (forward-compat). Never construct this to
+    /// send in a request filter; [`super::api::users::ListActivity::activity_type`]
+    /// silently drops it since the upstream API has no matching value to filter on.
+    #[serde(other)]
+    Unknown,
 }
 
 impl std::fmt::Display for ActivityType {
@@ -276,6 +290,8 @@ impl std::fmt::Display for ActivityType {
             Self::Conversion => write!(f, "CONVERSION"),
             Self::MakerRebate => write!(f, "MAKER_REBATE"),
             Self::ReferralReward => write!(f, "REFERRAL_REWARD"),
+            Self::TakerRebate => write!(f, "TAKER_REBATE"),
+            Self::Unknown => write!(f, "UNKNOWN"),
         }
     }
 }
@@ -630,7 +646,7 @@ mod tests {
 
     #[test]
     fn trade_side_display_matches_serde() {
-        let variants = [TradeSide::Buy, TradeSide::Sell];
+        let variants = [TradeSide::Buy, TradeSide::Sell, TradeSide::Unknown];
         for variant in variants {
             let serialized = serde_json::to_value(variant).unwrap();
             let display = variant.to_string();
@@ -641,6 +657,12 @@ mod tests {
                 variant
             );
         }
+    }
+
+    #[test]
+    fn trade_side_falls_back_to_unknown_for_future_values() {
+        let result: TradeSide = serde_json::from_str("\"SOME_FUTURE_SIDE\"").unwrap();
+        assert_eq!(result, TradeSide::Unknown);
     }
 
     #[test]
@@ -669,6 +691,8 @@ mod tests {
             ActivityType::Conversion,
             ActivityType::MakerRebate,
             ActivityType::ReferralReward,
+            ActivityType::TakerRebate,
+            ActivityType::Unknown,
         ];
         for variant in variants {
             let serialized = serde_json::to_value(variant).unwrap();
@@ -693,6 +717,7 @@ mod tests {
             ActivityType::Conversion,
             ActivityType::MakerRebate,
             ActivityType::ReferralReward,
+            ActivityType::TakerRebate,
         ] {
             let json = serde_json::to_string(&variant).unwrap();
             let deserialized: ActivityType = serde_json::from_str(&json).unwrap();
@@ -701,15 +726,14 @@ mod tests {
     }
 
     #[test]
-    fn activity_type_rejects_unknown_variant() {
-        let result = serde_json::from_str::<ActivityType>("\"UNKNOWN\"");
-        assert!(result.is_err(), "should reject unknown activity type");
-    }
+    fn activity_type_falls_back_to_unknown_for_future_types() {
+        // A hypothetical future activity type Polymarket hasn't documented yet.
+        let result: ActivityType = serde_json::from_str("\"SOME_FUTURE_TYPE\"").unwrap();
+        assert_eq!(result, ActivityType::Unknown);
 
-    #[test]
-    fn activity_type_rejects_lowercase() {
-        let result = serde_json::from_str::<ActivityType>("\"trade\"");
-        assert!(result.is_err(), "should reject lowercase activity type");
+        // Case mismatches also fall back rather than poisoning the whole page.
+        let result: ActivityType = serde_json::from_str("\"trade\"").unwrap();
+        assert_eq!(result, ActivityType::Unknown);
     }
 
     #[test]

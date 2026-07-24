@@ -204,7 +204,12 @@ impl ListClosedPositions {
         self
     }
 
-    /// Set maximum number of results (0-50, default: 10)
+    /// Set maximum number of results (0-50, default: 10).
+    ///
+    /// Unlike most other `limit()` builders in this crate, this cap is
+    /// strictly enforced server-side: passing a value above 50 fails the
+    /// request with a 400 ("max closed positions limit of 50 exceeded")
+    /// rather than being clamped or paginated by the API.
     pub fn limit(mut self, limit: u32) -> Self {
         self.request = self.request.query("limit", limit);
         self
@@ -326,9 +331,14 @@ impl ListActivity {
         self
     }
 
-    /// Filter by activity types (comma-separated)
+    /// Filter by activity types (comma-separated). `ActivityType::Unknown` is
+    /// silently dropped since the upstream API has no matching value to filter on.
     pub fn activity_type(mut self, types: impl IntoIterator<Item = ActivityType>) -> Self {
-        let type_strs: Vec<String> = types.into_iter().map(|t| t.to_string()).collect();
+        let type_strs: Vec<String> = types
+            .into_iter()
+            .filter(|t| *t != ActivityType::Unknown)
+            .map(|t| t.to_string())
+            .collect();
         if !type_strs.is_empty() {
             self.request = self.request.query("type", type_strs.join(","));
         }
