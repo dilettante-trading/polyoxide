@@ -899,6 +899,118 @@ pub struct CombosActivityResponse {
     pub pagination: Option<Pagination>,
 }
 
+// ---------------------------------------------------------------------------
+// Undocumented sibling hosts (user-pnl-api, lb-api)
+//
+// Neither host appears in any published Polymarket OpenAPI spec. The shapes
+// below were derived from live responses; the enum variants come from the
+// APIs' own validation errors, which enumerate the accepted values.
+// ---------------------------------------------------------------------------
+
+/// Sampling resolution for a PnL series.
+///
+/// Upstream rejects anything outside this set with
+/// `"the 'fidelity' value is unkonwn. Known values: '1d', '18h', '12h', '3h', '1h'"`
+/// (typo theirs).
+#[cfg_attr(feature = "specta", derive(specta::Type))]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, Default)]
+pub enum PnlFidelity {
+    /// One point per day (default).
+    #[default]
+    #[serde(rename = "1d")]
+    OneDay,
+    /// One point per 18 hours.
+    #[serde(rename = "18h")]
+    EighteenHours,
+    /// One point per 12 hours.
+    #[serde(rename = "12h")]
+    TwelveHours,
+    /// One point per 3 hours.
+    #[serde(rename = "3h")]
+    ThreeHours,
+    /// One point per hour.
+    #[serde(rename = "1h")]
+    OneHour,
+}
+
+impl std::fmt::Display for PnlFidelity {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            Self::OneDay => write!(f, "1d"),
+            Self::EighteenHours => write!(f, "18h"),
+            Self::TwelveHours => write!(f, "12h"),
+            Self::ThreeHours => write!(f, "3h"),
+            Self::OneHour => write!(f, "1h"),
+        }
+    }
+}
+
+/// A single point on a user's PnL curve.
+#[cfg_attr(feature = "specta", derive(specta::Type))]
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct PnlPoint {
+    /// Unix timestamp in seconds.
+    #[serde(rename = "t")]
+    pub timestamp: i64,
+    /// PnL in USDC at that timestamp. Negative values are losses.
+    #[serde(rename = "p")]
+    pub pnl: f64,
+}
+
+/// Ranking window for the rankings host.
+///
+/// Upstream rejects anything else with `{"error": "invalid request"}`.
+#[cfg_attr(feature = "specta", derive(specta::Type))]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, Default)]
+pub enum RankingWindow {
+    /// All-time (default).
+    #[default]
+    #[serde(rename = "all")]
+    All,
+    /// Trailing day.
+    #[serde(rename = "1d")]
+    OneDay,
+    /// Trailing week.
+    #[serde(rename = "7d")]
+    SevenDays,
+    /// Trailing 30 days.
+    #[serde(rename = "30d")]
+    ThirtyDays,
+}
+
+impl std::fmt::Display for RankingWindow {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            Self::All => write!(f, "all"),
+            Self::OneDay => write!(f, "1d"),
+            Self::SevenDays => write!(f, "7d"),
+            Self::ThirtyDays => write!(f, "30d"),
+        }
+    }
+}
+
+/// One entry in a volume or profit ranking.
+#[cfg_attr(feature = "specta", derive(specta::Type))]
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct RankingEntry {
+    /// Proxy wallet address of the ranked trader.
+    pub proxy_wallet: Option<String>,
+    /// Ranked amount in USDC — traded volume or realized profit, depending on
+    /// which endpoint produced the entry.
+    pub amount: Option<f64>,
+    /// Display name.
+    pub name: Option<String>,
+    /// Pseudonym, which falls back to an address-derived string.
+    pub pseudonym: Option<String>,
+    /// Profile biography.
+    pub bio: Option<String>,
+    /// Profile image URL.
+    pub profile_image: Option<String>,
+    /// Optimized profile image URL.
+    pub profile_image_optimized: Option<String>,
+}
+
 /// "Other" outcome size held by a user in an augmented neg-risk event.
 #[cfg_attr(feature = "specta", derive(specta::Type))]
 #[derive(Debug, Clone, Serialize, Deserialize)]

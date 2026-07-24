@@ -14,6 +14,8 @@ use crate::{
         market_positions::MarketPositionsApi,
         misc::MiscApi,
         open_interest::OpenInterestApi,
+        pnl::PnlApi,
+        rankings::RankingsApi,
         trades::Trades,
         users::{UserApi, UserTraded},
     },
@@ -21,11 +23,21 @@ use crate::{
 };
 
 const DEFAULT_BASE_URL: &str = "https://data-api.polymarket.com";
+const DEFAULT_PNL_BASE_URL: &str = "https://user-pnl-api.polymarket.com";
+const DEFAULT_RANKINGS_BASE_URL: &str = "https://lb-api.polymarket.com";
 
 /// Main Data API client
+///
+/// Most namespaces target `data-api.polymarket.com`. Two of them —
+/// [`pnl`](Self::pnl) and [`rankings`](Self::rankings) — target sibling hosts
+/// that Polymarket does not publish an OpenAPI spec for; see those methods for
+/// the stability caveat. All three share one connection pool, rate limiter,
+/// and concurrency budget.
 #[derive(Clone)]
 pub struct DataApi {
     pub(crate) http_client: HttpClient,
+    pub(crate) pnl_http_client: HttpClient,
+    pub(crate) rankings_http_client: HttpClient,
 }
 
 impl DataApi {
@@ -135,11 +147,34 @@ impl DataApi {
             http_client: self.http_client.clone(),
         }
     }
+
+    /// Get PnL namespace (`/user-pnl` on `user-pnl-api.polymarket.com`)
+    ///
+    /// This host has no published OpenAPI spec — see [`PnlApi`] for the
+    /// stability caveat.
+    pub fn pnl(&self) -> PnlApi {
+        PnlApi {
+            http_client: self.pnl_http_client.clone(),
+        }
+    }
+
+    /// Get rankings namespace (`/volume`, `/profit` on `lb-api.polymarket.com`)
+    ///
+    /// Distinct from [`Self::leaderboard`], which calls `/v1/leaderboard` on
+    /// the main Data API host. This host has no published OpenAPI spec — see
+    /// [`RankingsApi`] for the stability caveat.
+    pub fn rankings(&self) -> RankingsApi {
+        RankingsApi {
+            http_client: self.rankings_http_client.clone(),
+        }
+    }
 }
 
 /// Builder for configuring Data API client
 pub struct DataApiBuilder {
     base_url: String,
+    pnl_base_url: String,
+    rankings_base_url: String,
     timeout_ms: u64,
     pool_size: usize,
     retry_config: Option<RetryConfig>,
@@ -150,6 +185,8 @@ impl DataApiBuilder {
     fn new() -> Self {
         Self {
             base_url: DEFAULT_BASE_URL.to_string(),
+            pnl_base_url: DEFAULT_PNL_BASE_URL.to_string(),
+            rankings_base_url: DEFAULT_RANKINGS_BASE_URL.to_string(),
             timeout_ms: DEFAULT_TIMEOUT_MS,
             pool_size: DEFAULT_POOL_SIZE,
             retry_config: None,
@@ -158,8 +195,26 @@ impl DataApiBuilder {
     }
 
     /// Set base URL for the API
+    ///
+    /// This covers every namespace except [`DataApi::pnl`] and
+    /// [`DataApi::rankings`], which live on their own hosts and have their own
+    /// setters.
     pub fn base_url(mut self, url: impl Into<String>) -> Self {
         self.base_url = url.into();
+        self
+    }
+
+    /// Set base URL for the PnL host (default:
+    /// `https://user-pnl-api.polymarket.com`)
+    pub fn pnl_base_url(mut self, url: impl Into<String>) -> Self {
+        self.pnl_base_url = url.into();
+        self
+    }
+
+    /// Set base URL for the rankings host (default:
+    /// `https://lb-api.polymarket.com`)
+    pub fn rankings_base_url(mut self, url: impl Into<String>) -> Self {
+        self.rankings_base_url = url.into();
         self
     }
 
@@ -201,7 +256,16 @@ impl DataApiBuilder {
         }
         let http_client = builder.build()?;
 
-        Ok(DataApi { http_client })
+        // Sibling hosts reuse the same reqwest client, rate limiter, and
+        // concurrency permit pool — only the base URL differs.
+        let pnl_http_client = http_client.with_base_url(&self.pnl_base_url)?;
+        let rankings_http_client = http_client.with_base_url(&self.rankings_base_url)?;
+
+        Ok(DataApi {
+            http_client,
+            pnl_http_client,
+            rankings_http_client,
+        })
     }
 }
 

@@ -10,5 +10,7 @@ pub mod live_volume;
 pub mod market_positions;
 pub mod misc;
 pub mod open_interest;
+pub mod pnl;
+pub mod rankings;
 pub mod trades;
 pub mod users;

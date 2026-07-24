@@ -41,6 +41,24 @@ pub struct HttpClient {
 }
 
 impl HttpClient {
+    /// Clone this client, pointed at a different base URL.
+    ///
+    /// The underlying reqwest client (and so its connection pool), rate
+    /// limiter, retry config, and concurrency limiter are all shared with the
+    /// original. Use this to reach a sibling API host that should share the
+    /// same transport configuration and request budget — several Polymarket
+    /// APIs live on their own subdomains but are consumed by one client.
+    ///
+    /// Sharing the concurrency limiter is deliberate: the limit exists to keep
+    /// Cloudflare from seeing a burst from this process, and that is a
+    /// per-process concern rather than a per-host one.
+    pub fn with_base_url(&self, base_url: &str) -> Result<Self, ApiError> {
+        Ok(Self {
+            base_url: Url::parse(base_url)?,
+            ..self.clone()
+        })
+    }
+
     /// Await rate limiter for the given endpoint path + method.
     pub async fn acquire_rate_limit(&self, path: &str, method: Option<&reqwest::Method>) {
         if let Some(rl) = &self.rate_limiter {

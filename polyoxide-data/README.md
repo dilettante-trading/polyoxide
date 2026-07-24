@@ -335,7 +335,32 @@ println!("API latency: {}ms", latency.as_millis());
 | `data.accounting()` | `.snapshot(addr)` | Accounting snapshot (ZIP bytes) |
 | `data.combos()` | `.positions(addr)`, `.activity(addr)` | Combinatorial (multi-market) positions and lifecycle events |
 | `data.misc()` | `.other_size(event_id, addr)`, `.revisions(question_id)` | Neg-risk "Other" size and moderated question revisions |
+| `data.pnl()` | `.history(addr)` | PnL time series (`user-pnl-api` host) |
+| `data.rankings()` | `.volume()`, `.profit()` | Trader rankings by volume or profit (`lb-api` host) |
 | `data.health()` | `.check()`, `.ping()` | API health and latency |
+
+### Undocumented hosts
+
+`data.pnl()` and `data.rankings()` call sibling hosts that Polymarket publishes
+no OpenAPI spec for. They are verified live and covered by `#[ignore]`d
+integration tests, but carry no upstream compatibility guarantee — expect them
+to change more freely than the rest of this crate. Both base URLs are
+configurable:
+
+```rust,no_run
+use polyoxide_data::DataApi;
+
+# fn main() -> Result<(), Box<dyn std::error::Error>> {
+let data = DataApi::builder()
+    .pnl_base_url("https://user-pnl-api.polymarket.com")
+    .rankings_base_url("https://lb-api.polymarket.com")
+    .build()?;
+# Ok(())
+# }
+```
+
+`data.rankings()` is a different service from `data.leaderboard()`, which calls
+`/v1/leaderboard` on the main Data API host and returns a different shape.
 
 ## License
 

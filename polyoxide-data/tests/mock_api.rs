@@ -1,5 +1,7 @@
 use mockito::{Matcher, Server};
-use polyoxide_data::types::{ActivityType, ComboLegStatus, ComboSort, ComboStatus};
+use polyoxide_data::types::{
+    ActivityType, ComboLegStatus, ComboSort, ComboStatus, PnlFidelity, RankingWindow,
+};
 use polyoxide_data::{DataApi, DataApiError};
 
 fn test_data(server: &mockito::ServerGuard) -> DataApi {
@@ -1237,4 +1239,113 @@ async fn activity_type_covers_deposit_withdrawal_yield() {
     assert_eq!(rows[2].activity_type, ActivityType::Yield);
 
     mock.assert_async().await;
+}
+
+#[tokio::test]
+async fn user_pnl_series_parses() {
+    let mut server = Server::new_async().await;
+
+    let mock = server
+        .mock("GET", "/user-pnl")
+        .match_query(Matcher::AllOf(vec![
+            Matcher::UrlEncoded("user_address".into(), "0xabc".into()),
+            Matcher::UrlEncoded("interval".into(), "1d".into()),
+            Matcher::UrlEncoded("fidelity".into(), "1h".into()),
+        ]))
+        .with_status(200)
+        .with_header("content-type", "application/json")
+        .with_body(r#"[{"t":1784836800,"p":-1703608.4},{"t":1784840400,"p":12.5}]"#)
+        .create_async()
+        .await;
+
+    let data = DataApi::builder()
+        .pnl_base_url(server.url())
+        .build()
+        .unwrap();
+
+    let points = data
+        .pnl()
+        .history("0xabc")
+        .interval("1d")
+        .fidelity(PnlFidelity::OneHour)
+        .send()
+        .await
+        .unwrap();
+
+    assert_eq!(points.len(), 2);
+    assert_eq!(points[0].timestamp, 1_784_836_800);
+    assert!((points[0].pnl - -1_703_608.4).abs() < 1e-6);
+
+    mock.assert_async().await;
+}
+
+#[tokio::test]
+async fn rankings_volume_and_profit_parse() {
+    let mut server = Server::new_async().await;
+
+    let volume = server
+        .mock("GET", "/volume")
+        .match_query(Matcher::AllOf(vec![
+            Matcher::UrlEncoded("window".into(), "all".into()),
+            Matcher::UrlEncoded("limit".into(), "2".into()),
+        ]))
+        .with_status(200)
+        .with_header("content-type", "application/json")
+        .with_body(
+            r#"[{"proxyWallet":"0x204f","pseudonym":"swisstony","amount":1730945622.28217,
+                 "name":"swisstony","bio":"","profileImage":"","profileImageOptimized":""}]"#,
+        )
+        .create_async()
+        .await;
+
+    let profit = server
+        .mock("GET", "/profit")
+        .match_query(Matcher::UrlEncoded("window".into(), "7d".into()))
+        .with_status(200)
+        .with_header("content-type", "application/json")
+        .with_body(r#"[{"proxyWallet":"0x56","amount":22053933.75}]"#)
+        .create_async()
+        .await;
+
+    let data = DataApi::builder()
+        .rankings_base_url(server.url())
+        .build()
+        .unwrap();
+
+    let vol = data
+        .rankings()
+        .volume()
+        .window(RankingWindow::All)
+        .limit(2)
+        .send()
+        .await
+        .unwrap();
+    assert_eq!(vol[0].proxy_wallet.as_deref(), Some("0x204f"));
+    assert_eq!(vol[0].name.as_deref(), Some("swisstony"));
+
+    let prof = data
+        .rankings()
+        .profit()
+        .window(RankingWindow::SevenDays)
+        .send()
+        .await
+        .unwrap();
+    // Sparse rows must not fail: only two of the seven fields are present.
+    assert_eq!(prof[0].proxy_wallet.as_deref(), Some("0x56"));
+    assert_eq!(prof[0].name, None);
+
+    volume.assert_async().await;
+    profit.assert_async().await;
+}
+
+#[tokio::test]
+async fn sibling_hosts_are_independently_configurable() {
+    // Overriding one host must not redirect the others.
+    let data = DataApi::builder()
+        .pnl_base_url("http://127.0.0.1:1/")
+        .build()
+        .unwrap();
+
+    // The main host keeps its default even though the PnL host was overridden.
+    assert!(data.pnl().history("0xabc").send().await.is_err());
 }

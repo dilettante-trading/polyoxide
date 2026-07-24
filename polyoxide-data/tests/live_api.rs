@@ -319,3 +319,65 @@ async fn live_accounting_snapshot() {
         "response should start with ZIP signature"
     );
 }
+
+// --- Undocumented sibling hosts -------------------------------------------
+//
+// user-pnl-api and lb-api have no published OpenAPI spec, so these live tests
+// are the only contract check we have. If the shapes drift, these fail here
+// rather than silently in a user's deserialize.
+
+#[tokio::test]
+#[ignore = "hits live API"]
+async fn live_user_pnl_series() {
+    let client = client();
+    // A high-volume trader, so the series is non-empty.
+    let points = client
+        .pnl()
+        .history("0xcd30f4698c6f5f3829893e68e183a8e5ea18f316")
+        .interval("1d")
+        .fidelity(polyoxide_data::types::PnlFidelity::OneHour)
+        .send()
+        .await
+        .expect("user-pnl should succeed");
+
+    assert!(!points.is_empty(), "expected a non-empty PnL series");
+    assert!(
+        points[0].timestamp > 1_000_000_000,
+        "timestamp should be Unix seconds, got {}",
+        points[0].timestamp
+    );
+}
+
+#[tokio::test]
+#[ignore = "hits live API"]
+async fn live_rankings_volume_and_profit() {
+    let client = client();
+
+    let volume = client
+        .rankings()
+        .volume()
+        .window(polyoxide_data::types::RankingWindow::All)
+        .limit(3)
+        .send()
+        .await
+        .expect("rankings volume should succeed");
+    assert!(!volume.is_empty(), "expected ranked entries");
+    assert!(
+        volume[0]
+            .proxy_wallet
+            .as_deref()
+            .is_some_and(|w| w.starts_with("0x")),
+        "expected a 0x proxy wallet, got {:?}",
+        volume[0].proxy_wallet
+    );
+
+    let profit = client
+        .rankings()
+        .profit()
+        .window(polyoxide_data::types::RankingWindow::SevenDays)
+        .limit(3)
+        .send()
+        .await
+        .expect("rankings profit should succeed");
+    assert!(!profit.is_empty(), "expected ranked entries");
+}
