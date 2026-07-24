@@ -1,3 +1,19 @@
+## [0.19.0] - 2026-07-24
+
+### 🚀 Features
+
+- *(data)* Add combos and misc namespaces, close query param gaps
+- *(clob)* [**breaking**] Add rewards multi/rebates, public rewards, cursor pagination
+- *(gamma)* Expose missing keyset, search, and series query params
+
+### 📚 Documentation
+
+- Record new namespaces and the unimplemented upstream APIs
+
+### ⚙️ Miscellaneous Tasks
+
+- *(specs)* Refresh upstream specs and mirror perps, bridge, combos-rfq
+
 ## [0.18.2] - 2026-07-24
 
 ### 🐛 Bug Fixes
