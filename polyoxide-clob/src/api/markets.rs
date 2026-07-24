@@ -276,22 +276,6 @@ impl Markets {
         .query("token_id", token_id.into())
     }
 
-    /// Get live activity events for a market
-    pub fn live_activity(
-        &self,
-        condition_id: impl Into<String>,
-    ) -> Request<Vec<LiveActivityEvent>> {
-        Request::get(
-            self.http_client.clone(),
-            format!(
-                "/live-activity/events/{}",
-                urlencoding::encode(&condition_id.into())
-            ),
-            AuthMode::None,
-            self.chain_id,
-        )
-    }
-
     /// List simplified markets (reduced payload for performance)
     pub fn simplified(&self) -> Request<ListMarketsResponse> {
         Request::get(
@@ -571,14 +555,6 @@ pub struct LastTradePriceResponse {
     pub timestamp: Option<String>,
 }
 
-/// A live activity event for a market
-#[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct LiveActivityEvent {
-    pub condition_id: String,
-    #[serde(flatten)]
-    pub extra: serde_json::Value,
-}
-
 /// Parameters for the calculate-price endpoint
 #[derive(Debug, Clone, Serialize)]
 pub struct CalculatePriceParams {
@@ -838,19 +814,6 @@ mod tests {
         assert_eq!(resp.token_id.as_deref(), Some("token-1"));
         assert_eq!(resp.last_trade_price.as_deref(), Some("0.55"));
         assert_eq!(resp.timestamp.as_deref(), Some("1700000000"));
-    }
-
-    #[test]
-    fn live_activity_event_deserializes_with_extra_fields() {
-        let json = r#"{
-            "condition_id": "0xabc123",
-            "event_type": "trade",
-            "amount": 100
-        }"#;
-        let event: LiveActivityEvent = serde_json::from_str(json).unwrap();
-        assert_eq!(event.condition_id, "0xabc123");
-        assert_eq!(event.extra["event_type"], "trade");
-        assert_eq!(event.extra["amount"], 100);
     }
 
     #[test]

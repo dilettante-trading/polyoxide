@@ -49,7 +49,6 @@ from ._polyoxide import (
     TickSizeResponse,
     SpreadResponse,
     LastTradePriceResponse,
-    LiveActivityEvent,
     CalculatePriceResponse,
     ServerTimeResponse,
     # Data types
@@ -121,7 +120,6 @@ __all__ = [
     "TickSizeResponse",
     "SpreadResponse",
     "LastTradePriceResponse",
-    "LiveActivityEvent",
     "CalculatePriceResponse",
     "ServerTimeResponse",
     # Data types

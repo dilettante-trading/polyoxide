@@ -131,13 +131,6 @@ py_type!(
 );
 
 py_type!(
-    PyLiveActivityEvent,
-    "LiveActivityEvent",
-    polyoxide_clob::api::markets::LiveActivityEvent,
-    condition_id,
-);
-
-py_type!(
     PyCalculatePriceResponse,
     "CalculatePriceResponse",
     polyoxide_clob::api::markets::CalculatePriceResponse,
@@ -166,7 +159,6 @@ pub fn register(m: &pyo3::Bound<'_, pyo3::types::PyModule>) -> pyo3::PyResult<()
     m.add_class::<PyTickSizeResponse>()?;
     m.add_class::<PySpreadResponse>()?;
     m.add_class::<PyLastTradePriceResponse>()?;
-    m.add_class::<PyLiveActivityEvent>()?;
     m.add_class::<PyCalculatePriceResponse>()?;
     m.add_class::<PyServerTimeResponse>()?;
     Ok(())

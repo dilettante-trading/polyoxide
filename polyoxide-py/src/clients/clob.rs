@@ -149,19 +149,6 @@ client_ns!(
                 .map_err(clob_err)?,
         ))
     },
-    #[pyo3(signature = (condition_id,))]
-    fn live_activity(condition_id: String) -> Vec<PyLiveActivityEvent> {
-        let result = client
-            .markets()
-            .live_activity(condition_id)
-            .send()
-            .await
-            .map_err(clob_err)?;
-        Ok(result
-            .into_iter()
-            .map(PyLiveActivityEvent::from)
-            .collect::<Vec<_>>())
-    },
     #[pyo3(signature = ())]
     fn simplified() -> PyListMarketsResponse {
         Ok(PyListMarketsResponse::from(
