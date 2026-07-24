@@ -297,6 +297,26 @@ impl ListOrders {
     pub async fn send(self) -> Result<ListOrdersResponse, ClobError> {
         self.request.send().await
     }
+
+    /// Execute the request and return the raw HTTP response, unparsed.
+    ///
+    /// An escape hatch for when [`OpenOrder`] cannot represent what the venue
+    /// returned. Without it, a typed-struct mismatch is a hard block with no
+    /// way for a caller to read the response at all — which is exactly what
+    /// happened when `OpenOrder` expected an `assetId` the venue never sends.
+    ///
+    /// Also the way to capture a body for a test fixture:
+    ///
+    /// ```no_run
+    /// # async fn doctest(clob: polyoxide_clob::Clob) -> Result<(), Box<dyn std::error::Error>> {
+    /// let body = clob.orders()?.list().send_raw().await?.text().await?;
+    /// println!("{body}");
+    /// # Ok(())
+    /// # }
+    /// ```
+    pub async fn send_raw(self) -> Result<reqwest::Response, ClobError> {
+        self.request.send_raw().await
+    }
 }
 
 #[cfg(test)]

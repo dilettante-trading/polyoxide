@@ -2602,3 +2602,41 @@ async fn l1_address_header_is_not_lowercase() {
 
     mock.assert_async().await;
 }
+
+#[tokio::test]
+async fn orders_list_send_raw_returns_unparsed_body() {
+    let mut server = Server::new_async().await;
+
+    // A body the typed OpenOrder cannot represent. send_raw must still hand it
+    // back, so a struct/venue mismatch is recoverable rather than a hard block.
+    let body = r#"{"data":[{"id":"0xabc","unexpected_field":123}],"next_cursor":"LTE="}"#;
+    let mock = server
+        .mock("GET", "/data/orders")
+        .with_status(200)
+        .with_header("content-type", "application/json")
+        .with_body(body)
+        .expect(2) // one typed attempt, one raw
+        .create_async()
+        .await;
+
+    let clob = test_authed_clob(&server);
+
+    // The typed path fails on this body...
+    let typed = clob.orders().unwrap().list().send().await;
+    assert!(typed.is_err(), "typed parse should fail on this shape");
+
+    // ...but the raw path still yields it verbatim.
+    let raw = clob
+        .orders()
+        .unwrap()
+        .list()
+        .send_raw()
+        .await
+        .expect("send_raw should succeed")
+        .text()
+        .await
+        .expect("body");
+    assert_eq!(raw, body);
+
+    mock.assert_async().await;
+}
