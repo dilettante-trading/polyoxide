@@ -14,6 +14,30 @@ Used for: creating API credentials, deriving existing credentials, locally signi
 
 Signs an EIP-712 message containing: address, timestamp, nonce, and the message "This message attests that I control the given wallet."
 
+### EIP-712 shape
+
+Both type strings must match byte-for-byte or the server rejects the signature.
+Reference: `py_clob_client/signing/{model,eip712}.py`.
+
+```
+domain: EIP712Domain(string name,string version,uint256 chainId)
+struct: ClobAuth(address address,string timestamp,uint256 nonce,string message)
+```
+
+Three details are easy to get wrong, and each silently produces a valid-looking
+signature that fails verification:
+
+- The **domain carries no `verifyingContract`.** It is built from name,
+  version, and chainId only. Passing a zero address adds a fourth field to the
+  type string and changes the separator. (The *order* domain does use all four
+  — they are different domains.)
+- **`timestamp` is a `string`,** not a uint, so the digest covers its decimal
+  text.
+- **`message` is a constant.** The timestamp and nonce are their own fields;
+  they are not interpolated into the message text.
+
+Domain values: `name = "ClobAuthDomain"`, `version = "1"`.
+
 **Headers:**
 
 | Header | Description |

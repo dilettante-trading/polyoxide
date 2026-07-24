@@ -1,8 +1,8 @@
 use alloy::{
-    primitives::{keccak256, Address, U256},
+    primitives::{keccak256, U256},
     signers::Signer as AlloySigner,
     sol,
-    sol_types::SolStruct,
+    sol_types::{Eip712Domain, SolStruct},
 };
 
 use crate::{
@@ -37,10 +37,45 @@ mod protocol {
             bytes32 builder;
         }
 
+        /// L1 authentication struct.
+        ///
+        /// Must hash as
+        /// `ClobAuth(address address,string timestamp,uint256 nonce,string message)`
+        /// to match the counterparty. Note `timestamp` is a **string**, not a
+        /// uint, and `message` is a fixed constant — the timestamp and nonce
+        /// are separate fields rather than text interpolated into it.
         #[derive(Debug, PartialEq, Eq)]
         struct ClobAuth {
+            address address;
+            string timestamp;
+            uint256 nonce;
             string message;
         }
+    }
+}
+
+/// The fixed `message` field of [`protocol::ClobAuth`].
+///
+/// A constant, not a template: the timestamp and nonce are their own struct
+/// fields.
+const CLOB_AUTH_MESSAGE: &str = "This message attests that I control the given wallet";
+
+/// EIP-712 domain for L1 auth.
+///
+/// Carries **no `verifyingContract`**. The counterparty builds this domain from
+/// name, version, and chainId alone, so it hashes as
+/// `EIP712Domain(string name,string version,uint256 chainId)`. Passing a zero
+/// address instead would add a fourth field to the type string and change the
+/// separator — which is why this cannot reuse the fixed-shape
+/// [`protocol::EIP712Domain`] that order signing needs. [`Eip712Domain`] omits
+/// `None` fields from the encoded type.
+fn clob_auth_domain(chain_id: u64) -> Eip712Domain {
+    Eip712Domain {
+        name: Some("ClobAuthDomain".into()),
+        version: Some("1".into()),
+        chain_id: Some(U256::from(chain_id)),
+        verifying_contract: None,
+        salt: None,
     }
 }
 
@@ -130,23 +165,19 @@ pub async fn sign_clob_auth<S: AlloySigner>(
     timestamp: u64,
     nonce: u32,
 ) -> Result<String, ClobError> {
-    let domain = protocol::EIP712Domain {
-        name: "ClobAuthDomain".to_string(),
-        version: "1".to_string(),
-        chainId: U256::from(chain_id),
-        verifyingContract: Address::ZERO,
+    let domain = clob_auth_domain(chain_id);
+
+    let clob_auth = protocol::ClobAuth {
+        address: signer.address(),
+        // A string field upstream, so the digest covers the decimal text.
+        timestamp: timestamp.to_string(),
+        nonce: U256::from(nonce),
+        message: CLOB_AUTH_MESSAGE.to_string(),
     };
-
-    let message = format!(
-        "This message attests that I control the given wallet\ntimestamp: {}\nnonce: {}",
-        timestamp, nonce
-    );
-
-    let clob_auth = protocol::ClobAuth { message };
 
     // Compute struct hash and domain separator
     let struct_hash = clob_auth.eip712_hash_struct();
-    let domain_separator = domain.eip712_hash_struct();
+    let domain_separator = domain.separator();
 
     // Compute final hash
     let mut digest_message = Vec::new();
@@ -165,7 +196,7 @@ pub async fn sign_clob_auth<S: AlloySigner>(
 mod tests {
     use super::*;
     use crate::types::OrderSide;
-    use alloy::primitives::address;
+    use alloy::primitives::{address, Address};
     use alloy::signers::local::PrivateKeySigner;
 
     // Well-known Hardhat test private key #0 (DO NOT use in production)
@@ -712,5 +743,72 @@ uint256 timestamp,bytes32 metadata,bytes32 builder)";
         assert_ne!(h0, h1);
         assert_ne!(h1, h2);
         assert_ne!(h0, h2);
+    }
+}
+
+#[cfg(test)]
+mod clob_auth_reference_tests {
+    use super::*;
+    use alloy::signers::local::PrivateKeySigner;
+
+    const TEST_KEY: &str = "ac0974bec39a17e36ba4a6b4d238ff944bacb478cbed5efcae784d7bf4f2ff80";
+
+    /// Golden vector produced by the reference implementation
+    /// (Polymarket/py-clob-client + poly_eip712_structs) for
+    /// key = Hardhat #0, chain_id = 137, timestamp = 1700000000, nonce = 42.
+    ///
+    /// Regenerate with:
+    /// ```python
+    /// from poly_eip712_structs import make_domain, EIP712Struct, Address, String, Uint
+    /// from eth_utils import keccak
+    /// from eth_account import Account
+    /// class ClobAuth(EIP712Struct):
+    ///     address = Address(); timestamp = String(); nonce = Uint(); message = String()
+    /// acct = Account.from_key("0x" + KEY)
+    /// msg = ClobAuth(address=acct.address, timestamp="1700000000", nonce=42,
+    ///                message="This message attests that I control the given wallet")
+    /// digest = keccak(msg.signable_bytes(
+    ///     make_domain(name="ClobAuthDomain", version="1", chainId=137)))
+    /// ```
+    const REFERENCE_SIGNATURE: &str = "0x8e61f918d542a48ff9433fb6cc4c172a2763ad53dda8afa07f77321e2e0a1e3055f29fac1408e0020dca977190fd4f01b1c73b5e2078be29c88a32887945fe2a1b";
+
+    #[tokio::test]
+    async fn clob_auth_struct_matches_the_reference_type_string() {
+        // The counterparty hashes ClobAuth(address address,string timestamp,
+        // uint256 nonce,string message). Any deviation — field order, a uint
+        // timestamp instead of string, or folding the values into `message` —
+        // produces a different type hash and a signature the server rejects.
+        assert_eq!(
+            protocol::ClobAuth::eip712_encode_type(),
+            "ClobAuth(address address,string timestamp,uint256 nonce,string message)"
+        );
+    }
+
+    #[test]
+    fn clob_auth_domain_omits_verifying_contract() {
+        // Localizes the second half of the bug: the struct can be correct and
+        // the signature still rejected if the domain carries a fourth field.
+        // Separators below come from poly_eip712_structs' make_domain.
+        assert_eq!(
+            clob_auth_domain(137).separator().to_string(),
+            "0xcfc66be2a3b30464cb3b588324101f660c9a205fa76e8e5f83ee16a528e1c4cb"
+        );
+        assert_eq!(
+            clob_auth_domain(80002).separator().to_string(),
+            "0xa1df8f4e3112eaee2448fbec9ab79f68278407e49d9cf52e3dd3d9692fcac9b6"
+        );
+        assert!(clob_auth_domain(137).verifying_contract.is_none());
+    }
+
+    #[tokio::test]
+    async fn sign_clob_auth_matches_the_reference_implementation() {
+        let signer = TEST_KEY.parse::<PrivateKeySigner>().unwrap();
+        let signature = sign_clob_auth(&signer, 137, 1_700_000_000, 42)
+            .await
+            .unwrap();
+        assert_eq!(
+            signature, REFERENCE_SIGNATURE,
+            "signature must byte-match py-clob-client for the same inputs"
+        );
     }
 }
