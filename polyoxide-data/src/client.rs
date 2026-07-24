@@ -6,11 +6,13 @@ use crate::{
     api::{
         accounting::AccountingApi,
         builders::BuildersApi,
+        combos::CombosApi,
         health::Health,
         holders::Holders,
         leaderboard::LeaderboardApi,
         live_volume::LiveVolumeApi,
         market_positions::MarketPositionsApi,
+        misc::MiscApi,
         open_interest::OpenInterestApi,
         trades::Trades,
         users::{UserApi, UserTraded},
@@ -116,6 +118,20 @@ impl DataApi {
     /// Get accounting namespace (`/v1/accounting/snapshot`, returns ZIP bytes)
     pub fn accounting(&self) -> AccountingApi {
         AccountingApi {
+            http_client: self.http_client.clone(),
+        }
+    }
+
+    /// Get combos namespace (`/v1/positions/combos`, `/v1/activity/combos`)
+    pub fn combos(&self) -> CombosApi {
+        CombosApi {
+            http_client: self.http_client.clone(),
+        }
+    }
+
+    /// Get misc namespace (`/other`, `/revisions`)
+    pub fn misc(&self) -> MiscApi {
+        MiscApi {
             http_client: self.http_client.clone(),
         }
     }

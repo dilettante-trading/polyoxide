@@ -2,7 +2,7 @@
 
 Rust client library for the Polymarket Data API.
 
-Read-only access to Polymarket user positions, trades, activity, holders, open interest, live volume, leaderboards, builder analytics, market-positions, and accounting snapshots. No authentication required.
+Read-only access to Polymarket user positions, trades, activity, holders, open interest, live volume, leaderboards, builder analytics, market-positions, combinatorial positions, and accounting snapshots. No authentication required.
 
 More information about this crate can be found in the [crate documentation](https://docs.rs/polyoxide-data/).
 
@@ -333,6 +333,8 @@ println!("API latency: {}ms", latency.as_millis());
 | `data.builders()` | `.leaderboard()`, `.volume()` | Builder analytics and rankings |
 | `data.market_positions()` | `.list(market)` | Aggregated positions for a market |
 | `data.accounting()` | `.snapshot(addr)` | Accounting snapshot (ZIP bytes) |
+| `data.combos()` | `.positions(addr)`, `.activity(addr)` | Combinatorial (multi-market) positions and lifecycle events |
+| `data.misc()` | `.other_size(event_id, addr)`, `.revisions(question_id)` | Neg-risk "Other" size and moderated question revisions |
 | `data.health()` | `.check()`, `.ping()` | API health and latency |
 
 ## License

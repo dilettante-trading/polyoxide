@@ -83,8 +83,32 @@ impl ListTrades {
     }
 
     /// Set pagination offset (0-10000, default: 0)
+    ///
+    /// Requests past the cap are rejected with a 400 rather than silently
+    /// clamped. To read deeper than offset 10000, page inside successive
+    /// [`start`](Self::start)/[`end`](Self::end) windows — each window has its
+    /// own offset budget.
     pub fn offset(mut self, offset: u32) -> Self {
         self.request = self.request.query("offset", offset);
+        self
+    }
+
+    /// Lower-bound timestamp (epoch seconds) for the trade window.
+    ///
+    /// Omit or pass `0` for the default window (most recent ~3 years); pass a
+    /// positive epoch (e.g. `1`) to retrieve full history on user-scoped
+    /// requests. Market- and event-scoped requests keep the ~3-year floor, so
+    /// `start` can only narrow their window.
+    pub fn start(mut self, start: u64) -> Self {
+        self.request = self.request.query("start", start);
+        self
+    }
+
+    /// Upper-bound timestamp (epoch seconds) for the trade window.
+    ///
+    /// Omit for the default (current time); rows newer than `end` are excluded.
+    pub fn end(mut self, end: u64) -> Self {
+        self.request = self.request.query("end", end);
         self
     }
 

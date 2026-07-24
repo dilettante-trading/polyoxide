@@ -6,6 +6,7 @@
 //!
 //! - User data: open/closed positions, position value, trades, activity, and markets-traded counts
 //! - Market positions (`/v1/market-positions`) and token holders
+//! - Combinatorial (multi-market) positions and their lifecycle activity
 //! - Trade history across users
 //! - Leaderboards, builder stats, open interest, and live volume
 //! - Accounting snapshots (returned as ZIP bytes)

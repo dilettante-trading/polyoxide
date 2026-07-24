@@ -351,25 +351,39 @@ impl ListActivity {
         self
     }
 
-    /// Set start timestamp filter
+    /// Lower-bound timestamp (epoch seconds) for the activity window.
+    ///
+    /// Omit or pass `0` for the default window (most recent ~3 years); pass a
+    /// positive epoch (e.g. `1`) to retrieve full history. With
+    /// [`sort_direction(SortDirection::Asc)`](Self::sort_direction), omitting
+    /// `start` anchors paging to the default window's floor.
     pub fn start(mut self, timestamp: i64) -> Self {
         self.request = self.request.query("start", timestamp);
         self
     }
 
-    /// Set end timestamp filter
+    /// Upper-bound timestamp (epoch seconds) for the activity window.
+    ///
+    /// Omit for the default (current time); rows newer than `end` are excluded.
     pub fn end(mut self, timestamp: i64) -> Self {
         self.request = self.request.query("end", timestamp);
         self
     }
 
-    /// Set maximum number of results (0-10000, default: 100)
+    /// Set maximum number of results (0-500, default: 100)
+    ///
+    /// Values above the maximum are clamped to 500 server-side.
     pub fn limit(mut self, limit: u32) -> Self {
         self.request = self.request.query("limit", limit);
         self
     }
 
-    /// Set pagination offset (0-10000, default: 0)
+    /// Set pagination offset (0-5000, default: 0)
+    ///
+    /// Requests past the cap are rejected with a 400 rather than silently
+    /// clamped. To read history deeper than offset 5000, page inside successive
+    /// [`start`](Self::start)/[`end`](Self::end) windows — each window has its
+    /// own offset budget.
     pub fn offset(mut self, offset: u32) -> Self {
         self.request = self.request.query("offset", offset);
         self

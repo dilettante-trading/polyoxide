@@ -1,4 +1,5 @@
 use mockito::{Matcher, Server};
+use polyoxide_data::types::{ActivityType, ComboLegStatus, ComboSort, ComboStatus};
 use polyoxide_data::{DataApi, DataApiError};
 
 fn test_data(server: &mockito::ServerGuard) -> DataApi {
@@ -902,6 +903,338 @@ async fn ping_propagates_5xx_as_error() {
         matches!(err, DataApiError::Api(_)),
         "expected ApiError for 5xx, got {err:?}"
     );
+
+    mock.assert_async().await;
+}
+
+#[tokio::test]
+async fn combo_positions_with_filters_and_cursor() {
+    let mut server = Server::new_async().await;
+
+    let mock = server
+        .mock("GET", "/v1/positions/combos")
+        .match_query(Matcher::AllOf(vec![
+            Matcher::UrlEncoded("user".into(), "0xabc123".into()),
+            Matcher::UrlEncoded("status".into(), "RESOLVED_WIN,RESOLVED_PARTIAL".into()),
+            Matcher::UrlEncoded("sort".into(), "updated_asc".into()),
+            Matcher::UrlEncoded("updatedAfter".into(), "1700000000".into()),
+            Matcher::UrlEncoded("cursor".into(), "opaque-token".into()),
+            Matcher::UrlEncoded("limit".into(), "50".into()),
+        ]))
+        .with_status(200)
+        .with_header("content-type", "application/json")
+        .with_body(
+            r#"{
+                "combos": [{
+                    "combo_condition_id": "0x0391ab0ebea17b65ba87e071b0566e816b0000000000000000000000000000",
+                    "combo_position_id": "pos-1",
+                    "module_id": 3,
+                    "user_address": "0xabc123",
+                    "shares_balance": "12.500000",
+                    "entry_avg_price_usdc": "0.4",
+                    "entry_cost_usdc": "5.000000",
+                    "realized_payout_usdc": "0.00",
+                    "total_cost_usdc": "5.000000",
+                    "gross_entry_cost_usdc": "8999.997488",
+                    "entry_fees_usdc": "2.512000",
+                    "status": "RESOLVED_PARTIAL",
+                    "first_entry_at": "2026-01-02T03:04:05Z",
+                    "resolved_at": null,
+                    "updated_at": "2026-06-01T00:00:00Z",
+                    "legs_total": 2,
+                    "legs_resolved": 1,
+                    "legs_pending": 1,
+                    "legs": [{
+                        "leg_index": 0,
+                        "leg_position_id": "leg-1",
+                        "leg_condition_id": "0xleg",
+                        "leg_outcome_index": 1,
+                        "leg_outcome_label": "No",
+                        "leg_status": "RESOLVED_PARTIAL",
+                        "leg_resolved_at": "2026-05-01T00:00:00Z",
+                        "leg_current_price": "0.5",
+                        "market": {
+                            "market_id": "m-1",
+                            "slug": "will-x",
+                            "title": "Will X happen?",
+                            "outcome": "No",
+                            "tags": ["politics"],
+                            "end_date": "2026-12-31T00:00:00Z",
+                            "event": {"event_id": "e-1", "event_slug": "ev", "event_title": "Ev"}
+                        }
+                    }]
+                }],
+                "pagination": {"limit": 50, "offset": 0, "has_more": true, "next_cursor": "next-token"}
+            }"#,
+        )
+        .create_async()
+        .await;
+
+    let data = test_data(&server);
+    let res = data
+        .combos()
+        .positions("0xabc123")
+        .status([ComboStatus::ResolvedWin, ComboStatus::ResolvedPartial])
+        .sort(ComboSort::UpdatedAsc)
+        .updated_after(1_700_000_000)
+        .cursor("opaque-token")
+        .limit(50)
+        .send()
+        .await
+        .unwrap();
+
+    assert_eq!(res.combos.len(), 1);
+    let combo = &res.combos[0];
+    assert_eq!(combo.status, Some(ComboStatus::ResolvedPartial));
+    // Monetary fields stay as strings so six-decimal precision survives.
+    assert_eq!(combo.gross_entry_cost_usdc.as_deref(), Some("8999.997488"));
+    assert_eq!(combo.entry_fees_usdc.as_deref(), Some("2.512000"));
+    assert_eq!(combo.updated_at.as_deref(), Some("2026-06-01T00:00:00Z"));
+    assert_eq!(combo.legs.len(), 1);
+    assert_eq!(
+        combo.legs[0].leg_status,
+        Some(ComboLegStatus::ResolvedPartial)
+    );
+
+    let pagination = res.pagination.unwrap();
+    assert!(pagination.has_more);
+    assert_eq!(pagination.next_cursor.as_deref(), Some("next-token"));
+
+    mock.assert_async().await;
+}
+
+#[tokio::test]
+async fn combo_positions_status_drops_unknown_variant() {
+    let mut server = Server::new_async().await;
+
+    // Only OPEN should reach the wire; Unknown has no upstream value to filter on.
+    let mock = server
+        .mock("GET", "/v1/positions/combos")
+        .match_query(Matcher::AllOf(vec![
+            Matcher::UrlEncoded("user".into(), "0xabc".into()),
+            Matcher::UrlEncoded("status".into(), "OPEN".into()),
+        ]))
+        .with_status(200)
+        .with_header("content-type", "application/json")
+        .with_body(r#"{"combos": [], "pagination": null}"#)
+        .create_async()
+        .await;
+
+    let data = test_data(&server);
+    let res = data
+        .combos()
+        .positions("0xabc")
+        .status([ComboStatus::Open, ComboStatus::Unknown])
+        .send()
+        .await
+        .unwrap();
+
+    assert!(res.combos.is_empty());
+    mock.assert_async().await;
+}
+
+#[tokio::test]
+async fn combo_positions_unknown_status_does_not_poison_page() {
+    let mut server = Server::new_async().await;
+
+    let mock = server
+        .mock("GET", "/v1/positions/combos")
+        .match_query(Matcher::UrlEncoded("user".into(), "0xabc".into()))
+        .with_status(200)
+        .with_header("content-type", "application/json")
+        .with_body(
+            r#"{"combos": [
+                {"combo_condition_id": "0xaaa", "status": "SOME_FUTURE_STATUS", "legs": []},
+                {"combo_condition_id": "0xbbb", "status": "OPEN", "legs": []}
+            ]}"#,
+        )
+        .create_async()
+        .await;
+
+    let data = test_data(&server);
+    let res = data.combos().positions("0xabc").send().await.unwrap();
+
+    assert_eq!(res.combos.len(), 2, "unknown status must not drop the page");
+    assert_eq!(res.combos[0].status, Some(ComboStatus::Unknown));
+    assert_eq!(res.combos[1].status, Some(ComboStatus::Open));
+
+    mock.assert_async().await;
+}
+
+#[tokio::test]
+async fn combo_activity_list() {
+    let mut server = Server::new_async().await;
+
+    let mock = server
+        .mock("GET", "/v1/activity/combos")
+        .match_query(Matcher::AllOf(vec![
+            Matcher::UrlEncoded("user".into(), "0xabc".into()),
+            Matcher::UrlEncoded("market_id".into(), "0xcombo1,0xcombo2".into()),
+            Matcher::UrlEncoded("limit".into(), "10".into()),
+        ]))
+        .with_status(200)
+        .with_header("content-type", "application/json")
+        .with_body(
+            r#"{
+                "activity": [{
+                    "id": "act-1",
+                    "type": "redeem",
+                    "event_kind": "PositionRedeemed",
+                    "side": "Redeem",
+                    "module_kind": "Combinatorial",
+                    "user_address": "0xabc",
+                    "combo_condition_id": "0xcombo1",
+                    "amount_usdc": null,
+                    "payout_usdc": 42.5,
+                    "timestamp": 1700000000,
+                    "tx_hash": "0xdead",
+                    "legs": []
+                }],
+                "pagination": {"limit": 10, "offset": 0, "has_more": false, "next_cursor": null}
+            }"#,
+        )
+        .create_async()
+        .await;
+
+    let data = test_data(&server);
+    let res = data
+        .combos()
+        .activity("0xabc")
+        .market_id(["0xcombo1", "0xcombo2"])
+        .limit(10)
+        .send()
+        .await
+        .unwrap();
+
+    assert_eq!(res.activity.len(), 1);
+    let row = &res.activity[0];
+    assert_eq!(row.activity_type.as_deref(), Some("redeem"));
+    assert_eq!(row.payout_usdc, Some(42.5));
+    assert_eq!(row.amount_usdc, None);
+    assert!(!res.pagination.unwrap().has_more);
+
+    mock.assert_async().await;
+}
+
+#[tokio::test]
+async fn misc_other_size_and_revisions() {
+    let mut server = Server::new_async().await;
+
+    let other = server
+        .mock("GET", "/other")
+        .match_query(Matcher::AllOf(vec![
+            Matcher::UrlEncoded("id".into(), "123".into()),
+            Matcher::UrlEncoded("user".into(), "0xabc".into()),
+        ]))
+        .with_status(200)
+        .with_header("content-type", "application/json")
+        .with_body(r#"[{"id": 123, "user": "0xabc", "size": 7.5}]"#)
+        .create_async()
+        .await;
+
+    let revisions = server
+        .mock("GET", "/revisions")
+        .match_query(Matcher::AllOf(vec![
+            Matcher::UrlEncoded("questionID".into(), "0xq".into()),
+            Matcher::UrlEncoded("limit".into(), "5".into()),
+        ]))
+        .with_status(200)
+        .with_header("content-type", "application/json")
+        .with_body(
+            r#"[{"questionID": "0xq", "revisions": [{"revision": "clarified", "timestamp": 1700000000}]}]"#,
+        )
+        .create_async()
+        .await;
+
+    let data = test_data(&server);
+
+    let sizes = data.misc().other_size(123, "0xabc").send().await.unwrap();
+    assert_eq!(sizes.len(), 1);
+    assert_eq!(sizes[0].size, Some(7.5));
+
+    let revs = data.misc().revisions("0xq").limit(5).send().await.unwrap();
+    assert_eq!(revs.len(), 1);
+    assert_eq!(revs[0].question_id.as_deref(), Some("0xq"));
+    assert_eq!(revs[0].revisions[0].revision.as_deref(), Some("clarified"));
+
+    other.assert_async().await;
+    revisions.assert_async().await;
+}
+
+#[tokio::test]
+async fn trades_list_with_time_window() {
+    let mut server = Server::new_async().await;
+
+    let mock = server
+        .mock("GET", "/trades")
+        .match_query(Matcher::AllOf(vec![
+            Matcher::UrlEncoded("user".into(), "0xabc".into()),
+            Matcher::UrlEncoded("start".into(), "1".into()),
+            Matcher::UrlEncoded("end".into(), "1700000000".into()),
+        ]))
+        .with_status(200)
+        .with_header("content-type", "application/json")
+        .with_body("[]")
+        .create_async()
+        .await;
+
+    let data = test_data(&server);
+    let trades = data
+        .trades()
+        .list()
+        .user("0xabc")
+        .start(1)
+        .end(1_700_000_000)
+        .send()
+        .await
+        .unwrap();
+
+    assert!(trades.is_empty());
+    mock.assert_async().await;
+}
+
+#[tokio::test]
+async fn activity_type_covers_deposit_withdrawal_yield() {
+    let mut server = Server::new_async().await;
+
+    let mock = server
+        .mock("GET", "/activity")
+        .match_query(Matcher::AllOf(vec![
+            Matcher::UrlEncoded("user".into(), "0xabc".into()),
+            Matcher::UrlEncoded("type".into(), "DEPOSIT,WITHDRAWAL,YIELD".into()),
+        ]))
+        .with_status(200)
+        .with_header("content-type", "application/json")
+        .with_body(
+            r#"[
+                {"proxyWallet": "0xabc", "timestamp": 1, "conditionId": "c", "type": "DEPOSIT",
+                 "size": 1.0, "usdcSize": 1.0, "transactionHash": "0x1"},
+                {"proxyWallet": "0xabc", "timestamp": 2, "conditionId": "c", "type": "WITHDRAWAL",
+                 "size": 1.0, "usdcSize": 1.0, "transactionHash": "0x2"},
+                {"proxyWallet": "0xabc", "timestamp": 3, "conditionId": "c", "type": "YIELD",
+                 "size": 1.0, "usdcSize": 1.0, "transactionHash": "0x3"}
+            ]"#,
+        )
+        .create_async()
+        .await;
+
+    let data = test_data(&server);
+    let rows = data
+        .user("0xabc")
+        .activity()
+        .activity_type([
+            ActivityType::Deposit,
+            ActivityType::Withdrawal,
+            ActivityType::Yield,
+        ])
+        .send()
+        .await
+        .unwrap();
+
+    // These three used to fall through to `Unknown` via #[serde(other)].
+    assert_eq!(rows[0].activity_type, ActivityType::Deposit);
+    assert_eq!(rows[1].activity_type, ActivityType::Withdrawal);
+    assert_eq!(rows[2].activity_type, ActivityType::Yield);
 
     mock.assert_async().await;
 }

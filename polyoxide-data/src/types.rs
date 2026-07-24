@@ -263,6 +263,12 @@ pub enum ActivityType {
     Reward,
     /// Conversion activity
     Conversion,
+    /// Collateral deposit
+    Deposit,
+    /// Collateral withdrawal
+    Withdrawal,
+    /// Yield accrual on collateral
+    Yield,
     /// Maker rebate activity
     #[serde(rename = "MAKER_REBATE")]
     MakerRebate,
@@ -288,6 +294,9 @@ impl std::fmt::Display for ActivityType {
             Self::Redeem => write!(f, "REDEEM"),
             Self::Reward => write!(f, "REWARD"),
             Self::Conversion => write!(f, "CONVERSION"),
+            Self::Deposit => write!(f, "DEPOSIT"),
+            Self::Withdrawal => write!(f, "WITHDRAWAL"),
+            Self::Yield => write!(f, "YIELD"),
             Self::MakerRebate => write!(f, "MAKER_REBATE"),
             Self::ReferralReward => write!(f, "REFERRAL_REWARD"),
             Self::TakerRebate => write!(f, "TAKER_REBATE"),
@@ -556,6 +565,372 @@ impl std::fmt::Display for TimePeriod {
             Self::All => write!(f, "ALL"),
         }
     }
+}
+
+// ---------------------------------------------------------------------------
+// Combinatorial (multi-market) positions and activity
+//
+// Monetary and share fields on these types are kept as `String` rather than
+// `f64` deliberately: upstream documents them as "six-decimal
+// precision-preserving" values and instructs clients to parse them as decimals,
+// never through a float. Round-tripping them through `f64` would silently lose
+// precision on large balances.
+// ---------------------------------------------------------------------------
+
+/// Resolution state of a combinatorial position.
+#[cfg_attr(feature = "specta", derive(specta::Type))]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "SCREAMING_SNAKE_CASE")]
+pub enum ComboStatus {
+    /// No leg has resolved yet.
+    Open,
+    /// Some legs have resolved; the combo is still live.
+    Partial,
+    /// Resolved at a fractional payout (e.g. a leg voided 50/50) — redemption
+    /// pays the fractional value per share.
+    ResolvedPartial,
+    /// Resolved in the holder's favour; shares redeem 1:1 at $1.
+    ResolvedWin,
+    /// Resolved against the holder; shares are worthless.
+    ResolvedLoss,
+    /// Unrecognized status (forward-compat). Never construct this to send in a
+    /// request filter; [`crate::api::combos::ListComboPositions::status`] drops
+    /// it since the upstream API has no matching value to filter on.
+    #[serde(other)]
+    Unknown,
+}
+
+impl std::fmt::Display for ComboStatus {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            Self::Open => write!(f, "OPEN"),
+            Self::Partial => write!(f, "PARTIAL"),
+            Self::ResolvedPartial => write!(f, "RESOLVED_PARTIAL"),
+            Self::ResolvedWin => write!(f, "RESOLVED_WIN"),
+            Self::ResolvedLoss => write!(f, "RESOLVED_LOSS"),
+            Self::Unknown => write!(f, "UNKNOWN"),
+        }
+    }
+}
+
+/// Resolution state of a single leg within a combinatorial position.
+#[cfg_attr(feature = "specta", derive(specta::Type))]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "SCREAMING_SNAKE_CASE")]
+pub enum ComboLegStatus {
+    /// The leg's market has not resolved.
+    Open,
+    /// The leg's market resolved with a fractional payout (e.g. a 50/50 void).
+    ResolvedPartial,
+    /// The leg resolved in the holder's favour.
+    ResolvedWin,
+    /// The leg resolved against the holder.
+    ResolvedLoss,
+    /// Unrecognized leg status (forward-compat).
+    #[serde(other)]
+    Unknown,
+}
+
+impl std::fmt::Display for ComboLegStatus {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            Self::Open => write!(f, "OPEN"),
+            Self::ResolvedPartial => write!(f, "RESOLVED_PARTIAL"),
+            Self::ResolvedWin => write!(f, "RESOLVED_WIN"),
+            Self::ResolvedLoss => write!(f, "RESOLVED_LOSS"),
+            Self::Unknown => write!(f, "UNKNOWN"),
+        }
+    }
+}
+
+/// Sort order for [`crate::api::combos::ListComboPositions`].
+#[cfg_attr(feature = "specta", derive(specta::Type))]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, Default)]
+#[serde(rename_all = "snake_case")]
+pub enum ComboSort {
+    /// Highest current value first (default).
+    #[default]
+    CurrentValueDesc,
+    /// Highest entry cost first.
+    EntryCostDesc,
+    /// Most recently entered first.
+    FirstEntryDesc,
+    /// Most recently resolved first.
+    ResolvedAtDesc,
+    /// Oldest `updated_at` first — the sort to use for incremental sync
+    /// alongside [`crate::api::combos::ListComboPositions::updated_after`].
+    UpdatedAsc,
+}
+
+impl std::fmt::Display for ComboSort {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            Self::CurrentValueDesc => write!(f, "current_value_desc"),
+            Self::EntryCostDesc => write!(f, "entry_cost_desc"),
+            Self::FirstEntryDesc => write!(f, "first_entry_desc"),
+            Self::ResolvedAtDesc => write!(f, "resolved_at_desc"),
+            Self::UpdatedAsc => write!(f, "updated_asc"),
+        }
+    }
+}
+
+/// Standard pagination metadata for combo endpoints.
+///
+/// There is no total count; `has_more` is derived from page fullness.
+#[cfg_attr(feature = "specta", derive(specta::Type))]
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct Pagination {
+    /// Page size used for this response.
+    pub limit: i64,
+    /// Offset used for this response.
+    pub offset: i64,
+    /// Whether another page is available.
+    pub has_more: bool,
+    /// Opaque signed cursor for the next page; `None` when `has_more` is false.
+    ///
+    /// Pass it back verbatim via `cursor(..)`, keeping the same sort. Never
+    /// parse or construct it. Using the cursor makes deep pagination O(page)
+    /// and stable against concurrent inserts.
+    pub next_cursor: Option<String>,
+}
+
+/// Event metadata attached to a combo leg's market.
+#[cfg_attr(feature = "specta", derive(specta::Type))]
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct ComboEvent {
+    /// Event identifier.
+    pub event_id: Option<String>,
+    /// URL slug for the event.
+    pub event_slug: Option<String>,
+    /// Human-readable event title.
+    pub event_title: Option<String>,
+    /// Event image URL.
+    pub event_image: Option<String>,
+}
+
+/// Market metadata attached to a combo leg.
+#[cfg_attr(feature = "specta", derive(specta::Type))]
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct ComboMarket {
+    /// Market identifier.
+    pub market_id: Option<String>,
+    /// URL slug for the market.
+    pub slug: Option<String>,
+    /// Market title.
+    pub title: Option<String>,
+    /// Outcome label this leg refers to.
+    pub outcome: Option<String>,
+    /// Market image URL.
+    pub image_url: Option<String>,
+    /// Market icon URL.
+    pub icon_url: Option<String>,
+    /// Market category.
+    pub category: Option<String>,
+    /// Market subcategory.
+    pub subcategory: Option<String>,
+    /// Tags applied to the market.
+    #[serde(default)]
+    pub tags: Vec<String>,
+    /// Market end date (RFC3339 UTC).
+    pub end_date: Option<String>,
+    /// Parent event metadata.
+    pub event: Option<ComboEvent>,
+}
+
+/// A single leg of a combinatorial position.
+#[cfg_attr(feature = "specta", derive(specta::Type))]
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct ComboLeg {
+    /// Zero-based index of this leg within the combo.
+    pub leg_index: i64,
+    /// Position identifier for the leg.
+    pub leg_position_id: Option<String>,
+    /// The leg market's condition ID (distinct from the combo's).
+    pub leg_condition_id: Option<String>,
+    /// Index of the selected outcome within the leg market.
+    pub leg_outcome_index: Option<i64>,
+    /// Label of the selected outcome.
+    pub leg_outcome_label: Option<String>,
+    /// Live per-leg resolution state, derived from the leg market's on-chain
+    /// payout vector.
+    pub leg_status: Option<ComboLegStatus>,
+    /// RFC3339 UTC. Set once the leg's market resolves on-chain, including
+    /// fractional resolutions that still report `leg_status` `Open`.
+    pub leg_resolved_at: Option<String>,
+    /// Live price for the leg outcome (decimal string, 0–1). `"0"` when no
+    /// price is available.
+    pub leg_current_price: Option<String>,
+    /// Market metadata for the leg.
+    pub market: Option<ComboMarket>,
+}
+
+/// A combinatorial (multi-market) position held by a user.
+#[cfg_attr(feature = "specta", derive(specta::Type))]
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct ComboPosition {
+    /// Combo condition ID (`0x` + 62 hex). Equals the `conditionId` of
+    /// `isCombo` rows on `/activity`.
+    pub combo_condition_id: String,
+    /// Position identifier for the combo.
+    pub combo_position_id: Option<String>,
+    /// Module identifier; `3` is the Combinatorial module.
+    pub module_id: Option<i64>,
+    /// Holder's wallet address.
+    pub user_address: Option<String>,
+    /// Share balance as a precision-preserving decimal string.
+    pub shares_balance: Option<String>,
+    /// Average entry price in USDC, as a decimal string.
+    pub entry_avg_price_usdc: Option<String>,
+    /// *Remaining* cost basis (`entry_avg_price × shares_balance`).
+    ///
+    /// Reads ~0 after a winning combo is redeemed — use
+    /// [`total_cost_usdc`](Self::total_cost_usdc) to display what was paid on
+    /// closed positions.
+    pub entry_cost_usdc: Option<String>,
+    /// Gross redemption proceeds (winning shares redeem 1:1 at $1).
+    ///
+    /// `"0.00"` while open, unredeemed, or resolved-loss; accumulates under
+    /// `Partial`. This is gross payout, not net PnL — net =
+    /// `realized_payout_usdc − total_cost_usdc`.
+    pub realized_payout_usdc: Option<String>,
+    /// Original cost basis, surviving redemption burning the shares. Equals
+    /// [`entry_cost_usdc`](Self::entry_cost_usdc) while open.
+    pub total_cost_usdc: Option<String>,
+    /// Exact gross entry basis including attributed BUY fees, as a six-decimal
+    /// precision-preserving string (e.g. `"8999.997488"`).
+    ///
+    /// Tracks the remaining basis while the position is live and freezes once
+    /// it is terminal. Exact net basis = `gross_entry_cost_usdc −
+    /// entry_fees_usdc`. Parse as a decimal, never through a float.
+    pub gross_entry_cost_usdc: Option<String>,
+    /// BUY-fee portion of the same basis, as a six-decimal precision-preserving
+    /// string. SELL fees are excluded; always ≤ `gross_entry_cost_usdc`.
+    pub entry_fees_usdc: Option<String>,
+    /// Resolution state of the combo.
+    pub status: Option<ComboStatus>,
+    /// First entry time (RFC3339 UTC).
+    pub first_entry_at: Option<String>,
+    /// Resolution time (RFC3339 UTC), or `None` while unresolved.
+    pub resolved_at: Option<String>,
+    /// Last-modified time (UTC, ISO 8601) — the incremental-sync watermark.
+    ///
+    /// Bumps on any recompute of the row (trade, redemption, resolution
+    /// classification). Omitted on responses served by the legacy backend.
+    pub updated_at: Option<String>,
+    /// Total number of legs.
+    pub legs_total: Option<i64>,
+    /// Number of legs that have resolved.
+    pub legs_resolved: Option<i64>,
+    /// Number of legs still pending.
+    pub legs_pending: Option<i64>,
+    /// Per-leg breakdown.
+    #[serde(default)]
+    pub legs: Vec<ComboLeg>,
+}
+
+/// Response envelope for `GET /v1/positions/combos`.
+#[cfg_attr(feature = "specta", derive(specta::Type))]
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct CombosResponse {
+    /// The combo positions in this page.
+    #[serde(default)]
+    pub combos: Vec<ComboPosition>,
+    /// Pagination metadata.
+    pub pagination: Option<Pagination>,
+}
+
+/// A combo lifecycle or redeem event.
+#[cfg_attr(feature = "specta", derive(specta::Type))]
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct ComboActivity {
+    /// Event identifier.
+    pub id: Option<String>,
+    /// Event type (split, merge, convert, compress, wrap, unwrap, redeem).
+    ///
+    /// Upstream documents `type` as the replacement for the deprecated
+    /// [`event_kind`](Self::event_kind) and [`side`](Self::side) fields, but
+    /// does not yet list it in the published schema — treat it as optional
+    /// until it appears there.
+    #[serde(rename = "type")]
+    pub activity_type: Option<String>,
+    /// Raw on-chain event name (e.g. `PositionsSplit`).
+    #[deprecated(note = "upstream deprecated this field; use `activity_type` instead")]
+    pub event_kind: Option<String>,
+    /// Normalized rendering label (e.g. `Split`).
+    #[deprecated(note = "upstream deprecated this field; use `activity_type` instead")]
+    pub side: Option<String>,
+    /// Module kind; always `Combinatorial`.
+    pub module_kind: Option<String>,
+    /// Holder's wallet address.
+    pub user_address: Option<String>,
+    /// Combo condition ID (`0x` + 62 hex).
+    pub combo_condition_id: Option<String>,
+    /// Position identifier for the combo.
+    pub combo_position_id: Option<String>,
+    /// Module identifier.
+    pub module_id: Option<i64>,
+    /// Lifecycle amount in USDC; `None` on redeems.
+    pub amount_usdc: Option<f64>,
+    /// Redeem payout in USDC; `None` on lifecycle events.
+    pub payout_usdc: Option<f64>,
+    /// Event time as a Unix timestamp (seconds).
+    pub timestamp: Option<i64>,
+    /// Transaction time (RFC3339 UTC).
+    pub tx_dttm: Option<String>,
+    /// Transaction hash.
+    pub tx_hash: Option<String>,
+    /// Log index within the transaction.
+    pub log_index: Option<i64>,
+    /// Block number.
+    pub block_number: Option<i64>,
+    /// Per-leg breakdown.
+    #[serde(default)]
+    pub legs: Vec<ComboLeg>,
+}
+
+/// Response envelope for `GET /v1/activity/combos`.
+#[cfg_attr(feature = "specta", derive(specta::Type))]
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct CombosActivityResponse {
+    /// The combo activity rows in this page.
+    #[serde(default)]
+    pub activity: Vec<ComboActivity>,
+    /// Pagination metadata.
+    pub pagination: Option<Pagination>,
+}
+
+/// "Other" outcome size held by a user in an augmented neg-risk event.
+#[cfg_attr(feature = "specta", derive(specta::Type))]
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct OtherSize {
+    /// Gamma event ID of the augmented neg-risk event.
+    pub id: Option<i64>,
+    /// User wallet address.
+    pub user: Option<String>,
+    /// Size of the "Other" position.
+    pub size: Option<f64>,
+}
+
+/// A single moderated revision of a question.
+#[cfg_attr(feature = "specta", derive(specta::Type))]
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct RevisionEntry {
+    /// Revised question text.
+    pub revision: Option<String>,
+    /// Revision time as a Unix timestamp (seconds).
+    pub timestamp: Option<i64>,
+}
+
+/// Moderated revisions for a question.
+#[cfg_attr(feature = "specta", derive(specta::Type))]
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct RevisionPayload {
+    /// Question ID (`0x` + 64 hex).
+    #[serde(rename = "questionID")]
+    pub question_id: Option<String>,
+    /// Revisions recorded for the question, oldest first.
+    #[serde(default)]
+    pub revisions: Vec<RevisionEntry>,
 }
 
 #[cfg(test)]
