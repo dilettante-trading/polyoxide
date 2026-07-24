@@ -662,6 +662,35 @@ async fn live_list_notifications() {
         .expect("list notifications should deserialize");
 }
 
+// ── Authenticated: Auth — L1 (EIP-712) ─────────────────────────
+
+/// The only end-to-end check that L1 signing is accepted by the server.
+///
+/// L1 has exactly one signing path, so this covers `create_api_key`,
+/// `derive_api_key`, and `create_readonly_key` alike. Unit tests pin the
+/// EIP-712 struct against py-clob-client, but only the server can confirm it
+/// accepts the header set; before the ClobAuth fix this returned
+/// "Invalid L1 Request headers".
+///
+/// Derive is deliberate over create: it is read-only and returns the existing
+/// deterministic credential rather than provisioning a new one.
+#[tokio::test]
+#[ignore]
+async fn live_l1_derive_api_key() {
+    let client = authenticated_client();
+    let resp = client
+        .auth()
+        .expect("auth")
+        .derive_api_key(0)
+        .send()
+        .await
+        .expect("L1 derive_api_key should be accepted by the server");
+
+    assert!(!resp.api_key.is_empty(), "apiKey should deserialize");
+    assert!(!resp.secret.is_empty(), "secret should deserialize");
+    assert!(!resp.passphrase.is_empty(), "passphrase should deserialize");
+}
+
 // ── Authenticated: Auth — ban status ────────────────────────────
 
 #[tokio::test]
