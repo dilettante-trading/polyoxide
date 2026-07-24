@@ -73,9 +73,14 @@ plus a `manifest.jsonl`. Parquet output requires building the CLI with the
 **Builder pattern** — All clients use builders: `ClobBuilder::new()`, `Clob::builder(private_key, credentials)`, `Gamma::builder()`, `DataApi::builder()`, `RelayClient::default_builder()`, `Polymarket::builder(account)`.
 
 **API namespaces** — Clients organize endpoints into namespaces:
-- CLOB: `clob.markets()`, `clob.orders()`, `clob.account_api()`, `clob.health()`, `clob.auth()`, `clob.rewards()`, `clob.notifications()`
+- CLOB: `clob.markets()`, `clob.orders()`, `clob.account_api()`, `clob.health()`, `clob.auth()`, `clob.rewards()`, `clob.public_rewards()`, `clob.notifications()`
 - Gamma: `gamma.markets()`, `gamma.events()`, `gamma.series()`, `gamma.tags()`, `gamma.comments()`, `gamma.sports()`, `gamma.search()`, `gamma.user()`, `gamma.health()`
-- Data: `data.user(addr)`, `data.trades()`, `data.holders()`, `data.leaderboard()`, `data.builders()`, `data.live_volume()`, `data.open_interest()`, `data.market_positions()`, `data.accounting()`, `data.health()`
+- Data: `data.user(addr)`, `data.trades()`, `data.holders()`, `data.leaderboard()`, `data.builders()`, `data.live_volume()`, `data.open_interest()`, `data.market_positions()`, `data.combos()`, `data.misc()`, `data.accounting()`, `data.health()`
+
+`clob.rewards()` requires an `Account`; `clob.public_rewards()` exposes the
+subset that is public upstream (`/rewards/markets/current`,
+`/rewards/markets/{condition_id}`, `/rewards/markets/multi`,
+`/rebates/current`) without one.
 
 Example: `gamma.markets().list().open(true).send().await?`, `data.leaderboard().get().send().await?`.
 
@@ -104,6 +109,14 @@ Relay operations need either `BUILDER_API_KEY`, `BUILDER_SECRET`, `BUILDER_PASS_
 ## API Specs
 
 Upstream Polymarket API documentation lives in `docs/specs/`. See `docs/specs/INDEX.md` for the full index. These are the source of truth for endpoint contracts, rate limits, and response schemas — sourced from https://docs.polymarket.com and the official OpenAPI specs.
+
+**Not yet implemented.** `docs/specs/` also mirrors three upstream APIs that no
+polyoxide crate covers: **Perps** (`perps/`, 43 endpoints on
+`api.perpetuals.polymarket.com`, with its own `POLYMARKET-PROXY` /
+`POLYMARKET-SECRET` header auth rather than the L1/L2 scheme), **Bridge**
+(`bridge/`, 5 endpoints), and **Combos RFQ** (`combos-rfq/`, 4 endpoints). They
+are mirrored so parity audits can see them; adding client support for any of
+them is a separate piece of work.
 
 For the upstream hosted docs, [`docs/specs/polymarket-llms.txt`](docs/specs/polymarket-llms.txt) is a snapshot of Polymarket's own documentation index (`https://docs.polymarket.com/llms.txt`) — a flat list of every doc page (with `.md` URLs) covering CLOB/auth/orders, builder attribution, and the CLOB V2 migration. Use it to locate the authoritative upstream page for a topic when the local `docs/specs/` copies are insufficient.
 
