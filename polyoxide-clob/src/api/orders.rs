@@ -21,18 +21,23 @@ pub struct Orders {
 }
 
 impl Orders {
-    /// List user's orders
-    pub fn list(&self) -> Request<ListOrdersResponse> {
-        Request::get(
-            self.http_client.clone(),
-            "/data/orders",
-            AuthMode::L2 {
-                address: self.wallet.address(),
-                credentials: self.credentials.clone(),
-                signer: self.signer.clone(),
-            },
-            self.chain_id,
-        )
+    /// List the user's open orders (`GET /data/orders`).
+    ///
+    /// Results are cursor-paginated; feed `next_cursor` from the response back
+    /// via [`ListOrders::next_cursor`] to fetch the next page.
+    pub fn list(&self) -> ListOrders {
+        ListOrders {
+            request: Request::get(
+                self.http_client.clone(),
+                "/data/orders",
+                AuthMode::L2 {
+                    address: self.wallet.address(),
+                    credentials: self.credentials.clone(),
+                    signer: self.signer.clone(),
+                },
+                self.chain_id,
+            ),
+        }
     }
 
     /// Get a specific order by ID
@@ -256,6 +261,42 @@ pub struct BatchCancelResponse {
 pub struct ListOrdersResponse {
     pub data: Vec<OpenOrder>,
     pub next_cursor: Option<String>,
+}
+
+/// Request builder for listing open orders with optional filters.
+pub struct ListOrders {
+    request: Request<ListOrdersResponse>,
+}
+
+impl ListOrders {
+    /// Filter by a specific order ID.
+    pub fn id(mut self, order_id: impl Into<String>) -> Self {
+        self.request = self.request.query("id", order_id.into());
+        self
+    }
+
+    /// Filter by market (condition ID).
+    pub fn market(mut self, condition_id: impl Into<String>) -> Self {
+        self.request = self.request.query("market", condition_id.into());
+        self
+    }
+
+    /// Filter by asset (token ID).
+    pub fn asset_id(mut self, token_id: impl Into<String>) -> Self {
+        self.request = self.request.query("asset_id", token_id.into());
+        self
+    }
+
+    /// Continue from a pagination cursor.
+    pub fn next_cursor(mut self, cursor: impl Into<String>) -> Self {
+        self.request = self.request.query("next_cursor", cursor.into());
+        self
+    }
+
+    /// Execute the request.
+    pub async fn send(self) -> Result<ListOrdersResponse, ClobError> {
+        self.request.send().await
+    }
 }
 
 #[cfg(test)]

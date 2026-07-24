@@ -41,14 +41,20 @@ impl Markets {
         .query_many("clob_token_ids", token_ids.into())
     }
 
-    /// List all markets
-    pub fn list(&self) -> Request<ListMarketsResponse> {
-        Request::get(
-            self.http_client.clone(),
-            "/markets",
-            AuthMode::None,
-            self.chain_id,
-        )
+    /// List all markets (`GET /markets`).
+    ///
+    /// Results are cursor-paginated: read `next_cursor` off the response and
+    /// feed it back via [`ListClobMarkets::next_cursor`] to fetch the next
+    /// page. A cursor of `"LTE="` marks the end of the list.
+    pub fn list(&self) -> ListClobMarkets {
+        ListClobMarkets {
+            request: Request::get(
+                self.http_client.clone(),
+                "/markets",
+                AuthMode::None,
+                self.chain_id,
+            ),
+        }
     }
 
     /// Get order book for a token
@@ -276,34 +282,46 @@ impl Markets {
         .query("token_id", token_id.into())
     }
 
-    /// List simplified markets (reduced payload for performance)
-    pub fn simplified(&self) -> Request<ListMarketsResponse> {
-        Request::get(
-            self.http_client.clone(),
-            "/simplified-markets",
-            AuthMode::None,
-            self.chain_id,
-        )
+    /// List simplified markets (reduced payload for performance).
+    ///
+    /// Cursor-paginated — see [`ListClobMarkets::next_cursor`].
+    pub fn simplified(&self) -> ListClobMarkets {
+        ListClobMarkets {
+            request: Request::get(
+                self.http_client.clone(),
+                "/simplified-markets",
+                AuthMode::None,
+                self.chain_id,
+            ),
+        }
     }
 
-    /// List sampling markets
-    pub fn sampling(&self) -> Request<ListMarketsResponse> {
-        Request::get(
-            self.http_client.clone(),
-            "/sampling-markets",
-            AuthMode::None,
-            self.chain_id,
-        )
+    /// List sampling markets (markets currently eligible for liquidity rewards).
+    ///
+    /// Cursor-paginated — see [`ListClobMarkets::next_cursor`].
+    pub fn sampling(&self) -> ListClobMarkets {
+        ListClobMarkets {
+            request: Request::get(
+                self.http_client.clone(),
+                "/sampling-markets",
+                AuthMode::None,
+                self.chain_id,
+            ),
+        }
     }
 
-    /// List sampling simplified markets
-    pub fn sampling_simplified(&self) -> Request<ListMarketsResponse> {
-        Request::get(
-            self.http_client.clone(),
-            "/sampling-simplified-markets",
-            AuthMode::None,
-            self.chain_id,
-        )
+    /// List sampling simplified markets.
+    ///
+    /// Cursor-paginated — see [`ListClobMarkets::next_cursor`].
+    pub fn sampling_simplified(&self) -> ListClobMarkets {
+        ListClobMarkets {
+            request: Request::get(
+                self.http_client.clone(),
+                "/sampling-simplified-markets",
+                AuthMode::None,
+                self.chain_id,
+            ),
+        }
     }
 
     /// Calculate estimated execution price for a market order
@@ -427,6 +445,29 @@ pub struct Market {
 pub struct ListMarketsResponse {
     pub data: Vec<Market>,
     pub next_cursor: Option<String>,
+}
+
+/// Request builder for the cursor-paginated market listing endpoints
+/// (`/markets`, `/simplified-markets`, `/sampling-markets`,
+/// `/sampling-simplified-markets`).
+pub struct ListClobMarkets {
+    request: Request<ListMarketsResponse>,
+}
+
+impl ListClobMarkets {
+    /// Continue from a pagination cursor.
+    ///
+    /// Pass the `next_cursor` value from the previous response. The end of the
+    /// list is signalled by a `next_cursor` of `"LTE="`.
+    pub fn next_cursor(mut self, cursor: impl Into<String>) -> Self {
+        self.request = self.request.query("next_cursor", cursor.into());
+        self
+    }
+
+    /// Execute the request.
+    pub async fn send(self) -> Result<ListMarketsResponse, ClobError> {
+        self.request.send().await
+    }
 }
 
 /// Market token (outcome)

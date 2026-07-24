@@ -1,5 +1,8 @@
 use mockito::{Matcher, Server};
-use polyoxide_clob::{Account, ClobBuilder, ClobError, Credentials, SignatureType};
+use polyoxide_clob::{
+    Account, ClobBuilder, ClobError, Credentials, MultiMarketOrderBy, SignatureType, SortPosition,
+    UserRewardMarketOrderBy,
+};
 use polyoxide_core::RetryConfig;
 
 fn test_public_clob(server: &mockito::ServerGuard) -> polyoxide_clob::Clob {
@@ -2333,5 +2336,220 @@ async fn ping_propagates_5xx_as_error() {
         "expected ApiError for 5xx, got {err:?}"
     );
 
+    mock.assert_async().await;
+}
+
+#[tokio::test]
+async fn rewards_multi_markets_with_filters() {
+    let mut server = Server::new_async().await;
+
+    let mock = server
+        .mock("GET", "/rewards/markets/multi")
+        .match_query(Matcher::AllOf(vec![
+            Matcher::UrlEncoded("q".into(), "election".into()),
+            Matcher::UrlEncoded("tag_slug".into(), "politics".into()),
+            Matcher::UrlEncoded("order_by".into(), "volume_24hr".into()),
+            Matcher::UrlEncoded("position".into(), "DESC".into()),
+            Matcher::UrlEncoded("min_volume_24hr".into(), "1000".into()),
+            Matcher::UrlEncoded("page_size".into(), "50".into()),
+        ]))
+        .with_status(200)
+        .with_header("content-type", "application/json")
+        .with_body(
+            r#"{
+                "limit": 50,
+                "count": 1,
+                "next_cursor": "LTE=",
+                "data": [{"condition_id": "0xabc", "rewards_max_spread": 3.5}]
+            }"#,
+        )
+        .create_async()
+        .await;
+
+    let clob = test_public_clob(&server);
+    let page = clob
+        .public_rewards()
+        .multi_markets()
+        .query_text("election")
+        .tag_slug("politics")
+        .order_by(MultiMarketOrderBy::Volume24hr)
+        .position(SortPosition::Desc)
+        .min_volume_24hr(1000.0)
+        .page_size(50)
+        .send()
+        .await
+        .unwrap();
+
+    assert_eq!(page.data.len(), 1);
+    assert_eq!(page.next_cursor.as_deref(), Some("LTE="));
+    assert_eq!(page.data[0].data["condition_id"], "0xabc");
+
+    mock.assert_async().await;
+}
+
+#[tokio::test]
+async fn current_rebates_returns_typed_rows() {
+    let mut server = Server::new_async().await;
+
+    let mock = server
+        .mock("GET", "/rebates/current")
+        .match_query(Matcher::AllOf(vec![
+            Matcher::UrlEncoded("date".into(), "2026-02-27".into()),
+            Matcher::UrlEncoded("maker_address".into(), "0xFeA4".into()),
+        ]))
+        .with_status(200)
+        .with_header("content-type", "application/json")
+        .with_body(
+            r#"[{
+                "date": "2026-02-27",
+                "condition_id": "0xbd31",
+                "asset_address": "0xC011",
+                "maker_address": "0xFeA4",
+                "rebated_fees_usdc": "0.237519"
+            }]"#,
+        )
+        .create_async()
+        .await;
+
+    let clob = test_public_clob(&server);
+    let rebates = clob
+        .public_rewards()
+        .current_rebates("2026-02-27", "0xFeA4")
+        .send()
+        .await
+        .unwrap();
+
+    assert_eq!(rebates.len(), 1);
+    assert_eq!(rebates[0].rebated_fees_usdc, "0.237519");
+    assert_eq!(rebates[0].condition_id, "0xbd31");
+
+    mock.assert_async().await;
+}
+
+#[tokio::test]
+async fn reward_markets_current_forwards_cursor_and_sponsored() {
+    let mut server = Server::new_async().await;
+
+    let mock = server
+        .mock("GET", "/rewards/markets/current")
+        .match_query(Matcher::AllOf(vec![
+            Matcher::UrlEncoded("sponsored".into(), "true".into()),
+            Matcher::UrlEncoded("next_cursor".into(), "MTAw".into()),
+        ]))
+        .with_status(200)
+        .with_header("content-type", "application/json")
+        .with_body(r#"{"limit": 500, "count": 0, "next_cursor": "LTE=", "data": []}"#)
+        .create_async()
+        .await;
+
+    let clob = test_public_clob(&server);
+    let page = clob
+        .public_rewards()
+        .current_markets()
+        .sponsored(true)
+        .next_cursor("MTAw")
+        .send()
+        .await
+        .unwrap();
+
+    assert!(page.data.is_empty());
+    mock.assert_async().await;
+}
+
+#[tokio::test]
+async fn simplified_markets_paginates_with_cursor() {
+    let mut server = Server::new_async().await;
+
+    let mock = server
+        .mock("GET", "/simplified-markets")
+        .match_query(Matcher::UrlEncoded("next_cursor".into(), "MTAw".into()))
+        .with_status(200)
+        .with_header("content-type", "application/json")
+        .with_body(r#"{"data": [], "next_cursor": "LTE="}"#)
+        .create_async()
+        .await;
+
+    let clob = test_public_clob(&server);
+    let page = clob
+        .markets()
+        .simplified()
+        .next_cursor("MTAw")
+        .send()
+        .await
+        .unwrap();
+
+    assert_eq!(page.next_cursor.as_deref(), Some("LTE="));
+    mock.assert_async().await;
+}
+
+#[tokio::test]
+async fn orders_list_forwards_filters() {
+    let mut server = Server::new_async().await;
+
+    let mock = server
+        .mock("GET", "/data/orders")
+        .match_query(Matcher::AllOf(vec![
+            Matcher::UrlEncoded("market".into(), "0xcond".into()),
+            Matcher::UrlEncoded("asset_id".into(), "token-1".into()),
+            Matcher::UrlEncoded("next_cursor".into(), "MTAw".into()),
+        ]))
+        .with_status(200)
+        .with_header("content-type", "application/json")
+        .with_body(r#"{"data": [], "next_cursor": "LTE="}"#)
+        .create_async()
+        .await;
+
+    let clob = test_authed_clob(&server);
+    let page = clob
+        .orders()
+        .unwrap()
+        .list()
+        .market("0xcond")
+        .asset_id("token-1")
+        .next_cursor("MTAw")
+        .send()
+        .await
+        .unwrap();
+
+    assert!(page.data.is_empty());
+    mock.assert_async().await;
+}
+
+#[tokio::test]
+async fn user_reward_markets_forwards_full_filter_set() {
+    let mut server = Server::new_async().await;
+
+    let mock = server
+        .mock("GET", "/rewards/user/markets")
+        .match_query(Matcher::AllOf(vec![
+            Matcher::UrlEncoded("date".into(), "2026-02-27".into()),
+            Matcher::UrlEncoded("maker_address".into(), "0xFeA4".into()),
+            Matcher::UrlEncoded("only_open_orders".into(), "true".into()),
+            Matcher::UrlEncoded("order_by".into(), "earning_percentage".into()),
+            Matcher::UrlEncoded("position".into(), "ASC".into()),
+            Matcher::UrlEncoded("page_size".into(), "250".into()),
+        ]))
+        .with_status(200)
+        .with_header("content-type", "application/json")
+        .with_body(r#"{"limit": 250, "count": 0, "next_cursor": "LTE=", "data": []}"#)
+        .create_async()
+        .await;
+
+    let clob = test_authed_clob(&server);
+    let page = clob
+        .rewards()
+        .unwrap()
+        .market_earnings()
+        .date("2026-02-27")
+        .maker_address("0xFeA4")
+        .only_open_orders(true)
+        .order_by(UserRewardMarketOrderBy::EarningPercentage)
+        .position(SortPosition::Asc)
+        .page_size(250)
+        .send()
+        .await
+        .unwrap();
+
+    assert!(page.data.is_empty());
     mock.assert_async().await;
 }

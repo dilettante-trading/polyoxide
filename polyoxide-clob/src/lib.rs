@@ -84,17 +84,21 @@ pub use api::{
     markets::{
         BatchPricesHistoryRequest, BatchPricesHistoryResponse, BookParams, CalculatePriceResponse,
         ClobMarketDetails, ClobRewards, ClobToken, FeeDetails, LastTradePriceResponse,
-        ListMarketsResponse, LiveActivityMarket, Market, MarketByTokenResponse, MarketPrice,
-        MarketToken, MidpointResponse, OrderBook, OrderLevel, PriceHistoryPoint, PriceResponse,
-        PricesHistoryQuery, PricesHistoryResponse, SpreadResponse,
+        ListClobMarkets, ListMarketsResponse, LiveActivityMarket, Market, MarketByTokenResponse,
+        MarketPrice, MarketToken, MidpointResponse, OrderBook, OrderLevel, PriceHistoryPoint,
+        PriceResponse, PricesHistoryQuery, PricesHistoryResponse, SpreadResponse,
     },
     notifications::Notification,
     orders::{
-        BatchCancelResponse, ListOrdersResponse, OpenOrder, OrderResponse, OrderScoringResponse,
+        BatchCancelResponse, ListOrders, ListOrdersResponse, OpenOrder, OrderResponse,
+        OrderScoringResponse,
     },
     rewards::{
-        Paginated, RewardEarnings, RewardMarket, RewardMarketEarning, RewardPercentages,
-        RewardTotalEarnings,
+        ListMultiRewardMarkets, ListRewardMarkets, ListUserRewardMarkets, MultiMarketOrderBy,
+        Paginated, PublicRewards, RebatedFees, RewardEarnings, RewardMarket, RewardMarketEarning,
+        RewardMarketRequest, RewardPercentages, RewardTotalEarnings, SortPosition,
+        UserEarningsRequest, UserPercentagesRequest, UserRewardMarketOrderBy,
+        UserTotalEarningsRequest,
     },
 };
 pub use client::{Clob, ClobBuilder, CreateOrderParams, SignedOrderPayload};

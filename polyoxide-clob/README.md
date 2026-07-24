@@ -122,11 +122,18 @@ The client organizes endpoints into namespaces. Public namespaces are always ava
 |-----------|--------|--------|
 | `markets()` | Public | `clob.markets()` |
 | `health()` | Public | `clob.health()` |
+| `public_rewards()` | Public | `clob.public_rewards()` |
 | `orders()` | Authenticated | `clob.orders()?` |
 | `account_api()` | Authenticated | `clob.account_api()?` |
 | `auth()` | Authenticated | `clob.auth()?` |
 | `rewards()` | Authenticated | `clob.rewards()?` |
 | `notifications()` | Authenticated | `clob.notifications()?` |
+
+`public_rewards()` covers the reward endpoints that are public upstream —
+`/rewards/markets/current`, `/rewards/markets/{condition_id}`,
+`/rewards/markets/multi`, and `/rebates/current`. The same four methods are
+mirrored on `rewards()` for callers that already hold the authenticated
+namespace.
 
 ### Market Data (public)
 

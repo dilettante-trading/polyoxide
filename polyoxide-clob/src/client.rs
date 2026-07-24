@@ -5,8 +5,12 @@ use polyoxide_core::{
 use crate::{
     account::{Account, Credentials},
     api::{
-        account::AccountApi, auth::Auth, notifications::Notifications, orders::OrderResponse,
-        rewards::Rewards, Health, Markets, Orders,
+        account::AccountApi,
+        auth::Auth,
+        notifications::Notifications,
+        orders::OrderResponse,
+        rewards::{PublicRewards, Rewards},
+        Health, Markets, Orders,
     },
     core::chain::Chain,
     error::ClobError,
@@ -138,6 +142,19 @@ impl Clob {
             chain_id: self.chain_id,
             signature_type: self.signature_type,
         })
+    }
+
+    /// Get the unauthenticated rewards namespace.
+    ///
+    /// `GET /rewards/markets/current`, `/rewards/markets/{condition_id}`,
+    /// `/rewards/markets/multi`, and `/rebates/current` are public upstream, so
+    /// they are reachable without an account. Use [`Self::rewards`] for the
+    /// L2-authenticated user endpoints.
+    pub fn public_rewards(&self) -> PublicRewards {
+        PublicRewards {
+            http_client: self.http_client.clone(),
+            chain_id: self.chain_id,
+        }
     }
 
     /// Get rewards namespace for liquidity reward operations
