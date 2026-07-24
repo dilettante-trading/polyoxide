@@ -1,0 +1,928 @@
+openapi: 3.1.0
+info:
+  title: Polymarket Combinatorial RFQ API
+  description: >
+    REST API for the combinatorial RFQ (Request for Quote) system.
+
+
+    This spec covers the publicly documented endpoints used by quoters (market
+
+    makers): the combo-market catalog and the authenticated maker commands for
+
+    submitting, cancelling, and confirming quotes.
+
+
+    Conventions:
+
+    - All `*_e6` fields are six-decimal fixed-point values encoded as
+    **strings**
+      to avoid number precision issues.
+    - All timestamps are **Unix milliseconds** (integer); zero/omitted means
+    unset.
+
+    - Errors return an HTTP status code with a body of the form `{ "error":
+    "..." }`.
+  license:
+    name: MIT
+    identifier: MIT
+  version: 1.0.0
+servers:
+  - url: https://combos-rfq-api.polymarket.com
+    description: Production combinatorial RFQ API
+tags:
+  - name: Combo Markets
+    description: Public catalog of markets that can be used as combo legs
+  - name: Maker
+    description: Authenticated quoter (maker) commands
+paths:
+  /v1/rfq/combo-markets:
+    get:
+      summary: Get combo markets
+      description: >
+        Returns active markets that can be used as combo legs, ordered by volume
+
+        descending. This endpoint is public and does not require CLOB
+
+        authentication.
+
+
+        Entries in `position_ids`, `outcomes`, and `outcome_prices` correspond
+        by
+
+        array index (`[0]` is YES, `[1]` is NO). Use `next_cursor` unchanged in
+
+        the next request; a value of `null` indicates the final page.
+      operationId: getComboMarkets
+      tags:
+        - Combo Markets
+      security: []
+      parameters:
+        - name: limit
+          in: query
+          required: false
+          description: Number of markets to return. Defaults to `50`; maximum `100`.
+          schema:
+            type: integer
+            minimum: 1
+            maximum: 100
+            default: 50
+        - name: cursor
+          in: query
+          required: false
+          description: Opaque cursor returned as `next_cursor` by the previous response.
+          schema:
+            type: string
+        - name: exclude
+          in: query
+          required: false
+          description: >-
+            Comma-separated condition IDs to omit, such as markets already
+            shown.
+          schema:
+            type: string
+          example: 0x4cd7...110ff,0x0391ab0e...
+      responses:
+        '200':
+          description: Catalog page of combo-able markets
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ComboMarketsResponse'
+              example:
+                markets:
+                  - id: '1897034'
+                    condition_id: 0x4cd7...110ff
+                    position_ids:
+                      - 1012585...362880
+                      - 1012585...362881
+                    slug: fifwc-mex-rsa-2026-06-11-mex
+                    title: Will Mexico win on 2026-06-11?
+                    outcomes:
+                      - 'Yes'
+                      - 'No'
+                    outcome_prices:
+                      - '0.685'
+                      - '0.315'
+                    image: https://...
+                    volume: 330327.7128580074
+                    tags:
+                      - sports
+                      - soccer
+                      - games
+                      - world-cup
+                next_cursor: Mg
+        '400':
+          $ref: '#/components/responses/BadRequest'
+  /v1/maker/quotes:
+    post:
+      summary: Submit a quote
+      description: |
+        Submit a signed maker quote for an active RFQ. Requires CLOB L2
+        authentication for the maker role.
+
+        REST does not assign a quote ID — generate `quote_id` client-side.
+      operationId: submitMakerQuote
+      tags:
+        - Maker
+      security:
+        - polyApiKey: []
+          polyAddress: []
+          polySignature: []
+          polyPassphrase: []
+          polyTimestamp: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/Quote'
+            example:
+              quote_id: quote_<id>
+              rfq_id: rfq_<id>
+              signer_address: 0xYourSigner
+              maker_address: 0xYourQuoterWallet
+              signature_type: 0
+              price_e6: '450000'
+              size_e6: '1000000'
+              signed_order:
+                salt: <order_salt>
+                maker: 0xYourQuoterWallet
+                signer: 0xYourSigner
+                tokenId: <yes_or_no_position_id>
+                makerAmount: <amount_to_pay>
+                takerAmount: <taker_amount>
+                side: 0
+                signatureType: 0
+                timestamp: <unix_seconds>
+                metadata: >-
+                  0x0000000000000000000000000000000000000000000000000000000000000000
+                builder: >-
+                  0x0000000000000000000000000000000000000000000000000000000000000000
+                signature: 0x...
+      responses:
+        '200':
+          description: Current RFQ snapshot after the quote was accepted
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/RFQSnapshot'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '409':
+          $ref: '#/components/responses/Conflict'
+        '429':
+          $ref: '#/components/responses/TooManyRequests'
+        '503':
+          $ref: '#/components/responses/ServiceUnavailable'
+  /v1/maker/quotes/cancel:
+    post:
+      summary: Cancel a quote
+      description: |
+        Cancel an active maker quote before it is selected. Requires CLOB L2
+        authentication for the maker role. `signer_address` and `maker_address`
+        must match the authenticated identity.
+      operationId: cancelMakerQuote
+      tags:
+        - Maker
+      security:
+        - polyApiKey: []
+          polyAddress: []
+          polySignature: []
+          polyPassphrase: []
+          polyTimestamp: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/CancelQuoteRequest'
+            example:
+              rfq_id: rfq_<id>
+              quote_id: quote_<id>
+              signer_address: 0xYourSigner
+              maker_address: 0xYourQuoterWallet
+              signature_type: 0
+      responses:
+        '200':
+          description: Current RFQ snapshot after the cancellation was applied
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/RFQSnapshot'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '409':
+          $ref: '#/components/responses/Conflict'
+        '429':
+          $ref: '#/components/responses/TooManyRequests'
+        '503':
+          $ref: '#/components/responses/ServiceUnavailable'
+  /v1/maker/confirmations:
+    post:
+      summary: Confirm or decline last look
+      description: >
+        Respond to a last-look confirmation request for a selected quote.
+        Requires
+
+        CLOB L2 authentication for the maker role. `decision` must be `CONFIRM`
+        or
+
+        `DECLINE`.
+      operationId: submitMakerConfirmation
+      tags:
+        - Maker
+      security:
+        - polyApiKey: []
+          polyAddress: []
+          polySignature: []
+          polyPassphrase: []
+          polyTimestamp: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/MakerConfirmationRequest'
+            example:
+              rfq_id: rfq_<id>
+              quote_id: quote_<id>
+              signer_address: 0xYourSigner
+              maker_address: 0xYourQuoterWallet
+              signature_type: 0
+              decision: CONFIRM
+      responses:
+        '200':
+          description: Result of the confirmation — a snapshot and/or an execution handoff
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/MakerConfirmationResult'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '409':
+          $ref: '#/components/responses/Conflict'
+        '429':
+          $ref: '#/components/responses/TooManyRequests'
+        '503':
+          $ref: '#/components/responses/ServiceUnavailable'
+components:
+  securitySchemes:
+    polyApiKey:
+      type: apiKey
+      in: header
+      name: POLY_API_KEY
+      description: CLOB API key
+    polyAddress:
+      type: apiKey
+      in: header
+      name: POLY_ADDRESS
+      description: Wallet address associated with the API key
+    polySignature:
+      type: apiKey
+      in: header
+      name: POLY_SIGNATURE
+      description: HMAC-SHA256 signature of the request
+    polyPassphrase:
+      type: apiKey
+      in: header
+      name: POLY_PASSPHRASE
+      description: CLOB API key passphrase
+    polyTimestamp:
+      type: apiKey
+      in: header
+      name: POLY_TIMESTAMP
+      description: Unix timestamp of the request
+  responses:
+    BadRequest:
+      description: >-
+        Invalid request (malformed JSON, invalid parameters, or failed
+        validation)
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ErrorResponse'
+          example:
+            error: invalid quote
+    Unauthorized:
+      description: Missing or invalid CLOB L2 authentication
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ErrorResponse'
+          example:
+            error: unauthenticated
+    Forbidden:
+      description: >-
+        Authenticated identity does not match the request, or role is not
+        allowed
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ErrorResponse'
+          example:
+            error: auth address mismatch
+    NotFound:
+      description: The referenced RFQ is not active or no longer exists
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ErrorResponse'
+          example:
+            error: unknown rfq
+    Conflict:
+      description: The RFQ is not in a state that accepts this command
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ErrorResponse'
+          example:
+            error: competition window closed
+    TooManyRequests:
+      description: Rate limited
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ErrorResponse'
+          example:
+            error: rate limited
+    ServiceUnavailable:
+      description: An RFQ service dependency is temporarily unavailable
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ErrorResponse'
+          example:
+            error: service unavailable
+  schemas:
+    ErrorResponse:
+      type: object
+      properties:
+        error:
+          type: string
+          description: Human-readable error detail
+      required:
+        - error
+    SignatureType:
+      type: integer
+      description: |
+        CLOB signature type:
+        - `0` EOA
+        - `1` POLY_PROXY
+        - `2` GNOSIS_SAFE
+        - `3` POLY_1271
+      enum:
+        - 0
+        - 1
+        - 2
+        - 3
+      example: 0
+    Direction:
+      type: string
+      description: Requester trade direction
+      enum:
+        - BUY
+        - SELL
+    Side:
+      type: string
+      description: Combinatorial position side. Currently only `YES` is supported.
+      enum:
+        - 'YES'
+        - 'NO'
+    RFQStatus:
+      type: string
+      description: Lifecycle status of the RFQ
+      enum:
+        - CREATED
+        - COLLECTING_QUOTES
+        - AWAITING_REQUESTER_ACCEPTANCE
+        - AWAITING_MAKER_CONFIRMATION
+        - EXECUTING
+        - FILLED
+        - FAILED
+        - EXPIRED
+        - CANCELED
+        - REJECTED
+    RequestedSize:
+      type: object
+      description: Requested RFQ size and unit
+      properties:
+        unit:
+          type: string
+          description: >
+            `notional` for requester BUY RFQs and `shares` for requester SELL
+            RFQs.
+          enum:
+            - notional
+            - shares
+        value_e6:
+          type: string
+          description: Six-decimal fixed-point value encoded as a string.
+          example: '1000000'
+      required:
+        - unit
+        - value_e6
+    ExchangeV3Order:
+      type: object
+      description: >-
+        Signed Exchange v3 order. Combinatorial RFQ trades settle through
+        Exchange v3.
+      properties:
+        salt:
+          type: string
+          description: Order salt (uint256 as a decimal string)
+        maker:
+          type: string
+          description: Wallet that funds the order
+          example: 0xYourQuoterWallet
+        signer:
+          type: string
+          description: Address that signs the order
+          example: 0xYourSigner
+        tokenId:
+          type: string
+          description: YES or NO combo position ID (uint256 as a decimal string)
+        makerAmount:
+          type: string
+          description: >-
+            Amount the maker pays, in six-decimal base units (uint256 as a
+            string)
+        takerAmount:
+          type: string
+          description: >-
+            Amount the maker receives, in six-decimal base units (uint256 as a
+            string)
+        side:
+          type: integer
+          description: Order side — `0` BUY, `1` SELL
+          enum:
+            - 0
+            - 1
+        signatureType:
+          $ref: '#/components/schemas/SignatureType'
+        timestamp:
+          type: string
+          description: Order timestamp in Unix seconds (as a string)
+        metadata:
+          type: string
+          description: 32-byte hex field; defaults to the zero value
+          example: '0x0000000000000000000000000000000000000000000000000000000000000000'
+        builder:
+          type: string
+          description: 32-byte hex field; defaults to the zero value
+          example: '0x0000000000000000000000000000000000000000000000000000000000000000'
+        signature:
+          type: string
+          description: EIP-712 signature over the order
+          example: 0x...
+      required:
+        - salt
+        - maker
+        - signer
+        - tokenId
+        - makerAmount
+        - takerAmount
+        - side
+        - signatureType
+        - timestamp
+        - signature
+    ComboMarket:
+      type: object
+      properties:
+        id:
+          type: string
+        condition_id:
+          type: string
+        position_ids:
+          type: array
+          description: Combo position IDs; `[0]` is YES, `[1]` is NO.
+          items:
+            type: string
+        slug:
+          type: string
+        title:
+          type: string
+        outcomes:
+          type: array
+          items:
+            type: string
+        outcome_prices:
+          type: array
+          items:
+            type: string
+        image:
+          type: string
+        volume:
+          type: number
+          format: double
+        tags:
+          type: array
+          items:
+            type: string
+      required:
+        - id
+        - condition_id
+        - position_ids
+        - slug
+        - title
+        - outcomes
+        - outcome_prices
+        - image
+        - volume
+        - tags
+    ComboMarketsResponse:
+      type: object
+      properties:
+        markets:
+          type: array
+          items:
+            $ref: '#/components/schemas/ComboMarket'
+        next_cursor:
+          type:
+            - string
+            - 'null'
+          description: Cursor for the next page, or `null` on the final page.
+      required:
+        - markets
+        - next_cursor
+    Quote:
+      type: object
+      description: A signed maker quote.
+      properties:
+        quote_id:
+          type: string
+          description: Maker-generated quote ID (required for REST submissions).
+          example: quote_<id>
+        rfq_id:
+          type: string
+          description: RFQ ID from the `RFQ_REQUEST`.
+          example: rfq_<id>
+        auth_address:
+          type: string
+          description: Derived from the authenticated session; ignored if provided.
+          readOnly: true
+        signer_address:
+          type: string
+          example: 0xYourSigner
+        maker_address:
+          type: string
+          example: 0xYourQuoterWallet
+        signature_type:
+          $ref: '#/components/schemas/SignatureType'
+        price_e6:
+          type: string
+          description: Quote price in six-decimal fixed-point units (must be positive).
+          example: '450000'
+        size_e6:
+          type: string
+          description: >
+            Fillable share count in six-decimal fixed-point units (must be
+            positive).
+
+            Note this differs from the request's size field, which may be
+            notional or shares.
+          example: '1000000'
+        valid_until:
+          type: integer
+          format: int64
+          description: Optional quote expiry in Unix milliseconds.
+        signed_order:
+          $ref: '#/components/schemas/ExchangeV3Order'
+        received_at:
+          type: integer
+          format: int64
+          description: Server-assigned receipt time in Unix milliseconds.
+          readOnly: true
+      required:
+        - quote_id
+        - rfq_id
+        - signer_address
+        - maker_address
+        - signature_type
+        - price_e6
+        - size_e6
+        - signed_order
+    CancelQuoteRequest:
+      type: object
+      properties:
+        rfq_id:
+          type: string
+          example: rfq_<id>
+        quote_id:
+          type: string
+          example: quote_<id>
+        signer_address:
+          type: string
+          description: Must match the authenticated `signer_address`.
+          example: 0xYourSigner
+        maker_address:
+          type: string
+          description: Must match the authenticated `maker_address`.
+          example: 0xYourQuoterWallet
+        signature_type:
+          $ref: '#/components/schemas/SignatureType'
+      required:
+        - rfq_id
+        - quote_id
+        - signer_address
+        - maker_address
+        - signature_type
+    MakerConfirmationRequest:
+      type: object
+      description: Maker last-look confirmation response.
+      properties:
+        rfq_id:
+          type: string
+          example: rfq_<id>
+        quote_id:
+          type: string
+          example: quote_<id>
+        signer_address:
+          type: string
+          example: 0xYourSigner
+        maker_address:
+          type: string
+          example: 0xYourQuoterWallet
+        signature_type:
+          $ref: '#/components/schemas/SignatureType'
+        decision:
+          type: string
+          description: Confirmation decision.
+          enum:
+            - CONFIRM
+            - DECLINE
+      required:
+        - rfq_id
+        - quote_id
+        - signer_address
+        - maker_address
+        - signature_type
+        - decision
+    RFQRequest:
+      type: object
+      description: The RFQ request as stored by the engine.
+      properties:
+        rfq_id:
+          type: string
+        auth_address:
+          type: string
+        signer_address:
+          type: string
+        maker_address:
+          type: string
+        signature_type:
+          $ref: '#/components/schemas/SignatureType'
+        requestor_public_id:
+          type: string
+        leg_position_ids:
+          type: array
+          items:
+            type: string
+        condition_id:
+          type: string
+        yes_position_id:
+          type: string
+        no_position_id:
+          type: string
+        direction:
+          $ref: '#/components/schemas/Direction'
+        side:
+          $ref: '#/components/schemas/Side'
+        requested_size:
+          $ref: '#/components/schemas/RequestedSize'
+        created_at:
+          type: integer
+          format: int64
+          description: Creation time in Unix milliseconds.
+      required:
+        - rfq_id
+        - leg_position_ids
+        - direction
+        - side
+    FillAllocation:
+      type: object
+      properties:
+        maker_quote_id:
+          type: string
+        signer_address:
+          type: string
+        maker_address:
+          type: string
+        size_e6:
+          type: string
+          description: >-
+            Accepted fill size for this maker quote, in six-decimal fixed-point
+            units.
+        price_e6:
+          type: string
+          description: Fill price in six-decimal fixed-point units.
+        received_at:
+          type: integer
+          format: int64
+          description: Receipt time in Unix milliseconds.
+      required:
+        - maker_quote_id
+        - signer_address
+        - maker_address
+        - size_e6
+        - price_e6
+    FillBundle:
+      type: object
+      description: The selected executable bundle of maker allocations.
+      properties:
+        requested_shares_e6:
+          type: string
+          description: Requested share size in six-decimal fixed-point units.
+        requested_notional_e6:
+          type: string
+          description: Requested notional in six-decimal fixed-point units (BUY RFQs only).
+        blended_price_e6:
+          type: string
+          description: Blended bundle price in six-decimal fixed-point units.
+        allocations:
+          type: array
+          items:
+            $ref: '#/components/schemas/FillAllocation'
+      required:
+        - requested_shares_e6
+        - blended_price_e6
+        - allocations
+    MakerConfirmationSnapshot:
+      type: object
+      properties:
+        quote_id:
+          type: string
+        signer_address:
+          type: string
+        maker_address:
+          type: string
+        decision:
+          type: string
+          enum:
+            - CONFIRM
+            - DECLINE
+            - TIMED_OUT
+        reason:
+          type: string
+        responded_at:
+          type: integer
+          format: int64
+          description: Response time in Unix milliseconds.
+      required:
+        - quote_id
+        - signer_address
+        - maker_address
+    RFQSnapshot:
+      type: object
+      description: Point-in-time view of an RFQ and its competition/confirmation windows.
+      properties:
+        request:
+          $ref: '#/components/schemas/RFQRequest'
+        status:
+          $ref: '#/components/schemas/RFQStatus'
+        competition_started_at:
+          type: integer
+          format: int64
+          description: Unix milliseconds.
+        competition_ends_at:
+          type: integer
+          format: int64
+          description: Unix milliseconds.
+        confirmation_started_at:
+          type: integer
+          format: int64
+          description: Unix milliseconds.
+        confirmation_ends_at:
+          type: integer
+          format: int64
+          description: Unix milliseconds.
+        quote_id:
+          type: string
+        bundle:
+          $ref: '#/components/schemas/FillBundle'
+        maker_confirmations:
+          type: array
+          items:
+            $ref: '#/components/schemas/MakerConfirmationSnapshot'
+      required:
+        - request
+        - status
+    RequesterAcceptance:
+      type: object
+      properties:
+        rfq_id:
+          type: string
+        quote_id:
+          type: string
+        auth_address:
+          type: string
+        signer_address:
+          type: string
+        maker_address:
+          type: string
+        signature_type:
+          $ref: '#/components/schemas/SignatureType'
+        signed_order:
+          $ref: '#/components/schemas/ExchangeV3Order'
+        accepted_at:
+          type: integer
+          format: int64
+          description: Unix milliseconds.
+      required:
+        - rfq_id
+        - quote_id
+        - signed_order
+    WalletAssetDelta:
+      type: object
+      properties:
+        asset:
+          type: string
+        asset_id:
+          type: string
+        amount:
+          type: string
+      required:
+        - asset
+        - asset_id
+        - amount
+    WalletReservation:
+      type: object
+      properties:
+        action_id:
+          type: string
+        user:
+          type: string
+        wallet_nonce:
+          type: integer
+          format: int64
+        deltas:
+          type: array
+          items:
+            $ref: '#/components/schemas/WalletAssetDelta'
+      required:
+        - action_id
+        - user
+        - wallet_nonce
+        - deltas
+    ExecutionHandoff:
+      type: object
+      description: Handoff produced when a confirmed RFQ is ready for onchain execution.
+      properties:
+        execution_id:
+          type: string
+        request:
+          $ref: '#/components/schemas/RFQRequest'
+        quote_id:
+          type: string
+        bundle:
+          $ref: '#/components/schemas/FillBundle'
+        requester_acceptance:
+          $ref: '#/components/schemas/RequesterAcceptance'
+        maker_quotes:
+          type: array
+          items:
+            $ref: '#/components/schemas/Quote'
+        reservations:
+          type: array
+          items:
+            $ref: '#/components/schemas/WalletReservation'
+        ready_at:
+          type: integer
+          format: int64
+          description: Unix milliseconds.
+      required:
+        - execution_id
+        - request
+        - quote_id
+        - bundle
+        - requester_acceptance
+        - maker_quotes
+    MakerConfirmationResult:
+      type: object
+      description: >
+        Result of a maker confirmation. Includes a snapshot, an execution
+        handoff,
+
+        or both, depending on whether the confirmation completed the bundle.
+      properties:
+        snapshot:
+          $ref: '#/components/schemas/RFQSnapshot'
+        execution:
+          $ref: '#/components/schemas/ExecutionHandoff'

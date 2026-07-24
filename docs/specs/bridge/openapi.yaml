@@ -1,0 +1,556 @@
+openapi: 3.0.3
+info:
+  title: Polymarket Bridge API
+  version: 1.0.0
+  description: HTTP API for Polymarket bridge and swap operations.
+servers:
+  - url: https://bridge.polymarket.com
+    description: Polymarket Bridge API
+tags:
+  - name: Bridge
+    description: Bridge and swap operations for Polymarket
+components:
+  parameters:
+    BuilderCodeHeader:
+      name: X-Builder-Code
+      in: header
+      required: false
+      description: >
+        Optional builder code (bytes32 hex) attributing this request to your
+        integration so transfer issues can be traced to your app. Omitting it
+        still succeeds but returns a `missing_builder_code` warning; a malformed
+        code returns 400. Get your code at
+        https://polymarket.com/settings?tab=builder
+      schema:
+        type: string
+        pattern: ^0x[a-fA-F0-9]{64}$
+        example: '0x00000000000000000000000000000000000000000000000000000000abcd1234'
+  schemas:
+    Address:
+      type: string
+      description: Ethereum address (0x-prefixed, 40 hex chars)
+      pattern: ^0x[a-fA-F0-9]{40}$
+      example: '0x56687bf447db6ffa42ffe2204a05edaa20f55839'
+    ErrorResponse:
+      type: object
+      properties:
+        error:
+          type: string
+      required:
+        - error
+    DepositRequest:
+      type: object
+      required:
+        - address
+      properties:
+        address:
+          $ref: '#/components/schemas/Address'
+          description: >-
+            Your Polymarket wallet address where deposited funds will be
+            credited as pUSD
+    DepositResponse:
+      type: object
+      properties:
+        address:
+          type: object
+          description: Bridge addresses for different blockchain networks
+          properties:
+            evm:
+              type: string
+              description: >-
+                EVM-compatible bridge address (Ethereum, Polygon, Arbitrum,
+                Base, etc.)
+              example: '0x23566f8b2E82aDfCf01846E54899d110e97AC053'
+            svm:
+              type: string
+              description: Solana Virtual Machine bridge address
+              example: CrvTBvzryYxBHbWu2TiQpcqD5M7Le7iBKzVmEj3f36Jb
+            btc:
+              type: string
+              description: Bitcoin bridge address
+              example: bc1q8eau83qffxcj8ht4hsjdza3lha9r3egfqysj3g
+        note:
+          type: string
+          description: Additional information about the bridge addresses
+          example: >-
+            Only certain chains and tokens are supported. See /supported-assets
+            for details.
+    SupportedAsset:
+      type: object
+      properties:
+        chainId:
+          type: string
+          description: Chain ID
+          example: '1'
+        chainName:
+          type: string
+          description: Human-readable chain name
+          example: Ethereum
+        token:
+          $ref: '#/components/schemas/Token'
+        minCheckoutUsd:
+          type: number
+          description: Minimum amount in USD for deposits and withdrawals
+          example: 45
+    Token:
+      type: object
+      properties:
+        name:
+          type: string
+          description: Full token name
+          example: USD Coin
+        symbol:
+          type: string
+          description: Token symbol
+          example: USDC
+        address:
+          type: string
+          description: Token contract address
+          example: '0xA0b86991c6218b36c1d19D4a2e9Eb0cE3606eB48'
+        decimals:
+          type: integer
+          description: Token decimals
+          example: 6
+    SupportedAssetsResponse:
+      type: object
+      properties:
+        supportedAssets:
+          type: array
+          items:
+            $ref: '#/components/schemas/SupportedAsset'
+          description: >-
+            List of supported assets with minimum amounts for deposits and
+            withdrawals
+    WithdrawalRequest:
+      type: object
+      required:
+        - address
+        - toChainId
+        - toTokenAddress
+        - recipientAddr
+      properties:
+        address:
+          $ref: '#/components/schemas/Address'
+          description: Source Polymarket wallet address on Polygon
+        toChainId:
+          type: string
+          description: >-
+            Destination chain ID (e.g., "1" for Ethereum, "8453" for Base,
+            "1151111081099710" for Solana)
+          example: '1'
+        toTokenAddress:
+          type: string
+          description: Destination token contract address
+          example: '0xA0b86991c6218b36c1d19D4a2e9Eb0cE3606eB48'
+        recipientAddr:
+          type: string
+          description: Destination wallet address where funds will be sent
+          example: '0xd8dA6BF26964aF9D7eEd9e03E53415D37aA96045'
+    TransactionStatusResponse:
+      type: object
+      properties:
+        transactions:
+          type: array
+          items:
+            $ref: '#/components/schemas/Transaction'
+          description: List of transactions for the given address
+    Transaction:
+      type: object
+      properties:
+        fromChainId:
+          type: string
+          description: Source chain ID
+          example: '1151111081099710'
+        fromTokenAddress:
+          type: string
+          description: Source token contract address
+          example: '11111111111111111111111111111111'
+        fromAmountBaseUnit:
+          type: string
+          description: Amount in base units (without decimals)
+          example: '13566635'
+        toChainId:
+          type: string
+          description: Destination chain ID
+          example: '137'
+        toTokenAddress:
+          type: string
+          description: Destination token contract address
+          example: '0xC011a7E12a19f7B1f670d46F03B03f3342E82DFB'
+        status:
+          type: string
+          description: >
+            Current status of the transaction. If a transaction fails, remains
+            stuck, or funds are held due to a compliance check, direct users to
+            our Bridge API provider's support
+            (https://intercom.help/funxyz/en/articles/10732578-contact-us).
+          enum:
+            - DEPOSIT_DETECTED
+            - PROCESSING
+            - ORIGIN_TX_CONFIRMED
+            - SUBMITTED
+            - COMPLETED
+            - FAILED
+          example: COMPLETED
+        txHash:
+          type: string
+          description: Transaction hash (only available when status is COMPLETED)
+          example: >-
+            3atr19NAiNCYt24RHM1WnzZp47RXskpTDzspJoCBBaMFwUB8fk37hFkxz35P5UEnnmWz21rb2t5wJ8pq3EE2XnxU
+        createdTimeMs:
+          type: number
+          description: >-
+            Unix timestamp in milliseconds when transaction was created (missing
+            when status is DEPOSIT_DETECTED)
+          example: 1757531217339
+    QuoteRequest:
+      type: object
+      required:
+        - fromAmountBaseUnit
+        - fromChainId
+        - fromTokenAddress
+        - recipientAddress
+        - toChainId
+        - toTokenAddress
+      properties:
+        fromAmountBaseUnit:
+          type: string
+          description: Amount of tokens to send
+          example: '10000000'
+        fromChainId:
+          type: string
+          description: Source Chain ID
+          example: '137'
+        fromTokenAddress:
+          type: string
+          description: Source token address
+          example: '0x3c499c542cEF5E3811e1192ce70d8cC03d5c3359'
+        recipientAddress:
+          type: string
+          description: Address of the recipient
+          example: '0x17eC161f126e82A8ba337f4022d574DBEaFef575'
+        toChainId:
+          type: string
+          description: Destination Chain ID
+          example: '137'
+        toTokenAddress:
+          type: string
+          description: Destination token address
+          example: '0xC011a7E12a19f7B1f670d46F03B03f3342E82DFB'
+    QuoteResponse:
+      type: object
+      properties:
+        estCheckoutTimeMs:
+          type: integer
+          description: Estimated time to complete the checkout in milliseconds
+          example: 25000
+        estFeeBreakdown:
+          $ref: '#/components/schemas/FeeBreakdown'
+        estInputUsd:
+          type: number
+          description: Estimated token amount received in USD
+          example: 14.488305
+        estOutputUsd:
+          type: number
+          description: Estimated token amount sent in USD
+          example: 14.488305
+        estToTokenBaseUnit:
+          type: string
+          description: Estimated token amount received
+          example: '14491203'
+        quoteId:
+          type: string
+          description: Unique quote id of the request
+          example: '0x00c34ba467184b0146406d62b0e60aaa24ed52460bd456222b6155a0d9de0ad5'
+    FeeBreakdown:
+      type: object
+      description: Breakdown of the estimated fees
+      properties:
+        appFeeLabel:
+          type: string
+          description: Label of the app fee
+          example: Fun.xyz fee
+        appFeePercent:
+          type: number
+          description: App fees as a percentage of the total amount sent
+          example: 0
+        appFeeUsd:
+          type: number
+          description: App fees in USD
+          example: 0
+        fillCostPercent:
+          type: number
+          description: Fill cost percentage of the total amount sent
+          example: 0
+        fillCostUsd:
+          type: number
+          description: Fill cost in USD
+          example: 0
+        gasUsd:
+          type: number
+          description: Gas fee in USD
+          example: 0.003854
+        maxSlippage:
+          type: number
+          description: Maximum potential slippage as a percentage
+          example: 0
+        minReceived:
+          type: number
+          description: Amount after factoring slippage
+          example: 14.488305
+        swapImpact:
+          type: number
+          description: Swap impact as a percentage of the total amount sent
+          example: 0
+        swapImpactUsd:
+          type: number
+          description: Swap impact of the transaction in USD
+          example: 0
+        totalImpact:
+          type: number
+          description: Total impact as a percentage of the total amount sent
+          example: 0
+        totalImpactUsd:
+          type: number
+          description: Impact cost of the transaction
+          example: 0
+paths:
+  /supported-assets:
+    get:
+      tags:
+        - Bridge
+      summary: Get supported assets
+      responses:
+        '200':
+          description: Successfully retrieved supported assets
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/SupportedAssetsResponse'
+        '500':
+          description: Server Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+  /quote:
+    post:
+      tags:
+        - Bridge
+      summary: Get a quote
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/QuoteRequest'
+            example:
+              fromAmountBaseUnit: '10000000'
+              fromChainId: '137'
+              fromTokenAddress: '0x3c499c542cEF5E3811e1192ce70d8cC03d5c3359'
+              recipientAddress: '0x17eC161f126e82A8ba337f4022d574DBEaFef575'
+              toChainId: '137'
+              toTokenAddress: '0xC011a7E12a19f7B1f670d46F03B03f3342E82DFB'
+      responses:
+        '200':
+          description: Quote retrieved successfully
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/QuoteResponse'
+              example:
+                estCheckoutTimeMs: 25000
+                estFeeBreakdown:
+                  appFeeLabel: Fun.xyz fee
+                  appFeePercent: 0
+                  appFeeUsd: 0
+                  fillCostPercent: 0
+                  fillCostUsd: 0
+                  gasUsd: 0.003854
+                  maxSlippage: 0
+                  minReceived: 14.488305
+                  swapImpact: 0
+                  swapImpactUsd: 0
+                  totalImpact: 0
+                  totalImpactUsd: 0
+                estInputUsd: 14.488305
+                estOutputUsd: 14.488305
+                estToTokenBaseUnit: '14491203'
+                quoteId: >-
+                  0x00c34ba467184b0146406d62b0e60aaa24ed52460bd456222b6155a0d9de0ad5
+        '400':
+          description: Bad Request - Missing required field
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+              examples:
+                missingFromAmount:
+                  value:
+                    error: fromAmountBaseUnit is required
+                missingFromChainId:
+                  value:
+                    error: fromChainId is required
+                missingFromTokenAddress:
+                  value:
+                    error: fromTokenAddress is required
+                missingRecipientAddress:
+                  value:
+                    error: recipientAddress is required
+                missingToChainId:
+                  value:
+                    error: toChainId is required
+                missingToTokenAddress:
+                  value:
+                    error: toTokenAddress is required
+        '500':
+          description: Server Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+              example:
+                error: cannot get quote
+  /deposit:
+    post:
+      tags:
+        - Bridge
+      summary: Create bridge addresses
+      parameters:
+        - $ref: '#/components/parameters/BuilderCodeHeader'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/DepositRequest'
+            example:
+              address: '0x56687bf447db6ffa42ffe2204a05edaa20f55839'
+      responses:
+        '201':
+          description: Bridge addresses created successfully
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/DepositResponse'
+        '400':
+          description: >-
+            Bad Request - Invalid address, request body, or malformed
+            X-Builder-Code
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '500':
+          description: Server Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+  /withdraw:
+    post:
+      tags:
+        - Bridge
+      summary: Create withdrawal addresses
+      parameters:
+        - $ref: '#/components/parameters/BuilderCodeHeader'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/WithdrawalRequest'
+            example:
+              address: '0x9156dd10bea4c8d7e2d591b633d1694b1d764756'
+              toChainId: '1'
+              toTokenAddress: '0xA0b86991c6218b36c1d19D4a2e9Eb0cE3606eB48'
+              recipientAddr: '0xd8dA6BF26964aF9D7eEd9e03E53415D37aA96045'
+      responses:
+        '201':
+          description: Withdrawal addresses created successfully
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/DepositResponse'
+              example:
+                address:
+                  evm: '0x23566f8b2E82aDfCf01846E54899d110e97AC053'
+                  svm: CrvTBvzryYxBHbWu2TiQpcqD5M7Le7iBKzVmEj3f36Jb
+                  btc: bc1q8eau83qffxcj8ht4hsjdza3lha9r3egfqysj3g
+                note: >-
+                  Send funds to these addresses to bridge to your destination
+                  chain and token.
+        '400':
+          description: Bad Request - Invalid/missing parameters or malformed X-Builder-Code
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '500':
+          description: Server Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+  /status/{address}:
+    get:
+      tags:
+        - Bridge
+      summary: Get transaction status
+      parameters:
+        - name: address
+          in: path
+          required: true
+          description: >-
+            The address to query for transaction status (EVM, SVM, or BTC
+            address from the `/deposit` or `/withdraw` response)
+          schema:
+            type: string
+          example: EXoZue2avJae1d45B3fVw2unhkrtToSYQqHtHgfZ2cbE
+      responses:
+        '200':
+          description: Successfully retrieved transaction status
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/TransactionStatusResponse'
+              example:
+                transactions:
+                  - fromChainId: '1151111081099710'
+                    fromTokenAddress: '11111111111111111111111111111111'
+                    fromAmountBaseUnit: '13566635'
+                    toChainId: '137'
+                    toTokenAddress: '0xC011a7E12a19f7B1f670d46F03B03f3342E82DFB'
+                    status: DEPOSIT_DETECTED
+                  - fromChainId: '1151111081099710'
+                    fromTokenAddress: '11111111111111111111111111111111'
+                    fromAmountBaseUnit: '13400000'
+                    toChainId: '137'
+                    toTokenAddress: '0xC011a7E12a19f7B1f670d46F03B03f3342E82DFB'
+                    createdTimeMs: 1757646914535
+                    status: PROCESSING
+                  - fromChainId: '1151111081099710'
+                    fromTokenAddress: '11111111111111111111111111111111'
+                    fromAmountBaseUnit: '13500152'
+                    toChainId: '137'
+                    toTokenAddress: '0xC011a7E12a19f7B1f670d46F03B03f3342E82DFB'
+                    txHash: >-
+                      3atr19NAiNCYt24RHM1WnzZp47RXskpTDzspJoCBBaMFwUB8fk37hFkxz35P5UEnnmWz21rb2t5wJ8pq3EE2XnxU
+                    createdTimeMs: 1757531217339
+                    status: COMPLETED
+        '400':
+          description: Bad Request - Missing address parameter
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+              example:
+                error: address is required
+        '500':
+          description: Server Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+              example:
+                error: cannot get transaction status

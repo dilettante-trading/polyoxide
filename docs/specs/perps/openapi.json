@@ -1,0 +1,5888 @@
+{
+  "openapi": "3.0.3",
+  "info": {
+    "title": "Polymarket Perps HTTP API",
+    "version": "1.0.0",
+    "description": "HTTP API for Polymarket perpetual trading system.",
+    "license": {
+      "name": "Apache 2.0",
+      "url": "https://www.apache.org/licenses/LICENSE-2.0.html"
+    }
+  },
+  "servers": [
+    {
+      "url": "https://api.perpetuals.polymarket.com",
+      "description": "Production Perps HTTP API"
+    }
+  ],
+  "paths": {
+    "/v1/info/ping": {
+      "get": {
+        "operationId": "getPing",
+        "summary": "Test Connection",
+        "security": [],
+        "x-mint": {
+          "content": "<Badge color=\"gray\" size=\"md\">Request Weight: **1**</Badge>"
+        },
+        "description": "Test connection to the server.\n",
+        "responses": {
+          "200": {
+            "description": "Successful ping response.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "status"
+                  ],
+                  "properties": {
+                    "status": {
+                      "type": "string",
+                      "example": "ok"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "429": {
+            "$ref": "#/components/responses/Error429Response"
+          },
+          "500": {
+            "$ref": "#/components/responses/Error500Response"
+          }
+        }
+      }
+    },
+    "/v1/info/time": {
+      "get": {
+        "operationId": "getTime",
+        "summary": "Get Server Time",
+        "security": [],
+        "x-mint": {
+          "content": "<Badge color=\"gray\" size=\"md\">Request Weight: **1**</Badge>"
+        },
+        "description": "Get server time.\n",
+        "responses": {
+          "200": {
+            "description": "Successful time response.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Time"
+                }
+              }
+            }
+          },
+          "429": {
+            "$ref": "#/components/responses/Error429Response"
+          },
+          "500": {
+            "$ref": "#/components/responses/Error500Response"
+          }
+        }
+      }
+    },
+    "/v1/info/exchange": {
+      "get": {
+        "operationId": "getExchange",
+        "summary": "Get Exchange Info",
+        "security": [],
+        "x-mint": {
+          "content": "<Badge color=\"gray\" size=\"md\">Request Weight: **2**</Badge>"
+        },
+        "description": "Get exchange information.\n",
+        "responses": {
+          "200": {
+            "description": "Successful exchange information response.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Exchange"
+                }
+              }
+            }
+          },
+          "429": {
+            "$ref": "#/components/responses/Error429Response"
+          },
+          "500": {
+            "$ref": "#/components/responses/Error500Response"
+          }
+        }
+      }
+    },
+    "/v1/info/assets": {
+      "get": {
+        "operationId": "getAssets",
+        "summary": "Get Collateral Assets",
+        "security": [],
+        "x-mint": {
+          "content": "<Badge color=\"gray\" size=\"md\">Request Weight: **2**</Badge>"
+        },
+        "description": "Get a list of collateral assets.\n",
+        "responses": {
+          "200": {
+            "description": "Assets response.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "$ref": "#/components/schemas/Asset"
+                  }
+                }
+              }
+            }
+          },
+          "429": {
+            "$ref": "#/components/responses/Error429Response"
+          },
+          "500": {
+            "$ref": "#/components/responses/Error500Response"
+          }
+        }
+      }
+    },
+    "/v1/info/instruments": {
+      "get": {
+        "operationId": "getInstruments",
+        "summary": "Get Instruments",
+        "security": [],
+        "x-mint": {
+          "content": "<Badge color=\"gray\" size=\"md\">Request Weight: **2**</Badge>"
+        },
+        "description": "Get all instruments.",
+        "parameters": [
+          {
+            "name": "instrument_id",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "$ref": "#/components/schemas/instrument_id"
+            }
+          },
+          {
+            "name": "instrument_type",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "$ref": "#/components/schemas/instrument_type"
+            }
+          },
+          {
+            "name": "category",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "$ref": "#/components/schemas/category"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Instruments response.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "$ref": "#/components/schemas/Instrument"
+                  }
+                }
+              }
+            }
+          },
+          "400": {
+            "$ref": "#/components/responses/Error400Response"
+          },
+          "429": {
+            "$ref": "#/components/responses/Error429Response"
+          },
+          "500": {
+            "$ref": "#/components/responses/Error500Response"
+          }
+        }
+      }
+    },
+    "/v1/info/tickers": {
+      "get": {
+        "operationId": "getTickers",
+        "summary": "Get Tickers",
+        "security": [],
+        "x-mint": {
+          "content": "<Badge color=\"gray\" size=\"md\">Request Weight: **2**</Badge>"
+        },
+        "description": "Get all instrument tickers with live market data.",
+        "parameters": [
+          {
+            "name": "instrument_id",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "$ref": "#/components/schemas/instrument_id"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Tickers response.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "$ref": "#/components/schemas/Ticker"
+                  }
+                }
+              }
+            }
+          },
+          "429": {
+            "$ref": "#/components/responses/Error429Response"
+          },
+          "500": {
+            "$ref": "#/components/responses/Error500Response"
+          }
+        }
+      }
+    },
+    "/v1/info/statistics": {
+      "get": {
+        "operationId": "getStatistics",
+        "summary": "Get Statistics",
+        "security": [],
+        "x-mint": {
+          "content": "<Badge color=\"gray\" size=\"md\">Request Weight: **2**</Badge>"
+        },
+        "description": "Get last 24-hour statistics for all instruments.",
+        "parameters": [
+          {
+            "name": "instrument_id",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "$ref": "#/components/schemas/instrument_id"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Statistics response.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "$ref": "#/components/schemas/Statistic"
+                  }
+                }
+              }
+            }
+          },
+          "429": {
+            "$ref": "#/components/responses/Error429Response"
+          },
+          "500": {
+            "$ref": "#/components/responses/Error500Response"
+          }
+        }
+      }
+    },
+    "/v1/info/klines": {
+      "get": {
+        "operationId": "getKlines",
+        "summary": "Get Klines",
+        "security": [],
+        "x-mint": {
+          "content": "<Badge color=\"gray\" size=\"md\">Request Weight: **5**</Badge>"
+        },
+        "description": "Get klines for an instrument.\nIf no end time is provided, the current time will be used.\nMaximum of 1000 entries returned per request.\n",
+        "parameters": [
+          {
+            "name": "instrument_id",
+            "in": "query",
+            "required": true,
+            "schema": {
+              "$ref": "#/components/schemas/instrument_id"
+            }
+          },
+          {
+            "name": "interval",
+            "in": "query",
+            "required": true,
+            "schema": {
+              "$ref": "#/components/schemas/interval"
+            }
+          },
+          {
+            "name": "start_timestamp",
+            "in": "query",
+            "required": true,
+            "schema": {
+              "$ref": "#/components/schemas/start_timestamp"
+            }
+          },
+          {
+            "name": "end_timestamp",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "$ref": "#/components/schemas/end_timestamp"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Klines response.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/KlinesResponse"
+                }
+              }
+            }
+          },
+          "400": {
+            "$ref": "#/components/responses/Error400Response"
+          },
+          "429": {
+            "$ref": "#/components/responses/Error429Response"
+          },
+          "500": {
+            "$ref": "#/components/responses/Error500Response"
+          }
+        }
+      }
+    },
+    "/v1/info/bbo": {
+      "get": {
+        "operationId": "getBBO",
+        "summary": "Get BBO",
+        "security": [],
+        "x-mint": {
+          "content": "<Badge color=\"gray\" size=\"md\">Request Weight: **2**</Badge>"
+        },
+        "description": "Get best bid and offer for all instruments.",
+        "parameters": [
+          {
+            "name": "instrument_id",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "$ref": "#/components/schemas/instrument_id"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "BBO response.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "$ref": "#/components/schemas/BBO"
+                  }
+                }
+              }
+            }
+          },
+          "400": {
+            "$ref": "#/components/responses/Error400Response"
+          },
+          "429": {
+            "$ref": "#/components/responses/Error429Response"
+          },
+          "500": {
+            "$ref": "#/components/responses/Error500Response"
+          }
+        }
+      }
+    },
+    "/v1/info/book": {
+      "get": {
+        "operationId": "getBook",
+        "summary": "Get Book",
+        "security": [],
+        "x-mint": {
+          "content": "<Badge color=\"gray\" size=\"md\">Request Weight:</Badge>\n<br/>\n<Badge color=\"gray\" size=\"md\">Depth 10: **2**</Badge>\n<br/>\n<Badge color=\"gray\" size=\"md\">Depth 100: **5**</Badge>\n<br/>\n<Badge color=\"gray\" size=\"md\">Depth 500: **10**</Badge>\n<br/>\n<Badge color=\"gray\" size=\"md\">Depth 1000: **20**</Badge>\n"
+        },
+        "description": "Get book for an instrument.",
+        "parameters": [
+          {
+            "name": "instrument_id",
+            "in": "query",
+            "required": true,
+            "schema": {
+              "$ref": "#/components/schemas/instrument_id"
+            }
+          },
+          {
+            "name": "depth",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "$ref": "#/components/schemas/depth"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Book response.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Book"
+                }
+              }
+            }
+          },
+          "400": {
+            "$ref": "#/components/responses/Error400Response"
+          },
+          "429": {
+            "$ref": "#/components/responses/Error429Response"
+          },
+          "500": {
+            "$ref": "#/components/responses/Error500Response"
+          }
+        }
+      }
+    },
+    "/v1/info/index": {
+      "get": {
+        "operationId": "getIndex",
+        "summary": "Get Index",
+        "security": [],
+        "x-mint": {
+          "content": "<Badge color=\"gray\" size=\"md\">Request Weight: **2**</Badge>"
+        },
+        "description": "Get index price and the list of constituents for an asset.",
+        "parameters": [
+          {
+            "name": "asset",
+            "in": "query",
+            "required": true,
+            "schema": {
+              "$ref": "#/components/schemas/asset"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Index constituents response.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Index"
+                },
+                "examples": {
+                  "index": {
+                    "summary": "Index constituents",
+                    "value": {
+                      "asset": "NVDA",
+                      "index_price": "160.00",
+                      "constituents": [
+                        {
+                          "source": "chainlink",
+                          "symbol": "NVDA/USD",
+                          "weight": "1.0",
+                          "price": "160.00"
+                        }
+                      ],
+                      "ts": 1767225600000
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "400": {
+            "$ref": "#/components/responses/Error400Response"
+          },
+          "429": {
+            "$ref": "#/components/responses/Error429Response"
+          },
+          "500": {
+            "$ref": "#/components/responses/Error500Response"
+          }
+        }
+      }
+    },
+    "/v1/info/trades": {
+      "get": {
+        "operationId": "getTrades",
+        "summary": "Get Recent Trades",
+        "security": [],
+        "x-mint": {
+          "content": "<Badge color=\"gray\" size=\"md\">Request Weight: **10**</Badge>"
+        },
+        "description": "Get public trades for an instrument.\nMaximum of 100 entries returned per request.\n",
+        "parameters": [
+          {
+            "name": "instrument_id",
+            "in": "query",
+            "required": true,
+            "schema": {
+              "$ref": "#/components/schemas/instrument_id"
+            }
+          },
+          {
+            "name": "start_timestamp",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "$ref": "#/components/schemas/start_timestamp"
+            }
+          },
+          {
+            "name": "end_timestamp",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "$ref": "#/components/schemas/end_timestamp"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Trades response.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Trades"
+                }
+              }
+            }
+          },
+          "400": {
+            "$ref": "#/components/responses/Error400Response"
+          },
+          "429": {
+            "$ref": "#/components/responses/Error429Response"
+          },
+          "500": {
+            "$ref": "#/components/responses/Error500Response"
+          }
+        }
+      }
+    },
+    "/v1/info/portfolio": {
+      "get": {
+        "operationId": "getPublicPortfolio",
+        "summary": "Get Public Portfolio",
+        "security": [],
+        "x-mint": {
+          "content": "<Badge color=\"gray\" size=\"md\">Request Weight: **5**</Badge>"
+        },
+        "description": "Get public portfolio for an address including equity and open positions.\n",
+        "parameters": [
+          {
+            "name": "address",
+            "in": "query",
+            "required": true,
+            "schema": {
+              "$ref": "#/components/schemas/address"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Public portfolio response.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PublicPortfolio"
+                }
+              }
+            }
+          },
+          "400": {
+            "$ref": "#/components/responses/Error400Response"
+          },
+          "429": {
+            "$ref": "#/components/responses/Error429Response"
+          },
+          "500": {
+            "$ref": "#/components/responses/Error500Response"
+          }
+        }
+      }
+    },
+    "/v1/info/funding": {
+      "get": {
+        "operationId": "getFundingHistory",
+        "summary": "Get Historical Funding",
+        "security": [],
+        "x-mint": {
+          "content": "<Badge color=\"gray\" size=\"md\">Request Weight: **10**</Badge>"
+        },
+        "description": "Get public funding rate history for an instrument.\nMaximum of 100 entries returned per request.\n",
+        "parameters": [
+          {
+            "name": "instrument_id",
+            "in": "query",
+            "required": true,
+            "schema": {
+              "$ref": "#/components/schemas/instrument_id"
+            }
+          },
+          {
+            "name": "start_timestamp",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "$ref": "#/components/schemas/start_timestamp"
+            }
+          },
+          {
+            "name": "end_timestamp",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "$ref": "#/components/schemas/end_timestamp"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Funding rate history response.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/FundingHistory"
+                }
+              }
+            }
+          },
+          "400": {
+            "$ref": "#/components/responses/Error400Response"
+          },
+          "429": {
+            "$ref": "#/components/responses/Error429Response"
+          },
+          "500": {
+            "$ref": "#/components/responses/Error500Response"
+          }
+        }
+      }
+    },
+    "/v1/info/fees": {
+      "get": {
+        "operationId": "getInfoFees",
+        "summary": "Get Fees",
+        "security": [],
+        "x-mint": {
+          "content": "<Badge color=\"gray\" size=\"md\">Request Weight: **2**</Badge>"
+        },
+        "description": "Get the default fee schedule for each instrument type and category. Rates returned are the $0-tier defaults; the account's actual rate on each fill depends on its trailing 30-day volume tier.",
+        "responses": {
+          "200": {
+            "description": "Fee schedule response.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/FeesInfo"
+                }
+              }
+            }
+          },
+          "429": {
+            "$ref": "#/components/responses/Error429Response"
+          },
+          "500": {
+            "$ref": "#/components/responses/Error500Response"
+          }
+        }
+      }
+    },
+    "/v1/info/limit-tiers": {
+      "get": {
+        "operationId": "getLimitTiers",
+        "summary": "Get Limit Tiers",
+        "security": [],
+        "x-mint": {
+          "content": "<Badge color=\"gray\" size=\"md\">Request Weight: **2**</Badge>"
+        },
+        "description": "Get the list of account limit tiers. Action and open-order fields are enforced per account; legacy request-rate fields are not used for gateway request enforcement.",
+        "responses": {
+          "200": {
+            "description": "Limit tiers response.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "$ref": "#/components/schemas/LimitTier"
+                  }
+                }
+              }
+            }
+          },
+          "429": {
+            "$ref": "#/components/responses/Error429Response"
+          },
+          "500": {
+            "$ref": "#/components/responses/Error500Response"
+          }
+        }
+      }
+    },
+    "/v1/info/invite": {
+      "get": {
+        "operationId": "checkInviteCode",
+        "summary": "Check Invite Code",
+        "security": [],
+        "x-mint": {
+          "content": "<Badge color=\"gray\" size=\"md\">Request Weight: **1**</Badge>"
+        },
+        "description": "Check whether an invite code can be used. When `address` is provided, the\nresponse is invalid if that address already has an account.\n",
+        "parameters": [
+          {
+            "name": "code",
+            "in": "query",
+            "required": true,
+            "schema": {
+              "$ref": "#/components/schemas/code"
+            }
+          },
+          {
+            "name": "address",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "$ref": "#/components/schemas/address"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Invite code validation response.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/InviteCheckResponse"
+                }
+              }
+            }
+          },
+          "429": {
+            "$ref": "#/components/responses/Error429Response"
+          },
+          "500": {
+            "$ref": "#/components/responses/Error500Response"
+          }
+        }
+      }
+    },
+    "/v1/trade/orders": {
+      "post": {
+        "operationId": "createOrders",
+        "summary": "Create Orders",
+        "security": [],
+        "x-mint": {
+          "content": "<Badge color=\"gray\" size=\"md\">Request Weight: **1 + floor(n / 20)**</Badge> <Badge color=\"gray\" size=\"md\">Action Weight: **1 / order**</Badge>"
+        },
+        "description": "Create new orders.\nRequires proxy signature, see [proxy signing](/http/signing#2-proxy-signing).\n",
+        "requestBody": {
+          "description": "Order request.",
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/OrderRequest"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Order ACK response. Order result should be fetched using the get orders endpoint.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "$ref": "#/components/schemas/OrderResponse"
+                  }
+                }
+              }
+            }
+          },
+          "400": {
+            "$ref": "#/components/responses/Error400Response"
+          },
+          "429": {
+            "$ref": "#/components/responses/Error429Response"
+          },
+          "500": {
+            "$ref": "#/components/responses/Error500Response"
+          }
+        }
+      },
+      "delete": {
+        "operationId": "cancelOrders",
+        "summary": "Cancel Orders",
+        "security": [],
+        "x-mint": {
+          "content": "<Badge color=\"gray\" size=\"md\">Request Weight: **1 + floor(n / 20)**</Badge> <Badge color=\"gray\" size=\"md\">Action Weight: **0**</Badge>"
+        },
+        "description": "Cancel orders.\nRequires proxy signature, see [proxy signing](/http/signing#2-proxy-signing).\n",
+        "requestBody": {
+          "description": "Cancel request.",
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/CancelRequest"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Cancel response.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "$ref": "#/components/schemas/CancelResponse"
+                  }
+                }
+              }
+            }
+          },
+          "400": {
+            "$ref": "#/components/responses/Error400Response"
+          },
+          "429": {
+            "$ref": "#/components/responses/Error429Response"
+          },
+          "500": {
+            "$ref": "#/components/responses/Error500Response"
+          }
+        }
+      }
+    },
+    "/v1/trade/orders-coid": {
+      "delete": {
+        "operationId": "cancelOrdersByCoid",
+        "summary": "Cancel Orders COID",
+        "security": [],
+        "x-mint": {
+          "content": "<Badge color=\"gray\" size=\"md\">Request Weight: **1 + floor(n / 20)**</Badge> <Badge color=\"gray\" size=\"md\">Action Weight: **0**</Badge>"
+        },
+        "description": "Cancel orders by client order ID.\nRequires proxy signature, see [proxy signing](/http/signing#2-proxy-signing).\n",
+        "requestBody": {
+          "description": "Cancel by coid request.",
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/CancelByCoidRequest"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Cancel response.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "$ref": "#/components/schemas/CancelResponse"
+                  }
+                }
+              }
+            }
+          },
+          "400": {
+            "$ref": "#/components/responses/Error400Response"
+          },
+          "429": {
+            "$ref": "#/components/responses/Error429Response"
+          },
+          "500": {
+            "$ref": "#/components/responses/Error500Response"
+          }
+        }
+      }
+    },
+    "/v1/trade/auto-cancel": {
+      "patch": {
+        "operationId": "setAutoCancel",
+        "summary": "Set Auto-Cancel",
+        "security": [],
+        "x-mint": {
+          "content": "<Badge color=\"gray\" size=\"md\">Request Weight: **1**</Badge> <Badge color=\"gray\" size=\"md\">Action Weight: **10**</Badge>"
+        },
+        "description": "Set a dead man switch that will cancel all open orders at the specified time.\nTime must be at least 5 seconds in the future, or `0` to clear an active\nschedule without triggering it. Posting a new auto-cancel replaces the\nprevious one.\n\nThe switch is one-shot: once the deadline elapses and your open orders are\ncancelled, the schedule clears automatically. Orders you place after the\nfire are not affected by the expired deadline — re-arm to extend\nprotection.\n\nEach account may trigger auto-cancel at most 10 times per UTC day. Once\nthat limit is reached, further attempts to arm a schedule are rejected with\n`auto_cancel_daily_limit_reached` until the next UTC day; clearing an\nexisting schedule (`time: 0`) is always allowed.\n\nUse `GET /v1/account/auto-cancel` to check the current deadline, today's\ntrigger count, and when the daily counter resets.\n\nRequires proxy signature, see [proxy signing](/http/signing#2-proxy-signing).\n",
+        "requestBody": {
+          "description": "Auto-cancel request.",
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/AutoCancelRequest"
+              },
+              "examples": {
+                "enable": {
+                  "summary": "Enable auto-cancel",
+                  "value": {
+                    "op": {
+                      "type": "autoCancel",
+                      "args": {
+                        "time": 1767000045000
+                      }
+                    },
+                    "sig": "0x2b3c4d5e6f7a8b9c0d1e2f3a4b5c6d7e8f9a0b1c2d3e4f5a6b7c8d9e0f1a2b3c4d5e6f7a8b9c0d1e2f3a4b5c6d7e8f9a0b1c2d3e4f5a6b7c8d9e0f1a2b1c",
+                    "salt": 666666666,
+                    "ts": 1767000015000
+                  }
+                },
+                "disable": {
+                  "summary": "Disable auto-cancel",
+                  "value": {
+                    "op": {
+                      "type": "autoCancel",
+                      "args": {
+                        "time": 0
+                      }
+                    },
+                    "sig": "0x8f9a0b1c2d3e4f5a6b7c8d9e0f1a2b3c4d5e6f7a8b9c0d1e2f3a4b5c6d7e8f9a0b1c2d3e4f5a6b7c8d9e0f1a2b3c4d5e6f7a8b9c0d1e2f3a4b5c6d7e8f1c",
+                    "salt": 666666667,
+                    "ts": 1767000016000
+                  }
+                }
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "The effective auto-cancel schedule after the update.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AutoCancelResponse"
+                }
+              }
+            }
+          },
+          "400": {
+            "$ref": "#/components/responses/Error400Response"
+          },
+          "404": {
+            "$ref": "#/components/responses/Error404Response"
+          },
+          "422": {
+            "$ref": "#/components/responses/Error422Response"
+          },
+          "429": {
+            "$ref": "#/components/responses/Error429Response"
+          },
+          "500": {
+            "$ref": "#/components/responses/Error500Response"
+          }
+        }
+      }
+    },
+    "/v1/trade/leverage": {
+      "patch": {
+        "operationId": "updateLeverage",
+        "summary": "Update Leverage",
+        "security": [],
+        "x-mint": {
+          "content": "<Badge color=\"gray\" size=\"md\">Request Weight: **1**</Badge> <Badge color=\"gray\" size=\"md\">Action Weight: **1**</Badge>"
+        },
+        "description": "Update leverage for an instrument.\nRequires proxy signature, see [proxy signing](/http/signing#2-proxy-signing).\n",
+        "requestBody": {
+          "description": "Leverage request.",
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/LeverageRequest"
+              },
+              "examples": {
+                "updateLeverage": {
+                  "summary": "Update leverage for one instrument",
+                  "value": {
+                    "op": {
+                      "type": "updateLeverage",
+                      "args": {
+                        "iid": 1,
+                        "lev": 5,
+                        "cross": false
+                      }
+                    },
+                    "sig": "0x59ed57f6dce8d15aa01e774ef53d9957c84801fb34ec655f6a2ea344af8a58843095314730a3f1bd8f0f4560f6dc6f8de69d3f2d0a6f3365fc877f7f4845d40b1c",
+                    "salt": 333333333,
+                    "ts": 1767000012000
+                  }
+                }
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "The instrument's effective leverage configuration after the update.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/LeverageResponse"
+                }
+              }
+            }
+          },
+          "400": {
+            "$ref": "#/components/responses/Error400Response"
+          },
+          "422": {
+            "$ref": "#/components/responses/Error422Response"
+          },
+          "429": {
+            "$ref": "#/components/responses/Error429Response"
+          },
+          "500": {
+            "$ref": "#/components/responses/Error500Response"
+          }
+        }
+      }
+    },
+    "/v1/account/proxy": {
+      "post": {
+        "operationId": "createProxy",
+        "summary": "Create Proxy",
+        "security": [],
+        "x-mint": {
+          "content": "<Badge color=\"gray\" size=\"md\">Request Weight: **1**</Badge>"
+        },
+        "description": "Create a new proxy to sign orders. Returns an API secret for private account access.\nRequires EOA signature, see [EOA signing](/http/signing#1-eoa-signing).\n",
+        "requestBody": {
+          "description": "Proxy creation request.",
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ProxyRequest"
+              },
+              "examples": {
+                "createProxy": {
+                  "summary": "Create a proxy",
+                  "value": {
+                    "op": {
+                      "type": "createProxy",
+                      "args": {
+                        "owner": "0xf39Fd6e51aad88F6F4ce6aB8827279cffFb92266",
+                        "proxy": "0x70997970C51812dc3A010C7d01b50e0d17dc79C8",
+                        "expiry": 1767225600000
+                      }
+                    },
+                    "sig": "0x4d11d89f6d8e2f0fd22fb5dd9e6e88a35f3a2c0f3a9e4ff9f8f0da5e6c5f241d2ed7d173f7fcb15726b8a7e7f1f1277ec54c060f5b3ab4d72dbf4d0e40ee6e9a1c",
+                    "salt": 123456789,
+                    "ts": 1767000000000
+                  }
+                }
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Proxy creation response.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProxyResponse"
+                }
+              }
+            }
+          },
+          "400": {
+            "$ref": "#/components/responses/Error400Response"
+          },
+          "422": {
+            "$ref": "#/components/responses/Error422Response"
+          },
+          "429": {
+            "$ref": "#/components/responses/Error429Response"
+          },
+          "500": {
+            "$ref": "#/components/responses/Error500Response"
+          }
+        }
+      },
+      "delete": {
+        "operationId": "deleteProxy",
+        "summary": "Delete Proxy",
+        "security": [],
+        "x-mint": {
+          "content": "<Badge color=\"gray\" size=\"md\">Request Weight: **1**</Badge>"
+        },
+        "description": "Delete a proxy by address.\nRequires EOA signature, see [EOA signing](/http/signing#1-eoa-signing).\n",
+        "requestBody": {
+          "description": "Delete proxy request.",
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/DeleteProxyRequest"
+              },
+              "examples": {
+                "deleteProxy": {
+                  "summary": "Delete a proxy",
+                  "value": {
+                    "op": {
+                      "type": "deleteProxy",
+                      "args": {
+                        "proxy": "0x70997970C51812dc3A010C7d01b50e0d17dc79C8"
+                      }
+                    },
+                    "sig": "0x9a0b1c2d3e4f5a6b7c8d9e0f1a2b3c4d5e6f7a8b9c0d1e2f3a4b5c6d7e8f9a0b1c2d3e4f5a6b7c8d9e0f1a2b3c4d5e6f7a8b9c0d1e2f3a4b5c6d7e8f9a1c",
+                    "salt": 888888888,
+                    "ts": 1767000020000
+                  }
+                }
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Delete proxy response.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/GenericAccepted"
+                }
+              }
+            }
+          },
+          "400": {
+            "$ref": "#/components/responses/Error400Response"
+          },
+          "422": {
+            "$ref": "#/components/responses/Error422Response"
+          },
+          "429": {
+            "$ref": "#/components/responses/Error429Response"
+          },
+          "500": {
+            "$ref": "#/components/responses/Error500Response"
+          }
+        }
+      }
+    },
+    "/v1/account/credentials": {
+      "get": {
+        "operationId": "getCredentials",
+        "summary": "Get Credentials",
+        "security": [
+          {
+            "polymarket_proxy": [],
+            "polymarket_secret": []
+          }
+        ],
+        "x-mint": {
+          "content": "<Badge color=\"gray\" size=\"md\">Request Weight: **2**</Badge>"
+        },
+        "description": "Get the account ID, address, and proxy keys for the authenticated account.",
+        "responses": {
+          "200": {
+            "description": "Credentials response.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Credentials"
+                }
+              }
+            }
+          },
+          "400": {
+            "$ref": "#/components/responses/Error400Response"
+          },
+          "401": {
+            "$ref": "#/components/responses/Error401Response"
+          },
+          "429": {
+            "$ref": "#/components/responses/Error429Response"
+          },
+          "500": {
+            "$ref": "#/components/responses/Error500Response"
+          }
+        }
+      }
+    },
+    "/v1/account/orders": {
+      "get": {
+        "operationId": "getOrders",
+        "summary": "Get Orders",
+        "security": [
+          {
+            "polymarket_proxy": [],
+            "polymarket_secret": []
+          }
+        ],
+        "x-mint": {
+          "content": "<Badge color=\"gray\" size=\"md\">Request Weight:</Badge>\n<br/>\n<Badge color=\"gray\" size=\"md\">With order ID: **1**</Badge>\n<br/>\n<Badge color=\"gray\" size=\"md\">Without order ID: **10**</Badge>\n"
+        },
+        "description": "Get historical order snapshots for the authenticated account from the order history database.\nReturns the latest known state for each matching order, including accepted, open, partial,\nfilled, and cancelled orders. For currently resting orders only, use Get Open Orders.\nMaximum of 100 entries returned per request.\n",
+        "parameters": [
+          {
+            "name": "order_id",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "$ref": "#/components/schemas/order_id"
+            }
+          },
+          {
+            "name": "client_order_id",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "$ref": "#/components/schemas/coid"
+            }
+          },
+          {
+            "name": "instrument_id",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "$ref": "#/components/schemas/iid"
+            }
+          },
+          {
+            "name": "start_timestamp",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "$ref": "#/components/schemas/start_timestamp"
+            }
+          },
+          {
+            "name": "end_timestamp",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "$ref": "#/components/schemas/end_timestamp"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Orders response.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "$ref": "#/components/schemas/OrderData"
+                  }
+                }
+              }
+            }
+          },
+          "400": {
+            "$ref": "#/components/responses/Error400Response"
+          },
+          "401": {
+            "$ref": "#/components/responses/Error401Response"
+          },
+          "429": {
+            "$ref": "#/components/responses/Error429Response"
+          },
+          "500": {
+            "$ref": "#/components/responses/Error500Response"
+          }
+        }
+      }
+    },
+    "/v1/account/open-orders": {
+      "get": {
+        "operationId": "getOpenOrders",
+        "summary": "Get Open Orders",
+        "security": [
+          {
+            "polymarket_proxy": [],
+            "polymarket_secret": []
+          }
+        ],
+        "x-mint": {
+          "content": "<Badge color=\"gray\" size=\"md\">Request Weight:</Badge>\n<br/>\n<Badge color=\"gray\" size=\"md\">With instrument ID: **1**</Badge>\n<br/>\n<Badge color=\"gray\" size=\"md\">Without instrument ID: **20**</Badge>\n"
+        },
+        "description": "Get open orders for the authenticated account.",
+        "parameters": [
+          {
+            "name": "instrument_id",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "$ref": "#/components/schemas/iid"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Orders response.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "$ref": "#/components/schemas/OrderData"
+                  }
+                }
+              }
+            }
+          },
+          "400": {
+            "$ref": "#/components/responses/Error400Response"
+          },
+          "401": {
+            "$ref": "#/components/responses/Error401Response"
+          },
+          "429": {
+            "$ref": "#/components/responses/Error429Response"
+          },
+          "500": {
+            "$ref": "#/components/responses/Error500Response"
+          }
+        }
+      }
+    },
+    "/v1/account/balances": {
+      "get": {
+        "operationId": "getBalances",
+        "summary": "Get Balances",
+        "security": [
+          {
+            "polymarket_proxy": [],
+            "polymarket_secret": []
+          }
+        ],
+        "x-mint": {
+          "content": "<Badge color=\"gray\" size=\"md\">Request Weight: **2**</Badge>"
+        },
+        "description": "Get asset balances for the authenticated account.",
+        "responses": {
+          "200": {
+            "description": "Balances response.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "$ref": "#/components/schemas/Balance"
+                  }
+                }
+              }
+            }
+          },
+          "401": {
+            "$ref": "#/components/responses/Error401Response"
+          },
+          "429": {
+            "$ref": "#/components/responses/Error429Response"
+          },
+          "500": {
+            "$ref": "#/components/responses/Error500Response"
+          }
+        }
+      }
+    },
+    "/v1/account/portfolio": {
+      "get": {
+        "operationId": "getPortfolio",
+        "summary": "Get Portfolio",
+        "security": [
+          {
+            "polymarket_proxy": [],
+            "polymarket_secret": []
+          }
+        ],
+        "x-mint": {
+          "content": "<Badge color=\"gray\" size=\"md\">Request Weight: **2**</Badge>"
+        },
+        "description": "Get current portfolio snapshot including open positions, margin summary, and withdrawable balance.\n",
+        "responses": {
+          "200": {
+            "description": "Portfolio response.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Portfolio"
+                }
+              }
+            }
+          },
+          "400": {
+            "$ref": "#/components/responses/Error400Response"
+          },
+          "401": {
+            "$ref": "#/components/responses/Error401Response"
+          },
+          "429": {
+            "$ref": "#/components/responses/Error429Response"
+          },
+          "500": {
+            "$ref": "#/components/responses/Error500Response"
+          }
+        }
+      }
+    },
+    "/v1/account/fills": {
+      "get": {
+        "operationId": "getFills",
+        "summary": "Get Fills",
+        "security": [
+          {
+            "polymarket_proxy": [],
+            "polymarket_secret": []
+          }
+        ],
+        "x-mint": {
+          "content": "<Badge color=\"gray\" size=\"md\">Request Weight: **10**</Badge>"
+        },
+        "description": "Get fill history for the authenticated account.\nIf no end time is provided, the current time will be used.\nMaximum of 100 entries returned per request.\n",
+        "parameters": [
+          {
+            "name": "start_timestamp",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "$ref": "#/components/schemas/start_timestamp"
+            }
+          },
+          {
+            "name": "end_timestamp",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "$ref": "#/components/schemas/end_timestamp"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Fills response.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AccountTrades"
+                }
+              }
+            }
+          },
+          "400": {
+            "$ref": "#/components/responses/Error400Response"
+          },
+          "401": {
+            "$ref": "#/components/responses/Error401Response"
+          },
+          "429": {
+            "$ref": "#/components/responses/Error429Response"
+          },
+          "500": {
+            "$ref": "#/components/responses/Error500Response"
+          }
+        }
+      }
+    },
+    "/v1/account/equity": {
+      "get": {
+        "operationId": "getEquityHistory",
+        "summary": "Get Equity",
+        "security": [
+          {
+            "polymarket_proxy": [],
+            "polymarket_secret": []
+          }
+        ],
+        "x-mint": {
+          "content": "<Badge color=\"gray\" size=\"md\">Request Weight: **10**</Badge>"
+        },
+        "description": "Get equity history for the authenticated account.\nIf no end time is provided, the current time will be used.\nMaximum of 1000 entries returned per request.\n",
+        "parameters": [
+          {
+            "name": "interval",
+            "in": "query",
+            "required": true,
+            "schema": {
+              "$ref": "#/components/schemas/interval"
+            }
+          },
+          {
+            "name": "start_timestamp",
+            "in": "query",
+            "required": true,
+            "schema": {
+              "$ref": "#/components/schemas/start_timestamp"
+            }
+          },
+          {
+            "name": "end_timestamp",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "$ref": "#/components/schemas/end_timestamp"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Equity history response.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/EquityHistory"
+                }
+              }
+            }
+          },
+          "400": {
+            "$ref": "#/components/responses/Error400Response"
+          },
+          "401": {
+            "$ref": "#/components/responses/Error401Response"
+          },
+          "429": {
+            "$ref": "#/components/responses/Error429Response"
+          },
+          "500": {
+            "$ref": "#/components/responses/Error500Response"
+          }
+        }
+      }
+    },
+    "/v1/account/pnl": {
+      "get": {
+        "operationId": "getPnlHistory",
+        "summary": "Get PnL",
+        "security": [
+          {
+            "polymarket_proxy": [],
+            "polymarket_secret": []
+          }
+        ],
+        "x-mint": {
+          "content": "<Badge color=\"gray\" size=\"md\">Request Weight: **10**</Badge>"
+        },
+        "description": "Get PnL history for the authenticated account.\nIf no end time is provided, the current time will be used.\nMaximum of 1000 entries returned per request.\n",
+        "parameters": [
+          {
+            "name": "interval",
+            "in": "query",
+            "required": true,
+            "schema": {
+              "$ref": "#/components/schemas/pnl_interval"
+            }
+          },
+          {
+            "name": "start_timestamp",
+            "in": "query",
+            "required": true,
+            "schema": {
+              "$ref": "#/components/schemas/start_timestamp"
+            }
+          },
+          {
+            "name": "end_timestamp",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "$ref": "#/components/schemas/end_timestamp"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "PnL history response.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PnlHistory"
+                }
+              }
+            }
+          },
+          "400": {
+            "$ref": "#/components/responses/Error400Response"
+          },
+          "401": {
+            "$ref": "#/components/responses/Error401Response"
+          },
+          "429": {
+            "$ref": "#/components/responses/Error429Response"
+          },
+          "500": {
+            "$ref": "#/components/responses/Error500Response"
+          }
+        }
+      }
+    },
+    "/v1/account/funding": {
+      "get": {
+        "operationId": "getAccountFunding",
+        "summary": "Get Funding Charges",
+        "security": [
+          {
+            "polymarket_proxy": [],
+            "polymarket_secret": []
+          }
+        ],
+        "x-mint": {
+          "content": "<Badge color=\"gray\" size=\"md\">Request Weight: **10**</Badge>"
+        },
+        "description": "Get funding payment history for the authenticated account.\nIf no end time is provided, the current time will be used.\nMaximum of 100 entries returned per request.\n",
+        "parameters": [
+          {
+            "name": "instrument_id",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "$ref": "#/components/schemas/instrument_id"
+            }
+          },
+          {
+            "name": "start_timestamp",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "$ref": "#/components/schemas/start_timestamp"
+            }
+          },
+          {
+            "name": "end_timestamp",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "$ref": "#/components/schemas/end_timestamp"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Account funding history response.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AccountFundingHistory"
+                }
+              }
+            }
+          },
+          "400": {
+            "$ref": "#/components/responses/Error400Response"
+          },
+          "401": {
+            "$ref": "#/components/responses/Error401Response"
+          },
+          "429": {
+            "$ref": "#/components/responses/Error429Response"
+          },
+          "500": {
+            "$ref": "#/components/responses/Error500Response"
+          }
+        }
+      }
+    },
+    "/v1/account/withdraw": {
+      "post": {
+        "operationId": "withdraw",
+        "summary": "Withdraw",
+        "security": [],
+        "x-mint": {
+          "content": "<Badge color=\"gray\" size=\"md\">Request Weight: **1**</Badge>"
+        },
+        "description": "Submit a signed withdrawal request.\nRequires EOA signature, see [EOA signing](/http/signing#1-eoa-signing).\n\nThe `amount` field is the raw token amount including decimals (e.g. `\"100000000\"` for 100 USDC).\nThis must match the `uint256 amount` value used in the EIP-712 `Withdraw` signature.\n\nThe `ts` field is Unix seconds (not milliseconds) because the on-chain contract validates it\nagainst `block.timestamp`. It must also match the `uint64 ts` in the signed EIP-712 struct.\n",
+        "requestBody": {
+          "description": "Withdraw request.",
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/WithdrawRequest"
+              },
+              "examples": {
+                "withdraw": {
+                  "summary": "Withdraw 100 USDC",
+                  "value": {
+                    "op": {
+                      "type": "withdraw",
+                      "args": {
+                        "account": "0xf39Fd6e51aad88F6F4ce6aB8827279cffFb92266",
+                        "token": "0xaf88d065e77c8cc2239327c5edb3a432268e5831",
+                        "amount": "100000000",
+                        "to": "0x70997970C51812dc3A010C7d01b50e0d17dc79C8"
+                      }
+                    },
+                    "sig": "0x5a6b7c8d9e0f1a2b3c4d5e6f7a8b9c0d1e2f3a4b5c6d7e8f9a0b1c2d3e4f5a6b7c8d9e0f1a2b3c4d5e6f7a8b9c0d1e2f3a4b5c6d7e8f9a0b1c2d3e4f5a1c",
+                    "salt": 555555555,
+                    "ts": 1767000014
+                  }
+                }
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "The accepted withdrawal, carrying its `withdraw_id`.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/WithdrawAccepted"
+                }
+              }
+            }
+          },
+          "400": {
+            "$ref": "#/components/responses/Error400Response"
+          },
+          "422": {
+            "description": "The withdrawal was rejected on its merits (e.g. insufficient balance).\nThe body carries `withdraw_id` and `error`.\n",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/WithdrawRejected"
+                }
+              }
+            }
+          },
+          "429": {
+            "$ref": "#/components/responses/Error429Response"
+          },
+          "500": {
+            "$ref": "#/components/responses/Error500Response"
+          }
+        }
+      }
+    },
+    "/v1/account/internal-transfer": {
+      "post": {
+        "operationId": "internalTransfer",
+        "summary": "Internal Transfer",
+        "security": [],
+        "x-mint": {
+          "content": "<Badge color=\"gray\" size=\"md\">Request Weight: **1**</Badge>"
+        },
+        "description": "Submit a signed internal ledger transfer between two exchange accounts.\nRequires proxy signature using the standard signed-op flow.\n",
+        "requestBody": {
+          "description": "Internal transfer request.",
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/InternalTransferRequest"
+              },
+              "examples": {
+                "transfer": {
+                  "summary": "Transfer USDC to another account",
+                  "value": {
+                    "op": {
+                      "type": "internalTransfer",
+                      "args": {
+                        "account": "0xf39Fd6e51aad88F6F4ce6aB8827279cffFb92266",
+                        "token": "0xaf88d065e77c8cc2239327c5edb3a432268e5831",
+                        "amount": "100.00",
+                        "to": "0x70997970C51812dc3A010C7d01b50e0d17dc79C8"
+                      }
+                    },
+                    "sig": "0x5a6b7c8d9e0f1a2b3c4d5e6f7a8b9c0d1e2f3a4b5c6d7e8f9a0b1c2d3e4f5a6b7c8d9e0f1a2b3c4d5e6f7a8b9c0d1e2f3a4b5c6d7e8f9a0b1c2d3e4f5a1c",
+                    "salt": 555555555,
+                    "ts": 1767000014000,
+                    "label": "ops-rebalance"
+                  }
+                }
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "The accepted transfer, carrying its `transfer_id`.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/InternalTransferAccepted"
+                }
+              }
+            }
+          },
+          "400": {
+            "$ref": "#/components/responses/Error400Response"
+          },
+          "422": {
+            "description": "The transfer was rejected on its merits (e.g. insufficient balance,\ntransfer to self). The body carries `transfer_id` and `error`.\n",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/InternalTransferRejected"
+                }
+              }
+            }
+          },
+          "429": {
+            "$ref": "#/components/responses/Error429Response"
+          },
+          "500": {
+            "$ref": "#/components/responses/Error500Response"
+          }
+        }
+      }
+    },
+    "/v1/account/deposits": {
+      "get": {
+        "operationId": "getDeposits",
+        "summary": "Get Deposits",
+        "security": [
+          {
+            "polymarket_proxy": [],
+            "polymarket_secret": []
+          }
+        ],
+        "x-mint": {
+          "content": "<Badge color=\"gray\" size=\"md\">Request Weight: **10**</Badge>"
+        },
+        "description": "Get deposit history for the authenticated account.\nIf no end time is provided, the current time will be used.\nMaximum of 100 entries returned per request.\n",
+        "parameters": [
+          {
+            "name": "deposit_status",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "$ref": "#/components/schemas/deposit_status"
+            }
+          },
+          {
+            "name": "hash",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "$ref": "#/components/schemas/hash"
+            }
+          },
+          {
+            "name": "start_timestamp",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "$ref": "#/components/schemas/start_timestamp"
+            }
+          },
+          {
+            "name": "end_timestamp",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "$ref": "#/components/schemas/end_timestamp"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Deposit history response.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Deposits"
+                }
+              }
+            }
+          },
+          "400": {
+            "$ref": "#/components/responses/Error400Response"
+          },
+          "401": {
+            "$ref": "#/components/responses/Error401Response"
+          },
+          "429": {
+            "$ref": "#/components/responses/Error429Response"
+          },
+          "500": {
+            "$ref": "#/components/responses/Error500Response"
+          }
+        }
+      }
+    },
+    "/v1/account/internal-transfers": {
+      "get": {
+        "operationId": "getInternalTransfers",
+        "summary": "Get Internal Transfers",
+        "security": [
+          {
+            "polymarket_proxy": [],
+            "polymarket_secret": []
+          }
+        ],
+        "x-mint": {
+          "content": "<Badge color=\"gray\" size=\"md\">Request Weight: **10**</Badge>"
+        },
+        "description": "Get settled internal transfer history for the authenticated account.\nReturns both inbound and outbound transfers.\n",
+        "parameters": [
+          {
+            "name": "start_timestamp",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "$ref": "#/components/schemas/start_timestamp"
+            }
+          },
+          {
+            "name": "end_timestamp",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "$ref": "#/components/schemas/end_timestamp"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Internal transfer history response.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/InternalTransfers"
+                }
+              }
+            }
+          },
+          "400": {
+            "$ref": "#/components/responses/Error400Response"
+          },
+          "401": {
+            "$ref": "#/components/responses/Error401Response"
+          },
+          "429": {
+            "$ref": "#/components/responses/Error429Response"
+          },
+          "500": {
+            "$ref": "#/components/responses/Error500Response"
+          }
+        }
+      }
+    },
+    "/v1/account/withdrawals": {
+      "get": {
+        "operationId": "getWithdrawals",
+        "summary": "Get Withdrawals",
+        "security": [
+          {
+            "polymarket_proxy": [],
+            "polymarket_secret": []
+          }
+        ],
+        "x-mint": {
+          "content": "<Badge color=\"gray\" size=\"md\">Request Weight: **10**</Badge>"
+        },
+        "description": "Get withdrawal history for the authenticated account.\nIf no end time is provided, the current time will be used.\nMaximum of 100 entries returned per request.\n",
+        "parameters": [
+          {
+            "name": "withdrawal_status",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "$ref": "#/components/schemas/withdrawal_status"
+            }
+          },
+          {
+            "name": "hash",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "$ref": "#/components/schemas/hash"
+            }
+          },
+          {
+            "name": "start_timestamp",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "$ref": "#/components/schemas/start_timestamp"
+            }
+          },
+          {
+            "name": "end_timestamp",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "$ref": "#/components/schemas/end_timestamp"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Withdrawal history response.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Withdrawals"
+                }
+              }
+            }
+          },
+          "400": {
+            "$ref": "#/components/responses/Error400Response"
+          },
+          "401": {
+            "$ref": "#/components/responses/Error401Response"
+          },
+          "429": {
+            "$ref": "#/components/responses/Error429Response"
+          },
+          "500": {
+            "$ref": "#/components/responses/Error500Response"
+          }
+        }
+      }
+    },
+    "/v1/account/stats": {
+      "get": {
+        "operationId": "getAccountStats",
+        "summary": "Get Account Stats",
+        "security": [
+          {
+            "polymarket_proxy": [],
+            "polymarket_secret": []
+          }
+        ],
+        "x-mint": {
+          "content": "<Badge color=\"gray\" size=\"md\">Request Weight: **2**</Badge>"
+        },
+        "description": "Get the authenticated account's 7-day trading stats (taker volume, maker volume,\naccount maker share, and entity maker share when applicable).\nStats are cached by UTC day and may be stale by up to 24 hours.\n",
+        "responses": {
+          "200": {
+            "description": "Account stats response.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AccountStats"
+                }
+              }
+            }
+          },
+          "401": {
+            "$ref": "#/components/responses/Error401Response"
+          },
+          "429": {
+            "$ref": "#/components/responses/Error429Response"
+          },
+          "500": {
+            "$ref": "#/components/responses/Error500Response"
+          }
+        }
+      }
+    },
+    "/v1/account/limits": {
+      "get": {
+        "operationId": "getAccountLimits",
+        "summary": "Get Account Limits",
+        "security": [
+          {
+            "polymarket_proxy": [],
+            "polymarket_secret": []
+          }
+        ],
+        "x-mint": {
+          "content": "<Badge color=\"gray\" size=\"md\">Request Weight: **2**</Badge>"
+        },
+        "description": "Get the authenticated account's effective rate-limit allowances for its current\nvolume-based tier: order-action rate, open-order cap, and the display-only\nmessages-per-minute figure. `open_orders` reflects the account's current live\nopen-order count; the rate-usage counters (`actions_per_minute`,\n`actions_burst`, and `reset`) are not tracked here and are reported as 0.\n",
+        "responses": {
+          "200": {
+            "description": "Account limits response.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AccountLimits"
+                }
+              }
+            }
+          },
+          "401": {
+            "$ref": "#/components/responses/Error401Response"
+          },
+          "429": {
+            "$ref": "#/components/responses/Error429Response"
+          },
+          "500": {
+            "$ref": "#/components/responses/Error500Response"
+          }
+        }
+      }
+    },
+    "/v1/account/rewards": {
+      "get": {
+        "operationId": "getAccountRewards",
+        "summary": "Get Account Rewards",
+        "security": [
+          {
+            "polymarket_proxy": [],
+            "polymarket_secret": []
+          }
+        ],
+        "x-mint": {
+          "content": "<Badge color=\"gray\" size=\"md\">Request Weight: **2**</Badge>"
+        },
+        "description": "Get per-instrument daily liquidity reward shares for the authenticated account.\nReward periods run from 12:00 UTC to 12:00 UTC and are labeled by their UTC end date.\nOI rewards pay 6% APR on the account's full daily average gross OI across all\ninstruments when the combined daily average gross OI of its rewards entity is\nat least $1M. Accounts without an entity mapping qualify independently.\nThe first reward period starts at 2026-05-08 12:00 UTC. If no date range is provided,\nthe latest computed reward period is returned.\n",
+        "parameters": [
+          {
+            "name": "date",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "$ref": "#/components/schemas/date"
+            }
+          },
+          {
+            "name": "start_date",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "$ref": "#/components/schemas/start_date"
+            }
+          },
+          {
+            "name": "end_date",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "$ref": "#/components/schemas/end_date"
+            }
+          },
+          {
+            "name": "limit",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "$ref": "#/components/schemas/limit"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Account rewards response.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AccountRewards"
+                }
+              }
+            }
+          },
+          "400": {
+            "$ref": "#/components/responses/Error400Response"
+          },
+          "401": {
+            "$ref": "#/components/responses/Error401Response"
+          },
+          "429": {
+            "$ref": "#/components/responses/Error429Response"
+          },
+          "500": {
+            "$ref": "#/components/responses/Error500Response"
+          }
+        }
+      }
+    },
+    "/v1/account/config": {
+      "get": {
+        "operationId": "getConfig",
+        "summary": "Get Instrument Config",
+        "security": [
+          {
+            "polymarket_proxy": [],
+            "polymarket_secret": []
+          }
+        ],
+        "x-mint": {
+          "content": "<Badge color=\"gray\" size=\"md\">Request Weight: **2**</Badge>"
+        },
+        "description": "Get per-instrument configuration (leverage and margin mode) for the authenticated account.",
+        "parameters": [
+          {
+            "name": "instrument_id",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "$ref": "#/components/schemas/instrument_id"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Instrument config response.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "$ref": "#/components/schemas/AccountConfig"
+                  }
+                }
+              }
+            }
+          },
+          "400": {
+            "$ref": "#/components/responses/Error400Response"
+          },
+          "401": {
+            "$ref": "#/components/responses/Error401Response"
+          },
+          "429": {
+            "$ref": "#/components/responses/Error429Response"
+          },
+          "500": {
+            "$ref": "#/components/responses/Error500Response"
+          }
+        }
+      }
+    },
+    "/v1/account/auto-cancel": {
+      "get": {
+        "operationId": "getAutoCancel",
+        "summary": "Get Auto-Cancel Status",
+        "security": [
+          {
+            "polymarket_proxy": [],
+            "polymarket_secret": []
+          }
+        ],
+        "x-mint": {
+          "content": "<Badge color=\"gray\" size=\"md\">Request Weight: **1**</Badge>"
+        },
+        "description": "Get the current auto-cancel dead-man-switch status for the authenticated\naccount, including the armed deadline, today's trigger count, and when\nthe daily counter resets.\n",
+        "responses": {
+          "200": {
+            "description": "Auto-cancel status response.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AutoCancelStatus"
+                }
+              }
+            }
+          },
+          "401": {
+            "$ref": "#/components/responses/Error401Response"
+          },
+          "429": {
+            "$ref": "#/components/responses/Error429Response"
+          },
+          "500": {
+            "$ref": "#/components/responses/Error500Response"
+          }
+        }
+      }
+    },
+    "/v1/account/invite": {
+      "post": {
+        "operationId": "createAccountInvite",
+        "summary": "Create Account Invite",
+        "security": [
+          {
+            "polymarket_proxy": [],
+            "polymarket_secret": []
+          }
+        ],
+        "x-mint": {
+          "content": "<Badge color=\"gray\" size=\"md\">Request Weight: **1**</Badge>"
+        },
+        "description": "Create or return the authenticated account's primary invite code. The call\nis idempotent for accounts that already have a primary invite code.\n",
+        "requestBody": {
+          "description": "Empty invite creation request.",
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/CreateInviteRequest"
+              },
+              "examples": {
+                "createAccountInvite": {
+                  "summary": "Create or get the authenticated account invite code",
+                  "value": {}
+                }
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Account invite response.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CreateInviteResponse"
+                }
+              }
+            }
+          },
+          "400": {
+            "$ref": "#/components/responses/Error400Response"
+          },
+          "401": {
+            "$ref": "#/components/responses/Error401Response"
+          },
+          "429": {
+            "$ref": "#/components/responses/Error429Response"
+          },
+          "500": {
+            "$ref": "#/components/responses/Error500Response"
+          }
+        }
+      }
+    },
+    "/v1/account/referral": {
+      "get": {
+        "operationId": "getAccountReferral",
+        "summary": "Get Account Referral",
+        "security": [
+          {
+            "polymarket_proxy": [],
+            "polymarket_secret": []
+          }
+        ],
+        "x-mint": {
+          "content": "<Badge color=\"gray\" size=\"md\">Request Weight: **1**</Badge>"
+        },
+        "description": "Get the authenticated account's invite code, parent referral code, direct\nreferral count, and fee share rate.\n",
+        "responses": {
+          "200": {
+            "description": "Account referral response.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AccountReferral"
+                }
+              }
+            }
+          },
+          "401": {
+            "$ref": "#/components/responses/Error401Response"
+          },
+          "429": {
+            "$ref": "#/components/responses/Error429Response"
+          },
+          "500": {
+            "$ref": "#/components/responses/Error500Response"
+          }
+        }
+      },
+      "post": {
+        "operationId": "applyReferral",
+        "summary": "Apply Referral Code",
+        "security": [
+          {
+            "polymarket_proxy": [],
+            "polymarket_secret": []
+          }
+        ],
+        "x-mint": {
+          "content": "<Badge color=\"gray\" size=\"md\">Request Weight: **1**</Badge>"
+        },
+        "description": "Apply a referral code to the authenticated account after signup. Accounts\ncan only apply a referral code if they do not already have one.\n",
+        "requestBody": {
+          "required": true,
+          "description": "Referral code to apply.",
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/AccountReferralRequest"
+              },
+              "examples": {
+                "applyReferral": {
+                  "summary": "Apply a referral code",
+                  "value": {
+                    "code": "ABC123"
+                  }
+                }
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Referral code accepted.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/GenericAccepted"
+                }
+              }
+            }
+          },
+          "400": {
+            "$ref": "#/components/responses/Error400Response"
+          },
+          "401": {
+            "$ref": "#/components/responses/Error401Response"
+          },
+          "429": {
+            "$ref": "#/components/responses/Error429Response"
+          },
+          "500": {
+            "$ref": "#/components/responses/Error500Response"
+          }
+        }
+      }
+    }
+  },
+  "components": {
+    "securitySchemes": {
+      "polymarket_proxy": {
+        "type": "apiKey",
+        "name": "POLYMARKET-PROXY",
+        "in": "header",
+        "description": "Proxy address"
+      },
+      "polymarket_secret": {
+        "type": "apiKey",
+        "name": "POLYMARKET-SECRET",
+        "in": "header",
+        "description": "Correponding proxy secret"
+      }
+    },
+    "schemas": {
+      "error": {
+        "type": "string",
+        "description": "Error identifier. For domain rejections and transport errors (`401`/`404`/`429`/`500`) this is a stable, machine-readable snake_case identifier that is part of the API contract and safe to branch on, e.g. `insufficient_margin`, `insufficient_balance`, `order_not_found`, `reduce_only_invalid`, `unauthorized`, `not_found`. For `400` it is a human-readable validation detail whose wording may change. See the Error handling guide for the domain identifiers. (Post-only / Fill-or-Kill outcomes are order statuses such as `post_only_rejected`, not rejections.)",
+        "example": "insufficient_margin"
+      },
+      "Error429": {
+        "title": "Error429",
+        "type": "object",
+        "required": [
+          "status",
+          "error"
+        ],
+        "properties": {
+          "status": {
+            "type": "string",
+            "enum": [
+              "err"
+            ]
+          },
+          "error": {
+            "$ref": "#/components/schemas/error"
+          }
+        }
+      },
+      "Error500": {
+        "title": "Error500",
+        "type": "object",
+        "required": [
+          "status",
+          "error"
+        ],
+        "properties": {
+          "status": {
+            "type": "string",
+            "enum": [
+              "err"
+            ]
+          },
+          "error": {
+            "$ref": "#/components/schemas/error"
+          }
+        }
+      },
+      "time": {
+        "type": "integer",
+        "description": "Timestamp in milliseconds",
+        "example": 1767225600000
+      },
+      "Time": {
+        "type": "object",
+        "required": [
+          "time"
+        ],
+        "properties": {
+          "time": {
+            "$ref": "#/components/schemas/time"
+          }
+        }
+      },
+      "name": {
+        "type": "string",
+        "description": "Exchange name used in the EIP-712 domain.",
+        "example": "Polymarket"
+      },
+      "version": {
+        "type": "string",
+        "description": "Exchange version used in the EIP-712 domain.",
+        "example": "1"
+      },
+      "chain_id": {
+        "type": "integer",
+        "format": "uint32",
+        "description": "Chain ID of the network the exchange is deployed on.",
+        "example": 137
+      },
+      "contract": {
+        "type": "string",
+        "description": "Verifying contract address or the EIP-712 domain.",
+        "example": "0x1234567890abcdef1234567890abcdef12345678"
+      },
+      "Exchange": {
+        "type": "object",
+        "required": [
+          "name",
+          "version",
+          "chain_id",
+          "contract"
+        ],
+        "properties": {
+          "name": {
+            "$ref": "#/components/schemas/name"
+          },
+          "version": {
+            "$ref": "#/components/schemas/version"
+          },
+          "chain_id": {
+            "$ref": "#/components/schemas/chain_id"
+          },
+          "contract": {
+            "$ref": "#/components/schemas/contract"
+          }
+        }
+      },
+      "asset": {
+        "type": "string",
+        "description": "Asset name",
+        "example": "USDC"
+      },
+      "address": {
+        "type": "string",
+        "description": "Address",
+        "example": "0x1234567890abcdef1234567890abcdef12345678"
+      },
+      "decimals": {
+        "type": "integer",
+        "description": "Asset decimals",
+        "example": 6
+      },
+      "collateral_ratio": {
+        "type": "string",
+        "description": "Collateral ratio",
+        "example": "1.00"
+      },
+      "withdrawal_fee": {
+        "type": "string",
+        "description": "Withdrawal transaction fee in decimalized asset units",
+        "example": "5.00"
+      },
+      "Asset": {
+        "type": "object",
+        "required": [
+          "asset",
+          "address",
+          "decimals",
+          "collateral_ratio",
+          "withdrawal_fee"
+        ],
+        "properties": {
+          "asset": {
+            "$ref": "#/components/schemas/asset"
+          },
+          "address": {
+            "$ref": "#/components/schemas/address"
+          },
+          "decimals": {
+            "$ref": "#/components/schemas/decimals"
+          },
+          "collateral_ratio": {
+            "$ref": "#/components/schemas/collateral_ratio"
+          },
+          "withdrawal_fee": {
+            "$ref": "#/components/schemas/withdrawal_fee"
+          }
+        }
+      },
+      "instrument_id": {
+        "type": "integer",
+        "description": "Instrument ID"
+      },
+      "instrument_type": {
+        "type": "string",
+        "description": "Instrument type",
+        "enum": [
+          "perpetual"
+        ]
+      },
+      "category": {
+        "type": "string",
+        "description": "Instrument category",
+        "enum": [
+          "equity",
+          "commodity",
+          "index",
+          "crypto"
+        ]
+      },
+      "symbol": {
+        "type": "string",
+        "description": "Instrument symbol",
+        "example": "NVDA-USDC"
+      },
+      "base_asset": {
+        "type": "string",
+        "description": "Base asset name",
+        "example": "NVDA"
+      },
+      "quote_asset": {
+        "type": "string",
+        "description": "Quote asset name",
+        "example": "USDC"
+      },
+      "funding_interval": {
+        "type": "string",
+        "description": "Funding interval",
+        "example": "1h"
+      },
+      "quantity_decimals": {
+        "type": "integer",
+        "description": "Number of decimal places for quantity.",
+        "example": 2
+      },
+      "price_decimals": {
+        "type": "integer",
+        "description": "Number of decimal places for price. Non-integer prices have a maximum of 5 significant figures; integer prices are allowed regardless of significant figures.",
+        "example": 2
+      },
+      "price_bounds": {
+        "type": "string",
+        "description": "Price bounds percentage",
+        "example": "0.05"
+      },
+      "liquidation_fee": {
+        "type": "string",
+        "description": "Liquidation fee rate",
+        "example": "0.025"
+      },
+      "max_order_count": {
+        "type": "integer",
+        "description": "Maximum open order count",
+        "example": 200
+      },
+      "min_notional": {
+        "type": "string",
+        "description": "Minimum notional value in USD",
+        "example": "1.00"
+      },
+      "max_market_notional": {
+        "type": "string",
+        "description": "Maximum market order notional value in USD",
+        "example": "1000000.00"
+      },
+      "max_limit_notional": {
+        "type": "string",
+        "description": "Maximum limit order notional value in USD",
+        "example": "10000000.00"
+      },
+      "max_leverage": {
+        "type": "integer",
+        "description": "Maximum leverage",
+        "example": 20
+      },
+      "lower_bound": {
+        "type": "string",
+        "description": "Position size lower bound",
+        "example": "0"
+      },
+      "RiskTier": {
+        "type": "object",
+        "required": [
+          "lower_bound",
+          "max_leverage"
+        ],
+        "properties": {
+          "lower_bound": {
+            "$ref": "#/components/schemas/lower_bound"
+          },
+          "max_leverage": {
+            "$ref": "#/components/schemas/max_leverage"
+          }
+        }
+      },
+      "Instrument": {
+        "type": "object",
+        "required": [
+          "instrument_id",
+          "instrument_type",
+          "category",
+          "symbol",
+          "base_asset",
+          "quote_asset",
+          "funding_interval",
+          "quantity_decimals",
+          "price_decimals",
+          "price_bounds",
+          "liquidation_fee",
+          "max_order_count",
+          "min_notional",
+          "max_market_notional",
+          "max_limit_notional",
+          "max_leverage",
+          "risk_tiers"
+        ],
+        "properties": {
+          "instrument_id": {
+            "$ref": "#/components/schemas/instrument_id"
+          },
+          "instrument_type": {
+            "$ref": "#/components/schemas/instrument_type"
+          },
+          "category": {
+            "$ref": "#/components/schemas/category"
+          },
+          "symbol": {
+            "$ref": "#/components/schemas/symbol"
+          },
+          "base_asset": {
+            "$ref": "#/components/schemas/base_asset"
+          },
+          "quote_asset": {
+            "$ref": "#/components/schemas/quote_asset"
+          },
+          "funding_interval": {
+            "$ref": "#/components/schemas/funding_interval"
+          },
+          "quantity_decimals": {
+            "$ref": "#/components/schemas/quantity_decimals"
+          },
+          "price_decimals": {
+            "$ref": "#/components/schemas/price_decimals"
+          },
+          "price_bounds": {
+            "$ref": "#/components/schemas/price_bounds"
+          },
+          "liquidation_fee": {
+            "$ref": "#/components/schemas/liquidation_fee"
+          },
+          "max_order_count": {
+            "$ref": "#/components/schemas/max_order_count"
+          },
+          "min_notional": {
+            "$ref": "#/components/schemas/min_notional"
+          },
+          "max_market_notional": {
+            "$ref": "#/components/schemas/max_market_notional"
+          },
+          "max_limit_notional": {
+            "$ref": "#/components/schemas/max_limit_notional"
+          },
+          "max_leverage": {
+            "$ref": "#/components/schemas/max_leverage"
+          },
+          "risk_tiers": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/RiskTier"
+            }
+          }
+        }
+      },
+      "Error400": {
+        "title": "Error400",
+        "type": "object",
+        "required": [
+          "status",
+          "error"
+        ],
+        "properties": {
+          "status": {
+            "type": "string",
+            "enum": [
+              "err"
+            ]
+          },
+          "error": {
+            "$ref": "#/components/schemas/error"
+          }
+        }
+      },
+      "index_price": {
+        "type": "string",
+        "description": "Index price",
+        "example": "100.00"
+      },
+      "mark_price": {
+        "type": "string",
+        "description": "Mark price",
+        "example": "100.00"
+      },
+      "last_price": {
+        "type": "string",
+        "description": "Last traded price",
+        "example": "100.00"
+      },
+      "mid_price": {
+        "type": "string",
+        "description": "Mid price",
+        "example": "100.00"
+      },
+      "open_interest": {
+        "type": "string",
+        "description": "Open interest in number of contracts",
+        "example": "10.00"
+      },
+      "funding_rate": {
+        "type": "string",
+        "description": "Funding rate",
+        "example": "0.0001"
+      },
+      "next_funding": {
+        "type": "integer",
+        "description": "Next funding timestamp in milliseconds",
+        "example": 1767225600000
+      },
+      "TickerData": {
+        "type": "object",
+        "required": [
+          "instrument_id",
+          "symbol",
+          "index_price",
+          "mark_price",
+          "last_price",
+          "mid_price",
+          "open_interest",
+          "funding_rate",
+          "next_funding"
+        ],
+        "properties": {
+          "instrument_id": {
+            "$ref": "#/components/schemas/instrument_id"
+          },
+          "symbol": {
+            "$ref": "#/components/schemas/symbol"
+          },
+          "index_price": {
+            "$ref": "#/components/schemas/index_price"
+          },
+          "mark_price": {
+            "$ref": "#/components/schemas/mark_price"
+          },
+          "last_price": {
+            "$ref": "#/components/schemas/last_price"
+          },
+          "mid_price": {
+            "$ref": "#/components/schemas/mid_price"
+          },
+          "open_interest": {
+            "$ref": "#/components/schemas/open_interest"
+          },
+          "funding_rate": {
+            "$ref": "#/components/schemas/funding_rate"
+          },
+          "next_funding": {
+            "$ref": "#/components/schemas/next_funding"
+          }
+        }
+      },
+      "timestamp": {
+        "type": "integer",
+        "description": "Timestamp in milliseconds",
+        "example": 1767225600000
+      },
+      "Ticker": {
+        "allOf": [
+          {
+            "$ref": "#/components/schemas/TickerData"
+          },
+          {
+            "type": "object",
+            "required": [
+              "timestamp"
+            ],
+            "properties": {
+              "timestamp": {
+                "$ref": "#/components/schemas/timestamp"
+              }
+            }
+          }
+        ]
+      },
+      "iid": {
+        "type": "integer",
+        "description": "Instrument ID",
+        "example": 1
+      },
+      "volume": {
+        "type": "string",
+        "description": "24-hour trading volume in contracts",
+        "example": "1000.00"
+      },
+      "open_price": {
+        "type": "string",
+        "description": "Opening price from 24 hours ago",
+        "example": "100.50"
+      },
+      "kline": {
+        "type": "array",
+        "description": "- `1767225600000` - Open time\n- `\"100.00\"` - Open price\n- `\"105.00\"` - High price\n- `\"99.00\"` - Low price\n- `\"102.00\"` - Close price\n- `\"500.00\"` - Volume (base unit)\n- `42` - Number of trades\n",
+        "example": [
+          1767225600000,
+          "100.00",
+          "105.00",
+          "99.00",
+          "102.00",
+          "500.00",
+          42
+        ]
+      },
+      "klines": {
+        "type": "array",
+        "items": {
+          "$ref": "#/components/schemas/kline"
+        },
+        "description": "Last 24-hour kline data"
+      },
+      "Statistic": {
+        "type": "object",
+        "required": [
+          "instrument_id",
+          "symbol",
+          "volume",
+          "open_price",
+          "klines"
+        ],
+        "properties": {
+          "instrument_id": {
+            "$ref": "#/components/schemas/iid"
+          },
+          "symbol": {
+            "$ref": "#/components/schemas/symbol"
+          },
+          "volume": {
+            "$ref": "#/components/schemas/volume"
+          },
+          "open_price": {
+            "$ref": "#/components/schemas/open_price"
+          },
+          "klines": {
+            "$ref": "#/components/schemas/klines"
+          }
+        }
+      },
+      "interval": {
+        "type": "string",
+        "description": "Kline interval",
+        "enum": [
+          "1s",
+          "1m",
+          "5m",
+          "15m",
+          "30m",
+          "1h",
+          "4h",
+          "6h",
+          "12h",
+          "1d",
+          "1w"
+        ]
+      },
+      "start_timestamp": {
+        "type": "integer",
+        "description": "Start timestamp in milliseconds",
+        "example": 1767225600000
+      },
+      "end_timestamp": {
+        "type": "integer",
+        "description": "End timestamp in milliseconds",
+        "example": 1767229200000
+      },
+      "more": {
+        "type": "boolean",
+        "description": "More data available"
+      },
+      "KlinesResponse": {
+        "type": "object",
+        "required": [
+          "data",
+          "more"
+        ],
+        "properties": {
+          "data": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/kline"
+            },
+            "maxItems": 1000
+          },
+          "more": {
+            "$ref": "#/components/schemas/more"
+          }
+        }
+      },
+      "best_bid_price": {
+        "type": "string",
+        "description": "Best bid price",
+        "example": "99.50"
+      },
+      "best_bid_quantity": {
+        "type": "string",
+        "description": "Best bid quantity",
+        "example": "10.00"
+      },
+      "best_ask_price": {
+        "type": "string",
+        "description": "Best ask price",
+        "example": "100.50"
+      },
+      "best_ask_quantity": {
+        "type": "string",
+        "description": "Best ask quantity",
+        "example": "10.00"
+      },
+      "ts": {
+        "type": "integer",
+        "description": "Request timestamp. Unix milliseconds for most operations; Unix seconds for withdrawals (must match the on-chain EIP-712 struct verified against block.timestamp).",
+        "example": 1767225600000
+      },
+      "BBO": {
+        "title": "BBO",
+        "type": "object",
+        "required": [
+          "instrument_id",
+          "bid_price",
+          "bid_quantity",
+          "ask_price",
+          "ask_quantity",
+          "timestamp"
+        ],
+        "properties": {
+          "instrument_id": {
+            "$ref": "#/components/schemas/iid"
+          },
+          "bid_price": {
+            "$ref": "#/components/schemas/best_bid_price"
+          },
+          "bid_quantity": {
+            "$ref": "#/components/schemas/best_bid_quantity"
+          },
+          "ask_price": {
+            "$ref": "#/components/schemas/best_ask_price"
+          },
+          "ask_quantity": {
+            "$ref": "#/components/schemas/best_ask_quantity"
+          },
+          "timestamp": {
+            "$ref": "#/components/schemas/ts"
+          }
+        }
+      },
+      "depth": {
+        "type": "integer",
+        "description": "Number of book levels to return",
+        "enum": [
+          10,
+          100,
+          500,
+          1000
+        ],
+        "default": 100
+      },
+      "level": {
+        "type": "array",
+        "items": {
+          "type": "string"
+        },
+        "maxItems": 2,
+        "description": "- `\"100.00\"` - Price\n- `\"10.00\"` - Quantity\n",
+        "example": [
+          "100.00",
+          "10.00"
+        ]
+      },
+      "sequence": {
+        "type": "integer",
+        "description": "Sequence number",
+        "example": 1234567890
+      },
+      "Book": {
+        "type": "object",
+        "required": [
+          "instrument_id",
+          "bids",
+          "asks",
+          "timestamp",
+          "sequence"
+        ],
+        "properties": {
+          "instrument_id": {
+            "$ref": "#/components/schemas/instrument_id"
+          },
+          "bids": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/level"
+            },
+            "description": "Bid levels"
+          },
+          "asks": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/level"
+            },
+            "description": "Ask levels"
+          },
+          "timestamp": {
+            "$ref": "#/components/schemas/timestamp"
+          },
+          "sequence": {
+            "$ref": "#/components/schemas/sequence"
+          }
+        }
+      },
+      "source": {
+        "type": "string",
+        "description": "Source name",
+        "example": "chainlink"
+      },
+      "weight": {
+        "type": "string",
+        "description": "Index constituent weight",
+        "example": "0.25"
+      },
+      "price": {
+        "type": "string",
+        "description": "Price",
+        "example": "100.00"
+      },
+      "IndexConstituent": {
+        "type": "object",
+        "required": [
+          "source",
+          "symbol",
+          "weight",
+          "price"
+        ],
+        "properties": {
+          "source": {
+            "$ref": "#/components/schemas/source"
+          },
+          "symbol": {
+            "$ref": "#/components/schemas/symbol"
+          },
+          "weight": {
+            "$ref": "#/components/schemas/weight"
+          },
+          "price": {
+            "$ref": "#/components/schemas/price"
+          }
+        }
+      },
+      "Index": {
+        "type": "object",
+        "required": [
+          "asset",
+          "index_price",
+          "constituents",
+          "ts"
+        ],
+        "properties": {
+          "asset": {
+            "$ref": "#/components/schemas/asset"
+          },
+          "index_price": {
+            "$ref": "#/components/schemas/index_price"
+          },
+          "constituents": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/IndexConstituent"
+            }
+          },
+          "ts": {
+            "$ref": "#/components/schemas/ts"
+          }
+        }
+      },
+      "tid": {
+        "type": "integer",
+        "description": "Trade ID",
+        "example": 1
+      },
+      "side": {
+        "type": "string",
+        "description": "Side",
+        "enum": [
+          "long",
+          "short"
+        ]
+      },
+      "p": {
+        "type": "string",
+        "description": "Price",
+        "example": "100.00"
+      },
+      "qty": {
+        "type": "string",
+        "description": "Quantity in no. of contracts",
+        "example": "10.00"
+      },
+      "hash": {
+        "type": "string",
+        "description": "On-chain transaction hash, \"0x\" if not yet mined",
+        "default": "0x",
+        "example": "0x1234567890abcdef1234567890abcdef1234567890abcdef1234567890abcdef"
+      },
+      "TradeData": {
+        "type": "object",
+        "required": [
+          "trade_id",
+          "instrument_id",
+          "side",
+          "price",
+          "quantity",
+          "timestamp",
+          "hash"
+        ],
+        "properties": {
+          "trade_id": {
+            "$ref": "#/components/schemas/tid"
+          },
+          "instrument_id": {
+            "$ref": "#/components/schemas/iid"
+          },
+          "side": {
+            "$ref": "#/components/schemas/side"
+          },
+          "price": {
+            "$ref": "#/components/schemas/p"
+          },
+          "quantity": {
+            "$ref": "#/components/schemas/qty"
+          },
+          "timestamp": {
+            "$ref": "#/components/schemas/ts"
+          },
+          "hash": {
+            "$ref": "#/components/schemas/hash"
+          }
+        }
+      },
+      "Trades": {
+        "type": "object",
+        "required": [
+          "data",
+          "more"
+        ],
+        "properties": {
+          "data": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/TradeData"
+            },
+            "description": "Public trades for the instrument"
+          },
+          "more": {
+            "$ref": "#/components/schemas/more"
+          }
+        }
+      },
+      "size": {
+        "type": "string",
+        "description": "Signed position size in no. of contracts (positive = long, negative = short)",
+        "example": "10.00"
+      },
+      "entry_price": {
+        "type": "string",
+        "description": "Average entry price",
+        "example": "2986.30"
+      },
+      "unrealized_pnl": {
+        "type": "string",
+        "description": "Unrealized PnL in USD",
+        "example": "-0.01"
+      },
+      "return_on_equity": {
+        "type": "string",
+        "description": "Return on equity as a decimal",
+        "example": "-0.0027"
+      },
+      "PublicPortfolioPosition": {
+        "type": "object",
+        "required": [
+          "instrument_id",
+          "symbol",
+          "size",
+          "entry_price",
+          "unrealized_pnl",
+          "return_on_equity"
+        ],
+        "properties": {
+          "instrument_id": {
+            "$ref": "#/components/schemas/instrument_id"
+          },
+          "symbol": {
+            "$ref": "#/components/schemas/symbol"
+          },
+          "size": {
+            "$ref": "#/components/schemas/size"
+          },
+          "entry_price": {
+            "$ref": "#/components/schemas/entry_price"
+          },
+          "unrealized_pnl": {
+            "$ref": "#/components/schemas/unrealized_pnl"
+          },
+          "return_on_equity": {
+            "$ref": "#/components/schemas/return_on_equity"
+          }
+        }
+      },
+      "equity": {
+        "type": "string",
+        "description": "Equity in USD",
+        "example": "10000.00"
+      },
+      "update_timestamp": {
+        "type": "integer",
+        "description": "Update timestamp in milliseconds",
+        "example": 1767225600000
+      },
+      "PublicPortfolio": {
+        "type": "object",
+        "required": [
+          "positions",
+          "equity",
+          "timestamp"
+        ],
+        "properties": {
+          "positions": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/PublicPortfolioPosition"
+            }
+          },
+          "equity": {
+            "$ref": "#/components/schemas/equity"
+          },
+          "timestamp": {
+            "$ref": "#/components/schemas/update_timestamp"
+          }
+        }
+      },
+      "fr": {
+        "type": "string",
+        "description": "Funding rate",
+        "example": "0.0001"
+      },
+      "FundingRate": {
+        "type": "object",
+        "required": [
+          "funding_rate",
+          "timestamp"
+        ],
+        "properties": {
+          "funding_rate": {
+            "$ref": "#/components/schemas/fr"
+          },
+          "timestamp": {
+            "$ref": "#/components/schemas/ts"
+          }
+        }
+      },
+      "FundingHistory": {
+        "type": "object",
+        "required": [
+          "data",
+          "more"
+        ],
+        "properties": {
+          "data": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/FundingRate"
+            }
+          },
+          "more": {
+            "$ref": "#/components/schemas/more"
+          }
+        }
+      },
+      "taker_fee_rate": {
+        "type": "string",
+        "description": "Default taker fee rate for the $0 volume tier. Actual rate scales down with the account's trailing 30-day volume tier.",
+        "example": "0.0004"
+      },
+      "maker_fee_rate": {
+        "type": "string",
+        "description": "Default maker fee rate for the $0 volume tier. Positive at lower tiers, zero at the $500M tier, and a rebate (negative) at the top tier.",
+        "example": "0.000125"
+      },
+      "FeeScheduleEntry": {
+        "type": "object",
+        "required": [
+          "instrument_type",
+          "category",
+          "taker_fee_rate",
+          "maker_fee_rate"
+        ],
+        "properties": {
+          "instrument_type": {
+            "$ref": "#/components/schemas/instrument_type"
+          },
+          "category": {
+            "$ref": "#/components/schemas/category"
+          },
+          "taker_fee_rate": {
+            "$ref": "#/components/schemas/taker_fee_rate"
+          },
+          "maker_fee_rate": {
+            "$ref": "#/components/schemas/maker_fee_rate"
+          }
+        }
+      },
+      "FeesInfo": {
+        "type": "object",
+        "required": [
+          "fee_schedule"
+        ],
+        "properties": {
+          "fee_schedule": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/FeeScheduleEntry"
+            }
+          }
+        }
+      },
+      "min_volume": {
+        "type": "string",
+        "description": "Minimum volume threshold for this tier",
+        "example": "0"
+      },
+      "rate_per_minute_limit": {
+        "type": "integer",
+        "description": "Maximum IP request weight per minute. In limit tiers, this is a legacy field and is not used for gateway enforcement.",
+        "example": 1200
+      },
+      "rate_burst_limit": {
+        "type": "integer",
+        "description": "Legacy limit-tier request-rate field. It is not used for gateway enforcement."
+      },
+      "actions_per_minute_limit": {
+        "type": "integer",
+        "description": "Maximum order action tokens per account per minute",
+        "example": 300
+      },
+      "actions_burst_limit": {
+        "type": "integer",
+        "description": "Additional account action allowance limit"
+      },
+      "open_orders_limit": {
+        "type": "integer",
+        "description": "Maximum number of open orders per account",
+        "example": 1000
+      },
+      "messages_per_minute": {
+        "type": "integer",
+        "description": "Display-only per-minute action/message allowance, equal to actions_per_minute_limit. Not separately configured or enforced.",
+        "example": 300
+      },
+      "LimitTier": {
+        "type": "object",
+        "required": [
+          "min_volume_14d",
+          "rate_per_minute_limit",
+          "rate_burst_limit",
+          "actions_per_minute_limit",
+          "actions_burst_limit",
+          "open_orders_limit",
+          "messages_per_minute"
+        ],
+        "properties": {
+          "min_volume_14d": {
+            "$ref": "#/components/schemas/min_volume"
+          },
+          "rate_per_minute_limit": {
+            "$ref": "#/components/schemas/rate_per_minute_limit"
+          },
+          "rate_burst_limit": {
+            "$ref": "#/components/schemas/rate_burst_limit"
+          },
+          "actions_per_minute_limit": {
+            "$ref": "#/components/schemas/actions_per_minute_limit"
+          },
+          "actions_burst_limit": {
+            "$ref": "#/components/schemas/actions_burst_limit"
+          },
+          "open_orders_limit": {
+            "$ref": "#/components/schemas/open_orders_limit"
+          },
+          "messages_per_minute": {
+            "$ref": "#/components/schemas/messages_per_minute"
+          }
+        }
+      },
+      "code": {
+        "type": "string",
+        "description": "Referral or invite code",
+        "example": "ABC123"
+      },
+      "InviteCheckResponse": {
+        "type": "object",
+        "required": [
+          "valid"
+        ],
+        "properties": {
+          "valid": {
+            "type": "boolean",
+            "description": "Whether the invite code can be used."
+          },
+          "error": {
+            "type": "string",
+            "description": "Present when the invite code is invalid or unusable."
+          }
+        }
+      },
+      "buy": {
+        "type": "boolean",
+        "description": "Is buy",
+        "example": true
+      },
+      "tif": {
+        "type": "string",
+        "description": "Time in force",
+        "enum": [
+          "gtc",
+          "ioc",
+          "fok"
+        ]
+      },
+      "po": {
+        "type": "boolean",
+        "description": "Post only",
+        "default": false,
+        "example": false
+      },
+      "ro": {
+        "type": "boolean",
+        "description": "Reduce only",
+        "example": false,
+        "default": false
+      },
+      "coid": {
+        "type": "string",
+        "description": "Client order ID",
+        "minLength": 32,
+        "maxLength": 32,
+        "pattern": "^[0-9a-f]{32}$",
+        "example": "550e8400e29b41d4a716446655440000"
+      },
+      "market": {
+        "type": "boolean",
+        "description": "Whether the trigger executes as a market order"
+      },
+      "trp": {
+        "type": "string",
+        "description": "Trigger price",
+        "example": "110.00"
+      },
+      "tpsl": {
+        "type": "string",
+        "description": "Trigger type",
+        "enum": [
+          "tp",
+          "sl"
+        ]
+      },
+      "CreateOrder": {
+        "type": "object",
+        "required": [
+          "iid",
+          "buy",
+          "qty"
+        ],
+        "properties": {
+          "iid": {
+            "$ref": "#/components/schemas/iid"
+          },
+          "buy": {
+            "$ref": "#/components/schemas/buy"
+          },
+          "p": {
+            "$ref": "#/components/schemas/p"
+          },
+          "qty": {
+            "$ref": "#/components/schemas/qty"
+          },
+          "tif": {
+            "$ref": "#/components/schemas/tif"
+          },
+          "po": {
+            "$ref": "#/components/schemas/po"
+          },
+          "ro": {
+            "$ref": "#/components/schemas/ro"
+          },
+          "c": {
+            "$ref": "#/components/schemas/coid"
+          },
+          "tr": {
+            "type": "object",
+            "description": "Optional trigger attached to this order.",
+            "properties": {
+              "market": {
+                "$ref": "#/components/schemas/market"
+              },
+              "trp": {
+                "$ref": "#/components/schemas/trp"
+              },
+              "tpsl": {
+                "$ref": "#/components/schemas/tpsl"
+              }
+            }
+          }
+        }
+      },
+      "grp": {
+        "type": "string",
+        "description": "TPSL grouping",
+        "enum": [
+          "order",
+          "position"
+        ]
+      },
+      "OpCreateOrders": {
+        "type": "object",
+        "required": [
+          "type",
+          "args"
+        ],
+        "properties": {
+          "type": {
+            "type": "string",
+            "enum": [
+              "createOrders"
+            ]
+          },
+          "args": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/CreateOrder"
+            }
+          },
+          "grp": {
+            "$ref": "#/components/schemas/grp"
+          }
+        }
+      },
+      "sig": {
+        "type": "string",
+        "description": "Signature in hex format",
+        "example": "0x1234567890..."
+      },
+      "salt": {
+        "type": "integer",
+        "description": "Salt",
+        "example": 1234567890
+      },
+      "BaseOp": {
+        "type": "object",
+        "required": [
+          "sig",
+          "salt",
+          "ts"
+        ],
+        "properties": {
+          "sig": {
+            "$ref": "#/components/schemas/sig"
+          },
+          "salt": {
+            "$ref": "#/components/schemas/salt"
+          },
+          "ts": {
+            "$ref": "#/components/schemas/ts"
+          }
+        }
+      },
+      "exp": {
+        "type": "integer",
+        "description": "Command expiry timestamp in Unix milliseconds. If provided, it must be in the future and within the gateway's default command timeout. It can shorten request validity but cannot extend it. This is not an order auto-cancel time.",
+        "example": 1767225600000
+      },
+      "OrderRequest": {
+        "allOf": [
+          {
+            "type": "object",
+            "required": [
+              "op"
+            ],
+            "properties": {
+              "op": {
+                "$ref": "#/components/schemas/OpCreateOrders"
+              }
+            }
+          },
+          {
+            "$ref": "#/components/schemas/BaseOp"
+          },
+          {
+            "type": "object",
+            "properties": {
+              "exp": {
+                "$ref": "#/components/schemas/exp"
+              }
+            }
+          }
+        ]
+      },
+      "oid": {
+        "type": "integer",
+        "description": "Order ID",
+        "example": 1234567890
+      },
+      "OrderAccepted": {
+        "type": "object",
+        "required": [
+          "status",
+          "oid"
+        ],
+        "properties": {
+          "status": {
+            "type": "string",
+            "enum": [
+              "ok"
+            ]
+          },
+          "oid": {
+            "$ref": "#/components/schemas/oid"
+          },
+          "coid": {
+            "$ref": "#/components/schemas/coid",
+            "description": "Echoed only when the request carried a client_order_id."
+          }
+        }
+      },
+      "OrderRejected": {
+        "type": "object",
+        "required": [
+          "status",
+          "error"
+        ],
+        "properties": {
+          "status": {
+            "type": "string",
+            "enum": [
+              "err"
+            ]
+          },
+          "error": {
+            "$ref": "#/components/schemas/error"
+          },
+          "oid": {
+            "$ref": "#/components/schemas/oid"
+          },
+          "coid": {
+            "$ref": "#/components/schemas/coid"
+          }
+        }
+      },
+      "OrderResponse": {
+        "oneOf": [
+          {
+            "$ref": "#/components/schemas/OrderAccepted"
+          },
+          {
+            "$ref": "#/components/schemas/OrderRejected"
+          }
+        ]
+      },
+      "OpCancelOrders": {
+        "type": "object",
+        "required": [
+          "type",
+          "args"
+        ],
+        "properties": {
+          "type": {
+            "type": "string",
+            "enum": [
+              "cancelOrders"
+            ]
+          },
+          "args": {
+            "type": "array",
+            "description": "Array of order IDs to cancel. Cancelling an order that has attached\ntake-profit / stop-loss children (see `CreateOrder.tr`) cascades to\nthose children — they are cancelled with reason `ParentCancelled`.\n",
+            "items": {
+              "$ref": "#/components/schemas/oid"
+            }
+          }
+        }
+      },
+      "CancelRequest": {
+        "allOf": [
+          {
+            "type": "object",
+            "required": [
+              "op"
+            ],
+            "properties": {
+              "op": {
+                "$ref": "#/components/schemas/OpCancelOrders"
+              }
+            }
+          },
+          {
+            "$ref": "#/components/schemas/BaseOp"
+          },
+          {
+            "type": "object",
+            "properties": {
+              "exp": {
+                "$ref": "#/components/schemas/exp"
+              }
+            }
+          }
+        ]
+      },
+      "CancelAccepted": {
+        "type": "object",
+        "required": [
+          "status",
+          "oid"
+        ],
+        "properties": {
+          "status": {
+            "type": "string",
+            "enum": [
+              "ok"
+            ]
+          },
+          "oid": {
+            "$ref": "#/components/schemas/oid"
+          },
+          "coid": {
+            "$ref": "#/components/schemas/coid",
+            "description": "Echoed only when the request carried a client_order_id."
+          }
+        }
+      },
+      "CancelRejected": {
+        "type": "object",
+        "required": [
+          "status",
+          "error"
+        ],
+        "properties": {
+          "status": {
+            "type": "string",
+            "enum": [
+              "err"
+            ]
+          },
+          "oid": {
+            "$ref": "#/components/schemas/oid"
+          },
+          "coid": {
+            "$ref": "#/components/schemas/coid"
+          },
+          "error": {
+            "$ref": "#/components/schemas/error"
+          }
+        }
+      },
+      "CancelResponse": {
+        "oneOf": [
+          {
+            "$ref": "#/components/schemas/CancelAccepted"
+          },
+          {
+            "$ref": "#/components/schemas/CancelRejected"
+          }
+        ]
+      },
+      "OpCancelOrdersByCoid": {
+        "type": "object",
+        "required": [
+          "type",
+          "args"
+        ],
+        "properties": {
+          "type": {
+            "type": "string",
+            "enum": [
+              "cancelOrdersCOID"
+            ]
+          },
+          "args": {
+            "type": "array",
+            "description": "Array of client order IDs to cancel. Cancelling an order that has\nattached take-profit / stop-loss children (see `CreateOrder.tr`)\ncascades to those children — they are cancelled with reason\n`ParentCancelled`.\n",
+            "items": {
+              "$ref": "#/components/schemas/coid"
+            }
+          }
+        }
+      },
+      "CancelByCoidRequest": {
+        "allOf": [
+          {
+            "type": "object",
+            "required": [
+              "op"
+            ],
+            "properties": {
+              "op": {
+                "$ref": "#/components/schemas/OpCancelOrdersByCoid"
+              }
+            }
+          },
+          {
+            "$ref": "#/components/schemas/BaseOp"
+          },
+          {
+            "type": "object",
+            "properties": {
+              "exp": {
+                "$ref": "#/components/schemas/exp"
+              }
+            }
+          }
+        ]
+      },
+      "OpAutoCancel": {
+        "type": "object",
+        "required": [
+          "type",
+          "args"
+        ],
+        "properties": {
+          "type": {
+            "type": "string",
+            "enum": [
+              "autoCancel"
+            ]
+          },
+          "args": {
+            "type": "object",
+            "required": [
+              "time"
+            ],
+            "properties": {
+              "time": {
+                "$ref": "#/components/schemas/time"
+              }
+            }
+          }
+        }
+      },
+      "AutoCancelRequest": {
+        "allOf": [
+          {
+            "type": "object",
+            "required": [
+              "op"
+            ],
+            "properties": {
+              "op": {
+                "$ref": "#/components/schemas/OpAutoCancel"
+              }
+            }
+          },
+          {
+            "$ref": "#/components/schemas/BaseOp"
+          }
+        ]
+      },
+      "auto_cancel_deadline": {
+        "type": "integer",
+        "description": "Unix-ms deadline for the per-account auto-cancel dead-man-switch.\nZero means no schedule is armed. When the deadline elapses, every\nopen order on the account is cancelled and the schedule clears.\n",
+        "example": 1767000045000
+      },
+      "AutoCancelResponse": {
+        "description": "The effective auto-cancel schedule after the update. `deadline` echoes the\narmed Unix-ms time, or `0` when the schedule was cleared (`time: 0`).\n",
+        "type": "object",
+        "required": [
+          "status",
+          "deadline"
+        ],
+        "properties": {
+          "status": {
+            "type": "string",
+            "enum": [
+              "ok"
+            ]
+          },
+          "deadline": {
+            "$ref": "#/components/schemas/auto_cancel_deadline"
+          }
+        }
+      },
+      "Error404": {
+        "title": "Error404",
+        "type": "object",
+        "required": [
+          "status",
+          "error"
+        ],
+        "properties": {
+          "status": {
+            "type": "string",
+            "enum": [
+              "err"
+            ]
+          },
+          "error": {
+            "$ref": "#/components/schemas/error"
+          }
+        }
+      },
+      "GenericRejected": {
+        "type": "object",
+        "required": [
+          "status",
+          "error"
+        ],
+        "properties": {
+          "status": {
+            "type": "string",
+            "enum": [
+              "err"
+            ]
+          },
+          "error": {
+            "$ref": "#/components/schemas/error"
+          }
+        }
+      },
+      "lev": {
+        "type": "integer",
+        "description": "Leverage",
+        "example": 10
+      },
+      "cross": {
+        "type": "boolean",
+        "description": "Whether to use cross margin mode"
+      },
+      "OpUpdateLeverage": {
+        "type": "object",
+        "required": [
+          "type",
+          "args"
+        ],
+        "properties": {
+          "type": {
+            "type": "string",
+            "enum": [
+              "updateLeverage"
+            ]
+          },
+          "args": {
+            "type": "object",
+            "required": [
+              "iid",
+              "lev",
+              "cross"
+            ],
+            "properties": {
+              "iid": {
+                "$ref": "#/components/schemas/iid"
+              },
+              "lev": {
+                "$ref": "#/components/schemas/lev"
+              },
+              "cross": {
+                "$ref": "#/components/schemas/cross"
+              }
+            }
+          }
+        }
+      },
+      "LeverageRequest": {
+        "allOf": [
+          {
+            "type": "object",
+            "required": [
+              "op"
+            ],
+            "properties": {
+              "op": {
+                "$ref": "#/components/schemas/OpUpdateLeverage"
+              }
+            }
+          },
+          {
+            "$ref": "#/components/schemas/BaseOp"
+          }
+        ]
+      },
+      "LeverageResponse": {
+        "description": "The instrument's effective leverage configuration after the update.",
+        "type": "object",
+        "required": [
+          "status",
+          "instrument_id",
+          "leverage",
+          "cross"
+        ],
+        "properties": {
+          "status": {
+            "type": "string",
+            "enum": [
+              "ok"
+            ]
+          },
+          "instrument_id": {
+            "$ref": "#/components/schemas/iid"
+          },
+          "leverage": {
+            "$ref": "#/components/schemas/lev"
+          },
+          "cross": {
+            "$ref": "#/components/schemas/cross"
+          }
+        }
+      },
+      "owner": {
+        "type": "string",
+        "description": "Owner address in hex format",
+        "example": "0x1234567890abcdef1234567890abcdef12345678"
+      },
+      "proxy": {
+        "type": "string",
+        "description": "Proxy address in hex format",
+        "example": "0x70997970C51812dc3A010C7d01b50e0d17dc79C8"
+      },
+      "expiry": {
+        "type": "integer",
+        "description": "Expiry timestamp in milliseconds",
+        "example": 1767225600000
+      },
+      "OpCreateProxy": {
+        "type": "object",
+        "required": [
+          "type",
+          "args"
+        ],
+        "properties": {
+          "type": {
+            "type": "string",
+            "enum": [
+              "createProxy"
+            ]
+          },
+          "args": {
+            "type": "object",
+            "required": [
+              "owner",
+              "proxy",
+              "expiry"
+            ],
+            "properties": {
+              "owner": {
+                "$ref": "#/components/schemas/owner"
+              },
+              "proxy": {
+                "$ref": "#/components/schemas/proxy"
+              },
+              "expiry": {
+                "$ref": "#/components/schemas/expiry"
+              }
+            }
+          }
+        }
+      },
+      "label": {
+        "type": "string",
+        "description": "Human-readable label for a proxy key or internal transfer",
+        "example": "trading-bot"
+      },
+      "ProxyRequest": {
+        "allOf": [
+          {
+            "type": "object",
+            "required": [
+              "op"
+            ],
+            "properties": {
+              "op": {
+                "$ref": "#/components/schemas/OpCreateProxy"
+              }
+            }
+          },
+          {
+            "$ref": "#/components/schemas/BaseOp"
+          },
+          {
+            "type": "object",
+            "properties": {
+              "label": {
+                "$ref": "#/components/schemas/label"
+              },
+              "code": {
+                "$ref": "#/components/schemas/code"
+              }
+            }
+          }
+        ]
+      },
+      "secret": {
+        "type": "string",
+        "description": "API secret",
+        "example": "wJalrXUtnFEMI/K7MDENG/bPxRfiCYEXAMPLEKEY"
+      },
+      "ProxyResponse": {
+        "type": "object",
+        "required": [
+          "status",
+          "secret"
+        ],
+        "properties": {
+          "status": {
+            "type": "string",
+            "enum": [
+              "ok"
+            ]
+          },
+          "secret": {
+            "$ref": "#/components/schemas/secret"
+          }
+        }
+      },
+      "OpDeleteProxy": {
+        "type": "object",
+        "required": [
+          "type",
+          "args"
+        ],
+        "properties": {
+          "type": {
+            "type": "string",
+            "enum": [
+              "deleteProxy"
+            ]
+          },
+          "args": {
+            "type": "object",
+            "required": [
+              "proxy"
+            ],
+            "properties": {
+              "proxy": {
+                "$ref": "#/components/schemas/proxy"
+              }
+            }
+          }
+        }
+      },
+      "DeleteProxyRequest": {
+        "allOf": [
+          {
+            "type": "object",
+            "required": [
+              "op"
+            ],
+            "properties": {
+              "op": {
+                "$ref": "#/components/schemas/OpDeleteProxy"
+              }
+            }
+          },
+          {
+            "$ref": "#/components/schemas/BaseOp"
+          }
+        ]
+      },
+      "GenericAccepted": {
+        "type": "object",
+        "required": [
+          "status"
+        ],
+        "properties": {
+          "status": {
+            "type": "string",
+            "enum": [
+              "ok"
+            ]
+          }
+        }
+      },
+      "Key": {
+        "type": "object",
+        "required": [
+          "proxy",
+          "expiry"
+        ],
+        "properties": {
+          "proxy": {
+            "$ref": "#/components/schemas/proxy"
+          },
+          "label": {
+            "$ref": "#/components/schemas/label"
+          },
+          "expiry": {
+            "$ref": "#/components/schemas/expiry"
+          }
+        }
+      },
+      "Credentials": {
+        "type": "object",
+        "required": [
+          "address",
+          "keys"
+        ],
+        "properties": {
+          "address": {
+            "$ref": "#/components/schemas/address"
+          },
+          "keys": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/Key"
+            }
+          }
+        }
+      },
+      "Error401": {
+        "title": "Error401",
+        "type": "object",
+        "required": [
+          "status",
+          "error"
+        ],
+        "properties": {
+          "status": {
+            "type": "string",
+            "enum": [
+              "err"
+            ]
+          },
+          "error": {
+            "$ref": "#/components/schemas/error"
+          }
+        }
+      },
+      "order_id": {
+        "type": "integer",
+        "description": "Order ID"
+      },
+      "rest": {
+        "type": "string",
+        "description": "Resting quantity",
+        "example": "9.00"
+      },
+      "fill": {
+        "type": "string",
+        "description": "Filled quantity",
+        "example": "1.00"
+      },
+      "st": {
+        "type": "string",
+        "description": "Order status",
+        "example": "open"
+      },
+      "cts": {
+        "type": "integer",
+        "description": "Create timestamp in milliseconds",
+        "example": 1767225600000
+      },
+      "uts": {
+        "type": "integer",
+        "description": "Update timestamp in milliseconds",
+        "example": 1767225600000
+      },
+      "kind": {
+        "type": "string",
+        "description": "Conditional order type (TakeProfit / StopLoss)",
+        "enum": [
+          "tp",
+          "sl"
+        ]
+      },
+      "tr_scope": {
+        "type": "string",
+        "description": "How the conditional order sizes itself.\n- `order` - child of a parent entry (bracket / OCO ladder). Quantity is required.\n- `position` - attached to an open position. v1 always closes the full position (`qty` must be `\"0\"`).\n",
+        "enum": [
+          "order",
+          "position"
+        ]
+      },
+      "parent_oid": {
+        "type": "integer",
+        "description": "Parent entry order id. Optional — omit it (do not send `0`) when the parent is created in the same request (inline `CreateOrder.tpsl` or `CreateTpSlArgs.parent`); the gateway auto-wires the child to it. Set it only to attach an order-scoped leg to an existing resting order. Inline `CreateOrder.tpsl` rejects a non-zero value; position-scoped legs carry no parent.",
+        "example": 1234567890
+      },
+      "slip_bps": {
+        "type": "integer",
+        "minimum": 0,
+        "maximum": 10000,
+        "description": "Per-order market-trigger slippage cap in basis points. 0 = use the per-instrument default. Clamped to the instrument cap.",
+        "example": 1000
+      },
+      "TpSlOrderFields": {
+        "type": "object",
+        "description": "TP/SL-specific fields surfaced alongside the regular order shape.",
+        "required": [
+          "kind",
+          "scope",
+          "trp"
+        ],
+        "properties": {
+          "kind": {
+            "$ref": "#/components/schemas/kind"
+          },
+          "scope": {
+            "$ref": "#/components/schemas/tr_scope"
+          },
+          "trp": {
+            "$ref": "#/components/schemas/trp"
+          },
+          "parent_oid": {
+            "$ref": "#/components/schemas/parent_oid"
+          },
+          "armed_qty": {
+            "$ref": "#/components/schemas/qty",
+            "description": "Quantity armed at attach time (OCO) or `\"0\"` for position-based (sized at trigger time)."
+          },
+          "slip_bps": {
+            "$ref": "#/components/schemas/slip_bps"
+          }
+        }
+      },
+      "OrderData": {
+        "type": "object",
+        "required": [
+          "order_id",
+          "instrument_id",
+          "buy",
+          "price",
+          "quantity",
+          "tif",
+          "post_only",
+          "ro",
+          "status",
+          "resting_quantity",
+          "filled_quantity",
+          "created_timestamp",
+          "updated_timestamp"
+        ],
+        "properties": {
+          "order_id": {
+            "$ref": "#/components/schemas/oid"
+          },
+          "instrument_id": {
+            "$ref": "#/components/schemas/iid"
+          },
+          "buy": {
+            "$ref": "#/components/schemas/buy"
+          },
+          "price": {
+            "$ref": "#/components/schemas/p"
+          },
+          "quantity": {
+            "$ref": "#/components/schemas/qty"
+          },
+          "tif": {
+            "$ref": "#/components/schemas/tif"
+          },
+          "post_only": {
+            "$ref": "#/components/schemas/po"
+          },
+          "ro": {
+            "$ref": "#/components/schemas/ro"
+          },
+          "resting_quantity": {
+            "$ref": "#/components/schemas/rest"
+          },
+          "filled_quantity": {
+            "$ref": "#/components/schemas/fill"
+          },
+          "status": {
+            "$ref": "#/components/schemas/st"
+          },
+          "created_timestamp": {
+            "$ref": "#/components/schemas/cts"
+          },
+          "updated_timestamp": {
+            "$ref": "#/components/schemas/uts"
+          },
+          "client_order_id": {
+            "$ref": "#/components/schemas/coid"
+          },
+          "tpsl": {
+            "$ref": "#/components/schemas/TpSlOrderFields",
+            "description": "Conditional-order fields. Present only when the order is a TP/SL conditional order — `null`/omitted for regular orders."
+          }
+        }
+      },
+      "balance": {
+        "type": "string",
+        "description": "Total balance",
+        "example": "10000.00"
+      },
+      "value": {
+        "type": "string",
+        "description": "USD value",
+        "example": "10000.00"
+      },
+      "Balance": {
+        "type": "object",
+        "required": [
+          "asset",
+          "balance",
+          "value"
+        ],
+        "properties": {
+          "asset": {
+            "$ref": "#/components/schemas/asset"
+          },
+          "balance": {
+            "$ref": "#/components/schemas/balance"
+          },
+          "value": {
+            "$ref": "#/components/schemas/value"
+          }
+        }
+      },
+      "leverage": {
+        "type": "integer",
+        "description": "Leverage",
+        "example": 10
+      },
+      "initial_margin": {
+        "type": "string",
+        "description": "Initial margin in USD",
+        "example": "10.00"
+      },
+      "maintenance_margin_amount": {
+        "type": "string",
+        "description": "Maintenance margin amount",
+        "example": "100.00"
+      },
+      "position_value": {
+        "type": "string",
+        "description": "Notional position value in USD",
+        "example": "100.03"
+      },
+      "liquidation_price": {
+        "type": "string",
+        "description": "Liquidation price",
+        "example": "2866.27"
+      },
+      "cumulative_funding": {
+        "type": "string",
+        "description": "Cumulative funding paid/received in USD",
+        "example": "514.09"
+      },
+      "PortfolioPosition": {
+        "type": "object",
+        "required": [
+          "instrument_id",
+          "symbol",
+          "size",
+          "entry_price",
+          "leverage",
+          "cross",
+          "initial_margin",
+          "maintenance_margin",
+          "position_value",
+          "liquidation_price",
+          "unrealized_pnl",
+          "return_on_equity",
+          "cumulative_funding"
+        ],
+        "properties": {
+          "instrument_id": {
+            "$ref": "#/components/schemas/instrument_id"
+          },
+          "symbol": {
+            "$ref": "#/components/schemas/symbol"
+          },
+          "size": {
+            "$ref": "#/components/schemas/size"
+          },
+          "entry_price": {
+            "$ref": "#/components/schemas/entry_price"
+          },
+          "leverage": {
+            "$ref": "#/components/schemas/leverage"
+          },
+          "cross": {
+            "$ref": "#/components/schemas/cross"
+          },
+          "initial_margin": {
+            "$ref": "#/components/schemas/initial_margin"
+          },
+          "maintenance_margin": {
+            "$ref": "#/components/schemas/maintenance_margin_amount"
+          },
+          "position_value": {
+            "$ref": "#/components/schemas/position_value"
+          },
+          "liquidation_price": {
+            "$ref": "#/components/schemas/liquidation_price"
+          },
+          "unrealized_pnl": {
+            "$ref": "#/components/schemas/unrealized_pnl"
+          },
+          "return_on_equity": {
+            "$ref": "#/components/schemas/return_on_equity"
+          },
+          "cumulative_funding": {
+            "$ref": "#/components/schemas/cumulative_funding"
+          }
+        }
+      },
+      "total_account_value": {
+        "type": "string",
+        "description": "Total account value in USD (equity + unrealized PnL)",
+        "example": "13109.48"
+      },
+      "total_initial_margin": {
+        "type": "string",
+        "description": "Total initial margin in use across all positions",
+        "example": "4.97"
+      },
+      "total_maintenance_margin": {
+        "type": "string",
+        "description": "Total maintenance margin across all positions",
+        "example": "2.49"
+      },
+      "total_position_value": {
+        "type": "string",
+        "description": "Total notional position value in USD",
+        "example": "100.03"
+      },
+      "MarginSummary": {
+        "type": "object",
+        "required": [
+          "total_account_value",
+          "total_initial_margin",
+          "total_maintenance_margin",
+          "total_position_value"
+        ],
+        "properties": {
+          "total_account_value": {
+            "$ref": "#/components/schemas/total_account_value"
+          },
+          "total_initial_margin": {
+            "$ref": "#/components/schemas/total_initial_margin"
+          },
+          "total_maintenance_margin": {
+            "$ref": "#/components/schemas/total_maintenance_margin"
+          },
+          "total_position_value": {
+            "$ref": "#/components/schemas/total_position_value"
+          }
+        }
+      },
+      "withdrawable": {
+        "type": "string",
+        "description": "Withdrawable balance in USD",
+        "example": "13104.51"
+      },
+      "in_liquidation": {
+        "type": "boolean",
+        "description": "Whether the account is currently under liquidation"
+      },
+      "Portfolio": {
+        "type": "object",
+        "required": [
+          "positions",
+          "margin",
+          "withdrawable",
+          "in_liquidation",
+          "timestamp"
+        ],
+        "properties": {
+          "positions": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/PortfolioPosition"
+            }
+          },
+          "margin": {
+            "$ref": "#/components/schemas/MarginSummary"
+          },
+          "withdrawable": {
+            "$ref": "#/components/schemas/withdrawable"
+          },
+          "in_liquidation": {
+            "$ref": "#/components/schemas/in_liquidation"
+          },
+          "timestamp": {
+            "$ref": "#/components/schemas/update_timestamp"
+          }
+        }
+      },
+      "taker": {
+        "type": "boolean",
+        "description": "Whether this side was the taker"
+      },
+      "fee": {
+        "type": "string",
+        "description": "Fee amount for this trade side",
+        "example": "1.25"
+      },
+      "fea": {
+        "type": "string",
+        "description": "Fee asset name",
+        "example": "USDC"
+      },
+      "psz": {
+        "type": "string",
+        "description": "Position size before the fill",
+        "example": "26.86"
+      },
+      "pep": {
+        "type": "string",
+        "description": "Position entry price before the fill",
+        "example": "100.00"
+      },
+      "pnl": {
+        "type": "string",
+        "description": "PnL in USD",
+        "example": "100.00"
+      },
+      "liq": {
+        "type": "boolean",
+        "description": "Whether the fill was a liquidation"
+      },
+      "AccountTradeData": {
+        "type": "object",
+        "required": [
+          "trade_id",
+          "order_id",
+          "instrument_id",
+          "side",
+          "price",
+          "quantity",
+          "taker",
+          "fee",
+          "fee_asset",
+          "previous_size",
+          "previous_entry_price",
+          "pnl",
+          "timestamp",
+          "liquidation",
+          "hash"
+        ],
+        "properties": {
+          "trade_id": {
+            "$ref": "#/components/schemas/tid"
+          },
+          "order_id": {
+            "$ref": "#/components/schemas/oid"
+          },
+          "instrument_id": {
+            "$ref": "#/components/schemas/iid"
+          },
+          "side": {
+            "$ref": "#/components/schemas/side"
+          },
+          "price": {
+            "$ref": "#/components/schemas/p"
+          },
+          "quantity": {
+            "$ref": "#/components/schemas/qty"
+          },
+          "taker": {
+            "$ref": "#/components/schemas/taker"
+          },
+          "fee": {
+            "$ref": "#/components/schemas/fee"
+          },
+          "fee_asset": {
+            "$ref": "#/components/schemas/fea"
+          },
+          "previous_size": {
+            "$ref": "#/components/schemas/psz"
+          },
+          "previous_entry_price": {
+            "$ref": "#/components/schemas/pep"
+          },
+          "pnl": {
+            "$ref": "#/components/schemas/pnl"
+          },
+          "liquidation": {
+            "$ref": "#/components/schemas/liq"
+          },
+          "timestamp": {
+            "$ref": "#/components/schemas/ts"
+          },
+          "hash": {
+            "$ref": "#/components/schemas/hash"
+          }
+        }
+      },
+      "AccountTrades": {
+        "type": "object",
+        "required": [
+          "data",
+          "more"
+        ],
+        "properties": {
+          "data": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/AccountTradeData"
+            },
+            "description": "Account's trade history"
+          },
+          "more": {
+            "$ref": "#/components/schemas/more"
+          }
+        }
+      },
+      "EquityHistory": {
+        "type": "object",
+        "required": [
+          "data",
+          "more"
+        ],
+        "properties": {
+          "data": {
+            "type": "array",
+            "description": "- `1767225600000` - Timestamp\n- `\"10000.00\"` - Equity\n",
+            "items": {
+              "type": "array",
+              "example": [
+                1767225600000,
+                "10000.00"
+              ]
+            },
+            "maxItems": 1000
+          },
+          "more": {
+            "$ref": "#/components/schemas/more"
+          }
+        }
+      },
+      "pnl_interval": {
+        "type": "string",
+        "description": "PnL interval",
+        "enum": [
+          "1h",
+          "4h",
+          "1d",
+          "1w"
+        ]
+      },
+      "PnlHistory": {
+        "type": "object",
+        "required": [
+          "data",
+          "more"
+        ],
+        "properties": {
+          "data": {
+            "type": "array",
+            "description": "- `1767225600000` - Timestamp\n- `\"100.50\"` - PnL\n",
+            "items": {
+              "type": "array",
+              "example": [
+                1767225600000,
+                "100.50"
+              ]
+            },
+            "maxItems": 1000
+          },
+          "more": {
+            "$ref": "#/components/schemas/more"
+          }
+        }
+      },
+      "sz": {
+        "type": "string",
+        "description": "Signed position size in no. of contracts (positive = long, negative = short)",
+        "example": "10.00"
+      },
+      "fua": {
+        "type": "string",
+        "description": "Funding asset name",
+        "example": "USDC"
+      },
+      "fund": {
+        "type": "string",
+        "description": "Funding paid in USD",
+        "example": "1.00"
+      },
+      "AccountFundingData": {
+        "type": "object",
+        "required": [
+          "instrument_id",
+          "size",
+          "funding_rate",
+          "funding_asset",
+          "funding",
+          "timestamp"
+        ],
+        "properties": {
+          "instrument_id": {
+            "$ref": "#/components/schemas/iid"
+          },
+          "size": {
+            "$ref": "#/components/schemas/sz"
+          },
+          "funding_rate": {
+            "$ref": "#/components/schemas/fr"
+          },
+          "funding_asset": {
+            "$ref": "#/components/schemas/fua"
+          },
+          "funding": {
+            "$ref": "#/components/schemas/fund"
+          },
+          "timestamp": {
+            "$ref": "#/components/schemas/ts"
+          }
+        }
+      },
+      "AccountFundingHistory": {
+        "type": "object",
+        "required": [
+          "data",
+          "more"
+        ],
+        "properties": {
+          "data": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/AccountFundingData"
+            }
+          },
+          "more": {
+            "$ref": "#/components/schemas/more"
+          }
+        }
+      },
+      "account": {
+        "type": "string",
+        "description": "Account address in hex format",
+        "example": "0xf39Fd6e51aad88F6F4ce6aB8827279cffFb92266"
+      },
+      "token": {
+        "type": "string",
+        "description": "Token contract address in hex format",
+        "example": "0xaf88d065e77c8cc2239327c5edb3a432268e5831"
+      },
+      "amount": {
+        "type": "string",
+        "description": "Raw token amount including decimals. For withdrawals this matches the uint256 amount in the EIP-712 signature (e.g. \"100000000\" for 100 USDC with 6 decimals).",
+        "example": "100000000"
+      },
+      "to": {
+        "type": "string",
+        "description": "Destination address in hex format",
+        "example": "0x1234567890abcdef1234567890abcdef12345678"
+      },
+      "OpWithdraw": {
+        "type": "object",
+        "required": [
+          "type",
+          "args"
+        ],
+        "properties": {
+          "type": {
+            "type": "string",
+            "enum": [
+              "withdraw"
+            ]
+          },
+          "args": {
+            "type": "object",
+            "required": [
+              "account",
+              "token",
+              "amount",
+              "to"
+            ],
+            "properties": {
+              "account": {
+                "$ref": "#/components/schemas/account"
+              },
+              "token": {
+                "$ref": "#/components/schemas/token"
+              },
+              "amount": {
+                "$ref": "#/components/schemas/amount"
+              },
+              "to": {
+                "$ref": "#/components/schemas/to"
+              }
+            }
+          }
+        }
+      },
+      "WithdrawRequest": {
+        "allOf": [
+          {
+            "type": "object",
+            "required": [
+              "op"
+            ],
+            "properties": {
+              "op": {
+                "$ref": "#/components/schemas/OpWithdraw"
+              }
+            }
+          },
+          {
+            "$ref": "#/components/schemas/BaseOp"
+          }
+        ]
+      },
+      "withdraw_id": {
+        "type": "integer",
+        "description": "Withdraw ID"
+      },
+      "WithdrawAccepted": {
+        "type": "object",
+        "required": [
+          "status",
+          "withdraw_id"
+        ],
+        "properties": {
+          "status": {
+            "type": "string",
+            "enum": [
+              "ok"
+            ]
+          },
+          "withdraw_id": {
+            "$ref": "#/components/schemas/withdraw_id"
+          }
+        }
+      },
+      "WithdrawRejected": {
+        "type": "object",
+        "required": [
+          "status",
+          "withdraw_id",
+          "error"
+        ],
+        "properties": {
+          "status": {
+            "type": "string",
+            "enum": [
+              "err"
+            ]
+          },
+          "withdraw_id": {
+            "$ref": "#/components/schemas/withdraw_id"
+          },
+          "error": {
+            "$ref": "#/components/schemas/error"
+          }
+        }
+      },
+      "OpInternalTransfer": {
+        "type": "object",
+        "required": [
+          "type",
+          "args"
+        ],
+        "properties": {
+          "type": {
+            "type": "string",
+            "enum": [
+              "internalTransfer"
+            ]
+          },
+          "args": {
+            "type": "object",
+            "required": [
+              "account",
+              "token",
+              "amount",
+              "to"
+            ],
+            "properties": {
+              "account": {
+                "$ref": "#/components/schemas/account"
+              },
+              "token": {
+                "$ref": "#/components/schemas/token"
+              },
+              "amount": {
+                "$ref": "#/components/schemas/amount"
+              },
+              "to": {
+                "$ref": "#/components/schemas/to"
+              }
+            }
+          }
+        }
+      },
+      "InternalTransferRequest": {
+        "allOf": [
+          {
+            "type": "object",
+            "required": [
+              "op"
+            ],
+            "properties": {
+              "op": {
+                "$ref": "#/components/schemas/OpInternalTransfer"
+              }
+            }
+          },
+          {
+            "$ref": "#/components/schemas/BaseOp"
+          },
+          {
+            "type": "object",
+            "properties": {
+              "label": {
+                "$ref": "#/components/schemas/label"
+              }
+            }
+          }
+        ]
+      },
+      "transfer_id": {
+        "type": "integer",
+        "description": "Internal transfer ID"
+      },
+      "InternalTransferAccepted": {
+        "type": "object",
+        "required": [
+          "status",
+          "transfer_id"
+        ],
+        "properties": {
+          "status": {
+            "type": "string",
+            "enum": [
+              "ok"
+            ]
+          },
+          "transfer_id": {
+            "$ref": "#/components/schemas/transfer_id"
+          }
+        }
+      },
+      "InternalTransferRejected": {
+        "type": "object",
+        "required": [
+          "status",
+          "transfer_id",
+          "error"
+        ],
+        "properties": {
+          "status": {
+            "type": "string",
+            "enum": [
+              "err"
+            ]
+          },
+          "transfer_id": {
+            "$ref": "#/components/schemas/transfer_id"
+          },
+          "error": {
+            "$ref": "#/components/schemas/error"
+          }
+        }
+      },
+      "deposit_status": {
+        "type": "string",
+        "description": "Deposit status",
+        "enum": [
+          "pending",
+          "confirmed",
+          "removed"
+        ]
+      },
+      "from": {
+        "type": "string",
+        "description": "Sender address in hex format",
+        "example": "0x1234567890abcdef1234567890abcdef12345678"
+      },
+      "confirmations": {
+        "type": "integer",
+        "description": "Number of block confirmations",
+        "example": 12
+      },
+      "required_confirmations": {
+        "type": "integer",
+        "description": "Required number of block confirmations",
+        "example": 12
+      },
+      "created_timestamp": {
+        "type": "integer",
+        "description": "Creation timestamp in milliseconds",
+        "example": 1767225600000
+      },
+      "confirmed_timestamp": {
+        "type": "integer",
+        "description": "Confirmation timestamp in milliseconds",
+        "example": 1767225600000
+      },
+      "Deposit": {
+        "type": "object",
+        "required": [
+          "hash",
+          "asset",
+          "amount",
+          "status",
+          "from",
+          "to",
+          "confirmations",
+          "required_confirmations",
+          "created_timestamp"
+        ],
+        "properties": {
+          "hash": {
+            "$ref": "#/components/schemas/hash"
+          },
+          "asset": {
+            "$ref": "#/components/schemas/asset"
+          },
+          "amount": {
+            "$ref": "#/components/schemas/amount"
+          },
+          "from": {
+            "$ref": "#/components/schemas/from"
+          },
+          "to": {
+            "$ref": "#/components/schemas/to"
+          },
+          "status": {
+            "$ref": "#/components/schemas/deposit_status"
+          },
+          "confirmations": {
+            "$ref": "#/components/schemas/confirmations"
+          },
+          "required_confirmations": {
+            "$ref": "#/components/schemas/required_confirmations"
+          },
+          "created_timestamp": {
+            "$ref": "#/components/schemas/created_timestamp"
+          },
+          "confirmed_timestamp": {
+            "$ref": "#/components/schemas/confirmed_timestamp"
+          }
+        }
+      },
+      "Deposits": {
+        "type": "object",
+        "required": [
+          "data",
+          "more"
+        ],
+        "properties": {
+          "data": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/Deposit"
+            }
+          },
+          "more": {
+            "$ref": "#/components/schemas/more"
+          }
+        }
+      },
+      "direction": {
+        "type": "string",
+        "description": "Transfer direction relative to the authenticated account",
+        "enum": [
+          "in",
+          "out"
+        ]
+      },
+      "counterparty": {
+        "type": "string",
+        "description": "Counterparty account address in hex format",
+        "example": "0x1234567890abcdef1234567890abcdef12345678"
+      },
+      "InternalTransfer": {
+        "type": "object",
+        "required": [
+          "transfer_id",
+          "asset",
+          "amount",
+          "direction",
+          "counterparty",
+          "created_timestamp"
+        ],
+        "properties": {
+          "transfer_id": {
+            "$ref": "#/components/schemas/transfer_id"
+          },
+          "asset": {
+            "$ref": "#/components/schemas/asset"
+          },
+          "amount": {
+            "$ref": "#/components/schemas/amount"
+          },
+          "direction": {
+            "$ref": "#/components/schemas/direction"
+          },
+          "counterparty": {
+            "$ref": "#/components/schemas/counterparty"
+          },
+          "label": {
+            "$ref": "#/components/schemas/label"
+          },
+          "created_timestamp": {
+            "$ref": "#/components/schemas/created_timestamp"
+          }
+        }
+      },
+      "InternalTransfers": {
+        "type": "object",
+        "required": [
+          "data",
+          "more"
+        ],
+        "properties": {
+          "data": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/InternalTransfer"
+            }
+          },
+          "more": {
+            "$ref": "#/components/schemas/more"
+          }
+        }
+      },
+      "withdrawal_status": {
+        "type": "string",
+        "description": "Withdrawal status",
+        "enum": [
+          "pending",
+          "confirmed",
+          "removed",
+          "failed"
+        ]
+      },
+      "Withdrawal": {
+        "type": "object",
+        "required": [
+          "withdraw_id",
+          "asset",
+          "amount",
+          "fee",
+          "status",
+          "to",
+          "hash",
+          "confirmations",
+          "required_confirmations",
+          "created_timestamp"
+        ],
+        "properties": {
+          "withdraw_id": {
+            "$ref": "#/components/schemas/withdraw_id"
+          },
+          "asset": {
+            "$ref": "#/components/schemas/asset"
+          },
+          "amount": {
+            "$ref": "#/components/schemas/amount"
+          },
+          "to": {
+            "$ref": "#/components/schemas/to"
+          },
+          "fee": {
+            "$ref": "#/components/schemas/withdrawal_fee"
+          },
+          "status": {
+            "$ref": "#/components/schemas/withdrawal_status"
+          },
+          "hash": {
+            "$ref": "#/components/schemas/hash"
+          },
+          "confirmations": {
+            "$ref": "#/components/schemas/confirmations"
+          },
+          "required_confirmations": {
+            "$ref": "#/components/schemas/required_confirmations"
+          },
+          "created_timestamp": {
+            "$ref": "#/components/schemas/created_timestamp"
+          },
+          "confirmed_timestamp": {
+            "$ref": "#/components/schemas/confirmed_timestamp"
+          }
+        }
+      },
+      "Withdrawals": {
+        "type": "object",
+        "required": [
+          "data",
+          "more"
+        ],
+        "properties": {
+          "data": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/Withdrawal"
+            }
+          },
+          "more": {
+            "$ref": "#/components/schemas/more"
+          }
+        }
+      },
+      "volume_7d": {
+        "type": "string",
+        "description": "Rolling 7-day perpetual trading volume in USD",
+        "example": "5000000"
+      },
+      "taker_volume_7d": {
+        "type": "string",
+        "description": "Rolling 7-day perpetual taker volume in USD",
+        "example": "3500000"
+      },
+      "maker_volume_7d": {
+        "type": "string",
+        "description": "Rolling 7-day perpetual maker volume in USD",
+        "example": "1500000"
+      },
+      "account_maker_share_7d": {
+        "type": "string",
+        "description": "Rolling 7-day account maker volume divided by total exchange volume",
+        "example": "0.35"
+      },
+      "entity_maker_share_7d": {
+        "type": "string",
+        "description": "Rolling 7-day entity maker volume divided by total exchange volume",
+        "example": "0.35"
+      },
+      "entity_id": {
+        "type": "integer",
+        "description": "Liquidity rewards entity ID",
+        "example": 42
+      },
+      "entity_name": {
+        "type": "string",
+        "description": "Liquidity rewards entity name",
+        "example": "desk"
+      },
+      "AccountStats": {
+        "type": "object",
+        "required": [
+          "volume_7d",
+          "taker_volume_7d",
+          "maker_volume_7d",
+          "account_maker_share_7d"
+        ],
+        "properties": {
+          "volume_7d": {
+            "$ref": "#/components/schemas/volume_7d"
+          },
+          "taker_volume_7d": {
+            "$ref": "#/components/schemas/taker_volume_7d"
+          },
+          "maker_volume_7d": {
+            "$ref": "#/components/schemas/maker_volume_7d"
+          },
+          "account_maker_share_7d": {
+            "$ref": "#/components/schemas/account_maker_share_7d"
+          },
+          "entity_maker_share_7d": {
+            "$ref": "#/components/schemas/entity_maker_share_7d"
+          },
+          "entity_id": {
+            "$ref": "#/components/schemas/entity_id"
+          },
+          "entity_name": {
+            "$ref": "#/components/schemas/entity_name"
+          }
+        }
+      },
+      "actions_per_minute": {
+        "type": "integer",
+        "description": "Order action tokens used by the account in the current minute",
+        "example": 23
+      },
+      "actions_burst": {
+        "type": "integer",
+        "description": "Additional account action allowance remaining"
+      },
+      "open_orders": {
+        "type": "integer",
+        "description": "Current number of open orders",
+        "example": 42
+      },
+      "rate_reset": {
+        "type": "integer",
+        "description": "Timestamp in milliseconds when the current interval resets",
+        "example": 1767225660000
+      },
+      "AccountLimits": {
+        "type": "object",
+        "required": [
+          "actions_per_minute",
+          "actions_per_minute_limit",
+          "actions_burst",
+          "actions_burst_limit",
+          "open_orders",
+          "open_orders_limit",
+          "reset",
+          "messages_per_minute"
+        ],
+        "properties": {
+          "actions_per_minute": {
+            "$ref": "#/components/schemas/actions_per_minute"
+          },
+          "actions_per_minute_limit": {
+            "$ref": "#/components/schemas/actions_per_minute_limit"
+          },
+          "actions_burst": {
+            "$ref": "#/components/schemas/actions_burst"
+          },
+          "actions_burst_limit": {
+            "$ref": "#/components/schemas/actions_burst_limit"
+          },
+          "open_orders": {
+            "$ref": "#/components/schemas/open_orders"
+          },
+          "open_orders_limit": {
+            "$ref": "#/components/schemas/open_orders_limit"
+          },
+          "reset": {
+            "$ref": "#/components/schemas/rate_reset"
+          },
+          "messages_per_minute": {
+            "$ref": "#/components/schemas/messages_per_minute"
+          }
+        }
+      },
+      "date": {
+        "type": "string",
+        "description": "UTC reward period end date in YYYY-MM-DD format",
+        "example": "2026-05-10"
+      },
+      "start_date": {
+        "type": "string",
+        "description": "Inclusive UTC start date in YYYY-MM-DD format",
+        "example": "2026-05-01"
+      },
+      "end_date": {
+        "type": "string",
+        "description": "Inclusive UTC end date in YYYY-MM-DD format",
+        "example": "2026-05-10"
+      },
+      "limit": {
+        "type": "integer",
+        "description": "Maximum number of entries to return",
+        "example": 100
+      },
+      "maker_share_7d": {
+        "type": "string",
+        "description": "Rolling 7-day account maker volume divided by total exchange volume",
+        "example": "0.35"
+      },
+      "reward_distributed": {
+        "type": "boolean",
+        "description": "Whether rewards for this period have been marked as distributed",
+        "example": true
+      },
+      "reward_pool": {
+        "type": "string",
+        "description": "Configured reward pool for the instrument",
+        "example": "1000"
+      },
+      "reward_amount": {
+        "type": "string",
+        "description": "Reward amount attributed to this reward row",
+        "example": "127.50344"
+      },
+      "AccountRewardInstrument": {
+        "type": "object",
+        "required": [
+          "instrument_id",
+          "reward_pool",
+          "reward_amount"
+        ],
+        "properties": {
+          "instrument_id": {
+            "$ref": "#/components/schemas/instrument_id"
+          },
+          "reward_pool": {
+            "$ref": "#/components/schemas/reward_pool"
+          },
+          "reward_amount": {
+            "$ref": "#/components/schemas/reward_amount"
+          }
+        }
+      },
+      "account_oi": {
+        "type": "string",
+        "description": "Daily average gross open-interest notional for this account across all instruments",
+        "example": "3200000"
+      },
+      "AccountRewardOi": {
+        "type": "object",
+        "required": [
+          "account_oi",
+          "reward_amount"
+        ],
+        "properties": {
+          "account_oi": {
+            "$ref": "#/components/schemas/account_oi"
+          },
+          "reward_amount": {
+            "$ref": "#/components/schemas/reward_amount"
+          }
+        }
+      },
+      "AccountReward": {
+        "type": "object",
+        "required": [
+          "date",
+          "maker_share_7d",
+          "reward_distributed",
+          "breakdown"
+        ],
+        "properties": {
+          "date": {
+            "$ref": "#/components/schemas/date"
+          },
+          "maker_share_7d": {
+            "$ref": "#/components/schemas/maker_share_7d"
+          },
+          "reward_distributed": {
+            "$ref": "#/components/schemas/reward_distributed"
+          },
+          "breakdown": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/AccountRewardInstrument"
+            }
+          },
+          "oi_rewards": {
+            "$ref": "#/components/schemas/AccountRewardOi"
+          }
+        }
+      },
+      "AccountRewards": {
+        "type": "object",
+        "required": [
+          "data",
+          "more"
+        ],
+        "properties": {
+          "data": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/AccountReward"
+            }
+          },
+          "more": {
+            "$ref": "#/components/schemas/more"
+          }
+        }
+      },
+      "AccountConfig": {
+        "description": "Account configuration.",
+        "type": "object",
+        "required": [
+          "instrument_id",
+          "leverage",
+          "cross"
+        ],
+        "properties": {
+          "instrument_id": {
+            "$ref": "#/components/schemas/iid"
+          },
+          "leverage": {
+            "$ref": "#/components/schemas/lev"
+          },
+          "cross": {
+            "$ref": "#/components/schemas/cross"
+          }
+        }
+      },
+      "auto_cancel_triggered": {
+        "type": "integer",
+        "description": "Number of times auto-cancel has fired for this account during the\ncurrent UTC day. Resets to zero at 00:00 UTC.\n",
+        "example": 0
+      },
+      "auto_cancel_daily_limit": {
+        "type": "integer",
+        "description": "Maximum number of auto-cancel triggers allowed per UTC day.\n",
+        "example": 10
+      },
+      "auto_cancel_next_reset": {
+        "type": "integer",
+        "description": "Unix-ms timestamp of the next UTC midnight when the daily trigger\ncount resets to zero.\n",
+        "example": 1767052800000
+      },
+      "AutoCancelStatus": {
+        "type": "object",
+        "required": [
+          "deadline",
+          "triggered",
+          "daily_limit",
+          "next_reset"
+        ],
+        "properties": {
+          "deadline": {
+            "$ref": "#/components/schemas/auto_cancel_deadline"
+          },
+          "triggered": {
+            "$ref": "#/components/schemas/auto_cancel_triggered"
+          },
+          "daily_limit": {
+            "$ref": "#/components/schemas/auto_cancel_daily_limit"
+          },
+          "next_reset": {
+            "$ref": "#/components/schemas/auto_cancel_next_reset"
+          }
+        }
+      },
+      "CreateInviteRequest": {
+        "type": "object",
+        "additionalProperties": false
+      },
+      "CreateInviteResponse": {
+        "type": "object",
+        "required": [
+          "status",
+          "code",
+          "referrals_available",
+          "cooldown_ms"
+        ],
+        "properties": {
+          "status": {
+            "type": "string",
+            "enum": [
+              "ok"
+            ]
+          },
+          "code": {
+            "$ref": "#/components/schemas/code"
+          },
+          "referrals_available": {
+            "type": "integer",
+            "minimum": 0,
+            "description": "Remaining lifetime referrals for this invite code."
+          },
+          "cooldown_ms": {
+            "type": "integer",
+            "nullable": true,
+            "minimum": 0,
+            "description": "Milliseconds until referrals become available again. Null for lifetime caps because no windowed cooldown applies."
+          }
+        }
+      },
+      "children_count": {
+        "type": "integer",
+        "description": "Number of directly referred child accounts",
+        "example": 12
+      },
+      "referrals_left": {
+        "type": "integer",
+        "description": "Number of additional referrals remaining for this account's invite code",
+        "example": 11
+      },
+      "fee_share_rate": {
+        "type": "string",
+        "description": "Referral fee share rate. Defaults to 0.2.",
+        "example": "0.2"
+      },
+      "AccountReferral": {
+        "type": "object",
+        "required": [
+          "code",
+          "children_count",
+          "referrals_left",
+          "fee_share_rate"
+        ],
+        "properties": {
+          "code": {
+            "$ref": "#/components/schemas/code"
+          },
+          "parent": {
+            "$ref": "#/components/schemas/code",
+            "description": "Parent referral code, omitted when the account has no parent referral."
+          },
+          "children_count": {
+            "$ref": "#/components/schemas/children_count"
+          },
+          "referrals_left": {
+            "$ref": "#/components/schemas/referrals_left"
+          },
+          "fee_share_rate": {
+            "$ref": "#/components/schemas/fee_share_rate"
+          }
+        }
+      },
+      "AccountReferralRequest": {
+        "type": "object",
+        "required": [
+          "code"
+        ],
+        "properties": {
+          "code": {
+            "$ref": "#/components/schemas/code"
+          }
+        }
+      }
+    },
+    "responses": {
+      "Error429Response": {
+        "description": "Too Many Requests. `error` distinguishes the limit that was hit:\n`ip_rate_limited` (per-IP token bucket), `action_rate_limited` (per-account\naction rate), or `open_orders_limit` (resting open-order cap).\n",
+        "headers": {
+          "Retry-After": {
+            "description": "Whole seconds to wait before retrying. Present only on token-bucket\nrate-limit rejections (`ip_rate_limited` and `action_rate_limited`); a\nconservative estimate of when enough capacity will have refilled to\nadmit the request. Absent on `open_orders_limit`, which is a capacity\nlimit, not a rate limit — waiting does not free order slots; cancel\nresting orders or wait for fills instead.\n",
+            "schema": {
+              "type": "integer",
+              "example": 2
+            }
+          }
+        },
+        "content": {
+          "application/json": {
+            "schema": {
+              "$ref": "#/components/schemas/Error429"
+            }
+          }
+        }
+      },
+      "Error500Response": {
+        "description": "Internal server error. `error` is `internal_error`.\n",
+        "content": {
+          "application/json": {
+            "schema": {
+              "$ref": "#/components/schemas/Error500"
+            }
+          }
+        }
+      },
+      "Error400Response": {
+        "description": "Bad request — the request was malformed or failed validation (bad query\nparameters, unparseable body, invalid signature, or a domain pre-check).\nThe `error` field is a human-readable validation detail.\n",
+        "content": {
+          "application/json": {
+            "schema": {
+              "$ref": "#/components/schemas/Error400"
+            }
+          }
+        }
+      },
+      "Error404Response": {
+        "description": "Not found — the endpoint is disabled on this venue (e.g. auto-cancel) or\nthe route does not exist. `error` is `not_found`.\n",
+        "content": {
+          "application/json": {
+            "schema": {
+              "$ref": "#/components/schemas/Error404"
+            }
+          }
+        }
+      },
+      "Error422Response": {
+        "description": "Unprocessable Entity — the request was well-formed but a domain rule\nrejected it on its merits (insufficient balance, invalid leverage,\nproxy already exists, …). The body is the discriminated rejection\n(`status: err`) with the engine error identifier in `error`.\n",
+        "content": {
+          "application/json": {
+            "schema": {
+              "$ref": "#/components/schemas/GenericRejected"
+            }
+          }
+        }
+      },
+      "Error401Response": {
+        "description": "Unauthorized — missing or invalid `POLYMARKET-PROXY` / `POLYMARKET-SECRET`\ncredentials. `error` is `unauthorized`.\n",
+        "content": {
+          "application/json": {
+            "schema": {
+              "$ref": "#/components/schemas/Error401"
+            }
+          }
+        }
+      }
+    }
+  }
+}

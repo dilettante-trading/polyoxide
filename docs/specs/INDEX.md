@@ -8,12 +8,25 @@ These specs are sourced from https://docs.polymarket.com and the OpenAPI specs a
 - Gamma: https://docs.polymarket.com/api-spec/gamma-openapi.yaml
 - Data: https://docs.polymarket.com/api-spec/data-openapi.yaml
 - Relay: https://docs.polymarket.com/api-spec/relayer-openapi.yaml
+- Perps: https://docs.polymarket.com/api-spec/perps-openapi.json
+- Bridge: https://docs.polymarket.com/api-spec/bridge-openapi.yaml
+- Combos RFQ: https://docs.polymarket.com/api-spec/combos-rfq-openapi.yaml
 
 ## APIs
 
+Covered by a polyoxide crate:
+
+| API | Base URL | Description | Crate |
+|-----|----------|-------------|-------|
+| [CLOB](clob/INDEX.md) | `https://clob.polymarket.com` | Order book trading, market data, rewards, RFQ | `polyoxide-clob` |
+| [Gamma](gamma/INDEX.md) | `https://gamma-api.polymarket.com` | Market/event metadata, search, comments | `polyoxide-gamma` |
+| [Data](data/INDEX.md) | `https://data-api.polymarket.com` | User positions, trades, combos, leaderboard | `polyoxide-data` |
+| [Relay](relay/INDEX.md) | `https://relayer-v2.polymarket.com` | Gasless relay transactions | `polyoxide-relay` |
+
+Mirrored for reference, **not implemented** by any crate:
+
 | API | Base URL | Description |
 |-----|----------|-------------|
-| [CLOB](clob/INDEX.md) | `https://clob.polymarket.com` | Order book trading, market data, rewards, RFQ |
-| [Gamma](gamma/INDEX.md) | `https://gamma-api.polymarket.com` | Market/event metadata, search, comments |
-| [Data](data/INDEX.md) | `https://data-api.polymarket.com` | User positions, trades, leaderboard |
-| [Relay](relay/INDEX.md) | `https://relayer-v2.polymarket.com` | Gasless relay transactions |
+| [Perps](perps/INDEX.md) | `https://api.perpetuals.polymarket.com` | Perpetual futures: accounts, orders, market info |
+| [Bridge](bridge/INDEX.md) | `https://bridge.polymarket.com` | Cross-chain deposits and withdrawals |
+| [Combos RFQ](combos-rfq/INDEX.md) | `https://combos-rfq-api.polymarket.com` | Maker quoting for combinatorial markets |

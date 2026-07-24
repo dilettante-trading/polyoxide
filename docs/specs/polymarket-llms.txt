@@ -2,8 +2,7 @@
 
 ## Docs
 
-- [Negative Risk Markets](https://docs.polymarket.com/advanced/neg-risk.md): Capital-efficient trading for multi-outcome events
-- [Authentication](https://docs.polymarket.com/api-reference/authentication.md): How to authenticate requests to the CLOB API
+- [Apply Referral Code](https://docs.polymarket.com/api-reference/apply-referral-code.md): Apply a referral code to the authenticated account after signup. Accounts can only apply a referral code if they do not already have one.
 - [Create bridge addresses](https://docs.polymarket.com/api-reference/bridge/create-bridge-addresses.md)
 - [Create withdrawal addresses](https://docs.polymarket.com/api-reference/bridge/create-withdrawal-addresses.md)
 - [Get a quote](https://docs.polymarket.com/api-reference/bridge/get-a-quote.md)
@@ -11,7 +10,9 @@
 - [Get transaction status](https://docs.polymarket.com/api-reference/bridge/get-transaction-status.md)
 - [Get aggregated builder leaderboard](https://docs.polymarket.com/api-reference/builders/get-aggregated-builder-leaderboard.md)
 - [Get daily builder volume time-series](https://docs.polymarket.com/api-reference/builders/get-daily-builder-volume-time-series.md)
-- [Clients & SDKs](https://docs.polymarket.com/api-reference/clients-sdks.md): Official open-source libraries for interacting with Polymarket
+- [Cancel Orders](https://docs.polymarket.com/api-reference/cancel-orders.md): Cancel orders. Requires proxy signature, see [proxy signing](/http/signing#2-proxy-signing).
+- [Cancel Orders COID](https://docs.polymarket.com/api-reference/cancel-orders-coid.md): Cancel orders by client order ID. Requires proxy signature, see [proxy signing](/http/signing#2-proxy-signing).
+- [Check Invite Code](https://docs.polymarket.com/api-reference/check-invite-code.md): Check whether an invite code can be used. When `address` is provided, the response is invalid if that address already has an account.
 - [Get combo markets](https://docs.polymarket.com/api-reference/combo-markets/get-combo-markets.md): Returns active markets that can be used as combo legs, ordered by volume descending. This endpoint is public and does not require CLOB authentication.
 - [Get comments by comment id](https://docs.polymarket.com/api-reference/comments/get-comments-by-comment-id.md)
 - [Get comments by user address](https://docs.polymarket.com/api-reference/comments/get-comments-by-user-address.md)
@@ -25,16 +26,53 @@
 - [Get trades for a user or markets](https://docs.polymarket.com/api-reference/core/get-trades-for-a-user-or-markets.md)
 - [Get user activity](https://docs.polymarket.com/api-reference/core/get-user-activity.md)
 - [Get user combo activity](https://docs.polymarket.com/api-reference/core/get-user-combo-activity.md): Combo lifecycle and redeem events (split / merge / convert / compress / wrap / unwrap / redeem) for a user, with per-leg breakdown. The combo counterpart to /activity trade rows. Also available at /v1/data/user/{address}/activity/combos (address from the path).
-- [Get user combo positions](https://docs.polymarket.com/api-reference/core/get-user-combo-positions.md): Combinatorial (multi-market) positions held by a user, with per-leg breakdown. Also available at /v1/data/user/{address}/positions/combos (address from the path).
+- [Get user combo positions](https://docs.polymarket.com/api-reference/core/get-user-combo-positions.md): Combinatorial (multi-market) positions held by a user, with per-leg breakdown. Also available at /v1/data/user/{address}/positions/combos (address from the path). Open positions with shares_balance below 0.001 are omitted (dust floor — e.g. sub-0.001 remainders left by "sell all" cashouts); resolved…
+- [Create Account Invite](https://docs.polymarket.com/api-reference/create-account-invite.md): Create or return the authenticated account's primary invite code. The call is idempotent for accounts that already have a primary invite code.
+- [Create Orders](https://docs.polymarket.com/api-reference/create-orders.md): Create new orders. Requires proxy signature, see [proxy signing](/http/signing#2-proxy-signing).
+- [Create Proxy](https://docs.polymarket.com/api-reference/create-proxy.md): Create a new proxy to sign orders. Returns an API secret for private account access. Requires EOA signature, see [EOA signing](/http/signing#1-eoa-signing).
 - [Get midpoint price](https://docs.polymarket.com/api-reference/data/get-midpoint-price.md): Retrieves the midpoint price for a specific token ID. The midpoint is calculated as the average of the best bid and best ask prices.
 - [Get server time](https://docs.polymarket.com/api-reference/data/get-server-time.md): Returns the current Unix timestamp of the server. This can be used to synchronize client time with server time.
+- [Delete Proxy](https://docs.polymarket.com/api-reference/delete-proxy.md): Delete a proxy by address. Requires EOA signature, see [EOA signing](/http/signing#1-eoa-signing).
 - [Get event by id](https://docs.polymarket.com/api-reference/events/get-event-by-id.md)
 - [Get event by slug](https://docs.polymarket.com/api-reference/events/get-event-by-slug.md)
 - [Get event tags](https://docs.polymarket.com/api-reference/events/get-event-tags.md)
 - [List events](https://docs.polymarket.com/api-reference/events/list-events.md)
 - [List events (keyset pagination)](https://docs.polymarket.com/api-reference/events/list-events-keyset-pagination.md): Returns events using cursor-based (keyset) pagination for stable, efficient paging through large result sets. Use `next_cursor` from each response as `after_cursor` in the next request. The `offset` parameter is explicitly rejected; use `after_cursor` instead.
 - [Geographic Restrictions](https://docs.polymarket.com/api-reference/geoblock.md): Check geographic restrictions before placing orders on the Polymarket API
-- [Introduction](https://docs.polymarket.com/api-reference/introduction.md): Overview of the Polymarket APIs
+- [Get Account Limits](https://docs.polymarket.com/api-reference/get-account-limits.md): Get the authenticated account's effective rate-limit allowances for its current volume-based tier: order-action rate, open-order cap, and the display-only messages-per-minute figure. `open_orders` reflects the account's current live open-order count; the rate-usage counters (`actions_per_minute`, `a…
+- [Get Account Referral](https://docs.polymarket.com/api-reference/get-account-referral.md): Get the authenticated account's invite code, parent referral code, direct referral count, and fee share rate.
+- [Get Account Rewards](https://docs.polymarket.com/api-reference/get-account-rewards.md): Get per-instrument daily liquidity reward shares for the authenticated account. Reward periods run from 12:00 UTC to 12:00 UTC and are labeled by their UTC end date. OI rewards pay 6% APR on the account's full daily average gross OI across all instruments when the combined daily average gross OI of…
+- [Get Account Stats](https://docs.polymarket.com/api-reference/get-account-stats.md): Get the authenticated account's 7-day trading stats (taker volume, maker volume, account maker share, and entity maker share when applicable). Stats are cached by UTC day and may be stale by up to 24 hours.
+- [Get Auto-Cancel Status](https://docs.polymarket.com/api-reference/get-auto-cancel-status.md): Get the current auto-cancel dead-man-switch status for the authenticated account, including the armed deadline, today's trigger count, and when the daily counter resets.
+- [Get Balances](https://docs.polymarket.com/api-reference/get-balances.md): Get asset balances for the authenticated account.
+- [Get BBO](https://docs.polymarket.com/api-reference/get-bbo.md): Get best bid and offer for all instruments.
+- [Get Book](https://docs.polymarket.com/api-reference/get-book.md): Get book for an instrument.
+- [Get Collateral Assets](https://docs.polymarket.com/api-reference/get-collateral-assets.md): Get a list of collateral assets.
+- [Get Credentials](https://docs.polymarket.com/api-reference/get-credentials.md): Get the account ID, address, and proxy keys for the authenticated account.
+- [Get Deposits](https://docs.polymarket.com/api-reference/get-deposits.md): Get deposit history for the authenticated account. If no end time is provided, the current time will be used. Maximum of 100 entries returned per request.
+- [Get Equity](https://docs.polymarket.com/api-reference/get-equity.md): Get equity history for the authenticated account. If no end time is provided, the current time will be used. Maximum of 1000 entries returned per request.
+- [Get Exchange Info](https://docs.polymarket.com/api-reference/get-exchange-info.md): Get exchange information.
+- [Get Fees](https://docs.polymarket.com/api-reference/get-fees.md): Get the default fee schedule for each instrument type and category. Rates returned are the $0-tier defaults; the account's actual rate on each fill depends on its trailing 30-day volume tier.
+- [Get Fills](https://docs.polymarket.com/api-reference/get-fills.md): Get fill history for the authenticated account. If no end time is provided, the current time will be used. Maximum of 100 entries returned per request.
+- [Get Funding Charges](https://docs.polymarket.com/api-reference/get-funding-charges.md): Get funding payment history for the authenticated account. If no end time is provided, the current time will be used. Maximum of 100 entries returned per request.
+- [Get Historical Funding](https://docs.polymarket.com/api-reference/get-historical-funding.md): Get public funding rate history for an instrument. Maximum of 100 entries returned per request.
+- [Get Index](https://docs.polymarket.com/api-reference/get-index.md): Get index price and the list of constituents for an asset.
+- [Get Instrument Config](https://docs.polymarket.com/api-reference/get-instrument-config.md): Get per-instrument configuration (leverage and margin mode) for the authenticated account.
+- [Get Instruments](https://docs.polymarket.com/api-reference/get-instruments.md): Get all instruments.
+- [Get Internal Transfers](https://docs.polymarket.com/api-reference/get-internal-transfers.md): Get settled internal transfer history for the authenticated account. Returns both inbound and outbound transfers.
+- [Get Klines](https://docs.polymarket.com/api-reference/get-klines.md): Get klines for an instrument. If no end time is provided, the current time will be used. Maximum of 1000 entries returned per request.
+- [Get Limit Tiers](https://docs.polymarket.com/api-reference/get-limit-tiers.md): Get the list of account limit tiers. Action and open-order fields are enforced per account; legacy request-rate fields are not used for gateway request enforcement.
+- [Get Open Orders](https://docs.polymarket.com/api-reference/get-open-orders.md): Get open orders for the authenticated account.
+- [Get Orders](https://docs.polymarket.com/api-reference/get-orders.md): Get historical order snapshots for the authenticated account from the order history database. Returns the latest known state for each matching order, including accepted, open, partial, filled, and cancelled orders. For currently resting orders only, use Get Open Orders. Maximum of 100 entries return…
+- [Get PnL](https://docs.polymarket.com/api-reference/get-pnl.md): Get PnL history for the authenticated account. If no end time is provided, the current time will be used. Maximum of 1000 entries returned per request.
+- [Get Portfolio](https://docs.polymarket.com/api-reference/get-portfolio.md): Get current portfolio snapshot including open positions, margin summary, and withdrawable balance.
+- [Get Public Portfolio](https://docs.polymarket.com/api-reference/get-public-portfolio.md): Get public portfolio for an address including equity and open positions.
+- [Get Recent Trades](https://docs.polymarket.com/api-reference/get-recent-trades.md): Get public trades for an instrument. Maximum of 100 entries returned per request.
+- [Get Server Time](https://docs.polymarket.com/api-reference/get-server-time.md): Get server time.
+- [Get Statistics](https://docs.polymarket.com/api-reference/get-statistics.md): Get last 24-hour statistics for all instruments.
+- [Get Tickers](https://docs.polymarket.com/api-reference/get-tickers.md): Get all instrument tickers with live market data.
+- [Get Withdrawals](https://docs.polymarket.com/api-reference/get-withdrawals.md): Get withdrawal history for the authenticated account. If no end time is provided, the current time will be used. Maximum of 100 entries returned per request.
+- [Internal Transfer](https://docs.polymarket.com/api-reference/internal-transfer.md): Submit a signed internal ledger transfer between two exchange accounts. Requires proxy signature using the standard signed-op flow.
 - [Cancel a quote](https://docs.polymarket.com/api-reference/maker/cancel-a-quote.md): Cancel an active maker quote before it is selected. Requires CLOB L2 authentication for the maker role. `signer_address` and `maker_address` must match the authenticated identity.
 - [Confirm or decline last look](https://docs.polymarket.com/api-reference/maker/confirm-or-decline-last-look.md): Respond to a last-look confirmation request for a selected quote. Requires CLOB L2 authentication for the maker role. `decision` must be `CONFIRM` or `DECLINE`.
 - [Submit a quote](https://docs.polymarket.com/api-reference/maker/submit-a-quote.md): Submit a signed maker quote for an active RFQ. Requires CLOB L2 authentication for the maker role.
@@ -70,6 +108,10 @@
 - [Get live volume for an event](https://docs.polymarket.com/api-reference/misc/get-live-volume-for-an-event.md)
 - [Get open interest](https://docs.polymarket.com/api-reference/misc/get-open-interest.md)
 - [Get total markets a user has traded](https://docs.polymarket.com/api-reference/misc/get-total-markets-a-user-has-traded.md)
+- [Geographic Restrictions](https://docs.polymarket.com/api-reference/perps/geographic-restrictions.md): Jurisdictions where Polymarket Perps order placement is not permitted
+- [Overview](https://docs.polymarket.com/api-reference/perps/overview.md): Explore the APIs available for building with Polymarket Perps.
+- [Rate Limits](https://docs.polymarket.com/api-reference/perps/rate-limits.md): IP rate limits, action rate limits, and WebSocket limits for Perps integrations
+- [Overview](https://docs.polymarket.com/api-reference/predictions/overview.md): Explore the APIs available for building with Polymarket Predictions.
 - [Get public profile by wallet address](https://docs.polymarket.com/api-reference/profiles/get-public-profile-by-wallet-address.md)
 - [Rate Limits](https://docs.polymarket.com/api-reference/rate-limits.md): API rate limits for all Polymarket endpoints
 - [Get current rebated fees for a maker](https://docs.polymarket.com/api-reference/rebates/get-current-rebated-fees-for-a-maker.md): Returns the current rebated fees for a maker address on a given date.
@@ -90,6 +132,7 @@
 - [Search markets, events, and profiles](https://docs.polymarket.com/api-reference/search/search-markets-events-and-profiles.md)
 - [Get series by id](https://docs.polymarket.com/api-reference/series/get-series-by-id.md)
 - [List series](https://docs.polymarket.com/api-reference/series/list-series.md)
+- [Set Auto-Cancel](https://docs.polymarket.com/api-reference/set-auto-cancel.md): Set a dead man switch that will cancel all open orders at the specified time. Time must be at least 5 seconds in the future, or `0` to clear an active schedule without triggering it. Posting a new auto-cancel replaces the previous one.
 - [Get sports metadata information](https://docs.polymarket.com/api-reference/sports/get-sports-metadata-information.md)
 - [Get valid sports market types](https://docs.polymarket.com/api-reference/sports/get-valid-sports-market-types.md)
 - [List teams](https://docs.polymarket.com/api-reference/sports/list-teams.md)
@@ -100,6 +143,7 @@
 - [Get tags related to a tag id](https://docs.polymarket.com/api-reference/tags/get-tags-related-to-a-tag-id.md)
 - [Get tags related to a tag slug](https://docs.polymarket.com/api-reference/tags/get-tags-related-to-a-tag-slug.md)
 - [List tags](https://docs.polymarket.com/api-reference/tags/list-tags.md)
+- [Test Connection](https://docs.polymarket.com/api-reference/test-connection.md): Test connection to the server.
 - [Cancel all orders](https://docs.polymarket.com/api-reference/trade/cancel-all-orders.md): Cancels all open orders for the authenticated user. Works even in cancel-only mode.
 - [Cancel multiple orders](https://docs.polymarket.com/api-reference/trade/cancel-multiple-orders.md): Cancels multiple orders by their IDs. Maximum 1000 orders per request. Duplicate order IDs in the request are automatically ignored. Works even in cancel-only mode.
 - [Cancel orders for a market](https://docs.polymarket.com/api-reference/trade/cancel-orders-for-a-market.md): Cancels all open orders for the authenticated user in a specific market (condition) and asset. Works even in cancel-only mode.
@@ -112,73 +156,112 @@
 - [Post a new order](https://docs.polymarket.com/api-reference/trade/post-a-new-order.md): Creates a new order in the order book
 - [Post multiple orders](https://docs.polymarket.com/api-reference/trade/post-multiple-orders.md): Creates multiple new orders in the order book. Orders are processed in parallel. Maximum 15 orders per request.
 - [Send heartbeat](https://docs.polymarket.com/api-reference/trade/send-heartbeat.md): Sends a heartbeat signal to maintain active session status. If heartbeats are not sent regularly, all open orders for the user will be automatically canceled. This is useful for automated trading systems that need to ensure orders are canceled if the system becomes unresponsive.
+- [Update Leverage](https://docs.polymarket.com/api-reference/update-leverage.md): Update leverage for an instrument. Requires proxy signature, see [proxy signing](/http/signing#2-proxy-signing).
+- [Withdraw](https://docs.polymarket.com/api-reference/withdraw.md): Submit a signed withdrawal request. Requires EOA signature, see [EOA signing](/http/signing#1-eoa-signing).
 - [Market Channel](https://docs.polymarket.com/api-reference/wss/market.md): Public WebSocket for real-time orderbook, price, and market lifecycle updates.
+- [Auth](https://docs.polymarket.com/api-reference/wss/perps-auth.md): Perps WebSocket authentication.
+- [Auto Cancel](https://docs.polymarket.com/api-reference/wss/perps-auto-cancel.md): Perps WebSocket dead man's switch updates.
+- [Balances](https://docs.polymarket.com/api-reference/wss/perps-balances.md): Perps WebSocket private balance updates.
+- [BBO](https://docs.polymarket.com/api-reference/wss/perps-bbo.md): Perps WebSocket best bid and offer updates.
+- [Book](https://docs.polymarket.com/api-reference/wss/perps-book.md): Perps WebSocket order book updates.
+- [Cancel Orders](https://docs.polymarket.com/api-reference/wss/perps-cancel-orders.md): Perps WebSocket order cancellation by order ID.
+- [Cancel Orders by Client Order ID](https://docs.polymarket.com/api-reference/wss/perps-cancel-orders-coid.md): Perps WebSocket order cancellation by client order ID.
+- [Deposits](https://docs.polymarket.com/api-reference/wss/perps-deposits.md): Perps WebSocket private deposit updates.
+- [Fills](https://docs.polymarket.com/api-reference/wss/perps-fills.md): Perps WebSocket private fill updates.
+- [Funding](https://docs.polymarket.com/api-reference/wss/perps-funding.md): Perps WebSocket private funding updates.
+- [Klines](https://docs.polymarket.com/api-reference/wss/perps-klines.md): Perps WebSocket candle updates.
+- [Orders](https://docs.polymarket.com/api-reference/wss/perps-orders.md): Perps WebSocket private order updates.
+- [Ping](https://docs.polymarket.com/api-reference/wss/perps-ping.md): Perps WebSocket heartbeat.
+- [Place Orders](https://docs.polymarket.com/api-reference/wss/perps-place-orders.md): Perps WebSocket order placement.
+- [Portfolio](https://docs.polymarket.com/api-reference/wss/perps-portfolio.md): Perps WebSocket private portfolio updates.
+- [Statistics](https://docs.polymarket.com/api-reference/wss/perps-statistics.md): Perps WebSocket 24-hour statistics updates.
+- [Tickers](https://docs.polymarket.com/api-reference/wss/perps-tickers.md): Perps WebSocket ticker updates.
+- [Trades](https://docs.polymarket.com/api-reference/wss/perps-trades.md): Perps WebSocket public trade updates.
+- [Update Leverage](https://docs.polymarket.com/api-reference/wss/perps-update-leverage.md): Perps WebSocket leverage updates.
+- [Withdrawals](https://docs.polymarket.com/api-reference/wss/perps-withdrawals.md): Perps WebSocket private withdrawal updates.
 - [Quoter Gateway](https://docs.polymarket.com/api-reference/wss/rfq.md): Authenticated WebSocket for combinatorial RFQ quoters — receive requests, submit quotes, confirm last look, and track execution.
 - [Sports Channel](https://docs.polymarket.com/api-reference/wss/sports.md): Public WebSocket for real-time sports match results.
 - [User Channel](https://docs.polymarket.com/api-reference/wss/user.md): Authenticated WebSocket for real-time order and trade updates.
-- [Builder Code](https://docs.polymarket.com/builders/api-keys.md): Your builder code for order attribution
-- [Builder Fees](https://docs.polymarket.com/builders/fees.md): How builders earn fees on orders routed through their applications, and how to integrate.
-- [Builder Program](https://docs.polymarket.com/builders/overview.md): Build applications that route orders through Polymarket
-- [Tiers](https://docs.polymarket.com/builders/tiers.md): Rate limits, rewards, and how to upgrade
+- [Perps Changelog](https://docs.polymarket.com/changelog/perps.md): Recent changes to the Polymarket Perps API and platform
+- [Predictions Changelog](https://docs.polymarket.com/changelog/predictions.md): Important changes to Polymarket prediction markets, including the CLOB, APIs, web application, and mobile applications.
+- [SDK Changelog](https://docs.polymarket.com/changelog/sdks.md): Recent changes to the official SDKs.
 - [Markets & Events](https://docs.polymarket.com/concepts/markets-events.md): Understanding the fundamental building blocks of Polymarket
+- [Negative Risk Markets](https://docs.polymarket.com/concepts/negative-risk.md): Capital-efficient trading for multi-outcome events
 - [Order Lifecycle](https://docs.polymarket.com/concepts/order-lifecycle.md): Understanding how orders flow from creation to settlement
 - [Positions & Tokens](https://docs.polymarket.com/concepts/positions-tokens.md): Understanding outcome tokens and how positions work on Polymarket
 - [Prices & Orderbook](https://docs.polymarket.com/concepts/prices-orderbook.md): How prices work and how the order book enables peer-to-peer trading
 - [Polymarket USD](https://docs.polymarket.com/concepts/pusd.md): pUSD — the collateral token used for all trading on Polymarket
 - [Resolution](https://docs.polymarket.com/concepts/resolution.md): How markets are resolved and winning positions redeemed
-- [Overview](https://docs.polymarket.com/dev-tooling.md): Learn about Polymarket's developer tooling roadmap.
-- [Python SDK](https://docs.polymarket.com/dev-tooling/python.md): Build with the unified Polymarket Python SDK.
-- [TypeScript SDK](https://docs.polymarket.com/dev-tooling/typescript.md): Build with the unified Polymarket TypeScript SDK.
+- [API](https://docs.polymarket.com/getting-started/api.md): Build directly with Polymarket REST APIs and WebSocket streams.
+- [SDK Migration](https://docs.polymarket.com/getting-started/migrate-from-previous-sdks.md): Move an existing Polymarket integration to the unified SDKs.
+- [Python SDK](https://docs.polymarket.com/getting-started/python.md): Get started with the unified Polymarket Python SDK.
+- [SDKs & APIs](https://docs.polymarket.com/getting-started/sdks-apis.md): Choose how to integrate with Polymarket.
+- [TypeScript SDK](https://docs.polymarket.com/getting-started/typescript.md): Get started with the unified Polymarket TypeScript SDK.
 - [Overview](https://docs.polymarket.com/index.md): Build on the world's largest prediction market. Trade, integrate, and access real-time market data with the Polymarket API.
-- [Fetching Markets](https://docs.polymarket.com/market-data/fetching-markets.md): Three strategies for discovering and querying markets
-- [Overview](https://docs.polymarket.com/market-data/overview.md): Fetch market data with no authentication required
-- [Market Channel](https://docs.polymarket.com/market-data/websocket/market-channel.md): Real-time orderbook, price, and trade data
-- [Overview](https://docs.polymarket.com/market-data/websocket/overview.md): Real-time market data and trading updates via WebSocket
-- [Real-Time Data Socket](https://docs.polymarket.com/market-data/websocket/rtds.md): Stream comments, crypto prices, and equity prices via WebSocket
-- [Sports WebSocket](https://docs.polymarket.com/market-data/websocket/sports.md): Live sports scores and game state
-- [User Channel](https://docs.polymarket.com/market-data/websocket/user-channel.md): Authenticated order and trade updates
-- [Combos](https://docs.polymarket.com/market-makers/combos.md): Build a market maker integration for pricing and executing Combos
-- [Getting Started](https://docs.polymarket.com/market-makers/getting-started.md): One-time setup for market making on Polymarket
-- [Inventory Management](https://docs.polymarket.com/market-makers/inventory.md): Managing outcome token inventory for market making
-- [Liquidity Rewards](https://docs.polymarket.com/market-makers/liquidity-rewards.md): Earn rewards for providing liquidity on Polymarket
-- [Maker Rebates Program](https://docs.polymarket.com/market-makers/maker-rebates.md): Earn daily pUSD rebates by providing liquidity on Polymarket
-- [Overview](https://docs.polymarket.com/market-makers/overview.md): Market making on Polymarket
-- [Trading](https://docs.polymarket.com/market-makers/trading.md): Order entry, management, and best practices for market makers
+- [Discover Markets](https://docs.polymarket.com/market-data/discover-markets.md): Learn how to find and filter events and markets and explore related metadata.
+- [Market Details](https://docs.polymarket.com/market-data/market-details.md): Understand the structure and state of a Polymarket market.
+- [Overview](https://docs.polymarket.com/market-data/overview.md): Learn how Polymarket organizes market data and where to begin.
+- [Prices and Order Books](https://docs.polymarket.com/market-data/prices-order-books.md): Learn how prices and order books represent trading activity on Polymarket.
+- [Analytics](https://docs.polymarket.com/market-data/public-analytics.md): Understand activity and performance across Polymarket.
+- [Real-Time Data](https://docs.polymarket.com/market-data/realtime-data.md): Keep market data current with Polymarket's real-time feeds.
+- [Account Management](https://docs.polymarket.com/perps/account-management.md): Monitor balances, positions, and account history
+- [Authenticated Sessions](https://docs.polymarket.com/perps/authenticated-sessions.md): Set up authenticated access for Perps trading and account data
+- [Concepts](https://docs.polymarket.com/perps/concepts.md): Core concepts for Polymarket perpetual markets
+- [Errors](https://docs.polymarket.com/perps/errors.md): Error messages returned by the API and the conditions that trigger them
+- [FAQ](https://docs.polymarket.com/perps/faq.md): Common questions about Polymarket Perps trading, pricing, margin, liquidation, fees, and integration
+- [Fund Your Account](https://docs.polymarket.com/perps/fund-your-account.md): Deposit and withdraw pUSD collateral for Perps trading
+- [Architecture](https://docs.polymarket.com/perps/learn-about-trading/architecture.md): High-level architecture of the Polymarket Perps exchange
+- [Fees](https://docs.polymarket.com/perps/learn-about-trading/fees.md): Tiered maker and taker trading fees for Polymarket Perps
+- [Funding](https://docs.polymarket.com/perps/learn-about-trading/funding.md): Funding rate calculation and settlement
+- [Index Price](https://docs.polymarket.com/perps/learn-about-trading/index-price.md): How the Index Price is computed for Perps
+- [Liquidation Mechanics](https://docs.polymarket.com/perps/learn-about-trading/liquidation-mechanics.md): Detection, execution, and insurance-fund backstop
+- [Margin](https://docs.polymarket.com/perps/learn-about-trading/margin.md): Initial margin, maintenance margin, and equity calculations
+- [Mark Price](https://docs.polymarket.com/perps/learn-about-trading/mark-price.md): How the Mark Price is computed for Perps
+- [Market Sessions](https://docs.polymarket.com/perps/learn-about-trading/market-sessions.md): How session state affects pricing feed selection
+- [Markets](https://docs.polymarket.com/perps/learn-about-trading/markets.md): Listed perpetual markets and trading parameters
+- [Overview](https://docs.polymarket.com/perps/learn-about-trading/overview.md): The market mechanics behind Perps trading
+- [Market Data](https://docs.polymarket.com/perps/market-data.md): Discover Perps markets and monitor public market activity
+- [Overview](https://docs.polymarket.com/perps/overview.md): Start here for Polymarket perpetual markets
+- [Place Your First Trade](https://docs.polymarket.com/perps/place-your-first-trade.md): Learn how to prepare a Perps account and submit a first buy order
+- [Realtime Updates](https://docs.polymarket.com/perps/realtime-updates.md): Stream public Perps market data
+- [Referral Program](https://docs.polymarket.com/perps/referral-program.md): Earn a share of Perps trading fees from traders you refer
+- [Trading](https://docs.polymarket.com/perps/trading.md): Place, manage, and reconcile Perps orders
 - [Polymarket 101](https://docs.polymarket.com/polymarket-101.md): An intro to Polymarket - the world's largest prediction market
-- [Quickstart](https://docs.polymarket.com/quickstart.md): Fetch a market and place your first order
+- [Builder Fees](https://docs.polymarket.com/programs/builders/fees.md): How builders earn fees on orders routed through their applications, and how to integrate.
+- [Overview](https://docs.polymarket.com/programs/builders/overview.md): Build applications that route orders through Polymarket
+- [Tiers](https://docs.polymarket.com/programs/builders/tiers.md): Rate limits, rewards, and how to upgrade
+- [Liquidity Rewards](https://docs.polymarket.com/programs/liquidity-rewards.md): Earn rewards for providing liquidity on Polymarket
+- [Maker Rebates Program](https://docs.polymarket.com/programs/maker-rebates.md): Earn daily pUSD rebates by providing liquidity on Polymarket
+- [Referral Program](https://docs.polymarket.com/programs/referral-program.md): Refer traders to Polymarket and earn daily pUSD rewards
+- [Taker Rebate Program](https://docs.polymarket.com/programs/taker-rebates.md): Climb the tiers and earn daily pUSD rebates as you trade
 - [Data Resources](https://docs.polymarket.com/resources/blockchain-data.md): Access Polymarket on-chain activity for data & analytics
 - [Contracts](https://docs.polymarket.com/resources/contracts.md): All Polymarket smart contract addresses, audits, and security resources
 - [Error Codes](https://docs.polymarket.com/resources/error-codes.md): Complete reference for CLOB API error responses
-- [Referral Program](https://docs.polymarket.com/resources/referral-program.md): Refer traders to Polymarket and earn daily pUSD rewards
 - [Deposit](https://docs.polymarket.com/trading/bridge/deposit.md): Bridge assets from any supported chain to fund your Polymarket account
 - [Quote](https://docs.polymarket.com/trading/bridge/quote.md): Preview fees and estimated output for deposits and withdrawals
 - [Deposit Status](https://docs.polymarket.com/trading/bridge/status.md): Track the progress of your bridge deposits
 - [Supported Assets](https://docs.polymarket.com/trading/bridge/supported-assets.md): Chains and tokens supported for deposits to Polymarket
 - [Withdraw](https://docs.polymarket.com/trading/bridge/withdraw.md): Bridge pUSD from Polymarket to any supported chain
-- [Builder Methods](https://docs.polymarket.com/trading/clients/builder.md): Methods for querying orders and trades attributed to your builder code.
-- [L1 Methods](https://docs.polymarket.com/trading/clients/l1.md): These methods require a wallet signer (private key) but do not require user API credentials. Use these for initial setup.
-- [L2 Methods](https://docs.polymarket.com/trading/clients/l2.md): These methods require user API credentials (L2 headers). Use these for placing trades and managing your positions.
-- [Public Methods](https://docs.polymarket.com/trading/clients/public.md): These methods can be called without a signer or user credentials. Use these for reading market data, prices, and order books.
-- [Merge Tokens](https://docs.polymarket.com/trading/ctf/merge.md): Convert outcome token pairs back to pUSD
-- [Conditional Token Framework](https://docs.polymarket.com/trading/ctf/overview.md): Onchain token mechanics powering Polymarket positions
-- [Redeem Tokens](https://docs.polymarket.com/trading/ctf/redeem.md): Exchange winning tokens for pUSD after market resolution
-- [Split Tokens](https://docs.polymarket.com/trading/ctf/split.md): Convert pUSD into outcome token pairs
-- [Deposit Wallets](https://docs.polymarket.com/trading/deposit-wallets.md): Create deposit wallets, execute wallet actions, and place POLY_1271 orders
+- [Market Makers](https://docs.polymarket.com/trading/combos/market-makers.md): Build a market maker integration for pricing and executing Combos
+- [How Combos Work](https://docs.polymarket.com/trading/combos/overview.md): Understand Combo positions and the RFQ flow for multi-leg markets
 - [Fees](https://docs.polymarket.com/trading/fees.md): Understanding trading fees on Polymarket
-- [Gasless Transactions](https://docs.polymarket.com/trading/gasless.md): Execute onchain operations without paying gas fees
+- [Manage Orders](https://docs.polymarket.com/trading/manage-orders.md): Learn how to track and manage orders after submitting them.
+- [Market Making](https://docs.polymarket.com/trading/market-making.md): Guidance for operating a market-making system on Polymarket.
 - [Matching Engine Restarts](https://docs.polymarket.com/trading/matching-engine.md): Maintenance windows, restart handling, and post-restart post-only mode
-- [Orderbook](https://docs.polymarket.com/trading/orderbook.md): Reading the orderbook, prices, spreads, and midpoints
-- [Order Attribution](https://docs.polymarket.com/trading/orders/attribution.md): Attribute orders to your builder code for volume credit and fee rewards
-- [Cancel Order](https://docs.polymarket.com/trading/orders/cancel.md): Cancel single, multiple, or all open orders
-- [Create Order](https://docs.polymarket.com/trading/orders/create.md): Build, sign, and submit orders
-- [Overview](https://docs.polymarket.com/trading/orders/overview.md): Order types, tick sizes, and querying orders
-- [Overview](https://docs.polymarket.com/trading/overview.md): Trading on the Polymarket CLOB
-- [Quickstart](https://docs.polymarket.com/trading/quickstart.md): Place your first order on Polymarket
-- [Taker Rebate Program](https://docs.polymarket.com/trading/taker-rebates.md): Climb the tiers and earn daily pUSD rebates as you trade
+- [Overview](https://docs.polymarket.com/trading/overview.md): Understand how orders, settlement, and positions fit together on Polymarket.
+- [Place Orders](https://docs.polymarket.com/trading/place-orders.md): Learn how to place orders and control how they execute
+- [Combinatorial Positions](https://docs.polymarket.com/trading/positions/combinatorial.md): Multi-leg positions built from existing Polymarket outcomes
+- [How Positions Work](https://docs.polymarket.com/trading/positions/how-positions-work.md): Understand the onchain token mechanics that power Polymarket positions.
+- [Manage Positions](https://docs.polymarket.com/trading/positions/manage.md): Learn how to manage outcome-token inventory from creation through redemption.
+- [Place Your First Order](https://docs.polymarket.com/trading/quickstart.md): Learn how to authenticate with the CLOB and submit your first market order.
+- [Real-Time Order Updates](https://docs.polymarket.com/trading/realtime-order-updates.md): React to authenticated order and trade activity as it happens.
+- [Wallet Activity](https://docs.polymarket.com/trading/wallet-activity.md): Track the positions and activity associated with a Polymarket wallet.
+- [Wallets and Authentication](https://docs.polymarket.com/trading/wallets-auth.md): Connect or create a Polymarket account for trading.
 
 ## OpenAPI Specs
 
 - [data-openapi](https://docs.polymarket.com/api-spec/data-openapi.yaml)
+- [perps-openapi](https://docs.polymarket.com/api-spec/perps-openapi.json)
 - [bridge-openapi](https://docs.polymarket.com/api-spec/bridge-openapi.yaml)
 - [clob-openapi](https://docs.polymarket.com/api-spec/clob-openapi.yaml)
 - [combos-rfq-openapi](https://docs.polymarket.com/api-spec/combos-rfq-openapi.yaml)
@@ -202,8 +285,9 @@
 
 ## AsyncAPI Specs
 
-- [asyncapi-user](https://docs.polymarket.com/asyncapi-user.json)
 - [asyncapi-rfq](https://docs.polymarket.com/asyncapi-rfq.json)
+- [asyncapi-perps](https://docs.polymarket.com/asyncapi-perps.json)
+- [asyncapi-user](https://docs.polymarket.com/asyncapi-user.json)
 - [asyncapi](https://docs.polymarket.com/asyncapi.json)
 - [asyncapi-sports](https://docs.polymarket.com/asyncapi-sports.json)
 - [connect-wss](https://docs.polymarket.com/developers/open-api/connect-wss.json)

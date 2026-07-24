@@ -23,6 +23,7 @@ No authentication required for any endpoint.
 | [leaderboard.md](leaderboard.md) | /v1/leaderboard | None |
 | [builders.md](builders.md) | /v1/builders/leaderboard, /v1/builders/volume | None |
 | [accounting.md](accounting.md) | /v1/accounting/snapshot | None |
+| [misc.md](misc.md) | /other, /revisions | None |
 
 ## Rate Limits
 
