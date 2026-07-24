@@ -229,7 +229,17 @@ async fn add_auth_headers(
             let signature = sign_clob_auth(wallet.signer(), chain_id, timestamp, *nonce).await?;
 
             request = request
-                .header("POLY_ADDRESS", format!("{:?}", wallet.address()))
+                // EIP-55 checksummed, matching py-clob-client, which sends
+                // eth_account's `signer.address()`. Note `Display`/`to_string`
+                // checksums but `{:?}` lowercases — the L1 path is where this
+                // can matter, since the server recovers the address from the
+                // signature and compares it against this header.
+                //
+                // The L2 branch below deliberately still uses `{:?}`: it sends
+                // lowercase today and works, so there is no evidence the server
+                // is case-sensitive there and no reason to churn a working path.
+                // Don't "unify" these without a live check on both.
+                .header("POLY_ADDRESS", wallet.address().to_string())
                 .header("POLY_SIGNATURE", signature)
                 .header("POLY_TIMESTAMP", timestamp.to_string())
                 .header("POLY_NONCE", nonce.to_string());

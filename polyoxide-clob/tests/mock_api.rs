@@ -2553,3 +2553,52 @@ async fn user_reward_markets_forwards_full_filter_set() {
     assert!(page.data.is_empty());
     mock.assert_async().await;
 }
+
+#[tokio::test]
+async fn l1_headers_send_checksummed_address_and_nonce() {
+    let mut server = Server::new_async().await;
+
+    // Case-sensitive on purpose. The pre-existing POLY_ADDRESS assertions use
+    // `(?i)` / `[0-9a-fA-F]`, so they pass against either casing and could not
+    // catch this drift. py-clob-client sends eth_account's checksummed form.
+    let mock = server
+        .mock("POST", "/auth/api-key")
+        .match_header("POLY_ADDRESS", "0xf39Fd6e51aad88F6F4ce6aB8827279cffFb92266")
+        .match_header("POLY_NONCE", "7")
+        .match_header("POLY_SIGNATURE", Matcher::Any)
+        .match_header("POLY_TIMESTAMP", Matcher::Any)
+        .with_status(200)
+        .with_header("content-type", "application/json")
+        .with_body(r#"{"apiKey":"k","secret":"cw==","passphrase":"p"}"#)
+        .create_async()
+        .await;
+
+    let clob = test_authed_clob(&server);
+    clob.auth().unwrap().create_api_key(7).send().await.unwrap();
+
+    mock.assert_async().await;
+}
+
+#[tokio::test]
+async fn l1_address_header_is_not_lowercase() {
+    let mut server = Server::new_async().await;
+
+    // Negative control: the lowercase form must no longer be sent. Without
+    // this, a regression to `{:?}` would still satisfy a checksummed-only
+    // assertion if the matcher were ever loosened.
+    let mock = server
+        .mock("GET", "/auth/derive-api-key")
+        .match_header("POLY_ADDRESS", "0xf39fd6e51aad88f6f4ce6ab8827279cfffb92266")
+        .with_status(200)
+        .with_header("content-type", "application/json")
+        .with_body(r#"{"apiKey":"k","secret":"cw==","passphrase":"p"}"#)
+        .expect(0)
+        .create_async()
+        .await;
+
+    let clob = test_authed_clob(&server);
+    // Reaches the server but must not match the lowercase mock.
+    let _ = clob.auth().unwrap().derive_api_key(0).send().await;
+
+    mock.assert_async().await;
+}
