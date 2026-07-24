@@ -534,4 +534,37 @@ mod tests {
         ));
         assert!(!should_print(&channel, &[MarketEventType::Book]));
     }
+
+    fn bbo_channel() -> Channel {
+        Channel::Market(MarketMessage::BestBidAsk(
+            polyoxide_clob::ws::BestBidAskMessage {
+                event_type: "best_bid_ask".to_string(),
+                asset_id: "asset-1".to_string(),
+                market: "0xcond".to_string(),
+                best_bid: "0.55".parse().unwrap(),
+                best_ask: "0.57".parse().unwrap(),
+                spread: "0.02".parse().unwrap(),
+                timestamp: "0".to_string(),
+            },
+        ))
+    }
+
+    #[test]
+    fn should_print_matches_gated_event_filters() {
+        assert!(should_print(&bbo_channel(), &[MarketEventType::BestBidAsk]));
+        // A gated event must not slip through a filter for a different type.
+        assert!(!should_print(&bbo_channel(), &[MarketEventType::Book]));
+        // No filters means everything passes, gated events included.
+        assert!(should_print(&bbo_channel(), &[]));
+    }
+
+    #[test]
+    fn print_market_summary_handles_gated_events() {
+        // Exercises the new match arms; the guard is that they do not panic on
+        // field access (e.g. truncate on a market id shorter than the cut).
+        print_market_summary(match &bbo_channel() {
+            Channel::Market(msg) => msg,
+            _ => unreachable!(),
+        });
+    }
 }

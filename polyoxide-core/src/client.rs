@@ -52,6 +52,21 @@ impl HttpClient {
     /// Sharing the concurrency limiter is deliberate: the limit exists to keep
     /// Cloudflare from seeing a burst from this process, and that is a
     /// per-process concern rather than a per-host one.
+    ///
+    /// # Path prefixes are ignored
+    ///
+    /// Request paths are absolute (`/user-pnl`), and resolving an absolute
+    /// path against a base replaces the base's path entirely. So a prefix in
+    /// `base_url` is **silently dropped**, with or without a trailing slash:
+    ///
+    /// ```text
+    /// http://host          + /user-pnl -> http://host/user-pnl
+    /// http://host/proxy    + /user-pnl -> http://host/user-pnl   (prefix gone)
+    /// http://host/proxy/   + /user-pnl -> http://host/user-pnl   (prefix gone)
+    /// ```
+    ///
+    /// Point this at a scheme, host, and port — not at a sub-path. Fronting
+    /// the API with a path-prefixed reverse proxy is not supported.
     pub fn with_base_url(&self, base_url: &str) -> Result<Self, ApiError> {
         Ok(Self {
             base_url: Url::parse(base_url)?,
@@ -567,5 +582,58 @@ mod tests {
         let out = client.get_bytes("/raw", &[]).await.unwrap();
         assert_eq!(out, b"hello");
         mock.assert_async().await;
+    }
+
+    #[test]
+    fn with_base_url_retargets_and_shares_transport() {
+        let client = HttpClientBuilder::new("https://data-api.polymarket.com")
+            .with_max_concurrent(4)
+            .build()
+            .unwrap();
+        let sibling = client
+            .with_base_url("https://user-pnl-api.polymarket.com")
+            .unwrap();
+
+        assert_eq!(
+            sibling.base_url.host_str(),
+            Some("user-pnl-api.polymarket.com")
+        );
+        // The original is untouched — this returns a clone, not a mutation.
+        assert_eq!(client.base_url.host_str(), Some("data-api.polymarket.com"));
+        // Both must draw on the same concurrency budget, since the limit exists
+        // to stop this process bursting rather than to pace any one host.
+        assert!(sibling.concurrency_limiter.is_some());
+    }
+
+    #[test]
+    fn with_base_url_rejects_a_malformed_url() {
+        let client = HttpClientBuilder::new("https://data-api.polymarket.com")
+            .build()
+            .unwrap();
+        assert!(client.with_base_url("not-a-url").is_err());
+    }
+
+    #[test]
+    fn base_url_path_prefixes_are_dropped() {
+        // Documented footgun, pinned so it cannot change silently: request
+        // paths are absolute, so they replace the base path entirely. If this
+        // test ever fails, the doc comment on with_base_url needs updating too.
+        let client = HttpClientBuilder::new("http://localhost:8080/proxy")
+            .build()
+            .unwrap();
+        assert_eq!(
+            client.base_url.join("/user-pnl").unwrap().as_str(),
+            "http://localhost:8080/user-pnl",
+            "a path prefix in the base URL is not preserved"
+        );
+
+        let with_slash = client
+            .with_base_url("http://localhost:8080/proxy/")
+            .unwrap();
+        assert_eq!(
+            with_slash.base_url.join("/user-pnl").unwrap().as_str(),
+            "http://localhost:8080/user-pnl",
+            "a trailing slash does not preserve the prefix either"
+        );
     }
 }

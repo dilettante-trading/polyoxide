@@ -1339,13 +1339,78 @@ async fn rankings_volume_and_profit_parse() {
 }
 
 #[tokio::test]
-async fn sibling_hosts_are_independently_configurable() {
-    // Overriding one host must not redirect the others.
+async fn each_namespace_targets_its_own_host() {
+    // Three servers standing in for the three hosts. Each mock asserts it was
+    // hit exactly once, so a namespace routed to the wrong base URL fails here
+    // rather than silently querying the wrong service.
+    let mut main = Server::new_async().await;
+    let mut pnl = Server::new_async().await;
+    let mut rankings = Server::new_async().await;
+
+    let main_mock = main
+        .mock("GET", "/trades")
+        .with_status(200)
+        .with_header("content-type", "application/json")
+        .with_body("[]")
+        .expect(1)
+        .create_async()
+        .await;
+    let pnl_mock = pnl
+        .mock("GET", "/user-pnl")
+        // Explicit: mockito's default query matcher is not `Any`, and this is
+        // the only one of the three that sends a query string.
+        .match_query(Matcher::Any)
+        .with_status(200)
+        .with_header("content-type", "application/json")
+        .with_body("[]")
+        .expect(1)
+        .create_async()
+        .await;
+    let rankings_mock = rankings
+        .mock("GET", "/volume")
+        .with_status(200)
+        .with_header("content-type", "application/json")
+        .with_body("[]")
+        .expect(1)
+        .create_async()
+        .await;
+
     let data = DataApi::builder()
-        .pnl_base_url("http://127.0.0.1:1/")
+        .base_url(main.url())
+        .pnl_base_url(pnl.url())
+        .rankings_base_url(rankings.url())
         .build()
         .unwrap();
 
-    // The main host keeps its default even though the PnL host was overridden.
-    assert!(data.pnl().history("0xabc").send().await.is_err());
+    data.trades().list().send().await.unwrap();
+    data.pnl().history("0xabc").send().await.unwrap();
+    data.rankings().volume().send().await.unwrap();
+
+    main_mock.assert_async().await;
+    pnl_mock.assert_async().await;
+    rankings_mock.assert_async().await;
+}
+
+#[tokio::test]
+async fn overriding_one_host_leaves_the_others_alone() {
+    // Only the PnL host is overridden; the main host must still be reachable
+    // at its own base URL rather than following the override.
+    let mut main = Server::new_async().await;
+    let main_mock = main
+        .mock("GET", "/trades")
+        .with_status(200)
+        .with_header("content-type", "application/json")
+        .with_body("[]")
+        .expect(1)
+        .create_async()
+        .await;
+
+    let data = DataApi::builder()
+        .base_url(main.url())
+        .pnl_base_url("http://127.0.0.1:1")
+        .build()
+        .unwrap();
+
+    data.trades().list().send().await.unwrap();
+    main_mock.assert_async().await;
 }

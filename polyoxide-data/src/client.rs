@@ -206,6 +206,10 @@ impl DataApiBuilder {
 
     /// Set base URL for the PnL host (default:
     /// `https://user-pnl-api.polymarket.com`)
+    ///
+    /// Give a scheme, host, and port only — a path prefix is silently dropped,
+    /// because request paths are absolute. See
+    /// [`HttpClient::with_base_url`](polyoxide_core::HttpClient::with_base_url).
     pub fn pnl_base_url(mut self, url: impl Into<String>) -> Self {
         self.pnl_base_url = url.into();
         self
@@ -213,6 +217,10 @@ impl DataApiBuilder {
 
     /// Set base URL for the rankings host (default:
     /// `https://lb-api.polymarket.com`)
+    ///
+    /// Give a scheme, host, and port only — a path prefix is silently dropped,
+    /// because request paths are absolute. See
+    /// [`HttpClient::with_base_url`](polyoxide_core::HttpClient::with_base_url).
     pub fn rankings_base_url(mut self, url: impl Into<String>) -> Self {
         self.rankings_base_url = url.into();
         self

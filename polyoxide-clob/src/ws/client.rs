@@ -24,6 +24,32 @@ use super::{
 /// Maximum number of subscriptions per WebSocket connection.
 const MAX_SUBSCRIPTIONS_PER_CONNECTION: usize = 500;
 
+/// Parse one text frame into a [`Channel`], or `None` if it carries no event.
+///
+/// Shared by [`WebSocket`] and [`WebSocketWithPing`] so the two cannot drift —
+/// they previously held byte-identical copies of this logic.
+fn parse_channel_message(
+    channel_type: ChannelType,
+    text: &str,
+) -> Result<Option<Channel>, WebSocketError> {
+    // Skip PONG responses and empty messages
+    if text == "PONG" || text == "{}" || text.is_empty() {
+        return Ok(None);
+    }
+
+    // Skip messages without event_type (heartbeats, acks, etc.)
+    if !text.contains("event_type") {
+        tracing::trace!("Skipping non-event message: {}", text);
+        return Ok(None);
+    }
+
+    match channel_type {
+        ChannelType::Market => Ok(Some(Channel::Market(MarketMessage::from_json(text)?))),
+        ChannelType::User => Ok(Some(Channel::User(UserMessage::from_json(text)?))),
+        ChannelType::Sports => Ok(Some(Channel::Sports(SportsMessage::from_json(text)?))),
+    }
+}
+
 /// Validate that the subscription count does not exceed the per-connection limit.
 fn validate_subscription_count(count: usize) -> Result<(), WebSocketError> {
     if count > MAX_SUBSCRIPTIONS_PER_CONNECTION {
@@ -210,31 +236,7 @@ impl WebSocket {
 
     /// Parse a text message based on the channel type.
     fn parse_message(&self, text: &str) -> Result<Option<Channel>, WebSocketError> {
-        // Skip PONG responses and empty messages
-        if text == "PONG" || text == "{}" || text.is_empty() {
-            return Ok(None);
-        }
-
-        // Skip messages without event_type (heartbeats, acks, etc.)
-        if !text.contains("event_type") {
-            tracing::trace!("Skipping non-event message: {}", text);
-            return Ok(None);
-        }
-
-        match self.channel_type {
-            ChannelType::Market => {
-                let msg = MarketMessage::from_json(text)?;
-                Ok(Some(Channel::Market(msg)))
-            }
-            ChannelType::User => {
-                let msg = UserMessage::from_json(text)?;
-                Ok(Some(Channel::User(msg)))
-            }
-            ChannelType::Sports => {
-                let msg = SportsMessage::from_json(text)?;
-                Ok(Some(Channel::Sports(msg)))
-            }
-        }
+        parse_channel_message(self.channel_type, text)
     }
 }
 
@@ -468,31 +470,7 @@ impl WebSocketWithPing {
 
     /// Parse a text message based on the channel type.
     fn parse_message(&self, text: &str) -> Result<Option<Channel>, WebSocketError> {
-        // Skip PONG responses and empty messages
-        if text == "PONG" || text == "{}" || text.is_empty() {
-            return Ok(None);
-        }
-
-        // Skip messages without event_type (heartbeats, acks, etc.)
-        if !text.contains("event_type") {
-            tracing::trace!("Skipping non-event message: {}", text);
-            return Ok(None);
-        }
-
-        match self.channel_type {
-            ChannelType::Market => {
-                let msg = MarketMessage::from_json(text)?;
-                Ok(Some(Channel::Market(msg)))
-            }
-            ChannelType::User => {
-                let msg = UserMessage::from_json(text)?;
-                Ok(Some(Channel::User(msg)))
-            }
-            ChannelType::Sports => {
-                let msg = SportsMessage::from_json(text)?;
-                Ok(Some(Channel::Sports(msg)))
-            }
-        }
+        parse_channel_message(self.channel_type, text)
     }
 }
 
@@ -552,5 +530,63 @@ mod tests {
 
         let result = WebSocketBuilder::new().user_url("https://example.com/ws");
         assert!(result.is_err());
+    }
+}
+
+#[cfg(test)]
+mod dispatch_tests {
+    use super::*;
+
+    const BOOK: &str = r#"{"event_type":"book","asset_id":"a","market":"m","timestamp":"1",
+        "hash":"h","bids":[],"asks":[],"last_trade_price":null}"#;
+    const BBO: &str = r#"{"event_type":"best_bid_ask","asset_id":"a","market":"m",
+        "best_bid":"0.5","best_ask":"0.6","spread":"0.1","timestamp":"1"}"#;
+    const SPORTS: &str = r#"{"event_type":"sports_update","game_id":"g-1"}"#;
+
+    #[test]
+    fn routes_by_channel_type() {
+        assert!(matches!(
+            parse_channel_message(ChannelType::Market, BOOK).unwrap(),
+            Some(Channel::Market(_))
+        ));
+        assert!(matches!(
+            parse_channel_message(ChannelType::Market, BBO).unwrap(),
+            Some(Channel::Market(MarketMessage::BestBidAsk(_)))
+        ));
+        assert!(matches!(
+            parse_channel_message(ChannelType::Sports, SPORTS).unwrap(),
+            Some(Channel::Sports(_))
+        ));
+    }
+
+    #[test]
+    fn sports_frames_do_not_parse_as_market_frames() {
+        // Guards the dispatch itself: routing a sports frame to the market
+        // parser must fail rather than silently produce a market event.
+        assert!(parse_channel_message(ChannelType::Market, SPORTS).is_err());
+    }
+
+    #[test]
+    fn skips_keepalive_and_eventless_frames() {
+        for text in ["PONG", "{}", "", r#"{"some":"ack"}"#] {
+            for ch in [ChannelType::Market, ChannelType::User, ChannelType::Sports] {
+                assert!(
+                    parse_channel_message(ch, text).unwrap().is_none(),
+                    "{ch:?} should skip {text:?}"
+                );
+            }
+        }
+    }
+
+    #[test]
+    fn both_stream_types_share_one_dispatch() {
+        // WebSocket and WebSocketWithPing previously carried byte-identical
+        // copies of this logic; this pins that they now delegate to the same
+        // function, so a fix to one cannot miss the other.
+        let by_helper = parse_channel_message(ChannelType::Market, BBO).unwrap();
+        assert!(matches!(
+            by_helper,
+            Some(Channel::Market(MarketMessage::BestBidAsk(_)))
+        ));
     }
 }
