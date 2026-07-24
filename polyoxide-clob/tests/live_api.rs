@@ -823,15 +823,38 @@ async fn live_v2_place_and_cancel() {
     let clob = authenticated_client();
     let token_id = find_active_token_id().await;
     let book = clob.markets().order_book(&token_id).send().await.unwrap();
-    let ask = book.asks.iter().map(|l| l.price).min().expect("asks");
-    let price: f64 = ask.to_string().parse().unwrap();
+    let best_ask: f64 = book
+        .asks
+        .iter()
+        .map(|l| l.price)
+        .min()
+        .expect("asks")
+        .to_string()
+        .parse()
+        .unwrap();
+
+    // Rest, do not fill. This previously bid the best ask, which crosses the
+    // spread and executes immediately — leaving a real position bought at the
+    // worst available price and making the cancel below a no-op.
+    //
+    // 0.01 is the minimum tick on most markets and a valid multiple on
+    // finer-ticked ones, so a bid there sits at the bottom of the book.
+    const RESTING_PRICE: f64 = 0.01;
+    assert!(
+        RESTING_PRICE < best_ask,
+        "market too thin to rest under the ask (best ask {best_ask}); pick another"
+    );
+
     let params = CreateOrderParams {
         token_id,
-        price,
+        price: RESTING_PRICE,
         size: 5.0,
         side: OrderSide::Buy,
         order_type: OrderKind::Gtc,
-        post_only: false,
+        // Belt and braces: the venue rejects a post-only order outright rather
+        // than letting it take, so a mispriced bid fails loudly instead of
+        // silently spending money.
+        post_only: true,
         expiration: None,
         funder: None,
         signature_type: Some(SignatureType::PolyProxy),
@@ -839,11 +862,43 @@ async fn live_v2_place_and_cancel() {
     let order = clob.create_order(&params, None).await.unwrap();
     let signed = clob.sign_order(&order).await.unwrap();
     let resp = clob
-        .post_order(&signed, OrderKind::Gtc, false)
+        .post_order(&signed, OrderKind::Gtc, true)
         .await
         .unwrap();
     assert!(resp.success, "V2 order rejected: {:?}", resp.error_msg);
-    if let Some(id) = resp.order_id {
-        let _ = clob.orders().unwrap().cancel(id).send().await;
-    }
+    let id = resp.order_id.expect("accepted order must return an id");
+
+    // Prove it rested. Without this the test passes just as happily when the
+    // order fills, which is what hid the original behaviour.
+    tokio::time::sleep(Duration::from_secs(3)).await;
+    let open = clob
+        .orders()
+        .expect("orders")
+        .list()
+        .send()
+        .await
+        .expect("list open orders");
+    let resting = open.data.iter().find(|o| o.id == id);
+    assert!(
+        resting.is_some(),
+        "order {id} is not resting — it filled or was rejected"
+    );
+    assert_eq!(
+        resting.unwrap().size_matched,
+        "0",
+        "order must rest unfilled, not execute"
+    );
+
+    // Always clean up, and verify the cleanup.
+    let cancelled = clob
+        .orders()
+        .expect("orders")
+        .cancel(id.clone())
+        .send()
+        .await
+        .expect("cancel");
+    assert!(
+        cancelled.canceled.contains(&id),
+        "cancel did not report {id}: {cancelled:?}"
+    );
 }
