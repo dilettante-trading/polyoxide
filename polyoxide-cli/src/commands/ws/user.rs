@@ -220,7 +220,7 @@ fn should_print(channel: &Channel, filters: &[UserEventType]) -> bool {
             };
             filters.contains(&event_type)
         }
-        Channel::Market(_) => false,
+        _ => false,
     }
 }
 
@@ -237,7 +237,7 @@ fn print_message(channel: &Channel, format: OutputFormat) -> Result<()> {
                 print_user_summary(msg);
             }
         },
-        Channel::Market(_) => {
+        _ => {
             // Shouldn't happen on user channel
         }
     }

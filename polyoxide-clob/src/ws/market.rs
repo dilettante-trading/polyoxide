@@ -115,9 +115,113 @@ pub struct LastTradePriceMessage {
     pub timestamp: String,
 }
 
+/// Best bid/ask update (`best_bid_ask`).
+///
+/// Only delivered when the subscription set `custom_feature_enabled`; see
+/// [`MarketSubscriptionOptions`](crate::ws::MarketSubscriptionOptions).
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct BestBidAskMessage {
+    /// Event discriminator, always `best_bid_ask`.
+    pub event_type: String,
+    /// Asset ID (token ID)
+    pub asset_id: String,
+    /// Market condition ID
+    pub market: String,
+    /// Best bid price
+    #[serde(with = "rust_decimal::serde::str")]
+    pub best_bid: Decimal,
+    /// Best ask price
+    #[serde(with = "rust_decimal::serde::str")]
+    pub best_ask: Decimal,
+    /// Spread between best ask and best bid
+    #[serde(with = "rust_decimal::serde::str")]
+    pub spread: Decimal,
+    /// Timestamp in milliseconds (as string)
+    pub timestamp: String,
+}
+
+/// New market creation event (`new_market`).
+///
+/// Only delivered when the subscription set `custom_feature_enabled`.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct NewMarketMessage {
+    /// Event discriminator, always `new_market`.
+    pub event_type: String,
+    /// Market ID
+    pub id: String,
+    /// Market question
+    pub question: String,
+    /// Condition ID
+    pub market: String,
+    /// URL slug
+    pub slug: String,
+    /// Market description
+    #[serde(default)]
+    pub description: Option<String>,
+    /// Asset (token) IDs for the market
+    #[serde(default)]
+    pub assets_ids: Vec<String>,
+    /// Outcome labels
+    #[serde(default)]
+    pub outcomes: Vec<String>,
+    /// Timestamp in milliseconds (as string)
+    pub timestamp: String,
+    /// Tags applied to the market
+    #[serde(default)]
+    pub tags: Vec<String>,
+    /// Condition ID, when reported separately from `market`
+    #[serde(default)]
+    pub condition_id: Option<String>,
+    /// Whether the market is active
+    #[serde(default)]
+    pub active: Option<bool>,
+    /// CLOB token IDs for the market
+    #[serde(default)]
+    pub clob_token_ids: Vec<String>,
+    /// Sports market type, e.g. spread or moneyline
+    #[serde(default)]
+    pub sports_market_type: Option<String>,
+    /// Parent event metadata, passed through unparsed
+    #[serde(default)]
+    pub event_message: Option<serde_json::Value>,
+}
+
+/// Market resolution event (`market_resolved`).
+///
+/// Only delivered when the subscription set `custom_feature_enabled`.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct MarketResolvedMessage {
+    /// Event discriminator, always `market_resolved`.
+    pub event_type: String,
+    /// Market ID
+    pub id: String,
+    /// Condition ID
+    pub market: String,
+    /// Asset (token) IDs for the market
+    #[serde(default)]
+    pub assets_ids: Vec<String>,
+    /// Asset ID of the winning outcome
+    pub winning_asset_id: String,
+    /// Label of the winning outcome
+    pub winning_outcome: String,
+    /// Timestamp in milliseconds (as string)
+    pub timestamp: String,
+    /// Tags applied to the market
+    #[serde(default)]
+    pub tags: Vec<String>,
+    /// Parent event metadata, passed through unparsed
+    #[serde(default)]
+    pub event_message: Option<serde_json::Value>,
+}
+
 /// Market channel message types
+///
+/// Marked `#[non_exhaustive]`: Polymarket adds market events over time (the
+/// three `custom_feature_enabled` events were added after this crate first
+/// shipped), so matches must carry a `_` arm to keep compiling.
 #[derive(Debug, Clone, Serialize)]
 #[serde(untagged)]
+#[non_exhaustive]
 pub enum MarketMessage {
     /// Full order book snapshot
     Book(BookMessage),
@@ -127,6 +231,12 @@ pub enum MarketMessage {
     TickSizeChange(TickSizeChangeMessage),
     /// Last trade price
     LastTradePrice(LastTradePriceMessage),
+    /// Best bid/ask update (requires `custom_feature_enabled`)
+    BestBidAsk(BestBidAskMessage),
+    /// New market created (requires `custom_feature_enabled`)
+    NewMarket(Box<NewMarketMessage>),
+    /// Market resolved (requires `custom_feature_enabled`)
+    MarketResolved(Box<MarketResolvedMessage>),
 }
 
 impl MarketMessage {
@@ -152,6 +262,9 @@ impl MarketMessage {
             "price_change" => Ok(MarketMessage::PriceChange(serde_json::from_str(json)?)),
             "tick_size_change" => Ok(MarketMessage::TickSizeChange(serde_json::from_str(json)?)),
             "last_trade_price" => Ok(MarketMessage::LastTradePrice(serde_json::from_str(json)?)),
+            "best_bid_ask" => Ok(MarketMessage::BestBidAsk(serde_json::from_str(json)?)),
+            "new_market" => Ok(MarketMessage::NewMarket(serde_json::from_str(json)?)),
+            "market_resolved" => Ok(MarketMessage::MarketResolved(serde_json::from_str(json)?)),
             _ => Err(serde::de::Error::custom(format!(
                 "Unknown market event type: {}",
                 raw.event_type
@@ -469,5 +582,84 @@ mod tests {
             }
             _ => panic!("Expected Book variant"),
         }
+    }
+}
+
+#[cfg(test)]
+mod custom_feature_tests {
+    use super::*;
+
+    #[test]
+    fn parses_best_bid_ask() {
+        let json = r#"{
+            "event_type": "best_bid_ask",
+            "asset_id": "abc123",
+            "market": "0xcond",
+            "best_bid": "0.55",
+            "best_ask": "0.57",
+            "spread": "0.02",
+            "timestamp": "1700000000000"
+        }"#;
+
+        let msg = MarketMessage::from_json(json).unwrap();
+        let MarketMessage::BestBidAsk(bba) = msg else {
+            panic!("expected BestBidAsk, got {msg:?}");
+        };
+        // Prices go through Decimal, not f64 — 0.57 - 0.55 is exact here.
+        assert_eq!(bba.best_bid.to_string(), "0.55");
+        assert_eq!(bba.best_ask.to_string(), "0.57");
+        assert_eq!(bba.best_ask - bba.best_bid, bba.spread);
+    }
+
+    #[test]
+    fn parses_new_market() {
+        let json = r#"{
+            "event_type": "new_market",
+            "id": "m-1",
+            "question": "Will X happen?",
+            "market": "0xcond",
+            "slug": "will-x-happen",
+            "assets_ids": ["t1", "t2"],
+            "outcomes": ["Yes", "No"],
+            "timestamp": "1700000000000"
+        }"#;
+
+        let msg = MarketMessage::from_json(json).unwrap();
+        let MarketMessage::NewMarket(nm) = msg else {
+            panic!("expected NewMarket, got {msg:?}");
+        };
+        assert_eq!(nm.question, "Will X happen?");
+        assert_eq!(nm.outcomes, vec!["Yes", "No"]);
+        // Optional fields absent from the payload must not fail the parse.
+        assert_eq!(nm.description, None);
+        assert!(nm.tags.is_empty());
+    }
+
+    #[test]
+    fn parses_market_resolved() {
+        let json = r#"{
+            "event_type": "market_resolved",
+            "id": "m-1",
+            "market": "0xcond",
+            "assets_ids": ["t1", "t2"],
+            "winning_asset_id": "t1",
+            "winning_outcome": "Yes",
+            "timestamp": "1700000000000"
+        }"#;
+
+        let msg = MarketMessage::from_json(json).unwrap();
+        let MarketMessage::MarketResolved(mr) = msg else {
+            panic!("expected MarketResolved, got {msg:?}");
+        };
+        assert_eq!(mr.winning_outcome, "Yes");
+        assert_eq!(mr.winning_asset_id, "t1");
+    }
+
+    #[test]
+    fn unknown_event_type_still_errors() {
+        // Forward-compat is handled at the enum level via #[non_exhaustive],
+        // not by silently swallowing unrecognized events here.
+        let json = r#"{"event_type": "some_future_event"}"#;
+        assert!(MarketMessage::from_json(json).is_err());
     }
 }

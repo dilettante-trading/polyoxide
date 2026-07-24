@@ -14,7 +14,7 @@ More information about this crate can be found in the [crate documentation](http
 - **API Key Management**: Create, list, and delete standard, read-only, and builder API keys
 - **Liquidity Rewards**: Query earnings, percentages, and reward markets
 - **Notifications**: List and dismiss user notifications
-- **WebSocket**: Real-time market data and user order/trade updates (feature-gated)
+- **WebSocket**: Real-time market, user, and sports channels (feature-gated)
 
 ## Installation
 
@@ -299,6 +299,55 @@ while let Some(msg) = ws.next().await {
             println!("Price change: {:?}", pc.price_changes);
         }
         _ => {}
+    }
+}
+# Ok(())
+# }
+```
+
+#### Gated market events
+
+`best_bid_ask`, `new_market`, and `market_resolved` are withheld by the server
+unless the subscription opts in. Without `with_custom_features()` you will
+never observe them:
+
+```rust
+# async fn doctest() -> Result<(), Box<dyn std::error::Error>> {
+use polyoxide_clob::ws::{Channel, MarketMessage, MarketSubscriptionOptions, WebSocket};
+use futures_util::StreamExt;
+
+let mut ws = WebSocket::connect_market_with(
+    vec!["asset_id".to_string()],
+    MarketSubscriptionOptions::default().with_custom_features(),
+).await?;
+
+while let Some(msg) = ws.next().await {
+    if let Channel::Market(MarketMessage::BestBidAsk(bba)) = msg? {
+        println!("{} / {} (spread {})", bba.best_bid, bba.best_ask, bba.spread);
+    }
+}
+# Ok(())
+# }
+```
+
+`MarketMessage` and `Channel` are `#[non_exhaustive]`, so matches need a `_`
+arm — upstream adds event types without a major release.
+
+#### Sports Channel
+
+Live game state updates. Served by a different host
+(`sports-api.polymarket.com`) and needs no subscription payload:
+
+```rust
+# async fn doctest() -> Result<(), Box<dyn std::error::Error>> {
+use polyoxide_clob::ws::{Channel, WebSocket};
+use futures_util::StreamExt;
+
+let mut ws = WebSocket::connect_sports().await?;
+
+while let Some(msg) = ws.next().await {
+    if let Channel::Sports(update) = msg? {
+        println!("{update:?}");
     }
 }
 # Ok(())

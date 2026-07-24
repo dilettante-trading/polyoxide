@@ -66,8 +66,8 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
                     println!();
                 }
             },
-            Ok(Channel::Market(_)) => {
-                // Won't happen on user channel
+            Ok(_) => {
+                // Other channels won't appear on a user connection.
             }
             Err(e) => {
                 eprintln!("Error: {}", e);

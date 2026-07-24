@@ -12,7 +12,11 @@ use super::{
     auth::ApiCredentials,
     error::WebSocketError,
     market::MarketMessage,
-    subscription::{ChannelType, MarketSubscription, UserSubscription, WS_MARKET_URL, WS_USER_URL},
+    sports::SportsMessage,
+    subscription::{
+        ChannelType, MarketSubscription, MarketSubscriptionOptions, UserSubscription,
+        WS_MARKET_URL, WS_SPORTS_URL, WS_USER_URL,
+    },
     user::UserMessage,
     Channel,
 };
@@ -80,16 +84,69 @@ impl WebSocket {
     /// }
     /// ```
     pub async fn connect_market(asset_ids: Vec<String>) -> Result<Self, WebSocketError> {
+        Self::connect_market_with(asset_ids, MarketSubscriptionOptions::default()).await
+    }
+
+    /// Connect to the market channel with explicit subscription options.
+    ///
+    /// Use this to opt into the `best_bid_ask`, `new_market`, and
+    /// `market_resolved` events, which the server withholds unless the
+    /// subscription sets `custom_feature_enabled`.
+    ///
+    /// # Example
+    ///
+    /// ```no_run
+    /// use polyoxide_clob::ws::{MarketSubscriptionOptions, WebSocket};
+    ///
+    /// #[tokio::main]
+    /// async fn main() -> Result<(), Box<dyn std::error::Error>> {
+    ///     let ws = WebSocket::connect_market_with(
+    ///         vec!["token_id_1".to_string()],
+    ///         MarketSubscriptionOptions::default().with_custom_features(),
+    ///     ).await?;
+    ///     Ok(())
+    /// }
+    /// ```
+    pub async fn connect_market_with(
+        asset_ids: Vec<String>,
+        options: MarketSubscriptionOptions,
+    ) -> Result<Self, WebSocketError> {
         validate_subscription_count(asset_ids.len())?;
         let (mut ws, _) = connect_async(WS_MARKET_URL).await?;
 
-        let subscription = MarketSubscription::new(asset_ids);
+        let subscription = MarketSubscription::with_options(asset_ids, options);
         let msg = serde_json::to_string(&subscription)?;
         ws.send(Message::Text(msg.into())).await?;
 
         Ok(Self {
             inner: ws,
             channel_type: ChannelType::Market,
+        })
+    }
+
+    /// Connect to the sports channel for live game state updates.
+    ///
+    /// This channel takes no subscription payload — connecting is enough. Note
+    /// that it is served by a different host (`sports-api.polymarket.com`)
+    /// than the market and user channels.
+    ///
+    /// # Example
+    ///
+    /// ```no_run
+    /// use polyoxide_clob::ws::WebSocket;
+    ///
+    /// #[tokio::main]
+    /// async fn main() -> Result<(), Box<dyn std::error::Error>> {
+    ///     let ws = WebSocket::connect_sports().await?;
+    ///     Ok(())
+    /// }
+    /// ```
+    pub async fn connect_sports() -> Result<Self, WebSocketError> {
+        let (ws, _) = connect_async(WS_SPORTS_URL).await?;
+
+        Ok(Self {
+            inner: ws,
+            channel_type: ChannelType::Sports,
         })
     }
 
@@ -172,6 +229,10 @@ impl WebSocket {
             ChannelType::User => {
                 let msg = UserMessage::from_json(text)?;
                 Ok(Some(Channel::User(msg)))
+            }
+            ChannelType::Sports => {
+                let msg = SportsMessage::from_json(text)?;
+                Ok(Some(Channel::Sports(msg)))
             }
         }
     }
@@ -426,6 +487,10 @@ impl WebSocketWithPing {
             ChannelType::User => {
                 let msg = UserMessage::from_json(text)?;
                 Ok(Some(Channel::User(msg)))
+            }
+            ChannelType::Sports => {
+                let msg = SportsMessage::from_json(text)?;
+                Ok(Some(Channel::Sports(msg)))
             }
         }
     }

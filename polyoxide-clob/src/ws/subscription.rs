@@ -10,6 +10,12 @@ pub const WS_MARKET_URL: &str = "wss://ws-subscriptions-clob.polymarket.com/ws/m
 /// WebSocket endpoint URL for user channel
 pub const WS_USER_URL: &str = "wss://ws-subscriptions-clob.polymarket.com/ws/user";
 
+/// WebSocket endpoint URL for the sports channel
+///
+/// Note the different host: sports updates are served by `sports-api`, not by
+/// `ws-subscriptions-clob` like the market and user channels.
+pub const WS_SPORTS_URL: &str = "wss://sports-api.polymarket.com/ws";
+
 /// Channel type for WebSocket subscription
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "lowercase")]
@@ -18,6 +24,87 @@ pub enum ChannelType {
     Market,
     /// User channel for authenticated order and trade updates
     User,
+    /// Sports channel for live game state updates
+    ///
+    /// Unlike the other two, this variant is never sent on the wire — the
+    /// sports channel takes no subscription payload. It exists so a connected
+    /// [`WebSocket`](crate::ws::WebSocket) can report which channel it is on.
+    Sports,
+}
+
+/// Order book depth level for a market subscription.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(into = "u8", try_from = "u8")]
+pub enum SubscriptionLevel {
+    /// Level 1 — top of book only.
+    One,
+    /// Level 2 — aggregated depth (upstream default).
+    Two,
+    /// Level 3 — full depth.
+    Three,
+}
+
+impl From<SubscriptionLevel> for u8 {
+    fn from(level: SubscriptionLevel) -> Self {
+        match level {
+            SubscriptionLevel::One => 1,
+            SubscriptionLevel::Two => 2,
+            SubscriptionLevel::Three => 3,
+        }
+    }
+}
+
+impl TryFrom<u8> for SubscriptionLevel {
+    type Error = String;
+
+    fn try_from(value: u8) -> Result<Self, Self::Error> {
+        match value {
+            1 => Ok(Self::One),
+            2 => Ok(Self::Two),
+            3 => Ok(Self::Three),
+            other => Err(format!("invalid subscription level {other}, expected 1-3")),
+        }
+    }
+}
+
+/// Optional settings for a market channel subscription.
+///
+/// Every field is omitted from the wire payload when left unset, so the
+/// default value produces exactly the subscription
+/// [`MarketSubscription::new`] has always sent.
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
+pub struct MarketSubscriptionOptions {
+    /// Enable the `best_bid_ask`, `new_market`, and `market_resolved` events.
+    ///
+    /// These are gated server-side: without this flag the server simply never
+    /// sends them, so [`MarketMessage::BestBidAsk`](crate::ws::MarketMessage)
+    /// and its siblings will never be observed.
+    pub custom_feature_enabled: bool,
+    /// Whether to send an order book snapshot on subscribe (upstream default:
+    /// `true`).
+    pub initial_dump: Option<bool>,
+    /// Order book depth level (upstream default: [`SubscriptionLevel::Two`]).
+    pub level: Option<SubscriptionLevel>,
+}
+
+impl MarketSubscriptionOptions {
+    /// Enable `best_bid_ask`, `new_market`, and `market_resolved` events.
+    pub fn with_custom_features(mut self) -> Self {
+        self.custom_feature_enabled = true;
+        self
+    }
+
+    /// Set whether the server sends an initial order book snapshot.
+    pub fn initial_dump(mut self, initial_dump: bool) -> Self {
+        self.initial_dump = Some(initial_dump);
+        self
+    }
+
+    /// Set the order book depth level.
+    pub fn level(mut self, level: SubscriptionLevel) -> Self {
+        self.level = Some(level);
+        self
+    }
 }
 
 /// Subscription message for market channel
@@ -28,14 +115,36 @@ pub struct MarketSubscription {
     /// Channel type (always "market")
     #[serde(rename = "type")]
     pub channel_type: ChannelType,
+    /// Enables `best_bid_ask`, `new_market`, and `market_resolved` events.
+    /// Omitted when false, matching the upstream default.
+    #[serde(default, skip_serializing_if = "is_false")]
+    pub custom_feature_enabled: bool,
+    /// Whether to send an initial order book snapshot. Omitted when unset.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub initial_dump: Option<bool>,
+    /// Order book depth level. Omitted when unset.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub level: Option<SubscriptionLevel>,
+}
+
+fn is_false(value: &bool) -> bool {
+    !*value
 }
 
 impl MarketSubscription {
-    /// Create a new market subscription
+    /// Create a new market subscription with upstream defaults.
     pub fn new(assets_ids: Vec<String>) -> Self {
+        Self::with_options(assets_ids, MarketSubscriptionOptions::default())
+    }
+
+    /// Create a market subscription with explicit options.
+    pub fn with_options(assets_ids: Vec<String>, options: MarketSubscriptionOptions) -> Self {
         Self {
             assets_ids,
             channel_type: ChannelType::Market,
+            custom_feature_enabled: options.custom_feature_enabled,
+            initial_dump: options.initial_dump,
+            level: options.level,
         }
     }
 }
@@ -147,5 +256,69 @@ mod tests {
         assert!(WS_MARKET_URL.contains("market"));
         assert!(WS_USER_URL.starts_with("wss://"));
         assert!(WS_USER_URL.contains("user"));
+    }
+}
+
+#[cfg(test)]
+mod options_tests {
+    use super::*;
+
+    #[test]
+    fn default_options_preserve_the_original_wire_payload() {
+        // Regression guard: adding the new optional fields must not change the
+        // bytes sent by existing callers of MarketSubscription::new.
+        let sub = MarketSubscription::new(vec!["token123".into()]);
+        let json = serde_json::to_value(&sub).unwrap();
+
+        assert_eq!(json["type"], "market");
+        assert_eq!(json["assets_ids"][0], "token123");
+        assert_eq!(
+            json.as_object().unwrap().len(),
+            2,
+            "unset options must be omitted entirely, got {json}"
+        );
+    }
+
+    #[test]
+    fn custom_features_flag_is_sent_when_enabled() {
+        let sub = MarketSubscription::with_options(
+            vec!["t".into()],
+            MarketSubscriptionOptions::default().with_custom_features(),
+        );
+        let json = serde_json::to_value(&sub).unwrap();
+        assert_eq!(json["custom_feature_enabled"], true);
+    }
+
+    #[test]
+    fn initial_dump_and_level_serialize_when_set() {
+        let sub = MarketSubscription::with_options(
+            vec!["t".into()],
+            MarketSubscriptionOptions::default()
+                .initial_dump(false)
+                .level(SubscriptionLevel::Three),
+        );
+        let json = serde_json::to_value(&sub).unwrap();
+        assert_eq!(json["initial_dump"], false);
+        // Level is an integer on the wire, not a string.
+        assert_eq!(json["level"], 3);
+    }
+
+    #[test]
+    fn subscription_level_rejects_out_of_range() {
+        assert!(SubscriptionLevel::try_from(0u8).is_err());
+        assert!(SubscriptionLevel::try_from(4u8).is_err());
+        assert_eq!(
+            SubscriptionLevel::try_from(2u8).unwrap(),
+            SubscriptionLevel::Two
+        );
+    }
+
+    #[test]
+    fn sports_url_uses_its_own_host() {
+        assert!(WS_SPORTS_URL.starts_with("wss://"));
+        assert!(
+            !WS_SPORTS_URL.contains("ws-subscriptions-clob"),
+            "sports is served by sports-api, not the clob subscriptions host"
+        );
     }
 }

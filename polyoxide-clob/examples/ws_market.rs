@@ -6,7 +6,7 @@
 //! ```
 
 use futures_util::StreamExt;
-use polyoxide_clob::ws::{Channel, MarketMessage, WebSocket};
+use polyoxide_clob::ws::{Channel, MarketMessage, MarketSubscriptionOptions, WebSocket};
 
 #[tokio::main]
 async fn main() -> Result<(), Box<dyn std::error::Error>> {
@@ -21,7 +21,13 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     println!("Connecting to Polymarket WebSocket...");
     println!("Subscribing to {} asset(s)", asset_ids.len());
 
-    let mut ws = WebSocket::connect_market(asset_ids).await?;
+    // `with_custom_features()` opts into best_bid_ask, new_market, and
+    // market_resolved. Without it the server never sends those three.
+    let mut ws = WebSocket::connect_market_with(
+        asset_ids,
+        MarketSubscriptionOptions::default().with_custom_features(),
+    )
+    .await?;
 
     println!("Connected! Waiting for messages...\n");
 
@@ -69,6 +75,27 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
                         );
                         println!();
                     }
+                    MarketMessage::BestBidAsk(bba) => {
+                        println!("🥇 Best Bid/Ask for {}", &bba.asset_id[..20]);
+                        println!(
+                            "   {} / {} (spread {})",
+                            bba.best_bid, bba.best_ask, bba.spread
+                        );
+                        println!();
+                    }
+                    MarketMessage::NewMarket(nm) => {
+                        println!("🆕 New Market: {}", nm.question);
+                        println!("   slug: {}, outcomes: {:?}", nm.slug, nm.outcomes);
+                        println!();
+                    }
+                    MarketMessage::MarketResolved(mr) => {
+                        println!("🏁 Market Resolved: {}", mr.market);
+                        println!("   winner: {}", mr.winning_outcome);
+                        println!();
+                    }
+                    // `MarketMessage` is #[non_exhaustive] — new event types can
+                    // appear without a breaking release.
+                    other => println!("❓ Unhandled market event: {other:?}\n"),
                 }
                 count += 1;
                 if count >= limit {
@@ -76,8 +103,8 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
                     break;
                 }
             }
-            Ok(Channel::User(_)) => {
-                // Won't happen on market channel
+            Ok(_) => {
+                // Other channels won't appear on a market connection.
             }
             Err(e) => {
                 eprintln!("Error: {}", e);

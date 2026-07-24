@@ -107,6 +107,7 @@ mod auth;
 mod client;
 mod error;
 mod market;
+mod sports;
 mod subscription;
 mod user;
 
@@ -114,17 +115,24 @@ pub use auth::ApiCredentials;
 pub use client::{WebSocket, WebSocketBuilder, WebSocketWithPing};
 pub use error::WebSocketError;
 pub use market::{
-    BookMessage, LastTradePriceMessage, MarketMessage, OrderSummary, PriceChange,
-    PriceChangeMessage, TickSizeChangeMessage,
+    BestBidAskMessage, BookMessage, LastTradePriceMessage, MarketMessage, MarketResolvedMessage,
+    NewMarketMessage, OrderSummary, PriceChange, PriceChangeMessage, TickSizeChangeMessage,
 };
-pub use subscription::ChannelType;
+pub use sports::{SportsMessage, SportsUpdateMessage};
+pub use subscription::{
+    ChannelType, MarketSubscriptionOptions, SubscriptionLevel, WS_MARKET_URL, WS_SPORTS_URL,
+    WS_USER_URL,
+};
 pub use user::{MakerOrder, OrderEventType, OrderMessage, TradeMessage, TradeStatus, UserMessage};
 
 /// All possible WebSocket channel messages
 #[derive(Debug, Clone)]
+#[non_exhaustive]
 pub enum Channel {
     /// Market channel message
     Market(MarketMessage),
     /// User channel message
     User(UserMessage),
+    /// Sports channel message
+    Sports(SportsMessage),
 }

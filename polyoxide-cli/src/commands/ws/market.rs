@@ -9,7 +9,7 @@ use std::{
 use clap::Args;
 use color_eyre::eyre::Result;
 use futures_util::StreamExt;
-use polyoxide_clob::ws::{Channel, MarketMessage, WebSocket};
+use polyoxide_clob::ws::{Channel, MarketMessage, MarketSubscriptionOptions, WebSocket};
 
 use crate::commands::common::parsing::parse_duration;
 
@@ -24,6 +24,12 @@ pub enum MarketEventType {
     Trade,
     /// Tick size changes
     Tick,
+    /// Best bid/ask updates (requires `--custom-features`)
+    BestBidAsk,
+    /// New market creations (requires `--custom-features`)
+    NewMarket,
+    /// Market resolutions (requires `--custom-features`)
+    MarketResolved,
 }
 
 #[derive(Args)]
@@ -39,6 +45,11 @@ pub struct MarketArgs {
     /// Filter by event type (can be specified multiple times)
     #[arg(long, value_enum)]
     filter: Vec<MarketEventType>,
+
+    /// Subscribe with custom_feature_enabled, which is required for the
+    /// best-bid-ask, new-market, and market-resolved events
+    #[arg(long)]
+    custom_features: bool,
 
     /// Exit after receiving N messages
     #[arg(short = 'n', long)]
@@ -81,9 +92,28 @@ pub async fn run(args: MarketArgs) -> Result<()> {
     if let Some(timeout) = args.timeout {
         eprintln!("Will exit after {:?}", timeout);
     }
+    // Warn rather than silently returning nothing: filtering for a gated event
+    // without the opt-in flag produces an empty stream, which reads as "no
+    // activity" instead of "misconfigured".
+    let gated = [
+        MarketEventType::BestBidAsk,
+        MarketEventType::NewMarket,
+        MarketEventType::MarketResolved,
+    ];
+    if !args.custom_features && args.filter.iter().any(|f| gated.contains(f)) {
+        eprintln!(
+            "warning: --filter selects a gated event but --custom-features was not passed; \
+             the server will never send those events"
+        );
+    }
     eprintln!("Press Ctrl+C to exit\n");
 
-    let mut ws = WebSocket::connect_market(args.asset_ids).await?;
+    let options = if args.custom_features {
+        MarketSubscriptionOptions::default().with_custom_features()
+    } else {
+        MarketSubscriptionOptions::default()
+    };
+    let mut ws = WebSocket::connect_market_with(args.asset_ids, options).await?;
     let mut message_count: u64 = 0;
     let start_time = std::time::Instant::now();
 
@@ -149,10 +179,16 @@ fn should_print(channel: &Channel, filters: &[MarketEventType]) -> bool {
                 MarketMessage::PriceChange(_) => MarketEventType::Price,
                 MarketMessage::LastTradePrice(_) => MarketEventType::Trade,
                 MarketMessage::TickSizeChange(_) => MarketEventType::Tick,
+                MarketMessage::BestBidAsk(_) => MarketEventType::BestBidAsk,
+                MarketMessage::NewMarket(_) => MarketEventType::NewMarket,
+                MarketMessage::MarketResolved(_) => MarketEventType::MarketResolved,
+                // A market event this build predates cannot match any filter,
+                // so an explicit filter list excludes it.
+                _ => return false,
             };
             filters.contains(&event_type)
         }
-        Channel::User(_) => false,
+        _ => false,
     }
 }
 
@@ -169,8 +205,8 @@ fn print_message(channel: &Channel, format: OutputFormat) -> Result<()> {
                 print_market_summary(msg);
             }
         },
-        Channel::User(_) => {
-            // Shouldn't happen on market channel
+        _ => {
+            // Other channels don't appear on a market connection.
         }
     }
     Ok(())
@@ -218,6 +254,33 @@ fn print_market_summary(msg: &MarketMessage) {
                 ltp.size
             );
         }
+        MarketMessage::BestBidAsk(bba) => {
+            println!(
+                "[BBO] asset={}.. bid={} ask={} spread={}",
+                truncate(&bba.asset_id, 10),
+                bba.best_bid,
+                bba.best_ask,
+                bba.spread
+            );
+        }
+        MarketMessage::NewMarket(nm) => {
+            println!(
+                "[NEW] market={}.. slug={} outcomes={}",
+                truncate(&nm.market, 10),
+                nm.slug,
+                nm.outcomes.join("/")
+            );
+        }
+        MarketMessage::MarketResolved(mr) => {
+            println!(
+                "[RESOLVED] market={}.. winner={}",
+                truncate(&mr.market, 10),
+                mr.winning_outcome
+            );
+        }
+        // `MarketMessage` is #[non_exhaustive]; print something rather than
+        // dropping an event this build doesn't know about.
+        other => println!("[?] unhandled event: {other:?}"),
     }
 }
 
@@ -253,6 +316,31 @@ mod tests {
     fn parses_multiple_asset_ids() {
         let w = try_parse(&["test", "asset-1", "asset-2", "asset-3"]).unwrap();
         assert_eq!(w.args.asset_ids, vec!["asset-1", "asset-2", "asset-3"]);
+    }
+
+    #[test]
+    fn custom_features_defaults_off_and_parses() {
+        let w = try_parse(&["test", "id"]).unwrap();
+        assert!(!w.args.custom_features, "must stay opt-in");
+
+        let w = try_parse(&["test", "id", "--custom-features"]).unwrap();
+        assert!(w.args.custom_features);
+    }
+
+    #[test]
+    fn parses_gated_event_filters() {
+        let w = try_parse(&[
+            "test",
+            "id",
+            "--filter",
+            "best-bid-ask",
+            "--filter",
+            "market-resolved",
+        ])
+        .unwrap();
+        assert_eq!(w.args.filter.len(), 2);
+        assert!(matches!(w.args.filter[0], MarketEventType::BestBidAsk));
+        assert!(matches!(w.args.filter[1], MarketEventType::MarketResolved));
     }
 
     #[test]
