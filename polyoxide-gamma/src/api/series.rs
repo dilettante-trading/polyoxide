@@ -144,6 +144,18 @@ impl ListSeries {
         self
     }
 
+    /// Comma-separated list of JSON field names to order by.
+    pub fn order(mut self, order: impl Into<String>) -> Self {
+        self.request = self.request.query("order", order.into());
+        self
+    }
+
+    /// Omit the nested `events` relation from each series.
+    pub fn exclude_events(mut self, exclude: bool) -> Self {
+        self.request = self.request.query("exclude_events", exclude);
+        self
+    }
+
     /// Execute the request
     pub async fn send(self) -> Result<Vec<SeriesData>, GammaError> {
         self.request.send().await

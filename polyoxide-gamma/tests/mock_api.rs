@@ -1086,3 +1086,139 @@ async fn ping_propagates_5xx_as_error() {
 
     mock.assert_async().await;
 }
+
+#[tokio::test]
+async fn keyset_events_forwards_newly_added_filters() {
+    let mut server = Server::new_async().await;
+
+    let mock = server
+        .mock("GET", "/events/keyset")
+        .match_query(Matcher::AllOf(vec![
+            // Gamma array params use the OpenAPI default (form/explode=true),
+            // i.e. repeated keys — not the CSV form the Data API combos use.
+            // Matched by regex because `Matcher::UrlEncoded` only sees the last
+            // occurrence of a repeated key.
+            Matcher::Regex("series_id=10.*series_id=11".into()),
+            Matcher::UrlEncoded("game_id".into(), "77".into()),
+            Matcher::UrlEncoded("event_week".into(), "3".into()),
+            Matcher::UrlEncoded("parent_event_id".into(), "500".into()),
+            Matcher::UrlEncoded("include_children".into(), "true".into()),
+            Matcher::UrlEncoded("include_best_lines".into(), "true".into()),
+            Matcher::UrlEncoded("partner_slug".into(), "acme".into()),
+            Matcher::UrlEncoded("locale".into(), "en-US".into()),
+            Matcher::UrlEncoded("start_time_min".into(), "2026-01-01T00:00:00Z".into()),
+            Matcher::UrlEncoded("exclude_tag_id".into(), "9".into()),
+        ]))
+        .with_status(200)
+        .with_header("content-type", "application/json")
+        .with_body(r#"{"events": []}"#)
+        .create_async()
+        .await;
+
+    let gamma = test_gamma(&server);
+    let resp = gamma
+        .events()
+        .list_keyset()
+        .series_id([10, 11])
+        .game_id([77])
+        .event_week(3)
+        .parent_event_id(500)
+        .include_children(true)
+        .include_best_lines(true)
+        .partner_slug("acme")
+        .locale("en-US")
+        .start_time_min("2026-01-01T00:00:00Z")
+        .exclude_tag_id([9])
+        .send()
+        .await
+        .unwrap();
+
+    assert!(resp.events.is_empty());
+    mock.assert_async().await;
+}
+
+#[tokio::test]
+async fn keyset_markets_forwards_newly_added_filters() {
+    let mut server = Server::new_async().await;
+
+    let mock = server
+        .mock("GET", "/markets/keyset")
+        .match_query(Matcher::AllOf(vec![
+            Matcher::UrlEncoded("decimalized".into(), "true".into()),
+            Matcher::UrlEncoded("tag_match".into(), "all".into()),
+            Matcher::UrlEncoded("locale".into(), "fr-FR".into()),
+        ]))
+        .with_status(200)
+        .with_header("content-type", "application/json")
+        .with_body(r#"{"markets": []}"#)
+        .create_async()
+        .await;
+
+    let gamma = test_gamma(&server);
+    let resp = gamma
+        .markets()
+        .list_keyset()
+        .decimalized(true)
+        .tag_match("all")
+        .locale("fr-FR")
+        .send()
+        .await
+        .unwrap();
+
+    assert!(resp.markets.is_empty());
+    mock.assert_async().await;
+}
+
+#[tokio::test]
+async fn series_and_search_forward_newly_added_params() {
+    let mut server = Server::new_async().await;
+
+    let series = server
+        .mock("GET", "/series")
+        .match_query(Matcher::AllOf(vec![
+            Matcher::UrlEncoded("order".into(), "createdAt".into()),
+            Matcher::UrlEncoded("exclude_events".into(), "true".into()),
+        ]))
+        .with_status(200)
+        .with_header("content-type", "application/json")
+        .with_body("[]")
+        .create_async()
+        .await;
+
+    let search = server
+        .mock("GET", "/public-search")
+        .match_query(Matcher::AllOf(vec![
+            Matcher::UrlEncoded("q".into(), "election".into()),
+            Matcher::UrlEncoded("sort".into(), "volume".into()),
+            Matcher::UrlEncoded("ascending".into(), "true".into()),
+        ]))
+        .with_status(200)
+        .with_header("content-type", "application/json")
+        .with_body(r#"{}"#)
+        .create_async()
+        .await;
+
+    let gamma = test_gamma(&server);
+
+    let list = gamma
+        .series()
+        .list()
+        .order("createdAt")
+        .exclude_events(true)
+        .send()
+        .await
+        .unwrap();
+    assert!(list.is_empty());
+
+    gamma
+        .search()
+        .public_search("election")
+        .sort("volume")
+        .ascending(true)
+        .send()
+        .await
+        .unwrap();
+
+    series.assert_async().await;
+    search.assert_async().await;
+}

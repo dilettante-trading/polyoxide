@@ -715,6 +715,28 @@ impl ListKeysetMarkets {
         self
     }
 
+    /// Return decimalized price and size fields.
+    pub fn decimalized(mut self, decimalized: bool) -> Self {
+        self.request = self.request.query("decimalized", decimalized);
+        self
+    }
+
+    /// Tag matching mode.
+    pub fn tag_match(mut self, mode: impl Into<String>) -> Self {
+        self.request = self.request.query("tag_match", mode.into());
+        self
+    }
+
+    /// Set the response locale.
+    pub fn locale(mut self, locale: impl Into<String>) -> Self {
+        self.request = self.request.query("locale", locale.into());
+        self
+    }
+
+    // Note: `/markets/keyset` documents `offset` as "Not allowed. Returns 422 if
+    // provided." — it is deliberately not exposed here. Page with
+    // [`after_cursor`](Self::after_cursor) instead.
+
     /// Execute the request.
     pub async fn send(self) -> Result<KeysetMarketsResponse, GammaError> {
         self.request.send().await

@@ -355,6 +355,154 @@ impl ListKeysetEvents {
         self
     }
 
+    /// Filter to create-your-own-market events.
+    pub fn cyom(mut self, cyom: bool) -> Self {
+        self.request = self.request.query("cyom", cyom);
+        self
+    }
+
+    /// Filter by minimum start date (RFC3339).
+    pub fn start_date_min(mut self, date: impl Into<String>) -> Self {
+        self.request = self.request.query("start_date_min", date.into());
+        self
+    }
+
+    /// Filter by maximum start date (RFC3339).
+    pub fn start_date_max(mut self, date: impl Into<String>) -> Self {
+        self.request = self.request.query("start_date_max", date.into());
+        self
+    }
+
+    /// Filter by minimum end date (RFC3339).
+    pub fn end_date_min(mut self, date: impl Into<String>) -> Self {
+        self.request = self.request.query("end_date_min", date.into());
+        self
+    }
+
+    /// Filter by maximum end date (RFC3339).
+    pub fn end_date_max(mut self, date: impl Into<String>) -> Self {
+        self.request = self.request.query("end_date_max", date.into());
+        self
+    }
+
+    /// Filter by minimum game start time (RFC3339).
+    pub fn start_time_min(mut self, time: impl Into<String>) -> Self {
+        self.request = self.request.query("start_time_min", time.into());
+        self
+    }
+
+    /// Filter by maximum game start time (RFC3339).
+    pub fn start_time_max(mut self, time: impl Into<String>) -> Self {
+        self.request = self.request.query("start_time_max", time.into());
+        self
+    }
+
+    /// Exclude events carrying any of these tag IDs.
+    pub fn exclude_tag_id(mut self, tag_ids: impl IntoIterator<Item = i64>) -> Self {
+        self.request = self.request.query_many("exclude_tag_id", tag_ids);
+        self
+    }
+
+    /// Include events matching related tags.
+    pub fn related_tags(mut self, include: bool) -> Self {
+        self.request = self.request.query("related_tags", include);
+        self
+    }
+
+    /// Tag matching mode.
+    pub fn tag_match(mut self, mode: impl Into<String>) -> Self {
+        self.request = self.request.query("tag_match", mode.into());
+        self
+    }
+
+    /// Filter by series IDs.
+    pub fn series_id(mut self, series_ids: impl IntoIterator<Item = i64>) -> Self {
+        self.request = self.request.query_many("series_id", series_ids);
+        self
+    }
+
+    /// Filter by game IDs.
+    pub fn game_id(mut self, game_ids: impl IntoIterator<Item = i64>) -> Self {
+        self.request = self.request.query_many("game_id", game_ids);
+        self
+    }
+
+    /// Filter by event date (RFC3339).
+    pub fn event_date(mut self, date: impl Into<String>) -> Self {
+        self.request = self.request.query("event_date", date.into());
+        self
+    }
+
+    /// Filter by event week number.
+    pub fn event_week(mut self, week: i64) -> Self {
+        self.request = self.request.query("event_week", week);
+        self
+    }
+
+    /// Order results by the featured ranking.
+    pub fn featured_order(mut self, featured_order: bool) -> Self {
+        self.request = self.request.query("featured_order", featured_order);
+        self
+    }
+
+    /// Filter by recurrence.
+    pub fn recurrence(mut self, recurrence: impl Into<String>) -> Self {
+        self.request = self.request.query("recurrence", recurrence.into());
+        self
+    }
+
+    /// Filter by creator addresses.
+    pub fn created_by(mut self, creators: impl IntoIterator<Item = impl ToString>) -> Self {
+        self.request = self.request.query_many("created_by", creators);
+        self
+    }
+
+    /// Filter to children of a specific parent event.
+    pub fn parent_event_id(mut self, parent_event_id: i64) -> Self {
+        self.request = self.request.query("parent_event_id", parent_event_id);
+        self
+    }
+
+    /// Include child events in the response.
+    pub fn include_children(mut self, include: bool) -> Self {
+        self.request = self.request.query("include_children", include);
+        self
+    }
+
+    /// Attach `external_partners` for the given partner slug.
+    pub fn partner_slug(mut self, slug: impl Into<String>) -> Self {
+        self.request = self.request.query("partner_slug", slug.into());
+        self
+    }
+
+    /// Include chat data in the response.
+    pub fn include_chat(mut self, include: bool) -> Self {
+        self.request = self.request.query("include_chat", include);
+        self
+    }
+
+    /// Include template data in the response.
+    pub fn include_template(mut self, include: bool) -> Self {
+        self.request = self.request.query("include_template", include);
+        self
+    }
+
+    /// Include the `BestLines` relation in the response.
+    pub fn include_best_lines(mut self, include: bool) -> Self {
+        self.request = self.request.query("include_best_lines", include);
+        self
+    }
+
+    /// Set the response locale.
+    pub fn locale(mut self, locale: impl Into<String>) -> Self {
+        self.request = self.request.query("locale", locale.into());
+        self
+    }
+
+    // Note: `/events/keyset` documents `offset` as "Not allowed. Returns 422 if
+    // provided." — it is deliberately not exposed here. Page with
+    // [`after_cursor`](Self::after_cursor) instead.
+
     /// Execute the request.
     pub async fn send(self) -> Result<KeysetEventsResponse, GammaError> {
         self.request.send().await

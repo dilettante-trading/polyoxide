@@ -78,6 +78,12 @@ impl PublicSearch {
         self
     }
 
+    /// Sort direction (used only when [`sort`](Self::sort) is set).
+    pub fn ascending(mut self, ascending: bool) -> Self {
+        self.request = self.request.query("ascending", ascending);
+        self
+    }
+
     /// Include tag search results
     pub fn search_tags(mut self, include: bool) -> Self {
         self.request = self.request.query("search_tags", include);
