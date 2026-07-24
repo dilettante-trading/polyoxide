@@ -1,3 +1,17 @@
+## [0.22.0] - 2026-07-25
+
+### 🚀 Features
+
+- *(clob)* Add ListOrders::send_raw as an escape hatch
+
+### 🐛 Bug Fixes
+
+- *(clob)* [**breaking**] Pin OpenOrder to the shape the venue actually returns
+
+### 📚 Documentation
+
+- Correct the inverted L1/L2 description in CLAUDE.md
+
 ## [0.21.0] - 2026-07-24
 
 ### 🐛 Bug Fixes
