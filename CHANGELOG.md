@@ -1,3 +1,15 @@
+## [0.21.0] - 2026-07-24
+
+### 🐛 Bug Fixes
+
+- *(clob)* [**breaking**] Correct the ClobAuth EIP-712 struct and auth domain
+- *(clob)* Send a checksummed POLY_ADDRESS on L1 auth
+
+### 🧪 Testing
+
+- Close coverage gaps in the new WebSocket and sibling-host code
+- *(clob)* Add a live L1 auth test
+
 ## [0.20.0] - 2026-07-24
 
 ### 🚀 Features
