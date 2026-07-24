@@ -88,7 +88,15 @@ Example: `gamma.markets().list().open(true).send().await?`, `data.leaderboard().
 
 **Request builder fluency** — Query parameters are chained with builder methods before `.send().await?`.
 
-**Two auth layers** — L1 uses EIP-712 signing (via `alloy`) for on-chain orders; L2 uses HMAC-SHA256 for API credentials. Both are managed through the `Account` type in `polyoxide-clob/src/account/`.
+**Two auth layers, three signing schemes** — managed through the `Account` type in `polyoxide-clob/src/account/`. Don't conflate them; they use different EIP-712 domains and are verified by different parties:
+
+| Scheme | Used for | Shape |
+|--------|----------|-------|
+| **L1** | Creating/deriving API credentials (`/auth/api-key`, `/auth/derive-api-key`) | EIP-712 `ClobAuth`, domain `ClobAuthDomain` v1, **no `verifyingContract`** |
+| **L2** | Everything else authenticated — orders, balances, trades | HMAC-SHA256 over `timestamp + method + path [+ body]`, url-safe base64 |
+| **Order signing** | The signed order payload itself, posted under L2 | EIP-712 `Order`, domain `Polymarket CTF Exchange` v2, **with** `verifyingContract` |
+
+The two EIP-712 domains are unrelated — order signing needs a verifying contract, L1 auth must not have one. See `docs/specs/clob/auth.md` for both type strings; `polyoxide-clob/src/core/eip712.rs` pins them against golden vectors from `py-clob-client`.
 
 **Error hierarchy** — `ApiError` in core, wrapped by crate-specific errors (`ClobError`, `GammaError`, `DataApiError`, `RelayError`). The `impl_api_error_conversions!` macro in core wires up `From` conversions.
 
