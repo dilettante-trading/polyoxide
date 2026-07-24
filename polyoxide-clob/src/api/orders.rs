@@ -7,7 +7,6 @@ use crate::{
     account::{Credentials, Signer, Wallet},
     error::ClobError,
     request::{AuthMode, Request},
-    types::SignedOrder,
 };
 
 /// Orders namespace for order-related operations
@@ -198,27 +197,59 @@ impl CancelOrderRequest {
     }
 }
 
-/// Open order from API
+/// A resting order, as returned by `GET /data/orders` and
+/// `GET /data/order/{orderID}` (both return this same shape).
+///
+/// This is an order *summary*, not a signed order: the venue does not echo back
+/// the signed payload, so there is no `token_id`, `maker_amount`,
+/// `signature_type`, `metadata`, `builder`, `salt`, or `signature` here. Field
+/// names are snake_case on the wire — there is deliberately no `rename_all`.
+///
+/// Pinned to a body captured from the live venue on 2026-07-24 (see
+/// `open_order_deserializes_captured_response` below), cross-checked against
+/// the `/data/orders` response schema in `docs/specs/clob/openapi.yaml`.
+/// Prior to 0.22.0 this struct declared camelCase names, a flattened
+/// [`SignedOrder`], and a string `created_at`, so **any** response containing a
+/// real order failed to deserialize with ``missing field `assetId` ``.
+///
+/// Fields the schema marks required are non-optional here, matching the
+/// capture. If the venue ever omits one, deserialization fails loudly rather
+/// than silently producing a half-empty order — and
+/// [`ListOrders::send_raw`] is the escape hatch for reading the body anyway.
 #[derive(Debug, Clone, Serialize, Deserialize)]
-#[serde(rename_all(deserialize = "camelCase"))]
 pub struct OpenOrder {
+    /// Order ID (`0x`-prefixed hash).
     pub id: String,
-    pub market: String,
-    pub asset_id: String,
-    #[serde(flatten)]
-    pub order: SignedOrder,
+    /// Order status, e.g. `LIVE`.
     pub status: String,
-    pub owner: Option<String>,
-    pub maker_address: Option<String>,
-    pub original_size: Option<String>,
-    pub size_matched: Option<String>,
-    pub price: Option<String>,
+    /// Owning API key (a UUID, not an address).
+    pub owner: String,
+    /// Maker address — the proxy/deposit wallet, not the signing EOA.
+    pub maker_address: String,
+    /// Market condition ID.
+    pub market: String,
+    /// Asset (token) ID for the outcome being traded.
+    pub asset_id: String,
+    /// `BUY` or `SELL`.
+    pub side: String,
+    /// Original order size, as a decimal string.
+    pub original_size: String,
+    /// Size matched so far, as a decimal string.
+    pub size_matched: String,
+    /// Limit price, as a decimal string.
+    pub price: String,
+    /// Outcome label, e.g. `Yes`.
+    pub outcome: String,
+    /// Expiration as a Unix timestamp string; `"0"` means no expiry.
+    pub expiration: String,
+    /// Order type, e.g. `GTC`.
+    pub order_type: String,
+    /// IDs of trades associated with this order.
     #[serde(default)]
     pub associate_trades: Vec<String>,
-    pub outcome: Option<String>,
-    pub order_type: Option<String>,
-    pub created_at: String,
-    pub updated_at: Option<String>,
+    /// Creation time as a Unix timestamp in **seconds** — an integer on the
+    /// wire, not a string.
+    pub created_at: i64,
 }
 
 /// Response from posting an order
@@ -322,93 +353,91 @@ impl ListOrders {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use alloy::primitives::Address;
-    use std::str::FromStr;
+
+    /// Verbatim `GET /data/orders` body captured from the live venue on
+    /// 2026-07-24, with identifiers redacted. Only the identifier *values* were
+    /// changed — every key, type, and string/number distinction is as the venue
+    /// sent it.
+    ///
+    /// Recapture with:
+    /// `clob.orders()?.list().send_raw().await?.text().await?`
+    /// (needs an account holding at least one resting order — with none, the
+    /// body is `{"data":[],...}`, which is why this bug survived to 0.21.0).
+    const CAPTURED_OPEN_ORDERS: &str = r#"{
+        "data": [{
+            "id": "0xc566ca3bb8d61f08d649214f7a5daf5041f5577c1e60c9131ae418aa62eff165",
+            "status": "LIVE",
+            "owner": "aa17dfae-754d-2498-f336-8bd1db84f525",
+            "maker_address": "0xb98ad946c7f753596F26396Bf3F34A2EeBc39E86",
+            "market": "0x7018d32e315a69c0537fc42f8e574ee4a24b3babaae302cda3d9f5f8e5b0bd6e",
+            "asset_id": "84371186359433032934344934234365568331165136826770712345678901234567",
+            "side": "BUY",
+            "original_size": "5",
+            "size_matched": "0",
+            "price": "0.01",
+            "outcome": "Yes",
+            "expiration": "0",
+            "order_type": "GTC",
+            "associate_trades": [],
+            "created_at": 1784930007
+        }],
+        "next_cursor": "LTE=",
+        "limit": 100,
+        "count": 1
+    }"#;
 
     #[test]
-    fn open_order_deserializes_with_flattened_signed_order() {
-        let json = r#"{
-            "id": "order-abc",
-            "market": "0xcondition123",
-            "assetId": "0xtoken456",
-            "salt": "999",
-            "maker": "0x0000000000000000000000000000000000000001",
-            "signer": "0x0000000000000000000000000000000000000002",
-            "tokenId": "0xtoken456",
-            "makerAmount": "1000",
-            "takerAmount": "500",
-            "side": "BUY",
-            "expiration": "0",
-            "signatureType": 0,
-            "timestamp": "1700000000000",
-            "metadata": "0x0000000000000000000000000000000000000000000000000000000000000000",
-            "builder": "0x0000000000000000000000000000000000000000000000000000000000000000",
-            "signature": "0xsig",
-            "status": "LIVE",
-            "createdAt": "2024-01-01T00:00:00Z",
-            "updatedAt": null
-        }"#;
-        let order: OpenOrder = serde_json::from_str(json).unwrap();
-        assert_eq!(order.id, "order-abc");
-        assert_eq!(order.market, "0xcondition123");
-        assert_eq!(order.asset_id, "0xtoken456");
-        assert_eq!(order.status, "LIVE");
-        assert_eq!(order.order.signature, "0xsig");
-        assert_eq!(order.order.order.maker_amount, "1000");
-        assert_eq!(
-            order.order.order.maker,
-            Address::from_str("0x0000000000000000000000000000000000000001").unwrap()
-        );
-        assert!(order.updated_at.is_none());
-        // New fields default to None/empty when absent
-        assert!(order.owner.is_none());
-        assert!(order.maker_address.is_none());
-        assert!(order.original_size.is_none());
-        assert!(order.price.is_none());
-        assert!(order.associate_trades.is_empty());
+    fn open_order_deserializes_captured_response() {
+        // The regression guard. Before 0.22.0 this failed with
+        // `missing field ` + "`assetId`" + `, because the struct declared
+        // camelCase names the venue does not send.
+        let resp: ListOrdersResponse = serde_json::from_str(CAPTURED_OPEN_ORDERS)
+            .expect("captured live body must deserialize");
+        assert_eq!(resp.data.len(), 1);
+
+        let o = &resp.data[0];
+        assert_eq!(o.status, "LIVE");
+        assert_eq!(o.side, "BUY");
+        assert_eq!(o.original_size, "5");
+        assert_eq!(o.size_matched, "0");
+        assert_eq!(o.price, "0.01");
+        assert_eq!(o.outcome, "Yes");
+        assert_eq!(o.expiration, "0");
+        assert_eq!(o.order_type, "GTC");
+        assert!(o.associate_trades.is_empty());
+        // Integer on the wire, not a string.
+        assert_eq!(o.created_at, 1_784_930_007);
+        // maker_address is the proxy wallet, distinct from the signing EOA.
+        assert!(o.maker_address.starts_with("0x"));
+        // owner is an API-key UUID, not an address.
+        assert!(!o.owner.starts_with("0x"));
+        assert_eq!(resp.next_cursor.as_deref(), Some("LTE="));
     }
 
     #[test]
-    fn open_order_with_full_fields() {
-        let json = r#"{
-            "id": "order-full",
-            "market": "0xcond",
-            "assetId": "0xtoken",
-            "salt": "1",
-            "maker": "0x0000000000000000000000000000000000000001",
-            "signer": "0x0000000000000000000000000000000000000002",
-            "tokenId": "0xtoken",
-            "makerAmount": "1000",
-            "takerAmount": "500",
-            "side": "BUY",
-            "expiration": "0",
-            "signatureType": 0,
-            "timestamp": "1700000000000",
-            "metadata": "0x0000000000000000000000000000000000000000000000000000000000000000",
-            "builder": "0x0000000000000000000000000000000000000000000000000000000000000000",
-            "signature": "0xsig",
-            "status": "LIVE",
-            "owner": "0xowner",
-            "makerAddress": "0xmaker",
-            "originalSize": "200.5",
-            "sizeMatched": "100.0",
-            "price": "0.55",
-            "associateTrades": ["trade-1", "trade-2"],
-            "outcome": "Yes",
-            "orderType": "GTC",
-            "createdAt": "2024-01-01T00:00:00Z",
-            "updatedAt": "2024-01-02T00:00:00Z"
-        }"#;
-        let order: OpenOrder = serde_json::from_str(json).unwrap();
-        assert_eq!(order.owner.as_deref(), Some("0xowner"));
-        assert_eq!(order.maker_address.as_deref(), Some("0xmaker"));
-        assert_eq!(order.original_size.as_deref(), Some("200.5"));
-        assert_eq!(order.size_matched.as_deref(), Some("100.0"));
-        assert_eq!(order.price.as_deref(), Some("0.55"));
-        assert_eq!(order.associate_trades, vec!["trade-1", "trade-2"]);
-        assert_eq!(order.outcome.as_deref(), Some("Yes"));
-        assert_eq!(order.order_type.as_deref(), Some("GTC"));
-        assert_eq!(order.updated_at.as_deref(), Some("2024-01-02T00:00:00Z"));
+    fn open_order_rejects_the_camel_case_shape_it_used_to_expect() {
+        // Negative control. If someone reintroduces `rename_all(camelCase)`,
+        // the positive test above starts failing and this one starts passing —
+        // so the pair cannot both be satisfied by a single convention.
+        let json = r#"{"id":"x","status":"LIVE","owner":"o","makerAddress":"0x1",
+            "market":"0x2","assetId":"0x3","side":"BUY","originalSize":"5",
+            "sizeMatched":"0","price":"0.01","outcome":"Yes","expiration":"0",
+            "orderType":"GTC","associateTrades":[],"createdAt":1}"#;
+        assert!(
+            serde_json::from_str::<OpenOrder>(json).is_err(),
+            "camelCase must not deserialize; the venue sends snake_case"
+        );
+    }
+
+    #[test]
+    fn open_order_created_at_must_be_an_integer() {
+        // The venue sends a Unix-seconds integer. A string here was part of the
+        // original bug and would silently pass if the field were `String`.
+        let json = CAPTURED_OPEN_ORDERS.replace("1784930007", "\"2024-01-01T00:00:00Z\"");
+        assert!(
+            serde_json::from_str::<ListOrdersResponse>(&json).is_err(),
+            "a string created_at must be rejected"
+        );
     }
 
     #[test]
@@ -477,37 +506,6 @@ mod tests {
         let json = serde_json::to_value(&resp).unwrap();
         assert_eq!(json["canceled"], serde_json::json!(["a", "b"]));
         assert_eq!(json["not_canceled"]["c"], "error");
-    }
-
-    #[test]
-    fn list_orders_response_deserializes() {
-        let json = r#"{
-            "data": [{
-                "id": "order-abc",
-                "market": "0xcondition123",
-                "assetId": "0xtoken456",
-                "salt": "1",
-                "maker": "0x0000000000000000000000000000000000000001",
-                "signer": "0x0000000000000000000000000000000000000002",
-                "tokenId": "0xtoken456",
-                "makerAmount": "1000",
-                "takerAmount": "500",
-                "side": "BUY",
-                "expiration": "0",
-                "signatureType": 0,
-                "timestamp": "1700000000000",
-                "metadata": "0x0000000000000000000000000000000000000000000000000000000000000000",
-                "builder": "0x0000000000000000000000000000000000000000000000000000000000000000",
-                "signature": "0xsig",
-                "status": "LIVE",
-                "createdAt": "2024-01-01T00:00:00Z"
-            }],
-            "next_cursor": "MQ=="
-        }"#;
-        let resp: ListOrdersResponse = serde_json::from_str(json).unwrap();
-        assert_eq!(resp.data.len(), 1);
-        assert_eq!(resp.data[0].id, "order-abc");
-        assert_eq!(resp.next_cursor.as_deref(), Some("MQ=="));
     }
 
     #[test]

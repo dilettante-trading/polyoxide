@@ -581,9 +581,13 @@ async fn tick_size_number_response() {
 }
 
 #[tokio::test]
-async fn get_order_flatten_rename() {
+async fn get_order_deserializes_captured_shape() {
     let mut server = Server::new_async().await;
 
+    // `/data/order/{orderID}` returns the same shape as `/data/orders`; this
+    // body mirrors one captured live on 2026-07-24. The previous fixture here
+    // was written to match the (wrong) struct rather than the venue, so it
+    // asserted camelCase names and a flattened SignedOrder that never arrive.
     let mock = server
         .mock("GET", "/data/order/order-123")
         .match_header("POLY_API_KEY", "test-key")
@@ -592,32 +596,20 @@ async fn get_order_flatten_rename() {
         .with_body(
             r#"{
                 "id": "order-123",
-                "market": "0xcond",
-                "assetId": "0xtoken",
-                "salt": "999",
-                "maker": "0x0000000000000000000000000000000000000001",
-                "signer": "0x0000000000000000000000000000000000000002",
-                "tokenId": "0xtoken",
-                "makerAmount": "1000",
-                "takerAmount": "500",
-                "side": "BUY",
-                "expiration": "0",
-                "signatureType": 0,
-                "timestamp": "1700000000000",
-                "metadata": "0x0000000000000000000000000000000000000000000000000000000000000000",
-                "builder": "0x0000000000000000000000000000000000000000000000000000000000000000",
-                "signature": "0xsig",
                 "status": "LIVE",
-                "owner": "0xowner",
-                "makerAddress": "0xmaker",
-                "originalSize": "200.5",
-                "sizeMatched": "100.0",
+                "owner": "aa17dfae-754d-2498-f336-8bd1db84f525",
+                "maker_address": "0xb98ad946c7f753596F26396Bf3F34A2EeBc39E86",
+                "market": "0xcond",
+                "asset_id": "0xtoken",
+                "side": "BUY",
+                "original_size": "200.5",
+                "size_matched": "100.0",
                 "price": "0.55",
-                "associateTrades": ["trade-1"],
                 "outcome": "Yes",
-                "orderType": "GTC",
-                "createdAt": "2024-01-01T00:00:00Z",
-                "updatedAt": "2024-01-02T00:00:00Z"
+                "expiration": "0",
+                "order_type": "GTC",
+                "associate_trades": ["trade-1"],
+                "created_at": 1784930007
             }"#,
         )
         .create_async()
@@ -634,16 +626,13 @@ async fn get_order_flatten_rename() {
 
     assert_eq!(order.id, "order-123");
     assert_eq!(order.asset_id, "0xtoken");
-    // Flattened SignedOrder fields
-    assert_eq!(order.order.signature, "0xsig");
-    assert_eq!(order.order.order.maker_amount, "1000");
-    // camelCase rename fields
-    assert_eq!(order.owner.as_deref(), Some("0xowner"));
-    assert_eq!(order.maker_address.as_deref(), Some("0xmaker"));
-    assert_eq!(order.original_size.as_deref(), Some("200.5"));
-    assert_eq!(order.size_matched.as_deref(), Some("100.0"));
+    assert_eq!(order.side, "BUY");
+    assert_eq!(order.owner, "aa17dfae-754d-2498-f336-8bd1db84f525");
+    assert_eq!(order.original_size, "200.5");
+    assert_eq!(order.size_matched, "100.0");
     assert_eq!(order.associate_trades, vec!["trade-1"]);
-    assert_eq!(order.order_type.as_deref(), Some("GTC"));
+    assert_eq!(order.order_type, "GTC");
+    assert_eq!(order.created_at, 1_784_930_007);
     mock.assert_async().await;
 }
 

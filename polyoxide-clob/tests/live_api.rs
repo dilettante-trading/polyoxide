@@ -775,17 +775,40 @@ async fn live_reward_current_markets() {
 
 // ── Authenticated: Orders ───────────────────────────────────────
 
+/// Checks that `GET /data/orders` deserializes through the typed path.
+///
+/// **Weak on a quiet account.** With no resting orders the venue returns
+/// `{"data":[],...}`, which parses under any naming convention — that is
+/// exactly how the camelCase `OpenOrder` bug survived to 0.21.0. Run it while
+/// holding at least one open order for it to mean anything, e.g. straight
+/// after `live_v2_place_and_cancel` posts one.
+///
+/// The load-bearing guard is the unit test
+/// `open_order_deserializes_captured_response` in `api/orders.rs`, pinned to a
+/// captured body. This test exists to catch venue-side drift a frozen fixture
+/// cannot.
 #[tokio::test]
 #[ignore]
 async fn live_list_open_orders() {
     let client = authenticated_client();
-    let _orders = client
+    let resp = client
         .orders()
         .expect("orders")
         .list()
         .send()
         .await
         .expect("list open orders should deserialize");
+
+    if resp.data.is_empty() {
+        eprintln!(
+            "note: account holds no resting orders, so this run proves little \
+             — see the doc comment"
+        );
+    }
+    for o in &resp.data {
+        assert!(!o.id.is_empty());
+        assert!(o.created_at > 1_500_000_000, "created_at is Unix seconds");
+    }
 }
 
 // ── Authenticated: Orders — V2 re-validation (places a real-money order) ──
