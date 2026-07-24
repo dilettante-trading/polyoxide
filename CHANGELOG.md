@@ -1,3 +1,14 @@
+## [0.20.0] - 2026-07-24
+
+### 🚀 Features
+
+- *(clob)* [**breaking**] Add sports channel and the gated market WebSocket events
+- *(data)* Add pnl and rankings namespaces on undocumented hosts
+
+### ⚙️ Miscellaneous Tasks
+
+- *(specs)* Mirror AsyncAPI specs and record undocumented hosts
+
 ## [0.19.0] - 2026-07-24
 
 ### 🚀 Features
