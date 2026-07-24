@@ -1,0 +1,1024 @@
+{
+  "asyncapi": "3.0.0",
+  "info": {
+    "title": "Polymarket WebSocket API",
+    "version": "1.0.0",
+    "description": "Real-time WebSocket API for Polymarket market data. Stream orderbook snapshots, price changes, trade executions, and market lifecycle events."
+  },
+  "servers": {
+    "production": {
+      "host": "ws-subscriptions-clob.polymarket.com",
+      "pathname": "/ws/market",
+      "protocol": "wss",
+      "description": "Public market data WebSocket server"
+    }
+  },
+  "channels": {
+    "market": {
+      "address": "/ws/market",
+      "title": "Market Channel",
+      "description": "Public channel for real-time market data. Subscribe by providing asset IDs (token IDs). Receive orderbook snapshots, price updates, trade executions, and market lifecycle events.",
+      "messages": {
+        "subscriptionRequest": {
+          "$ref": "#/components/messages/subscriptionRequest"
+        },
+        "subscriptionRequestUpdate": {
+          "$ref": "#/components/messages/subscriptionRequestUpdate"
+        },
+        "ping": {
+          "$ref": "#/components/messages/ping"
+        },
+        "pong": {
+          "$ref": "#/components/messages/pong"
+        },
+        "book": {
+          "$ref": "#/components/messages/book"
+        },
+        "priceChange": {
+          "$ref": "#/components/messages/priceChange"
+        },
+        "lastTradePrice": {
+          "$ref": "#/components/messages/lastTradePrice"
+        },
+        "tickSizeChange": {
+          "$ref": "#/components/messages/tickSizeChange"
+        },
+        "bestBidAsk": {
+          "$ref": "#/components/messages/bestBidAsk"
+        },
+        "newMarket": {
+          "$ref": "#/components/messages/newMarket"
+        },
+        "marketResolved": {
+          "$ref": "#/components/messages/marketResolved"
+        }
+      }
+    }
+  },
+  "operations": {
+    "subscribe": {
+      "action": "receive",
+      "channel": {
+        "$ref": "#/channels/market"
+      },
+      "title": "Subscribe",
+      "summary": "Send initial subscription request to receive market data",
+      "description": "Upon connecting, send a subscription request specifying which asset IDs (token IDs) to receive updates for. The server responds with an initial orderbook snapshot for each subscribed asset.",
+      "messages": [
+        {
+          "$ref": "#/channels/market/messages/subscriptionRequest"
+        }
+      ]
+    },
+    "updateSubscription": {
+      "action": "receive",
+      "channel": {
+        "$ref": "#/channels/market"
+      },
+      "title": "Update Subscription",
+      "summary": "Dynamically subscribe or unsubscribe from assets without reconnecting",
+      "messages": [
+        {
+          "$ref": "#/channels/market/messages/subscriptionRequestUpdate"
+        }
+      ]
+    },
+    "ping": {
+      "action": "receive",
+      "channel": {
+        "$ref": "#/channels/market"
+      },
+      "title": "Ping",
+      "summary": "Send PING every 10 seconds to keep the connection alive",
+      "messages": [
+        {
+          "$ref": "#/channels/market/messages/ping"
+        }
+      ]
+    },
+    "pong": {
+      "action": "send",
+      "channel": {
+        "$ref": "#/channels/market"
+      },
+      "title": "Pong",
+      "summary": "Server responds to PING with PONG",
+      "messages": [
+        {
+          "$ref": "#/channels/market/messages/pong"
+        }
+      ]
+    },
+    "receiveBook": {
+      "action": "send",
+      "channel": {
+        "$ref": "#/channels/market"
+      },
+      "title": "Orderbook Snapshot",
+      "summary": "Full orderbook snapshot sent on subscribe or after a trade",
+      "messages": [
+        {
+          "$ref": "#/channels/market/messages/book"
+        }
+      ]
+    },
+    "receivePriceChange": {
+      "action": "send",
+      "channel": {
+        "$ref": "#/channels/market"
+      },
+      "title": "Price Change",
+      "summary": "Delta update to orderbook price levels when an order is placed or cancelled",
+      "messages": [
+        {
+          "$ref": "#/channels/market/messages/priceChange"
+        }
+      ]
+    },
+    "receiveLastTradePrice": {
+      "action": "send",
+      "channel": {
+        "$ref": "#/channels/market"
+      },
+      "title": "Last Trade Price",
+      "summary": "Trade execution notification",
+      "messages": [
+        {
+          "$ref": "#/channels/market/messages/lastTradePrice"
+        }
+      ]
+    },
+    "receiveTickSizeChange": {
+      "action": "send",
+      "channel": {
+        "$ref": "#/channels/market"
+      },
+      "title": "Tick Size Change",
+      "summary": "Market tick size update when price approaches limits",
+      "messages": [
+        {
+          "$ref": "#/channels/market/messages/tickSizeChange"
+        }
+      ]
+    },
+    "receiveBestBidAsk": {
+      "action": "send",
+      "channel": {
+        "$ref": "#/channels/market"
+      },
+      "title": "Best Bid/Ask",
+      "summary": "Best bid and ask update (requires custom_feature_enabled: true)",
+      "messages": [
+        {
+          "$ref": "#/channels/market/messages/bestBidAsk"
+        }
+      ]
+    },
+    "receiveNewMarket": {
+      "action": "send",
+      "channel": {
+        "$ref": "#/channels/market"
+      },
+      "title": "New Market",
+      "summary": "New market creation event (requires custom_feature_enabled: true)",
+      "messages": [
+        {
+          "$ref": "#/channels/market/messages/newMarket"
+        }
+      ]
+    },
+    "receiveMarketResolved": {
+      "action": "send",
+      "channel": {
+        "$ref": "#/channels/market"
+      },
+      "title": "Market Resolved",
+      "summary": "Market resolution event (requires custom_feature_enabled: true)",
+      "messages": [
+        {
+          "$ref": "#/channels/market/messages/marketResolved"
+        }
+      ]
+    }
+  },
+  "components": {
+    "messages": {
+      "subscriptionRequest": {
+        "name": "SubscriptionRequest",
+        "title": "Subscription Request",
+        "summary": "Initial subscription message sent after connecting",
+        "contentType": "application/json",
+        "payload": {
+          "$ref": "#/components/schemas/SubscriptionRequest"
+        },
+        "examples": [
+          {
+            "name": "Basic subscription",
+            "payload": {
+              "assets_ids": [
+                "65818619657568813474341868652308942079804919287380422192892211131408793125422",
+                "52114319501245915516055106046884209969926127482827954674443846427813813222426"
+              ],
+              "type": "market"
+            }
+          },
+          {
+            "name": "Subscription with custom features",
+            "payload": {
+              "assets_ids": [
+                "65818619657568813474341868652308942079804919287380422192892211131408793125422"
+              ],
+              "type": "market",
+              "custom_feature_enabled": true,
+              "initial_dump": true
+            }
+          }
+        ]
+      },
+      "subscriptionRequestUpdate": {
+        "name": "SubscriptionRequestUpdate",
+        "title": "Subscription Update",
+        "summary": "Subscribe or unsubscribe from assets without reconnecting",
+        "contentType": "application/json",
+        "payload": {
+          "$ref": "#/components/schemas/SubscriptionRequestUpdate"
+        },
+        "examples": [
+          {
+            "name": "Subscribe to more assets",
+            "payload": {
+              "operation": "subscribe",
+              "assets_ids": [
+                "71321045679252212594626385532706912750332728571942532289631379312455583992563"
+              ]
+            }
+          },
+          {
+            "name": "Unsubscribe from assets",
+            "payload": {
+              "operation": "unsubscribe",
+              "assets_ids": [
+                "65818619657568813474341868652308942079804919287380422192892211131408793125422"
+              ]
+            }
+          }
+        ]
+      },
+      "ping": {
+        "name": "Ping",
+        "title": "Ping",
+        "summary": "Client heartbeat — send every 10 seconds",
+        "contentType": "text/plain",
+        "payload": {
+          "type": "string",
+          "const": "PING"
+        }
+      },
+      "pong": {
+        "name": "Pong",
+        "title": "Pong",
+        "summary": "Server heartbeat response",
+        "contentType": "text/plain",
+        "payload": {
+          "type": "string",
+          "const": "PONG"
+        }
+      },
+      "book": {
+        "name": "Book",
+        "title": "Orderbook Snapshot",
+        "summary": "Full aggregated orderbook for an asset",
+        "contentType": "application/json",
+        "payload": {
+          "$ref": "#/components/schemas/BookEvent"
+        },
+        "examples": [
+          {
+            "name": "Orderbook snapshot",
+            "payload": {
+              "event_type": "book",
+              "asset_id": "65818619657568813474341868652308942079804919287380422192892211131408793125422",
+              "market": "0xbd31dc8a20211944f6b70f31557f1001557b59905b7738480ca09bd4532f84af",
+              "bids": [
+                {
+                  "price": "0.48",
+                  "size": "30"
+                },
+                {
+                  "price": "0.49",
+                  "size": "20"
+                },
+                {
+                  "price": "0.50",
+                  "size": "15"
+                }
+              ],
+              "asks": [
+                {
+                  "price": "0.52",
+                  "size": "25"
+                },
+                {
+                  "price": "0.53",
+                  "size": "60"
+                },
+                {
+                  "price": "0.54",
+                  "size": "10"
+                }
+              ],
+              "timestamp": "1757908892351",
+              "hash": "0xabc123..."
+            }
+          }
+        ]
+      },
+      "priceChange": {
+        "name": "PriceChange",
+        "title": "Price Change",
+        "summary": "Orderbook price level delta update",
+        "contentType": "application/json",
+        "payload": {
+          "$ref": "#/components/schemas/PriceChangeEvent"
+        },
+        "examples": [
+          {
+            "name": "Price change",
+            "payload": {
+              "event_type": "price_change",
+              "market": "0x5f65177b394277fd294cd75650044e32ba009a95022d88a0c1d565897d72f8f1",
+              "price_changes": [
+                {
+                  "asset_id": "71321045679252212594626385532706912750332728571942532289631379312455583992563",
+                  "price": "0.5",
+                  "size": "200",
+                  "side": "BUY",
+                  "hash": "56621a121a47ed9333273e21c83b660cff37ae50",
+                  "best_bid": "0.5",
+                  "best_ask": "1"
+                }
+              ],
+              "timestamp": "1757908892351"
+            }
+          }
+        ]
+      },
+      "lastTradePrice": {
+        "name": "LastTradePrice",
+        "title": "Last Trade Price",
+        "summary": "Trade execution event",
+        "contentType": "application/json",
+        "payload": {
+          "$ref": "#/components/schemas/LastTradePriceEvent"
+        },
+        "examples": [
+          {
+            "name": "Trade executed",
+            "payload": {
+              "event_type": "last_trade_price",
+              "asset_id": "114122071509644379678018727908709560226618148003371446110114509806601493071694",
+              "market": "0x6a67b9d828d53862160e470329ffea5246f338ecfffdf2cab45211ec578b0347",
+              "price": "0.456",
+              "size": "219.217767",
+              "fee_rate_bps": "0",
+              "side": "BUY",
+              "timestamp": "1750428146322",
+              "transaction_hash": "0xeeefffggghhh"
+            }
+          }
+        ]
+      },
+      "tickSizeChange": {
+        "name": "TickSizeChange",
+        "title": "Tick Size Change",
+        "summary": "Market tick size update event",
+        "contentType": "application/json",
+        "payload": {
+          "$ref": "#/components/schemas/TickSizeChangeEvent"
+        },
+        "examples": [
+          {
+            "name": "Tick size changed",
+            "payload": {
+              "event_type": "tick_size_change",
+              "asset_id": "65818619657568813474341868652308942079804919287380422192892211131408793125422",
+              "market": "0xbd31dc8a20211944f6b70f31557f1001557b59905b7738480ca09bd4532f84af",
+              "old_tick_size": "0.01",
+              "new_tick_size": "0.001",
+              "timestamp": "1757908892351"
+            }
+          }
+        ]
+      },
+      "bestBidAsk": {
+        "name": "BestBidAsk",
+        "title": "Best Bid/Ask",
+        "summary": "Best bid and ask price update — requires custom_feature_enabled: true",
+        "contentType": "application/json",
+        "payload": {
+          "$ref": "#/components/schemas/BestBidAskEvent"
+        },
+        "examples": [
+          {
+            "name": "Best bid/ask update",
+            "payload": {
+              "event_type": "best_bid_ask",
+              "market": "0x0005c0d312de0be897668695bae9f32b624b4a1ae8b140c49f08447fcc74f442",
+              "asset_id": "85354956062430465315924116860125388538595433819574542752031640332592237464430",
+              "best_bid": "0.73",
+              "best_ask": "0.77",
+              "spread": "0.04",
+              "timestamp": "1766789469958"
+            }
+          }
+        ]
+      },
+      "newMarket": {
+        "name": "NewMarket",
+        "title": "New Market",
+        "summary": "New market creation event — requires custom_feature_enabled: true",
+        "contentType": "application/json",
+        "payload": {
+          "$ref": "#/components/schemas/NewMarketEvent"
+        },
+        "examples": [
+          {
+            "name": "New market created",
+            "payload": {
+              "event_type": "new_market",
+              "id": "1031769",
+              "question": "Will NVIDIA (NVDA) close above $240 end of January?",
+              "market": "0x311d0c4b6671ab54af4970c06fcf58662516f5168997bdda209ec3db5aa6b0c1",
+              "slug": "nvda-above-240-on-january-30-2026",
+              "description": "This market will resolve to \"Yes\" if the official closing price for NVIDIA (NVDA) on the final trading day of January 2026 is higher than the listed price. Otherwise, this market will resolve to \"No\".",
+              "assets_ids": [
+                "76043073756653678226373981964075571318267289248134717369284518995922789326425",
+                "31690934263385727664202099278545688007799199447969475608906331829650099442770"
+              ],
+              "outcomes": [
+                "Yes",
+                "No"
+              ],
+              "event_message": {
+                "id": "125819",
+                "ticker": "nvda-above-in-january-2026",
+                "slug": "nvda-above-in-january-2026",
+                "title": "Will NVIDIA (NVDA) close above ___ end of January?",
+                "description": "This market will resolve to \"Yes\" if the official closing price for NVIDIA (NVDA) on the final trading day of January 2026 is higher than the listed price. Otherwise, this market will resolve to \"No\"."
+              },
+              "timestamp": "1766790415550",
+              "tags": [
+                "stocks"
+              ],
+              "condition_id": "0x311d0c4b6671ab54af4970c06fcf58662516f5168997bdda209ec3db5aa6b0c1",
+              "active": true,
+              "clob_token_ids": [
+                "76043073756653678226373981964075571318267289248134717369284518995922789326425",
+                "31690934263385727664202099278545688007799199447969475608906331829650099442770"
+              ],
+              "sports_market_type": "",
+              "line": "",
+              "game_start_time": "",
+              "order_price_min_tick_size": "0.01",
+              "group_item_title": "NVDA above $240"
+            }
+          }
+        ]
+      },
+      "marketResolved": {
+        "name": "MarketResolved",
+        "title": "Market Resolved",
+        "summary": "Market resolution event — requires custom_feature_enabled: true",
+        "contentType": "application/json",
+        "payload": {
+          "$ref": "#/components/schemas/MarketResolvedEvent"
+        },
+        "examples": [
+          {
+            "name": "Market resolved",
+            "payload": {
+              "event_type": "market_resolved",
+              "id": "1031769",
+              "market": "0x311d0c4b6671ab54af4970c06fcf58662516f5168997bdda209ec3db5aa6b0c1",
+              "assets_ids": [
+                "76043073756653678226373981964075571318267289248134717369284518995922789326425",
+                "31690934263385727664202099278545688007799199447969475608906331829650099442770"
+              ],
+              "winning_asset_id": "76043073756653678226373981964075571318267289248134717369284518995922789326425",
+              "winning_outcome": "Yes",
+              "timestamp": "1766790415550",
+              "tags": [
+                "stocks"
+              ]
+            }
+          }
+        ]
+      }
+    },
+    "schemas": {
+      "SubscriptionRequest": {
+        "type": "object",
+        "description": "Initial subscription request payload",
+        "required": [
+          "assets_ids",
+          "type"
+        ],
+        "properties": {
+          "assets_ids": {
+            "type": "array",
+            "description": "Asset IDs (token IDs) to subscribe to",
+            "items": {
+              "type": "string"
+            }
+          },
+          "type": {
+            "type": "string",
+            "const": "market",
+            "description": "Must be 'market'"
+          },
+          "initial_dump": {
+            "type": "boolean",
+            "description": "Whether to send an initial orderbook snapshot on subscribe. Defaults to true.",
+            "default": true
+          },
+          "level": {
+            "type": "integer",
+            "enum": [
+              1,
+              2,
+              3
+            ],
+            "description": "Subscription level. Defaults to 2.",
+            "default": 2
+          },
+          "custom_feature_enabled": {
+            "type": "boolean",
+            "description": "Enable best_bid_ask, new_market, and market_resolved events.",
+            "default": false
+          }
+        }
+      },
+      "SubscriptionRequestUpdate": {
+        "type": "object",
+        "description": "Dynamically update asset subscriptions",
+        "required": [
+          "operation",
+          "assets_ids"
+        ],
+        "properties": {
+          "operation": {
+            "type": "string",
+            "enum": [
+              "subscribe",
+              "unsubscribe"
+            ]
+          },
+          "assets_ids": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          },
+          "level": {
+            "type": "integer",
+            "enum": [
+              1,
+              2,
+              3
+            ]
+          },
+          "custom_feature_enabled": {
+            "type": "boolean"
+          }
+        }
+      },
+      "OrderSummary": {
+        "type": "object",
+        "description": "Aggregated order at a price level",
+        "required": [
+          "price",
+          "size"
+        ],
+        "properties": {
+          "price": {
+            "type": "string",
+            "description": "Price level (e.g., '0.50')"
+          },
+          "size": {
+            "type": "string",
+            "description": "Total size at this price level"
+          }
+        }
+      },
+      "BookEvent": {
+        "type": "object",
+        "description": "Full orderbook snapshot",
+        "required": [
+          "event_type",
+          "asset_id",
+          "market",
+          "bids",
+          "asks",
+          "timestamp",
+          "hash"
+        ],
+        "properties": {
+          "event_type": {
+            "type": "string",
+            "const": "book"
+          },
+          "asset_id": {
+            "type": "string",
+            "description": "Asset ID (token ID)"
+          },
+          "market": {
+            "type": "string",
+            "description": "Condition ID of the market"
+          },
+          "bids": {
+            "type": "array",
+            "description": "Aggregated buy orders by price level",
+            "items": {
+              "$ref": "#/components/schemas/OrderSummary"
+            }
+          },
+          "asks": {
+            "type": "array",
+            "description": "Aggregated sell orders by price level",
+            "items": {
+              "$ref": "#/components/schemas/OrderSummary"
+            }
+          },
+          "timestamp": {
+            "type": "string",
+            "description": "Unix timestamp in milliseconds"
+          },
+          "hash": {
+            "type": "string",
+            "description": "Hash of the orderbook content"
+          }
+        }
+      },
+      "PriceChangeMessage": {
+        "type": "object",
+        "description": "Individual price level change",
+        "required": [
+          "asset_id",
+          "price",
+          "size",
+          "side",
+          "hash"
+        ],
+        "properties": {
+          "asset_id": {
+            "type": "string"
+          },
+          "price": {
+            "type": "string",
+            "description": "Price level affected"
+          },
+          "size": {
+            "type": "string",
+            "description": "New aggregate size (0 means level removed)"
+          },
+          "side": {
+            "type": "string",
+            "enum": [
+              "BUY",
+              "SELL"
+            ]
+          },
+          "hash": {
+            "type": "string",
+            "description": "Hash of the order that caused this change"
+          },
+          "best_bid": {
+            "type": "string"
+          },
+          "best_ask": {
+            "type": "string"
+          }
+        }
+      },
+      "PriceChangeEvent": {
+        "type": "object",
+        "description": "One or more price level updates",
+        "required": [
+          "event_type",
+          "market",
+          "price_changes",
+          "timestamp"
+        ],
+        "properties": {
+          "event_type": {
+            "type": "string",
+            "const": "price_change"
+          },
+          "market": {
+            "type": "string",
+            "description": "Condition ID of the market"
+          },
+          "price_changes": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/PriceChangeMessage"
+            }
+          },
+          "timestamp": {
+            "type": "string",
+            "description": "Unix timestamp in milliseconds"
+          }
+        }
+      },
+      "LastTradePriceEvent": {
+        "type": "object",
+        "description": "Last trade price event",
+        "required": [
+          "event_type",
+          "asset_id",
+          "market",
+          "price",
+          "size",
+          "side",
+          "timestamp"
+        ],
+        "properties": {
+          "event_type": {
+            "type": "string",
+            "const": "last_trade_price"
+          },
+          "asset_id": {
+            "type": "string"
+          },
+          "market": {
+            "type": "string"
+          },
+          "price": {
+            "type": "string",
+            "description": "Trade execution price"
+          },
+          "size": {
+            "type": "string",
+            "description": "Trade size"
+          },
+          "fee_rate_bps": {
+            "type": "string",
+            "description": "Fee rate in basis points"
+          },
+          "side": {
+            "type": "string",
+            "enum": [
+              "BUY",
+              "SELL"
+            ],
+            "description": "From taker's perspective"
+          },
+          "timestamp": {
+            "type": "string",
+            "description": "Unix timestamp in milliseconds"
+          },
+          "transaction_hash": {
+            "type": "string"
+          }
+        }
+      },
+      "TickSizeChangeEvent": {
+        "type": "object",
+        "description": "Tick size change event",
+        "required": [
+          "event_type",
+          "asset_id",
+          "market",
+          "old_tick_size",
+          "new_tick_size",
+          "timestamp"
+        ],
+        "properties": {
+          "event_type": {
+            "type": "string",
+            "const": "tick_size_change"
+          },
+          "asset_id": {
+            "type": "string"
+          },
+          "market": {
+            "type": "string"
+          },
+          "old_tick_size": {
+            "type": "string"
+          },
+          "new_tick_size": {
+            "type": "string"
+          },
+          "timestamp": {
+            "type": "string"
+          }
+        }
+      },
+      "BestBidAskEvent": {
+        "type": "object",
+        "description": "Best bid/ask event — requires custom_feature_enabled",
+        "required": [
+          "event_type",
+          "asset_id",
+          "market",
+          "best_bid",
+          "best_ask",
+          "spread",
+          "timestamp"
+        ],
+        "properties": {
+          "event_type": {
+            "type": "string",
+            "const": "best_bid_ask"
+          },
+          "asset_id": {
+            "type": "string"
+          },
+          "market": {
+            "type": "string"
+          },
+          "best_bid": {
+            "type": "string"
+          },
+          "best_ask": {
+            "type": "string"
+          },
+          "spread": {
+            "type": "string"
+          },
+          "timestamp": {
+            "type": "string"
+          }
+        }
+      },
+      "EventMessage": {
+        "type": "object",
+        "description": "Parent event metadata for grouped markets",
+        "properties": {
+          "id": {
+            "type": "string"
+          },
+          "ticker": {
+            "type": "string"
+          },
+          "slug": {
+            "type": "string"
+          },
+          "title": {
+            "type": "string"
+          },
+          "description": {
+            "type": "string"
+          }
+        }
+      },
+      "NewMarketEvent": {
+        "type": "object",
+        "description": "New market creation event — requires custom_feature_enabled",
+        "required": [
+          "event_type",
+          "id",
+          "question",
+          "market",
+          "slug",
+          "assets_ids",
+          "outcomes",
+          "timestamp"
+        ],
+        "properties": {
+          "event_type": {
+            "type": "string",
+            "const": "new_market"
+          },
+          "id": {
+            "type": "string",
+            "description": "Market ID"
+          },
+          "question": {
+            "type": "string"
+          },
+          "market": {
+            "type": "string",
+            "description": "Condition ID"
+          },
+          "slug": {
+            "type": "string"
+          },
+          "description": {
+            "type": "string"
+          },
+          "assets_ids": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          },
+          "outcomes": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          },
+          "event_message": {
+            "$ref": "#/components/schemas/EventMessage"
+          },
+          "timestamp": {
+            "type": "string"
+          },
+          "tags": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          },
+          "condition_id": {
+            "type": "string",
+            "description": "Condition ID"
+          },
+          "active": {
+            "type": "boolean",
+            "description": "Whether the market is active"
+          },
+          "clob_token_ids": {
+            "type": "array",
+            "description": "CLOB token IDs for the market",
+            "items": {
+              "type": "string"
+            }
+          },
+          "sports_market_type": {
+            "type": "string",
+            "description": "Sports market type such as spread or moneyline"
+          },
+          "line": {
+            "type": "string",
+            "description": "Betting line value, or an empty string when not applicable"
+          },
+          "game_start_time": {
+            "type": "string",
+            "description": "Game start time in RFC3339 format, or an empty string when not applicable"
+          },
+          "order_price_min_tick_size": {
+            "type": "string",
+            "description": "Minimum tick size for order prices"
+          },
+          "group_item_title": {
+            "type": "string",
+            "description": "Display title for the group item"
+          }
+        }
+      },
+      "MarketResolvedEvent": {
+        "type": "object",
+        "description": "Market resolution event — requires custom_feature_enabled",
+        "required": [
+          "event_type",
+          "id",
+          "market",
+          "assets_ids",
+          "winning_asset_id",
+          "winning_outcome",
+          "timestamp"
+        ],
+        "properties": {
+          "event_type": {
+            "type": "string",
+            "const": "market_resolved"
+          },
+          "id": {
+            "type": "string"
+          },
+          "market": {
+            "type": "string",
+            "description": "Condition ID"
+          },
+          "assets_ids": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          },
+          "winning_asset_id": {
+            "type": "string"
+          },
+          "winning_outcome": {
+            "type": "string"
+          },
+          "event_message": {
+            "$ref": "#/components/schemas/EventMessage"
+          },
+          "timestamp": {
+            "type": "string"
+          },
+          "tags": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          }
+        }
+      }
+    }
+  }
+}

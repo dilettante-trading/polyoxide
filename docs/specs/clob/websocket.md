@@ -1,5 +1,9 @@
 # CLOB WebSocket
 
+Machine-readable schemas (mirrors of `https://docs.polymarket.com/asyncapi*.json`):
+[asyncapi-market.json](asyncapi-market.json), [asyncapi-user.json](asyncapi-user.json),
+[asyncapi-sports.json](asyncapi-sports.json).
+
 ## Endpoints
 
 | Channel | URL | Auth |
@@ -7,6 +11,24 @@
 | Market | `wss://ws-subscriptions-clob.polymarket.com/ws/market` | None |
 | User | `wss://ws-subscriptions-clob.polymarket.com/ws/user` | L2 credentials |
 | Sports | `wss://sports-api.polymarket.com/ws` | None |
+
+Note the sports channel is on a **different host** and takes **no subscription
+payload** — connecting is enough to start receiving updates.
+
+## Market events
+
+Seven data-bearing event types. The last three are gated: the server sends them
+only when the subscription sets `custom_feature_enabled: true`.
+
+| `event_type` | Gated |
+|--------------|-------|
+| `book` | no |
+| `price_change` | no |
+| `tick_size_change` | no |
+| `last_trade_price` | no |
+| `best_bid_ask` | **yes** |
+| `new_market` | **yes** |
+| `market_resolved` | **yes** |
 
 ## Market Channel
 

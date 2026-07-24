@@ -1,0 +1,234 @@
+{
+  "asyncapi": "3.0.0",
+  "info": {
+    "title": "Polymarket WebSocket API — Sports Channel",
+    "version": "1.0.0",
+    "description": "Public WebSocket channel for real-time sports results. No authentication or subscription required — connect and receive live match updates for all active sports events."
+  },
+  "servers": {
+    "production": {
+      "host": "sports-api.polymarket.com",
+      "pathname": "/ws",
+      "protocol": "wss",
+      "description": "Public sports results WebSocket server"
+    }
+  },
+  "channels": {
+    "sports": {
+      "address": "/ws",
+      "title": "Sports Channel",
+      "description": "Public channel broadcasting live sports results. No subscription message required — connect and immediately start receiving updates for all active events. The server sends a ping every 5 seconds; respond with pong within 10 seconds to stay connected.",
+      "messages": {
+        "ping": {
+          "$ref": "#/components/messages/ping"
+        },
+        "pong": {
+          "$ref": "#/components/messages/pong"
+        },
+        "sportsUpdate": {
+          "$ref": "#/components/messages/sportsUpdate"
+        }
+      }
+    }
+  },
+  "operations": {
+    "ping": {
+      "action": "send",
+      "channel": {
+        "$ref": "#/channels/sports"
+      },
+      "title": "Ping",
+      "summary": "Server sends ping every 5 seconds — respond with pong within 10 seconds",
+      "messages": [
+        {
+          "$ref": "#/channels/sports/messages/ping"
+        }
+      ]
+    },
+    "pong": {
+      "action": "receive",
+      "channel": {
+        "$ref": "#/channels/sports"
+      },
+      "title": "Pong",
+      "summary": "Client responds to server ping",
+      "messages": [
+        {
+          "$ref": "#/channels/sports/messages/pong"
+        }
+      ]
+    },
+    "receiveSportsUpdate": {
+      "action": "send",
+      "channel": {
+        "$ref": "#/channels/sports"
+      },
+      "title": "Sports Update",
+      "summary": "Live match update broadcast to all connected clients",
+      "description": "Emitted whenever a live match has an update — score change, period change, match started or ended. Supports NFL, soccer, NBA, MLB, NHL, and cricket.",
+      "messages": [
+        {
+          "$ref": "#/channels/sports/messages/sportsUpdate"
+        }
+      ]
+    }
+  },
+  "components": {
+    "messages": {
+      "ping": {
+        "name": "Ping",
+        "title": "Ping",
+        "summary": "Server heartbeat sent every 5 seconds",
+        "contentType": "text/plain",
+        "payload": {
+          "type": "string",
+          "const": "ping"
+        }
+      },
+      "pong": {
+        "name": "Pong",
+        "title": "Pong",
+        "summary": "Client heartbeat response — must be sent within 10 seconds",
+        "contentType": "text/plain",
+        "payload": {
+          "type": "string",
+          "const": "pong"
+        }
+      },
+      "sportsUpdate": {
+        "name": "SportsUpdate",
+        "title": "Sports Result Update",
+        "summary": "Real-time sports match update",
+        "contentType": "application/json",
+        "payload": {
+          "$ref": "#/components/schemas/SportResult"
+        },
+        "examples": [
+          {
+            "name": "Football (soccer) — live match",
+            "payload": {
+              "slug": "mci-liv-2025-02-03",
+              "live": true,
+              "ended": false,
+              "score": "1-0",
+              "period": "1H",
+              "elapsed": "32:15",
+              "last_update": "2025-02-03T19:50:16.939Z"
+            }
+          },
+          {
+            "name": "NFL — game with possession indicator",
+            "payload": {
+              "slug": "sea-sf-2025-02-03",
+              "live": true,
+              "ended": false,
+              "score": "14-7",
+              "period": "Q2",
+              "elapsed": "08:45",
+              "last_update": "2025-02-03T20:15:30.123Z",
+              "turn": "sea"
+            }
+          },
+          {
+            "name": "NBA — basketball game",
+            "payload": {
+              "slug": "lal-gsw-2025-02-03",
+              "live": true,
+              "ended": false,
+              "score": "78-82",
+              "period": "Q3",
+              "elapsed": "05:30",
+              "last_update": "2025-02-03T21:30:45.789Z"
+            }
+          },
+          {
+            "name": "MLB — baseball game",
+            "payload": {
+              "slug": "nyy-bos-2025-06-15",
+              "live": true,
+              "ended": false,
+              "score": "3-2",
+              "period": "Top 5th",
+              "elapsed": "",
+              "last_update": "2025-06-15T23:30:00.000Z"
+            }
+          },
+          {
+            "name": "NHL — ice hockey game",
+            "payload": {
+              "slug": "tor-mtl-2025-02-03",
+              "live": true,
+              "ended": false,
+              "score": "2-2",
+              "period": "P2",
+              "elapsed": "12:30",
+              "last_update": "2025-02-03T20:45:00.000Z"
+            }
+          },
+          {
+            "name": "Finished match",
+            "payload": {
+              "slug": "ars-che-2025-02-03",
+              "live": false,
+              "ended": true,
+              "score": "2-1",
+              "period": "FT",
+              "elapsed": "",
+              "last_update": "2025-02-03T22:00:00.000Z",
+              "finished_timestamp": "2025-02-03T21:55:00.000Z"
+            }
+          }
+        ]
+      }
+    },
+    "schemas": {
+      "SportResult": {
+        "type": "object",
+        "description": "Real-time sports match update. Only slug is required; all other fields may be omitted if not applicable.",
+        "required": [
+          "slug"
+        ],
+        "properties": {
+          "slug": {
+            "type": "string",
+            "description": "Unique match identifier (e.g., 'mci-liv-2025-02-03')"
+          },
+          "live": {
+            "type": "boolean",
+            "description": "Whether the match is currently in progress"
+          },
+          "ended": {
+            "type": "boolean",
+            "description": "Whether the match has ended"
+          },
+          "score": {
+            "type": "string",
+            "description": "Current score (e.g., '2-1' for soccer, '14-7' for football)"
+          },
+          "period": {
+            "type": "string",
+            "description": "Current period. Soccer: '1H', '2H', 'HT', 'FT', 'PEN'. NFL: 'Q1'–'Q4', 'HT', 'OT', 'FT'. NBA/CBB: 'Q1'–'Q4', 'HT', 'OT', 'FT'. MLB: 'Top 1st', 'Bot 1st', ... Ice Hockey: 'P1', 'P2', 'P3', 'OT', 'PEN', 'FT'. Cricket: '1H', '1A', '2H', '2A', 'SO', 'FT'. Other: 'CAN', 'POST', 'INT', 'AB'."
+          },
+          "elapsed": {
+            "type": "string",
+            "description": "Elapsed time in the current period in 'MM:SS' format. Empty string if not applicable."
+          },
+          "last_update": {
+            "type": "string",
+            "format": "date-time",
+            "description": "ISO 8601 timestamp of the last update"
+          },
+          "finished_timestamp": {
+            "type": "string",
+            "format": "date-time",
+            "description": "ISO 8601 timestamp when the match ended. Only present for ended matches."
+          },
+          "turn": {
+            "type": "string",
+            "description": "Team abbreviation with ball possession. NFL only."
+          }
+        }
+      }
+    }
+  }
+}

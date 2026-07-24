@@ -1,0 +1,699 @@
+{
+  "asyncapi": "3.0.0",
+  "info": {
+    "title": "Polymarket WebSocket API — User Channel",
+    "version": "1.0.0",
+    "description": "Authenticated WebSocket channel for real-time order and trade updates. Requires CLOB API credentials."
+  },
+  "servers": {
+    "production": {
+      "host": "ws-subscriptions-clob.polymarket.com",
+      "pathname": "/ws/user",
+      "protocol": "wss",
+      "description": "Authenticated user data WebSocket server"
+    }
+  },
+  "channels": {
+    "user": {
+      "address": "/ws/user",
+      "title": "User Channel",
+      "description": "Authenticated channel for real-time order and trade updates. Send API credentials in the initial subscription message. Optionally filter by market condition IDs.",
+      "messages": {
+        "userSubscriptionRequest": {
+          "$ref": "#/components/messages/userSubscriptionRequest"
+        },
+        "userSubscriptionRequestUpdate": {
+          "$ref": "#/components/messages/userSubscriptionRequestUpdate"
+        },
+        "ping": {
+          "$ref": "#/components/messages/ping"
+        },
+        "pong": {
+          "$ref": "#/components/messages/pong"
+        },
+        "order": {
+          "$ref": "#/components/messages/order"
+        },
+        "trade": {
+          "$ref": "#/components/messages/trade"
+        }
+      }
+    }
+  },
+  "operations": {
+    "subscribe": {
+      "action": "receive",
+      "channel": {
+        "$ref": "#/channels/user"
+      },
+      "title": "Subscribe",
+      "summary": "Send authenticated subscription request",
+      "description": "Upon connecting, send an authenticated subscription request with your CLOB API credentials. Optionally include market condition IDs to filter events to specific markets.",
+      "messages": [
+        {
+          "$ref": "#/channels/user/messages/userSubscriptionRequest"
+        }
+      ]
+    },
+    "updateSubscription": {
+      "action": "receive",
+      "channel": {
+        "$ref": "#/channels/user"
+      },
+      "title": "Update Subscription",
+      "summary": "Dynamically subscribe or unsubscribe from markets without reconnecting",
+      "messages": [
+        {
+          "$ref": "#/channels/user/messages/userSubscriptionRequestUpdate"
+        }
+      ]
+    },
+    "ping": {
+      "action": "receive",
+      "channel": {
+        "$ref": "#/channels/user"
+      },
+      "title": "Ping",
+      "summary": "Send PING every 10 seconds to keep the connection alive",
+      "messages": [
+        {
+          "$ref": "#/channels/user/messages/ping"
+        }
+      ]
+    },
+    "pong": {
+      "action": "send",
+      "channel": {
+        "$ref": "#/channels/user"
+      },
+      "title": "Pong",
+      "summary": "Server responds to PING with PONG",
+      "messages": [
+        {
+          "$ref": "#/channels/user/messages/pong"
+        }
+      ]
+    },
+    "receiveOrder": {
+      "action": "send",
+      "channel": {
+        "$ref": "#/channels/user"
+      },
+      "title": "Order Event",
+      "summary": "Order placement, update, or cancellation event for the authenticated user",
+      "messages": [
+        {
+          "$ref": "#/channels/user/messages/order"
+        }
+      ]
+    },
+    "receiveTrade": {
+      "action": "send",
+      "channel": {
+        "$ref": "#/channels/user"
+      },
+      "title": "Trade Event",
+      "summary": "Trade match or status change event for the authenticated user",
+      "messages": [
+        {
+          "$ref": "#/channels/user/messages/trade"
+        }
+      ]
+    }
+  },
+  "components": {
+    "messages": {
+      "userSubscriptionRequest": {
+        "name": "UserSubscriptionRequest",
+        "title": "Subscription Request",
+        "summary": "Authenticated subscription message sent after connecting",
+        "contentType": "application/json",
+        "payload": {
+          "$ref": "#/components/schemas/UserSubscriptionRequest"
+        },
+        "examples": [
+          {
+            "name": "Subscribe to all user events",
+            "payload": {
+              "auth": {
+                "apiKey": "your-api-key-uuid",
+                "secret": "your-api-secret",
+                "passphrase": "your-passphrase"
+              },
+              "type": "user"
+            }
+          },
+          {
+            "name": "Subscribe with market filter",
+            "payload": {
+              "auth": {
+                "apiKey": "your-api-key-uuid",
+                "secret": "your-api-secret",
+                "passphrase": "your-passphrase"
+              },
+              "type": "user",
+              "markets": [
+                "0xbd31dc8a20211944f6b70f31557f1001557b59905b7738480ca09bd4532f84af"
+              ]
+            }
+          }
+        ]
+      },
+      "userSubscriptionRequestUpdate": {
+        "name": "UserSubscriptionRequestUpdate",
+        "title": "Subscription Update",
+        "summary": "Subscribe or unsubscribe from markets without reconnecting",
+        "contentType": "application/json",
+        "payload": {
+          "$ref": "#/components/schemas/UserSubscriptionRequestUpdate"
+        },
+        "examples": [
+          {
+            "name": "Subscribe to more markets",
+            "payload": {
+              "operation": "subscribe",
+              "markets": [
+                "0x5f65177b394277fd294cd75650044e32ba009a95022d88a0c1d565897d72f8f1"
+              ]
+            }
+          },
+          {
+            "name": "Unsubscribe from markets",
+            "payload": {
+              "operation": "unsubscribe",
+              "markets": [
+                "0xbd31dc8a20211944f6b70f31557f1001557b59905b7738480ca09bd4532f84af"
+              ]
+            }
+          }
+        ]
+      },
+      "ping": {
+        "name": "Ping",
+        "title": "Ping",
+        "summary": "Client heartbeat — send every 10 seconds",
+        "contentType": "text/plain",
+        "payload": {
+          "type": "string",
+          "const": "PING"
+        }
+      },
+      "pong": {
+        "name": "Pong",
+        "title": "Pong",
+        "summary": "Server heartbeat response",
+        "contentType": "text/plain",
+        "payload": {
+          "type": "string",
+          "const": "PONG"
+        }
+      },
+      "order": {
+        "name": "Order",
+        "title": "Order Event",
+        "summary": "Order placement, update, or cancellation",
+        "contentType": "application/json",
+        "payload": {
+          "$ref": "#/components/schemas/OrderEvent"
+        },
+        "examples": [
+          {
+            "name": "Order placement",
+            "payload": {
+              "event_type": "order",
+              "id": "0xff354cd7ca7539dfa9c28d90943ab5779a4eac34b9b37a757d7b32bdfb11790b",
+              "owner": "9180014b-33c8-9240-a14b-bdca11c0a465",
+              "market": "0xbd31dc8a20211944f6b70f31557f1001557b59905b7738480ca09bd4532f84af",
+              "asset_id": "52114319501245915516055106046884209969926127482827954674443846427813813222426",
+              "side": "SELL",
+              "order_owner": "9180014b-33c8-9240-a14b-bdca11c0a465",
+              "original_size": "10",
+              "size_matched": "0",
+              "price": "0.57",
+              "associate_trades": null,
+              "outcome": "YES",
+              "type": "PLACEMENT",
+              "created_at": "1672290687",
+              "expiration": "1234567",
+              "order_type": "GTD",
+              "status": "LIVE",
+              "maker_address": "0x1234...",
+              "timestamp": "1672290687"
+            }
+          },
+          {
+            "name": "Order cancellation",
+            "payload": {
+              "event_type": "order",
+              "id": "0xff354cd7ca7539dfa9c28d90943ab5779a4eac34b9b37a757d7b32bdfb11790b",
+              "owner": "9180014b-33c8-9240-a14b-bdca11c0a465",
+              "market": "0xbd31dc8a20211944f6b70f31557f1001557b59905b7738480ca09bd4532f84af",
+              "asset_id": "52114319501245915516055106046884209969926127482827954674443846427813813222426",
+              "side": "SELL",
+              "order_owner": "9180014b-33c8-9240-a14b-bdca11c0a465",
+              "original_size": "10",
+              "size_matched": "5",
+              "price": "0.57",
+              "associate_trades": [
+                "trade-id-1"
+              ],
+              "outcome": "YES",
+              "type": "CANCELLATION",
+              "created_at": "1672290687",
+              "expiration": "1234567",
+              "order_type": "GTD",
+              "status": "CANCELED",
+              "maker_address": "0x1234...",
+              "timestamp": "1672295000"
+            }
+          }
+        ]
+      },
+      "trade": {
+        "name": "Trade",
+        "title": "Trade Event",
+        "summary": "Trade match, confirmation, or status change",
+        "contentType": "application/json",
+        "payload": {
+          "$ref": "#/components/schemas/TradeEvent"
+        },
+        "examples": [
+          {
+            "name": "Trade matched",
+            "payload": {
+              "event_type": "trade",
+              "type": "TRADE",
+              "id": "28c4d2eb-bbea-40e7-a9f0-b2fdb56b2c2e",
+              "taker_order_id": "0x06bc63e346ed4ceddce9efd6b3af37c8f8f440c92fe7da6b2d0f9e4ccbc50c42",
+              "market": "0xbd31dc8a20211944f6b70f31557f1001557b59905b7738480ca09bd4532f84af",
+              "asset_id": "52114319501245915516055106046884209969926127482827954674443846427813813222426",
+              "side": "BUY",
+              "size": "10",
+              "price": "0.57",
+              "fee_rate_bps": "0",
+              "status": "MATCHED",
+              "match_time": "1672290701",
+              "last_update": "1672290701",
+              "outcome": "YES",
+              "owner": "9180014b-33c8-9240-a14b-bdca11c0a465",
+              "trade_owner": "9180014b-33c8-9240-a14b-bdca11c0a465",
+              "maker_address": "0x1234...",
+              "transaction_hash": "",
+              "bucket_index": 0,
+              "maker_orders": [
+                {
+                  "order_id": "0xff354cd7ca7539dfa9c28d90943ab5779a4eac34b9b37a757d7b32bdfb11790b",
+                  "owner": "9180014b-33c8-9240-a14b-bdca11c0a465",
+                  "maker_address": "0x5678...",
+                  "matched_amount": "10",
+                  "price": "0.57",
+                  "fee_rate_bps": "0",
+                  "asset_id": "52114319501245915516055106046884209969926127482827954674443846427813813222426",
+                  "outcome": "YES",
+                  "side": "SELL"
+                }
+              ],
+              "trader_side": "TAKER",
+              "timestamp": "1672290701"
+            }
+          },
+          {
+            "name": "Trade confirmed",
+            "payload": {
+              "event_type": "trade",
+              "type": "TRADE",
+              "id": "28c4d2eb-bbea-40e7-a9f0-b2fdb56b2c2e",
+              "taker_order_id": "0x06bc63e346ed4ceddce9efd6b3af37c8f8f440c92fe7da6b2d0f9e4ccbc50c42",
+              "market": "0xbd31dc8a20211944f6b70f31557f1001557b59905b7738480ca09bd4532f84af",
+              "asset_id": "52114319501245915516055106046884209969926127482827954674443846427813813222426",
+              "side": "BUY",
+              "size": "10",
+              "price": "0.57",
+              "fee_rate_bps": "0",
+              "status": "CONFIRMED",
+              "match_time": "1672290701",
+              "last_update": "1672291000",
+              "outcome": "YES",
+              "owner": "9180014b-33c8-9240-a14b-bdca11c0a465",
+              "trade_owner": "9180014b-33c8-9240-a14b-bdca11c0a465",
+              "maker_address": "0x1234...",
+              "transaction_hash": "0xabc123...",
+              "bucket_index": 88,
+              "maker_orders": [
+                {
+                  "order_id": "0xff354cd7ca7539dfa9c28d90943ab5779a4eac34b9b37a757d7b32bdfb11790b",
+                  "owner": "9180014b-33c8-9240-a14b-bdca11c0a465",
+                  "maker_address": "0x5678...",
+                  "matched_amount": "10",
+                  "price": "0.57",
+                  "fee_rate_bps": "0",
+                  "asset_id": "52114319501245915516055106046884209969926127482827954674443846427813813222426",
+                  "outcome": "YES",
+                  "side": "SELL"
+                }
+              ],
+              "trader_side": "TAKER",
+              "timestamp": "1672291000"
+            }
+          }
+        ]
+      }
+    },
+    "schemas": {
+      "WebSocketAuth": {
+        "type": "object",
+        "description": "CLOB API credentials for authentication",
+        "required": [
+          "apiKey",
+          "secret",
+          "passphrase"
+        ],
+        "properties": {
+          "apiKey": {
+            "type": "string",
+            "description": "CLOB API key (UUID format)"
+          },
+          "secret": {
+            "type": "string",
+            "description": "CLOB API secret"
+          },
+          "passphrase": {
+            "type": "string",
+            "description": "CLOB API passphrase"
+          }
+        }
+      },
+      "UserSubscriptionRequest": {
+        "type": "object",
+        "description": "Authenticated subscription request for the user channel",
+        "required": [
+          "auth",
+          "type"
+        ],
+        "properties": {
+          "auth": {
+            "$ref": "#/components/schemas/WebSocketAuth"
+          },
+          "type": {
+            "type": "string",
+            "const": "user",
+            "description": "Must be 'user'"
+          },
+          "markets": {
+            "type": "array",
+            "description": "Optional condition IDs to filter events. If omitted, receives events for all markets.",
+            "items": {
+              "type": "string"
+            }
+          }
+        }
+      },
+      "UserSubscriptionRequestUpdate": {
+        "type": "object",
+        "description": "Dynamically update market subscriptions",
+        "required": [
+          "operation",
+          "markets"
+        ],
+        "properties": {
+          "operation": {
+            "type": "string",
+            "enum": [
+              "subscribe",
+              "unsubscribe"
+            ]
+          },
+          "markets": {
+            "type": "array",
+            "description": "Condition IDs to subscribe to or unsubscribe from",
+            "items": {
+              "type": "string"
+            }
+          }
+        }
+      },
+      "OrderEvent": {
+        "type": "object",
+        "description": "Order placement, update, or cancellation event",
+        "required": [
+          "event_type",
+          "id",
+          "owner",
+          "market",
+          "asset_id",
+          "side",
+          "original_size",
+          "size_matched",
+          "price",
+          "type",
+          "timestamp"
+        ],
+        "properties": {
+          "event_type": {
+            "type": "string",
+            "const": "order"
+          },
+          "id": {
+            "type": "string",
+            "description": "Order ID (hash)"
+          },
+          "owner": {
+            "type": "string",
+            "description": "API key of the order owner"
+          },
+          "market": {
+            "type": "string",
+            "description": "Condition ID of the market"
+          },
+          "asset_id": {
+            "type": "string",
+            "description": "Asset ID (token ID)"
+          },
+          "side": {
+            "type": "string",
+            "enum": [
+              "BUY",
+              "SELL"
+            ]
+          },
+          "order_owner": {
+            "type": "string"
+          },
+          "original_size": {
+            "type": "string",
+            "description": "Original order size"
+          },
+          "size_matched": {
+            "type": "string",
+            "description": "Amount matched so far"
+          },
+          "price": {
+            "type": "string"
+          },
+          "associate_trades": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            },
+            "nullable": true,
+            "description": "Trade IDs this order has been matched in"
+          },
+          "outcome": {
+            "type": "string",
+            "description": "e.g. 'YES', 'NO'"
+          },
+          "type": {
+            "type": "string",
+            "enum": [
+              "PLACEMENT",
+              "UPDATE",
+              "CANCELLATION"
+            ]
+          },
+          "created_at": {
+            "type": "string"
+          },
+          "expiration": {
+            "type": "string",
+            "description": "For GTD orders"
+          },
+          "order_type": {
+            "type": "string",
+            "enum": [
+              "GTC",
+              "GTD",
+              "FOK"
+            ]
+          },
+          "status": {
+            "type": "string",
+            "description": "e.g. 'LIVE', 'MATCHED', 'CANCELED'"
+          },
+          "maker_address": {
+            "type": "string"
+          },
+          "timestamp": {
+            "type": "string",
+            "description": "Event timestamp in milliseconds"
+          }
+        }
+      },
+      "TradeMakerOrder": {
+        "type": "object",
+        "description": "Maker order details within a trade",
+        "required": [
+          "order_id",
+          "owner",
+          "matched_amount",
+          "price",
+          "asset_id"
+        ],
+        "properties": {
+          "order_id": {
+            "type": "string"
+          },
+          "owner": {
+            "type": "string"
+          },
+          "maker_address": {
+            "type": "string"
+          },
+          "matched_amount": {
+            "type": "string"
+          },
+          "price": {
+            "type": "string"
+          },
+          "fee_rate_bps": {
+            "type": "string"
+          },
+          "asset_id": {
+            "type": "string"
+          },
+          "outcome": {
+            "type": "string"
+          },
+          "side": {
+            "type": "string",
+            "enum": [
+              "BUY",
+              "SELL"
+            ]
+          }
+        }
+      },
+      "TradeEvent": {
+        "type": "object",
+        "description": "Trade match, confirmation, or status change event",
+        "required": [
+          "event_type",
+          "type",
+          "id",
+          "taker_order_id",
+          "market",
+          "asset_id",
+          "side",
+          "size",
+          "price",
+          "status",
+          "owner",
+          "timestamp"
+        ],
+        "properties": {
+          "event_type": {
+            "type": "string",
+            "const": "trade"
+          },
+          "type": {
+            "type": "string",
+            "const": "TRADE"
+          },
+          "id": {
+            "type": "string",
+            "description": "Trade ID"
+          },
+          "taker_order_id": {
+            "type": "string"
+          },
+          "market": {
+            "type": "string",
+            "description": "Condition ID"
+          },
+          "asset_id": {
+            "type": "string"
+          },
+          "side": {
+            "type": "string",
+            "enum": [
+              "BUY",
+              "SELL"
+            ],
+            "description": "From taker's perspective"
+          },
+          "size": {
+            "type": "string"
+          },
+          "price": {
+            "type": "string"
+          },
+          "fee_rate_bps": {
+            "type": "string"
+          },
+          "status": {
+            "type": "string",
+            "enum": [
+              "MATCHED",
+              "MINED",
+              "CONFIRMED",
+              "RETRYING",
+              "FAILED"
+            ]
+          },
+          "match_time": {
+            "type": "string"
+          },
+          "last_update": {
+            "type": "string"
+          },
+          "outcome": {
+            "type": "string"
+          },
+          "owner": {
+            "type": "string",
+            "description": "API key of the taker"
+          },
+          "trade_owner": {
+            "type": "string"
+          },
+          "maker_address": {
+            "type": "string"
+          },
+          "transaction_hash": {
+            "type": "string"
+          },
+          "bucket_index": {
+            "type": "integer"
+          },
+          "maker_orders": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/TradeMakerOrder"
+            }
+          },
+          "trader_side": {
+            "type": "string",
+            "enum": [
+              "TAKER",
+              "MAKER"
+            ],
+            "description": "Whether the receiving user was TAKER or MAKER"
+          },
+          "timestamp": {
+            "type": "string",
+            "description": "Event timestamp in milliseconds"
+          }
+        }
+      }
+    }
+  }
+}
