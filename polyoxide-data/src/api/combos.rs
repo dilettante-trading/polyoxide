@@ -99,8 +99,7 @@ impl ListComboPositions {
     /// whose `updated_at` is at or after this time.
     ///
     /// Positions mutate on resolution and redemption, so this catches changes a
-    /// creation-time filter cannot. Pair with
-    /// [`ComboSort::UpdatedAsc`](crate::types::ComboSort::UpdatedAsc).
+    /// creation-time filter cannot. Pair with [`ComboSort::UpdatedAsc`].
     pub fn updated_after(mut self, timestamp: i64) -> Self {
         self.request = self.request.query("updatedAfter", timestamp);
         self

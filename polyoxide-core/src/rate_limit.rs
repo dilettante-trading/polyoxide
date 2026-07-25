@@ -205,7 +205,7 @@ impl RateLimiter {
     ///
     /// - The **ledger group cap** (900/10s across `/trades`, `/orders`,
     ///   `/notifications` and `/order`) is genuinely shared, so those entries
-    ///   hold clones of one [`Bucket`] rather than four of their own.
+    ///   hold clones of one shared bucket rather than four of their own.
     /// - That group names `/order` and `/orders`, which also appear in the
     ///   trading table at 5,000 and 2,000 per 10s. Both tables can only hold
     ///   simultaneously if the group cap governs the ledger *reads*; a 900/10s

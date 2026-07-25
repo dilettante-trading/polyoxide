@@ -209,7 +209,7 @@ impl CancelOrderRequest {
 /// `open_order_deserializes_captured_response` below), cross-checked against
 /// the `/data/orders` response schema in `docs/specs/clob/openapi.yaml`.
 /// Prior to 0.22.0 this struct declared camelCase names, a flattened
-/// [`SignedOrder`], and a string `created_at`, so **any** response containing a
+/// [`SignedOrder`](crate::types::SignedOrder), and a string `created_at`, so **any** response containing a
 /// real order failed to deserialize with ``missing field `assetId` ``.
 ///
 /// Fields the schema marks required are non-optional here, matching the

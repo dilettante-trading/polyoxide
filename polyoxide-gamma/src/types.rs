@@ -441,8 +441,8 @@ pub struct Tag {
 /// `GET /tags/slug/{slug}/related-tags` return the edges of the tag graph —
 /// each row names the two endpoints of the relationship and its ordering rank,
 /// and carries no `slug` or `label`. Resolve [`related_tag_id`](Self::related_tag_id)
-/// against [`Tags::get`](crate::api::Tags::get) to obtain the tag itself, or call
-/// [`Tags::get_related_detailed`](crate::api::Tags::get_related_detailed)
+/// against [`Tags::get`](crate::api::tags::Tags::get) to obtain the tag itself,
+/// or call [`Tags::get_related_detailed`](crate::api::tags::Tags::get_related_detailed)
 /// (`/related-tags/tags`), which returns [`Tag`] values directly.
 ///
 /// Note the wire names are `tagID` / `relatedTagID` — capital `ID`, so they are
