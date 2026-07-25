@@ -45,6 +45,40 @@
 //!     Ok(())
 //! }
 //! ```
+//!
+//! ## Order outcomes and retries
+//!
+//! Polymarket returns HTTP 400 both for genuine faults (malformed payload, banned
+//! address, tick-size violation) and for the *defined* kill outcomes of marketable
+//! orders — a FAK that matched nothing, a FOK that could not fill in full. Those two
+//! are not failures, so they get their own variants rather than collapsing into a
+//! generic validation error:
+//!
+//! - [`ClobError::FakUnmatched`] — nothing on the book matched a Fill-And-Kill order
+//! - [`ClobError::FokUnfilled`] — a Fill-Or-Kill order could not be filled entirely
+//!
+//! Both are deterministic: resubmitting the identical order cannot change the answer.
+//! [`ClobError::is_retriable`] reports that, and is the intended input to a caller's
+//! retry policy — so retriability never has to be re-derived from status codes or
+//! from the venue's prose, which changes without notice.
+//!
+//! ```
+//! use polyoxide_clob::ClobError;
+//!
+//! fn handle(err: ClobError) {
+//!     match err {
+//!         // Normal outcomes of a marketable order — report, don't retry, don't alert.
+//!         ClobError::FakUnmatched { .. } | ClobError::FokUnfilled { .. } => {}
+//!         // Rate limits, timeouts, connection failures, 425, and 5xx.
+//!         e if e.is_retriable() => {}
+//!         // Deterministic faults: auth, validation, signing.
+//!         _ => {}
+//!     }
+//! }
+//! ```
+//!
+//! This crate's own retry loop only ever retries `429`, so a killed order has never
+//! been resent by the SDK itself.
 
 /// Doctest-only anchor that compiles every fenced `rust` example in the crate
 /// README, so broken examples fail CI. Exists only under `cfg(doctest)`, so it

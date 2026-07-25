@@ -92,6 +92,10 @@ Example: `gamma.markets().list().open(true).send().await?`, `data.leaderboard().
 
 **Error hierarchy** — `ApiError` in core, wrapped by crate-specific errors (`ClobError`, `GammaError`, `DataApiError`, `RelayError`). The `impl_api_error_conversions!` macro in core wires up `From` conversions.
 
+**Retriability** — `ApiError::is_retriable()` (and `ClobError::is_retriable()`) is the canonical classifier for callers' retry policies: true for rate limits, timeouts, connection failures, `425 Too Early`, and 5xx. The crates' *own* retry loop is narrower — `HttpClient::should_retry` only ever retries `429`.
+
+**Order kill outcomes are not faults** — Polymarket returns HTTP 400 for both genuine faults and the defined kill outcomes of marketable orders, so `ClobError` splits the latter out as `FakUnmatched` (FAK matched nothing) and `FokUnfilled` (FOK could not fill in full). They are deterministic and never retriable. Classification lives in `classify_order_kill` in `polyoxide-clob/src/error.rs` and matches on the venue's message body — the only signal available, since the venue ships no error code. Upstream's error catalogue is [docs.polymarket.com/resources/error-codes](https://docs.polymarket.com/resources/error-codes); it is **not** in `docs/specs/clob/openapi.yaml`, which omits these rows entirely.
+
 **Decimal precision** — Price/size fields use `rust_decimal::Decimal` with `serde(with = "rust_decimal::serde::str")` for string serialization.
 
 ## Environment Variables
