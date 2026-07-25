@@ -21,20 +21,82 @@ pub struct MakerOrder {
     pub price: String,
 }
 
-/// Trade status
+/// Lifecycle state of a trade on the user channel.
+///
+/// # State machine
+///
+/// A trade does **not** stop at [`Matched`](Self::Matched). The venue matches
+/// off-chain and then settles on-chain, and settlement can fail:
+///
+/// ```text
+///   MATCHED ──► MINED ──► CONFIRMED     (settled, succeeded)
+///      │
+///      └──────► RETRYING ──► FAILED     (settled, did not happen)
+///                   │
+///                   └──► (back to MINED on a successful retry)
+/// ```
+///
+/// Only [`Confirmed`](Self::Confirmed) and [`Failed`](Self::Failed) are
+/// terminal. Treating `MATCHED` as final means booking fills that later fail —
+/// use [`is_terminal`](Self::is_terminal) to gate irreversible bookkeeping, and
+/// [`settled_successfully`](Self::settled_successfully) to ask whether the
+/// trade actually happened.
+///
+/// ```
+/// use polyoxide_clob::ws::TradeStatus;
+///
+/// // Do not book on a match — it is not settled yet.
+/// assert!(!TradeStatus::Matched.is_terminal());
+/// assert_eq!(TradeStatus::Matched.settled_successfully(), None);
+///
+/// assert!(TradeStatus::Confirmed.is_terminal());
+/// assert_eq!(TradeStatus::Confirmed.settled_successfully(), Some(true));
+/// assert_eq!(TradeStatus::Failed.settled_successfully(), Some(false));
+/// ```
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "UPPERCASE")]
 pub enum TradeStatus {
-    /// Trade matched
+    /// Matched off-chain. **Not terminal** — on-chain settlement follows and
+    /// may still fail.
     Matched,
-    /// Trade mined on chain
+    /// Included in a block, awaiting confirmation. Not terminal.
     Mined,
-    /// Trade confirmed
+    /// Settled on-chain. Terminal, and the only success state.
     Confirmed,
-    /// Trade retrying
+    /// Settlement failed and is being retried. Not terminal.
     Retrying,
-    /// Trade failed
+    /// Settlement gave up. Terminal — the trade did not happen.
     Failed,
+}
+
+impl TradeStatus {
+    /// Every status the venue emits, in lifecycle order.
+    pub const ALL: [Self; 5] = [
+        Self::Matched,
+        Self::Mined,
+        Self::Confirmed,
+        Self::Retrying,
+        Self::Failed,
+    ];
+
+    /// Whether this state is final — no further transition will follow.
+    ///
+    /// Gate irreversible bookkeeping on this rather than on `MATCHED`.
+    pub fn is_terminal(&self) -> bool {
+        matches!(self, Self::Confirmed | Self::Failed)
+    }
+
+    /// Whether the trade settled, and if so whether it succeeded.
+    ///
+    /// Returns `None` while the outcome is still undecided, which is exactly
+    /// the case a consumer must not mistake for a fill.
+    pub fn settled_successfully(&self) -> Option<bool> {
+        match self {
+            Self::Confirmed => Some(true),
+            Self::Failed => Some(false),
+            Self::Matched | Self::Mined | Self::Retrying => None,
+        }
+    }
 }
 
 /// Trade message - user trade update
@@ -349,6 +411,59 @@ mod tests {
         let json = r#"{"id": "order-1"}"#;
         let err = UserMessage::from_json(json).unwrap_err();
         assert!(err.is_data());
+    }
+
+    #[test]
+    fn matched_is_not_terminal() {
+        // The whole point of the state machine: a consumer that books a fill on
+        // MATCHED will book trades that later go RETRYING -> FAILED.
+        assert!(!TradeStatus::Matched.is_terminal());
+        assert!(!TradeStatus::Mined.is_terminal());
+        assert!(!TradeStatus::Retrying.is_terminal());
+    }
+
+    #[test]
+    fn only_confirmed_and_failed_are_terminal() {
+        assert!(TradeStatus::Confirmed.is_terminal());
+        assert!(TradeStatus::Failed.is_terminal());
+
+        for status in TradeStatus::ALL {
+            assert_eq!(
+                status.is_terminal(),
+                matches!(status, TradeStatus::Confirmed | TradeStatus::Failed),
+                "{status:?} classified inconsistently"
+            );
+        }
+    }
+
+    #[test]
+    fn settled_successfully_distinguishes_the_two_terminal_states() {
+        assert_eq!(TradeStatus::Confirmed.settled_successfully(), Some(true));
+        assert_eq!(TradeStatus::Failed.settled_successfully(), Some(false));
+        // Non-terminal states have no answer yet — that is the distinction the
+        // previous API forced callers to guess at.
+        assert_eq!(TradeStatus::Matched.settled_successfully(), None);
+        assert_eq!(TradeStatus::Mined.settled_successfully(), None);
+        assert_eq!(TradeStatus::Retrying.settled_successfully(), None);
+    }
+
+    #[test]
+    fn all_covers_every_documented_status() {
+        // The AsyncAPI mirror enumerates exactly these five.
+        let rendered: Vec<String> = TradeStatus::ALL
+            .iter()
+            .map(|s| serde_json::to_string(s).unwrap())
+            .collect();
+        assert_eq!(
+            rendered,
+            vec![
+                "\"MATCHED\"",
+                "\"MINED\"",
+                "\"CONFIRMED\"",
+                "\"RETRYING\"",
+                "\"FAILED\""
+            ]
+        );
     }
 
     #[test]
