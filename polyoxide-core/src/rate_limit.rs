@@ -23,13 +23,72 @@ enum MatchMode {
     Exact,
 }
 
+/// A quota as published by Polymarket: `count` requests per `period`.
+///
+/// Kept alongside the limiter so tests can assert the configured allowance
+/// against the documented table rather than merely checking an entry exists.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+struct RateSpec {
+    count: u32,
+    period: Duration,
+}
+
+/// One token bucket, shareable between endpoint patterns.
+///
+/// Sharing is what lets several paths sit under a single cap: upstream limits
+/// `/trades`, `/orders`, `/notifications` and `/order` to 900/10s *combined*,
+/// which four independent buckets would silently turn into 3,600/10s.
+struct Bucket {
+    /// The configured allowance. Read only by the agreement tests, which check
+    /// it against the published table.
+    #[cfg_attr(not(test), allow(dead_code))]
+    spec: RateSpec,
+    limiter: DirectLimiter,
+}
+
+impl Bucket {
+    fn new(count: u32, period: Duration) -> Arc<Self> {
+        Arc::new(Self {
+            spec: RateSpec { count, period },
+            limiter: DirectLimiter::direct(quota(count, period)),
+        })
+    }
+}
+
 /// Rate limit configuration for a specific endpoint pattern.
 struct EndpointLimit {
     path_prefix: &'static str,
     method: Option<Method>,
     match_mode: MatchMode,
-    burst: DirectLimiter,
-    sustained: Option<DirectLimiter>,
+    /// Every bucket a matching request must pass, awaited in order.
+    buckets: Vec<Arc<Bucket>>,
+}
+
+impl EndpointLimit {
+    /// Whether this entry governs the given request.
+    ///
+    /// Shared by [`RateLimiter::acquire`] and the agreement tests so the two
+    /// cannot disagree about which rule applies.
+    fn matches(&self, path: &str, method: Option<&Method>) -> bool {
+        let path_matches = match self.match_mode {
+            MatchMode::Exact => path == self.path_prefix,
+            MatchMode::Prefix => {
+                // Ensure we're at a segment boundary, not a partial word match.
+                // "/price" should match "/price" and "/price/foo" but not "/prices-history".
+                match path.strip_prefix(self.path_prefix) {
+                    Some(rest) => rest.is_empty() || rest.starts_with('/') || rest.starts_with('?'),
+                    None => false,
+                }
+            }
+        };
+        if !path_matches {
+            return false;
+        }
+        match &self.method {
+            Some(expected) => method == Some(expected),
+            None => true,
+        }
+    }
 }
 
 /// Holds all rate limiters for one API surface.
@@ -66,22 +125,45 @@ fn quota(count: u32, period: Duration) -> Quota {
         .allow_burst(NonZeroU32::new(count).unwrap())
 }
 
-/// Create an endpoint rate limit configuration.
+/// Create an endpoint rate limit configuration from its own buckets.
 fn endpoint_limit(
     path_prefix: &'static str,
     method: Option<Method>,
-    match_mode: MatchMode,
-    burst_count: u32,
-    burst_period: Duration,
-    sustained: Option<(u32, Duration)>,
+    buckets: Vec<Arc<Bucket>>,
 ) -> EndpointLimit {
     EndpointLimit {
         path_prefix,
         method,
-        match_mode,
-        burst: DirectLimiter::direct(quota(burst_count, burst_period)),
-        sustained: sustained.map(|(count, period)| DirectLimiter::direct(quota(count, period))),
+        match_mode: MatchMode::Prefix,
+        buckets,
     }
+}
+
+/// A single-window endpoint limit: `count` requests per `period`.
+fn simple_limit(
+    path_prefix: &'static str,
+    method: Option<Method>,
+    count: u32,
+    period: Duration,
+) -> EndpointLimit {
+    endpoint_limit(path_prefix, method, vec![Bucket::new(count, period)])
+}
+
+/// A dual-window endpoint limit: a burst window plus a sustained window.
+fn dual_limit(
+    path_prefix: &'static str,
+    method: Method,
+    burst: (u32, Duration),
+    sustained: (u32, Duration),
+) -> EndpointLimit {
+    endpoint_limit(
+        path_prefix,
+        Some(method),
+        vec![
+            Bucket::new(burst.0, burst.1),
+            Bucket::new(sustained.0, sustained.1),
+        ],
+    )
 }
 
 impl RateLimiter {
@@ -92,77 +174,127 @@ impl RateLimiter {
     pub async fn acquire(&self, path: &str, method: Option<&Method>) {
         self.inner.default.until_ready().await;
 
-        for limit in &self.inner.limits {
-            let matched = match limit.match_mode {
-                MatchMode::Exact => path == limit.path_prefix,
-                MatchMode::Prefix => {
-                    // Ensure we're at a segment boundary, not a partial word match.
-                    // "/price" should match "/price" and "/price/foo" but not "/prices-history".
-                    match path.strip_prefix(limit.path_prefix) {
-                        Some(rest) => {
-                            rest.is_empty() || rest.starts_with('/') || rest.starts_with('?')
-                        }
-                        None => false,
-                    }
-                }
-            };
-            if !matched {
-                continue;
+        if let Some(limit) = self.inner.limits.iter().find(|l| l.matches(path, method)) {
+            for bucket in &limit.buckets {
+                bucket.limiter.until_ready().await;
             }
-            if let Some(ref m) = limit.method {
-                if method != Some(m) {
-                    continue;
-                }
-            }
-            limit.burst.until_ready().await;
-            if let Some(ref sustained) = limit.sustained {
-                sustained.until_ready().await;
-            }
-            break;
         }
+    }
+
+    /// The quotas a request would be held to, in the order they are awaited.
+    ///
+    /// Empty when nothing matches — meaning the request is governed only by the
+    /// general bucket, which is the shape every over-permit bug in this table
+    /// has taken.
+    #[cfg(test)]
+    fn resolve_specs(&self, path: &str, method: Option<&Method>) -> Vec<RateSpec> {
+        self.inner
+            .limits
+            .iter()
+            .find(|l| l.matches(path, method))
+            .map(|l| l.buckets.iter().map(|b| b.spec).collect())
+            .unwrap_or_default()
     }
 
     /// CLOB API rate limits.
     ///
-    /// - General: 9,000/10s
-    /// - POST /order: 3,500/10s burst + 36,000/10min sustained
-    /// - DELETE /order: 3,000/10s
-    /// - Market data (/markets, /book, /price, /midpoint, /prices-history, /neg-risk, /tick-size): 1,500/10s
-    /// - Ledger (/trades, /data/): 900/10s
-    /// - Auth (/auth): 100/10s
+    /// Transcribed from <https://docs.polymarket.com/api-reference/rate-limits>
+    /// as fetched on 2026-07-25, and pinned by the `documented_limits` tests.
+    ///
+    /// Two things about the published tables need interpreting:
+    ///
+    /// - The **ledger group cap** (900/10s across `/trades`, `/orders`,
+    ///   `/notifications` and `/order`) is genuinely shared, so those entries
+    ///   hold clones of one [`Bucket`] rather than four of their own.
+    /// - That group names `/order` and `/orders`, which also appear in the
+    ///   trading table at 5,000 and 2,000 per 10s. Both tables can only hold
+    ///   simultaneously if the group cap governs the ledger *reads*; a 900/10s
+    ///   cap on all methods would make the published trading burst
+    ///   unreachable. The group is therefore scoped to `GET`.
+    ///
+    /// Ordering matters wherever one pattern is a path-segment prefix of
+    /// another: `/balance-allowance/update` must precede `/balance-allowance`,
+    /// and the specific `/data/*` routes must precede the `/data` catch-all.
     pub fn clob_default() -> Self {
         let ten_sec = Duration::from_secs(10);
         let ten_min = Duration::from_secs(600);
-        let p = MatchMode::Prefix;
+        let get = Some(Method::GET);
+
+        // Shared across the ledger read endpoints — one bucket, four patterns.
+        let ledger_group = Bucket::new(900, ten_sec);
 
         Self {
             inner: Arc::new(RateLimiterInner {
                 default: DirectLimiter::direct(quota(9_000, ten_sec)),
                 limits: vec![
-                    // POST /order — dual window (matches /order/{id})
-                    endpoint_limit(
+                    // ── Account. The tighter /update route must come first:
+                    // it matches the /balance-allowance prefix at a boundary.
+                    simple_limit("/balance-allowance/update", None, 50, ten_sec),
+                    simple_limit("/balance-allowance", None, 200, ten_sec),
+                    // ── Trading (dual window: burst + sustained).
+                    dual_limit("/order", Method::POST, (5_000, ten_sec), (120_000, ten_min)),
+                    dual_limit(
                         "/order",
-                        Some(Method::POST),
-                        p,
-                        3_500,
-                        ten_sec,
-                        Some((36_000, ten_min)),
+                        Method::DELETE,
+                        (5_000, ten_sec),
+                        (120_000, ten_min),
                     ),
-                    // DELETE /order (matches /order/{id})
-                    endpoint_limit("/order", Some(Method::DELETE), p, 3_000, ten_sec, None),
-                    // Auth (matches /auth/derive-api-key etc.)
-                    endpoint_limit("/auth", None, p, 100, ten_sec, None),
-                    // Ledger
-                    endpoint_limit("/trades", None, p, 900, ten_sec, None),
-                    endpoint_limit("/data/", None, p, 900, ten_sec, None),
-                    // Market data — /prices-history before /price to avoid prefix collision
-                    endpoint_limit("/prices-history", None, p, 1_500, ten_sec, None),
-                    endpoint_limit("/markets", None, p, 1_500, ten_sec, None),
-                    endpoint_limit("/book", None, p, 1_500, ten_sec, None),
-                    endpoint_limit("/price", None, p, 1_500, ten_sec, None),
-                    endpoint_limit("/midpoint", None, p, 1_500, ten_sec, None),
-                    endpoint_limit("/neg-risk", None, p, 1_500, ten_sec, None),
-                    endpoint_limit("/tick-size", None, p, 1_500, ten_sec, None),
+                    dual_limit("/orders", Method::POST, (2_000, ten_sec), (21_000, ten_min)),
+                    dual_limit(
+                        "/orders",
+                        Method::DELETE,
+                        (2_000, ten_sec),
+                        (15_000, ten_min),
+                    ),
+                    dual_limit(
+                        "/cancel-all",
+                        Method::DELETE,
+                        (250, ten_sec),
+                        (6_000, ten_min),
+                    ),
+                    dual_limit(
+                        "/cancel-market-orders",
+                        Method::DELETE,
+                        (1_500, ten_sec),
+                        (21_000, ten_min),
+                    ),
+                    // ── Ledger reads, sharing one 900/10s bucket.
+                    // /notifications additionally carries its own 125/10s cap.
+                    endpoint_limit(
+                        "/notifications",
+                        None,
+                        vec![ledger_group.clone(), Bucket::new(125, ten_sec)],
+                    ),
+                    endpoint_limit("/trades", get.clone(), vec![ledger_group.clone()]),
+                    endpoint_limit("/orders", get.clone(), vec![ledger_group.clone()]),
+                    endpoint_limit("/order", get.clone(), vec![ledger_group]),
+                    // Specific /data routes before the catch-all. The previous
+                    // pattern here was "/data/", which the segment-boundary
+                    // rule can never match — it was dead configuration.
+                    simple_limit("/data/orders", None, 500, ten_sec),
+                    simple_limit("/data/trades", None, 500, ten_sec),
+                    simple_limit("/data", None, 500, ten_sec),
+                    // ── Auth (matches /auth/derive-api-key etc.)
+                    simple_limit("/auth", None, 100, ten_sec),
+                    // ── Market data. The batch forms are 3x tighter than their
+                    // singular siblings and do not match them: the boundary
+                    // rule means "/books" never resolves through "/book".
+                    simple_limit("/prices-history", None, 1_000, ten_sec),
+                    simple_limit("/book", None, 1_500, ten_sec),
+                    simple_limit("/books", None, 500, ten_sec),
+                    simple_limit("/price", None, 1_500, ten_sec),
+                    simple_limit("/prices", None, 500, ten_sec),
+                    simple_limit("/midpoint", None, 1_500, ten_sec),
+                    simple_limit("/midpoints", None, 500, ten_sec),
+                    simple_limit("/tick-size", None, 200, ten_sec),
+                    // ── Health.
+                    simple_limit("/ok", None, 100, ten_sec),
+                    // ── Not in the published table. These are local, deliberately
+                    // conservative caps kept from earlier revisions; they only
+                    // ever permit less than the general bucket would. Listed
+                    // last so no documented rule is shadowed by them.
+                    simple_limit("/markets", None, 1_500, ten_sec),
+                    simple_limit("/neg-risk", None, 1_500, ten_sec),
                 ],
             }),
         }
@@ -176,19 +308,24 @@ impl RateLimiter {
     /// - /public-search: 350/10s
     /// - /comments: 200/10s
     /// - /tags: 200/10s
+    /// - `/ok`: 100/10s
+    ///
+    /// Upstream also lists a 900/10s cap shared by `/markets` + `/events`.
+    /// It is not modelled because it can never bind: the per-endpoint caps of
+    /// 300 and 500 sum to 800, which is already below it.
     pub fn gamma_default() -> Self {
         let ten_sec = Duration::from_secs(10);
-        let p = MatchMode::Prefix;
 
         Self {
             inner: Arc::new(RateLimiterInner {
                 default: DirectLimiter::direct(quota(4_000, ten_sec)),
                 limits: vec![
-                    endpoint_limit("/comments", None, p, 200, ten_sec, None),
-                    endpoint_limit("/tags", None, p, 200, ten_sec, None),
-                    endpoint_limit("/markets", None, p, 300, ten_sec, None),
-                    endpoint_limit("/public-search", None, p, 350, ten_sec, None),
-                    endpoint_limit("/events", None, p, 500, ten_sec, None),
+                    simple_limit("/comments", None, 200, ten_sec),
+                    simple_limit("/tags", None, 200, ten_sec),
+                    simple_limit("/markets", None, 300, ten_sec),
+                    simple_limit("/public-search", None, 350, ten_sec),
+                    simple_limit("/events", None, 500, ten_sec),
+                    simple_limit("/ok", None, 100, ten_sec),
                 ],
             }),
         }
@@ -199,17 +336,18 @@ impl RateLimiter {
     /// - General: 1,000/10s
     /// - /trades: 200/10s
     /// - /positions and /closed-positions: 150/10s
+    /// - `/ok`: 100/10s
     pub fn data_default() -> Self {
         let ten_sec = Duration::from_secs(10);
-        let p = MatchMode::Prefix;
 
         Self {
             inner: Arc::new(RateLimiterInner {
                 default: DirectLimiter::direct(quota(1_000, ten_sec)),
                 limits: vec![
-                    endpoint_limit("/closed-positions", None, p, 150, ten_sec, None),
-                    endpoint_limit("/positions", None, p, 150, ten_sec, None),
-                    endpoint_limit("/trades", None, p, 200, ten_sec, None),
+                    simple_limit("/closed-positions", None, 150, ten_sec),
+                    simple_limit("/positions", None, 150, ten_sec),
+                    simple_limit("/trades", None, 200, ten_sec),
+                    simple_limit("/ok", None, 100, ten_sec),
                 ],
             }),
         }
@@ -263,6 +401,230 @@ impl RetryConfig {
         let jitter_factor = 0.75 + (fastrand::f64() * 0.5);
         let ms = (capped as f64 * jitter_factor) as u64;
         Duration::from_millis(ms.max(1))
+    }
+}
+
+#[cfg(test)]
+mod documented_limits {
+    //! Table-driven agreement tests against Polymarket's published limits.
+    //!
+    //! Transcribed from <https://docs.polymarket.com/api-reference/rate-limits>
+    //! as fetched on 2026-07-25. These assert the *effective quota* a request
+    //! resolves to, not merely that some entry exists — the previous tests only
+    //! checked that entries were present and in the right order, which is why
+    //! `/balance-allowance` could be absent entirely while every test passed.
+
+    use super::*;
+
+    /// One published rule: the request it applies to, and the buckets it must
+    /// pass, as `(count, window_secs)` in the order `acquire` awaits them.
+    type DocumentedRule = (&'static str, Option<Method>, Vec<(u32, u64)>);
+
+    /// The published table, transcribed by hand. This is the golden vector.
+    fn documented() -> Vec<DocumentedRule> {
+        vec![
+            // ── Account ──
+            ("/balance-allowance", Some(Method::GET), vec![(200, 10)]),
+            (
+                "/balance-allowance/update",
+                Some(Method::GET),
+                vec![(50, 10)],
+            ),
+            // ── Trading (dual window) ──
+            (
+                "/order",
+                Some(Method::POST),
+                vec![(5_000, 10), (120_000, 600)],
+            ),
+            (
+                "/order",
+                Some(Method::DELETE),
+                vec![(5_000, 10), (120_000, 600)],
+            ),
+            (
+                "/orders",
+                Some(Method::POST),
+                vec![(2_000, 10), (21_000, 600)],
+            ),
+            (
+                "/orders",
+                Some(Method::DELETE),
+                vec![(2_000, 10), (15_000, 600)],
+            ),
+            (
+                "/cancel-all",
+                Some(Method::DELETE),
+                vec![(250, 10), (6_000, 600)],
+            ),
+            (
+                "/cancel-market-orders",
+                Some(Method::DELETE),
+                vec![(1_500, 10), (21_000, 600)],
+            ),
+            // ── Ledger: a cap shared across the group, plus per-endpoint caps ──
+            ("/trades", Some(Method::GET), vec![(900, 10)]),
+            ("/orders", Some(Method::GET), vec![(900, 10)]),
+            ("/order", Some(Method::GET), vec![(900, 10)]),
+            (
+                "/notifications",
+                Some(Method::GET),
+                vec![(900, 10), (125, 10)],
+            ),
+            ("/data/orders", Some(Method::GET), vec![(500, 10)]),
+            ("/data/trades", Some(Method::GET), vec![(500, 10)]),
+            // ── Market data ──
+            ("/book", Some(Method::GET), vec![(1_500, 10)]),
+            ("/books", Some(Method::POST), vec![(500, 10)]),
+            ("/price", Some(Method::GET), vec![(1_500, 10)]),
+            ("/prices", Some(Method::POST), vec![(500, 10)]),
+            ("/midpoint", Some(Method::GET), vec![(1_500, 10)]),
+            ("/midpoints", Some(Method::POST), vec![(500, 10)]),
+            ("/prices-history", Some(Method::GET), vec![(1_000, 10)]),
+            ("/tick-size", Some(Method::GET), vec![(200, 10)]),
+            // ── Auth & health ──
+            ("/auth/api-key", Some(Method::POST), vec![(100, 10)]),
+            ("/ok", Some(Method::GET), vec![(100, 10)]),
+        ]
+    }
+
+    #[test]
+    fn every_documented_endpoint_resolves_to_its_published_quota() {
+        let rl = RateLimiter::clob_default();
+
+        for (path, method, expected) in documented() {
+            let resolved = rl.resolve_specs(path, method.as_ref());
+            assert!(
+                !resolved.is_empty(),
+                "{method:?} {path} matches no endpoint limit — it falls through to the \
+                 general {}/10s bucket, over-permitting by {}x",
+                9_000,
+                9_000 / expected[0].0.max(1),
+            );
+            let actual: Vec<(u32, u64)> = resolved
+                .iter()
+                .map(|s| (s.count, s.period.as_secs()))
+                .collect();
+            assert_eq!(
+                actual, expected,
+                "{method:?} {path} resolves to {actual:?}, published limit is {expected:?}"
+            );
+        }
+    }
+
+    #[test]
+    fn batch_endpoints_do_not_inherit_their_singular_sibling() {
+        // `/books` must not resolve through the `/book` rule: they are
+        // different endpoints with a 3x difference in allowance.
+        let rl = RateLimiter::clob_default();
+        for (batch, singular) in [
+            ("/books", "/book"),
+            ("/prices", "/price"),
+            ("/midpoints", "/midpoint"),
+        ] {
+            let batch_specs = rl.resolve_specs(batch, Some(&Method::POST));
+            let singular_specs = rl.resolve_specs(singular, Some(&Method::GET));
+            assert_ne!(
+                batch_specs, singular_specs,
+                "{batch} is being limited as if it were {singular}"
+            );
+            assert_eq!(batch_specs[0].count, 500, "{batch} should allow 500/10s");
+        }
+    }
+
+    #[test]
+    fn the_ledger_group_cap_is_one_shared_bucket() {
+        // Upstream caps `/trades`, `/orders`, `/notifications` and `/order`
+        // at 900/10s *combined*. Modelling that as four independent 900/10s
+        // buckets would permit 3,600/10s.
+        let rl = RateLimiter::clob_default();
+        let group: Vec<_> = ["/trades", "/orders", "/order", "/notifications"]
+            .iter()
+            .map(|p| {
+                rl.inner
+                    .limits
+                    .iter()
+                    .find(|l| l.matches(p, Some(&Method::GET)))
+                    .unwrap_or_else(|| panic!("{p} should match a ledger entry"))
+                    .buckets[0]
+                    .clone()
+            })
+            .collect();
+
+        for other in &group[1..] {
+            assert!(
+                Arc::ptr_eq(&group[0], other),
+                "ledger endpoints must share one bucket, not hold copies"
+            );
+        }
+    }
+
+    #[test]
+    fn balance_allowance_update_is_not_shadowed_by_its_parent_path() {
+        // `/balance-allowance/update` starts with `/balance-allowance` at a
+        // segment boundary, so ordering decides which rule wins. The update
+        // route is four times tighter.
+        let rl = RateLimiter::clob_default();
+        let update = rl.resolve_specs("/balance-allowance/update", Some(&Method::GET));
+        assert_eq!(
+            update[0].count, 50,
+            "the tighter /balance-allowance/update rule must be ordered first"
+        );
+    }
+
+    #[tokio::test]
+    async fn a_documented_cap_actually_throttles() {
+        // Matching specs is not the same as enforcing them. `/tick-size` is
+        // 200/10s; the 201st request in a burst must wait for a token
+        // (200 per 10s replenishes one every ~50ms).
+        let rl = RateLimiter::clob_default();
+        for _ in 0..200 {
+            rl.acquire("/tick-size", Some(&Method::GET)).await;
+        }
+
+        let start = std::time::Instant::now();
+        rl.acquire("/tick-size", Some(&Method::GET)).await;
+        let waited = start.elapsed();
+
+        assert!(
+            waited >= Duration::from_millis(25),
+            "201st /tick-size request returned in {waited:?}; the cap is not being enforced"
+        );
+    }
+
+    #[tokio::test]
+    async fn the_ledger_group_allowance_is_consumed_jointly() {
+        // The runtime counterpart to the Arc::ptr_eq check: draining the group
+        // through one endpoint must leave a *different* group member throttled.
+        // With four independent buckets this would return instantly.
+        let rl = RateLimiter::clob_default();
+        for _ in 0..900 {
+            rl.acquire("/trades", Some(&Method::GET)).await;
+        }
+
+        let start = std::time::Instant::now();
+        rl.acquire("/orders", Some(&Method::GET)).await;
+        let waited = start.elapsed();
+
+        assert!(
+            waited >= Duration::from_millis(5),
+            "GET /orders returned in {waited:?} after /trades drained the shared 900/10s \
+             allowance — the group cap is not actually shared"
+        );
+    }
+
+    #[test]
+    fn post_order_is_not_throttled_by_the_ledger_group() {
+        // The ledger group names `/order`, but the trading table allows POST
+        // /order 5,000/10s. Both can only hold if the group cap is the ledger
+        // *read*. Applying it to POST would make the published burst
+        // unreachable.
+        let rl = RateLimiter::clob_default();
+        let specs = rl.resolve_specs("/order", Some(&Method::POST));
+        assert_eq!(specs[0].count, 5_000);
+        assert!(
+            !specs.iter().any(|s| s.count == 900),
+            "POST /order must not be caught by the ledger read cap"
+        );
     }
 }
 
@@ -387,20 +749,20 @@ mod tests {
     #[test]
     fn test_clob_default_construction() {
         let rl = RateLimiter::clob_default();
-        assert_eq!(rl.inner.limits.len(), 12);
+        assert_eq!(rl.inner.limits.len(), 27);
         assert!(format!("{:?}", rl).contains("endpoints"));
     }
 
     #[test]
     fn test_gamma_default_construction() {
         let rl = RateLimiter::gamma_default();
-        assert_eq!(rl.inner.limits.len(), 5);
+        assert_eq!(rl.inner.limits.len(), 6);
     }
 
     #[test]
     fn test_data_default_construction() {
         let rl = RateLimiter::data_default();
-        assert_eq!(rl.inner.limits.len(), 3);
+        assert_eq!(rl.inner.limits.len(), 4);
     }
 
     #[test]
@@ -414,29 +776,35 @@ mod tests {
         let rl = RateLimiter::clob_default();
         let dbg = format!("{:?}", rl);
         assert!(dbg.contains("RateLimiter"), "missing struct name: {dbg}");
-        assert!(dbg.contains("endpoints: 12"), "missing count: {dbg}");
+        assert!(dbg.contains("endpoints: 27"), "missing count: {dbg}");
     }
 
     // ── Endpoint matching internals ──────────────────────────────
 
     #[test]
-    fn test_clob_endpoint_order_and_methods() {
+    fn test_clob_tighter_rules_precede_the_prefixes_that_would_shadow_them() {
+        // Ordering is only load-bearing where one pattern is a path-segment
+        // prefix of another. Asserting on fixed indices made this test brittle
+        // and told us nothing; assert the actual constraint instead.
         let rl = RateLimiter::clob_default();
-        let limits = &rl.inner.limits;
+        let index_of = |path: &str| {
+            rl.inner
+                .limits
+                .iter()
+                .position(|l| l.path_prefix == path)
+                .unwrap_or_else(|| panic!("{path} should be configured"))
+        };
 
-        // First: POST /order with sustained
-        assert_eq!(limits[0].path_prefix, "/order");
-        assert_eq!(limits[0].method, Some(Method::POST));
-        assert!(limits[0].sustained.is_some());
-
-        // Second: DELETE /order without sustained
-        assert_eq!(limits[1].path_prefix, "/order");
-        assert_eq!(limits[1].method, Some(Method::DELETE));
-        assert!(limits[1].sustained.is_none());
-
-        // Third: /auth with method=None
-        assert_eq!(limits[2].path_prefix, "/auth");
-        assert!(limits[2].method.is_none());
+        for (specific, general) in [
+            ("/balance-allowance/update", "/balance-allowance"),
+            ("/data/orders", "/data"),
+            ("/data/trades", "/data"),
+        ] {
+            assert!(
+                index_of(specific) < index_of(general),
+                "{specific} must be matched before {general} or it can never win"
+            );
+        }
     }
 
     // ── acquire() async behavior ─────────────────────────────────
@@ -678,14 +1046,18 @@ mod tests {
             .find(|l| l.path_prefix == "/order" && l.method == Some(Method::POST))
             .expect("POST /order endpoint should exist");
 
-        assert!(
-            post_order.sustained.is_some(),
-            "POST /order should have a sustained (10-min) window"
+        assert_eq!(
+            post_order.buckets.len(),
+            2,
+            "POST /order should have a burst and a sustained window"
         );
     }
 
     #[test]
-    fn test_clob_delete_order_has_no_sustained_window() {
+    fn test_clob_delete_order_has_a_sustained_window_too() {
+        // This previously asserted the *opposite* — that DELETE /order had only
+        // a burst window — and so pinned the omission in place. Upstream
+        // publishes 5,000/10s burst plus 120,000/10min sustained.
         let rl = RateLimiter::clob_default();
         let delete_order = rl
             .inner
@@ -694,9 +1066,10 @@ mod tests {
             .find(|l| l.path_prefix == "/order" && l.method == Some(Method::DELETE))
             .expect("DELETE /order endpoint should exist");
 
-        assert!(
-            delete_order.sustained.is_none(),
-            "DELETE /order should only have a burst window"
+        assert_eq!(
+            delete_order.buckets.len(),
+            2,
+            "DELETE /order should have both a burst and a sustained window"
         );
     }
 
