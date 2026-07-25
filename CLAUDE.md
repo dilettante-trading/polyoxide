@@ -155,7 +155,13 @@ Most crates follow a consistent layout:
 
 Three market events — `best_bid_ask`, `new_market`, `market_resolved` — are withheld by the server unless the subscription sets `custom_feature_enabled`. Use `WebSocket::connect_market_with(ids, MarketSubscriptionOptions::default().with_custom_features())` to receive them. `MarketMessage` and `Channel` are `#[non_exhaustive]`, since upstream adds event types over time.
 
+The user channel's market filter is optional: `WebSocket::connect_user_all_markets(creds)` omits it and receives events for every market, and `subscribe_markets` / `unsubscribe_markets` adjust it on a live connection without reconnecting.
+
 The WebSocket contracts are published as AsyncAPI, not OpenAPI — mirrored in `docs/specs/clob/asyncapi-{market,user,sports}.json`. A parity audit that only diffs the OpenAPI files will miss this whole surface.
+
+**The sports mirror does not match the wire.** Upstream's own page documents a `slug`-keyed payload and a text `"ping"`/`"pong"` keep-alive; the server sends neither. `SportsUpdateMessage` is modelled on 229 captured frames instead — see `x-observed-payload` in `asyncapi-sports.json`. Diffing polyoxide against that mirror will report a false positive.
+
+**WebSocket TLS needs a nudge.** `reqwest 0.12` (via core) and `alloy`'s `reqwest 0.13` enable `ring` and `aws-lc-rs` on one shared `rustls`, which then installs no default `CryptoProvider`. `ws/client.rs` installs one before connecting; any code that calls `tokio_tungstenite::connect_async` directly must do the same or it will panic.
 
 ## Publishing Order
 

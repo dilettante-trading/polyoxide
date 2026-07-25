@@ -15,6 +15,15 @@ Machine-readable schemas (mirrors of `https://docs.polymarket.com/asyncapi*.json
 Note the sports channel is on a **different host** and takes **no subscription
 payload** — connecting is enough to start receiving updates.
 
+> **The upstream sports contract is wrong.** Verified against 229 frames on
+> 2026-07-25: the payload has no `slug`, `last_update` or `turn` field, and the
+> keep-alive is a WebSocket **protocol** ping (opcode `0x9`), not the text
+> `"ping"`/`"pong"` exchange upstream describes. See `x-observed-payload` and
+> `x-observed-keepalive` in [asyncapi-sports.json](asyncapi-sports.json) for the
+> real shape. `SportsUpdateMessage` is modelled on the observed frames.
+> A parity audit that diffs polyoxide against the mirror will flag this as a
+> polyoxide defect; it is not.
+
 ## Market events
 
 Seven data-bearing event types. The last three are gated: the server sends them

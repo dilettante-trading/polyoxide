@@ -3,7 +3,79 @@
   "info": {
     "title": "Polymarket WebSocket API — Sports Channel",
     "version": "1.0.0",
-    "description": "Public WebSocket channel for real-time sports results. No authentication or subscription required — connect and receive live match updates for all active sports events."
+    "description": "Public WebSocket channel for real-time sports results. No authentication or subscription required — connect and receive live match updates for all active sports events.\n\n!! DIVERGENCE: this document mirrors https://docs.polymarket.com/api-reference/wss/sports.md faithfully, and that upstream page does not describe what the server actually sends. Both the payload schema and the keep-alive below are wrong on the wire. See x-observed-payload and x-observed-keepalive for what 229 frames captured on 2026-07-25 actually contained, and prefer those when writing a client. polyoxide's SportsUpdateMessage is modelled on the observed shape, not on SportResult.",
+    "x-observed-keepalive": {
+      "captured": "2026-07-25",
+      "finding": "The server sends WebSocket protocol-level PING control frames (opcode 0x9), which conforming client libraries answer automatically. It does NOT send a text frame containing 'ping', and no text 'pong' reply is required. Over a 5-minute capture: 20 protocol PINGs (~1 per 15s), 0 text ping frames.",
+      "contradicts": "components.messages.ping / components.messages.pong, which document text/plain 'ping' and 'pong' every 5s with a 10s timeout."
+    },
+    "x-observed-payload": {
+      "captured": "2026-07-25",
+      "sampleSize": "229 frames over 5 minutes, covering soccer, tennis, cricket, and the lol/val/cs2/dota2/mlbb esports titles",
+      "finding": "No frame contained a 'slug' field, and none contained 'last_update' or 'turn'. The real payload is keyed on 'leagueAbbreviation' plus either 'gameId' (numeric) or, for cricket, 'metadataGameId' (string). Frames carry no event discriminator of any kind.",
+      "requiredObserved": [
+        "leagueAbbreviation",
+        "score",
+        "period",
+        "live",
+        "ended"
+      ],
+      "optionalObserved": {
+        "gameId": "integer; present on 222/229 frames, absent on cricket",
+        "metadataGameId": "string; cricket's identifier, mutually exclusive with gameId",
+        "homeTeam": "string; absent on cricket",
+        "awayTeam": "string; absent on cricket",
+        "status": "string; casing is not normalised upstream ('InProgress', 'inprogress', 'running')",
+        "elapsed": "string; present on 33/229 frames",
+        "finishedTimestamp": "ISO 8601; only once ended is true",
+        "eventState": "object; nested per-sport detail whose shape varies (tennis adds tournamentName and tennisRound)"
+      },
+      "distinctKeySetsObserved": 5,
+      "examples": [
+        {
+          "gameId": 90106111,
+          "leagueAbbreviation": "kor",
+          "homeTeam": "Gimcheon Sangmu FC",
+          "awayTeam": "Daejeon Hana Citizen FC",
+          "status": "InProgress",
+          "eventState": {
+            "type": "soccer",
+            "createdAt": "2026-07-25T12:02:18.395759286Z",
+            "updatedAt": "2026-07-25T12:02:18.395759286Z",
+            "score": "2-1",
+            "elapsed": "74",
+            "period": "2H",
+            "live": true,
+            "ended": false
+          },
+          "score": "2-1",
+          "elapsed": "74",
+          "period": "2H",
+          "live": true,
+          "ended": false
+        },
+        {
+          "gameId": 1590176,
+          "leagueAbbreviation": "lol",
+          "homeTeam": "Caldya Esport",
+          "awayTeam": "Galions Sharks",
+          "status": "running",
+          "score": "000-000|0-0|Bo1",
+          "period": "1/1",
+          "live": true,
+          "ended": false
+        },
+        {
+          "metadataGameId": "id2703438269077680",
+          "leagueAbbreviation": "cricket",
+          "score": "116-38",
+          "period": "FT",
+          "live": false,
+          "ended": true,
+          "finishedTimestamp": "2026-07-25T12:06:54.595448902Z"
+        }
+      ]
+    }
   },
   "servers": {
     "production": {
