@@ -28,7 +28,12 @@ pub struct ListHolders {
 }
 
 impl ListHolders {
-    /// Set maximum number of results per market (0-500, default: 100)
+    /// Set maximum number of results per market (0-500, default: 20).
+    ///
+    /// Verified live on 2026-07-25: `limit=500` succeeds, `limit=501` returns
+    /// HTTP 400 `{"error":"max holders limit of 500 exceeded"}`, and omitting
+    /// the parameter yields 20 rows. The value is not range-checked here —
+    /// out-of-range values reach the venue and 400.
     pub fn limit(mut self, limit: u32) -> Self {
         self.request = self.request.query("limit", limit);
         self

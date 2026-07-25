@@ -213,6 +213,74 @@ async fn live_holders() {
     );
 }
 
+/// Pins the actual `limit` contract for `GET /holders`.
+///
+/// Both the SDK doc comment and the spec mirror were wrong here, in opposite
+/// directions: the SDK claimed a default of 100 (it is 20) and the mirror
+/// claimed a maximum of 20 (it is 500). Re-run this rather than re-deriving it.
+#[tokio::test]
+#[ignore]
+async fn live_holders_limit_bounds() {
+    let client = client();
+
+    let trades = client
+        .trades()
+        .list()
+        .limit(1)
+        .send()
+        .await
+        .expect("trades for holders test");
+    let condition_id = trades
+        .first()
+        .map(|t| t.condition_id.clone())
+        .expect("need at least one trade");
+
+    // Omitting `limit` yields the server default of 20, not 100.
+    let defaulted = client
+        .holders()
+        .list(vec![condition_id.as_str()])
+        .send()
+        .await
+        .expect("holders with default limit");
+    if let Some(market) = defaulted.first() {
+        assert!(
+            market.holders.len() <= 20,
+            "server default should be 20, got {}",
+            market.holders.len()
+        );
+    }
+
+    // 100 is accepted — the mirror's claimed 0-20 range was wrong.
+    client
+        .holders()
+        .list(vec![condition_id.as_str()])
+        .limit(100)
+        .send()
+        .await
+        .expect("limit=100 must be accepted");
+
+    // 500 is the documented ceiling and is accepted.
+    client
+        .holders()
+        .list(vec![condition_id.as_str()])
+        .limit(500)
+        .send()
+        .await
+        .expect("limit=500 must be accepted");
+
+    // 501 is rejected — this is what establishes 500 as the real cap.
+    let over = client
+        .holders()
+        .list(vec![condition_id.as_str()])
+        .limit(501)
+        .send()
+        .await;
+    assert!(
+        over.is_err(),
+        "limit=501 should be rejected with 'max holders limit of 500 exceeded'"
+    );
+}
+
 // ── Live Volume ─────────────────────────────────────────────────
 
 #[tokio::test]

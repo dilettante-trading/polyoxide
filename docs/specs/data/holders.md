@@ -13,10 +13,15 @@ Returns top token holders for a market.
 | Name | In | Type | Required | Default | Description |
 |------|-----|------|----------|---------|-------------|
 | market | query | Hash64[] (`0x` + 64 hex) | yes | — | Condition ID(s) |
-| limit | query | integer (0-20) | no | 20 | Results per page |
+| limit | query | integer (0-500) | no | 20 | Results per page |
 | minBalance | query | integer (0-999999) | no | 1 | Minimum token balance |
 
 **Response:** `MetaHolder[]`
+
+Verified live on 2026-07-25: `limit=500` returns 200, `limit=501` returns
+HTTP 400 `{"error":"max holders limit of 500 exceeded"}`, and omitting `limit`
+returns 20 rows. An earlier revision of this page documented the maximum as 20
+— that was the default being mistaken for the cap.
 
 ## Errors
 
