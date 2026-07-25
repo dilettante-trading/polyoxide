@@ -152,8 +152,13 @@ impl MarketSubscription {
 /// Subscription message for user channel
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct UserSubscription {
-    /// Market condition IDs to subscribe to
-    pub markets: Vec<String>,
+    /// Condition IDs to filter events to.
+    ///
+    /// `None` omits the field, which subscribes to **every** market the
+    /// account trades. `Some(vec![])` is a different request — an explicit
+    /// filter that matches nothing — so the two are kept distinct on the wire.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub markets: Option<Vec<String>>,
     /// Authentication credentials
     pub auth: ApiCredentials,
     /// Channel type (always "user")
@@ -162,13 +167,167 @@ pub struct UserSubscription {
 }
 
 impl UserSubscription {
-    /// Create a new user subscription
+    /// Subscribe to user events for specific markets.
     pub fn new(markets: Vec<String>, credentials: ApiCredentials) -> Self {
         Self {
-            markets,
+            markets: Some(markets),
             auth: credentials,
             channel_type: ChannelType::User,
         }
+    }
+
+    /// Subscribe to user events across every market, with no filter.
+    ///
+    /// Omitting `markets` is what the venue expects for this; verified live on
+    /// 2026-07-25 against a control subscription that did send the field.
+    /// Without it a consumer needs one socket per market it cares about.
+    pub fn all_markets(credentials: ApiCredentials) -> Self {
+        Self {
+            markets: None,
+            auth: credentials,
+            channel_type: ChannelType::User,
+        }
+    }
+}
+
+/// Whether a [`UserSubscriptionUpdate`] adds or removes markets.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "lowercase")]
+pub enum SubscriptionOperation {
+    /// Start receiving events for the listed markets.
+    Subscribe,
+    /// Stop receiving events for the listed markets.
+    Unsubscribe,
+}
+
+/// Adjust a live user-channel subscription without reconnecting.
+///
+/// Sent on an already-open user connection to add or drop market filters.
+/// Without this a consumer that adds a market to its watchlist has to tear
+/// down and rebuild the whole socket.
+///
+/// The wire shape comes from `UserSubscriptionRequestUpdate` in
+/// `docs/specs/clob/asyncapi-user.json`.
+///
+/// ```
+/// use polyoxide_clob::ws::UserSubscriptionUpdate;
+///
+/// let frame = UserSubscriptionUpdate::subscribe(vec!["0xabc".to_string()]);
+/// let json = serde_json::to_string(&frame).unwrap();
+/// assert_eq!(json, r#"{"operation":"subscribe","markets":["0xabc"]}"#);
+/// ```
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct UserSubscriptionUpdate {
+    /// Whether to add or remove the listed markets.
+    pub operation: SubscriptionOperation,
+    /// Condition IDs to add or remove.
+    pub markets: Vec<String>,
+}
+
+impl UserSubscriptionUpdate {
+    /// Start receiving events for these markets.
+    pub fn subscribe(markets: Vec<String>) -> Self {
+        Self {
+            operation: SubscriptionOperation::Subscribe,
+            markets,
+        }
+    }
+
+    /// Stop receiving events for these markets.
+    pub fn unsubscribe(markets: Vec<String>) -> Self {
+        Self {
+            operation: SubscriptionOperation::Unsubscribe,
+            markets,
+        }
+    }
+}
+
+#[cfg(test)]
+mod optional_markets_tests {
+    use super::*;
+
+    #[test]
+    fn all_markets_omits_the_field_entirely() {
+        // Verified live on 2026-07-25: the venue accepts a user subscription
+        // with `markets` absent. An empty array is NOT the same thing — that
+        // would ask to be filtered down to no markets at all.
+        let sub = UserSubscription::all_markets(ApiCredentials::new("k", "s", "p"));
+        let json = serde_json::to_value(&sub).unwrap();
+
+        assert_eq!(json["type"], "user");
+        assert!(
+            json.as_object().unwrap().get("markets").is_none(),
+            "markets must be absent, not null or empty: {json}"
+        );
+    }
+
+    #[test]
+    fn filtered_subscription_still_sends_its_markets() {
+        let sub = UserSubscription::new(vec!["0xabc".into()], ApiCredentials::new("k", "s", "p"));
+        let json = serde_json::to_value(&sub).unwrap();
+        assert_eq!(json["markets"][0], "0xabc");
+    }
+
+    #[test]
+    fn an_empty_filter_is_distinguishable_from_no_filter() {
+        let none = serde_json::to_value(UserSubscription::all_markets(ApiCredentials::new(
+            "k", "s", "p",
+        )))
+        .unwrap();
+        let empty = serde_json::to_value(UserSubscription::new(
+            vec![],
+            ApiCredentials::new("k", "s", "p"),
+        ))
+        .unwrap();
+        assert_ne!(
+            none, empty,
+            "collapsing an empty filter into no filter would silently widen a subscription"
+        );
+    }
+}
+
+#[cfg(test)]
+mod update_tests {
+    use super::*;
+
+    // The wire shape is pinned by asyncapi-user.json's
+    // `UserSubscriptionRequestUpdate`: required `operation` and `markets`, with
+    // `operation` one of "subscribe" / "unsubscribe".
+
+    #[test]
+    fn subscribe_frame_matches_the_documented_payload() {
+        let update = UserSubscriptionUpdate::subscribe(vec!["0xabc".into(), "0xdef".into()]);
+        let json = serde_json::to_value(&update).unwrap();
+
+        assert_eq!(json["operation"], "subscribe");
+        assert_eq!(json["markets"][0], "0xabc");
+        assert_eq!(json["markets"][1], "0xdef");
+        assert_eq!(
+            json.as_object().unwrap().len(),
+            2,
+            "frame must carry exactly operation and markets, got {json}"
+        );
+    }
+
+    #[test]
+    fn unsubscribe_frame_matches_the_documented_payload() {
+        let update = UserSubscriptionUpdate::unsubscribe(vec!["0xabc".into()]);
+        let json = serde_json::to_value(&update).unwrap();
+        assert_eq!(json["operation"], "unsubscribe");
+        assert_eq!(json["markets"][0], "0xabc");
+    }
+
+    #[test]
+    fn operation_is_lowercase_on_the_wire() {
+        // The venue's enum is lowercase; UPPERCASE would be silently ignored.
+        assert_eq!(
+            serde_json::to_value(SubscriptionOperation::Subscribe).unwrap(),
+            "subscribe"
+        );
+        assert_eq!(
+            serde_json::to_value(SubscriptionOperation::Unsubscribe).unwrap(),
+            "unsubscribe"
+        );
     }
 }
 
@@ -232,8 +391,9 @@ mod tests {
         let creds = ApiCredentials::new("key", "secret", "pass");
         let sub = UserSubscription::new(vec!["cond1".into()], creds);
         assert_eq!(sub.channel_type, ChannelType::User);
-        assert_eq!(sub.markets.len(), 1);
-        assert_eq!(sub.markets[0], "cond1");
+        let markets = sub.markets.as_ref().expect("new() sets an explicit filter");
+        assert_eq!(markets.len(), 1);
+        assert_eq!(markets[0], "cond1");
     }
 
     #[test]

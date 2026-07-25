@@ -15,7 +15,7 @@ use super::{
     sports::SportsMessage,
     subscription::{
         ChannelType, MarketSubscription, MarketSubscriptionOptions, UserSubscription,
-        WS_MARKET_URL, WS_SPORTS_URL, WS_USER_URL,
+        UserSubscriptionUpdate, WS_MARKET_URL, WS_SPORTS_URL, WS_USER_URL,
     },
     user::UserMessage,
     Channel,
@@ -54,22 +54,41 @@ fn parse_channel_message(
     channel_type: ChannelType,
     text: &str,
 ) -> Result<Option<Channel>, WebSocketError> {
-    // Skip PONG responses and empty messages
+    // Skip PONG responses and empty messages on every channel.
     if text == "PONG" || text == "{}" || text.is_empty() {
         return Ok(None);
     }
 
-    // Skip messages without event_type (heartbeats, acks, etc.)
-    if !text.contains("event_type") {
-        tracing::trace!("Skipping non-event message: {}", text);
-        return Ok(None);
-    }
-
     match channel_type {
+        // The clob channels tag every event with `event_type`, so a frame
+        // without one is a heartbeat or a subscription ack. This filter must
+        // stay channel-scoped: applying it before the dispatch also silenced
+        // the sports channel, and removing it outright would push clob
+        // heartbeats into `from_json` and turn them into hard stream errors.
+        ChannelType::Market | ChannelType::User if !text.contains("event_type") => {
+            tracing::trace!("Skipping non-event message: {}", text);
+            Ok(None)
+        }
         ChannelType::Market => Ok(Some(Channel::Market(MarketMessage::from_json(text)?))),
         ChannelType::User => Ok(Some(Channel::User(UserMessage::from_json(text)?))),
+        // Sports frames carry no discriminator at all — every field is match
+        // data. Verified against 229 live frames on 2026-07-25.
         ChannelType::Sports => Ok(Some(Channel::Sports(SportsMessage::from_json(text)?))),
     }
+}
+
+/// Reject a subscription update sent on a channel that has no market filters.
+///
+/// Only the user channel supports adjusting its markets after connecting; the
+/// market channel is keyed on asset IDs fixed at subscribe time and the sports
+/// channel takes no subscription payload at all.
+fn require_user_channel(channel_type: ChannelType) -> Result<(), WebSocketError> {
+    if channel_type != ChannelType::User {
+        return Err(WebSocketError::InvalidMessage(format!(
+            "subscription updates are only supported on the user channel, not {channel_type:?}"
+        )));
+    }
+    Ok(())
 }
 
 /// Validate that the subscription count does not exceed the per-connection limit.
@@ -173,20 +192,33 @@ impl WebSocket {
         })
     }
 
-    /// Connect to the sports channel for live game state updates.
+    /// Connect to the sports channel for live match updates.
     ///
     /// This channel takes no subscription payload — connecting is enough. Note
     /// that it is served by a different host (`sports-api.polymarket.com`)
-    /// than the market and user channels.
+    /// than the market and user channels, and that its frames carry no
+    /// `event_type` discriminator.
+    ///
+    /// Keep-alive needs no help from the caller: the server sends WebSocket
+    /// protocol ping frames, which the underlying transport answers
+    /// automatically. Upstream's documentation describes a text `"ping"` /
+    /// `"pong"` exchange instead; that is not what the server does.
     ///
     /// # Example
     ///
     /// ```no_run
-    /// use polyoxide_clob::ws::WebSocket;
+    /// use polyoxide_clob::ws::{Channel, WebSocket};
+    /// use futures_util::StreamExt;
     ///
     /// #[tokio::main]
     /// async fn main() -> Result<(), Box<dyn std::error::Error>> {
-    ///     let ws = WebSocket::connect_sports().await?;
+    ///     let mut ws = WebSocket::connect_sports().await?;
+    ///
+    ///     while let Some(msg) = ws.next().await {
+    ///         if let Channel::Sports(update) = msg? {
+    ///             println!("{update:?}");
+    ///         }
+    ///     }
     ///     Ok(())
     /// }
     /// ```
@@ -227,10 +259,45 @@ impl WebSocket {
         credentials: ApiCredentials,
     ) -> Result<Self, WebSocketError> {
         validate_subscription_count(market_ids.len())?;
+        Self::connect_user_subscription(UserSubscription::new(market_ids, credentials)).await
+    }
+
+    /// Connect to the user channel for **every** market, unfiltered.
+    ///
+    /// Omitting the market filter is what the venue expects for an
+    /// account-wide subscription, and it removes the need to open one socket
+    /// per market. Note this also means events arrive for markets the caller
+    /// never enumerated, including any it starts trading later.
+    ///
+    /// # Example
+    ///
+    /// ```no_run
+    /// use polyoxide_clob::ws::{ApiCredentials, WebSocket};
+    ///
+    /// #[tokio::main]
+    /// async fn main() -> Result<(), Box<dyn std::error::Error>> {
+    ///     let ws = WebSocket::connect_user_all_markets(
+    ///         ApiCredentials::from_env()?,
+    ///     ).await?;
+    ///     Ok(())
+    /// }
+    /// ```
+    pub async fn connect_user_all_markets(
+        credentials: ApiCredentials,
+    ) -> Result<Self, WebSocketError> {
+        Self::connect_user_subscription(UserSubscription::all_markets(credentials)).await
+    }
+
+    /// Connect to the user channel with an explicitly built subscription.
+    pub async fn connect_user_subscription(
+        subscription: UserSubscription,
+    ) -> Result<Self, WebSocketError> {
+        if let Some(markets) = &subscription.markets {
+            validate_subscription_count(markets.len())?;
+        }
         ensure_crypto_provider();
         let (mut ws, _) = connect_async(WS_USER_URL).await?;
 
-        let subscription = UserSubscription::new(market_ids, credentials);
         let msg = serde_json::to_string(&subscription)?;
         ws.send(Message::Text(msg.into())).await?;
 
@@ -245,6 +312,56 @@ impl WebSocket {
     /// The Polymarket WebSocket expects "PING" text messages every ~10 seconds.
     pub async fn ping(&mut self) -> Result<(), WebSocketError> {
         self.inner.send(Message::Text("PING".into())).await?;
+        Ok(())
+    }
+
+    /// Start receiving user events for additional markets, without reconnecting.
+    ///
+    /// User channel only. Adding a market to a watchlist previously meant
+    /// tearing down and rebuilding the socket.
+    ///
+    /// # Example
+    ///
+    /// ```no_run
+    /// use polyoxide_clob::ws::{ApiCredentials, WebSocket};
+    ///
+    /// #[tokio::main]
+    /// async fn main() -> Result<(), Box<dyn std::error::Error>> {
+    ///     let mut ws = WebSocket::connect_user(
+    ///         vec!["0xfirst".to_string()],
+    ///         ApiCredentials::from_env()?,
+    ///     ).await?;
+    ///
+    ///     // Later, as the watchlist grows:
+    ///     ws.subscribe_markets(vec!["0xsecond".to_string()]).await?;
+    ///     Ok(())
+    /// }
+    /// ```
+    pub async fn subscribe_markets(&mut self, markets: Vec<String>) -> Result<(), WebSocketError> {
+        self.send_subscription_update(UserSubscriptionUpdate::subscribe(markets))
+            .await
+    }
+
+    /// Stop receiving user events for the given markets, without reconnecting.
+    ///
+    /// User channel only.
+    pub async fn unsubscribe_markets(
+        &mut self,
+        markets: Vec<String>,
+    ) -> Result<(), WebSocketError> {
+        self.send_subscription_update(UserSubscriptionUpdate::unsubscribe(markets))
+            .await
+    }
+
+    /// Send a prepared subscription update frame on a live user connection.
+    pub async fn send_subscription_update(
+        &mut self,
+        update: UserSubscriptionUpdate,
+    ) -> Result<(), WebSocketError> {
+        require_user_channel(self.channel_type)?;
+        validate_subscription_count(update.markets.len())?;
+        let msg = serde_json::to_string(&update)?;
+        self.inner.send(Message::Text(msg.into())).await?;
         Ok(())
     }
 
@@ -388,10 +505,30 @@ impl WebSocketBuilder {
         credentials: ApiCredentials,
     ) -> Result<WebSocketWithPing, WebSocketError> {
         validate_subscription_count(market_ids.len())?;
+        self.connect_user_subscription(UserSubscription::new(market_ids, credentials))
+            .await
+    }
+
+    /// Connect to the user channel for every market, unfiltered.
+    pub async fn connect_user_all_markets(
+        self,
+        credentials: ApiCredentials,
+    ) -> Result<WebSocketWithPing, WebSocketError> {
+        self.connect_user_subscription(UserSubscription::all_markets(credentials))
+            .await
+    }
+
+    /// Connect to the user channel with an explicitly built subscription.
+    pub async fn connect_user_subscription(
+        self,
+        subscription: UserSubscription,
+    ) -> Result<WebSocketWithPing, WebSocketError> {
+        if let Some(markets) = &subscription.markets {
+            validate_subscription_count(markets.len())?;
+        }
         ensure_crypto_provider();
         let (mut ws, _) = connect_async(&self.user_url).await?;
 
-        let subscription = UserSubscription::new(market_ids, credentials);
         let msg = serde_json::to_string(&subscription)?;
         ws.send(Message::Text(msg.into())).await?;
 
@@ -407,6 +544,11 @@ impl WebSocketBuilder {
 ///
 /// Use this when you need automatic keep-alive pings. Call `run` to process
 /// messages with automatic ping handling.
+///
+/// Note that [`run`](Self::run) takes ownership of the connection, so there is
+/// no way to adjust subscriptions while it is driving the stream. Use the plain
+/// [`WebSocket`] with [`subscribe_markets`](WebSocket::subscribe_markets) if the
+/// market set changes over the connection's life.
 pub struct WebSocketWithPing {
     inner: WebSocketStream<MaybeTlsStream<TcpStream>>,
     channel_type: ChannelType,
@@ -502,6 +644,25 @@ impl WebSocketWithPing {
 }
 
 #[cfg(test)]
+mod subscription_update_tests {
+    use super::*;
+
+    #[test]
+    fn only_the_user_channel_accepts_subscription_updates() {
+        assert!(require_user_channel(ChannelType::User).is_ok());
+
+        for ch in [ChannelType::Market, ChannelType::Sports] {
+            let err = require_user_channel(ch)
+                .expect_err("dynamic market filters are a user-channel feature");
+            assert!(
+                err.to_string().contains("user channel"),
+                "error should name the constraint, got: {err}"
+            );
+        }
+    }
+}
+
+#[cfg(test)]
 mod crypto_provider_tests {
     use super::*;
 
@@ -583,12 +744,12 @@ mod tests {
 #[cfg(test)]
 mod dispatch_tests {
     use super::*;
+    use crate::ws::sports::fixtures;
 
     const BOOK: &str = r#"{"event_type":"book","asset_id":"a","market":"m","timestamp":"1",
         "hash":"h","bids":[],"asks":[],"last_trade_price":null}"#;
     const BBO: &str = r#"{"event_type":"best_bid_ask","asset_id":"a","market":"m",
         "best_bid":"0.5","best_ask":"0.6","spread":"0.1","timestamp":"1"}"#;
-    const SPORTS: &str = r#"{"event_type":"sports_update","game_id":"g-1"}"#;
 
     #[test]
     fn routes_by_channel_type() {
@@ -600,22 +761,60 @@ mod dispatch_tests {
             parse_channel_message(ChannelType::Market, BBO).unwrap(),
             Some(Channel::Market(MarketMessage::BestBidAsk(_)))
         ));
-        assert!(matches!(
-            parse_channel_message(ChannelType::Sports, SPORTS).unwrap(),
-            Some(Channel::Sports(_))
-        ));
     }
 
     #[test]
-    fn sports_frames_do_not_parse_as_market_frames() {
+    fn every_real_sports_frame_reaches_the_caller() {
+        // The regression this pins: the `event_type` pre-filter is correct for
+        // the two clob channels and catastrophic for sports, whose frames carry
+        // no such field. Every one of these was silently dropped, leaving
+        // `connect_sports` a public method that yielded an empty stream.
+        for (i, frame) in fixtures::ALL.iter().enumerate() {
+            assert!(
+                !frame.contains("event_type"),
+                "fixture {i} must be a real frame, not one invented to suit the filter"
+            );
+            assert!(
+                matches!(
+                    parse_channel_message(ChannelType::Sports, frame).unwrap(),
+                    Some(Channel::Sports(_))
+                ),
+                "sports fixture {i} was dropped by the dispatcher"
+            );
+        }
+    }
+
+    #[test]
+    fn the_event_type_filter_still_guards_market_and_user() {
+        // Scoping the fix to sports must not remove the filter from the
+        // channels that need it: without it, clob heartbeats and subscription
+        // acks reach `from_json` and become hard stream errors.
+        for ch in [ChannelType::Market, ChannelType::User] {
+            assert!(
+                parse_channel_message(ch, r#"{"some":"ack"}"#)
+                    .unwrap()
+                    .is_none(),
+                "{ch:?} must still skip frames without event_type"
+            );
+        }
+    }
+
+    #[test]
+    fn sports_frames_do_not_yield_market_events() {
         // Guards the dispatch itself: routing a sports frame to the market
-        // parser must fail rather than silently produce a market event.
-        assert!(parse_channel_message(ChannelType::Market, SPORTS).is_err());
+        // parser must never produce a market event.
+        for frame in fixtures::ALL {
+            let routed = parse_channel_message(ChannelType::Market, frame);
+            assert!(
+                !matches!(routed, Ok(Some(Channel::Market(_)))),
+                "a sports frame must not be read as a market event"
+            );
+        }
     }
 
     #[test]
-    fn skips_keepalive_and_eventless_frames() {
-        for text in ["PONG", "{}", "", r#"{"some":"ack"}"#] {
+    fn skips_keepalive_frames_on_every_channel() {
+        for text in ["PONG", "{}", ""] {
             for ch in [ChannelType::Market, ChannelType::User, ChannelType::Sports] {
                 assert!(
                     parse_channel_message(ch, text).unwrap().is_none(),

@@ -6,7 +6,7 @@
 //!
 //! # Channels
 //!
-//! Two channels are available:
+//! Three channels are available:
 //!
 //! - **Market Channel**: Public channel for order book and price updates. Subscribe with
 //!   asset IDs (token IDs) to receive [`BookMessage`], [`PriceChangeMessage`],
@@ -14,7 +14,13 @@
 //!
 //! - **User Channel**: Authenticated channel for user order and trade updates. Subscribe
 //!   with market condition IDs and API credentials to receive [`OrderMessage`] and
-//!   [`TradeMessage`] updates.
+//!   [`TradeMessage`] updates. Pass no condition IDs — via
+//!   [`WebSocket::connect_user_all_markets`] — to receive events for every market, and
+//!   use [`WebSocket::subscribe_markets`] to adjust the filter on a live connection.
+//!
+//! - **Sports Channel**: Public channel for live match updates, on its own host and
+//!   taking no subscription payload. See [`SportsUpdateMessage`]; note its frames carry
+//!   no `event_type` discriminator, unlike the other two channels.
 //!
 //! # Basic Example
 //!
@@ -120,7 +126,8 @@ pub use market::{
 };
 pub use sports::{SportsMessage, SportsUpdateMessage};
 pub use subscription::{
-    ChannelType, MarketSubscriptionOptions, SubscriptionLevel, WS_MARKET_URL, WS_SPORTS_URL,
+    ChannelType, MarketSubscription, MarketSubscriptionOptions, SubscriptionLevel,
+    SubscriptionOperation, UserSubscription, UserSubscriptionUpdate, WS_MARKET_URL, WS_SPORTS_URL,
     WS_USER_URL,
 };
 pub use user::{MakerOrder, OrderEventType, OrderMessage, TradeMessage, TradeStatus, UserMessage};
