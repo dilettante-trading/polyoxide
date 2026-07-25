@@ -96,7 +96,23 @@ impl HttpClient {
         )
     }
 
-    /// Check if a 429 response should be retried; returns backoff duration if yes.
+    /// Check if a response should be retried; returns backoff duration if yes.
+    ///
+    /// Retries two statuses, both of which upstream documents as "retry with
+    /// exponential backoff":
+    ///
+    /// - `429 Too Many Requests` — rate limited.
+    /// - `425 Too Early` — Polymarket's matching engine is restarting. It returns
+    ///   this with no body, so nothing was processed.
+    ///
+    /// Deliberately narrow: 5xx is *not* retried here. It is retriable in the
+    /// [`ApiError::is_retriable`] sense, but a 5xx can mean the request was
+    /// partially applied, and this loop resends non-idempotent writes. The two
+    /// statuses above are safe because neither reaches the matching engine — and
+    /// for order placement the resent body is byte-identical, so the order hash
+    /// is unchanged and the venue rejects a genuine double-submit as a duplicate.
+    /// Callers wanting broader retry semantics should drive them from
+    /// [`ApiError::is_retriable`] with their own idempotency judgement.
     ///
     /// When `retry_after` is `Some`, the server-provided delay is used instead of
     /// the client-computed exponential backoff (clamped to `max_backoff_ms`).
@@ -106,7 +122,8 @@ impl HttpClient {
         attempt: u32,
         retry_after: Option<&str>,
     ) -> Option<Duration> {
-        if status == StatusCode::TOO_MANY_REQUESTS && attempt < self.retry_config.max_retries {
+        let retriable = status == StatusCode::TOO_MANY_REQUESTS || status == StatusCode::TOO_EARLY;
+        if retriable && attempt < self.retry_config.max_retries {
             if let Some(delay) = retry_after.and_then(|v| v.parse::<f64>().ok()) {
                 let ms = (delay * 1000.0) as u64;
                 Some(Duration::from_millis(
@@ -123,8 +140,9 @@ impl HttpClient {
     /// GET a URL and return the raw response body as bytes.
     ///
     /// Use this for endpoints that return non-JSON payloads (e.g. `application/zip`
-    /// downloads). Applies the same rate-limiting, concurrency gating, and 429
-    /// retry behavior as the JSON-oriented [`Request`](crate::Request) helper.
+    /// downloads). Applies the same rate-limiting, concurrency gating, and
+    /// [`should_retry`](Self::should_retry) behavior as the JSON-oriented
+    /// [`Request`](crate::Request) helper.
     ///
     /// Non-2xx responses are mapped to [`ApiError`] via
     /// [`ApiError::from_response`].
@@ -157,7 +175,8 @@ impl HttpClient {
             if let Some(backoff) = self.should_retry(status, attempt, retry_after.as_deref()) {
                 attempt += 1;
                 tracing::warn!(
-                    "Rate limited (429) on {}, retry {} after {}ms",
+                    "Retriable status {} on {}, retry {} after {}ms",
+                    status,
                     path,
                     attempt,
                     backoff.as_millis()
@@ -318,21 +337,68 @@ mod tests {
     }
 
     #[test]
-    fn test_should_retry_non_429_returns_none() {
+    fn test_should_retry_425_under_max() {
+        let client = HttpClientBuilder::new("https://example.com")
+            .build()
+            .unwrap();
+        // 425 Too Early — Polymarket's matching engine restarting.
+        assert!(client
+            .should_retry(StatusCode::TOO_EARLY, 0, None)
+            .is_some());
+        assert!(client
+            .should_retry(StatusCode::TOO_EARLY, 2, None)
+            .is_some());
+    }
+
+    #[test]
+    fn test_should_retry_425_at_max() {
+        let client = HttpClientBuilder::new("https://example.com")
+            .build()
+            .unwrap();
+        assert!(client
+            .should_retry(StatusCode::TOO_EARLY, 3, None)
+            .is_none());
+    }
+
+    #[test]
+    fn test_should_retry_ignores_other_statuses() {
         let client = HttpClientBuilder::new("https://example.com")
             .build()
             .unwrap();
         for status in [
             StatusCode::OK,
             StatusCode::INTERNAL_SERVER_ERROR,
+            StatusCode::BAD_GATEWAY,
             StatusCode::BAD_REQUEST,
             StatusCode::FORBIDDEN,
+            StatusCode::NOT_FOUND,
+            // 503 is deliberately excluded even though post-only mode sends it
+            // with a Retry-After: the documented wait is ~79s, far too long to
+            // block inside a request, and it rejects orders wholesale.
+            StatusCode::SERVICE_UNAVAILABLE,
         ] {
             assert!(
                 client.should_retry(status, 0, None).is_none(),
                 "expected None for {status}"
             );
         }
+    }
+
+    #[test]
+    fn test_should_retry_5xx_not_retried_despite_being_is_retriable() {
+        // The two notions differ on purpose. `ApiError::is_retriable` describes the
+        // error; this loop resends non-idempotent writes, so it stays narrower.
+        let client = HttpClientBuilder::new("https://example.com")
+            .build()
+            .unwrap();
+        assert!(client
+            .should_retry(StatusCode::INTERNAL_SERVER_ERROR, 0, None)
+            .is_none());
+        assert!(ApiError::Api {
+            status: 500,
+            message: String::new()
+        }
+        .is_retriable());
     }
 
     #[test]

@@ -161,7 +161,8 @@ impl RelayClient {
             {
                 attempt += 1;
                 tracing::warn!(
-                    "Rate limited (429) on {}, retry {} after {}ms",
+                    "Retriable status {} on {}, retry {} after {}ms",
+                    resp.status(),
                     path,
                     attempt,
                     backoff.as_millis()
@@ -251,7 +252,8 @@ impl RelayClient {
             {
                 attempt += 1;
                 tracing::warn!(
-                    "Rate limited (429) on {}, retry {} after {}ms",
+                    "Retriable status {} on {}, retry {} after {}ms",
+                    resp.status(),
                     path,
                     attempt,
                     backoff.as_millis()
@@ -962,7 +964,8 @@ impl RelayClient {
             {
                 attempt += 1;
                 tracing::warn!(
-                    "Rate limited (429) on {}, retry {} after {}ms",
+                    "Retriable status {} on {}, retry {} after {}ms",
+                    status,
                     endpoint,
                     attempt,
                     backoff.as_millis()

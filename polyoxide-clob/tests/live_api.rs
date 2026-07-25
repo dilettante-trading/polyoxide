@@ -902,3 +902,75 @@ async fn live_v2_place_and_cancel() {
         "cancel did not report {id}: {cancelled:?}"
     );
 }
+
+// ── Authenticated: Orders — FAK kill outcome ──
+
+/// Live re-validation that an unmatched FAK surfaces as [`ClobError::FakUnmatched`]
+/// rather than a generic validation error.
+///
+/// Posts a deliberately non-crossing marketable BUY — 1c against a book whose best
+/// ask is far above it — so the matching engine finds no counterparty and kills the
+/// order. **No capital moves**: an unmatched FAK fills nothing, which makes this the
+/// cheapest of the order-placing live tests. It still needs a funded proxy account,
+/// because the venue checks balance/allowance before it reaches the matching engine.
+///
+/// Size is 200 shares (= $2.00 notional at 1c) rather than the bare 100. Polymarket
+/// enforces a $1 minimum notional on *marketable* orders — resting limit orders are
+/// exempt — and under it you get `invalid amount for a marketable BUY order ($X),
+/// min size: 1` without ever reaching the matching engine, i.e. the wrong path.
+///
+/// Not covered here: a *partially* filled FAK. That requires an order that genuinely
+/// crosses a book with less depth than the order size, which does spend money. The
+/// expectation is a 200 with `status: matched` and partial amounts, since the error
+/// is specifically the zero-match branch — but that remains unverified.
+#[tokio::test]
+#[ignore] // live; run with `-- --ignored`, needs funded proxy account
+async fn live_fak_unmatched_is_typed_error() {
+    use polyoxide_clob::ClobError;
+
+    let clob = authenticated_client();
+    let token_id = find_active_token_id().await;
+
+    // Precondition: the book must sit well clear of 1c, or the order would cross
+    // and we would be testing the fill path (and spending money).
+    let book = clob.markets().order_book(&token_id).send().await.unwrap();
+    let best_ask = book.asks.iter().map(|l| l.price).min().expect("asks");
+    assert!(
+        best_ask > rust_decimal::Decimal::new(5, 2),
+        "book too cheap for a safe non-crossing test: best ask {best_ask}"
+    );
+
+    let params = CreateOrderParams {
+        token_id,
+        price: 0.01,
+        size: 200.0,
+        side: OrderSide::Buy,
+        order_type: OrderKind::Fak,
+        post_only: false,
+        expiration: None,
+        funder: None,
+        signature_type: Some(SignatureType::PolyProxy),
+    };
+
+    let err = clob
+        .place_order(&params, None)
+        .await
+        .expect_err("a non-crossing FAK must be killed, not filled");
+
+    match &err {
+        ClobError::FakUnmatched { message } => {
+            assert!(
+                message.to_ascii_lowercase().contains("fak order"),
+                "unexpected venue prose: {message}"
+            );
+        }
+        // Surface the actual error: a min-notional rejection means the order never
+        // reached the matching engine and this run proved nothing.
+        other => panic!("expected ClobError::FakUnmatched, got: {other:?}"),
+    }
+
+    assert!(
+        !err.is_retriable(),
+        "an unmatched FAK must not be retriable"
+    );
+}

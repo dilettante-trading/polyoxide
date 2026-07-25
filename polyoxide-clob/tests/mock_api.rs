@@ -987,6 +987,67 @@ async fn retry_429_with_retry_after_header() {
 }
 
 #[tokio::test]
+async fn retry_425_too_early_is_retried_then_succeeds() {
+    // 425 is Polymarket's matching engine restarting. Upstream documents it as
+    // "retry with exponential backoff", and it carries no body — nothing was
+    // processed — so resending is safe even for a write.
+    let mut server = Server::new_async().await;
+
+    // Two 425s, then the real response. mockito serves mocks in creation order and
+    // retires each once its `expect` count is met.
+    let early = server
+        .mock("GET", "/time")
+        .with_status(425)
+        .expect(2)
+        .create_async()
+        .await;
+    let ok = server
+        .mock("GET", "/time")
+        .with_status(200)
+        .with_header("content-type", "application/json")
+        .with_body("1700000000")
+        .expect(1)
+        .create_async()
+        .await;
+
+    let clob = test_public_clob_fast_retry(&server);
+    let time = clob
+        .health()
+        .server_time()
+        .send()
+        .await
+        .expect("425 should be retried through to the eventual success");
+    assert_eq!(time.time, 1700000000);
+
+    early.assert_async().await;
+    ok.assert_async().await;
+}
+
+#[tokio::test]
+async fn retry_425_exhausted_returns_too_early_error() {
+    let mut server = Server::new_async().await;
+
+    // 425 forever: max_retries=2 on the fast-retry client, so 3 total attempts.
+    let mock = server
+        .mock("GET", "/time")
+        .with_status(425)
+        .expect(3)
+        .create_async()
+        .await;
+
+    let clob = test_public_clob_fast_retry(&server);
+    let err = clob.health().server_time().send().await.unwrap_err();
+
+    match &err {
+        ClobError::Api(polyoxide_core::ApiError::Api { status, .. }) => assert_eq!(*status, 425),
+        other => panic!("Expected Api error with status 425, got: {other:?}"),
+    }
+    // Still retriable once surfaced — the caller may back off further and retry.
+    assert!(err.is_retriable());
+    mock.assert_async().await;
+}
+
+#[tokio::test]
 async fn server_500_not_retried() {
     let mut server = Server::new_async().await;
 
@@ -2628,4 +2689,203 @@ async fn orders_list_send_raw_returns_unparsed_body() {
     assert_eq!(raw, body);
 
     mock.assert_async().await;
+}
+
+// ── FAK/FOK kill outcomes ──
+//
+// Polymarket reports a marketable order that the matching engine killed as HTTP
+// 400 with prose in `error` — the same status it uses for malformed payloads,
+// bans, and tick-size violations. See
+// https://docs.polymarket.com/resources/error-codes ("Order Processing Errors").
+// These are *defined* outcomes of FAK/FOK, not faults, and they are
+// deterministic: re-sending cannot change the answer. They must therefore
+// surface as their own error variants, must not be retried, and must not be
+// confused with the neighbouring 400s.
+
+/// Venue prose for a FAK order that found nothing to match against, verbatim.
+const FAK_UNMATCHED_MSG: &str = "no orders found to match with FAK order. \
+FAK orders are partially filled or killed if no match is found.";
+
+/// Venue prose for a FOK order that could not be filled in full, verbatim.
+const FOK_UNFILLED_MSG: &str =
+    "order couldn't be fully filled. FOK orders are fully filled or killed.";
+
+/// Mock the `create_order` prerequisites (`/neg-risk`, `/tick-size`) plus a
+/// `POST /order` that fails with `status` and `{"error": body_msg}`.
+///
+/// Returns the `POST /order` mock so callers can assert the attempt count.
+async fn mock_order_rejection(
+    server: &mut mockito::ServerGuard,
+    token_id: &str,
+    status: usize,
+    body_msg: &str,
+) -> mockito::Mock {
+    server
+        .mock("GET", "/neg-risk")
+        .match_query(Matcher::UrlEncoded("token_id".into(), token_id.into()))
+        .with_status(200)
+        .with_header("content-type", "application/json")
+        .with_body(r#"{"neg_risk": false}"#)
+        .create_async()
+        .await;
+
+    server
+        .mock("GET", "/tick-size")
+        .match_query(Matcher::UrlEncoded("token_id".into(), token_id.into()))
+        .with_status(200)
+        .with_header("content-type", "application/json")
+        .with_body(r#"{"minimum_tick_size": "0.01"}"#)
+        .create_async()
+        .await;
+
+    server
+        .mock("POST", "/order")
+        .with_status(status)
+        .with_header("content-type", "application/json")
+        .with_body(serde_json::json!({ "error": body_msg }).to_string())
+        .expect(1)
+        .create_async()
+        .await
+}
+
+/// A non-crossing marketable BUY: 100 shares at 1c, the repro from the report.
+fn deep_otm_params(
+    token_id: &str,
+    order_type: polyoxide_clob::OrderKind,
+) -> polyoxide_clob::CreateOrderParams {
+    polyoxide_clob::CreateOrderParams {
+        token_id: token_id.into(),
+        price: 0.01,
+        size: 100.0,
+        side: polyoxide_clob::OrderSide::Buy,
+        order_type,
+        post_only: false,
+        expiration: None,
+        funder: None,
+        signature_type: None,
+    }
+}
+
+#[tokio::test]
+async fn fak_unmatched_maps_to_typed_error_not_generic_validation() {
+    let mut server = Server::new_async().await;
+    const TOKEN_ID: &str = "100";
+
+    let post_mock = mock_order_rejection(&mut server, TOKEN_ID, 400, FAK_UNMATCHED_MSG).await;
+
+    let clob = test_authed_clob(&server);
+    let err = clob
+        .place_order(
+            &deep_otm_params(TOKEN_ID, polyoxide_clob::OrderKind::Fak),
+            None,
+        )
+        .await
+        .unwrap_err();
+
+    match &err {
+        ClobError::FakUnmatched { message } => {
+            // The venue's prose is preserved for logs, but callers never need to read it.
+            assert_eq!(message, FAK_UNMATCHED_MSG);
+        }
+        other => panic!("Expected ClobError::FakUnmatched, got: {other:?}"),
+    }
+
+    // Deterministic: re-sending cannot change the outcome.
+    assert!(
+        !err.is_retriable(),
+        "an unmatched FAK must not be retriable"
+    );
+
+    // Exactly one placement attempt reached the venue.
+    post_mock.assert_async().await;
+}
+
+#[tokio::test]
+async fn fok_unfilled_maps_to_typed_error_not_generic_validation() {
+    let mut server = Server::new_async().await;
+    const TOKEN_ID: &str = "100";
+
+    let post_mock = mock_order_rejection(&mut server, TOKEN_ID, 400, FOK_UNFILLED_MSG).await;
+
+    let clob = test_authed_clob(&server);
+    let err = clob
+        .place_order(
+            &deep_otm_params(TOKEN_ID, polyoxide_clob::OrderKind::Fok),
+            None,
+        )
+        .await
+        .unwrap_err();
+
+    match &err {
+        ClobError::FokUnfilled { message } => assert_eq!(message, FOK_UNFILLED_MSG),
+        other => panic!("Expected ClobError::FokUnfilled, got: {other:?}"),
+    }
+
+    assert!(!err.is_retriable(), "an unfilled FOK must not be retriable");
+    post_mock.assert_async().await;
+}
+
+#[tokio::test]
+async fn unrelated_400_still_maps_to_validation_error() {
+    // Negative control. The classifier keys off the message body, so it must not
+    // swallow the neighbouring 400s that genuinely are faults. Without this, a
+    // sloppy match (e.g. on "order") would silently reclassify real errors.
+    let mut server = Server::new_async().await;
+    const TOKEN_ID: &str = "100";
+
+    let post_mock = mock_order_rejection(
+        &mut server,
+        TOKEN_ID,
+        400,
+        "order 0xabc is invalid. Price (100) breaks minimum tick size rule: 0.1",
+    )
+    .await;
+
+    let clob = test_authed_clob(&server);
+    let err = clob
+        .place_order(
+            &deep_otm_params(TOKEN_ID, polyoxide_clob::OrderKind::Fak),
+            None,
+        )
+        .await
+        .unwrap_err();
+
+    match &err {
+        ClobError::Api(polyoxide_core::ApiError::Validation(msg)) => {
+            assert!(
+                msg.contains("minimum tick size"),
+                "unexpected message: {msg}"
+            );
+        }
+        other => panic!("Expected a generic Validation error, got: {other:?}"),
+    }
+    assert!(!err.is_retriable());
+    post_mock.assert_async().await;
+}
+
+#[tokio::test]
+async fn fak_prose_on_non_400_status_is_not_reclassified() {
+    // The kill outcome is documented only for 400. A 500 carrying similar prose is
+    // an engine fault ("order timed out" territory) and stays retriable, so the
+    // classifier must be gated on the status, not on the message alone.
+    let mut server = Server::new_async().await;
+    const TOKEN_ID: &str = "100";
+
+    let post_mock = mock_order_rejection(&mut server, TOKEN_ID, 500, FAK_UNMATCHED_MSG).await;
+
+    let clob = test_authed_clob(&server);
+    let err = clob
+        .place_order(
+            &deep_otm_params(TOKEN_ID, polyoxide_clob::OrderKind::Fak),
+            None,
+        )
+        .await
+        .unwrap_err();
+
+    match &err {
+        ClobError::Api(polyoxide_core::ApiError::Api { status, .. }) => assert_eq!(*status, 500),
+        other => panic!("Expected a generic Api error with status 500, got: {other:?}"),
+    }
+    assert!(err.is_retriable(), "a 5xx is a transient fault");
+    post_mock.assert_async().await;
 }

@@ -63,6 +63,31 @@ impl ApiError {
             _ => Self::Api { status, message },
         }
     }
+
+    /// Whether re-sending the same request could plausibly produce a different result.
+    ///
+    /// Intended as the canonical input to a caller's retry policy, so consumers do
+    /// not have to re-derive retriability from status codes or error prose.
+    ///
+    /// Retriable: rate limits, timeouts, connection failures, `425 Too Early`
+    /// (Polymarket's matching engine restarting), and any 5xx. Not retriable:
+    /// authentication failures, validation failures, and local encode/decode errors —
+    /// all of which are deterministic for a given request.
+    ///
+    /// Note this describes the *error*, not the *operation*: a retriable error on a
+    /// non-idempotent request (order placement) still needs caller-side judgement
+    /// about whether resubmitting is safe.
+    pub fn is_retriable(&self) -> bool {
+        match self {
+            // 425 Too Early is the matching engine restarting; 5xx is a server fault.
+            // Both are documented upstream as "retry with exponential backoff".
+            Self::Api { status, .. } => *status == 425 || *status >= 500,
+            Self::RateLimit(_) | Self::Timeout => true,
+            Self::Network(e) => e.is_timeout() || e.is_connect(),
+            Self::Authentication(_) | Self::Validation(_) => false,
+            Self::Serialization(_) | Self::Url(_) => false,
+        }
+    }
 }
 
 #[cfg(test)]
@@ -84,5 +109,58 @@ mod tests {
     fn test_rate_limit_error_display_format() {
         let err = ApiError::RateLimit("slow down".to_string());
         assert_eq!(format!("{}", err), "Rate limit exceeded: slow down");
+    }
+
+    // ── is_retriable ────────────────────────────────────────────
+
+    #[test]
+    fn test_retriable_transient_failures() {
+        assert!(ApiError::RateLimit("slow down".into()).is_retriable());
+        assert!(ApiError::Timeout.is_retriable());
+        for status in [500u16, 502, 503, 504] {
+            assert!(
+                ApiError::Api {
+                    status,
+                    message: String::new()
+                }
+                .is_retriable(),
+                "{status} should be retriable"
+            );
+        }
+    }
+
+    #[test]
+    fn test_retriable_425_too_early() {
+        // Polymarket returns 425 while the matching engine restarts and documents
+        // it as "retry with exponential backoff".
+        assert!(ApiError::Api {
+            status: 425,
+            message: String::new()
+        }
+        .is_retriable());
+    }
+
+    #[test]
+    fn test_not_retriable_deterministic_failures() {
+        assert!(!ApiError::Validation("bad payload".into()).is_retriable());
+        assert!(!ApiError::Authentication("Invalid API key".into()).is_retriable());
+        for status in [404u16, 409, 418] {
+            assert!(
+                !ApiError::Api {
+                    status,
+                    message: String::new()
+                }
+                .is_retriable(),
+                "{status} should not be retriable"
+            );
+        }
+    }
+
+    #[test]
+    fn test_not_retriable_local_encode_decode_failures() {
+        let json_err = serde_json::from_str::<String>("not json").unwrap_err();
+        assert!(!ApiError::Serialization(json_err).is_retriable());
+        let url_err = url::Url::parse("://bad").unwrap_err();
+        assert!(!ApiError::Url(url_err).is_retriable());
     }
 }
