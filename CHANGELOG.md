@@ -1,3 +1,33 @@
+## [0.23.0] - 2026-07-25
+
+### 🚀 Features
+
+- *(clob)* Document the TradeStatus lifecycle and add terminal-state helpers
+
+### 🐛 Bug Fixes
+
+- *(core)* Align the CLOB rate limiter with the published limits
+- *(gamma)* [**breaking**] Return relationship rows, not tags, from related-tags
+- *(data)* Add the missing ESPORTS leaderboard category
+- *(clob)* Stop every WebSocket connect panicking on rustls provider ambiguity
+- *(clob)* [**breaking**] Parse the sports frames the venue sends, and make the user channel usable
+- *(gamma)* Tolerate the nulls the schema permits in RelatedTag
+
+### 📚 Documentation
+
+- *(plans)* Add the prader-audit upstream worklist
+- *(data)* Correct the holders limit range to 0-500 default 20
+- *(specs)* Record where upstream's sports contract diverges from the wire
+- Fix broken intra-doc links across the workspace
+
+### 🧪 Testing
+
+- *(clob)* Add live WebSocket tests
+
+### ⚙️ Miscellaneous Tasks
+
+- Fail the build on rustdoc warnings
+
 ## [0.22.0] - 2026-07-25
 
 ### 🚀 Features
