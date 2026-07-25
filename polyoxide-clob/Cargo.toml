@@ -13,7 +13,13 @@ categories = ["api-bindings", "web-programming::http-client"]
 [features]
 default = ["gamma"]
 gamma = ["dep:polyoxide-gamma"]
-ws = ["dep:tokio-tungstenite", "dep:futures-util", "tokio/net", "tokio/macros"]
+ws = [
+    "dep:tokio-tungstenite",
+    "dep:futures-util",
+    "dep:rustls",
+    "tokio/net",
+    "tokio/macros",
+]
 keychain = ["polyoxide-core/keychain"]
 
 [dependencies]
@@ -38,6 +44,13 @@ rust_decimal = { workspace = true }
 urlencoding = "2.1"
 tokio-tungstenite = { workspace = true, optional = true }
 futures-util = { version = "0.3", optional = true }
+# Needed only to install a process-default rustls CryptoProvider — see
+# `ensure_crypto_provider` in src/ws/client.rs. default-features = false keeps
+# us from pulling aws-lc-rs (and its cmake/nasm build requirements) into the
+# graph on top of the ring backend already present.
+rustls = { version = "0.23", default-features = false, features = [
+    "ring",
+], optional = true }
 
 [dev-dependencies]
 mockito = { workspace = true }

@@ -24,6 +24,28 @@ use super::{
 /// Maximum number of subscriptions per WebSocket connection.
 const MAX_SUBSCRIPTIONS_PER_CONNECTION: usize = 500;
 
+/// Make sure rustls has a default `CryptoProvider` before we open a connection.
+///
+/// `tokio-tungstenite` builds its TLS config from the process-wide default
+/// provider. rustls picks that default automatically only when exactly one
+/// backend feature is enabled — and this dependency graph enables two on a
+/// single shared `rustls`: `ring` arrives with `reqwest 0.12` (used by
+/// `polyoxide-core`) and `aws-lc-rs` with `reqwest 0.13` (pulled in by
+/// `alloy`, a mandatory dependency here). Faced with two candidates rustls
+/// installs neither and panics inside `connect_async`, which made *every*
+/// channel — market, user and sports alike — abort at connect time for any
+/// consumer of this crate.
+///
+/// Installing the default is deliberately best-effort: `install_default`
+/// returns `Err` when one is already set, and in that case the host
+/// application has chosen and we leave its choice alone.
+fn ensure_crypto_provider() {
+    static INSTALL: std::sync::Once = std::sync::Once::new();
+    INSTALL.call_once(|| {
+        let _ = rustls::crypto::ring::default_provider().install_default();
+    });
+}
+
 /// Parse one text frame into a [`Channel`], or `None` if it carries no event.
 ///
 /// Shared by [`WebSocket`] and [`WebSocketWithPing`] so the two cannot drift —
@@ -138,6 +160,7 @@ impl WebSocket {
         options: MarketSubscriptionOptions,
     ) -> Result<Self, WebSocketError> {
         validate_subscription_count(asset_ids.len())?;
+        ensure_crypto_provider();
         let (mut ws, _) = connect_async(WS_MARKET_URL).await?;
 
         let subscription = MarketSubscription::with_options(asset_ids, options);
@@ -168,6 +191,7 @@ impl WebSocket {
     /// }
     /// ```
     pub async fn connect_sports() -> Result<Self, WebSocketError> {
+        ensure_crypto_provider();
         let (ws, _) = connect_async(WS_SPORTS_URL).await?;
 
         Ok(Self {
@@ -203,6 +227,7 @@ impl WebSocket {
         credentials: ApiCredentials,
     ) -> Result<Self, WebSocketError> {
         validate_subscription_count(market_ids.len())?;
+        ensure_crypto_provider();
         let (mut ws, _) = connect_async(WS_USER_URL).await?;
 
         let subscription = UserSubscription::new(market_ids, credentials);
@@ -342,6 +367,7 @@ impl WebSocketBuilder {
         asset_ids: Vec<String>,
     ) -> Result<WebSocketWithPing, WebSocketError> {
         validate_subscription_count(asset_ids.len())?;
+        ensure_crypto_provider();
         let (mut ws, _) = connect_async(&self.market_url).await?;
 
         let subscription = MarketSubscription::new(asset_ids);
@@ -362,6 +388,7 @@ impl WebSocketBuilder {
         credentials: ApiCredentials,
     ) -> Result<WebSocketWithPing, WebSocketError> {
         validate_subscription_count(market_ids.len())?;
+        ensure_crypto_provider();
         let (mut ws, _) = connect_async(&self.user_url).await?;
 
         let subscription = UserSubscription::new(market_ids, credentials);
@@ -471,6 +498,26 @@ impl WebSocketWithPing {
     /// Parse a text message based on the channel type.
     fn parse_message(&self, text: &str) -> Result<Option<Channel>, WebSocketError> {
         parse_channel_message(self.channel_type, text)
+    }
+}
+
+#[cfg(test)]
+mod crypto_provider_tests {
+    use super::*;
+
+    #[test]
+    fn a_default_crypto_provider_is_available_to_connect() {
+        // Every `connect_*` panicked before this was installed. tokio-tungstenite
+        // builds its rustls `ClientConfig` from the process-wide default
+        // CryptoProvider, and this workspace enables *both* `ring` (via
+        // reqwest 0.12) and `aws-lc-rs` (via alloy's reqwest 0.13) on one
+        // shared rustls. Given two candidates rustls installs neither and
+        // panics — so the whole WebSocket surface aborted at connect time.
+        ensure_crypto_provider();
+        assert!(
+            rustls::crypto::CryptoProvider::get_default().is_some(),
+            "no process-default CryptoProvider: every WebSocket connect will panic"
+        );
     }
 }
 
