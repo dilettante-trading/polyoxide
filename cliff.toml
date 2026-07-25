@@ -66,7 +66,11 @@ commit_parsers = [
     { message = "^test", group = "<!-- 6 -->🧪 Testing" },
     { message = "^build", group = "<!-- 7 -->🔧 Build" },
     { message = "^revert", group = "<!-- 8 -->◀️ Revert" },
-    { message = "^chore\\(release\\): prepare for", skip = true },
+    # Version-bump commits are release bookkeeping, not changes. This repo's
+    # take the form `chore(release): v1.2.3`; the upstream default pattern
+    # (`prepare for`) never matched them, so they leaked into the changelog
+    # whenever a release commit fell inside an untagged range.
+    { message = "^chore\\(release\\)", skip = true },
     { message = "^chore\\(deps.*\\)", skip = true },
     { message = "^chore\\(pr\\)", skip = true },
     { message = "^chore\\(pull\\)", skip = true },

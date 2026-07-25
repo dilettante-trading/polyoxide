@@ -7,6 +7,9 @@
 ### 🐛 Bug Fixes
 
 - *(clob)* [**breaking**] Pin OpenOrder to the shape the venue actually returns
+- *(clob)* Make live_v2_place_and_cancel rest instead of filling
+- *(clob)* [**breaking**] Surface FAK/FOK kill outcomes as typed non-retriable errors
+- *(core)* Retry 425 Too Early alongside 429
 
 ### 📚 Documentation
 
