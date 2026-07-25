@@ -493,16 +493,24 @@ async fn live_get_related_tags() {
 
     for row in &related {
         assert!(!row.id.is_empty(), "relationship row needs its own id");
+        // The type allows these to be null because the upstream schema says
+        // nullable, but nothing observed live has been. Asserting they are
+        // populated makes this test a canary: if it starts failing, the venue
+        // really does emit nulls and the Option typing is earning its keep.
         assert!(
-            row.related_tag_id > 0,
-            "row must name the tag it relates to"
+            row.related_tag_id.is_some_and(|id| id > 0),
+            "row must name the tag it relates to, got {:?}",
+            row.related_tag_id
         );
     }
 
     // The by-ID route must return the same rows as the by-slug route.
+    let tag_id = related[0]
+        .tag_id
+        .expect("the queried tag's own id should be populated");
     let by_id = gamma
         .tags()
-        .get_related(related[0].tag_id.to_string())
+        .get_related(tag_id.to_string())
         .send()
         .await
         .expect("get related tags by id");

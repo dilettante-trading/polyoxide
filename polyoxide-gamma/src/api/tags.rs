@@ -186,10 +186,40 @@ mod tests {
         let rows: Vec<RelatedTag> = serde_json::from_str(LIVE_RELATED_TAGS).unwrap();
         assert_eq!(rows.len(), 3);
         assert_eq!(rows[0].id, "36304");
-        assert_eq!(rows[0].tag_id, 2);
-        assert_eq!(rows[0].related_tag_id, 126);
-        assert_eq!(rows[0].rank, 1);
-        assert_eq!(rows[2].related_tag_id, 102289);
+        assert_eq!(rows[0].tag_id, Some(2));
+        assert_eq!(rows[0].related_tag_id, Some(126));
+        assert_eq!(rows[0].rank, Some(1));
+        assert_eq!(rows[2].related_tag_id, Some(102289));
+    }
+
+    #[test]
+    fn a_null_numeric_field_does_not_sink_the_whole_response() {
+        // The gamma OpenAPI mirror marks tagID, relatedTagID and rank
+        // `nullable: true`. Every row observed live had all three populated,
+        // but observation cannot establish requiredness — and because serde
+        // fails the entire `Vec<RelatedTag>`, one null row would cost the
+        // caller every other row in the response, not just that one.
+        const WITH_NULLS: &str = r#"[
+            {"id":"1","tagID":2,"relatedTagID":126,"rank":1},
+            {"id":"2","tagID":null,"relatedTagID":null,"rank":null}
+        ]"#;
+
+        let rows: Vec<RelatedTag> = serde_json::from_str(WITH_NULLS)
+            .expect("a nullable field the spec permits must not fail the response");
+        assert_eq!(rows.len(), 2, "the populated row must survive alongside it");
+        assert_eq!(rows[0].related_tag_id, Some(126));
+        assert_eq!(rows[1].tag_id, None);
+        assert_eq!(rows[1].related_tag_id, None);
+        assert_eq!(rows[1].rank, None);
+    }
+
+    #[test]
+    fn a_missing_numeric_field_is_also_tolerated() {
+        // `nullable` and "absent" are different on the wire; accept both.
+        let rows: Vec<RelatedTag> = serde_json::from_str(r#"[{"id":"3"}]"#)
+            .expect("an omitted optional field must not fail the response");
+        assert_eq!(rows[0].id, "3");
+        assert_eq!(rows[0].tag_id, None);
     }
 
     #[test]

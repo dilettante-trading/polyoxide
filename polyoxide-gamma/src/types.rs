@@ -447,22 +447,28 @@ pub struct Tag {
 ///
 /// Note the wire names are `tagID` / `relatedTagID` — capital `ID`, so they are
 /// not what `rename_all = "camelCase"` would produce and are renamed explicitly.
+///
+/// The three numeric fields are optional because the upstream schema marks them
+/// `nullable`, even though every row observed live carried all three. Serde
+/// fails a whole `Vec<RelatedTag>` on one bad element, so requiring them would
+/// let a single null row cost the caller the entire response.
 #[cfg_attr(feature = "specta", derive(specta::Type))]
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
 pub struct RelatedTag {
     /// Identifier of the relationship row itself (not of either tag).
     pub id: String,
     /// The tag the relationship is declared on — the one named in the request.
-    #[serde(rename = "tagID")]
-    #[cfg_attr(feature = "specta", specta(type = f64))]
-    pub tag_id: u64,
+    #[serde(rename = "tagID", default)]
+    #[cfg_attr(feature = "specta", specta(type = Option<f64>))]
+    pub tag_id: Option<u64>,
     /// The tag being related to. Resolve this to get the actual tag.
-    #[serde(rename = "relatedTagID")]
-    #[cfg_attr(feature = "specta", specta(type = f64))]
-    pub related_tag_id: u64,
+    #[serde(rename = "relatedTagID", default)]
+    #[cfg_attr(feature = "specta", specta(type = Option<f64>))]
+    pub related_tag_id: Option<u64>,
     /// Ordering rank of this relationship, ascending from 1.
-    #[cfg_attr(feature = "specta", specta(type = f64))]
-    pub rank: i64,
+    #[serde(default)]
+    #[cfg_attr(feature = "specta", specta(type = Option<f64>))]
+    pub rank: Option<i64>,
 }
 
 /// Sports metadata
