@@ -29,7 +29,10 @@ impl GetLeaderboard {
         self
     }
 
-    /// Set the aggregation time period (default: ALL)
+    /// Set the aggregation time period (default: DAY).
+    ///
+    /// Verified live on 2026-07-25: omitting the parameter returns the same
+    /// rankings as `timePeriod=DAY`, not `ALL`.
     pub fn time_period(mut self, period: TimePeriod) -> Self {
         self.request = self.request.query("timePeriod", period);
         self
@@ -83,6 +86,8 @@ pub enum LeaderboardCategory {
     Politics,
     /// Sports category
     Sports,
+    /// Esports category
+    Esports,
     /// Crypto category
     Crypto,
     /// Culture category
@@ -99,12 +104,33 @@ pub enum LeaderboardCategory {
     Finance,
 }
 
+impl LeaderboardCategory {
+    /// Every category the endpoint accepts, in upstream's documented order.
+    ///
+    /// `GET /v1/leaderboard` rejects anything outside this set with HTTP 400
+    /// `{"error":"invalid category parameter"}`.
+    pub const ALL: [Self; 11] = [
+        Self::Overall,
+        Self::Politics,
+        Self::Sports,
+        Self::Esports,
+        Self::Crypto,
+        Self::Culture,
+        Self::Mentions,
+        Self::Weather,
+        Self::Economics,
+        Self::Tech,
+        Self::Finance,
+    ];
+}
+
 impl std::fmt::Display for LeaderboardCategory {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
             Self::Overall => write!(f, "OVERALL"),
             Self::Politics => write!(f, "POLITICS"),
             Self::Sports => write!(f, "SPORTS"),
+            Self::Esports => write!(f, "ESPORTS"),
             Self::Crypto => write!(f, "CRYPTO"),
             Self::Culture => write!(f, "CULTURE"),
             Self::Mentions => write!(f, "MENTIONS"),
@@ -185,19 +211,10 @@ mod tests {
 
     #[test]
     fn leaderboard_category_display_matches_serde() {
-        let variants = [
-            LeaderboardCategory::Overall,
-            LeaderboardCategory::Politics,
-            LeaderboardCategory::Sports,
-            LeaderboardCategory::Crypto,
-            LeaderboardCategory::Culture,
-            LeaderboardCategory::Mentions,
-            LeaderboardCategory::Weather,
-            LeaderboardCategory::Economics,
-            LeaderboardCategory::Tech,
-            LeaderboardCategory::Finance,
-        ];
-        for variant in variants {
+        // Drives off ALL rather than a hand-copied list: the hand-copied list
+        // silently omitted ESPORTS and kept passing while the variant was
+        // missing entirely.
+        for variant in LeaderboardCategory::ALL {
             let serialized = serde_json::to_value(variant).unwrap();
             let display = variant.to_string();
             assert_eq!(
@@ -222,6 +239,56 @@ mod tests {
                 variant
             );
         }
+    }
+
+    /// Every value `GET /v1/leaderboard?category=` accepts, enumerated live on
+    /// 2026-07-25 by probing each candidate. The endpoint validates strictly —
+    /// an unknown value returns HTTP 400 `{"error":"invalid category parameter"}`
+    /// — so this list is exhaustive rather than merely observed. GEOPOLITICS,
+    /// SCIENCE, BUSINESS, WORLD, ELECTIONS and POP-CULTURE were all rejected.
+    const UPSTREAM_CATEGORIES: [&str; 11] = [
+        "OVERALL",
+        "POLITICS",
+        "SPORTS",
+        "ESPORTS",
+        "CRYPTO",
+        "CULTURE",
+        "MENTIONS",
+        "WEATHER",
+        "ECONOMICS",
+        "TECH",
+        "FINANCE",
+    ];
+
+    #[test]
+    fn category_covers_every_value_upstream_accepts() {
+        for name in UPSTREAM_CATEGORIES {
+            let parsed: LeaderboardCategory = serde_json::from_str(&format!("\"{name}\""))
+                .unwrap_or_else(|e| panic!("upstream accepts {name} but the enum rejects it: {e}"));
+            assert_eq!(
+                parsed.to_string(),
+                name,
+                "{name} must round-trip through Display"
+            );
+        }
+    }
+
+    #[test]
+    fn category_has_no_variant_upstream_rejects() {
+        // The converse guard: sending a variant the venue 400s on would be a
+        // runtime error the type system implies is impossible.
+        for variant in LeaderboardCategory::ALL {
+            let rendered = variant.to_string();
+            assert!(
+                UPSTREAM_CATEGORIES.contains(&rendered.as_str()),
+                "{rendered} is not a category upstream accepts"
+            );
+        }
+        assert_eq!(
+            LeaderboardCategory::ALL.len(),
+            UPSTREAM_CATEGORIES.len(),
+            "ALL and the upstream list have drifted apart"
+        );
     }
 
     #[test]

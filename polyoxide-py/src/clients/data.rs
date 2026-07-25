@@ -65,10 +65,12 @@ fn parse_leaderboard_category(
     s: &str,
 ) -> PyResult<polyoxide_data::api::leaderboard::LeaderboardCategory> {
     use polyoxide_data::api::leaderboard::LeaderboardCategory;
+    // Keep in step with `LeaderboardCategory::ALL`.
     parse_enum!(s, LeaderboardCategory,
         Overall => "OVERALL", Politics => "POLITICS", Sports => "SPORTS",
-        Crypto => "CRYPTO", Culture => "CULTURE", Mentions => "MENTIONS",
-        Weather => "WEATHER", Economics => "ECONOMICS", Tech => "TECH", Finance => "FINANCE",
+        Esports => "ESPORTS", Crypto => "CRYPTO", Culture => "CULTURE",
+        Mentions => "MENTIONS", Weather => "WEATHER", Economics => "ECONOMICS",
+        Tech => "TECH", Finance => "FINANCE",
     )
 }
 
