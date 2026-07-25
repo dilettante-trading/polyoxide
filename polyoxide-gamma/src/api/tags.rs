@@ -1,6 +1,9 @@
 use polyoxide_core::{HttpClient, QueryBuilder, Request};
 
-use crate::{error::GammaError, types::Tag};
+use crate::{
+    error::GammaError,
+    types::{RelatedTag, Tag},
+};
 
 /// Tags namespace for tag-related operations
 #[derive(Clone)]
@@ -32,7 +35,10 @@ impl Tags {
         )
     }
 
-    /// Get related tags by tag ID
+    /// Get the tag-relationship rows for a tag, by tag ID.
+    ///
+    /// Returns [`RelatedTag`] edges, not [`Tag`] values — see
+    /// [`get_related_detailed`](Self::get_related_detailed) for the tags themselves.
     pub fn get_related(&self, id: impl Into<String>) -> RelatedTags {
         RelatedTags {
             request: Request::new(
@@ -42,7 +48,11 @@ impl Tags {
         }
     }
 
-    /// Get related tags by tag slug
+    /// Get the tag-relationship rows for a tag, by tag slug.
+    ///
+    /// Returns [`RelatedTag`] edges, not [`Tag`] values — see
+    /// [`get_related_detailed_by_slug`](Self::get_related_detailed_by_slug) for
+    /// the tags themselves.
     pub fn get_related_by_slug(&self, slug: impl Into<String>) -> RelatedTags {
         RelatedTags {
             request: Request::new(
@@ -81,9 +91,9 @@ impl Tags {
     }
 }
 
-/// Request builder for related tags with optional filters
+/// Request builder for tag-relationship rows with optional filters
 pub struct RelatedTags {
-    request: Request<Vec<Tag>, GammaError>,
+    request: Request<Vec<RelatedTag>, GammaError>,
 }
 
 impl RelatedTags {
@@ -100,7 +110,7 @@ impl RelatedTags {
     }
 
     /// Execute the request
-    pub async fn send(self) -> Result<Vec<Tag>, GammaError> {
+    pub async fn send(self) -> Result<Vec<RelatedTag>, GammaError> {
         self.request.send().await
     }
 }
@@ -155,10 +165,43 @@ impl ListTags {
 
 #[cfg(test)]
 mod tests {
+    use super::*;
     use crate::Gamma;
 
     fn gamma() -> Gamma {
         Gamma::new().unwrap()
+    }
+
+    /// Golden vector captured live on 2026-07-25 from
+    /// `GET https://gamma-api.polymarket.com/tags/slug/politics/related-tags`.
+    /// The by-ID route (`/tags/2/related-tags`) returns byte-identical rows.
+    const LIVE_RELATED_TAGS: &str = r#"[
+        {"id":"36304","tagID":2,"relatedTagID":126,"rank":1},
+        {"id":"36305","tagID":2,"relatedTagID":104776,"rank":2},
+        {"id":"36306","tagID":2,"relatedTagID":102289,"rank":3}
+    ]"#;
+
+    #[test]
+    fn related_tags_deserialize_as_relationship_rows() {
+        let rows: Vec<RelatedTag> = serde_json::from_str(LIVE_RELATED_TAGS).unwrap();
+        assert_eq!(rows.len(), 3);
+        assert_eq!(rows[0].id, "36304");
+        assert_eq!(rows[0].tag_id, 2);
+        assert_eq!(rows[0].related_tag_id, 126);
+        assert_eq!(rows[0].rank, 1);
+        assert_eq!(rows[2].related_tag_id, 102289);
+    }
+
+    #[test]
+    fn related_tags_payload_is_not_a_tag_payload() {
+        // Pins *why* this was retyped: the venue's relationship rows carry no
+        // slug or label, so the previous `Vec<Tag>` typing could never parse a
+        // non-empty response. Without this the regression is invisible — every
+        // tag with zero relations returns `[]`, which parses fine either way.
+        assert!(
+            serde_json::from_str::<Vec<crate::types::Tag>>(LIVE_RELATED_TAGS).is_err(),
+            "relationship rows must not be mistaken for Tag objects"
+        );
     }
 
     #[test]

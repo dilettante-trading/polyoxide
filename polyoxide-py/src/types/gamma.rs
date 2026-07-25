@@ -86,6 +86,16 @@ py_type!(
 );
 
 py_type!(
+    PyRelatedTag,
+    "RelatedTag",
+    polyoxide_gamma::types::RelatedTag,
+    id,
+    tag_id,
+    related_tag_id,
+    rank,
+);
+
+py_type!(
     PySportMetadata,
     "SportMetadata",
     polyoxide_gamma::types::SportMetadata,
@@ -214,6 +224,7 @@ pub fn register(m: &pyo3::Bound<'_, pyo3::types::PyModule>) -> pyo3::PyResult<()
     m.add_class::<PySeriesInfo>()?;
     m.add_class::<PySeriesData>()?;
     m.add_class::<PyTag>()?;
+    m.add_class::<PyRelatedTag>()?;
     m.add_class::<PySportMetadata>()?;
     m.add_class::<PyTeam>()?;
     m.add_class::<PyComment>()?;

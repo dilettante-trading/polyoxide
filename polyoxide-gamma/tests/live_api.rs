@@ -472,23 +472,58 @@ async fn live_get_tag_by_slug() {
 #[ignore]
 async fn live_get_related_tags() {
     let gamma = client();
-    let tags = gamma
-        .tags()
-        .list()
-        .limit(10)
-        .send()
-        .await
-        .expect("list tags to discover id");
-    let first = tags.first().expect("need at least one tag");
-    let id = first.id.clone();
 
-    // Related tags may be empty for some tags, but the call should succeed.
-    let _related = gamma
+    // Use a tag known to have relations. The previous version of this test took
+    // whatever `list()` returned first, which is almost always a long-tail tag
+    // with zero relations — an empty array parses as *any* element type, so the
+    // test passed for years while the response was typed as `Vec<Tag>` instead
+    // of `Vec<RelatedTag>`. Asserting on a populated response is the point.
+    let related = gamma
         .tags()
-        .get_related(&id)
+        .get_related_by_slug("politics")
         .send()
         .await
         .expect("get related tags");
+
+    assert!(
+        !related.is_empty(),
+        "expected the 'politics' tag to have relations; if upstream changed, \
+         pick another well-connected tag rather than relaxing this assertion"
+    );
+
+    for row in &related {
+        assert!(!row.id.is_empty(), "relationship row needs its own id");
+        assert!(
+            row.related_tag_id > 0,
+            "row must name the tag it relates to"
+        );
+    }
+
+    // The by-ID route must return the same rows as the by-slug route.
+    let by_id = gamma
+        .tags()
+        .get_related(related[0].tag_id.to_string())
+        .send()
+        .await
+        .expect("get related tags by id");
+    assert_eq!(
+        by_id.len(),
+        related.len(),
+        "by-id and by-slug routes disagree"
+    );
+
+    // `/related-tags/tags` is the sibling that really does return tags; the two
+    // shapes must not be conflated again.
+    let detailed = gamma
+        .tags()
+        .get_related_detailed_by_slug("politics")
+        .send()
+        .await
+        .expect("get detailed related tags");
+    assert!(
+        detailed.iter().all(|t| !t.slug.is_empty()),
+        "/related-tags/tags must return Tag objects with slugs"
+    );
 }
 
 // ── Series ──────────────────────────────────────────────────────

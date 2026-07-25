@@ -281,6 +281,25 @@ class SeriesData:
     def __repr__(self) -> str: ...
     def __str__(self) -> str: ...
 
+class RelatedTag:
+    """An edge in the tag graph, as returned by the related-tags endpoints.
+
+    This is not a Tag: it names the two tags a relationship connects and its
+    ordering rank, and carries no slug or label. Resolve related_tag_id via
+    tags.get() to obtain the tag itself.
+    """
+    @property
+    def id(self) -> Any: ...
+    @property
+    def tag_id(self) -> Any: ...
+    @property
+    def related_tag_id(self) -> Any: ...
+    @property
+    def rank(self) -> Any: ...
+    def to_dict(self) -> dict[str, Any]: ...
+    def __repr__(self) -> str: ...
+    def __str__(self) -> str: ...
+
 class Tag:
     """A tag used to categorize markets and events."""
     @property
@@ -1283,8 +1302,11 @@ class GammaTags:
         *,
         omit_empty: bool | None = None,
         status: str | None = None,
-    ) -> Coroutine[Any, Any, list[Tag]]:
-        """Get related tags by ID."""
+    ) -> Coroutine[Any, Any, list[RelatedTag]]:
+        """Get the tag-relationship rows for a tag, by ID.
+
+        Returns relationship edges, not tags. Use get_related_detailed for tags.
+        """
         ...
     def get_related_by_slug(
         self,
@@ -1292,8 +1314,12 @@ class GammaTags:
         *,
         omit_empty: bool | None = None,
         status: str | None = None,
-    ) -> Coroutine[Any, Any, list[Tag]]:
-        """Get related tags by slug."""
+    ) -> Coroutine[Any, Any, list[RelatedTag]]:
+        """Get the tag-relationship rows for a tag, by slug.
+
+        Returns relationship edges, not tags. Use get_related_detailed_by_slug
+        for tags.
+        """
         ...
 
 class GammaTagsSync:
@@ -1322,8 +1348,11 @@ class GammaTagsSync:
         *,
         omit_empty: bool | None = None,
         status: str | None = None,
-    ) -> list[Tag]:
-        """Get related tags by ID."""
+    ) -> list[RelatedTag]:
+        """Get the tag-relationship rows for a tag, by ID.
+
+        Returns relationship edges, not tags. Use get_related_detailed for tags.
+        """
         ...
     def get_related_by_slug(
         self,
@@ -1331,8 +1360,12 @@ class GammaTagsSync:
         *,
         omit_empty: bool | None = None,
         status: str | None = None,
-    ) -> list[Tag]:
-        """Get related tags by slug."""
+    ) -> list[RelatedTag]:
+        """Get the tag-relationship rows for a tag, by slug.
+
+        Returns relationship edges, not tags. Use get_related_detailed_by_slug
+        for tags.
+        """
         ...
 
 class GammaComments:

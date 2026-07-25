@@ -82,12 +82,13 @@ impl TagsCommand {
                 println!("{}", serde_json::to_string_pretty(&tag)?);
             }
             Self::Related { id } => {
-                let tags = gamma.tags().get_related(&id).send().await?;
-                println!("{}", serde_json::to_string_pretty(&tags)?);
+                // Relationship rows, not tags — see `RelatedTag`.
+                let relations = gamma.tags().get_related(&id).send().await?;
+                println!("{}", serde_json::to_string_pretty(&relations)?);
             }
             Self::RelatedBySlug { slug } => {
-                let tags = gamma.tags().get_related_by_slug(&slug).send().await?;
-                println!("{}", serde_json::to_string_pretty(&tags)?);
+                let relations = gamma.tags().get_related_by_slug(&slug).send().await?;
+                println!("{}", serde_json::to_string_pretty(&relations)?);
             }
         }
         Ok(())

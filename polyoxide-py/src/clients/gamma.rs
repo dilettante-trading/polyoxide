@@ -372,7 +372,11 @@ client_ns!(
         ))
     },
     #[pyo3(signature = (id, *, omit_empty=None, status=None))]
-    fn get_related(id: String, omit_empty: Option<bool>, status: Option<String>) -> Vec<PyTag> {
+    fn get_related(
+        id: String,
+        omit_empty: Option<bool>,
+        status: Option<String>,
+    ) -> Vec<PyRelatedTag> {
         let mut req = client.tags().get_related(id);
         if let Some(v) = omit_empty {
             req = req.omit_empty(v);
@@ -381,14 +385,17 @@ client_ns!(
             req = req.status(v);
         }
         let result = req.send().await.map_err(gamma_err)?;
-        Ok(result.into_iter().map(PyTag::from).collect::<Vec<_>>())
+        Ok(result
+            .into_iter()
+            .map(PyRelatedTag::from)
+            .collect::<Vec<_>>())
     },
     #[pyo3(signature = (slug, *, omit_empty=None, status=None))]
     fn get_related_by_slug(
         slug: String,
         omit_empty: Option<bool>,
         status: Option<String>,
-    ) -> Vec<PyTag> {
+    ) -> Vec<PyRelatedTag> {
         let mut req = client.tags().get_related_by_slug(slug);
         if let Some(v) = omit_empty {
             req = req.omit_empty(v);
@@ -397,7 +404,10 @@ client_ns!(
             req = req.status(v);
         }
         let result = req.send().await.map_err(gamma_err)?;
-        Ok(result.into_iter().map(PyTag::from).collect::<Vec<_>>())
+        Ok(result
+            .into_iter()
+            .map(PyRelatedTag::from)
+            .collect::<Vec<_>>())
     }
 );
 
