@@ -138,7 +138,8 @@ impl<T: DeserializeOwned, E: RequestError> Request<T, E> {
             {
                 attempt += 1;
                 tracing::warn!(
-                    "Rate limited (429) on {}, retry {} after {}ms",
+                    "Retriable status {} on {}, retry {} after {}ms",
+                    status,
                     path,
                     attempt,
                     backoff.as_millis()

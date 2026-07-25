@@ -998,6 +998,67 @@ async fn retry_429_with_retry_after_header() {
 }
 
 #[tokio::test]
+async fn retry_425_too_early_is_retried_then_succeeds() {
+    // 425 is Polymarket's matching engine restarting. Upstream documents it as
+    // "retry with exponential backoff", and it carries no body — nothing was
+    // processed — so resending is safe even for a write.
+    let mut server = Server::new_async().await;
+
+    // Two 425s, then the real response. mockito serves mocks in creation order and
+    // retires each once its `expect` count is met.
+    let early = server
+        .mock("GET", "/time")
+        .with_status(425)
+        .expect(2)
+        .create_async()
+        .await;
+    let ok = server
+        .mock("GET", "/time")
+        .with_status(200)
+        .with_header("content-type", "application/json")
+        .with_body("1700000000")
+        .expect(1)
+        .create_async()
+        .await;
+
+    let clob = test_public_clob_fast_retry(&server);
+    let time = clob
+        .health()
+        .server_time()
+        .send()
+        .await
+        .expect("425 should be retried through to the eventual success");
+    assert_eq!(time.time, 1700000000);
+
+    early.assert_async().await;
+    ok.assert_async().await;
+}
+
+#[tokio::test]
+async fn retry_425_exhausted_returns_too_early_error() {
+    let mut server = Server::new_async().await;
+
+    // 425 forever: max_retries=2 on the fast-retry client, so 3 total attempts.
+    let mock = server
+        .mock("GET", "/time")
+        .with_status(425)
+        .expect(3)
+        .create_async()
+        .await;
+
+    let clob = test_public_clob_fast_retry(&server);
+    let err = clob.health().server_time().send().await.unwrap_err();
+
+    match &err {
+        ClobError::Api(polyoxide_core::ApiError::Api { status, .. }) => assert_eq!(*status, 425),
+        other => panic!("Expected Api error with status 425, got: {other:?}"),
+    }
+    // Still retriable once surfaced — the caller may back off further and retry.
+    assert!(err.is_retriable());
+    mock.assert_async().await;
+}
+
+#[tokio::test]
 async fn server_500_not_retried() {
     let mut server = Server::new_async().await;
 
