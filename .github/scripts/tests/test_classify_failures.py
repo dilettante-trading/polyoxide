@@ -52,10 +52,35 @@ def test_classify_auth_gated() -> None:
     assert classify(text) == Verdict.AUTH_GATED
 
 
+def test_classify_auth_gated_private_key_variant() -> None:
+    """live_ws.rs derives L2 credentials from the private key alone, so its
+    auth panic names one concrete var instead of the `POLYMARKET_*` glob."""
+    text = (
+        "thread 'live_user_subscription_accepts_omitted_markets' panicked at "
+        "polyoxide-clob/tests/live_ws.rs:111:10:\n"
+        "POLYMARKET_PRIVATE_KEY required; the L2 triple is derived from it"
+    )
+    assert classify(text) == Verdict.AUTH_GATED
+
+
 def test_classify_auth_gated_takes_precedence_over_transient() -> None:
     """If both patterns match, AUTH_GATED wins (defensive ordering)."""
     text = "POLYMARKET_* env vars required for authenticated tests: HTTP 503"
     assert classify(text) == Verdict.AUTH_GATED
+
+
+def test_classify_environmental_sports_timeout() -> None:
+    """live_sports_channel_yields_frames documents that it can legitimately
+    time out when no matches are live anywhere; that is a fact about the
+    world, not the SDK, so it must not be reported as a real failure."""
+    text = (
+        "thread 'live_sports_channel_yields_frames' panicked at "
+        "polyoxide-clob/tests/live_ws.rs:35:10:\n"
+        "sports channel should push a frame within the window; if no matches "
+        "are live anywhere this can legitimately time out, so re-run before "
+        "concluding a defect: Elapsed(())"
+    )
+    assert classify(text) == Verdict.ENVIRONMENTAL
 
 
 def test_classify_empty_string_is_real() -> None:
@@ -71,12 +96,13 @@ def test_classify_unrelated_5xx_substring_does_not_match() -> None:
 def test_parse_mixed_fixture() -> None:
     outcomes = parse_nextest_json(FIXTURES / "nextest-mixed.json")
     by_name = {o.name: o for o in outcomes}
-    assert by_name["live_list_markets"].verdict == Verdict.PASS
-    assert by_name["live_get_market"].verdict == Verdict.REAL
-    assert by_name["live_search_markets"].verdict == Verdict.TRANSIENT
-    assert by_name["live_create_order"].verdict == Verdict.AUTH_GATED
-    assert by_name["live_get_order"].verdict == Verdict.TRANSIENT
-    assert len(outcomes) == 5
+    assert by_name["polyoxide-gamma::live_api$live_list_markets"].verdict == Verdict.PASS
+    assert by_name["polyoxide-gamma::live_api$live_get_market"].verdict == Verdict.REAL
+    assert by_name["polyoxide-gamma::live_api$live_search_markets"].verdict == Verdict.TRANSIENT
+    assert by_name["polyoxide-clob::live_api$live_create_order"].verdict == Verdict.AUTH_GATED
+    assert by_name["polyoxide-clob::live_api$live_get_order"].verdict == Verdict.TRANSIENT
+    assert by_name["polyoxide-clob::live_ws$live_sports_frames"].verdict == Verdict.ENVIRONMENTAL
+    assert len(outcomes) == 6
 
 
 def test_cli_classify_writes_outputs(tmp_path: Path) -> None:
@@ -97,14 +123,59 @@ def test_cli_classify_writes_outputs(tmp_path: Path) -> None:
     retry = (out_dir / "retry-tests.txt").read_text().splitlines()
     real = (out_dir / "real-failures.txt").read_text().splitlines()
     auth = (out_dir / "auth-gated.txt").read_text().splitlines()
+    environmental = (out_dir / "environmental.txt").read_text().splitlines()
     report = (out_dir / "report.md").read_text()
 
-    # mixed.json has: 1 pass, 1 real, 1 transient (429), 1 auth-gated, 1 transient (DNS)
-    assert sorted(retry) == sorted(["live_search_markets", "live_get_order"])
-    assert real == ["live_get_market"]
-    assert auth == ["live_create_order"]
+    # mixed.json has: 1 pass, 1 real, 1 transient (429), 1 auth-gated,
+    # 1 transient (DNS), 1 environmental (sports timeout)
+    assert sorted(retry) == sorted([
+        "polyoxide-gamma::live_api$live_search_markets",
+        "polyoxide-clob::live_api$live_get_order",
+    ])
+    assert real == ["polyoxide-gamma::live_api$live_get_market"]
+    assert auth == ["polyoxide-clob::live_api$live_create_order"]
+    assert environmental == ["polyoxide-clob::live_ws$live_sports_frames"]
     assert "live_get_market" in report
     assert "## Real failures" in report
+
+
+def test_cli_classify_writes_retry_filterset(tmp_path: Path) -> None:
+    """nextest's libtest-json names are `crate::binary$test`, which the
+    `test(=...)` filterset predicate cannot match. The classifier must emit a
+    ready-made filterset that pins both the binary and the bare test name."""
+    out_dir = tmp_path / "out"
+    out_dir.mkdir()
+    subprocess.run(
+        [
+            sys.executable, str(SCRIPT), "classify",
+            "--input", str(FIXTURES / "nextest-mixed.json"),
+            "--output-dir", str(out_dir),
+        ],
+        capture_output=True,
+        text=True,
+        check=True,
+    )
+    filterset = (out_dir / "retry-filter.txt").read_text().strip()
+    assert filterset == (
+        "(binary_id(=polyoxide-gamma::live_api) & test(=live_search_markets))"
+        " | (binary_id(=polyoxide-clob::live_api) & test(=live_get_order))"
+    )
+
+
+def test_cli_classify_writes_empty_filterset_when_nothing_transient(tmp_path: Path) -> None:
+    out_dir = tmp_path / "out"
+    out_dir.mkdir()
+    subprocess.run(
+        [
+            sys.executable, str(SCRIPT), "classify",
+            "--input", str(FIXTURES / "nextest-real-failure.json"),
+            "--output-dir", str(out_dir),
+        ],
+        capture_output=True,
+        text=True,
+        check=True,
+    )
+    assert (out_dir / "retry-filter.txt").read_text() == ""
 
 
 def test_cli_merge_promotes_persistent_transients_to_real(tmp_path: Path) -> None:
@@ -115,10 +186,10 @@ def test_cli_merge_promotes_persistent_transients_to_real(tmp_path: Path) -> Non
     retry_file = tmp_path / "retry.json"
     retry_file.write_text(
         '{"type":"suite","event":"started","test_count":2}\n'
-        '{"type":"test","event":"started","name":"live_search_markets"}\n'
-        '{"type":"test","name":"live_search_markets","event":"failed","stdout":"thread panic: HTTP 429"}\n'
-        '{"type":"test","event":"started","name":"live_get_order"}\n'
-        '{"type":"test","name":"live_get_order","event":"ok"}\n'
+        '{"type":"test","event":"started","name":"polyoxide-gamma::live_api$live_search_markets"}\n'
+        '{"type":"test","name":"polyoxide-gamma::live_api$live_search_markets","event":"failed","stdout":"thread panic: HTTP 429"}\n'
+        '{"type":"test","event":"started","name":"polyoxide-clob::live_api$live_get_order"}\n'
+        '{"type":"test","name":"polyoxide-clob::live_api$live_get_order","event":"ok"}\n'
         '{"type":"suite","event":"failed","passed":1,"failed":1,"ignored":0,"measured":0,"filtered_out":0,"exec_time":0.5}\n'
     )
 
@@ -141,5 +212,11 @@ def test_cli_merge_promotes_persistent_transients_to_real(tmp_path: Path) -> Non
     # live_get_market was REAL on first pass — stays REAL.
     # live_search_markets was TRANSIENT on first pass, still failing on retry — promoted to REAL.
     # live_get_order was TRANSIENT on first pass, passed on retry — drops to PASS.
-    assert sorted(real) == sorted(["live_get_market", "live_search_markets"])
+    # live_sports_frames was ENVIRONMENTAL on first pass — logged, never REAL.
+    assert sorted(real) == sorted([
+        "polyoxide-gamma::live_api$live_get_market",
+        "polyoxide-gamma::live_api$live_search_markets",
+    ])
     assert (out_dir / "retry-tests.txt").read_text() == ""
+    environmental = (out_dir / "environmental.txt").read_text().splitlines()
+    assert environmental == ["polyoxide-clob::live_ws$live_sports_frames"]

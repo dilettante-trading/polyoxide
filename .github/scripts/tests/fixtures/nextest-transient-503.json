@@ -1,4 +1,4 @@
 { "type": "suite", "event": "started", "test_count": 1 }
-{ "type": "test", "event": "started", "name": "live_get_market" }
-{ "type": "test", "name": "live_get_market", "event": "failed", "stdout": "thread 'live_get_market' panicked at polyoxide-gamma/tests/live_api.rs:60:5:\ngamma get market: ApiError(Http { status: 503, message: \"Service Unavailable\" })\n" }
+{ "type": "test", "event": "started", "name": "polyoxide-gamma::live_api$live_get_market" }
+{ "type": "test", "name": "polyoxide-gamma::live_api$live_get_market", "event": "failed", "stdout": "thread 'live_get_market' panicked at polyoxide-gamma/tests/live_api.rs:60:5:\ngamma get market: ApiError(Http { status: 503, message: \"Service Unavailable\" })\n" }
 { "type": "suite", "event": "failed", "passed": 0, "failed": 1, "ignored": 0, "measured": 0, "filtered_out": 0, "exec_time": 0.4 }

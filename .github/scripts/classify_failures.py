@@ -15,11 +15,20 @@ from pathlib import Path
 class Verdict(str, Enum):
     PASS = "pass"
     AUTH_GATED = "auth-gated"
+    ENVIRONMENTAL = "environmental"
     TRANSIENT = "transient"
     REAL = "real"
 
 
-AUTH_GATED_RE = re.compile(r"POLYMARKET_\* env vars required", re.IGNORECASE)
+# Two shapes in the tree: live_api's `POLYMARKET_* env vars required for
+# authenticated tests` and live_ws's `POLYMARKET_PRIVATE_KEY required; ...`.
+AUTH_GATED_RE = re.compile(r"POLYMARKET_(?:\*|[A-Z_]+) (?:env vars )?required", re.IGNORECASE)
+
+# Tests that depend on the state of the world (e.g. the sports channel with no
+# match live anywhere) announce it in their panic message. Retrying within the
+# same run won't change the world, and filing an issue would be a false
+# positive — so these are logged and skipped, like auth-gated tests.
+ENVIRONMENTAL_RE = re.compile(r"legitimately time out", re.IGNORECASE)
 
 TRANSIENT_RES: list[re.Pattern[str]] = [
     re.compile(r"\bHTTP 429\b", re.IGNORECASE),
@@ -48,6 +57,8 @@ def classify(failure_output: str) -> Verdict:
     """
     if AUTH_GATED_RE.search(failure_output):
         return Verdict.AUTH_GATED
+    if ENVIRONMENTAL_RE.search(failure_output):
+        return Verdict.ENVIRONMENTAL
     for pat in TRANSIENT_RES:
         if pat.search(failure_output):
             return Verdict.TRANSIENT
@@ -87,6 +98,23 @@ def parse_nextest_json(path: Path) -> list[TestOutcome]:
     return outcomes
 
 
+def retry_filterset(names: list[str]) -> str:
+    """Build a nextest filterset expression selecting exactly `names`.
+
+    libtest-json reports tests as `crate::binary$test`; `test(=...)` matches
+    the bare test name only, so each clause pins the binary too. A name
+    without a `$` (defensive) falls back to a bare `test(=...)` clause.
+    """
+    clauses: list[str] = []
+    for name in names:
+        binary_id, sep, test = name.partition("$")
+        if sep:
+            clauses.append(f"(binary_id(={binary_id}) & test(={test}))")
+        else:
+            clauses.append(f"test(={name})")
+    return " | ".join(clauses)
+
+
 def _write_lines(path: Path, names: list[str]) -> None:
     """Write one name per line; trailing newline only if non-empty."""
     if names:
@@ -116,9 +144,13 @@ def _emit_outputs(outcomes: list[TestOutcome], output_dir: Path) -> None:
     retry = [o.name for o in outcomes if o.verdict == Verdict.TRANSIENT]
     real = [o for o in outcomes if o.verdict == Verdict.REAL]
     auth = [o.name for o in outcomes if o.verdict == Verdict.AUTH_GATED]
+    environmental = [o.name for o in outcomes if o.verdict == Verdict.ENVIRONMENTAL]
     _write_lines(output_dir / "retry-tests.txt", retry)
+    filterset = retry_filterset(retry)
+    (output_dir / "retry-filter.txt").write_text(filterset + "\n" if filterset else "")
     _write_lines(output_dir / "real-failures.txt", [o.name for o in real])
     _write_lines(output_dir / "auth-gated.txt", auth)
+    _write_lines(output_dir / "environmental.txt", environmental)
     (output_dir / "report.md").write_text(_render_report(real))
 
 
@@ -137,7 +169,7 @@ def _cmd_merge(args: argparse.Namespace) -> int:
 
     merged: list[TestOutcome] = []
     for o in first:
-        if o.verdict in (Verdict.PASS, Verdict.AUTH_GATED, Verdict.REAL):
+        if o.verdict in (Verdict.PASS, Verdict.AUTH_GATED, Verdict.ENVIRONMENTAL, Verdict.REAL):
             merged.append(o)
         elif o.verdict == Verdict.TRANSIENT:
             r = by_name_retry.get(o.name)
@@ -152,9 +184,11 @@ def _cmd_merge(args: argparse.Namespace) -> int:
     output_dir.mkdir(parents=True, exist_ok=True)
     real = [o for o in merged if o.verdict == Verdict.REAL]
     auth = [o.name for o in merged if o.verdict == Verdict.AUTH_GATED]
+    environmental = [o.name for o in merged if o.verdict == Verdict.ENVIRONMENTAL]
     _write_lines(output_dir / "retry-tests.txt", [])
     _write_lines(output_dir / "real-failures.txt", [o.name for o in real])
     _write_lines(output_dir / "auth-gated.txt", auth)
+    _write_lines(output_dir / "environmental.txt", environmental)
     (output_dir / "report.md").write_text(_render_report(real))
     return 0
 
