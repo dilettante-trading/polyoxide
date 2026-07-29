@@ -142,6 +142,18 @@ Read-only crates (gamma, data) use `Gamma::builder().build()` / `DataApi::builde
 
 Mock HTTP tests use `mockito` (workspace dev-dependency). Each crate with mock tests has a `tests/mock_api.rs` file with helper functions like `test_public_clob(server)` that point clients at the mock server URL.
 
+## Nightly API Smoketest
+
+Two GitHub Actions workflows run at `0 6 * * *` UTC and on `workflow_dispatch`:
+
+- `.github/workflows/nightly-behavioral.yml` — runs `--ignored` live tests across all four crates' no-auth surfaces. Failures are classified by `.github/scripts/classify_failures.py` into:
+  - **auth-gated** (matches the `POLYMARKET_* env vars required` panic) — silently skipped
+  - **transient** (HTTP 429/5xx, connection refused, timeouts, DNS) — retried up to 2× with `cargo nextest --retries 2`
+  - **real** (everything else) — files or updates a tracking issue with the `nightly-behavioral` label
+- `.github/workflows/nightly-schema.yml` — fetches each upstream OpenAPI YAML and compares against `docs/specs/<crate>/openapi.yaml`. On drift, opens an auto-PR (deterministic branch `nightly-schema-drift/<crate>`) and a tracking issue with the `schema-drift` label. The PR commits Polymarket's raw upstream bytes; the canonical-form diff is in the PR body for review.
+
+To enable CLOB/relay's auth-gated tests (currently ~25 + 8 tests), set the `POLYMARKET_*` and `BUILDER_*` repo secrets and remove the `POLYMARKET_\* env vars required` regex from `AUTH_GATED_RE` in `.github/scripts/classify_failures.py`. Auth tests will then start contributing real signal.
+
 ## Module Organization
 
 Most crates follow a consistent layout:

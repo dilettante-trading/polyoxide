@@ -1,0 +1,158 @@
+name: Nightly schema drift
+
+on:
+  schedule:
+    - cron: "0 6 * * *"
+  workflow_dispatch: {}
+
+permissions:
+  contents: write
+  pull-requests: write
+  issues: write
+
+concurrency:
+  group: nightly-schema
+  cancel-in-progress: false
+
+jobs:
+  check:
+    name: Check ${{ matrix.crate }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - { crate: clob,  upstream: clob-openapi.yaml }
+          - { crate: gamma, upstream: gamma-openapi.yaml }
+          - { crate: data,  upstream: data-openapi.yaml }
+          - { crate: relay, upstream: relayer-openapi.yaml }
+    env:
+      UPSTREAM_BASE: https://docs.polymarket.com/api-spec
+      BRANCH: nightly-schema-drift/${{ matrix.crate }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - uses: astral-sh/setup-uv@v6
+      - run: uv sync
+        working-directory: .github/scripts
+
+      - name: Configure git for bot commits
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+
+      - name: Fetch upstream OpenAPI (with retries)
+        id: fetch
+        run: |
+          UPSTREAM_URL="${UPSTREAM_BASE}/${{ matrix.upstream }}"
+          UPSTREAM_FILE=$(mktemp --suffix=.yaml)
+          echo "url=$UPSTREAM_URL" >> "$GITHUB_OUTPUT"
+          echo "file=$UPSTREAM_FILE" >> "$GITHUB_OUTPUT"
+          # 3 retries, 5s initial backoff, doubling each time.
+          for delay in 0 5 10 20; do
+            sleep "$delay"
+            if curl -fsSL --max-time 30 -o "$UPSTREAM_FILE" "$UPSTREAM_URL"; then
+              echo "fetched=true" >> "$GITHUB_OUTPUT"
+              exit 0
+            fi
+          done
+          echo "fetched=false" >> "$GITHUB_OUTPUT"
+          echo "::warning::Failed to fetch ${UPSTREAM_URL} after retries; skipping drift check for this crate."
+          # Exit success so the matrix entry doesn't count as "infra failure" — we
+          # explicitly choose to skip rather than file false-positive PRs.
+          exit 0
+
+      - name: Detect drift
+        id: drift
+        if: steps.fetch.outputs.fetched == 'true'
+        run: |
+          set +e
+          uv run python ${{ github.workspace }}/.github/scripts/diff_openapi.py check \
+            --crate ${{ matrix.crate }} \
+            --upstream-yaml "${{ steps.fetch.outputs.file }}" \
+            --vendored-yaml ${{ github.workspace }}/docs/specs/${{ matrix.crate }}/openapi.yaml \
+            --upstream-url "${{ steps.fetch.outputs.url }}" \
+            --output-dir ${{ github.workspace }}/artifacts/${{ matrix.crate }} \
+            --apply-on-drift
+          ec=$?
+          set -e
+          if [ "$ec" -eq 0 ]; then
+            echo "drift=false" >> "$GITHUB_OUTPUT"
+          elif [ "$ec" -eq 1 ]; then
+            echo "drift=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "::error::diff_openapi.py exited with $ec — see logs"
+            exit "$ec"
+          fi
+        working-directory: .github/scripts
+
+      - name: Open or update drift PR + issue
+        if: steps.fetch.outputs.fetched == 'true' && steps.drift.outputs.drift == 'true'
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          BRANCH: ${{ env.BRANCH }}
+        run: |
+          ARTIFACT_DIR="${{ github.workspace }}/artifacts/${{ matrix.crate }}"
+
+          # Re-checkout the schema-drift branch (or create it).
+          git fetch origin "${BRANCH}:${BRANCH}" 2>/dev/null || true
+          git checkout -B "${BRANCH}"
+          git add docs/specs/${{ matrix.crate }}/openapi.yaml
+          if git diff --staged --quiet; then
+            echo "No file change to commit (perhaps idempotent re-run); aborting PR ops."
+            exit 0
+          fi
+          git commit -m "chore(specs): sync ${{ matrix.crate }} OpenAPI from upstream"
+          git push --force-with-lease origin "${BRANCH}"
+
+          ISSUE_TITLE="Schema drift: ${{ matrix.crate }}"
+          EXISTING_ISSUE=$(gh issue list --label schema-drift --search "${ISSUE_TITLE} in:title" --state open --json number --jq '.[0].number // empty')
+          if [ -z "$EXISTING_ISSUE" ]; then
+            EXISTING_ISSUE=$(gh issue create --title "${ISSUE_TITLE}" --label schema-drift --body "$(cat ${ARTIFACT_DIR}/summary.md)" | awk -F/ '{print $NF}')
+          else
+            gh issue edit "$EXISTING_ISSUE" --body "$(cat ${ARTIFACT_DIR}/summary.md)"
+          fi
+
+          PR_BODY=$(mktemp)
+          {
+            cat "${ARTIFACT_DIR}/summary.md"
+            echo ""
+            echo "<details><summary>Full canonicalized diff</summary>"
+            echo ""
+            echo '```diff'
+            cat "${ARTIFACT_DIR}/unified-diff.txt"
+            echo '```'
+            echo "</details>"
+            echo ""
+            echo "Closes #${EXISTING_ISSUE}"
+          } > "$PR_BODY"
+
+          EXISTING_PR=$(gh pr list --head "${BRANCH}" --state open --json number --jq '.[0].number // empty')
+          if [ -z "$EXISTING_PR" ]; then
+            gh pr create \
+              --title "chore(specs): ${{ matrix.crate }} drift on $(date -u +%Y-%m-%d)" \
+              --body "$(cat ${PR_BODY})" \
+              --label schema-drift \
+              --head "${BRANCH}" \
+              --base main
+          else
+            gh pr edit "$EXISTING_PR" --body "$(cat ${PR_BODY})"
+          fi
+
+      - name: Close stale drift PR + issue (recovery)
+        if: steps.fetch.outputs.fetched == 'true' && steps.drift.outputs.drift == 'false'
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          BRANCH: ${{ env.BRANCH }}
+        run: |
+          EXISTING_PR=$(gh pr list --head "${BRANCH}" --state open --json number --jq '.[0].number // empty')
+          if [ -n "$EXISTING_PR" ]; then
+            gh pr close "$EXISTING_PR" --comment "Drift no longer present (upstream reverted or vendored already updated)"
+          fi
+          ISSUE_TITLE="Schema drift: ${{ matrix.crate }}"
+          EXISTING_ISSUE=$(gh issue list --label schema-drift --search "${ISSUE_TITLE} in:title" --state open --json number --jq '.[0].number // empty')
+          if [ -n "$EXISTING_ISSUE" ]; then
+            gh issue close "$EXISTING_ISSUE" --comment "Drift recovered $(date -u +%Y-%m-%d)"
+          fi

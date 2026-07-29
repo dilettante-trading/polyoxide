@@ -1,0 +1,4 @@
+{ "type": "suite", "event": "started", "test_count": 1 }
+{ "type": "test", "event": "started", "name": "live_ping" }
+{ "type": "test", "name": "live_ping", "event": "failed", "stdout": "thread 'live_ping' panicked at polyoxide-gamma/tests/live_api.rs:12:5:\nping should succeed: ApiError(Network(\"Connection refused (os error 111)\"))\n" }
+{ "type": "suite", "event": "failed", "passed": 0, "failed": 1, "ignored": 0, "measured": 0, "filtered_out": 0, "exec_time": 0.1 }
