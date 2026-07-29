@@ -1,0 +1,29 @@
+{
+  "asyncapi": "2.6.0",
+  "info": { "title": "Polymarket WebSocket API", "version": "1.0.0" },
+  "channels": {
+    "market": {
+      "subscribe": {
+        "message": { "payload": { "type": "object" } }
+      }
+    },
+    "user": {
+      "subscribe": {
+        "message": {
+          "payload": {
+            "type": "object",
+            "properties": {
+              "event_type": { "type": "string" },
+              "connection_id": { "type": "string" }
+            }
+          }
+        }
+      }
+    },
+    "sports": {
+      "subscribe": {
+        "message": { "payload": { "type": "object" } }
+      }
+    }
+  }
+}

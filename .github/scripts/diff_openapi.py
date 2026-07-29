@@ -20,10 +20,18 @@ class DriftResult:
     endpoints_added: list[str] = field(default_factory=list)
     endpoints_removed: list[str] = field(default_factory=list)
     endpoints_modified: list[str] = field(default_factory=list)
+    channels_added: list[str] = field(default_factory=list)
+    channels_removed: list[str] = field(default_factory=list)
+    channels_modified: list[str] = field(default_factory=list)
 
 
 def detect_drift(old_yaml: str, new_yaml: str) -> DriftResult:
-    """Compare two OpenAPI YAML strings and report endpoint-level changes."""
+    """Compare two spec strings and report surface-level changes.
+
+    OpenAPI documents key their surface on `paths` (with per-method
+    operations); AsyncAPI documents key theirs on `channels`. Both are
+    enumerated so the same check serves REST and WebSocket mirrors.
+    """
     if canonicalize(old_yaml) == canonicalize(new_yaml):
         return DriftResult(has_drift=False)
 
@@ -56,11 +64,23 @@ def detect_drift(old_yaml: str, new_yaml: str) -> DriftResult:
                 if method not in (new_paths[path] or {}):
                     removed.append(f"{method.upper()} {path}")
 
+    old_channels = old_doc.get("channels") or {}
+    new_channels = new_doc.get("channels") or {}
+    ch_added = [name for name in new_channels if name not in old_channels]
+    ch_removed = [name for name in old_channels if name not in new_channels]
+    ch_modified = [
+        name for name, body in new_channels.items()
+        if name in old_channels and old_channels[name] != body
+    ]
+
     return DriftResult(
         has_drift=True,
         endpoints_added=sorted(added),
         endpoints_removed=sorted(removed),
         endpoints_modified=sorted(modified),
+        channels_added=sorted(ch_added),
+        channels_removed=sorted(ch_removed),
+        channels_modified=sorted(ch_modified),
     )
 
 
@@ -75,35 +95,44 @@ def canonicalize(yaml_text: str) -> str:
     return json.dumps(parsed, sort_keys=True, indent=2)
 
 
-def render_summary(result: DriftResult, crate: str, upstream_url: str) -> str:
-    """Render a markdown summary of a DriftResult."""
+def render_summary(
+    result: DriftResult,
+    crate: str,
+    upstream_url: str,
+    vendored_label: str | None = None,
+) -> str:
+    """Render a markdown summary of a DriftResult.
+
+    `vendored_label` names the vendored file in prose; it defaults to the
+    historical OpenAPI layout for the original four crate entries.
+    """
+    if vendored_label is None:
+        vendored_label = f"docs/specs/{crate}/openapi.yaml"
+
     if not result.has_drift:
         return f"No drift detected for `{crate}` against `{upstream_url}`.\n"
 
     lines = [
         f"## Schema drift in `{crate}`",
         "",
-        f"Upstream OpenAPI at <{upstream_url}> differs from vendored `docs/specs/{crate}/openapi.yaml`.",
+        f"Upstream spec at <{upstream_url}> differs from vendored `{vendored_label}`.",
         "",
     ]
-    if result.endpoints_added:
-        lines.append("## Endpoints added")
-        lines.append("")
-        for ep in result.endpoints_added:
-            lines.append(f"- `{ep}`")
-        lines.append("")
-    if result.endpoints_removed:
-        lines.append("## Endpoints removed")
-        lines.append("")
-        for ep in result.endpoints_removed:
-            lines.append(f"- `{ep}`")
-        lines.append("")
-    if result.endpoints_modified:
-        lines.append("## Endpoints modified")
-        lines.append("")
-        for ep in result.endpoints_modified:
-            lines.append(f"- `{ep}`")
-        lines.append("")
+    sections = [
+        ("## Endpoints added", result.endpoints_added),
+        ("## Endpoints removed", result.endpoints_removed),
+        ("## Endpoints modified", result.endpoints_modified),
+        ("## Channels added", result.channels_added),
+        ("## Channels removed", result.channels_removed),
+        ("## Channels modified", result.channels_modified),
+    ]
+    for heading, entries in sections:
+        if entries:
+            lines.append(heading)
+            lines.append("")
+            for entry in entries:
+                lines.append(f"- `{entry}`")
+            lines.append("")
     return "\n".join(lines)
 
 
@@ -117,7 +146,13 @@ def _cmd_check(args: argparse.Namespace) -> int:
         return 2
 
     args.output_dir.mkdir(parents=True, exist_ok=True)
-    summary = render_summary(result, crate=args.crate, upstream_url=args.upstream_url)
+    vendored_label = args.vendored_label or f"docs/specs/{args.crate}/openapi.yaml"
+    summary = render_summary(
+        result,
+        crate=args.crate,
+        upstream_url=args.upstream_url,
+        vendored_label=vendored_label,
+    )
     (args.output_dir / "summary.md").write_text(summary)
 
     if not result.has_drift:
@@ -127,8 +162,8 @@ def _cmd_check(args: argparse.Namespace) -> int:
     canonical_new = canonicalize(upstream_yaml).splitlines(keepends=True)
     diff = "".join(difflib.unified_diff(
         canonical_old, canonical_new,
-        fromfile=f"vendored/{args.crate}/openapi.yaml (canonical)",
-        tofile=f"upstream/{args.crate}/openapi.yaml (canonical)",
+        fromfile=f"vendored {vendored_label} (canonical)",
+        tofile=f"upstream {args.upstream_url} (canonical)",
     ))
     (args.output_dir / "unified-diff.txt").write_text(diff)
 
@@ -148,6 +183,9 @@ def main(argv: list[str] | None = None) -> int:
     p.add_argument("--upstream-yaml", type=Path, required=True, help="Path to fetched upstream YAML")
     p.add_argument("--vendored-yaml", type=Path, required=True, help="Path to docs/specs/<crate>/openapi.yaml")
     p.add_argument("--upstream-url", required=True, help="URL the upstream was fetched from (for the summary)")
+    p.add_argument("--vendored-label", default=None,
+                   help="Repo-relative path of the vendored file, for summary prose "
+                        "(defaults to docs/specs/<crate>/openapi.yaml)")
     p.add_argument("--output-dir", type=Path, required=True)
     p.add_argument("--apply-on-drift", action="store_true",
                    help="If drift detected, overwrite vendored-yaml with upstream-yaml's raw bytes")

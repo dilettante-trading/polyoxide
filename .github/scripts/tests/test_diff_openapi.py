@@ -65,6 +65,29 @@ def test_detect_drift_modified_schema() -> None:
     assert result.endpoints_modified == ["GET /markets"]
 
 
+def test_detect_drift_asyncapi_channels_added_and_modified() -> None:
+    """AsyncAPI documents key their surface on `channels`, not `paths` —
+    without channel awareness a WS-contract drift summary would be empty."""
+    old = (FIXTURES / "asyncapi-channel-drift" / "old.json").read_text()
+    new = (FIXTURES / "asyncapi-channel-drift" / "new.json").read_text()
+    result = detect_drift(old, new)
+    assert result.has_drift is True
+    assert result.endpoints_added == []
+    assert result.channels_added == ["sports"]
+    assert result.channels_removed == []
+    assert result.channels_modified == ["user"]
+
+
+def test_detect_drift_asyncapi_channel_removed() -> None:
+    old = (FIXTURES / "asyncapi-channel-drift" / "new.json").read_text()
+    new = (FIXTURES / "asyncapi-channel-drift" / "old.json").read_text()
+    result = detect_drift(old, new)
+    assert result.has_drift is True
+    assert result.channels_added == []
+    assert result.channels_removed == ["sports"]
+    assert result.channels_modified == ["user"]
+
+
 def test_render_summary_no_drift() -> None:
     text = render_summary(DriftResult(has_drift=False), crate="clob", upstream_url="https://x")
     assert "No drift detected" in text
@@ -85,6 +108,58 @@ def test_render_summary_with_changes() -> None:
     assert "## Endpoints modified" in text
     assert "GET /markets" in text
     assert "https://docs.polymarket.com/api-spec/clob-openapi.yaml" in text
+
+
+def test_render_summary_with_channels() -> None:
+    result = DriftResult(
+        has_drift=True,
+        channels_added=["sports"],
+        channels_removed=["legacy"],
+        channels_modified=["user"],
+    )
+    text = render_summary(result, crate="clob-ws-market", upstream_url="https://docs.polymarket.com/asyncapi.json")
+    assert "## Channels added" in text
+    assert "sports" in text
+    assert "## Channels removed" in text
+    assert "legacy" in text
+    assert "## Channels modified" in text
+    assert "user" in text
+
+
+def test_render_summary_uses_vendored_label() -> None:
+    """AsyncAPI mirrors don't live at docs/specs/<crate>/openapi.yaml, so the
+    summary prose must name the actual vendored file."""
+    result = DriftResult(has_drift=True, channels_added=["sports"])
+    text = render_summary(
+        result,
+        crate="clob-ws-market",
+        upstream_url="https://docs.polymarket.com/asyncapi.json",
+        vendored_label="docs/specs/clob/asyncapi-market.json",
+    )
+    assert "docs/specs/clob/asyncapi-market.json" in text
+    assert "docs/specs/clob-ws-market/openapi.yaml" not in text
+
+
+def test_cli_check_asyncapi_drift_with_vendored_label(tmp_path: Path) -> None:
+    out_dir = tmp_path / "out"
+    out_dir.mkdir()
+    result = subprocess.run(
+        [
+            sys.executable, str(SCRIPT), "check",
+            "--crate", "clob-ws-market",
+            "--upstream-yaml", str(FIXTURES / "asyncapi-channel-drift" / "new.json"),
+            "--vendored-yaml", str(FIXTURES / "asyncapi-channel-drift" / "old.json"),
+            "--upstream-url", "https://docs.polymarket.com/asyncapi.json",
+            "--vendored-label", "docs/specs/clob/asyncapi-market.json",
+            "--output-dir", str(out_dir),
+        ],
+        capture_output=True,
+        text=True,
+    )
+    assert result.returncode == 1
+    summary = (out_dir / "summary.md").read_text()
+    assert "sports" in summary
+    assert "docs/specs/clob/asyncapi-market.json" in summary
 
 
 def test_cli_check_no_drift_exits_zero(tmp_path: Path) -> None:
