@@ -366,3 +366,43 @@ Add a paragraph to `CLAUDE.md` under "Testing Conventions" describing:
 - **Auth-gated test enablement** — deferred per Q1. Future PR provisions secrets and removes the auth-gated classifier regex.
 - **Response-snapshot drift** — explicitly out of scope. Reconsider if behavioral + schema drift miss real regressions.
 - **Sub-hourly cron / continuous monitoring** — if Polymarket ships a breaking change at 02:00 UTC and this runs at 06:00 UTC, there's up to a 4-hour detection gap. Acceptable for an SDK; not acceptable if this ever monitors production trading. Out of scope today.
+
+## Addendum (2026-07-29) — coverage extension and latent-bug fixes
+
+The branch sat unmerged for ~12 weeks while main moved from 0.15.0 to 0.23.x.
+Before shipping, the following was amended:
+
+**Coverage gaps closed:**
+
+- **Behavioral matrix** now includes `polyoxide-cli` (`--test live_api`) and
+  runs clob's `live_ws` binary (`--features ws --test live_api --test live_ws`,
+  added to main 2026-07-25). Matrix entries carry a per-crate `flags` string.
+- **Schema matrix** grew from 4 to 11 entries: perps/bridge/combos-rfq OpenAPI
+  plus the four faithful AsyncAPI mirrors (clob market/user, perps WS,
+  combos-rfq WS; upstream URLs from `docs/specs/polymarket-llms.txt`).
+  `diff_openapi.py` enumerates AsyncAPI `channels` alongside OpenAPI `paths`
+  and takes `--vendored-label` since mirrors no longer all live at
+  `docs/specs/<crate>/openapi.yaml`. Deliberately excluded: the sports
+  AsyncAPI mirror (modelled on the wire, never matches upstream's published
+  doc) and the undocumented pnl/rankings hosts (no spec to diff).
+
+**Latent bugs found while extending (the workflows had never run):**
+
+- nextest's `--message-format libtest-json` refuses to run without
+  `NEXTEST_EXPERIMENTAL_LIBTEST_JSON=1`; with `|| true` swallowing the error,
+  every nightly would have reported green on an empty JSON file. The env var
+  is now set workflow-wide.
+- libtest-json names tests `crate::binary$test`, which the retry step's
+  `test(=name)` filterset can never match — and an unmatched retry was
+  counted as a pass by `merge`. The classifier now emits `retry-filter.txt`
+  with `binary_id(=…) & test(=…)` clauses, and fixtures use realistic
+  qualified names.
+
+**Classifier taxonomy changes:**
+
+- `AUTH_GATED_RE` also matches `POLYMARKET_PRIVATE_KEY required` (live_ws
+  derives L2 credentials from the private key alone).
+- New **environmental** category (pattern: `legitimately time out`) for tests
+  whose failure states the world can't provide signal — e.g. the sports
+  channel with no live match anywhere at 06:00 UTC. Logged to
+  `environmental.txt`, never retried, never filed as an issue.

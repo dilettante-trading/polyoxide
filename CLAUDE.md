@@ -146,13 +146,14 @@ Mock HTTP tests use `mockito` (workspace dev-dependency). Each crate with mock t
 
 Two GitHub Actions workflows run at `0 6 * * *` UTC and on `workflow_dispatch`:
 
-- `.github/workflows/nightly-behavioral.yml` — runs `--ignored` live tests across all four crates' no-auth surfaces. Failures are classified by `.github/scripts/classify_failures.py` into:
-  - **auth-gated** (matches the `POLYMARKET_* env vars required` panic) — silently skipped
+- `.github/workflows/nightly-behavioral.yml` — runs `--ignored` live tests across the five crates with live suites (gamma, data, clob incl. `live_ws` under `--features ws`, relay, cli). Failures are classified by `.github/scripts/classify_failures.py` into:
+  - **auth-gated** (matches the `POLYMARKET_* env vars required` / `POLYMARKET_PRIVATE_KEY required` panics) — silently skipped
+  - **environmental** (test says the world can't provide signal right now, e.g. the sports channel with no live matches — matches `legitimately time out`) — logged and skipped
   - **transient** (HTTP 429/5xx, connection refused, timeouts, DNS) — retried up to 2× with `cargo nextest --retries 2`
   - **real** (everything else) — files or updates a tracking issue with the `nightly-behavioral` label
-- `.github/workflows/nightly-schema.yml` — fetches each upstream OpenAPI YAML and compares against `docs/specs/<crate>/openapi.yaml`. On drift, opens an auto-PR (deterministic branch `nightly-schema-drift/<crate>`) and a tracking issue with the `schema-drift` label. The PR commits Polymarket's raw upstream bytes; the canonical-form diff is in the PR body for review.
+- `.github/workflows/nightly-schema.yml` — fetches each published upstream spec (seven OpenAPI: clob, gamma, data, relay, perps, bridge, combos-rfq; four AsyncAPI: clob market/user, perps WS, combos-rfq WS) and compares against the vendored mirror in `docs/specs/`. On drift, opens an auto-PR (deterministic branch `nightly-schema-drift/<id>`) and a tracking issue with the `schema-drift` label. The PR commits Polymarket's raw upstream bytes; the canonical-form diff is in the PR body for review. Deliberately excluded: the sports AsyncAPI mirror (modelled on captured wire frames, so it never matches upstream's published doc) and the undocumented `user-pnl-api`/`lb-api` hosts (nothing to diff).
 
-To enable CLOB/relay's auth-gated tests (currently ~25 + 8 tests), set the `POLYMARKET_*` and `BUILDER_*` repo secrets and remove the `POLYMARKET_\* env vars required` regex from `AUTH_GATED_RE` in `.github/scripts/classify_failures.py`. Auth tests will then start contributing real signal.
+To enable CLOB/relay's auth-gated tests (currently ~25 + 8 tests), set the `POLYMARKET_*` and `BUILDER_*` repo secrets and remove the auth patterns from `AUTH_GATED_RE` in `.github/scripts/classify_failures.py`. Auth tests will then start contributing real signal.
 
 ## Module Organization
 
