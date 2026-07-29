@@ -18,6 +18,9 @@ parquet = ["dep:arrow", "dep:parquet"]
 [[bin]]
 name = "polyoxide"
 path = "src/main.rs"
+# doc = false: this bin shares its name with the polyoxide lib crate, and concurrent
+# rustdoc writes to the shared target/doc/polyoxide/ output race (cargo#6313).
+doc = false
 
 [dependencies]
 polyoxide-clob = { workspace = true, features = ["ws"] }
