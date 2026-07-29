@@ -123,6 +123,11 @@ jobs:
           git commit -m "chore(specs): sync ${{ matrix.id }} spec from upstream"
           git push --force-with-lease origin "${BRANCH}"
 
+          # --force makes this idempotent; without the label existing,
+          # `gh issue create --label` / `gh pr create --label` fail outright.
+          gh label create schema-drift --force \
+            --description "Filed by the nightly schema drift check" --color 1D76DB || true
+
           ISSUE_TITLE="Schema drift: ${{ matrix.id }}"
           EXISTING_ISSUE=$(gh issue list --label schema-drift --search "${ISSUE_TITLE} in:title" --state open --json number --jq '.[0].number // empty')
           if [ -z "$EXISTING_ISSUE" ]; then
@@ -131,14 +136,23 @@ jobs:
             gh issue edit "$EXISTING_ISSUE" --body "$(cat ${ARTIFACT_DIR}/summary.md)"
           fi
 
+          # GitHub caps issue/PR bodies at 65536 characters; a full canonical
+          # diff of a large spec can exceed that and fail `gh pr create`.
+          # Truncate here — the complete diff is in the run's artifacts.
+          DIFF_FILE="${ARTIFACT_DIR}/unified-diff.txt"
+          DIFF_LIMIT=50000
           PR_BODY=$(mktemp)
           {
             cat "${ARTIFACT_DIR}/summary.md"
             echo ""
-            echo "<details><summary>Full canonicalized diff</summary>"
+            echo "<details><summary>Canonicalized diff</summary>"
             echo ""
             echo '```diff'
-            cat "${ARTIFACT_DIR}/unified-diff.txt"
+            head -c "$DIFF_LIMIT" "$DIFF_FILE"
+            if [ "$(wc -c < "$DIFF_FILE")" -gt "$DIFF_LIMIT" ]; then
+              echo ""
+              echo "... [truncated — full diff in this workflow run's artifacts]"
+            fi
             echo '```'
             echo "</details>"
             echo ""
@@ -156,6 +170,13 @@ jobs:
           else
             gh pr edit "$EXISTING_PR" --body "$(cat ${PR_BODY})"
           fi
+
+      - name: Upload drift artifacts
+        if: always() && steps.drift.outputs.drift == 'true'
+        uses: actions/upload-artifact@v4
+        with:
+          name: schema-${{ matrix.id }}
+          path: artifacts/${{ matrix.id }}/
 
       - name: Close stale drift PR + issue (recovery)
         if: steps.fetch.outputs.fetched == 'true' && steps.drift.outputs.drift == 'false'

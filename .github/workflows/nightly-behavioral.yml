@@ -56,12 +56,21 @@ jobs:
             --no-fail-fast \
             --message-format libtest-json \
             > artifacts/${{ matrix.crate }}/first-pass.json 2>artifacts/${{ matrix.crate }}/first-pass.stderr || true
+          # `|| true` exists so test failures don't stop the pipeline, but it
+          # also swallows nextest refusing to run at all (build error, bad
+          # flags). An empty JSON would classify as "no failures" — silent
+          # green. Distinguish the two here: no output means infra failure.
+          if [ ! -s artifacts/${{ matrix.crate }}/first-pass.json ]; then
+            echo "::error::nextest produced no libtest-json output — build failure or bad invocation:"
+            cat artifacts/${{ matrix.crate }}/first-pass.stderr
+            exit 1
+          fi
 
       - name: Classify first-pass failures
         run: |
           uv run python ${{ github.workspace }}/.github/scripts/classify_failures.py classify \
-            --input artifacts/${{ matrix.crate }}/first-pass.json \
-            --output-dir artifacts/${{ matrix.crate }}/classified
+            --input ${{ github.workspace }}/artifacts/${{ matrix.crate }}/first-pass.json \
+            --output-dir ${{ github.workspace }}/artifacts/${{ matrix.crate }}/classified
         working-directory: .github/scripts
 
       - name: Retry transient failures
@@ -139,7 +148,13 @@ jobs:
       - name: File or update tracking issue
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          TEST_RESULT: ${{ needs.test.result }}
         run: |
+          # --force makes this idempotent; without the label existing,
+          # `gh issue create --label` fails outright.
+          gh label create nightly-behavioral --force \
+            --description "Filed by the nightly behavioral smoketest" --color D93F0B || true
+
           EXISTING=$(gh issue list --label nightly-behavioral --state open --json number --jq '.[0].number // empty')
           if [ "${{ steps.report.outputs.any_real_failure }}" = "true" ]; then
             BODY="$(cat ${{ steps.report.outputs.report_file }})"
@@ -151,6 +166,10 @@ jobs:
                 --label nightly-behavioral \
                 --body "$BODY"
             fi
-          elif [ -n "$EXISTING" ]; then
+          elif [ -n "$EXISTING" ] && [ "$TEST_RESULT" = "success" ]; then
+            # Close only on a genuinely clean run. If a matrix entry died on
+            # infrastructure (build failure, classifier crash, timeout), the
+            # absence of failure reports proves nothing — leaving the issue
+            # open beats falsely declaring recovery.
             gh issue close "$EXISTING" --comment "Recovered $(date -u +%Y-%m-%d)"
           fi
