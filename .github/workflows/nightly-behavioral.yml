@@ -17,6 +17,10 @@ env:
   CARGO_INCREMENTAL: 0
   CARGO_TERM_COLOR: always
   RUST_BACKTRACE: 1
+  # nextest's libtest-json output is experimental and refuses to run without
+  # this opt-in. Without it every nightly would silently produce empty JSON
+  # (the `|| true` swallows nextest's error) and report green regardless.
+  NEXTEST_EXPERIMENTAL_LIBTEST_JSON: 1
 
 jobs:
   test:
@@ -26,7 +30,15 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        crate: [polyoxide-gamma, polyoxide-data, polyoxide-clob, polyoxide-relay]
+        # `flags` selects each crate's live test binaries (and any features
+        # they need). polyoxide-clob's WebSocket tests live in a separate
+        # `live_ws` binary behind the non-default `ws` feature.
+        include:
+          - { crate: polyoxide-gamma, flags: "--test live_api" }
+          - { crate: polyoxide-data,  flags: "--test live_api" }
+          - { crate: polyoxide-clob,  flags: "--features ws --test live_api --test live_ws" }
+          - { crate: polyoxide-relay, flags: "--test live_api" }
+          - { crate: polyoxide-cli,   flags: "--test live_api" }
     steps:
       - uses: actions/checkout@v4
       - uses: dtolnay/rust-toolchain@stable
@@ -39,8 +51,7 @@ jobs:
         run: |
           mkdir -p artifacts/${{ matrix.crate }}
           cargo nextest run \
-            -p ${{ matrix.crate }} \
-            --test live_api \
+            -p ${{ matrix.crate }} ${{ matrix.flags }} \
             --run-ignored only \
             --no-fail-fast \
             --message-format libtest-json \
@@ -55,17 +66,18 @@ jobs:
 
       - name: Retry transient failures
         run: |
-          RETRY_LIST="artifacts/${{ matrix.crate }}/classified/retry-tests.txt"
-          if [ -s "$RETRY_LIST" ]; then
-            FILTER=$(awk 'BEGIN{first=1} {if(first==1){printf "test(=%s)", $0; first=0} else {printf " | test(=%s)", $0}}' "$RETRY_LIST")
+          # retry-filter.txt is a ready-made nextest filterset built by the
+          # classifier: libtest-json names are `crate::binary$test`, so each
+          # clause pins binary_id AND bare test name.
+          FILTER_FILE="artifacts/${{ matrix.crate }}/classified/retry-filter.txt"
+          if [ -s "$FILTER_FILE" ]; then
             cargo nextest run \
-              -p ${{ matrix.crate }} \
-              --test live_api \
+              -p ${{ matrix.crate }} ${{ matrix.flags }} \
               --run-ignored only \
               --no-fail-fast \
               --message-format libtest-json \
               --retries 2 \
-              -E "$FILTER" \
+              -E "$(cat "$FILTER_FILE")" \
               > artifacts/${{ matrix.crate }}/retry.json 2>artifacts/${{ matrix.crate }}/retry.stderr || true
           else
             echo '{"type":"suite","event":"started","test_count":0}' > artifacts/${{ matrix.crate }}/retry.json
