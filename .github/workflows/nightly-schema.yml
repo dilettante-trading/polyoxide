@@ -46,10 +46,10 @@ jobs:
     env:
       BRANCH: nightly-schema-drift/${{ matrix.id }}
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5
         with:
           fetch-depth: 0
-      - uses: astral-sh/setup-uv@v6
+      - uses: astral-sh/setup-uv@v7
       - run: uv sync
         working-directory: .github/scripts
 
@@ -173,7 +173,7 @@ jobs:
 
       - name: Upload drift artifacts
         if: always() && steps.drift.outputs.drift == 'true'
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v6
         with:
           name: schema-${{ matrix.id }}
           path: artifacts/${{ matrix.id }}/
