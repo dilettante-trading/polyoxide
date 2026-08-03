@@ -395,7 +395,7 @@
                       },
                       "error": {
                         "type": "string",
-                        "description": "Error identifier. For domain rejections and transport errors (`401`/`404`/`429`/`500`) this is a stable, machine-readable snake_case identifier that is part of the API contract and safe to branch on, e.g. `insufficient_margin`, `insufficient_balance`, `order_not_found`, `reduce_only_invalid`, `unauthorized`, `not_found`. For `400` it is a human-readable validation detail whose wording may change. See the Error handling guide for the domain identifiers. (Post-only / Fill-or-Kill outcomes are order statuses such as `post_only_rejected`, not rejections.)",
+                        "description": "Error identifier. For domain rejections and transport errors (`401`/`404`/`429`/`500`) this is a stable, machine-readable snake_case identifier that is part of the API contract and safe to branch on, e.g. `insufficient_margin`, `insufficient_balance`, `order_not_found`, `reduce_only_invalid`, `price_outside_bounds`, `position_not_found`, `invalid_margin_mode`, `invalid_margin_amount`, `margin_below_required_initial`, `account_liquidating`, `unauthorized`, `not_found`. For `400` it is a human-readable validation detail whose wording may change. See the Error handling guide for the domain identifiers. (Post-only / Fill-or-Kill outcomes are order statuses such as `post_only_rejected`, not rejections.)",
                         "example": "insufficient_margin"
                       },
                       "oid": {
@@ -611,7 +611,7 @@
                         },
                         "error": {
                           "type": "string",
-                          "description": "Error identifier. For domain rejections and transport errors (`401`/`404`/`429`/`500`) this is a stable, machine-readable snake_case identifier that is part of the API contract and safe to branch on, e.g. `insufficient_margin`, `insufficient_balance`, `order_not_found`, `reduce_only_invalid`, `unauthorized`, `not_found`. For `400` it is a human-readable validation detail whose wording may change. See the Error handling guide for the domain identifiers. (Post-only / Fill-or-Kill outcomes are order statuses such as `post_only_rejected`, not rejections.)",
+                          "description": "Error identifier. For domain rejections and transport errors (`401`/`404`/`429`/`500`) this is a stable, machine-readable snake_case identifier that is part of the API contract and safe to branch on, e.g. `insufficient_margin`, `insufficient_balance`, `order_not_found`, `reduce_only_invalid`, `price_outside_bounds`, `position_not_found`, `invalid_margin_mode`, `invalid_margin_amount`, `margin_below_required_initial`, `account_liquidating`, `unauthorized`, `not_found`. For `400` it is a human-readable validation detail whose wording may change. See the Error handling guide for the domain identifiers. (Post-only / Fill-or-Kill outcomes are order statuses such as `post_only_rejected`, not rejections.)",
                           "example": "insufficient_margin"
                         }
                       }
@@ -822,7 +822,7 @@
                         },
                         "error": {
                           "type": "string",
-                          "description": "Error identifier. For domain rejections and transport errors (`401`/`404`/`429`/`500`) this is a stable, machine-readable snake_case identifier that is part of the API contract and safe to branch on, e.g. `insufficient_margin`, `insufficient_balance`, `order_not_found`, `reduce_only_invalid`, `unauthorized`, `not_found`. For `400` it is a human-readable validation detail whose wording may change. See the Error handling guide for the domain identifiers. (Post-only / Fill-or-Kill outcomes are order statuses such as `post_only_rejected`, not rejections.)",
+                          "description": "Error identifier. For domain rejections and transport errors (`401`/`404`/`429`/`500`) this is a stable, machine-readable snake_case identifier that is part of the API contract and safe to branch on, e.g. `insufficient_margin`, `insufficient_balance`, `order_not_found`, `reduce_only_invalid`, `price_outside_bounds`, `position_not_found`, `invalid_margin_mode`, `invalid_margin_amount`, `margin_below_required_initial`, `account_liquidating`, `unauthorized`, `not_found`. For `400` it is a human-readable validation detail whose wording may change. See the Error handling guide for the domain identifiers. (Post-only / Fill-or-Kill outcomes are order statuses such as `post_only_rejected`, not rejections.)",
                           "example": "insufficient_margin"
                         }
                       }
@@ -852,6 +852,178 @@
                     "coid": "550e8400e29b41d4a716446655440001"
                   }
                 ]
+              }
+            }
+          ]
+        }
+      }
+    },
+    "cancelAll": {
+      "address": "/v1/ws",
+      "title": "Cancel All Orders",
+      "summary": "Cancel all open orders.",
+      "description": "Cancel all open orders for the authenticated account, optionally scoped to\none instrument.\nRequires proxy signature, see [proxy signing](/http/signing#2-proxy-signing).\n\n<Badge color=\"gray\" size=\"md\">Action Weight: **0**</Badge>\n",
+      "messages": {
+        "Request": {
+          "name": "CancelAllRequest",
+          "title": "Cancel All Orders Request",
+          "summary": "Client submits a signed cancel-all request",
+          "contentType": "application/json",
+          "payload": {
+            "type": "object",
+            "title": "Base Request",
+            "properties": {
+              "id": {
+                "type": "integer",
+                "description": "Correlation ID for request-response matching"
+              },
+              "req": {
+                "type": "string",
+                "description": "Request type",
+                "enum": [
+                  "post",
+                  "sub",
+                  "unsub"
+                ]
+              },
+              "op": {
+                "type": "object",
+                "required": [
+                  "type",
+                  "args"
+                ],
+                "properties": {
+                  "type": {
+                    "type": "string",
+                    "enum": [
+                      "cancelAll"
+                    ]
+                  },
+                  "args": {
+                    "type": "object",
+                    "description": "Optional cancel scope. When `iid` is provided, only open orders for\nthat instrument are canceled. When omitted, all open orders for the\nsigning account are canceled.\n",
+                    "properties": {
+                      "iid": {
+                        "type": "integer",
+                        "description": "Instrument ID",
+                        "example": 1
+                      }
+                    }
+                  }
+                }
+              },
+              "sig": {
+                "type": "string",
+                "description": "Signature in hex format",
+                "example": "0x1234567890..."
+              },
+              "salt": {
+                "type": "integer",
+                "description": "Salt",
+                "example": 1234567890
+              },
+              "ts": {
+                "type": "integer",
+                "description": "Request timestamp. Unix milliseconds for most operations; Unix seconds for withdrawals (must match the on-chain EIP-712 struct verified against block.timestamp).",
+                "example": 1767225600000
+              },
+              "exp": {
+                "type": "integer",
+                "description": "Command expiry timestamp in Unix milliseconds. If provided, it must be in the future and within the gateway's default command timeout. It can shorten request validity but cannot extend it. This is not an order auto-cancel time.",
+                "example": 1767225600000
+              }
+            },
+            "required": [
+              "req",
+              "op",
+              "sig",
+              "salt",
+              "ts"
+            ]
+          },
+          "examples": [
+            {
+              "name": "Request Example",
+              "payload": {
+                "req": "post",
+                "op": {
+                  "type": "cancelAll",
+                  "args": {
+                    "iid": 1
+                  }
+                },
+                "sig": "0x1234567890...",
+                "salt": 1234567890,
+                "ts": 1767225600000,
+                "exp": 1767225600000
+              }
+            }
+          ]
+        },
+        "Response": {
+          "name": "CancelAllResponse",
+          "title": "Cancel All Orders Response",
+          "summary": "Server responds with the cancel-all result",
+          "contentType": "application/json",
+          "payload": {
+            "type": "object",
+            "title": "Base Response",
+            "properties": {
+              "id": {
+                "type": "integer",
+                "description": "Correlation ID for request-response matching"
+              },
+              "data": {
+                "oneOf": [
+                  {
+                    "type": "object",
+                    "required": [
+                      "status"
+                    ],
+                    "properties": {
+                      "status": {
+                        "type": "string",
+                        "enum": [
+                          "ok"
+                        ]
+                      }
+                    }
+                  },
+                  {
+                    "type": "object",
+                    "required": [
+                      "status",
+                      "error"
+                    ],
+                    "properties": {
+                      "status": {
+                        "type": "string",
+                        "enum": [
+                          "err"
+                        ]
+                      },
+                      "error": {
+                        "type": "string",
+                        "description": "Error identifier. For domain rejections and transport errors (`401`/`404`/`429`/`500`) this is a stable, machine-readable snake_case identifier that is part of the API contract and safe to branch on, e.g. `insufficient_margin`, `insufficient_balance`, `order_not_found`, `reduce_only_invalid`, `price_outside_bounds`, `position_not_found`, `invalid_margin_mode`, `invalid_margin_amount`, `margin_below_required_initial`, `account_liquidating`, `unauthorized`, `not_found`. For `400` it is a human-readable validation detail whose wording may change. See the Error handling guide for the domain identifiers. (Post-only / Fill-or-Kill outcomes are order statuses such as `post_only_rejected`, not rejections.)",
+                        "example": "insufficient_margin"
+                      }
+                    }
+                  }
+                ]
+              }
+            },
+            "required": [
+              "data"
+            ]
+          },
+          "examples": [
+            {
+              "name": "Accepted",
+              "payload": {
+                "id": 5,
+                "data": {
+                  "status": "ok"
+                }
               }
             }
           ]
@@ -1000,7 +1172,7 @@
                       },
                       "error": {
                         "type": "string",
-                        "description": "Error identifier. For domain rejections and transport errors (`401`/`404`/`429`/`500`) this is a stable, machine-readable snake_case identifier that is part of the API contract and safe to branch on, e.g. `insufficient_margin`, `insufficient_balance`, `order_not_found`, `reduce_only_invalid`, `unauthorized`, `not_found`. For `400` it is a human-readable validation detail whose wording may change. See the Error handling guide for the domain identifiers. (Post-only / Fill-or-Kill outcomes are order statuses such as `post_only_rejected`, not rejections.)",
+                        "description": "Error identifier. For domain rejections and transport errors (`401`/`404`/`429`/`500`) this is a stable, machine-readable snake_case identifier that is part of the API contract and safe to branch on, e.g. `insufficient_margin`, `insufficient_balance`, `order_not_found`, `reduce_only_invalid`, `price_outside_bounds`, `position_not_found`, `invalid_margin_mode`, `invalid_margin_amount`, `margin_below_required_initial`, `account_liquidating`, `unauthorized`, `not_found`. For `400` it is a human-readable validation detail whose wording may change. See the Error handling guide for the domain identifiers. (Post-only / Fill-or-Kill outcomes are order statuses such as `post_only_rejected`, not rejections.)",
                         "example": "insufficient_margin"
                       }
                     }
@@ -1180,7 +1352,7 @@
                       },
                       "error": {
                         "type": "string",
-                        "description": "Error identifier. For domain rejections and transport errors (`401`/`404`/`429`/`500`) this is a stable, machine-readable snake_case identifier that is part of the API contract and safe to branch on, e.g. `insufficient_margin`, `insufficient_balance`, `order_not_found`, `reduce_only_invalid`, `unauthorized`, `not_found`. For `400` it is a human-readable validation detail whose wording may change. See the Error handling guide for the domain identifiers. (Post-only / Fill-or-Kill outcomes are order statuses such as `post_only_rejected`, not rejections.)",
+                        "description": "Error identifier. For domain rejections and transport errors (`401`/`404`/`429`/`500`) this is a stable, machine-readable snake_case identifier that is part of the API contract and safe to branch on, e.g. `insufficient_margin`, `insufficient_balance`, `order_not_found`, `reduce_only_invalid`, `price_outside_bounds`, `position_not_found`, `invalid_margin_mode`, `invalid_margin_amount`, `margin_below_required_initial`, `account_liquidating`, `unauthorized`, `not_found`. For `400` it is a human-readable validation detail whose wording may change. See the Error handling guide for the domain identifiers. (Post-only / Fill-or-Kill outcomes are order statuses such as `post_only_rejected`, not rejections.)",
                         "example": "insufficient_margin"
                       }
                     }
@@ -1199,6 +1371,209 @@
                 "id": 6,
                 "data": {
                   "status": "ok"
+                }
+              }
+            }
+          ]
+        }
+      }
+    },
+    "updateMargin": {
+      "address": "/v1/ws",
+      "title": "Update Isolated Margin",
+      "summary": "Add or remove margin from an isolated position.",
+      "description": "Adjust the collateral allocated to an existing isolated position.\nPositive `amt` adds margin and negative `amt` removes it. A removal may\ninclude unrealized isolated profit, as long as the position's equity\nstays at or above its current required initial margin.\n\nThe exchange rejects both additions and removals while the account is in\ncross liquidation or the target position is in isolated liquidation. An\nisolated liquidation on another instrument does not block the request,\nand neither does cancel-only mode.\n\nRequires proxy signature, see [proxy signing](/http/signing#2-proxy-signing).\nGateway validation rejects a stale or future-skewed timestamp as\n`invalid signature`. A request that passes the gateway can still be\nrejected with `invalid_margin_signature_timestamp` if its timestamp is no\nlonger fresh when the exchange executes it. Reusing the exact signed\nrequest rejects with `signature_already_used`.\n\n<Badge color=\"gray\" size=\"md\">Action Weight: **1**</Badge>\n",
+      "messages": {
+        "Request": {
+          "name": "UpdateMarginRequest",
+          "title": "Update Isolated Margin Request",
+          "summary": "Client submits a signed isolated-margin adjustment",
+          "contentType": "application/json",
+          "payload": {
+            "type": "object",
+            "title": "Base Request",
+            "properties": {
+              "id": {
+                "type": "integer",
+                "description": "Correlation ID for request-response matching"
+              },
+              "req": {
+                "type": "string",
+                "description": "Request type",
+                "enum": [
+                  "post",
+                  "sub",
+                  "unsub"
+                ]
+              },
+              "op": {
+                "type": "object",
+                "required": [
+                  "type",
+                  "args"
+                ],
+                "properties": {
+                  "type": {
+                    "type": "string",
+                    "enum": [
+                      "updateMargin"
+                    ]
+                  },
+                  "args": {
+                    "type": "object",
+                    "required": [
+                      "iid",
+                      "amt"
+                    ],
+                    "properties": {
+                      "iid": {
+                        "type": "integer",
+                        "description": "Instrument ID",
+                        "example": 1
+                      },
+                      "amt": {
+                        "type": "string",
+                        "description": "Signed isolated-margin adjustment in the instrument quote asset. Positive values add allocation; negative values remove it.",
+                        "example": "100.00"
+                      }
+                    }
+                  }
+                }
+              },
+              "sig": {
+                "type": "string",
+                "description": "Signature in hex format",
+                "example": "0x1234567890..."
+              },
+              "salt": {
+                "type": "integer",
+                "description": "Salt",
+                "example": 1234567890
+              },
+              "ts": {
+                "type": "integer",
+                "description": "Request timestamp. Unix milliseconds for most operations; Unix seconds for withdrawals (must match the on-chain EIP-712 struct verified against block.timestamp).",
+                "example": 1767225600000
+              }
+            },
+            "required": [
+              "req",
+              "op",
+              "sig",
+              "salt",
+              "ts"
+            ]
+          },
+          "examples": [
+            {
+              "name": "AddMargin",
+              "payload": {
+                "id": 7,
+                "req": "post",
+                "op": {
+                  "type": "updateMargin",
+                  "args": {
+                    "iid": 1,
+                    "amt": "100.00"
+                  }
+                },
+                "sig": "0x7d8e9f0a1b2c3d4e5f6a7b8c9d0e1f2a3b4c5d6e7f8a9b0c1d2e3f4a5b6c7d8e9f0a1b2c3d4e5f6a7b8c9d0e1f2a3b4c5d6e7f8a9b0c1d2e3f4a5b6c7d1c",
+                "salt": 444444444,
+                "ts": 1767000013000
+              }
+            },
+            {
+              "name": "RemoveMargin",
+              "payload": {
+                "id": 8,
+                "req": "post",
+                "op": {
+                  "type": "updateMargin",
+                  "args": {
+                    "iid": 1,
+                    "amt": "-25.00"
+                  }
+                },
+                "sig": "0x7d8e9f0a1b2c3d4e5f6a7b8c9d0e1f2a3b4c5d6e7f8a9b0c1d2e3f4a5b6c7d8e9f0a1b2c3d4e5f6a7b8c9d0e1f2a3b4c5d6e7f8a9b0c1d2e3f4a5b6c7d1c",
+                "salt": 444444445,
+                "ts": 1767000013001
+              }
+            }
+          ]
+        },
+        "Response": {
+          "name": "UpdateMarginResponse",
+          "title": "Update Isolated Margin Response",
+          "summary": "Server responds with the margin update result",
+          "contentType": "application/json",
+          "payload": {
+            "type": "object",
+            "title": "Base Response",
+            "properties": {
+              "id": {
+                "type": "integer",
+                "description": "Correlation ID for request-response matching"
+              },
+              "data": {
+                "oneOf": [
+                  {
+                    "type": "object",
+                    "required": [
+                      "status"
+                    ],
+                    "properties": {
+                      "status": {
+                        "type": "string",
+                        "enum": [
+                          "ok"
+                        ]
+                      }
+                    }
+                  },
+                  {
+                    "type": "object",
+                    "required": [
+                      "status",
+                      "error"
+                    ],
+                    "properties": {
+                      "status": {
+                        "type": "string",
+                        "enum": [
+                          "err"
+                        ]
+                      },
+                      "error": {
+                        "type": "string",
+                        "description": "Error identifier. For domain rejections and transport errors (`401`/`404`/`429`/`500`) this is a stable, machine-readable snake_case identifier that is part of the API contract and safe to branch on, e.g. `insufficient_margin`, `insufficient_balance`, `order_not_found`, `reduce_only_invalid`, `price_outside_bounds`, `position_not_found`, `invalid_margin_mode`, `invalid_margin_amount`, `margin_below_required_initial`, `account_liquidating`, `unauthorized`, `not_found`. For `400` it is a human-readable validation detail whose wording may change. See the Error handling guide for the domain identifiers. (Post-only / Fill-or-Kill outcomes are order statuses such as `post_only_rejected`, not rejections.)",
+                        "example": "insufficient_margin"
+                      }
+                    }
+                  }
+                ]
+              }
+            },
+            "required": [
+              "data"
+            ]
+          },
+          "examples": [
+            {
+              "name": "Updated",
+              "payload": {
+                "id": 7,
+                "data": {
+                  "status": "ok"
+                }
+              }
+            },
+            {
+              "name": "Rejected",
+              "payload": {
+                "id": 8,
+                "data": {
+                  "status": "err",
+                  "error": "margin_below_required_initial"
                 }
               }
             }
@@ -1333,7 +1708,7 @@
                       },
                       "error": {
                         "type": "string",
-                        "description": "Error identifier. For domain rejections and transport errors (`401`/`404`/`429`/`500`) this is a stable, machine-readable snake_case identifier that is part of the API contract and safe to branch on, e.g. `insufficient_margin`, `insufficient_balance`, `order_not_found`, `reduce_only_invalid`, `unauthorized`, `not_found`. For `400` it is a human-readable validation detail whose wording may change. See the Error handling guide for the domain identifiers. (Post-only / Fill-or-Kill outcomes are order statuses such as `post_only_rejected`, not rejections.)",
+                        "description": "Error identifier. For domain rejections and transport errors (`401`/`404`/`429`/`500`) this is a stable, machine-readable snake_case identifier that is part of the API contract and safe to branch on, e.g. `insufficient_margin`, `insufficient_balance`, `order_not_found`, `reduce_only_invalid`, `price_outside_bounds`, `position_not_found`, `invalid_margin_mode`, `invalid_margin_amount`, `margin_below_required_initial`, `account_liquidating`, `unauthorized`, `not_found`. For `400` it is a human-readable validation detail whose wording may change. See the Error handling guide for the domain identifiers. (Post-only / Fill-or-Kill outcomes are order statuses such as `post_only_rejected`, not rejections.)",
                         "example": "insufficient_margin"
                       }
                     }
@@ -1451,7 +1826,7 @@
                         },
                         "error": {
                           "type": "string",
-                          "description": "Error identifier. For domain rejections and transport errors (`401`/`404`/`429`/`500`) this is a stable, machine-readable snake_case identifier that is part of the API contract and safe to branch on, e.g. `insufficient_margin`, `insufficient_balance`, `order_not_found`, `reduce_only_invalid`, `unauthorized`, `not_found`. For `400` it is a human-readable validation detail whose wording may change. See the Error handling guide for the domain identifiers. (Post-only / Fill-or-Kill outcomes are order statuses such as `post_only_rejected`, not rejections.)",
+                          "description": "Error identifier. For domain rejections and transport errors (`401`/`404`/`429`/`500`) this is a stable, machine-readable snake_case identifier that is part of the API contract and safe to branch on, e.g. `insufficient_margin`, `insufficient_balance`, `order_not_found`, `reduce_only_invalid`, `price_outside_bounds`, `position_not_found`, `invalid_margin_mode`, `invalid_margin_amount`, `margin_below_required_initial`, `account_liquidating`, `unauthorized`, `not_found`. For `400` it is a human-readable validation detail whose wording may change. See the Error handling guide for the domain identifiers. (Post-only / Fill-or-Kill outcomes are order statuses such as `post_only_rejected`, not rejections.)",
                           "example": "insufficient_margin"
                         }
                       }
@@ -1571,7 +1946,7 @@
                         },
                         "error": {
                           "type": "string",
-                          "description": "Error identifier. For domain rejections and transport errors (`401`/`404`/`429`/`500`) this is a stable, machine-readable snake_case identifier that is part of the API contract and safe to branch on, e.g. `insufficient_margin`, `insufficient_balance`, `order_not_found`, `reduce_only_invalid`, `unauthorized`, `not_found`. For `400` it is a human-readable validation detail whose wording may change. See the Error handling guide for the domain identifiers. (Post-only / Fill-or-Kill outcomes are order statuses such as `post_only_rejected`, not rejections.)",
+                          "description": "Error identifier. For domain rejections and transport errors (`401`/`404`/`429`/`500`) this is a stable, machine-readable snake_case identifier that is part of the API contract and safe to branch on, e.g. `insufficient_margin`, `insufficient_balance`, `order_not_found`, `reduce_only_invalid`, `price_outside_bounds`, `position_not_found`, `invalid_margin_mode`, `invalid_margin_amount`, `margin_below_required_initial`, `account_liquidating`, `unauthorized`, `not_found`. For `400` it is a human-readable validation detail whose wording may change. See the Error handling guide for the domain identifiers. (Post-only / Fill-or-Kill outcomes are order statuses such as `post_only_rejected`, not rejections.)",
                           "example": "insufficient_margin"
                         }
                       }
@@ -1807,7 +2182,7 @@
                         },
                         "error": {
                           "type": "string",
-                          "description": "Error identifier. For domain rejections and transport errors (`401`/`404`/`429`/`500`) this is a stable, machine-readable snake_case identifier that is part of the API contract and safe to branch on, e.g. `insufficient_margin`, `insufficient_balance`, `order_not_found`, `reduce_only_invalid`, `unauthorized`, `not_found`. For `400` it is a human-readable validation detail whose wording may change. See the Error handling guide for the domain identifiers. (Post-only / Fill-or-Kill outcomes are order statuses such as `post_only_rejected`, not rejections.)",
+                          "description": "Error identifier. For domain rejections and transport errors (`401`/`404`/`429`/`500`) this is a stable, machine-readable snake_case identifier that is part of the API contract and safe to branch on, e.g. `insufficient_margin`, `insufficient_balance`, `order_not_found`, `reduce_only_invalid`, `price_outside_bounds`, `position_not_found`, `invalid_margin_mode`, `invalid_margin_amount`, `margin_below_required_initial`, `account_liquidating`, `unauthorized`, `not_found`. For `400` it is a human-readable validation detail whose wording may change. See the Error handling guide for the domain identifiers. (Post-only / Fill-or-Kill outcomes are order statuses such as `post_only_rejected`, not rejections.)",
                           "example": "insufficient_margin"
                         }
                       }
@@ -1927,7 +2302,7 @@
                         },
                         "error": {
                           "type": "string",
-                          "description": "Error identifier. For domain rejections and transport errors (`401`/`404`/`429`/`500`) this is a stable, machine-readable snake_case identifier that is part of the API contract and safe to branch on, e.g. `insufficient_margin`, `insufficient_balance`, `order_not_found`, `reduce_only_invalid`, `unauthorized`, `not_found`. For `400` it is a human-readable validation detail whose wording may change. See the Error handling guide for the domain identifiers. (Post-only / Fill-or-Kill outcomes are order statuses such as `post_only_rejected`, not rejections.)",
+                          "description": "Error identifier. For domain rejections and transport errors (`401`/`404`/`429`/`500`) this is a stable, machine-readable snake_case identifier that is part of the API contract and safe to branch on, e.g. `insufficient_margin`, `insufficient_balance`, `order_not_found`, `reduce_only_invalid`, `price_outside_bounds`, `position_not_found`, `invalid_margin_mode`, `invalid_margin_amount`, `margin_below_required_initial`, `account_liquidating`, `unauthorized`, `not_found`. For `400` it is a human-readable validation detail whose wording may change. See the Error handling guide for the domain identifiers. (Post-only / Fill-or-Kill outcomes are order statuses such as `post_only_rejected`, not rejections.)",
                           "example": "insufficient_margin"
                         }
                       }
@@ -2143,7 +2518,7 @@
                         },
                         "error": {
                           "type": "string",
-                          "description": "Error identifier. For domain rejections and transport errors (`401`/`404`/`429`/`500`) this is a stable, machine-readable snake_case identifier that is part of the API contract and safe to branch on, e.g. `insufficient_margin`, `insufficient_balance`, `order_not_found`, `reduce_only_invalid`, `unauthorized`, `not_found`. For `400` it is a human-readable validation detail whose wording may change. See the Error handling guide for the domain identifiers. (Post-only / Fill-or-Kill outcomes are order statuses such as `post_only_rejected`, not rejections.)",
+                          "description": "Error identifier. For domain rejections and transport errors (`401`/`404`/`429`/`500`) this is a stable, machine-readable snake_case identifier that is part of the API contract and safe to branch on, e.g. `insufficient_margin`, `insufficient_balance`, `order_not_found`, `reduce_only_invalid`, `price_outside_bounds`, `position_not_found`, `invalid_margin_mode`, `invalid_margin_amount`, `margin_below_required_initial`, `account_liquidating`, `unauthorized`, `not_found`. For `400` it is a human-readable validation detail whose wording may change. See the Error handling guide for the domain identifiers. (Post-only / Fill-or-Kill outcomes are order statuses such as `post_only_rejected`, not rejections.)",
                           "example": "insufficient_margin"
                         }
                       }
@@ -2263,7 +2638,7 @@
                         },
                         "error": {
                           "type": "string",
-                          "description": "Error identifier. For domain rejections and transport errors (`401`/`404`/`429`/`500`) this is a stable, machine-readable snake_case identifier that is part of the API contract and safe to branch on, e.g. `insufficient_margin`, `insufficient_balance`, `order_not_found`, `reduce_only_invalid`, `unauthorized`, `not_found`. For `400` it is a human-readable validation detail whose wording may change. See the Error handling guide for the domain identifiers. (Post-only / Fill-or-Kill outcomes are order statuses such as `post_only_rejected`, not rejections.)",
+                          "description": "Error identifier. For domain rejections and transport errors (`401`/`404`/`429`/`500`) this is a stable, machine-readable snake_case identifier that is part of the API contract and safe to branch on, e.g. `insufficient_margin`, `insufficient_balance`, `order_not_found`, `reduce_only_invalid`, `price_outside_bounds`, `position_not_found`, `invalid_margin_mode`, `invalid_margin_amount`, `margin_below_required_initial`, `account_liquidating`, `unauthorized`, `not_found`. For `400` it is a human-readable validation detail whose wording may change. See the Error handling guide for the domain identifiers. (Post-only / Fill-or-Kill outcomes are order statuses such as `post_only_rejected`, not rejections.)",
                           "example": "insufficient_margin"
                         }
                       }
@@ -2488,7 +2863,7 @@
                         },
                         "error": {
                           "type": "string",
-                          "description": "Error identifier. For domain rejections and transport errors (`401`/`404`/`429`/`500`) this is a stable, machine-readable snake_case identifier that is part of the API contract and safe to branch on, e.g. `insufficient_margin`, `insufficient_balance`, `order_not_found`, `reduce_only_invalid`, `unauthorized`, `not_found`. For `400` it is a human-readable validation detail whose wording may change. See the Error handling guide for the domain identifiers. (Post-only / Fill-or-Kill outcomes are order statuses such as `post_only_rejected`, not rejections.)",
+                          "description": "Error identifier. For domain rejections and transport errors (`401`/`404`/`429`/`500`) this is a stable, machine-readable snake_case identifier that is part of the API contract and safe to branch on, e.g. `insufficient_margin`, `insufficient_balance`, `order_not_found`, `reduce_only_invalid`, `price_outside_bounds`, `position_not_found`, `invalid_margin_mode`, `invalid_margin_amount`, `margin_below_required_initial`, `account_liquidating`, `unauthorized`, `not_found`. For `400` it is a human-readable validation detail whose wording may change. See the Error handling guide for the domain identifiers. (Post-only / Fill-or-Kill outcomes are order statuses such as `post_only_rejected`, not rejections.)",
                           "example": "insufficient_margin"
                         }
                       }
@@ -2608,7 +2983,7 @@
                         },
                         "error": {
                           "type": "string",
-                          "description": "Error identifier. For domain rejections and transport errors (`401`/`404`/`429`/`500`) this is a stable, machine-readable snake_case identifier that is part of the API contract and safe to branch on, e.g. `insufficient_margin`, `insufficient_balance`, `order_not_found`, `reduce_only_invalid`, `unauthorized`, `not_found`. For `400` it is a human-readable validation detail whose wording may change. See the Error handling guide for the domain identifiers. (Post-only / Fill-or-Kill outcomes are order statuses such as `post_only_rejected`, not rejections.)",
+                          "description": "Error identifier. For domain rejections and transport errors (`401`/`404`/`429`/`500`) this is a stable, machine-readable snake_case identifier that is part of the API contract and safe to branch on, e.g. `insufficient_margin`, `insufficient_balance`, `order_not_found`, `reduce_only_invalid`, `price_outside_bounds`, `position_not_found`, `invalid_margin_mode`, `invalid_margin_amount`, `margin_below_required_initial`, `account_liquidating`, `unauthorized`, `not_found`. For `400` it is a human-readable validation detail whose wording may change. See the Error handling guide for the domain identifiers. (Post-only / Fill-or-Kill outcomes are order statuses such as `post_only_rejected`, not rejections.)",
                           "example": "insufficient_margin"
                         }
                       }
@@ -2806,7 +3181,7 @@
                         },
                         "error": {
                           "type": "string",
-                          "description": "Error identifier. For domain rejections and transport errors (`401`/`404`/`429`/`500`) this is a stable, machine-readable snake_case identifier that is part of the API contract and safe to branch on, e.g. `insufficient_margin`, `insufficient_balance`, `order_not_found`, `reduce_only_invalid`, `unauthorized`, `not_found`. For `400` it is a human-readable validation detail whose wording may change. See the Error handling guide for the domain identifiers. (Post-only / Fill-or-Kill outcomes are order statuses such as `post_only_rejected`, not rejections.)",
+                          "description": "Error identifier. For domain rejections and transport errors (`401`/`404`/`429`/`500`) this is a stable, machine-readable snake_case identifier that is part of the API contract and safe to branch on, e.g. `insufficient_margin`, `insufficient_balance`, `order_not_found`, `reduce_only_invalid`, `price_outside_bounds`, `position_not_found`, `invalid_margin_mode`, `invalid_margin_amount`, `margin_below_required_initial`, `account_liquidating`, `unauthorized`, `not_found`. For `400` it is a human-readable validation detail whose wording may change. See the Error handling guide for the domain identifiers. (Post-only / Fill-or-Kill outcomes are order statuses such as `post_only_rejected`, not rejections.)",
                           "example": "insufficient_margin"
                         }
                       }
@@ -2926,7 +3301,7 @@
                         },
                         "error": {
                           "type": "string",
-                          "description": "Error identifier. For domain rejections and transport errors (`401`/`404`/`429`/`500`) this is a stable, machine-readable snake_case identifier that is part of the API contract and safe to branch on, e.g. `insufficient_margin`, `insufficient_balance`, `order_not_found`, `reduce_only_invalid`, `unauthorized`, `not_found`. For `400` it is a human-readable validation detail whose wording may change. See the Error handling guide for the domain identifiers. (Post-only / Fill-or-Kill outcomes are order statuses such as `post_only_rejected`, not rejections.)",
+                          "description": "Error identifier. For domain rejections and transport errors (`401`/`404`/`429`/`500`) this is a stable, machine-readable snake_case identifier that is part of the API contract and safe to branch on, e.g. `insufficient_margin`, `insufficient_balance`, `order_not_found`, `reduce_only_invalid`, `price_outside_bounds`, `position_not_found`, `invalid_margin_mode`, `invalid_margin_amount`, `margin_below_required_initial`, `account_liquidating`, `unauthorized`, `not_found`. For `400` it is a human-readable validation detail whose wording may change. See the Error handling guide for the domain identifiers. (Post-only / Fill-or-Kill outcomes are order statuses such as `post_only_rejected`, not rejections.)",
                           "example": "insufficient_margin"
                         }
                       }
@@ -3164,7 +3539,7 @@
                         },
                         "error": {
                           "type": "string",
-                          "description": "Error identifier. For domain rejections and transport errors (`401`/`404`/`429`/`500`) this is a stable, machine-readable snake_case identifier that is part of the API contract and safe to branch on, e.g. `insufficient_margin`, `insufficient_balance`, `order_not_found`, `reduce_only_invalid`, `unauthorized`, `not_found`. For `400` it is a human-readable validation detail whose wording may change. See the Error handling guide for the domain identifiers. (Post-only / Fill-or-Kill outcomes are order statuses such as `post_only_rejected`, not rejections.)",
+                          "description": "Error identifier. For domain rejections and transport errors (`401`/`404`/`429`/`500`) this is a stable, machine-readable snake_case identifier that is part of the API contract and safe to branch on, e.g. `insufficient_margin`, `insufficient_balance`, `order_not_found`, `reduce_only_invalid`, `price_outside_bounds`, `position_not_found`, `invalid_margin_mode`, `invalid_margin_amount`, `margin_below_required_initial`, `account_liquidating`, `unauthorized`, `not_found`. For `400` it is a human-readable validation detail whose wording may change. See the Error handling guide for the domain identifiers. (Post-only / Fill-or-Kill outcomes are order statuses such as `post_only_rejected`, not rejections.)",
                           "example": "insufficient_margin"
                         }
                       }
@@ -3284,7 +3659,7 @@
                         },
                         "error": {
                           "type": "string",
-                          "description": "Error identifier. For domain rejections and transport errors (`401`/`404`/`429`/`500`) this is a stable, machine-readable snake_case identifier that is part of the API contract and safe to branch on, e.g. `insufficient_margin`, `insufficient_balance`, `order_not_found`, `reduce_only_invalid`, `unauthorized`, `not_found`. For `400` it is a human-readable validation detail whose wording may change. See the Error handling guide for the domain identifiers. (Post-only / Fill-or-Kill outcomes are order statuses such as `post_only_rejected`, not rejections.)",
+                          "description": "Error identifier. For domain rejections and transport errors (`401`/`404`/`429`/`500`) this is a stable, machine-readable snake_case identifier that is part of the API contract and safe to branch on, e.g. `insufficient_margin`, `insufficient_balance`, `order_not_found`, `reduce_only_invalid`, `price_outside_bounds`, `position_not_found`, `invalid_margin_mode`, `invalid_margin_amount`, `margin_below_required_initial`, `account_liquidating`, `unauthorized`, `not_found`. For `400` it is a human-readable validation detail whose wording may change. See the Error handling guide for the domain identifiers. (Post-only / Fill-or-Kill outcomes are order statuses such as `post_only_rejected`, not rejections.)",
                           "example": "insufficient_margin"
                         }
                       }
@@ -3518,7 +3893,7 @@
                         },
                         "error": {
                           "type": "string",
-                          "description": "Error identifier. For domain rejections and transport errors (`401`/`404`/`429`/`500`) this is a stable, machine-readable snake_case identifier that is part of the API contract and safe to branch on, e.g. `insufficient_margin`, `insufficient_balance`, `order_not_found`, `reduce_only_invalid`, `unauthorized`, `not_found`. For `400` it is a human-readable validation detail whose wording may change. See the Error handling guide for the domain identifiers. (Post-only / Fill-or-Kill outcomes are order statuses such as `post_only_rejected`, not rejections.)",
+                          "description": "Error identifier. For domain rejections and transport errors (`401`/`404`/`429`/`500`) this is a stable, machine-readable snake_case identifier that is part of the API contract and safe to branch on, e.g. `insufficient_margin`, `insufficient_balance`, `order_not_found`, `reduce_only_invalid`, `price_outside_bounds`, `position_not_found`, `invalid_margin_mode`, `invalid_margin_amount`, `margin_below_required_initial`, `account_liquidating`, `unauthorized`, `not_found`. For `400` it is a human-readable validation detail whose wording may change. See the Error handling guide for the domain identifiers. (Post-only / Fill-or-Kill outcomes are order statuses such as `post_only_rejected`, not rejections.)",
                           "example": "insufficient_margin"
                         }
                       }
@@ -3640,7 +4015,7 @@
                         },
                         "error": {
                           "type": "string",
-                          "description": "Error identifier. For domain rejections and transport errors (`401`/`404`/`429`/`500`) this is a stable, machine-readable snake_case identifier that is part of the API contract and safe to branch on, e.g. `insufficient_margin`, `insufficient_balance`, `order_not_found`, `reduce_only_invalid`, `unauthorized`, `not_found`. For `400` it is a human-readable validation detail whose wording may change. See the Error handling guide for the domain identifiers. (Post-only / Fill-or-Kill outcomes are order statuses such as `post_only_rejected`, not rejections.)",
+                          "description": "Error identifier. For domain rejections and transport errors (`401`/`404`/`429`/`500`) this is a stable, machine-readable snake_case identifier that is part of the API contract and safe to branch on, e.g. `insufficient_margin`, `insufficient_balance`, `order_not_found`, `reduce_only_invalid`, `price_outside_bounds`, `position_not_found`, `invalid_margin_mode`, `invalid_margin_amount`, `margin_below_required_initial`, `account_liquidating`, `unauthorized`, `not_found`. For `400` it is a human-readable validation detail whose wording may change. See the Error handling guide for the domain identifiers. (Post-only / Fill-or-Kill outcomes are order statuses such as `post_only_rejected`, not rejections.)",
                           "example": "insufficient_margin"
                         }
                       }
@@ -3930,7 +4305,7 @@
                         },
                         "error": {
                           "type": "string",
-                          "description": "Error identifier. For domain rejections and transport errors (`401`/`404`/`429`/`500`) this is a stable, machine-readable snake_case identifier that is part of the API contract and safe to branch on, e.g. `insufficient_margin`, `insufficient_balance`, `order_not_found`, `reduce_only_invalid`, `unauthorized`, `not_found`. For `400` it is a human-readable validation detail whose wording may change. See the Error handling guide for the domain identifiers. (Post-only / Fill-or-Kill outcomes are order statuses such as `post_only_rejected`, not rejections.)",
+                          "description": "Error identifier. For domain rejections and transport errors (`401`/`404`/`429`/`500`) this is a stable, machine-readable snake_case identifier that is part of the API contract and safe to branch on, e.g. `insufficient_margin`, `insufficient_balance`, `order_not_found`, `reduce_only_invalid`, `price_outside_bounds`, `position_not_found`, `invalid_margin_mode`, `invalid_margin_amount`, `margin_below_required_initial`, `account_liquidating`, `unauthorized`, `not_found`. For `400` it is a human-readable validation detail whose wording may change. See the Error handling guide for the domain identifiers. (Post-only / Fill-or-Kill outcomes are order statuses such as `post_only_rejected`, not rejections.)",
                           "example": "insufficient_margin"
                         }
                       }
@@ -4052,7 +4427,7 @@
                         },
                         "error": {
                           "type": "string",
-                          "description": "Error identifier. For domain rejections and transport errors (`401`/`404`/`429`/`500`) this is a stable, machine-readable snake_case identifier that is part of the API contract and safe to branch on, e.g. `insufficient_margin`, `insufficient_balance`, `order_not_found`, `reduce_only_invalid`, `unauthorized`, `not_found`. For `400` it is a human-readable validation detail whose wording may change. See the Error handling guide for the domain identifiers. (Post-only / Fill-or-Kill outcomes are order statuses such as `post_only_rejected`, not rejections.)",
+                          "description": "Error identifier. For domain rejections and transport errors (`401`/`404`/`429`/`500`) this is a stable, machine-readable snake_case identifier that is part of the API contract and safe to branch on, e.g. `insufficient_margin`, `insufficient_balance`, `order_not_found`, `reduce_only_invalid`, `price_outside_bounds`, `position_not_found`, `invalid_margin_mode`, `invalid_margin_amount`, `margin_below_required_initial`, `account_liquidating`, `unauthorized`, `not_found`. For `400` it is a human-readable validation detail whose wording may change. See the Error handling guide for the domain identifiers. (Post-only / Fill-or-Kill outcomes are order statuses such as `post_only_rejected`, not rejections.)",
                           "example": "insufficient_margin"
                         }
                       }
@@ -4340,7 +4715,7 @@
                         },
                         "error": {
                           "type": "string",
-                          "description": "Error identifier. For domain rejections and transport errors (`401`/`404`/`429`/`500`) this is a stable, machine-readable snake_case identifier that is part of the API contract and safe to branch on, e.g. `insufficient_margin`, `insufficient_balance`, `order_not_found`, `reduce_only_invalid`, `unauthorized`, `not_found`. For `400` it is a human-readable validation detail whose wording may change. See the Error handling guide for the domain identifiers. (Post-only / Fill-or-Kill outcomes are order statuses such as `post_only_rejected`, not rejections.)",
+                          "description": "Error identifier. For domain rejections and transport errors (`401`/`404`/`429`/`500`) this is a stable, machine-readable snake_case identifier that is part of the API contract and safe to branch on, e.g. `insufficient_margin`, `insufficient_balance`, `order_not_found`, `reduce_only_invalid`, `price_outside_bounds`, `position_not_found`, `invalid_margin_mode`, `invalid_margin_amount`, `margin_below_required_initial`, `account_liquidating`, `unauthorized`, `not_found`. For `400` it is a human-readable validation detail whose wording may change. See the Error handling guide for the domain identifiers. (Post-only / Fill-or-Kill outcomes are order statuses such as `post_only_rejected`, not rejections.)",
                           "example": "insufficient_margin"
                         }
                       }
@@ -4462,7 +4837,7 @@
                         },
                         "error": {
                           "type": "string",
-                          "description": "Error identifier. For domain rejections and transport errors (`401`/`404`/`429`/`500`) this is a stable, machine-readable snake_case identifier that is part of the API contract and safe to branch on, e.g. `insufficient_margin`, `insufficient_balance`, `order_not_found`, `reduce_only_invalid`, `unauthorized`, `not_found`. For `400` it is a human-readable validation detail whose wording may change. See the Error handling guide for the domain identifiers. (Post-only / Fill-or-Kill outcomes are order statuses such as `post_only_rejected`, not rejections.)",
+                          "description": "Error identifier. For domain rejections and transport errors (`401`/`404`/`429`/`500`) this is a stable, machine-readable snake_case identifier that is part of the API contract and safe to branch on, e.g. `insufficient_margin`, `insufficient_balance`, `order_not_found`, `reduce_only_invalid`, `price_outside_bounds`, `position_not_found`, `invalid_margin_mode`, `invalid_margin_amount`, `margin_below_required_initial`, `account_liquidating`, `unauthorized`, `not_found`. For `400` it is a human-readable validation detail whose wording may change. See the Error handling guide for the domain identifiers. (Post-only / Fill-or-Kill outcomes are order statuses such as `post_only_rejected`, not rejections.)",
                           "example": "insufficient_margin"
                         }
                       }
@@ -4510,8 +4885,13 @@
               },
               "data": {
                 "type": "object",
-                "description": "Array of funding objects",
+                "description": "Funding payment object (one update per charged instrument)",
                 "properties": {
+                  "id": {
+                    "type": "integer",
+                    "description": "Funding payment ID. Probabilistically unique (same guarantees as trade IDs) and stable across REST and WebSocket for the same funding record.",
+                    "example": 1234567890
+                  },
                   "iid": {
                     "type": "integer",
                     "description": "Instrument ID",
@@ -4544,6 +4924,7 @@
                   }
                 },
                 "required": [
+                  "id",
                   "iid",
                   "sz",
                   "fr",
@@ -4567,16 +4948,15 @@
                 "ch": "funding",
                 "ts": 1767225600000,
                 "sq": 1234567890,
-                "data": [
-                  {
-                    "iid": 1,
-                    "sz": "10.00",
-                    "fr": "0.0001",
-                    "fund": "1.00",
-                    "fua": "USDC",
-                    "ts": 1767225600000
-                  }
-                ]
+                "data": {
+                  "id": 1234567890,
+                  "iid": 1,
+                  "sz": "10.00",
+                  "fr": "0.0001",
+                  "fund": "1.00",
+                  "fua": "USDC",
+                  "ts": 1767225600000
+                }
               }
             }
           ]
@@ -4688,7 +5068,7 @@
                         },
                         "error": {
                           "type": "string",
-                          "description": "Error identifier. For domain rejections and transport errors (`401`/`404`/`429`/`500`) this is a stable, machine-readable snake_case identifier that is part of the API contract and safe to branch on, e.g. `insufficient_margin`, `insufficient_balance`, `order_not_found`, `reduce_only_invalid`, `unauthorized`, `not_found`. For `400` it is a human-readable validation detail whose wording may change. See the Error handling guide for the domain identifiers. (Post-only / Fill-or-Kill outcomes are order statuses such as `post_only_rejected`, not rejections.)",
+                          "description": "Error identifier. For domain rejections and transport errors (`401`/`404`/`429`/`500`) this is a stable, machine-readable snake_case identifier that is part of the API contract and safe to branch on, e.g. `insufficient_margin`, `insufficient_balance`, `order_not_found`, `reduce_only_invalid`, `price_outside_bounds`, `position_not_found`, `invalid_margin_mode`, `invalid_margin_amount`, `margin_below_required_initial`, `account_liquidating`, `unauthorized`, `not_found`. For `400` it is a human-readable validation detail whose wording may change. See the Error handling guide for the domain identifiers. (Post-only / Fill-or-Kill outcomes are order statuses such as `post_only_rejected`, not rejections.)",
                           "example": "insufficient_margin"
                         }
                       }
@@ -4810,7 +5190,7 @@
                         },
                         "error": {
                           "type": "string",
-                          "description": "Error identifier. For domain rejections and transport errors (`401`/`404`/`429`/`500`) this is a stable, machine-readable snake_case identifier that is part of the API contract and safe to branch on, e.g. `insufficient_margin`, `insufficient_balance`, `order_not_found`, `reduce_only_invalid`, `unauthorized`, `not_found`. For `400` it is a human-readable validation detail whose wording may change. See the Error handling guide for the domain identifiers. (Post-only / Fill-or-Kill outcomes are order statuses such as `post_only_rejected`, not rejections.)",
+                          "description": "Error identifier. For domain rejections and transport errors (`401`/`404`/`429`/`500`) this is a stable, machine-readable snake_case identifier that is part of the API contract and safe to branch on, e.g. `insufficient_margin`, `insufficient_balance`, `order_not_found`, `reduce_only_invalid`, `price_outside_bounds`, `position_not_found`, `invalid_margin_mode`, `invalid_margin_amount`, `margin_below_required_initial`, `account_liquidating`, `unauthorized`, `not_found`. For `400` it is a human-readable validation detail whose wording may change. See the Error handling guide for the domain identifiers. (Post-only / Fill-or-Kill outcomes are order statuses such as `post_only_rejected`, not rejections.)",
                           "example": "insufficient_margin"
                         }
                       }
@@ -5013,7 +5393,7 @@
                         },
                         "error": {
                           "type": "string",
-                          "description": "Error identifier. For domain rejections and transport errors (`401`/`404`/`429`/`500`) this is a stable, machine-readable snake_case identifier that is part of the API contract and safe to branch on, e.g. `insufficient_margin`, `insufficient_balance`, `order_not_found`, `reduce_only_invalid`, `unauthorized`, `not_found`. For `400` it is a human-readable validation detail whose wording may change. See the Error handling guide for the domain identifiers. (Post-only / Fill-or-Kill outcomes are order statuses such as `post_only_rejected`, not rejections.)",
+                          "description": "Error identifier. For domain rejections and transport errors (`401`/`404`/`429`/`500`) this is a stable, machine-readable snake_case identifier that is part of the API contract and safe to branch on, e.g. `insufficient_margin`, `insufficient_balance`, `order_not_found`, `reduce_only_invalid`, `price_outside_bounds`, `position_not_found`, `invalid_margin_mode`, `invalid_margin_amount`, `margin_below_required_initial`, `account_liquidating`, `unauthorized`, `not_found`. For `400` it is a human-readable validation detail whose wording may change. See the Error handling guide for the domain identifiers. (Post-only / Fill-or-Kill outcomes are order statuses such as `post_only_rejected`, not rejections.)",
                           "example": "insufficient_margin"
                         }
                       }
@@ -5135,7 +5515,7 @@
                         },
                         "error": {
                           "type": "string",
-                          "description": "Error identifier. For domain rejections and transport errors (`401`/`404`/`429`/`500`) this is a stable, machine-readable snake_case identifier that is part of the API contract and safe to branch on, e.g. `insufficient_margin`, `insufficient_balance`, `order_not_found`, `reduce_only_invalid`, `unauthorized`, `not_found`. For `400` it is a human-readable validation detail whose wording may change. See the Error handling guide for the domain identifiers. (Post-only / Fill-or-Kill outcomes are order statuses such as `post_only_rejected`, not rejections.)",
+                          "description": "Error identifier. For domain rejections and transport errors (`401`/`404`/`429`/`500`) this is a stable, machine-readable snake_case identifier that is part of the API contract and safe to branch on, e.g. `insufficient_margin`, `insufficient_balance`, `order_not_found`, `reduce_only_invalid`, `price_outside_bounds`, `position_not_found`, `invalid_margin_mode`, `invalid_margin_amount`, `margin_below_required_initial`, `account_liquidating`, `unauthorized`, `not_found`. For `400` it is a human-readable validation detail whose wording may change. See the Error handling guide for the domain identifiers. (Post-only / Fill-or-Kill outcomes are order statuses such as `post_only_rejected`, not rejections.)",
                           "example": "insufficient_margin"
                         }
                       }
@@ -5208,7 +5588,8 @@
                         "liquidation_price",
                         "unrealized_pnl",
                         "return_on_equity",
-                        "cumulative_funding"
+                        "cumulative_funding",
+                        "adl_index"
                       ],
                       "properties": {
                         "instrument_id": {
@@ -5241,7 +5622,7 @@
                         },
                         "initial_margin": {
                           "type": "string",
-                          "description": "Initial margin in USD",
+                          "description": "Current collateral backing the position. For cross positions, this is\nthe required initial margin based on position size, mark price, the\napplicable risk tier, and configured leverage. For isolated positions,\nthis is the position's current equity: signed allocated margin plus\nunrealized PnL minus settled funding.\n\nThe legacy `initial_margin` name is retained for API compatibility;\n`margin` would more accurately describe the field.\n",
                           "example": "10.00"
                         },
                         "maintenance_margin": {
@@ -5266,13 +5647,24 @@
                         },
                         "return_on_equity": {
                           "type": "string",
-                          "description": "Return on equity as a decimal",
+                          "description": "Unrealized PnL divided by the position's current required initial margin, as a decimal.",
                           "example": "-0.0027"
                         },
                         "cumulative_funding": {
                           "type": "string",
                           "description": "Cumulative funding paid/received in USD",
                           "example": "514.09"
+                        },
+                        "adl_index": {
+                          "type": "integer",
+                          "enum": [
+                            0,
+                            1,
+                            2,
+                            3
+                          ],
+                          "description": "Auto-deleveraging tier; higher means higher risk of being ADL'd.",
+                          "example": 2
                         }
                       }
                     }
@@ -5352,7 +5744,8 @@
                       "liquidation_price": "2866.27",
                       "unrealized_pnl": "-0.01",
                       "return_on_equity": "-0.0027",
-                      "cumulative_funding": "514.09"
+                      "cumulative_funding": "514.09",
+                      "adl_index": 2
                     }
                   ],
                   "margin": {
@@ -5475,7 +5868,7 @@
                         },
                         "error": {
                           "type": "string",
-                          "description": "Error identifier. For domain rejections and transport errors (`401`/`404`/`429`/`500`) this is a stable, machine-readable snake_case identifier that is part of the API contract and safe to branch on, e.g. `insufficient_margin`, `insufficient_balance`, `order_not_found`, `reduce_only_invalid`, `unauthorized`, `not_found`. For `400` it is a human-readable validation detail whose wording may change. See the Error handling guide for the domain identifiers. (Post-only / Fill-or-Kill outcomes are order statuses such as `post_only_rejected`, not rejections.)",
+                          "description": "Error identifier. For domain rejections and transport errors (`401`/`404`/`429`/`500`) this is a stable, machine-readable snake_case identifier that is part of the API contract and safe to branch on, e.g. `insufficient_margin`, `insufficient_balance`, `order_not_found`, `reduce_only_invalid`, `price_outside_bounds`, `position_not_found`, `invalid_margin_mode`, `invalid_margin_amount`, `margin_below_required_initial`, `account_liquidating`, `unauthorized`, `not_found`. For `400` it is a human-readable validation detail whose wording may change. See the Error handling guide for the domain identifiers. (Post-only / Fill-or-Kill outcomes are order statuses such as `post_only_rejected`, not rejections.)",
                           "example": "insufficient_margin"
                         }
                       }
@@ -5597,7 +5990,7 @@
                         },
                         "error": {
                           "type": "string",
-                          "description": "Error identifier. For domain rejections and transport errors (`401`/`404`/`429`/`500`) this is a stable, machine-readable snake_case identifier that is part of the API contract and safe to branch on, e.g. `insufficient_margin`, `insufficient_balance`, `order_not_found`, `reduce_only_invalid`, `unauthorized`, `not_found`. For `400` it is a human-readable validation detail whose wording may change. See the Error handling guide for the domain identifiers. (Post-only / Fill-or-Kill outcomes are order statuses such as `post_only_rejected`, not rejections.)",
+                          "description": "Error identifier. For domain rejections and transport errors (`401`/`404`/`429`/`500`) this is a stable, machine-readable snake_case identifier that is part of the API contract and safe to branch on, e.g. `insufficient_margin`, `insufficient_balance`, `order_not_found`, `reduce_only_invalid`, `price_outside_bounds`, `position_not_found`, `invalid_margin_mode`, `invalid_margin_amount`, `margin_below_required_initial`, `account_liquidating`, `unauthorized`, `not_found`. For `400` it is a human-readable validation detail whose wording may change. See the Error handling guide for the domain identifiers. (Post-only / Fill-or-Kill outcomes are order statuses such as `post_only_rejected`, not rejections.)",
                           "example": "insufficient_margin"
                         }
                       }
@@ -5814,7 +6207,7 @@
                         },
                         "error": {
                           "type": "string",
-                          "description": "Error identifier. For domain rejections and transport errors (`401`/`404`/`429`/`500`) this is a stable, machine-readable snake_case identifier that is part of the API contract and safe to branch on, e.g. `insufficient_margin`, `insufficient_balance`, `order_not_found`, `reduce_only_invalid`, `unauthorized`, `not_found`. For `400` it is a human-readable validation detail whose wording may change. See the Error handling guide for the domain identifiers. (Post-only / Fill-or-Kill outcomes are order statuses such as `post_only_rejected`, not rejections.)",
+                          "description": "Error identifier. For domain rejections and transport errors (`401`/`404`/`429`/`500`) this is a stable, machine-readable snake_case identifier that is part of the API contract and safe to branch on, e.g. `insufficient_margin`, `insufficient_balance`, `order_not_found`, `reduce_only_invalid`, `price_outside_bounds`, `position_not_found`, `invalid_margin_mode`, `invalid_margin_amount`, `margin_below_required_initial`, `account_liquidating`, `unauthorized`, `not_found`. For `400` it is a human-readable validation detail whose wording may change. See the Error handling guide for the domain identifiers. (Post-only / Fill-or-Kill outcomes are order statuses such as `post_only_rejected`, not rejections.)",
                           "example": "insufficient_margin"
                         }
                       }
@@ -5936,7 +6329,7 @@
                         },
                         "error": {
                           "type": "string",
-                          "description": "Error identifier. For domain rejections and transport errors (`401`/`404`/`429`/`500`) this is a stable, machine-readable snake_case identifier that is part of the API contract and safe to branch on, e.g. `insufficient_margin`, `insufficient_balance`, `order_not_found`, `reduce_only_invalid`, `unauthorized`, `not_found`. For `400` it is a human-readable validation detail whose wording may change. See the Error handling guide for the domain identifiers. (Post-only / Fill-or-Kill outcomes are order statuses such as `post_only_rejected`, not rejections.)",
+                          "description": "Error identifier. For domain rejections and transport errors (`401`/`404`/`429`/`500`) this is a stable, machine-readable snake_case identifier that is part of the API contract and safe to branch on, e.g. `insufficient_margin`, `insufficient_balance`, `order_not_found`, `reduce_only_invalid`, `price_outside_bounds`, `position_not_found`, `invalid_margin_mode`, `invalid_margin_amount`, `margin_below_required_initial`, `account_liquidating`, `unauthorized`, `not_found`. For `400` it is a human-readable validation detail whose wording may change. See the Error handling guide for the domain identifiers. (Post-only / Fill-or-Kill outcomes are order statuses such as `post_only_rejected`, not rejections.)",
                           "example": "insufficient_margin"
                         }
                       }
@@ -6067,6 +6460,681 @@
           ]
         }
       }
+    },
+    "notifications": {
+      "address": "/v1/ws",
+      "title": "Notifications",
+      "summary": "Real-time perps notifications for the in-app bell. Requires authentication, see [Auth](/ws/auth).",
+      "messages": {
+        "SubscribeRequest": {
+          "name": "NotificationsSubscribeRequest",
+          "title": "Subscribe",
+          "summary": "Subscribe to private perps notifications (requires prior auth)",
+          "contentType": "application/json",
+          "payload": {
+            "type": "object",
+            "title": "Base Request",
+            "properties": {
+              "id": {
+                "type": "integer",
+                "description": "Correlation ID for request-response matching"
+              },
+              "req": {
+                "type": "string",
+                "description": "Request type",
+                "enum": [
+                  "post",
+                  "sub",
+                  "unsub"
+                ]
+              },
+              "chs": {
+                "type": "array",
+                "description": "Notifications private channel: \"notifications\"",
+                "items": {
+                  "type": "string",
+                  "enum": [
+                    "notifications"
+                  ]
+                },
+                "example": [
+                  "notifications"
+                ]
+              }
+            },
+            "required": [
+              "req",
+              "chs"
+            ]
+          },
+          "examples": [
+            {
+              "name": "SubscribeRequest Example",
+              "payload": {
+                "req": "sub",
+                "chs": [
+                  "notifications"
+                ]
+              }
+            }
+          ]
+        },
+        "SubscribeResponse": {
+          "name": "NotificationsSubscribeResponse",
+          "title": "Subscribe Response",
+          "summary": "Response to notifications subscribe request",
+          "contentType": "application/json",
+          "payload": {
+            "type": "object",
+            "title": "Base Response",
+            "properties": {
+              "id": {
+                "type": "integer",
+                "description": "Correlation ID for request-response matching"
+              },
+              "data": {
+                "title": "Subscribe Response",
+                "type": "array",
+                "items": {
+                  "oneOf": [
+                    {
+                      "type": "object",
+                      "required": [
+                        "status"
+                      ],
+                      "properties": {
+                        "status": {
+                          "type": "string",
+                          "enum": [
+                            "ok"
+                          ]
+                        }
+                      }
+                    },
+                    {
+                      "type": "object",
+                      "required": [
+                        "status",
+                        "error"
+                      ],
+                      "properties": {
+                        "status": {
+                          "type": "string",
+                          "enum": [
+                            "err"
+                          ]
+                        },
+                        "error": {
+                          "type": "string",
+                          "description": "Error identifier. For domain rejections and transport errors (`401`/`404`/`429`/`500`) this is a stable, machine-readable snake_case identifier that is part of the API contract and safe to branch on, e.g. `insufficient_margin`, `insufficient_balance`, `order_not_found`, `reduce_only_invalid`, `price_outside_bounds`, `position_not_found`, `invalid_margin_mode`, `invalid_margin_amount`, `margin_below_required_initial`, `account_liquidating`, `unauthorized`, `not_found`. For `400` it is a human-readable validation detail whose wording may change. See the Error handling guide for the domain identifiers. (Post-only / Fill-or-Kill outcomes are order statuses such as `post_only_rejected`, not rejections.)",
+                          "example": "insufficient_margin"
+                        }
+                      }
+                    }
+                  ]
+                }
+              }
+            },
+            "required": [
+              "data"
+            ]
+          },
+          "examples": [
+            {
+              "name": "SubscribeResponse Example",
+              "payload": {
+                "data": []
+              }
+            }
+          ]
+        },
+        "UnsubscribeRequest": {
+          "name": "NotificationsUnsubscribeRequest",
+          "title": "Unsubscribe",
+          "summary": "Unsubscribe from private perps notifications",
+          "contentType": "application/json",
+          "payload": {
+            "type": "object",
+            "title": "Base Request",
+            "properties": {
+              "id": {
+                "type": "integer",
+                "description": "Correlation ID for request-response matching"
+              },
+              "req": {
+                "type": "string",
+                "description": "Request type",
+                "enum": [
+                  "post",
+                  "sub",
+                  "unsub"
+                ]
+              },
+              "chs": {
+                "type": "array",
+                "description": "Notifications private channel: \"notifications\"",
+                "items": {
+                  "type": "string",
+                  "enum": [
+                    "notifications"
+                  ]
+                },
+                "example": [
+                  "notifications"
+                ]
+              }
+            },
+            "required": [
+              "req",
+              "chs"
+            ]
+          },
+          "examples": [
+            {
+              "name": "UnsubscribeRequest Example",
+              "payload": {
+                "req": "unsub",
+                "chs": [
+                  "notifications"
+                ]
+              }
+            }
+          ]
+        },
+        "UnsubscribeResponse": {
+          "name": "NotificationsUnsubscribeResponse",
+          "title": "Unsubscribe Response",
+          "summary": "Response to notifications unsubscribe request",
+          "contentType": "application/json",
+          "payload": {
+            "type": "object",
+            "title": "Base Response",
+            "properties": {
+              "id": {
+                "type": "integer",
+                "description": "Correlation ID for request-response matching"
+              },
+              "data": {
+                "title": "Subscribe Response",
+                "type": "array",
+                "items": {
+                  "oneOf": [
+                    {
+                      "type": "object",
+                      "required": [
+                        "status"
+                      ],
+                      "properties": {
+                        "status": {
+                          "type": "string",
+                          "enum": [
+                            "ok"
+                          ]
+                        }
+                      }
+                    },
+                    {
+                      "type": "object",
+                      "required": [
+                        "status",
+                        "error"
+                      ],
+                      "properties": {
+                        "status": {
+                          "type": "string",
+                          "enum": [
+                            "err"
+                          ]
+                        },
+                        "error": {
+                          "type": "string",
+                          "description": "Error identifier. For domain rejections and transport errors (`401`/`404`/`429`/`500`) this is a stable, machine-readable snake_case identifier that is part of the API contract and safe to branch on, e.g. `insufficient_margin`, `insufficient_balance`, `order_not_found`, `reduce_only_invalid`, `price_outside_bounds`, `position_not_found`, `invalid_margin_mode`, `invalid_margin_amount`, `margin_below_required_initial`, `account_liquidating`, `unauthorized`, `not_found`. For `400` it is a human-readable validation detail whose wording may change. See the Error handling guide for the domain identifiers. (Post-only / Fill-or-Kill outcomes are order statuses such as `post_only_rejected`, not rejections.)",
+                          "example": "insufficient_margin"
+                        }
+                      }
+                    }
+                  ]
+                }
+              }
+            },
+            "required": [
+              "data"
+            ]
+          },
+          "examples": [
+            {
+              "name": "UnsubscribeResponse Example",
+              "payload": {
+                "data": []
+              }
+            }
+          ]
+        },
+        "Update": {
+          "name": "NotificationsUpdate",
+          "title": "Update",
+          "summary": "Real-time perps notification frame (data or resync) for authenticated users",
+          "contentType": "application/json",
+          "payload": {
+            "oneOf": [
+              {
+                "type": "object",
+                "title": "Base Update",
+                "properties": {
+                  "ch": {
+                    "const": "notifications"
+                  },
+                  "ts": {
+                    "type": "integer",
+                    "description": "Request timestamp. Unix milliseconds for most operations; Unix seconds for withdrawals (must match the on-chain EIP-712 struct verified against block.timestamp).",
+                    "example": 1767225600000
+                  },
+                  "sq": {
+                    "type": "integer",
+                    "description": "Sequence number",
+                    "example": 1234567890
+                  },
+                  "data": {
+                    "oneOf": [
+                      {
+                        "type": "object",
+                        "properties": {
+                          "id": {
+                            "type": "string",
+                            "description": "Stable notification id. The same notification always has the same id on the WebSocket feed and in the notifications history, so you can safely deduplicate across the two.",
+                            "example": "0a5d8f1e-3b2c-5e4a-9f8b-1c2d3e4f5a6b"
+                          },
+                          "type": {
+                            "type": "string",
+                            "enum": [
+                              "position_opened",
+                              "position_increased",
+                              "position_reduced"
+                            ]
+                          },
+                          "instrument_id": {
+                            "type": "integer",
+                            "description": "Instrument ID"
+                          },
+                          "side": {
+                            "type": "string",
+                            "description": "Side",
+                            "enum": [
+                              "long",
+                              "short"
+                            ]
+                          },
+                          "size": {
+                            "type": "string",
+                            "description": "Quantity in no. of contracts",
+                            "example": "10.00"
+                          },
+                          "avg_price": {
+                            "type": "string",
+                            "description": "Volume-weighted average fill price in USD",
+                            "example": "64210"
+                          },
+                          "leverage": {
+                            "type": "integer",
+                            "description": "Leverage",
+                            "example": 10
+                          },
+                          "order_type": {
+                            "type": "string",
+                            "description": "Kind of order whose execution produced this notification, decided by the account's own order in the fill. A TP/SL-triggered order reports the trigger that fired it (take_profit / stop_loss) whether it aggressed or rested; otherwise an aggressor submitted without a limit price is market and everything else — including a maker's resting order — is limit. Optional — omitted when the deriver cannot attribute the fill to an order (e.g. a consumer restarted inside the trigger-to-fill window).",
+                            "enum": [
+                              "market",
+                              "limit",
+                              "take_profit",
+                              "stop_loss"
+                            ]
+                          },
+                          "fill_qty": {
+                            "type": "string",
+                            "description": "Quantity filled in this event, in no. of contracts. When the account has more than one fill in the event, this is their combined quantity. Always a positive decimal string.",
+                            "example": "0.05"
+                          },
+                          "order_qty": {
+                            "type": "string",
+                            "description": "Original total quantity of the account's own order that produced the fill, in no. of contracts. Optional: omitted when the deriver cannot resolve the order, or when the account's fills in this event span multiple of its own orders (fill_qty then combines quantities across orders, so no single original quantity applies). order_qty can be present while order_type is absent, because order_type is also omitted when a triggered order's conditional cannot be classified.",
+                            "example": "0.10"
+                          }
+                        },
+                        "required": [
+                          "id",
+                          "type",
+                          "instrument_id",
+                          "side",
+                          "size",
+                          "avg_price",
+                          "leverage",
+                          "fill_qty"
+                        ]
+                      },
+                      {
+                        "type": "object",
+                        "properties": {
+                          "id": {
+                            "type": "string",
+                            "description": "Stable notification id. The same notification always has the same id on the WebSocket feed and in the notifications history, so you can safely deduplicate across the two.",
+                            "example": "0a5d8f1e-3b2c-5e4a-9f8b-1c2d3e4f5a6b"
+                          },
+                          "type": {
+                            "type": "string",
+                            "const": "position_closed"
+                          },
+                          "instrument_id": {
+                            "type": "integer",
+                            "description": "Instrument ID"
+                          },
+                          "side": {
+                            "type": "string",
+                            "description": "Side",
+                            "enum": [
+                              "long",
+                              "short"
+                            ]
+                          },
+                          "size": {
+                            "type": "string",
+                            "description": "Quantity in no. of contracts",
+                            "example": "10.00"
+                          },
+                          "avg_price": {
+                            "type": "string",
+                            "description": "Volume-weighted average fill price in USD",
+                            "example": "64210"
+                          },
+                          "pnl": {
+                            "type": "string",
+                            "description": "PnL in USD",
+                            "example": "100.00"
+                          },
+                          "order_type": {
+                            "type": "string",
+                            "description": "Kind of order whose execution produced this notification, decided by the account's own order in the fill. A TP/SL-triggered order reports the trigger that fired it (take_profit / stop_loss) whether it aggressed or rested; otherwise an aggressor submitted without a limit price is market and everything else — including a maker's resting order — is limit. Optional — omitted when the deriver cannot attribute the fill to an order (e.g. a consumer restarted inside the trigger-to-fill window).",
+                            "enum": [
+                              "market",
+                              "limit",
+                              "take_profit",
+                              "stop_loss"
+                            ]
+                          },
+                          "fill_qty": {
+                            "type": "string",
+                            "description": "Quantity filled in this event, in no. of contracts. When the account has more than one fill in the event, this is their combined quantity. Always a positive decimal string.",
+                            "example": "0.05"
+                          },
+                          "order_qty": {
+                            "type": "string",
+                            "description": "Original total quantity of the account's own order that produced the fill, in no. of contracts. Optional: omitted when the deriver cannot resolve the order, or when the account's fills in this event span multiple of its own orders (fill_qty then combines quantities across orders, so no single original quantity applies). order_qty can be present while order_type is absent, because order_type is also omitted when a triggered order's conditional cannot be classified.",
+                            "example": "0.10"
+                          }
+                        },
+                        "required": [
+                          "id",
+                          "type",
+                          "instrument_id",
+                          "side",
+                          "size",
+                          "avg_price",
+                          "pnl",
+                          "fill_qty"
+                        ]
+                      },
+                      {
+                        "type": "object",
+                        "properties": {
+                          "id": {
+                            "type": "string",
+                            "description": "Stable notification id. The same notification always has the same id on the WebSocket feed and in the notifications history, so you can safely deduplicate across the two.",
+                            "example": "0a5d8f1e-3b2c-5e4a-9f8b-1c2d3e4f5a6b"
+                          },
+                          "type": {
+                            "type": "string",
+                            "const": "limit_order_canceled"
+                          },
+                          "instrument_id": {
+                            "type": "integer",
+                            "description": "Instrument ID"
+                          },
+                          "side": {
+                            "type": "string",
+                            "description": "Side",
+                            "enum": [
+                              "long",
+                              "short"
+                            ]
+                          },
+                          "size": {
+                            "type": "string",
+                            "description": "Quantity in no. of contracts",
+                            "example": "10.00"
+                          },
+                          "price": {
+                            "type": "string",
+                            "description": "Price",
+                            "example": "100.00"
+                          }
+                        },
+                        "required": [
+                          "id",
+                          "type",
+                          "instrument_id",
+                          "side",
+                          "size",
+                          "price"
+                        ]
+                      },
+                      {
+                        "oneOf": [
+                          {
+                            "type": "object",
+                            "properties": {
+                              "id": {
+                                "type": "string",
+                                "description": "Stable notification id. The same notification always has the same id on the WebSocket feed and in the notifications history, so you can safely deduplicate across the two.",
+                                "example": "0a5d8f1e-3b2c-5e4a-9f8b-1c2d3e4f5a6b"
+                              },
+                              "type": {
+                                "type": "string",
+                                "const": "liquidation_warning"
+                              },
+                              "instrument_id": {
+                                "type": "integer",
+                                "description": "Instrument ID"
+                              },
+                              "margin_type": {
+                                "type": "string",
+                                "const": "isolated"
+                              },
+                              "mark_price": {
+                                "type": "string",
+                                "description": "Mark price",
+                                "example": "100.00"
+                              },
+                              "liq_price": {
+                                "type": "string",
+                                "description": "Liquidation price",
+                                "example": "2866.27"
+                              }
+                            },
+                            "required": [
+                              "id",
+                              "type",
+                              "instrument_id",
+                              "margin_type",
+                              "mark_price",
+                              "liq_price"
+                            ],
+                            "not": {
+                              "required": [
+                                "affected_instruments"
+                              ]
+                            }
+                          },
+                          {
+                            "type": "object",
+                            "properties": {
+                              "id": {
+                                "type": "string",
+                                "description": "Stable notification id. The same notification always has the same id on the WebSocket feed and in the notifications history, so you can safely deduplicate across the two.",
+                                "example": "0a5d8f1e-3b2c-5e4a-9f8b-1c2d3e4f5a6b"
+                              },
+                              "type": {
+                                "type": "string",
+                                "const": "liquidation_warning"
+                              },
+                              "instrument_id": {
+                                "type": "null"
+                              },
+                              "margin_type": {
+                                "type": "string",
+                                "const": "cross"
+                              },
+                              "mark_price": {
+                                "type": "string",
+                                "description": "Mark price",
+                                "example": "100.00"
+                              },
+                              "affected_instruments": {
+                                "type": "array",
+                                "description": "Instrument ids contributing to a cross-margin liquidation warning",
+                                "items": {
+                                  "type": "integer"
+                                },
+                                "example": [
+                                  42,
+                                  7
+                                ]
+                              }
+                            },
+                            "required": [
+                              "id",
+                              "type",
+                              "instrument_id",
+                              "margin_type",
+                              "mark_price",
+                              "affected_instruments"
+                            ],
+                            "not": {
+                              "required": [
+                                "liq_price"
+                              ]
+                            }
+                          }
+                        ]
+                      },
+                      {
+                        "type": "object",
+                        "properties": {
+                          "id": {
+                            "type": "string",
+                            "description": "Stable notification id. The same notification always has the same id on the WebSocket feed and in the notifications history, so you can safely deduplicate across the two.",
+                            "example": "0a5d8f1e-3b2c-5e4a-9f8b-1c2d3e4f5a6b"
+                          },
+                          "type": {
+                            "type": "string",
+                            "const": "position_liquidated"
+                          },
+                          "instrument_id": {
+                            "type": "integer",
+                            "description": "Instrument ID"
+                          },
+                          "side": {
+                            "type": "string",
+                            "description": "Side",
+                            "enum": [
+                              "long",
+                              "short"
+                            ]
+                          },
+                          "size_closed": {
+                            "type": "string",
+                            "description": "Position size closed by a liquidation (base units)",
+                            "example": "0.05"
+                          },
+                          "pnl": {
+                            "type": [
+                              "string",
+                              "null"
+                            ],
+                            "description": "Realized PnL in USD; null when not available (e.g. a backstop close with no fill)",
+                            "example": "290.00"
+                          },
+                          "margin_type": {
+                            "type": "string",
+                            "description": "Margin mode",
+                            "enum": [
+                              "cross",
+                              "isolated"
+                            ]
+                          },
+                          "via_backstop": {
+                            "type": "boolean",
+                            "description": "Whether an insurance-fund backstop applied to the liquidation",
+                            "example": false
+                          }
+                        },
+                        "required": [
+                          "id",
+                          "type",
+                          "instrument_id",
+                          "side",
+                          "size_closed",
+                          "pnl",
+                          "margin_type",
+                          "via_backstop"
+                        ]
+                      }
+                    ]
+                  }
+                },
+                "required": [
+                  "ch",
+                  "ts",
+                  "sq",
+                  "data"
+                ]
+              },
+              {
+                "description": "Resync control frame sent when the connection falls behind and the server drops one or more data frames. Its sq is the highest sequence among the dropped notifications. To recover, backfill from the REST notifications history anchored at the last data frame you processed, and keep paging until the returned durable_source_seq reaches this sq and no more pages remain.",
+                "type": "object",
+                "title": "Base Update",
+                "properties": {
+                  "ch": {
+                    "const": "notifications"
+                  },
+                  "ts": {
+                    "type": "integer",
+                    "description": "Request timestamp. Unix milliseconds for most operations; Unix seconds for withdrawals (must match the on-chain EIP-712 struct verified against block.timestamp).",
+                    "example": 1767225600000
+                  },
+                  "sq": {
+                    "type": "integer",
+                    "description": "Sequence number",
+                    "example": 1234567890
+                  },
+                  "type": {
+                    "const": "resync"
+                  }
+                },
+                "required": [
+                  "ch",
+                  "ts",
+                  "sq",
+                  "type"
+                ],
+                "not": {
+                  "required": [
+                    "data"
+                  ]
+                }
+              }
+            ]
+          }
+        }
+      }
     }
   },
   "operations": {
@@ -6166,6 +7234,30 @@
         }
       ]
     },
+    "CancelAllSend": {
+      "action": "receive",
+      "channel": {
+        "$ref": "#/channels/cancelAll"
+      },
+      "summary": "Cancel all open orders",
+      "messages": [
+        {
+          "$ref": "#/channels/cancelAll/messages/Request"
+        }
+      ]
+    },
+    "CancelAllReceive": {
+      "action": "send",
+      "channel": {
+        "$ref": "#/channels/cancelAll"
+      },
+      "summary": "Cancel all orders response",
+      "messages": [
+        {
+          "$ref": "#/channels/cancelAll/messages/Response"
+        }
+      ]
+    },
     "AutoCancelSend": {
       "action": "receive",
       "channel": {
@@ -6211,6 +7303,30 @@
       "messages": [
         {
           "$ref": "#/channels/updateLeverage/messages/Response"
+        }
+      ]
+    },
+    "UpdateMarginSend": {
+      "action": "receive",
+      "channel": {
+        "$ref": "#/channels/updateMargin"
+      },
+      "summary": "Update isolated margin",
+      "messages": [
+        {
+          "$ref": "#/channels/updateMargin/messages/Request"
+        }
+      ]
+    },
+    "UpdateMarginReceive": {
+      "action": "send",
+      "channel": {
+        "$ref": "#/channels/updateMargin"
+      },
+      "summary": "Update isolated margin response",
+      "messages": [
+        {
+          "$ref": "#/channels/updateMargin/messages/Response"
         }
       ]
     },
@@ -7015,6 +8131,66 @@
       "messages": [
         {
           "$ref": "#/channels/withdrawals/messages/Update"
+        }
+      ]
+    },
+    "NotificationsSubscribe": {
+      "action": "receive",
+      "channel": {
+        "$ref": "#/channels/notifications"
+      },
+      "summary": "Subscribe to notifications",
+      "messages": [
+        {
+          "$ref": "#/channels/notifications/messages/SubscribeRequest"
+        }
+      ]
+    },
+    "NotificationsSubscribeResponse": {
+      "action": "send",
+      "channel": {
+        "$ref": "#/channels/notifications"
+      },
+      "summary": "Notifications subscribe response",
+      "messages": [
+        {
+          "$ref": "#/channels/notifications/messages/SubscribeResponse"
+        }
+      ]
+    },
+    "NotificationsUnsubscribe": {
+      "action": "receive",
+      "channel": {
+        "$ref": "#/channels/notifications"
+      },
+      "summary": "Unsubscribe from notifications",
+      "messages": [
+        {
+          "$ref": "#/channels/notifications/messages/UnsubscribeRequest"
+        }
+      ]
+    },
+    "NotificationsUnsubscribeResponse": {
+      "action": "send",
+      "channel": {
+        "$ref": "#/channels/notifications"
+      },
+      "summary": "Notifications unsubscribe response",
+      "messages": [
+        {
+          "$ref": "#/channels/notifications/messages/UnsubscribeResponse"
+        }
+      ]
+    },
+    "NotificationsUpdate": {
+      "action": "send",
+      "channel": {
+        "$ref": "#/channels/notifications"
+      },
+      "summary": "Receive notification updates",
+      "messages": [
+        {
+          "$ref": "#/channels/notifications/messages/Update"
         }
       ]
     }

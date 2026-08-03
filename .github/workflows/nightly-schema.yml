@@ -109,6 +109,7 @@ jobs:
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           BRANCH: ${{ env.BRANCH }}
+          SPEC_ID: ${{ matrix.id }}
         run: |
           ARTIFACT_DIR="${{ github.workspace }}/artifacts/${{ matrix.id }}"
 
@@ -160,15 +161,36 @@ jobs:
           } > "$PR_BODY"
 
           EXISTING_PR=$(gh pr list --head "${BRANCH}" --state open --json number --jq '.[0].number // empty')
-          if [ -z "$EXISTING_PR" ]; then
-            gh pr create \
-              --title "chore(specs): ${{ matrix.id }} drift on $(date -u +%Y-%m-%d)" \
-              --body "$(cat ${PR_BODY})" \
-              --label schema-drift \
-              --head "${BRANCH}" \
-              --base main
-          else
+          if [ -n "$EXISTING_PR" ]; then
             gh pr edit "$EXISTING_PR" --body "$(cat ${PR_BODY})"
+            exit 0
+          fi
+
+          # `gh pr create` is refused outright when "Allow GitHub Actions to
+          # create and approve pull requests" is disabled for the repo or org.
+          # That is a settings gap, not a drift finding: the synced bytes are
+          # already pushed to ${BRANCH} and the tracking issue is already filed,
+          # so no signal is lost. Degrade to a warning rather than reporting a
+          # red nightly every night until someone flips the toggle — a
+          # permanently-red workflow trains maintainers to ignore it, which
+          # would mask the very drift this job exists to raise. Any *other*
+          # failure is a genuine fault and still fails the step.
+          set +e
+          PR_OUT=$(gh pr create \
+            --title "chore(specs): ${SPEC_ID} drift on $(date -u +%Y-%m-%d)" \
+            --body "$(cat ${PR_BODY})" \
+            --label schema-drift \
+            --head "${BRANCH}" \
+            --base main 2>&1)
+          PR_EC=$?
+          set -e
+          printf '%s\n' "$PR_OUT"
+          if [ "$PR_EC" -ne 0 ]; then
+            if printf '%s' "$PR_OUT" | grep -qF "not permitted to create or approve pull requests"; then
+              echo "::warning::Actions may not open PRs in this repo, so no ${SPEC_ID} drift PR was created. The synced spec is committed on branch ${BRANCH} and tracked in issue #${EXISTING_ISSUE} — open the PR by hand, or enable Settings → Actions → General → Workflow permissions → 'Allow GitHub Actions to create and approve pull requests'."
+              exit 0
+            fi
+            exit "$PR_EC"
           fi
 
       - name: Upload drift artifacts
