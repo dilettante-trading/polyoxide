@@ -158,12 +158,40 @@ impl TickSize {
     }
 
     /// Returns the number of decimal places for this tick size.
+    ///
+    /// This is the precision limit the venue applies to the **price** leg.
+    /// See [`Self::size_decimals`] and [`Self::amount_decimals`] for the two
+    /// other limits that apply to order amounts.
     pub fn decimals(&self) -> u32 {
         match self {
             Self::Tenth => 1,
             Self::Hundredth => 2,
             Self::Thousandth => 3,
             Self::TenThousandth => 4,
+        }
+    }
+
+    /// Decimal limit for the order leg the **caller supplies** — the size in
+    /// shares, or the USDC amount of a market buy.
+    ///
+    /// Two for every tick size. Mirrors `size` in py-clob-client's
+    /// `ROUNDING_CONFIG`.
+    pub(crate) fn size_decimals(&self) -> u32 {
+        2
+    }
+
+    /// Decimal limit for the order leg **derived** from the supplied one, via
+    /// multiplication or division by the price.
+    ///
+    /// Always [`Self::decimals`] + 2. Mirrors `amount` in py-clob-client's
+    /// `ROUNDING_CONFIG`; spelled out rather than computed so it stays
+    /// diffable against the reference table.
+    pub(crate) fn amount_decimals(&self) -> u32 {
+        match self {
+            Self::Tenth => 3,
+            Self::Hundredth => 4,
+            Self::Thousandth => 5,
+            Self::TenThousandth => 6,
         }
     }
 }

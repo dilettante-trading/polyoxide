@@ -43,49 +43,51 @@ pub fn calculate_order_amounts(
 }
 
 /// Calculate maker and taker amounts for a MARKET order.
+///
+/// The venue enforces two different decimal limits, both varying by tick size
+/// (see [`TickSize::size_decimals`] and [`TickSize::amount_decimals`]): the leg
+/// the caller supplies is truncated to `size` decimals, and the leg derived
+/// from it by dividing or multiplying by the price is capped at `amount`.
+///
+/// Rounding both to a flat six decimals — as this did previously — breaks
+/// market buys at almost every price, because the division rarely terminates:
+/// a plain `$10` buy at `0.55` yields `18.1818…`, which at six decimals is two
+/// past what the `0.01` tick permits. Only prices that divide cleanly, like
+/// `10 / 0.2 = 50`, slipped through, which is exactly the shape of input the
+/// unit tests happened to use.
+///
+/// Mirrors `get_market_order_amounts` in py-clob-client.
 pub fn calculate_market_order_amounts(
     amount: f64,
     price: f64,
     side: OrderSide,
     tick_size: TickSize,
 ) -> (String, String) {
-    const SIZE_DECIMALS: u32 = 6;
-    let tick_decimals = tick_size.decimals();
+    /// Raw wire amounts are always scaled by 10^6, independent of the decimal
+    /// limits applied to the values themselves.
+    const WIRE_DECIMALS: u32 = 6;
 
-    let price_rounded = round_bankers(price, tick_decimals);
-    let amount_rounded = round_bankers(amount, SIZE_DECIMALS); // Input amount (USDC or Shares)
-
+    let price_rounded = round_bankers(price, tick_size.decimals());
     if price_rounded == 0.0 {
         return ("0".to_string(), "0".to_string());
     }
 
-    match side {
-        OrderSide::Buy => {
-            // Market BUY: amount is USDC (maker amount).
-            // Taker (shares) = usdc / price
-            let maker_amount = amount_rounded;
-            let taker_amount_raw = maker_amount / price_rounded;
-            let taker_amount = round_to_zero(taker_amount_raw, SIZE_DECIMALS); // Round down/to-zero for shares?
-                                                                               // Existing logic used round_dp_with_strategy(ToZero).
+    // The supplied leg: USDC for a buy, shares for a sell. Truncated, never
+    // rounded up — rounding up would spend or sell more than was asked for.
+    let maker_amount = round_to_zero(amount, tick_size.size_decimals());
 
-            (
-                to_raw_amount(maker_amount, SIZE_DECIMALS),
-                to_raw_amount(taker_amount, SIZE_DECIMALS),
-            )
-        }
-        OrderSide::Sell => {
-            // Market SELL: amount is Shares (maker amount)
-            // Taker (USDC) = shares * price
-            let maker_amount = round_to_zero(amount, SIZE_DECIMALS); // Shares input usually rounded?
-            let taker_amount_raw = maker_amount * price_rounded;
-            let taker_amount = round_bankers(taker_amount_raw, SIZE_DECIMALS);
+    let derived = match side {
+        // Buy: USDC in, shares out.
+        OrderSide::Buy => maker_amount / price_rounded,
+        // Sell: shares in, USDC out.
+        OrderSide::Sell => maker_amount * price_rounded,
+    };
+    let taker_amount = cap_decimals(derived, tick_size.amount_decimals());
 
-            (
-                to_raw_amount(maker_amount, SIZE_DECIMALS),
-                to_raw_amount(taker_amount, SIZE_DECIMALS),
-            )
-        }
-    }
+    (
+        to_raw_amount(maker_amount, WIRE_DECIMALS),
+        to_raw_amount(taker_amount, WIRE_DECIMALS),
+    )
 }
 
 /// Calculate the worst price needed to fill the requested amount from the orderbook.
@@ -179,6 +181,49 @@ fn round_bankers(val: f64, decimals: u32) -> f64 {
 fn round_to_zero(val: f64, decimals: u32) -> f64 {
     let factor = 10f64.powi(decimals as i32);
     (val * factor).trunc() / factor
+}
+
+/// Round away from zero's lower side (ceiling) at `decimals` places.
+fn round_up(val: f64, decimals: u32) -> f64 {
+    let factor = 10f64.powi(decimals as i32);
+    (val * factor).ceil() / factor
+}
+
+/// Count the decimals in `val`'s shortest round-trip representation.
+///
+/// Mirrors py-clob-client's `decimal_places`, which reads the exponent of
+/// `Decimal(str(x))` — Python's `str` and Rust's `{}` both emit the shortest
+/// representation that round-trips, so the counts agree. Values that format in
+/// exponential notation are reported as maximally precise, which routes them
+/// through the capping path rather than silently passing.
+fn decimal_places(val: f64) -> u32 {
+    let s = format!("{val}");
+    if s.contains(['e', 'E']) {
+        return u32::MAX;
+    }
+    s.split_once('.')
+        .map(|(_, frac)| frac.len() as u32)
+        .unwrap_or(0)
+}
+
+/// Constrain `val` to at most `max_decimals`, the way the venue's reference
+/// client does.
+///
+/// The two-step dance is not redundant. Dividing or multiplying by a price
+/// routinely lands a hair off an exact value — 49.999999999999996 for what is
+/// really 50 — and truncating that outright would silently drop most of a
+/// share. Rounding up at a *higher* precision first snaps those artifacts back
+/// to the clean value, which then passes the decimal check on its own; only a
+/// genuinely repeating result falls through to truncation.
+fn cap_decimals(val: f64, max_decimals: u32) -> f64 {
+    if decimal_places(val) <= max_decimals {
+        return val;
+    }
+    let bumped = round_up(val, max_decimals + 4);
+    if decimal_places(bumped) <= max_decimals {
+        return bumped;
+    }
+    round_to_zero(bumped, max_decimals)
 }
 
 #[cfg(test)]
@@ -440,6 +485,103 @@ mod tests {
         );
         // This reveals that callers MUST validate price > 0 before calling
         assert_eq!(maker, "100000000");
+    }
+
+    // ── Venue decimal-precision limits ──────────────────────────────
+    //
+    // Polymarket rejects orders whose legs carry more decimals than it allows.
+    // The limits are per tick size, mirroring py-clob-client's ROUNDING_CONFIG:
+    //
+    //   tick     price  size  amount
+    //   0.1        1      2      3
+    //   0.01       2      2      4
+    //   0.001      3      2      5
+    //   0.0001     4      2      6
+    //
+    // `size` bounds the leg the caller supplies, `amount` bounds the leg we
+    // derive from it. Both were previously rounded to 6 decimals regardless.
+
+    /// Wire amounts are `value × 10^6`, so a value with at most `max` decimals
+    /// leaves a raw amount divisible by `10^(6 - max)`.
+    fn assert_max_decimals(raw: &str, max: u32, label: &str) {
+        let v: i64 = raw.parse().expect("raw amount should parse");
+        let modulus = 10i64.pow(6 - max);
+        assert_eq!(
+            v % modulus,
+            0,
+            "{label} {raw} carries more than {max} decimals \
+             (raw must be divisible by {modulus})"
+        );
+    }
+
+    /// The headline case: a clean $10 buy at a perfectly ordinary price.
+    ///
+    /// 10 / 0.55 = 18.1818… which the old code truncated to 6 decimals
+    /// (18.181818) — two more than the 0.01 tick allows. Nothing about the
+    /// input is unusual, which is why market buys failed at most prices rather
+    /// than only on odd user input.
+    #[test]
+    fn market_buy_taker_respects_amount_precision() {
+        let (maker, taker) =
+            calculate_market_order_amounts(10.0, 0.55, OrderSide::Buy, TickSize::Hundredth);
+        assert_eq!(maker, "10000000", "maker is a clean $10");
+        assert_max_decimals(&taker, 4, "market buy taker");
+        assert_eq!(taker, "18181800", "18.1818 shares, truncated to 4 decimals");
+    }
+
+    /// The maker leg is truncated to 2 decimals, not passed through at 6.
+    #[test]
+    fn market_buy_maker_respects_size_precision() {
+        let (maker, _taker) =
+            calculate_market_order_amounts(10.129, 0.5, OrderSide::Buy, TickSize::Hundredth);
+        assert_max_decimals(&maker, 2, "market buy maker");
+        assert_eq!(maker, "10120000", "$10.129 truncates to $10.12");
+    }
+
+    /// The `amount` cap varies by tick size; a single 6-decimal constant cannot
+    /// satisfy all four.
+    #[test]
+    fn market_buy_taker_precision_across_tick_sizes() {
+        for (tick, max) in [
+            (TickSize::Tenth, 3),
+            (TickSize::Hundredth, 4),
+            (TickSize::Thousandth, 5),
+            (TickSize::TenThousandth, 6),
+        ] {
+            let (_maker, taker) = calculate_market_order_amounts(10.0, 0.3, OrderSide::Buy, tick);
+            assert_max_decimals(&taker, max, &format!("{tick:?} taker"));
+        }
+    }
+
+    /// The float-artifact guard is load-bearing, not defensive decoration.
+    ///
+    /// `1.03 / 0.05` is exactly `20.6`, but in `f64` it evaluates to
+    /// `20.599999999999998`. Truncating that at four decimals yields `20.5999`
+    /// — a silently short order. Rounding up at a higher precision first snaps
+    /// it back to `20.6`, which then satisfies the decimal limit unaided.
+    ///
+    /// A sweep of $1.00–$50.00 against every hundredth-tick price turns up
+    /// thousands of such cases, so this is the common path, not a corner.
+    #[test]
+    fn market_buy_recovers_float_representation_artifacts() {
+        let (_maker, taker) =
+            calculate_market_order_amounts(1.03, 0.05, OrderSide::Buy, TickSize::Hundredth);
+        assert_eq!(
+            taker, "20600000",
+            "1.03 / 0.05 is 20.6; naive truncation would give 20.5999"
+        );
+        assert_max_decimals(&taker, 4, "artifact-recovered taker");
+    }
+
+    /// Sells have the same contract with the legs swapped: shares in are capped
+    /// at `size`, the derived USDC at `amount`.
+    #[test]
+    fn market_sell_respects_precision() {
+        let (maker, taker) =
+            calculate_market_order_amounts(33.333333, 0.55, OrderSide::Sell, TickSize::Hundredth);
+        assert_max_decimals(&maker, 2, "market sell maker");
+        assert_eq!(maker, "33330000", "33.333333 shares truncate to 33.33");
+        assert_max_decimals(&taker, 4, "market sell taker");
     }
 
     #[test]
