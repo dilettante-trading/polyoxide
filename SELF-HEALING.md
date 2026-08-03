@@ -144,9 +144,10 @@ file a false-positive PR.
   (*Settings → Actions → General → Workflow permissions*) returns `409
   Conflict — The organization does not allow GitHub Actions to create or
   approve pull requests` while the org policy forbids it, so an org owner must
-  enable it first at *https://github.com/organizations/&lt;org&gt;/settings/actions*.
-  That is an org-wide change affecting every repository, which is why it is
-  not something this repo can fix on its own.
+  enable it first at
+  `https://github.com/organizations/<org>/settings/actions`. That is an
+  org-wide change affecting every repository, which is why it is not something
+  this repo can fix on its own.
 
   Until then the schema workflow degrades deliberately: it treats that one
   refusal as a warning, not a failure. The drift branch is still pushed and the
