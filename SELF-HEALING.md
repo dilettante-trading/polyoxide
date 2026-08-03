@@ -133,6 +133,25 @@ file a false-positive PR.
 - **Permissions**: `GITHUB_TOKEN` only — behavioral needs `issues: write`;
   schema needs `contents: write`, `pull-requests: write`, `issues: write`.
   No external secrets.
+- **Auto-PRs need a setting the workflow cannot grant itself.** "Allow GitHub
+  Actions to create and approve pull requests"
+  (`can_approve_pull_request_reviews`) must be on. With it off, `gh pr create`
+  is refused with `GitHub Actions is not permitted to create or approve pull
+  requests` regardless of how the `GITHUB_TOKEN` is scoped — a `permissions:`
+  block cannot substitute for it.
+
+  It exists at **two levels, and the org wins**. Setting it per-repo
+  (*Settings → Actions → General → Workflow permissions*) returns `409
+  Conflict — The organization does not allow GitHub Actions to create or
+  approve pull requests` while the org policy forbids it, so an org owner must
+  enable it first at *https://github.com/organizations/&lt;org&gt;/settings/actions*.
+  That is an org-wide change affecting every repository, which is why it is
+  not something this repo can fix on its own.
+
+  Until then the schema workflow degrades deliberately: it treats that one
+  refusal as a warning, not a failure. The drift branch is still pushed and the
+  tracking issue still filed, so no signal is lost — a maintainer just opens
+  the PR by hand. Any other `gh pr create` failure still fails the job.
 - **Enabling authenticated coverage** (~25 CLOB + 8 relay tests): set the
   `POLYMARKET_*` and `BUILDER_*` repo secrets and remove the auth patterns
   from `AUTH_GATED_RE` in `.github/scripts/classify_failures.py`. The tests
