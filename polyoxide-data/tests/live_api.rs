@@ -218,6 +218,9 @@ async fn live_holders() {
 /// Both the SDK doc comment and the spec mirror were wrong here, in opposite
 /// directions: the SDK claimed a default of 100 (it is 20) and the mirror
 /// claimed a maximum of 20 (it is 500). Re-run this rather than re-deriving it.
+///
+/// The cap is enforced by clamping, not by rejection — see the `limit=5000`
+/// case below for when that changed.
 #[tokio::test]
 #[ignore]
 async fn live_holders_limit_bounds() {
@@ -268,16 +271,45 @@ async fn live_holders_limit_bounds() {
         .await
         .expect("limit=500 must be accepted");
 
-    // 501 is rejected — this is what establishes 500 as the real cap.
+    // Above the ceiling the venue clamps rather than rejects. This changed
+    // upstream between 2026-07-25 and 2026-08-03: `limit=501` used to return
+    // HTTP 400 `{"error":"max holders limit of 500 exceeded"}` and now returns
+    // 200 with the response silently truncated to 500 rows per token.
+    //
+    // Asserted as an upper bound, not an equality: the sampled market may hold
+    // fewer than 500 positions, in which case a clamped and an unclamped
+    // response are indistinguishable. What must never happen is a token coming
+    // back with more rows than the cap.
     let over = client
         .holders()
         .list(vec![condition_id.as_str()])
-        .limit(501)
+        .limit(5000)
+        .send()
+        .await
+        .expect("limit above the ceiling is clamped, not rejected");
+    for market in &over {
+        assert!(
+            market.holders.len() <= 500,
+            "limit=5000 must clamp to 500, got {} for token {}",
+            market.holders.len(),
+            market.token
+        );
+    }
+
+    // `limit=0` is a trap worth pinning: the venue answers with a bare `null`
+    // body rather than `[]`, which is not a valid `Vec<MarketHolders>` and so
+    // surfaces as a deserialization error instead of an empty result.
+    let zero = client
+        .holders()
+        .list(vec![condition_id.as_str()])
+        .limit(0)
         .send()
         .await;
+    let err = zero.expect_err("limit=0 must not deserialize as an empty list");
+    let msg = err.to_string();
     assert!(
-        over.is_err(),
-        "limit=501 should be rejected with 'max holders limit of 500 exceeded'"
+        msg.contains("invalid type: null"),
+        "limit=0 should fail deserializing a `null` body, got a different error: {msg}"
     );
 }
 

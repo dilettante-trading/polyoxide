@@ -28,12 +28,22 @@ pub struct ListHolders {
 }
 
 impl ListHolders {
-    /// Set maximum number of results per market (0-500, default: 20).
+    /// Set maximum number of results per market (1-500, default: 20).
     ///
-    /// Verified live on 2026-07-25: `limit=500` succeeds, `limit=501` returns
-    /// HTTP 400 `{"error":"max holders limit of 500 exceeded"}`, and omitting
-    /// the parameter yields 20 rows. The value is not range-checked here —
-    /// out-of-range values reach the venue and 400.
+    /// Verified live on 2026-08-03: omitting the parameter yields 20 rows, and
+    /// `limit=500` succeeds. Values above the ceiling are **clamped, not
+    /// rejected** — `limit=5000` returns HTTP 200 with the response silently
+    /// truncated to 500 rows per token, so a caller cannot tell from the status
+    /// code that it asked for more than it got.
+    ///
+    /// This is a behavior change. Until at least 2026-07-25 the venue returned
+    /// HTTP 400 `{"error":"max holders limit of 500 exceeded"}` for `limit=501`.
+    ///
+    /// `limit=0` is a trap: the venue answers with a bare `null` body rather
+    /// than `[]`, which fails to deserialize into `Vec<MarketHolders>` and so
+    /// surfaces as an error rather than an empty list.
+    ///
+    /// The value is not range-checked here — it is passed through to the venue.
     pub fn limit(mut self, limit: u32) -> Self {
         self.request = self.request.query("limit", limit);
         self
