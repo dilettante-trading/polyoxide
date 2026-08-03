@@ -29,6 +29,9 @@ cargo test -p polyoxide-clob --all-features -- test_name
 # Lint (must pass with zero warnings)
 cargo clippy --all-targets --all-features -- -D warnings
 
+# Docs (must pass with zero warnings — see the note on intra-doc links below)
+RUSTDOCFLAGS="-D warnings" cargo doc --no-deps --all-features --workspace
+
 # Format check
 cargo fmt --all -- --check
 
@@ -36,7 +39,11 @@ cargo fmt --all -- --check
 cargo fmt --all
 ```
 
-CI runs three jobs: **format** (standalone), **lint & test** (clippy, `cargo nextest run`, doctest — sequentially in one job), and **python bindings** (`uv run pytest tests/` in `polyoxide-py`, gated on **format** passing). Clippy uses `-D warnings` (all warnings are errors).
+CI runs four jobs: **format** (standalone), **lint & test** (clippy, `cargo nextest run`, doctest, then `cargo doc` — sequentially in one job), **python bindings** (`uv run pytest tests/` in `polyoxide-py`, gated on **format** passing), and **CI scripts** (`uv run pytest tests/` in `.github/scripts`). Clippy uses `-D warnings` (all warnings are errors).
+
+**Clippy and tests passing is not enough.** The lint & test job ends with `cargo doc` under `RUSTDOCFLAGS: -D warnings`, which makes `rustdoc::private_intra_doc_links` an error: a doc comment on a `pub` item may not use ``[`link`]`` syntax to reference a `pub(crate)` item. Doctests do not catch this — they run the code in doc comments and say nothing about whether the prose links resolve. Either make the referenced item `pub` or state the fact inline.
+
+A red doc build costs more than it looks: `release.yml` triggers on `workflow_run: [CI], conclusion == 'success'`, so a failed doc build **silently withholds the release tag**. The version bump lands on `main` and nothing publishes, with no obvious connection between the two symptoms.
 
 ```bash
 # Run live integration tests (hit real APIs, skipped in CI)
