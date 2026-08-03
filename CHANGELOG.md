@@ -1,3 +1,9 @@
+## [0.24.1] - 2026-08-03
+
+### 🐛 Bug Fixes
+
+- *(clob)* Apply the venue's per-tick decimal limits to market orders
+
 ## [0.24.0] - 2026-08-03
 
 ### 🚀 Features
