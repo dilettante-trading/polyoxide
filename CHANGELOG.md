@@ -1,3 +1,57 @@
+## [0.24.0] - 2026-08-03
+
+### 🚀 Features
+
+- *(ci)* Classifier core for nextest failure categorization
+- *(ci)* Nextest NDJSON parser in classify_failures.py
+- *(ci)* CLI for classify_failures.py with classify and merge subcommands
+- *(ci)* Canonicalize() for OpenAPI YAML drift comparison
+- *(ci)* Structural drift detection for OpenAPI specs
+- *(ci)* CLI for diff_openapi.py with check subcommand
+- *(ci)* Channel-aware drift detection with per-entry vendored labels
+
+### 🐛 Bug Fixes
+
+- *(ci)* Classify live_ws panics and emit binary-aware retry filters
+- *(ci)* Harden nightly workflows against review findings
+- *(ci)* Disable rustdoc for the polyoxide-cli bin to stop the doc-build race
+- *(ci)* Degrade gracefully when Actions may not open drift PRs
+- *(data)* Pin holders `limit` clamping after upstream dropped the 400
+- *(clob)* [**breaking**] Type Trade.owner as String, not Address
+- *(clob)* [**breaking**] Type Notification.id as u64, not String
+
+### 📚 Documentation
+
+- Add design for nightly Polymarket API smoketest
+- Add implementation plan for nightly API smoketest
+- *(claude.md)* Document nightly API smoketest workflows
+- Record nightly smoketest coverage extension
+- Add SELF-HEALING.md describing the nightly drift machinery
+- *(specs)* Refresh perps counts and guard them against future rot
+- Use backticks for the org settings URL placeholder
+
+### 🧪 Testing
+
+- *(ci)* Add nextest output fixtures for classifier
+- *(ci)* Add OpenAPI drift fixtures
+- *(ci)* Cover diff_openapi exit code 2 on YAML parse error
+
+### ⚙️ Miscellaneous Tasks
+
+- *(ci)* Bootstrap python project for nightly helper scripts
+- *(ci)* Commit scripts uv.lock for reproducibility
+- *(ci)* Drop unused pytest import from classifier tests
+- *(ci)* Drop unused TestOutcome import from classifier tests
+- *(ci)* Consolidate diff_openapi imports at top of test file
+- Run helper script unit tests on every PR
+- Nightly behavioral smoketest workflow against live Polymarket APIs
+- Nightly schema-drift workflow with auto-PR + tracking issue
+- Cover clob live_ws and polyoxide-cli in the nightly behavioral matrix
+- Extend nightly schema drift to all published Polymarket specs
+- Bump pinned actions to their first Node 24-native majors
+- *(specs)* Sync perps spec from upstream
+- *(specs)* Sync perps-ws spec from upstream
+
 ## [0.23.0] - 2026-07-25
 
 ### 🚀 Features
