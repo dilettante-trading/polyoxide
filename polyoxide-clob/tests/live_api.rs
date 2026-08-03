@@ -594,6 +594,70 @@ async fn live_list_trades() {
         .expect("trades should deserialize");
 }
 
+/// Live shape check for `Trade.owner` on `GET /data/trades`.
+///
+/// `Trade.owner` was typed as an `Address` while the venue populates it with the
+/// owner's API-key UUID (the wallet is the sibling `maker_address`). Every real
+/// trade therefore failed to deserialize, and since the failure happens inside
+/// `Vec<Trade>`, one row poisoned the entire `ListTradesResponse`.
+///
+/// `live_list_trades` above already called this endpoint and passed throughout,
+/// which is the interesting part: the test account has never traded, and an
+/// empty `data` array deserializes happily no matter how the row type is
+/// declared. A typed field is only exercised once a row exists.
+///
+/// So this test refuses to report a silent pass on an empty result. When there
+/// are no rows it says outright that it proved nothing; the assertions below
+/// only mean something for an account that has traded.
+#[tokio::test]
+#[ignore]
+async fn live_trade_owner_is_a_uuid_not_an_address() {
+    let client = authenticated_client();
+    let maker = authenticated_address();
+
+    let trades = client
+        .account_api()
+        .expect("account_api")
+        .trades(maker)
+        .send()
+        .await
+        .expect("GET /data/trades must deserialize");
+
+    if trades.data.is_empty() {
+        eprintln!(
+            "live_trade_owner_is_a_uuid_not_an_address PROVED NOTHING: the test \
+             account has no trades, so no `Trade` row was deserialized. This \
+             assertion only carries signal for an account that has traded."
+        );
+        return;
+    }
+
+    for trade in &trades.data {
+        assert!(
+            !trade.owner.is_empty(),
+            "owner must be populated, got an empty string"
+        );
+        assert!(
+            !trade.owner.starts_with("0x"),
+            "owner is the API-key UUID, not a wallet address: {}",
+            trade.owner
+        );
+        assert_ne!(
+            trade.owner.len(),
+            42,
+            "owner must not be address-shaped: {}",
+            trade.owner
+        );
+        // The wallet lives here instead, when the venue populates it.
+        if let Some(maker_address) = trade.maker_address.as_deref() {
+            assert!(
+                maker_address.starts_with("0x"),
+                "maker_address should be the wallet address: {maker_address}"
+            );
+        }
+    }
+}
+
 #[tokio::test]
 #[ignore]
 async fn live_list_trades_with_filter() {

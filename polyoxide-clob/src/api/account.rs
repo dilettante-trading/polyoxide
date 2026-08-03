@@ -1,6 +1,5 @@
 use std::collections::HashMap;
 
-use alloy::primitives::Address;
 use polyoxide_core::{HttpClient, QueryBuilder};
 use serde::{Deserialize, Serialize};
 
@@ -297,7 +296,11 @@ pub struct Trade {
     pub outcome: String,
     #[serde(default)]
     pub bucket_index: Option<u32>,
-    pub owner: Address,
+    /// API-key UUID of the order's owner — **not** a wallet address. The
+    /// wallet is [`Trade::maker_address`]. Upstream documents this as
+    /// `type: string` / "Owner UUID"; typing it as an address makes every real
+    /// trade fail to deserialize.
+    pub owner: String,
     pub maker_address: Option<String>,
     #[serde(default)]
     pub maker_orders: Vec<MakerOrder>,
@@ -400,7 +403,7 @@ mod tests {
             "last_update": null,
             "outcome": "Yes",
             "bucket_index": null,
-            "owner": "0x0000000000000000000000000000000000000001",
+            "owner": "aa17dfae-754d-2498-f336-8bd1d0e6a1c3",
             "transaction_hash": "0xhash123"
         }"#;
         let trade: Trade = serde_json::from_str(json).unwrap();
@@ -431,7 +434,7 @@ mod tests {
             "last_update": "1700002000",
             "outcome": "No",
             "bucket_index": 3,
-            "owner": "0x0000000000000000000000000000000000000002",
+            "owner": "f4f247b7-4ac7-ff29-a152-04fda0a8755a",
             "maker_address": "0xmaker",
             "maker_orders": [{
                 "order_id": "mo-1",
@@ -474,7 +477,7 @@ mod tests {
                 "status": "MATCHED",
                 "match_time": "1700000000",
                 "outcome": "Yes",
-                "owner": "0x0000000000000000000000000000000000000001",
+                "owner": "aa17dfae-754d-2498-f336-8bd1d0e6a1c3",
                 "transaction_hash": "0xhash"
             }],
             "next_cursor": "abc123"
@@ -490,6 +493,75 @@ mod tests {
         let json = r#"{"data": [], "next_cursor": null}"#;
         let resp: ListTradesResponse = serde_json::from_str(json).unwrap();
         assert!(resp.data.is_empty());
+        assert!(resp.next_cursor.is_none());
+    }
+
+    /// `Trade.owner` is the API-key UUID of the order's owner, not a wallet
+    /// address — the wallet is the sibling `maker_address`. Upstream documents
+    /// it as `type: string` / "Owner UUID" (`docs/specs/clob/openapi.yaml`), and
+    /// `OpenOrder.owner` in `orders.rs` already types it as `String`; `Trade`
+    /// was the one that got missed.
+    ///
+    /// Typing it as `Address` made every real trade fail to deserialize with
+    /// `invalid string length`, and because the failure happens inside
+    /// `Vec<Trade>`, a single row poisons the whole `ListTradesResponse` — so
+    /// `GET /data/trades` was unusable for any account that had ever traded.
+    ///
+    /// The payload below is shaped from a real logged response rather than
+    /// hand-invented, which is the point: the pre-existing tests in this module
+    /// all used a synthetic `0x…01` owner and so agreed with the bug.
+    #[test]
+    fn trade_owner_is_an_api_key_uuid_not_an_address() {
+        let json = r#"{
+            "data": [{
+                "id": "c1766d5e-f9d2-496d-b0cb-a12b556aca42",
+                "taker_order_id": "0x4fe995dcf6f97e7f230826a06832d36cb90634e84a0bd92f6c93f596ba515447",
+                "market": "0x5db999fad322cea2914535aae5517060c3f80ad6d8c0231cde2124a434d16846",
+                "asset_id": "55115078421062885512539156303747803058407616201213034911037320915726138659123",
+                "side": "SELL",
+                "size": "5",
+                "fee_rate_bps": "0",
+                "price": "0.2",
+                "status": "CONFIRMED",
+                "match_time": "1785768852",
+                "last_update": "1785768859",
+                "outcome": "Yes",
+                "bucket_index": 0,
+                "owner": "aa17dfae-754d-2498-f336-8bd1d0e6a1c3",
+                "maker_address": "0x0000000000000000000000000000000000000001",
+                "maker_orders": [],
+                "transaction_hash": "0x0000000000000000000000000000000000000000000000000000000000000001",
+                "trader_side": "TAKER"
+            }],
+            "next_cursor": null
+        }"#;
+
+        let resp: ListTradesResponse = match serde_json::from_str(json) {
+            Ok(resp) => resp,
+            Err(e) => panic!("a real trade row must deserialize, got: {e}"),
+        };
+
+        let trade = &resp.data[0];
+        assert_eq!(trade.id, "c1766d5e-f9d2-496d-b0cb-a12b556aca42");
+        assert_eq!(
+            trade.owner, "aa17dfae-754d-2498-f336-8bd1d0e6a1c3",
+            "owner must round-trip the UUID verbatim"
+        );
+        assert!(
+            !trade.owner.starts_with("0x"),
+            "owner is an API-key UUID, not an address"
+        );
+        // The wallet address lives in `maker_address`, not `owner`.
+        assert_eq!(
+            trade.maker_address.as_deref(),
+            Some("0x0000000000000000000000000000000000000001")
+        );
+        // Pin the rest of the row too, so this doubles as a shape guard.
+        assert_eq!(trade.side, OrderSide::Sell);
+        assert_eq!(trade.status, "CONFIRMED");
+        assert_eq!(trade.price, "0.2");
+        assert_eq!(trade.bucket_index, Some(0));
+        assert_eq!(trade.trader_side.as_deref(), Some("TAKER"));
         assert!(resp.next_cursor.is_none());
     }
 
