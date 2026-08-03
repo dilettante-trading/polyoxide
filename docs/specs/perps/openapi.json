@@ -676,7 +676,7 @@
         "x-mint": {
           "content": "<Badge color=\"gray\" size=\"md\">Request Weight: **2**</Badge>"
         },
-        "description": "Get the default fee schedule for each instrument type and category. Rates returned are the $0-tier defaults; the account's actual rate on each fill depends on its trailing 30-day volume tier.",
+        "description": "Get the fee tier schedule for each instrument type and category.",
         "responses": {
           "200": {
             "description": "Fee schedule response.",
@@ -864,6 +864,48 @@
         }
       }
     },
+    "/v1/trade/orders/all": {
+      "delete": {
+        "operationId": "cancelAllOrders",
+        "summary": "Cancel All Orders",
+        "security": [],
+        "x-mint": {
+          "content": "<Badge color=\"gray\" size=\"md\">Request Weight: **1**</Badge> <Badge color=\"gray\" size=\"md\">Action Weight: **0**</Badge>"
+        },
+        "description": "Cancel all open orders for the authenticated account on one instrument.\nRequires proxy signature, see [proxy signing](/http/signing#2-proxy-signing).\n",
+        "requestBody": {
+          "description": "Cancel all request.",
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/CancelAllRequest"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Cancel all accepted response.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/GenericAccepted"
+                }
+              }
+            }
+          },
+          "400": {
+            "$ref": "#/components/responses/Error400Response"
+          },
+          "429": {
+            "$ref": "#/components/responses/Error429Response"
+          },
+          "500": {
+            "$ref": "#/components/responses/Error500Response"
+          }
+        }
+      }
+    },
     "/v1/trade/orders-coid": {
       "delete": {
         "operationId": "cancelOrdersByCoid",
@@ -917,7 +959,7 @@
         "x-mint": {
           "content": "<Badge color=\"gray\" size=\"md\">Request Weight: **1**</Badge> <Badge color=\"gray\" size=\"md\">Action Weight: **10**</Badge>"
         },
-        "description": "Set a dead man switch that will cancel all open orders at the specified time.\nTime must be at least 5 seconds in the future, or `0` to clear an active\nschedule without triggering it. Posting a new auto-cancel replaces the\nprevious one.\n\nThe switch is one-shot: once the deadline elapses and your open orders are\ncancelled, the schedule clears automatically. Orders you place after the\nfire are not affected by the expired deadline — re-arm to extend\nprotection.\n\nEach account may trigger auto-cancel at most 10 times per UTC day. Once\nthat limit is reached, further attempts to arm a schedule are rejected with\n`auto_cancel_daily_limit_reached` until the next UTC day; clearing an\nexisting schedule (`time: 0`) is always allowed.\n\nUse `GET /v1/account/auto-cancel` to check the current deadline, today's\ntrigger count, and when the daily counter resets.\n\nRequires proxy signature, see [proxy signing](/http/signing#2-proxy-signing).\n",
+        "description": "Set a dead man's switch that cancels all your open orders at the chosen\ntime. The time must be at least 5 seconds in the future. Send 0 to clear\nan active schedule without triggering it; posting a new time replaces the\ncurrent one.\n\nThe switch fires once, then clears itself. It does not cover orders you\nplace after it fires, so re-arm it if you still need protection.\n\nAn account can trigger auto-cancel up to 1000 times per UTC day. After\nthat, the API rejects new schedules with the error\n`auto_cancel_daily_limit_reached` until the next UTC day. Clearing a\nschedule is always allowed. To check the active deadline and today's\ntrigger count, call [Get Auto-Cancel Status](/api-reference/get-auto-cancel-status).\n\nRequires proxy signature, see [proxy signing](/http/signing#2-proxy-signing).\n",
         "requestBody": {
           "description": "Auto-cancel request.",
           "content": {
@@ -1443,7 +1485,7 @@
         "x-mint": {
           "content": "<Badge color=\"gray\" size=\"md\">Request Weight: **10**</Badge>"
         },
-        "description": "Get fill history for the authenticated account.\nIf no end time is provided, the current time will be used.\nMaximum of 100 entries returned per request.\n",
+        "description": "Get fill history for the authenticated account.\nIf no end time is provided, the current time will be used.\nMaximum of 100 entries returned per request.\nResults are ordered by time; use `sort` to choose newest-first (`desc`,\ndefault) or oldest-first (`asc`). To page through more than 100 fills, pass\n`cursor` set to the trade ID of the last fill from the previous page (keep\n`sort` consistent across pages).\n",
         "parameters": [
           {
             "name": "start_timestamp",
@@ -1459,6 +1501,22 @@
             "required": false,
             "schema": {
               "$ref": "#/components/schemas/end_timestamp"
+            }
+          },
+          {
+            "name": "cursor",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "$ref": "#/components/schemas/cursor"
+            }
+          },
+          {
+            "name": "sort",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "$ref": "#/components/schemas/sort"
             }
           }
         ],
@@ -2122,7 +2180,7 @@
         "x-mint": {
           "content": "<Badge color=\"gray\" size=\"md\">Request Weight: **2**</Badge>"
         },
-        "description": "Get per-instrument daily liquidity reward shares for the authenticated account.\nReward periods run from 12:00 UTC to 12:00 UTC and are labeled by their UTC end date.\nOI rewards pay 6% APR on the account's full daily average gross OI across all\ninstruments when the combined daily average gross OI of its rewards entity is\nat least $1M. Accounts without an entity mapping qualify independently.\nThe first reward period starts at 2026-05-08 12:00 UTC. If no date range is provided,\nthe latest computed reward period is returned.\n",
+        "description": "Get per-instrument daily liquidity reward shares for the authenticated account.\nReward periods run from 12:00 UTC to 12:00 UTC and are labeled by their UTC end date.\nOI rewards pay 6% APR on the account's full daily average gross OI across all\ninstruments when the combined daily average gross OI of its rewards entity is\nat least $1M. Accounts without an entity mapping qualify independently.\nThe first reward period starts at 2026-07-06 12:00 UTC. If no date range is provided,\nthe latest computed reward period is returned.\n",
         "parameters": [
           {
             "name": "date",
@@ -2249,7 +2307,7 @@
         "x-mint": {
           "content": "<Badge color=\"gray\" size=\"md\">Request Weight: **1**</Badge>"
         },
-        "description": "Get the current auto-cancel dead-man-switch status for the authenticated\naccount, including the armed deadline, today's trigger count, and when\nthe daily counter resets.\n",
+        "description": "Get the current auto-cancel status for the authenticated account: the\narmed deadline, how many times the switch has fired today, and when the\ndaily counter resets.\n",
         "responses": {
           "200": {
             "description": "Auto-cancel status response.",
@@ -2422,6 +2480,139 @@
           }
         }
       }
+    },
+    "/v1/account/notifications": {
+      "get": {
+        "operationId": "getAccountNotifications",
+        "summary": "Get Notifications",
+        "security": [
+          {
+            "polymarket_proxy": [],
+            "polymarket_secret": []
+          }
+        ],
+        "x-mint": {
+          "content": "<Badge color=\"gray\" size=\"md\">Request Weight: **10**</Badge>"
+        },
+        "description": "Get the authenticated account's notifications, newest first.\n\nResults come in pages. Pass the cursor returned by the previous page to\nfetch the next, older one. If your WebSocket connection dropped or you\nreceived a resync frame, pass since_seq to backfill anything you may have\nmissed; the same notification can show up again at the edges of the\nwindow, so deduplicate by id. While paging through a backfill, keep\nsending the same since_seq with each cursor so every page stays inside\nthe same window.\n\nThe response also includes your unread count and durable_source_seq, which\ntells you how far the notification store has caught up. If a backfill has\nnot yet reached your target sequence, wait briefly and retry with the same\nsince_seq.\n",
+        "parameters": [
+          {
+            "name": "cursor",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "$ref": "#/components/schemas/notif_cursor"
+            }
+          },
+          {
+            "name": "since_seq",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "$ref": "#/components/schemas/since_seq"
+            }
+          },
+          {
+            "name": "limit",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "$ref": "#/components/schemas/limit"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Notifications page.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/NotificationsResponse"
+                }
+              }
+            }
+          },
+          "400": {
+            "$ref": "#/components/responses/Error400Response"
+          },
+          "401": {
+            "$ref": "#/components/responses/Error401Response"
+          },
+          "429": {
+            "$ref": "#/components/responses/Error429Response"
+          },
+          "500": {
+            "$ref": "#/components/responses/Error500Response"
+          }
+        }
+      }
+    },
+    "/v1/account/notifications/read": {
+      "post": {
+        "operationId": "markAccountNotificationsRead",
+        "summary": "Mark Notifications Read",
+        "security": [
+          {
+            "polymarket_proxy": [],
+            "polymarket_secret": []
+          }
+        ],
+        "x-mint": {
+          "content": "<Badge color=\"gray\" size=\"md\">Request Weight: **2**</Badge>"
+        },
+        "description": "Mark notifications as read. Send a list of notification ids, or a before\ncursor to mark everything up to and including that point. You can only\nmark your own notifications.\n",
+        "requestBody": {
+          "required": true,
+          "description": "The notifications to mark read.",
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/NotificationsReadRequest"
+              },
+              "examples": {
+                "byIds": {
+                  "summary": "Mark specific ids read",
+                  "value": {
+                    "ids": [
+                      "0a5d8f1e-3b2c-5e4a-9f8b-1c2d3e4f5a6b"
+                    ]
+                  }
+                },
+                "beforeCursor": {
+                  "summary": "Mark everything up to a cursor read",
+                  "value": {
+                    "before": "eyJ0cyI6MTc2NzIyNTYwMDAwMCwiaWQiOiIwYTVkOGYxZS0zYjJjLTVlNGEtOWY4Yi0xYzJkM2U0ZjVhNmIifQ"
+                  }
+                }
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Read markers accepted.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/GenericAccepted"
+                }
+              }
+            }
+          },
+          "400": {
+            "$ref": "#/components/responses/Error400Response"
+          },
+          "401": {
+            "$ref": "#/components/responses/Error401Response"
+          },
+          "429": {
+            "$ref": "#/components/responses/Error429Response"
+          },
+          "500": {
+            "$ref": "#/components/responses/Error500Response"
+          }
+        }
+      }
     }
   },
   "components": {
@@ -2442,7 +2633,7 @@
     "schemas": {
       "error": {
         "type": "string",
-        "description": "Error identifier. For domain rejections and transport errors (`401`/`404`/`429`/`500`) this is a stable, machine-readable snake_case identifier that is part of the API contract and safe to branch on, e.g. `insufficient_margin`, `insufficient_balance`, `order_not_found`, `reduce_only_invalid`, `unauthorized`, `not_found`. For `400` it is a human-readable validation detail whose wording may change. See the Error handling guide for the domain identifiers. (Post-only / Fill-or-Kill outcomes are order statuses such as `post_only_rejected`, not rejections.)",
+        "description": "Error identifier. For domain rejections and transport errors (`401`/`404`/`429`/`500`) this is a stable, machine-readable snake_case identifier that is part of the API contract and safe to branch on, e.g. `insufficient_margin`, `insufficient_balance`, `order_not_found`, `reduce_only_invalid`, `price_outside_bounds`, `unauthorized`, `not_found`. For `400` it is a human-readable validation detail whose wording may change. See the Error handling guide for the domain identifiers. (Post-only / Fill-or-Kill outcomes are order statuses such as `post_only_rejected`, not rejections.)",
         "example": "insufficient_margin"
       },
       "Error429": {
@@ -2616,6 +2807,10 @@
           "crypto"
         ]
       },
+      "isolated_only": {
+        "type": "boolean",
+        "description": "Whether the instrument supports only isolated account margin. When false, both cross and isolated account margin modes are supported."
+      },
       "symbol": {
         "type": "string",
         "description": "Instrument symbol",
@@ -2707,6 +2902,7 @@
           "instrument_id",
           "instrument_type",
           "category",
+          "isolated_only",
           "symbol",
           "base_asset",
           "quote_asset",
@@ -2731,6 +2927,9 @@
           },
           "category": {
             "$ref": "#/components/schemas/category"
+          },
+          "isolated_only": {
+            "$ref": "#/components/schemas/isolated_only"
           },
           "symbol": {
             "$ref": "#/components/schemas/symbol"
@@ -3401,13 +3600,37 @@
       },
       "taker_fee_rate": {
         "type": "string",
-        "description": "Default taker fee rate for the $0 volume tier. Actual rate scales down with the account's trailing 30-day volume tier.",
-        "example": "0.0004"
+        "description": "Taker fee rate",
+        "example": "0.0002"
       },
       "maker_fee_rate": {
         "type": "string",
-        "description": "Default maker fee rate for the $0 volume tier. Positive at lower tiers, zero at the $500M tier, and a rebate (negative) at the top tier.",
-        "example": "0.000125"
+        "description": "Maker fee rate",
+        "example": "-0.00005"
+      },
+      "min_volume_30d": {
+        "type": "string",
+        "description": "Minimum rolling 30-day notional volume in USD required for this tier",
+        "example": "5000000"
+      },
+      "FeeTier": {
+        "type": "object",
+        "required": [
+          "min_volume_30d",
+          "taker_fee_rate",
+          "maker_fee_rate"
+        ],
+        "properties": {
+          "min_volume_30d": {
+            "$ref": "#/components/schemas/min_volume_30d"
+          },
+          "taker_fee_rate": {
+            "$ref": "#/components/schemas/taker_fee_rate"
+          },
+          "maker_fee_rate": {
+            "$ref": "#/components/schemas/maker_fee_rate"
+          }
+        }
       },
       "FeeScheduleEntry": {
         "type": "object",
@@ -3415,7 +3638,8 @@
           "instrument_type",
           "category",
           "taker_fee_rate",
-          "maker_fee_rate"
+          "maker_fee_rate",
+          "tiers"
         ],
         "properties": {
           "instrument_type": {
@@ -3429,6 +3653,12 @@
           },
           "maker_fee_rate": {
             "$ref": "#/components/schemas/maker_fee_rate"
+          },
+          "tiers": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/FeeTier"
+            }
           }
         }
       },
@@ -3892,6 +4122,70 @@
           }
         ]
       },
+      "OpCancelAll": {
+        "type": "object",
+        "required": [
+          "type",
+          "args"
+        ],
+        "properties": {
+          "type": {
+            "type": "string",
+            "enum": [
+              "cancelAll"
+            ]
+          },
+          "args": {
+            "type": "object",
+            "description": "Optional cancel scope. When `iid` is provided, only open orders for\nthat instrument are canceled. When omitted, all open orders for the\nsigning account are canceled.\n",
+            "properties": {
+              "iid": {
+                "$ref": "#/components/schemas/iid"
+              }
+            }
+          }
+        }
+      },
+      "CancelAllRequest": {
+        "allOf": [
+          {
+            "type": "object",
+            "required": [
+              "op"
+            ],
+            "properties": {
+              "op": {
+                "$ref": "#/components/schemas/OpCancelAll"
+              }
+            }
+          },
+          {
+            "$ref": "#/components/schemas/BaseOp"
+          },
+          {
+            "type": "object",
+            "properties": {
+              "exp": {
+                "$ref": "#/components/schemas/exp"
+              }
+            }
+          }
+        ]
+      },
+      "GenericAccepted": {
+        "type": "object",
+        "required": [
+          "status"
+        ],
+        "properties": {
+          "status": {
+            "type": "string",
+            "enum": [
+              "ok"
+            ]
+          }
+        }
+      },
       "OpCancelOrdersByCoid": {
         "type": "object",
         "required": [
@@ -3986,11 +4280,11 @@
       },
       "auto_cancel_deadline": {
         "type": "integer",
-        "description": "Unix-ms deadline for the per-account auto-cancel dead-man-switch.\nZero means no schedule is armed. When the deadline elapses, every\nopen order on the account is cancelled and the schedule clears.\n",
+        "description": "Deadline of the armed auto-cancel schedule, in Unix milliseconds. Zero\nmeans no schedule is armed. When the deadline passes, the exchange cancels\nevery open order on the account and the schedule clears.\n",
         "example": 1767000045000
       },
       "AutoCancelResponse": {
-        "description": "The effective auto-cancel schedule after the update. `deadline` echoes the\narmed Unix-ms time, or `0` when the schedule was cleared (`time: 0`).\n",
+        "description": "The auto-cancel schedule now in effect. The deadline field echoes the\narmed time in Unix milliseconds, or 0 if you cleared the schedule.\n",
         "type": "object",
         "required": [
           "status",
@@ -4282,20 +4576,6 @@
             "$ref": "#/components/schemas/BaseOp"
           }
         ]
-      },
-      "GenericAccepted": {
-        "type": "object",
-        "required": [
-          "status"
-        ],
-        "properties": {
-          "status": {
-            "type": "string",
-            "enum": [
-              "ok"
-            ]
-          }
-        }
       },
       "Key": {
         "type": "object",
@@ -4704,6 +4984,20 @@
             "$ref": "#/components/schemas/update_timestamp"
           }
         }
+      },
+      "cursor": {
+        "type": "integer",
+        "description": "Pagination cursor. Pass the trade ID of the last fill from the previous page to fetch the next page. Paging follows the `sort` direction (strictly older fills when `sort=desc`, strictly newer when `sort=asc`).",
+        "example": 1
+      },
+      "sort": {
+        "type": "string",
+        "description": "Time sort direction. `desc` (default) returns newest fills first; `asc` returns oldest first.",
+        "default": "desc",
+        "enum": [
+          "desc",
+          "asc"
+        ]
       },
       "taker": {
         "type": "boolean",
@@ -5694,7 +5988,7 @@
       "auto_cancel_daily_limit": {
         "type": "integer",
         "description": "Maximum number of auto-cancel triggers allowed per UTC day.\n",
-        "example": 10
+        "example": 1000
       },
       "auto_cancel_next_reset": {
         "type": "integer",
@@ -5764,6 +6058,21 @@
         "description": "Number of directly referred child accounts",
         "example": 12
       },
+      "active_children_count": {
+        "type": "integer",
+        "description": "Number of directly referred child accounts that have traded at least once since their referral was applied",
+        "example": 8
+      },
+      "children_volume": {
+        "type": "string",
+        "description": "Total notional volume traded by directly referred child accounts since their referral was applied",
+        "example": "125000.50"
+      },
+      "children_fees": {
+        "type": "string",
+        "description": "Total fees paid by directly referred child accounts since their referral was applied",
+        "example": "312.75"
+      },
       "referrals_left": {
         "type": "integer",
         "description": "Number of additional referrals remaining for this account's invite code",
@@ -5779,6 +6088,9 @@
         "required": [
           "code",
           "children_count",
+          "active_children_count",
+          "children_volume",
+          "children_fees",
           "referrals_left",
           "fee_share_rate"
         ],
@@ -5792,6 +6104,15 @@
           },
           "children_count": {
             "$ref": "#/components/schemas/children_count"
+          },
+          "active_children_count": {
+            "$ref": "#/components/schemas/active_children_count"
+          },
+          "children_volume": {
+            "$ref": "#/components/schemas/children_volume"
+          },
+          "children_fees": {
+            "$ref": "#/components/schemas/children_fees"
           },
           "referrals_left": {
             "$ref": "#/components/schemas/referrals_left"
@@ -5811,6 +6132,122 @@
             "$ref": "#/components/schemas/code"
           }
         }
+      },
+      "notif_cursor": {
+        "type": "string",
+        "nullable": true,
+        "description": "Opaque pagination cursor. Pass the next_cursor value from the previous page to fetch the next, older page. Null when there are no more pages.",
+        "example": "eyJ0cyI6MTc2NzIyNTYwMDAwMCwiaWQiOiIwYTVkOGYxZS0zYjJjLTVlNGEtOWY4Yi0xYzJkM2U0ZjVhNmIifQ"
+      },
+      "since_seq": {
+        "type": "integer",
+        "description": "Backfill anchor for gap recovery. Pass the sequence number (sq) of the last notifications data frame you processed before the gap, never the sq of a resync frame. The bound is inclusive, so the response repeats the boundary event in full; deduplicate by notification id.",
+        "example": 1043
+      },
+      "read_at": {
+        "type": "integer",
+        "nullable": true,
+        "description": "When the recipient marked this notification read, Unix milliseconds; null if unread.",
+        "example": 1767225600000
+      },
+      "NotificationItem": {
+        "type": "object",
+        "required": [
+          "notification",
+          "read_at",
+          "ts"
+        ],
+        "properties": {
+          "notification": {
+            "type": "object",
+            "description": "The notification payload. Fields vary by notification type; see the [Notifications channel](/api-reference/wss/perps-notifications) for the per-type shapes."
+          },
+          "read_at": {
+            "$ref": "#/components/schemas/read_at"
+          },
+          "ts": {
+            "$ref": "#/components/schemas/ts"
+          }
+        }
+      },
+      "unread": {
+        "type": "integer",
+        "description": "Count of the authenticated owner's unread notifications within the retention window.",
+        "example": 3
+      },
+      "durable_source_seq": {
+        "type": "integer",
+        "description": "Highest notification sequence the store has persisted for your account. If it is still below the sequence you are catching up to, the store is lagging; retry the backfill until it catches up.",
+        "example": 1043
+      },
+      "NotificationsResponse": {
+        "type": "object",
+        "required": [
+          "items",
+          "unread",
+          "durable_source_seq",
+          "has_more",
+          "next_cursor"
+        ],
+        "properties": {
+          "items": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/NotificationItem"
+            }
+          },
+          "unread": {
+            "$ref": "#/components/schemas/unread"
+          },
+          "durable_source_seq": {
+            "$ref": "#/components/schemas/durable_source_seq"
+          },
+          "has_more": {
+            "type": "boolean",
+            "description": "Whether older notifications exist beyond this page."
+          },
+          "next_cursor": {
+            "$ref": "#/components/schemas/notif_cursor"
+          }
+        }
+      },
+      "notif_id": {
+        "type": "string",
+        "description": "Stable notification id. The same notification always has the same id on the WebSocket feed and in the notifications history, so you can safely deduplicate across the two.",
+        "example": "0a5d8f1e-3b2c-5e4a-9f8b-1c2d3e4f5a6b"
+      },
+      "NotificationsReadRequest": {
+        "oneOf": [
+          {
+            "type": "object",
+            "required": [
+              "ids"
+            ],
+            "additionalProperties": false,
+            "properties": {
+              "ids": {
+                "type": "array",
+                "description": "Notification ids to mark read.",
+                "items": {
+                  "$ref": "#/components/schemas/notif_id"
+                }
+              }
+            }
+          },
+          {
+            "type": "object",
+            "required": [
+              "before"
+            ],
+            "additionalProperties": false,
+            "properties": {
+              "before": {
+                "type": "string",
+                "description": "Pagination cursor. Marks every notification at or before this point as read."
+              }
+            }
+          }
+        ]
       }
     },
     "responses": {
