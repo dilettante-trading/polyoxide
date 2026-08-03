@@ -2113,6 +2113,46 @@ async fn notifications_list_sends_configured_signature_type() {
     mock.assert_async().await;
 }
 
+/// Deserialize a *non-empty* `/notifications` body.
+///
+/// The test above serves `[]`, which is right for what it checks (that
+/// `signature_type` is threaded through) but means it never exercises the row
+/// type at all — an empty array deserializes cleanly no matter how
+/// `Notification` is declared. That blind spot is why `id` sat wrongly typed as
+/// a `String` while every test passed. The body below mirrors a real response.
+#[tokio::test]
+async fn notifications_list_deserializes_a_real_row() {
+    let mut server = Server::new_async().await;
+    let clob = test_authed_clob_with_sig(&server, SignatureType::PolyProxy);
+
+    let mock = server
+        .mock("GET", "/notifications")
+        .match_query(Matcher::UrlEncoded("signature_type".into(), "1".into()))
+        .with_status(200)
+        .with_header("content-type", "application/json")
+        .with_body(
+            r#"[{
+                "id": 1390056400,
+                "type": 2,
+                "owner": "aa17dfae-754d-2498-f336-8bd1d0e6a1c3",
+                "payload": {"orderId": "0xabc", "outcome": "Yes"},
+                "timestamp": "2026-08-03T14:54:12.384486Z"
+            }]"#,
+        )
+        .create_async()
+        .await;
+
+    let notifications = clob.notifications().unwrap().list().send().await.unwrap();
+    assert_eq!(notifications.len(), 1);
+    assert_eq!(notifications[0].id, 1_390_056_400);
+    assert_eq!(notifications[0].notification_type, 2);
+    assert_eq!(
+        notifications[0].timestamp.as_deref(),
+        Some("2026-08-03T14:54:12.384486Z")
+    );
+    mock.assert_async().await;
+}
+
 #[tokio::test]
 async fn reward_earnings_sends_date_and_signature_type() {
     let mut server = Server::new_async().await;

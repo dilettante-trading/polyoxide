@@ -726,6 +726,66 @@ async fn live_list_notifications() {
         .expect("list notifications should deserialize");
 }
 
+/// Live shape check for `Notification` on `GET /notifications`.
+///
+/// `Notification.id` was typed as a `String` while the venue sends an integer,
+/// so this endpoint failed outright — `invalid type: integer, expected a
+/// string` — for any account with a notification. Unlike the `Trade` case, this
+/// one did surface in the live suite as soon as credentials were supplied,
+/// because the account had a notification waiting.
+///
+/// Two field types are pinned deliberately, because upstream's schema is right
+/// about one and wrong about the other:
+///   * `id` — spec says integer, wire sends integer. Agree.
+///   * `timestamp` — spec says integer, wire sends an RFC3339 **string**.
+///
+/// Anyone reconciling this crate against `docs/specs/clob/openapi.yaml` will be
+/// tempted to make `timestamp` numeric. This test is here to stop that.
+#[tokio::test]
+#[ignore]
+async fn live_notification_field_types_match_the_wire() {
+    let client = authenticated_client();
+
+    let notifications = client
+        .notifications()
+        .expect("notifications")
+        .list()
+        .send()
+        .await
+        .expect("GET /notifications must deserialize");
+
+    if notifications.is_empty() {
+        eprintln!(
+            "live_notification_field_types_match_the_wire PROVED NOTHING: the \
+             account has no notifications, so no `Notification` row was \
+             deserialized. Re-run when the account has activity."
+        );
+        return;
+    }
+
+    for notif in &notifications {
+        // `id` is numeric; reaching here at all means it parsed as one.
+        assert!(
+            notif.id > 0,
+            "id should be a positive integer, got {}",
+            notif.id
+        );
+        // The venue documents types 1..=6; don't pin the upper bound, since
+        // upstream adds them, but 0 would mean the field went missing.
+        assert!(
+            notif.notification_type > 0,
+            "notification type should be populated, got {}",
+            notif.notification_type
+        );
+        if let Some(ts) = notif.timestamp.as_deref() {
+            assert!(
+                ts.contains('T'),
+                "timestamp is an RFC3339 string on the wire, not a number: {ts}"
+            );
+        }
+    }
+}
+
 // ── Authenticated: Auth — L1 (EIP-712) ─────────────────────────
 
 /// The only end-to-end check that L1 signing is accepted by the server.
