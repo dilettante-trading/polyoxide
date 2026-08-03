@@ -159,9 +159,11 @@ impl TickSize {
 
     /// Returns the number of decimal places for this tick size.
     ///
-    /// This is the precision limit the venue applies to the **price** leg.
-    /// See [`Self::size_decimals`] and [`Self::amount_decimals`] for the two
-    /// other limits that apply to order amounts.
+    /// This is the precision limit the venue applies to the **price** leg. Two
+    /// further limits govern order amounts — the leg the caller supplies is
+    /// capped at 2 decimals for every tick size, and the leg derived from it at
+    /// this value plus 2. Both are applied when building an order; see
+    /// `calculate_market_order_amounts` for the full table.
     pub fn decimals(&self) -> u32 {
         match self {
             Self::Tenth => 1,

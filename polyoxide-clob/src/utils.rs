@@ -44,10 +44,17 @@ pub fn calculate_order_amounts(
 
 /// Calculate maker and taker amounts for a MARKET order.
 ///
-/// The venue enforces two different decimal limits, both varying by tick size
-/// (see [`TickSize::size_decimals`] and [`TickSize::amount_decimals`]): the leg
-/// the caller supplies is truncated to `size` decimals, and the leg derived
-/// from it by dividing or multiplying by the price is capped at `amount`.
+/// The venue enforces two decimal limits beyond the price precision, both
+/// varying by tick size. The leg the caller supplies is truncated to the `size`
+/// limit; the leg derived from it by dividing or multiplying by the price is
+/// capped at the `amount` limit:
+///
+/// | tick     | price | size | amount |
+/// |----------|-------|------|--------|
+/// | `0.1`    | 1     | 2    | 3      |
+/// | `0.01`   | 2     | 2    | 4      |
+/// | `0.001`  | 3     | 2    | 5      |
+/// | `0.0001` | 4     | 2    | 6      |
 ///
 /// Rounding both to a flat six decimals — as this did previously — breaks
 /// market buys at almost every price, because the division rarely terminates:
