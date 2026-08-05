@@ -308,11 +308,17 @@ impl RateLimiter {
     /// - /public-search: 350/10s
     /// - /comments: 200/10s
     /// - /tags: 200/10s
-    /// - `/ok`: 100/10s
+    /// - `/status` (health): 100/10s
     ///
     /// Upstream also lists a 900/10s cap shared by `/markets` + `/events`.
     /// It is not modelled because it can never bind: the per-endpoint caps of
     /// 300 and 500 sum to 800, which is already below it.
+    ///
+    /// The published table spells the health row `/ok`, but that path answers
+    /// **404** on `gamma-api.polymarket.com` — `/status` is the route that
+    /// answers 200, and the one `Gamma::health().ping()` requests. `/ok` is
+    /// boilerplate repeated into every surface's table; only the CLOB host
+    /// serves it.
     pub fn gamma_default() -> Self {
         let ten_sec = Duration::from_secs(10);
 
@@ -325,7 +331,7 @@ impl RateLimiter {
                     simple_limit("/markets", None, 300, ten_sec),
                     simple_limit("/public-search", None, 350, ten_sec),
                     simple_limit("/events", None, 500, ten_sec),
-                    simple_limit("/ok", None, 100, ten_sec),
+                    simple_limit("/status", None, 100, ten_sec),
                 ],
             }),
         }
@@ -336,7 +342,26 @@ impl RateLimiter {
     /// - General: 1,000/10s
     /// - /trades: 200/10s
     /// - /positions and /closed-positions: 150/10s
-    /// - `/ok`: 100/10s
+    /// - `/` (health): 100/10s
+    ///
+    /// The published table spells the health row `/ok`, but that path answers
+    /// **404** on `data-api.polymarket.com` — `/` answers 200 `{"data":"OK"}`,
+    /// and is the route this crate requests. `/ok` is boilerplate repeated into
+    /// every surface's table; only the CLOB host serves it.
+    ///
+    /// Matching `/` is safe despite entries being prefix-matched: the
+    /// segment-boundary rule means `strip_prefix("/")` on `/positions` leaves
+    /// `positions`, which starts with neither `/` nor `?`, so the entry matches
+    /// only the bare root and the root with a query string.
+    ///
+    /// This limiter is shared with the two sibling hosts, so it also carries
+    /// their rules:
+    ///
+    /// - `/user-pnl`: 200/10s, published as the *host-wide* allowance for
+    ///   `user-pnl-api.polymarket.com`. Modelled per-path because it is the
+    ///   only route polyoxide calls there and matching has no host dimension.
+    /// - `lb-api.polymarket.com` (`/volume`, `/profit`) has no published limit,
+    ///   so those fall to the general bucket.
     pub fn data_default() -> Self {
         let ten_sec = Duration::from_secs(10);
 
@@ -347,7 +372,8 @@ impl RateLimiter {
                     simple_limit("/closed-positions", None, 150, ten_sec),
                     simple_limit("/positions", None, 150, ten_sec),
                     simple_limit("/trades", None, 200, ten_sec),
-                    simple_limit("/ok", None, 100, ten_sec),
+                    simple_limit("/user-pnl", None, 200, ten_sec),
+                    simple_limit("/", None, 100, ten_sec),
                 ],
             }),
         }
@@ -405,20 +431,240 @@ impl RetryConfig {
 }
 
 #[cfg(test)]
-mod documented_limits {
-    //! Table-driven agreement tests against Polymarket's published limits.
+mod agreement {
+    //! Shared machinery for the per-surface `documented_*_limits` modules.
     //!
-    //! Transcribed from <https://docs.polymarket.com/api-reference/rate-limits>
-    //! as fetched on 2026-07-25. These assert the *effective quota* a request
-    //! resolves to, not merely that some entry exists — the previous tests only
-    //! checked that entries were present and in the right order, which is why
-    //! `/balance-allowance` could be absent entirely while every test passed.
+    //! Every API surface pins its published table the same way: assert the
+    //! *effective quota* a request resolves to, not merely that some entry
+    //! exists. Checking only for presence and ordering is why
+    //! `/balance-allowance` could once be absent entirely while every test
+    //! passed, and why `/closed-positions` could be set to 66x its published
+    //! cap without a single failure.
 
     use super::*;
 
     /// One published rule: the request it applies to, and the buckets it must
     /// pass, as `(count, window_secs)` in the order `acquire` awaits them.
-    type DocumentedRule = (&'static str, Option<Method>, Vec<(u32, u64)>);
+    pub type DocumentedRule = (&'static str, Option<Method>, Vec<(u32, u64)>);
+
+    /// Assert every rule resolves to exactly the quota Polymarket publishes.
+    ///
+    /// `general` is the surface's catch-all allowance. It is only used to make
+    /// the failure message name the over-permit factor, since falling through
+    /// to the general bucket is the shape every bug in these tables has taken.
+    pub fn assert_matches_published(rl: &RateLimiter, rules: Vec<DocumentedRule>, general: u32) {
+        for (path, method, expected) in rules {
+            let resolved = rl.resolve_specs(path, method.as_ref());
+            assert!(
+                !resolved.is_empty(),
+                "{method:?} {path} matches no endpoint limit — it falls through to the \
+                 general {general}/10s bucket, over-permitting by {}x",
+                general / expected[0].0.max(1),
+            );
+            let actual: Vec<(u32, u64)> = resolved
+                .iter()
+                .map(|s| (s.count, s.period.as_secs()))
+                .collect();
+            assert_eq!(
+                actual, expected,
+                "{method:?} {path} resolves to {actual:?}, published limit is {expected:?}"
+            );
+        }
+    }
+
+    /// Assert `path` is governed by nothing but the general bucket.
+    ///
+    /// Used to pin routes that upstream's table names but the host does not
+    /// actually serve, so a dead entry cannot quietly reappear.
+    pub fn assert_unconfigured(rl: &RateLimiter, path: &str) {
+        assert!(
+            rl.resolve_specs(path, Some(&Method::GET)).is_empty(),
+            "{path} has an endpoint limit configured, but the host answers 404 there — \
+             the entry is dead configuration and the real route is going unlimited"
+        );
+    }
+
+    /// Drain `count` tokens from `path`, then assert the next call has to wait.
+    ///
+    /// Matching a spec is not the same as enforcing it; this is the runtime
+    /// half of the agreement.
+    pub async fn assert_throttles_after(rl: &RateLimiter, path: &str, count: u32) {
+        for _ in 0..count {
+            rl.acquire(path, Some(&Method::GET)).await;
+        }
+
+        let start = std::time::Instant::now();
+        rl.acquire(path, Some(&Method::GET)).await;
+        let waited = start.elapsed();
+
+        assert!(
+            waited >= Duration::from_millis(25),
+            "request {} to {path} returned in {waited:?}; the cap is not being enforced",
+            count + 1,
+        );
+    }
+}
+
+#[cfg(test)]
+mod documented_data_limits {
+    //! Agreement tests for the Data API's published table.
+    //!
+    //! Transcribed from <https://docs.polymarket.com/api-reference/rate-limits>
+    //! as fetched on 2026-08-05.
+    //!
+    //! Two rows need interpreting, both verified against the live hosts:
+    //!
+    //! - The health row is published as `/ok`, but `data-api.polymarket.com/ok`
+    //!   answers **404** while `/` answers 200 `{"data":"OK"}`. The `/ok`
+    //!   spelling is boilerplate repeated into every surface's table; only
+    //!   `clob.polymarket.com` actually serves it. The cap is therefore
+    //!   attached to `/`, the route this crate requests and the host answers.
+    //! - "User PNL API 200 req/10s" is published as a *host-wide* allowance for
+    //!   `user-pnl-api.polymarket.com`. It is modelled as a path rule on
+    //!   `/user-pnl` because that is the only route polyoxide calls there and
+    //!   the limiter matches on path alone, with no host dimension.
+
+    use super::agreement::*;
+    use super::*;
+
+    /// The published table, transcribed by hand. This is the golden vector.
+    fn documented() -> Vec<DocumentedRule> {
+        vec![
+            ("/trades", Some(Method::GET), vec![(200, 10)]),
+            ("/positions", Some(Method::GET), vec![(150, 10)]),
+            ("/closed-positions", Some(Method::GET), vec![(150, 10)]),
+            ("/", Some(Method::GET), vec![(100, 10)]),
+            ("/user-pnl", Some(Method::GET), vec![(200, 10)]),
+        ]
+    }
+
+    #[test]
+    fn every_documented_endpoint_resolves_to_its_published_quota() {
+        assert_matches_published(&RateLimiter::data_default(), documented(), 1_000);
+    }
+
+    #[test]
+    fn the_health_cap_is_attached_to_the_route_the_host_answers_on() {
+        // `/ok` is a 404 on data-api. An entry there caps nothing and leaves
+        // the real health route — `/` — on the 10x-looser general bucket.
+        assert_unconfigured(&RateLimiter::data_default(), "/ok");
+    }
+
+    #[test]
+    fn the_root_health_rule_does_not_swallow_every_other_route() {
+        // `/` under prefix matching could plausibly match everything. The
+        // segment-boundary rule saves it: `strip_prefix("/")` on `/positions`
+        // leaves `positions`, which starts with neither `/` nor `?`.
+        let rl = RateLimiter::data_default();
+        for (path, expected) in [
+            ("/positions", 150),
+            ("/closed-positions", 150),
+            ("/trades", 200),
+            ("/", 100),
+        ] {
+            let specs = rl.resolve_specs(path, Some(&Method::GET));
+            assert_eq!(
+                specs[0].count, expected,
+                "{path} resolved through the wrong rule — the `/` entry is over-matching"
+            );
+        }
+    }
+
+    #[tokio::test]
+    async fn the_closed_positions_cap_actually_throttles() {
+        // 150/10s replenishes one token every ~67ms, so the 151st request in a
+        // burst cannot return immediately.
+        assert_throttles_after(&RateLimiter::data_default(), "/closed-positions", 150).await;
+    }
+
+    #[tokio::test]
+    async fn closed_positions_and_positions_do_not_share_an_allowance() {
+        // Upstream publishes 150/10s for each, not 150/10s combined. Draining
+        // one must leave the other untouched — the inverse of the CLOB ledger
+        // group, where sharing *is* the published behaviour.
+        let rl = RateLimiter::data_default();
+        for _ in 0..150 {
+            rl.acquire("/closed-positions", Some(&Method::GET)).await;
+        }
+
+        let start = std::time::Instant::now();
+        rl.acquire("/positions", Some(&Method::GET)).await;
+        assert!(
+            start.elapsed() < Duration::from_millis(25),
+            "/positions was throttled by /closed-positions draining its own bucket"
+        );
+    }
+}
+
+#[cfg(test)]
+mod documented_gamma_limits {
+    //! Agreement tests for the Gamma API's published table.
+    //!
+    //! Transcribed from <https://docs.polymarket.com/api-reference/rate-limits>
+    //! as fetched on 2026-08-05. As with the Data API, the published health row
+    //! reads `/ok`, but `gamma-api.polymarket.com/ok` answers 404 — `/status`
+    //! is the route that answers 200.
+
+    use super::agreement::*;
+    use super::*;
+
+    /// The published table, transcribed by hand. This is the golden vector.
+    fn documented() -> Vec<DocumentedRule> {
+        vec![
+            ("/events", Some(Method::GET), vec![(500, 10)]),
+            ("/public-search", Some(Method::GET), vec![(350, 10)]),
+            ("/markets", Some(Method::GET), vec![(300, 10)]),
+            ("/comments", Some(Method::GET), vec![(200, 10)]),
+            ("/tags", Some(Method::GET), vec![(200, 10)]),
+            ("/status", Some(Method::GET), vec![(100, 10)]),
+        ]
+    }
+
+    #[test]
+    fn every_documented_endpoint_resolves_to_its_published_quota() {
+        assert_matches_published(&RateLimiter::gamma_default(), documented(), 4_000);
+    }
+
+    #[test]
+    fn the_health_cap_is_attached_to_the_route_the_host_answers_on() {
+        assert_unconfigured(&RateLimiter::gamma_default(), "/ok");
+    }
+
+    #[test]
+    fn the_markets_plus_events_group_cap_can_never_bind() {
+        // Upstream also publishes a 900/10s cap shared by /markets + /events.
+        // It is deliberately not modelled because the per-endpoint caps sum to
+        // less than it. If either cap is ever raised, this stops being true and
+        // the group bucket has to be added — that is what this test watches.
+        let rl = RateLimiter::gamma_default();
+        let markets = rl.resolve_specs("/markets", Some(&Method::GET))[0].count;
+        let events = rl.resolve_specs("/events", Some(&Method::GET))[0].count;
+        assert!(
+            markets + events <= 900,
+            "/markets ({markets}) + /events ({events}) now exceeds the published 900/10s \
+             group cap, which is no longer unreachable and must be modelled"
+        );
+    }
+
+    #[tokio::test]
+    async fn the_markets_cap_actually_throttles() {
+        assert_throttles_after(&RateLimiter::gamma_default(), "/markets", 300).await;
+    }
+}
+
+#[cfg(test)]
+mod documented_limits {
+    //! Table-driven agreement tests against Polymarket's published limits.
+    //!
+    //! Transcribed from <https://docs.polymarket.com/api-reference/rate-limits>
+    //! as fetched on 2026-07-25, re-confirmed 2026-08-05. These assert the
+    //! *effective quota* a request resolves to, not merely that some entry
+    //! exists — the previous tests only checked that entries were present and
+    //! in the right order, which is why `/balance-allowance` could be absent
+    //! entirely while every test passed.
+
+    use super::agreement::DocumentedRule;
+    use super::*;
 
     /// The published table, transcribed by hand. This is the golden vector.
     fn documented() -> Vec<DocumentedRule> {
@@ -762,7 +1008,7 @@ mod tests {
     #[test]
     fn test_data_default_construction() {
         let rl = RateLimiter::data_default();
-        assert_eq!(rl.inner.limits.len(), 4);
+        assert_eq!(rl.inner.limits.len(), 5);
     }
 
     #[test]
@@ -945,25 +1191,29 @@ mod tests {
 
     #[test]
     fn test_data_positions_and_closed_positions_are_distinct() {
+        // This previously asserted `!"/closed-positions".starts_with("/positions")`
+        // — a tautology about two string literals that never touched the
+        // limiter, and so held even with `/closed-positions` set to 66x its
+        // published cap. Ask the limiter instead.
         let rl = RateLimiter::data_default();
-        let limits = &rl.inner.limits;
 
-        let positions = limits
-            .iter()
-            .find(|l| l.path_prefix == "/positions")
-            .unwrap();
-        let closed = limits
-            .iter()
-            .find(|l| l.path_prefix == "/closed-positions")
-            .unwrap();
+        let closed = rl.resolve_specs("/closed-positions", Some(&Method::GET));
+        let positions = rl.resolve_specs("/positions", Some(&Method::GET));
+        assert_eq!(closed, positions, "both are published at 150/10s");
 
-        assert_eq!(positions.match_mode, MatchMode::Prefix);
-        assert_eq!(closed.match_mode, MatchMode::Prefix);
-
-        // "/closed-positions" does NOT start with "/positions"
+        let bucket_for = |path: &str| {
+            rl.inner
+                .limits
+                .iter()
+                .find(|l| l.matches(path, Some(&Method::GET)))
+                .unwrap_or_else(|| panic!("{path} should match a rule"))
+                .buckets[0]
+                .clone()
+        };
         assert!(
-            !"/closed-positions".starts_with(positions.path_prefix),
-            "/closed-positions should not match /positions prefix"
+            !Arc::ptr_eq(&bucket_for("/closed-positions"), &bucket_for("/positions")),
+            "equal quotas must still be separate buckets — upstream publishes \
+             150/10s each, not 150/10s combined"
         );
     }
 
