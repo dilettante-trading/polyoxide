@@ -4,6 +4,11 @@ Base URL: `https://clob.polymarket.com`
 
 Enforcement: sliding time window. Requests are throttled (delayed/queued) rather than immediately rejected when limits are exceeded.
 
+**This page covers only the Cloudflare IP-based layer.** Order and cancellation
+requests are *additionally* evaluated against per-signer token buckets that count
+orders rather than requests — see
+[trading-rate-limits.md](trading-rate-limits.md). A request must satisfy both.
+
 Source: <https://docs.polymarket.com/api-reference/rate-limits>, re-fetched 2026-07-25.
 An earlier revision of this page carried stale trading numbers (`POST /order` at
 3,500/10s rather than 5,000, `DELETE /order` with no sustained window at all).

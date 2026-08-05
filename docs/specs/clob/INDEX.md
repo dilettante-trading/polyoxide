@@ -31,7 +31,12 @@ Three authentication levels. See [auth.md](auth.md) for details.
 
 ## Rate Limits
 
-See [rate-limits.md](rate-limits.md) for all limits.
+Two independent layers; a request must satisfy both.
+
+| File | Layer | Keyed on | Counts |
+|------|-------|----------|--------|
+| [rate-limits.md](rate-limits.md) | Cloudflare IP throttling | client IP | requests |
+| [trading-rate-limits.md](trading-rate-limits.md) | per-signer token buckets | signer address | orders (batches cost N) |
 
 ## Error Codes
 

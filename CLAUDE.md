@@ -111,6 +111,19 @@ The two EIP-712 domains are unrelated — order signing needs a verifying contra
 
 **Order kill outcomes are not faults** — Polymarket returns HTTP 400 for both genuine faults and the defined kill outcomes of marketable orders, so `ClobError` splits the latter out as `FakUnmatched` (FAK matched nothing) and `FokUnfilled` (FOK could not fill in full). They are deterministic and never retriable. Classification lives in `classify_order_kill` in `polyoxide-clob/src/error.rs` and matches on the venue's message body — the only signal available, since the venue ships no error code. Upstream's error catalogue is [docs.polymarket.com/resources/error-codes](https://docs.polymarket.com/resources/error-codes); it is **not** in `docs/specs/clob/openapi.yaml`, which omits these rows entirely.
 
+**Two rate limit layers, counting different things** — a request must satisfy both, and they are modelled in separate modules:
+
+| Layer | Module | Keyed on | Counts | Applies to |
+|-------|--------|----------|--------|------------|
+| Cloudflare IP throttling | `polyoxide-core/src/rate_limit.rs` | client IP | **requests** | every host |
+| Per-signer token buckets | `polyoxide-core/src/signer_limit.rs` | signer address | **orders** | CLOB order/cancel only |
+
+The per-signer layer charges batch endpoints their full size (`POST /orders` costs N, `DELETE /orders` costs N, `cancel-all` costs 1+N), so a batch can cost more than the bucket's burst capacity can *ever* hold — permanently rejected, not throttled. `SignerLimiter::acquire` refuses those client-side as `ClobError::BurstCapacityExceeded` (non-retriable) rather than letting the retry loop burn attempts on a 429 it would misread as transient. Tier starts at `Standard` (tightest) and is adopted from the `Poly-RateLimit-Tier` response header, since it derives from 30-day volume the client cannot compute. `cancel-all`/`cancel-market-orders` costs are *not* knowable client-side — `TradingRequest::cost_is_exact` flags that.
+
+Both tables are pinned by `documented_*_limits` agreement tests asserting the **effective quota a request resolves to**, not merely that an entry exists. Tests that only check presence and ordering are how `/balance-allowance` went missing and `/closed-positions` sat at 66x its cap, both undetected.
+
+**Published rate limit tables name routes that 404** — upstream lists `Health check (/ok)` under every surface, but only `clob.polymarket.com` serves it. Data's health route is `/`, Gamma's is `/status`. Probe the path on the host before pinning a row.
+
 **Decimal precision** — Price/size fields use `rust_decimal::Decimal` with `serde(with = "rust_decimal::serde::str")` for string serialization.
 
 ## Environment Variables

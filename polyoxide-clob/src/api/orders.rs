@@ -1,6 +1,6 @@
 use std::collections::HashMap;
 
-use polyoxide_core::{HttpClient, QueryBuilder};
+use polyoxide_core::{HttpClient, QueryBuilder, SignerLimiter, TradingRequest};
 use serde::{Deserialize, Serialize};
 
 use crate::{
@@ -13,6 +13,7 @@ use crate::{
 #[derive(Clone)]
 pub struct Orders {
     pub(crate) http_client: HttpClient,
+    pub(crate) signer_limiter: SignerLimiter,
     pub(crate) wallet: Wallet,
     pub(crate) credentials: Credentials,
     pub(crate) signer: Signer,
@@ -57,6 +58,7 @@ impl Orders {
     pub fn cancel(&self, order_id: impl Into<String>) -> CancelOrderRequest {
         CancelOrderRequest {
             http_client: self.http_client.clone(),
+            signer_limiter: self.signer_limiter.clone(),
             auth: AuthMode::L2 {
                 address: self.wallet.address(),
                 credentials: self.credentials.clone(),
@@ -79,6 +81,7 @@ impl Orders {
             },
             self.chain_id,
         )
+        .trading(&self.signer_limiter, TradingRequest::CancelAll)
         .send()
         .await
     }
@@ -105,6 +108,7 @@ impl Orders {
             },
             self.chain_id,
         )
+        .trading(&self.signer_limiter, TradingRequest::CancelMarketOrders)
         .body(&Body {
             market: market.into(),
             asset_id: asset_id.into(),
@@ -163,6 +167,12 @@ impl Orders {
             },
             self.chain_id,
         )
+        .trading(
+            &self.signer_limiter,
+            TradingRequest::CancelOrders {
+                count: ids.len() as u32,
+            },
+        )
         .body(&ids)?
         .send()
         .await
@@ -172,6 +182,7 @@ impl Orders {
 /// Request builder for canceling an order
 pub struct CancelOrderRequest {
     http_client: HttpClient,
+    signer_limiter: SignerLimiter,
     auth: AuthMode,
     chain_id: u64,
     order_id: String,
@@ -191,6 +202,7 @@ impl CancelOrderRequest {
         };
 
         Request::delete(self.http_client, "/order", self.auth, self.chain_id)
+            .trading(&self.signer_limiter, TradingRequest::CancelOrder)
             .body(&request)?
             .send()
             .await

@@ -2,6 +2,7 @@ use std::marker::PhantomData;
 
 use alloy::primitives::Address;
 use polyoxide_core::{current_timestamp, request::QueryBuilder, retry_after_header, HttpClient};
+use polyoxide_core::{SignerLimiter, TradingRequest};
 use reqwest::{Method, Response};
 use serde::de::DeserializeOwned;
 
@@ -34,7 +35,21 @@ pub struct Request<T> {
     pub(crate) body: Option<serde_json::Value>,
     pub(crate) auth: AuthMode,
     pub(crate) chain_id: u64,
+    /// The per-signer trading limiter and this request's shape, when the
+    /// request draws on a signer's order or cancel bucket.
+    ///
+    /// `None` for everything else — market data, auth, rewards — which the
+    /// venue does not evaluate against those buckets at all.
+    pub(crate) trading: Option<(SignerLimiter, TradingRequest)>,
     pub(crate) _marker: PhantomData<T>,
+}
+
+impl<T> Request<T> {
+    /// Charge this request against a signer's order or cancel bucket.
+    pub(crate) fn trading(mut self, limiter: &SignerLimiter, request: TradingRequest) -> Self {
+        self.trading = Some((limiter.clone(), request));
+        self
+    }
 }
 
 impl<T> Request<T> {
@@ -53,6 +68,7 @@ impl<T> Request<T> {
             body: None,
             auth,
             chain_id,
+            trading: None,
             _marker: PhantomData,
         }
     }
@@ -72,6 +88,7 @@ impl<T> Request<T> {
             body: None,
             auth,
             chain_id,
+            trading: None,
             _marker: PhantomData,
         }
     }
@@ -91,6 +108,7 @@ impl<T> Request<T> {
             body: None,
             auth,
             chain_id,
+            trading: None,
             _marker: PhantomData,
         }
     }
@@ -137,11 +155,20 @@ impl<T: DeserializeOwned> Request<T> {
         let body = self.body;
         let auth = self.auth;
         let chain_id = self.chain_id;
+        let trading = self.trading;
         let mut attempt = 0u32;
 
         loop {
             let _permit = http_client.acquire_concurrency().await;
             http_client.acquire_rate_limit(&path, Some(&method)).await;
+
+            // The per-signer trading bucket is a second, independent limiter:
+            // it counts orders where the one above counts requests. Charged
+            // inside the retry loop so a retried request pays again, as the
+            // venue would charge it again.
+            if let Some((limiter, request)) = &trading {
+                limiter.acquire(*request).await?;
+            }
 
             // Build the base request — rebuilt each iteration so auth timestamps are fresh
             let mut request = match method {
@@ -182,6 +209,13 @@ impl<T: DeserializeOwned> Request<T> {
             let response = request.send().await?;
             let status = response.status();
             let retry_after = retry_after_header(&response);
+
+            // Poly-RateLimit-Tier is the only way to learn the signer's tier,
+            // so record it whatever the status — a 429 carries it too, and that
+            // is exactly when the correct capacity matters most.
+            if let Some((limiter, _)) = &trading {
+                limiter.observe(response.headers());
+            }
 
             if let Some(backoff) = http_client.should_retry(status, attempt, retry_after.as_deref())
             {

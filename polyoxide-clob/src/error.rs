@@ -51,6 +51,18 @@ pub enum ClobError {
     /// which defaults to [`crate::OrderKind::Fok`].
     #[error("FOK order killed unfilled: {message}")]
     FokUnfilled { message: String },
+
+    /// A batch's token cost exceeds the signer's per-signer burst capacity.
+    ///
+    /// Rejected client-side, before any request is sent. Polymarket evaluates
+    /// order and cancel requests against per-signer token buckets whose cost is
+    /// the *number of orders*, not the number of requests — so a batch can cost
+    /// more than the bucket can ever hold. Waiting cannot help, and the venue
+    /// would answer 429, which the retry loop would misread as transient.
+    /// Splitting the batch is the only remedy, so this is
+    /// **not** retriable. See `docs/specs/clob/trading-rate-limits.md`.
+    #[error(transparent)]
+    BurstCapacityExceeded(#[from] polyoxide_core::BurstCapacityExceeded),
 }
 
 /// Recognise the matching-engine kill outcomes Polymarket reports as HTTP 400.
@@ -117,6 +129,9 @@ impl ClobError {
         match self {
             Self::Api(e) => e.is_retriable(),
             Self::FakUnmatched { .. } | Self::FokUnfilled { .. } => false,
+            // Deterministic: the batch is larger than the bucket can ever hold,
+            // so every retry would fail identically.
+            Self::BurstCapacityExceeded(_) => false,
             Self::Crypto(_) | Self::Alloy(_) | Self::InvalidTickSize(_) => false,
         }
     }

@@ -3015,3 +3015,139 @@ async fn fak_prose_on_non_400_status_is_not_reclassified() {
     assert!(err.is_retriable(), "a 5xx is a transient fault");
     post_mock.assert_async().await;
 }
+
+// ── Per-signer trading rate limits ───────────────────────────────
+//
+// A second limiter, independent of the IP-based one: it counts *orders*, not
+// requests, so a batch can cost more than the signer's bucket can ever hold.
+// See docs/specs/clob/trading-rate-limits.md.
+
+#[tokio::test]
+async fn over_capacity_batch_cancel_is_rejected_without_sending_a_request() {
+    // 2,000 IDs costs 2,000 cancel tokens; Standard holds 120 and even Elite
+    // only 1,800. Waiting can never satisfy it, so the client must refuse
+    // locally rather than let the venue answer 429 — which the retry loop
+    // would misread as transient and burn three attempts on.
+    let mut server = mockito::Server::new_async().await;
+    let mock = server
+        .mock("DELETE", "/orders")
+        .with_status(200)
+        .with_body(r#"{"canceled": [], "notCanceled": {}}"#)
+        .expect(0) // must never be reached
+        .create_async()
+        .await;
+
+    let clob = test_authed_clob(&server);
+    let ids: Vec<String> = (0..2_000).map(|i| format!("order-{i}")).collect();
+
+    let err = clob
+        .orders()
+        .unwrap()
+        .cancel_many(ids)
+        .await
+        .expect_err("an over-capacity batch must be refused");
+
+    match &err {
+        polyoxide_clob::ClobError::BurstCapacityExceeded(e) => {
+            assert_eq!(e.cost, 2_000);
+            assert_eq!(e.capacity, 120, "Standard tier cancel burst");
+        }
+        other => panic!("expected BurstCapacityExceeded, got {other:?}"),
+    }
+    assert!(!err.is_retriable(), "splitting is the only remedy");
+
+    // The decisive assertion: nothing went over the wire.
+    mock.assert_async().await;
+}
+
+#[tokio::test]
+async fn a_batch_within_capacity_still_reaches_the_venue() {
+    // The guard must not be over-eager: 100 fits Standard's 120 cancel burst.
+    let mut server = mockito::Server::new_async().await;
+    let mock = server
+        .mock("DELETE", "/orders")
+        .with_status(200)
+        .with_body(r#"{"canceled": [], "notCanceled": {}}"#)
+        .expect(1)
+        .create_async()
+        .await;
+
+    let clob = test_authed_clob(&server);
+    let ids: Vec<String> = (0..100).map(|i| format!("order-{i}")).collect();
+    clob.orders().unwrap().cancel_many(ids).await.unwrap();
+
+    mock.assert_async().await;
+}
+
+#[tokio::test]
+async fn the_tier_is_adopted_from_the_response_header() {
+    // Tier derives from 30-day volume the client cannot compute, so the header
+    // is the only source. Before any trading request it must read Standard.
+    let mut server = mockito::Server::new_async().await;
+    let _mock = server
+        .mock("DELETE", "/order")
+        .with_status(200)
+        .with_header("poly-ratelimit-tier", "gold")
+        .with_header("poly-ratelimit-remaining", "1183")
+        .with_body(r#"{"canceled": ["order-1"], "notCanceled": {}}"#)
+        .create_async()
+        .await;
+
+    let clob = test_authed_clob(&server);
+    assert_eq!(clob.tier(), polyoxide_core::Tier::Standard);
+    assert_eq!(clob.rate_limit_status().tier, None);
+
+    clob.orders()
+        .unwrap()
+        .cancel("order-1")
+        .send()
+        .await
+        .unwrap();
+
+    assert_eq!(clob.tier(), polyoxide_core::Tier::Gold);
+    assert_eq!(clob.rate_limit_status().remaining, Some(1_183));
+}
+
+#[tokio::test]
+async fn adopting_a_higher_tier_admits_a_previously_impossible_batch() {
+    // Proves discovery actually resizes the buckets rather than just recording
+    // a label: 500 IDs is impossible at Standard (120) and fine at Gold (1,200).
+    let mut server = mockito::Server::new_async().await;
+    let _cancel_one = server
+        .mock("DELETE", "/order")
+        .with_status(200)
+        .with_header("poly-ratelimit-tier", "gold")
+        .with_body(r#"{"canceled": ["order-1"], "notCanceled": {}}"#)
+        .create_async()
+        .await;
+    let batch = server
+        .mock("DELETE", "/orders")
+        .with_status(200)
+        .with_body(r#"{"canceled": [], "notCanceled": {}}"#)
+        .expect(1)
+        .create_async()
+        .await;
+
+    let clob = test_authed_clob(&server);
+    let ids: Vec<String> = (0..500).map(|i| format!("order-{i}")).collect();
+
+    assert!(
+        clob.orders()
+            .unwrap()
+            .cancel_many(ids.clone())
+            .await
+            .is_err(),
+        "500 exceeds Standard's 120 cancel burst"
+    );
+
+    // Learn the tier from an unrelated trading response, then retry.
+    clob.orders()
+        .unwrap()
+        .cancel("order-1")
+        .send()
+        .await
+        .unwrap();
+    clob.orders().unwrap().cancel_many(ids).await.unwrap();
+
+    batch.assert_async().await;
+}

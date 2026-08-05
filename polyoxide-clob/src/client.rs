@@ -1,5 +1,6 @@
 use polyoxide_core::{
-    HttpClient, HttpClientBuilder, RateLimiter, RetryConfig, DEFAULT_POOL_SIZE, DEFAULT_TIMEOUT_MS,
+    HttpClient, HttpClientBuilder, RateLimitStatus, RateLimiter, RetryConfig, SignerLimiter, Tier,
+    TradingRequest, DEFAULT_POOL_SIZE, DEFAULT_TIMEOUT_MS,
 };
 
 use crate::{
@@ -52,6 +53,9 @@ pub struct Clob {
     /// [`B256::ZERO`] (no attribution).
     pub(crate) builder_code: B256,
     pub(crate) account: Option<Account>,
+    /// Per-signer order/cancel token buckets. Independent of the IP-based
+    /// limiter on `http_client`; see `docs/specs/clob/trading-rate-limits.md`.
+    pub(crate) signer_limiter: SignerLimiter,
     #[cfg(feature = "gamma")]
     pub(crate) gamma: Gamma,
 }
@@ -105,7 +109,23 @@ impl Clob {
         }
     }
 
-    /// Get orders namespace
+    /// The trading tier currently in force for this client's signer.
+    ///
+    /// Starts at [`Tier::Standard`] and is adopted from the
+    /// `Poly-RateLimit-Tier` header the first time a trading request answers,
+    /// since tier derives from 30-day volume the client cannot compute.
+    pub fn tier(&self) -> Tier {
+        self.signer_limiter.tier()
+    }
+
+    /// The most recent `Poly-RateLimit-*` telemetry the venue reported.
+    ///
+    /// All fields are `None` until a trading request has been made.
+    pub fn rate_limit_status(&self) -> RateLimitStatus {
+        self.signer_limiter.last_status()
+    }
+
+    /// Access the order management namespace.
     pub fn orders(&self) -> Result<Orders, ClobError> {
         let account = self
             .account
@@ -114,6 +134,7 @@ impl Clob {
 
         Ok(Orders {
             http_client: self.http_client.clone(),
+            signer_limiter: self.signer_limiter.clone(),
             wallet: account.wallet().clone(),
             credentials: account.credentials().clone(),
             signer: account.signer().clone(),
@@ -549,6 +570,12 @@ impl Clob {
             auth,
             self.chain_id,
         )
+        .trading(
+            &self.signer_limiter,
+            TradingRequest::PostOrders {
+                count: payload.len() as u32,
+            },
+        )
         .body(&payload)?
         .send()
         .await
@@ -586,6 +613,7 @@ impl Clob {
             auth,
             self.chain_id,
         )
+        .trading(&self.signer_limiter, TradingRequest::PostOrder)
         .body(&payload)?
         .send()
         .await
@@ -835,6 +863,7 @@ impl ClobBuilder {
             signature_type: self.signature_type,
             builder_code: self.builder_code,
             account: self.account,
+            signer_limiter: SignerLimiter::new(),
             #[cfg(feature = "gamma")]
             gamma,
         })

@@ -38,6 +38,23 @@ Some Polymarket APIs are published in **no** OpenAPI or AsyncAPI document.
 — `user-pnl-api` and `lb-api` are implemented by `polyoxide-data`; the shapes
 there were derived from live responses rather than a vendor contract.
 
+## Rate limits are not in the OpenAPI either
+
+Neither limiter appears in any machine-readable spec; both are prose pages.
+CLOB is governed by **two independent layers** that count different things —
+diffing the OpenAPI shows neither.
+
+| Spec | Layer | Keyed on | Counts |
+|------|-------|----------|--------|
+| [clob/rate-limits.md](clob/rate-limits.md) | Cloudflare IP throttling | client IP | requests |
+| [clob/trading-rate-limits.md](clob/trading-rate-limits.md) | per-signer token buckets | signer address | orders (batches cost N) |
+| [gamma/rate-limits.md](gamma/rate-limits.md) | Cloudflare IP throttling | client IP | requests |
+| [data/rate-limits.md](data/rate-limits.md) | Cloudflare IP throttling | client IP | requests |
+
+Upstream's published tables also carry rows that name routes the host does not
+serve — every surface lists `Health check (/ok)`, but only `clob.polymarket.com`
+answers there. Probe the path on the host before pinning a row.
+
 ## WebSocket specs
 
 Real-time contracts are published as **AsyncAPI**, separately from the OpenAPI

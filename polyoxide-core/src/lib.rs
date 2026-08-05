@@ -41,6 +41,7 @@ pub mod client;
 pub mod error;
 pub mod rate_limit;
 pub mod request;
+pub mod signer_limit;
 
 #[cfg(feature = "keychain")]
 pub mod keychain;
@@ -68,6 +69,9 @@ pub use client::{
 pub use error::ApiError;
 pub use rate_limit::{RateLimiter, RetryConfig};
 pub use request::{QueryBuilder, Request, RequestError};
+pub use signer_limit::{
+    BurstCapacityExceeded, RateLimitStatus, SignerLimiter, Tier, TradingBucket, TradingRequest,
+};
 
 #[cfg(feature = "keychain")]
 pub use keychain::KeychainError;
