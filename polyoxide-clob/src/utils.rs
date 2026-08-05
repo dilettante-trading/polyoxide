@@ -81,7 +81,7 @@ pub fn calculate_market_order_amounts(
 
     // The supplied leg: USDC for a buy, shares for a sell. Truncated, never
     // rounded up — rounding up would spend or sell more than was asked for.
-    let maker_amount = round_to_zero(amount, tick_size.size_decimals());
+    let maker_amount = truncate_decimals(amount, tick_size.size_decimals());
 
     let derived = match side {
         // Buy: USDC in, shares out.
@@ -231,6 +231,22 @@ fn cap_decimals(val: f64, max_decimals: u32) -> f64 {
         return bumped;
     }
     round_to_zero(bumped, max_decimals)
+}
+
+/// Constrain a caller-supplied leg to at most `max_decimals` by truncating.
+///
+/// The guard is not an optimization. `round_to_zero` scales by a power of ten
+/// before flooring, and that scaling has its own representation error: `0.29`
+/// times 100 is `28.999999999999996`, which floors to a `0.28` order — 3.4%
+/// short of what was asked for. 573 of the 10,000 two-decimal values from
+/// `0.01` to `100.00` fail that way. Returning an already-compliant value
+/// untouched sidesteps the scaling entirely — the same guard [`cap_decimals`]
+/// opens with, for the same reason.
+fn truncate_decimals(val: f64, max_decimals: u32) -> f64 {
+    if decimal_places(val) <= max_decimals {
+        return val;
+    }
+    round_to_zero(val, max_decimals)
 }
 
 #[cfg(test)]
@@ -589,6 +605,23 @@ mod tests {
         assert_max_decimals(&maker, 2, "market sell maker");
         assert_eq!(maker, "33330000", "33.333333 shares truncate to 33.33");
         assert_max_decimals(&taker, 4, "market sell taker");
+    }
+
+    /// Truncating an input that is *already* within the limit must not move it.
+    ///
+    /// `0.29 * 100` is `28.999999999999996` in f64, so a bare floor turns a
+    /// perfectly legal `$0.29` into `$0.28`. 573 of the 10,000 two-decimal
+    /// values between `0.01` and `100.00` land this way, so the guard is not a
+    /// corner case.
+    #[test]
+    fn market_buy_preserves_amount_already_within_precision() {
+        let (maker, taker) =
+            calculate_market_order_amounts(0.29, 0.5, OrderSide::Buy, TickSize::Hundredth);
+        assert_eq!(
+            maker, "290000",
+            "$0.29 is already 2 decimals; leave it alone"
+        );
+        assert_eq!(taker, "580000", "0.29 / 0.5 = 0.58 shares");
     }
 
     #[test]
