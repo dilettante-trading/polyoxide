@@ -1,8 +1,21 @@
+## [0.24.2] - 2026-08-05
+
+### 🐛 Bug Fixes
+
+- *(clob)* Stop size truncation from shortening compliant amounts
+- *(clob)* Apply the venue's per-tick decimal limits to limit orders
+- *(clob)* Reject order quantities below the venue's 2-decimal floor
+
 ## [0.24.1] - 2026-08-03
 
 ### 🐛 Bug Fixes
 
 - *(clob)* Apply the venue's per-tick decimal limits to market orders
+
+### 📚 Documentation
+
+- *(clob)* Stop linking public docs at pub(crate) precision helpers
+- *(claude.md)* Document the rustdoc gate and correct the CI job count
 
 ## [0.24.0] - 2026-08-03
 
