@@ -6,7 +6,32 @@ use crate::{
     types::{OrderSide, TickSize},
 };
 
-/// Calculate maker and taker amounts for an order using f64 arithmetic.
+/// Calculate maker and taker amounts for a LIMIT order.
+///
+/// The venue enforces two decimal limits beyond the price precision, both
+/// varying by tick size. The size the caller supplies is truncated to the
+/// `size` limit; the cost derived from it by multiplying by the price is capped
+/// at the `amount` limit:
+///
+/// | tick     | price | size | amount |
+/// |----------|-------|------|--------|
+/// | `0.1`    | 1     | 2    | 3      |
+/// | `0.01`   | 2     | 2    | 4      |
+/// | `0.001`  | 3     | 2    | 5      |
+/// | `0.0001` | 4     | 2    | 6      |
+///
+/// The `amount` column is `price + size` for every row, which is what makes the
+/// product exact: a price of at most `price` decimals times a size of at most
+/// two never needs more than `amount` to write down. That matters because
+/// Polymarket never reads the price off the wire — it derives
+/// `makerAmount / takerAmount` from the signed order and tick-checks *that*.
+/// Rounding both legs to a flat six decimals, as this did previously, breaks
+/// the identity: a size of `18.181818` shares (what `$10` at `0.55` comes to)
+/// carries four decimals more than the `0.01` tick permits.
+///
+/// Mirrors `get_order_amounts` in py-clob-client; see
+/// [`calculate_market_order_amounts`] for the market-order half of the same
+/// contract.
 ///
 /// # Arguments
 ///
@@ -24,17 +49,19 @@ pub fn calculate_order_amounts(
     side: OrderSide,
     tick_size: TickSize,
 ) -> (String, String) {
-    const SIZE_DECIMALS: u32 = 6;
-    let tick_decimals = tick_size.decimals();
+    /// Raw wire amounts are always scaled by 10^6, independent of the decimal
+    /// limits applied to the values themselves.
+    const WIRE_DECIMALS: u32 = 6;
 
-    let price_rounded = round_bankers(price, tick_decimals);
-    let size_rounded = round_bankers(size, SIZE_DECIMALS);
+    let price_rounded = round_bankers(price, tick_size.decimals());
 
-    let cost = price_rounded * size_rounded;
-    let cost_rounded = round_bankers(cost, SIZE_DECIMALS);
+    // Shares are what the caller asked for, so truncate — never round up to a
+    // larger order than was requested.
+    let size_rounded = truncate_decimals(size, tick_size.size_decimals());
+    let cost = cap_decimals(price_rounded * size_rounded, tick_size.amount_decimals());
 
-    let share_amount = to_raw_amount(size_rounded, SIZE_DECIMALS);
-    let cost_amount = to_raw_amount(cost_rounded, SIZE_DECIMALS);
+    let share_amount = to_raw_amount(size_rounded, WIRE_DECIMALS);
+    let cost_amount = to_raw_amount(cost, WIRE_DECIMALS);
 
     match side {
         OrderSide::Buy => (cost_amount, share_amount),
@@ -624,14 +651,171 @@ mod tests {
         assert_eq!(taker, "580000", "0.29 / 0.5 = 0.58 shares");
     }
 
+    // ── calculate_order_amounts (limit orders) ──────────────────────
+    //
+    // Same two limits, with `size` bounding the shares the caller supplies and
+    // `amount` bounding the cost derived from them. Mirrors `get_order_amounts`
+    // in py-clob-client.
+
+    /// The size leg is truncated to 2 decimals, not rounded at 6.
+    ///
+    /// `18.181818` shares is what "$10 at 0.55" comes to, so this is the shape
+    /// of size a caller sizing by budget passes in — not an odd input.
+    #[test]
+    fn limit_buy_truncates_size_to_size_precision() {
+        let (maker, taker) =
+            calculate_order_amounts(0.55, 18.181818, OrderSide::Buy, TickSize::Hundredth);
+        assert_max_decimals(&taker, 2, "limit buy size leg");
+        assert_eq!(taker, "18180000", "18.181818 shares truncate to 18.18");
+        assert_max_decimals(&maker, 4, "limit buy cost leg");
+        assert_eq!(maker, "9999000", "0.55 * 18.18 = 9.999 USDC");
+    }
+
+    /// Sells carry the same contract with the legs swapped.
+    #[test]
+    fn limit_sell_truncates_size_to_size_precision() {
+        let (maker, taker) =
+            calculate_order_amounts(0.55, 18.181818, OrderSide::Sell, TickSize::Hundredth);
+        assert_max_decimals(&maker, 2, "limit sell size leg");
+        assert_eq!(maker, "18180000", "18.181818 shares truncate to 18.18");
+        assert_max_decimals(&taker, 4, "limit sell cost leg");
+        assert_eq!(taker, "9999000", "0.55 * 18.18 = 9.999 USDC");
+    }
+
+    /// The `amount` cap varies by tick; a flat six decimals cannot satisfy all
+    /// four rows.
+    #[test]
+    fn limit_legs_respect_precision_across_tick_sizes() {
+        for (tick, amount_max) in [
+            (TickSize::Tenth, 3),
+            (TickSize::Hundredth, 4),
+            (TickSize::Thousandth, 5),
+            (TickSize::TenThousandth, 6),
+        ] {
+            let (maker, taker) = calculate_order_amounts(0.5, 100.123456, OrderSide::Buy, tick);
+            assert_max_decimals(&taker, 2, &format!("{tick:?} size leg"));
+            assert_max_decimals(&maker, amount_max, &format!("{tick:?} cost leg"));
+        }
+    }
+
+    /// A size already within the limit must survive untouched.
+    ///
+    /// Same f64 trap as the market path: flooring `0.29` at two decimals yields
+    /// `0.28`, quietly shrinking the order by 3.4%.
+    #[test]
+    fn limit_preserves_size_already_within_precision() {
+        let (maker, taker) =
+            calculate_order_amounts(0.5, 0.29, OrderSide::Buy, TickSize::Hundredth);
+        assert_eq!(
+            taker, "290000",
+            "0.29 is already 2 decimals; leave it alone"
+        );
+        assert_eq!(maker, "145000", "0.5 * 0.29 = 0.145 USDC");
+    }
+
+    /// The invariant the whole table exists to protect, checked exhaustively.
+    ///
+    /// Polymarket never reads a price field off the wire: it recovers
+    /// `makerAmount / takerAmount` from the signed order and tick-checks the
+    /// result. So the real contract is not "few enough decimals" but "the two
+    /// legs divide back to exactly the price the caller asked for" — verified
+    /// here in integer arithmetic, where no float artifact can hide.
+    ///
+    /// Sweeps every tick price against both a compliant size and the same size
+    /// made over-precise, on both sides — ~600k orders. An over-precise size
+    /// must produce byte-identical legs to its truncated twin, which is the
+    /// property the old flat-six-decimal code could not hold.
+    #[test]
+    fn limit_legs_divide_back_to_the_requested_price() {
+        for (tick, price_steps, size_steps) in [
+            (TickSize::Tenth, 9, 500),
+            (TickSize::Hundredth, 99, 250),
+            (TickSize::Thousandth, 999, 25),
+            (TickSize::TenThousandth, 9999, 10),
+        ] {
+            let price_scale = 10i64.pow(tick.decimals());
+            let amount_modulus = 10i64.pow(6 - tick.amount_decimals());
+
+            for price_int in 1..=price_steps {
+                let price = price_int as f64 / price_scale as f64;
+                for size_int in 1..=size_steps {
+                    let size = size_int as f64 / 100.0;
+                    // The same order, requested with a size the venue cannot
+                    // express. Truncation must land it back on `size`.
+                    let over_precise = size + 0.006789;
+
+                    for side in [OrderSide::Buy, OrderSide::Sell] {
+                        let legs = calculate_order_amounts(price, size, side, tick);
+                        assert_eq!(
+                            calculate_order_amounts(price, over_precise, side, tick),
+                            legs,
+                            "{tick:?} {side:?} {price}: size {over_precise} must \
+                             truncate to the same order as {size}"
+                        );
+                        let (maker, taker) = legs;
+                        let (shares, cost) = match side {
+                            OrderSide::Buy => (&taker, &maker),
+                            OrderSide::Sell => (&maker, &taker),
+                        };
+                        let shares: i64 = shares.parse().expect("shares parse");
+                        let cost: i64 = cost.parse().expect("cost parse");
+
+                        assert_eq!(
+                            shares,
+                            size_int * 10_000,
+                            "{tick:?} {side:?} {price}x{size}: a compliant size must survive intact"
+                        );
+                        assert_eq!(
+                            cost % amount_modulus,
+                            0,
+                            "{tick:?} {side:?} {price}x{size}: cost {cost} exceeds the amount limit"
+                        );
+                        // cost / shares == price, in exact integers.
+                        assert_eq!(
+                            cost * price_scale,
+                            price_int * shares,
+                            "{tick:?} {side:?} {price}x{size}: legs imply a price off the tick"
+                        );
+                    }
+                }
+            }
+        }
+    }
+
+    /// The derived cost needs the same two-step artifact recovery the market
+    /// path uses, for the same reason.
+    ///
+    /// `0.29 * 3` is exactly `0.87`, but f64 evaluates it to
+    /// `0.8699999999999999`. Truncating that at four decimals gives `0.8699` —
+    /// an order priced a hundredth of a cent light, which no longer divides
+    /// back to a valid tick.
+    #[test]
+    fn limit_cost_recovers_float_representation_artifacts() {
+        let (maker, taker) =
+            calculate_order_amounts(0.29, 3.0, OrderSide::Buy, TickSize::Hundredth);
+        assert_eq!(taker, "3000000", "3 shares");
+        assert_eq!(
+            maker, "870000",
+            "0.29 * 3 is 0.87; naive truncation would give 0.8699"
+        );
+        assert_max_decimals(&maker, 4, "artifact-recovered cost leg");
+    }
+
+    /// Sizes below the venue's 2-decimal floor truncate away entirely.
+    ///
+    /// `0.000001` shares is not expressible in an order, so both legs come out
+    /// zero rather than as a 6-decimal size the venue would reject. The venue
+    /// rejects the zero-size order in turn — callers wanting a friendlier
+    /// failure must check the size themselves; [`CreateOrderParams::validate`]
+    /// only requires it to be positive.
+    ///
+    /// [`CreateOrderParams::validate`]: crate::client::CreateOrderParams::validate
     #[test]
     fn test_calculate_order_amounts_small_fractional_size() {
-        // Very small size to test precision isn't lost
         let (maker, taker) =
             calculate_order_amounts(0.50, 0.000001, OrderSide::Buy, TickSize::Hundredth);
-        // cost = 0.50 * 0.000001 = 0.0000005 → rounds to 0 at 6 decimals
-        assert_eq!(taker, "1"); // 0.000001 * 10^6 = 1
-        assert_eq!(maker, "0"); // 0.0000005 rounds to 0 at 6 decimals → 0
+        assert_eq!(taker, "0", "0.000001 shares truncates to 0 at 2 decimals");
+        assert_eq!(maker, "0", "and so the cost is 0 too");
     }
 
     #[test]

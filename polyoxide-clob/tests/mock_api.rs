@@ -1582,6 +1582,47 @@ async fn create_order_with_provided_options_skips_metadata_fetch() {
     tick_size_mock.assert_async().await;
 }
 
+/// An over-precise size must reach the wire truncated to the venue's limit.
+///
+/// `18.181818` shares is what "$10 at 0.55" comes to, so it is the ordinary
+/// output of sizing by budget. The venue caps sizes at 2 decimals and derives
+/// the price as `makerAmount / takerAmount`, so the legs that leave here must
+/// be `18.18` shares for `9.999` USDC — anything else is signed, submitted, and
+/// rejected. This covers the path through `create_order`, not just the helper.
+#[tokio::test]
+async fn create_order_truncates_over_precise_size_to_tick_limits() {
+    let server = Server::new_async().await;
+
+    let clob = test_authed_clob(&server);
+    let params = polyoxide_clob::CreateOrderParams {
+        token_id: "0xtoken".into(),
+        price: 0.55,
+        size: 18.181818,
+        side: polyoxide_clob::OrderSide::Buy,
+        order_type: polyoxide_clob::OrderKind::Gtc,
+        post_only: false,
+        expiration: None,
+        funder: None,
+        signature_type: None,
+    };
+
+    let options = polyoxide_clob::PartialCreateOrderOptions {
+        neg_risk: Some(false),
+        tick_size: Some(polyoxide_clob::TickSize::Hundredth),
+    };
+
+    let order = clob.create_order(&params, Some(options)).await.unwrap();
+
+    // Buy: maker_amount = cost, taker_amount = shares.
+    assert_eq!(order.taker_amount, "18180000", "18.181818 → 18.18 shares");
+    assert_eq!(order.maker_amount, "9999000", "0.55 * 18.18 = 9.999 USDC");
+
+    // The venue's own check: the legs divide back to exactly 0.55.
+    let cost: i64 = order.maker_amount.parse().unwrap();
+    let shares: i64 = order.taker_amount.parse().unwrap();
+    assert_eq!(cost * 100, 55 * shares, "legs must imply a price of 0.55");
+}
+
 #[tokio::test]
 async fn create_order_without_account_errors() {
     let server = Server::new_async().await;
