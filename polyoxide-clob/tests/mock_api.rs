@@ -1582,6 +1582,51 @@ async fn create_order_with_provided_options_skips_metadata_fetch() {
     tick_size_mock.assert_async().await;
 }
 
+/// Market orders carry the same floor, and reject before any network I/O.
+///
+/// The supplied leg is USDC for a buy and shares for a sell, both capped at two
+/// decimals, so `0.005` truncates away either way. The mocks assert zero calls:
+/// a size the venue cannot express should not cost a round trip to discover.
+#[tokio::test]
+async fn create_market_order_rejects_amount_below_venue_minimum() {
+    let mut server = Server::new_async().await;
+
+    let neg_risk_mock = server
+        .mock("GET", "/neg-risk")
+        .expect(0)
+        .create_async()
+        .await;
+    let tick_size_mock = server
+        .mock("GET", "/tick-size")
+        .expect(0)
+        .create_async()
+        .await;
+    let book_mock = server.mock("GET", "/book").expect(0).create_async().await;
+
+    let clob = test_authed_clob(&server);
+    let params = polyoxide_clob::types::MarketOrderArgs {
+        token_id: "0xtoken".into(),
+        amount: 0.005,
+        side: polyoxide_clob::OrderSide::Buy,
+        price: Some(0.50),
+        fee_rate_bps: None,
+        nonce: None,
+        funder: None,
+        signature_type: None,
+        order_type: None,
+    };
+
+    let err = clob.create_market_order(&params, None).await.unwrap_err();
+    assert!(
+        err.to_string().contains("0.01"),
+        "error should name the floor, got: {err}"
+    );
+
+    neg_risk_mock.assert_async().await;
+    tick_size_mock.assert_async().await;
+    book_mock.assert_async().await;
+}
+
 /// An over-precise size must reach the wire truncated to the venue's limit.
 ///
 /// `18.181818` shares is what "$10 at 0.55" comes to, so it is the ordinary

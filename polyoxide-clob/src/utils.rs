@@ -804,10 +804,12 @@ mod tests {
     /// Sizes below the venue's 2-decimal floor truncate away entirely.
     ///
     /// `0.000001` shares is not expressible in an order, so both legs come out
-    /// zero rather than as a 6-decimal size the venue would reject. The venue
-    /// rejects the zero-size order in turn — callers wanting a friendlier
-    /// failure must check the size themselves; [`CreateOrderParams::validate`]
-    /// only requires it to be positive.
+    /// zero rather than as a 6-decimal size the venue would reject.
+    ///
+    /// Orders built through the client never reach this state:
+    /// [`CreateOrderParams::validate`] rejects sizes below `0.01` up front. The
+    /// helper stays total anyway, since it is public and callers may drive it
+    /// directly.
     ///
     /// [`CreateOrderParams::validate`]: crate::client::CreateOrderParams::validate
     #[test]

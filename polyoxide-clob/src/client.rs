@@ -27,6 +27,17 @@ use polyoxide_gamma::Gamma;
 
 const DEFAULT_BASE_URL: &str = "https://clob.polymarket.com";
 
+/// The smallest order quantity the venue can express.
+///
+/// Every tick size caps the caller-supplied leg at two decimals, so anything
+/// below this truncates to zero when the order amounts are built. The cap is
+/// two for all four ticks — the `size` column of the rounding table — which is
+/// why the floor can be checked before any market metadata is fetched.
+///
+/// Applies to shares for limit orders and to whichever leg the caller supplies
+/// for market orders: USDC on a buy, shares on a sell.
+const MIN_ORDER_QUANTITY: f64 = 0.01;
+
 /// CLOB (Central Limit Order Book) trading client for Polymarket.
 ///
 /// Provides authenticated order creation, signing, and submission, plus read-only
@@ -265,6 +276,13 @@ impl Clob {
         if params.amount <= 0.0 {
             return Err(ClobError::validation(format!(
                 "Amount must be positive, got {}",
+                params.amount
+            )));
+        }
+        if params.amount < MIN_ORDER_QUANTITY {
+            return Err(ClobError::validation(format!(
+                "Amount must be at least {MIN_ORDER_QUANTITY} — the venue truncates \
+                 amounts to 2 decimals, so {} would become a zero-size order",
                 params.amount
             )));
         }
@@ -640,6 +658,13 @@ impl CreateOrderParams {
                 self.size
             )));
         }
+        if self.size < MIN_ORDER_QUANTITY {
+            return Err(ClobError::validation(format!(
+                "Size must be at least {MIN_ORDER_QUANTITY} shares — the venue \
+                 truncates sizes to 2 decimals, so {} would become a zero-size order",
+                self.size
+            )));
+        }
         Ok(())
     }
 }
@@ -997,5 +1022,45 @@ mod tests {
         // Price exactly 1.0 should be valid
         let params = make_params(1.0, 100.0);
         assert!(params.validate().is_ok());
+    }
+
+    /// A size the venue cannot express is rejected here rather than truncated
+    /// to a zero-size order downstream.
+    ///
+    /// Sizes are capped at two decimals for every tick, so `0.005` shares
+    /// becomes `0.00` when the amounts are built — a signed, submitted order
+    /// the venue rejects for a reason that points at neither the size nor the
+    /// caller's mistake.
+    #[test]
+    fn test_validate_rejects_size_below_venue_minimum() {
+        let params = make_params(0.5, 0.005);
+        let err = params.validate().unwrap_err();
+        assert!(
+            err.to_string().contains("0.01"),
+            "error should name the floor, got: {err}"
+        );
+    }
+
+    /// The floor itself is a valid size.
+    #[test]
+    fn test_validate_accepts_size_at_venue_minimum() {
+        assert!(make_params(0.5, 0.01).validate().is_ok());
+    }
+
+    /// Over-precise sizes above the floor are truncated, not rejected.
+    ///
+    /// `18.181818` shares is what "$10 at 0.55" comes to; erroring on it would
+    /// break sizing by budget for the sake of a rule the venue does not have.
+    #[test]
+    fn test_validate_accepts_over_precise_size_above_minimum() {
+        assert!(make_params(0.55, 18.181818).validate().is_ok());
+    }
+
+    /// A negative size still reports as non-positive, not as below the floor —
+    /// the more specific complaint is the more useful one.
+    #[test]
+    fn test_validate_reports_negative_size_as_non_positive() {
+        let err = make_params(0.5, -10.0).validate().unwrap_err();
+        assert!(err.to_string().contains("positive"), "got: {err}");
     }
 }
