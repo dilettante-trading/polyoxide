@@ -1,3 +1,13 @@
+## [0.25.0] - 2026-08-05
+
+### 🚀 Features
+
+- *(clob)* Model the per-signer trading rate limits
+
+### 🐛 Bug Fixes
+
+- *(core)* Cap the health routes the hosts actually serve
+
 ## [0.24.2] - 2026-08-05
 
 ### 🐛 Bug Fixes
