@@ -22,13 +22,10 @@
 //! run stops immediately and reports the single data point it has. A failing
 //! run tells you *when* the throttle arrived, not how many followed.
 //!
-//! # Why it needs a tracing subscriber
+//! # How throttling is detected
 //!
-//! A 429 that the client retries away is invisible to the caller — the retry
-//! loop in `polyoxide-core/src/request.rs` logs a `WARN` and then returns
-//! `Ok`. Counting successes alone would report a clean run through an hour of
-//! throttling. The `ThrottleLayer` below is the only thing in this program
-//! that can see the failure it exists to detect.
+//! A 429 the client retries away is invisible to the caller, so detection
+//! runs through a counting `tracing` subscriber. See `examples/common/mod.rs`.
 
 use std::{
     fmt::Write as _,
@@ -41,151 +38,19 @@ use std::{
 };
 
 use polyoxide_data::DataApi;
-use tracing::field::{Field, Visit};
-use tracing_subscriber::{layer::SubscriberExt, util::SubscriberInitExt, Layer};
 
-/// The repo's conventional probe address (see `tests/live_api.rs`). Holds no
-/// closed positions, so responses are an empty array; pass `--user` with a
-/// real trader to soak with realistic payload sizes.
-const DEFAULT_USER: &str = "0x0000000000000000000000000000000000000001";
-
-/// Matches `DataApiBuilder`'s own default so the run measures the shipped
-/// configuration rather than a bespoke one.
-const DEFAULT_CONCURRENCY: usize = 4;
+#[path = "common/mod.rs"]
+mod common;
+use common::{
+    install_observer, percentile, ThrottleObserver, DEFAULT_CONCURRENCY, DEFAULT_USER,
+    MAX_PAGE_LIMIT,
+};
 
 const DEFAULT_DURATION_SECS: u64 = 180;
-
-/// Server-enforced ceiling for this endpoint — above 50 it 400s.
-const DEFAULT_LIMIT: u32 = 50;
 
 /// Backstop against a misconfigured run: far above the ~15 req/s the limiter
 /// should sustain, but low enough to bound a runaway.
 const MAX_REQUESTS_PER_SEC: u64 = 100;
-
-const MAX_WARN_SAMPLES: usize = 8;
-
-// ── Throttle detection ──────────────────────────────────────────
-
-/// A warning emitted by `polyoxide-core`'s retry loop, classified by whether
-/// it is the rate-limit signal this soak is looking for.
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-enum WarnKind {
-    /// `Retriable status 429` — upstream throttled us.
-    Throttle,
-    /// Some other retriable status (e.g. `425 Too Early`), or a warning added
-    /// to core after this example was written. Reported, but not a failure.
-    Other,
-}
-
-fn classify(message: &str) -> WarnKind {
-    if message.contains("Retriable status 429") {
-        WarnKind::Throttle
-    } else {
-        WarnKind::Other
-    }
-}
-
-/// Shared tally of what the retry loop logged.
-///
-/// `throttles` is atomic and read on every request iteration so the driver can
-/// abort the instant a 429 lands, without contending on the sample mutex.
-#[derive(Debug)]
-struct ThrottleObserver {
-    start: Instant,
-    throttles: AtomicU64,
-    other_warnings: AtomicU64,
-    /// Micros since `start` of the first throttle; `u64::MAX` means none yet.
-    first_throttle_micros: AtomicU64,
-    samples: Mutex<Vec<String>>,
-}
-
-impl ThrottleObserver {
-    fn new(start: Instant) -> Self {
-        Self {
-            start,
-            throttles: AtomicU64::new(0),
-            other_warnings: AtomicU64::new(0),
-            first_throttle_micros: AtomicU64::new(u64::MAX),
-            samples: Mutex::new(Vec::new()),
-        }
-    }
-
-    fn record(&self, message: &str) {
-        match classify(message) {
-            WarnKind::Throttle => {
-                self.throttles.fetch_add(1, Ordering::Relaxed);
-                let elapsed = self.start.elapsed().as_micros() as u64;
-                // Only the first writer wins; later throttles leave it alone.
-                let _ = self.first_throttle_micros.compare_exchange(
-                    u64::MAX,
-                    elapsed,
-                    Ordering::Relaxed,
-                    Ordering::Relaxed,
-                );
-            }
-            WarnKind::Other => {
-                self.other_warnings.fetch_add(1, Ordering::Relaxed);
-            }
-        }
-
-        if let Ok(mut samples) = self.samples.lock() {
-            if samples.len() < MAX_WARN_SAMPLES {
-                samples.push(message.to_owned());
-            }
-        }
-    }
-
-    fn throttled(&self) -> bool {
-        self.throttles.load(Ordering::Relaxed) > 0
-    }
-
-    fn first_throttle_at(&self) -> Option<Duration> {
-        match self.first_throttle_micros.load(Ordering::Relaxed) {
-            u64::MAX => None,
-            micros => Some(Duration::from_micros(micros)),
-        }
-    }
-}
-
-/// Pulls the formatted `message` field out of a `tracing` event.
-#[derive(Default)]
-struct MessageVisitor(Option<String>);
-
-impl Visit for MessageVisitor {
-    fn record_debug(&mut self, field: &Field, value: &dyn std::fmt::Debug) {
-        if field.name() == "message" {
-            self.0 = Some(format!("{value:?}"));
-        }
-    }
-}
-
-/// Counts `WARN` events from `polyoxide-core`.
-///
-/// The retry loops in `client.rs` and `request.rs` are the only `warn!` call
-/// sites in that crate, so target + level identifies them without matching on
-/// message text. The text is used afterwards only to tell a 429 from a 425.
-struct ThrottleLayer(Arc<ThrottleObserver>);
-
-impl<S: tracing::Subscriber> Layer<S> for ThrottleLayer {
-    fn on_event(
-        &self,
-        event: &tracing::Event<'_>,
-        _ctx: tracing_subscriber::layer::Context<'_, S>,
-    ) {
-        let metadata = event.metadata();
-        if !metadata.target().starts_with("polyoxide_core")
-            || *metadata.level() != tracing::Level::WARN
-        {
-            return;
-        }
-
-        let mut visitor = MessageVisitor::default();
-        event.record(&mut visitor);
-        if let Some(message) = visitor.0 {
-            self.0.record(&message);
-        }
-    }
-}
 
 // ── Configuration ───────────────────────────────────────────────
 
@@ -205,7 +70,7 @@ impl Default for Config {
             duration: Duration::from_secs(DEFAULT_DURATION_SECS),
             concurrency: DEFAULT_CONCURRENCY,
             user: DEFAULT_USER.to_owned(),
-            limit: DEFAULT_LIMIT,
+            limit: MAX_PAGE_LIMIT,
             base_url: None,
             max_requests: DEFAULT_DURATION_SECS * MAX_REQUESTS_PER_SEC,
         }
@@ -406,7 +271,7 @@ async fn soak(
                 };
                 println!(
                     "  [{elapsed:6.1}s] {done:6} requests  {rate:6.2} req/s  throttles: {}",
-                    observer.throttles.load(Ordering::Relaxed)
+                    observer.throttle_count()
                 );
             }
         })
@@ -447,16 +312,6 @@ fn drain(samples: &Mutex<Vec<Sample>>) -> Vec<Sample> {
 }
 
 // ── Reporting ───────────────────────────────────────────────────
-
-/// Nearest-rank percentile over an ascending slice.
-fn percentile(sorted: &[Duration], p: f64) -> Duration {
-    if sorted.is_empty() {
-        return Duration::ZERO;
-    }
-    let last = sorted.len() - 1;
-    let rank = (p / 100.0 * last as f64).round() as usize;
-    sorted[rank.min(last)]
-}
 
 /// Completions bucketed into one-second bins by completion time.
 ///
@@ -562,28 +417,23 @@ fn report(
     }
 
     println!("\n── Throttling ──────────────────────────────────────────");
-    let throttles = observer.throttles.load(Ordering::Relaxed);
+    let throttles = observer.throttle_count();
     println!("  429s observed {throttles}");
-    println!(
-        "  other warns   {}",
-        observer.other_warnings.load(Ordering::Relaxed)
-    );
+    println!("  other warns   {}", observer.other_warning_count());
     if let Some(at) = observer.first_throttle_at() {
         println!("  first at      {:.2}s into the run", at.as_secs_f64());
-        let burst_phase = at < Duration::from_secs(10);
+        let first_window = at < Duration::from_secs(10);
         println!(
             "  reading       {}",
-            if burst_phase {
-                "inside the burst window — allow_burst(150) is too permissive for upstream"
+            if first_window {
+                "first window — a full-start bucket that also refills permits 2x the quota"
             } else {
-                "after the burst drained — the sustained 150/10s model itself over-permits"
+                "after the first window — the sustained 150/10s rate itself over-permits"
             }
         );
     }
-    if let Ok(samples) = observer.samples.lock() {
-        for line in samples.iter() {
-            println!("    {line}");
-        }
+    for line in observer.warn_samples() {
+        println!("    {line}");
     }
 
     println!(
@@ -621,10 +471,7 @@ async fn main() -> ExitCode {
     };
 
     let start = Instant::now();
-    let observer = Arc::new(ThrottleObserver::new(start));
-    tracing_subscriber::registry()
-        .with(ThrottleLayer(Arc::clone(&observer)))
-        .init();
+    let observer = install_observer(start);
 
     let mut builder = DataApi::builder().max_concurrent(config.concurrency);
     if let Some(url) = &config.base_url {
@@ -664,70 +511,6 @@ mod tests {
             latency: Duration::from_millis(latency_ms),
             error: None,
         }
-    }
-
-    // ── classify ────────────────────────────────────────────────
-
-    #[test]
-    fn classify_recognises_the_retry_loop_429() {
-        assert_eq!(
-            classify(
-                "Retriable status 429 Too Many Requests on /closed-positions, retry 1 after 0ms"
-            ),
-            WarnKind::Throttle
-        );
-    }
-
-    #[test]
-    fn classify_does_not_count_425_as_throttling() {
-        assert_eq!(
-            classify("Retriable status 425 Too Early on /closed-positions, retry 1 after 500ms"),
-            WarnKind::Other
-        );
-    }
-
-    // ── ThrottleObserver ────────────────────────────────────────
-
-    #[test]
-    fn observer_keeps_the_first_throttle_timestamp() {
-        let observer = ThrottleObserver::new(Instant::now());
-        observer.record("Retriable status 429 on /closed-positions, retry 1 after 500ms");
-        let first = observer
-            .first_throttle_at()
-            .expect("first throttle recorded");
-        observer.record("Retriable status 429 on /closed-positions, retry 2 after 1000ms");
-
-        assert_eq!(observer.throttles.load(Ordering::Relaxed), 2);
-        assert_eq!(
-            observer.first_throttle_at(),
-            Some(first),
-            "a later throttle must not overwrite the first timestamp"
-        );
-    }
-
-    #[test]
-    fn observer_separates_other_warnings_from_throttles() {
-        let observer = ThrottleObserver::new(Instant::now());
-        observer.record("Retriable status 425 Too Early on /trades, retry 1 after 500ms");
-
-        assert!(!observer.throttled(), "a 425 is not upstream rate limiting");
-        assert_eq!(observer.other_warnings.load(Ordering::Relaxed), 1);
-        assert_eq!(observer.first_throttle_at(), None);
-    }
-
-    // ── percentile ──────────────────────────────────────────────
-
-    #[test]
-    fn percentile_of_empty_is_zero() {
-        assert_eq!(percentile(&[], 50.0), Duration::ZERO);
-    }
-
-    #[test]
-    fn percentile_picks_by_nearest_rank() {
-        let sorted: Vec<Duration> = (1..=100).map(Duration::from_millis).collect();
-        assert_eq!(percentile(&sorted, 50.0), Duration::from_millis(51));
-        assert_eq!(percentile(&sorted, 99.0), Duration::from_millis(99));
-        assert_eq!(percentile(&sorted, 100.0), Duration::from_millis(100));
     }
 
     // ── histogram ───────────────────────────────────────────────
