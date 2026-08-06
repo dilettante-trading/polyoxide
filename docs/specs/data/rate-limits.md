@@ -99,9 +99,50 @@ every request on the limiter. See the "two rate limit layers" section of
 
 ### Staying under the rule in the first place
 
-The client's buckets start full (`allow_burst`), so a fresh process may issue
-150 `/closed-positions` requests as fast as its concurrency limit allows before
-any throttling engages. That is within "150 per 10 seconds" read as an average,
-but it is a burst — and Cloudflare's own window is not published. Callers doing
-bulk hydration should pace themselves rather than rely on the client's buckets
-alone.
+Two separate defects sat here, and only the first is arithmetic.
+
+**The client spent the published quota twice.** `quota()` gave each bucket a
+depth of `count` *and* a refill of `count/period`, and a bucket that starts full
+admits its depth plus everything the refill adds — so the first window let
+through `count + count`. Fixed by dropping the burst allowance entirely:
+capacity is one token, and requests are paced uniformly.
+
+**The published count is not reachable as a sustained rate.** Fixing the
+arithmetic alone still failed. `quota()` therefore also reserves a tenth of
+every published count, pacing this route at 13.4 req/s.
+
+Measured against the live host with
+`polyoxide-data/examples/closed_positions_soak.rs`, whose `--rate` flag drives a
+chosen rate (omit it to exercise the shipped limiter):
+
+| Shape | Rate | Share of published | Result |
+|---|---|---|---|
+| one-shot burst of 140 | — | — | clean (0.46s) |
+| one-shot burst of 150 | — | 100% | **clean** (0.70s) |
+| sustained, pre-fix | ~150 in second 0, then 15/s | 200% first window | 1015 at 0.48s and 0.73s |
+| sustained | 14.9/s | 100% | 1015 at 15.70s |
+| sustained | 14.25/s | 95% | 1015 at 17.28s |
+| sustained | 13.5/s | 90% | **clean over 180s, 2,430 requests** |
+
+Read together these say something the table alone cannot. The two pre-fix soaks
+tripped at the same *cumulative* count at different rates — a window cap, not a
+rate cap — and a one-shot 150 inside 0.70s is clean, which rules out the
+tempting explanation that Cloudflare's window is shorter than the published 10s.
+Yet a *sustained* 142.5 per 10s is refused. So the count is reachable as a burst
+and not as a rate: Cloudflare's sliding-window estimator does not count the way
+a naive interval count does, and nothing outside the server can observe the
+difference. Aiming at a published quota is a bug even when the arithmetic is
+right.
+
+Note that a 429 the client retries away is **invisible to the caller**: the
+retry loops in `polyoxide-core` log a `WARN` and return `Ok`. A harness that
+counts `Ok` against `Err` reports a clean run straight through sustained
+throttling, so the examples detect throttling with a `tracing` subscriber
+instead.
+
+**What still falls to the caller.** The limiter is per-process, and 1015 is
+scoped to the IP. Two polyoxide processes behind one address each believe they
+hold the whole 135/10s allowance, and neither can see the other — so a pair of
+them runs at 180% of a rate that is only clean at 90%. Anything running a fleet
+has to divide the allowance across it; the client cannot do that for you. Within
+a single process, no self-pacing is needed for this cap.

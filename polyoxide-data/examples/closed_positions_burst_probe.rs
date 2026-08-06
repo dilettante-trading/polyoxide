@@ -61,8 +61,21 @@ use common::{
     MAX_PAGE_LIMIT,
 };
 
-/// `RateLimiter::data_default` calls `allow_burst(150)`. Trials above this
-/// would be paced by the client's own limiter rather than fired as a burst.
+/// The burst the client was once willing to fire, and the reason this probe
+/// can no longer do its job.
+///
+/// **This constant is historical.** `RateLimiter::data_default` used to reach
+/// `allow_burst(150)`, which is what made a one-shot burst of up to 150
+/// possible through the client at all. `quota()` no longer calls `allow_burst`
+/// — capacity is a single token and every request is paced — so a trial of N
+/// requests is now spread over `(N-1) × 67ms` by the client's own limiter and
+/// is not a burst in any sense. Re-running this binary measures polyoxide's
+/// pacing, not Cloudflare's tolerance.
+///
+/// Measuring real burst tolerance again would mean issuing requests outside
+/// the client. See the findings recorded in this file's module docs, and
+/// `closed_positions_soak --rate` for the sustained-rate question, which is
+/// the one that turned out to matter.
 const CLIENT_BURST_ALLOWANCE: u32 = 150;
 
 #[derive(Debug, Clone)]

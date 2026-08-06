@@ -1,4 +1,3 @@
-use std::num::NonZeroU32;
 use std::sync::{Arc, Mutex};
 use std::time::Duration;
 
@@ -122,16 +121,188 @@ struct RateLimiterInner {
     cooldown_until: Mutex<Option<Instant>>,
 }
 
-/// Helper to create a quota: `count` requests per `period`.
+/// Helper to create a quota: at most `count` requests in *any* window of
+/// length `period`.
 ///
-/// Uses `Quota::with_period` for exact rate enforcement rather than
-/// ceiling-based `per_second`, which can over-permit for non-round windows.
+/// **There is deliberately no `allow_burst` call here.** `Quota::with_period`
+/// leaves capacity at a single token, and keeping it there is the entire point.
+/// A token bucket admits its depth *plus* everything the refill adds, so across
+/// a window of length `period` it lets through `burst + rate × period`. Funding
+/// a burst of `count` on top of a rate of `count/period` spends the published
+/// allowance twice — which is what this function did for every entry in every
+/// table until it was measured.
+///
+/// Depth is not free capacity; it is borrowed against the rate. Satisfying the
+/// bound with a burst of `B` costs `B` requests of sustained allowance forever,
+/// so the minimum depth is also the maximum throughput: 149/10s here rather
+/// than the 135/10s a 10% burst would leave. It is the safer shape too — the
+/// client never concentrates requests into an instant, including on release
+/// from a cooldown, when every parked request resumes at once and a burst
+/// allowance would fire them as a spike immediately after a ban.
+///
+/// `count < 2` degenerates to admitting 2 per window, since a bucket cannot
+/// hold less than one token. No published row is that small.
+///
+/// # Why it aims below the published count
+///
+/// Because the published count turns out not to be reachable as a rate.
+/// Measured against `data-api.polymarket.com` on `/closed-positions`, which
+/// publishes 150/10s:
+///
+/// | Sustained rate | Share of published | Result |
+/// |---|---|---|
+/// | 14.9/s (149 per 10s) | 100% | refused after 15.7s |
+/// | 14.25/s (142.5 per 10s) | 95% | refused after 17.3s |
+/// | 13.5/s (135 per 10s) | 90% | clean over 180s, 2,430 requests |
+///
+/// A one-shot burst of exactly 150 *is* accepted, so this is not the table
+/// overstating the cap: the count is reachable as a burst and not as a rate.
+/// Cloudflare's sliding-window estimator does not count the way a naive
+/// interval count does, and nothing outside the server can observe the
+/// difference — so the only safe response is to aim below the line rather than
+/// at it. [`RESERVED_FRACTION`] is that margin, measured rather than
+/// conventional: 95% is known-refused, 90% is known-clean.
 fn quota(count: u32, period: Duration) -> Quota {
-    let count = count.max(1);
-    let interval = period / count;
-    Quota::with_period(interval)
-        .expect("quota interval must be non-zero")
-        .allow_burst(NonZeroU32::new(count).unwrap())
+    Quota::with_period(period / sustained_slots(count)).expect("quota interval must be non-zero")
+}
+
+/// Slots per `period` the client actually paces out for a published `count`:
+/// the count, less its reserve, less the single token of depth.
+///
+/// Shared with the runtime agreement tests so their expected pacing cannot
+/// drift from what [`quota`] builds. They would still catch a request routed to
+/// the wrong bucket — a different `count` yields a different interval — but a
+/// hand-copied formula here would silently loosen them the next time the
+/// reserve changes.
+fn sustained_slots(count: u32) -> u32 {
+    let target = count.saturating_sub(count.div_ceil(RESERVED_FRACTION));
+    target.max(2) - 1
+}
+
+/// Reciprocal of the share of each published quota the client leaves unused:
+/// `10` reserves a tenth, so the client targets 90%.
+///
+/// Measured, not chosen — see the table on [`quota`].
+const RESERVED_FRACTION: u32 = 10;
+
+#[cfg(test)]
+mod quota_arithmetic {
+    //! The bound every bucket has to satisfy, checked as arithmetic.
+    //!
+    //! `agreement::assert_throttles_after` pins a bucket's *depth*: drain
+    //! `count` and the next call has to wait, so capacity is no larger than the
+    //! published figure. It says nothing about the refill rate, and depth and
+    //! rate are two separate spends of one budget. A bucket holding `count`
+    //! tokens that also replenishes `count` per `period` passes that test and
+    //! still admits `2 * count` in a single window — each assertion true, the
+    //! conjunction they exist to guarantee false.
+    //!
+    //! Measured against the live host on `/closed-positions` (150/10s): a
+    //! one-shot burst of exactly 150 in 0.70s is accepted, while sustained runs
+    //! tripped Cloudflare's `error code: 1015` at ~152 cumulative requests —
+    //! twice, at different rates, which is the signature of a cumulative cap
+    //! rather than a rate one. Upstream's published figure is accurate in both
+    //! count and window; the client was spending it twice.
+
+    use super::*;
+
+    /// Requests `q` admits in the worst-case window of length `period`: the
+    /// full bucket drained at `t=0`, plus every token the refill adds by
+    /// `t=period`.
+    ///
+    /// This is the quantity the published table bounds. Buckets start full, so
+    /// the worst case is always a fresh limiter.
+    fn admitted_in_one_window(q: &Quota, period: Duration) -> u128 {
+        let refilled = period.as_nanos() / q.replenish_interval().as_nanos();
+        u128::from(q.burst_size().get()) + refilled
+    }
+
+    /// The four general-purpose default buckets, plus a spread of endpoint
+    /// shapes for good measure.
+    ///
+    /// The defaults are the reason this list exists at all: they are built as
+    /// bare `DirectLimiter`s carrying no `RateSpec`, so the sweep below — which
+    /// walks the configured tables — cannot see them, and they are the largest
+    /// allowance on every surface.
+    const PUBLISHED_SHAPES: &[(u32, u64)] = &[
+        (9_000, 10),    // clob default
+        (4_000, 10),    // gamma default
+        (1_000, 10),    // data default / clob /prices-history
+        (25, 60),       // relay default
+        (150, 10),      // data /closed-positions, /positions
+        (200, 10),      // data /trades, clob /balance-allowance
+        (300, 10),      // gamma /markets
+        (350, 10),      // gamma /public-search
+        (500, 10),      // gamma /events
+        (100, 10),      // health routes
+        (50, 10),       // clob /balance-allowance/update
+        (5_000, 10),    // clob /order burst window
+        (120_000, 600), // clob /order sustained window
+    ];
+
+    #[test]
+    fn no_quota_admits_more_than_its_published_count_in_one_window() {
+        for &(count, secs) in PUBLISHED_SHAPES {
+            let period = Duration::from_secs(secs);
+            let q = quota(count, period);
+            let admitted = admitted_in_one_window(&q, period);
+
+            assert!(
+                admitted <= u128::from(count),
+                "{count}/{secs}s admits {admitted} in one window \
+                 ({} burst + {} refilled) — the published quota is spent twice",
+                q.burst_size(),
+                admitted - u128::from(q.burst_size().get()),
+            );
+        }
+    }
+
+    #[test]
+    fn every_quota_reserves_headroom_below_the_published_count() {
+        // Satisfying the published count exactly is not enough, because the
+        // published count is not actually reachable. Measured on
+        // `/closed-positions` (150/10s) against the live host: a sustained
+        // 142.5/10s — 95% — was refused after 17.3s, and the client's own
+        // exactly-100% pacing was refused after 15.7s, while 135/10s ran clean.
+        // Cloudflare's sliding-window estimator does not count the way a naive
+        // interval count does, and the client cannot observe the difference, so
+        // it aims below the line rather than at it.
+        for &(count, secs) in PUBLISHED_SHAPES {
+            let period = Duration::from_secs(secs);
+            let admitted = admitted_in_one_window(&quota(count, period), period);
+            let ceiling = u128::from(count - count.div_ceil(RESERVED_FRACTION));
+
+            assert!(
+                admitted <= ceiling,
+                "{count}/{secs}s admits {admitted} in one window, above the {ceiling} \
+                 the reserve allows — no headroom under the published cap"
+            );
+        }
+    }
+
+    #[test]
+    fn every_configured_bucket_satisfies_the_quota_it_publishes() {
+        for (surface, rl) in [
+            ("clob", RateLimiter::clob_default()),
+            ("gamma", RateLimiter::gamma_default()),
+            ("data", RateLimiter::data_default()),
+            ("relay", RateLimiter::relay_default()),
+        ] {
+            for limit in &rl.inner.limits {
+                for bucket in &limit.buckets {
+                    let RateSpec { count, period } = bucket.spec;
+                    let admitted = admitted_in_one_window(&quota(count, period), period);
+
+                    assert!(
+                        admitted <= u128::from(count),
+                        "{surface} {} is published as {count}/{period:?} but admits \
+                         {admitted} in one window",
+                        limit.path_prefix,
+                    );
+                }
+            }
+        }
+    }
 }
 
 /// Create an endpoint rate limit configuration from its own buckets.
@@ -547,23 +718,45 @@ mod agreement {
         );
     }
 
-    /// Drain `count` tokens from `path`, then assert the next call has to wait.
+    /// Assert `path` is paced at runtime by the quota it publishes.
     ///
     /// Matching a spec is not the same as enforcing it; this is the runtime
-    /// half of the agreement.
-    pub async fn assert_throttles_after(rl: &RateLimiter, path: &str, count: u32) {
-        for _ in 0..count {
-            rl.acquire(path, Some(&Method::GET)).await;
-        }
+    /// half of the agreement. Buckets hold a single token, so one request
+    /// empties `path`'s bucket and the next has to wait a full replenish
+    /// interval — no `count`-sized drain required, and none wanted: draining
+    /// `count` under uniform pacing takes a real `period`, which would put a
+    /// 10-second sleep in the unit suite for every row asserted.
+    ///
+    /// Asserting *how long* the wait is, rather than merely that there was
+    /// one, is what makes this specific. The delay identifies which bucket the
+    /// request came from: `/closed-positions` (150/10s) paces at ~67ms while
+    /// the surface's general bucket paces at ~10ms. The upper bound catches
+    /// the inverse failure — a path resolving through some tighter rule that
+    /// shadows it, which is the shape every ordering bug in these tables has
+    /// taken.
+    pub async fn assert_paced_by_its_own_quota(
+        rl: &RateLimiter,
+        path: &str,
+        count: u32,
+        period: Duration,
+    ) {
+        let interval = period / sustained_slots(count);
+
+        rl.acquire(path, Some(&Method::GET)).await;
 
         let start = std::time::Instant::now();
         rl.acquire(path, Some(&Method::GET)).await;
         let waited = start.elapsed();
 
         assert!(
-            waited >= Duration::from_millis(25),
-            "request {} to {path} returned in {waited:?}; the cap is not being enforced",
-            count + 1,
+            waited >= interval.mul_f64(0.8),
+            "the 2nd request to {path} returned in {waited:?}; {count}/{period:?} should pace \
+             it at {interval:?} and the cap is not being enforced"
+        );
+        assert!(
+            waited <= interval * 3 + Duration::from_millis(25),
+            "the 2nd request to {path} waited {waited:?}, far longer than the {interval:?} its \
+             published {count}/{period:?} implies — it is resolving through a tighter rule"
         );
     }
 }
@@ -635,26 +828,34 @@ mod documented_data_limits {
 
     #[tokio::test]
     async fn the_closed_positions_cap_actually_throttles() {
-        // 150/10s replenishes one token every ~67ms, so the 151st request in a
-        // burst cannot return immediately.
-        assert_throttles_after(&RateLimiter::data_default(), "/closed-positions", 150).await;
+        // 150/10s paces one request every ~67ms.
+        assert_paced_by_its_own_quota(
+            &RateLimiter::data_default(),
+            "/closed-positions",
+            150,
+            Duration::from_secs(10),
+        )
+        .await;
     }
 
     #[tokio::test]
     async fn closed_positions_and_positions_do_not_share_an_allowance() {
-        // Upstream publishes 150/10s for each, not 150/10s combined. Draining
+        // Upstream publishes 150/10s for each, not 150/10s combined. Emptying
         // one must leave the other untouched — the inverse of the CLOB ledger
         // group, where sharing *is* the published behaviour.
+        //
+        // The margin here is ~67ms (shared) against ~10ms (separate, and only
+        // that much because the request still passes the surface's general
+        // 1,000/10s bucket). Both sides of that gap are load-bearing, so the
+        // threshold sits between them rather than at zero.
         let rl = RateLimiter::data_default();
-        for _ in 0..150 {
-            rl.acquire("/closed-positions", Some(&Method::GET)).await;
-        }
+        rl.acquire("/closed-positions", Some(&Method::GET)).await;
 
         let start = std::time::Instant::now();
         rl.acquire("/positions", Some(&Method::GET)).await;
         assert!(
             start.elapsed() < Duration::from_millis(25),
-            "/positions was throttled by /closed-positions draining its own bucket"
+            "/positions was throttled by /closed-positions emptying its own bucket"
         );
     }
 }
@@ -711,7 +912,13 @@ mod documented_gamma_limits {
 
     #[tokio::test]
     async fn the_markets_cap_actually_throttles() {
-        assert_throttles_after(&RateLimiter::gamma_default(), "/markets", 300).await;
+        assert_paced_by_its_own_quota(
+            &RateLimiter::gamma_default(),
+            "/markets",
+            300,
+            Duration::from_secs(10),
+        )
+        .await;
     }
 }
 
@@ -726,7 +933,7 @@ mod documented_limits {
     //! in the right order, which is why `/balance-allowance` could be absent
     //! entirely while every test passed.
 
-    use super::agreement::DocumentedRule;
+    use super::agreement::{assert_paced_by_its_own_quota, DocumentedRule};
     use super::*;
 
     /// The published table, transcribed by hand. This is the golden vector.
@@ -883,32 +1090,24 @@ mod documented_limits {
     #[tokio::test]
     async fn a_documented_cap_actually_throttles() {
         // Matching specs is not the same as enforcing them. `/tick-size` is
-        // 200/10s; the 201st request in a burst must wait for a token
-        // (200 per 10s replenishes one every ~50ms).
-        let rl = RateLimiter::clob_default();
-        for _ in 0..200 {
-            rl.acquire("/tick-size", Some(&Method::GET)).await;
-        }
-
-        let start = std::time::Instant::now();
-        rl.acquire("/tick-size", Some(&Method::GET)).await;
-        let waited = start.elapsed();
-
-        assert!(
-            waited >= Duration::from_millis(25),
-            "201st /tick-size request returned in {waited:?}; the cap is not being enforced"
-        );
+        // 200/10s, which paces one request every ~50ms.
+        assert_paced_by_its_own_quota(
+            &RateLimiter::clob_default(),
+            "/tick-size",
+            200,
+            Duration::from_secs(10),
+        )
+        .await;
     }
 
     #[tokio::test]
     async fn the_ledger_group_allowance_is_consumed_jointly() {
-        // The runtime counterpart to the Arc::ptr_eq check: draining the group
+        // The runtime counterpart to the Arc::ptr_eq check: consuming the group
         // through one endpoint must leave a *different* group member throttled.
-        // With four independent buckets this would return instantly.
+        // The shared 900/10s bucket paces at ~11ms; with four independent
+        // buckets /orders would only meet the general 9,000/10s one at ~1.1ms.
         let rl = RateLimiter::clob_default();
-        for _ in 0..900 {
-            rl.acquire("/trades", Some(&Method::GET)).await;
-        }
+        rl.acquire("/trades", Some(&Method::GET)).await;
 
         let start = std::time::Instant::now();
         rl.acquire("/orders", Some(&Method::GET)).await;
@@ -916,7 +1115,7 @@ mod documented_limits {
 
         assert!(
             waited >= Duration::from_millis(5),
-            "GET /orders returned in {waited:?} after /trades drained the shared 900/10s \
+            "GET /orders returned in {waited:?} after /trades consumed from the shared 900/10s \
              allowance — the group cap is not actually shared"
         );
     }
@@ -1049,8 +1248,10 @@ mod tests {
 
     #[test]
     fn test_quota_edge_zero_count() {
-        // count=0 is guarded by .max(1) — should not panic
+        // The sustained rate is count-1, so 0 and 1 both have to be clamped or
+        // the period is divided by zero. Neither appears in any table.
         let _ = quota(0, Duration::from_secs(10));
+        let _ = quota(1, Duration::from_secs(10));
     }
 
     // ── Factory methods ──────────────────────────────────────────
@@ -1296,28 +1497,41 @@ mod tests {
     // ── Concurrent access tests ─────────────────────────────────
 
     #[tokio::test]
-    async fn test_acquire_concurrent_tasks_all_complete() {
-        // A rate limiter with high burst should allow many concurrent acquires
-        let rl = RateLimiter::clob_default(); // 9000/10s general
-        let rl = std::sync::Arc::new(rl);
+    async fn concurrent_acquires_are_paced_against_one_shared_allowance() {
+        // Concurrency must not multiply the allowance. Ten tasks racing on one
+        // limiter have to serialise into ten successive slots, not each take a
+        // token of their own — the limiter's state is shared, and this is the
+        // assertion that says so.
+        //
+        // /markets is locally capped at 1,500/10s, pacing at ~6.7ms, so ten
+        // acquires occupy ~60ms. The floor is the real assertion; the ceiling
+        // only catches a stall.
+        const TASKS: u32 = 10;
+        let interval = Duration::from_secs(10) / (1_500 - 1);
 
+        let rl = std::sync::Arc::new(RateLimiter::clob_default());
+
+        let start = std::time::Instant::now();
         let mut handles = Vec::new();
-        for _ in 0..10 {
+        for _ in 0..TASKS {
             let rl = rl.clone();
             handles.push(tokio::spawn(async move {
                 rl.acquire("/markets", None).await;
             }));
         }
-
-        let start = std::time::Instant::now();
         for handle in handles {
             handle.await.unwrap();
         }
-        // 10 concurrent acquires against a 9000/10s limiter should complete fast
+        let elapsed = start.elapsed();
+
         assert!(
-            start.elapsed() < Duration::from_millis(100),
-            "concurrent acquires took too long: {:?}",
-            start.elapsed()
+            elapsed >= interval * (TASKS - 1) / 2,
+            "{TASKS} concurrent acquires completed in {elapsed:?}; pacing at {interval:?} each \
+             they cannot, so concurrent tasks are not sharing one allowance"
+        );
+        assert!(
+            elapsed < Duration::from_secs(1),
+            "{TASKS} concurrent acquires took {elapsed:?} — they are stalling, not pacing"
         );
     }
 

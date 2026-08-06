@@ -48,6 +48,18 @@ use common::{
 
 const DEFAULT_DURATION_SECS: u64 = 180;
 
+/// The rate the client's own limiter sustains on this path.
+///
+/// `/closed-positions` is published at 150/10s, but `quota()` reserves a tenth
+/// and paces the remainder: `10s / 134`, so 13.4 req/s, and never a burst above
+/// it. A `--rate` at or beyond this can never bind — the client would be the
+/// slower of the two pacers and the run would report polyoxide's behaviour
+/// under the guise of the server's.
+///
+/// Keep this in step with `RESERVED_FRACTION` in `polyoxide-core`. If the
+/// reserve changes and this does not, the guard silently stops guarding.
+const CLIENT_SUSTAINED_RATE: f64 = 13.4;
+
 /// Backstop against a misconfigured run: far above the ~15 req/s the limiter
 /// should sustain, but low enough to bound a runaway.
 const MAX_REQUESTS_PER_SEC: u64 = 100;
@@ -62,6 +74,9 @@ struct Config {
     limit: u32,
     base_url: Option<String>,
     max_requests: u64,
+    /// Interval between sends when driving a fixed rate; `None` lets the
+    /// client's own limiter set the pace.
+    rate: Option<Duration>,
 }
 
 impl Default for Config {
@@ -73,6 +88,7 @@ impl Default for Config {
             limit: MAX_PAGE_LIMIT,
             base_url: None,
             max_requests: DEFAULT_DURATION_SECS * MAX_REQUESTS_PER_SEC,
+            rate: None,
         }
     }
 }
@@ -88,6 +104,9 @@ Usage: closed_positions_soak [options]
   --limit <n>           Results per request, 0-50 (default: 50)
   --base-url <url>      Override the Data API host
   --max-requests <n>    Hard cap on total requests (default: duration * 100)
+  --rate <req/s>        Drive a fixed rate instead of the client's own pace.
+                        Must be below the client's sustained 14.9 req/s or its
+                        limiter binds first and the run measures polyoxide.
   -h, --help            Show this message
 
 Exits 0 if no throttling was observed, 1 otherwise.";
@@ -134,6 +153,24 @@ impl Config {
                     }
                 }
                 "--base-url" => config.base_url = Some(value()?),
+                "--rate" => {
+                    let raw = value()?;
+                    let per_sec: f64 = raw.parse().map_err(|_| format!("bad --rate: {raw}"))?;
+                    // `is_finite` is load-bearing: "nan" and "inf" both parse,
+                    // and a bare `<= 0.0` lets NaN through to become a
+                    // nonsensical interval.
+                    if !per_sec.is_finite() || per_sec <= 0.0 {
+                        return Err("--rate must be a positive, finite number".into());
+                    }
+                    if per_sec >= CLIENT_SUSTAINED_RATE {
+                        return Err(format!(
+                            "--rate {per_sec} is at or above the client's own limiter \
+                             ({CLIENT_SUSTAINED_RATE} req/s on this path), which would bind \
+                             first — the run would measure polyoxide, not the server"
+                        ));
+                    }
+                    config.rate = Some(Duration::from_secs_f64(1.0 / per_sec));
+                }
                 "--max-requests" => {
                     let raw = value()?;
                     config.max_requests = raw
@@ -152,6 +189,47 @@ impl Config {
         }
 
         Ok(Some(config))
+    }
+}
+
+// ── Pacing ──────────────────────────────────────────────────────
+
+/// Hands out send slots at a fixed interval, shared by every worker.
+///
+/// By default the soak lets the client's own limiter set the rate. Asking what
+/// rate the *server* tolerates means driving a rate the client would not pick,
+/// which means pacing outside it — and only downwards. At or above
+/// [`CLIENT_SUSTAINED_RATE`] the client's limiter is the slower of the two and
+/// binds first, so the run measures polyoxide instead of Cloudflare. That is
+/// the same trap the burst probe avoids by using a fresh client per trial.
+struct Pacer {
+    interval: Duration,
+    /// The earliest unclaimed slot; `None` until the first reservation.
+    next: Mutex<Option<Instant>>,
+}
+
+impl Pacer {
+    fn new(interval: Duration) -> Self {
+        Self {
+            interval,
+            next: Mutex::new(None),
+        }
+    }
+
+    /// Claim the next slot, given the current time.
+    fn reserve(&self, now: Instant) -> Instant {
+        let mut next = self
+            .next
+            .lock()
+            .unwrap_or_else(|poisoned| poisoned.into_inner());
+        let slot = next.map_or(now, |claimed| claimed.max(now));
+        *next = Some(slot + self.interval);
+        slot
+    }
+
+    async fn wait(&self) {
+        let slot = self.reserve(Instant::now());
+        tokio::time::sleep_until(tokio::time::Instant::from_std(slot)).await;
     }
 }
 
@@ -200,10 +278,12 @@ async fn soak(
     let issued = Arc::new(AtomicU64::new(0));
     let samples: Arc<Mutex<Vec<Sample>>> = Arc::new(Mutex::new(Vec::new()));
     let cap_hit = Arc::new(AtomicBool::new(false));
+    let pacer = config.rate.map(|interval| Arc::new(Pacer::new(interval)));
 
     let mut workers = tokio::task::JoinSet::new();
     for _ in 0..config.concurrency {
         let client = client.clone();
+        let pacer = pacer.clone();
         let observer = Arc::clone(&observer);
         let abort = Arc::clone(&abort);
         let issued = Arc::clone(&issued);
@@ -221,6 +301,16 @@ async fn soak(
                 if issued.fetch_add(1, Ordering::Relaxed) >= max_requests {
                     cap_hit.store(true, Ordering::Relaxed);
                     break;
+                }
+
+                // Hold the caller's rate, if one was asked for. Claiming the
+                // slot before re-checking the deadline would leave the fleet
+                // sleeping past the end of the run.
+                if let Some(pacer) = &pacer {
+                    pacer.wait().await;
+                    if abort.load(Ordering::Relaxed) || Instant::now() >= deadline {
+                        break;
+                    }
                 }
 
                 let sent = Instant::now();
@@ -372,6 +462,17 @@ fn report(
         config.concurrency,
         config.limit
     );
+    println!(
+        "  paced at      {}",
+        match config.rate {
+            Some(interval) => format!(
+                "{:.2} req/s ({:.0}% of the published 150/10s), driven by the harness",
+                1.0 / interval.as_secs_f64(),
+                100.0 / interval.as_secs_f64() / 15.0,
+            ),
+            None => "the client's own limiter".to_owned(),
+        }
+    );
     println!("  stopped       {}", stop.as_str());
 
     println!("\n── Throughput ──────────────────────────────────────────");
@@ -513,6 +614,50 @@ mod tests {
         }
     }
 
+    // ── pacer ───────────────────────────────────────────────────
+
+    const TEN_MS: Duration = Duration::from_millis(10);
+
+    #[test]
+    fn pacer_hands_out_the_first_slot_immediately() {
+        let now = Instant::now();
+        assert_eq!(Pacer::new(TEN_MS).reserve(now), now);
+    }
+
+    #[test]
+    fn pacer_spaces_consecutive_slots_by_the_interval() {
+        let pacer = Pacer::new(TEN_MS);
+        let now = Instant::now();
+
+        assert_eq!(pacer.reserve(now), now);
+        assert_eq!(pacer.reserve(now), now + TEN_MS);
+        assert_eq!(pacer.reserve(now), now + 2 * TEN_MS);
+    }
+
+    #[test]
+    fn pacer_does_not_bank_credit_while_idle() {
+        // The whole point of the harness is to hold a rate, and a pacer that
+        // carries its cursor forward from an idle period releases the backlog
+        // in one burst the moment traffic resumes — the same defect as a token
+        // bucket with depth, which is what this run exists to measure the
+        // absence of. A slot may never be in the past.
+        let pacer = Pacer::new(TEN_MS);
+        let start = Instant::now();
+        pacer.reserve(start);
+
+        let after_a_long_stall = start + Duration::from_secs(10);
+        assert_eq!(
+            pacer.reserve(after_a_long_stall),
+            after_a_long_stall,
+            "the pacer banked credit during the stall and would now burst"
+        );
+        assert_eq!(
+            pacer.reserve(after_a_long_stall),
+            after_a_long_stall + TEN_MS,
+            "the cursor did not resume from the stall, so the backlog survives it"
+        );
+    }
+
     // ── histogram ───────────────────────────────────────────────
 
     #[test]
@@ -622,6 +767,51 @@ mod tests {
         assert_eq!(config.concurrency, DEFAULT_CONCURRENCY);
         assert_eq!(config.limit, 50);
         assert_eq!(config.duration, Duration::from_secs(180));
+        assert_eq!(
+            config.rate, None,
+            "without --rate the client's own limiter sets the pace"
+        );
+    }
+
+    #[test]
+    fn rate_is_stored_as_the_interval_between_sends() {
+        let config = parse(&["--rate", "12"]).unwrap().unwrap();
+        let interval = config.rate.expect("--rate should be set");
+        assert!(
+            (interval.as_secs_f64() - 1.0 / 12.0).abs() < 1e-9,
+            "12 req/s should pace at {:?}, got {interval:?}",
+            Duration::from_secs_f64(1.0 / 12.0)
+        );
+    }
+
+    #[test]
+    fn a_rate_at_or_above_the_clients_own_is_refused() {
+        // Above the client's sustained rate its limiter is the slower of the
+        // two and binds first, so the run would measure polyoxide's pacing
+        // rather than the server's tolerance — a clean result that means
+        // nothing. Refusing beats silently measuring the wrong thing.
+        for rate in ["13.4", "14", "100"] {
+            let err = parse(&["--rate", rate]).unwrap_err();
+            assert!(
+                err.contains("client's own limiter"),
+                "--rate {rate} should be refused with an explanation, got: {err}"
+            );
+        }
+    }
+
+    #[test]
+    fn a_rate_below_the_clients_own_is_accepted() {
+        assert!(parse(&["--rate", "13.3"]).unwrap().unwrap().rate.is_some());
+    }
+
+    #[test]
+    fn a_non_positive_rate_is_refused() {
+        for rate in ["0", "-1", "nan", "inf"] {
+            assert!(
+                parse(&["--rate", rate]).is_err(),
+                "--rate {rate} should be refused"
+            );
+        }
     }
 
     #[test]

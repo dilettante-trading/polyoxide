@@ -131,7 +131,23 @@ Both tables are pinned by `documented_*_limits` agreement tests asserting the **
 
 Every retry loop must call `note_rate_limited` **before** `should_retry` and unconditionally — a request that is out of attempts still has to publish what it learned.
 
-**Buckets start full.** `quota()` uses `allow_burst(count)`, so a fresh client may fire the entire window's allowance at once (150 requests for `/closed-positions`) before throttling to the sustained rate. That satisfies "150 per 10 seconds" as an average but presents as a burst, which is what upstream throttles on if its window is shorter than ours.
+**A bucket's depth and its refill rate are two spends of one budget.** `quota()` deliberately does not call `allow_burst`, leaving capacity at governor's default of one token. The obvious spelling — capacity `count`, refilling at `count/period` — reads like a faithful transcription of "150 per 10 seconds" and is wrong: a bucket starting full admits its depth *plus* everything the refill adds, so its first window lets through `count + count`. Every entry in every table over-permitted by exactly 2x until this was measured.
+
+Depth is not spare capacity; it is borrowed against the rate, and `burst + rate × period ≤ count` means any burst of `B` costs `B` requests of sustained allowance permanently. Minimum depth is therefore also maximum throughput — and the safest shape, since the client never concentrates requests into an instant, including on release from a cooldown when every parked request resumes at once. This is inherent to token buckets against a sliding-window server, not an artifact of this implementation: satisfying the bound with `rate = count/period` forces `B ≤ 0`.
+
+**Contrast `signer_limit.rs`, which must keep its `allow_burst`.** Polymarket publishes rate *and* burst for the per-signer layer and says burst is the bucket's capacity, so copying both is a faithful model of a bucket the server also implements as a bucket. Cloudflare publishes a *window quota* with no capacity term at all. Same two numbers, opposite meanings — making the two modules "consistent" would reintroduce the bug.
+
+**The published count is reachable as a burst and not as a rate**, which is why `quota()` also reserves a tenth (`RESERVED_FRACTION`) rather than aiming at the published figure. Measured on `/closed-positions` (150/10s) against the live host:
+
+| Sustained rate | Share of published | Result |
+|---|---|---|
+| 14.9/s | 100% | refused after 15.7s |
+| 14.25/s | 95% | refused after 17.3s |
+| 13.5/s | 90% | clean over 180s, 2,430 requests |
+
+A one-shot 150 in 0.70s is accepted, so the table is not overstating the cap; Cloudflare's sliding-window estimator simply does not count the way a naive interval count does, and nothing outside the server can observe the difference. Aiming *at* a published quota is therefore a bug even when the arithmetic is right. Reproduce with `polyoxide-data/examples/closed_positions_soak.rs` (`--rate` drives a chosen rate; omit it to exercise the shipped limiter).
+
+Note that a 429 the client retries away is invisible to the caller — the retry loops log a `WARN` and return `Ok` — so a harness that counts `Ok` against `Err` reports a clean run straight through sustained throttling. Detection goes through a `tracing` subscriber instead.
 
 **Decimal precision** — Price/size fields use `rust_decimal::Decimal` with `serde(with = "rust_decimal::serde::str")` for string serialization.
 
