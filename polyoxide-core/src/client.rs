@@ -114,8 +114,15 @@ impl HttpClient {
     /// Callers wanting broader retry semantics should drive them from
     /// [`ApiError::is_retriable`] with their own idempotency judgement.
     ///
-    /// When `retry_after` is `Some`, the server-provided delay is used instead of
-    /// the client-computed exponential backoff (clamped to `max_backoff_ms`).
+    /// `Retry-After` can only *extend* the wait, never shorten it. A server
+    /// asking for longer than the client-computed backoff is obeyed (clamped to
+    /// `max_backoff_ms`); one asking for less — including the zero that
+    /// Cloudflare returns alongside `error code: 1015` — leaves the exponential
+    /// backoff in place. Taking the header verbatim made a tripped Cloudflare
+    /// limit self-perpetuating: `Duration::from_millis(0)` is not a backoff, and
+    /// the three retries landed inside 65ms, extending the ban they were waiting
+    /// on. Values that do not parse as a float (e.g. the HTTP-date form) are
+    /// ignored the same way.
     pub fn should_retry(
         &self,
         status: StatusCode,
@@ -123,18 +130,23 @@ impl HttpClient {
         retry_after: Option<&str>,
     ) -> Option<Duration> {
         let retriable = status == StatusCode::TOO_MANY_REQUESTS || status == StatusCode::TOO_EARLY;
-        if retriable && attempt < self.retry_config.max_retries {
-            if let Some(delay) = retry_after.and_then(|v| v.parse::<f64>().ok()) {
-                let ms = (delay * 1000.0) as u64;
-                Some(Duration::from_millis(
-                    ms.min(self.retry_config.max_backoff_ms),
-                ))
-            } else {
-                Some(self.retry_config.backoff(attempt))
-            }
-        } else {
-            None
+        if !retriable || attempt >= self.retry_config.max_retries {
+            return None;
         }
+        Some(self.retry_delay(attempt, retry_after))
+    }
+
+    /// The delay a rate-limited request should wait before its next attempt.
+    fn retry_delay(&self, attempt: u32, retry_after: Option<&str>) -> Duration {
+        let computed = self.retry_config.backoff(attempt);
+        let requested = retry_after
+            .and_then(|v| v.parse::<f64>().ok())
+            .filter(|secs| secs.is_finite() && *secs > 0.0)
+            .map(|secs| {
+                let ms = (secs * 1000.0) as u64;
+                Duration::from_millis(ms.min(self.retry_config.max_backoff_ms))
+            });
+        requested.map_or(computed, |r| r.max(computed))
     }
 
     /// GET a URL and return the raw response body as bytes.
@@ -434,10 +446,56 @@ mod tests {
         let client = HttpClientBuilder::new("https://example.com")
             .build()
             .unwrap();
+        // 1.5s, not the 0.5s this once used: a server-supplied delay is only
+        // honoured when it exceeds the client's own backoff, and attempt 0's
+        // jitter range is [375, 625]ms — straddling it made the assertion
+        // depend on the roll. The point here is that fractions parse.
         let d = client
-            .should_retry(StatusCode::TOO_MANY_REQUESTS, 0, Some("0.5"))
+            .should_retry(StatusCode::TOO_MANY_REQUESTS, 0, Some("1.5"))
             .unwrap();
-        assert_eq!(d, Duration::from_millis(500));
+        assert_eq!(d, Duration::from_millis(1500));
+    }
+
+    #[test]
+    fn retry_after_below_our_own_backoff_does_not_shorten_the_wait() {
+        let client = HttpClientBuilder::new("https://example.com")
+            .build()
+            .unwrap();
+        // Cloudflare answers a tripped rate limit with 429 + `error code: 1015`
+        // and a Retry-After that floors to zero. Taking it verbatim collapsed
+        // the sleep to nothing: the observed failure was three "retry after 0ms"
+        // attempts inside 65ms, which deepens a 1015 ban rather than waiting it
+        // out. A server asking us to wait *longer* is honoured; one asking us to
+        // wait less than our own policy is not.
+        for header in ["0", "0.0", "-1", "-30", "0.0001"] {
+            let d = client
+                .should_retry(StatusCode::TOO_MANY_REQUESTS, 0, Some(header))
+                .unwrap();
+            assert!(
+                d >= Duration::from_millis(375),
+                "Retry-After: {header:?} produced a {d:?} sleep; the floor is the \
+                 client's own attempt-0 backoff, >=375ms after jitter"
+            );
+        }
+    }
+
+    #[test]
+    fn retry_after_zero_still_backs_off_exponentially_across_attempts() {
+        let client = HttpClientBuilder::new("https://example.com")
+            .build()
+            .unwrap();
+        // Flooring at a flat minimum would still let a 1015 ban be hammered at a
+        // fixed cadence. The floor has to be the *attempt's* backoff, so a
+        // degenerate header still yields 500ms, 1s, 2s.
+        for (attempt, min_ms) in [(0u32, 375u64), (1, 750), (2, 1_500)] {
+            let d = client
+                .should_retry(StatusCode::TOO_MANY_REQUESTS, attempt, Some("0"))
+                .unwrap();
+            assert!(
+                d >= Duration::from_millis(min_ms),
+                "attempt {attempt} with Retry-After: 0 slept {d:?}, expected >={min_ms}ms"
+            );
+        }
     }
 
     #[test]

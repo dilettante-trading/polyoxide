@@ -1414,3 +1414,59 @@ async fn overriding_one_host_leaves_the_others_alone() {
     data.trades().list().send().await.unwrap();
     main_mock.assert_async().await;
 }
+
+// ── Rate limit backpressure ──────────────────────────────────────────────────
+//
+// Reproduces the shape observed against the live Data API: Cloudflare answers a
+// tripped limit with 429, `error code: 1015`, and a `Retry-After` that floors to
+// zero. Two things went wrong there — the zero was obeyed verbatim, and the 429
+// stayed private to the request that saw it while its siblings kept firing.
+
+/// A server that rate-limits everything, exactly as Cloudflare does.
+async fn rate_limited_server() -> mockito::ServerGuard {
+    let mut server = Server::new_async().await;
+    server
+        .mock("GET", Matcher::Any)
+        .with_status(429)
+        .with_header("retry-after", "0")
+        .with_body("error code: 1015\n")
+        .expect_at_least(1)
+        .create_async()
+        .await;
+    server
+}
+
+fn throttled_data(server: &mockito::ServerGuard, backoff_ms: u64, max_retries: u32) -> DataApi {
+    DataApi::builder()
+        .base_url(server.url())
+        .with_retry_config(polyoxide_core::RetryConfig {
+            max_retries,
+            initial_backoff_ms: backoff_ms,
+            max_backoff_ms: 10_000,
+        })
+        .build()
+        .unwrap()
+}
+
+#[tokio::test]
+async fn retry_after_zero_does_not_turn_the_retry_loop_into_a_hot_loop() {
+    let server = rate_limited_server().await;
+    // Two retries at a 400ms base: 300-500ms then 600-1000ms after jitter, so
+    // at least 900ms of genuine waiting. The reported failure burned all three
+    // attempts in 65ms.
+    let data = throttled_data(&server, 400, 2);
+
+    let start = std::time::Instant::now();
+    let result = data.user("0xaddr").closed_positions().send().await;
+    let elapsed = start.elapsed();
+
+    assert!(
+        result.is_err(),
+        "a 429-only server cannot produce a success"
+    );
+    assert!(
+        elapsed >= std::time::Duration::from_millis(700),
+        "the retries took {elapsed:?}; `Retry-After: 0` was taken literally \
+         instead of falling back to the client's own backoff"
+    );
+}
