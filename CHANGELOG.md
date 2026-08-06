@@ -1,3 +1,13 @@
+## [0.26.0] - 2026-08-06
+
+### 🚀 Features
+
+- *(core)* Make an observed 429 back off the whole client
+
+### 🐛 Bug Fixes
+
+- *(core)* Stop a zero Retry-After from collapsing the retry backoff
+
 ## [0.25.0] - 2026-08-05
 
 ### 🚀 Features
