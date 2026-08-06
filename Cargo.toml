@@ -37,6 +37,7 @@ chrono = "0.4"
 url = "2.5"
 hex = "0.4"
 tracing = "0.1"
+tracing-subscriber = "0.3"
 tokio-tungstenite = { version = "0.26", features = ["rustls-tls-native-roots"] }
 rust_decimal = { version = "1.37", features = ["serde-with-str"] }
 governor = { version = "0.8", features = ["std"] }
