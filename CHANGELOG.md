@@ -1,3 +1,14 @@
+## [0.26.1] - 2026-08-06
+
+### 🐛 Bug Fixes
+
+- *(core)* Stop rate limit buckets over-spending their published quota
+
+### 🧪 Testing
+
+- *(data)* Soak /closed-positions against the live rate limit
+- *(data)* Bracket the real burst ceiling for /closed-positions
+
 ## [0.26.0] - 2026-08-06
 
 ### 🚀 Features
