@@ -134,6 +134,11 @@ impl<T: DeserializeOwned, E: RequestError> Request<T, E> {
             let status = response.status();
             let retry_after = retry_after_header(&response);
 
+            // Before `should_retry`, and unconditionally: a 429 has to become
+            // backpressure for every request on this limiter even when *this*
+            // request is out of attempts and about to give up.
+            http_client.note_rate_limited(status, retry_after.as_deref());
+
             if let Some(backoff) = http_client.should_retry(status, attempt, retry_after.as_deref())
             {
                 attempt += 1;

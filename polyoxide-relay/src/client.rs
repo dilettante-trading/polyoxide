@@ -154,6 +154,8 @@ impl RelayClient {
             self.http_client.acquire_rate_limit(path, None).await;
             let resp = self.http_client.client.get(url.clone()).send().await?;
             let retry_after = retry_after_header(&resp);
+            self.http_client
+                .note_rate_limited(resp.status(), retry_after.as_deref());
 
             if let Some(backoff) =
                 self.http_client
@@ -246,6 +248,8 @@ impl RelayClient {
                 .await?;
 
             let retry_after = retry_after_header(&resp);
+            self.http_client
+                .note_rate_limited(resp.status(), retry_after.as_deref());
             if let Some(backoff) =
                 self.http_client
                     .should_retry(resp.status(), attempt, retry_after.as_deref())
@@ -957,6 +961,8 @@ impl RelayClient {
             let status = resp.status();
             let retry_after = retry_after_header(&resp);
             tracing::debug!("Response status for {}: {}", endpoint, status);
+            self.http_client
+                .note_rate_limited(status, retry_after.as_deref());
 
             if let Some(backoff) =
                 self.http_client

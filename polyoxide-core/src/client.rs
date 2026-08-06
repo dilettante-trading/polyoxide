@@ -137,6 +137,11 @@ impl HttpClient {
     }
 
     /// The delay a rate-limited request should wait before its next attempt.
+    ///
+    /// Shared by [`should_retry`](Self::should_retry) and
+    /// [`note_rate_limited`](Self::note_rate_limited) so a single response
+    /// cannot produce one delay for the request that saw it and a different one
+    /// for the client-wide cooldown it triggers.
     fn retry_delay(&self, attempt: u32, retry_after: Option<&str>) -> Duration {
         let computed = self.retry_config.backoff(attempt);
         let requested = retry_after
@@ -147,6 +152,29 @@ impl HttpClient {
                 Duration::from_millis(ms.min(self.retry_config.max_backoff_ms))
             });
         requested.map_or(computed, |r| r.max(computed))
+    }
+
+    /// Record that the server rate-limited us, so every request sharing this
+    /// client's limiter waits — not just the one that saw the 429.
+    ///
+    /// A 429 is a fact about the host, but the retry loop treats it as private
+    /// to one request. With the default concurrency of 4, three in-flight
+    /// siblings kept firing into a limit that had already tripped, then each
+    /// burned its own three retries: ~16 doomed requests in 200ms. Cloudflare's
+    /// 1015 is a *timed ban*, so that traffic does not merely fail, it prolongs
+    /// the block. Feeding the 429 back into the shared limiter converts it into
+    /// backpressure the whole client observes.
+    ///
+    /// Call this once per response, before [`should_retry`](Self::should_retry).
+    /// It is a no-op for any status other than 429 and for clients built without
+    /// a rate limiter.
+    pub fn note_rate_limited(&self, status: StatusCode, retry_after: Option<&str>) {
+        if status != StatusCode::TOO_MANY_REQUESTS {
+            return;
+        }
+        if let Some(rl) = &self.rate_limiter {
+            rl.begin_cooldown(self.retry_delay(0, retry_after));
+        }
     }
 
     /// GET a URL and return the raw response body as bytes.
@@ -183,6 +211,8 @@ impl HttpClient {
             let response = request.send().await?;
             let status = response.status();
             let retry_after = retry_after_header(&response);
+
+            self.note_rate_limited(status, retry_after.as_deref());
 
             if let Some(backoff) = self.should_retry(status, attempt, retry_after.as_deref()) {
                 attempt += 1;

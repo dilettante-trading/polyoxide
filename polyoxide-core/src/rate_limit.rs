@@ -1,9 +1,10 @@
 use std::num::NonZeroU32;
-use std::sync::Arc;
+use std::sync::{Arc, Mutex};
 use std::time::Duration;
 
 use governor::Quota;
 use reqwest::Method;
+use tokio::time::Instant;
 
 type DirectLimiter = governor::RateLimiter<
     governor::state::NotKeyed,
@@ -111,6 +112,14 @@ impl std::fmt::Debug for RateLimiter {
 struct RateLimiterInner {
     limits: Vec<EndpointLimit>,
     default: DirectLimiter,
+    /// Deadline before which no request on this limiter may proceed.
+    ///
+    /// The buckets above encode the quota Polymarket *publishes*; this encodes
+    /// what the server actually just said. They disagree more often than the
+    /// tables suggest — Cloudflare's `error code: 1015` is an IP-scoped block
+    /// with its own window, and it answers 429 no matter how many tokens the
+    /// buckets still hold.
+    cooldown_until: Mutex<Option<Instant>>,
 }
 
 /// Helper to create a quota: `count` requests per `period`.
@@ -167,11 +176,61 @@ fn dual_limit(
 }
 
 impl RateLimiter {
+    /// Hold every request on this limiter for `delay`.
+    ///
+    /// Extends an existing cooldown but never shortens one: several concurrent
+    /// requests typically see the same 429 within a few milliseconds of each
+    /// other, and taking the most recent value would let whichever response
+    /// carried the smallest delay release all of them early.
+    ///
+    /// Prefer [`HttpClient::note_rate_limited`](crate::HttpClient::note_rate_limited),
+    /// which derives the delay from the response. Reach for this directly only
+    /// when driving the limiter from a transport this crate does not own.
+    pub fn begin_cooldown(&self, delay: Duration) {
+        let until = Instant::now() + delay;
+        let mut slot = self.lock_cooldown();
+        if slot.is_none_or(|current| until > current) {
+            *slot = Some(until);
+        }
+    }
+
+    /// A poison-tolerant lock on the cooldown slot.
+    ///
+    /// A panic elsewhere must not turn the rate limiter into a permanent
+    /// outage; the worst a torn write can cost here is one early or late
+    /// wakeup.
+    fn lock_cooldown(&self) -> std::sync::MutexGuard<'_, Option<Instant>> {
+        self.inner
+            .cooldown_until
+            .lock()
+            .unwrap_or_else(|poisoned| poisoned.into_inner())
+    }
+
+    /// Wait out any cooldown currently in force.
+    async fn await_cooldown(&self) {
+        loop {
+            // Read the deadline and release the guard before awaiting. Holding
+            // a `std::sync::MutexGuard` across an await makes the future
+            // `!Send`, which every caller of `acquire` needs it to be.
+            let deadline = *self.lock_cooldown();
+            let Some(deadline) = deadline else { return };
+            if deadline <= Instant::now() {
+                return;
+            }
+            // Loop rather than return after sleeping: a sibling's 429 can push
+            // the deadline out while we wait, and waking into a still-active
+            // block is how the storm restarts.
+            tokio::time::sleep_until(deadline).await;
+        }
+    }
+
     /// Await the appropriate limiter(s) for this endpoint.
     ///
-    /// Always awaits the default (general) limiter, then additionally awaits
-    /// the first matching endpoint-specific limiter (burst + sustained).
+    /// Waits out any cooldown a previous 429 imposed, then awaits the default
+    /// (general) limiter, then additionally awaits the first matching
+    /// endpoint-specific limiter (burst + sustained).
     pub async fn acquire(&self, path: &str, method: Option<&Method>) {
+        self.await_cooldown().await;
         self.inner.default.until_ready().await;
 
         if let Some(limit) = self.inner.limits.iter().find(|l| l.matches(path, method)) {
@@ -226,6 +285,7 @@ impl RateLimiter {
         Self {
             inner: Arc::new(RateLimiterInner {
                 default: DirectLimiter::direct(quota(9_000, ten_sec)),
+                cooldown_until: Mutex::new(None),
                 limits: vec![
                     // ── Account. The tighter /update route must come first:
                     // it matches the /balance-allowance prefix at a boundary.
@@ -325,6 +385,7 @@ impl RateLimiter {
         Self {
             inner: Arc::new(RateLimiterInner {
                 default: DirectLimiter::direct(quota(4_000, ten_sec)),
+                cooldown_until: Mutex::new(None),
                 limits: vec![
                     simple_limit("/comments", None, 200, ten_sec),
                     simple_limit("/tags", None, 200, ten_sec),
@@ -368,6 +429,7 @@ impl RateLimiter {
         Self {
             inner: Arc::new(RateLimiterInner {
                 default: DirectLimiter::direct(quota(1_000, ten_sec)),
+                cooldown_until: Mutex::new(None),
                 limits: vec![
                     simple_limit("/closed-positions", None, 150, ten_sec),
                     simple_limit("/positions", None, 150, ten_sec),
@@ -386,6 +448,7 @@ impl RateLimiter {
         Self {
             inner: Arc::new(RateLimiterInner {
                 default: DirectLimiter::direct(quota(25, Duration::from_secs(60))),
+                cooldown_until: Mutex::new(None),
                 limits: vec![],
             }),
         }
@@ -1383,6 +1446,127 @@ mod tests {
                 .should_retry(reqwest::StatusCode::TOO_MANY_REQUESTS, 0, None)
                 .is_none(),
             "max_retries=0 should never retry"
+        );
+    }
+}
+
+#[cfg(test)]
+mod cooldown_tests {
+    //! A 429 is a fact about the host, not about the request that saw it.
+    //!
+    //! The token buckets above model the *published* quota, which is all a
+    //! client can know in advance. When the server disagrees — Cloudflare's
+    //! `error code: 1015` arrives as a 429 whatever our buckets believe — that
+    //! correction has to reach every request sharing the limiter, or the
+    //! siblings already in flight keep feeding a ban that is timed, and so gets
+    //! longer the more it is hit.
+
+    use super::*;
+
+    #[tokio::test(start_paused = true)]
+    async fn acquire_is_immediate_without_a_cooldown() {
+        let rl = RateLimiter::data_default();
+        let t = tokio::time::Instant::now();
+        rl.acquire("/closed-positions", None).await;
+        assert!(
+            t.elapsed() < Duration::from_millis(1),
+            "an untripped limiter must not delay: waited {:?}",
+            t.elapsed()
+        );
+    }
+
+    #[tokio::test(start_paused = true)]
+    async fn a_cooldown_holds_back_a_path_that_never_saw_the_429() {
+        let rl = RateLimiter::data_default();
+        rl.begin_cooldown(Duration::from_secs(5));
+
+        // /trades has its own bucket, full and untouched. It must wait anyway:
+        // the block is on the IP, and every path shares it.
+        let t = tokio::time::Instant::now();
+        rl.acquire("/trades", None).await;
+        assert!(
+            t.elapsed() >= Duration::from_secs(5),
+            "a sibling path resumed after {:?}, before the cooldown expired",
+            t.elapsed()
+        );
+    }
+
+    #[tokio::test(start_paused = true)]
+    async fn concurrent_requests_all_observe_one_cooldown() {
+        let rl = RateLimiter::data_default();
+        rl.begin_cooldown(Duration::from_secs(3));
+
+        // The shape from the report: several /closed-positions calls in flight
+        // at once. One 429 has to stop all of them, not just its own caller.
+        let t = tokio::time::Instant::now();
+        tokio::join!(
+            rl.acquire("/closed-positions", None),
+            rl.acquire("/closed-positions", None),
+            rl.acquire("/closed-positions", None),
+            rl.acquire("/closed-positions", None),
+        );
+        assert!(
+            t.elapsed() >= Duration::from_secs(3),
+            "concurrent callers resumed after {:?}",
+            t.elapsed()
+        );
+    }
+
+    #[tokio::test(start_paused = true)]
+    async fn a_shorter_cooldown_never_cuts_a_longer_one_short() {
+        let rl = RateLimiter::data_default();
+        rl.begin_cooldown(Duration::from_secs(10));
+        // A sibling's 429 lands next, carrying a smaller delay. Taking the
+        // latest value would let the shortest response win the race and
+        // release everyone early.
+        rl.begin_cooldown(Duration::from_secs(1));
+
+        let t = tokio::time::Instant::now();
+        rl.acquire("/positions", None).await;
+        assert!(
+            t.elapsed() >= Duration::from_secs(10),
+            "the longer cooldown was truncated to {:?}",
+            t.elapsed()
+        );
+    }
+
+    #[tokio::test(start_paused = true)]
+    async fn a_cooldown_extended_mid_wait_is_honoured_in_full() {
+        let rl = RateLimiter::data_default();
+        rl.begin_cooldown(Duration::from_secs(2));
+
+        let extender = {
+            let rl = rl.clone();
+            tokio::spawn(async move {
+                tokio::time::sleep(Duration::from_secs(1)).await;
+                rl.begin_cooldown(Duration::from_secs(5));
+            })
+        };
+
+        let t = tokio::time::Instant::now();
+        rl.acquire("/closed-positions", None).await;
+        extender.await.unwrap();
+        // Extended to 1s + 5s = 6s. Waking at the original 2s deadline and
+        // returning would resume straight into the still-active ban.
+        assert!(
+            t.elapsed() >= Duration::from_secs(6),
+            "resumed at {:?}, ignoring the cooldown extension",
+            t.elapsed()
+        );
+    }
+
+    #[tokio::test(start_paused = true)]
+    async fn an_expired_cooldown_stops_delaying() {
+        let rl = RateLimiter::data_default();
+        rl.begin_cooldown(Duration::from_secs(2));
+        rl.acquire("/closed-positions", None).await;
+
+        let t = tokio::time::Instant::now();
+        rl.acquire("/closed-positions", None).await;
+        assert!(
+            t.elapsed() < Duration::from_millis(1),
+            "the limiter stayed blocked for {:?} after the cooldown expired",
+            t.elapsed()
         );
     }
 }

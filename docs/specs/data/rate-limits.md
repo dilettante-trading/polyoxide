@@ -59,3 +59,49 @@ dimension**, so a future sibling route colliding with a main-host path (`/trades
 
 `lb-api` has no published limit, so `/volume` and `/profit` fall to the shared
 general bucket.
+
+## What the published table cannot tell you
+
+The caps above are enforced by Cloudflare, and Cloudflare has a second gear the
+table does not mention. When its rule trips, it answers:
+
+```
+HTTP/1.1 429 Too Many Requests
+Retry-After: 0
+
+error code: 1015
+```
+
+Two properties matter for any client:
+
+1. **It is an IP-scoped block, not a per-route counter.** Once tripped, every
+   path on the host returns 1015 — `/trades` is refused because of what
+   `/closed-positions` did. A limiter that reasons purely per-path will happily
+   keep issuing requests from buckets that are still full.
+2. **It is timed, and traffic during the block prolongs it.** Retrying into a
+   1015 does not merely fail; it feeds the rule that is blocking you.
+
+The `Retry-After: 0` in that response is the trap. Taken literally it turns a
+retry loop into an immediate resend — the failure that prompted this section
+burned three attempts in 65ms:
+
+```
+WARN Retriable status 429 Too Many Requests on /closed-positions, retry 1 after 0ms
+WARN Retriable status 429 Too Many Requests on /closed-positions, retry 2 after 0ms
+WARN Retriable status 429 Too Many Requests on /closed-positions, retry 3 after 0ms
+ERROR Request failed: Api(RateLimit("error code: 1015\n"))
+```
+
+polyoxide therefore treats `Retry-After` as a **lower bound the server may
+raise, never lower**, and converts any observed 429 into a cooldown shared by
+every request on the limiter. See the "two rate limit layers" section of
+`CLAUDE.md`.
+
+### Staying under the rule in the first place
+
+The client's buckets start full (`allow_burst`), so a fresh process may issue
+150 `/closed-positions` requests as fast as its concurrency limit allows before
+any throttling engages. That is within "150 per 10 seconds" read as an average,
+but it is a burst — and Cloudflare's own window is not published. Callers doing
+bulk hydration should pace themselves rather than rely on the client's buckets
+alone.

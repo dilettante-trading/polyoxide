@@ -32,4 +32,6 @@ tokio = { workspace = true, features = ["time", "sync"] }
 [dev-dependencies]
 mockito = { workspace = true }
 serde = { workspace = true }
-tokio = { workspace = true, features = ["macros", "rt-multi-thread"] }
+# `test-util` gives the cooldown tests a paused clock, so they assert the full
+# backoff without actually sleeping for it.
+tokio = { workspace = true, features = ["macros", "rt-multi-thread", "test-util"] }

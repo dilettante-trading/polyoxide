@@ -124,6 +124,15 @@ Both tables are pinned by `documented_*_limits` agreement tests asserting the **
 
 **Published rate limit tables name routes that 404** — upstream lists `Health check (/ok)` under every surface, but only `clob.polymarket.com` serves it. Data's health route is `/`, Gamma's is `/status`. Probe the path on the host before pinning a row.
 
+**The buckets model the published quota; a 429 is what the server actually said.** They disagree — Cloudflare's `error code: 1015` is an IP-scoped block with its own window and arrives as a 429 no matter how many tokens the buckets still hold. So a 429 feeds back into the limiter as a *client-wide cooldown* (`HttpClient::note_rate_limited` → `RateLimiter::begin_cooldown`), which every subsequent `acquire` waits out regardless of path. Two rules make this work, both mutation-tested:
+
+- **`Retry-After` may only extend the wait, never shorten it.** Cloudflare sends one that floors to zero; obeying it verbatim made `should_retry` return `Duration::from_millis(0)`, so three retries landed inside 65ms and *extended* the very ban they were waiting on. The floor is the client's own exponential backoff.
+- **Cooldowns extend, never truncate.** Concurrent requests see the same 429 milliseconds apart; taking the newest value would let the smallest delay release everyone early. `await_cooldown` re-checks after waking so a cooldown extended mid-wait is honoured in full.
+
+Every retry loop must call `note_rate_limited` **before** `should_retry` and unconditionally — a request that is out of attempts still has to publish what it learned.
+
+**Buckets start full.** `quota()` uses `allow_burst(count)`, so a fresh client may fire the entire window's allowance at once (150 requests for `/closed-positions`) before throttling to the sustained rate. That satisfies "150 per 10 seconds" as an average but presents as a burst, which is what upstream throttles on if its window is shorter than ours.
+
 **Decimal precision** — Price/size fields use `rust_decimal::Decimal` with `serde(with = "rust_decimal::serde::str")` for string serialization.
 
 ## Environment Variables

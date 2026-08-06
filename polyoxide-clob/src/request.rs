@@ -210,6 +210,10 @@ impl<T: DeserializeOwned> Request<T> {
             let status = response.status();
             let retry_after = retry_after_header(&response);
 
+            // A 429 is a fact about the host, so it has to reach the shared IP
+            // limiter whether or not this request has attempts left.
+            http_client.note_rate_limited(status, retry_after.as_deref());
+
             // Poly-RateLimit-Tier is the only way to learn the signer's tier,
             // so record it whatever the status — a 429 carries it too, and that
             // is exactly when the correct capacity matters most.
