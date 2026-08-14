@@ -263,6 +263,40 @@ def render_summary(
     return "\n".join(lines)
 
 
+ISSUE_BODY_LIMIT = 65536
+
+_DIFF_HEADER = "\n<details><summary>Canonicalized diff</summary>\n\n```diff\n"
+_DIFF_FOOTER = "\n```\n</details>\n"
+_TRUNCATION_NOTE = "\n… [truncated — full diff in this workflow run's artifacts]"
+_OVERFLOW_NOTE = "\n\n_Diff omitted: the summary alone reaches the GitHub body limit. Full detail is in this workflow run's artifacts._\n"
+
+
+def compose_issue_body(
+    summary: str,
+    diff: str,
+    limit: int = ISSUE_BODY_LIMIT,
+    reserve: int = 0,
+) -> str:
+    """Compose an issue body from a summary and a canonical diff, under `limit`.
+
+    The summary has priority and the diff absorbs any shortfall, because a
+    truncated finding is worse than a truncated diff — the full diff is always
+    in the run's artifacts. `reserve` withholds bytes for text the caller will
+    append afterwards.
+    """
+    budget = limit - reserve
+    if not diff:
+        return summary[:budget]
+
+    overhead = len(summary) + len(_DIFF_HEADER) + len(_DIFF_FOOTER) + len(_TRUNCATION_NOTE)
+    diff_budget = budget - overhead
+    if diff_budget <= 0:
+        return summary[: budget - len(_OVERFLOW_NOTE)] + _OVERFLOW_NOTE
+    if len(diff) <= diff_budget:
+        return summary + _DIFF_HEADER + diff + _DIFF_FOOTER
+    return summary + _DIFF_HEADER + diff[:diff_budget] + _TRUNCATION_NOTE + _DIFF_FOOTER
+
+
 def _cmd_check(args: argparse.Namespace) -> int:
     upstream_yaml = args.upstream_yaml.read_text()
     vendored_yaml = args.vendored_yaml.read_text()
@@ -300,6 +334,15 @@ def _cmd_check(args: argparse.Namespace) -> int:
     return 1
 
 
+def _cmd_render_issue(args: argparse.Namespace) -> int:
+    summary = (args.output_dir / "summary.md").read_text()
+    diff_path = args.output_dir / "unified-diff.txt"
+    diff = diff_path.read_text() if diff_path.exists() else ""
+    body = compose_issue_body(summary, diff, reserve=args.reserve)
+    (args.output_dir / "issue-body.md").write_text(body)
+    return 0
+
+
 def main(argv: list[str] | None = None) -> int:
     """Entry point for the diff_openapi CLI."""
     parser = argparse.ArgumentParser(description="Detect OpenAPI schema drift.")
@@ -317,6 +360,13 @@ def main(argv: list[str] | None = None) -> int:
     p.add_argument("--apply-on-drift", action="store_true",
                    help="If drift detected, overwrite vendored-yaml with upstream-yaml's raw bytes")
     p.set_defaults(func=_cmd_check)
+
+    p2 = sub.add_parser("render-issue", help="Compose the GitHub issue body from a check's artifacts.")
+    p2.add_argument("--output-dir", type=Path, required=True,
+                    help="Directory holding summary.md and unified-diff.txt")
+    p2.add_argument("--reserve", type=int, default=0,
+                    help="Bytes to withhold for text the caller appends (e.g. a PR's `Closes #N`)")
+    p2.set_defaults(func=_cmd_render_issue)
 
     ns = parser.parse_args(argv)
     return ns.func(ns)

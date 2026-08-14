@@ -13,6 +13,7 @@ from diff_openapi import (
     Change,
     DriftResult,
     canonicalize,
+    compose_issue_body,
     detect_drift,
     diff_tree,
     render_summary,
@@ -444,3 +445,67 @@ def test_drifting_fixture_always_names_a_finding(fixture: str) -> None:
         + [change.pointer for change in result.changes]
     )
     assert named, f"{fixture} reports drift but names no finding"
+
+
+def test_compose_issue_body_embeds_diff_when_it_fits() -> None:
+    body = compose_issue_body("## Schema drift in `clob`\n", "-old\n+new\n")
+    assert "## Schema drift in `clob`" in body
+    assert "<details><summary>Canonicalized diff</summary>" in body
+    assert "-old" in body
+    assert "truncated" not in body
+
+
+def test_compose_issue_body_within_cap() -> None:
+    """Summary has priority; the diff yields. Both oversized must still fit."""
+    summary = "S" * 30_000
+    diff = "D" * 90_000
+    body = compose_issue_body(summary, diff)
+    assert len(body) <= 65536
+    assert body.startswith("S" * 30_000)
+    assert "truncated" in body
+    assert body.rstrip().endswith("</details>")
+
+
+def test_compose_issue_body_drops_diff_when_summary_exceeds_budget() -> None:
+    body = compose_issue_body("S" * 70_000, "D" * 1_000)
+    assert len(body) <= 65536
+    assert "<details>" not in body
+    assert "run's artifacts" in body
+
+
+def test_compose_issue_body_without_diff_returns_summary() -> None:
+    body = compose_issue_body("## No drift\n", "")
+    assert body == "## No drift\n"
+
+
+def test_compose_issue_body_reserve_shrinks_the_budget() -> None:
+    """The PR variant appends `Closes #N`; reserved bytes keep it under cap."""
+    body = compose_issue_body("S" * 100, "D" * 90_000, reserve=1_000)
+    assert len(body) <= 65536 - 1_000
+
+
+def test_cli_render_issue_writes_body(tmp_path: Path) -> None:
+    out_dir = tmp_path / "out"
+    out_dir.mkdir()
+    subprocess.run(
+        [
+            sys.executable, str(SCRIPT), "check",
+            "--crate", "test",
+            "--upstream-yaml", str(FIXTURES / "openapi-added-endpoint" / "new.yaml"),
+            "--vendored-yaml", str(FIXTURES / "openapi-added-endpoint" / "old.yaml"),
+            "--upstream-url", "https://example.com/test.yaml",
+            "--output-dir", str(out_dir),
+        ],
+        capture_output=True,
+        text=True,
+    )
+    result = subprocess.run(
+        [sys.executable, str(SCRIPT), "render-issue", "--output-dir", str(out_dir)],
+        capture_output=True,
+        text=True,
+    )
+    assert result.returncode == 0, result.stderr
+    body = (out_dir / "issue-body.md").read_text()
+    assert "GET /markets/{id}" in body
+    assert "<details><summary>Canonicalized diff</summary>" in body
+    assert len(body) <= 65536
