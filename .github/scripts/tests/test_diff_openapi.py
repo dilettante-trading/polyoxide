@@ -273,3 +273,18 @@ def test_canonicalize_distinguishes_bool_from_string() -> None:
     new = (FIXTURES / "openapi-bool-example" / "new.yaml").read_text()
     assert canonicalize(old) != canonicalize(new)
     assert detect_drift(old, new).has_drift is True
+
+
+def test_canonicalize_distinguishes_bool_from_int() -> None:
+    """Mutation guard for _normalize's branch order.
+
+    The 'Yes' fixture cannot detect a reversal: with a string on the old side,
+    collapsing True to 1 still leaves the two sides different, so drift is
+    still reported and the test stays green. With an int on the old side the
+    mutation makes both sides 1 and erases the drift, so this test fails if
+    the bool check ever stops preceding the float/int check.
+    """
+    old = (FIXTURES / "openapi-int-bool-example" / "old.yaml").read_text()
+    new = (FIXTURES / "openapi-int-bool-example" / "new.yaml").read_text()
+    assert canonicalize(old) != canonicalize(new)
+    assert detect_drift(old, new).has_drift is True
