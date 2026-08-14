@@ -86,6 +86,7 @@ class DriftResult:
     channels_added: list[str] = field(default_factory=list)
     channels_removed: list[str] = field(default_factory=list)
     channels_modified: list[str] = field(default_factory=list)
+    changes: list[Change] = field(default_factory=list)
 
 
 def detect_drift(old_yaml: str, new_yaml: str) -> DriftResult:
@@ -144,6 +145,7 @@ def detect_drift(old_yaml: str, new_yaml: str) -> DriftResult:
         channels_added=sorted(ch_added),
         channels_removed=sorted(ch_removed),
         channels_modified=sorted(ch_modified),
+        changes=diff_tree(old_doc, new_doc),
     )
 
 
@@ -180,6 +182,17 @@ def canonicalize(yaml_text: str) -> str:
     """
     parsed = _normalize(yaml.safe_load(yaml_text))
     return json.dumps(parsed, sort_keys=True, indent=2)
+
+
+CHANGE_LIMIT = 200
+
+
+def _group_of(pointer: str) -> str:
+    """Top-level key a pointer belongs to: 'components.schemas.X' -> 'components'."""
+    for index, char in enumerate(pointer):
+        if char in ".[":
+            return pointer[:index]
+    return pointer
 
 
 def render_summary(
@@ -220,6 +233,30 @@ def render_summary(
             for entry in entries:
                 lines.append(f"- `{entry}`")
             lines.append("")
+
+    if result.changes:
+        lines.append("## Changes")
+        lines.append("")
+        shown = result.changes[:CHANGE_LIMIT]
+        groups: dict[str, list[Change]] = {}
+        for change in shown:
+            groups.setdefault(_group_of(change.pointer), []).append(change)
+        for group, entries in groups.items():
+            lines.append(f"### {group}")
+            lines.append("")
+            for change in entries:
+                if change.kind == "changed":
+                    lines.append(f"- `{change.pointer}` changed: `{change.before}` → `{change.after}`")
+                elif change.kind == "added":
+                    lines.append(f"- `{change.pointer}` added: `{change.after}`")
+                else:
+                    lines.append(f"- `{change.pointer}` removed: `{change.before}`")
+            lines.append("")
+        remaining = len(result.changes) - len(shown)
+        if remaining:
+            lines.append(f"_{remaining} more — see the canonicalized diff below._")
+            lines.append("")
+
     return "\n".join(lines)
 
 

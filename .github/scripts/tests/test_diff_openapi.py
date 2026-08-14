@@ -360,3 +360,45 @@ def test_diff_tree_truncates_long_scalar_values() -> None:
     changes = diff_tree({"d": "x" * 400}, {"d": "y" * 400})
     assert len(changes[0].after) == 120
     assert changes[0].after.endswith("…")
+
+
+def test_detect_drift_populates_changes() -> None:
+    old = (FIXTURES / "openapi-modified-schema" / "old.yaml").read_text()
+    new = (FIXTURES / "openapi-modified-schema" / "new.yaml").read_text()
+    result = detect_drift(old, new)
+    assert result.has_drift is True
+    assert len(result.changes) == 1
+    assert result.changes[0].pointer.endswith("properties.creator_address")
+
+
+def test_render_summary_groups_changes_by_top_level_key() -> None:
+    result = DriftResult(
+        has_drift=True,
+        changes=[
+            Change("components.schemas.Position.properties.entryFeesUsdc", "added", None, "{… 2 keys}"),
+            Change("info.version", "changed", '"1.0.0"', '"1.1.0"'),
+        ],
+    )
+    text = render_summary(result, crate="data", upstream_url="https://x")
+    assert "## Changes" in text
+    assert "### components" in text
+    assert "### info" in text
+    assert "`components.schemas.Position.properties.entryFeesUsdc` added: `{… 2 keys}`" in text
+    assert "`info.version` changed: `\"1.0.0\"` → `\"1.1.0\"`" in text
+
+
+def test_render_summary_caps_change_enumeration() -> None:
+    result = DriftResult(
+        has_drift=True,
+        changes=[Change(f"paths./p{i}", "added", None, "{… 1 key}") for i in range(250)],
+    )
+    text = render_summary(result, crate="perps-ws", upstream_url="https://x")
+    assert "`paths./p199` added" in text
+    assert "`paths./p200` added" not in text
+    assert "50 more" in text
+
+
+def test_render_summary_omits_changes_section_when_empty() -> None:
+    result = DriftResult(has_drift=True, endpoints_added=["POST /new"])
+    text = render_summary(result, crate="clob", upstream_url="https://x")
+    assert "## Changes" not in text
