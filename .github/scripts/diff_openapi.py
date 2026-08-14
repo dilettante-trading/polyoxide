@@ -14,6 +14,69 @@ from pathlib import Path
 import yaml
 
 
+@dataclass(frozen=True)
+class Change:
+    """One difference between two canonical spec trees."""
+
+    pointer: str
+    kind: str  # "added" | "removed" | "changed"
+    before: str | None
+    after: str | None
+
+
+def _plural(count: int, word: str) -> str:
+    return f"{count} {word}" if count == 1 else f"{count} {word}s"
+
+
+def _render_value(value: object, limit: int = 120) -> str:
+    """Render a value for display in a summary line.
+
+    Containers collapse to a shape and a child count: a summary should say a
+    schema was added, not reprint it.
+    """
+    if isinstance(value, dict):
+        return f"{{… {_plural(len(value), 'key')}}}"
+    if isinstance(value, list):
+        return f"[… {_plural(len(value), 'item')}]"
+    text = json.dumps(value)
+    return text if len(text) <= limit else text[: limit - 1] + "…"
+
+
+def diff_tree(old: object, new: object, prefix: str = "") -> list[Change]:
+    """Walk two canonical trees in parallel, reporting differences as pointers.
+
+    Adds and removes record the subtree root and do not descend, so a newly
+    added schema is one Change rather than one per leaf beneath it.
+    """
+    changes: list[Change] = []
+
+    if isinstance(old, dict) and isinstance(new, dict):
+        for key in sorted(set(old) | set(new), key=str):
+            child = f"{prefix}.{key}" if prefix else str(key)
+            if key not in new:
+                changes.append(Change(child, "removed", _render_value(old[key]), None))
+            elif key not in old:
+                changes.append(Change(child, "added", None, _render_value(new[key])))
+            else:
+                changes.extend(diff_tree(old[key], new[key], child))
+        return changes
+
+    if isinstance(old, list) and isinstance(new, list):
+        for index in range(max(len(old), len(new))):
+            child = f"{prefix}[{index}]"
+            if index >= len(new):
+                changes.append(Change(child, "removed", _render_value(old[index]), None))
+            elif index >= len(old):
+                changes.append(Change(child, "added", None, _render_value(new[index])))
+            else:
+                changes.extend(diff_tree(old[index], new[index], child))
+        return changes
+
+    if old != new:
+        changes.append(Change(prefix, "changed", _render_value(old), _render_value(new)))
+    return changes
+
+
 @dataclass
 class DriftResult:
     has_drift: bool

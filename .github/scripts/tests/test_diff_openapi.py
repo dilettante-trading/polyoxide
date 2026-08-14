@@ -6,7 +6,16 @@ import subprocess
 import sys
 from pathlib import Path
 
-from diff_openapi import DriftResult, canonicalize, detect_drift, render_summary
+import yaml
+
+from diff_openapi import (
+    Change,
+    DriftResult,
+    canonicalize,
+    detect_drift,
+    diff_tree,
+    render_summary,
+)
 
 SCRIPT = Path(__file__).parent.parent / "diff_openapi.py"
 
@@ -288,3 +297,66 @@ def test_canonicalize_distinguishes_bool_from_int() -> None:
     new = (FIXTURES / "openapi-int-bool-example" / "new.yaml").read_text()
     assert canonicalize(old) != canonicalize(new)
     assert detect_drift(old, new).has_drift is True
+
+
+def test_diff_tree_reports_added_schema_property() -> None:
+    """The polyoxide-data case: a new property on an existing schema should be
+    named, not reported as an opaque 'endpoint modified'."""
+    old = yaml.safe_load((FIXTURES / "openapi-modified-schema" / "old.yaml").read_text())
+    new = yaml.safe_load((FIXTURES / "openapi-modified-schema" / "new.yaml").read_text())
+    changes = diff_tree(old, new)
+    assert len(changes) == 1
+    (change,) = changes
+    assert change.pointer.endswith("properties.creator_address")
+    assert change.kind == "added"
+    assert change.before is None
+    assert change.after == "{… 1 key}"
+
+
+def test_diff_tree_reports_subtree_root_not_leaves() -> None:
+    """An added subtree yields one Change at its root. Descending would turn a
+    new schema into dozens of pointers and bury the finding."""
+    old = {"components": {"schemas": {}}}
+    new = {"components": {"schemas": {"Approval": {"type": "object", "x": 1, "y": 2}}}}
+    changes = diff_tree(old, new)
+    assert len(changes) == 1
+    assert changes[0] == Change(
+        pointer="components.schemas.Approval",
+        kind="added",
+        before=None,
+        after="{… 3 keys}",
+    )
+
+
+def test_diff_tree_reports_changed_scalar_with_both_values() -> None:
+    old = {"components": {"schemas": {"Token": {"properties": {"o": {"example": "Yes"}}}}}}
+    new = {"components": {"schemas": {"Token": {"properties": {"o": {"example": True}}}}}}
+    changes = diff_tree(old, new)
+    assert changes == [
+        Change(
+            pointer="components.schemas.Token.properties.o.example",
+            kind="changed",
+            before='"Yes"',
+            after="true",
+        )
+    ]
+
+
+def test_diff_tree_reports_removed_key() -> None:
+    changes = diff_tree({"info": {"version": "1.0.0"}}, {"info": {}})
+    assert changes == [
+        Change(pointer="info.version", kind="removed", before='"1.0.0"', after=None)
+    ]
+
+
+def test_diff_tree_indexes_list_elements() -> None:
+    changes = diff_tree({"servers": ["a", "b"]}, {"servers": ["a", "c"]})
+    assert changes == [
+        Change(pointer="servers[1]", kind="changed", before='"b"', after='"c"')
+    ]
+
+
+def test_diff_tree_truncates_long_scalar_values() -> None:
+    changes = diff_tree({"d": "x" * 400}, {"d": "y" * 400})
+    assert len(changes[0].after) == 120
+    assert changes[0].after.endswith("…")
