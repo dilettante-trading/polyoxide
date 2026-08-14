@@ -98,6 +98,11 @@ jobs:
             echo "drift=false" >> "$GITHUB_OUTPUT"
           elif [ "$ec" -eq 1 ]; then
             echo "drift=true" >> "$GITHUB_OUTPUT"
+            # Reserve bytes for the `Closes #N` line the PR body appends, so
+            # one rendered file is safe as both issue body and PR body.
+            uv run python ${{ github.workspace }}/.github/scripts/diff_openapi.py render-issue \
+              --output-dir ${{ github.workspace }}/artifacts/${{ matrix.id }} \
+              --reserve 64
           else
             echo "::error::diff_openapi.py exited with $ec — see logs"
             exit "$ec"
@@ -124,45 +129,41 @@ jobs:
           git commit -m "chore(specs): sync ${{ matrix.id }} spec from upstream"
           git push --force-with-lease origin "${BRANCH}"
 
-          # --force makes this idempotent; without the label existing,
+          # --force makes these idempotent; without the labels existing,
           # `gh issue create --label` / `gh pr create --label` fail outright.
           gh label create schema-drift --force \
             --description "Filed by the nightly schema drift check" --color 1D76DB || true
+          gh label create "spec:${SPEC_ID}" --force \
+            --description "Schema drift tracking for the ${SPEC_ID} spec" --color 0E8A16 || true
 
-          ISSUE_TITLE="Schema drift: ${{ matrix.id }}"
-          EXISTING_ISSUE=$(gh issue list --label schema-drift --search "${ISSUE_TITLE} in:title" --state open --json number --jq '.[0].number // empty')
+          ISSUE_TITLE="Schema drift: ${SPEC_ID}"
+          # Label intersection is exact. `--search "<title> in:title"` is a
+          # tokenized full-text search, so `perps` also matched `perps-ws` and
+          # one spec's job edited and closed another spec's issue.
+          MATCHES=$(gh issue list --label schema-drift --label "spec:${SPEC_ID}" \
+            --state open --json number --jq 'sort_by(.number) | map(.number) | join(" ")')
+          set -- $MATCHES
+          if [ "$#" -gt 1 ]; then
+            echo "::warning::${SPEC_ID} has $# open drift issues ($MATCHES); using #$1."
+          fi
+          EXISTING_ISSUE="${1:-}"
           if [ -z "$EXISTING_ISSUE" ]; then
-            EXISTING_ISSUE=$(gh issue create --title "${ISSUE_TITLE}" --label schema-drift --body "$(cat ${ARTIFACT_DIR}/summary.md)" | awk -F/ '{print $NF}')
+            EXISTING_ISSUE=$(gh issue create --title "${ISSUE_TITLE}" \
+              --label schema-drift --label "spec:${SPEC_ID}" \
+              --body-file "${ARTIFACT_DIR}/issue-body.md" | awk -F/ '{print $NF}')
           else
-            gh issue edit "$EXISTING_ISSUE" --body "$(cat ${ARTIFACT_DIR}/summary.md)"
+            gh issue edit "$EXISTING_ISSUE" --body-file "${ARTIFACT_DIR}/issue-body.md"
           fi
 
-          # GitHub caps issue/PR bodies at 65536 characters; a full canonical
-          # diff of a large spec can exceed that and fail `gh pr create`.
-          # Truncate here — the complete diff is in the run's artifacts.
-          DIFF_FILE="${ARTIFACT_DIR}/unified-diff.txt"
-          DIFF_LIMIT=50000
+          # The rendered body is already under the cap with bytes reserved for
+          # the Closes line, so this only appends the linkage.
           PR_BODY=$(mktemp)
-          {
-            cat "${ARTIFACT_DIR}/summary.md"
-            echo ""
-            echo "<details><summary>Canonicalized diff</summary>"
-            echo ""
-            echo '```diff'
-            head -c "$DIFF_LIMIT" "$DIFF_FILE"
-            if [ "$(wc -c < "$DIFF_FILE")" -gt "$DIFF_LIMIT" ]; then
-              echo ""
-              echo "... [truncated — full diff in this workflow run's artifacts]"
-            fi
-            echo '```'
-            echo "</details>"
-            echo ""
-            echo "Closes #${EXISTING_ISSUE}"
-          } > "$PR_BODY"
+          cat "${ARTIFACT_DIR}/issue-body.md" > "$PR_BODY"
+          printf '\nCloses #%s\n' "${EXISTING_ISSUE}" >> "$PR_BODY"
 
           EXISTING_PR=$(gh pr list --head "${BRANCH}" --state open --json number --jq '.[0].number // empty')
           if [ -n "$EXISTING_PR" ]; then
-            gh pr edit "$EXISTING_PR" --body "$(cat ${PR_BODY})"
+            gh pr edit "$EXISTING_PR" --body-file "$PR_BODY"
             exit 0
           fi
 
@@ -178,7 +179,7 @@ jobs:
           set +e
           PR_OUT=$(gh pr create \
             --title "chore(specs): ${SPEC_ID} drift on $(date -u +%Y-%m-%d)" \
-            --body "$(cat ${PR_BODY})" \
+            --body-file "$PR_BODY" \
             --label schema-drift \
             --head "${BRANCH}" \
             --base main 2>&1)
@@ -210,8 +211,10 @@ jobs:
           if [ -n "$EXISTING_PR" ]; then
             gh pr close "$EXISTING_PR" --comment "Drift no longer present (upstream reverted or vendored already updated)"
           fi
-          ISSUE_TITLE="Schema drift: ${{ matrix.id }}"
-          EXISTING_ISSUE=$(gh issue list --label schema-drift --search "${ISSUE_TITLE} in:title" --state open --json number --jq '.[0].number // empty')
+          # Must match the open path exactly. The tokenized title search here
+          # is what closed combos-rfq-ws's issue from the combos-rfq job.
+          EXISTING_ISSUE=$(gh issue list --label schema-drift --label "spec:${{ matrix.id }}" \
+            --state open --json number --jq 'sort_by(.number) | .[0].number // empty')
           if [ -n "$EXISTING_ISSUE" ]; then
             gh issue close "$EXISTING_ISSUE" --comment "Drift recovered $(date -u +%Y-%m-%d)"
           fi
