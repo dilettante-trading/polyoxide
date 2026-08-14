@@ -1,0 +1,13 @@
+openapi: 3.0.0
+info:
+  title: Test API
+  version: 1.0.0
+components:
+  schemas:
+    Token:
+      type: object
+      properties:
+        o:
+          type: string
+          description: Outcome label for the token
+          example: 'Yes'

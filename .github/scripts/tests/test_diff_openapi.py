@@ -247,3 +247,29 @@ def test_cli_check_parse_error_exits_two(tmp_path: Path) -> None:
     )
     assert result.returncode == 2
     assert "YAML parse error" in result.stderr
+
+
+def test_canonicalize_treats_integral_float_as_int() -> None:
+    """YAML `3` and `3.0` are the same JSON number; only Python's int/float
+    split makes them differ. Reported drift on clob for exactly this."""
+    old = (FIXTURES / "openapi-numeric-noise" / "old.yaml").read_text()
+    new = (FIXTURES / "openapi-numeric-noise" / "new.yaml").read_text()
+    assert canonicalize(old) == canonicalize(new)
+
+
+def test_detect_drift_ignores_integral_float_noise() -> None:
+    old = (FIXTURES / "openapi-numeric-noise" / "old.yaml").read_text()
+    new = (FIXTURES / "openapi-numeric-noise" / "new.yaml").read_text()
+    result = detect_drift(old, new)
+    assert result.has_drift is False
+    assert result.endpoints_modified == []
+
+
+def test_canonicalize_distinguishes_bool_from_string() -> None:
+    """Unquoted `Yes` parses as boolean True on a `type: string` field — a real
+    upstream regression. Python's bool-subclasses-int trap would erase it if
+    the normalizer checked isinstance(v, int) before isinstance(v, bool)."""
+    old = (FIXTURES / "openapi-bool-example" / "old.yaml").read_text()
+    new = (FIXTURES / "openapi-bool-example" / "new.yaml").read_text()
+    assert canonicalize(old) != canonicalize(new)
+    assert detect_drift(old, new).has_drift is True

@@ -1,0 +1,15 @@
+openapi: 3.0.0
+info:
+  title: Test API
+  version: 1.0.0
+paths:
+  /rewards:
+    get:
+      summary: Reward rates
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              example:
+                total_daily_rate: 3

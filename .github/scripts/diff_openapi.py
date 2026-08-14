@@ -35,8 +35,8 @@ def detect_drift(old_yaml: str, new_yaml: str) -> DriftResult:
     if canonicalize(old_yaml) == canonicalize(new_yaml):
         return DriftResult(has_drift=False)
 
-    old_doc = yaml.safe_load(old_yaml) or {}
-    new_doc = yaml.safe_load(new_yaml) or {}
+    old_doc = _normalized_doc(old_yaml)
+    new_doc = _normalized_doc(new_yaml)
     old_paths = old_doc.get("paths") or {}
     new_paths = new_doc.get("paths") or {}
 
@@ -84,6 +84,30 @@ def detect_drift(old_yaml: str, new_yaml: str) -> DriftResult:
     )
 
 
+def _normalize(value: object) -> object:
+    """Erase YAML's Python-typing artifacts from a parsed value tree.
+
+    `3` and `3.0` parse to int and float and serialize differently, though
+    they are the same JSON number. Booleans are returned untouched and are
+    checked FIRST: Python's `bool` subclasses `int`, so an isinstance(int)
+    test would match True and rewrite it, destroying real type drift.
+    """
+    if isinstance(value, bool):
+        return value
+    if isinstance(value, float) and value.is_integer():
+        return int(value)
+    if isinstance(value, dict):
+        return {key: _normalize(item) for key, item in value.items()}
+    if isinstance(value, list):
+        return [_normalize(item) for item in value]
+    return value
+
+
+def _normalized_doc(yaml_text: str) -> dict:
+    """Parse a spec into a normalized value tree, defaulting to empty."""
+    return _normalize(yaml.safe_load(yaml_text) or {})
+
+
 def canonicalize(yaml_text: str) -> str:
     """Return a canonical string for the YAML's structural content.
 
@@ -91,7 +115,7 @@ def canonicalize(yaml_text: str) -> str:
     we parse to a Python value tree and emit JSON with sorted keys. Two
     YAMLs whose structural content matches will produce identical strings.
     """
-    parsed = yaml.safe_load(yaml_text)
+    parsed = _normalize(yaml.safe_load(yaml_text))
     return json.dumps(parsed, sort_keys=True, indent=2)
 
 
