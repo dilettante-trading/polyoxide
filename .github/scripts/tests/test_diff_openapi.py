@@ -6,6 +6,7 @@ import subprocess
 import sys
 from pathlib import Path
 
+import pytest
 import yaml
 
 from diff_openapi import (
@@ -402,3 +403,44 @@ def test_render_summary_omits_changes_section_when_empty() -> None:
     result = DriftResult(has_drift=True, endpoints_added=["POST /new"])
     text = render_summary(result, crate="clob", upstream_url="https://x")
     assert "## Changes" not in text
+
+
+def test_diff_tree_distinguishes_int_from_bool() -> None:
+    """Same bool-subclasses-int trap as _normalize, one layer up: plain `!=`
+    finds 1 and True equal, so an int->bool change produced no Change while
+    has_drift was still True."""
+    changes = diff_tree({"example": 1}, {"example": True})
+    assert changes == [
+        Change(pointer="example", kind="changed", before="1", after="true")
+    ]
+
+
+@pytest.mark.parametrize(
+    "fixture",
+    [
+        "openapi-added-endpoint",
+        "openapi-removed-endpoint",
+        "openapi-modified-schema",
+        "openapi-bool-example",
+        "openapi-int-bool-example",
+    ],
+)
+def test_drifting_fixture_always_names_a_finding(fixture: str) -> None:
+    """A summary that reports drift but names nothing is the exact failure this
+    change exists to eliminate — the clob issue did that for weeks. Any fixture
+    with drift must yield at least one named finding.
+    """
+    old = (FIXTURES / fixture / "old.yaml").read_text()
+    new = (FIXTURES / fixture / "new.yaml").read_text()
+    result = detect_drift(old, new)
+    assert result.has_drift is True
+    named = (
+        result.endpoints_added
+        + result.endpoints_removed
+        + result.endpoints_modified
+        + result.channels_added
+        + result.channels_removed
+        + result.channels_modified
+        + [change.pointer for change in result.changes]
+    )
+    assert named, f"{fixture} reports drift but names no finding"

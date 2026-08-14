@@ -72,7 +72,10 @@ def diff_tree(old: object, new: object, prefix: str = "") -> list[Change]:
                 changes.extend(diff_tree(old[index], new[index], child))
         return changes
 
-    if old != new:
+    # `bool` subclasses `int`, so `1 != True` is False and an int->bool change
+    # would produce no Change while canonicalize still reports drift — an issue
+    # that announces drift and names nothing. Compare type first.
+    if type(old) is not type(new) or old != new:
         changes.append(Change(prefix, "changed", _render_value(old), _render_value(new)))
     return changes
 
