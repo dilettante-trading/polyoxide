@@ -15,6 +15,7 @@ from diff_openapi import (
     canonicalize,
     compose_issue_body,
     detect_drift,
+    diff_fingerprint,
     diff_tree,
     render_summary,
 )
@@ -509,3 +510,21 @@ def test_cli_render_issue_writes_body(tmp_path: Path) -> None:
     assert "GET /markets/{id}" in body
     assert "<details><summary>Canonicalized diff</summary>" in body
     assert len(body) <= 65536
+
+
+def test_diff_fingerprint_is_stable() -> None:
+    """Same diff text must hash identically across calls, or an
+    acknowledgement would expire at random."""
+    text = "-old line\n+new line\n"
+    assert diff_fingerprint(text) == diff_fingerprint(text)
+    assert len(diff_fingerprint(text)) == 64
+
+
+def test_diff_fingerprint_changes_with_diff() -> None:
+    """A one-character change must break the match, so acknowledging one
+    disagreement never silences a different one."""
+    assert diff_fingerprint("-a\n+b\n") != diff_fingerprint("-a\n+c\n")
+
+
+def test_diff_fingerprint_of_empty_string() -> None:
+    assert len(diff_fingerprint("")) == 64

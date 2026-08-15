@@ -5,6 +5,7 @@ from __future__ import annotations
 
 import argparse
 import difflib
+import hashlib
 import json
 import shutil
 import sys
@@ -295,6 +296,18 @@ def compose_issue_body(
     if len(diff) <= diff_budget:
         return summary + _DIFF_HEADER + diff + _DIFF_FOOTER
     return summary + _DIFF_HEADER + diff[:diff_budget] + _TRUNCATION_NOTE + _DIFF_FOOTER
+
+
+def diff_fingerprint(diff_text: str) -> str:
+    """SHA-256 hex digest of a canonical unified diff.
+
+    Fingerprints the *disagreement* rather than the upstream document, so an
+    acknowledgement expires in both directions: it stops matching if upstream
+    changes, and also if we adopt part of the drift. Hashing upstream alone
+    would stay silent after a partial adoption, exactly when a fresh look is
+    warranted.
+    """
+    return hashlib.sha256(diff_text.encode("utf-8")).hexdigest()
 
 
 def _cmd_check(args: argparse.Namespace) -> int:
