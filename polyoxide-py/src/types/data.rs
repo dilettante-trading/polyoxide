@@ -10,6 +10,8 @@ py_type!(
     size,
     avg_price,
     initial_value,
+    gross_initial_value,
+    entry_fees_usdc,
     current_value,
     cash_pnl,
     percent_pnl,
