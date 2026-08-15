@@ -3948,7 +3948,7 @@ dependencies = [
 
 [[package]]
 name = "polyoxide"
-version = "0.26.1"
+version = "0.27.0"
 dependencies = [
  "futures-util",
  "polyoxide-clob",
@@ -3960,7 +3960,7 @@ dependencies = [
 
 [[package]]
 name = "polyoxide-cli"
-version = "0.26.1"
+version = "0.27.0"
 dependencies = [
  "arrow",
  "clap",
@@ -3984,7 +3984,7 @@ dependencies = [
 
 [[package]]
 name = "polyoxide-clob"
-version = "0.26.1"
+version = "0.27.0"
 dependencies = [
  "alloy",
  "dotenvy",
@@ -4011,7 +4011,7 @@ dependencies = [
 
 [[package]]
 name = "polyoxide-core"
-version = "0.26.1"
+version = "0.27.0"
 dependencies = [
  "base64",
  "fastrand",
@@ -4031,11 +4031,12 @@ dependencies = [
 
 [[package]]
 name = "polyoxide-data"
-version = "0.26.1"
+version = "0.27.0"
 dependencies = [
  "mockito",
  "polyoxide-core",
  "reqwest 0.12.28",
+ "rust_decimal",
  "serde",
  "serde_json",
  "specta",
@@ -4048,7 +4049,7 @@ dependencies = [
 
 [[package]]
 name = "polyoxide-gamma"
-version = "0.26.1"
+version = "0.27.0"
 dependencies = [
  "chrono",
  "mockito",
@@ -4066,7 +4067,7 @@ dependencies = [
 
 [[package]]
 name = "polyoxide-py"
-version = "0.26.1"
+version = "0.27.0"
 dependencies = [
  "polyoxide-clob",
  "polyoxide-data",
@@ -4080,7 +4081,7 @@ dependencies = [
 
 [[package]]
 name = "polyoxide-relay"
-version = "0.26.1"
+version = "0.27.0"
 dependencies = [
  "alloy",
  "dotenvy",
@@ -5331,6 +5332,7 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "4ccbb212565d2dc177bc15ecb7b039d66c4490da892436a4eee5b394d620c9bc"
 dependencies = [
  "chrono",
+ "rust_decimal",
  "serde",
  "specta-macros",
  "thiserror 1.0.69",

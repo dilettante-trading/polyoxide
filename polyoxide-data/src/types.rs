@@ -263,9 +263,17 @@ pub enum ActivityType {
     Reward,
     /// Conversion activity
     Conversion,
-    /// Collateral deposit
+    /// Collateral deposit.
+    ///
+    /// Upstream excludes deposit rows by default, so filtering on this alone
+    /// returns nothing. Pair it with
+    /// [`ListActivity::exclude_deposits_withdrawals(false)`](crate::api::users::ListActivity::exclude_deposits_withdrawals).
     Deposit,
-    /// Collateral withdrawal
+    /// Collateral withdrawal.
+    ///
+    /// Upstream excludes withdrawal rows by default, so filtering on this alone
+    /// returns nothing. Pair it with
+    /// [`ListActivity::exclude_deposits_withdrawals(false)`](crate::api::users::ListActivity::exclude_deposits_withdrawals).
     Withdrawal,
     /// Yield accrual on collateral
     Yield,
@@ -303,6 +311,130 @@ impl std::fmt::Display for ActivityType {
             Self::Unknown => write!(f, "UNKNOWN"),
         }
     }
+}
+
+/// An ERC20 allowance as reported by `/v1/approvals`.
+///
+/// Upstream sends a string that is either the sentinel `"max"` or a decimal
+/// amount in the token's base units. `ERC1155` entries carry no amount at all,
+/// which is represented by `Option::None` on the containing field rather than
+/// by a variant here.
+#[cfg_attr(feature = "specta", derive(specta::Type))]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+#[serde(untagged)]
+pub enum Allowance {
+    /// The unlimited-allowance sentinel (`"max"`).
+    Max,
+    /// A concrete allowance, in the token's base units.
+    Amount(rust_decimal::Decimal),
+    /// A value that is neither `"max"` nor a decimal `rust_decimal` can hold,
+    /// preserved verbatim.
+    ///
+    /// `rust_decimal` tops out near 7.9e28 while a uint256 allowance can reach
+    /// 1.2e77, so an unusually large approval lands here instead of failing
+    /// deserialization of the entire response.
+    Unknown(String),
+}
+
+impl<'de> Deserialize<'de> for Allowance {
+    fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
+    where
+        D: serde::Deserializer<'de>,
+    {
+        let raw = String::deserialize(deserializer)?;
+        if raw == "max" {
+            return Ok(Allowance::Max);
+        }
+        Ok(match raw.parse::<rust_decimal::Decimal>() {
+            Ok(amount) => Allowance::Amount(amount),
+            Err(_) => Allowance::Unknown(raw),
+        })
+    }
+}
+
+/// What a tracked approval unlocks.
+///
+/// Upstream's values are lowercase and kebab-cased, unlike the UPPERCASE
+/// enums elsewhere in this API, so each variant renames explicitly.
+#[cfg_attr(feature = "specta", derive(specta::Type))]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+pub enum ApprovalFeature {
+    /// Order placement and settlement.
+    #[serde(rename = "trading")]
+    Trading,
+    /// Perpetual futures.
+    #[serde(rename = "perps")]
+    Perps,
+    /// Liquidity reward accrual.
+    #[serde(rename = "rewards")]
+    Rewards,
+    /// Automatic redemption of resolved positions.
+    #[serde(rename = "auto-redeem")]
+    AutoRedeem,
+    /// A feature this client does not recognize (forward-compat).
+    #[serde(other)]
+    Unknown,
+}
+
+/// Token standard of a tracked approval.
+#[cfg_attr(feature = "specta", derive(specta::Type))]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+pub enum ApprovalStandard {
+    /// Carries an allowance amount.
+    #[serde(rename = "ERC20")]
+    Erc20,
+    /// An operator flag with no amount.
+    #[serde(rename = "ERC1155")]
+    Erc1155,
+    /// A standard this client does not recognize (forward-compat).
+    #[serde(other)]
+    Unknown,
+}
+
+/// Approval state for one token and spender pair.
+#[cfg_attr(feature = "specta", derive(specta::Type))]
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ApprovalContract {
+    /// Stable identifier for the pair, such as `UsdcExchange`.
+    pub id: String,
+    /// What the approval unlocks.
+    pub feature: ApprovalFeature,
+    /// Token contract address.
+    pub token: String,
+    /// Spender contract address.
+    pub spender: String,
+    /// Token standard.
+    pub standard: ApprovalStandard,
+    /// Allowance for `ERC20` entries. Always `None` for `ERC1155`, which is an
+    /// operator flag with no amount — read [`approved`](Self::approved) instead.
+    #[serde(default)]
+    pub amount: Option<Allowance>,
+    /// Whether the approval is sufficient for its feature.
+    pub approved: bool,
+}
+
+/// Token approval state for a wallet, from `GET /v1/approvals`.
+#[cfg_attr(feature = "specta", derive(specta::Type))]
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ApprovalsResponse {
+    /// The wallet the approvals were read for.
+    pub address: String,
+    /// Chain the approvals were read on.
+    pub chain_id: u64,
+    /// RFC 3339 timestamp of when the response was generated.
+    ///
+    /// Left as a string deliberately: upstream tracks approval state from
+    /// onchain events rather than reading fresh, so parsing this into a
+    /// timestamp type would imply a freshness guarantee it does not carry.
+    pub checked_at: String,
+    /// Every approval Polymarket tracks, in a stable display order.
+    ///
+    /// Pairs the wallet has never approved are still present with `approved`
+    /// false, so the length does not vary with wallet state. Upstream does not
+    /// publish how many entries that is — do not depend on a count.
+    pub contracts: Vec<ApprovalContract>,
 }
 
 /// Sort field options for activity queries
@@ -383,6 +515,7 @@ pub struct Activity {
 #[cfg_attr(feature = "specta", derive(specta::Type))]
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
+#[non_exhaustive]
 pub struct Position {
     /// Proxy wallet address
     pub proxy_wallet: String,
@@ -396,6 +529,21 @@ pub struct Position {
     pub avg_price: f64,
     /// Initial value of position
     pub initial_value: f64,
+    /// Remaining entry basis including attributed BUY fees.
+    ///
+    /// [`initial_value`](Self::initial_value) and [`avg_price`](Self::avg_price)
+    /// keep their fee-**exclusive** semantics, so the fee-exclusive basis is
+    /// `gross_initial_value - entry_fees_usdc`. `None` means upstream omitted
+    /// the field — treat that as unavailable, not as zero.
+    #[serde(default)]
+    pub gross_initial_value: Option<f64>,
+    /// Attributed BUY-fee component of [`gross_initial_value`](Self::gross_initial_value).
+    ///
+    /// SELL fees are exit costs and are never included. Upstream returns an
+    /// explicit `0` when the component is zero, so `Some(0.0)` (a measured
+    /// zero) and `None` (no data) are different answers.
+    #[serde(default)]
+    pub entry_fees_usdc: Option<f64>,
     /// Current value of position
     pub current_value: f64,
     /// Cash profit and loss
@@ -1671,5 +1819,171 @@ mod tests {
         assert_eq!(meta.positions.len(), 1);
         assert_eq!(meta.positions[0].name, "Alice");
         assert!(meta.positions[0].profile_image.is_none());
+    }
+
+    #[test]
+    fn deserialize_position_fee_basis() {
+        // `entryFeesUsdc: 0` is a *measured* zero and must not collapse to None:
+        // upstream returns an explicit 0 when the fee component is zero, and
+        // omits the field entirely when the data is unavailable.
+        let json = r#"{
+            "proxyWallet": "0xabc123",
+            "asset": "token123",
+            "conditionId": "cond456",
+            "size": 100.5,
+            "avgPrice": 0.65,
+            "initialValue": 65.0,
+            "grossInitialValue": 65.5,
+            "entryFeesUsdc": 0,
+            "currentValue": 70.0,
+            "cashPnl": 5.0,
+            "percentPnl": 7.69,
+            "totalBought": 100.5,
+            "realizedPnl": 2.0,
+            "percentRealizedPnl": 3.08,
+            "curPrice": 0.70,
+            "redeemable": false,
+            "mergeable": true,
+            "title": "Will X happen?",
+            "slug": "will-x-happen",
+            "outcome": "Yes",
+            "outcomeIndex": 0,
+            "oppositeOutcome": "No",
+            "oppositeAsset": "token789",
+            "negativeRisk": false
+        }"#;
+
+        let pos: Position = serde_json::from_str(json).unwrap();
+        assert_eq!(pos.gross_initial_value, Some(65.5));
+        assert_eq!(pos.entry_fees_usdc, Some(0.0));
+        // initialValue keeps fee-exclusive semantics, so it is NOT the gross figure.
+        assert!((pos.initial_value - 65.0).abs() < f64::EPSILON);
+    }
+
+    #[test]
+    fn deserialize_position_without_fee_basis_is_none() {
+        // Older payloads omit both fields; None means "unavailable", not zero.
+        let json = r#"{
+            "proxyWallet": "0xabc123",
+            "asset": "token123",
+            "conditionId": "cond456",
+            "size": 100.5,
+            "avgPrice": 0.65,
+            "initialValue": 65.0,
+            "currentValue": 70.0,
+            "cashPnl": 5.0,
+            "percentPnl": 7.69,
+            "totalBought": 100.5,
+            "realizedPnl": 2.0,
+            "percentRealizedPnl": 3.08,
+            "curPrice": 0.70,
+            "redeemable": false,
+            "mergeable": true,
+            "title": "Will X happen?",
+            "slug": "will-x-happen",
+            "outcome": "Yes",
+            "outcomeIndex": 0,
+            "oppositeOutcome": "No",
+            "oppositeAsset": "token789",
+            "negativeRisk": false
+        }"#;
+
+        let pos: Position = serde_json::from_str(json).unwrap();
+        assert_eq!(pos.gross_initial_value, None);
+        assert_eq!(pos.entry_fees_usdc, None);
+    }
+
+    #[test]
+    fn deserialize_allowance_max_sentinel() {
+        let v: Allowance = serde_json::from_str(r#""max""#).unwrap();
+        assert_eq!(v, Allowance::Max);
+    }
+
+    #[test]
+    fn deserialize_allowance_decimal_amount() {
+        let v: Allowance = serde_json::from_str(r#""1000000""#).unwrap();
+        assert_eq!(
+            v,
+            Allowance::Amount(rust_decimal::Decimal::new(1_000_000, 0))
+        );
+    }
+
+    #[test]
+    fn deserialize_allowance_beyond_decimal_range_is_unknown() {
+        // rust_decimal tops out near 7.9e28; a uint256 allowance can reach
+        // 1.2e77. Without the Unknown arm this would fail the whole response.
+        let huge = "1".repeat(40);
+        let json = format!(r#""{huge}""#);
+        let v: Allowance = serde_json::from_str(&json).unwrap();
+        assert_eq!(v, Allowance::Unknown(huge));
+    }
+
+    #[test]
+    fn deserialize_allowance_unrecognized_sentinel_is_unknown() {
+        let v: Allowance = serde_json::from_str(r#""unlimited""#).unwrap();
+        assert_eq!(v, Allowance::Unknown("unlimited".to_string()));
+    }
+
+    #[test]
+    fn deserialize_approvals_response() {
+        let json = r#"{
+            "address": "0xabc123",
+            "chainId": 137,
+            "checkedAt": "2026-08-10T12:34:56Z",
+            "contracts": [
+                {
+                    "id": "UsdcExchange",
+                    "feature": "trading",
+                    "token": "0xtoken",
+                    "spender": "0xspender",
+                    "standard": "ERC20",
+                    "amount": "max",
+                    "approved": true
+                },
+                {
+                    "id": "CtfExchangeIsApprovedForAll",
+                    "feature": "auto-redeem",
+                    "token": "0xctf",
+                    "spender": "0xspender2",
+                    "standard": "ERC1155",
+                    "approved": false
+                }
+            ]
+        }"#;
+
+        let resp: ApprovalsResponse = serde_json::from_str(json).unwrap();
+        assert_eq!(resp.chain_id, 137);
+        assert_eq!(resp.contracts.len(), 2);
+
+        let erc20 = &resp.contracts[0];
+        assert_eq!(erc20.feature, ApprovalFeature::Trading);
+        assert_eq!(erc20.standard, ApprovalStandard::Erc20);
+        assert_eq!(erc20.amount, Some(Allowance::Max));
+        assert!(erc20.approved);
+
+        // ERC1155 entries carry no amount at all.
+        let erc1155 = &resp.contracts[1];
+        assert_eq!(erc1155.feature, ApprovalFeature::AutoRedeem);
+        assert_eq!(erc1155.standard, ApprovalStandard::Erc1155);
+        assert_eq!(erc1155.amount, None);
+        assert!(!erc1155.approved);
+    }
+
+    #[test]
+    fn deserialize_approval_enums_tolerate_unknown_variants() {
+        // Upstream adds features over time; an unrecognized value must not
+        // fail the whole response.
+        let json = r#"{
+            "id": "SomethingNew",
+            "feature": "staking",
+            "token": "0xtoken",
+            "spender": "0xspender",
+            "standard": "ERC721",
+            "approved": true
+        }"#;
+
+        let c: ApprovalContract = serde_json::from_str(json).unwrap();
+        assert_eq!(c.feature, ApprovalFeature::Unknown);
+        assert_eq!(c.standard, ApprovalStandard::Unknown);
     }
 }

@@ -82,7 +82,7 @@ plus a `manifest.jsonl`. Parquet output requires building the CLI with the
 **API namespaces** — Clients organize endpoints into namespaces:
 - CLOB: `clob.markets()`, `clob.orders()`, `clob.account_api()`, `clob.health()`, `clob.auth()`, `clob.rewards()`, `clob.public_rewards()`, `clob.notifications()`
 - Gamma: `gamma.markets()`, `gamma.events()`, `gamma.series()`, `gamma.tags()`, `gamma.comments()`, `gamma.sports()`, `gamma.search()`, `gamma.user()`, `gamma.health()`
-- Data: `data.user(addr)`, `data.trades()`, `data.holders()`, `data.leaderboard()`, `data.builders()`, `data.live_volume()`, `data.open_interest()`, `data.market_positions()`, `data.combos()`, `data.misc()`, `data.pnl()`, `data.rankings()`, `data.accounting()`, `data.health()`
+- Data: `data.user(addr)`, `data.trades()`, `data.holders()`, `data.leaderboard()`, `data.builders()`, `data.live_volume()`, `data.open_interest()`, `data.market_positions()`, `data.combos()`, `data.misc()`, `data.pnl()`, `data.rankings()`, `data.accounting()`, `data.approvals()`, `data.health()`
 
 `data.pnl()` and `data.rankings()` target sibling hosts (`user-pnl-api` and `lb-api`) that have **no published spec** — see `docs/specs/undocumented/INDEX.md`. Their base URLs are configurable via `DataApiBuilder::pnl_base_url` / `rankings_base_url`, and all three hosts share one connection pool and concurrency budget via `HttpClient::with_base_url`.
 

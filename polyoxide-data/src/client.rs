@@ -5,6 +5,7 @@ use polyoxide_core::{
 use crate::{
     api::{
         accounting::AccountingApi,
+        approvals::ApprovalsApi,
         builders::BuildersApi,
         combos::CombosApi,
         health::Health,
@@ -137,6 +138,13 @@ impl DataApi {
     /// Get combos namespace (`/v1/positions/combos`, `/v1/activity/combos`)
     pub fn combos(&self) -> CombosApi {
         CombosApi {
+            http_client: self.http_client.clone(),
+        }
+    }
+
+    /// Get approvals namespace (`/v1/approvals`)
+    pub fn approvals(&self) -> ApprovalsApi {
+        ApprovalsApi {
             http_client: self.http_client.clone(),
         }
     }

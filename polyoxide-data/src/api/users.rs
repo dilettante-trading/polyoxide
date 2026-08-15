@@ -345,6 +345,19 @@ impl ListActivity {
         self
     }
 
+    /// Include deposit and withdrawal rows (`excludeDepositsWithdrawals`).
+    ///
+    /// Upstream defaults this to `true` and applies the default **even when
+    /// [`activity_type`](Self::activity_type) explicitly requests**
+    /// [`ActivityType::Deposit`] or [`ActivityType::Withdrawal`], so those two
+    /// filters return an empty list unless this is called with `false`.
+    ///
+    /// Leaving it unset sends no parameter, preserving upstream's default.
+    pub fn exclude_deposits_withdrawals(mut self, exclude: bool) -> Self {
+        self.request = self.request.query("excludeDepositsWithdrawals", exclude);
+        self
+    }
+
     /// Filter by trade side (BUY or SELL)
     pub fn side(mut self, side: TradeSide) -> Self {
         self.request = self.request.query("side", side);
