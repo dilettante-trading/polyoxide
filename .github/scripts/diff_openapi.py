@@ -310,6 +310,38 @@ def diff_fingerprint(diff_text: str) -> str:
     return hashlib.sha256(diff_text.encode("utf-8")).hexdigest()
 
 
+def render_actions(spec: str, adopt_url: str, vendored_path: str, fingerprint: str) -> str:
+    """Render the two terminal states as copy-paste blocks.
+
+    Adopting is a single curl; declining is a single JSON entry whose hash is
+    filled in here so nobody has to reproduce the canonicalization by hand.
+    """
+    return "\n".join([
+        "",
+        "## What to do",
+        "",
+        "### Adopt",
+        "",
+        "```bash",
+        f"curl -fsSL {adopt_url} -o {vendored_path}",
+        "```",
+        "",
+        "### Or acknowledge",
+        "",
+        "Record the decision in `docs/specs/.drift-acknowledged.json` and this stops",
+        "refiling until upstream changes or we adopt part of it:",
+        "",
+        "```json",
+        f'  "{spec}": {{',
+        f'    "diff_sha256": "{fingerprint}",',
+        '    "reason": "why this will not be synced",',
+        '    "acknowledged": "YYYY-MM-DD"',
+        "  }",
+        "```",
+        "",
+    ])
+
+
 def load_acknowledged(path: Path | None) -> dict:
     """Read the acknowledgement file, tolerating absence and corruption.
 
@@ -380,6 +412,15 @@ def _cmd_render_issue(args: argparse.Namespace) -> int:
     summary = (args.output_dir / "summary.md").read_text()
     diff_path = args.output_dir / "unified-diff.txt"
     diff = diff_path.read_text() if diff_path.exists() else ""
+
+    if diff and args.spec and args.adopt_url and args.vendored_path:
+        summary += render_actions(
+            spec=args.spec,
+            adopt_url=args.adopt_url,
+            vendored_path=args.vendored_path,
+            fingerprint=diff_fingerprint(diff),
+        )
+
     body = compose_issue_body(summary, diff, reserve=args.reserve)
     (args.output_dir / "issue-body.md").write_text(body)
     return 0
@@ -411,6 +452,10 @@ def main(argv: list[str] | None = None) -> int:
                     help="Directory holding summary.md and unified-diff.txt")
     p2.add_argument("--reserve", type=int, default=0,
                     help="Bytes to withhold for text the caller appends (e.g. a PR's `Closes #N`)")
+    p2.add_argument("--spec", default=None, help="Spec id, for the acknowledge snippet")
+    p2.add_argument("--adopt-url", default=None, help="Upstream URL, for the adopt command")
+    p2.add_argument("--vendored-path", default=None,
+                    help="Repo-relative vendored file path, for the adopt command")
     p2.set_defaults(func=_cmd_render_issue)
 
     ns = parser.parse_args(argv)

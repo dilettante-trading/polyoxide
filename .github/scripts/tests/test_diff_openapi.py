@@ -19,6 +19,7 @@ from diff_openapi import (
     diff_fingerprint,
     diff_tree,
     load_acknowledged,
+    render_actions,
     render_summary,
 )
 
@@ -645,3 +646,82 @@ def test_cli_check_acknowledged_does_not_apply_upstream(tmp_path: Path) -> None:
     )
     assert result.returncode == 3
     assert vendored.read_bytes() == original, "acknowledged drift overwrote the mirror"
+
+
+def test_render_actions_contains_adopt_command() -> None:
+    text = render_actions(
+        spec="clob",
+        adopt_url="https://docs.polymarket.com/api-spec/clob-openapi.yaml",
+        vendored_path="docs/specs/clob/openapi.yaml",
+        fingerprint="a" * 64,
+    )
+    assert "curl -fsSL https://docs.polymarket.com/api-spec/clob-openapi.yaml -o docs/specs/clob/openapi.yaml" in text
+
+
+def test_render_actions_contains_acknowledge_snippet_with_hash() -> None:
+    text = render_actions(
+        spec="clob",
+        adopt_url="https://x/clob.yaml",
+        vendored_path="docs/specs/clob/openapi.yaml",
+        fingerprint="b" * 64,
+    )
+    assert "docs/specs/.drift-acknowledged.json" in text
+    assert '"clob"' in text
+    assert '"diff_sha256": "' + "b" * 64 + '"' in text
+
+
+def test_cli_render_issue_embeds_actions(tmp_path: Path) -> None:
+    out_dir = tmp_path / "out"
+    out_dir.mkdir()
+    subprocess.run(
+        [
+            sys.executable, str(SCRIPT), "check",
+            "--crate", "clob",
+            "--upstream-yaml", str(FIXTURES / "openapi-added-endpoint" / "new.yaml"),
+            "--vendored-yaml", str(FIXTURES / "openapi-added-endpoint" / "old.yaml"),
+            "--upstream-url", "https://example.com/clob.yaml",
+            "--output-dir", str(out_dir),
+        ],
+        capture_output=True, text=True,
+    )
+    digest = (out_dir / "diff-sha256.txt").read_text().strip()
+    result = subprocess.run(
+        [
+            sys.executable, str(SCRIPT), "render-issue",
+            "--output-dir", str(out_dir),
+            "--spec", "clob",
+            "--adopt-url", "https://example.com/clob.yaml",
+            "--vendored-path", "docs/specs/clob/openapi.yaml",
+        ],
+        capture_output=True, text=True,
+    )
+    assert result.returncode == 0, result.stderr
+    body = (out_dir / "issue-body.md").read_text()
+    assert "curl -fsSL https://example.com/clob.yaml -o docs/specs/clob/openapi.yaml" in body
+    assert digest in body
+    assert len(body) <= 65536
+
+
+def test_cli_render_issue_without_action_args_omits_blocks(tmp_path: Path) -> None:
+    """The action args are optional so no-drift runs, which have no diff and
+    nothing to adopt, still render."""
+    out_dir = tmp_path / "out"
+    out_dir.mkdir()
+    subprocess.run(
+        [
+            sys.executable, str(SCRIPT), "check",
+            "--crate", "test",
+            "--upstream-yaml", str(FIXTURES / "openapi-no-drift" / "old.yaml"),
+            "--vendored-yaml", str(FIXTURES / "openapi-no-drift" / "new.yaml"),
+            "--upstream-url", "https://example.com/test.yaml",
+            "--output-dir", str(out_dir),
+        ],
+        capture_output=True, text=True,
+    )
+    result = subprocess.run(
+        [sys.executable, str(SCRIPT), "render-issue", "--output-dir", str(out_dir)],
+        capture_output=True, text=True,
+    )
+    assert result.returncode == 0, result.stderr
+    body = (out_dir / "issue-body.md").read_text()
+    assert "### Adopt" not in body
