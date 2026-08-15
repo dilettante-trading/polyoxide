@@ -1494,3 +1494,53 @@ async fn a_429_makes_the_next_request_wait_even_though_it_never_saw_one() {
          backpressure for the rest of the client"
     );
 }
+
+#[tokio::test]
+async fn activity_sends_exclude_deposits_withdrawals_when_set() {
+    let mut server = Server::new_async().await;
+    let mock = server
+        .mock("GET", "/activity")
+        .match_query(Matcher::AllOf(vec![
+            Matcher::UrlEncoded("user".into(), "0xabc123".into()),
+            Matcher::UrlEncoded("excludeDepositsWithdrawals".into(), "false".into()),
+        ]))
+        .with_status(200)
+        .with_header("content-type", "application/json")
+        .with_body("[]")
+        .create_async()
+        .await;
+
+    let data = test_data(&server);
+    data.user("0xabc123")
+        .activity()
+        .exclude_deposits_withdrawals(false)
+        .send()
+        .await
+        .expect("activity");
+
+    mock.assert_async().await;
+}
+
+#[tokio::test]
+async fn activity_omits_exclude_deposits_withdrawals_when_unset() {
+    // Proves the fix is additive: an existing caller's request is unchanged.
+    //
+    // `Matcher::Exact` on `match_query` compares the WHOLE query string, so
+    // this asserts absence — any extra parameter fails the match. Mockito's
+    // `Matcher::Missing` is a unit variant for *headers* and cannot express
+    // "this query key is absent".
+    let mut server = Server::new_async().await;
+    let mock = server
+        .mock("GET", "/activity")
+        .match_query(Matcher::Exact("user=0xabc123".into()))
+        .with_status(200)
+        .with_header("content-type", "application/json")
+        .with_body("[]")
+        .create_async()
+        .await;
+
+    let data = test_data(&server);
+    data.user("0xabc123").activity().send().await.expect("activity");
+
+    mock.assert_async().await;
+}

@@ -263,9 +263,17 @@ pub enum ActivityType {
     Reward,
     /// Conversion activity
     Conversion,
-    /// Collateral deposit
+    /// Collateral deposit.
+    ///
+    /// Upstream excludes deposit rows by default, so filtering on this alone
+    /// returns nothing. Pair it with
+    /// [`ListActivity::exclude_deposits_withdrawals(false)`](crate::api::users::ListActivity::exclude_deposits_withdrawals).
     Deposit,
-    /// Collateral withdrawal
+    /// Collateral withdrawal.
+    ///
+    /// Upstream excludes withdrawal rows by default, so filtering on this alone
+    /// returns nothing. Pair it with
+    /// [`ListActivity::exclude_deposits_withdrawals(false)`](crate::api::users::ListActivity::exclude_deposits_withdrawals).
     Withdrawal,
     /// Yield accrual on collateral
     Yield,
