@@ -352,6 +352,91 @@ impl<'de> Deserialize<'de> for Allowance {
     }
 }
 
+/// What a tracked approval unlocks.
+///
+/// Upstream's values are lowercase and kebab-cased, unlike the UPPERCASE
+/// enums elsewhere in this API, so each variant renames explicitly.
+#[cfg_attr(feature = "specta", derive(specta::Type))]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+pub enum ApprovalFeature {
+    /// Order placement and settlement.
+    #[serde(rename = "trading")]
+    Trading,
+    /// Perpetual futures.
+    #[serde(rename = "perps")]
+    Perps,
+    /// Liquidity reward accrual.
+    #[serde(rename = "rewards")]
+    Rewards,
+    /// Automatic redemption of resolved positions.
+    #[serde(rename = "auto-redeem")]
+    AutoRedeem,
+    /// A feature this client does not recognize (forward-compat).
+    #[serde(other)]
+    Unknown,
+}
+
+/// Token standard of a tracked approval.
+#[cfg_attr(feature = "specta", derive(specta::Type))]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+pub enum ApprovalStandard {
+    /// Carries an allowance amount.
+    #[serde(rename = "ERC20")]
+    Erc20,
+    /// An operator flag with no amount.
+    #[serde(rename = "ERC1155")]
+    Erc1155,
+    /// A standard this client does not recognize (forward-compat).
+    #[serde(other)]
+    Unknown,
+}
+
+/// Approval state for one token and spender pair.
+#[cfg_attr(feature = "specta", derive(specta::Type))]
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ApprovalContract {
+    /// Stable identifier for the pair, such as `UsdcExchange`.
+    pub id: String,
+    /// What the approval unlocks.
+    pub feature: ApprovalFeature,
+    /// Token contract address.
+    pub token: String,
+    /// Spender contract address.
+    pub spender: String,
+    /// Token standard.
+    pub standard: ApprovalStandard,
+    /// Allowance for `ERC20` entries. Always `None` for `ERC1155`, which is an
+    /// operator flag with no amount — read [`approved`](Self::approved) instead.
+    #[serde(default)]
+    pub amount: Option<Allowance>,
+    /// Whether the approval is sufficient for its feature.
+    pub approved: bool,
+}
+
+/// Token approval state for a wallet, from `GET /v1/approvals`.
+#[cfg_attr(feature = "specta", derive(specta::Type))]
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ApprovalsResponse {
+    /// The wallet the approvals were read for.
+    pub address: String,
+    /// Chain the approvals were read on.
+    pub chain_id: u64,
+    /// RFC 3339 timestamp of when the response was generated.
+    ///
+    /// Left as a string deliberately: upstream tracks approval state from
+    /// onchain events rather than reading fresh, so parsing this into a
+    /// timestamp type would imply a freshness guarantee it does not carry.
+    pub checked_at: String,
+    /// Every approval Polymarket tracks, in a stable display order.
+    ///
+    /// Pairs the wallet has never approved are still present with `approved`
+    /// false, so the length does not vary with wallet state. Upstream does not
+    /// publish how many entries that is — do not depend on a count.
+    pub contracts: Vec<ApprovalContract>,
+}
+
 /// Sort field options for activity queries
 #[cfg_attr(feature = "specta", derive(specta::Type))]
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, Default)]
@@ -1834,5 +1919,68 @@ mod tests {
     fn deserialize_allowance_unrecognized_sentinel_is_unknown() {
         let v: Allowance = serde_json::from_str(r#""unlimited""#).unwrap();
         assert_eq!(v, Allowance::Unknown("unlimited".to_string()));
+    }
+
+    #[test]
+    fn deserialize_approvals_response() {
+        let json = r#"{
+            "address": "0xabc123",
+            "chainId": 137,
+            "checkedAt": "2026-08-10T12:34:56Z",
+            "contracts": [
+                {
+                    "id": "UsdcExchange",
+                    "feature": "trading",
+                    "token": "0xtoken",
+                    "spender": "0xspender",
+                    "standard": "ERC20",
+                    "amount": "max",
+                    "approved": true
+                },
+                {
+                    "id": "CtfExchangeIsApprovedForAll",
+                    "feature": "auto-redeem",
+                    "token": "0xctf",
+                    "spender": "0xspender2",
+                    "standard": "ERC1155",
+                    "approved": false
+                }
+            ]
+        }"#;
+
+        let resp: ApprovalsResponse = serde_json::from_str(json).unwrap();
+        assert_eq!(resp.chain_id, 137);
+        assert_eq!(resp.contracts.len(), 2);
+
+        let erc20 = &resp.contracts[0];
+        assert_eq!(erc20.feature, ApprovalFeature::Trading);
+        assert_eq!(erc20.standard, ApprovalStandard::Erc20);
+        assert_eq!(erc20.amount, Some(Allowance::Max));
+        assert!(erc20.approved);
+
+        // ERC1155 entries carry no amount at all.
+        let erc1155 = &resp.contracts[1];
+        assert_eq!(erc1155.feature, ApprovalFeature::AutoRedeem);
+        assert_eq!(erc1155.standard, ApprovalStandard::Erc1155);
+        assert_eq!(erc1155.amount, None);
+        assert!(!erc1155.approved);
+    }
+
+    #[test]
+    fn deserialize_approval_enums_tolerate_unknown_variants() {
+        // Upstream adds features over time; an unrecognized value must not
+        // fail the whole response.
+        let json = r#"{
+            "id": "SomethingNew",
+            "feature": "staking",
+            "token": "0xtoken",
+            "spender": "0xspender",
+            "standard": "ERC721",
+            "approved": true
+        }"#;
+
+        let c: ApprovalContract = serde_json::from_str(json).unwrap();
+        assert_eq!(c.feature, ApprovalFeature::Unknown);
+        assert_eq!(c.standard, ApprovalStandard::Unknown);
     }
 }
