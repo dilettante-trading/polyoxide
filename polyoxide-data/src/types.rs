@@ -391,6 +391,7 @@ pub struct Activity {
 #[cfg_attr(feature = "specta", derive(specta::Type))]
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
+#[non_exhaustive]
 pub struct Position {
     /// Proxy wallet address
     pub proxy_wallet: String,
@@ -404,6 +405,21 @@ pub struct Position {
     pub avg_price: f64,
     /// Initial value of position
     pub initial_value: f64,
+    /// Remaining entry basis including attributed BUY fees.
+    ///
+    /// [`initial_value`](Self::initial_value) and [`avg_price`](Self::avg_price)
+    /// keep their fee-**exclusive** semantics, so the fee-exclusive basis is
+    /// `gross_initial_value - entry_fees_usdc`. `None` means upstream omitted
+    /// the field — treat that as unavailable, not as zero.
+    #[serde(default)]
+    pub gross_initial_value: Option<f64>,
+    /// Attributed BUY-fee component of [`gross_initial_value`](Self::gross_initial_value).
+    ///
+    /// SELL fees are exit costs and are never included. Upstream returns an
+    /// explicit `0` when the component is zero, so `Some(0.0)` (a measured
+    /// zero) and `None` (no data) are different answers.
+    #[serde(default)]
+    pub entry_fees_usdc: Option<f64>,
     /// Current value of position
     pub current_value: f64,
     /// Cash profit and loss
@@ -1679,5 +1695,77 @@ mod tests {
         assert_eq!(meta.positions.len(), 1);
         assert_eq!(meta.positions[0].name, "Alice");
         assert!(meta.positions[0].profile_image.is_none());
+    }
+
+    #[test]
+    fn deserialize_position_fee_basis() {
+        // `entryFeesUsdc: 0` is a *measured* zero and must not collapse to None:
+        // upstream returns an explicit 0 when the fee component is zero, and
+        // omits the field entirely when the data is unavailable.
+        let json = r#"{
+            "proxyWallet": "0xabc123",
+            "asset": "token123",
+            "conditionId": "cond456",
+            "size": 100.5,
+            "avgPrice": 0.65,
+            "initialValue": 65.0,
+            "grossInitialValue": 65.5,
+            "entryFeesUsdc": 0,
+            "currentValue": 70.0,
+            "cashPnl": 5.0,
+            "percentPnl": 7.69,
+            "totalBought": 100.5,
+            "realizedPnl": 2.0,
+            "percentRealizedPnl": 3.08,
+            "curPrice": 0.70,
+            "redeemable": false,
+            "mergeable": true,
+            "title": "Will X happen?",
+            "slug": "will-x-happen",
+            "outcome": "Yes",
+            "outcomeIndex": 0,
+            "oppositeOutcome": "No",
+            "oppositeAsset": "token789",
+            "negativeRisk": false
+        }"#;
+
+        let pos: Position = serde_json::from_str(json).unwrap();
+        assert_eq!(pos.gross_initial_value, Some(65.5));
+        assert_eq!(pos.entry_fees_usdc, Some(0.0));
+        // initialValue keeps fee-exclusive semantics, so it is NOT the gross figure.
+        assert!((pos.initial_value - 65.0).abs() < f64::EPSILON);
+    }
+
+    #[test]
+    fn deserialize_position_without_fee_basis_is_none() {
+        // Older payloads omit both fields; None means "unavailable", not zero.
+        let json = r#"{
+            "proxyWallet": "0xabc123",
+            "asset": "token123",
+            "conditionId": "cond456",
+            "size": 100.5,
+            "avgPrice": 0.65,
+            "initialValue": 65.0,
+            "currentValue": 70.0,
+            "cashPnl": 5.0,
+            "percentPnl": 7.69,
+            "totalBought": 100.5,
+            "realizedPnl": 2.0,
+            "percentRealizedPnl": 3.08,
+            "curPrice": 0.70,
+            "redeemable": false,
+            "mergeable": true,
+            "title": "Will X happen?",
+            "slug": "will-x-happen",
+            "outcome": "Yes",
+            "outcomeIndex": 0,
+            "oppositeOutcome": "No",
+            "oppositeAsset": "token789",
+            "negativeRisk": false
+        }"#;
+
+        let pos: Position = serde_json::from_str(json).unwrap();
+        assert_eq!(pos.gross_initial_value, None);
+        assert_eq!(pos.entry_fees_usdc, None);
     }
 }
