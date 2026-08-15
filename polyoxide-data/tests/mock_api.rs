@@ -1544,3 +1544,44 @@ async fn activity_omits_exclude_deposits_withdrawals_when_unset() {
 
     mock.assert_async().await;
 }
+
+#[tokio::test]
+async fn approvals_returns_contracts() {
+    let mut server = Server::new_async().await;
+    let mock = server
+        .mock("GET", "/v1/approvals")
+        .match_query(Matcher::UrlEncoded("user".into(), "0xabc123".into()))
+        .with_status(200)
+        .with_header("content-type", "application/json")
+        .with_body(
+            r#"{
+                "address": "0xabc123",
+                "chainId": 137,
+                "checkedAt": "2026-08-10T12:34:56Z",
+                "contracts": [{
+                    "id": "UsdcExchange",
+                    "feature": "trading",
+                    "token": "0xtoken",
+                    "spender": "0xspender",
+                    "standard": "ERC20",
+                    "amount": "max",
+                    "approved": true
+                }]
+            }"#,
+        )
+        .create_async()
+        .await;
+
+    let data = test_data(&server);
+    let resp = data
+        .approvals()
+        .get("0xabc123")
+        .send()
+        .await
+        .expect("approvals");
+
+    assert_eq!(resp.address, "0xabc123");
+    assert_eq!(resp.chain_id, 137);
+    assert_eq!(resp.contracts[0].id, "UsdcExchange");
+    mock.assert_async().await;
+}
