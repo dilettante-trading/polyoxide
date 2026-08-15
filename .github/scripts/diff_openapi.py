@@ -310,6 +310,26 @@ def diff_fingerprint(diff_text: str) -> str:
     return hashlib.sha256(diff_text.encode("utf-8")).hexdigest()
 
 
+def load_acknowledged(path: Path | None) -> dict:
+    """Read the acknowledgement file, tolerating absence and corruption.
+
+    Every failure resolves to 'nothing is acknowledged'. Silence must only
+    ever be produced by an exact hash match, never by a missing or unreadable
+    file — a config mistake has to make the workflow louder, not quieter.
+    """
+    if path is None or not path.exists():
+        return {}
+    try:
+        parsed = json.loads(path.read_text())
+    except (json.JSONDecodeError, OSError) as exc:
+        print(f"::warning::could not read {path}: {exc}", file=sys.stderr)
+        return {}
+    if not isinstance(parsed, dict):
+        print(f"::warning::{path} is not a JSON object; ignoring", file=sys.stderr)
+        return {}
+    return parsed
+
+
 def _cmd_check(args: argparse.Namespace) -> int:
     upstream_yaml = args.upstream_yaml.read_text()
     vendored_yaml = args.vendored_yaml.read_text()
@@ -340,6 +360,15 @@ def _cmd_check(args: argparse.Namespace) -> int:
         tofile=f"upstream {args.upstream_url} (canonical)",
     ))
     (args.output_dir / "unified-diff.txt").write_text(diff)
+
+    fingerprint = diff_fingerprint(diff)
+    (args.output_dir / "diff-sha256.txt").write_text(fingerprint + "\n")
+
+    entry = load_acknowledged(args.acknowledged_file).get(args.crate) or {}
+    if entry.get("diff_sha256") == fingerprint:
+        # Acknowledged: we decided not to sync, so the mirror must not be
+        # overwritten even if --apply-on-drift was passed.
+        return 3
 
     if args.apply_on_drift:
         shutil.copyfile(args.upstream_yaml, args.vendored_yaml)
@@ -372,6 +401,9 @@ def main(argv: list[str] | None = None) -> int:
     p.add_argument("--output-dir", type=Path, required=True)
     p.add_argument("--apply-on-drift", action="store_true",
                    help="If drift detected, overwrite vendored-yaml with upstream-yaml's raw bytes")
+    p.add_argument("--acknowledged-file", type=Path, default=None,
+                   help="JSON file of accepted-as-different specs, keyed by crate id "
+                        "with a diff_sha256 field; a match exits 3 instead of 1")
     p.set_defaults(func=_cmd_check)
 
     p2 = sub.add_parser("render-issue", help="Compose the GitHub issue body from a check's artifacts.")

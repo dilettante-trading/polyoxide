@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import json
 import subprocess
 import sys
 from pathlib import Path
@@ -17,6 +18,7 @@ from diff_openapi import (
     detect_drift,
     diff_fingerprint,
     diff_tree,
+    load_acknowledged,
     render_summary,
 )
 
@@ -528,3 +530,118 @@ def test_diff_fingerprint_changes_with_diff() -> None:
 
 def test_diff_fingerprint_of_empty_string() -> None:
     assert len(diff_fingerprint("")) == 64
+
+
+def test_load_acknowledged_missing_file_is_empty(tmp_path: Path) -> None:
+    """Absent file must mean 'nothing acknowledged', never a crash — the
+    failure direction has to be toward speaking up."""
+    assert load_acknowledged(tmp_path / "nope.json") == {}
+
+
+def test_load_acknowledged_malformed_file_is_empty(tmp_path: Path) -> None:
+    bad = tmp_path / "bad.json"
+    bad.write_text("{not json at all")
+    assert load_acknowledged(bad) == {}
+
+
+def test_load_acknowledged_reads_entries(tmp_path: Path) -> None:
+    good = tmp_path / "ack.json"
+    good.write_text(json.dumps({"clob": {"diff_sha256": "abc", "reason": "x"}}))
+    assert load_acknowledged(good) == {"clob": {"diff_sha256": "abc", "reason": "x"}}
+
+
+def _run_check(tmp_path: Path, ack_file: Path | None, vendored: Path | None = None):
+    """Run `check` on the added-endpoint fixture pair, optionally with an
+    acknowledgement file. Returns (CompletedProcess, out_dir)."""
+    out_dir = tmp_path / "out"
+    out_dir.mkdir(exist_ok=True)
+    if vendored is None:
+        vendored = FIXTURES / "openapi-added-endpoint" / "old.yaml"
+    cmd = [
+        sys.executable, str(SCRIPT), "check",
+        "--crate", "test",
+        "--upstream-yaml", str(FIXTURES / "openapi-added-endpoint" / "new.yaml"),
+        "--vendored-yaml", str(vendored),
+        "--upstream-url", "https://example.com/test.yaml",
+        "--output-dir", str(out_dir),
+    ]
+    if ack_file is not None:
+        cmd += ["--acknowledged-file", str(ack_file)]
+    return subprocess.run(cmd, capture_output=True, text=True), out_dir
+
+
+def test_cli_check_writes_fingerprint_file(tmp_path: Path) -> None:
+    result, out_dir = _run_check(tmp_path, None)
+    assert result.returncode == 1
+    digest = (out_dir / "diff-sha256.txt").read_text().strip()
+    assert len(digest) == 64
+
+
+def test_cli_check_acknowledged_exits_three(tmp_path: Path) -> None:
+    _, out_dir = _run_check(tmp_path, None)
+    digest = (out_dir / "diff-sha256.txt").read_text().strip()
+    ack = tmp_path / "ack.json"
+    ack.write_text(json.dumps({"test": {"diff_sha256": digest, "reason": "declined"}}))
+    result, _ = _run_check(tmp_path, ack)
+    assert result.returncode == 3, result.stderr
+
+
+def test_cli_check_stale_acknowledgement_exits_one(tmp_path: Path) -> None:
+    """A hash that no longer matches must refile. This is the expiry working."""
+    ack = tmp_path / "ack.json"
+    ack.write_text(json.dumps({"test": {"diff_sha256": "0" * 64, "reason": "stale"}}))
+    result, _ = _run_check(tmp_path, ack)
+    assert result.returncode == 1
+
+
+def test_cli_check_acknowledgement_for_other_spec_exits_one(tmp_path: Path) -> None:
+    _, out_dir = _run_check(tmp_path, None)
+    digest = (out_dir / "diff-sha256.txt").read_text().strip()
+    ack = tmp_path / "ack.json"
+    ack.write_text(json.dumps({"someothercrate": {"diff_sha256": digest}}))
+    result, _ = _run_check(tmp_path, ack)
+    assert result.returncode == 1
+
+
+def test_cli_check_missing_acknowledged_file_exits_one(tmp_path: Path) -> None:
+    result, _ = _run_check(tmp_path, tmp_path / "does-not-exist.json")
+    assert result.returncode == 1
+
+
+def test_cli_check_malformed_acknowledged_file_exits_one(tmp_path: Path) -> None:
+    bad = tmp_path / "bad.json"
+    bad.write_text("{ broken")
+    result, _ = _run_check(tmp_path, bad)
+    assert result.returncode == 1
+
+
+def test_cli_check_acknowledged_does_not_apply_upstream(tmp_path: Path) -> None:
+    """The one silent-corruption path: acknowledging means we decided NOT to
+    sync, so the vendored bytes must survive untouched even with
+    --apply-on-drift passed."""
+    vendored = tmp_path / "vendored.yaml"
+    original = (FIXTURES / "openapi-added-endpoint" / "old.yaml").read_bytes()
+    vendored.write_bytes(original)
+    out_dir = tmp_path / "out2"
+    out_dir.mkdir()
+
+    base = [
+        sys.executable, str(SCRIPT), "check",
+        "--crate", "test",
+        "--upstream-yaml", str(FIXTURES / "openapi-added-endpoint" / "new.yaml"),
+        "--vendored-yaml", str(vendored),
+        "--upstream-url", "https://example.com/test.yaml",
+        "--output-dir", str(out_dir),
+    ]
+    # First pass with no acknowledgement, to learn the digest.
+    subprocess.run(base, capture_output=True, text=True)
+    digest = (out_dir / "diff-sha256.txt").read_text().strip()
+
+    ack = tmp_path / "ack.json"
+    ack.write_text(json.dumps({"test": {"diff_sha256": digest}}))
+    result = subprocess.run(
+        base + ["--acknowledged-file", str(ack), "--apply-on-drift"],
+        capture_output=True, text=True,
+    )
+    assert result.returncode == 3
+    assert vendored.read_bytes() == original, "acknowledged drift overwrote the mirror"
