@@ -5,6 +5,7 @@ from __future__ import annotations
 
 import argparse
 import difflib
+import hashlib
 import json
 import shutil
 import sys
@@ -297,6 +298,70 @@ def compose_issue_body(
     return summary + _DIFF_HEADER + diff[:diff_budget] + _TRUNCATION_NOTE + _DIFF_FOOTER
 
 
+def diff_fingerprint(diff_text: str) -> str:
+    """SHA-256 hex digest of a canonical unified diff.
+
+    Fingerprints the *disagreement* rather than the upstream document, so an
+    acknowledgement expires in both directions: it stops matching if upstream
+    changes, and also if we adopt part of the drift. Hashing upstream alone
+    would stay silent after a partial adoption, exactly when a fresh look is
+    warranted.
+    """
+    return hashlib.sha256(diff_text.encode("utf-8")).hexdigest()
+
+
+def render_actions(spec: str, adopt_url: str, vendored_path: str, fingerprint: str) -> str:
+    """Render the two terminal states as copy-paste blocks.
+
+    Adopting is a single curl; declining is a single JSON entry whose hash is
+    filled in here so nobody has to reproduce the canonicalization by hand.
+    """
+    return "\n".join([
+        "",
+        "## What to do",
+        "",
+        "### Adopt",
+        "",
+        "```bash",
+        f"curl -fsSL {adopt_url} -o {vendored_path}",
+        "```",
+        "",
+        "### Or acknowledge",
+        "",
+        "Record the decision in `docs/specs/.drift-acknowledged.json` and this stops",
+        "refiling until upstream changes or we adopt part of it:",
+        "",
+        "```json",
+        f'  "{spec}": {{',
+        f'    "diff_sha256": "{fingerprint}",',
+        '    "reason": "why this will not be synced",',
+        '    "acknowledged": "YYYY-MM-DD"',
+        "  }",
+        "```",
+        "",
+    ])
+
+
+def load_acknowledged(path: Path | None) -> dict:
+    """Read the acknowledgement file, tolerating absence and corruption.
+
+    Every failure resolves to 'nothing is acknowledged'. Silence must only
+    ever be produced by an exact hash match, never by a missing or unreadable
+    file — a config mistake has to make the workflow louder, not quieter.
+    """
+    if path is None or not path.exists():
+        return {}
+    try:
+        parsed = json.loads(path.read_text())
+    except (json.JSONDecodeError, OSError) as exc:
+        print(f"::warning::could not read {path}: {exc}", file=sys.stderr)
+        return {}
+    if not isinstance(parsed, dict):
+        print(f"::warning::{path} is not a JSON object; ignoring", file=sys.stderr)
+        return {}
+    return parsed
+
+
 def _cmd_check(args: argparse.Namespace) -> int:
     upstream_yaml = args.upstream_yaml.read_text()
     vendored_yaml = args.vendored_yaml.read_text()
@@ -328,6 +393,15 @@ def _cmd_check(args: argparse.Namespace) -> int:
     ))
     (args.output_dir / "unified-diff.txt").write_text(diff)
 
+    fingerprint = diff_fingerprint(diff)
+    (args.output_dir / "diff-sha256.txt").write_text(fingerprint + "\n")
+
+    entry = load_acknowledged(args.acknowledged_file).get(args.crate) or {}
+    if entry.get("diff_sha256") == fingerprint:
+        # Acknowledged: we decided not to sync, so the mirror must not be
+        # overwritten even if --apply-on-drift was passed.
+        return 3
+
     if args.apply_on_drift:
         shutil.copyfile(args.upstream_yaml, args.vendored_yaml)
 
@@ -338,6 +412,15 @@ def _cmd_render_issue(args: argparse.Namespace) -> int:
     summary = (args.output_dir / "summary.md").read_text()
     diff_path = args.output_dir / "unified-diff.txt"
     diff = diff_path.read_text() if diff_path.exists() else ""
+
+    if diff and args.spec and args.adopt_url and args.vendored_path:
+        summary += render_actions(
+            spec=args.spec,
+            adopt_url=args.adopt_url,
+            vendored_path=args.vendored_path,
+            fingerprint=diff_fingerprint(diff),
+        )
+
     body = compose_issue_body(summary, diff, reserve=args.reserve)
     (args.output_dir / "issue-body.md").write_text(body)
     return 0
@@ -359,6 +442,9 @@ def main(argv: list[str] | None = None) -> int:
     p.add_argument("--output-dir", type=Path, required=True)
     p.add_argument("--apply-on-drift", action="store_true",
                    help="If drift detected, overwrite vendored-yaml with upstream-yaml's raw bytes")
+    p.add_argument("--acknowledged-file", type=Path, default=None,
+                   help="JSON file of accepted-as-different specs, keyed by crate id "
+                        "with a diff_sha256 field; a match exits 3 instead of 1")
     p.set_defaults(func=_cmd_check)
 
     p2 = sub.add_parser("render-issue", help="Compose the GitHub issue body from a check's artifacts.")
@@ -366,6 +452,10 @@ def main(argv: list[str] | None = None) -> int:
                     help="Directory holding summary.md and unified-diff.txt")
     p2.add_argument("--reserve", type=int, default=0,
                     help="Bytes to withhold for text the caller appends (e.g. a PR's `Closes #N`)")
+    p2.add_argument("--spec", default=None, help="Spec id, for the acknowledge snippet")
+    p2.add_argument("--adopt-url", default=None, help="Upstream URL, for the adopt command")
+    p2.add_argument("--vendored-path", default=None,
+                    help="Repo-relative vendored file path, for the adopt command")
     p2.set_defaults(func=_cmd_render_issue)
 
     ns = parser.parse_args(argv)

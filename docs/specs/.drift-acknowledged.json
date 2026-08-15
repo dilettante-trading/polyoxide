@@ -1,0 +1,7 @@
+{
+  "clob": {
+    "diff_sha256": "1f0a915475aefb502b5d48a467d1d70e88bce8e2044d9d7eb2ab9abe596eb165",
+    "reason": "Upstream's re-serialization dropped the quotes on `example: 'Yes'` for the outcome-label field, so YAML now parses it as boolean true on a `type: string` property. Adopting these bytes would import an invalid example into the mirror. Revisit if upstream fixes the quoting.",
+    "acknowledged": "2026-08-15"
+  }
+}

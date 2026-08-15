@@ -5,9 +5,11 @@ on:
     - cron: "0 6 * * *"
   workflow_dispatch: {}
 
+# Read-only on the repository. This workflow files issues; it does not commit,
+# push branches, or open PRs. Actions cannot open PRs here anyway (org policy),
+# and adopting a drift is a one-line curl a maintainer runs from the issue.
 permissions:
-  contents: write
-  pull-requests: write
+  contents: read
   issues: write
 
 concurrency:
@@ -43,20 +45,11 @@ jobs:
           - { id: clob-ws-user,   url: "https://docs.polymarket.com/asyncapi-user.json",               vendored: docs/specs/clob/asyncapi-user.json }
           - { id: perps-ws,       url: "https://docs.polymarket.com/asyncapi-perps.json",              vendored: docs/specs/perps/asyncapi.json }
           - { id: combos-rfq-ws,  url: "https://docs.polymarket.com/asyncapi-rfq.json",                vendored: docs/specs/combos-rfq/asyncapi.json }
-    env:
-      BRANCH: nightly-schema-drift/${{ matrix.id }}
     steps:
       - uses: actions/checkout@v5
-        with:
-          fetch-depth: 0
       - uses: astral-sh/setup-uv@v7
       - run: uv sync
         working-directory: .github/scripts
-
-      - name: Configure git for bot commits
-        run: |
-          git config user.name "github-actions[bot]"
-          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
 
       - name: Fetch upstream spec (with retries)
         id: fetch
@@ -76,7 +69,7 @@ jobs:
           echo "fetched=false" >> "$GITHUB_OUTPUT"
           echo "::warning::Failed to fetch ${UPSTREAM_URL} after retries; skipping drift check for this entry."
           # Exit success so the matrix entry doesn't count as "infra failure" — we
-          # explicitly choose to skip rather than file false-positive PRs.
+          # explicitly choose to skip rather than file a false-positive issue.
           exit 0
 
       - name: Detect drift
@@ -91,46 +84,39 @@ jobs:
             --upstream-url "${{ steps.fetch.outputs.url }}" \
             --vendored-label "${{ matrix.vendored }}" \
             --output-dir ${{ github.workspace }}/artifacts/${{ matrix.id }} \
-            --apply-on-drift
+            --acknowledged-file ${{ github.workspace }}/docs/specs/.drift-acknowledged.json
           ec=$?
           set -e
+          # Three-valued, because three exit codes do not fit in a boolean.
+          # `drift` used to be true/false here; leaving it alongside `state`
+          # would give one fact two sources of truth.
           if [ "$ec" -eq 0 ]; then
-            echo "drift=false" >> "$GITHUB_OUTPUT"
+            echo "state=clean" >> "$GITHUB_OUTPUT"
+          elif [ "$ec" -eq 3 ]; then
+            echo "state=acknowledged" >> "$GITHUB_OUTPUT"
           elif [ "$ec" -eq 1 ]; then
-            echo "drift=true" >> "$GITHUB_OUTPUT"
-            # Reserve bytes for the `Closes #N` line the PR body appends, so
-            # one rendered file is safe as both issue body and PR body.
+            echo "state=drift" >> "$GITHUB_OUTPUT"
             uv run python ${{ github.workspace }}/.github/scripts/diff_openapi.py render-issue \
               --output-dir ${{ github.workspace }}/artifacts/${{ matrix.id }} \
-              --reserve 64
+              --spec "${{ matrix.id }}" \
+              --adopt-url "${{ steps.fetch.outputs.url }}" \
+              --vendored-path "${{ matrix.vendored }}"
           else
             echo "::error::diff_openapi.py exited with $ec — see logs"
             exit "$ec"
           fi
         working-directory: .github/scripts
 
-      - name: Open or update drift PR + issue
-        if: steps.fetch.outputs.fetched == 'true' && steps.drift.outputs.drift == 'true'
+      - name: Open or update drift issue
+        if: steps.fetch.outputs.fetched == 'true' && steps.drift.outputs.state == 'drift'
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-          BRANCH: ${{ env.BRANCH }}
           SPEC_ID: ${{ matrix.id }}
         run: |
           ARTIFACT_DIR="${{ github.workspace }}/artifacts/${{ matrix.id }}"
 
-          # Re-checkout the schema-drift branch (or create it).
-          git fetch origin "${BRANCH}:${BRANCH}" 2>/dev/null || true
-          git checkout -B "${BRANCH}"
-          git add ${{ matrix.vendored }}
-          if git diff --staged --quiet; then
-            echo "No file change to commit (perhaps idempotent re-run); aborting PR ops."
-            exit 0
-          fi
-          git commit -m "chore(specs): sync ${{ matrix.id }} spec from upstream"
-          git push --force-with-lease origin "${BRANCH}"
-
           # --force makes these idempotent; without the labels existing,
-          # `gh issue create --label` / `gh pr create --label` fail outright.
+          # `gh issue create --label` fails outright.
           gh label create schema-drift --force \
             --description "Filed by the nightly schema drift check" --color 1D76DB || true
           gh label create "spec:${SPEC_ID}" --force \
@@ -148,73 +134,40 @@ jobs:
           fi
           EXISTING_ISSUE="${1:-}"
           if [ -z "$EXISTING_ISSUE" ]; then
-            EXISTING_ISSUE=$(gh issue create --title "${ISSUE_TITLE}" \
+            gh issue create --title "${ISSUE_TITLE}" \
               --label schema-drift --label "spec:${SPEC_ID}" \
-              --body-file "${ARTIFACT_DIR}/issue-body.md" | awk -F/ '{print $NF}')
+              --body-file "${ARTIFACT_DIR}/issue-body.md"
           else
             gh issue edit "$EXISTING_ISSUE" --body-file "${ARTIFACT_DIR}/issue-body.md"
           fi
 
-          # The rendered body is already under the cap with bytes reserved for
-          # the Closes line, so this only appends the linkage.
-          PR_BODY=$(mktemp)
-          cat "${ARTIFACT_DIR}/issue-body.md" > "$PR_BODY"
-          printf '\nCloses #%s\n' "${EXISTING_ISSUE}" >> "$PR_BODY"
-
-          EXISTING_PR=$(gh pr list --head "${BRANCH}" --state open --json number --jq '.[0].number // empty')
-          if [ -n "$EXISTING_PR" ]; then
-            gh pr edit "$EXISTING_PR" --body-file "$PR_BODY"
-            exit 0
-          fi
-
-          # `gh pr create` is refused outright when "Allow GitHub Actions to
-          # create and approve pull requests" is disabled for the repo or org.
-          # That is a settings gap, not a drift finding: the synced bytes are
-          # already pushed to ${BRANCH} and the tracking issue is already filed,
-          # so no signal is lost. Degrade to a warning rather than reporting a
-          # red nightly every night until someone flips the toggle — a
-          # permanently-red workflow trains maintainers to ignore it, which
-          # would mask the very drift this job exists to raise. Any *other*
-          # failure is a genuine fault and still fails the step.
-          set +e
-          PR_OUT=$(gh pr create \
-            --title "chore(specs): ${SPEC_ID} drift on $(date -u +%Y-%m-%d)" \
-            --body-file "$PR_BODY" \
-            --label schema-drift \
-            --head "${BRANCH}" \
-            --base main 2>&1)
-          PR_EC=$?
-          set -e
-          printf '%s\n' "$PR_OUT"
-          if [ "$PR_EC" -ne 0 ]; then
-            if printf '%s' "$PR_OUT" | grep -qF "not permitted to create or approve pull requests"; then
-              echo "::warning::Actions may not open PRs in this repo, so no ${SPEC_ID} drift PR was created. The synced spec is committed on branch ${BRANCH} and tracked in issue #${EXISTING_ISSUE} — open the PR by hand, or enable Settings → Actions → General → Workflow permissions → 'Allow GitHub Actions to create and approve pull requests'."
-              exit 0
-            fi
-            exit "$PR_EC"
-          fi
-
       - name: Upload drift artifacts
-        if: always() && steps.drift.outputs.drift == 'true'
+        # Explicitly positive: when the fetch fails this step is reached with an
+        # empty `state`, and a `!= 'clean'` test would try to upload artifacts
+        # that were never written.
+        if: always() && (steps.drift.outputs.state == 'drift' || steps.drift.outputs.state == 'acknowledged')
         uses: actions/upload-artifact@v6
         with:
           name: schema-${{ matrix.id }}
           path: artifacts/${{ matrix.id }}/
 
-      - name: Close stale drift PR + issue (recovery)
-        if: steps.fetch.outputs.fetched == 'true' && steps.drift.outputs.drift == 'false'
+      - name: Converge (close the tracking issue)
+        # Exit 0 and exit 3 reach the same end state — no open issue — and
+        # differ only in the comment, so they share this step.
+        if: steps.fetch.outputs.fetched == 'true' && steps.drift.outputs.state != 'drift'
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-          BRANCH: ${{ env.BRANCH }}
         run: |
-          EXISTING_PR=$(gh pr list --head "${BRANCH}" --state open --json number --jq '.[0].number // empty')
-          if [ -n "$EXISTING_PR" ]; then
-            gh pr close "$EXISTING_PR" --comment "Drift no longer present (upstream reverted or vendored already updated)"
+          if [ "${{ steps.drift.outputs.state }}" = "acknowledged" ]; then
+            COMMENT="Drift acknowledged $(date -u +%Y-%m-%d) — the canonical diff still matches the entry in \`docs/specs/.drift-acknowledged.json\`. This will refile automatically if upstream changes or the mirror is partly adopted."
+          else
+            COMMENT="Drift recovered $(date -u +%Y-%m-%d)"
           fi
-          # Must match the open path exactly. The tokenized title search here
-          # is what closed combos-rfq-ws's issue from the combos-rfq job.
+          # Must match the open path exactly. The tokenized title search that
+          # used to be here is what closed combos-rfq-ws's issue from the
+          # combos-rfq job.
           EXISTING_ISSUE=$(gh issue list --label schema-drift --label "spec:${{ matrix.id }}" \
             --state open --json number --jq 'sort_by(.number) | .[0].number // empty')
           if [ -n "$EXISTING_ISSUE" ]; then
-            gh issue close "$EXISTING_ISSUE" --comment "Drift recovered $(date -u +%Y-%m-%d)"
+            gh issue close "$EXISTING_ISSUE" --comment "$COMMENT"
           fi
