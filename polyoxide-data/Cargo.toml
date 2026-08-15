@@ -17,11 +17,15 @@ specta = ["dep:specta"]
 [dependencies]
 polyoxide-core = { workspace = true }
 reqwest = { workspace = true }
+rust_decimal = { workspace = true }
 serde = { workspace = true }
 serde_json = { workspace = true }
 thiserror = { workspace = true }
 url = { workspace = true }
-specta = { version = "=2.0.0-rc.20", features = ["derive", "serde"], optional = true }
+# `rust_decimal` maps `Decimal` to `String` in the exported type graph, which
+# is what it is on the wire. Without it, any specta-deriving type that reaches
+# a `Decimal` fails to compile under `--all-features`.
+specta = { version = "=2.0.0-rc.20", features = ["derive", "serde", "rust_decimal"], optional = true }
 
 [dev-dependencies]
 mockito = { workspace = true }
