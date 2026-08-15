@@ -1540,7 +1540,11 @@ async fn activity_omits_exclude_deposits_withdrawals_when_unset() {
         .await;
 
     let data = test_data(&server);
-    data.user("0xabc123").activity().send().await.expect("activity");
+    data.user("0xabc123")
+        .activity()
+        .send()
+        .await
+        .expect("activity");
 
     mock.assert_async().await;
 }

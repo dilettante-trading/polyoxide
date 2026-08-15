@@ -1902,7 +1902,10 @@ mod tests {
     #[test]
     fn deserialize_allowance_decimal_amount() {
         let v: Allowance = serde_json::from_str(r#""1000000""#).unwrap();
-        assert_eq!(v, Allowance::Amount(rust_decimal::Decimal::new(1_000_000, 0)));
+        assert_eq!(
+            v,
+            Allowance::Amount(rust_decimal::Decimal::new(1_000_000, 0))
+        );
     }
 
     #[test]
