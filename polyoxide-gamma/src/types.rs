@@ -1331,27 +1331,41 @@ mod tests {
     }
 
     // ── UserResponse ────────────────────────────────────────────
+    //
+    // `address` and `id` are not tested here because they do not exist: the
+    // wire never sends either — see `UserResponse`'s doc comment and
+    // `docs/plans/2026-08-19-gamma-type-parity-worklist.md` finding #10.
+    // `tests/wire_agreement.rs` is the guard against them (or anything else
+    // invented) reappearing.
 
     #[test]
     fn test_user_response() {
         let json = r#"{
             "proxyWallet": "0xproxy",
-            "address": "0xsigner",
-            "id": "u1",
-            "name": "polytrader"
+            "name": "polytrader",
+            "takerTier": 0,
+            "takerTierName": "Tier 0",
+            "weightedVolume": 0.0
         }"#;
         let user: crate::api::user::UserResponse = serde_json::from_str(json).unwrap();
         assert_eq!(user.proxy.as_deref(), Some("0xproxy"));
         assert_eq!(user.name.as_deref(), Some("polytrader"));
+        assert_eq!(user.taker_tier, 0);
+        assert_eq!(user.taker_tier_name, "Tier 0");
+        assert_eq!(user.weighted_volume, 0.0);
     }
 
     #[test]
-    fn test_user_response_all_null() {
-        let json = r#"{}"#;
+    fn test_user_response_only_required_fields() {
+        // taker_tier, taker_tier_name and weighted_volume are the schema's
+        // only required properties; everything else may be absent.
+        let json = r#"{
+            "takerTier": 0,
+            "takerTierName": "Tier 0",
+            "weightedVolume": 0.0
+        }"#;
         let user: crate::api::user::UserResponse = serde_json::from_str(json).unwrap();
         assert!(user.proxy.is_none());
-        assert!(user.address.is_none());
-        assert!(user.id.is_none());
         assert!(user.name.is_none());
         assert!(user.created_at.is_none());
         assert!(user.profile_image.is_none());
@@ -1359,6 +1373,7 @@ mod tests {
         assert!(user.bio.is_none());
         assert!(user.pseudonym.is_none());
         assert!(user.x_username.is_none());
+        assert!(user.discord_username.is_none());
         assert!(user.verified_badge.is_none());
         assert!(user.users.is_empty());
     }
@@ -1367,8 +1382,6 @@ mod tests {
     fn test_user_response_full_profile() {
         let json = r#"{
             "proxyWallet": "0xproxy",
-            "address": "0xsigner",
-            "id": "u1",
             "name": "polytrader",
             "createdAt": "2024-01-15T10:00:00Z",
             "profileImage": "https://example.com/avatar.png",
@@ -1376,10 +1389,14 @@ mod tests {
             "bio": "DeFi enthusiast",
             "pseudonym": "poly_anon",
             "xUsername": "polytrader_x",
+            "discordUsername": "polytrader#0001",
             "verifiedBadge": true,
+            "takerTier": 2,
+            "takerTierName": "Silver",
+            "weightedVolume": 89074.462449,
             "users": [
-                {"id": "uid-1", "creator": true, "mod": false},
-                {"id": "uid-2", "creator": false, "mod": true}
+                {"id": "uid-1", "creator": true, "mod": false, "communityMod": false},
+                {"id": "uid-2", "creator": false, "mod": true, "communityMod": true}
             ]
         }"#;
         let user: crate::api::user::UserResponse = serde_json::from_str(json).unwrap();
@@ -1394,30 +1411,43 @@ mod tests {
         assert_eq!(user.bio.as_deref(), Some("DeFi enthusiast"));
         assert_eq!(user.pseudonym.as_deref(), Some("poly_anon"));
         assert_eq!(user.x_username.as_deref(), Some("polytrader_x"));
+        assert_eq!(user.discord_username.as_deref(), Some("polytrader#0001"));
         assert_eq!(user.verified_badge, Some(true));
+        assert_eq!(user.taker_tier, 2);
+        assert_eq!(user.taker_tier_name, "Silver");
+        assert_eq!(user.weighted_volume, 89074.462449);
         assert_eq!(user.users.len(), 2);
+        assert_eq!(user.users[0].id, "uid-1");
         assert!(user.users[0].creator);
         assert!(!user.users[0].moderator);
+        assert!(!user.users[0].community_mod);
+        assert_eq!(user.users[1].id, "uid-2");
         assert!(!user.users[1].creator);
         assert!(user.users[1].moderator);
+        assert!(user.users[1].community_mod);
     }
 
     #[test]
     fn test_user_info_deserialization() {
-        let json = r#"{"id": "uid-1", "creator": true, "mod": false}"#;
+        let json = r#"{"id": "uid-1", "creator": true, "mod": false, "communityMod": true}"#;
         let info: crate::api::user::UserInfo = serde_json::from_str(json).unwrap();
-        assert_eq!(info.id.as_deref(), Some("uid-1"));
+        assert_eq!(info.id, "uid-1");
         assert!(info.creator);
         assert!(!info.moderator);
+        assert!(info.community_mod);
     }
 
     #[test]
     fn test_user_info_defaults() {
-        let json = r#"{}"#;
+        // `id` is the schema's only required property on this object;
+        // `creator`, `mod` and `communityMod` may all be absent — observed
+        // live for `communityMod` (1 of 39 sampled nested `users[]` entries).
+        let json = r#"{"id": "uid-1"}"#;
         let info: crate::api::user::UserInfo = serde_json::from_str(json).unwrap();
-        assert!(info.id.is_none());
+        assert_eq!(info.id, "uid-1");
         assert!(!info.creator);
         assert!(!info.moderator);
+        assert!(!info.community_mod);
     }
 
     // ── CountResponse ────────────────────────────────────────────

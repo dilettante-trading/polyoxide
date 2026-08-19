@@ -41,6 +41,7 @@
 //! deserialization before these assertions ever ran. `EXPECTED_ABSENT` is
 //! what makes an invented `Option<T>` field fail too.
 
+use polyoxide_gamma::api::user::UserResponse;
 use polyoxide_gamma::types::{Comment, ParentEntityType, Profile};
 use serde_json::Value;
 
@@ -48,17 +49,26 @@ const FULL: &str = include_str!("fixtures/comment_full.json");
 const SPARSE: &str = include_str!("fixtures/comment_sparse.json");
 const PROFILE_FULL: &str = include_str!("fixtures/profile_full.json");
 const PROFILE_SPARSE: &str = include_str!("fixtures/profile_sparse.json");
+const USER_RESPONSE_FULL: &str = include_str!("fixtures/user_response_full.json");
+const USER_RESPONSE_SPARSE: &str = include_str!("fixtures/user_response_sparse.json");
 
 /// Wire keys deliberately left unmodelled, each with a reason.
 ///
 /// Adding an entry is a written decision that shows up in a reviewed diff.
 /// There is no wildcard. Paths are dotted from the root, e.g.
 /// `comment.profile.someKey`.
-const IGNORED: &[(&str, &str)] = &[(
-    "profile.$schema",
-    "response metadata (a link to the published JSON Schema for this \
-     endpoint), not data — see docs/specs/gamma/OBSERVED.md",
-)];
+const IGNORED: &[(&str, &str)] = &[
+    (
+        "profile.$schema",
+        "response metadata (a link to the published JSON Schema for this \
+         endpoint), not data — see docs/specs/gamma/OBSERVED.md",
+    ),
+    (
+        "user.$schema",
+        "response metadata (a link to the published JSON Schema for this \
+         endpoint), not data — see docs/specs/gamma/OBSERVED.md",
+    ),
+];
 
 /// Keys the type emits that the captured payloads do not contain.
 ///
@@ -158,6 +168,26 @@ const EXPECTED_ABSENT: &[(&str, &str)] = &[
         "the sparse capture's subject has not set one; absent in 49/65 sampled \
          profiles (see tests/fixtures/README.md)",
     ),
+    (
+        "user.discordUsername",
+        "not observed in a 39-address sample of /public-profile — see \
+         tests/fixtures/README.md",
+    ),
+    (
+        "user.profileImage",
+        "the sparse capture's subject has not set one; present in 12/39 sampled \
+         /public-profile responses (see tests/fixtures/README.md)",
+    ),
+    (
+        "user.bio",
+        "the sparse capture's subject has not set one; present in 5/39 sampled \
+         /public-profile responses (see tests/fixtures/README.md)",
+    ),
+    (
+        "user.xUsername",
+        "the sparse capture's subject has not set one; present in 5/39 sampled \
+         /public-profile responses (see tests/fixtures/README.md)",
+    ),
 ];
 
 /// Walk a captured payload against what the type re-emits, asserting both
@@ -246,6 +276,37 @@ fn sparse_profile_agrees_with_captured_payload() {
         .unwrap_or_else(|e| panic!("captured payload must deserialize into Profile: {e}"));
     let emitted = serde_json::to_value(&typed).expect("Profile must serialize");
     check(&wire, &emitted, "profile");
+}
+
+#[test]
+fn full_user_response_agrees_with_captured_payload() {
+    let wire: Value = serde_json::from_str(USER_RESPONSE_FULL).expect("fixture is valid JSON");
+    let typed: UserResponse = serde_json::from_value(wire.clone())
+        .unwrap_or_else(|e| panic!("captured payload must deserialize into UserResponse: {e}"));
+    let emitted = serde_json::to_value(&typed).expect("UserResponse must serialize");
+    check(&wire, &emitted, "user");
+}
+
+#[test]
+fn sparse_user_response_agrees_with_captured_payload() {
+    let wire: Value = serde_json::from_str(USER_RESPONSE_SPARSE).expect("fixture is valid JSON");
+    let typed: UserResponse = serde_json::from_value(wire.clone())
+        .unwrap_or_else(|e| panic!("captured payload must deserialize into UserResponse: {e}"));
+    let emitted = serde_json::to_value(&typed).expect("UserResponse must serialize");
+    check(&wire, &emitted, "user");
+}
+
+#[test]
+fn user_response_tolerates_null_users() {
+    // The published schema (`PublicProfileResponse.json`) types `users` as
+    // `["array","null"]` — an explicit JSON `null` is legal, distinct from the
+    // key being absent (already covered by `#[serde(default)]`). Not observed
+    // in the wild across a 39-address sample, but the schema allows it, so it
+    // must not error.
+    let json = r#"{"takerTier": 0, "takerTierName": "Tier 0", "weightedVolume": 0, "users": null}"#;
+    let user: UserResponse = serde_json::from_str(json)
+        .expect("an explicit null for `users` must deserialize, not error");
+    assert!(user.users.is_empty());
 }
 
 #[test]

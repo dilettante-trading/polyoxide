@@ -127,9 +127,10 @@ covers `Profile` in both directions, `mock_api.rs`'s hand-written `"id":
 `live_get_profile_by_address` now distinguishes a 404 (legitimate skip) from a
 deserialization error (hard failure) instead of swallowing both.
 
-Discovering `$schema` also bears on finding #10 below (`UserResponse`, served
-by `/public-profile` under `PublicProfileResponse.json`) — that finding
-remains open; only `Profile` was in scope for this fix.
+Discovering `$schema` also bore on finding #10 below (`UserResponse`, served
+by `/public-profile` under `PublicProfileResponse.json`) — that half of the
+finding has since been fixed the same way; see #10's update. `SearchProfile`,
+the other half of #10, remains open — `/public-search` serves no `$schema`.
 
 The rest of this section is the original finding, kept for the record.
 
@@ -434,7 +435,38 @@ parses it.
 
 **Confidence: high** — spec and 1,309 live objects agree.
 
-### 10. `UserResponse::address`, `UserResponse::id`, `SearchProfile::address`
+### 10. `UserResponse::address`, `UserResponse::id`, `SearchProfile::address` — PARTIALLY FIXED
+
+Fixed for `UserResponse` and `UserInfo` in the change that pulled this half of
+the finding into PR #29. Both were rewritten field-for-field against
+`/public-profile`'s own published JSON Schema (`PublicProfileResponse.json`
+and, for each `users[]` entry, `PublicProfileUser.json` — both linked from the
+response's `$schema` key) rather than `openapi.yaml`, which does not describe
+this endpoint at all — see the extended section in
+`docs/specs/gamma/OBSERVED.md`. `address` and `id` are gone from
+`UserResponse` (neither was ever real); `taker_tier`, `taker_tier_name` and
+`weighted_volume` are now required, matching the schema and every capture
+behind `tests/fixtures/user_response_{full,sparse}.json` (39-address sample).
+`UserInfo::id` is now a required `String` (the schema's only required property
+on that object) instead of `Option<String>`, and `UserInfo` gains
+`community_mod`, observed absent from 1 of 39 sampled nested entries and so
+kept `#[serde(default)]` rather than required. `tests/wire_agreement.rs` now
+covers `UserResponse` in both directions, including a hand-written case for
+the schema's explicit `null` on `users`; the `types.rs` unit tests that
+asserted `"address"`/`"id"` from a hand-written fixture are updated to the
+real shape.
+
+**`SearchProfile::address` (`api/search.rs:142`) is still open.** It was
+explicitly out of scope for this change, and unlike `/public-profile`,
+`/public-search` serves **no** `$schema` key (verified 2026-08-19 — the
+response body is `{"events": [...], "profiles": [...], "pagination": {...}}`
+with no schema link at any level). Fixing it will need capture-based work
+against the live host rather than a served schema, the way `Profile` and
+`Comment` were originally approached before `$schema` was discovered.
+
+The rest of this section is the original finding, kept for the record.
+
+#### Original finding
 
 | Field | Location | Doc comment claims |
 |---|---|---|

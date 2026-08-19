@@ -13,6 +13,7 @@
 - *(gamma)* [**breaking**] `Profile` described a payload `/profiles/user_address/{address}` has never sent — `id` was required and the server never sends it, so `Gamma::user().get_by_address` failed for every address. Rewritten against the endpoint's own published `PublicProfile.json` schema (linked from the response's `$schema` key) rather than `openapi.yaml`, whose `Profile` schema turns out to describe an unrelated object. Removed: `id`, `user`, `referral`, `created_by`, `updated_by`, `updated_at`, `utm_source`, `utm_medium`, `utm_campaign`, `utm_content`, `utm_term`, `wallet_activated`, `display_username_public`, `profile_image_optimized`, `is_close_only`, `is_cert_req`, `cert_req_date`. Added, now required: `taker_tier`, `taker_tier_name`, `weighted_volume` — sent on every response, and not in `openapi.yaml` at all
 - *(cli)* [**breaking**] Drop the rejected `market` entity type, add `perps-asset`
 - *(py)* [**breaking**] Align the comment bindings with the corrected types — `CommentUser` is removed and `CommentProfile` added, the comment getters renamed to match, and `GammaComments.get` now returns `list[Comment]`
+- *(gamma)* [**breaking**] `UserResponse` and `UserInfo` described a payload `/public-profile` has never sent. Rewritten against the endpoint's own published `PublicProfileResponse.json` / `PublicProfileUser.json` schemas (linked from the response's `$schema` key) rather than invented fields. Removed: `UserResponse::address`, `UserResponse::id` — the wire never sends either; the account id lives at `users[].id` instead. Added, now required: `UserResponse::taker_tier`, `taker_tier_name`, `weighted_volume` — sent on every response. Added, optional: `UserResponse::discord_username`. `UserInfo::id` is now a required `String`, not `Option<String>` — the schema's only required property on that object. Added `UserInfo::community_mod`
 
 ### 📚 Documentation
 
@@ -21,6 +22,7 @@
 - Record the gamma type parity sweep in `docs/plans/2026-08-19-gamma-type-parity-worklist.md`, cataloguing 15 further parity findings across the crate, including a second runtime failure of the same class (`Profile::id` is required and never sent)
 - *(specs)* Sync perps, perps-ws, bridge and combos-rfq mirrors to upstream (#23, #20, #24, #21) — mirror-only, no client crate implements them
 - *(gamma)* Record in `docs/specs/gamma/OBSERVED.md` that some endpoints publish a live, authoritative JSON Schema via a `$schema` response key — a better oracle than `openapi.yaml` where present
+- *(gamma)* Record in `docs/plans/2026-08-19-gamma-type-parity-worklist.md` that finding #10 is partially fixed — `UserResponse`/`UserInfo` done, `SearchProfile::address` still open — and that `/public-search` serves no `$schema`
 
 ### 🧪 Testing
 
@@ -29,6 +31,7 @@
 - *(gamma)* Fix the four live comment tests
 - *(gamma)* Capture live profile payloads as fixtures and extend `tests/wire_agreement.rs` to `Profile`
 - *(gamma)* Stop `live_get_profile_by_address` from swallowing a deserialization error as if it were a 404
+- *(gamma)* Capture live `/public-profile` payloads as fixtures and extend `tests/wire_agreement.rs` to `UserResponse`, including a hand-written case for the schema's explicit `null` on `users`
 
 ### 🎨 Styling
 

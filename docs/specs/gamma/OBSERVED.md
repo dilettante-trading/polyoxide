@@ -79,7 +79,22 @@ for an endpoint, check whether a live response from it carries `$schema`. If
 it does, fetch that URL and treat it as the oracle instead — it is closer to
 the server than the vendored mirror can ever be, since the mirror is a
 point-in-time copy and the served schema is generated from whatever the server
-is actually running. This bears directly on `UserResponse`
-(`polyoxide-gamma/src/api/user.rs`, `/public-profile`), which serves
-`PublicProfileResponse.json` and remains unfixed — see finding #10 in the
-worklist.
+is actually running.
+
+`GET /public-profile` (`polyoxide-gamma/src/api/user.rs`) is the second
+confirmation of the same pattern: it serves `PublicProfileResponse.json`, a
+sibling schema to `PublicProfile.json` (10 properties there, 12 here, plus the
+nested `PublicProfileUser.json` for each entry of `users[]`). Neither schema
+has ever described a top-level `address` or `id` — the fork invented both,
+exactly as it invented `Profile::id` (#1) and `SearchProfile::address` (part
+of the same finding, #10). Fixed by modelling `polyoxide_gamma::api::user::UserResponse`
+and `UserInfo` against `PublicProfileResponse.json` / `PublicProfileUser.json`
+directly, verified against `tests/fixtures/user_response_{full,sparse}.json`
+(39-address live sample) and enforced by `tests/wire_agreement.rs`. Key
+findings: the account id lives nested at `users[].id` (required on that
+object), not at any top level; `discordUsername` is a documented optional
+property never observed on the wire across the sample; and `users[].communityMod`,
+while usually present, was absent for 1 of 39 sampled nested entries —
+confirming it is genuinely optional rather than always-sent-as-false. `finding
+#10`'s remaining half, `SearchProfile::address`, is still open — see
+`docs/plans/2026-08-19-gamma-type-parity-worklist.md`.
