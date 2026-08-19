@@ -117,14 +117,25 @@ impl PublicSearch {
     }
 }
 
-/// Response from public search
+/// Response from public search (`GET /public-search`).
 #[cfg_attr(feature = "specta", derive(specta::Type))]
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct SearchResponse {
-    /// Matching user profiles
+    /// Matching user profiles.
+    ///
+    /// The server can send a JSON `null` for individual entries in this
+    /// array in place of a profile object, in addition to omitting the whole
+    /// key (already handled by `#[serde(default)]`) — reproducible with
+    /// `q=sports&search_profiles=true&limit_per_type=20`, stable across 5/5
+    /// attempts on 2026-08-19 (see `docs/specs/gamma/OBSERVED.md` and
+    /// `tests/fixtures/README.md`). Each element is therefore
+    /// `Option<SearchProfile>`, not `SearchProfile` — `Option<T>`'s own
+    /// `Deserialize` impl decodes a `null` element as `None`, so no custom
+    /// deserializer is needed, but a caller that assumes every entry is
+    /// populated must filter or unwrap.
     #[serde(default)]
-    pub profiles: Vec<SearchProfile>,
+    pub profiles: Vec<Option<SearchProfile>>,
     /// Matching events
     #[serde(default)]
     pub events: Vec<Event>,
@@ -133,15 +144,27 @@ pub struct SearchResponse {
     pub tags: Vec<Tag>,
 }
 
-/// Profile result from search
+/// Profile result from search (`GET /public-search`).
+///
+/// Unlike `/public-profile` and `/profiles/user_address/{address}`,
+/// `/public-search` serves no `$schema` key — there is no published contract
+/// to model this type against. Modelled instead from a 228-profile,
+/// 12-query live sample (2026-08-19; see `tests/fixtures/README.md`):
+/// `name`, `display_username_public` and `proxy_wallet` were present on
+/// every sampled profile and `pseudonym` on all but 5, but that is a strong
+/// sample, not a guarantee the way a schema's `required` list would be, so
+/// every field here stays `Option`. There is no `address` field: the old one
+/// was invented — 0 of 228 sampled profiles carried it — and the value
+/// callers actually want is [`proxy_wallet`](Self::proxy_wallet).
 #[cfg_attr(feature = "specta", derive(specta::Type))]
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
+#[non_exhaustive]
 pub struct SearchProfile {
-    /// User address
-    pub address: Option<String>,
     /// Display name
     pub name: Option<String>,
+    /// Whether the username is displayed publicly
+    pub display_username_public: Option<bool>,
     /// Profile image URL
     pub profile_image: Option<String>,
     /// User pseudonym
@@ -182,11 +205,13 @@ mod tests {
 
     #[test]
     fn test_search_response_deserialization() {
+        // Shape captured live from `/public-search` — no `address` key; the
+        // server has never sent one (see tests/wire_agreement.rs).
         let json = r#"{
             "profiles": [
                 {
-                    "address": "0xabc",
                     "name": "trader1",
+                    "displayUsernamePublic": true,
                     "profileImage": null,
                     "pseudonym": null,
                     "bio": null,
@@ -198,9 +223,32 @@ mod tests {
         }"#;
         let resp: SearchResponse = serde_json::from_str(json).unwrap();
         assert_eq!(resp.profiles.len(), 1);
-        assert_eq!(resp.profiles[0].address.as_deref(), Some("0xabc"));
+        let profile = resp.profiles[0].as_ref().expect("entry is not null");
+        assert_eq!(profile.name.as_deref(), Some("trader1"));
+        assert_eq!(profile.display_username_public, Some(true));
         assert!(resp.events.is_empty());
         assert!(resp.tags.is_empty());
+    }
+
+    #[test]
+    fn test_search_response_tolerates_null_profile_entry() {
+        // `/public-search` sends a JSON `null` for some entries in `profiles`
+        // — see tests/wire_agreement.rs's
+        // `search_response_tolerates_null_profile_entries`, which pins this
+        // against a captured payload. This is the hand-written analogue.
+        let json = r#"{
+            "profiles": [
+                {"name": "trader1", "proxyWallet": "0xproxy"},
+                null
+            ],
+            "events": [],
+            "tags": []
+        }"#;
+        let resp: SearchResponse =
+            serde_json::from_str(json).expect("a null profile entry must deserialize, not error");
+        assert_eq!(resp.profiles.len(), 2);
+        assert!(resp.profiles[0].is_some());
+        assert!(resp.profiles[1].is_none());
     }
 
     #[test]
@@ -222,16 +270,16 @@ mod tests {
     #[test]
     fn test_search_profile_deserialization() {
         let json = r#"{
-            "address": "0x123",
             "name": "Searcher",
+            "displayUsernamePublic": true,
             "profileImage": "https://img.example.com/pic.png",
             "pseudonym": "anon",
             "bio": "A bio",
             "proxyWallet": "0xproxy123"
         }"#;
         let profile: SearchProfile = serde_json::from_str(json).unwrap();
-        assert_eq!(profile.address.as_deref(), Some("0x123"));
         assert_eq!(profile.name.as_deref(), Some("Searcher"));
+        assert_eq!(profile.display_username_public, Some(true));
         assert_eq!(profile.bio.as_deref(), Some("A bio"));
         assert_eq!(profile.proxy_wallet.as_deref(), Some("0xproxy123"));
     }
@@ -240,8 +288,8 @@ mod tests {
     fn test_search_profile_all_null() {
         let json = r#"{}"#;
         let profile: SearchProfile = serde_json::from_str(json).unwrap();
-        assert!(profile.address.is_none());
         assert!(profile.name.is_none());
+        assert!(profile.display_username_public.is_none());
         assert!(profile.profile_image.is_none());
         assert!(profile.pseudonym.is_none());
         assert!(profile.bio.is_none());

@@ -4,23 +4,27 @@ use polyoxide_gamma::Gamma;
 
 use crate::commands::gamma::SortOrder;
 
-/// Parent entity type for comments
+/// Parent entity type for comments.
+///
+/// Mirrors [`polyoxide_gamma::types::ParentEntityType`] minus its `Unknown`
+/// forward-compat variant, which is not a filter a user can meaningfully ask
+/// for. `market` is deliberately absent: the server rejects it.
 #[derive(Debug, Clone, Copy, ValueEnum)]
 pub enum ParentEntityType {
     /// Event comments
     Event,
     /// Series comments
     Series,
-    /// Market comments
-    Market,
+    /// Perpetual futures asset comments
+    PerpsAsset,
 }
 
-impl ParentEntityType {
-    fn as_str(&self) -> &'static str {
-        match self {
-            Self::Event => "Event",
-            Self::Series => "Series",
-            Self::Market => "Market",
+impl From<ParentEntityType> for polyoxide_gamma::types::ParentEntityType {
+    fn from(value: ParentEntityType) -> Self {
+        match value {
+            ParentEntityType::Event => Self::Event,
+            ParentEntityType::Series => Self::Series,
+            ParentEntityType::PerpsAsset => Self::PerpsAsset,
         }
     }
 }
@@ -92,7 +96,7 @@ impl CommentsCommand {
                     request = request.order(ord);
                 }
                 if let Some(pet) = parent_entity_type {
-                    request = request.parent_entity_type(pet.as_str());
+                    request = request.parent_entity_type(pet.into());
                 }
                 if let Some(pei) = parent_entity_id {
                     request = request.parent_entity_id(pei);
@@ -156,7 +160,10 @@ mod tests {
             } => {
                 let pet = parent_entity_type.unwrap();
                 assert!(matches!(pet, ParentEntityType::Event));
-                assert_eq!(pet.as_str(), "Event");
+                assert_eq!(
+                    polyoxide_gamma::types::ParentEntityType::from(pet).to_string(),
+                    "Event"
+                );
             }
         }
     }
@@ -170,23 +177,36 @@ mod tests {
             } => {
                 let pet = parent_entity_type.unwrap();
                 assert!(matches!(pet, ParentEntityType::Series));
-                assert_eq!(pet.as_str(), "Series");
+                assert_eq!(
+                    polyoxide_gamma::types::ParentEntityType::from(pet).to_string(),
+                    "Series"
+                );
             }
         }
     }
 
     #[test]
-    fn parent_entity_type_market() {
-        let cmd = parse(&["test", "list", "--parent-entity-type", "market"]);
+    fn parent_entity_type_perps_asset() {
+        let cmd = parse(&["test", "list", "--parent-entity-type", "perps-asset"]);
         match cmd {
             CommentsCommand::List {
                 parent_entity_type, ..
             } => {
                 let pet = parent_entity_type.unwrap();
-                assert!(matches!(pet, ParentEntityType::Market));
-                assert_eq!(pet.as_str(), "Market");
+                assert!(matches!(pet, ParentEntityType::PerpsAsset));
+                assert_eq!(
+                    polyoxide_gamma::types::ParentEntityType::from(pet).to_string(),
+                    "PerpsAsset"
+                );
             }
         }
+    }
+
+    #[test]
+    fn market_is_no_longer_accepted() {
+        // Probed live 2026-08-19: the server rejects both `market` and
+        // `Market` with a 422. It must not be reachable from the CLI.
+        assert_parse_err(&["test", "list", "--parent-entity-type", "market"]);
     }
 
     #[test]

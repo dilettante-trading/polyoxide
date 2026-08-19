@@ -893,16 +893,24 @@ async fn get_team_by_id() {
 #[tokio::test]
 async fn get_profile_by_address() {
     let mut server = Server::new_async().await;
+
+    // Field shape taken verbatim from tests/fixtures/profile_full.json — a
+    // captured live payload. See tests/wire_agreement.rs for the byte-level
+    // agreement check; this test is only exercising request/response wiring.
     let mock = server
         .mock("GET", "/profiles/user_address/0xdeadbeef")
         .with_status(200)
         .with_header("content-type", "application/json")
         .with_body(
             r#"{
-                "id": "p-1",
+                "$schema": "https://gamma-api.polymarket.com/schemas/PublicProfile.json",
                 "name": "Alice",
+                "pseudonym": "Gracious-Fame",
                 "proxyWallet": "0xdeadbeef",
-                "walletActivated": true
+                "createdAt": "2025-10-13T19:31:36.489292Z",
+                "takerTier": 2,
+                "takerTierName": "Silver",
+                "weightedVolume": 89074.462449
             }"#,
         )
         .create_async()
@@ -915,10 +923,11 @@ async fn get_profile_by_address() {
         .send()
         .await
         .unwrap();
-    assert_eq!(profile.id, "p-1");
     assert_eq!(profile.name.as_deref(), Some("Alice"));
     assert_eq!(profile.proxy_wallet.as_deref(), Some("0xdeadbeef"));
-    assert_eq!(profile.wallet_activated, Some(true));
+    assert_eq!(profile.taker_tier, 2);
+    assert_eq!(profile.taker_tier_name, "Silver");
+    assert_eq!(profile.weighted_volume, 89074.462449);
     mock.assert_async().await;
 }
 
@@ -1221,4 +1230,73 @@ async fn series_and_search_forward_newly_added_params() {
 
     series.assert_async().await;
     search.assert_async().await;
+}
+
+// ── /comments/{id} ─────────────────────────────────────────────
+
+#[tokio::test]
+async fn get_comment_by_id_returns_the_whole_thread() {
+    let mut server = Server::new_async().await;
+
+    // Probed live 2026-08-19: requesting one comment id returns the entire
+    // thread — root first, the requested id somewhere inside it.
+    let mock = server
+        .mock("GET", "/comments/3218542")
+        .with_status(200)
+        .with_header("content-type", "application/json")
+        .with_body(
+            r#"[
+                {"id": "3218360", "body": "root", "parentEntityType": "Event",
+                 "parentEntityID": 45915, "reportCount": 0, "reactionCount": 7},
+                {"id": "3218542", "body": "reply", "parentEntityType": "Event",
+                 "parentEntityID": 45915, "parentCommentID": "3218360",
+                 "reportCount": 0, "reactionCount": 1}
+            ]"#,
+        )
+        .create_async()
+        .await;
+
+    let gamma = test_gamma(&server);
+    let thread = gamma.comments().get("3218542").send().await.unwrap();
+
+    assert_eq!(thread.len(), 2);
+    assert!(
+        thread.iter().any(|c| c.id == "3218542"),
+        "the requested comment must be somewhere in the thread"
+    );
+    assert_eq!(
+        thread[0].id, "3218360",
+        "the root comes first, not the request"
+    );
+    mock.assert_async().await;
+}
+
+#[tokio::test]
+async fn list_comments_sends_typed_parent_entity_type() {
+    let mut server = Server::new_async().await;
+
+    let mock = server
+        .mock("GET", "/comments")
+        .match_query(Matcher::AllOf(vec![
+            Matcher::UrlEncoded("parent_entity_type".into(), "PerpsAsset".into()),
+            Matcher::UrlEncoded("parent_entity_id".into(), "42".into()),
+        ]))
+        .with_status(200)
+        .with_header("content-type", "application/json")
+        .with_body("[]")
+        .create_async()
+        .await;
+
+    let gamma = test_gamma(&server);
+    let comments = gamma
+        .comments()
+        .list()
+        .parent_entity_type(polyoxide_gamma::types::ParentEntityType::PerpsAsset)
+        .parent_entity_id(42)
+        .send()
+        .await
+        .unwrap();
+
+    assert!(comments.is_empty());
+    mock.assert_async().await;
 }

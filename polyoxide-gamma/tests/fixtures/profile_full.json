@@ -1,0 +1,12 @@
+{
+  "$schema": "https://gamma-api.polymarket.com/schemas/PublicProfile.json",
+  "name": "LiquidatedDegen",
+  "pseudonym": "Gracious-Fame",
+  "proxyWallet": "0xc7e53ac4a7c76d6df8b794de2e7d0794265d2d3a",
+  "profileImage": "https://polymarket-upload.s3.us-east-2.amazonaws.com/profile-image-3553565-6352b076-798c-49f2-9f3e-69a79d1810cc.png",
+  "bio": "Follow my X for breaking news and plays.",
+  "createdAt": "2025-10-13T19:31:36.489292Z",
+  "takerTier": 2,
+  "takerTierName": "Silver",
+  "weightedVolume": 89074.462449
+}

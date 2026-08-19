@@ -170,7 +170,7 @@ Relay operations need either `BUILDER_API_KEY`, `BUILDER_SECRET`, `BUILDER_PASS_
 Upstream Polymarket API documentation lives in `docs/specs/`. See `docs/specs/INDEX.md` for the full index. These are the source of truth for endpoint contracts, rate limits, and response schemas — sourced from https://docs.polymarket.com and the official OpenAPI specs.
 
 **Not yet implemented.** `docs/specs/` also mirrors three upstream APIs that no
-polyoxide crate covers: **Perps** (`perps/`, 49 endpoints on
+polyoxide crate covers: **Perps** (`perps/`, 55 endpoints on
 `api.perpetuals.polymarket.com`, with its own `POLYMARKET-PROXY` /
 `POLYMARKET-SECRET` header auth rather than the L1/L2 scheme), **Bridge**
 (`bridge/`, 5 endpoints), and **Combos RFQ** (`combos-rfq/`, 4 endpoints). They
@@ -178,6 +178,15 @@ are mirrored so parity audits can see them; adding client support for any of
 them is a separate piece of work.
 
 For the upstream hosted docs, [`docs/specs/polymarket-llms.txt`](docs/specs/polymarket-llms.txt) is a snapshot of Polymarket's own documentation index (`https://docs.polymarket.com/llms.txt`) — a flat list of every doc page (with `.md` URLs) covering CLOB/auth/orders, builder attribution, and the CLOB V2 migration. Use it to locate the authoritative upstream page for a topic when the local `docs/specs/` copies are insufficient.
+
+**A mirror can match upstream and still be wrong.** `docs/specs/gamma/OBSERVED.md`
+records places where gamma's published spec disagrees with gamma's own server —
+`parent_entity_type` accepts `PerpsAsset` and rejects the documented `market`,
+`limit` counts top-level comments rather than rows, and `GET /comments/{id}`
+returns a whole thread. The drift check cannot see any of this: it compares the
+mirror to the published document, never to the live host. The mirror itself must
+stay byte-faithful or `nightly-schema.yml` alarms forever, so the observations
+live beside it rather than inside it.
 
 ## Testing Conventions
 

@@ -1,4 +1,5 @@
 use std::collections::HashMap;
+use std::fmt;
 
 use chrono::{DateTime, Utc};
 use serde::{Deserialize, Serialize};
@@ -378,41 +379,32 @@ pub struct SeriesSummary {
 
 /// Profile returned from `/profiles/user_address/{user_address}`.
 ///
-/// All fields except `id` are optional; upstream frequently omits UTM
-/// attribution and certification fields.
+/// Modelled against the endpoint's own published JSON Schema —
+/// `https://gamma-api.polymarket.com/schemas/PublicProfile.json`, linked from
+/// the response body's `$schema` key — rather than
+/// `docs/specs/gamma/openapi.yaml`, whose `Profile` schema describes a
+/// different, unrelated object. See `docs/specs/gamma/OBSERVED.md`.
+///
+/// `taker_tier`, `taker_tier_name` and `weighted_volume` are the schema's only
+/// `required` properties, and every capture behind
+/// `tests/fixtures/profile_{full,sparse}.json` carried all three. Every other
+/// field is optional; the server omits `name`, `pseudonym`, `proxy_wallet`,
+/// `profile_image`, `bio` and `created_at` for some subjects.
 #[cfg_attr(feature = "specta", derive(specta::Type))]
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
 #[serde(rename_all = "camelCase")]
+#[non_exhaustive]
 pub struct Profile {
-    pub id: String,
     pub name: Option<String>,
-    #[cfg_attr(feature = "specta", specta(type = Option<f64>))]
-    pub user: Option<i64>,
-    pub referral: Option<String>,
-    #[cfg_attr(feature = "specta", specta(type = Option<f64>))]
-    pub created_by: Option<i64>,
-    #[cfg_attr(feature = "specta", specta(type = Option<f64>))]
-    pub updated_by: Option<i64>,
-    pub created_at: Option<String>,
-    pub updated_at: Option<String>,
-    pub utm_source: Option<String>,
-    pub utm_medium: Option<String>,
-    pub utm_campaign: Option<String>,
-    pub utm_content: Option<String>,
-    pub utm_term: Option<String>,
-    pub wallet_activated: Option<bool>,
     pub pseudonym: Option<String>,
-    pub display_username_public: Option<bool>,
+    pub proxy_wallet: Option<String>,
     pub profile_image: Option<String>,
     pub bio: Option<String>,
-    pub proxy_wallet: Option<String>,
-    /// ImageOptimization payload; kept as raw JSON since the upstream shape
-    /// is not yet modelled in this crate.
-    #[cfg_attr(feature = "specta", specta(skip))]
-    pub profile_image_optimized: Option<serde_json::Value>,
-    pub is_close_only: Option<bool>,
-    pub is_cert_req: Option<bool>,
-    pub cert_req_date: Option<String>,
+    pub created_at: Option<String>,
+    #[cfg_attr(feature = "specta", specta(type = f64))]
+    pub taker_tier: i64,
+    pub taker_tier_name: String,
+    pub weighted_volume: f64,
 }
 
 /// Tag for categorizing markets/events
@@ -504,60 +496,133 @@ pub struct Team {
     pub updated_at: Option<DateTime<Utc>>,
 }
 
-/// Comment on a market/event/series
+/// What a comment is attached to.
+///
+/// Probed against the live host on 2026-08-19: the server accepts exactly
+/// `Event`, `Series` and `PerpsAsset`, and rejects anything else with
+/// `expected value to be one of "Event, Series, PerpsAsset"`.
+///
+/// The vendored spec disagrees — it lists `market`, which the server rejects,
+/// and omits `PerpsAsset`. See `docs/specs/gamma/OBSERVED.md`.
+///
+/// [`ParentEntityType::Unknown`] absorbs values added upstream after this
+/// release so that one new entity type cannot fail an entire response. It is
+/// never sent as a filter.
+#[cfg_attr(feature = "specta", derive(specta::Type))]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+pub enum ParentEntityType {
+    /// Comments on an event.
+    Event,
+    /// Comments on a series.
+    Series,
+    /// Comments on a perpetual futures asset.
+    PerpsAsset,
+    /// An entity type this client does not recognize (forward-compat).
+    #[serde(other)]
+    Unknown,
+}
+
+impl fmt::Display for ParentEntityType {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match self {
+            Self::Event => write!(f, "Event"),
+            Self::Series => write!(f, "Series"),
+            Self::PerpsAsset => write!(f, "PerpsAsset"),
+            Self::Unknown => write!(f, "Unknown"),
+        }
+    }
+}
+
+/// Comment on an event, series, or perps asset.
+///
+/// Modelled against payloads captured from the live host; see
+/// `tests/fixtures/README.md`. Three keys carry an explicit
+/// `#[serde(rename)]` because the wire capitalises the `ID` suffix and
+/// `rename_all = "camelCase"` would emit `parentEntityId` instead.
 #[cfg_attr(feature = "specta", derive(specta::Type))]
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
+#[non_exhaustive]
 pub struct Comment {
     pub id: String,
-    pub body: String,
-    pub created_at: DateTime<Utc>,
-    pub updated_at: DateTime<Utc>,
-    pub deleted_at: Option<DateTime<Utc>>,
-    pub user: CommentUser,
-    pub market_id: Option<String>,
-    pub event_id: Option<String>,
-    pub series_id: Option<String>,
-    pub parent_id: Option<String>,
+    pub body: Option<String>,
+    pub parent_entity_type: Option<ParentEntityType>,
+    #[serde(rename = "parentEntityID")]
+    #[cfg_attr(feature = "specta", specta(type = Option<f64>))]
+    pub parent_entity_id: Option<i64>,
+    /// Set on replies; absent on thread roots.
+    #[serde(rename = "parentCommentID")]
+    pub parent_comment_id: Option<String>,
+    /// Author's base (EOA) address. This is what `/public-profile?address=`
+    /// wants — not any id field.
+    pub user_address: Option<String>,
+    /// Address being replied to. Set on replies only.
+    pub reply_address: Option<String>,
+    pub created_at: Option<DateTime<Utc>>,
+    pub updated_at: Option<DateTime<Utc>>,
+    pub profile: Option<CommentProfile>,
+    /// Absent from the payload entirely when a comment has no reactions.
     #[serde(default)]
     pub reactions: Vec<CommentReaction>,
+    #[cfg_attr(feature = "specta", specta(type = Option<f64>))]
+    pub report_count: Option<i64>,
+    #[cfg_attr(feature = "specta", specta(type = Option<f64>))]
+    pub reaction_count: Option<i64>,
+}
+
+/// Author profile embedded in a comment.
+///
+/// Upstream's schema calls this `CommentProfile`; it is not the same shape as
+/// [`Profile`], which comes from `/profiles/user_address/{address}`.
+#[cfg_attr(feature = "specta", derive(specta::Type))]
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+#[non_exhaustive]
+pub struct CommentProfile {
+    pub name: Option<String>,
+    pub pseudonym: Option<String>,
+    pub display_username_public: Option<bool>,
+    pub bio: Option<String>,
+    pub is_mod: Option<bool>,
+    pub is_creator: Option<bool>,
+    pub proxy_wallet: Option<String>,
+    pub base_address: Option<String>,
+    pub profile_image: Option<String>,
+    /// ImageOptimization payload; kept as raw JSON since the upstream shape
+    /// is not yet modelled in this crate.
+    #[cfg_attr(feature = "specta", specta(skip))]
+    pub profile_image_optimized: Option<serde_json::Value>,
+    /// Populated only when the request sets `get_positions(true)`.
     #[serde(default)]
     pub positions: Vec<CommentPosition>,
-    #[cfg_attr(feature = "specta", specta(type = f64))]
-    pub like_count: u32,
-    #[cfg_attr(feature = "specta", specta(type = f64))]
-    pub dislike_count: u32,
-    #[cfg_attr(feature = "specta", specta(type = f64))]
-    pub reply_count: u32,
 }
 
-/// User who created a comment
+/// Reaction to a comment.
 #[cfg_attr(feature = "specta", derive(specta::Type))]
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
-pub struct CommentUser {
-    pub id: String,
-    pub name: String,
-    pub avatar: Option<String>,
-}
-
-/// Reaction to a comment
-#[cfg_attr(feature = "specta", derive(specta::Type))]
-#[derive(Debug, Clone, Serialize, Deserialize)]
-#[serde(rename_all = "camelCase")]
+#[non_exhaustive]
 pub struct CommentReaction {
-    pub user_id: String,
-    pub reaction_type: String,
+    pub id: String,
+    #[serde(rename = "commentID")]
+    #[cfg_attr(feature = "specta", specta(type = Option<f64>))]
+    pub comment_id: Option<i64>,
+    pub reaction_type: Option<String>,
+    pub icon: Option<String>,
+    pub user_address: Option<String>,
+    pub created_at: Option<DateTime<Utc>>,
+    pub profile: Option<CommentProfile>,
 }
 
-/// Position held by comment author
+/// Position held by a comment author, shown alongside their comment.
 #[cfg_attr(feature = "specta", derive(specta::Type))]
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
+#[non_exhaustive]
 pub struct CommentPosition {
-    pub token_id: String,
-    pub outcome: String,
-    pub shares: String,
+    pub token_id: Option<String>,
+    /// Raw integer string in token base units, e.g. `"290001537"`.
+    pub position_size: Option<String>,
 }
 
 /// Generic count response (used for tweet count, comment count, etc.)
@@ -1241,60 +1306,66 @@ mod tests {
         assert!(team.created_at.is_some());
     }
 
-    // ── Comment ─────────────────────────────────────────────────
+    // ── ParentEntityType ────────────────────────────────────────
 
     #[test]
-    fn test_comment_deserialization() {
-        let json = r#"{
-            "id": "c1",
-            "body": "I think this market will resolve yes.",
-            "createdAt": "2024-06-01T10:00:00Z",
-            "updatedAt": "2024-06-01T10:00:00Z",
-            "deletedAt": null,
-            "user": {"id": "u1", "name": "trader1", "avatar": null},
-            "marketId": "mkt-1",
-            "eventId": null,
-            "seriesId": null,
-            "parentId": null,
-            "reactions": [],
-            "positions": [
-                {"tokenId": "t1", "outcome": "Yes", "shares": "100.5"}
-            ],
-            "likeCount": 5,
-            "dislikeCount": 1,
-            "replyCount": 3
-        }"#;
-        let comment: Comment = serde_json::from_str(json).unwrap();
-        assert_eq!(comment.id, "c1");
-        assert_eq!(comment.user.name, "trader1");
-        assert_eq!(comment.like_count, 5);
-        assert_eq!(comment.positions.len(), 1);
-        assert_eq!(comment.positions[0].shares, "100.5");
-        assert!(comment.deleted_at.is_none());
+    fn parent_entity_type_matches_server_accepted_values() {
+        // Probed live 2026-08-19: the server rejects anything else with
+        // `expected value to be one of "Event, Series, PerpsAsset"`.
+        assert_eq!(ParentEntityType::Event.to_string(), "Event");
+        assert_eq!(ParentEntityType::Series.to_string(), "Series");
+        assert_eq!(ParentEntityType::PerpsAsset.to_string(), "PerpsAsset");
+    }
+
+    #[test]
+    fn parent_entity_type_deserializes_known_values() {
+        let v: ParentEntityType = serde_json::from_str("\"PerpsAsset\"").unwrap();
+        assert_eq!(v, ParentEntityType::PerpsAsset);
+    }
+
+    #[test]
+    fn parent_entity_type_tolerates_unknown_values() {
+        // Upstream added PerpsAsset without warning; assume it will add more.
+        let v: ParentEntityType = serde_json::from_str("\"SomethingNew\"").unwrap();
+        assert_eq!(v, ParentEntityType::Unknown);
     }
 
     // ── UserResponse ────────────────────────────────────────────
+    //
+    // `address` and `id` are not tested here because they do not exist: the
+    // wire never sends either — see `UserResponse`'s doc comment and
+    // `docs/plans/2026-08-19-gamma-type-parity-worklist.md` finding #10.
+    // `tests/wire_agreement.rs` is the guard against them (or anything else
+    // invented) reappearing.
 
     #[test]
     fn test_user_response() {
         let json = r#"{
             "proxyWallet": "0xproxy",
-            "address": "0xsigner",
-            "id": "u1",
-            "name": "polytrader"
+            "name": "polytrader",
+            "takerTier": 0,
+            "takerTierName": "Tier 0",
+            "weightedVolume": 0.0
         }"#;
         let user: crate::api::user::UserResponse = serde_json::from_str(json).unwrap();
         assert_eq!(user.proxy.as_deref(), Some("0xproxy"));
         assert_eq!(user.name.as_deref(), Some("polytrader"));
+        assert_eq!(user.taker_tier, 0);
+        assert_eq!(user.taker_tier_name, "Tier 0");
+        assert_eq!(user.weighted_volume, 0.0);
     }
 
     #[test]
-    fn test_user_response_all_null() {
-        let json = r#"{}"#;
+    fn test_user_response_only_required_fields() {
+        // taker_tier, taker_tier_name and weighted_volume are the schema's
+        // only required properties; everything else may be absent.
+        let json = r#"{
+            "takerTier": 0,
+            "takerTierName": "Tier 0",
+            "weightedVolume": 0.0
+        }"#;
         let user: crate::api::user::UserResponse = serde_json::from_str(json).unwrap();
         assert!(user.proxy.is_none());
-        assert!(user.address.is_none());
-        assert!(user.id.is_none());
         assert!(user.name.is_none());
         assert!(user.created_at.is_none());
         assert!(user.profile_image.is_none());
@@ -1302,6 +1373,7 @@ mod tests {
         assert!(user.bio.is_none());
         assert!(user.pseudonym.is_none());
         assert!(user.x_username.is_none());
+        assert!(user.discord_username.is_none());
         assert!(user.verified_badge.is_none());
         assert!(user.users.is_empty());
     }
@@ -1310,8 +1382,6 @@ mod tests {
     fn test_user_response_full_profile() {
         let json = r#"{
             "proxyWallet": "0xproxy",
-            "address": "0xsigner",
-            "id": "u1",
             "name": "polytrader",
             "createdAt": "2024-01-15T10:00:00Z",
             "profileImage": "https://example.com/avatar.png",
@@ -1319,10 +1389,14 @@ mod tests {
             "bio": "DeFi enthusiast",
             "pseudonym": "poly_anon",
             "xUsername": "polytrader_x",
+            "discordUsername": "polytrader#0001",
             "verifiedBadge": true,
+            "takerTier": 2,
+            "takerTierName": "Silver",
+            "weightedVolume": 89074.462449,
             "users": [
-                {"id": "uid-1", "creator": true, "mod": false},
-                {"id": "uid-2", "creator": false, "mod": true}
+                {"id": "uid-1", "creator": true, "mod": false, "communityMod": false},
+                {"id": "uid-2", "creator": false, "mod": true, "communityMod": true}
             ]
         }"#;
         let user: crate::api::user::UserResponse = serde_json::from_str(json).unwrap();
@@ -1337,30 +1411,43 @@ mod tests {
         assert_eq!(user.bio.as_deref(), Some("DeFi enthusiast"));
         assert_eq!(user.pseudonym.as_deref(), Some("poly_anon"));
         assert_eq!(user.x_username.as_deref(), Some("polytrader_x"));
+        assert_eq!(user.discord_username.as_deref(), Some("polytrader#0001"));
         assert_eq!(user.verified_badge, Some(true));
+        assert_eq!(user.taker_tier, 2);
+        assert_eq!(user.taker_tier_name, "Silver");
+        assert_eq!(user.weighted_volume, 89074.462449);
         assert_eq!(user.users.len(), 2);
+        assert_eq!(user.users[0].id, "uid-1");
         assert!(user.users[0].creator);
         assert!(!user.users[0].moderator);
+        assert!(!user.users[0].community_mod);
+        assert_eq!(user.users[1].id, "uid-2");
         assert!(!user.users[1].creator);
         assert!(user.users[1].moderator);
+        assert!(user.users[1].community_mod);
     }
 
     #[test]
     fn test_user_info_deserialization() {
-        let json = r#"{"id": "uid-1", "creator": true, "mod": false}"#;
+        let json = r#"{"id": "uid-1", "creator": true, "mod": false, "communityMod": true}"#;
         let info: crate::api::user::UserInfo = serde_json::from_str(json).unwrap();
-        assert_eq!(info.id.as_deref(), Some("uid-1"));
+        assert_eq!(info.id, "uid-1");
         assert!(info.creator);
         assert!(!info.moderator);
+        assert!(info.community_mod);
     }
 
     #[test]
     fn test_user_info_defaults() {
-        let json = r#"{}"#;
+        // `id` is the schema's only required property on this object;
+        // `creator`, `mod` and `communityMod` may all be absent — observed
+        // live for `communityMod` (1 of 39 sampled nested `users[]` entries).
+        let json = r#"{"id": "uid-1"}"#;
         let info: crate::api::user::UserInfo = serde_json::from_str(json).unwrap();
-        assert!(info.id.is_none());
+        assert_eq!(info.id, "uid-1");
         assert!(!info.creator);
         assert!(!info.moderator);
+        assert!(!info.community_mod);
     }
 
     // ── CountResponse ────────────────────────────────────────────
@@ -1693,68 +1780,71 @@ mod tests {
     }
 
     // ── Profile ─────────────────────────────────────────────────
+    //
+    // Field-level agreement with the live server is covered by
+    // `tests/wire_agreement.rs` against captured payloads. These tests only
+    // pin the required/optional split and the wire casing.
 
     #[test]
-    fn test_profile_minimal() {
-        let json = r#"{"id": "p-1"}"#;
+    fn test_profile_minimal_only_required_fields() {
+        let json = r#"{"takerTier": 0, "takerTierName": "Tier 0", "weightedVolume": 0.0}"#;
         let p: Profile = serde_json::from_str(json).unwrap();
-        assert_eq!(p.id, "p-1");
+        assert_eq!(p.taker_tier, 0);
+        assert_eq!(p.taker_tier_name, "Tier 0");
+        assert_eq!(p.weighted_volume, 0.0);
         assert!(p.name.is_none());
         assert!(p.proxy_wallet.is_none());
     }
 
     #[test]
+    fn test_profile_missing_required_field_fails() {
+        // taker_tier, taker_tier_name and weighted_volume are the schema's
+        // only `required` properties, and every capture carried all three.
+        let json = r#"{"name": "Alice", "proxyWallet": "0xdead"}"#;
+        assert!(serde_json::from_str::<Profile>(json).is_err());
+    }
+
+    #[test]
     fn test_profile_full() {
         let json = r#"{
-            "id": "p-1",
             "name": "Alice",
-            "user": 42,
+            "pseudonym": "Gracious-Fame",
             "proxyWallet": "0xdead",
-            "utmSource": "direct",
-            "walletActivated": true,
-            "isCloseOnly": false,
-            "profileImageOptimized": {"medium": "https://cdn/p/m.png"}
+            "profileImage": "https://cdn/p/m.png",
+            "bio": "hi",
+            "createdAt": "2025-10-13T19:31:36.489292Z",
+            "takerTier": 2,
+            "takerTierName": "Silver",
+            "weightedVolume": 89074.462449
         }"#;
         let p: Profile = serde_json::from_str(json).unwrap();
         assert_eq!(p.name.as_deref(), Some("Alice"));
-        assert_eq!(p.user, Some(42));
+        assert_eq!(p.pseudonym.as_deref(), Some("Gracious-Fame"));
         assert_eq!(p.proxy_wallet.as_deref(), Some("0xdead"));
-        assert_eq!(p.utm_source.as_deref(), Some("direct"));
-        assert_eq!(p.wallet_activated, Some(true));
-        assert_eq!(p.is_close_only, Some(false));
-        assert!(p.profile_image_optimized.is_some());
+        assert_eq!(p.profile_image.as_deref(), Some("https://cdn/p/m.png"));
+        assert_eq!(p.bio.as_deref(), Some("hi"));
+        assert_eq!(p.created_at.as_deref(), Some("2025-10-13T19:31:36.489292Z"));
+        assert_eq!(p.taker_tier, 2);
+        assert_eq!(p.taker_tier_name, "Silver");
+        assert_eq!(p.weighted_volume, 89074.462449);
     }
 
     #[test]
     fn test_profile_roundtrip() {
         let p = Profile {
-            id: "p-1".into(),
             name: Some("A".into()),
-            user: Some(1),
-            referral: None,
-            created_by: None,
-            updated_by: None,
-            created_at: None,
-            updated_at: None,
-            utm_source: None,
-            utm_medium: None,
-            utm_campaign: None,
-            utm_content: None,
-            utm_term: None,
-            wallet_activated: Some(true),
             pseudonym: None,
-            display_username_public: None,
+            proxy_wallet: Some("0xpw".into()),
             profile_image: None,
             bio: None,
-            proxy_wallet: Some("0xpw".into()),
-            profile_image_optimized: None,
-            is_close_only: None,
-            is_cert_req: None,
-            cert_req_date: None,
+            created_at: None,
+            taker_tier: 0,
+            taker_tier_name: "Tier 0".into(),
+            weighted_volume: 0.0,
         };
         let json = serde_json::to_string(&p).unwrap();
         assert!(json.contains("\"proxyWallet\""));
-        assert!(json.contains("\"walletActivated\""));
+        assert!(json.contains("\"takerTierName\""));
         let back: Profile = serde_json::from_str(&json).unwrap();
         assert_eq!(p, back);
     }

@@ -8,7 +8,9 @@
 //! cargo test -p polyoxide-gamma --test live_api -- --ignored
 //! ```
 
-use polyoxide_gamma::Gamma;
+use polyoxide_core::ApiError;
+use polyoxide_gamma::types::ParentEntityType;
+use polyoxide_gamma::{Gamma, GammaError};
 use std::time::Duration;
 
 fn client() -> Gamma {
@@ -715,14 +717,26 @@ async fn live_list_comments() {
     let comments = gamma
         .comments()
         .list()
-        .parent_entity_type("Event")
+        .parent_entity_type(ParentEntityType::Event)
         .parent_entity_id(event_id)
         .limit(5)
         .send()
         .await
         .expect("list comments");
-    // Some events may have no comments, but deserialization must succeed.
-    let _ = comments;
+    // An empty result is not signal: the discovered event may simply have no
+    // comments, which is exactly the luck that let issue #28 hide for months.
+    // Say so out loud rather than passing silently.
+    if comments.is_empty() {
+        eprintln!(
+            "SKIPPED: no comments on event {event_id}; this run did not exercise \
+             comment deserialization"
+        );
+        return;
+    }
+    assert!(
+        comments.iter().all(|c| !c.id.is_empty()),
+        "every comment must carry an id"
+    );
 }
 
 // ── Comments: get and by_user ───────────────────────────────────
@@ -747,22 +761,29 @@ async fn live_get_comment_by_id() {
     let comments = gamma
         .comments()
         .list()
-        .parent_entity_type("Event")
+        .parent_entity_type(ParentEntityType::Event)
         .parent_entity_id(event_id)
         .limit(1)
         .send()
         .await
         .expect("list comments");
 
-    if let Some(comment) = comments.first() {
-        let fetched = gamma
-            .comments()
-            .get(&comment.id)
-            .send()
-            .await
-            .expect("get comment by id");
-        assert_eq!(fetched.id, comment.id);
-    }
+    let Some(comment) = comments.first() else {
+        eprintln!("SKIPPED: no comments on event {event_id}; nothing to fetch by id");
+        return;
+    };
+    let thread = gamma
+        .comments()
+        .get(&comment.id)
+        .send()
+        .await
+        .expect("get comment thread by id");
+    // Upstream returns the whole thread, with the requested id somewhere
+    // inside it — not necessarily first.
+    assert!(
+        thread.iter().any(|c| c.id == comment.id),
+        "the requested comment must appear in the returned thread"
+    );
 }
 
 // ── Events: related by ID, tags, counts ────────────────────────
@@ -844,6 +865,26 @@ async fn live_public_search() {
     let _ = results;
 }
 
+/// Regression test for the `SearchResponse::profiles` null-element failure
+/// (see `docs/specs/gamma/OBSERVED.md` and `docs/plans/2026-08-19-gamma-type-parity-worklist.md`,
+/// follow-up 17). `q=sports` at this `limit_per_type` reliably returns a JSON
+/// `null` entry in `profiles`; the old `Vec<SearchProfile>` errored the whole
+/// call on it instead of tolerating it.
+#[tokio::test]
+#[ignore]
+async fn live_public_search_sports_profiles() {
+    let gamma = client();
+    let results = gamma
+        .search()
+        .public_search("sports")
+        .search_profiles(true)
+        .limit_per_type(20)
+        .send()
+        .await
+        .expect("public search must deserialize even when profiles contains a null entry");
+    let _ = results;
+}
+
 // ── User ────────────────────────────────────────────────────────
 
 #[tokio::test]
@@ -866,26 +907,30 @@ async fn live_get_user() {
     let comments = gamma
         .comments()
         .list()
-        .parent_entity_type("Event")
+        .parent_entity_type(ParentEntityType::Event)
         .parent_entity_id(event_id)
         .limit(20)
         .send()
         .await
         .expect("list comments to find a user");
 
-    if let Some(comment) = comments.first() {
-        let user_id = &comment.user.id;
-        let user = gamma
-            .user()
-            .get(user_id)
-            .send()
-            .await
-            .expect("get user profile");
-        // Deserialization succeeded; the profile may have sparse fields.
-        let _ = user;
-    }
-    // If no comments found, skip silently -- the endpoint itself is
-    // exercised in the request path even when no suitable address exists.
+    let Some(comment) = comments.first() else {
+        eprintln!("SKIPPED: no comments on event {event_id}; no address to resolve");
+        return;
+    };
+    // `/public-profile` wants an address. The old code passed `comment.user.id`,
+    // which was an id-shaped field that never existed on the wire.
+    let Some(address) = comment.user_address.as_deref() else {
+        eprintln!("SKIPPED: comment {} carries no userAddress", comment.id);
+        return;
+    };
+    let user = gamma
+        .user()
+        .get(address)
+        .send()
+        .await
+        .expect("get user profile");
+    let _ = user;
 }
 
 #[tokio::test]
@@ -910,7 +955,7 @@ async fn live_get_profile_by_address() {
     let comments = gamma
         .comments()
         .list()
-        .parent_entity_type("Event")
+        .parent_entity_type(ParentEntityType::Event)
         .parent_entity_id(event_id)
         .limit(20)
         .send()
@@ -920,9 +965,12 @@ async fn live_get_profile_by_address() {
     let Some(comment) = comments.first() else {
         return;
     };
+    let Some(user_address) = comment.user_address.as_deref() else {
+        return;
+    };
     let user = gamma
         .user()
-        .get(&comment.user.id)
+        .get(user_address)
         .send()
         .await
         .expect("resolve user to proxy wallet");
@@ -930,11 +978,25 @@ async fn live_get_profile_by_address() {
         return;
     };
 
-    // The endpoint returns 404 for non-profile addresses; treat that as a
-    // valid contract exercise. Only successful deserializations are asserted.
-    if let Ok(profile) = gamma.user().get_by_address(&address).send().await {
-        // The profile may have sparse fields, but id must always be present.
-        assert!(!profile.id.is_empty(), "profile id must not be empty");
+    // The endpoint returns 200 for almost any address that has ever touched
+    // the platform; a 404 here means `address` genuinely has no profile,
+    // which is a legitimate skip. Anything else — in particular a
+    // deserialization error — is a real failure and must not be swallowed.
+    // See `docs/plans/2026-08-19-gamma-type-parity-worklist.md` finding #1,
+    // fixed by modelling `Profile` against the endpoint's published schema.
+    match gamma.user().get_by_address(&address).send().await {
+        Ok(profile) => {
+            // Every capture behind tests/wire_agreement.rs carried all three;
+            // taker_tier_name in particular must never be empty.
+            assert!(
+                !profile.taker_tier_name.is_empty(),
+                "takerTierName must not be empty"
+            );
+        }
+        Err(GammaError::Api(ApiError::Api { status: 404, .. })) => {
+            eprintln!("SKIPPED: {address} has no profile (404)");
+        }
+        Err(e) => panic!("get_by_address({address}) failed: {e}"),
     }
 }
 

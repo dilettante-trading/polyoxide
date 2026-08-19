@@ -66,5 +66,5 @@ entirely.
 | [clob/asyncapi-market.json](clob/asyncapi-market.json) | Market channel (11 messages) |
 | [clob/asyncapi-user.json](clob/asyncapi-user.json) | User channel (6 messages) |
 | [clob/asyncapi-sports.json](clob/asyncapi-sports.json) | Sports channel (3 messages) |
-| [perps/asyncapi.json](perps/asyncapi.json) | Perps WebSocket (23 channels) — not implemented |
+| [perps/asyncapi.json](perps/asyncapi.json) | Perps WebSocket (25 channels) — not implemented |
 | [combos-rfq/asyncapi.json](combos-rfq/asyncapi.json) | RFQ quoter gateway — not implemented |

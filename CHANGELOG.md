@@ -1,3 +1,49 @@
+## [0.28.0] - 2026-08-19
+
+### 🚀 Features
+
+- *(gamma)* Add `ParentEntityType` with the server's accepted values
+
+### 🐛 Bug Fixes
+
+- *(gamma)* [**breaking**] Model comments against the wire, not the fork's invention. `Comment`, `CommentReaction` and `CommentPosition` described a payload Polymarket has never sent; `CommentUser` had no upstream counterpart at all and is removed. Removed fields: `Comment::user`, `market_id`, `event_id`, `series_id`, `parent_id`, `positions`, `like_count`, `dislike_count`, `reply_count`; `CommentReaction::user_id`; `CommentPosition::outcome` and `shares`. Added: `Comment::parent_entity_type`, `parent_entity_id`, `parent_comment_id`, `user_address`, `reply_address`, `profile`, `report_count`, `reaction_count`; the new `CommentProfile`; and `CommentPosition::position_size`. Any code touching these types was already failing at runtime with a deserialization error
+- *(gamma)* Comment endpoints no longer fail with `missing field 'userId'` on any response containing a reaction (#28)
+- *(gamma)* [**breaking**] `GET /comments/{id}` returns a thread, not one comment — `Comments::get` now returns `Vec<Comment>`
+- *(gamma)* [**breaking**] `ListComments::parent_entity_type` takes `ParentEntityType`, not a string — the server rejects `market` in either casing
+- *(gamma)* [**breaking**] `Profile` described a payload `/profiles/user_address/{address}` has never sent — `id` was required and the server never sends it, so `Gamma::user().get_by_address` failed for every address. Rewritten against the endpoint's own published `PublicProfile.json` schema (linked from the response's `$schema` key) rather than `openapi.yaml`, whose `Profile` schema turns out to describe an unrelated object. Removed: `id`, `user`, `referral`, `created_by`, `updated_by`, `updated_at`, `utm_source`, `utm_medium`, `utm_campaign`, `utm_content`, `utm_term`, `wallet_activated`, `display_username_public`, `profile_image_optimized`, `is_close_only`, `is_cert_req`, `cert_req_date`. Added, now required: `taker_tier`, `taker_tier_name`, `weighted_volume` — sent on every response, and not in `openapi.yaml` at all
+- *(cli)* [**breaking**] Drop the rejected `market` entity type, add `perps-asset`
+- *(py)* [**breaking**] Align the comment bindings with the corrected types — `CommentUser` is removed and `CommentProfile` added, the comment getters renamed to match, and `GammaComments.get` now returns `list[Comment]`
+- *(gamma)* [**breaking**] `UserResponse` and `UserInfo` described a payload `/public-profile` has never sent. Rewritten against the endpoint's own published `PublicProfileResponse.json` / `PublicProfileUser.json` schemas (linked from the response's `$schema` key) rather than invented fields. Removed: `UserResponse::address`, `UserResponse::id` — the wire never sends either; the account id lives at `users[].id` instead. Added, now required: `UserResponse::taker_tier`, `taker_tier_name`, `weighted_volume` — sent on every response. Added, optional: `UserResponse::discord_username`. `UserInfo::id` is now a required `String`, not `Option<String>` — the schema's only required property on that object. Added `UserInfo::community_mod`
+- *(py)* [**breaking**] Align the `UserResponse` / `UserInfo` bindings with the corrected types — `address` and `id` are removed from `UserResponse`, `taker_tier`/`taker_tier_name`/`weighted_volume`/`discord_username` are added, and `UserInfo` gains `community_mod`
+- *(gamma)* `SearchResponse::profiles` no longer fails the whole call with `invalid type: null, expected struct SearchProfile` — `/public-search` sends a JSON `null` for some entries in the array (reproducible on `q=sports&search_profiles=true&limit_per_type=20`, stable across 5 attempts), and the old `Vec<SearchProfile>` couldn't hold one
+- *(gamma)* [**breaking**] `SearchProfile::address` described a payload `/public-search` has never sent (0 of 228 sampled profiles) — removed, along with `SearchResponse::profiles`'s element type changing to `Option<SearchProfile>` to tolerate the server's `null` entries. Added `SearchProfile::display_username_public`, sent on every sampled profile and previously unmodelled. Completes finding #10
+- *(py)* [**breaking**] Align the `SearchProfile` bindings with the corrected type — `address` is removed, `display_username_public` is added
+
+### 📚 Documentation
+
+- *(gamma)* Update the README comments example for the typed filter
+- Add `docs/specs/gamma/OBSERVED.md`, recording where gamma's published spec disagrees with gamma's server
+- Record the gamma type parity sweep in `docs/plans/2026-08-19-gamma-type-parity-worklist.md`, cataloguing 15 further parity findings across the crate, including a second runtime failure of the same class (`Profile::id` is required and never sent)
+- *(specs)* Sync perps, perps-ws, bridge and combos-rfq mirrors to upstream (#23, #20, #24, #21) — mirror-only, no client crate implements them
+- *(gamma)* Record in `docs/specs/gamma/OBSERVED.md` that some endpoints publish a live, authoritative JSON Schema via a `$schema` response key — a better oracle than `openapi.yaml` where present
+- *(gamma)* Record in `docs/plans/2026-08-19-gamma-type-parity-worklist.md` that finding #10 is partially fixed — `UserResponse`/`UserInfo` done, `SearchProfile::address` still open — and that `/public-search` serves no `$schema`
+- *(gamma)* Record in `docs/specs/gamma/OBSERVED.md` and `docs/plans/2026-08-19-gamma-type-parity-worklist.md` that finding #10 is fully fixed, and add the `profiles[]` null-element failure as a new confirmed finding found while fixing it
+
+### 🧪 Testing
+
+- *(gamma)* Capture live comment payloads as fixtures
+- *(gamma)* Add `tests/wire_agreement.rs`, asserting both directions of agreement between the comment types and captured live payloads
+- *(gamma)* Fix the four live comment tests
+- *(gamma)* Capture live profile payloads as fixtures and extend `tests/wire_agreement.rs` to `Profile`
+- *(gamma)* Stop `live_get_profile_by_address` from swallowing a deserialization error as if it were a 404
+- *(gamma)* Capture live `/public-profile` payloads as fixtures and extend `tests/wire_agreement.rs` to `UserResponse`, including a hand-written case for the schema's explicit `null` on `users`
+- *(gamma)* Capture live `/public-search` payloads as fixtures, including a response with a `null` `profiles[]` entry, and extend `tests/wire_agreement.rs` to `SearchProfile`/`SearchResponse`
+- *(gamma)* Add a live test asserting `public_search(...).search_profiles(true)` succeeds — the regression that would have caught the `profiles[]` null failure
+
+### 🎨 Styling
+
+- Rustfmt the mock_api thread assertion
+
 ## [0.26.1] - 2026-08-06
 
 ### 🐛 Bug Fixes

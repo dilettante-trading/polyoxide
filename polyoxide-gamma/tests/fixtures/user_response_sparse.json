@@ -1,0 +1,20 @@
+{
+  "$schema": "https://gamma-api.polymarket.com/schemas/PublicProfileResponse.json",
+  "createdAt": "2026-07-10T11:37:07.789916Z",
+  "proxyWallet": "0x226b48c1ab114eb890dfae18ea6eb3304c92df8b",
+  "displayUsernamePublic": true,
+  "pseudonym": "Unfinished-Grey-Gammaray",
+  "name": "codex-community-mod-2c93fe6b-0b2c93fe6b",
+  "users": [
+    {
+      "id": "9164772",
+      "creator": false,
+      "mod": false,
+      "communityMod": true
+    }
+  ],
+  "verifiedBadge": false,
+  "takerTier": 0,
+  "takerTierName": "Tier 0",
+  "weightedVolume": 0
+}

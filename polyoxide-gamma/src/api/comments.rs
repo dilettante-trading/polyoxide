@@ -1,6 +1,9 @@
 use polyoxide_core::{HttpClient, QueryBuilder, Request};
 
-use crate::{error::GammaError, types::Comment};
+use crate::{
+    error::GammaError,
+    types::{Comment, ParentEntityType},
+};
 
 /// Comments namespace for comment-related operations
 #[derive(Clone)]
@@ -16,8 +19,22 @@ impl Comments {
         }
     }
 
-    /// Get a comment by ID
-    pub fn get(&self, id: impl Into<String>) -> Request<Comment, GammaError> {
+    /// Get the comment thread containing `id` (`GET /comments/{id}`).
+    ///
+    /// Despite the name, upstream returns the **whole thread** — the root
+    /// comment and every reply — not just the comment identified by `id`.
+    /// Confirmed by probe on 2026-08-19: requesting `3218542` returned six
+    /// comments with the requested one third in the list. Callers wanting the
+    /// single comment must search the result:
+    ///
+    /// ```no_run
+    /// # async fn f(gamma: &polyoxide_gamma::Gamma) -> Result<(), polyoxide_gamma::GammaError> {
+    /// let thread = gamma.comments().get("3218542").send().await?;
+    /// let this = thread.iter().find(|c| c.id == "3218542");
+    /// # Ok(())
+    /// # }
+    /// ```
+    pub fn get(&self, id: impl Into<String>) -> Request<Vec<Comment>, GammaError> {
         Request::new(
             self.http_client.clone(),
             format!("/comments/{}", urlencoding::encode(&id.into())),
@@ -42,7 +59,11 @@ pub struct ListComments {
 }
 
 impl ListComments {
-    /// Set maximum number of results (minimum: 0)
+    /// Bound the number of top-level comments, not the number of rows
+    /// returned: replies come along with their parents and are not counted
+    /// against `limit`. Measured 2026-08-19 (`docs/specs/gamma/OBSERVED.md`):
+    /// `limit=2` returned 8 rows, `limit=64` returned 160. Callers sizing a
+    /// buffer from `limit` will under-allocate.
     pub fn limit(mut self, limit: u32) -> Self {
         self.request = self.request.query("limit", limit);
         self
@@ -66,9 +87,15 @@ impl ListComments {
         self
     }
 
-    /// Filter by parent entity type (Event, Series, market)
-    pub fn parent_entity_type(mut self, entity_type: impl Into<String>) -> Self {
-        self.request = self.request.query("parent_entity_type", entity_type.into());
+    /// Filter by parent entity type.
+    ///
+    /// [`ParentEntityType::Unknown`] is not a filter the server understands,
+    /// so passing it sends no parameter at all — mirroring
+    /// `ListActivity::activity_type` in `polyoxide-data`.
+    pub fn parent_entity_type(mut self, entity_type: ParentEntityType) -> Self {
+        if entity_type != ParentEntityType::Unknown {
+            self.request = self.request.query("parent_entity_type", entity_type);
+        }
         self
     }
 
@@ -98,7 +125,7 @@ impl ListComments {
 
 #[cfg(test)]
 mod tests {
-    use crate::Gamma;
+    use crate::{types::ParentEntityType, Gamma};
 
     fn gamma() -> Gamma {
         Gamma::new().unwrap()
@@ -125,7 +152,7 @@ mod tests {
             .offset(0)
             .order("createdAt")
             .ascending(false)
-            .parent_entity_type("Event")
+            .parent_entity_type(ParentEntityType::Event)
             .parent_entity_id(42)
             .get_positions(true)
             .holders_only(false);
