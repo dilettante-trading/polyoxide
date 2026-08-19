@@ -1669,15 +1669,24 @@ temporarily raising the `limit` in the discovery call if so.
 
 Prove the test fails without the fix, rather than trusting that it would:
 
+`git stash` will NOT work here — the fix is committed, so a stash of a clean
+file is a no-op that silently "passes". Restore the pre-fix file by SHA
+instead:
+
 ```bash
-git stash push polyoxide-gamma/src/types.rs
+git checkout 17ab027 -- polyoxide-gamma/src/types.rs   # commit before Task 5
 cargo test -p polyoxide-gamma --all-features --test wire_agreement 2>&1 | tail -20
-git stash pop
+git checkout HEAD -- polyoxide-gamma/src/types.rs      # restore the fix
+cargo test -p polyoxide-gamma --all-features --test wire_agreement 2>&1 | tail -3
+git status --short                                     # must be clean
 ```
 
-Expected: the tests FAIL while the old types are restored, then pass again
-after the stash pop. A guard that passes either way is not a guard — this is
-the check that distinguishes this work from the shape-only test it replaces.
+Expected: 3 failed with the old types, 3 passed with the new ones. A guard that
+passes either way is not a guard — this is the check that distinguishes this
+work from the shape-only test it replaces.
+
+**Already executed during Task 5** and confirmed: 3 failed / 3 passed. Re-run
+only if `types.rs` or the fixtures changed after that point.
 
 - [ ] **Step 5: Open the PR**
 
