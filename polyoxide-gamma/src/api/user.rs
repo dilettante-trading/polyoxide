@@ -20,8 +20,9 @@ impl User {
     /// (`GET /profiles/user_address/{user_address}`).
     ///
     /// `address` must be a 0x-prefixed EVM address. Responses are modelled by
-    /// [`Profile`], which is field-for-field compatible with the upstream
-    /// `Profile` schema.
+    /// [`Profile`], which follows the endpoint's own published
+    /// `PublicProfile.json` schema — not `docs/specs/gamma/openapi.yaml`'s
+    /// `Profile`, which describes an unrelated object.
     pub fn get_by_address(&self, address: impl Into<String>) -> Request<Profile, GammaError> {
         Request::new(
             self.http_client.clone(),

@@ -112,7 +112,28 @@ returns exactly `body`, `createdAt`, `id`, `parentEntityID`, `parentEntityType`,
 
 ## Priority 1 — A public endpoint that cannot succeed
 
-### 1. `Profile.id` is required and the server never sends it
+### 1. `Profile.id` is required and the server never sends it — FIXED
+
+Fixed in the change that pulled this finding into PR #29, alongside the
+comment fixes. `Profile` was rewritten field-for-field against the endpoint's
+own published JSON Schema (`PublicProfile.json`, linked from the response's
+`$schema` key) rather than `openapi.yaml` — see the new section in
+`docs/specs/gamma/OBSERVED.md`. `id` is gone (it was never real); `taker_tier`,
+`taker_tier_name` and `weighted_volume` are now required, matching the
+schema's own `required` list and every capture behind
+`tests/fixtures/profile_{full,sparse}.json`. `tests/wire_agreement.rs` now
+covers `Profile` in both directions, `mock_api.rs`'s hand-written `"id":
+"p-1"` fixture is replaced by a captured payload, and `live_api.rs`'s
+`live_get_profile_by_address` now distinguishes a 404 (legitimate skip) from a
+deserialization error (hard failure) instead of swallowing both.
+
+Discovering `$schema` also bears on finding #10 below (`UserResponse`, served
+by `/public-profile` under `PublicProfileResponse.json`) — that finding
+remains open; only `Profile` was in scope for this fix.
+
+The rest of this section is the original finding, kept for the record.
+
+#### Original finding: `Profile.id` is required and the server never sends it
 
 `polyoxide-gamma/src/types.rs:388` — `pub id: String`, non-`Option`, no
 `#[serde(default)]`.

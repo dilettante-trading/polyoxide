@@ -41,18 +41,24 @@
 //! deserialization before these assertions ever ran. `EXPECTED_ABSENT` is
 //! what makes an invented `Option<T>` field fail too.
 
-use polyoxide_gamma::types::{Comment, ParentEntityType};
+use polyoxide_gamma::types::{Comment, ParentEntityType, Profile};
 use serde_json::Value;
 
 const FULL: &str = include_str!("fixtures/comment_full.json");
 const SPARSE: &str = include_str!("fixtures/comment_sparse.json");
+const PROFILE_FULL: &str = include_str!("fixtures/profile_full.json");
+const PROFILE_SPARSE: &str = include_str!("fixtures/profile_sparse.json");
 
 /// Wire keys deliberately left unmodelled, each with a reason.
 ///
 /// Adding an entry is a written decision that shows up in a reviewed diff.
 /// There is no wildcard. Paths are dotted from the root, e.g.
 /// `comment.profile.someKey`.
-const IGNORED: &[(&str, &str)] = &[];
+const IGNORED: &[(&str, &str)] = &[(
+    "profile.$schema",
+    "response metadata (a link to the published JSON Schema for this \
+     endpoint), not data — see docs/specs/gamma/OBSERVED.md",
+)];
 
 /// Keys the type emits that the captured payloads do not contain.
 ///
@@ -142,6 +148,16 @@ const EXPECTED_ABSENT: &[(&str, &str)] = &[
         "the sparse capture's author has no profile in this response",
     ),
     ("comment.reactions", "the sparse capture has no reactions"),
+    (
+        "profile.profileImage",
+        "the sparse capture's subject has not set one; absent in 34/65 sampled \
+         profiles (see tests/fixtures/README.md)",
+    ),
+    (
+        "profile.bio",
+        "the sparse capture's subject has not set one; absent in 49/65 sampled \
+         profiles (see tests/fixtures/README.md)",
+    ),
 ];
 
 /// Walk a captured payload against what the type re-emits, asserting both
@@ -212,6 +228,24 @@ fn full_comment_agrees_with_captured_payload() {
 #[test]
 fn sparse_comment_agrees_with_captured_payload() {
     round_trip(SPARSE, "comment");
+}
+
+#[test]
+fn full_profile_agrees_with_captured_payload() {
+    let wire: Value = serde_json::from_str(PROFILE_FULL).expect("fixture is valid JSON");
+    let typed: Profile = serde_json::from_value(wire.clone())
+        .unwrap_or_else(|e| panic!("captured payload must deserialize into Profile: {e}"));
+    let emitted = serde_json::to_value(&typed).expect("Profile must serialize");
+    check(&wire, &emitted, "profile");
+}
+
+#[test]
+fn sparse_profile_agrees_with_captured_payload() {
+    let wire: Value = serde_json::from_str(PROFILE_SPARSE).expect("fixture is valid JSON");
+    let typed: Profile = serde_json::from_value(wire.clone())
+        .unwrap_or_else(|e| panic!("captured payload must deserialize into Profile: {e}"));
+    let emitted = serde_json::to_value(&typed).expect("Profile must serialize");
+    check(&wire, &emitted, "profile");
 }
 
 #[test]

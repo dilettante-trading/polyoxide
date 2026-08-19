@@ -379,41 +379,32 @@ pub struct SeriesSummary {
 
 /// Profile returned from `/profiles/user_address/{user_address}`.
 ///
-/// All fields except `id` are optional; upstream frequently omits UTM
-/// attribution and certification fields.
+/// Modelled against the endpoint's own published JSON Schema —
+/// `https://gamma-api.polymarket.com/schemas/PublicProfile.json`, linked from
+/// the response body's `$schema` key — rather than
+/// `docs/specs/gamma/openapi.yaml`, whose `Profile` schema describes a
+/// different, unrelated object. See `docs/specs/gamma/OBSERVED.md`.
+///
+/// `taker_tier`, `taker_tier_name` and `weighted_volume` are the schema's only
+/// `required` properties, and every capture behind
+/// `tests/fixtures/profile_{full,sparse}.json` carried all three. Every other
+/// field is optional; the server omits `name`, `pseudonym`, `proxy_wallet`,
+/// `profile_image`, `bio` and `created_at` for some subjects.
 #[cfg_attr(feature = "specta", derive(specta::Type))]
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
 #[serde(rename_all = "camelCase")]
+#[non_exhaustive]
 pub struct Profile {
-    pub id: String,
     pub name: Option<String>,
-    #[cfg_attr(feature = "specta", specta(type = Option<f64>))]
-    pub user: Option<i64>,
-    pub referral: Option<String>,
-    #[cfg_attr(feature = "specta", specta(type = Option<f64>))]
-    pub created_by: Option<i64>,
-    #[cfg_attr(feature = "specta", specta(type = Option<f64>))]
-    pub updated_by: Option<i64>,
-    pub created_at: Option<String>,
-    pub updated_at: Option<String>,
-    pub utm_source: Option<String>,
-    pub utm_medium: Option<String>,
-    pub utm_campaign: Option<String>,
-    pub utm_content: Option<String>,
-    pub utm_term: Option<String>,
-    pub wallet_activated: Option<bool>,
     pub pseudonym: Option<String>,
-    pub display_username_public: Option<bool>,
+    pub proxy_wallet: Option<String>,
     pub profile_image: Option<String>,
     pub bio: Option<String>,
-    pub proxy_wallet: Option<String>,
-    /// ImageOptimization payload; kept as raw JSON since the upstream shape
-    /// is not yet modelled in this crate.
-    #[cfg_attr(feature = "specta", specta(skip))]
-    pub profile_image_optimized: Option<serde_json::Value>,
-    pub is_close_only: Option<bool>,
-    pub is_cert_req: Option<bool>,
-    pub cert_req_date: Option<String>,
+    pub created_at: Option<String>,
+    #[cfg_attr(feature = "specta", specta(type = f64))]
+    pub taker_tier: i64,
+    pub taker_tier_name: String,
+    pub weighted_volume: f64,
 }
 
 /// Tag for categorizing markets/events
@@ -1759,68 +1750,71 @@ mod tests {
     }
 
     // ── Profile ─────────────────────────────────────────────────
+    //
+    // Field-level agreement with the live server is covered by
+    // `tests/wire_agreement.rs` against captured payloads. These tests only
+    // pin the required/optional split and the wire casing.
 
     #[test]
-    fn test_profile_minimal() {
-        let json = r#"{"id": "p-1"}"#;
+    fn test_profile_minimal_only_required_fields() {
+        let json = r#"{"takerTier": 0, "takerTierName": "Tier 0", "weightedVolume": 0.0}"#;
         let p: Profile = serde_json::from_str(json).unwrap();
-        assert_eq!(p.id, "p-1");
+        assert_eq!(p.taker_tier, 0);
+        assert_eq!(p.taker_tier_name, "Tier 0");
+        assert_eq!(p.weighted_volume, 0.0);
         assert!(p.name.is_none());
         assert!(p.proxy_wallet.is_none());
     }
 
     #[test]
+    fn test_profile_missing_required_field_fails() {
+        // taker_tier, taker_tier_name and weighted_volume are the schema's
+        // only `required` properties, and every capture carried all three.
+        let json = r#"{"name": "Alice", "proxyWallet": "0xdead"}"#;
+        assert!(serde_json::from_str::<Profile>(json).is_err());
+    }
+
+    #[test]
     fn test_profile_full() {
         let json = r#"{
-            "id": "p-1",
             "name": "Alice",
-            "user": 42,
+            "pseudonym": "Gracious-Fame",
             "proxyWallet": "0xdead",
-            "utmSource": "direct",
-            "walletActivated": true,
-            "isCloseOnly": false,
-            "profileImageOptimized": {"medium": "https://cdn/p/m.png"}
+            "profileImage": "https://cdn/p/m.png",
+            "bio": "hi",
+            "createdAt": "2025-10-13T19:31:36.489292Z",
+            "takerTier": 2,
+            "takerTierName": "Silver",
+            "weightedVolume": 89074.462449
         }"#;
         let p: Profile = serde_json::from_str(json).unwrap();
         assert_eq!(p.name.as_deref(), Some("Alice"));
-        assert_eq!(p.user, Some(42));
+        assert_eq!(p.pseudonym.as_deref(), Some("Gracious-Fame"));
         assert_eq!(p.proxy_wallet.as_deref(), Some("0xdead"));
-        assert_eq!(p.utm_source.as_deref(), Some("direct"));
-        assert_eq!(p.wallet_activated, Some(true));
-        assert_eq!(p.is_close_only, Some(false));
-        assert!(p.profile_image_optimized.is_some());
+        assert_eq!(p.profile_image.as_deref(), Some("https://cdn/p/m.png"));
+        assert_eq!(p.bio.as_deref(), Some("hi"));
+        assert_eq!(p.created_at.as_deref(), Some("2025-10-13T19:31:36.489292Z"));
+        assert_eq!(p.taker_tier, 2);
+        assert_eq!(p.taker_tier_name, "Silver");
+        assert_eq!(p.weighted_volume, 89074.462449);
     }
 
     #[test]
     fn test_profile_roundtrip() {
         let p = Profile {
-            id: "p-1".into(),
             name: Some("A".into()),
-            user: Some(1),
-            referral: None,
-            created_by: None,
-            updated_by: None,
-            created_at: None,
-            updated_at: None,
-            utm_source: None,
-            utm_medium: None,
-            utm_campaign: None,
-            utm_content: None,
-            utm_term: None,
-            wallet_activated: Some(true),
             pseudonym: None,
-            display_username_public: None,
+            proxy_wallet: Some("0xpw".into()),
             profile_image: None,
             bio: None,
-            proxy_wallet: Some("0xpw".into()),
-            profile_image_optimized: None,
-            is_close_only: None,
-            is_cert_req: None,
-            cert_req_date: None,
+            created_at: None,
+            taker_tier: 0,
+            taker_tier_name: "Tier 0".into(),
+            weighted_volume: 0.0,
         };
         let json = serde_json::to_string(&p).unwrap();
         assert!(json.contains("\"proxyWallet\""));
-        assert!(json.contains("\"walletActivated\""));
+        assert!(json.contains("\"takerTierName\""));
         let back: Profile = serde_json::from_str(&json).unwrap();
         assert_eq!(p, back);
     }

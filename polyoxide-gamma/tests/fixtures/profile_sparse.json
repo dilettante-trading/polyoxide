@@ -1,0 +1,10 @@
+{
+  "$schema": "https://gamma-api.polymarket.com/schemas/PublicProfile.json",
+  "name": "MarcoDamo",
+  "pseudonym": "Outlying-Rediscovery",
+  "proxyWallet": "0xaba26d34045d9ecb36c451656115a6fe98f28ad9",
+  "createdAt": "2024-10-21T13:17:03.9037Z",
+  "takerTier": 0,
+  "takerTierName": "Tier 0",
+  "weightedVolume": 12.486278
+}

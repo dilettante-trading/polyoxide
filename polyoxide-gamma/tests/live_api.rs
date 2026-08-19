@@ -8,8 +8,9 @@
 //! cargo test -p polyoxide-gamma --test live_api -- --ignored
 //! ```
 
+use polyoxide_core::ApiError;
 use polyoxide_gamma::types::ParentEntityType;
-use polyoxide_gamma::Gamma;
+use polyoxide_gamma::{Gamma, GammaError};
 use std::time::Duration;
 
 fn client() -> Gamma {
@@ -957,15 +958,25 @@ async fn live_get_profile_by_address() {
         return;
     };
 
-    // The endpoint actually returns 200 here, not 404: the `if let Ok` below
-    // is swallowing a deserialization error caused by `Profile::id` being
-    // required when the server routinely omits the `id` key. See
-    // `docs/plans/2026-08-19-gamma-type-parity-worklist.md` finding #1.
-    // Fixing `Profile::id` is out of scope for this change; only successful
-    // deserializations are asserted here.
-    if let Ok(profile) = gamma.user().get_by_address(&address).send().await {
-        // The profile may have sparse fields, but id must always be present.
-        assert!(!profile.id.is_empty(), "profile id must not be empty");
+    // The endpoint returns 200 for almost any address that has ever touched
+    // the platform; a 404 here means `address` genuinely has no profile,
+    // which is a legitimate skip. Anything else — in particular a
+    // deserialization error — is a real failure and must not be swallowed.
+    // See `docs/plans/2026-08-19-gamma-type-parity-worklist.md` finding #1,
+    // fixed by modelling `Profile` against the endpoint's published schema.
+    match gamma.user().get_by_address(&address).send().await {
+        Ok(profile) => {
+            // Every capture behind tests/wire_agreement.rs carried all three;
+            // taker_tier_name in particular must never be empty.
+            assert!(
+                !profile.taker_tier_name.is_empty(),
+                "takerTierName must not be empty"
+            );
+        }
+        Err(GammaError::Api(ApiError::Api { status: 404, .. })) => {
+            eprintln!("SKIPPED: {address} has no profile (404)");
+        }
+        Err(e) => panic!("get_by_address({address}) failed: {e}"),
     }
 }
 

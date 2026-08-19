@@ -893,16 +893,24 @@ async fn get_team_by_id() {
 #[tokio::test]
 async fn get_profile_by_address() {
     let mut server = Server::new_async().await;
+
+    // Field shape taken verbatim from tests/fixtures/profile_full.json — a
+    // captured live payload. See tests/wire_agreement.rs for the byte-level
+    // agreement check; this test is only exercising request/response wiring.
     let mock = server
         .mock("GET", "/profiles/user_address/0xdeadbeef")
         .with_status(200)
         .with_header("content-type", "application/json")
         .with_body(
             r#"{
-                "id": "p-1",
+                "$schema": "https://gamma-api.polymarket.com/schemas/PublicProfile.json",
                 "name": "Alice",
+                "pseudonym": "Gracious-Fame",
                 "proxyWallet": "0xdeadbeef",
-                "walletActivated": true
+                "createdAt": "2025-10-13T19:31:36.489292Z",
+                "takerTier": 2,
+                "takerTierName": "Silver",
+                "weightedVolume": 89074.462449
             }"#,
         )
         .create_async()
@@ -915,10 +923,11 @@ async fn get_profile_by_address() {
         .send()
         .await
         .unwrap();
-    assert_eq!(profile.id, "p-1");
     assert_eq!(profile.name.as_deref(), Some("Alice"));
     assert_eq!(profile.proxy_wallet.as_deref(), Some("0xdeadbeef"));
-    assert_eq!(profile.wallet_activated, Some(true));
+    assert_eq!(profile.taker_tier, 2);
+    assert_eq!(profile.taker_tier_name, "Silver");
+    assert_eq!(profile.weighted_volume, 89074.462449);
     mock.assert_async().await;
 }
 
