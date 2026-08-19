@@ -14,6 +14,7 @@
 - *(cli)* [**breaking**] Drop the rejected `market` entity type, add `perps-asset`
 - *(py)* [**breaking**] Align the comment bindings with the corrected types — `CommentUser` is removed and `CommentProfile` added, the comment getters renamed to match, and `GammaComments.get` now returns `list[Comment]`
 - *(gamma)* [**breaking**] `UserResponse` and `UserInfo` described a payload `/public-profile` has never sent. Rewritten against the endpoint's own published `PublicProfileResponse.json` / `PublicProfileUser.json` schemas (linked from the response's `$schema` key) rather than invented fields. Removed: `UserResponse::address`, `UserResponse::id` — the wire never sends either; the account id lives at `users[].id` instead. Added, now required: `UserResponse::taker_tier`, `taker_tier_name`, `weighted_volume` — sent on every response. Added, optional: `UserResponse::discord_username`. `UserInfo::id` is now a required `String`, not `Option<String>` — the schema's only required property on that object. Added `UserInfo::community_mod`
+- *(py)* [**breaking**] Align the `UserResponse` / `UserInfo` bindings with the corrected types — `address` and `id` are removed from `UserResponse`, `taker_tier`/`taker_tier_name`/`weighted_volume`/`discord_username` are added, and `UserInfo` gains `community_mod`
 
 ### 📚 Documentation
 

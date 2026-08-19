@@ -217,14 +217,15 @@ py_type!(
 
 py_type!(PyUserResponse, "UserResponse", polyoxide_gamma::api::user::UserResponse,
     proxy => "proxyWallet",
-    address, id, name, created_at, profile_image,
-    display_username_public, bio, pseudonym, x_username,
-    verified_badge, users,
+    name, created_at, profile_image,
+    display_username_public, bio, pseudonym, x_username, discord_username,
+    verified_badge, taker_tier, taker_tier_name, weighted_volume, users,
 );
 
 py_type!(PyUserInfo, "UserInfo", polyoxide_gamma::api::user::UserInfo,
     id, creator,
     moderator => "mod",
+    community_mod,
 );
 
 pub fn register(m: &pyo3::Bound<'_, pyo3::types::PyModule>) -> pyo3::PyResult<()> {
