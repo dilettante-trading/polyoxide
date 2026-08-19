@@ -1,4 +1,5 @@
 use std::collections::HashMap;
+use std::fmt;
 
 use chrono::{DateTime, Utc};
 use serde::{Deserialize, Serialize};
@@ -502,6 +503,43 @@ pub struct Team {
     pub alias: Option<String>,
     pub created_at: Option<DateTime<Utc>>,
     pub updated_at: Option<DateTime<Utc>>,
+}
+
+/// What a comment is attached to.
+///
+/// Probed against the live host on 2026-08-19: the server accepts exactly
+/// `Event`, `Series` and `PerpsAsset`, and rejects anything else with
+/// `expected value to be one of "Event, Series, PerpsAsset"`.
+///
+/// The vendored spec disagrees — it lists `market`, which the server rejects,
+/// and omits `PerpsAsset`. See `docs/specs/gamma/OBSERVED.md`.
+///
+/// [`ParentEntityType::Unknown`] absorbs values added upstream after this
+/// release so that one new entity type cannot fail an entire response. It is
+/// never sent as a filter.
+#[cfg_attr(feature = "specta", derive(specta::Type))]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+pub enum ParentEntityType {
+    /// Comments on an event.
+    Event,
+    /// Comments on a series.
+    Series,
+    /// Comments on a perpetual futures asset.
+    PerpsAsset,
+    /// An entity type this client does not recognize (forward-compat).
+    #[serde(other)]
+    Unknown,
+}
+
+impl fmt::Display for ParentEntityType {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match self {
+            Self::Event => write!(f, "Event"),
+            Self::Series => write!(f, "Series"),
+            Self::PerpsAsset => write!(f, "PerpsAsset"),
+            Self::Unknown => write!(f, "UNKNOWN"),
+        }
+    }
 }
 
 /// Comment on a market/event/series
@@ -1271,6 +1309,30 @@ mod tests {
         assert_eq!(comment.positions.len(), 1);
         assert_eq!(comment.positions[0].shares, "100.5");
         assert!(comment.deleted_at.is_none());
+    }
+
+    // ── ParentEntityType ────────────────────────────────────────
+
+    #[test]
+    fn parent_entity_type_matches_server_accepted_values() {
+        // Probed live 2026-08-19: the server rejects anything else with
+        // `expected value to be one of "Event, Series, PerpsAsset"`.
+        assert_eq!(ParentEntityType::Event.to_string(), "Event");
+        assert_eq!(ParentEntityType::Series.to_string(), "Series");
+        assert_eq!(ParentEntityType::PerpsAsset.to_string(), "PerpsAsset");
+    }
+
+    #[test]
+    fn parent_entity_type_deserializes_known_values() {
+        let v: ParentEntityType = serde_json::from_str("\"PerpsAsset\"").unwrap();
+        assert_eq!(v, ParentEntityType::PerpsAsset);
+    }
+
+    #[test]
+    fn parent_entity_type_tolerates_unknown_values() {
+        // Upstream added PerpsAsset without warning; assume it will add more.
+        let v: ParentEntityType = serde_json::from_str("\"SomethingNew\"").unwrap();
+        assert_eq!(v, ParentEntityType::Unknown);
     }
 
     // ── UserResponse ────────────────────────────────────────────
