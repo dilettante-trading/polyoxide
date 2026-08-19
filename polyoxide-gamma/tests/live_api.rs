@@ -8,6 +8,7 @@
 //! cargo test -p polyoxide-gamma --test live_api -- --ignored
 //! ```
 
+use polyoxide_gamma::types::ParentEntityType;
 use polyoxide_gamma::Gamma;
 use std::time::Duration;
 
@@ -715,14 +716,26 @@ async fn live_list_comments() {
     let comments = gamma
         .comments()
         .list()
-        .parent_entity_type("Event")
+        .parent_entity_type(ParentEntityType::Event)
         .parent_entity_id(event_id)
         .limit(5)
         .send()
         .await
         .expect("list comments");
-    // Some events may have no comments, but deserialization must succeed.
-    let _ = comments;
+    // An empty result is not signal: the discovered event may simply have no
+    // comments, which is exactly the luck that let issue #28 hide for months.
+    // Say so out loud rather than passing silently.
+    if comments.is_empty() {
+        eprintln!(
+            "SKIPPED: no comments on event {event_id}; this run did not exercise \
+             comment deserialization"
+        );
+        return;
+    }
+    assert!(
+        comments.iter().all(|c| !c.id.is_empty()),
+        "every comment must carry an id"
+    );
 }
 
 // ── Comments: get and by_user ───────────────────────────────────
@@ -747,22 +760,29 @@ async fn live_get_comment_by_id() {
     let comments = gamma
         .comments()
         .list()
-        .parent_entity_type("Event")
+        .parent_entity_type(ParentEntityType::Event)
         .parent_entity_id(event_id)
         .limit(1)
         .send()
         .await
         .expect("list comments");
 
-    if let Some(comment) = comments.first() {
-        let fetched = gamma
-            .comments()
-            .get(&comment.id)
-            .send()
-            .await
-            .expect("get comment by id");
-        assert_eq!(fetched.id, comment.id);
-    }
+    let Some(comment) = comments.first() else {
+        eprintln!("SKIPPED: no comments on event {event_id}; nothing to fetch by id");
+        return;
+    };
+    let thread = gamma
+        .comments()
+        .get(&comment.id)
+        .send()
+        .await
+        .expect("get comment thread by id");
+    // Upstream returns the whole thread, with the requested id somewhere
+    // inside it — not necessarily first.
+    assert!(
+        thread.iter().any(|c| c.id == comment.id),
+        "the requested comment must appear in the returned thread"
+    );
 }
 
 // ── Events: related by ID, tags, counts ────────────────────────
@@ -866,26 +886,30 @@ async fn live_get_user() {
     let comments = gamma
         .comments()
         .list()
-        .parent_entity_type("Event")
+        .parent_entity_type(ParentEntityType::Event)
         .parent_entity_id(event_id)
         .limit(20)
         .send()
         .await
         .expect("list comments to find a user");
 
-    if let Some(comment) = comments.first() {
-        let user_id = &comment.user.id;
-        let user = gamma
-            .user()
-            .get(user_id)
-            .send()
-            .await
-            .expect("get user profile");
-        // Deserialization succeeded; the profile may have sparse fields.
-        let _ = user;
-    }
-    // If no comments found, skip silently -- the endpoint itself is
-    // exercised in the request path even when no suitable address exists.
+    let Some(comment) = comments.first() else {
+        eprintln!("SKIPPED: no comments on event {event_id}; no address to resolve");
+        return;
+    };
+    // `/public-profile` wants an address. The old code passed `comment.user.id`,
+    // which was an id-shaped field that never existed on the wire.
+    let Some(address) = comment.user_address.as_deref() else {
+        eprintln!("SKIPPED: comment {} carries no userAddress", comment.id);
+        return;
+    };
+    let user = gamma
+        .user()
+        .get(address)
+        .send()
+        .await
+        .expect("get user profile");
+    let _ = user;
 }
 
 #[tokio::test]
@@ -910,7 +934,7 @@ async fn live_get_profile_by_address() {
     let comments = gamma
         .comments()
         .list()
-        .parent_entity_type("Event")
+        .parent_entity_type(ParentEntityType::Event)
         .parent_entity_id(event_id)
         .limit(20)
         .send()
@@ -920,9 +944,12 @@ async fn live_get_profile_by_address() {
     let Some(comment) = comments.first() else {
         return;
     };
+    let Some(user_address) = comment.user_address.as_deref() else {
+        return;
+    };
     let user = gamma
         .user()
-        .get(&comment.user.id)
+        .get(user_address)
         .send()
         .await
         .expect("resolve user to proxy wallet");
