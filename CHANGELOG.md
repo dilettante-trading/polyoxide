@@ -44,6 +44,49 @@
 
 - Rustfmt the mock_api thread assertion
 
+## [0.27.0] - 2026-08-15
+
+### 🚀 Features
+
+- *(ci)* Add canonical-tree walker producing JSON-pointer changes
+- *(ci)* Report changed key paths in the drift summary
+- *(ci)* Compose the issue body in Python under a tested size budget
+- *(ci)* Fingerprint the canonical diff
+- *(ci)* Exit 3 for drift we have accepted as permanent
+- *(ci)* Put adopt and acknowledge commands in the issue body
+- *(data)* [**breaking**] Add Position fee-basis fields, mark non_exhaustive
+- *(py)* Expose Position fee-basis fields
+- *(data)* Add typed Allowance for approval amounts
+- *(data)* Add approval types for /v1/approvals
+- *(data)* Add approvals namespace for /v1/approvals
+
+### 🐛 Bug Fixes
+
+- *(ci)* Treat integral floats as ints when canonicalizing specs
+- *(ci)* Distinguish int from bool when walking canonical trees
+- *(ci)* Identify drift issues by spec label, not tokenized title search
+- *(ci)* Drop branch and PR machinery from the nightly drift check
+- *(data)* Make deposit and withdrawal activity filters reachable
+
+### 📚 Documentation
+
+- *(specs)* Design for trustworthy schema drift findings
+- *(plans)* Implementation plan for trustworthy schema drift findings
+- Describe label-based drift issue identity in CLAUDE.md
+- *(specs)* Design for drift findings that converge
+- *(plans)* Implementation plan for drift convergence
+- *(specs)* Design for absorbing the data spec drift
+- *(plans)* Implementation plan for absorbing the data spec drift
+
+### 🧪 Testing
+
+- *(ci)* Make the bool/int branch-order guard mutation-sensitive
+
+### ⚙️ Miscellaneous Tasks
+
+- *(specs)* Acknowledge clob's upstream quoting regression
+- *(specs)* Sync the data spec and release 0.27.0
+
 ## [0.26.1] - 2026-08-06
 
 ### 🐛 Bug Fixes
