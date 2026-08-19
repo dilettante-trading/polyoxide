@@ -542,60 +542,96 @@ impl fmt::Display for ParentEntityType {
     }
 }
 
-/// Comment on a market/event/series
+/// Comment on an event, series, or perps asset.
+///
+/// Modelled against payloads captured from the live host; see
+/// `tests/fixtures/README.md`. Three keys carry an explicit
+/// `#[serde(rename)]` because the wire capitalises the `ID` suffix and
+/// `rename_all = "camelCase"` would emit `parentEntityId` instead.
 #[cfg_attr(feature = "specta", derive(specta::Type))]
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
+#[non_exhaustive]
 pub struct Comment {
     pub id: String,
-    pub body: String,
-    pub created_at: DateTime<Utc>,
-    pub updated_at: DateTime<Utc>,
-    pub deleted_at: Option<DateTime<Utc>>,
-    pub user: CommentUser,
-    pub market_id: Option<String>,
-    pub event_id: Option<String>,
-    pub series_id: Option<String>,
-    pub parent_id: Option<String>,
+    pub body: Option<String>,
+    pub parent_entity_type: Option<ParentEntityType>,
+    #[serde(rename = "parentEntityID")]
+    #[cfg_attr(feature = "specta", specta(type = Option<f64>))]
+    pub parent_entity_id: Option<i64>,
+    /// Set on replies; absent on thread roots.
+    #[serde(rename = "parentCommentID")]
+    pub parent_comment_id: Option<String>,
+    /// Author's base (EOA) address. This is what `/public-profile?address=`
+    /// wants — not any id field.
+    pub user_address: Option<String>,
+    /// Address being replied to. Set on replies only.
+    pub reply_address: Option<String>,
+    pub created_at: Option<DateTime<Utc>>,
+    pub updated_at: Option<DateTime<Utc>>,
+    pub profile: Option<CommentProfile>,
+    /// Absent from the payload entirely when a comment has no reactions.
     #[serde(default)]
     pub reactions: Vec<CommentReaction>,
+    #[cfg_attr(feature = "specta", specta(type = Option<f64>))]
+    pub report_count: Option<i64>,
+    #[cfg_attr(feature = "specta", specta(type = Option<f64>))]
+    pub reaction_count: Option<i64>,
+}
+
+/// Author profile embedded in a comment.
+///
+/// Upstream's schema calls this `CommentProfile`; it is not the same shape as
+/// [`Profile`], which comes from `/profiles/user_address/{address}`.
+#[cfg_attr(feature = "specta", derive(specta::Type))]
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+#[non_exhaustive]
+pub struct CommentProfile {
+    pub name: Option<String>,
+    pub pseudonym: Option<String>,
+    pub display_username_public: Option<bool>,
+    pub bio: Option<String>,
+    pub is_mod: Option<bool>,
+    pub is_creator: Option<bool>,
+    pub proxy_wallet: Option<String>,
+    pub base_address: Option<String>,
+    pub profile_image: Option<String>,
+    /// ImageOptimization payload; kept as raw JSON since the upstream shape
+    /// is not yet modelled in this crate.
+    #[cfg_attr(feature = "specta", specta(skip))]
+    pub profile_image_optimized: Option<serde_json::Value>,
+    /// Populated only when the request sets `get_positions(true)`.
     #[serde(default)]
     pub positions: Vec<CommentPosition>,
-    #[cfg_attr(feature = "specta", specta(type = f64))]
-    pub like_count: u32,
-    #[cfg_attr(feature = "specta", specta(type = f64))]
-    pub dislike_count: u32,
-    #[cfg_attr(feature = "specta", specta(type = f64))]
-    pub reply_count: u32,
 }
 
-/// User who created a comment
+/// Reaction to a comment.
 #[cfg_attr(feature = "specta", derive(specta::Type))]
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
-pub struct CommentUser {
-    pub id: String,
-    pub name: String,
-    pub avatar: Option<String>,
-}
-
-/// Reaction to a comment
-#[cfg_attr(feature = "specta", derive(specta::Type))]
-#[derive(Debug, Clone, Serialize, Deserialize)]
-#[serde(rename_all = "camelCase")]
+#[non_exhaustive]
 pub struct CommentReaction {
-    pub user_id: String,
-    pub reaction_type: String,
+    pub id: String,
+    #[serde(rename = "commentID")]
+    #[cfg_attr(feature = "specta", specta(type = Option<f64>))]
+    pub comment_id: Option<i64>,
+    pub reaction_type: Option<String>,
+    pub icon: Option<String>,
+    pub user_address: Option<String>,
+    pub created_at: Option<DateTime<Utc>>,
+    pub profile: Option<CommentProfile>,
 }
 
-/// Position held by comment author
+/// Position held by a comment author, shown alongside their comment.
 #[cfg_attr(feature = "specta", derive(specta::Type))]
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
+#[non_exhaustive]
 pub struct CommentPosition {
-    pub token_id: String,
-    pub outcome: String,
-    pub shares: String,
+    pub token_id: Option<String>,
+    /// Raw integer string in token base units, e.g. `"290001537"`.
+    pub position_size: Option<String>,
 }
 
 /// Generic count response (used for tweet count, comment count, etc.)
@@ -1277,38 +1313,6 @@ mod tests {
         assert_eq!(team.id, 42);
         assert_eq!(team.name.as_deref(), Some("Lakers"));
         assert!(team.created_at.is_some());
-    }
-
-    // ── Comment ─────────────────────────────────────────────────
-
-    #[test]
-    fn test_comment_deserialization() {
-        let json = r#"{
-            "id": "c1",
-            "body": "I think this market will resolve yes.",
-            "createdAt": "2024-06-01T10:00:00Z",
-            "updatedAt": "2024-06-01T10:00:00Z",
-            "deletedAt": null,
-            "user": {"id": "u1", "name": "trader1", "avatar": null},
-            "marketId": "mkt-1",
-            "eventId": null,
-            "seriesId": null,
-            "parentId": null,
-            "reactions": [],
-            "positions": [
-                {"tokenId": "t1", "outcome": "Yes", "shares": "100.5"}
-            ],
-            "likeCount": 5,
-            "dislikeCount": 1,
-            "replyCount": 3
-        }"#;
-        let comment: Comment = serde_json::from_str(json).unwrap();
-        assert_eq!(comment.id, "c1");
-        assert_eq!(comment.user.name, "trader1");
-        assert_eq!(comment.like_count, 5);
-        assert_eq!(comment.positions.len(), 1);
-        assert_eq!(comment.positions[0].shares, "100.5");
-        assert!(comment.deleted_at.is_none());
     }
 
     // ── ParentEntityType ────────────────────────────────────────
