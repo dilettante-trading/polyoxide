@@ -703,3 +703,34 @@ then fix those under it.
   in that directory's `README.md`, as the comment fixtures do. **Prove each test
   fails without the fix.**
 - Update `CHANGELOG.md`; mark breaking entries `[**breaking**]`.
+
+---
+
+## Follow-up 16 — the wire-agreement guard has a hole (found 2026-08-19)
+
+`polyoxide-gamma/tests/wire_agreement.rs` does **not** catch an invented
+`Option<T>` field. Direction 1 must exempt `null` values, because a genuinely
+optional field the server omitted this time also serializes to `null`; that
+exemption cannot tell "absent this time" from "does not exist at all".
+
+**Verified empirically:** adding `totally_invented_field: Option<String>` to
+`Comment` left all three tests passing.
+
+This is why the guard caught #28 — the old type's invented fields included
+required ones (`user: CommentUser`, `like_count: u32`) that failed
+deserialization before the assertions ran. Had the fork made them all `Option`,
+the guard would have gone green on a type that was still entirely fictional.
+
+Note this bears directly on findings #10 and #11 in this document
+(`UserResponse::address`, `UserResponse::id`, `SearchProfile::address`,
+`Event::start_date_iso`, `Event::end_date_iso`) — all invented, all `Option`.
+Extending the current guard to those types would **not** flag them.
+
+**Possible fix:** for every key the type emits as `null` across all fixtures,
+require that the key appear either in the vendored spec's property list for
+that schema, or in `IGNORED` with a reason. That uses the spec only to answer
+"does this name exist anywhere", which is a question it can answer reliably —
+distinct from using it as the authority on values and enums, which
+`docs/specs/gamma/OBSERVED.md` shows it cannot.
+
+**Confidence: confirmed by experiment.** Not fixed in 0.28.0.

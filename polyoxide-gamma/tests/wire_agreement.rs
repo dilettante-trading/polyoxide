@@ -11,6 +11,26 @@
 //! The oracle is the captured payload, not `docs/specs/gamma/openapi.yaml`.
 //! The published spec is known to be wrong about this API — see
 //! `docs/specs/gamma/OBSERVED.md`.
+//!
+//! # Known limitation: an invented `Option` field is invisible here
+//!
+//! Direction 1 must exempt `null`, because a legitimately-optional field the
+//! server omitted also serializes to `null`. That exemption cannot distinguish
+//! "optional and absent this time" from "does not exist at all", so a wholly
+//! invented `Option<T>` field passes. Verified 2026-08-19 by adding
+//! `totally_invented_field: Option<String>` to `Comment`: all three tests
+//! still passed.
+//!
+//! This guard caught issue #28 only because that type's invented fields
+//! included *required* ones (`user`, `like_count`), which failed
+//! deserialization before these assertions ran. Had they all been `Option`,
+//! it would have gone green.
+//!
+//! What this guard does reliably catch: any wire key that stops being
+//! modelled (direction 2), any invented non-`Option` field, and any change in
+//! the `ID`-suffixed key spellings. Closing the remaining gap needs a second
+//! source for "does this field name exist anywhere" — see the follow-up in
+//! `docs/plans/2026-08-19-gamma-type-parity-worklist.md`.
 
 use polyoxide_gamma::types::Comment;
 use serde_json::Value;
