@@ -1,9 +1,20 @@
-"""Guards the py_type! field lists for the comment family.
+"""Guards the py_type! field lists for the comment family — presence, not resolution.
 
-py_type! getters resolve by camelCase key lookup and return None for any key
-that is not there (polyoxide-py/src/convert.rs:23), so a stale field list is
-invisible without an explicit assertion. Every getter below has a value in the
-captured payload; a None means the macro's key does not match the wire.
+`hasattr(polyoxide.Comment, attr)` only checks that a getter descriptor exists
+on the class; PyO3 registers one for every entry in the `py_type!` list
+regardless of which JSON key it resolves, so this check cannot fail on a
+stale rename (py_type! getters resolve by camelCase key lookup and return
+None for any key that is not there — polyoxide-py/src/convert.rs:23-29). What
+it still catches: a field dropped from the list entirely (`CommentUser`
+below), and, via `test_fixture_is_present`, the shared fixture going missing.
+
+The instance-level guard against a getter silently resolving to None lives in
+Rust instead, because py_type! exposes no Python-side constructor:
+`comment_getters_resolve_against_the_shared_fixture` in
+`polyoxide-py/src/types/gamma.rs` builds a real `PyComment` from the shared
+fixture and asserts each getter is not None, pinning `parent_entity_id` and
+`parent_comment_id` specifically — the two an `ID`-suffix rename mistake would
+null out.
 """
 
 import json

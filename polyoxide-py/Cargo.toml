@@ -18,3 +18,13 @@ pyo3-async-runtimes = { workspace = true }
 pythonize = { workspace = true }
 tokio = { workspace = true, features = ["rt-multi-thread", "macros"] }
 serde_json = { workspace = true }
+
+# `extension-module` (needed for the shipped wheel) and `auto-initialize`
+# (needed to embed an interpreter from `cargo test`) are mutually exclusive
+# pyo3 features. The workspace default carries neither: maturin adds
+# `pyo3/extension-module` for the real build via `[tool.maturin] features` in
+# pyproject.toml, and this dev-dependency adds `auto-initialize` only for
+# test/bench/doctest targets, never for the `cargo build --lib` maturin runs.
+# See the FAQ entry in the pyo3 book: "I can't run cargo test".
+[dev-dependencies]
+pyo3 = { workspace = true, features = ["auto-initialize"] }

@@ -249,3 +249,78 @@ pub fn register(m: &pyo3::Bound<'_, pyo3::types::PyModule>) -> pyo3::PyResult<()
     m.add_class::<PyUserInfo>()?;
     Ok(())
 }
+
+#[cfg(test)]
+mod tests {
+    use pyo3::{Py, PyAny, PyResult, Python};
+
+    use super::PyComment;
+
+    /// The shared fixture `test_comment_types.py` also reads, so both guards
+    /// stay pinned to the same captured payload.
+    const COMMENT_FULL: &str =
+        include_str!("../../../polyoxide-gamma/tests/fixtures/comment_full.json");
+
+    fn assert_present(py: Python<'_>, name: &str, value: PyResult<Py<PyAny>>) {
+        let value = value.unwrap_or_else(|e| panic!("Comment.{name}() errored: {e}"));
+        assert!(
+            !value.is_none(py),
+            "Comment.{name}() resolved to None against a fixture that carries the key — \
+             py_type!'s field list has drifted from the wire"
+        );
+    }
+
+    /// `polyoxide-py/tests/test_comment_types.py` calls `hasattr(polyoxide.Comment, attr)`
+    /// on the class object, which is always true: PyO3 registers a property
+    /// descriptor for every entry in the `py_type!` list regardless of which
+    /// JSON key it resolves. `get_field`/`get_field_exact`
+    /// (`polyoxide-py/src/convert.rs`) return `py.None()` for a missing key,
+    /// so a stale rename is invisible to a class-level `hasattr` check.
+    ///
+    /// This test builds a real `PyComment` from the shared fixture and reads
+    /// every getter, so a drifted key actually fails. Concrete case it
+    /// catches: delete `parent_entity_id => "parentEntityID"`'s rename from
+    /// the `py_type!` list and the getter falls back to `parentEntityId` then
+    /// `parent_entity_id`, neither of which the server sends —
+    /// `parent_entity_id` silently becomes `None` in production, and only an
+    /// instance-level check like this one notices.
+    #[test]
+    fn comment_getters_resolve_against_the_shared_fixture() {
+        let comment: polyoxide_gamma::types::Comment =
+            serde_json::from_str(COMMENT_FULL).expect("shared fixture deserializes into Comment");
+        let py_comment = PyComment::from(comment);
+
+        Python::attach(|py| {
+            assert_present(py, "id", py_comment.id(py));
+            assert_present(py, "body", py_comment.body(py));
+            assert_present(py, "parent_entity_type", py_comment.parent_entity_type(py));
+            assert_present(py, "parent_entity_id", py_comment.parent_entity_id(py));
+            assert_present(py, "parent_comment_id", py_comment.parent_comment_id(py));
+            assert_present(py, "user_address", py_comment.user_address(py));
+            assert_present(py, "reply_address", py_comment.reply_address(py));
+            assert_present(py, "created_at", py_comment.created_at(py));
+            assert_present(py, "updated_at", py_comment.updated_at(py));
+            assert_present(py, "profile", py_comment.profile(py));
+            assert_present(py, "reactions", py_comment.reactions(py));
+            assert_present(py, "report_count", py_comment.report_count(py));
+            assert_present(py, "reaction_count", py_comment.reaction_count(py));
+
+            // The two `ID`-suffixed renames specifically: pin the values, not
+            // just presence, since these are exactly what the mistake above
+            // would silently null out.
+            let parent_entity_id: i64 = py_comment
+                .parent_entity_id(py)
+                .unwrap()
+                .extract(py)
+                .expect("parent_entity_id is a number");
+            assert_eq!(parent_entity_id, 45915);
+
+            let parent_comment_id: String = py_comment
+                .parent_comment_id(py)
+                .unwrap()
+                .extract(py)
+                .expect("parent_comment_id is a string");
+            assert_eq!(parent_comment_id, "3218360");
+        });
+    }
+}

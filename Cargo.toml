@@ -44,7 +44,7 @@ governor = { version = "0.8", features = ["std"] }
 fastrand = "2"
 keyring = { version = "3", features = ["apple-native", "windows-native", "async-secret-service", "crypto-rust"] }
 mockito = "1.7"
-pyo3 = { version = "0.28", features = ["extension-module", "abi3-py39"] }
+pyo3 = { version = "0.28", features = ["abi3-py39"] }
 pyo3-async-runtimes = { version = "0.28", features = ["tokio-runtime"] }
 pythonize = "0.28"
 
