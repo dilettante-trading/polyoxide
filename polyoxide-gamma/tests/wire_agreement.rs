@@ -3,8 +3,9 @@
 //!
 //! Two directions, both of which must fail if a type drifts from the wire:
 //!
-//! 1. **No invented fields.** Every non-null, non-empty value the type emits
-//!    corresponds to a key the server actually sent.
+//! 1. **No invented fields.** Every key the type emits corresponds to a key
+//!    the server actually sent, unless it is declared in `EXPECTED_ABSENT`
+//!    with a reason.
 //! 2. **No unmodelled fields.** Every key the server sent is either modelled
 //!    or listed in `IGNORED` with a written reason.
 //!
@@ -12,27 +13,35 @@
 //! The published spec is known to be wrong about this API — see
 //! `docs/specs/gamma/OBSERVED.md`.
 //!
-//! # Known limitation: an invented `Option` field is invisible here
+//! # Why direction 1 needs `EXPECTED_ABSENT` rather than a `null` exemption
 //!
-//! Direction 1 must exempt `null`, because a legitimately-optional field the
-//! server omitted also serializes to `null`. That exemption cannot distinguish
-//! "optional and absent this time" from "does not exist at all", so a wholly
-//! invented `Option<T>` field passes. Verified 2026-08-19 by adding
-//! `totally_invented_field: Option<String>` to `Comment`: all three tests
-//! still passed.
+//! An earlier version of this guard exempted `null` values and empty arrays
+//! from direction 1, on the theory that a legitimately-optional field the
+//! server omitted also serializes to `null`. That reasoning is correct as far
+//! as it goes, but the exemption cannot distinguish "optional and absent this
+//! time" from "does not exist at all" — every field in the comment family is
+//! `Option<T>` or `#[serde(default)] Vec<T>`, so a wholly invented field also
+//! serializes to `null` or `[]` and passed unnoticed. Verified 2026-08-19:
+//! adding `totally_invented_field: Option<String>` to `Comment` left all three
+//! tests passing, and re-adding `positions: Vec<CommentPosition>` at the
+//! `Comment` level — the exact field issue #28 removed — would also have
+//! passed.
+//!
+//! `EXPECTED_ABSENT` closes that gap without reintroducing the blanket
+//! exemption: every key the type emits must be either present on the wire or
+//! named here with a reason. A field can be legitimately absent from a
+//! capture — the server omitted it for this subject, or it is modelled from
+//! the vendored spec and rarely sent — but "absent from every capture" and
+//! "does not exist" look identical from here, so each one must be declared
+//! rather than silently exempted. An invented field has no entry and no
+//! excuse, so it fails.
 //!
 //! This guard caught issue #28 only because that type's invented fields
 //! included *required* ones (`user`, `like_count`), which failed
-//! deserialization before these assertions ran. Had they all been `Option`,
-//! it would have gone green.
-//!
-//! What this guard does reliably catch: any wire key that stops being
-//! modelled (direction 2), any invented non-`Option` field, and any change in
-//! the `ID`-suffixed key spellings. Closing the remaining gap needs a second
-//! source for "does this field name exist anywhere" — see the follow-up in
-//! `docs/plans/2026-08-19-gamma-type-parity-worklist.md`.
+//! deserialization before these assertions ever ran. `EXPECTED_ABSENT` is
+//! what makes an invented `Option<T>` field fail too.
 
-use polyoxide_gamma::types::Comment;
+use polyoxide_gamma::types::{Comment, ParentEntityType};
 use serde_json::Value;
 
 const FULL: &str = include_str!("fixtures/comment_full.json");
@@ -45,41 +54,140 @@ const SPARSE: &str = include_str!("fixtures/comment_sparse.json");
 /// `comment.profile.someKey`.
 const IGNORED: &[(&str, &str)] = &[];
 
+/// Keys the type emits that the captured payloads do not contain.
+///
+/// A field can be legitimately absent from a capture — the server omits it
+/// for this subject, or it is modelled from the vendored spec and rarely
+/// sent. But "absent from every capture" and "does not exist" look identical
+/// from here, so each one must be declared with a reason rather than
+/// silently exempted. This is what stops an invented `Option<T>` field from
+/// passing unnoticed. There is no wildcard; paths follow the same dotted
+/// convention as `IGNORED`.
+const EXPECTED_ABSENT: &[(&str, &str)] = &[
+    (
+        "comment.profile.isMod",
+        "spec-sourced field; not observed in the 166-comment live sample",
+    ),
+    (
+        "comment.profile.isCreator",
+        "spec-sourced field; not observed in the 166-comment live sample",
+    ),
+    (
+        "comment.profile.profileImageOptimized",
+        "spec-sourced field; not observed in the 166-comment live sample",
+    ),
+    (
+        "comment.profile.pseudonym",
+        "this capture's author has none set; 164 of 166 sampled comments carry it \
+         (see tests/fixtures/README.md)",
+    ),
+    (
+        "comment.reactions[0].createdAt",
+        "spec-sourced field; not observed in the 166-comment live sample",
+    ),
+    (
+        "comment.reactions[0].icon",
+        "spec-sourced field; not observed in the 166-comment live sample",
+    ),
+    (
+        "comment.reactions[0].profile.name",
+        "the reactor's embedded profile in this capture carries only proxyWallet",
+    ),
+    (
+        "comment.reactions[0].profile.pseudonym",
+        "the reactor's embedded profile in this capture carries only proxyWallet",
+    ),
+    (
+        "comment.reactions[0].profile.displayUsernamePublic",
+        "the reactor's embedded profile in this capture carries only proxyWallet",
+    ),
+    (
+        "comment.reactions[0].profile.bio",
+        "the reactor's embedded profile in this capture carries only proxyWallet",
+    ),
+    (
+        "comment.reactions[0].profile.isMod",
+        "the reactor's embedded profile in this capture carries only proxyWallet",
+    ),
+    (
+        "comment.reactions[0].profile.isCreator",
+        "the reactor's embedded profile in this capture carries only proxyWallet",
+    ),
+    (
+        "comment.reactions[0].profile.baseAddress",
+        "the reactor's embedded profile in this capture carries only proxyWallet",
+    ),
+    (
+        "comment.reactions[0].profile.profileImage",
+        "the reactor's embedded profile in this capture carries only proxyWallet",
+    ),
+    (
+        "comment.reactions[0].profile.profileImageOptimized",
+        "the reactor's embedded profile in this capture carries only proxyWallet",
+    ),
+    (
+        "comment.reactions[0].profile.positions",
+        "the reactor's embedded profile in this capture carries only proxyWallet",
+    ),
+    (
+        "comment.parentCommentID",
+        "the sparse capture is a thread root, not a reply",
+    ),
+    (
+        "comment.replyAddress",
+        "the sparse capture is a thread root, not a reply",
+    ),
+    (
+        "comment.profile",
+        "the sparse capture's author has no profile in this response",
+    ),
+    ("comment.reactions", "the sparse capture has no reactions"),
+];
+
 /// Walk a captured payload against what the type re-emits, asserting both
 /// directions at every level of nesting.
 fn check(wire: &Value, emitted: &Value, path: &str) {
     match (wire, emitted) {
         (Value::Object(w), Value::Object(e)) => {
-            // Direction 1: nothing invented.
+            // Direction 1: nothing invented. A key present on both sides
+            // recurses so nested mismatches are caught too; a key the type
+            // emits but the wire lacks must be declared in EXPECTED_ABSENT.
             for (key, value) in e {
-                // `Option::None` serializes to null, and `#[serde(default)]`
-                // on a Vec serializes to []. Neither claims the server sent
-                // anything, so neither can be an invented field.
-                if value.is_null() || matches!(value, Value::Array(a) if a.is_empty()) {
+                let full = format!("{path}.{key}");
+                match w.get(key) {
+                    Some(wire_value) => check(wire_value, value, &full),
+                    None => assert!(
+                        EXPECTED_ABSENT.iter().any(|(k, _)| *k == full.as_str()),
+                        "{full} is emitted by the type but absent from the captured \
+                         payload, and not listed in EXPECTED_ABSENT with a reason — \
+                         the field may be invented"
+                    ),
+                }
+            }
+            // Direction 2: nothing unmodelled. Keys present on both sides
+            // were already recursed into above.
+            for key in w.keys() {
+                if e.contains_key(key) {
                     continue;
                 }
+                let full = format!("{path}.{key}");
                 assert!(
-                    w.contains_key(key),
-                    "{path}.{key} is emitted by the type but absent from the captured \
-                     payload — the field is invented"
+                    IGNORED.iter().any(|(k, _)| *k == full.as_str()),
+                    "{full} is sent by the server but not modelled, and not listed \
+                     in IGNORED with a reason"
                 );
-            }
-            // Direction 2: nothing unmodelled.
-            for (key, value) in w {
-                match e.get(key) {
-                    Some(emitted_value) => check(value, emitted_value, &format!("{path}.{key}")),
-                    None => {
-                        let full = format!("{path}.{key}");
-                        assert!(
-                            IGNORED.iter().any(|(k, _)| *k == full.as_str()),
-                            "{full} is sent by the server but not modelled, and not listed \
-                             in IGNORED with a reason"
-                        );
-                    }
-                }
             }
         }
         (Value::Array(w), Value::Array(e)) => {
+            assert_eq!(
+                w.len(),
+                e.len(),
+                "{path} has {} elements on the wire but the type re-emits {} — a \
+                 truncated collection would otherwise pass unnoticed by comparing \
+                 only the shorter length",
+                w.len(),
+                e.len()
+            );
             for (i, (wi, ei)) in w.iter().zip(e).enumerate() {
                 check(wi, ei, &format!("{path}[{i}]"));
             }
@@ -130,4 +238,14 @@ fn id_suffixed_keys_keep_their_wire_casing() {
         emitted["reactions"][0].get("commentID").is_some(),
         "commentID must keep its capitalised suffix"
     );
+
+    // A key-set guard alone cannot catch a value falling through to
+    // `ParentEntityType::Unknown`: if `"Event"` ever stopped deserializing to
+    // `ParentEntityType::Event` (a renamed variant, upstream switching to
+    // lowercase `event`, ...), `#[serde(other)]` would silently absorb it into
+    // `Unknown`, which re-serializes to the string `"Unknown"` — the key sets
+    // would still match and every test above would still pass, while
+    // `polyoxide gamma comments list` printed `"parentEntityType": "Unknown"`
+    // on every row. Pin the decoded value, not just its presence.
+    assert_eq!(typed.parent_entity_type, Some(ParentEntityType::Event));
 }
