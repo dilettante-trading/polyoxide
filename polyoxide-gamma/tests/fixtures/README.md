@@ -16,6 +16,9 @@ spec is wrong.
 | `profile_sparse.json` | `GET /profiles/user_address/0x69463a2ab818b0453e8380ae2b5dd5d33b2625f2` | 2026-08-19 | Verbatim (re-indented to 2 spaces; **no keys added or removed**). Lacks `profileImage` and `bio`, the two keys the server omits most often — see the sample below. |
 | `user_response_full.json` | `GET /public-profile?address=0xc7e53ac4a7c76d6df8b794de2e7d0794265d2d3a` | 2026-08-19 | Verbatim (re-indented to 2 spaces; **no keys added or removed**). The richest capture in a 39-address sweep: carries `profileImage`, `bio`, `pseudonym`, `xUsername` and a non-default `takerTier`/`takerTierName` together, plus a `users[]` entry with an explicit `communityMod: false`. Only `discordUsername` is missing — never observed in the sweep at all (see below). |
 | `user_response_sparse.json` | `GET /public-profile?address=0x226b48c1ab114eb890dfae18ea6eb3304c92df8b` | 2026-08-19 | Verbatim (re-indented to 2 spaces; **no keys added or removed**). Lacks `profileImage`, `bio` and `xUsername`. Its `users[]` entry carries `communityMod: true`, the rarer of the two observed boolean values (2/38 nested entries where the key was present at all). |
+| `search_response_profiles.json` | `GET /public-search?q=sports&search_profiles=true&limit_per_type=20` | 2026-08-19 | `events` truncated from 20 entries to `[]` — this fixture exercises `SearchResponse`/`SearchProfile`, not `Event`, and keeping real `Event` payloads here would drag the known `Market`/`Event` parity findings into this guard. `pagination` kept verbatim. **`profiles` is untouched**: all 20 entries, including the server's own JSON `null` at index 12 — reproduced on 5/5 attempts against the live host, see `docs/specs/gamma/OBSERVED.md`. |
+| `search_profile_full.json` | One `profiles[]` entry from `GET /public-search?q=degen&search_profiles=true&limit_per_type=20` | 2026-08-19 | Verbatim. The richest profile shape observed across a 228-profile, 12-query sweep (`poly, trader, crypto, whale, a, bot, john, mod, degen, market, sports, e`): carries `bio` and `profileImage` together, which only 34/228 and 41/228 sampled profiles do respectively. |
+| `search_profile_sparse.json` | One `profiles[]` entry from `GET /public-search?q=crypto&search_profiles=true&limit_per_type=20` | 2026-08-19 | Verbatim. The sparsest profile shape observed in the same sweep: only `name`, `displayUsernamePublic` and `proxyWallet` — missing `pseudonym`, which 223/228 sampled profiles carry. |
 
 Across the 39-address sweep backing the `user_response_*` pair, top-level key
 frequency was: `$schema`, `createdAt`, `proxyWallet`, `displayUsernamePublic`,
@@ -35,6 +38,19 @@ explicit JSON `null`, though the schema types it `["array","null"]`;
 `user_response_tolerates_null_users` in `tests/wire_agreement.rs` covers that
 case with a hand-written payload instead. `$schema` is response metadata, not
 data — see `tests/wire_agreement.rs`'s `IGNORED` list.
+
+Across the 228-profile, 12-query sweep backing the `search_*` fixtures
+(`poly, trader, crypto, whale, a, bot, john, mod, degen, market, sports, e`
+against `/public-search?q=<q>&search_profiles=true&limit_per_type=20`),
+top-level key frequency was: `name`, `displayUsernamePublic`, `proxyWallet` in
+228/228; `pseudonym` in 223/228; `profileImage` in 41/228; `bio` in 34/228;
+`address` in **0/228** — invented by the fork, exactly as `Profile::id` and
+`UserResponse::address`/`id` were. Unlike `/public-profile` and
+`/profiles/user_address/{address}`, `/public-search` serves **no** `$schema`
+key, so there is no published contract to model `SearchProfile` against;
+228/228 is a strong sample but not a guarantee, so every field stays
+`Option`. See `docs/specs/gamma/OBSERVED.md` for the full writeup, including
+the `profiles[]` array's JSON `null` entries.
 
 ## Recapturing
 

@@ -41,6 +41,7 @@
 //! deserialization before these assertions ever ran. `EXPECTED_ABSENT` is
 //! what makes an invented `Option<T>` field fail too.
 
+use polyoxide_gamma::api::search::{SearchProfile, SearchResponse};
 use polyoxide_gamma::api::user::UserResponse;
 use polyoxide_gamma::types::{Comment, ParentEntityType, Profile};
 use serde_json::Value;
@@ -51,6 +52,9 @@ const PROFILE_FULL: &str = include_str!("fixtures/profile_full.json");
 const PROFILE_SPARSE: &str = include_str!("fixtures/profile_sparse.json");
 const USER_RESPONSE_FULL: &str = include_str!("fixtures/user_response_full.json");
 const USER_RESPONSE_SPARSE: &str = include_str!("fixtures/user_response_sparse.json");
+const SEARCH_PROFILE_FULL: &str = include_str!("fixtures/search_profile_full.json");
+const SEARCH_PROFILE_SPARSE: &str = include_str!("fixtures/search_profile_sparse.json");
+const SEARCH_RESPONSE_PROFILES: &str = include_str!("fixtures/search_response_profiles.json");
 
 /// Wire keys deliberately left unmodelled, each with a reason.
 ///
@@ -187,6 +191,21 @@ const EXPECTED_ABSENT: &[(&str, &str)] = &[
         "user.xUsername",
         "the sparse capture's subject has not set one; present in 5/39 sampled \
          /public-profile responses (see tests/fixtures/README.md)",
+    ),
+    (
+        "searchProfile.profileImage",
+        "the sparse capture's subject has not set one; present in 41/228 sampled \
+         profiles (see tests/fixtures/README.md)",
+    ),
+    (
+        "searchProfile.bio",
+        "the sparse capture's subject has not set one; present in 34/228 sampled \
+         profiles (see tests/fixtures/README.md)",
+    ),
+    (
+        "searchProfile.pseudonym",
+        "the sparse capture's subject has not set one; present in 223/228 sampled \
+         profiles (see tests/fixtures/README.md)",
     ),
 ];
 
@@ -343,4 +362,51 @@ fn id_suffixed_keys_keep_their_wire_casing() {
     // `polyoxide gamma comments list` printed `"parentEntityType": "Unknown"`
     // on every row. Pin the decoded value, not just its presence.
     assert_eq!(typed.parent_entity_type, Some(ParentEntityType::Event));
+}
+
+#[test]
+fn full_search_profile_agrees_with_captured_payload() {
+    let wire: Value = serde_json::from_str(SEARCH_PROFILE_FULL).expect("fixture is valid JSON");
+    let typed: SearchProfile = serde_json::from_value(wire.clone())
+        .unwrap_or_else(|e| panic!("captured payload must deserialize into SearchProfile: {e}"));
+    let emitted = serde_json::to_value(&typed).expect("SearchProfile must serialize");
+    check(&wire, &emitted, "searchProfile");
+}
+
+#[test]
+fn sparse_search_profile_agrees_with_captured_payload() {
+    let wire: Value = serde_json::from_str(SEARCH_PROFILE_SPARSE).expect("fixture is valid JSON");
+    let typed: SearchProfile = serde_json::from_value(wire.clone())
+        .unwrap_or_else(|e| panic!("captured payload must deserialize into SearchProfile: {e}"));
+    let emitted = serde_json::to_value(&typed).expect("SearchProfile must serialize");
+    check(&wire, &emitted, "searchProfile");
+}
+
+#[test]
+fn search_response_tolerates_null_profile_entries() {
+    // `search_response_profiles.json` is a captured `/public-search` response
+    // whose `profiles` array has a server-sent JSON `null` at index 12 — see
+    // tests/fixtures/README.md. A `Vec<SearchProfile>` cannot deserialize a
+    // `null` element and errors the whole call; this pins that the type
+    // tolerates it instead of failing outright.
+    let wire: Value =
+        serde_json::from_str(SEARCH_RESPONSE_PROFILES).expect("fixture is valid JSON");
+    let typed: SearchResponse = serde_json::from_value(wire).unwrap_or_else(|e| {
+        panic!(
+            "captured payload with a null profile entry must deserialize into SearchResponse: {e}"
+        )
+    });
+    assert_eq!(
+        typed.profiles.len(),
+        20,
+        "the null entry must not silently shrink the array"
+    );
+    assert!(
+        typed.profiles[12].is_none(),
+        "index 12 is the server's null entry and must decode to None"
+    );
+    assert!(
+        typed.profiles[0].is_some(),
+        "a populated entry must still decode to Some"
+    );
 }

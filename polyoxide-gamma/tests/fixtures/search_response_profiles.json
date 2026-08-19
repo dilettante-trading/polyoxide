@@ -1,0 +1,125 @@
+{
+  "events": [],
+  "profiles": [
+    {
+      "name": "Fastisslow-sports",
+      "pseudonym": "Fantastic-Alto",
+      "displayUsernamePublic": true,
+      "proxyWallet": "0xbc10cac9532604eafd98dce49f5d139d7c263f05"
+    },
+    {
+      "name": "Sports",
+      "pseudonym": "Pleasant-Proposal",
+      "displayUsernamePublic": true,
+      "proxyWallet": "0x322f041810cee536293dcb4c99fc23b3a766940a"
+    },
+    {
+      "name": "Jre-Mike-Sports",
+      "pseudonym": "Moral-Peninsula",
+      "displayUsernamePublic": true,
+      "proxyWallet": "0x147319991b1f3e06df38a33f0af11c5a31f5d28b"
+    },
+    {
+      "name": "sportsfan",
+      "pseudonym": "Smug-Sediment",
+      "displayUsernamePublic": true,
+      "proxyWallet": "0x3c084ac4afbdecfc91de76b9ba4e7341bba899d7"
+    },
+    {
+      "name": "Sports-bald-eagle",
+      "pseudonym": "Young-Chaplain",
+      "displayUsernamePublic": true,
+      "proxyWallet": "0xfd8adf671347ba076715f637dd76c171fbaf4146"
+    },
+    {
+      "name": "very-hot-sports-al",
+      "pseudonym": "Melodic-App",
+      "displayUsernamePublic": true,
+      "proxyWallet": "0x094f6c73c0b7a3cddc4453857bb13164ea83364c"
+    },
+    {
+      "name": "sports-2026",
+      "pseudonym": "Glaring-Bidding-Pasta",
+      "displayUsernamePublic": true,
+      "proxyWallet": "0xfe8b731508c38abe5b4cd0616a83169c6b783dc3"
+    },
+    {
+      "name": "Boston.Sports",
+      "pseudonym": "Chubby-Practitioner",
+      "displayUsernamePublic": true,
+      "proxyWallet": "0xbe28fbb7cd9d8a439619fe673b8ddc2bcb1a60eb"
+    },
+    {
+      "name": "sports-pm",
+      "pseudonym": "Wee-Cashew",
+      "displayUsernamePublic": true,
+      "proxyWallet": "0x08232d1bfea758419b12117008279dc3991bec6a"
+    },
+    {
+      "name": "e-sports",
+      "pseudonym": "Sandy-Interpreter",
+      "displayUsernamePublic": true,
+      "profileImage": "https://polymarket-upload.s3.us-east-2.amazonaws.com/profile-image-8045105-fd0204c6-acdc-446b-baa8-88562264c6f6.png",
+      "proxyWallet": "0x257e49ef206fb10fd1cc1786c3a5ce20fc1742f5"
+    },
+    {
+      "name": "repl-sports-2",
+      "pseudonym": "Prickly-Predecessor",
+      "displayUsernamePublic": true,
+      "proxyWallet": "0xdfcdeaf9e42b8d6b1a4b45687a6f95f77ba836df"
+    },
+    {
+      "name": "sports-lapine",
+      "pseudonym": "Ordinary-Conservation",
+      "displayUsernamePublic": true,
+      "proxyWallet": "0x1fe7a630e8e40b916b17e5ad20906c9650fcb685"
+    },
+    null,
+    {
+      "name": "Sports-Xr",
+      "pseudonym": "Naughty-Boatload",
+      "displayUsernamePublic": true,
+      "proxyWallet": "0x9065bbeddc5f9de0a3e9561fe2ccd8fd81e53275"
+    },
+    {
+      "name": "agnelo-sports",
+      "pseudonym": "Evil-Authenticity",
+      "displayUsernamePublic": true,
+      "proxyWallet": "0x7efd7c0737b39b71216b01bda64b935a26277eed"
+    },
+    {
+      "name": "sports-bot",
+      "pseudonym": "Salty-Heirloom",
+      "displayUsernamePublic": true,
+      "proxyWallet": "0xcd2148ed7ff719ed4a19a632e0be01527697a494"
+    },
+    {
+      "name": "Jeffrey-E.Sports",
+      "pseudonym": "Monthly-Tenant",
+      "displayUsernamePublic": true,
+      "proxyWallet": "0x67bf711285642d103ce5864ce510e7a411102ea8"
+    },
+    {
+      "name": "syno.sports.v1",
+      "pseudonym": "Celebrated-Guide",
+      "displayUsernamePublic": true,
+      "proxyWallet": "0xf420a7910dd74e05a873767d3955c2d3b866558e"
+    },
+    {
+      "name": "Nick.sports",
+      "pseudonym": "Handsome-Daily",
+      "displayUsernamePublic": true,
+      "proxyWallet": "0xf860b67eb40d203f0f7cf037df2fc29615fb31f4"
+    },
+    {
+      "name": "sopileo-sports",
+      "pseudonym": "Functional-Accord",
+      "displayUsernamePublic": true,
+      "proxyWallet": "0x6a1f500f81fc9fb807a7530f6244672b3976d129"
+    }
+  ],
+  "pagination": {
+    "hasMore": true,
+    "totalResults": 118968
+  }
+}

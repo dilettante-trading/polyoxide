@@ -865,6 +865,26 @@ async fn live_public_search() {
     let _ = results;
 }
 
+/// Regression test for the `SearchResponse::profiles` null-element failure
+/// (see `docs/specs/gamma/OBSERVED.md` and `docs/plans/2026-08-19-gamma-type-parity-worklist.md`,
+/// follow-up 17). `q=sports` at this `limit_per_type` reliably returns a JSON
+/// `null` entry in `profiles`; the old `Vec<SearchProfile>` errored the whole
+/// call on it instead of tolerating it.
+#[tokio::test]
+#[ignore]
+async fn live_public_search_sports_profiles() {
+    let gamma = client();
+    let results = gamma
+        .search()
+        .public_search("sports")
+        .search_profiles(true)
+        .limit_per_type(20)
+        .send()
+        .await
+        .expect("public search must deserialize even when profiles contains a null entry");
+    let _ = results;
+}
+
 // ── User ────────────────────────────────────────────────────────
 
 #[tokio::test]

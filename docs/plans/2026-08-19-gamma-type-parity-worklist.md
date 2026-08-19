@@ -435,7 +435,7 @@ parses it.
 
 **Confidence: high** — spec and 1,309 live objects agree.
 
-### 10. `UserResponse::address`, `UserResponse::id`, `SearchProfile::address` — PARTIALLY FIXED
+### 10. `UserResponse::address`, `UserResponse::id`, `SearchProfile::address` — FIXED
 
 Fixed for `UserResponse` and `UserInfo` in the change that pulled this half of
 the finding into PR #29. Both were rewritten field-for-field against
@@ -456,13 +456,26 @@ the schema's explicit `null` on `users`; the `types.rs` unit tests that
 asserted `"address"`/`"id"` from a hand-written fixture are updated to the
 real shape.
 
-**`SearchProfile::address` (`api/search.rs:142`) is still open.** It was
-explicitly out of scope for this change, and unlike `/public-profile`,
-`/public-search` serves **no** `$schema` key (verified 2026-08-19 — the
-response body is `{"events": [...], "profiles": [...], "pagination": {...}}`
-with no schema link at any level). Fixing it will need capture-based work
-against the live host rather than a served schema, the way `Profile` and
-`Comment` were originally approached before `$schema` was discovered.
+**`SearchProfile::address` (`api/search.rs:142`) is now fixed too.** Unlike
+`/public-profile`, `/public-search` serves **no** `$schema` key (verified
+2026-08-19 — the response body is `{"events": [...], "profiles": [...],
+"pagination": {...}}` with no schema link at any level), so this needed
+capture-based work against the live host rather than a served schema, the way
+`Profile` and `Comment` were originally approached before `$schema` was
+discovered. Modelled from a 228-profile, 12-query live sample instead (see
+`tests/fixtures/README.md`): `address` appeared in 0/228, `displayUsernamePublic`
+in 228/228 and was unmodelled. `address` is removed; `display_username_public`
+is added. Because there is no schema to supply a `required` list the way
+`PublicProfile.json`/`PublicProfileResponse.json` did for `Profile` and
+`UserResponse`, every `SearchProfile` field stays `Option` rather than being
+promoted — see `docs/specs/gamma/OBSERVED.md`. Verified against
+`tests/fixtures/search_profile_{full,sparse}.json` and enforced by
+`tests/wire_agreement.rs`.
+
+**Found while fixing this: `SearchResponse::profiles` can hold a JSON `null`
+element, which the old `Vec<SearchProfile>` could not deserialize — a hard
+failure, not silent data loss.** Not part of the original sweep; see finding
+#17 below.
 
 The rest of this section is the original finding, kept for the record.
 
@@ -787,3 +800,43 @@ distinct from using it as the authority on values and enums, which
 `docs/specs/gamma/OBSERVED.md` shows it cannot.
 
 **Confidence: confirmed by experiment.** Not fixed in 0.28.0.
+
+---
+
+## Follow-up 17 — `SearchResponse::profiles` errored on the server's own `null` (found and fixed 2026-08-19)
+
+Found while fixing finding #10, not part of the original sweep. This is a
+**hard failure**, the more serious class than the silent-data-loss findings
+elsewhere in this document: the old `profiles: Vec<SearchProfile>`
+(`polyoxide-gamma/src/api/search.rs:127`) could not deserialize a JSON `null`
+array element, so the whole `/public-search` call errored rather than
+dropping or defaulting the entry.
+
+**Reproduce:**
+
+```
+GET /public-search?q=sports&search_profiles=true&limit_per_type=20
+```
+
+`profiles` returns 20 entries; index 12 is `null`. Stable on 5/5 attempts on
+2026-08-19. Proven against the real client:
+
+```
+gamma.search().public_search("sports").search_profiles(true).limit_per_type(20).send()
+  → ERR: Serialization error: invalid type: null, expected struct SearchProfile
+```
+
+`events` and `tags` on the same struct were probed across the 12-query
+sweep backing finding #10 (240 event slots, 68 tag slots total) and never
+observed to contain `null`, so they are unchanged.
+
+**Fixed** by typing the field `Vec<Option<SearchProfile>>` — `Option<T>`'s own
+`Deserialize` impl already decodes a `null` array element as `None`, no custom
+deserializer needed. Verified against
+`tests/fixtures/search_response_profiles.json` and enforced by
+`tests/wire_agreement.rs`'s `search_response_tolerates_null_profile_entries`.
+A live test (`live_public_search_sports_profiles`, `#[ignore]`) now calls
+`public_search("sports").search_profiles(true).limit_per_type(20)` against the
+real host — the regression that would have caught this.
+
+**Confidence: confirmed**, both live and by fixture.

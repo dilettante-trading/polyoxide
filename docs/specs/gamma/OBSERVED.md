@@ -95,6 +95,50 @@ findings: the account id lives nested at `users[].id` (required on that
 object), not at any top level; `discordUsername` is a documented optional
 property never observed on the wire across the sample; and `users[].communityMod`,
 while usually present, was absent for 1 of 39 sampled nested entries —
-confirming it is genuinely optional rather than always-sent-as-false. `finding
-#10`'s remaining half, `SearchProfile::address`, is still open — see
-`docs/plans/2026-08-19-gamma-type-parity-worklist.md`.
+confirming it is genuinely optional rather than always-sent-as-false. Finding
+#10's remaining half, `SearchProfile::address`, is now fixed too — see the
+`/public-search` section below.
+
+## `GET /public-search` serves no `$schema` — and its `profiles` array can contain `null`
+
+Unlike `/public-profile` and `/profiles/user_address/{address}`,
+`/public-search` (`polyoxide-gamma/src/api/search.rs`) serves **no** `$schema`
+key at any level (verified 2026-08-19 — a response body is
+`{"events": [...], "profiles": [...], "pagination": {...}}` with no schema
+link anywhere). There is no published, machine-readable contract for this
+endpoint, so `SearchProfile` is modelled from a live sample instead: 228
+profile objects across 12 queries (`poly, trader, crypto, whale, a, bot, john,
+mod, degen, market, sports, e`) at
+`/public-search?q=<q>&search_profiles=true&limit_per_type=20`. Key frequency:
+`name`, `displayUsernamePublic`, `proxyWallet` in 228/228; `pseudonym` in
+223/228; `profileImage` in 41/228; `bio` in 34/228; `address` in **0/228** —
+invented by the fork, exactly like `Profile::id` and `UserResponse::address`/
+`id`. Because there is no schema to name a `required` set, every
+`SearchProfile` field stays `Option`, unlike `Profile` and `UserResponse`
+where a served schema's `required` list justified non-`Option` fields. Fixed
+by removing `SearchProfile::address` and adding
+`SearchProfile::display_username_public`; verified against
+`tests/fixtures/search_profile_{full,sparse}.json` and enforced by
+`tests/wire_agreement.rs`. This closes finding #10.
+
+Separately — found while fixing #10, not part of the original sweep —
+**`SearchResponse::profiles` can contain a JSON `null` element**, and the old
+`Vec<SearchProfile>` could not deserialize one, so the whole call errored
+rather than losing data. Reproduce with:
+
+```
+GET /public-search?q=sports&search_profiles=true&limit_per_type=20
+```
+
+`profiles` returns 20 entries; index 12 is `null`. Stable on 5/5 attempts on
+2026-08-19. This is a **hard failure**, not silent data loss —
+`gamma.search().public_search("sports").search_profiles(true).limit_per_type(20).send()`
+returned `Err(Serialization error: invalid type: null, expected struct
+SearchProfile)` before the fix. Fixed by typing the field
+`Vec<Option<SearchProfile>>` — `Option<T>`'s own `Deserialize` impl already
+decodes a `null` array element as `None`, so no custom deserializer was
+needed. Verified against `tests/fixtures/search_response_profiles.json` and
+enforced by `tests/wire_agreement.rs`'s
+`search_response_tolerates_null_profile_entries`. `events` and `tags` were
+probed across the same 12 queries (240 event slots, 68 tag slots) and never
+observed to contain `null`, so they are left as `Vec<Event>` / `Vec<Tag>`.
