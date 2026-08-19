@@ -957,8 +957,12 @@ async fn live_get_profile_by_address() {
         return;
     };
 
-    // The endpoint returns 404 for non-profile addresses; treat that as a
-    // valid contract exercise. Only successful deserializations are asserted.
+    // The endpoint actually returns 200 here, not 404: the `if let Ok` below
+    // is swallowing a deserialization error caused by `Profile::id` being
+    // required when the server routinely omits the `id` key. See
+    // `docs/plans/2026-08-19-gamma-type-parity-worklist.md` finding #1.
+    // Fixing `Profile::id` is out of scope for this change; only successful
+    // deserializations are asserted here.
     if let Ok(profile) = gamma.user().get_by_address(&address).send().await {
         // The profile may have sparse fields, but id must always be present.
         assert!(!profile.id.is_empty(), "profile id must not be empty");

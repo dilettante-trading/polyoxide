@@ -537,7 +537,7 @@ impl fmt::Display for ParentEntityType {
             Self::Event => write!(f, "Event"),
             Self::Series => write!(f, "Series"),
             Self::PerpsAsset => write!(f, "PerpsAsset"),
-            Self::Unknown => write!(f, "UNKNOWN"),
+            Self::Unknown => write!(f, "Unknown"),
         }
     }
 }

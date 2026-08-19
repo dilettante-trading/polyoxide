@@ -59,7 +59,11 @@ pub struct ListComments {
 }
 
 impl ListComments {
-    /// Set maximum number of results (minimum: 0)
+    /// Bound the number of top-level comments, not the number of rows
+    /// returned: replies come along with their parents and are not counted
+    /// against `limit`. Measured 2026-08-19 (`docs/specs/gamma/OBSERVED.md`):
+    /// `limit=2` returned 8 rows, `limit=64` returned 160. Callers sizing a
+    /// buffer from `limit` will under-allocate.
     pub fn limit(mut self, limit: u32) -> Self {
         self.request = self.request.query("limit", limit);
         self

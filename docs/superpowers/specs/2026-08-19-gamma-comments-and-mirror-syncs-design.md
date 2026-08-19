@@ -233,7 +233,7 @@ The `IGNORED` list in Component 5 is the only place a wire field may be dropped,
 
 Recapture is manual and expected: when upstream adds a field, assertion 2 fails in CI with the field named. The fix is to model it or to ignore it explicitly — both are diffs someone reads.
 
-Assertion 1 cannot be satisfied by weakening the type, only by removing the invented field, since a field the server never sends has no non-null value to emit.
+Assertion 1 is satisfied by removing an invented field, or by declaring it in `EXPECTED_ABSENT` (Component 5) with a written reason — an explicit, reviewed exemption, not a weakening of the assertion itself. An earlier draft of this document claimed assertion 1 could *only* be satisfied by removal, reasoning that a field the server never sends has no non-null value to emit. That reasoning was only as sound as the `null`/empty-array exemption it depended on, and that exemption is exactly what let an invented `Option<T>` field pass unnoticed — a 2026-08-19 review disproved the claim by adding one and watching all three `wire_agreement.rs` tests stay green. `EXPECTED_ABSENT` replaces the blanket exemption: every key the type emits must be present on the wire or named here with a reason, so a field with no legitimate excuse still fails.
 
 ## Testing
 
@@ -250,7 +250,8 @@ across `polyoxide-gamma/tests/wire_agreement.rs`, `polyoxide-gamma/tests/mock_ap
 | `list_comments_sends_typed_parent_entity_type` | Mock test asserting the query string carries `parent_entity_type=PerpsAsset`, not a string a caller could misspell as `market`. |
 | `market_is_no_longer_accepted` | The CLI's `--parent-entity-type market` fails to parse. |
 | `parent_entity_type_perps_asset` | The CLI's `--parent-entity-type perps-asset` parses and converts to `polyoxide_gamma::types::ParentEntityType::PerpsAsset`. |
-| `test_every_comment_getter_resolves` (pytest) | Every `py_type!` getter on a captured payload returns non-`None` where the wire has a value — the only defence against the silent-`None` path. |
+| `test_every_comment_getter_resolves` (pytest) | Asserts `hasattr` on the *class* for each field name in the `py_type!` list — catches a field dropped from the list entirely, but not a stale rename, since PyO3 registers the descriptor regardless of which JSON key it resolves. It is not a defence against the silent-`None` path; a 2026-08-19 review showed it cannot fail on one. |
+| `comment_getters_resolve_against_the_shared_fixture` (Rust, `polyoxide-py/src/types/gamma.rs`) | Builds a real `PyComment` from the shared fixture and reads every getter, added 2026-08-19 as the instance-level defence the pytest version could not provide. |
 
 `test_comment_deserialization`, the old self-referential fixture test, is deleted; the fixture-driven tests above replace it.
 

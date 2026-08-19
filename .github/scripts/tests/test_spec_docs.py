@@ -56,7 +56,7 @@ def count_channels(spec: str) -> int:
 # (spec, doc, template) — `template` is the prose claim with the count punched
 # out, and must stay specific enough to identify one claim unambiguously.
 ENDPOINT_CLAIMS = [
-    ("docs/specs/perps/openapi.json", "docs/specs/perps/INDEX.md", "{n} endpoints across three groups."),
+    ("docs/specs/perps/openapi.json", "docs/specs/perps/INDEX.md", "{n} endpoints across four groups."),
     ("docs/specs/perps/openapi.json", "CLAUDE.md", "`perps/`, {n} endpoints on"),
     ("docs/specs/bridge/openapi.yaml", "CLAUDE.md", "(`bridge/`, {n} endpoints)"),
     ("docs/specs/combos-rfq/openapi.yaml", "CLAUDE.md", "(`combos-rfq/`, {n} endpoints)"),
