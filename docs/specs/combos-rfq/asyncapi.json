@@ -19,24 +19,12 @@
       "title": "Quoter Gateway",
       "description": "Authenticated quoter channel. Send the `auth` message as the first message within 30 seconds. The gateway broadcasts active RFQ requests, accepts signed quotes and cancellations, issues last-look confirmation requests, streams execution updates, and sends confirmed trade broadcasts.",
       "messages": {
-        "auth": {
-          "$ref": "#/components/messages/auth"
-        },
-        "authResponse": {
-          "$ref": "#/components/messages/authResponse"
-        },
-        "rfqRequest": {
-          "$ref": "#/components/messages/rfqRequest"
-        },
-        "rfqQuote": {
-          "$ref": "#/components/messages/rfqQuote"
-        },
-        "ackRfqQuote": {
-          "$ref": "#/components/messages/ackRfqQuote"
-        },
-        "rfqQuoteCancel": {
-          "$ref": "#/components/messages/rfqQuoteCancel"
-        },
+        "auth": { "$ref": "#/components/messages/auth" },
+        "authResponse": { "$ref": "#/components/messages/authResponse" },
+        "rfqRequest": { "$ref": "#/components/messages/rfqRequest" },
+        "rfqQuote": { "$ref": "#/components/messages/rfqQuote" },
+        "ackRfqQuote": { "$ref": "#/components/messages/ackRfqQuote" },
+        "rfqQuoteCancel": { "$ref": "#/components/messages/rfqQuoteCancel" },
         "ackRfqQuoteCancel": {
           "$ref": "#/components/messages/ackRfqQuoteCancel"
         },
@@ -52,191 +40,115 @@
         "rfqExecutionUpdate": {
           "$ref": "#/components/messages/rfqExecutionUpdate"
         },
-        "rfqTrade": {
-          "$ref": "#/components/messages/rfqTrade"
-        },
-        "rfqError": {
-          "$ref": "#/components/messages/rfqError"
-        }
+        "rfqTrade": { "$ref": "#/components/messages/rfqTrade" },
+        "rfqError": { "$ref": "#/components/messages/rfqError" }
       }
     }
   },
   "operations": {
     "authenticate": {
       "action": "receive",
-      "channel": {
-        "$ref": "#/channels/quoter"
-      },
+      "channel": { "$ref": "#/channels/quoter" },
       "title": "Authenticate",
       "summary": "Authenticate the connection (send as the first message)",
       "description": "Authenticate with CLOB API credentials and the signer/maker identity used for RFQ orders. Must be the first message, sent within 30 seconds of connecting.",
-      "messages": [
-        {
-          "$ref": "#/channels/quoter/messages/auth"
-        }
-      ]
+      "messages": [{ "$ref": "#/channels/quoter/messages/auth" }]
     },
     "authResult": {
       "action": "send",
-      "channel": {
-        "$ref": "#/channels/quoter"
-      },
+      "channel": { "$ref": "#/channels/quoter" },
       "title": "Auth Result",
       "summary": "Gateway response to the auth message",
-      "messages": [
-        {
-          "$ref": "#/channels/quoter/messages/authResponse"
-        }
-      ]
+      "messages": [{ "$ref": "#/channels/quoter/messages/authResponse" }]
     },
     "receiveRfqRequest": {
       "action": "send",
-      "channel": {
-        "$ref": "#/channels/quoter"
-      },
+      "channel": { "$ref": "#/channels/quoter" },
       "title": "RFQ Request",
       "summary": "Broadcast of an active RFQ request to quote",
       "description": "Broadcasts an active request with derived combo position IDs and a submission deadline. Quoters must respond before `submission_deadline`.",
-      "messages": [
-        {
-          "$ref": "#/channels/quoter/messages/rfqRequest"
-        }
-      ]
+      "messages": [{ "$ref": "#/channels/quoter/messages/rfqRequest" }]
     },
     "submitQuote": {
       "action": "receive",
-      "channel": {
-        "$ref": "#/channels/quoter"
-      },
+      "channel": { "$ref": "#/channels/quoter" },
       "title": "Submit Quote",
       "summary": "Submit a signed maker quote before the submission deadline",
       "description": "Submit a signed Exchange v3 order. Do not include `quote_id` (server-generated) or top-level `signer_address`/`maker_address`/`signature_type` (applied from the authenticated session).",
-      "messages": [
-        {
-          "$ref": "#/channels/quoter/messages/rfqQuote"
-        }
-      ]
+      "messages": [{ "$ref": "#/channels/quoter/messages/rfqQuote" }]
     },
     "acknowledgeQuote": {
       "action": "send",
-      "channel": {
-        "$ref": "#/channels/quoter"
-      },
+      "channel": { "$ref": "#/channels/quoter" },
       "title": "Quote Ack",
       "summary": "Returns the server-generated quote ID",
-      "messages": [
-        {
-          "$ref": "#/channels/quoter/messages/ackRfqQuote"
-        }
-      ]
+      "messages": [{ "$ref": "#/channels/quoter/messages/ackRfqQuote" }]
     },
     "cancelQuote": {
       "action": "receive",
-      "channel": {
-        "$ref": "#/channels/quoter"
-      },
+      "channel": { "$ref": "#/channels/quoter" },
       "title": "Cancel Quote",
       "summary": "Cancel an active maker quote before it is selected",
-      "messages": [
-        {
-          "$ref": "#/channels/quoter/messages/rfqQuoteCancel"
-        }
-      ]
+      "messages": [{ "$ref": "#/channels/quoter/messages/rfqQuoteCancel" }]
     },
     "acknowledgeQuoteCancel": {
       "action": "send",
-      "channel": {
-        "$ref": "#/channels/quoter"
-      },
+      "channel": { "$ref": "#/channels/quoter" },
       "title": "Quote Cancel Ack",
       "summary": "Confirms quote cancellation",
-      "messages": [
-        {
-          "$ref": "#/channels/quoter/messages/ackRfqQuoteCancel"
-        }
-      ]
+      "messages": [{ "$ref": "#/channels/quoter/messages/ackRfqQuoteCancel" }]
     },
     "receiveConfirmationRequest": {
       "action": "send",
-      "channel": {
-        "$ref": "#/channels/quoter"
-      },
+      "channel": { "$ref": "#/channels/quoter" },
       "title": "Confirmation Request",
       "summary": "Last-look confirmation request for a selected quote",
       "description": "Sent when the selected quote's maker has last look enabled. Respond before `confirm_by`.",
       "messages": [
-        {
-          "$ref": "#/channels/quoter/messages/rfqConfirmationRequest"
-        }
+        { "$ref": "#/channels/quoter/messages/rfqConfirmationRequest" }
       ]
     },
     "respondConfirmation": {
       "action": "receive",
-      "channel": {
-        "$ref": "#/channels/quoter"
-      },
+      "channel": { "$ref": "#/channels/quoter" },
       "title": "Confirmation Response",
       "summary": "Confirm or decline a selected quote during last look",
       "description": "Respond before `confirm_by`. Do not include top-level `signer_address`, `maker_address`, or `signature_type`; identity is applied from the authenticated session.",
       "messages": [
-        {
-          "$ref": "#/channels/quoter/messages/rfqConfirmationResponse"
-        }
+        { "$ref": "#/channels/quoter/messages/rfqConfirmationResponse" }
       ]
     },
     "acknowledgeConfirmation": {
       "action": "send",
-      "channel": {
-        "$ref": "#/channels/quoter"
-      },
+      "channel": { "$ref": "#/channels/quoter" },
       "title": "Confirmation Ack",
       "summary": "Confirms the maker's last-look response",
       "messages": [
-        {
-          "$ref": "#/channels/quoter/messages/ackRfqConfirmationResponse"
-        }
+        { "$ref": "#/channels/quoter/messages/ackRfqConfirmationResponse" }
       ]
     },
     "receiveExecutionUpdate": {
       "action": "send",
-      "channel": {
-        "$ref": "#/channels/quoter"
-      },
+      "channel": { "$ref": "#/channels/quoter" },
       "title": "Execution Update",
       "summary": "Execution progress for selected makers",
       "description": "Reports execution progress. `CONFIRMED` and `FAILED` are terminal.",
-      "messages": [
-        {
-          "$ref": "#/channels/quoter/messages/rfqExecutionUpdate"
-        }
-      ]
+      "messages": [{ "$ref": "#/channels/quoter/messages/rfqExecutionUpdate" }]
     },
     "receiveTradeBroadcast": {
       "action": "send",
-      "channel": {
-        "$ref": "#/channels/quoter"
-      },
+      "channel": { "$ref": "#/channels/quoter" },
       "title": "Trade Broadcast",
       "summary": "Confirmed Combo RFQ trade broadcast",
       "description": "Broadcasts confirmed Combo RFQ trades to authenticated quoter sessions. Delivery is best-effort, and consumers should deduplicate by `rfq_id`.",
-      "messages": [
-        {
-          "$ref": "#/channels/quoter/messages/rfqTrade"
-        }
-      ]
+      "messages": [{ "$ref": "#/channels/quoter/messages/rfqTrade" }]
     },
     "receiveError": {
       "action": "send",
-      "channel": {
-        "$ref": "#/channels/quoter"
-      },
+      "channel": { "$ref": "#/channels/quoter" },
       "title": "Error",
       "summary": "Sent when a command fails validation or cannot be applied",
-      "messages": [
-        {
-          "$ref": "#/channels/quoter/messages/rfqError"
-        }
-      ]
+      "messages": [{ "$ref": "#/channels/quoter/messages/rfqError" }]
     }
   },
   "components": {
@@ -246,9 +158,7 @@
         "title": "Auth",
         "summary": "Authenticate the connection",
         "contentType": "application/json",
-        "payload": {
-          "$ref": "#/components/schemas/AuthMessage"
-        },
+        "payload": { "$ref": "#/components/schemas/AuthMessage" },
         "examples": [
           {
             "name": "Authenticate",
@@ -273,9 +183,7 @@
         "title": "Auth Response",
         "summary": "Gateway response to the auth message",
         "contentType": "application/json",
-        "payload": {
-          "$ref": "#/components/schemas/AuthResponse"
-        },
+        "payload": { "$ref": "#/components/schemas/AuthResponse" },
         "examples": [
           {
             "name": "Success",
@@ -300,9 +208,7 @@
         "title": "RFQ_REQUEST",
         "summary": "Broadcast of an active RFQ request",
         "contentType": "application/json",
-        "payload": {
-          "$ref": "#/components/schemas/RfqRequest"
-        },
+        "payload": { "$ref": "#/components/schemas/RfqRequest" },
         "examples": [
           {
             "name": "Active request",
@@ -319,10 +225,7 @@
               "no_position_id": "<no_position_id>",
               "direction": "BUY",
               "side": "YES",
-              "requested_size": {
-                "unit": "notional",
-                "value_e6": "1000000"
-              },
+              "requested_size": { "unit": "notional", "value_e6": "1000000" },
               "submission_deadline": 1780575184000
             }
           }
@@ -333,9 +236,7 @@
         "title": "RFQ_QUOTE",
         "summary": "Submit a signed maker quote",
         "contentType": "application/json",
-        "payload": {
-          "$ref": "#/components/schemas/RfqQuote"
-        },
+        "payload": { "$ref": "#/components/schemas/RfqQuote" },
         "examples": [
           {
             "name": "Submit quote",
@@ -367,9 +268,7 @@
         "title": "ACK_RFQ_QUOTE",
         "summary": "Returns the server-generated quote ID",
         "contentType": "application/json",
-        "payload": {
-          "$ref": "#/components/schemas/AckRfqQuote"
-        },
+        "payload": { "$ref": "#/components/schemas/AckRfqQuote" },
         "examples": [
           {
             "name": "Quote accepted",
@@ -386,9 +285,7 @@
         "title": "RFQ_QUOTE_CANCEL",
         "summary": "Cancel an active maker quote",
         "contentType": "application/json",
-        "payload": {
-          "$ref": "#/components/schemas/RfqQuoteCancel"
-        },
+        "payload": { "$ref": "#/components/schemas/RfqQuoteCancel" },
         "examples": [
           {
             "name": "Cancel quote",
@@ -407,9 +304,7 @@
         "title": "ACK_RFQ_QUOTE_CANCEL",
         "summary": "Confirms quote cancellation",
         "contentType": "application/json",
-        "payload": {
-          "$ref": "#/components/schemas/AckRfqQuoteCancel"
-        },
+        "payload": { "$ref": "#/components/schemas/AckRfqQuoteCancel" },
         "examples": [
           {
             "name": "Cancel confirmed",
@@ -426,9 +321,7 @@
         "title": "RFQ_CONFIRMATION_REQUEST",
         "summary": "Last-look confirmation request for a selected quote",
         "contentType": "application/json",
-        "payload": {
-          "$ref": "#/components/schemas/RfqConfirmationRequest"
-        },
+        "payload": { "$ref": "#/components/schemas/RfqConfirmationRequest" },
         "examples": [
           {
             "name": "Confirmation request",
@@ -460,9 +353,7 @@
         "title": "RFQ_CONFIRMATION_RESPONSE",
         "summary": "Confirm or decline a selected quote",
         "contentType": "application/json",
-        "payload": {
-          "$ref": "#/components/schemas/RfqConfirmationResponse"
-        },
+        "payload": { "$ref": "#/components/schemas/RfqConfirmationResponse" },
         "examples": [
           {
             "name": "Confirm",
@@ -500,9 +391,7 @@
         "title": "RFQ_EXECUTION_UPDATE",
         "summary": "Execution progress for selected makers",
         "contentType": "application/json",
-        "payload": {
-          "$ref": "#/components/schemas/RfqExecutionUpdate"
-        },
+        "payload": { "$ref": "#/components/schemas/RfqExecutionUpdate" },
         "examples": [
           {
             "name": "Mined",
@@ -520,9 +409,7 @@
         "title": "RFQ_TRADE",
         "summary": "Confirmed Combo RFQ trade broadcast",
         "contentType": "application/json",
-        "payload": {
-          "$ref": "#/components/schemas/RfqTrade"
-        },
+        "payload": { "$ref": "#/components/schemas/RfqTrade" },
         "examples": [
           {
             "name": "Confirmed trade",
@@ -549,9 +436,7 @@
         "title": "RFQ_ERROR",
         "summary": "Sent when a command fails validation or cannot be applied",
         "contentType": "application/json",
-        "payload": {
-          "$ref": "#/components/schemas/RfqError"
-        },
+        "payload": { "$ref": "#/components/schemas/RfqError" },
         "examples": [
           {
             "name": "Competition window closed",
@@ -570,44 +455,27 @@
       "SignatureType": {
         "type": "integer",
         "description": "CLOB signature type: 0 EOA, 1 POLY_PROXY, 2 GNOSIS_SAFE, 3 POLY_1271.",
-        "enum": [
-          0,
-          1,
-          2,
-          3
-        ]
+        "enum": [0, 1, 2, 3]
       },
       "Direction": {
         "type": "string",
         "description": "Requester trade direction.",
-        "enum": [
-          "BUY",
-          "SELL"
-        ]
+        "enum": ["BUY", "SELL"]
       },
       "Side": {
         "type": "string",
         "description": "Combinatorial position side. Currently only YES is supported.",
-        "enum": [
-          "YES",
-          "NO"
-        ]
+        "enum": ["YES", "NO"]
       },
       "RequestedSize": {
         "type": "object",
         "description": "Requested RFQ size and unit.",
-        "required": [
-          "unit",
-          "value_e6"
-        ],
+        "required": ["unit", "value_e6"],
         "properties": {
           "unit": {
             "type": "string",
             "description": "`notional` for requester BUY RFQs and `shares` for requester SELL RFQs.",
-            "enum": [
-              "notional",
-              "shares"
-            ]
+            "enum": ["notional", "shares"]
           },
           "value_e6": {
             "type": "string",
@@ -658,14 +526,9 @@
           "side": {
             "type": "integer",
             "description": "Order side — 0 BUY, 1 SELL.",
-            "enum": [
-              0,
-              1
-            ]
+            "enum": [0, 1]
           },
-          "signatureType": {
-            "$ref": "#/components/schemas/SignatureType"
-          },
+          "signatureType": { "$ref": "#/components/schemas/SignatureType" },
           "timestamp": {
             "type": "string",
             "description": "Order timestamp in Unix seconds (as a string)."
@@ -687,33 +550,16 @@
       "AuthMessage": {
         "type": "object",
         "description": "Authentication message. Must be the first message after connecting.",
-        "required": [
-          "type",
-          "auth",
-          "identity"
-        ],
+        "required": ["type", "auth", "identity"],
         "properties": {
-          "type": {
-            "type": "string",
-            "const": "auth"
-          },
+          "type": { "type": "string", "const": "auth" },
           "auth": {
             "type": "object",
             "description": "CLOB API credentials.",
-            "required": [
-              "apiKey",
-              "secret",
-              "passphrase"
-            ],
+            "required": ["apiKey", "secret", "passphrase"],
             "properties": {
-              "apiKey": {
-                "type": "string",
-                "description": "CLOB API key."
-              },
-              "secret": {
-                "type": "string",
-                "description": "CLOB API secret."
-              },
+              "apiKey": { "type": "string", "description": "CLOB API key." },
+              "secret": { "type": "string", "description": "CLOB API secret." },
               "passphrase": {
                 "type": "string",
                 "description": "CLOB API passphrase."
@@ -723,11 +569,7 @@
           "identity": {
             "type": "object",
             "description": "Signer/maker identity used for RFQ orders.",
-            "required": [
-              "signer_address",
-              "maker_address",
-              "signature_type"
-            ],
+            "required": ["signer_address", "maker_address", "signature_type"],
             "properties": {
               "signer_address": {
                 "type": "string",
@@ -737,9 +579,7 @@
                 "type": "string",
                 "description": "Wallet that funds orders."
               },
-              "signature_type": {
-                "$ref": "#/components/schemas/SignatureType"
-              }
+              "signature_type": { "$ref": "#/components/schemas/SignatureType" }
             }
           }
         }
@@ -747,18 +587,10 @@
       "AuthResponse": {
         "type": "object",
         "description": "Gateway response to the auth message.",
-        "required": [
-          "type",
-          "success"
-        ],
+        "required": ["type", "success"],
         "properties": {
-          "type": {
-            "type": "string",
-            "const": "auth"
-          },
-          "success": {
-            "type": "boolean"
-          },
+          "type": { "type": "string", "const": "auth" },
+          "success": { "type": "boolean" },
           "address": {
             "type": "string",
             "description": "Authenticated address, present on success."
@@ -786,10 +618,7 @@
           "submission_deadline"
         ],
         "properties": {
-          "type": {
-            "type": "string",
-            "const": "RFQ_REQUEST"
-          },
+          "type": { "type": "string", "const": "RFQ_REQUEST" },
           "rfq_id": {
             "type": "string",
             "description": "Server-assigned RFQ ID."
@@ -801,9 +630,7 @@
           "leg_position_ids": {
             "type": "array",
             "description": "Canonical leg position IDs in the combo.",
-            "items": {
-              "type": "string"
-            }
+            "items": { "type": "string" }
           },
           "condition_id": {
             "type": "string",
@@ -817,15 +644,9 @@
             "type": "string",
             "description": "Derived NO combo position ID."
           },
-          "direction": {
-            "$ref": "#/components/schemas/Direction"
-          },
-          "side": {
-            "$ref": "#/components/schemas/Side"
-          },
-          "requested_size": {
-            "$ref": "#/components/schemas/RequestedSize"
-          },
+          "direction": { "$ref": "#/components/schemas/Direction" },
+          "side": { "$ref": "#/components/schemas/Side" },
+          "requested_size": { "$ref": "#/components/schemas/RequestedSize" },
           "submission_deadline": {
             "type": "integer",
             "format": "int64",
@@ -836,18 +657,9 @@
       "RfqQuote": {
         "type": "object",
         "description": "Submit a signed maker quote before the submission deadline.",
-        "required": [
-          "type",
-          "rfq_id",
-          "price_e6",
-          "size_e6",
-          "signed_order"
-        ],
+        "required": ["type", "rfq_id", "price_e6", "size_e6", "signed_order"],
         "properties": {
-          "type": {
-            "type": "string",
-            "const": "RFQ_QUOTE"
-          },
+          "type": { "type": "string", "const": "RFQ_QUOTE" },
           "rfq_id": {
             "type": "string",
             "description": "RFQ ID from RFQ_REQUEST."
@@ -860,27 +672,16 @@
             "type": "string",
             "description": "Fillable share count in six-decimal fixed-point units."
           },
-          "signed_order": {
-            "$ref": "#/components/schemas/ExchangeV3Order"
-          }
+          "signed_order": { "$ref": "#/components/schemas/ExchangeV3Order" }
         }
       },
       "AckRfqQuote": {
         "type": "object",
         "description": "Returns the server-generated quote ID.",
-        "required": [
-          "type",
-          "rfq_id",
-          "quote_id"
-        ],
+        "required": ["type", "rfq_id", "quote_id"],
         "properties": {
-          "type": {
-            "type": "string",
-            "const": "ACK_RFQ_QUOTE"
-          },
-          "rfq_id": {
-            "type": "string"
-          },
+          "type": { "type": "string", "const": "ACK_RFQ_QUOTE" },
+          "rfq_id": { "type": "string" },
           "quote_id": {
             "type": "string",
             "description": "Server-generated quote ID."
@@ -898,13 +699,8 @@
           "maker_address"
         ],
         "properties": {
-          "type": {
-            "type": "string",
-            "const": "RFQ_QUOTE_CANCEL"
-          },
-          "rfq_id": {
-            "type": "string"
-          },
+          "type": { "type": "string", "const": "RFQ_QUOTE_CANCEL" },
+          "rfq_id": { "type": "string" },
           "quote_id": {
             "type": "string",
             "description": "Server-generated quote ID."
@@ -922,22 +718,11 @@
       "AckRfqQuoteCancel": {
         "type": "object",
         "description": "Confirms quote cancellation.",
-        "required": [
-          "type",
-          "rfq_id",
-          "quote_id"
-        ],
+        "required": ["type", "rfq_id", "quote_id"],
         "properties": {
-          "type": {
-            "type": "string",
-            "const": "ACK_RFQ_QUOTE_CANCEL"
-          },
-          "rfq_id": {
-            "type": "string"
-          },
-          "quote_id": {
-            "type": "string"
-          }
+          "type": { "type": "string", "const": "ACK_RFQ_QUOTE_CANCEL" },
+          "rfq_id": { "type": "string" },
+          "quote_id": { "type": "string" }
         }
       },
       "RfqConfirmationRequest": {
@@ -961,47 +746,21 @@
           "confirm_by"
         ],
         "properties": {
-          "type": {
-            "type": "string",
-            "const": "RFQ_CONFIRMATION_REQUEST"
-          },
-          "rfq_id": {
-            "type": "string"
-          },
-          "quote_id": {
-            "type": "string",
-            "description": "Selected quote ID."
-          },
-          "signer_address": {
-            "type": "string"
-          },
-          "maker_address": {
-            "type": "string"
-          },
-          "signature_type": {
-            "$ref": "#/components/schemas/SignatureType"
-          },
+          "type": { "type": "string", "const": "RFQ_CONFIRMATION_REQUEST" },
+          "rfq_id": { "type": "string" },
+          "quote_id": { "type": "string", "description": "Selected quote ID." },
+          "signer_address": { "type": "string" },
+          "maker_address": { "type": "string" },
+          "signature_type": { "$ref": "#/components/schemas/SignatureType" },
           "leg_position_ids": {
             "type": "array",
-            "items": {
-              "type": "string"
-            }
+            "items": { "type": "string" }
           },
-          "condition_id": {
-            "type": "string"
-          },
-          "yes_position_id": {
-            "type": "string"
-          },
-          "no_position_id": {
-            "type": "string"
-          },
-          "direction": {
-            "$ref": "#/components/schemas/Direction"
-          },
-          "side": {
-            "$ref": "#/components/schemas/Side"
-          },
+          "condition_id": { "type": "string" },
+          "yes_position_id": { "type": "string" },
+          "no_position_id": { "type": "string" },
+          "direction": { "$ref": "#/components/schemas/Direction" },
+          "side": { "$ref": "#/components/schemas/Side" },
           "fill_size_e6": {
             "type": "string",
             "description": "Selected fill size in six-decimal fixed-point units."
@@ -1020,87 +779,38 @@
       "RfqConfirmationResponse": {
         "type": "object",
         "description": "Confirm or decline a selected quote. Identity is applied from the authenticated session.",
-        "required": [
-          "type",
-          "rfq_id",
-          "quote_id",
-          "decision"
-        ],
+        "required": ["type", "rfq_id", "quote_id", "decision"],
         "properties": {
-          "type": {
-            "type": "string",
-            "const": "RFQ_CONFIRMATION_RESPONSE"
-          },
-          "rfq_id": {
-            "type": "string"
-          },
-          "quote_id": {
-            "type": "string",
-            "description": "Selected quote ID."
-          },
-          "decision": {
-            "type": "string",
-            "enum": [
-              "CONFIRM",
-              "DECLINE"
-            ]
-          }
+          "type": { "type": "string", "const": "RFQ_CONFIRMATION_RESPONSE" },
+          "rfq_id": { "type": "string" },
+          "quote_id": { "type": "string", "description": "Selected quote ID." },
+          "decision": { "type": "string", "enum": ["CONFIRM", "DECLINE"] }
         }
       },
       "AckRfqConfirmationResponse": {
         "type": "object",
         "description": "Confirms the maker's last-look response.",
-        "required": [
-          "type",
-          "rfq_id",
-          "quote_id",
-          "decision"
-        ],
+        "required": ["type", "rfq_id", "quote_id", "decision"],
         "properties": {
           "type": {
             "type": "string",
             "const": "ACK_RFQ_CONFIRMATION_RESPONSE"
           },
-          "rfq_id": {
-            "type": "string"
-          },
-          "quote_id": {
-            "type": "string"
-          },
-          "decision": {
-            "type": "string",
-            "enum": [
-              "CONFIRM",
-              "DECLINE"
-            ]
-          }
+          "rfq_id": { "type": "string" },
+          "quote_id": { "type": "string" },
+          "decision": { "type": "string", "enum": ["CONFIRM", "DECLINE"] }
         }
       },
       "RfqExecutionUpdate": {
         "type": "object",
         "description": "Reports execution progress for selected makers. CONFIRMED and FAILED are terminal.",
-        "required": [
-          "type",
-          "rfq_id",
-          "status"
-        ],
+        "required": ["type", "rfq_id", "status"],
         "properties": {
-          "type": {
-            "type": "string",
-            "const": "RFQ_EXECUTION_UPDATE"
-          },
-          "rfq_id": {
-            "type": "string"
-          },
+          "type": { "type": "string", "const": "RFQ_EXECUTION_UPDATE" },
+          "rfq_id": { "type": "string" },
           "status": {
             "type": "string",
-            "enum": [
-              "MATCHED",
-              "MINED",
-              "RETRYING",
-              "CONFIRMED",
-              "FAILED"
-            ]
+            "enum": ["MATCHED", "MINED", "RETRYING", "CONFIRMED", "FAILED"]
           },
           "tx_hash": {
             "type": "string",
@@ -1124,10 +834,7 @@
           "executed_at"
         ],
         "properties": {
-          "type": {
-            "type": "string",
-            "const": "RFQ_TRADE"
-          },
+          "type": { "type": "string", "const": "RFQ_TRADE" },
           "rfq_id": {
             "type": "string",
             "description": "RFQ ID for deduplication and reconciliation."
@@ -1143,16 +850,10 @@
           "leg_position_ids": {
             "type": "array",
             "description": "Canonical leg position IDs in the combo.",
-            "items": {
-              "type": "string"
-            }
+            "items": { "type": "string" }
           },
-          "direction": {
-            "$ref": "#/components/schemas/Direction"
-          },
-          "side": {
-            "$ref": "#/components/schemas/Side"
-          },
+          "direction": { "$ref": "#/components/schemas/Direction" },
+          "side": { "$ref": "#/components/schemas/Side" },
           "price_e6": {
             "type": "string",
             "description": "Accepted blended price in six-decimal fixed-point units."
@@ -1171,16 +872,9 @@
       "RfqError": {
         "type": "object",
         "description": "Sent when a command fails validation or cannot be applied.",
-        "required": [
-          "type",
-          "code",
-          "error"
-        ],
+        "required": ["type", "code", "error"],
         "properties": {
-          "type": {
-            "type": "string",
-            "const": "RFQ_ERROR"
-          },
+          "type": { "type": "string", "const": "RFQ_ERROR" },
           "request_type": {
             "type": "string",
             "description": "Inbound command that failed, when parsed."
@@ -1195,8 +889,8 @@
           },
           "code": {
             "type": "string",
-            "description": "Stable machine-readable error code. New codes may be introduced over time; treat unrecognized codes as command-level failures.",
-            "enum": [
+            "description": "Stable machine-readable error code. Known values are listed as examples; new codes may be introduced over time, so handle unrecognized values as rejections.",
+            "examples": [
               "ADDRESS_MISMATCH",
               "ALLOWANCE_VALIDATION_FAILED",
               "BALANCE_VALIDATION_FAILED",
@@ -1207,20 +901,47 @@
               "INVALID_EXECUTION_RESULT",
               "INVALID_IDENTITY",
               "INVALID_MESSAGE",
+              "INVALID_ORDER_SIDE",
               "INVALID_QUOTE",
               "INVALID_RFQ",
               "INVALID_RFQ_STATE",
               "INVALID_ROLE",
+              "INVALID_SIGNATURE",
+              "INVALID_SIGNATURE_TYPE",
               "LEG_METADATA_UNAVAILABLE",
               "MAKER_ALREADY_RESPONDED",
               "MAKER_NOT_REQUIRED",
               "MAKER_QUOTE_LIMITED",
+              "MISSING_MAKER_ADDRESS_IN_QUOTE",
+              "MISSING_MAKER_AMOUNT_IN_SIGNED_ORDER",
+              "MISSING_MAKER_IN_SIGNED_ORDER",
+              "MISSING_QUOTE_ID",
+              "MISSING_RFQ_ID",
+              "MISSING_SALT_IN_SIGNED_ORDER",
+              "MISSING_SIGNATURE_IN_SIGNED_ORDER",
+              "MISSING_SIGNER_ADDRESS_IN_QUOTE",
+              "MISSING_SIGNER_IN_SIGNED_ORDER",
+              "MISSING_TAKER_AMOUNT_IN_SIGNED_ORDER",
+              "MISSING_TIMESTAMP_IN_SIGNED_ORDER",
+              "MISSING_TOKEN_ID_IN_SIGNED_ORDER",
+              "ORDER_SIDE_OR_TOKEN_DOES_NOT_MATCH_REQUEST",
               "PRE_EXECUTION_BALANCE_RESERVATION_FAILED",
+              "PRICE_E6_NOT_POSITIVE",
               "QUOTE_MISMATCH",
               "QUOTE_UNAVAILABLE",
+              "QUOTED_PRICE_ABOVE_SAFETY_THRESHOLD",
+              "QUOTED_PRICE_OUT_OF_RANGE",
               "RATE_LIMITED",
               "REQUEST_FAILED",
               "SERVICE_UNAVAILABLE",
+              "SIGNED_ORDER_MAKER_AMOUNT_NOT_POSITIVE",
+              "SIGNED_ORDER_MAKER_DOES_NOT_MATCH_AUTH",
+              "SIGNED_ORDER_PRICE_WORSE_THAN_QUOTE",
+              "SIGNED_ORDER_SIGNATURE_TYPE_DOES_NOT_MATCH_AUTH",
+              "SIGNED_ORDER_SIGNER_DOES_NOT_MATCH_AUTH",
+              "SIGNED_ORDER_SIZE_DOES_NOT_COVER_QUOTE",
+              "SIGNED_ORDER_TAKER_AMOUNT_NOT_POSITIVE",
+              "SIZE_E6_NOT_POSITIVE",
               "SUBMISSION_WINDOW_CLOSED",
               "TRADE_SUBMISSION_FAILED",
               "UNAUTHENTICATED",

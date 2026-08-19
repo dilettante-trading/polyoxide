@@ -40,31 +40,20 @@
               "req": {
                 "type": "string",
                 "description": "Request type",
-                "enum": [
-                  "post",
-                  "sub",
-                  "unsub"
-                ]
+                "enum": ["post", "sub", "unsub"]
               },
               "op": {
                 "type": "object",
-                "required": [
-                  "type"
-                ],
+                "required": ["type"],
                 "properties": {
                   "type": {
                     "type": "string",
-                    "enum": [
-                      "ping"
-                    ]
+                    "enum": ["ping"]
                   }
                 }
               }
             },
-            "required": [
-              "req",
-              "op"
-            ]
+            "required": ["req", "op"]
           },
           "examples": [
             {
@@ -93,18 +82,11 @@
               },
               "data": {
                 "type": "object",
-                "required": [
-                  "status",
-                  "ts",
-                  "sq"
-                ],
+                "required": ["status", "ts", "sq"],
                 "properties": {
                   "status": {
                     "type": "string",
-                    "enum": [
-                      "ok",
-                      "err"
-                    ],
+                    "enum": ["ok", "err"],
                     "description": "Result status"
                   },
                   "ts": {
@@ -120,9 +102,7 @@
                 }
               }
             },
-            "required": [
-              "data"
-            ]
+            "required": ["data"]
           },
           "examples": [
             {
@@ -161,33 +141,20 @@
               "req": {
                 "type": "string",
                 "description": "Request type",
-                "enum": [
-                  "post",
-                  "sub",
-                  "unsub"
-                ]
+                "enum": ["post", "sub", "unsub"]
               },
               "op": {
                 "type": "object",
-                "required": [
-                  "type",
-                  "args"
-                ],
+                "required": ["type", "args"],
                 "properties": {
                   "type": {
                     "type": "string",
-                    "enum": [
-                      "createOrders"
-                    ]
+                    "enum": ["createOrders"]
                   },
                   "args": {
                     "description": "Array of orders to create",
                     "type": "object",
-                    "required": [
-                      "iid",
-                      "buy",
-                      "qty"
-                    ],
+                    "required": ["iid", "buy", "qty"],
                     "properties": {
                       "iid": {
                         "type": "integer",
@@ -212,11 +179,7 @@
                       "tif": {
                         "type": "string",
                         "description": "Time in force",
-                        "enum": [
-                          "gtc",
-                          "ioc",
-                          "fok"
-                        ]
+                        "enum": ["gtc", "ioc", "fok"]
                       },
                       "po": {
                         "type": "boolean",
@@ -254,10 +217,7 @@
                           "tpsl": {
                             "type": "string",
                             "description": "Trigger type",
-                            "enum": [
-                              "tp",
-                              "sl"
-                            ]
+                            "enum": ["tp", "sl"]
                           }
                         }
                       }
@@ -266,10 +226,7 @@
                   "grp": {
                     "type": "string",
                     "description": "TPSL grouping",
-                    "enum": [
-                      "order",
-                      "position"
-                    ]
+                    "enum": ["order", "position"]
                   }
                 }
               },
@@ -294,13 +251,7 @@
                 "example": 1767225600000
               }
             },
-            "required": [
-              "req",
-              "op",
-              "sig",
-              "salt",
-              "ts"
-            ]
+            "required": ["req", "op", "sig", "salt", "ts"]
           },
           "examples": [
             {
@@ -354,16 +305,11 @@
                 "oneOf": [
                   {
                     "type": "object",
-                    "required": [
-                      "status",
-                      "oid"
-                    ],
+                    "required": ["status", "oid"],
                     "properties": {
                       "status": {
                         "type": "string",
-                        "enum": [
-                          "ok"
-                        ]
+                        "enum": ["ok"]
                       },
                       "oid": {
                         "type": "integer",
@@ -382,16 +328,11 @@
                   },
                   {
                     "type": "object",
-                    "required": [
-                      "status",
-                      "error"
-                    ],
+                    "required": ["status", "error"],
                     "properties": {
                       "status": {
                         "type": "string",
-                        "enum": [
-                          "err"
-                        ]
+                        "enum": ["err"]
                       },
                       "error": {
                         "type": "string",
@@ -416,9 +357,7 @@
                 ]
               }
             },
-            "required": [
-              "data"
-            ]
+            "required": ["data"]
           },
           "examples": [
             {
@@ -459,24 +398,15 @@
               "req": {
                 "type": "string",
                 "description": "Request type",
-                "enum": [
-                  "post",
-                  "sub",
-                  "unsub"
-                ]
+                "enum": ["post", "sub", "unsub"]
               },
               "op": {
                 "type": "object",
-                "required": [
-                  "type",
-                  "args"
-                ],
+                "required": ["type", "args"],
                 "properties": {
                   "type": {
                     "type": "string",
-                    "enum": [
-                      "cancelOrders"
-                    ]
+                    "enum": ["cancelOrders"]
                   },
                   "args": {
                     "type": "array",
@@ -510,13 +440,7 @@
                 "example": 1767225600000
               }
             },
-            "required": [
-              "req",
-              "op",
-              "sig",
-              "salt",
-              "ts"
-            ]
+            "required": ["req", "op", "sig", "salt", "ts"]
           },
           "examples": [
             {
@@ -525,9 +449,7 @@
                 "req": "post",
                 "op": {
                   "type": "cancelOrders",
-                  "args": [
-                    1234567890
-                  ]
+                  "args": [1234567890]
                 },
                 "sig": "0x1234567890...",
                 "salt": 1234567890,
@@ -557,16 +479,11 @@
                   "oneOf": [
                     {
                       "type": "object",
-                      "required": [
-                        "status",
-                        "oid"
-                      ],
+                      "required": ["status", "oid"],
                       "properties": {
                         "status": {
                           "type": "string",
-                          "enum": [
-                            "ok"
-                          ]
+                          "enum": ["ok"]
                         },
                         "oid": {
                           "type": "integer",
@@ -585,16 +502,11 @@
                     },
                     {
                       "type": "object",
-                      "required": [
-                        "status",
-                        "error"
-                      ],
+                      "required": ["status", "error"],
                       "properties": {
                         "status": {
                           "type": "string",
-                          "enum": [
-                            "err"
-                          ]
+                          "enum": ["err"]
                         },
                         "oid": {
                           "type": "integer",
@@ -620,9 +532,7 @@
                 }
               }
             },
-            "required": [
-              "data"
-            ]
+            "required": ["data"]
           },
           "examples": [
             {
@@ -667,24 +577,15 @@
               "req": {
                 "type": "string",
                 "description": "Request type",
-                "enum": [
-                  "post",
-                  "sub",
-                  "unsub"
-                ]
+                "enum": ["post", "sub", "unsub"]
               },
               "op": {
                 "type": "object",
-                "required": [
-                  "type",
-                  "args"
-                ],
+                "required": ["type", "args"],
                 "properties": {
                   "type": {
                     "type": "string",
-                    "enum": [
-                      "cancelOrdersCOID"
-                    ]
+                    "enum": ["cancelOrdersCOID"]
                   },
                   "args": {
                     "type": "array",
@@ -721,13 +622,7 @@
                 "example": 1767225600000
               }
             },
-            "required": [
-              "req",
-              "op",
-              "sig",
-              "salt",
-              "ts"
-            ]
+            "required": ["req", "op", "sig", "salt", "ts"]
           },
           "examples": [
             {
@@ -736,9 +631,7 @@
                 "req": "post",
                 "op": {
                   "type": "cancelOrdersCOID",
-                  "args": [
-                    "550e8400e29b41d4a716446655440000"
-                  ]
+                  "args": ["550e8400e29b41d4a716446655440000"]
                 },
                 "sig": "0x1234567890...",
                 "salt": 1234567890,
@@ -768,16 +661,11 @@
                   "oneOf": [
                     {
                       "type": "object",
-                      "required": [
-                        "status",
-                        "oid"
-                      ],
+                      "required": ["status", "oid"],
                       "properties": {
                         "status": {
                           "type": "string",
-                          "enum": [
-                            "ok"
-                          ]
+                          "enum": ["ok"]
                         },
                         "oid": {
                           "type": "integer",
@@ -796,16 +684,11 @@
                     },
                     {
                       "type": "object",
-                      "required": [
-                        "status",
-                        "error"
-                      ],
+                      "required": ["status", "error"],
                       "properties": {
                         "status": {
                           "type": "string",
-                          "enum": [
-                            "err"
-                          ]
+                          "enum": ["err"]
                         },
                         "oid": {
                           "type": "integer",
@@ -831,9 +714,7 @@
                 }
               }
             },
-            "required": [
-              "data"
-            ]
+            "required": ["data"]
           },
           "examples": [
             {
@@ -880,24 +761,15 @@
               "req": {
                 "type": "string",
                 "description": "Request type",
-                "enum": [
-                  "post",
-                  "sub",
-                  "unsub"
-                ]
+                "enum": ["post", "sub", "unsub"]
               },
               "op": {
                 "type": "object",
-                "required": [
-                  "type",
-                  "args"
-                ],
+                "required": ["type", "args"],
                 "properties": {
                   "type": {
                     "type": "string",
-                    "enum": [
-                      "cancelAll"
-                    ]
+                    "enum": ["cancelAll"]
                   },
                   "args": {
                     "type": "object",
@@ -933,13 +805,7 @@
                 "example": 1767225600000
               }
             },
-            "required": [
-              "req",
-              "op",
-              "sig",
-              "salt",
-              "ts"
-            ]
+            "required": ["req", "op", "sig", "salt", "ts"]
           },
           "examples": [
             {
@@ -977,30 +843,21 @@
                 "oneOf": [
                   {
                     "type": "object",
-                    "required": [
-                      "status"
-                    ],
+                    "required": ["status"],
                     "properties": {
                       "status": {
                         "type": "string",
-                        "enum": [
-                          "ok"
-                        ]
+                        "enum": ["ok"]
                       }
                     }
                   },
                   {
                     "type": "object",
-                    "required": [
-                      "status",
-                      "error"
-                    ],
+                    "required": ["status", "error"],
                     "properties": {
                       "status": {
                         "type": "string",
-                        "enum": [
-                          "err"
-                        ]
+                        "enum": ["err"]
                       },
                       "error": {
                         "type": "string",
@@ -1012,9 +869,7 @@
                 ]
               }
             },
-            "required": [
-              "data"
-            ]
+            "required": ["data"]
           },
           "examples": [
             {
@@ -1052,30 +907,19 @@
               "req": {
                 "type": "string",
                 "description": "Request type",
-                "enum": [
-                  "post",
-                  "sub",
-                  "unsub"
-                ]
+                "enum": ["post", "sub", "unsub"]
               },
               "op": {
                 "type": "object",
-                "required": [
-                  "type",
-                  "args"
-                ],
+                "required": ["type", "args"],
                 "properties": {
                   "type": {
                     "type": "string",
-                    "enum": [
-                      "autoCancel"
-                    ]
+                    "enum": ["autoCancel"]
                   },
                   "args": {
                     "type": "object",
-                    "required": [
-                      "time"
-                    ],
+                    "required": ["time"],
                     "properties": {
                       "time": {
                         "type": "integer",
@@ -1102,13 +946,7 @@
                 "example": 1767225600000
               }
             },
-            "required": [
-              "req",
-              "op",
-              "sig",
-              "salt",
-              "ts"
-            ]
+            "required": ["req", "op", "sig", "salt", "ts"]
           },
           "examples": [
             {
@@ -1145,30 +983,21 @@
                 "oneOf": [
                   {
                     "type": "object",
-                    "required": [
-                      "status"
-                    ],
+                    "required": ["status"],
                     "properties": {
                       "status": {
                         "type": "string",
-                        "enum": [
-                          "ok"
-                        ]
+                        "enum": ["ok"]
                       }
                     }
                   },
                   {
                     "type": "object",
-                    "required": [
-                      "status",
-                      "error"
-                    ],
+                    "required": ["status", "error"],
                     "properties": {
                       "status": {
                         "type": "string",
-                        "enum": [
-                          "err"
-                        ]
+                        "enum": ["err"]
                       },
                       "error": {
                         "type": "string",
@@ -1180,9 +1009,7 @@
                 ]
               }
             },
-            "required": [
-              "data"
-            ]
+            "required": ["data"]
           },
           "examples": [
             {
@@ -1220,32 +1047,19 @@
               "req": {
                 "type": "string",
                 "description": "Request type",
-                "enum": [
-                  "post",
-                  "sub",
-                  "unsub"
-                ]
+                "enum": ["post", "sub", "unsub"]
               },
               "op": {
                 "type": "object",
-                "required": [
-                  "type",
-                  "args"
-                ],
+                "required": ["type", "args"],
                 "properties": {
                   "type": {
                     "type": "string",
-                    "enum": [
-                      "updateLeverage"
-                    ]
+                    "enum": ["updateLeverage"]
                   },
                   "args": {
                     "type": "object",
-                    "required": [
-                      "iid",
-                      "lev",
-                      "cross"
-                    ],
+                    "required": ["iid", "lev", "cross"],
                     "properties": {
                       "iid": {
                         "type": "integer",
@@ -1281,13 +1095,7 @@
                 "example": 1767225600000
               }
             },
-            "required": [
-              "req",
-              "op",
-              "sig",
-              "salt",
-              "ts"
-            ]
+            "required": ["req", "op", "sig", "salt", "ts"]
           },
           "examples": [
             {
@@ -1325,30 +1133,21 @@
                 "oneOf": [
                   {
                     "type": "object",
-                    "required": [
-                      "status"
-                    ],
+                    "required": ["status"],
                     "properties": {
                       "status": {
                         "type": "string",
-                        "enum": [
-                          "ok"
-                        ]
+                        "enum": ["ok"]
                       }
                     }
                   },
                   {
                     "type": "object",
-                    "required": [
-                      "status",
-                      "error"
-                    ],
+                    "required": ["status", "error"],
                     "properties": {
                       "status": {
                         "type": "string",
-                        "enum": [
-                          "err"
-                        ]
+                        "enum": ["err"]
                       },
                       "error": {
                         "type": "string",
@@ -1360,9 +1159,7 @@
                 ]
               }
             },
-            "required": [
-              "data"
-            ]
+            "required": ["data"]
           },
           "examples": [
             {
@@ -1372,6 +1169,234 @@
                 "data": {
                   "status": "ok"
                 }
+              }
+            }
+          ]
+        }
+      }
+    },
+    "updateLeverages": {
+      "address": "/v1/ws",
+      "title": "Update Leverages",
+      "summary": "Update leverage for multiple instruments.",
+      "description": "Update leverage for up to 100 unique instruments. Updates are processed\nsequentially and are not atomic. If only some responses arrive before the\ngateway deadline, missing item results use `internal_error`; whether those\nupdates applied is unknown. If no responses arrive, the request is rejected\nwith `internal_error` instead.\nRequires proxy signature, see [Update Leverage](/perps/trading#update-leverage).\n\n<Badge color=\"gray\" size=\"md\">Action Weight: **1 / instrument**</Badge>\n",
+      "messages": {
+        "Request": {
+          "name": "UpdateLeveragesRequest",
+          "title": "Update Leverages Request",
+          "summary": "Client submits a signed batch leverage update request",
+          "contentType": "application/json",
+          "payload": {
+            "type": "object",
+            "title": "Base Request",
+            "properties": {
+              "id": {
+                "type": "integer",
+                "description": "Correlation ID for request-response matching"
+              },
+              "req": {
+                "type": "string",
+                "description": "Request type",
+                "enum": ["post", "sub", "unsub"]
+              },
+              "op": {
+                "type": "object",
+                "required": ["type", "args"],
+                "properties": {
+                  "type": {
+                    "type": "string",
+                    "enum": ["updateLeverages"]
+                  },
+                  "args": {
+                    "type": "array",
+                    "minItems": 1,
+                    "maxItems": 100,
+                    "items": {
+                      "type": "object",
+                      "required": ["iid", "lev", "cross"],
+                      "properties": {
+                        "iid": {
+                          "type": "integer",
+                          "description": "Instrument ID",
+                          "example": 1
+                        },
+                        "lev": {
+                          "type": "integer",
+                          "description": "Leverage",
+                          "example": 10
+                        },
+                        "cross": {
+                          "type": "boolean",
+                          "description": "Whether to use cross margin mode"
+                        }
+                      }
+                    }
+                  }
+                }
+              },
+              "sig": {
+                "type": "string",
+                "description": "Signature in hex format",
+                "example": "0x1234567890..."
+              },
+              "salt": {
+                "type": "integer",
+                "description": "Salt",
+                "example": 1234567890
+              },
+              "ts": {
+                "type": "integer",
+                "description": "Request timestamp. Unix milliseconds for most operations; Unix seconds for withdrawals (must match the on-chain EIP-712 struct verified against block.timestamp).",
+                "example": 1767225600000
+              }
+            },
+            "required": ["req", "op", "sig", "salt", "ts"]
+          },
+          "examples": [
+            {
+              "name": "Request Example",
+              "payload": {
+                "req": "post",
+                "op": {
+                  "type": "updateLeverages",
+                  "args": [
+                    {
+                      "iid": 1,
+                      "lev": 10,
+                      "cross": true
+                    }
+                  ]
+                },
+                "sig": "0x1234567890...",
+                "salt": 1234567890,
+                "ts": 1767225600000
+              }
+            }
+          ]
+        },
+        "Response": {
+          "name": "UpdateLeveragesResponse",
+          "title": "Update Leverages Response",
+          "summary": "Server responds with an ordered result for each instrument",
+          "contentType": "application/json",
+          "payload": {
+            "type": "object",
+            "title": "Base Response",
+            "properties": {
+              "id": {
+                "type": "integer",
+                "description": "Correlation ID for request-response matching"
+              },
+              "data": {
+                "type": "array",
+                "description": "Ordered per-instrument results. A request-level failure is\nreturned as a single rejected item without an instrument id.\n",
+                "items": {
+                  "anyOf": [
+                    {
+                      "oneOf": [
+                        {
+                          "description": "The instrument's effective leverage configuration after the update.",
+                          "type": "object",
+                          "required": [
+                            "status",
+                            "instrument_id",
+                            "leverage",
+                            "cross"
+                          ],
+                          "properties": {
+                            "status": {
+                              "type": "string",
+                              "enum": ["ok"]
+                            },
+                            "instrument_id": {
+                              "type": "integer",
+                              "description": "Instrument ID",
+                              "example": 1
+                            },
+                            "leverage": {
+                              "type": "integer",
+                              "description": "Leverage",
+                              "example": 10
+                            },
+                            "cross": {
+                              "type": "boolean",
+                              "description": "Whether to use cross margin mode"
+                            }
+                          }
+                        },
+                        {
+                          "type": "object",
+                          "required": ["status", "instrument_id", "error"],
+                          "properties": {
+                            "status": {
+                              "type": "string",
+                              "enum": ["err"]
+                            },
+                            "instrument_id": {
+                              "type": "integer",
+                              "description": "Instrument ID",
+                              "example": 1
+                            },
+                            "error": {
+                              "type": "string",
+                              "description": "Error identifier. For domain rejections and transport errors (`401`/`404`/`429`/`500`) this is a stable, machine-readable snake_case identifier that is part of the API contract and safe to branch on, e.g. `insufficient_margin`, `insufficient_balance`, `order_not_found`, `reduce_only_invalid`, `price_outside_bounds`, `position_not_found`, `invalid_margin_mode`, `invalid_margin_amount`, `margin_below_required_initial`, `account_liquidating`, `unauthorized`, `not_found`. For `400` it is a human-readable validation detail whose wording may change. See the Error handling guide for the domain identifiers. (Post-only / Fill-or-Kill outcomes are order statuses such as `post_only_rejected`, not rejections.)",
+                              "example": "insufficient_margin"
+                            }
+                          }
+                        }
+                      ]
+                    },
+                    {
+                      "type": "object",
+                      "required": ["status", "error"],
+                      "properties": {
+                        "status": {
+                          "type": "string",
+                          "enum": ["err"]
+                        },
+                        "error": {
+                          "type": "string",
+                          "description": "Error identifier. For domain rejections and transport errors (`401`/`404`/`429`/`500`) this is a stable, machine-readable snake_case identifier that is part of the API contract and safe to branch on, e.g. `insufficient_margin`, `insufficient_balance`, `order_not_found`, `reduce_only_invalid`, `price_outside_bounds`, `position_not_found`, `invalid_margin_mode`, `invalid_margin_amount`, `margin_below_required_initial`, `account_liquidating`, `unauthorized`, `not_found`. For `400` it is a human-readable validation detail whose wording may change. See the Error handling guide for the domain identifiers. (Post-only / Fill-or-Kill outcomes are order statuses such as `post_only_rejected`, not rejections.)",
+                          "example": "insufficient_margin"
+                        }
+                      }
+                    }
+                  ]
+                }
+              }
+            },
+            "required": ["data"]
+          },
+          "examples": [
+            {
+              "name": "Mixed result",
+              "payload": {
+                "id": 7,
+                "data": [
+                  {
+                    "status": "ok",
+                    "instrument_id": 1,
+                    "leverage": 5,
+                    "cross": false
+                  },
+                  {
+                    "status": "err",
+                    "instrument_id": 2,
+                    "error": "insufficient_margin"
+                  }
+                ]
+              }
+            },
+            {
+              "name": "Request rejected",
+              "payload": {
+                "id": 7,
+                "data": [
+                  {
+                    "status": "err",
+                    "error": "invalid signature"
+                  }
+                ]
               }
             }
           ]
@@ -1400,31 +1425,19 @@
               "req": {
                 "type": "string",
                 "description": "Request type",
-                "enum": [
-                  "post",
-                  "sub",
-                  "unsub"
-                ]
+                "enum": ["post", "sub", "unsub"]
               },
               "op": {
                 "type": "object",
-                "required": [
-                  "type",
-                  "args"
-                ],
+                "required": ["type", "args"],
                 "properties": {
                   "type": {
                     "type": "string",
-                    "enum": [
-                      "updateMargin"
-                    ]
+                    "enum": ["updateMargin"]
                   },
                   "args": {
                     "type": "object",
-                    "required": [
-                      "iid",
-                      "amt"
-                    ],
+                    "required": ["iid", "amt"],
                     "properties": {
                       "iid": {
                         "type": "integer",
@@ -1456,13 +1469,7 @@
                 "example": 1767225600000
               }
             },
-            "required": [
-              "req",
-              "op",
-              "sig",
-              "salt",
-              "ts"
-            ]
+            "required": ["req", "op", "sig", "salt", "ts"]
           },
           "examples": [
             {
@@ -1518,30 +1525,21 @@
                 "oneOf": [
                   {
                     "type": "object",
-                    "required": [
-                      "status"
-                    ],
+                    "required": ["status"],
                     "properties": {
                       "status": {
                         "type": "string",
-                        "enum": [
-                          "ok"
-                        ]
+                        "enum": ["ok"]
                       }
                     }
                   },
                   {
                     "type": "object",
-                    "required": [
-                      "status",
-                      "error"
-                    ],
+                    "required": ["status", "error"],
                     "properties": {
                       "status": {
                         "type": "string",
-                        "enum": [
-                          "err"
-                        ]
+                        "enum": ["err"]
                       },
                       "error": {
                         "type": "string",
@@ -1553,9 +1551,7 @@
                 ]
               }
             },
-            "required": [
-              "data"
-            ]
+            "required": ["data"]
           },
           "examples": [
             {
@@ -1602,31 +1598,19 @@
               "req": {
                 "type": "string",
                 "description": "Request type",
-                "enum": [
-                  "post",
-                  "sub",
-                  "unsub"
-                ]
+                "enum": ["post", "sub", "unsub"]
               },
               "op": {
                 "type": "object",
-                "required": [
-                  "type",
-                  "args"
-                ],
+                "required": ["type", "args"],
                 "properties": {
                   "type": {
                     "type": "string",
-                    "enum": [
-                      "auth"
-                    ]
+                    "enum": ["auth"]
                   },
                   "args": {
                     "type": "object",
-                    "required": [
-                      "proxy",
-                      "secret"
-                    ],
+                    "required": ["proxy", "secret"],
                     "properties": {
                       "proxy": {
                         "type": "string",
@@ -1643,10 +1627,7 @@
                 }
               }
             },
-            "required": [
-              "req",
-              "op"
-            ]
+            "required": ["req", "op"]
           },
           "examples": [
             {
@@ -1681,30 +1662,21 @@
                 "oneOf": [
                   {
                     "type": "object",
-                    "required": [
-                      "status"
-                    ],
+                    "required": ["status"],
                     "properties": {
                       "status": {
                         "type": "string",
-                        "enum": [
-                          "ok"
-                        ]
+                        "enum": ["ok"]
                       }
                     }
                   },
                   {
                     "type": "object",
-                    "required": [
-                      "status",
-                      "error"
-                    ],
+                    "required": ["status", "error"],
                     "properties": {
                       "status": {
                         "type": "string",
-                        "enum": [
-                          "err"
-                        ]
+                        "enum": ["err"]
                       },
                       "error": {
                         "type": "string",
@@ -1716,9 +1688,7 @@
                 ]
               }
             },
-            "required": [
-              "data"
-            ]
+            "required": ["data"]
           }
         }
       }
@@ -1744,11 +1714,7 @@
               "req": {
                 "type": "string",
                 "description": "Request type",
-                "enum": [
-                  "post",
-                  "sub",
-                  "unsub"
-                ]
+                "enum": ["post", "sub", "unsub"]
               },
               "chs": {
                 "type": "array",
@@ -1757,24 +1723,17 @@
                   "type": "string",
                   "pattern": "^trades::\\d+$"
                 },
-                "example": [
-                  "trades::1"
-                ]
+                "example": ["trades::1"]
               }
             },
-            "required": [
-              "req",
-              "chs"
-            ]
+            "required": ["req", "chs"]
           },
           "examples": [
             {
               "name": "SubscribeRequest Example",
               "payload": {
                 "req": "sub",
-                "chs": [
-                  "trades::1"
-                ]
+                "chs": ["trades::1"]
               }
             }
           ]
@@ -1799,30 +1758,21 @@
                   "oneOf": [
                     {
                       "type": "object",
-                      "required": [
-                        "status"
-                      ],
+                      "required": ["status"],
                       "properties": {
                         "status": {
                           "type": "string",
-                          "enum": [
-                            "ok"
-                          ]
+                          "enum": ["ok"]
                         }
                       }
                     },
                     {
                       "type": "object",
-                      "required": [
-                        "status",
-                        "error"
-                      ],
+                      "required": ["status", "error"],
                       "properties": {
                         "status": {
                           "type": "string",
-                          "enum": [
-                            "err"
-                          ]
+                          "enum": ["err"]
                         },
                         "error": {
                           "type": "string",
@@ -1835,9 +1785,7 @@
                 }
               }
             },
-            "required": [
-              "data"
-            ]
+            "required": ["data"]
           },
           "examples": [
             {
@@ -1864,11 +1812,7 @@
               "req": {
                 "type": "string",
                 "description": "Request type",
-                "enum": [
-                  "post",
-                  "sub",
-                  "unsub"
-                ]
+                "enum": ["post", "sub", "unsub"]
               },
               "chs": {
                 "type": "array",
@@ -1877,24 +1821,17 @@
                   "type": "string",
                   "pattern": "^trades::\\d+$"
                 },
-                "example": [
-                  "trades::1"
-                ]
+                "example": ["trades::1"]
               }
             },
-            "required": [
-              "req",
-              "chs"
-            ]
+            "required": ["req", "chs"]
           },
           "examples": [
             {
               "name": "UnsubscribeRequest Example",
               "payload": {
                 "req": "unsub",
-                "chs": [
-                  "trades::1"
-                ]
+                "chs": ["trades::1"]
               }
             }
           ]
@@ -1919,30 +1856,21 @@
                   "oneOf": [
                     {
                       "type": "object",
-                      "required": [
-                        "status"
-                      ],
+                      "required": ["status"],
                       "properties": {
                         "status": {
                           "type": "string",
-                          "enum": [
-                            "ok"
-                          ]
+                          "enum": ["ok"]
                         }
                       }
                     },
                     {
                       "type": "object",
-                      "required": [
-                        "status",
-                        "error"
-                      ],
+                      "required": ["status", "error"],
                       "properties": {
                         "status": {
                           "type": "string",
-                          "enum": [
-                            "err"
-                          ]
+                          "enum": ["err"]
                         },
                         "error": {
                           "type": "string",
@@ -1955,9 +1883,7 @@
                 }
               }
             },
-            "required": [
-              "data"
-            ]
+            "required": ["data"]
           },
           "examples": [
             {
@@ -2010,10 +1936,7 @@
                   "side": {
                     "type": "string",
                     "description": "Side",
-                    "enum": [
-                      "long",
-                      "short"
-                    ]
+                    "enum": ["long", "short"]
                   },
                   "p": {
                     "type": "string",
@@ -2037,23 +1960,10 @@
                     "example": "0x1234567890abcdef1234567890abcdef1234567890abcdef1234567890abcdef"
                   }
                 },
-                "required": [
-                  "tid",
-                  "iid",
-                  "side",
-                  "p",
-                  "qty",
-                  "ts",
-                  "hash"
-                ]
+                "required": ["tid", "iid", "side", "p", "qty", "ts", "hash"]
               }
             },
-            "required": [
-              "ch",
-              "ts",
-              "sq",
-              "data"
-            ]
+            "required": ["ch", "ts", "sq", "data"]
           },
           "examples": [
             {
@@ -2100,11 +2010,7 @@
               "req": {
                 "type": "string",
                 "description": "Request type",
-                "enum": [
-                  "post",
-                  "sub",
-                  "unsub"
-                ]
+                "enum": ["post", "sub", "unsub"]
               },
               "chs": {
                 "type": "array",
@@ -2113,24 +2019,17 @@
                   "type": "string",
                   "pattern": "^bbo::\\d+$"
                 },
-                "example": [
-                  "bbo::1"
-                ]
+                "example": ["bbo::1"]
               }
             },
-            "required": [
-              "req",
-              "chs"
-            ]
+            "required": ["req", "chs"]
           },
           "examples": [
             {
               "name": "SubscribeRequest Example",
               "payload": {
                 "req": "sub",
-                "chs": [
-                  "bbo::1"
-                ]
+                "chs": ["bbo::1"]
               }
             }
           ]
@@ -2155,30 +2054,21 @@
                   "oneOf": [
                     {
                       "type": "object",
-                      "required": [
-                        "status"
-                      ],
+                      "required": ["status"],
                       "properties": {
                         "status": {
                           "type": "string",
-                          "enum": [
-                            "ok"
-                          ]
+                          "enum": ["ok"]
                         }
                       }
                     },
                     {
                       "type": "object",
-                      "required": [
-                        "status",
-                        "error"
-                      ],
+                      "required": ["status", "error"],
                       "properties": {
                         "status": {
                           "type": "string",
-                          "enum": [
-                            "err"
-                          ]
+                          "enum": ["err"]
                         },
                         "error": {
                           "type": "string",
@@ -2191,9 +2081,7 @@
                 }
               }
             },
-            "required": [
-              "data"
-            ]
+            "required": ["data"]
           },
           "examples": [
             {
@@ -2220,11 +2108,7 @@
               "req": {
                 "type": "string",
                 "description": "Request type",
-                "enum": [
-                  "post",
-                  "sub",
-                  "unsub"
-                ]
+                "enum": ["post", "sub", "unsub"]
               },
               "chs": {
                 "type": "array",
@@ -2233,24 +2117,17 @@
                   "type": "string",
                   "pattern": "^bbo::\\d+$"
                 },
-                "example": [
-                  "bbo::1"
-                ]
+                "example": ["bbo::1"]
               }
             },
-            "required": [
-              "req",
-              "chs"
-            ]
+            "required": ["req", "chs"]
           },
           "examples": [
             {
               "name": "UnsubscribeRequest Example",
               "payload": {
                 "req": "unsub",
-                "chs": [
-                  "bbo::1"
-                ]
+                "chs": ["bbo::1"]
               }
             }
           ]
@@ -2275,30 +2152,21 @@
                   "oneOf": [
                     {
                       "type": "object",
-                      "required": [
-                        "status"
-                      ],
+                      "required": ["status"],
                       "properties": {
                         "status": {
                           "type": "string",
-                          "enum": [
-                            "ok"
-                          ]
+                          "enum": ["ok"]
                         }
                       }
                     },
                     {
                       "type": "object",
-                      "required": [
-                        "status",
-                        "error"
-                      ],
+                      "required": ["status", "error"],
                       "properties": {
                         "status": {
                           "type": "string",
-                          "enum": [
-                            "err"
-                          ]
+                          "enum": ["err"]
                         },
                         "error": {
                           "type": "string",
@@ -2311,9 +2179,7 @@
                 }
               }
             },
-            "required": [
-              "data"
-            ]
+            "required": ["data"]
           },
           "examples": [
             {
@@ -2379,21 +2245,10 @@
                     "example": "10.00"
                   }
                 },
-                "required": [
-                  "iid",
-                  "bp",
-                  "bq",
-                  "ap",
-                  "aq"
-                ]
+                "required": ["iid", "bp", "bq", "ap", "aq"]
               }
             },
-            "required": [
-              "ch",
-              "ts",
-              "sq",
-              "data"
-            ]
+            "required": ["ch", "ts", "sq", "data"]
           },
           "examples": [
             {
@@ -2436,11 +2291,7 @@
               "req": {
                 "type": "string",
                 "description": "Request type",
-                "enum": [
-                  "post",
-                  "sub",
-                  "unsub"
-                ]
+                "enum": ["post", "sub", "unsub"]
               },
               "chs": {
                 "type": "array",
@@ -2449,24 +2300,17 @@
                   "type": "string",
                   "pattern": "^book::\\d+$"
                 },
-                "example": [
-                  "book::1"
-                ]
+                "example": ["book::1"]
               }
             },
-            "required": [
-              "req",
-              "chs"
-            ]
+            "required": ["req", "chs"]
           },
           "examples": [
             {
               "name": "SubscribeRequest Example",
               "payload": {
                 "req": "sub",
-                "chs": [
-                  "book::1"
-                ]
+                "chs": ["book::1"]
               }
             }
           ]
@@ -2491,30 +2335,21 @@
                   "oneOf": [
                     {
                       "type": "object",
-                      "required": [
-                        "status"
-                      ],
+                      "required": ["status"],
                       "properties": {
                         "status": {
                           "type": "string",
-                          "enum": [
-                            "ok"
-                          ]
+                          "enum": ["ok"]
                         }
                       }
                     },
                     {
                       "type": "object",
-                      "required": [
-                        "status",
-                        "error"
-                      ],
+                      "required": ["status", "error"],
                       "properties": {
                         "status": {
                           "type": "string",
-                          "enum": [
-                            "err"
-                          ]
+                          "enum": ["err"]
                         },
                         "error": {
                           "type": "string",
@@ -2527,9 +2362,7 @@
                 }
               }
             },
-            "required": [
-              "data"
-            ]
+            "required": ["data"]
           },
           "examples": [
             {
@@ -2556,11 +2389,7 @@
               "req": {
                 "type": "string",
                 "description": "Request type",
-                "enum": [
-                  "post",
-                  "sub",
-                  "unsub"
-                ]
+                "enum": ["post", "sub", "unsub"]
               },
               "chs": {
                 "type": "array",
@@ -2569,24 +2398,17 @@
                   "type": "string",
                   "pattern": "^book::\\d+$"
                 },
-                "example": [
-                  "book::1"
-                ]
+                "example": ["book::1"]
               }
             },
-            "required": [
-              "req",
-              "chs"
-            ]
+            "required": ["req", "chs"]
           },
           "examples": [
             {
               "name": "UnsubscribeRequest Example",
               "payload": {
                 "req": "unsub",
-                "chs": [
-                  "book::1"
-                ]
+                "chs": ["book::1"]
               }
             }
           ]
@@ -2611,30 +2433,21 @@
                   "oneOf": [
                     {
                       "type": "object",
-                      "required": [
-                        "status"
-                      ],
+                      "required": ["status"],
                       "properties": {
                         "status": {
                           "type": "string",
-                          "enum": [
-                            "ok"
-                          ]
+                          "enum": ["ok"]
                         }
                       }
                     },
                     {
                       "type": "object",
-                      "required": [
-                        "status",
-                        "error"
-                      ],
+                      "required": ["status", "error"],
                       "properties": {
                         "status": {
                           "type": "string",
-                          "enum": [
-                            "err"
-                          ]
+                          "enum": ["err"]
                         },
                         "error": {
                           "type": "string",
@@ -2647,9 +2460,7 @@
                 }
               }
             },
-            "required": [
-              "data"
-            ]
+            "required": ["data"]
           },
           "examples": [
             {
@@ -2686,10 +2497,7 @@
               },
               "data": {
                 "type": "object",
-                "required": [
-                  "b",
-                  "a"
-                ],
+                "required": ["b", "a"],
                 "properties": {
                   "b": {
                     "type": "array",
@@ -2700,10 +2508,7 @@
                       },
                       "maxItems": 2,
                       "description": "- `\"100.00\"` - Price\n- `\"10.00\"` - Quantity\n",
-                      "example": [
-                        "100.00",
-                        "10.00"
-                      ]
+                      "example": ["100.00", "10.00"]
                     },
                     "description": "Bid levels"
                   },
@@ -2716,22 +2521,14 @@
                       },
                       "maxItems": 2,
                       "description": "- `\"100.00\"` - Price\n- `\"10.00\"` - Quantity\n",
-                      "example": [
-                        "100.00",
-                        "10.00"
-                      ]
+                      "example": ["100.00", "10.00"]
                     },
                     "description": "Ask levels"
                   }
                 }
               }
             },
-            "required": [
-              "ch",
-              "ts",
-              "sq",
-              "data"
-            ]
+            "required": ["ch", "ts", "sq", "data"]
           },
           "examples": [
             {
@@ -2741,18 +2538,8 @@
                 "ts": 1767225600000,
                 "sq": 1234567890,
                 "data": {
-                  "b": [
-                    [
-                      "100.00",
-                      "10.00"
-                    ]
-                  ],
-                  "a": [
-                    [
-                      "100.00",
-                      "10.00"
-                    ]
-                  ]
+                  "b": [["100.00", "10.00"]],
+                  "a": [["100.00", "10.00"]]
                 }
               }
             }
@@ -2781,11 +2568,7 @@
               "req": {
                 "type": "string",
                 "description": "Request type",
-                "enum": [
-                  "post",
-                  "sub",
-                  "unsub"
-                ]
+                "enum": ["post", "sub", "unsub"]
               },
               "chs": {
                 "type": "array",
@@ -2794,24 +2577,17 @@
                   "type": "string",
                   "pattern": "^klines::\\d+::(1m|5m|15m|30m|1h|4h|6h|12h|1d|1w)$"
                 },
-                "example": [
-                  "klines::1::1m"
-                ]
+                "example": ["klines::1::1m"]
               }
             },
-            "required": [
-              "req",
-              "chs"
-            ]
+            "required": ["req", "chs"]
           },
           "examples": [
             {
               "name": "SubscribeRequest Example",
               "payload": {
                 "req": "sub",
-                "chs": [
-                  "klines::1::1m"
-                ]
+                "chs": ["klines::1::1m"]
               }
             }
           ]
@@ -2836,30 +2612,21 @@
                   "oneOf": [
                     {
                       "type": "object",
-                      "required": [
-                        "status"
-                      ],
+                      "required": ["status"],
                       "properties": {
                         "status": {
                           "type": "string",
-                          "enum": [
-                            "ok"
-                          ]
+                          "enum": ["ok"]
                         }
                       }
                     },
                     {
                       "type": "object",
-                      "required": [
-                        "status",
-                        "error"
-                      ],
+                      "required": ["status", "error"],
                       "properties": {
                         "status": {
                           "type": "string",
-                          "enum": [
-                            "err"
-                          ]
+                          "enum": ["err"]
                         },
                         "error": {
                           "type": "string",
@@ -2872,9 +2639,7 @@
                 }
               }
             },
-            "required": [
-              "data"
-            ]
+            "required": ["data"]
           },
           "examples": [
             {
@@ -2901,11 +2666,7 @@
               "req": {
                 "type": "string",
                 "description": "Request type",
-                "enum": [
-                  "post",
-                  "sub",
-                  "unsub"
-                ]
+                "enum": ["post", "sub", "unsub"]
               },
               "chs": {
                 "type": "array",
@@ -2914,24 +2675,17 @@
                   "type": "string",
                   "pattern": "^klines::\\d+::(1m|5m|15m|30m|1h|4h|6h|12h|1d|1w)$"
                 },
-                "example": [
-                  "klines::1::1m"
-                ]
+                "example": ["klines::1::1m"]
               }
             },
-            "required": [
-              "req",
-              "chs"
-            ]
+            "required": ["req", "chs"]
           },
           "examples": [
             {
               "name": "UnsubscribeRequest Example",
               "payload": {
                 "req": "unsub",
-                "chs": [
-                  "klines::1::1m"
-                ]
+                "chs": ["klines::1::1m"]
               }
             }
           ]
@@ -2956,30 +2710,21 @@
                   "oneOf": [
                     {
                       "type": "object",
-                      "required": [
-                        "status"
-                      ],
+                      "required": ["status"],
                       "properties": {
                         "status": {
                           "type": "string",
-                          "enum": [
-                            "ok"
-                          ]
+                          "enum": ["ok"]
                         }
                       }
                     },
                     {
                       "type": "object",
-                      "required": [
-                        "status",
-                        "error"
-                      ],
+                      "required": ["status", "error"],
                       "properties": {
                         "status": {
                           "type": "string",
-                          "enum": [
-                            "err"
-                          ]
+                          "enum": ["err"]
                         },
                         "error": {
                           "type": "string",
@@ -2992,9 +2737,7 @@
                 }
               }
             },
-            "required": [
-              "data"
-            ]
+            "required": ["data"]
           },
           "examples": [
             {
@@ -3047,12 +2790,7 @@
                 }
               }
             },
-            "required": [
-              "ch",
-              "ts",
-              "sq",
-              "data"
-            ]
+            "required": ["ch", "ts", "sq", "data"]
           },
           "examples": [
             {
@@ -3099,11 +2837,7 @@
               "req": {
                 "type": "string",
                 "description": "Request type",
-                "enum": [
-                  "post",
-                  "sub",
-                  "unsub"
-                ]
+                "enum": ["post", "sub", "unsub"]
               },
               "chs": {
                 "type": "array",
@@ -3112,24 +2846,17 @@
                   "type": "string",
                   "pattern": "^tickers::(\\d+|all)$"
                 },
-                "example": [
-                  "tickers::all"
-                ]
+                "example": ["tickers::all"]
               }
             },
-            "required": [
-              "req",
-              "chs"
-            ]
+            "required": ["req", "chs"]
           },
           "examples": [
             {
               "name": "SubscribeRequest Example",
               "payload": {
                 "req": "sub",
-                "chs": [
-                  "tickers::all"
-                ]
+                "chs": ["tickers::all"]
               }
             }
           ]
@@ -3154,30 +2881,21 @@
                   "oneOf": [
                     {
                       "type": "object",
-                      "required": [
-                        "status"
-                      ],
+                      "required": ["status"],
                       "properties": {
                         "status": {
                           "type": "string",
-                          "enum": [
-                            "ok"
-                          ]
+                          "enum": ["ok"]
                         }
                       }
                     },
                     {
                       "type": "object",
-                      "required": [
-                        "status",
-                        "error"
-                      ],
+                      "required": ["status", "error"],
                       "properties": {
                         "status": {
                           "type": "string",
-                          "enum": [
-                            "err"
-                          ]
+                          "enum": ["err"]
                         },
                         "error": {
                           "type": "string",
@@ -3190,9 +2908,7 @@
                 }
               }
             },
-            "required": [
-              "data"
-            ]
+            "required": ["data"]
           },
           "examples": [
             {
@@ -3219,11 +2935,7 @@
               "req": {
                 "type": "string",
                 "description": "Request type",
-                "enum": [
-                  "post",
-                  "sub",
-                  "unsub"
-                ]
+                "enum": ["post", "sub", "unsub"]
               },
               "chs": {
                 "type": "array",
@@ -3232,24 +2944,17 @@
                   "type": "string",
                   "pattern": "^tickers::(\\d+|all)$"
                 },
-                "example": [
-                  "tickers::all"
-                ]
+                "example": ["tickers::all"]
               }
             },
-            "required": [
-              "req",
-              "chs"
-            ]
+            "required": ["req", "chs"]
           },
           "examples": [
             {
               "name": "UnsubscribeRequest Example",
               "payload": {
                 "req": "unsub",
-                "chs": [
-                  "tickers::all"
-                ]
+                "chs": ["tickers::all"]
               }
             }
           ]
@@ -3274,30 +2979,21 @@
                   "oneOf": [
                     {
                       "type": "object",
-                      "required": [
-                        "status"
-                      ],
+                      "required": ["status"],
                       "properties": {
                         "status": {
                           "type": "string",
-                          "enum": [
-                            "ok"
-                          ]
+                          "enum": ["ok"]
                         }
                       }
                     },
                     {
                       "type": "object",
-                      "required": [
-                        "status",
-                        "error"
-                      ],
+                      "required": ["status", "error"],
                       "properties": {
                         "status": {
                           "type": "string",
-                          "enum": [
-                            "err"
-                          ]
+                          "enum": ["err"]
                         },
                         "error": {
                           "type": "string",
@@ -3310,9 +3006,7 @@
                 }
               }
             },
-            "required": [
-              "data"
-            ]
+            "required": ["data"]
           },
           "examples": [
             {
@@ -3404,12 +3098,7 @@
                 ]
               }
             },
-            "required": [
-              "ch",
-              "ts",
-              "sq",
-              "data"
-            ]
+            "required": ["ch", "ts", "sq", "data"]
           },
           "examples": [
             {
@@ -3457,11 +3146,7 @@
               "req": {
                 "type": "string",
                 "description": "Request type",
-                "enum": [
-                  "post",
-                  "sub",
-                  "unsub"
-                ]
+                "enum": ["post", "sub", "unsub"]
               },
               "chs": {
                 "type": "array",
@@ -3470,24 +3155,17 @@
                   "type": "string",
                   "pattern": "^statistics::(\\d+|all)$"
                 },
-                "example": [
-                  "statistics::all"
-                ]
+                "example": ["statistics::all"]
               }
             },
-            "required": [
-              "req",
-              "chs"
-            ]
+            "required": ["req", "chs"]
           },
           "examples": [
             {
               "name": "SubscribeRequest Example",
               "payload": {
                 "req": "sub",
-                "chs": [
-                  "statistics::all"
-                ]
+                "chs": ["statistics::all"]
               }
             }
           ]
@@ -3512,30 +3190,21 @@
                   "oneOf": [
                     {
                       "type": "object",
-                      "required": [
-                        "status"
-                      ],
+                      "required": ["status"],
                       "properties": {
                         "status": {
                           "type": "string",
-                          "enum": [
-                            "ok"
-                          ]
+                          "enum": ["ok"]
                         }
                       }
                     },
                     {
                       "type": "object",
-                      "required": [
-                        "status",
-                        "error"
-                      ],
+                      "required": ["status", "error"],
                       "properties": {
                         "status": {
                           "type": "string",
-                          "enum": [
-                            "err"
-                          ]
+                          "enum": ["err"]
                         },
                         "error": {
                           "type": "string",
@@ -3548,9 +3217,7 @@
                 }
               }
             },
-            "required": [
-              "data"
-            ]
+            "required": ["data"]
           },
           "examples": [
             {
@@ -3577,11 +3244,7 @@
               "req": {
                 "type": "string",
                 "description": "Request type",
-                "enum": [
-                  "post",
-                  "sub",
-                  "unsub"
-                ]
+                "enum": ["post", "sub", "unsub"]
               },
               "chs": {
                 "type": "array",
@@ -3590,24 +3253,17 @@
                   "type": "string",
                   "pattern": "^statistics::(\\d+|all)$"
                 },
-                "example": [
-                  "statistics::all"
-                ]
+                "example": ["statistics::all"]
               }
             },
-            "required": [
-              "req",
-              "chs"
-            ]
+            "required": ["req", "chs"]
           },
           "examples": [
             {
               "name": "UnsubscribeRequest Example",
               "payload": {
                 "req": "unsub",
-                "chs": [
-                  "statistics::all"
-                ]
+                "chs": ["statistics::all"]
               }
             }
           ]
@@ -3632,30 +3288,21 @@
                   "oneOf": [
                     {
                       "type": "object",
-                      "required": [
-                        "status"
-                      ],
+                      "required": ["status"],
                       "properties": {
                         "status": {
                           "type": "string",
-                          "enum": [
-                            "ok"
-                          ]
+                          "enum": ["ok"]
                         }
                       }
                     },
                     {
                       "type": "object",
-                      "required": [
-                        "status",
-                        "error"
-                      ],
+                      "required": ["status", "error"],
                       "properties": {
                         "status": {
                           "type": "string",
-                          "enum": [
-                            "err"
-                          ]
+                          "enum": ["err"]
                         },
                         "error": {
                           "type": "string",
@@ -3668,9 +3315,7 @@
                 }
               }
             },
-            "required": [
-              "data"
-            ]
+            "required": ["data"]
           },
           "examples": [
             {
@@ -3742,20 +3387,10 @@
                     "description": "Last 24-hour kline data"
                   }
                 },
-                "required": [
-                  "iid",
-                  "vol",
-                  "open",
-                  "klines"
-                ]
+                "required": ["iid", "vol", "open", "klines"]
               }
             },
-            "required": [
-              "ch",
-              "ts",
-              "sq",
-              "data"
-            ]
+            "required": ["ch", "ts", "sq", "data"]
           },
           "examples": [
             {
@@ -3809,39 +3444,26 @@
               "req": {
                 "type": "string",
                 "description": "Request type",
-                "enum": [
-                  "post",
-                  "sub",
-                  "unsub"
-                ]
+                "enum": ["post", "sub", "unsub"]
               },
               "chs": {
                 "type": "array",
                 "description": "Fills private channel: \"fills\"",
                 "items": {
                   "type": "string",
-                  "enum": [
-                    "fills"
-                  ]
+                  "enum": ["fills"]
                 },
-                "example": [
-                  "fills"
-                ]
+                "example": ["fills"]
               }
             },
-            "required": [
-              "req",
-              "chs"
-            ]
+            "required": ["req", "chs"]
           },
           "examples": [
             {
               "name": "SubscribeRequest Example",
               "payload": {
                 "req": "sub",
-                "chs": [
-                  "fills"
-                ]
+                "chs": ["fills"]
               }
             }
           ]
@@ -3866,30 +3488,21 @@
                   "oneOf": [
                     {
                       "type": "object",
-                      "required": [
-                        "status"
-                      ],
+                      "required": ["status"],
                       "properties": {
                         "status": {
                           "type": "string",
-                          "enum": [
-                            "ok"
-                          ]
+                          "enum": ["ok"]
                         }
                       }
                     },
                     {
                       "type": "object",
-                      "required": [
-                        "status",
-                        "error"
-                      ],
+                      "required": ["status", "error"],
                       "properties": {
                         "status": {
                           "type": "string",
-                          "enum": [
-                            "err"
-                          ]
+                          "enum": ["err"]
                         },
                         "error": {
                           "type": "string",
@@ -3902,9 +3515,7 @@
                 }
               }
             },
-            "required": [
-              "data"
-            ]
+            "required": ["data"]
           },
           "examples": [
             {
@@ -3931,39 +3542,26 @@
               "req": {
                 "type": "string",
                 "description": "Request type",
-                "enum": [
-                  "post",
-                  "sub",
-                  "unsub"
-                ]
+                "enum": ["post", "sub", "unsub"]
               },
               "chs": {
                 "type": "array",
                 "description": "Fills private channel: \"fills\"",
                 "items": {
                   "type": "string",
-                  "enum": [
-                    "fills"
-                  ]
+                  "enum": ["fills"]
                 },
-                "example": [
-                  "fills"
-                ]
+                "example": ["fills"]
               }
             },
-            "required": [
-              "req",
-              "chs"
-            ]
+            "required": ["req", "chs"]
           },
           "examples": [
             {
               "name": "UnsubscribeRequest Example",
               "payload": {
                 "req": "unsub",
-                "chs": [
-                  "fills"
-                ]
+                "chs": ["fills"]
               }
             }
           ]
@@ -3988,30 +3586,21 @@
                   "oneOf": [
                     {
                       "type": "object",
-                      "required": [
-                        "status"
-                      ],
+                      "required": ["status"],
                       "properties": {
                         "status": {
                           "type": "string",
-                          "enum": [
-                            "ok"
-                          ]
+                          "enum": ["ok"]
                         }
                       }
                     },
                     {
                       "type": "object",
-                      "required": [
-                        "status",
-                        "error"
-                      ],
+                      "required": ["status", "error"],
                       "properties": {
                         "status": {
                           "type": "string",
-                          "enum": [
-                            "err"
-                          ]
+                          "enum": ["err"]
                         },
                         "error": {
                           "type": "string",
@@ -4024,9 +3613,7 @@
                 }
               }
             },
-            "required": [
-              "data"
-            ]
+            "required": ["data"]
           },
           "examples": [
             {
@@ -4083,10 +3670,7 @@
                   "side": {
                     "type": "string",
                     "description": "Side",
-                    "enum": [
-                      "long",
-                      "short"
-                    ]
+                    "enum": ["long", "short"]
                   },
                   "p": {
                     "type": "string",
@@ -4129,7 +3713,11 @@
                   },
                   "liq": {
                     "type": "boolean",
-                    "description": "Whether the fill was a liquidation"
+                    "description": "Whether this fill was part of a liquidation of the account's position — true on forced closes and on any fill executed while the account was under liquidation on the instrument, maker or taker. False on the counterparty leg of an auto-deleveraging or backstop match — its fill is part of someone else's liquidation, flagged by `adl` where applicable"
+                  },
+                  "adl": {
+                    "type": "boolean",
+                    "description": "Whether the fill came from auto-deleveraging"
                   },
                   "ts": {
                     "type": "integer",
@@ -4159,16 +3747,12 @@
                   "pep",
                   "pnl",
                   "ts",
-                  "liq"
+                  "liq",
+                  "adl"
                 ]
               }
             },
-            "required": [
-              "ch",
-              "ts",
-              "sq",
-              "data"
-            ]
+            "required": ["ch", "ts", "sq", "data"]
           },
           "examples": [
             {
@@ -4200,6 +3784,318 @@
         }
       }
     },
+    "backstop": {
+      "address": "/v1/ws",
+      "title": "Backstop",
+      "summary": "Real-time backstop liquidation updates. Restricted to Backstop Liquidity Provider participants; requires authentication, see [Auth](/ws/auth).",
+      "description": "Emitted when the insurance fund absorbs an account's positions because a liquidation could not be filled on the book. Each frame covers one absorption: the account, the positions taken over, and the margin transferred to the fund.\nSubscription is restricted to accounts enrolled in the Backstop Liquidity Provider program. Any other account is rejected with `unauthorized`, and an account removed from the program stops receiving updates.",
+      "messages": {
+        "SubscribeRequest": {
+          "name": "BackstopSubscribeRequest",
+          "title": "Subscribe",
+          "summary": "Subscribe to backstop updates (requires prior auth and BLP enrolment)",
+          "contentType": "application/json",
+          "payload": {
+            "type": "object",
+            "title": "Base Request",
+            "properties": {
+              "id": {
+                "type": "integer",
+                "description": "Correlation ID for request-response matching"
+              },
+              "req": {
+                "type": "string",
+                "description": "Request type",
+                "enum": ["post", "sub", "unsub"]
+              },
+              "chs": {
+                "type": "array",
+                "description": "Backstop private channel: \"backstop\"",
+                "items": {
+                  "type": "string",
+                  "enum": ["backstop"]
+                },
+                "example": ["backstop"]
+              }
+            },
+            "required": ["req", "chs"]
+          },
+          "examples": [
+            {
+              "name": "SubscribeRequest Example",
+              "payload": {
+                "req": "sub",
+                "chs": ["backstop"]
+              }
+            }
+          ]
+        },
+        "SubscribeResponse": {
+          "name": "BackstopSubscribeResponse",
+          "title": "Subscribe Response",
+          "summary": "Response to backstop subscribe request",
+          "contentType": "application/json",
+          "payload": {
+            "type": "object",
+            "title": "Base Response",
+            "properties": {
+              "id": {
+                "type": "integer",
+                "description": "Correlation ID for request-response matching"
+              },
+              "data": {
+                "title": "Subscribe Response",
+                "type": "array",
+                "items": {
+                  "oneOf": [
+                    {
+                      "type": "object",
+                      "required": ["status"],
+                      "properties": {
+                        "status": {
+                          "type": "string",
+                          "enum": ["ok"]
+                        }
+                      }
+                    },
+                    {
+                      "type": "object",
+                      "required": ["status", "error"],
+                      "properties": {
+                        "status": {
+                          "type": "string",
+                          "enum": ["err"]
+                        },
+                        "error": {
+                          "type": "string",
+                          "description": "Error identifier. For domain rejections and transport errors (`401`/`404`/`429`/`500`) this is a stable, machine-readable snake_case identifier that is part of the API contract and safe to branch on, e.g. `insufficient_margin`, `insufficient_balance`, `order_not_found`, `reduce_only_invalid`, `price_outside_bounds`, `position_not_found`, `invalid_margin_mode`, `invalid_margin_amount`, `margin_below_required_initial`, `account_liquidating`, `unauthorized`, `not_found`. For `400` it is a human-readable validation detail whose wording may change. See the Error handling guide for the domain identifiers. (Post-only / Fill-or-Kill outcomes are order statuses such as `post_only_rejected`, not rejections.)",
+                          "example": "insufficient_margin"
+                        }
+                      }
+                    }
+                  ]
+                }
+              }
+            },
+            "required": ["data"]
+          },
+          "examples": [
+            {
+              "name": "SubscribeResponse Example",
+              "payload": {
+                "data": []
+              }
+            }
+          ]
+        },
+        "UnsubscribeRequest": {
+          "name": "BackstopUnsubscribeRequest",
+          "title": "Unsubscribe",
+          "summary": "Unsubscribe from backstop updates",
+          "contentType": "application/json",
+          "payload": {
+            "type": "object",
+            "title": "Base Request",
+            "properties": {
+              "id": {
+                "type": "integer",
+                "description": "Correlation ID for request-response matching"
+              },
+              "req": {
+                "type": "string",
+                "description": "Request type",
+                "enum": ["post", "sub", "unsub"]
+              },
+              "chs": {
+                "type": "array",
+                "description": "Backstop private channel: \"backstop\"",
+                "items": {
+                  "type": "string",
+                  "enum": ["backstop"]
+                },
+                "example": ["backstop"]
+              }
+            },
+            "required": ["req", "chs"]
+          },
+          "examples": [
+            {
+              "name": "UnsubscribeRequest Example",
+              "payload": {
+                "req": "unsub",
+                "chs": ["backstop"]
+              }
+            }
+          ]
+        },
+        "UnsubscribeResponse": {
+          "name": "BackstopUnsubscribeResponse",
+          "title": "Unsubscribe Response",
+          "summary": "Response to backstop unsubscribe request",
+          "contentType": "application/json",
+          "payload": {
+            "type": "object",
+            "title": "Base Response",
+            "properties": {
+              "id": {
+                "type": "integer",
+                "description": "Correlation ID for request-response matching"
+              },
+              "data": {
+                "title": "Subscribe Response",
+                "type": "array",
+                "items": {
+                  "oneOf": [
+                    {
+                      "type": "object",
+                      "required": ["status"],
+                      "properties": {
+                        "status": {
+                          "type": "string",
+                          "enum": ["ok"]
+                        }
+                      }
+                    },
+                    {
+                      "type": "object",
+                      "required": ["status", "error"],
+                      "properties": {
+                        "status": {
+                          "type": "string",
+                          "enum": ["err"]
+                        },
+                        "error": {
+                          "type": "string",
+                          "description": "Error identifier. For domain rejections and transport errors (`401`/`404`/`429`/`500`) this is a stable, machine-readable snake_case identifier that is part of the API contract and safe to branch on, e.g. `insufficient_margin`, `insufficient_balance`, `order_not_found`, `reduce_only_invalid`, `price_outside_bounds`, `position_not_found`, `invalid_margin_mode`, `invalid_margin_amount`, `margin_below_required_initial`, `account_liquidating`, `unauthorized`, `not_found`. For `400` it is a human-readable validation detail whose wording may change. See the Error handling guide for the domain identifiers. (Post-only / Fill-or-Kill outcomes are order statuses such as `post_only_rejected`, not rejections.)",
+                          "example": "insufficient_margin"
+                        }
+                      }
+                    }
+                  ]
+                }
+              }
+            },
+            "required": ["data"]
+          },
+          "examples": [
+            {
+              "name": "UnsubscribeResponse Example",
+              "payload": {
+                "data": []
+              }
+            }
+          ]
+        },
+        "Update": {
+          "name": "BackstopUpdate",
+          "title": "Update",
+          "summary": "Real-time backstop liquidation updates for BLP participants",
+          "contentType": "application/json",
+          "payload": {
+            "title": "Backstop Update",
+            "type": "object",
+            "properties": {
+              "ch": {
+                "type": "string",
+                "description": "Channel name for push data. Parameterized channels include the instrument ID (e.g. \"trades::1\", \"book::1\", \"klines::1::1m\", \"tickers::all\"). Private channels use plain names (e.g. \"fills\", \"orders\").",
+                "example": "trades::1"
+              },
+              "ts": {
+                "type": "integer",
+                "description": "Request timestamp. Unix milliseconds for most operations; Unix seconds for withdrawals (must match the on-chain EIP-712 struct verified against block.timestamp).",
+                "example": 1767225600000
+              },
+              "sq": {
+                "type": "integer",
+                "description": "Sequence number",
+                "example": 1234567890
+              },
+              "data": {
+                "type": "object",
+                "description": "One absorption of an account's positions and margin by the insurance fund. A cross backstop reports every cross position on the account and sweeps its collateral once; an isolated backstop reports the single position and its isolated margin.",
+                "required": ["lid", "cross", "mgn", "pos"],
+                "properties": {
+                  "lid": {
+                    "type": "integer",
+                    "description": "Liquidation ID. Identifies one absorption of an account's positions by the insurance fund. Probabilistically unique (same guarantees as trade IDs).",
+                    "example": 1234567890
+                  },
+                  "cross": {
+                    "type": "boolean",
+                    "description": "Whether to use cross margin mode"
+                  },
+                  "mgn": {
+                    "type": "string",
+                    "description": "Net margin transferred to the insurance fund in USD, covering the quote asset only. Negative when the fund returned more isolated margin than the account's balance covered, i.e. it absorbed bad debt.",
+                    "example": "150.00"
+                  },
+                  "pos": {
+                    "type": "array",
+                    "description": "Positions absorbed by the insurance fund",
+                    "items": {
+                      "type": "object",
+                      "description": "One position absorbed by the insurance fund.",
+                      "required": ["tid", "iid", "side", "qty", "p"],
+                      "properties": {
+                        "tid": {
+                          "type": "integer",
+                          "description": "Trade ID",
+                          "example": 1
+                        },
+                        "iid": {
+                          "type": "integer",
+                          "description": "Instrument ID",
+                          "example": 1
+                        },
+                        "side": {
+                          "type": "string",
+                          "description": "Side",
+                          "enum": ["long", "short"]
+                        },
+                        "qty": {
+                          "type": "string",
+                          "description": "Quantity in no. of contracts",
+                          "example": "10.00"
+                        },
+                        "p": {
+                          "type": "string",
+                          "description": "Price",
+                          "example": "100.00"
+                        }
+                      }
+                    }
+                  }
+                }
+              }
+            },
+            "required": ["ch", "ts", "sq", "data"]
+          },
+          "examples": [
+            {
+              "name": "Update Example",
+              "payload": {
+                "ch": "backstop",
+                "ts": 1767225600000,
+                "sq": 1234567890,
+                "data": {
+                  "lid": 1234567890,
+                  "mgn": "150.00",
+                  "pos": [
+                    {
+                      "tid": 1,
+                      "iid": 1,
+                      "side": "long",
+                      "qty": "10.00",
+                      "p": "100.00"
+                    }
+                  ]
+                }
+              }
+            }
+          ]
+        }
+      }
+    },
     "orders": {
       "address": "/v1/ws",
       "title": "Orders",
@@ -4221,39 +4117,26 @@
               "req": {
                 "type": "string",
                 "description": "Request type",
-                "enum": [
-                  "post",
-                  "sub",
-                  "unsub"
-                ]
+                "enum": ["post", "sub", "unsub"]
               },
               "chs": {
                 "type": "array",
                 "description": "Orders private channel: \"orders\"",
                 "items": {
                   "type": "string",
-                  "enum": [
-                    "orders"
-                  ]
+                  "enum": ["orders"]
                 },
-                "example": [
-                  "orders"
-                ]
+                "example": ["orders"]
               }
             },
-            "required": [
-              "req",
-              "chs"
-            ]
+            "required": ["req", "chs"]
           },
           "examples": [
             {
               "name": "SubscribeRequest Example",
               "payload": {
                 "req": "sub",
-                "chs": [
-                  "orders"
-                ]
+                "chs": ["orders"]
               }
             }
           ]
@@ -4278,30 +4161,21 @@
                   "oneOf": [
                     {
                       "type": "object",
-                      "required": [
-                        "status"
-                      ],
+                      "required": ["status"],
                       "properties": {
                         "status": {
                           "type": "string",
-                          "enum": [
-                            "ok"
-                          ]
+                          "enum": ["ok"]
                         }
                       }
                     },
                     {
                       "type": "object",
-                      "required": [
-                        "status",
-                        "error"
-                      ],
+                      "required": ["status", "error"],
                       "properties": {
                         "status": {
                           "type": "string",
-                          "enum": [
-                            "err"
-                          ]
+                          "enum": ["err"]
                         },
                         "error": {
                           "type": "string",
@@ -4314,9 +4188,7 @@
                 }
               }
             },
-            "required": [
-              "data"
-            ]
+            "required": ["data"]
           },
           "examples": [
             {
@@ -4343,39 +4215,26 @@
               "req": {
                 "type": "string",
                 "description": "Request type",
-                "enum": [
-                  "post",
-                  "sub",
-                  "unsub"
-                ]
+                "enum": ["post", "sub", "unsub"]
               },
               "chs": {
                 "type": "array",
                 "description": "Orders private channel: \"orders\"",
                 "items": {
                   "type": "string",
-                  "enum": [
-                    "orders"
-                  ]
+                  "enum": ["orders"]
                 },
-                "example": [
-                  "orders"
-                ]
+                "example": ["orders"]
               }
             },
-            "required": [
-              "req",
-              "chs"
-            ]
+            "required": ["req", "chs"]
           },
           "examples": [
             {
               "name": "UnsubscribeRequest Example",
               "payload": {
                 "req": "unsub",
-                "chs": [
-                  "orders"
-                ]
+                "chs": ["orders"]
               }
             }
           ]
@@ -4400,30 +4259,21 @@
                   "oneOf": [
                     {
                       "type": "object",
-                      "required": [
-                        "status"
-                      ],
+                      "required": ["status"],
                       "properties": {
                         "status": {
                           "type": "string",
-                          "enum": [
-                            "ok"
-                          ]
+                          "enum": ["ok"]
                         }
                       }
                     },
                     {
                       "type": "object",
-                      "required": [
-                        "status",
-                        "error"
-                      ],
+                      "required": ["status", "error"],
                       "properties": {
                         "status": {
                           "type": "string",
-                          "enum": [
-                            "err"
-                          ]
+                          "enum": ["err"]
                         },
                         "error": {
                           "type": "string",
@@ -4436,9 +4286,7 @@
                 }
               }
             },
-            "required": [
-              "data"
-            ]
+            "required": ["data"]
           },
           "examples": [
             {
@@ -4505,11 +4353,7 @@
                   "tif": {
                     "type": "string",
                     "description": "Time in force",
-                    "enum": [
-                      "gtc",
-                      "ioc",
-                      "fok"
-                    ]
+                    "enum": ["gtc", "ioc", "fok"]
                   },
                   "po": {
                     "type": "boolean",
@@ -4574,12 +4418,7 @@
                 ]
               }
             },
-            "required": [
-              "ch",
-              "ts",
-              "sq",
-              "data"
-            ]
+            "required": ["ch", "ts", "sq", "data"]
           },
           "examples": [
             {
@@ -4631,39 +4470,26 @@
               "req": {
                 "type": "string",
                 "description": "Request type",
-                "enum": [
-                  "post",
-                  "sub",
-                  "unsub"
-                ]
+                "enum": ["post", "sub", "unsub"]
               },
               "chs": {
                 "type": "array",
                 "description": "Funding private channel: \"funding\"",
                 "items": {
                   "type": "string",
-                  "enum": [
-                    "funding"
-                  ]
+                  "enum": ["funding"]
                 },
-                "example": [
-                  "funding"
-                ]
+                "example": ["funding"]
               }
             },
-            "required": [
-              "req",
-              "chs"
-            ]
+            "required": ["req", "chs"]
           },
           "examples": [
             {
               "name": "SubscribeRequest Example",
               "payload": {
                 "req": "sub",
-                "chs": [
-                  "funding"
-                ]
+                "chs": ["funding"]
               }
             }
           ]
@@ -4688,30 +4514,21 @@
                   "oneOf": [
                     {
                       "type": "object",
-                      "required": [
-                        "status"
-                      ],
+                      "required": ["status"],
                       "properties": {
                         "status": {
                           "type": "string",
-                          "enum": [
-                            "ok"
-                          ]
+                          "enum": ["ok"]
                         }
                       }
                     },
                     {
                       "type": "object",
-                      "required": [
-                        "status",
-                        "error"
-                      ],
+                      "required": ["status", "error"],
                       "properties": {
                         "status": {
                           "type": "string",
-                          "enum": [
-                            "err"
-                          ]
+                          "enum": ["err"]
                         },
                         "error": {
                           "type": "string",
@@ -4724,9 +4541,7 @@
                 }
               }
             },
-            "required": [
-              "data"
-            ]
+            "required": ["data"]
           },
           "examples": [
             {
@@ -4753,39 +4568,26 @@
               "req": {
                 "type": "string",
                 "description": "Request type",
-                "enum": [
-                  "post",
-                  "sub",
-                  "unsub"
-                ]
+                "enum": ["post", "sub", "unsub"]
               },
               "chs": {
                 "type": "array",
                 "description": "Funding private channel: \"funding\"",
                 "items": {
                   "type": "string",
-                  "enum": [
-                    "funding"
-                  ]
+                  "enum": ["funding"]
                 },
-                "example": [
-                  "funding"
-                ]
+                "example": ["funding"]
               }
             },
-            "required": [
-              "req",
-              "chs"
-            ]
+            "required": ["req", "chs"]
           },
           "examples": [
             {
               "name": "UnsubscribeRequest Example",
               "payload": {
                 "req": "unsub",
-                "chs": [
-                  "funding"
-                ]
+                "chs": ["funding"]
               }
             }
           ]
@@ -4810,30 +4612,21 @@
                   "oneOf": [
                     {
                       "type": "object",
-                      "required": [
-                        "status"
-                      ],
+                      "required": ["status"],
                       "properties": {
                         "status": {
                           "type": "string",
-                          "enum": [
-                            "ok"
-                          ]
+                          "enum": ["ok"]
                         }
                       }
                     },
                     {
                       "type": "object",
-                      "required": [
-                        "status",
-                        "error"
-                      ],
+                      "required": ["status", "error"],
                       "properties": {
                         "status": {
                           "type": "string",
-                          "enum": [
-                            "err"
-                          ]
+                          "enum": ["err"]
                         },
                         "error": {
                           "type": "string",
@@ -4846,9 +4639,7 @@
                 }
               }
             },
-            "required": [
-              "data"
-            ]
+            "required": ["data"]
           },
           "examples": [
             {
@@ -4890,7 +4681,7 @@
                   "id": {
                     "type": "integer",
                     "description": "Funding payment ID. Probabilistically unique (same guarantees as trade IDs) and stable across REST and WebSocket for the same funding record.",
-                    "example": 1234567890
+                    "example": 3055723280187747
                   },
                   "iid": {
                     "type": "integer",
@@ -4923,23 +4714,10 @@
                     "example": 1767225600000
                   }
                 },
-                "required": [
-                  "id",
-                  "iid",
-                  "sz",
-                  "fr",
-                  "fund",
-                  "fua",
-                  "ts"
-                ]
+                "required": ["id", "iid", "sz", "fr", "fund", "fua", "ts"]
               }
             },
-            "required": [
-              "ch",
-              "ts",
-              "sq",
-              "data"
-            ]
+            "required": ["ch", "ts", "sq", "data"]
           },
           "examples": [
             {
@@ -4949,7 +4727,7 @@
                 "ts": 1767225600000,
                 "sq": 1234567890,
                 "data": {
-                  "id": 1234567890,
+                  "id": 3055723280187747,
                   "iid": 1,
                   "sz": "10.00",
                   "fr": "0.0001",
@@ -4984,39 +4762,26 @@
               "req": {
                 "type": "string",
                 "description": "Request type",
-                "enum": [
-                  "post",
-                  "sub",
-                  "unsub"
-                ]
+                "enum": ["post", "sub", "unsub"]
               },
               "chs": {
                 "type": "array",
                 "description": "Balances private channel: \"balances\"",
                 "items": {
                   "type": "string",
-                  "enum": [
-                    "balances"
-                  ]
+                  "enum": ["balances"]
                 },
-                "example": [
-                  "balances"
-                ]
+                "example": ["balances"]
               }
             },
-            "required": [
-              "req",
-              "chs"
-            ]
+            "required": ["req", "chs"]
           },
           "examples": [
             {
               "name": "SubscribeRequest Example",
               "payload": {
                 "req": "sub",
-                "chs": [
-                  "balances"
-                ]
+                "chs": ["balances"]
               }
             }
           ]
@@ -5041,30 +4806,21 @@
                   "oneOf": [
                     {
                       "type": "object",
-                      "required": [
-                        "status"
-                      ],
+                      "required": ["status"],
                       "properties": {
                         "status": {
                           "type": "string",
-                          "enum": [
-                            "ok"
-                          ]
+                          "enum": ["ok"]
                         }
                       }
                     },
                     {
                       "type": "object",
-                      "required": [
-                        "status",
-                        "error"
-                      ],
+                      "required": ["status", "error"],
                       "properties": {
                         "status": {
                           "type": "string",
-                          "enum": [
-                            "err"
-                          ]
+                          "enum": ["err"]
                         },
                         "error": {
                           "type": "string",
@@ -5077,9 +4833,7 @@
                 }
               }
             },
-            "required": [
-              "data"
-            ]
+            "required": ["data"]
           },
           "examples": [
             {
@@ -5106,39 +4860,26 @@
               "req": {
                 "type": "string",
                 "description": "Request type",
-                "enum": [
-                  "post",
-                  "sub",
-                  "unsub"
-                ]
+                "enum": ["post", "sub", "unsub"]
               },
               "chs": {
                 "type": "array",
                 "description": "Balances private channel: \"balances\"",
                 "items": {
                   "type": "string",
-                  "enum": [
-                    "balances"
-                  ]
+                  "enum": ["balances"]
                 },
-                "example": [
-                  "balances"
-                ]
+                "example": ["balances"]
               }
             },
-            "required": [
-              "req",
-              "chs"
-            ]
+            "required": ["req", "chs"]
           },
           "examples": [
             {
               "name": "UnsubscribeRequest Example",
               "payload": {
                 "req": "unsub",
-                "chs": [
-                  "balances"
-                ]
+                "chs": ["balances"]
               }
             }
           ]
@@ -5163,30 +4904,21 @@
                   "oneOf": [
                     {
                       "type": "object",
-                      "required": [
-                        "status"
-                      ],
+                      "required": ["status"],
                       "properties": {
                         "status": {
                           "type": "string",
-                          "enum": [
-                            "ok"
-                          ]
+                          "enum": ["ok"]
                         }
                       }
                     },
                     {
                       "type": "object",
-                      "required": [
-                        "status",
-                        "error"
-                      ],
+                      "required": ["status", "error"],
                       "properties": {
                         "status": {
                           "type": "string",
-                          "enum": [
-                            "err"
-                          ]
+                          "enum": ["err"]
                         },
                         "error": {
                           "type": "string",
@@ -5199,9 +4931,7 @@
                 }
               }
             },
-            "required": [
-              "data"
-            ]
+            "required": ["data"]
           },
           "examples": [
             {
@@ -5256,19 +4986,10 @@
                     "example": "10000.00"
                   }
                 },
-                "required": [
-                  "asset",
-                  "balance",
-                  "value"
-                ]
+                "required": ["asset", "balance", "value"]
               }
             },
-            "required": [
-              "ch",
-              "ts",
-              "sq",
-              "data"
-            ]
+            "required": ["ch", "ts", "sq", "data"]
           },
           "examples": [
             {
@@ -5309,39 +5030,26 @@
               "req": {
                 "type": "string",
                 "description": "Request type",
-                "enum": [
-                  "post",
-                  "sub",
-                  "unsub"
-                ]
+                "enum": ["post", "sub", "unsub"]
               },
               "chs": {
                 "type": "array",
                 "description": "Portfolio private channel: \"portfolio\"",
                 "items": {
                   "type": "string",
-                  "enum": [
-                    "portfolio"
-                  ]
+                  "enum": ["portfolio"]
                 },
-                "example": [
-                  "portfolio"
-                ]
+                "example": ["portfolio"]
               }
             },
-            "required": [
-              "req",
-              "chs"
-            ]
+            "required": ["req", "chs"]
           },
           "examples": [
             {
               "name": "SubscribeRequest Example",
               "payload": {
                 "req": "sub",
-                "chs": [
-                  "portfolio"
-                ]
+                "chs": ["portfolio"]
               }
             }
           ]
@@ -5366,30 +5074,21 @@
                   "oneOf": [
                     {
                       "type": "object",
-                      "required": [
-                        "status"
-                      ],
+                      "required": ["status"],
                       "properties": {
                         "status": {
                           "type": "string",
-                          "enum": [
-                            "ok"
-                          ]
+                          "enum": ["ok"]
                         }
                       }
                     },
                     {
                       "type": "object",
-                      "required": [
-                        "status",
-                        "error"
-                      ],
+                      "required": ["status", "error"],
                       "properties": {
                         "status": {
                           "type": "string",
-                          "enum": [
-                            "err"
-                          ]
+                          "enum": ["err"]
                         },
                         "error": {
                           "type": "string",
@@ -5402,9 +5101,7 @@
                 }
               }
             },
-            "required": [
-              "data"
-            ]
+            "required": ["data"]
           },
           "examples": [
             {
@@ -5431,39 +5128,26 @@
               "req": {
                 "type": "string",
                 "description": "Request type",
-                "enum": [
-                  "post",
-                  "sub",
-                  "unsub"
-                ]
+                "enum": ["post", "sub", "unsub"]
               },
               "chs": {
                 "type": "array",
                 "description": "Portfolio private channel: \"portfolio\"",
                 "items": {
                   "type": "string",
-                  "enum": [
-                    "portfolio"
-                  ]
+                  "enum": ["portfolio"]
                 },
-                "example": [
-                  "portfolio"
-                ]
+                "example": ["portfolio"]
               }
             },
-            "required": [
-              "req",
-              "chs"
-            ]
+            "required": ["req", "chs"]
           },
           "examples": [
             {
               "name": "UnsubscribeRequest Example",
               "payload": {
                 "req": "unsub",
-                "chs": [
-                  "portfolio"
-                ]
+                "chs": ["portfolio"]
               }
             }
           ]
@@ -5488,30 +5172,21 @@
                   "oneOf": [
                     {
                       "type": "object",
-                      "required": [
-                        "status"
-                      ],
+                      "required": ["status"],
                       "properties": {
                         "status": {
                           "type": "string",
-                          "enum": [
-                            "ok"
-                          ]
+                          "enum": ["ok"]
                         }
                       }
                     },
                     {
                       "type": "object",
-                      "required": [
-                        "status",
-                        "error"
-                      ],
+                      "required": ["status", "error"],
                       "properties": {
                         "status": {
                           "type": "string",
-                          "enum": [
-                            "err"
-                          ]
+                          "enum": ["err"]
                         },
                         "error": {
                           "type": "string",
@@ -5524,9 +5199,7 @@
                 }
               }
             },
-            "required": [
-              "data"
-            ]
+            "required": ["data"]
           },
           "examples": [
             {
@@ -5657,12 +5330,7 @@
                         },
                         "adl_index": {
                           "type": "integer",
-                          "enum": [
-                            0,
-                            1,
-                            2,
-                            3
-                          ],
+                          "enum": [0, 1, 2, 3],
                           "description": "Auto-deleveraging tier; higher means higher risk of being ADL'd.",
                           "example": 2
                         }
@@ -5673,6 +5341,7 @@
                     "type": "object",
                     "required": [
                       "total_account_value",
+                      "available_order_margin",
                       "total_initial_margin",
                       "total_maintenance_margin",
                       "total_position_value"
@@ -5682,6 +5351,11 @@
                         "type": "string",
                         "description": "Total account value in USD (equity + unrealized PnL)",
                         "example": "13109.48"
+                      },
+                      "available_order_margin": {
+                        "type": "string",
+                        "description": "Collateral available in USD for additional order initial margin after existing exposure, open orders, orders and isolated-margin additions awaiting risk processing, and pending withdrawals or transfers",
+                        "example": "5055.79"
                       },
                       "total_initial_margin": {
                         "type": "string",
@@ -5717,12 +5391,7 @@
                 }
               }
             },
-            "required": [
-              "ch",
-              "ts",
-              "sq",
-              "data"
-            ]
+            "required": ["ch", "ts", "sq", "data"]
           },
           "examples": [
             {
@@ -5750,6 +5419,7 @@
                   ],
                   "margin": {
                     "total_account_value": "13109.48",
+                    "available_order_margin": "13104.51",
                     "total_initial_margin": "4.97",
                     "total_maintenance_margin": "2.49",
                     "total_position_value": "100.03"
@@ -5784,39 +5454,26 @@
               "req": {
                 "type": "string",
                 "description": "Request type",
-                "enum": [
-                  "post",
-                  "sub",
-                  "unsub"
-                ]
+                "enum": ["post", "sub", "unsub"]
               },
               "chs": {
                 "type": "array",
                 "description": "Deposits private channel: \"deposits\"",
                 "items": {
                   "type": "string",
-                  "enum": [
-                    "deposits"
-                  ]
+                  "enum": ["deposits"]
                 },
-                "example": [
-                  "deposits"
-                ]
+                "example": ["deposits"]
               }
             },
-            "required": [
-              "req",
-              "chs"
-            ]
+            "required": ["req", "chs"]
           },
           "examples": [
             {
               "name": "SubscribeRequest Example",
               "payload": {
                 "req": "sub",
-                "chs": [
-                  "deposits"
-                ]
+                "chs": ["deposits"]
               }
             }
           ]
@@ -5841,30 +5498,21 @@
                   "oneOf": [
                     {
                       "type": "object",
-                      "required": [
-                        "status"
-                      ],
+                      "required": ["status"],
                       "properties": {
                         "status": {
                           "type": "string",
-                          "enum": [
-                            "ok"
-                          ]
+                          "enum": ["ok"]
                         }
                       }
                     },
                     {
                       "type": "object",
-                      "required": [
-                        "status",
-                        "error"
-                      ],
+                      "required": ["status", "error"],
                       "properties": {
                         "status": {
                           "type": "string",
-                          "enum": [
-                            "err"
-                          ]
+                          "enum": ["err"]
                         },
                         "error": {
                           "type": "string",
@@ -5877,9 +5525,7 @@
                 }
               }
             },
-            "required": [
-              "data"
-            ]
+            "required": ["data"]
           },
           "examples": [
             {
@@ -5906,39 +5552,26 @@
               "req": {
                 "type": "string",
                 "description": "Request type",
-                "enum": [
-                  "post",
-                  "sub",
-                  "unsub"
-                ]
+                "enum": ["post", "sub", "unsub"]
               },
               "chs": {
                 "type": "array",
                 "description": "Deposits private channel: \"deposits\"",
                 "items": {
                   "type": "string",
-                  "enum": [
-                    "deposits"
-                  ]
+                  "enum": ["deposits"]
                 },
-                "example": [
-                  "deposits"
-                ]
+                "example": ["deposits"]
               }
             },
-            "required": [
-              "req",
-              "chs"
-            ]
+            "required": ["req", "chs"]
           },
           "examples": [
             {
               "name": "UnsubscribeRequest Example",
               "payload": {
                 "req": "unsub",
-                "chs": [
-                  "deposits"
-                ]
+                "chs": ["deposits"]
               }
             }
           ]
@@ -5963,30 +5596,21 @@
                   "oneOf": [
                     {
                       "type": "object",
-                      "required": [
-                        "status"
-                      ],
+                      "required": ["status"],
                       "properties": {
                         "status": {
                           "type": "string",
-                          "enum": [
-                            "ok"
-                          ]
+                          "enum": ["ok"]
                         }
                       }
                     },
                     {
                       "type": "object",
-                      "required": [
-                        "status",
-                        "error"
-                      ],
+                      "required": ["status", "error"],
                       "properties": {
                         "status": {
                           "type": "string",
-                          "enum": [
-                            "err"
-                          ]
+                          "enum": ["err"]
                         },
                         "error": {
                           "type": "string",
@@ -5999,9 +5623,7 @@
                 }
               }
             },
-            "required": [
-              "data"
-            ]
+            "required": ["data"]
           },
           "examples": [
             {
@@ -6053,33 +5675,19 @@
                   },
                   "amount": {
                     "type": "string",
-                    "description": "Raw token amount including decimals. For withdrawals this matches the uint256 amount in the EIP-712 signature (e.g. \"100000000\" for 100 USDC with 6 decimals).",
-                    "example": "100000000"
+                    "description": "Token amount in decimal units (e.g. \"100\" for 100 USDC).",
+                    "example": "100"
                   },
                   "status": {
                     "type": "string",
                     "description": "Deposit status",
-                    "enum": [
-                      "pending",
-                      "confirmed",
-                      "removed"
-                    ]
+                    "enum": ["pending", "confirmed", "removed"]
                   }
                 },
-                "required": [
-                  "hash",
-                  "asset",
-                  "amount",
-                  "status"
-                ]
+                "required": ["hash", "asset", "amount", "status"]
               }
             },
-            "required": [
-              "ch",
-              "ts",
-              "sq",
-              "data"
-            ]
+            "required": ["ch", "ts", "sq", "data"]
           },
           "examples": [
             {
@@ -6123,39 +5731,26 @@
               "req": {
                 "type": "string",
                 "description": "Request type",
-                "enum": [
-                  "post",
-                  "sub",
-                  "unsub"
-                ]
+                "enum": ["post", "sub", "unsub"]
               },
               "chs": {
                 "type": "array",
                 "description": "Withdrawals private channel: \"withdrawals\"",
                 "items": {
                   "type": "string",
-                  "enum": [
-                    "withdrawals"
-                  ]
+                  "enum": ["withdrawals"]
                 },
-                "example": [
-                  "withdrawals"
-                ]
+                "example": ["withdrawals"]
               }
             },
-            "required": [
-              "req",
-              "chs"
-            ]
+            "required": ["req", "chs"]
           },
           "examples": [
             {
               "name": "SubscribeRequest Example",
               "payload": {
                 "req": "sub",
-                "chs": [
-                  "withdrawals"
-                ]
+                "chs": ["withdrawals"]
               }
             }
           ]
@@ -6180,30 +5775,21 @@
                   "oneOf": [
                     {
                       "type": "object",
-                      "required": [
-                        "status"
-                      ],
+                      "required": ["status"],
                       "properties": {
                         "status": {
                           "type": "string",
-                          "enum": [
-                            "ok"
-                          ]
+                          "enum": ["ok"]
                         }
                       }
                     },
                     {
                       "type": "object",
-                      "required": [
-                        "status",
-                        "error"
-                      ],
+                      "required": ["status", "error"],
                       "properties": {
                         "status": {
                           "type": "string",
-                          "enum": [
-                            "err"
-                          ]
+                          "enum": ["err"]
                         },
                         "error": {
                           "type": "string",
@@ -6216,9 +5802,7 @@
                 }
               }
             },
-            "required": [
-              "data"
-            ]
+            "required": ["data"]
           },
           "examples": [
             {
@@ -6245,39 +5829,26 @@
               "req": {
                 "type": "string",
                 "description": "Request type",
-                "enum": [
-                  "post",
-                  "sub",
-                  "unsub"
-                ]
+                "enum": ["post", "sub", "unsub"]
               },
               "chs": {
                 "type": "array",
                 "description": "Withdrawals private channel: \"withdrawals\"",
                 "items": {
                   "type": "string",
-                  "enum": [
-                    "withdrawals"
-                  ]
+                  "enum": ["withdrawals"]
                 },
-                "example": [
-                  "withdrawals"
-                ]
+                "example": ["withdrawals"]
               }
             },
-            "required": [
-              "req",
-              "chs"
-            ]
+            "required": ["req", "chs"]
           },
           "examples": [
             {
               "name": "UnsubscribeRequest Example",
               "payload": {
                 "req": "unsub",
-                "chs": [
-                  "withdrawals"
-                ]
+                "chs": ["withdrawals"]
               }
             }
           ]
@@ -6302,30 +5873,21 @@
                   "oneOf": [
                     {
                       "type": "object",
-                      "required": [
-                        "status"
-                      ],
+                      "required": ["status"],
                       "properties": {
                         "status": {
                           "type": "string",
-                          "enum": [
-                            "ok"
-                          ]
+                          "enum": ["ok"]
                         }
                       }
                     },
                     {
                       "type": "object",
-                      "required": [
-                        "status",
-                        "error"
-                      ],
+                      "required": ["status", "error"],
                       "properties": {
                         "status": {
                           "type": "string",
-                          "enum": [
-                            "err"
-                          ]
+                          "enum": ["err"]
                         },
                         "error": {
                           "type": "string",
@@ -6338,9 +5900,7 @@
                 }
               }
             },
-            "required": [
-              "data"
-            ]
+            "required": ["data"]
           },
           "examples": [
             {
@@ -6390,8 +5950,8 @@
                   },
                   "amount": {
                     "type": "string",
-                    "description": "Raw token amount including decimals. For withdrawals this matches the uint256 amount in the EIP-712 signature (e.g. \"100000000\" for 100 USDC with 6 decimals).",
-                    "example": "100000000"
+                    "description": "Token amount in decimal units (e.g. \"100\" for 100 USDC).",
+                    "example": "100"
                   },
                   "fee": {
                     "type": "string",
@@ -6406,12 +5966,7 @@
                   "status": {
                     "type": "string",
                     "description": "Withdrawal status",
-                    "enum": [
-                      "pending",
-                      "confirmed",
-                      "removed",
-                      "failed"
-                    ]
+                    "enum": ["pending", "confirmed", "removed", "failed"]
                   },
                   "hash": {
                     "type": "string",
@@ -6431,12 +5986,7 @@
                 ]
               }
             },
-            "required": [
-              "ch",
-              "ts",
-              "sq",
-              "data"
-            ]
+            "required": ["ch", "ts", "sq", "data"]
           },
           "examples": [
             {
@@ -6482,39 +6032,26 @@
               "req": {
                 "type": "string",
                 "description": "Request type",
-                "enum": [
-                  "post",
-                  "sub",
-                  "unsub"
-                ]
+                "enum": ["post", "sub", "unsub"]
               },
               "chs": {
                 "type": "array",
                 "description": "Notifications private channel: \"notifications\"",
                 "items": {
                   "type": "string",
-                  "enum": [
-                    "notifications"
-                  ]
+                  "enum": ["notifications"]
                 },
-                "example": [
-                  "notifications"
-                ]
+                "example": ["notifications"]
               }
             },
-            "required": [
-              "req",
-              "chs"
-            ]
+            "required": ["req", "chs"]
           },
           "examples": [
             {
               "name": "SubscribeRequest Example",
               "payload": {
                 "req": "sub",
-                "chs": [
-                  "notifications"
-                ]
+                "chs": ["notifications"]
               }
             }
           ]
@@ -6539,30 +6076,21 @@
                   "oneOf": [
                     {
                       "type": "object",
-                      "required": [
-                        "status"
-                      ],
+                      "required": ["status"],
                       "properties": {
                         "status": {
                           "type": "string",
-                          "enum": [
-                            "ok"
-                          ]
+                          "enum": ["ok"]
                         }
                       }
                     },
                     {
                       "type": "object",
-                      "required": [
-                        "status",
-                        "error"
-                      ],
+                      "required": ["status", "error"],
                       "properties": {
                         "status": {
                           "type": "string",
-                          "enum": [
-                            "err"
-                          ]
+                          "enum": ["err"]
                         },
                         "error": {
                           "type": "string",
@@ -6575,9 +6103,7 @@
                 }
               }
             },
-            "required": [
-              "data"
-            ]
+            "required": ["data"]
           },
           "examples": [
             {
@@ -6604,39 +6130,26 @@
               "req": {
                 "type": "string",
                 "description": "Request type",
-                "enum": [
-                  "post",
-                  "sub",
-                  "unsub"
-                ]
+                "enum": ["post", "sub", "unsub"]
               },
               "chs": {
                 "type": "array",
                 "description": "Notifications private channel: \"notifications\"",
                 "items": {
                   "type": "string",
-                  "enum": [
-                    "notifications"
-                  ]
+                  "enum": ["notifications"]
                 },
-                "example": [
-                  "notifications"
-                ]
+                "example": ["notifications"]
               }
             },
-            "required": [
-              "req",
-              "chs"
-            ]
+            "required": ["req", "chs"]
           },
           "examples": [
             {
               "name": "UnsubscribeRequest Example",
               "payload": {
                 "req": "unsub",
-                "chs": [
-                  "notifications"
-                ]
+                "chs": ["notifications"]
               }
             }
           ]
@@ -6661,30 +6174,21 @@
                   "oneOf": [
                     {
                       "type": "object",
-                      "required": [
-                        "status"
-                      ],
+                      "required": ["status"],
                       "properties": {
                         "status": {
                           "type": "string",
-                          "enum": [
-                            "ok"
-                          ]
+                          "enum": ["ok"]
                         }
                       }
                     },
                     {
                       "type": "object",
-                      "required": [
-                        "status",
-                        "error"
-                      ],
+                      "required": ["status", "error"],
                       "properties": {
                         "status": {
                           "type": "string",
-                          "enum": [
-                            "err"
-                          ]
+                          "enum": ["err"]
                         },
                         "error": {
                           "type": "string",
@@ -6697,9 +6201,7 @@
                 }
               }
             },
-            "required": [
-              "data"
-            ]
+            "required": ["data"]
           },
           "examples": [
             {
@@ -6759,10 +6261,7 @@
                           "side": {
                             "type": "string",
                             "description": "Side",
-                            "enum": [
-                              "long",
-                              "short"
-                            ]
+                            "enum": ["long", "short"]
                           },
                           "size": {
                             "type": "string",
@@ -6830,10 +6329,7 @@
                           "side": {
                             "type": "string",
                             "description": "Side",
-                            "enum": [
-                              "long",
-                              "short"
-                            ]
+                            "enum": ["long", "short"]
                           },
                           "size": {
                             "type": "string",
@@ -6901,10 +6397,7 @@
                           "side": {
                             "type": "string",
                             "description": "Side",
-                            "enum": [
-                              "long",
-                              "short"
-                            ]
+                            "enum": ["long", "short"]
                           },
                           "size": {
                             "type": "string",
@@ -6968,9 +6461,7 @@
                               "liq_price"
                             ],
                             "not": {
-                              "required": [
-                                "affected_instruments"
-                              ]
+                              "required": ["affected_instruments"]
                             }
                           },
                           {
@@ -7003,10 +6494,7 @@
                                 "items": {
                                   "type": "integer"
                                 },
-                                "example": [
-                                  42,
-                                  7
-                                ]
+                                "example": [42, 7]
                               }
                             },
                             "required": [
@@ -7018,9 +6506,7 @@
                               "affected_instruments"
                             ],
                             "not": {
-                              "required": [
-                                "liq_price"
-                              ]
+                              "required": ["liq_price"]
                             }
                           }
                         ]
@@ -7044,10 +6530,7 @@
                           "side": {
                             "type": "string",
                             "description": "Side",
-                            "enum": [
-                              "long",
-                              "short"
-                            ]
+                            "enum": ["long", "short"]
                           },
                           "size_closed": {
                             "type": "string",
@@ -7055,20 +6538,14 @@
                             "example": "0.05"
                           },
                           "pnl": {
-                            "type": [
-                              "string",
-                              "null"
-                            ],
+                            "type": ["string", "null"],
                             "description": "Realized PnL in USD; null when not available (e.g. a backstop close with no fill)",
                             "example": "290.00"
                           },
                           "margin_type": {
                             "type": "string",
                             "description": "Margin mode",
-                            "enum": [
-                              "cross",
-                              "isolated"
-                            ]
+                            "enum": ["cross", "isolated"]
                           },
                           "via_backstop": {
                             "type": "boolean",
@@ -7086,16 +6563,64 @@
                           "margin_type",
                           "via_backstop"
                         ]
+                      },
+                      {
+                        "type": "object",
+                        "properties": {
+                          "id": {
+                            "type": "string",
+                            "description": "Stable notification id. The same notification always has the same id on the WebSocket feed and in the notifications history, so you can safely deduplicate across the two.",
+                            "example": "0a5d8f1e-3b2c-5e4a-9f8b-1c2d3e4f5a6b"
+                          },
+                          "type": {
+                            "type": "string",
+                            "const": "position_deleveraged"
+                          },
+                          "instrument_id": {
+                            "type": "integer",
+                            "description": "Instrument ID"
+                          },
+                          "side": {
+                            "type": "string",
+                            "description": "Side",
+                            "enum": ["long", "short"]
+                          },
+                          "size_closed": {
+                            "type": "string",
+                            "description": "Position size closed by auto-deleveraging (base units)",
+                            "example": "0.05"
+                          },
+                          "price": {
+                            "type": "string",
+                            "description": "Price",
+                            "example": "100.00"
+                          },
+                          "pnl": {
+                            "type": "string",
+                            "description": "PnL in USD",
+                            "example": "100.00"
+                          },
+                          "margin_type": {
+                            "type": "string",
+                            "description": "Margin mode",
+                            "enum": ["cross", "isolated"]
+                          }
+                        },
+                        "required": [
+                          "id",
+                          "type",
+                          "instrument_id",
+                          "side",
+                          "size_closed",
+                          "price",
+                          "pnl",
+                          "margin_type"
+                        ]
                       }
                     ]
                   }
                 },
-                "required": [
-                  "ch",
-                  "ts",
-                  "sq",
-                  "data"
-                ]
+                "required": ["ch", "ts", "sq", "data"]
               },
               {
                 "description": "Resync control frame sent when the connection falls behind and the server drops one or more data frames. Its sq is the highest sequence among the dropped notifications. To recover, backfill from the REST notifications history anchored at the last data frame you processed, and keep paging until the returned durable_source_seq reaches this sq and no more pages remain.",
@@ -7119,16 +6644,9 @@
                     "const": "resync"
                   }
                 },
-                "required": [
-                  "ch",
-                  "ts",
-                  "sq",
-                  "type"
-                ],
+                "required": ["ch", "ts", "sq", "type"],
                 "not": {
-                  "required": [
-                    "data"
-                  ]
+                  "required": ["data"]
                 }
               }
             ]
@@ -7303,6 +6821,30 @@
       "messages": [
         {
           "$ref": "#/channels/updateLeverage/messages/Response"
+        }
+      ]
+    },
+    "UpdateLeveragesSend": {
+      "action": "receive",
+      "channel": {
+        "$ref": "#/channels/updateLeverages"
+      },
+      "summary": "Update leverage for multiple instruments",
+      "messages": [
+        {
+          "$ref": "#/channels/updateLeverages/messages/Request"
+        }
+      ]
+    },
+    "UpdateLeveragesReceive": {
+      "action": "send",
+      "channel": {
+        "$ref": "#/channels/updateLeverages"
+      },
+      "summary": "Batch leverage update response",
+      "messages": [
+        {
+          "$ref": "#/channels/updateLeverages/messages/Response"
         }
       ]
     },
@@ -7771,6 +7313,66 @@
       "messages": [
         {
           "$ref": "#/channels/fills/messages/Update"
+        }
+      ]
+    },
+    "BackstopSubscribe": {
+      "action": "receive",
+      "channel": {
+        "$ref": "#/channels/backstop"
+      },
+      "summary": "Subscribe to backstop liquidations",
+      "messages": [
+        {
+          "$ref": "#/channels/backstop/messages/SubscribeRequest"
+        }
+      ]
+    },
+    "BackstopSubscribeResponse": {
+      "action": "send",
+      "channel": {
+        "$ref": "#/channels/backstop"
+      },
+      "summary": "Backstop subscribe response",
+      "messages": [
+        {
+          "$ref": "#/channels/backstop/messages/SubscribeResponse"
+        }
+      ]
+    },
+    "BackstopUnsubscribe": {
+      "action": "receive",
+      "channel": {
+        "$ref": "#/channels/backstop"
+      },
+      "summary": "Unsubscribe from backstop liquidations",
+      "messages": [
+        {
+          "$ref": "#/channels/backstop/messages/UnsubscribeRequest"
+        }
+      ]
+    },
+    "BackstopUnsubscribeResponse": {
+      "action": "send",
+      "channel": {
+        "$ref": "#/channels/backstop"
+      },
+      "summary": "Backstop unsubscribe response",
+      "messages": [
+        {
+          "$ref": "#/channels/backstop/messages/UnsubscribeResponse"
+        }
+      ]
+    },
+    "BackstopUpdate": {
+      "action": "send",
+      "channel": {
+        "$ref": "#/channels/backstop"
+      },
+      "summary": "Receive backstop liquidation updates",
+      "messages": [
+        {
+          "$ref": "#/channels/backstop/messages/Update"
         }
       ]
     },

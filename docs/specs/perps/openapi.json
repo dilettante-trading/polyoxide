@@ -159,7 +159,11 @@
             "in": "query",
             "required": false,
             "schema": {
-              "$ref": "#/components/schemas/instrument_id"
+              "type": "integer",
+              "format": "int64",
+              "minimum": 0,
+              "maximum": 4294967295,
+              "description": "Instrument ID"
             }
           },
           {
@@ -304,7 +308,11 @@
             "in": "query",
             "required": true,
             "schema": {
-              "$ref": "#/components/schemas/instrument_id"
+              "type": "integer",
+              "format": "int64",
+              "minimum": 0,
+              "maximum": 4294967295,
+              "description": "Instrument ID"
             }
           },
           {
@@ -339,6 +347,76 @@
               "application/json": {
                 "schema": {
                   "$ref": "#/components/schemas/KlinesResponse"
+                }
+              }
+            }
+          },
+          "400": {
+            "$ref": "#/components/responses/Error400Response"
+          },
+          "429": {
+            "$ref": "#/components/responses/Error429Response"
+          },
+          "500": {
+            "$ref": "#/components/responses/Error500Response"
+          }
+        }
+      }
+    },
+    "/v1/info/mark-history": {
+      "get": {
+        "operationId": "getMarkHistory",
+        "summary": "Get Mark Price History",
+        "security": [],
+        "x-mint": {
+          "content": "<Badge color=\"gray\" size=\"md\">Request Weight: **5**</Badge>\n<br/>\n<Badge color=\"gray\" size=\"md\">Cached for 2s. A request served from cache costs **1**</Badge>\n"
+        },
+        "description": "Get mark price history for an instrument, bucketed by interval.\nIf no end time is provided, the current time will be used.\nMaximum of 1000 entries returned per request.\nOnly buckets with at least one mark update are included.\nFor intervals of a minute or coarser, a bucket cut mid-way by `end_timestamp`\nmay be omitted, or may reflect the window's last mark at one-minute fidelity.\n",
+        "parameters": [
+          {
+            "name": "instrument_id",
+            "in": "query",
+            "required": true,
+            "schema": {
+              "type": "integer",
+              "format": "int64",
+              "minimum": 0,
+              "maximum": 4294967295,
+              "description": "Instrument ID"
+            }
+          },
+          {
+            "name": "interval",
+            "in": "query",
+            "required": true,
+            "schema": {
+              "$ref": "#/components/schemas/interval"
+            }
+          },
+          {
+            "name": "start_timestamp",
+            "in": "query",
+            "required": true,
+            "schema": {
+              "$ref": "#/components/schemas/start_timestamp"
+            }
+          },
+          {
+            "name": "end_timestamp",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "$ref": "#/components/schemas/end_timestamp"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Mark price history response.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/MarkHistoryResponse"
                 }
               }
             }
@@ -415,7 +493,11 @@
             "in": "query",
             "required": true,
             "schema": {
-              "$ref": "#/components/schemas/instrument_id"
+              "type": "integer",
+              "format": "int64",
+              "minimum": 0,
+              "maximum": 4294967295,
+              "description": "Instrument ID"
             }
           },
           {
@@ -525,7 +607,11 @@
             "in": "query",
             "required": true,
             "schema": {
-              "$ref": "#/components/schemas/instrument_id"
+              "type": "integer",
+              "format": "int64",
+              "minimum": 0,
+              "maximum": 4294967295,
+              "description": "Instrument ID"
             }
           },
           {
@@ -625,7 +711,11 @@
             "in": "query",
             "required": true,
             "schema": {
-              "$ref": "#/components/schemas/instrument_id"
+              "type": "integer",
+              "format": "int64",
+              "minimum": 0,
+              "maximum": 4294967295,
+              "description": "Instrument ID"
             }
           },
           {
@@ -1088,6 +1178,94 @@
           },
           "500": {
             "$ref": "#/components/responses/Error500Response"
+          }
+        }
+      }
+    },
+    "/v1/trade/leverage/batch": {
+      "patch": {
+        "operationId": "updateLeverages",
+        "summary": "Update Leverage for Multiple Instruments",
+        "security": [],
+        "x-mint": {
+          "content": "<Badge color=\"gray\" size=\"md\">Request Weight: **1 + floor(n / 20)**</Badge> <Badge color=\"gray\" size=\"md\">Action Weight: **1 / instrument**</Badge>"
+        },
+        "description": "Update leverage for up to 100 unique instruments. Updates are processed\nsequentially and are not atomic. If only some responses arrive before the\ngateway deadline, missing item results use `internal_error`; whether those\nupdates applied is unknown. If no responses arrive, the request returns 500.\nRequires proxy signature, see [Update Leverage](/perps/trading#update-leverage).\n",
+        "requestBody": {
+          "description": "Batch leverage request.",
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/LeverageBatchRequest"
+              },
+              "examples": {
+                "updateLeverages": {
+                  "summary": "Update leverage for multiple instruments",
+                  "value": {
+                    "op": {
+                      "type": "updateLeverages",
+                      "args": [
+                        {
+                          "iid": 1,
+                          "lev": 5,
+                          "cross": false
+                        },
+                        {
+                          "iid": 2,
+                          "lev": 10,
+                          "cross": true
+                        }
+                      ]
+                    },
+                    "sig": "0x59ed57f6dce8d15aa01e774ef53d9957c84801fb34ec655f6a2ea344af8a58843095314730a3f1bd8f0f4560f6dc6f8de69d3f2d0a6f3365fc877f7f4845d40b1c",
+                    "salt": 333333333,
+                    "ts": 1767000012000
+                  }
+                }
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Ordered result for each requested instrument.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "$ref": "#/components/schemas/LeverageBatchResponse"
+                  }
+                },
+                "examples": {
+                  "mixedResult": {
+                    "summary": "One update succeeds and one is rejected",
+                    "value": [
+                      {
+                        "status": "ok",
+                        "instrument_id": 1,
+                        "leverage": 5,
+                        "cross": false
+                      },
+                      {
+                        "status": "err",
+                        "instrument_id": 2,
+                        "error": "insufficient_margin"
+                      }
+                    ]
+                  }
+                }
+              }
+            }
+          },
+          "400": {
+            "$ref": "#/components/responses/BatchError400Response"
+          },
+          "429": {
+            "$ref": "#/components/responses/BatchError429Response"
+          },
+          "500": {
+            "$ref": "#/components/responses/BatchError500Response"
           }
         }
       }
@@ -1698,7 +1876,11 @@
             "in": "query",
             "required": false,
             "schema": {
-              "$ref": "#/components/schemas/instrument_id"
+              "type": "integer",
+              "format": "int64",
+              "minimum": 0,
+              "maximum": 4294967295,
+              "description": "Instrument ID"
             }
           },
           {
@@ -2481,6 +2663,97 @@
         }
       }
     },
+    "/v1/trade/margin": {
+      "patch": {
+        "operationId": "updateMargin",
+        "summary": "Update Isolated Margin",
+        "security": [],
+        "x-mint": {
+          "content": "<Badge color=\"gray\" size=\"md\">Request Weight: **1**</Badge> <Badge color=\"gray\" size=\"md\">Action Weight: **1**</Badge>"
+        },
+        "description": "Adjust the signed collateral allocation for an existing isolated position.\nUse a positive amount to add margin and a negative amount to remove it.\nA removal may include unrealized isolated profit, but the resulting\nisolated position equity (allocation + unrealized PnL - settled funding)\nmust remain at or above the position's current required initial margin.\n\nBoth additions and removals are rejected while the account is in cross\nliquidation or the target isolated position is in isolated liquidation.\nAn isolated liquidation on another instrument does not block this request.\n\nCancel-only mode does not gate margin adjustments.\n\nRequires proxy signature, see [proxy signing](/http/signing#2-proxy-signing).\nGateway signature validation rejects a stale or future-skewed timestamp as\n`invalid signature`. A request that passes gateway validation can still fail\nsequencer freshness revalidation with\n`invalid_margin_signature_timestamp`. Reusing the exact signed request\nrejects with `signature_already_used`.\n",
+        "requestBody": {
+          "description": "Margin request.",
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/MarginRequest"
+              },
+              "examples": {
+                "addMargin": {
+                  "summary": "Add margin to a position",
+                  "value": {
+                    "op": {
+                      "type": "updateMargin",
+                      "args": {
+                        "iid": 1,
+                        "amt": "100.00"
+                      }
+                    },
+                    "sig": "0x7d8e9f0a1b2c3d4e5f6a7b8c9d0e1f2a3b4c5d6e7f8a9b0c1d2e3f4a5b6c7d8e9f0a1b2c3d4e5f6a7b8c9d0e1f2a3b4c5d6e7f8a9b0c1d2e3f4a5b6c7d1c",
+                    "salt": 444444444,
+                    "ts": 1767000013000
+                  }
+                },
+                "removeMargin": {
+                  "summary": "Remove margin or unrealized isolated profit",
+                  "value": {
+                    "op": {
+                      "type": "updateMargin",
+                      "args": {
+                        "iid": 1,
+                        "amt": "-25.00"
+                      }
+                    },
+                    "sig": "0x7d8e9f0a1b2c3d4e5f6a7b8c9d0e1f2a3b4c5d6e7f8a9b0c1d2e3f4a5b6c7d8e9f0a1b2c3d4e5f6a7b8c9d0e1f2a3b4c5d6e7f8a9b0c1d2e3f4a5b6c7d1c",
+                    "salt": 444444445,
+                    "ts": 1767000013001
+                  }
+                }
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Generic response.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/GenericResponse"
+                }
+              }
+            }
+          },
+          "400": {
+            "$ref": "#/components/responses/Error400Response"
+          },
+          "422": {
+            "description": "Sequenced domain rejection. Stable errors include\n`position_not_found`, `invalid_margin_mode`,\n`invalid_margin_amount`, `insufficient_margin`,\n`account_liquidating`, `margin_below_required_initial`, and\n`signature_already_used`. `invalid_margin_signature_timestamp`\nspecifically indicates that sequencer freshness revalidation rejected\na request that passed gateway validation.\n",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/GenericResponse"
+                }
+              }
+            }
+          },
+          "429": {
+            "$ref": "#/components/responses/Error429Response"
+          },
+          "500": {
+            "description": "Internal server error or timeout. The outcome may be indeterminate if\nthe request was sequenced but its Risk decision did not reach the\ngateway before the timeout. Before retrying, refresh the position using\n`GET /v1/account/portfolio`.\n",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error500"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/v1/account/notifications": {
       "get": {
         "operationId": "getAccountNotifications",
@@ -2613,6 +2886,179 @@
           }
         }
       }
+    },
+    "/v1/blp/enrollment": {
+      "get": {
+        "operationId": "getBlpEnrollment",
+        "summary": "Get BLP Enrollment",
+        "security": [
+          {
+            "polymarket_proxy": [],
+            "polymarket_secret": []
+          }
+        ],
+        "x-mint": {
+          "content": "<Badge color=\"gray\" size=\"md\">Request Weight: **2**</Badge>"
+        },
+        "description": "Get the authenticated account's Backstop Liquidity Provider (BLP) enrollment\nand the instruments it is subscribed to.\n\nThe endpoint is restricted to program participants: an authenticated account\nthat is not enrolled receives a 404, the same response as an account\nrequesting a route that does not exist for it. A participant that is enrolled\nbut not yet subscribed to any instrument receives an empty `instruments`\nlist.\n\nProgram membership is set by Polymarket under the participation agreement.\nSubscriptions are the participant's own to manage through\n`POST /v1/blp/enroll`; every subscribed instrument runs at the program\nleverage of 3x, which is locked while the subscription stands.\n",
+        "responses": {
+          "200": {
+            "description": "BLP enrollment response.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/BlpEnrollment"
+                }
+              }
+            }
+          },
+          "401": {
+            "$ref": "#/components/responses/Error401Response"
+          },
+          "404": {
+            "$ref": "#/components/responses/Error404Response"
+          },
+          "429": {
+            "$ref": "#/components/responses/Error429Response"
+          },
+          "500": {
+            "$ref": "#/components/responses/Error500Response"
+          }
+        }
+      }
+    },
+    "/v1/blp/enroll": {
+      "post": {
+        "operationId": "postBlpEnroll",
+        "summary": "Set BLP Instrument Subscription",
+        "security": [
+          {
+            "polymarket_proxy": [],
+            "polymarket_secret": []
+          }
+        ],
+        "x-mint": {
+          "content": "<Badge color=\"gray\" size=\"md\">Request Weight: **1**</Badge>"
+        },
+        "description": "Subscribe the authenticated Backstop Liquidity Provider (BLP) account to an\ninstrument, or unsubscribe it. A participant only receives backstop\nallocations on the instruments it is subscribed to.\n\nThe subscription always applies to the authenticated account — there is no\naccount parameter. Program membership itself is set by Polymarket under the\nparticipation agreement and cannot be changed here: an authenticated account\nthat is not enrolled receives a 404, matching\n`GET /v1/blp/enrollment`.\n\n**Subscribing sets the instrument's leverage to the program leverage of\n3x** before the subscription takes effect, and the instrument's leverage is\nthen locked for as long as the subscription stands — `PATCH\n/v1/trade/leverage` on a subscribed instrument rejects with\n`blp_leverage_locked`. The margin mode is left as it is. Unsubscribing\nreleases the lock and leaves the leverage at 3x; set it to whatever you\nwant afterwards.\n\nIf the leverage change is rejected (for example the instrument's risk tier\ncaps leverage below 3x), the subscription is not applied and the rejection\nis returned unchanged.\n\nThe call is idempotent — subscribing an already-subscribed instrument, or\nunsubscribing one that was never subscribed, succeeds and changes nothing.\nA repeated subscribe leaves the leverage as the first one set it.\n",
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/BlpEnrollRequest"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Subscription accepted.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/GenericAccepted"
+                }
+              }
+            }
+          },
+          "400": {
+            "$ref": "#/components/responses/Error400Response"
+          },
+          "401": {
+            "$ref": "#/components/responses/Error401Response"
+          },
+          "404": {
+            "$ref": "#/components/responses/Error404Response"
+          },
+          "422": {
+            "$ref": "#/components/responses/Error422Response"
+          },
+          "429": {
+            "$ref": "#/components/responses/Error429Response"
+          },
+          "500": {
+            "$ref": "#/components/responses/Error500Response"
+          }
+        }
+      }
+    },
+    "/v1/blp/liquidations": {
+      "get": {
+        "operationId": "getBlpLiquidations",
+        "summary": "List BLP Liquidations",
+        "security": [
+          {
+            "polymarket_proxy": [],
+            "polymarket_secret": []
+          }
+        ],
+        "x-mint": {
+          "content": "<Badge color=\"gray\" size=\"md\">Request Weight: **10**</Badge>"
+        },
+        "description": "List the backstop liquidations the authenticated Backstop Liquidity Provider (BLP)\naccount received, most recent first by default.\n\nEach record is one absorption and carries the same fields as a frame on the\n`backstop` WebSocket channel, so a participant that missed frames while\ndisconnected can replay them from here rather than reconstructing them from\ntrade history. Records do not identify the liquidated account.\n\n`margin` is the net margin transferred with the positions. It is negative when\nthe absorption carried bad debt — the fund returned more isolated margin than the\naccount's balance covered.\n\nLike the other BLP routes, this one is restricted to program participants: an\nauthenticated account that is not enrolled receives a 404, the same response as an\naccount requesting a route that does not exist for it.\n",
+        "parameters": [
+          {
+            "name": "start_timestamp",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "$ref": "#/components/schemas/start_timestamp"
+            }
+          },
+          {
+            "name": "end_timestamp",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "$ref": "#/components/schemas/end_timestamp"
+            }
+          },
+          {
+            "name": "cursor",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "$ref": "#/components/schemas/blp_cursor"
+            }
+          },
+          {
+            "name": "sort",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "$ref": "#/components/schemas/blp_sort"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "BLP liquidation history.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/BlpLiquidations"
+                }
+              }
+            }
+          },
+          "400": {
+            "$ref": "#/components/responses/Error400Response"
+          },
+          "401": {
+            "$ref": "#/components/responses/Error401Response"
+          },
+          "404": {
+            "$ref": "#/components/responses/Error404Response"
+          },
+          "429": {
+            "$ref": "#/components/responses/Error429Response"
+          },
+          "500": {
+            "$ref": "#/components/responses/Error500Response"
+          }
+        }
+      }
     }
   },
   "components": {
@@ -2633,7 +3079,7 @@
     "schemas": {
       "error": {
         "type": "string",
-        "description": "Error identifier. For domain rejections and transport errors (`401`/`404`/`429`/`500`) this is a stable, machine-readable snake_case identifier that is part of the API contract and safe to branch on, e.g. `insufficient_margin`, `insufficient_balance`, `order_not_found`, `reduce_only_invalid`, `price_outside_bounds`, `unauthorized`, `not_found`. For `400` it is a human-readable validation detail whose wording may change. See the Error handling guide for the domain identifiers. (Post-only / Fill-or-Kill outcomes are order statuses such as `post_only_rejected`, not rejections.)",
+        "description": "Error identifier. For domain rejections and transport errors (`401`/`404`/`429`/`500`) this is a stable, machine-readable snake_case identifier that is part of the API contract and safe to branch on, e.g. `insufficient_margin`, `insufficient_balance`, `order_not_found`, `reduce_only_invalid`, `price_outside_bounds`, `position_not_found`, `invalid_margin_mode`, `invalid_margin_amount`, `margin_below_required_initial`, `account_liquidating`, `unauthorized`, `not_found`. For `400` it is a human-readable validation detail whose wording may change. See the Error handling guide for the domain identifiers. (Post-only / Fill-or-Kill outcomes are order statuses such as `post_only_rejected`, not rejections.)",
         "example": "insufficient_margin"
       },
       "Error429": {
@@ -2711,13 +3157,25 @@
         "description": "Verifying contract address or the EIP-712 domain.",
         "example": "0x1234567890abcdef1234567890abcdef12345678"
       },
+      "cancel_only": {
+        "type": "boolean",
+        "description": "True while the exchange is in cancel-only (maintenance) mode — only order cancellation is accepted.",
+        "example": false
+      },
+      "engine_version": {
+        "type": "string",
+        "description": "Engine release version of the build serving this response.",
+        "example": "0.0.61"
+      },
       "Exchange": {
         "type": "object",
         "required": [
           "name",
           "version",
           "chain_id",
-          "contract"
+          "contract",
+          "cancel_only",
+          "engine_version"
         ],
         "properties": {
           "name": {
@@ -2731,6 +3189,12 @@
           },
           "contract": {
             "$ref": "#/components/schemas/contract"
+          },
+          "cancel_only": {
+            "$ref": "#/components/schemas/cancel_only"
+          },
+          "engine_version": {
+            "$ref": "#/components/schemas/engine_version"
           }
         }
       },
@@ -2896,6 +3360,14 @@
           }
         }
       },
+      "ui_live_time": {
+        "type": "integer",
+        "nullable": true,
+        "minimum": 0,
+        "maximum": 253402300799000,
+        "description": "Unix timestamp in milliseconds when first-party interfaces may display the instrument. A null value means hidden. This advisory field does not affect trading availability.",
+        "example": 1786032000000
+      },
       "Instrument": {
         "type": "object",
         "required": [
@@ -2916,7 +3388,8 @@
           "max_market_notional",
           "max_limit_notional",
           "max_leverage",
-          "risk_tiers"
+          "risk_tiers",
+          "ui_live_time"
         ],
         "properties": {
           "instrument_id": {
@@ -2975,6 +3448,9 @@
             "items": {
               "$ref": "#/components/schemas/RiskTier"
             }
+          },
+          "ui_live_time": {
+            "$ref": "#/components/schemas/ui_live_time"
           }
         }
       },
@@ -3209,6 +3685,33 @@
             "$ref": "#/components/schemas/more"
           }
         }
+      },
+      "MarkHistoryResponse": {
+        "type": "object",
+        "required": [
+          "data",
+          "more"
+        ],
+        "properties": {
+          "data": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/mark_point"
+            },
+            "maxItems": 1000
+          },
+          "more": {
+            "$ref": "#/components/schemas/more"
+          }
+        }
+      },
+      "mark_point": {
+        "type": "array",
+        "description": "- `1767225600000` - Bucket open time (ms)\n- `\"160.00\"` - Last mark price in bucket\n",
+        "example": [
+          1767225600000,
+          "160.00"
+        ]
       },
       "best_bid_price": {
         "type": "string",
@@ -3494,7 +3997,7 @@
       },
       "return_on_equity": {
         "type": "string",
-        "description": "Return on equity as a decimal",
+        "description": "Unrealized PnL divided by the position's current required initial margin, as a decimal.",
         "example": "-0.0027"
       },
       "PublicPortfolioPosition": {
@@ -4427,6 +4930,98 @@
           }
         }
       },
+      "OpUpdateLeveragesArgsItem": {
+        "type": "object",
+        "required": [
+          "iid",
+          "lev",
+          "cross"
+        ],
+        "properties": {
+          "iid": {
+            "$ref": "#/components/schemas/iid"
+          },
+          "lev": {
+            "$ref": "#/components/schemas/lev"
+          },
+          "cross": {
+            "$ref": "#/components/schemas/cross"
+          }
+        }
+      },
+      "OpUpdateLeverages": {
+        "type": "object",
+        "required": [
+          "type",
+          "args"
+        ],
+        "properties": {
+          "type": {
+            "type": "string",
+            "enum": [
+              "updateLeverages"
+            ]
+          },
+          "args": {
+            "type": "array",
+            "minItems": 1,
+            "maxItems": 100,
+            "items": {
+              "$ref": "#/components/schemas/OpUpdateLeveragesArgsItem"
+            }
+          }
+        }
+      },
+      "LeverageBatchRequest": {
+        "allOf": [
+          {
+            "type": "object",
+            "required": [
+              "op"
+            ],
+            "properties": {
+              "op": {
+                "$ref": "#/components/schemas/OpUpdateLeverages"
+              }
+            }
+          },
+          {
+            "$ref": "#/components/schemas/BaseOp"
+          }
+        ]
+      },
+      "LeverageRejected": {
+        "type": "object",
+        "required": [
+          "status",
+          "instrument_id",
+          "error"
+        ],
+        "properties": {
+          "status": {
+            "type": "string",
+            "enum": [
+              "err"
+            ]
+          },
+          "instrument_id": {
+            "$ref": "#/components/schemas/iid"
+          },
+          "error": {
+            "$ref": "#/components/schemas/error"
+          }
+        }
+      },
+      "LeverageBatchResponse": {
+        "oneOf": [
+          {
+            "$ref": "#/components/schemas/LeverageResponse"
+          },
+          {
+            "$ref": "#/components/schemas/LeverageRejected"
+          }
+        ]
+      },
       "owner": {
         "type": "string",
         "description": "Owner address in hex format",
@@ -4821,7 +5416,7 @@
       },
       "initial_margin": {
         "type": "string",
-        "description": "Initial margin in USD",
+        "description": "Current collateral backing the position. For cross positions, this is\nthe required initial margin based on position size, mark price, the\napplicable risk tier, and configured leverage. For isolated positions,\nthis is the position's current equity: signed allocated margin plus\nunrealized PnL minus settled funding.\n\nThe legacy `initial_margin` name is retained for API compatibility;\n`margin` would more accurately describe the field.\n",
         "example": "10.00"
       },
       "maintenance_margin_amount": {
@@ -4908,6 +5503,11 @@
         "description": "Total account value in USD (equity + unrealized PnL)",
         "example": "13109.48"
       },
+      "available_order_margin": {
+        "type": "string",
+        "description": "Collateral available in USD for additional order initial margin after existing exposure, open orders, orders and isolated-margin additions awaiting risk processing, and pending withdrawals or transfers",
+        "example": "5055.79"
+      },
       "total_initial_margin": {
         "type": "string",
         "description": "Total initial margin in use across all positions",
@@ -4927,6 +5527,7 @@
         "type": "object",
         "required": [
           "total_account_value",
+          "available_order_margin",
           "total_initial_margin",
           "total_maintenance_margin",
           "total_position_value"
@@ -4934,6 +5535,9 @@
         "properties": {
           "total_account_value": {
             "$ref": "#/components/schemas/total_account_value"
+          },
+          "available_order_margin": {
+            "$ref": "#/components/schemas/available_order_margin"
           },
           "total_initial_margin": {
             "$ref": "#/components/schemas/total_initial_margin"
@@ -5030,7 +5634,11 @@
       },
       "liq": {
         "type": "boolean",
-        "description": "Whether the fill was a liquidation"
+        "description": "Whether this fill was part of a liquidation of the account's position — true on forced closes and on any fill executed while the account was under liquidation on the instrument, maker or taker. False on the counterparty leg of an auto-deleveraging or backstop match — its fill is part of someone else's liquidation, flagged by `adl` where applicable"
+      },
+      "adl": {
+        "type": "boolean",
+        "description": "Whether the fill came from auto-deleveraging"
       },
       "AccountTradeData": {
         "type": "object",
@@ -5049,6 +5657,7 @@
           "pnl",
           "timestamp",
           "liquidation",
+          "adl",
           "hash"
         ],
         "properties": {
@@ -5090,6 +5699,9 @@
           },
           "liquidation": {
             "$ref": "#/components/schemas/liq"
+          },
+          "adl": {
+            "$ref": "#/components/schemas/adl"
           },
           "timestamp": {
             "$ref": "#/components/schemas/ts"
@@ -5191,9 +5803,15 @@
         "description": "Funding paid in USD",
         "example": "1.00"
       },
+      "fid": {
+        "type": "integer",
+        "description": "Funding payment ID. Probabilistically unique (same guarantees as trade IDs) and stable across REST and WebSocket for the same funding record.",
+        "example": 3055723280187747
+      },
       "AccountFundingData": {
         "type": "object",
         "required": [
+          "id",
           "instrument_id",
           "size",
           "funding_rate",
@@ -5202,6 +5820,9 @@
           "timestamp"
         ],
         "properties": {
+          "id": {
+            "$ref": "#/components/schemas/fid"
+          },
           "instrument_id": {
             "$ref": "#/components/schemas/iid"
           },
@@ -5252,7 +5873,12 @@
       },
       "amount": {
         "type": "string",
-        "description": "Raw token amount including decimals. For withdrawals this matches the uint256 amount in the EIP-712 signature (e.g. \"100000000\" for 100 USDC with 6 decimals).",
+        "description": "Token amount in decimal units (e.g. \"100\" for 100 USDC).",
+        "example": "100"
+      },
+      "op_amount": {
+        "type": "string",
+        "description": "Raw token amount in base units, matching the uint256 amount in the EIP-712 signature (e.g. \"100000000\" for 100 USDC with 6 decimals).",
         "example": "100000000"
       },
       "to": {
@@ -5289,7 +5915,7 @@
                 "$ref": "#/components/schemas/token"
               },
               "amount": {
-                "$ref": "#/components/schemas/amount"
+                "$ref": "#/components/schemas/op_amount"
               },
               "to": {
                 "$ref": "#/components/schemas/to"
@@ -6133,6 +6759,69 @@
           }
         }
       },
+      "MarginRequest": {
+        "allOf": [
+          {
+            "type": "object",
+            "required": [
+              "op"
+            ],
+            "properties": {
+              "op": {
+                "$ref": "#/components/schemas/OpUpdateMargin"
+              }
+            }
+          },
+          {
+            "$ref": "#/components/schemas/BaseOp"
+          }
+        ]
+      },
+      "OpUpdateMargin": {
+        "type": "object",
+        "required": [
+          "type",
+          "args"
+        ],
+        "properties": {
+          "type": {
+            "type": "string",
+            "enum": [
+              "updateMargin"
+            ]
+          },
+          "args": {
+            "type": "object",
+            "required": [
+              "iid",
+              "amt"
+            ],
+            "properties": {
+              "iid": {
+                "$ref": "#/components/schemas/iid"
+              },
+              "amt": {
+                "$ref": "#/components/schemas/margin_amount"
+              }
+            }
+          }
+        }
+      },
+      "GenericResponse": {
+        "oneOf": [
+          {
+            "$ref": "#/components/schemas/GenericAccepted"
+          },
+          {
+            "$ref": "#/components/schemas/GenericRejected"
+          }
+        ]
+      },
+      "margin_amount": {
+        "type": "string",
+        "description": "Signed isolated-margin adjustment in the instrument quote asset. Positive values add allocation; negative values remove it.",
+        "example": "100.00"
+      },
       "notif_cursor": {
         "type": "string",
         "nullable": true,
@@ -6248,6 +6937,168 @@
             }
           }
         ]
+      },
+      "blp": {
+        "type": "boolean",
+        "description": "True when the account is enrolled in the Backstop Liquidity Provider program.",
+        "example": true
+      },
+      "BlpInstrument": {
+        "type": "object",
+        "required": [
+          "instrument_id",
+          "symbol"
+        ],
+        "properties": {
+          "instrument_id": {
+            "$ref": "#/components/schemas/instrument_id"
+          },
+          "symbol": {
+            "$ref": "#/components/schemas/symbol"
+          }
+        }
+      },
+      "BlpEnrollment": {
+        "type": "object",
+        "required": [
+          "blp",
+          "instruments"
+        ],
+        "properties": {
+          "blp": {
+            "$ref": "#/components/schemas/blp"
+          },
+          "instruments": {
+            "type": "array",
+            "description": "Instruments the account is subscribed to, in ascending instrument-id\norder. Empty when the account is enrolled but not yet subscribed to\nany instrument.\n",
+            "items": {
+              "$ref": "#/components/schemas/BlpInstrument"
+            }
+          }
+        }
+      },
+      "blp_active": {
+        "type": "boolean",
+        "description": "True subscribes the account to the instrument, false unsubscribes it.",
+        "example": true
+      },
+      "BlpEnrollRequest": {
+        "type": "object",
+        "required": [
+          "instrument_id",
+          "active"
+        ],
+        "properties": {
+          "instrument_id": {
+            "$ref": "#/components/schemas/instrument_id"
+          },
+          "active": {
+            "$ref": "#/components/schemas/blp_active"
+          }
+        }
+      },
+      "lid": {
+        "type": "integer",
+        "description": "Liquidation ID. Identifies one absorption of an account's positions by the insurance fund. Probabilistically unique (same guarantees as trade IDs).",
+        "example": 1234567890
+      },
+      "mgn": {
+        "type": "string",
+        "description": "Net margin transferred to the insurance fund in USD, covering the quote asset only. Negative when the fund returned more isolated margin than the account's balance covered, i.e. it absorbed bad debt.",
+        "example": "150.00"
+      },
+      "blp_cursor": {
+        "type": "integer",
+        "description": "Pagination cursor. Pass the liquidation ID of the last record from the previous page to fetch the next page. Paging follows the `sort` direction (strictly older records when `sort=desc`, strictly newer when `sort=asc`).",
+        "example": 1234567890
+      },
+      "blp_sort": {
+        "type": "string",
+        "description": "Time sort direction. `desc` (default) returns the most recent liquidations first; `asc` returns the oldest first.",
+        "default": "desc",
+        "enum": [
+          "desc",
+          "asc"
+        ]
+      },
+      "BlpLiquidationTrade": {
+        "type": "object",
+        "description": "One trade booked for a position absorbed in the liquidation.",
+        "required": [
+          "trade_id",
+          "instrument_id",
+          "side",
+          "quantity",
+          "price"
+        ],
+        "properties": {
+          "trade_id": {
+            "$ref": "#/components/schemas/tid"
+          },
+          "instrument_id": {
+            "$ref": "#/components/schemas/iid"
+          },
+          "side": {
+            "$ref": "#/components/schemas/side"
+          },
+          "quantity": {
+            "$ref": "#/components/schemas/qty"
+          },
+          "price": {
+            "$ref": "#/components/schemas/p"
+          }
+        }
+      },
+      "BlpLiquidation": {
+        "type": "object",
+        "description": "One absorption of an account's positions and margin, matching a single `backstop` WebSocket frame.",
+        "required": [
+          "liquidation_id",
+          "timestamp",
+          "cross",
+          "margin",
+          "trades"
+        ],
+        "properties": {
+          "liquidation_id": {
+            "$ref": "#/components/schemas/lid"
+          },
+          "timestamp": {
+            "$ref": "#/components/schemas/ts"
+          },
+          "cross": {
+            "$ref": "#/components/schemas/cross"
+          },
+          "margin": {
+            "$ref": "#/components/schemas/mgn"
+          },
+          "trades": {
+            "type": "array",
+            "description": "Trades booked for the positions absorbed in this liquidation, in the order they were booked.",
+            "items": {
+              "$ref": "#/components/schemas/BlpLiquidationTrade"
+            }
+          }
+        }
+      },
+      "BlpLiquidations": {
+        "type": "object",
+        "required": [
+          "data",
+          "more"
+        ],
+        "properties": {
+          "data": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/BlpLiquidation"
+            },
+            "description": "Backstop liquidations the account received"
+          },
+          "more": {
+            "$ref": "#/components/schemas/more"
+          }
+        }
       }
     },
     "responses": {
@@ -6286,6 +7137,60 @@
           "application/json": {
             "schema": {
               "$ref": "#/components/schemas/Error400"
+            }
+          }
+        }
+      },
+      "BatchError400Response": {
+        "description": "Bad request — the batch request was malformed or failed validation\n(unparseable body, invalid signature, or a domain pre-check). Request-level\nfailures are returned as a single rejected item so batch endpoints\nalways return an array. The `error` field is a human-readable validation\ndetail.\n",
+        "content": {
+          "application/json": {
+            "schema": {
+              "type": "array",
+              "minItems": 1,
+              "maxItems": 1,
+              "items": {
+                "$ref": "#/components/schemas/GenericRejected"
+              }
+            }
+          }
+        }
+      },
+      "BatchError429Response": {
+        "description": "Too Many Requests. Request-level failures are returned as a single\nrejected item so batch endpoints always return an array. `error`\ndistinguishes the limit that was hit: `ip_rate_limited` (per-IP token\nbucket), `action_rate_limited` (per-account action rate), or\n`open_orders_limit` (resting open-order cap).\n",
+        "headers": {
+          "Retry-After": {
+            "description": "Whole seconds to wait before retrying. Present only on token-bucket\nrate-limit rejections (`ip_rate_limited` and `action_rate_limited`); a\nconservative estimate of when enough capacity will have refilled to\nadmit the request. Absent on `open_orders_limit`, which is a capacity\nlimit, not a rate limit — waiting does not free order slots; cancel\nresting orders or wait for fills instead.\n",
+            "schema": {
+              "type": "integer",
+              "example": 2
+            }
+          }
+        },
+        "content": {
+          "application/json": {
+            "schema": {
+              "type": "array",
+              "minItems": 1,
+              "maxItems": 1,
+              "items": {
+                "$ref": "#/components/schemas/GenericRejected"
+              }
+            }
+          }
+        }
+      },
+      "BatchError500Response": {
+        "description": "Internal server error. Request-level failures are returned as a single\nrejected item so batch endpoints always return an array. `error` is\n`internal_error`.\n",
+        "content": {
+          "application/json": {
+            "schema": {
+              "type": "array",
+              "minItems": 1,
+              "maxItems": 1,
+              "items": {
+                "$ref": "#/components/schemas/GenericRejected"
+              }
             }
           }
         }
