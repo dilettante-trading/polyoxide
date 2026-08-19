@@ -1255,7 +1255,10 @@ async fn get_comment_by_id_returns_the_whole_thread() {
         thread.iter().any(|c| c.id == "3218542"),
         "the requested comment must be somewhere in the thread"
     );
-    assert_eq!(thread[0].id, "3218360", "the root comes first, not the request");
+    assert_eq!(
+        thread[0].id, "3218360",
+        "the root comes first, not the request"
+    );
     mock.assert_async().await;
 }
 
