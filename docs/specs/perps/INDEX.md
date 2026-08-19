@@ -26,7 +26,7 @@ retrieved via `GET /v1/account/credentials`.
 
 ## Endpoints
 
-49 endpoints across three groups.
+55 endpoints across three groups.
 
 | Group | Endpoints |
 |-------|-----------|
