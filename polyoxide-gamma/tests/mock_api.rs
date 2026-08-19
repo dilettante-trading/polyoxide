@@ -1222,3 +1222,39 @@ async fn series_and_search_forward_newly_added_params() {
     series.assert_async().await;
     search.assert_async().await;
 }
+
+// ── /comments/{id} ─────────────────────────────────────────────
+
+#[tokio::test]
+async fn get_comment_by_id_returns_the_whole_thread() {
+    let mut server = Server::new_async().await;
+
+    // Probed live 2026-08-19: requesting one comment id returns the entire
+    // thread — root first, the requested id somewhere inside it.
+    let mock = server
+        .mock("GET", "/comments/3218542")
+        .with_status(200)
+        .with_header("content-type", "application/json")
+        .with_body(
+            r#"[
+                {"id": "3218360", "body": "root", "parentEntityType": "Event",
+                 "parentEntityID": 45915, "reportCount": 0, "reactionCount": 7},
+                {"id": "3218542", "body": "reply", "parentEntityType": "Event",
+                 "parentEntityID": 45915, "parentCommentID": "3218360",
+                 "reportCount": 0, "reactionCount": 1}
+            ]"#,
+        )
+        .create_async()
+        .await;
+
+    let gamma = test_gamma(&server);
+    let thread = gamma.comments().get("3218542").send().await.unwrap();
+
+    assert_eq!(thread.len(), 2);
+    assert!(
+        thread.iter().any(|c| c.id == "3218542"),
+        "the requested comment must be somewhere in the thread"
+    );
+    assert_eq!(thread[0].id, "3218360", "the root comes first, not the request");
+    mock.assert_async().await;
+}

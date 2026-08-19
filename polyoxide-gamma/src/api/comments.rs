@@ -16,8 +16,22 @@ impl Comments {
         }
     }
 
-    /// Get a comment by ID
-    pub fn get(&self, id: impl Into<String>) -> Request<Comment, GammaError> {
+    /// Get the comment thread containing `id` (`GET /comments/{id}`).
+    ///
+    /// Despite the name, upstream returns the **whole thread** — the root
+    /// comment and every reply — not just the comment identified by `id`.
+    /// Confirmed by probe on 2026-08-19: requesting `3218542` returned six
+    /// comments with the requested one third in the list. Callers wanting the
+    /// single comment must search the result:
+    ///
+    /// ```no_run
+    /// # async fn f(gamma: &polyoxide_gamma::Gamma) -> Result<(), polyoxide_gamma::GammaError> {
+    /// let thread = gamma.comments().get("3218542").send().await?;
+    /// let this = thread.iter().find(|c| c.id == "3218542");
+    /// # Ok(())
+    /// # }
+    /// ```
+    pub fn get(&self, id: impl Into<String>) -> Request<Vec<Comment>, GammaError> {
         Request::new(
             self.http_client.clone(),
             format!("/comments/{}", urlencoding::encode(&id.into())),
