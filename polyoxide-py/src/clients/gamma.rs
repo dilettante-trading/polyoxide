@@ -415,6 +415,13 @@ client_ns!(
 // Namespace: Comments
 // ═══════════════════════════════════════════════════════════════════════════════
 
+fn parse_parent_entity_type(s: &str) -> PyResult<polyoxide_gamma::types::ParentEntityType> {
+    use polyoxide_gamma::types::ParentEntityType;
+    parse_enum!(s, ParentEntityType,
+        Event => "EVENT", Series => "SERIES", PerpsAsset => "PERPSASSET",
+    )
+}
+
 client_ns!(
     async_name = PyGammaComments,
     sync_name = PyGammaCommentsSync,
@@ -448,7 +455,7 @@ client_ns!(
             req = req.ascending(v);
         }
         if let Some(v) = parent_entity_type {
-            req = req.parent_entity_type(v);
+            req = req.parent_entity_type(parse_parent_entity_type(&v)?);
         }
         if let Some(v) = parent_entity_id {
             req = req.parent_entity_id(v);
@@ -462,11 +469,13 @@ client_ns!(
         let result = req.send().await.map_err(gamma_err)?;
         Ok(result.into_iter().map(PyComment::from).collect::<Vec<_>>())
     },
+    // Despite the name, upstream returns the whole thread containing `id` -
+    // the root comment and every reply - not just the comment identified by
+    // `id`. See `polyoxide_gamma::api::comments::Comments::get`.
     #[pyo3(signature = (id,))]
-    fn get(id: String) -> PyComment {
-        Ok(PyComment::from(
-            client.comments().get(id).send().await.map_err(gamma_err)?,
-        ))
+    fn get(id: String) -> Vec<PyComment> {
+        let result = client.comments().get(id).send().await.map_err(gamma_err)?;
+        Ok(result.into_iter().map(PyComment::from).collect::<Vec<_>>())
     },
     #[pyo3(signature = (address,))]
     fn by_user(address: String) -> Vec<PyComment> {

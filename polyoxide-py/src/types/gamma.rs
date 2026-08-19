@@ -129,36 +129,47 @@ py_type!(
     polyoxide_gamma::types::Comment,
     id,
     body,
+    parent_entity_type,
+    parent_entity_id => "parentEntityID",
+    parent_comment_id => "parentCommentID",
+    user_address,
+    reply_address,
     created_at,
     updated_at,
-    deleted_at,
-    user,
-    market_id,
-    event_id,
-    series_id,
-    parent_id,
+    profile,
     reactions,
-    positions,
-    like_count,
-    dislike_count,
-    reply_count,
+    report_count,
+    reaction_count,
 );
 
 py_type!(
-    PyCommentUser,
-    "CommentUser",
-    polyoxide_gamma::types::CommentUser,
-    id,
+    PyCommentProfile,
+    "CommentProfile",
+    polyoxide_gamma::types::CommentProfile,
     name,
-    avatar,
+    pseudonym,
+    display_username_public,
+    bio,
+    is_mod,
+    is_creator,
+    proxy_wallet,
+    base_address,
+    profile_image,
+    profile_image_optimized,
+    positions,
 );
 
 py_type!(
     PyCommentReaction,
     "CommentReaction",
     polyoxide_gamma::types::CommentReaction,
-    user_id,
+    id,
+    comment_id => "commentID",
     reaction_type,
+    icon,
+    user_address,
+    created_at,
+    profile,
 );
 
 py_type!(
@@ -166,8 +177,7 @@ py_type!(
     "CommentPosition",
     polyoxide_gamma::types::CommentPosition,
     token_id,
-    outcome,
-    shares,
+    position_size,
 );
 
 py_type!(
@@ -228,7 +238,7 @@ pub fn register(m: &pyo3::Bound<'_, pyo3::types::PyModule>) -> pyo3::PyResult<()
     m.add_class::<PySportMetadata>()?;
     m.add_class::<PyTeam>()?;
     m.add_class::<PyComment>()?;
-    m.add_class::<PyCommentUser>()?;
+    m.add_class::<PyCommentProfile>()?;
     m.add_class::<PyCommentReaction>()?;
     m.add_class::<PyCommentPosition>()?;
     m.add_class::<PyCountResponse>()?;
