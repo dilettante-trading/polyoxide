@@ -171,17 +171,17 @@ let detailed = gamma.tags().get_related_detailed("42").send().await?;
 ### Comments
 
 ```rust
-# use polyoxide_gamma::Gamma;
+# use polyoxide_gamma::{Gamma, types::ParentEntityType};
 # async fn doctest() -> Result<(), Box<dyn std::error::Error>> {
 # let gamma = Gamma::builder().build()?;
 let comments = gamma.comments().list()
-    .parent_entity_type("Event")
+    .parent_entity_type(ParentEntityType::Event)
     .parent_entity_id(42)
     .holders_only(true)
     .limit(20)
     .send().await?;
 
-let comment = gamma.comments().get("comment_id").send().await?;
+let thread = gamma.comments().get("comment_id").send().await?;
 let user_comments = gamma.comments().by_user("0xaddress").send().await?;
 # Ok(())
 # }
