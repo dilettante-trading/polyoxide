@@ -1,6 +1,9 @@
 use polyoxide_core::{HttpClient, QueryBuilder, Request};
 
-use crate::{error::GammaError, types::Comment};
+use crate::{
+    error::GammaError,
+    types::{Comment, ParentEntityType},
+};
 
 /// Comments namespace for comment-related operations
 #[derive(Clone)]
@@ -80,9 +83,15 @@ impl ListComments {
         self
     }
 
-    /// Filter by parent entity type (Event, Series, market)
-    pub fn parent_entity_type(mut self, entity_type: impl Into<String>) -> Self {
-        self.request = self.request.query("parent_entity_type", entity_type.into());
+    /// Filter by parent entity type.
+    ///
+    /// [`ParentEntityType::Unknown`] is not a filter the server understands,
+    /// so passing it sends no parameter at all — mirroring
+    /// `ListActivity::activity_type` in `polyoxide-data`.
+    pub fn parent_entity_type(mut self, entity_type: ParentEntityType) -> Self {
+        if entity_type != ParentEntityType::Unknown {
+            self.request = self.request.query("parent_entity_type", entity_type);
+        }
         self
     }
 
@@ -112,7 +121,7 @@ impl ListComments {
 
 #[cfg(test)]
 mod tests {
-    use crate::Gamma;
+    use crate::{types::ParentEntityType, Gamma};
 
     fn gamma() -> Gamma {
         Gamma::new().unwrap()
@@ -139,7 +148,7 @@ mod tests {
             .offset(0)
             .order("createdAt")
             .ascending(false)
-            .parent_entity_type("Event")
+            .parent_entity_type(ParentEntityType::Event)
             .parent_entity_id(42)
             .get_positions(true)
             .holders_only(false);

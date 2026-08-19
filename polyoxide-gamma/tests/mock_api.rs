@@ -1258,3 +1258,33 @@ async fn get_comment_by_id_returns_the_whole_thread() {
     assert_eq!(thread[0].id, "3218360", "the root comes first, not the request");
     mock.assert_async().await;
 }
+
+#[tokio::test]
+async fn list_comments_sends_typed_parent_entity_type() {
+    let mut server = Server::new_async().await;
+
+    let mock = server
+        .mock("GET", "/comments")
+        .match_query(Matcher::AllOf(vec![
+            Matcher::UrlEncoded("parent_entity_type".into(), "PerpsAsset".into()),
+            Matcher::UrlEncoded("parent_entity_id".into(), "42".into()),
+        ]))
+        .with_status(200)
+        .with_header("content-type", "application/json")
+        .with_body("[]")
+        .create_async()
+        .await;
+
+    let gamma = test_gamma(&server);
+    let comments = gamma
+        .comments()
+        .list()
+        .parent_entity_type(polyoxide_gamma::types::ParentEntityType::PerpsAsset)
+        .parent_entity_id(42)
+        .send()
+        .await
+        .unwrap();
+
+    assert!(comments.is_empty());
+    mock.assert_async().await;
+}
