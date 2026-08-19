@@ -179,6 +179,15 @@ them is a separate piece of work.
 
 For the upstream hosted docs, [`docs/specs/polymarket-llms.txt`](docs/specs/polymarket-llms.txt) is a snapshot of Polymarket's own documentation index (`https://docs.polymarket.com/llms.txt`) — a flat list of every doc page (with `.md` URLs) covering CLOB/auth/orders, builder attribution, and the CLOB V2 migration. Use it to locate the authoritative upstream page for a topic when the local `docs/specs/` copies are insufficient.
 
+**A mirror can match upstream and still be wrong.** `docs/specs/gamma/OBSERVED.md`
+records places where gamma's published spec disagrees with gamma's own server —
+`parent_entity_type` accepts `PerpsAsset` and rejects the documented `market`,
+`limit` counts top-level comments rather than rows, and `GET /comments/{id}`
+returns a whole thread. The drift check cannot see any of this: it compares the
+mirror to the published document, never to the live host. The mirror itself must
+stay byte-faithful or `nightly-schema.yml` alarms forever, so the observations
+live beside it rather than inside it.
+
 ## Testing Conventions
 
 Each crate has live integration tests in `tests/live_api.rs` gated with `#[ignore]` so CI skips them. They hit the real Polymarket APIs. Run with `-- --ignored` flag.

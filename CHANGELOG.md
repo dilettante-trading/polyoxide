@@ -1,3 +1,35 @@
+## [0.28.0] - 2026-08-19
+
+### 🚀 Features
+
+- *(gamma)* Add `ParentEntityType` with the server's accepted values
+
+### 🐛 Bug Fixes
+
+- *(gamma)* [**breaking**] Model comments against the wire, not the fork's invention. `Comment`, `CommentReaction` and `CommentPosition` described a payload Polymarket has never sent; `CommentUser` had no upstream counterpart at all and is removed. Removed fields: `Comment::user`, `market_id`, `event_id`, `series_id`, `parent_id`, `positions`, `like_count`, `dislike_count`, `reply_count`; `CommentReaction::user_id`; `CommentPosition::outcome` and `shares`. Added: `Comment::parent_entity_type`, `parent_entity_id`, `parent_comment_id`, `user_address`, `reply_address`, `profile`, `report_count`, `reaction_count`; the new `CommentProfile`; and `CommentPosition::position_size`. Any code touching these types was already failing at runtime with a deserialization error
+- *(gamma)* Comment endpoints no longer fail with `missing field 'userId'` on any response containing a reaction (#28)
+- *(gamma)* [**breaking**] `GET /comments/{id}` returns a thread, not one comment — `Comments::get` now returns `Vec<Comment>`
+- *(gamma)* [**breaking**] `ListComments::parent_entity_type` takes `ParentEntityType`, not a string — the server rejects `market` in either casing
+- *(cli)* [**breaking**] Drop the rejected `market` entity type, add `perps-asset`
+- *(py)* [**breaking**] Align the comment bindings with the corrected types — `CommentUser` is removed and `CommentProfile` added, the comment getters renamed to match, and `GammaComments.get` now returns `list[Comment]`
+
+### 📚 Documentation
+
+- *(gamma)* Update the README comments example for the typed filter
+- Add `docs/specs/gamma/OBSERVED.md`, recording where gamma's published spec disagrees with gamma's server
+- Record the gamma type parity sweep in `docs/plans/2026-08-19-gamma-type-parity-worklist.md`, cataloguing 15 further parity findings across the crate, including a second runtime failure of the same class (`Profile::id` is required and never sent)
+- *(specs)* Sync perps, perps-ws, bridge and combos-rfq mirrors to upstream (#23, #20, #24, #21) — mirror-only, no client crate implements them
+
+### 🧪 Testing
+
+- *(gamma)* Capture live comment payloads as fixtures
+- *(gamma)* Add `tests/wire_agreement.rs`, asserting both directions of agreement between the comment types and captured live payloads
+- *(gamma)* Fix the four live comment tests
+
+### 🎨 Styling
+
+- Rustfmt the mock_api thread assertion
+
 ## [0.26.1] - 2026-08-06
 
 ### 🐛 Bug Fixes

@@ -143,9 +143,24 @@ pub struct Comment {
     pub reaction_count: Option<i64>,
 }
 
-#[non_exhaustive]
-pub enum ParentEntityType { Event, Series, PerpsAsset }
+pub enum ParentEntityType {
+    Event,
+    Series,
+    PerpsAsset,
+    /// An entity type this client does not recognize (forward-compat).
+    #[serde(other)]
+    Unknown,
+}
 ```
+
+As built, `ParentEntityType` uses `#[serde(other)] Unknown` rather than
+`#[non_exhaustive]`, following the house pattern already established in
+`polyoxide-data` (`TradeSide::Unknown`, `ActivityType::Unknown`). Both defend
+against upstream adding a variant, but `#[non_exhaustive]` only blocks
+exhaustive matching in downstream crates — it does nothing for
+deserialization, which is where an unrecognized value actually arrives. A
+fallback variant handles the real failure mode: one new entity type does not
+fail the whole response.
 
 `CommentProfile` carries `name`, `pseudonym`, `display_username_public`, `bio`, `is_mod`, `is_creator`, `proxy_wallet`, `base_address`, `profile_image`, `profile_image_optimized`, `positions`. The last two follow the existing precedent at `types.rs:409`:
 
@@ -179,9 +194,9 @@ This is worth stating because it is invisible to review: `rename_all` looks like
 
 ### Component 3 — the two API bugs
 
-`Comments::get()` at `api/comments.rs:20` is typed `Request<Comment, GammaError>`, but `GET /comments/{id}` returns an array. Confirmed live and stated in the spec at `openapi.yaml:1485`. It becomes `Request<Vec<Comment>, GammaError>`. Faithful over ergonomic: callers write `.into_iter().next()`, and the type does not lie about arity.
+`Comments::get()` at `api/comments.rs:20` is typed `Request<Comment, GammaError>`, but `GET /comments/{id}` returns an array. Confirmed live and stated in the spec at `openapi.yaml:1485`. It becomes `Request<Vec<Comment>, GammaError>`. Faithful over ergonomic: callers write `.into_iter().next()`, and the type does not lie about arity. As built, the response is not merely an array but the whole thread — the root comment first, with the requested id appearing anywhere in the list, not necessarily first — confirmed live on 2026-08-19 (`get_comment_by_id_returns_the_whole_thread` in `polyoxide-gamma/tests/mock_api.rs`).
 
-`ListComments::parent_entity_type` takes `ParentEntityType` instead of `impl Into<String>`, so the CLI's invalid `market` value stops being expressible. The CLI's local `ParentEntityType` enum is deleted and the clap value-enum derives from the library type.
+`ListComments::parent_entity_type` takes `ParentEntityType` instead of `impl Into<String>`, so the CLI's invalid `market` value stops being expressible. As built, the CLI keeps its own local `ParentEntityType` enum rather than deriving the clap value-enum from the library type: `clap::ValueEnum` can only be derived on a type defined in the crate deriving it, and `polyoxide_gamma::types::ParentEntityType` is foreign to `polyoxide-cli`. The CLI enum instead carries a `From<cli::ParentEntityType> for polyoxide_gamma::types::ParentEntityType` impl (`polyoxide-cli/src/commands/gamma/comments.rs`) and omits `Unknown`, which is not a filter a user can meaningfully ask for.
 
 ### Component 4 — bindings
 
@@ -222,17 +237,22 @@ Assertion 1 cannot be satisfied by weakening the type, only by removing the inve
 
 ## Testing
 
+As built, the tests are named and split differently than sketched above —
+across `polyoxide-gamma/tests/wire_agreement.rs`, `polyoxide-gamma/tests/mock_api.rs`,
+`polyoxide-cli/src/commands/gamma/comments.rs`, and `polyoxide-py/tests/test_comment_types.py`:
+
 | Test | Pins |
 |---|---|
-| `comment_emits_no_unwired_fields` | Assertion 1 against the captured `/comments` payload. Fails today on `likeCount`. |
-| `comment_models_every_wire_field` | Assertion 2 against the same. Fails today on `userAddress`. |
-| `reaction_agrees_with_wire` | Both assertions against the nested reaction object. Fails today on `userId`. |
-| `comment_by_id_returns_array` | Mock test pinning `GET /comments/{id}` to a JSON array; fails against the current single-object signature. |
-| `comment_id_fields_use_wire_casing` | `parentEntityID`, `parentCommentID` and `commentID` round-trip with their capitalised suffix; `rename_all` alone would emit `parentEntityId` and fail. |
-| `parent_entity_type_rejects_market` | The enum has no `Market` variant and does have `PerpsAsset`. |
-| `parent_entity_type_serializes_exactly` | `Event`/`Series`/`PerpsAsset` reach the query string with server-accepted casing. |
-| `test_comment_deserialization` | **Deleted.** Replaced by the fixture-driven tests; keeping it would preserve the self-referential pattern that caused this. |
-| `test_comment_getters_resolve` (pytest) | Every `py_type!` getter on a captured payload returns non-`None` where the wire has a value — the only defence against the silent-`None` path. |
+| `full_comment_agrees_with_captured_payload` | Both assertions (Component 5) against `tests/fixtures/comment_full.json`, a comment with a reaction. Fails on today's code: invents `likeCount` and leaves `userAddress` unmodelled. |
+| `sparse_comment_agrees_with_captured_payload` | Both assertions against `tests/fixtures/comment_sparse.json`, a comment with most optional fields absent — exercises the null/empty exemptions in the "no invented fields" direction. |
+| `id_suffixed_keys_keep_their_wire_casing` | `parentEntityID`, `parentCommentID` and `commentID` round-trip with their capitalised suffix and `parentEntityId` is absent; `rename_all` alone would emit the latter and fail. |
+| `get_comment_by_id_returns_the_whole_thread` | Mock test pinning `GET /comments/{id}` to a two-element JSON array (root then reply), asserting the root comes first and the requested id appears somewhere in the thread; fails against the old single-object signature. |
+| `list_comments_sends_typed_parent_entity_type` | Mock test asserting the query string carries `parent_entity_type=PerpsAsset`, not a string a caller could misspell as `market`. |
+| `market_is_no_longer_accepted` | The CLI's `--parent-entity-type market` fails to parse. |
+| `parent_entity_type_perps_asset` | The CLI's `--parent-entity-type perps-asset` parses and converts to `polyoxide_gamma::types::ParentEntityType::PerpsAsset`. |
+| `test_every_comment_getter_resolves` (pytest) | Every `py_type!` getter on a captured payload returns non-`None` where the wire has a value — the only defence against the silent-`None` path. |
+
+`test_comment_deserialization`, the old self-referential fixture test, is deleted; the fixture-driven tests above replace it.
 
 Live: the four `--ignored` gamma tests must pass against the real host before merge, not only in the next nightly.
 
