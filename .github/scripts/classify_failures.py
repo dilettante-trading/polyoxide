@@ -28,7 +28,16 @@ AUTH_GATED_RE = re.compile(r"POLYMARKET_(?:\*|[A-Z_]+) (?:env vars )?required", 
 # match live anywhere) announce it in their panic message. Retrying within the
 # same run won't change the world, and filing an issue would be a false
 # positive — so these are logged and skipped, like auth-gated tests.
-ENVIRONMENTAL_RE = re.compile(r"legitimately time out", re.IGNORECASE)
+#
+# Two shapes so far: the sports channel's `legitimately time out`, and the
+# order-placing tests refusing to post because no open market's book satisfies
+# their price precondition (`no qualifying market` from the selection helper,
+# `no suitable market` from a test's own guard). The phrase is required in
+# full — a bare `market` would swallow most genuine CLOB failures.
+ENVIRONMENTAL_RE = re.compile(
+    r"legitimately time out|no (?:qualifying|suitable) market",
+    re.IGNORECASE,
+)
 
 TRANSIENT_RES: list[re.Pattern[str]] = [
     re.compile(r"\bHTTP 429\b", re.IGNORECASE),

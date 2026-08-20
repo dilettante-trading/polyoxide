@@ -13,6 +13,7 @@ use polyoxide_clob::{
 };
 use polyoxide_core::QueryBuilder;
 use polyoxide_gamma::Gamma;
+use rust_decimal::Decimal;
 use std::time::Duration;
 
 fn public_client() -> Clob {
@@ -65,6 +66,77 @@ async fn find_active_token_id() -> String {
             })
         })
         .expect("should find at least one active market with a token_id via Gamma")
+}
+
+/// How many gamma-listed candidates we are willing to confirm against the CLOB
+/// book before giving up. Each confirmation is one `/book` request.
+const MAX_BOOK_PROBES: usize = 10;
+
+/// Find an open market whose CLOB best ask sits strictly above `min_ask`.
+///
+/// [`find_active_token_id`] returns whatever gamma lists first, which is fine
+/// for the price-agnostic tests but wrong for the order-placing ones: they need
+/// a book that satisfies a price precondition, and asserting about an arbitrary
+/// market *after* selecting it just makes them fail whenever the listing
+/// happens to open on a cheap book.
+///
+/// Narrowing is free — gamma returns `best_ask` in the listing itself, so no
+/// extra request is needed to filter. The chosen candidate is then confirmed
+/// against the live CLOB book, because gamma's figure is a cached view and the
+/// caller asserts on the book: selecting on one and asserting on the other
+/// would be the same mismatch in a new place.
+///
+/// Panics with market-state wording (not defect wording) when nothing
+/// qualifies, so the nightly classifier logs and skips it instead of filing an
+/// issue about the weather.
+async fn find_token_id_with_min_ask(min_ask: Decimal) -> String {
+    let gamma = Gamma::builder().build().expect("gamma client");
+    // gamma's default page is 20 markets — narrow enough that the whole
+    // candidate pool once came down to a single 4c book. 100 is its maximum.
+    let markets = gamma
+        .markets()
+        .list()
+        .closed(false)
+        .limit(100)
+        .send()
+        .await
+        .expect("gamma list markets");
+
+    let clob = public_client();
+    let mut probed = 0usize;
+
+    for market in markets.iter() {
+        let gamma_ask = market.best_ask.and_then(|ask| Decimal::try_from(ask).ok());
+        if gamma_ask.is_none_or(|ask| ask <= min_ask) {
+            continue;
+        }
+        // clob_token_ids is a JSON-encoded array string: '["id1", "id2"]'
+        let token_id = market.clob_token_ids.as_ref().and_then(|ids| {
+            serde_json::from_str::<Vec<String>>(ids)
+                .ok()
+                .and_then(|v| v.into_iter().next())
+        });
+        let Some(token_id) = token_id else {
+            continue;
+        };
+
+        probed += 1;
+        if let Ok(book) = clob.markets().order_book(&token_id).send().await {
+            let best_ask = book.asks.iter().map(|level| level.price).min();
+            if best_ask.is_some_and(|ask| ask > min_ask) {
+                return token_id;
+            }
+        }
+        if probed >= MAX_BOOK_PROBES {
+            break;
+        }
+    }
+
+    panic!(
+        "no qualifying market with a best ask above {min_ask} among the open markets gamma \
+         lists ({probed} book(s) probed); market conditions rather than a defect, so re-run \
+         before concluding otherwise"
+    );
 }
 
 // ── Health ───────────────────────────────────────────────────────
@@ -945,7 +1017,10 @@ async fn live_list_open_orders() {
 #[ignore] // live; run with `-- --ignored`, needs funded proxy account
 async fn live_v2_place_and_cancel() {
     let clob = authenticated_client();
-    let token_id = find_active_token_id().await;
+    // Select a market that already clears the resting price, instead of taking
+    // gamma's first listing and asserting about it afterwards.
+    let min_ask = Decimal::new(1, 2);
+    let token_id = find_token_id_with_min_ask(min_ask).await;
     let book = clob.markets().order_book(&token_id).send().await.unwrap();
     let best_ask: f64 = book
         .asks
@@ -966,7 +1041,8 @@ async fn live_v2_place_and_cancel() {
     const RESTING_PRICE: f64 = 0.01;
     assert!(
         RESTING_PRICE < best_ask,
-        "market too thin to rest under the ask (best ask {best_ask}); pick another"
+        "no suitable market: best ask {best_ask} leaves no room to rest under it; \
+         market conditions rather than a defect"
     );
 
     let params = CreateOrderParams {
@@ -1053,15 +1129,21 @@ async fn live_fak_unmatched_is_typed_error() {
     use polyoxide_clob::ClobError;
 
     let clob = authenticated_client();
-    let token_id = find_active_token_id().await;
+    // The book must sit well clear of 1c, or the order would cross and we would
+    // be testing the fill path (and spending money). Select on that precondition
+    // rather than asserting it about whichever market gamma happens to list
+    // first — a cheap first listing used to fail this test outright.
+    let min_ask = Decimal::new(5, 2);
+    let token_id = find_token_id_with_min_ask(min_ask).await;
 
-    // Precondition: the book must sit well clear of 1c, or the order would cross
-    // and we would be testing the fill path (and spending money).
+    // Backstop: selection already confirmed this book against the CLOB, but it
+    // can move in between. A cheap book here is market state, not a defect.
     let book = clob.markets().order_book(&token_id).send().await.unwrap();
     let best_ask = book.asks.iter().map(|l| l.price).min().expect("asks");
     assert!(
-        best_ask > rust_decimal::Decimal::new(5, 2),
-        "book too cheap for a safe non-crossing test: best ask {best_ask}"
+        best_ask > min_ask,
+        "no suitable market: best ask {best_ask} is too cheap for a safe non-crossing \
+         test; market conditions rather than a defect"
     );
 
     let params = CreateOrderParams {

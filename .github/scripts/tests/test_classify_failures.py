@@ -83,6 +83,41 @@ def test_classify_environmental_sports_timeout() -> None:
     assert classify(text) == Verdict.ENVIRONMENTAL
 
 
+def test_classify_environmental_no_qualifying_market() -> None:
+    """The order-placing tests need a market whose book satisfies a price
+    precondition. When the open listing offers none, the helper refuses to
+    post rather than spend money on a crossing order. That is a fact about
+    today's markets, not the SDK."""
+    text = (
+        "thread 'live_fak_unmatched_is_typed_error' panicked at "
+        "polyoxide-clob/tests/live_api.rs:47:5:\n"
+        "no qualifying market with a best ask above 0.05 in the 100 open "
+        "markets gamma lists; market conditions rather than a defect, "
+        "so re-run before concluding otherwise"
+    )
+    assert classify(text) == Verdict.ENVIRONMENTAL
+
+
+def test_classify_environmental_no_suitable_market() -> None:
+    """The in-test guard fires when gamma's cached best_ask and the CLOB book
+    disagree at the threshold. Same category: market state, not a defect."""
+    text = (
+        "thread 'live_fak_unmatched_is_typed_error' panicked at "
+        "polyoxide-clob/tests/live_api.rs:1062:5:\n"
+        "no suitable market: best ask 0.042 is too cheap for a safe "
+        "non-crossing test; market conditions rather than a defect"
+    )
+    assert classify(text) == Verdict.ENVIRONMENTAL
+
+
+def test_classify_bare_market_word_is_real() -> None:
+    """The environmental pattern must require the `no qualifying/suitable
+    market` phrasing, not merely the word `market` — otherwise most CLOB
+    failures would be silently skipped."""
+    text = "market_by_token returned the wrong condition_id for the market"
+    assert classify(text) == Verdict.REAL
+
+
 def test_classify_empty_string_is_real() -> None:
     """No information defaults to REAL — better to false-positive than skip."""
     assert classify("") == Verdict.REAL
