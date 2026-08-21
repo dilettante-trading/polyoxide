@@ -1,3 +1,24 @@
+## [0.28.1] - 2026-08-21
+
+No library code changed in this release: every crate's shipped source is
+identical to 0.28.0. The entries below cover the changelog itself, the live
+test suite, and CI.
+
+### 📚 Documentation
+
+- *(changelog)* Backfill the missing 0.27.0 entry. The 0.27.0 bump rode along inside `chore(specs): sync the data spec and release 0.27.0` rather than a dedicated release commit, so the step that regenerates `CHANGELOG.md` was never run and the file jumped 0.28.0 -> 0.26.1 with nothing to signal it
+- *(changelog)* Backfill six 0.28.0 entries. All six commits landed between the release commit and the tag, after the section had already been written — including a behavioural fix to `ParentEntityType`'s `Display` impl that shipped in 0.28.0 undocumented
+
+### 🧪 Testing
+
+- *(clob)* Select the order-test markets by price rather than asserting the precondition about an arbitrary one. `find_active_token_id` returns whichever open market gamma lists first, and gamma's ordering is stable, so a listing whose first market asked 0.042 failed `live_fak_unmatched_is_typed_error` on four consecutive runs with no way to retry out of it. The new `find_token_id_with_min_ask` filters on the `best_ask` gamma already returns in the listing, then confirms the candidate against the live CLOB book
+- *(clob)* Read credentials from the OS keychain when the environment is unset. The live suites called `Account::from_env()` only, so credentials already held in the keyring did nothing for them, and bridging the gap by materialising a `.env` would put four secrets on disk to run a test suite. `load_account()` and `l1_account()` now try the environment, then `Account::from_keychain()` under the crate's non-default `keychain` feature, then panic as before — CI has no keychain and still falls through to the same auth-gated panics
+- *(ci)* Assert that `CHANGELOG.md` and the workspace version agree. `release.yml` runs git-cliff only to compose the GitHub release body and never writes the file back, so the version bump and the changelog entry are two independent manual steps that nothing checked. The new `.github/scripts/tests/test_changelog.py` pins that the version in `Cargo.toml` has a dated section, that it heads the file, that sections stay strictly descending, and that every `[workspace.dependencies]` path pin moved with the workspace version
+
+### ⚙️ Miscellaneous Tasks
+
+- *(ci)* Teach the nightly failure classifier that a market-state refusal is environmental, not a defect. `ENVIRONMENTAL_RE` now also matches `no (?:qualifying|suitable) market`, the wording both the CLOB helper's give-up panic and the tests' own guards use — without it, wiring up the `POLYMARKET_*` secrets would file a tracking issue every night the listing happened to open cheap
+
 ## [0.28.0] - 2026-08-19
 
 ### 🚀 Features
@@ -10,6 +31,7 @@
 - *(gamma)* Comment endpoints no longer fail with `missing field 'userId'` on any response containing a reaction (#28)
 - *(gamma)* [**breaking**] `GET /comments/{id}` returns a thread, not one comment — `Comments::get` now returns `Vec<Comment>`
 - *(gamma)* [**breaking**] `ListComments::parent_entity_type` takes `ParentEntityType`, not a string — the server rejects `market` in either casing
+- *(gamma)* `ParentEntityType`'s `Display` impl emitted `UNKNOWN` for the unknown variant while `Serialize` emitted `Unknown` for the same variant — `Display` now agrees with the wire vocabulary
 - *(gamma)* [**breaking**] `Profile` described a payload `/profiles/user_address/{address}` has never sent — `id` was required and the server never sends it, so `Gamma::user().get_by_address` failed for every address. Rewritten against the endpoint's own published `PublicProfile.json` schema (linked from the response's `$schema` key) rather than `openapi.yaml`, whose `Profile` schema turns out to describe an unrelated object. Removed: `id`, `user`, `referral`, `created_by`, `updated_by`, `updated_at`, `utm_source`, `utm_medium`, `utm_campaign`, `utm_content`, `utm_term`, `wallet_activated`, `display_username_public`, `profile_image_optimized`, `is_close_only`, `is_cert_req`, `cert_req_date`. Added, now required: `taker_tier`, `taker_tier_name`, `weighted_volume` — sent on every response, and not in `openapi.yaml` at all
 - *(cli)* [**breaking**] Drop the rejected `market` entity type, add `perps-asset`
 - *(py)* [**breaking**] Align the comment bindings with the corrected types — `CommentUser` is removed and `CommentProfile` added, the comment getters renamed to match, and `GammaComments.get` now returns `list[Comment]`
@@ -25,6 +47,9 @@
 - Add `docs/specs/gamma/OBSERVED.md`, recording where gamma's published spec disagrees with gamma's server
 - Record the gamma type parity sweep in `docs/plans/2026-08-19-gamma-type-parity-worklist.md`, cataloguing 15 further parity findings across the crate, including a second runtime failure of the same class (`Profile::id` is required and never sent)
 - *(specs)* Sync perps, perps-ws, bridge and combos-rfq mirrors to upstream (#23, #20, #24, #21) — mirror-only, no client crate implements them
+- Refresh the perps endpoint and channel counts in `CLAUDE.md` and both `INDEX.md` files after the mirror sync — it added 6 endpoints and 2 WebSocket channels the prose still under-counted
+- *(gamma)* Record the wire-agreement guard's blind spot: an invented `Option<T>` field passes it, because the no-invented-fields direction must exempt null and cannot distinguish "optional and absent this time" from "does not exist"
+- *(gamma)* Correct false and stale claims found by review — `/profiles/user_address/{address}` returns 200 rather than 404 for an address with no profile, `limit` bounds top-level comments rather than returned rows, and `comment_full.json`'s nested profile still lacks `pseudonym`
 - *(gamma)* Record in `docs/specs/gamma/OBSERVED.md` that some endpoints publish a live, authoritative JSON Schema via a `$schema` response key — a better oracle than `openapi.yaml` where present
 - *(gamma)* Record in `docs/plans/2026-08-19-gamma-type-parity-worklist.md` that finding #10 is partially fixed — `UserResponse`/`UserInfo` done, `SearchProfile::address` still open — and that `/public-search` serves no `$schema`
 - *(gamma)* Record in `docs/specs/gamma/OBSERVED.md` and `docs/plans/2026-08-19-gamma-type-parity-worklist.md` that finding #10 is fully fixed, and add the `profiles[]` null-element failure as a new confirmed finding found while fixing it
@@ -34,6 +59,8 @@
 - *(gamma)* Capture live comment payloads as fixtures
 - *(gamma)* Add `tests/wire_agreement.rs`, asserting both directions of agreement between the comment types and captured live payloads
 - *(gamma)* Fix the four live comment tests
+- *(gamma)* Close the wire-agreement guard's null-exemption hole — every key a type emits must now be present on the wire or declared in `EXPECTED_ABSENT` with a reason, and array lengths must agree before zipping rather than comparing only `min(len)`
+- *(py)* Guard the comment getters against silent `None` with a real instance — `hasattr` on the class object is true for every `py_type!` property regardless of which JSON key it resolves, so the guard moved to a Rust test that deserializes the shared fixture and asserts every getter is non-`None`
 - *(gamma)* Capture live profile payloads as fixtures and extend `tests/wire_agreement.rs` to `Profile`
 - *(gamma)* Stop `live_get_profile_by_address` from swallowing a deserialization error as if it were a 404
 - *(gamma)* Capture live `/public-profile` payloads as fixtures and extend `tests/wire_agreement.rs` to `UserResponse`, including a hand-written case for the schema's explicit `null` on `users`
