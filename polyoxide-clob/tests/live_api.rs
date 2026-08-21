@@ -20,10 +20,35 @@ fn public_client() -> Clob {
     Clob::public()
 }
 
-fn authenticated_client() -> Clob {
+/// Load the account these tests authenticate as.
+///
+/// Environment first (`POLYMARKET_*`, including a `.env` picked up by dotenvy),
+/// then the OS keychain under the `polyoxide-clob` service when the `keychain`
+/// feature is enabled. The keychain leg exists so a developer whose credentials
+/// already live in the keyring can run these without first materialising the
+/// secrets into a file on disk.
+///
+/// When neither source has them this panics rather than soft-skipping, so the
+/// run is loudly gated instead of reporting `ok` for tests that asserted
+/// nothing — the failure mode `polyoxide-relay`'s live suite still has. CI has
+/// no keychain, so it lands here; the wording is matched by `AUTH_GATED_RE` in
+/// `.github/scripts/classify_failures.py` and must keep the phrase
+/// `POLYMARKET_* env vars required`, or the nightly starts filing issues for
+/// every auth-gated test.
+fn load_account() -> Account {
     dotenvy::dotenv().ok();
-    let account =
-        Account::from_env().expect("POLYMARKET_* env vars required for authenticated tests");
+    if let Ok(account) = Account::from_env() {
+        return account;
+    }
+    #[cfg(feature = "keychain")]
+    if let Ok(account) = Account::from_keychain() {
+        return account;
+    }
+    panic!("POLYMARKET_* env vars required for authenticated tests");
+}
+
+fn authenticated_client() -> Clob {
+    let account = load_account();
     // The test account is a Polymarket proxy wallet, so authenticated read
     // endpoints (balances, notifications, rewards) need the POLY_PROXY signature
     // type to resolve the correct on-chain address.
@@ -35,10 +60,7 @@ fn authenticated_client() -> Clob {
 }
 
 fn authenticated_address() -> String {
-    dotenvy::dotenv().ok();
-    let account =
-        Account::from_env().expect("POLYMARKET_* env vars required for authenticated tests");
-    format!("{:#x}", account.address())
+    format!("{:#x}", load_account().address())
 }
 
 /// Find a token_id with an active order book using Gamma.

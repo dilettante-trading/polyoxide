@@ -105,22 +105,39 @@ async fn live_sports_connection_survives_the_keepalive_interval() {
 /// `/auth/derive-api-key` is signed with L1, which needs only the private key,
 /// and returns the account's existing deterministic credential rather than
 /// provisioning a new one. So this whole file needs one secret, not four.
-async fn derive_credentials() -> (String, String, String) {
+/// Build the L1-signing account from `POLYMARKET_PRIVATE_KEY`, else the keychain.
+///
+/// L1 ignores the L2 credential entirely, so both sources reach the same
+/// `derive_api_key` call below: the env leg supplies placeholder credentials
+/// purely to satisfy `Account`'s constructor, and the keychain leg happens to
+/// carry a real triple that is then ignored. The derive path is what runs
+/// either way.
+///
+/// The panic keeps the phrase `POLYMARKET_PRIVATE_KEY required` verbatim:
+/// `AUTH_GATED_RE` in `.github/scripts/classify_failures.py` matches on it to
+/// skip these in the nightly rather than filing an issue.
+fn l1_account() -> Account {
     dotenvy::dotenv().ok();
-    let private_key = std::env::var("POLYMARKET_PRIVATE_KEY")
-        .expect("POLYMARKET_PRIVATE_KEY required; the L2 triple is derived from it");
+    if let Ok(private_key) = std::env::var("POLYMARKET_PRIVATE_KEY") {
+        return Account::new(
+            private_key,
+            Credentials {
+                key: String::new(),
+                secret: String::new(),
+                passphrase: String::new(),
+            },
+        )
+        .expect("build account from private key");
+    }
+    #[cfg(feature = "keychain")]
+    if let Ok(account) = Account::from_keychain() {
+        return account;
+    }
+    panic!("POLYMARKET_PRIVATE_KEY required; the L2 triple is derived from it");
+}
 
-    // L1 signing ignores the L2 credential entirely, so placeholders are fine
-    // here — they exist only to satisfy `Account`'s constructor.
-    let account = Account::new(
-        private_key,
-        Credentials {
-            key: String::new(),
-            secret: String::new(),
-            passphrase: String::new(),
-        },
-    )
-    .expect("build account from private key");
+async fn derive_credentials() -> (String, String, String) {
+    let account = l1_account();
 
     let clob = ClobBuilder::new()
         .with_account(account)
