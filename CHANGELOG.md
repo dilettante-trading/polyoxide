@@ -1,3 +1,9 @@
+## [0.29.0] - 2026-08-26
+
+### 🚀 Features
+
+- *(clob)* Per-address connect timeout and IPv6/IPv4 fallback for WebSocket connects. `connect_async` resolves DNS internally and connects to only the first address with no timeout, so one blackholed AAAA record hung the connect indefinitely. Addresses are now resolved up front and interleaved by family (RFC 8305 §4), and each address's TCP connect and TLS+handshake is bounded by the new `WebSocketBuilder::connect_timeout` (default 10s). The free `connect_*` functions delegate to the shared helper
+
 ## [0.28.1] - 2026-08-21
 
 No library code changed in this release: every crate's shipped source is
