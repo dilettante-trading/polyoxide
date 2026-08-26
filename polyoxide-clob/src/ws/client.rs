@@ -1,4 +1,5 @@
 use std::{
+    net::SocketAddr,
     pin::Pin,
     task::{Context, Poll},
     time::Duration,
@@ -6,7 +7,7 @@ use std::{
 
 use futures_util::{SinkExt, Stream, StreamExt};
 use tokio::{net::TcpStream, time::interval};
-use tokio_tungstenite::{connect_async, tungstenite::Message, MaybeTlsStream, WebSocketStream};
+use tokio_tungstenite::{client_async_tls, tungstenite::Message, MaybeTlsStream, WebSocketStream};
 
 use super::{
     auth::ApiCredentials,
@@ -44,6 +45,83 @@ fn ensure_crypto_provider() {
     INSTALL.call_once(|| {
         let _ = rustls::crypto::ring::default_provider().install_default();
     });
+}
+
+/// Default per-address connect timeout, overridable via
+/// [`WebSocketBuilder::connect_timeout`].
+const DEFAULT_CONNECT_TIMEOUT: Duration = Duration::from_secs(10);
+
+/// Interleave IPv6 and IPv4 addresses, Happy-Eyeballs style (RFC 8305 §4).
+///
+/// `lookup_host` typically returns all AAAA records before all A records, so a
+/// network with broken IPv6 would burn one full timeout per v6 address before
+/// ever trying v4. Alternating families bounds the damage to a single timeout.
+fn interleave_address_families(addrs: Vec<SocketAddr>) -> Vec<SocketAddr> {
+    let (v6, v4): (Vec<_>, Vec<_>) = addrs.into_iter().partition(SocketAddr::is_ipv6);
+    let mut out = Vec::with_capacity(v6.len() + v4.len());
+    let (mut v6, mut v4) = (v6.into_iter(), v4.into_iter());
+    loop {
+        match (v6.next(), v4.next()) {
+            (None, None) => return out,
+            (a, b) => out.extend(a.into_iter().chain(b)),
+        }
+    }
+}
+
+/// Open a TLS WebSocket connection with a per-address timeout and fallback.
+///
+/// [`tokio_tungstenite::connect_async`] resolves DNS and connects to only the
+/// *first* address, with no timeout of its own — a blackholed route (the
+/// classic broken-IPv6 case) hangs the connect until the OS gives up, if it
+/// ever does. This resolves every address up front, tries each in
+/// family-interleaved order with `connect_timeout` covering its TCP connect
+/// and again its TLS + WebSocket handshake, and falls back to the next
+/// address on any failure.
+async fn connect_ws(
+    url: &str,
+    connect_timeout: Duration,
+) -> Result<WebSocketStream<MaybeTlsStream<TcpStream>>, WebSocketError> {
+    ensure_crypto_provider();
+
+    let parsed = url::Url::parse(url)?;
+    let host = parsed
+        .host_str()
+        .ok_or_else(|| WebSocketError::InvalidMessage(format!("URL has no host: {url}")))?;
+    let port = parsed.port().unwrap_or(443);
+
+    let io_err = |e: std::io::Error| {
+        WebSocketError::Connection(Box::new(tokio_tungstenite::tungstenite::Error::Io(e)))
+    };
+    let addrs: Vec<SocketAddr> = tokio::net::lookup_host((host, port))
+        .await
+        .map_err(io_err)?
+        .collect();
+
+    let mut last_err = WebSocketError::InvalidMessage(format!("no addresses resolved for {url}"));
+    for addr in interleave_address_families(addrs) {
+        let timeout_err = || WebSocketError::ConnectTimeout {
+            url: url.to_string(),
+            timeout: connect_timeout,
+        };
+        let stream = match tokio::time::timeout(connect_timeout, TcpStream::connect(addr)).await {
+            Ok(Ok(stream)) => stream,
+            Ok(Err(e)) => {
+                last_err = io_err(e);
+                continue;
+            }
+            Err(_) => {
+                last_err = timeout_err();
+                continue;
+            }
+        };
+        // TCP is up; bound the TLS + WebSocket handshake by the same budget.
+        match tokio::time::timeout(connect_timeout, client_async_tls(url, stream)).await {
+            Ok(Ok((ws, _response))) => return Ok(ws),
+            Ok(Err(e)) => last_err = e.into(),
+            Err(_) => last_err = timeout_err(),
+        }
+    }
+    Err(last_err)
 }
 
 /// Parse one text frame into a [`Channel`], or `None` if it carries no event.
@@ -179,8 +257,7 @@ impl WebSocket {
         options: MarketSubscriptionOptions,
     ) -> Result<Self, WebSocketError> {
         validate_subscription_count(asset_ids.len())?;
-        ensure_crypto_provider();
-        let (mut ws, _) = connect_async(WS_MARKET_URL).await?;
+        let mut ws = connect_ws(WS_MARKET_URL, DEFAULT_CONNECT_TIMEOUT).await?;
 
         let subscription = MarketSubscription::with_options(asset_ids, options);
         let msg = serde_json::to_string(&subscription)?;
@@ -223,8 +300,7 @@ impl WebSocket {
     /// }
     /// ```
     pub async fn connect_sports() -> Result<Self, WebSocketError> {
-        ensure_crypto_provider();
-        let (ws, _) = connect_async(WS_SPORTS_URL).await?;
+        let ws = connect_ws(WS_SPORTS_URL, DEFAULT_CONNECT_TIMEOUT).await?;
 
         Ok(Self {
             inner: ws,
@@ -295,8 +371,7 @@ impl WebSocket {
         if let Some(markets) = &subscription.markets {
             validate_subscription_count(markets.len())?;
         }
-        ensure_crypto_provider();
-        let (mut ws, _) = connect_async(WS_USER_URL).await?;
+        let mut ws = connect_ws(WS_USER_URL, DEFAULT_CONNECT_TIMEOUT).await?;
 
         let msg = serde_json::to_string(&subscription)?;
         ws.send(Message::Text(msg.into())).await?;
@@ -422,6 +497,7 @@ pub struct WebSocketBuilder {
     market_url: String,
     user_url: String,
     ping_interval: Option<Duration>,
+    connect_timeout: Duration,
 }
 
 impl Default for WebSocketBuilder {
@@ -437,6 +513,7 @@ impl WebSocketBuilder {
             market_url: WS_MARKET_URL.to_string(),
             user_url: WS_USER_URL.to_string(),
             ping_interval: None,
+            connect_timeout: DEFAULT_CONNECT_TIMEOUT,
         }
     }
 
@@ -478,14 +555,24 @@ impl WebSocketBuilder {
         self
     }
 
+    /// Set the per-address connect timeout (default 10 seconds).
+    ///
+    /// Connecting resolves every address for the host and tries each in turn,
+    /// IPv6 and IPv4 interleaved; this timeout bounds each address's TCP
+    /// connect and, separately, its TLS + WebSocket handshake before falling
+    /// back to the next address.
+    pub fn connect_timeout(mut self, timeout: Duration) -> Self {
+        self.connect_timeout = timeout;
+        self
+    }
+
     /// Connect to the market channel.
     pub async fn connect_market(
         self,
         asset_ids: Vec<String>,
     ) -> Result<WebSocketWithPing, WebSocketError> {
         validate_subscription_count(asset_ids.len())?;
-        ensure_crypto_provider();
-        let (mut ws, _) = connect_async(&self.market_url).await?;
+        let mut ws = connect_ws(&self.market_url, self.connect_timeout).await?;
 
         let subscription = MarketSubscription::new(asset_ids);
         let msg = serde_json::to_string(&subscription)?;
@@ -526,8 +613,7 @@ impl WebSocketBuilder {
         if let Some(markets) = &subscription.markets {
             validate_subscription_count(markets.len())?;
         }
-        ensure_crypto_provider();
-        let (mut ws, _) = connect_async(&self.user_url).await?;
+        let mut ws = connect_ws(&self.user_url, self.connect_timeout).await?;
 
         let msg = serde_json::to_string(&subscription)?;
         ws.send(Message::Text(msg.into())).await?;
@@ -640,6 +726,61 @@ impl WebSocketWithPing {
     /// Parse a text message based on the channel type.
     fn parse_message(&self, text: &str) -> Result<Option<Channel>, WebSocketError> {
         parse_channel_message(self.channel_type, text)
+    }
+}
+
+#[cfg(test)]
+mod connect_tests {
+    use super::*;
+
+    fn addr(s: &str) -> SocketAddr {
+        s.parse().unwrap()
+    }
+
+    #[test]
+    fn address_families_are_interleaved() {
+        // Resolvers return all AAAA then all A; a broken v6 network must not
+        // pay one timeout per v6 address before the first v4 attempt.
+        let addrs = vec![
+            addr("[2001:db8::1]:443"),
+            addr("[2001:db8::2]:443"),
+            addr("192.0.2.1:443"),
+            addr("192.0.2.2:443"),
+            addr("192.0.2.3:443"),
+        ];
+        let out = interleave_address_families(addrs);
+        assert_eq!(
+            out,
+            vec![
+                addr("[2001:db8::1]:443"),
+                addr("192.0.2.1:443"),
+                addr("[2001:db8::2]:443"),
+                addr("192.0.2.2:443"),
+                addr("192.0.2.3:443"),
+            ]
+        );
+    }
+
+    #[test]
+    fn single_family_lists_pass_through_unchanged() {
+        let v4 = vec![addr("192.0.2.1:443"), addr("192.0.2.2:443")];
+        assert_eq!(interleave_address_families(v4.clone()), v4);
+        assert!(interleave_address_families(Vec::new()).is_empty());
+    }
+
+    #[tokio::test]
+    async fn a_dead_address_times_out_rather_than_hanging() {
+        // 192.0.2.0/24 (TEST-NET-1) is guaranteed unrouted, so the connect
+        // either blackholes (timeout) or is refused (io error) — never Ok.
+        // Either way connect_ws must return promptly instead of hanging.
+        let started = std::time::Instant::now();
+        let err = connect_ws("wss://192.0.2.1/ws", Duration::from_millis(200))
+            .await
+            .expect_err("TEST-NET-1 must not accept connections");
+        assert!(
+            started.elapsed() < Duration::from_secs(5),
+            "connect_ws did not honour the per-address timeout: {err}"
+        );
     }
 }
 
