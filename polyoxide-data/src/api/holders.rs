@@ -10,7 +10,26 @@ pub struct Holders {
 }
 
 impl Holders {
-    /// Get top holders for markets
+    /// Get top holders for markets.
+    ///
+    /// Each market is a condition ID, which the venue validates for shape —
+    /// `0x` followed by exactly 64 hex digits — before looking anything up.
+    ///
+    /// **A malformed ID is reported as a missing one.** Passing an empty
+    /// string, a short ID, or an empty iterator all produce the same HTTP 400,
+    /// `required query param 'market' not provided`, so the error does not
+    /// distinguish "you sent nothing" from "you sent something unusable".
+    ///
+    /// This is easy to hit by accident, because `GET /trades` emits condition
+    /// IDs of two shapes: mostly Hash64, but some are `0x` plus 62 hex digits
+    /// zero-padded on the right, and those are rejected here. Piping a
+    /// `conditionId` from the trade feed into this call is therefore not safe
+    /// without checking its shape first.
+    ///
+    /// A well-formed ID the holders index has never seen is the other edge:
+    /// that returns a bare `null` rather than `[]`, which fails to deserialize
+    /// into `Vec<MarketHolders>` and so surfaces as an error, not an empty
+    /// list. See also [`ListHolders::limit`], where `limit=0` does the same.
     pub fn list(&self, markets: impl IntoIterator<Item = impl ToString>) -> ListHolders {
         let market_ids: Vec<String> = markets.into_iter().map(|s| s.to_string()).collect();
         let mut request = Request::new(self.http_client.clone(), "/holders");

@@ -7,6 +7,8 @@ import subprocess
 import sys
 from pathlib import Path
 
+import pytest
+
 from classify_failures import Verdict, classify, parse_nextest_json
 
 FIXTURES = Path(__file__).parent / "fixtures"
@@ -67,6 +69,131 @@ def test_classify_auth_gated_takes_precedence_over_transient() -> None:
     """If both patterns match, AUTH_GATED wins (defensive ordering)."""
     text = "POLYMARKET_* env vars required for authenticated tests: HTTP 503"
     assert classify(text) == Verdict.AUTH_GATED
+
+
+def test_classify_transient_reqwest_debug_timeout() -> None:
+    """A panic renders its error with `Debug`, not `Display`.
+
+    Verbatim from the nightly run that filed issue #32. reqwest's timeout
+    marker is a unit struct: `Display` writes "operation timed out" (which the
+    table already matched), but the derived `Debug` writes the bare token
+    `TimedOut`. `.expect()` formats with `{:?}`, so only the second one ever
+    reaches this classifier.
+    """
+    text = (
+        "thread 'live_last_trade_price' (7718) panicked at "
+        "polyoxide-clob/tests/live_api.rs:620:10:\n"
+        "last_trade_price should succeed: Api(Network(reqwest::Error "
+        '{ kind: Request, url: "https://clob.polymarket.com/last-trade-price'
+        '?token_id=3233822019007135143577280177972530224457577521641332595144'
+        '3816017994629993401", source: TimedOut }))'
+    )
+    assert classify(text) == Verdict.TRANSIENT
+
+
+def test_classify_transient_reqwest_debug_connect_error() -> None:
+    """The same Debug-vs-Display gap for a failed connect.
+
+    hyper-util labels the source "tcp connect error" and reqwest's own
+    `Display` for a request-phase failure is "error sending request"; neither
+    appeared in the table, so a connect failure whose OS message was not
+    literally "Connection refused" (a TLS handshake abort, an unreachable
+    host) classified as REAL.
+    """
+    text = (
+        "thread 'live_markets' panicked at polyoxide-gamma/tests/live_api.rs:42:10:\n"
+        "markets should succeed: Api(Network(reqwest::Error { kind: Request, "
+        'url: "https://gamma-api.polymarket.com/markets", source: '
+        "hyper_util::client::legacy::Error(Connect, ConnectError("
+        '"tcp connect error", Os { code: 101, kind: NetworkUnreachable, '
+        'message: "Network is unreachable" })) }))'
+    )
+    assert classify(text) == Verdict.TRANSIENT
+
+
+def test_classify_real_is_not_broadened_by_the_debug_patterns() -> None:
+    """The Debug patterns must not swallow genuine contract failures.
+
+    Issue #32 also carried two real ones — a venue validation error reached
+    through the same `Api(...)` wrapper. Matching on the wrapper, or on a bare
+    `Request`/`Connect` token, would have hidden them.
+    """
+    text = (
+        "thread 'live_holders' (4811) panicked at "
+        "polyoxide-data/tests/live_api.rs:209:10:\n"
+        "holders should deserialize: Api(Validation("
+        "\"required query param 'market' not provided\"))"
+    )
+    assert classify(text) == Verdict.REAL
+
+
+# Every arm `ApiError::is_retriable()` answers `true` for, in both of the
+# renderings a panic can carry. `.expect()` formats with `{:?}`, and
+# `panic!("...: {e}")` with `{}`; the table has to match either, and for the
+# `Network` arms the two share no words at all.
+#
+# Keep this in step with `is_retriable` in polyoxide-core/src/error.rs. A row
+# that only proves "some pattern exists" is worth little — each of these is the
+# text a real panic produces, so a pattern that stops matching fails here.
+RETRIABLE_ARMS: list[tuple[str, str]] = [
+    # (label, panic text)
+    ("Api 5xx / Debug", 'live_x: Api { status: 503, message: "bad gateway" }'),
+    ("Api 5xx / Display", "live_x: API error: 503 - bad gateway"),
+    ("Api 425 / Debug", 'live_x: Api { status: 425, message: "too early" }'),
+    ("Api 425 / Display", "live_x: API error: 425 - too early"),
+    ("RateLimit / Debug", 'live_x: RateLimit("slow down")'),
+    ("RateLimit / Display", "live_x: Rate limit exceeded: slow down"),
+    ("Timeout / Debug", "live_x: Api(Timeout)"),
+    ("Timeout / Display", "live_x: Request timeout"),
+    (
+        "Network is_timeout / Debug",
+        'live_x: Network(reqwest::Error { kind: Request, '
+        'url: "https://clob.polymarket.com/ok", source: TimedOut })',
+    ),
+    (
+        "Network is_timeout / Display",
+        "live_x: Network error: error sending request for url "
+        "(https://clob.polymarket.com/ok)",
+    ),
+    (
+        "Network is_connect / Debug",
+        'live_x: Network(reqwest::Error { kind: Request, '
+        'url: "https://clob.polymarket.com/ok", source: '
+        "hyper_util::client::legacy::Error(Connect, ConnectError("
+        '"tcp connect error", Os { code: 111, kind: ConnectionRefused, '
+        'message: "Connection refused" })) })',
+    ),
+    (
+        "Network is_connect / Display",
+        "live_x: Network error: error sending request for url "
+        "(https://clob.polymarket.com/ok)",
+    ),
+]
+
+
+@pytest.mark.parametrize("label,text", RETRIABLE_ARMS, ids=[a[0] for a in RETRIABLE_ARMS])
+def test_every_retriable_arm_classifies_transient(label: str, text: str) -> None:
+    assert classify(text) == Verdict.TRANSIENT, f"{label} fell through to REAL"
+
+
+# The mirror image: arms `is_retriable()` answers `false` for must stay REAL,
+# so widening the table for issue #32 cannot quietly start skipping defects.
+NON_RETRIABLE_ARMS: list[tuple[str, str]] = [
+    ("Validation / Debug", "live_x: Validation(\"required query param 'market' not provided\")"),
+    ("Validation / Display", "live_x: Validation error: bad request"),
+    ("Authentication / Debug", 'live_x: Authentication("invalid signature")'),
+    ("Api 4xx / Debug", 'live_x: Api { status: 404, message: "not found" }'),
+    ("Api 4xx / Display", "live_x: API error: 404 - not found"),
+    ("Serialization / Display", "live_x: Serialization error: invalid type at line 1"),
+    ("plain assertion", "assertion `left == right` failed\n  left: 3\n right: 4"),
+]
+
+
+@pytest.mark.parametrize(
+    "label,text", NON_RETRIABLE_ARMS, ids=[a[0] for a in NON_RETRIABLE_ARMS]
+)
+def test_non_retriable_arms_stay_real(label: str, text: str) -> None:
+    assert classify(text) == Verdict.REAL, f"{label} was wrongly skipped as transient"
 
 
 def test_classify_environmental_sports_timeout() -> None:
