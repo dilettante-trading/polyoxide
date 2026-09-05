@@ -39,7 +39,6 @@ pub const BINANCE_SNAPSHOT: &str = r#"{"payload":{"data":[{"timestamp":178860026
 pub const REJECTED_SUBSCRIPTION: &str = r#"{"body":{"message":"leger GetTopics error: rpc error: code = NotFound desc = topic: definitely_not_a_topic and type: update not found, status: rpc error: code = NotFound desc = topic: definitely_not_a_topic and type: update not found, message: topic: definitely_not_a_topic and type: update not found"},"statusCode":401}"#;
 
 /// The empty text frame RTDS sends immediately after the connection opens.
-#[allow(dead_code)]
 pub const EMPTY_GREETING: &str = "";
 
 #[cfg(test)]
@@ -121,5 +120,55 @@ mod tests {
         assert!(twap["connection_id"].is_null());
         let update: serde_json::Value = serde_json::from_str(TWAP_THIRTY_UPDATE).unwrap();
         assert!(update["connection_id"].is_string());
+    }
+
+    /// Cross-checks each fixture's exact string against the lossy float the
+    /// venue sent beside it. The other tests would all still pass with a
+    /// single mistyped digit inside a 23-digit `full_accuracy_value`; this one
+    /// would not, because the two fields would stop agreeing.
+    #[test]
+    fn every_fixture_decodes_to_the_float_it_shipped_with() {
+        use crate::decode::{decode_e18, decode_plain};
+        use crate::topic::{Topic, TwapWindow};
+        use rust_decimal::prelude::ToPrimitive;
+
+        let cases: [(&str, &str, Topic); 4] = [
+            ("BINANCE_UPDATE", BINANCE_UPDATE, Topic::BinanceSpot),
+            (
+                "CHAINLINK_SPOT_UPDATE",
+                CHAINLINK_SPOT_UPDATE,
+                Topic::ChainlinkSpot,
+            ),
+            (
+                "TWAP_THIRTY_UPDATE",
+                TWAP_THIRTY_UPDATE,
+                Topic::ChainlinkTwap(TwapWindow::Thirty),
+            ),
+            (
+                "TWAP_SIXTY_UPDATE",
+                TWAP_SIXTY_UPDATE,
+                Topic::ChainlinkTwap(TwapWindow::Sixty),
+            ),
+        ];
+
+        for (name, frame, topic) in cases {
+            let value: serde_json::Value = serde_json::from_str(frame).unwrap();
+            let raw = value["payload"]["full_accuracy_value"].as_str().unwrap();
+            let shipped = value["payload"]["value"].as_f64().unwrap();
+
+            let decoded = match topic {
+                Topic::BinanceSpot => decode_plain(raw, topic),
+                _ => decode_e18(raw, topic),
+            }
+            .unwrap_or_else(|e| panic!("{name}: {raw} did not decode: {e}"));
+
+            let decoded = decoded.to_f64().unwrap();
+            let drift = (decoded - shipped).abs();
+            assert!(
+                drift < 0.001,
+                "{name}: exact value {decoded} disagrees with the float the \
+                 venue sent ({shipped}); one of the two was mistyped"
+            );
+        }
     }
 }

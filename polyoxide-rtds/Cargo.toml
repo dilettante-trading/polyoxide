@@ -10,6 +10,12 @@ description = "Rust client for Polymarket's Real-Time Data Service (RTDS) crypto
 keywords = ["polymarket", "websocket", "chainlink", "twap", "prices"]
 categories = ["api-bindings", "web-programming::websocket"]
 
+[features]
+# Exposes the captured wire frames in `fixtures` so integration tests under
+# `tests/` can use the same golden vectors as the unit tests. Not intended
+# for library consumers; the module is `#[doc(hidden)]`.
+test-fixtures = []
+
 [dependencies]
 tokio = { workspace = true, features = ["macros", "net", "time", "rt"] }
 tokio-tungstenite = { workspace = true }
