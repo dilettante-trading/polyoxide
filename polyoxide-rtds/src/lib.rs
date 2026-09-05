@@ -18,8 +18,10 @@
 
 #![warn(missing_docs)]
 
+pub mod error;
 pub mod subscription;
 pub mod topic;
 
+pub use error::RtdsError;
 pub use subscription::{Subscription, SubscriptionRequest};
 pub use topic::{Topic, TwapWindow};
