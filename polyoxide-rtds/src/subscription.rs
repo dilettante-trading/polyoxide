@@ -51,7 +51,9 @@ impl Subscription {
     ///
     /// Returns an empty vector for an empty input, which is deliberate: an
     /// empty list must not collapse into an unfiltered subscription for every
-    /// symbol on the topic.
+    /// symbol on the topic. Discards any symbol set by [`symbol`](Self::symbol)
+    /// — this fans out from the topic, not from an existing single-symbol
+    /// subscription.
     pub fn symbols<I, S>(self, symbols: I) -> Vec<Self>
     where
         I: IntoIterator<Item = S>,
@@ -81,7 +83,13 @@ impl Serialize for Subscription {
     fn serialize<S: serde::Serializer>(&self, serializer: S) -> Result<S::Ok, S::Error> {
         use serde::ser::SerializeStruct;
 
-        let mut entry = serializer.serialize_struct("Subscription", 3)?;
+        // serde_derive computes an exact length from its skip predicates
+        // rather than trusting `skip_field` to patch a wrong one, because a
+        // definite-length format (MessagePack, CBOR, postcard) writes the
+        // header before the fields and never revises it. JSON ignores the
+        // hint, which is exactly why getting this wrong stays invisible here.
+        let len = 2 + usize::from(self.symbol.is_some());
+        let mut entry = serializer.serialize_struct("Subscription", len)?;
         entry.serialize_field("topic", self.topic.as_wire())?;
         entry.serialize_field("type", "update")?;
         if let Some(symbol) = &self.symbol {
@@ -201,5 +209,20 @@ mod tests {
             subs.is_empty(),
             "an empty symbol list must not silently become an unfiltered subscription"
         );
+    }
+
+    #[test]
+    fn a_symbol_needing_escaping_survives_the_nested_encoding() {
+        // `filters` is JSON inside a JSON string, so a symbol containing a
+        // quote or backslash gets escaped twice. No real Polymarket symbol
+        // looks like this; the test exists so that anyone tempted to build
+        // the filter with `format!` instead of serde_json breaks a test
+        // rather than the wire format.
+        let sub = Subscription::for_topic(Topic::ChainlinkSpot).symbol(r#"weird"symbol\x"#);
+        let value = serde_json::to_value(SubscriptionRequest::new([sub])).unwrap();
+
+        let filters = value["subscriptions"][0]["filters"].as_str().unwrap();
+        let reparsed: serde_json::Value = serde_json::from_str(filters).unwrap();
+        assert_eq!(reparsed["symbol"], r#"weird"symbol\x"#);
     }
 }
