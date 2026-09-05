@@ -52,7 +52,7 @@ cargo test -p polyoxide-clob --test live_api -- --ignored
 
 ## Workspace Architecture
 
-Eight crates with this dependency graph:
+Nine crates with this dependency graph:
 
 ```
 polyoxide-core          (shared: auth, HTTP client, errors, macros)
@@ -60,12 +60,14 @@ polyoxide-core          (shared: auth, HTTP client, errors, macros)
 ├── polyoxide-gamma     (read-only market data API)
 ├── polyoxide-data      (read-only user positions/trades API)
 ├── polyoxide-clob      (order book trading, depends on core; gamma optional, default-on)
-│   └── polyoxide        (unified client re-exporting clob/gamma/data, feature-gated)
+│   └── polyoxide        (unified client re-exporting clob/gamma/data/rtds, feature-gated)
 ├── polyoxide-cli       (CLI tool using clap)
 └── polyoxide-py        (Python bindings via PyO3 + maturin, publish = false)
+
+polyoxide-rtds          (RTDS crypto price streams — depends on NOTHING in-workspace)
 ```
 
-Note: `polyoxide-cli` does **not** depend on the unified `polyoxide` crate. It depends directly on the component crates — `polyoxide-clob` (with `ws`), `polyoxide-data`, and `polyoxide-gamma` — plus `polyoxide-core` and `polyoxide-relay` only under the optional `keychain` feature.
+Note: `polyoxide-cli` does **not** depend on the unified `polyoxide` crate. It depends directly on the component crates — `polyoxide-clob` (with `ws`), `polyoxide-data`, `polyoxide-gamma` and `polyoxide-rtds` — plus `polyoxide-core` and `polyoxide-relay` only under the optional `keychain` feature.
 
 The CLI's `clob` command group currently exposes `clob prices download` — a bulk,
 resumable, rate-limited downloader for CLOB historical price data
@@ -228,8 +230,16 @@ The WebSocket contracts are published as AsyncAPI, not OpenAPI — mirrored in `
 
 **The sports mirror does not match the wire.** Upstream's own page documents a `slug`-keyed payload and a text `"ping"`/`"pong"` keep-alive; the server sends neither. `SportsUpdateMessage` is modelled on 229 captured frames instead — see `x-observed-payload` in `asyncapi-sports.json`. Diffing polyoxide against that mirror will report a false positive.
 
-**WebSocket TLS needs a nudge.** `reqwest 0.12` (via core) and `alloy`'s `reqwest 0.13` enable `ring` and `aws-lc-rs` on one shared `rustls`, which then installs no default `CryptoProvider`. `ws/client.rs` installs one before connecting; any code that calls `tokio_tungstenite::connect_async` directly must do the same or it will panic.
+**WebSocket TLS needs a nudge.** `reqwest 0.12` (via core) and `alloy`'s `reqwest 0.13` enable `ring` and `aws-lc-rs` on one shared `rustls`, which then installs no default `CryptoProvider`. `ws/client.rs` installs one before connecting; any code that calls `tokio_tungstenite::connect_async` directly must do the same or it will panic. `polyoxide-rtds` has its own copy for this reason, and declares `rustls`'s `std` feature explicitly — clob only compiles without it because `reqwest`/`alloy` turn it on transitively, and rtds has no such neighbour by design.
+
+**RTDS is a separate crate and a separate protocol.** `polyoxide-rtds` covers `wss://ws-live-data.polymarket.com`, which multiplexes many topics over one connection under an `action`/`subscriptions` envelope — unlike the CLOB channels, which are one channel per connection. It depends on nothing else in the workspace (not even core) so a credential-free price feed does not pull in `alloy`: `polyoxide-clob --features ws` builds 352 crates against core's 161, and none of that signing stack is needed to read a price. Two tiers: `Rtds` is a bare `Stream`; `RtdsBuilder`/`SupervisedRtds` adds keep-alive, a staleness watchdog and reconnect-with-resubscribe.
+
+**`full_accuracy_value` does not mean the same thing on every topic.** It is E18 fixed-point on the three Chainlink topics and a **plain decimal** on `crypto_prices` (Binance). Two frames captured a second apart both report BTC at ≈$79,697 with byte-identical payload keys, differing only in that scale — so the two spot payloads are separate types and the scale is never a runtime decision. A test asserting only "the value is a positive Decimal" passes on both and proves nothing; `the_two_spot_topics_do_not_share_a_scale` in `event.rs` is the one that holds this up, and it has been observed failing in both directions.
+
+**Four RTDS behaviours have no counterpart in the docs**, all recorded in `docs/specs/rtds/OBSERVED.md`. A filter with one stray space delivers the backfill and then goes silent forever with no error, which is why `filters` is built by `serde_json` and never accepted as a caller string. One unrecognised topic returns zero frames for *every* topic in the same batch. A Chainlink-spot **snapshot** arrives labelled with the Binance topic, so `correct_mislabelled_spot_snapshot` keys on the symbol format — taking the label at face value files Chainlink prices under Binance, silently. And a backfill is only sent for a **symbol-filtered** subscription; an unfiltered one never receives one, so it cannot re-initialise from a snapshot after a reconnect.
+
+`docs/specs/rtds/` is modelled on captured frames and is deliberately excluded from `nightly-schema.yml` — upstream publishes nothing to diff it against. The documented 5-second `PING` is neither required nor answered, so staleness, not the heartbeat, is the only liveness signal.
 
 ## Publishing Order
 
-Crates must be published in dependency order: core → relay → gamma → data → clob → polyoxide. The release workflow in `.github/workflows/release.yml` handles this automatically. `polyoxide-py` is `publish = false` (not on crates.io); its Python wheels are built and published to PyPI via a separate step in the release workflow.
+Crates must be published in dependency order: core → rtds → relay → gamma → data → clob → polyoxide. (`polyoxide-rtds` depends on nothing in-workspace, so its position only has to precede `polyoxide`.) The release workflow in `.github/workflows/release.yml` handles this automatically. `polyoxide-py` is `publish = false` (not on crates.io); its Python wheels are built and published to PyPI via a separate step in the release workflow.
