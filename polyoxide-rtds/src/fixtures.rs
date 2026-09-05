@@ -124,8 +124,18 @@ mod tests {
 
     /// Cross-checks each fixture's exact string against the lossy float the
     /// venue sent beside it. The other tests would all still pass with a
-    /// single mistyped digit inside a 23-digit `full_accuracy_value`; this one
-    /// would not, because the two fields would stop agreeing.
+    /// mistyped digit inside a 23-digit `full_accuracy_value`; this one would
+    /// not, because the two fields would stop agreeing.
+    ///
+    /// It also fails if someone swaps the two scales, since it decodes Binance
+    /// with [`decode_plain`](crate::decode::decode_plain) and the Chainlink
+    /// topics with [`decode_e18`](crate::decode::decode_e18).
+    ///
+    /// **What it cannot catch:** `value` carries about 16 significant digits,
+    /// so it says nothing about the last ~7 digits of a 23-digit exact value.
+    /// A typo there is invisible here. Those digits are guaranteed instead by
+    /// having byte-compared every fixture against the original packet capture
+    /// when they were added.
     #[test]
     fn every_fixture_decodes_to_the_float_it_shipped_with() {
         use crate::decode::{decode_e18, decode_plain};
@@ -163,9 +173,13 @@ mod tests {
             .unwrap_or_else(|e| panic!("{name}: {raw} did not decode: {e}"));
 
             let decoded = decoded.to_f64().unwrap();
-            let drift = (decoded - shipped).abs();
-            assert!(
-                drift < 0.001,
+            // Exact equality, not an epsilon: measured across all four
+            // fixtures, rounding the decoded value to f64 reproduces the
+            // venue's own float bit for bit. Anything looser would let a
+            // wrong digit through — an epsilon of 0.001 accepts a value that
+            // is wrong in its ninth significant figure.
+            assert_eq!(
+                decoded, shipped,
                 "{name}: exact value {decoded} disagrees with the float the \
                  venue sent ({shipped}); one of the two was mistyped"
             );
