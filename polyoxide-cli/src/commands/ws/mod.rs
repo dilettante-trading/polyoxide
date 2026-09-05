@@ -1,4 +1,5 @@
 mod market;
+mod prices;
 mod user;
 
 use clap::Subcommand;
@@ -16,6 +17,11 @@ pub enum WsCommand {
         #[command(flatten)]
         args: user::UserArgs,
     },
+    /// Stream RTDS reference prices (Binance, Chainlink spot, Chainlink TWAP)
+    Prices {
+        #[command(flatten)]
+        args: prices::PricesArgs,
+    },
 }
 
 impl WsCommand {
@@ -23,6 +29,7 @@ impl WsCommand {
         match self {
             Self::Market { args } => market::run(args).await,
             Self::User { args } => user::run(args).await,
+            Self::Prices { args } => prices::run(args).await,
         }
     }
 }

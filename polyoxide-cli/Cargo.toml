@@ -28,6 +28,7 @@ polyoxide-core = { workspace = true, optional = true, features = ["keychain"] }
 polyoxide-relay = { workspace = true, optional = true, features = ["keychain"] }
 polyoxide-data = { workspace = true }
 polyoxide-gamma = { workspace = true }
+polyoxide-rtds = { workspace = true }
 tokio = { workspace = true, features = ["macros", "rt-multi-thread", "time", "net"] }
 clap = { version = "4.5", features = ["derive", "env"] }
 clap_complete = "4.5"
