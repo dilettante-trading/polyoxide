@@ -181,6 +181,10 @@ mod tests {
         let count = wires.len();
         wires.dedup();
         assert_eq!(wires.len(), count, "ALL contains a duplicate topic");
-        assert_eq!(count, 4, "ALL must list every modelled topic");
+        assert_eq!(
+            count,
+            2 + TwapWindow::ALL.len(),
+            "ALL must list both spot topics plus one per TWAP window"
+        );
     }
 }
