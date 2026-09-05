@@ -48,8 +48,14 @@ pub enum RtdsError {
         message: String,
     },
 
-    /// A price could not be represented as a [`Decimal`](rust_decimal::Decimal).
-    #[error("RTDS value {raw} on topic {topic:?} does not fit a Decimal")]
+    /// A price could not be decoded.
+    ///
+    /// Three different failures share this variant: a value that is not a
+    /// valid E18 integer, one whose magnitude exceeds what a
+    /// [`Decimal`](rust_decimal::Decimal) can hold, and a plain-decimal string
+    /// that will not parse. The first is the interesting one — it usually
+    /// means a payload arrived on a topic whose scale this crate got wrong.
+    #[error("RTDS could not decode value {raw} on topic {topic:?}")]
     Precision {
         /// The undecoded wire value.
         raw: String,

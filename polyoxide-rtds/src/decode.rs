@@ -31,6 +31,18 @@ pub fn decode_e18(raw: &str, topic: Topic) -> Result<Decimal, RtdsError> {
 }
 
 /// Decode a plain decimal value, as sent on [`Topic::BinanceSpot`].
+///
+/// Accepts anything [`Decimal::from_str`] accepts, which is broader than the
+/// venue's own format (a leading `+`, scientific notation, and `_`
+/// separators all parse) — the permissiveness is deliberate rather than
+/// accidental, since none of it can misinterpret a value and none of it
+/// appears in observed venue data.
+///
+/// Note also that `from_str` does not error on a value with more than 28
+/// significant fractional digits — it silently rounds and returns `Ok`.
+/// Observed Binance values carry 8 decimal places, so this is unreachable
+/// today, and [`decode_e18`] cannot hit it at all: it builds a [`Decimal`]
+/// from an exact `i128` plus a scale and never parses a string as one.
 pub fn decode_plain(raw: &str, topic: Topic) -> Result<Decimal, RtdsError> {
     Decimal::from_str(raw).map_err(|_| RtdsError::Precision {
         raw: raw.to_string(),
@@ -108,5 +120,51 @@ mod tests {
         // The reverse fails loudly rather than silently: Binance's value is
         // not an integer, so the E18 path cannot parse it at all.
         assert!(decode_e18(BINANCE_RAW, Topic::BinanceSpot).is_err());
+    }
+
+    #[test]
+    fn e18_accepts_the_largest_value_a_decimal_can_hold_and_rejects_the_next() {
+        // `try_from_i128_with_scale` is bounded by Decimal's 96-bit mantissa,
+        // not by the scale: the ceiling is 2^96 - 1 whatever the scale. At E18
+        // that is a price of about $79.2 billion per unit, against an observed
+        // BTC raw value of ~7.97e22 — roughly six orders of magnitude of head
+        // room. `i128` parses far past this, so 29-to-38 digit inputs parse
+        // and then fail, which is why the cutoff is worth pinning.
+        const MAX: &str = "79228162514264337593543950335"; // 2^96 - 1
+        const OVER: &str = "79228162514264337593543950336"; // 2^96
+
+        assert!(decode_e18(MAX, Topic::ChainlinkSpot).is_ok());
+        assert!(matches!(
+            decode_e18(OVER, Topic::ChainlinkSpot),
+            Err(RtdsError::Precision { .. })
+        ));
+    }
+
+    #[test]
+    fn plain_decoding_rounds_rather_than_failing_past_28_digits() {
+        // Documents a real hazard rather than asserting a desirable property.
+        // `Decimal::from_str` does not reject a value too precise to
+        // represent — it rounds and reports success. Observed Binance values
+        // carry 8 decimal places, so this is unreachable today, and
+        // `decode_e18` cannot hit it at all because it builds from an exact
+        // i128 plus a scale rather than from a string. This test exists so a
+        // `rust_decimal` upgrade that changes rounding behaviour, or a venue
+        // that starts sending more precision, shows up as a failure here
+        // instead of as a quietly wrong price.
+        let rounded = decode_plain("1.00000000000000000000000000005", Topic::BinanceSpot).unwrap();
+        assert_eq!(rounded.to_string(), "1.0000000000000000000000000001");
+    }
+
+    #[test]
+    fn cheap_edge_cases() {
+        assert_eq!(
+            decode_e18("1", Topic::ChainlinkSpot).unwrap().to_string(),
+            "0.000000000000000001"
+        );
+        assert_eq!(
+            decode_plain("0", Topic::BinanceSpot).unwrap(),
+            Decimal::ZERO
+        );
+        assert!(decode_plain("", Topic::BinanceSpot).is_err());
     }
 }
