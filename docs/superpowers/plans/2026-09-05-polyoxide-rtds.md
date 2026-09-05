@@ -43,7 +43,7 @@ The `cargo doc` gate is not optional and is easy to trip: a doc comment on a `pu
 | `polyoxide-rtds/src/decode.rs` | `decode_e18`, `decode_plain`. The only place a scale is applied. |
 | `polyoxide-rtds/src/payload.rs` | Per-topic update structs, `Snapshot`, `SnapshotPoints`. |
 | `polyoxide-rtds/src/event.rs` | `PriceEvent`, `PriceUpdate`, accessors, frame dispatch. |
-| `polyoxide-rtds/src/error.rs` | `RtdsError` and `is_recoverable`. |
+| `polyoxide-rtds/src/error.rs` | `RtdsError` and the three-way `Recovery` classifier. |
 | `polyoxide-rtds/src/client.rs` | `Rtds` — tier 1. |
 | `polyoxide-rtds/src/supervisor.rs` | `RtdsBuilder`, `SupervisedRtds` — tier 2. |
 | `polyoxide-rtds/src/fixtures.rs` | `#[cfg(test)]` frames captured 2026-09-05. |
@@ -598,6 +598,23 @@ git commit -m "feat(rtds): build subscription filters as compact JSON"
 ---
 
 ### Task 4: Error type
+
+> **AMENDED during execution.** The `is_recoverable() -> bool` shown below was
+> replaced by a three-way `recovery() -> Recovery` (`Reconnect` / `SkipFrame` /
+> `Fatal`), and `Json` now retains the frame text. Two reasons, both found in
+> review:
+>
+> 1. One boolean answered two questions. `false` did not mean "don't reconnect",
+>    it meant "terminate the feed" — so a single unparseable frame killed a 24/7
+>    price feed. `SkipFrame` is the missing third outcome, and it is what
+>    `Json` and `Precision` actually warrant.
+> 2. `Connection` was recoverable unconditionally, but
+>    `tungstenite::Error::{Url, Tls, Http, AlreadyClosed, AttackAttempt}` are
+>    permanent — a bad certificate retried forever at full backoff, which is
+>    the exact failure this classifier exists to prevent.
+>
+> Tasks 8, 9 and 11 below were updated to match. The code in *this* section is
+> left as originally written, for the record.
 
 **Files:**
 - Create: `polyoxide-rtds/src/error.rs`
@@ -1322,7 +1339,7 @@ mod tests {
             }
             other => panic!("expected Server, got {other:?}"),
         }
-        assert!(!err.is_recoverable());
+        assert_eq!(err.recovery(), Recovery::Fatal);
     }
 
     #[test]
@@ -1540,7 +1557,8 @@ impl PriceEvent {
             });
         }
 
-        let frame: RawFrame = serde_json::from_str(trimmed)?;
+        let frame: RawFrame =
+            serde_json::from_str(trimmed).map_err(|e| RtdsError::json(trimmed, e))?;
         let Some(topic) = Topic::from_wire(&frame.topic) else {
             tracing::trace!(topic = %frame.topic, "skipping unmodelled RTDS topic");
             return Ok(None);
@@ -1558,7 +1576,8 @@ impl PriceEvent {
 }
 
 fn parse_update(topic: Topic, frame: &RawFrame) -> Result<PriceUpdate, RtdsError> {
-    let payload: RawUpdatePayload = serde_json::from_value(frame.payload.clone())?;
+    let payload: RawUpdatePayload = serde_json::from_value(frame.payload.clone())
+        .map_err(|e| RtdsError::json(frame.payload.to_string(), e))?;
     let raw = payload.full_accuracy_value;
 
     Ok(match topic {
@@ -1607,7 +1626,8 @@ fn parse_update(topic: Topic, frame: &RawFrame) -> Result<PriceUpdate, RtdsError
 }
 
 fn parse_snapshot(topic: Topic, frame: &RawFrame) -> Result<Snapshot, RtdsError> {
-    let payload: RawSnapshotPayload = serde_json::from_value(frame.payload.clone())?;
+    let payload: RawSnapshotPayload = serde_json::from_value(frame.payload.clone())
+        .map_err(|e| RtdsError::json(frame.payload.to_string(), e))?;
 
     // Only the TWAP topics backfill exact values. Deciding on the topic rather
     // than on whether the field happens to be present keeps a shape change
@@ -2356,7 +2376,10 @@ impl SupervisedRtds {
         loop {
             match self.pump(&mut handler).await {
                 Ok(()) => return Ok(()),
-                Err(err) if err.is_recoverable() => {
+                // `pump` only ever returns Reconnect or Fatal errors —
+                // SkipFrame ones are handled inside it, without dropping the
+                // connection. See `Recovery` in error.rs.
+                Err(err) if err.recovery() == Recovery::Reconnect => {
                     tracing::warn!(%err, ?backoff, "RTDS connection lost, reconnecting");
                     tokio::time::sleep(backoff).await;
                     backoff = (backoff * 2).min(self.config.max_backoff);
@@ -2366,7 +2389,9 @@ impl SupervisedRtds {
                             self.stream = stream;
                             backoff = self.config.initial_backoff;
                         }
-                        Err(connect_err) if connect_err.is_recoverable() => continue,
+                        Err(connect_err) if connect_err.recovery() == Recovery::Reconnect => {
+                            continue
+                        }
                         Err(fatal) => return Err(fatal),
                     }
                 }
@@ -2407,6 +2432,12 @@ impl SupervisedRtds {
                     }
                 }
                 Ok(None) => return Err(RtdsError::ConnectionClosed),
+                // A bad frame is not a bad connection. Surface it and keep
+                // reading, or one unparseable message ends a 24/7 feed.
+                Ok(Some(Err(err))) if err.recovery() == Recovery::SkipFrame => {
+                    last_frame = Instant::now();
+                    tracing::warn!(%err, "skipping an RTDS frame this client could not read");
+                }
                 Ok(Some(Err(err))) => return Err(err),
                 Ok(Some(Ok(event))) => {
                     last_frame = Instant::now();
