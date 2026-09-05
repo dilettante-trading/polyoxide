@@ -33,10 +33,16 @@ pub fn decode_e18(raw: &str, topic: Topic) -> Result<Decimal, RtdsError> {
 /// Decode a plain decimal value, as sent on [`Topic::BinanceSpot`].
 ///
 /// Accepts anything [`Decimal::from_str`] accepts, which is broader than the
-/// venue's own format (a leading `+`, scientific notation, and `_`
-/// separators all parse) — the permissiveness is deliberate rather than
-/// accidental, since none of it can misinterpret a value and none of it
-/// appears in observed venue data.
+/// venue's own format: a leading `+`, `_` digit separators and `-0` all
+/// parse, while surrounding whitespace and an empty string are rejected. The
+/// permissiveness is deliberate rather than accidental — none of it can
+/// misinterpret a value, and none of it appears in observed venue data.
+///
+/// That list is what `rust_decimal` 1.41 does, verified in-tree rather than
+/// taken from its documentation. Scientific notation (`1e5`) is **rejected**
+/// at this version and accepted at 1.43, so treat the set as
+/// version-dependent and re-check it after a dependency bump rather than
+/// trusting this comment.
 ///
 /// Note also that `from_str` does not error on a value with more than 28
 /// significant fractional digits — it silently rounds and returns `Ok`.
