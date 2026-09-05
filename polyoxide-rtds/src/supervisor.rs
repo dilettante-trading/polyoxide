@@ -122,6 +122,15 @@ pub struct SupervisedRtds {
     /// Backoff resets on this, not on `connect_to` returning `Ok`. A server
     /// that accepts and immediately closes would otherwise pin the delay at
     /// its initial value forever, hammering a host that is already unwell.
+    ///
+    /// This narrows that failure rather than eliminating it. A host that
+    /// reliably delivers *exactly one* frame before dying still resets the
+    /// backoff every cycle and never escalates. Most unhealthy hosts reject
+    /// before delivering anything — an immediate close, a proxy error, a
+    /// rejected subscription — and those are handled. Closing the remaining
+    /// case needs a stronger signal than a boolean: a minimum connection
+    /// lifetime, or a failure count that decays rather than resetting. Worth
+    /// doing only if a real host is ever observed behaving that way.
     delivered: bool,
 }
 

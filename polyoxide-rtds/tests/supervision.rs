@@ -132,8 +132,12 @@ async fn a_silent_connection_is_treated_as_dead() {
 async fn a_rejected_subscription_stops_instead_of_looping() {
     // One unrecognised topic zeroes an entire batch. Retrying replays the same
     // rejection forever, so the run loop must give up and return the error.
-    const REJECTION: &str = r#"{"body":{"message":"topic not found"},"statusCode":401}"#;
-    let server = ScriptedServer::start(vec![Script::SendThenIdle(vec![REJECTION.into()])]).await;
+    // The captured envelope, not a hand-rolled lookalike — the other two
+    // tests already use it, and a second copy would drift on the next capture.
+    let server = ScriptedServer::start(vec![Script::SendThenIdle(vec![
+        polyoxide_rtds::fixtures::REJECTED_SUBSCRIPTION.into(),
+    ])])
+    .await;
 
     let supervised = RtdsBuilder::new()
         .url(&server.url)
