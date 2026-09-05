@@ -80,6 +80,15 @@ pub enum RtdsError {
     /// The endpoint URL could not be parsed.
     #[error("RTDS URL parse error: {0}")]
     Url(#[from] url::ParseError),
+
+    /// A subscription request that would produce a connection receiving
+    /// nothing.
+    ///
+    /// Refused client-side rather than sent: an empty `subscriptions` array
+    /// opens a socket the venue answers with silence, which is
+    /// indistinguishable from a feed that is merely idle.
+    #[error("RTDS subscription request is empty")]
+    EmptySubscription,
 }
 
 impl From<tokio_tungstenite::tungstenite::Error> for RtdsError {
@@ -150,6 +159,9 @@ impl RtdsError {
             // One rejected topic zeroes every topic in the batch, so retrying
             // replays the same silence.
             Self::Server { .. } | Self::Url(_) => Recovery::Fatal,
+            // Refused before anything was sent. Retrying an empty request
+            // cannot produce a different outcome.
+            Self::EmptySubscription => Recovery::Fatal,
             // Frame-level: the socket is fine, this one message was not.
             Self::Json { .. } | Self::Precision { .. } => Recovery::SkipFrame,
         }
@@ -231,6 +243,12 @@ mod tests {
     fn a_url_failure_is_fatal() {
         let err = RtdsError::Url(url::ParseError::EmptyHost);
         assert_eq!(err.recovery(), Recovery::Fatal);
+    }
+
+    #[test]
+    fn an_empty_subscription_request_is_never_recoverable() {
+        // Nothing was sent, so reconnecting replays the same empty request.
+        assert_eq!(RtdsError::EmptySubscription.recovery(), Recovery::Fatal);
     }
 
     #[test]

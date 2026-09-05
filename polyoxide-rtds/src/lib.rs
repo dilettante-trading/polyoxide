@@ -18,6 +18,7 @@
 
 #![warn(missing_docs)]
 
+pub mod client;
 pub mod decode;
 pub mod error;
 pub mod event;
@@ -29,6 +30,7 @@ pub mod topic;
 #[doc(hidden)]
 pub mod fixtures;
 
+pub use client::{Rtds, RTDS_URL};
 pub use error::{Recovery, RtdsError};
 pub use event::{PriceEvent, PriceUpdate};
 pub use payload::{
