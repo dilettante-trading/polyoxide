@@ -24,7 +24,13 @@ fn subs() -> Vec<Subscription> {
 async fn reconnects_and_resubscribes_after_a_drop() {
     let server = ScriptedServer::start(vec![
         Script::SendThenClose(vec![TWAP_UPDATE.into()]),
-        Script::SendThenIdle(vec![TWAP_UPDATE.into()]),
+        // The rejection is Fatal, so `run` returns on its own rather than
+        // being cut off by a timeout — which also means the assertions below
+        // observe a supervisor that actually finished.
+        Script::SendThenIdle(vec![
+            TWAP_UPDATE.into(),
+            polyoxide_rtds::fixtures::REJECTED_SUBSCRIPTION.into(),
+        ]),
     ])
     .await;
 
@@ -39,9 +45,8 @@ async fn reconnects_and_resubscribes_after_a_drop() {
         .await
         .expect("connect");
 
-    // Stop once we have seen an update from each of the two connections.
-    let _ = tokio::time::timeout(
-        Duration::from_secs(10),
+    let outcome = tokio::time::timeout(
+        Duration::from_secs(5),
         supervised.run(move |event| {
             let counter = Arc::clone(&counter);
             async move {
@@ -52,7 +57,13 @@ async fn reconnects_and_resubscribes_after_a_drop() {
             }
         }),
     )
-    .await;
+    .await
+    .expect("run must return on a rejection rather than hang");
+
+    assert!(
+        outcome.is_err(),
+        "the second connection's rejection must surface"
+    );
 
     assert!(
         server.connection_count() >= 2,

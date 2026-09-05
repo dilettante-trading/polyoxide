@@ -61,7 +61,15 @@ impl RtdsBuilder {
         self
     }
 
-    /// How often to send the application keep-alive.
+    /// How long the stream may be idle before sending a keep-alive.
+    ///
+    /// Not an unconditional cadence: a ping is only sent after a full tick
+    /// with no frames, so a healthy feed never sends one. That is fine —
+    /// a subscription was observed running 240 seconds with no application
+    /// ping at all, so the documented 5-second cadence is not load-bearing.
+    ///
+    /// Setting this larger than `stale_after` disables pings entirely, since
+    /// the staleness check runs first on every idle tick.
     pub fn ping_interval(mut self, interval: Duration) -> Self {
         self.ping_interval = interval;
         self
@@ -95,6 +103,7 @@ impl RtdsBuilder {
             config: self,
             subscriptions,
             stream,
+            delivered: false,
         })
     }
 }
@@ -108,6 +117,12 @@ pub struct SupervisedRtds {
     config: RtdsBuilder,
     subscriptions: Vec<Subscription>,
     stream: Rtds,
+    /// Whether the current connection has yielded at least one event.
+    ///
+    /// Backoff resets on this, not on `connect_to` returning `Ok`. A server
+    /// that accepts and immediately closes would otherwise pin the delay at
+    /// its initial value forever, hammering a host that is already unwell.
+    delivered: bool,
 }
 
 impl SupervisedRtds {
@@ -116,6 +131,15 @@ impl SupervisedRtds {
     /// Recoverable failures — drops and stalls — reconnect with backoff.
     /// Unrecoverable ones, chiefly [`RtdsError::Server`], return: retrying a
     /// rejected subscription replays the same rejection forever.
+    ///
+    /// Because every resubscribe replays the backfill, the handler sees
+    /// [`PriceEvent::Snapshot`](crate::PriceEvent) again after each reconnect.
+    /// That is how caller state re-initialises; it is not a duplicate.
+    ///
+    /// There is no stop method. To end the feed, drop the future or race it
+    /// against your own shutdown signal — `tokio::select!` on `run` and a
+    /// cancellation token is the usual shape. A handler returning `Err` also
+    /// ends it, since any error that is not `Recovery::Reconnect` is terminal.
     pub async fn run<F, Fut>(mut self, mut handler: F) -> Result<(), RtdsError>
     where
         F: FnMut(PriceEvent) -> Fut,
@@ -124,29 +148,50 @@ impl SupervisedRtds {
         let mut backoff = self.config.initial_backoff;
 
         loop {
+            self.delivered = false;
             match self.pump(&mut handler).await {
+                // `pump`'s loop has no branch that returns `Ok(())` today —
+                // every iteration either keeps going or returns `Err`. Kept
+                // for forward compatibility (e.g. a documented clean-close
+                // reason) so that adding one does not require touching this
+                // match.
                 Ok(()) => return Ok(()),
                 // `pump` only ever returns Reconnect or Fatal errors —
                 // SkipFrame ones are handled inside it, without dropping the
                 // connection. See `Recovery` in error.rs.
                 Err(err) if err.recovery() == Recovery::Reconnect => {
                     tracing::warn!(%err, ?backoff, "RTDS connection lost, reconnecting");
-                    tokio::time::sleep(backoff).await;
-                    backoff = (backoff * 2).min(self.config.max_backoff);
+                    if self.delivered {
+                        // The connection did real work before dying, so this
+                        // is a fresh incident, not a continuation of a host
+                        // that never worked in the first place.
+                        backoff = self.config.initial_backoff;
+                    }
 
-                    // A *fresh* `Rtds`, never the exhausted one. `Rtds` is
-                    // not `FusedStream`, so re-polling after it has yielded
-                    // `None` is not contractually defined — and the socket is
-                    // gone anyway. Do not "optimise" this into reuse.
-                    match Rtds::connect_to(&self.config.url, self.subscriptions.clone()).await {
-                        Ok(stream) => {
-                            self.stream = stream;
-                            backoff = self.config.initial_backoff;
+                    // Retry the *connection attempt*, not the outer loop:
+                    // `self.stream` is exhausted here and only the success
+                    // arm below replaces it. `Rtds` is not `FusedStream`, so
+                    // re-polling after it has yielded `None` is not
+                    // contractually defined — and the socket is gone anyway.
+                    // Do not "optimise" this into reuse.
+                    loop {
+                        tokio::time::sleep(backoff).await;
+                        backoff = (backoff * 2).min(self.config.max_backoff);
+
+                        match Rtds::connect_to(&self.config.url, self.subscriptions.clone()).await {
+                            Ok(stream) => {
+                                self.stream = stream;
+                                break;
+                            }
+                            Err(again) if again.recovery() == Recovery::Reconnect => {
+                                tracing::warn!(
+                                    %again,
+                                    ?backoff,
+                                    "RTDS reconnect attempt failed, retrying"
+                                );
+                            }
+                            Err(fatal) => return Err(fatal),
                         }
-                        Err(connect_err) if connect_err.recovery() == Recovery::Reconnect => {
-                            continue
-                        }
-                        Err(fatal) => return Err(fatal),
                     }
                 }
                 Err(fatal) => return Err(fatal),
@@ -195,6 +240,7 @@ impl SupervisedRtds {
                 Ok(Some(Err(err))) => return Err(err),
                 Ok(Some(Ok(event))) => {
                     last_frame = Instant::now();
+                    self.delivered = true;
                     handler(event).await?;
                 }
             }
