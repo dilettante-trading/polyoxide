@@ -1739,7 +1739,7 @@ pub use event::{PriceEvent, PriceUpdate};
 - [ ] **Step 4: Run the tests to verify they pass**
 
 Run: `cargo test -p polyoxide-rtds event`
-Expected: PASS, 10 tests.
+Expected: PASS, 11 tests.
 
 - [ ] **Step 5: Prove the differential test actually catches the bug**
 
