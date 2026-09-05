@@ -13,7 +13,6 @@ use crate::{
     error::RtdsError,
     event::PriceEvent,
     subscription::{Subscription, SubscriptionRequest},
-    topic::Topic,
 };
 
 /// The RTDS endpoint.
@@ -84,8 +83,14 @@ impl Rtds {
         Self::connect_to(RTDS_URL, subscriptions).await
     }
 
-    /// Connect to a specific endpoint. Used by tests against a local server.
-    pub async fn connect_to(
+    /// Connect to a specific endpoint.
+    ///
+    /// Crate-internal: the supervised tier uses it to reconnect, and tests
+    /// point it at a local server. Callers who need a different endpoint use
+    /// `RtdsBuilder::url` at tier 2 — not written as an intra-doc link yet,
+    /// since `supervisor` does not exist until Task 11 and a link to a
+    /// missing item is a hard error under `RUSTDOCFLAGS=-D warnings`.
+    pub(crate) async fn connect_to(
         url: &str,
         subscriptions: impl IntoIterator<Item = Subscription>,
     ) -> Result<Self, RtdsError> {
@@ -124,11 +129,6 @@ impl Rtds {
     pub fn subscriptions(&self) -> &[Subscription] {
         &self.subscriptions
     }
-
-    /// The topics this connection is subscribed to.
-    pub fn topics(&self) -> impl Iterator<Item = Topic> + '_ {
-        self.subscriptions.iter().map(Subscription::topic)
-    }
 }
 
 impl Stream for Rtds {
@@ -144,7 +144,13 @@ impl Stream for Rtds {
                         Ok(None) => continue,
                         Err(err) => Poll::Ready(Some(Err(err))),
                     },
-                    Message::Close(_) => Poll::Ready(None),
+                    Message::Close(frame) => {
+                        // The only place this reason is ever visible. Tier 2
+                        // turns stream-end into `ConnectionClosed` and
+                        // reconnects, by which point it is gone.
+                        tracing::debug!(?frame, "RTDS closed the connection");
+                        Poll::Ready(None)
+                    }
                     Message::Ping(_) | Message::Pong(_) | Message::Binary(_) => continue,
                     Message::Frame(_) => continue,
                 },
@@ -159,7 +165,7 @@ impl Stream for Rtds {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::topic::TwapWindow;
+    use crate::topic::{Topic, TwapWindow};
 
     #[test]
     fn the_default_url_is_the_live_data_host() {
