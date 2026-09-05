@@ -16,8 +16,12 @@ pub enum RtdsError {
 
     /// A frame could not be parsed.
     ///
-    /// Retains the frame text. `serde_json`'s message gives a line and column
-    /// into bytes you would otherwise no longer have.
+    /// Retains the text that failed. When the failure came from parsing the
+    /// whole frame, `serde_json` also reports a line and column into bytes you
+    /// would otherwise no longer have. When it came from interpreting an
+    /// already-parsed payload, there is no byte stream to point into — the
+    /// position reads `0:0` and `raw` is a re-serialisation of the payload,
+    /// not the original wire bytes.
     #[error("RTDS could not parse a frame: {source}; frame was: {raw}")]
     Json {
         /// The frame text as received.

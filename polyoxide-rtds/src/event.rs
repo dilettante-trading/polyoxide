@@ -41,6 +41,8 @@ struct RawUpdatePayload {
 struct RawSnapshotPayload {
     symbol: String,
     data: Vec<RawSnapshotPoint>,
+    #[serde(default)]
+    window_s: Option<u32>,
 }
 
 #[derive(Deserialize)]
@@ -52,6 +54,11 @@ struct RawSnapshotPoint {
 }
 
 /// The venue's error envelope, which shares no fields with a data frame.
+///
+/// `from_json` tries this shape before `RawFrame`, which is only safe while
+/// every field here stays required. Adding `#[serde(default)]` to either
+/// field would let a real data frame parse as this envelope instead —
+/// `no_data_frame_can_be_mistaken_for_the_error_envelope` is the trip-wire.
 #[derive(Deserialize)]
 struct RawServerError {
     #[serde(rename = "statusCode")]
@@ -185,23 +192,23 @@ impl PriceEvent {
         let frame: RawFrame =
             serde_json::from_str(trimmed).map_err(|e| RtdsError::json(trimmed, e))?;
         let Some(topic) = Topic::from_wire(&frame.topic) else {
-            tracing::trace!(topic = %frame.topic, "skipping unmodelled RTDS topic");
+            tracing::debug!(topic = %frame.topic, "skipping unmodelled RTDS topic");
             return Ok(None);
         };
 
         match frame.kind.as_str() {
-            "update" => Ok(Some(Self::Update(parse_update(topic, &frame)?))),
-            "subscribe" => Ok(Some(Self::Snapshot(parse_snapshot(topic, &frame)?))),
+            "update" => Ok(Some(Self::Update(parse_update(topic, frame)?))),
+            "subscribe" => Ok(Some(Self::Snapshot(parse_snapshot(topic, frame)?))),
             other => {
-                tracing::trace!(kind = %other, "skipping unmodelled RTDS frame type");
+                tracing::debug!(kind = %other, "skipping unmodelled RTDS frame type");
                 Ok(None)
             }
         }
     }
 }
 
-fn parse_update(topic: Topic, frame: &RawFrame) -> Result<PriceUpdate, RtdsError> {
-    let payload: RawUpdatePayload = serde_json::from_value(frame.payload.clone())
+fn parse_update(topic: Topic, frame: RawFrame) -> Result<PriceUpdate, RtdsError> {
+    let payload = RawUpdatePayload::deserialize(&frame.payload)
         .map_err(|e| RtdsError::json(frame.payload.to_string(), e))?;
     let raw = payload.full_accuracy_value;
 
@@ -211,7 +218,7 @@ fn parse_update(topic: Topic, frame: &RawFrame) -> Result<PriceUpdate, RtdsError
             symbol: payload.symbol,
             observed_at: payload.timestamp,
             published_at: frame.timestamp,
-            connection_id: frame.connection_id.clone(),
+            connection_id: frame.connection_id,
             display_value: payload.value,
             raw,
         }),
@@ -220,34 +227,45 @@ fn parse_update(topic: Topic, frame: &RawFrame) -> Result<PriceUpdate, RtdsError
             symbol: payload.symbol,
             observed_at: payload.timestamp,
             published_at: frame.timestamp,
-            connection_id: frame.connection_id.clone(),
+            connection_id: frame.connection_id,
             display_value: payload.value,
             raw,
         }),
         Topic::ChainlinkTwap(window) => {
-            // Trust the topic over `window_s` when they disagree: the topic is
-            // what we subscribed to, and a mismatch means our model is wrong.
-            if let Some(seconds) = payload.window_s {
-                if TwapWindow::from_seconds(seconds) != Some(window) {
-                    tracing::warn!(
-                        expected = window.seconds(),
-                        received = seconds,
-                        "RTDS TWAP window_s disagrees with its topic"
-                    );
-                }
-            }
+            warn_on_window_disagreement(topic, payload.window_s, &payload.symbol);
             PriceUpdate::Twap(TwapUpdate {
                 value: decode_e18(&raw, topic)?,
                 symbol: payload.symbol,
                 window,
                 observed_at: payload.timestamp,
                 published_at: frame.timestamp,
-                connection_id: frame.connection_id.clone(),
+                connection_id: frame.connection_id,
                 display_value: payload.value,
                 raw,
             })
         }
     })
+}
+
+/// Warn when a frame's `window_s` disagrees with the topic it arrived on.
+///
+/// The topic wins: it is what the client subscribed to, and the venue already
+/// has one proven mislabelling bug on exactly this axis (see
+/// `correct_mislabelled_spot_snapshot`). The decoded value is unaffected
+/// either way, so this is worth recording, not worth dropping a good price
+/// over.
+fn warn_on_window_disagreement(topic: Topic, window_s: Option<u32>, symbol: &str) {
+    let (Topic::ChainlinkTwap(expected), Some(seconds)) = (topic, window_s) else {
+        return;
+    };
+    if TwapWindow::from_seconds(seconds) != Some(expected) {
+        tracing::warn!(
+            symbol,
+            expected = expected.seconds(),
+            received = seconds,
+            "RTDS window_s disagrees with its topic"
+        );
+    }
 }
 
 /// Correct a server bug: a Chainlink-spot backfill arrives labelled with the
@@ -275,11 +293,12 @@ fn correct_mislabelled_spot_snapshot(topic: Topic, symbol: &str) -> Topic {
     topic
 }
 
-fn parse_snapshot(topic: Topic, frame: &RawFrame) -> Result<Snapshot, RtdsError> {
-    let payload: RawSnapshotPayload = serde_json::from_value(frame.payload.clone())
+fn parse_snapshot(topic: Topic, frame: RawFrame) -> Result<Snapshot, RtdsError> {
+    let payload = RawSnapshotPayload::deserialize(&frame.payload)
         .map_err(|e| RtdsError::json(frame.payload.to_string(), e))?;
 
     let topic = correct_mislabelled_spot_snapshot(topic, &payload.symbol);
+    warn_on_window_disagreement(topic, payload.window_s, &payload.symbol);
 
     // Only the TWAP topics backfill exact values. Deciding on the topic rather
     // than on whether the field happens to be present keeps a shape change
@@ -291,7 +310,10 @@ fn parse_snapshot(topic: Topic, frame: &RawFrame) -> Result<Snapshot, RtdsError>
                 let raw_e18 = point
                     .full_accuracy_value
                     .ok_or_else(|| RtdsError::Precision {
-                        raw: String::new(),
+                        raw: format!(
+                        "<{} point at timestamp={} has no full_accuracy_value, display_value={}>",
+                        payload.symbol, point.timestamp, point.value
+                    ),
                         topic,
                     })?;
                 exact.push(ExactPoint {
@@ -516,5 +538,46 @@ mod tests {
         let frame = r#"{"topic":"equity_prices","type":"update","timestamp":1,
             "payload":{"symbol":"aapl","timestamp":1,"value":189.42}}"#;
         assert!(matches!(PriceEvent::from_json(frame), Ok(None)));
+    }
+
+    #[test]
+    fn a_twap_snapshot_point_missing_its_exact_value_is_reported_usefully() {
+        // The venue has never sent this; the fixture is hand-built. It exists
+        // because the error it produces is logged and dropped, so a useless
+        // message would be the only trace of a real upstream change.
+        let frame = r#"{"payload":{"data":[{"timestamp":1788600329000,"value":79696.84}],
+            "symbol":"btc/usd","window_s":30},"timestamp":1788600388753,
+            "topic":"crypto_prices_twap_thirty","type":"subscribe"}"#;
+
+        let err = PriceEvent::from_json(frame).unwrap_err();
+        let rendered = err.to_string();
+        assert!(rendered.contains("btc/usd"), "{rendered}");
+        assert!(rendered.contains("1788600329000"), "{rendered}");
+        assert_eq!(err.recovery(), Recovery::SkipFrame);
+    }
+
+    #[test]
+    fn no_data_frame_can_be_mistaken_for_the_error_envelope() {
+        // `from_json` tries the error envelope first, which is only safe while
+        // `RawServerError`'s fields stay required. Adding `#[serde(default)]`
+        // to either would silently route real price frames into
+        // `RtdsError::Server`. This test is the trip-wire for that edit.
+        for frame in [
+            fixtures::BINANCE_UPDATE,
+            fixtures::CHAINLINK_SPOT_UPDATE,
+            fixtures::TWAP_THIRTY_UPDATE,
+            fixtures::TWAP_SIXTY_UPDATE,
+            fixtures::TWAP_THIRTY_SNAPSHOT,
+            fixtures::TWAP_SIXTY_SNAPSHOT,
+            fixtures::BINANCE_SNAPSHOT,
+            fixtures::CHAINLINK_SPOT_SNAPSHOT,
+        ] {
+            assert!(
+                serde_json::from_str::<RawServerError>(frame).is_err(),
+                "a data frame deserialised as the error envelope: {frame}"
+            );
+        }
+        // And the real thing still does parse.
+        assert!(serde_json::from_str::<RawServerError>(fixtures::REJECTED_SUBSCRIPTION).is_ok());
     }
 }
