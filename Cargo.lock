@@ -3954,6 +3954,7 @@ dependencies = [
  "polyoxide-clob",
  "polyoxide-data",
  "polyoxide-gamma",
+ "polyoxide-rtds",
  "thiserror 2.0.18",
  "tokio",
 ]

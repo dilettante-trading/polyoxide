@@ -84,6 +84,8 @@ pub use polyoxide_clob;
 pub use polyoxide_data;
 #[cfg(feature = "gamma")]
 pub use polyoxide_gamma;
+#[cfg(feature = "rtds")]
+pub use polyoxide_rtds;
 
 #[cfg(all(feature = "clob", feature = "gamma", feature = "data"))]
 use polyoxide_clob::{Account, Chain, Clob, ClobBuilder};
@@ -105,6 +107,10 @@ pub mod prelude {
     pub use polyoxide_data::{DataApi, DataApiError};
     #[cfg(feature = "gamma")]
     pub use polyoxide_gamma::{Gamma, GammaError};
+    #[cfg(feature = "rtds")]
+    pub use polyoxide_rtds::{
+        PriceEvent, PriceUpdate, Rtds, RtdsBuilder, Subscription, Topic, TwapWindow,
+    };
 
     #[cfg(all(feature = "clob", feature = "gamma", feature = "data"))]
     pub use crate::{Polymarket, PolymarketBuilder, PolymarketError};

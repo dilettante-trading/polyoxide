@@ -16,13 +16,15 @@ clob = ["dep:polyoxide-clob"]
 gamma = ["dep:polyoxide-gamma", "polyoxide-clob?/gamma"]
 data = ["dep:polyoxide-data"]
 ws = ["clob", "polyoxide-clob/ws"]
-full = ["clob", "gamma", "data", "ws"]
+rtds = ["dep:polyoxide-rtds"]
+full = ["clob", "gamma", "data", "ws", "rtds"]
 keychain = ["polyoxide-clob?/keychain"]
 
 [dependencies]
 polyoxide-gamma = { workspace = true, optional = true }
 polyoxide-clob = { workspace = true, optional = true }
 polyoxide-data = { workspace = true, optional = true }
+polyoxide-rtds = { workspace = true, optional = true }
 thiserror = { workspace = true }
 
 [dev-dependencies]
