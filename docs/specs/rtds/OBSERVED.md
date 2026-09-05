@@ -14,7 +14,7 @@ not on any upstream document, so it must never be added to `nightly-schema.yml`
 | # | Documented | Observed |
 |---|---|---|
 | 1 | `full_accuracy_value` is "the exact signed E18 fixed-point value" | E18 on the three Chainlink topics; a **plain decimal** on `crypto_prices` |
-| 2 | TWAP: "no snapshot, history, or replay" | Every topic sends a `type:"subscribe"` backfill first — ~55-59 points on the Chainlink topics, 120 on Binance |
+| 2 | TWAP: "no snapshot, history, or replay" | Every topic sends a `type:"subscribe"` backfill first. Length varies: 50-59 points observed on the Chainlink topics across five captures (50, 55, 57, 59, 59), 120 on Binance. Do not treat the count as fixed |
 | 3 | Binance filter is `"btcusdt,ethusdt"` | Yields zero frames. The working form is `{"symbol":"btcusdt"}` |
 | 4 | Symbols must be lowercase | `{"symbol":"BTC/USD"}` works; matching is case-insensitive |
 | 5 | Envelope is `{topic,type,timestamp,payload}` | `update` frames carry an undocumented `connection_id`; `subscribe` frames do not |

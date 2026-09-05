@@ -135,7 +135,8 @@ pub struct Snapshot {
     pub symbol: String,
     /// When RTDS sent the backfill, Unix milliseconds.
     pub published_at: i64,
-    /// The points, roughly one per second — about 55-59 for the Chainlink
-    /// topics and 120 for Binance.
+    /// The points, roughly one per second. The count is not fixed: 50 to 59
+    /// observed across five captures on the Chainlink topics, 120 on Binance.
+    /// Do not depend on a particular length.
     pub points: SnapshotPoints,
 }
