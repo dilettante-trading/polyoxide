@@ -92,9 +92,15 @@ async fn reconnects_and_resubscribes_after_a_drop() {
 
 #[tokio::test]
 async fn a_silent_connection_is_treated_as_dead() {
-    // The server holds the socket open and sends nothing. There is no PONG to
-    // detect this with, so only the staleness timer can.
-    let server = ScriptedServer::start(vec![Script::SendThenIdle(Vec::new())]).await;
+    let server = ScriptedServer::start(vec![
+        // Nothing sent, never closed: the only thing that can end this
+        // connection is the staleness timer.
+        Script::SendThenIdle(Vec::new()),
+        // Once the watchdog has forced a reconnect, end the run naturally
+        // rather than leaning on an outer timeout.
+        Script::SendThenIdle(vec![polyoxide_rtds::fixtures::REJECTED_SUBSCRIPTION.into()]),
+    ])
+    .await;
 
     let supervised = RtdsBuilder::new()
         .url(&server.url)
@@ -104,12 +110,17 @@ async fn a_silent_connection_is_treated_as_dead() {
         .await
         .expect("connect");
 
-    let _ = tokio::time::timeout(
+    let outcome = tokio::time::timeout(
         Duration::from_secs(5),
         supervised.run(|_event| async move { Ok(()) }),
     )
-    .await;
+    .await
+    .expect("the staleness watchdog must fire and the run must then end");
 
+    assert!(
+        outcome.is_err(),
+        "the rejection on the second connection is fatal"
+    );
     assert!(
         server.connection_count() >= 2,
         "a stalled connection must be reconnected, saw {}",
