@@ -34,6 +34,27 @@ pub const TWAP_THIRTY_SNAPSHOT: &str = r#"{"payload":{"data":[{"full_accuracy_va
 /// backfill, and the payload carries no `window_s`.
 pub const BINANCE_SNAPSHOT: &str = r#"{"payload":{"data":[{"timestamp":1788600269000,"value":79697.73},{"timestamp":1788600270000,"value":79697.73},{"timestamp":1788600271000,"value":79697.73}],"symbol":"btcusdt"},"timestamp":1788600388752,"topic":"crypto_prices","type":"subscribe"}"#;
 
+/// Chainlink **spot** snapshot, truncated from 59 points, captured
+/// 2026-09-05 on a connection subscribed to `crypto_prices_chainlink` and
+/// nothing else.
+///
+/// Note the `topic` field: it says `crypto_prices`, the *Binance* topic. That
+/// is what the server sends. Both spot topics' backfills come back under the
+/// same label, and the only thing distinguishing them is the symbol format —
+/// `btc/usd` here versus `btcusdt` on [`BINANCE_SNAPSHOT`]. Update frames on
+/// this topic are labelled correctly (see [`CHAINLINK_SPOT_UPDATE`]); only
+/// the snapshot is mislabelled, and only for the spot pair. TWAP snapshots
+/// carry their own topic correctly.
+///
+/// Deriving a snapshot's topic from this field alone therefore files every
+/// Chainlink-spot backfill under Binance.
+pub const CHAINLINK_SPOT_SNAPSHOT: &str = r#"{"payload":{"data":[{"timestamp":1788608387000,"value":79639.20029609217},{"timestamp":1788608388000,"value":79639.18129358691},{"timestamp":1788608389000,"value":79639.19042885714}],"symbol":"btc/usd"},"timestamp":1788608446826,"topic":"crypto_prices","type":"subscribe"}"#;
+
+/// 60-second TWAP snapshot, truncated from 59 points, captured 2026-09-05.
+///
+/// Unlike the spot pair above, this one carries its own topic correctly.
+pub const TWAP_SIXTY_SNAPSHOT: &str = r#"{"payload":{"data":[{"full_accuracy_value":"79639795829763498573824","timestamp":1788608387000,"value":79639.7958297635},{"full_accuracy_value":"79639790921767903559680","timestamp":1788608388000,"value":79639.7909217679},{"full_accuracy_value":"79639787357732704616448","timestamp":1788608389000,"value":79639.78735773271}],"symbol":"btc/usd","window_s":60},"timestamp":1788608446825,"topic":"crypto_prices_twap_sixty","type":"subscribe"}"#;
+
 /// The error frame produced by including one unrecognised topic in an
 /// otherwise valid five-topic batch. All five topics returned zero frames.
 pub const REJECTED_SUBSCRIPTION: &str = r#"{"body":{"message":"leger GetTopics error: rpc error: code = NotFound desc = topic: definitely_not_a_topic and type: update not found, status: rpc error: code = NotFound desc = topic: definitely_not_a_topic and type: update not found, message: topic: definitely_not_a_topic and type: update not found"},"statusCode":401}"#;
@@ -57,6 +78,8 @@ mod tests {
             ("TWAP_SIXTY_UPDATE", TWAP_SIXTY_UPDATE),
             ("TWAP_THIRTY_SNAPSHOT", TWAP_THIRTY_SNAPSHOT),
             ("BINANCE_SNAPSHOT", BINANCE_SNAPSHOT),
+            ("CHAINLINK_SPOT_SNAPSHOT", CHAINLINK_SPOT_SNAPSHOT),
+            ("TWAP_SIXTY_SNAPSHOT", TWAP_SIXTY_SNAPSHOT),
             ("REJECTED_SUBSCRIPTION", REJECTED_SUBSCRIPTION),
         ] {
             serde_json::from_str::<serde_json::Value>(frame)
@@ -120,6 +143,42 @@ mod tests {
         assert!(twap["connection_id"].is_null());
         let update: serde_json::Value = serde_json::from_str(TWAP_THIRTY_UPDATE).unwrap();
         assert!(update["connection_id"].is_string());
+    }
+
+    /// Pins a server bug: a Chainlink-spot backfill arrives labelled with the
+    /// **Binance** topic. Captured on a connection subscribed to
+    /// `crypto_prices_chainlink` and nothing else, so the label cannot be
+    /// explained by another subscription on the same socket.
+    ///
+    /// The consequence is that a snapshot's topic cannot be taken from its
+    /// `topic` field alone for the spot pair — the symbol format is the only
+    /// discriminator. This test exists so that if the venue ever fixes the
+    /// label, the workaround built on top of it is revisited rather than
+    /// silently left in place.
+    #[test]
+    fn a_chainlink_spot_snapshot_is_mislabelled_as_the_binance_topic() {
+        let chainlink: serde_json::Value = serde_json::from_str(CHAINLINK_SPOT_SNAPSHOT).unwrap();
+        let binance: serde_json::Value = serde_json::from_str(BINANCE_SNAPSHOT).unwrap();
+
+        assert_eq!(chainlink["topic"], "crypto_prices");
+        assert_eq!(binance["topic"], "crypto_prices");
+
+        // Only the symbol tells them apart: Chainlink uses a slash, Binance
+        // does not.
+        assert!(chainlink["payload"]["symbol"]
+            .as_str()
+            .unwrap()
+            .contains('/'));
+        assert!(!binance["payload"]["symbol"].as_str().unwrap().contains('/'));
+
+        // Update frames on the same topic are labelled correctly, which is
+        // what makes this specifically a snapshot bug.
+        let update: serde_json::Value = serde_json::from_str(CHAINLINK_SPOT_UPDATE).unwrap();
+        assert_eq!(update["topic"], "crypto_prices_chainlink");
+
+        // TWAP snapshots are unaffected.
+        let twap: serde_json::Value = serde_json::from_str(TWAP_SIXTY_SNAPSHOT).unwrap();
+        assert_eq!(twap["topic"], "crypto_prices_twap_sixty");
     }
 
     /// Cross-checks each fixture's exact string against the lossy float the
