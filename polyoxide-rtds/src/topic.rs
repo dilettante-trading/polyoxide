@@ -25,9 +25,12 @@ pub enum TwapWindow {
 impl TwapWindow {
     /// Every window this crate models.
     ///
-    /// [`from_seconds`](Self::from_seconds) is derived from this and
-    /// [`seconds`](Self::seconds), so a new variant cannot be silently
-    /// unparseable — `seconds` fails to compile until it is handled.
+    /// [`from_seconds`](Self::from_seconds) walks this list, so it agrees with
+    /// [`seconds`](Self::seconds) by construction for whatever is listed here.
+    /// Note this is agreement, not completeness: adding a variant to the enum
+    /// does not add it to this list. [`seconds`](Self::seconds) will fail to
+    /// compile until the new variant is handled there, which is the reminder
+    /// to extend this list too.
     pub const ALL: [Self; 2] = [Self::Thirty, Self::Sixty];
 
     /// The window length in seconds, as it appears in `payload.window_s`.
