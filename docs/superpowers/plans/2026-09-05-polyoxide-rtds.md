@@ -1306,6 +1306,37 @@ mod tests {
     }
 
     #[test]
+    fn a_mislabelled_chainlink_spot_snapshot_is_attributed_correctly() {
+        // The venue labels this backfill `crypto_prices` (Binance) even
+        // though it was produced by a `crypto_prices_chainlink` subscription.
+        // Taking the label at face value files Chainlink prices under
+        // Binance, silently — the points parse either way, because both spot
+        // snapshots are display-only.
+        let Ok(Some(PriceEvent::Snapshot(snapshot))) =
+            PriceEvent::from_json(fixtures::CHAINLINK_SPOT_SNAPSHOT)
+        else {
+            panic!("expected a snapshot");
+        };
+
+        assert_eq!(
+            snapshot.topic,
+            Topic::ChainlinkSpot,
+            "a slash in the symbol is the only thing distinguishing this from \
+             a Binance backfill"
+        );
+        assert_eq!(snapshot.symbol, "btc/usd");
+
+        // A genuine Binance backfill must be left alone.
+        let Ok(Some(PriceEvent::Snapshot(binance))) =
+            PriceEvent::from_json(fixtures::BINANCE_SNAPSHOT)
+        else {
+            panic!("expected a snapshot");
+        };
+        assert_eq!(binance.topic, Topic::BinanceSpot);
+        assert_eq!(binance.symbol, "btcusdt");
+    }
+
+    #[test]
     fn spot_snapshots_have_no_exact_values_to_offer() {
         // Binance and Chainlink-spot backfills omit full_accuracy_value
         // entirely. Modelling them as Exact-with-Option would invent a value
@@ -1625,9 +1656,36 @@ fn parse_update(topic: Topic, frame: &RawFrame) -> Result<PriceUpdate, RtdsError
     })
 }
 
+/// Correct a server bug: a Chainlink-spot backfill arrives labelled with the
+/// **Binance** topic.
+///
+/// Verified 2026-09-05 on a connection subscribed to
+/// `crypto_prices_chainlink` and nothing else — its updates are labelled
+/// correctly, its snapshot is not. Both spot topics' backfills come back as
+/// `crypto_prices`, and the symbol format is the only discriminator:
+/// Chainlink uses `btc/usd`, Binance uses `btcusdt`.
+///
+/// Deliberately narrow. It only ever reassigns `BinanceSpot`, only for
+/// snapshots, and only when the symbol contains a slash — so if the venue
+/// fixes the label, this becomes a no-op rather than a new bug. The
+/// `a_chainlink_spot_snapshot_is_mislabelled_as_the_binance_topic` fixture
+/// test fails if that happens, which is the prompt to delete this.
+fn correct_mislabelled_spot_snapshot(topic: Topic, symbol: &str) -> Topic {
+    if topic == Topic::BinanceSpot && symbol.contains('/') {
+        tracing::debug!(
+            symbol,
+            "relabelling a snapshot the venue reported as crypto_prices"
+        );
+        return Topic::ChainlinkSpot;
+    }
+    topic
+}
+
 fn parse_snapshot(topic: Topic, frame: &RawFrame) -> Result<Snapshot, RtdsError> {
     let payload: RawSnapshotPayload = serde_json::from_value(frame.payload.clone())
         .map_err(|e| RtdsError::json(frame.payload.to_string(), e))?;
+
+    let topic = correct_mislabelled_spot_snapshot(topic, &payload.symbol);
 
     // Only the TWAP topics backfill exact values. Deciding on the topic rather
     // than on whether the field happens to be present keeps a shape change
