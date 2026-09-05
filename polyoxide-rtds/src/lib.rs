@@ -18,6 +18,7 @@
 
 #![warn(missing_docs)]
 
+pub mod decode;
 pub mod error;
 pub mod subscription;
 pub mod topic;
