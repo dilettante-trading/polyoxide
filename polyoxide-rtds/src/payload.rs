@@ -122,11 +122,13 @@ impl SnapshotPoints {
     }
 }
 
-/// The backfill RTDS sends once, immediately after each subscribe.
+/// The backfill RTDS sends once, immediately after a subscribe.
 ///
-/// Upstream documents that no snapshot exists; it does. Every resubscribe
-/// replays one, so a reconnect re-initialises caller state rather than merely
-/// resuming the feed — and callers therefore see this event more than once.
+/// Upstream documents that no snapshot exists; one does — but **only for a
+/// symbol-filtered subscription**. An unfiltered subscription to a topic
+/// receives updates and no backfill at all, verified on all three topic
+/// families. So a caller that omits the symbol filter will never see this
+/// event, and a reconnect will not re-initialise its state.
 #[derive(Debug, Clone, PartialEq)]
 pub struct Snapshot {
     /// The topic backfilled.

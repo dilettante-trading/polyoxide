@@ -110,9 +110,10 @@ impl RtdsBuilder {
 
 /// A supervised RTDS connection that pings, detects stalls, and reconnects.
 ///
-/// Because every resubscribe replays the backfill, callers see
-/// [`PriceEvent::Snapshot`] again after each reconnect. That is the intended
-/// way to re-initialise state.
+/// A resubscribe replays the backfill, so callers see [`PriceEvent::Snapshot`]
+/// again after each reconnect — that is the intended way to re-initialise
+/// state. It applies only to symbol-filtered subscriptions: an unfiltered one
+/// receives no backfill at all, so it has nothing to re-initialise from.
 pub struct SupervisedRtds {
     config: RtdsBuilder,
     subscriptions: Vec<Subscription>,
@@ -141,9 +142,14 @@ impl SupervisedRtds {
     /// Unrecoverable ones, chiefly [`RtdsError::Server`], return: retrying a
     /// rejected subscription replays the same rejection forever.
     ///
-    /// Because every resubscribe replays the backfill, the handler sees
+    /// A resubscribe replays the backfill, so the handler sees
     /// [`PriceEvent::Snapshot`](crate::PriceEvent) again after each reconnect.
     /// That is how caller state re-initialises; it is not a duplicate.
+    ///
+    /// This only applies to symbol-filtered subscriptions. An unfiltered
+    /// subscription receives no backfill on connect or reconnect, verified
+    /// against all three topic families, so such a handler never sees a
+    /// snapshot at all and must rebuild its own state from updates.
     ///
     /// There is no stop method. To end the feed, drop the future or race it
     /// against your own shutdown signal — `tokio::select!` on `run` and a
