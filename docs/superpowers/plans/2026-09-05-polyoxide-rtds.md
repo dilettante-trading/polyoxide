@@ -46,7 +46,7 @@ The `cargo doc` gate is not optional and is easy to trip: a doc comment on a `pu
 | `polyoxide-rtds/src/error.rs` | `RtdsError` and the three-way `Recovery` classifier. |
 | `polyoxide-rtds/src/client.rs` | `Rtds` — tier 1. |
 | `polyoxide-rtds/src/supervisor.rs` | `RtdsBuilder`, `SupervisedRtds` — tier 2. |
-| `polyoxide-rtds/src/fixtures.rs` | `#[cfg(test)]` frames captured 2026-09-05. |
+| `polyoxide-rtds/src/fixtures.rs` | Frames captured 2026-09-05, behind `test-fixtures` so `tests/` can share them. |
 | `polyoxide-rtds/tests/scripted_server.rs` | Local ws harness (dev-only). |
 | `polyoxide-rtds/tests/supervision.rs` | Reconnect/staleness tests against the harness. |
 | `polyoxide-rtds/tests/live_api.rs` | `#[ignore]` tests against the real host. |
@@ -2080,7 +2080,7 @@ async fn serve(
 
 - [ ] **Step 2: Verify it compiles**
 
-Run: `cargo test -p polyoxide-rtds --test scripted_server`
+Run: `cargo test -p polyoxide-rtds --features test-fixtures --test scripted_server`
 Expected: `running 0 tests`, no warnings.
 
 - [ ] **Step 3: Commit**
@@ -2118,8 +2118,10 @@ use std::{
 use polyoxide_rtds::{PriceEvent, RtdsBuilder, Subscription, Topic, TwapWindow};
 use scripted_server::{Script, ScriptedServer};
 
-/// A TWAP update frame captured 2026-09-05.
-const TWAP_UPDATE: &str = r#"{"connection_id":"gZexFa6cUWeIKEiTDA==","payload":{"full_accuracy_value":"79697474565615044788224","symbol":"btc/usd","timestamp":1788600388000,"value":79697.47456561505,"window_s":30},"timestamp":1788600389537,"topic":"crypto_prices_twap_thirty","type":"update"}"#;
+// The same golden vector the unit tests use, not a second copy. `fixtures`
+// is behind the `test-fixtures` feature precisely so integration tests can
+// reach it — a pasted duplicate would silently diverge on the next capture.
+use polyoxide_rtds::fixtures::TWAP_THIRTY_UPDATE as TWAP_UPDATE;
 
 fn subs() -> Vec<Subscription> {
     Subscription::for_topic(Topic::ChainlinkTwap(TwapWindow::Thirty)).symbols(["btc/usd"])
@@ -2240,7 +2242,7 @@ async fn a_rejected_subscription_stops_instead_of_looping() {
 
 - [ ] **Step 2: Run the tests to verify they fail**
 
-Run: `cargo test -p polyoxide-rtds --test supervision`
+Run: `cargo test -p polyoxide-rtds --features test-fixtures --test supervision`
 Expected: FAIL — `unresolved import polyoxide_rtds::RtdsBuilder`.
 
 - [ ] **Step 3: Write the implementation**
@@ -2459,7 +2461,7 @@ pub use supervisor::{RtdsBuilder, SupervisedRtds};
 
 - [ ] **Step 4: Run the tests to verify they pass**
 
-Run: `cargo test -p polyoxide-rtds --test supervision`
+Run: `cargo test -p polyoxide-rtds --features test-fixtures --test supervision`
 Expected: PASS, 3 tests.
 
 - [ ] **Step 5: Run the whole suite**
