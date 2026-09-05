@@ -17,3 +17,7 @@
 //! each topic has its own type and the scale is never a runtime decision.
 
 #![warn(missing_docs)]
+
+pub mod topic;
+
+pub use topic::{Topic, TwapWindow};
