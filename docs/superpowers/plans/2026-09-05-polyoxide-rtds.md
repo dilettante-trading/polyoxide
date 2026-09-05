@@ -2098,7 +2098,7 @@ impl ScriptedServer {
 
     /// The subscription frames received, one per connection, in order.
     pub fn received_subscriptions(&self) -> Vec<String> {
-        self.received.lock().await.clone()
+        self.received.lock().unwrap().clone()
     }
 }
 
@@ -2111,7 +2111,7 @@ async fn serve(
 
     // The client sends its subscription frame immediately on connect.
     if let Some(Ok(Message::Text(frame))) = ws.next().await {
-        received.lock().await.push(frame.to_string());
+        received.lock().unwrap().push(frame.to_string());
     }
 
     let (frames, close_after) = match script {
