@@ -20,6 +20,7 @@
 
 pub mod decode;
 pub mod error;
+pub mod event;
 pub mod payload;
 pub mod subscription;
 pub mod topic;
@@ -29,6 +30,7 @@ pub mod topic;
 pub mod fixtures;
 
 pub use error::{Recovery, RtdsError};
+pub use event::{PriceEvent, PriceUpdate};
 pub use payload::{
     BinanceUpdate, ChainlinkSpotUpdate, DisplayPoint, ExactPoint, Snapshot, SnapshotPoints,
     TwapUpdate,
