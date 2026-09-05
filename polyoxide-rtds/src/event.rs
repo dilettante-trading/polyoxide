@@ -56,9 +56,15 @@ struct RawSnapshotPoint {
 /// The venue's error envelope, which shares no fields with a data frame.
 ///
 /// `from_json` tries this shape before `RawFrame`, which is only safe while
-/// every field here stays required. Adding `#[serde(default)]` to either
-/// field would let a real data frame parse as this envelope instead —
-/// `no_data_frame_can_be_mistaken_for_the_error_envelope` is the trip-wire.
+/// every field here stays required, so that no data frame can satisfy it.
+///
+/// Measured, rather than assumed. `body` is the load-bearing field: relaxing
+/// `status_code` alone changes nothing, because a data frame still has no
+/// `body`. Relaxing `body` alone does not compile, because
+/// [`RawServerErrorBody`] derives no `Default`. Only doing both — which means
+/// deliberately adding `#[derive(Default)]` — lets a price frame through, and
+/// that is exactly where
+/// `no_data_frame_can_be_mistaken_for_the_error_envelope` fires.
 #[derive(Deserialize)]
 struct RawServerError {
     #[serde(rename = "statusCode")]
