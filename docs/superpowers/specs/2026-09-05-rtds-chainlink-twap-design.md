@@ -416,13 +416,20 @@ poisoning.
 
 ## Open questions
 
-One, to be resolved by a live probe during implementation rather than guessed:
+**Resolved 2026-09-05 by live probe: yes.**
 
-**Does RTDS accept a second `action:"subscribe"` frame on an open connection?**
-If yes, `Rtds::subscribe_more()` mirrors the user channel's `subscribe_markets`
-and tier 2 can widen a subscription without reconnecting. If no, changing
-subscriptions means reconnecting, and the method is not added. This was not
-probed and must not be assumed either way.
+The question was whether RTDS accepts a second `action:"subscribe"` frame on an
+already-open connection. It does. A connection subscribed to
+`crypto_prices_twap_thirty` for `btc/usd` was sent a second subscribe frame
+adding `crypto_prices_chainlink`, and update frames from **both** topics
+followed on the same socket within seconds. Repeated four times across two
+sessions; no `{"body":…,"statusCode":…}` rejection was ever returned.
+
+So `Rtds::subscribe_more()` exists and mirrors the CLOB user channel's
+`subscribe_markets`: a caller can widen a subscription without reconnecting.
+The live test `reports_whether_a_second_subscribe_frame_is_accepted` pins it,
+so if the venue ever withdraws the behaviour, that shows up as a nightly
+failure rather than as a method that silently does nothing.
 
 ## Appendix: captured frames
 
