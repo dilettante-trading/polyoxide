@@ -12,11 +12,20 @@ use crate::topic::Topic;
 pub enum RtdsError {
     /// The underlying WebSocket transport failed.
     #[error("RTDS connection error: {0}")]
-    Connection(Box<tokio_tungstenite::tungstenite::Error>),
+    Connection(#[source] Box<tokio_tungstenite::tungstenite::Error>),
 
     /// A frame could not be parsed.
-    #[error("RTDS JSON error: {0}")]
-    Json(#[from] serde_json::Error),
+    ///
+    /// Retains the frame text. `serde_json`'s message gives a line and column
+    /// into bytes you would otherwise no longer have.
+    #[error("RTDS could not parse a frame: {source}; frame was: {raw}")]
+    Json {
+        /// The frame text as received.
+        raw: String,
+        /// The underlying parse failure.
+        #[source]
+        source: serde_json::Error,
+    },
 
     /// The connection closed.
     #[error("RTDS connection closed")]
@@ -69,16 +78,66 @@ impl From<tokio_tungstenite::tungstenite::Error> for RtdsError {
     }
 }
 
+/// What a caller should do about an [`RtdsError`].
+///
+/// A single boolean cannot express this. "Reconnect the transport" and "give
+/// up entirely" are different from "this one frame was bad, the connection is
+/// fine" — and collapsing the third into the second lets one unparseable
+/// frame kill a feed that is otherwise healthy.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[non_exhaustive]
+pub enum Recovery {
+    /// Reconnect and resubscribe. The connection is gone but the request is
+    /// still valid.
+    Reconnect,
+    /// Skip this frame and keep the connection. Something about one message
+    /// was wrong; the transport is healthy.
+    SkipFrame,
+    /// Give up. Retrying replays the same failure.
+    Fatal,
+}
+
 impl RtdsError {
-    /// Whether reconnecting could plausibly succeed.
+    /// Build a [`RtdsError::Json`] retaining the frame that failed to parse.
+    pub fn json(raw: impl Into<String>, source: serde_json::Error) -> Self {
+        Self::Json {
+            raw: raw.into(),
+            source,
+        }
+    }
+
+    /// What a caller should do about this error.
     ///
-    /// This gates the supervisor's retry loop. Without it, a rejected
-    /// subscription becomes an infinite reconnect at full backoff with no
-    /// output — the same failure the error was meant to surface.
-    pub fn is_recoverable(&self) -> bool {
+    /// This gates the supervisor's retry loop. Written without a wildcard arm
+    /// so a new variant fails to compile until it is classified — a default
+    /// would be a guess, and each of the three outcomes is wrong for some
+    /// variant.
+    pub fn recovery(&self) -> Recovery {
         match self {
-            Self::Connection(_) | Self::ConnectionClosed | Self::Stalled { .. } => true,
-            Self::Server { .. } | Self::Precision { .. } | Self::Json(_) | Self::Url(_) => false,
+            // Not every transport failure is transient. A bad URL, a failed
+            // TLS handshake, a rejected upgrade, a protocol-violation
+            // detection and a use-after-close are all permanent, and
+            // reconnecting into them spins at full backoff forever.
+            Self::Connection(err) => match &**err {
+                tokio_tungstenite::tungstenite::Error::Url(_)
+                | tokio_tungstenite::tungstenite::Error::Tls(_)
+                | tokio_tungstenite::tungstenite::Error::Http(_)
+                | tokio_tungstenite::tungstenite::Error::AlreadyClosed
+                | tokio_tungstenite::tungstenite::Error::AttackAttempt => Recovery::Fatal,
+                // `tungstenite::Error` is `#[non_exhaustive]`, so this match
+                // can never be exhaustive without a default. An unknown
+                // transport error is treated as transient rather than fatal:
+                // reconnecting is the recoverable guess, and a variant that
+                // turns out to be permanent just costs one extra retry cycle
+                // instead of wedging the feed shut.
+                _ => Recovery::Reconnect,
+            },
+            Self::ConnectionClosed | Self::Stalled { .. } => Recovery::Reconnect,
+            // One rejected topic zeroes every topic in the batch, so retrying
+            // replays the same silence.
+            Self::Server { .. } | Self::Url(_) => Recovery::Fatal,
+            // Frame-level: the socket is fine, this one message was not.
+            Self::Json { .. } | Self::Precision { .. } => Recovery::SkipFrame,
         }
     }
 }
@@ -95,27 +154,7 @@ mod tests {
             status_code: 401,
             message: "topic: nope and type: update not found".into(),
         };
-        assert!(!err.is_recoverable());
-    }
-
-    #[test]
-    fn transport_failures_are_recoverable() {
-        assert!(RtdsError::ConnectionClosed.is_recoverable());
-        assert!(RtdsError::Stalled {
-            elapsed: std::time::Duration::from_secs(30)
-        }
-        .is_recoverable());
-    }
-
-    #[test]
-    fn decode_failures_are_not_recoverable() {
-        // A value we cannot represent will not become representable on a
-        // reconnect, and a malformed frame means our model is wrong.
-        assert!(!RtdsError::Precision {
-            raw: "1".repeat(40),
-            topic: crate::Topic::ChainlinkSpot,
-        }
-        .is_recoverable());
+        assert_eq!(err.recovery(), Recovery::Fatal);
     }
 
     #[test]
@@ -127,5 +166,58 @@ mod tests {
         let rendered = err.to_string();
         assert!(rendered.contains("401"), "{rendered}");
         assert!(rendered.contains("not found"), "{rendered}");
+    }
+
+    #[test]
+    fn a_permanent_transport_failure_is_fatal_not_a_retry_loop() {
+        // Reconnecting after a TLS or bad-URL failure spins forever at full
+        // backoff. Retrying is not "safe by default" here.
+        let closed = RtdsError::from(tokio_tungstenite::tungstenite::Error::AlreadyClosed);
+        assert_eq!(closed.recovery(), Recovery::Fatal);
+    }
+
+    #[test]
+    fn a_transient_transport_failure_reconnects() {
+        let err = RtdsError::from(tokio_tungstenite::tungstenite::Error::ConnectionClosed);
+        assert_eq!(err.recovery(), Recovery::Reconnect);
+    }
+
+    #[test]
+    fn a_bad_frame_skips_without_killing_the_connection() {
+        // One unparseable message must not end a 24/7 feed.
+        let source = serde_json::from_str::<serde_json::Value>("{not json").unwrap_err();
+        let err = RtdsError::json("{not json", source);
+        assert_eq!(err.recovery(), Recovery::SkipFrame);
+
+        assert_eq!(
+            RtdsError::Precision {
+                raw: "1".repeat(40),
+                topic: Topic::ChainlinkSpot,
+            }
+            .recovery(),
+            Recovery::SkipFrame
+        );
+    }
+
+    #[test]
+    fn a_url_failure_is_fatal() {
+        let err = RtdsError::Url(url::ParseError::EmptyHost);
+        assert_eq!(err.recovery(), Recovery::Fatal);
+    }
+
+    #[test]
+    fn json_errors_retain_the_raw_frame_in_display() {
+        let source = serde_json::from_str::<serde_json::Value>("{not json").unwrap_err();
+        let err = RtdsError::json("{not json", source);
+        let rendered = err.to_string();
+        assert!(rendered.contains("{not json"), "{rendered}");
+    }
+
+    #[test]
+    fn connection_errors_keep_the_transport_cause_in_the_chain() {
+        use std::error::Error as _;
+
+        let err = RtdsError::from(tokio_tungstenite::tungstenite::Error::AlreadyClosed);
+        assert!(err.source().is_some());
     }
 }
