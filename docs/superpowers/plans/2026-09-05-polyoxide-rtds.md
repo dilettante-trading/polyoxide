@@ -1866,7 +1866,10 @@ fn validate_subscriptions(subscriptions: &[Subscription]) -> Result<(), RtdsErro
 /// A connected RTDS stream.
 ///
 /// Ends when the connection drops. For a feed that recovers on its own, use
-/// [`RtdsBuilder`](crate::supervisor::RtdsBuilder).
+/// the supervised tier built on top of this one. (Deliberately prose, not
+/// an intra-doc link: `supervisor` does not exist until Task 11, and a
+/// link to a missing item is a hard error under `RUSTDOCFLAGS=-D warnings`,
+/// which silently withholds the release tag. Task 11 restores the link.)
 ///
 /// # Example
 ///
@@ -2516,6 +2519,20 @@ pub mod supervisor;
 
 pub use supervisor::{RtdsBuilder, SupervisedRtds};
 ```
+
+- [ ] **Step 3b: Restore the forward doc link in `client.rs`**
+
+Task 9 had to write prose where a link belonged, because `supervisor` did not
+exist and `rustdoc::broken_intra_doc_links` is a hard error under
+`RUSTDOCFLAGS="-D warnings"` — the gate that silently withholds the release
+tag. Now that `RtdsBuilder` exists, turn it back into a link:
+
+```rust
+/// Ends when the connection drops. For a feed that recovers on its own, use
+/// [`RtdsBuilder`](crate::supervisor::RtdsBuilder).
+```
+
+Re-run `RUSTDOCFLAGS="-D warnings" cargo doc --no-deps --all-features -p polyoxide-rtds` and confirm it resolves.
 
 - [ ] **Step 4: Run the tests to verify they pass**
 
