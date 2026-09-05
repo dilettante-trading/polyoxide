@@ -28,6 +28,8 @@ RUSTDOCFLAGS="-D warnings" cargo doc --no-deps --all-features -p polyoxide-rtds
 
 The `cargo doc` gate is not optional and is easy to trip: a doc comment on a `pub` item may not use ``[`link`]`` syntax to reference a `pub(crate)` item. Doctests do not catch this. A red doc build silently withholds the release tag.
 
+**Wire the module into `lib.rs` before writing the failing test.** Several tasks below create a new module and say "write the failing test, then add the `pub mod` line to `lib.rs`". Done in that order the test does not fail — it does not *run*. An unreferenced file is never compiled, so `cargo test -p polyoxide-rtds <name>` reports `0 tests, N filtered out` and exits 0, which looks like a pass. Add the `pub mod` and `pub use` lines first, then write the test, then watch it fail to compile with `cannot find type ...`. Same end state, and it is the only ordering that produces the evidence the red-then-green step is asking for. This applies to Tasks 4, 5, 8, 9 and 11.
+
 ---
 
 ## File Structure
