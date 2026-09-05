@@ -33,6 +33,10 @@ jobs:
         #     it would report perpetual false drift.
         #   - user-pnl-api / lb-api (docs/specs/undocumented/): no published
         #     spec exists to diff against.
+        #   - RTDS AsyncAPI (docs/specs/rtds/asyncapi-live-data.json):
+        #     upstream publishes no AsyncAPI at all for ws-live-data — the
+        #     mirror is modelled entirely on captured wire frames, so there
+        #     is nothing to diff it against either.
         include:
           - { id: clob,           url: "https://docs.polymarket.com/api-spec/clob-openapi.yaml",       vendored: docs/specs/clob/openapi.yaml }
           - { id: gamma,          url: "https://docs.polymarket.com/api-spec/gamma-openapi.yaml",      vendored: docs/specs/gamma/openapi.yaml }

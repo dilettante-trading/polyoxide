@@ -1,0 +1,767 @@
+{
+  "asyncapi": "3.0.0",
+  "info": {
+    "title": "Polymarket RTDS (ws-live-data)",
+    "version": "1.0.0",
+    "description": "Public, credential-free WebSocket feed of reference crypto prices: Binance spot, Chainlink spot, and Chainlink-computed 30-second and 60-second TWAPs. Polymarket publishes prose documentation for this feed at https://docs.polymarket.com/market-data/realtime-data and https://docs.polymarket.com/market-data/chainlink-twap, but **no AsyncAPI or other machine-readable contract exists for this host** \u2014 unlike clob/gamma/data/relay/perps/bridge/combos-rfq, there is nothing upstream to mirror.\n\nThis document is instead modelled entirely on frames captured 2026-09-05 from `wss://ws-live-data.polymarket.com`, copied verbatim from `polyoxide-rtds/src/fixtures.rs` into each message's `x-observed-payload`. It records what the server does, not what a vendor promised, and it **must never be diffed against a published document** in `nightly-schema.yml` or anywhere else \u2014 there is nothing to diff it against. See `docs/specs/rtds/OBSERVED.md` for the ways the prose documentation that does exist disagrees with the server, and for behaviour the prose documentation says nothing about at all.",
+    "x-observed-connection": {
+      "captured": "2026-09-05",
+      "finding": "One connection multiplexes every subscribed topic, tagged by the envelope's `topic` and `type` fields rather than by separate WebSocket paths \u2014 a different shape from the one-connection-per-channel CLOB WebSocket in docs/specs/clob/. `update` frames carry an undocumented `connection_id`; `subscribe` (backfill) frames never do. The only non-JSON text frame ever observed is a single empty string sent immediately after connecting, before any subscribe frame is sent by the client.",
+      "x-observed-payload-empty-greeting": "",
+      "x-observed-payload-rejected-subscription": {
+        "body": {
+          "message": "leger GetTopics error: rpc error: code = NotFound desc = topic: definitely_not_a_topic and type: update not found, status: rpc error: code = NotFound desc = topic: definitely_not_a_topic and type: update not found, message: topic: definitely_not_a_topic and type: update not found"
+        },
+        "statusCode": 401
+      },
+      "rejected-subscription-note": "One unrecognised topic in a subscription array yields zero frames for every topic in that array, and this single error envelope on a disjoint shape from the normal {topic,type,timestamp,payload} envelope. The 401 status is not meaningful \u2014 the body describes a not-found."
+    }
+  },
+  "servers": {
+    "production": {
+      "host": "ws-live-data.polymarket.com",
+      "protocol": "wss",
+      "description": "Public RTDS server. No authentication. All four crypto price topics are served on this one connection; there is no per-topic path."
+    }
+  },
+  "channels": {
+    "crypto_prices": {
+      "address": "crypto_prices",
+      "title": "Binance Spot Prices",
+      "description": "Binance spot prices, multiplexed on the shared RTDS connection and identified by `topic: \"crypto_prices\"`. Not a separate WebSocket path \u2014 see `servers.production.description`.",
+      "x-observed-notes": "`full_accuracy_value` on this topic's `update` payload is a plain decimal (e.g. \"79697.73000000\"), not E18 fixed-point. Every other topic in this document (`crypto_prices_chainlink`, `crypto_prices_twap_thirty`, `crypto_prices_twap_sixty`) uses E18 for the same field name. Captured ~1 second apart reporting the same asset at the same price as `crypto_prices_chainlink`'s update (see that channel's `cryptoPricesChainlinkUpdate` message), which is the evidence the two cannot share a type: \"79697.73000000\" (plain) vs \"79696948174287960000000\" (E18).",
+      "messages": {
+        "update": {
+          "$ref": "#/components/messages/cryptoPricesUpdate"
+        },
+        "subscribe": {
+          "$ref": "#/components/messages/cryptoPricesSubscribe"
+        }
+      }
+    },
+    "crypto_prices_chainlink": {
+      "address": "crypto_prices_chainlink",
+      "title": "Chainlink Spot Prices",
+      "description": "Chainlink spot prices, multiplexed on the shared RTDS connection and identified by `topic: \"crypto_prices_chainlink\"` on `update` frames. Its `subscribe` (backfill) frame is mislabelled \u2014 see `x-observed-notes` on the `subscribe` message below.",
+      "messages": {
+        "update": {
+          "$ref": "#/components/messages/cryptoPricesChainlinkUpdate"
+        },
+        "subscribe": {
+          "$ref": "#/components/messages/cryptoPricesChainlinkSubscribe"
+        }
+      }
+    },
+    "crypto_prices_twap_thirty": {
+      "address": "crypto_prices_twap_thirty",
+      "title": "Chainlink 30s TWAP",
+      "description": "Chainlink 30-second TWAP, multiplexed on the shared RTDS connection and identified by `topic: \"crypto_prices_twap_thirty\"`. Both `update` and `subscribe` (backfill) frames on this topic carry the correct `topic` value.",
+      "messages": {
+        "update": {
+          "$ref": "#/components/messages/cryptoPricesTwapThirtyUpdate"
+        },
+        "subscribe": {
+          "$ref": "#/components/messages/cryptoPricesTwapThirtySubscribe"
+        }
+      }
+    },
+    "crypto_prices_twap_sixty": {
+      "address": "crypto_prices_twap_sixty",
+      "title": "Chainlink 60s TWAP",
+      "description": "Chainlink 60-second TWAP, multiplexed on the shared RTDS connection and identified by `topic: \"crypto_prices_twap_sixty\"`. Both `update` and `subscribe` (backfill) frames on this topic carry the correct `topic` value.",
+      "messages": {
+        "update": {
+          "$ref": "#/components/messages/cryptoPricesTwapSixtyUpdate"
+        },
+        "subscribe": {
+          "$ref": "#/components/messages/cryptoPricesTwapSixtySubscribe"
+        }
+      }
+    }
+  },
+  "operations": {
+    "receiveCryptoPricesUpdate": {
+      "action": "send",
+      "channel": {
+        "$ref": "#/channels/crypto_prices"
+      },
+      "title": "cryptoPrices update",
+      "summary": "Server pushes a live price tick to all subscribers of this topic.",
+      "messages": [
+        {
+          "$ref": "#/channels/crypto_prices/messages/update"
+        }
+      ]
+    },
+    "receiveCryptoPricesBackfill": {
+      "action": "send",
+      "channel": {
+        "$ref": "#/channels/crypto_prices"
+      },
+      "title": "cryptoPrices backfill",
+      "summary": "Server pushes a one-shot backfill immediately after the client subscribes to this topic.",
+      "messages": [
+        {
+          "$ref": "#/channels/crypto_prices/messages/subscribe"
+        }
+      ]
+    },
+    "receiveCryptoPricesChainlinkUpdate": {
+      "action": "send",
+      "channel": {
+        "$ref": "#/channels/crypto_prices_chainlink"
+      },
+      "title": "cryptoPricesChainlink update",
+      "summary": "Server pushes a live price tick to all subscribers of this topic.",
+      "messages": [
+        {
+          "$ref": "#/channels/crypto_prices_chainlink/messages/update"
+        }
+      ]
+    },
+    "receiveCryptoPricesChainlinkBackfill": {
+      "action": "send",
+      "channel": {
+        "$ref": "#/channels/crypto_prices_chainlink"
+      },
+      "title": "cryptoPricesChainlink backfill",
+      "summary": "Server pushes a one-shot backfill immediately after the client subscribes to this topic.",
+      "messages": [
+        {
+          "$ref": "#/channels/crypto_prices_chainlink/messages/subscribe"
+        }
+      ]
+    },
+    "receiveCryptoPricesTwapThirtyUpdate": {
+      "action": "send",
+      "channel": {
+        "$ref": "#/channels/crypto_prices_twap_thirty"
+      },
+      "title": "cryptoPricesTwapThirty update",
+      "summary": "Server pushes a live price tick to all subscribers of this topic.",
+      "messages": [
+        {
+          "$ref": "#/channels/crypto_prices_twap_thirty/messages/update"
+        }
+      ]
+    },
+    "receiveCryptoPricesTwapThirtyBackfill": {
+      "action": "send",
+      "channel": {
+        "$ref": "#/channels/crypto_prices_twap_thirty"
+      },
+      "title": "cryptoPricesTwapThirty backfill",
+      "summary": "Server pushes a one-shot backfill immediately after the client subscribes to this topic.",
+      "messages": [
+        {
+          "$ref": "#/channels/crypto_prices_twap_thirty/messages/subscribe"
+        }
+      ]
+    },
+    "receiveCryptoPricesTwapSixtyUpdate": {
+      "action": "send",
+      "channel": {
+        "$ref": "#/channels/crypto_prices_twap_sixty"
+      },
+      "title": "cryptoPricesTwapSixty update",
+      "summary": "Server pushes a live price tick to all subscribers of this topic.",
+      "messages": [
+        {
+          "$ref": "#/channels/crypto_prices_twap_sixty/messages/update"
+        }
+      ]
+    },
+    "receiveCryptoPricesTwapSixtyBackfill": {
+      "action": "send",
+      "channel": {
+        "$ref": "#/channels/crypto_prices_twap_sixty"
+      },
+      "title": "cryptoPricesTwapSixty backfill",
+      "summary": "Server pushes a one-shot backfill immediately after the client subscribes to this topic.",
+      "messages": [
+        {
+          "$ref": "#/channels/crypto_prices_twap_sixty/messages/subscribe"
+        }
+      ]
+    }
+  },
+  "components": {
+    "messages": {
+      "cryptoPricesUpdate": {
+        "name": "CryptoPricesUpdate",
+        "title": "Binance Spot Update",
+        "summary": "A Binance spot price tick.",
+        "contentType": "application/json",
+        "payload": {
+          "allOf": [
+            {
+              "$ref": "#/components/schemas/Envelope"
+            },
+            {
+              "type": "object",
+              "properties": {
+                "payload": {
+                  "$ref": "#/components/schemas/BinanceSpotUpdatePayload"
+                }
+              }
+            }
+          ]
+        },
+        "x-observed-payload": {
+          "captured": "2026-09-05",
+          "source": "polyoxide-rtds/src/fixtures.rs::BINANCE_UPDATE",
+          "frame": {
+            "connection_id": "gZexFa6cUWeIKEiTDA==",
+            "payload": {
+              "full_accuracy_value": "79697.73000000",
+              "symbol": "btcusdt",
+              "timestamp": 1788600389000,
+              "value": 79697.73
+            },
+            "timestamp": 1788600389154,
+            "topic": "crypto_prices",
+            "type": "update"
+          }
+        }
+      },
+      "cryptoPricesSubscribe": {
+        "name": "CryptoPricesSubscribe",
+        "title": "Binance Spot Backfill",
+        "summary": "The one-shot backfill RTDS sends immediately after subscribing to `crypto_prices`. Upstream documents \"no snapshot, history, or replay\" for TWAP; this topic sends one regardless, ~120 points (~2 minutes at 1s cadence). Truncated to 3 points below; see `polyoxide-rtds/src/fixtures.rs` for the note on the original length.",
+        "contentType": "application/json",
+        "payload": {
+          "allOf": [
+            {
+              "$ref": "#/components/schemas/Envelope"
+            },
+            {
+              "type": "object",
+              "properties": {
+                "payload": {
+                  "$ref": "#/components/schemas/BinanceSpotSnapshotPayload"
+                }
+              }
+            }
+          ]
+        },
+        "x-observed-payload": {
+          "captured": "2026-09-05",
+          "source": "polyoxide-rtds/src/fixtures.rs::BINANCE_SNAPSHOT",
+          "note": "Truncated from 120 points to 3 for this document, matching the fixture.",
+          "frame": {
+            "payload": {
+              "data": [
+                {
+                  "timestamp": 1788600269000,
+                  "value": 79697.73
+                },
+                {
+                  "timestamp": 1788600270000,
+                  "value": 79697.73
+                },
+                {
+                  "timestamp": 1788600271000,
+                  "value": 79697.73
+                }
+              ],
+              "symbol": "btcusdt"
+            },
+            "timestamp": 1788600388752,
+            "topic": "crypto_prices",
+            "type": "subscribe"
+          }
+        }
+      },
+      "cryptoPricesChainlinkUpdate": {
+        "name": "CryptoPricesChainlinkUpdate",
+        "title": "Chainlink Spot Update",
+        "summary": "A Chainlink spot price tick.",
+        "contentType": "application/json",
+        "payload": {
+          "allOf": [
+            {
+              "$ref": "#/components/schemas/Envelope"
+            },
+            {
+              "type": "object",
+              "properties": {
+                "payload": {
+                  "$ref": "#/components/schemas/ChainlinkSpotUpdatePayload"
+                }
+              }
+            }
+          ]
+        },
+        "x-observed-payload": {
+          "captured": "2026-09-05",
+          "source": "polyoxide-rtds/src/fixtures.rs::CHAINLINK_SPOT_UPDATE",
+          "note": "Captured roughly one second after crypto_prices's update, reporting the same asset at the same price, with byte-identical payload keys.",
+          "frame": {
+            "connection_id": "gZexFa6cUWeIKEiTDA==",
+            "payload": {
+              "full_accuracy_value": "79696948174287960000000",
+              "symbol": "btc/usd",
+              "timestamp": 1788600388000,
+              "value": 79696.94817428796
+            },
+            "timestamp": 1788600389451,
+            "topic": "crypto_prices_chainlink",
+            "type": "update"
+          }
+        }
+      },
+      "cryptoPricesChainlinkSubscribe": {
+        "name": "CryptoPricesChainlinkSubscribe",
+        "title": "Chainlink Spot Backfill",
+        "summary": "The one-shot backfill RTDS sends immediately after subscribing to `crypto_prices_chainlink`, ~55-59 points.",
+        "contentType": "application/json",
+        "payload": {
+          "allOf": [
+            {
+              "$ref": "#/components/schemas/Envelope"
+            },
+            {
+              "type": "object",
+              "properties": {
+                "payload": {
+                  "$ref": "#/components/schemas/ChainlinkSpotSnapshotPayload"
+                }
+              }
+            }
+          ]
+        },
+        "x-observed-payload": {
+          "captured": "2026-09-05",
+          "source": "polyoxide-rtds/src/fixtures.rs::CHAINLINK_SPOT_SNAPSHOT",
+          "note": "Truncated from 59 points to 3 for this document, matching the fixture. Captured on a connection subscribed to crypto_prices_chainlink and nothing else.",
+          "frame": {
+            "payload": {
+              "data": [
+                {
+                  "timestamp": 1788608387000,
+                  "value": 79639.20029609217
+                },
+                {
+                  "timestamp": 1788608388000,
+                  "value": 79639.18129358691
+                },
+                {
+                  "timestamp": 1788608389000,
+                  "value": 79639.19042885714
+                }
+              ],
+              "symbol": "btc/usd"
+            },
+            "timestamp": 1788608446826,
+            "topic": "crypto_prices",
+            "type": "subscribe"
+          }
+        },
+        "x-observed-notes": "MISLABELLED: this frame's own `topic` field reads \"crypto_prices\" \u2014 the Binance topic \u2014 even though it was captured on a connection subscribed only to crypto_prices_chainlink, and this channel's update frames are correctly labelled crypto_prices_chainlink (see cryptoPricesChainlinkUpdate above). Both spot topics' backfills come back under the crypto_prices label; the symbol format (\"btc/usd\" vs \"btcusdt\") is the only discriminator. See docs/specs/rtds/OBSERVED.md for the full finding; polyoxide-rtds corrects this in `correct_mislabelled_spot_snapshot`."
+      },
+      "cryptoPricesTwapThirtyUpdate": {
+        "name": "CryptoPricesTwapThirtyUpdate",
+        "title": "Chainlink 30s TWAP Update",
+        "summary": "A Chainlink 30-second time-weighted-average-price tick.",
+        "contentType": "application/json",
+        "payload": {
+          "allOf": [
+            {
+              "$ref": "#/components/schemas/Envelope"
+            },
+            {
+              "type": "object",
+              "properties": {
+                "payload": {
+                  "$ref": "#/components/schemas/ChainlinkTwapUpdatePayload"
+                }
+              }
+            }
+          ]
+        },
+        "x-observed-payload": {
+          "captured": "2026-09-05",
+          "source": "polyoxide-rtds/src/fixtures.rs::TWAP_THIRTY_UPDATE",
+          "frame": {
+            "connection_id": "gZexFa6cUWeIKEiTDA==",
+            "payload": {
+              "full_accuracy_value": "79697474565615044788224",
+              "symbol": "btc/usd",
+              "timestamp": 1788600388000,
+              "value": 79697.47456561505,
+              "window_s": 30
+            },
+            "timestamp": 1788600389537,
+            "topic": "crypto_prices_twap_thirty",
+            "type": "update"
+          }
+        }
+      },
+      "cryptoPricesTwapThirtySubscribe": {
+        "name": "CryptoPricesTwapThirtySubscribe",
+        "title": "Chainlink 30s TWAP Backfill",
+        "summary": "The one-shot backfill RTDS sends immediately after subscribing to crypto_prices_twap_thirty, ~55-59 points. Contradicts upstream's documented \"no snapshot, history, or replay\" for TWAP. Points here DO carry full_accuracy_value, unlike the two spot snapshots.",
+        "contentType": "application/json",
+        "payload": {
+          "allOf": [
+            {
+              "$ref": "#/components/schemas/Envelope"
+            },
+            {
+              "type": "object",
+              "properties": {
+                "payload": {
+                  "$ref": "#/components/schemas/ChainlinkTwapSnapshotPayload"
+                }
+              }
+            }
+          ]
+        },
+        "x-observed-payload": {
+          "captured": "2026-09-05",
+          "source": "polyoxide-rtds/src/fixtures.rs::TWAP_THIRTY_SNAPSHOT",
+          "note": "Truncated to 3 points for this document, matching the fixture. This topic's snapshot is labelled correctly, unlike crypto_prices_chainlink's.",
+          "frame": {
+            "payload": {
+              "data": [
+                {
+                  "full_accuracy_value": "79696840994573453885440",
+                  "timestamp": 1788600329000,
+                  "value": 79696.84099457346
+                },
+                {
+                  "full_accuracy_value": "79696885010084155883520",
+                  "timestamp": 1788600330000,
+                  "value": 79696.88501008415
+                },
+                {
+                  "full_accuracy_value": "79696928978311781023744",
+                  "timestamp": 1788600331000,
+                  "value": 79696.92897831179
+                }
+              ],
+              "symbol": "btc/usd",
+              "window_s": 30
+            },
+            "timestamp": 1788600388753,
+            "topic": "crypto_prices_twap_thirty",
+            "type": "subscribe"
+          }
+        }
+      },
+      "cryptoPricesTwapSixtyUpdate": {
+        "name": "CryptoPricesTwapSixtyUpdate",
+        "title": "Chainlink 60s TWAP Update",
+        "summary": "A Chainlink 60-second time-weighted-average-price tick.",
+        "contentType": "application/json",
+        "payload": {
+          "allOf": [
+            {
+              "$ref": "#/components/schemas/Envelope"
+            },
+            {
+              "type": "object",
+              "properties": {
+                "payload": {
+                  "$ref": "#/components/schemas/ChainlinkTwapUpdatePayload"
+                }
+              }
+            }
+          ]
+        },
+        "x-observed-payload": {
+          "captured": "2026-09-05",
+          "source": "polyoxide-rtds/src/fixtures.rs::TWAP_SIXTY_UPDATE",
+          "frame": {
+            "connection_id": "gZexFa6cUWeIKEiTDA==",
+            "payload": {
+              "full_accuracy_value": "79697575317474428059648",
+              "symbol": "btc/usd",
+              "timestamp": 1788600388000,
+              "value": 79697.57531747443,
+              "window_s": 60
+            },
+            "timestamp": 1788600389495,
+            "topic": "crypto_prices_twap_sixty",
+            "type": "update"
+          }
+        }
+      },
+      "cryptoPricesTwapSixtySubscribe": {
+        "name": "CryptoPricesTwapSixtySubscribe",
+        "title": "Chainlink 60s TWAP Backfill",
+        "summary": "The one-shot backfill RTDS sends immediately after subscribing to crypto_prices_twap_sixty, ~55-59 points. Contradicts upstream's documented \"no snapshot, history, or replay\" for TWAP. Points here DO carry full_accuracy_value, unlike the two spot snapshots.",
+        "contentType": "application/json",
+        "payload": {
+          "allOf": [
+            {
+              "$ref": "#/components/schemas/Envelope"
+            },
+            {
+              "type": "object",
+              "properties": {
+                "payload": {
+                  "$ref": "#/components/schemas/ChainlinkTwapSnapshotPayload"
+                }
+              }
+            }
+          ]
+        },
+        "x-observed-payload": {
+          "captured": "2026-09-05",
+          "source": "polyoxide-rtds/src/fixtures.rs::TWAP_SIXTY_SNAPSHOT",
+          "note": "Truncated to 3 points for this document, matching the fixture. This topic's snapshot is labelled correctly, unlike crypto_prices_chainlink's.",
+          "frame": {
+            "payload": {
+              "data": [
+                {
+                  "full_accuracy_value": "79639795829763498573824",
+                  "timestamp": 1788608387000,
+                  "value": 79639.7958297635
+                },
+                {
+                  "full_accuracy_value": "79639790921767903559680",
+                  "timestamp": 1788608388000,
+                  "value": 79639.7909217679
+                },
+                {
+                  "full_accuracy_value": "79639787357732704616448",
+                  "timestamp": 1788608389000,
+                  "value": 79639.78735773271
+                }
+              ],
+              "symbol": "btc/usd",
+              "window_s": 60
+            },
+            "timestamp": 1788608446825,
+            "topic": "crypto_prices_twap_sixty",
+            "type": "subscribe"
+          }
+        }
+      }
+    },
+    "schemas": {
+      "Envelope": {
+        "type": "object",
+        "description": "The frame wrapper common to every topic. `connection_id` is present on `update` frames and absent on `subscribe` (backfill) frames \u2014 observed on all four topics.",
+        "required": [
+          "topic",
+          "type",
+          "timestamp",
+          "payload"
+        ],
+        "properties": {
+          "topic": {
+            "type": "string"
+          },
+          "type": {
+            "type": "string",
+            "enum": [
+              "update",
+              "subscribe"
+            ]
+          },
+          "timestamp": {
+            "type": "integer",
+            "description": "Unix milliseconds when RTDS sent this frame."
+          },
+          "connection_id": {
+            "type": "string",
+            "description": "Undocumented. Present on `update` frames only."
+          },
+          "payload": {
+            "type": "object"
+          }
+        }
+      },
+      "DisplayPoint": {
+        "type": "object",
+        "description": "One backfill point with no exact value \u2014 the shape used by the Binance and Chainlink-spot snapshots.",
+        "required": [
+          "timestamp",
+          "value"
+        ],
+        "properties": {
+          "timestamp": {
+            "type": "integer"
+          },
+          "value": {
+            "type": "number",
+            "description": "The venue's lossy float. The only value this point carries."
+          }
+        }
+      },
+      "ExactPoint": {
+        "type": "object",
+        "description": "One backfill point with an exact value \u2014 the shape used by the two TWAP snapshots only.",
+        "required": [
+          "timestamp",
+          "value",
+          "full_accuracy_value"
+        ],
+        "properties": {
+          "timestamp": {
+            "type": "integer"
+          },
+          "value": {
+            "type": "number"
+          },
+          "full_accuracy_value": {
+            "type": "string",
+            "description": "E18 fixed-point integer string."
+          }
+        }
+      },
+      "BinanceSpotUpdatePayload": {
+        "type": "object",
+        "description": "Binance spot price payload. `full_accuracy_value` is a **plain decimal** here \u2014 the one topic where it is not E18. See `x-observed-notes` on this channel.",
+        "required": [
+          "symbol",
+          "timestamp",
+          "value",
+          "full_accuracy_value"
+        ],
+        "properties": {
+          "symbol": {
+            "type": "string",
+            "description": "e.g. `btcusdt`. Case-insensitive on subscribe despite documented lowercase-only."
+          },
+          "timestamp": {
+            "type": "integer",
+            "description": "Venue observation time, Unix milliseconds."
+          },
+          "value": {
+            "type": "number",
+            "description": "Lossy float. Never use for arithmetic."
+          },
+          "full_accuracy_value": {
+            "type": "string",
+            "description": "Plain decimal string, e.g. \"79697.73000000\"."
+          }
+        }
+      },
+      "BinanceSpotSnapshotPayload": {
+        "type": "object",
+        "description": "Binance spot backfill payload. Points carry no exact value.",
+        "required": [
+          "data",
+          "symbol"
+        ],
+        "properties": {
+          "data": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/DisplayPoint"
+            }
+          },
+          "symbol": {
+            "type": "string"
+          }
+        }
+      },
+      "ChainlinkSpotUpdatePayload": {
+        "type": "object",
+        "description": "Chainlink spot price payload. `full_accuracy_value` is E18 fixed-point.",
+        "required": [
+          "symbol",
+          "timestamp",
+          "value",
+          "full_accuracy_value"
+        ],
+        "properties": {
+          "symbol": {
+            "type": "string",
+            "description": "e.g. `btc/usd`. Case-insensitive on subscribe."
+          },
+          "timestamp": {
+            "type": "integer",
+            "description": "Venue observation time, Unix milliseconds."
+          },
+          "value": {
+            "type": "number",
+            "description": "Lossy float. Never use for arithmetic."
+          },
+          "full_accuracy_value": {
+            "type": "string",
+            "description": "E18 fixed-point integer string, e.g. \"79696948174287960000000\"."
+          }
+        }
+      },
+      "ChainlinkSpotSnapshotPayload": {
+        "type": "object",
+        "description": "Chainlink spot backfill payload. Points carry no exact value, like the Binance backfill.",
+        "required": [
+          "data",
+          "symbol"
+        ],
+        "properties": {
+          "data": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/DisplayPoint"
+            }
+          },
+          "symbol": {
+            "type": "string"
+          }
+        }
+      },
+      "ChainlinkTwapUpdatePayload": {
+        "type": "object",
+        "description": "Chainlink TWAP payload. `full_accuracy_value` is E18 fixed-point; `window_s` names the lookback window.",
+        "required": [
+          "symbol",
+          "timestamp",
+          "value",
+          "full_accuracy_value",
+          "window_s"
+        ],
+        "properties": {
+          "symbol": {
+            "type": "string",
+            "description": "e.g. `btc/usd`."
+          },
+          "timestamp": {
+            "type": "integer",
+            "description": "Venue observation time, Unix milliseconds."
+          },
+          "value": {
+            "type": "number",
+            "description": "Lossy float. Never use for arithmetic."
+          },
+          "full_accuracy_value": {
+            "type": "string",
+            "description": "E18 fixed-point integer string."
+          },
+          "window_s": {
+            "type": "integer",
+            "description": "Lookback window in seconds: 30 or 60 as observed."
+          }
+        }
+      },
+      "ChainlinkTwapSnapshotPayload": {
+        "type": "object",
+        "description": "Chainlink TWAP backfill payload \u2014 unlike the two spot topics, points here DO carry an exact value. Upstream documents \"no snapshot, history, or replay\" for TWAP; the server sends one regardless.",
+        "required": [
+          "data",
+          "symbol",
+          "window_s"
+        ],
+        "properties": {
+          "data": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/ExactPoint"
+            }
+          },
+          "symbol": {
+            "type": "string"
+          },
+          "window_s": {
+            "type": "integer"
+          }
+        }
+      }
+    }
+  }
+}

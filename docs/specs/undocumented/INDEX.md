@@ -69,8 +69,3 @@ depending on the endpoint. Rows can be sparse — only `proxyWallet` and
 }]
 ```
 
-## Known but not implemented
-
-| Host | Evidence | Notes |
-|------|----------|-------|
-| `ws-live-data.polymarket.com` | Returns `426 Upgrade Required` | A live WebSocket feed. Not described by any of the five AsyncAPI documents; payloads unexamined |
