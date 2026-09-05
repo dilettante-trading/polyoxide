@@ -24,6 +24,7 @@ pub mod error;
 pub mod event;
 pub mod payload;
 pub mod subscription;
+pub mod supervisor;
 pub mod topic;
 
 #[cfg(any(test, feature = "test-fixtures"))]
@@ -38,4 +39,5 @@ pub use payload::{
     TwapUpdate,
 };
 pub use subscription::{Subscription, SubscriptionRequest};
+pub use supervisor::{RtdsBuilder, SupervisedRtds};
 pub use topic::{Topic, TwapWindow};

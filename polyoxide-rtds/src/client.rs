@@ -47,7 +47,7 @@ fn validate_subscriptions(subscriptions: &[Subscription]) -> Result<(), RtdsErro
 /// A connected RTDS stream.
 ///
 /// Ends when the connection drops. For a feed that recovers on its own, use
-/// the supervised tier built on top of this one.
+/// [`RtdsBuilder`](crate::supervisor::RtdsBuilder).
 ///
 /// # Example
 ///

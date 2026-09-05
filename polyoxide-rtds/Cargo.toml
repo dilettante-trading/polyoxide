@@ -16,6 +16,14 @@ categories = ["api-bindings", "web-programming::websocket"]
 # for library consumers; the module is `#[doc(hidden)]`.
 test-fixtures = []
 
+[[test]]
+# Imports `fixtures`, which only exists behind `test-fixtures` (see the
+# feature comment below). Without `required-features`, a plain
+# `cargo test --all-targets` (no `--features`) would try to build this target
+# and fail with an unresolved import instead of just skipping it.
+name = "supervision"
+required-features = ["test-fixtures"]
+
 [dependencies]
 tokio = { workspace = true, features = ["macros", "net", "time", "rt"] }
 tokio-tungstenite = { workspace = true }

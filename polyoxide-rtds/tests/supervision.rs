@@ -1,0 +1,137 @@
+//! Supervision behaviour, exercised against a local scripted server.
+
+#[path = "scripted_server.rs"]
+mod scripted_server;
+
+use std::{
+    sync::{Arc, Mutex},
+    time::Duration,
+};
+
+use polyoxide_rtds::{PriceEvent, RtdsBuilder, Subscription, Topic, TwapWindow};
+use scripted_server::{Script, ScriptedServer};
+
+// The same golden vector the unit tests use, not a second copy. `fixtures`
+// is behind the `test-fixtures` feature precisely so integration tests can
+// reach it — a pasted duplicate would silently diverge on the next capture.
+use polyoxide_rtds::fixtures::TWAP_THIRTY_UPDATE as TWAP_UPDATE;
+
+fn subs() -> Vec<Subscription> {
+    Subscription::for_topic(Topic::ChainlinkTwap(TwapWindow::Thirty)).symbols(["btc/usd"])
+}
+
+#[tokio::test]
+async fn reconnects_and_resubscribes_after_a_drop() {
+    let server = ScriptedServer::start(vec![
+        Script::SendThenClose(vec![TWAP_UPDATE.into()]),
+        Script::SendThenIdle(vec![TWAP_UPDATE.into()]),
+    ])
+    .await;
+
+    let seen = Arc::new(Mutex::new(0usize));
+    let counter = Arc::clone(&seen);
+
+    let supervised = RtdsBuilder::new()
+        .url(&server.url)
+        .stale_after(Duration::from_secs(60))
+        .backoff(Duration::from_millis(10), Duration::from_millis(50))
+        .connect(subs())
+        .await
+        .expect("connect");
+
+    // Stop once we have seen an update from each of the two connections.
+    let _ = tokio::time::timeout(
+        Duration::from_secs(10),
+        supervised.run(move |event| {
+            let counter = Arc::clone(&counter);
+            async move {
+                if matches!(event, PriceEvent::Update(_)) {
+                    *counter.lock().unwrap() += 1;
+                }
+                Ok(())
+            }
+        }),
+    )
+    .await;
+
+    assert!(
+        server.connection_count() >= 2,
+        "expected a reconnect, saw {} connection(s)",
+        server.connection_count()
+    );
+    assert!(
+        *seen.lock().unwrap() >= 2,
+        "expected updates from both connections"
+    );
+
+    // The resubscribe must send the same frame, or the new connection is
+    // subscribed to nothing and goes quiet without erroring.
+    let frames = server.received_subscriptions();
+    assert!(frames.len() >= 2, "expected 2 subscription frames");
+    assert_eq!(
+        frames[0], frames[1],
+        "resubscribe must replay the original subscription exactly"
+    );
+    assert!(
+        frames[0].contains(r#"{\"symbol\":\"btc/usd\"}"#),
+        "{}",
+        frames[0]
+    );
+}
+
+#[tokio::test]
+async fn a_silent_connection_is_treated_as_dead() {
+    // The server holds the socket open and sends nothing. There is no PONG to
+    // detect this with, so only the staleness timer can.
+    let server = ScriptedServer::start(vec![Script::SendThenIdle(Vec::new())]).await;
+
+    let supervised = RtdsBuilder::new()
+        .url(&server.url)
+        .stale_after(Duration::from_millis(200))
+        .backoff(Duration::from_millis(10), Duration::from_millis(50))
+        .connect(subs())
+        .await
+        .expect("connect");
+
+    let _ = tokio::time::timeout(
+        Duration::from_secs(5),
+        supervised.run(|_event| async move { Ok(()) }),
+    )
+    .await;
+
+    assert!(
+        server.connection_count() >= 2,
+        "a stalled connection must be reconnected, saw {}",
+        server.connection_count()
+    );
+}
+
+#[tokio::test]
+async fn a_rejected_subscription_stops_instead_of_looping() {
+    // One unrecognised topic zeroes an entire batch. Retrying replays the same
+    // rejection forever, so the run loop must give up and return the error.
+    const REJECTION: &str = r#"{"body":{"message":"topic not found"},"statusCode":401}"#;
+    let server = ScriptedServer::start(vec![Script::SendThenIdle(vec![REJECTION.into()])]).await;
+
+    let supervised = RtdsBuilder::new()
+        .url(&server.url)
+        .stale_after(Duration::from_secs(60))
+        .backoff(Duration::from_millis(10), Duration::from_millis(50))
+        .connect(subs())
+        .await
+        .expect("connect");
+
+    let outcome = tokio::time::timeout(
+        Duration::from_secs(5),
+        supervised.run(|_event| async move { Ok(()) }),
+    )
+    .await
+    .expect("run must return rather than retry forever");
+
+    assert!(outcome.is_err(), "a rejected subscription must surface");
+    assert_eq!(
+        server.connection_count(),
+        1,
+        "must not reconnect into a rejected subscription"
+    );
+}
