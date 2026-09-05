@@ -109,6 +109,24 @@ impl Rtds {
         })
     }
 
+    /// Send an additional subscribe frame on an open connection.
+    ///
+    /// Whether RTDS honours this is recorded in
+    /// `docs/specs/rtds/OBSERVED.md`; see the live test that established it.
+    pub async fn subscribe_more(
+        &mut self,
+        subscriptions: impl IntoIterator<Item = Subscription>,
+    ) -> Result<(), RtdsError> {
+        let request = SubscriptionRequest::new(subscriptions);
+        validate_subscriptions(request.subscriptions())?;
+        let frame = serde_json::to_string(&request)
+            .map_err(|e| RtdsError::json(format!("{request:?}"), e))?;
+        self.inner.send(Message::Text(frame.into())).await?;
+        self.subscriptions
+            .extend(request.subscriptions().iter().cloned());
+        Ok(())
+    }
+
     /// Send the application keep-alive.
     ///
     /// RTDS documents a five-second cadence, but the connection survives far
