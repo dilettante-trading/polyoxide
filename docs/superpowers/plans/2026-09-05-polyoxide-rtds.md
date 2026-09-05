@@ -2447,6 +2447,10 @@ impl SupervisedRtds {
                     tokio::time::sleep(backoff).await;
                     backoff = (backoff * 2).min(self.config.max_backoff);
 
+                    // A *fresh* `Rtds`, never the exhausted one. `Rtds` is
+                    // not `FusedStream`, so re-polling after it has yielded
+                    // `None` is not contractually defined — and the socket is
+                    // gone anyway. Do not "optimise" this into reuse.
                     match Rtds::connect_to(&self.config.url, self.subscriptions.clone()).await {
                         Ok(stream) => {
                             self.stream = stream;
