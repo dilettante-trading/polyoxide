@@ -5,8 +5,6 @@
 //! staleness detection, resubscribe) cannot be triggered on demand against the
 //! real host.
 
-#![allow(dead_code)]
-
 use std::sync::{
     atomic::{AtomicUsize, Ordering},
     Arc, Mutex,
@@ -77,7 +75,7 @@ impl ScriptedServer {
     }
 
     /// The subscription frames received, one per connection, in order.
-    pub async fn received_subscriptions(&self) -> Vec<String> {
+    pub fn received_subscriptions(&self) -> Vec<String> {
         self.received
             .lock()
             .expect("received mutex poisoned")
@@ -122,4 +120,137 @@ async fn serve(
         }
     }
     Ok(())
+}
+
+// This file is test infrastructure for Task 11's supervision tests, not a
+// test in its own right -- but infrastructure with a bug is worse than none,
+// because a harness that silently stops accepting connections or mis-scripts
+// a connection would make Task 11's supervision tests fail in a way that
+// looks like a supervisor bug rather than a harness bug. These tests pin the
+// harness's own behaviour directly against real sockets so that failure mode
+// is ruled out.
+#[cfg(test)]
+mod tests {
+    use std::time::Duration;
+
+    use tokio::time::{sleep, timeout};
+    use tokio_tungstenite::{connect_async, MaybeTlsStream, WebSocketStream};
+
+    use super::*;
+
+    /// Connects to `url` and immediately sends `frame` as the subscription
+    /// message, mirroring what a real client does on connect.
+    async fn connect_and_subscribe(
+        url: &str,
+        frame: &str,
+    ) -> WebSocketStream<MaybeTlsStream<TcpStream>> {
+        let (mut ws, _) = connect_async(url).await.expect("connect");
+        ws.send(Message::Text(frame.to_string().into()))
+            .await
+            .expect("send subscription frame");
+        ws
+    }
+
+    #[tokio::test]
+    async fn send_then_close_delivers_its_frames_in_order_then_closes() {
+        let server = ScriptedServer::start(vec![Script::SendThenClose(vec![
+            "frame-a".to_string(),
+            "frame-b".to_string(),
+        ])])
+        .await;
+
+        let mut ws = connect_and_subscribe(&server.url, "sub-1").await;
+
+        let mut frames = Vec::new();
+        while let Some(Ok(message)) = ws.next().await {
+            match message {
+                Message::Text(text) => frames.push(text.to_string()),
+                Message::Close(_) => break,
+                other => panic!("unexpected message: {other:?}"),
+            }
+        }
+
+        assert_eq!(frames, vec!["frame-a".to_string(), "frame-b".to_string()]);
+    }
+
+    #[tokio::test]
+    async fn send_then_idle_delivers_its_frames_then_falls_silent() {
+        let server =
+            ScriptedServer::start(vec![Script::SendThenIdle(vec!["frame-c".to_string()])]).await;
+        let mut ws = connect_and_subscribe(&server.url, "sub-1").await;
+
+        let first = timeout(Duration::from_secs(2), ws.next())
+            .await
+            .expect("should receive the scripted frame promptly")
+            .expect("stream item")
+            .expect("ok message");
+        match first {
+            Message::Text(text) => assert_eq!(text.to_string(), "frame-c"),
+            other => panic!("unexpected message: {other:?}"),
+        }
+
+        let silence = timeout(Duration::from_millis(300), ws.next()).await;
+        assert!(
+            silence.is_err(),
+            "expected the connection to stay open and silent, got {silence:?}"
+        );
+    }
+
+    #[tokio::test]
+    async fn connections_beyond_the_script_list_repeat_the_last_script() {
+        let server = ScriptedServer::start(vec![
+            Script::SendThenClose(vec!["frame-a".to_string()]),
+            Script::SendThenIdle(vec!["frame-c".to_string()]),
+        ])
+        .await;
+
+        // Connections 1 and 2 consume the two scripted entries; connection 3
+        // has nothing scripted for it and must repeat the last one
+        // (SendThenIdle), which is how it differs from connection 1's close.
+        for expected in ["frame-a", "frame-c", "frame-c"] {
+            let mut ws = connect_and_subscribe(&server.url, "sub").await;
+            let message = timeout(Duration::from_secs(2), ws.next())
+                .await
+                .expect("should receive a frame promptly")
+                .expect("stream item")
+                .expect("ok message");
+            match message {
+                Message::Text(text) => assert_eq!(text.to_string(), expected),
+                other => panic!("unexpected message: {other:?}"),
+            }
+        }
+
+        assert_eq!(server.connection_count(), 3);
+    }
+
+    #[tokio::test]
+    async fn received_subscriptions_records_one_frame_per_connection_in_order() {
+        let server = ScriptedServer::start(vec![Script::SendThenIdle(Vec::new())]).await;
+
+        // Keep each socket alive; dropping it right after sending would race
+        // the server's read against the client's teardown.
+        let mut sockets = Vec::new();
+        for frame in ["sub-1", "sub-2", "sub-3"] {
+            sockets.push(connect_and_subscribe(&server.url, frame).await);
+        }
+
+        // The server records each frame on a task spawned per connection, so
+        // give it a moment to catch up rather than asserting immediately.
+        timeout(Duration::from_secs(2), async {
+            while server.received_subscriptions().len() < 3 {
+                sleep(Duration::from_millis(10)).await;
+            }
+        })
+        .await
+        .expect("server should record all three subscription frames promptly");
+
+        assert_eq!(
+            server.received_subscriptions(),
+            vec![
+                "sub-1".to_string(),
+                "sub-2".to_string(),
+                "sub-3".to_string()
+            ]
+        );
+    }
 }
