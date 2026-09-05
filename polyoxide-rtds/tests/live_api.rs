@@ -103,3 +103,107 @@ async fn reports_whether_a_second_subscribe_frame_is_accepted() {
          RTDS may not honour a second subscribe frame on an open connection"
     );
 }
+
+/// Collect the symbols seen on one subscription within a time budget.
+async fn symbols_seen(subscriptions: Vec<Subscription>, budget: Duration) -> HashSet<String> {
+    let mut stream = Rtds::connect(subscriptions).await.expect("connect");
+    let mut symbols = HashSet::new();
+    let deadline = tokio::time::Instant::now() + budget;
+
+    while tokio::time::Instant::now() < deadline {
+        match tokio::time::timeout(Duration::from_secs(5), stream.next()).await {
+            Ok(Some(Ok(PriceEvent::Update(update)))) => {
+                symbols.insert(update.symbol().to_string());
+            }
+            Ok(Some(Ok(_))) => continue,
+            Ok(Some(Err(err))) => panic!("stream error: {err}"),
+            Ok(None) => break,
+            Err(_) => continue,
+        }
+    }
+    symbols
+}
+
+/// A silent feed is ambiguous by itself: it happens both when upstream is
+/// down and when our filter encoding regresses, and a stray space in the
+/// `filters` JSON produces exactly the same symptom as an outage — the
+/// snapshot still arrives, then updates never do. This test subscribes
+/// filtered and unfiltered at once so "no frames" is only environmental when
+/// the unfiltered control is silent too; a silent filter next to a live
+/// control is a real failure.
+#[tokio::test]
+#[ignore]
+async fn the_symbol_filter_actually_binds() {
+    let topic = Topic::ChainlinkTwap(TwapWindow::Thirty);
+    let budget = Duration::from_secs(25);
+
+    let control = symbols_seen(vec![Subscription::for_topic(topic)], budget).await;
+    let filtered = symbols_seen(Subscription::for_topic(topic).symbols(["btc/usd"]), budget).await;
+
+    eprintln!("control symbols: {control:?}");
+    eprintln!("filtered symbols: {filtered:?}");
+
+    if control.is_empty() {
+        panic!(
+            "no frames on an unfiltered subscription in {budget:?}; upstream may \
+             legitimately time out"
+        );
+    }
+
+    assert!(
+        !filtered.is_empty(),
+        "the unfiltered control received {} symbol(s) but the filtered \
+         subscription received none — the filter encoding is broken, which is \
+         exactly what a stray space in `filters` looks like",
+        control.len()
+    );
+    assert_eq!(
+        filtered,
+        HashSet::from(["btc/usd".to_string()]),
+        "the filter must bind to exactly one symbol; control saw {control:?}"
+    );
+    assert!(
+        control.len() > 1,
+        "an unfiltered subscription should see several symbols, saw {control:?}"
+    );
+}
+
+/// A TWAP update's `value` must decode to a plausible BTC price. A scale
+/// error is invisible to type checking — it shows up only as a magnitude
+/// that is wrong by a power of ten (or eighteen), which is exactly what an
+/// E18 misdecode looks like.
+#[tokio::test]
+#[ignore]
+async fn twap_updates_decode_to_a_plausible_price() {
+    let budget = Duration::from_secs(20);
+    let mut stream = Rtds::connect(
+        Subscription::for_topic(Topic::ChainlinkTwap(TwapWindow::Sixty)).symbols(["btc/usd"]),
+    )
+    .await
+    .expect("connect");
+
+    let deadline = tokio::time::Instant::now() + budget;
+    while tokio::time::Instant::now() < deadline {
+        match tokio::time::timeout(Duration::from_secs(5), stream.next()).await {
+            Ok(Some(Ok(PriceEvent::Update(update)))) => {
+                // A scale error shows up here as a wildly wrong magnitude:
+                // an E18 misdecode reads ~8e-14, the reverse reads ~8e22.
+                let value = update.value();
+                eprintln!("decoded 60s BTC TWAP: {value}");
+                assert!(
+                    value > rust_decimal::Decimal::from(100u32)
+                        && value < rust_decimal::Decimal::from(10_000_000u32),
+                    "BTC TWAP decoded to {value}, which is not a plausible price — \
+                     check the E18 scale"
+                );
+                assert_eq!(update.window(), Some(TwapWindow::Sixty));
+                return;
+            }
+            Ok(Some(Ok(_))) => continue,
+            Ok(Some(Err(err))) => panic!("stream error: {err}"),
+            Ok(None) => break,
+            Err(_) => continue,
+        }
+    }
+    panic!("no TWAP updates in {budget:?}; upstream may legitimately time out");
+}
