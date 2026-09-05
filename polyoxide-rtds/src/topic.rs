@@ -10,7 +10,11 @@
 ///
 /// These are lookback windows, not publication cadences — both windows publish
 /// roughly once per second.
+///
+/// Marked `#[non_exhaustive]` because upstream could add new windows (e.g., 300
+/// seconds), and adding one later must not be a breaking change.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+#[non_exhaustive]
 pub enum TwapWindow {
     /// 30-second lookback.
     Thirty,
@@ -19,6 +23,13 @@ pub enum TwapWindow {
 }
 
 impl TwapWindow {
+    /// Every window this crate models.
+    ///
+    /// [`from_seconds`](Self::from_seconds) is derived from this and
+    /// [`seconds`](Self::seconds), so a new variant cannot be silently
+    /// unparseable — `seconds` fails to compile until it is handled.
+    pub const ALL: [Self; 2] = [Self::Thirty, Self::Sixty];
+
     /// The window length in seconds, as it appears in `payload.window_s`.
     pub fn seconds(self) -> u32 {
         match self {
@@ -28,12 +39,14 @@ impl TwapWindow {
     }
 
     /// Parse a `payload.window_s` value. Returns `None` for any other length.
+    ///
+    /// Derived from [`ALL`](Self::ALL) and [`seconds`](Self::seconds), so the
+    /// parse direction is kept in sync with the wire-to-seconds mapping by
+    /// construction rather than manual duplication.
     pub fn from_seconds(seconds: u32) -> Option<Self> {
-        match seconds {
-            30 => Some(Self::Thirty),
-            60 => Some(Self::Sixty),
-            _ => None,
-        }
+        Self::ALL
+            .into_iter()
+            .find(|window| window.seconds() == seconds)
     }
 }
 
@@ -59,6 +72,18 @@ pub enum Topic {
 }
 
 impl Topic {
+    /// Every topic this crate models.
+    ///
+    /// [`from_wire`](Self::from_wire) is derived from this and
+    /// [`as_wire`](Self::as_wire), which makes the two directions agree by
+    /// construction rather than by a test that has to remember to check.
+    pub const ALL: [Self; 4] = [
+        Self::BinanceSpot,
+        Self::ChainlinkSpot,
+        Self::ChainlinkTwap(TwapWindow::Thirty),
+        Self::ChainlinkTwap(TwapWindow::Sixty),
+    ];
+
     /// The exact string the venue expects in a subscription frame.
     pub fn as_wire(self) -> &'static str {
         match self {
@@ -73,14 +98,12 @@ impl Topic {
     ///
     /// Returns `None` for topics this crate does not model, so a frame from an
     /// unmodelled topic is skipped rather than misparsed.
+    ///
+    /// Derived from [`ALL`](Self::ALL) and [`as_wire`](Self::as_wire), so the
+    /// parse direction is kept in sync with the wire mapping by construction
+    /// rather than manual duplication.
     pub fn from_wire(wire: &str) -> Option<Self> {
-        match wire {
-            "crypto_prices" => Some(Self::BinanceSpot),
-            "crypto_prices_chainlink" => Some(Self::ChainlinkSpot),
-            "crypto_prices_twap_thirty" => Some(Self::ChainlinkTwap(TwapWindow::Thirty)),
-            "crypto_prices_twap_sixty" => Some(Self::ChainlinkTwap(TwapWindow::Sixty)),
-            _ => None,
-        }
+        Self::ALL.into_iter().find(|topic| topic.as_wire() == wire)
     }
 
     /// The TWAP window, for TWAP topics only.
@@ -112,12 +135,7 @@ mod tests {
 
     #[test]
     fn wire_strings_round_trip() {
-        for topic in [
-            Topic::BinanceSpot,
-            Topic::ChainlinkSpot,
-            Topic::ChainlinkTwap(TwapWindow::Thirty),
-            Topic::ChainlinkTwap(TwapWindow::Sixty),
-        ] {
+        for topic in Topic::ALL {
             assert_eq!(Topic::from_wire(topic.as_wire()), Some(topic));
         }
     }
@@ -134,9 +152,14 @@ mod tests {
     fn windows_carry_their_seconds() {
         assert_eq!(TwapWindow::Thirty.seconds(), 30);
         assert_eq!(TwapWindow::Sixty.seconds(), 60);
-        assert_eq!(TwapWindow::from_seconds(30), Some(TwapWindow::Thirty));
-        assert_eq!(TwapWindow::from_seconds(60), Some(TwapWindow::Sixty));
         assert_eq!(TwapWindow::from_seconds(45), None);
+    }
+
+    #[test]
+    fn every_window_round_trips_its_seconds() {
+        for window in TwapWindow::ALL {
+            assert_eq!(TwapWindow::from_seconds(window.seconds()), Some(window));
+        }
     }
 
     #[test]
@@ -147,5 +170,17 @@ mod tests {
             Topic::ChainlinkTwap(TwapWindow::Sixty).window(),
             Some(TwapWindow::Sixty)
         );
+    }
+
+    #[test]
+    fn all_lists_every_topic_exactly_once() {
+        // Guards the one manual step the compiler cannot check: adding a
+        // variant without adding it to ALL.
+        let mut wires: Vec<&str> = Topic::ALL.iter().map(|t| t.as_wire()).collect();
+        wires.sort_unstable();
+        let count = wires.len();
+        wires.dedup();
+        assert_eq!(wires.len(), count, "ALL contains a duplicate topic");
+        assert_eq!(count, 4, "ALL must list every modelled topic");
     }
 }
