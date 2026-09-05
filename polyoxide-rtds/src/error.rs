@@ -122,6 +122,10 @@ impl RtdsError {
                 tokio_tungstenite::tungstenite::Error::Url(_)
                 | tokio_tungstenite::tungstenite::Error::Tls(_)
                 | tokio_tungstenite::tungstenite::Error::Http(_)
+                // Raised when building the handshake request from an invalid
+                // header name or value — deterministic given the same inputs,
+                // so it belongs with `Http` rather than in the retry bucket.
+                | tokio_tungstenite::tungstenite::Error::HttpFormat(_)
                 | tokio_tungstenite::tungstenite::Error::AlreadyClosed
                 | tokio_tungstenite::tungstenite::Error::AttackAttempt => Recovery::Fatal,
                 // `tungstenite::Error` is `#[non_exhaustive]`, so this match
@@ -174,6 +178,20 @@ mod tests {
         // backoff. Retrying is not "safe by default" here.
         let closed = RtdsError::from(tokio_tungstenite::tungstenite::Error::AlreadyClosed);
         assert_eq!(closed.recovery(), Recovery::Fatal);
+    }
+
+    #[test]
+    fn a_malformed_handshake_request_is_fatal() {
+        // HttpFormat comes from an invalid header name or value while
+        // building the upgrade request. Same inputs produce the same failure,
+        // so retrying it is a spin, not a recovery.
+        let bad_header =
+            tokio_tungstenite::tungstenite::http::header::HeaderName::from_bytes(b"in valid")
+                .unwrap_err();
+        let err = RtdsError::from(tokio_tungstenite::tungstenite::Error::HttpFormat(
+            bad_header.into(),
+        ));
+        assert_eq!(err.recovery(), Recovery::Fatal);
     }
 
     #[test]
