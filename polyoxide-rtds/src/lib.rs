@@ -23,6 +23,9 @@ pub mod error;
 pub mod subscription;
 pub mod topic;
 
+#[cfg(test)]
+pub(crate) mod fixtures;
+
 pub use error::{Recovery, RtdsError};
 pub use subscription::{Subscription, SubscriptionRequest};
 pub use topic::{Topic, TwapWindow};

@@ -1,0 +1,125 @@
+//! Frames captured verbatim from `wss://ws-live-data.polymarket.com` on
+//! 2026-09-05.
+//!
+//! Do not edit these to make a test pass. They are what the venue actually
+//! sent, and several of them contradict Polymarket's published documentation —
+//! see `docs/specs/rtds/OBSERVED.md`. Snapshot fixtures have had their `data`
+//! arrays truncated to three points; the original lengths are noted on each.
+
+/// Binance spot update. `full_accuracy_value` is a **plain decimal**.
+pub const BINANCE_UPDATE: &str = r#"{"connection_id":"gZexFa6cUWeIKEiTDA==","payload":{"full_accuracy_value":"79697.73000000","symbol":"btcusdt","timestamp":1788600389000,"value":79697.73},"timestamp":1788600389154,"topic":"crypto_prices","type":"update"}"#;
+
+/// Chainlink spot update. `full_accuracy_value` is **E18**.
+///
+/// Captured roughly one second after [`BINANCE_UPDATE`], reporting the same
+/// asset at the same price, with byte-identical payload keys. The pair is the
+/// evidence that these two topics cannot share a type.
+pub const CHAINLINK_SPOT_UPDATE: &str = r#"{"connection_id":"gZexFa6cUWeIKEiTDA==","payload":{"full_accuracy_value":"79696948174287960000000","symbol":"btc/usd","timestamp":1788600388000,"value":79696.94817428796},"timestamp":1788600389451,"topic":"crypto_prices_chainlink","type":"update"}"#;
+
+/// 30-second TWAP update. E18, plus `window_s`.
+pub const TWAP_THIRTY_UPDATE: &str = r#"{"connection_id":"gZexFa6cUWeIKEiTDA==","payload":{"full_accuracy_value":"79697474565615044788224","symbol":"btc/usd","timestamp":1788600388000,"value":79697.47456561505,"window_s":30},"timestamp":1788600389537,"topic":"crypto_prices_twap_thirty","type":"update"}"#;
+
+/// 60-second TWAP update.
+pub const TWAP_SIXTY_UPDATE: &str = r#"{"connection_id":"gZexFa6cUWeIKEiTDA==","payload":{"full_accuracy_value":"79697575317474428059648","symbol":"btc/usd","timestamp":1788600388000,"value":79697.57531747443,"window_s":60},"timestamp":1788600389495,"topic":"crypto_prices_twap_sixty","type":"update"}"#;
+
+/// TWAP snapshot, truncated from 55 points.
+///
+/// Points carry `full_accuracy_value`, and the payload carries `window_s`.
+/// Note the envelope has **no** `connection_id` — snapshots never do.
+pub const TWAP_THIRTY_SNAPSHOT: &str = r#"{"payload":{"data":[{"full_accuracy_value":"79696840994573453885440","timestamp":1788600329000,"value":79696.84099457346},{"full_accuracy_value":"79696885010084155883520","timestamp":1788600330000,"value":79696.88501008415},{"full_accuracy_value":"79696928978311781023744","timestamp":1788600331000,"value":79696.92897831179}],"symbol":"btc/usd","window_s":30},"timestamp":1788600388753,"topic":"crypto_prices_twap_thirty","type":"subscribe"}"#;
+
+/// Binance snapshot, truncated from 120 points.
+///
+/// Points carry **no** `full_accuracy_value`, so no exact value exists in this
+/// backfill, and the payload carries no `window_s`.
+pub const BINANCE_SNAPSHOT: &str = r#"{"payload":{"data":[{"timestamp":1788600269000,"value":79697.73},{"timestamp":1788600270000,"value":79697.73},{"timestamp":1788600271000,"value":79697.73}],"symbol":"btcusdt"},"timestamp":1788600388752,"topic":"crypto_prices","type":"subscribe"}"#;
+
+/// The error frame produced by including one unrecognised topic in an
+/// otherwise valid five-topic batch. All five topics returned zero frames.
+pub const REJECTED_SUBSCRIPTION: &str = r#"{"body":{"message":"leger GetTopics error: rpc error: code = NotFound desc = topic: definitely_not_a_topic and type: update not found, status: rpc error: code = NotFound desc = topic: definitely_not_a_topic and type: update not found, message: topic: definitely_not_a_topic and type: update not found"},"statusCode":401}"#;
+
+/// The empty text frame RTDS sends immediately after the connection opens.
+#[allow(dead_code)]
+pub const EMPTY_GREETING: &str = "";
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    /// Every fixture except the greeting must be valid JSON. A stray character
+    /// introduced while copying these would otherwise surface as a confusing
+    /// parser failure several tasks later.
+    #[test]
+    fn every_fixture_is_valid_json() {
+        for (name, frame) in [
+            ("BINANCE_UPDATE", BINANCE_UPDATE),
+            ("CHAINLINK_SPOT_UPDATE", CHAINLINK_SPOT_UPDATE),
+            ("TWAP_THIRTY_UPDATE", TWAP_THIRTY_UPDATE),
+            ("TWAP_SIXTY_UPDATE", TWAP_SIXTY_UPDATE),
+            ("TWAP_THIRTY_SNAPSHOT", TWAP_THIRTY_SNAPSHOT),
+            ("BINANCE_SNAPSHOT", BINANCE_SNAPSHOT),
+            ("REJECTED_SUBSCRIPTION", REJECTED_SUBSCRIPTION),
+        ] {
+            serde_json::from_str::<serde_json::Value>(frame)
+                .unwrap_or_else(|e| panic!("{name} is not valid JSON: {e}"));
+        }
+    }
+
+    /// The whole design rests on these two frames being field-identical and
+    /// differently scaled. If a copy error broke that, every later test would
+    /// still pass while testing the wrong thing.
+    #[test]
+    fn the_two_spot_fixtures_are_field_identical_and_differently_scaled() {
+        let binance: serde_json::Value = serde_json::from_str(BINANCE_UPDATE).unwrap();
+        let chainlink: serde_json::Value = serde_json::from_str(CHAINLINK_SPOT_UPDATE).unwrap();
+
+        let mut binance_keys: Vec<&str> = binance["payload"]
+            .as_object()
+            .unwrap()
+            .keys()
+            .map(String::as_str)
+            .collect();
+        let mut chainlink_keys: Vec<&str> = chainlink["payload"]
+            .as_object()
+            .unwrap()
+            .keys()
+            .map(String::as_str)
+            .collect();
+        binance_keys.sort_unstable();
+        chainlink_keys.sort_unstable();
+        assert_eq!(
+            binance_keys, chainlink_keys,
+            "the two spot topics must have identical payload keys"
+        );
+
+        // Both report BTC at about $79,697, but one string is E18 and the
+        // other is a plain decimal.
+        assert!(binance["payload"]["full_accuracy_value"]
+            .as_str()
+            .unwrap()
+            .contains('.'));
+        assert!(!chainlink["payload"]["full_accuracy_value"]
+            .as_str()
+            .unwrap()
+            .contains('.'));
+    }
+
+    /// Only TWAP frames carry `window_s`, and only TWAP snapshots carry an
+    /// exact value per point.
+    #[test]
+    fn snapshot_fixtures_differ_in_exactly_the_way_the_design_depends_on() {
+        let twap: serde_json::Value = serde_json::from_str(TWAP_THIRTY_SNAPSHOT).unwrap();
+        let binance: serde_json::Value = serde_json::from_str(BINANCE_SNAPSHOT).unwrap();
+
+        assert_eq!(twap["payload"]["window_s"], 30);
+        assert!(binance["payload"]["window_s"].is_null());
+
+        assert!(twap["payload"]["data"][0]["full_accuracy_value"].is_string());
+        assert!(binance["payload"]["data"][0]["full_accuracy_value"].is_null());
+
+        // Snapshots carry no connection_id; updates do.
+        assert!(twap["connection_id"].is_null());
+        let update: serde_json::Value = serde_json::from_str(TWAP_THIRTY_UPDATE).unwrap();
+        assert!(update["connection_id"].is_string());
+    }
+}
