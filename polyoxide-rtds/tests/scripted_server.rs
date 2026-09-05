@@ -75,6 +75,20 @@ impl ScriptedServer {
     }
 
     /// The subscription frames received, one per connection, in order.
+    ///
+    /// **Not synchronised with [`connection_count`](Self::connection_count).**
+    /// That counter increments in the accept loop, before the per-connection
+    /// task is spawned; a frame lands here later, inside that task. So
+    /// `connection_count() == n` does not imply `received_subscriptions()`
+    /// has `n` entries yet.
+    ///
+    /// Establish happens-before some other way first — either poll this until
+    /// it reaches the length you expect, or observe a frame the server sent,
+    /// which works because [`serve`] records the subscription *before* it
+    /// sends anything.
+    ///
+    /// The `expect` cannot fire in practice: poisoning would require a panic
+    /// inside a `Vec<String>` push or clone.
     pub fn received_subscriptions(&self) -> Vec<String> {
         self.received
             .lock()
@@ -91,6 +105,12 @@ async fn serve(
     let mut ws = accept_async(stream).await?;
 
     // The client sends its subscription frame immediately on connect.
+    //
+    // Recording it BEFORE sending any scripted frames is load-bearing, not
+    // incidental. It is what lets a test treat "the client saw a frame from
+    // us" as proof that the subscription was already recorded — which is how
+    // the supervision tests avoid racing `received_subscriptions()` against
+    // `connection_count()`. Do not move this below the send loop.
     if let Some(Ok(Message::Text(frame))) = ws.next().await {
         received
             .lock()
