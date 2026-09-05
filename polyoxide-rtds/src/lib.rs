@@ -20,6 +20,7 @@
 
 pub mod decode;
 pub mod error;
+pub mod payload;
 pub mod subscription;
 pub mod topic;
 
@@ -28,5 +29,9 @@ pub mod topic;
 pub mod fixtures;
 
 pub use error::{Recovery, RtdsError};
+pub use payload::{
+    BinanceUpdate, ChainlinkSpotUpdate, DisplayPoint, ExactPoint, Snapshot, SnapshotPoints,
+    TwapUpdate,
+};
 pub use subscription::{Subscription, SubscriptionRequest};
 pub use topic::{Topic, TwapWindow};
