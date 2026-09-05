@@ -4098,6 +4098,23 @@ dependencies = [
 ]
 
 [[package]]
+name = "polyoxide-rtds"
+version = "0.28.1"
+dependencies = [
+ "futures-util",
+ "rust_decimal",
+ "rustls",
+ "serde",
+ "serde_json",
+ "thiserror 2.0.18",
+ "tokio",
+ "tokio-tungstenite",
+ "tracing",
+ "tracing-subscriber",
+ "url",
+]
+
+[[package]]
 name = "portable-atomic"
 version = "1.13.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"

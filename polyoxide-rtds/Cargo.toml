@@ -1,0 +1,32 @@
+[package]
+name = "polyoxide-rtds"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+authors.workspace = true
+repository.workspace = true
+rust-version.workspace = true
+description = "Rust client for Polymarket's Real-Time Data Service (RTDS) crypto price streams"
+keywords = ["polymarket", "websocket", "chainlink", "twap", "prices"]
+categories = ["api-bindings", "web-programming::websocket"]
+
+[dependencies]
+tokio = { workspace = true, features = ["macros", "net", "time", "rt"] }
+tokio-tungstenite = { workspace = true }
+futures-util = "0.3"
+serde = { workspace = true }
+serde_json = { workspace = true }
+rust_decimal = { workspace = true }
+thiserror = { workspace = true }
+tracing = { workspace = true }
+url = { workspace = true }
+# Needed only to install a process-default rustls CryptoProvider. See the
+# comment on `ensure_crypto_provider` in src/client.rs.
+rustls = { version = "0.23", default-features = false, features = [
+  "ring",
+  "std",
+] }
+
+[dev-dependencies]
+tokio = { workspace = true, features = ["macros", "rt-multi-thread", "time", "net"] }
+tracing-subscriber = { version = "0.3", features = ["env-filter"] }

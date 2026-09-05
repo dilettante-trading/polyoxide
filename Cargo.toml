@@ -8,6 +8,7 @@ members = [
   "polyoxide-gamma",
   "polyoxide-py",
   "polyoxide-relay",
+  "polyoxide-rtds",
 ]
 resolver = "2"
 
@@ -25,6 +26,7 @@ polyoxide-clob = { path = "polyoxide-clob", version = "0.28.1" }
 polyoxide-gamma = { path = "polyoxide-gamma", version = "0.28.1" }
 polyoxide-data = { path = "polyoxide-data", version = "0.28.1" }
 polyoxide-relay = { path = "polyoxide-relay", version = "0.28.1" }
+polyoxide-rtds = { path = "polyoxide-rtds", version = "0.28.1" }
 tokio = { version = "1.41" }
 reqwest = { version = "0.12", features = ["json", "rustls-tls"], default-features = false }
 serde = { version = "1.0", features = ["derive"] }
