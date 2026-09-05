@@ -2052,7 +2052,7 @@ pub struct ScriptedServer {
     /// How many connections have been accepted so far.
     connections: Arc<AtomicUsize>,
     /// The subscription frame received on each connection, in order.
-    received: Arc<tokio::sync::Mutex<Vec<String>>>,
+    received: Arc<std::sync::Mutex<Vec<String>>>,
 }
 
 impl ScriptedServer {
@@ -2062,7 +2062,7 @@ impl ScriptedServer {
         let listener = TcpListener::bind("127.0.0.1:0").await.expect("bind");
         let addr = listener.local_addr().expect("local_addr");
         let connections = Arc::new(AtomicUsize::new(0));
-        let received = Arc::new(tokio::sync::Mutex::new(Vec::new()));
+        let received = Arc::new(std::sync::Mutex::new(Vec::new()));
 
         let task_connections = Arc::clone(&connections);
         let task_received = Arc::clone(&received);
@@ -2097,7 +2097,7 @@ impl ScriptedServer {
     }
 
     /// The subscription frames received, one per connection, in order.
-    pub async fn received_subscriptions(&self) -> Vec<String> {
+    pub fn received_subscriptions(&self) -> Vec<String> {
         self.received.lock().await.clone()
     }
 }
@@ -2105,7 +2105,7 @@ impl ScriptedServer {
 async fn serve(
     stream: TcpStream,
     script: Script,
-    received: Arc<tokio::sync::Mutex<Vec<String>>>,
+    received: Arc<std::sync::Mutex<Vec<String>>>,
 ) -> Result<(), Box<dyn std::error::Error>> {
     let mut ws = accept_async(stream).await?;
 
@@ -2234,7 +2234,7 @@ async fn reconnects_and_resubscribes_after_a_drop() {
 
     // The resubscribe must send the same frame, or the new connection is
     // subscribed to nothing and goes quiet without erroring.
-    let frames = server.received_subscriptions().await;
+    let frames = server.received_subscriptions();
     assert!(frames.len() >= 2, "expected 2 subscription frames");
     assert_eq!(
         frames[0], frames[1],
