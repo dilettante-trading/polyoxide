@@ -80,7 +80,7 @@ jobs:
       - name: Publish crates to crates.io
         run: |
           VERSION="${{ needs.version.outputs.version }}"
-          CRATES=("polyoxide-core" "polyoxide-relay" "polyoxide-gamma" "polyoxide-data" "polyoxide-clob" "polyoxide")
+          CRATES=("polyoxide-core" "polyoxide-rtds" "polyoxide-relay" "polyoxide-gamma" "polyoxide-data" "polyoxide-clob" "polyoxide")
 
           for crate in "${CRATES[@]}"; do
             PUBLISHED=$(cargo search "$crate" --limit 1 | grep -oP "$crate = \"\K[^\"]+" || echo "0.0.0")
