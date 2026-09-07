@@ -26,6 +26,16 @@ pub enum WebSocketError {
     /// URL parse error
     #[error("URL parse error: {0}")]
     Url(#[from] url::ParseError),
+
+    /// Connecting (TCP, TLS, or WebSocket handshake) exceeded the configured
+    /// per-address timeout, and no later address succeeded either.
+    #[error("WebSocket connect to {url} timed out after {timeout:?} per address")]
+    ConnectTimeout {
+        /// The URL that was being connected to.
+        url: String,
+        /// The per-address timeout that elapsed.
+        timeout: std::time::Duration,
+    },
 }
 
 impl From<tokio_tungstenite::tungstenite::Error> for WebSocketError {

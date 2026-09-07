@@ -39,18 +39,60 @@ ENVIRONMENTAL_RE = re.compile(
     re.IGNORECASE,
 )
 
+# The transient set mirrors `ApiError::is_retriable()` in polyoxide-core, which
+# is the SDK's canonical answer to "could re-sending change this?". This script
+# cannot call it, so each arm is matched by prose instead — and every arm needs
+# *two* spellings, because a panic can render its error either way:
+#
+#   .expect("...")          formats with `{:?}`  → Debug
+#   panic!("...: {e}")      formats with `{}`    → Display
+#
+# The two disagree completely for `Network`. reqwest's Display for any
+# request-phase failure is the bare phrase "error sending request" — it never
+# names the cause — while its Debug prints the source chain, where a timeout
+# appears as the unit struct `TimedOut` and a connect failure as a hyper-util
+# error tagged `Connect`. The original table matched neither, so the genuine
+# connect timeout in issue #32 was reported as a real failure.
+#
+# Misclassifying transient-as-real is the expensive direction: it files an issue
+# immediately. The reverse is self-correcting, because `merge` promotes a
+# transient that is still failing on retry back to real.
 TRANSIENT_RES: list[re.Pattern[str]] = [
-    re.compile(r"\bHTTP 429\b", re.IGNORECASE),
-    re.compile(r"\bstatus:\s*429\b", re.IGNORECASE),
+    # ApiError::RateLimit — Display "Rate limit exceeded: {0}" spaces the words,
+    # Debug `RateLimit("…")` does not, so neither spelling matches the other.
     re.compile(r"\bToo Many Requests\b", re.IGNORECASE),
     re.compile(r"\brate limit\b", re.IGNORECASE),
-    re.compile(r"\bHTTP 5\d{2}\b", re.IGNORECASE),
-    re.compile(r"\bstatus:\s*5\d{2}\b", re.IGNORECASE),
+    re.compile(r"\bRateLimit\("),
+    # ApiError::Api { status } for 425 Too Early and 5xx, plus 429 before it is
+    # narrowed to RateLimit. Display is "API error: {status} - {message}", Debug
+    # is `Api { status: 503, .. }`, and reqwest's own status prose says "HTTP 503".
+    re.compile(r"\b(?:HTTP|status:|API error:)\s*(?:425|429|5\d{2})\b", re.IGNORECASE),
+    # ApiError::Timeout (HTTP 408) — Display "Request timeout"; Debug is the bare
+    # unit variant, matched only through the wrapper the crate errors add, since
+    # `Timeout` on its own is too common a word in ordinary panic prose.
+    re.compile(r"\brequest timeout\b", re.IGNORECASE),
+    re.compile(r"\bApi\(Timeout\)"),
+    # ApiError::Network(e) where e.is_timeout(). reqwest's marker struct and
+    # io::ErrorKind share the name, so one token covers `source: TimedOut`,
+    # `kind: TimedOut` and `Kind(TimedOut)`. Case-sensitive: the Display strings
+    # below are the separate, spaced spelling.
+    re.compile(r"\bTimedOut\b"),
+    re.compile(r"\b(?:request|operation) timed out\b", re.IGNORECASE),
+    # ApiError::Network(e) where e.is_connect(). reqwest decides this by walking
+    # its source chain for a hyper-util error whose kind is `Connect`; that type
+    # Debug-prints as a tuple named for itself with the kind first, so this
+    # matches exactly what `is_connect()` does.
+    re.compile(r"hyper_util::client::legacy::Error\(Connect\b"),
+    re.compile(r"\btcp connect error\b", re.IGNORECASE),
+    # Under Display both Network arms collapse to this one phrase — it is
+    # reqwest's entire vocabulary for a request-phase failure.
+    re.compile(r"\berror sending request\b", re.IGNORECASE),
+    # Socket-level causes, reached through either Network arm. An OS-backed
+    # io::Error carries its message in both renderings.
     re.compile(r"\bConnection refused\b", re.IGNORECASE),
     re.compile(r"\bConnection reset by peer\b", re.IGNORECASE),
     re.compile(r"\bbroken pipe\b", re.IGNORECASE),
-    re.compile(r"\brequest timed out\b", re.IGNORECASE),
-    re.compile(r"\boperation timed out\b", re.IGNORECASE),
+    # DNS, which fails before either arm can be decided.
     re.compile(r"\bDNS lookup failed\b", re.IGNORECASE),
     re.compile(r"\bfailed to lookup address\b", re.IGNORECASE),
     re.compile(r"\bname resolution failed\b", re.IGNORECASE),

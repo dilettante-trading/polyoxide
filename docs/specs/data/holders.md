@@ -43,6 +43,36 @@ the cap.
 > file byte-for-byte against Polymarket's published spec, so correcting it here
 > would manufacture permanent false drift.
 
+## `market` validation
+
+`market` is checked for shape — `0x` followed by exactly 64 hex digits — before
+anything is looked up, and **a value that fails the check is reported as if no
+value had been sent at all**:
+
+| `market` | Response |
+|----------|----------|
+| omitted | 400 `{"error":"required query param 'market' not provided"}` |
+| `` (empty) | 400, *same message* |
+| 62 hex digits | 400, *same message* |
+| 65 hex digits, or any non-hex | 400, *same message* |
+| Hash64, unknown to the index | 200, body is a bare `null` — **not** `[]` |
+| Hash64, known | 200, `MetaHolder[]` |
+
+Verified live on 2026-08-27.
+
+This matters because **`GET /trades` emits both shapes**. Most `conditionId`
+values in the trade feed are Hash64, but some are `0x` + 62 hex, zero-padded on
+the right — e.g. `0x03474f36a86039e6c40479b1844401d81a0000000000000000000000000000`.
+Feeding one of those straight from `/trades` into `/holders` therefore fails,
+and the error names the wrong cause: it says the parameter is missing when it
+was sent and malformed. Three of these were present in a 2,500-trade sample.
+
+That is what broke the 2026-08-26 nightly (issue #32): `live_holders` took
+`trades[0].condition_id` unconditionally, drew one of the 62-hex ids, and the
+"not provided" message made an upstream shape mismatch read as an SDK defect.
+`polyoxide-data/tests/live_api.rs` now probes for a market `/holders` answers
+for instead of assuming the newest trade names one.
+
 ## Errors
 
 | Code | Description |
@@ -50,6 +80,9 @@ the cap.
 | 400 | Invalid parameters (missing required fields, out-of-range values) |
 | 401 | Unauthorized |
 | 500 | Internal server error |
+
+A 400 from this endpoint does not distinguish "absent" from "malformed" — see
+the table above before concluding the client failed to send the parameter.
 
 **ErrorResponse:**
 

@@ -181,16 +181,66 @@ async fn live_user_activity() {
 
 // ── Holders ─────────────────────────────────────────────────────
 
-#[tokio::test]
-#[ignore]
-async fn live_holders() {
-    let client = client();
+/// Whether `condition_id` has the shape `GET /holders` validates `market`
+/// against: `0x` followed by exactly 64 hex digits.
+///
+/// The check runs before any lookup, and a value that fails it is reported as
+/// `required query param 'market' not provided` — the *missing*-parameter
+/// message, not a malformed-value one. A caller reading that error has no way
+/// to tell it sent a bad id rather than none.
+fn is_hash64(condition_id: &str) -> bool {
+    condition_id.len() == 66
+        && condition_id.starts_with("0x")
+        && condition_id[2..].bytes().all(|b| b.is_ascii_hexdigit())
+}
 
-    // Get a valid condition_id from recent trades
+/// Pins the shape rule above against values taken from the live trade feed.
+///
+/// Not `#[ignore]`d: it needs no network, and the reject case is the actual
+/// `conditionId` that broke `live_holders` in the 2026-08-26 nightly (issue
+/// #32) — `0x` plus 62 hex digits, zero-padded on the right.
+#[test]
+fn hash64_shape_matches_what_holders_accepts() {
+    assert!(is_hash64(
+        "0x94f56a80d387a41395ae464e5e3eb2e23d1a6032014b40590074b75aa3447f90"
+    ));
+
+    // Straight from `GET /trades`. 62 hex digits, so 64 characters, not 66.
+    assert!(!is_hash64(
+        "0x03474f36a86039e6c40479b1844401d81a0000000000000000000000000000"
+    ));
+    // Missing prefix, over-long, non-hex, and the empty string an absent field
+    // would produce — the venue rejects every one of these identically.
+    assert!(!is_hash64(
+        "94f56a80d387a41395ae464e5e3eb2e23d1a6032014b40590074b75aa3447f90"
+    ));
+    assert!(!is_hash64(
+        "0x94f56a80d387a41395ae464e5e3eb2e23d1a6032014b40590074b75aa3447f900"
+    ));
+    assert!(!is_hash64(
+        "0xZZ4f56a80d387a41395ae464e5e3eb2e23d1a6032014b40590074b75aa3447f9"
+    ));
+    assert!(!is_hash64(""));
+}
+
+/// Picks a market `GET /holders` will actually answer for.
+///
+/// Taking `trades[0].condition_id` is not enough, and assuming otherwise is
+/// what filed issue #32. The trade feed carries ids of two different shapes:
+/// most are Hash64, but some are `0x` + 62 hex, and the latter fail the
+/// `market` validation described on [`is_hash64`]. There is a second trap
+/// behind that one — a well-formed id the holders index has never seen
+/// answers with a bare `null`, which is not a valid `Vec<MarketHolders>` and
+/// so surfaces as a deserialization error rather than an empty list.
+///
+/// Neither is visible from the trade alone, so probe rather than predict.
+async fn holders_market(client: &DataApi) -> String {
+    const MAX_PROBES: usize = 10;
+
     let trades = client
         .trades()
         .list()
-        .limit(1)
+        .limit(100)
         .send()
         .await
         .expect("trades for holders test");
@@ -199,7 +249,45 @@ async fn live_holders() {
         "need at least one trade for holders test"
     );
 
-    let condition_id = &trades[0].condition_id;
+    let mut seen: Vec<String> = Vec::new();
+    for trade in &trades {
+        let condition_id = trade.condition_id.as_str();
+        if !is_hash64(condition_id) || seen.iter().any(|s| s == condition_id) {
+            continue;
+        }
+        seen.push(condition_id.to_string());
+
+        if client
+            .holders()
+            .list(vec![condition_id])
+            .limit(1)
+            .send()
+            .await
+            .is_ok()
+        {
+            return condition_id.to_string();
+        }
+        if seen.len() >= MAX_PROBES {
+            break;
+        }
+    }
+
+    panic!(
+        "no qualifying market among the {} most recent trades: probed {} \
+         distinct Hash64 condition ids and /holders answered for none. \
+         Market conditions rather than a defect, so re-run before concluding \
+         otherwise",
+        trades.len(),
+        seen.len()
+    );
+}
+
+#[tokio::test]
+#[ignore]
+async fn live_holders() {
+    let client = client();
+
+    let condition_id = holders_market(&client).await;
     let holders = client
         .holders()
         .list(vec![condition_id.as_str()])
@@ -226,17 +314,7 @@ async fn live_holders() {
 async fn live_holders_limit_bounds() {
     let client = client();
 
-    let trades = client
-        .trades()
-        .list()
-        .limit(1)
-        .send()
-        .await
-        .expect("trades for holders test");
-    let condition_id = trades
-        .first()
-        .map(|t| t.condition_id.clone())
-        .expect("need at least one trade");
+    let condition_id = holders_market(&client).await;
 
     // Omitting `limit` yields the server default of 20, not 100.
     let defaulted = client
