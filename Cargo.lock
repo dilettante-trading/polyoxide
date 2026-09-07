@@ -3948,7 +3948,7 @@ dependencies = [
 
 [[package]]
 name = "polyoxide"
-version = "0.29.0"
+version = "0.30.0"
 dependencies = [
  "futures-util",
  "polyoxide-clob",
@@ -3961,7 +3961,7 @@ dependencies = [
 
 [[package]]
 name = "polyoxide-cli"
-version = "0.29.0"
+version = "0.30.0"
 dependencies = [
  "arrow",
  "clap",
@@ -3986,7 +3986,7 @@ dependencies = [
 
 [[package]]
 name = "polyoxide-clob"
-version = "0.29.0"
+version = "0.30.0"
 dependencies = [
  "alloy",
  "dotenvy",
@@ -4013,7 +4013,7 @@ dependencies = [
 
 [[package]]
 name = "polyoxide-core"
-version = "0.29.0"
+version = "0.30.0"
 dependencies = [
  "base64",
  "fastrand",
@@ -4033,7 +4033,7 @@ dependencies = [
 
 [[package]]
 name = "polyoxide-data"
-version = "0.29.0"
+version = "0.30.0"
 dependencies = [
  "mockito",
  "polyoxide-core",
@@ -4051,7 +4051,7 @@ dependencies = [
 
 [[package]]
 name = "polyoxide-gamma"
-version = "0.29.0"
+version = "0.30.0"
 dependencies = [
  "chrono",
  "mockito",
@@ -4069,7 +4069,7 @@ dependencies = [
 
 [[package]]
 name = "polyoxide-py"
-version = "0.29.0"
+version = "0.30.0"
 dependencies = [
  "polyoxide-clob",
  "polyoxide-data",
@@ -4083,7 +4083,7 @@ dependencies = [
 
 [[package]]
 name = "polyoxide-relay"
-version = "0.29.0"
+version = "0.30.0"
 dependencies = [
  "alloy",
  "dotenvy",
@@ -4101,7 +4101,7 @@ dependencies = [
 
 [[package]]
 name = "polyoxide-rtds"
-version = "0.29.0"
+version = "0.30.0"
 dependencies = [
  "futures-util",
  "rust_decimal",

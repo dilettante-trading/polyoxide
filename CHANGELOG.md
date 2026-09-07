@@ -1,3 +1,85 @@
+## [0.30.0] - 2026-09-07
+
+Adds `polyoxide-rtds`, a client for Polymarket's Real-Time Data Service
+(`wss://ws-live-data.polymarket.com`) crypto price streams. It depends on
+nothing else in the workspace — not even `polyoxide-core` — so a
+credential-free price feed does not pull in the signing stack. Reachable from
+the unified crate under the `rtds` feature and from the CLI as
+`polyoxide ws prices`.
+
+Also carries two fixes that landed after the 0.29.0 tag was cut, and so appear
+here rather than in that release's section.
+
+### 🚀 Features
+
+- *(rtds)* Add the polyoxide-rtds crate skeleton
+- *(rtds)* Add Topic and TwapWindow with wire mappings
+- *(rtds)* Build subscription filters as compact JSON
+- *(rtds)* Add RtdsError with a recoverability classifier
+- *(rtds)* Classify errors three ways instead of two
+- *(rtds)* Decode E18 and plain decimal values without panicking
+- *(rtds)* Add per-topic payload types
+- *(rtds)* Dispatch frames into per-topic events
+- *(rtds)* Add the Rtds stream client
+- *(rtds)* Add reconnect, staleness detection, and keep-alive
+- *(rtds)* Re-export through the unified crate and add an example
+- *(cli)* Add ws prices for RTDS reference price streams
+
+### 🐛 Bug Fixes
+
+- *(rtds)* Compute the subscription struct length from its fields
+- *(rtds)* Treat a malformed handshake request as fatal
+- *(rtds)* Say what a decode failure actually was
+- *(rtds)* Make dropped frames diagnosable
+- *(rtds)* Reconnect with a fresh stream and back off a flapping host
+- *(release)* Publish polyoxide-rtds to crates.io
+- *(ci)* Match transient failures in both of a panic's error renderings
+- *(data)* Select a holders market instead of trusting the newest trade
+
+### 🚜 Refactor
+
+- *(rtds)* Derive topic and window parsing from their wire mappings
+- *(rtds)* Keep the test seam off the public API
+
+### 📚 Documentation
+
+- *(specs)* Design for the RTDS crypto price streams crate
+- *(plans)* Implementation plan for polyoxide-rtds
+- *(rtds)* Stop TwapWindow::ALL claiming a guarantee it lacks
+- *(plans)* Fix a step ordering that made red-then-green unobservable
+- *(plans)* Classify errors three ways, and keep the frame that failed
+- *(plans)* Record what SkipFrame costs when a symbol stays broken
+- *(rtds)* Correct what decode_plain actually accepts
+- *(plans)* Share the captured frames instead of pasting one
+- *(plans)* Correct the mislabelled spot snapshot in Task 8
+- *(plans)* Fix a stale test count in Task 8
+- *(rtds)* Record which field actually keeps the envelopes apart
+- *(plans)* Stop Task 9 shipping a doc link to a module that does not exist
+- *(plans)* Say why Task 11 reconnects with a fresh Rtds
+- *(plans)* Match the harness the crate's features can actually build
+- *(plans)* Finish the std Mutex swap in the harness
+- *(rtds)* Record the harness ordering the supervision tests rely on
+- *(rtds)* Say what the delivered flag does not fix
+- *(specs)* Close the design's open question — RTDS does accept resubscribe
+- *(specs)* Mirror the observed RTDS contract
+- *(rtds)* Stop claiming a fixed backfill length
+- *(rtds)* A backfill only arrives for a filtered subscription
+- *(claude)* Document polyoxide-rtds and its gotchas
+
+### 🧪 Testing
+
+- *(rtds)* Tie the topic list to the window list
+- *(rtds)* Add frames captured verbatim from the live host
+- *(rtds)* Let integration tests share the captured frames
+- *(rtds)* Assert the fixture cross-check exactly, not within 0.001
+- *(rtds)* Pin a server bug that mislabels Chainlink-spot backfills
+- *(rtds)* Add a scripted local WebSocket server
+- *(rtds)* Give the scripted server its own smoke test
+- *(rtds)* Stop the supervision tests waiting on timeouts
+- *(rtds)* Establish that RTDS accepts a second subscribe frame
+- *(rtds)* Add live tests with an unfiltered control subscription
+- *(rtds)* Cover the supervision layer, which no test could see
+
 ## [0.29.0] - 2026-08-26
 
 ### 🚀 Features

@@ -57,7 +57,7 @@ use polyoxide_core::{RateLimiter, RetryConfig};
 
 ```toml
 [dependencies]
-polyoxide-core = "0.29"
+polyoxide-core = "0.30"
 ```
 
 ## License
