@@ -31,6 +31,18 @@ pub mod topic;
 #[doc(hidden)]
 pub mod fixtures;
 
+// Gated on `cfg(test)` alone, unlike `fixtures` and `test_server`: it is built
+// on `tracing-subscriber`, a dev-dependency, so putting it behind the public
+// `test-fixtures` feature would make that feature fail to build for anyone who
+// enabled it. Nothing under `tests/` needs it today; if that changes, the fix
+// is to make `tracing-subscriber` an optional dependency of the feature.
+#[cfg(test)]
+mod test_log;
+
+#[cfg(any(test, feature = "test-fixtures"))]
+#[doc(hidden)]
+pub mod test_server;
+
 pub use client::{Rtds, RTDS_URL};
 pub use error::{Recovery, RtdsError};
 pub use event::{PriceEvent, PriceUpdate};

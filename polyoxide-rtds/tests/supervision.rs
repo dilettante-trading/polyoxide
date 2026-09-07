@@ -1,15 +1,12 @@
 //! Supervision behaviour, exercised against a local scripted server.
 
-#[path = "scripted_server.rs"]
-mod scripted_server;
-
 use std::{
     sync::{Arc, Mutex},
     time::Duration,
 };
 
+use polyoxide_rtds::test_server::{Script, ScriptedServer};
 use polyoxide_rtds::{PriceEvent, RtdsBuilder, Subscription, Topic, TwapWindow};
-use scripted_server::{Script, ScriptedServer};
 
 // The same golden vector the unit tests use, not a second copy. `fixtures`
 // is behind the `test-fixtures` feature precisely so integration tests can
@@ -159,5 +156,81 @@ async fn a_rejected_subscription_stops_instead_of_looping() {
         server.connection_count(),
         1,
         "must not reconnect into a rejected subscription"
+    );
+}
+
+/// A frame this client cannot read must not end a 24/7 feed.
+///
+/// `error.rs` proves a bad frame classifies as [`Recovery::SkipFrame`]; this
+/// proves the supervisor acts on that. Without it the classifier can be
+/// correct while `pump` still drops the connection, and the two spellings are
+/// indistinguishable from every other test in the suite.
+#[tokio::test]
+async fn a_frame_the_client_cannot_read_is_skipped_without_dropping_the_connection() {
+    // Hand-built rather than captured: the venue has never sent either of
+    // these. The first fails to parse as a frame at all (`RtdsError::Json`);
+    // the second parses but carries a plain decimal on an E18 topic
+    // (`RtdsError::Precision`). They are the two distinct routes to SkipFrame,
+    // and a `pump` that handled only one would still look correct.
+    const UNPARSEABLE: &str = "{not json";
+    const UNDECODABLE: &str = r#"{"payload":{"full_accuracy_value":"79697.47",
+        "symbol":"btc/usd","timestamp":1788600388000,"value":79697.47,"window_s":30},
+        "timestamp":1788600389537,"topic":"crypto_prices_twap_thirty","type":"update"}"#;
+
+    let server = ScriptedServer::start(vec![Script::SendThenIdle(vec![
+        TWAP_UPDATE.into(),
+        UNPARSEABLE.into(),
+        UNDECODABLE.into(),
+        TWAP_UPDATE.into(),
+        // Ends the run deliberately, so the assertions below observe a
+        // supervisor that finished rather than one cut off by a timeout.
+        polyoxide_rtds::fixtures::REJECTED_SUBSCRIPTION.into(),
+    ])])
+    .await;
+
+    let seen = Arc::new(Mutex::new(0usize));
+    let counter = Arc::clone(&seen);
+
+    let supervised = RtdsBuilder::new()
+        .url(&server.url)
+        .stale_after(Duration::from_secs(60))
+        .backoff(Duration::from_millis(10), Duration::from_millis(50))
+        .connect(subs())
+        .await
+        .expect("connect");
+
+    let outcome = tokio::time::timeout(
+        Duration::from_secs(5),
+        supervised.run(move |event| {
+            let counter = Arc::clone(&counter);
+            async move {
+                if matches!(event, PriceEvent::Update(_)) {
+                    *counter.lock().unwrap() += 1;
+                }
+                Ok(())
+            }
+        }),
+    )
+    .await
+    .expect("run must return on the rejection rather than hang");
+
+    // The run ends on the *rejection*, not on either bad frame. If a bad frame
+    // ended it, this would be Json or Precision instead.
+    match outcome {
+        Err(polyoxide_rtds::RtdsError::Server { .. }) => {}
+        other => {
+            panic!("the run must survive both bad frames and end on the rejection, got {other:?}")
+        }
+    }
+
+    assert_eq!(
+        *seen.lock().unwrap(),
+        2,
+        "both updates must arrive — the ones either side of the unreadable frames"
+    );
+    assert_eq!(
+        server.connection_count(),
+        1,
+        "a bad frame is not a bad connection; there must be no reconnect"
     );
 }

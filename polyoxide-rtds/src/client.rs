@@ -211,4 +211,216 @@ mod tests {
         let request = SubscriptionRequest::new(subs);
         assert!(validate_subscriptions(request.subscriptions()).is_ok());
     }
+
+    #[test]
+    fn a_crypto_provider_is_installed_before_any_connection_is_opened() {
+        // `connect_async` builds its TLS config from the process-wide default
+        // provider and panics if there is none. Two `rustls` backend features
+        // are enabled in this workspace, so rustls installs neither by itself
+        // — see the comment on `ensure_crypto_provider`.
+        //
+        // What this proves is narrow but real: that calling the installer
+        // leaves a provider in place. It cannot prove ordering, since any
+        // earlier `connect_to` in this binary already ran it. It fails if the
+        // `ring` feature is dropped or `install_default` stops working, which
+        // is the regression that would otherwise only surface as a panic in
+        // the nightly live run.
+        ensure_crypto_provider();
+        assert!(
+            rustls::crypto::CryptoProvider::get_default().is_some(),
+            "no default CryptoProvider; connect_async would panic"
+        );
+    }
+
+    // The tests below drive a real socket against the local scripted server.
+    // They are unit tests rather than integration tests because `connect_to`
+    // is `pub(crate)`: pointing the client at a test endpoint is not something
+    // the public API offers, and widening it just to test it would be the
+    // wrong trade.
+    mod against_a_local_server {
+        use super::*;
+        use crate::{
+            fixtures,
+            test_server::{Script, ScriptedServer},
+        };
+
+        fn subs() -> Vec<Subscription> {
+            Subscription::for_topic(Topic::ChainlinkTwap(TwapWindow::Thirty)).symbols(["btc/usd"])
+        }
+
+        async fn connected(server: &ScriptedServer) -> Rtds {
+            Rtds::connect_to(&server.url, subs())
+                .await
+                .expect("connect")
+        }
+
+        #[tokio::test]
+        async fn connecting_sends_the_subscription_frame_and_records_it() {
+            let server = ScriptedServer::start(vec![Script::SendThenIdle(Vec::new())]).await;
+            let stream = connected(&server).await;
+
+            server
+                .wait_for("the subscription frame", |s| {
+                    s.received_subscriptions().len() == 1
+                })
+                .await;
+
+            let sent = &server.received_subscriptions()[0];
+            assert!(sent.contains(r#"{\"symbol\":\"btc/usd\"}"#), "{sent}");
+            assert_eq!(
+                stream.subscriptions(),
+                subs(),
+                "the connection must remember what it subscribed to, or a \
+                 reconnect resubscribes to something else"
+            );
+        }
+
+        #[tokio::test]
+        async fn ping_sends_the_application_keepalive() {
+            // RTDS never answers a PING, so nothing about the client's own
+            // stream can tell you the frame went out. The server is the only
+            // observer.
+            let server = ScriptedServer::start(vec![Script::SendThenIdle(Vec::new())]).await;
+            let mut stream = connected(&server).await;
+
+            stream.ping().await.expect("ping");
+
+            server
+                .wait_for("a PING frame", |s| {
+                    s.client_frames().iter().any(|f| f == "PING")
+                })
+                .await;
+        }
+
+        #[tokio::test]
+        async fn subscribe_more_sends_a_second_frame_and_extends_the_set() {
+            let server = ScriptedServer::start(vec![Script::SendThenIdle(Vec::new())]).await;
+            let mut stream = connected(&server).await;
+
+            stream
+                .subscribe_more(Subscription::for_topic(Topic::ChainlinkSpot).symbols(["eth/usd"]))
+                .await
+                .expect("subscribe_more");
+
+            server
+                .wait_for("two client frames", |s| s.client_frames().len() == 2)
+                .await;
+
+            let second = &server.client_frames()[1];
+            assert!(second.contains("crypto_prices_chainlink"), "{second}");
+            assert!(second.contains(r#"{\"symbol\":\"eth/usd\"}"#), "{second}");
+
+            // A reconnect replays `subscriptions()`. If the added topic is not
+            // in there, the feed silently narrows back on the first drop.
+            assert_eq!(stream.subscriptions().len(), 2);
+            assert_eq!(stream.subscriptions()[1].topic(), Topic::ChainlinkSpot);
+            assert_eq!(stream.subscriptions()[1].symbol_filter(), Some("eth/usd"));
+        }
+
+        #[tokio::test]
+        async fn subscribe_more_refuses_an_empty_set_without_sending_anything() {
+            // An empty `subscriptions` array is answered with silence, which is
+            // indistinguishable from an idle feed. The guard has to be at the
+            // call site, not merely available.
+            let server = ScriptedServer::start(vec![Script::SendThenIdle(Vec::new())]).await;
+            let mut stream = connected(&server).await;
+            server
+                .wait_for("the subscription frame", |s| s.client_frames().len() == 1)
+                .await;
+
+            let err = stream
+                .subscribe_more(Vec::new())
+                .await
+                .expect_err("an empty subscribe_more must be refused");
+            assert!(matches!(err, RtdsError::EmptySubscription), "{err:?}");
+
+            // Give a frame that should not exist time to arrive before denying
+            // that it did.
+            tokio::time::sleep(std::time::Duration::from_millis(50)).await;
+            assert_eq!(
+                server.client_frames().len(),
+                1,
+                "nothing may go out for a refused subscribe_more"
+            );
+            assert_eq!(stream.subscriptions().len(), 1);
+        }
+
+        #[tokio::test]
+        async fn non_text_frames_are_skipped_rather_than_ending_the_stream() {
+            // A server-initiated Ping or a Binary frame must not look like the
+            // end of the feed. Nothing else in the suite drives these arms.
+            let server = ScriptedServer::start(vec![Script::SendRawThenIdle(vec![
+                Message::Ping(vec![7u8].into()),
+                Message::Pong(vec![].into()),
+                Message::Binary(vec![1u8, 2, 3].into()),
+                Message::Text(fixtures::TWAP_THIRTY_UPDATE.into()),
+            ])])
+            .await;
+            let mut stream = connected(&server).await;
+
+            let event = tokio::time::timeout(std::time::Duration::from_secs(2), stream.next())
+                .await
+                .expect("the update must arrive, not be cut off by a control frame")
+                .expect("stream must not end at a control frame")
+                .expect("the update must parse");
+
+            assert!(matches!(event, PriceEvent::Update(_)), "{event:?}");
+        }
+
+        #[tokio::test]
+        async fn greetings_and_keepalives_are_skipped_on_a_live_socket() {
+            // The unit tests prove `from_json` returns Ok(None) for these. This
+            // proves the Stream impl loops on that rather than yielding a gap
+            // the caller has to interpret.
+            let server = ScriptedServer::start(vec![Script::SendThenIdle(vec![
+                fixtures::EMPTY_GREETING.to_string(),
+                "PONG".to_string(),
+                "{}".to_string(),
+                fixtures::BINANCE_UPDATE.to_string(),
+            ])])
+            .await;
+            let mut stream = connected(&server).await;
+
+            let event = tokio::time::timeout(std::time::Duration::from_secs(2), stream.next())
+                .await
+                .expect("the update must arrive")
+                .expect("stream must not end")
+                .expect("the update must parse");
+
+            match event {
+                PriceEvent::Update(update) => assert_eq!(update.symbol(), "btcusdt"),
+                other => panic!("expected the Binance update, got {other:?}"),
+            }
+        }
+
+        #[tokio::test]
+        async fn a_server_close_ends_the_stream_after_delivering_its_frames() {
+            let server = ScriptedServer::start(vec![Script::SendThenClose(vec![
+                fixtures::TWAP_THIRTY_UPDATE.to_string(),
+            ])])
+            .await;
+            let mut stream = connected(&server).await;
+
+            assert!(matches!(
+                stream.next().await,
+                Some(Ok(PriceEvent::Update(_)))
+            ));
+            assert!(
+                stream.next().await.is_none(),
+                "a Close frame ends the stream rather than surfacing as an error"
+            );
+        }
+
+        #[tokio::test]
+        async fn close_sends_a_close_frame_to_the_server() {
+            let server = ScriptedServer::start(vec![Script::SendThenIdle(Vec::new())]).await;
+            let mut stream = connected(&server).await;
+
+            stream.close().await.expect("close");
+
+            server
+                .wait_for("a client-initiated close", |s| s.close_count() == 1)
+                .await;
+        }
+    }
 }

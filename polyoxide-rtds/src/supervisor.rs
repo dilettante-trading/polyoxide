@@ -27,6 +27,56 @@ const DEFAULT_STALE_AFTER: Duration = Duration::from_secs(30);
 const DEFAULT_INITIAL_BACKOFF: Duration = Duration::from_millis(500);
 const DEFAULT_MAX_BACKOFF: Duration = Duration::from_secs(60);
 
+/// The reconnect delay schedule.
+///
+/// Split out from [`SupervisedRtds::run`] deliberately. As three statements
+/// interleaved with a `sleep` and a live socket, the doubling and the ceiling
+/// could only be checked by timing a real reconnect — so neither was checked
+/// at all, and a schedule pinned at its initial value would have hammered an
+/// unwell host indefinitely without failing a test.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+struct Backoff {
+    initial: Duration,
+    max: Duration,
+    next: Duration,
+}
+
+impl Backoff {
+    /// A schedule starting at `initial` and doubling towards `max`.
+    ///
+    /// `initial` is clamped to `max`: [`RtdsBuilder::backoff`] takes the two
+    /// independently and nothing stops a caller passing them the wrong way
+    /// round, which would otherwise wait the larger delay once before the
+    /// ceiling took effect.
+    fn new(initial: Duration, max: Duration) -> Self {
+        let initial = initial.min(max);
+        Self {
+            initial,
+            max,
+            next: initial,
+        }
+    }
+
+    /// The delay to wait before the next attempt, advancing the schedule.
+    fn take(&mut self) -> Duration {
+        let delay = self.next;
+        self.next = (self.next * 2).min(self.max);
+        delay
+    }
+
+    /// Note that a connection ended, and whether it had done any real work.
+    ///
+    /// Resetting on `delivered` rather than on a successful connect is what
+    /// stops a host that accepts and immediately closes from pinning the delay
+    /// at its initial value forever. See [`SupervisedRtds::delivered`] for what
+    /// this does and does not cover.
+    fn after_connection_ended(&mut self, delivered: bool) {
+        if delivered {
+            self.next = self.initial;
+        }
+    }
+}
+
 /// Builder for a supervised RTDS connection.
 #[derive(Debug, Clone)]
 pub struct RtdsBuilder {
@@ -160,7 +210,7 @@ impl SupervisedRtds {
         F: FnMut(PriceEvent) -> Fut,
         Fut: Future<Output = Result<(), RtdsError>>,
     {
-        let mut backoff = self.config.initial_backoff;
+        let mut backoff = Backoff::new(self.config.initial_backoff, self.config.max_backoff);
 
         loop {
             self.delivered = false;
@@ -175,13 +225,11 @@ impl SupervisedRtds {
                 // SkipFrame ones are handled inside it, without dropping the
                 // connection. See `Recovery` in error.rs.
                 Err(err) if err.recovery() == Recovery::Reconnect => {
-                    tracing::warn!(%err, ?backoff, "RTDS connection lost, reconnecting");
-                    if self.delivered {
-                        // The connection did real work before dying, so this
-                        // is a fresh incident, not a continuation of a host
-                        // that never worked in the first place.
-                        backoff = self.config.initial_backoff;
-                    }
+                    // A connection that did real work before dying is a fresh
+                    // incident, not a continuation of a host that never worked
+                    // in the first place.
+                    backoff.after_connection_ended(self.delivered);
+                    tracing::warn!(%err, "RTDS connection lost, reconnecting");
 
                     // Retry the *connection attempt*, not the outer loop:
                     // `self.stream` is exhausted here and only the success
@@ -190,8 +238,14 @@ impl SupervisedRtds {
                     // contractually defined — and the socket is gone anyway.
                     // Do not "optimise" this into reuse.
                     loop {
-                        tokio::time::sleep(backoff).await;
-                        backoff = (backoff * 2).min(self.config.max_backoff);
+                        // Logged rather than merely slept: a delay handed to
+                        // `sleep` is otherwise unobservable, and the previous
+                        // spelling reported the wrong number twice over — the
+                        // value before the reset, then the already-doubled one
+                        // on a retry.
+                        let delay = backoff.take();
+                        tracing::debug!(?delay, "waiting before the next RTDS connection attempt");
+                        tokio::time::sleep(delay).await;
 
                         match Rtds::connect_to(&self.config.url, self.subscriptions.clone()).await {
                             Ok(stream) => {
@@ -199,11 +253,7 @@ impl SupervisedRtds {
                                 break;
                             }
                             Err(again) if again.recovery() == Recovery::Reconnect => {
-                                tracing::warn!(
-                                    %again,
-                                    ?backoff,
-                                    "RTDS reconnect attempt failed, retrying"
-                                );
+                                tracing::warn!(%again, "RTDS reconnect attempt failed, retrying");
                             }
                             Err(fatal) => return Err(fatal),
                         }
@@ -296,5 +346,284 @@ mod tests {
         assert_eq!(builder.stale_after, Duration::from_secs(2));
         assert_eq!(builder.initial_backoff, Duration::from_millis(1));
         assert_eq!(builder.max_backoff, Duration::from_millis(2));
+    }
+
+    /// The schedule as arithmetic, with no clock and no socket involved.
+    mod backoff_schedule {
+        use super::*;
+
+        fn millis(ms: u64) -> Duration {
+            Duration::from_millis(ms)
+        }
+
+        fn take_n(backoff: &mut Backoff, n: usize) -> Vec<Duration> {
+            (0..n).map(|_| backoff.take()).collect()
+        }
+
+        #[test]
+        fn the_delay_doubles_up_to_the_ceiling_and_then_holds() {
+            let mut backoff = Backoff::new(millis(10), millis(80));
+            assert_eq!(
+                take_n(&mut backoff, 6),
+                vec![
+                    millis(10),
+                    millis(20),
+                    millis(40),
+                    millis(80),
+                    millis(80),
+                    millis(80)
+                ],
+                "a schedule that stops escalating hammers a host that is \
+                 already unwell"
+            );
+        }
+
+        #[test]
+        fn the_ceiling_is_a_clamp_rather_than_a_step() {
+            // 30 doubles to 60, which is past 50 without ever equalling it. A
+            // ceiling implemented as an equality check would run away here.
+            let mut backoff = Backoff::new(millis(30), millis(50));
+            assert_eq!(
+                take_n(&mut backoff, 3),
+                vec![millis(30), millis(50), millis(50)]
+            );
+        }
+
+        #[test]
+        fn a_reset_returns_to_the_initial_delay_not_to_zero() {
+            let mut backoff = Backoff::new(millis(10), millis(80));
+            take_n(&mut backoff, 3);
+            backoff.after_connection_ended(true);
+            assert_eq!(
+                take_n(&mut backoff, 2),
+                vec![millis(10), millis(20)],
+                "a reset restarts the schedule; it does not remove the wait"
+            );
+        }
+
+        #[test]
+        fn only_a_connection_that_delivered_something_resets_the_schedule() {
+            // The distinction the `delivered` flag exists for. A host that
+            // accepts and immediately closes must keep escalating.
+            let mut escalating = Backoff::new(millis(10), millis(80));
+            let mut recovering = Backoff::new(millis(10), millis(80));
+            let (mut escalated, mut recovered) = (Vec::new(), Vec::new());
+
+            for _ in 0..4 {
+                escalating.after_connection_ended(false);
+                escalated.push(escalating.take());
+                recovering.after_connection_ended(true);
+                recovered.push(recovering.take());
+            }
+
+            assert_eq!(
+                escalated,
+                vec![millis(10), millis(20), millis(40), millis(80)]
+            );
+            assert_eq!(
+                recovered,
+                vec![millis(10), millis(10), millis(10), millis(10)]
+            );
+        }
+
+        #[test]
+        fn a_ceiling_below_the_initial_delay_is_still_honoured() {
+            // `backoff(initial, max)` takes the two independently, so nothing
+            // stops a caller swapping them. Without the clamp the first wait
+            // would be a minute regardless of the ceiling.
+            let mut backoff = Backoff::new(Duration::from_secs(60), millis(1));
+            assert_eq!(take_n(&mut backoff, 2), vec![millis(1), millis(1)]);
+
+            backoff.after_connection_ended(true);
+            assert_eq!(backoff.take(), millis(1), "a reset must respect it too");
+        }
+    }
+
+    /// The parts of supervision that only exist because RTDS fails silently:
+    /// the delay actually waited between attempts, and the keep-alive.
+    mod against_a_local_server {
+        use super::*;
+        use crate::{
+            fixtures,
+            test_log::capture_async,
+            test_server::{Script, ScriptedServer},
+            topic::{Topic, TwapWindow},
+        };
+
+        const INITIAL: Duration = Duration::from_millis(10);
+        const MAX: Duration = Duration::from_millis(80);
+
+        fn subs() -> Vec<Subscription> {
+            Subscription::for_topic(Topic::ChainlinkTwap(TwapWindow::Thirty)).symbols(["btc/usd"])
+        }
+
+        /// Run against `scripts` until it returns, collecting the delays it
+        /// waited between connection attempts.
+        ///
+        /// Every script list must end in a frame that ends the run, so the
+        /// delays observed are a complete sequence rather than however many
+        /// happened to fit inside a timeout.
+        async fn delays_while_running(scripts: Vec<Script>) -> (Vec<String>, usize) {
+            let server = ScriptedServer::start(scripts).await;
+            let supervised = RtdsBuilder::new()
+                .url(&server.url)
+                .stale_after(Duration::from_secs(60))
+                .backoff(INITIAL, MAX)
+                .connect(subs())
+                .await
+                .expect("connect");
+
+            let (outcome, logs) = capture_async(async {
+                tokio::time::timeout(
+                    Duration::from_secs(5),
+                    supervised.run(|_event| async move { Ok(()) }),
+                )
+                .await
+                .expect("the run must end on the scripted rejection, not a timeout")
+            })
+            .await;
+
+            match outcome {
+                Err(RtdsError::Server { .. }) => {}
+                other => panic!("expected the run to end on the rejection, got {other:?}"),
+            }
+            (logs.field_values("delay"), server.connection_count())
+        }
+
+        #[tokio::test]
+        async fn a_host_that_never_delivers_anything_is_backed_off_further_each_time() {
+            // Accept-and-close, three times over. Nothing is ever delivered, so
+            // the schedule must keep escalating rather than restarting.
+            let (delays, connections) = delays_while_running(vec![
+                Script::SendThenClose(Vec::new()),
+                Script::SendThenClose(Vec::new()),
+                Script::SendThenClose(Vec::new()),
+                Script::SendThenIdle(vec![fixtures::REJECTED_SUBSCRIPTION.into()]),
+            ])
+            .await;
+
+            assert_eq!(
+                delays,
+                vec!["10ms", "20ms", "40ms"],
+                "a host that never works must not hold the delay at its initial value"
+            );
+            assert_eq!(connections, 4);
+        }
+
+        #[tokio::test]
+        async fn a_host_that_delivers_before_dying_starts_the_schedule_over() {
+            // The mirror image: each connection does real work before dying,
+            // so each drop is a fresh incident and the delay must not creep up.
+            let update = fixtures::TWAP_THIRTY_UPDATE.to_string();
+            let (delays, connections) = delays_while_running(vec![
+                Script::SendThenClose(vec![update.clone()]),
+                Script::SendThenClose(vec![update.clone()]),
+                Script::SendThenClose(vec![update]),
+                Script::SendThenIdle(vec![fixtures::REJECTED_SUBSCRIPTION.into()]),
+            ])
+            .await;
+
+            assert_eq!(
+                delays,
+                vec!["10ms", "10ms", "10ms"],
+                "a connection that delivered events must reset the schedule"
+            );
+            assert_eq!(connections, 4);
+        }
+
+        #[tokio::test]
+        async fn a_refused_connection_attempt_is_retried_rather_than_surfaced() {
+            // The reconnect loop's own retry arm. The first connection works
+            // and then drops, resetting the schedule; the next two attempts are
+            // refused before the WebSocket handshake completes and must be
+            // retried, escalating, rather than ending the run.
+            let (delays, connections) = delays_while_running(vec![
+                Script::SendThenClose(vec![fixtures::TWAP_THIRTY_UPDATE.into()]),
+                Script::RejectHandshake,
+                Script::RejectHandshake,
+                Script::SendThenIdle(vec![fixtures::REJECTED_SUBSCRIPTION.into()]),
+            ])
+            .await;
+
+            assert_eq!(
+                delays,
+                vec!["10ms", "20ms", "40ms"],
+                "a refused attempt must escalate the wait, not restart it"
+            );
+            assert_eq!(
+                connections, 4,
+                "the two refused attempts must be retried, not returned"
+            );
+        }
+
+        #[tokio::test]
+        async fn the_keepalive_is_sent_once_the_stream_goes_quiet() {
+            // Nothing else in the suite reaches `pump`'s ping branch: every
+            // other test either has frames arriving or trips the staleness
+            // timer first.
+            let server = ScriptedServer::start(vec![Script::SendThenIdle(Vec::new())]).await;
+            let supervised = RtdsBuilder::new()
+                .url(&server.url)
+                .ping_interval(Duration::from_millis(20))
+                .stale_after(Duration::from_secs(60))
+                .backoff(INITIAL, MAX)
+                .connect(subs())
+                .await
+                .expect("connect");
+
+            let running = tokio::spawn(supervised.run(|_event| async move { Ok(()) }));
+            server
+                .wait_for("a PING frame", |s| {
+                    s.client_frames().iter().any(|f| f == "PING")
+                })
+                .await;
+
+            assert_eq!(
+                server.connection_count(),
+                1,
+                "the keep-alive must not have come from a reconnect"
+            );
+            running.abort();
+        }
+
+        #[tokio::test]
+        async fn a_ping_interval_past_the_staleness_window_disables_pings() {
+            // Documented on `RtdsBuilder::ping_interval`: the staleness check
+            // runs first on every idle tick, so a ping that is never due before
+            // the connection is declared dead never goes out at all.
+            let server = ScriptedServer::start(vec![
+                Script::SendThenIdle(Vec::new()),
+                Script::SendThenIdle(vec![fixtures::REJECTED_SUBSCRIPTION.into()]),
+            ])
+            .await;
+            let supervised = RtdsBuilder::new()
+                .url(&server.url)
+                .ping_interval(Duration::from_secs(10))
+                .stale_after(Duration::from_millis(60))
+                .backoff(INITIAL, MAX)
+                .connect(subs())
+                .await
+                .expect("connect");
+
+            let outcome = tokio::time::timeout(
+                Duration::from_secs(5),
+                supervised.run(|_event| async move { Ok(()) }),
+            )
+            .await
+            .expect("the staleness watchdog must fire and the run must then end");
+            assert!(outcome.is_err());
+
+            assert!(
+                server.connection_count() >= 2,
+                "the stall must have forced a reconnect, saw {}",
+                server.connection_count()
+            );
+            assert!(
+                !server.client_frames().iter().any(|f| f == "PING"),
+                "no keep-alive may go out when it is never due before the \
+                 staleness window: {:?}",
+                server.client_frames()
+            );
+        }
     }
 }

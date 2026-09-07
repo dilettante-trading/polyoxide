@@ -586,4 +586,197 @@ mod tests {
         // And the real thing still does parse.
         assert!(serde_json::from_str::<RawServerError>(fixtures::REJECTED_SUBSCRIPTION).is_ok());
     }
+
+    #[test]
+    fn an_unreadable_frame_surfaces_as_a_skippable_json_error() {
+        // Nothing else routes malformed text through `from_json`; the error
+        // tests build the variant by hand, which cannot catch `from_json`
+        // classifying it as something else — a `Server` error, say, which is
+        // Fatal and would end the feed.
+        let err = PriceEvent::from_json("{not json").unwrap_err();
+        assert!(matches!(err, RtdsError::Json { .. }), "{err:?}");
+        assert_eq!(err.recovery(), Recovery::SkipFrame);
+        assert!(err.to_string().contains("{not json"), "{err}");
+    }
+
+    #[test]
+    fn a_well_formed_frame_with_an_unreadable_payload_is_also_skippable() {
+        // The envelope parses, the payload does not. A different code path
+        // from the one above: `parse_update`'s own error, not `from_json`'s.
+        let frame = r#"{"topic":"crypto_prices","type":"update","timestamp":1,
+            "payload":{"symbol":"btcusdt"}}"#;
+        let err = PriceEvent::from_json(frame).unwrap_err();
+        assert!(matches!(err, RtdsError::Json { .. }), "{err:?}");
+        assert_eq!(err.recovery(), Recovery::SkipFrame);
+    }
+
+    #[test]
+    fn the_sixty_second_twap_snapshot_parses_as_exact_points() {
+        // The thirty-second snapshot is covered above; this fixture was only
+        // ever checked as JSON, so nothing proved the second window's backfill
+        // takes the same path.
+        let Ok(Some(PriceEvent::Snapshot(snapshot))) =
+            PriceEvent::from_json(fixtures::TWAP_SIXTY_SNAPSHOT)
+        else {
+            panic!("expected a snapshot");
+        };
+
+        assert_eq!(snapshot.topic, Topic::ChainlinkTwap(TwapWindow::Sixty));
+        assert_eq!(snapshot.published_at, 1788608446825);
+        let SnapshotPoints::Exact(points) = &snapshot.points else {
+            panic!("TWAP backfills carry full_accuracy_value, so they are Exact");
+        };
+        assert_eq!(points.len(), 3);
+        assert_eq!(points[0].value.to_string(), "79639.795829763498573824");
+        assert_eq!(points[0].raw_e18, "79639795829763498573824");
+    }
+
+    #[test]
+    fn an_empty_backfill_is_reported_as_empty_rather_than_missing() {
+        // The venue has never sent a zero-point backfill, but `SnapshotPoints`
+        // offers `len`/`is_empty` as public API and nothing exercised either.
+        let frame = r#"{"payload":{"data":[],"symbol":"btcusdt"},"timestamp":1,
+            "topic":"crypto_prices","type":"subscribe"}"#;
+        let Ok(Some(PriceEvent::Snapshot(snapshot))) = PriceEvent::from_json(frame) else {
+            panic!("an empty backfill is still a backfill");
+        };
+        assert_eq!(snapshot.points.len(), 0);
+        assert!(snapshot.points.is_empty());
+
+        // And a populated one disagrees, so the two are not both hardcoded.
+        let Ok(Some(PriceEvent::Snapshot(populated))) =
+            PriceEvent::from_json(fixtures::BINANCE_SNAPSHOT)
+        else {
+            panic!("expected a snapshot");
+        };
+        assert_eq!(populated.points.len(), 3);
+        assert!(!populated.points.is_empty());
+    }
+
+    #[test]
+    fn an_update_without_a_connection_id_reports_none() {
+        // `connection_id` is undocumented, so it may simply stop arriving.
+        // Absent must read as absent rather than failing the whole frame.
+        let frame = r#"{"payload":{"full_accuracy_value":"79697.73","symbol":"btcusdt",
+            "timestamp":1788600389000,"value":79697.73},"timestamp":1788600389154,
+            "topic":"crypto_prices","type":"update"}"#;
+        let update = update(frame);
+        assert_eq!(update.connection_id(), None);
+        assert_eq!(update.published_at(), 1788600389154);
+    }
+
+    #[test]
+    fn every_accessor_reports_the_frame_it_came_from() {
+        // The accessors are eight parallel matches over three variants. Most
+        // are only ever read for one variant, so a copy-paste slip between two
+        // arms would go unnoticed.
+        for (frame, topic, symbol, observed, published) in [
+            (
+                fixtures::CHAINLINK_SPOT_UPDATE,
+                Topic::ChainlinkSpot,
+                "btc/usd",
+                1788600388000i64,
+                1788600389451i64,
+            ),
+            (
+                fixtures::TWAP_SIXTY_UPDATE,
+                Topic::ChainlinkTwap(TwapWindow::Sixty),
+                "btc/usd",
+                1788600388000,
+                1788600389495,
+            ),
+            (
+                fixtures::BINANCE_UPDATE,
+                Topic::BinanceSpot,
+                "btcusdt",
+                1788600389000,
+                1788600389154,
+            ),
+        ] {
+            let update = update(frame);
+            assert_eq!(update.topic(), topic, "{frame}");
+            assert_eq!(update.symbol(), symbol, "{frame}");
+            assert_eq!(update.observed_at(), observed, "{frame}");
+            assert_eq!(update.published_at(), published, "{frame}");
+            assert_eq!(
+                update.connection_id(),
+                Some("gZexFa6cUWeIKEiTDA=="),
+                "{frame}"
+            );
+            assert_eq!(update.window(), topic.window(), "{frame}");
+        }
+    }
+
+    /// `warn_on_window_disagreement` only logs, so the log is the whole
+    /// observable behaviour — asserting on the parsed value proves nothing,
+    /// because the topic wins either way and the price is identical.
+    mod window_disagreement {
+        use super::*;
+
+        /// Parse `frame` with a subscriber attached and return the WARN events.
+        fn warnings_while_parsing(frame: &str) -> Vec<crate::test_log::CapturedEvent> {
+            crate::test_log::capture(|| {
+                let _ = PriceEvent::from_json(frame);
+            })
+            .at(tracing::Level::WARN)
+        }
+
+        /// A 30-second TWAP frame carrying `window_s: 60`.
+        const MISMATCHED: &str = r#"{"payload":{"full_accuracy_value":"79697474565615044788224",
+            "symbol":"btc/usd","timestamp":1788600388000,"value":79697.47456561505,"window_s":60},
+            "timestamp":1788600389537,"topic":"crypto_prices_twap_thirty","type":"update"}"#;
+
+        /// The same frame carrying a window this crate does not model at all.
+        const UNMODELLED_WINDOW: &str = r#"{"payload":{"full_accuracy_value":"79697474565615044788224",
+            "symbol":"btc/usd","timestamp":1788600388000,"value":79697.47456561505,"window_s":45},
+            "timestamp":1788600389537,"topic":"crypto_prices_twap_thirty","type":"update"}"#;
+
+        #[test]
+        fn a_healthy_frame_warns_about_nothing() {
+            // The control. Without it a `warn!` fired unconditionally would
+            // pass every assertion below.
+            assert!(
+                warnings_while_parsing(fixtures::TWAP_THIRTY_UPDATE).is_empty(),
+                "a frame whose window_s matches its topic must be silent"
+            );
+            assert!(warnings_while_parsing(fixtures::TWAP_SIXTY_UPDATE).is_empty());
+            assert!(
+                warnings_while_parsing(fixtures::BINANCE_UPDATE).is_empty(),
+                "a topic with no window cannot disagree about one"
+            );
+        }
+
+        #[test]
+        fn a_window_that_contradicts_its_topic_is_recorded() {
+            // The venue already has one proven mislabelling bug on this exact
+            // axis, so a second one must leave a trace rather than being
+            // silently overridden by the topic.
+            let warnings = warnings_while_parsing(MISMATCHED);
+            assert_eq!(warnings.len(), 1, "{warnings:?}");
+            assert!(warnings[0].has_field("expected", "30"), "{warnings:?}");
+            assert!(warnings[0].has_field("received", "60"), "{warnings:?}");
+            assert!(
+                warnings[0].has_field("symbol", "\"btc/usd\""),
+                "{warnings:?}"
+            );
+        }
+
+        #[test]
+        fn a_window_this_crate_does_not_model_is_recorded_too() {
+            // `TwapWindow::from_seconds` returns None here, a different branch
+            // from "parses, but to the wrong window".
+            let warnings = warnings_while_parsing(UNMODELLED_WINDOW);
+            assert_eq!(warnings.len(), 1, "{warnings:?}");
+            assert!(warnings[0].has_field("received", "45"), "{warnings:?}");
+        }
+
+        #[test]
+        fn the_topic_still_wins_and_the_price_is_unaffected() {
+            // Warning is the whole remedy: a disagreement must not drop a
+            // perfectly good price or relabel it.
+            let update = update(MISMATCHED);
+            assert_eq!(update.window(), Some(TwapWindow::Thirty));
+            assert_eq!(update.value().to_string(), "79697.474565615044788224");
+        }
+    }
 }

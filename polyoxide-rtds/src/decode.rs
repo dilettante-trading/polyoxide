@@ -162,6 +162,42 @@ mod tests {
     }
 
     #[test]
+    fn the_accepted_input_set_is_pinned_against_a_rust_decimal_bump() {
+        // `decode_plain`'s doc comment describes exactly what this version of
+        // `rust_decimal` accepts, and says the set is version-dependent —
+        // notably `1e5`, rejected at 1.41 and accepted at 1.43. The workspace
+        // requirement is `1.37`, so a plain `cargo update` can cross that line
+        // and quietly widen what a price feed will swallow.
+        //
+        // The comment asked a human to re-check after a bump. This makes the
+        // bump fail instead. None of the accepted forms can misinterpret a
+        // value, so the point is not that the permissiveness is wrong — it is
+        // that a change to it should be a decision rather than a side effect.
+        for accepted in ["+79697.73", "79_697.73", "-0", ".5", "5."] {
+            assert!(
+                decode_plain(accepted, Topic::BinanceSpot).is_ok(),
+                "{accepted} used to parse; rust_decimal has narrowed"
+            );
+        }
+        for rejected in [" 1", "1 ", "", "1e5", "1E5", "1,000"] {
+            assert!(
+                decode_plain(rejected, Topic::BinanceSpot).is_err(),
+                "{rejected} used to be rejected; rust_decimal has widened"
+            );
+        }
+
+        // The E18 path is unaffected by any of this: it parses an `i128` and
+        // never hands a string to `Decimal::from_str`.
+        assert!(decode_e18("+1", Topic::ChainlinkSpot).is_ok());
+        for rejected in ["1_0", ".5", "1e5", "79697.47"] {
+            assert!(
+                decode_e18(rejected, Topic::ChainlinkSpot).is_err(),
+                "{rejected} must not parse as an E18 integer"
+            );
+        }
+    }
+
+    #[test]
     fn cheap_edge_cases() {
         assert_eq!(
             decode_e18("1", Topic::ChainlinkSpot).unwrap().to_string(),

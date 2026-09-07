@@ -212,6 +212,43 @@ mod tests {
     }
 
     #[test]
+    fn the_accessors_report_what_the_subscription_was_built_from() {
+        // A reconnect resubscribes from these, and `SupervisedRtds` compares
+        // nothing — whatever they say is what the new connection asks for.
+        let unfiltered = Subscription::for_topic(Topic::BinanceSpot);
+        assert_eq!(unfiltered.topic(), Topic::BinanceSpot);
+        assert_eq!(unfiltered.symbol_filter(), None);
+
+        let filtered = Subscription::for_topic(Topic::ChainlinkSpot).symbol("btc/usd");
+        assert_eq!(filtered.topic(), Topic::ChainlinkSpot);
+        assert_eq!(filtered.symbol_filter(), Some("btc/usd"));
+
+        // `symbol` replaces rather than accumulates.
+        let replaced = filtered.symbol("eth/usd");
+        assert_eq!(replaced.symbol_filter(), Some("eth/usd"));
+    }
+
+    #[test]
+    fn symbols_fans_out_from_the_topic_and_discards_a_prior_symbol() {
+        // Documented behaviour with a sharp edge: `.symbol("btc/usd")` before
+        // `.symbols([...])` looks additive and is not. Silently keeping it
+        // would subscribe to a symbol the caller did not list.
+        let subs = Subscription::for_topic(Topic::BinanceSpot)
+            .symbol("btcusdt")
+            .symbols(["ethusdt", "solusdt"]);
+
+        assert_eq!(subs.len(), 2);
+        assert_eq!(
+            subs.iter()
+                .map(Subscription::symbol_filter)
+                .collect::<Vec<_>>(),
+            vec![Some("ethusdt"), Some("solusdt")],
+            "the symbol set by `symbol` must not survive a `symbols` fan-out"
+        );
+        assert!(subs.iter().all(|s| s.topic() == Topic::BinanceSpot));
+    }
+
+    #[test]
     fn a_symbol_needing_escaping_survives_the_nested_encoding() {
         // `filters` is JSON inside a JSON string, so a symbol containing a
         // quote or backslash gets escaped twice. No real Polymarket symbol
