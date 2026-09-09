@@ -407,6 +407,36 @@ ws.run(|msg| async move {
 # }
 ```
 
+#### Changing membership on a live socket
+
+Both channels accept subscription updates without reconnecting. On a plain
+`WebSocket`, `subscribe_assets` / `unsubscribe_assets` (market channel) and
+`subscribe_markets` / `unsubscribe_markets` (user channel) send the frame
+directly. While `run` drives a `WebSocketWithPing`, take a `MembershipHandle`
+**before** calling `run`:
+
+```rust
+# async fn doctest() -> Result<(), Box<dyn std::error::Error>> {
+use polyoxide_clob::ws::WebSocketBuilder;
+use std::time::Duration;
+
+let ws = WebSocketBuilder::new()
+    .ping_interval(Duration::from_secs(10))
+    .connect_market(vec!["asset_id".to_string()])
+    .await?;
+let membership = ws.membership();
+tokio::spawn(ws.run(|_msg| async { Ok(()) }));
+
+// Later — the venue answers with a `book` snapshot for the new asset.
+membership.subscribe_assets(vec!["another_asset_id".to_string()]).await?;
+# Ok(())
+# }
+```
+
+An asset already on the socket gets no snapshot on a repeated subscribe;
+unsubscribe it first to force one. See `MarketSubscriptionUpdate` for the
+verified venue behaviour.
+
 ## License
 
 Licensed under either of [MIT](../LICENSE-MIT) or [Apache-2.0](../LICENSE-APACHE) at your option.

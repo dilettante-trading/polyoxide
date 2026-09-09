@@ -464,7 +464,9 @@ impl WebSocket {
     /// reconnecting.
     ///
     /// The venue answers with a `book` snapshot for each newly added asset
-    /// (~155 ms); an asset already on the socket gets nothing.
+    /// (~155 ms); an asset already on the socket gets nothing — to force a
+    /// snapshot for one, [`unsubscribe_assets`](Self::unsubscribe_assets) it
+    /// first (see [`MarketSubscriptionUpdate`]).
     ///
     /// Market channel only.
     ///
@@ -730,7 +732,9 @@ pub struct MembershipHandle {
 impl MembershipHandle {
     /// Start receiving market events for additional assets. The venue answers
     /// with a `book` snapshot for each newly added asset; an asset already on
-    /// the socket gets nothing.
+    /// the socket gets nothing — to force a snapshot for one,
+    /// [`unsubscribe_assets`](Self::unsubscribe_assets) it first (see
+    /// [`MarketSubscriptionUpdate`]).
     pub async fn subscribe_assets(&self, assets: Vec<String>) -> Result<(), WebSocketError> {
         self.send_market_update(MarketSubscriptionUpdate::subscribe(assets))
             .await
@@ -773,6 +777,9 @@ impl WebSocketWithPing {
 
     /// A handle for changing this connection's market subscription while
     /// [`run`](Self::run) drives it. Take it before calling `run`.
+    ///
+    /// Market channel only: a handle taken from a user-channel connection
+    /// returns [`WebSocketError::InvalidMessage`] on every send.
     pub fn membership(&self) -> MembershipHandle {
         MembershipHandle {
             tx: self.outbound_tx.clone(),
@@ -1214,7 +1221,11 @@ mod membership_tests {
         let handle = ws.membership();
         let run = tokio::spawn(ws.run(|_| async { Ok(()) }));
         handle.subscribe_assets(vec!["b".into()]).await.unwrap();
-        run.await.unwrap().unwrap();
+        tokio::time::timeout(Duration::from_secs(2), run)
+            .await
+            .expect("must not hang")
+            .unwrap()
+            .unwrap();
 
         let err = tokio::time::timeout(
             Duration::from_secs(1),
