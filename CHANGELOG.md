@@ -1,3 +1,32 @@
+## [0.31.0] - 2026-09-09
+
+The CLOB market channel can change membership on a live socket. The venue
+has always accepted `{"operation":"subscribe"|"unsubscribe","assets_ids":[…]}`
+on the market channel (it is `SubscriptionRequestUpdate` in
+`asyncapi-market.json`), but the crate gated subscription updates to the user
+channel. `WebSocket::subscribe_assets` / `unsubscribe_assets` send the frame
+on a plain socket, and a `MembershipHandle` (from
+`WebSocketWithPing::membership`, taken before `run`) sends it while the ping
+loop drives the connection. Verified live on 2026-09-09: an added asset gets a
+fresh `book` in ~155 ms, a duplicate add gets nothing (unsubscribe then
+subscribe to force a snapshot), and an empty-membership socket stays open
+under the 10 s `PING`.
+
+Breaking: `WebSocketError` is not `#[non_exhaustive]` and gains
+`MembershipClosed`, so exhaustive matches must add an arm. Everything else in
+the workspace is byte-identical to 0.30.0.
+
+### 🚀 Features
+
+- *(clob)* Add the market-channel MarketSubscriptionUpdate frame
+- *(clob)* [**breaking**] Market-channel subscribe_assets/unsubscribe_assets on WebSocket
+- *(clob)* MembershipHandle sends market subscription updates while run pumps
+
+### 📚 Documentation
+
+- *(clob)* The market channel changes membership on a live socket
+- *(clob)* Membership() is market-only, name the duplicate-add remedy, README section for live membership
+
 ## [0.30.0] - 2026-09-07
 
 Adds `polyoxide-rtds`, a client for Polymarket's Real-Time Data Service

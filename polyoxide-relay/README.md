@@ -13,7 +13,7 @@ More information about this crate can be found in the [crate documentation](http
 
 ```toml
 [dependencies]
-polyoxide-relay = "0.30"
+polyoxide-relay = "0.31"
 ```
 
 The relay client is not bundled into the unified `polyoxide` crate (which covers CLOB, Gamma, and Data). Depend on `polyoxide-relay` directly to use it.
