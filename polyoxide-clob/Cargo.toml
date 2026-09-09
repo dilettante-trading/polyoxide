@@ -19,6 +19,7 @@ ws = [
     "dep:rustls",
     "tokio/net",
     "tokio/macros",
+    "tokio/sync",
 ]
 keychain = ["polyoxide-core/keychain"]
 

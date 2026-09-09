@@ -25,6 +25,11 @@ use super::{
 /// Maximum number of subscriptions per WebSocket connection.
 const MAX_SUBSCRIPTIONS_PER_CONNECTION: usize = 500;
 
+/// Outbound subscription-update frames queued for a [`WebSocketWithPing`]'s
+/// run loop. Small on purpose: a caller that outruns the socket should feel
+/// back-pressure rather than buffer membership changes unboundedly.
+const OUTBOUND_QUEUE_DEPTH: usize = 64;
+
 /// Make sure rustls has a default `CryptoProvider` before we open a connection.
 ///
 /// `tokio-tungstenite` builds its TLS config from the process-wide default
@@ -168,6 +173,20 @@ fn require_channel(actual: ChannelType, expected: ChannelType) -> Result<(), Web
         )));
     }
     Ok(())
+}
+
+/// Gate, count-check and serialise one market-channel update frame.
+///
+/// Shared by every sender of a [`MarketSubscriptionUpdate`] — [`WebSocket`],
+/// which writes the frame straight to its socket, and [`MembershipHandle`],
+/// which queues it for a run loop — so the three steps cannot drift apart.
+fn market_update_frame(
+    channel: ChannelType,
+    update: &MarketSubscriptionUpdate,
+) -> Result<String, WebSocketError> {
+    require_channel(channel, ChannelType::Market)?;
+    validate_subscription_count(update.assets_ids.len())?;
+    Ok(serde_json::to_string(update)?)
 }
 
 /// Validate that the subscription count does not exceed the per-connection limit.
@@ -442,8 +461,10 @@ impl WebSocket {
     }
 
     /// Start receiving market events for additional assets, without
-    /// reconnecting. The venue answers with a `book` snapshot for each newly
-    /// added asset (~155 ms); an asset already on the socket gets nothing.
+    /// reconnecting.
+    ///
+    /// The venue answers with a `book` snapshot for each newly added asset
+    /// (~155 ms); an asset already on the socket gets nothing.
     ///
     /// Market channel only.
     ///
@@ -477,9 +498,7 @@ impl WebSocket {
         &mut self,
         update: MarketSubscriptionUpdate,
     ) -> Result<(), WebSocketError> {
-        require_channel(self.channel_type, ChannelType::Market)?;
-        validate_subscription_count(update.assets_ids.len())?;
-        let msg = serde_json::to_string(&update)?;
+        let msg = market_update_frame(self.channel_type, &update)?;
         self.inner.send(Message::Text(msg.into())).await?;
         Ok(())
     }
@@ -622,11 +641,11 @@ impl WebSocketBuilder {
         let msg = serde_json::to_string(&subscription)?;
         ws.send(Message::Text(msg.into())).await?;
 
-        Ok(WebSocketWithPing {
-            inner: ws,
-            channel_type: ChannelType::Market,
-            ping_interval: self.ping_interval.unwrap_or(Duration::from_secs(10)),
-        })
+        Ok(WebSocketWithPing::new(
+            ws,
+            ChannelType::Market,
+            self.ping_interval.unwrap_or(Duration::from_secs(10)),
+        ))
     }
 
     /// Connect to the user channel.
@@ -662,11 +681,11 @@ impl WebSocketBuilder {
         let msg = serde_json::to_string(&subscription)?;
         ws.send(Message::Text(msg.into())).await?;
 
-        Ok(WebSocketWithPing {
-            inner: ws,
-            channel_type: ChannelType::User,
-            ping_interval: self.ping_interval.unwrap_or(Duration::from_secs(10)),
-        })
+        Ok(WebSocketWithPing::new(
+            ws,
+            ChannelType::User,
+            self.ping_interval.unwrap_or(Duration::from_secs(10)),
+        ))
     }
 }
 
@@ -675,21 +694,90 @@ impl WebSocketBuilder {
 /// Use this when you need automatic keep-alive pings. Call `run` to process
 /// messages with automatic ping handling.
 ///
-/// Note that [`run`](Self::run) takes ownership of the connection, so there is
-/// no way to adjust subscriptions while it is driving the stream. Use the plain
-/// [`WebSocket`] with [`subscribe_markets`](WebSocket::subscribe_markets) if the
-/// market set changes over the connection's life.
+/// [`run`](Self::run) takes ownership of the connection; take a
+/// [`MembershipHandle`] via [`membership`](Self::membership) **before** calling
+/// it to change a market subscription while the loop is driving the stream.
 pub struct WebSocketWithPing {
     inner: WebSocketStream<MaybeTlsStream<TcpStream>>,
     channel_type: ChannelType,
     ping_interval: Duration,
+    outbound_tx: tokio::sync::mpsc::Sender<String>,
+    outbound_rx: tokio::sync::mpsc::Receiver<String>,
+}
+
+/// Sends market-channel subscription updates on a connection that
+/// [`WebSocketWithPing::run`] is driving.
+///
+/// Cloneable and cheap; obtained from [`WebSocketWithPing::membership`]. A
+/// successful call means the frame was **queued** for the run loop, which
+/// sends it in order with everything queued before it. A frame the socket
+/// refuses ends `run` with that error, exactly like a failed keep-alive ping.
+/// Once `run` has returned, every call fails with
+/// [`WebSocketError::MembershipClosed`] — never hangs.
+#[derive(Clone, Debug)]
+pub struct MembershipHandle {
+    tx: tokio::sync::mpsc::Sender<String>,
+    channel_type: ChannelType,
+}
+
+impl MembershipHandle {
+    /// Start receiving market events for additional assets. The venue answers
+    /// with a `book` snapshot for each newly added asset; an asset already on
+    /// the socket gets nothing.
+    pub async fn subscribe_assets(&self, assets: Vec<String>) -> Result<(), WebSocketError> {
+        self.send_market_update(MarketSubscriptionUpdate::subscribe(assets))
+            .await
+    }
+
+    /// Stop receiving market events for the given assets.
+    pub async fn unsubscribe_assets(&self, assets: Vec<String>) -> Result<(), WebSocketError> {
+        self.send_market_update(MarketSubscriptionUpdate::unsubscribe(assets))
+            .await
+    }
+
+    /// Queue a prepared market-channel update frame.
+    pub async fn send_market_update(
+        &self,
+        update: MarketSubscriptionUpdate,
+    ) -> Result<(), WebSocketError> {
+        let msg = market_update_frame(self.channel_type, &update)?;
+        self.tx
+            .send(msg)
+            .await
+            .map_err(|_| WebSocketError::MembershipClosed)
+    }
 }
 
 impl WebSocketWithPing {
+    fn new(
+        inner: WebSocketStream<MaybeTlsStream<TcpStream>>,
+        channel_type: ChannelType,
+        ping_interval: Duration,
+    ) -> Self {
+        let (outbound_tx, outbound_rx) = tokio::sync::mpsc::channel(OUTBOUND_QUEUE_DEPTH);
+        Self {
+            inner,
+            channel_type,
+            ping_interval,
+            outbound_tx,
+            outbound_rx,
+        }
+    }
+
+    /// A handle for changing this connection's market subscription while
+    /// [`run`](Self::run) drives it. Take it before calling `run`.
+    pub fn membership(&self) -> MembershipHandle {
+        MembershipHandle {
+            tx: self.outbound_tx.clone(),
+            channel_type: self.channel_type,
+        }
+    }
+
     /// Run the WebSocket message loop with automatic ping handling.
     ///
     /// This method will:
     /// - Send ping messages at the configured interval
+    /// - Send any subscription update queued through a [`MembershipHandle`]
     /// - Call the provided handler for each received message
     /// - Return when the connection is closed or an error occurs
     ///
@@ -709,12 +797,15 @@ impl WebSocketWithPing {
     ///         .ping_interval(Duration::from_secs(10))
     ///         .connect_market(vec!["asset_id".to_string()])
     ///         .await?;
+    ///     let membership = ws.membership();
     ///
-    ///     ws.run(|msg| async move {
+    ///     tokio::spawn(ws.run(|msg| async move {
     ///         println!("Received: {:?}", msg);
     ///         Ok(())
-    ///     }).await?;
+    ///     }));
     ///
+    ///     // Later, without reconnecting:
+    ///     membership.subscribe_assets(vec!["another_asset_id".to_string()]).await?;
     ///     Ok(())
     /// }
     /// ```
@@ -729,6 +820,10 @@ impl WebSocketWithPing {
             tokio::select! {
                 _ = ping_interval.tick() => {
                     self.inner.send(Message::Text("PING".into())).await?;
+                }
+                // `self` holds a sender, so this arm never sees `None`.
+                Some(frame) = self.outbound_rx.recv() => {
+                    self.inner.send(Message::Text(frame.into())).await?;
                 }
                 msg = self.inner.next() => {
                     match msg {
@@ -790,7 +885,16 @@ mod connect_tests {
             matches!(err, WebSocketError::InvalidMessage(ref m) if m.contains("Market") && m.contains("User")),
             "the error names both channels: {err}"
         );
-        assert!(require_channel(ChannelType::Sports, ChannelType::User).is_err());
+        let err = require_channel(ChannelType::Market, ChannelType::User).unwrap_err();
+        assert!(
+            matches!(err, WebSocketError::InvalidMessage(ref m) if m.contains("User") && m.contains("Market")),
+            "the error names both channels: {err}"
+        );
+        let err = require_channel(ChannelType::Sports, ChannelType::User).unwrap_err();
+        assert!(
+            matches!(err, WebSocketError::InvalidMessage(ref m) if m.contains("Sports") && m.contains("User")),
+            "the error names both channels: {err}"
+        );
     }
 
     #[test]
@@ -1012,5 +1116,113 @@ mod dispatch_tests {
             by_helper,
             Some(Channel::Market(MarketMessage::BestBidAsk(_)))
         ));
+    }
+}
+
+#[cfg(test)]
+mod membership_tests {
+    use super::*;
+    use futures_util::StreamExt;
+    use tokio::net::TcpListener;
+    use tokio::sync::mpsc;
+
+    /// A loopback WebSocket server that records every text frame it receives
+    /// (PINGs excluded) and closes after `expect` of them.
+    async fn recording_server(expect: usize) -> (u16, mpsc::Receiver<String>) {
+        let listener = TcpListener::bind("127.0.0.1:0").await.unwrap();
+        let port = listener.local_addr().unwrap().port();
+        let (tx, rx) = mpsc::channel(16);
+        tokio::spawn(async move {
+            let (stream, _) = listener.accept().await.unwrap();
+            let mut ws = tokio_tungstenite::accept_async(stream).await.unwrap();
+            let mut seen = 0;
+            while let Some(Ok(msg)) = ws.next().await {
+                if let Message::Text(t) = msg {
+                    if t.as_str() == "PING" {
+                        continue;
+                    }
+                    tx.send(t.to_string()).await.unwrap();
+                    seen += 1;
+                    if seen == expect {
+                        let _ = ws.close(None).await;
+                        return;
+                    }
+                }
+            }
+        });
+        (port, rx)
+    }
+
+    /// Build a market-channel `WebSocketWithPing` over a plain loopback TCP
+    /// stream. `WebSocketBuilder::market_url` insists on `wss://`, so the
+    /// struct is assembled directly, exactly as `connect_market` would.
+    async fn connect_plain(port: u16) -> WebSocketWithPing {
+        let tcp = TcpStream::connect(("127.0.0.1", port)).await.unwrap();
+        let (inner, _) = tokio_tungstenite::client_async(
+            format!("ws://127.0.0.1:{port}/ws/market"),
+            MaybeTlsStream::Plain(tcp),
+        )
+        .await
+        .unwrap();
+        let (outbound_tx, outbound_rx) = mpsc::channel(OUTBOUND_QUEUE_DEPTH);
+        WebSocketWithPing {
+            inner,
+            channel_type: ChannelType::Market,
+            ping_interval: Duration::from_secs(10),
+            outbound_tx,
+            outbound_rx,
+        }
+    }
+
+    #[tokio::test]
+    async fn run_forwards_membership_frames_in_order() {
+        let (port, mut frames) = recording_server(2).await;
+        let ws = connect_plain(port).await;
+        let handle = ws.membership();
+        let run = tokio::spawn(ws.run(|_| async { Ok(()) }));
+
+        handle.subscribe_assets(vec!["b".into()]).await.unwrap();
+        handle.unsubscribe_assets(vec!["a".into()]).await.unwrap();
+
+        assert_eq!(
+            frames.recv().await.unwrap(),
+            r#"{"operation":"subscribe","assets_ids":["b"]}"#
+        );
+        assert_eq!(
+            frames.recv().await.unwrap(),
+            r#"{"operation":"unsubscribe","assets_ids":["a"]}"#
+        );
+        // The server closed after the second frame: run returns cleanly.
+        run.await.unwrap().unwrap();
+    }
+
+    #[tokio::test]
+    async fn membership_handle_errors_with_membership_closed_after_run_exits() {
+        let (port, _frames) = recording_server(1).await;
+        let ws = connect_plain(port).await;
+        let handle = ws.membership();
+        let run = tokio::spawn(ws.run(|_| async { Ok(()) }));
+        handle.subscribe_assets(vec!["b".into()]).await.unwrap();
+        run.await.unwrap().unwrap();
+
+        let err = tokio::time::timeout(
+            Duration::from_secs(1),
+            handle.subscribe_assets(vec!["c".into()]),
+        )
+        .await
+        .expect("must not hang")
+        .unwrap_err();
+        assert!(matches!(err, WebSocketError::MembershipClosed), "{err}");
+    }
+
+    #[tokio::test]
+    async fn membership_handle_refuses_the_user_channel() {
+        let (outbound_tx, _rx) = mpsc::channel(1);
+        let handle = MembershipHandle {
+            tx: outbound_tx,
+            channel_type: ChannelType::User,
+        };
+        let err = handle.subscribe_assets(vec!["b".into()]).await.unwrap_err();
+        assert!(matches!(err, WebSocketError::InvalidMessage(_)), "{err}");
     }
 }

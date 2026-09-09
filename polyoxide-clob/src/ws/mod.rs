@@ -118,7 +118,7 @@ mod subscription;
 mod user;
 
 pub use auth::ApiCredentials;
-pub use client::{WebSocket, WebSocketBuilder, WebSocketWithPing};
+pub use client::{MembershipHandle, WebSocket, WebSocketBuilder, WebSocketWithPing};
 pub use error::WebSocketError;
 pub use market::{
     BestBidAskMessage, BookMessage, LastTradePriceMessage, MarketMessage, MarketResolvedMessage,

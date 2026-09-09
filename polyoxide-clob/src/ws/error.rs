@@ -37,9 +37,9 @@ pub enum WebSocketError {
         timeout: std::time::Duration,
     },
 
-    /// A `MembershipHandle` was used after the connection's `run` loop had
-    /// exited, so there is no socket left to send the frame on. Reconnect and
-    /// take a fresh handle.
+    /// A [`MembershipHandle`](crate::ws::MembershipHandle) was used after the
+    /// connection's `run` loop had exited, so there is no socket left to send
+    /// the frame on. Reconnect and take a fresh handle.
     #[error("subscription update refused: the connection's run loop has exited")]
     MembershipClosed,
 }
