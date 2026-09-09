@@ -242,6 +242,58 @@ impl UserSubscriptionUpdate {
     }
 }
 
+/// Adjust a live market-channel subscription without reconnecting.
+///
+/// Sent on an already-open market connection to add or drop asset IDs. The
+/// wire shape comes from `SubscriptionRequestUpdate` in
+/// `docs/specs/clob/asyncapi-market.json`.
+///
+/// Venue behaviour, verified live on 2026-09-09:
+///
+/// - `subscribe` delivers a fresh `book` snapshot for each **newly** added
+///   asset (~155 ms); an asset that is already subscribed gets **nothing** —
+///   to force a snapshot, `unsubscribe` it and `subscribe` it again.
+/// - `unsubscribe` stops that asset's frames; siblings are unaffected.
+/// - A socket opened with an empty asset list (or with no subscription frame
+///   at all) accepts a later `subscribe`. It stays open indefinitely as long
+///   as the text `PING` keep-alive is sent; a silent socket is reset after
+///   about two minutes.
+/// - Re-sending a `{"type":"market", …}` subscription frame on a live socket
+///   does nothing — it is not additive. Only this frame changes membership.
+///
+/// ```
+/// use polyoxide_clob::ws::MarketSubscriptionUpdate;
+///
+/// let frame = MarketSubscriptionUpdate::subscribe(vec!["111".to_string()]);
+/// let json = serde_json::to_string(&frame).unwrap();
+/// assert_eq!(json, r#"{"operation":"subscribe","assets_ids":["111"]}"#);
+/// ```
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct MarketSubscriptionUpdate {
+    /// Whether to add or remove the listed assets.
+    pub operation: SubscriptionOperation,
+    /// Asset (token) IDs to add or remove.
+    pub assets_ids: Vec<String>,
+}
+
+impl MarketSubscriptionUpdate {
+    /// Start receiving events for these assets.
+    pub fn subscribe(assets_ids: Vec<String>) -> Self {
+        Self {
+            operation: SubscriptionOperation::Subscribe,
+            assets_ids,
+        }
+    }
+
+    /// Stop receiving events for these assets.
+    pub fn unsubscribe(assets_ids: Vec<String>) -> Self {
+        Self {
+            operation: SubscriptionOperation::Unsubscribe,
+            assets_ids,
+        }
+    }
+}
+
 #[cfg(test)]
 mod optional_markets_tests {
     use super::*;
@@ -480,5 +532,35 @@ mod options_tests {
             !WS_SPORTS_URL.contains("ws-subscriptions-clob"),
             "sports is served by sports-api, not the clob subscriptions host"
         );
+    }
+}
+
+#[cfg(test)]
+mod market_update_tests {
+    use super::*;
+
+    // The wire shape is pinned by asyncapi-market.json's
+    // `SubscriptionRequestUpdate`: required `operation` and `assets_ids`.
+    // Verified live 2026-09-09: this frame on an open market socket delivers
+    // the added asset's `book` in ~155 ms; a `type: market` frame does NOT.
+
+    #[test]
+    fn market_update_frame_matches_the_documented_payload() {
+        let update = MarketSubscriptionUpdate::subscribe(vec!["111".into(), "222".into()]);
+        let json = serde_json::to_value(&update).unwrap();
+        assert_eq!(json["operation"], "subscribe");
+        assert_eq!(json["assets_ids"], serde_json::json!(["111", "222"]));
+        assert_eq!(
+            json.as_object().unwrap().len(),
+            2,
+            "frame must carry exactly operation and assets_ids — no `type` — got {json}"
+        );
+    }
+
+    #[test]
+    fn market_unsubscribe_frame_uses_the_lowercase_operation() {
+        let update = MarketSubscriptionUpdate::unsubscribe(vec!["111".into()]);
+        let json = serde_json::to_string(&update).unwrap();
+        assert_eq!(json, r#"{"operation":"unsubscribe","assets_ids":["111"]}"#);
     }
 }

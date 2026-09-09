@@ -126,9 +126,9 @@ pub use market::{
 };
 pub use sports::{SportsMessage, SportsUpdateMessage};
 pub use subscription::{
-    ChannelType, MarketSubscription, MarketSubscriptionOptions, SubscriptionLevel,
-    SubscriptionOperation, UserSubscription, UserSubscriptionUpdate, WS_MARKET_URL, WS_SPORTS_URL,
-    WS_USER_URL,
+    ChannelType, MarketSubscription, MarketSubscriptionOptions, MarketSubscriptionUpdate,
+    SubscriptionLevel, SubscriptionOperation, UserSubscription, UserSubscriptionUpdate,
+    WS_MARKET_URL, WS_SPORTS_URL, WS_USER_URL,
 };
 pub use user::{MakerOrder, OrderEventType, OrderMessage, TradeMessage, TradeStatus, UserMessage};
 
