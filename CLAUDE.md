@@ -224,7 +224,7 @@ Most crates follow a consistent layout:
 
 Three market events — `best_bid_ask`, `new_market`, `market_resolved` — are withheld by the server unless the subscription sets `custom_feature_enabled`. Use `WebSocket::connect_market_with(ids, MarketSubscriptionOptions::default().with_custom_features())` to receive them. `MarketMessage` and `Channel` are `#[non_exhaustive]`, since upstream adds event types over time.
 
-The user channel's market filter is optional: `WebSocket::connect_user_all_markets(creds)` omits it and receives events for every market, and `subscribe_markets` / `unsubscribe_markets` adjust it on a live connection without reconnecting.
+The user channel's market filter is optional: `WebSocket::connect_user_all_markets(creds)` omits it and receives events for every market, and `subscribe_markets` / `unsubscribe_markets` adjust it on a live connection without reconnecting. The market channel changes membership the same way — `subscribe_assets` / `unsubscribe_assets`, or a `MembershipHandle` (from `WebSocketWithPing::membership`, taken **before** `run`) while the ping loop drives the socket. Both frames are documented in the AsyncAPI mirrors (`SubscriptionRequestUpdate`). Verified live 2026-09-09: an added asset gets a fresh `book` in ~155 ms, a duplicate add gets nothing (unsubscribe then subscribe to force a snapshot), and an empty-membership socket stays open under the 10 s `PING` but is reset after ~125 s without it.
 
 The WebSocket contracts are published as AsyncAPI, not OpenAPI — mirrored in `docs/specs/clob/asyncapi-{market,user,sports}.json`. A parity audit that only diffs the OpenAPI files will miss this whole surface.
 

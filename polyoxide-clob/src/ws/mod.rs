@@ -10,7 +10,13 @@
 //!
 //! - **Market Channel**: Public channel for order book and price updates. Subscribe with
 //!   asset IDs (token IDs) to receive [`BookMessage`], [`PriceChangeMessage`],
-//!   [`TickSizeChangeMessage`], and [`LastTradePriceMessage`] updates.
+//!   [`TickSizeChangeMessage`], and [`LastTradePriceMessage`] updates. Membership can
+//!   change on a live socket: [`WebSocket::subscribe_assets`] /
+//!   [`WebSocket::unsubscribe_assets`] on the plain socket, or a [`MembershipHandle`]
+//!   taken from [`WebSocketWithPing::membership`] while `run` drives it. The venue
+//!   sends a `book` snapshot for each newly added asset and nothing for one already
+//!   subscribed (see [`MarketSubscriptionUpdate`]). A socket opened with no assets is
+//!   valid and stays open under the keep-alive ping.
 //!
 //! - **User Channel**: Authenticated channel for user order and trade updates. Subscribe
 //!   with market condition IDs and API credentials to receive [`OrderMessage`] and

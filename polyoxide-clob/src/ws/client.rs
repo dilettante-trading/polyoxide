@@ -714,6 +714,13 @@ pub struct WebSocketWithPing {
 /// refuses ends `run` with that error, exactly like a failed keep-alive ping.
 /// Once `run` has returned, every call fails with
 /// [`WebSocketError::MembershipClosed`] — never hangs.
+///
+/// The queue is bounded; a call awaits until the run loop has drained room.
+/// Never await a handle send from inside the handler passed to
+/// [`WebSocketWithPing::run`] — the handler would be waiting on the loop that
+/// is waiting on the handler. Frames still queued when `run` returns are
+/// dropped with the connection: on reconnect, re-send the full desired
+/// membership from your own state rather than replaying a log of updates.
 #[derive(Clone, Debug)]
 pub struct MembershipHandle {
     tx: tokio::sync::mpsc::Sender<String>,
@@ -1153,10 +1160,11 @@ mod membership_tests {
         (port, rx)
     }
 
-    /// Build a market-channel `WebSocketWithPing` over a plain loopback TCP
-    /// stream. `WebSocketBuilder::market_url` insists on `wss://`, so the
-    /// struct is assembled directly, exactly as `connect_market` would.
-    async fn connect_plain(port: u16) -> WebSocketWithPing {
+    /// Build a `WebSocketWithPing` of the given channel type over a plain
+    /// loopback TCP stream. `WebSocketBuilder::market_url` insists on
+    /// `wss://`, so the connection is assembled directly, exactly as
+    /// `connect_market` would.
+    async fn connect_plain(port: u16, channel_type: ChannelType) -> WebSocketWithPing {
         let tcp = TcpStream::connect(("127.0.0.1", port)).await.unwrap();
         let (inner, _) = tokio_tungstenite::client_async(
             format!("ws://127.0.0.1:{port}/ws/market"),
@@ -1164,20 +1172,13 @@ mod membership_tests {
         )
         .await
         .unwrap();
-        let (outbound_tx, outbound_rx) = mpsc::channel(OUTBOUND_QUEUE_DEPTH);
-        WebSocketWithPing {
-            inner,
-            channel_type: ChannelType::Market,
-            ping_interval: Duration::from_secs(10),
-            outbound_tx,
-            outbound_rx,
-        }
+        WebSocketWithPing::new(inner, channel_type, Duration::from_secs(10))
     }
 
     #[tokio::test]
     async fn run_forwards_membership_frames_in_order() {
         let (port, mut frames) = recording_server(2).await;
-        let ws = connect_plain(port).await;
+        let ws = connect_plain(port, ChannelType::Market).await;
         let handle = ws.membership();
         let run = tokio::spawn(ws.run(|_| async { Ok(()) }));
 
@@ -1185,21 +1186,31 @@ mod membership_tests {
         handle.unsubscribe_assets(vec!["a".into()]).await.unwrap();
 
         assert_eq!(
-            frames.recv().await.unwrap(),
+            tokio::time::timeout(Duration::from_secs(2), frames.recv())
+                .await
+                .expect("must not hang")
+                .unwrap(),
             r#"{"operation":"subscribe","assets_ids":["b"]}"#
         );
         assert_eq!(
-            frames.recv().await.unwrap(),
+            tokio::time::timeout(Duration::from_secs(2), frames.recv())
+                .await
+                .expect("must not hang")
+                .unwrap(),
             r#"{"operation":"unsubscribe","assets_ids":["a"]}"#
         );
         // The server closed after the second frame: run returns cleanly.
-        run.await.unwrap().unwrap();
+        tokio::time::timeout(Duration::from_secs(2), run)
+            .await
+            .expect("must not hang")
+            .unwrap()
+            .unwrap();
     }
 
     #[tokio::test]
     async fn membership_handle_errors_with_membership_closed_after_run_exits() {
         let (port, _frames) = recording_server(1).await;
-        let ws = connect_plain(port).await;
+        let ws = connect_plain(port, ChannelType::Market).await;
         let handle = ws.membership();
         let run = tokio::spawn(ws.run(|_| async { Ok(()) }));
         handle.subscribe_assets(vec!["b".into()]).await.unwrap();
@@ -1217,11 +1228,11 @@ mod membership_tests {
 
     #[tokio::test]
     async fn membership_handle_refuses_the_user_channel() {
-        let (outbound_tx, _rx) = mpsc::channel(1);
-        let handle = MembershipHandle {
-            tx: outbound_tx,
-            channel_type: ChannelType::User,
-        };
+        let (port, _frames) = recording_server(1).await;
+        let ws = connect_plain(port, ChannelType::User).await;
+        let handle = ws.membership();
+        drop(ws);
+
         let err = handle.subscribe_assets(vec!["b".into()]).await.unwrap_err();
         assert!(matches!(err, WebSocketError::InvalidMessage(_)), "{err}");
     }
