@@ -36,6 +36,12 @@ pub enum WebSocketError {
         /// The per-address timeout that elapsed.
         timeout: std::time::Duration,
     },
+
+    /// A `MembershipHandle` was used after the connection's `run` loop had
+    /// exited, so there is no socket left to send the frame on. Reconnect and
+    /// take a fresh handle.
+    #[error("subscription update refused: the connection's run loop has exited")]
+    MembershipClosed,
 }
 
 impl From<tokio_tungstenite::tungstenite::Error> for WebSocketError {

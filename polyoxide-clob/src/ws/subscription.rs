@@ -190,13 +190,14 @@ impl UserSubscription {
     }
 }
 
-/// Whether a [`UserSubscriptionUpdate`] adds or removes markets.
+/// Whether a subscription-update frame ([`UserSubscriptionUpdate`],
+/// [`MarketSubscriptionUpdate`]) adds or removes the IDs it lists.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "lowercase")]
 pub enum SubscriptionOperation {
-    /// Start receiving events for the listed markets.
+    /// Start receiving events for the listed IDs.
     Subscribe,
-    /// Stop receiving events for the listed markets.
+    /// Stop receiving events for the listed IDs.
     Unsubscribe,
 }
 
@@ -246,7 +247,9 @@ impl UserSubscriptionUpdate {
 ///
 /// Sent on an already-open market connection to add or drop asset IDs. The
 /// wire shape comes from `SubscriptionRequestUpdate` in
-/// `docs/specs/clob/asyncapi-market.json`.
+/// `docs/specs/clob/asyncapi-market.json`. That schema also lists optional
+/// `level` and `custom_feature_enabled`; they are deliberately not modelled
+/// here — whether the venue honours them mid-session is unverified.
 ///
 /// Venue behaviour, verified live on 2026-09-09:
 ///

@@ -15,8 +15,8 @@ use super::{
     market::MarketMessage,
     sports::SportsMessage,
     subscription::{
-        ChannelType, MarketSubscription, MarketSubscriptionOptions, UserSubscription,
-        UserSubscriptionUpdate, WS_MARKET_URL, WS_SPORTS_URL, WS_USER_URL,
+        ChannelType, MarketSubscription, MarketSubscriptionOptions, MarketSubscriptionUpdate,
+        UserSubscription, UserSubscriptionUpdate, WS_MARKET_URL, WS_SPORTS_URL, WS_USER_URL,
     },
     user::UserMessage,
     Channel,
@@ -155,15 +155,16 @@ fn parse_channel_message(
     }
 }
 
-/// Reject a subscription update sent on a channel that has no market filters.
+/// Refuse a subscription-update frame on the wrong channel.
 ///
-/// Only the user channel supports adjusting its markets after connecting; the
-/// market channel is keyed on asset IDs fixed at subscribe time and the sports
-/// channel takes no subscription payload at all.
-fn require_user_channel(channel_type: ChannelType) -> Result<(), WebSocketError> {
-    if channel_type != ChannelType::User {
+/// Each channel has its own update frame — the market channel's is keyed on
+/// asset IDs ([`MarketSubscriptionUpdate`]), the user channel's on condition
+/// IDs ([`UserSubscriptionUpdate`]) — and the sports channel takes no
+/// subscription payload at all.
+fn require_channel(actual: ChannelType, expected: ChannelType) -> Result<(), WebSocketError> {
+    if actual != expected {
         return Err(WebSocketError::InvalidMessage(format!(
-            "subscription updates are only supported on the user channel, not {channel_type:?}"
+            "subscription updates for the {expected:?} channel cannot be sent on the {actual:?} channel"
         )));
     }
     Ok(())
@@ -433,8 +434,51 @@ impl WebSocket {
         &mut self,
         update: UserSubscriptionUpdate,
     ) -> Result<(), WebSocketError> {
-        require_user_channel(self.channel_type)?;
+        require_channel(self.channel_type, ChannelType::User)?;
         validate_subscription_count(update.markets.len())?;
+        let msg = serde_json::to_string(&update)?;
+        self.inner.send(Message::Text(msg.into())).await?;
+        Ok(())
+    }
+
+    /// Start receiving market events for additional assets, without
+    /// reconnecting. The venue answers with a `book` snapshot for each newly
+    /// added asset (~155 ms); an asset already on the socket gets nothing.
+    ///
+    /// Market channel only.
+    ///
+    /// # Example
+    ///
+    /// ```no_run
+    /// use polyoxide_clob::ws::WebSocket;
+    ///
+    /// #[tokio::main]
+    /// async fn main() -> Result<(), Box<dyn std::error::Error>> {
+    ///     let mut ws = WebSocket::connect_market(vec!["111".to_string()]).await?;
+    ///     ws.subscribe_assets(vec!["222".to_string()]).await?;
+    ///     Ok(())
+    /// }
+    /// ```
+    pub async fn subscribe_assets(&mut self, assets: Vec<String>) -> Result<(), WebSocketError> {
+        self.send_market_update(MarketSubscriptionUpdate::subscribe(assets))
+            .await
+    }
+
+    /// Stop receiving market events for the given assets, without reconnecting.
+    ///
+    /// Market channel only.
+    pub async fn unsubscribe_assets(&mut self, assets: Vec<String>) -> Result<(), WebSocketError> {
+        self.send_market_update(MarketSubscriptionUpdate::unsubscribe(assets))
+            .await
+    }
+
+    /// Send a prepared subscription update frame on a live market connection.
+    pub async fn send_market_update(
+        &mut self,
+        update: MarketSubscriptionUpdate,
+    ) -> Result<(), WebSocketError> {
+        require_channel(self.channel_type, ChannelType::Market)?;
+        validate_subscription_count(update.assets_ids.len())?;
         let msg = serde_json::to_string(&update)?;
         self.inner.send(Message::Text(msg.into())).await?;
         Ok(())
@@ -738,6 +782,18 @@ mod connect_tests {
     }
 
     #[test]
+    fn require_channel_rejects_the_other_channels() {
+        assert!(require_channel(ChannelType::Market, ChannelType::Market).is_ok());
+        assert!(require_channel(ChannelType::User, ChannelType::User).is_ok());
+        let err = require_channel(ChannelType::User, ChannelType::Market).unwrap_err();
+        assert!(
+            matches!(err, WebSocketError::InvalidMessage(ref m) if m.contains("Market") && m.contains("User")),
+            "the error names both channels: {err}"
+        );
+        assert!(require_channel(ChannelType::Sports, ChannelType::User).is_err());
+    }
+
+    #[test]
     fn address_families_are_interleaved() {
         // Resolvers return all AAAA then all A; a broken v6 network must not
         // pay one timeout per v6 address before the first v4 attempt.
@@ -781,25 +837,6 @@ mod connect_tests {
             started.elapsed() < Duration::from_secs(5),
             "connect_ws did not honour the per-address timeout: {err}"
         );
-    }
-}
-
-#[cfg(test)]
-mod subscription_update_tests {
-    use super::*;
-
-    #[test]
-    fn only_the_user_channel_accepts_subscription_updates() {
-        assert!(require_user_channel(ChannelType::User).is_ok());
-
-        for ch in [ChannelType::Market, ChannelType::Sports] {
-            let err = require_user_channel(ch)
-                .expect_err("dynamic market filters are a user-channel feature");
-            assert!(
-                err.to_string().contains("user channel"),
-                "error should name the constraint, got: {err}"
-            );
-        }
     }
 }
 
