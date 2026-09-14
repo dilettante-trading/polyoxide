@@ -106,6 +106,16 @@ pub fn parse_routes(raw: &str) -> Result<Vec<Route>, String> {
     Ok(routes)
 }
 
+/// Whether `id` is a market condition id: `0x` and 64 hex digits.
+///
+/// The trade feed also carries combo trades, whose `condition_id` is a 62-digit
+/// combo condition id. `/v2/holders` rejects those with `400 invalid condition
+/// id`, so they must not become holder probes.
+pub fn is_market_condition_id(id: &str) -> bool {
+    id.strip_prefix("0x")
+        .is_some_and(|hex| hex.len() == 64 && hex.bytes().all(|b| b.is_ascii_hexdigit()))
+}
+
 /// Live identifiers the probes are built from.
 #[derive(Debug, Clone, Default)]
 pub struct Pools {
@@ -284,6 +294,23 @@ mod tests {
             wallets: (0..wallets).map(|i| format!("0xw{i}")).collect(),
             conditions: (0..conditions).map(|i| format!("0xc{i}")).collect(),
         }
+    }
+
+    #[test]
+    fn only_standard_market_condition_ids_are_holder_probes() {
+        // The trade feed also carries combo trades, whose condition id is 62 hex
+        // digits. `/v2/holders` answers those with `400 invalid condition id`,
+        // which made the first holders ramp invalid (26 of 600 requests).
+        let market = "0xc76e164a38fa0cbe49e5da48c5475b60771af13cf2bdc619dfbdd5f4cf641f7d";
+        let combo = "0x03a1ed34d7fa8632a3af30160262b8fb420000000000000000000000000000";
+        assert!(is_market_condition_id(market));
+        assert!(!is_market_condition_id(combo));
+        assert!(!is_market_condition_id(
+            "c76e164a38fa0cbe49e5da48c5475b60771af13cf2bdc619dfbdd5f4cf641f7d"
+        ));
+        assert!(!is_market_condition_id(
+            "0xc76e164a38fa0cbe49e5da48c5475b60771af13cf2bdc619dfbdd5f4cf641f7g"
+        ));
     }
 
     #[test]

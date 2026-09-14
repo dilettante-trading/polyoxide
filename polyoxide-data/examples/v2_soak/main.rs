@@ -62,7 +62,7 @@ mod probes;
 mod verdict;
 
 use common::Pacer;
-use probes::{parse_routes, Pools, ProbeSource, Route, SeenUrls};
+use probes::{is_market_condition_id, parse_routes, Pools, ProbeSource, Route, SeenUrls};
 use verdict::{classify, judge, pin, Abort, Layer, Pin, Reply, Sample, Stage, Verdict};
 
 const DEFAULT_BASE_URL: &str = "https://data-api.polymarket.com";
@@ -268,7 +268,10 @@ async fn bootstrap(http: &reqwest::Client, config: &Config) -> Result<Pools, Str
                     config.wallets,
                 );
             }
-            if let Some(condition) = row["condition_id"].as_str() {
+            if let Some(condition) = row["condition_id"]
+                .as_str()
+                .filter(|id| is_market_condition_id(id))
+            {
                 push_distinct(
                     &mut pools.conditions,
                     &mut seen_conditions,
