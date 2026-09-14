@@ -574,3 +574,258 @@ async fn live_rankings_volume_and_profit() {
         .expect("rankings profit should succeed");
     assert!(!profit.is_empty(), "expected ranked entries");
 }
+
+// ── Data API v2 ──────────────────────────────────────────────────
+//
+// Inputs are chosen live, never hardcoded: a wallet from the bare trade feed,
+// that trade's market and token, a resolved market from the winners board.
+
+mod v2 {
+    use futures_util::StreamExt;
+    use polyoxide_data::v2::types::{
+        PnlFidelity, PnlInterval, PositionAnchor, PositionStatus, PricesInterval, ResolutionKey,
+        TimePeriod,
+    };
+    use polyoxide_data::v2::ErrorCode;
+    use polyoxide_data::{DataApi, DataApiError};
+
+    use super::client;
+
+    /// A recent trade's wallet, condition id and token id.
+    async fn recent_trade(data: &DataApi) -> (String, String, String) {
+        let page = data.v2().trades().limit(1).send().await.expect("v2 trades");
+        let trade = page
+            .data
+            .into_iter()
+            .next()
+            .expect("the bare feed is never empty");
+        (trade.proxy_wallet, trade.condition_id, trade.token_id)
+    }
+
+    /// A wallet absent from every dataset: random, so it cannot collide with
+    /// an address that appears on chain (`0x…0001` does, and is "known").
+    fn unknown_wallet() -> String {
+        let nanos = std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .unwrap()
+            .as_nanos();
+        format!(
+            "0x{:040x}",
+            nanos ^ 0x5eed_5eed_5eed_5eed_5eed_5eed_5eed_5eed
+        )
+    }
+
+    #[tokio::test]
+    #[ignore]
+    async fn live_v2_trades_walk_follows_the_cursor() {
+        let data = client();
+        let pages: Vec<_> = data.v2().trades().limit(2).pages().take(2).collect().await;
+
+        assert_eq!(pages.len(), 2);
+        let first = pages[0].as_ref().expect("page 1");
+        let second = pages[1].as_ref().expect("page 2");
+        assert!(
+            first.pagination.next_cursor.is_some(),
+            "the feed has more than 2 rows"
+        );
+        assert_ne!(
+            first.data[0].transaction_hash, second.data[0].transaction_hash,
+            "page 2 repeated page 1"
+        );
+    }
+
+    #[tokio::test]
+    #[ignore]
+    async fn live_v2_wallet_routes() {
+        let data = client();
+        let (wallet, _, _) = recent_trade(&data).await;
+        let v2 = data.v2();
+
+        v2.activity(&wallet)
+            .limit(2)
+            .send()
+            .await
+            .expect("activity");
+        v2.combo_activity(&wallet)
+            .limit(2)
+            .send()
+            .await
+            .expect("combo activity");
+        v2.positions(wallet.as_str())
+            .limit(2)
+            .send()
+            .await
+            .expect("positions");
+        v2.positions(wallet.as_str())
+            .status(PositionStatus::Closed)
+            .limit(2)
+            .send()
+            .await
+            .expect("closed positions");
+        v2.combo_positions(&wallet)
+            .limit(2)
+            .send()
+            .await
+            .expect("combo positions");
+        v2.approvals(&wallet).send().await.expect("approvals");
+        let pnl = v2
+            .user_pnl(&wallet)
+            .interval(PnlInterval::OneWeek)
+            .fidelity(PnlFidelity::OneDay)
+            .send()
+            .await
+            .expect("user pnl");
+        assert_eq!(pnl.proxy_wallet.to_lowercase(), wallet.to_lowercase());
+        let stats = v2.user_stats(&wallet).send().await.expect("user stats");
+        assert!(stats.is_some(), "a wallet that just traded is a known user");
+        v2.user_volume(&wallet).send().await.expect("user volume");
+        v2.value(&wallet).send().await.expect("value");
+    }
+
+    #[tokio::test]
+    #[ignore]
+    async fn live_v2_unknown_wallet_is_none_not_an_error() {
+        let data = client();
+        let wallet = unknown_wallet();
+
+        assert!(data
+            .v2()
+            .user_stats(&wallet)
+            .send()
+            .await
+            .expect("user stats")
+            .is_none());
+        assert!(data
+            .v2()
+            .leaderboard_user(&wallet)
+            .send()
+            .await
+            .expect("leaderboard user")
+            .is_none());
+    }
+
+    #[tokio::test]
+    #[ignore]
+    async fn live_v2_market_routes() {
+        let data = client();
+        let (_, condition, token_id) = recent_trade(&data).await;
+        let v2 = data.v2();
+
+        v2.holders([condition.as_str()])
+            .limit(2)
+            .send()
+            .await
+            .expect("holders");
+        v2.positions(PositionAnchor::Condition(condition.clone()))
+            .limit(2)
+            .send()
+            .await
+            .expect("market positions");
+        v2.open_interest()
+            .conditions([condition.as_str()])
+            .send()
+            .await
+            .expect("open interest");
+        let global = v2
+            .open_interest()
+            .send()
+            .await
+            .expect("global open interest");
+        assert_eq!(global.len(), 1);
+        assert_eq!(global[0].condition_id, "GLOBAL");
+        v2.prices_history(&token_id)
+            .interval(PricesInterval::OneDay)
+            .limit(10)
+            .send()
+            .await
+            .expect("prices history");
+
+        let winners = v2
+            .biggest_winners()
+            .time_period(TimePeriod::Week)
+            .limit(5)
+            .send()
+            .await
+            .expect("winners");
+        let resolved = winners
+            .data
+            .iter()
+            .find(|w| w.kind == "market")
+            .expect("a market win on the weekly board");
+        let rows = v2
+            .resolutions(ResolutionKey::Conditions(vec![resolved
+                .condition_id
+                .clone()]))
+            .send()
+            .await
+            .expect("resolutions");
+        assert!(
+            !rows.is_empty(),
+            "a market on the winners board has resolved"
+        );
+        v2.live_volume([resolved.event_id])
+            .send()
+            .await
+            .expect("live volume");
+    }
+
+    #[tokio::test]
+    #[ignore]
+    async fn live_v2_board_routes() {
+        let data = client();
+        let v2 = data.v2();
+
+        let board = v2
+            .leaderboard()
+            .time_period(TimePeriod::Week)
+            .limit(2)
+            .send()
+            .await
+            .expect("leaderboard");
+        let leader = &board
+            .data
+            .first()
+            .expect("the weekly board is never empty")
+            .user_id;
+        let standing = v2
+            .leaderboard_user(leader)
+            .time_period(TimePeriod::Week)
+            .send()
+            .await
+            .expect("leaderboard user")
+            .expect("the board's leader has a standing");
+        assert!(standing.rank_pnl.is_some() || standing.rank_volume.is_some());
+        v2.builders_leaderboard()
+            .limit(2)
+            .send()
+            .await
+            .expect("builders leaderboard");
+        v2.builder_volume()
+            .limit(2)
+            .send()
+            .await
+            .expect("builder volume");
+        v2.status().send().await.expect("status");
+    }
+
+    #[tokio::test]
+    #[ignore]
+    async fn live_v2_errors_are_structured() {
+        let data = client();
+        let err = data
+            .v2()
+            .trades()
+            .cursor("garbage")
+            .send()
+            .await
+            .unwrap_err();
+
+        let DataApiError::V2(v2) = &err else {
+            panic!("expected a structured v2 error, got {err:?}");
+        };
+        assert_eq!(v2.status, 400);
+        assert_eq!(v2.code, ErrorCode::InvalidRequest);
+        assert!(!v2.trace_id.is_empty());
+        assert!(!err.is_retriable());
+    }
+}
