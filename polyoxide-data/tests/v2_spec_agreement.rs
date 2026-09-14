@@ -551,6 +551,11 @@ const ROUTES: &[(&str, Fire)] = &[
                 .await;
         })
     }),
+    ("/v2/status", |data| {
+        Box::pin(async move {
+            let _ = data.v2().status().send().await;
+        })
+    }),
 ];
 
 fn documented_parameters(path: &str) -> BTreeSet<String> {
@@ -582,4 +587,20 @@ async fn every_route_sends_exactly_the_documented_parameters() {
             "{path}: query keys sent differ from the documented parameters"
         );
     }
+}
+
+#[test]
+fn every_documented_route_has_a_builder() {
+    let spec = spec();
+    let documented: BTreeSet<&str> = spec["paths"]
+        .as_object()
+        .unwrap()
+        .keys()
+        .map(String::as_str)
+        .collect();
+    let covered: BTreeSet<&str> = ROUTES.iter().map(|(path, _)| *path).collect();
+    assert_eq!(
+        covered, documented,
+        "routes without a builder, or builders for undocumented routes"
+    );
 }

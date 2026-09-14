@@ -4,4 +4,5 @@
 pub mod boards;
 pub mod feeds;
 pub mod markets;
+pub mod service;
 pub mod wallet;
