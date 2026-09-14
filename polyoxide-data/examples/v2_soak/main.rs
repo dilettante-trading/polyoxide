@@ -2,7 +2,11 @@
 //!
 //! Built up across the Phase 3 plan; the modules land before the entry point.
 
-#[allow(dead_code)] // Used by the entry point, which lands in a later task.
+#[path = "../common/mod.rs"]
+mod common;
+#[allow(dead_code)] // Used by the entry point, which lands in the next task.
 mod probes;
+#[allow(dead_code)] // Used by the entry point, which lands in the next task.
+mod verdict;
 
 fn main() {}
