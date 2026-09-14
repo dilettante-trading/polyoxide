@@ -18,6 +18,8 @@ usefully enumerate accepted values.
 
 Base URL: `https://user-pnl-api.polymarket.com`
 Implemented by: `data.pnl()` (`polyoxide-data`)
+Documented counterpart: `GET /v2/user-pnl`, which is **not** the same series.
+See [../data-v2/OBSERVED.md](../data-v2/OBSERVED.md).
 
 ### `GET /user-pnl`
 
@@ -40,6 +42,8 @@ values are losses.
 
 Base URL: `https://lb-api.polymarket.com`
 Implemented by: `data.rankings()` (`polyoxide-data`)
+Documented counterpart: `GET /v2/leaderboard`, which ranks volume in shares, not
+USDC. See [../data-v2/OBSERVED.md](../data-v2/OBSERVED.md).
 
 Distinct from `GET /v1/leaderboard` on the main Data API host, which is
 spec-backed and returns a different shape.

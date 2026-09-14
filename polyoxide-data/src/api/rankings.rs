@@ -20,6 +20,14 @@ use crate::{
 /// treat it as more likely to change without notice than the rest of this
 /// crate. The base URL is configurable via
 /// [`DataApiBuilder::rankings_base_url`](crate::DataApiBuilder::rankings_base_url).
+///
+/// # Documented alternative
+///
+/// [`DataV2::leaderboard`](crate::v2::DataV2::leaderboard) serves a documented
+/// trader board, but it does not rank the same quantity. Its `volume` is in
+/// shares where this host's `amount` is USDC (4.5x to 5.8x apart for the top of
+/// the weekly board on 2026-09-14), and its windows are `day`/`week`/`month`/`all`
+/// rather than trailing `1d`/`7d`/`30d`. See `docs/specs/data-v2/OBSERVED.md`.
 #[derive(Clone)]
 pub struct RankingsApi {
     pub(crate) http_client: HttpClient,

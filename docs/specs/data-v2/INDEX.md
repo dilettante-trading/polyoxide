@@ -6,9 +6,9 @@ The second contract for the Data API: the same host and data as
 [../data/INDEX.md](../data/INDEX.md), behind one shared set of conventions
 instead of per-route ones.
 
-> **Not implemented by polyoxide.** `polyoxide-data` targets the v1 routes,
-> which upstream says keep working. This spec is mirrored so parity audits can
-> see the surface and the nightly drift check can watch it.
+> **Implemented by `polyoxide-data`** as `data.v2()`, alongside the v1 routes,
+> which upstream says keep working. Where the live host disagrees with or goes
+> beyond this spec, see [OBSERVED.md](OBSERVED.md).
 
 Machine-readable schema: [openapi.json](openapi.json) (OpenAPI 3.1, mirror of
 `https://data-api.polymarket.com/v2/openapi.json`).
@@ -86,8 +86,8 @@ spec and have no `/v2` path; `/v2/status` reports data freshness, not liveness. 
 
 ## Overlap with what polyoxide already calls
 
-Not compared field by field. These are the places to look first if v2 support is
-taken on:
+The first two are compared in [OBSERVED.md](OBSERVED.md): neither v2 route is a
+drop-in replacement for the undocumented host.
 
 | v2 route | polyoxide today |
 |----------|-----------------|

@@ -22,13 +22,13 @@ Covered by a polyoxide crate:
 | [CLOB](clob/INDEX.md) | `https://clob.polymarket.com` | Order book trading, market data, rewards, RFQ | `polyoxide-clob` |
 | [Gamma](gamma/INDEX.md) | `https://gamma-api.polymarket.com` | Market/event metadata, search, comments | `polyoxide-gamma` |
 | [Data](data/INDEX.md) | `https://data-api.polymarket.com` | User positions, trades, combos, leaderboard | `polyoxide-data` |
+| [Data v2](data-v2/INDEX.md) | `https://data-api.polymarket.com/v2` | The Data API's second contract: `data` envelope, cursor pagination, snake_case | `polyoxide-data` (`data.v2()`) |
 | [Relay](relay/INDEX.md) | `https://relayer-v2.polymarket.com` | Gasless relay transactions | `polyoxide-relay` |
 
 Mirrored for reference, **not implemented** by any crate:
 
 | API | Base URL | Description |
 |-----|----------|-------------|
-| [Data v2](data-v2/INDEX.md) | `https://data-api.polymarket.com/v2` | The Data API's second contract: `data` envelope, cursor pagination, snake_case |
 | [Perps](perps/INDEX.md) | `https://api.perpetuals.polymarket.com` | Perpetual futures: accounts, orders, market info |
 | [Bridge](bridge/INDEX.md) | `https://bridge.polymarket.com` | Cross-chain deposits and withdrawals |
 | [Combos RFQ](combos-rfq/INDEX.md) | `https://combos-rfq-api.polymarket.com` | Maker quoting for combinatorial markets |

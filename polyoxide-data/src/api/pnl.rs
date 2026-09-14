@@ -15,6 +15,15 @@ use crate::{
 /// change without notice than the rest of this crate. The base URL is
 /// configurable via
 /// [`DataApiBuilder::pnl_base_url`](crate::DataApiBuilder::pnl_base_url).
+///
+/// # Documented alternative
+///
+/// [`DataV2::user_pnl`](crate::v2::DataV2::user_pnl) serves a documented PnL
+/// series, and upstream describes its `trade_pnl` as this one. They are not
+/// interchangeable. Measured on 2026-09-14 across four wallets, `trade_pnl`
+/// differed from this host's `p` at the same timestamps by anywhere from -0.55%
+/// to +62.7%, and this host appends a point for the current moment that v2 does
+/// not. See `docs/specs/data-v2/OBSERVED.md`.
 #[derive(Clone)]
 pub struct PnlApi {
     pub(crate) http_client: HttpClient,

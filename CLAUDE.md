@@ -84,7 +84,7 @@ plus a `manifest.jsonl`. Parquet output requires building the CLI with the
 **API namespaces** — Clients organize endpoints into namespaces:
 - CLOB: `clob.markets()`, `clob.orders()`, `clob.account_api()`, `clob.health()`, `clob.auth()`, `clob.rewards()`, `clob.public_rewards()`, `clob.notifications()`
 - Gamma: `gamma.markets()`, `gamma.events()`, `gamma.series()`, `gamma.tags()`, `gamma.comments()`, `gamma.sports()`, `gamma.search()`, `gamma.user()`, `gamma.health()`
-- Data: `data.user(addr)`, `data.trades()`, `data.holders()`, `data.leaderboard()`, `data.builders()`, `data.live_volume()`, `data.open_interest()`, `data.market_positions()`, `data.combos()`, `data.misc()`, `data.pnl()`, `data.rankings()`, `data.accounting()`, `data.approvals()`, `data.health()`
+- Data: `data.user(addr)`, `data.trades()`, `data.holders()`, `data.leaderboard()`, `data.builders()`, `data.live_volume()`, `data.open_interest()`, `data.market_positions()`, `data.combos()`, `data.misc()`, `data.pnl()`, `data.rankings()`, `data.accounting()`, `data.approvals()`, `data.health()`, `data.v2()`
 
 `data.pnl()` and `data.rankings()` target sibling hosts (`user-pnl-api` and `lb-api`) that have **no published spec** — see `docs/specs/undocumented/INDEX.md`. Their base URLs are configurable via `DataApiBuilder::pnl_base_url` / `rankings_base_url`, and all three hosts share one connection pool and concurrency budget via `HttpClient::with_base_url`.
 
@@ -180,11 +180,26 @@ are mirrored so parity audits can see them; adding client support for any of
 them is a separate piece of work.
 
 **Data API v2** (`data-v2/`, 20 endpoints under `/v2` on `data-api.polymarket.com`)
-is mirrored on the same terms. `polyoxide-data` implements only the v1 routes,
-which upstream says keep working. v2 uses a different contract: a `data`
-envelope, cursor-only pagination and snake_case fields. Its spec is the one mirror
-served by the API host (`/v2/openapi.json`) rather than `docs.polymarket.com`,
-so a parity audit that only walks `/api-spec/` misses it.
+is implemented by `polyoxide-data` as `data.v2()`, alongside the v1 routes, which
+upstream says keep working. v2 uses a different contract: a `data` envelope,
+cursor-only pagination and snake_case fields. Paged builders return `Page<T>` from
+`send()` and a `Stream` from `.pages()`, which clones one request per page so a walk
+cannot change its filters: on `trades`/`activity` a changed filter re-anchors the walk
+silently, and on `positions` the `title`, `condition` and window filters are not in the
+cursor at all. An error with the v2 body becomes `DataApiError::V2` (stable `code`, the
+server's `retryable` flag, `trace_id`), recognised by body shape rather than path. Its
+spec is the one mirror served by the API host (`/v2/openapi.json`) rather than
+`docs.polymarket.com`, so a parity audit that only walks `/api-spec/` misses it.
+
+Three test files hold v2 in place. `tests/v2_spec_agreement.rs` checks every type's
+optionality and field names and every builder's query keys against that schema.
+`tests/v2_wire_agreement.rs` checks the types against live captures in both directions
+(`scripts/capture_v2_fixtures.py` refreshes them). `docs/specs/data-v2/OBSERVED.md`
+records where the server and the schema part ways. Notably `/v2/user-pnl` is **not** the
+`data.pnl()` series and `/v2/leaderboard` ranks volume in shares, not USDC, so neither
+replaces the undocumented host. The v2 rows in `RateLimiter::data_default` are borrowed
+from v1 and are provisional until measured; several v2 routes are CDN-cached, so a soak
+that repeats a URL measures CloudFront rather than the origin.
 
 For the upstream hosted docs, [`docs/specs/polymarket-llms.txt`](docs/specs/polymarket-llms.txt) is a snapshot of Polymarket's own documentation index (`https://docs.polymarket.com/llms.txt`) — a flat list of every doc page (with `.md` URLs) covering CLOB/auth/orders, builder attribution, and the CLOB V2 migration. Use it to locate the authoritative upstream page for a topic when the local `docs/specs/` copies are insufficient.
 
