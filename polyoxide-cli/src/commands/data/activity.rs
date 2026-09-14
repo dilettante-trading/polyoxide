@@ -1,75 +1,94 @@
-use clap::{Args, ValueEnum};
+use std::io::Write;
+
+use clap::Args;
 use color_eyre::eyre::Result;
 use polyoxide_data::DataApi;
 
+use super::paging::{run_paged, PageArgs};
 use super::SortOrder;
-use crate::commands::common::parsing::{parse_activity_types, parse_comma_separated};
+use crate::commands::common::parsing::{parse_activity_types, parse_list_entry};
 use crate::commands::data::trades::TradeSideFilter;
 
+/// Query a user's activity (`/v2/activity`)
 #[derive(Args)]
 pub struct UserActivityCommand {
     /// User address (0x-prefixed, 40 hex chars)
     #[arg(short, long)]
     pub user: String,
-    /// Filter by market condition IDs (comma-separated)
-    #[arg(short, long, value_parser = parse_comma_separated)]
-    market: Option<Vec<String>>,
-    /// Filter by event IDs (comma-separated)
-    #[arg(short, long, value_parser = parse_comma_separated)]
-    event_id: Option<Vec<String>>,
-    /// Filter by activity types (comma-separated: trade, split, merge, redeem, reward, conversion)
-    #[arg(short = 'T', long)]
-    activity_type: Option<String>,
-    /// Filter by trade side
-    #[arg(short, long, value_enum)]
-    side: Option<TradeSideFilter>,
-    /// Start timestamp filter
-    #[arg(long)]
-    start: Option<i64>,
-    /// End timestamp filter
-    #[arg(long)]
-    end: Option<i64>,
-    /// Maximum number of results (0-10000, default: 100)
-    #[arg(short, long, default_value = "100")]
-    limit: u32,
-    /// Pagination offset (0-10000, default: 0)
-    #[arg(short, long, default_value = "0")]
-    offset: u32,
-    /// Sort field
-    #[arg(long, value_enum, default_value = "timestamp")]
-    sort_by: ActivitySortField,
-    /// Sort direction
-    #[arg(long, value_enum, default_value = "desc")]
-    sort_direction: SortOrder,
+    #[command(flatten)]
+    pub filters: ActivityFilters,
 }
 
 impl UserActivityCommand {
-    pub async fn run(self, data: &DataApi) -> Result<()> {
-        let positions_api = data.positions(&self.user);
+    pub async fn run(self, data: &DataApi, out: &mut dyn Write, err: &mut dyn Write) -> Result<()> {
+        self.filters.run(data, &self.user, out, err).await
+    }
+}
 
-        let mut request = positions_api
-            .activity()
+/// Filters shared by `data activity` and `data positions activity`
+#[derive(Args, Debug, Clone, PartialEq)]
+pub struct ActivityFilters {
+    /// Filter by market condition IDs (comma-separated, at most 20)
+    #[arg(
+        short = 'm',
+        long = "condition",
+        visible_alias = "market",
+        value_delimiter = ',',
+        value_parser = parse_list_entry
+    )]
+    pub condition: Option<Vec<String>>,
+    /// Filter by event IDs (comma-separated)
+    #[arg(short, long, value_delimiter = ',', value_parser = parse_list_entry)]
+    pub event_id: Option<Vec<String>>,
+    /// Filter by activity types (comma-separated, e.g. trade,split,tip)
+    #[arg(short = 'T', long)]
+    pub activity_type: Option<String>,
+    /// Filter trade rows by side
+    #[arg(short, long, value_enum)]
+    pub side: Option<TradeSideFilter>,
+    /// Window start, epoch seconds (default: three years back; 1 for full history)
+    #[arg(long)]
+    pub start: Option<i64>,
+    /// Window end, epoch seconds
+    #[arg(long)]
+    pub end: Option<i64>,
+    /// Include deposit and withdrawal rows, which the API hides by default
+    #[arg(long)]
+    pub include_deposits_withdrawals: bool,
+    /// Page size (at most 1000)
+    #[arg(short, long, default_value = "100")]
+    pub limit: u32,
+    /// Sort direction (rows are always sorted by timestamp)
+    #[arg(long, value_enum, default_value = "desc")]
+    pub sort_direction: SortOrder,
+    #[command(flatten)]
+    pub page: PageArgs,
+}
+
+impl ActivityFilters {
+    pub async fn run(
+        self,
+        data: &DataApi,
+        user: &str,
+        out: &mut dyn Write,
+        err: &mut dyn Write,
+    ) -> Result<()> {
+        let mut request = data
+            .v2()
+            .activity(user)
             .limit(self.limit)
-            .offset(self.offset)
-            .sort_by(self.sort_by.into())
             .sort_direction(self.sort_direction.into());
-
-        if let Some(ref ids) = self.market {
-            let ids: Vec<&str> = ids.iter().map(|s| s.as_str()).collect();
-            request = request.market(ids);
+        if let Some(ids) = self.condition {
+            request = request.conditions(ids);
         }
-        if let Some(ref ids) = self.event_id {
-            let ids: Vec<&str> = ids.iter().map(|s| s.as_str()).collect();
-            request = request.event_id(ids);
+        if let Some(ids) = self.event_id {
+            request = request.event_ids(ids);
         }
         if let Some(types) = self.activity_type {
-            let activity_types = parse_activity_types(&types)?;
-            if !activity_types.is_empty() {
-                request = request.activity_type(activity_types);
-            }
+            request = request.types(parse_activity_types(&types)?);
         }
-        if let Some(s) = self.side {
-            request = request.side(s.into());
+        if let Some(side) = self.side {
+            request = request.side(side.into());
         }
         if let Some(ts) = self.start {
             request = request.start(ts);
@@ -77,99 +96,47 @@ impl UserActivityCommand {
         if let Some(ts) = self.end {
             request = request.end(ts);
         }
-
-        let activity = request.send().await?;
-        println!("{}", serde_json::to_string_pretty(&activity)?);
-        Ok(())
+        if self.include_deposits_withdrawals {
+            request = request.exclude_deposits_withdrawals(false);
+        }
+        run_paged(request, &self.page, out, err).await
     }
 }
 
-/// Sort field for positions
-#[derive(Debug, Clone, Copy, ValueEnum, Default)]
-pub enum PositionSortField {
-    /// Sort by current value
-    #[default]
-    Current,
-    /// Sort by initial value
-    Initial,
-    /// Sort by token count
-    Tokens,
-    /// Sort by cash P&L
-    CashPnl,
-    /// Sort by percentage P&L
-    PercentPnl,
-    /// Sort by market title
-    Title,
-    /// Sort by resolving status
-    Resolving,
-    /// Sort by price
-    Price,
-    /// Sort by average price
-    AvgPrice,
-}
+#[cfg(test)]
+mod tests {
+    use clap::Parser;
 
-impl From<PositionSortField> for polyoxide_data::types::PositionSortBy {
-    fn from(field: PositionSortField) -> Self {
-        match field {
-            PositionSortField::Current => Self::Current,
-            PositionSortField::Initial => Self::Initial,
-            PositionSortField::Tokens => Self::Tokens,
-            PositionSortField::CashPnl => Self::CashPnl,
-            PositionSortField::PercentPnl => Self::PercentPnl,
-            PositionSortField::Title => Self::Title,
-            PositionSortField::Resolving => Self::Resolving,
-            PositionSortField::Price => Self::Price,
-            PositionSortField::AvgPrice => Self::AvgPrice,
-        }
+    use super::*;
+
+    #[derive(Parser)]
+    struct Wrapper {
+        #[command(flatten)]
+        cmd: UserActivityCommand,
     }
-}
 
-/// Sort field for closed positions
-#[derive(Debug, Clone, Copy, ValueEnum, Default)]
-pub enum ClosedPositionSortField {
-    /// Sort by realized P&L
-    #[default]
-    RealizedPnl,
-    /// Sort by market title
-    Title,
-    /// Sort by price
-    Price,
-    /// Sort by average price
-    AvgPrice,
-    /// Sort by timestamp
-    Timestamp,
-}
-
-impl From<ClosedPositionSortField> for polyoxide_data::types::ClosedPositionSortBy {
-    fn from(field: ClosedPositionSortField) -> Self {
-        match field {
-            ClosedPositionSortField::RealizedPnl => Self::RealizedPnl,
-            ClosedPositionSortField::Title => Self::Title,
-            ClosedPositionSortField::Price => Self::Price,
-            ClosedPositionSortField::AvgPrice => Self::AvgPrice,
-            ClosedPositionSortField::Timestamp => Self::Timestamp,
-        }
+    fn try_parse(args: &[&str]) -> Result<UserActivityCommand, clap::Error> {
+        Wrapper::try_parse_from(args).map(|w| w.cmd)
     }
-}
 
-/// Sort field for activity
-#[derive(Debug, Clone, Copy, ValueEnum, Default)]
-pub enum ActivitySortField {
-    /// Sort by timestamp
-    #[default]
-    Timestamp,
-    /// Sort by token amount
-    Tokens,
-    /// Sort by cash amount
-    Cash,
-}
+    #[test]
+    fn activity_defaults() {
+        let cmd = try_parse(&["test", "--user", "0xabc"]).unwrap();
+        assert_eq!(cmd.user, "0xabc");
+        assert_eq!(cmd.filters.limit, 100);
+        assert!(matches!(cmd.filters.sort_direction, SortOrder::Desc));
+        assert!(!cmd.filters.include_deposits_withdrawals);
+        assert_eq!(cmd.filters.page, PageArgs::default());
+    }
 
-impl From<ActivitySortField> for polyoxide_data::types::ActivitySortBy {
-    fn from(field: ActivitySortField) -> Self {
-        match field {
-            ActivitySortField::Timestamp => Self::Timestamp,
-            ActivitySortField::Tokens => Self::Tokens,
-            ActivitySortField::Cash => Self::Cash,
-        }
+    #[test]
+    fn sort_by_is_gone_because_only_timestamp_is_supported() {
+        assert!(try_parse(&["test", "--user", "0xabc", "--sort-by", "tokens"]).is_err());
+    }
+
+    #[test]
+    fn market_is_an_alias_of_condition() {
+        let cmd = try_parse(&["test", "--user", "0xabc", "--market", "0xc"]).unwrap();
+        assert_eq!(cmd.filters.condition.unwrap(), ["0xc"]);
     }
 }

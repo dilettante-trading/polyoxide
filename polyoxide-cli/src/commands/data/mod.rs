@@ -39,7 +39,7 @@ pub enum DataCommand {
     },
     /// Get traded markets by user
     Traded(TradedCommand),
-    /// Query user positions (open, closed, value) and activity
+    /// Query user positions (open, redeemable, closed, value) and activity
     Positions(PositionsCommand),
     /// Get open interest for markets
     OpenInterest(OpenInterestCommand),
@@ -70,12 +70,12 @@ impl DataCommand {
                 let health = data.health().check().await?;
                 paging::print_pretty(&health, out)
             }
-            Self::Activity(cmd) => cmd.run(data).await,
+            Self::Activity(cmd) => cmd.run(data, out, err).await,
             Self::Builders { command } => command.run(data).await,
             Self::Holders(cmd) => cmd.run(data).await,
             Self::Trades { command } => command.run(data, out, err).await,
             Self::Traded(cmd) => cmd.run(data).await,
-            Self::Positions(cmd) => cmd.run(data).await,
+            Self::Positions(cmd) => cmd.run(data, out, err).await,
             Self::OpenInterest(cmd) => cmd.run(data).await,
             Self::LiveVolume(cmd) => cmd.run(data).await,
         }
@@ -83,7 +83,7 @@ impl DataCommand {
 }
 
 /// Sort order
-#[derive(Debug, Clone, Copy, ValueEnum, Default)]
+#[derive(Debug, Clone, Copy, ValueEnum, Default, PartialEq)]
 pub enum SortOrder {
     /// Ascending order
     Asc,

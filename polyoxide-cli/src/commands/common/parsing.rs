@@ -1,7 +1,7 @@
 use std::time::Duration;
 
 use color_eyre::eyre::{bail, Result};
-use polyoxide_data::types::ActivityType;
+use polyoxide_data::v2::types::ActivityType;
 
 /// One entry of a comma-separated list flag, trimmed.
 ///
@@ -55,27 +55,30 @@ pub fn parse_duration(s: &str) -> Result<Duration, String> {
     }
 }
 
+/// Parses comma-separated activity types, case-insensitively, against every
+/// type the SDK knows (`ActivityType::ALL`).
 pub fn parse_activity_types(input: &str) -> Result<Vec<ActivityType>> {
     let mut valid = Vec::new();
     let mut invalid = Vec::new();
 
     for s in input.split(',') {
         let trimmed = s.trim();
-        match trimmed.to_uppercase().as_str() {
-            "TRADE" => valid.push(ActivityType::Trade),
-            "SPLIT" => valid.push(ActivityType::Split),
-            "MERGE" => valid.push(ActivityType::Merge),
-            "REDEEM" => valid.push(ActivityType::Redeem),
-            "REWARD" => valid.push(ActivityType::Reward),
-            "CONVERSION" => valid.push(ActivityType::Conversion),
-            _ => invalid.push(trimmed.to_string()),
+        let wire = trimmed.to_uppercase();
+        match ActivityType::ALL.iter().find(|t| t.as_str() == wire) {
+            Some(activity_type) => valid.push(activity_type.clone()),
+            None => invalid.push(trimmed.to_string()),
         }
     }
 
     if !invalid.is_empty() {
+        let names: Vec<String> = ActivityType::ALL
+            .iter()
+            .map(|t| t.as_str().to_lowercase())
+            .collect();
         bail!(
-            "Invalid activity type(s): {}. Valid types: trade, split, merge, redeem, reward, conversion",
-            invalid.join(", ")
+            "Invalid activity type(s): {}. Valid types: {}",
+            invalid.join(", "),
+            names.join(", ")
         );
     }
 
@@ -144,9 +147,27 @@ mod tests {
     }
 
     #[test]
-    fn parse_activity_types_all_variants() {
-        let result = parse_activity_types("trade,split,merge,redeem,reward,conversion").unwrap();
-        assert_eq!(result.len(), 6);
+    fn parse_activity_types_accepts_every_v2_type() {
+        let every = ActivityType::ALL
+            .iter()
+            .map(|t| t.as_str().to_lowercase())
+            .collect::<Vec<_>>()
+            .join(",");
+        assert_eq!(parse_activity_types(&every).unwrap(), ActivityType::ALL);
+    }
+
+    #[test]
+    fn parse_activity_types_accepts_v2_only_types() {
+        assert_eq!(
+            parse_activity_types("tip,maker_rebate").unwrap(),
+            vec![ActivityType::Tip, ActivityType::MakerRebate]
+        );
+    }
+
+    #[test]
+    fn parse_activity_types_error_lists_the_valid_types() {
+        let msg = parse_activity_types("nope").unwrap_err().to_string();
+        assert!(msg.contains("tip") && msg.contains("deposit"), "{msg}");
     }
 
     // --- parse_list_entry tests ---

@@ -120,17 +120,6 @@ impl From<TradeSideFilter> for TradeSide {
     }
 }
 
-/// The v1 side, for `activity` and `positions` until they move to v2 in the
-/// next task.
-impl From<TradeSideFilter> for polyoxide_data::types::TradeSide {
-    fn from(side: TradeSideFilter) -> Self {
-        match side {
-            TradeSideFilter::Buy => Self::Buy,
-            TradeSideFilter::Sell => Self::Sell,
-        }
-    }
-}
-
 /// Unit of a filter amount
 #[derive(Debug, Clone, Copy, ValueEnum, PartialEq)]
 pub enum TradeFilterField {

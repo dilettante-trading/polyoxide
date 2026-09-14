@@ -396,6 +396,8 @@ async fn offset_is_refused_with_a_pointer_to_cursor() {
     for args in [
         &["trades", "list", "--offset", "100"][..],
         &["trades", "list", "-o", "100"][..],
+        &["activity", "--user", "0xu", "--offset", "100"][..],
+        &["positions", "--user", "0xu", "list", "--offset", "100"][..],
     ] {
         let run = run(&server, args).await;
         let message = run.result.unwrap_err().to_string();
@@ -408,4 +410,167 @@ async fn max_pages_without_all_is_refused() {
     let server = Server::new_async().await;
     let run = run(&server, &["trades", "list", "--max-pages", "2"]).await;
     assert!(run.result.is_err());
+}
+
+// ── positions and activity ───────────────────────────────────────────
+
+#[tokio::test]
+async fn positions_list_flags_reach_their_v2_parameters() {
+    let (query, _) = sent(
+        "/v2/positions",
+        &fixture("positions_closed"),
+        &[
+            "positions",
+            "--user",
+            "0xu",
+            "list",
+            "--condition",
+            "0xa,0xb",
+            "--event-id",
+            "7",
+            "--status",
+            "closed",
+            "--title",
+            "rain",
+            "--filter-type",
+            "tokens",
+            "--filter-amount",
+            "2.5",
+            "--include-archived",
+            "--sort-by",
+            "realized-pnl",
+            "--sort-direction",
+            "asc",
+            "--start",
+            "100",
+            "--end",
+            "200",
+            "--limit",
+            "4",
+        ],
+    )
+    .await;
+
+    assert_eq!(
+        query,
+        pairs(&[
+            ("user", "0xu"),
+            ("condition", "0xa,0xb"),
+            ("event_id", "7"),
+            ("status", "CLOSED"),
+            ("title", "rain"),
+            ("filter_type", "TOKENS"),
+            ("filter_amount", "2.5"),
+            ("include_archived", "true"),
+            ("sort_by", "REALIZED_PNL"),
+            ("sort_direction", "ASC"),
+            ("start", "100"),
+            ("end", "200"),
+            ("limit", "4"),
+        ])
+    );
+}
+
+#[tokio::test]
+async fn positions_list_defaults_to_open_positions_for_the_user() {
+    let (query, _) = sent(
+        "/v2/positions",
+        &fixture("positions"),
+        &["positions", "--user", "0xu", "list"],
+    )
+    .await;
+    assert_eq!(
+        query,
+        pairs(&[
+            ("user", "0xu"),
+            ("status", "OPEN"),
+            ("sort_direction", "DESC"),
+            ("limit", "100"),
+        ])
+    );
+}
+
+#[tokio::test]
+async fn positions_value_scopes_to_conditions() {
+    let (query, _) = sent(
+        "/v2/value",
+        &fixture("value"),
+        &["positions", "--user", "0xu", "value", "--market", "0xa,0xb"],
+    )
+    .await;
+    assert_eq!(query, pairs(&[("user", "0xu"), ("condition", "0xa,0xb")]));
+}
+
+#[tokio::test]
+async fn positions_closed_names_its_replacement() {
+    let server = Server::new_async().await;
+    let run = run(&server, &["positions", "--user", "0xu", "closed"]).await;
+    let message = run.result.unwrap_err().to_string();
+    assert!(message.contains("--status closed"), "{message}");
+}
+
+#[tokio::test]
+async fn activity_flags_reach_their_v2_parameters() {
+    let (query, _) = sent(
+        "/v2/activity",
+        &fixture("activity"),
+        &[
+            "activity",
+            "--user",
+            "0xu",
+            "--condition",
+            "0xa",
+            "--event-id",
+            "7",
+            "--activity-type",
+            "trade,tip",
+            "--side",
+            "buy",
+            "--start",
+            "100",
+            "--end",
+            "200",
+            "--include-deposits-withdrawals",
+            "--sort-direction",
+            "asc",
+            "--limit",
+            "5",
+        ],
+    )
+    .await;
+
+    assert_eq!(
+        query,
+        pairs(&[
+            ("user", "0xu"),
+            ("condition", "0xa"),
+            ("event_id", "7"),
+            ("type", "TRADE,TIP"),
+            ("side", "BUY"),
+            ("start", "100"),
+            ("end", "200"),
+            ("exclude_deposits_withdrawals", "false"),
+            ("sort_direction", "ASC"),
+            ("limit", "5"),
+        ])
+    );
+}
+
+#[tokio::test]
+async fn positions_activity_uses_the_positions_user() {
+    let (query, _) = sent(
+        "/v2/activity",
+        &fixture("activity"),
+        &["positions", "--user", "0xu", "activity"],
+    )
+    .await;
+    assert_eq!(
+        query,
+        pairs(&[
+            ("user", "0xu"),
+            ("sort_direction", "DESC"),
+            ("limit", "100")
+        ]),
+        "deposits stay at the API's default of hidden unless asked for"
+    );
 }

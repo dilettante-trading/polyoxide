@@ -1,10 +1,17 @@
-use clap::{Args, Subcommand, ValueEnum};
-use color_eyre::eyre::Result;
-use polyoxide_data::DataApi;
+use std::io::Write;
 
+use clap::{Args, Subcommand, ValueEnum};
+use color_eyre::eyre::{bail, Result};
+use polyoxide_data::{
+    v2::types::{PositionAnchor, PositionSortBy, PositionStatus},
+    DataApi,
+};
+
+use super::activity::ActivityFilters;
+use super::paging::{print_pretty, run_paged, PageArgs};
 use super::SortOrder;
-use crate::commands::common::parsing::{parse_activity_types, parse_comma_separated};
-use crate::commands::data::trades::TradeSideFilter;
+use crate::commands::common::parsing::parse_list_entry;
+use crate::commands::data::trades::TradeFilterField;
 
 #[derive(Args)]
 pub struct PositionsCommand {
@@ -18,227 +25,123 @@ pub struct PositionsCommand {
 
 #[derive(Subcommand)]
 pub enum PositionsSubcommand {
-    /// List positions for the user
+    /// List the user's positions (`/v2/positions`); --status selects open, redeemable or closed
     List {
-        /// Filter by market condition IDs (comma-separated)
-        #[arg(short, long, value_parser = parse_comma_separated)]
-        market: Option<Vec<String>>,
+        /// Filter by market condition IDs (comma-separated, at most 20)
+        #[arg(
+            short = 'm',
+            long = "condition",
+            visible_alias = "market",
+            value_delimiter = ',',
+            value_parser = parse_list_entry
+        )]
+        condition: Option<Vec<String>>,
         /// Filter by event IDs (comma-separated)
-        #[arg(short, long, value_parser = parse_comma_separated)]
+        #[arg(short, long, value_delimiter = ',', value_parser = parse_list_entry)]
         event_id: Option<Vec<String>>,
-        /// Minimum position size filter (default: 1)
+        /// Lifecycle state (open includes redeemable positions)
+        #[arg(long, value_enum, ignore_case = true, default_value = "open")]
+        status: PositionStatusFilter,
+        /// Filter by market title (case-insensitive substring, at most 200 chars)
+        #[arg(short, long)]
+        title: Option<String>,
+        /// Unit of --filter-amount (API default: tokens)
+        #[arg(long, value_enum)]
+        filter_type: Option<TradeFilterField>,
+        /// Minimum current holding, in the unit of --filter-type
         #[arg(long)]
-        size_threshold: Option<f64>,
-        /// Filter for redeemable positions only
+        filter_amount: Option<f64>,
+        /// Include positions on archived markets (open and redeemable only)
         #[arg(long)]
-        redeemable: bool,
-        /// Filter for mergeable positions only
-        #[arg(long)]
-        mergeable: bool,
-        /// Maximum number of results (0-500, default: 100)
-        #[arg(short, long, default_value = "100")]
-        limit: u32,
-        /// Pagination offset (0-10000, default: 0)
-        #[arg(short, long, default_value = "0")]
-        offset: u32,
-        /// Sort field
-        #[arg(long, value_enum, default_value = "current")]
-        sort_by: PositionSortField,
+        include_archived: bool,
+        /// Sort field (API default depends on --status)
+        #[arg(long, value_enum)]
+        sort_by: Option<PositionSortField>,
         /// Sort direction
         #[arg(long, value_enum, default_value = "desc")]
         sort_direction: SortOrder,
-        /// Filter by market title (max 100 chars)
-        #[arg(short, long)]
-        title: Option<String>,
-    },
-    /// Get total value of the user's positions
-    Value {
-        /// Filter by market condition IDs (comma-separated)
-        #[arg(short, long, value_parser = parse_comma_separated)]
-        market: Option<Vec<String>>,
-    },
-    /// List closed positions for the user
-    Closed {
-        /// Filter by market condition IDs (comma-separated)
-        #[arg(short, long, value_parser = parse_comma_separated)]
-        market: Option<Vec<String>>,
-        /// Filter by event IDs (comma-separated)
-        #[arg(short, long, value_parser = parse_comma_separated)]
-        event_id: Option<Vec<String>>,
-        /// Filter by market title (max 100 chars)
-        #[arg(short, long)]
-        title: Option<String>,
-        /// Maximum number of results (0-50, default: 10)
-        #[arg(short, long, default_value = "10")]
-        limit: u32,
-        /// Pagination offset (0-100000, default: 0)
-        #[arg(short, long, default_value = "0")]
-        offset: u32,
-        /// Sort field
-        #[arg(long, value_enum, default_value = "realized-pnl")]
-        sort_by: ClosedPositionSortField,
-        /// Sort direction
-        #[arg(long, value_enum, default_value = "desc")]
-        sort_direction: SortOrder,
-    },
-    /// List activity for the user
-    Activity {
-        /// Filter by market condition IDs (comma-separated)
-        #[arg(short, long, value_parser = parse_comma_separated)]
-        market: Option<Vec<String>>,
-        /// Filter by event IDs (comma-separated)
-        #[arg(short, long, value_parser = parse_comma_separated)]
-        event_id: Option<Vec<String>>,
-        /// Filter by activity types (comma-separated: trade, split, merge, redeem, reward, conversion)
-        #[arg(short = 'T', long)]
-        activity_type: Option<String>,
-        /// Filter by trade side
-        #[arg(short, long, value_enum)]
-        side: Option<TradeSideFilter>,
-        /// Start timestamp filter
+        /// Only positions whose last event is at or after this epoch second
         #[arg(long)]
         start: Option<i64>,
-        /// End timestamp filter
+        /// Only positions whose last event is at or before this epoch second
         #[arg(long)]
         end: Option<i64>,
-        /// Maximum number of results (0-10000, default: 100)
+        /// Page size (at most 1000)
         #[arg(short, long, default_value = "100")]
         limit: u32,
-        /// Pagination offset (0-10000, default: 0)
-        #[arg(short, long, default_value = "0")]
-        offset: u32,
-        /// Sort field
-        #[arg(long, value_enum, default_value = "timestamp")]
-        sort_by: ActivitySortField,
-        /// Sort direction
-        #[arg(long, value_enum, default_value = "desc")]
-        sort_direction: SortOrder,
+        #[command(flatten)]
+        page: PageArgs,
     },
+    /// Get the total value of the user's positions (`/v2/value`)
+    Value {
+        /// Value only these market condition IDs (comma-separated, at most 20)
+        #[arg(
+            short = 'm',
+            long = "condition",
+            visible_alias = "market",
+            value_delimiter = ',',
+            value_parser = parse_list_entry
+        )]
+        condition: Option<Vec<String>>,
+    },
+    /// Removed: use `positions list --status closed`
+    #[command(hide = true)]
+    Closed {
+        #[arg(trailing_var_arg = true, allow_hyphen_values = true, hide = true)]
+        _ignored: Vec<String>,
+    },
+    /// List activity for the user (`/v2/activity`)
+    Activity(ActivityFilters),
 }
 
 impl PositionsCommand {
-    pub async fn run(self, data: &DataApi) -> Result<()> {
-        let positions_api = data.positions(&self.user);
-
+    pub async fn run(self, data: &DataApi, out: &mut dyn Write, err: &mut dyn Write) -> Result<()> {
         match self.command {
             PositionsSubcommand::List {
-                market,
+                condition,
                 event_id,
-                size_threshold,
-                redeemable,
-                mergeable,
-                limit,
-                offset,
+                status,
+                title,
+                filter_type,
+                filter_amount,
+                include_archived,
                 sort_by,
                 sort_direction,
-                title,
-            } => {
-                let mut request = positions_api.list_positions();
-
-                if let Some(ref ids) = market {
-                    let ids: Vec<&str> = ids.iter().map(|s| s.as_str()).collect();
-                    request = request.market(ids);
-                }
-                if let Some(ref ids) = event_id {
-                    let ids: Vec<&str> = ids.iter().map(|s| s.as_str()).collect();
-                    request = request.event_id(ids);
-                }
-                if let Some(threshold) = size_threshold {
-                    request = request.size_threshold(threshold);
-                }
-                if redeemable {
-                    request = request.redeemable(true);
-                }
-                if mergeable {
-                    request = request.mergeable(true);
-                }
-                request = request
-                    .limit(limit)
-                    .offset(offset)
-                    .sort_by(sort_by.into())
-                    .sort_direction(sort_direction.into());
-                if let Some(t) = title {
-                    request = request.title(t);
-                }
-
-                let positions = request.send().await?;
-                println!("{}", serde_json::to_string_pretty(&positions)?);
-            }
-            PositionsSubcommand::Value { market } => {
-                let mut request = positions_api.positions_value();
-                if let Some(ref ids) = market {
-                    let ids: Vec<&str> = ids.iter().map(|s| s.as_str()).collect();
-                    request = request.market(ids);
-                }
-                let value = request.send().await?;
-                println!("{}", serde_json::to_string_pretty(&value)?);
-            }
-            PositionsSubcommand::Closed {
-                market,
-                event_id,
-                title,
-                limit,
-                offset,
-                sort_by,
-                sort_direction,
-            } => {
-                let mut request = positions_api
-                    .closed_positions()
-                    .limit(limit)
-                    .offset(offset)
-                    .sort_by(sort_by.into())
-                    .sort_direction(sort_direction.into());
-
-                if let Some(ref ids) = market {
-                    let ids: Vec<&str> = ids.iter().map(|s| s.as_str()).collect();
-                    request = request.market(ids);
-                }
-                if let Some(ref ids) = event_id {
-                    let ids: Vec<&str> = ids.iter().map(|s| s.as_str()).collect();
-                    request = request.event_id(ids);
-                }
-                if let Some(t) = title {
-                    request = request.title(t);
-                }
-
-                let positions = request.send().await?;
-                println!("{}", serde_json::to_string_pretty(&positions)?);
-            }
-            PositionsSubcommand::Activity {
-                market,
-                event_id,
-                activity_type,
-                side,
                 start,
                 end,
                 limit,
-                offset,
-                sort_by,
-                sort_direction,
+                page,
             } => {
-                let mut request = positions_api
-                    .activity()
-                    .limit(limit)
-                    .offset(offset)
-                    .sort_by(sort_by.into())
-                    .sort_direction(sort_direction.into());
-
-                if let Some(ref ids) = market {
-                    let ids: Vec<&str> = ids.iter().map(|s| s.as_str()).collect();
-                    request = request.market(ids);
+                let anchor = match condition {
+                    Some(conditions) => PositionAnchor::UserInConditions {
+                        user: self.user,
+                        conditions,
+                    },
+                    None => PositionAnchor::User(self.user),
+                };
+                let mut request = data
+                    .v2()
+                    .positions(anchor)
+                    .status(status.into())
+                    .sort_direction(sort_direction.into())
+                    .limit(limit);
+                if let Some(ids) = event_id {
+                    request = request.event_ids(ids);
                 }
-                if let Some(ref ids) = event_id {
-                    let ids: Vec<&str> = ids.iter().map(|s| s.as_str()).collect();
-                    request = request.event_id(ids);
+                if let Some(title) = title {
+                    request = request.title(title);
                 }
-                if let Some(types) = activity_type {
-                    let activity_types = parse_activity_types(&types)?;
-                    if !activity_types.is_empty() {
-                        request = request.activity_type(activity_types);
-                    }
+                if let Some(filter_type) = filter_type {
+                    request = request.filter_type(filter_type.into());
                 }
-                if let Some(s) = side {
-                    request = request.side(s.into());
+                if let Some(amount) = filter_amount {
+                    request = request.filter_amount(amount);
+                }
+                if include_archived {
+                    request = request.include_archived(true);
+                }
+                if let Some(sort_by) = sort_by {
+                    request = request.sort_by(sort_by.into());
                 }
                 if let Some(ts) = start {
                     request = request.start(ts);
@@ -246,101 +149,71 @@ impl PositionsCommand {
                 if let Some(ts) = end {
                     request = request.end(ts);
                 }
-
-                let activity = request.send().await?;
-                println!("{}", serde_json::to_string_pretty(&activity)?);
+                run_paged(request, &page, out, err).await
             }
+            PositionsSubcommand::Value { condition } => {
+                let mut request = data.v2().value(self.user);
+                if let Some(ids) = condition {
+                    request = request.conditions(ids);
+                }
+                print_pretty(&request.send().await?, out)
+            }
+            PositionsSubcommand::Closed { .. } => {
+                bail!("`positions closed` was removed: use `positions list --status closed`")
+            }
+            PositionsSubcommand::Activity(filters) => filters.run(data, &self.user, out, err).await,
         }
-        Ok(())
+    }
+}
+
+/// Position lifecycle state
+#[derive(Debug, Clone, Copy, ValueEnum, Default, PartialEq)]
+pub enum PositionStatusFilter {
+    /// Open positions, including settled-but-unredeemed winners
+    #[default]
+    Open,
+    /// Only positions that can be redeemed now
+    Redeemable,
+    /// Exited positions
+    Closed,
+}
+
+impl From<PositionStatusFilter> for PositionStatus {
+    fn from(status: PositionStatusFilter) -> Self {
+        match status {
+            PositionStatusFilter::Open => Self::Open,
+            PositionStatusFilter::Redeemable => Self::Redeemable,
+            PositionStatusFilter::Closed => Self::Closed,
+        }
     }
 }
 
 /// Sort field for positions
-#[derive(Debug, Clone, Copy, ValueEnum, Default)]
+#[derive(Debug, Clone, Copy, ValueEnum, PartialEq)]
 pub enum PositionSortField {
-    /// Sort by current value
-    #[default]
-    Current,
-    /// Sort by initial value
-    Initial,
-    /// Sort by token count
+    /// Mark-to-market value
+    CurrentValue,
+    /// Token count
     Tokens,
-    /// Sort by cash P&L
-    CashPnl,
-    /// Sort by percentage P&L
-    PercentPnl,
-    /// Sort by market title
-    Title,
-    /// Sort by resolving status
-    Resolving,
-    /// Sort by price
-    Price,
-    /// Sort by average price
-    AvgPrice,
+    /// Unrealized P&L
+    UnrealizedPnl,
+    /// Realized P&L
+    RealizedPnl,
+    /// Total P&L
+    TotalPnl,
+    /// Time of the position's last event
+    Timestamp,
 }
 
-impl From<PositionSortField> for polyoxide_data::types::PositionSortBy {
+impl From<PositionSortField> for PositionSortBy {
     fn from(field: PositionSortField) -> Self {
         match field {
-            PositionSortField::Current => Self::Current,
-            PositionSortField::Initial => Self::Initial,
+            PositionSortField::CurrentValue => Self::CurrentValue,
             PositionSortField::Tokens => Self::Tokens,
-            PositionSortField::CashPnl => Self::CashPnl,
-            PositionSortField::PercentPnl => Self::PercentPnl,
-            PositionSortField::Title => Self::Title,
-            PositionSortField::Resolving => Self::Resolving,
-            PositionSortField::Price => Self::Price,
-            PositionSortField::AvgPrice => Self::AvgPrice,
-        }
-    }
-}
-
-/// Sort field for closed positions
-#[derive(Debug, Clone, Copy, ValueEnum, Default)]
-pub enum ClosedPositionSortField {
-    /// Sort by realized P&L
-    #[default]
-    RealizedPnl,
-    /// Sort by market title
-    Title,
-    /// Sort by price
-    Price,
-    /// Sort by average price
-    AvgPrice,
-    /// Sort by timestamp
-    Timestamp,
-}
-
-impl From<ClosedPositionSortField> for polyoxide_data::types::ClosedPositionSortBy {
-    fn from(field: ClosedPositionSortField) -> Self {
-        match field {
-            ClosedPositionSortField::RealizedPnl => Self::RealizedPnl,
-            ClosedPositionSortField::Title => Self::Title,
-            ClosedPositionSortField::Price => Self::Price,
-            ClosedPositionSortField::AvgPrice => Self::AvgPrice,
-            ClosedPositionSortField::Timestamp => Self::Timestamp,
-        }
-    }
-}
-
-/// Sort field for activity
-#[derive(Debug, Clone, Copy, ValueEnum, Default)]
-pub enum ActivitySortField {
-    /// Sort by timestamp
-    #[default]
-    Timestamp,
-    /// Sort by token amount
-    Tokens,
-    /// Sort by cash amount
-    Cash,
-}
-
-impl From<ActivitySortField> for polyoxide_data::types::ActivitySortBy {
-    fn from(field: ActivitySortField) -> Self {
-        match field {
-            ActivitySortField::Timestamp => Self::Timestamp,
-            ActivitySortField::Tokens => Self::Tokens,
-            ActivitySortField::Cash => Self::Cash,
+            PositionSortField::UnrealizedPnl => Self::UnrealizedPnl,
+            PositionSortField::RealizedPnl => Self::RealizedPnl,
+            PositionSortField::TotalPnl => Self::TotalPnl,
+            PositionSortField::Timestamp => Self::Timestamp,
         }
     }
 }
@@ -348,9 +221,9 @@ impl From<ActivitySortField> for polyoxide_data::types::ActivitySortBy {
 #[cfg(test)]
 mod tests {
     use clap::Parser;
-    use polyoxide_data::types;
 
     use super::*;
+    use crate::commands::data::trades::TradeSideFilter;
 
     #[derive(Parser)]
     struct TestWrapper {
@@ -362,102 +235,46 @@ mod tests {
         TestWrapper::try_parse_from(args)
     }
 
-    // --- PositionSortField From conversion tests ---
-
     #[test]
-    fn position_sort_field_from_current() {
-        let p: types::PositionSortBy = PositionSortField::Current.into();
-        assert!(matches!(p, types::PositionSortBy::Current));
+    fn status_filter_maps_to_the_v2_status() {
+        assert_eq!(
+            PositionStatus::from(PositionStatusFilter::Open),
+            PositionStatus::Open
+        );
+        assert_eq!(
+            PositionStatus::from(PositionStatusFilter::Redeemable),
+            PositionStatus::Redeemable
+        );
+        assert_eq!(
+            PositionStatus::from(PositionStatusFilter::Closed),
+            PositionStatus::Closed
+        );
     }
 
     #[test]
-    fn position_sort_field_from_initial() {
-        let p: types::PositionSortBy = PositionSortField::Initial.into();
-        assert!(matches!(p, types::PositionSortBy::Initial));
+    fn sort_field_maps_to_the_v2_sort() {
+        let pairs = [
+            (
+                PositionSortField::CurrentValue,
+                PositionSortBy::CurrentValue,
+            ),
+            (PositionSortField::Tokens, PositionSortBy::Tokens),
+            (
+                PositionSortField::UnrealizedPnl,
+                PositionSortBy::UnrealizedPnl,
+            ),
+            (PositionSortField::RealizedPnl, PositionSortBy::RealizedPnl),
+            (PositionSortField::TotalPnl, PositionSortBy::TotalPnl),
+            (PositionSortField::Timestamp, PositionSortBy::Timestamp),
+        ];
+        for (field, expected) in pairs {
+            assert_eq!(PositionSortBy::from(field), expected);
+        }
     }
-
-    #[test]
-    fn position_sort_field_from_tokens() {
-        let p: types::PositionSortBy = PositionSortField::Tokens.into();
-        assert!(matches!(p, types::PositionSortBy::Tokens));
-    }
-
-    #[test]
-    fn position_sort_field_from_cash_pnl() {
-        let p: types::PositionSortBy = PositionSortField::CashPnl.into();
-        assert!(matches!(p, types::PositionSortBy::CashPnl));
-    }
-
-    #[test]
-    fn position_sort_field_from_percent_pnl() {
-        let p: types::PositionSortBy = PositionSortField::PercentPnl.into();
-        assert!(matches!(p, types::PositionSortBy::PercentPnl));
-    }
-
-    #[test]
-    fn position_sort_field_from_title() {
-        let p: types::PositionSortBy = PositionSortField::Title.into();
-        assert!(matches!(p, types::PositionSortBy::Title));
-    }
-
-    #[test]
-    fn position_sort_field_from_resolving() {
-        let p: types::PositionSortBy = PositionSortField::Resolving.into();
-        assert!(matches!(p, types::PositionSortBy::Resolving));
-    }
-
-    #[test]
-    fn position_sort_field_from_price() {
-        let p: types::PositionSortBy = PositionSortField::Price.into();
-        assert!(matches!(p, types::PositionSortBy::Price));
-    }
-
-    #[test]
-    fn position_sort_field_from_avg_price() {
-        let p: types::PositionSortBy = PositionSortField::AvgPrice.into();
-        assert!(matches!(p, types::PositionSortBy::AvgPrice));
-    }
-
-    // --- ClosedPositionSortField From conversion tests ---
-
-    #[test]
-    fn closed_sort_field_from_realized_pnl() {
-        let c: types::ClosedPositionSortBy = ClosedPositionSortField::RealizedPnl.into();
-        assert!(matches!(c, types::ClosedPositionSortBy::RealizedPnl));
-    }
-
-    #[test]
-    fn closed_sort_field_from_timestamp() {
-        let c: types::ClosedPositionSortBy = ClosedPositionSortField::Timestamp.into();
-        assert!(matches!(c, types::ClosedPositionSortBy::Timestamp));
-    }
-
-    // --- ActivitySortField From conversion tests ---
-
-    #[test]
-    fn activity_sort_field_from_timestamp() {
-        let a: types::ActivitySortBy = ActivitySortField::Timestamp.into();
-        assert!(matches!(a, types::ActivitySortBy::Timestamp));
-    }
-
-    #[test]
-    fn activity_sort_field_from_tokens() {
-        let a: types::ActivitySortBy = ActivitySortField::Tokens.into();
-        assert!(matches!(a, types::ActivitySortBy::Tokens));
-    }
-
-    #[test]
-    fn activity_sort_field_from_cash() {
-        let a: types::ActivitySortBy = ActivitySortField::Cash.into();
-        assert!(matches!(a, types::ActivitySortBy::Cash));
-    }
-
-    // --- Argument parsing tests ---
 
     #[test]
     fn positions_requires_user_flag() {
-        let result = try_parse(&["test", "list"]);
-        assert!(result.is_err());
+        assert!(try_parse(&["test", "list"]).is_err());
     }
 
     #[test]
@@ -466,116 +283,92 @@ mod tests {
         assert_eq!(w.cmd.user, "0xabc");
         match w.cmd.command {
             PositionsSubcommand::List {
-                limit,
-                offset,
+                status,
                 sort_by,
                 sort_direction,
-                redeemable,
-                mergeable,
+                limit,
+                include_archived,
+                page,
                 ..
             } => {
+                assert_eq!(status, PositionStatusFilter::Open);
+                assert!(sort_by.is_none(), "the API picks a default by status");
+                assert!(matches!(sort_direction, SortOrder::Desc));
                 assert_eq!(limit, 100);
-                assert_eq!(offset, 0);
-                assert!(matches!(sort_by, PositionSortField::Current));
-                assert!(matches!(sort_direction, super::super::SortOrder::Desc));
-                assert!(!redeemable);
-                assert!(!mergeable);
+                assert!(!include_archived);
+                assert_eq!(page, PageArgs::default());
             }
             _ => panic!("expected List"),
         }
     }
 
     #[test]
-    fn positions_list_with_sort_fields() {
+    fn positions_list_status_and_sort_parse() {
         let w = try_parse(&[
             "test",
             "--user",
             "0xabc",
             "list",
+            "--status",
+            "closed",
             "--sort-by",
-            "cash-pnl",
-            "--sort-direction",
-            "asc",
+            "realized-pnl",
         ])
         .unwrap();
         match w.cmd.command {
             PositionsSubcommand::List {
-                sort_by,
-                sort_direction,
-                ..
+                status, sort_by, ..
             } => {
-                assert!(matches!(sort_by, PositionSortField::CashPnl));
-                assert!(matches!(sort_direction, super::super::SortOrder::Asc));
+                assert_eq!(status, PositionStatusFilter::Closed);
+                assert_eq!(sort_by, Some(PositionSortField::RealizedPnl));
             }
             _ => panic!("expected List"),
         }
     }
 
     #[test]
-    fn positions_list_invalid_sort_by_errors() {
-        let result = try_parse(&["test", "--user", "0xabc", "list", "--sort-by", "invalid"]);
-        assert!(result.is_err());
-    }
-
-    #[test]
-    fn positions_list_with_redeemable_flag() {
-        let w = try_parse(&["test", "--user", "0xabc", "list", "--redeemable"]).unwrap();
+    fn status_accepts_the_upstream_spelling() {
+        let w = try_parse(&["test", "--user", "0xabc", "list", "--status", "REDEEMABLE"]).unwrap();
         match w.cmd.command {
-            PositionsSubcommand::List { redeemable, .. } => {
-                assert!(redeemable);
+            PositionsSubcommand::List { status, .. } => {
+                assert_eq!(status, PositionStatusFilter::Redeemable)
             }
             _ => panic!("expected List"),
         }
     }
 
     #[test]
-    fn positions_value_parses() {
-        let w = try_parse(&["test", "--user", "0xabc", "value"]).unwrap();
-        assert!(matches!(w.cmd.command, PositionsSubcommand::Value { .. }));
+    fn v1_only_list_flags_are_gone() {
+        for flag in ["--redeemable", "--mergeable"] {
+            assert!(
+                try_parse(&["test", "--user", "0xabc", "list", flag]).is_err(),
+                "{flag}"
+            );
+        }
+        assert!(try_parse(&["test", "--user", "0xabc", "list", "--size-threshold", "1"]).is_err());
     }
 
     #[test]
-    fn positions_closed_defaults() {
-        let w = try_parse(&["test", "--user", "0xabc", "closed"]).unwrap();
+    fn positions_value_parses_with_market_alias() {
+        let w = try_parse(&["test", "--user", "0xabc", "value", "--market", "0xc"]).unwrap();
         match w.cmd.command {
-            PositionsSubcommand::Closed {
-                limit,
-                offset,
-                sort_by,
-                ..
-            } => {
-                assert_eq!(limit, 10);
-                assert_eq!(offset, 0);
-                assert!(matches!(sort_by, ClosedPositionSortField::RealizedPnl));
-            }
-            _ => panic!("expected Closed"),
+            PositionsSubcommand::Value { condition } => assert_eq!(condition.unwrap(), ["0xc"]),
+            _ => panic!("expected Value"),
         }
     }
 
     #[test]
-    fn positions_activity_defaults() {
-        let w = try_parse(&["test", "--user", "0xabc", "activity"]).unwrap();
-        match w.cmd.command {
-            PositionsSubcommand::Activity {
-                limit,
-                offset,
-                sort_by,
-                ..
-            } => {
-                assert_eq!(limit, 100);
-                assert_eq!(offset, 0);
-                assert!(matches!(sort_by, ActivitySortField::Timestamp));
-            }
-            _ => panic!("expected Activity"),
-        }
+    fn closed_still_parses_so_it_can_explain_its_replacement() {
+        let w = try_parse(&["test", "--user", "0xabc", "closed", "--limit", "20"]).unwrap();
+        assert!(matches!(w.cmd.command, PositionsSubcommand::Closed { .. }));
     }
 
     #[test]
-    fn positions_activity_with_side_buy() {
+    fn positions_activity_parses() {
         let w = try_parse(&["test", "--user", "0xabc", "activity", "--side", "buy"]).unwrap();
         match w.cmd.command {
-            PositionsSubcommand::Activity { side, .. } => {
-                assert!(matches!(side.unwrap(), TradeSideFilter::Buy));
+            PositionsSubcommand::Activity(filters) => {
+                assert!(matches!(filters.side, Some(TradeSideFilter::Buy)));
             }
             _ => panic!("expected Activity"),
         }
@@ -583,7 +376,6 @@ mod tests {
 
     #[test]
     fn positions_requires_subcommand() {
-        let result = try_parse(&["test", "--user", "0xabc"]);
-        assert!(result.is_err());
+        assert!(try_parse(&["test", "--user", "0xabc"]).is_err());
     }
 }
