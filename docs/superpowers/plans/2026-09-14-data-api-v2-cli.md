@@ -31,18 +31,18 @@ The same failure hits every comma-separated `--market` and `--event-id` on `trad
 | 6.2 says | This plan | Why |
 |----------|-----------|-----|
 | `positions`: open and closed become `--status OPEN\|REDEEMABLE\|CLOSED` | `positions list --status open\|redeemable\|closed`; the uppercase spellings also parse. `positions closed` stays as a hidden subcommand that fails with `use positions list --status closed` | This CLI's value enums are lowercase. The hidden subcommand gives an old script a pointer instead of `unrecognized subcommand` |
-| `traded` prints `trades` (the distinct-market count) | Prints `{"user": …, "traded": <trades>}`, and `0` when v2 returns `data: null` | That is v1's shape, so `traded` is the one command whose output scripts can keep. **Open decision** below |
+| `traded` prints `trades` (the distinct-market count) | Prints the whole `/v2/user-stats` object (`proxy_wallet`, `trades`, `biggest_win`, `views`, `join_date`, `all_time_pnl`), and `null` when v2 returns `data: null` | Decided 2026-09-14 (decision 3 below). `null` keeps an unknown wallet distinguishable from a known one with zero counts |
 | — | v1-only flags are removed: positions `--redeemable`, `--mergeable`, `--size-threshold`; activity `--sort-by`. holders `--min-balance` changes from a default of `1` to the API's `0`, and accepts fractions | v2 has none of these parameters, and sorts activity by timestamp only |
 | "Not included: commands for routes that are new in v2" | New flags for v2 parameters on routes the CLI already covers: trades `--start`/`--end`; activity `--include-deposits-withdrawals`; positions `--filter-type`/`--filter-amount`, `--include-archived`, `--start`/`--end`; holders `--include-pnl`; builders volume `--limit` | These are not new routes. Without `--include-deposits-withdrawals`, two of v2's activity types are unreachable, because v2 hides them by default |
 | holders "moved to the matching v2 route" | `--condition` is required | v2 answers 400 without it, where v1 accepted none |
 | — | `DataCommand::run_with(data, out, err)` | So tests can run commands against a mock server and read the output |
 | Exit criterion: "live CLI tests green" | Two new live tests in `polyoxide-cli/tests/live_api.rs` (Task 6) | There were no live tests for `data` commands |
 
-## Decisions to confirm before executing
+## Decisions (confirmed 2026-09-14)
 
-1. **The output break.** Every ported command now prints v2's `{data, pagination}` envelope with snake_case fields. That includes `proxy_wallet` for `proxyWallet`, and `{data: [...]}` for a bare array. Scripts parsing the old output break. 6.2 already decided this; it is repeated here because it is the change users will notice.
-2. **Removing `positions closed`.** The plan keeps it hidden, failing with a pointer. The alternative is to alias it to `list --status closed` for a release.
-3. **`traded`'s shape.** Keep v1's `{user, traded}` (the plan), or print the whole `/v2/user-stats` object.
+1. **The output break is accepted.** Every ported command prints v2's `{data, pagination}` envelope with snake_case fields: `proxy_wallet` for `proxyWallet`, and `{data: [...]}` for a bare array. Scripts parsing the old output break.
+2. **`positions closed` stays hidden and fails with a pointer** to `positions list --status closed`, rather than aliasing it.
+3. **`traded` prints the whole `/v2/user-stats` object** as pretty JSON, and `null` for a wallet v2 does not know. v1's `{user, traded}` shape is not kept. (The first version of this plan kept it; Task 5 was amended.)
 
 ## Conventions
 
@@ -2915,9 +2915,115 @@ EOF
 - Modify: `polyoxide-cli/src/commands/data/mod.rs`
 - Modify: `polyoxide-cli/tests/data_v2.rs`
 
-- [ ] **Step 1: Replace the two commands**
+- [ ] **Step 1: Write the failing mock tests**
 
-- **traded** reads `/v2/user-stats` and prints `trades`, the distinct-market count, in v1's `{"user", "traded"}` shape. A wallet v2 does not know (`data: null`) prints `0`, as v1 did.
+`traded` still calls v1's `/traded`, which the mock does not serve, and `builders` still accepts `--offset`, so these fail first.
+
+In `polyoxide-cli/tests/data_v2.rs`, replace:
+
+```rust
+        &["trades", "list", "--offset", "100"][..],
+        &["trades", "list", "-o", "100"][..],
+        &["activity", "--user", "0xu", "--offset", "100"][..],
+        &["positions", "--user", "0xu", "list", "--offset", "100"][..],
+        &["holders", "--condition", "0xc", "--offset", "100"][..],
+```
+
+with:
+
+```rust
+        &["trades", "list", "--offset", "100"][..],
+        &["trades", "list", "-o", "100"][..],
+        &["activity", "--user", "0xu", "--offset", "100"][..],
+        &["positions", "--user", "0xu", "list", "--offset", "100"][..],
+        &["holders", "--condition", "0xc", "--offset", "100"][..],
+        &["builders", "leaderboard", "--offset", "25"][..],
+```
+
+Append to the end of `polyoxide-cli/tests/data_v2.rs`:
+
+```rust
+
+// ── traded and builders ──────────────────────────────────────────────
+
+#[tokio::test]
+async fn traded_prints_the_user_stats_object() {
+    let (query, run) = sent(
+        "/v2/user-stats",
+        &fixture("user_stats"),
+        &["traded", "--user", "0xu"],
+    )
+    .await;
+    assert_eq!(query, pairs(&[("user", "0xu")]));
+
+    let printed: Value = serde_json::from_str(&run.out).unwrap();
+    let received: Value = serde_json::from_str(&fixture("user_stats")).unwrap();
+    assert_eq!(
+        printed, received["data"],
+        "the whole stats object, out of its envelope"
+    );
+    assert_eq!(printed["trades"], 2746, "`trades` counts distinct markets");
+}
+
+#[tokio::test]
+async fn traded_prints_null_for_a_wallet_the_api_does_not_know() {
+    let (_, run) = sent(
+        "/v2/user-stats",
+        &fixture("user_stats_unknown"),
+        &["traded", "--user", "0xu"],
+    )
+    .await;
+    assert_eq!(run.out, "null\n");
+}
+
+#[tokio::test]
+async fn builders_leaderboard_flags_reach_their_v2_parameters() {
+    let (query, _) = sent(
+        "/v2/builders/leaderboard",
+        &fixture("builders_leaderboard"),
+        &[
+            "builders",
+            "leaderboard",
+            "--time-period",
+            "week",
+            "--limit",
+            "5",
+        ],
+    )
+    .await;
+    assert_eq!(query, pairs(&[("time_period", "week"), ("limit", "5")]));
+}
+
+#[tokio::test]
+async fn builders_volume_sends_the_period_as_its_interval() {
+    let (query, _) = sent(
+        "/v2/builders/volume",
+        &fixture("builder_volume"),
+        &[
+            "builders",
+            "volume",
+            "--time-period",
+            "month",
+            "--limit",
+            "12",
+        ],
+    )
+    .await;
+    assert_eq!(query, pairs(&[("interval", "month"), ("limit", "12")]));
+}
+```
+
+Run:
+
+```bash
+cargo test -p polyoxide-cli --all-features --test data_v2
+```
+
+Expected: the run fails, with `test traded_prints_the_user_stats_object ... FAILED` and `test offset_is_refused_with_a_pointer_to_cursor ... FAILED` among the failures.
+
+- [ ] **Step 2: Replace the two commands**
+
+- **traded** reads `/v2/user-stats` and prints the stats object as pretty JSON: `proxy_wallet`, `trades` (the number of distinct markets traded), `biggest_win`, `views`, `join_date` and `all_time_pnl`. For a wallet v2 does not know (`data: null`) it prints `null`, which a script can tell apart from a known wallet whose counts are zero. v1's `{"user", "traded"}` shape is gone.
 - **builders leaderboard** pages by cursor. **builders volume** sends `--time-period` as v2's `interval` (the bucket width) and gains `--limit`, the number of most recent buckets.
 
 Replace the entire contents of `polyoxide-cli/src/commands/data/traded.rs`:
@@ -2928,11 +3034,10 @@ use std::io::Write;
 use clap::Args;
 use color_eyre::eyre::Result;
 use polyoxide_data::DataApi;
-use serde_json::json;
 
 use super::paging::print_pretty;
 
-/// Get the number of distinct markets a user traded (`/v2/user-stats`)
+/// Get a user's profile stats (`/v2/user-stats`); `trades` counts distinct markets
 #[derive(Args)]
 pub struct TradedCommand {
     /// User address (0x-prefixed, 40 hex chars)
@@ -2943,10 +3048,9 @@ pub struct TradedCommand {
 impl TradedCommand {
     pub async fn run(self, data: &DataApi, out: &mut dyn Write) -> Result<()> {
         let stats = data.v2().user_stats(&self.user).send().await?;
-        // The v1 `/traded` shape. A wallet the API does not know has no
-        // stats, which v1 reported as zero markets traded.
-        let traded = stats.map_or(0, |stats| stats.trades);
-        print_pretty(&json!({ "user": self.user, "traded": traded }), out)
+        // A wallet the API does not know has no stats: `data: null` prints as
+        // `null`, which a script can tell apart from a known wallet's zeros.
+        print_pretty(&stats, out)
     }
 }
 ```
@@ -3118,7 +3222,7 @@ mod tests {
 }
 ```
 
-- [ ] **Step 2: Dispatch them through the writers**
+- [ ] **Step 3: Dispatch them through the writers**
 
 In `polyoxide-cli/src/commands/data/mod.rs`, replace:
 
@@ -3129,7 +3233,7 @@ In `polyoxide-cli/src/commands/data/mod.rs`, replace:
 with:
 
 ```rust
-    /// Get the number of distinct markets a user traded
+    /// Get a user's profile stats, including the number of markets traded
 ```
 
 In `polyoxide-cli/src/commands/data/mod.rs`, replace:
@@ -3156,7 +3260,7 @@ with:
             Self::Traded(cmd) => cmd.run(data, out).await,
 ```
 
-- [ ] **Step 3: Run the unit tests**
+- [ ] **Step 4: Run the tests**
 
 Run:
 
@@ -3166,109 +3270,6 @@ cargo test -p polyoxide-cli --all-features --lib
 
 Expected: `test result: ok. 213 passed`.
 
-- [ ] **Step 4: Add the mock tests**
-
-In `polyoxide-cli/tests/data_v2.rs`, replace:
-
-```rust
-use serde_json::Value;
-```
-
-with:
-
-```rust
-use serde_json::{json, Value};
-```
-
-In `polyoxide-cli/tests/data_v2.rs`, replace:
-
-```rust
-        &["trades", "list", "--offset", "100"][..],
-        &["trades", "list", "-o", "100"][..],
-        &["activity", "--user", "0xu", "--offset", "100"][..],
-        &["positions", "--user", "0xu", "list", "--offset", "100"][..],
-        &["holders", "--condition", "0xc", "--offset", "100"][..],
-```
-
-with:
-
-```rust
-        &["trades", "list", "--offset", "100"][..],
-        &["trades", "list", "-o", "100"][..],
-        &["activity", "--user", "0xu", "--offset", "100"][..],
-        &["positions", "--user", "0xu", "list", "--offset", "100"][..],
-        &["holders", "--condition", "0xc", "--offset", "100"][..],
-        &["builders", "leaderboard", "--offset", "25"][..],
-```
-
-Append to the end of `polyoxide-cli/tests/data_v2.rs`:
-
-```rust
-
-// ── traded and builders ──────────────────────────────────────────────
-
-#[tokio::test]
-async fn traded_prints_the_distinct_market_count() {
-    let (query, run) = sent(
-        "/v2/user-stats",
-        &fixture("user_stats"),
-        &["traded", "--user", "0xu"],
-    )
-    .await;
-    assert_eq!(query, pairs(&[("user", "0xu")]));
-    let printed: Value = serde_json::from_str(&run.out).unwrap();
-    assert_eq!(printed, json!({ "user": "0xu", "traded": 2746 }));
-}
-
-#[tokio::test]
-async fn traded_prints_zero_for_a_wallet_the_api_does_not_know() {
-    let (_, run) = sent(
-        "/v2/user-stats",
-        &fixture("user_stats_unknown"),
-        &["traded", "--user", "0xu"],
-    )
-    .await;
-    let printed: Value = serde_json::from_str(&run.out).unwrap();
-    assert_eq!(printed, json!({ "user": "0xu", "traded": 0 }));
-}
-
-#[tokio::test]
-async fn builders_leaderboard_flags_reach_their_v2_parameters() {
-    let (query, _) = sent(
-        "/v2/builders/leaderboard",
-        &fixture("builders_leaderboard"),
-        &[
-            "builders",
-            "leaderboard",
-            "--time-period",
-            "week",
-            "--limit",
-            "5",
-        ],
-    )
-    .await;
-    assert_eq!(query, pairs(&[("time_period", "week"), ("limit", "5")]));
-}
-
-#[tokio::test]
-async fn builders_volume_sends_the_period_as_its_interval() {
-    let (query, _) = sent(
-        "/v2/builders/volume",
-        &fixture("builder_volume"),
-        &[
-            "builders",
-            "volume",
-            "--time-period",
-            "month",
-            "--limit",
-            "12",
-        ],
-    )
-    .await;
-    assert_eq!(query, pairs(&[("interval", "month"), ("limit", "12")]));
-}
-```
-
 Run:
 
 ```bash
@@ -3277,17 +3278,29 @@ cargo test -p polyoxide-cli --all-features --test data_v2
 
 Expected: `test result: ok. 24 passed`.
 
-- [ ] **Step 5: Prove the unknown-wallet case is tested**
+- [ ] **Step 5: Prove the output shape is tested**
+
+Print v1's `{user, traded}` shape, then print `{}` instead of `null` for an unknown wallet. Each must fail a named test. The backup restores the file, and `touch` matters: `mv` brings back the old modification time, so without it cargo keeps the mutated build and the next test run fails for no visible reason.
 
 Run:
 
 ```bash
-sed -i 's/stats.map_or(0,/stats.map_or(1,/' polyoxide-cli/src/commands/data/traded.rs
+sed -i.bak 's/print_pretty(&stats, out)/print_pretty(\&serde_json::json!({"user": self.user, "traded": stats.map_or(0, |s| s.trades)}), out)/' polyoxide-cli/src/commands/data/traded.rs
 cargo test -p polyoxide-cli --all-features --test data_v2 2>&1 | grep -E '^test .* FAILED'
-sed -i 's/stats.map_or(1,/stats.map_or(0,/' polyoxide-cli/src/commands/data/traded.rs
+mv polyoxide-cli/src/commands/data/traded.rs.bak polyoxide-cli/src/commands/data/traded.rs && touch polyoxide-cli/src/commands/data/traded.rs
 ```
 
-Expected: `test traded_prints_zero_for_a_wallet_the_api_does_not_know ... FAILED` among the lines printed.
+Expected: `test traded_prints_the_user_stats_object ... FAILED` among the lines printed.
+
+Run:
+
+```bash
+sed -i.bak 's/print_pretty(&stats, out)/print_pretty(\&stats.map_or(serde_json::json!({}), |s| serde_json::json!(s)), out)/' polyoxide-cli/src/commands/data/traded.rs
+cargo test -p polyoxide-cli --all-features --test data_v2 2>&1 | grep -E '^test .* FAILED'
+mv polyoxide-cli/src/commands/data/traded.rs.bak polyoxide-cli/src/commands/data/traded.rs && touch polyoxide-cli/src/commands/data/traded.rs
+```
+
+Expected: `test traded_prints_null_for_a_wallet_the_api_does_not_know ... FAILED` among the lines printed.
 
 - [ ] **Step 6: Check that no data command still reaches v1**
 
@@ -3334,11 +3347,12 @@ git add polyoxide-cli/src/commands/data/builders.rs polyoxide-cli/src/commands/d
 git commit -F - <<'EOF'
 feat(cli)!: data traded and builders on Data API v2
 
-traded reads /v2/user-stats and prints its distinct-market count in the
-v1 {user, traded} shape, with 0 for a wallet v2 does not know. builders
-leaderboard reads /v2/builders/leaderboard with cursor paging; builders
-volume reads /v2/builders/volume, sending --time-period as its interval,
-and gains --limit. Every data command but health now uses v2.
+traded reads /v2/user-stats and prints the stats object, whose trades
+field is the distinct-market count, or null for a wallet v2 does not
+know. The v1 {user, traded} output is gone. builders leaderboard reads
+/v2/builders/leaderboard with cursor paging; builders volume reads
+/v2/builders/volume, sending --time-period as its interval, and gains
+--limit. Every data command but health now uses v2.
 
 Co-Authored-By: Claude Opus 5 <noreply@anthropic.com>
 Claude-Session: https://claude.ai/code/session_01PHCoySzmmAem89S7HttcK5
@@ -3428,9 +3442,13 @@ mod data_v2 {
         }
 
         let args = ["traded", "--user", wallet];
-        let traded = json(&args, &data(&args).await.0);
-        assert_eq!(traded["user"], wallet);
-        assert!(traded["traded"].is_u64(), "{traded}");
+        let stats = json(&args, &data(&args).await.0);
+        assert_eq!(
+            stats["proxy_wallet"].as_str().map(str::to_lowercase),
+            Some(wallet.to_lowercase()),
+            "a wallet that just traded has stats: {stats}"
+        );
+        assert!(stats["trades"].is_u64(), "{stats}");
     }
 
     #[tokio::test]
@@ -3708,7 +3726,8 @@ polyoxide data trades list --filter-type cash --filter-amount 100
 #### `data traded`
 
 ```bash
-# Number of distinct markets a user traded: {"user": ..., "traded": N}
+# A user's profile stats; `trades` is the number of distinct markets traded.
+# Prints `null` for a wallet the API does not know.
 polyoxide data traded --user 0xADDRESS
 ```
 
@@ -3854,7 +3873,7 @@ This plan edits only `polyoxide-cli/`. These documentation changes belong outsid
 
 **`CHANGELOG.md`**, in the release intro. git-cliff lists the `feat(cli)!` commits as breaking on its own, but the intro should say what breaks for scripts:
 
-> Breaking for scripts: `polyoxide data` commands now read Data API v2. Output is the v2 `{data, pagination}` envelope with snake_case fields (`proxy_wallet`, not `proxyWallet`). `--offset` is replaced by `--cursor`, `--all` and `--max-pages`, `positions closed` by `positions list --status closed`, and `holders` requires `--condition`. `data traded` keeps its `{user, traded}` output, and `data health` is unchanged. Comma-separated `--market` and `--event-id` values, which panicked in earlier releases, now work.
+> Breaking for scripts: `polyoxide data` commands now read Data API v2. Output is the v2 `{data, pagination}` envelope with snake_case fields (`proxy_wallet`, not `proxyWallet`). `--offset` is replaced by `--cursor`, `--all` and `--max-pages`, `positions closed` by `positions list --status closed`, and `holders` requires `--condition`. `data traded` prints the `/v2/user-stats` object (its `trades` field is the distinct-market count), or `null` for a wallet the API does not know, instead of `{user, traded}`. `data health` is unchanged. Comma-separated `--market` and `--event-id` values, which panicked in earlier releases, now work.
 
 ## Spec coverage
 
@@ -3862,7 +3881,7 @@ This plan edits only `polyoxide-cli/`. These documentation changes belong outsid
 |-----------------|------|
 | `activity`, `builders`, `holders`, `trades`, `open-interest`, `live-volume` on their v2 routes | 2, 3, 4, 5 |
 | `positions`: `--status` on `/v2/positions`; `value` on `/v2/value` | 3 |
-| `traded` on `/v2/user-stats`, printing the distinct-market count | 5 |
+| `traded` on `/v2/user-stats`, printing the distinct-market count (as `trades`, in the full stats object, per decision 3) | 5 |
 | `health` stays on v1 | 2 (dispatch), 5 (grep check) |
 | `--offset` removed, with a clap error pointing to `--cursor` | 1 (parser), 2–5 (mock test per paged command), 7 (binary) |
 | `--condition` replaces `--market`, which stays as an alias | 2, 3, 4 |
