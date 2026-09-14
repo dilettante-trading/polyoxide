@@ -940,6 +940,7 @@ paths:
       tags:
       - Core
       summary: Get current positions for a user
+      description: '**Data API v2:** this route has a v2 counterpart, `GET /v2/positions`. See [Migrating to Data API v2](/api-reference/data-api/migrating-from-v1).'
       parameters:
       - in: query
         name: user
@@ -1064,6 +1065,7 @@ paths:
       tags:
       - Core
       summary: Get trades for a user or markets
+      description: '**Data API v2:** this route has a v2 counterpart, `GET /v2/trades`. See [Migrating to Data API v2](/api-reference/data-api/migrating-from-v1).'
       parameters:
       - in: query
         name: limit
@@ -1185,6 +1187,7 @@ paths:
       tags:
       - Core
       summary: Get user activity
+      description: '**Data API v2:** this route has a v2 counterpart, `GET /v2/activity`. See [Migrating to Data API v2](/api-reference/data-api/migrating-from-v1).'
       parameters:
       - in: query
         name: limit
@@ -1343,6 +1346,8 @@ paths:
       - Core
       summary: Get user combo activity
       description: >-
+        **Data API v2:** this route has a v2 counterpart, `GET /v2/activity/combos`. See [Migrating to Data API v2](/api-reference/data-api/migrating-from-v1).
+
         Combo lifecycle and redeem events (split / merge / convert / compress /
         wrap / unwrap / redeem) for a user, with per-leg breakdown. The combo
         counterpart to /activity trade rows. Also available at
@@ -1418,6 +1423,8 @@ paths:
       - Core
       summary: Get user combo positions
       description: >-
+        **Data API v2:** this route has a v2 counterpart, `GET /v2/positions/combos`. See [Migrating to Data API v2](/api-reference/data-api/migrating-from-v1).
+
         Combinatorial (multi-market) positions held by a user, with per-leg
         breakdown. Also available at /v1/data/user/{address}/positions/combos
         (address from the path). Open positions with shares_balance below
@@ -1545,6 +1552,7 @@ paths:
       tags:
       - Core
       summary: Get top holders for markets
+      description: '**Data API v2:** this route has a v2 counterpart, `GET /v2/holders`. See [Migrating to Data API v2](/api-reference/data-api/migrating-from-v1).'
       parameters:
       - in: query
         name: limit
@@ -1679,6 +1687,7 @@ paths:
       tags:
       - Core
       summary: Get total value of a user's positions
+      description: '**Data API v2:** this route has a v2 counterpart, `GET /v2/value`. See [Migrating to Data API v2](/api-reference/data-api/migrating-from-v1).'
       parameters:
       - in: query
         name: user
@@ -1719,6 +1728,7 @@ paths:
       tags:
       - Misc
       summary: Get open interest
+      description: '**Data API v2:** this route has a v2 counterpart, `GET /v2/oi`. See [Migrating to Data API v2](/api-reference/data-api/migrating-from-v1).'
       parameters:
       - in: query
         name: market
@@ -1754,6 +1764,7 @@ paths:
       tags:
       - Misc
       summary: Get live volume for an event
+      description: '**Data API v2:** this route has a v2 counterpart, `GET /v2/live-volume`. See [Migrating to Data API v2](/api-reference/data-api/migrating-from-v1).'
       parameters:
       - in: query
         name: id
@@ -1787,6 +1798,7 @@ paths:
       tags:
       - Core
       summary: Get closed positions for a user
+      description: '**Data API v2:** this route has a v2 counterpart, `GET /v2/positions?status=CLOSED`. See [Migrating to Data API v2](/api-reference/data-api/migrating-from-v1).'
       parameters:
       - in: query
         name: user
@@ -1929,6 +1941,7 @@ paths:
       tags:
       - Core
       summary: Get positions for a market
+      description: '**Data API v2:** this route has a v2 counterpart, `GET /v2/positions`. See [Migrating to Data API v2](/api-reference/data-api/migrating-from-v1).'
       parameters:
       - in: query
         name: market
@@ -2036,6 +2049,7 @@ paths:
       tags:
       - Builders
       summary: Get aggregated builder leaderboard
+      description: '**Data API v2:** this route has a v2 counterpart, `GET /v2/builders/leaderboard`. See [Migrating to Data API v2](/api-reference/data-api/migrating-from-v1).'
       parameters:
       - in: query
         name: timePeriod
@@ -2092,6 +2106,7 @@ paths:
       tags:
       - Builders
       summary: Get daily builder volume time-series
+      description: '**Data API v2:** this route has a v2 counterpart, `GET /v2/builders/volume`. See [Migrating to Data API v2](/api-reference/data-api/migrating-from-v1).'
       parameters:
       - in: query
         name: timePeriod
@@ -2132,6 +2147,7 @@ paths:
       tags:
       - Core
       summary: Get trader leaderboard rankings
+      description: '**Data API v2:** this route has a v2 counterpart, `GET /v2/leaderboard`. See [Migrating to Data API v2](/api-reference/data-api/migrating-from-v1).'
       parameters:
       - in: query
         name: category
