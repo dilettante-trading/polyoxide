@@ -606,6 +606,14 @@ impl RateLimiter {
                     simple_limit("/positions", None, 150, ten_sec),
                     simple_limit("/trades", None, 200, ten_sec),
                     simple_limit("/user-pnl", None, 200, ten_sec),
+                    // Data API v2. Upstream publishes no v2 figures, so each row
+                    // borrows the v1 quota of the route(s) it replaces until it is
+                    // measured: `/v2/positions` folds `/positions` and
+                    // `/closed-positions` together, and by prefix it also covers
+                    // `/v2/positions/combos`.
+                    simple_limit("/v2/positions", None, 150, ten_sec),
+                    simple_limit("/v2/trades", None, 200, ten_sec),
+                    simple_limit("/v2/user-pnl", None, 200, ten_sec),
                     simple_limit("/", None, 100, ten_sec),
                 ],
             }),
@@ -797,6 +805,22 @@ mod documented_data_limits {
     #[test]
     fn every_documented_endpoint_resolves_to_its_published_quota() {
         assert_matches_published(&RateLimiter::data_default(), documented(), 1_000);
+    }
+
+    /// Data API v2 rows. Not published upstream: each borrows the v1 quota of
+    /// the route it replaces, pending measurement.
+    fn provisional_v2() -> Vec<DocumentedRule> {
+        vec![
+            ("/v2/positions", Some(Method::GET), vec![(150, 10)]),
+            ("/v2/positions/combos", Some(Method::GET), vec![(150, 10)]),
+            ("/v2/trades", Some(Method::GET), vec![(200, 10)]),
+            ("/v2/user-pnl", Some(Method::GET), vec![(200, 10)]),
+        ]
+    }
+
+    #[test]
+    fn every_v2_route_resolves_to_its_provisional_quota() {
+        assert_matches_published(&RateLimiter::data_default(), provisional_v2(), 1_000);
     }
 
     #[test]
@@ -1272,7 +1296,7 @@ mod tests {
     #[test]
     fn test_data_default_construction() {
         let rl = RateLimiter::data_default();
-        assert_eq!(rl.inner.limits.len(), 5);
+        assert_eq!(rl.inner.limits.len(), 8);
     }
 
     #[test]
