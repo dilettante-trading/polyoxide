@@ -1,6 +1,8 @@
 # Data API v2 Support — Design
 
-**Status:** Approved (2026-09-14)
+**Status:** Approved (2026-09-14). Amended the same day during planning; see
+[Amendments from planning](#amendments-from-planning) and the plan,
+[`2026-09-14-data-api-v2.md`](../plans/2026-09-14-data-api-v2.md).
 **Author:** aidanb
 **Branch:** `aidanb/data-v2`
 **Follows:** `b3849b7` (`ci(specs): mirror Data API v2 and watch it for drift`)
@@ -85,9 +87,13 @@ route)". For wallet `0x3048d65321be3497164cdfc2996f94f98a2e7537`, with
 | 1789344000 | 416167.01 | 417942.70 |
 | 1789369200 | — | 419601.47 |
 
-The v2 values are consistently 0.42–0.55% lower (1.8k–2.4k USDC on this wallet).
-The legacy host also appends an off-grid "now" point. Phase 0 repeats this comparison on at least three wallets
-before it is recorded in `OBSERVED.md`.
+On this wallet the v2 values were 0.42–0.55% lower, and the legacy host also
+appends an off-grid "now" point.
+
+*Amended during planning:* on three more wallets the gap was not a steady offset.
+It ranged from +0.002% to +62.7%, the opposite sign from this wallet, and the
+legacy host appended its extra point every time. The four-wallet table is in
+`docs/specs/data-v2/OBSERVED.md` (plan Task 1).
 
 **`/v2/leaderboard` does not reproduce `data.rankings()`.** v2 `volume` is
 documented as both-sides **shares**, while lb-api's `amount` is USDC. The v2
@@ -449,7 +455,7 @@ leaderboard-user response, and a `holders?include_pnl=true` response.
 
 ### 6.3 `pnl()` and `rankings()`
 
-- `PnlApi`'s docs gain a *Documented alternative* section. It names `DataV2::user_pnl` and says `trade_pnl` is described upstream as this series, but measured 0.42–0.55% lower on 2026-09-14 and without the trailing live point, so it is **not a drop-in replacement**. It links to `OBSERVED.md`.
+- `PnlApi`'s docs gain a *Documented alternative* section. It names `DataV2::user_pnl` and says `trade_pnl` is described upstream as this series, but on 2026-09-14 it differed by anywhere from −0.55% to +62.7% across four wallets and lacked the trailing live point, so it is **not a drop-in replacement**. It links to `OBSERVED.md`.
 - `RankingsApi`'s docs gain the same section for `DataV2::leaderboard`: volume is in shares, not USDC, and windows are calendar-named, not trailing.
 - `docs/specs/undocumented/INDEX.md` links both hosts to their v2 counterparts and to `OBSERVED.md`.
 
@@ -509,6 +515,24 @@ They run as separate loom sessions, each with its own branch and PR.
 - **IP throttling during Phase 3.** The harness stops on the first 429 and steps up from the provisional rates rather than starting high.
 - **Local OOM.** earlyoom killing rustc (signal 15 / exit 254) during full workspace runs is environmental. Rerun with fewer jobs; it is not a test failure.
 - **Enum values change upstream.** Request enums come from prose, which the drift check sees only as a description diff. The nightly drift issue's key-path summary names the parameter, and the change is then made by hand.
+
+## Amendments from planning
+
+Planning built and ran the Phase 0–2 code in a scratch workspace, against the
+live host where needed. These changes came out of that, and the plan follows them:
+
+| Area | Design said | Now | Why |
+|------|-------------|-----|-----|
+| Type delivery | Types for each route land with its builder (Phase 2) | All 33 schemas land in Phase 1 via `scripts/gen_data_v2_types.py` | The spec agreement test can check every schema from its first commit, with no "pending" list to maintain |
+| `PositionAnchor` | `Conditions(Vec<String>)` arm | `Condition(String)` | Without `user`, upstream accepts exactly one condition and rejects a list |
+| Response enums | `side` uses `#[serde(other)] Unknown` | `TradeSide`, `ActivityType`, `PositionStatus` keep unknown values in `Other(String)`; new `ActivitySide` | Activity `side` also carries `IN`/`OUT` (tips) and `""` |
+| `BuilderInterval` | Separate enum | Dropped; `builder_volume().interval()` takes `TimePeriod` | The server validates it as `time_period must be one of day, week, month, all` |
+| Leaderboard `sort_by` | — | `ListLeaderboard::board(LeaderboardBoard)` | The parameter selects a board rather than sorting one |
+| Mock tests | `tests/mock_api.rs` | `tests/v2_mock_api.rs` | Kept apart from the 37 v1 mock tests |
+| Anchor checks | Route table only | Plus mock tests pinning each `PositionAnchor`/`ResolutionKey` arm to its own keys | The route table unions keys per path, so a leaking arm would pass it |
+| CDN caching | `/v2/trades` only | Per route: trades and oi 300s, activity 15s, positions 5s; a cache hit repeats the `trace_id` | Measured on 2026-09-14 |
+| Unknown-wallet tests | — | Random addresses | `0x…0001` is a known wallet (zeros, not `null`) |
+| Phase 3 | In this plan | **Its own plan**, written after Phase 2 lands | The soak harness has to be designed around which routes actually throttle and how CloudFront caching interacts with the origin limiter. Planning it now would be guessing. Phase 3 still precedes the release. |
 
 ## Out of scope
 
