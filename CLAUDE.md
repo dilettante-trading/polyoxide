@@ -75,6 +75,20 @@ resumable, rate-limited downloader for CLOB historical price data
 plus a `manifest.jsonl`. Parquet output requires building the CLI with the
 `parquet` feature.
 
+The CLI's `data` command group reads Data API v2, except `data health`, which stays on
+v1's `/` because `/v2/status` reports data freshness, not liveness. Listing commands print
+the v2 `{data, pagination}` envelope and page with `--cursor`, `--all` (JSONL, flushed per
+page) and `--max-pages`; the cursor to resume from goes to stderr when a walk stops early.
+`--offset` is refused with a pointer to `--cursor`. `data traded` prints the
+`/v2/user-stats` object, or `null` for an unknown wallet. `DataCommand::run_with` takes the
+client and the output writers, and `polyoxide-cli/tests/data_v2.rs` uses it to run real
+arguments against mock servers serving `polyoxide-data`'s v2 fixtures.
+
+**A clap `Vec<String>` field needs `value_delimiter`, not a value parser that returns a
+`Vec`.** The latter compiles and parses, then panics when the field is read. Every v1
+`data` list flag shipped that way, and no test caught it because the parse tests never
+passed those flags.
+
 **polyoxide** (the unified crate) uses feature flags: `clob`, `gamma`, `data`, `ws` (WebSocket), `full` (all). Default = clob + gamma + data.
 
 ## Key Patterns
@@ -202,6 +216,17 @@ replaces the undocumented host. The v2 rows in `RateLimiter::data_default` were 
 routes are CDN-cached, and a repeated URL is answered by CloudFront without reaching the
 origin, so a soak that repeats URLs reports a clean run at any rate. The runs are in
 `docs/specs/data-v2/OBSERVED.md`.
+
+**Python bindings** expose v2 as `DataApi().v2()` / `DataApiSync().v2()`. The row classes,
+`Page` and the page iterators live on `polyoxide.v2`, because v2 reuses v1 class names.
+Three tests hold the bindings up. `every_v2_getter_reads_its_own_key` in
+`polyoxide-py/src/types/data_v2.rs` exists because `get_field` returns `None` for a missing
+key, which stub consistency cannot see. `test_stub_consistency.py` checks `v2.pyi` members
+and signatures against the compiled module. `test_data_v2_offline.py` calls every route
+with every argument against a local server. Enum arguments take the exact wire spelling. A
+v2 error maps by `code`, and every SDK exception carries `status`, `code`, `retryable`,
+`trace_id`, `parameter` and `retry_after`, which are `None` unless the error came from a v2
+route.
 
 For the upstream hosted docs, [`docs/specs/polymarket-llms.txt`](docs/specs/polymarket-llms.txt) is a snapshot of Polymarket's own documentation index (`https://docs.polymarket.com/llms.txt`) — a flat list of every doc page (with `.md` URLs) covering CLOB/auth/orders, builder attribution, and the CLOB V2 migration. Use it to locate the authoritative upstream page for a topic when the local `docs/specs/` copies are insufficient.
 
