@@ -2,4 +2,5 @@
 //! methods themselves are on [`DataV2`](super::DataV2).
 
 pub mod feeds;
+pub mod markets;
 pub mod wallet;

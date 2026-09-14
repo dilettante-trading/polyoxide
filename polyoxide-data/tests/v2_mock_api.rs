@@ -13,7 +13,7 @@ use mockito::{Matcher, Server, ServerGuard};
 use polyoxide_core::{ApiError, RetryConfig};
 use polyoxide_data::{
     v2::{
-        types::{PositionAnchor, TradeSide},
+        types::{PositionAnchor, ResolutionKey, TradeSide},
         ErrorCode,
     },
     DataApi, DataApiError,
@@ -457,4 +457,36 @@ async fn each_position_anchor_sends_only_its_own_keys() {
     assert_eq!(user, pairs(&[("user", "0xuser")]));
     assert_eq!(market, pairs(&[("condition", "0xcond")]));
     assert_eq!(both, pairs(&[("user", "0xuser"), ("condition", "0xa,0xb")]));
+}
+
+#[tokio::test]
+async fn each_resolution_key_sends_exactly_one_selector() {
+    let question = pairs_sent("/v2/resolutions", |data| async move {
+        let _ = data
+            .v2()
+            .resolutions(ResolutionKey::Question("0xq".into()))
+            .send()
+            .await;
+    })
+    .await;
+    let conditions = pairs_sent("/v2/resolutions", |data| async move {
+        let _ = data
+            .v2()
+            .resolutions(ResolutionKey::Conditions(vec!["0xa".into(), "0xb".into()]))
+            .send()
+            .await;
+    })
+    .await;
+    let events = pairs_sent("/v2/resolutions", |data| async move {
+        let _ = data
+            .v2()
+            .resolutions(ResolutionKey::Events(vec!["7".into()]))
+            .send()
+            .await;
+    })
+    .await;
+
+    assert_eq!(question, pairs(&[("question_id", "0xq")]));
+    assert_eq!(conditions, pairs(&[("condition", "0xa,0xb")]));
+    assert_eq!(events, pairs(&[("event_id", "7")]));
 }

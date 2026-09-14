@@ -415,6 +415,79 @@ const ROUTES: &[(&str, Fire)] = &[
                 .await;
         })
     }),
+    ("/v2/holders", |data| {
+        Box::pin(async move {
+            let _ = data
+                .v2()
+                .holders(["0xcond"])
+                .min_balance(1.0)
+                .include_pnl(true)
+                .limit(10)
+                .cursor("cursor")
+                .send()
+                .await;
+        })
+    }),
+    ("/v2/live-volume", |data| {
+        Box::pin(async move {
+            let _ = data.v2().live_volume([1, 2]).send().await;
+        })
+    }),
+    ("/v2/oi", |data| {
+        Box::pin(async move {
+            let _ = data
+                .v2()
+                .open_interest()
+                .conditions(["0xcond"])
+                .send()
+                .await;
+        })
+    }),
+    ("/v2/prices-history", |data| {
+        Box::pin(async move {
+            let _ = data
+                .v2()
+                .prices_history("123")
+                .start(1)
+                .end(2)
+                .interval(PricesInterval::OneDay)
+                .bucket_seconds(60)
+                .as_of(3)
+                .limit(10)
+                .cursor("cursor")
+                .send()
+                .await;
+        })
+    }),
+    // `/v2/resolutions` takes one selector family per request, so its three
+    // entries together cover the documented parameters.
+    ("/v2/resolutions", |data| {
+        Box::pin(async move {
+            let _ = data
+                .v2()
+                .resolutions(ResolutionKey::Question("0xq".into()))
+                .send()
+                .await;
+        })
+    }),
+    ("/v2/resolutions", |data| {
+        Box::pin(async move {
+            let _ = data
+                .v2()
+                .resolutions(ResolutionKey::Conditions(vec!["0xcond".into()]))
+                .send()
+                .await;
+        })
+    }),
+    ("/v2/resolutions", |data| {
+        Box::pin(async move {
+            let _ = data
+                .v2()
+                .resolutions(ResolutionKey::Events(vec!["1".into()]))
+                .send()
+                .await;
+        })
+    }),
 ];
 
 fn documented_parameters(path: &str) -> BTreeSet<String> {
