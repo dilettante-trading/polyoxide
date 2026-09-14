@@ -83,6 +83,7 @@ macro_rules! parse_enum {
 
 pub mod clob;
 pub mod data;
+pub mod data_v2;
 pub mod gamma;
 
 pub fn register(m: &pyo3::Bound<'_, pyo3::types::PyModule>) -> pyo3::PyResult<()> {

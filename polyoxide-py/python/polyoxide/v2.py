@@ -7,6 +7,11 @@ classes here share a name with a v1 class in ``polyoxide`` (``Trade``,
 
 from ._polyoxide import v2 as _v2
 
+DataV2 = _v2.DataV2
+DataV2Sync = _v2.DataV2Sync
+Page = _v2.Page
+PageIterator = _v2.PageIterator
+PageIteratorSync = _v2.PageIteratorSync
 Pagination = _v2.Pagination
 Activity = _v2.Activity
 Approvals = _v2.Approvals
@@ -31,6 +36,11 @@ UserStats = _v2.UserStats
 UserVolume = _v2.UserVolume
 
 __all__ = [
+    "DataV2",
+    "DataV2Sync",
+    "Page",
+    "PageIterator",
+    "PageIteratorSync",
     "Pagination",
     "Activity",
     "Approvals",

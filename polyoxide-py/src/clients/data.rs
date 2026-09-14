@@ -971,6 +971,13 @@ impl PyDataApi {
             client: self.client.clone(),
         }
     }
+
+    /// The Data API v2 routes, sharing this client's connection pool and rate limiter.
+    fn v2(&self) -> super::data_v2::PyDataV2 {
+        super::data_v2::PyDataV2 {
+            v2: self.client.v2(),
+        }
+    }
 }
 
 // ═══════════════════════════════════════════════════════════════════════════════
@@ -1053,6 +1060,13 @@ impl PyDataApiSync {
     fn health(&self) -> PyDataApiHealthSync {
         PyDataApiHealthSync {
             client: self.client.clone(),
+        }
+    }
+
+    /// The Data API v2 routes, sharing this client's connection pool and rate limiter.
+    fn v2(&self) -> super::data_v2::PyDataV2Sync {
+        super::data_v2::PyDataV2Sync {
+            v2: self.client.v2(),
         }
     }
 }

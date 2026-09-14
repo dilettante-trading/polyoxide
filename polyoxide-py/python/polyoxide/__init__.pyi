@@ -3,6 +3,9 @@ from __future__ import annotations
 from collections.abc import Coroutine
 from typing import Any
 
+from . import v2 as v2
+from .v2 import DataV2 as _DataV2, DataV2Sync as _DataV2Sync
+
 # =============================================================================
 # Errors
 # =============================================================================
@@ -2143,6 +2146,9 @@ class DataApi:
     def health(self) -> DataApiHealth:
         """Access health endpoints."""
         ...
+    def v2(self) -> _DataV2:
+        """The Data API v2 routes, sharing this client's connection pool and rate limiter."""
+        ...
 
 class DataApiSync:
     """Sync client for the Polymarket data API."""
@@ -2176,4 +2182,7 @@ class DataApiSync:
         ...
     def health(self) -> DataApiHealthSync:
         """Access health endpoints."""
+        ...
+    def v2(self) -> _DataV2Sync:
+        """The Data API v2 routes, sharing this client's connection pool and rate limiter."""
         ...
