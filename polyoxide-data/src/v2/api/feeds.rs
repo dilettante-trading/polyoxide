@@ -2,10 +2,15 @@
 
 use polyoxide_core::Request;
 
-use crate::v2::{
-    envelope::{csv, Paged},
-    types::{FilterType, Trade, TradeSide},
-    DataV2,
+use crate::{
+    types::SortDirection,
+    v2::{
+        envelope::{csv, Paged},
+        types::{
+            Activity, ActivitySortBy, ActivityType, ComboActivity, FilterType, Trade, TradeSide,
+        },
+        DataV2,
+    },
 };
 
 impl DataV2 {
@@ -21,6 +26,25 @@ impl DataV2 {
     pub fn trades(&self) -> ListTrades {
         ListTrades {
             inner: Paged::new(Request::new(self.http_client.clone(), "/v2/trades")),
+        }
+    }
+
+    /// `GET /v2/activity`: one wallet's activity feed.
+    pub fn activity(&self, user: impl Into<String>) -> ListActivity {
+        ListActivity {
+            inner: Paged::new(Request::new(self.http_client.clone(), "/v2/activity"))
+                .query("user", user.into()),
+        }
+    }
+
+    /// `GET /v2/activity/combos`: one wallet's combo lifecycle events.
+    pub fn combo_activity(&self, user: impl Into<String>) -> ListComboActivity {
+        ListComboActivity {
+            inner: Paged::new(Request::new(
+                self.http_client.clone(),
+                "/v2/activity/combos",
+            ))
+            .query("user", user.into()),
         }
     }
 }
@@ -110,4 +134,119 @@ impl ListTrades {
     }
 
     paged_builder_methods!(Trade);
+}
+
+/// Builder for `GET /v2/activity`.
+pub struct ListActivity {
+    inner: Paged<Activity>,
+}
+
+impl ListActivity {
+    /// Only these row types. `TIP` is never in the default set; name it here
+    /// to receive tips. An empty list is omitted.
+    pub fn types(mut self, types: impl IntoIterator<Item = ActivityType>) -> Self {
+        if let Some(value) = csv(types) {
+            self.inner = self.inner.query("type", value);
+        }
+        self
+    }
+
+    /// Only activity in these markets, by condition id (at most 20). Mutually
+    /// exclusive with [`event_ids`](Self::event_ids). An empty list is omitted.
+    pub fn conditions<I, S>(mut self, conditions: I) -> Self
+    where
+        I: IntoIterator<Item = S>,
+        S: ToString,
+    {
+        if let Some(value) = csv(conditions) {
+            self.inner = self.inner.query("condition", value);
+        }
+        self
+    }
+
+    /// Only activity in these Gamma events. An empty list is omitted.
+    pub fn event_ids<I, S>(mut self, event_ids: I) -> Self
+    where
+        I: IntoIterator<Item = S>,
+        S: ToString,
+    {
+        if let Some(value) = csv(event_ids) {
+            self.inner = self.inner.query("event_id", value);
+        }
+        self
+    }
+
+    /// Only trade rows on this side.
+    pub fn side(mut self, side: TradeSide) -> Self {
+        self.inner = self.inner.query("side", side);
+        self
+    }
+
+    /// Window start on the block timestamp, epoch seconds, inclusive. Omitted
+    /// or `0` floors to three years back; `1` asks for full history.
+    pub fn start(mut self, start: i64) -> Self {
+        self.inner = self.inner.query("start", start);
+        self
+    }
+
+    /// Window end, epoch seconds, inclusive. Omitted or `0` means now plus one day.
+    pub fn end(mut self, end: i64) -> Self {
+        self.inner = self.inner.query("end", end);
+        self
+    }
+
+    /// Sort key. Only `TIMESTAMP` exists.
+    pub fn sort_by(mut self, sort_by: ActivitySortBy) -> Self {
+        self.inner = self.inner.query("sort_by", sort_by);
+        self
+    }
+
+    /// Walk direction. Upstream default: `DESC`. The cursor binds it, so keep it
+    /// the same for every page (`.pages()` does).
+    pub fn sort_direction(mut self, direction: SortDirection) -> Self {
+        self.inner = self.inner.query("sort_direction", direction);
+        self
+    }
+
+    /// Upstream defaults this to `true`, which hides `DEPOSIT` and `WITHDRAWAL`
+    /// rows even when [`types`](Self::types) asks for them.
+    pub fn exclude_deposits_withdrawals(mut self, exclude: bool) -> Self {
+        self.inner = self.inner.query("exclude_deposits_withdrawals", exclude);
+        self
+    }
+
+    /// Page size (at most 1000; upstream default 100).
+    pub fn limit(mut self, limit: u32) -> Self {
+        self.inner = self.inner.query("limit", limit);
+        self
+    }
+
+    paged_builder_methods!(Activity);
+}
+
+/// Builder for `GET /v2/activity/combos`.
+pub struct ListComboActivity {
+    inner: Paged<ComboActivity>,
+}
+
+impl ListComboActivity {
+    /// Only these combo condition ids (at most 20). An empty list is omitted.
+    pub fn conditions<I, S>(mut self, conditions: I) -> Self
+    where
+        I: IntoIterator<Item = S>,
+        S: ToString,
+    {
+        if let Some(value) = csv(conditions) {
+            self.inner = self.inner.query("condition", value);
+        }
+        self
+    }
+
+    /// First-page size (at most 1000).
+    pub fn limit(mut self, limit: u32) -> Self {
+        self.inner = self.inner.query("limit", limit);
+        self
+    }
+
+    paged_builder_methods!(ComboActivity);
 }

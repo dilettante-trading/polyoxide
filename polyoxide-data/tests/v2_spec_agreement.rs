@@ -28,6 +28,7 @@ use std::{
 
 use mockito::{Matcher, Server};
 use polyoxide_data::{
+    types::SortDirection,
     v2::{types::*, Page, Pagination},
     DataApi,
 };
@@ -304,6 +305,38 @@ const ROUTES: &[(&str, Fire)] = &[
                 .filter_amount(1.0)
                 .start(1)
                 .end(2)
+                .limit(10)
+                .cursor("cursor")
+                .send()
+                .await;
+        })
+    }),
+    ("/v2/activity", |data| {
+        Box::pin(async move {
+            let _ = data
+                .v2()
+                .activity("0xuser")
+                .types([ActivityType::Trade, ActivityType::Tip])
+                .conditions(["0xcond"])
+                .event_ids([1])
+                .side(TradeSide::Sell)
+                .start(1)
+                .end(2)
+                .sort_by(ActivitySortBy::Timestamp)
+                .sort_direction(SortDirection::Asc)
+                .exclude_deposits_withdrawals(false)
+                .limit(10)
+                .cursor("cursor")
+                .send()
+                .await;
+        })
+    }),
+    ("/v2/activity/combos", |data| {
+        Box::pin(async move {
+            let _ = data
+                .v2()
+                .combo_activity("0xuser")
+                .conditions(["0xcond"])
                 .limit(10)
                 .cursor("cursor")
                 .send()
