@@ -490,3 +490,27 @@ async fn each_resolution_key_sends_exactly_one_selector() {
     assert_eq!(conditions, pairs(&[("condition", "0xa,0xb")]));
     assert_eq!(events, pairs(&[("event_id", "7")]));
 }
+
+#[tokio::test]
+async fn an_empty_list_omits_its_parameter_instead_of_sending_it_blank() {
+    let optional = pairs_sent("/v2/trades", |data| async move {
+        let _ = data
+            .v2()
+            .trades()
+            .user("0xuser")
+            .conditions(Vec::<String>::new())
+            .event_ids(Vec::<u64>::new())
+            .send()
+            .await;
+    })
+    .await;
+    // A required argument given no values is omitted too, so the server's own
+    // `required query param` 400 names it, rather than a blank value slipping by.
+    let required = pairs_sent("/v2/holders", |data| async move {
+        let _ = data.v2().holders(Vec::<String>::new()).send().await;
+    })
+    .await;
+
+    assert_eq!(optional, pairs(&[("user", "0xuser")]));
+    assert_eq!(required, pairs(&[]));
+}
