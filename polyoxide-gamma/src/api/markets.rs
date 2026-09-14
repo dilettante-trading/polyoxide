@@ -404,6 +404,11 @@ impl ListMarkets {
     ///
     /// Safe batch size: ≤ 80 per request. Ethereum addresses are 42 chars
     /// (~60 B/entry); URLs over ~8 KB are rejected upstream with `414`.
+    ///
+    /// Upstream's published spec dropped this parameter in 2026-09, but the
+    /// server still applies it (verified 2026-09-14). Only markets created on
+    /// the old AMM carry a non-empty address, so most markets never match. See
+    /// `docs/specs/gamma/OBSERVED.md`.
     pub fn market_maker_address(
         mut self,
         addresses: impl IntoIterator<Item = impl ToString>,
@@ -611,6 +616,9 @@ impl ListKeysetMarkets {
     }
 
     /// Filter by market-maker addresses.
+    ///
+    /// Undocumented upstream since 2026-09 but still applied by the server —
+    /// see [`ListMarkets::market_maker_address`].
     pub fn market_maker_address(
         mut self,
         addresses: impl IntoIterator<Item = impl ToString>,

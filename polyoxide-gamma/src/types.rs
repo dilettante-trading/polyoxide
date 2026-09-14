@@ -70,6 +70,13 @@ pub struct Market {
     pub lower_bound_date: Option<String>,
     pub upper_bound_date: Option<String>,
     pub closed: Option<bool>,
+    /// The AMM contract address, or `""` for a market that never had one —
+    /// which is nearly every market listed today.
+    ///
+    /// Required because the server's own `Market.json` schema requires it,
+    /// even though upstream's published OpenAPI dropped the field in 2026-09
+    /// (see `docs/specs/gamma/OBSERVED.md`). If the server ever follows the
+    /// published spec, every `Market` fails to deserialize here.
     pub market_maker_address: String,
     #[cfg_attr(feature = "specta", specta(type = Option<f64>))]
     pub created_by: Option<i64>,
@@ -734,6 +741,9 @@ pub struct MarketsInformationBody {
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub condition_ids: Vec<String>,
     /// Filter by market-maker contract addresses.
+    ///
+    /// Undocumented upstream since 2026-09 but still applied by the server
+    /// (verified 2026-09-14) — see `docs/specs/gamma/OBSERVED.md`.
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub market_maker_address: Vec<String>,
     /// Minimum liquidity.

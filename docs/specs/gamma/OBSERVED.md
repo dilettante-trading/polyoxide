@@ -41,6 +41,48 @@ Upstream's summary is "Get comments by comment id". It returns the root comment
 and every reply, with the requested id anywhere in the list. Requesting
 `3218542` on 2026-08-19 returned six comments, the requested one third.
 
+## Market-maker fields and filters: dropped from the spec, still served
+
+Upstream's published `openapi.yaml` removed all of the following; the nightly
+first flagged it on 2026-09-04 (issue #34):
+
+- `Market`: `marketMakerAddress`, `ammType`, `fpmmLive`, `liquidityAmm`,
+  `volumeAmm`, `volume24hrAmm`, `volume1wkAmm`, `volume1moAmm`, `volume1yrAmm`
+- `Event`: `liquidityAmm`
+- the `market_maker_address` query parameter on `GET /markets` and
+  `GET /markets/keyset`
+- `marketMakerAddress` in the `POST /markets/information` body
+
+**The server kept every one of them.** Verified 2026-09-14:
+
+| What | Server |
+|------|--------|
+| `Market.json` (served `$schema`) | still lists all nine `Market` properties, and `marketMakerAddress` is in `required` alongside `id`, `conditionId`, `feeType` |
+| `Event.json` (served `$schema`) | still lists `liquidityAmm` |
+| `marketMakerAddress` on the wire | present on 100/100 open and 100/100 closed markets sampled, and on all 1,221 markets nested in 100 events; `""` for all but one (id `560317`, an old AMM market) |
+| `ammType`, `fpmmLive`, `volume*Amm` on the wire | absent from all 200 sampled markets |
+| `liquidityAmm` on the wire | absent from open markets; `0` on 92/100 closed markets |
+| `GET /markets?market_maker_address=<560317's address>` | 1 market, id `560317` |
+| same, with an address no market has | `[]` |
+| `GET /markets/keyset` with that unknown address | `{"markets":[]}` |
+| `POST /markets/information` `{"marketMakerAddress":[<560317's address>]}` | 1 market, id `560317`; with an unknown address, `[]` |
+
+So the filter is applied, not ignored. The distinction matters because an
+**unknown** body field *is* ignored: `POST /markets/information`
+`{"bogusField":["x"]}` returns an unfiltered page of 20. If the server ever drops
+the filter, callers will get unfiltered results with no error.
+
+**What polyoxide does.** Following the server, and the served schema that ranks
+above this mirror: `Market::market_maker_address` stays a required `String`, the
+AMM fields stay `Option`, and `ListMarkets::market_maker_address`,
+`ListKeysetMarkets::market_maker_address` and
+`MarketsInformationBody::market_maker_address` stay. The removal is a docs change
+until the server says otherwise, and the nightly checks for that:
+`live_market_maker_address_filter_is_still_applied` in
+`polyoxide-gamma/tests/live_api.rs` fails if any of the three routes stops
+applying the filter. Deserialization of every live-market test fails if
+`marketMakerAddress` disappears from the wire.
+
 ## More instances
 
 The 2026-08-19 type parity sweep found nine further places where the spec and
@@ -59,9 +101,17 @@ Two are known to do this:
 |---|---|
 | `GET /profiles/user_address/{address}` | `PublicProfile.json` |
 | `GET /public-profile?address=` | `PublicProfileResponse.json` |
+| `GET /markets/{id}` | `Market.json` |
+| `GET /markets/keyset` | `MarketsKeysetListResponse.json` (items `$ref` `Market.json`) |
+| `GET /events/keyset` | `EventsKeysetListResponse.json` (items `$ref` `Event.json`) |
 
-`/markets`, `/events` and `/comments` do **not** send a `$schema` key — this is
-not a universal feature of the API, only of these two (so far).
+The first two were found on 2026-08-19; the last three were seen on 2026-09-14
+and may have been serving it earlier. `/markets`, `/events`, `/series`, `/tags`,
+`/comments` and `/public-search` do **not** send a `$schema` key, so it is not a
+universal feature of the API. `Market.json` still describes what `/markets`
+returns even though that route does not link it: every key across 200 sampled
+`/markets` rows, and across 1,221 markets nested in `/events`, is a
+`Market.json` property (2026-09-14).
 
 Where a served schema disagrees with `openapi.yaml`, the served schema is
 right. For `/profiles/user_address/{address}` the disagreement isn't a missing

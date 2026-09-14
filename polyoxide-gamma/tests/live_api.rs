@@ -292,6 +292,80 @@ async fn live_list_markets_keyset() {
     let _ = resp;
 }
 
+/// `market_maker_address` is still applied on all three routes that take it.
+///
+/// Upstream's published spec dropped the filter (and `marketMakerAddress`
+/// itself) in 2026-09 while the server kept honouring both, so nothing
+/// outside this test would notice if the server followed the spec. The
+/// failure that matters is silent: an unknown filter is *ignored*, not
+/// rejected — `POST /markets/information` with `{"bogusField": ["x"]}`
+/// returns an unfiltered page. So filter on an address no market has and
+/// require an empty result, against an unfiltered baseline that is not empty.
+/// No market selection is needed, which keeps this independent of which AMM
+/// markets happen to be listed.
+#[tokio::test]
+#[ignore]
+async fn live_market_maker_address_filter_is_still_applied() {
+    use polyoxide_gamma::types::MarketsInformationBody;
+
+    const NO_SUCH_MAKER: &str = "0x0000000000000000000000000000000000000001";
+    let gamma = client();
+
+    let baseline = gamma
+        .markets()
+        .list()
+        .limit(5)
+        .send()
+        .await
+        .expect("unfiltered list");
+    assert!(!baseline.is_empty(), "the control needs an unfiltered page");
+
+    let listed = gamma
+        .markets()
+        .list()
+        .market_maker_address([NO_SUCH_MAKER])
+        .limit(5)
+        .send()
+        .await
+        .expect("GET /markets with market_maker_address");
+    assert!(
+        listed.is_empty(),
+        "GET /markets ignored market_maker_address: {} markets came back",
+        listed.len()
+    );
+
+    let keyset = gamma
+        .markets()
+        .list_keyset()
+        .market_maker_address([NO_SUCH_MAKER])
+        .limit(5)
+        .send()
+        .await
+        .expect("GET /markets/keyset with market_maker_address");
+    assert!(
+        keyset.markets.is_empty(),
+        "GET /markets/keyset ignored market_maker_address: {} markets came back",
+        keyset.markets.len()
+    );
+
+    let body = MarketsInformationBody {
+        market_maker_address: vec![NO_SUCH_MAKER.to_string()],
+        ..Default::default()
+    };
+    let posted = gamma
+        .markets()
+        .query_by_information(body)
+        .limit(5)
+        .send()
+        .await
+        .expect("POST /markets/information with marketMakerAddress");
+    assert!(
+        posted.is_empty(),
+        "POST /markets/information ignored marketMakerAddress: {} markets came back",
+        posted.len()
+    );
+}
+
 // ── Events ──────────────────────────────────────────────────────
 
 #[tokio::test]

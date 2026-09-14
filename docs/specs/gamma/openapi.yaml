@@ -4,32 +4,32 @@ info:
   version: 1.0.0
   description: REST API specification for public endpoints used by the Markets service.
 servers:
-  - url: https://gamma-api.polymarket.com
-    description: Polymarket Gamma API Production Server
+- url: https://gamma-api.polymarket.com
+  description: Polymarket Gamma API Production Server
 tags:
-  - name: Gamma Status
-    description: Gamma API status and health check
-  - name: Sports
-    description: Sports-related endpoints including teams and game data
-  - name: Tags
-    description: Tag management and related tag operations
-  - name: Events
-    description: Event management and event-related operations
-  - name: Markets
-    description: Market data and market-related operations
-  - name: Comments
-    description: Comment system and user interactions
-  - name: Series
-    description: Series management and related operations
-  - name: Profiles
-    description: User profile management
-  - name: Search
-    description: Search functionality across different entity types
+- name: Gamma Status
+  description: Gamma API status and health check
+- name: Sports
+  description: Sports-related endpoints including teams and game data
+- name: Tags
+  description: Tag management and related tag operations
+- name: Events
+  description: Event management and event-related operations
+- name: Markets
+  description: Market data and market-related operations
+- name: Comments
+  description: Comment system and user interactions
+- name: Series
+  description: Series management and related operations
+- name: Profiles
+  description: User profile management
+- name: Search
+  description: Search functionality across different entity types
 paths:
   /status:
     get:
       tags:
-        - Gamma Status
+      - Gamma Status
       summary: Gamma API Health check
       operationId: getGammaStatus
       responses:
@@ -43,32 +43,32 @@ paths:
   /teams:
     get:
       tags:
-        - Sports
+      - Sports
       summary: List teams
       operationId: listTeams
       parameters:
-        - $ref: '#/components/parameters/limit'
-        - $ref: '#/components/parameters/offset'
-        - $ref: '#/components/parameters/order'
-        - $ref: '#/components/parameters/ascending'
-        - name: league
-          in: query
-          schema:
-            type: array
-            items:
-              type: string
-        - name: name
-          in: query
-          schema:
-            type: array
-            items:
-              type: string
-        - name: abbreviation
-          in: query
-          schema:
-            type: array
-            items:
-              type: string
+      - $ref: '#/components/parameters/limit'
+      - $ref: '#/components/parameters/offset'
+      - $ref: '#/components/parameters/order'
+      - $ref: '#/components/parameters/ascending'
+      - name: league
+        in: query
+        schema:
+          type: array
+          items:
+            type: string
+      - name: name
+        in: query
+        schema:
+          type: array
+          items:
+            type: string
+      - name: abbreviation
+        in: query
+        schema:
+          type: array
+          items:
+            type: string
       responses:
         '200':
           description: List of teams
@@ -81,12 +81,12 @@ paths:
   /teams/{id}:
     get:
       tags:
-        - Sports
+      - Sports
       x-excluded: true
       summary: Get team by id
       operationId: getTeam
       parameters:
-        - $ref: '#/components/parameters/pathId'
+      - $ref: '#/components/parameters/pathId'
       responses:
         '200':
           description: Team
@@ -99,22 +99,22 @@ paths:
   /tags:
     get:
       tags:
-        - Tags
+      - Tags
       summary: List tags
       operationId: listTags
       parameters:
-        - $ref: '#/components/parameters/limit'
-        - $ref: '#/components/parameters/offset'
-        - $ref: '#/components/parameters/order'
-        - $ref: '#/components/parameters/ascending'
-        - name: include_template
-          in: query
-          schema:
-            type: boolean
-        - name: is_carousel
-          in: query
-          schema:
-            type: boolean
+      - $ref: '#/components/parameters/limit'
+      - $ref: '#/components/parameters/offset'
+      - $ref: '#/components/parameters/order'
+      - $ref: '#/components/parameters/ascending'
+      - name: include_template
+        in: query
+        schema:
+          type: boolean
+      - name: is_carousel
+        in: query
+        schema:
+          type: boolean
       responses:
         '200':
           description: List of tags
@@ -127,15 +127,15 @@ paths:
   /tags/{id}:
     get:
       tags:
-        - Tags
+      - Tags
       summary: Get tag by id
       operationId: getTag
       parameters:
-        - $ref: '#/components/parameters/pathId'
-        - name: include_template
-          in: query
-          schema:
-            type: boolean
+      - $ref: '#/components/parameters/pathId'
+      - name: include_template
+        in: query
+        schema:
+          type: boolean
       responses:
         '200':
           description: Tag
@@ -148,15 +148,15 @@ paths:
   /tags/slug/{slug}:
     get:
       tags:
-        - Tags
+      - Tags
       summary: Get tag by slug
       operationId: getTagBySlug
       parameters:
-        - $ref: '#/components/parameters/pathSlug'
-        - name: include_template
-          in: query
-          schema:
-            type: boolean
+      - $ref: '#/components/parameters/pathSlug'
+      - name: include_template
+        in: query
+        schema:
+          type: boolean
       responses:
         '200':
           description: Tag
@@ -169,23 +169,23 @@ paths:
   /tags/{id}/related-tags:
     get:
       tags:
-        - Tags
+      - Tags
       summary: Get related tags (relationships) by tag id
       operationId: getRelatedTagsById
       parameters:
-        - $ref: '#/components/parameters/pathId'
-        - name: omit_empty
-          in: query
-          schema:
-            type: boolean
-        - name: status
-          in: query
-          schema:
-            type: string
-            enum:
-              - active
-              - closed
-              - all
+      - $ref: '#/components/parameters/pathId'
+      - name: omit_empty
+        in: query
+        schema:
+          type: boolean
+      - name: status
+        in: query
+        schema:
+          type: string
+          enum:
+          - active
+          - closed
+          - all
       responses:
         '200':
           description: Related tag relationships
@@ -198,23 +198,23 @@ paths:
   /tags/slug/{slug}/related-tags:
     get:
       tags:
-        - Tags
+      - Tags
       summary: Get related tags (relationships) by tag slug
       operationId: getRelatedTagsBySlug
       parameters:
-        - $ref: '#/components/parameters/pathSlug'
-        - name: omit_empty
-          in: query
-          schema:
-            type: boolean
-        - name: status
-          in: query
-          schema:
-            type: string
-            enum:
-              - active
-              - closed
-              - all
+      - $ref: '#/components/parameters/pathSlug'
+      - name: omit_empty
+        in: query
+        schema:
+          type: boolean
+      - name: status
+        in: query
+        schema:
+          type: string
+          enum:
+          - active
+          - closed
+          - all
       responses:
         '200':
           description: Related tag relationships
@@ -227,23 +227,23 @@ paths:
   /tags/{id}/related-tags/tags:
     get:
       tags:
-        - Tags
+      - Tags
       summary: Get tags related to a tag id
       operationId: getTagsRelatedToATagById
       parameters:
-        - $ref: '#/components/parameters/pathId'
-        - name: omit_empty
-          in: query
-          schema:
-            type: boolean
-        - name: status
-          in: query
-          schema:
-            type: string
-            enum:
-              - active
-              - closed
-              - all
+      - $ref: '#/components/parameters/pathId'
+      - name: omit_empty
+        in: query
+        schema:
+          type: boolean
+      - name: status
+        in: query
+        schema:
+          type: string
+          enum:
+          - active
+          - closed
+          - all
       responses:
         '200':
           description: Related tags
@@ -256,23 +256,23 @@ paths:
   /tags/slug/{slug}/related-tags/tags:
     get:
       tags:
-        - Tags
+      - Tags
       summary: Get tags related to a tag slug
       operationId: getTagsRelatedToATagBySlug
       parameters:
-        - $ref: '#/components/parameters/pathSlug'
-        - name: omit_empty
-          in: query
-          schema:
-            type: boolean
-        - name: status
-          in: query
-          schema:
-            type: string
-            enum:
-              - active
-              - closed
-              - all
+      - $ref: '#/components/parameters/pathSlug'
+      - name: omit_empty
+        in: query
+        schema:
+          type: boolean
+      - name: status
+        in: query
+        schema:
+          type: string
+          enum:
+          - active
+          - closed
+          - all
       responses:
         '200':
           description: Related tags
@@ -285,112 +285,112 @@ paths:
   /events:
     get:
       tags:
-        - Events
+      - Events
       summary: List events
       operationId: listEvents
       parameters:
-        - $ref: '#/components/parameters/limit'
-        - $ref: '#/components/parameters/offset'
-        - $ref: '#/components/parameters/order'
-        - $ref: '#/components/parameters/ascending'
-        - name: id
-          in: query
-          schema:
-            type: array
-            items:
-              type: integer
-        - name: tag_id
-          in: query
-          schema:
+      - $ref: '#/components/parameters/limit'
+      - $ref: '#/components/parameters/offset'
+      - $ref: '#/components/parameters/order'
+      - $ref: '#/components/parameters/ascending'
+      - name: id
+        in: query
+        schema:
+          type: array
+          items:
             type: integer
-        - name: exclude_tag_id
-          in: query
-          schema:
-            type: array
-            items:
-              type: integer
-        - name: slug
-          in: query
-          schema:
-            type: array
-            items:
-              type: string
-        - name: tag_slug
-          in: query
-          schema:
+      - name: tag_id
+        in: query
+        schema:
+          type: integer
+      - name: exclude_tag_id
+        in: query
+        schema:
+          type: array
+          items:
+            type: integer
+      - name: slug
+        in: query
+        schema:
+          type: array
+          items:
             type: string
-        - name: related_tags
-          in: query
-          schema:
-            type: boolean
-        - name: active
-          in: query
-          schema:
-            type: boolean
-        - name: archived
-          in: query
-          schema:
-            type: boolean
-        - name: featured
-          in: query
-          schema:
-            type: boolean
-        - name: cyom
-          in: query
-          schema:
-            type: boolean
-        - name: include_chat
-          in: query
-          schema:
-            type: boolean
-        - name: include_template
-          in: query
-          schema:
-            type: boolean
-        - name: recurrence
-          in: query
-          schema:
-            type: string
-        - name: closed
-          in: query
-          schema:
-            type: boolean
-        - name: liquidity_min
-          in: query
-          schema:
-            type: number
-        - name: liquidity_max
-          in: query
-          schema:
-            type: number
-        - name: volume_min
-          in: query
-          schema:
-            type: number
-        - name: volume_max
-          in: query
-          schema:
-            type: number
-        - name: start_date_min
-          in: query
-          schema:
-            type: string
-            format: date-time
-        - name: start_date_max
-          in: query
-          schema:
-            type: string
-            format: date-time
-        - name: end_date_min
-          in: query
-          schema:
-            type: string
-            format: date-time
-        - name: end_date_max
-          in: query
-          schema:
-            type: string
-            format: date-time
+      - name: tag_slug
+        in: query
+        schema:
+          type: string
+      - name: related_tags
+        in: query
+        schema:
+          type: boolean
+      - name: active
+        in: query
+        schema:
+          type: boolean
+      - name: archived
+        in: query
+        schema:
+          type: boolean
+      - name: featured
+        in: query
+        schema:
+          type: boolean
+      - name: cyom
+        in: query
+        schema:
+          type: boolean
+      - name: include_chat
+        in: query
+        schema:
+          type: boolean
+      - name: include_template
+        in: query
+        schema:
+          type: boolean
+      - name: recurrence
+        in: query
+        schema:
+          type: string
+      - name: closed
+        in: query
+        schema:
+          type: boolean
+      - name: liquidity_min
+        in: query
+        schema:
+          type: number
+      - name: liquidity_max
+        in: query
+        schema:
+          type: number
+      - name: volume_min
+        in: query
+        schema:
+          type: number
+      - name: volume_max
+        in: query
+        schema:
+          type: number
+      - name: start_date_min
+        in: query
+        schema:
+          type: string
+          format: date-time
+      - name: start_date_max
+        in: query
+        schema:
+          type: string
+          format: date-time
+      - name: end_date_min
+        in: query
+        schema:
+          type: string
+          format: date-time
+      - name: end_date_max
+        in: query
+        schema:
+          type: string
+          format: date-time
       responses:
         '200':
           description: List of events
@@ -404,26 +404,26 @@ paths:
     get:
       x-excluded: true
       tags:
-        - Events
+      - Events
       summary: List events (paginated)
       operationId: listEventsPagination
       parameters:
-        - $ref: '#/components/parameters/limit'
-        - $ref: '#/components/parameters/offset'
-        - $ref: '#/components/parameters/order'
-        - $ref: '#/components/parameters/ascending'
-        - name: include_chat
-          in: query
-          schema:
-            type: boolean
-        - name: include_template
-          in: query
-          schema:
-            type: boolean
-        - name: recurrence
-          in: query
-          schema:
-            type: string
+      - $ref: '#/components/parameters/limit'
+      - $ref: '#/components/parameters/offset'
+      - $ref: '#/components/parameters/order'
+      - $ref: '#/components/parameters/ascending'
+      - name: include_chat
+        in: query
+        schema:
+          type: boolean
+      - name: include_template
+        in: query
+        schema:
+          type: boolean
+      - name: recurrence
+        in: query
+        schema:
+          type: string
       responses:
         '200':
           description: Events with pagination
@@ -434,16 +434,16 @@ paths:
   /events/results:
     get:
       tags:
-        - Events
-        - Sports
+      - Events
+      - Sports
       x-excluded: true
       summary: List sport events results
       operationId: listSportEventsResults
       parameters:
-        - $ref: '#/components/parameters/limit'
-        - $ref: '#/components/parameters/offset'
-        - $ref: '#/components/parameters/order'
-        - $ref: '#/components/parameters/ascending'
+      - $ref: '#/components/parameters/limit'
+      - $ref: '#/components/parameters/offset'
+      - $ref: '#/components/parameters/order'
+      - $ref: '#/components/parameters/ascending'
       responses:
         '200':
           description: List of events with results
@@ -456,19 +456,19 @@ paths:
   /events/{id}:
     get:
       tags:
-        - Events
+      - Events
       summary: Get event by id
       operationId: getEvent
       parameters:
-        - $ref: '#/components/parameters/pathId'
-        - name: include_chat
-          in: query
-          schema:
-            type: boolean
-        - name: include_template
-          in: query
-          schema:
-            type: boolean
+      - $ref: '#/components/parameters/pathId'
+      - name: include_chat
+        in: query
+        schema:
+          type: boolean
+      - name: include_template
+        in: query
+        schema:
+          type: boolean
       responses:
         '200':
           description: Event
@@ -481,12 +481,12 @@ paths:
   /events/{id}/tweet-count:
     get:
       tags:
-        - Events
+      - Events
       x-excluded: true
       summary: Get event tweet count
       operationId: getEventTweetCount
       parameters:
-        - $ref: '#/components/parameters/pathId'
+      - $ref: '#/components/parameters/pathId'
       responses:
         '200':
           description: Tweet count
@@ -499,13 +499,13 @@ paths:
   /events/{id}/comments/count:
     get:
       tags:
-        - Events
-        - Comments
+      - Events
+      - Comments
       x-excluded: true
       summary: Get event comment count
       operationId: getEventCommentsCount
       parameters:
-        - $ref: '#/components/parameters/pathId'
+      - $ref: '#/components/parameters/pathId'
       responses:
         '200':
           description: Comment count
@@ -518,12 +518,12 @@ paths:
   /events/{id}/tags:
     get:
       tags:
-        - Events
-        - Tags
+      - Events
+      - Tags
       summary: Get event tags
       operationId: getEventTags
       parameters:
-        - $ref: '#/components/parameters/pathId'
+      - $ref: '#/components/parameters/pathId'
       responses:
         '200':
           description: Tags attached to the event
@@ -538,19 +538,19 @@ paths:
   /events/slug/{slug}:
     get:
       tags:
-        - Events
+      - Events
       summary: Get event by slug
       operationId: getEventBySlug
       parameters:
-        - $ref: '#/components/parameters/pathSlug'
-        - name: include_chat
-          in: query
-          schema:
-            type: boolean
-        - name: include_template
-          in: query
-          schema:
-            type: boolean
+      - $ref: '#/components/parameters/pathSlug'
+      - name: include_chat
+        in: query
+        schema:
+          type: boolean
+      - name: include_template
+        in: query
+        schema:
+          type: boolean
       responses:
         '200':
           description: Event
@@ -563,23 +563,23 @@ paths:
   /events/creators:
     get:
       tags:
-        - Events
+      - Events
       x-excluded: true
       summary: List event creators
       operationId: listEventCreators
       parameters:
-        - $ref: '#/components/parameters/limit'
-        - $ref: '#/components/parameters/offset'
-        - $ref: '#/components/parameters/order'
-        - $ref: '#/components/parameters/ascending'
-        - name: creator_name
-          in: query
-          schema:
-            type: string
-        - name: creator_handle
-          in: query
-          schema:
-            type: string
+      - $ref: '#/components/parameters/limit'
+      - $ref: '#/components/parameters/offset'
+      - $ref: '#/components/parameters/order'
+      - $ref: '#/components/parameters/ascending'
+      - name: creator_name
+        in: query
+        schema:
+          type: string
+      - name: creator_handle
+        in: query
+        schema:
+          type: string
       responses:
         '200':
           description: List of event creators
@@ -592,12 +592,12 @@ paths:
   /events/creators/{id}:
     get:
       tags:
-        - Events
+      - Events
       x-excluded: true
       summary: Get event creator by id
       operationId: getEventCreator
       parameters:
-        - $ref: '#/components/parameters/pathId'
+      - $ref: '#/components/parameters/pathId'
       responses:
         '200':
           description: Event creator
@@ -610,125 +610,119 @@ paths:
   /markets:
     get:
       tags:
-        - Markets
+      - Markets
       summary: List markets
       operationId: listMarkets
       parameters:
-        - $ref: '#/components/parameters/limit'
-        - $ref: '#/components/parameters/offset'
-        - $ref: '#/components/parameters/order'
-        - $ref: '#/components/parameters/ascending'
-        - name: id
-          in: query
-          schema:
-            type: array
-            items:
-              type: integer
-        - name: slug
-          in: query
-          schema:
-            type: array
-            items:
-              type: string
-        - name: clob_token_ids
-          in: query
-          schema:
-            type: array
-            items:
-              type: string
-        - name: condition_ids
-          in: query
-          schema:
-            type: array
-            items:
-              type: string
-        - name: market_maker_address
-          in: query
-          schema:
-            type: array
-            items:
-              type: string
-        - name: liquidity_num_min
-          in: query
-          schema:
-            type: number
-        - name: liquidity_num_max
-          in: query
-          schema:
-            type: number
-        - name: volume_num_min
-          in: query
-          schema:
-            type: number
-        - name: volume_num_max
-          in: query
-          schema:
-            type: number
-        - name: start_date_min
-          in: query
-          schema:
-            type: string
-            format: date-time
-        - name: start_date_max
-          in: query
-          schema:
-            type: string
-            format: date-time
-        - name: end_date_min
-          in: query
-          schema:
-            type: string
-            format: date-time
-        - name: end_date_max
-          in: query
-          schema:
-            type: string
-            format: date-time
-        - name: tag_id
-          in: query
-          schema:
+      - $ref: '#/components/parameters/limit'
+      - $ref: '#/components/parameters/offset'
+      - $ref: '#/components/parameters/order'
+      - $ref: '#/components/parameters/ascending'
+      - name: id
+        in: query
+        schema:
+          type: array
+          items:
             type: integer
-        - name: related_tags
-          in: query
-          schema:
-            type: boolean
-        - name: cyom
-          in: query
-          schema:
-            type: boolean
-        - name: uma_resolution_status
-          in: query
-          schema:
+      - name: slug
+        in: query
+        schema:
+          type: array
+          items:
             type: string
-        - name: game_id
-          in: query
-          schema:
+      - name: clob_token_ids
+        in: query
+        schema:
+          type: array
+          items:
             type: string
-        - name: sports_market_types
-          in: query
-          schema:
-            type: array
-            items:
-              type: string
-        - name: rewards_min_size
-          in: query
-          schema:
-            type: number
-        - name: question_ids
-          in: query
-          schema:
-            type: array
-            items:
-              type: string
-        - name: include_tag
-          in: query
-          schema:
-            type: boolean
-        - name: closed
-          in: query
-          schema:
-            type: boolean
-            default: false
+      - name: condition_ids
+        in: query
+        schema:
+          type: array
+          items:
+            type: string
+      - name: liquidity_num_min
+        in: query
+        schema:
+          type: number
+      - name: liquidity_num_max
+        in: query
+        schema:
+          type: number
+      - name: volume_num_min
+        in: query
+        schema:
+          type: number
+      - name: volume_num_max
+        in: query
+        schema:
+          type: number
+      - name: start_date_min
+        in: query
+        schema:
+          type: string
+          format: date-time
+      - name: start_date_max
+        in: query
+        schema:
+          type: string
+          format: date-time
+      - name: end_date_min
+        in: query
+        schema:
+          type: string
+          format: date-time
+      - name: end_date_max
+        in: query
+        schema:
+          type: string
+          format: date-time
+      - name: tag_id
+        in: query
+        schema:
+          type: integer
+      - name: related_tags
+        in: query
+        schema:
+          type: boolean
+      - name: cyom
+        in: query
+        schema:
+          type: boolean
+      - name: uma_resolution_status
+        in: query
+        schema:
+          type: string
+      - name: game_id
+        in: query
+        schema:
+          type: string
+      - name: sports_market_types
+        in: query
+        schema:
+          type: array
+          items:
+            type: string
+      - name: rewards_min_size
+        in: query
+        schema:
+          type: number
+      - name: question_ids
+        in: query
+        schema:
+          type: array
+          items:
+            type: string
+      - name: include_tag
+        in: query
+        schema:
+          type: boolean
+      - name: closed
+        in: query
+        schema:
+          type: boolean
+          default: false
       responses:
         '200':
           description: List of markets
@@ -741,15 +735,15 @@ paths:
   /markets/{id}:
     get:
       tags:
-        - Markets
+      - Markets
       summary: Get market by id
       operationId: getMarket
       parameters:
-        - $ref: '#/components/parameters/pathId'
-        - name: include_tag
-          in: query
-          schema:
-            type: boolean
+      - $ref: '#/components/parameters/pathId'
+      - name: include_tag
+        in: query
+        schema:
+          type: boolean
       responses:
         '200':
           description: Market
@@ -762,12 +756,12 @@ paths:
   /markets/{id}/description:
     get:
       tags:
-        - Markets
+      - Markets
       x-excluded: true
       summary: Get market description by id
       operationId: getMarketDescription
       parameters:
-        - $ref: '#/components/parameters/pathId'
+      - $ref: '#/components/parameters/pathId'
       responses:
         '200':
           description: Market description
@@ -780,12 +774,12 @@ paths:
   /markets/{id}/tags:
     get:
       tags:
-        - Markets
-        - Tags
+      - Markets
+      - Tags
       summary: Get market tags by id
       operationId: getMarketTags
       parameters:
-        - $ref: '#/components/parameters/pathId'
+      - $ref: '#/components/parameters/pathId'
       responses:
         '200':
           description: Tags attached to the market
@@ -800,15 +794,15 @@ paths:
   /markets/slug/{slug}:
     get:
       tags:
-        - Markets
+      - Markets
       summary: Get market by slug
       operationId: getMarketBySlug
       parameters:
-        - $ref: '#/components/parameters/pathSlug'
-        - name: include_tag
-          in: query
-          schema:
-            type: boolean
+      - $ref: '#/components/parameters/pathSlug'
+      - name: include_tag
+        in: query
+        schema:
+          type: boolean
       responses:
         '200':
           description: Market
@@ -821,7 +815,7 @@ paths:
   /markets/information:
     post:
       tags:
-        - Markets
+      - Markets
       x-excluded: true
       summary: Query markets by information filters
       operationId: getMarketsInformation
@@ -845,7 +839,7 @@ paths:
   /markets/abridged:
     post:
       tags:
-        - Markets
+      - Markets
       x-excluded: true
       summary: Query abridged markets by information filters
       operationId: getAbridgedMarkets
@@ -869,187 +863,177 @@ paths:
   /markets/keyset:
     get:
       tags:
-        - Markets
+      - Markets
       summary: List markets (keyset pagination)
       description: >
-        Returns markets using cursor-based (keyset) pagination for stable,
-        efficient paging through large result sets. Use `next_cursor` from each
-        response as `after_cursor` in the next request. The `offset` parameter
-        is explicitly rejected; use `after_cursor` instead.
+        Returns markets using cursor-based (keyset) pagination for stable, efficient paging through
+        large result sets. Use `next_cursor` from each response as `after_cursor` in the next request.
+        The `offset` parameter is explicitly rejected; use `after_cursor` instead.
       operationId: listMarketsKeyset
       parameters:
-        - name: limit
-          in: query
-          description: Maximum number of results to return (max 100)
-          schema:
+      - name: limit
+        in: query
+        description: Maximum number of results to return (max 100)
+        schema:
+          type: integer
+          minimum: 1
+          maximum: 100
+          default: 20
+      - name: order
+        in: query
+        description: Comma-separated list of JSON field names to order by, e.g. volume_num,liquidity_num
+        schema:
+          type: string
+      - name: ascending
+        in: query
+        description: Sort direction. Only used when order is set.
+        schema:
+          type: boolean
+          default: true
+      - name: after_cursor
+        in: query
+        description: Opaque cursor token from a previous response's next_cursor
+        schema:
+          type: string
+      - name: offset
+        in: query
+        description: Not allowed. Returns 422 if provided.
+        schema:
+          type: integer
+      - name: id
+        in: query
+        schema:
+          type: array
+          items:
             type: integer
-            minimum: 1
-            maximum: 100
-            default: 20
-        - name: order
-          in: query
-          description: >-
-            Comma-separated list of JSON field names to order by, e.g.
-            volume_num,liquidity_num
-          schema:
+      - name: slug
+        in: query
+        schema:
+          type: array
+          items:
             type: string
-        - name: ascending
-          in: query
-          description: Sort direction. Only used when order is set.
-          schema:
-            type: boolean
-            default: true
-        - name: after_cursor
-          in: query
-          description: Opaque cursor token from a previous response's next_cursor
-          schema:
+      - name: closed
+        in: query
+        schema:
+          type: boolean
+          default: false
+      - name: decimalized
+        in: query
+        schema:
+          type: boolean
+      - name: clob_token_ids
+        in: query
+        schema:
+          type: array
+          items:
             type: string
-        - name: offset
-          in: query
-          description: Not allowed. Returns 422 if provided.
-          schema:
+      - name: condition_ids
+        in: query
+        schema:
+          type: array
+          items:
+            type: string
+      - name: question_ids
+        in: query
+        schema:
+          type: array
+          items:
+            type: string
+      - name: liquidity_num_min
+        in: query
+        schema:
+          type: number
+      - name: liquidity_num_max
+        in: query
+        schema:
+          type: number
+      - name: volume_num_min
+        in: query
+        schema:
+          type: number
+      - name: volume_num_max
+        in: query
+        schema:
+          type: number
+      - name: start_date_min
+        in: query
+        schema:
+          type: string
+          format: date-time
+      - name: start_date_max
+        in: query
+        schema:
+          type: string
+          format: date-time
+      - name: end_date_min
+        in: query
+        schema:
+          type: string
+          format: date-time
+      - name: end_date_max
+        in: query
+        schema:
+          type: string
+          format: date-time
+      - name: tag_id
+        in: query
+        schema:
+          type: array
+          items:
             type: integer
-        - name: id
-          in: query
-          schema:
-            type: array
-            items:
-              type: integer
-        - name: slug
-          in: query
-          schema:
-            type: array
-            items:
-              type: string
-        - name: closed
-          in: query
-          schema:
-            type: boolean
-            default: false
-        - name: decimalized
-          in: query
-          schema:
-            type: boolean
-        - name: clob_token_ids
-          in: query
-          schema:
-            type: array
-            items:
-              type: string
-        - name: condition_ids
-          in: query
-          schema:
-            type: array
-            items:
-              type: string
-        - name: question_ids
-          in: query
-          schema:
-            type: array
-            items:
-              type: string
-        - name: market_maker_address
-          in: query
-          schema:
-            type: array
-            items:
-              type: string
-        - name: liquidity_num_min
-          in: query
-          schema:
-            type: number
-        - name: liquidity_num_max
-          in: query
-          schema:
-            type: number
-        - name: volume_num_min
-          in: query
-          schema:
-            type: number
-        - name: volume_num_max
-          in: query
-          schema:
-            type: number
-        - name: start_date_min
-          in: query
-          schema:
+      - name: related_tags
+        in: query
+        schema:
+          type: boolean
+      - name: tag_match
+        in: query
+        schema:
+          type: string
+      - name: cyom
+        in: query
+        schema:
+          type: boolean
+      - name: rfq_enabled
+        in: query
+        schema:
+          type: boolean
+      - name: uma_resolution_status
+        in: query
+        schema:
+          type: string
+      - name: game_id
+        in: query
+        schema:
+          type: string
+      - name: sports_market_types
+        in: query
+        schema:
+          type: array
+          items:
             type: string
-            format: date-time
-        - name: start_date_max
-          in: query
-          schema:
-            type: string
-            format: date-time
-        - name: end_date_min
-          in: query
-          schema:
-            type: string
-            format: date-time
-        - name: end_date_max
-          in: query
-          schema:
-            type: string
-            format: date-time
-        - name: tag_id
-          in: query
-          schema:
-            type: array
-            items:
-              type: integer
-        - name: related_tags
-          in: query
-          schema:
-            type: boolean
-        - name: tag_match
-          in: query
-          schema:
-            type: string
-        - name: cyom
-          in: query
-          schema:
-            type: boolean
-        - name: rfq_enabled
-          in: query
-          schema:
-            type: boolean
-        - name: uma_resolution_status
-          in: query
-          schema:
-            type: string
-        - name: game_id
-          in: query
-          schema:
-            type: string
-        - name: sports_market_types
-          in: query
-          schema:
-            type: array
-            items:
-              type: string
-        - name: include_tag
-          in: query
-          description: When true, includes Tags relation on each market
-          schema:
-            type: boolean
-        - name: locale
-          in: query
-          schema:
-            type: string
+      - name: include_tag
+        in: query
+        description: When true, includes Tags relation on each market
+        schema:
+          type: boolean
+      - name: locale
+        in: query
+        schema:
+          type: string
       responses:
         '200':
           description: >
-            Paginated list of markets. Includes Events and Events.Series
-            relations. Tags included only when include_tag=true. Nested
-            clob_rewards and fee_schedule are populated on each market.
+            Paginated list of markets. Includes Events and Events.Series relations.
+            Tags included only when include_tag=true. Nested clob_rewards and fee_schedule
+            are populated on each market.
           content:
             application/json:
               schema:
                 $ref: '#/components/schemas/KeysetMarketsResponse'
         '422':
           description: >
-            Validation error. Returned when offset is provided, cursor is
-            invalid, order fields are not valid, or other filter validation
-            fails.
+            Validation error. Returned when offset is provided, cursor is invalid,
+            order fields are not valid, or other filter validation fails.
           content:
             application/json:
               schema:
@@ -1069,233 +1053,229 @@ paths:
   /events/keyset:
     get:
       tags:
-        - Events
+      - Events
       summary: List events (keyset pagination)
       description: >
-        Returns events using cursor-based (keyset) pagination for stable,
-        efficient paging through large result sets. Use `next_cursor` from each
-        response as `after_cursor` in the next request. The `offset` parameter
-        is explicitly rejected; use `after_cursor` instead.
+        Returns events using cursor-based (keyset) pagination for stable, efficient paging through
+        large result sets. Use `next_cursor` from each response as `after_cursor` in the next request.
+        The `offset` parameter is explicitly rejected; use `after_cursor` instead.
       operationId: listEventsKeyset
       parameters:
-        - name: limit
-          in: query
-          description: Maximum number of results to return (max 500)
-          schema:
+      - name: limit
+        in: query
+        description: Maximum number of results to return (max 500)
+        schema:
+          type: integer
+          minimum: 1
+          maximum: 500
+          default: 20
+      - name: order
+        in: query
+        description: Comma-separated list of JSON field names to order by
+        schema:
+          type: string
+      - name: ascending
+        in: query
+        description: Sort direction. Only used when order is set.
+        schema:
+          type: boolean
+          default: true
+      - name: after_cursor
+        in: query
+        description: Opaque cursor token from a previous response's next_cursor
+        schema:
+          type: string
+      - name: offset
+        in: query
+        description: Not allowed. Returns 422 if provided.
+        schema:
+          type: integer
+      - name: id
+        in: query
+        schema:
+          type: array
+          items:
             type: integer
-            minimum: 1
-            maximum: 500
-            default: 20
-        - name: order
-          in: query
-          description: Comma-separated list of JSON field names to order by
-          schema:
+      - name: slug
+        in: query
+        schema:
+          type: array
+          items:
             type: string
-        - name: ascending
-          in: query
-          description: Sort direction. Only used when order is set.
-          schema:
-            type: boolean
-            default: true
-        - name: after_cursor
-          in: query
-          description: Opaque cursor token from a previous response's next_cursor
-          schema:
-            type: string
-        - name: offset
-          in: query
-          description: Not allowed. Returns 422 if provided.
-          schema:
+      - name: closed
+        in: query
+        schema:
+          type: boolean
+      - name: live
+        in: query
+        schema:
+          type: boolean
+      - name: featured
+        in: query
+        schema:
+          type: boolean
+      - name: cyom
+        in: query
+        schema:
+          type: boolean
+      - name: title_search
+        in: query
+        schema:
+          type: string
+      - name: liquidity_min
+        in: query
+        schema:
+          type: number
+      - name: liquidity_max
+        in: query
+        schema:
+          type: number
+      - name: volume_min
+        in: query
+        schema:
+          type: number
+      - name: volume_max
+        in: query
+        schema:
+          type: number
+      - name: start_date_min
+        in: query
+        schema:
+          type: string
+          format: date-time
+      - name: start_date_max
+        in: query
+        schema:
+          type: string
+          format: date-time
+      - name: end_date_min
+        in: query
+        schema:
+          type: string
+          format: date-time
+      - name: end_date_max
+        in: query
+        schema:
+          type: string
+          format: date-time
+      - name: start_time_min
+        in: query
+        schema:
+          type: string
+          format: date-time
+      - name: start_time_max
+        in: query
+        schema:
+          type: string
+          format: date-time
+      - name: tag_id
+        in: query
+        schema:
+          type: array
+          items:
             type: integer
-        - name: id
-          in: query
-          schema:
-            type: array
-            items:
-              type: integer
-        - name: slug
-          in: query
-          schema:
-            type: array
-            items:
-              type: string
-        - name: closed
-          in: query
-          schema:
-            type: boolean
-        - name: live
-          in: query
-          schema:
-            type: boolean
-        - name: featured
-          in: query
-          schema:
-            type: boolean
-        - name: cyom
-          in: query
-          schema:
-            type: boolean
-        - name: title_search
-          in: query
-          schema:
-            type: string
-        - name: liquidity_min
-          in: query
-          schema:
-            type: number
-        - name: liquidity_max
-          in: query
-          schema:
-            type: number
-        - name: volume_min
-          in: query
-          schema:
-            type: number
-        - name: volume_max
-          in: query
-          schema:
-            type: number
-        - name: start_date_min
-          in: query
-          schema:
-            type: string
-            format: date-time
-        - name: start_date_max
-          in: query
-          schema:
-            type: string
-            format: date-time
-        - name: end_date_min
-          in: query
-          schema:
-            type: string
-            format: date-time
-        - name: end_date_max
-          in: query
-          schema:
-            type: string
-            format: date-time
-        - name: start_time_min
-          in: query
-          schema:
-            type: string
-            format: date-time
-        - name: start_time_max
-          in: query
-          schema:
-            type: string
-            format: date-time
-        - name: tag_id
-          in: query
-          schema:
-            type: array
-            items:
-              type: integer
-        - name: tag_slug
-          in: query
-          schema:
-            type: string
-        - name: exclude_tag_id
-          in: query
-          description: Tag IDs to exclude. Cannot overlap with tag_id.
-          schema:
-            type: array
-            items:
-              type: integer
-        - name: related_tags
-          in: query
-          schema:
-            type: boolean
-        - name: tag_match
-          in: query
-          schema:
-            type: string
-        - name: series_id
-          in: query
-          schema:
-            type: array
-            items:
-              type: integer
-        - name: game_id
-          in: query
-          schema:
-            type: array
-            items:
-              type: integer
-        - name: event_date
-          in: query
-          schema:
-            type: string
-            format: date-time
-        - name: event_week
-          in: query
-          schema:
+      - name: tag_slug
+        in: query
+        schema:
+          type: string
+      - name: exclude_tag_id
+        in: query
+        description: Tag IDs to exclude. Cannot overlap with tag_id.
+        schema:
+          type: array
+          items:
             type: integer
-        - name: featured_order
-          in: query
-          schema:
-            type: boolean
-        - name: recurrence
-          in: query
-          schema:
-            type: string
-        - name: created_by
-          in: query
-          schema:
-            type: array
-            items:
-              type: string
-        - name: parent_event_id
-          in: query
-          schema:
+      - name: related_tags
+        in: query
+        schema:
+          type: boolean
+      - name: tag_match
+        in: query
+        schema:
+          type: string
+      - name: series_id
+        in: query
+        schema:
+          type: array
+          items:
             type: integer
-        - name: include_children
-          in: query
-          schema:
-            type: boolean
-        - name: partner_slug
-          in: query
-          description: When set, external_partners are attached to matching events
-          schema:
+      - name: game_id
+        in: query
+        schema:
+          type: array
+          items:
+            type: integer
+      - name: event_date
+        in: query
+        schema:
+          type: string
+          format: date-time
+      - name: event_week
+        in: query
+        schema:
+          type: integer
+      - name: featured_order
+        in: query
+        schema:
+          type: boolean
+      - name: recurrence
+        in: query
+        schema:
+          type: string
+      - name: created_by
+        in: query
+        schema:
+          type: array
+          items:
             type: string
-        - name: include_chat
-          in: query
-          description: When true, includes Chats and Series.Chats relations
-          schema:
-            type: boolean
-        - name: include_template
-          in: query
-          description: When true, includes Templates relation
-          schema:
-            type: boolean
-        - name: include_best_lines
-          in: query
-          description: When true, includes BestLines relation
-          schema:
-            type: boolean
-        - name: locale
-          in: query
-          schema:
-            type: string
+      - name: parent_event_id
+        in: query
+        schema:
+          type: integer
+      - name: include_children
+        in: query
+        schema:
+          type: boolean
+      - name: partner_slug
+        in: query
+        description: When set, external_partners are attached to matching events
+        schema:
+          type: string
+      - name: include_chat
+        in: query
+        description: When true, includes Chats and Series.Chats relations
+        schema:
+          type: boolean
+      - name: include_template
+        in: query
+        description: When true, includes Templates relation
+        schema:
+          type: boolean
+      - name: include_best_lines
+        in: query
+        description: When true, includes BestLines relation
+        schema:
+          type: boolean
+      - name: locale
+        in: query
+        schema:
+          type: string
       responses:
         '200':
           description: >
-            Paginated list of events. Always includes Series, Tags, Markets, and
-            EventCreators relations. Chats/Series.Chats, Templates, and
-            BestLines are optional via their respective include_ flags. Nested
-            markets include clob_rewards and fee_schedule. Teams are enriched
-            automatically. external_partners attached only when partner_slug is
-            set.
+            Paginated list of events. Always includes Series, Tags, Markets, and EventCreators
+            relations. Chats/Series.Chats, Templates, and BestLines are optional via their
+            respective include_ flags. Nested markets include clob_rewards and fee_schedule.
+            Teams are enriched automatically. external_partners attached only when partner_slug is set.
           content:
             application/json:
               schema:
                 $ref: '#/components/schemas/KeysetEventsResponse'
         '422':
           description: >
-            Validation error. Returned when offset is provided, cursor is
-            invalid, order fields are not valid, tag_id overlaps with
-            exclude_tag_id, invalid recurrence, or other filter validation
-            fails.
+            Validation error. Returned when offset is provided, cursor is invalid,
+            order fields are not valid, tag_id overlaps with exclude_tag_id,
+            invalid recurrence, or other filter validation fails.
           content:
             application/json:
               schema:
@@ -1315,48 +1295,48 @@ paths:
   /series:
     get:
       tags:
-        - Series
+      - Series
       summary: List series
       operationId: listSeries
       parameters:
-        - $ref: '#/components/parameters/limit'
-        - $ref: '#/components/parameters/offset'
-        - $ref: '#/components/parameters/order'
-        - $ref: '#/components/parameters/ascending'
-        - name: slug
-          in: query
-          schema:
-            type: array
-            items:
-              type: string
-        - name: categories_ids
-          in: query
-          schema:
-            type: array
-            items:
-              type: integer
-        - name: categories_labels
-          in: query
-          schema:
-            type: array
-            items:
-              type: string
-        - name: closed
-          in: query
-          schema:
-            type: boolean
-        - name: include_chat
-          in: query
-          schema:
-            type: boolean
-        - name: recurrence
-          in: query
-          schema:
+      - $ref: '#/components/parameters/limit'
+      - $ref: '#/components/parameters/offset'
+      - $ref: '#/components/parameters/order'
+      - $ref: '#/components/parameters/ascending'
+      - name: slug
+        in: query
+        schema:
+          type: array
+          items:
             type: string
-        - name: exclude_events
-          in: query
-          schema:
-            type: boolean
+      - name: categories_ids
+        in: query
+        schema:
+          type: array
+          items:
+            type: integer
+      - name: categories_labels
+        in: query
+        schema:
+          type: array
+          items:
+            type: string
+      - name: closed
+        in: query
+        schema:
+          type: boolean
+      - name: include_chat
+        in: query
+        schema:
+          type: boolean
+      - name: recurrence
+        in: query
+        schema:
+          type: string
+      - name: exclude_events
+        in: query
+        schema:
+          type: boolean
       responses:
         '200':
           description: List of series
@@ -1369,15 +1349,15 @@ paths:
   /series/{id}:
     get:
       tags:
-        - Series
+      - Series
       summary: Get series by id
       operationId: getSeries
       parameters:
-        - $ref: '#/components/parameters/pathId'
-        - name: include_chat
-          in: query
-          schema:
-            type: boolean
+      - $ref: '#/components/parameters/pathId'
+      - name: include_chat
+        in: query
+        schema:
+          type: boolean
       responses:
         '200':
           description: Series
@@ -1390,13 +1370,13 @@ paths:
   /series/{id}/comments/count:
     get:
       tags:
-        - Series
-        - Comments
+      - Series
+      - Comments
       x-excluded: true
       summary: Get series comment count
       operationId: getSeriesCommentsCount
       parameters:
-        - $ref: '#/components/parameters/pathId'
+      - $ref: '#/components/parameters/pathId'
       responses:
         '200':
           description: Comment count
@@ -1409,12 +1389,12 @@ paths:
   /series-summary/{id}:
     get:
       tags:
-        - Series
+      - Series
       x-excluded: true
       summary: Get series summary by id
       operationId: getSeriesSummaryById
       parameters:
-        - $ref: '#/components/parameters/pathId'
+      - $ref: '#/components/parameters/pathId'
       responses:
         '200':
           description: Series summary
@@ -1427,12 +1407,12 @@ paths:
   /series-summary/slug/{slug}:
     get:
       tags:
-        - Series
+      - Series
       x-excluded: true
       summary: Get series summary by slug
       operationId: getSeriesSummaryBySlug
       parameters:
-        - $ref: '#/components/parameters/pathSlug'
+      - $ref: '#/components/parameters/pathSlug'
       responses:
         '200':
           description: Series summary
@@ -1445,34 +1425,34 @@ paths:
   /comments:
     get:
       tags:
-        - Comments
+      - Comments
       summary: List comments
       operationId: listComments
       parameters:
-        - $ref: '#/components/parameters/limit'
-        - $ref: '#/components/parameters/offset'
-        - $ref: '#/components/parameters/order'
-        - $ref: '#/components/parameters/ascending'
-        - name: parent_entity_type
-          in: query
-          schema:
-            type: string
-            enum:
-              - Event
-              - Series
-              - market
-        - name: parent_entity_id
-          in: query
-          schema:
-            type: integer
-        - name: get_positions
-          in: query
-          schema:
-            type: boolean
-        - name: holders_only
-          in: query
-          schema:
-            type: boolean
+      - $ref: '#/components/parameters/limit'
+      - $ref: '#/components/parameters/offset'
+      - $ref: '#/components/parameters/order'
+      - $ref: '#/components/parameters/ascending'
+      - name: parent_entity_type
+        in: query
+        schema:
+          type: string
+          enum:
+          - Event
+          - Series
+          - market
+      - name: parent_entity_id
+        in: query
+        schema:
+          type: integer
+      - name: get_positions
+        in: query
+        schema:
+          type: boolean
+      - name: holders_only
+        in: query
+        schema:
+          type: boolean
       responses:
         '200':
           description: List of comments
@@ -1485,19 +1465,19 @@ paths:
   /comments/{id}:
     get:
       tags:
-        - Comments
+      - Comments
       summary: Get comments by comment id
       operationId: getCommentsById
       parameters:
-        - name: id
-          in: path
-          required: true
-          schema:
-            type: integer
-        - name: get_positions
-          in: query
-          schema:
-            type: boolean
+      - name: id
+        in: path
+        required: true
+        schema:
+          type: integer
+      - name: get_positions
+        in: query
+        schema:
+          type: boolean
       responses:
         '200':
           description: Comments
@@ -1510,20 +1490,20 @@ paths:
   /comments/user_address/{user_address}:
     get:
       tags:
-        - Comments
-        - Profiles
+      - Comments
+      - Profiles
       summary: Get comments by user address
       operationId: getCommentsByUserAddress
       parameters:
-        - name: user_address
-          in: path
-          required: true
-          schema:
-            type: string
-        - $ref: '#/components/parameters/limit'
-        - $ref: '#/components/parameters/offset'
-        - $ref: '#/components/parameters/order'
-        - $ref: '#/components/parameters/ascending'
+      - name: user_address
+        in: path
+        required: true
+        schema:
+          type: string
+      - $ref: '#/components/parameters/limit'
+      - $ref: '#/components/parameters/offset'
+      - $ref: '#/components/parameters/order'
+      - $ref: '#/components/parameters/ascending'
       responses:
         '200':
           description: Comments
@@ -1536,18 +1516,18 @@ paths:
   /public-profile:
     get:
       tags:
-        - Profiles
+      - Profiles
       summary: Get public profile by wallet address
       operationId: getPublicProfile
       parameters:
-        - name: address
-          in: query
-          required: true
-          description: The wallet address (proxy wallet or user address)
-          schema:
-            type: string
-            pattern: ^0x[a-fA-F0-9]{40}$
-          example: '0x7c3db723f1d4d8cb9c550095203b686cb11e5c6b'
+      - name: address
+        in: query
+        required: true
+        description: The wallet address (proxy wallet or user address)
+        schema:
+          type: string
+          pattern: ^0x[a-fA-F0-9]{40}$
+        example: '0x7c3db723f1d4d8cb9c550095203b686cb11e5c6b'
       responses:
         '200':
           description: Public profile information
@@ -1576,17 +1556,17 @@ paths:
   /profiles/user_address/{user_address}:
     get:
       tags:
-        - Profiles
+      - Profiles
       x-excluded: true
       summary: Get public profile by user address
       operationId: getPublicProfileByUserAddress
       parameters:
-        - name: user_address
-          in: path
-          required: true
-          schema:
-            type: string
-            pattern: ^0x[a-fA-F0-9]{40}$
+      - name: user_address
+        in: path
+        required: true
+        schema:
+          type: string
+          pattern: ^0x[a-fA-F0-9]{40}$
       responses:
         '200':
           description: Profile
@@ -1599,14 +1579,13 @@ paths:
   /sports:
     get:
       tags:
-        - Sports
+      - Sports
       summary: Get sports metadata information
       operationId: getSportsMetadata
       responses:
         '200':
-          description: >-
-            List of sports metadata objects containing sport configuration
-            details, visual assets, and related identifiers
+          description: List of sports metadata objects containing sport configuration details, visual assets, and related
+            identifiers
           content:
             application/json:
               schema:
@@ -1616,7 +1595,7 @@ paths:
   /sports/market-types:
     get:
       tags:
-        - Sports
+      - Sports
       summary: Get valid sports market types
       operationId: getSportsMarketTypes
       responses:
@@ -1629,71 +1608,71 @@ paths:
   /public-search:
     get:
       tags:
-        - Search
+      - Search
       summary: Search markets, events, and profiles
       operationId: publicSearch
       parameters:
-        - name: q
-          in: query
-          required: true
-          schema:
+      - name: q
+        in: query
+        required: true
+        schema:
+          type: string
+      - name: cache
+        in: query
+        schema:
+          type: boolean
+      - name: events_status
+        in: query
+        schema:
+          type: string
+      - name: limit_per_type
+        in: query
+        schema:
+          type: integer
+      - name: page
+        in: query
+        schema:
+          type: integer
+      - name: events_tag
+        in: query
+        schema:
+          type: array
+          items:
             type: string
-        - name: cache
-          in: query
-          schema:
-            type: boolean
-        - name: events_status
-          in: query
-          schema:
-            type: string
-        - name: limit_per_type
-          in: query
-          schema:
+      - name: keep_closed_markets
+        in: query
+        schema:
+          type: integer
+      - name: sort
+        in: query
+        schema:
+          type: string
+      - name: ascending
+        in: query
+        schema:
+          type: boolean
+      - name: search_tags
+        in: query
+        schema:
+          type: boolean
+      - name: search_profiles
+        in: query
+        schema:
+          type: boolean
+      - name: recurrence
+        in: query
+        schema:
+          type: string
+      - name: exclude_tag_id
+        in: query
+        schema:
+          type: array
+          items:
             type: integer
-        - name: page
-          in: query
-          schema:
-            type: integer
-        - name: events_tag
-          in: query
-          schema:
-            type: array
-            items:
-              type: string
-        - name: keep_closed_markets
-          in: query
-          schema:
-            type: integer
-        - name: sort
-          in: query
-          schema:
-            type: string
-        - name: ascending
-          in: query
-          schema:
-            type: boolean
-        - name: search_tags
-          in: query
-          schema:
-            type: boolean
-        - name: search_profiles
-          in: query
-          schema:
-            type: boolean
-        - name: recurrence
-          in: query
-          schema:
-            type: string
-        - name: exclude_tag_id
-          in: query
-          schema:
-            type: array
-            items:
-              type: integer
-        - name: optimized
-          in: query
-          schema:
-            type: boolean
+      - name: optimized
+        in: query
+        schema:
+          type: boolean
       responses:
         '200':
           description: Search results
@@ -1879,9 +1858,6 @@ components:
         category:
           type: string
           nullable: true
-        ammType:
-          type: string
-          nullable: true
         liquidity:
           type: string
           nullable: true
@@ -1949,8 +1925,6 @@ components:
         closed:
           type: boolean
           nullable: true
-        marketMakerAddress:
-          type: string
         createdBy:
           type: integer
           nullable: true
@@ -2082,21 +2056,6 @@ components:
         umaReward:
           type: string
           nullable: true
-        fpmmLive:
-          type: boolean
-          nullable: true
-        volume24hrAmm:
-          type: number
-          nullable: true
-        volume1wkAmm:
-          type: number
-          nullable: true
-        volume1moAmm:
-          type: number
-          nullable: true
-        volume1yrAmm:
-          type: number
-          nullable: true
         volume24hrClob:
           type: number
           nullable: true
@@ -2109,13 +2068,7 @@ components:
         volume1yrClob:
           type: number
           nullable: true
-        volumeAmm:
-          type: number
-          nullable: true
         volumeClob:
-          type: number
-          nullable: true
-        liquidityAmm:
           type: number
           nullable: true
         liquidityClob:
@@ -2464,9 +2417,6 @@ components:
           nullable: true
         enableOrderBook:
           type: boolean
-          nullable: true
-        liquidityAmm:
-          type: number
           nullable: true
         liquidityClob:
           type: number
@@ -3276,22 +3226,16 @@ components:
         resolution:
           type: string
           format: uri
-          description: >-
-            URL to the official resolution source for the sport (e.g., league
-            website)
+          description: URL to the official resolution source for the sport (e.g., league website)
         ordering:
           type: string
           description: Preferred ordering for sport display, typically "home" or "away"
         tags:
           type: string
-          description: >-
-            Comma-separated list of tag IDs associated with the sport for
-            categorization and filtering
+          description: Comma-separated list of tag IDs associated with the sport for categorization and filtering
         series:
           type: string
-          description: >-
-            Series identifier linking the sport to a specific tournament or
-            season series
+          description: Series identifier linking the sport to a specific tournament or season series
     SportsMarketTypesResponse:
       type: object
       properties:
@@ -3319,10 +3263,6 @@ components:
           items:
             type: string
         conditionIds:
-          type: array
-          items:
-            type: string
-        marketMakerAddress:
           type: array
           items:
             type: string
@@ -3394,9 +3334,8 @@ components:
         next_cursor:
           type: string
           description: >
-            Opaque cursor token for fetching the next page. Present only when
-            the number of returned markets equals the effective limit. Omitted
-            on the last page.
+            Opaque cursor token for fetching the next page. Present only when the
+            number of returned markets equals the effective limit. Omitted on the last page.
     KeysetEventsResponse:
       type: object
       properties:
@@ -3408,9 +3347,8 @@ components:
         next_cursor:
           type: string
           description: >
-            Opaque cursor token for fetching the next page. Present only when
-            the number of returned events equals the effective limit. Omitted on
-            the last page.
+            Opaque cursor token for fetching the next page. Present only when the
+            number of returned events equals the effective limit. Omitted on the last page.
     ValidationError:
       type: object
       properties:
