@@ -79,6 +79,21 @@ impl<T, E> Request<T, E> {
     }
 }
 
+// Written by hand: `#[derive(Clone)]` would require `T: Clone` and `E: Clone`
+// through `PhantomData<(T, E)>`, but both are only type markers. Cloning a
+// request copies its client handle, path and query, which is what lets a
+// paginated walk re-send identical filters on every page.
+impl<T, E> Clone for Request<T, E> {
+    fn clone(&self) -> Self {
+        Self {
+            http_client: self.http_client.clone(),
+            path: self.path.clone(),
+            query: self.query.clone(),
+            _marker: PhantomData,
+        }
+    }
+}
+
 impl<T, E> QueryBuilder for Request<T, E> {
     fn add_query(&mut self, key: String, value: String) {
         self.query.push((key, value));
@@ -323,6 +338,33 @@ mod tests {
             .unwrap();
         let req: Request<(), ApiError> = Request::new(http, String::from("/events"));
         assert_eq!(req.path, "/events");
+    }
+
+    // ── Clone ───────────────────────────────────────────────────
+
+    #[test]
+    fn test_request_clone_does_not_require_clone_markers() {
+        // Neither marker implements `Clone`; a derived impl would not compile here.
+        struct NotClone;
+        struct NotCloneError;
+
+        let http = HttpClientBuilder::new("https://example.com")
+            .build()
+            .unwrap();
+        let original: Request<NotClone, NotCloneError> =
+            Request::new(http, "/feed").query("user", "0xabc");
+        let extended = original.clone().query("cursor", "c1");
+
+        assert_eq!(original.path, "/feed");
+        assert_eq!(original.query, vec![("user".into(), "0xabc".into())]);
+        assert_eq!(extended.path, "/feed");
+        assert_eq!(
+            extended.query,
+            vec![
+                ("user".into(), "0xabc".into()),
+                ("cursor".into(), "c1".into()),
+            ]
+        );
     }
 
     // ── TypedRequest ────────────────────────────────────────────
