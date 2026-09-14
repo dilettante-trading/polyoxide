@@ -47,6 +47,7 @@ pub mod api;
 pub mod client;
 pub mod error;
 pub mod types;
+pub mod v2;
 
 pub use client::{DataApi, DataApiBuilder};
 pub use error::DataApiError;
