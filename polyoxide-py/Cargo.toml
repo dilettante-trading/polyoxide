@@ -28,3 +28,4 @@ serde_json = { workspace = true }
 # See the FAQ entry in the pyo3 book: "I can't run cargo test".
 [dev-dependencies]
 pyo3 = { workspace = true, features = ["auto-initialize"] }
+serde = { workspace = true }

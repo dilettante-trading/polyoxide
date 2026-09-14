@@ -4078,6 +4078,7 @@ dependencies = [
  "pyo3",
  "pyo3-async-runtimes",
  "pythonize",
+ "serde",
  "serde_json",
  "tokio",
 ]

@@ -1,5 +1,6 @@
 mod clob;
 mod data;
+pub mod data_v2;
 mod gamma;
 
 pub use clob::*;
