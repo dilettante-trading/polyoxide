@@ -1,0 +1,42 @@
+{
+  "data": [
+    {
+      "win_rank": 1,
+      "kind": "market",
+      "user_id": "0x168a51f1cac0ad3b166797069382495a8aa10d24",
+      "pnl": 1306459.298013,
+      "initial_value": 2100711.75698658,
+      "final_value": 3407171.0549995797,
+      "resolved_at": 1788988576,
+      "condition_id": "0x789f0872f66cfffd21a33020e5c90e11f95f947e03be77ac2df7e86b0cb71527",
+      "position_id": "111542660486399282647408117439638950802775541416995149264363091678184762870709",
+      "event_id": 931722,
+      "event_slug": "ucl-spo-gal-2026-09-09",
+      "event_title": "Sporting CP vs. Galatasaray SK",
+      "user_name": "ripley86alien",
+      "profile_image": ""
+    },
+    {
+      "win_rank": 2,
+      "kind": "market",
+      "user_id": "0x168a51f1cac0ad3b166797069382495a8aa10d24",
+      "pnl": 1060101.077917,
+      "initial_value": 995724.9419317243,
+      "final_value": 2055826.0198487244,
+      "resolved_at": 1789160265,
+      "condition_id": "0x6ee88702a3df2b660e38177a1224bf30765a16467f48cb119a07583e8fbd42ca",
+      "position_id": "102955916736383970318525152607282984713098399363914380126908202379691672599615",
+      "event_id": 928970,
+      "event_slug": "fl1-ren-olm-2026-09-11",
+      "event_title": "Stade Rennais FC 1901 vs. Olympique de Marseille",
+      "user_name": "ripley86alien",
+      "profile_image": ""
+    }
+  ],
+  "pagination": {
+    "limit": 2,
+    "offset": 0,
+    "has_more": true,
+    "next_cursor": "eyJkYXRhIjp7InR5cGUiOiJiaWdnZXN0X3dpbm5lcnMiLCJwYXJhbXMiOnsibCI6MiwibyI6MiwidCI6IndlZWsiLCJjIjoib3ZlcmFsbCJ9fSwic2lnIjoiYTJmMWNhNzZjYmRjZjc1MzkxZDIwYmZmZmRjNjk4YmEifQ"
+  }
+}

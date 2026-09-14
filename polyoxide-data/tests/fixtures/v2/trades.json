@@ -1,0 +1,52 @@
+{
+  "data": [
+    {
+      "proxy_wallet": "0x379a410a36c101e3b8dfb6c90d1176eb0def4b1a",
+      "side": "BUY",
+      "token_id": "107562952936555819668737826428754978979556920505990557747611348541829551199040",
+      "condition_id": "0x571aafcdc9d3549ac260d5f956adc4ae57d9ace63575abd99db58ba0130e9fcf",
+      "size": 22.84,
+      "price": 0.52,
+      "timestamp": 1789381477,
+      "title": "Will the highest temperature in Dallas be between 100-101°F on September 14?",
+      "slug": "highest-temperature-in-dallas-on-september-14-2026-100-101f",
+      "icon": "https://polymarket-upload.s3.us-east-2.amazonaws.com/highest-temperature-in-dallas-on-december-5-m1XZuVxmKEs_.jpg",
+      "event_slug": "",
+      "outcome": "Yes",
+      "outcome_index": 999,
+      "name": "jaboobelite",
+      "pseudonym": "Scary-Barrel",
+      "bio": "",
+      "profile_image": "",
+      "profile_image_optimized": "",
+      "transaction_hash": "0x7958c0638f1b7ab12d0e3c762a6a2d3fe98edb3f748d0bcbe12adae1a67e58a8"
+    },
+    {
+      "proxy_wallet": "0xc69bd5567b40ef4d11922eaa57e1f9be1c642076",
+      "side": "BUY",
+      "token_id": "33339798372916037220786136133406478491116150628220441951753426683441228279665",
+      "condition_id": "0xefa17dee3af09f69f9ddf245b969aa4efbe7c71cdf06ee49d694408bc33e2ed2",
+      "size": 5.0,
+      "price": 0.002,
+      "timestamp": 1789381477,
+      "title": "Will Shakhtar Donetsk win the 2026-27 UEFA Champions League Championship?",
+      "slug": "will-shakhtar-donetsk-win-the-2026-27-uefa-champions-league-championship-20260701202025578",
+      "icon": "",
+      "event_slug": "",
+      "outcome": "Yes",
+      "outcome_index": 999,
+      "name": "vtcchampion52",
+      "pseudonym": "Ultimate-Underpass",
+      "bio": "grandmaster fiora",
+      "profile_image": "https://polymarket-upload.s3.us-east-2.amazonaws.com/profile-image-8942959-23c51b9d-6e30-4e81-a9c1-df6aeed06c75.gif",
+      "profile_image_optimized": "",
+      "transaction_hash": "0xc5939880ac3e72ca3e93c4aefb88aaed0ff0ba4b2241648ea4027cbad750a455"
+    }
+  ],
+  "pagination": {
+    "limit": 2,
+    "offset": 0,
+    "has_more": true,
+    "next_cursor": "eyJkYXRhIjp7InR5cGUiOiJ0cmFkZXMiLCJwYXJhbXMiOnsibCI6MiwidHMiOjE3ODkzODE0NzcsInNxIjoiOTM3ODQyOTYwMDAzMTA0MjEwIiwiZCI6Mn19LCJzaWciOiJkZDBlOWYwNDAxZWU0ZWI2NjdhN2NlODBkODQxMmUwMyJ9"
+  }
+}

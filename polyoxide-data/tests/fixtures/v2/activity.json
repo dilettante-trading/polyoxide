@@ -1,0 +1,56 @@
+{
+  "data": [
+    {
+      "proxy_wallet": "0x379a410a36c101e3b8dfb6c90d1176eb0def4b1a",
+      "timestamp": 1789381477,
+      "condition_id": "0x571aafcdc9d3549ac260d5f956adc4ae57d9ace63575abd99db58ba0130e9fcf",
+      "type": "TRADE",
+      "size": 22.84,
+      "usdc_size": 12.16184,
+      "transaction_hash": "0x7958c0638f1b7ab12d0e3c762a6a2d3fe98edb3f748d0bcbe12adae1a67e58a8",
+      "price": 0.52,
+      "token_id": "107562952936555819668737826428754978979556920505990557747611348541829551199040",
+      "side": "BUY",
+      "outcome_index": 999,
+      "title": "Will the highest temperature in Dallas be between 100-101°F on September 14?",
+      "slug": "highest-temperature-in-dallas-on-september-14-2026-100-101f",
+      "icon": "https://polymarket-upload.s3.us-east-2.amazonaws.com/highest-temperature-in-dallas-on-december-5-m1XZuVxmKEs_.jpg",
+      "event_slug": "",
+      "outcome": "Yes",
+      "name": "jaboobelite",
+      "pseudonym": "Scary-Barrel",
+      "bio": "",
+      "profile_image": "",
+      "profile_image_optimized": ""
+    },
+    {
+      "proxy_wallet": "0x379a410a36c101e3b8dfb6c90d1176eb0def4b1a",
+      "timestamp": 1789380859,
+      "condition_id": "0x5d37860480c16a2ca6e325198b73d9e696a1d2fc7e349aa9b6f3be0f1b2cca39",
+      "type": "TRADE",
+      "size": 7.44,
+      "usdc_size": 6.72948,
+      "transaction_hash": "0x4a9d91e0c59b31e48e0172d1d49ec105a89134bdbc1e4f4356f85d314b023738",
+      "price": 0.9,
+      "token_id": "110891621175623911123262418934389066157020231116267817028449905194275827971468",
+      "side": "BUY",
+      "outcome_index": 1,
+      "title": "Will the highest temperature in Karachi be 37°C on September 15?",
+      "slug": "highest-temperature-in-karachi-on-september-15-2026-37c",
+      "icon": "https://polymarket-upload.s3.us-east-2.amazonaws.com/karachi-dcb1d7dafc.jpg",
+      "event_slug": "highest-temperature-in-karachi-on-september-15-2026",
+      "outcome": "No",
+      "name": "jaboobelite",
+      "pseudonym": "Scary-Barrel",
+      "bio": "",
+      "profile_image": "",
+      "profile_image_optimized": ""
+    }
+  ],
+  "pagination": {
+    "limit": 2,
+    "offset": 0,
+    "has_more": true,
+    "next_cursor": "eyJkYXRhIjp7InR5cGUiOiJhY3Rpdml0eSIsInBhcmFtcyI6eyJsIjoyLCJ0cyI6MTc4OTM4MDg1OSwic3EiOiI5Mzc4Mzg4NDAwMDQ1MDM0MzAiLCJkIjoyfX0sInNpZyI6Ijk4NWQwMDRjZWFmMTY0NDY3NWQxYzE3ZjczNWU5MDA2In0"
+  }
+}

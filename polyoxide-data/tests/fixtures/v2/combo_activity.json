@@ -1,0 +1,182 @@
+{
+  "data": [
+    {
+      "id": "0xd94dcb06730c5f910098a4b82376f1113a0836ea8936a91a461f86f767b2c7cf-844",
+      "type": "REDEEM",
+      "proxy_wallet": "0x87746b484db725beb8e79d7ce188261b7c75baf4",
+      "combo_condition_id": "0x03449eec66c044cecb729af4169b45afbf0000000000000000000000000000",
+      "combo_position_id": "1478180995445884194963783500106018329313736528433258596285541062936163778560",
+      "amount_usdc": null,
+      "payout_usdc": 79375.723165,
+      "block_number": 91440179,
+      "timestamp": 1785865295,
+      "transaction_hash": "0xd94dcb06730c5f910098a4b82376f1113a0836ea8936a91a461f86f767b2c7cf",
+      "legs": [
+        {
+          "leg_index": 0,
+          "leg_position_id": "1176710649185715379246236772702433179078596393450958754111917085864706965504",
+          "leg_condition_id": "0xb82979cea439ed92f7bbb382b9f7a5c6d44a1fef7c494a77f4911c28464c0061",
+          "leg_outcome_index": 0,
+          "leg_outcome_label": "Yes",
+          "leg_status": "RESOLVED_WIN",
+          "leg_resolved_at": "2026-08-04T17:39:14Z",
+          "leg_current_price": 1.0,
+          "market": {
+            "market_id": "3135934",
+            "slug": "clf-avl-pau-2026-08-04-avl",
+            "title": "Aston Villa",
+            "question": "Will Aston Villa win on 2026-08-04?",
+            "group_item_title": "Aston Villa",
+            "sports_market_type": "moneyline",
+            "line": null,
+            "outcomes": [
+              "Yes",
+              "No"
+            ],
+            "outcome": "Yes",
+            "image_url": "https://polymarket-upload.s3.us-east-2.amazonaws.com/soccer ball-bba4025f77.png",
+            "icon_url": "https://polymarket-upload.s3.us-east-2.amazonaws.com/soccer ball-bba4025f77.png",
+            "category": "",
+            "subcategory": "",
+            "tags": [],
+            "end_date": "2026-08-04T12:30:00Z",
+            "event": {
+              "event_id": "757859",
+              "event_slug": "clf-avl-pau-2026-08-04",
+              "event_title": "Aston Villa vs. BG Pathum United",
+              "event_image": "https://polymarket-upload.s3.us-east-2.amazonaws.com/soccer ball-bba4025f77.png"
+            }
+          }
+        },
+        {
+          "leg_index": 1,
+          "leg_position_id": "1243965552808499617108514947746357048534421404414231170468951922814836802048",
+          "leg_condition_id": "0xc93f3a2216901fb0d35d7256a4f8b25b62fd3b994b5eb27b42ba12a2790ed232",
+          "leg_outcome_index": 0,
+          "leg_outcome_label": "Yes",
+          "leg_status": "RESOLVED_WIN",
+          "leg_resolved_at": "2026-08-04T17:14:42Z",
+          "leg_current_price": 1.0,
+          "market": {
+            "market_id": "3307355",
+            "slug": "clf-pau-avl-2026-08-04-avl",
+            "title": "Aston Villa",
+            "question": "Will Aston Villa win on 2026-08-04?",
+            "group_item_title": "Aston Villa",
+            "sports_market_type": "moneyline",
+            "line": null,
+            "outcomes": [
+              "Yes",
+              "No"
+            ],
+            "outcome": "Yes",
+            "image_url": "https://polymarket-upload.s3.us-east-2.amazonaws.com/soccer ball-bba4025f77.png",
+            "icon_url": "https://polymarket-upload.s3.us-east-2.amazonaws.com/soccer ball-bba4025f77.png",
+            "category": "",
+            "subcategory": "",
+            "tags": [],
+            "end_date": "2026-08-04T12:30:00Z",
+            "event": {
+              "event_id": "791393",
+              "event_slug": "clf-pau-avl-2026-08-04",
+              "event_title": "BG Pathum United vs. Aston Villa",
+              "event_image": "https://polymarket-upload.s3.us-east-2.amazonaws.com/soccer ball-bba4025f77.png"
+            }
+          }
+        }
+      ]
+    },
+    {
+      "id": "0x21fe88d183e0420017aac281a1010f1b758eec6ee148c5978c0820e26b686c30-605",
+      "type": "REDEEM",
+      "proxy_wallet": "0x87746b484db725beb8e79d7ce188261b7c75baf4",
+      "combo_condition_id": "0x03a5bd349868c117201ff162ee5f4565b20000000000000000000000000000",
+      "combo_position_id": "1649774159465564424204933934359108832229981771726490136445638611638801137664",
+      "amount_usdc": null,
+      "payout_usdc": 306.123584,
+      "block_number": 91440174,
+      "timestamp": 1785865287,
+      "transaction_hash": "0x21fe88d183e0420017aac281a1010f1b758eec6ee148c5978c0820e26b686c30",
+      "legs": [
+        {
+          "leg_index": 0,
+          "leg_position_id": "729008845737088637708570735059920983813154345334047802293908494995152699392",
+          "leg_condition_id": "0xd4b5cf3900582bed55810f91fad3aecd9c9ab8f1f465e24d3314af9f1fb8e87e",
+          "leg_outcome_index": 0,
+          "leg_outcome_label": "Yes",
+          "leg_status": "RESOLVED_WIN",
+          "leg_resolved_at": "2026-08-04T17:37:42Z",
+          "leg_current_price": 1.0,
+          "market": {
+            "market_id": "3189137",
+            "slug": "clf-avl-pau-2026-08-04-spread-home-1pt5",
+            "title": "Aston Villa (-1.5)",
+            "question": "Spread: Aston Villa (-1.5)",
+            "group_item_title": "Aston Villa (-1.5)",
+            "sports_market_type": "spreads",
+            "line": -1.5,
+            "outcomes": [
+              "Aston Villa",
+              "BG Pathum United"
+            ],
+            "outcome": "Yes",
+            "image_url": "https://polymarket-upload.s3.us-east-2.amazonaws.com/soccer ball-bba4025f77.png",
+            "icon_url": "https://polymarket-upload.s3.us-east-2.amazonaws.com/soccer ball-bba4025f77.png",
+            "category": "",
+            "subcategory": "",
+            "tags": [],
+            "end_date": "2026-08-04T12:30:00Z",
+            "event": {
+              "event_id": "765289",
+              "event_slug": "clf-avl-pau-2026-08-04-more-markets",
+              "event_title": "Aston Villa vs. BG Pathum United - More Markets",
+              "event_image": "https://polymarket-upload.s3.us-east-2.amazonaws.com/soccer ball-bba4025f77.png"
+            }
+          }
+        },
+        {
+          "leg_index": 1,
+          "leg_position_id": "778196067222445124533171496033970525025212201166890688794253067032689901568",
+          "leg_condition_id": "0xd46420f9a4e5301b9ffcab0b7a5b7ffeb8718063cb6934a94fa5add11c0578e6",
+          "leg_outcome_index": 0,
+          "leg_outcome_label": "Yes",
+          "leg_status": "RESOLVED_WIN",
+          "leg_resolved_at": "2026-08-04T17:12:03Z",
+          "leg_current_price": 1.0,
+          "market": {
+            "market_id": "3313158",
+            "slug": "clf-pau-avl-2026-08-04-spread-away-1pt5",
+            "title": "Aston Villa (-1.5)",
+            "question": "Spread: Aston Villa (-1.5)",
+            "group_item_title": "Aston Villa (-1.5)",
+            "sports_market_type": "spreads",
+            "line": -1.5,
+            "outcomes": [
+              "Aston Villa",
+              "BG Pathum United"
+            ],
+            "outcome": "Yes",
+            "image_url": "https://polymarket-upload.s3.us-east-2.amazonaws.com/soccer ball-bba4025f77.png",
+            "icon_url": "https://polymarket-upload.s3.us-east-2.amazonaws.com/soccer ball-bba4025f77.png",
+            "category": "",
+            "subcategory": "",
+            "tags": [],
+            "end_date": "2026-08-04T12:30:00Z",
+            "event": {
+              "event_id": "791700",
+              "event_slug": "clf-pau-avl-2026-08-04-more-markets",
+              "event_title": "BG Pathum United vs. Aston Villa - More Markets",
+              "event_image": "https://polymarket-upload.s3.us-east-2.amazonaws.com/soccer ball-bba4025f77.png"
+            }
+          }
+        }
+      ]
+    }
+  ],
+  "pagination": {
+    "limit": 2,
+    "offset": 0,
+    "has_more": true,
+    "next_cursor": "eyJkYXRhIjp7InR5cGUiOiJjb21ib3NfYWN0aXZpdHkiLCJwYXJhbXMiOnsibCI6MiwidHMiOjkxNDQwMTc0LCJzcSI6IjYwNSIsImQiOjJ9fSwic2lnIjoiOWQ1MjYyY2UzYzY0MjMzOTU3ZDY1NjEyNThmZmM5MTkifQ"
+  }
+}

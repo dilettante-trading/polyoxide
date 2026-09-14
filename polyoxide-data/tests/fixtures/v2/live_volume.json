@@ -1,0 +1,51 @@
+{
+  "data": {
+    "taker_volume_total": 15369.464376,
+    "conditions": [
+      {
+        "condition_id": "0x94ad92377199e93e51512d57cc5d5c8e360cad52ff1559ebe190e94530464f6b",
+        "taker_volume": 6090.203686
+      },
+      {
+        "condition_id": "0xcece824838771e3677154db87325f2dbd321183ecb947b9286273f9989aa09eb",
+        "taker_volume": 3683.522426
+      },
+      {
+        "condition_id": "0x3029f8de88e726330aebd5f7754f17f80e53e58cbc22716370a2ea92a2dbc55f",
+        "taker_volume": 2607.069779
+      },
+      {
+        "condition_id": "0x841dccc64fb2ae8f21f6b77f39674839de7d4b581462c4b5d7d1b004fd02f0da",
+        "taker_volume": 2065.479486
+      },
+      {
+        "condition_id": "0xf9822cdda5cef194c57bf54531f8c54a0106e03d851c5e120eb36ad889d0df10",
+        "taker_volume": 223.0
+      },
+      {
+        "condition_id": "0x37a50c8acdfbf13a64ddf94f10aa6ec4fe0f14ba5776edac84cbd55432754a61",
+        "taker_volume": 207.991
+      },
+      {
+        "condition_id": "0xca93da10ae83c1419f43f335abcddddb6ab6a2ffccf103bc1da9f93bc7bbde82",
+        "taker_volume": 108.0
+      },
+      {
+        "condition_id": "0x545522405f334d9af4c57a3e52c3966444fe695e4da01207cedee70cd123d1fa",
+        "taker_volume": 107.997999
+      },
+      {
+        "condition_id": "0x2a50fc096dd46eede127d21113748a64adf6bbab371c4f966d4523b37bfef0a1",
+        "taker_volume": 100.1
+      },
+      {
+        "condition_id": "0x89b5c6869e24e59957303995763495b9e9849d23eb9cff228a85a119dd65157f",
+        "taker_volume": 100.1
+      },
+      {
+        "condition_id": "0xacf9afac8d0cb4482dfdfbef3bebf828725a9330a4e708d47323c67a9588c035",
+        "taker_volume": 76.0
+      }
+    ]
+  }
+}

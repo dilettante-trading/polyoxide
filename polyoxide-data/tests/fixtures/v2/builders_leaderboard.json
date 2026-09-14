@@ -1,0 +1,28 @@
+{
+  "data": [
+    {
+      "rank": 1,
+      "builder_name": "betmoar",
+      "builder_code": "0xceebf77a833b30520287ddd9478ff51abbdffa30aa90a8d655dba0e8a79ce0c1",
+      "profile_image": "https://polymarket-upload.s3.us-east-2.amazonaws.com/betmoar_2.png",
+      "verified": true,
+      "volume": 6940691.179080001,
+      "active_users": 226
+    },
+    {
+      "rank": 2,
+      "builder_name": "traderline",
+      "builder_code": "0x6b0e773fada0a2ec67c956b25a737d353a534ea33db56c717ba7854346c67984",
+      "profile_image": "https://polymarket-upload.s3.us-east-2.amazonaws.com/profile-image-1377213-24116eb2-24b0-429e-89a5-4fd2b6182074.png",
+      "verified": true,
+      "volume": 4857516.838541002,
+      "active_users": 161
+    }
+  ],
+  "pagination": {
+    "limit": 2,
+    "offset": 0,
+    "has_more": true,
+    "next_cursor": "eyJkYXRhIjp7InR5cGUiOiJidWlsZGVyc19sZWFkZXJib2FyZCIsInBhcmFtcyI6eyJsIjoyLCJvIjoyLCJ0Ijoid2VlayJ9fSwic2lnIjoiM2RmMmIzZTExNDJlZDFjOGZkOGUzMjQyZjNkMDRjZTMifQ"
+  }
+}

@@ -1,0 +1,22 @@
+{
+  "data": [
+    {
+      "condition_id": "0x789f0872f66cfffd21a33020e5c90e11f95f947e03be77ac2df7e86b0cb71527",
+      "status": "resolved",
+      "extended_review": false,
+      "was_disputed": false,
+      "new_version_q": false,
+      "transaction_hash": "",
+      "log_index": "",
+      "last_update_timestamp": "2026-09-09T21:19:19Z",
+      "payouts": [
+        1000000,
+        0
+      ],
+      "resolution_source": "reported",
+      "was_arbitrated": false,
+      "resolved_block": 93522484,
+      "resolved_at": "2026-09-09T21:19:19Z"
+    }
+  ]
+}

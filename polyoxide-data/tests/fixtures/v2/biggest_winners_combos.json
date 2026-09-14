@@ -1,0 +1,42 @@
+{
+  "data": [
+    {
+      "win_rank": 1,
+      "kind": "combo",
+      "user_id": "0x87746b484db725beb8e79d7ce188261b7c75baf4",
+      "pnl": 128035.305038,
+      "initial_value": 98173.46,
+      "final_value": 226208.765038,
+      "resolved_at": 1785865104,
+      "condition_id": "0x03226d7818f083b4498ac54e8945c5e8a90000000000000000000000000000",
+      "position_id": "1417766874124101375905411871637299379845694748735178839365809761068049760256",
+      "event_id": 0,
+      "event_slug": "",
+      "event_title": "Spread: Aston Villa (-2.5) / Spread: Aston Villa (-2.5)",
+      "user_name": "0x87746b484dB725BeB8E79D7ce188261b7c75baf4-1774396632243",
+      "profile_image": ""
+    },
+    {
+      "win_rank": 2,
+      "kind": "combo",
+      "user_id": "0x1109da04152c38666464f5adb5d7c55618810b2c",
+      "pnl": 124717.90567300003,
+      "initial_value": 179837.743165,
+      "final_value": 304555.648838,
+      "resolved_at": 1784065502,
+      "condition_id": "0x0363bca0122da0b1afcbbbadbfb1a94f900000000000000000000000000000",
+      "position_id": "1533158248981913985591606614931751721329767452734619171404323640679195475969",
+      "event_id": 0,
+      "event_slug": "",
+      "event_title": "France vs. Spain: Both Teams to Score / France vs. Spain: Team to Advance",
+      "user_name": "MumiaTriste",
+      "profile_image": ""
+    }
+  ],
+  "pagination": {
+    "limit": 2,
+    "offset": 0,
+    "has_more": true,
+    "next_cursor": "eyJkYXRhIjp7InR5cGUiOiJiaWdnZXN0X3dpbm5lcnMiLCJwYXJhbXMiOnsibCI6MiwibyI6MiwidCI6ImFsbCIsImMiOiJjb21ib3MifX0sInNpZyI6IjU2ZmE3MTEwMmI5ZWU5NGUxMGE0MTM3MzU4M2ZkMGUwIn0"
+  }
+}

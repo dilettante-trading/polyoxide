@@ -1,0 +1,72 @@
+{
+  "data": [
+    {
+      "token_id": "66363272387756783114092375784358599782902170534463606258774271951004485601241",
+      "holders": [
+        {
+          "proxy_wallet": "0x4c48e79c441db833e630257a7f09c652af591c17",
+          "bio": "",
+          "token_id": "66363272387756783114092375784358599782902170534463606258774271951004485601241",
+          "pseudonym": "Supportive-Basket-Fringe",
+          "amount": 784.38,
+          "display_username_public": true,
+          "outcome_index": 0,
+          "name": "myfirstd",
+          "profile_image": "",
+          "profile_image_optimized": "",
+          "verified": false
+        },
+        {
+          "proxy_wallet": "0x054605d9224ca48239edfb53260b1b319e3017a9",
+          "bio": "",
+          "token_id": "66363272387756783114092375784358599782902170534463606258774271951004485601241",
+          "pseudonym": "Standard-Caramel",
+          "amount": 370.0,
+          "display_username_public": true,
+          "outcome_index": 0,
+          "name": "princeyin02",
+          "profile_image": "",
+          "profile_image_optimized": "",
+          "verified": false
+        }
+      ]
+    },
+    {
+      "token_id": "105255053214697100562187128468696705592125078562372753967617537422212689051932",
+      "holders": [
+        {
+          "proxy_wallet": "0xa5ef39c3d3e10d0b270233af41cac69796b12966",
+          "bio": "",
+          "token_id": "105255053214697100562187128468696705592125078562372753967617537422212689051932",
+          "pseudonym": "",
+          "amount": 894.775228,
+          "display_username_public": false,
+          "outcome_index": 1,
+          "name": "",
+          "profile_image": "",
+          "profile_image_optimized": "",
+          "verified": false
+        },
+        {
+          "proxy_wallet": "0xbf13934a1fec7d3211fc15c138d84ac2a691b91a",
+          "bio": "",
+          "token_id": "105255053214697100562187128468696705592125078562372753967617537422212689051932",
+          "pseudonym": "Boiling-Miscommunication",
+          "amount": 482.278023,
+          "display_username_public": true,
+          "outcome_index": 1,
+          "name": "Bilberry",
+          "profile_image": "",
+          "profile_image_optimized": "",
+          "verified": false
+        }
+      ]
+    }
+  ],
+  "pagination": {
+    "limit": 2,
+    "offset": 0,
+    "has_more": true,
+    "next_cursor": "eyJkYXRhIjp7InR5cGUiOiJob2xkZXJzIiwicGFyYW1zIjp7ImwiOjIsIm8iOjJ9fSwic2lnIjoiMzRkMDFlYzU0ZjdlZmRhMjdmZTE4ZDZmNjZjZmU0OTAifQ"
+  }
+}

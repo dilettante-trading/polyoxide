@@ -1,0 +1,100 @@
+{
+  "data": [
+    {
+      "token_id": "66363272387756783114092375784358599782902170534463606258774271951004485601241",
+      "holders": [
+        {
+          "proxy_wallet": "0x4c48e79c441db833e630257a7f09c652af591c17",
+          "bio": "",
+          "token_id": "66363272387756783114092375784358599782902170534463606258774271951004485601241",
+          "pseudonym": "Supportive-Basket-Fringe",
+          "amount": 784.38,
+          "display_username_public": true,
+          "outcome_index": 0,
+          "name": "myfirstd",
+          "profile_image": "",
+          "profile_image_optimized": "",
+          "verified": false,
+          "avg_price": 0.9142,
+          "entry_cost_usdc": 714.9412,
+          "current_price": 0.94,
+          "current_value": 737.3172,
+          "realized_pnl": 0.0,
+          "unrealized_pnl": 22.3759,
+          "total_pnl": 22.3759
+        },
+        {
+          "proxy_wallet": "0x054605d9224ca48239edfb53260b1b319e3017a9",
+          "bio": "",
+          "token_id": "66363272387756783114092375784358599782902170534463606258774271951004485601241",
+          "pseudonym": "Standard-Caramel",
+          "amount": 370.0,
+          "display_username_public": true,
+          "outcome_index": 0,
+          "name": "princeyin02",
+          "profile_image": "",
+          "profile_image_optimized": "",
+          "verified": false,
+          "avg_price": 0.9361,
+          "entry_cost_usdc": 345.2162,
+          "current_price": 0.94,
+          "current_value": 347.8,
+          "realized_pnl": 0.0,
+          "unrealized_pnl": 2.5837,
+          "total_pnl": 2.5837
+        }
+      ]
+    },
+    {
+      "token_id": "105255053214697100562187128468696705592125078562372753967617537422212689051932",
+      "holders": [
+        {
+          "proxy_wallet": "0xa5ef39c3d3e10d0b270233af41cac69796b12966",
+          "bio": "",
+          "token_id": "105255053214697100562187128468696705592125078562372753967617537422212689051932",
+          "pseudonym": "",
+          "amount": 894.775228,
+          "display_username_public": false,
+          "outcome_index": 1,
+          "name": "",
+          "profile_image": "",
+          "profile_image_optimized": "",
+          "verified": false,
+          "avg_price": 0.0,
+          "entry_cost_usdc": 0.0,
+          "current_price": 0.06,
+          "current_value": 53.6865,
+          "realized_pnl": 0.0,
+          "unrealized_pnl": 53.6865,
+          "total_pnl": 53.6865
+        },
+        {
+          "proxy_wallet": "0xbf13934a1fec7d3211fc15c138d84ac2a691b91a",
+          "bio": "",
+          "token_id": "105255053214697100562187128468696705592125078562372753967617537422212689051932",
+          "pseudonym": "Boiling-Miscommunication",
+          "amount": 482.288023,
+          "display_username_public": true,
+          "outcome_index": 1,
+          "name": "Bilberry",
+          "profile_image": "",
+          "profile_image_optimized": "",
+          "verified": false,
+          "avg_price": 0.5515,
+          "entry_cost_usdc": 260.0038,
+          "current_price": 0.06,
+          "current_value": 28.9372,
+          "realized_pnl": 0.0,
+          "unrealized_pnl": -231.0666,
+          "total_pnl": -231.0666
+        }
+      ]
+    }
+  ],
+  "pagination": {
+    "limit": 2,
+    "offset": 0,
+    "has_more": true,
+    "next_cursor": "eyJkYXRhIjp7InR5cGUiOiJob2xkZXJzIiwicGFyYW1zIjp7ImwiOjIsIm8iOjJ9fSwic2lnIjoiMzRkMDFlYzU0ZjdlZmRhMjdmZTE4ZDZmNjZjZmU0OTAifQ"
+  }
+}

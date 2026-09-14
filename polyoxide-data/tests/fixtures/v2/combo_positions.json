@@ -1,0 +1,204 @@
+{
+  "data": [
+    {
+      "combo_condition_id": "0x03644e2e16fcbac7ab23cbf9cf68fba6f10000000000000000000000000000",
+      "outcome_index": 0,
+      "outcome_label": "Yes",
+      "combo_position_id": "1534162831021071298618460748655302203595635349916686009303552494548086161408",
+      "proxy_wallet": "0x87746b484db725beb8e79d7ce188261b7c75baf4",
+      "current_size": 225208.623029,
+      "entry_avg_price_usdc": 0.240292,
+      "entry_cost_usdc": 54115.830444,
+      "gross_entry_cost_usdc": 56174.0,
+      "entry_fees_usdc": 2055.66045,
+      "realized_payout_usdc": 0.0,
+      "status": "RESOLVED_LOSS",
+      "redeemable": false,
+      "first_entry_at": "2026-08-04T02:33:29Z",
+      "resolved_at": "2026-08-04T17:11:48Z",
+      "legs_total": 2,
+      "legs_resolved": 2,
+      "legs_pending": 0,
+      "legs": [
+        {
+          "leg_index": 0,
+          "leg_position_id": "559046155902038595262480008230326675380475253950762106083537792221715628032",
+          "leg_condition_id": "0x013c68ae665fd8c9156655492ae51153160000000000000000000000000000",
+          "leg_outcome_index": 0,
+          "leg_outcome_label": "Aston Villa",
+          "leg_status": "RESOLVED_LOSS",
+          "leg_resolved_at": "2026-08-04T17:37:38Z",
+          "leg_current_price": 0.0,
+          "market": {
+            "market_id": "3189139",
+            "slug": "clf-avl-pau-2026-08-04-spread-home-2pt5",
+            "title": "Aston Villa (-2.5)",
+            "question": "Spread: Aston Villa (-2.5)",
+            "group_item_title": "Aston Villa (-2.5)",
+            "sports_market_type": "spreads",
+            "line": -2.5,
+            "outcomes": [
+              "Aston Villa",
+              "BG Pathum United"
+            ],
+            "outcome": "Aston Villa",
+            "image_url": "https://polymarket-upload.s3.us-east-2.amazonaws.com/soccer ball-bba4025f77.png",
+            "icon_url": "https://polymarket-upload.s3.us-east-2.amazonaws.com/soccer ball-bba4025f77.png",
+            "category": "",
+            "subcategory": "",
+            "tags": [],
+            "end_date": "2026-08-04",
+            "event": {
+              "event_id": "765289",
+              "event_slug": "clf-avl-pau-2026-08-04-more-markets",
+              "event_title": "Aston Villa vs. BG Pathum United - More Markets",
+              "event_image": "https://polymarket-upload.s3.us-east-2.amazonaws.com/soccer ball-bba4025f77.png"
+            }
+          }
+        },
+        {
+          "leg_index": 1,
+          "leg_position_id": "686958738232140500825748414873722514450555655367691328487318002769082712064",
+          "leg_condition_id": "0x0184ce0bc56cca501e54321175826eb8e60000000000000000000000000000",
+          "leg_outcome_index": 0,
+          "leg_outcome_label": "Aston Villa",
+          "leg_status": "RESOLVED_LOSS",
+          "leg_resolved_at": "2026-08-04T17:12:56Z",
+          "leg_current_price": 0.0,
+          "market": {
+            "market_id": "3313160",
+            "slug": "clf-pau-avl-2026-08-04-spread-away-2pt5",
+            "title": "Aston Villa (-2.5)",
+            "question": "Spread: Aston Villa (-2.5)",
+            "group_item_title": "Aston Villa (-2.5)",
+            "sports_market_type": "spreads",
+            "line": -2.5,
+            "outcomes": [
+              "Aston Villa",
+              "BG Pathum United"
+            ],
+            "outcome": "Aston Villa",
+            "image_url": "https://polymarket-upload.s3.us-east-2.amazonaws.com/soccer ball-bba4025f77.png",
+            "icon_url": "https://polymarket-upload.s3.us-east-2.amazonaws.com/soccer ball-bba4025f77.png",
+            "category": "",
+            "subcategory": "",
+            "tags": [],
+            "end_date": "2026-08-04",
+            "event": {
+              "event_id": "791700",
+              "event_slug": "clf-pau-avl-2026-08-04-more-markets",
+              "event_title": "BG Pathum United vs. Aston Villa - More Markets",
+              "event_image": "https://polymarket-upload.s3.us-east-2.amazonaws.com/soccer ball-bba4025f77.png"
+            }
+          }
+        }
+      ],
+      "first_entry_at_micros": 1785810809000000,
+      "updated_at": "2026-08-04T17:12:26Z",
+      "updated_at_micros": 1785863546181412
+    },
+    {
+      "combo_condition_id": "0x038424daee92cbae7b0d23e76755d7e8040000000000000000000000000000",
+      "outcome_index": 0,
+      "outcome_label": "Yes",
+      "combo_position_id": "1590416723562117432875521436543004434153917935995312445044018479369767878656",
+      "proxy_wallet": "0x87746b484db725beb8e79d7ce188261b7c75baf4",
+      "current_size": 65184.285735,
+      "entry_avg_price_usdc": 0.106336,
+      "entry_cost_usdc": 6931.436207,
+      "gross_entry_cost_usdc": 7240.999995,
+      "entry_fees_usdc": 308.97121,
+      "realized_payout_usdc": 0.0,
+      "status": "RESOLVED_LOSS",
+      "redeemable": false,
+      "first_entry_at": "2026-08-04T02:26:23Z",
+      "resolved_at": "2026-08-04T17:14:42Z",
+      "legs_total": 2,
+      "legs_resolved": 2,
+      "legs_pending": 0,
+      "legs": [
+        {
+          "leg_index": 0,
+          "leg_position_id": "1176710649185715379246236772702433179078596393450958754111917085864706965505",
+          "leg_condition_id": "0x0299fe9fc67ffce73b3eb7350dc21a82000003000000000000000000000000",
+          "leg_outcome_index": 1,
+          "leg_outcome_label": "No",
+          "leg_status": "RESOLVED_LOSS",
+          "leg_resolved_at": "2026-08-04T17:41:20Z",
+          "leg_current_price": 0.0,
+          "market": {
+            "market_id": "3135934",
+            "slug": "clf-avl-pau-2026-08-04-avl",
+            "title": "Aston Villa",
+            "question": "Will Aston Villa win on 2026-08-04?",
+            "group_item_title": "Aston Villa",
+            "sports_market_type": "moneyline",
+            "line": null,
+            "outcomes": [
+              "Yes",
+              "No"
+            ],
+            "outcome": "No",
+            "image_url": "https://polymarket-upload.s3.us-east-2.amazonaws.com/soccer ball-bba4025f77.png",
+            "icon_url": "https://polymarket-upload.s3.us-east-2.amazonaws.com/soccer ball-bba4025f77.png",
+            "category": "",
+            "subcategory": "",
+            "tags": [],
+            "end_date": "2026-08-04",
+            "event": {
+              "event_id": "757859",
+              "event_slug": "clf-avl-pau-2026-08-04",
+              "event_title": "Aston Villa vs. BG Pathum United",
+              "event_image": "https://polymarket-upload.s3.us-east-2.amazonaws.com/soccer ball-bba4025f77.png"
+            }
+          }
+        },
+        {
+          "leg_index": 1,
+          "leg_position_id": "1243965552808499617108514947746357048534421404414231170468951922814836802049",
+          "leg_condition_id": "0x02c00f3ecc15ab66352ccc40ddc404ee000003000000000000000000000002",
+          "leg_outcome_index": 1,
+          "leg_outcome_label": "No",
+          "leg_status": "RESOLVED_LOSS",
+          "leg_resolved_at": "2026-08-04T17:19:21Z",
+          "leg_current_price": 0.0,
+          "market": {
+            "market_id": "3307355",
+            "slug": "clf-pau-avl-2026-08-04-avl",
+            "title": "Aston Villa",
+            "question": "Will Aston Villa win on 2026-08-04?",
+            "group_item_title": "Aston Villa",
+            "sports_market_type": "moneyline",
+            "line": null,
+            "outcomes": [
+              "Yes",
+              "No"
+            ],
+            "outcome": "No",
+            "image_url": "https://polymarket-upload.s3.us-east-2.amazonaws.com/soccer ball-bba4025f77.png",
+            "icon_url": "https://polymarket-upload.s3.us-east-2.amazonaws.com/soccer ball-bba4025f77.png",
+            "category": "",
+            "subcategory": "",
+            "tags": [],
+            "end_date": "2026-08-04",
+            "event": {
+              "event_id": "791393",
+              "event_slug": "clf-pau-avl-2026-08-04",
+              "event_title": "BG Pathum United vs. Aston Villa",
+              "event_image": "https://polymarket-upload.s3.us-east-2.amazonaws.com/soccer ball-bba4025f77.png"
+            }
+          }
+        }
+      ],
+      "first_entry_at_micros": 1785810383000000,
+      "updated_at": "2026-08-04T17:15:00Z",
+      "updated_at_micros": 1785863700649000
+    }
+  ],
+  "pagination": {
+    "limit": 2,
+    "offset": 0,
+    "has_more": false,
+    "next_cursor": null
+  }
+}
