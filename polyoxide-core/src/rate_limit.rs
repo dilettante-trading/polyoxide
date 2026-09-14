@@ -575,6 +575,8 @@ impl RateLimiter {
     /// - /trades: 200/10s
     /// - /positions and /closed-positions: 150/10s
     /// - `/` (health): 100/10s
+    /// - Data API v2: measured per route, since upstream publishes no figures;
+    ///   see `docs/specs/data-v2/OBSERVED.md`
     ///
     /// The published table spells the health row `/ok`, but that path answers
     /// **404** on `data-api.polymarket.com` — `/` answers 200 `{"data":"OK"}`,

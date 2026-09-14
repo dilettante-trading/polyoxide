@@ -197,9 +197,11 @@ optionality and field names and every builder's query keys against that schema.
 (`scripts/capture_v2_fixtures.py` refreshes them). `docs/specs/data-v2/OBSERVED.md`
 records where the server and the schema part ways. Notably `/v2/user-pnl` is **not** the
 `data.pnl()` series and `/v2/leaderboard` ranks volume in shares, not USDC, so neither
-replaces the undocumented host. The v2 rows in `RateLimiter::data_default` are borrowed
-from v1 and are provisional until measured; several v2 routes are CDN-cached, so a soak
-that repeats a URL measures CloudFront rather than the origin.
+replaces the undocumented host. The v2 rows in `RateLimiter::data_default` were measured with
+`polyoxide-data/examples/v2_soak`, which sends raw requests over distinct URLs: several v2
+routes are CDN-cached, and a repeated URL is answered by CloudFront without reaching the
+origin, so a soak that repeats URLs reports a clean run at any rate. The runs are in
+`docs/specs/data-v2/OBSERVED.md`.
 
 For the upstream hosted docs, [`docs/specs/polymarket-llms.txt`](docs/specs/polymarket-llms.txt) is a snapshot of Polymarket's own documentation index (`https://docs.polymarket.com/llms.txt`) — a flat list of every doc page (with `.md` URLs) covering CLOB/auth/orders, builder attribution, and the CLOB V2 migration. Use it to locate the authoritative upstream page for a topic when the local `docs/specs/` copies are insufficient.
 

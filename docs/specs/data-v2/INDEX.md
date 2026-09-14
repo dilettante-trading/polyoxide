@@ -47,7 +47,7 @@ once for every route:
 - **Rate limiting.** A heavy query may be queued for a capacity slot before a
   `429`, and a per-client allowance also answers bursts with `429` +
   `Retry-After`. No figures are published, and `data/rate-limits.md` covers
-  only v1 routes.
+  only v1 routes. Measured figures: [OBSERVED.md](OBSERVED.md#measured-rate-limits).
 - **Auth.** None.
 
 ## Endpoints

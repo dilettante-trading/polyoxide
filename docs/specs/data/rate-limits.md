@@ -7,6 +7,9 @@ throttling — over-limit requests are delayed/queued rather than rejected outri
 
 Source: <https://docs.polymarket.com/api-reference/rate-limits>, fetched 2026-08-05.
 
+These are v1 routes. Data API v2 publishes no limits; the measured `/v2` rows are in
+[../data-v2/OBSERVED.md](../data-v2/OBSERVED.md#measured-rate-limits).
+
 ## General
 
 | Limit | Window |
