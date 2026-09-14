@@ -48,7 +48,7 @@ The same failure hits every comma-separated `--market` and `--event-id` on `trad
 
 - Run everything from the repository root.
 - **Keep build output off `/tmp`.** On this machine it is a 16 GB RAM-backed tmpfs. Leave `CARGO_TARGET_DIR` unset, or point it at disk.
-- Each mutation check changes one line with `sed`, runs the tests, and reverts in the same block. Before each commit, `git diff --stat` must show only the task's files.
+- Each mutation check changes one line with `sed`, runs the tests, and reverts in the same block. **Never create a backup or scratch file inside the repository** (no `sed -i.bak`): this loom worktree stages new files as intent-to-add, and a removed backup then shows as a staged deletion. Keep copies outside it (`mktemp`), and `touch` a restored file so cargo rebuilds it. Before each commit, `git status --short` must show only the task's files.
 - **Live traffic** comes only from Task 6 step 2 and Task 7's smoke run, about fifteen requests in all.
 - Commit messages end with the attribution trailer shown in each commit step. Commits that change a command's flags or output are marked breaking (`feat(cli)!`), so git-cliff flags them in the changelog.
 
@@ -3280,14 +3280,16 @@ Expected: `test result: ok. 24 passed`.
 
 - [ ] **Step 5: Prove the output shape is tested**
 
-Print v1's `{user, traded}` shape, then print `{}` instead of `null` for an unknown wallet. Each must fail a named test. The backup restores the file, and `touch` matters: `mv` brings back the old modification time, so without it cargo keeps the mutated build and the next test run fails for no visible reason.
+Print v1's `{user, traded}` shape, then print `{}` instead of `null` for an unknown wallet. Each must fail a named test. The original is copied outside the repository, never to a backup beside it: this loom worktree stages new files as intent-to-add, so `sed -i.bak` leaves an index entry behind. The restore ends with `touch`, so cargo rebuilds from the restored file instead of keeping the mutated build.
 
 Run:
 
 ```bash
-sed -i.bak 's/print_pretty(&stats, out)/print_pretty(\&serde_json::json!({"user": self.user, "traded": stats.map_or(0, |s| s.trades)}), out)/' polyoxide-cli/src/commands/data/traded.rs
+orig="$(mktemp)"
+cp polyoxide-cli/src/commands/data/traded.rs "$orig"
+sed 's/print_pretty(&stats, out)/print_pretty(\&serde_json::json!({"user": self.user, "traded": stats.map_or(0, |s| s.trades)}), out)/' "$orig" > polyoxide-cli/src/commands/data/traded.rs
 cargo test -p polyoxide-cli --all-features --test data_v2 2>&1 | grep -E '^test .* FAILED'
-mv polyoxide-cli/src/commands/data/traded.rs.bak polyoxide-cli/src/commands/data/traded.rs && touch polyoxide-cli/src/commands/data/traded.rs
+cp "$orig" polyoxide-cli/src/commands/data/traded.rs && touch polyoxide-cli/src/commands/data/traded.rs && rm "$orig"
 ```
 
 Expected: `test traded_prints_the_user_stats_object ... FAILED` among the lines printed.
@@ -3295,9 +3297,11 @@ Expected: `test traded_prints_the_user_stats_object ... FAILED` among the lines 
 Run:
 
 ```bash
-sed -i.bak 's/print_pretty(&stats, out)/print_pretty(\&stats.map_or(serde_json::json!({}), |s| serde_json::json!(s)), out)/' polyoxide-cli/src/commands/data/traded.rs
+orig="$(mktemp)"
+cp polyoxide-cli/src/commands/data/traded.rs "$orig"
+sed 's/print_pretty(&stats, out)/print_pretty(\&stats.map_or(serde_json::json!({}), |s| serde_json::json!(s)), out)/' "$orig" > polyoxide-cli/src/commands/data/traded.rs
 cargo test -p polyoxide-cli --all-features --test data_v2 2>&1 | grep -E '^test .* FAILED'
-mv polyoxide-cli/src/commands/data/traded.rs.bak polyoxide-cli/src/commands/data/traded.rs && touch polyoxide-cli/src/commands/data/traded.rs
+cp "$orig" polyoxide-cli/src/commands/data/traded.rs && touch polyoxide-cli/src/commands/data/traded.rs && rm "$orig"
 ```
 
 Expected: `test traded_prints_null_for_a_wallet_the_api_does_not_know ... FAILED` among the lines printed.
