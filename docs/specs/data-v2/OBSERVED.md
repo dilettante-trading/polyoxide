@@ -123,6 +123,18 @@ decode; `tests/v2_wire_agreement.rs` excuses them for this fixture. An earlier
 capture of a different market omitted `was_arbitrated` too, so which fields a
 row carries varies by market.
 
+## Combo trades carry 62-digit condition ids
+
+`/v2/trades` includes combo trades. Their `condition_id` is a combo condition id of
+62 hex digits, ending in zero padding, rather than a `0x`-plus-64-hex market
+condition id, and they have empty `slug` and `outcome` and a title of legs joined by
+`AND`. In one page of 1,000 trades on 2026-09-14, 8 rows were combo trades.
+
+`/v2/holders` answers a combo condition id with `400 invalid condition id`
+(`parameter: "condition"`), so anything that feeds trade rows into market routes
+must filter them. The schema describes `condition_id` as a market condition id and
+does not mention the combo form.
+
 ## `0x0000…0001` is a known wallet
 
 `/v2/user-stats?user=0x0000000000000000000000000000000000000001` returns a row
@@ -130,3 +142,171 @@ of zeros, not `data: null`. A freshly random address returns `data: null` on
 both `/v2/user-stats` and `/v2/leaderboard?user=` (2026-09-14).
 
 **Consequence:** tests that need an unknown wallet generate a random address.
+
+## Measured rate limits
+
+Upstream publishes no v2 figures. Each route below was ramped with
+`polyoxide-data/examples/v2_soak` (raw requests, every URL distinct so the CDN
+cannot answer, abort on the first 429) and then validated at the shipped
+limiter's pace. `RateLimiter::data_default` pins the counts in the table at the
+end of this section.
+
+### Ramps
+
+<!-- For each route: the date, the exact command, then the harness's table and
+its "Pin for" line pasted verbatim. Re-runs (lower stages, more concurrency)
+get their own entry below the first, with the reason. -->
+
+#### `/v2/positions` (2026-09-14T13:05Z)
+
+`target/release/examples/v2_soak --route positions` (500 wallets, 76,500 distinct probe URLs)
+
+| stage | requests | achieved req/s | p50 ms | p99 ms | 429s | cache hits | errors | verdict |
+|-------|----------|----------------|--------|--------|------|------------|--------|---------|
+| 10 req/s | 600 | 10.00 | 294 | 943 | 0 | 0 | 1 | clean |
+| 15 req/s | 799 | 13.32 | 418 | 6184 | 0 | 0 | 20 | **invalid**: 20 of 799 requests failed (status 503) |
+
+The ramp is invalid, so nothing may be pinned: stage at 15 req/s: 20 of 799 requests failed (status 503)
+
+No 429 at all: at 15 req/s the origin answered `503` and p99 rose 6.5x over the
+10 req/s stage. Re-run once after 10 minutes, per the plan's rule for 5xx errors.
+
+#### `/v2/positions`, re-run (2026-09-14T13:19Z)
+
+`target/release/examples/v2_soak --route positions`
+
+| stage | requests | achieved req/s | p50 ms | p99 ms | 429s | cache hits | errors | verdict |
+|-------|----------|----------------|--------|--------|------|------------|--------|---------|
+| 10 req/s | 600 | 10.00 | 245 | 4924 | 0 | 0 | 5 | clean |
+| 15 req/s | 900 | 15.00 | 312 | 2087 | 0 | 0 | 1 | clean |
+| 20 req/s | 1200 | 20.00 | 254 | 3483 | 0 | 0 | 3 | clean |
+| 30 req/s | 1719 | 28.65 | 287 | 2576 | 6 | 0 | 5 | **throttled** on /v2/positions (unrecognised 429, retry-after none, at 57.7s) |
+
+Pin for /v2/positions: 200 per 10s
+
+The 503s did not recur, so this ramp stands. The 429s at 30 req/s were neither the
+v2 JSON body (`code: rate_limited`) nor Cloudflare's `error code: 1015` page, and
+carried no `Retry-After`; `v2_soak` does not keep bodies, so the shape is recorded
+only as what it was not. The first stage's p99 was noisy (4.9 s against 2–3.5 s
+later), which loosens the saturation check for this ramp; no later stage came near
+3x it.
+
+#### `/v2/positions/combos` (2026-09-14T13:34Z)
+
+`target/release/examples/v2_soak --route combo-positions` (500 wallets, 51,000 distinct probe URLs)
+
+| stage | requests | achieved req/s | p50 ms | p99 ms | 429s | cache hits | errors | verdict |
+|-------|----------|----------------|--------|--------|------|------------|--------|---------|
+| 10 req/s | 600 | 10.00 | 195 | 492 | 0 | 0 | 0 | clean |
+| 15 req/s | 900 | 15.00 | 193 | 560 | 0 | 0 | 0 | clean |
+| 20 req/s | 1200 | 20.00 | 192 | 460 | 0 | 0 | 0 | clean |
+| 30 req/s | 1800 | 30.00 | 194 | 473 | 0 | 0 | 0 | clean |
+| 40 req/s | 2400 | 40.00 | 191 | 458 | 0 | 0 | 0 | clean |
+
+Pin for /v2/positions/combos: 400 per 10s
+
+Clean to the harness ceiling with flat latency. Most sampled wallets hold no combo
+positions, so these are light queries; the ceiling, not the server, ended the ramp.
+
+#### `/v2/trades` (2026-09-14T14:00Z)
+
+`target/release/examples/v2_soak --route trades` (500 wallets, 51,000 distinct probe URLs)
+
+| stage | requests | achieved req/s | p50 ms | p99 ms | 429s | cache hits | errors | verdict |
+|-------|----------|----------------|--------|--------|------|------------|--------|---------|
+| 10 req/s | 600 | 10.00 | 220 | 449 | 0 | 0 | 0 | clean |
+| 15 req/s | 900 | 15.00 | 212 | 465 | 0 | 0 | 0 | clean |
+| 20 req/s | 1200 | 20.00 | 213 | 479 | 0 | 0 | 0 | clean |
+| 30 req/s | 1779 | 29.65 | 210 | 431 | 6 | 0 | 0 | **throttled** on /v2/trades (unrecognised 429, retry-after none, at 59.3s) |
+
+Pin for /v2/trades: 200 per 10s
+
+Same shape as `/v2/positions`: clean at 20 req/s, then an unrecognised 429 with no
+`Retry-After` in the last seconds of the 30 req/s stage (57.7 s there, 59.3 s here),
+with flat latency. A cap reached late in a stage at a fixed rate looks like a window
+count rather than server strain. The same count on two routes could have meant one
+rule for the whole client, but `/v2/activity` below ran clean at 30 and 40 req/s, so
+the cap is not client-wide at that rate; the mixed validation still tests the
+aggregate.
+
+#### `/v2/activity` (2026-09-14T14:15Z)
+
+`target/release/examples/v2_soak --route activity` (500 wallets, 51,000 distinct probe URLs)
+
+| stage | requests | achieved req/s | p50 ms | p99 ms | 429s | cache hits | errors | verdict |
+|-------|----------|----------------|--------|--------|------|------------|--------|---------|
+| 10 req/s | 600 | 10.00 | 313 | 581 | 0 | 0 | 0 | clean |
+| 15 req/s | 900 | 15.00 | 314 | 595 | 0 | 0 | 0 | clean |
+| 20 req/s | 1200 | 20.00 | 314 | 575 | 0 | 0 | 0 | clean |
+| 30 req/s | 1800 | 30.00 | 339 | 586 | 0 | 0 | 0 | clean |
+| 40 req/s | 2388 | 39.80 | 310 | 588 | 0 | 0 | 0 | clean |
+
+Pin for /v2/activity: 400 per 10s
+
+Clean to the harness ceiling with flat latency, despite being a heavier query than
+combo positions (p50 about 310 ms).
+
+#### `/v2/user-pnl` (2026-09-14T14:33Z)
+
+`target/release/examples/v2_soak --route user-pnl` (500 wallets, 17,500 distinct probe URLs)
+
+| stage | requests | achieved req/s | p50 ms | p99 ms | 429s | cache hits | errors | verdict |
+|-------|----------|----------------|--------|--------|------|------------|--------|---------|
+| 10 req/s | 600 | 10.00 | 211 | 542 | 0 | 0 | 0 | clean |
+| 15 req/s | 900 | 15.00 | 205 | 460 | 0 | 0 | 0 | clean |
+| 20 req/s | 1200 | 20.00 | 192 | 314 | 0 | 0 | 0 | clean |
+| 30 req/s | 1738 | 28.97 | 200 | 1431 | 0 | 0 | 0 | clean |
+| 40 req/s | 2289 | 38.15 | 182 | 1309 | 0 | 0 | 0 | clean |
+
+Pin for /v2/user-pnl: 400 per 10s
+
+Clean by the rules, but the nearest to them of any route: p99 rose from 314 ms at
+20 req/s to 1.4 s at 30 (the saturation threshold was 1.6 s), and achieved rate fell
+to 96–97% of target. Validation at the pinned pace is the check on this one.
+
+#### `/v2/holders?include_pnl=true` (2026-09-14T14:52Z)
+
+`target/release/examples/v2_soak --route holders-pnl` (300 markets, 30,000 distinct probe URLs)
+
+| stage | requests | achieved req/s | p50 ms | p99 ms | 429s | cache hits | errors | verdict |
+|-------|----------|----------------|--------|--------|------|------------|--------|---------|
+| 10 req/s | 600 | 10.00 | 208 | 444 | 0 | 0 | 26 | **invalid**: 26 of 600 requests failed (status 400) |
+
+The ramp is invalid, so nothing may be pinned: stage at 10 req/s: 26 of 600 requests failed (status 400)
+
+A harness defect, not a limit: the market pool included combo condition ids from
+combo trades (see "Combo trades carry 62-digit condition ids" above), which
+`/v2/holders` rejects. Fixed in `v2_soak` (`is_market_condition_id`) and re-run.
+
+#### `/v2/holders?include_pnl=true`, re-run (2026-09-14T14:55Z)
+
+`target/release/examples/v2_soak --route holders-pnl` (300 market condition ids, 30,000 distinct probe URLs)
+
+| stage | requests | achieved req/s | p50 ms | p99 ms | 429s | cache hits | errors | verdict |
+|-------|----------|----------------|--------|--------|------|------------|--------|---------|
+| 10 req/s | 600 | 10.00 | 212 | 447 | 0 | 0 | 0 | clean |
+| 15 req/s | 900 | 15.00 | 209 | 440 | 0 | 0 | 0 | clean |
+| 20 req/s | 1200 | 20.00 | 213 | 511 | 0 | 0 | 0 | clean |
+| 30 req/s | 1800 | 30.00 | 203 | 463 | 0 | 0 | 0 | clean |
+| 40 req/s | 2394 | 39.90 | 201 | 484 | 0 | 0 | 0 | clean |
+
+Pin for /v2/holders: 400 per 10s
+
+Clean to the harness ceiling with flat latency, although `include_pnl=true` is the
+heaviest holders shape and `/v2/holders` is cached for 120 s (no cache hits).
+
+### Validation
+
+<!-- One row per `--pace client` run: command, result table row, PASS/FAIL,
+and what was changed before the next run if it failed. -->
+
+### Pinned
+
+| Route | Per 10s | Ramp stopped by |
+|-------|---------|-----------------|
+| `/v2/positions` | 200 | 429 (unrecognised body) at 30 req/s |
+| `/v2/positions/combos` | 400 | clean to 40 req/s (harness ceiling) |
+| `/v2/trades` | 200 | 429 (unrecognised body) at 30 req/s |
+| `/v2/activity` | 400 | clean to 40 req/s (harness ceiling) |
+| `/v2/user-pnl` | 400 | clean to 40 req/s (harness ceiling); p99 near the saturation threshold at 30 |
+| `/v2/holders` | 400 | clean to 40 req/s (harness ceiling), measured with `include_pnl=true` |
