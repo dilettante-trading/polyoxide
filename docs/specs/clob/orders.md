@@ -74,9 +74,12 @@ Base URL: `https://clob.polymarket.com`
 
 **Auth:** L2 or Builder
 
+Returns **live** orders only. Filtering by `id` is the exception: that order is
+returned whatever its status, including canceled or fully matched.
+
 | Name | In | Type | Required | Description |
 |------|-----|------|----------|-------------|
-| id | query | string | no | Order ID filter |
+| id | query | string | no | Order ID filter (any status) |
 | market | query | string | no | Condition ID filter |
 | asset_id | query | string | no | Token ID filter |
 | next_cursor | query | string | no | Pagination cursor |
@@ -90,23 +93,31 @@ Base URL: `https://clob.polymarket.com`
   "count": 1,
   "data": [{
     "id": "string",
-    "status": "ORDER_STATUS_LIVE",
+    "status": "LIVE",
     "owner": "string",
     "maker_address": "string",
     "market": "string — condition ID",
     "asset_id": "string — token ID",
     "side": "BUY",
-    "original_size": "string",
-    "size_matched": "string",
+    "original_size": "string — shares, already normalized",
+    "size_matched": "string — shares, retained after cancellation",
     "price": "string",
     "outcome": "string",
     "expiration": "string",
     "order_type": "GTC",
     "associate_trades": [],
-    "created_at": "string"
+    "created_at": 1784930007
   }]
 }
 ```
+
+`status` is one of `LIVE`, `INVALID`, `CANCELED`, `MATCHED`, or
+`CANCELED_MARKET_RESOLVED`. The last cancels only the unfilled remainder when the
+market resolves; settled fills stand. Before 2026-09 upstream's schema listed
+these with an `ORDER_STATUS_` prefix and described both sizes as 6-decimal
+fixed-point; a 2026-07-24 live capture already had neither, and upstream has
+since corrected the schema. `size_matched` is what the order filled, not the
+current position balance. `created_at` is an integer of Unix seconds.
 
 ## Get Single Order
 
@@ -118,7 +129,8 @@ Base URL: `https://clob.polymarket.com`
 |------|-----|------|----------|-------------|
 | orderID | path | string | yes | Order ID (order hash) |
 
-**Response:** `OpenOrder` (same schema as items in `OrdersResponse.data`)
+**Response:** `OpenOrder` (same schema as items in `OrdersResponse.data`).
+Includes canceled and fully matched orders.
 
 ## Cancel Single Order
 

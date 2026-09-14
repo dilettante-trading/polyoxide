@@ -21,7 +21,11 @@ pub struct Orders {
 }
 
 impl Orders {
-    /// List the user's open orders (`GET /data/orders`).
+    /// List the user's live orders (`GET /data/orders`).
+    ///
+    /// Canceled and fully matched orders are not listed, with one exception
+    /// upstream documents: filtering with [`ListOrders::id`] returns that order
+    /// whatever its status. [`Orders::get`] does the same for a single ID.
     ///
     /// Results are cursor-paginated; feed `next_cursor` from the response back
     /// via [`ListOrders::next_cursor`] to fetch the next page.
@@ -40,7 +44,11 @@ impl Orders {
         }
     }
 
-    /// Get a specific order by ID
+    /// Get a specific order by ID (`GET /data/order/{orderID}`).
+    ///
+    /// Unlike [`Orders::list`], this returns canceled and fully matched orders
+    /// too, so it is the way to read an order's final `status` and
+    /// `size_matched` after it leaves the book.
     pub fn get(&self, order_id: impl Into<String>) -> Request<OpenOrder> {
         Request::get(
             self.http_client.clone(),
@@ -232,7 +240,13 @@ impl CancelOrderRequest {
 pub struct OpenOrder {
     /// Order ID (`0x`-prefixed hash).
     pub id: String,
-    /// Order status, e.g. `LIVE`.
+    /// Order status: `LIVE`, `INVALID`, `CANCELED`, `MATCHED`, or
+    /// `CANCELED_MARKET_RESOLVED`.
+    ///
+    /// `CANCELED_MARKET_RESOLVED` cancels only the unfilled remainder when the
+    /// market resolves; fills that already settled stand. The values carry no
+    /// `ORDER_STATUS_` prefix — the spec mirror claimed one until 2026-09,
+    /// while the 2026-07-24 capture below already had none.
     pub status: String,
     /// Owning API key (a UUID, not an address).
     pub owner: String,
@@ -244,9 +258,16 @@ pub struct OpenOrder {
     pub asset_id: String,
     /// `BUY` or `SELL`.
     pub side: String,
-    /// Original order size, as a decimal string.
+    /// Original order size in shares, as a decimal string.
+    ///
+    /// Already normalized — do not divide by 1e6. The spec mirror described
+    /// this as 6-decimal fixed-point until 2026-09; upstream now documents
+    /// shares, matching the 2026-07-24 capture.
     pub original_size: String,
-    /// Size matched so far, as a decimal string.
+    /// Size matched so far in shares, as a decimal string.
+    ///
+    /// Retained after cancellation, so it records what this order filled —
+    /// it is not the current position balance.
     pub size_matched: String,
     /// Limit price, as a decimal string.
     pub price: String,
@@ -313,6 +334,9 @@ pub struct ListOrders {
 
 impl ListOrders {
     /// Filter by a specific order ID.
+    ///
+    /// This lifts the live-only restriction: the order is returned whatever its
+    /// status, including canceled or fully matched.
     pub fn id(mut self, order_id: impl Into<String>) -> Self {
         self.request = self.request.query("id", order_id.into());
         self
