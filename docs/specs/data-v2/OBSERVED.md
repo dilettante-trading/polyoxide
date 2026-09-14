@@ -300,6 +300,23 @@ heaviest holders shape and `/v2/holders` is cached for 120 s (no cache hits).
 <!-- One row per `--pace client` run: command, result table row, PASS/FAIL,
 and what was changed before the next run if it failed. -->
 
+Pinned rows pace at `quota()`'s sustained rate: 17.9 req/s for a 200 per 10s row,
+35.9 req/s for 400, and at most 89.9 req/s through the general bucket.
+
+| Run (UTC) | Command | Requests | Achieved req/s | p99 ms | 429s | Cache hits | Errors | Result |
+|-----------|---------|----------|----------------|--------|------|------------|--------|--------|
+| 15:10 | `--route positions --pace client` | 1377 | 11.47 | 1311 | 0 | 0 | 3 | PASS, but not at the row's pace |
+| 15:18 | `--route positions --pace client --concurrency 16` | 2144 | 17.87 | 1921 | 0 | 0 | 4 | **PASS** at the row's 17.9 |
+| 15:25 | `--route combo-positions --pace client --concurrency 16` | 4292 | 35.77 | 409 | 0 | 0 | 0 | **PASS** at the row's 35.9 |
+| 15:32 | `--route trades --pace client --concurrency 16` | 2144 | 17.87 | 489 | 0 | 0 | 1 | **PASS** at the row's 17.9 |
+| 15:39 | `--route activity --pace client --concurrency 16` | 4292 | 35.77 | 600 | 0 | 0 | 0 | **PASS** at the row's 35.9 |
+| 15:46 | `--route user-pnl --pace client --concurrency 16` | 4290 | 35.75 | 430 | 0 | 0 | 0 | **PASS** at the row's 35.9; p99 stayed low, unlike the ramp's 1.4 s at 30 req/s |
+| 15:53 | `--route holders-pnl --pace client --concurrency 16` | 4291 | 35.76 | 445 | 0 | 0 | 0 | **PASS** at the row's 35.9 |
+
+At the plan's default of 4 requests in flight, latency capped the run at 11.47 req/s
+against the row's 17.9, so the limiter never bound and the run did not test the row.
+The remaining validations use `--concurrency 16`, and this route is re-run with it.
+
 ### Pinned
 
 | Route | Per 10s | Ramp stopped by |
