@@ -81,6 +81,35 @@ async def main():
 asyncio.run(main())
 ```
 
+### Data API v2 (cursor pages)
+
+`DataApi().v2()` and `DataApiSync().v2()` expose the `/v2` routes: snake_case
+fields, cursor-only paging, and errors with a stable `code`. Their result classes
+live in `polyoxide.v2`, since several share a name with a v1 class.
+
+```python
+from polyoxide import DataApiSync, v2
+
+data = DataApiSync().v2()
+
+# One page, and the cursor for the next one
+page = data.trades(limit=50)
+print(len(page), page.pagination.next_cursor)
+
+# Every page, re-sending the same filters each time
+for page in data.iter_activity("0xADDRESS", types=["TRADE"], limit=500):
+    for row in page.data:
+        print(row.activity_type, row.usdc_size)
+
+# None, not an error, for a wallet the API does not know
+stats = data.user_stats("0xADDRESS")
+```
+
+Async walks use `async for page in DataApi().v2().iter_trades(...)`. Enum
+arguments take the exact wire spelling (`time_period="week"`,
+`sort_direction="DESC"`), and a value the route does not accept raises
+`ValueError` before any request is sent.
+
 ## Client API Reference
 
 ### Gamma / GammaSync
@@ -122,6 +151,7 @@ Constructed with optional `base_url`, `timeout_ms`, and `pool_size` keyword argu
 | `.leaderboard()` | `get(...)` |
 | `.builders()` | `leaderboard(...)`, `volume(...)` |
 | `.health()` | `ping()` |
+| `.v2()` | `approvals`, `positions`, `combo_positions`, `user_pnl`, `user_stats`, `user_volume`, `value`, `activity`, `combo_activity`, `trades`, `holders`, `live_volume`, `open_interest`, `prices_history`, `resolutions`, `biggest_winners`, `builders_leaderboard`, `builder_volume`, `leaderboard`, `leaderboard_user`, `status`; each paged route also has `iter_<route>(...)` |
 
 ## Result Objects
 
@@ -157,6 +187,12 @@ except PolyoxideError as e:
 | `NetworkError` | Connection failure |
 | `TimeoutError` | Request timed out |
 
+A Data API v2 error maps by its `code`: `invalid_request` to `ValidationError`,
+`rate_limited` to `RateLimitError`, `request_timeout` to `TimeoutError`, and
+any other code to `ApiError`. Every exception also carries `status`, `code`,
+`retryable`, `trace_id`, `parameter` and `retry_after`, which are `None` unless
+the error came from a v2 route.
+
 ## Async Support
 
 Async clients (`Gamma`, `ClobClient`, `DataApi`) use [pyo3-async-runtimes](https://github.com/PyO3/pyo3-async-runtimes) to bridge Rust futures into Python awaitables. They work with `asyncio.run()`, `await`, and any asyncio-compatible event loop.
@@ -165,7 +201,7 @@ Sync clients (`GammaSync`, `ClobClientSync`, `DataApiSync`) execute on a shared 
 
 ## Type Stubs
 
-A `.pyi` stub file is included at `python/polyoxide/__init__.pyi` for editor autocomplete and type checking.
+`.pyi` stub files are included at `python/polyoxide/__init__.pyi` and `python/polyoxide/v2.pyi` for editor autocomplete and type checking.
 
 ## Building from Source
 

@@ -438,6 +438,114 @@ class TestDataAsync:
 
 
 # ══════════════════════════════════════════════════════════════════
+# Data API v2
+# ══════════════════════════════════════════════════════════════════
+#
+# Mirrors the `live_v2_*` tests in polyoxide-data/tests/live_api.rs. Inputs
+# come from the live feed, never hardcoded: a fixed wallet goes quiet.
+
+
+def _recent_trade():
+    """(wallet, condition_id, token_id) of the newest trade on the bare feed."""
+    trade = polyoxide.DataApiSync().v2().trades(limit=1).data[0]
+    return trade.proxy_wallet, trade.condition_id, trade.token_id
+
+
+def _unknown_wallet():
+    """A random address: `0x…0001` appears on chain and is a known wallet."""
+    import secrets
+
+    return "0x" + secrets.token_hex(20)
+
+
+class TestDataV2Sync:
+    def test_trades_walk_follows_the_cursor(self):
+        walk = polyoxide.DataApiSync().v2().iter_trades(limit=2)
+        first, second = next(walk), next(walk)
+
+        assert isinstance(first, polyoxide.v2.Page)
+        assert first.pagination.next_cursor, "the feed has more than 2 rows"
+        assert isinstance(first.data[0], polyoxide.v2.Trade)
+        assert first.data[0].transaction_hash != second.data[0].transaction_hash, "page 2 repeated page 1"
+
+    def test_wallet_routes(self):
+        wallet, _, _ = _recent_trade()
+        v2 = polyoxide.DataApiSync().v2()
+
+        assert isinstance(v2.activity(wallet, limit=2), polyoxide.v2.Page)
+        assert isinstance(v2.combo_activity(wallet, limit=2), polyoxide.v2.Page)
+        assert isinstance(v2.positions(user=wallet, limit=2), polyoxide.v2.Page)
+        assert isinstance(v2.positions(user=wallet, status="CLOSED", limit=2), polyoxide.v2.Page)
+        assert isinstance(v2.combo_positions(wallet, limit=2), polyoxide.v2.Page)
+        assert isinstance(v2.approvals(wallet), polyoxide.v2.Approvals)
+        pnl = v2.user_pnl(wallet, interval="1w", fidelity="1d")
+        assert pnl.proxy_wallet.lower() == wallet.lower()
+        assert isinstance(v2.user_stats(wallet), polyoxide.v2.UserStats), "a wallet that just traded is known"
+        assert isinstance(v2.user_volume(wallet), polyoxide.v2.UserVolume)
+        assert isinstance(v2.value(wallet), polyoxide.v2.PortfolioValue)
+
+    def test_unknown_wallet_is_none_not_an_error(self):
+        wallet = _unknown_wallet()
+        v2 = polyoxide.DataApiSync().v2()
+
+        assert v2.user_stats(wallet) is None
+        assert v2.leaderboard_user(wallet) is None
+
+    def test_market_routes(self):
+        _, condition, token_id = _recent_trade()
+        v2 = polyoxide.DataApiSync().v2()
+
+        assert isinstance(v2.holders([condition], limit=2), polyoxide.v2.Page)
+        assert isinstance(v2.positions(conditions=[condition], limit=2), polyoxide.v2.Page)
+        assert isinstance(v2.open_interest(conditions=[condition]), list)
+        global_oi = v2.open_interest()
+        assert [row.condition_id for row in global_oi] == ["GLOBAL"]
+        assert isinstance(v2.prices_history(token_id, interval="1d", limit=10), polyoxide.v2.Page)
+
+        winners = v2.biggest_winners(time_period="week", limit=5)
+        resolved = next(w for w in winners.data if w.kind == "market")
+        assert v2.resolutions(conditions=[resolved.condition_id]), "a market on the winners board has resolved"
+        assert isinstance(v2.live_volume([str(resolved.event_id)]), polyoxide.v2.LiveVolume)
+
+    def test_board_routes(self):
+        v2 = polyoxide.DataApiSync().v2()
+
+        board = v2.leaderboard(time_period="week", limit=2)
+        leader = board.data[0].user_id
+        standing = v2.leaderboard_user(leader, time_period="week")
+        assert standing is not None, "the board's leader has a standing"
+        assert standing.rank_pnl is not None or standing.rank_volume is not None
+        assert isinstance(v2.builders_leaderboard(limit=2), polyoxide.v2.Page)
+        assert isinstance(v2.builder_volume(limit=2), list)
+        assert isinstance(v2.status(), polyoxide.v2.ServiceStatus)
+
+    def test_errors_are_structured(self):
+        try:
+            polyoxide.DataApiSync().v2().trades(cursor="garbage")
+        except polyoxide.ValidationError as e:
+            assert e.status == 400
+            assert e.code == "invalid_request"
+            assert e.trace_id
+            assert e.retryable is False
+        else:
+            raise AssertionError("a garbage cursor is refused")
+
+
+class TestDataV2Async:
+    def test_trades_walk(self):
+        async def go():
+            pages = []
+            async for page in polyoxide.DataApi().v2().iter_trades(limit=2):
+                pages.append(page)
+                if len(pages) == 2:
+                    break
+            return pages
+
+        first, second = run_async(go())
+        assert first.data[0].transaction_hash != second.data[0].transaction_hash
+
+
+# ══════════════════════════════════════════════════════════════════
 # Error Hierarchy
 # ══════════════════════════════════════════════════════════════════
 
