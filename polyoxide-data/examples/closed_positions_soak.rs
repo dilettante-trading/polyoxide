@@ -42,7 +42,7 @@ use polyoxide_data::DataApi;
 #[path = "common/mod.rs"]
 mod common;
 use common::{
-    install_observer, percentile, ThrottleObserver, DEFAULT_CONCURRENCY, DEFAULT_USER,
+    install_observer, percentile, Pacer, ThrottleObserver, DEFAULT_CONCURRENCY, DEFAULT_USER,
     MAX_PAGE_LIMIT,
 };
 
@@ -189,47 +189,6 @@ impl Config {
         }
 
         Ok(Some(config))
-    }
-}
-
-// ── Pacing ──────────────────────────────────────────────────────
-
-/// Hands out send slots at a fixed interval, shared by every worker.
-///
-/// By default the soak lets the client's own limiter set the rate. Asking what
-/// rate the *server* tolerates means driving a rate the client would not pick,
-/// which means pacing outside it — and only downwards. At or above
-/// [`CLIENT_SUSTAINED_RATE`] the client's limiter is the slower of the two and
-/// binds first, so the run measures polyoxide instead of Cloudflare. That is
-/// the same trap the burst probe avoids by using a fresh client per trial.
-struct Pacer {
-    interval: Duration,
-    /// The earliest unclaimed slot; `None` until the first reservation.
-    next: Mutex<Option<Instant>>,
-}
-
-impl Pacer {
-    fn new(interval: Duration) -> Self {
-        Self {
-            interval,
-            next: Mutex::new(None),
-        }
-    }
-
-    /// Claim the next slot, given the current time.
-    fn reserve(&self, now: Instant) -> Instant {
-        let mut next = self
-            .next
-            .lock()
-            .unwrap_or_else(|poisoned| poisoned.into_inner());
-        let slot = next.map_or(now, |claimed| claimed.max(now));
-        *next = Some(slot + self.interval);
-        slot
-    }
-
-    async fn wait(&self) {
-        let slot = self.reserve(Instant::now());
-        tokio::time::sleep_until(tokio::time::Instant::from_std(slot)).await;
     }
 }
 
@@ -612,50 +571,6 @@ mod tests {
             latency: Duration::from_millis(latency_ms),
             error: None,
         }
-    }
-
-    // ── pacer ───────────────────────────────────────────────────
-
-    const TEN_MS: Duration = Duration::from_millis(10);
-
-    #[test]
-    fn pacer_hands_out_the_first_slot_immediately() {
-        let now = Instant::now();
-        assert_eq!(Pacer::new(TEN_MS).reserve(now), now);
-    }
-
-    #[test]
-    fn pacer_spaces_consecutive_slots_by_the_interval() {
-        let pacer = Pacer::new(TEN_MS);
-        let now = Instant::now();
-
-        assert_eq!(pacer.reserve(now), now);
-        assert_eq!(pacer.reserve(now), now + TEN_MS);
-        assert_eq!(pacer.reserve(now), now + 2 * TEN_MS);
-    }
-
-    #[test]
-    fn pacer_does_not_bank_credit_while_idle() {
-        // The whole point of the harness is to hold a rate, and a pacer that
-        // carries its cursor forward from an idle period releases the backlog
-        // in one burst the moment traffic resumes — the same defect as a token
-        // bucket with depth, which is what this run exists to measure the
-        // absence of. A slot may never be in the past.
-        let pacer = Pacer::new(TEN_MS);
-        let start = Instant::now();
-        pacer.reserve(start);
-
-        let after_a_long_stall = start + Duration::from_secs(10);
-        assert_eq!(
-            pacer.reserve(after_a_long_stall),
-            after_a_long_stall,
-            "the pacer banked credit during the stall and would now burst"
-        );
-        assert_eq!(
-            pacer.reserve(after_a_long_stall),
-            after_a_long_stall + TEN_MS,
-            "the cursor did not resume from the stall, so the backlog survives it"
-        );
     }
 
     // ── histogram ───────────────────────────────────────────────

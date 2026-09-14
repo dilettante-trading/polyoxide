@@ -1,7 +1,7 @@
-//! Shared throttle detection for the live rate-limit harnesses.
+//! Shared throttle detection and pacing for the live rate-limit harnesses.
 //!
-//! Included by both `closed_positions_soak.rs` and
-//! `closed_positions_burst_probe.rs` via `#[path]`. Cargo only auto-discovers
+//! Included by `closed_positions_soak.rs`, `closed_positions_burst_probe.rs` and
+//! `v2_soak/main.rs` via `#[path]`. Cargo only auto-discovers
 //! `examples/*.rs` and `examples/*/main.rs`, so this file is not itself built
 //! as an example.
 //!
@@ -202,6 +202,45 @@ pub fn install_observer(start: Instant) -> Arc<ThrottleObserver> {
     observer
 }
 
+/// Hands out send slots at a fixed interval, shared by every worker.
+///
+/// Asking what rate the *server* tolerates means driving a rate the client
+/// would not pick, which means pacing outside the client's own limiter. A
+/// harness that paces through a polyoxide client can only go below that
+/// client's sustained rate, or its limiter binds first and the run measures
+/// polyoxide instead of the server; `v2_soak` sends raw requests for exactly
+/// that reason.
+pub struct Pacer {
+    interval: Duration,
+    /// The earliest unclaimed slot; `None` until the first reservation.
+    next: Mutex<Option<Instant>>,
+}
+
+impl Pacer {
+    pub fn new(interval: Duration) -> Self {
+        Self {
+            interval,
+            next: Mutex::new(None),
+        }
+    }
+
+    /// Claim the next slot, given the current time.
+    pub fn reserve(&self, now: Instant) -> Instant {
+        let mut next = self
+            .next
+            .lock()
+            .unwrap_or_else(|poisoned| poisoned.into_inner());
+        let slot = next.map_or(now, |claimed| claimed.max(now));
+        *next = Some(slot + self.interval);
+        slot
+    }
+
+    pub async fn wait(&self) {
+        let slot = self.reserve(Instant::now());
+        tokio::time::sleep_until(tokio::time::Instant::from_std(slot)).await;
+    }
+}
+
 /// Nearest-rank percentile over an ascending slice.
 pub fn percentile(sorted: &[Duration], p: f64) -> Duration {
     if sorted.is_empty() {
@@ -275,6 +314,50 @@ mod tests {
         assert_eq!(observer.other_warning_count(), 0);
         assert_eq!(observer.first_throttle_at(), None);
         assert!(observer.warn_samples().is_empty());
+    }
+
+    // ── pacer ───────────────────────────────────────────────────
+
+    const TEN_MS: Duration = Duration::from_millis(10);
+
+    #[test]
+    fn pacer_hands_out_the_first_slot_immediately() {
+        let now = Instant::now();
+        assert_eq!(Pacer::new(TEN_MS).reserve(now), now);
+    }
+
+    #[test]
+    fn pacer_spaces_consecutive_slots_by_the_interval() {
+        let pacer = Pacer::new(TEN_MS);
+        let now = Instant::now();
+
+        assert_eq!(pacer.reserve(now), now);
+        assert_eq!(pacer.reserve(now), now + TEN_MS);
+        assert_eq!(pacer.reserve(now), now + 2 * TEN_MS);
+    }
+
+    #[test]
+    fn pacer_does_not_bank_credit_while_idle() {
+        // The whole point of the harness is to hold a rate, and a pacer that
+        // carries its cursor forward from an idle period releases the backlog
+        // in one burst the moment traffic resumes — the same defect as a token
+        // bucket with depth, which is what this run exists to measure the
+        // absence of. A slot may never be in the past.
+        let pacer = Pacer::new(TEN_MS);
+        let start = Instant::now();
+        pacer.reserve(start);
+
+        let after_a_long_stall = start + Duration::from_secs(10);
+        assert_eq!(
+            pacer.reserve(after_a_long_stall),
+            after_a_long_stall,
+            "the pacer banked credit during the stall and would now burst"
+        );
+        assert_eq!(
+            pacer.reserve(after_a_long_stall),
+            after_a_long_stall + TEN_MS,
+            "the cursor did not resume from the stall, so the backlog survives it"
+        );
     }
 
     #[test]
