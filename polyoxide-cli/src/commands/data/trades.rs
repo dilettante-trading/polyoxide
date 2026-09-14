@@ -1,27 +1,39 @@
-use clap::{Subcommand, ValueEnum};
-use color_eyre::eyre::Result;
-use polyoxide_data::DataApi;
+use std::io::Write;
 
-use crate::commands::common::parsing::parse_comma_separated;
+use clap::{ArgAction, Subcommand, ValueEnum};
+use color_eyre::eyre::Result;
+use polyoxide_data::{
+    v2::types::{FilterType, TradeSide},
+    DataApi,
+};
+
+use super::paging::{run_paged, PageArgs};
+use crate::commands::common::parsing::parse_list_entry;
 
 #[derive(Subcommand)]
 pub enum TradesCommand {
-    /// List trades for a user or markets
+    /// List trades: a user's, a market's or event's, or the whole feed (`/v2/trades`)
     List {
         /// User address (0x-prefixed, 40 hex chars)
         #[arg(short, long)]
         user: Option<String>,
-        /// Filter by market condition IDs (comma-separated)
-        #[arg(short, long, value_parser = parse_comma_separated)]
-        market: Option<Vec<String>>,
+        /// Filter by market condition IDs (comma-separated, at most 20)
+        #[arg(
+            short = 'm',
+            long = "condition",
+            visible_alias = "market",
+            value_delimiter = ',',
+            value_parser = parse_list_entry
+        )]
+        condition: Option<Vec<String>>,
         /// Filter by event IDs (comma-separated)
-        #[arg(short, long, value_parser = parse_comma_separated)]
+        #[arg(short, long, value_delimiter = ',', value_parser = parse_list_entry)]
         event_id: Option<Vec<String>>,
         /// Filter by trade side
         #[arg(short, long, value_enum)]
         side: Option<TradeSideFilter>,
-        /// Filter for taker trades only (default: true)
-        #[arg(long, default_value = "true")]
+        /// Only taker trades; pass `--taker-only false` to include maker fills
+        #[arg(long, default_value_t = true, action = ArgAction::Set)]
         taker_only: bool,
         /// Filter type (must be paired with --filter-amount)
         #[arg(long, value_enum)]
@@ -29,94 +41,69 @@ pub enum TradesCommand {
         /// Filter amount (must be paired with --filter-type)
         #[arg(long)]
         filter_amount: Option<f64>,
-        /// Maximum number of results (0-10000, default: 100)
+        /// Window start, epoch seconds; honoured with --user only (1 for full history)
+        #[arg(long)]
+        start: Option<i64>,
+        /// Window end, epoch seconds; honoured with --user only
+        #[arg(long)]
+        end: Option<i64>,
+        /// Page size (at most 1000)
         #[arg(short, long, default_value = "100")]
         limit: u32,
-        /// Pagination offset (0-10000, default: 0)
-        #[arg(short, long, default_value = "0")]
-        offset: u32,
+        #[command(flatten)]
+        page: PageArgs,
     },
 }
 
 impl TradesCommand {
-    pub async fn run(self, data: &DataApi) -> Result<()> {
+    pub async fn run(self, data: &DataApi, out: &mut dyn Write, err: &mut dyn Write) -> Result<()> {
         match self {
             Self::List {
                 user,
-                market,
+                condition,
                 event_id,
                 side,
                 taker_only,
                 filter_type,
                 filter_amount,
+                start,
+                end,
                 limit,
-                offset,
+                page,
             } => {
-                let trades = if let Some(u) = user {
-                    let mut request = data
-                        .positions(&u)
-                        .trades()
-                        .limit(limit)
-                        .offset(offset)
-                        .taker_only(taker_only);
-
-                    if let Some(ref ids) = market {
-                        let ids: Vec<&str> = ids.iter().map(|s| s.as_str()).collect();
-                        request = request.market(ids);
-                    }
-                    if let Some(ref ids) = event_id {
-                        let ids: Vec<&str> = ids.iter().map(|s| s.as_str()).collect();
-                        request = request.event_id(ids);
-                    }
-                    if let Some(s) = side {
-                        request = request.side(s.into());
-                    }
-                    if let Some(ft) = filter_type {
-                        request = request.filter_type(ft.into());
-                    }
-                    if let Some(fa) = filter_amount {
-                        request = request.filter_amount(fa);
-                    }
-
-                    request.send().await?
-                } else {
-                    let mut request = data
-                        .trades()
-                        .list()
-                        .limit(limit)
-                        .offset(offset)
-                        .taker_only(taker_only);
-
-                    if let Some(ref ids) = market {
-                        let ids: Vec<&str> = ids.iter().map(|s| s.as_str()).collect();
-                        request = request.market(ids);
-                    }
-                    if let Some(ref ids) = event_id {
-                        let ids: Vec<&str> = ids.iter().map(|s| s.as_str()).collect();
-                        request = request.event_id(ids);
-                    }
-                    if let Some(s) = side {
-                        request = request.side(s.into());
-                    }
-                    if let Some(ft) = filter_type {
-                        request = request.filter_type(ft.into());
-                    }
-                    if let Some(fa) = filter_amount {
-                        request = request.filter_amount(fa);
-                    }
-
-                    request.send().await?
-                };
-
-                println!("{}", serde_json::to_string_pretty(&trades)?);
+                let mut request = data.v2().trades().taker_only(taker_only).limit(limit);
+                if let Some(user) = user {
+                    request = request.user(user);
+                }
+                if let Some(ids) = condition {
+                    request = request.conditions(ids);
+                }
+                if let Some(ids) = event_id {
+                    request = request.event_ids(ids);
+                }
+                if let Some(side) = side {
+                    request = request.side(side.into());
+                }
+                if let Some(filter_type) = filter_type {
+                    request = request.filter_type(filter_type.into());
+                }
+                if let Some(amount) = filter_amount {
+                    request = request.filter_amount(amount);
+                }
+                if let Some(ts) = start {
+                    request = request.start(ts);
+                }
+                if let Some(ts) = end {
+                    request = request.end(ts);
+                }
+                run_paged(request, &page, out, err).await
             }
         }
-        Ok(())
     }
 }
 
 /// Trade side filter
-#[derive(Debug, Clone, Copy, ValueEnum)]
+#[derive(Debug, Clone, Copy, ValueEnum, PartialEq)]
 pub enum TradeSideFilter {
     /// Buy trades
     Buy,
@@ -124,6 +111,17 @@ pub enum TradeSideFilter {
     Sell,
 }
 
+impl From<TradeSideFilter> for TradeSide {
+    fn from(side: TradeSideFilter) -> Self {
+        match side {
+            TradeSideFilter::Buy => Self::Buy,
+            TradeSideFilter::Sell => Self::Sell,
+        }
+    }
+}
+
+/// The v1 side, for `activity` and `positions` until they move to v2 in the
+/// next task.
 impl From<TradeSideFilter> for polyoxide_data::types::TradeSide {
     fn from(side: TradeSideFilter) -> Self {
         match side {
@@ -133,16 +131,16 @@ impl From<TradeSideFilter> for polyoxide_data::types::TradeSide {
     }
 }
 
-/// Trade filter type
-#[derive(Debug, Clone, Copy, ValueEnum)]
+/// Unit of a filter amount
+#[derive(Debug, Clone, Copy, ValueEnum, PartialEq)]
 pub enum TradeFilterField {
-    /// Filter by cash amount
+    /// Cash amount (USDC)
     Cash,
-    /// Filter by token amount
+    /// Token amount (shares)
     Tokens,
 }
 
-impl From<TradeFilterField> for polyoxide_data::types::TradeFilterType {
+impl From<TradeFilterField> for FilterType {
     fn from(filter: TradeFilterField) -> Self {
         match filter {
             TradeFilterField::Cash => Self::Cash,
@@ -154,7 +152,6 @@ impl From<TradeFilterField> for polyoxide_data::types::TradeFilterType {
 #[cfg(test)]
 mod tests {
     use clap::Parser;
-    use polyoxide_data::types::{TradeFilterType, TradeSide};
 
     use super::*;
 
@@ -168,137 +165,127 @@ mod tests {
     }
 
     #[test]
-    fn trade_side_filter_from_buy() {
-        let side: TradeSide = TradeSideFilter::Buy.into();
-        assert!(matches!(side, TradeSide::Buy));
+    fn trade_side_filter_maps_to_the_v2_side() {
+        assert_eq!(TradeSide::from(TradeSideFilter::Buy), TradeSide::Buy);
+        assert_eq!(TradeSide::from(TradeSideFilter::Sell), TradeSide::Sell);
     }
 
     #[test]
-    fn trade_side_filter_from_sell() {
-        let side: TradeSide = TradeSideFilter::Sell.into();
-        assert!(matches!(side, TradeSide::Sell));
-    }
-
-    #[test]
-    fn trade_filter_field_from_cash() {
-        let ft: TradeFilterType = TradeFilterField::Cash.into();
-        assert!(matches!(ft, TradeFilterType::Cash));
-    }
-
-    #[test]
-    fn trade_filter_field_from_tokens() {
-        let ft: TradeFilterType = TradeFilterField::Tokens.into();
-        assert!(matches!(ft, TradeFilterType::Tokens));
+    fn trade_filter_field_maps_to_the_v2_filter_type() {
+        assert_eq!(FilterType::from(TradeFilterField::Cash), FilterType::Cash);
+        assert_eq!(
+            FilterType::from(TradeFilterField::Tokens),
+            FilterType::Tokens
+        );
     }
 
     #[test]
     fn list_defaults() {
-        let cmd = try_parse(&["test", "list"]).unwrap();
-        match cmd {
-            TradesCommand::List {
-                user,
-                market,
-                event_id,
-                side,
-                taker_only,
-                filter_type,
-                filter_amount,
-                limit,
-                offset,
-            } => {
-                assert!(user.is_none());
-                assert!(market.is_none());
-                assert!(event_id.is_none());
-                assert!(side.is_none());
-                assert!(taker_only);
-                assert!(filter_type.is_none());
-                assert!(filter_amount.is_none());
-                assert_eq!(limit, 100);
-                assert_eq!(offset, 0);
-            }
+        let TradesCommand::List {
+            user,
+            condition,
+            event_id,
+            side,
+            taker_only,
+            filter_type,
+            filter_amount,
+            start,
+            end,
+            limit,
+            page,
+        } = try_parse(&["test", "list"]).unwrap();
+        assert!(user.is_none());
+        assert!(condition.is_none());
+        assert!(event_id.is_none());
+        assert!(side.is_none());
+        assert!(taker_only);
+        assert!(filter_type.is_none());
+        assert!(filter_amount.is_none());
+        assert!(start.is_none() && end.is_none());
+        assert_eq!(limit, 100);
+        assert_eq!(page, PageArgs::default());
+    }
+
+    #[test]
+    fn market_is_an_alias_of_condition() {
+        for flag in ["--condition", "--market", "-m"] {
+            let TradesCommand::List { condition, .. } =
+                try_parse(&["test", "list", flag, "0xa,0xb"]).unwrap();
+            assert_eq!(condition.unwrap(), ["0xa", "0xb"], "{flag}");
         }
     }
 
     #[test]
-    fn list_with_user() {
-        let cmd = try_parse(&["test", "list", "--user", "0xabc"]).unwrap();
-        match cmd {
-            TradesCommand::List { user, .. } => {
-                assert_eq!(user.unwrap(), "0xabc");
-            }
-        }
+    fn list_flags_split_on_commas_and_trim_each_entry() {
+        let TradesCommand::List {
+            condition,
+            event_id,
+            ..
+        } = try_parse(&[
+            "test",
+            "list",
+            "--condition",
+            " 0xa , 0xb ",
+            "-e",
+            "1",
+            "-e",
+            "2",
+        ])
+        .unwrap();
+        assert_eq!(condition.unwrap(), ["0xa", "0xb"]);
+        assert_eq!(event_id.unwrap(), ["1", "2"], "a repeated flag appends");
     }
 
     #[test]
-    fn list_with_side_buy() {
-        let cmd = try_parse(&["test", "list", "--side", "buy"]).unwrap();
-        match cmd {
-            TradesCommand::List { side, .. } => {
-                assert!(matches!(side.unwrap(), TradeSideFilter::Buy));
-            }
-        }
-    }
-
-    #[test]
-    fn list_with_side_sell() {
-        let cmd = try_parse(&["test", "list", "--side", "sell"]).unwrap();
-        match cmd {
-            TradesCommand::List { side, .. } => {
-                assert!(matches!(side.unwrap(), TradeSideFilter::Sell));
-            }
-        }
+    fn taker_only_can_be_turned_off() {
+        let TradesCommand::List { taker_only, .. } =
+            try_parse(&["test", "list", "--taker-only", "false"]).unwrap();
+        assert!(!taker_only);
     }
 
     #[test]
     fn list_invalid_side_errors() {
-        let result = try_parse(&["test", "list", "--side", "short"]);
-        assert!(result.is_err());
-    }
-
-    #[test]
-    fn list_with_filter_type_cash() {
-        let cmd = try_parse(&["test", "list", "--filter-type", "cash"]).unwrap();
-        match cmd {
-            TradesCommand::List { filter_type, .. } => {
-                assert!(matches!(filter_type.unwrap(), TradeFilterField::Cash));
-            }
-        }
-    }
-
-    #[test]
-    fn list_with_filter_type_tokens() {
-        let cmd = try_parse(&["test", "list", "--filter-type", "tokens"]).unwrap();
-        match cmd {
-            TradesCommand::List { filter_type, .. } => {
-                assert!(matches!(filter_type.unwrap(), TradeFilterField::Tokens));
-            }
-        }
+        assert!(try_parse(&["test", "list", "--side", "short"]).is_err());
     }
 
     #[test]
     fn list_invalid_filter_type_errors() {
-        let result = try_parse(&["test", "list", "--filter-type", "volume"]);
-        assert!(result.is_err());
+        assert!(try_parse(&["test", "list", "--filter-type", "volume"]).is_err());
     }
 
     #[test]
-    fn list_without_market_is_none() {
-        let cmd = try_parse(&["test", "list"]).unwrap();
-        match cmd {
-            TradesCommand::List { market, .. } => {
-                assert!(market.is_none());
-            }
+    fn offset_is_refused_with_a_pointer_to_cursor() {
+        for args in [
+            &["test", "list", "--offset", "100"][..],
+            &["test", "list", "-o", "100"][..],
+        ] {
+            let message = try_parse(args)
+                .err()
+                .expect("offset must be refused")
+                .to_string();
+            assert!(message.contains("--cursor"), "{message}");
         }
     }
 
     #[test]
-    fn list_with_custom_limit_offset() {
-        let cmd = try_parse(&["test", "list", "-l", "50", "-o", "200"]).unwrap();
-        match cmd {
-            TradesCommand::List { limit, offset, .. } => {
-                assert_eq!(limit, 50);
-                assert_eq!(offset, 200);
-            }
-        }
+    fn cursor_all_and_max_pages_parse() {
+        let TradesCommand::List { page, .. } = try_parse(&[
+            "test",
+            "list",
+            "--cursor",
+            "c1",
+            "--all",
+            "--max-pages",
+            "3",
+        ])
+        .unwrap();
+        assert_eq!(page.cursor.as_deref(), Some("c1"));
+        assert!(page.all);
+        assert_eq!(page.max_pages, Some(3));
+    }
+
+    #[test]
+    fn max_pages_requires_all() {
+        assert!(try_parse(&["test", "list", "--max-pages", "3"]).is_err());
     }
 }

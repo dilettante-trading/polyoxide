@@ -3,6 +3,16 @@ use std::time::Duration;
 use color_eyre::eyre::{bail, Result};
 use polyoxide_data::types::ActivityType;
 
+/// One entry of a comma-separated list flag, trimmed.
+///
+/// Pair it with `value_delimiter = ','` on a `Vec<String>` field: clap splits
+/// the list and parses each entry. A value parser that returns the whole
+/// `Vec` instead does not fit a `Vec` field, and clap panics at runtime the
+/// first time the flag is given.
+pub fn parse_list_entry(s: &str) -> Result<String, std::convert::Infallible> {
+    Ok(s.trim().to_owned())
+}
+
 /// Parse comma-separated values into a Vec of trimmed strings.
 /// Used as a clap value_parser for arguments that accept multiple IDs.
 pub fn parse_comma_separated(s: &str) -> Result<Vec<String>, std::convert::Infallible> {
@@ -137,6 +147,13 @@ mod tests {
     fn parse_activity_types_all_variants() {
         let result = parse_activity_types("trade,split,merge,redeem,reward,conversion").unwrap();
         assert_eq!(result.len(), 6);
+    }
+
+    // --- parse_list_entry tests ---
+
+    #[test]
+    fn parse_list_entry_trims_whitespace() {
+        assert_eq!(parse_list_entry(" 0xa ").unwrap(), "0xa");
     }
 
     // --- parse_comma_separated tests ---

@@ -3,11 +3,12 @@ mod builders;
 mod holders;
 mod live_volume;
 mod open_interest;
-#[allow(dead_code)] // Used by the commands ported in the next tasks.
 mod paging;
 mod positions;
 mod traded;
 mod trades;
+
+use std::io::Write;
 
 use clap::{Subcommand, ValueEnum};
 use color_eyre::eyre::Result;
@@ -48,22 +49,35 @@ pub enum DataCommand {
 
 impl DataCommand {
     pub async fn run(self) -> Result<()> {
-        let data = DataApi::new()?;
+        self.run_with(
+            &DataApi::new()?,
+            &mut std::io::stdout(),
+            &mut std::io::stderr(),
+        )
+        .await
+    }
 
+    /// Runs the command against `data`, writing results to `out` and resume
+    /// cursors to `err`, so tests can use a mock server and read the output.
+    pub async fn run_with(
+        self,
+        data: &DataApi,
+        out: &mut dyn Write,
+        err: &mut dyn Write,
+    ) -> Result<()> {
         match self {
             Self::Health => {
                 let health = data.health().check().await?;
-                println!("{}", serde_json::to_string_pretty(&health)?);
-                Ok(())
+                paging::print_pretty(&health, out)
             }
-            Self::Activity(cmd) => cmd.run(&data).await,
-            Self::Builders { command } => command.run(&data).await,
-            Self::Holders(cmd) => cmd.run(&data).await,
-            Self::Trades { command } => command.run(&data).await,
-            Self::Traded(cmd) => cmd.run(&data).await,
-            Self::Positions(cmd) => cmd.run(&data).await,
-            Self::OpenInterest(cmd) => cmd.run(&data).await,
-            Self::LiveVolume(cmd) => cmd.run(&data).await,
+            Self::Activity(cmd) => cmd.run(data).await,
+            Self::Builders { command } => command.run(data).await,
+            Self::Holders(cmd) => cmd.run(data).await,
+            Self::Trades { command } => command.run(data, out, err).await,
+            Self::Traded(cmd) => cmd.run(data).await,
+            Self::Positions(cmd) => cmd.run(data).await,
+            Self::OpenInterest(cmd) => cmd.run(data).await,
+            Self::LiveVolume(cmd) => cmd.run(data).await,
         }
     }
 }
