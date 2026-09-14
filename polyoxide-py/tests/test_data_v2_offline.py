@@ -525,3 +525,88 @@ def test_response_enums_pass_unknown_values_through(server) -> None:
     server.reply("/v2/activity", fixture("activity"))
     polyoxide.DataApiSync(base_url=server.url).v2().activity("0xuser", types=["FUTURE_TYPE"], side="FUTURE_SIDE")
     assert server.requests[0][1] == {"user": "0xuser", "type": "FUTURE_TYPE", "side": "FUTURE_SIDE"}
+
+
+def test_a_walk_that_repeats_its_cursor_stops_with_the_base_error(server) -> None:
+    server.reply("/v2/trades", page_of("trades", "same"))
+    walk = polyoxide.DataApiSync(base_url=server.url).v2().iter_trades(cursor="same")
+
+    with pytest.raises(polyoxide.PolyoxideError) as err:
+        next(walk)
+
+    assert type(err.value) is polyoxide.PolyoxideError
+    assert "server returned the cursor it was sent" in str(err.value)
+    assert err.value.code is None
+
+
+def v2_error(code: str, **extra: object) -> dict:
+    return {"error": f"{code} happened", "code": code, "retryable": code != "invalid_request", "trace_id": "t-1", **extra}
+
+
+@pytest.mark.parametrize(
+    ("status", "body", "headers", "error"),
+    [
+        (400, v2_error("invalid_request", parameter="user"), {}, polyoxide.ValidationError),
+        (503, v2_error("request_timeout"), {"retry-after": "2"}, polyoxide.TimeoutError),
+        (503, v2_error("dependency_unavailable"), {}, polyoxide.ApiError),
+        (500, v2_error("brand_new_code"), {}, polyoxide.ApiError),
+    ],
+    ids=["invalid_request", "request_timeout", "dependency_unavailable", "unknown_code"],
+)
+def test_a_v2_error_body_maps_by_code_and_keeps_its_fields(server, status, body, headers, error) -> None:
+    server.reply("/v2/user-pnl", body, status=status, headers=headers)
+
+    with pytest.raises(error) as raised:
+        polyoxide.DataApiSync(base_url=server.url).v2().user_pnl("0xuser")
+
+    e = raised.value
+    assert type(e) is error
+    assert e.status == status
+    assert e.code == ("unknown" if body["code"] == "brand_new_code" else body["code"])
+    assert e.retryable is body["retryable"]
+    assert e.trace_id == "t-1"
+    assert e.parameter == body.get("parameter")
+    assert e.retry_after == (2.0 if headers else None)
+    assert "trace_id t-1" in str(e)
+
+
+def test_rate_limited_is_a_rate_limit_error(server) -> None:
+    # The client retries 429 three times with backoff first, so this takes ~4s.
+    server.reply("/v2/status", v2_error("rate_limited"), status=429, headers={"retry-after": "0"})
+
+    with pytest.raises(polyoxide.RateLimitError) as raised:
+        polyoxide.DataApiSync(base_url=server.url).v2().status()
+
+    assert raised.value.code == "rate_limited"
+    assert raised.value.retryable is True
+    assert len(server.requests) == 4
+
+
+def test_async_error_carries_the_same_fields(server) -> None:
+    server.reply("/v2/trades", v2_error("invalid_request", parameter="side"), status=400)
+
+    async def call():
+        await polyoxide.DataApi(base_url=server.url).v2().trades()
+
+    with pytest.raises(polyoxide.ValidationError) as raised:
+        asyncio.run(call())
+    assert raised.value.parameter == "side"
+
+
+def test_an_error_without_a_v2_body_has_none_fields(server) -> None:
+    server.reply("/v2/status", "upstream exploded", status=500)
+
+    with pytest.raises(polyoxide.PolyoxideError) as raised:
+        polyoxide.DataApiSync(base_url=server.url).v2().status()
+
+    e = raised.value
+    assert (e.status, e.code, e.retryable, e.trace_id, e.parameter, e.retry_after) == (None,) * 6
+
+
+def test_v1_errors_also_carry_the_attributes(server) -> None:
+    server.reply("/", "nope", status=500)
+
+    with pytest.raises(polyoxide.PolyoxideError) as raised:
+        polyoxide.DataApiSync(base_url=server.url).health().ping()
+
+    assert raised.value.code is None

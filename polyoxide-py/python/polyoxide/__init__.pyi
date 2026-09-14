@@ -11,8 +11,24 @@ from .v2 import DataV2 as _DataV2, DataV2Sync as _DataV2Sync
 # =============================================================================
 
 class PolyoxideError(Exception):
-    """Base exception for all polyoxide errors."""
-    ...
+    """Base exception for all polyoxide errors.
+
+    The attributes below carry a Data API v2 error body's fields. Each is set on
+    every exception the SDK raises, and is None unless the error came from a v2
+    route.
+    """
+    status: int | None
+    """HTTP status."""
+    code: str | None
+    """Stable classification, e.g. `invalid_request`, `rate_limited`, `dependency_unavailable`."""
+    retryable: bool | None
+    """Whether the server says the request may be retried unchanged."""
+    trace_id: str | None
+    """Id to quote when reporting a failure."""
+    parameter: str | None
+    """The query parameter a validation failure concerns, when the server names one."""
+    retry_after: float | None
+    """The `Retry-After` delay in seconds, when the response carried one."""
 
 class ApiError(PolyoxideError):
     """API returned an error response."""
