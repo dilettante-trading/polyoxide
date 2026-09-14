@@ -398,6 +398,7 @@ async fn offset_is_refused_with_a_pointer_to_cursor() {
         &["trades", "list", "-o", "100"][..],
         &["activity", "--user", "0xu", "--offset", "100"][..],
         &["positions", "--user", "0xu", "list", "--offset", "100"][..],
+        &["holders", "--condition", "0xc", "--offset", "100"][..],
     ] {
         let run = run(&server, args).await;
         let message = run.result.unwrap_err().to_string();
@@ -573,4 +574,67 @@ async fn positions_activity_uses_the_positions_user() {
         ]),
         "deposits stay at the API's default of hidden unless asked for"
     );
+}
+
+// ── holders, open interest and live volume ───────────────────────────
+
+#[tokio::test]
+async fn holders_flags_reach_their_v2_parameters() {
+    let (query, _) = sent(
+        "/v2/holders",
+        &fixture("holders_pnl"),
+        &[
+            "holders",
+            "--market",
+            "0xc",
+            "--min-balance",
+            "2.5",
+            "--include-pnl",
+            "--limit",
+            "10",
+        ],
+    )
+    .await;
+    assert_eq!(
+        query,
+        pairs(&[
+            ("condition", "0xc"),
+            ("min_balance", "2.5"),
+            ("include_pnl", "true"),
+            ("limit", "10"),
+        ])
+    );
+}
+
+#[tokio::test]
+async fn open_interest_is_global_without_markets() {
+    let (query, _) = sent(
+        "/v2/oi",
+        &fixture("open_interest_global"),
+        &["open-interest"],
+    )
+    .await;
+    assert_eq!(query, pairs(&[]));
+}
+
+#[tokio::test]
+async fn open_interest_scopes_to_markets() {
+    let (query, _) = sent(
+        "/v2/oi",
+        &fixture("open_interest"),
+        &["open-interest", "--market", "0xa,0xb"],
+    )
+    .await;
+    assert_eq!(query, pairs(&[("condition", "0xa,0xb")]));
+}
+
+#[tokio::test]
+async fn live_volume_sends_every_event_id() {
+    let (query, _) = sent(
+        "/v2/live-volume",
+        &fixture("live_volume"),
+        &["live-volume", "--event-id", "1,2"],
+    )
+    .await;
+    assert_eq!(query, pairs(&[("event_id", "1,2")]));
 }

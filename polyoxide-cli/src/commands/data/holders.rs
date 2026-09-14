@@ -1,34 +1,47 @@
+use std::io::Write;
+
 use clap::Args;
 use color_eyre::eyre::Result;
 use polyoxide_data::DataApi;
 
-use crate::commands::common::parsing::parse_comma_separated;
+use super::paging::{run_paged, PageArgs};
+use crate::commands::common::parsing::parse_list_entry;
 
-/// Get top holders for markets
+/// Get top holders for markets (`/v2/holders`)
 #[derive(Args)]
 pub struct HoldersCommand {
-    /// Market condition IDs (comma-separated, required)
-    #[arg(short, long, value_parser = parse_comma_separated)]
-    market: Vec<String>,
-    /// Maximum number of holders per market between 0 and 500
+    /// Market condition IDs (comma-separated, at most 20; exactly one with --include-pnl)
+    #[arg(
+        short = 'm',
+        long = "condition",
+        visible_alias = "market",
+        value_delimiter = ',',
+        value_parser = parse_list_entry,
+        required = true
+    )]
+    condition: Vec<String>,
+    /// Rows per outcome token (at most 1000, or 100 with --include-pnl)
     #[arg(short, long, default_value = "100")]
     limit: u32,
-    /// Minimum balance filter between 0 and 999999
-    #[arg(long, default_value = "1")]
-    min_balance: u32,
+    /// Minimum balance in shares (API default: 0)
+    #[arg(long)]
+    min_balance: Option<f64>,
+    /// Add each holder's entry cost and P&L, and switch to per-side balances
+    #[arg(long)]
+    include_pnl: bool,
+    #[command(flatten)]
+    page: PageArgs,
 }
 
 impl HoldersCommand {
-    pub async fn run(self, data: &DataApi) -> Result<()> {
-        let ids: Vec<&str> = self.market.iter().map(|s| s.as_str()).collect();
-        let request = data
-            .holders()
-            .list(ids)
-            .limit(self.limit)
-            .min_balance(self.min_balance);
-
-        let holders = request.send().await?;
-        println!("{}", serde_json::to_string_pretty(&holders)?);
-        Ok(())
+    pub async fn run(self, data: &DataApi, out: &mut dyn Write, err: &mut dyn Write) -> Result<()> {
+        let mut request = data.v2().holders(self.condition).limit(self.limit);
+        if let Some(min_balance) = self.min_balance {
+            request = request.min_balance(min_balance);
+        }
+        if self.include_pnl {
+            request = request.include_pnl(true);
+        }
+        run_paged(request, &self.page, out, err).await
     }
 }

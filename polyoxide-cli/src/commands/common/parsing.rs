@@ -13,16 +13,6 @@ pub fn parse_list_entry(s: &str) -> Result<String, std::convert::Infallible> {
     Ok(s.trim().to_owned())
 }
 
-/// Parse comma-separated values into a Vec of trimmed strings.
-/// Used as a clap value_parser for arguments that accept multiple IDs.
-pub fn parse_comma_separated(s: &str) -> Result<Vec<String>, std::convert::Infallible> {
-    if s.is_empty() {
-        return Ok(Vec::new());
-    }
-    let strings = s.split(',').map(|s| s.trim().to_string()).collect();
-    Ok(strings)
-}
-
 pub fn parse_duration(s: &str) -> Result<Duration, String> {
     let s = s.trim();
     if s.is_empty() {
@@ -175,38 +165,6 @@ mod tests {
     #[test]
     fn parse_list_entry_trims_whitespace() {
         assert_eq!(parse_list_entry(" 0xa ").unwrap(), "0xa");
-    }
-
-    // --- parse_comma_separated tests ---
-
-    #[test]
-    fn parse_comma_separated_single_value() {
-        let result = parse_comma_separated("abc").unwrap();
-        assert_eq!(result, vec!["abc"]);
-    }
-
-    #[test]
-    fn parse_comma_separated_multiple_values() {
-        let result = parse_comma_separated("a,b,c").unwrap();
-        assert_eq!(result, vec!["a", "b", "c"]);
-    }
-
-    #[test]
-    fn parse_comma_separated_trims_whitespace() {
-        let result = parse_comma_separated(" a , b , c ").unwrap();
-        assert_eq!(result, vec!["a", "b", "c"]);
-    }
-
-    #[test]
-    fn parse_comma_separated_empty_string() {
-        let result = parse_comma_separated("").unwrap();
-        assert!(result.is_empty());
-    }
-
-    #[test]
-    fn parse_comma_separated_trailing_comma() {
-        let result = parse_comma_separated("a,b,").unwrap();
-        assert_eq!(result, vec!["a", "b", ""]);
     }
 
     // --- parse_duration tests ---

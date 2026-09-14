@@ -43,7 +43,7 @@ pub enum DataCommand {
     Positions(PositionsCommand),
     /// Get open interest for markets
     OpenInterest(OpenInterestCommand),
-    /// Get live volume for an event
+    /// Get live volume for events
     LiveVolume(LiveVolumeCommand),
 }
 
@@ -72,12 +72,12 @@ impl DataCommand {
             }
             Self::Activity(cmd) => cmd.run(data, out, err).await,
             Self::Builders { command } => command.run(data).await,
-            Self::Holders(cmd) => cmd.run(data).await,
+            Self::Holders(cmd) => cmd.run(data, out, err).await,
             Self::Trades { command } => command.run(data, out, err).await,
             Self::Traded(cmd) => cmd.run(data).await,
             Self::Positions(cmd) => cmd.run(data, out, err).await,
-            Self::OpenInterest(cmd) => cmd.run(data).await,
-            Self::LiveVolume(cmd) => cmd.run(data).await,
+            Self::OpenInterest(cmd) => cmd.run(data, out).await,
+            Self::LiveVolume(cmd) => cmd.run(data, out).await,
         }
     }
 }
@@ -185,9 +185,23 @@ mod tests {
     }
 
     #[test]
-    fn holders_parses_without_market() {
-        // market defaults to empty Vec, so it parses without --market
-        let cmd = try_parse(&["test", "holders"]).unwrap();
+    fn live_volume_parses_several_event_ids() {
+        let cmd = try_parse(&["test", "live-volume", "--event-id", "42,43"]).unwrap();
+        match cmd {
+            DataCommand::LiveVolume(cmd) => assert_eq!(cmd.event_id, ["42", "43"]),
+            _ => panic!("expected LiveVolume"),
+        }
+    }
+
+    #[test]
+    fn holders_requires_a_condition() {
+        // v2 has no marketless holders listing: it 400s without `condition`
+        assert!(try_parse(&["test", "holders"]).is_err());
+    }
+
+    #[test]
+    fn holders_parses_with_market_alias() {
+        let cmd = try_parse(&["test", "holders", "--market", "0xc"]).unwrap();
         assert!(matches!(cmd, DataCommand::Holders(_)));
     }
 
