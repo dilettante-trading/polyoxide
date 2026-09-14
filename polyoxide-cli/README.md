@@ -119,7 +119,31 @@ polyoxide gamma comments list --holders-only true --get-positions true
 
 ### Data API
 
-User positions, trades, and aggregate data. No authentication required.
+User positions, trades, and aggregate data, from Data API v2. No authentication
+required.
+
+**Output.** A single call prints the response envelope as pretty JSON:
+`{"data": ..., "pagination": {..., "next_cursor": ...}}`. Field names are
+snake_case (`proxy_wallet`, `condition_id`), as v2 returns them.
+
+**Paging.** v2 pages by cursor only, so `--offset` is gone. Every listing
+command takes:
+
+- `--cursor <next_cursor>` to fetch the page after a previous one;
+- `--all` to walk every page, writing one JSON row per line (JSONL);
+- `--max-pages N`, with `--all`, to stop after N pages.
+
+When a walk stops before the last page, whether at `--max-pages` or on an error,
+the cursor to resume from is printed to stderr as `next_cursor: <cursor>`.
+
+```bash
+polyoxide data trades list --user 0xADDRESS --all > trades.jsonl
+polyoxide data trades list --all --max-pages 5 2> resume.txt
+polyoxide data trades list --all --cursor "$(sed -n 's/^next_cursor: //p' resume.txt)"
+```
+
+`--condition` takes comma-separated condition IDs; `--market` and `-m` are
+aliases for it.
 
 #### `data health`
 
@@ -130,10 +154,16 @@ polyoxide data health
 #### `data activity`
 
 ```bash
-# List user activity (--user required)
+# List user activity (--user required), newest first
 polyoxide data activity --user 0xADDRESS
-polyoxide data activity --user 0xADDRESS --activity-type trade,split
-polyoxide data activity --user 0xADDRESS --side buy --sort-by tokens --sort-direction asc
+polyoxide data activity --user 0xADDRESS --activity-type trade,split,tip
+polyoxide data activity --user 0xADDRESS --side buy --sort-direction asc
+
+# Deposits and withdrawals are hidden unless asked for
+polyoxide data activity --user 0xADDRESS --include-deposits-withdrawals
+
+# Full history (the API's default window starts three years back)
+polyoxide data activity --user 0xADDRESS --start 1 --all
 ```
 
 #### `data positions`
@@ -141,15 +171,14 @@ polyoxide data activity --user 0xADDRESS --side buy --sort-by tokens --sort-dire
 ```bash
 # List open positions (--user required, then a subcommand)
 polyoxide data positions --user 0xADDRESS list
-polyoxide data positions --user 0xADDRESS list --redeemable --sort-by cash-pnl
-polyoxide data positions --user 0xADDRESS list --market <CONDITION_ID> --title "search term"
+polyoxide data positions --user 0xADDRESS list --condition <CONDITION_ID> --title "search term"
+
+# Redeemable or closed positions
+polyoxide data positions --user 0xADDRESS list --status redeemable
+polyoxide data positions --user 0xADDRESS list --status closed --sort-by realized-pnl --limit 20
 
 # Total value of positions
 polyoxide data positions --user 0xADDRESS value
-
-# Closed positions
-polyoxide data positions --user 0xADDRESS closed
-polyoxide data positions --user 0xADDRESS closed --sort-by realized-pnl --limit 20
 
 # User activity (same as top-level activity, scoped to user)
 polyoxide data positions --user 0xADDRESS activity
@@ -165,23 +194,27 @@ polyoxide data trades list
 polyoxide data trades list --user 0xADDRESS
 
 # Filter by market, side, or amounts
-polyoxide data trades list --market <CONDITION_ID> --side buy
+polyoxide data trades list --condition <CONDITION_ID> --side buy
 polyoxide data trades list --filter-type cash --filter-amount 100
 ```
 
 #### `data traded`
 
 ```bash
-# Get markets traded by a user
+# A user's profile stats; `trades` is the number of distinct markets traded.
+# Prints `null` for a wallet the API does not know.
 polyoxide data traded --user 0xADDRESS
 ```
 
 #### `data holders`
 
 ```bash
-# Top holders for markets (comma-separated condition IDs)
-polyoxide data holders --market <CONDITION_ID>
-polyoxide data holders --market "id1,id2" --limit 50 --min-balance 10
+# Top holders per outcome token (--condition required, comma-separated)
+polyoxide data holders --condition <CONDITION_ID>
+polyoxide data holders --condition "id1,id2" --limit 50 --min-balance 10
+
+# Add each holder's entry cost and P&L (one condition only)
+polyoxide data holders --condition <CONDITION_ID> --include-pnl
 ```
 
 #### `data builders`
@@ -191,22 +224,23 @@ polyoxide data holders --market "id1,id2" --limit 50 --min-balance 10
 polyoxide data builders leaderboard
 polyoxide data builders leaderboard --time-period week --limit 10
 
-# Builder volume time series
+# Builder volume per bucket (time-period is the bucket width)
 polyoxide data builders volume
-polyoxide data builders volume --time-period month
+polyoxide data builders volume --time-period month --limit 12
 ```
 
 #### `data open-interest`
 
 ```bash
 polyoxide data open-interest
-polyoxide data open-interest --market <CONDITION_ID>
+polyoxide data open-interest --condition <CONDITION_ID>
 ```
 
 #### `data live-volume`
 
 ```bash
 polyoxide data live-volume --event-id 42
+polyoxide data live-volume --event-id 42,43
 ```
 
 ---
