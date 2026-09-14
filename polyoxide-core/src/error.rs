@@ -45,7 +45,16 @@ impl ApiError {
         let body_text = response.text().await.unwrap_or_default();
         tracing::debug!("API error response body: {}", body_text);
 
-        let message = serde_json::from_str::<serde_json::Value>(&body_text)
+        Self::from_status_and_body(status, &body_text)
+    }
+
+    /// Classify an unsuccessful response from its status and body text.
+    ///
+    /// The body-reading half of [`from_response`](Self::from_response), for
+    /// callers that have to read the body themselves first, for example to
+    /// check it for a richer error shape before falling back to this one.
+    pub fn from_status_and_body(status: u16, body: &str) -> Self {
+        let message = serde_json::from_str::<serde_json::Value>(body)
             .ok()
             .and_then(|v| {
                 v.get("error")
@@ -53,7 +62,7 @@ impl ApiError {
                     .and_then(|m| m.as_str())
                     .map(String::from)
             })
-            .unwrap_or_else(|| body_text.clone());
+            .unwrap_or_else(|| body.to_owned());
 
         match status {
             401 | 403 => Self::Authentication(message),
@@ -109,6 +118,29 @@ mod tests {
     fn test_rate_limit_error_display_format() {
         let err = ApiError::RateLimit("slow down".to_string());
         assert_eq!(format!("{}", err), "Rate limit exceeded: slow down");
+    }
+
+    // ── from_status_and_body ────────────────────────────────────
+
+    #[test]
+    fn test_from_status_and_body_reads_error_then_message() {
+        assert!(matches!(
+            ApiError::from_status_and_body(400, r#"{"error":"bad limit"}"#),
+            ApiError::Validation(m) if m == "bad limit"
+        ));
+        assert!(matches!(
+            ApiError::from_status_and_body(503, r#"{"message":"down"}"#),
+            ApiError::Api { status: 503, message } if message == "down"
+        ));
+    }
+
+    #[test]
+    fn test_from_status_and_body_keeps_a_non_json_body_verbatim() {
+        // Cloudflare's IP block is plain text, not JSON.
+        assert!(matches!(
+            ApiError::from_status_and_body(429, "error code: 1015"),
+            ApiError::RateLimit(m) if m == "error code: 1015"
+        ));
     }
 
     // ── is_retriable ────────────────────────────────────────────
