@@ -312,6 +312,11 @@ Pinned rows pace at `quota()`'s sustained rate: 17.9 req/s for a 200 per 10s row
 | 15:39 | `--route activity --pace client --concurrency 16` | 4292 | 35.77 | 600 | 0 | 0 | 0 | **PASS** at the row's 35.9 |
 | 15:46 | `--route user-pnl --pace client --concurrency 16` | 4290 | 35.75 | 430 | 0 | 0 | 0 | **PASS** at the row's 35.9; p99 stayed low, unlike the ramp's 1.4 s at 30 req/s |
 | 15:53 | `--route holders-pnl --pace client --concurrency 16` | 4291 | 35.76 | 445 | 0 | 0 | 0 | **PASS** at the row's 35.9 |
+| 16:00 | `--route all --pace client --concurrency 16` | 10705 | 89.21 | 555 | 0 | 0 | 1 | **PASS** at the general bucket's 89.9 |
+
+No allowance shared across routes was observed at the general bucket's pace: all six
+routes together, from one process through one limiter, ran at the ceiling the
+general 1,000/10s bucket allows a single client, for 120 s, without a 429.
 
 At the plan's default of 4 requests in flight, latency capped the run at 11.47 req/s
 against the row's 17.9, so the limiter never bound and the run did not test the row.
