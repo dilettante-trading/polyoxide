@@ -33,3 +33,22 @@ mockito = { workspace = true }
 tokio = { workspace = true, features = ["macros", "rt-multi-thread", "time"] }
 tracing = { workspace = true }
 tracing-subscriber = { workspace = true }
+
+# `cargo test` and `cargo nextest` build examples but do not run their unit
+# tests unless asked, so the rate-limit harnesses' tests (including the
+# verdict rules that pinned `RateLimiter::data_default`'s v2 rows) would
+# otherwise never run in CI.
+[[example]]
+name = "v2_soak"
+path = "examples/v2_soak/main.rs"
+test = true
+
+[[example]]
+name = "closed_positions_soak"
+path = "examples/closed_positions_soak.rs"
+test = true
+
+[[example]]
+name = "closed_positions_burst_probe"
+path = "examples/closed_positions_burst_probe.rs"
+test = true
