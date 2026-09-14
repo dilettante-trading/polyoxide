@@ -20,6 +20,10 @@ macro_rules! open_enum {
         }
 
         impl $name {
+            /// Every variant this SDK knows, in declaration order. `Other` is not
+            /// among them: it holds whatever else the server sends.
+            pub const ALL: &'static [Self] = &[$( Self::$variant ),+];
+
             /// The wire spelling.
             pub fn as_str(&self) -> &str {
                 match self {
@@ -87,6 +91,9 @@ macro_rules! closed_enum {
         }
 
         impl $name {
+            /// Every variant, in declaration order.
+            pub const ALL: &'static [Self] = &[$( Self::$variant ),+];
+
             /// The wire spelling.
             pub fn as_str(&self) -> &'static str {
                 match self {
