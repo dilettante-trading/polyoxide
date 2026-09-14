@@ -60,6 +60,8 @@ ENDPOINT_CLAIMS = [
     ("docs/specs/perps/openapi.json", "CLAUDE.md", "`perps/`, {n} endpoints on"),
     ("docs/specs/bridge/openapi.yaml", "CLAUDE.md", "(`bridge/`, {n} endpoints)"),
     ("docs/specs/combos-rfq/openapi.yaml", "CLAUDE.md", "(`combos-rfq/`, {n} endpoints)"),
+    ("docs/specs/data-v2/openapi.json", "docs/specs/data-v2/INDEX.md", "{n} endpoints across five tags."),
+    ("docs/specs/data-v2/openapi.json", "CLAUDE.md", "(`data-v2/`, {n} endpoints under"),
 ]
 
 CHANNEL_CLAIMS = [
@@ -119,3 +121,16 @@ def test_claim_template_still_matches_some_count(doc: str, template: str) -> Non
         f"No claim matching {template!r} found in {doc}. The prose was reworded; "
         f"update the template in this file to match."
     )
+
+
+def test_every_watched_spec_has_a_mirror() -> None:
+    """A matrix row whose `vendored` path is mistyped fails its nightly job.
+
+    The failure is loud (the diff script cannot open the file), but it shows
+    up the next morning, not in CI. Checking here catches it before merge.
+    """
+    workflow = yaml.safe_load((REPO / ".github/workflows/nightly-schema.yml").read_text())
+    rows = workflow["jobs"]["check"]["strategy"]["matrix"]["include"]
+    missing = [row["id"] for row in rows if not (REPO / row["vendored"]).is_file()]
+    assert rows, "nightly-schema.yml matrix has no rows; the workflow layout changed"
+    assert not missing, f"matrix rows with no vendored mirror: {missing}"

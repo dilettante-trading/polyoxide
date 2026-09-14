@@ -26,7 +26,10 @@ jobs:
       matrix:
         # One entry per (upstream URL, vendored mirror) pair. REST contracts
         # are OpenAPI under /api-spec/; WebSocket contracts are AsyncAPI at
-        # the docs root. Deliberately absent:
+        # the docs root. The one exception is data-v2, whose spec is served
+        # by the API host itself rather than the docs site — llms.txt links
+        # it there, and nothing under /api-spec/ covers the /v2 routes.
+        # Deliberately absent:
         #   - clob sports AsyncAPI (docs/specs/clob/asyncapi-sports.json):
         #     the mirror is modelled on captured wire frames because
         #     upstream's published contract does not match the wire — diffing
@@ -41,6 +44,7 @@ jobs:
           - { id: clob,           url: "https://docs.polymarket.com/api-spec/clob-openapi.yaml",       vendored: docs/specs/clob/openapi.yaml }
           - { id: gamma,          url: "https://docs.polymarket.com/api-spec/gamma-openapi.yaml",      vendored: docs/specs/gamma/openapi.yaml }
           - { id: data,           url: "https://docs.polymarket.com/api-spec/data-openapi.yaml",       vendored: docs/specs/data/openapi.yaml }
+          - { id: data-v2,        url: "https://data-api.polymarket.com/v2/openapi.json",              vendored: docs/specs/data-v2/openapi.json }
           - { id: relay,          url: "https://docs.polymarket.com/api-spec/relayer-openapi.yaml",    vendored: docs/specs/relay/openapi.yaml }
           - { id: perps,          url: "https://docs.polymarket.com/api-spec/perps-openapi.json",      vendored: docs/specs/perps/openapi.json }
           - { id: bridge,         url: "https://docs.polymarket.com/api-spec/bridge-openapi.yaml",     vendored: docs/specs/bridge/openapi.yaml }

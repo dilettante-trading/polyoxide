@@ -6,6 +6,10 @@ Read-only API for user positions, trades, activity, leaderboard, and market anal
 
 Machine-readable schema: [openapi.yaml](openapi.yaml) (mirror of `https://docs.polymarket.com/api-spec/data-openapi.yaml`).
 
+These are the **v1** routes, which `polyoxide-data` implements. The same host also
+serves Data API v2 under `/v2`, with a different contract; see
+[../data-v2/INDEX.md](../data-v2/INDEX.md). It is not implemented.
+
 ## Auth
 
 No authentication required for any endpoint.

@@ -7,6 +7,7 @@ These specs are sourced from https://docs.polymarket.com and the OpenAPI specs a
 - CLOB: https://docs.polymarket.com/api-spec/clob-openapi.yaml
 - Gamma: https://docs.polymarket.com/api-spec/gamma-openapi.yaml
 - Data: https://docs.polymarket.com/api-spec/data-openapi.yaml
+- Data v2: https://data-api.polymarket.com/v2/openapi.json (served by the API host, not the docs site)
 - Relay: https://docs.polymarket.com/api-spec/relayer-openapi.yaml
 - Perps: https://docs.polymarket.com/api-spec/perps-openapi.json
 - Bridge: https://docs.polymarket.com/api-spec/bridge-openapi.yaml
@@ -27,6 +28,7 @@ Mirrored for reference, **not implemented** by any crate:
 
 | API | Base URL | Description |
 |-----|----------|-------------|
+| [Data v2](data-v2/INDEX.md) | `https://data-api.polymarket.com/v2` | The Data API's second contract: `data` envelope, cursor pagination, snake_case |
 | [Perps](perps/INDEX.md) | `https://api.perpetuals.polymarket.com` | Perpetual futures: accounts, orders, market info |
 | [Bridge](bridge/INDEX.md) | `https://bridge.polymarket.com` | Cross-chain deposits and withdrawals |
 | [Combos RFQ](combos-rfq/INDEX.md) | `https://combos-rfq-api.polymarket.com` | Maker quoting for combinatorial markets |

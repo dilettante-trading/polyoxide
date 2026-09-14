@@ -79,6 +79,7 @@ mirror in `docs/specs/`:
 | Entry | Upstream | Vendored mirror |
 |-------|----------|-----------------|
 | clob, gamma, data, relay | `docs.polymarket.com/api-spec/*-openapi.yaml` | `docs/specs/<crate>/openapi.yaml` |
+| data-v2 | `data-api.polymarket.com/v2/openapi.json` (the API host) | `docs/specs/data-v2/openapi.json` |
 | perps | `api-spec/perps-openapi.json` | `docs/specs/perps/openapi.json` |
 | bridge | `api-spec/bridge-openapi.yaml` | `docs/specs/bridge/openapi.yaml` |
 | combos-rfq | `api-spec/combos-rfq-openapi.yaml` | `docs/specs/combos-rfq/openapi.yaml` |
