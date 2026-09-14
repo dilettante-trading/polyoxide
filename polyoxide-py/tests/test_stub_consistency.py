@@ -18,6 +18,7 @@ It hits no network (it only inspects class objects, never constructs clients).
 from __future__ import annotations
 
 import ast
+import inspect
 import pathlib
 
 import pytest
@@ -100,3 +101,83 @@ def test_stub_matches_compiled_class(class_name: str) -> None:
         + ". Update polyoxide-py/python/polyoxide/__init__.pyi to match the "
         "snake_case getters emitted by the py_type! macro."
     )
+
+
+# ── polyoxide.v2 ──────────────────────────────────────────────────────────────
+#
+# The v2 classes reuse v1 names (`Trade`, `Position`, ...), so they have their
+# own stub and resolve on `polyoxide.v2` only: falling back to the top-level
+# module would compare a v2 stub with the v1 class of the same name.
+
+_V2_STUB_PATH = _STUB_PATH.with_name("v2.pyi")
+_V2_STUB = {
+    node.name: node
+    for node in ast.parse(_V2_STUB_PATH.read_text()).body
+    if isinstance(node, ast.ClassDef)
+}
+
+
+def _v2_methods(class_name: str) -> list[ast.FunctionDef]:
+    """Public stub methods of a v2 class, without its properties."""
+    return [
+        member
+        for member in _V2_STUB[class_name].body
+        if isinstance(member, ast.FunctionDef)
+        and not member.name.startswith("_")
+        and not any(getattr(d, "id", None) == "property" for d in member.decorator_list)
+    ]
+
+
+_V2_METHODS = sorted((c, m.name) for c in _V2_STUB for m in _v2_methods(c))
+
+
+def test_v2_stub_declares_every_v2_export() -> None:
+    assert set(_V2_STUB) == set(polyoxide.v2.__all__)
+
+
+@pytest.mark.parametrize("class_name", sorted(_V2_STUB))
+def test_v2_stub_matches_compiled_class(class_name: str) -> None:
+    stub_members = {
+        member.name
+        for member in _V2_STUB[class_name].body
+        if isinstance(member, ast.FunctionDef) and not member.name.startswith("_")
+    }
+    real_members = _public_members(getattr(polyoxide.v2, class_name))
+    assert stub_members == real_members, (
+        f"polyoxide/v2.pyi `{class_name}` is out of sync with the compiled class"
+    )
+
+
+def _stub_parameters(fn: ast.FunctionDef) -> list[tuple[str, str, bool]]:
+    """(name, positional|keyword, has a default) for each parameter after self."""
+    positional = fn.args.args[1:]
+    first_default = len(positional) - len(fn.args.defaults)
+    return [
+        (arg.arg, "positional", i >= first_default) for i, arg in enumerate(positional)
+    ] + [
+        (arg.arg, "keyword", default is not None)
+        for arg, default in zip(fn.args.kwonlyargs, fn.args.kw_defaults)
+    ]
+
+
+def _compiled_parameters(method: object) -> list[tuple[str, str, bool]]:
+    kinds = {
+        inspect.Parameter.POSITIONAL_OR_KEYWORD: "positional",
+        inspect.Parameter.KEYWORD_ONLY: "keyword",
+    }
+    parameters = list(inspect.signature(method).parameters.values())[1:]
+    return [(p.name, kinds[p.kind], p.default is not p.empty) for p in parameters]
+
+
+@pytest.mark.parametrize(
+    ("class_name", "method"), _V2_METHODS, ids=[f"{c}.{m}" for c, m in _V2_METHODS]
+)
+def test_v2_stub_signature_matches_compiled_method(class_name: str, method: str) -> None:
+    """Parameter names, order, kinds and defaults, which member names alone miss.
+
+    Only v2 is checked: its signatures all come from `#[pyo3(signature = ...)]`,
+    so the compiled `__text_signature__` is exact.
+    """
+    stub = next(m for m in _v2_methods(class_name) if m.name == method)
+    compiled = getattr(getattr(polyoxide.v2, class_name), method)
+    assert _stub_parameters(stub) == _compiled_parameters(compiled)

@@ -69,6 +69,7 @@ from ._polyoxide import (
     MarketVolume,
     HealthResponse,
 )
+from . import v2
 
 __all__ = [
     # Async clients
@@ -140,4 +141,6 @@ __all__ = [
     "LiveVolume",
     "MarketVolume",
     "HealthResponse",
+    # Data API v2 routes and types
+    "v2",
 ]
