@@ -3,6 +3,8 @@ mod builders;
 mod holders;
 mod live_volume;
 mod open_interest;
+#[allow(dead_code)] // Used by the commands ported in the next tasks.
+mod paging;
 mod positions;
 mod traded;
 mod trades;
