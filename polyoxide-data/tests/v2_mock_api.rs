@@ -12,7 +12,10 @@ use futures_util::{StreamExt, TryStreamExt};
 use mockito::{Matcher, Server, ServerGuard};
 use polyoxide_core::{ApiError, RetryConfig};
 use polyoxide_data::{
-    v2::{types::TradeSide, ErrorCode},
+    v2::{
+        types::{PositionAnchor, TradeSide},
+        ErrorCode,
+    },
     DataApi, DataApiError,
 };
 
@@ -383,4 +386,75 @@ async fn a_v2_rate_limit_carries_retry_after() {
     assert!(matches!(&err, DataApiError::V2(e) if e.code == ErrorCode::RateLimited));
     assert_eq!(err.retry_after(), Some(Duration::from_secs(7)));
     assert!(err.is_retriable());
+}
+
+// ── Anchors ──────────────────────────────────────────────────────────
+
+/// Query pairs of the single request `fire` sends to `path`.
+async fn pairs_sent<F, Fut>(path: &str, fire: F) -> Vec<(String, String)>
+where
+    F: FnOnce(DataApi) -> Fut,
+    Fut: std::future::Future<Output = ()>,
+{
+    let mut server = Server::new_async().await;
+    let seen = Arc::new(Mutex::new(Vec::<String>::new()));
+    let sink = Arc::clone(&seen);
+    server
+        .mock("GET", path)
+        .match_query(Matcher::Any)
+        .match_request(move |request| {
+            sink.lock()
+                .unwrap()
+                .push(request.path_and_query().to_owned());
+            true
+        })
+        .with_status(200)
+        .with_body("{}")
+        .create_async()
+        .await;
+    fire(client(&server)).await;
+    let seen = seen.lock().unwrap();
+    url::Url::parse(&format!("http://mock{}", seen.last().expect("one request")))
+        .unwrap()
+        .query_pairs()
+        .map(|(k, v)| (k.into_owned(), v.into_owned()))
+        .collect()
+}
+
+fn pairs(expected: &[(&str, &str)]) -> Vec<(String, String)> {
+    expected
+        .iter()
+        .map(|(k, v)| ((*k).into(), (*v).into()))
+        .collect()
+}
+
+#[tokio::test]
+async fn each_position_anchor_sends_only_its_own_keys() {
+    let user = pairs_sent("/v2/positions", |data| async move {
+        let _ = data.v2().positions("0xuser").send().await;
+    })
+    .await;
+    let market = pairs_sent("/v2/positions", |data| async move {
+        let _ = data
+            .v2()
+            .positions(PositionAnchor::Condition("0xcond".into()))
+            .send()
+            .await;
+    })
+    .await;
+    let both = pairs_sent("/v2/positions", |data| async move {
+        let _ = data
+            .v2()
+            .positions(PositionAnchor::UserInConditions {
+                user: "0xuser".into(),
+                conditions: vec!["0xa".into(), "0xb".into()],
+            })
+            .send()
+            .await;
+    })
+    .await;
+
+    assert_eq!(user, pairs(&[("user", "0xuser")]));
+    assert_eq!(market, pairs(&[("condition", "0xcond")]));
+    assert_eq!(both, pairs(&[("user", "0xuser"), ("condition", "0xa,0xb")]));
 }

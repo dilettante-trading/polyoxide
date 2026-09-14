@@ -343,6 +343,78 @@ const ROUTES: &[(&str, Fire)] = &[
                 .await;
         })
     }),
+    ("/v2/approvals", |data| {
+        Box::pin(async move {
+            let _ = data.v2().approvals("0xuser").send().await;
+        })
+    }),
+    ("/v2/positions", |data| {
+        Box::pin(async move {
+            let _ = data
+                .v2()
+                .positions(PositionAnchor::UserInConditions {
+                    user: "0xuser".into(),
+                    conditions: vec!["0xcond".into()],
+                })
+                .status(PositionStatus::Closed)
+                .event_ids([1])
+                .title("bitcoin")
+                .filter_type(FilterType::Tokens)
+                .filter_amount(1.0)
+                .include_archived(true)
+                .sort_by(PositionSortBy::RealizedPnl)
+                .sort_direction(SortDirection::Asc)
+                .start(1)
+                .end(2)
+                .limit(10)
+                .cursor("cursor")
+                .send()
+                .await;
+        })
+    }),
+    ("/v2/positions/combos", |data| {
+        Box::pin(async move {
+            let _ = data
+                .v2()
+                .combo_positions("0xuser")
+                .conditions(["0xcond"])
+                .statuses([ComboPositionStatus::Open, ComboPositionStatus::Partial])
+                .sort_by(ComboPositionSortBy::Updated)
+                .sort_direction(SortDirection::Asc)
+                .updated_after(1)
+                .updated_before(2)
+                .limit(10)
+                .cursor("cursor")
+                .send()
+                .await;
+        })
+    }),
+    ("/v2/user-pnl", |data| {
+        Box::pin(async move {
+            let _ = data
+                .v2()
+                .user_pnl("0xuser")
+                .interval(PnlInterval::OneWeek)
+                .fidelity(PnlFidelity::OneDay)
+                .send()
+                .await;
+        })
+    }),
+    ("/v2/user-volume", |data| {
+        Box::pin(async move {
+            let _ = data.v2().user_volume("0xuser").start(1).end(2).send().await;
+        })
+    }),
+    ("/v2/value", |data| {
+        Box::pin(async move {
+            let _ = data
+                .v2()
+                .value("0xuser")
+                .conditions(["0xcond"])
+                .send()
+                .await;
+        })
+    }),
 ];
 
 fn documented_parameters(path: &str) -> BTreeSet<String> {
