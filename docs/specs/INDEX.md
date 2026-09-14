@@ -67,5 +67,5 @@ entirely.
 | [clob/asyncapi-user.json](clob/asyncapi-user.json) | User channel (6 messages) |
 | [clob/asyncapi-sports.json](clob/asyncapi-sports.json) | Sports channel (3 messages) |
 | [rtds/asyncapi-live-data.json](rtds/asyncapi-live-data.json) | RTDS crypto prices (4 topics) — **observed, not published upstream**; see [rtds/OBSERVED.md](rtds/OBSERVED.md) |
-| [perps/asyncapi.json](perps/asyncapi.json) | Perps WebSocket (25 channels) — not implemented |
+| [perps/asyncapi.json](perps/asyncapi.json) | Perps WebSocket (27 channels) — not implemented |
 | [combos-rfq/asyncapi.json](combos-rfq/asyncapi.json) | RFQ quoter gateway — not implemented |

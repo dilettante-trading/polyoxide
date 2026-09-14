@@ -474,12 +474,12 @@
               },
               "data": {
                 "type": "array",
-                "description": "Array of cancel results",
+                "description": "Array of cancel results. A request-level failure is returned as\na single rejected item.\n",
                 "items": {
                   "oneOf": [
                     {
                       "type": "object",
-                      "required": ["status", "oid"],
+                      "required": ["status", "oid", "ts"],
                       "properties": {
                         "status": {
                           "type": "string",
@@ -497,12 +497,17 @@
                           "maxLength": 32,
                           "pattern": "^[0-9a-f]{32}$",
                           "example": "550e8400e29b41d4a716446655440000"
+                        },
+                        "ts": {
+                          "type": "integer",
+                          "description": "The time when the exchange decided this cancellation outcome, in Unix milliseconds. Sequenced outcomes use the exchange event time. Rejections created before sequencing use the gateway’s decision time. This is not the client request timestamp.",
+                          "example": 1767225600000
                         }
                       }
                     },
                     {
                       "type": "object",
-                      "required": ["status", "error"],
+                      "required": ["status", "error", "ts"],
                       "properties": {
                         "status": {
                           "type": "string",
@@ -525,6 +530,11 @@
                           "type": "string",
                           "description": "Error identifier. For domain rejections and transport errors (`401`/`404`/`429`/`500`) this is a stable, machine-readable snake_case identifier that is part of the API contract and safe to branch on, e.g. `insufficient_margin`, `insufficient_balance`, `order_not_found`, `reduce_only_invalid`, `price_outside_bounds`, `position_not_found`, `invalid_margin_mode`, `invalid_margin_amount`, `margin_below_required_initial`, `account_liquidating`, `unauthorized`, `not_found`. For `400` it is a human-readable validation detail whose wording may change. See the Error handling guide for the domain identifiers. (Post-only / Fill-or-Kill outcomes are order statuses such as `post_only_rejected`, not rejections.)",
                           "example": "insufficient_margin"
+                        },
+                        "ts": {
+                          "type": "integer",
+                          "description": "The time when the exchange decided this cancellation outcome, in Unix milliseconds. Sequenced outcomes use the exchange event time. Rejections created before sequencing use the gateway’s decision time. This is not the client request timestamp.",
+                          "example": 1767225600000
                         }
                       }
                     }
@@ -542,11 +552,26 @@
                 "data": [
                   {
                     "status": "ok",
-                    "oid": 1234567890
+                    "oid": 1234567890,
+                    "ts": 1767225600100
                   },
                   {
                     "status": "ok",
-                    "oid": 1234567891
+                    "oid": 1234567891,
+                    "ts": 1767225600101
+                  }
+                ]
+              }
+            },
+            {
+              "name": "Request rejected",
+              "payload": {
+                "id": 3,
+                "data": [
+                  {
+                    "status": "err",
+                    "error": "message_rate_limited",
+                    "ts": 1767225600102
                   }
                 ]
               }
@@ -656,12 +681,12 @@
               },
               "data": {
                 "type": "array",
-                "description": "Array of cancel results",
+                "description": "Array of cancel results. A request-level failure is returned as\na single rejected item.\n",
                 "items": {
                   "oneOf": [
                     {
                       "type": "object",
-                      "required": ["status", "oid"],
+                      "required": ["status", "oid", "ts"],
                       "properties": {
                         "status": {
                           "type": "string",
@@ -679,12 +704,17 @@
                           "maxLength": 32,
                           "pattern": "^[0-9a-f]{32}$",
                           "example": "550e8400e29b41d4a716446655440000"
+                        },
+                        "ts": {
+                          "type": "integer",
+                          "description": "The time when the exchange decided this cancellation outcome, in Unix milliseconds. Sequenced outcomes use the exchange event time. Rejections created before sequencing use the gateway’s decision time. This is not the client request timestamp.",
+                          "example": 1767225600000
                         }
                       }
                     },
                     {
                       "type": "object",
-                      "required": ["status", "error"],
+                      "required": ["status", "error", "ts"],
                       "properties": {
                         "status": {
                           "type": "string",
@@ -707,6 +737,11 @@
                           "type": "string",
                           "description": "Error identifier. For domain rejections and transport errors (`401`/`404`/`429`/`500`) this is a stable, machine-readable snake_case identifier that is part of the API contract and safe to branch on, e.g. `insufficient_margin`, `insufficient_balance`, `order_not_found`, `reduce_only_invalid`, `price_outside_bounds`, `position_not_found`, `invalid_margin_mode`, `invalid_margin_amount`, `margin_below_required_initial`, `account_liquidating`, `unauthorized`, `not_found`. For `400` it is a human-readable validation detail whose wording may change. See the Error handling guide for the domain identifiers. (Post-only / Fill-or-Kill outcomes are order statuses such as `post_only_rejected`, not rejections.)",
                           "example": "insufficient_margin"
+                        },
+                        "ts": {
+                          "type": "integer",
+                          "description": "The time when the exchange decided this cancellation outcome, in Unix milliseconds. Sequenced outcomes use the exchange event time. Rejections created before sequencing use the gateway’s decision time. This is not the client request timestamp.",
+                          "example": 1767225600000
                         }
                       }
                     }
@@ -725,12 +760,27 @@
                   {
                     "status": "ok",
                     "oid": 1234567890,
-                    "coid": "550e8400e29b41d4a716446655440000"
+                    "coid": "550e8400e29b41d4a716446655440000",
+                    "ts": 1767225600100
                   },
                   {
                     "status": "ok",
                     "oid": 1234567891,
-                    "coid": "550e8400e29b41d4a716446655440001"
+                    "coid": "550e8400e29b41d4a716446655440001",
+                    "ts": 1767225600101
+                  }
+                ]
+              }
+            },
+            {
+              "name": "Request rejected",
+              "payload": {
+                "id": 3,
+                "data": [
+                  {
+                    "status": "err",
+                    "error": "invalid_request",
+                    "ts": 1767225600102
                   }
                 ]
               }
@@ -2575,7 +2625,7 @@
                 "description": "Klines subscription in format \"klines::{iid}::{interval}\" (e.g., \"klines::1::1m\")",
                 "items": {
                   "type": "string",
-                  "pattern": "^klines::\\d+::(1m|5m|15m|30m|1h|4h|6h|12h|1d|1w)$"
+                  "pattern": "^klines::\\d+::(1s|1m|5m|15m|30m|1h|4h|6h|12h|1d|1w)$"
                 },
                 "example": ["klines::1::1m"]
               }
@@ -2673,7 +2723,7 @@
                 "description": "Klines subscription in format \"klines::{iid}::{interval}\" (e.g., \"klines::1::1m\")",
                 "items": {
                   "type": "string",
-                  "pattern": "^klines::\\d+::(1m|5m|15m|30m|1h|4h|6h|12h|1d|1w)$"
+                  "pattern": "^klines::\\d+::(1s|1m|5m|15m|30m|1h|4h|6h|12h|1d|1w)$"
                 },
                 "example": ["klines::1::1m"]
               }
@@ -6653,6 +6703,614 @@
           }
         }
       }
+    },
+    "modifyOrders": {
+      "address": "/v1/ws",
+      "title": "Modify Orders",
+      "summary": "Modify existing orders by exchange order ID.",
+      "description": "Modify existing orders by exchange order ID. Only price and total quantity\nare mutable.\nRequires proxy signature, see [proxy signing](/http/signing#2-proxy-signing).\n\n<Badge color=\"gray\" size=\"md\">Action Weight: **1 / order**</Badge>\n",
+      "messages": {
+        "Request": {
+          "name": "ModifyOrdersRequest",
+          "title": "Modify Orders Request",
+          "summary": "Client submits a signed order modification request",
+          "contentType": "application/json",
+          "payload": {
+            "type": "object",
+            "title": "Base Request",
+            "properties": {
+              "id": {
+                "type": "integer",
+                "description": "Correlation ID for request-response matching"
+              },
+              "req": {
+                "type": "string",
+                "description": "Request type",
+                "enum": ["post", "sub", "unsub"]
+              },
+              "op": {
+                "type": "object",
+                "required": ["type", "args"],
+                "properties": {
+                  "type": {
+                    "type": "string",
+                    "enum": ["modifyOrders"]
+                  },
+                  "args": {
+                    "type": "array",
+                    "minItems": 1,
+                    "description": "Array of orders to modify",
+                    "items": {
+                      "type": "object",
+                      "additionalProperties": false,
+                      "required": ["oid", "p", "qty"],
+                      "properties": {
+                        "oid": {
+                          "type": "integer",
+                          "description": "Order ID",
+                          "example": 1234567890
+                        },
+                        "p": {
+                          "type": "string",
+                          "description": "Price",
+                          "example": "100.00"
+                        },
+                        "qty": {
+                          "type": "string",
+                          "description": "Quantity in no. of contracts",
+                          "example": "10.00"
+                        }
+                      }
+                    }
+                  }
+                }
+              },
+              "sig": {
+                "type": "string",
+                "description": "Signature in hex format",
+                "example": "0x1234567890..."
+              },
+              "salt": {
+                "type": "integer",
+                "description": "Salt",
+                "example": 1234567890
+              },
+              "ts": {
+                "type": "integer",
+                "description": "Request timestamp. Unix milliseconds for most operations; Unix seconds for withdrawals (must match the on-chain EIP-712 struct verified against block.timestamp).",
+                "example": 1767225600000
+              },
+              "exp": {
+                "type": "integer",
+                "description": "Command expiry timestamp in Unix milliseconds. If provided, it must be in the future and within the gateway's default command timeout. It can shorten request validity but cannot extend it. This is not an order auto-cancel time.",
+                "example": 1767225600000
+              }
+            },
+            "required": ["req", "op", "sig", "salt", "ts"]
+          },
+          "examples": [
+            {
+              "name": "Modify by order ID",
+              "payload": {
+                "id": 2,
+                "req": "post",
+                "op": {
+                  "type": "modifyOrders",
+                  "args": [
+                    {
+                      "oid": 1234567890,
+                      "p": "100.25",
+                      "qty": "8"
+                    }
+                  ]
+                },
+                "sig": "0x1234567890...",
+                "salt": 1234567890,
+                "ts": 1767225600000,
+                "exp": 1767225660000
+              }
+            }
+          ]
+        },
+        "Response": {
+          "name": "ModifyOrdersResponse",
+          "title": "Modify Orders Response",
+          "summary": "Server responds with modify result for each order",
+          "contentType": "application/json",
+          "payload": {
+            "type": "object",
+            "title": "Base Response",
+            "properties": {
+              "id": {
+                "type": "integer",
+                "description": "Correlation ID for request-response matching"
+              },
+              "data": {
+                "type": "array",
+                "description": "Array of modify results. A request-level failure is returned as\na single rejected item.\n",
+                "items": {
+                  "oneOf": [
+                    {
+                      "type": "object",
+                      "required": ["status", "order"],
+                      "properties": {
+                        "status": {
+                          "type": "string",
+                          "enum": ["ok"]
+                        },
+                        "order": {
+                          "type": "object",
+                          "required": [
+                            "oid",
+                            "iid",
+                            "buy",
+                            "p",
+                            "qty",
+                            "tif",
+                            "po",
+                            "ro",
+                            "status",
+                            "rest",
+                            "fill",
+                            "cts",
+                            "uts"
+                          ],
+                          "properties": {
+                            "oid": {
+                              "type": "integer",
+                              "description": "Order ID",
+                              "example": 1234567890
+                            },
+                            "iid": {
+                              "type": "integer",
+                              "description": "Instrument ID",
+                              "example": 1
+                            },
+                            "buy": {
+                              "type": "boolean",
+                              "description": "Is buy",
+                              "example": true
+                            },
+                            "p": {
+                              "type": "string",
+                              "description": "Price",
+                              "example": "100.00"
+                            },
+                            "qty": {
+                              "type": "string",
+                              "description": "Quantity in no. of contracts",
+                              "example": "10.00"
+                            },
+                            "tif": {
+                              "type": "string",
+                              "description": "Time in force",
+                              "enum": ["gtc", "ioc", "fok"]
+                            },
+                            "po": {
+                              "type": "boolean",
+                              "description": "Post only",
+                              "default": false,
+                              "example": false
+                            },
+                            "ro": {
+                              "type": "boolean",
+                              "description": "Reduce only",
+                              "example": false,
+                              "default": false
+                            },
+                            "rest": {
+                              "type": "string",
+                              "description": "Resting quantity",
+                              "example": "9.00"
+                            },
+                            "fill": {
+                              "type": "string",
+                              "description": "Filled quantity",
+                              "example": "1.00"
+                            },
+                            "cts": {
+                              "type": "integer",
+                              "description": "Create timestamp in milliseconds",
+                              "example": 1767225600000
+                            },
+                            "uts": {
+                              "type": "integer",
+                              "description": "Update timestamp in milliseconds",
+                              "example": 1767225600000
+                            },
+                            "status": {
+                              "type": "string",
+                              "description": "Order status",
+                              "example": "open"
+                            },
+                            "coid": {
+                              "type": "string",
+                              "description": "Client order ID",
+                              "minLength": 32,
+                              "maxLength": 32,
+                              "pattern": "^[0-9a-f]{32}$",
+                              "example": "550e8400e29b41d4a716446655440000"
+                            }
+                          }
+                        }
+                      }
+                    },
+                    {
+                      "type": "object",
+                      "required": ["status", "error"],
+                      "properties": {
+                        "status": {
+                          "type": "string",
+                          "enum": ["err"]
+                        },
+                        "oid": {
+                          "type": "integer",
+                          "description": "Order ID",
+                          "example": 1234567890
+                        },
+                        "coid": {
+                          "type": "string",
+                          "description": "Client order ID",
+                          "minLength": 32,
+                          "maxLength": 32,
+                          "pattern": "^[0-9a-f]{32}$",
+                          "example": "550e8400e29b41d4a716446655440000"
+                        },
+                        "error": {
+                          "type": "string",
+                          "description": "Error identifier. For domain rejections and transport errors (`401`/`404`/`429`/`500`) this is a stable, machine-readable snake_case identifier that is part of the API contract and safe to branch on, e.g. `insufficient_margin`, `insufficient_balance`, `order_not_found`, `reduce_only_invalid`, `price_outside_bounds`, `position_not_found`, `invalid_margin_mode`, `invalid_margin_amount`, `margin_below_required_initial`, `account_liquidating`, `unauthorized`, `not_found`. For `400` it is a human-readable validation detail whose wording may change. See the Error handling guide for the domain identifiers. (Post-only / Fill-or-Kill outcomes are order statuses such as `post_only_rejected`, not rejections.)",
+                          "example": "insufficient_margin"
+                        }
+                      }
+                    }
+                  ]
+                }
+              }
+            },
+            "required": ["data"]
+          },
+          "examples": [
+            {
+              "name": "Order modified",
+              "payload": {
+                "id": 2,
+                "data": [
+                  {
+                    "status": "ok",
+                    "order": {
+                      "oid": 1234567890,
+                      "iid": 1,
+                      "buy": true,
+                      "p": "100.25",
+                      "qty": "8",
+                      "tif": "gtc",
+                      "po": false,
+                      "ro": false,
+                      "rest": "8",
+                      "fill": "0",
+                      "status": "open",
+                      "cts": 1767225600000,
+                      "uts": 1767225601000
+                    }
+                  }
+                ]
+              }
+            },
+            {
+              "name": "Request rejected",
+              "payload": {
+                "id": 2,
+                "data": [
+                  {
+                    "status": "err",
+                    "error": "message_rate_limited"
+                  }
+                ]
+              }
+            }
+          ]
+        }
+      }
+    },
+    "modifyOrdersCOID": {
+      "address": "/v1/ws",
+      "title": "Modify Orders COID",
+      "summary": "Modify existing orders by client order ID.",
+      "description": "Modify existing orders by client order ID. Only price and total quantity are\nmutable.\nRequires proxy signature, see [proxy signing](/http/signing#2-proxy-signing).\n\n<Badge color=\"gray\" size=\"md\">Action Weight: **1 / order**</Badge>\n",
+      "messages": {
+        "Request": {
+          "name": "ModifyOrdersCoidRequest",
+          "title": "Modify Orders COID Request",
+          "summary": "Client submits signed order modifications by client order ID",
+          "contentType": "application/json",
+          "payload": {
+            "type": "object",
+            "title": "Base Request",
+            "properties": {
+              "id": {
+                "type": "integer",
+                "description": "Correlation ID for request-response matching"
+              },
+              "req": {
+                "type": "string",
+                "description": "Request type",
+                "enum": ["post", "sub", "unsub"]
+              },
+              "op": {
+                "type": "object",
+                "required": ["type", "args"],
+                "properties": {
+                  "type": {
+                    "type": "string",
+                    "enum": ["modifyOrdersCOID"]
+                  },
+                  "args": {
+                    "type": "array",
+                    "minItems": 1,
+                    "description": "Array of orders to modify by client order ID",
+                    "items": {
+                      "type": "object",
+                      "additionalProperties": false,
+                      "required": ["coid", "p", "qty"],
+                      "properties": {
+                        "coid": {
+                          "type": "string",
+                          "description": "Client order ID",
+                          "minLength": 32,
+                          "maxLength": 32,
+                          "pattern": "^[0-9a-f]{32}$",
+                          "example": "550e8400e29b41d4a716446655440000"
+                        },
+                        "p": {
+                          "type": "string",
+                          "description": "Price",
+                          "example": "100.00"
+                        },
+                        "qty": {
+                          "type": "string",
+                          "description": "Quantity in no. of contracts",
+                          "example": "10.00"
+                        }
+                      }
+                    }
+                  }
+                }
+              },
+              "sig": {
+                "type": "string",
+                "description": "Signature in hex format",
+                "example": "0x1234567890..."
+              },
+              "salt": {
+                "type": "integer",
+                "description": "Salt",
+                "example": 1234567890
+              },
+              "ts": {
+                "type": "integer",
+                "description": "Request timestamp. Unix milliseconds for most operations; Unix seconds for withdrawals (must match the on-chain EIP-712 struct verified against block.timestamp).",
+                "example": 1767225600000
+              },
+              "exp": {
+                "type": "integer",
+                "description": "Command expiry timestamp in Unix milliseconds. If provided, it must be in the future and within the gateway's default command timeout. It can shorten request validity but cannot extend it. This is not an order auto-cancel time.",
+                "example": 1767225600000
+              }
+            },
+            "required": ["req", "op", "sig", "salt", "ts"]
+          },
+          "examples": [
+            {
+              "name": "Modify by client order ID",
+              "payload": {
+                "id": 2,
+                "req": "post",
+                "op": {
+                  "type": "modifyOrdersCOID",
+                  "args": [
+                    {
+                      "coid": "550e8400e29b41d4a716446655440000",
+                      "p": "100.25",
+                      "qty": "8"
+                    }
+                  ]
+                },
+                "sig": "0x1234567890...",
+                "salt": 1234567890,
+                "ts": 1767225600000,
+                "exp": 1767225660000
+              }
+            }
+          ]
+        },
+        "Response": {
+          "name": "ModifyOrdersCoidResponse",
+          "title": "Modify Orders COID Response",
+          "summary": "Server responds with modify result for each client order ID",
+          "contentType": "application/json",
+          "payload": {
+            "type": "object",
+            "title": "Base Response",
+            "properties": {
+              "id": {
+                "type": "integer",
+                "description": "Correlation ID for request-response matching"
+              },
+              "data": {
+                "type": "array",
+                "description": "Array of modify results",
+                "items": {
+                  "oneOf": [
+                    {
+                      "type": "object",
+                      "required": ["status", "order"],
+                      "properties": {
+                        "status": {
+                          "type": "string",
+                          "enum": ["ok"]
+                        },
+                        "order": {
+                          "type": "object",
+                          "required": [
+                            "oid",
+                            "iid",
+                            "buy",
+                            "p",
+                            "qty",
+                            "tif",
+                            "po",
+                            "ro",
+                            "status",
+                            "rest",
+                            "fill",
+                            "cts",
+                            "uts"
+                          ],
+                          "properties": {
+                            "oid": {
+                              "type": "integer",
+                              "description": "Order ID",
+                              "example": 1234567890
+                            },
+                            "iid": {
+                              "type": "integer",
+                              "description": "Instrument ID",
+                              "example": 1
+                            },
+                            "buy": {
+                              "type": "boolean",
+                              "description": "Is buy",
+                              "example": true
+                            },
+                            "p": {
+                              "type": "string",
+                              "description": "Price",
+                              "example": "100.00"
+                            },
+                            "qty": {
+                              "type": "string",
+                              "description": "Quantity in no. of contracts",
+                              "example": "10.00"
+                            },
+                            "tif": {
+                              "type": "string",
+                              "description": "Time in force",
+                              "enum": ["gtc", "ioc", "fok"]
+                            },
+                            "po": {
+                              "type": "boolean",
+                              "description": "Post only",
+                              "default": false,
+                              "example": false
+                            },
+                            "ro": {
+                              "type": "boolean",
+                              "description": "Reduce only",
+                              "example": false,
+                              "default": false
+                            },
+                            "rest": {
+                              "type": "string",
+                              "description": "Resting quantity",
+                              "example": "9.00"
+                            },
+                            "fill": {
+                              "type": "string",
+                              "description": "Filled quantity",
+                              "example": "1.00"
+                            },
+                            "cts": {
+                              "type": "integer",
+                              "description": "Create timestamp in milliseconds",
+                              "example": 1767225600000
+                            },
+                            "uts": {
+                              "type": "integer",
+                              "description": "Update timestamp in milliseconds",
+                              "example": 1767225600000
+                            },
+                            "status": {
+                              "type": "string",
+                              "description": "Order status",
+                              "example": "open"
+                            },
+                            "coid": {
+                              "type": "string",
+                              "description": "Client order ID",
+                              "minLength": 32,
+                              "maxLength": 32,
+                              "pattern": "^[0-9a-f]{32}$",
+                              "example": "550e8400e29b41d4a716446655440000"
+                            }
+                          }
+                        }
+                      }
+                    },
+                    {
+                      "type": "object",
+                      "required": ["status", "error"],
+                      "properties": {
+                        "status": {
+                          "type": "string",
+                          "enum": ["err"]
+                        },
+                        "oid": {
+                          "type": "integer",
+                          "description": "Order ID",
+                          "example": 1234567890
+                        },
+                        "coid": {
+                          "type": "string",
+                          "description": "Client order ID",
+                          "minLength": 32,
+                          "maxLength": 32,
+                          "pattern": "^[0-9a-f]{32}$",
+                          "example": "550e8400e29b41d4a716446655440000"
+                        },
+                        "error": {
+                          "type": "string",
+                          "description": "Error identifier. For domain rejections and transport errors (`401`/`404`/`429`/`500`) this is a stable, machine-readable snake_case identifier that is part of the API contract and safe to branch on, e.g. `insufficient_margin`, `insufficient_balance`, `order_not_found`, `reduce_only_invalid`, `price_outside_bounds`, `position_not_found`, `invalid_margin_mode`, `invalid_margin_amount`, `margin_below_required_initial`, `account_liquidating`, `unauthorized`, `not_found`. For `400` it is a human-readable validation detail whose wording may change. See the Error handling guide for the domain identifiers. (Post-only / Fill-or-Kill outcomes are order statuses such as `post_only_rejected`, not rejections.)",
+                          "example": "insufficient_margin"
+                        }
+                      }
+                    }
+                  ]
+                }
+              }
+            },
+            "required": ["data"]
+          },
+          "examples": [
+            {
+              "name": "Order modified",
+              "payload": {
+                "id": 2,
+                "data": [
+                  {
+                    "status": "ok",
+                    "order": {
+                      "oid": 1234567890,
+                      "coid": "550e8400e29b41d4a716446655440000",
+                      "iid": 1,
+                      "buy": true,
+                      "p": "100.25",
+                      "qty": "8",
+                      "tif": "gtc",
+                      "po": false,
+                      "ro": false,
+                      "rest": "8",
+                      "fill": "0",
+                      "status": "open",
+                      "cts": 1767225600000,
+                      "uts": 1767225601000
+                    }
+                  }
+                ]
+              }
+            }
+          ]
+        }
+      }
     }
   },
   "operations": {
@@ -7793,6 +8451,54 @@
       "messages": [
         {
           "$ref": "#/channels/notifications/messages/Update"
+        }
+      ]
+    },
+    "ModifyOrdersCOIDReceive": {
+      "action": "send",
+      "channel": {
+        "$ref": "#/channels/modifyOrdersCOID"
+      },
+      "summary": "Modify by client order ID response",
+      "messages": [
+        {
+          "$ref": "#/channels/modifyOrdersCOID/messages/Response"
+        }
+      ]
+    },
+    "ModifyOrdersCOIDSend": {
+      "action": "receive",
+      "channel": {
+        "$ref": "#/channels/modifyOrdersCOID"
+      },
+      "summary": "Modify existing orders by client order ID",
+      "messages": [
+        {
+          "$ref": "#/channels/modifyOrdersCOID/messages/Request"
+        }
+      ]
+    },
+    "ModifyOrdersReceive": {
+      "action": "send",
+      "channel": {
+        "$ref": "#/channels/modifyOrders"
+      },
+      "summary": "Modify order response",
+      "messages": [
+        {
+          "$ref": "#/channels/modifyOrders/messages/Response"
+        }
+      ]
+    },
+    "ModifyOrdersSend": {
+      "action": "receive",
+      "channel": {
+        "$ref": "#/channels/modifyOrders"
+      },
+      "summary": "Modify existing orders",
+      "messages": [
+        {
+          "$ref": "#/channels/modifyOrders/messages/Request"
         }
       ]
     }

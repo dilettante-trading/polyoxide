@@ -293,6 +293,65 @@
         }
       }
     },
+    "/v1/info/exchange-stats": {
+      "get": {
+        "operationId": "getExchangeStatistics",
+        "summary": "Get Exchange Statistics",
+        "security": [],
+        "x-mint": {
+          "content": "<Badge color=\"gray\" size=\"md\">Request Weight: **10**</Badge>\n<br/>\n<Badge color=\"gray\" size=\"md\">Cached 5m — a request served from cache costs **1**</Badge>\n"
+        },
+        "description": "Get aggregate statistics for all pUSD-quoted Polymarket perpetual markets.\nThe time window is half-open: trades at `start_timestamp` are included and trades at\n`end_timestamp` are excluded. The maximum window is 31 days.\nOpen interest is the one-sided USD notional from the latest complete sample before\n`end_timestamp`; its value and timestamp are null when no complete sample is available.\nFees are gross positive maker and taker trading fees. Rebates, incentives, and referral\npayments are excluded.\n",
+        "parameters": [
+          {
+            "name": "start_timestamp",
+            "in": "query",
+            "required": true,
+            "schema": {
+              "$ref": "#/components/schemas/start_timestamp"
+            }
+          },
+          {
+            "name": "end_timestamp",
+            "in": "query",
+            "required": true,
+            "schema": {
+              "$ref": "#/components/schemas/end_timestamp"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Exchange statistics response.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ExchangeStatistics"
+                }
+              }
+            }
+          },
+          "400": {
+            "$ref": "#/components/responses/Error400Response"
+          },
+          "408": {
+            "$ref": "#/components/responses/Error408Response"
+          },
+          "413": {
+            "$ref": "#/components/responses/Error413Response"
+          },
+          "429": {
+            "$ref": "#/components/responses/Error429Response"
+          },
+          "500": {
+            "$ref": "#/components/responses/Error500Response"
+          },
+          "503": {
+            "$ref": "#/components/responses/Error503Response"
+          }
+        }
+      }
+    },
     "/v1/info/klines": {
       "get": {
         "operationId": "getKlines",
@@ -696,6 +755,82 @@
         }
       }
     },
+    "/v1/info/position-fills": {
+      "get": {
+        "operationId": "getPublicPositionFills",
+        "summary": "Get Current Position Fills",
+        "security": [],
+        "x-mint": {
+          "content": "<Badge color=\"gray\" size=\"md\">Request Weight: **10**</Badge>\n<br/>\n<Badge color=\"gray\" size=\"md\">Cached 2s — a request served from cache costs **1**</Badge>"
+        },
+        "description": "Get every fill in a registered account's current open position cycle for\none instrument. A cycle begins when the position opens from flat or flips\ndirection. For a flip, every fill from the flipping engine event belongs\nto the new cycle so a fill is never split between cycles.\n\nReturns an empty page when the account has no open position for the\ninstrument. Maximum of 100 entries returned per request. Results are\nordered by time; use `sort` to choose newest-first (`desc`, default) or\noldest-first (`asc`). To page through more than 100 fills, pass the opaque\n`cursor` returned by the previous page and keep `sort` unchanged. Each page\nverifies that the cursor still describes the account's current position\ncycle. If that position changes while pagination is in progress, the\ncursor returns `400` and pagination must restart from the first page.\n\nCycle discovery for a position inherited from a gateway snapshot is\nlimited to 250,000 account-history rows. A cycle older than that bound\nreturns `413` rather than allowing a public request to run an unbounded\nClickHouse scan. Positions opened or flipped after gateway startup carry\ntheir cycle boundary directly and do not use this discovery scan.\n",
+        "parameters": [
+          {
+            "name": "address",
+            "in": "query",
+            "required": true,
+            "schema": {
+              "$ref": "#/components/schemas/address"
+            }
+          },
+          {
+            "name": "instrument_id",
+            "in": "query",
+            "required": true,
+            "schema": {
+              "type": "integer",
+              "format": "int64",
+              "minimum": 0,
+              "maximum": 4294967295,
+              "description": "Instrument ID"
+            }
+          },
+          {
+            "name": "cursor",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "$ref": "#/components/schemas/fills_cursor"
+            }
+          },
+          {
+            "name": "sort",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "$ref": "#/components/schemas/sort"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Current position fills response.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AccountTrades"
+                }
+              }
+            }
+          },
+          "400": {
+            "$ref": "#/components/responses/Error400Response"
+          },
+          "408": {
+            "$ref": "#/components/responses/Error408Response"
+          },
+          "413": {
+            "$ref": "#/components/responses/Error413Response"
+          },
+          "429": {
+            "$ref": "#/components/responses/Error429Response"
+          },
+          "500": {
+            "$ref": "#/components/responses/Error500Response"
+          }
+        }
+      }
+    },
     "/v1/info/funding": {
       "get": {
         "operationId": "getFundingHistory",
@@ -952,6 +1087,52 @@
             "$ref": "#/components/responses/Error500Response"
           }
         }
+      },
+      "patch": {
+        "operationId": "modifyOrders",
+        "summary": "Modify Orders",
+        "security": [],
+        "x-mint": {
+          "content": "<Badge color=\"gray\" size=\"md\">Request Weight: **1 + floor(n / 20)**</Badge> <Badge color=\"gray\" size=\"md\">Action Weight: **1 / order**</Badge>"
+        },
+        "description": "Modify the price and total quantity of existing orders by exchange order ID.\nRequires proxy signature, see [proxy signing](/http/signing#2-proxy-signing).\n",
+        "requestBody": {
+          "description": "Modify request.",
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ModifyRequest"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "One modify result per requested order, in request order.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "$ref": "#/components/schemas/ModifyResponse"
+                  }
+                }
+              }
+            }
+          },
+          "400": {
+            "$ref": "#/components/responses/BatchError400Response"
+          },
+          "404": {
+            "$ref": "#/components/responses/BatchError404Response"
+          },
+          "429": {
+            "$ref": "#/components/responses/BatchError429Response"
+          },
+          "500": {
+            "$ref": "#/components/responses/BatchError500Response"
+          }
+        }
       }
     },
     "/v1/trade/orders/all": {
@@ -1037,6 +1218,52 @@
           },
           "500": {
             "$ref": "#/components/responses/Error500Response"
+          }
+        }
+      },
+      "patch": {
+        "operationId": "modifyOrdersByCoid",
+        "summary": "Modify Orders COID",
+        "security": [],
+        "x-mint": {
+          "content": "<Badge color=\"gray\" size=\"md\">Request Weight: **1 + floor(n / 20)**</Badge> <Badge color=\"gray\" size=\"md\">Action Weight: **1 / order**</Badge>"
+        },
+        "description": "Modify the price and total quantity of existing orders by client order ID.\nRequires proxy signature, see [proxy signing](/http/signing#2-proxy-signing).\n",
+        "requestBody": {
+          "description": "Modify by coid request.",
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ModifyByCoidRequest"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "One modify result per requested order, in request order.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "$ref": "#/components/schemas/ModifyResponse"
+                  }
+                }
+              }
+            }
+          },
+          "400": {
+            "$ref": "#/components/responses/BatchError400Response"
+          },
+          "404": {
+            "$ref": "#/components/responses/BatchError404Response"
+          },
+          "429": {
+            "$ref": "#/components/responses/BatchError429Response"
+          },
+          "500": {
+            "$ref": "#/components/responses/BatchError500Response"
           }
         }
       }
@@ -1663,8 +1890,20 @@
         "x-mint": {
           "content": "<Badge color=\"gray\" size=\"md\">Request Weight: **10**</Badge>"
         },
-        "description": "Get fill history for the authenticated account.\nIf no end time is provided, the current time will be used.\nMaximum of 100 entries returned per request.\nResults are ordered by time; use `sort` to choose newest-first (`desc`,\ndefault) or oldest-first (`asc`). To page through more than 100 fills, pass\n`cursor` set to the trade ID of the last fill from the previous page (keep\n`sort` consistent across pages).\n",
+        "description": "Get fill history for the authenticated account.\nIf no end time is provided, the current time will be used.\nMaximum of 100 entries returned per request.\nResults are ordered by time; use `sort` to choose newest-first (`desc`,\ndefault) or oldest-first (`asc`). To page through more than 100 fills,\npass the `cursor` returned by the previous page (keep `sort` consistent\nacross pages). Passing the trade ID of the last fill from the previous\npage is also still accepted. Pass `instrument_id` to narrow the page to\none instrument's fills; the window, cursor and sort apply unchanged.\n",
         "parameters": [
+          {
+            "name": "instrument_id",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "integer",
+              "format": "int64",
+              "minimum": 0,
+              "maximum": 4294967295,
+              "description": "Instrument ID — when set, only fills on this instrument are returned"
+            }
+          },
           {
             "name": "start_timestamp",
             "in": "query",
@@ -1737,7 +1976,7 @@
         "x-mint": {
           "content": "<Badge color=\"gray\" size=\"md\">Request Weight: **10**</Badge>"
         },
-        "description": "Get equity history for the authenticated account.\nIf no end time is provided, the current time will be used.\nMaximum of 1000 entries returned per request.\n",
+        "description": "Get equity history for the authenticated account.\nIf no end time is provided, the current time will be used.\nEach point is the last equity sample in its `interval` bucket, stamped with\nthat sample's own timestamp rather than the bucket's start — so every\ntimestamp falls within the requested window. Buckets are aligned to the\nUnix epoch.\nEquity history is served at one-minute resolution, so `1s` is served as\n`1m`.\nMaximum of 1000 entries returned per request — of buckets, so a coarser\ninterval covers a longer window before `more` is set. When `more` is true,\npage by re-requesting from one millisecond past the last timestamp\nreturned; that always lands on the next bucket, never back inside the one\njust served.\n",
         "parameters": [
           {
             "name": "interval",
@@ -1803,7 +2042,7 @@
         "x-mint": {
           "content": "<Badge color=\"gray\" size=\"md\">Request Weight: **10**</Badge>"
         },
-        "description": "Get PnL history for the authenticated account.\nIf no end time is provided, the current time will be used.\nMaximum of 1000 entries returned per request.\n",
+        "description": "Get PnL history for the authenticated account.\nIf no end time is provided, the current time will be used.\nEach point is the PnL realized inside its `interval` bucket — not a running\ntotal. Buckets are aligned to the Unix epoch, and one in which nothing was\nrealized is omitted, so the series is sparse.\nA point is stamped with the last populated hour in its bucket, not with the\nbucket's start, so every returned timestamp falls within the requested\nwindow. Window bounds select whole one-hour rollup rows before coarser\nbuckets are formed.\nMaximum of 1000 entries returned per request — of buckets, so a coarser\ninterval covers a longer window before `more` is set. When `more` is true,\npage by re-requesting from one millisecond past the last timestamp\nreturned; that always lands on the next bucket, never back inside the one\njust served.\n",
         "parameters": [
           {
             "name": "interval",
@@ -2156,8 +2395,16 @@
         "x-mint": {
           "content": "<Badge color=\"gray\" size=\"md\">Request Weight: **10**</Badge>"
         },
-        "description": "Get settled internal transfer history for the authenticated account.\nReturns both inbound and outbound transfers.\n",
+        "description": "Get settled internal transfer history for the authenticated account.\nReturns both inbound and outbound transfers unless `direction` narrows\nthe page to one side; a value other than `in` or `out` is refused.\n",
         "parameters": [
+          {
+            "name": "direction",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "$ref": "#/components/schemas/direction"
+            }
+          },
           {
             "name": "start_timestamp",
             "in": "query",
@@ -2362,7 +2609,7 @@
         "x-mint": {
           "content": "<Badge color=\"gray\" size=\"md\">Request Weight: **2**</Badge>"
         },
-        "description": "Get per-instrument daily liquidity reward shares for the authenticated account.\nReward periods run from 12:00 UTC to 12:00 UTC and are labeled by their UTC end date.\nOI rewards pay 6% APR on the account's full daily average gross OI across all\ninstruments when the combined daily average gross OI of its rewards entity is\nat least $1M. Accounts without an entity mapping qualify independently.\nThe first reward period starts at 2026-07-06 12:00 UTC. If no date range is provided,\nthe latest computed reward period is returned.\n",
+        "description": "Get per-instrument daily liquidity reward shares for the authenticated account.\nReward periods run from 12:00 UTC to 12:00 UTC and are labeled by their UTC end date.\nOI rewards pay 6% APR on the account's full daily average gross OI across all\ninstruments when the combined daily average gross OI of its rewards entity is\nat least $5M. Accounts without an entity mapping qualify independently.\nThe first reward period starts at 2026-07-06 12:00 UTC. If no date range is provided,\nthe latest computed reward period is returned.\n",
         "parameters": [
           {
             "name": "date",
@@ -3120,6 +3367,25 @@
           }
         }
       },
+      "Error503": {
+        "title": "Error503",
+        "type": "object",
+        "required": [
+          "status",
+          "error"
+        ],
+        "properties": {
+          "status": {
+            "type": "string",
+            "enum": [
+              "err"
+            ]
+          },
+          "error": {
+            "$ref": "#/components/schemas/error"
+          }
+        }
+      },
       "time": {
         "type": "integer",
         "description": "Timestamp in milliseconds",
@@ -3584,6 +3850,28 @@
         "description": "24-hour trading volume in contracts",
         "example": "1000.00"
       },
+      "exchange_volume": {
+        "type": "string",
+        "description": "Matched trading volume in USD notional for the requested window, as an unformatted numeric string",
+        "example": "10164976.25"
+      },
+      "exchange_open_interest": {
+        "type": "string",
+        "nullable": true,
+        "description": "One-sided open interest in USD notional at the latest complete sample before the requested window end, as an unformatted numeric string. Null when no complete sample is available.",
+        "example": "9238345.12"
+      },
+      "open_interest_timestamp": {
+        "type": "integer",
+        "nullable": true,
+        "description": "Timestamp of the open-interest sample in Unix milliseconds. Null when no complete sample is available.",
+        "example": 1767225570000
+      },
+      "exchange_fees": {
+        "type": "string",
+        "description": "Gross positive maker and taker trading fees in USD for the requested window, as an unformatted numeric string. Rebates, incentives, and referral payments are excluded.",
+        "example": "1245.67"
+      },
       "open_price": {
         "type": "string",
         "description": "Opening price from 24 hours ago",
@@ -3633,6 +3921,37 @@
           },
           "klines": {
             "$ref": "#/components/schemas/klines"
+          }
+        }
+      },
+      "ExchangeStatistics": {
+        "type": "object",
+        "required": [
+          "start_timestamp",
+          "end_timestamp",
+          "volume",
+          "open_interest",
+          "open_interest_timestamp",
+          "fees"
+        ],
+        "properties": {
+          "start_timestamp": {
+            "$ref": "#/components/schemas/start_timestamp"
+          },
+          "end_timestamp": {
+            "$ref": "#/components/schemas/end_timestamp"
+          },
+          "volume": {
+            "$ref": "#/components/schemas/exchange_volume"
+          },
+          "open_interest": {
+            "$ref": "#/components/schemas/exchange_open_interest"
+          },
+          "open_interest_timestamp": {
+            "$ref": "#/components/schemas/open_interest_timestamp"
+          },
+          "fees": {
+            "$ref": "#/components/schemas/exchange_fees"
           }
         }
       },
@@ -3736,6 +4055,11 @@
       "ts": {
         "type": "integer",
         "description": "Request timestamp. Unix milliseconds for most operations; Unix seconds for withdrawals (must match the on-chain EIP-712 struct verified against block.timestamp).",
+        "example": 1767225600000
+      },
+      "cancel_ts": {
+        "type": "integer",
+        "description": "The time when the exchange decided this cancellation outcome, in Unix milliseconds. Sequenced outcomes use the exchange event time. Rejections created before sequencing use the gateway’s decision time. This is not the client request timestamp.",
         "example": 1767225600000
       },
       "BBO": {
@@ -4573,7 +4897,8 @@
         "type": "object",
         "required": [
           "status",
-          "oid"
+          "oid",
+          "ts"
         ],
         "properties": {
           "status": {
@@ -4588,6 +4913,9 @@
           "coid": {
             "$ref": "#/components/schemas/coid",
             "description": "Echoed only when the request carried a client_order_id."
+          },
+          "ts": {
+            "$ref": "#/components/schemas/cancel_ts"
           }
         }
       },
@@ -4595,7 +4923,8 @@
         "type": "object",
         "required": [
           "status",
-          "error"
+          "error",
+          "ts"
         ],
         "properties": {
           "status": {
@@ -4612,6 +4941,9 @@
           },
           "error": {
             "$ref": "#/components/schemas/error"
+          },
+          "ts": {
+            "$ref": "#/components/schemas/cancel_ts"
           }
         }
       },
@@ -4807,6 +5139,44 @@
       },
       "Error404": {
         "title": "Error404",
+        "type": "object",
+        "required": [
+          "status",
+          "error"
+        ],
+        "properties": {
+          "status": {
+            "type": "string",
+            "enum": [
+              "err"
+            ]
+          },
+          "error": {
+            "$ref": "#/components/schemas/error"
+          }
+        }
+      },
+      "Error408": {
+        "title": "Error408",
+        "type": "object",
+        "required": [
+          "status",
+          "error"
+        ],
+        "properties": {
+          "status": {
+            "type": "string",
+            "enum": [
+              "err"
+            ]
+          },
+          "error": {
+            "$ref": "#/components/schemas/error"
+          }
+        }
+      },
+      "Error413": {
+        "title": "Error413",
         "type": "object",
         "required": [
           "status",
@@ -5590,9 +5960,14 @@
         }
       },
       "cursor": {
-        "type": "integer",
-        "description": "Pagination cursor. Pass the trade ID of the last fill from the previous page to fetch the next page. Paging follows the `sort` direction (strictly older fills when `sort=desc`, strictly newer when `sort=asc`).",
-        "example": 1
+        "type": "string",
+        "description": "Pagination cursor. Pass the opaque `cursor` returned by the previous page to fetch the next page. Paging follows the `sort` direction (strictly older fills when `sort=desc`, strictly newer when `sort=asc`). The trade ID of the last fill from the previous page is also accepted for backwards compatibility.",
+        "example": "eyJ0cyI6MTc2NzIyNTYwMDAwMDAwMDAwMCwiaWQiOjF9"
+      },
+      "fills_cursor": {
+        "type": "string",
+        "description": "Opaque keyset pagination cursor for the next page of fills. Present while `more` is true; pass it as `cursor` on the next request, keeping the other parameters the same across pages.",
+        "example": "eyJ0cyI6MTc2NzIyNTYwMDAwMDAwMDAwMCwiaWQiOjF9"
       },
       "sort": {
         "type": "string",
@@ -5727,6 +6102,9 @@
           },
           "more": {
             "$ref": "#/components/schemas/more"
+          },
+          "cursor": {
+            "$ref": "#/components/schemas/fills_cursor"
           }
         }
       },
@@ -7099,6 +7477,256 @@
             "$ref": "#/components/schemas/more"
           }
         }
+      },
+      "ModifyAccepted": {
+        "type": "object",
+        "required": [
+          "status",
+          "order"
+        ],
+        "properties": {
+          "status": {
+            "type": "string",
+            "enum": [
+              "ok"
+            ]
+          },
+          "order": {
+            "$ref": "#/components/schemas/Order"
+          }
+        }
+      },
+      "ModifyByCoidRequest": {
+        "allOf": [
+          {
+            "type": "object",
+            "required": [
+              "op"
+            ],
+            "properties": {
+              "op": {
+                "$ref": "#/components/schemas/OpModifyOrdersByCoid"
+              }
+            }
+          },
+          {
+            "$ref": "#/components/schemas/BaseOp"
+          },
+          {
+            "type": "object",
+            "properties": {
+              "exp": {
+                "$ref": "#/components/schemas/exp"
+              }
+            }
+          }
+        ]
+      },
+      "ModifyOrder": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "oid",
+          "p",
+          "qty"
+        ],
+        "properties": {
+          "oid": {
+            "$ref": "#/components/schemas/oid"
+          },
+          "p": {
+            "$ref": "#/components/schemas/p"
+          },
+          "qty": {
+            "$ref": "#/components/schemas/qty"
+          }
+        }
+      },
+      "ModifyOrderByCoid": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "coid",
+          "p",
+          "qty"
+        ],
+        "properties": {
+          "coid": {
+            "$ref": "#/components/schemas/coid"
+          },
+          "p": {
+            "$ref": "#/components/schemas/p"
+          },
+          "qty": {
+            "$ref": "#/components/schemas/qty"
+          }
+        }
+      },
+      "ModifyRejected": {
+        "type": "object",
+        "required": [
+          "status",
+          "error"
+        ],
+        "properties": {
+          "status": {
+            "type": "string",
+            "enum": [
+              "err"
+            ]
+          },
+          "oid": {
+            "$ref": "#/components/schemas/oid"
+          },
+          "coid": {
+            "$ref": "#/components/schemas/coid"
+          },
+          "error": {
+            "$ref": "#/components/schemas/error"
+          }
+        }
+      },
+      "ModifyRequest": {
+        "allOf": [
+          {
+            "type": "object",
+            "required": [
+              "op"
+            ],
+            "properties": {
+              "op": {
+                "$ref": "#/components/schemas/OpModifyOrders"
+              }
+            }
+          },
+          {
+            "$ref": "#/components/schemas/BaseOp"
+          },
+          {
+            "type": "object",
+            "properties": {
+              "exp": {
+                "$ref": "#/components/schemas/exp"
+              }
+            }
+          }
+        ]
+      },
+      "ModifyResponse": {
+        "oneOf": [
+          {
+            "$ref": "#/components/schemas/ModifyAccepted"
+          },
+          {
+            "$ref": "#/components/schemas/ModifyRejected"
+          }
+        ]
+      },
+      "OpModifyOrders": {
+        "type": "object",
+        "required": [
+          "type",
+          "args"
+        ],
+        "properties": {
+          "type": {
+            "type": "string",
+            "enum": [
+              "modifyOrders"
+            ]
+          },
+          "args": {
+            "type": "array",
+            "minItems": 1,
+            "items": {
+              "$ref": "#/components/schemas/ModifyOrder"
+            }
+          }
+        }
+      },
+      "OpModifyOrdersByCoid": {
+        "type": "object",
+        "required": [
+          "type",
+          "args"
+        ],
+        "properties": {
+          "type": {
+            "type": "string",
+            "enum": [
+              "modifyOrdersCOID"
+            ]
+          },
+          "args": {
+            "type": "array",
+            "minItems": 1,
+            "items": {
+              "$ref": "#/components/schemas/ModifyOrderByCoid"
+            }
+          }
+        }
+      },
+      "Order": {
+        "type": "object",
+        "required": [
+          "oid",
+          "iid",
+          "buy",
+          "p",
+          "qty",
+          "tif",
+          "po",
+          "ro",
+          "status",
+          "rest",
+          "fill",
+          "cts",
+          "uts"
+        ],
+        "properties": {
+          "oid": {
+            "$ref": "#/components/schemas/oid"
+          },
+          "iid": {
+            "$ref": "#/components/schemas/iid"
+          },
+          "buy": {
+            "$ref": "#/components/schemas/buy"
+          },
+          "p": {
+            "$ref": "#/components/schemas/p"
+          },
+          "qty": {
+            "$ref": "#/components/schemas/qty"
+          },
+          "tif": {
+            "$ref": "#/components/schemas/tif"
+          },
+          "po": {
+            "$ref": "#/components/schemas/po"
+          },
+          "ro": {
+            "$ref": "#/components/schemas/ro"
+          },
+          "rest": {
+            "$ref": "#/components/schemas/rest"
+          },
+          "fill": {
+            "$ref": "#/components/schemas/fill"
+          },
+          "cts": {
+            "$ref": "#/components/schemas/cts"
+          },
+          "uts": {
+            "$ref": "#/components/schemas/uts"
+          },
+          "status": {
+            "$ref": "#/components/schemas/st"
+          },
+          "coid": {
+            "$ref": "#/components/schemas/coid"
+          }
+        }
       }
     },
     "responses": {
@@ -7127,6 +7755,25 @@
           "application/json": {
             "schema": {
               "$ref": "#/components/schemas/Error500"
+            }
+          }
+        }
+      },
+      "Error503Response": {
+        "description": "Service unavailable — the request was deliberately shed and did not\nexecute; it is safe to retry with backoff, honoring `Retry-After` when\npresent. Causes include the replica's pod-level in-flight cap (shed\nbefore dispatch, with `Retry-After`), a database read shed as\nbackpressure under overload (by the local read gate or by the database\nserver's concurrency cap — the query never executed), a required\ninternal cache that is stale or not yet primed and would return wrong\ndata, or a full bounded deferred-write queue. `error` is\n`service_unavailable`.\n",
+        "headers": {
+          "Retry-After": {
+            "description": "Whole seconds to wait before retrying. Present on pre-dispatch\nin-flight-cap sheds — a transient overload signal, so the hint is\nshort and constant.\n",
+            "schema": {
+              "type": "integer",
+              "example": 1
+            }
+          }
+        },
+        "content": {
+          "application/json": {
+            "schema": {
+              "$ref": "#/components/schemas/Error503"
             }
           }
         }
@@ -7221,6 +7868,41 @@
           "application/json": {
             "schema": {
               "$ref": "#/components/schemas/Error401"
+            }
+          }
+        }
+      },
+      "BatchError404Response": {
+        "description": "Not found — the batch endpoint is disabled on this venue. Request-level\nfailures are returned as a single rejected item so batch endpoints always\nreturn an array. `error` is `not_found`.\n",
+        "content": {
+          "application/json": {
+            "schema": {
+              "type": "array",
+              "minItems": 1,
+              "maxItems": 1,
+              "items": {
+                "$ref": "#/components/schemas/GenericRejected"
+              }
+            }
+          }
+        }
+      },
+      "Error408Response": {
+        "description": "Request Timeout — the request body was not delivered within the\ngateway's read deadline. Protects against slow uploads holding\nconnections open; send the complete body promptly and retry.\n`error` is `request_body_timeout`.\n",
+        "content": {
+          "application/json": {
+            "schema": {
+              "$ref": "#/components/schemas/Error408"
+            }
+          }
+        }
+      },
+      "Error413Response": {
+        "description": "Content Too Large — the request body exceeds the gateway's size cap,\njudged on the declared `Content-Length` or the actual stream. Split\noversized batches into smaller requests. `error` is\n`payload_too_large`.\n",
+        "content": {
+          "application/json": {
+            "schema": {
+              "$ref": "#/components/schemas/Error413"
             }
           }
         }
