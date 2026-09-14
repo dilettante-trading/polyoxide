@@ -21,6 +21,7 @@ use crate::{
         users::{UserApi, UserTraded},
     },
     error::DataApiError,
+    v2::DataV2,
 };
 
 const DEFAULT_BASE_URL: &str = "https://data-api.polymarket.com";
@@ -50,6 +51,16 @@ impl DataApi {
     /// Create a builder for configuring the client
     pub fn builder() -> DataApiBuilder {
         DataApiBuilder::new()
+    }
+
+    /// Data API v2 routes (`/v2/*`).
+    ///
+    /// Shares this client's connection pool, rate limiter, 429 cooldown and
+    /// concurrency budget: v1 and v2 are served by the same host.
+    pub fn v2(&self) -> DataV2 {
+        DataV2 {
+            http_client: self.http_client.clone(),
+        }
     }
 
     /// Get health namespace

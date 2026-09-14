@@ -1,8 +1,8 @@
-//! Agreement between the v2 types and the served OpenAPI schema.
+//! Agreement between the v2 types and builders and the served OpenAPI schema.
 //!
 //! The oracle is `docs/specs/data-v2/openapi.json`, which upstream serves from
 //! the API host itself (`/v2/openapi.json`) and the nightly drift check keeps
-//! byte-identical. Two things are checked, and each was shown to fail on a
+//! byte-identical. Three things are checked, and each was shown to fail on a
 //! deliberate mutation before being trusted:
 //!
 //! 1. **Optionality.** A property that is required and not nullable must be a
@@ -13,12 +13,24 @@
 //!    the spec's property set. Serde ignores unknown keys on the way in, so
 //!    without this a struct that forgot or misspelled a field would pass (1).
 //!    Mutations caught: a field removed; a field misspelled.
+//! 3. **Query parameters.** Each route, built with every argument and setter,
+//!    must send exactly the spec's parameter names. Mutations caught: a
+//!    camelCase key; an extra `offset` setter.
 //!
 //! Every non-envelope schema must be in the table or excused with a reason.
 
-use std::collections::BTreeSet;
+use std::{
+    collections::{BTreeMap, BTreeSet},
+    future::Future,
+    pin::Pin,
+    sync::{Arc, Mutex},
+};
 
-use polyoxide_data::v2::{types::*, Page, Pagination};
+use mockito::{Matcher, Server};
+use polyoxide_data::{
+    v2::{types::*, Page, Pagination},
+    DataApi,
+};
 use serde::{de::DeserializeOwned, Serialize};
 use serde_json::{Map, Value};
 
@@ -233,4 +245,100 @@ fn every_spec_schema_is_modelled_or_excused() {
         unaccounted.is_empty(),
         "schemas neither modelled nor excused: {unaccounted:?}"
     );
+}
+
+// ── Query parameters ────────────────────────────────────────────────
+
+type Fire = fn(DataApi) -> Pin<Box<dyn Future<Output = ()> + Send>>;
+
+/// Sends one request through `fire` and returns the query keys it carried.
+///
+/// The mock answers `{}`, which no route deserializes, so `fire` ignores the
+/// result: only what went over the wire matters here.
+async fn query_keys_sent(path: &str, fire: Fire) -> BTreeSet<String> {
+    let mut server = Server::new_async().await;
+    let seen = Arc::new(Mutex::new(Vec::<String>::new()));
+    let sink = Arc::clone(&seen);
+    let mock = server
+        .mock("GET", path)
+        .match_query(Matcher::Any)
+        .match_request(move |request| {
+            sink.lock()
+                .unwrap()
+                .push(request.path_and_query().to_owned());
+            true
+        })
+        .with_status(200)
+        .with_body("{}")
+        .create_async()
+        .await;
+
+    fire(DataApi::builder().base_url(server.url()).build().unwrap()).await;
+    mock.assert_async().await;
+
+    let seen = seen.lock().unwrap();
+    let url = url::Url::parse(&format!("http://mock{}", seen.last().unwrap())).unwrap();
+    url.query_pairs().map(|(key, _)| key.into_owned()).collect()
+}
+
+/// One entry per builder, each calling every argument and setter it has.
+/// Two builders may share a path (`leaderboard` and `leaderboard_user`); their
+/// keys are unioned before comparison.
+const ROUTES: &[(&str, Fire)] = &[
+    ("/v2/user-stats", |data| {
+        Box::pin(async move {
+            let _ = data.v2().user_stats("0xuser").send().await;
+        })
+    }),
+    ("/v2/trades", |data| {
+        Box::pin(async move {
+            let _ = data
+                .v2()
+                .trades()
+                .user("0xuser")
+                .conditions(["0xcond"])
+                .event_ids([1])
+                .side(TradeSide::Buy)
+                .taker_only(false)
+                .filter_type(FilterType::Cash)
+                .filter_amount(1.0)
+                .start(1)
+                .end(2)
+                .limit(10)
+                .cursor("cursor")
+                .send()
+                .await;
+        })
+    }),
+];
+
+fn documented_parameters(path: &str) -> BTreeSet<String> {
+    let spec = spec();
+    let operation = &spec["paths"][path]["get"];
+    assert!(operation.is_object(), "{path} is not a documented route");
+    operation["parameters"]
+        .as_array()
+        .map(|params| {
+            params
+                .iter()
+                .map(|p| p["name"].as_str().unwrap().to_owned())
+                .collect()
+        })
+        .unwrap_or_default()
+}
+
+#[tokio::test]
+async fn every_route_sends_exactly_the_documented_parameters() {
+    let mut sent: BTreeMap<&str, BTreeSet<String>> = BTreeMap::new();
+    for (path, fire) in ROUTES {
+        let keys = query_keys_sent(path, *fire).await;
+        sent.entry(path).or_default().extend(keys);
+    }
+    for (path, keys) in sent {
+        assert_eq!(
+            keys,
+            documented_parameters(path),
+            "{path}: query keys sent differ from the documented parameters"
+        );
+    }
 }

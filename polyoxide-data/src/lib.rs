@@ -10,6 +10,7 @@
 //! - Trade history across users
 //! - Leaderboards, builder stats, open interest, and live volume
 //! - Accounting snapshots (returned as ZIP bytes)
+//! - Data API v2 (`/v2/*`) via [`DataApi::v2`], with cursor paging and structured errors
 //! - Type-safe API with idiomatic Rust patterns
 //! - Request builder pattern for flexible, composable queries
 //!
