@@ -27,6 +27,68 @@ Or use the unified client:
 polyoxide = "0.31"
 ```
 
+## Data API v2
+
+Upstream recommends the v2 contract (`/v2/*`) for new integrations; the v1
+routes below keep working. `data.v2()` shares the client's connection pool,
+rate limiter and concurrency budget.
+
+v2 wraps every response in `data`, pages by cursor only, uses snake_case field
+names, and returns structured errors. A missing or `null` number means the value
+was unavailable, never zero, so those fields are `Option`s.
+
+### One page, and every page
+
+```rust
+# use polyoxide_data::DataApi;
+use futures_util::TryStreamExt;
+use polyoxide_data::v2::types::PositionStatus;
+
+# async fn doctest() -> Result<(), Box<dyn std::error::Error>> {
+# let data = DataApi::builder().build()?;
+// One page. `next_cursor` is `None` on the last one.
+let page = data.v2().trades().user("0x1234...abcd").limit(100).send().await?;
+for trade in &page.data {
+    // `outcome_index` is `None` when upstream could not label the outcome.
+    println!("{} {} @ {} (outcome {:?})", trade.side, trade.size, trade.price, trade.outcome_index.get());
+}
+
+// Every page. The filters are re-sent unchanged on each request.
+let mut pages = data
+    .v2()
+    .positions("0x1234...abcd")
+    .status(PositionStatus::Closed)
+    .pages();
+while let Some(page) = pages.try_next().await? {
+    for position in page.data {
+        println!("{}: realized {}", position.title, position.realized_pnl);
+    }
+}
+# Ok(())
+# }
+```
+
+### Structured errors
+
+```rust
+# use polyoxide_data::DataApi;
+use polyoxide_data::{v2::ErrorCode, DataApiError};
+
+# async fn doctest() -> Result<(), Box<dyn std::error::Error>> {
+# let data = DataApi::builder().build()?;
+match data.v2().user_stats("0x1234...abcd").send().await {
+    Ok(Some(stats)) => println!("{} markets traded", stats.trades),
+    Ok(None) => println!("not a known user"),
+    Err(DataApiError::V2(err)) if err.code == ErrorCode::InvalidRequest => {
+        println!("bad {:?}: {} (trace {})", err.parameter, err.message, err.trace_id);
+    }
+    Err(err) if err.is_retriable() => println!("try again after {:?}", err.retry_after()),
+    Err(err) => return Err(err.into()),
+}
+# Ok(())
+# }
+```
+
 ## Usage
 
 ### Create a Client
