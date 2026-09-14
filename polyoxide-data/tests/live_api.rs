@@ -8,6 +8,7 @@
 //! cargo test -p polyoxide-data --test live_api -- --ignored
 //! ```
 
+use polyoxide_data::api::holders::MarketHolders;
 use polyoxide_data::DataApi;
 use std::time::Duration;
 
@@ -223,18 +224,28 @@ fn hash64_shape_matches_what_holders_accepts() {
     assert!(!is_hash64(""));
 }
 
-/// Picks a market `GET /holders` will actually answer for.
+/// Page size the market probe asks for, and the bound `live_holders` checks.
+const HOLDERS_PROBE_LIMIT: u32 = 5;
+
+/// Picks a market `GET /holders` returns rows for, and hands back those rows.
 ///
 /// Taking `trades[0].condition_id` is not enough, and assuming otherwise is
 /// what filed issue #32. The trade feed carries ids of two different shapes:
 /// most are Hash64, but some are `0x` + 62 hex, and the latter fail the
 /// `market` validation described on [`is_hash64`]. There is a second trap
 /// behind that one — a well-formed id the holders index has never seen
-/// answers with a bare `null`, which is not a valid `Vec<MarketHolders>` and
-/// so surfaces as a deserialization error rather than an empty list.
+/// answers with a bare `null`, which the SDK reads as an empty list. Neither
+/// is visible from the trade alone, so probe rather than predict, and select
+/// on rows actually coming back.
 ///
-/// Neither is visible from the trade alone, so probe rather than predict.
-async fn holders_market(client: &DataApi) -> String {
+/// The rows are returned rather than re-fetched because `/holders` is
+/// CDN-cached for 120 seconds **per URL**. A second request with a different
+/// `limit` is a different cache entry and can still hold a `null` captured
+/// before the market was indexed — which is exactly what failed the
+/// 2026-09-13 nightly (issue #37): the `limit=1` probe answered, and the
+/// default-limit request made milliseconds later got `null`. A precondition
+/// established on one URL says nothing about another.
+async fn holders_market(client: &DataApi) -> (String, Vec<MarketHolders>) {
     const MAX_PROBES: usize = 10;
 
     let trades = client
@@ -257,15 +268,18 @@ async fn holders_market(client: &DataApi) -> String {
         }
         seen.push(condition_id.to_string());
 
-        if client
+        // Only well-formed ids reach here, so an error is a real failure —
+        // a shape the SDK cannot decode, or an outage — and not a reason to
+        // try the next candidate.
+        let holders = client
             .holders()
             .list(vec![condition_id])
-            .limit(1)
+            .limit(HOLDERS_PROBE_LIMIT)
             .send()
             .await
-            .is_ok()
-        {
-            return condition_id.to_string();
+            .expect("holders should deserialize");
+        if !holders.is_empty() {
+            return (condition_id.to_string(), holders);
         }
         if seen.len() >= MAX_PROBES {
             break;
@@ -274,7 +288,7 @@ async fn holders_market(client: &DataApi) -> String {
 
     panic!(
         "no qualifying market among the {} most recent trades: probed {} \
-         distinct Hash64 condition ids and /holders answered for none. \
+         distinct Hash64 condition ids and /holders returned rows for none. \
          Market conditions rather than a defect, so re-run before concluding \
          otherwise",
         trades.len(),
@@ -287,18 +301,16 @@ async fn holders_market(client: &DataApi) -> String {
 async fn live_holders() {
     let client = client();
 
-    let condition_id = holders_market(&client).await;
-    let holders = client
-        .holders()
-        .list(vec![condition_id.as_str()])
-        .limit(5)
-        .send()
-        .await
-        .expect("holders should deserialize");
-    assert!(
-        !holders.is_empty(),
-        "should return at least one market's holders"
-    );
+    let (_, holders) = holders_market(&client).await;
+    for market in &holders {
+        assert!(!market.token.is_empty(), "every entry names its token");
+        assert!(
+            market.holders.len() <= HOLDERS_PROBE_LIMIT as usize,
+            "limit={HOLDERS_PROBE_LIMIT} must bound rows per token, got {} for token {}",
+            market.holders.len(),
+            market.token
+        );
+    }
 }
 
 /// Pins the actual `limit` contract for `GET /holders`.
@@ -314,9 +326,11 @@ async fn live_holders() {
 async fn live_holders_limit_bounds() {
     let client = client();
 
-    let condition_id = holders_market(&client).await;
+    let (condition_id, _) = holders_market(&client).await;
 
-    // Omitting `limit` yields the server default of 20, not 100.
+    // Omitting `limit` yields the server default of 20, not 100. Bounded
+    // rather than asserted non-empty: this URL has its own cache entry, and
+    // can serve a stale miss for a market the probe just saw rows for.
     let defaulted = client
         .holders()
         .list(vec![condition_id.as_str()])
@@ -374,20 +388,21 @@ async fn live_holders_limit_bounds() {
         );
     }
 
-    // `limit=0` is a trap worth pinning: the venue answers with a bare `null`
-    // body rather than `[]`, which is not a valid `Vec<MarketHolders>` and so
-    // surfaces as a deserialization error instead of an empty result.
+    // `limit=0` is answered with a bare `null` body rather than `[]`, which
+    // the SDK reads as an empty list. Unlike the requests above this one
+    // cannot be a stale cache entry masking rows: its response is `null` for
+    // every market, so rows here would mean the venue changed what 0 means.
     let zero = client
         .holders()
         .list(vec![condition_id.as_str()])
         .limit(0)
         .send()
-        .await;
-    let err = zero.expect_err("limit=0 must not deserialize as an empty list");
-    let msg = err.to_string();
+        .await
+        .expect("limit=0 must read as an empty list, not an error");
     assert!(
-        msg.contains("invalid type: null"),
-        "limit=0 should fail deserializing a `null` body, got a different error: {msg}"
+        zero.is_empty(),
+        "limit=0 should return no rows, got {} markets",
+        zero.len()
     );
 }
 

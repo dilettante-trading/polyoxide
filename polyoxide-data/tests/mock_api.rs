@@ -556,6 +556,63 @@ async fn holders_list_with_nested_types() {
     mock.assert_async().await;
 }
 
+/// The venue answers an unindexed market (and `limit=0`) with HTTP 200 and a
+/// four-byte `null` body. The 2026-09-13 nightly (issue #37) drew one from the
+/// CDN cache and failed with `invalid type: null, expected a sequence`.
+#[tokio::test]
+async fn holders_null_body_is_an_empty_list() {
+    let mut server = Server::new_async().await;
+
+    let mock = server
+        .mock("GET", "/holders")
+        .match_query(Matcher::UrlEncoded("market".into(), "cond1".into()))
+        .with_status(200)
+        .with_header("content-type", "application/json")
+        .with_body("null")
+        .create_async()
+        .await;
+
+    let data = test_data(&server);
+    let holders = data
+        .holders()
+        .list(["cond1"])
+        .send()
+        .await
+        .expect("a null body is a miss, not a malformed response");
+
+    assert!(holders.is_empty());
+    mock.assert_async().await;
+}
+
+/// Absorbing `null` must not make the decoder lenient about anything else.
+#[tokio::test]
+async fn holders_non_array_body_is_still_an_error() {
+    let mut server = Server::new_async().await;
+
+    let mock = server
+        .mock("GET", "/holders")
+        .match_query(Matcher::UrlEncoded("market".into(), "cond1".into()))
+        .with_status(200)
+        .with_header("content-type", "application/json")
+        .with_body(r#"{"token": "token_abc", "holders": []}"#)
+        .create_async()
+        .await;
+
+    let data = test_data(&server);
+    let err = data
+        .holders()
+        .list(["cond1"])
+        .send()
+        .await
+        .expect_err("an object is not a list of market holders");
+
+    assert!(
+        err.to_string().contains("invalid type: map"),
+        "expected a deserialization error, got: {err}"
+    );
+    mock.assert_async().await;
+}
+
 #[tokio::test]
 async fn leaderboard_get_with_params() {
     let mut server = Server::new_async().await;

@@ -27,9 +27,15 @@ impl Holders {
     /// without checking its shape first.
     ///
     /// A well-formed ID the holders index has never seen is the other edge:
-    /// that returns a bare `null` rather than `[]`, which fails to deserialize
-    /// into `Vec<MarketHolders>` and so surfaces as an error, not an empty
-    /// list. See also [`ListHolders::limit`], where `limit=0` does the same.
+    /// the venue answers with a bare `null` rather than `[]`. [`ListHolders::send`]
+    /// reads that as an empty list, so an unknown market yields `Ok(vec![])`.
+    ///
+    /// **Responses are CDN-cached for 120 seconds per URL**
+    /// (`cache-control: public, max-age=120`), `null` included. Two requests for
+    /// the same market that differ only in `limit` are separate cache entries,
+    /// so one can still be serving a `null` captured before the market was
+    /// indexed while the other already returns rows. Do not read an empty
+    /// result for a freshly listed market as proof it has no holders.
     pub fn list(&self, markets: impl IntoIterator<Item = impl ToString>) -> ListHolders {
         let market_ids: Vec<String> = markets.into_iter().map(|s| s.to_string()).collect();
         let mut request = Request::new(self.http_client.clone(), "/holders");
@@ -43,7 +49,9 @@ impl Holders {
 
 /// Request builder for getting top holders
 pub struct ListHolders {
-    request: Request<Vec<MarketHolders>, DataApiError>,
+    // `Option` because the venue answers a miss with a bare `null`; `send`
+    // flattens it so callers never see the distinction.
+    request: Request<Option<Vec<MarketHolders>>, DataApiError>,
 }
 
 impl ListHolders {
@@ -58,9 +66,8 @@ impl ListHolders {
     /// This is a behavior change. Until at least 2026-07-25 the venue returned
     /// HTTP 400 `{"error":"max holders limit of 500 exceeded"}` for `limit=501`.
     ///
-    /// `limit=0` is a trap: the venue answers with a bare `null` body rather
-    /// than `[]`, which fails to deserialize into `Vec<MarketHolders>` and so
-    /// surfaces as an error rather than an empty list.
+    /// `limit=0` returns no rows: the venue answers with a bare `null` body,
+    /// which [`send`](Self::send) reads as an empty list.
     ///
     /// The value is not range-checked here — it is passed through to the venue.
     pub fn limit(mut self, limit: u32) -> Self {
@@ -74,9 +81,13 @@ impl ListHolders {
         self
     }
 
-    /// Execute the request
+    /// Execute the request.
+    ///
+    /// A bare `null` body — what the venue sends for a market its holders
+    /// index does not know, and for `limit=0` — is returned as an empty list
+    /// rather than a deserialization error.
     pub async fn send(self) -> Result<Vec<MarketHolders>, DataApiError> {
-        self.request.send().await
+        Ok(self.request.send().await?.unwrap_or_default())
     }
 }
 

@@ -23,7 +23,7 @@ Verified live on 2026-08-03:
 | `limit` | Result |
 |---------|--------|
 | omitted | 200, 20 rows per token (the default) |
-| `0` | 200, body is a bare `null` — **not** `[]` |
+| `0` | 200, body is a bare `null` — **not** `[]` (the SDK returns an empty list; see below) |
 | `500` | 200, up to 500 rows per token |
 | `501`, `5000` | 200, **clamped** to 500 rows per token |
 | `-1`, `abc` | 200, falls back to the default of 20 |
@@ -70,8 +70,37 @@ was sent and malformed. Three of these were present in a 2,500-trade sample.
 That is what broke the 2026-08-26 nightly (issue #32): `live_holders` took
 `trades[0].condition_id` unconditionally, drew one of the 62-hex ids, and the
 "not provided" message made an upstream shape mismatch read as an SDK defect.
-`polyoxide-data/tests/live_api.rs` now probes for a market `/holders` answers
-for instead of assuming the newest trade names one.
+`polyoxide-data/tests/live_api.rs` now probes for a market `/holders` returns
+rows for instead of assuming the newest trade names one.
+
+## `null` bodies, and the SDK
+
+Both `null` cases above — `limit=0`, and a Hash64 the index does not know — are
+HTTP 200 with the four-byte body `null`. `ListHolders::send` reads that as an
+empty list. Through 0.31.0 it failed with
+`Serialization(invalid type: null, expected a sequence)`, which cannot be told
+apart from the SDK's types having drifted from the wire — the nightly classified
+it as exactly that. `/holders` is the only Data API route observed doing this;
+`/oi`, `/trades`, `/positions` and `/v1/market-positions` answer an unknown id
+with `[]` (verified 2026-09-14). Data API v2 documents a miss as `data: null`,
+so the venue treats `null` as the empty answer and not as an error.
+
+## CDN caching
+
+Responses carry `cache-control: public, max-age=120` and are served through
+Cloudflare (`cf-cache-status: HIT` with a non-zero `age` on repeat requests).
+The cache key is the full URL, and **a `null` is cached like any other body**.
+
+So two requests for the same market that differ only in `limit` can disagree for
+up to two minutes: one can still serve a `null` stored before the market was
+indexed while the other already returns rows. That is what failed the
+2026-09-13 nightly (issue #37) — the helper's `limit=1` probe returned rows, and
+the default-limit request made milliseconds later got `null`. The live helper
+now returns the rows from its probe instead of asserting anything about a second
+URL.
+
+An empty result for a recently listed market is therefore not proof it has no
+holders. Verified 2026-09-14.
 
 ## Errors
 
