@@ -4035,6 +4035,7 @@ dependencies = [
 name = "polyoxide-data"
 version = "0.31.0"
 dependencies = [
+ "futures-util",
  "mockito",
  "polyoxide-core",
  "reqwest 0.12.28",

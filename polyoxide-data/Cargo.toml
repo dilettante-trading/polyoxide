@@ -15,6 +15,7 @@ default = []
 specta = ["dep:specta"]
 
 [dependencies]
+futures-util = "0.3"
 polyoxide-core = { workspace = true }
 reqwest = { workspace = true }
 rust_decimal = { workspace = true }
