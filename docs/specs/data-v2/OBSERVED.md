@@ -107,6 +107,22 @@ types (`TRADE` … `TAKER_REBATE`, `TIP`) are accepted by `/v2/activity?type=`.
 supported`, but `sort_direction=ASC` is accepted and returns ascending rows
 (2026-09-14). The spec's "`ASC` or `DESC`" is right; the message is not.
 
+## `/v2/resolutions` condition rows can omit documented fields
+
+`GET /v2/resolutions?condition=0x789f0872f66cfffd21a33020e5c90e11f95f947e03be77ac2df7e86b0cb71527`
+(a market from the weekly winners board, resolved 2026-09-09; captured
+2026-09-14 as `polyoxide-data/tests/fixtures/v2/resolutions.json`) returned a
+row with `resolution_source: "reported"` but:
+
+- no `reporter`, which the spec documents without any condition;
+- no `market_type`, which the spec documents as present on condition-keyed rows;
+- `transaction_hash` and `log_index` as empty strings rather than absent.
+
+Both missing fields are `Option` in `polyoxide-data`, so nothing fails to
+decode; `tests/v2_wire_agreement.rs` excuses them for this fixture. An earlier
+capture of a different market omitted `was_arbitrated` too, so which fields a
+row carries varies by market.
+
 ## `0x0000…0001` is a known wallet
 
 `/v2/user-stats?user=0x0000000000000000000000000000000000000001` returns a row
