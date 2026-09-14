@@ -13,9 +13,12 @@
 //!    the spec's property set. Serde ignores unknown keys on the way in, so
 //!    without this a struct that forgot or misspelled a field would pass (1).
 //!    Mutations caught: a field removed; a field misspelled.
-//! 3. **Query parameters.** Each route, built with every argument and setter,
-//!    must send exactly the spec's parameter names. Mutations caught: a
-//!    camelCase key; an extra `offset` setter.
+//! 3. **Query parameters, and decoding.** Each route, built with every argument
+//!    and setter, must send exactly the spec's parameter names, and its
+//!    `send()` must decode that route's captured response from
+//!    `tests/fixtures/v2/`, which covers every builder's envelope and return type
+//!    offline. Mutations caught: a camelCase key; an extra `offset` setter; a
+//!    route handed another route's response.
 //!
 //! Every non-envelope schema must be in the table or excused with a reason.
 
@@ -30,7 +33,7 @@ use mockito::{Matcher, Server};
 use polyoxide_data::{
     types::SortDirection,
     v2::{types::*, Page, Pagination},
-    DataApi,
+    DataApi, DataApiError,
 };
 use serde::{de::DeserializeOwned, Serialize};
 use serde_json::{Map, Value};
@@ -250,13 +253,16 @@ fn every_spec_schema_is_modelled_or_excused() {
 
 // ── Query parameters ────────────────────────────────────────────────
 
-type Fire = fn(DataApi) -> Pin<Box<dyn Future<Output = ()> + Send>>;
+type Fire = fn(DataApi) -> Pin<Box<dyn Future<Output = Result<(), DataApiError>> + Send>>;
 
-/// Sends one request through `fire` and returns the query keys it carried.
-///
-/// The mock answers `{}`, which no route deserializes, so `fire` ignores the
-/// result: only what went over the wire matters here.
-async fn query_keys_sent(path: &str, fire: Fire) -> BTreeSet<String> {
+/// Sends one request through `fire`, requires its response to decode, and
+/// returns the query keys it carried.
+async fn query_keys_sent(path: &str, fixture: &str, fire: Fire) -> BTreeSet<String> {
+    let body_path = format!(
+        "{}/tests/fixtures/v2/{fixture}.json",
+        env!("CARGO_MANIFEST_DIR")
+    );
+    let body = std::fs::read_to_string(&body_path).unwrap_or_else(|e| panic!("{body_path}: {e}"));
     let mut server = Server::new_async().await;
     let seen = Arc::new(Mutex::new(Vec::<String>::new()));
     let sink = Arc::clone(&seen);
@@ -270,31 +276,32 @@ async fn query_keys_sent(path: &str, fire: Fire) -> BTreeSet<String> {
             true
         })
         .with_status(200)
-        .with_body("{}")
+        .with_body(body)
         .create_async()
         .await;
 
-    fire(DataApi::builder().base_url(server.url()).build().unwrap()).await;
+    let decoded = fire(DataApi::builder().base_url(server.url()).build().unwrap()).await;
     mock.assert_async().await;
+    if let Err(e) = decoded {
+        panic!("{path}: the builder did not decode `{fixture}.json`: {e}");
+    }
 
     let seen = seen.lock().unwrap();
     let url = url::Url::parse(&format!("http://mock{}", seen.last().unwrap())).unwrap();
     url.query_pairs().map(|(key, _)| key.into_owned()).collect()
 }
 
-/// One entry per builder, each calling every argument and setter it has.
+/// One entry per builder: its path, the captured response it must decode (from
+/// `tests/fixtures/v2/`), and a call using every argument and setter it has.
 /// Two builders may share a path (`leaderboard` and `leaderboard_user`); their
 /// keys are unioned before comparison.
-const ROUTES: &[(&str, Fire)] = &[
-    ("/v2/user-stats", |data| {
-        Box::pin(async move {
-            let _ = data.v2().user_stats("0xuser").send().await;
-        })
+const ROUTES: &[(&str, &str, Fire)] = &[
+    ("/v2/user-stats", "user_stats", |data| {
+        Box::pin(async move { data.v2().user_stats("0xuser").send().await.map(|_| ()) })
     }),
-    ("/v2/trades", |data| {
+    ("/v2/trades", "trades", |data| {
         Box::pin(async move {
-            let _ = data
-                .v2()
+            data.v2()
                 .trades()
                 .user("0xuser")
                 .conditions(["0xcond"])
@@ -308,13 +315,13 @@ const ROUTES: &[(&str, Fire)] = &[
                 .limit(10)
                 .cursor("cursor")
                 .send()
-                .await;
+                .await
+                .map(|_| ())
         })
     }),
-    ("/v2/activity", |data| {
+    ("/v2/activity", "activity", |data| {
         Box::pin(async move {
-            let _ = data
-                .v2()
+            data.v2()
                 .activity("0xuser")
                 .types([ActivityType::Trade, ActivityType::Tip])
                 .conditions(["0xcond"])
@@ -328,30 +335,28 @@ const ROUTES: &[(&str, Fire)] = &[
                 .limit(10)
                 .cursor("cursor")
                 .send()
-                .await;
+                .await
+                .map(|_| ())
         })
     }),
-    ("/v2/activity/combos", |data| {
+    ("/v2/activity/combos", "combo_activity", |data| {
         Box::pin(async move {
-            let _ = data
-                .v2()
+            data.v2()
                 .combo_activity("0xuser")
                 .conditions(["0xcond"])
                 .limit(10)
                 .cursor("cursor")
                 .send()
-                .await;
+                .await
+                .map(|_| ())
         })
     }),
-    ("/v2/approvals", |data| {
-        Box::pin(async move {
-            let _ = data.v2().approvals("0xuser").send().await;
-        })
+    ("/v2/approvals", "approvals", |data| {
+        Box::pin(async move { data.v2().approvals("0xuser").send().await.map(|_| ()) })
     }),
-    ("/v2/positions", |data| {
+    ("/v2/positions", "positions", |data| {
         Box::pin(async move {
-            let _ = data
-                .v2()
+            data.v2()
                 .positions(PositionAnchor::UserInConditions {
                     user: "0xuser".into(),
                     conditions: vec!["0xcond".into()],
@@ -369,13 +374,13 @@ const ROUTES: &[(&str, Fire)] = &[
                 .limit(10)
                 .cursor("cursor")
                 .send()
-                .await;
+                .await
+                .map(|_| ())
         })
     }),
-    ("/v2/positions/combos", |data| {
+    ("/v2/positions/combos", "combo_positions", |data| {
         Box::pin(async move {
-            let _ = data
-                .v2()
+            data.v2()
                 .combo_positions("0xuser")
                 .conditions(["0xcond"])
                 .statuses([ComboPositionStatus::Open, ComboPositionStatus::Partial])
@@ -386,67 +391,71 @@ const ROUTES: &[(&str, Fire)] = &[
                 .limit(10)
                 .cursor("cursor")
                 .send()
-                .await;
+                .await
+                .map(|_| ())
         })
     }),
-    ("/v2/user-pnl", |data| {
+    ("/v2/user-pnl", "user_pnl", |data| {
         Box::pin(async move {
-            let _ = data
-                .v2()
+            data.v2()
                 .user_pnl("0xuser")
                 .interval(PnlInterval::OneWeek)
                 .fidelity(PnlFidelity::OneDay)
                 .send()
-                .await;
+                .await
+                .map(|_| ())
         })
     }),
-    ("/v2/user-volume", |data| {
+    ("/v2/user-volume", "user_volume", |data| {
         Box::pin(async move {
-            let _ = data.v2().user_volume("0xuser").start(1).end(2).send().await;
+            data.v2()
+                .user_volume("0xuser")
+                .start(1)
+                .end(2)
+                .send()
+                .await
+                .map(|_| ())
         })
     }),
-    ("/v2/value", |data| {
+    ("/v2/value", "value", |data| {
         Box::pin(async move {
-            let _ = data
-                .v2()
+            data.v2()
                 .value("0xuser")
                 .conditions(["0xcond"])
                 .send()
-                .await;
+                .await
+                .map(|_| ())
         })
     }),
-    ("/v2/holders", |data| {
+    ("/v2/holders", "holders_pnl", |data| {
         Box::pin(async move {
-            let _ = data
-                .v2()
+            data.v2()
                 .holders(["0xcond"])
                 .min_balance(1.0)
                 .include_pnl(true)
                 .limit(10)
                 .cursor("cursor")
                 .send()
-                .await;
+                .await
+                .map(|_| ())
         })
     }),
-    ("/v2/live-volume", |data| {
-        Box::pin(async move {
-            let _ = data.v2().live_volume([1, 2]).send().await;
-        })
+    ("/v2/live-volume", "live_volume", |data| {
+        Box::pin(async move { data.v2().live_volume([1, 2]).send().await.map(|_| ()) })
     }),
-    ("/v2/oi", |data| {
+    ("/v2/oi", "open_interest", |data| {
         Box::pin(async move {
-            let _ = data
-                .v2()
+            data.v2()
                 .open_interest()
                 .conditions(["0xcond"])
                 .send()
-                .await;
+                .await
+                .map(|_| ())
         })
     }),
-    ("/v2/prices-history", |data| {
+    ("/v2/prices-history", "prices_history", |data| {
         Box::pin(async move {
-            let _ = data
-                .v2()
+            data.v2()
                 .prices_history("123")
                 .start(1)
                 .end(2)
@@ -456,80 +465,80 @@ const ROUTES: &[(&str, Fire)] = &[
                 .limit(10)
                 .cursor("cursor")
                 .send()
-                .await;
+                .await
+                .map(|_| ())
         })
     }),
     // `/v2/resolutions` takes one selector family per request, so its three
     // entries together cover the documented parameters.
-    ("/v2/resolutions", |data| {
+    ("/v2/resolutions", "resolutions", |data| {
         Box::pin(async move {
-            let _ = data
-                .v2()
+            data.v2()
                 .resolutions(ResolutionKey::Question("0xq".into()))
                 .send()
-                .await;
+                .await
+                .map(|_| ())
         })
     }),
-    ("/v2/resolutions", |data| {
+    ("/v2/resolutions", "resolutions", |data| {
         Box::pin(async move {
-            let _ = data
-                .v2()
+            data.v2()
                 .resolutions(ResolutionKey::Conditions(vec!["0xcond".into()]))
                 .send()
-                .await;
+                .await
+                .map(|_| ())
         })
     }),
-    ("/v2/resolutions", |data| {
+    ("/v2/resolutions", "resolutions", |data| {
         Box::pin(async move {
-            let _ = data
-                .v2()
+            data.v2()
                 .resolutions(ResolutionKey::Events(vec!["1".into()]))
                 .send()
-                .await;
+                .await
+                .map(|_| ())
         })
     }),
-    ("/v2/biggest-winners", |data| {
+    ("/v2/biggest-winners", "biggest_winners", |data| {
         Box::pin(async move {
-            let _ = data
-                .v2()
+            data.v2()
                 .biggest_winners()
                 .time_period(TimePeriod::Week)
                 .category("sports")
                 .limit(10)
                 .cursor("cursor")
                 .send()
-                .await;
+                .await
+                .map(|_| ())
         })
     }),
-    ("/v2/builders/leaderboard", |data| {
+    ("/v2/builders/leaderboard", "builders_leaderboard", |data| {
         Box::pin(async move {
-            let _ = data
-                .v2()
+            data.v2()
                 .builders_leaderboard()
                 .time_period(TimePeriod::Month)
                 .limit(10)
                 .cursor("cursor")
                 .send()
-                .await;
+                .await
+                .map(|_| ())
         })
     }),
-    ("/v2/builders/volume", |data| {
+    ("/v2/builders/volume", "builder_volume", |data| {
         Box::pin(async move {
-            let _ = data
-                .v2()
+            data.v2()
                 .builder_volume()
                 .interval(TimePeriod::Week)
                 .limit(10)
                 .send()
-                .await;
+                .await
+                .map(|_| ())
         })
     }),
     // `leaderboard` and `leaderboard_user` share the path; together they
     // cover its parameters.
-    ("/v2/leaderboard", |data| {
+    ("/v2/leaderboard", "leaderboard", |data| {
         Box::pin(async move {
-            let _ = data
-                .v2()
+            data.v2()
                 .leaderboard()
                 .time_period(TimePeriod::All)
                 .category("overall")
@@ -537,24 +546,23 @@ const ROUTES: &[(&str, Fire)] = &[
                 .limit(10)
                 .cursor("cursor")
                 .send()
-                .await;
+                .await
+                .map(|_| ())
         })
     }),
-    ("/v2/leaderboard", |data| {
+    ("/v2/leaderboard", "leaderboard_user", |data| {
         Box::pin(async move {
-            let _ = data
-                .v2()
+            data.v2()
                 .leaderboard_user("0xuser")
                 .time_period(TimePeriod::Day)
                 .category("overall")
                 .send()
-                .await;
+                .await
+                .map(|_| ())
         })
     }),
-    ("/v2/status", |data| {
-        Box::pin(async move {
-            let _ = data.v2().status().send().await;
-        })
+    ("/v2/status", "status", |data| {
+        Box::pin(async move { data.v2().status().send().await.map(|_| ()) })
     }),
 ];
 
@@ -576,8 +584,8 @@ fn documented_parameters(path: &str) -> BTreeSet<String> {
 #[tokio::test]
 async fn every_route_sends_exactly_the_documented_parameters() {
     let mut sent: BTreeMap<&str, BTreeSet<String>> = BTreeMap::new();
-    for (path, fire) in ROUTES {
-        let keys = query_keys_sent(path, *fire).await;
+    for (path, fixture, fire) in ROUTES {
+        let keys = query_keys_sent(path, fixture, *fire).await;
         sent.entry(path).or_default().extend(keys);
     }
     for (path, keys) in sent {
@@ -598,7 +606,7 @@ fn every_documented_route_has_a_builder() {
         .keys()
         .map(String::as_str)
         .collect();
-    let covered: BTreeSet<&str> = ROUTES.iter().map(|(path, _)| *path).collect();
+    let covered: BTreeSet<&str> = ROUTES.iter().map(|(path, _, _)| *path).collect();
     assert_eq!(
         covered, documented,
         "routes without a builder, or builders for undocumented routes"
