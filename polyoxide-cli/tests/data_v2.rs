@@ -399,6 +399,7 @@ async fn offset_is_refused_with_a_pointer_to_cursor() {
         &["activity", "--user", "0xu", "--offset", "100"][..],
         &["positions", "--user", "0xu", "list", "--offset", "100"][..],
         &["holders", "--condition", "0xc", "--offset", "100"][..],
+        &["builders", "leaderboard", "--offset", "25"][..],
     ] {
         let run = run(&server, args).await;
         let message = run.result.unwrap_err().to_string();
@@ -637,4 +638,72 @@ async fn live_volume_sends_every_event_id() {
     )
     .await;
     assert_eq!(query, pairs(&[("event_id", "1,2")]));
+}
+
+// ── traded and builders ──────────────────────────────────────────────
+
+#[tokio::test]
+async fn traded_prints_the_user_stats_object() {
+    let (query, run) = sent(
+        "/v2/user-stats",
+        &fixture("user_stats"),
+        &["traded", "--user", "0xu"],
+    )
+    .await;
+    assert_eq!(query, pairs(&[("user", "0xu")]));
+
+    let printed: Value = serde_json::from_str(&run.out).unwrap();
+    let received: Value = serde_json::from_str(&fixture("user_stats")).unwrap();
+    assert_eq!(
+        printed, received["data"],
+        "the whole stats object, out of its envelope"
+    );
+    assert_eq!(printed["trades"], 2746, "`trades` counts distinct markets");
+}
+
+#[tokio::test]
+async fn traded_prints_null_for_a_wallet_the_api_does_not_know() {
+    let (_, run) = sent(
+        "/v2/user-stats",
+        &fixture("user_stats_unknown"),
+        &["traded", "--user", "0xu"],
+    )
+    .await;
+    assert_eq!(run.out, "null\n");
+}
+
+#[tokio::test]
+async fn builders_leaderboard_flags_reach_their_v2_parameters() {
+    let (query, _) = sent(
+        "/v2/builders/leaderboard",
+        &fixture("builders_leaderboard"),
+        &[
+            "builders",
+            "leaderboard",
+            "--time-period",
+            "week",
+            "--limit",
+            "5",
+        ],
+    )
+    .await;
+    assert_eq!(query, pairs(&[("time_period", "week"), ("limit", "5")]));
+}
+
+#[tokio::test]
+async fn builders_volume_sends_the_period_as_its_interval() {
+    let (query, _) = sent(
+        "/v2/builders/volume",
+        &fixture("builder_volume"),
+        &[
+            "builders",
+            "volume",
+            "--time-period",
+            "month",
+            "--limit",
+            "12",
+        ],
+    )
+    .await;
+    assert_eq!(query, pairs(&[("interval", "month"), ("limit", "12")]));
 }

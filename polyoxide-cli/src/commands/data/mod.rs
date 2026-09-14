@@ -37,7 +37,7 @@ pub enum DataCommand {
         #[command(subcommand)]
         command: trades::TradesCommand,
     },
-    /// Get traded markets by user
+    /// Get a user's profile stats, including the number of markets traded
     Traded(TradedCommand),
     /// Query user positions (open, redeemable, closed, value) and activity
     Positions(PositionsCommand),
@@ -71,10 +71,10 @@ impl DataCommand {
                 paging::print_pretty(&health, out)
             }
             Self::Activity(cmd) => cmd.run(data, out, err).await,
-            Self::Builders { command } => command.run(data).await,
+            Self::Builders { command } => command.run(data, out, err).await,
             Self::Holders(cmd) => cmd.run(data, out, err).await,
             Self::Trades { command } => command.run(data, out, err).await,
-            Self::Traded(cmd) => cmd.run(data).await,
+            Self::Traded(cmd) => cmd.run(data, out).await,
             Self::Positions(cmd) => cmd.run(data, out, err).await,
             Self::OpenInterest(cmd) => cmd.run(data, out).await,
             Self::LiveVolume(cmd) => cmd.run(data, out).await,
