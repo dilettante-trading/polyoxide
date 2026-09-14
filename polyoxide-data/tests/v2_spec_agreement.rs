@@ -488,6 +488,69 @@ const ROUTES: &[(&str, Fire)] = &[
                 .await;
         })
     }),
+    ("/v2/biggest-winners", |data| {
+        Box::pin(async move {
+            let _ = data
+                .v2()
+                .biggest_winners()
+                .time_period(TimePeriod::Week)
+                .category("sports")
+                .limit(10)
+                .cursor("cursor")
+                .send()
+                .await;
+        })
+    }),
+    ("/v2/builders/leaderboard", |data| {
+        Box::pin(async move {
+            let _ = data
+                .v2()
+                .builders_leaderboard()
+                .time_period(TimePeriod::Month)
+                .limit(10)
+                .cursor("cursor")
+                .send()
+                .await;
+        })
+    }),
+    ("/v2/builders/volume", |data| {
+        Box::pin(async move {
+            let _ = data
+                .v2()
+                .builder_volume()
+                .interval(TimePeriod::Week)
+                .limit(10)
+                .send()
+                .await;
+        })
+    }),
+    // `leaderboard` and `leaderboard_user` share the path; together they
+    // cover its parameters.
+    ("/v2/leaderboard", |data| {
+        Box::pin(async move {
+            let _ = data
+                .v2()
+                .leaderboard()
+                .time_period(TimePeriod::All)
+                .category("overall")
+                .board(LeaderboardBoard::Volume)
+                .limit(10)
+                .cursor("cursor")
+                .send()
+                .await;
+        })
+    }),
+    ("/v2/leaderboard", |data| {
+        Box::pin(async move {
+            let _ = data
+                .v2()
+                .leaderboard_user("0xuser")
+                .time_period(TimePeriod::Day)
+                .category("overall")
+                .send()
+                .await;
+        })
+    }),
 ];
 
 fn documented_parameters(path: &str) -> BTreeSet<String> {
