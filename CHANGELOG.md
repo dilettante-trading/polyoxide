@@ -1,3 +1,108 @@
+## [0.32.0] - 2026-09-16
+
+Adds Data API v2 (20 routes under `/v2` on `data-api.polymarket.com`) to
+`polyoxide-data` as `data.v2()`, alongside the v1 routes, which upstream says
+keep working. v2 has its own contract: a `data` envelope, cursor-only
+pagination and snake_case fields. Paged builders return `Page<T>` from
+`send()` and a `Stream` from `.pages()`. `RateLimiter::data_default` carries
+measured rows for six v2 routes. The Python bindings expose v2 as
+`DataApi().v2()` / `DataApiSync().v2()`, with the row classes on
+`polyoxide.v2`.
+
+Breaking: `DataApiError` is now `#[non_exhaustive]` and gains `V2` (a v2 error
+body's `code`, `retryable` flag and `trace_id`) and `Pagination` (for
+`.pages()` walks), so exhaustive matches must change. `is_retriable` follows
+the server's `retryable` flag for v2 errors.
+
+Breaking for scripts: `polyoxide data` commands now read Data API v2. Output
+is the v2 `{data, pagination}` envelope with snake_case fields
+(`proxy_wallet`, not `proxyWallet`). `--offset` is replaced by `--cursor`,
+`--all` and `--max-pages`, `positions closed` by
+`positions list --status closed`, and `holders` requires `--condition`
+(`--market` remains an alias). `data traded` prints the `/v2/user-stats`
+object (its `trades` field is the distinct-market count), or `null` for a
+wallet the API does not know, instead of `{user, traded}`. `data health` is
+unchanged. Comma-separated `--market` and `--event-id` values, which panicked
+in earlier releases, now work.
+
+Also fixes `data.holders().list()`, which failed with a serialization error
+when the venue answered a miss with `null`; it now returns no holders.
+
+### 🚀 Features
+
+- *(core)* Make Request cloneable without Clone markers
+- *(data)* [**breaking**] Structured Data API v2 errors on DataApiError
+- *(data)* Data API v2 response and parameter types
+- *(data)* Data API v2 envelopes, cursor walks, trades and user-stats
+- *(data)* V2 activity and combo activity
+- *(data)* V2 wallet routes
+- *(data)* V2 market routes
+- *(data)* V2 board routes
+- *(data)* V2 status, completing the v2 surface
+- *(core)* Provisional rate limits for Data API v2
+- *(data)* V2_soak harness for measuring Data API v2 rate limits
+- *(core)* Pin measured Data API v2 rate limits
+- *(cli)* Cursor paging and JSONL output helpers for data commands
+- *(cli)* [**breaking**] Data trades on Data API v2 with cursor paging
+- *(cli)* [**breaking**] Data activity and positions on Data API v2
+- *(cli)* [**breaking**] Data holders, open-interest and live-volume on Data API v2
+- *(cli)* [**breaking**] Data traded and builders on Data API v2
+- *(py)* Data API v2 row classes on a polyoxide.v2 submodule
+- *(py)* Polyoxide.v2 module and typed stub for the v2 rows
+- *(py)* DataApi.v2() with every Data API v2 route
+- *(py)* Map Data API v2 errors by code and keep their fields
+
+### 🐛 Bug Fixes
+
+- *(data)* Read a null /holders body as no holders
+- *(data)* V2_soak builds holder probes from market condition ids only
+
+### 🚜 Refactor
+
+- *(core)* Split ApiError::from_status_and_body out of from_response
+- *(data)* Share the soak harness Pacer via examples/common
+
+### 📚 Documentation
+
+- Handoff for Deposit Wallet and Session Key support
+- *(specs)* Sync the data mirror
+- *(clob)* Sync the clob mirror and document order status semantics
+- *(gamma)* Sync the gamma mirror and pin the market-maker surface it dropped
+- *(specs)* Sync the perps and perps-ws mirrors
+- *(specs)* Design Data API v2 support
+- *(plans)* Data API v2 implementation plan for Phases 0-2
+- *(data)* Data API v2 in the README
+- Mark Data API v2 implemented and document its overlaps
+- *(plans)* Data API v2 rate-limit measurement plan (Phase 3)
+- *(specs)* Record Data API v2 rate-limit ramps
+- Document the measured Data API v2 rate limits
+- *(plans)* Data API v2 CLI (Phase 5) implementation plan
+- *(plans)* Data traded prints the v2 user-stats object
+- *(plans)* Keep mutation-check copies out of the loom worktree
+- *(cli)* Document the Data API v2 data commands
+- *(plans)* Data API v2 Python bindings (Phase 4) implementation plan
+- Document the v2 data CLI commands and Python bindings
+
+### 🧪 Testing
+
+- *(data)* Capture Data API v2 fixtures and record observed behaviour
+- *(data)* Hold the v2 types to live captures in both directions
+- *(data)* Live tests for every Data API v2 route
+- *(data)* V2_soak probe space of distinct URLs per route
+- *(data)* V2_soak verdict rules for stages and pinned counts
+- *(data)* Validate the pinned Data API v2 rows per route
+- *(data)* Validate the Data API v2 rows across all routes at once
+- *(data)* Pin that empty v2 multi-value setters omit their parameter
+- *(data)* Pin every v2 enum's wire values to what the server accepts
+- *(data)* Decode a captured response through every v2 builder offline
+- *(cli)* Live tests for the Data API v2 data commands
+- *(py)* Live Data API v2 tests and README usage
+
+### ⚙️ Miscellaneous Tasks
+
+- *(specs)* Mirror Data API v2 and watch it for drift
+- *(data)* Run the rate-limit harnesses' unit tests
+
 ## [0.31.0] - 2026-09-09
 
 The CLOB market channel can change membership on a live socket. The venue
