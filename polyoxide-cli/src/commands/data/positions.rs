@@ -25,7 +25,7 @@ pub struct PositionsCommand {
 
 #[derive(Subcommand)]
 pub enum PositionsSubcommand {
-    /// List the user's positions (`/v2/positions`); --status selects open, redeemable or closed
+    /// List the user's positions (`/v2/positions`); --status selects which lifecycle state
     List {
         /// Filter by market condition IDs (comma-separated, at most 20)
         #[arg(
@@ -36,7 +36,7 @@ pub enum PositionsSubcommand {
             value_parser = parse_list_entry
         )]
         condition: Option<Vec<String>>,
-        /// Filter by event IDs (comma-separated)
+        /// Filter by event IDs (comma-separated, at most 20)
         #[arg(short, long, value_delimiter = ',', value_parser = parse_list_entry)]
         event_id: Option<Vec<String>>,
         /// Lifecycle state (open includes redeemable positions)
@@ -51,7 +51,7 @@ pub enum PositionsSubcommand {
         /// Minimum current holding, in the unit of --filter-type
         #[arg(long)]
         filter_amount: Option<f64>,
-        /// Include positions on archived markets (open and redeemable only)
+        /// Include positions on archived markets (not valid with --status closed)
         #[arg(long)]
         include_archived: bool,
         /// Sort field (API default depends on --status)
@@ -174,6 +174,11 @@ pub enum PositionStatusFilter {
     Open,
     /// Only positions that can be redeemed now
     Redeemable,
+    /// Settled positions on the losing side, which redeem for nothing
+    #[value(alias = "redeemable_lost")]
+    RedeemableLost,
+    /// Open positions holding a complementary set of outcomes that can be merged
+    Mergeable,
     /// Exited positions
     Closed,
 }
@@ -183,6 +188,8 @@ impl From<PositionStatusFilter> for PositionStatus {
         match status {
             PositionStatusFilter::Open => Self::Open,
             PositionStatusFilter::Redeemable => Self::Redeemable,
+            PositionStatusFilter::RedeemableLost => Self::RedeemableLost,
+            PositionStatusFilter::Mergeable => Self::Mergeable,
             PositionStatusFilter::Closed => Self::Closed,
         }
     }
@@ -193,6 +200,8 @@ impl From<PositionStatusFilter> for PositionStatus {
 pub enum PositionSortField {
     /// Mark-to-market value
     CurrentValue,
+    /// Current price of the outcome token
+    Price,
     /// Token count
     Tokens,
     /// Unrealized P&L
@@ -209,6 +218,7 @@ impl From<PositionSortField> for PositionSortBy {
     fn from(field: PositionSortField) -> Self {
         match field {
             PositionSortField::CurrentValue => Self::CurrentValue,
+            PositionSortField::Price => Self::Price,
             PositionSortField::Tokens => Self::Tokens,
             PositionSortField::UnrealizedPnl => Self::UnrealizedPnl,
             PositionSortField::RealizedPnl => Self::RealizedPnl,
@@ -272,6 +282,31 @@ mod tests {
         }
     }
 
+    // The pairwise tests above cannot notice a value the SDK gained and the CLI
+    // never offered, which is how `PRICE`, `REDEEMABLE_LOST` and `MERGEABLE`
+    // would have gone missing. These compare against the SDK's own list.
+    #[test]
+    fn every_v2_status_is_reachable_from_the_cli() {
+        let reachable: Vec<PositionStatus> = PositionStatusFilter::value_variants()
+            .iter()
+            .map(|&filter| filter.into())
+            .collect();
+        for status in PositionStatus::ALL {
+            assert!(reachable.contains(status), "no --status value for {status}");
+        }
+    }
+
+    #[test]
+    fn every_v2_sort_is_reachable_from_the_cli() {
+        let reachable: Vec<PositionSortBy> = PositionSortField::value_variants()
+            .iter()
+            .map(|&field| field.into())
+            .collect();
+        for sort in PositionSortBy::ALL {
+            assert!(reachable.contains(sort), "no --sort-by value for {sort}");
+        }
+    }
+
     #[test]
     fn positions_requires_user_flag() {
         assert!(try_parse(&["test", "list"]).is_err());
@@ -328,12 +363,14 @@ mod tests {
 
     #[test]
     fn status_accepts_the_upstream_spelling() {
-        let w = try_parse(&["test", "--user", "0xabc", "list", "--status", "REDEEMABLE"]).unwrap();
-        match w.cmd.command {
-            PositionsSubcommand::List { status, .. } => {
-                assert_eq!(status, PositionStatusFilter::Redeemable)
+        for &filter in PositionStatusFilter::value_variants() {
+            let wire = PositionStatus::from(filter);
+            let w = try_parse(&["test", "--user", "0xabc", "list", "--status", wire.as_str()])
+                .unwrap_or_else(|e| panic!("{wire}: {e}"));
+            match w.cmd.command {
+                PositionsSubcommand::List { status, .. } => assert_eq!(status, filter, "{wire}"),
+                _ => panic!("expected List"),
             }
-            _ => panic!("expected List"),
         }
     }
 

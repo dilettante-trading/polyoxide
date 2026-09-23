@@ -37,7 +37,7 @@ pub struct ActivityFilters {
         value_parser = parse_list_entry
     )]
     pub condition: Option<Vec<String>>,
-    /// Filter by event IDs (comma-separated)
+    /// Filter by event IDs (comma-separated, at most 20)
     #[arg(short, long, value_delimiter = ',', value_parser = parse_list_entry)]
     pub event_id: Option<Vec<String>>,
     /// Filter by activity types (comma-separated, e.g. trade,split,tip)

@@ -10,7 +10,7 @@ use crate::commands::common::parsing::parse_list_entry;
 /// Get live taker volume for events (`/v2/live-volume`)
 #[derive(Args)]
 pub struct LiveVolumeCommand {
-    /// Event IDs (comma-separated)
+    /// Event IDs (comma-separated, at most 20)
     #[arg(
         short,
         long,

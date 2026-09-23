@@ -26,7 +26,7 @@ pub enum TradesCommand {
             value_parser = parse_list_entry
         )]
         condition: Option<Vec<String>>,
-        /// Filter by event IDs (comma-separated)
+        /// Filter by event IDs (comma-separated, at most 20)
         #[arg(short, long, value_delimiter = ',', value_parser = parse_list_entry)]
         event_id: Option<Vec<String>>,
         /// Filter by trade side
