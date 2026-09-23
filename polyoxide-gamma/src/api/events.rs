@@ -644,6 +644,12 @@ impl ListEvents {
         self
     }
 
+    /// Include the nested `markets` array in each event
+    pub fn include_markets(mut self, include: bool) -> Self {
+        self.request = self.request.query("include_markets", include);
+        self
+    }
+
     /// Filter by recurrence pattern
     pub fn recurrence(mut self, recurrence: impl Into<String>) -> Self {
         self.request = self.request.query("recurrence", recurrence.into());
@@ -740,6 +746,7 @@ mod tests {
             .cyom(false)
             .include_chat(true)
             .include_template(false)
+            .include_markets(true)
             .recurrence("daily")
             .closed(false)
             .liquidity_min(1000.0)
