@@ -83,6 +83,28 @@ until the server says otherwise, and the nightly checks for that:
 applying the filter. Deserialization of every live-market test fails if
 `marketMakerAddress` disappears from the wire.
 
+## `include_markets` on `GET /events`: undocumented, applied
+
+`openapi.yaml` lists `include_chat` and `include_template` on `GET /events`
+but no `include_markets`. The server applies it. Probed 2026-09-23 with
+`limit=3&closed=false&order=id&ascending=false`:
+
+| Query | Each event |
+|-------|------------|
+| no `include_markets` | has `markets` (23 entries) |
+| `include_markets=true` | has `markets` (23 entries) |
+| `include_markets=false` | no `markets` key at all |
+
+`GET /events/keyset?limit=3&closed=false` behaves the same way: `markets` is
+present by default and missing with `include_markets=false`.
+
+So omitting the parameter is the same as `true`, and `false` removes the key
+rather than sending `[]`. `ListEvents::include_markets` sends it.
+`Event::markets` is `#[serde(default)]`, so the missing key parses as an empty
+`Vec`. That empty `Vec` looks the same as an event with no markets, and only
+the request says which one it is. `ListKeysetEvents` has no
+`include_markets` builder yet.
+
 ## More instances
 
 The 2026-08-19 type parity sweep found nine further places where the spec and

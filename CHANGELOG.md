@@ -1,3 +1,16 @@
+## [0.32.1] - 2026-09-23
+
+Adds `ListEvents::include_markets`. Everything else in the workspace is
+byte-identical to 0.32.0.
+
+### 🚀 Features
+
+- *(gamma)* Add `include_markets(bool)` to `ListEvents`. The parameter is not in upstream's `openapi.yaml`, but the server applies it (verified 2026-09-23): omitting it is the same as `true`, and `false` removes the `markets` key from each event rather than sending `[]`. `Event::markets` is `#[serde(default)]`, so such a response parses with an empty `markets`
+
+### 📚 Documentation
+
+- *(gamma)* Record `include_markets` in `docs/specs/gamma/OBSERVED.md` as an undocumented parameter the server applies on both `GET /events` and `GET /events/keyset`
+
 ## [0.32.0] - 2026-09-16
 
 Adds Data API v2 (20 routes under `/v2` on `data-api.polymarket.com`) to
