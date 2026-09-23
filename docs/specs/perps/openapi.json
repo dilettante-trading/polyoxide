@@ -1354,7 +1354,7 @@
         "x-mint": {
           "content": "<Badge color=\"gray\" size=\"md\">Request Weight: **1**</Badge> <Badge color=\"gray\" size=\"md\">Action Weight: **1**</Badge>"
         },
-        "description": "Update leverage for an instrument.\nRequires proxy signature, see [proxy signing](/http/signing#2-proxy-signing).\n",
+        "description": "Update leverage for an instrument.\n\nEach setting resolves independently: explicit per-instrument setting, then\nexchange-managed account-group default, then instrument maximum leverage and\nisolated margin. Group leverage is capped at the instrument maximum; a group\ncross default resolves to isolated on isolated-only instruments. Group defaults\napply to new listings and never overwrite explicit settings.\nThis operation sets both settings explicitly; GET /v1/account/config reports\nresolved values. Submit the current resolved pair to preserve it against later\ngroup changes. Leverage bounds and BLP locks also apply to unchanged values.\nSet your preferred leverage and margin mode after listing and before placing\nyour first order. An unknown instrument ID (never listed) is rejected with\n`instrument_not_found`; a disabled instrument is not rejected merely because\nit is disabled.\n\nMargin mode can change only when the account has no position and no open\norders in that instrument, including orders awaiting risk approval or execution.\nClose the position and cancel all orders before switching between isolated\nand cross margin. A position blocks a mode change with `position_exists`;\nopen orders block it with `open_orders_exist`. Leverage changes within the\nsame mode remain subject to leverage limits and margin checks. Leverage must\nbe positive (`lev: 0` returns 400); exceeding the instrument maximum returns\n`invalid_leverage`. BLP-subscribed instruments reject leverage or mode updates\nwith `blp_leverage_locked`; unsubscribe before changing the configuration.\n\nRequires proxy signature, see [proxy signing](/http/signing#2-proxy-signing).\n",
         "requestBody": {
           "description": "Leverage request.",
           "content": {
@@ -1417,7 +1417,7 @@
         "x-mint": {
           "content": "<Badge color=\"gray\" size=\"md\">Request Weight: **1 + floor(n / 20)**</Badge> <Badge color=\"gray\" size=\"md\">Action Weight: **1 / instrument**</Badge>"
         },
-        "description": "Update leverage for up to 100 unique instruments. Updates are processed\nsequentially and are not atomic. If only some responses arrive before the\ngateway deadline, missing item results use `internal_error`; whether those\nupdates applied is unknown. If no responses arrive, the request returns 500.\nRequires proxy signature, see [Update Leverage](/perps/trading#update-leverage).\n",
+        "description": "Update leverage for up to 100 unique instruments. Updates are processed\nsequentially and are not atomic. If only some responses arrive before the\ngateway deadline, missing item results use `internal_error`; whether those\nupdates applied is unknown. If no responses arrive, the request returns\n503 — retryable, since each update is an idempotent leverage/margin-type\nset that converges to the same value whether or not the original attempt\nwas admitted.\n\nEach setting resolves independently: explicit per-instrument setting, then\nexchange-managed account-group default, then instrument maximum leverage and\nisolated margin. Group leverage is capped at the instrument maximum; a group\ncross default resolves to isolated on isolated-only instruments. Group defaults\napply to new listings and never overwrite explicit settings.\nThis operation sets both settings explicitly; GET /v1/account/config reports\nresolved values. Submit the current resolved pair to preserve it against later\ngroup changes. Leverage bounds and BLP locks also apply to unchanged values.\nSet your preferred leverage and margin mode after listing and before placing\nyour first order. An unknown instrument ID (never listed) is rejected with\n`instrument_not_found`; a disabled instrument is not rejected merely because\nit is disabled.\n\nMargin mode can change only when the account has no position and no open\norders in that instrument, including orders awaiting risk approval or execution.\nClose the position and cancel all orders before switching between isolated\nand cross margin. A position blocks a mode change with `position_exists`;\nopen orders block it with `open_orders_exist`. Leverage changes within the\nsame mode remain subject to leverage limits and margin checks. Leverage must\nbe positive (`lev: 0` returns 400); exceeding the instrument maximum returns\n`invalid_leverage`. BLP-subscribed instruments reject leverage or mode updates\nwith `blp_leverage_locked`; unsubscribe before changing the configuration.\n\nRequires proxy signature, see [Update Leverage](/perps/trading#update-leverage).\n",
         "requestBody": {
           "description": "Batch leverage request.",
           "content": {
@@ -1493,6 +1493,9 @@
           },
           "500": {
             "$ref": "#/components/responses/BatchError500Response"
+          },
+          "503": {
+            "$ref": "#/components/responses/BatchError503Response"
           }
         }
       }
@@ -2095,6 +2098,81 @@
         }
       }
     },
+    "/v1/account/backstops": {
+      "get": {
+        "operationId": "getAccountBackstops",
+        "summary": "Get Account Backstop Transfers",
+        "security": [
+          {
+            "polymarket_proxy": [],
+            "polymarket_secret": []
+          }
+        ],
+        "x-mint": {
+          "content": "<Badge color=\"gray\" size=\"md\">Request Weight: **10**</Badge>\n<br/>\n<Badge color=\"gray\" size=\"md\">Cached 2s — a request served from cache costs **1**</Badge>\n"
+        },
+        "description": "Get exact quote cash transfers for backstops of the authenticated account.\nDefaults to the last 90 days. Rows are ordered newest first.\nIf no end time is provided, the current time will be used.\nMaximum of 100 entries returned per request.\n",
+        "parameters": [
+          {
+            "name": "start_timestamp",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "$ref": "#/components/schemas/start_timestamp"
+            }
+          },
+          {
+            "name": "end_timestamp",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "$ref": "#/components/schemas/end_timestamp"
+            }
+          },
+          {
+            "name": "cursor",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "$ref": "#/components/schemas/account_backstops_cursor"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Account backstop history response.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AccountBackstops"
+                }
+              }
+            }
+          },
+          "400": {
+            "$ref": "#/components/responses/Error400Response"
+          },
+          "401": {
+            "$ref": "#/components/responses/Error401Response"
+          },
+          "408": {
+            "$ref": "#/components/responses/Error408Response"
+          },
+          "413": {
+            "$ref": "#/components/responses/Error413Response"
+          },
+          "429": {
+            "$ref": "#/components/responses/Error429Response"
+          },
+          "500": {
+            "$ref": "#/components/responses/Error500Response"
+          },
+          "503": {
+            "$ref": "#/components/responses/Error503Response"
+          }
+        }
+      }
+    },
     "/v1/account/funding": {
       "get": {
         "operationId": "getAccountFunding",
@@ -2244,7 +2322,7 @@
         "x-mint": {
           "content": "<Badge color=\"gray\" size=\"md\">Request Weight: **1**</Badge>"
         },
-        "description": "Submit a signed internal ledger transfer between two exchange accounts.\nRequires proxy signature using the standard signed-op flow.\n",
+        "description": "Submit a signed internal ledger transfer between two exchange accounts.\nSign with the source account owner or a non-expired trading key registered\nto the source account. Trading-key signatures require both accounts to\nbelong to the same nonzero, exchange-managed account group. Owner signatures\nremain valid regardless of group membership.\n\nExpired trading keys receive `proxy_expired`; other authorization failures\nreceive `signer_does_not_match_account`. An unknown destination receives 400\n`destination account not found`.\n\nA 503 does not prove that the transfer was not submitted. Retry with backoff,\nhonoring `Retry-After` when present, and resend the exact original signed\nrequest. Do not create a fresh signature, salt, or timestamp for the retry: it\nwould identify a separate transfer. A `signature_already_used` rejection does\nnot confirm whether the original transfer completed.\n",
         "requestBody": {
           "description": "Internal transfer request.",
           "content": {
@@ -2290,11 +2368,30 @@
             "$ref": "#/components/responses/Error400Response"
           },
           "422": {
-            "description": "The transfer was rejected on its merits (e.g. insufficient balance,\ntransfer to self). The body carries `transfer_id` and `error`.\n",
+            "description": "The transfer was rejected (e.g. insufficient balance, transfer to self,\nor `signer_does_not_match_account` at the gateway or sequencer). Expired\ntrading keys receive `proxy_expired` before source/group checks. Sequencer\nand worker rejections carry `transfer_id`; gateway authorization rejections\ncarry `error` without that ID.\n",
             "content": {
               "application/json": {
                 "schema": {
-                  "$ref": "#/components/schemas/InternalTransferRejected"
+                  "oneOf": [
+                    {
+                      "$ref": "#/components/schemas/InternalTransferRejected"
+                    },
+                    {
+                      "description": "Gateway authorization rejection before a transfer ID is assigned.",
+                      "allOf": [
+                        {
+                          "$ref": "#/components/schemas/GenericRejected"
+                        },
+                        {
+                          "not": {
+                            "required": [
+                              "transfer_id"
+                            ]
+                          }
+                        }
+                      ]
+                    }
+                  ]
                 }
               }
             }
@@ -2304,6 +2401,25 @@
           },
           "500": {
             "$ref": "#/components/responses/Error500Response"
+          },
+          "503": {
+            "description": "Service unavailable. A freshness or load-shed rejection occurs before submission, but an engine response timeout can happen after submission. Retry only the exact original signed request, with backoff, honoring Retry-After when present. Do not re-sign the transfer. A replay rejection does not establish the original transfer outcome.",
+            "headers": {
+              "Retry-After": {
+                "description": "Whole seconds to wait before retrying.",
+                "schema": {
+                  "type": "integer",
+                  "example": 1
+                }
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error503"
+                }
+              }
+            }
           }
         }
       }
@@ -2683,7 +2799,7 @@
         "x-mint": {
           "content": "<Badge color=\"gray\" size=\"md\">Request Weight: **2**</Badge>"
         },
-        "description": "Get per-instrument configuration (leverage and margin mode) for the authenticated account.",
+        "description": "Get resolved per-instrument configuration (leverage and margin mode) for the authenticated account.\nEach setting resolves independently: explicit per-instrument setting, then\nexchange-managed account-group default, then instrument maximum leverage and\nisolated margin. Group leverage is capped at the instrument maximum; a group\ncross default resolves to isolated on isolated-only instruments. Group defaults\napply to new listings and never overwrite explicit settings.\nUse the leverage update operations to set explicit per-instrument overrides.\n",
         "parameters": [
           {
             "name": "instrument_id",
@@ -2994,6 +3110,25 @@
               "application/json": {
                 "schema": {
                   "$ref": "#/components/schemas/Error500"
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "Service unavailable. The adjustment may already have been admitted. Retry with backoff using only the exact original signed payload; do not generate a new signature, salt, or timestamp, which would create a separate margin delta. A signature_already_used rejection does not confirm success, and a portfolio snapshot cannot establish the request outcome. Do not sign another adjustment for the same account until the original outcome is confirmed out of band. See [Recover an Isolated-Margin Adjustment](/perps/errors#recover-an-isolated-margin-adjustment).",
+            "headers": {
+              "Retry-After": {
+                "description": "Whole seconds to wait before retrying, when present.",
+                "schema": {
+                  "type": "integer",
+                  "example": 1
+                }
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error503"
                 }
               }
             }
@@ -3326,7 +3461,7 @@
     "schemas": {
       "error": {
         "type": "string",
-        "description": "Error identifier. For domain rejections and transport errors (`401`/`404`/`429`/`500`) this is a stable, machine-readable snake_case identifier that is part of the API contract and safe to branch on, e.g. `insufficient_margin`, `insufficient_balance`, `order_not_found`, `reduce_only_invalid`, `price_outside_bounds`, `position_not_found`, `invalid_margin_mode`, `invalid_margin_amount`, `margin_below_required_initial`, `account_liquidating`, `unauthorized`, `not_found`. For `400` it is a human-readable validation detail whose wording may change. See the Error handling guide for the domain identifiers. (Post-only / Fill-or-Kill outcomes are order statuses such as `post_only_rejected`, not rejections.)",
+        "description": "Error identifier. For domain rejections and transport errors (`401`/`404`/`429`/`500`) this is a stable, machine-readable snake_case identifier that is part of the API contract and safe to branch on, e.g. `insufficient_margin`, `insufficient_balance`, `order_not_found`, `reduce_only_invalid`, `price_outside_bounds`, `position_not_found`, `position_exists`, `open_orders_exist`, `invalid_margin_mode`, `invalid_margin_amount`, `margin_below_required_initial`, `account_liquidating`, `unauthorized`, `not_found`. For `400` it is a human-readable validation detail whose wording may change. See the Error handling guide for the domain identifiers. (Post-only / Fill-or-Kill outcomes are order statuses such as `post_only_rejected`, not rejections.)",
         "example": "insufficient_margin"
       },
       "Error429": {
@@ -5936,6 +6071,7 @@
           "margin",
           "withdrawable",
           "in_liquidation",
+          "fee_tier",
           "timestamp"
         ],
         "properties": {
@@ -5954,10 +6090,17 @@
           "in_liquidation": {
             "$ref": "#/components/schemas/in_liquidation"
           },
+          "fee_tier": {
+            "$ref": "#/components/schemas/fee_tier"
+          },
           "timestamp": {
             "$ref": "#/components/schemas/update_timestamp"
           }
         }
+      },
+      "account_backstops_cursor": {
+        "type": "string",
+        "description": "Pass the last row id from the previous page as a decimal string. The server resolves its exact timestamp within the authenticated account. An opaque URL-safe unpadded base64 JSON cursor with ts (native nanoseconds) and id is also accepted. Keep the timestamp window unchanged when paging."
       },
       "cursor": {
         "type": "string",
@@ -6175,6 +6318,100 @@
         "type": "string",
         "description": "Funding asset name",
         "example": "USDC"
+      },
+      "backstop_transferred": {
+        "type": "string",
+        "description": "Signed raw quote margin allocated by the absorption, without rounding."
+      },
+      "backstop_cash_before": {
+        "type": "string",
+        "description": "Raw quote cash bucket immediately before the absorption."
+      },
+      "backstop_cash_after": {
+        "type": "string",
+        "description": "Raw quote cash bucket immediately after the absorption. The difference from cash_before is the authoritative wallet delta."
+      },
+      "history_sequence": {
+        "type": "integer",
+        "description": "Engine sequence of the history event."
+      },
+      "AccountBackstop": {
+        "type": "object",
+        "required": [
+          "id",
+          "cross",
+          "instrument_id",
+          "asset",
+          "transferred",
+          "cash_before",
+          "cash_after",
+          "timestamp",
+          "sequence"
+        ],
+        "properties": {
+          "id": {
+            "$ref": "#/components/schemas/lid"
+          },
+          "cross": {
+            "$ref": "#/components/schemas/cross"
+          },
+          "instrument_id": {
+            "type": "integer",
+            "nullable": true,
+            "description": "Absorbed instrument ID, or null for a cross-margin absorption."
+          },
+          "asset": {
+            "$ref": "#/components/schemas/fua"
+          },
+          "transferred": {
+            "$ref": "#/components/schemas/backstop_transferred"
+          },
+          "cash_before": {
+            "$ref": "#/components/schemas/backstop_cash_before"
+          },
+          "cash_after": {
+            "$ref": "#/components/schemas/backstop_cash_after"
+          },
+          "timestamp": {
+            "$ref": "#/components/schemas/ts"
+          },
+          "sequence": {
+            "$ref": "#/components/schemas/history_sequence"
+          }
+        }
+      },
+      "AccountBackstops": {
+        "type": "object",
+        "required": [
+          "data",
+          "more"
+        ],
+        "properties": {
+          "data": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/AccountBackstop"
+            }
+          },
+          "more": {
+            "$ref": "#/components/schemas/more"
+          },
+          "coverage": {
+            "type": "object",
+            "description": "Present when backstop history is unavailable because its schema is pending.",
+            "required": [
+              "notes"
+            ],
+            "properties": {
+              "notes": {
+                "type": "array",
+                "items": {
+                  "type": "string"
+                }
+              }
+            }
+          }
+        }
       },
       "fund": {
         "type": "string",
@@ -7727,6 +7964,11 @@
             "$ref": "#/components/schemas/coid"
           }
         }
+      },
+      "fee_tier": {
+        "type": "integer",
+        "description": "Zero-based effective account fee tier index in the perpetual equity fee schedule returned by /v1/info/fees. Defaults to 0 without a current tier assignment and is capped at the highest configured tier.",
+        "example": 0
       }
     },
     "responses": {
@@ -7760,7 +8002,7 @@
         }
       },
       "Error503Response": {
-        "description": "Service unavailable — the request was deliberately shed and did not\nexecute; it is safe to retry with backoff, honoring `Retry-After` when\npresent. Causes include the replica's pod-level in-flight cap (shed\nbefore dispatch, with `Retry-After`), a database read shed as\nbackpressure under overload (by the local read gate or by the database\nserver's concurrency cap — the query never executed), a required\ninternal cache that is stale or not yet primed and would return wrong\ndata, or a full bounded deferred-write queue. `error` is\n`service_unavailable`.\n",
+        "description": "Service unavailable — safe to retry with backoff, honoring\n`Retry-After` when present. `error` is\n`service_unavailable`.\n\nMost causes are a request deliberately shed before it reached the\nengine, so the request definitely did not execute: the replica's\npod-level in-flight cap (shed before dispatch, with `Retry-After`), a\ndatabase read shed as backpressure under overload (by the local read\ngate or by the database server's concurrency cap — the query never\nexecuted), a required internal cache that is stale or not yet primed\nand would return wrong data, or a full bounded deferred-write queue.\n\nOn a subset of order/state-mutating routes, this status is also\nreturned when the engine round-trip itself times out with zero\nresponses observed. That is retryable engine backpressure, but —\nunlike the sheds above — it does not prove non-execution: the command\nmay already have been admitted, with its response simply not reaching\nthe gateway before the deadline. This status is only used for that\ncase on routes that are safe to retry regardless (idempotent\nstate-setting, or an engine-side replay guard); routes where a bare\nretry cannot safely resolve the ambiguity keep the outcome a\nnon-retryable 500 instead.\n",
         "headers": {
           "Retry-After": {
             "description": "Whole seconds to wait before retrying. Present on pre-dispatch\nin-flight-cap sheds — a transient overload signal, so the hint is\nshort and constant.\n",
@@ -7829,6 +8071,30 @@
       },
       "BatchError500Response": {
         "description": "Internal server error. Request-level failures are returned as a single\nrejected item so batch endpoints always return an array. `error` is\n`internal_error`.\n",
+        "content": {
+          "application/json": {
+            "schema": {
+              "type": "array",
+              "minItems": 1,
+              "maxItems": 1,
+              "items": {
+                "$ref": "#/components/schemas/GenericRejected"
+              }
+            }
+          }
+        }
+      },
+      "BatchError503Response": {
+        "description": "Service unavailable — safe to retry with backoff, honoring\n`Retry-After` when present. Request-level failures are returned as a\nsingle rejected item so batch endpoints always return an array.\n`error` is `service_unavailable`.\n\nMost causes are the replica shedding the request at its pod-level\nin-flight cap before dispatch — the request definitely did not\nexecute, and the shed is transient by design.\n\nOn a subset of routes, this status is also returned when the engine\nround-trip itself times out with zero responses observed. That is\nretryable engine backpressure, but it does not prove non-execution:\nthe command may already have been admitted, with its response simply\nnot reaching the gateway before the deadline. This status is only\nused for that case on routes that are safe to retry regardless\n(idempotent state-setting); routes where a bare retry cannot safely\nresolve the ambiguity keep the outcome a non-retryable 500 instead.\n",
+        "headers": {
+          "Retry-After": {
+            "description": "Whole seconds to wait before retrying. The shed is a transient\noverload signal, so the hint is short and constant.\n",
+            "schema": {
+              "type": "integer",
+              "example": 1
+            }
+          }
+        },
         "content": {
           "application/json": {
             "schema": {
