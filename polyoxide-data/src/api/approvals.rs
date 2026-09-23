@@ -4,22 +4,25 @@ use crate::{error::DataApiError, types::ApprovalsResponse};
 
 /// Approvals namespace (`/v1/approvals`).
 ///
-/// # Upstream status
+/// # Deprecated: the route is gone
 ///
-/// As of 2026-08-15 the route is deployed but non-functional: it returns
-/// `400` when `user` is missing (so the route exists and validates) yet
-/// `{"error":"internal server error"}` with HTTP 500 for **every** valid
-/// address tried, including active wallets. The client is modelled from the
-/// published spec and covered by mock tests; there is deliberately no live
-/// test, because `nightly-behavioral.yml` runs `--ignored` tests and a
-/// permanently red one would file a tracking issue every night.
+/// Upstream dropped `GET /v1/approvals` from the published Data API spec, and
+/// as of 2026-09-23 the host answers `404 page not found` for it, with or
+/// without a `user`. Every call through this namespace fails. The same data
+/// is served by [`DataV2::approvals`](crate::v2::DataV2::approvals)
+/// (`GET /v2/approvals`), which is live.
 ///
-/// Add a live test once upstream starts returning `200`.
+/// Before its removal the route never worked either: from 2026-08-15 it
+/// returned HTTP 500 for every valid address, so it never had a live test.
+#[deprecated(
+    note = "`/v1/approvals` was removed upstream and now returns 404; use `data.v2().approvals(user)`"
+)]
 #[derive(Clone)]
 pub struct ApprovalsApi {
     pub(crate) http_client: HttpClient,
 }
 
+#[allow(deprecated)]
 impl ApprovalsApi {
     /// Get token approval state for a wallet (`GET /v1/approvals`).
     ///

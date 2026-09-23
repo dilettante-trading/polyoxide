@@ -313,7 +313,7 @@ impl std::fmt::Display for ActivityType {
     }
 }
 
-/// An ERC20 allowance as reported by `/v1/approvals`.
+/// An ERC20 allowance as reported by `/v2/approvals`.
 ///
 /// Upstream sends a string that is either the sentinel `"max"` or a decimal
 /// amount in the token's base units. `ERC1155` entries carry no amount at all,
@@ -352,7 +352,7 @@ impl<'de> Deserialize<'de> for Allowance {
     }
 }
 
-/// What a tracked approval unlocks.
+/// What a tracked approval unlocks, in the `/v1/approvals` response.
 ///
 /// Upstream's values are lowercase and kebab-cased, unlike the UPPERCASE
 /// enums elsewhere in this API, so each variant renames explicitly.
@@ -376,7 +376,7 @@ pub enum ApprovalFeature {
     Unknown,
 }
 
-/// Token standard of a tracked approval.
+/// Token standard of a tracked approval, in the `/v1/approvals` response.
 #[cfg_attr(feature = "specta", derive(specta::Type))]
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 pub enum ApprovalStandard {
@@ -391,7 +391,9 @@ pub enum ApprovalStandard {
     Unknown,
 }
 
-/// Approval state for one token and spender pair.
+/// Approval state for one token and spender pair, in the `/v1/approvals`
+/// response. `/v2/approvals` has its own
+/// [`ApprovalContract`](crate::v2::types::ApprovalContract).
 #[cfg_attr(feature = "specta", derive(specta::Type))]
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
@@ -415,6 +417,9 @@ pub struct ApprovalContract {
 }
 
 /// Token approval state for a wallet, from `GET /v1/approvals`.
+///
+/// That route now returns `404`, so the server no longer sends this; see
+/// [`Approvals`](crate::v2::types::Approvals) for the `/v2/approvals` shape.
 #[cfg_attr(feature = "specta", derive(specta::Type))]
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]

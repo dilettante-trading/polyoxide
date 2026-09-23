@@ -5,7 +5,6 @@ use polyoxide_core::{
 use crate::{
     api::{
         accounting::AccountingApi,
-        approvals::ApprovalsApi,
         builders::BuildersApi,
         combos::CombosApi,
         health::Health,
@@ -153,9 +152,14 @@ impl DataApi {
         }
     }
 
-    /// Get approvals namespace (`/v1/approvals`)
-    pub fn approvals(&self) -> ApprovalsApi {
-        ApprovalsApi {
+    /// Get approvals namespace (`/v1/approvals`). The route now returns `404`;
+    /// use [`v2().approvals()`](crate::v2::DataV2::approvals) instead.
+    #[deprecated(
+        note = "`/v1/approvals` was removed upstream and now returns 404; use `data.v2().approvals(user)`"
+    )]
+    #[allow(deprecated)]
+    pub fn approvals(&self) -> crate::api::approvals::ApprovalsApi {
+        crate::api::approvals::ApprovalsApi {
             http_client: self.http_client.clone(),
         }
     }

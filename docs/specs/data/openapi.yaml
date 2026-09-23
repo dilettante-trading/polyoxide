@@ -768,91 +768,6 @@ components:
             $ref: '#/components/schemas/ComboActivity'
         pagination:
           $ref: '#/components/schemas/Pagination'
-    ApprovalContract:
-      type: object
-      description: >-
-        Approval state for one token and spender pair.
-      properties:
-        id:
-          type: string
-          description: >-
-            Stable identifier for the token and spender pair, such as
-            `UsdcExchange` or `CtfExchangeIsApprovedForAll`.
-          example: UsdcExchange
-        feature:
-          type: string
-          description: What the approval unlocks.
-          enum:
-          - trading
-          - perps
-          - rewards
-          - auto-redeem
-        token:
-          $ref: '#/components/schemas/Address'
-        spender:
-          $ref: '#/components/schemas/Address'
-        standard:
-          type: string
-          description: >-
-            Token standard of the approval. `ERC20` entries carry an allowance
-            amount; `ERC1155` entries are an operator flag with no amount.
-          enum:
-          - ERC20
-          - ERC1155
-        amount:
-          type: string
-          description: >-
-            Allowance semantics for `ERC20` entries. Entries that require an
-            unlimited allowance always report the constant `max`, describing
-            what the feature needs rather than what the wallet granted — read
-            `approved` for the granted state. Entries that accept any positive
-            allowance report the wallet's current allowance in the token's base
-            units as a decimal string. Omitted for `ERC1155` entries.
-          example: max
-        approved:
-          type: boolean
-          description: >-
-            Whether the approval is sufficient for its feature. Unlimited
-            trading approvals require the maximum allowance, `perps` and
-            `rewards` approvals require any positive allowance, and `ERC1155`
-            entries reflect the operator flag.
-      required:
-      - id
-      - feature
-      - token
-      - spender
-      - standard
-      - approved
-    ApprovalsResponse:
-      type: object
-      properties:
-        address:
-          $ref: '#/components/schemas/Address'
-        chainId:
-          type: integer
-          description: Chain the approvals were read on.
-          example: 137
-        checkedAt:
-          type: string
-          format: date-time
-          description: >-
-            RFC 3339 timestamp of when this response was generated. Approval
-            state is tracked from onchain events, so this is not the timestamp
-            of a fresh onchain read.
-          example: '2026-08-10T12:34:56Z'
-        contracts:
-          type: array
-          description: >-
-            Every approval Polymarket tracks, in a stable display order. Pairs
-            the wallet has never approved are still present with `approved`
-            false, so the array length does not change with wallet state.
-          items:
-            $ref: '#/components/schemas/ApprovalContract'
-      required:
-      - address
-      - chainId
-      - checkedAt
-      - contracts
 paths:
   /:
     get:
@@ -887,42 +802,6 @@ paths:
               schema:
                 type: string
                 format: binary
-        '400':
-          description: Bad Request
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/ErrorResponse'
-        '500':
-          description: Server Error
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/ErrorResponse'
-  /v1/approvals:
-    get:
-      tags:
-      - Misc
-      summary: Get token approval state for a wallet
-      description: >-
-        Reports whether a wallet has granted the token approvals Polymarket
-        needs, so a client can prompt for the missing ones instead of reading
-        each allowance onchain. Every tracked token and spender pair is
-        returned, including pairs the wallet has never approved.
-      parameters:
-      - in: query
-        name: user
-        required: true
-        schema:
-          $ref: '#/components/schemas/Address'
-        description: User address (0x-prefixed)
-      responses:
-        '200':
-          description: Success
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/ApprovalsResponse'
         '400':
           description: Bad Request
           content:

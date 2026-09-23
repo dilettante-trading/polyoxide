@@ -1606,6 +1606,9 @@ async fn activity_omits_exclude_deposits_withdrawals_when_unset() {
     mock.assert_async().await;
 }
 
+// `/v1/approvals` now 404s upstream; this pins the deprecated client until it
+// is removed.
+#[allow(deprecated)]
 #[tokio::test]
 async fn approvals_returns_contracts() {
     let mut server = Server::new_async().await;
