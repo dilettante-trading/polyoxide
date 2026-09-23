@@ -207,15 +207,29 @@ open_enum! {
 }
 
 open_enum! {
-    /// Position lifecycle state (`OPEN` / `REDEEMABLE` / `CLOSED`).
+    /// Position lifecycle state (`OPEN` / `REDEEMABLE` / `CLOSED`), plus two
+    /// request-only filters (`REDEEMABLE_LOST` / `MERGEABLE`).
     ///
     /// `OPEN` is the superset: an `OPEN` request also returns rows whose own
-    /// status is `REDEEMABLE`.
+    /// status is `REDEEMABLE`. A `/v2/positions` row's status is only ever
+    /// `OPEN`, `REDEEMABLE` or `CLOSED`: a `REDEEMABLE_LOST` request returns
+    /// rows labelled `REDEEMABLE`, and a `MERGEABLE` request rows labelled
+    /// `OPEN`.
     pub enum PositionStatus {
         /// `OPEN`
         Open => "OPEN",
         /// `REDEEMABLE`
         Redeemable => "REDEEMABLE",
+        /// `REDEEMABLE_LOST`: settled positions on the losing side, which
+        /// redeem for nothing. Requires `user`; defaults to sorting by
+        /// `CURRENT_VALUE`. Its rows keep the status `REDEEMABLE`.
+        RedeemableLost => "REDEEMABLE_LOST",
+        /// `MERGEABLE`: `OPEN` narrowed to conditions where the wallet holds
+        /// two or more live outcome tokens, i.e. a complementary set it can
+        /// merge. Defaults to sorting by `TOKENS`. Wallet-scoped: a
+        /// market-anchored request is served as `OPEN`. Its rows keep the
+        /// status `OPEN`.
+        Mergeable => "MERGEABLE",
         /// `CLOSED`
         Closed => "CLOSED",
     }
@@ -256,10 +270,14 @@ closed_enum! {
 
 closed_enum! {
     /// Sort key for `/v2/positions`. The upstream default depends on the
-    /// status: `CURRENT_VALUE` for `OPEN`/`REDEEMABLE`, `REALIZED_PNL` for `CLOSED`.
+    /// status: `CURRENT_VALUE` for `OPEN`/`REDEEMABLE`/`REDEEMABLE_LOST`,
+    /// `TOKENS` for `MERGEABLE`, `REALIZED_PNL` for `CLOSED`.
     pub enum PositionSortBy {
         /// `CURRENT_VALUE`
         CurrentValue => "CURRENT_VALUE",
+        /// `PRICE`: the row's `current_price`. Under `REDEEMABLE`, winners
+        /// still sort ahead of losers, and price orders each group.
+        Price => "PRICE",
         /// `TOKENS`
         Tokens => "TOKENS",
         /// `UNREALIZED_PNL`

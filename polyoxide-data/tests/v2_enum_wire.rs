@@ -95,12 +95,14 @@ fn request_enums_spell_what_the_server_accepts() {
         set(&["FIRST_ENTRY", "ENTRY_COST", "CURRENT_VALUE", "UPDATED"]),
         "ComboPositionSortBy"
     );
-    // Mirror, /v2/positions sort_by: "One of CURRENT_VALUE, TOKENS, UNREALIZED_PNL,
-    // REALIZED_PNL, TOTAL_PNL, or TIMESTAMP"
+    // Mirror, /v2/positions sort_by: "One of CURRENT_VALUE, PRICE, TOKENS,
+    // UNREALIZED_PNL, REALIZED_PNL, TOTAL_PNL, or TIMESTAMP". PRICE was added
+    // upstream in September 2026; a live probe on 2026-09-23 accepted it.
     assert_eq!(
         wire(PositionSortBy::ALL),
         set(&[
             "CURRENT_VALUE",
+            "PRICE",
             "TOKENS",
             "UNREALIZED_PNL",
             "REALIZED_PNL",
@@ -135,10 +137,19 @@ fn request_enums_spell_what_the_server_accepts() {
 fn enums_that_also_appear_in_responses_spell_what_the_server_sends() {
     // Server: "side must be BUY or SELL"
     assert_eq!(wire(TradeSide::ALL), set(&["BUY", "SELL"]), "TradeSide");
-    // Mirror, /v2/positions status: "One of OPEN, REDEEMABLE, or CLOSED"
+    // Mirror, /v2/positions status: "One of OPEN, REDEEMABLE, REDEEMABLE_LOST,
+    // MERGEABLE, or CLOSED". The two filters were added upstream in September
+    // 2026 and a live probe on 2026-09-23 accepted both. Rows only ever carry
+    // the other three: REDEEMABLE_LOST rows say REDEEMABLE, MERGEABLE rows OPEN.
     assert_eq!(
         wire(PositionStatus::ALL),
-        set(&["OPEN", "REDEEMABLE", "CLOSED"]),
+        set(&[
+            "OPEN",
+            "REDEEMABLE",
+            "REDEEMABLE_LOST",
+            "MERGEABLE",
+            "CLOSED"
+        ]),
         "PositionStatus"
     );
     // Live probe: every one of these was accepted by /v2/activity?type=

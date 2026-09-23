@@ -122,8 +122,8 @@ impl ListPositions {
         self
     }
 
-    /// Only positions in these Gamma events. Wallet-anchored requests only.
-    /// An empty list is omitted.
+    /// Only positions in these Gamma events (at most 20 distinct ids).
+    /// Wallet-anchored requests only. An empty list is omitted.
     pub fn event_ids<I, S>(mut self, event_ids: I) -> Self
     where
         I: IntoIterator<Item = S>,
@@ -156,8 +156,8 @@ impl ListPositions {
         self
     }
 
-    /// Include positions on archived markets. `OPEN`/`REDEEMABLE` only;
-    /// upstream rejects it with `CLOSED`.
+    /// Include positions on archived markets. Not valid with `CLOSED`, which
+    /// upstream rejects; every other status accepts it.
     pub fn include_archived(mut self, include: bool) -> Self {
         self.inner = self.inner.query("include_archived", include);
         self

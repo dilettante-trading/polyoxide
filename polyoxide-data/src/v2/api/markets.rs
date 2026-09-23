@@ -30,7 +30,8 @@ impl DataV2 {
         ListHolders { inner }
     }
 
-    /// `GET /v2/live-volume`: taker volume per market under these Gamma events.
+    /// `GET /v2/live-volume`: taker volume per market under these Gamma events
+    /// (at most 20 distinct ids; more is a `400`).
     pub fn live_volume<I, S>(&self, event_ids: I) -> GetLiveVolume
     where
         I: IntoIterator<Item = S>,

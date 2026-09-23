@@ -74,7 +74,8 @@ impl ListTrades {
         self
     }
 
-    /// Only trades in these Gamma events. An empty list is omitted.
+    /// Only trades in these Gamma events (at most 20 distinct ids). An empty
+    /// list is omitted.
     pub fn event_ids<I, S>(mut self, event_ids: I) -> Self
     where
         I: IntoIterator<Item = S>,
@@ -164,7 +165,8 @@ impl ListActivity {
         self
     }
 
-    /// Only activity in these Gamma events. An empty list is omitted.
+    /// Only activity in these Gamma events (at most 20 distinct ids). An empty
+    /// list is omitted.
     pub fn event_ids<I, S>(mut self, event_ids: I) -> Self
     where
         I: IntoIterator<Item = S>,
