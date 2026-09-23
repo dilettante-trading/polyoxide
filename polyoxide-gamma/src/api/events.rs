@@ -259,7 +259,8 @@ pub struct ListKeysetEvents {
 }
 
 impl ListKeysetEvents {
-    /// Maximum number of results to return (upstream max 500).
+    /// Maximum number of results to return (upstream max 100). Larger values
+    /// are clamped to 100, not rejected, so a page can be shorter than asked.
     pub fn limit(mut self, limit: u32) -> Self {
         self.request = self.request.query("limit", limit);
         self

@@ -35,6 +35,17 @@ parents. Measured 2026-08-19 on `parent_entity_id=45915`: `limit=2` returned 8
 rows, `limit=5` returned 18, `limit=64` returned 160. Callers sizing a buffer
 from `limit` will under-allocate.
 
+## `limit` on `GET /events/keyset` is clamped, not validated
+
+**Spec** (`openapi.yaml`, `listEventsKeyset`): `maximum: 100` (lowered from
+500 upstream in September 2026).
+
+**Server**, probed 2026-09-23: `limit=100`, `limit=101` and `limit=500` all
+return `200` with exactly 100 events. A `maximum` in the schema reads like a
+`422` above it; the server clamps instead. A caller that asks for 500 and
+treats a short page as the end of the data stops early. Paginate on
+`next_cursor`, never on page length.
+
 ## `GET /comments/{id}` returns a thread
 
 Upstream's summary is "Get comments by comment id". It returns the root comment
