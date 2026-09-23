@@ -1,3 +1,23 @@
+## [0.32.2] - 2026-09-23
+
+Adds the new v2 positions filters and sort key to `polyoxide-data` and the CLI,
+and deprecates `data.approvals()`, whose upstream route now returns 404.
+
+### 🚀 Features
+
+- *(data)* `PositionStatus::RedeemableLost` (settled losing positions; rows come back labelled `REDEEMABLE`), `PositionStatus::Mergeable` (`OPEN` narrowed to conditions holding a complementary set of live outcome tokens; rows come back labelled `OPEN`) and `PositionSortBy::Price` (by `current_price`) on `/v2/positions`. Both enums are `#[non_exhaustive]` (#38)
+- *(cli)* `data positions list --status` accepts `redeemable-lost` and `mergeable` (and the upstream `REDEEMABLE_LOST` spelling), and `--sort-by` accepts `price` (#38)
+
+### ⚠️ Deprecated
+
+- *(data)* `DataApi::approvals()` and `ApprovalsApi`: upstream removed `GET /v1/approvals` and the host answers `404` for it. Use `data.v2().approvals(user)`. Removal is deferred to a breaking release (#41)
+
+### 📚 Documentation
+
+- *(data, cli)* The `event_id` filters on trades, activity, positions and live-volume document upstream's cap of 20 distinct ids, which the server enforces with a non-retryable 400 (#38)
+- *(gamma)* `ListKeysetEvents::limit` is capped at 100 (was documented as 500). The server clamps larger values rather than rejecting them, so a short page does not mean the end of the data. Page on `next_cursor` (#42)
+- *(specs)* Adopt upstream perps and perps-ws specs: `GET /v1/account/backstops`, a required `fee_tier` on `Portfolio`, and 503 responses on the leverage, margin and internal-transfer routes (#39, #40)
+
 ## [0.32.1] - 2026-09-23
 
 Adds `ListEvents::include_markets`. Everything else in the workspace is
