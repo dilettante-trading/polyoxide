@@ -3441,6 +3441,89 @@
           }
         }
       }
+    },
+    "/v1/info/leaderboard": {
+      "get": {
+        "operationId": "getLeaderboard",
+        "summary": "Get Leaderboard",
+        "security": [],
+        "x-mint": {
+          "content": "<Badge color=\"gray\" size=\"md\">Request Weight: **5**</Badge>\n<br/>\n<Badge color=\"gray\" size=\"md\">Cached 5s — a request served from cache costs **1**</Badge>\n"
+        },
+        "description": "Get the global perpetuals leaderboard, ranked by PnL, notional volume, or\ncurrent account value across all instruments.\n\nWindows are anchored to calendar UTC boundaries: `day` starts at 00:00 UTC\ntoday, `week` at Monday 00:00 UTC, `month` at the first of the month\n00:00 UTC, and `all` at exchange launch.\n\nPnL is realized PnL minus trading fees plus funding payments, consistent\nwith the account PnL endpoint; unrealized PnL is excluded. Notional is the\nUSD value of all fills in the window. Every entry carries both metrics;\n`rank` is the position under the requested `sort_by`.\n\nPnL, notional, and account value are raw numeric strings from the engine.\nAccount value is current equity (collateral value plus unrealized PnL).\nThe background census advances by at most 8,192 accounts on each 60-second\npoller tick, so a full publication can span multiple ticks as the account\npopulation grows. For account-value sorting, `timestamp` is the earlier of\nthe published census start and the historical window's computation time,\nso stale membership and PnL remain observable if a historical rebuild fails.\nWhen sorting by account value, the requested window still determines which\naccounts and historical PnL/notional metrics are included, while the\nranking uses their current equity. Accounts whose equity cannot be computed\nare excluded from that ranking. When unrealized PnL is unavailable (for\nexample, due to stale marks), the display field falls back to collateral\nvalue on PnL/notional entries and address lookups; it does not establish an\nequity rank. `total` counts accounts with published equity in that window.\n`sort_by=account_value` returns 503 while the first completed census is\nwarming. PnL and notional rankings remain available during that warm-up.\nClients are responsible for decimal and currency presentation formatting.\n\nRankings are recomputed periodically; `timestamp` is the computation time.\nReturns 25 entries by default and at most 100 per request; only the top\n1000 ranks are pageable (`offset + limit` must not exceed 1000).\n\nProvide `address` to additionally return that account's row regardless of\nrank. An address with no activity in the window returns zero metrics and\nno rank.\n",
+        "parameters": [
+          {
+            "name": "window",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "$ref": "#/components/schemas/window"
+            }
+          },
+          {
+            "name": "sort_by",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "$ref": "#/components/schemas/sort_by"
+            }
+          },
+          {
+            "name": "limit",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "$ref": "#/components/schemas/limit"
+            }
+          },
+          {
+            "name": "offset",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "$ref": "#/components/schemas/offset"
+            }
+          },
+          {
+            "name": "address",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "$ref": "#/components/schemas/address"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Leaderboard response.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Leaderboard"
+                }
+              }
+            }
+          },
+          "400": {
+            "$ref": "#/components/responses/Error400Response"
+          },
+          "408": {
+            "$ref": "#/components/responses/Error408Response"
+          },
+          "413": {
+            "$ref": "#/components/responses/Error413Response"
+          },
+          "429": {
+            "$ref": "#/components/responses/Error429Response"
+          },
+          "500": {
+            "$ref": "#/components/responses/Error500Response"
+          },
+          "503": {
+            "$ref": "#/components/responses/Error503Response"
+          }
+        }
+      }
     }
   },
   "components": {
@@ -6064,6 +6147,11 @@
         "type": "boolean",
         "description": "Whether the account is currently under liquidation"
       },
+      "fee_tier": {
+        "type": "integer",
+        "description": "Zero-based index into `tiers` of the single perpetual fee schedule returned by `/v1/info/fees`, which applies to every perpetual regardless of category. Defaults to 0 without a current tier assignment and is capped at the highest configured tier. WebSocket tier changes appear on the next portfolio update, published every 5 seconds.",
+        "example": 0
+      },
       "Portfolio": {
         "type": "object",
         "required": [
@@ -7965,10 +8053,140 @@
           }
         }
       },
-      "fee_tier": {
+      "window": {
+        "type": "string",
+        "description": "Leaderboard window, anchored to calendar UTC boundaries. `day` starts at 00:00 UTC today, `week` at Monday 00:00 UTC, `month` at the first of the month 00:00 UTC, `all` at exchange launch.",
+        "default": "day",
+        "enum": [
+          "day",
+          "week",
+          "month",
+          "all"
+        ]
+      },
+      "sort_by": {
+        "type": "string",
+        "description": "Leaderboard ranking metric",
+        "default": "pnl",
+        "enum": [
+          "pnl",
+          "notional",
+          "account_value"
+        ]
+      },
+      "offset": {
         "type": "integer",
-        "description": "Zero-based effective account fee tier index in the perpetual equity fee schedule returned by /v1/info/fees. Defaults to 0 without a current tier assignment and is capped at the highest configured tier.",
+        "description": "Number of entries to skip",
+        "default": 0,
         "example": 0
+      },
+      "Leaderboard": {
+        "type": "object",
+        "required": [
+          "window",
+          "sort_by",
+          "timestamp",
+          "total",
+          "entries"
+        ],
+        "properties": {
+          "window": {
+            "$ref": "#/components/schemas/window"
+          },
+          "sort_by": {
+            "$ref": "#/components/schemas/sort_by"
+          },
+          "timestamp": {
+            "$ref": "#/components/schemas/update_timestamp"
+          },
+          "total": {
+            "$ref": "#/components/schemas/total"
+          },
+          "entries": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/LeaderboardEntry"
+            },
+            "maxItems": 100
+          },
+          "account": {
+            "$ref": "#/components/schemas/LeaderboardAccount"
+          }
+        }
+      },
+      "total": {
+        "type": "integer",
+        "description": "Total number of ranked accounts",
+        "example": 15234
+      },
+      "LeaderboardEntry": {
+        "type": "object",
+        "required": [
+          "rank",
+          "account",
+          "pnl",
+          "notional",
+          "account_value"
+        ],
+        "properties": {
+          "rank": {
+            "$ref": "#/components/schemas/rank"
+          },
+          "account": {
+            "$ref": "#/components/schemas/account"
+          },
+          "pnl": {
+            "$ref": "#/components/schemas/pnl"
+          },
+          "notional": {
+            "$ref": "#/components/schemas/notional"
+          },
+          "account_value": {
+            "$ref": "#/components/schemas/account_value"
+          }
+        }
+      },
+      "rank": {
+        "type": "integer",
+        "description": "Leaderboard rank under the requested ranking metric, starting at 1",
+        "example": 1
+      },
+      "notional": {
+        "type": "string",
+        "description": "Trading volume in USD notional as an unformatted numeric string",
+        "example": "10164976"
+      },
+      "account_value": {
+        "type": "string",
+        "description": "Current account equity in USD as an unformatted numeric string",
+        "example": "9238345.12"
+      },
+      "LeaderboardAccount": {
+        "type": "object",
+        "description": "Leaderboard row for the requested address. `rank` is absent when the account has no activity in the window, or when sorting by account value and that account has no computed equity in the published census. A collateral-only display fallback does not establish an equity rank.",
+        "required": [
+          "account",
+          "pnl",
+          "notional",
+          "account_value"
+        ],
+        "properties": {
+          "rank": {
+            "$ref": "#/components/schemas/rank"
+          },
+          "account": {
+            "$ref": "#/components/schemas/account"
+          },
+          "pnl": {
+            "$ref": "#/components/schemas/pnl"
+          },
+          "notional": {
+            "$ref": "#/components/schemas/notional"
+          },
+          "account_value": {
+            "$ref": "#/components/schemas/account_value"
+          }
+        }
       }
     },
     "responses": {

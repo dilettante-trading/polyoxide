@@ -11,7 +11,8 @@ use serde::Deserialize;
 pub enum ErrorCode {
     /// `invalid_request` (400)
     InvalidRequest,
-    /// `unauthorized` (401)
+    /// `unauthorized` (401). No longer in the published contract, since every v2
+    /// route is public; kept so a body that still carries it keeps its name.
     Unauthorized,
     /// `not_found` (404)
     NotFound,

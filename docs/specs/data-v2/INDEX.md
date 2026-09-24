@@ -22,7 +22,7 @@ formatting has no effect on it. Fetched five times on 2026-09-14 it was
 byte-identical each time, contains no timestamps, and is served uncached
 (`cf-cache-status: DYNAMIC`).
 
-Migration guide: <https://docs.polymarket.com/api-reference/data-api/migrating-from-v1>.
+Migration guide: <https://docs.polymarket.com/migrate/data-api-v1-to-v2>.
 
 ## Conventions
 
@@ -35,7 +35,9 @@ once for every route:
   Sending `offset` is a `400`. Cursors are signed, typed per endpoint, and bind
   the filters they were minted with. Contradicting those filters on a boards,
   positions or combo-positions cursor is a `400`. On `trades`/`activity`, changing
-  a filter mid-walk re-anchors the walk **without an error**.
+  a filter mid-walk re-anchors the walk **without an error**. Following a
+  cursor still needs the anchor: `/v2/positions` answers a bare `?cursor=` with a
+  `400` naming the missing `user`/`condition`, so resend the first page's anchor.
 - **snake_case fields.** Query parameters accept either spelling.
 - **`condition`** (aliases `condition_id`, `conditionId`) replaces v1's `market`.
 - **Units.** Bare `volume`/`size` are shares; `_usdc` fields are USD.

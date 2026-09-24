@@ -2329,7 +2329,7 @@
     "book": {
       "address": "/v1/ws",
       "title": "Book",
-      "summary": "Order book snapshot updates. Pushed every 100ms.",
+      "summary": "Order book snapshot updates (top 20 or, with the ::50 suffix, top 50 levels per side). Pushed every 100ms.",
       "messages": {
         "SubscribeRequest": {
           "name": "BookSubscribeRequest",
@@ -2341,8 +2341,8 @@
             "title": "Base Request",
             "properties": {
               "id": {
-                "type": "integer",
-                "description": "Correlation ID for request-response matching"
+                "description": "Client-supplied identifier used to correlate the response.",
+                "type": "integer"
               },
               "req": {
                 "type": "string",
@@ -2351,22 +2351,23 @@
               },
               "chs": {
                 "type": "array",
-                "description": "Book subscription in format \"book::{iid}\" (e.g., \"book::1\")",
+                "description": "Book subscription in format \"book::{iid}\" or \"book::{iid}::{depth}\". Omitted depth and \"20\" select the top 20 levels per side; \"50\" selects the top 50. Allowed depths are exactly 20 and 50.",
                 "items": {
                   "type": "string",
-                  "pattern": "^book::\\d+$"
+                  "pattern": "^book::\\d+(::(20|50))?$"
                 },
-                "example": ["book::1"]
+                "example": ["book::1", "book::1::50"]
               }
             },
-            "required": ["req", "chs"]
+            "required": ["req", "chs"],
+            "description": "Each inbound request consumes a weighted WebSocket message token. Before\nauthentication the budget is per client IP; after authentication all of\nthe account's sockets share its tier budget across IPs. The first valid\nsigned write also binds an unauthenticated socket to its recovered account;\nlater signed writes must resolve that same account. A breach returns\n`message_rate_limited` and leaves the socket open.\n\nOn gateways configured for concurrent post dispatch, signed write posts\ncarrying an `id` may execute and respond out of request order, matching\nthe semantics of concurrent HTTP requests. For strict ordering, await\neach response before sending the next request or omit `id` to keep posts\nserial. Use a unique `id` for every in-flight request on a connection;\nuniqueness is not enforced and duplicate in-flight IDs are ambiguous.\n"
           },
           "examples": [
             {
               "name": "SubscribeRequest Example",
               "payload": {
                 "req": "sub",
-                "chs": ["book::1"]
+                "chs": ["book::1", "book::1::50"]
               }
             }
           ]
@@ -2411,6 +2412,21 @@
                           "type": "string",
                           "description": "Error identifier. For domain rejections and transport errors (`401`/`404`/`429`/`500`) this is a stable, machine-readable snake_case identifier that is part of the API contract and safe to branch on, e.g. `insufficient_margin`, `insufficient_balance`, `order_not_found`, `reduce_only_invalid`, `price_outside_bounds`, `position_not_found`, `position_exists`, `open_orders_exist`, `invalid_margin_mode`, `invalid_margin_amount`, `margin_below_required_initial`, `account_liquidating`, `unauthorized`, `not_found`. For `400` it is a human-readable validation detail whose wording may change. See the Error handling guide for the domain identifiers. (Post-only / Fill-or-Kill outcomes are order statuses such as `post_only_rejected`, not rejections.)",
                           "example": "insufficient_margin"
+                        },
+                        "arts": {
+                          "type": "integer",
+                          "description": "Gateway arrival timestamp captured at handler entry, in Unix milliseconds.",
+                          "example": 1767225600000
+                        },
+                        "ts": {
+                          "type": "integer",
+                          "description": "decision time in Unix milliseconds: terminal event time for event-backed outcomes, gateway decision time otherwise",
+                          "example": 1767225600000
+                        },
+                        "ref": {
+                          "type": "string",
+                          "description": "Unique server-generated rejection reference. Include this value when asking support to locate the corresponding structured rejection trace.",
+                          "example": "g-0011223344556"
                         }
                       }
                     }
@@ -2439,8 +2455,8 @@
             "title": "Base Request",
             "properties": {
               "id": {
-                "type": "integer",
-                "description": "Correlation ID for request-response matching"
+                "description": "Client-supplied identifier used to correlate the response.",
+                "type": "integer"
               },
               "req": {
                 "type": "string",
@@ -2449,22 +2465,23 @@
               },
               "chs": {
                 "type": "array",
-                "description": "Book subscription in format \"book::{iid}\" (e.g., \"book::1\")",
+                "description": "Book subscription in format \"book::{iid}\" or \"book::{iid}::{depth}\". Omitted depth and \"20\" select the top 20 levels per side; \"50\" selects the top 50. Allowed depths are exactly 20 and 50.",
                 "items": {
                   "type": "string",
-                  "pattern": "^book::\\d+$"
+                  "pattern": "^book::\\d+(::(20|50))?$"
                 },
-                "example": ["book::1"]
+                "example": ["book::1", "book::1::50"]
               }
             },
-            "required": ["req", "chs"]
+            "required": ["req", "chs"],
+            "description": "Each inbound request consumes a weighted WebSocket message token. Before\nauthentication the budget is per client IP; after authentication all of\nthe account's sockets share its tier budget across IPs. The first valid\nsigned write also binds an unauthenticated socket to its recovered account;\nlater signed writes must resolve that same account. A breach returns\n`message_rate_limited` and leaves the socket open.\n\nOn gateways configured for concurrent post dispatch, signed write posts\ncarrying an `id` may execute and respond out of request order, matching\nthe semantics of concurrent HTTP requests. For strict ordering, await\neach response before sending the next request or omit `id` to keep posts\nserial. Use a unique `id` for every in-flight request on a connection;\nuniqueness is not enforced and duplicate in-flight IDs are ambiguous.\n"
           },
           "examples": [
             {
               "name": "UnsubscribeRequest Example",
               "payload": {
                 "req": "unsub",
-                "chs": ["book::1"]
+                "chs": ["book::1", "book::1::50"]
               }
             }
           ]
@@ -2509,6 +2526,21 @@
                           "type": "string",
                           "description": "Error identifier. For domain rejections and transport errors (`401`/`404`/`429`/`500`) this is a stable, machine-readable snake_case identifier that is part of the API contract and safe to branch on, e.g. `insufficient_margin`, `insufficient_balance`, `order_not_found`, `reduce_only_invalid`, `price_outside_bounds`, `position_not_found`, `position_exists`, `open_orders_exist`, `invalid_margin_mode`, `invalid_margin_amount`, `margin_below_required_initial`, `account_liquidating`, `unauthorized`, `not_found`. For `400` it is a human-readable validation detail whose wording may change. See the Error handling guide for the domain identifiers. (Post-only / Fill-or-Kill outcomes are order statuses such as `post_only_rejected`, not rejections.)",
                           "example": "insufficient_margin"
+                        },
+                        "arts": {
+                          "type": "integer",
+                          "description": "Gateway arrival timestamp captured at handler entry, in Unix milliseconds.",
+                          "example": 1767225600000
+                        },
+                        "ts": {
+                          "type": "integer",
+                          "description": "decision time in Unix milliseconds: terminal event time for event-backed outcomes, gateway decision time otherwise",
+                          "example": 1767225600000
+                        },
+                        "ref": {
+                          "type": "string",
+                          "description": "Unique server-generated rejection reference. Include this value when asking support to locate the corresponding structured rejection trace.",
+                          "example": "g-0011223344556"
                         }
                       }
                     }
@@ -2542,8 +2574,13 @@
                 "example": "trades::1"
               },
               "ts": {
+                "description": "Server send time, Unix milliseconds",
                 "type": "integer",
-                "description": "Request timestamp. Unix milliseconds for most operations; Unix seconds for withdrawals (must match the on-chain EIP-712 struct verified against block.timestamp).",
+                "example": 1767225600000
+              },
+              "ets": {
+                "type": "integer",
+                "description": "Event timestamp — the newest event this update reflects, in Unix milliseconds. Distinct from `ts`, which is the server send time; `ts - ets` is time spent inside the exchange after the event. `ets=0` means no event horizon is attested, and consumers must treat the horizon as unknown.",
                 "example": 1767225600000
               },
               "sq": {
@@ -2584,7 +2621,7 @@
                 }
               }
             },
-            "required": ["ch", "ts", "sq", "data"]
+            "required": ["ch", "ts", "ets", "sq", "data"]
           },
           "examples": [
             {
@@ -2592,6 +2629,7 @@
               "payload": {
                 "ch": "book::1",
                 "ts": 1767225600000,
+                "ets": 1767225600000,
                 "sq": 1234567890,
                 "data": {
                   "b": [["100.00", "10.00"]],
@@ -5440,15 +5478,15 @@
                     "type": "boolean",
                     "description": "Whether the account is currently under liquidation"
                   },
+                  "fee_tier": {
+                    "type": "integer",
+                    "description": "Zero-based index into `tiers` of the single perpetual fee schedule returned by `/v1/info/fees`, which applies to every perpetual regardless of category. Defaults to 0 without a current tier assignment and is capped at the highest configured tier. WebSocket tier changes appear on the next portfolio update, published every 5 seconds.",
+                    "example": 0
+                  },
                   "timestamp": {
                     "type": "integer",
                     "description": "Update timestamp in milliseconds",
                     "example": 1767225600000
-                  },
-                  "fee_tier": {
-                    "type": "integer",
-                    "description": "Zero-based effective account fee tier index in the perpetual equity fee schedule returned by /v1/info/fees. Defaults to 0 without a current tier assignment and is capped at the highest configured tier.",
-                    "example": 0
                   }
                 }
               }
@@ -5487,8 +5525,8 @@
                     "total_position_value": "100.03"
                   },
                   "withdrawable": "13104.51",
-                  "timestamp": 1767225600000,
-                  "fee_tier": 0
+                  "fee_tier": 0,
+                  "timestamp": 1767225600000
                 }
               }
             }
