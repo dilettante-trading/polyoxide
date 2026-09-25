@@ -92,7 +92,10 @@ place owner-signed type-3 orders (ts-sdk live suite does this).
   A session-key signer wraps `signature` in the 6492 envelope.
 - Authorize: `POST /v1/session-signers/authorizations` with
   `{ walletAddress, sessionSignerAddress, scopes, validUntil, nonce, deadline, signature }`,
-  Builder HMAC headers and `Idempotency-Key`. `validUntil` = now + 4 315 h (the venue
+  Builder HMAC headers and `Idempotency-Key`. Revocation also accepts a Relayer API key,
+  as py-sdk's `_require_gasless_api_key` does; authorization is Builder HMAC only. Both
+  routes get a 300 s request timeout (py-sdk `read=300`) because the venue validates,
+  simulates, persists and broadcasts synchronously. `validUntil` = now + 4 315 h (the venue
   rejects other lifetimes). `scopes` is `["CLOB"]`, `["COMBOSRFQ"]`, both, or `["ALL"]` alone.
   Response `{ operationId, status, transactionHash, transactionId }`; status ∈
   `SUBMITTED | REGISTRY_PENDING | REGISTERED | FAILED | SUPERSEDED | REPAIR_REQUIRED`.
@@ -198,8 +201,9 @@ target, and a non-type-3 order against a Deposit Wallet target.
   `submit_session_signer_authorization(request, signature, idempotency_key) -> SessionSignerAuthorizationResponse`.
   `revoke_session_signer_typed_data` / `submit_session_signer_revocation` mirror it.
   Local-signer conveniences `authorize_session_signer(session, scopes)` and
-  `revoke_session_signer(session)` run both halves. Builder HMAC only; a client without
-  `AuthConfig::Builder` gets a validation error before any I/O.
+  `revoke_session_signer(session)` run both halves. Authorization is Builder HMAC only; a
+  client with just a Relayer API key gets a validation error before any I/O. Revocation
+  accepts either auth, as py-sdk does.
 - `SessionSignerScope { Clob, CombosRfq, All, Other(String) }` is `#[non_exhaustive]`, defined in
   `polyoxide-core` and re-exported by both crates, serialised as the wire strings. The relay owns a
   scope validator that rejects an empty list, duplicates, and `All` mixed with anything else,

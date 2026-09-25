@@ -2,7 +2,7 @@
 
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
-**Goal:** `polyoxide-relay` can derive and resolve a Deposit Wallet, sign and submit a Deposit Wallet `Batch` (approvals, redemption, any calls) with a local key or hand the typed data to an external signer, and authorize, list-poll and revoke session signers through the relayer's session-signer endpoints under Builder HMAC auth, all verified offline against py-sdk vectors.
+**Goal:** `polyoxide-relay` can derive and resolve a Deposit Wallet, sign and submit a Deposit Wallet `Batch` (approvals, redemption, any calls) with a local key or hand the typed data to an external signer, and authorize, list-poll and revoke session signers through the relayer's session-signer endpoints under Builder HMAC auth (revocation also under a Relayer API key), all verified offline against py-sdk vectors.
 
 **Architecture:** A pure `wallet.rs` holds the four CREATE2 derivations; a pure `deposit_wallet.rs` holds the `Batch` EIP-712 struct, the typed-data JSON, the calldata encoders and the relay's own copy of the session-signer envelope; `session_signers.rs` holds the request and response types and the scope validator. `RelayClient` gains an auth mode independent of a wallet key, a `DepositWallet` arm in `execute`, the params and transaction routes, and typed-data-out / signature-in pairs for every owner-signed batch.
 
@@ -2080,8 +2080,9 @@ Prepend to `polyoxide-relay/src/session_signers.rs`:
 //! Neither route is in the published relayer OpenAPI; the contract is
 //! `docs.polymarket.com/trading/session-keys` and Polymarket's official SDKs.
 //! Both take a Deposit Wallet `Batch` signed by the owner (see
-//! [`crate::deposit_wallet`]) plus the session-signer fields, under Builder HMAC
-//! auth only, with an `Idempotency-Key` header.
+//! [`crate::deposit_wallet`]) plus the session-signer fields, with an
+//! `Idempotency-Key` header. Authorization needs Builder HMAC; revocation also
+//! accepts a Relayer API key, as py-sdk does.
 
 use alloy::primitives::Address;
 use polyoxide_core::SessionSignerScope;
@@ -2512,7 +2513,7 @@ In `polyoxide-relay/src/client.rs`, add imports for the session-signer types and
     }
 
     /// `POST /v1/session-signers/authorizations` with an owner signature produced
-    /// elsewhere. Builder HMAC auth only; `idempotency_key` is sent as
+    /// elsewhere. Builder HMAC auth only (a Relayer API key is refused before I/O); `idempotency_key` is sent as
     /// `Idempotency-Key` and should be reused when retrying the same request.
     pub async fn submit_session_signer_authorization(
         &self,
@@ -2563,7 +2564,7 @@ In `polyoxide-relay/src/client.rs`, add imports for the session-signer types and
             reqwest::header::HeaderValue::from_str(idempotency_key)
                 .map_err(|e| RelayError::Api(format!("invalid idempotency key: {e}")))?,
         );
-        self.post_json("v1/session-signers/revocations", &request.body(signature), headers, false)
+        self.post_json("v1/session-signers/revocations", &request.body(signature), headers, true)
             .await
     }
 
@@ -2624,6 +2625,8 @@ In `polyoxide-relay/src/client.rs`, add imports for the session-signer types and
 ```
 
 `rand` is a dependency of `polyoxide-clob`, not relay; add `rand = { version = "0.9.2", features = ["std"] }` to `polyoxide-relay/Cargo.toml` `[dependencies]` (same version as clob). The `rand 0.9` API is `rand::rng()` and `RngCore::fill_bytes`. Also make sure `post_json` sets `Content-Type: application/json` (it does, inherited from `_post_request`) and that the HMAC covers the exact body string it sends.
+
+**Review amendments (2026-09-25, from py-sdk 0.11.0 `_internal/actions/session_keys.py`):** revocation goes through `_require_gasless_api_key`, which accepts a Builder key or a Relayer API key, so `submit_session_signer_revocation` passes `allow_relayer_api_key = true` (authorization stays Builder-only). Both routes use a 300 s per-request timeout (`SESSION_SIGNER_REQUEST_TIMEOUT`, applied via a new `Option<Duration>` parameter on `post_json` and `reqwest::RequestBuilder::timeout`) because py-sdk sets `read=300`: the venue validates, simulates, persists and broadcasts synchronously, and a 30 s transport error would lose the convenience's idempotency key. `validate_scopes` also rejects an empty scope string; duplicates are rejected client-side (py-sdk does not check them). An empty `idempotency_key` is refused.
 
 The session-key role: `authorize_session_signer` / `revoke_session_signer` are owner operations; if `self.deposit_wallet_role` is `SessionKey`, return `RelayError::Api("session signers are managed by the wallet owner, not a session key")` before I/O in both conveniences.
 
