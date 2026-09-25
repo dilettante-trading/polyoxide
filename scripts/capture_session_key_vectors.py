@@ -32,15 +32,19 @@ Writes `order_vectors.json`, `clob_auth.json` and `PROVENANCE.md` to the first d
 and `relay_vectors.json` and `PROVENANCE.md` to the second. Re-run after a py-sdk upgrade;
 review the diff before committing.
 """
+import dataclasses
 import importlib.metadata
 import json
 import re
 import sys
 import tomllib
+import types
+from datetime import UTC, datetime
 from pathlib import Path
 
 from eth_account import Account
 from eth_account.messages import encode_typed_data
+from eth_utils.address import to_checksum_address
 from eth_utils.crypto import keccak
 from polymarket._internal.actions.orders.typed_data import (
     _app_domain_separator,
@@ -52,13 +56,23 @@ from polymarket._internal.actions.orders.types import BYTES32_ZERO, UnsignedOrde
 from polymarket._internal.actions.relayer.calls import (
     authorize_session_signer_call,
     ctf_redeem_positions_call,
+    erc1155_set_approval_for_all_call,
     erc20_approval_call,
     revoke_session_signer_call,
 )
-from polymarket._internal.actions.relayer.gasless import build_deposit_wallet_payload
+from polymarket._internal.actions.relayer.gasless import (
+    SignedDepositWalletBatch,
+    build_deposit_wallet_payload,
+)
 from polymarket._internal.actions.relayer.signing.deposit_wallet import (
     build_deposit_wallet_typed_data,
     sign_deposit_wallet_batch,
+)
+from polymarket._internal.actions.session_keys import (
+    _build_authorization_payload,
+    _build_revocation_payload,
+    _ParsedAuthorizeSessionKeyRequest,
+    _ParsedRevokeSessionKeyRequest,
 )
 from polymarket._internal.environment import PRODUCTION_CONFIG
 from polymarket._internal.l1_auth import build_api_key_auth_typed_data
@@ -70,11 +84,13 @@ from polymarket._internal.wallet import (
     wrap_deposit_wallet_session_signer_signature,
 )
 from polymarket.models.types import TokenId
+from polymarket.session_keys import SessionKeyKnownScope
 from polymarket.types import EvmAddress, HexString
 
 ANVIL_KEY_0 = "0xac0974bec39a17e36ba4a6b4d238ff944bacb478cbed5efcae784d7bf4f2ff80"
 ANVIL_ADDR_1 = "0x70997970C51812dc3A010C7d01b50e0d17dc79C8"
 DEPOSIT_WALLET = EvmAddress("0x57ffbc34de23124faeb8387fcd689d314e57accd")
+CHAIN_ID = 137
 EXCHANGES = {
     # py-sdk's golden fixture uses the V1 exchange address; keep it so the digest
     # cross-checks against their pinned value.
@@ -87,7 +103,7 @@ EXCHANGES = {
 # as the existing `REFERENCE_SIGNATURE` golden in eip712.rs's
 # `clob_auth_reference_tests`, produced independently from py-clob-client +
 # poly_eip712_structs — the two signatures should agree.
-CLOB_AUTH_CHAIN_ID = 137
+CLOB_AUTH_CHAIN_ID = CHAIN_ID
 CLOB_AUTH_TIMESTAMP = 1700000000
 CLOB_AUTH_NONCE = 42
 
@@ -101,17 +117,32 @@ PY_SDK_GOLDEN_DIGEST = "0x1b9566eedd9589a73275df23a3a9d9e2e9897e76d31cd46d436f1b
 SIGNER_ONE = "0x0000000000000000000000000000000000000001"
 PUSD = "0xC011a7E12a19f7B1f670d46F03B03f3342E82DFB"
 CTF = "0x4D97DCd97eC945f40cF65F87097ACe5EA0476045"
-EXCHANGE_V2 = "0xE111180000d2663C0091e4f400237545B87B996B"
 MAX_UINT256 = (1 << 256) - 1
 CONDITION_ID = "0x1171bfba0ad9386688133910593527fe77ce5406a7ac2c9a3552ab5471c1ac51"
-# py-sdk's own golden: tests/unit/test_wallet_derivations.py EXPECTED_UUPS_DEPOSIT.
-PY_SDK_GOLDEN_UUPS_FOR_SIGNER_ONE = "0x57ffbc34de23124faeb8387fcd689d314e57accd"
+
+# py-sdk's own golden: tests/unit/test_wallet_derivations.py, for signer
+# 0x0000000000000000000000000000000000000001. If any of these stops matching, either
+# py-sdk's derivation changed upstream or ours no longer mirrors theirs — investigate
+# before trusting anything else this script produces.
+PY_SDK_GOLDEN_SIGNER_ONE = {
+    "uups": "0x57ffbc34de23124faeb8387fcd689d314e57accd",
+    "beacon": "0x94bf330955a0b957662feaf878de77bf25f76cd9",
+    "safe": "0x766b6851a199bf91ae3fa13b1cfac5187355118f",
+    "proxy": "0x7754536ecd85c00b2e0cf9c1aa679340d8550756",
+}
+
+# The two-argument invocation used by both provenance files' "run" line and Command
+# tables, kept as one constant so it can't drift between them.
+COMMAND = (
+    "uv run scripts/capture_session_key_vectors.py "
+    "polyoxide-clob/tests/fixtures/session_keys polyoxide-relay/tests/fixtures/session_keys"
+)
 
 
 def fixture(exchange: str) -> UnsignedOrder:
     return UnsignedOrder(
         builder=BYTES32_ZERO,
-        chain_id=137,
+        chain_id=CHAIN_ID,
         exchange_address=EvmAddress(exchange),
         expiration=0,
         maker=DEPOSIT_WALLET,
@@ -181,10 +212,10 @@ def _derivations(signer: str, cfg) -> dict:
 
 def _batch(signer, wallet: EvmAddress, calls, nonce: str, deadline: str, session: str) -> dict:
     typed_data = build_deposit_wallet_typed_data(
-        wallet=wallet, calls=calls, nonce=nonce, deadline=deadline, chain_id=137
+        wallet=wallet, calls=calls, nonce=nonce, deadline=deadline, chain_id=CHAIN_ID
     )
     signature = sign_deposit_wallet_batch(
-        signer, wallet=wallet, calls=calls, nonce=nonce, deadline=deadline, chain_id=137
+        signer, wallet=wallet, calls=calls, nonce=nonce, deadline=deadline, chain_id=CHAIN_ID
     )
     return {
         "typed_data": _hexify(typed_data),
@@ -205,28 +236,118 @@ def relay_vectors(signer) -> dict:
     The owner is Anvil key #0 (same signer as the order-signing fixtures); the wallet
     is its beacon-generation Deposit Wallet. `derivations.signer_one` cross-checks against
     py-sdk's own `tests/unit/test_wallet_derivations.py` golden, asserted by the caller
-    before anything here is written.
+    before anything here is written. `authorization_body` and `revocation_body` are built
+    by py-sdk's own `_build_authorization_payload` / `_build_revocation_payload`
+    (`polymarket._internal.actions.session_keys`) rather than assembled by hand, so the
+    request shape is pinned against the library that produces it, not a transcription of it.
     """
     cfg = PRODUCTION_CONFIG.wallet_derivation
     owner = signer.address
     wallet = EvmAddress(derive_beacon_deposit_wallet_address(owner, cfg))
-    approval = erc20_approval_call(
-        token_address=EvmAddress(PUSD), spender=EvmAddress(EXCHANGE_V2), amount=MAX_UINT256
-    )
+    signer_one = to_checksum_address(SIGNER_ONE)
+    session_signer = to_checksum_address(ANVIL_ADDR_1)
+    pusd = EvmAddress(to_checksum_address(PUSD))
+    ctf = EvmAddress(to_checksum_address(CTF))
+    v2_exchange = EvmAddress(to_checksum_address(EXCHANGES["v2_exchange"]))
+
+    approval = erc20_approval_call(token_address=pusd, spender=v2_exchange, amount=MAX_UINT256)
     authorize = authorize_session_signer_call(
-        wallet_address=wallet, session_signer=EvmAddress(ANVIL_ADDR_1), valid_until=1815534000
+        wallet_address=wallet, session_signer=EvmAddress(session_signer), valid_until=1815534000
     )
-    revoke = revoke_session_signer_call(wallet_address=wallet, session_signer=EvmAddress(ANVIL_ADDR_1))
-    redeem = ctf_redeem_positions_call(
-        ctf=EvmAddress(CTF), collateral=EvmAddress(PUSD), condition_id=CONDITION_ID
+    revoke = revoke_session_signer_call(
+        wallet_address=wallet, session_signer=EvmAddress(session_signer)
     )
-    approval_batch = _batch(signer, wallet, [approval], "3", "1800000000", ANVIL_ADDR_1)
-    authorize_batch = _batch(signer, wallet, [authorize], "4", "1800000600", ANVIL_ADDR_1)
+    redeem = ctf_redeem_positions_call(ctf=ctf, collateral=pusd, condition_id=CONDITION_ID)
+    # A second call in the same batch (approve pUSD, then set the CTF operator approval),
+    # with a non-zero `value` on the second call so the fixture doesn't only ever exercise
+    # the all-zero-value path that every other batch here happens to take.
+    approve_all = dataclasses.replace(
+        erc1155_set_approval_for_all_call(token_address=ctf, operator=v2_exchange, approved=True),
+        value=1,
+    )
+
+    approval_batch = _batch(signer, wallet, [approval], "3", "1800000000", session_signer)
+    authorize_batch = _batch(signer, wallet, [authorize], "4", "1800000600", session_signer)
+    revoke_batch = _batch(signer, wallet, [revoke], "5", "1800000600", session_signer)
+    redeem_batch = _batch(signer, wallet, [redeem], "6", "1800000600", session_signer)
+    multi_batch = _batch(signer, wallet, [approval, approve_all], "7", "1800000600", session_signer)
+
+    ctx = types.SimpleNamespace(wallet=wallet)
+    authorize_request = _ParsedAuthorizeSessionKeyRequest(
+        address=EvmAddress(session_signer),
+        scopes=(SessionKeyKnownScope.CLOB,),
+        valid_until=datetime.fromtimestamp(1815534000, tz=UTC),
+        valid_until_epoch=1815534000,
+        idempotency_key="unused",
+    )
+    revoke_request = _ParsedRevokeSessionKeyRequest(
+        address=EvmAddress(session_signer), idempotency_key="unused"
+    )
+    authorization_body = _build_authorization_payload(
+        ctx,
+        request=authorize_request,
+        batch=SignedDepositWalletBatch(
+            nonce=authorize_batch["nonce"],
+            deadline=authorize_batch["deadline"],
+            signature=authorize_batch["signature"],
+        ),
+    )
+    revocation_body = _build_revocation_payload(
+        ctx,
+        request=revoke_request,
+        batch=SignedDepositWalletBatch(
+            nonce=revoke_batch["nonce"],
+            deadline=revoke_batch["deadline"],
+            signature=revoke_batch["signature"],
+        ),
+    )
+
+    submit_body = dict(
+        build_deposit_wallet_payload(
+            signer_address=owner,
+            deposit_wallet_factory=cfg.deposit_wallet_factory,
+            wallet=wallet,
+            calls=[approval],
+            nonce="3",
+            deadline="1800000000",
+            signature=approval_batch["signature"],
+            metadata="",
+        )
+    )
+    # Same batch as `redeem_batch`, submitted as the owner — the ordinary submission path.
+    redeem_submit_body = dict(
+        build_deposit_wallet_payload(
+            signer_address=owner,
+            deposit_wallet_factory=cfg.deposit_wallet_factory,
+            wallet=wallet,
+            calls=[redeem],
+            nonce="6",
+            deadline="1800000600",
+            signature=redeem_batch["signature"],
+            metadata="",
+        )
+    )
+    # Same batch as `approval_batch`, but submitted by the session key itself (signer_address
+    # is the session signer, not the owner), signed with `session_signature` rather than the
+    # raw batch signature — how py-sdk submits once a session key is authorized.
+    session_submit_body = dict(
+        build_deposit_wallet_payload(
+            signer_address=session_signer,
+            deposit_wallet_factory=cfg.deposit_wallet_factory,
+            wallet=wallet,
+            calls=[approval],
+            nonce="3",
+            deadline="1800000000",
+            signature=approval_batch["session_signature"],
+            metadata="",
+        )
+    )
+
     return {
         "owner": owner,
         "wallet": wallet,
-        "session_signer": ANVIL_ADDR_1,
-        "chain_id": 137,
+        "session_signer": session_signer,
+        "chain_id": CHAIN_ID,
         "config": {
             "deposit_wallet_factory": cfg.deposit_wallet_factory,
             "deposit_wallet_beacon": cfg.deposit_wallet_beacon,
@@ -237,32 +358,19 @@ def relay_vectors(signer) -> dict:
             "safe_init_code_hash": cfg.safe_init_code_hash,
         },
         "derivations": {
-            "signer_one": _derivations(SIGNER_ONE, cfg),
+            "signer_one": _derivations(signer_one, cfg),
             "anvil0": _derivations(owner, cfg),
         },
         "approval_batch": approval_batch,
         "authorize_batch": authorize_batch,
-        "revoke_batch": _batch(signer, wallet, [revoke], "5", "1800000600", ANVIL_ADDR_1),
-        "redeem_batch": _batch(signer, wallet, [redeem], "6", "1800000600", ANVIL_ADDR_1),
-        "submit_body": dict(build_deposit_wallet_payload(
-            signer_address=owner,
-            deposit_wallet_factory=cfg.deposit_wallet_factory,
-            wallet=wallet,
-            calls=[approval],
-            nonce="3",
-            deadline="1800000000",
-            signature=approval_batch["signature"],
-            metadata="",
-        )),
-        "authorization_body": {
-            "deadline": "1800000600",
-            "nonce": "4",
-            "scopes": ["CLOB"],
-            "sessionSignerAddress": ANVIL_ADDR_1,
-            "signature": authorize_batch["signature"],
-            "validUntil": "1815534000",
-            "walletAddress": wallet,
-        },
+        "revoke_batch": revoke_batch,
+        "redeem_batch": redeem_batch,
+        "multi_batch": multi_batch,
+        "submit_body": submit_body,
+        "redeem_submit_body": redeem_submit_body,
+        "session_submit_body": session_submit_body,
+        "authorization_body": authorization_body,
+        "revocation_body": revocation_body,
     }
 
 
@@ -303,15 +411,28 @@ def order_provenance(order: UnsignedOrder) -> dict:
     }
 
 
+def _reproducibility_paragraph(sdk_version: str, dependency_cutoff: str) -> str:
+    """The "generated by, against what, reproducible until when" paragraph shared by both
+    PROVENANCE.md files, so the two can't drift on wording — only on which fixtures they
+    go on to describe."""
+    return (
+        "Generated by `scripts/capture_session_key_vectors.py` (run:\n"
+        f"`{COMMAND}`)\n"
+        f"against Polymarket's official Python SDK, `polymarket-client=={sdk_version}` — "
+        "not a live\n"
+        f"host. Dependency resolution is pinned to `exclude-newer = {dependency_cutoff}` "
+        "(the\n"
+        "script's own PEP 723 metadata), so a rerun reproduces byte-identical output "
+        "regardless of\n"
+        "the date it is run, until that cutoff or the pinned `polymarket-client` version "
+        "changes."
+    )
+
+
 def write_provenance(out_dir: Path, sdk_version: str, dependency_cutoff: str) -> None:
     text = f"""# Deposit Wallet (session-key) order-signing vectors
 
-Generated by `scripts/capture_session_key_vectors.py` (run:
-`uv run scripts/capture_session_key_vectors.py polyoxide-clob/tests/fixtures/session_keys`)
-against Polymarket's official Python SDK, `polymarket-client=={sdk_version}` — not a live
-host. Dependency resolution is pinned to `exclude-newer = {dependency_cutoff}` (the
-script's own PEP 723 metadata), so a rerun reproduces byte-identical output regardless of
-the date it is run, until that cutoff or the pinned `polymarket-client` version changes.
+{_reproducibility_paragraph(sdk_version, dependency_cutoff)}
 
 The order is py-sdk's own golden fixture (`tests/unit/test_order_typed_data_golden.py`),
 signed with Anvil key #0. Generation asserts the `v1_exchange` vector's `envelope_digest`
@@ -329,44 +450,50 @@ its signature over Anvil key #0, at chain id 137, timestamp 1700000000, nonce 42
 
 | Fixture | Command |
 |---|---|
-| `order_vectors.json` | `uv run scripts/capture_session_key_vectors.py polyoxide-clob/tests/fixtures/session_keys` |
-| `clob_auth.json` | `uv run scripts/capture_session_key_vectors.py polyoxide-clob/tests/fixtures/session_keys` |
+| `order_vectors.json` | `{COMMAND}` |
+| `clob_auth.json` | `{COMMAND}` |
 """
     (out_dir / "PROVENANCE.md").write_text(text)
 
 
-def write_relay_provenance(out_dir: Path, sdk_version: str, dependency_cutoff: str) -> None:
+def write_relay_provenance(
+    out_dir: Path, sdk_version: str, dependency_cutoff: str, deposit_wallet_factory: str
+) -> None:
     text = f"""# Deposit Wallet relay vectors
 
-Generated by `scripts/capture_session_key_vectors.py` (run:
-`uv run scripts/capture_session_key_vectors.py polyoxide-clob/tests/fixtures/session_keys
-polyoxide-relay/tests/fixtures/session_keys`) against Polymarket's official Python SDK,
-`polymarket-client=={sdk_version}` — not a live host. Dependency resolution is pinned to
-`exclude-newer = {dependency_cutoff}` (the script's own PEP 723 metadata), so a rerun
-reproduces byte-identical output regardless of the date it is run, until that cutoff or the
-pinned `polymarket-client` version changes.
+{_reproducibility_paragraph(sdk_version, dependency_cutoff)}
 
 The owner is Anvil key #0 (the same signer as the clob fixtures); `wallet` is its
-beacon-generation Deposit Wallet, `0x00000000000Fb5C9ADea0298D729A0CB3823Cc07`-factory
-derived. `derivations.signer_one` reproduces py-sdk's own
-`tests/unit/test_wallet_derivations.py` expected addresses for signer
-`0x0000000000000000000000000000000000000001`; generation asserts
-`derivations.signer_one.uups` against that golden before writing anything, so this
-fixture cannot drift from theirs silently. `derivations.anvil0` is the same four
-derivations for the owner itself, with no independent golden to check against.
+beacon-generation Deposit Wallet, `{deposit_wallet_factory}`-factory derived.
+`derivations.signer_one` reproduces py-sdk's own
+`tests/unit/test_wallet_derivations.py` expected addresses (all four: uups, beacon, safe,
+proxy) for signer `0x0000000000000000000000000000000000000001`; generation asserts all
+four against that golden before writing anything, so this fixture cannot drift from
+theirs silently. `derivations.anvil0` is the same four derivations for the owner itself,
+with no independent golden to check against.
 
-`approval_batch`, `authorize_batch`, `revoke_batch` and `redeem_batch` are Deposit Wallet
-`Batch` EIP-712 vectors (ERC-20 approve, authorize session signer, revoke session signer,
-CTF redeem), each with its typed data, digest, raw signature and `session_signature`. As
-in the clob fixtures, `session_signature` is a byte-pinning vector only: the session-signer
-envelope names Anvil address #1 as the session signer, but Anvil key #0 produced the inner
-batch signature. `submit_body` and `authorization_body` are the corresponding relay request
-payloads (`build_deposit_wallet_payload`'s submit envelope and the session-signer
-authorization body), built from `approval_batch` and `authorize_batch` respectively.
+`approval_batch`, `authorize_batch`, `revoke_batch`, `redeem_batch` and `multi_batch` are
+Deposit Wallet `Batch` EIP-712 vectors (ERC-20 approve, authorize session signer, revoke
+session signer, CTF redeem, and a two-call batch combining the pUSD approval with a CTF
+`setApprovalForAll` whose call carries a non-zero `value`), each with its typed data,
+digest, raw signature and `session_signature`. As in the clob fixtures, `session_signature`
+is a byte-pinning vector only: the session-signer envelope names Anvil address #1 as the
+session signer, but Anvil key #0 produced the inner batch signature. Note that
+`typed_data.message.calls[].data` is hex-encoded by this script for JSON output; py-sdk
+itself holds that field as raw `bytes` (see `_hexify`).
+
+`submit_body`, `redeem_submit_body`, `session_submit_body`, `authorization_body` and
+`revocation_body` are relay request payloads built by py-sdk's own functions, not
+hand-assembled: the three `submit_body` variants come from `build_deposit_wallet_payload`
+(the owner submitting `approval_batch` and `redeem_batch`, and the session key itself
+submitting `approval_batch` via its `session_signature`), and `authorization_body` /
+`revocation_body` come from `_build_authorization_payload` / `_build_revocation_payload`
+(`polymarket._internal.actions.session_keys`), built from `authorize_batch` and
+`revoke_batch` respectively.
 
 | Fixture | Command |
 |---|---|
-| `relay_vectors.json` | `uv run scripts/capture_session_key_vectors.py polyoxide-clob/tests/fixtures/session_keys polyoxide-relay/tests/fixtures/session_keys` |
+| `relay_vectors.json` | `{COMMAND}` |
 """
     (out_dir / "PROVENANCE.md").write_text(text)
 
@@ -375,6 +502,8 @@ def main(out_dir: Path, relay_dir: Path) -> None:
     signer = Account.from_key(ANVIL_KEY_0)
     sdk_version = importlib.metadata.version("polymarket-client")
     dependency_cutoff = read_dependency_cutoff()
+
+    # --- compute both halves first; nothing is written until both goldens pass. ---
     out = {}
     for name, exchange in EXCHANGES.items():
         order = fixture(exchange)
@@ -408,27 +537,33 @@ def main(out_dir: Path, relay_dir: Path) -> None:
             "session_signature": session,
             "order": order_provenance(order),
         }
+    clob_auth = clob_auth_fixture(signer)
+
+    vectors = relay_vectors(signer)
+    mismatches = [
+        (key, got, expected)
+        for key, expected in PY_SDK_GOLDEN_SIGNER_ONE.items()
+        if (got := vectors["derivations"]["signer_one"][key].lower()) != expected
+    ]
+    if mismatches:
+        print("derivations.signer_one does not match py-sdk's golden fixture:", file=sys.stderr)
+        for key, got, expected in mismatches:
+            print(f"  {key}: got={got} expected={expected}", file=sys.stderr)
+        sys.exit(1)
+
+    # --- both goldens passed; write everything. ---
     out_dir.mkdir(parents=True, exist_ok=True)
     (out_dir / "order_vectors.json").write_text(json.dumps(out, indent=2) + "\n")
-    clob_auth = clob_auth_fixture(signer)
     (out_dir / "clob_auth.json").write_text(json.dumps(clob_auth, indent=2) + "\n")
     write_provenance(out_dir, sdk_version, dependency_cutoff)
     print(f"wrote {out_dir / 'order_vectors.json'}")
     print(f"wrote {out_dir / 'clob_auth.json'}")
 
-    vectors = relay_vectors(signer)
-    got = vectors["derivations"]["signer_one"]["uups"].lower()
-    if got != PY_SDK_GOLDEN_UUPS_FOR_SIGNER_ONE:
-        print(
-            "derivations.signer_one.uups does not match py-sdk's golden fixture:\n"
-            f"  got:      {got}\n"
-            f"  expected: {PY_SDK_GOLDEN_UUPS_FOR_SIGNER_ONE}",
-            file=sys.stderr,
-        )
-        sys.exit(1)
     relay_dir.mkdir(parents=True, exist_ok=True)
     (relay_dir / "relay_vectors.json").write_text(json.dumps(vectors, indent=2) + "\n")
-    write_relay_provenance(relay_dir, sdk_version, dependency_cutoff)
+    write_relay_provenance(
+        relay_dir, sdk_version, dependency_cutoff, vectors["config"]["deposit_wallet_factory"]
+    )
     print(f"wrote {relay_dir / 'relay_vectors.json'}")
 
 
