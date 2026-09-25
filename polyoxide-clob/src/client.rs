@@ -226,9 +226,10 @@ impl Clob {
     /// The L1 auth message for `address` as EIP-712 JSON, for an external wallet to sign.
     ///
     /// `timestamp` is Unix seconds at signing time — construct it from
-    /// [`polyoxide_core::current_timestamp`] or `std::time::SystemTime`, and reuse it
-    /// unchanged if a caller retries after a 429 backoff, unlike the signer-based
-    /// [`Clob::auth`] path, which stamps a fresh timestamp on every attempt.
+    /// [`polyoxide_core::current_timestamp`] or `std::time::SystemTime`. Unlike the
+    /// signer-based [`Clob::auth`] path, which stamps a fresh timestamp on every
+    /// attempt, the client's internal 429 retry resends the same timestamp and
+    /// signature.
     ///
     /// Uses this client's chain id. See [`crate::core::eip712::clob_auth_typed_data`].
     pub fn clob_auth_typed_data(
@@ -256,9 +257,9 @@ impl Clob {
 
         let digest =
             crate::core::eip712::clob_auth_digest(address, self.chain_id, timestamp, nonce);
-        let recovered = sig.recover_address_from_prehash(&digest).map_err(|e| {
-            ClobError::validation(format!("signature must be 65 bytes of 0x-hex: {e}"))
-        })?;
+        let recovered = sig
+            .recover_address_from_prehash(&digest)
+            .map_err(|_| ClobError::validation("signature does not recover to any address"))?;
         if recovered != address {
             return Err(ClobError::validation(format!(
                 "signature recovers to {recovered}, not {address}; the typed data must be \
@@ -276,9 +277,9 @@ impl Clob {
     /// [`Clob::clob_auth_typed_data`] for the same `timestamp` and `nonce`. The
     /// signature is checked locally (parsed and recovered against `address`) before
     /// the request is sent, so a malformed or mismatched signature never reaches the
-    /// venue. `timestamp` is Unix seconds at signing time; unlike the signer-based
-    /// path, a retry after a 429 backoff must reuse the same timestamp, since only
-    /// the caller (or the external wallet) can produce a fresh signature for a new one.
+    /// venue. `timestamp` is Unix seconds at signing time, and the client's internal
+    /// 429 retry resends the same timestamp and signature, since only the caller (or
+    /// the external wallet) can produce a fresh signature for a new one.
     pub async fn create_api_key_with_signature(
         &self,
         address: Address,
@@ -306,8 +307,8 @@ impl Clob {
     ///
     /// The counterpart of [`Clob::create_api_key_with_signature`] for credentials
     /// that already exist. Same local signature check, and `timestamp` is Unix
-    /// seconds at signing time; a retry after a 429 backoff reuses it rather than
-    /// stamping a fresh one, since only the external wallet can re-sign.
+    /// seconds at signing time: the client's internal 429 retry resends the same
+    /// timestamp and signature, since only the external wallet can re-sign.
     pub async fn derive_api_key_with_signature(
         &self,
         address: Address,
@@ -1251,5 +1252,57 @@ mod tests {
     fn test_validate_reports_negative_size_as_non_positive() {
         let err = make_params(0.5, -10.0).validate().unwrap_err();
         assert!(err.to_string().contains("positive"), "got: {err}");
+    }
+
+    /// Two `checked_l1_signature` cases: a signature from the wrong signer names the
+    /// real signer (not a garbage recovered address — this only holds because the
+    /// digest is built from the *claimed* address, and the wrong signer really did
+    /// sign that exact digest, the "wrong account selected" case a browser wallet can
+    /// produce), and a genuine signature with `v` in 0/1 form is accepted and its `v`
+    /// normalised back to 27/28.
+    #[tokio::test]
+    async fn checked_l1_signature_names_the_real_signer_and_normalises_v() {
+        use crate::core::eip712::clob_auth_digest;
+        use alloy::signers::{local::PrivateKeySigner, Signer as AlloySigner};
+
+        // Hardhat/Anvil account #0 (the claimed address) and #1 (who actually signs).
+        let owner: PrivateKeySigner =
+            "ac0974bec39a17e36ba4a6b4d238ff944bacb478cbed5efcae784d7bf4f2ff80"
+                .parse()
+                .unwrap();
+        let wrong_account: PrivateKeySigner =
+            "59c6995e998f97a5a0044966f0945389dc9e86dae88c7a8412f4603b6b78690d"
+                .parse()
+                .unwrap();
+        let claimed = owner.address();
+        assert_ne!(claimed, wrong_account.address());
+
+        // No network touched: `checked_l1_signature` is pure local verification.
+        let clob = ClobBuilder::new().build().unwrap();
+        let timestamp = 1700000000u64;
+        let nonce = 5u32;
+        let digest = clob_auth_digest(claimed, clob.chain_id, timestamp, nonce);
+
+        let bad_sig = wrong_account.sign_hash(&digest).await.unwrap();
+        let bad_hex = format!("0x{}", hex::encode(bad_sig.as_bytes()));
+        let err = clob
+            .checked_l1_signature(claimed, timestamp, nonce, bad_hex)
+            .unwrap_err()
+            .to_string();
+        assert!(err.contains(&wrong_account.address().to_string()), "{err}");
+        assert!(err.contains(&claimed.to_string()), "{err}");
+
+        let good_sig = owner.sign_hash(&digest).await.unwrap();
+        let mut raw = good_sig.as_bytes();
+        assert!(raw[64] == 0x1b || raw[64] == 0x1c, "v byte: {}", raw[64]);
+        raw[64] -= 27; // 27/28 -> 0/1, as some wallets and tools emit it
+        let good_hex = format!("0x{}", hex::encode(raw));
+        let normalised = clob
+            .checked_l1_signature(claimed, timestamp, nonce, good_hex)
+            .unwrap();
+        assert!(
+            normalised.ends_with("1b") || normalised.ends_with("1c"),
+            "{normalised}"
+        );
     }
 }
