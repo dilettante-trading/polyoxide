@@ -1,5 +1,6 @@
 use crate::account::BuilderAccount;
 use crate::config::{get_contract_config, AuthConfig, BuilderConfig, ContractConfig};
+use crate::deposit_wallet::DepositWalletCall;
 use crate::error::RelayError;
 use crate::types::{
     ExecuteParams, GaslessTransaction, NonceResponse, RelayerApiKey, RelayerTransaction,
@@ -8,12 +9,13 @@ use crate::types::{
 use crate::wallet::WalletKind;
 use alloy::hex;
 use alloy::network::TransactionBuilder;
-use alloy::primitives::{keccak256, Address, Bytes, U256};
+use alloy::primitives::{address, keccak256, Address, Bytes, U256};
 use alloy::providers::{Provider, ProviderBuilder};
 use alloy::rpc::types::TransactionRequest;
-use alloy::signers::Signer;
 use alloy::sol_types::{Eip712Domain, SolCall, SolStruct, SolValue};
-use polyoxide_core::{retry_after_header, HttpClient, HttpClientBuilder, RateLimiter, RetryConfig};
+use polyoxide_core::{
+    retry_after_header, DepositWalletRole, HttpClient, HttpClientBuilder, RateLimiter, RetryConfig,
+};
 use serde::Serialize;
 use std::time::{Duration, Instant};
 use url::Url;
@@ -100,6 +102,35 @@ struct ProxySubmitBody {
     metadata: Option<String>,
 }
 
+#[derive(Serialize)]
+struct DepositWalletCallBody {
+    target: String,
+    value: String,
+    data: String,
+}
+
+#[derive(Serialize)]
+#[serde(rename_all = "camelCase")]
+struct DepositWalletParamsBody {
+    deposit_wallet: String,
+    deadline: String,
+    calls: Vec<DepositWalletCallBody>,
+}
+
+#[derive(Serialize)]
+struct DepositWalletSubmitBody {
+    #[serde(rename = "type")]
+    type_: String,
+    from: String,
+    to: String,
+    nonce: String,
+    signature: String,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    metadata: Option<String>,
+    #[serde(rename = "depositWalletParams")]
+    deposit_wallet_params: DepositWalletParamsBody,
+}
+
 /// Client for submitting gasless transactions through Polymarket's relayer service.
 ///
 /// Supports both Safe and Proxy wallet types. Handles EIP-712 transaction signing,
@@ -109,8 +140,11 @@ pub struct RelayClient {
     http_client: HttpClient,
     chain_id: u64,
     account: Option<BuilderAccount>,
+    auth: Option<AuthConfig>,
     contract_config: ContractConfig,
     wallet_type: WalletType,
+    deposit_wallet: Option<Address>,
+    deposit_wallet_role: DepositWalletRole,
 }
 
 impl RelayClient {
@@ -183,6 +217,22 @@ impl RelayClient {
         }
     }
 
+    /// The auth this client submits under: the account's own config if it has one,
+    /// otherwise the one given to [`RelayClientBuilder::with_auth`].
+    fn auth(&self) -> Result<&AuthConfig, RelayError> {
+        if let Some(auth) = &self.auth {
+            return Ok(auth);
+        }
+        if self.account.is_none() {
+            return Err(RelayError::Api(
+                "Account missing - cannot authenticate request. Configure an account via RelayClientBuilder::with_account or ::relayer_api_key.".to_string(),
+            ));
+        }
+        Err(RelayError::Api(
+            "No authentication configured - provide BuilderConfig or RelayerApiKeyConfig when creating the BuilderAccount".to_string(),
+        ))
+    }
+
     /// Produce GET auth headers, enforcing per-endpoint auth-scheme allow-lists.
     fn authed_get_headers(
         &self,
@@ -190,18 +240,7 @@ impl RelayClient {
         allow_builder: bool,
         allow_relayer_api_key: bool,
     ) -> Result<reqwest::header::HeaderMap, RelayError> {
-        let account = self.account.as_ref().ok_or_else(|| {
-            RelayError::Api(
-                "Account missing - cannot authenticate request. Configure an account via RelayClientBuilder::with_account or ::relayer_api_key.".to_string(),
-            )
-        })?;
-        let auth = account.auth_config().ok_or_else(|| {
-            RelayError::Api(
-                "No authentication configured - provide BuilderConfig or RelayerApiKeyConfig when creating the BuilderAccount".to_string(),
-            )
-        })?;
-
-        match auth {
+        match self.auth()? {
             AuthConfig::Builder(cfg) => {
                 if !allow_builder {
                     return Err(RelayError::Api(format!(
@@ -654,7 +693,9 @@ impl RelayClient {
     /// Sign and submit transactions through the relayer with an optional gas limit override.
     ///
     /// For Safe wallets, transactions are batched via MultiSend. For Proxy wallets,
-    /// they are encoded into the proxy's calldata format.
+    /// they are encoded into the proxy's calldata format. For Deposit Wallets, they
+    /// are signed as one EIP-712 `Batch` of CALLs (DELEGATECALL is refused), and
+    /// `gas_limit` is ignored because a Deposit Wallet submission carries none.
     pub async fn execute_with_gas(
         &self,
         transactions: Vec<SafeTransaction>,
@@ -667,9 +708,7 @@ impl RelayClient {
         match self.wallet_type {
             WalletType::Safe => self.execute_safe(transactions, metadata).await,
             WalletType::Proxy => self.execute_proxy(transactions, metadata, gas_limit).await,
-            WalletType::DepositWallet => Err(RelayError::Api(
-                "Deposit Wallet execution lands in a later task; use WalletType::Safe or Proxy for now".into(),
-            )),
+            WalletType::DepositWallet => self.execute_deposit_wallet(transactions, metadata).await,
         }
     }
 
@@ -818,6 +857,197 @@ impl RelayClient {
         self._post_request("submit", &body).await
     }
 
+    fn deposit_wallet_factory(&self) -> Result<Address, RelayError> {
+        self.contract_config.deposit_wallet_factory.ok_or_else(|| {
+            RelayError::Api("Deposit Wallets are not supported on this chain".to_string())
+        })
+    }
+
+    fn configured_deposit_wallet(&self) -> Result<Address, RelayError> {
+        self.deposit_wallet.ok_or_else(|| {
+            RelayError::Api(
+                "no Deposit Wallet configured: call RelayClientBuilder::deposit_wallet(address)"
+                    .to_string(),
+            )
+        })
+    }
+
+    /// Unix seconds now plus [`crate::deposit_wallet::DEFAULT_BATCH_DEADLINE_SECS`].
+    fn default_deadline() -> u64 {
+        polyoxide_core::current_timestamp() + crate::deposit_wallet::DEFAULT_BATCH_DEADLINE_SECS
+    }
+
+    /// The batch as EIP-712 JSON for an external signer (`eth_signTypedData_v4`).
+    ///
+    /// Pair with [`RelayClient::submit_deposit_wallet_batch_from`]. `nonce` comes from
+    /// [`RelayClient::get_execute_params`] for the owner with [`WalletType::DepositWallet`].
+    pub fn deposit_wallet_batch_typed_data(
+        &self,
+        wallet: Address,
+        calls: &[DepositWalletCall],
+        nonce: u64,
+        deadline: u64,
+    ) -> serde_json::Value {
+        crate::deposit_wallet::batch_typed_data(self.chain_id, wallet, calls, nonce, deadline)
+    }
+
+    /// Submit a batch signed elsewhere, naming the signer explicitly.
+    ///
+    /// `from` is the EOA that produced `signature` (the owner, or a session key whose
+    /// signature is already wrapped in the session-signer envelope). Works with
+    /// `RelayClientBuilder::with_auth` and no account.
+    #[allow(clippy::too_many_arguments)]
+    pub async fn submit_deposit_wallet_batch_from(
+        &self,
+        from: Address,
+        wallet: Address,
+        calls: &[DepositWalletCall],
+        nonce: u64,
+        deadline: u64,
+        signature: &str,
+        metadata: Option<String>,
+    ) -> Result<SubmitResponse, RelayError> {
+        let body = DepositWalletSubmitBody {
+            type_: WalletType::DepositWallet.as_str().to_string(),
+            from: from.to_string(),
+            to: self.deposit_wallet_factory()?.to_string(),
+            nonce: nonce.to_string(),
+            signature: signature.to_string(),
+            metadata,
+            deposit_wallet_params: DepositWalletParamsBody {
+                deposit_wallet: wallet.to_string(),
+                deadline: deadline.to_string(),
+                calls: calls
+                    .iter()
+                    .map(|c| DepositWalletCallBody {
+                        target: c.target.to_string(),
+                        value: c.value.to_string(),
+                        data: format!("0x{}", hex::encode(&c.data)),
+                    })
+                    .collect(),
+            },
+        };
+        self._post_request("submit", &body).await
+    }
+
+    /// Submit a batch signed elsewhere by this client's account.
+    pub async fn submit_deposit_wallet_batch(
+        &self,
+        wallet: Address,
+        calls: &[DepositWalletCall],
+        nonce: u64,
+        deadline: u64,
+        signature: &str,
+        metadata: Option<String>,
+    ) -> Result<SubmitResponse, RelayError> {
+        let from = self
+            .account
+            .as_ref()
+            .ok_or(RelayError::MissingSigner)?
+            .address();
+        self.submit_deposit_wallet_batch_from(
+            from, wallet, calls, nonce, deadline, signature, metadata,
+        )
+        .await
+    }
+
+    /// Sign a batch with the account's key, applying the session-signer envelope for a
+    /// session-key role, and return the hex signature.
+    async fn sign_deposit_wallet_batch(
+        &self,
+        wallet: Address,
+        calls: &[DepositWalletCall],
+        nonce: u64,
+        deadline: u64,
+    ) -> Result<String, RelayError> {
+        let account = self.account.as_ref().ok_or(RelayError::MissingSigner)?;
+        let digest =
+            crate::deposit_wallet::batch_digest(self.chain_id, wallet, calls, nonce, deadline);
+        let sig = account
+            .signer()
+            .sign_hash(&digest)
+            .await
+            .map_err(|e| RelayError::Signer(e.to_string()))?;
+        let bytes = match self.deposit_wallet_role {
+            DepositWalletRole::Owner => sig.as_bytes().to_vec(),
+            DepositWalletRole::SessionKey => {
+                crate::deposit_wallet::wrap_session_signer(account.address(), &sig.as_bytes())
+            }
+        };
+        Ok(format!("0x{}", hex::encode(bytes)))
+    }
+
+    async fn execute_deposit_wallet(
+        &self,
+        transactions: Vec<SafeTransaction>,
+        metadata: Option<String>,
+    ) -> Result<SubmitResponse, RelayError> {
+        let wallet = self.configured_deposit_wallet()?;
+        let account = self.account.as_ref().ok_or(RelayError::MissingSigner)?;
+        let calls = transactions
+            .into_iter()
+            .map(|tx| {
+                if tx.operation != CALL_OPERATION {
+                    return Err(RelayError::Api(
+                        "a Deposit Wallet batch supports CALL only, not DELEGATECALL".to_string(),
+                    ));
+                }
+                Ok(DepositWalletCall {
+                    target: tx.to,
+                    value: tx.value,
+                    data: tx.data,
+                })
+            })
+            .collect::<Result<Vec<_>, _>>()?;
+        let nonce = self
+            .get_execute_params(account.address(), WalletType::DepositWallet)
+            .await?;
+        let deadline = Self::default_deadline();
+        let signature = self
+            .sign_deposit_wallet_batch(wallet, &calls, nonce, deadline)
+            .await?;
+        self.submit_deposit_wallet_batch(wallet, &calls, nonce, deadline, &signature, metadata)
+            .await
+    }
+
+    /// The four approvals a Deposit Wallet needs before it can trade: pUSD `approve`
+    /// and Conditional Tokens `setApprovalForAll` for the standard and neg-risk V2
+    /// exchanges. Sign and submit the result as one batch, or convert each call to a
+    /// `SafeTransaction` with `operation: 0` for [`RelayClient::execute`].
+    ///
+    /// The addresses are Polygon mainnet's; any other chain is an error.
+    pub fn deposit_wallet_trading_approvals(&self) -> Result<Vec<DepositWalletCall>, RelayError> {
+        use crate::deposit_wallet::{
+            erc1155_set_approval_for_all_calldata, erc20_approve_calldata,
+        };
+        if self.chain_id != 137 {
+            return Err(RelayError::Api(format!(
+                "trading approvals are only known for Polygon mainnet (137), not chain {}",
+                self.chain_id
+            )));
+        }
+        let pusd = address!("C011a7E12a19f7B1f670d46F03B03f3342E82DFB");
+        let ctf = address!("4D97DCd97eC945f40cF65F87097ACe5EA0476045");
+        let exchanges = [
+            address!("E111180000d2663C0091e4f400237545B87B996B"),
+            address!("e2222d279d744050d28e00520010520000310F59"),
+        ];
+        let mut calls = Vec::with_capacity(4);
+        for exchange in exchanges {
+            calls.push(DepositWalletCall {
+                target: pusd,
+                value: U256::ZERO,
+                data: erc20_approve_calldata(exchange, U256::MAX).into(),
+            });
+            calls.push(DepositWalletCall {
+                target: ctf,
+                value: U256::ZERO,
+                data: erc1155_set_approval_for_all_calldata(exchange, true).into(),
+            });
+        }
+        Ok(calls)
+    }
+
     /// Estimate gas required for a redemption transaction.
     ///
     /// Returns the estimated gas limit with relayer overhead and safety buffer included.
@@ -887,11 +1117,7 @@ impl RelayClient {
         let proxy_wallet = match self.wallet_type {
             WalletType::Proxy => self.get_expected_proxy_wallet()?,
             WalletType::Safe => self.get_expected_safe()?,
-            WalletType::DepositWallet => {
-                return Err(RelayError::Api(
-                    "Deposit Wallet execution lands in a later task; use WalletType::Safe or Proxy for now".into(),
-                ))
-            }
+            WalletType::DepositWallet => self.configured_deposit_wallet()?,
         };
 
         // 5. Create provider using the configured RPC URL
@@ -994,9 +1220,31 @@ impl RelayClient {
         endpoint: &str,
         body: &T,
     ) -> Result<SubmitResponse, RelayError> {
+        self.post_json(endpoint, body, reqwest::header::HeaderMap::new(), true)
+            .await
+    }
+
+    /// POST `body` as JSON to `endpoint` under the client's auth, retrying on 429.
+    ///
+    /// `extra_headers` are merged after the auth headers on every attempt. When
+    /// `allow_relayer_api_key` is false, a client configured with a relayer API key
+    /// is refused before any I/O.
+    async fn post_json<B: Serialize, T: serde::de::DeserializeOwned>(
+        &self,
+        endpoint: &str,
+        body: &B,
+        extra_headers: reqwest::header::HeaderMap,
+        allow_relayer_api_key: bool,
+    ) -> Result<T, RelayError> {
         let url = self.http_client.base_url.join(endpoint)?;
         let body_str = serde_json::to_string(body)?;
         let path = format!("/{}", endpoint);
+        let auth = self.auth()?;
+        if !allow_relayer_api_key && matches!(auth, AuthConfig::RelayerApiKey(_)) {
+            return Err(RelayError::Api(format!(
+                "{path} requires Builder HMAC auth; configure the client with BuilderConfig"
+            )));
+        }
         let mut attempt = 0u32;
 
         loop {
@@ -1006,20 +1254,12 @@ impl RelayClient {
                 .await;
 
             // Generate fresh auth headers each attempt (timestamps stay current)
-            let mut headers = if let Some(account) = &self.account {
-                if let Some(auth) = account.auth_config() {
-                    auth.generate_relayer_v2_headers("POST", url.path(), Some(&body_str))
-                        .map_err(RelayError::Api)?
-                } else {
-                    return Err(RelayError::Api(
-                        "No authentication configured - provide BuilderConfig or RelayerApiKeyConfig when creating the BuilderAccount".to_string(),
-                    ));
-                }
-            } else {
-                return Err(RelayError::Api(
-                    "Account missing - cannot authenticate request".to_string(),
-                ));
-            };
+            let mut headers = auth
+                .generate_relayer_v2_headers("POST", url.path(), Some(&body_str))
+                .map_err(RelayError::Api)?;
+            for (name, value) in &extra_headers {
+                headers.insert(name.clone(), value.clone());
+            }
 
             headers.insert(
                 reqwest::header::CONTENT_TYPE,
@@ -1093,7 +1333,10 @@ pub struct RelayClientBuilder {
     base_url: String,
     chain_id: u64,
     account: Option<BuilderAccount>,
+    auth: Option<AuthConfig>,
     wallet_type: WalletType,
+    deposit_wallet: Option<Address>,
+    deposit_wallet_role: DepositWalletRole,
     retry_config: Option<RetryConfig>,
     max_concurrent: Option<usize>,
 }
@@ -1127,7 +1370,10 @@ impl RelayClientBuilder {
             base_url: base_url.to_string(),
             chain_id: 137,
             account: None,
+            auth: None,
             wallet_type: WalletType::default(),
+            deposit_wallet: None,
+            deposit_wallet_role: DepositWalletRole::Owner,
             retry_config: None,
             max_concurrent: None,
         })
@@ -1170,6 +1416,32 @@ impl RelayClientBuilder {
         Ok(self.with_account(account))
     }
 
+    /// Authenticate relay submissions without a wallet key.
+    ///
+    /// For flows where the owner signs typed data out of process and this client
+    /// only submits (session-signer authorization under Builder HMAC, or any
+    /// `*_with_signature` call). An account's own auth config, if also set, takes
+    /// precedence over this.
+    pub fn with_auth(mut self, auth: AuthConfig) -> Self {
+        self.auth = Some(auth);
+        self
+    }
+
+    /// The Deposit Wallet this client acts for. Required by every Deposit Wallet
+    /// execution path; it is not derived, so a mistaken address fails at the relayer
+    /// rather than silently targeting a wallet you do not own.
+    pub fn deposit_wallet(mut self, wallet: Address) -> Self {
+        self.deposit_wallet = Some(wallet);
+        self
+    }
+
+    /// Whether the account's key is the Deposit Wallet's owner (default) or a session
+    /// key; a session key's batch signatures get the session-signer envelope.
+    pub fn deposit_wallet_role(mut self, role: DepositWalletRole) -> Self {
+        self.deposit_wallet_role = role;
+        self
+    }
+
     /// Set the wallet type (default: [`WalletType::Safe`]).
     pub fn wallet_type(mut self, wallet_type: WalletType) -> Self {
         self.wallet_type = wallet_type;
@@ -1210,12 +1482,21 @@ impl RelayClientBuilder {
         }
         let http_client = builder.build()?;
 
+        let auth = self
+            .account
+            .as_ref()
+            .and_then(|a| a.auth_config().cloned())
+            .or(self.auth);
+
         Ok(RelayClient {
             http_client,
             chain_id: self.chain_id,
             account: self.account,
+            auth,
             contract_config,
             wallet_type: self.wallet_type,
+            deposit_wallet: self.deposit_wallet,
+            deposit_wallet_role: self.deposit_wallet_role,
         })
     }
 }
@@ -1250,6 +1531,28 @@ mod tests {
             result.is_err(),
             "3rd permit should block with default limit of 2"
         );
+    }
+
+    #[test]
+    fn deposit_wallet_trading_approvals_cover_both_exchanges_on_polygon_only() {
+        let client = RelayClient::builder().unwrap().build().unwrap();
+        let calls = client.deposit_wallet_trading_approvals().unwrap();
+        assert_eq!(calls.len(), 4);
+        let pusd = address!("C011a7E12a19f7B1f670d46F03B03f3342E82DFB");
+        let ctf = address!("4D97DCd97eC945f40cF65F87097ACe5EA0476045");
+        assert_eq!(calls[0].target, pusd);
+        assert!(calls[0].data.starts_with(&[0x09, 0x5e, 0xa7, 0xb3]));
+        assert_eq!(calls[1].target, ctf);
+        assert!(calls[1].data.starts_with(&[0xa2, 0x2c, 0xb4, 0x65]));
+        assert!(calls.iter().all(|c| c.value.is_zero()));
+
+        let amoy = RelayClient::builder()
+            .unwrap()
+            .chain_id(80002)
+            .build()
+            .unwrap();
+        let err = amoy.deposit_wallet_trading_approvals().unwrap_err();
+        assert!(err.to_string().contains("80002"), "{err}");
     }
 
     #[test]

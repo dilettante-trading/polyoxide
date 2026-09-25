@@ -2,6 +2,13 @@ use crate::config::{AuthConfig, BuilderConfig, RelayerApiKeyConfig};
 use crate::error::RelayError;
 use alloy::primitives::Address;
 use alloy::signers::local::PrivateKeySigner;
+use alloy::signers::Signer as AlloySigner;
+use std::sync::Arc;
+
+/// Any `alloy` signer that implements `sign_hash`, type-erased. Local keys and
+/// KMS-backed signers qualify; Ledger and Trezor refuse raw-hash signing and are
+/// not usable here (hand them the typed data instead).
+pub type DynSigner = dyn AlloySigner + Send + Sync;
 
 /// Keychain service name for Relay credentials.
 #[cfg(feature = "keychain")]
@@ -9,14 +16,15 @@ pub const KEYCHAIN_SERVICE: &str = "polyoxide-relay";
 
 /// Account credentials for authenticated relay operations.
 ///
-/// Combines a private key signer (for EIP-712 transaction signing) with an optional
+/// Combines a signer (for EIP-712 transaction signing) with an optional
 /// [`AuthConfig`] for relay submission. Two authentication schemes are supported:
 /// [`AuthConfig::Builder`] (HMAC-signed builder API credentials) and
 /// [`AuthConfig::RelayerApiKey`] (static relayer API key headers). The `Debug`
 /// implementation redacts the private key to prevent accidental leakage in logs.
 #[derive(Clone)]
 pub struct BuilderAccount {
-    pub(crate) signer: PrivateKeySigner,
+    pub(crate) signer: Arc<DynSigner>,
+    pub(crate) address: Address,
     pub(crate) config: Option<AuthConfig>,
 }
 
@@ -30,7 +38,7 @@ fn parse_signer(private_key: impl Into<String>) -> Result<PrivateKeySigner, Rela
 impl std::fmt::Debug for BuilderAccount {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         f.debug_struct("BuilderAccount")
-            .field("address", &self.signer.address())
+            .field("address", &self.address)
             .field("config", &self.config)
             .finish()
     }
@@ -46,10 +54,7 @@ impl BuilderAccount {
         config: Option<BuilderConfig>,
     ) -> Result<Self, RelayError> {
         let signer = parse_signer(private_key)?;
-        Ok(Self {
-            signer,
-            config: config.map(AuthConfig::Builder),
-        })
+        Ok(Self::with_signer(signer, config.map(AuthConfig::Builder)))
     }
 
     /// Create a new account from a hex-encoded private key and relayer API key credentials.
@@ -60,10 +65,10 @@ impl BuilderAccount {
     ) -> Result<Self, RelayError> {
         let signer = parse_signer(private_key)?;
         let relayer = RelayerApiKeyConfig::new(key, address)?;
-        Ok(Self {
+        Ok(Self::with_signer(
             signer,
-            config: Some(AuthConfig::RelayerApiKey(relayer)),
-        })
+            Some(AuthConfig::RelayerApiKey(relayer)),
+        ))
     }
 
     /// Create a new account from a hex-encoded private key and a pre-built [`AuthConfig`].
@@ -72,17 +77,29 @@ impl BuilderAccount {
         config: Option<AuthConfig>,
     ) -> Result<Self, RelayError> {
         let signer = parse_signer(private_key)?;
-        Ok(Self { signer, config })
+        Ok(Self::with_signer(signer, config))
     }
 
-    /// Returns the Ethereum address derived from the private key.
+    /// Create an account around any `alloy` signer that supports `sign_hash`.
+    pub fn with_signer<S>(signer: S, config: Option<AuthConfig>) -> Self
+    where
+        S: AlloySigner + Send + Sync + 'static,
+    {
+        Self {
+            address: signer.address(),
+            signer: Arc::new(signer),
+            config,
+        }
+    }
+
+    /// Returns the signer's Ethereum address.
     pub fn address(&self) -> Address {
-        self.signer.address()
+        self.address
     }
 
-    /// Returns a reference to the underlying private key signer.
-    pub fn signer(&self) -> &PrivateKeySigner {
-        &self.signer
+    /// Returns a reference to the underlying signer.
+    pub fn signer(&self) -> &DynSigner {
+        &*self.signer
     }
 
     /// Returns the auth config, if one was provided.

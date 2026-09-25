@@ -62,7 +62,7 @@ pub mod wallet;
 
 mod account;
 
-pub use account::BuilderAccount;
+pub use account::{BuilderAccount, DynSigner};
 
 #[cfg(feature = "keychain")]
 pub use account::{

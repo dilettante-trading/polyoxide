@@ -388,3 +388,245 @@ async fn resolve_wallet_reports_none_when_nothing_is_deployed() {
     assert_eq!(client.resolve_wallet(owner).await.unwrap(), None);
     none.assert_async().await;
 }
+
+// ── Deposit Wallet execution ───────────────────────────────────
+
+const RELAY_VECTORS: &str = include_str!("fixtures/session_keys/relay_vectors.json");
+
+fn relay_vectors() -> serde_json::Value {
+    serde_json::from_str(RELAY_VECTORS).unwrap()
+}
+
+fn deposit_wallet_client(server: &mockito::ServerGuard) -> RelayClient {
+    let config = BuilderConfig::new("builder-key".into(), "c2VjcmV0".into(), Some("pp".into()));
+    let account = BuilderAccount::new(TEST_PRIVATE_KEY, Some(config)).unwrap();
+    let wallet: alloy::primitives::Address =
+        relay_vectors()["wallet"].as_str().unwrap().parse().unwrap();
+    RelayClient::builder()
+        .expect("builder")
+        .url(&server.url())
+        .expect("valid mock URL")
+        .with_account(account)
+        .wallet_type(polyoxide_relay::WalletType::DepositWallet)
+        .deposit_wallet(wallet)
+        .build()
+        .expect("build client")
+}
+
+#[tokio::test]
+async fn submit_deposit_wallet_batch_posts_the_py_sdk_body_under_builder_hmac() {
+    let v = relay_vectors();
+    let mut server = Server::new_async().await;
+    let mock = server
+        .mock("POST", "/submit")
+        .match_header("POLY_BUILDER_API_KEY", "builder-key")
+        .match_header("POLY_BUILDER_SIGNATURE", Matcher::Any)
+        .match_header("content-type", "application/json")
+        .match_body(Matcher::Json(v["submit_body"].clone()))
+        .with_status(200)
+        .with_header("content-type", "application/json")
+        .with_body(r#"{"transactionID":"tx-1","state":"STATE_NEW"}"#)
+        .create_async()
+        .await;
+
+    let client = deposit_wallet_client(&server);
+    let b = &v["approval_batch"];
+    let call = polyoxide_relay::DepositWalletCall {
+        target: b["calls"][0]["target"].as_str().unwrap().parse().unwrap(),
+        value: alloy::primitives::U256::ZERO,
+        data: alloy::primitives::hex::decode(b["calls"][0]["data"].as_str().unwrap())
+            .unwrap()
+            .into(),
+    };
+    let wallet: alloy::primitives::Address = v["wallet"].as_str().unwrap().parse().unwrap();
+    let resp = client
+        .submit_deposit_wallet_batch(
+            wallet,
+            &[call],
+            3,
+            1_800_000_000,
+            b["signature"].as_str().unwrap(),
+            Some(String::new()),
+        )
+        .await
+        .unwrap();
+    assert_eq!(resp.transaction_id, "tx-1");
+    mock.assert_async().await;
+}
+
+#[tokio::test]
+async fn execute_on_a_deposit_wallet_fetches_the_wallet_nonce_and_signs_the_batch() {
+    let v = relay_vectors();
+    let mut server = Server::new_async().await;
+    let params = server
+        .mock("GET", "/v1/account/transactions/params")
+        .match_query(Matcher::AllOf(vec![
+            Matcher::UrlEncoded(
+                "address".into(),
+                "0xf39Fd6e51aad88F6F4ce6aB8827279cffFb92266".into(),
+            ),
+            Matcher::UrlEncoded("type".into(), "WALLET".into()),
+        ]))
+        .with_status(200)
+        .with_header("content-type", "application/json")
+        .with_body(r#"{"address":"0xf39Fd6e51aad88F6F4ce6aB8827279cffFb92266","nonce":"3"}"#)
+        .create_async()
+        .await;
+    // The deadline is now + 600 s, so the signature cannot be pinned here; the
+    // batch_digest/signature vector tests pin the signing. Here: body shape and auth.
+    let submit = server
+        .mock("POST", "/submit")
+        .match_header("POLY_BUILDER_API_KEY", "builder-key")
+        .match_body(Matcher::AllOf(vec![
+            Matcher::PartialJsonString(format!(
+                r#"{{"type":"WALLET","from":"0xf39Fd6e51aad88F6F4ce6aB8827279cffFb92266","to":"{}","nonce":"3","depositWalletParams":{{"depositWallet":"{}","calls":[{{"target":"0xC011a7E12a19f7B1f670d46F03B03f3342E82DFB","value":"0"}}]}}}}"#,
+                v["config"]["deposit_wallet_factory"].as_str().unwrap(),
+                v["wallet"].as_str().unwrap()
+            )),
+            Matcher::Regex(r#""signature":"0x[0-9a-f]{130}""#.into()),
+            Matcher::Regex(r#""deadline":"\d{10}""#.into()),
+        ]))
+        .with_status(200)
+        .with_header("content-type", "application/json")
+        .with_body(r#"{"transactionID":"tx-2","state":"STATE_NEW"}"#)
+        .create_async()
+        .await;
+    let legacy_nonce = server
+        .mock("GET", "/nonce")
+        .match_query(Matcher::Any)
+        .expect(0)
+        .create_async()
+        .await;
+
+    let client = deposit_wallet_client(&server);
+    let tx = polyoxide_relay::SafeTransaction {
+        to: "0xC011a7E12a19f7B1f670d46F03B03f3342E82DFB"
+            .parse()
+            .unwrap(),
+        value: alloy::primitives::U256::ZERO,
+        data: alloy::primitives::hex::decode(
+            v["approval_batch"]["calls"][0]["data"].as_str().unwrap(),
+        )
+        .unwrap()
+        .into(),
+        operation: 0,
+    };
+    let resp = client.execute(vec![tx], Some(String::new())).await.unwrap();
+    assert_eq!(resp.transaction_id, "tx-2");
+    params.assert_async().await;
+    submit.assert_async().await;
+    legacy_nonce.assert_async().await;
+}
+
+#[tokio::test]
+async fn execute_on_a_deposit_wallet_refuses_delegatecall_before_io() {
+    let mut server = Server::new_async().await;
+    let params = server
+        .mock("GET", "/v1/account/transactions/params")
+        .match_query(Matcher::Any)
+        .expect(0)
+        .create_async()
+        .await;
+    let client = deposit_wallet_client(&server);
+    let tx = polyoxide_relay::SafeTransaction {
+        to: alloy::primitives::Address::ZERO,
+        value: alloy::primitives::U256::ZERO,
+        data: alloy::primitives::Bytes::new(),
+        operation: 1,
+    };
+    let err = client
+        .execute(vec![tx], None)
+        .await
+        .unwrap_err()
+        .to_string();
+    assert!(err.contains("DELEGATECALL"), "{err}");
+    params.assert_async().await;
+}
+
+#[tokio::test]
+async fn execute_on_a_deposit_wallet_needs_the_wallet_address() {
+    let server = Server::new_async().await;
+    let config = BuilderConfig::new("builder-key".into(), "c2VjcmV0".into(), Some("pp".into()));
+    let account = BuilderAccount::new(TEST_PRIVATE_KEY, Some(config)).unwrap();
+    let client = RelayClient::builder()
+        .unwrap()
+        .url(&server.url())
+        .unwrap()
+        .with_account(account)
+        .wallet_type(polyoxide_relay::WalletType::DepositWallet)
+        .build()
+        .unwrap();
+    let tx = polyoxide_relay::SafeTransaction {
+        to: alloy::primitives::Address::ZERO,
+        value: alloy::primitives::U256::ZERO,
+        data: alloy::primitives::Bytes::new(),
+        operation: 0,
+    };
+    let err = client
+        .execute(vec![tx], None)
+        .await
+        .unwrap_err()
+        .to_string();
+    assert!(err.contains("deposit_wallet"), "{err}");
+}
+
+#[tokio::test]
+async fn with_auth_submits_a_signature_in_batch_without_any_key() {
+    let v = relay_vectors();
+    let mut server = Server::new_async().await;
+    let mock = server
+        .mock("POST", "/submit")
+        .match_header("POLY_BUILDER_API_KEY", "builder-key")
+        .match_body(Matcher::Json(v["submit_body"].clone()))
+        .with_status(200)
+        .with_header("content-type", "application/json")
+        .with_body(r#"{"transactionID":"tx-3","state":"STATE_NEW"}"#)
+        .create_async()
+        .await;
+
+    let auth = polyoxide_relay::AuthConfig::Builder(BuilderConfig::new(
+        "builder-key".into(),
+        "c2VjcmV0".into(),
+        Some("pp".into()),
+    ));
+    let client = RelayClient::builder()
+        .unwrap()
+        .url(&server.url())
+        .unwrap()
+        .with_auth(auth)
+        .build()
+        .unwrap();
+    assert!(client.address().is_none());
+
+    let b = &v["approval_batch"];
+    let wallet: alloy::primitives::Address = v["wallet"].as_str().unwrap().parse().unwrap();
+    let owner: alloy::primitives::Address = v["owner"].as_str().unwrap().parse().unwrap();
+    let call = polyoxide_relay::DepositWalletCall {
+        target: b["calls"][0]["target"].as_str().unwrap().parse().unwrap(),
+        value: alloy::primitives::U256::ZERO,
+        data: alloy::primitives::hex::decode(b["calls"][0]["data"].as_str().unwrap())
+            .unwrap()
+            .into(),
+    };
+    let typed = client.deposit_wallet_batch_typed_data(
+        wallet,
+        std::slice::from_ref(&call),
+        3,
+        1_800_000_000,
+    );
+    assert_eq!(typed, b["typed_data"]);
+    let resp = client
+        .submit_deposit_wallet_batch_from(
+            owner,
+            wallet,
+            &[call],
+            3,
+            1_800_000_000,
+            b["signature"].as_str().unwrap(),
+            Some(String::new()),
+        )
+        .await
+        .unwrap();
+    assert_eq!(resp.transaction_id, "tx-3");
+    mock.assert_async().await;
+}
