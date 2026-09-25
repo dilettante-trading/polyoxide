@@ -17,7 +17,7 @@ use crate::types::SignatureType;
 /// envelope naming the session signer; an owner's are not.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum DepositWalletRole {
-    /// The key that deployed and controls the Deposit Wallet.
+    /// The EOA that owns the Deposit Wallet; the wallet's address is derived from this key.
     Owner,
     /// A key the owner authorized through `authorizeSessionSigner`; it can trade but not withdraw.
     SessionKey,
@@ -27,8 +27,9 @@ pub enum DepositWalletRole {
 ///
 /// Defaults to [`SigningTarget::Eoa`], which is the behaviour every existing
 /// caller had: the signing key is the maker. Set another variant with
-/// `Account::with_target` (added alongside this type). Per-call `funder` and
-/// `signature_type` overrides on order parameters still win when given.
+/// `Account::with_target`. A per-call `funder` on order parameters still sets
+/// the maker; a per-call `signature_type` must agree with a Deposit Wallet
+/// target.
 #[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
 pub enum SigningTarget {
     /// The signing key is the maker (`signatureType` 0).
