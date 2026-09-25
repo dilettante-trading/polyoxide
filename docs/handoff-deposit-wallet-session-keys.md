@@ -26,9 +26,11 @@ enabled. Do this first, in parallel with the code.
   authorized Session Keys."* (session-keys.md §Considerations; repeated in manage-orders.md).
 - The owner's L1 auth for session-signer management uses `POLY_ADDRESS: <deposit_wallet_owner_address>`
   with the plain `ClobAuth` typed data — i.e. an EOA-bound key, no ERC-7739 wrapping.
-  Whether that EOA-bound owner key can list the deposit wallet's open orders is UNVERIFIED
-  (open SDK issues #64/#65/#70/#71/#77 say owner-signed *orders* need a deposit-wallet-bound
-  key, which the official clients cannot create). Probe item.
+  The same EOA-bound owner key also places and cancels owner-signed type-3 orders:
+  `ts-sdk`'s live suite (`packages/client/tests/integration/orders.test.ts`) does exactly
+  that with `secureClientWithDepositWallet`, and its L1 header is `POLY_ADDRESS: account.signer`
+  (`clients.ts`). Resolved 2026-09-25; the earlier "probe item" citing SDK issues
+  #64/#65/#70/#71/#77 predates the official `ts-sdk`/`py-sdk` and is moot.
 
 ## polyoxide-clob
 
@@ -38,10 +40,18 @@ enabled. Do this first, in parallel with the code.
      Today `build_order_v2` sets `signer` = `account.address()`; for type 3 it must be the
      deposit wallet, not the signing EOA.
    - Sign the ERC-7739 `TypedDataSign` envelope, NOT the bare `Order`:
-     domain `{name:"DepositWallet", version:"1", chainId:137, verifyingContract:<deposit_wallet>}`,
+     domain `{name:"Polymarket CTF Exchange", version:"2", chainId:137, verifyingContract:<exchange>}`
+     (the *app* domain — the same one a plain V2 order signs under),
      types `Order` (11 fields, V2) + `TypedDataSign{contents:Order, name, version, chainId,
-     verifyingContract, salt}`, message `{contents:<order>, name:"Polymarket CTF Exchange",
-     version:"2", chainId:137, verifyingContract:<exchange>, salt:bytes32(0)}`.
+     verifyingContract, salt}`, message `{contents:<order>, name:"DepositWallet",
+     version:"1", chainId:137, verifyingContract:<deposit_wallet>, salt:bytes32(0)}`
+     (the *account* domain rides inside the message, per ERC-7739).
+     **Corrected 2026-09-25**: an earlier revision had the two domains swapped. The
+     orientation above matches `session-keys.md`, `py-sdk`
+     (`src/polymarket/_internal/actions/orders/typed_data.py`) and `ts-sdk`; py-sdk pins
+     the digest for a fixed type-3 fixture in `tests/unit/test_order_typed_data_golden.py`
+     (`0x1b9566eedd9589a73275df23a3a9d9e2e9897e76d31cd46d436f1b824d161b33`) — pin
+     polyoxide against it before any live test.
    - Wrap per `wrapDepositWalletSignature` (place-orders.md):
      `innerSig ‖ appDomainSeparator(exchange domain) ‖ contentsHash(Order struct hash) ‖
      bytes(ORDER_TYPE string) ‖ uint16(len(ORDER_TYPE))`.
@@ -66,9 +76,8 @@ enabled. Do this first, in parallel with the code.
      for `eth_signTypedData_v4`), and
    - `create_api_key_with_signature(address, timestamp, nonce, signature)` /
      `derive_api_key_with_signature(...)` that take the signature instead of a signer.
-   Optional, gated on the probe: a 7739-wrapped `ClobAuth` for a deposit-wallet-bound key
-   (what the official SDKs fail to do). Only needed if the EOA-bound owner key cannot list
-   deposit-wallet orders.
+   No 7739-wrapped `ClobAuth` is needed: neither official SDK wraps it, and the EOA-bound
+   owner key already covers deposit-wallet orders (see "Venue facts"). Dropped 2026-09-25.
 5. **`GET /v1/user/session-signers`** on the CLOB host, owner L2 auth: list session
    keys with scopes and expiry. Not in 0.31.0 (`grep session-signers` is empty).
 6. **Balance/allowance with `signature_type=3`.** `api/account.rs` passes the enum as
