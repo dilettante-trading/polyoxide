@@ -101,7 +101,9 @@ pub mod ws;
 
 pub use core::chain::{Chain, Contracts};
 
-pub use account::{Account, AccountConfig, Credentials, Signer, Wallet};
+pub use account::{
+    Account, AccountConfig, Credentials, DepositWalletRole, Signer, SigningTarget, Wallet,
+};
 
 #[cfg(feature = "keychain")]
 pub use account::{save_private_key_to_keychain, KEYCHAIN_SERVICE};

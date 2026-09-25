@@ -5,6 +5,7 @@
 
 mod credentials;
 mod signer;
+mod target;
 mod wallet;
 
 use std::path::Path;
@@ -13,6 +14,7 @@ use alloy::primitives::Address;
 pub use credentials::Credentials;
 use serde::{Deserialize, Serialize};
 pub use signer::Signer;
+pub use target::{DepositWalletRole, SigningTarget};
 pub use wallet::Wallet;
 
 use crate::{
