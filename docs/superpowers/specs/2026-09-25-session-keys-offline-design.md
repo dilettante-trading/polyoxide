@@ -115,8 +115,10 @@ Factory `0x00000000000Fb5C9ADea0298D729A0CB3823Cc07`. Wallets deployed before 20
 UUPS proxies (implementation `0x58CA52ebe0DadfdF531Cde7062e76746de4Db1eB`); later ones are
 ERC-1967 beacon proxies (beacon `0x7A18EDfe055488A3128f01F563e5B479D92ffc3a`). Both are
 CREATE2 from the factory with a salt derived from the owner. `GET /deployed?address=&type=WALLET`
-(no auth) says whether a candidate exists; `type=SAFE` and `type=PROXY` ask the same of the
-Safe and the Proxy, so resolution probes four candidates. py-sdk's `wallet.py` is the
+(no auth) says whether a candidate exists; py-sdk asks `type=SAFE` and `type=PROXY` for the
+Safe and the Proxy; the relayer answers every value other than `WALLET` alike (observed
+2026-09-25, see `docs/specs/session-keys/OBSERVED.md` row 10), so resolution probes four
+candidates. py-sdk's `wallet.py` is the
 readable reference.
 
 ## Design

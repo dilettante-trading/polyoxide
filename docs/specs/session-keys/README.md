@@ -161,9 +161,8 @@ Factory `0x00000000000Fb5C9ADea0298D729A0CB3823Cc07`. Wallets deployed before 20
 are UUPS proxies (implementation `0x58CA52ebe0DadfdF531Cde7062e76746de4Db1eB`); later
 ones are ERC-1967 beacon proxies (beacon `0x7A18EDfe055488A3128f01F563e5B479D92ffc3a`).
 Both are CREATE2 from the factory with a salt derived from the owner. Resolving which
-one an owner has means deriving all four candidates (both Deposit Wallet generations, the
-Safe and the Proxy) and asking `GET /deployed` for each; `resolve_wallet` does so (four
-requests).
+account wallet an owner has means deriving both generations, the Safe and the Proxy, and
+asking `GET /deployed` for each; `resolve_wallet` does so (four requests on Polygon).
 
 ## Where polyoxide implements it
 

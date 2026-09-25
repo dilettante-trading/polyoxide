@@ -576,7 +576,8 @@ impl RelayClient {
     /// The Proxy is asked with `type=PROXY`, as py-sdk does, although the published
     /// spec omits it; see [`WalletKind`]. Costs up to four requests against the
     /// relay bucket, so callers should cache the answer rather than calling this on
-    /// every use.
+    /// every use. A candidate whose contracts the chain's `ContractConfig` does not
+    /// name is skipped rather than refused, so on Amoy only the Safe is asked.
     pub async fn resolve_wallet(&self, owner: Address) -> Result<Option<WalletKind>, RelayError> {
         let cfg = &self.contract_config;
         let mut candidates: Vec<(WalletKind, WalletType)> = Vec::new();

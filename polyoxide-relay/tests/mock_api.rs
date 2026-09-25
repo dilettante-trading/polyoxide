@@ -282,7 +282,7 @@ async fn get_gasless_transaction_percent_encodes_the_id() {
 }
 
 #[tokio::test]
-async fn resolve_wallet_probes_both_deposit_wallet_generations_and_the_safe() {
+async fn resolve_wallet_probes_both_deposit_wallet_generations_the_safe_and_the_proxy() {
     // Anvil #0: beacon 0xBc0f…, uups 0xdf8b…, safe 0xd93B…, proxy 0x365f… (relay_vectors.json).
     let proxy_address = relay_vectors()["derivations"]["anvil0"]["proxy"]
         .as_str()
@@ -1258,6 +1258,64 @@ async fn authorize_session_signer_refuses_relayer_api_key_auth_before_io() {
         .unwrap_err()
         .to_string();
     assert!(err.contains("Builder HMAC"), "{err}");
+    params.assert_async().await;
+    submit.assert_async().await;
+}
+
+#[tokio::test]
+async fn revoke_session_signer_accepts_relayer_api_key_auth() {
+    // Revocation takes a Builder key or a Relayer API key, unlike authorization;
+    // guards against copying the authorize refusal into revoke.
+    let v = relay_vectors();
+    let mut server = Server::new_async().await;
+    let params = server
+        .mock("GET", "/v1/account/transactions/params")
+        .match_query(Matcher::AllOf(vec![
+            Matcher::UrlEncoded(
+                "address".into(),
+                "0xf39Fd6e51aad88F6F4ce6aB8827279cffFb92266".into(),
+            ),
+            Matcher::UrlEncoded("type".into(), "WALLET".into()),
+        ]))
+        .with_status(200)
+        .with_header("content-type", "application/json")
+        .with_body(r#"{"address":"0xf39Fd6e51aad88F6F4ce6aB8827279cffFb92266","nonce":"6"}"#)
+        .create_async()
+        .await;
+    let submit = server
+        .mock("POST", "/v1/session-signers/revocations")
+        .match_header("RELAYER_API_KEY", "rk-abc")
+        .match_header("RELAYER_API_KEY_ADDRESS", "0xabc123")
+        .match_body(Matcher::PartialJsonString(format!(
+            r#"{{"walletAddress":"{}","sessionSignerAddress":"{}","nonce":"6"}}"#,
+            v["wallet"].as_str().unwrap(),
+            v["session_signer"].as_str().unwrap(),
+        )))
+        .with_status(200)
+        .with_header("content-type", "application/json")
+        .with_body(
+            r#"{"operationId":"op-5","status":"PENDING","fenced":false,"transactionId":"tx-14"}"#,
+        )
+        .expect(1)
+        .create_async()
+        .await;
+    let account =
+        BuilderAccount::with_relayer_api_key(TEST_PRIVATE_KEY, "rk-abc".into(), "0xabc123".into())
+            .unwrap();
+    let wallet: alloy::primitives::Address = v["wallet"].as_str().unwrap().parse().unwrap();
+    let client = RelayClient::builder()
+        .expect("builder")
+        .url(&server.url())
+        .expect("valid mock URL")
+        .with_account(account)
+        .wallet_type(polyoxide_relay::WalletType::DepositWallet)
+        .deposit_wallet(wallet)
+        .build()
+        .expect("build client");
+    let session: alloy::primitives::Address =
+        v["session_signer"].as_str().unwrap().parse().unwrap();
+    let resp = client.revoke_session_signer(session).await.unwrap();
+    assert_eq!(resp.transaction_id, "tx-14");
     params.assert_async().await;
     submit.assert_async().await;
 }
