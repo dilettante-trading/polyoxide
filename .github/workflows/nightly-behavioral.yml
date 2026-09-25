@@ -24,22 +24,28 @@ env:
 
 jobs:
   test:
-    name: Live tests (${{ matrix.crate }})
+    name: Live tests (${{ matrix.crate }}, ${{ matrix.suite }})
     runs-on: ubuntu-latest
-    timeout-minutes: 15
+    timeout-minutes: ${{ matrix.timeout }}
     strategy:
       fail-fast: false
       matrix:
         # `flags` selects each crate's live test binaries (and any features
         # they need). polyoxide-clob's WebSocket tests live in a separate
         # `live_ws` binary behind the non-default `ws` feature.
+        #
+        # `live_session_keys` gets its own row because its registry and
+        # transaction waits can legitimately take ~25 minutes, which would
+        # kill live_api/live_ws with it under a shared 15-minute budget.
+        # `suite` keeps the two clob rows' artifact names distinct.
         include:
-          - { crate: polyoxide-gamma, flags: "--test live_api" }
-          - { crate: polyoxide-data,  flags: "--test live_api" }
-          - { crate: polyoxide-clob,  flags: "--features ws --test live_api --test live_ws --test live_session_keys" }
-          - { crate: polyoxide-relay, flags: "--test live_api" }
-          - { crate: polyoxide-rtds,  flags: "--test live_api" }
-          - { crate: polyoxide-cli,   flags: "--test live_api" }
+          - { crate: polyoxide-gamma, suite: live,         timeout: 15, flags: "--test live_api" }
+          - { crate: polyoxide-data,  suite: live,         timeout: 15, flags: "--test live_api" }
+          - { crate: polyoxide-clob,  suite: live,         timeout: 15, flags: "--features ws --test live_api --test live_ws" }
+          - { crate: polyoxide-clob,  suite: session-keys, timeout: 40, flags: "--test live_session_keys" }
+          - { crate: polyoxide-relay, suite: live,         timeout: 15, flags: "--test live_api" }
+          - { crate: polyoxide-rtds,  suite: live,         timeout: 15, flags: "--test live_api" }
+          - { crate: polyoxide-cli,   suite: live,         timeout: 15, flags: "--test live_api" }
     steps:
       - uses: actions/checkout@v5
       - uses: dtolnay/rust-toolchain@stable
@@ -106,7 +112,7 @@ jobs:
         if: always()
         uses: actions/upload-artifact@v6
         with:
-          name: behavioral-${{ matrix.crate }}
+          name: behavioral-${{ matrix.crate }}-${{ matrix.suite }}
           path: artifacts/${{ matrix.crate }}/
 
   aggregate:
