@@ -267,7 +267,11 @@ Three plans, each ending in a green workspace:
    call from 4). Vectors first. **Done 2026-09-25** on `aidanb/non-custodial-keys` (plan
    `docs/superpowers/plans/2026-09-25-session-keys-clob-signing.md`).
 2. **Relay Deposit Wallet dialect** (section 3), including the resolver and derivations.
+   **Done 2026-09-25**, merged to `main` at `5932426` (plan
+   `docs/superpowers/plans/2026-09-25-session-keys-relay.md`).
 3. **Docs and handoff status** (rest of section 4), plus the ignored live test skeleton.
+   **Done 2026-09-25** (plan `docs/superpowers/plans/2026-09-25-session-keys-docs-and-live.md`);
+   the live test is written, not run.
 
 ## Breaking changes for the 0.33.0 release notes (plan 1)
 
