@@ -584,6 +584,8 @@ and `Self::DepositWallet(a) | Self::Safe(a) | Self::Proxy(a) => *a`.
 ```
 (check that `derive_proxy` reads exactly `proxy_factory` and `proxy_implementation` and gate on what it reads). Update the doc comment: "Derives the beacon and UUPS Deposit Wallets, the Safe and the Proxy, asks `/deployed` for each … Costs up to four requests …", and drop the sentence "A Proxy wallet cannot be observed this way".
 
+Also in `client.rs` (from the OBSERVED review): `authorize_session_signer` reaches `post_json`'s Relayer-API-key refusal only after an unauthenticated nonce GET and a signature. Add, at the top of `authorize_session_signer` (after `session_signer_owner_context()`), the same check `post_json` makes: if `self.auth()?` is `AuthConfig::RelayerApiKey(_)`, return `RelayError::Api("v1/session-signers/authorizations requires Builder HMAC auth; configure the client with BuilderConfig".into())` before any I/O (reuse `post_json`'s exact wording via a shared private fn so the two cannot drift). Add a mock test `authorize_session_signer_refuses_relayer_api_key_auth_before_io`: a client built like `client_with_relayer_api_key_auth` but with `.wallet_type(WalletType::DepositWallet).deposit_wallet(wallet)`, an asserted `expect(0)` params mock (`match_query(Matcher::Any)`) and an asserted `expect(0)` authorizations mock; the error contains "Builder HMAC". `revoke_session_signer` must keep accepting a Relayer API key.
+
 - [ ] **Step 3: Docs that said otherwise**
 
 - `docs/specs/session-keys/README.md`: the `/deployed` row's response cell → "`{ deployed }`; the published spec enumerates `SAFE` and `WALLET`, py-sdk also sends `PROXY`"; the derivation paragraph's last sentence → "Resolving which one an owner has means deriving all four and asking `GET /deployed` for each; `resolve_wallet` does so (four requests)."; the implementation-map row for derivation → "`RelayClient::resolve_wallet -> Option<WalletKind>` over beacon, UUPS, Safe and Proxy".
@@ -598,7 +600,7 @@ and `Self::DepositWallet(a) | Self::Safe(a) | Self::Proxy(a) => *a`.
 
 ```bash
 git add polyoxide-relay/src/wallet.rs polyoxide-relay/src/client.rs polyoxide-relay/tests/mock_api.rs polyoxide-relay/README.md polyoxide-relay/src/lib.rs docs/specs/session-keys/README.md docs/specs/session-keys/OBSERVED.md docs/superpowers/specs/2026-09-25-session-keys-offline-design.md docs/superpowers/plans/2026-09-25-session-keys-relay.md
-git commit -m "feat(relay): resolve_wallet probes the Proxy with type=PROXY, as py-sdk does"
+git commit -m "feat(relay): resolve_wallet probes the Proxy with type=PROXY, as py-sdk does; authorize_session_signer refuses a relayer key before I/O"
 ```
 
 ---
