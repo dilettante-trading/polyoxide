@@ -1932,6 +1932,8 @@ In `polyoxide-clob/src/client.rs`, inside `impl Clob`, after `auth()`:
 
 In `polyoxide-clob/src/lib.rs`, add `pub use core::eip712::clob_auth_typed_data;` next to the `pub use core::chain::{Chain, Contracts};` line.
 
+In `polyoxide-clob/src/account/wallet.rs`, the `DynSigner` doc mentions `clob_auth_typed_data` in plain backticks. Now that it exists, make it the intra-doc link [`crate::clob_auth_typed_data`] and reword the sentence so it covers both halves of the design: a hardware-held owner key signs the L1 auth typed data out of process and authorizes a session key that implements `sign_hash` for trading.
+
 - [ ] **Step 6: Run the tests to verify they pass**
 
 Run: `cargo test -p polyoxide-clob --all-features clob_auth_typed_data with_signature`
@@ -1940,7 +1942,7 @@ Expected: 3 passed.
 - [ ] **Step 7: Commit**
 
 ```bash
-git add polyoxide-clob/src/request.rs polyoxide-clob/src/core/eip712.rs polyoxide-clob/src/client.rs polyoxide-clob/src/lib.rs polyoxide-clob/tests/mock_api.rs
+git add polyoxide-clob/src/request.rs polyoxide-clob/src/core/eip712.rs polyoxide-clob/src/client.rs polyoxide-clob/src/lib.rs polyoxide-clob/src/account/wallet.rs polyoxide-clob/tests/mock_api.rs
 git commit -m "feat(clob): L1 auth typed data out, signature in, for external wallets"
 ```
 
