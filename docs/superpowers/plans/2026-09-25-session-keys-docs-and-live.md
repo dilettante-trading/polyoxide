@@ -36,8 +36,9 @@
 | `polyoxide-clob/Cargo.toml` | Modify. `polyoxide-relay` as a dev-dependency. |
 | `polyoxide-clob/tests/live_session_keys.rs` | Create. The `#[ignore]` round trip. |
 | `.github/workflows/nightly-behavioral.yml` | Modify. `--test live_session_keys` added to the clob flags. |
+| `polyoxide-relay/src/{wallet,client}.rs`, `polyoxide-relay/tests/mock_api.rs` | Modify (Task 6, review amendment). `WalletKind::Proxy`; `resolve_wallet` probes `type=PROXY`. |
 
-Nothing in this plan changes library code or the public API.
+Task 6 is the one library change (a new `#[non_exhaustive]` enum variant and a fourth probe); nothing else touches code outside tests.
 
 ---
 
@@ -490,6 +491,117 @@ git commit -m "docs: point the spec index, the drift workflow and CLAUDE.md at d
 
 ---
 
+### Task 6 (executed after Task 3, before Task 4): `resolve_wallet` probes the Proxy too, as py-sdk does
+
+**Why this task exists (review amendment, 2026-09-25):** plan 2 left the Proxy out of
+`resolve_wallet` because `docs/specs/relay/openapi.yaml` enumerates only `SAFE` and
+`WALLET` for `/deployed?type=`. Task 2's citation check found that py-sdk 0.11.0 sends
+`type=PROXY` for a Proxy account (`clients/async_secure.py`, `_ensure_wallet_ready` →
+`_relayer_transaction_type_for_wallet`, which maps `POLY_PROXY` → `RelayerTransactionType.PROXY`;
+the enum in `models/clob/relayer.py`). py-sdk is the contract; the spec is incomplete
+here as it is everywhere on this surface. `WalletKind` is `#[non_exhaustive]`, so adding
+a variant is not a breaking change.
+
+**Files:**
+- Modify: `polyoxide-relay/src/wallet.rs` (`WalletKind::Proxy`, doc)
+- Modify: `polyoxide-relay/src/client.rs` (`resolve_wallet` fourth candidate, doc)
+- Modify: `polyoxide-relay/tests/mock_api.rs` (resolver tests)
+- Modify: `docs/specs/session-keys/README.md`, `docs/specs/session-keys/OBSERVED.md`
+- Modify: `docs/superpowers/specs/2026-09-25-session-keys-offline-design.md` (the `resolve_wallet` sentence in section 3 and the "Deposit Wallet address derivation" paragraph)
+- Modify: `docs/superpowers/plans/2026-09-25-session-keys-relay.md` (one "Review amendment" line under Task 4, so the historical plan says why the code differs)
+
+- [ ] **Step 1: Failing tests**
+
+In `polyoxide-relay/tests/mock_api.rs`, in `resolve_wallet_probes_both_deposit_wallet_generations_and_the_safe`, add a fourth asserted mock on `/deployed` matching `address` = the fixture's `derivations.anvil0.proxy` (read it from `relay_vectors.json`; the test already reads the other three the same way) and `type` = `PROXY`, answering `{"deployed": false}`; assert it once like the others. In `resolve_wallet_refuses_two_deployed_wallets` and `resolve_wallet_reports_none_when_nothing_is_deployed`, change `expect(3)` to `expect(4)`. Add:
+
+```rust
+#[tokio::test]
+async fn resolve_wallet_reports_a_deployed_proxy() {
+    let v = relay_vectors();
+    let owner: alloy::primitives::Address = v["owner"].as_str().unwrap().parse().unwrap();
+    let proxy = v["derivations"]["anvil0"]["proxy"].as_str().unwrap();
+    let mut server = Server::new_async().await;
+    // Everything but the Proxy says "not deployed".
+    let others = server
+        .mock("GET", "/deployed")
+        .match_query(Matcher::AllOf(vec![Matcher::Regex("type=(WALLET|SAFE)".into())]))
+        .with_status(200)
+        .with_header("content-type", "application/json")
+        .with_body(r#"{"deployed":false}"#)
+        .expect(3)
+        .create_async()
+        .await;
+    let proxy_mock = server
+        .mock("GET", "/deployed")
+        .match_query(Matcher::AllOf(vec![
+            Matcher::UrlEncoded("address".into(), proxy.into()),
+            Matcher::UrlEncoded("type".into(), "PROXY".into()),
+        ]))
+        .with_status(200)
+        .with_header("content-type", "application/json")
+        .with_body(r#"{"deployed":true}"#)
+        .expect(1)
+        .create_async()
+        .await;
+    let client = RelayClient::builder().unwrap().url(&server.url()).unwrap().build().unwrap();
+    let kind = client.resolve_wallet(owner).await.unwrap();
+    assert_eq!(kind, Some(polyoxide_relay::WalletKind::Proxy(proxy.parse().unwrap())));
+    others.assert_async().await;
+    proxy_mock.assert_async().await;
+}
+```
+
+Run `cargo test -p polyoxide-relay --test mock_api resolve_wallet` — the new test fails to compile (`WalletKind::Proxy` missing) and the `expect(4)` tests fail once it does.
+
+- [ ] **Step 2: Implement**
+
+`polyoxide-relay/src/wallet.rs`: add the variant and replace the doc paragraph that begins "A Proxy wallet is not represented here":
+
+```rust
+/// A Polymarket proxy wallet. The published relayer spec enumerates only `SAFE`
+/// and `WALLET` for `/deployed?type=`, but py-sdk 0.11.0 asks with `type=PROXY`
+/// and this crate follows py-sdk; whether the host answers is recorded in
+/// `docs/specs/session-keys/OBSERVED.md`. A Proxy auto-deploys on first use, so a
+/// fresh Proxy account resolves to `None` until then; use [`derive_proxy`] when
+/// you already know the account is a Proxy.
+```
+```rust
+    /// A deployed Polymarket proxy wallet.
+    Proxy(Address),
+```
+and `Self::DepositWallet(a) | Self::Safe(a) | Self::Proxy(a) => *a`.
+
+`polyoxide-relay/src/client.rs`, in `resolve_wallet`, after the Safe push:
+
+```rust
+        if cfg.proxy_factory.is_some() && cfg.proxy_implementation.is_some() {
+            candidates.push((
+                WalletKind::Proxy(crate::wallet::derive_proxy(owner, cfg)?),
+                WalletType::Proxy,
+            ));
+        }
+```
+(check that `derive_proxy` reads exactly `proxy_factory` and `proxy_implementation` and gate on what it reads). Update the doc comment: "Derives the beacon and UUPS Deposit Wallets, the Safe and the Proxy, asks `/deployed` for each … Costs up to four requests …", and drop the sentence "A Proxy wallet cannot be observed this way".
+
+- [ ] **Step 3: Docs that said otherwise**
+
+- `docs/specs/session-keys/README.md`: the `/deployed` row's response cell → "`{ deployed }`; the published spec enumerates `SAFE` and `WALLET`, py-sdk also sends `PROXY`"; the derivation paragraph's last sentence → "Resolving which one an owner has means deriving all four and asking `GET /deployed` for each; `resolve_wallet` does so (four requests)."; the implementation-map row for derivation → "`RelayClient::resolve_wallet -> Option<WalletKind>` over beacon, UUPS, Safe and Proxy".
+- `docs/specs/session-keys/OBSERVED.md` row 10's polyoxide cell → "`resolve_wallet` probes all four candidates, sending `type=PROXY` for the Proxy as py-sdk does; whether the host honours `PROXY` (the spec omits it) is an open item"; keep the open item the implementer added.
+- Design spec: find the sentences in section 3 and in "Deposit Wallet address derivation" that say a Proxy is not probed / `WalletKind { DepositWallet | Safe }` and correct them to four candidates.
+- Plan 2 doc: under Task 4 append `**Review amendment (2026-09-25, plan 3 Task 6):** py-sdk queries \`/deployed?type=PROXY\`, so \`resolve_wallet\` gained a Proxy candidate and \`WalletKind::Proxy\`; the "Proxy is not probed" decision above was based on the spec's enum alone.`
+- `polyoxide-relay/README.md` and `lib.rs` crate docs: grep for "Proxy" near `resolve_wallet` and fix any sentence that says it is not resolved.
+
+- [ ] **Step 4: Verify and commit**
+
+`cargo test -p polyoxide-relay --all-features` (all resolver tests pass), `cargo clippy -p polyoxide-relay --all-targets --all-features -- -D warnings`, `RUSTDOCFLAGS="-D warnings" cargo doc --no-deps --all-features -p polyoxide-relay`, `cargo fmt --all -- --check`. Then:
+
+```bash
+git add polyoxide-relay/src/wallet.rs polyoxide-relay/src/client.rs polyoxide-relay/tests/mock_api.rs polyoxide-relay/README.md polyoxide-relay/src/lib.rs docs/specs/session-keys/README.md docs/specs/session-keys/OBSERVED.md docs/superpowers/specs/2026-09-25-session-keys-offline-design.md docs/superpowers/plans/2026-09-25-session-keys-relay.md
+git commit -m "feat(relay): resolve_wallet probes the Proxy with type=PROXY, as py-sdk does"
+```
+
+---
+
 ### Task 4: Handoff status lines and the spec's implementation order
 
 **Files:**
@@ -530,7 +642,7 @@ Append the following line as a new paragraph directly under the last line of eac
 - Item 11: `*Status:* Done, plan 2. `deposit_wallet_batch_typed_data` / `submit_deposit_wallet_batch_from` for any batch, `redeem_typed_data` / `submit_redemption_with_signature` for redemption (pUSD collateral), `deposit_wallet_trading_approvals` for the 17 approvals py-sdk requires (the page's four are a subset).`
 - Item 12: `*Status:* Skeleton only, plan 3. `polyoxide-clob/tests/live_session_keys.rs` runs the round trip as an `#[ignore]`d test gated on `POLYMARKET_DW_*` and `BUILDER_*` env vars; it panics with the nightly's auth-gated wording when they are unset. No fixture account exists yet (prader-rs #125).`
 - Item 13: `*Status:* Pending. Plans 1–3 are on `main`, unpushed; 0.33.0 follows plan 3 with the breaking changes listed at the end of the design spec.`
-- Item 14: `*Status:* Done, plan 2. Pure derivations `derive_{safe,proxy,deposit_wallet_uups,deposit_wallet_beacon}` (pinned to py-sdk's own derivation tests) and `RelayClient::resolve_wallet(owner) -> Result<Option<WalletKind>>` over beacon, UUPS and Safe. Correction: a Proxy is never resolved, because `/deployed` answers only for `WALLET` and `SAFE`; `WalletKind` has no `Proxy` variant and `None` means nothing deployed.`
+- Item 14: `*Status:* Done, plan 2 (Proxy added in plan 3). Pure derivations `derive_{safe,proxy,deposit_wallet_uups,deposit_wallet_beacon}` (pinned to py-sdk's own derivation tests) and `RelayClient::resolve_wallet(owner) -> Result<Option<WalletKind>>` over beacon, UUPS, Safe and Proxy (`type=PROXY`, as py-sdk sends; the published spec lists only `SAFE`/`WALLET`). `None` means nothing deployed; two deployed is an error.`
 - Item 15: `*Status:* Done, plan 2. `AuthConfig::{Builder, RelayerApiKey}` already existed; `with_auth` accepts either without an account. Correction: only *authorization* is Builder-only; revocation takes either, as py-sdk does.`
 - Item 16: `*Status:* Done, plan 2. `TransactionState` with `is_terminal` / `is_success` and `GaslessTransaction` from `GET /v1/account/transactions/{id}`. Correction: py-sdk's list is `NEW | EXECUTED | MINED | CONFIRMED | INVALID | FAILED` (no `SUBMITTED`); unknown values land in `Other(String)`.`
 
