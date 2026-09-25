@@ -2668,12 +2668,10 @@ async fn redeem_typed_data_and_submit_reproduce_the_py_sdk_batch() {
     let index_sets = [alloy::primitives::U256::from(1), alloy::primitives::U256::from(2)];
     let (typed, calls) = client.redeem_typed_data(wallet, condition, &index_sets, 6, 1800000600);
     assert_eq!(typed, v["redeem_batch"]["typed_data"]);
-    // redeem_submit_body carries metadata "", so pass Some(String::new()) through the generic submit.
     let resp = client
-        .submit_deposit_wallet_batch(wallet, &calls, 6, 1800000600, v["redeem_batch"]["signature"].as_str().unwrap(), Some(String::new()))
+        .submit_redemption_with_signature(wallet, &calls, 6, 1800000600, v["redeem_batch"]["signature"].as_str().unwrap())
         .await
         .unwrap();
-    let _ = client.submit_redemption_with_signature; // the thin wrapper is exercised below
     assert_eq!(resp.transaction_id, "tx-12");
     mock.assert_async().await;
 }
@@ -2712,6 +2710,8 @@ In `client.rs`:
     }
 
     /// Submit a redemption batch signed elsewhere by this client's account.
+    ///
+    /// Sends `metadata: ""`, as py-sdk does for every Deposit Wallet submission.
     pub async fn submit_redemption_with_signature(
         &self,
         wallet: Address,
@@ -2720,7 +2720,8 @@ In `client.rs`:
         deadline: u64,
         signature: &str,
     ) -> Result<SubmitResponse, RelayError> {
-        self.submit_deposit_wallet_batch(wallet, calls, nonce, deadline, signature, None).await
+        self.submit_deposit_wallet_batch(wallet, calls, nonce, deadline, signature, Some(String::new()))
+            .await
     }
 ```
 
