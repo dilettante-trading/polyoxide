@@ -7,8 +7,10 @@ The consumer is prader; the shape prader needs is in "Interface prader consumes"
 
 ## Status (2026-09-25)
 
-Every code item below is implemented on polyoxide `main` (plan 1 `02f011d`, plan 2
-`5932426`; docs plan 3 on the branch) and pinned offline to fixtures generated from
+Every code item below is implemented and merged to local `main` (plan 1 `02f011d`,
+plan 2 `5932426`, plan 3 on 2026-09-25, which adds the Proxy probe, the adapter
+redemption and the live test; nothing pushed or released) and pinned offline to
+fixtures generated from
 `py-sdk` 0.11.0. The contract record is `docs/specs/session-keys/README.md`; the
 design and its two breaking-changes lists are
 `docs/superpowers/specs/2026-09-25-session-keys-offline-design.md`. Nothing has run
@@ -192,8 +194,9 @@ enabled. Do this first, in parallel with the code.
     crates.io. prader consumes crates.io only (path deps break prader's CI signal per
     `docs/claude/polyoxide-upgrades.md`).
 
-    *Status:* Pending. Plans 1–3 are on `main`, unpushed; 0.33.0 follows plan 3 with the
-    breaking changes listed at the end of the design spec.
+    *Status:* Pending. Plans 1–3 are merged to local `main` (`02f011d`, `5932426`, then
+    plan 3 on 2026-09-25), unpushed; 0.33.0 follows with the breaking changes listed at
+    the end of the design spec.
 
 ## Amendments 2026-09-25 (prader's ADR-0021 accepted; raw docs re-read)
 
@@ -246,5 +249,7 @@ enabled. Do this first, in parallel with the code.
 - `relay`: `authorize_session_signer_typed_data(dw, session_addr, scopes, nonce, deadline)`
   (`valid_until` is computed; a `_with_valid_until` variant takes it),
   `submit_session_signer_authorization(request, signature, idempotency_key)` under Builder
-  HMAC auth, the revocation pair, and `redeem_typed_data` / `submit_with_signature` for
-  deposit wallets.
+  HMAC auth, the revocation pair, and
+  `redeem_typed_data(wallet, condition_id, index_sets, neg_risk, nonce, deadline)` /
+  `submit_redemption_with_signature` for deposit wallets (and
+  `submit_deposit_wallet_redemption` when the client holds the key).

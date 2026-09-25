@@ -271,7 +271,9 @@ Three plans, each ending in a green workspace:
    `docs/superpowers/plans/2026-09-25-session-keys-relay.md`).
 3. **Docs and handoff status** (rest of section 4), plus the ignored live test skeleton.
    **Done 2026-09-25** (plan `docs/superpowers/plans/2026-09-25-session-keys-docs-and-live.md`);
-   the live test is written, not run.
+   the live test is written, not run. Review added two code fixes, both as py-sdk does:
+   `resolve_wallet` probes the Proxy with `type=PROXY`, and Deposit Wallet redemption
+   targets the collateral adapter (the neg-risk adapter for neg-risk markets).
 
 ## Breaking changes for the 0.33.0 release notes (plan 1)
 
