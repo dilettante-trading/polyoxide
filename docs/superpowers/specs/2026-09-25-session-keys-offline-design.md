@@ -187,7 +187,8 @@ target, and a non-type-3 order against a Deposit Wallet target.
   and `submit_deposit_wallet_batch(wallet, calls, nonce, deadline, signature, metadata)`.
   `execute` gains a `DepositWallet` arm that fetches the nonce, sets `deadline = now + 600 s` (the ts-sdk default),
   signs with the local signer, and applies the 6492 envelope when the account's role is
-  session key. Trading approvals (the four calls from the deposit-wallets page) and
+  session key. Trading approvals (py-sdk's full set from `_required_trading_approvals`:
+  7 ERC-20 and 10 ERC-1155, not the four calls the deposit-wallets page lists) and
   redemption are call builders over this. Because prader's §8 names them, redemption also
   gets the named pair `redeem_typed_data(wallet, condition_id, ..., nonce, deadline)` and
   `submit_redemption_with_signature(...)`, thin wrappers over the generic pair.

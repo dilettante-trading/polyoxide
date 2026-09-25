@@ -864,7 +864,7 @@ async fn authorize_session_signer_typed_data_computes_valid_until_from_the_lifet
 }
 
 #[tokio::test]
-async fn session_signer_routes_refuse_relayer_api_key_auth_before_io() {
+async fn session_signer_authorization_refuses_relayer_api_key_auth_before_io() {
     let v = relay_vectors();
     let mut server = Server::new_async().await;
     let mock = server
@@ -1307,4 +1307,92 @@ async fn submit_gasless_redemption_on_a_deposit_wallet_redeems_pusd_through_the_
     params.assert_async().await;
     submit.assert_async().await;
     legacy_nonce.assert_async().await;
+}
+
+// ── Deposit Wallet metadata ───────────────────────────────────
+
+fn approval_transaction(v: &serde_json::Value) -> polyoxide_relay::SafeTransaction {
+    polyoxide_relay::SafeTransaction {
+        to: "0xC011a7E12a19f7B1f670d46F03B03f3342E82DFB"
+            .parse()
+            .unwrap(),
+        value: alloy::primitives::U256::ZERO,
+        data: alloy::primitives::hex::decode(
+            v["approval_batch"]["calls"][0]["data"].as_str().unwrap(),
+        )
+        .unwrap()
+        .into(),
+        operation: 0,
+    }
+}
+
+#[tokio::test]
+async fn execute_on_a_deposit_wallet_without_metadata_sends_an_empty_string() {
+    let v = relay_vectors();
+    let mut server = Server::new_async().await;
+    let params = server
+        .mock("GET", "/v1/account/transactions/params")
+        .match_query(Matcher::Any)
+        .with_status(200)
+        .with_header("content-type", "application/json")
+        .with_body(r#"{"address":"0xf39Fd6e51aad88F6F4ce6aB8827279cffFb92266","nonce":"3"}"#)
+        .create_async()
+        .await;
+    // py-sdk's build_deposit_wallet_payload always sends metadata, "" by default.
+    let submit = server
+        .mock("POST", "/submit")
+        .match_body(Matcher::PartialJsonString(
+            r#"{"type":"WALLET","metadata":""}"#.into(),
+        ))
+        .with_status(200)
+        .with_header("content-type", "application/json")
+        .with_body(r#"{"transactionID":"tx-14","state":"STATE_NEW"}"#)
+        .create_async()
+        .await;
+
+    let client = deposit_wallet_client(&server);
+    let resp = client
+        .execute(vec![approval_transaction(&v)], None)
+        .await
+        .unwrap();
+    assert_eq!(resp.transaction_id, "tx-14");
+    params.assert_async().await;
+    submit.assert_async().await;
+}
+
+#[tokio::test]
+async fn deposit_wallet_metadata_over_500_characters_is_refused_before_io() {
+    let v = relay_vectors();
+    let mut server = Server::new_async().await;
+    let params = server
+        .mock("GET", "/v1/account/transactions/params")
+        .match_query(Matcher::Any)
+        .expect(0)
+        .create_async()
+        .await;
+    let submit = server
+        .mock("POST", "/submit")
+        .expect(0)
+        .create_async()
+        .await;
+
+    let client = deposit_wallet_client(&server);
+    // py-sdk's cap is 500 characters. Both entry points refuse 501 before any I/O:
+    // `execute` before it fetches the nonce, the signature-in submit before it posts.
+    let err = client
+        .execute(vec![approval_transaction(&v)], Some("x".repeat(501)))
+        .await
+        .unwrap_err()
+        .to_string();
+    assert!(err.contains("500"), "{err}");
+
+    let wallet: alloy::primitives::Address = v["wallet"].as_str().unwrap().parse().unwrap();
+    let err = client
+        .submit_deposit_wallet_batch(wallet, &[], 3, 1_800_000_000, "0x", Some("x".repeat(501)))
+        .await
+        .unwrap_err()
+        .to_string();
+    assert!(err.contains("500"), "{err}");
+    params.assert_async().await;
+    submit.assert_async().await;
 }

@@ -53,6 +53,10 @@ from polymarket._internal.actions.orders.typed_data import (
     build_order_typed_data,
 )
 from polymarket._internal.actions.orders.types import BYTES32_ZERO, UnsignedOrder
+from polymarket._internal.actions.relayer.approvals import (
+    _required_trading_approvals,
+    build_missing_trading_approval_calls,
+)
 from polymarket._internal.actions.relayer.calls import (
     authorize_session_signer_call,
     ctf_redeem_positions_call,
@@ -69,6 +73,8 @@ from polymarket._internal.actions.relayer.signing.deposit_wallet import (
     sign_deposit_wallet_batch,
 )
 from polymarket._internal.actions.session_keys import (
+    _SESSION_KEY_LIFETIME_SECONDS,
+    _SESSION_KEY_RELAYER_SUBMISSION_TIMEOUT,
     _build_authorization_payload,
     _build_revocation_payload,
     _ParsedAuthorizeSessionKeyRequest,
@@ -83,6 +89,7 @@ from polymarket._internal.wallet import (
     derive_uups_deposit_wallet_address,
     wrap_deposit_wallet_session_signer_signature,
 )
+from polymarket.models.trading import MissingTradingApprovals
 from polymarket.models.types import TokenId
 from polymarket.session_keys import SessionKeyKnownScope
 from polymarket.types import EvmAddress, HexString
@@ -234,6 +241,38 @@ def _batch(signer, wallet: EvmAddress, calls, nonce: str, deadline: str) -> dict
     }
 
 
+def _trading_approvals() -> list[dict]:
+    """Every approval py-sdk requires of a fully approved Deposit Wallet on Polygon.
+
+    `_required_trading_approvals` names them (ERC-20 `approve` first, then ERC-1155
+    `setApprovalForAll`), and `build_missing_trading_approval_calls` is the function py-sdk
+    itself uses to turn a missing set into calls, so passing it the full set yields the
+    batch py-sdk would submit for a wallet with no approvals at all, in py-sdk's order.
+    """
+    erc20, erc1155 = _required_trading_approvals(PRODUCTION_CONFIG)
+    calls = build_missing_trading_approval_calls(
+        MissingTradingApprovals(erc20=erc20, erc1155=erc1155)
+    )
+    spenders = [("erc20", a.spender) for a in erc20] + [("erc1155", a.operator) for a in erc1155]
+    if len(calls) != len(spenders):
+        sys.exit("build_missing_trading_approval_calls changed the approval count")
+    return [
+        {
+            "kind": kind,
+            "target": to_checksum_address(str(call.to)),
+            "spender": to_checksum_address(spender),
+            "data": call.data,
+        }
+        for (kind, spender), call in zip(spenders, calls, strict=True)
+    ]
+
+
+def _whole_seconds(value: float, name: str) -> int:
+    if not float(value).is_integer():
+        sys.exit(f"{name} is not a whole number of seconds: {value}")
+    return int(value)
+
+
 def relay_vectors(signer) -> dict:
     """Deposit Wallet `Batch` signing, CREATE2 derivations, and relay request bodies.
 
@@ -375,6 +414,11 @@ def relay_vectors(signer) -> dict:
         "session_submit_body": session_submit_body,
         "authorization_body": authorization_body,
         "revocation_body": revocation_body,
+        "trading_approvals": _trading_approvals(),
+        "session_key_lifetime_secs": _SESSION_KEY_LIFETIME_SECONDS,
+        "session_signer_timeout_secs": _whole_seconds(
+            _SESSION_KEY_RELAYER_SUBMISSION_TIMEOUT.read, "session-signer read timeout"
+        ),
     }
 
 
@@ -499,6 +543,18 @@ submitting `approval_batch` via its `session_signature`), and `authorization_bod
 `revocation_body` come from `_build_authorization_payload` / `_build_revocation_payload`
 (`polymarket._internal.actions.session_keys`), built from `authorize_batch` and
 `revoke_batch` respectively.
+
+`trading_approvals` is every approval py-sdk requires before it reports a Deposit Wallet
+as fully approved on Polygon (`_required_trading_approvals` in
+`polymarket._internal.actions.relayer.approvals`): ERC-20 `approve` calls for the maximum
+uint256, then ERC-1155 `setApprovalForAll(operator, true)` calls, in py-sdk's order. The
+calldata comes from `build_missing_trading_approval_calls`, the function py-sdk uses to
+build the approval batch, given the full set as missing. Each entry records the `kind`,
+the token contract it calls (`target`), the spender or operator it approves, and the
+calldata. `session_key_lifetime_secs` is py-sdk's `_SESSION_KEY_LIFETIME_SECONDS` and
+`session_signer_timeout_secs` is the `read` timeout py-sdk sets on the two session-signer
+POSTs (`_SESSION_KEY_RELAYER_SUBMISSION_TIMEOUT`), both from
+`polymarket._internal.actions.session_keys`.
 
 | Fixture | Command |
 |---|---|

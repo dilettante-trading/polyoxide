@@ -40,6 +40,18 @@ submitting `approval_batch` via its `session_signature`), and `authorization_bod
 (`polymarket._internal.actions.session_keys`), built from `authorize_batch` and
 `revoke_batch` respectively.
 
+`trading_approvals` is every approval py-sdk requires before it reports a Deposit Wallet
+as fully approved on Polygon (`_required_trading_approvals` in
+`polymarket._internal.actions.relayer.approvals`): ERC-20 `approve` calls for the maximum
+uint256, then ERC-1155 `setApprovalForAll(operator, true)` calls, in py-sdk's order. The
+calldata comes from `build_missing_trading_approval_calls`, the function py-sdk uses to
+build the approval batch, given the full set as missing. Each entry records the `kind`,
+the token contract it calls (`target`), the spender or operator it approves, and the
+calldata. `session_key_lifetime_secs` is py-sdk's `_SESSION_KEY_LIFETIME_SECONDS` and
+`session_signer_timeout_secs` is the `read` timeout py-sdk sets on the two session-signer
+POSTs (`_SESSION_KEY_RELAYER_SUBMISSION_TIMEOUT`), both from
+`polymarket._internal.actions.session_keys`.
+
 | Fixture | Command |
 |---|---|
 | `relay_vectors.json` | `uv run scripts/capture_session_key_vectors.py polyoxide-clob/tests/fixtures/session_keys polyoxide-relay/tests/fixtures/session_keys` |

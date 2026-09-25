@@ -27,7 +27,7 @@ The relay client is not bundled into the unified `polyoxide` crate (which covers
 
 ## Authentication
 
-Relay operations require a private key for EIP-712 transaction signing **and** one of two authentication schemes for relay submission:
+Relay operations require a private key for EIP-712 transaction signing, unless an external wallet signs and this client only submits (see [Deposit Wallets](#deposit-wallets)), **and** one of two authentication schemes for relay submission:
 
 ### Builder API Credentials (HMAC-SHA256)
 
@@ -213,7 +213,8 @@ let client = RelayClient::builder()?
     .deposit_wallet(wallet)
     .build()?;
 
-// The four approvals a fresh Deposit Wallet needs before trading, in one batch.
+// Every approval py-sdk considers a fully approved Deposit Wallet to hold (7 ERC-20
+// and 10 ERC-1155), as one batch and one relayer submit.
 let calls = client.deposit_wallet_trading_approvals()?;
 let nonce = client.get_execute_params(owner, WalletType::DepositWallet).await?;
 let deadline = polyoxide_core::current_timestamp() + polyoxide_relay::DEFAULT_BATCH_DEADLINE_SECS;

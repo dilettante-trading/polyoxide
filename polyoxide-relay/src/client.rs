@@ -130,11 +130,76 @@ struct DepositWalletSubmitBody {
     to: String,
     nonce: String,
     signature: String,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    metadata: Option<String>,
+    /// Always present, as py-sdk's `build_deposit_wallet_payload` sends it: `""` by
+    /// default, at most [`DEPOSIT_WALLET_METADATA_MAX_CHARS`] characters.
+    metadata: String,
     #[serde(rename = "depositWalletParams")]
     deposit_wallet_params: DepositWalletParamsBody,
 }
+
+/// py-sdk's `_METADATA_MAX_LENGTH`: the longest `metadata` a Deposit Wallet submission
+/// may carry, in characters.
+const DEPOSIT_WALLET_METADATA_MAX_CHARS: usize = 500;
+
+/// The `metadata` a Deposit Wallet submission sends: `""` when none is given, refused
+/// past [`DEPOSIT_WALLET_METADATA_MAX_CHARS`]. Counts characters (code points), as
+/// Python's `len` does, not bytes.
+fn deposit_wallet_metadata(metadata: Option<String>) -> Result<String, RelayError> {
+    let metadata = metadata.unwrap_or_default();
+    let chars = metadata.chars().count();
+    if chars > DEPOSIT_WALLET_METADATA_MAX_CHARS {
+        return Err(RelayError::Api(format!(
+            "metadata must be at most {DEPOSIT_WALLET_METADATA_MAX_CHARS} characters, got {chars}"
+        )));
+    }
+    Ok(metadata)
+}
+
+/// Whether a trading approval is an ERC-20 `approve` or an ERC-1155 `setApprovalForAll`.
+#[derive(Debug, Clone, Copy)]
+enum ApprovalKind {
+    Erc20,
+    Erc1155,
+}
+
+/// py-sdk's `_required_trading_approvals` on Polygon mainnet, in py-sdk's order: the
+/// kind, the token contract called, and the spender or operator approved. ERC-20
+/// approvals are for the maximum uint256; ERC-1155 approvals set `true`.
+const POLYGON_TRADING_APPROVALS: [(ApprovalKind, Address, Address); 17] = {
+    use ApprovalKind::{Erc1155, Erc20};
+    let pusd = address!("C011a7E12a19f7B1f670d46F03B03f3342E82DFB");
+    let ctf = address!("4D97DCd97eC945f40cF65F87097ACe5EA0476045");
+    let position_manager = address!("006F54F7f9A22e0000CC2AB60031000000ae9fEF");
+    let standard_exchange = address!("E111180000d2663C0091e4f400237545B87B996B");
+    let neg_risk_exchange = address!("e2222d279d744050d28e00520010520000310F59");
+    let collateral_adapter = address!("AdA100Db00Ca00073811820692005400218FcE1f");
+    let neg_risk_collateral_adapter = address!("adA2005600Dec949baf300f4C6120000bDB6eAab");
+    let protocol_v2_router = address!("12121212006e4CD160D18e3f00711DA5c3372600");
+    let exchange_v3 = address!("e3333700cA9d93003F00f0F71f8515005F6c00Aa");
+    let perps_deposit = address!("DCa4af75705dbB50f62437045afF9921947917d2");
+    let auto_redeem_operator = address!("a1200000d0002264C9a1698e001292D00E1b00af");
+    let binary_module = address!("1000008dD9001B968442c1000017eaE6E0dA00Ba");
+    let neg_risk_module = address!("200000900045e3B6259600682756002200028933");
+    [
+        (Erc20, pusd, standard_exchange),
+        (Erc20, pusd, neg_risk_exchange),
+        (Erc20, pusd, collateral_adapter),
+        (Erc20, pusd, neg_risk_collateral_adapter),
+        (Erc20, pusd, protocol_v2_router),
+        (Erc20, pusd, exchange_v3),
+        (Erc20, pusd, perps_deposit),
+        (Erc1155, ctf, standard_exchange),
+        (Erc1155, ctf, neg_risk_exchange),
+        (Erc1155, ctf, collateral_adapter),
+        (Erc1155, ctf, neg_risk_collateral_adapter),
+        (Erc1155, ctf, auto_redeem_operator),
+        (Erc1155, ctf, binary_module),
+        (Erc1155, ctf, neg_risk_module),
+        (Erc1155, position_manager, protocol_v2_router),
+        (Erc1155, position_manager, exchange_v3),
+        (Erc1155, position_manager, auto_redeem_operator),
+    ]
+};
 
 /// Client for submitting gasless transactions through Polymarket's relayer service.
 ///
@@ -902,6 +967,9 @@ impl RelayClient {
     /// `from` is the EOA that produced `signature` (the owner, or a session key whose
     /// signature is already wrapped in the session-signer envelope). Works with
     /// [`RelayClientBuilder::with_auth`] and no account.
+    ///
+    /// `metadata` is sent as `""` when `None`, as py-sdk does, and refused before any
+    /// I/O past 500 characters (py-sdk's cap).
     #[allow(clippy::too_many_arguments)]
     pub async fn submit_deposit_wallet_batch_from(
         &self,
@@ -913,6 +981,7 @@ impl RelayClient {
         signature: &str,
         metadata: Option<String>,
     ) -> Result<SubmitResponse, RelayError> {
+        let metadata = deposit_wallet_metadata(metadata)?;
         let body = DepositWalletSubmitBody {
             type_: WalletType::DepositWallet.as_str().to_string(),
             from: from.to_string(),
@@ -989,8 +1058,10 @@ impl RelayClient {
         metadata: Option<String>,
     ) -> Result<SubmitResponse, RelayError> {
         let wallet = self.configured_deposit_wallet()?;
-        // Fail on an unsupported chain before fetching a nonce or signing.
+        // Fail on an unsupported chain or oversized metadata before fetching a nonce or
+        // signing.
         self.deposit_wallet_factory()?;
+        let metadata = Some(deposit_wallet_metadata(metadata)?);
         let account = self.account.as_ref().ok_or(RelayError::MissingSigner)?;
         let calls = transactions
             .into_iter()
@@ -1289,10 +1360,16 @@ impl RelayClient {
         )
     }
 
-    /// The four approvals a Deposit Wallet needs before it can trade: pUSD `approve`
-    /// and Conditional Tokens `setApprovalForAll` for the standard and neg-risk V2
-    /// exchanges. Sign and submit the result as one batch, or convert each call to a
-    /// `SafeTransaction` with `operation: 0` for [`RelayClient::execute`].
+    /// Every approval py-sdk considers a fully approved Deposit Wallet to hold: 7 ERC-20
+    /// `approve` calls for the maximum uint256 on pUSD, then 10 ERC-1155
+    /// `setApprovalForAll(operator, true)` calls on the Conditional Tokens contract and
+    /// the position manager, in py-sdk's order. The spenders are the standard and
+    /// neg-risk exchanges, both collateral adapters, the V2 router, exchange V3, the
+    /// perps deposit contract, the auto-redeem operator and the binary and neg-risk
+    /// modules.
+    ///
+    /// Sign and submit the result as one batch (one relayer submit), or convert each
+    /// call to a `SafeTransaction` with `operation: 0` for [`RelayClient::execute`].
     ///
     /// The addresses are Polygon mainnet's; any other chain is an error.
     pub fn deposit_wallet_trading_approvals(&self) -> Result<Vec<DepositWalletCall>, RelayError> {
@@ -1305,26 +1382,18 @@ impl RelayClient {
                 self.chain_id
             )));
         }
-        let pusd = address!("C011a7E12a19f7B1f670d46F03B03f3342E82DFB");
-        let ctf = address!("4D97DCd97eC945f40cF65F87097ACe5EA0476045");
-        let exchanges = [
-            address!("E111180000d2663C0091e4f400237545B87B996B"),
-            address!("e2222d279d744050d28e00520010520000310F59"),
-        ];
-        let mut calls = Vec::with_capacity(4);
-        for exchange in exchanges {
-            calls.push(DepositWalletCall {
-                target: pusd,
+        Ok(POLYGON_TRADING_APPROVALS
+            .iter()
+            .map(|&(kind, target, spender)| DepositWalletCall {
+                target,
                 value: U256::ZERO,
-                data: erc20_approve_calldata(exchange, U256::MAX).into(),
-            });
-            calls.push(DepositWalletCall {
-                target: ctf,
-                value: U256::ZERO,
-                data: erc1155_set_approval_for_all_calldata(exchange, true).into(),
-            });
-        }
-        Ok(calls)
+                data: match kind {
+                    ApprovalKind::Erc20 => erc20_approve_calldata(spender, U256::MAX),
+                    ApprovalKind::Erc1155 => erc1155_set_approval_for_all_calldata(spender, true),
+                }
+                .into(),
+            })
+            .collect())
     }
 
     /// The single `redeemPositions` call a Deposit Wallet redemption batch carries:
@@ -1377,7 +1446,7 @@ impl RelayClient {
     /// Submit a redemption batch signed elsewhere by this client's account.
     ///
     /// Pair with [`RelayClient::redeem_typed_data`]. Sends `metadata: ""`, as py-sdk
-    /// does for every Deposit Wallet submission.
+    /// does by default for every Deposit Wallet submission.
     pub async fn submit_redemption_with_signature(
         &self,
         wallet: Address,
@@ -1386,15 +1455,8 @@ impl RelayClient {
         deadline: u64,
         signature: &str,
     ) -> Result<SubmitResponse, RelayError> {
-        self.submit_deposit_wallet_batch(
-            wallet,
-            calls,
-            nonce,
-            deadline,
-            signature,
-            Some(String::new()),
-        )
-        .await
+        self.submit_deposit_wallet_batch(wallet, calls, nonce, deadline, signature, None)
+            .await
     }
 
     /// Estimate gas required for a redemption transaction.
@@ -1542,9 +1604,7 @@ impl RelayClient {
                 data: call.data,
                 operation: CALL_OPERATION,
             };
-            return self
-                .execute_deposit_wallet(vec![tx], Some(String::new()))
-                .await;
+            return self.execute_deposit_wallet(vec![tx], None).await;
         }
 
         // 1. Define the specific interface for redemption
@@ -1925,17 +1985,25 @@ mod tests {
     }
 
     #[test]
-    fn deposit_wallet_trading_approvals_cover_both_exchanges_on_polygon_only() {
+    fn deposit_wallet_trading_approvals_are_py_sdks_full_set_in_order_on_polygon_only() {
+        let v: serde_json::Value = serde_json::from_str(include_str!(
+            "../tests/fixtures/session_keys/relay_vectors.json"
+        ))
+        .unwrap();
+        let expected = v["trading_approvals"].as_array().unwrap();
         let client = RelayClient::builder().unwrap().build().unwrap();
         let calls = client.deposit_wallet_trading_approvals().unwrap();
-        assert_eq!(calls.len(), 4);
-        let pusd = address!("C011a7E12a19f7B1f670d46F03B03f3342E82DFB");
-        let ctf = address!("4D97DCd97eC945f40cF65F87097ACe5EA0476045");
-        assert_eq!(calls[0].target, pusd);
-        assert!(calls[0].data.starts_with(&[0x09, 0x5e, 0xa7, 0xb3]));
-        assert_eq!(calls[1].target, ctf);
-        assert!(calls[1].data.starts_with(&[0xa2, 0x2c, 0xb4, 0x65]));
-        assert!(calls.iter().all(|c| c.value.is_zero()));
+        assert_eq!(calls.len(), expected.len());
+        for (i, (call, want)) in calls.iter().zip(expected).enumerate() {
+            let target: Address = want["target"].as_str().unwrap().parse().unwrap();
+            assert_eq!(call.target, target, "call {i}");
+            assert_eq!(
+                format!("0x{}", hex::encode(&call.data)),
+                want["data"].as_str().unwrap(),
+                "call {i}"
+            );
+            assert!(call.value.is_zero(), "call {i}");
+        }
 
         let amoy = RelayClient::builder()
             .unwrap()
@@ -1944,6 +2012,18 @@ mod tests {
             .unwrap();
         let err = amoy.deposit_wallet_trading_approvals().unwrap_err();
         assert!(err.to_string().contains("80002"), "{err}");
+    }
+
+    #[test]
+    fn deposit_wallet_metadata_defaults_to_empty_and_counts_characters_not_bytes() {
+        assert_eq!(deposit_wallet_metadata(None).unwrap(), "");
+        // 500 two-byte characters are 1000 bytes but within py-sdk's 500-character cap.
+        assert_eq!(
+            deposit_wallet_metadata(Some("é".repeat(500))).unwrap(),
+            "é".repeat(500)
+        );
+        let err = deposit_wallet_metadata(Some("x".repeat(501))).unwrap_err();
+        assert!(err.to_string().contains("at most 500"), "{err}");
     }
 
     #[test]

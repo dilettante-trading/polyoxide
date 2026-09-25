@@ -378,6 +378,16 @@ mod tests {
             ),
             v["approval_batch"]["calls"][0]["data"].as_str().unwrap()
         );
+        assert_eq!(
+            format!(
+                "0x{}",
+                hex::encode(erc1155_set_approval_for_all_calldata(
+                    address!("E111180000d2663C0091e4f400237545B87B996B"),
+                    true
+                ))
+            ),
+            v["multi_batch"]["calls"][1]["data"].as_str().unwrap()
+        );
         let condition: B256 = "0x1171bfba0ad9386688133910593527fe77ce5406a7ac2c9a3552ab5471c1ac51"
             .parse()
             .unwrap();
@@ -417,7 +427,10 @@ mod tests {
 
     #[test]
     fn session_lifetime_is_the_venues_fixed_value() {
-        assert_eq!(SESSION_KEY_LIFETIME_SECS, 4_315 * 60 * 60);
+        assert_eq!(
+            SESSION_KEY_LIFETIME_SECS,
+            vectors()["session_key_lifetime_secs"].as_u64().unwrap()
+        );
         assert_eq!(DEFAULT_BATCH_DEADLINE_SECS, 600);
     }
 }

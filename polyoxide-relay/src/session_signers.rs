@@ -287,9 +287,13 @@ mod tests {
 
     #[test]
     fn session_signer_requests_wait_five_minutes_like_py_sdk() {
+        let v: serde_json::Value = serde_json::from_str(include_str!(
+            "../tests/fixtures/session_keys/relay_vectors.json"
+        ))
+        .unwrap();
         assert_eq!(
             SESSION_SIGNER_REQUEST_TIMEOUT,
-            std::time::Duration::from_secs(300)
+            std::time::Duration::from_secs(v["session_signer_timeout_secs"].as_u64().unwrap())
         );
     }
 
