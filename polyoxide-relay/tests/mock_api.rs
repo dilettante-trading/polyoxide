@@ -265,6 +265,23 @@ async fn get_gasless_transaction_reads_the_v1_record() {
 }
 
 #[tokio::test]
+async fn get_gasless_transaction_percent_encodes_the_id() {
+    let mut server = Server::new_async().await;
+    let mock = server
+        .mock("GET", "/v1/account/transactions/a%2Fb%3Fc")
+        .with_status(200)
+        .with_header("content-type", "application/json")
+        .with_body(r#"{"transaction_id":"a/b?c","transaction_hash":null,"state":"STATE_NEW","error_msg":null}"#)
+        .create_async()
+        .await;
+
+    let client = client_unauthed(&server);
+    let tx = client.get_gasless_transaction("a/b?c").await.unwrap();
+    assert_eq!(tx.transaction_id, "a/b?c");
+    mock.assert_async().await;
+}
+
+#[tokio::test]
 async fn resolve_wallet_probes_both_deposit_wallet_generations_and_the_safe() {
     // Anvil #0: beacon 0xBc0f…, uups 0xdf8b…, safe 0xd93B… (relay_vectors.json).
     let mut server = Server::new_async().await;
@@ -332,7 +349,7 @@ async fn resolve_wallet_probes_both_deposit_wallet_generations_and_the_safe() {
 #[tokio::test]
 async fn resolve_wallet_refuses_two_deployed_wallets() {
     let mut server = Server::new_async().await;
-    let _all_deployed = server
+    let all_deployed = server
         .mock("GET", "/deployed")
         .match_query(Matcher::Any)
         .with_status(200)
@@ -348,12 +365,13 @@ async fn resolve_wallet_refuses_two_deployed_wallets() {
         .unwrap();
     let err = client.resolve_wallet(owner).await.unwrap_err().to_string();
     assert!(err.contains("more than one"), "{err}");
+    all_deployed.assert_async().await;
 }
 
 #[tokio::test]
 async fn resolve_wallet_reports_none_when_nothing_is_deployed() {
     let mut server = Server::new_async().await;
-    let _none = server
+    let none = server
         .mock("GET", "/deployed")
         .match_query(Matcher::Any)
         .with_status(200)
@@ -368,4 +386,5 @@ async fn resolve_wallet_reports_none_when_nothing_is_deployed() {
         .parse()
         .unwrap();
     assert_eq!(client.resolve_wallet(owner).await.unwrap(), None);
+    none.assert_async().await;
 }

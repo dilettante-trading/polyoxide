@@ -47,8 +47,8 @@ pub use client::RelayClient;
 pub use config::{AuthConfig, BuilderConfig, ContractConfig, RelayerApiKeyConfig};
 pub use error::RelayError;
 pub use types::{
-    ExecuteParams, GaslessTransaction, RelayerApiKey, RelayerTransaction, SafeTransaction, SafeTx,
-    SubmitResponse, TransactionRequest, TransactionState, WalletType,
+    GaslessTransaction, RelayerApiKey, RelayerTransaction, SafeTransaction, SafeTx, SubmitResponse,
+    TransactionRequest, TransactionState, WalletType,
 };
 pub use wallet::{
     derive_deposit_wallet_beacon, derive_deposit_wallet_uups, derive_proxy, derive_safe, WalletKind,

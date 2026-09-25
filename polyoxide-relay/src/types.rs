@@ -3,6 +3,7 @@ use serde::{Deserialize, Serialize};
 
 /// Wallet type for the relayer API
 #[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
+#[non_exhaustive]
 pub enum WalletType {
     /// Safe wallet - requires explicit deployment before first transaction
     #[default]
@@ -205,6 +206,12 @@ macro_rules! open_string_enum {
         pub enum $name {
             $( $(#[$vmeta])* $variant, )+
             /// A value this crate does not know yet, kept verbatim.
+            ///
+            /// Build this via [`Self::from_wire`] or [`std::str::FromStr::from_str`],
+            /// never by constructing it directly: `Other("STATE_CONFIRMED".into())`
+            /// serialises identically to the named variant but does not compare
+            /// equal to it, and any state-dependent method (e.g. `is_success`) would
+            /// silently disagree with the wire value it holds.
             Other(String),
         }
 
@@ -300,13 +307,15 @@ pub struct GaslessTransaction {
     /// Current state.
     pub state: TransactionState,
     /// The relayer's failure reason for a terminal failure, if any.
-    #[serde(default)]
     pub error_msg: Option<String>,
 }
 
 /// `GET /v1/account/transactions/params`: the next nonce for a wallet type.
+///
+/// Only the nonce is exposed publicly ([`crate::RelayClient::get_execute_params`]
+/// returns it directly), so this struct stays crate-private.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
-pub struct ExecuteParams {
+pub(crate) struct ExecuteParams {
     /// The address the nonce was fetched for.
     pub address: alloy::primitives::Address,
     /// Next nonce; the wire sends it as a decimal string.

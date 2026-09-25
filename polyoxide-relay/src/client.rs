@@ -28,6 +28,13 @@ const PROXY_CALL_TYPE_CODE: u8 = 1;
 // multiSend(bytes) function selector
 const MULTISEND_SELECTOR: [u8; 4] = [0x8d, 0x80, 0xff, 0x0a];
 
+/// `GET /deployed` response body, shared by [`RelayClient::get_deployed`] and
+/// [`RelayClient::get_deployed_typed`].
+#[derive(serde::Deserialize)]
+struct DeployedResponse {
+    deployed: bool,
+}
+
 // ── Relay submission request bodies ─────────────────────────────────
 
 #[derive(Serialize)]
@@ -353,10 +360,6 @@ impl RelayClient {
 
     /// Check whether a Safe wallet has been deployed on-chain.
     pub async fn get_deployed(&self, safe_address: Address) -> Result<bool, RelayError> {
-        #[derive(serde::Deserialize)]
-        struct DeployedResponse {
-            deployed: bool,
-        }
         let url = self
             .http_client
             .base_url
@@ -375,10 +378,6 @@ impl RelayClient {
         wallet: Address,
         wallet_type: WalletType,
     ) -> Result<bool, RelayError> {
-        #[derive(serde::Deserialize)]
-        struct DeployedResponse {
-            deployed: bool,
-        }
         let url = self.http_client.base_url.join(&format!(
             "deployed?address={}&type={}",
             wallet,
@@ -418,10 +417,11 @@ impl RelayClient {
         &self,
         transaction_id: &str,
     ) -> Result<GaslessTransaction, RelayError> {
-        let url = self
-            .http_client
-            .base_url
-            .join(&format!("v1/account/transactions/{}", transaction_id))?;
+        let mut url = self.http_client.base_url.join("v1/account/transactions/")?;
+        url.path_segments_mut()
+            .map_err(|_| RelayError::Api("base URL cannot be a base".into()))?
+            .pop_if_empty()
+            .push(transaction_id);
         let resp = self
             .get_with_retry("/v1/account/transactions", &url)
             .await?;
@@ -433,15 +433,19 @@ impl RelayClient {
     /// Derives the beacon and UUPS Deposit Wallets and the Safe, asks `/deployed`
     /// for each, and returns the one that exists, or `None` when nothing is
     /// deployed. More than one deployed wallet is an error rather than a guess. A
-    /// Proxy wallet cannot be observed this way; see [`WalletKind`].
+    /// Proxy wallet cannot be observed this way; see [`WalletKind`]. Costs up to
+    /// three requests against the relay bucket, so callers should cache the answer
+    /// rather than calling this on every use.
     pub async fn resolve_wallet(&self, owner: Address) -> Result<Option<WalletKind>, RelayError> {
         let cfg = &self.contract_config;
         let mut candidates: Vec<(WalletKind, WalletType)> = Vec::new();
-        if cfg.deposit_wallet_factory.is_some() {
+        if cfg.deposit_wallet_factory.is_some() && cfg.deposit_wallet_beacon.is_some() {
             candidates.push((
                 WalletKind::DepositWallet(crate::wallet::derive_deposit_wallet_beacon(owner, cfg)?),
                 WalletType::DepositWallet,
             ));
+        }
+        if cfg.deposit_wallet_factory.is_some() && cfg.deposit_wallet_implementation.is_some() {
             candidates.push((
                 WalletKind::DepositWallet(crate::wallet::derive_deposit_wallet_uups(owner, cfg)?),
                 WalletType::DepositWallet,
