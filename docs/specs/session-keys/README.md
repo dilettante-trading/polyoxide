@@ -18,7 +18,8 @@ Read on 2026-09-25:
 - Prose: `https://docs.polymarket.com/trading/session-keys.md`,
   `https://docs.polymarket.com/trading/deposit-wallets.md`,
   `https://docs.polymarket.com/trading/place-orders.md`,
-  `https://docs.polymarket.com/trading/wallets-auth.md`. The first two postdate the
+  `https://docs.polymarket.com/trading/wallets-auth.md`,
+  `https://docs.polymarket.com/trading/positions/manage.md`. The first two postdate the
   `../polymarket-llms.txt` snapshot, which does not list them.
 - Code: `github.com/Polymarket/py-sdk` (`polymarket-client==0.11.0`) and
   `github.com/Polymarket/ts-sdk` (`@polymarket/client` 0.11.0). Where a page and an
@@ -142,9 +143,17 @@ position manager, towards the two V2 exchanges, exchange V3, the two collateral
 adapters, the V2 router, perps deposit, the auto-redeem operator and the two modules).
 The deposit-wallets page lists only four of them.
 
-**Redemption.** `redeemPositions(pUSD, 0x0, conditionId, indexSets)` on the Conditional
-Tokens contract, as one batch call. pUSD (`0xC011a7E12a19f7B1f670d46F03B03f3342E82DFB`)
-is the Deposit Wallet collateral; Safe and Proxy redeem against USDC.
+**Redemption.** py-sdk redeems in one batch call, and the target depends on the market.
+For a CTF market it calls `redeemPositions(pUSD, 0x0, conditionId, [1, 2])` on the
+collateral adapter (`0xAdA100Db00Ca00073811820692005400218FcE1f`); for a neg-risk market
+the target is the neg-risk collateral adapter
+(`0xadA2005600Dec949baf300f4C6120000bDB6eAab`). It never calls the Conditional Tokens
+contract directly. A protocol-V2 market goes through the V2 router's `redeem` and is not
+covered here. pUSD (`0xC011a7E12a19f7B1f670d46F03B03f3342E82DFB`) is the Deposit Wallet
+collateral; polyoxide's Safe and Proxy paths still redeem against USDC on the Conditional
+Tokens contract, which is what they did before Deposit Wallets existed and has not been
+re-checked against py-sdk. The Manage Positions page's API tab gives the same adapters,
+collateral and index sets.
 
 ## Deposit Wallet address derivation
 
@@ -152,8 +161,9 @@ Factory `0x00000000000Fb5C9ADea0298D729A0CB3823Cc07`. Wallets deployed before 20
 are UUPS proxies (implementation `0x58CA52ebe0DadfdF531Cde7062e76746de4Db1eB`); later
 ones are ERC-1967 beacon proxies (beacon `0x7A18EDfe055488A3128f01F563e5B479D92ffc3a`).
 Both are CREATE2 from the factory with a salt derived from the owner. Resolving which
-one an owner has means deriving all four and asking `GET /deployed` for each;
-`resolve_wallet` does so (four requests).
+one an owner has means deriving all four candidates (both Deposit Wallet generations, the
+Safe and the Proxy) and asking `GET /deployed` for each; `resolve_wallet` does so (four
+requests).
 
 ## Where polyoxide implements it
 
@@ -167,7 +177,8 @@ one an owner has means deriving all four and asking `GET /deployed` for each;
 | Nonce and transaction poll | `RelayClient::get_execute_params`, `RelayClient::get_gasless_transaction`, `TransactionState` | mock tests |
 | Batch typed data, digest, session envelope, calldata | `polyoxide_relay::deposit_wallet::{batch_typed_data, batch_digest, wrap_session_signer, …_calldata}` | `relay_vectors.json` (five signed batches) |
 | Execute as owner or session key | `RelayClient::execute` with `WalletType::DepositWallet` and `RelayClientBuilder::{deposit_wallet, deposit_wallet_role}` | `relay_vectors.json` (`submit_body`, `session_submit_body`) |
-| Typed-data-out / signature-in | `RelayClient::deposit_wallet_batch_typed_data`, `submit_deposit_wallet_batch_from`, `redeem_typed_data`, `submit_redemption_with_signature`; `RelayClientBuilder::with_auth` for a client with no key | `relay_vectors.json` |
+| Typed-data-out / signature-in | `RelayClient::deposit_wallet_batch_typed_data`, `submit_deposit_wallet_batch_from`, `redeem_typed_data(…, neg_risk, …)`, `submit_redemption_with_signature`; `RelayClientBuilder::with_auth` for a client with no key | `relay_vectors.json` (`redeem_adapter_batch`, `redeem_neg_risk_batch`) |
+| Redemption as the client's own account | `RelayClient::submit_deposit_wallet_redemption(condition_id, neg_risk, estimate_gas)`; `submit_gasless_redemption` refuses a Deposit Wallet client before I/O | `relay_vectors.json` (`redeem_adapter_submit_body`) |
 | Session-key management | `RelayClient::authorize_session_signer[_typed_data]`, `submit_session_signer_authorization`, `revoke_session_signer[_typed_data]`, `submit_session_signer_revocation`; `SESSION_KEY_LIFETIME_SECS`, `SESSION_SIGNER_REQUEST_TIMEOUT` | `relay_vectors.json` (`authorization_body`, `revocation_body`, the two constants) |
 | Trading approvals | `RelayClient::deposit_wallet_trading_approvals` | `relay_vectors.json` (`trading_approvals`) |
 

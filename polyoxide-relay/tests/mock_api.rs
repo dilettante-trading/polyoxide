@@ -1292,6 +1292,19 @@ async fn revoke_session_signer_refuses_a_session_key_role_before_io() {
 
 // ── Deposit Wallet redemption ─────────────────────────────────
 
+fn redemption_condition() -> alloy::primitives::B256 {
+    "0x1171bfba0ad9386688133910593527fe77ce5406a7ac2c9a3552ab5471c1ac51"
+        .parse()
+        .unwrap()
+}
+
+fn binary_index_sets() -> [alloy::primitives::U256; 2] {
+    [
+        alloy::primitives::U256::from(1),
+        alloy::primitives::U256::from(2),
+    ]
+}
+
 #[tokio::test]
 async fn redeem_typed_data_and_submit_reproduce_the_py_sdk_batch() {
     let v = relay_vectors();
@@ -1299,7 +1312,7 @@ async fn redeem_typed_data_and_submit_reproduce_the_py_sdk_batch() {
     let mock = server
         .mock("POST", "/submit")
         .match_header("POLY_BUILDER_API_KEY", "builder-key")
-        .match_body(Matcher::Json(v["redeem_submit_body"].clone()))
+        .match_body(Matcher::Json(v["redeem_adapter_submit_body"].clone()))
         .with_status(200)
         .with_header("content-type", "application/json")
         .with_body(r#"{"transactionID":"tx-12","state":"STATE_NEW"}"#)
@@ -1308,23 +1321,22 @@ async fn redeem_typed_data_and_submit_reproduce_the_py_sdk_batch() {
 
     let client = deposit_wallet_client(&server);
     let wallet: alloy::primitives::Address = v["wallet"].as_str().unwrap().parse().unwrap();
-    let condition: alloy::primitives::B256 =
-        "0x1171bfba0ad9386688133910593527fe77ce5406a7ac2c9a3552ab5471c1ac51"
-            .parse()
-            .unwrap();
-    let index_sets = [
-        alloy::primitives::U256::from(1),
-        alloy::primitives::U256::from(2),
-    ];
-    let (typed, calls) = client.redeem_typed_data(wallet, condition, &index_sets, 6, 1800000600);
-    assert_eq!(typed, v["redeem_batch"]["typed_data"]);
+    let (typed, calls) = client.redeem_typed_data(
+        wallet,
+        redemption_condition(),
+        &binary_index_sets(),
+        false,
+        8,
+        1800000600,
+    );
+    assert_eq!(typed, v["redeem_adapter_batch"]["typed_data"]);
     let resp = client
         .submit_redemption_with_signature(
             wallet,
             &calls,
-            6,
+            8,
             1800000600,
-            v["redeem_batch"]["signature"].as_str().unwrap(),
+            v["redeem_adapter_batch"]["signature"].as_str().unwrap(),
         )
         .await
         .unwrap();
@@ -1332,8 +1344,36 @@ async fn redeem_typed_data_and_submit_reproduce_the_py_sdk_batch() {
     mock.assert_async().await;
 }
 
+#[test]
+fn redeem_typed_data_targets_the_neg_risk_adapter_for_a_neg_risk_market() {
+    let v = relay_vectors();
+    let server = mockito::Server::new();
+    let client = deposit_wallet_client(&server);
+    let wallet: alloy::primitives::Address = v["wallet"].as_str().unwrap().parse().unwrap();
+    let (typed, calls) = client.redeem_typed_data(
+        wallet,
+        redemption_condition(),
+        &binary_index_sets(),
+        true,
+        9,
+        1800000600,
+    );
+    assert_eq!(typed, v["redeem_neg_risk_batch"]["typed_data"]);
+    let neg_risk_adapter: alloy::primitives::Address = "0xadA2005600Dec949baf300f4C6120000bDB6eAab"
+        .parse()
+        .unwrap();
+    assert_eq!(calls.len(), 1);
+    assert_eq!(calls[0].target, neg_risk_adapter);
+    assert_eq!(
+        calls[0].target.to_checksum(None),
+        v["redeem_neg_risk_batch"]["calls"][0]["target"]
+            .as_str()
+            .unwrap()
+    );
+}
+
 #[tokio::test]
-async fn submit_gasless_redemption_on_a_deposit_wallet_redeems_pusd_through_the_wallet_batch() {
+async fn submit_deposit_wallet_redemption_redeems_through_the_collateral_adapter() {
     let v = relay_vectors();
     let mut server = Server::new_async().await;
     let params = server
@@ -1347,27 +1387,24 @@ async fn submit_gasless_redemption_on_a_deposit_wallet_redeems_pusd_through_the_
         ]))
         .with_status(200)
         .with_header("content-type", "application/json")
-        .with_body(r#"{"address":"0xf39Fd6e51aad88F6F4ce6aB8827279cffFb92266","nonce":"6"}"#)
+        .with_body(r#"{"address":"0xf39Fd6e51aad88F6F4ce6aB8827279cffFb92266","nonce":"8"}"#)
         .create_async()
         .await;
-    // The fixture's call is exactly this redemption (pUSD collateral, condition,
-    // index sets [1, 2]), so its calldata is pinned in full. The deadline is now +
-    // 600 s, so the signature is pinned only by shape.
-    let fixture_call = &v["redeem_submit_body"]["depositWalletParams"]["calls"][0];
+    // The fixture's call is exactly this redemption (collateral adapter, pUSD
+    // collateral, condition, index sets [1, 2]), so its target and calldata are pinned
+    // in full. The deadline is now + 600 s, so the signature is pinned only by shape.
+    let fixture_call = &v["redeem_adapter_submit_body"]["depositWalletParams"]["calls"][0];
     let submit = server
         .mock("POST", "/submit")
         .match_header("POLY_BUILDER_API_KEY", "builder-key")
         .match_body(Matcher::AllOf(vec![
             Matcher::PartialJsonString(format!(
-                r#"{{"type":"WALLET","from":"0xf39Fd6e51aad88F6F4ce6aB8827279cffFb92266","to":"{}","nonce":"6","metadata":"","depositWalletParams":{{"depositWallet":"{}","calls":[{{"target":"0x4D97DCd97eC945f40cF65F87097ACe5EA0476045","value":"0","data":"{}"}}]}}}}"#,
+                r#"{{"type":"WALLET","from":"0xf39Fd6e51aad88F6F4ce6aB8827279cffFb92266","to":"{}","nonce":"8","metadata":"","depositWalletParams":{{"depositWallet":"{}","calls":[{{"target":"{}","value":"0","data":"{}"}}]}}}}"#,
                 v["config"]["deposit_wallet_factory"].as_str().unwrap(),
                 v["wallet"].as_str().unwrap(),
+                fixture_call["target"].as_str().unwrap(),
                 fixture_call["data"].as_str().unwrap(),
             )),
-            Matcher::Regex(
-                r#""data":"0x01b7037c000000000000000000000000c011a7e12a19f7b1f670d46f03b03f3342e82dfb"#
-                    .into(),
-            ),
             Matcher::Regex(r#""signature":"0x[0-9a-f]{130}""#.into()),
             Matcher::Regex(r#""deadline":"\d{10}""#.into()),
         ]))
@@ -1384,26 +1421,46 @@ async fn submit_gasless_redemption_on_a_deposit_wallet_redeems_pusd_through_the_
         .await;
 
     let client = deposit_wallet_client(&server);
-    let condition: [u8; 32] = alloy::primitives::hex::decode(
-        "1171bfba0ad9386688133910593527fe77ce5406a7ac2c9a3552ab5471c1ac51",
-    )
-    .unwrap()
-    .try_into()
-    .unwrap();
     let resp = client
-        .submit_gasless_redemption(
-            condition,
-            vec![
-                alloy::primitives::U256::from(1),
-                alloy::primitives::U256::from(2),
-            ],
-        )
+        .submit_deposit_wallet_redemption(redemption_condition(), false, false)
         .await
         .unwrap();
     assert_eq!(resp.transaction_id, "tx-13");
+    assert_eq!(
+        fixture_call["target"].as_str().unwrap(),
+        "0xAdA100Db00Ca00073811820692005400218FcE1f"
+    );
     params.assert_async().await;
     submit.assert_async().await;
     legacy_nonce.assert_async().await;
+}
+
+#[tokio::test]
+async fn submit_gasless_redemption_on_a_deposit_wallet_client_is_refused_before_io() {
+    let mut server = Server::new_async().await;
+    let params = server
+        .mock("GET", "/v1/account/transactions/params")
+        .match_query(Matcher::Any)
+        .expect(0)
+        .create_async()
+        .await;
+    let submit = server
+        .mock("POST", "/submit")
+        .expect(0)
+        .create_async()
+        .await;
+
+    let client = deposit_wallet_client(&server);
+    let err = client
+        .submit_gasless_redemption([0u8; 32], vec![])
+        .await
+        .unwrap_err();
+    assert!(
+        err.to_string().contains("submit_deposit_wallet_redemption"),
+        "unexpected error: {err}"
+    );
+    params.assert_async().await;
+    submit.assert_async().await;
 }
 
 // ── Deposit Wallet metadata ───────────────────────────────────

@@ -40,6 +40,16 @@ submitting `approval_batch` via its `session_signature`), and `authorization_bod
 (`polymarket._internal.actions.session_keys`), built from `authorize_batch` and
 `revoke_batch` respectively.
 
+`redeem_batch` and `redeem_submit_body` send the redemption to the Conditional Tokens
+contract, which py-sdk never does; they stay only to pin the `redeemPositions` encoder.
+`redeem_adapter_batch` and `redeem_neg_risk_batch` carry the same calldata to the targets
+py-sdk actually uses for a Deposit Wallet (`clients/secure.py` `redeem_positions`, via
+`normalize_market_position_context`): the collateral adapter `0xAdA100Db00Ca00073811820692005400218FcE1f` for a
+CTF market and the neg-risk collateral adapter `0xadA2005600Dec949baf300f4C6120000bDB6eAab` for a
+neg-risk market, at nonces 8 and 9. `redeem_adapter_submit_body` is the owner submitting
+`redeem_adapter_batch`, built by `build_deposit_wallet_payload`. Generation checks both
+adapter addresses and pUSD against py-sdk's `PRODUCTION_CONFIG` before writing anything.
+
 `trading_approvals` is every approval py-sdk requires before it reports a Deposit Wallet
 as fully approved on Polygon (`_required_trading_approvals` in
 `polymarket._internal.actions.relayer.approvals`): ERC-20 `approve` calls for the maximum

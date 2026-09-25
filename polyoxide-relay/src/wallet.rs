@@ -42,12 +42,12 @@ const ERC1967_BEACON_PREFIX_BASE: u128 = 0x6100523D8160233D3973;
 /// The resolver returns `Option<WalletKind>`, where `None` means nothing is
 /// deployed for the owner.
 ///
-/// A Polymarket proxy wallet. The published relayer spec enumerates only `SAFE`
-/// and `WALLET` for `/deployed?type=`, but py-sdk 0.11.0 asks with `type=PROXY`
-/// and this crate follows py-sdk; whether the host answers is recorded in
-/// `docs/specs/session-keys/OBSERVED.md`. A Proxy auto-deploys on first use, so a
-/// fresh Proxy account resolves to `None` until then; use [`derive_proxy`] when
-/// you already know the account is a Proxy.
+/// The `Proxy` variant is a Polymarket proxy wallet. The published relayer spec
+/// enumerates only `SAFE` and `WALLET` for `/deployed?type=`, but py-sdk 0.11.0 asks
+/// with `type=PROXY` and this crate follows py-sdk; whether the host answers is
+/// recorded in `docs/specs/session-keys/OBSERVED.md`. A Proxy auto-deploys on first
+/// use, so a fresh Proxy account resolves to `None` until then; use [`derive_proxy`]
+/// when you already know the account is a Proxy.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 #[non_exhaustive]
 pub enum WalletKind {

@@ -121,6 +121,13 @@ let client = RelayClient::default_builder()?
 
 ### Gasless Redemption
 
+`submit_gasless_redemption` redeems a Safe or Proxy position against USDC on the
+Conditional Tokens contract. A Deposit Wallet uses
+`submit_deposit_wallet_redemption(condition_id, neg_risk, estimate_gas)` instead, and
+`submit_gasless_redemption` refuses one: py-sdk redeems a Deposit Wallet's pUSD through
+the collateral adapter, or the neg-risk collateral adapter for a neg-risk market, so the
+call needs the market's neg-risk flag to pick its target.
+
 ```rust
 # use polyoxide_relay::{RelayClient, BuilderAccount, BuilderConfig};
 use alloy::primitives::U256;
@@ -288,7 +295,7 @@ let proxy_address = client.get_expected_proxy_wallet()?;
 ## API Coverage
 
 - **Transaction Submission**: Sign and submit gasless transactions via Safe or Proxy wallets
-- **Gasless Redemptions**: Redeem CTF positions without holding MATIC
+- **Gasless Redemptions**: Redeem CTF positions without holding MATIC; a Deposit Wallet redeems pUSD through the collateral adapter py-sdk targets (`submit_deposit_wallet_redemption`, which takes the market's neg-risk flag)
 - **Gas Estimation**: Simulate redemptions against Polygon RPC for accurate gas limits
 - **Nonce Management**: Fetch current nonce from the relayer
 - **Deployment Check**: Verify whether a Safe wallet is deployed on-chain

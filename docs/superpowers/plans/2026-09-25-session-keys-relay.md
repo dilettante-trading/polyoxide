@@ -2867,6 +2867,8 @@ git add polyoxide-relay/src/client.rs polyoxide-relay/src/lib.rs polyoxide-relay
 git commit -m "feat(relay): Deposit Wallet redemption pair; document the Deposit Wallet and session-key surface"
 ```
 
+**Review amendment (2026-09-25, plan 3 Task 7):** py-sdk sends the Deposit Wallet redemption to the collateral adapter (neg-risk: the neg-risk collateral adapter), never to the CTF; `redeem_typed_data` gained `neg_risk` and `submit_deposit_wallet_redemption` replaces the Deposit Wallet arm of `submit_gasless_redemption`.
+
 ---
 
 ## Not in this plan

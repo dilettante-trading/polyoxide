@@ -193,8 +193,12 @@ target, and a non-type-3 order against a Deposit Wallet target.
   session key. Trading approvals (py-sdk's full set from `_required_trading_approvals`:
   7 ERC-20 and 10 ERC-1155, not the four calls the deposit-wallets page lists) and
   redemption are call builders over this. Because prader's §8 names them, redemption also
-  gets the named pair `redeem_typed_data(wallet, condition_id, ..., nonce, deadline)` and
-  `submit_redemption_with_signature(...)`, thin wrappers over the generic pair.
+  gets the named pair `redeem_typed_data(wallet, condition_id, index_sets, neg_risk, nonce, deadline)` and
+  `submit_redemption_with_signature(...)`, thin wrappers over the generic pair, plus
+  `submit_deposit_wallet_redemption(condition_id, neg_risk, estimate_gas)` for the
+  client's own account. As in py-sdk, the redemption call goes to the collateral adapter,
+  or the neg-risk collateral adapter for a neg-risk market, never to the Conditional
+  Tokens contract.
 - `authorize_session_signer_typed_data(wallet, session, scopes, nonce, deadline) -> (serde_json::Value, SessionSignerAuthorization)`
   computes `valid_until` internally as now + 4 315 h and encodes the calldata; the returned
   request struct carries every field the body needs except `signature`, including the

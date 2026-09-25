@@ -124,6 +124,12 @@ PY_SDK_GOLDEN_DIGEST = "0x1b9566eedd9589a73275df23a3a9d9e2e9897e76d31cd46d436f1b
 SIGNER_ONE = "0x0000000000000000000000000000000000000001"
 PUSD = "0xC011a7E12a19f7B1f670d46F03B03f3342E82DFB"
 CTF = "0x4D97DCd97eC945f40cF65F87097ACe5EA0476045"
+# py-sdk's Deposit Wallet redeem targets: the collateral adapter for a CTF market, the
+# neg-risk collateral adapter for a neg-risk market (`clients/secure.py` `redeem_positions`
+# via `_internal/actions/relayer/positions.py` `normalize_market_position_context`).
+# `relay_vectors` checks both against `PRODUCTION_CONFIG` before anything is written.
+COLLATERAL_ADAPTER = "0xAdA100Db00Ca00073811820692005400218FcE1f"
+NEG_RISK_COLLATERAL_ADAPTER = "0xadA2005600Dec949baf300f4C6120000bDB6eAab"
 MAX_UINT256 = (1 << 256) - 1
 CONDITION_ID = "0x1171bfba0ad9386688133910593527fe77ce5406a7ac2c9a3552ab5471c1ac51"
 
@@ -301,6 +307,28 @@ def relay_vectors(signer) -> dict:
         wallet_address=wallet, session_signer=EvmAddress(session_signer)
     )
     redeem = ctf_redeem_positions_call(ctf=ctf, collateral=pusd, condition_id=CONDITION_ID)
+    for name, ours, theirs in (
+        ("collateral_adapter", COLLATERAL_ADAPTER, PRODUCTION_CONFIG.collateral_adapter),
+        (
+            "neg_risk_collateral_adapter",
+            NEG_RISK_COLLATERAL_ADAPTER,
+            PRODUCTION_CONFIG.neg_risk_collateral_adapter,
+        ),
+        ("collateral_token", PUSD, PRODUCTION_CONFIG.collateral_token),
+    ):
+        if ours != theirs:
+            sys.exit(f"{name} is {ours} here but {theirs} in py-sdk's PRODUCTION_CONFIG")
+    collateral_adapter = EvmAddress(COLLATERAL_ADAPTER)
+    neg_risk_collateral_adapter = EvmAddress(NEG_RISK_COLLATERAL_ADAPTER)
+    # py-sdk's redeem target for a CTF market and for a neg-risk market (secure.py
+    # redeem_positions -> positions.py normalize_market_position_context). Same
+    # calldata as `redeem`, different `to`; `redeem` itself stays, pinning the encoder.
+    redeem_adapter = ctf_redeem_positions_call(
+        ctf=collateral_adapter, collateral=pusd, condition_id=CONDITION_ID
+    )
+    redeem_neg_risk = ctf_redeem_positions_call(
+        ctf=neg_risk_collateral_adapter, collateral=pusd, condition_id=CONDITION_ID
+    )
     # A second call in the same batch (approve pUSD, then set the CTF operator approval),
     # with a non-zero `value` on the second call so the fixture doesn't only ever exercise
     # the all-zero-value path that every other batch here happens to take.
@@ -314,6 +342,8 @@ def relay_vectors(signer) -> dict:
     revoke_batch = _batch(signer, wallet, [revoke], "5", "1800000600")
     redeem_batch = _batch(signer, wallet, [redeem], "6", "1800000600")
     multi_batch = _batch(signer, wallet, [approval, approve_all], "7", "1800000600")
+    redeem_adapter_batch = _batch(signer, wallet, [redeem_adapter], "8", "1800000600")
+    redeem_neg_risk_batch = _batch(signer, wallet, [redeem_neg_risk], "9", "1800000600")
 
     ctx = types.SimpleNamespace(wallet=wallet)
     authorize_request = _ParsedAuthorizeSessionKeyRequest(
@@ -370,6 +400,20 @@ def relay_vectors(signer) -> dict:
             metadata="",
         )
     )
+    # Same batch as `redeem_adapter_batch`, submitted as the owner: the redemption py-sdk
+    # actually sends for a Deposit Wallet on a CTF market.
+    redeem_adapter_submit_body = dict(
+        build_deposit_wallet_payload(
+            signer_address=owner,
+            deposit_wallet_factory=cfg.deposit_wallet_factory,
+            wallet=wallet,
+            calls=[redeem_adapter],
+            nonce="8",
+            deadline="1800000600",
+            signature=redeem_adapter_batch["signature"],
+            metadata="",
+        )
+    )
     # Same batch as `approval_batch`, but submitted by the session key itself (signer_address
     # is the session signer, not the owner), signed with `session_signature` rather than the
     # raw batch signature — how py-sdk submits once a session key is authorized.
@@ -414,6 +458,9 @@ def relay_vectors(signer) -> dict:
         "session_submit_body": session_submit_body,
         "authorization_body": authorization_body,
         "revocation_body": revocation_body,
+        "redeem_adapter_batch": redeem_adapter_batch,
+        "redeem_neg_risk_batch": redeem_neg_risk_batch,
+        "redeem_adapter_submit_body": redeem_adapter_submit_body,
         "trading_approvals": _trading_approvals(),
         "session_key_lifetime_secs": _SESSION_KEY_LIFETIME_SECONDS,
         "session_signer_timeout_secs": _whole_seconds(
@@ -543,6 +590,16 @@ submitting `approval_batch` via its `session_signature`), and `authorization_bod
 `revocation_body` come from `_build_authorization_payload` / `_build_revocation_payload`
 (`polymarket._internal.actions.session_keys`), built from `authorize_batch` and
 `revoke_batch` respectively.
+
+`redeem_batch` and `redeem_submit_body` send the redemption to the Conditional Tokens
+contract, which py-sdk never does; they stay only to pin the `redeemPositions` encoder.
+`redeem_adapter_batch` and `redeem_neg_risk_batch` carry the same calldata to the targets
+py-sdk actually uses for a Deposit Wallet (`clients/secure.py` `redeem_positions`, via
+`normalize_market_position_context`): the collateral adapter `{COLLATERAL_ADAPTER}` for a
+CTF market and the neg-risk collateral adapter `{NEG_RISK_COLLATERAL_ADAPTER}` for a
+neg-risk market, at nonces 8 and 9. `redeem_adapter_submit_body` is the owner submitting
+`redeem_adapter_batch`, built by `build_deposit_wallet_payload`. Generation checks both
+adapter addresses and pUSD against py-sdk's `PRODUCTION_CONFIG` before writing anything.
 
 `trading_approvals` is every approval py-sdk requires before it reports a Deposit Wallet
 as fully approved on Polygon (`_required_trading_approvals` in

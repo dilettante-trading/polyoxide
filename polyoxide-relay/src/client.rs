@@ -29,6 +29,21 @@ use url::Url;
 const CALL_OPERATION: u8 = 0;
 const DELEGATE_CALL_OPERATION: u8 = 1;
 
+/// py-sdk's redemption target for a Deposit Wallet on a CTF market.
+const COLLATERAL_ADAPTER: Address = address!("AdA100Db00Ca00073811820692005400218FcE1f");
+/// py-sdk's redemption target for a Deposit Wallet on a neg-risk market.
+const NEG_RISK_COLLATERAL_ADAPTER: Address = address!("adA2005600Dec949baf300f4C6120000bDB6eAab");
+
+/// The error both legacy redemption entry points return on a Deposit Wallet client,
+/// which has to name the market's neg-risk flag to pick the adapter.
+fn deposit_wallet_redemption_refused() -> RelayError {
+    RelayError::Api(
+        "a Deposit Wallet redemption needs the market's neg-risk flag: use \
+         RelayClient::submit_deposit_wallet_redemption"
+            .to_string(),
+    )
+}
+
 // Proxy wallet call type for ProxyTransaction struct
 const PROXY_CALL_TYPE_CODE: u8 = 1;
 
@@ -188,8 +203,8 @@ const POLYGON_TRADING_APPROVALS: [(ApprovalKind, Address, Address); 17] = {
     let position_manager = address!("006F54F7f9A22e0000CC2AB60031000000ae9fEF");
     let standard_exchange = address!("E111180000d2663C0091e4f400237545B87B996B");
     let neg_risk_exchange = address!("e2222d279d744050d28e00520010520000310F59");
-    let collateral_adapter = address!("AdA100Db00Ca00073811820692005400218FcE1f");
-    let neg_risk_collateral_adapter = address!("adA2005600Dec949baf300f4C6120000bDB6eAab");
+    let collateral_adapter = COLLATERAL_ADAPTER;
+    let neg_risk_collateral_adapter = NEG_RISK_COLLATERAL_ADAPTER;
     let protocol_v2_router = address!("12121212006e4CD160D18e3f00711DA5c3372600");
     let exchange_v3 = address!("e3333700cA9d93003F00f0F71f8515005F6c00Aa");
     let perps_deposit = address!("DCa4af75705dbB50f62437045afF9921947917d2");
@@ -1422,14 +1437,20 @@ impl RelayClient {
             .collect())
     }
 
-    /// The single `redeemPositions` call a Deposit Wallet redemption batch carries:
-    /// the Conditional Tokens contract, pUSD collateral, the root parent collection.
+    /// The single `redeemPositions` call a Deposit Wallet redemption batch carries, as
+    /// py-sdk builds it: pUSD collateral and the root parent collection, sent to the
+    /// collateral adapter, or to the neg-risk collateral adapter when `neg_risk`.
     fn deposit_wallet_redemption_call(
         condition_id: B256,
         index_sets: &[U256],
+        neg_risk: bool,
     ) -> DepositWalletCall {
         DepositWalletCall {
-            target: address!("4D97DCd97eC945f40cF65F87097ACe5EA0476045"),
+            target: if neg_risk {
+                NEG_RISK_COLLATERAL_ADAPTER
+            } else {
+                COLLATERAL_ADAPTER
+            },
             value: U256::ZERO,
             data: crate::deposit_wallet::redeem_positions_calldata(
                 address!("C011a7E12a19f7B1f670d46F03B03f3342E82DFB"),
@@ -1442,9 +1463,14 @@ impl RelayClient {
 
     /// The redemption batch for a Deposit Wallet, for an external signer.
     ///
-    /// Redeems `condition_id`'s `index_sets` on the Conditional Tokens contract with
-    /// pUSD as collateral (the Deposit Wallet collateral, not the legacy USDC that
-    /// Safe and Proxy redemptions use). Returns the typed data and the calls to pass to
+    /// Redeems `condition_id`'s `index_sets` with pUSD as collateral (the Deposit Wallet
+    /// collateral, not the legacy USDC that Safe and Proxy redemptions use). py-sdk
+    /// sends this to the collateral adapter, or the neg-risk collateral adapter for a
+    /// neg-risk market, never to the Conditional Tokens contract directly; `neg_risk`
+    /// is the market's flag (`GET /neg-risk?token_id=` on the CLOB, or gamma's
+    /// `negRisk`). Protocol-V2 markets (router `redeem`) are not supported.
+    ///
+    /// Returns the typed data and the calls to pass to
     /// [`RelayClient::submit_redemption_with_signature`]. `nonce` comes from
     /// [`RelayClient::get_execute_params`] with [`WalletType::DepositWallet`].
     ///
@@ -1456,12 +1482,14 @@ impl RelayClient {
         wallet: Address,
         condition_id: B256,
         index_sets: &[U256],
+        neg_risk: bool,
         nonce: u64,
         deadline: u64,
     ) -> (serde_json::Value, Vec<DepositWalletCall>) {
         let calls = vec![Self::deposit_wallet_redemption_call(
             condition_id,
             index_sets,
+            neg_risk,
         )];
         (
             self.deposit_wallet_batch_typed_data(wallet, &calls, nonce, deadline),
@@ -1471,8 +1499,10 @@ impl RelayClient {
 
     /// Submit a redemption batch signed elsewhere by this client's account.
     ///
-    /// Pair with [`RelayClient::redeem_typed_data`]. Sends `metadata: ""`, as py-sdk
-    /// does by default for every Deposit Wallet submission.
+    /// Pair with [`RelayClient::redeem_typed_data`]. Sends `metadata: ""`, py-sdk's
+    /// default for a Deposit Wallet submission; py-sdk's own `redeem_positions` labels
+    /// it `Redeem positions for condition <id>` instead, which the batch signature does
+    /// not cover.
     pub async fn submit_redemption_with_signature(
         &self,
         wallet: Address,
@@ -1485,13 +1515,90 @@ impl RelayClient {
             .await
     }
 
+    /// Redeem `condition_id` through this client's Deposit Wallet, signed by its
+    /// account and submitted as one batch. `neg_risk` selects the adapter, as
+    /// py-sdk does. With `estimate_gas`, simulates the adapter call from the wallet
+    /// first as an early revert check; the submission itself carries no gas limit.
+    ///
+    /// Redeems both outcomes (index sets `[1, 2]`, py-sdk's binary index sets) with
+    /// pUSD as collateral, sent to the collateral adapter, or to the neg-risk
+    /// collateral adapter when `neg_risk`, never to the Conditional Tokens contract
+    /// directly. `neg_risk` is the market's flag (`GET /neg-risk?token_id=` on the CLOB,
+    /// or gamma's `negRisk`). Protocol-V2 markets (router `redeem`) are not supported.
+    /// Sends `metadata: ""`, where py-sdk's `redeem_positions` defaults to
+    /// `Redeem positions for condition <id>`; the batch signature does not cover it.
+    /// See [`RelayClient::redeem_typed_data`] for an external signer.
+    pub async fn submit_deposit_wallet_redemption(
+        &self,
+        condition_id: B256,
+        neg_risk: bool,
+        estimate_gas: bool,
+    ) -> Result<SubmitResponse, RelayError> {
+        let call = Self::deposit_wallet_redemption_call(
+            condition_id,
+            &[U256::from(1), U256::from(2)],
+            neg_risk,
+        );
+        if estimate_gas {
+            self.estimate_deposit_wallet_redemption_gas(&call).await?;
+        }
+        let tx = SafeTransaction {
+            to: call.target,
+            value: call.value,
+            data: call.data,
+            operation: CALL_OPERATION,
+        };
+        self.execute_deposit_wallet(vec![tx], None).await
+    }
+
+    /// Simulate a Deposit Wallet redemption call from the configured wallet, returning
+    /// the gas limit with relayer overhead and a safety buffer, as
+    /// `estimate_redemption_gas` does for Safe and Proxy.
+    async fn estimate_deposit_wallet_redemption_gas(
+        &self,
+        call: &DepositWalletCall,
+    ) -> Result<u64, RelayError> {
+        let wallet = self.configured_deposit_wallet()?;
+        self.estimate_call_gas(wallet, call.target, call.data.clone())
+            .await
+    }
+
+    /// Ask the configured RPC node to simulate `from` calling `to` with `input`, and
+    /// return that cost plus relayer execution overhead and a 20% safety buffer.
+    async fn estimate_call_gas(
+        &self,
+        from: Address,
+        to: Address,
+        input: Bytes,
+    ) -> Result<u64, RelayError> {
+        let provider = ProviderBuilder::new().connect_http(
+            self.contract_config
+                .rpc_url
+                .parse()
+                .map_err(|e| RelayError::Api(format!("Invalid RPC URL: {}", e)))?,
+        );
+        let tx = TransactionRequest::default()
+            .with_from(from)
+            .with_to(to)
+            .with_input(input);
+        let inner_gas_used = provider
+            .estimate_gas(tx)
+            .await
+            .map_err(|e| RelayError::Api(format!("Gas estimation failed: {}", e)))?;
+        let relayer_overhead: u64 = 50_000;
+        Ok((inner_gas_used + relayer_overhead) * 120 / 100)
+    }
+
     /// Estimate gas required for a redemption transaction.
     ///
     /// Returns the estimated gas limit with relayer overhead and safety buffer included.
     /// Uses the default RPC URL configured for the current chain. The simulated call
-    /// redeems against USDC for [`WalletType::Safe`] and [`WalletType::Proxy`] and
-    /// against pUSD for [`WalletType::DepositWallet`], matching what
+    /// redeems against USDC on the Conditional Tokens contract, matching what
     /// [`RelayClient::submit_gasless_redemption`] sends.
+    ///
+    /// Safe and Proxy only. A [`WalletType::DepositWallet`] client is refused before
+    /// any I/O: its redemption target depends on the market's neg-risk flag, so use
+    /// [`RelayClient::submit_deposit_wallet_redemption`] with `estimate_gas`.
     ///
     /// # Arguments
     ///
@@ -1530,23 +1637,28 @@ impl RelayClient {
         condition_id: [u8; 32],
         index_sets: Vec<U256>,
     ) -> Result<u64, RelayError> {
-        // 1. Define the redemption interface
+        // 1. The wallet the call is simulated from; a Deposit Wallet is refused.
+        let from = match self.wallet_type {
+            WalletType::Proxy => self.get_expected_proxy_wallet()?,
+            WalletType::Safe => self.get_expected_safe()?,
+            WalletType::DepositWallet => return Err(deposit_wallet_redemption_refused()),
+        };
+
+        // 2. Define the redemption interface
         alloy::sol! {
             function redeemPositions(address collateral, bytes32 parentCollectionId, bytes32 conditionId, uint256[] indexSets);
         }
 
-        // 2. Setup constants: a Deposit Wallet holds pUSD, the legacy wallets USDC.
-        let collateral = match self.wallet_type {
-            WalletType::DepositWallet => address!("C011a7E12a19f7B1f670d46F03B03f3342E82DFB"),
-            _ => Address::parse_checksummed("0x2791Bca1f2de4661ED88A30C99A7a9449Aa84174", None)
-                .map_err(|e| RelayError::Api(format!("Invalid collateral address: {}", e)))?,
-        };
+        // 3. Setup constants: USDC on Polygon, the Safe and Proxy collateral.
+        let collateral =
+            Address::parse_checksummed("0x2791Bca1f2de4661ED88A30C99A7a9449Aa84174", None)
+                .map_err(|e| RelayError::Api(format!("Invalid collateral address: {}", e)))?;
         let ctf_exchange =
             Address::parse_checksummed("0x4D97DCd97eC945f40cF65F87097ACe5EA0476045", None)
                 .map_err(|e| RelayError::Api(format!("Invalid CTF exchange address: {}", e)))?;
         let parent_collection_id = [0u8; 32];
 
-        // 3. Encode the redemption calldata
+        // 4. Encode the redemption calldata
         let call = redeemPositionsCall {
             collateral,
             parentCollectionId: parent_collection_id.into(),
@@ -1555,45 +1667,18 @@ impl RelayClient {
         };
         let redemption_calldata = Bytes::from(call.abi_encode());
 
-        // 4. Get the proxy wallet address
-        let proxy_wallet = match self.wallet_type {
-            WalletType::Proxy => self.get_expected_proxy_wallet()?,
-            WalletType::Safe => self.get_expected_safe()?,
-            WalletType::DepositWallet => self.configured_deposit_wallet()?,
-        };
-
-        // 5. Create provider using the configured RPC URL
-        let provider = ProviderBuilder::new().connect_http(
-            self.contract_config
-                .rpc_url
-                .parse()
-                .map_err(|e| RelayError::Api(format!("Invalid RPC URL: {}", e)))?,
-        );
-
-        // 6. Construct a mock transaction exactly as the proxy will execute it
-        let tx = TransactionRequest::default()
-            .with_from(proxy_wallet)
-            .with_to(ctf_exchange)
-            .with_input(redemption_calldata);
-
-        // 7. Ask the Polygon node to simulate it and return the base computational cost
-        let inner_gas_used = provider
-            .estimate_gas(tx)
+        // 5. Simulate it exactly as the wallet will execute it, plus relayer overhead
+        // and a 20% safety buffer.
+        self.estimate_call_gas(from, ctf_exchange, redemption_calldata)
             .await
-            .map_err(|e| RelayError::Api(format!("Gas estimation failed: {}", e)))?;
-
-        // 8. Add relayer execution overhead + a 20% safety buffer
-        let relayer_overhead: u64 = 50_000;
-        let safe_gas_limit = (inner_gas_used + relayer_overhead) * 120 / 100;
-
-        Ok(safe_gas_limit)
     }
 
     /// Submit a gasless CTF position redemption without gas estimation.
     ///
-    /// Collateral follows the wallet type: USDC for [`WalletType::Safe`] and
-    /// [`WalletType::Proxy`], pUSD for [`WalletType::DepositWallet`], whose redemption
-    /// goes out as a one-call Deposit Wallet batch signed by this client's account.
+    /// Safe and Proxy only: redeems against USDC on the Conditional Tokens contract. A
+    /// [`WalletType::DepositWallet`] client is refused before any I/O; use
+    /// [`RelayClient::submit_deposit_wallet_redemption`], which takes the market's
+    /// neg-risk flag to pick the collateral adapter py-sdk sends to.
     pub async fn submit_gasless_redemption(
         &self,
         condition_id: [u8; 32],
@@ -1608,10 +1693,10 @@ impl RelayClient {
     /// When `estimate_gas` is true, simulates the redemption against the configured
     /// RPC endpoint to determine a safe gas limit before submission.
     ///
-    /// On a [`WalletType::DepositWallet`] the redemption uses pUSD as collateral (Safe
-    /// and Proxy use the legacy USDC) and is submitted as a Deposit Wallet batch with
-    /// `metadata: ""`. That submission carries no gas limit, so `estimate_gas` then
-    /// only simulates the call, failing early if it would revert.
+    /// Safe and Proxy only: redeems against USDC on the Conditional Tokens contract. A
+    /// [`WalletType::DepositWallet`] client is refused before any I/O; use
+    /// [`RelayClient::submit_deposit_wallet_redemption`], which takes the market's
+    /// neg-risk flag to pick the collateral adapter py-sdk sends to.
     pub async fn submit_gasless_redemption_with_gas_estimation(
         &self,
         condition_id: [u8; 32],
@@ -1619,18 +1704,7 @@ impl RelayClient {
         estimate_gas: bool,
     ) -> Result<SubmitResponse, RelayError> {
         if self.wallet_type == WalletType::DepositWallet {
-            let call = Self::deposit_wallet_redemption_call(condition_id.into(), &index_sets);
-            if estimate_gas {
-                self.estimate_redemption_gas(condition_id, index_sets)
-                    .await?;
-            }
-            let tx = SafeTransaction {
-                to: call.target,
-                value: call.value,
-                data: call.data,
-                operation: CALL_OPERATION,
-            };
-            return self.execute_deposit_wallet(vec![tx], None).await;
+            return Err(deposit_wallet_redemption_refused());
         }
 
         // 1. Define the specific interface for redemption
