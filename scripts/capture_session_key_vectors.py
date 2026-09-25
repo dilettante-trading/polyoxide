@@ -2,6 +2,9 @@
 # /// script
 # requires-python = ">=3.11"
 # dependencies = ["polymarket-client==0.11.0"]
+#
+# [tool.uv]
+# exclude-newer = "2026-09-25T00:00:00Z"
 # ///
 """Generate ERC-7739 / session-key golden vectors from Polymarket's official py-sdk.
 
@@ -9,13 +12,19 @@ polyoxide pins its Deposit Wallet (signature type 3) signing against these bytes
 The fixture order is py-sdk's own golden fixture (tests/unit/test_order_typed_data_golden.py),
 signed with Anvil key #0; the session signer is Anvil address #1.
 
+This script imports py-sdk's private modules (`polymarket._internal...`), which are not a
+stable public API, so it is expected to need import-path fixes after a py-sdk upgrade.
+
 Usage:
     uv run scripts/capture_session_key_vectors.py polyoxide-clob/tests/fixtures/session_keys
 
-Writes `order_vectors.json`. Re-run after a py-sdk upgrade; review the diff before committing.
+Writes `order_vectors.json` and `PROVENANCE.md`. Re-run after a py-sdk upgrade; review the
+diff before committing.
 """
+import importlib.metadata
 import json
 import sys
+from datetime import datetime, timezone
 from pathlib import Path
 
 from eth_account import Account
@@ -43,6 +52,12 @@ EXCHANGES = {
     "v2_exchange": "0xE111180000d2663C0091e4f400237545B87B996B",
 }
 
+# py-sdk's own pinned digest for this exact order, from its
+# tests/unit/test_order_typed_data_golden.py. If this stops matching, either py-sdk's
+# signing bytes changed upstream or our fixture no longer mirrors theirs — investigate
+# before trusting anything else this script produces.
+PY_SDK_GOLDEN_DIGEST = "0x1b9566eedd9589a73275df23a3a9d9e2e9897e76d31cd46d436f1b824d161b33"
+
 
 def fixture(exchange: str) -> UnsignedOrder:
     return UnsignedOrder(
@@ -69,8 +84,51 @@ def digest(typed_data: dict) -> str:
     return "0x" + keccak(b"\x19\x01" + signable.header + signable.body).hex()
 
 
+def order_provenance(order: UnsignedOrder) -> dict:
+    return {
+        "chain_id": order.chain_id,
+        "salt": order.salt,
+        "token_id": str(order.token_id),
+        "maker_amount": order.maker_amount,
+        "taker_amount": order.taker_amount,
+        "side": order.side,
+        "signature_type": order.signature_type,
+        "timestamp": order.timestamp,
+        "expiration": order.expiration,
+        "metadata": order.metadata,
+        "builder": order.builder,
+    }
+
+
+def write_provenance(out_dir: Path, sdk_version: str, generated_date: str) -> None:
+    text = f"""# Deposit Wallet (session-key) order-signing vectors
+
+Captured {generated_date} by `scripts/capture_session_key_vectors.py` (run:
+`uv run scripts/capture_session_key_vectors.py polyoxide-clob/tests/fixtures/session_keys`)
+against Polymarket's official Python SDK, `polymarket-client=={sdk_version}` — not a live
+host.
+
+The order is py-sdk's own golden fixture (`tests/unit/test_order_typed_data_golden.py`),
+signed with Anvil key #0. Generation asserts the `v1_exchange` vector's `envelope_digest`
+against py-sdk's pinned value before writing anything, so this fixture cannot drift from
+theirs silently.
+
+`session_signature` is a byte-pinning vector only, not a signature a real session key
+would produce: the ERC-7739 envelope names Anvil address #1 as the session signer, but
+Anvil key #0 produced the inner order signature. The two identities are deliberately
+mismatched so the fixture can pin bytes without coordinating two live signers.
+
+| Fixture | Command |
+|---|---|
+| `order_vectors.json` | `uv run scripts/capture_session_key_vectors.py polyoxide-clob/tests/fixtures/session_keys` |
+"""
+    (out_dir / "PROVENANCE.md").write_text(text)
+
+
 def main(out_dir: Path) -> None:
     signer = Account.from_key(ANVIL_KEY_0)
+    sdk_version = importlib.metadata.version("polymarket-client")
+    generated_date = datetime.now(timezone.utc).strftime("%Y-%m-%d")
     out = {}
     for name, exchange in EXCHANGES.items():
         order = fixture(exchange)
@@ -80,20 +138,33 @@ def main(out_dir: Path) -> None:
         session = wrap_deposit_wallet_session_signer_signature(
             EvmAddress(ANVIL_ADDR_1), wrapped
         )
+        envelope_digest = digest(typed_data)
+        if name == "v1_exchange" and envelope_digest != PY_SDK_GOLDEN_DIGEST:
+            print(
+                "envelope_digest for v1_exchange does not match py-sdk's golden "
+                f"fixture:\n  got:      {envelope_digest}\n"
+                f"  expected: {PY_SDK_GOLDEN_DIGEST}",
+                file=sys.stderr,
+            )
+            sys.exit(1)
         out[name] = {
             "exchange": exchange,
             "deposit_wallet": DEPOSIT_WALLET,
             "signer_address": signer.address,
             "session_signer": ANVIL_ADDR_1,
-            "envelope_digest": digest(typed_data),
-            "app_domain_separator": _app_domain_separator(order, protocol_version="2"),
+            "envelope_digest": envelope_digest,
+            "app_domain_separator": _app_domain_separator(
+                order, protocol_version=order.protocol_version
+            ),
             "contents_hash": "0x" + _order_contents_hash(order).hex(),
             "inner_signature": inner,
             "wrapped_signature": wrapped,
             "session_signature": session,
+            "order": order_provenance(order),
         }
     out_dir.mkdir(parents=True, exist_ok=True)
     (out_dir / "order_vectors.json").write_text(json.dumps(out, indent=2) + "\n")
+    write_provenance(out_dir, sdk_version, generated_date)
     print(f"wrote {out_dir / 'order_vectors.json'}")
 
 
