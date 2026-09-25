@@ -1,5 +1,5 @@
 use alloy::{
-    primitives::{keccak256, U256},
+    primitives::{keccak256, Address, B256, U256},
     signers::Signer as AlloySigner,
     sol,
     sol_types::{Eip712Domain, SolStruct},
@@ -81,14 +81,12 @@ fn clob_auth_domain(chain_id: u64) -> Eip712Domain {
 
 /// Convert a CLOB order to the EIP-712 protocol struct for hashing/signing.
 fn order_to_protocol(order: &ClobOrder) -> Result<protocol::Order, ClobError> {
-    // Authoritative guard at the lowest signing choke point: every signing path
-    // (`Clob::sign_order`, `Account::sign_order`, and the create_* convenience methods)
-    // funnels through here, so this closes the hand-built-order bypass. The V2 contract
-    // cannot validate a `signatureType: 3` order as an ECDSA signature.
-    if order.signature_type == SignatureType::Poly1271 {
+    // The venue requires a Deposit Wallet order to be made *and* signed by the
+    // wallet itself; the key that produces the signature is named elsewhere
+    // (in the ERC-7739 / session envelope), not in these fields.
+    if order.signature_type == SignatureType::Poly1271 && order.maker != order.signer {
         return Err(ClobError::Crypto(
-            "Poly1271 (EIP-1271) signing is not yet supported; use EOA/PolyProxy/PolyGnosisSafe"
-                .into(),
+            "signature type 3 (Poly1271) requires maker == signer == the Deposit Wallet".into(),
         ));
     }
     Ok(protocol::Order {
@@ -114,37 +112,50 @@ fn order_to_protocol(order: &ClobOrder) -> Result<protocol::Order, ClobError> {
     })
 }
 
-/// Compute the EIP-712 digest for an order (without signing).
-fn compute_order_digest(
-    order: &ClobOrder,
-    chain_id: u64,
-) -> Result<alloy::primitives::B256, ClobError> {
+/// The exchange an order is settled on, from the chain's contract table.
+pub(crate) fn exchange_address(chain_id: u64, neg_risk: bool) -> Result<Address, ClobError> {
     let chain = Chain::from_chain_id(chain_id)
         .ok_or_else(|| ClobError::Crypto(format!("Unsupported chain ID: {}", chain_id)))?;
     let contracts = chain.contracts();
-
-    let verifying_contract = if order.neg_risk {
+    Ok(if neg_risk {
         contracts.neg_risk_exchange
     } else {
         contracts.exchange
-    };
+    })
+}
 
-    let domain = protocol::EIP712Domain {
+/// The `Polymarket CTF Exchange` v2 domain for one exchange contract.
+fn exchange_domain(chain_id: u64, exchange: Address) -> protocol::EIP712Domain {
+    protocol::EIP712Domain {
         name: "Polymarket CTF Exchange".to_string(),
         version: "2".to_string(),
         chainId: U256::from(chain_id),
-        verifyingContract: verifying_contract,
-    };
+        verifyingContract: exchange,
+    }
+}
 
-    let order_struct = order_to_protocol(order)?;
-    let struct_hash = order_struct.eip712_hash_struct();
-    let domain_separator = domain.eip712_hash_struct();
-
-    let mut message = Vec::new();
+/// `keccak256(0x1901 ‖ domain_separator ‖ struct_hash)`.
+fn eip712_digest(domain_separator: B256, struct_hash: B256) -> B256 {
+    let mut message = Vec::with_capacity(66);
     message.extend_from_slice(b"\x19\x01");
     message.extend_from_slice(domain_separator.as_slice());
     message.extend_from_slice(struct_hash.as_slice());
-    Ok(keccak256(&message))
+    keccak256(&message)
+}
+
+/// Compute the EIP-712 digest for a plain (type 0–2) order, without signing.
+fn compute_order_digest(order: &ClobOrder, chain_id: u64) -> Result<B256, ClobError> {
+    if order.signature_type == SignatureType::Poly1271 {
+        return Err(ClobError::Crypto(
+            "signature type 3 (Poly1271) is signed as an ERC-7739 envelope for a Deposit \
+             Wallet; use sign_order_as with SigningTarget::DepositWallet"
+                .into(),
+        ));
+    }
+    let exchange = exchange_address(chain_id, order.neg_risk)?;
+    let domain = exchange_domain(chain_id, exchange);
+    let struct_hash = order_to_protocol(order)?.eip712_hash_struct();
+    Ok(eip712_digest(domain.eip712_hash_struct(), struct_hash))
 }
 
 /// Sign an order with EIP-712
@@ -180,11 +191,7 @@ pub async fn sign_clob_auth<S: AlloySigner + ?Sized>(
     let domain_separator = domain.separator();
 
     // Compute final hash
-    let mut digest_message = Vec::new();
-    digest_message.extend_from_slice(b"\x19\x01");
-    digest_message.extend_from_slice(domain_separator.as_slice());
-    digest_message.extend_from_slice(struct_hash.as_slice());
-    let digest = keccak256(&digest_message);
+    let digest = eip712_digest(domain_separator, struct_hash);
 
     // Sign the digest
     let signature = signer.sign_hash(&digest).await?;
@@ -271,16 +278,20 @@ uint256 timestamp,bytes32 metadata,bytes32 builder)";
     }
 
     #[test]
-    fn order_to_protocol_rejects_poly1271() {
-        // Hand-built order with Poly1271 must be rejected at the signing choke point,
-        // independent of the higher-level create_order/create_market_order guards.
+    fn order_to_protocol_accepts_poly1271_when_maker_is_signer() {
         let mut order = make_test_order(false);
         order.signature_type = SignatureType::Poly1271;
-        let err = order_to_protocol(&order).unwrap_err();
-        assert!(
-            err.to_string().contains("Poly1271"),
-            "expected a Poly1271 rejection, got: {err}"
-        );
+        let proto = order_to_protocol(&order).unwrap();
+        assert_eq!(proto.signatureType, 3);
+    }
+
+    #[test]
+    fn order_to_protocol_rejects_poly1271_when_maker_differs_from_signer() {
+        let mut order = make_test_order(false);
+        order.signature_type = SignatureType::Poly1271;
+        order.maker = address!("57ffbc34de23124faeb8387fcd689d314e57accd");
+        let err = order_to_protocol(&order).unwrap_err().to_string();
+        assert!(err.contains("maker == signer"), "{err}");
     }
 
     #[test]
@@ -304,7 +315,7 @@ uint256 timestamp,bytes32 metadata,bytes32 builder)";
         let result = sign_order(&order, &signer, 137).await;
         assert!(
             result.is_err(),
-            "signing must reject Poly1271 (EIP-1271 not yet supported)"
+            "plain signing must reject Poly1271; it needs the ERC-7739 envelope"
         );
     }
 
