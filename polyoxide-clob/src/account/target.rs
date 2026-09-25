@@ -11,17 +11,7 @@ use alloy::primitives::Address;
 
 use crate::types::SignatureType;
 
-/// Whether the signing key is the Deposit Wallet's owner or an authorized session key.
-///
-/// A session key's order signatures are wrapped in an extra ERC-6492-style
-/// envelope naming the session signer; an owner's are not.
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub enum DepositWalletRole {
-    /// The EOA that owns the Deposit Wallet; the wallet's address is derived from this key.
-    Owner,
-    /// A key the owner authorized through `authorizeSessionSigner`; it can trade but not withdraw.
-    SessionKey,
-}
+pub use polyoxide_core::DepositWalletRole;
 
 /// The on-chain account an [`crate::Account`] signs orders for.
 ///

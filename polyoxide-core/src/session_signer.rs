@@ -8,6 +8,21 @@ use std::fmt;
 
 use serde::{Deserialize, Deserializer, Serialize, Serializer};
 
+/// Whether a key acting for a Deposit Wallet is the wallet's owner or an
+/// authorized session key.
+///
+/// A session key's signatures, for orders and for relayer batches alike, are
+/// wrapped in an extra ERC-6492-style envelope naming the session signer; an
+/// owner's are not. Both are EOAs distinct from the wallet, so the role cannot
+/// be inferred from addresses and is stated explicitly.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+pub enum DepositWalletRole {
+    /// The EOA that owns the Deposit Wallet; the wallet's address is derived from this key.
+    Owner,
+    /// A key the owner authorized through `authorizeSessionSigner`; it can trade but not withdraw.
+    SessionKey,
+}
+
 /// A trading venue a session key may act on.
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]
 #[non_exhaustive]
@@ -100,5 +115,13 @@ mod tests {
         assert_eq!(scope, SessionSignerScope::Other("PERPS".into()));
         assert_eq!(serde_json::to_string(&scope).unwrap(), "\"PERPS\"");
         assert_eq!(scope.to_string(), "PERPS");
+    }
+
+    #[test]
+    fn deposit_wallet_role_is_copy_and_distinguishes_the_two_roles() {
+        let owner = DepositWalletRole::Owner;
+        let copy = owner;
+        assert_eq!(owner, copy);
+        assert_ne!(DepositWalletRole::Owner, DepositWalletRole::SessionKey);
     }
 }

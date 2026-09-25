@@ -70,7 +70,7 @@ pub use client::{
 pub use error::ApiError;
 pub use rate_limit::{RateLimiter, RetryConfig};
 pub use request::{QueryBuilder, Request, RequestError};
-pub use session_signer::SessionSignerScope;
+pub use session_signer::{DepositWalletRole, SessionSignerScope};
 pub use signer_limit::{
     BurstCapacityExceeded, RateLimitStatus, SignerLimiter, Tier, TradingBucket, TradingRequest,
 };
