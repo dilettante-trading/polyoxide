@@ -1312,6 +1312,25 @@ In `polyoxide-clob/src/account/mod.rs`, change the import `core::eip712::{sign_c
 
 Update its doc comment to add: "For a [`SigningTarget::DepositWallet`] the signature is the ERC-7739 envelope (plus the session-signer wrapper for a session key)."
 
+Also remove the duplicated construction in `new`, `with_signer` and `l2_only`: add a private helper
+
+```rust
+    /// Assemble an account from its signing half and its L2 credentials.
+    fn from_parts(wallet: Wallet, credentials: Credentials) -> Self {
+        let signer = Signer::new(&credentials.secret);
+        Self {
+            wallet,
+            credentials,
+            signer,
+            target: SigningTarget::default(),
+        }
+    }
+```
+
+and make `new` return `Ok(Self::from_parts(Wallet::from_private_key(&private_key.into())?, credentials))`,
+`with_signer` return `Self::from_parts(Wallet::from_signer(signer), credentials)`, and `l2_only` return
+`Self::from_parts(Wallet::l2_only(address), credentials)`.
+
 - [ ] **Step 4: Run the tests to verify they pass**
 
 Run: `cargo test -p polyoxide-clob --all-features account`
@@ -2266,6 +2285,15 @@ git commit -m "feat(clob): list a Deposit Wallet's session signers; SessionSigne
 
 - [ ] **Step 1: Update the stale doc comments**
 
+In `polyoxide-clob/src/account/mod.rs`, the `Account` struct doc still says it "combines wallet (private key)"
+and lists only the env and file loaders. Reword the first paragraph to: "`Account` combines a signing
+half (a local key, any `alloy` signer that supports `sign_hash`, or no key at all for an L2-only
+account), the L2 API credentials, and what it signs for (a [`SigningTarget`]). The loaders
+(`from_env`, `from_file`, `from_keychain`) always produce a key-holding account targeting its own
+EOA; chain [`Account::with_target`] to change that. An L2-only account has no loader and is built
+with [`Account::l2_only`]." Change the `address()` doc to: "The signing key's EOA address. The order
+maker comes from `target().maker(address())`, which differs from this for proxy and Deposit Wallet targets."
+
 In `polyoxide-clob/src/types.rs`, replace the `Poly1271` variant's doc comment with:
 
 ```rust
@@ -2290,6 +2318,7 @@ In `polyoxide-clob/src/lib.rs`, after the last `//!` line of the crate docs (lin
 //!
 //! # fn main() -> Result<(), polyoxide_clob::ClobError> {
 //! let creds = Credentials { key: "k".into(), secret: "c2VjcmV0".into(), passphrase: "p".into() };
+//! // Any loader works the same way: `Account::from_env()?.with_target(..)`.
 //! let session = Account::new("0x...", creds)?.with_target(SigningTarget::DepositWallet {
 //!     wallet: "0x57ffbc34de23124faeb8387fcd689d314e57accd".parse().unwrap(),
 //!     role: DepositWalletRole::SessionKey,
