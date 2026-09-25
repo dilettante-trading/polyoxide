@@ -37,8 +37,9 @@
 | `polyoxide-clob/tests/live_session_keys.rs` | Create. The `#[ignore]` round trip. |
 | `.github/workflows/nightly-behavioral.yml` | Modify. `--test live_session_keys` added to the clob flags. |
 | `polyoxide-relay/src/{wallet,client}.rs`, `polyoxide-relay/tests/mock_api.rs` | Modify (Task 6, review amendment). `WalletKind::Proxy`; `resolve_wallet` probes `type=PROXY`. |
+| `polyoxide-relay/src/client.rs`, `scripts/capture_session_key_vectors.py`, relay fixture | Modify (Task 7, review amendment). Redemption targets the collateral adapters; `submit_deposit_wallet_redemption`. |
 
-Task 6 is the one library change (a new `#[non_exhaustive]` enum variant and a fourth probe); nothing else touches code outside tests.
+Tasks 6 and 7 are the library changes (a new `#[non_exhaustive]` enum variant and a fourth probe; the redemption target and a new redemption method on unreleased API); nothing else touches code outside tests.
 
 ---
 
@@ -602,6 +603,113 @@ git commit -m "feat(relay): resolve_wallet probes the Proxy with type=PROXY, as 
 
 ---
 
+### Task 7 (executed after Task 6, before Task 4): Deposit Wallet redemption targets the collateral adapter, as py-sdk does
+
+**Why this task exists (review amendment, 2026-09-25):** plan 2's `redeem_typed_data` and
+the Deposit Wallet arm of `submit_gasless_redemption` send
+`redeemPositions(pUSD, 0x0, conditionId, indexSets)` to the Conditional Tokens contract.
+py-sdk 0.11.0 never does that. `clients/secure.py::redeem_positions` (and the async twin)
+builds `ctf_redeem_positions_call(ctf=context.adapter_address, collateral=pUSD, …)`, where
+`adapter_address` is the **collateral adapter** `0xAdA100Db00Ca00073811820692005400218FcE1f`
+for a CTF market and the **neg-risk collateral adapter**
+`0xadA2005600Dec949baf300f4C6120000bDB6eAab` for a neg-risk market
+(`_internal/actions/relayer/positions.py::normalize_market_position_context`,
+`environments.py`). The calldata is identical; only the target differs. A protocol-V2
+market goes through the V2 router's `redeem(bytes31,uint256,uint256)` and is out of scope.
+The Task 1 review caught this; the fixture did not, because the capture script chose the
+CTF as the target itself. Both functions are new in the unreleased 0.33.0, so changing
+their signatures is not a breaking change.
+
+**Files:**
+- Modify: `scripts/capture_session_key_vectors.py`, `polyoxide-relay/tests/fixtures/session_keys/relay_vectors.json` (keys added only), `polyoxide-relay/tests/fixtures/session_keys/PROVENANCE.md`
+- Modify: `polyoxide-relay/src/client.rs`, `polyoxide-relay/tests/mock_api.rs`, `polyoxide-relay/README.md`, `polyoxide-relay/src/lib.rs` (docs)
+- Modify: `docs/specs/session-keys/README.md` (Redemption paragraph, implementation map), `docs/specs/session-keys/OBSERVED.md` (new row), `docs/superpowers/specs/2026-09-25-session-keys-offline-design.md` (section 3 redemption sentence), `docs/superpowers/plans/2026-09-25-session-keys-relay.md` (one "Review amendment" line under Task 8)
+
+- [ ] **Step 1: Fixture keys from py-sdk's own builder**
+
+In `scripts/capture_session_key_vectors.py`, next to the existing `redeem` call (line ~303, which passes `ctf=ctf`; leave it, it pins the encoder), add:
+
+```python
+    collateral_adapter = EvmAddress("0xAdA100Db00Ca00073811820692005400218FcE1f")
+    neg_risk_collateral_adapter = EvmAddress("0xadA2005600Dec949baf300f4C6120000bDB6eAab")
+    # py-sdk's redeem target for a CTF market and for a neg-risk market (secure.py
+    # redeem_positions → positions.py normalize_market_position_context). Same
+    # calldata as `redeem`, different `to`.
+    redeem_adapter = ctf_redeem_positions_call(
+        ctf=collateral_adapter, collateral=pusd, condition_id=CONDITION_ID
+    )
+    redeem_neg_risk = ctf_redeem_positions_call(
+        ctf=neg_risk_collateral_adapter, collateral=pusd, condition_id=CONDITION_ID
+    )
+    redeem_adapter_batch = _batch(signer, wallet, [redeem_adapter], "8", "1800000600")
+    redeem_neg_risk_batch = _batch(signer, wallet, [redeem_neg_risk], "9", "1800000600")
+```
+(use whatever the script's address type is; assert the two constants equal `PRODUCTION_CONFIG.collateral_adapter` and `.neg_risk_collateral_adapter` from `polymarket.environments` before writing, so the fixture cannot drift from py-sdk's addresses). Add a `redeem_adapter_submit_body` built exactly like `redeem_submit_body` but from `redeem_adapter_batch`. Emit `redeem_adapter_batch`, `redeem_neg_risk_batch` and `redeem_adapter_submit_body` as new top-level keys. Regenerate with the script's `COMMAND`; then prove with a JSON diff that every pre-existing key is byte-identical and only these three were added (as Task 8 of plan 2 did). Add one PROVENANCE paragraph.
+
+- [ ] **Step 2: Failing tests**
+
+In `polyoxide-relay/tests/mock_api.rs`:
+- `redeem_typed_data_and_submit_reproduce_the_py_sdk_batch`: switch to `redeem_adapter_batch` / `redeem_adapter_submit_body`, nonce 8, and pass `neg_risk = false`.
+- Add `redeem_typed_data_targets_the_neg_risk_adapter_for_a_neg_risk_market`: `redeem_typed_data(wallet, condition, &[1,2], true, 9, 1800000600)` equals `redeem_neg_risk_batch.typed_data`, and `calls[0].target` is the neg-risk adapter.
+- `submit_gasless_redemption_on_a_deposit_wallet_…`: rename to `submit_deposit_wallet_redemption_redeems_through_the_collateral_adapter`, call the new `submit_deposit_wallet_redemption(condition, false, false)`, pin the posted call's `target` and full `data` to `redeem_adapter_submit_body`.
+- Add `submit_gasless_redemption_on_a_deposit_wallet_client_is_refused_before_io`: on `deposit_wallet_client`, `submit_gasless_redemption([0u8;32], vec![])` errors with a message containing `submit_deposit_wallet_redemption`; asserted `expect(0)` mocks on params (`match_query(Matcher::Any)`) and `/submit`.
+
+Run: `cargo test -p polyoxide-relay --test mock_api redeem` — compile errors.
+
+- [ ] **Step 3: Implement**
+
+In `polyoxide-relay/src/client.rs`:
+
+```rust
+/// py-sdk's redemption target for a Deposit Wallet on a CTF market.
+const COLLATERAL_ADAPTER: Address = address!("AdA100Db00Ca00073811820692005400218FcE1f");
+/// … and on a neg-risk market.
+const NEG_RISK_COLLATERAL_ADAPTER: Address = address!("adA2005600Dec949baf300f4C6120000bDB6eAab");
+```
+(`address!` checks the checksum of a mixed-case literal, so a typo fails to compile.)
+
+`deposit_wallet_redemption_call(condition_id, index_sets, neg_risk: bool)` picks the target: `if neg_risk { NEG_RISK_COLLATERAL_ADAPTER } else { COLLATERAL_ADAPTER }`, calldata unchanged (pUSD collateral).
+
+`redeem_typed_data(&self, wallet, condition_id: B256, index_sets: &[U256], neg_risk: bool, nonce, deadline) -> (serde_json::Value, Vec<DepositWalletCall>)`. Doc: "py-sdk sends this to the collateral adapter, or the neg-risk collateral adapter for a neg-risk market, never to the Conditional Tokens contract directly; `neg_risk` is the market's flag (`GET /neg-risk?token_id=` on the CLOB, or gamma's `negRisk`). Protocol-V2 markets (router `redeem`) are not supported."
+
+New:
+```rust
+    /// Redeem `condition_id` through this client's Deposit Wallet, signed by its
+    /// account and submitted as one batch. `neg_risk` selects the adapter, as
+    /// py-sdk does. With `estimate_gas`, simulates the adapter call from the wallet
+    /// first as an early revert check; the submission itself carries no gas limit.
+    pub async fn submit_deposit_wallet_redemption(
+        &self,
+        condition_id: B256,
+        neg_risk: bool,
+        estimate_gas: bool,
+    ) -> Result<SubmitResponse, RelayError>
+```
+It builds the call with `[U256::from(1), U256::from(2)]` (py-sdk's `_BINARY_INDEX_SETS`), optionally runs the DW gas simulation against that call, then goes through `execute_deposit_wallet` with `metadata: None` (which becomes `""`).
+
+`submit_gasless_redemption_with_gas_estimation`: the `WalletType::DepositWallet` arm returns `Err(RelayError::Api("a Deposit Wallet redemption needs the market's neg-risk flag: use RelayClient::submit_deposit_wallet_redemption".into()))` before any I/O. `estimate_redemption_gas`: the DW arm likewise errors; move the DW simulation into a private `estimate_deposit_wallet_redemption_gas(&self, call: &DepositWalletCall)` used by `submit_deposit_wallet_redemption`. Doc both public methods: Safe and Proxy only; Deposit Wallets use `submit_deposit_wallet_redemption`.
+
+Mutation-check: with the target swapped back to the CTF, the adapter test must fail; with `neg_risk` ignored, the neg-risk test must fail. Report both.
+
+- [ ] **Step 4: Docs**
+
+- `polyoxide-relay/README.md` "Gasless Redemption" sections: add two sentences that a Deposit Wallet uses `submit_deposit_wallet_redemption(condition_id, neg_risk, estimate_gas)` and why (adapter target, pUSD collateral); "API Coverage" bullet likewise.
+- `polyoxide-relay/src/lib.rs`: if the crate docs mention redemption for Deposit Wallets, match.
+- `docs/specs/session-keys/README.md`, replace the **Redemption** paragraph with: "**Redemption.** py-sdk redeems in one batch call, and the target depends on the market. For a CTF market it calls `redeemPositions(pUSD, 0x0, conditionId, [1, 2])` on the collateral adapter (`0xAdA100Db00Ca00073811820692005400218FcE1f`); for a neg-risk market the target is the neg-risk collateral adapter (`0xadA2005600Dec949baf300f4C6120000bDB6eAab`). It never calls the Conditional Tokens contract directly. A protocol-V2 market goes through the V2 router's `redeem` and is not covered here. pUSD (`0xC011a7E12a19f7B1f670d46F03B03f3342E82DFB`) is the Deposit Wallet collateral; polyoxide's Safe and Proxy paths still redeem against USDC on the Conditional Tokens contract, which is what they did before Deposit Wallets existed and has not been re-checked against py-sdk." Update the implementation-map row for typed-data-out to name `redeem_typed_data(…, neg_risk, …)` and add `submit_deposit_wallet_redemption`; the Pinned-by cell names `redeem_adapter_batch` / `redeem_neg_risk_batch`.
+- `docs/specs/session-keys/OBSERVED.md`: add row 11: page says "redeem your positions" with no target; SDKs target the collateral adapter or the neg-risk collateral adapter with pUSD (cite `clients/secure.py` `redeem_positions` lines and `positions.py` lines); polyoxide column: "`redeem_typed_data` / `submit_deposit_wallet_redemption` take `neg_risk` and pick the adapter; plan 2 targeted the CTF until the plan 3 review". Add an open item: whether py-sdk's adapter-and-pUSD path is also what Safe/Proxy accounts should use now (polyoxide's legacy path is USDC on the CTF).
+- Design spec section 3: fix the redemption sentence. Plan 2 doc, under Task 8: append `**Review amendment (2026-09-25, plan 3 Task 7):** py-sdk sends the Deposit Wallet redemption to the collateral adapter (neg-risk: the neg-risk collateral adapter), never to the CTF; \`redeem_typed_data\` gained \`neg_risk\` and \`submit_deposit_wallet_redemption\` replaces the Deposit Wallet arm of \`submit_gasless_redemption\`.`
+
+- [ ] **Step 5: Verify and commit**
+
+`cargo test -p polyoxide-relay --all-features`, clippy on relay with `-D warnings`, the relay doc gate, `cargo fmt --all -- --check`, `cargo test -p polyoxide-relay --doc`. Then:
+
+```bash
+git add scripts/capture_session_key_vectors.py polyoxide-relay/tests/fixtures/session_keys/relay_vectors.json polyoxide-relay/tests/fixtures/session_keys/PROVENANCE.md polyoxide-relay/src/client.rs polyoxide-relay/tests/mock_api.rs polyoxide-relay/README.md polyoxide-relay/src/lib.rs docs/specs/session-keys/README.md docs/specs/session-keys/OBSERVED.md docs/superpowers/specs/2026-09-25-session-keys-offline-design.md docs/superpowers/plans/2026-09-25-session-keys-relay.md
+git commit -m "fix(relay): Deposit Wallet redemption targets the collateral adapter, as py-sdk does"
+```
+
+---
+
 ### Task 4: Handoff status lines and the spec's implementation order
 
 **Files:**
@@ -639,7 +747,7 @@ Append the following line as a new paragraph directly under the last line of eac
 - Item 8: `*Status:* Done, plan 2. `polyoxide_relay::deposit_wallet::{batch_typed_data, batch_digest}`, `RelayClient::get_execute_params(signer, WalletType::DepositWallet)`; five signed batches pinned to py-sdk (`polyoxide-relay/tests/fixtures/session_keys/relay_vectors.json`). The nonce is queried for the EOA that signs, owner or session key.`
 - Item 9: `*Status:* Done, plan 2. `authorize_session_signer[_typed_data]` / `submit_session_signer_authorization`, `revoke_session_signer[_typed_data]` / `submit_session_signer_revocation`; bodies pinned to py-sdk's builders. Correction: revocation also accepts a Relayer API key, and both routes use a 300 s request timeout (`docs/specs/session-keys/OBSERVED.md` rows 2–3).`
 - Item 10: `*Status:* Done, plan 2. `RelayClientBuilder::with_auth(AuthConfig)` builds a client with auth and no key; `BuilderAccount::with_signer` takes any alloy signer with `sign_hash` (so `BuilderAccount::signer()` now returns `&DynSigner`, a breaking change listed in the spec).`
-- Item 11: `*Status:* Done, plan 2. `deposit_wallet_batch_typed_data` / `submit_deposit_wallet_batch_from` for any batch, `redeem_typed_data` / `submit_redemption_with_signature` for redemption (pUSD collateral), `deposit_wallet_trading_approvals` for the 17 approvals py-sdk requires (the page's four are a subset).`
+- Item 11: `*Status:* Done, plan 2 (redemption target corrected in plan 3). `deposit_wallet_batch_typed_data` / `submit_deposit_wallet_batch_from` for any batch; `redeem_typed_data(…, neg_risk, …)` / `submit_redemption_with_signature` and `submit_deposit_wallet_redemption` for redemption through the collateral adapter or the neg-risk collateral adapter with pUSD, as py-sdk does; `deposit_wallet_trading_approvals` for the 17 approvals py-sdk requires (the page's four are a subset).`
 - Item 12: `*Status:* Skeleton only, plan 3. `polyoxide-clob/tests/live_session_keys.rs` runs the round trip as an `#[ignore]`d test gated on `POLYMARKET_DW_*` and `BUILDER_*` env vars; it panics with the nightly's auth-gated wording when they are unset. No fixture account exists yet (prader-rs #125).`
 - Item 13: `*Status:* Pending. Plans 1–3 are on `main`, unpushed; 0.33.0 follows plan 3 with the breaking changes listed at the end of the design spec.`
 - Item 14: `*Status:* Done, plan 2 (Proxy added in plan 3). Pure derivations `derive_{safe,proxy,deposit_wallet_uups,deposit_wallet_beacon}` (pinned to py-sdk's own derivation tests) and `RelayClient::resolve_wallet(owner) -> Result<Option<WalletKind>>` over beacon, UUPS, Safe and Proxy (`type=PROXY`, as py-sdk sends; the published spec lists only `SAFE`/`WALLET`). `None` means nothing deployed; two deployed is an error.`
