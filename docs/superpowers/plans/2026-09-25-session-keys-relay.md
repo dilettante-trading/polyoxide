@@ -14,7 +14,7 @@
 
 **Gates before every commit:** `cargo fmt --all`, then `cargo clippy -p polyoxide-core -p polyoxide-clob -p polyoxide-relay --all-targets --all-features -- -D warnings`. Before the final commit also `RUSTDOCFLAGS="-D warnings" cargo doc --no-deps --all-features --workspace` and `cargo check --workspace --all-features`. A `pub` item's doc must not intra-doc-link to a non-`pub` item.
 
-**Testing rules that bit plan 1:** every `expect(0)` mock on a route the client calls with a query string needs `.match_query(Matcher::Any)` or it can never match and proves nothing. Every signing test compares to fixture bytes from py-sdk, never to a value the code under test computed. Doc-comment links to items that do not exist yet must be plain backticks until the item lands.
+**Testing rules that bit plan 1:** every `expect(0)` mock on a route the client calls with a query string needs `.match_query(Matcher::Any)` or it can never match and proves nothing. mockito enforces `expect(n)` only when the mock is asserted, so every mock with an `expect` must be bound to a name and `assert_async().await`ed. Every signing test compares to fixture bytes from py-sdk, never to a value the code under test computed. Doc-comment links to items that do not exist yet must be plain backticks until the item lands.
 
 ---
 
@@ -937,7 +937,7 @@ async fn resolve_wallet_probes_both_deposit_wallet_generations_and_the_safe() {
 #[tokio::test]
 async fn resolve_wallet_refuses_two_deployed_wallets() {
     let mut server = Server::new_async().await;
-    let _all_deployed = server
+    let all_deployed = server
         .mock("GET", "/deployed")
         .match_query(Matcher::Any)
         .with_status(200)
@@ -951,12 +951,14 @@ async fn resolve_wallet_refuses_two_deployed_wallets() {
     let owner: alloy::primitives::Address = "0xf39Fd6e51aad88F6F4ce6aB8827279cffFb92266".parse().unwrap();
     let err = client.resolve_wallet(owner).await.unwrap_err().to_string();
     assert!(err.contains("more than one"), "{err}");
+    // mockito enforces expect(n) only on assert.
+    all_deployed.assert_async().await;
 }
 
 #[tokio::test]
 async fn resolve_wallet_reports_none_when_nothing_is_deployed() {
     let mut server = Server::new_async().await;
-    let _none = server
+    let none = server
         .mock("GET", "/deployed")
         .match_query(Matcher::Any)
         .with_status(200)
@@ -969,6 +971,7 @@ async fn resolve_wallet_reports_none_when_nothing_is_deployed() {
     let client = client_unauthed(&server);
     let owner: alloy::primitives::Address = "0xf39Fd6e51aad88F6F4ce6aB8827279cffFb92266".parse().unwrap();
     assert_eq!(client.resolve_wallet(owner).await.unwrap(), None);
+    none.assert_async().await;
 }
 ```
 
