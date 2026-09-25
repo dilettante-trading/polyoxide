@@ -235,14 +235,8 @@ impl Clob {
 
         params.validate()?;
 
-        // Reject Poly1271 before any network I/O (fail fast). This is a UX guard; the
-        // authoritative guarantee lives in `order_to_protocol` (signing choke point).
-        let signature_type = params.signature_type.unwrap_or_default();
-        if signature_type == SignatureType::Poly1271 {
-            return Err(ClobError::validation(
-                "Poly1271 (EIP-1271) signing is not yet supported; use EOA/PolyProxy/PolyGnosisSafe",
-            ));
-        }
+        let signature_type =
+            Self::effective_signature_type(params.signature_type, params.funder, account)?;
 
         // Fetch market metadata (neg_risk and tick_size)
         let (neg_risk, tick_size) = self.get_market_metadata(&params.token_id, options).await?;
@@ -265,7 +259,7 @@ impl Clob {
         Ok(Self::build_order_v2(
             params.token_id.clone(),
             maker,
-            account.address(),
+            account.target().order_signer(account.address()),
             maker_amount,
             taker_amount,
             params.side,
@@ -316,14 +310,8 @@ impl Clob {
             }
         }
 
-        // Reject Poly1271 before any network I/O (fail fast). This is a UX guard; the
-        // authoritative guarantee lives in `order_to_protocol` (signing choke point).
-        let signature_type = params.signature_type.unwrap_or_default();
-        if signature_type == SignatureType::Poly1271 {
-            return Err(ClobError::validation(
-                "Poly1271 (EIP-1271) signing is not yet supported; use EOA/PolyProxy/PolyGnosisSafe",
-            ));
-        }
+        let signature_type =
+            Self::effective_signature_type(params.signature_type, params.funder, account)?;
 
         // Fetch market metadata (neg_risk and tick_size)
         let (neg_risk, tick_size) = self.get_market_metadata(&params.token_id, options).await?;
@@ -366,7 +354,7 @@ impl Clob {
         Ok(Self::build_order_v2(
             params.token_id.clone(),
             maker,
-            account.address(),
+            account.target().order_signer(account.address()),
             maker_amount,
             taker_amount,
             params.side,
@@ -378,7 +366,7 @@ impl Clob {
             timestamp_ms,
         ))
     }
-    /// Sign an order using the configured account's EIP-712 signer.
+    /// Sign an order for the configured account's signing target (see `Account::sign_order`).
     pub async fn sign_order(&self, order: &Order) -> Result<SignedOrder, ClobError> {
         let account = self
             .account
@@ -424,7 +412,49 @@ impl Clob {
         Ok((neg_risk, tick_size))
     }
 
-    /// Resolve the maker address based on funder and signature type
+    /// The `signatureType` an order will carry: the per-call override, else the
+    /// account's target. Refused here, before any I/O, because nothing could sign
+    /// the result: a type-3 override on an account that does not target a Deposit
+    /// Wallet, any non-type-3 override or foreign funder on one that does, and an
+    /// L2-only account.
+    fn effective_signature_type(
+        override_type: Option<SignatureType>,
+        funder: Option<Address>,
+        account: &Account,
+    ) -> Result<SignatureType, ClobError> {
+        if !account.wallet().has_signer() {
+            return Err(ClobError::validation(
+                "this account is L2-only (no signing key) and cannot create orders",
+            ));
+        }
+        let target = account.target();
+        if let (Some((wallet, _)), Some(funder)) = (target.deposit_wallet(), funder) {
+            if funder != wallet {
+                return Err(ClobError::validation(format!(
+                    "this account targets Deposit Wallet {wallet}; a per-call funder of {funder} \
+                     cannot be signed (the wallet must be both maker and signer)"
+                )));
+            }
+        }
+        let signature_type = override_type.unwrap_or_else(|| target.signature_type());
+        match (
+            signature_type == SignatureType::Poly1271,
+            target.deposit_wallet().is_some(),
+        ) {
+            (true, false) => Err(ClobError::validation(
+                "signature type 3 (Poly1271) needs an account built with \
+                 SigningTarget::DepositWallet; a per-call override cannot supply the wallet",
+            )),
+            (false, true) => Err(ClobError::validation(format!(
+                "this account targets a Deposit Wallet, which signs only signature type 3; \
+                 a per-call override to {signature_type} cannot be signed"
+            ))),
+            _ => Ok(signature_type),
+        }
+    }
+
+    /// Resolve the maker address from the per-call funder, the account's target,
+    /// or (for proxy types with neither) the Gamma profile lookup.
     async fn resolve_maker_address(
         &self,
         funder: Option<Address>,
@@ -432,8 +462,12 @@ impl Clob {
         account: &Account,
     ) -> Result<Address, ClobError> {
         if let Some(funder) = funder {
-            Ok(funder)
-        } else if signature_type.is_proxy() {
+            return Ok(funder);
+        }
+        if signature_type == account.target().signature_type() {
+            return Ok(account.target().maker(account.address()));
+        }
+        if signature_type.is_proxy() {
             #[cfg(feature = "gamma")]
             {
                 // Fetch proxy from Gamma
@@ -447,7 +481,7 @@ impl Clob {
                         ClobError::service(format!("Failed to fetch user profile: {}", e))
                     })?;
 
-                profile
+                return profile
                     .proxy
                     .ok_or_else(|| {
                         ClobError::validation(format!(
@@ -462,19 +496,18 @@ impl Clob {
                             "Invalid proxy address format from Gamma: {}",
                             e
                         ))
-                    })
+                    });
             }
             #[cfg(not(feature = "gamma"))]
             {
-                Err(ClobError::validation(format!(
+                return Err(ClobError::validation(format!(
                     "Signature type {:?} requires the `gamma` feature to resolve proxy address; \
                      enable `polyoxide-clob/gamma` or provide an explicit `funder` address",
                     signature_type
-                )))
+                )));
             }
-        } else {
-            Ok(account.address())
         }
+        Ok(account.address())
     }
 
     /// Build a V2 [`Order`] struct from the provided parameters.

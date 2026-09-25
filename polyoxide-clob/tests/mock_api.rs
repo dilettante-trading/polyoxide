@@ -1488,9 +1488,8 @@ async fn place_order_signs_and_submits_v2_body_with_builder_code() {
 }
 
 #[tokio::test]
-async fn create_order_rejects_poly1271_without_network_io() {
-    // The Poly1271 guard fires before any market-metadata I/O, so no endpoints are mocked.
-    // expect(0) on the metadata endpoints proves nothing was fetched.
+async fn create_order_rejects_a_type3_override_on_an_eoa_account_without_network_io() {
+    // The target guard fires before any market-metadata I/O; expect(0) proves it.
     let mut server = Server::new_async().await;
     let neg_risk_mock = server
         .mock("GET", "/neg-risk")
@@ -1518,12 +1517,304 @@ async fn create_order_rejects_poly1271_without_network_io() {
 
     let err = clob.create_order(&params, None).await.unwrap_err();
     assert!(
-        err.to_string().contains("Poly1271"),
-        "expected a Poly1271 rejection, got: {err}"
+        err.to_string().contains("SigningTarget::DepositWallet"),
+        "expected a target rejection, got: {err}"
     );
 
     neg_risk_mock.assert_async().await;
     tick_size_mock.assert_async().await;
+}
+
+fn deposit_wallet_clob(
+    server: &mockito::ServerGuard,
+    role: polyoxide_clob::DepositWalletRole,
+) -> polyoxide_clob::Clob {
+    let creds = Credentials {
+        key: "test-key".into(),
+        secret: "c2VjcmV0".into(),
+        passphrase: "test-pass".into(),
+    };
+    let account = Account::new(
+        "0xac0974bec39a17e36ba4a6b4d238ff944bacb478cbed5efcae784d7bf4f2ff80",
+        creds,
+    )
+    .unwrap()
+    .with_target(polyoxide_clob::SigningTarget::DepositWallet {
+        wallet: DEPOSIT_WALLET,
+        role,
+    });
+    ClobBuilder::new()
+        .base_url(server.url())
+        .with_account(account)
+        .build()
+        .unwrap()
+}
+
+const DEPOSIT_WALLET: alloy::primitives::Address =
+    alloy::primitives::address!("57ffbc34de23124faeb8387fcd689d314e57accd");
+
+/// Signing parses `token_id` as a base-10 U256 (it is part of the signed struct),
+/// so tests that sign need a numeric id rather than `0xtoken`.
+const SIGNABLE_TOKEN_ID: &str = "100";
+
+async fn mock_market_metadata(
+    server: &mut mockito::ServerGuard,
+    token_id: &str,
+) -> (mockito::Mock, mockito::Mock) {
+    let neg_risk = server
+        .mock("GET", "/neg-risk")
+        .match_query(Matcher::UrlEncoded("token_id".into(), token_id.into()))
+        .with_status(200)
+        .with_header("content-type", "application/json")
+        .with_body(r#"{"neg_risk": false}"#)
+        .create_async()
+        .await;
+    let tick_size = server
+        .mock("GET", "/tick-size")
+        .match_query(Matcher::UrlEncoded("token_id".into(), token_id.into()))
+        .with_status(200)
+        .with_header("content-type", "application/json")
+        .with_body(r#"{"minimum_tick_size": "0.01"}"#)
+        .create_async()
+        .await;
+    (neg_risk, tick_size)
+}
+
+#[tokio::test]
+async fn create_order_for_a_deposit_wallet_sets_maker_signer_and_type3() {
+    let mut server = Server::new_async().await;
+    let (neg_risk_mock, tick_size_mock) =
+        mock_market_metadata(&mut server, SIGNABLE_TOKEN_ID).await;
+
+    let clob = deposit_wallet_clob(&server, polyoxide_clob::DepositWalletRole::Owner);
+    let params = polyoxide_clob::CreateOrderParams {
+        token_id: SIGNABLE_TOKEN_ID.into(),
+        price: 0.55,
+        size: 100.0,
+        side: polyoxide_clob::OrderSide::Buy,
+        order_type: polyoxide_clob::OrderKind::Gtc,
+        post_only: false,
+        expiration: None,
+        funder: None,
+        signature_type: None,
+    };
+
+    let order = clob.create_order(&params, None).await.unwrap();
+    assert_eq!(order.maker, DEPOSIT_WALLET);
+    assert_eq!(order.signer, DEPOSIT_WALLET);
+    assert_eq!(order.signature_type, SignatureType::Poly1271);
+
+    let signed = clob.sign_order(&order).await.unwrap();
+    assert_eq!(signed.signature.len(), 2 + 317 * 2, "owner: 7739 wrap only");
+
+    neg_risk_mock.assert_async().await;
+    tick_size_mock.assert_async().await;
+}
+
+#[tokio::test]
+async fn place_order_as_a_session_key_posts_the_session_envelope_under_the_eoa() {
+    let mut server = Server::new_async().await;
+    let (_neg_risk_mock, _tick_size_mock) =
+        mock_market_metadata(&mut server, SIGNABLE_TOKEN_ID).await;
+
+    let post_mock = server
+        .mock("POST", "/order")
+        // L2 headers name the session EOA, not the wallet.
+        .match_header(
+            "POLY_ADDRESS",
+            "0xf39fd6e51aad88f6f4ce6ab8827279cfffb92266",
+        )
+        .match_body(Matcher::AllOf(vec![
+            Matcher::PartialJsonString(
+                r#"{"order":{"maker":"0x57ffbc34de23124faeb8387fcd689d314e57accd","signer":"0x57ffbc34de23124faeb8387fcd689d314e57accd","signatureType":3},"owner":"test-key","orderType":"GTC"}"#.into(),
+            ),
+            // 480 bytes of session envelope as hex.
+            Matcher::Regex(r#""signature":"0x[0-9a-f]{960}""#.into()),
+            // The envelope names the EOA that signed: twelve zero bytes then the address.
+            Matcher::Regex(
+                r#""signature":"0x000000000000000000000000f39fd6e51aad88f6f4ce6ab8827279cfffb92266"#.into(),
+            ),
+        ]))
+        .with_status(200)
+        .with_header("content-type", "application/json")
+        .with_body(r#"{"success":true,"errorMsg":"","orderID":"0xabc","transactionsHashes":[],"status":"live","takingAmount":"","makingAmount":""}"#)
+        .create_async()
+        .await;
+
+    let clob = deposit_wallet_clob(&server, polyoxide_clob::DepositWalletRole::SessionKey);
+    let params = polyoxide_clob::CreateOrderParams {
+        token_id: SIGNABLE_TOKEN_ID.into(),
+        price: 0.55,
+        size: 100.0,
+        side: polyoxide_clob::OrderSide::Buy,
+        order_type: polyoxide_clob::OrderKind::Gtc,
+        post_only: false,
+        expiration: None,
+        funder: None,
+        signature_type: None,
+    };
+
+    let response = clob.place_order(&params, None).await.unwrap();
+    assert_eq!(response.order_id.as_deref(), Some("0xabc"));
+    post_mock.assert_async().await;
+}
+
+#[tokio::test]
+async fn create_order_rejects_a_non_type3_override_on_a_deposit_wallet_account_without_network_io()
+{
+    let mut server = Server::new_async().await;
+    let neg_risk_mock = server
+        .mock("GET", "/neg-risk")
+        .expect(0)
+        .create_async()
+        .await;
+    let tick_size_mock = server
+        .mock("GET", "/tick-size")
+        .expect(0)
+        .create_async()
+        .await;
+
+    let clob = deposit_wallet_clob(&server, polyoxide_clob::DepositWalletRole::Owner);
+    let params = polyoxide_clob::CreateOrderParams {
+        token_id: "0xtoken".into(),
+        price: 0.55,
+        size: 100.0,
+        side: polyoxide_clob::OrderSide::Buy,
+        order_type: polyoxide_clob::OrderKind::Gtc,
+        post_only: false,
+        expiration: None,
+        funder: None,
+        signature_type: Some(SignatureType::Eoa),
+    };
+
+    let err = clob
+        .create_order(&params, None)
+        .await
+        .unwrap_err()
+        .to_string();
+    assert!(err.contains("signs only signature type 3"), "{err}");
+
+    neg_risk_mock.assert_async().await;
+    tick_size_mock.assert_async().await;
+}
+
+#[tokio::test]
+async fn create_order_rejects_a_foreign_funder_on_a_deposit_wallet_account_without_network_io() {
+    let mut server = Server::new_async().await;
+    let neg_risk_mock = server
+        .mock("GET", "/neg-risk")
+        .expect(0)
+        .create_async()
+        .await;
+    let tick_size_mock = server
+        .mock("GET", "/tick-size")
+        .expect(0)
+        .create_async()
+        .await;
+
+    let clob = deposit_wallet_clob(&server, polyoxide_clob::DepositWalletRole::Owner);
+    let params = polyoxide_clob::CreateOrderParams {
+        token_id: "0xtoken".into(),
+        price: 0.55,
+        size: 100.0,
+        side: polyoxide_clob::OrderSide::Buy,
+        order_type: polyoxide_clob::OrderKind::Gtc,
+        post_only: false,
+        expiration: None,
+        funder: Some(alloy::primitives::address!(
+            "0000000000000000000000000000000000000001"
+        )),
+        signature_type: None,
+    };
+
+    let err = clob
+        .create_order(&params, None)
+        .await
+        .unwrap_err()
+        .to_string();
+    assert!(err.contains("per-call funder"), "{err}");
+
+    neg_risk_mock.assert_async().await;
+    tick_size_mock.assert_async().await;
+}
+
+#[tokio::test]
+async fn create_market_order_rejects_a_foreign_funder_on_a_deposit_wallet_account_without_network_io(
+) {
+    let mut server = Server::new_async().await;
+    let neg_risk_mock = server
+        .mock("GET", "/neg-risk")
+        .expect(0)
+        .create_async()
+        .await;
+    let tick_size_mock = server
+        .mock("GET", "/tick-size")
+        .expect(0)
+        .create_async()
+        .await;
+    let book_mock = server.mock("GET", "/book").expect(0).create_async().await;
+
+    let clob = deposit_wallet_clob(&server, polyoxide_clob::DepositWalletRole::Owner);
+    let params = polyoxide_clob::types::MarketOrderArgs {
+        token_id: "0xtoken".into(),
+        amount: 10.0,
+        side: polyoxide_clob::OrderSide::Buy,
+        price: Some(0.5),
+        fee_rate_bps: None,
+        nonce: None,
+        funder: Some(alloy::primitives::address!(
+            "0000000000000000000000000000000000000001"
+        )),
+        signature_type: None,
+        order_type: None,
+    };
+
+    let err = clob
+        .create_market_order(&params, None)
+        .await
+        .unwrap_err()
+        .to_string();
+    assert!(err.contains("per-call funder"), "{err}");
+
+    neg_risk_mock.assert_async().await;
+    tick_size_mock.assert_async().await;
+    book_mock.assert_async().await;
+}
+
+#[tokio::test]
+async fn l2_only_account_cannot_create_orders() {
+    let server = Server::new_async().await;
+    let creds = Credentials {
+        key: "test-key".into(),
+        secret: "c2VjcmV0".into(),
+        passphrase: "test-pass".into(),
+    };
+    let account = Account::l2_only(
+        alloy::primitives::address!("f39Fd6e51aad88F6F4ce6aB8827279cffFb92266"),
+        creds,
+    );
+    let clob = ClobBuilder::new()
+        .base_url(server.url())
+        .with_account(account)
+        .build()
+        .unwrap();
+    let params = polyoxide_clob::CreateOrderParams {
+        token_id: "0xtoken".into(),
+        price: 0.55,
+        size: 100.0,
+        side: polyoxide_clob::OrderSide::Buy,
+        order_type: polyoxide_clob::OrderKind::Gtc,
+        post_only: false,
+        expiration: None,
+        funder: None,
+        signature_type: None,
+    };
+    let err = clob
+        .create_order(&params, None)
+        .await
+        .unwrap_err()
+        .to_string();
+    assert!(err.contains("L2-only"), "{err}");
 }
 
 #[tokio::test]
