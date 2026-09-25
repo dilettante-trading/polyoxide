@@ -196,8 +196,10 @@ target, and a non-type-3 order against a Deposit Wallet target.
   Local-signer conveniences `authorize_session_signer(session, scopes)` and
   `revoke_session_signer(session)` run both halves. Builder HMAC only; a client without
   `AuthConfig::Builder` gets a validation error before any I/O.
-- `SessionSignerScope { Clob, CombosRfq, All, Other(String) }` is defined in `polyoxide-core`
-  and re-exported by both crates, serialised as the wire strings; `All` must appear alone. `SessionSignerAuthorizationStatus`,
+- `SessionSignerScope { Clob, CombosRfq, All, Other(String) }` is `#[non_exhaustive]`, defined in
+  `polyoxide-core` and re-exported by both crates, serialised as the wire strings. The relay owns a
+  scope validator that rejects an empty list, duplicates, and `All` mixed with anything else,
+  comparing on the wire spelling (`as_str`) so `Other("ALL")` cannot slip past. `SessionSignerAuthorizationStatus`,
   `SessionSignerRevocationStatus` and `TransactionState` are public enums with an `Other(String)`
   variant, and `is_terminal_failure()` on the two status enums.
 
@@ -251,4 +253,6 @@ Three plans, each ending in a green workspace:
 ## Open items carried to the blocked phase
 
 - Whether balance/allowance under a session signer's credentials reports the wallet's balance.
+- Whether `GET /v1/user/session-signers` under a session key's own credentials answers, and
+  with which `wallet`; `list_session_signers` documents this as unverified.
 - The exact tolerance on `validUntil`.
