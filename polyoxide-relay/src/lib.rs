@@ -43,7 +43,7 @@ mod config;
 mod error;
 mod types;
 
-pub use client::RelayClient;
+pub use client::{RelayClient, RelayClientBuilder};
 pub use config::{AuthConfig, BuilderConfig, ContractConfig, RelayerApiKeyConfig};
 pub use deposit_wallet::{
     DepositWalletCall, DEFAULT_BATCH_DEADLINE_SECS, SESSION_KEY_LIFETIME_SECS,

@@ -5,9 +5,10 @@ use alloy::signers::local::PrivateKeySigner;
 use alloy::signers::Signer as AlloySigner;
 use std::sync::Arc;
 
-/// Any `alloy` signer that implements `sign_hash`, type-erased. Local keys and
-/// KMS-backed signers qualify; Ledger and Trezor refuse raw-hash signing and are
-/// not usable here (hand them the typed data instead).
+/// Any `alloy` signer, type-erased. Local keys and KMS-backed signers work for
+/// every wallet type. Ledger and Trezor sign Safe and Proxy transactions (those use
+/// `sign_message`) but refuse the raw-hash signing a Deposit Wallet batch needs
+/// (`sign_hash`); for a Deposit Wallet, hand them the typed data instead.
 pub type DynSigner = dyn AlloySigner + Send + Sync;
 
 /// Keychain service name for Relay credentials.
@@ -80,7 +81,8 @@ impl BuilderAccount {
         Ok(Self::with_signer(signer, config))
     }
 
-    /// Create an account around any `alloy` signer that supports `sign_hash`.
+    /// Create an account around any `alloy` signer. See [`DynSigner`] for which
+    /// signers suit which wallet types.
     pub fn with_signer<S>(signer: S, config: Option<AuthConfig>) -> Self
     where
         S: AlloySigner + Send + Sync + 'static,

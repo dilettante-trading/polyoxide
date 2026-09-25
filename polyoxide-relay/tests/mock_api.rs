@@ -630,3 +630,160 @@ async fn with_auth_submits_a_signature_in_batch_without_any_key() {
     assert_eq!(resp.transaction_id, "tx-3");
     mock.assert_async().await;
 }
+
+#[tokio::test]
+async fn submit_deposit_wallet_batch_from_a_session_key_posts_the_py_sdk_body() {
+    let v = relay_vectors();
+    let mut server = Server::new_async().await;
+    let mock = server
+        .mock("POST", "/submit")
+        .match_header("POLY_BUILDER_API_KEY", "builder-key")
+        .match_body(Matcher::Json(v["session_submit_body"].clone()))
+        .with_status(200)
+        .with_header("content-type", "application/json")
+        .with_body(r#"{"transactionID":"tx-4","state":"STATE_NEW"}"#)
+        .create_async()
+        .await;
+
+    let client = deposit_wallet_client(&server);
+    let b = &v["approval_batch"];
+    let wallet: alloy::primitives::Address = v["wallet"].as_str().unwrap().parse().unwrap();
+    let session_signer: alloy::primitives::Address =
+        v["session_signer"].as_str().unwrap().parse().unwrap();
+    let call = polyoxide_relay::DepositWalletCall {
+        target: b["calls"][0]["target"].as_str().unwrap().parse().unwrap(),
+        value: alloy::primitives::U256::ZERO,
+        data: alloy::primitives::hex::decode(b["calls"][0]["data"].as_str().unwrap())
+            .unwrap()
+            .into(),
+    };
+    let resp = client
+        .submit_deposit_wallet_batch_from(
+            session_signer,
+            wallet,
+            &[call],
+            3,
+            1_800_000_000,
+            b["session_signature"].as_str().unwrap(),
+            Some(String::new()),
+        )
+        .await
+        .unwrap();
+    assert_eq!(resp.transaction_id, "tx-4");
+    mock.assert_async().await;
+}
+
+#[tokio::test]
+async fn execute_as_a_session_key_submits_from_the_key_with_the_session_envelope() {
+    let v = relay_vectors();
+    let mut server = Server::new_async().await;
+    let params = server
+        .mock("GET", "/v1/account/transactions/params")
+        .match_query(Matcher::AllOf(vec![
+            Matcher::UrlEncoded(
+                "address".into(),
+                "0xf39Fd6e51aad88F6F4ce6aB8827279cffFb92266".into(),
+            ),
+            Matcher::UrlEncoded("type".into(), "WALLET".into()),
+        ]))
+        .with_status(200)
+        .with_header("content-type", "application/json")
+        .with_body(r#"{"address":"0xf39Fd6e51aad88F6F4ce6aB8827279cffFb92266","nonce":"3"}"#)
+        .create_async()
+        .await;
+    // The envelope opens with the session signer's id (the account address, left
+    // padded) and ends in the 32-byte ERC-6492-style magic suffix.
+    let submit = server
+        .mock("POST", "/submit")
+        .match_header("POLY_BUILDER_API_KEY", "builder-key")
+        .match_body(Matcher::AllOf(vec![
+            Matcher::PartialJsonString(
+                r#"{"type":"WALLET","from":"0xf39Fd6e51aad88F6F4ce6aB8827279cffFb92266","nonce":"3"}"#
+                    .into(),
+            ),
+            Matcher::Regex(
+                r#""signature":"0x000000000000000000000000f39fd6e51aad88f6f4ce6ab8827279cfffb92266[0-9a-f]*(6492){16}""#
+                    .into(),
+            ),
+        ]))
+        .with_status(200)
+        .with_header("content-type", "application/json")
+        .with_body(r#"{"transactionID":"tx-5","state":"STATE_NEW"}"#)
+        .create_async()
+        .await;
+
+    let config = BuilderConfig::new("builder-key".into(), "c2VjcmV0".into(), Some("pp".into()));
+    let account = BuilderAccount::new(TEST_PRIVATE_KEY, Some(config)).unwrap();
+    let wallet: alloy::primitives::Address = v["wallet"].as_str().unwrap().parse().unwrap();
+    let client = RelayClient::builder()
+        .unwrap()
+        .url(&server.url())
+        .unwrap()
+        .with_account(account)
+        .wallet_type(polyoxide_relay::WalletType::DepositWallet)
+        .deposit_wallet(wallet)
+        .deposit_wallet_role(polyoxide_core::DepositWalletRole::SessionKey)
+        .build()
+        .unwrap();
+    let tx = polyoxide_relay::SafeTransaction {
+        to: "0xC011a7E12a19f7B1f670d46F03B03f3342E82DFB"
+            .parse()
+            .unwrap(),
+        value: alloy::primitives::U256::ZERO,
+        data: alloy::primitives::hex::decode(
+            v["approval_batch"]["calls"][0]["data"].as_str().unwrap(),
+        )
+        .unwrap()
+        .into(),
+        operation: 0,
+    };
+    let resp = client.execute(vec![tx], None).await.unwrap();
+    assert_eq!(resp.transaction_id, "tx-5");
+    params.assert_async().await;
+    submit.assert_async().await;
+}
+
+#[tokio::test]
+async fn execute_on_a_deposit_wallet_refuses_an_unsupported_chain_before_io() {
+    let v = relay_vectors();
+    let mut server = Server::new_async().await;
+    let params = server
+        .mock("GET", "/v1/account/transactions/params")
+        .match_query(Matcher::Any)
+        .expect(0)
+        .create_async()
+        .await;
+    let submit = server
+        .mock("POST", "/submit")
+        .expect(0)
+        .create_async()
+        .await;
+
+    let config = BuilderConfig::new("builder-key".into(), "c2VjcmV0".into(), Some("pp".into()));
+    let account = BuilderAccount::new(TEST_PRIVATE_KEY, Some(config)).unwrap();
+    let wallet: alloy::primitives::Address = v["wallet"].as_str().unwrap().parse().unwrap();
+    let client = RelayClient::builder()
+        .unwrap()
+        .url(&server.url())
+        .unwrap()
+        .chain_id(80002)
+        .with_account(account)
+        .wallet_type(polyoxide_relay::WalletType::DepositWallet)
+        .deposit_wallet(wallet)
+        .build()
+        .unwrap();
+    let tx = polyoxide_relay::SafeTransaction {
+        to: alloy::primitives::Address::ZERO,
+        value: alloy::primitives::U256::ZERO,
+        data: alloy::primitives::Bytes::new(),
+        operation: 0,
+    };
+    let err = client
+        .execute(vec![tx], None)
+        .await
+        .unwrap_err()
+        .to_string();
+    assert!(err.contains("not supported on this chain"), "{err}");
+    params.assert_async().await;
+    submit.assert_async().await;
+}

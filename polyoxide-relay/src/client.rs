@@ -133,7 +133,7 @@ struct DepositWalletSubmitBody {
 
 /// Client for submitting gasless transactions through Polymarket's relayer service.
 ///
-/// Supports both Safe and Proxy wallet types. Handles EIP-712 transaction signing,
+/// Supports Safe, Proxy and Deposit Wallet types. Handles EIP-712 transaction signing,
 /// nonce management, and multi-send batching automatically.
 #[derive(Debug, Clone)]
 pub struct RelayClient {
@@ -229,7 +229,7 @@ impl RelayClient {
             ));
         }
         Err(RelayError::Api(
-            "No authentication configured - provide BuilderConfig or RelayerApiKeyConfig when creating the BuilderAccount".to_string(),
+            "No authentication configured - provide BuilderConfig or RelayerApiKeyConfig when creating the BuilderAccount, or configure auth via RelayClientBuilder::with_auth".to_string(),
         ))
     }
 
@@ -880,7 +880,8 @@ impl RelayClient {
     /// The batch as EIP-712 JSON for an external signer (`eth_signTypedData_v4`).
     ///
     /// Pair with [`RelayClient::submit_deposit_wallet_batch_from`]. `nonce` comes from
-    /// [`RelayClient::get_execute_params`] for the owner with [`WalletType::DepositWallet`].
+    /// [`RelayClient::get_execute_params`] with [`WalletType::DepositWallet`], queried
+    /// for the EOA that will sign (the owner or the session key).
     pub fn deposit_wallet_batch_typed_data(
         &self,
         wallet: Address,
@@ -895,7 +896,7 @@ impl RelayClient {
     ///
     /// `from` is the EOA that produced `signature` (the owner, or a session key whose
     /// signature is already wrapped in the session-signer envelope). Works with
-    /// `RelayClientBuilder::with_auth` and no account.
+    /// [`RelayClientBuilder::with_auth`] and no account.
     #[allow(clippy::too_many_arguments)]
     pub async fn submit_deposit_wallet_batch_from(
         &self,
@@ -983,6 +984,8 @@ impl RelayClient {
         metadata: Option<String>,
     ) -> Result<SubmitResponse, RelayError> {
         let wallet = self.configured_deposit_wallet()?;
+        // Fail on an unsupported chain before fetching a nonce or signing.
+        self.deposit_wallet_factory()?;
         let account = self.account.as_ref().ok_or(RelayError::MissingSigner)?;
         let calls = transactions
             .into_iter()
@@ -1226,9 +1229,10 @@ impl RelayClient {
 
     /// POST `body` as JSON to `endpoint` under the client's auth, retrying on 429.
     ///
-    /// `extra_headers` are merged after the auth headers on every attempt. When
-    /// `allow_relayer_api_key` is false, a client configured with a relayer API key
-    /// is refused before any I/O.
+    /// `extra_headers` are inserted after the auth headers on every attempt, so a
+    /// same-named header would overwrite an auth header: callers must not pass auth
+    /// header names. When `allow_relayer_api_key` is false, a client configured with
+    /// a relayer API key is refused before any I/O.
     async fn post_json<B: Serialize, T: serde::de::DeserializeOwned>(
         &self,
         endpoint: &str,
@@ -1404,7 +1408,7 @@ impl RelayClientBuilder {
     /// Attach relayer API key credentials for authenticated relay operations.
     ///
     /// This is a convenience method that creates a [`BuilderAccount`] with
-    /// [`RelayerApiKeyConfig`] internally. The `private_key` is still required
+    /// [`RelayerApiKeyConfig`](crate::RelayerApiKeyConfig) internally. The `private_key` is still required
     /// for EIP-712 transaction signing.
     pub fn relayer_api_key(
         self,
@@ -1420,8 +1424,8 @@ impl RelayClientBuilder {
     ///
     /// For flows where the owner signs typed data out of process and this client
     /// only submits (session-signer authorization under Builder HMAC, or any
-    /// `*_with_signature` call). An account's own auth config, if also set, takes
-    /// precedence over this.
+    /// `submit_*` call that takes a signature produced elsewhere). An account's own
+    /// auth config, if also set, takes precedence over this.
     pub fn with_auth(mut self, auth: AuthConfig) -> Self {
         self.auth = Some(auth);
         self
@@ -1681,6 +1685,66 @@ mod tests {
             .with_account(account)
             .build()
             .unwrap()
+    }
+
+    fn approval_batch_fixture() -> (Address, Vec<DepositWalletCall>, u64, u64, Vec<u8>) {
+        let v: serde_json::Value = serde_json::from_str(include_str!(
+            "../tests/fixtures/session_keys/relay_vectors.json"
+        ))
+        .unwrap();
+        let b = &v["approval_batch"];
+        let wallet: Address = v["wallet"].as_str().unwrap().parse().unwrap();
+        let calls = b["calls"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .map(|c| DepositWalletCall {
+                target: c["target"].as_str().unwrap().parse().unwrap(),
+                value: c["value"].as_str().unwrap().parse().unwrap(),
+                data: hex::decode(c["data"].as_str().unwrap()).unwrap().into(),
+            })
+            .collect();
+        let nonce = b["nonce"].as_str().unwrap().parse().unwrap();
+        let deadline = b["deadline"].as_str().unwrap().parse().unwrap();
+        let signature = hex::decode(b["signature"].as_str().unwrap()).unwrap();
+        (wallet, calls, nonce, deadline, signature)
+    }
+
+    fn client_with_role(role: DepositWalletRole) -> RelayClient {
+        let account = crate::BuilderAccount::new(TEST_KEY, None).unwrap();
+        RelayClient::builder()
+            .unwrap()
+            .with_account(account)
+            .deposit_wallet_role(role)
+            .build()
+            .unwrap()
+    }
+
+    #[tokio::test]
+    async fn owner_role_signs_the_batch_bare() {
+        let (wallet, calls, nonce, deadline, owner_sig) = approval_batch_fixture();
+        let client = client_with_role(DepositWalletRole::Owner);
+        let sig = client
+            .sign_deposit_wallet_batch(wallet, &calls, nonce, deadline)
+            .await
+            .unwrap();
+        assert_eq!(sig, format!("0x{}", hex::encode(owner_sig)));
+    }
+
+    #[tokio::test]
+    async fn session_key_role_wraps_the_batch_signature_naming_the_account() {
+        // The fixture's `session_signature` names Anvil #1 as the session signer
+        // while Anvil #0 signed the inner batch (PROVENANCE.md), so it cannot be
+        // matched directly; the bare `signature` bytes are the pin.
+        let (wallet, calls, nonce, deadline, owner_sig) = approval_batch_fixture();
+        let client = client_with_role(DepositWalletRole::SessionKey);
+        let anvil0 = address!("f39Fd6e51aad88F6F4ce6aB8827279cffFb92266");
+        let sig = client
+            .sign_deposit_wallet_batch(wallet, &calls, nonce, deadline)
+            .await
+            .unwrap();
+        let expected = crate::deposit_wallet::wrap_session_signer(anvil0, &owner_sig);
+        assert_eq!(sig, format!("0x{}", hex::encode(expected)));
     }
 
     #[test]
