@@ -1612,6 +1612,48 @@ async fn create_order_for_a_deposit_wallet_sets_maker_signer_and_type3() {
 }
 
 #[tokio::test]
+async fn create_market_order_for_a_deposit_wallet_sets_maker_signer_and_type3() {
+    let mut server = Server::new_async().await;
+    let (neg_risk_mock, tick_size_mock) =
+        mock_market_metadata(&mut server, SIGNABLE_TOKEN_ID).await;
+
+    let clob = deposit_wallet_clob(&server, polyoxide_clob::DepositWalletRole::SessionKey);
+    let params = polyoxide_clob::types::MarketOrderArgs {
+        token_id: SIGNABLE_TOKEN_ID.into(),
+        amount: 10.0,
+        side: polyoxide_clob::OrderSide::Buy,
+        price: Some(0.5), // explicit price: no /book fetch
+        fee_rate_bps: None,
+        nonce: None,
+        funder: None,
+        signature_type: None,
+        order_type: None,
+    };
+
+    let order = clob.create_market_order(&params, None).await.unwrap();
+    assert_eq!(order.maker, DEPOSIT_WALLET);
+    assert_eq!(order.signer, DEPOSIT_WALLET);
+    assert_eq!(order.signature_type, SignatureType::Poly1271);
+
+    let signed = clob.sign_order(&order).await.unwrap();
+    assert_eq!(
+        signed.signature.len(),
+        2 + 480 * 2,
+        "session key: 7739 wrap plus session envelope"
+    );
+    assert!(
+        signed
+            .signature
+            .starts_with("0x000000000000000000000000f39fd6e51aad88f6f4ce6ab8827279cfffb92266"),
+        "envelope names the signing EOA: {}",
+        signed.signature
+    );
+
+    neg_risk_mock.assert_async().await;
+    tick_size_mock.assert_async().await;
+}
+
+#[tokio::test]
 async fn place_order_as_a_session_key_posts_the_session_envelope_under_the_eoa() {
     let mut server = Server::new_async().await;
     let (_neg_risk_mock, _tick_size_mock) =
