@@ -595,6 +595,11 @@ git add polyoxide-relay/src/config.rs polyoxide-relay/src/wallet.rs polyoxide-re
 git commit -m "feat(relay): pure CREATE2 derivations for Deposit Wallet, Safe and Proxy, pinned to py-sdk"
 ```
 
+**Amendment after review (applied as a follow-up commit):** `WalletKind` has no `None`
+variant, is `#[non_exhaustive]`, and `address()` returns `Address`; the resolver returns
+`Option<WalletKind>`. `ContractConfig` carries `safe_init_code_hash: B256` and the crate-wide
+constant is gone. The proxy init code is assembled from byte constants, not a string template.
+
 ---
 
 ### Task 4: Wire types and the v1 account routes
@@ -920,9 +925,9 @@ async fn resolve_wallet_probes_both_deposit_wallet_generations_and_the_safe() {
     let kind = client.resolve_wallet(owner).await.unwrap();
     assert_eq!(
         kind,
-        polyoxide_relay::WalletKind::DepositWallet(
+        Some(polyoxide_relay::WalletKind::DepositWallet(
             "0xBc0fF067b7740Eff76C1ca93c875Ba6B890d6B50".parse().unwrap()
-        )
+        ))
     );
     beacon.assert_async().await;
     uups.assert_async().await;
@@ -963,7 +968,7 @@ async fn resolve_wallet_reports_none_when_nothing_is_deployed() {
 
     let client = client_unauthed(&server);
     let owner: alloy::primitives::Address = "0xf39Fd6e51aad88F6F4ce6aB8827279cffFb92266".parse().unwrap();
-    assert_eq!(client.resolve_wallet(owner).await.unwrap(), polyoxide_relay::WalletKind::None);
+    assert_eq!(client.resolve_wallet(owner).await.unwrap(), None);
 }
 ```
 
@@ -1038,10 +1043,10 @@ In `polyoxide-relay/src/client.rs`, add to the `use crate::types::{...}` import 
     /// Find which account wallet `owner` has deployed.
     ///
     /// Derives the beacon and UUPS Deposit Wallets and the Safe, asks `/deployed`
-    /// for each, and returns the one that exists. More than one deployed wallet is
-    /// an error rather than a guess. A Proxy wallet cannot be observed this way;
-    /// see [`WalletKind`].
-    pub async fn resolve_wallet(&self, owner: Address) -> Result<WalletKind, RelayError> {
+    /// for each, and returns the one that exists, or `None` when nothing is
+    /// deployed. More than one deployed wallet is an error rather than a guess. A
+    /// Proxy wallet cannot be observed this way; see [`WalletKind`].
+    pub async fn resolve_wallet(&self, owner: Address) -> Result<Option<WalletKind>, RelayError> {
         let cfg = &self.contract_config;
         let mut candidates: Vec<(WalletKind, WalletType)> = Vec::new();
         if cfg.deposit_wallet_factory.is_some() {
@@ -1058,14 +1063,13 @@ In `polyoxide-relay/src/client.rs`, add to the `use crate::types::{...}` import 
 
         let mut found = Vec::new();
         for (kind, wallet_type) in candidates {
-            let address = kind.address().expect("candidate kinds carry an address");
-            if self.get_deployed_typed(address, wallet_type).await? {
+            if self.get_deployed_typed(kind.address(), wallet_type).await? {
                 found.push(kind);
             }
         }
         match found.as_slice() {
-            [] => Ok(WalletKind::None),
-            [one] => Ok(*one),
+            [] => Ok(None),
+            [one] => Ok(Some(*one)),
             many => Err(RelayError::Api(format!(
                 "owner {owner} has more than one deployed wallet: {many:?}"
             ))),
@@ -2813,7 +2817,7 @@ let owner = account.address();
 // generations and the Safe.
 let probe = RelayClient::builder()?.build()?;
 let wallet = match probe.resolve_wallet(owner).await? {
-    WalletKind::DepositWallet(address) => address,
+    Some(WalletKind::DepositWallet(address)) => address,
     other => return Err(format!("not a Deposit Wallet: {other:?}").into()),
 };
 
