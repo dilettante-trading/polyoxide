@@ -121,14 +121,17 @@ CREATE2 from the factory with a salt derived from the owner. `GET /deployed?addr
 New submodule `deposit_wallet`:
 
 - `sol!` definition of `TypedDataSign` with the six fields in upstream order.
-- `envelope_digest(order, chain_id, wallet) -> B256`: exchange domain separator (reusing
-  the existing domain construction) over the `TypedDataSign` struct hash whose `contents`
-  is the existing `Order` struct hash.
+- `envelope_digest(order, chain_id, exchange, wallet) -> B256`: exchange domain separator
+  (reusing the existing domain construction) over the `TypedDataSign` struct hash whose
+  `contents` is the existing `Order` struct hash. The exchange is a parameter so the py-sdk
+  vector, which uses the V1 exchange address, can be pinned alongside the V2 one.
 - `wrap_erc7739(inner: &[u8], app_domain_separator: B256, contents_hash: B256) -> Vec<u8>`.
 - `wrap_session_signer(session_eoa: Address, wrapped: &[u8]) -> Vec<u8>`.
-- `ORDER_TYPE_STRING` as a `const &str`, asserted at 186 bytes.
+- The order type string comes from `Order::eip712_encode_type()`, pinned at 186 bytes by a test.
 
-`sign_order` gains a `&SigningTarget` parameter. Types 0–2: unchanged path. Type 3: requires
+A new `sign_order_as(order, signer, chain_id, &SigningTarget)` sits beside `sign_order`, which
+is unchanged (additive rather than a signature change). Types 0–2: delegates to `sign_order`.
+Type 3: requires
 `SigningTarget::DepositWallet`, signs `envelope_digest`, applies `wrap_erc7739`, and applies
 `wrap_session_signer` when `role == SessionKey`.
 
@@ -152,7 +155,8 @@ target, and a non-type-3 order against a Deposit Wallet target.
 - `Account::l2_only(address, creds)`: no signer. Works for `post_order`, `orders()`,
   `account_api()`, `notifications()`, `list_session_signers()`. `create_order`, `sign_order`,
   `sign_clob_auth` and the L1 `auth()` calls return `ClobError::validation` naming the
-  missing key. `AuthMode::L1` keeps carrying a signer, so an L2-only account cannot enter it.
+  missing key. `AuthMode::L1` carries the `Wallet`; for an L2-only one the L1 header builder
+  fails before any request is sent.
 - On `Clob` itself (the `auth()` namespace needs an account, and this path exists for callers
   without one): `clob_auth_typed_data(address, timestamp, nonce) -> serde_json::Value` (the exact
   JSON for `eth_signTypedData_v4`; also a free function taking `chain_id`),
@@ -245,10 +249,21 @@ target, and a non-type-3 order against a Deposit Wallet target.
 
 Three plans, each ending in a green workspace:
 
-1. **CLOB signing core and account model** (sections 1, 2, and the `session_signers()`
-   call from 4). Vectors first.
+1. **CLOB signing core and account model** (sections 1, 2, and the `list_session_signers()`
+   call from 4). Vectors first. **Done 2026-09-25** on `aidanb/non-custodial-keys` (plan
+   `docs/superpowers/plans/2026-09-25-session-keys-clob-signing.md`).
 2. **Relay Deposit Wallet dialect** (section 3), including the resolver and derivations.
 3. **Docs and handoff status** (rest of section 4), plus the ignored live test skeleton.
+
+## Breaking changes for the 0.33.0 release notes (plan 1)
+
+- `Wallet::signer()` returns `Result<&DynSigner, ClobError>` instead of `&PrivateKeySigner`;
+  `Wallet::ethereum_wallet()` is removed (footer on commit 507bfba).
+- `AuthMode` gained `L1Signed`; the enum is exhaustive, so an external exhaustive `match` breaks.
+- `Account::sign_order` and `Clob::sign_order` now sign signature-type-3 orders for a Deposit
+  Wallet target instead of refusing them.
+- `ClobBuilder::signature_type` defaults from the account's target rather than always EOA.
+  Every loader yields an EOA target, so no existing caller changes behaviour.
 
 ## Open items carried to the blocked phase
 
