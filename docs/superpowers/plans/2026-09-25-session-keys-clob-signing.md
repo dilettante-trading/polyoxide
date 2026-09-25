@@ -1750,6 +1750,14 @@ Replace `resolve_maker_address` with:
     }
 ```
 
+Also update the doc comment on `Clob::sign_order` to "Sign an order for the configured account's
+signing target (see `Account::sign_order`)."
+
+In the `place_order_as_a_session_key_posts_the_session_envelope_under_the_eoa` test, strengthen the
+signature check so it proves the envelope names the session EOA that signed: keep the regex matcher,
+and add a `Matcher::Regex` for `"signature":"0x000000000000000000000000f39fd6e51aad88f6f4ce6ab8827279cfffb92266`
+(twelve zero bytes then the lowercase signing EOA, which is how the session envelope begins).
+
 - [ ] **Step 4: Run the whole mock suite**
 
 Run: `cargo test -p polyoxide-clob --all-features --test mock_api`
@@ -2366,6 +2374,11 @@ account), the L2 API credentials, and what it signs for (a [`SigningTarget`]). T
 EOA; chain [`Account::with_target`] to change that. An L2-only account has no loader and is built
 with [`Account::l2_only`]." Change the `address()` doc to: "The signing key's EOA address. The order
 maker comes from `target().maker(address())`, which differs from this for proxy and Deposit Wallet targets."
+
+Also in `mod.rs`, give `Account::sign_order` an `# Errors` section listing its four validation
+failures: an L2-only account; a type-3 order on a non-Deposit-Wallet target; a non-type-3 order on
+a Deposit Wallet target; a maker or signer that is not the target wallet. Use the term
+"session-signer envelope" (as `eip712.rs` does) rather than "wrapper" throughout `mod.rs`.
 
 In `polyoxide-clob/src/types.rs`, replace the `Poly1271` variant's doc comment with:
 
