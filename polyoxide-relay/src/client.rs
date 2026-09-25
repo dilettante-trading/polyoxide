@@ -1541,6 +1541,9 @@ impl RelayClient {
             neg_risk,
         );
         if estimate_gas {
+            // Refuse a misconfigured client before the RPC round trip, not after it.
+            self.deposit_wallet_factory()?;
+            self.account.as_ref().ok_or(RelayError::MissingSigner)?;
             self.estimate_deposit_wallet_redemption_gas(&call).await?;
         }
         let tx = SafeTransaction {
@@ -2274,6 +2277,45 @@ mod tests {
 
     // Well-known test key: anvil/hardhat default #0
     const TEST_KEY: &str = "ac0974bec39a17e36ba4a6b4d238ff944bacb478cbed5efcae784d7bf4f2ff80";
+
+    #[tokio::test]
+    async fn deposit_wallet_redemption_checks_the_client_before_simulating() {
+        // Amoy has no Deposit Wallet factory. With `estimate_gas`, the client checks
+        // must refuse before either the RPC simulation or the relayer nonce fetch.
+        let mut server = mockito::Server::new_async().await;
+        let rpc = server
+            .mock("POST", "/")
+            .match_query(mockito::Matcher::Any)
+            .expect(0)
+            .create_async()
+            .await;
+        let params = server
+            .mock("GET", "/v1/account/transactions/params")
+            .match_query(mockito::Matcher::Any)
+            .expect(0)
+            .create_async()
+            .await;
+        let account = crate::BuilderAccount::new(TEST_KEY, None).unwrap();
+        let mut client = RelayClient::builder()
+            .unwrap()
+            .url(&server.url())
+            .unwrap()
+            .chain_id(80002)
+            .with_account(account)
+            .wallet_type(WalletType::DepositWallet)
+            .deposit_wallet(address!("Bc0fF067b7740Eff76C1ca93c875Ba6B890d6B50"))
+            .build()
+            .unwrap();
+        client.contract_config.rpc_url = Box::leak(server.url().into_boxed_str());
+        let err = client
+            .submit_deposit_wallet_redemption(B256::ZERO, false, true)
+            .await
+            .unwrap_err()
+            .to_string();
+        assert!(err.contains("not supported on this chain"), "{err}");
+        rpc.assert_async().await;
+        params.assert_async().await;
+    }
 
     fn test_client_with_account() -> RelayClient {
         let account = crate::BuilderAccount::new(TEST_KEY, None).unwrap();

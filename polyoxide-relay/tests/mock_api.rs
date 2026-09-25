@@ -1494,6 +1494,78 @@ async fn submit_deposit_wallet_redemption_redeems_through_the_collateral_adapter
 }
 
 #[tokio::test]
+async fn submit_deposit_wallet_redemption_redeems_a_neg_risk_market_through_the_neg_risk_adapter() {
+    let v = relay_vectors();
+    let mut server = Server::new_async().await;
+    let params = server
+        .mock("GET", "/v1/account/transactions/params")
+        .match_query(Matcher::AllOf(vec![
+            Matcher::UrlEncoded(
+                "address".into(),
+                "0xf39Fd6e51aad88F6F4ce6aB8827279cffFb92266".into(),
+            ),
+            Matcher::UrlEncoded("type".into(), "WALLET".into()),
+        ]))
+        .with_status(200)
+        .with_header("content-type", "application/json")
+        .with_body(r#"{"address":"0xf39Fd6e51aad88F6F4ce6aB8827279cffFb92266","nonce":"9"}"#)
+        .create_async()
+        .await;
+    // The neg-risk batch's call (neg-risk collateral adapter, pUSD collateral,
+    // condition, index sets [1, 2]) pins the target and calldata in full.
+    let fixture_call = &v["redeem_neg_risk_batch"]["calls"][0];
+    let submit = server
+        .mock("POST", "/submit")
+        .match_header("POLY_BUILDER_API_KEY", "builder-key")
+        .match_body(Matcher::AllOf(vec![
+            Matcher::PartialJsonString(format!(
+                r#"{{"type":"WALLET","nonce":"9","metadata":"","depositWalletParams":{{"depositWallet":"{}","calls":[{{"target":"{}","value":"0","data":"{}"}}]}}}}"#,
+                v["wallet"].as_str().unwrap(),
+                fixture_call["target"].as_str().unwrap(),
+                fixture_call["data"].as_str().unwrap(),
+            )),
+            Matcher::Regex(r#""signature":"0x[0-9a-f]{130}""#.into()),
+        ]))
+        .with_status(200)
+        .with_header("content-type", "application/json")
+        .with_body(r#"{"transactionID":"tx-15","state":"STATE_NEW"}"#)
+        .create_async()
+        .await;
+
+    let client = deposit_wallet_client(&server);
+    let resp = client
+        .submit_deposit_wallet_redemption(redemption_condition(), true, false)
+        .await
+        .unwrap();
+    assert_eq!(resp.transaction_id, "tx-15");
+    assert_eq!(
+        fixture_call["target"].as_str().unwrap(),
+        "0xadA2005600Dec949baf300f4C6120000bDB6eAab"
+    );
+    params.assert_async().await;
+    submit.assert_async().await;
+}
+
+#[tokio::test]
+async fn estimate_redemption_gas_on_a_deposit_wallet_client_is_refused_before_io() {
+    // Refused before the RPC provider is even built, so no mock is needed.
+    let server = Server::new_async().await;
+    let client = deposit_wallet_client(&server);
+    let err = client
+        .estimate_redemption_gas([0u8; 32], vec![alloy::primitives::U256::from(1)])
+        .await
+        .unwrap_err()
+        .to_string();
+    let gasless = client
+        .submit_gasless_redemption([0u8; 32], vec![])
+        .await
+        .unwrap_err()
+        .to_string();
+    assert!(err.contains("submit_deposit_wallet_redemption"), "{err}");
+    assert_eq!(err, gasless);
+}
+
+#[tokio::test]
 async fn submit_gasless_redemption_on_a_deposit_wallet_client_is_refused_before_io() {
     let mut server = Server::new_async().await;
     let params = server
