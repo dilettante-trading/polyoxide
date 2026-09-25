@@ -596,7 +596,7 @@ Append inside the existing `#[cfg(test)] mod tests` in `polyoxide-clob/src/accou
     #[test]
     fn new_account_targets_its_own_eoa() {
         let account = Account::new(TEST_KEY, creds()).unwrap();
-        assert_eq!(*account.target(), SigningTarget::Eoa);
+        assert_eq!(account.target(), SigningTarget::Eoa);
         assert_eq!(account.address(), TEST_ADDR);
     }
 
@@ -689,10 +689,13 @@ Add these methods to `impl Account`, directly after `new`:
     }
 
     /// What this account signs orders for.
-    pub fn target(&self) -> &SigningTarget {
-        &self.target
+    pub fn target(&self) -> SigningTarget {
+        self.target
     }
 ```
+
+Also in `polyoxide-clob/src/account/target.rs`, in the doc comment on `SigningTarget`, change the plain text
+`Account::with_target` to the intra-doc link `[`crate::Account::with_target`]`, which now resolves.
 
 - [ ] **Step 4: Run the tests to verify they pass**
 
@@ -702,7 +705,7 @@ Expected: all pass, including the four new ones.
 - [ ] **Step 5: Commit**
 
 ```bash
-git add polyoxide-clob/src/account/mod.rs
+git add polyoxide-clob/src/account/mod.rs polyoxide-clob/src/account/target.rs
 git commit -m "feat(clob): Account::with_signer, Account::l2_only and a signing target"
 ```
 
@@ -1485,6 +1488,32 @@ async fn place_order_as_a_session_key_posts_the_session_envelope_under_the_eoa()
 }
 
 #[tokio::test]
+async fn create_order_rejects_a_non_type3_override_on_a_deposit_wallet_account_without_network_io() {
+    let mut server = Server::new_async().await;
+    let neg_risk_mock = server.mock("GET", "/neg-risk").expect(0).create_async().await;
+    let tick_size_mock = server.mock("GET", "/tick-size").expect(0).create_async().await;
+
+    let clob = deposit_wallet_clob(&server, polyoxide_clob::DepositWalletRole::Owner);
+    let params = polyoxide_clob::CreateOrderParams {
+        token_id: "0xtoken".into(),
+        price: 0.55,
+        size: 100.0,
+        side: polyoxide_clob::OrderSide::Buy,
+        order_type: polyoxide_clob::OrderKind::Gtc,
+        post_only: false,
+        expiration: None,
+        funder: None,
+        signature_type: Some(SignatureType::Eoa),
+    };
+
+    let err = clob.create_order(&params, None).await.unwrap_err().to_string();
+    assert!(err.contains("signs only signature type 3"), "{err}");
+
+    neg_risk_mock.assert_async().await;
+    tick_size_mock.assert_async().await;
+}
+
+#[tokio::test]
 async fn l2_only_account_cannot_create_orders() {
     let server = Server::new_async().await;
     let creds = Credentials {
@@ -1521,8 +1550,8 @@ The `960` in the regex is 480 bytes of session envelope as hex. `OrderResponse` 
 
 - [ ] **Step 2: Run the tests to verify they fail**
 
-Run: `cargo test -p polyoxide-clob --all-features --test mock_api deposit_wallet l2_only type3_override`
-Expected: the type-3 override test fails on the message text; the Deposit Wallet test fails because `maker` is the EOA; the L2-only test fails because `create_order` proceeds to fetch metadata.
+Run: `cargo test -p polyoxide-clob --all-features --test mock_api deposit_wallet l2_only override`
+Expected: the type-3 override test fails on the message text; the non-type-3 override test fails because the order is built; the Deposit Wallet test fails because `maker` is the EOA; the L2-only test fails because `create_order` proceeds to fetch metadata.
 
 - [ ] **Step 3: Drive `create_order` from the target**
 
@@ -1544,9 +1573,9 @@ Replace `resolve_maker_address` with:
 
 ```rust
     /// The `signatureType` an order will carry: the per-call override, else the
-    /// account's target. A type-3 override on an account that does not target a
-    /// Deposit Wallet is refused here, before any I/O, since nothing could sign it.
-    /// An L2-only account is refused for the same reason.
+    /// account's target. Refused here, before any I/O, because nothing could sign
+    /// the result: a type-3 override on an account that does not target a Deposit
+    /// Wallet, any non-type-3 override on one that does, and an L2-only account.
     fn effective_signature_type(
         override_type: Option<SignatureType>,
         account: &Account,
@@ -1556,14 +1585,19 @@ Replace `resolve_maker_address` with:
                 "this account is L2-only (no signing key) and cannot create orders",
             ));
         }
-        let signature_type = override_type.unwrap_or_else(|| account.target().signature_type());
-        if signature_type == SignatureType::Poly1271 && account.target().deposit_wallet().is_none() {
-            return Err(ClobError::validation(
+        let target = account.target();
+        let signature_type = override_type.unwrap_or_else(|| target.signature_type());
+        match (signature_type == SignatureType::Poly1271, target.deposit_wallet().is_some()) {
+            (true, false) => Err(ClobError::validation(
                 "signature type 3 (Poly1271) needs an account built with \
                  SigningTarget::DepositWallet; a per-call override cannot supply the wallet",
-            ));
+            )),
+            (false, true) => Err(ClobError::validation(format!(
+                "this account targets a Deposit Wallet, which signs only signature type 3; \
+                 a per-call override to {signature_type} cannot be signed"
+            ))),
+            _ => Ok(signature_type),
         }
-        Ok(signature_type)
     }
 
     /// Resolve the maker address from the per-call funder, the account's target,
@@ -2204,7 +2238,7 @@ pub struct SessionSigners {
 
 Correct the doc comment on `update_balance_allowance` to read `signature_type` (optional): `0` = EOA, `1` = POLY_PROXY, `2` = POLY_GNOSIS_SAFE, `3` = Deposit Wallet.
 
-In `polyoxide-clob/src/client.rs`, in `account_api()`, add `target: *account.target(),` to the `AccountApi { .. }` literal.
+In `polyoxide-clob/src/client.rs`, in `account_api()`, add `target: account.target(),` to the `AccountApi { .. }` literal.
 
 In `polyoxide-clob/src/lib.rs`, inside the `pub use api::{ ... }` block starting at line 108, add `SessionSigner, SessionSigners` to its `account::{ ... }` list (the one that already lists `BalanceAllowanceResponse`), and add a new line `pub use polyoxide_core::SessionSignerScope;` after it.
 
