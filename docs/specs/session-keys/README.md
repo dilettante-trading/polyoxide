@@ -1,10 +1,12 @@
 # Deposit Wallets and session keys
 
 **There is no machine-readable mirror for this surface.** Polymarket's published
-OpenAPI documents (`../clob/openapi.yaml`, `../relay/openapi.yaml`) do not contain
-it: `signatureType` still enumerates 0–2, and none of `/v1/user/session-signers`,
-`/v1/session-signers/*`, `/v1/account/transactions/params` or
-`/v1/account/transactions/{id}` appears. `nightly-schema.yml` therefore has nothing
+OpenAPI documents (`../clob/openapi.yaml`, `../relay/openapi.yaml`) barely touch it.
+The relay mirror documents only `GET /deployed?type=WALLET`, and its `/submit`
+`type` enumerates `SAFE` and `PROXY` only. The CLOB mirror's `signatureType` still
+enumerates 0–2. None of `/v1/user/session-signers`, `/v1/session-signers/*`,
+`/v1/account/transactions/params` or `/v1/account/transactions/{id}` appears.
+`nightly-schema.yml` therefore has nothing
 to diff and deliberately excludes this directory (see the "Deliberately absent"
 comment in the workflow). This file is the contract record; [OBSERVED.md](OBSERVED.md)
 beside it records what the official SDKs do that the prose pages do not say.
@@ -34,7 +36,8 @@ Read on 2026-09-25:
   or after 2026-05-04. It is the `maker` and `signer` of every order it places. Legacy
   Proxy and Safe accounts cannot use session keys.
 - **Owner.** The EOA the wallet was derived from. It signs orders under signature type 3
-  and signs every relayer batch (approvals, redemption, session-key management).
+  and relayer batches, and it is the only key that can sign session-key management
+  batches.
 - **Session key.** A fresh EOA the owner authorizes on the wallet contract. It can sign
   orders and relayer batches for the wallet within its scopes; it cannot withdraw and
   cannot manage other session keys.
@@ -56,19 +59,23 @@ an ERC-7739 `TypedDataSign` envelope:
    verifyingContract, salt }` with `contents` = the V2 `Order`, `name = "DepositWallet"`,
    `version = "1"`, `chainId = 137`, `verifyingContract` = the Deposit Wallet,
    `salt = bytes32(0)`. The wallet's own domain rides *inside the message*; the
-   exchange's is the signing domain. Swapping them produces a signature the venue
-   rejects with no useful error.
+   exchange's is the signing domain. Swapping them produces a different digest, so
+   the signature cannot verify for the wallet; `swapping_the_two_domains_changes_the_digest`
+   in `eip712.rs` proves the fixture tells the two layouts apart.
 3. `inner = sign(digest)`.
 4. `wrapped = inner ‖ appDomainSeparator ‖ contentsHash ‖ bytes(ORDER_TYPE) ‖ uint16(len(ORDER_TYPE))`,
    where `appDomainSeparator` is the exchange domain separator, `contentsHash` the
    `Order` struct hash, and `ORDER_TYPE` the 186-byte V2 type string.
 5. Session key only: `abi.encode(bytes32(leftPad(session_eoa)), bytes32(0), bytes(wrapped)) ‖ 0x6492…6492`
-   (thirty-two bytes of `6492`).
+   (`0x6492` repeated 16 times, 32 bytes).
 
 The owner signs steps 1–4. py-sdk pins the step-2 digest for a fixed fixture
 (`0x1b9566eedd9589a73275df23a3a9d9e2e9897e76d31cd46d436f1b824d161b33`); polyoxide
-pins the same digest in `polyoxide-clob/src/core/eip712.rs` and the full wrapped
-bytes in `polyoxide-clob/tests/fixtures/session_keys/order_vectors.json`.
+pins the same digest as `v1_exchange.envelope_digest` in
+`polyoxide-clob/tests/fixtures/session_keys/order_vectors.json`, alongside the
+full wrapped bytes. `envelope_digest_matches_py_sdk_for_both_exchanges` in
+`polyoxide-clob/src/core/eip712.rs` checks it, and the capture script refuses to
+write a fixture whose digest differs.
 
 ## L1 auth (creating and deriving API credentials)
 
@@ -113,8 +120,9 @@ EIP-712, no ERC-7739 layer. A session key's signature is wrapped in the same 649
 envelope as for orders. `deadline` must leave at least 10 s of validity on receipt; the
 SDKs use now + 600 s.
 
-**Session-key management.** `validUntil` = now + 4 315 h (the venue rejects other
-lifetimes). `scopes` is `["CLOB"]`, `["COMBOSRFQ"]`, both, or `["ALL"]` alone. The
+**Session-key management.** `validUntil` = now + 4 315 h (the session-keys page says
+other lifetimes are rejected; the tolerance is unverified). `scopes` is `["CLOB"]`,
+`["COMBOSRFQ"]`, both, or `["ALL"]` alone. The
 batch's one call targets the wallet itself with `authorizeSessionSigner(address,uint256)`
 or `revokeSessionSigner(address)` calldata. Authorization status ∈
 `SUBMITTED | REGISTRY_PENDING | REGISTERED | FAILED | SUPERSEDED | REPAIR_REQUIRED`;
@@ -151,8 +159,8 @@ answers for `WALLET` and `SAFE` only, so a Proxy is derived, never resolved.
 
 | Contract item | polyoxide | Pinned by |
 |---|---|---|
-| Type-3 order signing, owner or session key | `polyoxide_clob::Account::with_target(SigningTarget::DepositWallet { wallet, role })`, then `Clob::create_order` / `sign_order` / `post_order` | `polyoxide-clob/src/core/eip712.rs` (py-sdk golden digest), `tests/fixtures/session_keys/order_vectors.json` |
-| Any alloy signer, or no key at all | `Account::with_signer`, `Account::l2_only` | mock tests |
+| Type-3 order signing, owner or session key | `polyoxide_clob::Account::with_target(SigningTarget::DepositWallet { wallet, role })`, then `Clob::create_order` / `sign_order` / `post_order` | `tests/fixtures/session_keys/order_vectors.json` (py-sdk golden digest and wrapped bytes), checked in `polyoxide-clob/src/core/eip712.rs` |
+| Any alloy signer, or no key at all | `Account::with_signer`, `Account::l2_only` | unit and mock tests |
 | L1 auth with an external signer | `clob_auth_typed_data`, `Clob::create_api_key_with_signature`, `Clob::derive_api_key_with_signature` (signer recovered locally before any request) | `tests/fixtures/session_keys/clob_auth.json` |
 | Session-signers list | `AccountApi::list_session_signers` | mock tests |
 | Wallet derivation and resolution | `polyoxide_relay::wallet::{derive_safe, derive_proxy, derive_deposit_wallet_uups, derive_deposit_wallet_beacon}`, `RelayClient::resolve_wallet -> Option<WalletKind>` | `polyoxide-relay/tests/fixtures/session_keys/relay_vectors.json` (`derivations`) |
