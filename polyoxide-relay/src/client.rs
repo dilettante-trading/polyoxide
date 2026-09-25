@@ -17,14 +17,6 @@ use serde::Serialize;
 use std::time::{Duration, Instant};
 use url::Url;
 
-// Safe Init Code Hash from constants.py
-const SAFE_INIT_CODE_HASH: &str =
-    "2bce2127ff07fb632d16c8347c4ebf501f4841168bed00d9e6ef715ddb6fcecf";
-
-// From Polymarket Relayer Client
-const PROXY_INIT_CODE_HASH: &str =
-    "d21df8dc65880a8606f09fe0ce3df9b8869287ab0b058be05aa9e8af6330a00b";
-
 // Safe/Proxy wallet operation types
 const CALL_OPERATION: u8 = 0;
 const DELEGATE_CALL_OPERATION: u8 = 1;
@@ -374,18 +366,7 @@ impl RelayClient {
     }
 
     fn derive_safe_address(&self, owner: Address) -> Address {
-        let salt = keccak256(owner.abi_encode());
-        let init_code_hash = hex::decode(SAFE_INIT_CODE_HASH).expect("valid hex constant");
-
-        // CREATE2: keccak256(0xff ++ address ++ salt ++ keccak256(init_code))[12..]
-        let mut input = Vec::new();
-        input.push(0xff);
-        input.extend_from_slice(self.contract_config.safe_factory.as_slice());
-        input.extend_from_slice(salt.as_slice());
-        input.extend_from_slice(&init_code_hash);
-
-        let hash = keccak256(input);
-        Address::from_slice(&hash[12..])
+        crate::wallet::derive_safe(owner, &self.contract_config)
     }
 
     /// Derive the expected Safe wallet address for the configured account via CREATE2.
@@ -395,25 +376,7 @@ impl RelayClient {
     }
 
     fn derive_proxy_wallet(&self, owner: Address) -> Result<Address, RelayError> {
-        let proxy_factory = self.contract_config.proxy_factory.ok_or_else(|| {
-            RelayError::Api("Proxy wallet not supported on this chain".to_string())
-        })?;
-
-        // Salt = keccak256(encodePacked(["address"], [address]))
-        // encodePacked for address uses the 20 bytes directly.
-        let salt = keccak256(owner.as_slice());
-
-        let init_code_hash = hex::decode(PROXY_INIT_CODE_HASH).expect("valid hex constant");
-
-        // CREATE2: keccak256(0xff ++ factory ++ salt ++ init_code_hash)[12..]
-        let mut input = Vec::new();
-        input.push(0xff);
-        input.extend_from_slice(proxy_factory.as_slice());
-        input.extend_from_slice(salt.as_slice());
-        input.extend_from_slice(&init_code_hash);
-
-        let hash = keccak256(input);
-        Ok(Address::from_slice(&hash[12..]))
+        crate::wallet::derive_proxy(owner, &self.contract_config)
     }
 
     /// Derive the expected Proxy wallet address for the configured account via CREATE2.
@@ -1146,6 +1109,7 @@ impl RelayClientBuilder {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use alloy::primitives::address;
 
     #[tokio::test]
     async fn test_ping() {
@@ -1175,12 +1139,6 @@ mod tests {
     }
 
     #[test]
-    fn test_hex_constants_are_valid() {
-        hex::decode(SAFE_INIT_CODE_HASH).expect("SAFE_INIT_CODE_HASH should be valid hex");
-        hex::decode(PROXY_INIT_CODE_HASH).expect("PROXY_INIT_CODE_HASH should be valid hex");
-    }
-
-    #[test]
     fn test_multisend_selector_matches_expected() {
         // multiSend(bytes) selector = keccak256("multiSend(bytes)")[..4] = 0x8d80ff0a
         assert_eq!(MULTISEND_SELECTOR, [0x8d, 0x80, 0xff, 0x0a]);
@@ -1200,6 +1158,7 @@ mod tests {
         let config = config.unwrap();
         assert!(config.proxy_factory.is_some());
         assert!(config.relay_hub.is_some());
+        assert!(config.deposit_wallet_factory.is_some());
     }
 
     #[test]
@@ -1214,6 +1173,10 @@ mod tests {
         assert!(
             config.relay_hub.is_none(),
             "relay hub not supported on Amoy"
+        );
+        assert!(
+            config.deposit_wallet_factory.is_none(),
+            "deposit wallets not supported on Amoy"
         );
     }
 
@@ -1301,6 +1264,19 @@ mod tests {
             .with_account(account)
             .build()
             .unwrap()
+    }
+
+    #[test]
+    fn expected_wallets_for_anvil0_match_the_fixture() {
+        let client = test_client_with_account();
+        assert_eq!(
+            client.get_expected_proxy_wallet().unwrap(),
+            address!("365f0CA36Ae1f641E02fE3B7743673da42A13A70")
+        );
+        assert_eq!(
+            client.get_expected_safe().unwrap(),
+            address!("d93B25cb943D14d0d34FBaF01Fc93a0f8b5F6E47")
+        );
     }
 
     #[test]

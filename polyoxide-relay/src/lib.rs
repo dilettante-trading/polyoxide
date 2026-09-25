@@ -50,6 +50,11 @@ pub use types::{
     RelayerApiKey, RelayerTransaction, SafeTransaction, SafeTx, SubmitResponse, TransactionRequest,
     WalletType,
 };
+pub use wallet::{
+    derive_deposit_wallet_beacon, derive_deposit_wallet_uups, derive_proxy, derive_safe, WalletKind,
+};
+
+pub mod wallet;
 
 mod account;
 

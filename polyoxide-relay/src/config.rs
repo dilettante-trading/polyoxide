@@ -9,7 +9,15 @@ pub struct ContractConfig {
     pub safe_factory: Address,
     pub safe_multisend: Address,
     pub proxy_factory: Option<Address>,
+    /// Implementation behind every proxy wallet; part of the proxy CREATE2 init code.
+    pub proxy_implementation: Option<Address>,
     pub relay_hub: Option<Address>,
+    /// CREATE2 factory for Deposit Wallets (both generations).
+    pub deposit_wallet_factory: Option<Address>,
+    /// Implementation of the UUPS generation (wallets deployed before 2026-06-29).
+    pub deposit_wallet_implementation: Option<Address>,
+    /// Beacon of the ERC-1967 beacon generation (wallets deployed on or after 2026-06-29).
+    pub deposit_wallet_beacon: Option<Address>,
     pub rpc_url: &'static str,
 }
 
@@ -22,14 +30,24 @@ pub fn get_contract_config(chain_id: u64) -> Option<ContractConfig> {
             safe_factory: address!("aacFeEa03eb1561C4e67d661e40682Bd20E3541b"),
             safe_multisend: address!("A238CBeb142c10Ef7Ad8442C6D1f9E89e07e7761"),
             proxy_factory: Some(address!("aB45c5A4B0c941a2F231C04C3f49182e1A254052")),
+            proxy_implementation: Some(address!("44e999d5c2F66Ef0861317f9A4805AC2e90aEB4f")),
             relay_hub: Some(address!("D216153c06E857cD7f72665E0aF1d7D82172F494")),
+            deposit_wallet_factory: Some(address!("00000000000Fb5C9ADea0298D729A0CB3823Cc07")),
+            deposit_wallet_implementation: Some(address!(
+                "58CA52ebe0DadfdF531Cde7062e76746de4Db1eB"
+            )),
+            deposit_wallet_beacon: Some(address!("7A18EDfe055488A3128f01F563e5B479D92ffc3a")),
             rpc_url: "https://polygon.drpc.org",
         }),
         80002 => Some(ContractConfig {
             safe_factory: address!("aacFeEa03eb1561C4e67d661e40682Bd20E3541b"),
             safe_multisend: address!("A238CBeb142c10Ef7Ad8442C6D1f9E89e07e7761"),
             proxy_factory: None, // Proxy not supported on Amoy testnet
+            proxy_implementation: None,
             relay_hub: None,
+            deposit_wallet_factory: None,
+            deposit_wallet_implementation: None,
+            deposit_wallet_beacon: None,
             rpc_url: "https://rpc-amoy.polygon.technology",
         }),
         _ => None,
