@@ -1573,7 +1573,7 @@ async fn create_market_order_rejects_a_foreign_funder_on_a_deposit_wallet_accoun
     let book_mock = server.mock("GET", "/book").expect(0).create_async().await;
 
     let clob = deposit_wallet_clob(&server, polyoxide_clob::DepositWalletRole::Owner);
-    let params = polyoxide_clob::MarketOrderArgs {
+    let params = polyoxide_clob::types::MarketOrderArgs {
         token_id: "0xtoken".into(),
         amount: 10.0,
         side: polyoxide_clob::OrderSide::Buy,
