@@ -1182,8 +1182,9 @@ impl RelayClient {
     }
 
     /// [`RelayClient::authorize_session_signer_typed_data`] with an explicit
-    /// `valid_until`. The venue rejects lifetimes other than
-    /// [`crate::SESSION_KEY_LIFETIME_SECS`] from now; this exists for tests and for
+    /// `valid_until`. The session-keys page says other lifetimes are rejected
+    /// (tolerance unverified); the expected lifetime is
+    /// [`crate::SESSION_KEY_LIFETIME_SECS`] from now. This exists for tests and for
     /// the day the venue relaxes that.
     pub fn authorize_session_signer_typed_data_with_valid_until(
         &self,

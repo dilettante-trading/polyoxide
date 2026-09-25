@@ -3,7 +3,8 @@
 `README.md` beside this file is the contract as the prose pages and the official SDKs
 state it. This file records where the pages are silent, vague or contradicted by the
 SDKs, with a citation into `polymarket-client==0.11.0` (py-sdk) or
-`@polymarket/client` 0.11.0 (ts-sdk) for each. Nothing here has been observed against
+`@polymarket/client` 0.11.0 (ts-sdk) for each. Apart from row 10's `/deployed` probe
+(observed 2026-09-25 with unauthenticated GETs), nothing here has been observed against
 the live host: session-key management is gated per Builder API key and ours is not yet
 enabled (prader-rs #125). When the live round trip in
 `polyoxide-clob/tests/live_session_keys.rs` runs, move each confirmed row into

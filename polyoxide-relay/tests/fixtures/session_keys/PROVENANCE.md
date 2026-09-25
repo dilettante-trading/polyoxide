@@ -41,7 +41,9 @@ submitting `approval_batch` via its `session_signature`), and `authorization_bod
 `revoke_batch` respectively.
 
 `redeem_batch` and `redeem_submit_body` send the redemption to the Conditional Tokens
-contract, which py-sdk never does; they stay only to pin the `redeemPositions` encoder.
+contract, which py-sdk never does. `redeem_batch` stays to pin the `redeemPositions`
+encoder; `redeem_submit_body` is retained only for byte stability of the fixture and is
+not consumed by any test.
 `redeem_adapter_batch` and `redeem_neg_risk_batch` carry the same calldata to the targets
 py-sdk actually uses for a Deposit Wallet (`clients/secure.py` `redeem_positions`, via
 `normalize_market_position_context`): the collateral adapter `0xAdA100Db00Ca00073811820692005400218FcE1f` for a
