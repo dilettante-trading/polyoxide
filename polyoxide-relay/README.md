@@ -188,6 +188,40 @@ let response = client.execute(vec![tx], None).await?;
 # }
 ```
 
+### Deposit Wallets
+
+```rust
+use polyoxide_relay::{RelayClient, WalletKind, WalletType};
+
+# use polyoxide_relay::{BuilderAccount, BuilderConfig};
+# async fn doctest() -> Result<(), Box<dyn std::error::Error>> {
+# let config = BuilderConfig::new("key".into(), "secret".into(), None);
+# let account = BuilderAccount::new("0xprivatekey...", Some(config))?;
+let owner = account.address();
+// Which wallet does this key own? Probes the relayer for both Deposit Wallet
+// generations and the Safe.
+let probe = RelayClient::builder()?.build()?;
+let wallet = match probe.resolve_wallet(owner).await? {
+    Some(WalletKind::DepositWallet(address)) => address,
+    other => return Err(format!("not a Deposit Wallet: {other:?}").into()),
+};
+
+let client = RelayClient::builder()?
+    .with_account(account)
+    .wallet_type(WalletType::DepositWallet)
+    .deposit_wallet(wallet)
+    .build()?;
+
+// The four approvals a fresh Deposit Wallet needs before trading, in one batch.
+let calls = client.deposit_wallet_trading_approvals()?;
+let nonce = client.get_execute_params(owner, WalletType::DepositWallet).await?;
+let deadline = polyoxide_core::current_timestamp() + polyoxide_relay::DEFAULT_BATCH_DEADLINE_SECS;
+let typed_data = client.deposit_wallet_batch_typed_data(wallet, &calls, nonce, deadline);
+# let _ = typed_data;
+# Ok(())
+# }
+```
+
 ### Query Operations (no auth required)
 
 ```rust

@@ -1192,3 +1192,119 @@ async fn revoke_session_signer_refuses_a_session_key_role_before_io() {
     params.assert_async().await;
     submit.assert_async().await;
 }
+
+// ── Deposit Wallet redemption ─────────────────────────────────
+
+#[tokio::test]
+async fn redeem_typed_data_and_submit_reproduce_the_py_sdk_batch() {
+    let v = relay_vectors();
+    let mut server = Server::new_async().await;
+    let mock = server
+        .mock("POST", "/submit")
+        .match_header("POLY_BUILDER_API_KEY", "builder-key")
+        .match_body(Matcher::Json(v["redeem_submit_body"].clone()))
+        .with_status(200)
+        .with_header("content-type", "application/json")
+        .with_body(r#"{"transactionID":"tx-12","state":"STATE_NEW"}"#)
+        .create_async()
+        .await;
+
+    let client = deposit_wallet_client(&server);
+    let wallet: alloy::primitives::Address = v["wallet"].as_str().unwrap().parse().unwrap();
+    let condition: alloy::primitives::B256 =
+        "0x1171bfba0ad9386688133910593527fe77ce5406a7ac2c9a3552ab5471c1ac51"
+            .parse()
+            .unwrap();
+    let index_sets = [
+        alloy::primitives::U256::from(1),
+        alloy::primitives::U256::from(2),
+    ];
+    let (typed, calls) = client.redeem_typed_data(wallet, condition, &index_sets, 6, 1800000600);
+    assert_eq!(typed, v["redeem_batch"]["typed_data"]);
+    let resp = client
+        .submit_redemption_with_signature(
+            wallet,
+            &calls,
+            6,
+            1800000600,
+            v["redeem_batch"]["signature"].as_str().unwrap(),
+        )
+        .await
+        .unwrap();
+    assert_eq!(resp.transaction_id, "tx-12");
+    mock.assert_async().await;
+}
+
+#[tokio::test]
+async fn submit_gasless_redemption_on_a_deposit_wallet_redeems_pusd_through_the_wallet_batch() {
+    let v = relay_vectors();
+    let mut server = Server::new_async().await;
+    let params = server
+        .mock("GET", "/v1/account/transactions/params")
+        .match_query(Matcher::AllOf(vec![
+            Matcher::UrlEncoded(
+                "address".into(),
+                "0xf39Fd6e51aad88F6F4ce6aB8827279cffFb92266".into(),
+            ),
+            Matcher::UrlEncoded("type".into(), "WALLET".into()),
+        ]))
+        .with_status(200)
+        .with_header("content-type", "application/json")
+        .with_body(r#"{"address":"0xf39Fd6e51aad88F6F4ce6aB8827279cffFb92266","nonce":"6"}"#)
+        .create_async()
+        .await;
+    // The fixture's call is exactly this redemption (pUSD collateral, condition,
+    // index sets [1, 2]), so its calldata is pinned in full. The deadline is now +
+    // 600 s, so the signature is pinned only by shape.
+    let fixture_call = &v["redeem_submit_body"]["depositWalletParams"]["calls"][0];
+    let submit = server
+        .mock("POST", "/submit")
+        .match_header("POLY_BUILDER_API_KEY", "builder-key")
+        .match_body(Matcher::AllOf(vec![
+            Matcher::PartialJsonString(format!(
+                r#"{{"type":"WALLET","from":"0xf39Fd6e51aad88F6F4ce6aB8827279cffFb92266","to":"{}","nonce":"6","metadata":"","depositWalletParams":{{"depositWallet":"{}","calls":[{{"target":"0x4D97DCd97eC945f40cF65F87097ACe5EA0476045","value":"0","data":"{}"}}]}}}}"#,
+                v["config"]["deposit_wallet_factory"].as_str().unwrap(),
+                v["wallet"].as_str().unwrap(),
+                fixture_call["data"].as_str().unwrap(),
+            )),
+            Matcher::Regex(
+                r#""data":"0x01b7037c000000000000000000000000c011a7e12a19f7b1f670d46f03b03f3342e82dfb"#
+                    .into(),
+            ),
+            Matcher::Regex(r#""signature":"0x[0-9a-f]{130}""#.into()),
+            Matcher::Regex(r#""deadline":"\d{10}""#.into()),
+        ]))
+        .with_status(200)
+        .with_header("content-type", "application/json")
+        .with_body(r#"{"transactionID":"tx-13","state":"STATE_NEW"}"#)
+        .create_async()
+        .await;
+    let legacy_nonce = server
+        .mock("GET", "/nonce")
+        .match_query(Matcher::Any)
+        .expect(0)
+        .create_async()
+        .await;
+
+    let client = deposit_wallet_client(&server);
+    let condition: [u8; 32] = alloy::primitives::hex::decode(
+        "1171bfba0ad9386688133910593527fe77ce5406a7ac2c9a3552ab5471c1ac51",
+    )
+    .unwrap()
+    .try_into()
+    .unwrap();
+    let resp = client
+        .submit_gasless_redemption(
+            condition,
+            vec![
+                alloy::primitives::U256::from(1),
+                alloy::primitives::U256::from(2),
+            ],
+        )
+        .await
+        .unwrap();
+    assert_eq!(resp.transaction_id, "tx-13");
+    params.assert_async().await;
+    submit.assert_async().await;
+    legacy_nonce.assert_async().await;
+}

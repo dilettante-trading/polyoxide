@@ -30,9 +30,9 @@ pub const SESSION_SIGNER_REQUEST_TIMEOUT: std::time::Duration = std::time::Durat
 /// Reject malformed scope lists before any I/O: empty, containing an empty scope,
 /// duplicated, or `ALL` mixed with anything else.
 ///
-/// The venue and py-sdk refuse an empty list, an empty scope and `ALL` alongside
-/// other scopes. Duplicates are rejected here, client-side only. Compares on the
-/// wire spelling, so `Other("ALL")` counts as `ALL`.
+/// py-sdk refuses an empty list, an empty scope and `ALL` alongside other scopes.
+/// Duplicates are rejected here, client-side only. Compares on the wire spelling,
+/// so `Other("ALL")` counts as `ALL`.
 pub fn validate_scopes(scopes: &[SessionSignerScope]) -> Result<(), RelayError> {
     if scopes.is_empty() {
         return Err(RelayError::Api(

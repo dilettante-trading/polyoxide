@@ -13,7 +13,7 @@ use crate::types::{
 use crate::wallet::WalletKind;
 use alloy::hex;
 use alloy::network::TransactionBuilder;
-use alloy::primitives::{address, keccak256, Address, Bytes, U256};
+use alloy::primitives::{address, keccak256, Address, Bytes, B256, U256};
 use alloy::providers::{Provider, ProviderBuilder};
 use alloy::rpc::types::TransactionRequest;
 use alloy::sol_types::{Eip712Domain, SolCall, SolStruct, SolValue};
@@ -1327,10 +1327,81 @@ impl RelayClient {
         Ok(calls)
     }
 
+    /// The single `redeemPositions` call a Deposit Wallet redemption batch carries:
+    /// the Conditional Tokens contract, pUSD collateral, the root parent collection.
+    fn deposit_wallet_redemption_call(
+        condition_id: B256,
+        index_sets: &[U256],
+    ) -> DepositWalletCall {
+        DepositWalletCall {
+            target: address!("4D97DCd97eC945f40cF65F87097ACe5EA0476045"),
+            value: U256::ZERO,
+            data: crate::deposit_wallet::redeem_positions_calldata(
+                address!("C011a7E12a19f7B1f670d46F03B03f3342E82DFB"),
+                condition_id,
+                index_sets,
+            )
+            .into(),
+        }
+    }
+
+    /// The redemption batch for a Deposit Wallet, for an external signer.
+    ///
+    /// Redeems `condition_id`'s `index_sets` on the Conditional Tokens contract with
+    /// pUSD as collateral (the Deposit Wallet collateral, not the legacy USDC that
+    /// Safe and Proxy redemptions use). Returns the typed data and the calls to pass to
+    /// [`RelayClient::submit_redemption_with_signature`]. `nonce` comes from
+    /// [`RelayClient::get_execute_params`] with [`WalletType::DepositWallet`].
+    ///
+    /// The addresses are Polygon mainnet's.
+    pub fn redeem_typed_data(
+        &self,
+        wallet: Address,
+        condition_id: B256,
+        index_sets: &[U256],
+        nonce: u64,
+        deadline: u64,
+    ) -> (serde_json::Value, Vec<DepositWalletCall>) {
+        let calls = vec![Self::deposit_wallet_redemption_call(
+            condition_id,
+            index_sets,
+        )];
+        (
+            self.deposit_wallet_batch_typed_data(wallet, &calls, nonce, deadline),
+            calls,
+        )
+    }
+
+    /// Submit a redemption batch signed elsewhere by this client's account.
+    ///
+    /// Pair with [`RelayClient::redeem_typed_data`]. Sends `metadata: ""`, as py-sdk
+    /// does for every Deposit Wallet submission.
+    pub async fn submit_redemption_with_signature(
+        &self,
+        wallet: Address,
+        calls: &[DepositWalletCall],
+        nonce: u64,
+        deadline: u64,
+        signature: &str,
+    ) -> Result<SubmitResponse, RelayError> {
+        self.submit_deposit_wallet_batch(
+            wallet,
+            calls,
+            nonce,
+            deadline,
+            signature,
+            Some(String::new()),
+        )
+        .await
+    }
+
     /// Estimate gas required for a redemption transaction.
     ///
     /// Returns the estimated gas limit with relayer overhead and safety buffer included.
-    /// Uses the default RPC URL configured for the current chain.
+    /// Uses the default RPC URL configured for the current chain. The simulated call
+    /// redeems against USDC for [`WalletType::Safe`] and [`WalletType::Proxy`] and
+    /// against pUSD for [`WalletType::DepositWallet`], matching what
+    /// [`RelayClient::submit_gasless_redemption`] sends.
     ///
     /// # Arguments
     ///
@@ -1374,10 +1445,12 @@ impl RelayClient {
             function redeemPositions(address collateral, bytes32 parentCollectionId, bytes32 conditionId, uint256[] indexSets);
         }
 
-        // 2. Setup constants
-        let collateral =
-            Address::parse_checksummed("0x2791Bca1f2de4661ED88A30C99A7a9449Aa84174", None)
-                .map_err(|e| RelayError::Api(format!("Invalid collateral address: {}", e)))?;
+        // 2. Setup constants: a Deposit Wallet holds pUSD, the legacy wallets USDC.
+        let collateral = match self.wallet_type {
+            WalletType::DepositWallet => address!("C011a7E12a19f7B1f670d46F03B03f3342E82DFB"),
+            _ => Address::parse_checksummed("0x2791Bca1f2de4661ED88A30C99A7a9449Aa84174", None)
+                .map_err(|e| RelayError::Api(format!("Invalid collateral address: {}", e)))?,
+        };
         let ctf_exchange =
             Address::parse_checksummed("0x4D97DCd97eC945f40cF65F87097ACe5EA0476045", None)
                 .map_err(|e| RelayError::Api(format!("Invalid CTF exchange address: {}", e)))?;
@@ -1427,6 +1500,10 @@ impl RelayClient {
     }
 
     /// Submit a gasless CTF position redemption without gas estimation.
+    ///
+    /// Collateral follows the wallet type: USDC for [`WalletType::Safe`] and
+    /// [`WalletType::Proxy`], pUSD for [`WalletType::DepositWallet`], whose redemption
+    /// goes out as a one-call Deposit Wallet batch signed by this client's account.
     pub async fn submit_gasless_redemption(
         &self,
         condition_id: [u8; 32],
@@ -1440,19 +1517,41 @@ impl RelayClient {
     ///
     /// When `estimate_gas` is true, simulates the redemption against the configured
     /// RPC endpoint to determine a safe gas limit before submission.
+    ///
+    /// On a [`WalletType::DepositWallet`] the redemption uses pUSD as collateral (Safe
+    /// and Proxy use the legacy USDC) and is submitted as a Deposit Wallet batch with
+    /// `metadata: ""`. That submission carries no gas limit, so `estimate_gas` then
+    /// only simulates the call, failing early if it would revert.
     pub async fn submit_gasless_redemption_with_gas_estimation(
         &self,
         condition_id: [u8; 32],
         index_sets: Vec<alloy::primitives::U256>,
         estimate_gas: bool,
     ) -> Result<SubmitResponse, RelayError> {
+        if self.wallet_type == WalletType::DepositWallet {
+            let call = Self::deposit_wallet_redemption_call(condition_id.into(), &index_sets);
+            if estimate_gas {
+                self.estimate_redemption_gas(condition_id, index_sets)
+                    .await?;
+            }
+            let tx = SafeTransaction {
+                to: call.target,
+                value: call.value,
+                data: call.data,
+                operation: CALL_OPERATION,
+            };
+            return self
+                .execute_deposit_wallet(vec![tx], Some(String::new()))
+                .await;
+        }
+
         // 1. Define the specific interface for redemption
         alloy::sol! {
             function redeemPositions(address collateral, bytes32 parentCollectionId, bytes32 conditionId, uint256[] indexSets);
         }
 
         // 2. Setup Constants
-        // USDC on Polygon
+        // USDC on Polygon: the Safe and Proxy collateral
         let collateral =
             Address::parse_checksummed("0x2791Bca1f2de4661ED88A30C99A7a9449Aa84174", None)
                 .map_err(|e| RelayError::Api(format!("Invalid address: {}", e)))?;
