@@ -115,7 +115,9 @@ Factory `0x00000000000Fb5C9ADea0298D729A0CB3823Cc07`. Wallets deployed before 20
 UUPS proxies (implementation `0x58CA52ebe0DadfdF531Cde7062e76746de4Db1eB`); later ones are
 ERC-1967 beacon proxies (beacon `0x7A18EDfe055488A3128f01F563e5B479D92ffc3a`). Both are
 CREATE2 from the factory with a salt derived from the owner. `GET /deployed?address=&type=WALLET`
-(no auth) says whether a candidate exists. py-sdk's `wallet.py` is the readable reference.
+(no auth) says whether a candidate exists; `type=SAFE` and `type=PROXY` ask the same of the
+Safe and the Proxy, so resolution probes four candidates. py-sdk's `wallet.py` is the
+readable reference.
 
 ## Design
 
@@ -175,8 +177,9 @@ target, and a non-type-3 order against a Deposit Wallet target.
   `derive_deposit_wallet_uups`, `derive_deposit_wallet_beacon` (the first two move out of
   `client.rs`), with the constants above on `ContractConfig`.
   `RelayClient::resolve_wallet(owner) -> WalletKind { DepositWallet(Address) | Safe(Address) | Proxy(Address) | None }`
-  derives all candidates, probes `/deployed` for the two Deposit Wallet candidates and the
-  Safe, and errors if more than one is deployed.
+  derives all candidates, probes `/deployed` for the two Deposit Wallet candidates, the
+  Safe and the Proxy (four candidates, the Proxy with `type=PROXY` as py-sdk sends it),
+  and errors if more than one is deployed.
 - `RelayClientBuilder::with_auth(AuthConfig)` for header auth with no `BuilderAccount`.
   The existing `AuthConfig::{Builder, RelayerApiKey}` is the `RelayerAuth::{Builder, UserKey}`
   enum prader's #126 asks for; it keeps its current name.

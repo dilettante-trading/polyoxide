@@ -283,7 +283,11 @@ async fn get_gasless_transaction_percent_encodes_the_id() {
 
 #[tokio::test]
 async fn resolve_wallet_probes_both_deposit_wallet_generations_and_the_safe() {
-    // Anvil #0: beacon 0xBc0f…, uups 0xdf8b…, safe 0xd93B… (relay_vectors.json).
+    // Anvil #0: beacon 0xBc0f…, uups 0xdf8b…, safe 0xd93B…, proxy 0x365f… (relay_vectors.json).
+    let proxy_address = relay_vectors()["derivations"]["anvil0"]["proxy"]
+        .as_str()
+        .unwrap()
+        .to_string();
     let mut server = Server::new_async().await;
     let beacon = server
         .mock("GET", "/deployed")
@@ -327,6 +331,17 @@ async fn resolve_wallet_probes_both_deposit_wallet_generations_and_the_safe() {
         .with_body(r#"{"deployed":false}"#)
         .create_async()
         .await;
+    let proxy = server
+        .mock("GET", "/deployed")
+        .match_query(Matcher::AllOf(vec![
+            Matcher::UrlEncoded("address".into(), proxy_address),
+            Matcher::UrlEncoded("type".into(), "PROXY".into()),
+        ]))
+        .with_status(200)
+        .with_header("content-type", "application/json")
+        .with_body(r#"{"deployed":false}"#)
+        .create_async()
+        .await;
 
     let client = client_unauthed(&server);
     let owner: alloy::primitives::Address = "0xf39Fd6e51aad88F6F4ce6aB8827279cffFb92266"
@@ -344,6 +359,7 @@ async fn resolve_wallet_probes_both_deposit_wallet_generations_and_the_safe() {
     beacon.assert_async().await;
     uups.assert_async().await;
     safe.assert_async().await;
+    proxy.assert_async().await;
 }
 
 #[tokio::test]
@@ -355,7 +371,7 @@ async fn resolve_wallet_refuses_two_deployed_wallets() {
         .with_status(200)
         .with_header("content-type", "application/json")
         .with_body(r#"{"deployed":true}"#)
-        .expect(3)
+        .expect(4)
         .create_async()
         .await;
 
@@ -377,7 +393,7 @@ async fn resolve_wallet_reports_none_when_nothing_is_deployed() {
         .with_status(200)
         .with_header("content-type", "application/json")
         .with_body(r#"{"deployed":false}"#)
-        .expect(3)
+        .expect(4)
         .create_async()
         .await;
 
@@ -387,6 +403,46 @@ async fn resolve_wallet_reports_none_when_nothing_is_deployed() {
         .unwrap();
     assert_eq!(client.resolve_wallet(owner).await.unwrap(), None);
     none.assert_async().await;
+}
+
+#[tokio::test]
+async fn resolve_wallet_reports_a_deployed_proxy() {
+    let v = relay_vectors();
+    let owner: alloy::primitives::Address = v["owner"].as_str().unwrap().parse().unwrap();
+    let proxy = v["derivations"]["anvil0"]["proxy"].as_str().unwrap();
+    let mut server = Server::new_async().await;
+    // Everything but the Proxy says "not deployed".
+    let others = server
+        .mock("GET", "/deployed")
+        .match_query(Matcher::AllOf(vec![Matcher::Regex(
+            "type=(WALLET|SAFE)".into(),
+        )]))
+        .with_status(200)
+        .with_header("content-type", "application/json")
+        .with_body(r#"{"deployed":false}"#)
+        .expect(3)
+        .create_async()
+        .await;
+    let proxy_mock = server
+        .mock("GET", "/deployed")
+        .match_query(Matcher::AllOf(vec![
+            Matcher::UrlEncoded("address".into(), proxy.into()),
+            Matcher::UrlEncoded("type".into(), "PROXY".into()),
+        ]))
+        .with_status(200)
+        .with_header("content-type", "application/json")
+        .with_body(r#"{"deployed":true}"#)
+        .expect(1)
+        .create_async()
+        .await;
+    let client = client_unauthed(&server);
+    let kind = client.resolve_wallet(owner).await.unwrap();
+    assert_eq!(
+        kind,
+        Some(polyoxide_relay::WalletKind::Proxy(proxy.parse().unwrap()))
+    );
+    others.assert_async().await;
+    proxy_mock.assert_async().await;
 }
 
 // ── Deposit Wallet execution ───────────────────────────────────
@@ -1161,6 +1217,47 @@ async fn authorize_session_signer_refuses_a_session_key_role_before_io() {
         .unwrap_err()
         .to_string();
     assert!(err.contains("managed by the wallet owner"), "{err}");
+    params.assert_async().await;
+    submit.assert_async().await;
+}
+
+#[tokio::test]
+async fn authorize_session_signer_refuses_relayer_api_key_auth_before_io() {
+    let v = relay_vectors();
+    let mut server = Server::new_async().await;
+    let params = server
+        .mock("GET", "/v1/account/transactions/params")
+        .match_query(Matcher::Any)
+        .expect(0)
+        .create_async()
+        .await;
+    let submit = server
+        .mock("POST", "/v1/session-signers/authorizations")
+        .match_query(Matcher::Any)
+        .expect(0)
+        .create_async()
+        .await;
+    let account =
+        BuilderAccount::with_relayer_api_key(TEST_PRIVATE_KEY, "rk-abc".into(), "0xabc123".into())
+            .unwrap();
+    let wallet: alloy::primitives::Address = v["wallet"].as_str().unwrap().parse().unwrap();
+    let client = RelayClient::builder()
+        .expect("builder")
+        .url(&server.url())
+        .expect("valid mock URL")
+        .with_account(account)
+        .wallet_type(polyoxide_relay::WalletType::DepositWallet)
+        .deposit_wallet(wallet)
+        .build()
+        .expect("build client");
+    let session: alloy::primitives::Address =
+        v["session_signer"].as_str().unwrap().parse().unwrap();
+    let err = client
+        .authorize_session_signer(session, vec![polyoxide_core::SessionSignerScope::Clob])
+        .await
+        .unwrap_err()
+        .to_string();
+    assert!(err.contains("Builder HMAC"), "{err}");
     params.assert_async().await;
     submit.assert_async().await;
 }

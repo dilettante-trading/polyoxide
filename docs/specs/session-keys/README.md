@@ -108,7 +108,7 @@ credentials, and with which `wallet`, is unverified (open item).
 | `POST /v1/session-signers/authorizations` | Builder HMAC only, plus `Idempotency-Key` | `{ walletAddress, sessionSignerAddress, scopes, validUntil, nonce, deadline, signature }` | `{ operationId, status, transactionHash, transactionId }` |
 | `POST /v1/session-signers/revocations` | Builder HMAC **or Relayer API key**, plus `Idempotency-Key` | `{ walletAddress, sessionSignerAddress, nonce, deadline, signature }` | `{ operationId, status, fenced, transactionId }` |
 | `GET /v1/account/transactions/{id}` | none | | `{ transaction_id, transaction_hash, state, error_msg }` |
-| `GET /deployed?address=<candidate>&type=WALLET` | none | | `{ deployed }` (also answers `type=SAFE`; **not** Proxy) |
+| `GET /deployed?address=<candidate>&type=WALLET` | none | | `{ deployed }`; the published spec enumerates `SAFE` and `WALLET`, py-sdk also sends `PROXY` |
 
 Every `nonce`, `deadline`, `value` and `validUntil` is a decimal string on the wire.
 `metadata` is always present, `""` by default, at most 500 characters.
@@ -152,8 +152,8 @@ Factory `0x00000000000Fb5C9ADea0298D729A0CB3823Cc07`. Wallets deployed before 20
 are UUPS proxies (implementation `0x58CA52ebe0DadfdF531Cde7062e76746de4Db1eB`); later
 ones are ERC-1967 beacon proxies (beacon `0x7A18EDfe055488A3128f01F563e5B479D92ffc3a`).
 Both are CREATE2 from the factory with a salt derived from the owner. Resolving which
-one an owner has means deriving both and asking `GET /deployed` for each; the relayer
-answers for `WALLET` and `SAFE` only, so a Proxy is derived, never resolved.
+one an owner has means deriving all four and asking `GET /deployed` for each;
+`resolve_wallet` does so (four requests).
 
 ## Where polyoxide implements it
 
@@ -163,7 +163,7 @@ answers for `WALLET` and `SAFE` only, so a Proxy is derived, never resolved.
 | Any alloy signer, or no key at all | `Account::with_signer`, `Account::l2_only` | unit and mock tests |
 | L1 auth with an external signer | `clob_auth_typed_data`, `Clob::create_api_key_with_signature`, `Clob::derive_api_key_with_signature` (signer recovered locally before any request) | `tests/fixtures/session_keys/clob_auth.json` |
 | Session-signers list | `AccountApi::list_session_signers` | mock tests |
-| Wallet derivation and resolution | `polyoxide_relay::wallet::{derive_safe, derive_proxy, derive_deposit_wallet_uups, derive_deposit_wallet_beacon}`, `RelayClient::resolve_wallet -> Option<WalletKind>` | `polyoxide-relay/tests/fixtures/session_keys/relay_vectors.json` (`derivations`) |
+| Wallet derivation and resolution | `polyoxide_relay::wallet::{derive_safe, derive_proxy, derive_deposit_wallet_uups, derive_deposit_wallet_beacon}`, `RelayClient::resolve_wallet -> Option<WalletKind>` over beacon, UUPS, Safe and Proxy | `polyoxide-relay/tests/fixtures/session_keys/relay_vectors.json` (`derivations`) |
 | Nonce and transaction poll | `RelayClient::get_execute_params`, `RelayClient::get_gasless_transaction`, `TransactionState` | mock tests |
 | Batch typed data, digest, session envelope, calldata | `polyoxide_relay::deposit_wallet::{batch_typed_data, batch_digest, wrap_session_signer, …_calldata}` | `relay_vectors.json` (five signed batches) |
 | Execute as owner or session key | `RelayClient::execute` with `WalletType::DepositWallet` and `RelayClientBuilder::{deposit_wallet, deposit_wallet_role}` | `relay_vectors.json` (`submit_body`, `session_submit_body`) |

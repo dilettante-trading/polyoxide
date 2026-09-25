@@ -155,6 +155,22 @@ fn deposit_wallet_metadata(metadata: Option<String>) -> Result<String, RelayErro
     Ok(metadata)
 }
 
+/// The session-signer authorization route, which accepts only Builder HMAC auth.
+const SESSION_SIGNER_AUTHORIZATIONS: &str = "v1/session-signers/authorizations";
+
+/// Refuse a relayer API key for a route that accepts only Builder HMAC. `path` is
+/// the route with its leading slash, as it appears in the error. Shared by
+/// `post_json` and the conveniences that must refuse before their own I/O, so the
+/// wording cannot drift between them.
+fn refuse_relayer_api_key(auth: &AuthConfig, path: &str) -> Result<(), RelayError> {
+    if matches!(auth, AuthConfig::RelayerApiKey(_)) {
+        return Err(RelayError::Api(format!(
+            "{path} requires Builder HMAC auth; configure the client with BuilderConfig"
+        )));
+    }
+    Ok(())
+}
+
 /// Whether a trading approval is an ERC-20 `approve` or an ERC-1155 `setApprovalForAll`.
 #[derive(Debug, Clone, Copy)]
 enum ApprovalKind {
@@ -480,8 +496,8 @@ impl RelayClient {
 
     /// Check whether a wallet of the given type is deployed (`GET /deployed?type=`).
     ///
-    /// The relayer answers for [`WalletType::Safe`] and [`WalletType::DepositWallet`];
-    /// a Proxy auto-deploys on first use and is not queryable here.
+    /// The published spec lists [`WalletType::Safe`] and [`WalletType::DepositWallet`];
+    /// py-sdk also sends [`WalletType::Proxy`], and so does [`Self::resolve_wallet`].
     pub async fn get_deployed_typed(
         &self,
         wallet: Address,
@@ -539,12 +555,13 @@ impl RelayClient {
 
     /// Find which account wallet `owner` has deployed.
     ///
-    /// Derives the beacon and UUPS Deposit Wallets and the Safe, asks `/deployed`
-    /// for each, and returns the one that exists, or `None` when nothing is
-    /// deployed. More than one deployed wallet is an error rather than a guess. A
-    /// Proxy wallet cannot be observed this way; see [`WalletKind`]. Costs up to
-    /// three requests against the relay bucket, so callers should cache the answer
-    /// rather than calling this on every use.
+    /// Derives the beacon and UUPS Deposit Wallets, the Safe and the Proxy, asks
+    /// `/deployed` for each, and returns the one that exists, or `None` when nothing
+    /// is deployed. More than one deployed wallet is an error rather than a guess.
+    /// The Proxy is asked with `type=PROXY`, as py-sdk does, although the published
+    /// spec omits it; see [`WalletKind`]. Costs up to four requests against the
+    /// relay bucket, so callers should cache the answer rather than calling this on
+    /// every use.
     pub async fn resolve_wallet(&self, owner: Address) -> Result<Option<WalletKind>, RelayError> {
         let cfg = &self.contract_config;
         let mut candidates: Vec<(WalletKind, WalletType)> = Vec::new();
@@ -564,6 +581,12 @@ impl RelayClient {
             WalletKind::Safe(crate::wallet::derive_safe(owner, cfg)),
             WalletType::Safe,
         ));
+        if cfg.proxy_factory.is_some() && cfg.proxy_implementation.is_some() {
+            candidates.push((
+                WalletKind::Proxy(crate::wallet::derive_proxy(owner, cfg)?),
+                WalletType::Proxy,
+            ));
+        }
 
         let mut found = Vec::new();
         for (kind, wallet_type) in candidates {
@@ -1191,7 +1214,7 @@ impl RelayClient {
         idempotency_key: &str,
     ) -> Result<SessionSignerAuthorizationResponse, RelayError> {
         self.post_json(
-            "v1/session-signers/authorizations",
+            SESSION_SIGNER_AUTHORIZATIONS,
             &request.body(signature),
             Self::idempotency_headers(idempotency_key)?,
             false,
@@ -1253,12 +1276,15 @@ impl RelayClient {
     ///
     /// Refused before any I/O for a client built with
     /// [`DepositWalletRole::SessionKey`]: session signers are managed by the owner.
+    /// Also refused before any I/O for a client authenticated with a relayer API
+    /// key: the authorization route accepts only Builder HMAC.
     pub async fn authorize_session_signer(
         &self,
         session_signer: Address,
         scopes: Vec<SessionSignerScope>,
     ) -> Result<SessionSignerAuthorizationResponse, RelayError> {
         let (wallet, owner) = self.session_signer_owner_context()?;
+        refuse_relayer_api_key(self.auth()?, &format!("/{SESSION_SIGNER_AUTHORIZATIONS}"))?;
         // Validate before fetching a nonce; the typed-data call below repeats it.
         crate::session_signers::validate_scopes(&scopes)?;
         let nonce = self
@@ -1689,10 +1715,8 @@ impl RelayClient {
         let body_str = serde_json::to_string(body)?;
         let path = format!("/{}", endpoint);
         let auth = self.auth()?;
-        if !allow_relayer_api_key && matches!(auth, AuthConfig::RelayerApiKey(_)) {
-            return Err(RelayError::Api(format!(
-                "{path} requires Builder HMAC auth; configure the client with BuilderConfig"
-            )));
+        if !allow_relayer_api_key {
+            refuse_relayer_api_key(auth, &path)?;
         }
         let mut attempt = 0u32;
 

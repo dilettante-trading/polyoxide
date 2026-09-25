@@ -200,7 +200,7 @@ use polyoxide_relay::{RelayClient, WalletKind, WalletType};
 # let account = BuilderAccount::new("0xprivatekey...", Some(config))?;
 let owner = account.address();
 // Which wallet does this key own? Probes the relayer for both Deposit Wallet
-// generations and the Safe.
+// generations, the Safe and the Proxy.
 let probe = RelayClient::builder()?.build()?;
 let wallet = match probe.resolve_wallet(owner).await? {
     Some(WalletKind::DepositWallet(address)) => address,

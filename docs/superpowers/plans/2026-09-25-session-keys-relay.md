@@ -1095,6 +1095,8 @@ git add polyoxide-relay/src/types.rs polyoxide-relay/src/client.rs polyoxide-rel
 git commit -m "feat(relay): WalletType::DepositWallet, v1 params and transaction routes, resolve_wallet"
 ```
 
+**Review amendment (2026-09-25, plan 3 Task 6):** py-sdk queries `/deployed?type=PROXY`, so `resolve_wallet` gained a Proxy candidate and `WalletKind::Proxy`; the "Proxy is not probed" decision above was based on the spec's enum alone.
+
 ---
 
 ### Task 5: The Deposit Wallet `Batch`, pinned to py-sdk
