@@ -118,8 +118,34 @@ enabled. Do this first, in parallel with the code.
     exist; add a Deposit Wallet fixture account (fresh Polymarket account, funded a few USDC)
     and a session-key round trip: authorize → derive session creds → place GTC → list from
     session key → list from owner key (records the visibility answer) → cancel → revoke.
-13. **Release** as 0.32.0 to crates.io. prader consumes crates.io only (path deps break
-    prader's CI signal per `docs/claude/polyoxide-upgrades.md`).
+13. **Release** as the next minor (0.33.0; 0.32.x shipped without this work) to
+    crates.io. prader consumes crates.io only (path deps break prader's CI signal per
+    `docs/claude/polyoxide-upgrades.md`).
+
+## Amendments 2026-09-25 (prader's ADR-0021 accepted; raw docs re-read)
+
+14. **Two Deposit Wallet generations.** Wallets deployed before 2026-06-29 are UUPS
+    proxies (factory `0x00000000000Fb5C9ADea0298D729A0CB3823Cc07`, implementation
+    `0x58CA52ebe0DadfdF531Cde7062e76746de4Db1eB`); later ones are ERC-1967 beacon proxies
+    (same factory, beacon `0x7A18EDfe055488A3128f01F563e5B479D92ffc3a`). The docs publish
+    only the beacon recipe (`trading/wallets-auth` → "Derive a Deposit Wallet Address");
+    the UUPS recipe is in `@polymarket/client` 0.11.0's bundle (`function Gn`, next to
+    `$n` for beacon, `jc` for Safe; constants under `walletDerivation`). Expose
+    `resolve_wallet(owner, &RelayClient) -> WalletKind { DepositWallet | Safe | Proxy |
+    None }`: derive all four, ask `GET /deployed?address=&type=WALLET` (no auth) per
+    Deposit Wallet candidate, error on two deployed. Keep the pure derivations `pub` for
+    fixture tests.
+15. **Relayer auth is an enum.** `/submit` and the transaction poll accept Builder HMAC
+    or the user's Relayer API key (`RELAYER_API_KEY` + `RELAYER_API_KEY_ADDRESS`, from
+    polymarket.com → Settings → API Keys). Model `RelayerAuth::Builder(triplet) |
+    UserKey { key, address }`; the session-signer endpoints take Builder only. Note the
+    published relayer OpenAPI does not list `/v1/session-signers/*` or
+    `/v1/account/transactions/params`; the docs page is their only contract.
+16. **Transaction state is public.** Expose the poll's `STATE_NEW | STATE_SUBMITTED |
+    STATE_CONFIRMED | STATE_FAILED | STATE_INVALID` as an enum prader can persist and
+    resume on: the venue allows five minutes for an authorization to broadcast and runs a
+    revocation's cancel-all asynchronously afterwards, so prader's completion is a job,
+    not a request.
 
 ## Interface prader consumes (the contract this design will cite)
 
