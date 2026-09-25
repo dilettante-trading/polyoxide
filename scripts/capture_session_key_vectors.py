@@ -210,7 +210,11 @@ def _derivations(signer: str, cfg) -> dict:
     }
 
 
-def _batch(signer, wallet: EvmAddress, calls, nonce: str, deadline: str, session: str) -> dict:
+def _batch(signer, wallet: EvmAddress, calls, nonce: str, deadline: str) -> dict:
+    """Every batch fixture in this script is signed for the same session signer, Anvil
+    address #1 (`ANVIL_ADDR_1`) — there is nothing left to parameterize, so `_batch` uses
+    the constant directly rather than threading an argument that is always the same value.
+    """
     typed_data = build_deposit_wallet_typed_data(
         wallet=wallet, calls=calls, nonce=nonce, deadline=deadline, chain_id=CHAIN_ID
     )
@@ -222,7 +226,7 @@ def _batch(signer, wallet: EvmAddress, calls, nonce: str, deadline: str, session
         "digest": digest(typed_data),
         "signature": signature,
         "session_signature": wrap_deposit_wallet_session_signer_signature(
-            EvmAddress(session), HexString(signature)
+            EvmAddress(to_checksum_address(ANVIL_ADDR_1)), HexString(signature)
         ),
         "calls": [{"target": str(c.to), "value": str(c.value), "data": c.data} for c in calls],
         "nonce": nonce,
@@ -266,11 +270,11 @@ def relay_vectors(signer) -> dict:
         value=1,
     )
 
-    approval_batch = _batch(signer, wallet, [approval], "3", "1800000000", session_signer)
-    authorize_batch = _batch(signer, wallet, [authorize], "4", "1800000600", session_signer)
-    revoke_batch = _batch(signer, wallet, [revoke], "5", "1800000600", session_signer)
-    redeem_batch = _batch(signer, wallet, [redeem], "6", "1800000600", session_signer)
-    multi_batch = _batch(signer, wallet, [approval, approve_all], "7", "1800000600", session_signer)
+    approval_batch = _batch(signer, wallet, [approval], "3", "1800000000")
+    authorize_batch = _batch(signer, wallet, [authorize], "4", "1800000600")
+    revoke_batch = _batch(signer, wallet, [revoke], "5", "1800000600")
+    redeem_batch = _batch(signer, wallet, [redeem], "6", "1800000600")
+    multi_batch = _batch(signer, wallet, [approval, approve_all], "7", "1800000600")
 
     ctx = types.SimpleNamespace(wallet=wallet)
     authorize_request = _ParsedAuthorizeSessionKeyRequest(
@@ -481,6 +485,11 @@ is a byte-pinning vector only: the session-signer envelope names Anvil address #
 session signer, but Anvil key #0 produced the inner batch signature. Note that
 `typed_data.message.calls[].data` is hex-encoded by this script for JSON output; py-sdk
 itself holds that field as raw `bytes` (see `_hexify`).
+
+`multi_batch` is a byte-pinning vector only in a second sense: its second call sends
+`value=1` to the non-payable `setApprovalForAll`, which would revert on chain. It exists
+to pin the bytes of a two-call, non-zero-value batch and must not be replayed against a
+live relayer or contract.
 
 `submit_body`, `redeem_submit_body`, `session_submit_body`, `authorization_body` and
 `revocation_body` are relay request payloads built by py-sdk's own functions, not

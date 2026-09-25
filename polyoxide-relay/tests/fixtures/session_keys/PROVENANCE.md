@@ -26,6 +26,11 @@ session signer, but Anvil key #0 produced the inner batch signature. Note that
 `typed_data.message.calls[].data` is hex-encoded by this script for JSON output; py-sdk
 itself holds that field as raw `bytes` (see `_hexify`).
 
+`multi_batch` is a byte-pinning vector only in a second sense: its second call sends
+`value=1` to the non-payable `setApprovalForAll`, which would revert on chain. It exists
+to pin the bytes of a two-call, non-zero-value batch and must not be replayed against a
+live relayer or contract.
+
 `submit_body`, `redeem_submit_body`, `session_submit_body`, `authorization_body` and
 `revocation_body` are relay request payloads built by py-sdk's own functions, not
 hand-assembled: the three `submit_body` variants come from `build_deposit_wallet_payload`
