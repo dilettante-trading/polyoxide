@@ -1566,6 +1566,34 @@ async fn create_order_rejects_a_foreign_funder_on_a_deposit_wallet_account_witho
 }
 
 #[tokio::test]
+async fn create_market_order_rejects_a_foreign_funder_on_a_deposit_wallet_account_without_network_io() {
+    let mut server = Server::new_async().await;
+    let neg_risk_mock = server.mock("GET", "/neg-risk").expect(0).create_async().await;
+    let tick_size_mock = server.mock("GET", "/tick-size").expect(0).create_async().await;
+    let book_mock = server.mock("GET", "/book").expect(0).create_async().await;
+
+    let clob = deposit_wallet_clob(&server, polyoxide_clob::DepositWalletRole::Owner);
+    let params = polyoxide_clob::MarketOrderArgs {
+        token_id: "0xtoken".into(),
+        amount: 10.0,
+        side: polyoxide_clob::OrderSide::Buy,
+        price: Some(0.5),
+        fee_rate_bps: None,
+        nonce: None,
+        funder: Some(alloy::primitives::address!("0000000000000000000000000000000000000001")),
+        signature_type: None,
+        order_type: None,
+    };
+
+    let err = clob.create_market_order(&params, None).await.unwrap_err().to_string();
+    assert!(err.contains("per-call funder"), "{err}");
+
+    neg_risk_mock.assert_async().await;
+    tick_size_mock.assert_async().await;
+    book_mock.assert_async().await;
+}
+
+#[tokio::test]
 async fn l2_only_account_cannot_create_orders() {
     let server = Server::new_async().await;
     let creds = Credentials {
@@ -1614,7 +1642,8 @@ In `polyoxide-clob/src/client.rs`, in `create_order`, replace the block from `//
             Self::effective_signature_type(params.signature_type, params.funder, account)?;
 ```
 
-Do the same in `create_market_order` (the identical block after the price validation).
+Do the same in `create_market_order` (the identical block after the price validation), passing
+`params.funder` there too, since `MarketOrderArgs` also carries a `funder`.
 
 In both functions, replace the `build_order_v2(...)` call's `account.address(),` argument (the `signer` position, third argument) with:
 
