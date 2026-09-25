@@ -1291,9 +1291,16 @@ Append inside the `tests` module of `polyoxide-clob/src/account/mod.rs`:
             neg_risk: false,
         };
         let signed = account.sign_order(&order, 137).await.unwrap();
-        // 0x + 317 bytes: a 7739-wrapped owner signature, not a bare 65-byte one.
-        assert_eq!(signed.signature.len(), 2 + 317 * 2);
-        assert!(signed.signature.ends_with("00ba"));
+        // Anvil key #0 on py-sdk's golden fixture against the V2 exchange: the
+        // full 317-byte owner signature from tests/fixtures/session_keys/order_vectors.json.
+        let vectors: serde_json::Value = serde_json::from_str(include_str!(
+            "../../tests/fixtures/session_keys/order_vectors.json"
+        ))
+        .unwrap();
+        assert_eq!(
+            signed.signature,
+            vectors["v2_exchange"]["wrapped_signature"].as_str().unwrap()
+        );
     }
 ```
 
@@ -1533,6 +1540,32 @@ async fn create_order_rejects_a_non_type3_override_on_a_deposit_wallet_account_w
 }
 
 #[tokio::test]
+async fn create_order_rejects_a_foreign_funder_on_a_deposit_wallet_account_without_network_io() {
+    let mut server = Server::new_async().await;
+    let neg_risk_mock = server.mock("GET", "/neg-risk").expect(0).create_async().await;
+    let tick_size_mock = server.mock("GET", "/tick-size").expect(0).create_async().await;
+
+    let clob = deposit_wallet_clob(&server, polyoxide_clob::DepositWalletRole::Owner);
+    let params = polyoxide_clob::CreateOrderParams {
+        token_id: "0xtoken".into(),
+        price: 0.55,
+        size: 100.0,
+        side: polyoxide_clob::OrderSide::Buy,
+        order_type: polyoxide_clob::OrderKind::Gtc,
+        post_only: false,
+        expiration: None,
+        funder: Some(alloy::primitives::address!("0000000000000000000000000000000000000001")),
+        signature_type: None,
+    };
+
+    let err = clob.create_order(&params, None).await.unwrap_err().to_string();
+    assert!(err.contains("per-call funder"), "{err}");
+
+    neg_risk_mock.assert_async().await;
+    tick_size_mock.assert_async().await;
+}
+
+#[tokio::test]
 async fn l2_only_account_cannot_create_orders() {
     let server = Server::new_async().await;
     let creds = Credentials {
@@ -1577,7 +1610,8 @@ Expected: the type-3 override test fails on the message text; the non-type-3 ove
 In `polyoxide-clob/src/client.rs`, in `create_order`, replace the block from `// Reject Poly1271 before any network I/O` through the closing `}` of that `if` with:
 
 ```rust
-        let signature_type = Self::effective_signature_type(params.signature_type, account)?;
+        let signature_type =
+            Self::effective_signature_type(params.signature_type, params.funder, account)?;
 ```
 
 Do the same in `create_market_order` (the identical block after the price validation).
@@ -1594,9 +1628,11 @@ Replace `resolve_maker_address` with:
     /// The `signatureType` an order will carry: the per-call override, else the
     /// account's target. Refused here, before any I/O, because nothing could sign
     /// the result: a type-3 override on an account that does not target a Deposit
-    /// Wallet, any non-type-3 override on one that does, and an L2-only account.
+    /// Wallet, any non-type-3 override or foreign funder on one that does, and an
+    /// L2-only account.
     fn effective_signature_type(
         override_type: Option<SignatureType>,
+        funder: Option<Address>,
         account: &Account,
     ) -> Result<SignatureType, ClobError> {
         if !account.wallet().has_signer() {
@@ -1605,6 +1641,14 @@ Replace `resolve_maker_address` with:
             ));
         }
         let target = account.target();
+        if let (Some((wallet, _)), Some(funder)) = (target.deposit_wallet(), funder) {
+            if funder != wallet {
+                return Err(ClobError::validation(format!(
+                    "this account targets Deposit Wallet {wallet}; a per-call funder of {funder} \
+                     cannot be signed (the wallet must be both maker and signer)"
+                )));
+            }
+        }
         let signature_type = override_type.unwrap_or_else(|| target.signature_type());
         match (signature_type == SignatureType::Poly1271, target.deposit_wallet().is_some()) {
             (true, false) => Err(ClobError::validation(
