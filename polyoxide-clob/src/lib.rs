@@ -79,6 +79,51 @@
 //!
 //! This crate's own retry loop only ever retries `429`, so a killed order has never
 //! been resent by the SDK itself.
+//!
+//! ## Deposit Wallets and session keys
+//!
+//! A Deposit Wallet is Polymarket's smart account (default since 2026-05-04). Its
+//! owner can authorize a *session key* that trades but cannot withdraw. Build the
+//! account for either key with a [`SigningTarget::DepositWallet`]:
+//!
+//! ```no_run
+//! use polyoxide_clob::{Account, Credentials, DepositWalletRole, SigningTarget};
+//!
+//! # fn main() -> Result<(), polyoxide_clob::ClobError> {
+//! let creds = Credentials { key: "k".into(), secret: "c2VjcmV0".into(), passphrase: "p".into() };
+//! // Any loader works the same way: `Account::from_env()?.with_target(..)`.
+//! let session = Account::new("0x...", creds)?.with_target(SigningTarget::DepositWallet {
+//!     wallet: "0x57ffbc34de23124faeb8387fcd689d314e57accd".parse().unwrap(),
+//!     role: DepositWalletRole::SessionKey,
+//! });
+//! # let _ = session;
+//! # Ok(())
+//! # }
+//! ```
+//!
+//! The owner's key never enters the process. It signs the L1 auth message out of process:
+//!
+//! ```no_run
+//! # async fn onboarding() -> Result<(), Box<dyn std::error::Error>> {
+//! use polyoxide_clob::ClobBuilder;
+//! let clob = ClobBuilder::new().build()?;
+//! let owner: alloy::primitives::Address = "0xf39Fd6e51aad88F6F4ce6aB8827279cffFb92266".parse()?;
+//! let timestamp = polyoxide_core::current_timestamp();
+//! let typed_data = clob.clob_auth_typed_data(owner, timestamp, 0);
+//! // Hand `typed_data` to the wallet (`eth_signTypedData_v4`) and get its signature back.
+//! # let signature = String::new();
+//! let creds = clob.derive_api_key_with_signature(owner, timestamp, 0, signature).await?;
+//! # let _ = creds;
+//! # Ok(())
+//! # }
+//! ```
+//!
+//! `create_order` then sets `maker == signer == wallet` and `signatureType` 3, and
+//! `sign_order` produces the ERC-7739 envelope. [`Account::l2_only`] holds a
+//! credential triplet with no key, enough to read, cancel and list session
+//! signers (`AccountApi::list_session_signers`). [`clob_auth_typed_data`] and
+//! `Clob::derive_api_key_with_signature` let a key in an external wallet create
+//! credentials without entering the process.
 
 /// Doctest-only anchor that compiles every fenced `rust` example in the crate
 /// README, so broken examples fail CI. Exists only under `cfg(doctest)`, so it

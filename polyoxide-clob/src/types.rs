@@ -81,9 +81,12 @@ pub enum SignatureType {
     Eoa = 0,
     PolyProxy = 1,
     PolyGnosisSafe = 2,
-    /// EIP-1271 smart-contract wallet signatures (V2 orders only).
+    /// A Deposit Wallet, validated on-chain through ERC-1271 / ERC-7739 (V2 orders only).
     ///
-    /// Signing is not yet implemented; order creation rejects this variant.
+    /// Build the account with [`crate::SigningTarget::DepositWallet`]; the
+    /// signature is then the ERC-7739 envelope, plus the session-signer envelope
+    /// when the key is a session key rather than the owner. Balance and
+    /// notification queries default to this type for such an account.
     Poly1271 = 3,
 }
 

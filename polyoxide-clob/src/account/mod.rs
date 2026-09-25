@@ -58,10 +58,12 @@ impl std::fmt::Debug for AccountConfig {
 
 /// Unified account primitive for credential management and signing operations.
 ///
-/// `Account` combines wallet (private key), API credentials, and signing capabilities
-/// into a single abstraction. It provides factory methods for loading credentials from
-/// various sources (environment variables, files) and handles both EIP-712 order signing
-/// and HMAC-based L2 API authentication.
+/// `Account` combines a signing half (a local key, any `alloy` signer that supports
+/// `sign_hash`, or no key at all for an L2-only account), the L2 API credentials, and
+/// what it signs for (a [`SigningTarget`]). The loaders (`from_env`, `from_file`,
+/// `from_keychain`) always produce a key-holding account targeting its own EOA; chain
+/// [`Account::with_target`] to change that. An L2-only account has no loader and is
+/// built with [`Account::l2_only`].
 ///
 /// # Example
 ///
@@ -361,7 +363,9 @@ impl Account {
         Ok(())
     }
 
-    /// Get the wallet address.
+    /// The signing key's EOA address. The order maker comes from
+    /// `target().maker(address())`, which differs from this for proxy and
+    /// Deposit Wallet targets.
     pub fn address(&self) -> Address {
         self.wallet.address()
     }
@@ -384,12 +388,20 @@ impl Account {
     /// Sign an order using EIP-712.
     ///
     /// For a [`SigningTarget::DepositWallet`] the signature is the ERC-7739
-    /// envelope (plus the session-signer wrapper for a session key).
+    /// envelope (plus the session-signer envelope for a session key).
     ///
     /// # Arguments
     ///
     /// * `order` - The unsigned order to sign
     /// * `chain_id` - The chain ID for EIP-712 domain
+    ///
+    /// # Errors
+    ///
+    /// Returns a validation error, before signing, when:
+    /// - the account is L2-only (no signing key);
+    /// - the order is signature type 3 but the target is not a Deposit Wallet;
+    /// - the target is a Deposit Wallet but the order is not signature type 3;
+    /// - the order's `maker` or `signer` is not the target wallet.
     ///
     /// # Example
     ///
