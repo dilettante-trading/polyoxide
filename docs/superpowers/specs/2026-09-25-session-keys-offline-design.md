@@ -153,10 +153,13 @@ target, and a non-type-3 order against a Deposit Wallet target.
   `account_api()`, `notifications()`, `list_session_signers()`. `create_order`, `sign_order`,
   `sign_clob_auth` and the L1 `auth()` calls return `ClobError::validation` naming the
   missing key. `AuthMode::L1` keeps carrying a signer, so an L2-only account cannot enter it.
-- `auth()` namespace: `clob_auth_typed_data(address, chain_id, timestamp, nonce) -> serde_json::Value`
-  (the exact JSON for `eth_signTypedData_v4`), `create_api_key_with_signature(address, timestamp, nonce, signature)`
-  and `derive_api_key_with_signature(...)`. The existing signer-based calls become thin
-  callers of the same request builder, so the headers are produced by one function.
+- On `Clob` itself (the `auth()` namespace needs an account, and this path exists for callers
+  without one): `clob_auth_typed_data(address, timestamp, nonce) -> serde_json::Value` (the exact
+  JSON for `eth_signTypedData_v4`; also a free function taking `chain_id`),
+  `create_api_key_with_signature(address, timestamp, nonce, signature)` and
+  `derive_api_key_with_signature(...)`. The signature is parsed, `v` normalised to 27/28, and the
+  signer recovered locally and checked against `address` before any request. The signer-based
+  and signature-in paths share one header builder, and a test proves their headers are equal.
 
 ### 3. Relay — `polyoxide-relay`
 
