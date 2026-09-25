@@ -307,7 +307,14 @@ pub struct MarketOrderArgs {
     /// `timestamp`, so this field is not read anywhere in the order path.
     /// (V1 vestige; retained for source compatibility — removal is a recommended follow-up.)
     pub nonce: Option<u64>,
+    /// Overrides the maker the account's `SigningTarget` would set. On a Deposit
+    /// Wallet target it must equal the wallet or be `None`, since the wallet is both
+    /// maker and signer.
     pub funder: Option<Address>,
+    /// Defaults to the account's `SigningTarget` signature type. It must be `3`
+    /// (`Poly1271`) exactly when the target is a Deposit Wallet. A proxy type that
+    /// differs from the target's, with no `funder`, falls back to the Gamma profile
+    /// lookup for the maker.
     pub signature_type: Option<SignatureType>,
     pub order_type: Option<OrderKind>,
 }

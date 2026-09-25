@@ -223,6 +223,9 @@ impl Clob {
     }
 
     /// Create an unsigned order from parameters
+    ///
+    /// `maker`, `signer` and `signatureType` come from the account's `SigningTarget`
+    /// unless `funder` / `signature_type` override them.
     pub async fn create_order(
         &self,
         params: &CreateOrderParams,
@@ -273,6 +276,9 @@ impl Clob {
     }
 
     /// Create an unsigned market order from parameters
+    ///
+    /// `maker`, `signer` and `signatureType` come from the account's `SigningTarget`
+    /// unless `funder` / `signature_type` override them.
     pub async fn create_market_order(
         &self,
         params: &MarketOrderArgs,
@@ -417,6 +423,10 @@ impl Clob {
     /// the result: a type-3 override on an account that does not target a Deposit
     /// Wallet, any non-type-3 override or foreign funder on one that does, and an
     /// L2-only account.
+    ///
+    /// Mirrors the rules `sign_order_as` in `core::eip712` enforces at signing time,
+    /// which remains authoritative for hand-built orders; this copy exists to fail
+    /// before any network I/O.
     fn effective_signature_type(
         override_type: Option<SignatureType>,
         funder: Option<Address>,
@@ -453,8 +463,9 @@ impl Clob {
         }
     }
 
-    /// Resolve the maker address from the per-call funder, the account's target,
-    /// or (for proxy types with neither) the Gamma profile lookup.
+    /// The per-call funder if given; else the target's maker when the order's
+    /// signature type is the target's; else the Gamma proxy lookup for proxy types;
+    /// else the EOA.
     async fn resolve_maker_address(
         &self,
         funder: Option<Address>,
@@ -695,7 +706,14 @@ pub struct CreateOrderParams {
     pub order_type: OrderKind,
     pub post_only: bool,
     pub expiration: Option<u64>,
+    /// Overrides the maker the account's `SigningTarget` would set. On a Deposit
+    /// Wallet target it must equal the wallet or be `None`, since the wallet is both
+    /// maker and signer.
     pub funder: Option<Address>,
+    /// Defaults to the account's `SigningTarget` signature type. It must be `3`
+    /// (`Poly1271`) exactly when the target is a Deposit Wallet. A proxy type that
+    /// differs from the target's, with no `funder`, falls back to the Gamma profile
+    /// lookup for the maker.
     pub signature_type: Option<SignatureType>,
 }
 

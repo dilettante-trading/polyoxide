@@ -1296,6 +1296,7 @@ async fn create_order_fetches_metadata_and_builds_order() {
     // V2 order signing no longer fetches /fee-rate; assert it is NOT called.
     let fee_rate_mock = server
         .mock("GET", "/fee-rate")
+        .match_query(Matcher::Any)
         .expect(0)
         .create_async()
         .await;
@@ -1490,14 +1491,20 @@ async fn place_order_signs_and_submits_v2_body_with_builder_code() {
 #[tokio::test]
 async fn create_order_rejects_a_type3_override_on_an_eoa_account_without_network_io() {
     // The target guard fires before any market-metadata I/O; expect(0) proves it.
+    // `match_query(Matcher::Any)` is what makes that proof real: without a query
+    // matcher mockito compares the mock path to the request's path *and* query, so
+    // a bare "/neg-risk" never matches "/neg-risk?token_id=..." and expect(0)
+    // passes whether or not the request was sent.
     let mut server = Server::new_async().await;
     let neg_risk_mock = server
         .mock("GET", "/neg-risk")
+        .match_query(Matcher::Any)
         .expect(0)
         .create_async()
         .await;
     let tick_size_mock = server
         .mock("GET", "/tick-size")
+        .match_query(Matcher::Any)
         .expect(0)
         .create_async()
         .await;
@@ -1612,6 +1619,107 @@ async fn create_order_for_a_deposit_wallet_sets_maker_signer_and_type3() {
 }
 
 #[tokio::test]
+async fn create_order_for_a_deposit_wallet_accepts_the_wallet_as_per_call_funder() {
+    let mut server = Server::new_async().await;
+    let (neg_risk_mock, tick_size_mock) = mock_market_metadata(&mut server, "0xtoken").await;
+
+    let clob = deposit_wallet_clob(&server, polyoxide_clob::DepositWalletRole::Owner);
+    let params = polyoxide_clob::CreateOrderParams {
+        token_id: "0xtoken".into(),
+        price: 0.55,
+        size: 100.0,
+        side: polyoxide_clob::OrderSide::Buy,
+        order_type: polyoxide_clob::OrderKind::Gtc,
+        post_only: false,
+        expiration: None,
+        funder: Some(DEPOSIT_WALLET),
+        signature_type: None,
+    };
+
+    let order = clob.create_order(&params, None).await.unwrap();
+    assert_eq!(order.maker, DEPOSIT_WALLET);
+    assert_eq!(order.signer, DEPOSIT_WALLET);
+    assert_eq!(order.signature_type, SignatureType::Poly1271);
+
+    neg_risk_mock.assert_async().await;
+    tick_size_mock.assert_async().await;
+}
+
+#[cfg(feature = "gamma")]
+#[tokio::test]
+async fn create_order_for_a_proxy_target_uses_the_configured_funder_without_gamma() {
+    let mut server = Server::new_async().await;
+    let (neg_risk_mock, tick_size_mock) = mock_market_metadata(&mut server, "0xtoken").await;
+    // `resolve_maker_address` looks proxies up with `gamma.user().get`, which is
+    // `GET /public-profile?address=...`; `/profiles/` is covered too in case it moves.
+    let gamma_mock = server
+        .mock(
+            "GET",
+            Matcher::Regex(r"^/(public-profile|profiles/)".into()),
+        )
+        .match_query(Matcher::Any)
+        .expect(0)
+        .create_async()
+        .await;
+    let funder = alloy::primitives::address!("0000000000000000000000000000000000000abc");
+    let creds = Credentials {
+        key: "test-key".into(),
+        secret: "c2VjcmV0".into(),
+        passphrase: "test-pass".into(),
+    };
+    let account = Account::new(
+        "0xac0974bec39a17e36ba4a6b4d238ff944bacb478cbed5efcae784d7bf4f2ff80",
+        creds,
+    )
+    .unwrap()
+    .with_target(polyoxide_clob::SigningTarget::PolyProxy { funder });
+    let clob = ClobBuilder::new()
+        .base_url(server.url())
+        .gamma(
+            polyoxide_gamma::Gamma::builder()
+                .base_url(server.url())
+                .build()
+                .unwrap(),
+        )
+        .with_account(account)
+        .build()
+        .unwrap();
+    let params = polyoxide_clob::CreateOrderParams {
+        token_id: "0xtoken".into(),
+        price: 0.55,
+        size: 100.0,
+        side: polyoxide_clob::OrderSide::Buy,
+        order_type: polyoxide_clob::OrderKind::Gtc,
+        post_only: false,
+        expiration: None,
+        funder: None,
+        signature_type: None,
+    };
+    let order = clob.create_order(&params, None).await.unwrap();
+    assert_eq!(order.maker, funder);
+    assert_eq!(
+        order.signer,
+        alloy::primitives::address!("f39Fd6e51aad88F6F4ce6aB8827279cffFb92266")
+    );
+    assert_eq!(order.signature_type, SignatureType::PolyProxy);
+    // Checked here because the second call below fetches the metadata again.
+    neg_risk_mock.assert_async().await;
+    tick_size_mock.assert_async().await;
+
+    // A per-call funder still wins over the target's.
+    let other = alloy::primitives::address!("0000000000000000000000000000000000000def");
+    let params = polyoxide_clob::CreateOrderParams {
+        funder: Some(other),
+        ..params
+    };
+    let order = clob.create_order(&params, None).await.unwrap();
+    assert_eq!(order.maker, other);
+
+    // Neither call looked the proxy up on Gamma.
+    gamma_mock.assert_async().await;
+}
+
+#[tokio::test]
 async fn create_market_order_for_a_deposit_wallet_sets_maker_signer_and_type3() {
     let mut server = Server::new_async().await;
     let (neg_risk_mock, tick_size_mock) =
@@ -1707,11 +1815,13 @@ async fn create_order_rejects_a_non_type3_override_on_a_deposit_wallet_account_w
     let mut server = Server::new_async().await;
     let neg_risk_mock = server
         .mock("GET", "/neg-risk")
+        .match_query(Matcher::Any)
         .expect(0)
         .create_async()
         .await;
     let tick_size_mock = server
         .mock("GET", "/tick-size")
+        .match_query(Matcher::Any)
         .expect(0)
         .create_async()
         .await;
@@ -1745,11 +1855,13 @@ async fn create_order_rejects_a_foreign_funder_on_a_deposit_wallet_account_witho
     let mut server = Server::new_async().await;
     let neg_risk_mock = server
         .mock("GET", "/neg-risk")
+        .match_query(Matcher::Any)
         .expect(0)
         .create_async()
         .await;
     let tick_size_mock = server
         .mock("GET", "/tick-size")
+        .match_query(Matcher::Any)
         .expect(0)
         .create_async()
         .await;
@@ -1786,15 +1898,22 @@ async fn create_market_order_rejects_a_foreign_funder_on_a_deposit_wallet_accoun
     let mut server = Server::new_async().await;
     let neg_risk_mock = server
         .mock("GET", "/neg-risk")
+        .match_query(Matcher::Any)
         .expect(0)
         .create_async()
         .await;
     let tick_size_mock = server
         .mock("GET", "/tick-size")
+        .match_query(Matcher::Any)
         .expect(0)
         .create_async()
         .await;
-    let book_mock = server.mock("GET", "/book").expect(0).create_async().await;
+    let book_mock = server
+        .mock("GET", "/book")
+        .match_query(Matcher::Any)
+        .expect(0)
+        .create_async()
+        .await;
 
     let clob = deposit_wallet_clob(&server, polyoxide_clob::DepositWalletRole::Owner);
     let params = polyoxide_clob::types::MarketOrderArgs {
@@ -1867,6 +1986,7 @@ async fn create_order_with_provided_options_skips_metadata_fetch() {
     // so NO market-metadata endpoints should be called.
     let fee_rate_mock = server
         .mock("GET", "/fee-rate")
+        .match_query(Matcher::Any)
         .expect(0)
         .create_async()
         .await;
@@ -1874,11 +1994,13 @@ async fn create_order_with_provided_options_skips_metadata_fetch() {
     // These should NOT be called
     let neg_risk_mock = server
         .mock("GET", "/neg-risk")
+        .match_query(Matcher::Any)
         .expect(0)
         .create_async()
         .await;
     let tick_size_mock = server
         .mock("GET", "/tick-size")
+        .match_query(Matcher::Any)
         .expect(0)
         .create_async()
         .await;
@@ -1926,15 +2048,22 @@ async fn create_market_order_rejects_amount_below_venue_minimum() {
 
     let neg_risk_mock = server
         .mock("GET", "/neg-risk")
+        .match_query(Matcher::Any)
         .expect(0)
         .create_async()
         .await;
     let tick_size_mock = server
         .mock("GET", "/tick-size")
+        .match_query(Matcher::Any)
         .expect(0)
         .create_async()
         .await;
-    let book_mock = server.mock("GET", "/book").expect(0).create_async().await;
+    let book_mock = server
+        .mock("GET", "/book")
+        .match_query(Matcher::Any)
+        .expect(0)
+        .create_async()
+        .await;
 
     let clob = test_authed_clob(&server);
     let params = polyoxide_clob::types::MarketOrderArgs {
@@ -2051,12 +2180,18 @@ async fn create_market_order_with_explicit_price() {
     // V2 order signing no longer fetches /fee-rate; assert it is NOT called.
     let fee_rate_mock = server
         .mock("GET", "/fee-rate")
+        .match_query(Matcher::Any)
         .expect(0)
         .create_async()
         .await;
 
     // Order book should NOT be called when price is provided
-    let book_mock = server.mock("GET", "/book").expect(0).create_async().await;
+    let book_mock = server
+        .mock("GET", "/book")
+        .match_query(Matcher::Any)
+        .expect(0)
+        .create_async()
+        .await;
 
     let clob = test_authed_clob(&server);
     let params = polyoxide_clob::types::MarketOrderArgs {
@@ -2110,6 +2245,7 @@ async fn create_market_order_fetches_orderbook_for_price() {
     // V2 order signing no longer fetches /fee-rate; assert it is NOT called.
     let fee_rate_mock = server
         .mock("GET", "/fee-rate")
+        .match_query(Matcher::Any)
         .expect(0)
         .create_async()
         .await;
