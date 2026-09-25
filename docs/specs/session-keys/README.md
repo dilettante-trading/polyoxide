@@ -22,8 +22,8 @@ Read on 2026-09-25:
   `../polymarket-llms.txt` snapshot, which does not list them.
 - Code: `github.com/Polymarket/py-sdk` (`polymarket-client==0.11.0`) and
   `github.com/Polymarket/ts-sdk` (`@polymarket/client` 0.11.0). Where a page and an
-  SDK disagree, polyoxide follows the SDK, because the SDK is what the venue tests
-  against; every such case is listed in `OBSERVED.md`.
+  SDK disagree, polyoxide follows the SDK unless `OBSERVED.md`'s polyoxide column
+  says otherwise; every such case is listed there.
 - polyoxide's fixtures are generated from py-sdk by
   `scripts/capture_session_key_vectors.py` into
   `polyoxide-clob/tests/fixtures/session_keys/` and
