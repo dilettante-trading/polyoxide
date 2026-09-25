@@ -3,6 +3,8 @@
 **Date:** 2026-09-25
 **Branch:** `aidanb/non-custodial-keys`
 **Supersedes the code items in:** `docs/handoff-deposit-wallet-session-keys.md` (items 1–11, 14–16)
+**Tracked by:** prader-rs #126 (Phase 1 of ADR-0021). **Contract it satisfies:** prader-rs
+`docs/superpowers/specs/2026-09-13-non-custodial-session-keys-design.md` §8.
 
 ## Goal
 
@@ -148,7 +150,7 @@ target, and a non-type-3 order against a Deposit Wallet target.
   override, so no existing caller changes. The Gamma proxy lookup stays for the proxy
   variants when no funder is known.
 - `Account::l2_only(address, creds)`: no signer. Works for `post_order`, `orders()`,
-  `account_api()`, `notifications()`, `session_signers()`. `create_order`, `sign_order`,
+  `account_api()`, `notifications()`, `list_session_signers()`. `create_order`, `sign_order`,
   `sign_clob_auth` and the L1 `auth()` calls return `ClobError::validation` naming the
   missing key. `AuthMode::L1` keeps carrying a signer, so an L2-only account cannot enter it.
 - `auth()` namespace: `clob_auth_typed_data(address, chain_id, timestamp, nonce) -> serde_json::Value`
@@ -166,6 +168,8 @@ target, and a non-type-3 order against a Deposit Wallet target.
   derives all candidates, probes `/deployed` for the two Deposit Wallet candidates and the
   Safe, and errors if more than one is deployed.
 - `RelayClientBuilder::with_auth(AuthConfig)` for header auth with no `BuilderAccount`.
+  The existing `AuthConfig::{Builder, RelayerApiKey}` is the `RelayerAuth::{Builder, UserKey}`
+  enum prader's #126 asks for; it keeps its current name.
   `BuilderAccount` takes the same generic signer as `Account`.
 - `sol!` `Call` and `Batch`; `deposit_wallet_domain(wallet)`.
 - `get_execute_params(owner) -> nonce` via `/v1/account/transactions/params?type=WALLET`.
@@ -174,10 +178,16 @@ target, and a non-type-3 order against a Deposit Wallet target.
   `execute` gains a `DepositWallet` arm that fetches the nonce, sets `deadline = now + 600 s` (the ts-sdk default),
   signs with the local signer, and applies the 6492 envelope when the account's role is
   session key. Trading approvals (the four calls from the deposit-wallets page) and
-  redemption are call builders over this.
+  redemption are call builders over this. Because prader's §8 names them, redemption also
+  gets the named pair `redeem_typed_data(wallet, condition_id, ..., nonce, deadline)` and
+  `submit_redemption_with_signature(...)`, thin wrappers over the generic pair.
 - `authorize_session_signer_typed_data(wallet, session, scopes, nonce, deadline) -> (serde_json::Value, SessionSignerAuthorization)`
-  computes `valid_until` internally and encodes the calldata; the returned request struct
-  carries every field the body needs except `signature`.
+  computes `valid_until` internally as now + 4 315 h and encodes the calldata; the returned
+  request struct carries every field the body needs except `signature`, including the
+  computed `valid_until` so the caller can persist it. This deviates from prader's §8,
+  which passes `valid_until` in: both official SDKs removed it from their public request
+  after the venue rejected other lifetimes. If prader's Phase 0 probe C4 finds a tolerance
+  window, a `_with_valid_until` variant is a one-line addition.
   `submit_session_signer_authorization(request, signature, idempotency_key) -> SessionSignerAuthorizationResponse`.
   `revoke_session_signer_typed_data` / `submit_session_signer_revocation` mirror it.
   Local-signer conveniences `authorize_session_signer(session, scopes)` and
@@ -190,7 +200,8 @@ target, and a non-type-3 order against a Deposit Wallet target.
 
 ### 4. CLOB session-signers endpoint and docs
 
-- `account_api().session_signers() -> SessionSigners { wallet: Address, signers: Vec<SessionSigner> }`,
+- `account_api().list_session_signers() -> SessionSigners { wallet: Address, signers: Vec<SessionSigner> }`
+  (the name prader's §8 cites),
   `SessionSigner { address, scopes: Vec<SessionSignerScope>, valid_until: u64 }`. Works
   with an L2-only account. If the account's target is a Deposit Wallet and the response
   `wallet` differs, return `ClobError::validation`.
