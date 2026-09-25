@@ -146,7 +146,7 @@ target, and a non-type-3 order against a Deposit Wallet target.
   with `DepositWalletRole::{Owner, SessionKey}`. `Account::with_target(self, target)`.
   Default `Eoa`. Accessors `maker()`, `order_signer()`, `signature_type()`.
 - `create_order` and `create_market_order` take `maker`/`signer`/`signature_type` from the
-  target. Per-call `funder` and `signature_type` in `PartialCreateOrderOptions` still
+  target. Per-call `funder` and `signature_type` on `CreateOrderParams` / `MarketOrderArgs` still
   override, so no existing caller changes. The Gamma proxy lookup stays for the proxy
   variants when no funder is known.
 - `Account::l2_only(address, creds)`: no signer. Works for `post_order`, `orders()`,

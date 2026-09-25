@@ -2275,7 +2275,20 @@ Run: `cargo test -p polyoxide-clob --all-features --test mock_api list_session_s
 
 - [ ] **Step 5: Implement the endpoint**
 
-In `polyoxide-clob/src/api/account.rs`:
+First, close a split the Task 8 review found: `ClobBuilder::signature_type` (default `Eoa`) feeds
+the `signature_type` query parameter on balance-allowance and notifications, while orders now follow
+the `SigningTarget`. A Deposit Wallet account built without also calling `.signature_type(Poly1271)`
+would post type-3 orders but query balances as type 0. In `polyoxide-clob/src/client.rs`, change
+`ClobBuilder`'s field to `signature_type: Option<SignatureType>` (initialised `None`; the
+`signature_type(..)` setter stores `Some`), and in `build()` resolve it as
+`self.signature_type.unwrap_or_else(|| self.account.as_ref().map(|a| a.target().signature_type()).unwrap_or_default())`.
+Update the setter's doc: "Defaults to the account's signing target's type, or EOA without an account."
+Add a mock test in `tests/mock_api.rs`, `balance_allowance_defaults_to_the_targets_signature_type`,
+that builds `deposit_wallet_clob(..)` (no explicit `.signature_type`) and asserts `GET /balance-allowance`
+is requested with `signature_type=3` (`Matcher::UrlEncoded("signature_type".into(), "3".into())`),
+and a second assertion that an explicit `.signature_type(SignatureType::Eoa)` still wins (query `0`).
+
+Then, in `polyoxide-clob/src/api/account.rs`:
 
 Add `target: SigningTarget,` to `struct AccountApi` and change the `use crate::{ account::{Credentials, Signer, Wallet}, ...}` import to `account::{Credentials, Signer, SigningTarget, Wallet},`. Add `use alloy::primitives::Address;` and `use polyoxide_core::SessionSignerScope;` to the imports.
 
