@@ -285,7 +285,7 @@ mod tests {
     }
 
     #[test]
-    fn batch_digest_matches_py_sdk_for_all_five_batches() {
+    fn batch_digest_matches_py_sdk_for_all_seven_batches() {
         let v = vectors();
         // multi_batch has two calls, the second with value 1, so Call[] hashing and
         // the value field are exercised, not just single zero-value calls.
@@ -295,6 +295,8 @@ mod tests {
             "revoke_batch",
             "redeem_batch",
             "multi_batch",
+            "redeem_adapter_batch",
+            "redeem_neg_risk_batch",
         ] {
             let (calls, nonce, deadline) = batch_from(&v[name]);
             let expected: B256 = v[name]["digest"].as_str().unwrap().parse().unwrap();
@@ -316,6 +318,8 @@ mod tests {
             "revoke_batch",
             "redeem_batch",
             "multi_batch",
+            "redeem_adapter_batch",
+            "redeem_neg_risk_batch",
         ] {
             let (calls, nonce, deadline) = batch_from(&v[name]);
             let digest = batch_digest(137, wallet(), &calls, nonce, deadline);
