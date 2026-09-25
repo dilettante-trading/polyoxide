@@ -1,0 +1,409 @@
+{
+  "owner": "0xf39Fd6e51aad88F6F4ce6aB8827279cffFb92266",
+  "wallet": "0xBc0fF067b7740Eff76C1ca93c875Ba6B890d6B50",
+  "session_signer": "0x70997970C51812dc3A010C7d01b50e0d17dc79C8",
+  "chain_id": 137,
+  "config": {
+    "deposit_wallet_factory": "0x00000000000Fb5C9ADea0298D729A0CB3823Cc07",
+    "deposit_wallet_beacon": "0x7A18EDfe055488A3128f01F563e5B479D92ffc3a",
+    "deposit_wallet_implementation": "0x58CA52ebe0DadfdF531Cde7062e76746de4Db1eB",
+    "proxy_factory": "0xaB45c5A4B0c941a2F231C04C3f49182e1A254052",
+    "proxy_implementation": "0x44e999d5c2F66Ef0861317f9A4805AC2e90aEB4f",
+    "safe_factory": "0xaacFeEa03eb1561C4e67d661e40682Bd20E3541b",
+    "safe_init_code_hash": "0x2bce2127ff07fb632d16c8347c4ebf501f4841168bed00d9e6ef715ddb6fcecf"
+  },
+  "derivations": {
+    "signer_one": {
+      "signer": "0x0000000000000000000000000000000000000001",
+      "uups": "0x57ffBc34De23124fAeb8387fcd689d314E57aCcD",
+      "beacon": "0x94bF330955A0b957662fEaF878dE77bf25f76cD9",
+      "safe": "0x766b6851A199BF91Ae3fa13B1cfaC5187355118f",
+      "proxy": "0x7754536ecd85c00b2E0CF9c1aA679340D8550756"
+    },
+    "anvil0": {
+      "signer": "0xf39Fd6e51aad88F6F4ce6aB8827279cffFb92266",
+      "uups": "0xdf8b9E8f9AB23f261F6e1B171B7454ae6E46Ba76",
+      "beacon": "0xBc0fF067b7740Eff76C1ca93c875Ba6B890d6B50",
+      "safe": "0xd93B25cb943D14d0d34FBaF01Fc93a0f8b5F6E47",
+      "proxy": "0x365f0CA36Ae1f641E02fE3B7743673da42A13A70"
+    }
+  },
+  "approval_batch": {
+    "typed_data": {
+      "domain": {
+        "chainId": 137,
+        "name": "DepositWallet",
+        "verifyingContract": "0xBc0fF067b7740Eff76C1ca93c875Ba6B890d6B50",
+        "version": "1"
+      },
+      "types": {
+        "EIP712Domain": [
+          {
+            "name": "name",
+            "type": "string"
+          },
+          {
+            "name": "version",
+            "type": "string"
+          },
+          {
+            "name": "chainId",
+            "type": "uint256"
+          },
+          {
+            "name": "verifyingContract",
+            "type": "address"
+          }
+        ],
+        "Batch": [
+          {
+            "name": "wallet",
+            "type": "address"
+          },
+          {
+            "name": "nonce",
+            "type": "uint256"
+          },
+          {
+            "name": "deadline",
+            "type": "uint256"
+          },
+          {
+            "name": "calls",
+            "type": "Call[]"
+          }
+        ],
+        "Call": [
+          {
+            "name": "target",
+            "type": "address"
+          },
+          {
+            "name": "value",
+            "type": "uint256"
+          },
+          {
+            "name": "data",
+            "type": "bytes"
+          }
+        ]
+      },
+      "primaryType": "Batch",
+      "message": {
+        "wallet": "0xBc0fF067b7740Eff76C1ca93c875Ba6B890d6B50",
+        "nonce": 3,
+        "deadline": 1800000000,
+        "calls": [
+          {
+            "target": "0xC011a7E12a19f7B1f670d46F03B03f3342E82DFB",
+            "value": 0,
+            "data": "0x095ea7b3000000000000000000000000e111180000d2663c0091e4f400237545b87b996bffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff"
+          }
+        ]
+      }
+    },
+    "digest": "0x6142217cedb047b76ab08e81bc709bef31f7afe3179bc706c79b2ebda1af39db",
+    "signature": "0xaa0e8c45ca7e2c7c954edf32b2f8c70b58a633e280b25233e744a383538e9c675dcda2ffb2b88e941a4ca0d26188215ea806fb2921d2f84f68e392c6bff00fcc1b",
+    "session_signature": "0x00000000000000000000000070997970c51812dc3a010c7d01b50e0d17dc79c8000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000600000000000000000000000000000000000000000000000000000000000000041aa0e8c45ca7e2c7c954edf32b2f8c70b58a633e280b25233e744a383538e9c675dcda2ffb2b88e941a4ca0d26188215ea806fb2921d2f84f68e392c6bff00fcc1b000000000000000000000000000000000000000000000000000000000000006492649264926492649264926492649264926492649264926492649264926492",
+    "calls": [
+      {
+        "target": "0xC011a7E12a19f7B1f670d46F03B03f3342E82DFB",
+        "value": "0",
+        "data": "0x095ea7b3000000000000000000000000e111180000d2663c0091e4f400237545b87b996bffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff"
+      }
+    ],
+    "nonce": "3",
+    "deadline": "1800000000"
+  },
+  "authorize_batch": {
+    "typed_data": {
+      "domain": {
+        "chainId": 137,
+        "name": "DepositWallet",
+        "verifyingContract": "0xBc0fF067b7740Eff76C1ca93c875Ba6B890d6B50",
+        "version": "1"
+      },
+      "types": {
+        "EIP712Domain": [
+          {
+            "name": "name",
+            "type": "string"
+          },
+          {
+            "name": "version",
+            "type": "string"
+          },
+          {
+            "name": "chainId",
+            "type": "uint256"
+          },
+          {
+            "name": "verifyingContract",
+            "type": "address"
+          }
+        ],
+        "Batch": [
+          {
+            "name": "wallet",
+            "type": "address"
+          },
+          {
+            "name": "nonce",
+            "type": "uint256"
+          },
+          {
+            "name": "deadline",
+            "type": "uint256"
+          },
+          {
+            "name": "calls",
+            "type": "Call[]"
+          }
+        ],
+        "Call": [
+          {
+            "name": "target",
+            "type": "address"
+          },
+          {
+            "name": "value",
+            "type": "uint256"
+          },
+          {
+            "name": "data",
+            "type": "bytes"
+          }
+        ]
+      },
+      "primaryType": "Batch",
+      "message": {
+        "wallet": "0xBc0fF067b7740Eff76C1ca93c875Ba6B890d6B50",
+        "nonce": 4,
+        "deadline": 1800000600,
+        "calls": [
+          {
+            "target": "0xBc0fF067b7740Eff76C1ca93c875Ba6B890d6B50",
+            "value": 0,
+            "data": "0x24017fae00000000000000000000000070997970c51812dc3a010c7d01b50e0d17dc79c8000000000000000000000000000000000000000000000000000000006c36d9b0"
+          }
+        ]
+      }
+    },
+    "digest": "0xba435e27bb0258e5a631d904cb28416f163aee1532901376b30e4939de58976b",
+    "signature": "0x91a54e2dab364c46a1461c803eb0619d11f6ca94731904b280d4c0766cd44e05005b55ebe4610b7c718ec4c13779b3cebe629fc302830c4902e51c83f6da72a91b",
+    "session_signature": "0x00000000000000000000000070997970c51812dc3a010c7d01b50e0d17dc79c800000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000060000000000000000000000000000000000000000000000000000000000000004191a54e2dab364c46a1461c803eb0619d11f6ca94731904b280d4c0766cd44e05005b55ebe4610b7c718ec4c13779b3cebe629fc302830c4902e51c83f6da72a91b000000000000000000000000000000000000000000000000000000000000006492649264926492649264926492649264926492649264926492649264926492",
+    "calls": [
+      {
+        "target": "0xBc0fF067b7740Eff76C1ca93c875Ba6B890d6B50",
+        "value": "0",
+        "data": "0x24017fae00000000000000000000000070997970c51812dc3a010c7d01b50e0d17dc79c8000000000000000000000000000000000000000000000000000000006c36d9b0"
+      }
+    ],
+    "nonce": "4",
+    "deadline": "1800000600"
+  },
+  "revoke_batch": {
+    "typed_data": {
+      "domain": {
+        "chainId": 137,
+        "name": "DepositWallet",
+        "verifyingContract": "0xBc0fF067b7740Eff76C1ca93c875Ba6B890d6B50",
+        "version": "1"
+      },
+      "types": {
+        "EIP712Domain": [
+          {
+            "name": "name",
+            "type": "string"
+          },
+          {
+            "name": "version",
+            "type": "string"
+          },
+          {
+            "name": "chainId",
+            "type": "uint256"
+          },
+          {
+            "name": "verifyingContract",
+            "type": "address"
+          }
+        ],
+        "Batch": [
+          {
+            "name": "wallet",
+            "type": "address"
+          },
+          {
+            "name": "nonce",
+            "type": "uint256"
+          },
+          {
+            "name": "deadline",
+            "type": "uint256"
+          },
+          {
+            "name": "calls",
+            "type": "Call[]"
+          }
+        ],
+        "Call": [
+          {
+            "name": "target",
+            "type": "address"
+          },
+          {
+            "name": "value",
+            "type": "uint256"
+          },
+          {
+            "name": "data",
+            "type": "bytes"
+          }
+        ]
+      },
+      "primaryType": "Batch",
+      "message": {
+        "wallet": "0xBc0fF067b7740Eff76C1ca93c875Ba6B890d6B50",
+        "nonce": 5,
+        "deadline": 1800000600,
+        "calls": [
+          {
+            "target": "0xBc0fF067b7740Eff76C1ca93c875Ba6B890d6B50",
+            "value": 0,
+            "data": "0xe63f952f00000000000000000000000070997970c51812dc3a010c7d01b50e0d17dc79c8"
+          }
+        ]
+      }
+    },
+    "digest": "0x2856c1f8a21239cb091f2ca96709a76ab97ce55ed49e653ed83809ee0a3cd24f",
+    "signature": "0x12267105c20c84549eb1d04c0daf68fe42223248885b3a06710bb754c4ccfc023186c6c9c7ce478bbf139edd398ced9db9372577be9c7518488d86dbe483f25d1c",
+    "session_signature": "0x00000000000000000000000070997970c51812dc3a010c7d01b50e0d17dc79c800000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000060000000000000000000000000000000000000000000000000000000000000004112267105c20c84549eb1d04c0daf68fe42223248885b3a06710bb754c4ccfc023186c6c9c7ce478bbf139edd398ced9db9372577be9c7518488d86dbe483f25d1c000000000000000000000000000000000000000000000000000000000000006492649264926492649264926492649264926492649264926492649264926492",
+    "calls": [
+      {
+        "target": "0xBc0fF067b7740Eff76C1ca93c875Ba6B890d6B50",
+        "value": "0",
+        "data": "0xe63f952f00000000000000000000000070997970c51812dc3a010c7d01b50e0d17dc79c8"
+      }
+    ],
+    "nonce": "5",
+    "deadline": "1800000600"
+  },
+  "redeem_batch": {
+    "typed_data": {
+      "domain": {
+        "chainId": 137,
+        "name": "DepositWallet",
+        "verifyingContract": "0xBc0fF067b7740Eff76C1ca93c875Ba6B890d6B50",
+        "version": "1"
+      },
+      "types": {
+        "EIP712Domain": [
+          {
+            "name": "name",
+            "type": "string"
+          },
+          {
+            "name": "version",
+            "type": "string"
+          },
+          {
+            "name": "chainId",
+            "type": "uint256"
+          },
+          {
+            "name": "verifyingContract",
+            "type": "address"
+          }
+        ],
+        "Batch": [
+          {
+            "name": "wallet",
+            "type": "address"
+          },
+          {
+            "name": "nonce",
+            "type": "uint256"
+          },
+          {
+            "name": "deadline",
+            "type": "uint256"
+          },
+          {
+            "name": "calls",
+            "type": "Call[]"
+          }
+        ],
+        "Call": [
+          {
+            "name": "target",
+            "type": "address"
+          },
+          {
+            "name": "value",
+            "type": "uint256"
+          },
+          {
+            "name": "data",
+            "type": "bytes"
+          }
+        ]
+      },
+      "primaryType": "Batch",
+      "message": {
+        "wallet": "0xBc0fF067b7740Eff76C1ca93c875Ba6B890d6B50",
+        "nonce": 6,
+        "deadline": 1800000600,
+        "calls": [
+          {
+            "target": "0x4D97DCd97eC945f40cF65F87097ACe5EA0476045",
+            "value": 0,
+            "data": "0x01b7037c000000000000000000000000c011a7e12a19f7b1f670d46f03b03f3342e82dfb00000000000000000000000000000000000000000000000000000000000000001171bfba0ad9386688133910593527fe77ce5406a7ac2c9a3552ab5471c1ac510000000000000000000000000000000000000000000000000000000000000080000000000000000000000000000000000000000000000000000000000000000200000000000000000000000000000000000000000000000000000000000000010000000000000000000000000000000000000000000000000000000000000002"
+          }
+        ]
+      }
+    },
+    "digest": "0x271bfac1b0f09b942e79fcf1c5f9426876266de5f48114b15b128e7b9bcc160c",
+    "signature": "0x7765dcb482ec8ad120ca5aa1ed4521e1295e0a3701a1e0143e74b9637c7152151144a6e17b7018bedf1791bba850ebb22be38fd2989710a4e43ff676dea016b71c",
+    "session_signature": "0x00000000000000000000000070997970c51812dc3a010c7d01b50e0d17dc79c80000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000006000000000000000000000000000000000000000000000000000000000000000417765dcb482ec8ad120ca5aa1ed4521e1295e0a3701a1e0143e74b9637c7152151144a6e17b7018bedf1791bba850ebb22be38fd2989710a4e43ff676dea016b71c000000000000000000000000000000000000000000000000000000000000006492649264926492649264926492649264926492649264926492649264926492",
+    "calls": [
+      {
+        "target": "0x4D97DCd97eC945f40cF65F87097ACe5EA0476045",
+        "value": "0",
+        "data": "0x01b7037c000000000000000000000000c011a7e12a19f7b1f670d46f03b03f3342e82dfb00000000000000000000000000000000000000000000000000000000000000001171bfba0ad9386688133910593527fe77ce5406a7ac2c9a3552ab5471c1ac510000000000000000000000000000000000000000000000000000000000000080000000000000000000000000000000000000000000000000000000000000000200000000000000000000000000000000000000000000000000000000000000010000000000000000000000000000000000000000000000000000000000000002"
+      }
+    ],
+    "nonce": "6",
+    "deadline": "1800000600"
+  },
+  "submit_body": {
+    "type": "WALLET",
+    "from": "0xf39Fd6e51aad88F6F4ce6aB8827279cffFb92266",
+    "to": "0x00000000000Fb5C9ADea0298D729A0CB3823Cc07",
+    "nonce": "3",
+    "signature": "0xaa0e8c45ca7e2c7c954edf32b2f8c70b58a633e280b25233e744a383538e9c675dcda2ffb2b88e941a4ca0d26188215ea806fb2921d2f84f68e392c6bff00fcc1b",
+    "metadata": "",
+    "depositWalletParams": {
+      "depositWallet": "0xBc0fF067b7740Eff76C1ca93c875Ba6B890d6B50",
+      "deadline": "1800000000",
+      "calls": [
+        {
+          "target": "0xC011a7E12a19f7B1f670d46F03B03f3342E82DFB",
+          "value": "0",
+          "data": "0x095ea7b3000000000000000000000000e111180000d2663c0091e4f400237545b87b996bffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff"
+        }
+      ]
+    }
+  },
+  "authorization_body": {
+    "deadline": "1800000600",
+    "nonce": "4",
+    "scopes": [
+      "CLOB"
+    ],
+    "sessionSignerAddress": "0x70997970C51812dc3A010C7d01b50e0d17dc79C8",
+    "signature": "0x91a54e2dab364c46a1461c803eb0619d11f6ca94731904b280d4c0766cd44e05005b55ebe4610b7c718ec4c13779b3cebe629fc302830c4902e51c83f6da72a91b",
+    "validUntil": "1815534000",
+    "walletAddress": "0xBc0fF067b7740Eff76C1ca93c875Ba6B890d6B50"
+  }
+}
