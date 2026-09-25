@@ -285,7 +285,7 @@ mod tests {
     }
 
     #[test]
-    fn batch_digest_matches_py_sdk_for_all_seven_batches() {
+    fn batch_digest_matches_py_sdk_for_every_batch() {
         let v = vectors();
         // multi_batch has two calls, the second with value 1, so Call[] hashing and
         // the value field are exercised, not just single zero-value calls.
@@ -333,9 +333,14 @@ mod tests {
     }
 
     #[test]
-    fn typed_data_json_equals_py_sdk_for_the_authorize_and_multi_batches() {
+    fn typed_data_json_equals_py_sdk_for_the_authorize_multi_and_adapter_batches() {
         let v = vectors();
-        for name in ["authorize_batch", "multi_batch"] {
+        for name in [
+            "authorize_batch",
+            "multi_batch",
+            "redeem_adapter_batch",
+            "redeem_neg_risk_batch",
+        ] {
             let (calls, nonce, deadline) = batch_from(&v[name]);
             let json = batch_typed_data(137, wallet(), &calls, nonce, deadline);
             assert_eq!(json, v[name]["typed_data"], "{name}");
