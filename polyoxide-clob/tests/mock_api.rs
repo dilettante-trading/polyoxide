@@ -3925,6 +3925,7 @@ async fn list_session_signers_rejects_a_wallet_that_is_not_the_target() {
         .await
         .unwrap_err()
         .to_string();
+    let err = err.to_lowercase();
     assert!(
         err.contains("0x0000000000000000000000000000000000000001"),
         "{err}"

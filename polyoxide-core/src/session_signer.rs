@@ -10,6 +10,7 @@ use serde::{Deserialize, Deserializer, Serialize, Serializer};
 
 /// A trading venue a session key may act on.
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]
+#[non_exhaustive]
 pub enum SessionSignerScope {
     /// The central limit order book (`"CLOB"`).
     Clob,
@@ -18,6 +19,10 @@ pub enum SessionSignerScope {
     /// Every current and future venue (`"ALL"`). Must be requested alone.
     All,
     /// A scope this crate does not know yet, kept verbatim.
+    ///
+    /// Build scopes with [`Self::from_wire`] or [`std::str::FromStr::from_str`],
+    /// not by constructing `Other` directly: `Other("ALL")` serialises like
+    /// [`Self::All`] but does not compare equal to it.
     Other(String),
 }
 
@@ -46,6 +51,14 @@ impl SessionSignerScope {
 impl fmt::Display for SessionSignerScope {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         f.write_str(self.as_str())
+    }
+}
+
+impl std::str::FromStr for SessionSignerScope {
+    type Err = std::convert::Infallible;
+
+    fn from_str(s: &str) -> Result<Self, Self::Err> {
+        Ok(Self::from_wire(s))
     }
 }
 

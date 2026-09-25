@@ -200,7 +200,7 @@ impl AccountApi {
         if let Some((wallet, _)) = self.target.deposit_wallet() {
             if listed.wallet != wallet {
                 return Err(ClobError::validation(format!(
-                    "session-signers response is for wallet {:#x}, but this account targets {:#x}",
+                    "session-signers response is for wallet {}, but this account targets {}",
                     listed.wallet, wallet
                 )));
             }
