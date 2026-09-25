@@ -106,27 +106,35 @@ pub fn batch_digest(
     to_protocol(wallet, calls, nonce, deadline).eip712_signing_hash(&domain(chain_id, wallet))
 }
 
-/// A call's `value` as a JSON number, the way py-sdk emits it.
+/// A call's `value` for the typed-data JSON, exact at any size.
 ///
-/// Exact for anything up to `u64::MAX` wei (about 18.4 native tokens), which
-/// covers every value a Deposit Wallet batch sends in practice. A larger value
-/// cannot be held exactly: without serde_json's `arbitrary_precision` feature a
-/// JSON number is at most a `u64` or an `f64`, so it falls back to the nearest
-/// `f64`. The digest from `batch_digest` is unaffected, since it hashes the
-/// `U256` directly; only this display JSON loses precision.
+/// Up to `u64::MAX` wei (about 18.4 native tokens) it is a JSON number, the way
+/// py-sdk emits it, so the fixtures match. Above that it is a decimal string.
+/// Without serde_json's `arbitrary_precision` feature a JSON number holds at
+/// most a `u64` or an `f64`, and an `f64` would round the value, so the JSON
+/// would describe a different batch than `batch_digest` hashes and a wallet
+/// signing it would produce a signature the relayer rejects. eth-sig-util,
+/// ethers and viem all accept a decimal string for a `uint256` field. py-sdk
+/// emits a Python int instead, so this path does not match its bytes.
 fn value_json(value: U256) -> serde_json::Value {
     match u64::try_from(value) {
         Ok(v) => serde_json::Value::from(v),
-        Err(_) => serde_json::from_str(&value.to_string())
-            .expect("a decimal integer string always parses as a JSON number"),
+        Err(_) => serde_json::Value::String(value.to_string()),
     }
 }
 
-/// The batch as EIP-712 JSON for `eth_signTypedData_v4`, byte-equal in field
-/// names and order to what Polymarket's SDKs emit.
+/// The batch as EIP-712 JSON for `eth_signTypedData_v4`.
 ///
-/// Each call's `value` is a JSON number, exact up to `u64::MAX` wei and the
-/// nearest `f64` above that; `batch_digest` is exact at any size.
+/// It matches py-sdk's `build_deposit_wallet_typed_data` field for field, with
+/// the same array order and the same value representations, with one exception.
+/// Each call's `data` is rendered as `0x` hex, where py-sdk returns raw bytes;
+/// the fixture's hex strings come from the capture script. Object key order is
+/// not preserved: keys serialize sorted rather than in insertion order, which
+/// EIP-712 signers ignore, since they hash the `types` arrays.
+///
+/// Each call's `value` is a JSON number up to `u64::MAX` wei and a decimal
+/// string above that, so the JSON always describes exactly the batch that
+/// `batch_digest` hashes.
 pub fn batch_typed_data(
     chain_id: u64,
     wallet: Address,
@@ -276,7 +284,7 @@ mod tests {
     }
 
     #[test]
-    fn batch_digest_matches_py_sdk_for_all_four_batches() {
+    fn batch_digest_matches_py_sdk_for_all_five_batches() {
         let v = vectors();
         // multi_batch has two calls, the second with value 1, so Call[] hashing and
         // the value field are exercised, not just single zero-value calls.
@@ -389,12 +397,21 @@ mod tests {
     }
 
     #[test]
-    fn a_value_above_u64_stays_a_json_number_instead_of_panicking() {
-        // No fixture reaches this branch; py-sdk emits every value as a number.
-        let exact = value_json(alloy::primitives::U256::from(u64::MAX));
-        assert_eq!(exact, serde_json::json!(u64::MAX));
-        let big = value_json(alloy::primitives::U256::MAX);
-        assert!(big.is_number(), "{big}");
+    fn a_value_above_u64_is_an_exact_decimal_string() {
+        // No fixture reaches the string branch: every fixture value fits in u64.
+        let fits = value_json(alloy::primitives::U256::from(u64::MAX));
+        assert!(fits.is_number(), "{fits}");
+        assert_eq!(fits, serde_json::json!(u64::MAX));
+        let above =
+            value_json(alloy::primitives::U256::from(u64::MAX) + alloy::primitives::U256::from(1));
+        assert_eq!(above, serde_json::json!("18446744073709551616"));
+        let max = value_json(alloy::primitives::U256::MAX);
+        assert_eq!(
+            max,
+            serde_json::json!(
+                "115792089237316195423570985008687907853269984665640564039457584007913129639935"
+            )
+        );
     }
 
     #[test]
