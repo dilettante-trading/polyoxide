@@ -136,7 +136,7 @@ enabled. Do this first, in parallel with the code.
 
    *Status:* Done, plan 2. `polyoxide_relay::deposit_wallet::{batch_typed_data,
    batch_digest}`, `RelayClient::get_execute_params(signer, WalletType::DepositWallet)`;
-   five signed batches pinned to py-sdk
+   seven signed batches pinned to py-sdk
    (`polyoxide-relay/tests/fixtures/session_keys/relay_vectors.json`). The nonce is
    queried for the EOA that signs, owner or session key.
 9. **Session-signer endpoints** (base `https://relayer-v2.polymarket.com`, already the
