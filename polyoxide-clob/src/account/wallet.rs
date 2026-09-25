@@ -12,9 +12,10 @@ use crate::error::ClobError;
 ///
 /// Local keys and KMS-backed signers (AWS, GCP) qualify, so the process never
 /// has to hold raw key material to trade. Hardware wallets such as Ledger and
-/// Trezor refuse raw-hash signing and are not usable here; a key held that way
-/// should sign the typed data returned by `clob_auth_typed_data` out of
-/// process instead.
+/// Trezor refuse raw-hash signing and are not usable here; a hardware-held
+/// owner key instead signs the L1 auth typed data out of process (via
+/// [`crate::clob_auth_typed_data`] and `Clob::derive_api_key_with_signature`)
+/// and authorizes a session key that implements `sign_hash` for trading.
 pub type DynSigner = dyn AlloySigner + Send + Sync;
 
 /// The EIP-712 signing half of an account.

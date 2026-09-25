@@ -3620,3 +3620,99 @@ async fn adopting_a_higher_tier_admits_a_previously_impossible_batch() {
 
     batch.assert_async().await;
 }
+
+#[tokio::test]
+async fn derive_api_key_with_signature_sends_the_l1_headers_verbatim() {
+    let mut server = Server::new_async().await;
+    let mock = server
+        .mock("GET", "/auth/derive-api-key")
+        .match_header("POLY_ADDRESS", "0xf39Fd6e51aad88F6F4ce6aB8827279cffFb92266")
+        .match_header("POLY_SIGNATURE", "0xdeadbeef")
+        .match_header("POLY_TIMESTAMP", "1700000000")
+        .match_header("POLY_NONCE", "7")
+        .with_status(200)
+        .with_header("content-type", "application/json")
+        .with_body(r#"{"apiKey":"k","secret":"c2VjcmV0","passphrase":"p"}"#)
+        .create_async()
+        .await;
+
+    // No account: this is the onboarding path for a key held in an external wallet.
+    let clob = test_public_clob(&server);
+    let creds = clob
+        .derive_api_key_with_signature(
+            alloy::primitives::address!("f39Fd6e51aad88F6F4ce6aB8827279cffFb92266"),
+            1700000000,
+            7,
+            "0xdeadbeef",
+        )
+        .await
+        .unwrap();
+    assert_eq!(creds.api_key, "k");
+    mock.assert_async().await;
+}
+
+#[tokio::test]
+async fn create_api_key_with_signature_posts_the_l1_headers_verbatim() {
+    let mut server = Server::new_async().await;
+    let mock = server
+        .mock("POST", "/auth/api-key")
+        .match_header("POLY_ADDRESS", "0xf39Fd6e51aad88F6F4ce6aB8827279cffFb92266")
+        .match_header("POLY_SIGNATURE", "0xdeadbeef")
+        .match_header("POLY_TIMESTAMP", "1700000000")
+        .match_header("POLY_NONCE", "0")
+        .with_status(200)
+        .with_header("content-type", "application/json")
+        .with_body(r#"{"apiKey":"k","secret":"c2VjcmV0","passphrase":"p"}"#)
+        .create_async()
+        .await;
+
+    let clob = test_public_clob(&server);
+    let creds = clob
+        .create_api_key_with_signature(
+            alloy::primitives::address!("f39Fd6e51aad88F6F4ce6aB8827279cffFb92266"),
+            1700000000,
+            0,
+            "0xdeadbeef",
+        )
+        .await
+        .unwrap();
+    assert_eq!(creds.api_key, "k");
+    mock.assert_async().await;
+}
+
+#[tokio::test]
+async fn derive_api_key_with_signature_matches_the_signer_path() {
+    use alloy::signers::local::PrivateKeySigner;
+
+    // Hardhat/Anvil account #0.
+    let signer: PrivateKeySigner =
+        "0xac0974bec39a17e36ba4a6b4d238ff944bacb478cbed5efcae784d7bf4f2ff80"
+            .parse()
+            .unwrap();
+    let timestamp = 1700000000u64;
+    let nonce = 3u32;
+    let signature = polyoxide_clob::core::eip712::sign_clob_auth(&signer, 137, timestamp, nonce)
+        .await
+        .unwrap();
+
+    let mut server = Server::new_async().await;
+    let mock = server
+        .mock("GET", "/auth/derive-api-key")
+        .match_header("POLY_ADDRESS", "0xf39Fd6e51aad88F6F4ce6aB8827279cffFb92266")
+        .match_header("POLY_SIGNATURE", signature.as_str())
+        .match_header("POLY_TIMESTAMP", timestamp.to_string().as_str())
+        .match_header("POLY_NONCE", nonce.to_string().as_str())
+        .with_status(200)
+        .with_header("content-type", "application/json")
+        .with_body(r#"{"apiKey":"k","secret":"c2VjcmV0","passphrase":"p"}"#)
+        .create_async()
+        .await;
+
+    let clob = test_public_clob(&server);
+    let creds = clob
+        .derive_api_key_with_signature(signer.address(), timestamp, nonce, signature)
+        .await
+        .unwrap();
+    assert_eq!(creds.api_key, "k");
+    mock.assert_async().await;
+}

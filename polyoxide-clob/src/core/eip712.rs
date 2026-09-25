@@ -96,6 +96,44 @@ fn clob_auth_domain(chain_id: u64) -> Eip712Domain {
     }
 }
 
+/// The L1 auth message as EIP-712 JSON for `eth_signTypedData_v4`.
+///
+/// Hand this to an external wallet, then pass the signature it returns to
+/// [`crate::Clob::create_api_key_with_signature`] or
+/// [`crate::Clob::derive_api_key_with_signature`]. It is exactly what
+/// [`sign_clob_auth`] signs: `ClobAuthDomain` v1 with no verifying contract,
+/// `timestamp` as a decimal string, and the fixed attestation message.
+pub fn clob_auth_typed_data(
+    address: Address,
+    chain_id: u64,
+    timestamp: u64,
+    nonce: u32,
+) -> serde_json::Value {
+    serde_json::json!({
+        "types": {
+            "EIP712Domain": [
+                { "name": "name", "type": "string" },
+                { "name": "version", "type": "string" },
+                { "name": "chainId", "type": "uint256" }
+            ],
+            "ClobAuth": [
+                { "name": "address", "type": "address" },
+                { "name": "timestamp", "type": "string" },
+                { "name": "nonce", "type": "uint256" },
+                { "name": "message", "type": "string" }
+            ]
+        },
+        "primaryType": "ClobAuth",
+        "domain": { "name": "ClobAuthDomain", "version": "1", "chainId": chain_id },
+        "message": {
+            "address": address.to_string(),
+            "timestamp": timestamp.to_string(),
+            "nonce": nonce,
+            "message": CLOB_AUTH_MESSAGE
+        }
+    })
+}
+
 /// Convert a CLOB order to the EIP-712 protocol struct for hashing/signing.
 fn order_to_protocol(order: &ClobOrder) -> Result<protocol::Order, ClobError> {
     // The venue requires a Deposit Wallet order to be made *and* signed by the
@@ -1275,5 +1313,37 @@ uint256 timestamp,bytes32 metadata,bytes32 builder)"
             .unwrap_err()
             .to_string();
         assert!(err.contains("sign_order_as"), "{err}");
+    }
+
+    #[test]
+    fn clob_auth_typed_data_is_the_upstream_json_shape() {
+        let addr = address!("f39Fd6e51aad88F6F4ce6aB8827279cffFb92266");
+        let json = clob_auth_typed_data(addr, 137, 1700000000, 0);
+        assert_eq!(
+            json,
+            serde_json::json!({
+                "types": {
+                    "EIP712Domain": [
+                        { "name": "name", "type": "string" },
+                        { "name": "version", "type": "string" },
+                        { "name": "chainId", "type": "uint256" }
+                    ],
+                    "ClobAuth": [
+                        { "name": "address", "type": "address" },
+                        { "name": "timestamp", "type": "string" },
+                        { "name": "nonce", "type": "uint256" },
+                        { "name": "message", "type": "string" }
+                    ]
+                },
+                "primaryType": "ClobAuth",
+                "domain": { "name": "ClobAuthDomain", "version": "1", "chainId": 137 },
+                "message": {
+                    "address": "0xf39Fd6e51aad88F6F4ce6aB8827279cffFb92266",
+                    "timestamp": "1700000000",
+                    "nonce": 0,
+                    "message": "This message attests that I control the given wallet"
+                }
+            })
+        );
     }
 }

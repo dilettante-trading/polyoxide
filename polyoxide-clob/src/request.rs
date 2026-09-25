@@ -19,6 +19,15 @@ pub enum AuthMode {
         wallet: Wallet,
         nonce: u32,
     },
+    /// L1 auth with a signature produced elsewhere (an external wallet signed
+    /// the JSON from `clob_auth_typed_data`). Sends the same four headers as
+    /// [`AuthMode::L1`] but signs nothing itself.
+    L1Signed {
+        address: Address,
+        nonce: u32,
+        timestamp: u64,
+        signature: String,
+    },
     L2 {
         address: Address,
         credentials: Credentials,
@@ -285,6 +294,17 @@ async fn add_auth_headers(
 
             Ok(request)
         }
+        AuthMode::L1Signed {
+            address,
+            nonce,
+            timestamp,
+            signature,
+        } => Ok(request
+            // Checksummed, matching the signer-based L1 arm above.
+            .header("POLY_ADDRESS", address.to_string())
+            .header("POLY_SIGNATURE", signature.clone())
+            .header("POLY_TIMESTAMP", timestamp.to_string())
+            .header("POLY_NONCE", nonce.to_string())),
         AuthMode::L2 {
             address,
             credentials,

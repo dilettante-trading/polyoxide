@@ -222,6 +222,70 @@ impl Clob {
         })
     }
 
+    /// The L1 auth message for `address` as EIP-712 JSON, for an external wallet to sign.
+    ///
+    /// Uses this client's chain id. See [`crate::core::eip712::clob_auth_typed_data`].
+    pub fn clob_auth_typed_data(
+        &self,
+        address: Address,
+        timestamp: u64,
+        nonce: u32,
+    ) -> serde_json::Value {
+        crate::core::eip712::clob_auth_typed_data(address, self.chain_id, timestamp, nonce)
+    }
+
+    /// `POST /auth/api-key` with a signature produced outside this process.
+    ///
+    /// Needs no account: `address` is the EOA that signed
+    /// [`Clob::clob_auth_typed_data`] for the same `timestamp` and `nonce`.
+    pub async fn create_api_key_with_signature(
+        &self,
+        address: Address,
+        timestamp: u64,
+        nonce: u32,
+        signature: impl Into<String>,
+    ) -> Result<crate::api::auth::ApiKeyResponse, ClobError> {
+        Request::post(
+            self.http_client.clone(),
+            "/auth/api-key".to_string(),
+            AuthMode::L1Signed {
+                address,
+                nonce,
+                timestamp,
+                signature: signature.into(),
+            },
+            self.chain_id,
+        )
+        .send()
+        .await
+    }
+
+    /// `GET /auth/derive-api-key` with a signature produced outside this process.
+    ///
+    /// The counterpart of [`Clob::create_api_key_with_signature`] for credentials
+    /// that already exist.
+    pub async fn derive_api_key_with_signature(
+        &self,
+        address: Address,
+        timestamp: u64,
+        nonce: u32,
+        signature: impl Into<String>,
+    ) -> Result<crate::api::auth::ApiKeyResponse, ClobError> {
+        Request::get(
+            self.http_client.clone(),
+            "/auth/derive-api-key",
+            AuthMode::L1Signed {
+                address,
+                nonce,
+                timestamp,
+                signature: signature.into(),
+            },
+            self.chain_id,
+        )
+        .send()
+        .await
+    }
+
     /// Create an unsigned order from parameters
     ///
     /// `maker`, `signer` and `signatureType` come from the account's `SigningTarget`

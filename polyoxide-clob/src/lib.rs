@@ -100,6 +100,7 @@ pub mod utils;
 pub mod ws;
 
 pub use core::chain::{Chain, Contracts};
+pub use core::eip712::clob_auth_typed_data;
 
 pub use account::{
     Account, AccountConfig, Credentials, DepositWalletRole, DynSigner, Signer, SigningTarget,
