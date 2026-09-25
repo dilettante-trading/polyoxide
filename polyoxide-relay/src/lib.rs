@@ -49,6 +49,12 @@ pub use deposit_wallet::{
     DepositWalletCall, DEFAULT_BATCH_DEADLINE_SECS, SESSION_KEY_LIFETIME_SECS,
 };
 pub use error::RelayError;
+pub use polyoxide_core::{DepositWalletRole, SessionSignerScope};
+pub use session_signers::{
+    validate_scopes, SessionSignerAuthorization, SessionSignerAuthorizationBody,
+    SessionSignerAuthorizationResponse, SessionSignerAuthorizationStatus, SessionSignerRevocation,
+    SessionSignerRevocationBody, SessionSignerRevocationResponse, SessionSignerRevocationStatus,
+};
 pub use types::{
     GaslessTransaction, RelayerApiKey, RelayerTransaction, SafeTransaction, SafeTx, SubmitResponse,
     TransactionRequest, TransactionState, WalletType,
@@ -58,6 +64,7 @@ pub use wallet::{
 };
 
 pub mod deposit_wallet;
+pub mod session_signers;
 pub mod wallet;
 
 mod account;

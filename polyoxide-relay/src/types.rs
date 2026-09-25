@@ -260,6 +260,7 @@ macro_rules! open_string_enum {
         }
     };
 }
+pub(crate) use open_string_enum;
 
 open_string_enum! {
     /// Lifecycle state of a relayer transaction (`GET /v1/account/transactions/{id}`).

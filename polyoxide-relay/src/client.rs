@@ -2,6 +2,10 @@ use crate::account::BuilderAccount;
 use crate::config::{get_contract_config, AuthConfig, BuilderConfig, ContractConfig};
 use crate::deposit_wallet::DepositWalletCall;
 use crate::error::RelayError;
+use crate::session_signers::{
+    SessionSignerAuthorization, SessionSignerAuthorizationResponse, SessionSignerRevocation,
+    SessionSignerRevocationResponse,
+};
 use crate::types::{
     ExecuteParams, GaslessTransaction, NonceResponse, RelayerApiKey, RelayerTransaction,
     SafeTransaction, SafeTx, SubmitResponse, WalletType,
@@ -15,6 +19,7 @@ use alloy::rpc::types::TransactionRequest;
 use alloy::sol_types::{Eip712Domain, SolCall, SolStruct, SolValue};
 use polyoxide_core::{
     retry_after_header, DepositWalletRole, HttpClient, HttpClientBuilder, RateLimiter, RetryConfig,
+    SessionSignerScope,
 };
 use serde::Serialize;
 use std::time::{Duration, Instant};
@@ -1013,6 +1018,262 @@ impl RelayClient {
             .await
     }
 
+    /// The one-call batch that authorizes `session_signer` until `valid_until`.
+    fn authorize_session_signer_calls(
+        wallet: Address,
+        session_signer: Address,
+        valid_until: u64,
+    ) -> Vec<DepositWalletCall> {
+        vec![DepositWalletCall {
+            target: wallet,
+            value: U256::ZERO,
+            data: crate::deposit_wallet::authorize_session_signer_calldata(
+                session_signer,
+                valid_until,
+            )
+            .into(),
+        }]
+    }
+
+    /// The one-call batch that revokes `session_signer`.
+    fn revoke_session_signer_calls(
+        wallet: Address,
+        session_signer: Address,
+    ) -> Vec<DepositWalletCall> {
+        vec![DepositWalletCall {
+            target: wallet,
+            value: U256::ZERO,
+            data: crate::deposit_wallet::revoke_session_signer_calldata(session_signer).into(),
+        }]
+    }
+
+    /// Build the authorization batch for an external signer, with `valid_until`
+    /// computed as now + [`crate::SESSION_KEY_LIFETIME_SECS`] (the only lifetime the
+    /// venue accepts). Returns the typed data to sign and the request to submit with
+    /// the signature. Validates `scopes` before doing anything else.
+    pub fn authorize_session_signer_typed_data(
+        &self,
+        wallet: Address,
+        session_signer: Address,
+        scopes: Vec<SessionSignerScope>,
+        nonce: u64,
+        deadline: u64,
+    ) -> Result<(serde_json::Value, SessionSignerAuthorization), RelayError> {
+        let valid_until =
+            polyoxide_core::current_timestamp() + crate::deposit_wallet::SESSION_KEY_LIFETIME_SECS;
+        self.authorize_session_signer_typed_data_with_valid_until(
+            wallet,
+            session_signer,
+            scopes,
+            valid_until,
+            nonce,
+            deadline,
+        )
+    }
+
+    /// [`RelayClient::authorize_session_signer_typed_data`] with an explicit
+    /// `valid_until`. The venue rejects lifetimes other than
+    /// [`crate::SESSION_KEY_LIFETIME_SECS`] from now; this exists for tests and for
+    /// the day the venue relaxes that.
+    pub fn authorize_session_signer_typed_data_with_valid_until(
+        &self,
+        wallet: Address,
+        session_signer: Address,
+        scopes: Vec<SessionSignerScope>,
+        valid_until: u64,
+        nonce: u64,
+        deadline: u64,
+    ) -> Result<(serde_json::Value, SessionSignerAuthorization), RelayError> {
+        crate::session_signers::validate_scopes(&scopes)?;
+        if session_signer == Address::ZERO {
+            return Err(RelayError::Api(
+                "session signer must not be the zero address".into(),
+            ));
+        }
+        let calls = Self::authorize_session_signer_calls(wallet, session_signer, valid_until);
+        let typed = self.deposit_wallet_batch_typed_data(wallet, &calls, nonce, deadline);
+        Ok((
+            typed,
+            SessionSignerAuthorization {
+                wallet_address: wallet,
+                session_signer_address: session_signer,
+                scopes,
+                valid_until,
+                nonce,
+                deadline,
+            },
+        ))
+    }
+
+    /// `POST /v1/session-signers/authorizations` with an owner signature produced
+    /// elsewhere. Builder HMAC auth only; `idempotency_key` is sent as
+    /// `Idempotency-Key` and should be reused when retrying the same request.
+    pub async fn submit_session_signer_authorization(
+        &self,
+        request: &SessionSignerAuthorization,
+        signature: &str,
+        idempotency_key: &str,
+    ) -> Result<SessionSignerAuthorizationResponse, RelayError> {
+        self.post_json(
+            "v1/session-signers/authorizations",
+            &request.body(signature),
+            Self::idempotency_headers(idempotency_key)?,
+            false,
+        )
+        .await
+    }
+
+    /// Build the revocation batch for an external signer. Returns the typed data to
+    /// sign and the request to submit with the signature.
+    pub fn revoke_session_signer_typed_data(
+        &self,
+        wallet: Address,
+        session_signer: Address,
+        nonce: u64,
+        deadline: u64,
+    ) -> (serde_json::Value, SessionSignerRevocation) {
+        let calls = Self::revoke_session_signer_calls(wallet, session_signer);
+        let typed = self.deposit_wallet_batch_typed_data(wallet, &calls, nonce, deadline);
+        (
+            typed,
+            SessionSignerRevocation {
+                wallet_address: wallet,
+                session_signer_address: session_signer,
+                nonce,
+                deadline,
+            },
+        )
+    }
+
+    /// `POST /v1/session-signers/revocations` with an owner signature produced elsewhere.
+    ///
+    /// Builder HMAC auth only; `idempotency_key` is sent as `Idempotency-Key`. The
+    /// venue answers once the key is fenced out of the registry; the on-chain
+    /// revocation and the cancel-all of its open orders follow asynchronously.
+    pub async fn submit_session_signer_revocation(
+        &self,
+        request: &SessionSignerRevocation,
+        signature: &str,
+        idempotency_key: &str,
+    ) -> Result<SessionSignerRevocationResponse, RelayError> {
+        self.post_json(
+            "v1/session-signers/revocations",
+            &request.body(signature),
+            Self::idempotency_headers(idempotency_key)?,
+            false,
+        )
+        .await
+    }
+
+    /// Authorize `session_signer` with this client's account (the owner's key) and
+    /// configured Deposit Wallet: fetch the nonce, sign, submit. The idempotency key
+    /// is a fresh UUID; use the two-step API to retry with the same one.
+    ///
+    /// Refused before any I/O for a client built with
+    /// [`DepositWalletRole::SessionKey`]: session signers are managed by the owner.
+    pub async fn authorize_session_signer(
+        &self,
+        session_signer: Address,
+        scopes: Vec<SessionSignerScope>,
+    ) -> Result<SessionSignerAuthorizationResponse, RelayError> {
+        let (wallet, owner) = self.session_signer_owner_context()?;
+        // Validate before fetching a nonce; the typed-data call below repeats it.
+        crate::session_signers::validate_scopes(&scopes)?;
+        let nonce = self
+            .get_execute_params(owner, WalletType::DepositWallet)
+            .await?;
+        let deadline = Self::default_deadline();
+        let (_, request) = self.authorize_session_signer_typed_data(
+            wallet,
+            session_signer,
+            scopes,
+            nonce,
+            deadline,
+        )?;
+        let calls =
+            Self::authorize_session_signer_calls(wallet, session_signer, request.valid_until);
+        let signature = self
+            .sign_deposit_wallet_batch(wallet, &calls, nonce, deadline)
+            .await?;
+        self.submit_session_signer_authorization(&request, &signature, &Self::new_idempotency_key())
+            .await
+    }
+
+    /// Revoke `session_signer` with this client's account (the owner's key) and
+    /// configured Deposit Wallet: fetch the nonce, sign, submit. The idempotency key
+    /// is a fresh UUID; use the two-step API to retry with the same one.
+    ///
+    /// Refused before any I/O for a client built with
+    /// [`DepositWalletRole::SessionKey`]: session signers are managed by the owner.
+    pub async fn revoke_session_signer(
+        &self,
+        session_signer: Address,
+    ) -> Result<SessionSignerRevocationResponse, RelayError> {
+        let (wallet, owner) = self.session_signer_owner_context()?;
+        let nonce = self
+            .get_execute_params(owner, WalletType::DepositWallet)
+            .await?;
+        let deadline = Self::default_deadline();
+        let (_, request) =
+            self.revoke_session_signer_typed_data(wallet, session_signer, nonce, deadline);
+        let calls = Self::revoke_session_signer_calls(wallet, session_signer);
+        let signature = self
+            .sign_deposit_wallet_batch(wallet, &calls, nonce, deadline)
+            .await?;
+        self.submit_session_signer_revocation(&request, &signature, &Self::new_idempotency_key())
+            .await
+    }
+
+    /// The wallet and owner address for the session-signer conveniences, refusing a
+    /// session-key role, a missing wallet, an unsupported chain or a missing account.
+    fn session_signer_owner_context(&self) -> Result<(Address, Address), RelayError> {
+        if self.deposit_wallet_role == DepositWalletRole::SessionKey {
+            return Err(RelayError::Api(
+                "session signers are managed by the wallet owner, not a session key".into(),
+            ));
+        }
+        let wallet = self.configured_deposit_wallet()?;
+        self.deposit_wallet_factory()?;
+        let owner = self
+            .account
+            .as_ref()
+            .ok_or(RelayError::MissingSigner)?
+            .address();
+        Ok((wallet, owner))
+    }
+
+    /// The `Idempotency-Key` header map.
+    fn idempotency_headers(
+        idempotency_key: &str,
+    ) -> Result<reqwest::header::HeaderMap, RelayError> {
+        let mut headers = reqwest::header::HeaderMap::new();
+        headers.insert(
+            "Idempotency-Key",
+            reqwest::header::HeaderValue::from_str(idempotency_key)
+                .map_err(|e| RelayError::Api(format!("invalid idempotency key: {e}")))?,
+        );
+        Ok(headers)
+    }
+
+    /// A UUID v4 string for `Idempotency-Key`.
+    fn new_idempotency_key() -> String {
+        // Avoid a uuid dependency: 16 random bytes formatted 8-4-4-4-12 with the
+        // version and variant nibbles set.
+        let mut b = [0u8; 16];
+        rand::RngCore::fill_bytes(&mut rand::rng(), &mut b);
+        b[6] = (b[6] & 0x0f) | 0x40;
+        b[8] = (b[8] & 0x3f) | 0x80;
+        let h = hex::encode(b);
+        format!(
+            "{}-{}-{}-{}-{}",
+            &h[0..8],
+            &h[8..12],
+            &h[12..16],
+            &h[16..20],
+            &h[20..32]
+        )
+    }
+
     /// The four approvals a Deposit Wallet needs before it can trade: pUSD `approve`
     /// and Conditional Tokens `setApprovalForAll` for the standard and neg-risk V2
     /// exchanges. Sign and submit the result as one batch, or convert each call to a
@@ -1557,6 +1818,25 @@ mod tests {
             .unwrap();
         let err = amoy.deposit_wallet_trading_approvals().unwrap_err();
         assert!(err.to_string().contains("80002"), "{err}");
+    }
+
+    #[test]
+    fn new_idempotency_key_is_a_uuid_v4() {
+        let a = RelayClient::new_idempotency_key();
+        let b = RelayClient::new_idempotency_key();
+        assert_ne!(a, b);
+        for key in [&a, &b] {
+            assert_eq!(key.len(), 36, "{key}");
+            let bytes = key.as_bytes();
+            for i in [8, 13, 18, 23] {
+                assert_eq!(bytes[i], b'-', "{key}");
+            }
+            assert_eq!(bytes[14], b'4', "version nibble: {key}");
+            assert!(b"89ab".contains(&bytes[19]), "variant nibble: {key}");
+            assert!(key
+                .chars()
+                .all(|c| c == '-' || c.is_ascii_digit() || ('a'..='f').contains(&c)));
+        }
     }
 
     #[test]

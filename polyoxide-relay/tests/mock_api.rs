@@ -787,3 +787,294 @@ async fn execute_on_a_deposit_wallet_refuses_an_unsupported_chain_before_io() {
     params.assert_async().await;
     submit.assert_async().await;
 }
+
+// ── session signers ────────────────────────────────────────────
+
+#[tokio::test]
+async fn authorize_session_signer_typed_data_and_submit_reproduce_the_py_sdk_body() {
+    let v = relay_vectors();
+    let mut server = Server::new_async().await;
+    let mock = server
+        .mock("POST", "/v1/session-signers/authorizations")
+        .match_header("POLY_BUILDER_API_KEY", "builder-key")
+        .match_header("POLY_BUILDER_SIGNATURE", Matcher::Any)
+        .match_header("POLY_BUILDER_PASSPHRASE", "pp")
+        .match_header("Idempotency-Key", "idem-1")
+        .match_body(Matcher::Json(v["authorization_body"].clone()))
+        .with_status(200)
+        .with_header("content-type", "application/json")
+        .with_body(r#"{"operationId":"op-1","status":"SUBMITTED","transactionHash":null,"transactionId":"tx-9"}"#)
+        .create_async()
+        .await;
+
+    let client = deposit_wallet_client(&server);
+    let wallet: alloy::primitives::Address = v["wallet"].as_str().unwrap().parse().unwrap();
+    let session: alloy::primitives::Address =
+        v["session_signer"].as_str().unwrap().parse().unwrap();
+    let (typed, request) = client
+        .authorize_session_signer_typed_data_with_valid_until(
+            wallet,
+            session,
+            vec![polyoxide_core::SessionSignerScope::Clob],
+            1815534000,
+            4,
+            1800000600,
+        )
+        .unwrap();
+    assert_eq!(typed, v["authorize_batch"]["typed_data"]);
+    assert_eq!(request.valid_until, 1815534000);
+
+    let resp = client
+        .submit_session_signer_authorization(
+            &request,
+            v["authorize_batch"]["signature"].as_str().unwrap(),
+            "idem-1",
+        )
+        .await
+        .unwrap();
+    assert_eq!(
+        resp.status,
+        polyoxide_relay::SessionSignerAuthorizationStatus::Submitted
+    );
+    assert_eq!(resp.transaction_id, "tx-9");
+    mock.assert_async().await;
+}
+
+#[tokio::test]
+async fn authorize_session_signer_typed_data_computes_valid_until_from_the_lifetime() {
+    let v = relay_vectors();
+    let server = Server::new_async().await;
+    let client = deposit_wallet_client(&server);
+    let wallet: alloy::primitives::Address = v["wallet"].as_str().unwrap().parse().unwrap();
+    let session: alloy::primitives::Address =
+        v["session_signer"].as_str().unwrap().parse().unwrap();
+    let before = polyoxide_core::current_timestamp();
+    let (_, request) = client
+        .authorize_session_signer_typed_data(
+            wallet,
+            session,
+            vec![polyoxide_core::SessionSignerScope::All],
+            4,
+            1800000600,
+        )
+        .unwrap();
+    let after = polyoxide_core::current_timestamp();
+    assert!(request.valid_until >= before + polyoxide_relay::SESSION_KEY_LIFETIME_SECS);
+    assert!(request.valid_until <= after + polyoxide_relay::SESSION_KEY_LIFETIME_SECS);
+}
+
+#[tokio::test]
+async fn session_signer_routes_refuse_relayer_api_key_auth_before_io() {
+    let v = relay_vectors();
+    let mut server = Server::new_async().await;
+    let mock = server
+        .mock("POST", "/v1/session-signers/authorizations")
+        .expect(0)
+        .create_async()
+        .await;
+    let client = client_with_relayer_api_key_auth(&server);
+    let wallet: alloy::primitives::Address = v["wallet"].as_str().unwrap().parse().unwrap();
+    let session: alloy::primitives::Address =
+        v["session_signer"].as_str().unwrap().parse().unwrap();
+    let (_, request) = client
+        .authorize_session_signer_typed_data_with_valid_until(
+            wallet,
+            session,
+            vec![polyoxide_core::SessionSignerScope::Clob],
+            1815534000,
+            4,
+            1800000600,
+        )
+        .unwrap();
+    let err = client
+        .submit_session_signer_authorization(&request, "0xsig", "idem")
+        .await
+        .unwrap_err()
+        .to_string();
+    assert!(err.contains("Builder HMAC"), "{err}");
+    mock.assert_async().await;
+}
+
+#[tokio::test]
+async fn authorize_session_signer_typed_data_rejects_bad_scopes_before_io() {
+    let v = relay_vectors();
+    let server = Server::new_async().await;
+    let client = deposit_wallet_client(&server);
+    let wallet: alloy::primitives::Address = v["wallet"].as_str().unwrap().parse().unwrap();
+    let session: alloy::primitives::Address =
+        v["session_signer"].as_str().unwrap().parse().unwrap();
+    let err = client
+        .authorize_session_signer_typed_data(
+            wallet,
+            session,
+            vec![
+                polyoxide_core::SessionSignerScope::All,
+                polyoxide_core::SessionSignerScope::Clob,
+            ],
+            4,
+            1800000600,
+        )
+        .unwrap_err()
+        .to_string();
+    assert!(err.contains("ALL"), "{err}");
+}
+
+#[tokio::test]
+async fn revoke_session_signer_typed_data_and_submit_send_the_venue_body() {
+    let v = relay_vectors();
+    let mut server = Server::new_async().await;
+    let mock = server
+        .mock("POST", "/v1/session-signers/revocations")
+        .match_header("POLY_BUILDER_API_KEY", "builder-key")
+        .match_header("Idempotency-Key", "idem-2")
+        .match_body(Matcher::Json(v["revocation_body"].clone()))
+        .with_status(200)
+        .with_header("content-type", "application/json")
+        .with_body(
+            r#"{"operationId":"op-2","status":"FENCED","fenced":true,"transactionId":"tx-10"}"#,
+        )
+        .create_async()
+        .await;
+
+    let client = deposit_wallet_client(&server);
+    let wallet: alloy::primitives::Address = v["wallet"].as_str().unwrap().parse().unwrap();
+    let session: alloy::primitives::Address =
+        v["session_signer"].as_str().unwrap().parse().unwrap();
+    let (typed, request) = client.revoke_session_signer_typed_data(wallet, session, 5, 1800000600);
+    assert_eq!(typed, v["revoke_batch"]["typed_data"]);
+    let resp = client
+        .submit_session_signer_revocation(
+            &request,
+            v["revoke_batch"]["signature"].as_str().unwrap(),
+            "idem-2",
+        )
+        .await
+        .unwrap();
+    assert_eq!(
+        resp.status,
+        polyoxide_relay::SessionSignerRevocationStatus::Fenced
+    );
+    assert!(resp.fenced);
+    mock.assert_async().await;
+}
+
+#[tokio::test]
+async fn authorize_session_signer_with_a_local_key_fetches_the_nonce_and_signs() {
+    let v = relay_vectors();
+    let mut server = Server::new_async().await;
+    let params = server
+        .mock("GET", "/v1/account/transactions/params")
+        .match_query(Matcher::AllOf(vec![
+            Matcher::UrlEncoded(
+                "address".into(),
+                "0xf39Fd6e51aad88F6F4ce6aB8827279cffFb92266".into(),
+            ),
+            Matcher::UrlEncoded("type".into(), "WALLET".into()),
+        ]))
+        .with_status(200)
+        .with_header("content-type", "application/json")
+        .with_body(r#"{"address":"0xf39Fd6e51aad88F6F4ce6aB8827279cffFb92266","nonce":"4"}"#)
+        .create_async()
+        .await;
+    let submit = server
+        .mock("POST", "/v1/session-signers/authorizations")
+        .match_header("POLY_BUILDER_API_KEY", "builder-key")
+        .match_header("Idempotency-Key", Matcher::Regex(r"^[0-9a-f-]{36}$".into()))
+        .match_body(Matcher::AllOf(vec![
+            Matcher::PartialJsonString(format!(
+                r#"{{"nonce":"4","scopes":["CLOB"],"sessionSignerAddress":"{}","walletAddress":"{}"}}"#,
+                v["session_signer"].as_str().unwrap(),
+                v["wallet"].as_str().unwrap()
+            )),
+            Matcher::Regex(r#""signature":"0x[0-9a-f]{130}""#.into()),
+        ]))
+        .with_status(200)
+        .with_header("content-type", "application/json")
+        .with_body(r#"{"operationId":"op-3","status":"SUBMITTED","transactionHash":null,"transactionId":"tx-11"}"#)
+        .create_async()
+        .await;
+
+    let client = deposit_wallet_client(&server);
+    let session: alloy::primitives::Address =
+        v["session_signer"].as_str().unwrap().parse().unwrap();
+    let resp = client
+        .authorize_session_signer(session, vec![polyoxide_core::SessionSignerScope::Clob])
+        .await
+        .unwrap();
+    assert_eq!(resp.transaction_id, "tx-11");
+    params.assert_async().await;
+    submit.assert_async().await;
+}
+
+fn session_key_deposit_wallet_client(server: &mockito::ServerGuard) -> RelayClient {
+    let config = BuilderConfig::new("builder-key".into(), "c2VjcmV0".into(), Some("pp".into()));
+    let account = BuilderAccount::new(TEST_PRIVATE_KEY, Some(config)).unwrap();
+    let wallet: alloy::primitives::Address =
+        relay_vectors()["wallet"].as_str().unwrap().parse().unwrap();
+    RelayClient::builder()
+        .unwrap()
+        .url(&server.url())
+        .unwrap()
+        .with_account(account)
+        .wallet_type(polyoxide_relay::WalletType::DepositWallet)
+        .deposit_wallet(wallet)
+        .deposit_wallet_role(polyoxide_core::DepositWalletRole::SessionKey)
+        .build()
+        .unwrap()
+}
+
+#[tokio::test]
+async fn authorize_session_signer_refuses_a_session_key_role_before_io() {
+    let v = relay_vectors();
+    let mut server = Server::new_async().await;
+    let params = server
+        .mock("GET", "/v1/account/transactions/params")
+        .match_query(Matcher::Any)
+        .expect(0)
+        .create_async()
+        .await;
+    let submit = server
+        .mock("POST", "/v1/session-signers/authorizations")
+        .expect(0)
+        .create_async()
+        .await;
+    let client = session_key_deposit_wallet_client(&server);
+    let session: alloy::primitives::Address =
+        v["session_signer"].as_str().unwrap().parse().unwrap();
+    let err = client
+        .authorize_session_signer(session, vec![polyoxide_core::SessionSignerScope::Clob])
+        .await
+        .unwrap_err()
+        .to_string();
+    assert!(err.contains("managed by the wallet owner"), "{err}");
+    params.assert_async().await;
+    submit.assert_async().await;
+}
+
+#[tokio::test]
+async fn revoke_session_signer_refuses_a_session_key_role_before_io() {
+    let v = relay_vectors();
+    let mut server = Server::new_async().await;
+    let params = server
+        .mock("GET", "/v1/account/transactions/params")
+        .match_query(Matcher::Any)
+        .expect(0)
+        .create_async()
+        .await;
+    let submit = server
+        .mock("POST", "/v1/session-signers/revocations")
+        .expect(0)
+        .create_async()
+        .await;
+    let client = session_key_deposit_wallet_client(&server);
+    let session: alloy::primitives::Address =
+        v["session_signer"].as_str().unwrap().parse().unwrap();
+    let err = client
+        .revoke_session_signer(session)
+        .await
+        .unwrap_err()
+        .to_string();
+    assert!(err.contains("managed by the wallet owner"), "{err}");
+    params.assert_async().await;
+    submit.assert_async().await;
+}
