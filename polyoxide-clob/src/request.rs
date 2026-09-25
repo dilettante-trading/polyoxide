@@ -265,7 +265,7 @@ async fn add_auth_headers(
 
             // Fresh timestamp on each attempt to avoid staleness after retry backoff
             let timestamp = current_timestamp();
-            let signature = sign_clob_auth(wallet.signer(), chain_id, timestamp, *nonce).await?;
+            let signature = sign_clob_auth(wallet.signer()?, chain_id, timestamp, *nonce).await?;
 
             request = request
                 // EIP-55 checksummed, matching py-clob-client, which sends

@@ -148,7 +148,7 @@ fn compute_order_digest(
 }
 
 /// Sign an order with EIP-712
-pub async fn sign_order<S: AlloySigner>(
+pub async fn sign_order<S: AlloySigner + ?Sized>(
     order: &ClobOrder,
     signer: &S,
     chain_id: u64,
@@ -159,7 +159,7 @@ pub async fn sign_order<S: AlloySigner>(
 }
 
 /// Sign CLOB auth message for API key creation
-pub async fn sign_clob_auth<S: AlloySigner>(
+pub async fn sign_clob_auth<S: AlloySigner + ?Sized>(
     signer: &S,
     chain_id: u64,
     timestamp: u64,

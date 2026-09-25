@@ -1,73 +1,137 @@
-use alloy::{network::EthereumWallet, primitives::Address, signers::local::PrivateKeySigner};
+use std::sync::Arc;
+
+use alloy::{
+    primitives::Address,
+    signers::{local::PrivateKeySigner, Signer as AlloySigner},
+};
 
 use crate::error::ClobError;
 
-/// Wallet wrapper for signing operations
+/// The signer an [`Account`](crate::Account) holds: any `alloy` signer, type-erased.
+///
+/// A local key, a hardware wallet, or a KMS-backed signer all fit here, so the
+/// process never has to hold raw key material to trade.
+pub type DynSigner = dyn AlloySigner + Send + Sync;
+
+/// The EIP-712 signing half of an account.
+///
+/// Holds an address and, unless built with [`Wallet::l2_only`], a signer for it.
+/// An L2-only wallet can authenticate HMAC (L2) requests, which only need the
+/// address, but cannot sign orders or the L1 auth message.
 #[derive(Clone)]
 pub struct Wallet {
-    signer: PrivateKeySigner,
-    wallet: EthereumWallet,
+    signer: Option<Arc<DynSigner>>,
+    address: Address,
 }
 
 impl std::fmt::Debug for Wallet {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         f.debug_struct("Wallet")
-            .field("address", &self.signer.address())
+            .field("address", &self.address)
+            .field("signer", &self.signer.is_some())
             .finish()
     }
 }
 
 impl Wallet {
-    /// Create wallet from private key hex string
+    /// Create a wallet from a hex-encoded private key (with or without `0x`).
     pub fn from_private_key(private_key: &str) -> Result<Self, ClobError> {
         let signer = private_key
             .parse::<PrivateKeySigner>()
             .map_err(|e| ClobError::Crypto(format!("Failed to parse private key: {}", e)))?;
-        let wallet = EthereumWallet::from(signer.clone());
-
-        Ok(Self { signer, wallet })
+        Ok(Self::from_signer(signer))
     }
 
-    /// Get the wallet address
+    /// Create a wallet around any `alloy` signer.
+    pub fn from_signer<S>(signer: S) -> Self
+    where
+        S: AlloySigner + Send + Sync + 'static,
+    {
+        Self {
+            address: signer.address(),
+            signer: Some(Arc::new(signer)),
+        }
+    }
+
+    /// Create a wallet that knows its address but holds no key.
+    ///
+    /// Enough for every L2 (HMAC) request: reads, cancels, posting an already
+    /// signed order. [`Wallet::signer`] returns an error.
+    pub fn l2_only(address: Address) -> Self {
+        Self {
+            signer: None,
+            address,
+        }
+    }
+
+    /// The wallet address.
     pub fn address(&self) -> Address {
-        self.signer.address()
+        self.address
     }
 
-    /// Get reference to the signer
-    pub fn signer(&self) -> &PrivateKeySigner {
-        &self.signer
+    /// Whether this wallet can sign.
+    pub fn has_signer(&self) -> bool {
+        self.signer.is_some()
     }
 
-    /// Get reference to the Ethereum wallet
-    pub fn ethereum_wallet(&self) -> &EthereumWallet {
-        &self.wallet
+    /// The signer, or a validation error for an L2-only wallet.
+    pub fn signer(&self) -> Result<&DynSigner, ClobError> {
+        self.signer.as_deref().ok_or_else(|| {
+            ClobError::validation(
+                "this account is L2-only (no signing key): it can read, cancel and post \
+                 signed orders, but cannot sign orders or the L1 auth message",
+            )
+        })
     }
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
+    use alloy::primitives::address;
 
     // Well-known test private key (DO NOT use in production)
     const TEST_KEY: &str = "0xac0974bec39a17e36ba4a6b4d238ff944bacb478cbed5efcae784d7bf4f2ff80";
+    const TEST_ADDR: Address = address!("f39Fd6e51aad88F6F4ce6aB8827279cffFb92266");
 
     #[test]
     fn test_wallet_debug_shows_address_not_key() {
         let wallet = Wallet::from_private_key(TEST_KEY).unwrap();
         let debug_output = format!("{:?}", wallet);
-
-        // Should contain "address" field
-        assert!(
-            debug_output.contains("address"),
-            "Debug should show address: {}",
-            debug_output
-        );
-        // Should NOT contain the private key material
+        assert!(debug_output.contains("address"), "{debug_output}");
         assert!(
             !debug_output
                 .contains("ac0974bec39a17e36ba4a6b4d238ff944bacb478cbed5efcae784d7bf4f2ff80"),
-            "Debug should NOT contain private key: {}",
-            debug_output
+            "Debug should NOT contain private key: {debug_output}"
+        );
+    }
+
+    #[test]
+    fn from_private_key_has_a_signer_at_the_derived_address() {
+        let wallet = Wallet::from_private_key(TEST_KEY).unwrap();
+        assert_eq!(wallet.address(), TEST_ADDR);
+        assert!(wallet.has_signer());
+        assert_eq!(wallet.signer().unwrap().address(), TEST_ADDR);
+    }
+
+    #[test]
+    fn from_signer_accepts_any_alloy_signer() {
+        let local: PrivateKeySigner = TEST_KEY.parse().unwrap();
+        let wallet = Wallet::from_signer(local);
+        assert_eq!(wallet.address(), TEST_ADDR);
+        assert!(wallet.has_signer());
+    }
+
+    #[test]
+    fn l2_only_wallet_has_an_address_but_refuses_to_sign() {
+        let wallet = Wallet::l2_only(TEST_ADDR);
+        assert_eq!(wallet.address(), TEST_ADDR);
+        assert!(!wallet.has_signer());
+        let err = wallet.signer().map(|_| ()).unwrap_err().to_string();
+        assert!(err.contains("L2-only"), "{err}");
+        assert!(
+            format!("{wallet:?}").contains("signer: false"),
+            "{wallet:?}"
         );
     }
 }

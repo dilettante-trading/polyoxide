@@ -15,7 +15,7 @@ pub use credentials::Credentials;
 use serde::{Deserialize, Serialize};
 pub use signer::Signer;
 pub use target::{DepositWalletRole, SigningTarget};
-pub use wallet::Wallet;
+pub use wallet::{DynSigner, Wallet};
 
 use crate::{
     core::eip712::{sign_clob_auth, sign_order},
@@ -357,7 +357,7 @@ impl Account {
     /// }
     /// ```
     pub async fn sign_order(&self, order: &Order, chain_id: u64) -> Result<SignedOrder, ClobError> {
-        let signature = sign_order(order, self.wallet.signer(), chain_id).await?;
+        let signature = sign_order(order, self.wallet.signer()?, chain_id).await?;
 
         Ok(SignedOrder {
             order: order.clone(),
@@ -378,7 +378,7 @@ impl Account {
         timestamp: u64,
         nonce: u32,
     ) -> Result<String, ClobError> {
-        sign_clob_auth(self.wallet.signer(), chain_id, timestamp, nonce).await
+        sign_clob_auth(self.wallet.signer()?, chain_id, timestamp, nonce).await
     }
 
     /// Sign an L2 API request message using HMAC.
