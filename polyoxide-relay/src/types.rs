@@ -9,14 +9,17 @@ pub enum WalletType {
     Safe,
     /// Proxy wallet - auto-deploys on first transaction (Magic Link users)
     Proxy,
+    /// Deposit Wallet - Polymarket's smart account (default since 2026-05-04); `WALLET` on the wire.
+    DepositWallet,
 }
 
 impl WalletType {
-    /// Returns the API string representation ("SAFE" or "PROXY").
+    /// Returns the API string representation ("SAFE", "PROXY", or "WALLET").
     pub fn as_str(&self) -> &'static str {
         match self {
             WalletType::Safe => "SAFE",
             WalletType::Proxy => "PROXY",
+            WalletType::DepositWallet => "WALLET",
         }
     }
 }
@@ -188,6 +191,127 @@ pub struct RelayerApiKey {
     pub created_at: String,
     /// RFC3339 timestamp when the key was last updated.
     pub updated_at: String,
+}
+
+/// A string enum that keeps unknown wire values instead of rejecting them.
+macro_rules! open_string_enum {
+    (
+        $(#[$meta:meta])*
+        $name:ident { $( $(#[$vmeta:meta])* $variant:ident => $wire:literal ),+ $(,)? }
+    ) => {
+        $(#[$meta])*
+        #[derive(Debug, Clone, PartialEq, Eq, Hash)]
+        #[non_exhaustive]
+        pub enum $name {
+            $( $(#[$vmeta])* $variant, )+
+            /// A value this crate does not know yet, kept verbatim.
+            Other(String),
+        }
+
+        impl $name {
+            /// The wire spelling.
+            pub fn as_str(&self) -> &str {
+                match self {
+                    $( Self::$variant => $wire, )+
+                    Self::Other(s) => s,
+                }
+            }
+
+            /// Parse a wire spelling; anything unrecognised becomes `Other`.
+            pub fn from_wire(s: &str) -> Self {
+                match s {
+                    $( $wire => Self::$variant, )+
+                    other => Self::Other(other.to_string()),
+                }
+            }
+        }
+
+        impl std::fmt::Display for $name {
+            fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+                f.write_str(self.as_str())
+            }
+        }
+
+        impl std::str::FromStr for $name {
+            type Err = std::convert::Infallible;
+            fn from_str(s: &str) -> Result<Self, Self::Err> {
+                Ok(Self::from_wire(s))
+            }
+        }
+
+        impl Serialize for $name {
+            fn serialize<S: serde::Serializer>(&self, serializer: S) -> Result<S::Ok, S::Error> {
+                serializer.serialize_str(self.as_str())
+            }
+        }
+
+        impl<'de> Deserialize<'de> for $name {
+            fn deserialize<D: serde::Deserializer<'de>>(deserializer: D) -> Result<Self, D::Error> {
+                let s = String::deserialize(deserializer)?;
+                Ok(Self::from_wire(&s))
+            }
+        }
+    };
+}
+
+open_string_enum! {
+    /// Lifecycle state of a relayer transaction (`GET /v1/account/transactions/{id}`).
+    ///
+    /// `Confirmed` is the only success; `Failed` and `Invalid` are terminal
+    /// failures; everything else is still in flight.
+    TransactionState {
+        /// Accepted by the relayer, not yet broadcast.
+        New => "STATE_NEW",
+        /// Broadcast to the chain.
+        Executed => "STATE_EXECUTED",
+        /// Included in a block, awaiting confirmations.
+        Mined => "STATE_MINED",
+        /// Confirmed on chain.
+        Confirmed => "STATE_CONFIRMED",
+        /// Rejected before broadcast (bad nonce, deadline, signature).
+        Invalid => "STATE_INVALID",
+        /// Reverted or dropped on chain.
+        Failed => "STATE_FAILED",
+    }
+}
+
+impl TransactionState {
+    /// `true` once the relayer will not change this state again.
+    pub fn is_terminal(&self) -> bool {
+        matches!(self, Self::Confirmed | Self::Invalid | Self::Failed)
+    }
+
+    /// `true` only for [`TransactionState::Confirmed`].
+    pub fn is_success(&self) -> bool {
+        matches!(self, Self::Confirmed)
+    }
+}
+
+/// `GET /v1/account/transactions/{id}`: the poll record for a submitted transaction.
+///
+/// This is the v1 route the Deposit Wallet flows use; it is snake_case, unlike the
+/// legacy `GET /transaction` record ([`RelayerTransaction`]).
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct GaslessTransaction {
+    /// Relayer transaction id.
+    pub transaction_id: String,
+    /// On-chain hash once broadcast.
+    pub transaction_hash: Option<String>,
+    /// Current state.
+    pub state: TransactionState,
+    /// The relayer's failure reason for a terminal failure, if any.
+    #[serde(default)]
+    pub error_msg: Option<String>,
+}
+
+/// `GET /v1/account/transactions/params`: the next nonce for a wallet type.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct ExecuteParams {
+    /// The address the nonce was fetched for.
+    pub address: alloy::primitives::Address,
+    /// Next nonce; the wire sends it as a decimal string.
+    #[serde(deserialize_with = "deserialize_nonce")]
+    pub nonce: u64,
 }
 
 #[cfg(test)]
@@ -426,5 +550,68 @@ mod tests {
         assert_eq!(keys.len(), 2);
         assert_eq!(keys[0].api_key, "key-1");
         assert_eq!(keys[1].api_key, "key-2");
+    }
+
+    // ── v1 account routes ──────────────────────────────────────
+
+    #[test]
+    fn wallet_type_deposit_wallet_is_wallet_on_the_wire() {
+        assert_eq!(WalletType::DepositWallet.as_str(), "WALLET");
+    }
+
+    #[test]
+    fn transaction_state_round_trips_and_preserves_unknowns() {
+        for (state, wire) in [
+            (TransactionState::New, "\"STATE_NEW\""),
+            (TransactionState::Executed, "\"STATE_EXECUTED\""),
+            (TransactionState::Mined, "\"STATE_MINED\""),
+            (TransactionState::Confirmed, "\"STATE_CONFIRMED\""),
+            (TransactionState::Invalid, "\"STATE_INVALID\""),
+            (TransactionState::Failed, "\"STATE_FAILED\""),
+        ] {
+            assert_eq!(serde_json::to_string(&state).unwrap(), wire);
+            assert_eq!(
+                serde_json::from_str::<TransactionState>(wire).unwrap(),
+                state
+            );
+        }
+        let other: TransactionState = serde_json::from_str("\"STATE_QUEUED\"").unwrap();
+        assert_eq!(other, TransactionState::Other("STATE_QUEUED".into()));
+        assert!(!other.is_terminal());
+        assert!(
+            TransactionState::Confirmed.is_terminal() && TransactionState::Confirmed.is_success()
+        );
+        assert!(TransactionState::Failed.is_terminal() && !TransactionState::Failed.is_success());
+        assert!(TransactionState::Invalid.is_terminal() && !TransactionState::Invalid.is_success());
+        assert!(!TransactionState::Mined.is_terminal());
+    }
+
+    #[test]
+    fn gasless_transaction_parses_the_v1_shape() {
+        let json = r#"{"transaction_id":"tx-1","transaction_hash":null,"state":"STATE_NEW","error_msg":null}"#;
+        let tx: GaslessTransaction = serde_json::from_str(json).unwrap();
+        assert_eq!(tx.transaction_id, "tx-1");
+        assert_eq!(tx.transaction_hash, None);
+        assert_eq!(tx.state, TransactionState::New);
+        assert_eq!(tx.error_msg, None);
+
+        let json = r#"{"transaction_id":"tx-2","transaction_hash":"0xab","state":"STATE_CONFIRMED","error_msg":""}"#;
+        let tx: GaslessTransaction = serde_json::from_str(json).unwrap();
+        assert_eq!(tx.transaction_hash.as_deref(), Some("0xab"));
+        assert_eq!(tx.error_msg.as_deref(), Some(""));
+    }
+
+    #[test]
+    fn execute_params_take_a_string_or_number_nonce() {
+        let p: ExecuteParams = serde_json::from_str(
+            r#"{"address":"0x0000000000000000000000000000000000000001","nonce":"7"}"#,
+        )
+        .unwrap();
+        assert_eq!(p.nonce, 7);
+        let p: ExecuteParams = serde_json::from_str(
+            r#"{"address":"0x0000000000000000000000000000000000000001","nonce":8}"#,
+        )
+        .unwrap();
+        assert_eq!(p.nonce, 8);
     }
 }

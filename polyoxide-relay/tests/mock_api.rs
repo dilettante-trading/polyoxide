@@ -1,6 +1,6 @@
 //! Mock HTTP tests for the relay client. These do not hit the real API.
 
-use mockito::Server;
+use mockito::{Matcher, Server};
 use polyoxide_relay::{BuilderAccount, BuilderConfig, RelayClient};
 
 /// Well-known test private key (anvil/hardhat default #0). Do not use with real funds.
@@ -183,4 +183,189 @@ async fn list_relayer_api_keys_errors_when_no_auth_configured() {
         msg.contains("Account missing"),
         "expected missing-account error, got: {msg}"
     );
+}
+
+// ── v1 account routes ──────────────────────────────────────────
+
+#[tokio::test]
+async fn get_execute_params_asks_for_the_wallet_type_nonce() {
+    let mut server = Server::new_async().await;
+    let mock = server
+        .mock("GET", "/v1/account/transactions/params")
+        .match_query(Matcher::AllOf(vec![
+            Matcher::UrlEncoded(
+                "address".into(),
+                "0xf39Fd6e51aad88F6F4ce6aB8827279cffFb92266".into(),
+            ),
+            Matcher::UrlEncoded("type".into(), "WALLET".into()),
+        ]))
+        .with_status(200)
+        .with_header("content-type", "application/json")
+        .with_body(r#"{"address":"0xf39Fd6e51aad88F6F4ce6aB8827279cffFb92266","nonce":"12"}"#)
+        .create_async()
+        .await;
+
+    let client = client_unauthed(&server);
+    let owner: alloy::primitives::Address = "0xf39Fd6e51aad88F6F4ce6aB8827279cffFb92266"
+        .parse()
+        .unwrap();
+    let nonce = client
+        .get_execute_params(owner, polyoxide_relay::WalletType::DepositWallet)
+        .await
+        .unwrap();
+    assert_eq!(nonce, 12);
+    mock.assert_async().await;
+}
+
+#[tokio::test]
+async fn get_deployed_typed_passes_the_type() {
+    let mut server = Server::new_async().await;
+    let mock = server
+        .mock("GET", "/deployed")
+        .match_query(Matcher::AllOf(vec![
+            Matcher::UrlEncoded(
+                "address".into(),
+                "0xBc0fF067b7740Eff76C1ca93c875Ba6B890d6B50".into(),
+            ),
+            Matcher::UrlEncoded("type".into(), "WALLET".into()),
+        ]))
+        .with_status(200)
+        .with_header("content-type", "application/json")
+        .with_body(r#"{"deployed":true}"#)
+        .create_async()
+        .await;
+
+    let client = client_unauthed(&server);
+    let wallet: alloy::primitives::Address = "0xBc0fF067b7740Eff76C1ca93c875Ba6B890d6B50"
+        .parse()
+        .unwrap();
+    assert!(client
+        .get_deployed_typed(wallet, polyoxide_relay::WalletType::DepositWallet)
+        .await
+        .unwrap());
+    mock.assert_async().await;
+}
+
+#[tokio::test]
+async fn get_gasless_transaction_reads_the_v1_record() {
+    let mut server = Server::new_async().await;
+    let mock = server
+        .mock("GET", "/v1/account/transactions/tx-77")
+        .with_status(200)
+        .with_header("content-type", "application/json")
+        .with_body(r#"{"transaction_id":"tx-77","transaction_hash":"0xabc","state":"STATE_CONFIRMED","error_msg":null}"#)
+        .create_async()
+        .await;
+
+    let client = client_unauthed(&server);
+    let tx = client.get_gasless_transaction("tx-77").await.unwrap();
+    assert_eq!(tx.state, polyoxide_relay::TransactionState::Confirmed);
+    assert_eq!(tx.transaction_hash.as_deref(), Some("0xabc"));
+    mock.assert_async().await;
+}
+
+#[tokio::test]
+async fn resolve_wallet_probes_both_deposit_wallet_generations_and_the_safe() {
+    // Anvil #0: beacon 0xBc0f…, uups 0xdf8b…, safe 0xd93B… (relay_vectors.json).
+    let mut server = Server::new_async().await;
+    let beacon = server
+        .mock("GET", "/deployed")
+        .match_query(Matcher::AllOf(vec![
+            Matcher::UrlEncoded(
+                "address".into(),
+                "0xBc0fF067b7740Eff76C1ca93c875Ba6B890d6B50".into(),
+            ),
+            Matcher::UrlEncoded("type".into(), "WALLET".into()),
+        ]))
+        .with_status(200)
+        .with_header("content-type", "application/json")
+        .with_body(r#"{"deployed":true}"#)
+        .create_async()
+        .await;
+    let uups = server
+        .mock("GET", "/deployed")
+        .match_query(Matcher::AllOf(vec![
+            Matcher::UrlEncoded(
+                "address".into(),
+                "0xdf8b9E8f9AB23f261F6e1B171B7454ae6E46Ba76".into(),
+            ),
+            Matcher::UrlEncoded("type".into(), "WALLET".into()),
+        ]))
+        .with_status(200)
+        .with_header("content-type", "application/json")
+        .with_body(r#"{"deployed":false}"#)
+        .create_async()
+        .await;
+    let safe = server
+        .mock("GET", "/deployed")
+        .match_query(Matcher::AllOf(vec![
+            Matcher::UrlEncoded(
+                "address".into(),
+                "0xd93B25cb943D14d0d34FBaF01Fc93a0f8b5F6E47".into(),
+            ),
+            Matcher::UrlEncoded("type".into(), "SAFE".into()),
+        ]))
+        .with_status(200)
+        .with_header("content-type", "application/json")
+        .with_body(r#"{"deployed":false}"#)
+        .create_async()
+        .await;
+
+    let client = client_unauthed(&server);
+    let owner: alloy::primitives::Address = "0xf39Fd6e51aad88F6F4ce6aB8827279cffFb92266"
+        .parse()
+        .unwrap();
+    let kind = client.resolve_wallet(owner).await.unwrap();
+    assert_eq!(
+        kind,
+        Some(polyoxide_relay::WalletKind::DepositWallet(
+            "0xBc0fF067b7740Eff76C1ca93c875Ba6B890d6B50"
+                .parse()
+                .unwrap()
+        ))
+    );
+    beacon.assert_async().await;
+    uups.assert_async().await;
+    safe.assert_async().await;
+}
+
+#[tokio::test]
+async fn resolve_wallet_refuses_two_deployed_wallets() {
+    let mut server = Server::new_async().await;
+    let _all_deployed = server
+        .mock("GET", "/deployed")
+        .match_query(Matcher::Any)
+        .with_status(200)
+        .with_header("content-type", "application/json")
+        .with_body(r#"{"deployed":true}"#)
+        .expect(3)
+        .create_async()
+        .await;
+
+    let client = client_unauthed(&server);
+    let owner: alloy::primitives::Address = "0xf39Fd6e51aad88F6F4ce6aB8827279cffFb92266"
+        .parse()
+        .unwrap();
+    let err = client.resolve_wallet(owner).await.unwrap_err().to_string();
+    assert!(err.contains("more than one"), "{err}");
+}
+
+#[tokio::test]
+async fn resolve_wallet_reports_none_when_nothing_is_deployed() {
+    let mut server = Server::new_async().await;
+    let _none = server
+        .mock("GET", "/deployed")
+        .match_query(Matcher::Any)
+        .with_status(200)
+        .with_header("content-type", "application/json")
+        .with_body(r#"{"deployed":false}"#)
+        .expect(3)
+        .create_async()
+        .await;
+
+    let client = client_unauthed(&server);
+    let owner: alloy::primitives::Address = "0xf39Fd6e51aad88F6F4ce6aB8827279cffFb92266"
+        .parse()
+        .unwrap();
+    assert_eq!(client.resolve_wallet(owner).await.unwrap(), None);
 }

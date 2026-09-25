@@ -2,9 +2,10 @@ use crate::account::BuilderAccount;
 use crate::config::{get_contract_config, AuthConfig, BuilderConfig, ContractConfig};
 use crate::error::RelayError;
 use crate::types::{
-    NonceResponse, RelayerApiKey, RelayerTransaction, SafeTransaction, SafeTx, SubmitResponse,
-    WalletType,
+    ExecuteParams, GaslessTransaction, NonceResponse, RelayerApiKey, RelayerTransaction,
+    SafeTransaction, SafeTx, SubmitResponse, WalletType,
 };
+use crate::wallet::WalletKind;
 use alloy::hex;
 use alloy::network::TransactionBuilder;
 use alloy::primitives::{keccak256, Address, Bytes, U256};
@@ -365,6 +366,107 @@ impl RelayClient {
         Ok(data.deployed)
     }
 
+    /// Check whether a wallet of the given type is deployed (`GET /deployed?type=`).
+    ///
+    /// The relayer answers for [`WalletType::Safe`] and [`WalletType::DepositWallet`];
+    /// a Proxy auto-deploys on first use and is not queryable here.
+    pub async fn get_deployed_typed(
+        &self,
+        wallet: Address,
+        wallet_type: WalletType,
+    ) -> Result<bool, RelayError> {
+        #[derive(serde::Deserialize)]
+        struct DeployedResponse {
+            deployed: bool,
+        }
+        let url = self.http_client.base_url.join(&format!(
+            "deployed?address={}&type={}",
+            wallet,
+            wallet_type.as_str()
+        ))?;
+        let resp = self.get_with_retry("/deployed", &url).await?;
+        Ok(resp.json::<DeployedResponse>().await?.deployed)
+    }
+
+    /// Fetch the next nonce for `owner`'s wallet of `wallet_type`
+    /// (`GET /v1/account/transactions/params`).
+    ///
+    /// This is the v1 route the Deposit Wallet batch needs; [`RelayClient::get_nonce`]
+    /// stays on the legacy `/nonce` route for Safe and Proxy.
+    pub async fn get_execute_params(
+        &self,
+        owner: Address,
+        wallet_type: WalletType,
+    ) -> Result<u64, RelayError> {
+        let url = self.http_client.base_url.join(&format!(
+            "v1/account/transactions/params?address={}&type={}",
+            owner,
+            wallet_type.as_str()
+        ))?;
+        let resp = self
+            .get_with_retry("/v1/account/transactions/params", &url)
+            .await?;
+        Ok(resp.json::<ExecuteParams>().await?.nonce)
+    }
+
+    /// Poll a submitted transaction (`GET /v1/account/transactions/{id}`).
+    ///
+    /// Stop polling once [`crate::types::TransactionState::is_terminal`] is true. The
+    /// venue may take up to five minutes to move a session-signer authorization out of
+    /// `STATE_NEW`.
+    pub async fn get_gasless_transaction(
+        &self,
+        transaction_id: &str,
+    ) -> Result<GaslessTransaction, RelayError> {
+        let url = self
+            .http_client
+            .base_url
+            .join(&format!("v1/account/transactions/{}", transaction_id))?;
+        let resp = self
+            .get_with_retry("/v1/account/transactions", &url)
+            .await?;
+        resp.json::<GaslessTransaction>().await.map_err(Into::into)
+    }
+
+    /// Find which account wallet `owner` has deployed.
+    ///
+    /// Derives the beacon and UUPS Deposit Wallets and the Safe, asks `/deployed`
+    /// for each, and returns the one that exists, or `None` when nothing is
+    /// deployed. More than one deployed wallet is an error rather than a guess. A
+    /// Proxy wallet cannot be observed this way; see [`WalletKind`].
+    pub async fn resolve_wallet(&self, owner: Address) -> Result<Option<WalletKind>, RelayError> {
+        let cfg = &self.contract_config;
+        let mut candidates: Vec<(WalletKind, WalletType)> = Vec::new();
+        if cfg.deposit_wallet_factory.is_some() {
+            candidates.push((
+                WalletKind::DepositWallet(crate::wallet::derive_deposit_wallet_beacon(owner, cfg)?),
+                WalletType::DepositWallet,
+            ));
+            candidates.push((
+                WalletKind::DepositWallet(crate::wallet::derive_deposit_wallet_uups(owner, cfg)?),
+                WalletType::DepositWallet,
+            ));
+        }
+        candidates.push((
+            WalletKind::Safe(crate::wallet::derive_safe(owner, cfg)),
+            WalletType::Safe,
+        ));
+
+        let mut found = Vec::new();
+        for (kind, wallet_type) in candidates {
+            if self.get_deployed_typed(kind.address(), wallet_type).await? {
+                found.push(kind);
+            }
+        }
+        match found.as_slice() {
+            [] => Ok(None),
+            [one] => Ok(Some(*one)),
+            many => Err(RelayError::Api(format!(
+                "owner {owner} has more than one deployed wallet: {many:?}"
+            ))),
+        }
+    }
+
     fn derive_safe_address(&self, owner: Address) -> Address {
         crate::wallet::derive_safe(owner, &self.contract_config)
     }
@@ -561,6 +663,9 @@ impl RelayClient {
         match self.wallet_type {
             WalletType::Safe => self.execute_safe(transactions, metadata).await,
             WalletType::Proxy => self.execute_proxy(transactions, metadata, gas_limit).await,
+            WalletType::DepositWallet => Err(RelayError::Api(
+                "Deposit Wallet execution lands in a later task; use WalletType::Safe or Proxy for now".into(),
+            )),
         }
     }
 
@@ -778,6 +883,11 @@ impl RelayClient {
         let proxy_wallet = match self.wallet_type {
             WalletType::Proxy => self.get_expected_proxy_wallet()?,
             WalletType::Safe => self.get_expected_safe()?,
+            WalletType::DepositWallet => {
+                return Err(RelayError::Api(
+                    "Deposit Wallet execution lands in a later task; use WalletType::Safe or Proxy for now".into(),
+                ))
+            }
         };
 
         // 5. Create provider using the configured RPC URL

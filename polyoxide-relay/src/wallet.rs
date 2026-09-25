@@ -4,7 +4,7 @@
 //! Every function here is deterministic and network-free, pinned to addresses
 //! produced by Polymarket's `py-sdk` (`tests/fixtures/session_keys/relay_vectors.json`).
 //! Whether a derived wallet exists on chain is a separate question answered by
-//! `RelayClient::resolve_wallet`.
+//! [`crate::RelayClient::resolve_wallet`].
 
 use alloy::primitives::{keccak256, Address, B256};
 use alloy::sol_types::SolValue;
@@ -37,7 +37,7 @@ const ERC1967_BEACON_CONST3: [u8; 23] =
     alloy::primitives::hex!("60195155f3363d3d373d3d363d602036600436635c60da");
 const ERC1967_BEACON_PREFIX_BASE: u128 = 0x6100523D8160233D3973;
 
-/// What `RelayClient::resolve_wallet` found deployed for an owner.
+/// What [`crate::RelayClient::resolve_wallet`] found deployed for an owner.
 ///
 /// The resolver returns `Option<WalletKind>`, where `None` means nothing is
 /// deployed for the owner.
