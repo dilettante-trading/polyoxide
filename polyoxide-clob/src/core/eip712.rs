@@ -200,9 +200,9 @@ pub async fn sign_order<S: AlloySigner + ?Sized>(
 /// These are low-level pieces; [`sign_order_as`] is the
 /// function that also enforces the venue's rules (signature type 3, and
 /// `maker == signer == wallet`) before using them.
-pub mod deposit_wallet {
+pub(crate) mod deposit_wallet {
     use alloy::{
-        primitives::{Address, Bytes, B256, U256},
+        primitives::{hex, Address, Bytes, B256, U256},
         sol_types::{SolStruct, SolValue},
     };
 
@@ -215,15 +215,8 @@ pub mod deposit_wallet {
     pub const DOMAIN_VERSION: &str = "1";
 
     /// The 32-byte suffix that marks a session-signer envelope (`0x6492` × 16).
-    pub const SESSION_SIGNER_MAGIC: [u8; 32] = {
-        let mut magic = [0u8; 32];
-        let mut i = 0;
-        while i < 32 {
-            magic[i] = if i % 2 == 0 { 0x64 } else { 0x92 };
-            i += 1;
-        }
-        magic
-    };
+    pub const SESSION_SIGNER_MAGIC: [u8; 32] =
+        hex!("6492649264926492649264926492649264926492649264926492649264926492");
 
     /// The digest a Deposit Wallet key signs for `order`.
     ///
@@ -231,27 +224,49 @@ pub mod deposit_wallet {
     /// `wallet` the Deposit Wallet named inside the envelope. This computes
     /// the digest for whatever it is given: it does not check that
     /// `order.signature_type` is 3 or that `order.maker` is `wallet`; only
-    /// the `maker == signer` rule is enforced, by the order conversion.
-    /// `sign_order_as` applies the other two.
+    /// the `maker == signer` rule is enforced, by the order conversion, and
+    /// only for signature type 3. `sign_order_as` applies the other two.
+    #[cfg_attr(
+        not(test),
+        expect(
+            dead_code,
+            reason = "sign_order_as calls envelope_digest_from; this is the vector-pinned entry point"
+        )
+    )]
     pub fn envelope_digest(
         order: &ClobOrder,
         chain_id: u64,
         exchange: Address,
         wallet: Address,
     ) -> Result<B256, ClobError> {
+        let contents = order_to_protocol(order)?;
+        let app_domain_separator = exchange_domain(chain_id, exchange).eip712_hash_struct();
+        Ok(envelope_digest_from(
+            contents,
+            chain_id,
+            app_domain_separator,
+            wallet,
+        ))
+    }
+
+    /// [`envelope_digest`] from an already-converted order and an already-hashed
+    /// exchange domain, so a caller that also builds the ERC-7739 trailer signs
+    /// exactly the values the trailer carries.
+    pub(super) fn envelope_digest_from(
+        contents: protocol::Order,
+        chain_id: u64,
+        app_domain_separator: B256,
+        wallet: Address,
+    ) -> B256 {
         let envelope = protocol::TypedDataSign {
-            contents: order_to_protocol(order)?,
+            contents,
             name: DOMAIN_NAME.to_string(),
             version: DOMAIN_VERSION.to_string(),
             chainId: U256::from(chain_id),
             verifyingContract: wallet,
             salt: B256::ZERO,
         };
-        let domain = exchange_domain(chain_id, exchange);
-        Ok(eip712_digest(
-            domain.eip712_hash_struct(),
-            envelope.eip712_hash_struct(),
-        ))
+        eip712_digest(app_domain_separator, envelope.eip712_hash_struct())
     }
 
     /// Append the ERC-7739 trailer to an inner signature.
@@ -260,6 +275,7 @@ pub mod deposit_wallet {
     /// where `ORDER_TYPE` is the V2 order type string (186 bytes).
     pub fn wrap_erc7739(inner: &[u8], app_domain_separator: B256, contents_hash: B256) -> Vec<u8> {
         let type_string = protocol::Order::eip712_encode_type();
+        // 186 bytes, pinned by `v2_order_type_string_matches_contract`.
         let type_len = u16::try_from(type_string.len()).expect("order type string fits in u16");
         let mut out = Vec::with_capacity(inner.len() + 64 + type_string.len() + 2);
         out.extend_from_slice(inner);
@@ -297,32 +313,33 @@ pub async fn sign_order_as<S: AlloySigner + ?Sized>(
 ) -> Result<String, ClobError> {
     let Some((wallet, role)) = target.deposit_wallet() else {
         if order.signature_type == SignatureType::Poly1271 {
-            return Err(ClobError::Crypto(
+            return Err(ClobError::validation(
                 "signature type 3 (Poly1271) needs SigningTarget::DepositWallet; this account \
-                 targets an EOA, proxy or Safe"
-                    .into(),
+                 targets an EOA, proxy or Safe",
             ));
         }
         return sign_order(order, signer, chain_id).await;
     };
     if order.signature_type != SignatureType::Poly1271 {
-        return Err(ClobError::Crypto(format!(
-            "a Deposit Wallet target signs only signature type 3 orders, got {}",
-            order.signature_type
+        return Err(ClobError::validation(format!(
+            "a Deposit Wallet target signs only signature type 3 orders, got {} ({})",
+            order.signature_type, order.signature_type as u8
         )));
     }
     if order.maker != wallet || order.signer != wallet {
-        return Err(ClobError::Crypto(format!(
+        return Err(ClobError::validation(format!(
             "Deposit Wallet orders need maker == signer == {wallet}, got maker {} signer {}",
             order.maker, order.signer
         )));
     }
 
     let exchange = exchange_address(chain_id, order.neg_risk)?;
-    let digest = deposit_wallet::envelope_digest(order, chain_id, exchange, wallet)?;
-    let inner = signer.sign_hash(&digest).await?;
+    let contents = order_to_protocol(order)?;
+    let contents_hash = contents.eip712_hash_struct();
     let app_domain_separator = exchange_domain(chain_id, exchange).eip712_hash_struct();
-    let contents_hash = order_to_protocol(order)?.eip712_hash_struct();
+    let digest =
+        deposit_wallet::envelope_digest_from(contents, chain_id, app_domain_separator, wallet);
+    let inner = signer.sign_hash(&digest).await?;
     let wrapped =
         deposit_wallet::wrap_erc7739(&inner.as_bytes(), app_domain_separator, contents_hash);
     let bytes = match role {
@@ -1071,6 +1088,9 @@ uint256 timestamp,bytes32 metadata,bytes32 builder)"
 
     #[test]
     fn swapping_the_two_domains_changes_the_digest() {
+        // A fixture check, not a test of production code: it proves the vector
+        // distinguishes the two layouts, so matching it means the layout is right.
+        // `envelope_digest_matches_py_sdk_for_both_exchanges` tests the code.
         // The handoff document once had the exchange domain inside the message and
         // the DepositWallet domain outside. That layout must not reproduce the vector.
         let v = vector("v1_exchange");
@@ -1174,7 +1194,7 @@ uint256 timestamp,bytes32 metadata,bytes32 builder)"
             .await
             .unwrap_err()
             .to_string();
-        assert!(err.contains("SigningTarget::DepositWallet"), "{err}");
+        assert!(err.contains("targets an EOA, proxy or Safe"), "{err}");
     }
 
     #[tokio::test]
@@ -1207,7 +1227,32 @@ uint256 timestamp,bytes32 metadata,bytes32 builder)"
             .await
             .unwrap_err()
             .to_string();
-        assert!(err.contains("Deposit Wallet"), "{err}");
+        assert!(err.contains("maker == signer =="), "{err}");
+    }
+
+    #[tokio::test]
+    async fn sign_order_as_uses_the_neg_risk_exchange_in_digest_and_trailer() {
+        let signer: PrivateKeySigner = ANVIL_KEY_0.parse().unwrap();
+        let mut order = fixture_order();
+        order.neg_risk = true;
+        let target = SigningTarget::DepositWallet {
+            wallet: DW,
+            role: DepositWalletRole::Owner,
+        };
+        let sig = hex_bytes(&sign_order_as(&order, &signer, 137, &target).await.unwrap());
+        let neg_risk_exchange = exchange_address(137, true).unwrap();
+        let expected_sep = exchange_domain(137, neg_risk_exchange).eip712_hash_struct();
+        assert_eq!(
+            &sig[65..97],
+            expected_sep.as_slice(),
+            "trailer carries the neg-risk separator"
+        );
+        let digest = envelope_digest(&order, 137, neg_risk_exchange, DW).unwrap();
+        let inner = alloy::primitives::Signature::from_raw(&sig[..65]).unwrap();
+        assert_eq!(
+            inner.recover_address_from_prehash(&digest).unwrap(),
+            signer.address()
+        );
     }
 
     #[tokio::test]
