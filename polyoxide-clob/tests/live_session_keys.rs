@@ -264,6 +264,9 @@ async fn live_session_key_round_trip() {
             !revoked.status.is_terminal_failure(),
             "revocation of the leftover session signer refused: {revoked:?}"
         );
+        // Let the revocation batch go terminal before the authorization below
+        // takes a nonce for the same wallet.
+        wait_for_transaction(&relay, &revoked.transaction_id).await;
         wait_for_registry(&owner_clob, session_address, false).await;
     }
 
@@ -322,21 +325,18 @@ async fn live_session_key_round_trip() {
         .iter()
         .find(|o| o.id == order_id)
         .map(|o| o.size_matched.clone());
-    let from_owner = owner_clob
-        .orders()
-        .expect("orders")
-        .list()
-        .send()
-        .await
-        .expect("list as owner");
-    eprintln!(
-        "visibility: owner {} order {order_id} placed by the session key",
-        if from_owner.data.iter().any(|o| o.id == order_id) {
-            "SEES"
-        } else {
-            "does not see"
-        }
-    );
+    // Record-only: an owner listing error must not abort before the cancel.
+    match owner_clob.orders().expect("orders").list().send().await {
+        Ok(from_owner) => eprintln!(
+            "visibility: owner {} order {order_id} placed by the session key",
+            if from_owner.data.iter().any(|o| o.id == order_id) {
+                "SEES"
+            } else {
+                "does not see"
+            }
+        ),
+        Err(e) => eprintln!("visibility: owner listing failed, not asserted: {e}"),
+    }
 
     // 4. Cancel with the key that placed it.
     let cancelled = session_clob
