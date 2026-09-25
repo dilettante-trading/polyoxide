@@ -7,6 +7,10 @@ Order book trading API for Polymarket. Supports market data queries, order place
 
 Machine-readable schema: [openapi.yaml](openapi.yaml) (mirror of `https://docs.polymarket.com/api-spec/clob-openapi.yaml`).
 
+Not in the schema: order `signatureType` 3 (a Deposit Wallet signing an ERC-7739
+envelope, as owner or session key) and `GET /v1/user/session-signers`. See
+[../session-keys/README.md](../session-keys/README.md).
+
 ## Auth
 
 Three authentication levels. See [auth.md](auth.md) for details.

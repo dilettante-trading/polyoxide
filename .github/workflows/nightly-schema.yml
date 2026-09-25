@@ -40,6 +40,10 @@ jobs:
         #     upstream publishes no AsyncAPI at all for ws-live-data — the
         #     mirror is modelled entirely on captured wire frames, so there
         #     is nothing to diff it against either.
+        #   - Deposit Wallets / session keys (docs/specs/session-keys/): the
+        #     surface is absent from the published CLOB and relayer OpenAPI
+        #     entirely, so the record there is prose plus SDK-generated
+        #     fixtures. Nothing to diff; the fixtures are the drift check.
         include:
           - { id: clob,           url: "https://docs.polymarket.com/api-spec/clob-openapi.yaml",       vendored: docs/specs/clob/openapi.yaml }
           - { id: gamma,          url: "https://docs.polymarket.com/api-spec/gamma-openapi.yaml",      vendored: docs/specs/gamma/openapi.yaml }

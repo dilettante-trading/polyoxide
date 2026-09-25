@@ -121,6 +121,15 @@ Example: `gamma.markets().list().open(true).send().await?`, `data.leaderboard().
 
 The two EIP-712 domains are unrelated — order signing needs a verifying contract, L1 auth must not have one. See `docs/specs/clob/auth.md` for both type strings; `polyoxide-clob/src/core/eip712.rs` pins them against golden vectors from `py-clob-client`.
 
+A fourth scheme, **order signature type 3**, is a Deposit Wallet signing an ERC-7739
+`TypedDataSign` envelope: the exchange domain is the signing domain and the wallet's
+`DepositWallet`/`1` domain rides inside the message. Getting that orientation backwards
+yields a signature the venue rejects with no useful error, which is why
+`polyoxide-clob/src/core/eip712.rs` pins py-sdk's golden digest. A session key adds a
+6492 envelope on top. The role (owner or session key) is never inferred from
+addresses; `SigningTarget::DepositWallet { wallet, role }` carries it. The whole
+surface is absent from the published OpenAPI: see `docs/specs/session-keys/`.
+
 **Error hierarchy** — `ApiError` in core, wrapped by crate-specific errors (`ClobError`, `GammaError`, `DataApiError`, `RelayError`). The `impl_api_error_conversions!` macro in core wires up `From` conversions.
 
 **Retriability** — `ApiError::is_retriable()` (and `ClobError::is_retriable()`) is the canonical classifier for callers' retry policies: true for rate limits, timeouts, connection failures, `425 Too Early`, and 5xx. The crates' *own* retry loop is narrower — `HttpClient::should_retry` only ever retries `429`.
@@ -238,6 +247,22 @@ returns a whole thread. The drift check cannot see any of this: it compares the
 mirror to the published document, never to the live host. The mirror itself must
 stay byte-faithful or `nightly-schema.yml` alarms forever, so the observations
 live beside it rather than inside it.
+
+**Deposit Wallets and session keys have no mirror at all.** `docs/specs/session-keys/`
+holds the contract (`README.md`) and the SDK behaviours the pages omit (`OBSERVED.md`):
+signature type 3, `GET /v1/user/session-signers`, and the relayer's `type: WALLET`
+dialect with `/v1/session-signers/*` and `/v1/account/transactions/*`. The sources are
+the prose pages plus `github.com/Polymarket/py-sdk` and `github.com/Polymarket/ts-sdk`
+(0.11.0), and where they disagree the SDKs win. Per-route auth and timeouts live in
+py-sdk's `_require_*` guards and `httpx.Timeout` values, not in its payload builders;
+plan 2 got both wrong until a reviewer read `_internal/actions/session_keys.py`.
+`scripts/capture_session_key_vectors.py` regenerates the fixtures from py-sdk; every
+signing, encoding and wire-body test is pinned to them, never to a self-computed value.
+Implemented by `polyoxide-clob` (`SigningTarget`, `Account::{with_signer,l2_only}`,
+`*_with_signature`, `list_session_signers`) and `polyoxide-relay` (`WalletType::DepositWallet`,
+`deposit_wallet`, `session_signers`, `resolve_wallet`, `with_auth`). The live round trip
+is `polyoxide-clob/tests/live_session_keys.rs`, `#[ignore]`d and gated on a Deposit
+Wallet fixture account that does not exist until prader-rs #125 is resolved.
 
 ## Testing Conventions
 

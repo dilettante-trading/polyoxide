@@ -40,6 +40,20 @@ Some Polymarket APIs are published in **no** OpenAPI or AsyncAPI document.
 — `user-pnl-api` and `lb-api` are implemented by `polyoxide-data`; the shapes
 there were derived from live responses rather than a vendor contract.
 
+## Surfaces with no upstream spec
+
+Some surfaces *are* on documented hosts but are absent from the host's published
+OpenAPI. [session-keys/README.md](session-keys/README.md) records Polymarket's
+Deposit Wallet and session-key contract — order signature type 3 (ERC-7739),
+`GET /v1/user/session-signers` on the CLOB host, and the relayer's `type: WALLET`
+dialect with `/v1/session-signers/*` and `/v1/account/transactions/*` — which
+`clob/openapi.yaml` and `relay/openapi.yaml` do not mention. The contract comes from
+the prose pages and the official `py-sdk` / `ts-sdk` (0.11.0);
+[session-keys/OBSERVED.md](session-keys/OBSERVED.md) lists where the SDKs and the
+pages part ways. There is no mirror, so `nightly-schema.yml` excludes it; the offline
+fixtures under `polyoxide-{clob,relay}/tests/fixtures/session_keys/` are the drift
+detector until the live round trip can run.
+
 ## Rate limits are not in the OpenAPI either
 
 Neither limiter appears in any machine-readable spec; both are prose pages.
