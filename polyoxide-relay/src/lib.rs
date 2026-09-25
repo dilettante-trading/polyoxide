@@ -45,6 +45,9 @@ mod types;
 
 pub use client::RelayClient;
 pub use config::{AuthConfig, BuilderConfig, ContractConfig, RelayerApiKeyConfig};
+pub use deposit_wallet::{
+    DepositWalletCall, DEFAULT_BATCH_DEADLINE_SECS, SESSION_KEY_LIFETIME_SECS,
+};
 pub use error::RelayError;
 pub use types::{
     GaslessTransaction, RelayerApiKey, RelayerTransaction, SafeTransaction, SafeTx, SubmitResponse,
@@ -54,6 +57,7 @@ pub use wallet::{
     derive_deposit_wallet_beacon, derive_deposit_wallet_uups, derive_proxy, derive_safe, WalletKind,
 };
 
+pub mod deposit_wallet;
 pub mod wallet;
 
 mod account;
