@@ -18,7 +18,7 @@ pub use target::{DepositWalletRole, SigningTarget};
 pub use wallet::{DynSigner, Wallet};
 
 use crate::{
-    core::eip712::{sign_clob_auth, sign_order},
+    core::eip712::{sign_clob_auth, sign_order_as},
     error::ClobError,
     types::{Order, SignedOrder},
 };
@@ -112,15 +112,10 @@ impl Account {
         private_key: impl Into<String>,
         credentials: Credentials,
     ) -> Result<Self, ClobError> {
-        let wallet = Wallet::from_private_key(&private_key.into())?;
-        let signer = Signer::new(&credentials.secret);
-
-        Ok(Self {
-            wallet,
+        Ok(Self::from_parts(
+            Wallet::from_private_key(&private_key.into())?,
             credentials,
-            signer,
-            target: SigningTarget::default(),
-        })
+        ))
     }
 
     /// Create an account around any `alloy` signer.
@@ -131,13 +126,7 @@ impl Account {
     where
         S: alloy::signers::Signer + Send + Sync + 'static,
     {
-        let hmac = Signer::new(&credentials.secret);
-        Self {
-            wallet: Wallet::from_signer(signer),
-            credentials,
-            signer: hmac,
-            target: SigningTarget::default(),
-        }
+        Self::from_parts(Wallet::from_signer(signer), credentials)
     }
 
     /// Create an account with L2 credentials and no signing key.
@@ -146,11 +135,16 @@ impl Account {
     /// signed orders, but cannot create or sign orders or the L1 auth message.
     /// `address` is the EOA the triplet was derived for.
     pub fn l2_only(address: Address, credentials: Credentials) -> Self {
-        let hmac = Signer::new(&credentials.secret);
+        Self::from_parts(Wallet::l2_only(address), credentials)
+    }
+
+    /// Assemble an account from its signing half and its L2 credentials.
+    fn from_parts(wallet: Wallet, credentials: Credentials) -> Self {
+        let signer = Signer::new(&credentials.secret);
         Self {
-            wallet: Wallet::l2_only(address),
+            wallet,
             credentials,
-            signer: hmac,
+            signer,
             target: SigningTarget::default(),
         }
     }
@@ -389,6 +383,9 @@ impl Account {
 
     /// Sign an order using EIP-712.
     ///
+    /// For a [`SigningTarget::DepositWallet`] the signature is the ERC-7739
+    /// envelope (plus the session-signer wrapper for a session key).
+    ///
     /// # Arguments
     ///
     /// * `order` - The unsigned order to sign
@@ -406,7 +403,7 @@ impl Account {
     /// }
     /// ```
     pub async fn sign_order(&self, order: &Order, chain_id: u64) -> Result<SignedOrder, ClobError> {
-        let signature = sign_order(order, self.wallet.signer()?, chain_id).await?;
+        let signature = sign_order_as(order, self.wallet.signer()?, chain_id, &self.target).await?;
 
         Ok(SignedOrder {
             order: order.clone(),
@@ -656,5 +653,44 @@ mod tests {
             .unwrap_err()
             .to_string();
         assert!(err.contains("L2-only"), "{err}");
+    }
+
+    #[tokio::test]
+    async fn sign_order_uses_the_deposit_wallet_target() {
+        let account =
+            Account::new(TEST_KEY, creds())
+                .unwrap()
+                .with_target(SigningTarget::DepositWallet {
+                    wallet: DW,
+                    role: DepositWalletRole::Owner,
+                });
+        let order = Order {
+            salt: "1".into(),
+            maker: DW,
+            signer: DW,
+            token_id: "1".into(),
+            maker_amount: "1000000".into(),
+            taker_amount: "500000".into(),
+            side: crate::types::OrderSide::Buy,
+            expiration: "0".into(),
+            signature_type: crate::types::SignatureType::Poly1271,
+            timestamp: "0".into(),
+            metadata: alloy::primitives::B256::ZERO,
+            builder: alloy::primitives::B256::ZERO,
+            neg_risk: false,
+        };
+        let signed = account.sign_order(&order, 137).await.unwrap();
+        // Anvil key #0 on py-sdk's golden fixture against the V2 exchange: the
+        // full 317-byte owner signature from tests/fixtures/session_keys/order_vectors.json.
+        let vectors: serde_json::Value = serde_json::from_str(include_str!(
+            "../../tests/fixtures/session_keys/order_vectors.json"
+        ))
+        .unwrap();
+        assert_eq!(
+            signed.signature,
+            vectors["v2_exchange"]["wrapped_signature"]
+                .as_str()
+                .unwrap()
+        );
     }
 }
