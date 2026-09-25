@@ -1106,8 +1106,13 @@ impl RelayClient {
     }
 
     /// `POST /v1/session-signers/authorizations` with an owner signature produced
-    /// elsewhere. Builder HMAC auth only; `idempotency_key` is sent as
-    /// `Idempotency-Key` and should be reused when retrying the same request.
+    /// elsewhere.
+    ///
+    /// Builder HMAC auth only: a client with a relayer API key is refused before any
+    /// I/O. `idempotency_key` is trimmed and sent as `Idempotency-Key`; reuse it when
+    /// retrying the same request. The request waits up to
+    /// [`crate::SESSION_SIGNER_REQUEST_TIMEOUT`], because the venue broadcasts the
+    /// batch before it answers.
     pub async fn submit_session_signer_authorization(
         &self,
         request: &SessionSignerAuthorization,
@@ -1119,6 +1124,7 @@ impl RelayClient {
             &request.body(signature),
             Self::idempotency_headers(idempotency_key)?,
             false,
+            Some(crate::session_signers::SESSION_SIGNER_REQUEST_TIMEOUT),
         )
         .await
     }
@@ -1147,8 +1153,12 @@ impl RelayClient {
 
     /// `POST /v1/session-signers/revocations` with an owner signature produced elsewhere.
     ///
-    /// Builder HMAC auth only; `idempotency_key` is sent as `Idempotency-Key`. The
-    /// venue answers once the key is fenced out of the registry; the on-chain
+    /// Accepts Builder HMAC auth or a relayer API key, as py-sdk does; only the
+    /// authorization route is restricted to Builder HMAC. `idempotency_key` is
+    /// trimmed and sent as `Idempotency-Key`; reuse it when retrying the same
+    /// request. The request waits up to [`crate::SESSION_SIGNER_REQUEST_TIMEOUT`].
+    ///
+    /// The venue answers once the key is fenced out of the registry; the on-chain
     /// revocation and the cancel-all of its open orders follow asynchronously.
     pub async fn submit_session_signer_revocation(
         &self,
@@ -1160,7 +1170,8 @@ impl RelayClient {
             "v1/session-signers/revocations",
             &request.body(signature),
             Self::idempotency_headers(idempotency_key)?,
-            false,
+            true,
+            Some(crate::session_signers::SESSION_SIGNER_REQUEST_TIMEOUT),
         )
         .await
     }
@@ -1242,10 +1253,14 @@ impl RelayClient {
         Ok((wallet, owner))
     }
 
-    /// The `Idempotency-Key` header map.
+    /// The `Idempotency-Key` header map, with the key trimmed; a blank key is refused.
     fn idempotency_headers(
         idempotency_key: &str,
     ) -> Result<reqwest::header::HeaderMap, RelayError> {
+        let idempotency_key = idempotency_key.trim();
+        if idempotency_key.is_empty() {
+            return Err(RelayError::Api("idempotency key must not be empty".into()));
+        }
         let mut headers = reqwest::header::HeaderMap::new();
         headers.insert(
             "Idempotency-Key",
@@ -1484,8 +1499,14 @@ impl RelayClient {
         endpoint: &str,
         body: &T,
     ) -> Result<SubmitResponse, RelayError> {
-        self.post_json(endpoint, body, reqwest::header::HeaderMap::new(), true)
-            .await
+        self.post_json(
+            endpoint,
+            body,
+            reqwest::header::HeaderMap::new(),
+            true,
+            None,
+        )
+        .await
     }
 
     /// POST `body` as JSON to `endpoint` under the client's auth, retrying on 429.
@@ -1493,13 +1514,15 @@ impl RelayClient {
     /// `extra_headers` are inserted after the auth headers on every attempt, so a
     /// same-named header would overwrite an auth header: callers must not pass auth
     /// header names. When `allow_relayer_api_key` is false, a client configured with
-    /// a relayer API key is refused before any I/O.
+    /// a relayer API key is refused before any I/O. `timeout`, when set, replaces the
+    /// client-level timeout for each attempt; `None` keeps the client default.
     async fn post_json<B: Serialize, T: serde::de::DeserializeOwned>(
         &self,
         endpoint: &str,
         body: &B,
         extra_headers: reqwest::header::HeaderMap,
         allow_relayer_api_key: bool,
+        timeout: Option<Duration>,
     ) -> Result<T, RelayError> {
         let url = self.http_client.base_url.join(endpoint)?;
         let body_str = serde_json::to_string(body)?;
@@ -1531,14 +1554,16 @@ impl RelayClient {
                 reqwest::header::HeaderValue::from_static("application/json"),
             );
 
-            let resp = self
+            let mut request = self
                 .http_client
                 .client
                 .post(url.clone())
                 .headers(headers)
-                .body(body_str.clone())
-                .send()
-                .await?;
+                .body(body_str.clone());
+            if let Some(timeout) = timeout {
+                request = request.timeout(timeout);
+            }
+            let resp = request.send().await?;
 
             let status = resp.status();
             let retry_after = retry_after_header(&resp);
@@ -1818,6 +1843,18 @@ mod tests {
             .unwrap();
         let err = amoy.deposit_wallet_trading_approvals().unwrap_err();
         assert!(err.to_string().contains("80002"), "{err}");
+    }
+
+    #[test]
+    fn idempotency_headers_trim_the_key_and_refuse_a_blank_one() {
+        let headers = RelayClient::idempotency_headers("  idem-1\t").unwrap();
+        assert_eq!(headers.get("Idempotency-Key").unwrap(), "idem-1");
+        for blank in ["", "   "] {
+            let err = RelayClient::idempotency_headers(blank)
+                .unwrap_err()
+                .to_string();
+            assert!(err.contains("idempotency key"), "{err}");
+        }
     }
 
     #[test]

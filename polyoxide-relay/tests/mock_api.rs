@@ -960,6 +960,9 @@ async fn revoke_session_signer_typed_data_and_submit_send_the_venue_body() {
 
 #[tokio::test]
 async fn authorize_session_signer_with_a_local_key_fetches_the_nonce_and_signs() {
+    use std::str::FromStr;
+    use std::sync::{Arc, Mutex};
+
     let v = relay_vectors();
     let mut server = Server::new_async().await;
     let params = server
@@ -976,25 +979,28 @@ async fn authorize_session_signer_with_a_local_key_fetches_the_nonce_and_signs()
         .with_body(r#"{"address":"0xf39Fd6e51aad88F6F4ce6aB8827279cffFb92266","nonce":"4"}"#)
         .create_async()
         .await;
+    let captured: Arc<Mutex<Option<Vec<u8>>>> = Arc::new(Mutex::new(None));
+    let sink = Arc::clone(&captured);
     let submit = server
         .mock("POST", "/v1/session-signers/authorizations")
         .match_header("POLY_BUILDER_API_KEY", "builder-key")
         .match_header("Idempotency-Key", Matcher::Regex(r"^[0-9a-f-]{36}$".into()))
-        .match_body(Matcher::AllOf(vec![
-            Matcher::PartialJsonString(format!(
-                r#"{{"nonce":"4","scopes":["CLOB"],"sessionSignerAddress":"{}","walletAddress":"{}"}}"#,
-                v["session_signer"].as_str().unwrap(),
-                v["wallet"].as_str().unwrap()
-            )),
-            Matcher::Regex(r#""signature":"0x[0-9a-f]{130}""#.into()),
-        ]))
+        .match_body(Matcher::PartialJsonString(format!(
+            r#"{{"nonce":"4","scopes":["CLOB"],"sessionSignerAddress":"{}","walletAddress":"{}"}}"#,
+            v["session_signer"].as_str().unwrap(),
+            v["wallet"].as_str().unwrap()
+        )))
         .with_status(200)
         .with_header("content-type", "application/json")
-        .with_body(r#"{"operationId":"op-3","status":"SUBMITTED","transactionHash":null,"transactionId":"tx-11"}"#)
+        .with_body_from_request(move |req| {
+            *sink.lock().unwrap() = Some(req.body().unwrap().clone());
+            br#"{"operationId":"op-3","status":"SUBMITTED","transactionHash":null,"transactionId":"tx-11"}"#.to_vec()
+        })
         .create_async()
         .await;
 
     let client = deposit_wallet_client(&server);
+    let wallet: alloy::primitives::Address = v["wallet"].as_str().unwrap().parse().unwrap();
     let session: alloy::primitives::Address =
         v["session_signer"].as_str().unwrap().parse().unwrap();
     let resp = client
@@ -1004,6 +1010,114 @@ async fn authorize_session_signer_with_a_local_key_fetches_the_nonce_and_signs()
     assert_eq!(resp.transaction_id, "tx-11");
     params.assert_async().await;
     submit.assert_async().await;
+
+    // The signature must be the owner's over exactly the batch the body describes:
+    // rebuild it from the posted validUntil, nonce and deadline and recover the signer.
+    let body: serde_json::Value =
+        serde_json::from_slice(captured.lock().unwrap().as_ref().expect("body captured")).unwrap();
+    let field = |k: &str| -> u64 { body[k].as_str().unwrap().parse().unwrap() };
+    let (valid_until, nonce, deadline) = (field("validUntil"), field("nonce"), field("deadline"));
+    let calls = vec![polyoxide_relay::DepositWalletCall {
+        target: wallet,
+        value: alloy::primitives::U256::ZERO,
+        data: polyoxide_relay::deposit_wallet::authorize_session_signer_calldata(
+            session,
+            valid_until,
+        )
+        .into(),
+    }];
+    let digest =
+        polyoxide_relay::deposit_wallet::batch_digest(137, wallet, &calls, nonce, deadline);
+    let sig = alloy::primitives::Signature::from_str(body["signature"].as_str().unwrap()).unwrap();
+    assert_eq!(
+        sig.recover_address_from_prehash(&digest).unwrap(),
+        "0xf39Fd6e51aad88F6F4ce6aB8827279cffFb92266"
+            .parse::<alloy::primitives::Address>()
+            .unwrap()
+    );
+}
+
+#[tokio::test]
+async fn submit_session_signer_revocation_accepts_relayer_api_key_auth() {
+    let v = relay_vectors();
+    let mut server = Server::new_async().await;
+    let mock = server
+        .mock("POST", "/v1/session-signers/revocations")
+        .match_header("RELAYER_API_KEY", "rk-abc")
+        .match_header("RELAYER_API_KEY_ADDRESS", "0xabc123")
+        .match_header("Idempotency-Key", "idem-3")
+        .match_body(Matcher::Json(v["revocation_body"].clone()))
+        .with_status(200)
+        .with_header("content-type", "application/json")
+        .with_body(
+            r#"{"operationId":"op-4","status":"PENDING","fenced":false,"transactionId":"tx-12"}"#,
+        )
+        .create_async()
+        .await;
+    let client = client_with_relayer_api_key_auth(&server);
+    let wallet: alloy::primitives::Address = v["wallet"].as_str().unwrap().parse().unwrap();
+    let session: alloy::primitives::Address =
+        v["session_signer"].as_str().unwrap().parse().unwrap();
+    let (_, request) = client.revoke_session_signer_typed_data(wallet, session, 5, 1800000600);
+    let resp = client
+        .submit_session_signer_revocation(
+            &request,
+            v["revoke_batch"]["signature"].as_str().unwrap(),
+            "idem-3",
+        )
+        .await
+        .unwrap();
+    assert_eq!(
+        resp.status,
+        polyoxide_relay::SessionSignerRevocationStatus::Pending
+    );
+    assert_eq!(resp.transaction_id, "tx-12");
+    mock.assert_async().await;
+}
+
+#[tokio::test]
+async fn session_signer_submits_refuse_a_blank_idempotency_key_before_io() {
+    let v = relay_vectors();
+    let mut server = Server::new_async().await;
+    let auth = server
+        .mock("POST", "/v1/session-signers/authorizations")
+        .expect(0)
+        .create_async()
+        .await;
+    let revoke = server
+        .mock("POST", "/v1/session-signers/revocations")
+        .expect(0)
+        .create_async()
+        .await;
+    let client = deposit_wallet_client(&server);
+    let wallet: alloy::primitives::Address = v["wallet"].as_str().unwrap().parse().unwrap();
+    let session: alloy::primitives::Address =
+        v["session_signer"].as_str().unwrap().parse().unwrap();
+    let (_, a) = client
+        .authorize_session_signer_typed_data_with_valid_until(
+            wallet,
+            session,
+            vec![polyoxide_core::SessionSignerScope::Clob],
+            1815534000,
+            4,
+            1800000600,
+        )
+        .unwrap();
+    let err = client
+        .submit_session_signer_authorization(&a, "0xsig", "   ")
+        .await
+        .unwrap_err()
+        .to_string();
+    assert!(err.contains("idempotency key"), "{err}");
+    let (_, r) = client.revoke_session_signer_typed_data(wallet, session, 5, 1800000600);
+    let err = client
+        .submit_session_signer_revocation(&r, "0xsig", "")
+        .await
+        .unwrap_err()
+        .to_string();
+    assert!(err.contains("idempotency key"), "{err}");
+    auth.assert_async().await;
+    revoke.assert_async().await;
 }
 
 fn session_key_deposit_wallet_client(server: &mockito::ServerGuard) -> RelayClient {

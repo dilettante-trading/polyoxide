@@ -4,8 +4,12 @@
 //! Neither route is in the published relayer OpenAPI; the contract is
 //! `docs.polymarket.com/trading/session-keys` and Polymarket's official SDKs.
 //! Both take a Deposit Wallet `Batch` signed by the owner (see
-//! [`crate::deposit_wallet`]) plus the session-signer fields, under Builder HMAC
-//! auth only, with an `Idempotency-Key` header.
+//! [`crate::deposit_wallet`]) plus the session-signer fields, with an
+//! `Idempotency-Key` header.
+//!
+//! The two routes are gated differently, as in py-sdk: an authorization needs
+//! Builder HMAC auth, while a revocation also accepts a relayer API key. Both
+//! wait up to [`SESSION_SIGNER_REQUEST_TIMEOUT`] for the venue's answer.
 
 use alloy::primitives::Address;
 use polyoxide_core::SessionSignerScope;
@@ -14,8 +18,21 @@ use serde::{Deserialize, Serialize};
 use crate::error::RelayError;
 use crate::types::open_string_enum;
 
-/// Reject the scope lists the venue refuses: empty, duplicated, or `ALL` mixed
-/// with anything else. Compares on the wire spelling, so `Other("ALL")` counts as `ALL`.
+/// How long a session-signer `POST` waits for the venue's answer.
+///
+/// The venue validates, simulates, persists and broadcasts the batch before it
+/// answers, so py-sdk gives these two routes a 300-second read timeout rather than
+/// the client default. A slow success cut off early surfaces as a transport error,
+/// and a caller that retries with a fresh idempotency key then submits a second
+/// operation instead of replaying the first.
+pub const SESSION_SIGNER_REQUEST_TIMEOUT: std::time::Duration = std::time::Duration::from_secs(300);
+
+/// Reject malformed scope lists before any I/O: empty, containing an empty scope,
+/// duplicated, or `ALL` mixed with anything else.
+///
+/// The venue and py-sdk refuse an empty list, an empty scope and `ALL` alongside
+/// other scopes. Duplicates are rejected here, client-side only. Compares on the
+/// wire spelling, so `Other("ALL")` counts as `ALL`.
 pub fn validate_scopes(scopes: &[SessionSignerScope]) -> Result<(), RelayError> {
     if scopes.is_empty() {
         return Err(RelayError::Api(
@@ -24,6 +41,11 @@ pub fn validate_scopes(scopes: &[SessionSignerScope]) -> Result<(), RelayError> 
     }
     let mut seen = std::collections::HashSet::new();
     for scope in scopes {
+        if scope.as_str().is_empty() {
+            return Err(RelayError::Api(
+                "session-signer scope must not be empty".into(),
+            ));
+        }
         if !seen.insert(scope.as_str()) {
             return Err(RelayError::Api(format!(
                 "duplicate session-signer scope {scope}"
@@ -99,7 +121,7 @@ pub struct SessionSignerAuthorization {
     pub session_signer_address: Address,
     /// Requested venues.
     pub scopes: Vec<SessionSignerScope>,
-    /// Expiry, Unix seconds: now + [`crate::deposit_wallet::SESSION_KEY_LIFETIME_SECS`] at build time.
+    /// Session-key expiry, Unix seconds.
     pub valid_until: u64,
     /// The wallet nonce the batch was built with.
     pub nonce: u64,
@@ -257,6 +279,18 @@ mod tests {
             SessionSignerScope::Clob
         ])
         .is_err());
+        assert!(validate_scopes(&[SessionSignerScope::Other(String::new())])
+            .unwrap_err()
+            .to_string()
+            .contains("empty"));
+    }
+
+    #[test]
+    fn session_signer_requests_wait_five_minutes_like_py_sdk() {
+        assert_eq!(
+            SESSION_SIGNER_REQUEST_TIMEOUT,
+            std::time::Duration::from_secs(300)
+        );
     }
 
     #[test]

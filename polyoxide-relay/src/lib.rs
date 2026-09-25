@@ -54,6 +54,7 @@ pub use session_signers::{
     validate_scopes, SessionSignerAuthorization, SessionSignerAuthorizationBody,
     SessionSignerAuthorizationResponse, SessionSignerAuthorizationStatus, SessionSignerRevocation,
     SessionSignerRevocationBody, SessionSignerRevocationResponse, SessionSignerRevocationStatus,
+    SESSION_SIGNER_REQUEST_TIMEOUT,
 };
 pub use types::{
     GaslessTransaction, RelayerApiKey, RelayerTransaction, SafeTransaction, SafeTx, SubmitResponse,
