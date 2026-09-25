@@ -3821,3 +3821,179 @@ async fn derive_api_key_with_signature_refuses_a_signature_for_a_different_addre
     assert_ne!(recovered, claimed.to_string(), "{err}");
     mock.assert_async().await;
 }
+
+const SESSION_SIGNERS_BODY: &str = r#"{
+  "wallet": "0x57ffbc34de23124faeb8387fcd689d314e57accd",
+  "signers": [
+    { "address": "0x70997970c51812dc3a010c7d01b50e0d17dc79c8", "scopes": ["CLOB", "COMBOSRFQ"], "valid_until": 1800000000 },
+    { "address": "0x3c44cdddb6a900fa2b585dd299e03d12fa4293bc", "scopes": ["PERPS"], "valid_until": 1800000001 }
+  ]
+}"#;
+
+#[tokio::test]
+async fn list_session_signers_parses_scopes_and_expiry() {
+    let mut server = Server::new_async().await;
+    let mock = server
+        .mock("GET", "/v1/user/session-signers")
+        .match_header("POLY_ADDRESS", "0xf39fd6e51aad88f6f4ce6ab8827279cfffb92266")
+        .with_status(200)
+        .with_header("content-type", "application/json")
+        .with_body(SESSION_SIGNERS_BODY)
+        .create_async()
+        .await;
+
+    let clob = deposit_wallet_clob(&server, polyoxide_clob::DepositWalletRole::Owner);
+    let listed = clob
+        .account_api()
+        .unwrap()
+        .list_session_signers()
+        .await
+        .unwrap();
+
+    assert_eq!(listed.wallet, DEPOSIT_WALLET);
+    assert_eq!(listed.signers.len(), 2);
+    assert_eq!(
+        listed.signers[0].address,
+        alloy::primitives::address!("70997970c51812dc3a010c7d01b50e0d17dc79c8")
+    );
+    assert_eq!(
+        listed.signers[0].scopes,
+        vec![
+            polyoxide_core::SessionSignerScope::Clob,
+            polyoxide_core::SessionSignerScope::CombosRfq
+        ]
+    );
+    assert_eq!(listed.signers[0].valid_until, 1800000000);
+    assert_eq!(
+        listed.signers[1].scopes,
+        vec![polyoxide_core::SessionSignerScope::Other("PERPS".into())]
+    );
+    mock.assert_async().await;
+}
+
+#[tokio::test]
+async fn list_session_signers_works_for_an_l2_only_account() {
+    let mut server = Server::new_async().await;
+    let _mock = server
+        .mock("GET", "/v1/user/session-signers")
+        .with_status(200)
+        .with_header("content-type", "application/json")
+        .with_body(SESSION_SIGNERS_BODY)
+        .create_async()
+        .await;
+
+    let creds = Credentials {
+        key: "test-key".into(),
+        secret: "c2VjcmV0".into(),
+        passphrase: "test-pass".into(),
+    };
+    let account = Account::l2_only(
+        alloy::primitives::address!("f39Fd6e51aad88F6F4ce6aB8827279cffFb92266"),
+        creds,
+    );
+    let clob = ClobBuilder::new()
+        .base_url(server.url())
+        .with_account(account)
+        .build()
+        .unwrap();
+    // No target configured: the response wallet is reported, not checked.
+    let listed = clob
+        .account_api()
+        .unwrap()
+        .list_session_signers()
+        .await
+        .unwrap();
+    assert_eq!(listed.wallet, DEPOSIT_WALLET);
+}
+
+#[tokio::test]
+async fn list_session_signers_rejects_a_wallet_that_is_not_the_target() {
+    let mut server = Server::new_async().await;
+    let _mock = server
+        .mock("GET", "/v1/user/session-signers")
+        .with_status(200)
+        .with_header("content-type", "application/json")
+        .with_body(r#"{"wallet":"0x0000000000000000000000000000000000000001","signers":[]}"#)
+        .create_async()
+        .await;
+
+    let clob = deposit_wallet_clob(&server, polyoxide_clob::DepositWalletRole::Owner);
+    let err = clob
+        .account_api()
+        .unwrap()
+        .list_session_signers()
+        .await
+        .unwrap_err()
+        .to_string();
+    assert!(
+        err.contains("0x0000000000000000000000000000000000000001"),
+        "{err}"
+    );
+    assert!(err.contains("57ffbc34"), "{err}");
+}
+
+#[tokio::test]
+async fn balance_allowance_defaults_to_the_targets_signature_type() {
+    let mut server = Server::new_async().await;
+    let type3_mock = server
+        .mock("GET", "/balance-allowance")
+        .match_query(Matcher::AllOf(vec![
+            Matcher::UrlEncoded("asset_type".into(), "COLLATERAL".into()),
+            Matcher::UrlEncoded("signature_type".into(), "3".into()),
+        ]))
+        .with_status(200)
+        .with_header("content-type", "application/json")
+        .with_body(r#"{"balance":"0","allowances":{}}"#)
+        .create_async()
+        .await;
+
+    // No explicit `.signature_type(..)`: the Deposit Wallet target implies 3.
+    let clob = deposit_wallet_clob(&server, polyoxide_clob::DepositWalletRole::Owner);
+    clob.account_api()
+        .unwrap()
+        .usdc_balance()
+        .send()
+        .await
+        .unwrap();
+    type3_mock.assert_async().await;
+
+    // An explicit builder setting still wins.
+    let type0_mock = server
+        .mock("GET", "/balance-allowance")
+        .match_query(Matcher::AllOf(vec![
+            Matcher::UrlEncoded("asset_type".into(), "COLLATERAL".into()),
+            Matcher::UrlEncoded("signature_type".into(), "0".into()),
+        ]))
+        .with_status(200)
+        .with_header("content-type", "application/json")
+        .with_body(r#"{"balance":"0","allowances":{}}"#)
+        .create_async()
+        .await;
+    let creds = Credentials {
+        key: "test-key".into(),
+        secret: "c2VjcmV0".into(),
+        passphrase: "test-pass".into(),
+    };
+    let account = Account::new(
+        "0xac0974bec39a17e36ba4a6b4d238ff944bacb478cbed5efcae784d7bf4f2ff80",
+        creds,
+    )
+    .unwrap()
+    .with_target(polyoxide_clob::SigningTarget::DepositWallet {
+        wallet: DEPOSIT_WALLET,
+        role: polyoxide_clob::DepositWalletRole::Owner,
+    });
+    let clob = ClobBuilder::new()
+        .base_url(server.url())
+        .with_account(account)
+        .signature_type(SignatureType::Eoa)
+        .build()
+        .unwrap();
+    clob.account_api()
+        .unwrap()
+        .usdc_balance()
+        .send()
+        .await
+        .unwrap();
+    type0_mock.assert_async().await;
+}

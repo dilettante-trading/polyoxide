@@ -1,10 +1,11 @@
 use std::collections::HashMap;
 
-use polyoxide_core::{HttpClient, QueryBuilder};
+use alloy::primitives::Address;
+use polyoxide_core::{HttpClient, QueryBuilder, SessionSignerScope};
 use serde::{Deserialize, Serialize};
 
 use crate::{
-    account::{Credentials, Signer, Wallet},
+    account::{Credentials, Signer, SigningTarget, Wallet},
     error::ClobError,
     request::{AuthMode, Request},
     types::{OrderSide, SignatureType},
@@ -19,6 +20,7 @@ pub struct AccountApi {
     pub(crate) signer: Signer,
     pub(crate) chain_id: u64,
     pub(crate) signature_type: SignatureType,
+    pub(crate) target: SigningTarget,
 }
 
 impl AccountApi {
@@ -63,8 +65,8 @@ impl AccountApi {
     /// Calls `GET /balance-allowance/update` with the following query parameters:
     /// - `asset_type` (required): `"COLLATERAL"` or `"CONDITIONAL"`.
     /// - `token_id` (optional): asset ID. Defaults to `"-1"` (ERC20 collateral) server-side.
-    /// - `signature_type` (optional): `0` = EOA, `1` = POLY_PROXY, `2` = POLY_GNOSIS_SAFE.
-    ///   Defaults to `0` server-side.
+    /// - `signature_type` (optional): `0` = EOA, `1` = POLY_PROXY, `2` = POLY_GNOSIS_SAFE,
+    ///   `3` = Deposit Wallet. Defaults to `0` server-side.
     ///
     /// Returns the raw JSON body from the server (typically `{}` on success).
     pub async fn update_balance_allowance(
@@ -173,6 +175,37 @@ impl AccountApi {
         )
         .query("maker_address", maker_address.into());
         ListClobTrades { request }
+    }
+
+    /// `GET /v1/user/session-signers`: the session keys authorized for the caller's
+    /// Deposit Wallet, with their scopes and expiry.
+    ///
+    /// Uses the owner's L2 credentials; an L2-only account is enough. When the
+    /// account targets a Deposit Wallet, a response naming a different wallet is
+    /// an error, since the credentials then belong to some other account than
+    /// the one configured.
+    pub async fn list_session_signers(&self) -> Result<SessionSigners, ClobError> {
+        let listed: SessionSigners = Request::get(
+            self.http_client.clone(),
+            "/v1/user/session-signers",
+            AuthMode::L2 {
+                address: self.wallet.address(),
+                credentials: self.credentials.clone(),
+                signer: self.signer.clone(),
+            },
+            self.chain_id,
+        )
+        .send()
+        .await?;
+        if let Some((wallet, _)) = self.target.deposit_wallet() {
+            if listed.wallet != wallet {
+                return Err(ClobError::validation(format!(
+                    "session-signers response is for wallet {:#x}, but this account targets {:#x}",
+                    listed.wallet, wallet
+                )));
+            }
+        }
+        Ok(listed)
     }
 }
 
@@ -381,6 +414,26 @@ pub struct BalanceAllowanceResponse {
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct HeartbeatResponse {
     pub status: String,
+}
+
+/// A session key authorized for a Deposit Wallet.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct SessionSigner {
+    /// The session key's EOA.
+    pub address: Address,
+    /// The venues it may trade on.
+    pub scopes: Vec<SessionSignerScope>,
+    /// Expiry as Unix seconds.
+    pub valid_until: u64,
+}
+
+/// `GET /v1/user/session-signers`.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct SessionSigners {
+    /// The Deposit Wallet the credentials belong to.
+    pub wallet: Address,
+    /// Its active session keys.
+    pub signers: Vec<SessionSigner>,
 }
 
 #[cfg(test)]

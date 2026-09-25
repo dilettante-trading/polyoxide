@@ -112,7 +112,7 @@ pub use account::{save_private_key_to_keychain, KEYCHAIN_SERVICE};
 pub use api::{
     account::{
         BalanceAllowanceResponse, BuilderTrade, ListBuilderTrades, ListBuilderTradesResponse,
-        ListClobTrades, ListTradesResponse, MakerOrder, Trade,
+        ListClobTrades, ListTradesResponse, MakerOrder, SessionSigner, SessionSigners, Trade,
     },
     auth::{
         ApiKeyInfo, ApiKeyResponse, BuilderApiKeyResponse, ClosedOnlyResponse,
@@ -139,6 +139,8 @@ pub use api::{
         UserTotalEarningsRequest,
     },
 };
+pub use polyoxide_core::SessionSignerScope;
+
 pub use client::{Clob, ClobBuilder, CreateOrderParams, SignedOrderPayload};
 pub use error::ClobError;
 pub use types::{

@@ -157,6 +157,7 @@ impl Clob {
             signer: account.signer().clone(),
             chain_id: self.chain_id,
             signature_type: self.signature_type,
+            target: account.target(),
         })
     }
 
@@ -872,7 +873,7 @@ pub struct ClobBuilder {
     timeout_ms: u64,
     pool_size: usize,
     chain: Chain,
-    signature_type: SignatureType,
+    signature_type: Option<SignatureType>,
     builder_code: B256,
     account: Option<Account>,
     #[cfg(feature = "gamma")]
@@ -889,7 +890,7 @@ impl ClobBuilder {
             timeout_ms: DEFAULT_TIMEOUT_MS,
             pool_size: DEFAULT_POOL_SIZE,
             chain: Chain::PolygonMainnet,
-            signature_type: SignatureType::Eoa,
+            signature_type: None,
             builder_code: B256::ZERO,
             account: None,
             #[cfg(feature = "gamma")]
@@ -932,12 +933,11 @@ impl ClobBuilder {
     /// Set the account signature type used to derive the on-chain address for
     /// authenticated read endpoints (balances, notifications, rewards).
     ///
-    /// Defaults to [`SignatureType::Eoa`]. Set this to [`SignatureType::PolyProxy`]
-    /// or [`SignatureType::PolyGnosisSafe`] when the API credentials belong to a
-    /// Polymarket proxy / Gnosis Safe wallet, so the server resolves the correct
-    /// address rather than the bare EOA.
+    /// Defaults to the account's signing target's type, or EOA without an
+    /// account. Set it only to override that, e.g. when the API credentials
+    /// belong to a proxy wallet but no target was configured.
     pub fn signature_type(mut self, signature_type: SignatureType) -> Self {
-        self.signature_type = signature_type;
+        self.signature_type = Some(signature_type);
         self
     }
 
@@ -1005,6 +1005,13 @@ impl ClobBuilder {
         }
         let http_client = builder.build()?;
 
+        let signature_type = self.signature_type.unwrap_or_else(|| {
+            self.account
+                .as_ref()
+                .map(|a| a.target().signature_type())
+                .unwrap_or_default()
+        });
+
         #[cfg(feature = "gamma")]
         let gamma = if let Some(gamma) = self.gamma {
             gamma
@@ -1021,7 +1028,7 @@ impl ClobBuilder {
         Ok(Clob {
             http_client,
             chain_id: self.chain.chain_id(),
-            signature_type: self.signature_type,
+            signature_type,
             builder_code: self.builder_code,
             account: self.account,
             signer_limiter: SignerLimiter::new(),
