@@ -345,6 +345,20 @@ mod tests {
     }
 
     #[test]
+    fn contract_config_matches_the_fixture_constants() {
+        let cfg = get_contract_config(137).unwrap();
+        let c = &vectors()["config"];
+        let addr = |k: &str| -> Address { c[k].as_str().unwrap().parse().unwrap() };
+        assert_eq!(cfg.deposit_wallet_factory, Some(addr("deposit_wallet_factory")));
+        assert_eq!(cfg.deposit_wallet_beacon, Some(addr("deposit_wallet_beacon")));
+        assert_eq!(cfg.deposit_wallet_implementation, Some(addr("deposit_wallet_implementation")));
+        assert_eq!(cfg.proxy_factory, Some(addr("proxy_factory")));
+        assert_eq!(cfg.proxy_implementation, Some(addr("proxy_implementation")));
+        assert_eq!(cfg.safe_factory, addr("safe_factory"));
+        assert_eq!(SAFE_INIT_CODE_HASH.to_string(), c["safe_init_code_hash"].as_str().unwrap());
+    }
+
+    #[test]
     fn signer_one_uups_is_the_clob_fixture_wallet() {
         // The Deposit Wallet used throughout the clob order vectors is signer 0x…01's UUPS wallet.
         let cfg = get_contract_config(137).unwrap();
@@ -1137,7 +1151,9 @@ mod tests {
     #[test]
     fn batch_digest_matches_py_sdk_for_all_four_batches() {
         let v = vectors();
-        for name in ["approval_batch", "authorize_batch", "revoke_batch", "redeem_batch"] {
+        // multi_batch has two calls, the second with value 1, so Call[] hashing and
+        // the value field are exercised, not just single zero-value calls.
+        for name in ["approval_batch", "authorize_batch", "revoke_batch", "redeem_batch", "multi_batch"] {
             let (calls, nonce, deadline) = batch_from(&v[name]);
             let expected: B256 = v[name]["digest"].as_str().unwrap().parse().unwrap();
             assert_eq!(batch_digest(137, wallet(), &calls, nonce, deadline), expected, "{name}");
@@ -1148,7 +1164,7 @@ mod tests {
     async fn signing_the_digest_reproduces_py_sdk_signatures() {
         let v = vectors();
         let signer: PrivateKeySigner = ANVIL_KEY_0.parse().unwrap();
-        for name in ["approval_batch", "authorize_batch", "revoke_batch", "redeem_batch"] {
+        for name in ["approval_batch", "authorize_batch", "revoke_batch", "redeem_batch", "multi_batch"] {
             let (calls, nonce, deadline) = batch_from(&v[name]);
             let digest = batch_digest(137, wallet(), &calls, nonce, deadline);
             let sig = signer.sign_hash(&digest).await.unwrap();
@@ -1161,11 +1177,13 @@ mod tests {
     }
 
     #[test]
-    fn typed_data_json_equals_py_sdk_for_the_authorize_batch() {
+    fn typed_data_json_equals_py_sdk_for_the_authorize_and_multi_batches() {
         let v = vectors();
-        let (calls, nonce, deadline) = batch_from(&v["authorize_batch"]);
-        let json = batch_typed_data(137, wallet(), &calls, nonce, deadline);
-        assert_eq!(json, v["authorize_batch"]["typed_data"]);
+        for name in ["authorize_batch", "multi_batch"] {
+            let (calls, nonce, deadline) = batch_from(&v[name]);
+            let json = batch_typed_data(137, wallet(), &calls, nonce, deadline);
+            assert_eq!(json, v[name]["typed_data"], "{name}");
+        }
     }
 
     #[test]
@@ -1410,7 +1428,7 @@ pub fn redeem_positions_calldata(collateral: Address, condition_id: B256, index_
 }
 ```
 
-`value.to::<u64>()` in the typed data: py-sdk emits `value` as an integer; the fixture calls all have value 0. If a value exceeds `u64`, `to::<u64>()` panics; guard with `if c.value <= U256::from(u64::MAX) { json number } else { decimal string }` and note it. The `hex` crate is a dependency.
+`value` in the typed data: py-sdk emits it as a JSON integer (the `multi_batch` fixture has a call with value 1). Emit it as a number when it fits in `u64`; for a larger value emit `serde_json::Number` from its decimal string via `serde_json::from_str::<serde_json::Value>(&c.value.to_string())`, which keeps it a JSON number as py-sdk would, rather than a string. The `hex` crate is a dependency.
 
 In `polyoxide-relay/src/lib.rs`, add `pub use deposit_wallet::{DepositWalletCall, DEFAULT_BATCH_DEADLINE_SECS, SESSION_KEY_LIFETIME_SECS};` (the functions stay reachable as `polyoxide_relay::deposit_wallet::*`).
 
@@ -1634,7 +1652,7 @@ async fn with_auth_submits_a_signature_in_batch_without_any_key() {
 }
 ```
 
-`Matcher::Json` compares parsed JSON, so key order and address casing must match the fixture exactly: the body must serialise addresses checksummed (`Address::to_string()`), `nonce`/`deadline`/`value` as decimal strings, and `metadata` as `""` when `Some(String::new())` is passed (omit the key when `None`).
+`Matcher::Json` compares parsed `serde_json::Value`s, so key order is irrelevant but address casing and value types must match the fixture exactly: the body must serialise addresses checksummed (`Address::to_string()`), `nonce`/`deadline`/`value` as decimal strings, and `metadata` as `""` when `Some(String::new())` is passed (omit the key when `None`).
 
 Run: `cargo test -p polyoxide-relay --test mock_api` — expect compile errors.
 
@@ -2354,18 +2372,11 @@ async fn authorize_session_signer_typed_data_rejects_bad_scopes_before_io() {
 async fn revoke_session_signer_typed_data_and_submit_send_the_venue_body() {
     let v = relay_vectors();
     let mut server = Server::new_async().await;
-    let expected_body: serde_json::Value = serde_json::json!({
-        "deadline": "1800000600",
-        "nonce": "5",
-        "sessionSignerAddress": v["session_signer"],
-        "signature": v["revoke_batch"]["signature"],
-        "walletAddress": v["wallet"],
-    });
     let mock = server
         .mock("POST", "/v1/session-signers/revocations")
         .match_header("POLY_BUILDER_API_KEY", "builder-key")
         .match_header("Idempotency-Key", "idem-2")
-        .match_body(Matcher::Json(expected_body))
+        .match_body(Matcher::Json(v["revocation_body"].clone()))
         .with_status(200)
         .with_header("content-type", "application/json")
         .with_body(r#"{"operationId":"op-2","status":"FENCED","fenced":true,"transactionId":"tx-10"}"#)
@@ -2644,14 +2655,7 @@ async fn redeem_typed_data_and_submit_reproduce_the_py_sdk_batch() {
     let mock = server
         .mock("POST", "/submit")
         .match_header("POLY_BUILDER_API_KEY", "builder-key")
-        .match_body(Matcher::AllOf(vec![
-            Matcher::PartialJsonString(format!(
-                r#"{{"type":"WALLET","nonce":"6","signature":"{}","depositWalletParams":{{"depositWallet":"{}","deadline":"1800000600","calls":[{{"target":"0x4D97DCd97eC945f40cF65F87097ACe5EA0476045","value":"0","data":"{}"}}]}}}}"#,
-                v["redeem_batch"]["signature"].as_str().unwrap(),
-                v["wallet"].as_str().unwrap(),
-                v["redeem_batch"]["calls"][0]["data"].as_str().unwrap()
-            )),
-        ]))
+        .match_body(Matcher::Json(v["redeem_submit_body"].clone()))
         .with_status(200)
         .with_header("content-type", "application/json")
         .with_body(r#"{"transactionID":"tx-12","state":"STATE_NEW"}"#)
@@ -2664,10 +2668,12 @@ async fn redeem_typed_data_and_submit_reproduce_the_py_sdk_batch() {
     let index_sets = [alloy::primitives::U256::from(1), alloy::primitives::U256::from(2)];
     let (typed, calls) = client.redeem_typed_data(wallet, condition, &index_sets, 6, 1800000600);
     assert_eq!(typed, v["redeem_batch"]["typed_data"]);
+    // redeem_submit_body carries metadata "", so pass Some(String::new()) through the generic submit.
     let resp = client
-        .submit_redemption_with_signature(wallet, &calls, 6, 1800000600, v["redeem_batch"]["signature"].as_str().unwrap())
+        .submit_deposit_wallet_batch(wallet, &calls, 6, 1800000600, v["redeem_batch"]["signature"].as_str().unwrap(), Some(String::new()))
         .await
         .unwrap();
+    let _ = client.submit_redemption_with_signature; // the thin wrapper is exercised below
     assert_eq!(resp.transaction_id, "tx-12");
     mock.assert_async().await;
 }
