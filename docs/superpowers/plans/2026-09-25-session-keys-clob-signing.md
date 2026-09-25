@@ -874,7 +874,8 @@ mod deposit_wallet_vectors {
     }
 
     fn vector(name: &str) -> Vector {
-        let all: std::collections::HashMap<String, Vector> = serde_json::from_str(VECTORS).unwrap();
+        let mut all: std::collections::HashMap<String, Vector> =
+            serde_json::from_str(VECTORS).unwrap();
         all.remove(name).unwrap_or_else(|| panic!("no vector {name}"))
     }
 
