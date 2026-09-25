@@ -17,6 +17,11 @@ would produce: the session-signer envelope names Anvil address #1 as the session
 but Anvil key #0 produced the inner order signature. The two identities are deliberately
 mismatched so the fixture can pin bytes without coordinating two live signers.
 
+`clob_auth.json` pins the L1 auth (`ClobAuth`) typed data — from py-sdk's own
+`build_api_key_auth_typed_data`, not polyoxide's reimplementation of the same struct — and
+its signature over Anvil key #0, at chain id 137, timestamp 1700000000, nonce 42.
+
 | Fixture | Command |
 |---|---|
 | `order_vectors.json` | `uv run scripts/capture_session_key_vectors.py polyoxide-clob/tests/fixtures/session_keys` |
+| `clob_auth.json` | `uv run scripts/capture_session_key_vectors.py polyoxide-clob/tests/fixtures/session_keys` |

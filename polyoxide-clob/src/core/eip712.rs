@@ -389,6 +389,32 @@ pub async fn sign_order_as<S: AlloySigner + ?Sized>(
     Ok(format!("0x{}", hex::encode(bytes)))
 }
 
+/// The EIP-712 digest of the L1 auth (`ClobAuth`) message.
+///
+/// Factored out of [`sign_clob_auth`] so a caller that already has a signature (an
+/// external wallet signed [`clob_auth_typed_data`] out of process) can recover its
+/// signer over exactly the same digest, rather than re-deriving it independently.
+pub(crate) fn clob_auth_digest(
+    address: Address,
+    chain_id: u64,
+    timestamp: u64,
+    nonce: u32,
+) -> B256 {
+    let domain = clob_auth_domain(chain_id);
+
+    let clob_auth = protocol::ClobAuth {
+        address,
+        // A string field upstream, so the digest covers the decimal text.
+        timestamp: timestamp.to_string(),
+        nonce: U256::from(nonce),
+        message: CLOB_AUTH_MESSAGE.to_string(),
+    };
+
+    let struct_hash = clob_auth.eip712_hash_struct();
+    let domain_separator = domain.separator();
+    eip712_digest(domain_separator, struct_hash)
+}
+
 /// Sign CLOB auth message for API key creation
 pub async fn sign_clob_auth<S: AlloySigner + ?Sized>(
     signer: &S,
@@ -396,22 +422,7 @@ pub async fn sign_clob_auth<S: AlloySigner + ?Sized>(
     timestamp: u64,
     nonce: u32,
 ) -> Result<String, ClobError> {
-    let domain = clob_auth_domain(chain_id);
-
-    let clob_auth = protocol::ClobAuth {
-        address: signer.address(),
-        // A string field upstream, so the digest covers the decimal text.
-        timestamp: timestamp.to_string(),
-        nonce: U256::from(nonce),
-        message: CLOB_AUTH_MESSAGE.to_string(),
-    };
-
-    // Compute struct hash and domain separator
-    let struct_hash = clob_auth.eip712_hash_struct();
-    let domain_separator = domain.separator();
-
-    // Compute final hash
-    let digest = eip712_digest(domain_separator, struct_hash);
+    let digest = clob_auth_digest(signer.address(), chain_id, timestamp, nonce);
 
     // Sign the digest
     let signature = signer.sign_hash(&digest).await?;
@@ -1001,7 +1012,7 @@ mod clob_auth_reference_tests {
     /// digest = keccak(msg.signable_bytes(
     ///     make_domain(name="ClobAuthDomain", version="1", chainId=137)))
     /// ```
-    const REFERENCE_SIGNATURE: &str = "0x8e61f918d542a48ff9433fb6cc4c172a2763ad53dda8afa07f77321e2e0a1e3055f29fac1408e0020dca977190fd4f01b1c73b5e2078be29c88a32887945fe2a1b";
+    pub(super) const REFERENCE_SIGNATURE: &str = "0x8e61f918d542a48ff9433fb6cc4c172a2763ad53dda8afa07f77321e2e0a1e3055f29fac1408e0020dca977190fd4f01b1c73b5e2078be29c88a32887945fe2a1b";
 
     #[tokio::test]
     async fn clob_auth_struct_matches_the_reference_type_string() {
@@ -1314,36 +1325,65 @@ uint256 timestamp,bytes32 metadata,bytes32 builder)"
             .to_string();
         assert!(err.contains("sign_order_as"), "{err}");
     }
+}
+
+/// Cross-checks against Polymarket's own py-sdk, independent of the `poly_eip712_structs`
+/// golden vector in [`clob_auth_reference_tests`]: this pins [`clob_auth_typed_data`] and
+/// [`sign_clob_auth`] to py-sdk's `build_api_key_auth_typed_data` output and the signature
+/// it produces over the same struct, rather than only to polyoxide's own reimplementation
+/// of `ClobAuth`.
+#[cfg(test)]
+mod clob_auth_reference {
+    use super::*;
+    use alloy::signers::local::PrivateKeySigner;
+
+    const FIXTURE: &str = include_str!("../../tests/fixtures/session_keys/clob_auth.json");
+
+    #[derive(serde::Deserialize)]
+    struct Fixture {
+        address: Address,
+        chain_id: u64,
+        timestamp: u64,
+        nonce: u32,
+        typed_data: serde_json::Value,
+        signature: String,
+    }
+
+    fn fixture() -> Fixture {
+        serde_json::from_str(FIXTURE).unwrap()
+    }
 
     #[test]
-    fn clob_auth_typed_data_is_the_upstream_json_shape() {
-        let addr = address!("f39Fd6e51aad88F6F4ce6aB8827279cffFb92266");
-        let json = clob_auth_typed_data(addr, 137, 1700000000, 0);
+    fn clob_auth_typed_data_equals_py_sdk() {
+        let f = fixture();
         assert_eq!(
-            json,
-            serde_json::json!({
-                "types": {
-                    "EIP712Domain": [
-                        { "name": "name", "type": "string" },
-                        { "name": "version", "type": "string" },
-                        { "name": "chainId", "type": "uint256" }
-                    ],
-                    "ClobAuth": [
-                        { "name": "address", "type": "address" },
-                        { "name": "timestamp", "type": "string" },
-                        { "name": "nonce", "type": "uint256" },
-                        { "name": "message", "type": "string" }
-                    ]
-                },
-                "primaryType": "ClobAuth",
-                "domain": { "name": "ClobAuthDomain", "version": "1", "chainId": 137 },
-                "message": {
-                    "address": "0xf39Fd6e51aad88F6F4ce6aB8827279cffFb92266",
-                    "timestamp": "1700000000",
-                    "nonce": 0,
-                    "message": "This message attests that I control the given wallet"
-                }
-            })
+            clob_auth_typed_data(f.address, f.chain_id, f.timestamp, f.nonce),
+            f.typed_data
+        );
+    }
+
+    // Anvil/Hardhat account #0, matching `fixture().address`.
+    const ANVIL_KEY_0: &str = "ac0974bec39a17e36ba4a6b4d238ff944bacb478cbed5efcae784d7bf4f2ff80";
+
+    #[tokio::test]
+    async fn sign_clob_auth_equals_the_signature_over_py_sdk_typed_data() {
+        let f = fixture();
+        let signer: PrivateKeySigner = ANVIL_KEY_0.parse().unwrap();
+        assert_eq!(signer.address(), f.address);
+
+        let signature = sign_clob_auth(&signer, f.chain_id, f.timestamp, f.nonce)
+            .await
+            .unwrap();
+        assert_eq!(signature, f.signature);
+
+        // Same key, chain id, timestamp and nonce as `clob_auth_reference_tests`'s
+        // `REFERENCE_SIGNATURE` (produced independently from py-clob-client +
+        // poly_eip712_structs) — the two golden signatures are in fact equal,
+        // which is expected: deterministic ECDSA (RFC 6979) over an identical
+        // digest with an identical key always produces the same signature.
+        assert_eq!(
+            signature,
+            super::clob_auth_reference_tests::REFERENCE_SIGNATURE
         );
     }
 }

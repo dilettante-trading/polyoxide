@@ -14,7 +14,7 @@ use crate::error::ClobError;
 /// has to hold raw key material to trade. Hardware wallets such as Ledger and
 /// Trezor refuse raw-hash signing and are not usable here; a hardware-held
 /// owner key instead signs the L1 auth typed data out of process (via
-/// [`crate::clob_auth_typed_data`] and `Clob::derive_api_key_with_signature`)
+/// [`crate::clob_auth_typed_data`] and [`crate::Clob::derive_api_key_with_signature`])
 /// and authorizes a session key that implements `sign_hash` for trading.
 pub type DynSigner = dyn AlloySigner + Send + Sync;
 

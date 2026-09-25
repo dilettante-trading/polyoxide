@@ -22,9 +22,10 @@ use crate::{
         generate_salt,
     },
 };
-use alloy::primitives::{Address, B256};
+use alloy::primitives::{hex, Address, Signature, B256};
 #[cfg(feature = "gamma")]
 use polyoxide_gamma::Gamma;
+use std::str::FromStr;
 
 const DEFAULT_BASE_URL: &str = "https://clob.polymarket.com";
 
@@ -224,6 +225,11 @@ impl Clob {
 
     /// The L1 auth message for `address` as EIP-712 JSON, for an external wallet to sign.
     ///
+    /// `timestamp` is Unix seconds at signing time — construct it from
+    /// [`polyoxide_core::current_timestamp`] or `std::time::SystemTime`, and reuse it
+    /// unchanged if a caller retries after a 429 backoff, unlike the signer-based
+    /// [`Clob::auth`] path, which stamps a fresh timestamp on every attempt.
+    ///
     /// Uses this client's chain id. See [`crate::core::eip712::clob_auth_typed_data`].
     pub fn clob_auth_typed_data(
         &self,
@@ -234,10 +240,45 @@ impl Clob {
         crate::core::eip712::clob_auth_typed_data(address, self.chain_id, timestamp, nonce)
     }
 
+    /// Parse `signature` and check it recovers to `address` over the same digest
+    /// [`crate::core::eip712::sign_clob_auth`] signs, before spending a request on it.
+    fn checked_l1_signature(
+        &self,
+        address: Address,
+        timestamp: u64,
+        nonce: u32,
+        signature: impl Into<String>,
+    ) -> Result<String, ClobError> {
+        let signature = signature.into();
+        let sig = Signature::from_str(&signature).map_err(|e| {
+            ClobError::validation(format!("signature must be 65 bytes of 0x-hex: {e}"))
+        })?;
+
+        let digest =
+            crate::core::eip712::clob_auth_digest(address, self.chain_id, timestamp, nonce);
+        let recovered = sig.recover_address_from_prehash(&digest).map_err(|e| {
+            ClobError::validation(format!("signature must be 65 bytes of 0x-hex: {e}"))
+        })?;
+        if recovered != address {
+            return Err(ClobError::validation(format!(
+                "signature recovers to {recovered}, not {address}; the typed data must be \
+                 signed by that address with the same timestamp and nonce"
+            )));
+        }
+
+        // Re-serialise so `v` is normalised to 27/28, matching the signer-based L1 path.
+        Ok(format!("0x{}", hex::encode(sig.as_bytes())))
+    }
+
     /// `POST /auth/api-key` with a signature produced outside this process.
     ///
     /// Needs no account: `address` is the EOA that signed
-    /// [`Clob::clob_auth_typed_data`] for the same `timestamp` and `nonce`.
+    /// [`Clob::clob_auth_typed_data`] for the same `timestamp` and `nonce`. The
+    /// signature is checked locally (parsed and recovered against `address`) before
+    /// the request is sent, so a malformed or mismatched signature never reaches the
+    /// venue. `timestamp` is Unix seconds at signing time; unlike the signer-based
+    /// path, a retry after a 429 backoff must reuse the same timestamp, since only
+    /// the caller (or the external wallet) can produce a fresh signature for a new one.
     pub async fn create_api_key_with_signature(
         &self,
         address: Address,
@@ -245,6 +286,7 @@ impl Clob {
         nonce: u32,
         signature: impl Into<String>,
     ) -> Result<crate::api::auth::ApiKeyResponse, ClobError> {
+        let signature = self.checked_l1_signature(address, timestamp, nonce, signature)?;
         Request::post(
             self.http_client.clone(),
             "/auth/api-key".to_string(),
@@ -252,7 +294,7 @@ impl Clob {
                 address,
                 nonce,
                 timestamp,
-                signature: signature.into(),
+                signature,
             },
             self.chain_id,
         )
@@ -263,7 +305,9 @@ impl Clob {
     /// `GET /auth/derive-api-key` with a signature produced outside this process.
     ///
     /// The counterpart of [`Clob::create_api_key_with_signature`] for credentials
-    /// that already exist.
+    /// that already exist. Same local signature check, and `timestamp` is Unix
+    /// seconds at signing time; a retry after a 429 backoff reuses it rather than
+    /// stamping a fresh one, since only the external wallet can re-sign.
     pub async fn derive_api_key_with_signature(
         &self,
         address: Address,
@@ -271,6 +315,7 @@ impl Clob {
         nonce: u32,
         signature: impl Into<String>,
     ) -> Result<crate::api::auth::ApiKeyResponse, ClobError> {
+        let signature = self.checked_l1_signature(address, timestamp, nonce, signature)?;
         Request::get(
             self.http_client.clone(),
             "/auth/derive-api-key",
@@ -278,7 +323,7 @@ impl Clob {
                 address,
                 nonce,
                 timestamp,
-                signature: signature.into(),
+                signature,
             },
             self.chain_id,
         )

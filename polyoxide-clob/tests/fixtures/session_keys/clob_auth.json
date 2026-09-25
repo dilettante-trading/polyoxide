@@ -1,0 +1,55 @@
+{
+  "address": "0xf39Fd6e51aad88F6F4ce6aB8827279cffFb92266",
+  "chain_id": 137,
+  "timestamp": 1700000000,
+  "nonce": 42,
+  "typed_data": {
+    "domain": {
+      "name": "ClobAuthDomain",
+      "version": "1",
+      "chainId": 137
+    },
+    "types": {
+      "EIP712Domain": [
+        {
+          "name": "name",
+          "type": "string"
+        },
+        {
+          "name": "version",
+          "type": "string"
+        },
+        {
+          "name": "chainId",
+          "type": "uint256"
+        }
+      ],
+      "ClobAuth": [
+        {
+          "name": "address",
+          "type": "address"
+        },
+        {
+          "name": "timestamp",
+          "type": "string"
+        },
+        {
+          "name": "nonce",
+          "type": "uint256"
+        },
+        {
+          "name": "message",
+          "type": "string"
+        }
+      ]
+    },
+    "primaryType": "ClobAuth",
+    "message": {
+      "address": "0xf39Fd6e51aad88F6F4ce6aB8827279cffFb92266",
+      "timestamp": "1700000000",
+      "nonce": 42,
+      "message": "This message attests that I control the given wallet"
+    }
+  },
+  "signature": "0x8e61f918d542a48ff9433fb6cc4c172a2763ad53dda8afa07f77321e2e0a1e3055f29fac1408e0020dca977190fd4f01b1c73b5e2078be29c88a32887945fe2a1b"
+}

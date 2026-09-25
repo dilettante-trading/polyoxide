@@ -12,14 +12,19 @@ polyoxide pins its Deposit Wallet (signature type 3) signing against these bytes
 The fixture order is py-sdk's own golden fixture (tests/unit/test_order_typed_data_golden.py),
 signed with Anvil key #0; the session signer is Anvil address #1.
 
+Also generates `clob_auth.json`, pinning the L1 auth (`ClobAuth`) typed data and its
+signature — used to verify `clob_auth_typed_data` and the signature-in auth path against
+py-sdk's own `build_api_key_auth_typed_data`, rather than only against our own EIP-712
+implementation of the same struct.
+
 This script imports py-sdk's private modules (`polymarket._internal...`), which are not a
 stable public API, so it is expected to need import-path fixes after a py-sdk upgrade.
 
 Usage:
     uv run scripts/capture_session_key_vectors.py polyoxide-clob/tests/fixtures/session_keys
 
-Writes `order_vectors.json` and `PROVENANCE.md`. Re-run after a py-sdk upgrade; review the
-diff before committing.
+Writes `order_vectors.json`, `clob_auth.json` and `PROVENANCE.md`. Re-run after a py-sdk
+upgrade; review the diff before committing.
 """
 import importlib.metadata
 import json
@@ -38,6 +43,7 @@ from polymarket._internal.actions.orders.typed_data import (
     build_order_typed_data,
 )
 from polymarket._internal.actions.orders.types import BYTES32_ZERO, UnsignedOrder
+from polymarket._internal.l1_auth import build_api_key_auth_typed_data
 from polymarket._internal.wallet import wrap_deposit_wallet_session_signer_signature
 from polymarket.models.types import TokenId
 from polymarket.types import EvmAddress, HexString
@@ -52,6 +58,14 @@ EXCHANGES = {
     # polyoxide's Polygon mainnet CTF Exchange V2, what the client signs against.
     "v2_exchange": "0xE111180000d2663C0091e4f400237545B87B996B",
 }
+
+# Fixed inputs for the L1 auth (`ClobAuth`) fixture. Same chain id, timestamp and nonce
+# as the existing `REFERENCE_SIGNATURE` golden in eip712.rs's
+# `clob_auth_reference_tests`, produced independently from py-clob-client +
+# poly_eip712_structs — the two signatures should agree.
+CLOB_AUTH_CHAIN_ID = 137
+CLOB_AUTH_TIMESTAMP = 1700000000
+CLOB_AUTH_NONCE = 42
 
 # py-sdk's own pinned digest for this exact order, from its
 # tests/unit/test_order_typed_data_golden.py. If this stops matching, either py-sdk's
@@ -83,6 +97,25 @@ def fixture(exchange: str) -> UnsignedOrder:
 def digest(typed_data: dict) -> str:
     signable = encode_typed_data(full_message=typed_data)
     return "0x" + keccak(b"\x19\x01" + signable.header + signable.body).hex()
+
+
+def clob_auth_fixture(signer: Account) -> dict:
+    """L1 auth (`ClobAuth`) typed data and its signature, from py-sdk's own builder."""
+    typed_data = build_api_key_auth_typed_data(
+        address=signer.address,
+        chain_id=CLOB_AUTH_CHAIN_ID,
+        timestamp=CLOB_AUTH_TIMESTAMP,
+        nonce=CLOB_AUTH_NONCE,
+    )
+    signature = "0x" + signer.sign_typed_data(full_message=typed_data).signature.hex()
+    return {
+        "address": signer.address,
+        "chain_id": CLOB_AUTH_CHAIN_ID,
+        "timestamp": CLOB_AUTH_TIMESTAMP,
+        "nonce": CLOB_AUTH_NONCE,
+        "typed_data": typed_data,
+        "signature": signature,
+    }
 
 
 # The canonical PEP 723 block-extraction regex, straight from the spec.
@@ -142,9 +175,14 @@ would produce: the session-signer envelope names Anvil address #1 as the session
 but Anvil key #0 produced the inner order signature. The two identities are deliberately
 mismatched so the fixture can pin bytes without coordinating two live signers.
 
+`clob_auth.json` pins the L1 auth (`ClobAuth`) typed data — from py-sdk's own
+`build_api_key_auth_typed_data`, not polyoxide's reimplementation of the same struct — and
+its signature over Anvil key #0, at chain id 137, timestamp 1700000000, nonce 42.
+
 | Fixture | Command |
 |---|---|
 | `order_vectors.json` | `uv run scripts/capture_session_key_vectors.py polyoxide-clob/tests/fixtures/session_keys` |
+| `clob_auth.json` | `uv run scripts/capture_session_key_vectors.py polyoxide-clob/tests/fixtures/session_keys` |
 """
     (out_dir / "PROVENANCE.md").write_text(text)
 
@@ -188,8 +226,11 @@ def main(out_dir: Path) -> None:
         }
     out_dir.mkdir(parents=True, exist_ok=True)
     (out_dir / "order_vectors.json").write_text(json.dumps(out, indent=2) + "\n")
+    clob_auth = clob_auth_fixture(signer)
+    (out_dir / "clob_auth.json").write_text(json.dumps(clob_auth, indent=2) + "\n")
     write_provenance(out_dir, sdk_version, dependency_cutoff)
     print(f"wrote {out_dir / 'order_vectors.json'}")
+    print(f"wrote {out_dir / 'clob_auth.json'}")
 
 
 if __name__ == "__main__":

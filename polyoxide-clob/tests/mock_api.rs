@@ -3623,13 +3623,28 @@ async fn adopting_a_higher_tier_admits_a_previously_impossible_batch() {
 
 #[tokio::test]
 async fn derive_api_key_with_signature_sends_the_l1_headers_verbatim() {
+    use alloy::signers::local::PrivateKeySigner;
+
+    // Hardhat/Anvil account #0.
+    let signer: PrivateKeySigner =
+        "0xac0974bec39a17e36ba4a6b4d238ff944bacb478cbed5efcae784d7bf4f2ff80"
+            .parse()
+            .unwrap();
+    let timestamp = 1700000000u64;
+    let nonce = 7u32;
+    // Client-side validation now checks the signature recovers to `address`, so this
+    // has to be a genuine signature, not a placeholder like the old "0xdeadbeef".
+    let signature = polyoxide_clob::core::eip712::sign_clob_auth(&signer, 137, timestamp, nonce)
+        .await
+        .unwrap();
+
     let mut server = Server::new_async().await;
     let mock = server
         .mock("GET", "/auth/derive-api-key")
         .match_header("POLY_ADDRESS", "0xf39Fd6e51aad88F6F4ce6aB8827279cffFb92266")
-        .match_header("POLY_SIGNATURE", "0xdeadbeef")
-        .match_header("POLY_TIMESTAMP", "1700000000")
-        .match_header("POLY_NONCE", "7")
+        .match_header("POLY_SIGNATURE", signature.as_str())
+        .match_header("POLY_TIMESTAMP", timestamp.to_string().as_str())
+        .match_header("POLY_NONCE", nonce.to_string().as_str())
         .with_status(200)
         .with_header("content-type", "application/json")
         .with_body(r#"{"apiKey":"k","secret":"c2VjcmV0","passphrase":"p"}"#)
@@ -3639,12 +3654,7 @@ async fn derive_api_key_with_signature_sends_the_l1_headers_verbatim() {
     // No account: this is the onboarding path for a key held in an external wallet.
     let clob = test_public_clob(&server);
     let creds = clob
-        .derive_api_key_with_signature(
-            alloy::primitives::address!("f39Fd6e51aad88F6F4ce6aB8827279cffFb92266"),
-            1700000000,
-            7,
-            "0xdeadbeef",
-        )
+        .derive_api_key_with_signature(signer.address(), timestamp, nonce, signature)
         .await
         .unwrap();
     assert_eq!(creds.api_key, "k");
@@ -3653,13 +3663,26 @@ async fn derive_api_key_with_signature_sends_the_l1_headers_verbatim() {
 
 #[tokio::test]
 async fn create_api_key_with_signature_posts_the_l1_headers_verbatim() {
+    use alloy::signers::local::PrivateKeySigner;
+
+    // Hardhat/Anvil account #0.
+    let signer: PrivateKeySigner =
+        "0xac0974bec39a17e36ba4a6b4d238ff944bacb478cbed5efcae784d7bf4f2ff80"
+            .parse()
+            .unwrap();
+    let timestamp = 1700000000u64;
+    let nonce = 0u32;
+    let signature = polyoxide_clob::core::eip712::sign_clob_auth(&signer, 137, timestamp, nonce)
+        .await
+        .unwrap();
+
     let mut server = Server::new_async().await;
     let mock = server
         .mock("POST", "/auth/api-key")
         .match_header("POLY_ADDRESS", "0xf39Fd6e51aad88F6F4ce6aB8827279cffFb92266")
-        .match_header("POLY_SIGNATURE", "0xdeadbeef")
-        .match_header("POLY_TIMESTAMP", "1700000000")
-        .match_header("POLY_NONCE", "0")
+        .match_header("POLY_SIGNATURE", signature.as_str())
+        .match_header("POLY_TIMESTAMP", timestamp.to_string().as_str())
+        .match_header("POLY_NONCE", nonce.to_string().as_str())
         .with_status(200)
         .with_header("content-type", "application/json")
         .with_body(r#"{"apiKey":"k","secret":"c2VjcmV0","passphrase":"p"}"#)
@@ -3668,20 +3691,20 @@ async fn create_api_key_with_signature_posts_the_l1_headers_verbatim() {
 
     let clob = test_public_clob(&server);
     let creds = clob
-        .create_api_key_with_signature(
-            alloy::primitives::address!("f39Fd6e51aad88F6F4ce6aB8827279cffFb92266"),
-            1700000000,
-            0,
-            "0xdeadbeef",
-        )
+        .create_api_key_with_signature(signer.address(), timestamp, nonce, signature)
         .await
         .unwrap();
     assert_eq!(creds.api_key, "k");
     mock.assert_async().await;
 }
 
+/// Proves `Clob::derive_api_key_with_signature` echoes exactly what
+/// `sign_clob_auth` produces over the same digest, through the full public path
+/// (local signature check, re-serialisation, and a mocked wire assertion) — not just
+/// at the `add_auth_headers` level, which `request::tests::l1_and_l1_signed_produce_identical_headers`
+/// already covers without a `Clob` or a mock server.
 #[tokio::test]
-async fn derive_api_key_with_signature_matches_the_signer_path() {
+async fn derive_api_key_with_signature_echoes_a_sign_clob_auth_signature() {
     use alloy::signers::local::PrivateKeySigner;
 
     // Hardhat/Anvil account #0.
@@ -3714,5 +3737,87 @@ async fn derive_api_key_with_signature_matches_the_signer_path() {
         .await
         .unwrap();
     assert_eq!(creds.api_key, "k");
+    mock.assert_async().await;
+}
+
+#[tokio::test]
+async fn create_api_key_with_signature_refuses_a_garbage_signature_before_any_request() {
+    let mut server = Server::new_async().await;
+    // expect(0): no query params on this route, so an exact-path mock is sound for
+    // proving the request never went out at all.
+    let mock = server
+        .mock("POST", "/auth/api-key")
+        .expect(0)
+        .with_status(200)
+        .with_header("content-type", "application/json")
+        .with_body(r#"{"apiKey":"k","secret":"c2VjcmV0","passphrase":"p"}"#)
+        .create_async()
+        .await;
+
+    let clob = test_public_clob(&server);
+    let err = clob
+        .create_api_key_with_signature(
+            alloy::primitives::address!("f39Fd6e51aad88F6F4ce6aB8827279cffFb92266"),
+            1700000000,
+            0,
+            "0xdeadbeef",
+        )
+        .await
+        .unwrap_err()
+        .to_string();
+    assert!(err.contains("65 bytes of 0x-hex"), "{err}");
+    mock.assert_async().await;
+}
+
+#[tokio::test]
+async fn derive_api_key_with_signature_refuses_a_signature_for_a_different_address() {
+    use alloy::signers::local::PrivateKeySigner;
+
+    // Hardhat/Anvil account #1 signs their own, genuinely valid ClobAuth message —
+    // `address` is baked into the signed struct itself — but the caller claims
+    // account #0's address instead. Verifying against the claimed address recomputes
+    // a different digest than the one actually signed, so recovery lands on neither
+    // account; the point of this test is that the mismatch is still caught and the
+    // error names what was claimed.
+    let signer: PrivateKeySigner =
+        "0x59c6995e998f97a5a0044966f0945389dc9e86dae88c7a8412f4603b6b78690d"
+            .parse()
+            .unwrap();
+    let claimed = alloy::primitives::address!("f39Fd6e51aad88F6F4ce6aB8827279cffFb92266");
+    assert_ne!(signer.address(), claimed);
+    let timestamp = 1700000000u64;
+    let nonce = 0u32;
+    let signature = polyoxide_clob::core::eip712::sign_clob_auth(&signer, 137, timestamp, nonce)
+        .await
+        .unwrap();
+
+    let mut server = Server::new_async().await;
+    let mock = server
+        .mock("GET", "/auth/derive-api-key")
+        .expect(0)
+        .with_status(200)
+        .with_header("content-type", "application/json")
+        .with_body(r#"{"apiKey":"k","secret":"c2VjcmV0","passphrase":"p"}"#)
+        .create_async()
+        .await;
+
+    let clob = test_public_clob(&server);
+    let err = clob
+        .derive_api_key_with_signature(claimed, timestamp, nonce, signature)
+        .await
+        .unwrap_err()
+        .to_string();
+    assert!(err.contains("recovers to"), "{err}");
+    assert!(err.contains(&claimed.to_string()), "{err}");
+    // Names both addresses: the claimed one, and whatever the signature actually
+    // recovers to — which is guaranteed to differ from `claimed`, since a client
+    // that recovered `claimed` back out would have accepted the signature.
+    let recovered = err
+        .split("recovers to ")
+        .nth(1)
+        .and_then(|rest| rest.split(',').next())
+        .unwrap_or_default();
+    assert!(!recovered.is_empty(), "{err}");
+    assert_ne!(recovered, claimed.to_string(), "{err}");
     mock.assert_async().await;
 }

@@ -12,7 +12,7 @@ use crate::{
 };
 
 /// Authentication mode for requests
-#[derive(Debug, Clone)]
+#[derive(Clone)]
 pub enum AuthMode {
     None,
     L1 {
@@ -33,6 +33,44 @@ pub enum AuthMode {
         credentials: Credentials,
         signer: Signer,
     },
+}
+
+/// Manual impl so [`AuthMode::L1Signed`]'s `signature` is never printed: `Wallet` and
+/// `Credentials` already redact their own secrets, but a derived `Debug` would have
+/// printed the raw signature string verbatim.
+impl std::fmt::Debug for AuthMode {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            AuthMode::None => write!(f, "None"),
+            AuthMode::L1 { wallet, nonce } => f
+                .debug_struct("L1")
+                .field("wallet", wallet)
+                .field("nonce", nonce)
+                .finish(),
+            AuthMode::L1Signed {
+                address,
+                nonce,
+                timestamp,
+                signature: _,
+            } => f
+                .debug_struct("L1Signed")
+                .field("address", address)
+                .field("nonce", nonce)
+                .field("timestamp", timestamp)
+                .field("signature", &"[REDACTED]")
+                .finish(),
+            AuthMode::L2 {
+                address,
+                credentials,
+                signer,
+            } => f
+                .debug_struct("L2")
+                .field("address", address)
+                .field("credentials", credentials)
+                .field("signer", signer)
+                .finish(),
+        }
+    }
 }
 
 /// Generic request builder for CLOB API
@@ -258,6 +296,32 @@ impl<T: DeserializeOwned> Request<T> {
     }
 }
 
+/// Set the four `POLY_*` headers L1 auth sends, shared by [`AuthMode::L1`] (which signs
+/// first) and [`AuthMode::L1Signed`] (which already has a signature).
+fn l1_headers(
+    request: reqwest::RequestBuilder,
+    address: Address,
+    signature: &str,
+    timestamp: u64,
+    nonce: u32,
+) -> reqwest::RequestBuilder {
+    request
+        // EIP-55 checksummed, matching py-clob-client, which sends
+        // eth_account's `signer.address()`. Note `Display`/`to_string`
+        // checksums but `{:?}` lowercases — the L1 path is where this
+        // can matter, since the server recovers the address from the
+        // signature and compares it against this header.
+        //
+        // The L2 branch below deliberately still uses `{:?}`: it sends
+        // lowercase today and works, so there is no evidence the server
+        // is case-sensitive there and no reason to churn a working path.
+        // Don't "unify" these without a live check on both.
+        .header("POLY_ADDRESS", address.to_string())
+        .header("POLY_SIGNATURE", signature)
+        .header("POLY_TIMESTAMP", timestamp.to_string())
+        .header("POLY_NONCE", nonce.to_string())
+}
+
 /// Add authentication headers based on auth mode (free function for retry loop)
 async fn add_auth_headers(
     mut request: reqwest::RequestBuilder,
@@ -276,35 +340,20 @@ async fn add_auth_headers(
             let timestamp = current_timestamp();
             let signature = sign_clob_auth(wallet.signer()?, chain_id, timestamp, *nonce).await?;
 
-            request = request
-                // EIP-55 checksummed, matching py-clob-client, which sends
-                // eth_account's `signer.address()`. Note `Display`/`to_string`
-                // checksums but `{:?}` lowercases — the L1 path is where this
-                // can matter, since the server recovers the address from the
-                // signature and compares it against this header.
-                //
-                // The L2 branch below deliberately still uses `{:?}`: it sends
-                // lowercase today and works, so there is no evidence the server
-                // is case-sensitive there and no reason to churn a working path.
-                // Don't "unify" these without a live check on both.
-                .header("POLY_ADDRESS", wallet.address().to_string())
-                .header("POLY_SIGNATURE", signature)
-                .header("POLY_TIMESTAMP", timestamp.to_string())
-                .header("POLY_NONCE", nonce.to_string());
-
-            Ok(request)
+            Ok(l1_headers(
+                request,
+                wallet.address(),
+                &signature,
+                timestamp,
+                *nonce,
+            ))
         }
         AuthMode::L1Signed {
             address,
             nonce,
             timestamp,
             signature,
-        } => Ok(request
-            // Checksummed, matching the signer-based L1 arm above.
-            .header("POLY_ADDRESS", address.to_string())
-            .header("POLY_SIGNATURE", signature.clone())
-            .header("POLY_TIMESTAMP", timestamp.to_string())
-            .header("POLY_NONCE", nonce.to_string())),
+        } => Ok(l1_headers(request, *address, signature, *timestamp, *nonce)),
         AuthMode::L2 {
             address,
             credentials,
@@ -325,5 +374,96 @@ async fn add_auth_headers(
 
             Ok(request)
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::core::eip712::sign_clob_auth;
+    use alloy::signers::local::PrivateKeySigner;
+
+    // Anvil/Hardhat account #0.
+    const ANVIL_KEY_0: &str = "ac0974bec39a17e36ba4a6b4d238ff944bacb478cbed5efcae784d7bf4f2ff80";
+
+    /// Proves the signature-in path is not just parallel code that happens to work, but
+    /// produces the exact same wire headers as the signer-based path given the same
+    /// signature — at the header level, independent of the mock-server assertions in
+    /// `tests/mock_api.rs`.
+    #[tokio::test]
+    async fn l1_and_l1_signed_produce_identical_headers() {
+        let wallet = Wallet::from_private_key(ANVIL_KEY_0).unwrap();
+        let signer: PrivateKeySigner = ANVIL_KEY_0.parse().unwrap();
+
+        let auth_l1 = AuthMode::L1 {
+            wallet: wallet.clone(),
+            nonce: 7,
+        };
+        let request = add_auth_headers(
+            reqwest::Client::new().get("http://localhost/x"),
+            &auth_l1,
+            "/x",
+            &Method::GET,
+            &None,
+            137,
+        )
+        .await
+        .unwrap()
+        .build()
+        .unwrap();
+        let timestamp: u64 = request
+            .headers()
+            .get("POLY_TIMESTAMP")
+            .unwrap()
+            .to_str()
+            .unwrap()
+            .parse()
+            .unwrap();
+
+        let signature = sign_clob_auth(&signer, 137, timestamp, 7).await.unwrap();
+        let auth_signed = AuthMode::L1Signed {
+            address: wallet.address(),
+            nonce: 7,
+            timestamp,
+            signature,
+        };
+        let request2 = add_auth_headers(
+            reqwest::Client::new().get("http://localhost/x"),
+            &auth_signed,
+            "/x",
+            &Method::GET,
+            &None,
+            137,
+        )
+        .await
+        .unwrap()
+        .build()
+        .unwrap();
+
+        for name in [
+            "POLY_ADDRESS",
+            "POLY_SIGNATURE",
+            "POLY_TIMESTAMP",
+            "POLY_NONCE",
+        ] {
+            assert_eq!(
+                request.headers().get(name),
+                request2.headers().get(name),
+                "{name} differs"
+            );
+        }
+    }
+
+    #[test]
+    fn l1_signed_debug_redacts_the_signature() {
+        let auth = AuthMode::L1Signed {
+            address: Address::ZERO,
+            nonce: 1,
+            timestamp: 1700000000,
+            signature: "0xdeadbeefdeadbeef".to_string(),
+        };
+        let debug = format!("{auth:?}");
+        assert!(!debug.contains("deadbeef"), "{debug}");
+        assert!(debug.contains("REDACTED"), "{debug}");
     }
 }
