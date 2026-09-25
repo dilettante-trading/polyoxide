@@ -1,5 +1,5 @@
 use crate::error::RelayError;
-use alloy::primitives::{address, Address};
+use alloy::primitives::{address, b256, Address, B256};
 use polyoxide_core::{current_timestamp, Base64Format, Signer};
 use reqwest::header::{HeaderMap, HeaderValue};
 
@@ -8,6 +8,8 @@ use reqwest::header::{HeaderMap, HeaderValue};
 pub struct ContractConfig {
     pub safe_factory: Address,
     pub safe_multisend: Address,
+    /// Safe proxy init code hash used in the Safe CREATE2 derivation.
+    pub safe_init_code_hash: B256,
     pub proxy_factory: Option<Address>,
     /// Implementation behind every proxy wallet; part of the proxy CREATE2 init code.
     pub proxy_implementation: Option<Address>,
@@ -29,6 +31,9 @@ pub fn get_contract_config(chain_id: u64) -> Option<ContractConfig> {
         137 => Some(ContractConfig {
             safe_factory: address!("aacFeEa03eb1561C4e67d661e40682Bd20E3541b"),
             safe_multisend: address!("A238CBeb142c10Ef7Ad8442C6D1f9E89e07e7761"),
+            safe_init_code_hash: b256!(
+                "2bce2127ff07fb632d16c8347c4ebf501f4841168bed00d9e6ef715ddb6fcecf"
+            ),
             proxy_factory: Some(address!("aB45c5A4B0c941a2F231C04C3f49182e1A254052")),
             proxy_implementation: Some(address!("44e999d5c2F66Ef0861317f9A4805AC2e90aEB4f")),
             relay_hub: Some(address!("D216153c06E857cD7f72665E0aF1d7D82172F494")),
@@ -42,6 +47,9 @@ pub fn get_contract_config(chain_id: u64) -> Option<ContractConfig> {
         80002 => Some(ContractConfig {
             safe_factory: address!("aacFeEa03eb1561C4e67d661e40682Bd20E3541b"),
             safe_multisend: address!("A238CBeb142c10Ef7Ad8442C6D1f9E89e07e7761"),
+            safe_init_code_hash: b256!(
+                "2bce2127ff07fb632d16c8347c4ebf501f4841168bed00d9e6ef715ddb6fcecf"
+            ),
             proxy_factory: None, // Proxy not supported on Amoy testnet
             proxy_implementation: None,
             relay_hub: None,

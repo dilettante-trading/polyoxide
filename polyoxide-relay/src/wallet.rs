@@ -12,14 +12,16 @@ use alloy::sol_types::SolValue;
 use crate::config::ContractConfig;
 use crate::error::RelayError;
 
-/// Safe proxy init code hash (from the Polymarket relayer client constants).
-pub const SAFE_INIT_CODE_HASH: B256 =
-    alloy::primitives::b256!("2bce2127ff07fb632d16c8347c4ebf501f4841168bed00d9e6ef715ddb6fcecf");
-
-/// The deployed proxy-wallet bytecode with the factory and implementation
-/// substituted, as `polymarket/py-sdk` `wallet.py` builds it. `{factory}` and
-/// `{impl}` are replaced by the two 20-byte addresses in lowercase hex.
-const PROXY_BYTECODE_TEMPLATE: &str = "3d3d606380380380913d393d73{factory}5af4602a57600080fd5b602d8060366000396000f3363d3d373d3d3d363d73{impl}5af43d82803e903d91602b57fd5bf352e831dd00000000000000000000000000000000000000000000000000000000000000200000000000000000000000000000000000000000000000000000000000000000";
+// The proxy-wallet init code, as `polymarket/py-sdk` `wallet.py` builds it:
+// `PROXY_INIT_PREFIX ‖ factory ‖ PROXY_INIT_MIDDLE ‖ implementation ‖ PROXY_INIT_SUFFIX`.
+const PROXY_INIT_PREFIX: [u8; 13] = alloy::primitives::hex!("3d3d606380380380913d393d73");
+const PROXY_INIT_MIDDLE: [u8; 31] =
+    alloy::primitives::hex!("5af4602a57600080fd5b602d8060366000396000f3363d3d373d3d3d363d73");
+const PROXY_INIT_SUFFIX: [u8; 83] = alloy::primitives::hex!(
+    "5af43d82803e903d91602b57fd5bf352e831dd"
+    "0000000000000000000000000000000000000000000000000000000000000020"
+    "0000000000000000000000000000000000000000000000000000000000000000"
+);
 
 // ERC-1967 minimal proxy pieces (Solady), split exactly as py-sdk splits them.
 const ERC1967_CONST1: [u8; 32] =
@@ -35,28 +37,29 @@ const ERC1967_BEACON_CONST3: [u8; 23] =
     alloy::primitives::hex!("60195155f3363d3d373d3d363d602036600436635c60da");
 const ERC1967_BEACON_PREFIX_BASE: u128 = 0x6100523D8160233D3973;
 
-/// What `RelayClient::resolve_wallet` found for an owner.
+/// What `RelayClient::resolve_wallet` found deployed for an owner.
+///
+/// The resolver returns `Option<WalletKind>`, where `None` means nothing is
+/// deployed for the owner.
 ///
 /// A Proxy wallet is not represented here: the relayer's `/deployed` route only
 /// answers for `SAFE` and `WALLET`, and a Proxy auto-deploys on first use, so it
 /// cannot be observed before that. Use [`derive_proxy`] when you know the
 /// account is a Proxy.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[non_exhaustive]
 pub enum WalletKind {
     /// A deployed Deposit Wallet (either generation).
     DepositWallet(Address),
     /// A deployed Gnosis Safe.
     Safe(Address),
-    /// Nothing deployed for this owner.
-    None,
 }
 
 impl WalletKind {
-    /// The wallet address, if one is deployed.
-    pub fn address(&self) -> Option<Address> {
+    /// The deployed wallet's address.
+    pub fn address(&self) -> Address {
         match self {
-            Self::DepositWallet(a) | Self::Safe(a) => Some(*a),
-            Self::None => None,
+            Self::DepositWallet(a) | Self::Safe(a) => *a,
         }
     }
 }
@@ -74,7 +77,7 @@ fn create2(factory: Address, salt: B256, init_code_hash: B256) -> Address {
 /// The Gnosis Safe a signer owns. Salt is `keccak256(abi.encode(owner))`.
 pub fn derive_safe(owner: Address, cfg: &ContractConfig) -> Address {
     let salt = keccak256(owner.abi_encode());
-    create2(cfg.safe_factory, salt, SAFE_INIT_CODE_HASH)
+    create2(cfg.safe_factory, salt, cfg.safe_init_code_hash)
 }
 
 /// The Proxy wallet a signer owns. Salt is `keccak256(abi.encodePacked(owner))`.
@@ -85,10 +88,14 @@ pub fn derive_proxy(owner: Address, cfg: &ContractConfig) -> Result<Address, Rel
     let implementation = cfg.proxy_implementation.ok_or_else(|| {
         RelayError::Api("Proxy implementation not configured for this chain".to_string())
     })?;
-    let bytecode_hex = PROXY_BYTECODE_TEMPLATE
-        .replace("{factory}", &hex::encode(factory.as_slice()))
-        .replace("{impl}", &hex::encode(implementation.as_slice()));
-    let bytecode = hex::decode(bytecode_hex).expect("template is valid hex");
+    let mut bytecode = Vec::with_capacity(
+        PROXY_INIT_PREFIX.len() + 20 + PROXY_INIT_MIDDLE.len() + 20 + PROXY_INIT_SUFFIX.len(),
+    );
+    bytecode.extend_from_slice(&PROXY_INIT_PREFIX);
+    bytecode.extend_from_slice(factory.as_slice());
+    bytecode.extend_from_slice(&PROXY_INIT_MIDDLE);
+    bytecode.extend_from_slice(implementation.as_slice());
+    bytecode.extend_from_slice(&PROXY_INIT_SUFFIX);
     let salt = keccak256(owner.as_slice());
     Ok(create2(factory, salt, keccak256(bytecode)))
 }
@@ -109,6 +116,7 @@ fn deposit_wallet_factory(cfg: &ContractConfig) -> Result<Address, RelayError> {
 /// 10-byte ERC-1967 creation-code prefix with the args length folded in.
 fn prefix_bytes(base: u128, args_len: usize) -> [u8; 10] {
     let prefix = base + ((args_len as u128) << 56);
+    debug_assert!(prefix >> 80 == 0, "ERC-1967 prefix must fit in 10 bytes");
     let bytes = prefix.to_be_bytes();
     let mut out = [0u8; 10];
     out.copy_from_slice(&bytes[6..16]);
@@ -232,7 +240,7 @@ mod tests {
         assert_eq!(cfg.proxy_implementation, Some(addr("proxy_implementation")));
         assert_eq!(cfg.safe_factory, addr("safe_factory"));
         assert_eq!(
-            SAFE_INIT_CODE_HASH.to_string(),
+            cfg.safe_init_code_hash.to_string(),
             c["safe_init_code_hash"].as_str().unwrap()
         );
     }
@@ -258,8 +266,7 @@ mod tests {
     #[test]
     fn wallet_kind_reports_its_address() {
         let a = address!("0000000000000000000000000000000000000001");
-        assert_eq!(WalletKind::DepositWallet(a).address(), Some(a));
-        assert_eq!(WalletKind::Safe(a).address(), Some(a));
-        assert_eq!(WalletKind::None.address(), None);
+        assert_eq!(WalletKind::DepositWallet(a).address(), a);
+        assert_eq!(WalletKind::Safe(a).address(), a);
     }
 }
