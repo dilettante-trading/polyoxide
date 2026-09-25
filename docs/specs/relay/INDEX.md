@@ -6,10 +6,10 @@ Gasless transaction relay for Polymarket. Submits transactions to Polygon via Sa
 
 Machine-readable schema: [openapi.yaml](openapi.yaml) (mirror of `https://docs.polymarket.com/api-spec/relayer-openapi.yaml`).
 
-Not in the schema: `type: WALLET` (Deposit Wallet batches) on `/submit` and
-`/deployed`, `GET /v1/account/transactions/params`, `GET /v1/account/transactions/{id}`,
+Not in the schema: `type: WALLET` (Deposit Wallet batches) on `/submit`,
+`GET /v1/account/transactions/params`, `GET /v1/account/transactions/{id}`,
 `POST /v1/session-signers/authorizations` and `POST /v1/session-signers/revocations`.
-See [../session-keys/README.md](../session-keys/README.md).
+`/deployed` does document `type=WALLET`. See [../session-keys/README.md](../session-keys/README.md).
 
 ## Auth
 

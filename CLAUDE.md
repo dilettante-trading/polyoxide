@@ -124,11 +124,13 @@ The two EIP-712 domains are unrelated — order signing needs a verifying contra
 A fourth scheme, **order signature type 3**, is a Deposit Wallet signing an ERC-7739
 `TypedDataSign` envelope: the exchange domain is the signing domain and the wallet's
 `DepositWallet`/`1` domain rides inside the message. Getting that orientation backwards
-yields a signature the venue rejects with no useful error, which is why
-`polyoxide-clob/src/core/eip712.rs` pins py-sdk's golden digest. A session key adds a
+produces a different digest, so the signature cannot verify for the wallet.
+`v1_exchange.envelope_digest` in `polyoxide-clob/tests/fixtures/session_keys/order_vectors.json`
+pins py-sdk's golden digest, and `polyoxide-clob/src/core/eip712.rs` checks it. A session key adds a
 6492 envelope on top. The role (owner or session key) is never inferred from
-addresses; `SigningTarget::DepositWallet { wallet, role }` carries it. The whole
-surface is absent from the published OpenAPI: see `docs/specs/session-keys/`.
+addresses; `SigningTarget::DepositWallet { wallet, role }` carries it. The published
+OpenAPI omits almost all of it (the relay mirror documents only `GET /deployed?type=WALLET`):
+see `docs/specs/session-keys/`.
 
 **Error hierarchy** — `ApiError` in core, wrapped by crate-specific errors (`ClobError`, `GammaError`, `DataApiError`, `RelayError`). The `impl_api_error_conversions!` macro in core wires up `From` conversions.
 

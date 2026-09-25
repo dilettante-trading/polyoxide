@@ -47,7 +47,8 @@ OpenAPI. [session-keys/README.md](session-keys/README.md) records Polymarket's
 Deposit Wallet and session-key contract — order signature type 3 (ERC-7739),
 `GET /v1/user/session-signers` on the CLOB host, and the relayer's `type: WALLET`
 dialect with `/v1/session-signers/*` and `/v1/account/transactions/*` — which
-`clob/openapi.yaml` and `relay/openapi.yaml` do not mention. The contract comes from
+`clob/openapi.yaml` does not mention and `relay/openapi.yaml` mentions only on
+`/deployed`. The contract comes from
 the prose pages and the official `py-sdk` / `ts-sdk` (0.11.0);
 [session-keys/OBSERVED.md](session-keys/OBSERVED.md) lists where the SDKs and the
 pages part ways. There is no mirror, so `nightly-schema.yml` excludes it; the offline
