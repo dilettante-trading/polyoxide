@@ -36,7 +36,7 @@ jobs:
         include:
           - { crate: polyoxide-gamma, flags: "--test live_api" }
           - { crate: polyoxide-data,  flags: "--test live_api" }
-          - { crate: polyoxide-clob,  flags: "--features ws --test live_api --test live_ws" }
+          - { crate: polyoxide-clob,  flags: "--features ws --test live_api --test live_ws --test live_session_keys" }
           - { crate: polyoxide-relay, flags: "--test live_api" }
           - { crate: polyoxide-rtds,  flags: "--test live_api" }
           - { crate: polyoxide-cli,   flags: "--test live_api" }

@@ -54,6 +54,7 @@ rustls = { version = "0.23", default-features = false, features = [
 ], optional = true }
 
 [dev-dependencies]
+polyoxide-relay = { workspace = true }
 mockito = { workspace = true }
 tokio = { workspace = true, features = ["macros", "rt-multi-thread"] }
 tracing-subscriber = { version = "0.3", features = ["env-filter"] }
