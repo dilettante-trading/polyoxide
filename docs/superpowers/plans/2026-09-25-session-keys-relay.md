@@ -214,9 +214,9 @@ These were produced from py-sdk 0.11.0 on 2026-09-25 and must match exactly:
 | `authorize_batch.digest` | `0xba435e27bb0258e5a631d904cb28416f163aee1532901376b30e4939de58976b` |
 | `revoke_batch.digest` | `0x2856c1f8a21239cb091f2ca96709a76ab97ce55ed49e653ed83809ee0a3cd24f` |
 | `redeem_batch.digest` | `0x271bfac1b0f09b942e79fcf1c5f9426876266de5f48114b15b128e7b9bcc160c` |
-| `authorize_batch.calls[0].data` | starts `0x24017fae`, 138 hex chars after `0x` |
-| `revoke_batch.calls[0].data` | starts `0xe63f952f`, 74 hex chars |
-| `approval_batch.calls[0].data` | starts `0x095ea7b3`, 138 hex chars |
+| `authorize_batch.calls[0].data` | starts `0x24017fae`, 138 characters long including `0x` (68 bytes) |
+| `revoke_batch.calls[0].data` | starts `0xe63f952f`, 74 characters long including `0x` (36 bytes) |
+| `approval_batch.calls[0].data` | starts `0x095ea7b3`, 138 characters long including `0x` (68 bytes) |
 | every `signature` | 65 bytes; every `session_signature` 256 bytes ending `6492`×16 |
 | `submit_body.type` / `to` | `"WALLET"` / the factory `0x00000000000Fb5C9ADea0298D729A0CB3823Cc07` |
 
