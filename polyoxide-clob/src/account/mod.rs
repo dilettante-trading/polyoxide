@@ -83,6 +83,7 @@ pub struct Account {
     wallet: Wallet,
     credentials: Credentials,
     signer: Signer,
+    target: SigningTarget,
 }
 
 impl Account {
@@ -118,7 +119,55 @@ impl Account {
             wallet,
             credentials,
             signer,
+            target: SigningTarget::default(),
         })
+    }
+
+    /// Create an account around any `alloy` signer.
+    ///
+    /// Use this when the key lives outside the process: a KMS or any other
+    /// [`alloy::signers::Signer`] implementation that supports `sign_hash`.
+    pub fn with_signer<S>(signer: S, credentials: Credentials) -> Self
+    where
+        S: alloy::signers::Signer + Send + Sync + 'static,
+    {
+        let hmac = Signer::new(&credentials.secret);
+        Self {
+            wallet: Wallet::from_signer(signer),
+            credentials,
+            signer: hmac,
+            target: SigningTarget::default(),
+        }
+    }
+
+    /// Create an account with L2 credentials and no signing key.
+    ///
+    /// The holder of an API-key triplet can read, cancel and post already
+    /// signed orders, but cannot create or sign orders or the L1 auth message.
+    /// `address` is the EOA the triplet was derived for.
+    pub fn l2_only(address: Address, credentials: Credentials) -> Self {
+        let hmac = Signer::new(&credentials.secret);
+        Self {
+            wallet: Wallet::l2_only(address),
+            credentials,
+            signer: hmac,
+            target: SigningTarget::default(),
+        }
+    }
+
+    /// Set what this account signs orders for.
+    ///
+    /// Defaults to [`SigningTarget::Eoa`]. A Deposit Wallet target makes
+    /// [`Account::sign_order`] produce the ERC-7739 envelope the venue requires
+    /// for `signatureType` 3.
+    pub fn with_target(mut self, target: SigningTarget) -> Self {
+        self.target = target;
+        self
+    }
+
+    /// What this account signs orders for.
+    pub fn target(&self) -> SigningTarget {
+        self.target
     }
 
     /// Load account from environment variables.
@@ -547,5 +596,65 @@ mod tests {
         // Should be URL-safe base64
         assert!(!signature.contains('+'));
         assert!(!signature.contains('/'));
+    }
+
+    const TEST_KEY: &str = "0xac0974bec39a17e36ba4a6b4d238ff944bacb478cbed5efcae784d7bf4f2ff80";
+    const TEST_ADDR: alloy::primitives::Address =
+        alloy::primitives::address!("f39Fd6e51aad88F6F4ce6aB8827279cffFb92266");
+    const DW: alloy::primitives::Address =
+        alloy::primitives::address!("57ffbc34de23124faeb8387fcd689d314e57accd");
+
+    fn creds() -> Credentials {
+        Credentials {
+            key: "k".into(),
+            secret: "c2VjcmV0".into(),
+            passphrase: "p".into(),
+        }
+    }
+
+    #[test]
+    fn new_account_targets_its_own_eoa() {
+        let account = Account::new(TEST_KEY, creds()).unwrap();
+        assert_eq!(account.target(), SigningTarget::Eoa);
+        assert_eq!(account.address(), TEST_ADDR);
+    }
+
+    #[test]
+    fn with_signer_accepts_an_alloy_signer() {
+        let signer: alloy::signers::local::PrivateKeySigner = TEST_KEY.parse().unwrap();
+        let account = Account::with_signer(signer, creds());
+        assert_eq!(account.address(), TEST_ADDR);
+        assert!(account.wallet().has_signer());
+    }
+
+    #[test]
+    fn with_target_records_the_deposit_wallet() {
+        let account =
+            Account::new(TEST_KEY, creds())
+                .unwrap()
+                .with_target(SigningTarget::DepositWallet {
+                    wallet: DW,
+                    role: DepositWalletRole::SessionKey,
+                });
+        assert_eq!(
+            account.target().deposit_wallet(),
+            Some((DW, DepositWalletRole::SessionKey))
+        );
+        // The signing EOA is unchanged; only what it signs for moved.
+        assert_eq!(account.address(), TEST_ADDR);
+    }
+
+    #[tokio::test]
+    async fn l2_only_account_signs_hmac_but_not_eip712() {
+        let account = Account::l2_only(TEST_ADDR, creds());
+        assert_eq!(account.address(), TEST_ADDR);
+        assert!(!account.wallet().has_signer());
+        assert!(account.sign_l2_request(1, "GET", "/x", None).is_ok());
+        let err = account
+            .sign_clob_auth(137, 1, 0)
+            .await
+            .unwrap_err()
+            .to_string();
+        assert!(err.contains("L2-only"), "{err}");
     }
 }

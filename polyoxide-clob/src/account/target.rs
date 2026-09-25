@@ -27,7 +27,7 @@ pub enum DepositWalletRole {
 ///
 /// Defaults to [`SigningTarget::Eoa`], which is the behaviour every existing
 /// caller had: the signing key is the maker. Set another variant with
-/// `Account::with_target`. A per-call `funder` on order parameters still sets
+/// [`crate::Account::with_target`]. A per-call `funder` on order parameters still sets
 /// the maker; a per-call `signature_type` must agree with a Deposit Wallet
 /// target.
 #[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
