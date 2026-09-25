@@ -269,6 +269,23 @@ Three plans, each ending in a green workspace:
 - `ClobBuilder::signature_type` defaults from the account's target rather than always EOA.
   Every loader yields an EOA target, so no existing caller changes behaviour.
 
+## Breaking changes for the 0.33.0 release notes (plan 2)
+
+- `BuilderAccount::signer()` returns `&DynSigner` instead of `&PrivateKeySigner`, so callers
+  using `.credential()` or `.to_bytes()` break; `BuilderAccount::with_signer` accepts any alloy
+  signer.
+- `ContractConfig` gained `proxy_implementation`, `deposit_wallet_factory`,
+  `deposit_wallet_implementation`, `deposit_wallet_beacon` and `safe_init_code_hash`, so an
+  external struct literal breaks.
+- `WalletType` gained `DepositWallet` (wire `"WALLET"`) and is now `#[non_exhaustive]`, so an
+  external exhaustive `match` breaks. This alone requires the minor bump.
+- `RelayClient` may hold auth without an account (`RelayClientBuilder::with_auth`), so
+  `address()` stays `Option`. The "Account missing" error is now shared by the GET and POST
+  paths, and the POST path's message gained the GET path's configuration hint.
+- Newly exported, not breaking: `RelayClientBuilder`, `DynSigner`, `WalletKind`,
+  `GaslessTransaction`, `TransactionState`, the `deposit_wallet` and `session_signers` modules
+  and their root re-exports.
+
 ## Open items carried to the blocked phase
 
 - Whether balance/allowance under a session signer's credentials reports the wallet's balance.
