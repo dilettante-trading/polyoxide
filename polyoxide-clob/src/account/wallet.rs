@@ -7,10 +7,14 @@ use alloy::{
 
 use crate::error::ClobError;
 
-/// The signer an [`Account`](crate::Account) holds: any `alloy` signer, type-erased.
+/// The signer an [`Account`](crate::Account) holds: any `alloy` signer that
+/// implements `sign_hash`, type-erased.
 ///
-/// A local key, a hardware wallet, or a KMS-backed signer all fit here, so the
-/// process never has to hold raw key material to trade.
+/// Local keys and KMS-backed signers (AWS, GCP) qualify, so the process never
+/// has to hold raw key material to trade. Hardware wallets such as Ledger and
+/// Trezor refuse raw-hash signing and are not usable here; a key held that way
+/// should sign the typed data returned by `clob_auth_typed_data` out of
+/// process instead.
 pub type DynSigner = dyn AlloySigner + Send + Sync;
 
 /// The EIP-712 signing half of an account.
@@ -43,6 +47,9 @@ impl Wallet {
     }
 
     /// Create a wallet around any `alloy` signer.
+    ///
+    /// The signer must implement `sign_hash`; hardware wallets such as Ledger
+    /// and Trezor do not and are not usable here.
     pub fn from_signer<S>(signer: S) -> Self
     where
         S: AlloySigner + Send + Sync + 'static,
@@ -133,5 +140,15 @@ mod tests {
             format!("{wallet:?}").contains("signer: false"),
             "{wallet:?}"
         );
+    }
+
+    #[tokio::test]
+    async fn erased_signer_signs_and_recovers_to_the_wallet_address() {
+        use alloy::primitives::B256;
+        let wallet = Wallet::from_private_key(TEST_KEY).unwrap();
+        let digest = B256::repeat_byte(0x42);
+        let signature = wallet.signer().unwrap().sign_hash(&digest).await.unwrap();
+        let recovered = signature.recover_address_from_prehash(&digest).unwrap();
+        assert_eq!(recovered, TEST_ADDR);
     }
 }

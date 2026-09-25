@@ -102,7 +102,8 @@ pub mod ws;
 pub use core::chain::{Chain, Contracts};
 
 pub use account::{
-    Account, AccountConfig, Credentials, DepositWalletRole, Signer, SigningTarget, Wallet,
+    Account, AccountConfig, Credentials, DepositWalletRole, DynSigner, Signer, SigningTarget,
+    Wallet,
 };
 
 #[cfg(feature = "keychain")]
