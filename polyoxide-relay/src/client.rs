@@ -230,7 +230,7 @@ impl RelayClient {
         }
         if self.account.is_none() {
             return Err(RelayError::Api(
-                "Account missing - cannot authenticate request. Configure an account via RelayClientBuilder::with_account or ::relayer_api_key.".to_string(),
+                "Account missing - cannot authenticate request. Configure an account via RelayClientBuilder::with_account or ::relayer_api_key, or auth via ::with_auth.".to_string(),
             ));
         }
         Err(RelayError::Api(
@@ -1353,7 +1353,9 @@ impl RelayClient {
     /// [`RelayClient::submit_redemption_with_signature`]. `nonce` comes from
     /// [`RelayClient::get_execute_params`] with [`WalletType::DepositWallet`].
     ///
-    /// The addresses are Polygon mainnet's.
+    /// The addresses are Polygon mainnet's. This function cannot fail, so it builds
+    /// the batch on any chain; submitting it on a chain without a Deposit Wallet
+    /// factory is refused by [`RelayClient::submit_deposit_wallet_batch_from`].
     pub fn redeem_typed_data(
         &self,
         wallet: Address,

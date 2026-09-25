@@ -12,8 +12,9 @@
 //!
 //! ## Authentication
 //!
-//! Relay operations require a private key for EIP-712 transaction signing and one of
-//! two authentication schemes for relay submission:
+//! Relay operations require a private key for EIP-712 transaction signing, unless an
+//! external wallet signs and this client only submits (see below), and one of two
+//! authentication schemes for relay submission:
 //!
 //! - **Builder API credentials** — HMAC-SHA256 signed headers (`BUILDER_API_KEY`,
 //!   `BUILDER_SECRET`, `BUILDER_PASS_PHRASE`)
@@ -99,7 +100,7 @@
 //! # }
 //! ```
 //!
-//! Four things behave differently from the Safe and Proxy paths:
+//! Four things to know about the Deposit Wallet and session-signer routes:
 //!
 //! - **Auth.** Authorizing a session signer needs Builder HMAC credentials. Revoking
 //!   one also accepts a Relayer API key, as py-sdk's `_require_gasless_api_key` does.

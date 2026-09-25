@@ -284,7 +284,9 @@ Three plans, each ending in a green workspace:
   paths, and the POST path's message gained the GET path's configuration hint.
 - Newly exported, not breaking: `RelayClientBuilder`, `DynSigner`, `WalletKind`,
   `GaslessTransaction`, `TransactionState`, the `deposit_wallet` and `session_signers` modules
-  and their root re-exports.
+  and their root re-exports, `pub mod wallet` with its root re-exports `derive_safe`,
+  `derive_proxy`, `derive_deposit_wallet_beacon` and `derive_deposit_wallet_uups`, and the root
+  re-exports of `polyoxide_core::{DepositWalletRole, SessionSignerScope}`.
 
 ## Open items carried to the blocked phase
 

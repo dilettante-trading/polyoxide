@@ -2,10 +2,11 @@
 
 Rust client library for Polymarket Relayer API.
 
-The Relay API enables submitting gasless on-chain transactions through Polymarket's relayer service on Polygon. The relayer pays gas fees on behalf of users, supporting two wallet types:
+The Relay API enables submitting gasless on-chain transactions through Polymarket's relayer service on Polygon. The relayer pays gas fees on behalf of users, supporting three wallet types:
 
 - **Safe wallets** -- Gnosis Safe multisig contracts (must be deployed before first use)
 - **Proxy wallets** -- lightweight proxy contracts that auto-deploy on first transaction
+- **Deposit Wallets** -- Polymarket's smart account (default since 2026-05-04); an owner can authorize *session keys* that trade but cannot withdraw
 
 More information about this crate can be found in the [crate documentation](https://docs.rs/polyoxide-relay/).
 
@@ -291,15 +292,17 @@ let proxy_address = client.get_expected_proxy_wallet()?;
 - **Nonce Management**: Fetch current nonce from the relayer
 - **Deployment Check**: Verify whether a Safe wallet is deployed on-chain
 - **Transaction Status**: Query the state of submitted relay transactions
-- **Wallet Derivation**: Compute expected Safe and Proxy wallet addresses via CREATE2
+- **Deposit Wallet Batches**: Build a batch's EIP-712 typed data and submit a signature produced elsewhere, or sign and submit in-process (as the owner or a session key)
+- **Session Signers**: Authorize and revoke session keys on a Deposit Wallet, either in-process or as typed data for an external wallet
+- **Wallet Derivation**: Compute expected Safe and Proxy wallet addresses and both Deposit Wallet generations (UUPS and beacon) via CREATE2, and find which wallet an owner has deployed with `resolve_wallet`
 - **Multi-Send Batching**: Automatically batch multiple transactions via Gnosis Safe MultiSend
 
 ## Supported Chains
 
 | Chain | ID | Notes |
 |-------|----|-------|
-| Polygon mainnet | 137 | Full support (Safe + Proxy) |
-| Amoy testnet | 80002 | Safe only (Proxy not available) |
+| Polygon mainnet | 137 | Full support (Safe + Proxy + Deposit Wallet) |
+| Amoy testnet | 80002 | Safe only (Proxy and Deposit Wallet not available) |
 
 ## License
 
