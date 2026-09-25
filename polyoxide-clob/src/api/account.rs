@@ -184,6 +184,10 @@ impl AccountApi {
     /// account targets a Deposit Wallet, a response naming a different wallet is
     /// an error, since the credentials then belong to some other account than
     /// the one configured.
+    ///
+    /// Calling this with a session key's own credentials is unverified against
+    /// the venue; if the response names a different wallet for such an account,
+    /// the mismatch error above would be misleading.
     pub async fn list_session_signers(&self) -> Result<SessionSigners, ClobError> {
         let listed: SessionSigners = Request::get(
             self.http_client.clone(),
@@ -200,7 +204,9 @@ impl AccountApi {
         if let Some((wallet, _)) = self.target.deposit_wallet() {
             if listed.wallet != wallet {
                 return Err(ClobError::validation(format!(
-                    "session-signers response is for wallet {}, but this account targets {}",
+                    "session-signers response is for wallet {}, but this account targets {}; \
+                     check the wallet passed to SigningTarget::DepositWallet, or that these L2 \
+                     credentials belong to that wallet's owner",
                     listed.wallet, wallet
                 )));
             }

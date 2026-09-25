@@ -139,10 +139,9 @@ pub use api::{
         UserTotalEarningsRequest,
     },
 };
-pub use polyoxide_core::SessionSignerScope;
-
 pub use client::{Clob, ClobBuilder, CreateOrderParams, SignedOrderPayload};
 pub use error::ClobError;
+pub use polyoxide_core::SessionSignerScope;
 pub use types::{
     Order, OrderKind, OrderSide, ParseTickSizeError, PartialCreateOrderOptions, SignatureType,
     SignedOrder, TickSize,

@@ -3874,8 +3874,9 @@ async fn list_session_signers_parses_scopes_and_expiry() {
 #[tokio::test]
 async fn list_session_signers_works_for_an_l2_only_account() {
     let mut server = Server::new_async().await;
-    let _mock = server
+    let mock = server
         .mock("GET", "/v1/user/session-signers")
+        .match_header("POLY_ADDRESS", "0xf39fd6e51aad88f6f4ce6ab8827279cfffb92266")
         .with_status(200)
         .with_header("content-type", "application/json")
         .with_body(SESSION_SIGNERS_BODY)
@@ -3904,6 +3905,7 @@ async fn list_session_signers_works_for_an_l2_only_account() {
         .await
         .unwrap();
     assert_eq!(listed.wallet, DEPOSIT_WALLET);
+    mock.assert_async().await;
 }
 
 #[tokio::test]
@@ -3925,12 +3927,11 @@ async fn list_session_signers_rejects_a_wallet_that_is_not_the_target() {
         .await
         .unwrap_err()
         .to_string();
-    let err = err.to_lowercase();
     assert!(
         err.contains("0x0000000000000000000000000000000000000001"),
         "{err}"
     );
-    assert!(err.contains("57ffbc34"), "{err}");
+    assert!(err.contains(&DEPOSIT_WALLET.to_string()), "{err}");
 }
 
 #[tokio::test]
