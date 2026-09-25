@@ -126,7 +126,7 @@ fn value_json(value: U256) -> serde_json::Value {
 /// The batch as EIP-712 JSON for `eth_signTypedData_v4`.
 ///
 /// It matches py-sdk's `build_deposit_wallet_typed_data` field for field, with
-/// the same array order and the same value representations, with one exception.
+/// the same array order and the same value representations, with two exceptions.
 /// Each call's `data` is rendered as `0x` hex, where py-sdk returns raw bytes;
 /// the fixture's hex strings come from the capture script. Object key order is
 /// not preserved: keys serialize sorted rather than in insertion order, which
@@ -134,7 +134,8 @@ fn value_json(value: U256) -> serde_json::Value {
 ///
 /// Each call's `value` is a JSON number up to `u64::MAX` wei and a decimal
 /// string above that, so the JSON always describes exactly the batch that
-/// `batch_digest` hashes.
+/// `batch_digest` hashes. Above `u64::MAX` this departs from py-sdk, which
+/// emits an integer.
 pub fn batch_typed_data(
     chain_id: u64,
     wallet: Address,
