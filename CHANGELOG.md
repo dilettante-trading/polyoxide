@@ -1,3 +1,134 @@
+## [0.33.0] - 2026-09-26
+
+Adds Deposit Wallets and session keys. `polyoxide-clob` signs signature-type-3
+orders, an ERC-7739 `TypedDataSign` envelope pinned to py-sdk's golden digest,
+for a `SigningTarget::DepositWallet { wallet, role }`. It also accepts any alloy
+signer (`Account::with_signer`) or none (`Account::l2_only`), takes an externally
+produced L1 signature and checks it locally, and lists a wallet's session signers.
+`polyoxide-relay` speaks the relayer's `type: WALLET` dialect: CREATE2 wallet
+derivation, `resolve_wallet`, Deposit Wallet batches, session-signer
+authorization and revocation, and the redemption pair, which targets the
+collateral adapter as py-sdk does. `RelayClientBuilder::with_auth` builds a
+client that has auth but no account. The contract and the SDK behaviours the
+upstream pages omit are recorded in `docs/specs/session-keys/`.
+
+Breaking: `Wallet::signer()` returns `Result<&DynSigner, ClobError>` instead of
+`&PrivateKeySigner`, and `Wallet::ethereum_wallet()` is removed.
+`BuilderAccount::signer()` returns `&DynSigner`, so `.credential()` and
+`.to_bytes()` on it no longer compile. `AuthMode` gains `L1Signed`. `WalletType`
+gains `DepositWallet` (wire `"WALLET"`) and is now `#[non_exhaustive]`.
+`ContractConfig` gains five fields, so an external struct literal breaks.
+`Account::sign_order` and `Clob::sign_order` sign type-3 orders for a Deposit
+Wallet target instead of refusing them, and `ClobBuilder::signature_type`
+defaults from the account's target. Every existing loader yields an EOA target,
+so no existing caller changes behaviour.
+
+### 🚀 Features
+
+- *(clob)* SigningTarget names the account an Account signs for
+- *(clob)* Wallet holds any alloy signer, or none for L2-only use
+- *(clob)* Account::with_signer, Account::l2_only and a signing target
+- *(clob)* ERC-7739 Deposit Wallet order signing pinned to py-sdk vectors
+- *(clob)* Account::sign_order honours the signing target
+- *(clob)* Create_order builds Deposit Wallet orders from the signing target
+- *(clob)* L1 auth typed data out, signature in, for external wallets
+- *(clob)* L1 signature-in is checked locally and pinned to py-sdk's typed data
+- *(clob)* List a Deposit Wallet's session signers; SessionSignerScope in core
+- *(relay)* Pure CREATE2 derivations for Deposit Wallet, Safe and Proxy, pinned to py-sdk
+- *(relay)* WalletType::DepositWallet, v1 params and transaction routes, resolve_wallet
+- *(relay)* Deposit Wallet Batch typed data, calldata encoders and session envelope pinned to py-sdk
+- *(relay)* Execute through a Deposit Wallet; auth without a key; typed-data-out, signature-in batches
+- *(relay)* Session-signer authorization and revocation under Builder HMAC
+- *(relay)* Deposit Wallet redemption pair; document the Deposit Wallet and session-key surface
+- *(relay)* Resolve_wallet probes the Proxy with type=PROXY, as py-sdk does; authorize_session_signer refuses a relayer key before I/O
+
+### 🐛 Bug Fixes
+
+- *(clob)* Actionable session-signers mismatch error, verify L2-only POLY_ADDRESS
+- *(relay)* Resolver tests assert their probe counts; encode transaction ids; WalletType is non_exhaustive
+- *(relay)* Keep a Deposit Wallet call value above u64 exact in the typed data
+- *(relay)* Pin the session-key batch signature; refuse a Deposit Wallet on an unsupported chain before I/O; export RelayClientBuilder
+- *(relay)* Let revocations take a relayer API key; wait 300s on session-signer POSTs
+- *(relay)* Request py-sdk's full trading-approval set; always send Deposit Wallet metadata
+- *(relay)* Deposit Wallet redemption targets the collateral adapter, as py-sdk does
+
+### 🚜 Refactor
+
+- *(clob)* Share the exchange domain and 0x1901 digest; type 3 needs maker == signer
+- *(clob)* Deposit Wallet primitives are crate-private; guards are validation errors
+- *(core)* SessionSignerScope is non_exhaustive and parses via FromStr
+- *(core)* DepositWalletRole lives in core for clob and relay to share
+- *(relay)* WalletKind is non_exhaustive with an infallible address; Safe init hash lives in ContractConfig
+
+### 📚 Documentation
+
+- *(specs)* Adopt upstream data, data-v2, perps and perps-ws specs
+- *(handoff)* Correct the ERC-7739 domain orientation for session keys
+- Handoff amendments for two Deposit Wallet generations, relayer auth enum, tx state
+- *(specs)* Design for the offline Deposit Wallet session-key surface
+- *(specs)* Align the session-key spec with prader-rs [#126](https://github.com/dilettante-trading/prader-rs/issues/126) and its §8 contract
+- *(plans)* Session keys plan 1, CLOB signing core and account model
+- *(plans)* Vector() needs a mutable map
+- *(plans)* Refuse non-type-3 overrides on a Deposit Wallet target before I/O; target() by value
+- *(clob)* SigningTarget docs state what overrides can and cannot do
+- *(clob)* [**breaking**] DynSigner needs sign_hash; export it from the crate root
+- *(plans)* Task 9 relinks the DynSigner doc once clob_auth_typed_data exists
+- *(plans)* Fold Task 4 review notes into Tasks 7 and 11
+- *(plans)* Task 8 refuses a foreign funder on a Deposit Wallet target; Task 7 pins the full vector
+- *(plans)* Task 8 guards market orders' funder too
+- *(plans)* MarketOrderArgs lives under types
+- *(plans)* Fold Task 7 review notes into Tasks 8 and 11
+- Balance queries default to the target's signature type (Task 10); spec names the right params type
+- L1 signature-in lives on Clob and is checked locally; Task 11 shows the onboarding round trip
+- *(specs)* Scope validator belongs to the relay; session-key credentials on session-signers is an open item
+- *(clob)* Document Deposit Wallet accounts and session keys
+- *(specs)* Align section 1 and 2 text with the shipped code; record plan 1's breaking changes
+- *(plans)* Session keys plan 2, relay Deposit Wallet dialect
+- *(plans)* Calldata lengths count the 0x prefix
+- *(plans)* Relay tests read the py-sdk-built bodies and the two-call batch
+- *(plans)* Redemption submit sends the empty metadata py-sdk sends
+- *(plans)* Resolve_wallet returns Option<WalletKind>
+- *(plans)* Assert every expect(n) mock
+- *(relay)* Batch_typed_data departs from py-sdk in two places, not one
+- *(plans)* Revocation accepts a Relayer API key; session-signer routes use a 300 s timeout
+- *(specs)* List plan 2's breaking changes for the 0.33.0 release notes
+- *(relay)* Bring the README and crate docs up to the Deposit Wallet surface
+- *(plans)* Plan 3, docs and the ignored live round trip for session keys
+- *(specs)* Record the Deposit Wallet and session-key contract
+- *(specs)* Record what py-sdk and ts-sdk do for session keys that the pages omit
+- *(plans)* Plan 3 Task 6, resolve_wallet probes the Proxy as py-sdk does
+- Point the spec index, the drift workflow and CLAUDE.md at docs/specs/session-keys
+- *(specs)* Session-keys README, corrections from review
+- *(plans)* Plan 3 Task 7, Deposit Wallet redemption goes through the collateral adapter
+- *(specs)* Session-keys OBSERVED, corrections from review
+- *(plans)* Plan 3 Task 6 also moves the relayer-key refusal ahead of the nonce fetch
+- *(plans)* Plan 3 Task 7 also drops the unobserved venue claim in OBSERVED row 9
+- The relay mirror does document /deployed?type=WALLET; no unobserved venue claims
+- *(relay)* /deployed answers every non-WALLET type alike; revoke accepts a relayer key
+- *(plans)* Seven signed batches after the adapter redemption vectors
+- Status of every handoff item; plans 2 and 3 marked done in the design
+- *(handoff)* Item 8 status line says seven batches, not five
+- Handoff status wording; the redemption pair's real names
+- OBSERVED intro admits the /deployed probe; redeem_submit_body is unconsumed; lifetime claim attributed
+
+### 🧪 Testing
+
+- *(clob)* Golden vectors for Deposit Wallet order signing from py-sdk
+- *(clob)* Session-key vectors carry provenance and assert py-sdk's golden digest
+- *(clob)* Session-key provenance names the right envelope
+- *(clob)* Deposit Wallet market orders carry the wallet as maker and signer
+- *(clob)* Expect(0) mocks can match; pin the proxy-target maker path
+- *(clob)* L1 signature check names the real signer and normalises v
+- *(relay)* Golden vectors for Deposit Wallet batches and derivations from py-sdk
+- *(relay)* Session-signer bodies come from py-sdk; a two-call batch; one documented command
+- *(relay)* Provenance flags the synthetic two-call batch
+- *(clob)* Ignored live round trip for a Deposit Wallet session key
+- *(clob)* Live session-key round trip selects its market first and self-heals; own nightly row
+- *(clob)* Live session-key round trip never aborts on the owner listing; self-heal waits for the revocation
+- *(relay)* Adapter batches in the digest and signature loops
+- *(relay)* Pin the adapter redemption batches' typed data to py-sdk; digest test covers every batch
+- *(relay)* Neg-risk submit target, estimate refusal, and no RPC before the client checks
+
 ## [0.32.2] - 2026-09-23
 
 Adds the new v2 positions filters and sort key to `polyoxide-data` and the CLI,
