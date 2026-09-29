@@ -64,6 +64,51 @@ const EXPECTED_ABSENT: &[(&str, &str, &str)] = &[
         "present on question-keyed rows only, like proposed_price",
     ),
     (
+        "resolutions",
+        "/data[]/expected_settlement_time",
+        "an estimate is sent only while settlement is pending; this row resolved",
+    ),
+    (
+        "resolutions",
+        "/data[]/settlement_time_basis",
+        "sent only alongside expected_settlement_time",
+    ),
+    (
+        "resolutions_pending",
+        "/data[]/market_type",
+        "these are UMA lifecycle rows; market_type comes with native condition rows",
+    ),
+    (
+        "resolutions_pending",
+        "/data[]/payouts",
+        "present on resolved rows only; these are still settling",
+    ),
+    (
+        "resolutions_pending",
+        "/data[]/reporter",
+        "names who resolved it; these are still settling",
+    ),
+    (
+        "resolutions_pending",
+        "/data[]/resolution_source",
+        "provenance of a resolution; these are still settling",
+    ),
+    (
+        "resolutions_pending",
+        "/data[]/resolved_at",
+        "present on resolved rows only; these are still settling",
+    ),
+    (
+        "resolutions_pending",
+        "/data[]/resolved_block",
+        "present on resolved rows only; these are still settling",
+    ),
+    (
+        "resolutions_pending",
+        "/data[]/was_arbitrated",
+        "a finality field; these are still settling",
+    ),
+    (
         "activity",
         "/data[]/is_combo",
         "sent only on combo trade rows; this wallet's rows are not combos",
@@ -207,6 +252,10 @@ fn every_fixture_agrees_with_its_type_in_both_directions() {
     ));
     check(diff::<Page<PricePoint>>("prices_history", &mut used));
     check(diff::<Data<Vec<Resolution>>>("resolutions", &mut used));
+    check(diff::<Data<Vec<Resolution>>>(
+        "resolutions_pending",
+        &mut used,
+    ));
     check(diff::<Page<BiggestWinner>>("biggest_winners", &mut used));
     check(diff::<Page<BiggestWinner>>(
         "biggest_winners_combos",

@@ -123,6 +123,33 @@ decode; `tests/v2_wire_agreement.rs` excuses them for this fixture. An earlier
 capture of a different market omitted `was_arbitrated` too, so which fields a
 row carries varies by market.
 
+## `/v2/resolutions` settlement estimates
+
+Upstream added `expected_settlement_time` and `settlement_time_basis` to
+`/v2/resolutions` rows on 2026-09-29. The same day, every condition gamma listed
+under `uma_resolution_status=proposed` (50) and `=disputed` (20) was looked up:
+
+| Rows | State | Estimate |
+|------|-------|----------|
+| 35 | `proposed` in the last hour | `managed_proposal_expiration`, exactly `last_update_timestamp` + 2 h |
+| 9 | `proposed` 136 to 304 days ago | none |
+| 1 | `proposed`, `extended_review: true`, 3 h 47 m ago | none |
+| 2 | `disputed` | `dvm_round_estimate`, `2026-10-02T00:00:00Z` |
+| 18 | `challenged` | none |
+| 5 | `resolved` (4), `posed` (1) | none |
+
+- The two keys arrived together or not at all, and neither was ever `null`.
+- Every `proposed` row without an estimate was already past the two hours.
+- `liveness`, the third documented basis, did not appear.
+- A question-keyed lookup (`?question_id=`) of an estimated row carries both.
+
+`polyoxide-data/tests/fixtures/v2/resolutions_pending.json` holds one row of each
+basis seen; `scripts/capture_v2_fixtures.py` picks them the same way.
+
+**Consequence:** both are `Option<String>` on `Resolution`. `settlement_time_basis`
+stays a string, like the row's other closed sets (`status`, `reporter`,
+`market_type`).
+
 ## Combo trades carry 62-digit condition ids
 
 `/v2/trades` includes combo trades. Their `condition_id` is a combo condition id of

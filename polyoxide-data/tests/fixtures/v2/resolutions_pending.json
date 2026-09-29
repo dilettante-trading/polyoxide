@@ -1,0 +1,36 @@
+{
+  "data": [
+    {
+      "question_id": "0x947ab6e21c1ac0453ba91ef3ca7d8867186e82148e62513ba9c268c2845bcc0f",
+      "condition_id": "0x01579d0b4d0648c373ccf83cf1619ede0483f1e8919b4b76fe79a13e2ac2dddd",
+      "status": "disputed",
+      "extended_review": false,
+      "was_disputed": true,
+      "new_version_q": true,
+      "proposed_price": "1000000000000000000",
+      "reproposed_price": "500000000000000000",
+      "price": "69",
+      "transaction_hash": "0x11253feec1158557eff665f10d7936ba6c7e3658c79de461af5446861ca6fc54",
+      "log_index": "602",
+      "last_update_timestamp": "1790649809",
+      "expected_settlement_time": "2026-10-02T00:00:00Z",
+      "settlement_time_basis": "dvm_round_estimate"
+    },
+    {
+      "question_id": "0x5967b866a2b7674e3e28b2954e0aa3931c5ab3d769b831eee266140ea536e930",
+      "condition_id": "0x2458f124d8c37c68c7b0119078c5a8ba70beb840dcd90ee1aeca63c88abebbfd",
+      "status": "proposed",
+      "extended_review": false,
+      "was_disputed": false,
+      "new_version_q": true,
+      "proposed_price": "1000000000000000000",
+      "reproposed_price": "69",
+      "price": "69",
+      "transaction_hash": "0x660975bf27fdce0efc650088488b9ed13e899815e5e0dafb6678eb2d9baa4e41",
+      "log_index": "880",
+      "last_update_timestamp": "1790704227",
+      "expected_settlement_time": "2026-09-29T19:50:27Z",
+      "settlement_time_basis": "managed_proposal_expiration"
+    }
+  ]
+}

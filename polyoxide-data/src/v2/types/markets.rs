@@ -148,12 +148,18 @@ pub struct PricePoint {
 /// while condition/event lookups retain both the selected condition and backing
 /// UMA question. Native V2 and terminal CTF rows populate condition lifecycle,
 /// payout, provenance, and finality fields where those sources provide them.
+/// Rows still awaiting settlement can also carry an estimate of when it lands.
 #[cfg_attr(feature = "specta", derive(specta::Type))]
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 #[non_exhaustive]
 pub struct Resolution {
     /// Condition id the row answers for; absent on question-keyed rows.
     pub condition_id: Option<String>,
+    /// Estimated settlement time in RFC3339 UTC, not a guaranteed resolution
+    /// deadline. Omitted when timing is unavailable; do not derive a deadline
+    /// from `last_update_timestamp` or assume that an unresolved vote settles
+    /// in its first round. `settlement_time_basis` says how it was estimated.
+    pub expected_settlement_time: Option<String>,
     /// True while a managed proposal sits past its normal expiry in extended
     /// review; always false outside that window.
     pub extended_review: bool,
@@ -190,6 +196,9 @@ pub struct Resolution {
     /// Block the condition resolved at.
     #[cfg_attr(feature = "specta", specta(type = Option<f64>))]
     pub resolved_block: Option<i64>,
+    /// How `expected_settlement_time` was derived: `managed_proposal_expiration`,
+    /// `liveness` or `dvm_round_estimate`.
+    pub settlement_time_basis: Option<String>,
     /// Lifecycle state: initialized, posed, proposed, challenged, reproposed,
     /// disputed or resolved; condition-keyed rows can also serve active and
     /// arbitration.

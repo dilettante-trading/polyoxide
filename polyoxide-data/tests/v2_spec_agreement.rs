@@ -2,7 +2,7 @@
 //!
 //! The oracle is `docs/specs/data-v2/openapi.json`, which upstream serves from
 //! the API host itself (`/v2/openapi.json`) and the nightly drift check keeps
-//! byte-identical. Three things are checked, and each was shown to fail on a
+//! byte-identical. Four things are checked, and each was shown to fail on a
 //! deliberate mutation before being trusted:
 //!
 //! 1. **Optionality.** A property that is required and not nullable must be a
@@ -19,8 +19,12 @@
 //!    `tests/fixtures/v2/`, which covers every builder's envelope and return type
 //!    offline. Mutations caught: a camelCase key; an extra `offset` setter; a
 //!    route handed another route's response.
+//! 4. **Envelopes.** Each `{data}` envelope a route answers with must wrap a
+//!    schema from (1) and (2), which upstream mostly inlines as a copy rather
+//!    than a `$ref`. Mutation caught: a property added to one envelope's copy.
 //!
-//! Every non-envelope schema must be in the table or excused with a reason.
+//! An `allOf` schema is checked as the flat object the server sends. Every
+//! non-envelope schema must be in the table or excused with a reason.
 
 use std::{
     collections::{BTreeMap, BTreeSet},
@@ -93,15 +97,47 @@ fn synth(schemas: &Map<String, Value>, prop: &Value, full: bool) -> Value {
     }
 }
 
-fn synth_object(schemas: &Map<String, Value>, name: &str, full: bool) -> Value {
-    let schema = &schemas[name];
-    let required: BTreeSet<&str> = schema["required"]
+/// An object schema's properties and required names. An `allOf` contributes
+/// every arm's, so `ResolutionWithSettlementTime` (`Resolution` plus one
+/// property) reads as the one flat row the server sends.
+fn fields(schemas: &Map<String, Value>, schema: &Value) -> (Map<String, Value>, BTreeSet<String>) {
+    if let Some(r) = schema["$ref"].as_str() {
+        return fields(schemas, &schemas[r.rsplit('/').next().unwrap()]);
+    }
+    let own = schema["properties"].as_object();
+    let arms = schema["allOf"].as_array();
+    assert!(
+        own.is_some() || arms.is_some(),
+        "neither properties nor allOf: {schema}"
+    );
+    let mut props = own.cloned().unwrap_or_default();
+    let mut required: BTreeSet<String> = schema["required"]
         .as_array()
-        .map(|r| r.iter().filter_map(Value::as_str).collect())
+        .map(|r| {
+            r.iter()
+                .filter_map(Value::as_str)
+                .map(str::to_owned)
+                .collect()
+        })
         .unwrap_or_default();
+    for arm in arms.into_iter().flatten() {
+        let (arm_props, arm_required) = fields(schemas, arm);
+        for (key, prop) in arm_props {
+            assert!(
+                props.insert(key.clone(), prop).is_none(),
+                "{key} is declared by two allOf arms"
+            );
+        }
+        required.extend(arm_required);
+    }
+    (props, required)
+}
+
+fn synth_object(schemas: &Map<String, Value>, name: &str, full: bool) -> Value {
+    let (props, required) = fields(schemas, &schemas[name]);
     let mut out = Map::new();
-    for (key, prop) in schema["properties"].as_object().unwrap() {
-        if full || (required.contains(key.as_str()) && !is_nullable(prop)) {
+    for (key, prop) in &props {
+        if full || (required.contains(key) && !is_nullable(prop)) {
             out.insert(key.clone(), synth(schemas, prop, full));
         }
     }
@@ -109,20 +145,15 @@ fn synth_object(schemas: &Map<String, Value>, name: &str, full: bool) -> Value {
 }
 
 fn check<T: DeserializeOwned + Serialize>(schemas: &Map<String, Value>, name: &str) {
-    let schema = &schemas[name];
-    let props = schema["properties"].as_object().unwrap();
-    let required: BTreeSet<&str> = schema["required"]
-        .as_array()
-        .map(|r| r.iter().filter_map(Value::as_str).collect())
-        .unwrap_or_default();
+    let (props, required) = fields(schemas, &schemas[name]);
 
     let minimal = synth_object(schemas, name, false);
     if let Err(e) = serde_json::from_value::<T>(minimal.clone()) {
         panic!("{name}: only required fields present should deserialize: {e}");
     }
 
-    for (key, prop) in props {
-        let strictly_required = required.contains(key.as_str()) && !is_nullable(prop);
+    for (key, prop) in &props {
+        let strictly_required = required.contains(key) && !is_nullable(prop);
         if strictly_required {
             let mut without = minimal.clone();
             without.as_object_mut().unwrap().remove(key);
@@ -195,7 +226,7 @@ agreement! {
     "PortfolioValue" => PortfolioValue,
     "Position" => Position,
     "PricePoint" => PricePoint,
-    "Resolution" => Resolution,
+    "ResolutionWithSettlementTime" => Resolution,
     "ServiceStatus" => ServiceStatus,
     "ServingFreshness" => ServingFreshness,
     "ServingMechanism" => ServingMechanism,
@@ -230,6 +261,10 @@ const NOT_MODELLED: &[(&str, &str)] = &[
         "LeaderboardResponse",
         "oneOf split into leaderboard() and leaderboard_user()",
     ),
+    (
+        "Resolution",
+        "no route serves it bare; checked as the allOf base of ResolutionWithSettlementTime",
+    ),
 ];
 
 #[test]
@@ -241,7 +276,7 @@ fn every_spec_schema_is_modelled_or_excused() {
         .keys()
         .map(String::as_str)
         // Private `{data}` envelopes: `send()` unwraps them, and each one's
-        // `data` is byte-identical to a named schema checked above.
+        // `data` is a named schema checked above (see the next test).
         .filter(|n| !n.starts_with("Envelope_"))
         .filter(|n| !modelled.contains(n) && !excused.contains(n))
         .collect();
@@ -249,6 +284,34 @@ fn every_spec_schema_is_modelled_or_excused() {
         unaccounted.is_empty(),
         "schemas neither modelled nor excused: {unaccounted:?}"
     );
+}
+
+/// The routes answer with the envelopes, not the named schemas, and upstream
+/// writes most envelopes' `data` as an inline copy rather than a `$ref`. Checking
+/// the named schema only checks the route while the two stay identical.
+#[test]
+fn every_envelope_wraps_a_modelled_schema() {
+    let schemas = schemas();
+    for (name, envelope) in schemas.iter().filter(|(n, _)| n.starts_with("Envelope_")) {
+        let data = &envelope["properties"]["data"];
+        let row = if data["type"] == "array" {
+            &data["items"]
+        } else if let Some(arms) = data["oneOf"].as_array() {
+            arms.iter()
+                .find(|a| a["type"] != "null")
+                .expect("non-null arm")
+        } else {
+            data
+        };
+        let wrapped = match row["$ref"].as_str() {
+            Some(r) => MODELLED.iter().find(|m| r.rsplit('/').next() == Some(**m)),
+            None => MODELLED.iter().find(|m| schemas[**m] == *row),
+        };
+        assert!(
+            wrapped.is_some(),
+            "{name}: data is not identical to any modelled schema"
+        );
+    }
 }
 
 // ── Query parameters ────────────────────────────────────────────────

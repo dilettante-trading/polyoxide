@@ -3,7 +3,8 @@
 
 Inputs are chosen live, never hardcoded: a wallet from the bare trade feed, a
 market and event from that wallet's positions, a combo wallet from the combo
-winners board. Every request uses a small `limit`, and requests are spaced out.
+winners board, and markets still settling from gamma's UMA status filter. Every
+request uses a small `limit`, and requests are spaced out.
 
 Usage:
     python3 scripts/capture_v2_fixtures.py polyoxide-data/tests/fixtures/v2
@@ -22,12 +23,13 @@ from datetime import datetime, timezone
 from pathlib import Path
 
 HOST = "https://data-api.polymarket.com"
+GAMMA = "https://gamma-api.polymarket.com"
 PAUSE_SECONDS = 0.5
 
 
-def get(path, **params):
+def get(path, host=HOST, **params):
     query = urllib.parse.urlencode({k: v for k, v in params.items() if v is not None})
-    url = f"{HOST}{path}" + (f"?{query}" if query else "")
+    url = f"{host}{path}" + (f"?{query}" if query else "")
     request = urllib.request.Request(url, headers={"user-agent": "polyoxide-fixture-capture"})
     time.sleep(PAUSE_SECONDS)
     try:
@@ -35,6 +37,33 @@ def get(path, **params):
             return url, response.status, json.loads(response.read())
     except urllib.error.HTTPError as err:
         return url, err.code, json.loads(err.read())
+
+
+def ok(url, status, body):
+    if status != 200:
+        raise SystemExit(f"HTTP {status} from {url}: {body}")
+    return body
+
+
+def settling_conditions():
+    """One condition per `settlement_time_basis` among markets still settling.
+
+    A resolved row carries no settlement estimate, and neither does a stale
+    proposal or a challenged one, so these are probed rather than taken from the
+    winners board. Disputes are rare, so a capture can lack `dvm_round_estimate`.
+    """
+    chosen = {}
+    for status in ("proposed", "disputed"):
+        markets = ok(*get("/markets", host=GAMMA, uma_resolution_status=status, limit=100))
+        ids = [m["conditionId"] for m in markets if m.get("conditionId")]
+        for i in range(0, len(ids), 20):
+            rows = ok(*get("/v2/resolutions", condition=",".join(ids[i : i + 20])))
+            for row in rows["data"]:
+                if row.get("settlement_time_basis"):
+                    chosen.setdefault(row["settlement_time_basis"], row["condition_id"])
+    if not chosen:
+        raise SystemExit("resolutions_pending: no settling market carries an estimate")
+    return list(chosen.values())
 
 
 def main():
@@ -84,6 +113,7 @@ def main():
     question_ids = [r["question_id"] for r in resolutions["data"] if r.get("question_id")]
     if question_ids:
         save("resolutions_question", "/v2/resolutions", question_id=question_ids[0])
+    save("resolutions_pending", "/v2/resolutions", condition=",".join(settling_conditions()))
 
     combo_winners = save("biggest_winners_combos", "/v2/biggest-winners", category="combos", time_period="all", limit=2)
     combo_wallet = combo_winners["data"][0]["user_id"]

@@ -235,6 +235,7 @@ py_type!(
     "Resolution",
     polyoxide_data::v2::types::Resolution,
     condition_id,
+    expected_settlement_time,
     extended_review,
     last_update_timestamp,
     log_index,
@@ -249,6 +250,7 @@ py_type!(
     resolution_source,
     resolved_at,
     resolved_block,
+    settlement_time_basis,
     status,
     transaction_hash,
     was_arbitrated,
@@ -509,7 +511,11 @@ mod tests {
                 ["open_interest", "open_interest_global"]
             );
             check!(PricePoint, PyV2PricePoint, ["prices_history"]);
-            check!(Resolution, PyV2Resolution, ["resolutions"]);
+            check!(
+                Resolution,
+                PyV2Resolution,
+                ["resolutions", "resolutions_pending"]
+            );
             check!(
                 BiggestWinner,
                 PyV2BiggestWinner,
