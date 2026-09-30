@@ -6,7 +6,8 @@
 //! ## Features
 //!
 //! - Unified access to CLOB, Gamma, and Data APIs, plus RTDS price streams and
-//!   Perps public market data behind the `rtds` and `perps` features
+//!   Perps public market data behind the `rtds` and `perps` features, and the
+//!   Perps WebSocket channels behind `perps-ws`
 //! - Type-safe API with idiomatic Rust patterns
 //! - EIP-712 order signing and HMAC authentication
 //! - Comprehensive market data and trading operations
@@ -111,6 +112,8 @@ pub mod prelude {
     pub use polyoxide_data::{DataApi, DataApiError};
     #[cfg(feature = "gamma")]
     pub use polyoxide_gamma::{Gamma, GammaError};
+    #[cfg(feature = "perps-ws")]
+    pub use polyoxide_perps::ws::{Channel as PerpsChannel, Event as PerpsEvent, PerpsWsBuilder};
     #[cfg(feature = "perps")]
     pub use polyoxide_perps::{Perps, PerpsError};
     #[cfg(feature = "rtds")]

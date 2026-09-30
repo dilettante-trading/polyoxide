@@ -31,8 +31,8 @@ jobs:
       fail-fast: false
       matrix:
         # `flags` selects each crate's live test binaries (and any features
-        # they need). polyoxide-clob's WebSocket tests live in a separate
-        # `live_ws` binary behind the non-default `ws` feature.
+        # they need). polyoxide-clob's and polyoxide-perps's WebSocket tests
+        # live in a separate `live_ws` binary behind the non-default `ws` feature.
         #
         # `live_session_keys` gets its own row because its registry and
         # transaction waits can legitimately take ~25 minutes, which would
@@ -45,7 +45,7 @@ jobs:
           - { crate: polyoxide-clob,  suite: session-keys, timeout: 40, flags: "--test live_session_keys" }
           - { crate: polyoxide-relay, suite: live,         timeout: 15, flags: "--test live_api" }
           - { crate: polyoxide-rtds,  suite: live,         timeout: 15, flags: "--test live_api" }
-          - { crate: polyoxide-perps, suite: live,         timeout: 15, flags: "--test live_api" }
+          - { crate: polyoxide-perps, suite: live,         timeout: 15, flags: "--features ws --test live_api --test live_ws" }
           - { crate: polyoxide-cli,   suite: live,         timeout: 15, flags: "--test live_api" }
     steps:
       - uses: actions/checkout@v5

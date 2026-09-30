@@ -226,6 +226,22 @@ with `polyoxide-perps/examples/info_soak.rs` over distinct URLs: klines 30,
 trades 10, portfolio 30 and bbo 50 per 10 s, a `/v1/info` catch-all at 10 for
 the routes not soaked, and a client-wide general bucket of 30 set by two mixed
 validation runs, all recorded in OBSERVED.md's `## Rate limits`.
+The `ws` feature adds the six public WebSocket channels: `PerpsWs` (bare) and
+`PerpsWsBuilder`/`SupervisedPerpsWs` (keep-alive on the wall clock regardless of traffic,
+since the host idle-closes after 60 s without an inbound message; a pong counts as
+liveness; staleness; reconnect with resubscribe; `MembershipHandle`). Do not copy the
+rtds pump shape for this host: it pings only on a quiet tick. `Channel` is the only way to name a
+subscription; payload structs carry the REST field names over the socket's terse keys. Four wire facts the AsyncAPI mirror gets wrong are in
+`docs/specs/perps/OBSERVED.md`: `tickers`/`statistics` data are objects and
+`::all` fans out per instrument, `ets` is on every frame, `sq` is a
+server-wide stamp so only regressions are detectable, and an unknown
+instrument subscribes without error. Offline tests drive a scripted server
+in `src/ws/test_server.rs`, compiled under `cfg(test)` and additionally exposed
+by the `test-server` feature for downstream use; `tests/live_ws.rs` is
+the live suite, and `tests/ws_wire_agreement.rs` compares the payload types
+value-for-value against `tests/fixtures/ws/` (captured by
+`scripts/capture_perps_ws_fixtures.py`, instrument 6 because `trades::1` was
+quiet).
 
 **Data API v2** (`data-v2/`, 20 endpoints under `/v2` on `data-api.polymarket.com`)
 is implemented by `polyoxide-data` as `data.v2()`, alongside the v1 routes, which
@@ -319,7 +335,7 @@ Most crates follow a consistent layout:
 - `types.rs` — domain types
 - `api/` — namespace modules, one file per API group (markets, orders, etc.)
 
-**WebSocket** support lives in `polyoxide-clob/src/ws/` (not core), feature-gated behind `ws` (not enabled by default in polyoxide-clob; default = `["gamma"]`). Three channels: `WebSocket::connect_market(asset_ids)` (public), `WebSocket::connect_user(condition_ids, credentials)` (authenticated), and `WebSocket::connect_sports()` (public, served by `sports-api.polymarket.com` and taking no subscription payload). Implements `futures_util::Stream`. `WebSocketBuilder` provides auto-ping keep-alive for long-running connections.
+**WebSocket** support for the CLOB lives in `polyoxide-clob/src/ws/` (not core), feature-gated behind `ws` (not enabled by default in polyoxide-clob; default = `["gamma"]`). Three channels: `WebSocket::connect_market(asset_ids)` (public), `WebSocket::connect_user(condition_ids, credentials)` (authenticated), and `WebSocket::connect_sports()` (public, served by `sports-api.polymarket.com` and taking no subscription payload). Implements `futures_util::Stream`. `WebSocketBuilder` provides auto-ping keep-alive for long-running connections. The Perps socket (`polyoxide-perps/src/ws/`, feature `ws`) and RTDS (`polyoxide-rtds`) are separate protocols in their own crates, each with its own `ensure_crypto_provider` copy.
 
 Three market events — `best_bid_ask`, `new_market`, `market_resolved` — are withheld by the server unless the subscription sets `custom_feature_enabled`. Use `WebSocket::connect_market_with(ids, MarketSubscriptionOptions::default().with_custom_features())` to receive them. `MarketMessage` and `Channel` are `#[non_exhaustive]`, since upstream adds event types over time.
 
