@@ -224,6 +224,25 @@ fn judge(replies: &[(Duration, Reply)]) -> Verdict {
     Verdict::Clean
 }
 
+/// One line of reply counts for a stage, plus the first throttle's
+/// `Retry-After`, which `OBSERVED.md` records alongside the 429 body.
+fn summarize(replies: &[(Duration, Reply)]) -> String {
+    let count = |f: &dyn Fn(&Reply) -> bool| replies.iter().filter(|(_, r)| f(r)).count();
+    let ok = count(&|r| *r == Reply::Ok);
+    let cached = count(&|r| *r == Reply::CacheHit);
+    let throttled = count(&|r| matches!(r, Reply::Throttled { .. }));
+    let errors = count(&|r| matches!(r, Reply::Error(_)));
+    let retry_after = replies.iter().find_map(|(_, r)| match r {
+        Reply::Throttled { retry_after, .. } => Some(*retry_after),
+        _ => None,
+    });
+    let last = replies.last().map_or(Duration::ZERO, |(at, _)| *at);
+    format!(
+        "{ok} origin, {cached} cached, {throttled} throttled, {errors} errors; \
+         last reply at {last:.1?}; first Retry-After {retry_after:?}"
+    )
+}
+
 /// The count to pin for a 10-second window: the highest clean stage rate.
 fn pin(stages: &[(f64, Verdict)]) -> Option<u32> {
     stages
@@ -389,6 +408,7 @@ async fn run_ramp(cfg: &Config, route: Route) -> ExitCode {
         .await;
         let verdict = judge(&replies);
         eprintln!("   {} replies, verdict {verdict:?}", replies.len());
+        eprintln!("   {}", summarize(&replies));
         let stop = verdict != Verdict::Clean;
         stages.push((rate, verdict));
         if stop {

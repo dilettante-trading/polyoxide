@@ -498,3 +498,46 @@ async fn portfolio_position_fills_and_invite_decode() {
         m.assert_async().await;
     }
 }
+
+// ── rate limiting ───────────────────────────────────────────────
+
+#[tokio::test]
+async fn a_429_is_retried_and_retry_after_zero_does_not_shorten_the_backoff() {
+    use std::time::{Duration, Instant};
+    let mut server = Server::new_async().await;
+    let throttled = server
+        .mock("GET", "/v1/info/time")
+        .with_status(429)
+        .with_header("retry-after", "0")
+        .with_body(r#"{"status":"err","error":"ip_rate_limited"}"#)
+        .expect(1)
+        .create_async()
+        .await;
+    let ok = server
+        .mock("GET", "/v1/info/time")
+        .with_status(200)
+        .with_body(r#"{"time":1}"#)
+        .expect(1)
+        .create_async()
+        .await;
+
+    let start = Instant::now();
+    let time = test_perps(&server)
+        .health()
+        .time()
+        .send()
+        .await
+        .expect("retried to success");
+    throttled.assert_async().await;
+    ok.assert_async().await;
+    assert_eq!(time.time, 1);
+    // The client's own first backoff is the floor; a Retry-After of zero may
+    // not pull the retry forward (the Cloudflare lesson in CLAUDE.md).
+    // `RetryConfig::default()` starts at 500 ms and jitters down to 75% of
+    // it, so the earliest the retry can legitimately land is 375 ms.
+    assert!(
+        start.elapsed() >= Duration::from_millis(375),
+        "retry landed after {:?}: Retry-After: 0 shortened the backoff",
+        start.elapsed()
+    );
+}

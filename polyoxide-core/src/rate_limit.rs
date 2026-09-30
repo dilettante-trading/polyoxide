@@ -637,6 +637,53 @@ impl RateLimiter {
             }),
         }
     }
+
+    /// Perps API rate limits.
+    ///
+    /// Upstream publishes no figure for the public `/v1/info/*` routes, only
+    /// that a per-IP token bucket exists. Each count is the highest clean
+    /// ramp stage measured by `polyoxide-perps/examples/info_soak.rs` on
+    /// 2026-09-30 and recorded in `docs/specs/perps/OBSERVED.md`; `quota()`
+    /// reserves a tenth. The four routes throttle at different rates (a 429
+    /// on one arrived while the others kept being served), so each has its
+    /// own row. The 17 routes that were not soaked share a `/v1/info`
+    /// catch-all at the lowest measured rate, so an unmeasured route cannot
+    /// be driven harder than any measured one. The general bucket is a
+    /// client-wide cap measured separately: the budget is partly shared
+    /// across routes, so a mixed run capped at the most permissive route's
+    /// 50 per 10 s was throttled (11 of 487 requests over 120 s) while the
+    /// same run capped at `PERPS_GENERAL` was clean. See the validation runs
+    /// in OBSERVED.md.
+    ///
+    /// Row order matters: prefix matching takes the first match, so the
+    /// catch-all must come last.
+    pub fn perps_default() -> Self {
+        let ten_sec = Duration::from_secs(10);
+        const PIN_KLINES: u32 = 30;
+        const PIN_TRADES: u32 = 10;
+        const PIN_PORTFOLIO: u32 = 30;
+        const PIN_BBO: u32 = 50;
+        let lowest = [PIN_KLINES, PIN_TRADES, PIN_PORTFOLIO, PIN_BBO]
+            .into_iter()
+            .min()
+            .expect("four rows");
+        /// Client-wide cap, per 10 s, from the mixed-route validation runs.
+        const PERPS_GENERAL: u32 = 30;
+
+        Self {
+            inner: Arc::new(RateLimiterInner {
+                default: DirectLimiter::direct(quota(PERPS_GENERAL, ten_sec)),
+                cooldown_until: Mutex::new(None),
+                limits: vec![
+                    simple_limit("/v1/info/klines", None, PIN_KLINES, ten_sec),
+                    simple_limit("/v1/info/trades", None, PIN_TRADES, ten_sec),
+                    simple_limit("/v1/info/portfolio", None, PIN_PORTFOLIO, ten_sec),
+                    simple_limit("/v1/info/bbo", None, PIN_BBO, ten_sec),
+                    simple_limit("/v1/info", None, lowest, ten_sec),
+                ],
+            }),
+        }
+    }
 }
 
 /// Configuration for retry-on-429 with exponential backoff.
@@ -950,6 +997,104 @@ mod documented_gamma_limits {
             Duration::from_secs(10),
         )
         .await;
+    }
+}
+
+#[cfg(test)]
+mod documented_perps_limits {
+    //! Agreement tests for the Perps table. Nothing is published, so the
+    //! rows are the measured figures in `docs/specs/perps/OBSERVED.md`.
+
+    use super::agreement::*;
+    use super::*;
+
+    /// The measured table, transcribed by hand from the OBSERVED.md runs.
+    /// This is the golden vector: a second transcription, separate from the
+    /// constants inside `perps_default()`, so a typo in either is caught.
+    const KLINES: u32 = 30;
+    const TRADES: u32 = 10;
+    const PORTFOLIO: u32 = 30;
+    const BBO: u32 = 50;
+    /// Every other `/v1/info/*` route: the lowest measured row.
+    const UNSOAKED: u32 = 10;
+    /// The client-wide cap the mixed validation run was clean at.
+    const GENERAL: u32 = 30;
+
+    fn measured() -> Vec<DocumentedRule> {
+        vec![
+            ("/v1/info/klines", Some(Method::GET), vec![(KLINES, 10)]),
+            ("/v1/info/trades", Some(Method::GET), vec![(TRADES, 10)]),
+            (
+                "/v1/info/portfolio",
+                Some(Method::GET),
+                vec![(PORTFOLIO, 10)],
+            ),
+            ("/v1/info/bbo", Some(Method::GET), vec![(BBO, 10)]),
+            (
+                "/v1/info/instruments",
+                Some(Method::GET),
+                vec![(UNSOAKED, 10)],
+            ),
+            (
+                "/v1/info/statistics",
+                Some(Method::GET),
+                vec![(UNSOAKED, 10)],
+            ),
+        ]
+    }
+
+    #[test]
+    fn every_soaked_route_has_its_own_row() {
+        for (path, _, specs) in measured() {
+            assert!(
+                specs[0].0 >= 10,
+                "{path} expected {} per 10s: the ramp result was not written in",
+                specs[0].0
+            );
+        }
+        assert_matches_published(&RateLimiter::perps_default(), measured(), u32::MAX);
+    }
+
+    #[test]
+    fn an_unsoaked_info_route_is_held_to_the_catch_all_not_the_general_bucket() {
+        // The general bucket is the highest measured row, so without the
+        // catch-all an unmeasured route would be driven five times harder
+        // than trades, the tightest route measured.
+        let rl = RateLimiter::perps_default();
+        let specs = rl.resolve_specs("/v1/info/instruments", Some(&Method::GET));
+        assert_eq!(
+            specs.len(),
+            1,
+            "instruments matched no row: the /v1/info catch-all is missing or misordered"
+        );
+        assert_eq!(specs[0].count, UNSOAKED);
+        // A soaked route must resolve to its own row, not the catch-all.
+        assert_eq!(
+            rl.resolve_specs("/v1/info/bbo", Some(&Method::GET))[0].count,
+            BBO
+        );
+        // Outside /v1/info nothing is configured.
+        assert_unconfigured(&rl, "/v1/nope");
+    }
+
+    #[tokio::test]
+    async fn the_general_bucket_caps_the_client_below_the_most_permissive_route() {
+        // bbo alone sustains 50/10s, but a mixed run at that cap was
+        // throttled: the per-IP budget is partly shared. The general bucket
+        // must therefore bind before bbo's own row does.
+        const _: () = assert!(
+            GENERAL < BBO,
+            "the general bucket must bind before bbo's row"
+        );
+        let rl = RateLimiter::perps_default();
+        assert_paced_by_its_own_quota(&rl, "/v1/info/bbo", GENERAL, Duration::from_secs(10)).await;
+    }
+
+    #[tokio::test]
+    async fn the_klines_row_actually_paces() {
+        let rl = RateLimiter::perps_default();
+        let count = rl.resolve_specs("/v1/info/klines", Some(&Method::GET))[0].count;
+        assert_paced_by_its_own_quota(&rl, "/v1/info/klines", count, Duration::from_secs(10)).await;
     }
 }
 

@@ -78,7 +78,7 @@ impl PerpsBuilder {
             base_url: DEFAULT_BASE_URL.to_string(),
             timeout_ms: DEFAULT_TIMEOUT_MS,
             pool_size: DEFAULT_POOL_SIZE,
-            rate_limiter: None,
+            rate_limiter: Some(RateLimiter::perps_default()),
             retry_config: None,
             max_concurrent: None,
         }

@@ -110,5 +110,62 @@ absent for an unranked account.
 
 ## Rate limits
 
-Nothing numeric is published for the public routes. See the soak runs recorded
-below by Task 12 of `docs/superpowers/plans/2026-09-30-perps-http.md`.
+Nothing numeric is published for the public routes. Measured with
+`polyoxide-perps/examples/info_soak.rs` on 2026-09-30, one route per run, 60 s
+stages, 120 s cooldowns, 8 in-flight, distinct URLs throughout. The default
+ramp (5, 10, 15, 20, 30 req/s) was throttled at its first stage on three
+routes, so those were re-run at 1, 2, 3, 4 req/s as the harness prescribes;
+both runs are listed.
+
+| Route | Stages (req/s → verdict) | Pinned (per 10 s) |
+|-------|--------------------------|-------------------|
+| `/v1/info/klines` | 5.0 → Throttled after 8.2 s; re-run: 1.0 → Clean, 2.0 → Clean, 3.0 → Clean, 4.0 → Throttled after 16.6 s | 30 |
+| `/v1/info/trades` | 5.0 → Throttled after 2.4 s; re-run: 1.0 → Clean, 2.0 → Throttled after 16.9 s | 10 |
+| `/v1/info/portfolio` | 5.0 → Throttled after 9.6 s; re-run: 1.0 → Clean, 2.0 → Clean, 3.0 → Clean, 4.0 → Throttled after 26.4 s | 30 |
+| `/v1/info/bbo` | 5.0 → Clean, 10.0 → Throttled after 20.8 s | 50 |
+
+Verbatim `pin` lines from the runs:
+
+```
+klines: pin 30 per 10s ([(1.0, Clean), (2.0, Clean), (3.0, Clean), (4.0, Throttled { after: 16.622050001s, code: "ip_rate_limited" })])
+trades: pin 10 per 10s ([(1.0, Clean), (2.0, Throttled { after: 16.870869722s, code: "ip_rate_limited" })])
+portfolio: pin 30 per 10s ([(1.0, Clean), (2.0, Clean), (3.0, Clean), (4.0, Throttled { after: 26.412322897s, code: "ip_rate_limited" })])
+bbo: pin 50 per 10s ([(5.0, Clean), (10.0, Throttled { after: 20.772812787s, code: "ip_rate_limited" })])
+```
+
+The throttle is not a block: after the first 429 the other workers went on
+receiving origin replies, and a throttled stage refused only a few per cent
+of its requests (klines at 4 req/s: 164 origin, 6 throttled; trades at
+2 req/s: 99 origin, 3 throttled; bbo at 10 req/s: 369 origin, 5 throttled).
+That is the shape of a token bucket refilling just below the stage rate, not
+of a per-IP in-flight cap: single-request latency is 0.4 to 0.7 s on every
+route, so trades at 2 req/s had about one request in flight when it was
+throttled while bbo at 5 req/s was clean with several. The budgets differ
+per route, so they are modelled as separate rows and not as one shared
+per-IP bucket. Every route answered from the origin on distinct URLs
+(`x-cache: Miss from cloudfront`); bbo, whose URL space is one per
+instrument, saw 4 and 3 cache hits per 300-plus replies.
+
+Validation (`--route all --pace client`, 120 s, 4 in-flight per route, all
+four routes through one shared limiter) was run twice on 2026-09-30, and the
+two runs are what set the general bucket:
+
+| General bucket | Result |
+|----------------|--------|
+| 50 per 10 s (the most permissive route's row) | 487 requests, **11 throttled** |
+| 30 per 10 s | 327 requests, 0 throttled |
+
+So the per-IP budget is partly shared across routes: each route sustains its
+own row alone, but a mix capped at bbo's rate is refused. A 429 body seen
+during the ramps was `{"status":"err","error":"ip_rate_limited"}` with
+`Retry-After: 1`.
+
+**How the table is modelled** (`RateLimiter::perps_default`): one row per
+soaked route at its pinned count, a `/v1/info` catch-all at the lowest
+pinned count (10 per 10 s) for the 17 routes that were not soaked, and a
+general bucket of 30 per 10 s that caps the whole client, set by the
+validation runs above. `quota()` reserves a tenth of every row.
+
+The WebSocket budget was not soaked and is unpublished; the four WebSocket
+fields on `LimitTier` are a sentinel (see the wire-only fields above) and
+must not be used to size a bucket.
