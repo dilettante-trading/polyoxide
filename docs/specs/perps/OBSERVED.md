@@ -212,6 +212,15 @@ that day and pushed a trade within 4 s.
   instrument 1 saw only empty ones, so the capture script keeps the first
   non-empty `klines` frame when one arrives).
 - **`trades` entries carry `settlement`**, as the REST route does.
+- **Unsubscribe takes effect at the acknowledgement.** In
+  `tests/live_ws.rs` on 2026-09-30, `tickers::all` was unsubscribed while
+  nothing consumed the stream; 1,055 fan-out frames were still queued
+  client-side (the supervised tier's 1,024-event buffer plus the pushes the
+  bare tier parks during a control round trip), the last of them yielded
+  1.4 ms after the acknowledgement, and no ticker arrived in the following
+  5 s. A test that counts frames after a fixed sleep cannot distinguish that
+  queue from a server that ignored the request; the live test checks when
+  the last ticker arrived instead.
 - **Budget.** Each inbound request costs from a weighted per-IP budget the
   AsyncAPI does not quantify; a breach answers `message_rate_limited` and
   leaves the socket open. Not soaked. `LimitTier`'s WebSocket fields are a

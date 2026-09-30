@@ -6,7 +6,7 @@ More information about this crate can be found in the [crate documentation](http
 
 ## Installation
 
-By default, the three REST API modules (CLOB, Gamma, Data) are enabled; `rtds` and `perps` are opt-in:
+By default, the three REST API modules (CLOB, Gamma, Data) are enabled; `rtds`, `perps` and `perps-ws` are opt-in:
 
 ```bash
 cargo add polyoxide
@@ -38,7 +38,8 @@ cargo add polyoxide --no-default-features --features full
 | `ws`    | no  | WebSocket streaming (implies `clob`) |
 | `rtds`  | no  | RTDS crypto price streams via `polyoxide-rtds` |
 | `perps` | no  | Perps public market data via `polyoxide-perps` |
-| `full`  | no  | Enables `clob` + `gamma` + `data` + `ws` + `rtds` + `perps` |
+| `perps-ws` | no | Perps WebSocket streaming (implies `perps`) |
+| `full`  | no  | Enables `clob` + `gamma` + `data` + `ws` + `rtds` + `perps` + `perps-ws` |
 | `keychain` | no | OS keychain credential storage; off by default |
 
 ## Usage

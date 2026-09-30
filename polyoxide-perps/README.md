@@ -29,3 +29,24 @@ for instrument in &instruments {
 # Ok(())
 # }
 ```
+
+## Streaming
+
+With the `ws` feature, the public channels stream over one connection.
+`PerpsWsBuilder` keeps the socket alive, detects a stall, and reconnects with
+the same subscriptions; `Event::Reconnected` and `Event::SequenceRegressed`
+tell a book consumer to resync.
+
+```text
+use futures_util::StreamExt;
+use polyoxide_perps::{types::InstrumentId, ws::{Channel, Event, PerpsWsBuilder, StreamDepth}};
+
+let mut ws = PerpsWsBuilder::new()
+    .connect([Channel::Book(InstrumentId(1), StreamDepth::Twenty), Channel::Trades(InstrumentId(1))])
+    .await?;
+while let Some(event) = ws.next().await {
+    if let Event::Update(update) = event? {
+        println!("{} @ {}", update.channel, update.ts);
+    }
+}
+```
