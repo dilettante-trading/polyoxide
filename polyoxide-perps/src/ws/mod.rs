@@ -11,7 +11,7 @@
 pub mod channel;
 // pub mod client;
 pub mod error;
-// pub mod event;
+pub mod event;
 pub mod frame;
 // pub mod supervised;
 // #[cfg(any(test, feature = "test-server"))]
@@ -21,7 +21,7 @@ pub mod frame;
 pub use channel::{Channel, StreamDepth};
 // pub use client::PerpsWs;
 pub use error::{PerpsWsError, Recovery};
-// pub use event::{Event, Frame, Payload, Update};
+pub use event::{Event, Frame, Payload, Update};
 // pub use supervised::{MembershipHandle, PerpsWsBuilder, SupervisedPerpsWs};
 
 /// The production WebSocket endpoint.
