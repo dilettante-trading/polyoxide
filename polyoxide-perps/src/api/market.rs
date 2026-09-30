@@ -128,6 +128,10 @@ pub struct ListTickers {
 impl ListTickers {
     setter! {
         /// Restrict to one instrument.
+        ///
+        /// Verified live 2026-09-30: the host ignores this filter and returns
+        /// every instrument; `bbo` and `instruments` honour theirs. Filter
+        /// client-side until `docs/specs/perps/OBSERVED.md` says otherwise.
         instrument_id: InstrumentId => "instrument_id"
     }
 
@@ -145,6 +149,10 @@ pub struct ListStatistics {
 impl ListStatistics {
     setter! {
         /// Restrict to one instrument.
+        ///
+        /// Verified live 2026-09-30: the host ignores this filter and returns
+        /// every instrument; `bbo` and `instruments` honour theirs. Filter
+        /// client-side until `docs/specs/perps/OBSERVED.md` says otherwise.
         instrument_id: InstrumentId => "instrument_id"
     }
 

@@ -29,6 +29,18 @@ in `polyoxide-perps/tests/spec_agreement.rs`.
 The four `LimitTier` extras are the only published figures for the WebSocket
 inbound budget the AsyncAPI calls "weighted"; plan 2 reads them.
 
+## `tickers` and `statistics` ignore `instrument_id`
+
+The schema documents an `instrument_id` query parameter on `GET /v1/info/tickers`
+and `GET /v1/info/statistics`. On 2026-09-30 both routes answered every request
+with all 88 instruments: `?instrument_id=1`, `?instrument_id=2`, no parameter,
+`?instrument_id=1&instrument_id=2` and even `?instrument_id=abc` all returned
+200 with 88 rows and no validation error. The fixtures `tickers.json` and
+`statistics.json`, captured with `?instrument_id=1`, hold 88 rows each.
+`/v1/info/bbo` and `/v1/info/instruments` honour the same parameter (one row
+for `?instrument_id=2`). The builders still send it, since it is documented;
+callers must filter the response themselves until the host does.
+
 ## Every index has empty constituents
 
 On 2026-09-30 `GET /v1/info/index?asset=…` answered 200 with
