@@ -176,6 +176,9 @@ pub struct PositionFills {
 }
 
 /// One fill behind a current position.
+///
+/// `builder_fee`, `settlement` and `total_fee` are on the wire and not in the
+/// published schema (`docs/specs/perps/OBSERVED.md`).
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[non_exhaustive]
 pub struct PositionFill {
@@ -200,6 +203,14 @@ pub struct PositionFill {
     pub fee: Decimal,
     /// Asset the fee was paid in.
     pub fee_asset: String,
+    /// Fee paid to the order's builder. Undocumented.
+    #[serde(default, with = "rust_decimal::serde::str_option")]
+    pub builder_fee: Option<Decimal>,
+    /// `fee` plus `builder_fee`. Undocumented.
+    #[serde(default, with = "rust_decimal::serde::str_option")]
+    pub total_fee: Option<Decimal>,
+    /// Whether this was a settlement fill. Undocumented.
+    pub settlement: Option<bool>,
     /// Position size before the fill.
     #[serde(with = "rust_decimal::serde::str")]
     pub previous_size: Decimal,
