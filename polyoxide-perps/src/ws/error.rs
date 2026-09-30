@@ -59,7 +59,8 @@ pub enum PerpsWsError {
 
     /// The server's response to a control request was not the documented
     /// shape, or a pong was not `ok`. The supervised tier replaces the
-    /// connection.
+    /// connection when its own ping gets one; a membership call that gets
+    /// one is reported to the caller and the connection is kept.
     #[error("malformed response to request {id}: {raw}")]
     Response {
         /// The request id the response answered.
