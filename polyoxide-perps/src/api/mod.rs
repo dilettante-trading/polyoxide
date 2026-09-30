@@ -2,6 +2,7 @@
 
 pub mod exchange;
 pub mod health;
+pub mod market;
 
 use polyoxide_core::{HttpClient, Request};
 use serde::de::DeserializeOwned;
