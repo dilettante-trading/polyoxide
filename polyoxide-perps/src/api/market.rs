@@ -8,7 +8,7 @@ use serde::{Deserialize, Serialize};
 use crate::{
     api::{setter, Fetch},
     error::PerpsError,
-    types::{InstrumentId, Interval, Kline, Level, MarkPoint, Side},
+    types::{BookDepth, InstrumentId, Interval, Kline, Level, MarkPoint, Side},
 };
 
 /// Market namespace.
@@ -96,9 +96,10 @@ impl MarketApi {
 
     /// `GET /v1/info/index`: the index price and its constituents for a base
     /// asset name such as `BTC`.
-    pub fn index(&self, asset: impl ToString) -> Fetch<Index> {
+    pub fn index(&self, asset: impl Into<String>) -> Fetch<Index> {
         Fetch {
-            request: Request::new(self.http_client.clone(), "/v1/info/index").query("asset", asset),
+            request: Request::new(self.http_client.clone(), "/v1/info/index")
+                .query("asset", asset.into()),
         }
     }
 
@@ -127,7 +128,7 @@ pub struct ListTickers {
 impl ListTickers {
     setter! {
         /// Restrict to one instrument.
-        instrument_id => "instrument_id"
+        instrument_id: InstrumentId => "instrument_id"
     }
 
     /// Execute the request.
@@ -144,7 +145,7 @@ pub struct ListStatistics {
 impl ListStatistics {
     setter! {
         /// Restrict to one instrument.
-        instrument_id => "instrument_id"
+        instrument_id: InstrumentId => "instrument_id"
     }
 
     /// Execute the request.
@@ -161,7 +162,7 @@ pub struct GetKlines {
 impl GetKlines {
     setter! {
         /// End of the range, Unix ms. Defaults to now.
-        end => "end_timestamp"
+        end: u64 => "end_timestamp"
     }
 
     /// Execute the request.
@@ -178,7 +179,7 @@ pub struct GetMarkHistory {
 impl GetMarkHistory {
     setter! {
         /// End of the range, Unix ms. Defaults to now.
-        end => "end_timestamp"
+        end: u64 => "end_timestamp"
     }
 
     /// Execute the request.
@@ -195,7 +196,7 @@ pub struct ListBbo {
 impl ListBbo {
     setter! {
         /// Restrict to one instrument.
-        instrument_id => "instrument_id"
+        instrument_id: InstrumentId => "instrument_id"
     }
 
     /// Execute the request.
@@ -212,7 +213,7 @@ pub struct GetBook {
 impl GetBook {
     setter! {
         /// Levels per side. The server default is 100.
-        depth => "depth"
+        depth: BookDepth => "depth"
     }
 
     /// Execute the request.
@@ -229,11 +230,11 @@ pub struct ListTrades {
 impl ListTrades {
     setter! {
         /// Start of the range, Unix ms.
-        start => "start_timestamp"
+        start: u64 => "start_timestamp"
     }
     setter! {
         /// End of the range, Unix ms.
-        end => "end_timestamp"
+        end: u64 => "end_timestamp"
     }
 
     /// Execute the request.
@@ -250,11 +251,11 @@ pub struct GetFunding {
 impl GetFunding {
     setter! {
         /// Start of the range, Unix ms.
-        start => "start_timestamp"
+        start: u64 => "start_timestamp"
     }
     setter! {
         /// End of the range, Unix ms.
-        end => "end_timestamp"
+        end: u64 => "end_timestamp"
     }
 
     /// Execute the request.
@@ -324,9 +325,8 @@ pub struct ExchangeStatistics {
     /// Volume over the range.
     #[serde(with = "rust_decimal::serde::str")]
     pub volume: Decimal,
-    /// Open interest at `open_interest_timestamp`. The wire carries more
-    /// digits than `Decimal` holds; the value is rounded to 28 significant.
-    /// Null when no sample exists in the range.
+    /// Open interest at `open_interest_timestamp`. Null when no sample exists
+    /// in the range.
     #[serde(with = "rust_decimal::serde::str_option")]
     pub open_interest: Option<Decimal>,
     /// When `open_interest` was sampled, Unix ms. Null when no sample exists

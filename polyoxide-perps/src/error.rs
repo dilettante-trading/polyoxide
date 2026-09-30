@@ -28,6 +28,7 @@ pub enum PerpsError {
 /// long and grows.
 #[derive(Error, Debug, Clone, PartialEq, Eq)]
 #[error("perps API {status}: {code}")]
+#[non_exhaustive]
 pub struct VenueError {
     /// HTTP status.
     pub status: u16,
@@ -66,10 +67,12 @@ impl VenueError {
         })
     }
 
-    /// Whether re-sending the same request could plausibly succeed: a 429 or
-    /// any 5xx.
+    /// Whether re-sending the same request could plausibly succeed: a 429,
+    /// a 425 or any 5xx.
     pub fn is_retriable(&self) -> bool {
-        self.status == 429 || self.status >= 500
+        // Mirrors `ApiError::is_retriable` so a status classifies the same
+        // regardless of body shape.
+        self.status == 429 || self.status == 425 || self.status >= 500
     }
 }
 
@@ -151,6 +154,10 @@ mod tests {
         assert!(err.is_retriable());
         assert_eq!(err.code(), Some("ip_rate_limited"));
         assert_eq!(err.retry_after(), Some(Duration::from_secs(2)));
+
+        let too_early =
+            VenueError::from_parts(425, None, r#"{"status":"err","error":"too_early"}"#).unwrap();
+        assert!(too_early.is_retriable());
     }
 
     #[test]

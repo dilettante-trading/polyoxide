@@ -22,5 +22,5 @@ pub mod client;
 pub mod error;
 pub mod types;
 
-pub use client::{Perps, PerpsBuilder, DEFAULT_BASE_URL};
+pub use client::{Perps, PerpsBuilder, DEFAULT_BASE_URL, DEFAULT_MAX_CONCURRENT};
 pub use error::{PerpsError, VenueError};

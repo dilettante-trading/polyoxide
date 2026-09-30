@@ -29,11 +29,20 @@ pub(crate) fn fetch<T>(http_client: &HttpClient, path: &str) -> Fetch<T> {
 }
 
 /// A chained query-parameter setter on a request builder that holds its
-/// `Request` in a field named `request`.
+/// `Request` in a field named `request`. The parameter type is explicit so a
+/// caller cannot hand a route the wrong vocabulary; string parameters take
+/// `impl Into<String>`.
 macro_rules! setter {
-    ($(#[$meta:meta])* $name:ident => $key:literal) => {
+    ($(#[$meta:meta])* $name:ident: impl Into<String> => $key:literal) => {
         $(#[$meta])*
-        pub fn $name(mut self, value: impl ToString) -> Self {
+        pub fn $name(mut self, value: impl Into<String>) -> Self {
+            self.request = self.request.query($key, value.into());
+            self
+        }
+    };
+    ($(#[$meta:meta])* $name:ident: $ty:ty => $key:literal) => {
+        $(#[$meta])*
+        pub fn $name(mut self, value: $ty) -> Self {
             self.request = self.request.query($key, value);
             self
         }

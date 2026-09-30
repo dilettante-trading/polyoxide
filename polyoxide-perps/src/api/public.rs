@@ -8,7 +8,7 @@ use serde::{Deserialize, Serialize};
 use crate::{
     api::{setter, Fetch},
     error::PerpsError,
-    types::{InstrumentId, LeaderboardSort, LeaderboardWindow, Side},
+    types::{InstrumentId, LeaderboardSort, LeaderboardWindow, Side, SortOrder},
 };
 
 /// Public namespace.
@@ -19,10 +19,10 @@ pub struct PublicApi {
 
 impl PublicApi {
     /// `GET /v1/info/portfolio`: an account's open positions and equity.
-    pub fn portfolio(&self, address: impl ToString) -> Fetch<PublicPortfolio> {
+    pub fn portfolio(&self, address: impl Into<String>) -> Fetch<PublicPortfolio> {
         Fetch {
             request: Request::new(self.http_client.clone(), "/v1/info/portfolio")
-                .query("address", address),
+                .query("address", address.into()),
         }
     }
 
@@ -30,12 +30,12 @@ impl PublicApi {
     /// position in one instrument, cursor-paged.
     pub fn position_fills(
         &self,
-        address: impl ToString,
+        address: impl Into<String>,
         instrument_id: InstrumentId,
     ) -> ListPositionFills {
         ListPositionFills {
             request: Request::new(self.http_client.clone(), "/v1/info/position-fills")
-                .query("address", address)
+                .query("address", address.into())
                 .query("instrument_id", instrument_id),
         }
     }
@@ -48,9 +48,10 @@ impl PublicApi {
     }
 
     /// `GET /v1/info/invite`: whether an invite code is valid.
-    pub fn invite(&self, code: impl ToString) -> CheckInvite {
+    pub fn invite(&self, code: impl Into<String>) -> CheckInvite {
         CheckInvite {
-            request: Request::new(self.http_client.clone(), "/v1/info/invite").query("code", code),
+            request: Request::new(self.http_client.clone(), "/v1/info/invite")
+                .query("code", code.into()),
         }
     }
 }
@@ -63,11 +64,11 @@ pub struct ListPositionFills {
 impl ListPositionFills {
     setter! {
         /// Resume from a previous page's `cursor`.
-        cursor => "cursor"
+        cursor: impl Into<String> => "cursor"
     }
     setter! {
         /// Sort order. The server default is descending.
-        sort => "sort"
+        sort: SortOrder => "sort"
     }
 
     /// Execute the request.
@@ -84,23 +85,23 @@ pub struct GetLeaderboard {
 impl GetLeaderboard {
     setter! {
         /// Window. The server default is `day`.
-        window => "window"
+        window: LeaderboardWindow => "window"
     }
     setter! {
         /// Ranking key. The server default is `pnl`.
-        sort_by => "sort_by"
+        sort_by: LeaderboardSort => "sort_by"
     }
     setter! {
         /// Page size.
-        limit => "limit"
+        limit: u32 => "limit"
     }
     setter! {
         /// Page offset.
-        offset => "offset"
+        offset: u64 => "offset"
     }
     setter! {
         /// Also return this account's own standing as `account`.
-        address => "address"
+        address: impl Into<String> => "address"
     }
 
     /// Execute the request.
@@ -117,7 +118,7 @@ pub struct CheckInvite {
 impl CheckInvite {
     setter! {
         /// The address that would redeem the code.
-        address => "address"
+        address: impl Into<String> => "address"
     }
 
     /// Execute the request.
@@ -153,7 +154,8 @@ pub struct PublicPortfolioPosition {
     /// Average entry price.
     #[serde(with = "rust_decimal::serde::str")]
     pub entry_price: Decimal,
-    /// Unrealised PnL.
+    /// Unrealised PnL. The wire can carry more fractional digits than
+    /// `Decimal` holds (28); such values are rounded on decode.
     #[serde(with = "rust_decimal::serde::str")]
     pub unrealized_pnl: Decimal,
     /// Return on equity as a fraction.

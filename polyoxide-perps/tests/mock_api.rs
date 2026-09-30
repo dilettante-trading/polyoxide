@@ -234,13 +234,13 @@ async fn tickers_statistics_bbo_and_index_decode() {
         .await;
     let statistics = server
         .mock("GET", "/v1/info/statistics")
-        .match_query(Matcher::Any)
+        .match_query(Matcher::Missing)
         .with_body(r#"[{"instrument_id":1,"symbol":"SP500-USD","volume":"1255218.444899","open_price":"7682.7","klines":[[1790668800000,"7682.7","7683","7682.7","7682.9","0.06996",4]]}]"#)
         .create_async()
         .await;
     let bbo = server
         .mock("GET", "/v1/info/bbo")
-        .match_query(Matcher::Any)
+        .match_query(Matcher::Missing)
         .with_body(r#"[{"instrument_id":1,"bid_price":"7687.8","bid_quantity":"6.85437","ask_price":"7687.9","ask_quantity":"0.31358","timestamp":1790758485077}]"#)
         .create_async()
         .await;
@@ -338,8 +338,11 @@ async fn exchange_stats_mark_history_trades_and_funding_decode() {
         .send()
         .await
         .expect("exchange stats");
-    // 32 significant digits on the wire; Decimal keeps 28 and rounds.
-    assert!(x.open_interest.unwrap() > Decimal::new(75_573_217, 0));
+    // 26 significant digits on the wire, within Decimal's 28: decoded exactly.
+    assert_eq!(
+        x.open_interest.unwrap(),
+        "75573217.100902647081712288".parse::<Decimal>().unwrap()
+    );
     assert_eq!(x.open_interest_timestamp, Some(2));
     let empty = perps
         .market()
@@ -426,7 +429,7 @@ async fn portfolio_position_fills_and_invite_decode() {
     let portfolio = server
         .mock("GET", "/v1/info/portfolio")
         .match_query(Matcher::UrlEncoded("address".into(), "0xabc".into()))
-        .with_body(r#"{"positions":[{"instrument_id":32,"symbol":"ZEC-USD","size":"-253.4562","entry_price":"1446.1","unrealized_pnl":"10642.35","return_on_equity":"0.1"}],"equity":"100","timestamp":1790758440134}"#)
+        .with_body(r#"{"positions":[{"instrument_id":32,"symbol":"ZEC-USD","size":"-253.4562","entry_price":"1446.1","unrealized_pnl":"10642.357770000000000000000018","return_on_equity":"0.1"}],"equity":"100","timestamp":1790758440134}"#)
         .create_async()
         .await;
     let fills = server
@@ -458,6 +461,16 @@ async fn portfolio_position_fills_and_invite_decode() {
         .await
         .expect("portfolio");
     assert_eq!(p.positions[0].size, Decimal::new(-2534562, 4));
+    // 29 significant digits on the wire. Decimal's limit is 28 fractional
+    // places on a 96-bit mantissa, so this one is held exactly; a longer
+    // fraction would be rounded by the same parser.
+    let wire = "10642.357770000000000000000018";
+    assert_eq!(
+        p.positions[0].unrealized_pnl,
+        wire.parse::<Decimal>().unwrap()
+    );
+    assert_eq!(p.positions[0].unrealized_pnl.to_string(), wire);
+    assert!(p.positions[0].unrealized_pnl.to_string().len() <= 30);
     let f = perps
         .public()
         .position_fills("0xabc", InstrumentId(1))

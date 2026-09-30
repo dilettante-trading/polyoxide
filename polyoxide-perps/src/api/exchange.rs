@@ -53,15 +53,15 @@ pub struct ListInstruments {
 impl ListInstruments {
     setter! {
         /// Restrict to one instrument.
-        instrument_id => "instrument_id"
+        instrument_id: InstrumentId => "instrument_id"
     }
     setter! {
         /// Restrict to one instrument type.
-        instrument_type => "instrument_type"
+        instrument_type: InstrumentType => "instrument_type"
     }
     setter! {
         /// Restrict to one category.
-        category => "category"
+        category: InstrumentCategory => "category"
     }
 
     /// Execute the request.

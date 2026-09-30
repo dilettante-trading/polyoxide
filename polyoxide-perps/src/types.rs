@@ -337,6 +337,12 @@ mod tests {
     #[test]
     fn a_kline_with_the_wrong_arity_is_rejected() {
         assert!(serde_json::from_str::<Kline>(r#"[1,"2","3"]"#).is_err());
+        assert!(serde_json::from_str::<Kline>(r#"[1,"2","3","4","5","6",7,8]"#).is_err());
+    }
+
+    #[test]
+    fn a_kline_with_a_non_numeric_price_is_rejected() {
+        assert!(serde_json::from_str::<Kline>(r#"[1,"abc","3","4","5","6",7]"#).is_err());
     }
 
     #[test]
