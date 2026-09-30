@@ -23,10 +23,17 @@ pub struct Script {
     /// Ping or a Binary frame must be skipped, not treated as the end of the
     /// stream.
     pub raw_pushes: Vec<Message>,
+    /// While the connection is held open, resend the first entry of `pushes`
+    /// on this cadence: steady traffic, for a client that must keep pinging
+    /// under it.
+    pub push_every: Option<std::time::Duration>,
     /// Whether to close the connection after the pushes (else hold it open).
     pub close_after: bool,
     /// Whether to answer pings. `false` models a dead socket.
     pub answer_pings: bool,
+    /// Whether to answer `sub`/`unsub` requests after the first one. `false`
+    /// models a socket that keeps a membership change hanging.
+    pub answer_subscribes_after_first: bool,
     /// Accept the TCP connection and drop it without a handshake.
     pub reject_handshake: bool,
 }
@@ -37,8 +44,10 @@ impl Default for Script {
             refuse: Vec::new(),
             pushes: Vec::new(),
             raw_pushes: Vec::new(),
+            push_every: None,
             close_after: false,
             answer_pings: true,
+            answer_subscribes_after_first: true,
             reject_handshake: false,
         }
     }
@@ -213,27 +222,50 @@ async fn serve(
         let _ = ws.close(None).await;
         return Ok(());
     }
-    // Hold open: answer later control frames, count closes.
-    while let Some(message) = ws.next().await {
-        match message {
-            Ok(Message::Text(text)) => {
-                let text = text.to_string();
-                recorder.frames.lock().unwrap().push(text.clone());
-                if let Ok(value) = serde_json::from_str::<serde_json::Value>(&text) {
+    // Hold open: answer later control frames, count closes, and keep the
+    // scripted traffic flowing if asked.
+    let mut repeat = script.push_every.map(tokio::time::interval);
+    loop {
+        tokio::select! {
+            _ = async {
+                match repeat.as_mut() {
+                    Some(interval) => {
+                        interval.tick().await;
+                    }
+                    None => std::future::pending::<()>().await,
+                }
+            } => {
+                if let Some(first) = script.pushes.first() {
+                    ws.send(Message::Text(first.clone().into())).await?;
+                }
+            }
+            message = ws.next() => match message {
+                Some(Ok(Message::Text(text))) => {
+                    let text = text.to_string();
+                    recorder.frames.lock().unwrap().push(text.clone());
+                    let Ok(value) = serde_json::from_str::<serde_json::Value>(&text) else {
+                        continue;
+                    };
+                    let membership = matches!(
+                        value.get("req").and_then(|r| r.as_str()),
+                        Some("sub" | "unsub")
+                    );
+                    if membership && !script.answer_subscribes_after_first {
+                        continue;
+                    }
                     if let Some(reply) = answer(&script, &value) {
                         ws.send(Message::Text(reply.into())).await?;
                     }
                 }
-            }
-            Ok(Message::Close(_)) => {
-                recorder.closes.fetch_add(1, Ordering::SeqCst);
-                return Ok(());
-            }
-            Ok(_) => continue,
-            Err(_) => return Ok(()),
+                Some(Ok(Message::Close(_))) => {
+                    recorder.closes.fetch_add(1, Ordering::SeqCst);
+                    return Ok(());
+                }
+                Some(Ok(_)) => continue,
+                Some(Err(_)) | None => return Ok(()),
+            },
         }
     }
-    Ok(())
 }
 
 #[cfg(test)]

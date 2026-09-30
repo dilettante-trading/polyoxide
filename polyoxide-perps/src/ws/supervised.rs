@@ -11,7 +11,7 @@ use std::{
 use futures_util::{Stream, StreamExt};
 use tokio::{
     sync::{mpsc, oneshot},
-    time::{timeout, Instant},
+    time::{timeout, timeout_at, Instant},
 };
 
 use crate::ws::{
@@ -24,16 +24,14 @@ use crate::ws::{
 
 /// Default keep-alive cadence against the host's 60 s idle close.
 const DEFAULT_PING_INTERVAL: Duration = Duration::from_secs(20);
-/// Default silence before a connection is presumed dead. Tickers and books
-/// push several frames a second, so this is generous; raise it for a
-/// subscription that is only klines on a quiet instrument.
+/// Default silence before a connection is presumed dead. A pong counts as
+/// an inbound frame, so a quiet but answering connection is not torn down.
 const DEFAULT_STALE_AFTER: Duration = Duration::from_secs(30);
 const DEFAULT_INITIAL_BACKOFF: Duration = Duration::from_millis(500);
 const DEFAULT_MAX_BACKOFF: Duration = Duration::from_secs(60);
 /// Retries of a subscribe the server refused with `message_rate_limited`.
 pub(crate) const MAX_SUBSCRIBE_RETRIES: usize = 3;
-/// Events the consumer may leave unread before the task blocks. A blocked
-/// task stops pinging, so a consumer must keep up.
+/// Events the consumer may leave unread before the task blocks.
 const EVENT_BUFFER: usize = 1024;
 
 /// The reconnect delay schedule: doubling to a ceiling, reset after a
@@ -109,14 +107,18 @@ impl PerpsWsBuilder {
         self
     }
 
-    /// Silence after which the connection is presumed dead and replaced.
+    /// Silence after which the connection is presumed dead and replaced. A
+    /// pong counts as an inbound frame, so a connection that is quiet but
+    /// answers pings stays up.
     pub fn stale_after(mut self, stale_after: Duration) -> Self {
         self.stale_after = stale_after;
         self
     }
 
-    /// Reconnect delay schedule: `initial`, doubling to `max`. Also the
-    /// schedule for retrying a rate-limited subscribe.
+    /// Reconnect delay schedule: `initial`, doubling to `max`. The same
+    /// schedule spaces the retries of a rate-limited subscribe, during which
+    /// no pings are sent, so keep `initial` well under the host's 60 s idle
+    /// limit.
     pub fn backoff(mut self, initial: Duration, max: Duration) -> Self {
         self.initial_backoff = initial;
         self.max_backoff = max;
@@ -163,6 +165,11 @@ pub struct MembershipHandle {
 impl MembershipHandle {
     /// Subscribe to more channels. A `message_rate_limited` refusal is
     /// retried with backoff before being reported.
+    ///
+    /// When the server accepts some channels and refuses others in one
+    /// request, the accepted ones are live on the current connection but
+    /// are not replayed after a reconnect: the request failed as a whole,
+    /// and re-issuing it with the accepted channels is the caller's call.
     pub async fn subscribe(
         &self,
         channels: impl IntoIterator<Item = Channel>,
@@ -195,6 +202,9 @@ impl MembershipHandle {
 
 /// A supervised connection: a `Stream` of [`Event`]s that survives drops
 /// and stalls by reconnecting and replaying its subscriptions.
+///
+/// The consumer must keep up: after 1024 unread events the task blocks,
+/// and a blocked task neither pings nor notices a stall.
 ///
 /// ```no_run
 /// use futures_util::StreamExt;
@@ -239,10 +249,20 @@ impl SupervisedPerpsWs {
     /// Close the connection and stop the task. Every [`MembershipHandle`]
     /// reports [`PerpsWsError::Stopped`] afterwards.
     pub async fn close(self) -> Result<(), PerpsWsError> {
-        // A failed send means the task has already ended; its result says why.
-        let _ = self.commands.send(Command::Close).await;
-        drop(self.commands);
-        match self.task.await {
+        let Self {
+            events,
+            commands,
+            task,
+        } = self;
+        // Dropping the receiver first unblocks a task parked in
+        // `events.send` behind a full buffer, which would otherwise never
+        // read the command.
+        drop(events);
+        // A failed send means the task has already ended: the reason went
+        // out on the events stream and the task's result is `Stopped`.
+        let _ = commands.send(Command::Close).await;
+        drop(commands);
+        match task.await {
             Ok(result) => result,
             Err(_) => Err(PerpsWsError::Stopped),
         }
@@ -285,23 +305,13 @@ async fn run(
             Err(err) if err.recovery() == Recovery::Reconnect => {
                 backoff.after_connection_ended(delivered);
                 tracing::warn!(%err, "perps WebSocket lost, reconnecting");
-                loop {
-                    let delay = backoff.take();
-                    tracing::debug!(?delay, "waiting before the next perps WebSocket attempt");
-                    tokio::time::sleep(delay).await;
-                    match PerpsWs::connect_to(&config.url, channels.clone()).await {
-                        Ok(fresh) => {
-                            stream = fresh;
-                            break;
-                        }
-                        Err(again) if again.recovery() == Recovery::Reconnect => {
-                            tracing::warn!(%again, "perps WebSocket reconnect failed, retrying");
-                        }
-                        Err(fatal) => {
-                            let _ = events.send(Err(fatal)).await;
-                            return Err(PerpsWsError::Stopped);
-                        }
+                match reconnect(&config, &channels, &mut backoff, &events).await {
+                    Some(Ok(fresh)) => stream = fresh,
+                    Some(Err(fatal)) => {
+                        let _ = events.send(Err(fatal)).await;
+                        return Err(PerpsWsError::Stopped);
                     }
+                    None => return Ok(()),
                 }
                 if events.send(Ok(Event::Reconnected)).await.is_err() {
                     let _ = stream.close().await;
@@ -316,12 +326,54 @@ async fn run(
     }
 }
 
+/// Wait out the backoff and open a fresh connection, repeating while the
+/// failure is one a retry can fix. `None` means the consumer went away
+/// meanwhile (`close`, or the stream dropped) and no connection was opened.
+///
+/// Membership commands sent during the wait stay queued for the new
+/// connection; the consumer's departure is observed through the events
+/// channel instead, which `close` drops before anything else.
+async fn reconnect(
+    config: &PerpsWsBuilder,
+    channels: &[Channel],
+    backoff: &mut Backoff,
+    events: &mpsc::Sender<Result<Event, PerpsWsError>>,
+) -> Option<Result<PerpsWs, PerpsWsError>> {
+    loop {
+        if events.is_closed() {
+            return None;
+        }
+        let delay = backoff.take();
+        tracing::debug!(?delay, "waiting before the next perps WebSocket attempt");
+        let attempt = async {
+            tokio::time::sleep(delay).await;
+            PerpsWs::connect_to(&config.url, channels.to_vec()).await
+        };
+        tokio::select! {
+            biased;
+            () = events.closed() => return None,
+            result = attempt => match result {
+                Ok(fresh) => return Some(Ok(fresh)),
+                Err(again) if again.recovery() == Recovery::Reconnect => {
+                    tracing::warn!(%again, "perps WebSocket reconnect failed, retrying");
+                }
+                Err(fatal) => return Some(Err(fatal)),
+            },
+        }
+    }
+}
+
 /// Drive one connection until it fails or the consumer closes.
 ///
 /// `Ok(())` means the consumer is gone: it sent `Close`, dropped every
 /// handle, or dropped the stream. `last_sq` is per connection: a reconnect
 /// replays snapshots with fresh sequence stamps that must not be reported
 /// as a regression.
+///
+/// The ping is due on the wall clock, traffic or not: the host idle-closes
+/// on 60 s without an *inbound* message, so a busy connection that never
+/// pings is closed like a silent one. Every wait is bounded by whichever
+/// of the next ping and the staleness deadline comes first.
 async fn pump(
     config: &PerpsWsBuilder,
     stream: &mut PerpsWs,
@@ -330,36 +382,78 @@ async fn pump(
     events: &mpsc::Sender<Result<Event, PerpsWsError>>,
     delivered: &mut bool,
 ) -> Result<(), PerpsWsError> {
-    let tick = config.ping_interval.min(config.stale_after);
     let mut last_frame = Instant::now();
     let mut last_ping = Instant::now();
     let mut last_sq: HashMap<Channel, u64> = HashMap::new();
 
     loop {
+        if last_ping.elapsed() >= config.ping_interval {
+            // `ping` reads until the pong, which on a socket that is open
+            // but dead is forever. It gets one interval, and never more
+            // than the rest of the staleness window; a pong that arrives
+            // late is dropped by the stream as an uncorrelated response.
+            let remaining = config.stale_after.saturating_sub(last_frame.elapsed());
+            match timeout(config.ping_interval.min(remaining), stream.ping()).await {
+                Ok(pong) => {
+                    pong?;
+                    last_ping = Instant::now();
+                    last_frame = last_ping;
+                }
+                Err(_) => {
+                    let elapsed = last_frame.elapsed();
+                    if elapsed >= config.stale_after {
+                        return Err(PerpsWsError::Stalled { elapsed });
+                    }
+                    last_ping = Instant::now();
+                }
+            }
+        }
+        let deadline = (last_ping + config.ping_interval).min(last_frame + config.stale_after);
+
         tokio::select! {
             biased;
             command = commands.recv() => match command {
                 None | Some(Command::Close) => return Ok(()),
                 Some(Command::Subscribe(add, reply)) => {
-                    let result = subscribe_with_retry(config, stream, &add).await;
-                    if result.is_ok() {
-                        for c in add {
-                            if !channels.contains(&c) {
-                                channels.push(c);
+                    let result = bounded(config, &last_frame, subscribe_with_retry(config, stream, &add)).await;
+                    match result {
+                        Ok(Ok(())) => {
+                            for c in add {
+                                if !channels.contains(&c) {
+                                    channels.push(c);
+                                }
                             }
+                            let _ = reply.send(Ok(()));
+                        }
+                        Ok(refused) => {
+                            let _ = reply.send(refused);
+                        }
+                        Err(stalled) => {
+                            let elapsed = stalled.elapsed;
+                            let _ = reply.send(Err(PerpsWsError::Stalled { elapsed }));
+                            return Err(PerpsWsError::Stalled { elapsed });
                         }
                     }
-                    let _ = reply.send(result);
                 }
                 Some(Command::Unsubscribe(remove, reply)) => {
-                    let result = stream.unsubscribe(remove.iter().copied()).await;
-                    if result.is_ok() {
-                        channels.retain(|c| !remove.contains(c));
+                    let result = bounded(config, &last_frame, stream.unsubscribe(remove.iter().copied())).await;
+                    match result {
+                        Ok(Ok(())) => {
+                            channels.retain(|c| !remove.contains(c));
+                            let _ = reply.send(Ok(()));
+                        }
+                        Ok(refused) => {
+                            let _ = reply.send(refused);
+                        }
+                        Err(stalled) => {
+                            let elapsed = stalled.elapsed;
+                            let _ = reply.send(Err(PerpsWsError::Stalled { elapsed }));
+                            return Err(PerpsWsError::Stalled { elapsed });
+                        }
                     }
-                    let _ = reply.send(result);
                 }
             },
-            next = timeout(tick, stream.next()) => match next {
+            next = timeout_at(deadline, stream.next()) => match next {
                 Err(_) => {
                     // A consumer that dropped the stream without `close`
                     // is only noticed when something is sent to it; check
@@ -371,25 +465,7 @@ async fn pump(
                     if elapsed >= config.stale_after {
                         return Err(PerpsWsError::Stalled { elapsed });
                     }
-                    if last_ping.elapsed() >= config.ping_interval {
-                        // `ping` reads until the pong. On a socket that is
-                        // open but dead that is forever, so it gets the
-                        // rest of the staleness window and no more. A pong
-                        // that arrives late is dropped by the stream as an
-                        // uncorrelated response.
-                        let budget = config.stale_after.saturating_sub(elapsed);
-                        match timeout(budget, stream.ping()).await {
-                            Ok(pong) => {
-                                pong?;
-                                last_ping = Instant::now();
-                            }
-                            Err(_) => {
-                                return Err(PerpsWsError::Stalled {
-                                    elapsed: last_frame.elapsed(),
-                                })
-                            }
-                        }
-                    }
+                    // Otherwise the ping is due; the top of the loop sends it.
                 }
                 Ok(None) => return Err(PerpsWsError::ConnectionClosed),
                 Ok(Some(Err(err))) if err.recovery() == Recovery::SkipFrame => {
@@ -422,6 +498,29 @@ async fn pump(
                 }
             },
         }
+    }
+}
+
+/// How long a membership command has waited for the socket.
+struct HandlerStalled {
+    elapsed: Duration,
+}
+
+/// Bound a command handler's socket work by the staleness window. A
+/// request the server never answers must not park the task forever.
+async fn bounded<F>(
+    config: &PerpsWsBuilder,
+    last_frame: &Instant,
+    work: F,
+) -> Result<Result<(), PerpsWsError>, HandlerStalled>
+where
+    F: std::future::Future<Output = Result<(), PerpsWsError>>,
+{
+    match timeout(config.stale_after, work).await {
+        Ok(result) => Ok(result),
+        Err(_) => Err(HandlerStalled {
+            elapsed: last_frame.elapsed(),
+        }),
     }
 }
 
@@ -533,8 +632,13 @@ mod tests {
 
     #[tokio::test]
     async fn silence_is_a_stall_and_pings_go_out_meanwhile() {
+        // A socket that answers pings is alive by definition, so the first
+        // connection must not answer them for silence to mean a stall.
         let server = ScriptedServer::start(vec![
-            Script::default(),
+            Script {
+                answer_pings: false,
+                ..Default::default()
+            },
             Script {
                 pushes: vec![bbo(5)],
                 ..Default::default()
@@ -560,34 +664,13 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn a_socket_that_never_answers_pings_is_a_stall_too() {
-        // The socket stays open and silent. A ping whose pong never comes
-        // must not park the task past the staleness window.
-        let server = ScriptedServer::start(vec![
-            Script {
-                answer_pings: false,
-                ..Default::default()
-            },
-            Script {
-                pushes: vec![bbo(7)],
-                ..Default::default()
-            },
-        ])
-        .await;
-        let mut ws = fast()
-            .url(&server.url)
-            .connect([Channel::Bbo(InstrumentId(1))])
-            .await
-            .unwrap();
-        assert!(matches!(next_event(&mut ws).await, Event::Reconnected));
-        assert!(matches!(next_event(&mut ws).await, Event::Update(u) if u.sq == 7));
-    }
-
-    #[tokio::test]
     async fn membership_changes_reach_the_server_and_survive_a_reconnect() {
+        // The first connection answers membership requests but not pings,
+        // so once it goes quiet it is a stall and gets replaced.
         let server = ScriptedServer::start(vec![
             Script {
                 pushes: vec![bbo(1)],
+                answer_pings: false,
                 ..Default::default()
             },
             Script {
@@ -712,5 +795,203 @@ mod tests {
             handle.subscribe([Channel::Trades(InstrumentId(2))]).await,
             Err(PerpsWsError::Stopped)
         ));
+    }
+
+    #[tokio::test]
+    async fn a_quiet_connection_that_answers_pings_is_alive() {
+        // No pushes at all for three staleness windows; the pongs keep it.
+        let server = ScriptedServer::start(vec![Script::default()]).await;
+        let mut ws = fast()
+            .url(&server.url)
+            .connect([Channel::Bbo(InstrumentId(1))])
+            .await
+            .unwrap();
+        let quiet = tokio::time::timeout(Duration::from_millis(900), ws.next()).await;
+        assert!(quiet.is_err(), "expected silence, got {quiet:?}");
+        assert_eq!(server.connection_count(), 1);
+        let pings = server
+            .client_frames()
+            .iter()
+            .filter(|f| f.contains(r#""type":"ping""#))
+            .count();
+        assert!(pings >= 10, "expected pings on cadence, saw {pings}");
+    }
+
+    #[tokio::test]
+    async fn pings_keep_going_under_steady_traffic() {
+        let server = ScriptedServer::start(vec![Script {
+            pushes: vec![bbo(1)],
+            push_every: Some(Duration::from_millis(10)),
+            ..Default::default()
+        }])
+        .await;
+        let mut ws = fast()
+            .url(&server.url)
+            .connect([Channel::Bbo(InstrumentId(1))])
+            .await
+            .unwrap();
+        let deadline = tokio::time::Instant::now() + Duration::from_millis(500);
+        let mut updates = 0;
+        while let Ok(Some(event)) = tokio::time::timeout_at(deadline, ws.next()).await {
+            match event.unwrap() {
+                Event::Update(_) => updates += 1,
+                other => panic!("unexpected {other:?}"),
+            }
+        }
+        let pings = server
+            .client_frames()
+            .iter()
+            .filter(|f| f.contains(r#""type":"ping""#))
+            .count();
+        assert!(updates >= 20, "traffic stopped flowing: {updates} updates");
+        assert!(pings >= 5, "expected pings under traffic, saw {pings}");
+        assert_eq!(server.connection_count(), 1);
+    }
+
+    #[tokio::test]
+    async fn close_does_not_wait_on_a_consumer_that_never_read() {
+        // More pushes than the event buffer holds, and nobody reading: the
+        // task is parked in `events.send`. `close` must still return.
+        let pushes: Vec<String> = (1..=1100).map(bbo).collect();
+        let server = ScriptedServer::start(vec![Script {
+            pushes,
+            ..Default::default()
+        }])
+        .await;
+        let ws = fast()
+            .url(&server.url)
+            .stale_after(Duration::from_secs(5))
+            .connect([Channel::Bbo(InstrumentId(1))])
+            .await
+            .unwrap();
+        server
+            .wait_for("the buffer to fill", |s| !s.client_frames().is_empty())
+            .await;
+        tokio::time::sleep(Duration::from_millis(100)).await;
+        let closed = tokio::time::timeout(Duration::from_secs(2), ws.close()).await;
+        assert!(matches!(closed, Ok(Ok(()))), "close: {closed:?}");
+    }
+
+    #[tokio::test]
+    async fn close_is_honoured_during_the_reconnect_backoff() {
+        let server = ScriptedServer::start(vec![
+            Script {
+                pushes: vec![bbo(1)],
+                close_after: true,
+                ..Default::default()
+            },
+            Script {
+                reject_handshake: true,
+                ..Default::default()
+            },
+        ])
+        .await;
+        let mut ws = fast()
+            .url(&server.url)
+            .backoff(Duration::from_secs(3), Duration::from_secs(3))
+            .connect([Channel::Bbo(InstrumentId(1))])
+            .await
+            .unwrap();
+        assert!(matches!(next_event(&mut ws).await, Event::Update(_)));
+        // The server has closed; give the task a moment to enter its sleep.
+        tokio::time::sleep(Duration::from_millis(100)).await;
+        let started = tokio::time::Instant::now();
+        let closed = tokio::time::timeout(Duration::from_secs(2), ws.close()).await;
+        assert!(matches!(closed, Ok(Ok(()))), "close: {closed:?}");
+        assert!(
+            started.elapsed() < Duration::from_millis(500),
+            "close waited out the backoff: {:?}",
+            started.elapsed()
+        );
+        assert_eq!(server.connection_count(), 1);
+    }
+
+    #[tokio::test]
+    async fn a_membership_change_the_server_never_answers_is_a_stall() {
+        let server = ScriptedServer::start(vec![
+            Script {
+                answer_subscribes_after_first: false,
+                ..Default::default()
+            },
+            Script::default(),
+        ])
+        .await;
+        let mut ws = fast()
+            .url(&server.url)
+            .connect([Channel::Bbo(InstrumentId(1))])
+            .await
+            .unwrap();
+        let handle = ws.membership();
+        let result = tokio::time::timeout(
+            Duration::from_secs(2),
+            handle.subscribe([Channel::Trades(InstrumentId(2))]),
+        )
+        .await
+        .expect("the subscribe returns");
+        assert!(
+            matches!(result, Err(PerpsWsError::Stalled { .. })),
+            "{result:?}"
+        );
+        assert!(matches!(next_event(&mut ws).await, Event::Reconnected));
+    }
+
+    #[tokio::test]
+    async fn a_failed_reconnect_attempt_is_retried() {
+        let server = ScriptedServer::start(vec![
+            Script {
+                pushes: vec![bbo(1)],
+                close_after: true,
+                ..Default::default()
+            },
+            Script {
+                reject_handshake: true,
+                ..Default::default()
+            },
+            Script {
+                pushes: vec![bbo(2)],
+                ..Default::default()
+            },
+        ])
+        .await;
+        let mut ws = fast()
+            .url(&server.url)
+            .connect([Channel::Bbo(InstrumentId(1))])
+            .await
+            .unwrap();
+        assert!(matches!(next_event(&mut ws).await, Event::Update(u) if u.sq == 1));
+        assert!(matches!(next_event(&mut ws).await, Event::Reconnected));
+        assert!(matches!(next_event(&mut ws).await, Event::Update(u) if u.sq == 2));
+        assert_eq!(server.connection_count(), 3);
+    }
+
+    #[tokio::test]
+    async fn a_refusal_on_reconnect_is_fatal_and_ends_the_stream() {
+        let server = ScriptedServer::start(vec![
+            Script {
+                pushes: vec![bbo(1)],
+                close_after: true,
+                ..Default::default()
+            },
+            Script {
+                refuse: vec![("bbo::1".into(), "invalid channel".into())],
+                ..Default::default()
+            },
+        ])
+        .await;
+        let mut ws = fast()
+            .url(&server.url)
+            .connect([Channel::Bbo(InstrumentId(1))])
+            .await
+            .unwrap();
+        assert!(matches!(next_event(&mut ws).await, Event::Update(u) if u.sq == 1));
+        let err = tokio::time::timeout(Duration::from_secs(2), ws.next())
+            .await
+            .expect("an item")
+            .expect("stream open");
+        assert!(matches!(err, Err(PerpsWsError::Refused { .. })), "{err:?}");
+        let end = tokio::time::timeout(Duration::from_secs(2), ws.next())
+            .await
+            .expect("the end");
+        assert!(end.is_none(), "{end:?}");
     }
 }

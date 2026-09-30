@@ -19,6 +19,13 @@ use crate::ws::{
     WS_URL,
 };
 
+/// Which way a control request changes membership.
+#[derive(Debug, Clone, Copy)]
+enum Membership {
+    Add,
+    Remove,
+}
+
 /// A bare connection to the public channels.
 ///
 /// The server closes a connection after 60 s without an inbound message, so
@@ -97,7 +104,8 @@ impl PerpsWs {
         &mut self,
         channels: impl IntoIterator<Item = Channel>,
     ) -> Result<(), PerpsWsError> {
-        self.control("sub", channels.into_iter().collect()).await
+        self.control(Membership::Add, channels.into_iter().collect())
+            .await
     }
 
     /// Unsubscribe from channels on the open connection.
@@ -105,12 +113,13 @@ impl PerpsWs {
         &mut self,
         channels: impl IntoIterator<Item = Channel>,
     ) -> Result<(), PerpsWsError> {
-        self.control("unsub", channels.into_iter().collect()).await
+        self.control(Membership::Remove, channels.into_iter().collect())
+            .await
     }
 
     async fn control(
         &mut self,
-        req: &'static str,
+        change: Membership,
         channels: Vec<Channel>,
     ) -> Result<(), PerpsWsError> {
         if channels.is_empty() {
@@ -118,9 +127,9 @@ impl PerpsWs {
         }
         let names: Vec<String> = channels.iter().map(ToString::to_string).collect();
         let id = self.take_id();
-        let request = match req {
-            "sub" => Request::subscribe(id, &names),
-            _ => Request::unsubscribe(id, &names),
+        let request = match change {
+            Membership::Add => Request::subscribe(id, &names),
+            Membership::Remove => Request::unsubscribe(id, &names),
         };
         self.send(&request).await?;
         let response = self.await_response(id).await?;
@@ -137,13 +146,13 @@ impl PerpsWs {
         let mut refused = Vec::new();
         for (channel, status) in channels.iter().zip(&statuses) {
             if status.is_ok() {
-                match req {
-                    "sub" => {
+                match change {
+                    Membership::Add => {
                         if !self.channels.contains(channel) {
                             self.channels.push(*channel);
                         }
                     }
-                    _ => self.channels.retain(|c| c != channel),
+                    Membership::Remove => self.channels.retain(|c| c != channel),
                 }
             } else {
                 refused.push(Refusal {
