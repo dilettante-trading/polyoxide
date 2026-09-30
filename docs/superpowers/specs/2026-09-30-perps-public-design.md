@@ -4,6 +4,8 @@
 **Branch:** `aidanb/perps-impl`
 **Slice:** 1 of the perps rollout (public reads and public streaming). Credentials, signed
 trading, private channels, funds, Python and CLI are later specs.
+**Plans:** `docs/superpowers/plans/2026-09-30-perps-http.md` (HTTP, this slice's first
+half); the WebSocket plan follows once the crate exists.
 
 ## Goal
 
@@ -174,8 +176,9 @@ route so `RateLimiter::perps_default()` can match them.
 - `InstrumentId(u64)` newtype. Used by REST params, `Channel` and, later, signed ops.
 - `Interval`: the 11 kline intervals, serialising to the exact wire spelling, used by both
   the REST `interval` parameter and the `klines` channel suffix.
-- `BookDepth { Twenty, Fifty }`, the only depths the socket accepts. REST `depth` takes the
-  same enum.
+- `BookDepth { Ten, Hundred, FiveHundred, Thousand }` for REST `depth` (the schema's enum is
+  10/100/500/1000, default 100). The socket accepts 20 or 50 and gets its own enum in the
+  WebSocket slice; the two sets do not overlap, so they are not one type.
 - `Side { Long, Short }`, `InstrumentType`, `LeaderboardWindow`, `LeaderboardSort`, and any
   other closed set the schema enumerates. Each is checked against the schema enum.
 - REST rows are structs named after their schema, `Decimal` with string serde for prices
@@ -228,9 +231,11 @@ driven, adds and removes channels while running, following clob's handle.
 `RateLimiter::perps_default()` in `polyoxide-core/src/rate_limit.rs`, one row per route
 group, with values measured by `examples/info_soak.rs` and reserved by a tenth through the
 existing `quota()` helper. The soak sends raw requests at a caller-chosen rate over distinct
-URLs (a repeated URL may be served by a CDN) and detects throttling through a `tracing`
+URLs (the host is fronted by CloudFront, `x-cache: Hit from cloudfront`, so a repeated URL
+never reaches the origin) and, in validation mode, detects throttling through a `tracing`
 subscriber watching for the retry loop's `WARN`, not through `Ok` against `Err`. Routes
-soaked: `instruments`, `bbo`, `klines`, `portfolio`. The runs and the resulting table go in
+soaked: `klines`, `trades`, `portfolio`, `bbo`. `instruments` cannot be soaked: it has
+88 × 5 distinct parameterisations and the CDN answers the rest. The runs and the resulting table go in
 `OBSERVED.md`. The `documented_perps_limits` agreement test asserts the effective quota
 each route resolves to, not merely that a row exists.
 
@@ -282,6 +287,16 @@ the catalogue on the errors page is long and grows.
 - Docs: `docs/specs/perps/INDEX.md` drops the "not implemented" banner and links
   `OBSERVED.md`; `docs/specs/INDEX.md` and CLAUDE.md (workspace diagram, the not-yet-
   implemented paragraph, WebSocket notes, publishing order) updated.
+
+## Wire findings from the 2026-09-30 probes
+
+Recorded in `docs/specs/perps/OBSERVED.md` by the plan. `Instrument` carries
+`display_symbol`, `close_only` and `logo`; `TradeData` carries `settlement`; `LimitTier`
+carries four WebSocket-budget fields; none is in the schema, and each is modelled as an
+`Option` and allowed through an `OBSERVED_EXTRA` list in the spec-agreement test. A 400
+body carries `arts`, `ts` and `ref` (a gateway trace id, exposed as `VenueError::reference`).
+An unknown instrument on `/v1/info/book` is a 200 with empty sides. `open_interest` on
+`exchange-stats` has 32 significant digits; `Decimal` holds 28 and rounds.
 
 ## Open questions settled by fixtures, not by this spec
 
