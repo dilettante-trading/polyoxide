@@ -158,8 +158,9 @@ pub struct Instrument {
     pub max_leverage: u32,
     /// Leverage caps by position size.
     pub risk_tiers: Vec<RiskTier>,
-    /// When first-party interfaces may show the instrument, Unix ms.
-    pub ui_live_time: u64,
+    /// When first-party interfaces may show the instrument, Unix ms; null
+    /// when not yet scheduled.
+    pub ui_live_time: Option<u64>,
     /// Logo URL. Undocumented.
     pub logo: Option<String>,
 }

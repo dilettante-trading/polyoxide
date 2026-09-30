@@ -119,6 +119,7 @@ async fn instruments_sends_every_filter_and_decodes_undocumented_fields() {
     assert_eq!(rows[0].display_symbol.as_deref(), Some("USA500-USD"));
     assert_eq!(rows[0].close_only, Some(false));
     assert_eq!(rows[0].risk_tiers[0].max_leverage, 50);
+    assert_eq!(rows[0].ui_live_time, Some(1790000000000));
 }
 
 #[tokio::test]
@@ -287,6 +288,15 @@ async fn exchange_stats_mark_history_trades_and_funding_decode() {
         .with_body(r#"{"start_timestamp":1,"end_timestamp":2,"volume":"65715149.726359","open_interest":"75573217.100902647081712288","open_interest_timestamp":2,"fees":"1000.5"}"#)
         .create_async()
         .await;
+    let empty_stats = server
+        .mock("GET", "/v1/info/exchange-stats")
+        .match_query(Matcher::AllOf(vec![
+            Matcher::UrlEncoded("start_timestamp".into(), "3".into()),
+            Matcher::UrlEncoded("end_timestamp".into(), "4".into()),
+        ]))
+        .with_body(r#"{"start_timestamp":3,"end_timestamp":4,"volume":"0","open_interest":null,"open_interest_timestamp":null,"fees":"0"}"#)
+        .create_async()
+        .await;
     let marks = server
         .mock("GET", "/v1/info/mark-history")
         .match_query(Matcher::AllOf(vec![
@@ -329,7 +339,16 @@ async fn exchange_stats_mark_history_trades_and_funding_decode() {
         .await
         .expect("exchange stats");
     // 32 significant digits on the wire; Decimal keeps 28 and rounds.
-    assert!(x.open_interest > Decimal::new(75_573_217, 0));
+    assert!(x.open_interest.unwrap() > Decimal::new(75_573_217, 0));
+    assert_eq!(x.open_interest_timestamp, Some(2));
+    let empty = perps
+        .market()
+        .exchange_stats(3, 4)
+        .send()
+        .await
+        .expect("empty exchange stats");
+    assert_eq!(empty.open_interest, None);
+    assert_eq!(empty.open_interest_timestamp, None);
     let m = perps
         .market()
         .mark_history(InstrumentId(1), Interval::H1, 1)
@@ -358,7 +377,7 @@ async fn exchange_stats_mark_history_trades_and_funding_decode() {
         .await
         .expect("funding");
     assert_eq!(f.data[0].funding_rate, Decimal::new(625, 8));
-    for m in [stats, marks, trades, funding] {
+    for m in [stats, empty_stats, marks, trades, funding] {
         m.assert_async().await;
     }
 }

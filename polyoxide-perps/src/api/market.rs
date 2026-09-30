@@ -326,10 +326,12 @@ pub struct ExchangeStatistics {
     pub volume: Decimal,
     /// Open interest at `open_interest_timestamp`. The wire carries more
     /// digits than `Decimal` holds; the value is rounded to 28 significant.
-    #[serde(with = "rust_decimal::serde::str")]
-    pub open_interest: Decimal,
-    /// When `open_interest` was sampled, Unix ms.
-    pub open_interest_timestamp: u64,
+    /// Null when no sample exists in the range.
+    #[serde(with = "rust_decimal::serde::str_option")]
+    pub open_interest: Option<Decimal>,
+    /// When `open_interest` was sampled, Unix ms. Null when no sample exists
+    /// in the range.
+    pub open_interest_timestamp: Option<u64>,
     /// Fees collected over the range.
     #[serde(with = "rust_decimal::serde::str")]
     pub fees: Decimal,
