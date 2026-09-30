@@ -5,7 +5,7 @@ use polyoxide_core::{
 };
 
 use crate::{
-    api::{exchange::ExchangeApi, health::Health, market::MarketApi},
+    api::{exchange::ExchangeApi, health::Health, market::MarketApi, public::PublicApi},
     error::PerpsError,
 };
 
@@ -50,6 +50,13 @@ impl Perps {
     /// Market data keyed by instrument.
     pub fn market(&self) -> MarketApi {
         MarketApi {
+            http_client: self.http_client.clone(),
+        }
+    }
+
+    /// Public-by-address lookups: portfolio, position fills, leaderboard, invite.
+    pub fn public(&self) -> PublicApi {
+        PublicApi {
             http_client: self.http_client.clone(),
         }
     }

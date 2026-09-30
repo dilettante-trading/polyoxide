@@ -362,3 +362,103 @@ async fn exchange_stats_mark_history_trades_and_funding_decode() {
         m.assert_async().await;
     }
 }
+
+// ── public ──────────────────────────────────────────────────────
+
+use polyoxide_perps::types::{LeaderboardSort, LeaderboardWindow, SortOrder};
+
+#[tokio::test]
+async fn leaderboard_sends_every_setter_and_decodes_the_optional_account() {
+    let mut server = Server::new_async().await;
+    let mock = server
+        .mock("GET", "/v1/info/leaderboard")
+        .match_query(Matcher::AllOf(vec![
+            Matcher::UrlEncoded("window".into(), "week".into()),
+            Matcher::UrlEncoded("sort_by".into(), "account_value".into()),
+            Matcher::UrlEncoded("limit".into(), "3".into()),
+            Matcher::UrlEncoded("offset".into(), "6".into()),
+            Matcher::UrlEncoded("address".into(), "0xabc".into()),
+        ]))
+        .with_body(r#"{"window":"week","sort_by":"account_value","timestamp":1790758440134,"total":7751,"entries":[{"rank":1,"account":"0x65c8","pnl":"1","notional":"2","account_value":"3"}],"account":{"account":"0xabc","pnl":"0","notional":"0","account_value":"0"}}"#)
+        .create_async()
+        .await;
+
+    let board = test_perps(&server)
+        .public()
+        .leaderboard()
+        .window(LeaderboardWindow::Week)
+        .sort_by(LeaderboardSort::AccountValue)
+        .limit(3)
+        .offset(6)
+        .address("0xabc")
+        .send()
+        .await
+        .expect("leaderboard");
+    mock.assert_async().await;
+    assert_eq!(board.total, 7751);
+    assert_eq!(board.entries[0].rank, 1);
+    let account = board.account.expect("account echoed");
+    assert_eq!(account.rank, None);
+}
+
+#[tokio::test]
+async fn portfolio_position_fills_and_invite_decode() {
+    let mut server = Server::new_async().await;
+    let portfolio = server
+        .mock("GET", "/v1/info/portfolio")
+        .match_query(Matcher::UrlEncoded("address".into(), "0xabc".into()))
+        .with_body(r#"{"positions":[{"instrument_id":32,"symbol":"ZEC-USD","size":"-253.4562","entry_price":"1446.1","unrealized_pnl":"10642.35","return_on_equity":"0.1"}],"equity":"100","timestamp":1790758440134}"#)
+        .create_async()
+        .await;
+    let fills = server
+        .mock("GET", "/v1/info/position-fills")
+        .match_query(Matcher::AllOf(vec![
+            Matcher::UrlEncoded("address".into(), "0xabc".into()),
+            Matcher::UrlEncoded("instrument_id".into(), "1".into()),
+            Matcher::UrlEncoded("cursor".into(), "c1".into()),
+            Matcher::UrlEncoded("sort".into(), "asc".into()),
+        ]))
+        .with_body(r#"{"data":[{"trade_id":1,"order_id":2,"instrument_id":1,"side":"short","price":"1","quantity":"2","taker":true,"fee":"0.1","fee_asset":"pUSD","previous_size":"0","previous_entry_price":"0","pnl":"0","liquidation":false,"adl":false,"timestamp":1,"hash":"0x"}],"more":true,"cursor":"c2"}"#)
+        .create_async()
+        .await;
+    let invite = server
+        .mock("GET", "/v1/info/invite")
+        .match_query(Matcher::AllOf(vec![
+            Matcher::UrlEncoded("code".into(), "nope".into()),
+            Matcher::UrlEncoded("address".into(), "0xabc".into()),
+        ]))
+        .with_body(r#"{"valid":false,"error":"code not found"}"#)
+        .create_async()
+        .await;
+
+    let perps = test_perps(&server);
+    let p = perps
+        .public()
+        .portfolio("0xabc")
+        .send()
+        .await
+        .expect("portfolio");
+    assert_eq!(p.positions[0].size, Decimal::new(-2534562, 4));
+    let f = perps
+        .public()
+        .position_fills("0xabc", InstrumentId(1))
+        .cursor("c1")
+        .sort(SortOrder::Asc)
+        .send()
+        .await
+        .expect("position fills");
+    assert_eq!(f.cursor.as_deref(), Some("c2"));
+    assert!(f.data[0].taker);
+    let i = perps
+        .public()
+        .invite("nope")
+        .address("0xabc")
+        .send()
+        .await
+        .expect("invite");
+    assert!(!i.valid);
+    assert_eq!(i.error.as_deref(), Some("code not found"));
+    for m in [portfolio, fills, invite] {
+        m.assert_async().await;
+    }
+}
