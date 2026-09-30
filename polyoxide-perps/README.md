@@ -17,11 +17,15 @@ polyoxide-perps = "0.33"
 
 ## Usage
 
-```text
+```no_run
 use polyoxide_perps::Perps;
 
+# async fn example() -> Result<(), polyoxide_perps::PerpsError> {
 let perps = Perps::new()?;
 let instruments = perps.exchange().instruments().send().await?;
+for instrument in &instruments {
+    println!("{} {}", instrument.instrument_id, instrument.symbol);
+}
+# Ok(())
+# }
 ```
-
-The usage block becomes a `no_run` doctest in Task 4, once `exchange()` exists.
