@@ -64,9 +64,6 @@ pub enum Frame {
 }
 
 impl Frame {
-    // Only reached from `client`, which lands in a later task. Remove the
-    // allow once `client` exists.
-    #[allow(dead_code)]
     pub(crate) fn from_push(push: Push, raw: &str) -> Result<Self, PerpsWsError> {
         let Ok(channel) = push.ch.parse::<Channel>() else {
             return Ok(Frame::Unknown {

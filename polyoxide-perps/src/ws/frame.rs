@@ -1,6 +1,7 @@
 //! Wire shapes. Requests go out, responses come back correlated by `id`, and
-//! push frames arrive labelled by channel. Payload structs use the terse
-//! keys the socket sends (`bp`, `aq`, `oi`); `event.rs` is the public face.
+//! push frames arrive labelled by channel. Payload structs carry the REST
+//! names over the terse wire keys (`bp`, `aq`, `oi`); `event.rs` is the
+//! public face.
 
 use rust_decimal::Decimal;
 use serde::{Deserialize, Serialize};
@@ -8,8 +9,6 @@ use serde::{Deserialize, Serialize};
 use crate::types::{InstrumentId, Kline, Level, Side};
 
 /// An outbound request.
-// Read by ws::client (package B); remove then.
-#[allow(dead_code)]
 #[derive(Debug, Clone, Serialize)]
 pub(crate) struct Request {
     pub id: u64,
@@ -20,16 +19,12 @@ pub(crate) struct Request {
     pub op: Option<Op>,
 }
 
-// Read by ws::client (package B); remove then.
-#[allow(dead_code)]
 #[derive(Debug, Clone, Serialize)]
 pub(crate) struct Op {
     #[serde(rename = "type")]
     pub kind: &'static str,
 }
 
-// Read by ws::client (package B); remove then.
-#[allow(dead_code)]
 impl Request {
     pub fn subscribe(id: u64, channels: &[String]) -> Self {
         Self {
@@ -60,22 +55,15 @@ impl Request {
 }
 
 /// One entry of a subscribe/unsubscribe response, or the body of a pong.
-// Read by ws::client (package B); remove then.
-#[allow(dead_code)]
 #[derive(Debug, Clone, PartialEq, Eq, Deserialize)]
 pub(crate) struct Status {
     pub status: String,
     #[serde(default)]
     pub error: Option<String>,
-    // Returned by `ws::client`'s `ping()` as the pong's sequence (package B);
-    // remove the allow then.
-    #[allow(dead_code)]
     #[serde(default)]
     pub sq: Option<u64>,
 }
 
-// Read by ws::client (package B); remove then.
-#[allow(dead_code)]
 impl Status {
     pub fn is_ok(&self) -> bool {
         self.status == "ok"
@@ -83,8 +71,6 @@ impl Status {
 }
 
 /// A response to a request, correlated by `id`.
-// Read by ws::client (package B); remove then.
-#[allow(dead_code)]
 #[derive(Debug, Clone, Deserialize)]
 pub(crate) struct Response {
     #[serde(default)]
@@ -92,8 +78,6 @@ pub(crate) struct Response {
     pub data: serde_json::Value,
 }
 
-// Read by ws::client (package B); remove then.
-#[allow(dead_code)]
 impl Response {
     /// The per-channel statuses of a `sub`/`unsub` response.
     pub fn statuses(&self) -> Result<Vec<Status>, serde_json::Error> {
@@ -118,16 +102,12 @@ pub(crate) struct Push {
 }
 
 /// Anything the socket sends as text.
-// Read by ws::client (package B); remove then.
-#[allow(dead_code)]
 #[derive(Debug)]
 pub(crate) enum Incoming {
     Response(Response),
     Push(Push),
 }
 
-// Read by ws::client (package B); remove then.
-#[allow(dead_code)]
 impl Incoming {
     /// Classify by shape: a push has `ch`, a response has `data` without it.
     pub fn parse(text: &str) -> Result<Self, serde_json::Error> {
@@ -288,6 +268,7 @@ mod tests {
         let resp: Response = serde_json::from_str(raw).unwrap();
         assert_eq!(resp.id, Some(2));
         let pong = resp.pong().unwrap();
+        assert!(pong.is_ok());
         assert_eq!(pong.sq, Some(59023554562));
     }
 

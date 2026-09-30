@@ -3,14 +3,14 @@
 //! One multiplexed connection to [`WS_URL`]. Requests are
 //! `{ "id", "req": "sub" | "unsub" | "post", … }`; push frames are
 //! `{ "ch", "ts", "ets", "sq", "data" }`. The server closes a connection after
-//! 60 s without an inbound message, so a bare `PerpsWs` needs its caller to
-//! `ping`; `SupervisedPerpsWs` does that itself and also reconnects.
+//! 60 s without an inbound message, so a bare [`PerpsWs`] needs its caller to
+//! [`ping`](PerpsWs::ping); `SupervisedPerpsWs` does that itself and also
+//! reconnects.
 //! Everything the published AsyncAPI gets wrong about the wire is in
 //! `docs/specs/perps/OBSERVED.md`.
 
-// TODO(package B): restore intra-doc links to PerpsWs, PerpsWs::ping, SupervisedPerpsWs
 pub mod channel;
-// pub mod client;
+pub mod client;
 pub mod error;
 pub mod event;
 pub mod frame;
@@ -20,7 +20,7 @@ pub mod frame;
 pub mod test_server;
 
 pub use channel::{Channel, StreamDepth};
-// pub use client::PerpsWs;
+pub use client::PerpsWs;
 pub use error::{PerpsWsError, Recovery, Refusal};
 pub use event::{Event, Frame, Payload, Update};
 // pub use supervised::{MembershipHandle, PerpsWsBuilder, SupervisedPerpsWs};
@@ -37,7 +37,6 @@ pub const WS_URL: &str = "wss://ws.perpetuals.polymarket.com/v1/ws";
 /// both in the graph it installs neither and panics inside `connect_async`.
 /// `install_default` returns `Err` when a provider is already set, so crates
 /// racing is a no-op.
-#[allow(dead_code)] // Used by `client` once that module lands.
 pub(crate) fn ensure_crypto_provider() {
     static INSTALL: std::sync::Once = std::sync::Once::new();
     INSTALL.call_once(|| {
