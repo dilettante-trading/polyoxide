@@ -4,7 +4,8 @@
 //!
 //! ## Features
 //!
-//! - Unified access to CLOB, Gamma, and Data APIs
+//! - Unified access to CLOB, Gamma, and Data APIs, plus RTDS price streams and
+//!   Perps public market data behind the `rtds` and `perps` features
 //! - Type-safe API with idiomatic Rust patterns
 //! - EIP-712 order signing and HMAC authentication
 //! - Comprehensive market data and trading operations

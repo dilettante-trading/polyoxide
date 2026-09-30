@@ -197,7 +197,7 @@ Relay operations need either `BUILDER_API_KEY`, `BUILDER_SECRET`, `BUILDER_PASS_
 
 Upstream Polymarket API documentation lives in `docs/specs/`. See `docs/specs/INDEX.md` for the full index. These are the source of truth for endpoint contracts, rate limits, and response schemas — sourced from https://docs.polymarket.com and the official OpenAPI specs.
 
-**Not yet implemented.** `docs/specs/` also mirrors three upstream APIs that no
+**Not fully implemented.** `docs/specs/` also mirrors three upstream APIs that no
 polyoxide crate fully covers: **Perps** (`perps/`, 61 endpoints on
 `api.perpetuals.polymarket.com`, with its own `POLYMARKET-PROXY` /
 `POLYMARKET-SECRET` header auth rather than the L1/L2 scheme — the 21 public
