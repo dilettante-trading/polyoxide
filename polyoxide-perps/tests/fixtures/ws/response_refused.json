@@ -1,0 +1,16 @@
+{
+  "id": 3,
+  "data": [
+    {
+      "status": "ok"
+    },
+    {
+      "status": "err",
+      "error": "invalid channel"
+    },
+    {
+      "status": "err",
+      "error": "invalid channel"
+    }
+  ]
+}

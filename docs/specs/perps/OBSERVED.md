@@ -170,3 +170,50 @@ validation runs above. `quota()` reserves a tenth of every row.
 The WebSocket budget was not soaked and is unpublished; the four WebSocket
 fields on `LimitTier` are a sentinel (see the wire-only fields above) and
 must not be used to size a bucket.
+
+## WebSocket: where the AsyncAPI and the wire part ways
+
+Captured 2026-09-30 (`polyoxide-perps/tests/fixtures/ws/`, instrument 6, and a
+20 s run of 18,326 frames on instrument 1 during design). Every entry is what
+`polyoxide-perps`'s `ws` module implements. The fixtures are instrument 6
+rather than 1 because `trades::1` stayed quiet for two 20 s windows;
+instrument 6 had the largest 24-hour `volume` on `GET /v1/info/statistics`
+that day and pushed a trade within 4 s.
+
+- **`data` types.** `trades` and `klines` carry an array; `tickers` and
+  `statistics` carry one object per frame. The mirror types `trades` as an
+  object and gives array examples for `tickers`/`statistics`.
+- **`::all` fans out.** Subscribing `tickers::all` or `statistics::all`
+  delivers one frame per instrument labelled `tickers::N`/`statistics::N`
+  (174 distinct labels across the two kinds in the 20 s fixture window on
+  2026-09-30); no frame ever carries an `::all` label. `Channel::covers`
+  relates a subscription to the labels it produces.
+- **`ets` is on every push frame**, not only `book`. `0` means unattested and
+  is read as `None`.
+- **`sq` is a server-wide stamp**, identical across every frame of one
+  server batch and non-decreasing per channel. In the fixtures `book::6`,
+  `book::6::50` and `tickers::6` share `sq` `59134237518` and `ts`
+  `1790781005102`; the design run saw the same on instrument 1
+  (`59023555830`). It is not contiguous per channel, so gaps cannot be
+  counted; the supervised tier reports only a regression
+  (`Event::SequenceRegressed`).
+- **Subscribe responses** list one `{status}` per requested channel in
+  request order. An unknown instrument (`bbo::999999`) is `ok`; only a
+  malformed name (`nonsense::1`, `book::1::30`) is `err` with
+  `invalid channel`. The mirror's response example is an empty array.
+- **`book::1` and `book::1::20` are one channel**; frames are labelled
+  `book::1`. `book::1::50` is a separate channel with its own frames.
+- **Ping** is `{"req":"post","op":{"type":"ping"}}` and the reply is
+  `{"id","ts","data":{"status":"ok","ts","sq"}}`. Without any inbound message
+  the server closes the socket after 60 s, as documented.
+- **Rates observed:** bbo, book and tickers about 10 frames/s per channel;
+  statistics and klines one frame per 4 s; a `klines` frame may carry an
+  empty `data` array while a candle is open (the first two captures on
+  instrument 1 saw only empty ones, so the capture script keeps the first
+  non-empty `klines` frame when one arrives).
+- **`trades` entries carry `settlement`**, as the REST route does.
+- **Budget.** Each inbound request costs from a weighted per-IP budget the
+  AsyncAPI does not quantify; a breach answers `message_rate_limited` and
+  leaves the socket open. Not soaked. `LimitTier`'s WebSocket fields are a
+  sentinel (see above). The supervised tier retries a rate-limited subscribe
+  three times with backoff.

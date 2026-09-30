@@ -48,12 +48,12 @@ test = true
 
 # The `ws` integration tests import items that only exist behind the feature;
 # `required-features` keeps a plain `cargo test --all-targets` from trying to
-# build them. Uncomment each block when its file lands, since Cargo refuses a
+# build them. Uncomment a block when its file lands, since Cargo refuses a
 # manifest that names a test file that does not exist.
-# [[test]]
-# name = "ws_wire_agreement"
-# required-features = ["ws"]
-#
+[[test]]
+name = "ws_wire_agreement"
+required-features = ["ws"]
+
 # [[test]]
 # name = "live_ws"
 # required-features = ["ws"]

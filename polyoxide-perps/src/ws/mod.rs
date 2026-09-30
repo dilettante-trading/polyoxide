@@ -43,3 +43,15 @@ pub(crate) fn ensure_crypto_provider() {
         let _ = rustls::crypto::ring::default_provider().install_default();
     });
 }
+
+/// Parse one text frame as the stream would. For the crate's own
+/// integration tests; not API.
+#[doc(hidden)]
+pub fn frame_from_text_for_tests(text: &str) -> Result<Frame, PerpsWsError> {
+    match frame::Incoming::parse(text) {
+        Ok(frame::Incoming::Push(push)) => Frame::from_push(push, text),
+        Ok(frame::Incoming::Response(_)) | Err(_) => Err(PerpsWsError::Unrecognised {
+            raw: text.to_owned(),
+        }),
+    }
+}
