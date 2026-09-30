@@ -1,3 +1,32 @@
+## [0.34.0] - 2026-09-30
+
+Adds `polyoxide-perps`, a new crate for the public half of Polymarket's
+perpetual futures API on `api.perpetuals.polymarket.com`. It needs no
+credentials: `Perps::new()` covers all 21 `/v1/info/*` routes through the
+`health()`, `exchange()`, `market()` and `public()` namespaces. The unified
+`polyoxide` crate exposes it behind a new `perps` feature, which `full` now
+includes. Authentication, account reads, trading, funds and the WebSocket are
+not implemented yet.
+
+### 🚀 Features
+
+- *(perps)* New `polyoxide-perps` crate: `Perps` client and builder, `PerpsError` with a `#[non_exhaustive]` `VenueError`, and `is_retriable()` classifying errors the same way as core
+- *(perps)* `health()` (ping, server time), `exchange()` (exchange and instrument reference data), `market()` and `public()` namespaces covering all 21 public `/v1/info/*` routes: assets, instruments, indices, tickers, statistics, exchange stats, order books, BBO, klines, mark history, trades, funding, fees, limit tiers, public portfolios, position fills, leaderboards and invite checks. Request builders take typed setters, closed sets are enums, and fields the schema marks nullable are `Option`
+- *(perps)* Klines and mark points are positional arrays on the wire and deserialize into named structs. `LimitTier`'s four WebSocket fields carry a `u32::MAX` sentinel, not a real budget
+- *(perps)* The default client paces itself to rate limits measured against the live host (klines 30, trades 10, portfolio 30 and BBO 50 per 10 s, a `/v1/info` catch-all of 10, and a client-wide cap of 30), and retries `429` the way core does
+- *(perps)* `examples/info_soak.rs` ramps and validates a route's rate over distinct URLs, since the host sits behind CloudFront and repeated URLs never reach the origin
+- *(polyoxide)* `perps` feature re-exporting `polyoxide-perps`, included in `full`. `release.yml` and `finish_release.sh` publish the crate between `polyoxide-rtds` and `polyoxide-relay`, and the nightly workflows cover it
+
+### 📚 Documentation
+
+- *(perps)* `docs/specs/perps/OBSERVED.md` records where the host departs from its published schema. Notably, `/v1/info/tickers` and `/v1/info/statistics` ignore `instrument_id` and return every instrument, so callers filter client-side, and every index currently has empty constituents. Its `## Rate limits` section holds the soak runs behind the pacing table
+- *(polyoxide)* README, crate docs and `CLAUDE.md` name the `rtds` and `perps` features
+
+### 🧪 Testing
+
+- *(perps)* `spec_agreement.rs` checks types, enums and query keys against `docs/specs/perps/openapi.json`, following `$ref` targets for nullability. `wire_agreement.rs` checks the types against one live capture per route (`scripts/capture_perps_fixtures.py` refreshes them), and fails when an allow-list entry is no longer needed by any fixture
+- *(perps)* `live_api.rs` hits every public route (`#[ignore]`d in CI, run nightly)
+
 ## [0.33.1] - 2026-09-30
 
 Adds upstream's settlement estimates to `/v2/resolutions` rows.
