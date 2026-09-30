@@ -67,12 +67,14 @@ impl VenueError {
         })
     }
 
-    /// Whether re-sending the same request could plausibly succeed: a 429,
-    /// a 425 or any 5xx.
+    /// Whether re-sending the same request could plausibly succeed: a 408,
+    /// a 425, a 429 or any 5xx.
+    ///
+    /// Mirrors [`ApiError::is_retriable`] status for status, so a response
+    /// classifies the same whether or not its body had the venue shape;
+    /// `venue_and_api_errors_agree_on_retriability` pins the two together.
     pub fn is_retriable(&self) -> bool {
-        // Mirrors `ApiError::is_retriable` so a status classifies the same
-        // regardless of body shape.
-        self.status == 429 || self.status == 425 || self.status >= 500
+        matches!(self.status, 408 | 425 | 429) || self.status >= 500
     }
 }
 
@@ -178,6 +180,27 @@ mod tests {
         assert!(err.is_retriable());
         assert_eq!(err.code(), None);
         assert_eq!(err.retry_after(), None);
+    }
+
+    #[test]
+    fn venue_and_api_errors_agree_on_retriability() {
+        // The same status must classify the same whether the body had the
+        // venue shape or not; otherwise a retry policy would depend on which
+        // proxy layer answered.
+        let body = r#"{"status":"err","error":"x"}"#;
+        for status in [
+            400u16, 401, 403, 404, 408, 409, 413, 422, 425, 429, 500, 502, 503, 504,
+        ] {
+            let venue = VenueError::from_parts(status, None, body).unwrap();
+            let api = ApiError::from_status_and_body(status, body);
+            assert_eq!(
+                venue.is_retriable(),
+                api.is_retriable(),
+                "status {status}: VenueError says {} but ApiError says {}",
+                venue.is_retriable(),
+                api.is_retriable()
+            );
+        }
     }
 
     #[test]

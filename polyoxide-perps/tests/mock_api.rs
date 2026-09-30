@@ -502,6 +502,45 @@ async fn portfolio_position_fills_and_invite_decode() {
 // ── rate limiting ───────────────────────────────────────────────
 
 #[tokio::test]
+async fn the_default_client_paces_by_the_perps_table() {
+    // `PerpsBuilder` installs `RateLimiter::perps_default()` unless told
+    // otherwise. Nothing else observes that: the limiter is a private field,
+    // so without this test the line could be deleted and every offline test
+    // would still pass. The trades row is 10 per 10 s, which `quota()` paces
+    // at one request every 1.25 s (a tenth reserved, one token of depth).
+    use std::time::{Duration, Instant};
+    let mut server = Server::new_async().await;
+    let mock = server
+        .mock("GET", "/v1/info/trades")
+        .match_query(Matcher::Any)
+        .with_body(r#"{"data":[],"more":false}"#)
+        .expect(2)
+        .create_async()
+        .await;
+
+    let perps = test_perps(&server);
+    let start = Instant::now();
+    perps
+        .market()
+        .trades(InstrumentId(1))
+        .send()
+        .await
+        .expect("first");
+    perps
+        .market()
+        .trades(InstrumentId(1))
+        .send()
+        .await
+        .expect("second");
+    mock.assert_async().await;
+    assert!(
+        start.elapsed() >= Duration::from_secs(1),
+        "two trades requests completed in {:?}: the default client is not paced by the perps table",
+        start.elapsed()
+    );
+}
+
+#[tokio::test]
 async fn a_429_is_retried_and_retry_after_zero_does_not_shorten_the_backoff() {
     use std::time::{Duration, Instant};
     let mut server = Server::new_async().await;
