@@ -99,7 +99,7 @@ async fn instruments_sends_every_filter_and_decodes_undocumented_fields() {
         ]))
         .with_status(200)
         .with_body(
-            r#"[{"instrument_id":1,"instrument_type":"perpetual","category":"index","isolated_only":false,"symbol":"SP500-USD","display_symbol":"USA500-USD","close_only":false,"base_asset":"SP500","quote_asset":"pUSD","funding_interval":"1h","quantity_decimals":5,"price_decimals":1,"price_bounds":"0.02","liquidation_fee":"0.005","max_order_count":200,"min_notional":"10","max_market_notional":"1000000","max_limit_notional":"5000000","max_leverage":50,"risk_tiers":[{"lower_bound":"0","max_leverage":50}],"ui_live_time":1790000000000,"logo":"https://example/x.png"}]"#,
+            r#"[{"instrument_id":1,"instrument_type":"perpetual","category":"index","isolated_only":false,"symbol":"SP500-USD","display_symbol":"USA500-USD","close_only":false,"base_asset":"SP500","quote_asset":"pUSD","funding_interval":"1h","quantity_decimals":5,"price_decimals":1,"price_bounds":"0.02","liquidation_fee":"0.005","max_order_count":200,"min_notional":"10","max_market_notional":"1000000","max_limit_notional":"5000000","max_leverage":50,"risk_tiers":[{"lower_bound":"0","max_leverage":50}],"ui_live_time":1790000000000,"logo":{"light":"https://example/x-light.svg","dark":"https://example/x-dark.svg"}}]"#,
         )
         .create_async()
         .await;
@@ -120,6 +120,10 @@ async fn instruments_sends_every_filter_and_decodes_undocumented_fields() {
     assert_eq!(rows[0].close_only, Some(false));
     assert_eq!(rows[0].risk_tiers[0].max_leverage, 50);
     assert_eq!(rows[0].ui_live_time, Some(1790000000000));
+    assert_eq!(
+        rows[0].logo.as_ref().map(|l| l.dark.as_str()),
+        Some("https://example/x-dark.svg")
+    );
 }
 
 #[tokio::test]

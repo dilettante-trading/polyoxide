@@ -327,7 +327,7 @@ pub struct ExchangeStatistics {
     pub volume: Decimal,
     /// Open interest at `open_interest_timestamp`. Null when no sample exists
     /// in the range.
-    #[serde(with = "rust_decimal::serde::str_option")]
+    #[serde(default, with = "rust_decimal::serde::str_option")]
     pub open_interest: Option<Decimal>,
     /// When `open_interest` was sampled, Unix ms. Null when no sample exists
     /// in the range.

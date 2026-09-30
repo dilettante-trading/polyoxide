@@ -161,8 +161,20 @@ pub struct Instrument {
     /// When first-party interfaces may show the instrument, Unix ms; null
     /// when not yet scheduled.
     pub ui_live_time: Option<u64>,
-    /// Logo URL. Undocumented.
-    pub logo: Option<String>,
+    /// Logo URLs, one per colour scheme. Undocumented, and absent on a few
+    /// rows.
+    pub logo: Option<InstrumentLogo>,
+}
+
+/// An instrument's logo, one URL per colour scheme. On the wire and not in
+/// the published schema (`docs/specs/perps/OBSERVED.md`).
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[non_exhaustive]
+pub struct InstrumentLogo {
+    /// Logo for light backgrounds.
+    pub light: String,
+    /// Logo for dark backgrounds.
+    pub dark: String,
 }
 
 /// One leverage tier by position size.
