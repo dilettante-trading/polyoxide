@@ -1,3 +1,31 @@
+## [0.35.0] - 2026-09-30
+
+Adds the public Perps WebSocket to `polyoxide-perps`, behind a new `ws`
+feature. It covers the six public channels (`bbo`, `book`, `trades`,
+`klines`, `tickers`, `statistics`) in two tiers: `PerpsWs`, a bare `Stream`,
+and `SupervisedPerpsWs`, which adds keep-alive, a staleness watchdog,
+reconnect with resubscribe, and membership changes on a live connection. The
+unified crate exposes it as `perps-ws`, which `full` now includes. Nothing in
+0.34.0 changes, and the default features compile the same code.
+
+### 🚀 Features
+
+- *(perps)* `ws` feature with the `ws` module. `Channel` is the only way to name a subscription (`Bbo`, `Book` at a `StreamDepth` of 20 or 50 levels, `Trades`, `Klines` at an `Interval`, and `Tickers`/`Statistics` for one instrument or all of them). Payload structs carry the REST field names in place of the socket's terse keys
+- *(perps)* `PerpsWs`: connect, `subscribe`/`unsubscribe`, an application `ping` that returns the pong's `sq`, `close`, and a `Stream` of `Frame`s
+- *(perps)* `SupervisedPerpsWs`, built with `PerpsWsBuilder` (defaults: ping every 20 s, stale after 30 s, backoff from 500 ms to 60 s). It pings on the wall clock whether or not traffic is flowing, since the host closes a socket after 60 s without an inbound message. It yields `Event`s: `Update`, `Unknown`, `Reconnected` (book consumers must discard state) and `SequenceRegressed`. A `MembershipHandle` changes subscriptions while the stream is being driven
+- *(perps)* `PerpsWsError::recovery()` classifies each failure as `Reconnect`, `Retry`, `SkipFrame` or `Fatal`. A refused subscription lists every `Refusal`. A handshake refused with 5xx or 429 reconnects, any other refusal is fatal, and a rate-limited subscription retries
+- *(perps)* `test-server` feature exposes the scripted local WebSocket server the crate's own offline tests use, for downstream integration tests
+- *(polyoxide)* `perps-ws` feature enabling `polyoxide-perps/ws`, included in `full`
+
+### 📚 Documentation
+
+- *(perps)* `docs/specs/perps/OBSERVED.md` records where the socket departs from the AsyncAPI mirror. `tickers`/`statistics` data are objects, and `::all` fans out into one frame per instrument labelled `::N`. `ets` is on every frame. `sq` is a server-wide stamp that is not contiguous per channel, so only a regression is detectable, never a gap. An unknown instrument subscribes without error
+
+### 🧪 Testing
+
+- *(perps)* Offline tests drive the scripted server through reconnects, refusals and faulted pongs, and check that the supervised tier keeps pinging under steady traffic
+- *(perps)* `ws_wire_agreement.rs` compares the payload types value-for-value against captured frames in `tests/fixtures/ws/` (`scripts/capture_perps_ws_fixtures.py` refreshes them); `live_ws.rs` is the live suite, now in the nightly run
+
 ## [0.34.0] - 2026-09-30
 
 Adds `polyoxide-perps`, a new crate for the public half of Polymarket's
