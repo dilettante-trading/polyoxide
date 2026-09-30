@@ -1,3 +1,19 @@
+## [0.33.1] - 2026-09-30
+
+Adds upstream's settlement estimates to `/v2/resolutions` rows.
+
+### 🚀 Features
+
+- *(data, py)* `Resolution` gains `expected_settlement_time` and `settlement_time_basis`, both `Option<String>`, in Rust and on the Python `polyoxide.v2.Resolution` class. Upstream's route now answers with `ResolutionWithSettlementTime`, an `allOf` that keeps the row flat. `Resolution` is `#[non_exhaustive]`, so no caller breaks
+
+### 📚 Documentation
+
+- *(specs)* Adopt upstream's `data-v2` spec change. `docs/specs/data-v2/OBSERVED.md` records a 2026-09-29 probe of 70 proposed or disputed conditions. Both keys appeared on 37 rows, always together and never null: `managed_proposal_expiration` on fresh proposals and `dvm_round_estimate` on disputes. The documented `liveness` basis never appeared
+
+### 🧪 Testing
+
+- *(data)* `v2_spec_agreement.rs` checks an `allOf` schema as the flat object the server sends, and panics on a property that two arms both declare. A new `resolutions_pending.json` fixture pins one row of each basis seen
+
 ## [0.33.0] - 2026-09-26
 
 Adds Deposit Wallets and session keys. `polyoxide-clob` signs signature-type-3
