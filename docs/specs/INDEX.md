@@ -24,12 +24,12 @@ Covered by a polyoxide crate:
 | [Data](data/INDEX.md) | `https://data-api.polymarket.com` | User positions, trades, combos, leaderboard | `polyoxide-data` |
 | [Data v2](data-v2/INDEX.md) | `https://data-api.polymarket.com/v2` | The Data API's second contract: `data` envelope, cursor pagination, snake_case | `polyoxide-data` (`data.v2()`) |
 | [Relay](relay/INDEX.md) | `https://relayer-v2.polymarket.com` | Gasless relay transactions | `polyoxide-relay` |
+| [Perps](perps/INDEX.md) | `https://api.perpetuals.polymarket.com` | Perpetual futures: market info implemented; accounts and orders pending | `polyoxide-perps` (public `/v1/info/*`) |
 
 Mirrored for reference, **not implemented** by any crate:
 
 | API | Base URL | Description |
 |-----|----------|-------------|
-| [Perps](perps/INDEX.md) | `https://api.perpetuals.polymarket.com` | Perpetual futures: accounts, orders, market info |
 | [Bridge](bridge/INDEX.md) | `https://bridge.polymarket.com` | Cross-chain deposits and withdrawals |
 | [Combos RFQ](combos-rfq/INDEX.md) | `https://combos-rfq-api.polymarket.com` | Maker quoting for combinatorial markets |
 
@@ -84,5 +84,5 @@ entirely.
 | [clob/asyncapi-user.json](clob/asyncapi-user.json) | User channel (6 messages) |
 | [clob/asyncapi-sports.json](clob/asyncapi-sports.json) | Sports channel (3 messages) |
 | [rtds/asyncapi-live-data.json](rtds/asyncapi-live-data.json) | RTDS crypto prices (4 topics) — **observed, not published upstream**; see [rtds/OBSERVED.md](rtds/OBSERVED.md) |
-| [perps/asyncapi.json](perps/asyncapi.json) | Perps WebSocket (27 channels) — not implemented |
+| [perps/asyncapi.json](perps/asyncapi.json) | Perps WebSocket (27 channels) — public channels planned for `polyoxide-perps` (`ws` feature); see [perps/OBSERVED.md](perps/OBSERVED.md) |
 | [combos-rfq/asyncapi.json](combos-rfq/asyncapi.json) | RFQ quoter gateway — not implemented |

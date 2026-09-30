@@ -6,7 +6,7 @@ license.workspace = true
 authors.workspace = true
 repository.workspace = true
 rust-version.workspace = true
-description = "Unified Rust client for Polymarket APIs (CLOB, Gamma and Data)"
+description = "Unified Rust client for Polymarket APIs (CLOB, Gamma, Data, RTDS and Perps)"
 keywords = ["polymarket", "prediction-markets", "api", "trading"]
 categories = ["api-bindings", "web-programming::http-client"]
 
@@ -17,7 +17,8 @@ gamma = ["dep:polyoxide-gamma", "polyoxide-clob?/gamma"]
 data = ["dep:polyoxide-data"]
 ws = ["clob", "polyoxide-clob/ws"]
 rtds = ["dep:polyoxide-rtds"]
-full = ["clob", "gamma", "data", "ws", "rtds"]
+perps = ["dep:polyoxide-perps"]
+full = ["clob", "gamma", "data", "ws", "rtds", "perps"]
 keychain = ["polyoxide-clob?/keychain"]
 
 [dependencies]
@@ -25,6 +26,7 @@ polyoxide-gamma = { workspace = true, optional = true }
 polyoxide-clob = { workspace = true, optional = true }
 polyoxide-data = { workspace = true, optional = true }
 polyoxide-rtds = { workspace = true, optional = true }
+polyoxide-perps = { workspace = true, optional = true }
 thiserror = { workspace = true }
 
 [dev-dependencies]

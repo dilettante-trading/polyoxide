@@ -84,6 +84,8 @@ pub use polyoxide_clob;
 pub use polyoxide_data;
 #[cfg(feature = "gamma")]
 pub use polyoxide_gamma;
+#[cfg(feature = "perps")]
+pub use polyoxide_perps;
 #[cfg(feature = "rtds")]
 pub use polyoxide_rtds;
 
@@ -107,6 +109,8 @@ pub mod prelude {
     pub use polyoxide_data::{DataApi, DataApiError};
     #[cfg(feature = "gamma")]
     pub use polyoxide_gamma::{Gamma, GammaError};
+    #[cfg(feature = "perps")]
+    pub use polyoxide_perps::{Perps, PerpsError};
     #[cfg(feature = "rtds")]
     pub use polyoxide_rtds::{
         PriceEvent, PriceUpdate, Rtds, RtdsBuilder, Subscription, Topic, TwapWindow,
@@ -133,6 +137,11 @@ pub enum PolymarketError {
     #[cfg(feature = "gamma")]
     #[error("Gamma error: {0}")]
     Gamma(#[from] polyoxide_gamma::GammaError),
+
+    /// Perps API error
+    #[cfg(feature = "perps")]
+    #[error("Perps error: {0}")]
+    Perps(#[from] polyoxide_perps::PerpsError),
 
     /// Configuration error
     #[error("Configuration error: {0}")]

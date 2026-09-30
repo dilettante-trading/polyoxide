@@ -4,10 +4,11 @@ Base URL: `https://api.perpetuals.polymarket.com`
 
 Perpetual futures trading: account state, order placement, and market info.
 
-> **Not implemented by polyoxide.** This spec is mirrored so parity audits can
-> see the surface. Adding client support means a new crate: the API uses its own
-> authentication scheme (see below) rather than the CLOB's L1 EIP-712 / L2 HMAC
-> layers, and defines 347 response schemas.
+> **Partially implemented.** `polyoxide-perps` covers the 21 public
+> `/v1/info/*` routes. Credentials (`POST /v1/account/proxy`), the
+> header-authenticated `/v1/account/*` reads, the signed `/v1/trade/*` routes,
+> funds and BLP are not yet implemented; the API's own `POLYMARKET-PROXY` /
+> `POLYMARKET-SECRET` auth (below) is separate from the CLOB's L1/L2 layers.
 
 Machine-readable schema: [openapi.json](openapi.json) (mirror of
 `https://docs.polymarket.com/api-spec/perps-openapi.json`).

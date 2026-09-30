@@ -52,15 +52,16 @@ cargo test -p polyoxide-clob --test live_api -- --ignored
 
 ## Workspace Architecture
 
-Nine crates with this dependency graph:
+Ten crates with this dependency graph:
 
 ```
 polyoxide-core          (shared: auth, HTTP client, errors, macros)
 ├── polyoxide-relay     (gasless transactions via Polygon relayer)
 ├── polyoxide-gamma     (read-only market data API)
 ├── polyoxide-data      (read-only user positions/trades API)
+├── polyoxide-perps     (perpetual futures: public market data; auth and trading pending)
 ├── polyoxide-clob      (order book trading, depends on core; gamma optional, default-on)
-│   └── polyoxide        (unified client re-exporting clob/gamma/data/rtds, feature-gated)
+│   └── polyoxide        (unified client re-exporting clob/gamma/data/rtds/perps, feature-gated)
 ├── polyoxide-cli       (CLI tool using clap)
 └── polyoxide-py        (Python bindings via PyO3 + maturin, publish = false)
 
@@ -89,7 +90,7 @@ arguments against mock servers serving `polyoxide-data`'s v2 fixtures.
 `data` list flag shipped that way, and no test caught it because the parse tests never
 passed those flags.
 
-**polyoxide** (the unified crate) uses feature flags: `clob`, `gamma`, `data`, `ws` (WebSocket), `full` (all). Default = clob + gamma + data.
+**polyoxide** (the unified crate) uses feature flags: `clob`, `gamma`, `data`, `ws` (WebSocket), `rtds`, `perps`, `full` (all). Default = clob + gamma + data.
 
 ## Key Patterns
 
@@ -197,12 +198,34 @@ Relay operations need either `BUILDER_API_KEY`, `BUILDER_SECRET`, `BUILDER_PASS_
 Upstream Polymarket API documentation lives in `docs/specs/`. See `docs/specs/INDEX.md` for the full index. These are the source of truth for endpoint contracts, rate limits, and response schemas — sourced from https://docs.polymarket.com and the official OpenAPI specs.
 
 **Not yet implemented.** `docs/specs/` also mirrors three upstream APIs that no
-polyoxide crate covers: **Perps** (`perps/`, 61 endpoints on
+polyoxide crate fully covers: **Perps** (`perps/`, 61 endpoints on
 `api.perpetuals.polymarket.com`, with its own `POLYMARKET-PROXY` /
-`POLYMARKET-SECRET` header auth rather than the L1/L2 scheme), **Bridge**
-(`bridge/`, 5 endpoints), and **Combos RFQ** (`combos-rfq/`, 4 endpoints). They
-are mirrored so parity audits can see them; adding client support for any of
-them is a separate piece of work.
+`POLYMARKET-SECRET` header auth rather than the L1/L2 scheme — the 21 public
+`/v1/info/*` routes are implemented by `polyoxide-perps`; credentials, the
+`/v1/account/*` reads, the signed `/v1/trade/*` routes, funds and BLP are
+pending, and `docs/specs/perps/OBSERVED.md` records where the host and the
+schema part ways), **Bridge** (`bridge/`, 5 endpoints), and **Combos RFQ**
+(`combos-rfq/`, 4 endpoints). They are mirrored so parity audits can see them;
+adding client support for the rest is a separate piece of work.
+
+**Perps public routes** are implemented by `polyoxide-perps` (`Perps::new()`,
+namespaces `health()`, `exchange()`, `market()`, `public()`). Three test files
+hold it in place on the pattern of Data v2: `tests/spec_agreement.rs` (types,
+enums and query keys against `docs/specs/perps/openapi.json`, restricted to
+schemas reachable from `/v1/info/*`), `tests/wire_agreement.rs` (against
+`tests/fixtures/`, refreshed by `scripts/capture_perps_fixtures.py`) and
+`tests/live_api.rs`. Wire-only fields are allowed through `OBSERVED_EXTRA` and
+recorded in `docs/specs/perps/OBSERVED.md`. Klines and mark points are
+positional arrays on the wire and have hand-written serde. The host ignores
+`instrument_id` on `/v1/info/tickers` and `/v1/info/statistics` and returns
+every instrument, so a caller filters client-side. The four WebSocket fields on
+`LimitTier` are a `u32::MAX` sentinel, not a budget, and must not size a
+bucket. Every index has empty constituents today. The host is fronted by
+CloudFront, so the rate rows in `RateLimiter::perps_default` were measured
+with `polyoxide-perps/examples/info_soak.rs` over distinct URLs: klines 30,
+trades 10, portfolio 30 and bbo 50 per 10 s, a `/v1/info` catch-all at 10 for
+the routes not soaked, and a client-wide general bucket of 30 set by two mixed
+validation runs, all recorded in OBSERVED.md's `## Rate limits`.
 
 **Data API v2** (`data-v2/`, 20 endpoints under `/v2` on `data-api.polymarket.com`)
 is implemented by `polyoxide-data` as `data.v2()`, alongside the v1 routes, which
@@ -318,4 +341,4 @@ The WebSocket contracts are published as AsyncAPI, not OpenAPI — mirrored in `
 
 ## Publishing Order
 
-Crates must be published in dependency order: core → rtds → relay → gamma → data → clob → polyoxide. (`polyoxide-rtds` depends on nothing in-workspace, so its position only has to precede `polyoxide`.) The release workflow in `.github/workflows/release.yml` handles this automatically. `polyoxide-py` is `publish = false` (not on crates.io); its Python wheels are built and published to PyPI via a separate step in the release workflow.
+Crates must be published in dependency order: core → rtds → perps → relay → gamma → data → clob → polyoxide. (`polyoxide-rtds` depends on nothing in-workspace, so its position only has to precede `polyoxide`; `polyoxide-perps` depends only on core, so it only has to follow core and precede `polyoxide`.) The release workflow in `.github/workflows/release.yml` handles this automatically. `polyoxide-py` is `publish = false` (not on crates.io); its Python wheels are built and published to PyPI via a separate step in the release workflow.
