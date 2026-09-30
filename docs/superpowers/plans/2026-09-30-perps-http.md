@@ -2,7 +2,7 @@
 
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
-**Goal:** A `polyoxide-perps` crate that reads all 20 public `GET /v1/info/*` routes on `api.perpetuals.polymarket.com`, with spec, wire and live tests, a measured rate-limit table, and the crate wired into the workspace.
+**Goal:** A `polyoxide-perps` crate that reads all 21 public `GET /v1/info/*` routes on `api.perpetuals.polymarket.com`, with spec, wire and live tests, a measured rate-limit table, and the crate wired into the workspace.
 
 **Architecture:** One new crate on `polyoxide-core`'s `HttpClient`/`Request`, shaped like `polyoxide-data`: a `Perps` client with four namespaces (`health`, `exchange`, `market`, `public`), request builders ending in `.send().await?`, and a `PerpsError` that recognises the venue's `{status:"err", error}` body by shape. Rate rows are measured by a soak example before they are written into `RateLimiter::perps_default()`. Plan 2 (WebSocket) builds on this crate behind a `ws` feature.
 
@@ -3452,12 +3452,12 @@ A repeated URL can be answered without reaching the origin, so a rate-limit
 soak must vary the URL (`examples/info_soak.rs`), and `/v1/info/instruments`
 cannot be soaked at all: it has only 88 × 5 distinct parameterisations.
 
-## `open_interest` exceeds `Decimal` precision
+## Some decimals exceed `Decimal` precision
 
-`GET /v1/info/exchange-stats` sent `"open_interest":"75573217.100902647081712288"`
-(32 significant digits, 2026-09-30). `rust_decimal::Decimal` holds 28 and
-`Decimal::from_str` rounds, so the value is read to 28 significant digits.
-`PublicPortfolioPosition.unrealized_pnl` showed the same shape.
+`GET /v1/info/portfolio` sent `"unrealized_pnl":"10642.357770000000000000000018"`
+(29 significant digits, 2026-09-30). `rust_decimal::Decimal` holds 28 and
+`Decimal::from_str` rounds, so such a value is read to 28 significant digits.
+`ExchangeStatistics.open_interest` was captured with 26 and fits.
 
 ## Leaderboard `account` is request-dependent
 
@@ -4433,19 +4433,66 @@ mod documented_perps_limits {
 
 - [ ] **Step 4: Make the builder use it**
 
-In `polyoxide-perps/src/client.rs`, `PerpsBuilder::new()`: change `rate_limiter: None,` to `rate_limiter: Some(RateLimiter::perps_default()),`. The limiter is a private field of `HttpClient`, so there is no unit test for this; the validation run in Step 6 is what proves the default client is paced.
+In `polyoxide-perps/src/client.rs`, `PerpsBuilder::new()`: change `rate_limiter: None,` to `rate_limiter: Some(RateLimiter::perps_default()),`. The limiter is a private field of `HttpClient`, so there is no unit test for this; the validation run in Step 7 is what proves the default client is paced.
 
-- [ ] **Step 5: Run the core tests**
+- [ ] **Step 5: Mock test for the 429 path through the client**
+
+Append to `polyoxide-perps/tests/mock_api.rs`:
+
+```rust
+// ── rate limiting ───────────────────────────────────────────────
+
+#[tokio::test]
+async fn a_429_is_retried_and_retry_after_zero_does_not_shorten_the_backoff() {
+    use std::time::Instant;
+    let mut server = Server::new_async().await;
+    let throttled = server
+        .mock("GET", "/v1/info/time")
+        .with_status(429)
+        .with_header("retry-after", "0")
+        .with_body(r#"{"status":"err","error":"ip_rate_limited"}"#)
+        .expect(1)
+        .create_async()
+        .await;
+    let ok = server
+        .mock("GET", "/v1/info/time")
+        .with_status(200)
+        .with_body(r#"{"time":1}"#)
+        .expect(1)
+        .create_async()
+        .await;
+
+    let start = Instant::now();
+    let time = test_perps(&server).health().time().send().await.expect("retried to success");
+    throttled.assert_async().await;
+    ok.assert_async().await;
+    assert_eq!(time.time, 1);
+    // The client's own first backoff is the floor; a Retry-After of zero may
+    // not pull the retry forward (the Cloudflare lesson in CLAUDE.md).
+    assert!(
+        start.elapsed() >= std::time::Duration::from_millis(100),
+        "retry landed after {:?}: Retry-After: 0 shortened the backoff",
+        start.elapsed()
+    );
+}
+```
+
+mockito serves mocks in creation order for the same path, so the 429 is answered first. If `RetryConfig::default()`'s first backoff is below 100 ms, read the actual value from `polyoxide-core/src/rate_limit.rs` (`RetryConfig` / `backoff`) and assert against that figure instead.
+
+Run: `cargo test -p polyoxide-perps --test mock_api`
+Expected: 13 mock tests pass.
+
+- [ ] **Step 6: Run the core tests**
 
 Run: `cargo test -p polyoxide-core documented_perps_limits`
 Expected: 3 tests pass.
 
-- [ ] **Step 6: Validate the pinned table against the host**
+- [ ] **Step 7: Validate the pinned table against the host**
 
 Run: `cargo run --release -p polyoxide-perps --example info_soak -- --route all --pace client`
 Expected: `validation: N requests over 120s, 0 throttled` and exit code 0. If it reports throttles, lower the offending row by one ramp step and re-run.
 
-- [ ] **Step 7: Record the runs in `OBSERVED.md`**
+- [ ] **Step 8: Record the runs in `OBSERVED.md`**
 
 Replace the `## Rate limits` section with the measured results:
 
@@ -4473,11 +4520,11 @@ figures for it (see the wire-only fields above).
 
 Fill every cell from the run output; the table is the golden vector the core test module refers to.
 
-- [ ] **Step 8: Commit**
+- [ ] **Step 9: Commit**
 
 ```bash
 cargo fmt --all
-git add polyoxide-core/src/rate_limit.rs polyoxide-perps/src/client.rs docs/specs/perps/OBSERVED.md
+git add polyoxide-core/src/rate_limit.rs polyoxide-perps/src/client.rs polyoxide-perps/tests/mock_api.rs docs/specs/perps/OBSERVED.md
 git commit -m "feat(perps): measured rate-limit table for the public routes"
 ```
 
@@ -4548,7 +4595,7 @@ and change the AsyncAPI row to
 `docs/specs/perps/INDEX.md`: replace the "Not implemented by polyoxide" blockquote with
 
 ```markdown
-> **Partially implemented.** `polyoxide-perps` covers the 20 public
+> **Partially implemented.** `polyoxide-perps` covers the 21 public
 > `/v1/info/*` routes. Credentials (`POST /v1/account/proxy`), the
 > header-authenticated `/v1/account/*` reads, the signed `/v1/trade/*` routes,
 > funds and BLP are not yet implemented; the API's own `POLYMARKET-PROXY` /

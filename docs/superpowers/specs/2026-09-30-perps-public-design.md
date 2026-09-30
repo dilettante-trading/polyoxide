@@ -18,7 +18,7 @@ run against the live host today.
 
 In:
 
-- All 20 `GET /v1/info/*` routes.
+- All 21 `GET /v1/info/*` routes.
 - All six public WebSocket channels: `bbo`, `book`, `trades`, `klines`, `tickers`,
   `statistics`.
 - A bare WebSocket stream and a supervised one (keep-alive, staleness watchdog,
@@ -39,7 +39,7 @@ soak, Python bindings, CLI.
 | Account reads with caller-supplied credentials | No, public only | Credentials need the EOA-signed `CreateProxy` flow, which is slice 2 |
 | WebSocket tiers | Bare and supervised, as in `polyoxide-rtds` | The 60 s idle close means a bare stream dies on a quiet instrument |
 | Channel coverage | All six public channels | Plumbing is shared; the marginal cost is fixture capture |
-| HTTP coverage | All 20 `/v1/info/*` routes | Lets the parity audit mark the group done |
+| HTTP coverage | All 21 `/v1/info/*` routes | Lets the parity audit mark the group done |
 | Rate-limit table | Soak first, then write the table | Nothing is published for public routes; a guess is a guess |
 | Crate shape | One crate, WebSocket behind `ws`, signing later behind `trading` | REST already costs `core`; a feature that is off costs nothing |
 
@@ -57,7 +57,7 @@ disagrees with all of them, the wire wins and `OBSERVED.md` records it.
 
 ### HTTP
 
-Base URL `https://api.perpetuals.polymarket.com`. All 20 routes are unauthenticated `GET`.
+Base URL `https://api.perpetuals.polymarket.com`. All 21 routes are unauthenticated `GET`.
 Timestamps are Unix milliseconds. Prices and quantities are decimal strings. Instrument ids
 are integers.
 
