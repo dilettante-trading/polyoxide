@@ -23,6 +23,7 @@ pub use channel::{Channel, StreamDepth};
 pub use client::PerpsWs;
 pub use error::{PerpsWsError, Recovery, Refusal};
 pub use event::{Event, Frame, Payload, Update};
+pub use frame::{BboData, BookData, StatisticsData, TickerData, TradeData};
 pub use supervised::{MembershipHandle, PerpsWsBuilder, SupervisedPerpsWs};
 
 /// The production WebSocket endpoint.
@@ -53,5 +54,54 @@ pub fn frame_from_text_for_tests(text: &str) -> Result<Frame, PerpsWsError> {
         Ok(frame::Incoming::Response(_)) | Err(_) => Err(PerpsWsError::Unrecognised {
             raw: text.to_owned(),
         }),
+    }
+}
+
+/// What [`incoming_from_text_for_tests`] decodes a text frame into. For the
+/// crate's own integration tests; not API.
+#[doc(hidden)]
+#[derive(Debug)]
+pub enum IncomingForTests {
+    /// A push frame, decoded as the stream would.
+    Push(Frame),
+    /// A `sub`/`unsub` response: `(accepted, error)` per requested channel.
+    Statuses(Vec<(bool, Option<String>)>),
+    /// A ping response.
+    Pong {
+        /// Whether the server answered `ok`.
+        ok: bool,
+        /// The sequence stamp it carried.
+        sq: Option<u64>,
+    },
+}
+
+/// Parse one text frame through the private envelopes, including the
+/// response decoders the control methods use. For the crate's own
+/// integration tests; not API.
+#[doc(hidden)]
+pub fn incoming_from_text_for_tests(text: &str) -> Result<IncomingForTests, PerpsWsError> {
+    let incoming = frame::Incoming::parse(text).map_err(|_| PerpsWsError::Unrecognised {
+        raw: text.to_owned(),
+    })?;
+    match incoming {
+        frame::Incoming::Push(push) => Frame::from_push(push, text).map(IncomingForTests::Push),
+        frame::Incoming::Response(response) => {
+            let malformed = || PerpsWsError::Response {
+                id: response.id.unwrap_or_default(),
+                raw: response.data.to_string(),
+            };
+            if response.data.is_array() {
+                let statuses = response.statuses().map_err(|_| malformed())?;
+                Ok(IncomingForTests::Statuses(
+                    statuses.into_iter().map(|s| (s.is_ok(), s.error)).collect(),
+                ))
+            } else {
+                let pong = response.pong().map_err(|_| malformed())?;
+                Ok(IncomingForTests::Pong {
+                    ok: pong.is_ok(),
+                    sq: pong.sq,
+                })
+            }
+        }
     }
 }

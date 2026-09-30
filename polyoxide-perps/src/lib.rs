@@ -1,6 +1,9 @@
 //! Rust client for the Polymarket Perps HTTP API (`api.perpetuals.polymarket.com`).
 //!
-//! This crate covers the public `/v1/info/*` routes, which need no credentials.
+//! This crate covers the public `/v1/info/*` routes, which need no credentials,
+//! and, with the `ws` feature, the six public WebSocket channels (`bbo`,
+//! `book`, `trades`, `klines`, `tickers`, `statistics`) through the `ws`
+//! module.
 //!
 //! ```no_run
 //! use polyoxide_perps::Perps;

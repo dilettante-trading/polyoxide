@@ -115,10 +115,15 @@ impl PerpsWsBuilder {
         self
     }
 
-    /// Reconnect delay schedule: `initial`, doubling to `max`. The same
-    /// schedule spaces the retries of a rate-limited subscribe, during which
-    /// no pings are sent, so keep `initial` well under the host's 60 s idle
-    /// limit.
+    /// Reconnect delay schedule: `initial`, doubling to `max`. There is no
+    /// cap on reconnect attempts; only the delay is capped, at `max`.
+    ///
+    /// The same schedule spaces the three retries of a rate-limited
+    /// subscribe, and those retries share the request's `stale_after`
+    /// bound, so `initial × 7` (the three delays, `1×`, `2×` and `4×`) must
+    /// stay under `stale_after` or a rate-limited subscribe is reported as
+    /// a stall and becomes a reconnect. No pings are sent during those
+    /// retries, so keep `initial` well under the host's 60 s idle limit.
     pub fn backoff(mut self, initial: Duration, max: Duration) -> Self {
         self.initial_backoff = initial;
         self.max_backoff = max;
@@ -157,6 +162,12 @@ enum Command {
 }
 
 /// Changes the subscription set of a running [`SupervisedPerpsWs`].
+///
+/// A call waits for the task to take the command and for the server's
+/// acknowledgement. The task cannot take a command while it is parked in a
+/// full event buffer (1024 unread events), so a call made from the task
+/// that consumes the stream can deadlock: issue membership changes from
+/// another task, or keep draining the stream while awaiting them.
 #[derive(Debug, Clone)]
 pub struct MembershipHandle {
     commands: mpsc::Sender<Command>,
@@ -204,7 +215,11 @@ impl MembershipHandle {
 /// and stalls by reconnecting and replaying its subscriptions.
 ///
 /// The consumer must keep up: after 1024 unread events the task blocks,
-/// and a blocked task neither pings nor notices a stall.
+/// and a blocked task neither pings, notices a stall, nor takes a
+/// [`MembershipHandle`] command. Awaiting a membership change on the same
+/// task that consumes the stream can therefore deadlock once the buffer
+/// is full; make the call from another task, or keep draining while it
+/// is pending.
 ///
 /// ```no_run
 /// use futures_util::StreamExt;
@@ -596,6 +611,35 @@ mod tests {
         assert_eq!(b.take(), Duration::from_millis(100));
         b.after_connection_ended(false);
         assert_eq!(b.take(), Duration::from_millis(200));
+    }
+
+    #[tokio::test]
+    async fn a_faulted_pong_reconnects_rather_than_ending_the_stream() {
+        // A pong that is not `ok` is `PerpsWsError::Response`. The control
+        // channel of that connection is unreliable; a fresh connection is
+        // the fix, not a permanent end of the stream.
+        let server = ScriptedServer::start(vec![
+            Script {
+                pushes: vec![bbo(1)],
+                pong_status: "err",
+                ..Default::default()
+            },
+            Script {
+                pushes: vec![bbo(2)],
+                ..Default::default()
+            },
+        ])
+        .await;
+        let mut ws = fast()
+            .url(&server.url)
+            .connect([Channel::Bbo(InstrumentId(1))])
+            .await
+            .unwrap();
+        assert!(matches!(next_event(&mut ws).await, Event::Update(u) if u.sq == 1));
+        assert!(matches!(next_event(&mut ws).await, Event::Reconnected));
+        assert!(matches!(next_event(&mut ws).await, Event::Update(u) if u.sq == 2));
+        assert_eq!(server.connection_count(), 2);
+        ws.close().await.unwrap();
     }
 
     #[tokio::test]

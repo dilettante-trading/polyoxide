@@ -72,6 +72,10 @@ async fn live_bare_stream_delivers_book_and_bbo_frames_and_answers_ping() {
     ws.close().await.expect("close");
 }
 
+fn is_ticker(event: &Event) -> bool {
+    matches!(event, Event::Update(u) if matches!(u.channel, Channel::Tickers(_)))
+}
+
 #[tokio::test]
 #[ignore]
 async fn live_all_tickers_fans_out_per_instrument_and_membership_changes_apply() {
@@ -94,40 +98,80 @@ async fn live_all_tickers_fans_out_per_instrument_and_membership_changes_apply()
         ),
         other => panic!("expected a ticker update, got {other:?}"),
     }
-    handle
-        .subscribe([Channel::Trades(iid)])
-        .await
-        .expect("subscribe trades");
-    handle
-        .unsubscribe([Channel::Tickers(None)])
-        .await
-        .expect("unsubscribe tickers");
-    // Ticker frames that were already queued when the server acknowledged
-    // the unsubscribe are still yielded: the supervised tier buffers up to
-    // 1024 events, and the bare tier parks every push it reads while waiting
-    // for the acknowledgement. Nothing consumed during the two round trips
-    // above, so the queue holds about a thousand fan-out frames (1055 on the
-    // first live run), and a count-after-a-sleep cannot tell a full queue
-    // from a server that ignored the request. Timing can: a local queue
-    // drains in milliseconds, while `tickers::all` keeps arriving at
-    // hundreds of frames a second if the subscription is still live.
-    let acknowledged = tokio::time::Instant::now();
+    // `tickers::all` fills the supervised tier's 1024-event buffer in about
+    // a second, and a task parked in a full buffer cannot take a membership
+    // command. So the handle calls run on their own task while this one
+    // keeps draining, and the acknowledgement time comes back on a oneshot.
+    let (acked_tx, mut acked_rx) = tokio::sync::oneshot::channel();
+    let changes = tokio::spawn({
+        let handle = handle.clone();
+        async move {
+            handle
+                .subscribe([Channel::Trades(iid)])
+                .await
+                .expect("subscribe trades");
+            handle
+                .unsubscribe([Channel::Tickers(None)])
+                .await
+                .expect("unsubscribe tickers");
+            let _ = acked_tx.send(tokio::time::Instant::now());
+        }
+    });
+    let mut before_ack = 0;
+    let mut acknowledged = None;
+    tokio::time::timeout(Duration::from_secs(20), async {
+        loop {
+            tokio::select! {
+                event = ws.next() => {
+                    let event = event
+                        .expect("stream ended during the membership change")
+                        .expect("event decodes");
+                    if is_ticker(&event) {
+                        before_ack += 1;
+                    }
+                }
+                at = &mut acked_rx => {
+                    // An `Err` means the task panicked; joining it below
+                    // surfaces which call failed.
+                    acknowledged = at.ok();
+                    break;
+                }
+            }
+        }
+    })
+    .await
+    .expect("membership changes acknowledged within 20 s");
+    changes.await.expect("membership task");
+    let acknowledged = acknowledged.expect("acknowledgement time");
+
+    // Frames received before the acknowledgement say nothing about whether
+    // the server honoured it: the first live run counted 1,055 of them with
+    // nothing draining, all received before the acknowledgement. Timing
+    // does: if the subscription were still live, `tickers::all` would keep
+    // arriving at hundreds of frames a second for the whole window.
     let deadline = acknowledged + Duration::from_secs(5);
-    let mut drained = 0;
+    let mut after_ack = 0;
     let mut last_ticker = None;
-    while let Ok(Some(Ok(event))) = tokio::time::timeout_at(deadline, ws.next()).await {
-        if matches!(event, Event::Update(ref u) if matches!(u.channel, Channel::Tickers(_))) {
-            drained += 1;
-            last_ticker = Some(tokio::time::Instant::now());
+    loop {
+        match tokio::time::timeout_at(deadline, ws.next()).await {
+            Err(_) => break,
+            Ok(None) => panic!("stream ended during the drain window"),
+            Ok(Some(Err(err))) => panic!("stream error during the drain window: {err}"),
+            Ok(Some(Ok(event))) => {
+                if is_ticker(&event) {
+                    after_ack += 1;
+                    last_ticker = Some(tokio::time::Instant::now());
+                }
+            }
         }
     }
     let quiet_after = last_ticker.map(|at| at.duration_since(acknowledged));
     eprintln!(
-        "drained {drained} queued tickers; last one {quiet_after:?} after the acknowledgement"
+        "{before_ack} tickers before the acknowledgement, {after_ack} after; last one {quiet_after:?} after it"
     );
     assert!(
         quiet_after.is_none_or(|d| d < Duration::from_secs(2)),
-        "tickers kept arriving after unsubscribe: {drained} in the window, last at {quiet_after:?}"
+        "tickers kept arriving after unsubscribe: {after_ack} in the window, last at {quiet_after:?}"
     );
     ws.close().await.expect("close");
 }

@@ -31,6 +31,9 @@ pub struct Script {
     pub close_after: bool,
     /// Whether to answer pings. `false` models a dead socket.
     pub answer_pings: bool,
+    /// The `status` of every pong; anything but `"ok"` also carries an
+    /// `error`, modelling a control channel that answers but faults.
+    pub pong_status: &'static str,
     /// Whether to answer `sub`/`unsub` requests after the first one. `false`
     /// models a socket that keeps a membership change hanging.
     pub answer_subscribes_after_first: bool,
@@ -47,6 +50,7 @@ impl Default for Script {
             push_every: None,
             close_after: false,
             answer_pings: true,
+            pong_status: "ok",
             answer_subscribes_after_first: true,
             reject_handshake: false,
         }
@@ -178,10 +182,12 @@ fn answer(script: &Script, request: &serde_json::Value) -> Option<String> {
             Some(serde_json::json!({"id": id, "data": statuses}).to_string())
         }
         Some("post") if script.answer_pings && request["op"]["type"].as_str() == Some("ping") => {
-            Some(
-                serde_json::json!({"id": id, "ts": 1, "data": {"status": "ok", "ts": 1, "sq": 1}})
-                    .to_string(),
-            )
+            let data = if script.pong_status == "ok" {
+                serde_json::json!({"status": "ok", "ts": 1, "sq": 1})
+            } else {
+                serde_json::json!({"status": script.pong_status, "error": "x"})
+            };
+            Some(serde_json::json!({"id": id, "ts": 1, "data": data}).to_string())
         }
         _ => None,
     }

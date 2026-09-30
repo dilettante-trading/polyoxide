@@ -58,7 +58,8 @@ pub enum PerpsWsError {
     },
 
     /// The server's response to a control request was not the documented
-    /// shape.
+    /// shape, or a pong was not `ok`. The supervised tier replaces the
+    /// connection.
     #[error("malformed response to request {id}: {raw}")]
     Response {
         /// The request id the response answered.
@@ -135,7 +136,11 @@ impl PerpsWsError {
                 }
             }
             Self::Frame { .. } | Self::Unrecognised { .. } => Recovery::SkipFrame,
-            Self::Response { .. } | Self::EmptySubscription | Self::Stopped => Recovery::Fatal,
+            // A control reply that is malformed or not `ok` means this
+            // connection's control channel is unreliable; a fresh one is the
+            // fix. Fatal would end the supervised stream on one odd pong.
+            Self::Response { .. } => Recovery::Reconnect,
+            Self::EmptySubscription | Self::Stopped => Recovery::Fatal,
         }
     }
 }
@@ -242,5 +247,14 @@ mod tests {
         };
         assert_eq!(bad.recovery(), Recovery::SkipFrame);
         assert_eq!(PerpsWsError::EmptySubscription.recovery(), Recovery::Fatal);
+    }
+
+    #[test]
+    fn a_faulted_control_reply_reconnects_rather_than_ending_the_stream() {
+        let odd = PerpsWsError::Response {
+            id: 2,
+            raw: r#"{"status":"err","error":"x"}"#.to_owned(),
+        };
+        assert_eq!(odd.recovery(), Recovery::Reconnect);
     }
 }

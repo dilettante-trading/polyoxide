@@ -43,7 +43,7 @@ async def main():
     async with websockets.connect(URL, max_size=2**22, ssl=ctx) as ws:
         await ws.send(json.dumps({"id": 1, "req": "sub", "chs": CHANNELS}))
         await ws.send(json.dumps({"id": 2, "req": "post", "op": {"type": "ping"}}))
-        await ws.send(json.dumps({"id": 3, "req": "sub", "chs": ["bbo::999999", "nonsense::1", "book::1::30"]}))
+        await ws.send(json.dumps({"id": 3, "req": "sub", "chs": ["bbo::999999", "nonsense::1", f"book::{iid}::30"]}))
         deadline = time.time() + SECONDS
         fanout = set()
         while time.time() < deadline:
@@ -72,7 +72,7 @@ async def main():
                 break
             if json.loads(text).get("id") == 4:
                 captured["response_unsubscribe"] = text
-    missing = [n for n in list(WANTED.values()) + ["response_subscribe", "response_ping", "response_refused"] if n not in captured]
+    missing = [n for n in list(WANTED.values()) + ["response_subscribe", "response_ping", "response_refused", "response_unsubscribe"] if n not in captured]
     for name, text in captured.items():
         (out / f"{name}.json").write_text(json.dumps(json.loads(text), indent=2) + "\n")
     lines = ["# Perps WebSocket fixtures", "",

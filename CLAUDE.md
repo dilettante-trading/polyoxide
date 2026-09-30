@@ -236,7 +236,8 @@ subscription; payload structs carry the REST field names over the socket's terse
 `::all` fans out per instrument, `ets` is on every frame, `sq` is a
 server-wide stamp so only regressions are detectable, and an unknown
 instrument subscribes without error. Offline tests drive a scripted server
-in `src/ws/test_server.rs` (feature `test-server`); `tests/live_ws.rs` is
+in `src/ws/test_server.rs`, compiled under `cfg(test)` and additionally exposed
+by the `test-server` feature for downstream use; `tests/live_ws.rs` is
 the live suite, and `tests/ws_wire_agreement.rs` compares the payload types
 value-for-value against `tests/fixtures/ws/` (captured by
 `scripts/capture_perps_ws_fixtures.py`, instrument 6 because `trades::1` was
