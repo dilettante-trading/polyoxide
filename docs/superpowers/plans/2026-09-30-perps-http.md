@@ -2798,7 +2798,13 @@ fn ref_name(r: &str) -> &str {
     r.rsplit('/').next().unwrap()
 }
 
-fn is_nullable(prop: &Value) -> bool {
+/// Whether a property admits `null`. The perps schema puts `nullable: true`
+/// on the `$ref` target (`exchange_open_interest`, `ui_live_time`), not on
+/// the property, so the reference is followed.
+fn is_nullable(schemas: &Map<String, Value>, prop: &Value) -> bool {
+    if let Some(r) = prop["$ref"].as_str() {
+        return is_nullable(schemas, &schemas[ref_name(r)]);
+    }
     if let Some(types) = prop["type"].as_array() {
         return types.iter().any(|t| t == "null");
     }
@@ -2872,7 +2878,7 @@ fn synth_object_inline(schemas: &Map<String, Value>, schema: &Value, full: bool)
     let (props, required) = fields(schemas, schema);
     let mut out = Map::new();
     for (key, prop) in &props {
-        if full || (required.contains(key) && !is_nullable(prop)) {
+        if full || (required.contains(key) && !is_nullable(schemas, prop)) {
             out.insert(key.clone(), synth(schemas, prop, full));
         }
     }
@@ -2905,7 +2911,7 @@ fn check<T: DeserializeOwned + Serialize>(schemas: &Map<String, Value>, name: &s
     }
 
     for (key, prop) in &props {
-        if required.contains(key) && !is_nullable(prop) {
+        if required.contains(key) && !is_nullable(schemas, prop) {
             let mut without = minimal.clone();
             without.as_object_mut().unwrap().remove(key);
             assert!(
@@ -3226,7 +3232,7 @@ Expected: 5 tests pass. If `every_modelled_schema_agrees_with_the_spec` fails on
 
 - [ ] **Step 3: Prove the test bites**
 
-Temporarily change `pub close_only: Option<bool>` on `Instrument` to `pub close_only: bool` and run the test: expected failure `Instrument.close_only … the type rejects null` (it is not in the spec, so it must accept absence). Revert.
+Temporarily change `pub ui_live_time: Option<u64>` on `Instrument` to `pub ui_live_time: u64` and run the test: expected failure `Instrument.ui_live_time is optional or nullable in the spec but the type rejects null`. Revert. (`ui_live_time`, `ExchangeStatistics.open_interest` and `ExchangeStatistics.open_interest_timestamp` are `nullable` on their `$ref` targets, which is why the types carry `Option` and why `is_nullable` follows references.)
 
 - [ ] **Step 4: Commit**
 
