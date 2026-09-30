@@ -24,3 +24,10 @@ url = { workspace = true }
 mockito = { workspace = true }
 tokio = { workspace = true, features = ["macros", "rt-multi-thread", "time"] }
 tracing-subscriber = { workspace = true }
+
+# `cargo test` builds examples but does not run their unit tests unless
+# asked; the verdict rules that pin `RateLimiter::perps_default` live here.
+[[example]]
+name = "info_soak"
+path = "examples/info_soak.rs"
+test = true
