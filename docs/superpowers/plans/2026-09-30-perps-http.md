@@ -3452,12 +3452,15 @@ A repeated URL can be answered without reaching the origin, so a rate-limit
 soak must vary the URL (`examples/info_soak.rs`), and `/v1/info/instruments`
 cannot be soaked at all: it has only 88 × 5 distinct parameterisations.
 
-## Some decimals exceed `Decimal` precision
+## Long decimals and `Decimal` precision
 
 `GET /v1/info/portfolio` sent `"unrealized_pnl":"10642.357770000000000000000018"`
-(29 significant digits, 2026-09-30). `rust_decimal::Decimal` holds 28 and
-`Decimal::from_str` rounds, so such a value is read to 28 significant digits.
-`ExchangeStatistics.open_interest` was captured with 26 and fits.
+(24 fractional places) and `GET /v1/info/exchange-stats` sent
+`"open_interest":"75573217.100902647081712288"` (18), both 2026-09-30.
+`rust_decimal::Decimal` holds up to 28 fractional places on a 96-bit mantissa,
+so both fit exactly; a longer value would be rounded on decode, since the
+crate's string serde uses `Decimal::from_str`, not `from_str_exact`. No capture
+has exceeded the limit yet.
 
 ## Leaderboard `account` is request-dependent
 

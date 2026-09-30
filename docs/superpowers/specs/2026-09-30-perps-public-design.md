@@ -296,7 +296,7 @@ carries four WebSocket-budget fields; none is in the schema, and each is modelle
 `Option` and allowed through an `OBSERVED_EXTRA` list in the spec-agreement test. A 400
 body carries `arts`, `ts` and `ref` (a gateway trace id, exposed as `VenueError::reference`).
 An unknown instrument on `/v1/info/book` is a 200 with empty sides. `open_interest` on
-`exchange-stats` has 32 significant digits; `Decimal` holds 28 and rounds.
+`exchange-stats` was captured with 18 fractional places, within `Decimal`'s 28.
 
 ## Open questions settled by fixtures, not by this spec
 
