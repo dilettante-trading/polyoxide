@@ -10,6 +10,14 @@ echo "📦 Publishing polyoxide-core..."
 cargo publish -p polyoxide-core
 echo "✅ polyoxide-core published"
 
+echo "📦 Publishing polyoxide-rtds..."
+cargo publish -p polyoxide-rtds
+echo "✅ polyoxide-rtds published"
+
+echo "📦 Publishing polyoxide-perps..."
+cargo publish -p polyoxide-perps
+echo "✅ polyoxide-perps published"
+
 echo "📦 Publishing polyoxide-relay..."
 cargo publish -p polyoxide-relay
 echo "✅ polyoxide-relay published"

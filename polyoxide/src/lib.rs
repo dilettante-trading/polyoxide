@@ -1,6 +1,7 @@
 //! # polyoxide
 //!
-//! Unified Rust client for Polymarket APIs, combining CLOB (trading), Gamma (market data), and Data APIs.
+//! Unified Rust client for Polymarket APIs, combining CLOB (trading), Gamma (market data)
+//! and Data APIs, with RTDS price streams and Perps market data behind feature flags.
 //!
 //! ## Features
 //!
