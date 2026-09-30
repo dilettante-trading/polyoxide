@@ -1,0 +1,22 @@
+{
+  "window": "week",
+  "sort_by": "pnl",
+  "timestamp": 1790761992661,
+  "total": 7806,
+  "entries": [
+    {
+      "rank": 1,
+      "account": "0x65c874d474532F4f5Db9eE02F1290f3034E78d73",
+      "pnl": "82904.76691070512",
+      "notional": "747121.263223",
+      "account_value": "396503.99629664033163200000002"
+    }
+  ],
+  "account": {
+    "rank": 1,
+    "account": "0x65c874d474532F4f5Db9eE02F1290f3034E78d73",
+    "pnl": "82904.76691070512",
+    "notional": "747121.263223",
+    "account_value": "396503.99629664033163200000002"
+  }
+}

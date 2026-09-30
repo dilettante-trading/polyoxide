@@ -1,0 +1,54 @@
+[
+  {
+    "min_volume_14d": "0",
+    "rate_per_minute_limit": 750,
+    "rate_burst_limit": 500,
+    "actions_per_minute_limit": 2000,
+    "actions_burst_limit": 500,
+    "open_orders_limit": 1000,
+    "messages_per_minute": 2000,
+    "ws_messages_per_minute_limit": 4294967295,
+    "ws_messages_burst_limit": 4294967295,
+    "max_connections": 4294967295,
+    "connects_per_minute_limit": 4294967295
+  },
+  {
+    "min_volume_14d": "1000000",
+    "rate_per_minute_limit": 2000,
+    "rate_burst_limit": 1500,
+    "actions_per_minute_limit": 5000,
+    "actions_burst_limit": 2000,
+    "open_orders_limit": 1000,
+    "messages_per_minute": 5000,
+    "ws_messages_per_minute_limit": 4294967295,
+    "ws_messages_burst_limit": 4294967295,
+    "max_connections": 4294967295,
+    "connects_per_minute_limit": 4294967295
+  },
+  {
+    "min_volume_14d": "541800079",
+    "rate_per_minute_limit": 6000,
+    "rate_burst_limit": 4500,
+    "actions_per_minute_limit": 15000,
+    "actions_burst_limit": 6000,
+    "open_orders_limit": 3000,
+    "messages_per_minute": 15000,
+    "ws_messages_per_minute_limit": 4294967295,
+    "ws_messages_burst_limit": 4294967295,
+    "max_connections": 4294967295,
+    "connects_per_minute_limit": 4294967295
+  },
+  {
+    "min_volume_14d": "10000000000",
+    "rate_per_minute_limit": 12000,
+    "rate_burst_limit": 4500,
+    "actions_per_minute_limit": 30000,
+    "actions_burst_limit": 6000,
+    "open_orders_limit": 6000,
+    "messages_per_minute": 30000,
+    "ws_messages_per_minute_limit": 4294967295,
+    "ws_messages_burst_limit": 4294967295,
+    "max_connections": 4294967295,
+    "connects_per_minute_limit": 4294967295
+  }
+]

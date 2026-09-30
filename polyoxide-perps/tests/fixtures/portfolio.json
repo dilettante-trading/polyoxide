@@ -1,0 +1,22 @@
+{
+  "positions": [
+    {
+      "instrument_id": 57,
+      "symbol": "NEAR-USD",
+      "size": "-40790.00",
+      "entry_price": "4.9031",
+      "unrealized_pnl": "-7277.1778000000000000000000010",
+      "return_on_equity": "-0.3510891034606133314543425132"
+    },
+    {
+      "instrument_id": 32,
+      "symbol": "ZEC-USD",
+      "size": "-253.4562",
+      "entry_price": "1446.1",
+      "unrealized_pnl": "9463.786440000000000000000018",
+      "return_on_equity": "0.2650407605749748088755452669"
+    }
+  ],
+  "equity": "396588.09920064033163200000002",
+  "timestamp": 1790762005319
+}

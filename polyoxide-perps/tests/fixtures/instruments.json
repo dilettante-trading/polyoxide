@@ -1,0 +1,4176 @@
+[
+  {
+    "instrument_id": 1,
+    "instrument_type": "perpetual",
+    "category": "index",
+    "isolated_only": false,
+    "symbol": "SP500-USD",
+    "display_symbol": "USA500-USD",
+    "close_only": false,
+    "base_asset": "SP500",
+    "quote_asset": "pUSD",
+    "funding_interval": "1h",
+    "quantity_decimals": 5,
+    "price_decimals": 1,
+    "price_bounds": "0.02",
+    "liquidation_fee": "0.005",
+    "max_order_count": 200,
+    "min_notional": "10",
+    "max_market_notional": "1000000",
+    "max_limit_notional": "5000000",
+    "max_leverage": 50,
+    "risk_tiers": [
+      {
+        "lower_bound": "0",
+        "max_leverage": 50
+      },
+      {
+        "lower_bound": "500000",
+        "max_leverage": 25
+      },
+      {
+        "lower_bound": "1000000",
+        "max_leverage": 20
+      },
+      {
+        "lower_bound": "5000000",
+        "max_leverage": 15
+      },
+      {
+        "lower_bound": "10000000",
+        "max_leverage": 10
+      },
+      {
+        "lower_bound": "25000000",
+        "max_leverage": 5
+      },
+      {
+        "lower_bound": "50000000",
+        "max_leverage": 2
+      },
+      {
+        "lower_bound": "100000000",
+        "max_leverage": 1
+      }
+    ],
+    "ui_live_time": 1785542400000,
+    "logo": {
+      "light": "https://assets.perpetuals.polymarket.com/logos/sp500/49ce27067964d39a-light.svg",
+      "dark": "https://assets.perpetuals.polymarket.com/logos/sp500/49ce27067964d39a-dark.svg"
+    }
+  },
+  {
+    "instrument_id": 2,
+    "instrument_type": "perpetual",
+    "category": "commodity",
+    "isolated_only": false,
+    "symbol": "GOLD-USD",
+    "close_only": false,
+    "base_asset": "GOLD",
+    "quote_asset": "pUSD",
+    "funding_interval": "1h",
+    "quantity_decimals": 5,
+    "price_decimals": 1,
+    "price_bounds": "0.05",
+    "liquidation_fee": "0.005",
+    "max_order_count": 200,
+    "min_notional": "10",
+    "max_market_notional": "1000000",
+    "max_limit_notional": "5000000",
+    "max_leverage": 20,
+    "risk_tiers": [
+      {
+        "lower_bound": "0",
+        "max_leverage": 20
+      },
+      {
+        "lower_bound": "250000",
+        "max_leverage": 10
+      },
+      {
+        "lower_bound": "1000000",
+        "max_leverage": 8
+      },
+      {
+        "lower_bound": "2500000",
+        "max_leverage": 6
+      },
+      {
+        "lower_bound": "5000000",
+        "max_leverage": 5
+      },
+      {
+        "lower_bound": "7500000",
+        "max_leverage": 2
+      },
+      {
+        "lower_bound": "10000000",
+        "max_leverage": 1
+      }
+    ],
+    "ui_live_time": 1785542400000,
+    "logo": {
+      "light": "https://assets.perpetuals.polymarket.com/logos/gold/59f8c14646535cf9-light.svg",
+      "dark": "https://assets.perpetuals.polymarket.com/logos/gold/59f8c14646535cf9-dark.svg"
+    }
+  },
+  {
+    "instrument_id": 3,
+    "instrument_type": "perpetual",
+    "category": "commodity",
+    "isolated_only": false,
+    "symbol": "WTIOIL-USD",
+    "close_only": false,
+    "base_asset": "WTIOIL",
+    "quote_asset": "pUSD",
+    "funding_interval": "1h",
+    "quantity_decimals": 3,
+    "price_decimals": 3,
+    "price_bounds": "0.05",
+    "liquidation_fee": "0.005",
+    "max_order_count": 200,
+    "min_notional": "10",
+    "max_market_notional": "1000000",
+    "max_limit_notional": "5000000",
+    "max_leverage": 20,
+    "risk_tiers": [
+      {
+        "lower_bound": "0",
+        "max_leverage": 20
+      },
+      {
+        "lower_bound": "250000",
+        "max_leverage": 10
+      },
+      {
+        "lower_bound": "1000000",
+        "max_leverage": 8
+      },
+      {
+        "lower_bound": "2500000",
+        "max_leverage": 6
+      },
+      {
+        "lower_bound": "5000000",
+        "max_leverage": 5
+      },
+      {
+        "lower_bound": "7500000",
+        "max_leverage": 2
+      },
+      {
+        "lower_bound": "10000000",
+        "max_leverage": 1
+      }
+    ],
+    "ui_live_time": 1785542400000,
+    "logo": {
+      "light": "https://assets.perpetuals.polymarket.com/logos/wtioil/5a5d920df596be3a-light.svg",
+      "dark": "https://assets.perpetuals.polymarket.com/logos/wtioil/5a5d920df596be3a-dark.svg"
+    }
+  },
+  {
+    "instrument_id": 4,
+    "instrument_type": "perpetual",
+    "category": "index",
+    "isolated_only": false,
+    "symbol": "NAS100-USD",
+    "display_symbol": "US100-USD",
+    "close_only": false,
+    "base_asset": "NAS100",
+    "quote_asset": "pUSD",
+    "funding_interval": "1h",
+    "quantity_decimals": 5,
+    "price_decimals": 1,
+    "price_bounds": "0.02",
+    "liquidation_fee": "0.005",
+    "max_order_count": 200,
+    "min_notional": "10",
+    "max_market_notional": "1000000",
+    "max_limit_notional": "5000000",
+    "max_leverage": 50,
+    "risk_tiers": [
+      {
+        "lower_bound": "0",
+        "max_leverage": 50
+      },
+      {
+        "lower_bound": "250000",
+        "max_leverage": 25
+      },
+      {
+        "lower_bound": "1000000",
+        "max_leverage": 20
+      },
+      {
+        "lower_bound": "2500000",
+        "max_leverage": 15
+      },
+      {
+        "lower_bound": "5000000",
+        "max_leverage": 12
+      },
+      {
+        "lower_bound": "7500000",
+        "max_leverage": 5
+      },
+      {
+        "lower_bound": "10000000",
+        "max_leverage": 2
+      }
+    ],
+    "ui_live_time": 1785542400000,
+    "logo": {
+      "light": "https://assets.perpetuals.polymarket.com/logos/nas100/5215db1491e089de-light.svg",
+      "dark": "https://assets.perpetuals.polymarket.com/logos/nas100/5215db1491e089de-dark.svg"
+    }
+  },
+  {
+    "instrument_id": 5,
+    "instrument_type": "perpetual",
+    "category": "commodity",
+    "isolated_only": false,
+    "symbol": "SILVER-USD",
+    "close_only": false,
+    "base_asset": "SILVER",
+    "quote_asset": "pUSD",
+    "funding_interval": "1h",
+    "quantity_decimals": 3,
+    "price_decimals": 3,
+    "price_bounds": "0.05",
+    "liquidation_fee": "0.005",
+    "max_order_count": 200,
+    "min_notional": "10",
+    "max_market_notional": "1000000",
+    "max_limit_notional": "5000000",
+    "max_leverage": 20,
+    "risk_tiers": [
+      {
+        "lower_bound": "0",
+        "max_leverage": 20
+      },
+      {
+        "lower_bound": "250000",
+        "max_leverage": 10
+      },
+      {
+        "lower_bound": "1000000",
+        "max_leverage": 8
+      },
+      {
+        "lower_bound": "2500000",
+        "max_leverage": 6
+      },
+      {
+        "lower_bound": "5000000",
+        "max_leverage": 5
+      },
+      {
+        "lower_bound": "7500000",
+        "max_leverage": 2
+      },
+      {
+        "lower_bound": "10000000",
+        "max_leverage": 1
+      }
+    ],
+    "ui_live_time": 1785542400000,
+    "logo": {
+      "light": "https://assets.perpetuals.polymarket.com/logos/silver/e6a96182ba0ed75d-light.svg",
+      "dark": "https://assets.perpetuals.polymarket.com/logos/silver/e6a96182ba0ed75d-dark.svg"
+    }
+  },
+  {
+    "instrument_id": 6,
+    "instrument_type": "perpetual",
+    "category": "crypto",
+    "isolated_only": false,
+    "symbol": "BTC-USD",
+    "close_only": false,
+    "base_asset": "BTC",
+    "quote_asset": "pUSD",
+    "funding_interval": "1h",
+    "quantity_decimals": 5,
+    "price_decimals": 1,
+    "price_bounds": "0.02",
+    "liquidation_fee": "0.005",
+    "max_order_count": 200,
+    "min_notional": "10",
+    "max_market_notional": "1000000",
+    "max_limit_notional": "5000000",
+    "max_leverage": 50,
+    "risk_tiers": [
+      {
+        "lower_bound": "0",
+        "max_leverage": 50
+      },
+      {
+        "lower_bound": "250000",
+        "max_leverage": 25
+      },
+      {
+        "lower_bound": "1000000",
+        "max_leverage": 20
+      },
+      {
+        "lower_bound": "2500000",
+        "max_leverage": 15
+      },
+      {
+        "lower_bound": "5000000",
+        "max_leverage": 12
+      },
+      {
+        "lower_bound": "7500000",
+        "max_leverage": 5
+      },
+      {
+        "lower_bound": "10000000",
+        "max_leverage": 2
+      }
+    ],
+    "ui_live_time": 1785542400000
+  },
+  {
+    "instrument_id": 7,
+    "instrument_type": "perpetual",
+    "category": "crypto",
+    "isolated_only": false,
+    "symbol": "ETH-USD",
+    "close_only": false,
+    "base_asset": "ETH",
+    "quote_asset": "pUSD",
+    "funding_interval": "1h",
+    "quantity_decimals": 4,
+    "price_decimals": 2,
+    "price_bounds": "0.02",
+    "liquidation_fee": "0.005",
+    "max_order_count": 200,
+    "min_notional": "10",
+    "max_market_notional": "1000000",
+    "max_limit_notional": "5000000",
+    "max_leverage": 50,
+    "risk_tiers": [
+      {
+        "lower_bound": "0",
+        "max_leverage": 50
+      },
+      {
+        "lower_bound": "250000",
+        "max_leverage": 25
+      },
+      {
+        "lower_bound": "1000000",
+        "max_leverage": 20
+      },
+      {
+        "lower_bound": "2500000",
+        "max_leverage": 15
+      },
+      {
+        "lower_bound": "5000000",
+        "max_leverage": 12
+      },
+      {
+        "lower_bound": "7500000",
+        "max_leverage": 5
+      },
+      {
+        "lower_bound": "10000000",
+        "max_leverage": 2
+      }
+    ],
+    "ui_live_time": 1785542400000
+  },
+  {
+    "instrument_id": 8,
+    "instrument_type": "perpetual",
+    "category": "crypto",
+    "isolated_only": false,
+    "symbol": "SOL-USD",
+    "close_only": false,
+    "base_asset": "SOL",
+    "quote_asset": "pUSD",
+    "funding_interval": "1h",
+    "quantity_decimals": 3,
+    "price_decimals": 3,
+    "price_bounds": "0.05",
+    "liquidation_fee": "0.005",
+    "max_order_count": 200,
+    "min_notional": "10",
+    "max_market_notional": "1000000",
+    "max_limit_notional": "5000000",
+    "max_leverage": 20,
+    "risk_tiers": [
+      {
+        "lower_bound": "0",
+        "max_leverage": 20
+      },
+      {
+        "lower_bound": "250000",
+        "max_leverage": 10
+      },
+      {
+        "lower_bound": "1000000",
+        "max_leverage": 8
+      },
+      {
+        "lower_bound": "2500000",
+        "max_leverage": 6
+      },
+      {
+        "lower_bound": "5000000",
+        "max_leverage": 5
+      },
+      {
+        "lower_bound": "7500000",
+        "max_leverage": 2
+      },
+      {
+        "lower_bound": "10000000",
+        "max_leverage": 1
+      }
+    ],
+    "ui_live_time": 1785542400000
+  },
+  {
+    "instrument_id": 9,
+    "instrument_type": "perpetual",
+    "category": "equity",
+    "isolated_only": false,
+    "symbol": "SPCX-USD",
+    "close_only": false,
+    "base_asset": "SPCX",
+    "quote_asset": "pUSD",
+    "funding_interval": "1h",
+    "quantity_decimals": 4,
+    "price_decimals": 2,
+    "price_bounds": "0.10",
+    "liquidation_fee": "0.005",
+    "max_order_count": 200,
+    "min_notional": "10",
+    "max_market_notional": "500000",
+    "max_limit_notional": "2500000",
+    "max_leverage": 10,
+    "risk_tiers": [
+      {
+        "lower_bound": "0",
+        "max_leverage": 10
+      },
+      {
+        "lower_bound": "500000",
+        "max_leverage": 5
+      },
+      {
+        "lower_bound": "1000000",
+        "max_leverage": 3
+      },
+      {
+        "lower_bound": "3000000",
+        "max_leverage": 2
+      },
+      {
+        "lower_bound": "5000000",
+        "max_leverage": 1
+      }
+    ],
+    "ui_live_time": 1785542400000
+  },
+  {
+    "instrument_id": 10,
+    "instrument_type": "perpetual",
+    "category": "crypto",
+    "isolated_only": false,
+    "symbol": "HYPE-USD",
+    "close_only": false,
+    "base_asset": "HYPE",
+    "quote_asset": "pUSD",
+    "funding_interval": "1h",
+    "quantity_decimals": 3,
+    "price_decimals": 3,
+    "price_bounds": "0.05",
+    "liquidation_fee": "0.005",
+    "max_order_count": 200,
+    "min_notional": "10",
+    "max_market_notional": "1000000",
+    "max_limit_notional": "5000000",
+    "max_leverage": 20,
+    "risk_tiers": [
+      {
+        "lower_bound": "0",
+        "max_leverage": 20
+      },
+      {
+        "lower_bound": "250000",
+        "max_leverage": 10
+      },
+      {
+        "lower_bound": "1000000",
+        "max_leverage": 8
+      },
+      {
+        "lower_bound": "2500000",
+        "max_leverage": 6
+      },
+      {
+        "lower_bound": "5000000",
+        "max_leverage": 5
+      },
+      {
+        "lower_bound": "7500000",
+        "max_leverage": 2
+      },
+      {
+        "lower_bound": "10000000",
+        "max_leverage": 1
+      }
+    ],
+    "ui_live_time": 1785542400000,
+    "logo": {
+      "light": "https://assets.perpetuals.polymarket.com/logos/hype/43f3eb1e19e0241d-light.svg",
+      "dark": "https://assets.perpetuals.polymarket.com/logos/hype/7bc1abcad8f20d1e-dark.svg"
+    }
+  },
+  {
+    "instrument_id": 11,
+    "instrument_type": "perpetual",
+    "category": "equity",
+    "isolated_only": false,
+    "symbol": "MU-USD",
+    "close_only": false,
+    "base_asset": "MU",
+    "quote_asset": "pUSD",
+    "funding_interval": "1h",
+    "quantity_decimals": 4,
+    "price_decimals": 2,
+    "price_bounds": "0.10",
+    "liquidation_fee": "0.005",
+    "max_order_count": 200,
+    "min_notional": "10",
+    "max_market_notional": "500000",
+    "max_limit_notional": "2500000",
+    "max_leverage": 10,
+    "risk_tiers": [
+      {
+        "lower_bound": "0",
+        "max_leverage": 10
+      },
+      {
+        "lower_bound": "500000",
+        "max_leverage": 5
+      },
+      {
+        "lower_bound": "1000000",
+        "max_leverage": 3
+      },
+      {
+        "lower_bound": "3000000",
+        "max_leverage": 2
+      },
+      {
+        "lower_bound": "5000000",
+        "max_leverage": 1
+      }
+    ],
+    "ui_live_time": 1785542400000,
+    "logo": {
+      "light": "https://assets.perpetuals.polymarket.com/logos/mu/0b3be98c069190ed-light.svg",
+      "dark": "https://assets.perpetuals.polymarket.com/logos/mu/10402b8c155c50f3-dark.svg"
+    }
+  },
+  {
+    "instrument_id": 13,
+    "instrument_type": "perpetual",
+    "category": "equity",
+    "isolated_only": false,
+    "symbol": "SKHY-USD",
+    "close_only": false,
+    "base_asset": "SKHY",
+    "quote_asset": "pUSD",
+    "funding_interval": "1h",
+    "quantity_decimals": 4,
+    "price_decimals": 2,
+    "price_bounds": "0.10",
+    "liquidation_fee": "0.005",
+    "max_order_count": 200,
+    "min_notional": "10",
+    "max_market_notional": "500000",
+    "max_limit_notional": "2500000",
+    "max_leverage": 10,
+    "risk_tiers": [
+      {
+        "lower_bound": "0",
+        "max_leverage": 10
+      },
+      {
+        "lower_bound": "500000",
+        "max_leverage": 5
+      },
+      {
+        "lower_bound": "1000000",
+        "max_leverage": 3
+      },
+      {
+        "lower_bound": "3000000",
+        "max_leverage": 2
+      },
+      {
+        "lower_bound": "5000000",
+        "max_leverage": 1
+      }
+    ],
+    "ui_live_time": 1785542400000,
+    "logo": {
+      "light": "https://assets.perpetuals.polymarket.com/logos/skhy/2eaf1890cf97e245-light.svg",
+      "dark": "https://assets.perpetuals.polymarket.com/logos/skhy/2eaf1890cf97e245-dark.svg"
+    }
+  },
+  {
+    "instrument_id": 14,
+    "instrument_type": "perpetual",
+    "category": "equity",
+    "isolated_only": false,
+    "symbol": "SKHYNIX-USD",
+    "close_only": false,
+    "base_asset": "SKHYNIX",
+    "quote_asset": "pUSD",
+    "funding_interval": "1h",
+    "quantity_decimals": 4,
+    "price_decimals": 2,
+    "price_bounds": "0.10",
+    "liquidation_fee": "0.005",
+    "max_order_count": 200,
+    "min_notional": "10",
+    "max_market_notional": "500000",
+    "max_limit_notional": "2500000",
+    "max_leverage": 10,
+    "risk_tiers": [
+      {
+        "lower_bound": "0",
+        "max_leverage": 10
+      },
+      {
+        "lower_bound": "500000",
+        "max_leverage": 5
+      },
+      {
+        "lower_bound": "1000000",
+        "max_leverage": 3
+      },
+      {
+        "lower_bound": "3000000",
+        "max_leverage": 2
+      },
+      {
+        "lower_bound": "5000000",
+        "max_leverage": 1
+      }
+    ],
+    "ui_live_time": 1785542400000,
+    "logo": {
+      "light": "https://assets.perpetuals.polymarket.com/logos/skhynix/2eaf1890cf97e245-light.svg",
+      "dark": "https://assets.perpetuals.polymarket.com/logos/skhynix/2eaf1890cf97e245-dark.svg"
+    }
+  },
+  {
+    "instrument_id": 15,
+    "instrument_type": "perpetual",
+    "category": "equity",
+    "isolated_only": false,
+    "symbol": "AAPL-USD",
+    "close_only": false,
+    "base_asset": "AAPL",
+    "quote_asset": "pUSD",
+    "funding_interval": "1h",
+    "quantity_decimals": 4,
+    "price_decimals": 2,
+    "price_bounds": "0.10",
+    "liquidation_fee": "0.005",
+    "max_order_count": 200,
+    "min_notional": "10",
+    "max_market_notional": "500000",
+    "max_limit_notional": "2500000",
+    "max_leverage": 10,
+    "risk_tiers": [
+      {
+        "lower_bound": "0",
+        "max_leverage": 10
+      },
+      {
+        "lower_bound": "500000",
+        "max_leverage": 5
+      },
+      {
+        "lower_bound": "1000000",
+        "max_leverage": 3
+      },
+      {
+        "lower_bound": "3000000",
+        "max_leverage": 2
+      },
+      {
+        "lower_bound": "5000000",
+        "max_leverage": 1
+      }
+    ],
+    "ui_live_time": 1785542400000,
+    "logo": {
+      "light": "https://assets.perpetuals.polymarket.com/logos/aapl/a38bb1160ce9b707-light.svg",
+      "dark": "https://assets.perpetuals.polymarket.com/logos/aapl/b96160007116ed69-dark.svg"
+    }
+  },
+  {
+    "instrument_id": 16,
+    "instrument_type": "perpetual",
+    "category": "equity",
+    "isolated_only": false,
+    "symbol": "MSFT-USD",
+    "close_only": false,
+    "base_asset": "MSFT",
+    "quote_asset": "pUSD",
+    "funding_interval": "1h",
+    "quantity_decimals": 4,
+    "price_decimals": 2,
+    "price_bounds": "0.10",
+    "liquidation_fee": "0.005",
+    "max_order_count": 200,
+    "min_notional": "10",
+    "max_market_notional": "500000",
+    "max_limit_notional": "2500000",
+    "max_leverage": 10,
+    "risk_tiers": [
+      {
+        "lower_bound": "0",
+        "max_leverage": 10
+      },
+      {
+        "lower_bound": "500000",
+        "max_leverage": 5
+      },
+      {
+        "lower_bound": "1000000",
+        "max_leverage": 3
+      },
+      {
+        "lower_bound": "3000000",
+        "max_leverage": 2
+      },
+      {
+        "lower_bound": "5000000",
+        "max_leverage": 1
+      }
+    ],
+    "ui_live_time": 1785542400000,
+    "logo": {
+      "light": "https://assets.perpetuals.polymarket.com/logos/msft/b9a74a5f31ba8b2d-light.svg",
+      "dark": "https://assets.perpetuals.polymarket.com/logos/msft/b9a74a5f31ba8b2d-dark.svg"
+    }
+  },
+  {
+    "instrument_id": 17,
+    "instrument_type": "perpetual",
+    "category": "equity",
+    "isolated_only": false,
+    "symbol": "GOOG-USD",
+    "close_only": false,
+    "base_asset": "GOOGL",
+    "quote_asset": "pUSD",
+    "funding_interval": "1h",
+    "quantity_decimals": 4,
+    "price_decimals": 2,
+    "price_bounds": "0.10",
+    "liquidation_fee": "0.005",
+    "max_order_count": 200,
+    "min_notional": "10",
+    "max_market_notional": "500000",
+    "max_limit_notional": "2500000",
+    "max_leverage": 10,
+    "risk_tiers": [
+      {
+        "lower_bound": "0",
+        "max_leverage": 10
+      },
+      {
+        "lower_bound": "500000",
+        "max_leverage": 5
+      },
+      {
+        "lower_bound": "1000000",
+        "max_leverage": 3
+      },
+      {
+        "lower_bound": "3000000",
+        "max_leverage": 2
+      },
+      {
+        "lower_bound": "5000000",
+        "max_leverage": 1
+      }
+    ],
+    "ui_live_time": 1785542400000,
+    "logo": {
+      "light": "https://assets.perpetuals.polymarket.com/logos/googl/a44d5648c7e82ec6-light.svg",
+      "dark": "https://assets.perpetuals.polymarket.com/logos/googl/a44d5648c7e82ec6-dark.svg"
+    }
+  },
+  {
+    "instrument_id": 18,
+    "instrument_type": "perpetual",
+    "category": "equity",
+    "isolated_only": false,
+    "symbol": "AMZN-USD",
+    "close_only": false,
+    "base_asset": "AMZN",
+    "quote_asset": "pUSD",
+    "funding_interval": "1h",
+    "quantity_decimals": 4,
+    "price_decimals": 2,
+    "price_bounds": "0.10",
+    "liquidation_fee": "0.005",
+    "max_order_count": 200,
+    "min_notional": "10",
+    "max_market_notional": "500000",
+    "max_limit_notional": "2500000",
+    "max_leverage": 10,
+    "risk_tiers": [
+      {
+        "lower_bound": "0",
+        "max_leverage": 10
+      },
+      {
+        "lower_bound": "500000",
+        "max_leverage": 5
+      },
+      {
+        "lower_bound": "1000000",
+        "max_leverage": 3
+      },
+      {
+        "lower_bound": "3000000",
+        "max_leverage": 2
+      },
+      {
+        "lower_bound": "5000000",
+        "max_leverage": 1
+      }
+    ],
+    "ui_live_time": 1785542400000,
+    "logo": {
+      "light": "https://assets.perpetuals.polymarket.com/logos/amzn/1d7f2052e2b6aed7-light.svg",
+      "dark": "https://assets.perpetuals.polymarket.com/logos/amzn/785a8a81e8e11e37-dark.svg"
+    }
+  },
+  {
+    "instrument_id": 19,
+    "instrument_type": "perpetual",
+    "category": "equity",
+    "isolated_only": false,
+    "symbol": "NVDA-USD",
+    "close_only": false,
+    "base_asset": "NVDA",
+    "quote_asset": "pUSD",
+    "funding_interval": "1h",
+    "quantity_decimals": 4,
+    "price_decimals": 2,
+    "price_bounds": "0.10",
+    "liquidation_fee": "0.005",
+    "max_order_count": 200,
+    "min_notional": "10",
+    "max_market_notional": "500000",
+    "max_limit_notional": "2500000",
+    "max_leverage": 10,
+    "risk_tiers": [
+      {
+        "lower_bound": "0",
+        "max_leverage": 10
+      },
+      {
+        "lower_bound": "500000",
+        "max_leverage": 5
+      },
+      {
+        "lower_bound": "1000000",
+        "max_leverage": 3
+      },
+      {
+        "lower_bound": "3000000",
+        "max_leverage": 2
+      },
+      {
+        "lower_bound": "5000000",
+        "max_leverage": 1
+      }
+    ],
+    "ui_live_time": 1785542400000,
+    "logo": {
+      "light": "https://assets.perpetuals.polymarket.com/logos/nvda/af188e64025bada6-light.svg",
+      "dark": "https://assets.perpetuals.polymarket.com/logos/nvda/f2c68b7b6993f5ac-dark.svg"
+    }
+  },
+  {
+    "instrument_id": 20,
+    "instrument_type": "perpetual",
+    "category": "equity",
+    "isolated_only": false,
+    "symbol": "META-USD",
+    "close_only": false,
+    "base_asset": "META",
+    "quote_asset": "pUSD",
+    "funding_interval": "1h",
+    "quantity_decimals": 4,
+    "price_decimals": 2,
+    "price_bounds": "0.10",
+    "liquidation_fee": "0.005",
+    "max_order_count": 200,
+    "min_notional": "10",
+    "max_market_notional": "500000",
+    "max_limit_notional": "2500000",
+    "max_leverage": 10,
+    "risk_tiers": [
+      {
+        "lower_bound": "0",
+        "max_leverage": 10
+      },
+      {
+        "lower_bound": "500000",
+        "max_leverage": 5
+      },
+      {
+        "lower_bound": "1000000",
+        "max_leverage": 3
+      },
+      {
+        "lower_bound": "3000000",
+        "max_leverage": 2
+      },
+      {
+        "lower_bound": "5000000",
+        "max_leverage": 1
+      }
+    ],
+    "ui_live_time": 1785542400000,
+    "logo": {
+      "light": "https://assets.perpetuals.polymarket.com/logos/meta/a158add58fa64813-light.svg",
+      "dark": "https://assets.perpetuals.polymarket.com/logos/meta/a158add58fa64813-dark.svg"
+    }
+  },
+  {
+    "instrument_id": 21,
+    "instrument_type": "perpetual",
+    "category": "equity",
+    "isolated_only": false,
+    "symbol": "TSLA-USD",
+    "close_only": false,
+    "base_asset": "TSLA",
+    "quote_asset": "pUSD",
+    "funding_interval": "1h",
+    "quantity_decimals": 4,
+    "price_decimals": 2,
+    "price_bounds": "0.10",
+    "liquidation_fee": "0.005",
+    "max_order_count": 200,
+    "min_notional": "10",
+    "max_market_notional": "500000",
+    "max_limit_notional": "2500000",
+    "max_leverage": 10,
+    "risk_tiers": [
+      {
+        "lower_bound": "0",
+        "max_leverage": 10
+      },
+      {
+        "lower_bound": "500000",
+        "max_leverage": 5
+      },
+      {
+        "lower_bound": "1000000",
+        "max_leverage": 3
+      },
+      {
+        "lower_bound": "3000000",
+        "max_leverage": 2
+      },
+      {
+        "lower_bound": "5000000",
+        "max_leverage": 1
+      }
+    ],
+    "ui_live_time": 1785542400000,
+    "logo": {
+      "light": "https://assets.perpetuals.polymarket.com/logos/tsla/0838bd31c8a4fbfa-light.svg",
+      "dark": "https://assets.perpetuals.polymarket.com/logos/tsla/0838bd31c8a4fbfa-dark.svg"
+    }
+  },
+  {
+    "instrument_id": 22,
+    "instrument_type": "perpetual",
+    "category": "equity",
+    "isolated_only": false,
+    "symbol": "AMD-USD",
+    "close_only": false,
+    "base_asset": "AMD",
+    "quote_asset": "pUSD",
+    "funding_interval": "1h",
+    "quantity_decimals": 4,
+    "price_decimals": 2,
+    "price_bounds": "0.10",
+    "liquidation_fee": "0.005",
+    "max_order_count": 200,
+    "min_notional": "10",
+    "max_market_notional": "500000",
+    "max_limit_notional": "2500000",
+    "max_leverage": 10,
+    "risk_tiers": [
+      {
+        "lower_bound": "0",
+        "max_leverage": 10
+      },
+      {
+        "lower_bound": "250000",
+        "max_leverage": 5
+      },
+      {
+        "lower_bound": "1000000",
+        "max_leverage": 3
+      },
+      {
+        "lower_bound": "3000000",
+        "max_leverage": 2
+      },
+      {
+        "lower_bound": "5000000",
+        "max_leverage": 1
+      }
+    ],
+    "ui_live_time": 1785542400000,
+    "logo": {
+      "light": "https://assets.perpetuals.polymarket.com/logos/amd/c1592b7e495b4a6f-light.svg",
+      "dark": "https://assets.perpetuals.polymarket.com/logos/amd/abd25cfeda4496cd-dark.svg"
+    }
+  },
+  {
+    "instrument_id": 23,
+    "instrument_type": "perpetual",
+    "category": "equity",
+    "isolated_only": false,
+    "symbol": "INTC-USD",
+    "close_only": false,
+    "base_asset": "INTC",
+    "quote_asset": "pUSD",
+    "funding_interval": "1h",
+    "quantity_decimals": 4,
+    "price_decimals": 2,
+    "price_bounds": "0.10",
+    "liquidation_fee": "0.005",
+    "max_order_count": 200,
+    "min_notional": "10",
+    "max_market_notional": "500000",
+    "max_limit_notional": "2500000",
+    "max_leverage": 10,
+    "risk_tiers": [
+      {
+        "lower_bound": "0",
+        "max_leverage": 10
+      },
+      {
+        "lower_bound": "500000",
+        "max_leverage": 5
+      },
+      {
+        "lower_bound": "1000000",
+        "max_leverage": 3
+      },
+      {
+        "lower_bound": "3000000",
+        "max_leverage": 2
+      },
+      {
+        "lower_bound": "5000000",
+        "max_leverage": 1
+      }
+    ],
+    "ui_live_time": 1785542400000,
+    "logo": {
+      "light": "https://assets.perpetuals.polymarket.com/logos/intc/bdf9506c82d1ea92-light.svg",
+      "dark": "https://assets.perpetuals.polymarket.com/logos/intc/bdf9506c82d1ea92-dark.svg"
+    }
+  },
+  {
+    "instrument_id": 24,
+    "instrument_type": "perpetual",
+    "category": "equity",
+    "isolated_only": false,
+    "symbol": "AVGO-USD",
+    "close_only": false,
+    "base_asset": "AVGO",
+    "quote_asset": "pUSD",
+    "funding_interval": "1h",
+    "quantity_decimals": 4,
+    "price_decimals": 2,
+    "price_bounds": "0.10",
+    "liquidation_fee": "0.005",
+    "max_order_count": 200,
+    "min_notional": "10",
+    "max_market_notional": "500000",
+    "max_limit_notional": "2500000",
+    "max_leverage": 10,
+    "risk_tiers": [
+      {
+        "lower_bound": "0",
+        "max_leverage": 10
+      },
+      {
+        "lower_bound": "250000",
+        "max_leverage": 5
+      },
+      {
+        "lower_bound": "1000000",
+        "max_leverage": 3
+      },
+      {
+        "lower_bound": "3000000",
+        "max_leverage": 2
+      },
+      {
+        "lower_bound": "5000000",
+        "max_leverage": 1
+      }
+    ],
+    "ui_live_time": 1785542400000,
+    "logo": {
+      "light": "https://assets.perpetuals.polymarket.com/logos/avgo/7c36c0d4c4afad38-light.svg",
+      "dark": "https://assets.perpetuals.polymarket.com/logos/avgo/7c36c0d4c4afad38-dark.svg"
+    }
+  },
+  {
+    "instrument_id": 25,
+    "instrument_type": "perpetual",
+    "category": "equity",
+    "isolated_only": false,
+    "symbol": "QCOM-USD",
+    "close_only": false,
+    "base_asset": "QCOM",
+    "quote_asset": "pUSD",
+    "funding_interval": "1h",
+    "quantity_decimals": 4,
+    "price_decimals": 2,
+    "price_bounds": "0.10",
+    "liquidation_fee": "0.005",
+    "max_order_count": 200,
+    "min_notional": "10",
+    "max_market_notional": "500000",
+    "max_limit_notional": "2500000",
+    "max_leverage": 10,
+    "risk_tiers": [
+      {
+        "lower_bound": "0",
+        "max_leverage": 10
+      },
+      {
+        "lower_bound": "250000",
+        "max_leverage": 5
+      },
+      {
+        "lower_bound": "1000000",
+        "max_leverage": 3
+      },
+      {
+        "lower_bound": "3000000",
+        "max_leverage": 2
+      },
+      {
+        "lower_bound": "5000000",
+        "max_leverage": 1
+      }
+    ],
+    "ui_live_time": 1785542400000,
+    "logo": {
+      "light": "https://assets.perpetuals.polymarket.com/logos/qcom/dcd98d6276c0ee46-light.svg",
+      "dark": "https://assets.perpetuals.polymarket.com/logos/qcom/dcd98d6276c0ee46-dark.svg"
+    }
+  },
+  {
+    "instrument_id": 26,
+    "instrument_type": "perpetual",
+    "category": "equity",
+    "isolated_only": false,
+    "symbol": "ARM-USD",
+    "close_only": false,
+    "base_asset": "ARM",
+    "quote_asset": "pUSD",
+    "funding_interval": "1h",
+    "quantity_decimals": 4,
+    "price_decimals": 2,
+    "price_bounds": "0.10",
+    "liquidation_fee": "0.005",
+    "max_order_count": 200,
+    "min_notional": "10",
+    "max_market_notional": "500000",
+    "max_limit_notional": "2500000",
+    "max_leverage": 10,
+    "risk_tiers": [
+      {
+        "lower_bound": "0",
+        "max_leverage": 10
+      },
+      {
+        "lower_bound": "250000",
+        "max_leverage": 5
+      },
+      {
+        "lower_bound": "1000000",
+        "max_leverage": 3
+      },
+      {
+        "lower_bound": "3000000",
+        "max_leverage": 2
+      },
+      {
+        "lower_bound": "5000000",
+        "max_leverage": 1
+      }
+    ],
+    "ui_live_time": 1785542400000,
+    "logo": {
+      "light": "https://assets.perpetuals.polymarket.com/logos/arm/290641180312654d-light.svg",
+      "dark": "https://assets.perpetuals.polymarket.com/logos/arm/290641180312654d-dark.svg"
+    }
+  },
+  {
+    "instrument_id": 27,
+    "instrument_type": "perpetual",
+    "category": "equity",
+    "isolated_only": false,
+    "symbol": "TSM-USD",
+    "close_only": false,
+    "base_asset": "TSM",
+    "quote_asset": "pUSD",
+    "funding_interval": "1h",
+    "quantity_decimals": 4,
+    "price_decimals": 2,
+    "price_bounds": "0.10",
+    "liquidation_fee": "0.005",
+    "max_order_count": 200,
+    "min_notional": "10",
+    "max_market_notional": "500000",
+    "max_limit_notional": "2500000",
+    "max_leverage": 10,
+    "risk_tiers": [
+      {
+        "lower_bound": "0",
+        "max_leverage": 10
+      },
+      {
+        "lower_bound": "250000",
+        "max_leverage": 5
+      },
+      {
+        "lower_bound": "1000000",
+        "max_leverage": 3
+      },
+      {
+        "lower_bound": "3000000",
+        "max_leverage": 2
+      },
+      {
+        "lower_bound": "5000000",
+        "max_leverage": 1
+      }
+    ],
+    "ui_live_time": 1785542400000,
+    "logo": {
+      "light": "https://assets.perpetuals.polymarket.com/logos/tsm/233d4075695a58ad-light.svg",
+      "dark": "https://assets.perpetuals.polymarket.com/logos/tsm/233d4075695a58ad-dark.svg"
+    }
+  },
+  {
+    "instrument_id": 28,
+    "instrument_type": "perpetual",
+    "category": "equity",
+    "isolated_only": false,
+    "symbol": "ASML-USD",
+    "close_only": false,
+    "base_asset": "ASML",
+    "quote_asset": "pUSD",
+    "funding_interval": "1h",
+    "quantity_decimals": 5,
+    "price_decimals": 1,
+    "price_bounds": "0.10",
+    "liquidation_fee": "0.005",
+    "max_order_count": 200,
+    "min_notional": "10",
+    "max_market_notional": "500000",
+    "max_limit_notional": "2500000",
+    "max_leverage": 10,
+    "risk_tiers": [
+      {
+        "lower_bound": "0",
+        "max_leverage": 10
+      },
+      {
+        "lower_bound": "250000",
+        "max_leverage": 5
+      },
+      {
+        "lower_bound": "1000000",
+        "max_leverage": 3
+      },
+      {
+        "lower_bound": "3000000",
+        "max_leverage": 2
+      },
+      {
+        "lower_bound": "5000000",
+        "max_leverage": 1
+      }
+    ],
+    "ui_live_time": 1785542400000,
+    "logo": {
+      "light": "https://assets.perpetuals.polymarket.com/logos/asml/c286e85057895b0c-light.svg",
+      "dark": "https://assets.perpetuals.polymarket.com/logos/asml/c286e85057895b0c-dark.svg"
+    }
+  },
+  {
+    "instrument_id": 29,
+    "instrument_type": "perpetual",
+    "category": "equity",
+    "isolated_only": false,
+    "symbol": "SNDK-USD",
+    "close_only": false,
+    "base_asset": "SNDK",
+    "quote_asset": "pUSD",
+    "funding_interval": "1h",
+    "quantity_decimals": 5,
+    "price_decimals": 1,
+    "price_bounds": "0.10",
+    "liquidation_fee": "0.005",
+    "max_order_count": 200,
+    "min_notional": "10",
+    "max_market_notional": "500000",
+    "max_limit_notional": "2500000",
+    "max_leverage": 10,
+    "risk_tiers": [
+      {
+        "lower_bound": "0",
+        "max_leverage": 10
+      },
+      {
+        "lower_bound": "500000",
+        "max_leverage": 5
+      },
+      {
+        "lower_bound": "1000000",
+        "max_leverage": 3
+      },
+      {
+        "lower_bound": "3000000",
+        "max_leverage": 2
+      },
+      {
+        "lower_bound": "5000000",
+        "max_leverage": 1
+      }
+    ],
+    "ui_live_time": 1785542400000,
+    "logo": {
+      "light": "https://assets.perpetuals.polymarket.com/logos/sndk/d3f391a7676e9303-light.svg",
+      "dark": "https://assets.perpetuals.polymarket.com/logos/sndk/d3f391a7676e9303-dark.svg"
+    }
+  },
+  {
+    "instrument_id": 30,
+    "instrument_type": "perpetual",
+    "category": "index",
+    "isolated_only": false,
+    "symbol": "DRAM-USD",
+    "close_only": false,
+    "base_asset": "DRAM",
+    "quote_asset": "pUSD",
+    "funding_interval": "1h",
+    "quantity_decimals": 3,
+    "price_decimals": 3,
+    "price_bounds": "0.10",
+    "liquidation_fee": "0.005",
+    "max_order_count": 200,
+    "min_notional": "10",
+    "max_market_notional": "500000",
+    "max_limit_notional": "2500000",
+    "max_leverage": 10,
+    "risk_tiers": [
+      {
+        "lower_bound": "0",
+        "max_leverage": 10
+      },
+      {
+        "lower_bound": "500000",
+        "max_leverage": 5
+      },
+      {
+        "lower_bound": "1000000",
+        "max_leverage": 3
+      },
+      {
+        "lower_bound": "3000000",
+        "max_leverage": 2
+      },
+      {
+        "lower_bound": "5000000",
+        "max_leverage": 1
+      }
+    ],
+    "ui_live_time": 1785542400000,
+    "logo": {
+      "light": "https://assets.perpetuals.polymarket.com/logos/dram/7fb0248194d4c85f-light.svg",
+      "dark": "https://assets.perpetuals.polymarket.com/logos/dram/7fb0248194d4c85f-dark.svg"
+    }
+  },
+  {
+    "instrument_id": 31,
+    "instrument_type": "perpetual",
+    "category": "crypto",
+    "isolated_only": false,
+    "symbol": "PUMP-USD",
+    "close_only": false,
+    "base_asset": "PUMP",
+    "quote_asset": "pUSD",
+    "funding_interval": "1h",
+    "quantity_decimals": 0,
+    "price_decimals": 6,
+    "price_bounds": "0.10",
+    "liquidation_fee": "0.005",
+    "max_order_count": 200,
+    "min_notional": "10",
+    "max_market_notional": "500000",
+    "max_limit_notional": "2500000",
+    "max_leverage": 10,
+    "risk_tiers": [
+      {
+        "lower_bound": "0",
+        "max_leverage": 10
+      },
+      {
+        "lower_bound": "250000",
+        "max_leverage": 8
+      },
+      {
+        "lower_bound": "500000",
+        "max_leverage": 6
+      },
+      {
+        "lower_bound": "1000000",
+        "max_leverage": 5
+      },
+      {
+        "lower_bound": "2000000",
+        "max_leverage": 2
+      },
+      {
+        "lower_bound": "5000000",
+        "max_leverage": 1
+      }
+    ],
+    "ui_live_time": 1785542400000,
+    "logo": {
+      "light": "https://assets.perpetuals.polymarket.com/logos/pump/707add13f5acff4e-light.svg",
+      "dark": "https://assets.perpetuals.polymarket.com/logos/pump/707add13f5acff4e-dark.svg"
+    }
+  },
+  {
+    "instrument_id": 32,
+    "instrument_type": "perpetual",
+    "category": "crypto",
+    "isolated_only": false,
+    "symbol": "ZEC-USD",
+    "close_only": false,
+    "base_asset": "ZEC",
+    "quote_asset": "pUSD",
+    "funding_interval": "1h",
+    "quantity_decimals": 4,
+    "price_decimals": 2,
+    "price_bounds": "0.10",
+    "liquidation_fee": "0.005",
+    "max_order_count": 200,
+    "min_notional": "10",
+    "max_market_notional": "500000",
+    "max_limit_notional": "2500000",
+    "max_leverage": 10,
+    "risk_tiers": [
+      {
+        "lower_bound": "0",
+        "max_leverage": 10
+      },
+      {
+        "lower_bound": "500000",
+        "max_leverage": 8
+      },
+      {
+        "lower_bound": "1000000",
+        "max_leverage": 6
+      },
+      {
+        "lower_bound": "2000000",
+        "max_leverage": 5
+      },
+      {
+        "lower_bound": "3000000",
+        "max_leverage": 2
+      },
+      {
+        "lower_bound": "5000000",
+        "max_leverage": 1
+      }
+    ],
+    "ui_live_time": 1785542400000,
+    "logo": {
+      "light": "https://assets.perpetuals.polymarket.com/logos/zec/61659a7ca1ef5f43-light.svg",
+      "dark": "https://assets.perpetuals.polymarket.com/logos/zec/61659a7ca1ef5f43-dark.svg"
+    }
+  },
+  {
+    "instrument_id": 33,
+    "instrument_type": "perpetual",
+    "category": "crypto",
+    "isolated_only": false,
+    "symbol": "XRP-USD",
+    "close_only": false,
+    "base_asset": "XRP",
+    "quote_asset": "pUSD",
+    "funding_interval": "1h",
+    "quantity_decimals": 0,
+    "price_decimals": 6,
+    "price_bounds": "0.05",
+    "liquidation_fee": "0.005",
+    "max_order_count": 200,
+    "min_notional": "10",
+    "max_market_notional": "1000000",
+    "max_limit_notional": "5000000",
+    "max_leverage": 20,
+    "risk_tiers": [
+      {
+        "lower_bound": "0",
+        "max_leverage": 20
+      },
+      {
+        "lower_bound": "250000",
+        "max_leverage": 10
+      },
+      {
+        "lower_bound": "500000",
+        "max_leverage": 8
+      },
+      {
+        "lower_bound": "1000000",
+        "max_leverage": 6
+      },
+      {
+        "lower_bound": "2000000",
+        "max_leverage": 5
+      },
+      {
+        "lower_bound": "3000000",
+        "max_leverage": 2
+      },
+      {
+        "lower_bound": "5000000",
+        "max_leverage": 1
+      }
+    ],
+    "ui_live_time": 1785542400000,
+    "logo": {
+      "light": "https://assets.perpetuals.polymarket.com/logos/xrp/baabda23e17bc6d2-light.svg",
+      "dark": "https://assets.perpetuals.polymarket.com/logos/xrp/26cd4be7d51b1e3f-dark.svg"
+    }
+  },
+  {
+    "instrument_id": 34,
+    "instrument_type": "perpetual",
+    "category": "crypto",
+    "isolated_only": false,
+    "symbol": "LIT-USD",
+    "close_only": false,
+    "base_asset": "LIT",
+    "quote_asset": "pUSD",
+    "funding_interval": "1h",
+    "quantity_decimals": 2,
+    "price_decimals": 4,
+    "price_bounds": "0.10",
+    "liquidation_fee": "0.005",
+    "max_order_count": 200,
+    "min_notional": "10",
+    "max_market_notional": "500000",
+    "max_limit_notional": "2500000",
+    "max_leverage": 10,
+    "risk_tiers": [
+      {
+        "lower_bound": "0",
+        "max_leverage": 10
+      },
+      {
+        "lower_bound": "500000",
+        "max_leverage": 8
+      },
+      {
+        "lower_bound": "1000000",
+        "max_leverage": 6
+      },
+      {
+        "lower_bound": "2000000",
+        "max_leverage": 5
+      },
+      {
+        "lower_bound": "3000000",
+        "max_leverage": 2
+      },
+      {
+        "lower_bound": "5000000",
+        "max_leverage": 1
+      }
+    ],
+    "ui_live_time": 1785542400000,
+    "logo": {
+      "light": "https://assets.perpetuals.polymarket.com/logos/lit/23a21530acdfb69c-light.svg",
+      "dark": "https://assets.perpetuals.polymarket.com/logos/lit/182a3b7ae629d737-dark.svg"
+    }
+  },
+  {
+    "instrument_id": 35,
+    "instrument_type": "perpetual",
+    "category": "crypto",
+    "isolated_only": false,
+    "symbol": "KPEPE-USD",
+    "close_only": false,
+    "base_asset": "KPEPE",
+    "quote_asset": "pUSD",
+    "funding_interval": "1h",
+    "quantity_decimals": 0,
+    "price_decimals": 6,
+    "price_bounds": "0.10",
+    "liquidation_fee": "0.005",
+    "max_order_count": 200,
+    "min_notional": "10",
+    "max_market_notional": "500000",
+    "max_limit_notional": "2500000",
+    "max_leverage": 10,
+    "risk_tiers": [
+      {
+        "lower_bound": "0",
+        "max_leverage": 10
+      },
+      {
+        "lower_bound": "500000",
+        "max_leverage": 8
+      },
+      {
+        "lower_bound": "1000000",
+        "max_leverage": 6
+      },
+      {
+        "lower_bound": "2000000",
+        "max_leverage": 5
+      },
+      {
+        "lower_bound": "3000000",
+        "max_leverage": 2
+      },
+      {
+        "lower_bound": "5000000",
+        "max_leverage": 1
+      }
+    ],
+    "ui_live_time": 1785542400000,
+    "logo": {
+      "light": "https://assets.perpetuals.polymarket.com/logos/kpepe/bc0c17526fbe7d0b-light.svg",
+      "dark": "https://assets.perpetuals.polymarket.com/logos/kpepe/bc0c17526fbe7d0b-dark.svg"
+    }
+  },
+  {
+    "instrument_id": 36,
+    "instrument_type": "perpetual",
+    "category": "equity",
+    "isolated_only": false,
+    "symbol": "HOOD-USD",
+    "close_only": false,
+    "base_asset": "HOOD",
+    "quote_asset": "pUSD",
+    "funding_interval": "1h",
+    "quantity_decimals": 3,
+    "price_decimals": 3,
+    "price_bounds": "0.10",
+    "liquidation_fee": "0.005",
+    "max_order_count": 200,
+    "min_notional": "10",
+    "max_market_notional": "500000",
+    "max_limit_notional": "2500000",
+    "max_leverage": 10,
+    "risk_tiers": [
+      {
+        "lower_bound": "0",
+        "max_leverage": 10
+      },
+      {
+        "lower_bound": "500000",
+        "max_leverage": 5
+      },
+      {
+        "lower_bound": "1000000",
+        "max_leverage": 3
+      },
+      {
+        "lower_bound": "3000000",
+        "max_leverage": 2
+      },
+      {
+        "lower_bound": "5000000",
+        "max_leverage": 1
+      }
+    ],
+    "ui_live_time": 1785542400000,
+    "logo": {
+      "light": "https://assets.perpetuals.polymarket.com/logos/hood/b4bbe8eb85c01202-light.svg",
+      "dark": "https://assets.perpetuals.polymarket.com/logos/hood/b4bbe8eb85c01202-dark.svg"
+    }
+  },
+  {
+    "instrument_id": 37,
+    "instrument_type": "perpetual",
+    "category": "equity",
+    "isolated_only": false,
+    "symbol": "MSTR-USD",
+    "close_only": false,
+    "base_asset": "MSTR",
+    "quote_asset": "pUSD",
+    "funding_interval": "1h",
+    "quantity_decimals": 3,
+    "price_decimals": 3,
+    "price_bounds": "0.10",
+    "liquidation_fee": "0.005",
+    "max_order_count": 200,
+    "min_notional": "10",
+    "max_market_notional": "500000",
+    "max_limit_notional": "2500000",
+    "max_leverage": 10,
+    "risk_tiers": [
+      {
+        "lower_bound": "0",
+        "max_leverage": 10
+      },
+      {
+        "lower_bound": "500000",
+        "max_leverage": 5
+      },
+      {
+        "lower_bound": "1000000",
+        "max_leverage": 3
+      },
+      {
+        "lower_bound": "3000000",
+        "max_leverage": 2
+      },
+      {
+        "lower_bound": "5000000",
+        "max_leverage": 1
+      }
+    ],
+    "ui_live_time": 1785542400000,
+    "logo": {
+      "light": "https://assets.perpetuals.polymarket.com/logos/mstr/c22a75e40964fbc8-light.svg",
+      "dark": "https://assets.perpetuals.polymarket.com/logos/mstr/c22a75e40964fbc8-dark.svg"
+    }
+  },
+  {
+    "instrument_id": 38,
+    "instrument_type": "perpetual",
+    "category": "equity",
+    "isolated_only": false,
+    "symbol": "STRC-USD",
+    "close_only": false,
+    "base_asset": "STRC",
+    "quote_asset": "pUSD",
+    "funding_interval": "1h",
+    "quantity_decimals": 3,
+    "price_decimals": 3,
+    "price_bounds": "0.10",
+    "liquidation_fee": "0.005",
+    "max_order_count": 200,
+    "min_notional": "10",
+    "max_market_notional": "500000",
+    "max_limit_notional": "2500000",
+    "max_leverage": 10,
+    "risk_tiers": [
+      {
+        "lower_bound": "0",
+        "max_leverage": 10
+      },
+      {
+        "lower_bound": "500000",
+        "max_leverage": 5
+      },
+      {
+        "lower_bound": "1000000",
+        "max_leverage": 3
+      },
+      {
+        "lower_bound": "3000000",
+        "max_leverage": 2
+      },
+      {
+        "lower_bound": "5000000",
+        "max_leverage": 1
+      }
+    ],
+    "ui_live_time": 1785542400000,
+    "logo": {
+      "light": "https://assets.perpetuals.polymarket.com/logos/strc/7c5d3a20998e2944-light.svg",
+      "dark": "https://assets.perpetuals.polymarket.com/logos/strc/7c5d3a20998e2944-dark.svg"
+    }
+  },
+  {
+    "instrument_id": 39,
+    "instrument_type": "perpetual",
+    "category": "equity",
+    "isolated_only": false,
+    "symbol": "CRCL-USD",
+    "close_only": false,
+    "base_asset": "CRCL",
+    "quote_asset": "pUSD",
+    "funding_interval": "1h",
+    "quantity_decimals": 3,
+    "price_decimals": 3,
+    "price_bounds": "0.10",
+    "liquidation_fee": "0.005",
+    "max_order_count": 200,
+    "min_notional": "10",
+    "max_market_notional": "500000",
+    "max_limit_notional": "2500000",
+    "max_leverage": 10,
+    "risk_tiers": [
+      {
+        "lower_bound": "0",
+        "max_leverage": 10
+      },
+      {
+        "lower_bound": "500000",
+        "max_leverage": 5
+      },
+      {
+        "lower_bound": "1000000",
+        "max_leverage": 3
+      },
+      {
+        "lower_bound": "3000000",
+        "max_leverage": 2
+      },
+      {
+        "lower_bound": "5000000",
+        "max_leverage": 1
+      }
+    ],
+    "ui_live_time": 1785542400000,
+    "logo": {
+      "light": "https://assets.perpetuals.polymarket.com/logos/crcl/2a8761373c87b6a6-light.svg",
+      "dark": "https://assets.perpetuals.polymarket.com/logos/crcl/2a8761373c87b6a6-dark.svg"
+    }
+  },
+  {
+    "instrument_id": 40,
+    "instrument_type": "perpetual",
+    "category": "equity",
+    "isolated_only": false,
+    "symbol": "COIN-USD",
+    "close_only": false,
+    "base_asset": "COIN",
+    "quote_asset": "pUSD",
+    "funding_interval": "1h",
+    "quantity_decimals": 4,
+    "price_decimals": 2,
+    "price_bounds": "0.10",
+    "liquidation_fee": "0.005",
+    "max_order_count": 200,
+    "min_notional": "10",
+    "max_market_notional": "500000",
+    "max_limit_notional": "2500000",
+    "max_leverage": 10,
+    "risk_tiers": [
+      {
+        "lower_bound": "0",
+        "max_leverage": 10
+      },
+      {
+        "lower_bound": "500000",
+        "max_leverage": 5
+      },
+      {
+        "lower_bound": "1000000",
+        "max_leverage": 3
+      },
+      {
+        "lower_bound": "3000000",
+        "max_leverage": 2
+      },
+      {
+        "lower_bound": "5000000",
+        "max_leverage": 1
+      }
+    ],
+    "ui_live_time": 1785542400000,
+    "logo": {
+      "light": "https://assets.perpetuals.polymarket.com/logos/coin/358079a0f6c038c8-light.svg",
+      "dark": "https://assets.perpetuals.polymarket.com/logos/coin/358079a0f6c038c8-dark.svg"
+    }
+  },
+  {
+    "instrument_id": 41,
+    "instrument_type": "perpetual",
+    "category": "equity",
+    "isolated_only": false,
+    "symbol": "RKLB-USD",
+    "close_only": false,
+    "base_asset": "RKLB",
+    "quote_asset": "pUSD",
+    "funding_interval": "1h",
+    "quantity_decimals": 3,
+    "price_decimals": 3,
+    "price_bounds": "0.10",
+    "liquidation_fee": "0.005",
+    "max_order_count": 200,
+    "min_notional": "10",
+    "max_market_notional": "500000",
+    "max_limit_notional": "2500000",
+    "max_leverage": 10,
+    "risk_tiers": [
+      {
+        "lower_bound": "0",
+        "max_leverage": 10
+      },
+      {
+        "lower_bound": "500000",
+        "max_leverage": 5
+      },
+      {
+        "lower_bound": "1000000",
+        "max_leverage": 3
+      },
+      {
+        "lower_bound": "3000000",
+        "max_leverage": 2
+      },
+      {
+        "lower_bound": "5000000",
+        "max_leverage": 1
+      }
+    ],
+    "ui_live_time": 1786966357000,
+    "logo": {
+      "light": "https://assets.perpetuals.polymarket.com/logos/rklb/6581da86cbc2866c-light.svg",
+      "dark": "https://assets.perpetuals.polymarket.com/logos/rklb/5aaaec403dd399c7-dark.svg"
+    }
+  },
+  {
+    "instrument_id": 42,
+    "instrument_type": "perpetual",
+    "category": "equity",
+    "isolated_only": false,
+    "symbol": "LITE-USD",
+    "close_only": false,
+    "base_asset": "LITE",
+    "quote_asset": "pUSD",
+    "funding_interval": "1h",
+    "quantity_decimals": 4,
+    "price_decimals": 2,
+    "price_bounds": "0.10",
+    "liquidation_fee": "0.005",
+    "max_order_count": 200,
+    "min_notional": "10",
+    "max_market_notional": "500000",
+    "max_limit_notional": "2500000",
+    "max_leverage": 10,
+    "risk_tiers": [
+      {
+        "lower_bound": "0",
+        "max_leverage": 10
+      },
+      {
+        "lower_bound": "500000",
+        "max_leverage": 5
+      },
+      {
+        "lower_bound": "1000000",
+        "max_leverage": 3
+      },
+      {
+        "lower_bound": "3000000",
+        "max_leverage": 2
+      },
+      {
+        "lower_bound": "5000000",
+        "max_leverage": 1
+      }
+    ],
+    "ui_live_time": 1786966372000,
+    "logo": {
+      "light": "https://assets.perpetuals.polymarket.com/logos/lite/61ce8b781b8858e8-light.svg",
+      "dark": "https://assets.perpetuals.polymarket.com/logos/lite/61ce8b781b8858e8-dark.svg"
+    }
+  },
+  {
+    "instrument_id": 43,
+    "instrument_type": "perpetual",
+    "category": "equity",
+    "isolated_only": false,
+    "symbol": "NBIS-USD",
+    "close_only": false,
+    "base_asset": "NBIS",
+    "quote_asset": "pUSD",
+    "funding_interval": "1h",
+    "quantity_decimals": 4,
+    "price_decimals": 2,
+    "price_bounds": "0.10",
+    "liquidation_fee": "0.005",
+    "max_order_count": 200,
+    "min_notional": "10",
+    "max_market_notional": "500000",
+    "max_limit_notional": "2500000",
+    "max_leverage": 10,
+    "risk_tiers": [
+      {
+        "lower_bound": "0",
+        "max_leverage": 10
+      },
+      {
+        "lower_bound": "500000",
+        "max_leverage": 5
+      },
+      {
+        "lower_bound": "1000000",
+        "max_leverage": 3
+      },
+      {
+        "lower_bound": "3000000",
+        "max_leverage": 2
+      },
+      {
+        "lower_bound": "5000000",
+        "max_leverage": 1
+      }
+    ],
+    "ui_live_time": 1786966391000,
+    "logo": {
+      "light": "https://assets.perpetuals.polymarket.com/logos/nbis/122ede0f219baafb-light.svg",
+      "dark": "https://assets.perpetuals.polymarket.com/logos/nbis/122ede0f219baafb-dark.svg"
+    }
+  },
+  {
+    "instrument_id": 44,
+    "instrument_type": "perpetual",
+    "category": "equity",
+    "isolated_only": false,
+    "symbol": "ORCL-USD",
+    "close_only": false,
+    "base_asset": "ORCL",
+    "quote_asset": "pUSD",
+    "funding_interval": "1h",
+    "quantity_decimals": 4,
+    "price_decimals": 2,
+    "price_bounds": "0.10",
+    "liquidation_fee": "0.005",
+    "max_order_count": 200,
+    "min_notional": "10",
+    "max_market_notional": "500000",
+    "max_limit_notional": "2500000",
+    "max_leverage": 10,
+    "risk_tiers": [
+      {
+        "lower_bound": "0",
+        "max_leverage": 10
+      },
+      {
+        "lower_bound": "500000",
+        "max_leverage": 5
+      },
+      {
+        "lower_bound": "1000000",
+        "max_leverage": 3
+      },
+      {
+        "lower_bound": "3000000",
+        "max_leverage": 2
+      },
+      {
+        "lower_bound": "5000000",
+        "max_leverage": 1
+      }
+    ],
+    "ui_live_time": 1786966405000,
+    "logo": {
+      "light": "https://assets.perpetuals.polymarket.com/logos/orcl/8e4faee950f7a553-light.svg",
+      "dark": "https://assets.perpetuals.polymarket.com/logos/orcl/06a5a5ad2cf436af-dark.svg"
+    }
+  },
+  {
+    "instrument_id": 45,
+    "instrument_type": "perpetual",
+    "category": "equity",
+    "isolated_only": false,
+    "symbol": "PLTR-USD",
+    "close_only": false,
+    "base_asset": "PLTR",
+    "quote_asset": "pUSD",
+    "funding_interval": "1h",
+    "quantity_decimals": 4,
+    "price_decimals": 2,
+    "price_bounds": "0.10",
+    "liquidation_fee": "0.005",
+    "max_order_count": 200,
+    "min_notional": "10",
+    "max_market_notional": "500000",
+    "max_limit_notional": "2500000",
+    "max_leverage": 10,
+    "risk_tiers": [
+      {
+        "lower_bound": "0",
+        "max_leverage": 10
+      },
+      {
+        "lower_bound": "500000",
+        "max_leverage": 5
+      },
+      {
+        "lower_bound": "1000000",
+        "max_leverage": 3
+      },
+      {
+        "lower_bound": "3000000",
+        "max_leverage": 2
+      },
+      {
+        "lower_bound": "5000000",
+        "max_leverage": 1
+      }
+    ],
+    "ui_live_time": 1786966419000,
+    "logo": {
+      "light": "https://assets.perpetuals.polymarket.com/logos/pltr/33e3915abfacdda3-light.svg",
+      "dark": "https://assets.perpetuals.polymarket.com/logos/pltr/e2656d60dee1f85a-dark.svg"
+    }
+  },
+  {
+    "instrument_id": 46,
+    "instrument_type": "perpetual",
+    "category": "commodity",
+    "isolated_only": false,
+    "symbol": "BRENTOIL-USD",
+    "close_only": false,
+    "base_asset": "BRENTOIL",
+    "quote_asset": "pUSD",
+    "funding_interval": "1h",
+    "quantity_decimals": 3,
+    "price_decimals": 3,
+    "price_bounds": "0.05",
+    "liquidation_fee": "0.005",
+    "max_order_count": 200,
+    "min_notional": "10",
+    "max_market_notional": "1000000",
+    "max_limit_notional": "5000000",
+    "max_leverage": 20,
+    "risk_tiers": [
+      {
+        "lower_bound": "0",
+        "max_leverage": 20
+      },
+      {
+        "lower_bound": "250000",
+        "max_leverage": 10
+      },
+      {
+        "lower_bound": "1000000",
+        "max_leverage": 8
+      },
+      {
+        "lower_bound": "2500000",
+        "max_leverage": 6
+      },
+      {
+        "lower_bound": "5000000",
+        "max_leverage": 5
+      },
+      {
+        "lower_bound": "7500000",
+        "max_leverage": 2
+      },
+      {
+        "lower_bound": "10000000",
+        "max_leverage": 1
+      }
+    ],
+    "ui_live_time": 1786966429000,
+    "logo": {
+      "light": "https://assets.perpetuals.polymarket.com/logos/brentoil/5a5d920df596be3a-light.svg",
+      "dark": "https://assets.perpetuals.polymarket.com/logos/brentoil/5a5d920df596be3a-dark.svg"
+    }
+  },
+  {
+    "instrument_id": 47,
+    "instrument_type": "perpetual",
+    "category": "equity",
+    "isolated_only": false,
+    "symbol": "BABA-USD",
+    "close_only": false,
+    "base_asset": "BABA",
+    "quote_asset": "pUSD",
+    "funding_interval": "1h",
+    "quantity_decimals": 4,
+    "price_decimals": 2,
+    "price_bounds": "0.10",
+    "liquidation_fee": "0.005",
+    "max_order_count": 200,
+    "min_notional": "10",
+    "max_market_notional": "500000",
+    "max_limit_notional": "2500000",
+    "max_leverage": 10,
+    "risk_tiers": [
+      {
+        "lower_bound": "0",
+        "max_leverage": 10
+      },
+      {
+        "lower_bound": "500000",
+        "max_leverage": 5
+      },
+      {
+        "lower_bound": "1000000",
+        "max_leverage": 3
+      },
+      {
+        "lower_bound": "3000000",
+        "max_leverage": 2
+      },
+      {
+        "lower_bound": "5000000",
+        "max_leverage": 1
+      }
+    ],
+    "ui_live_time": 1786982400000,
+    "logo": {
+      "light": "https://assets.perpetuals.polymarket.com/logos/baba/455c60c6f007d8cd-light.svg",
+      "dark": "https://assets.perpetuals.polymarket.com/logos/baba/455c60c6f007d8cd-dark.svg"
+    }
+  },
+  {
+    "instrument_id": 48,
+    "instrument_type": "perpetual",
+    "category": "equity",
+    "isolated_only": false,
+    "symbol": "ZM-USD",
+    "close_only": false,
+    "base_asset": "ZM",
+    "quote_asset": "pUSD",
+    "funding_interval": "1h",
+    "quantity_decimals": 4,
+    "price_decimals": 2,
+    "price_bounds": "0.10",
+    "liquidation_fee": "0.005",
+    "max_order_count": 200,
+    "min_notional": "10",
+    "max_market_notional": "500000",
+    "max_limit_notional": "2500000",
+    "max_leverage": 10,
+    "risk_tiers": [
+      {
+        "lower_bound": "0",
+        "max_leverage": 10
+      },
+      {
+        "lower_bound": "500000",
+        "max_leverage": 5
+      },
+      {
+        "lower_bound": "1000000",
+        "max_leverage": 3
+      },
+      {
+        "lower_bound": "3000000",
+        "max_leverage": 2
+      },
+      {
+        "lower_bound": "5000000",
+        "max_leverage": 1
+      }
+    ],
+    "ui_live_time": 1786982400000,
+    "logo": {
+      "light": "https://assets.perpetuals.polymarket.com/logos/zm/62f93fb8bbc5ba06-light.svg",
+      "dark": "https://assets.perpetuals.polymarket.com/logos/zm/62f93fb8bbc5ba06-dark.svg"
+    }
+  },
+  {
+    "instrument_id": 49,
+    "instrument_type": "perpetual",
+    "category": "equity",
+    "isolated_only": false,
+    "symbol": "DELL-USD",
+    "close_only": false,
+    "base_asset": "DELL",
+    "quote_asset": "pUSD",
+    "funding_interval": "1h",
+    "quantity_decimals": 4,
+    "price_decimals": 2,
+    "price_bounds": "0.10",
+    "liquidation_fee": "0.005",
+    "max_order_count": 200,
+    "min_notional": "10",
+    "max_market_notional": "500000",
+    "max_limit_notional": "2500000",
+    "max_leverage": 10,
+    "risk_tiers": [
+      {
+        "lower_bound": "0",
+        "max_leverage": 10
+      },
+      {
+        "lower_bound": "500000",
+        "max_leverage": 5
+      },
+      {
+        "lower_bound": "1000000",
+        "max_leverage": 3
+      },
+      {
+        "lower_bound": "3000000",
+        "max_leverage": 2
+      },
+      {
+        "lower_bound": "5000000",
+        "max_leverage": 1
+      }
+    ],
+    "ui_live_time": 1786982400000,
+    "logo": {
+      "light": "https://assets.perpetuals.polymarket.com/logos/dell/e3b7fc2911b6a772-light.svg",
+      "dark": "https://assets.perpetuals.polymarket.com/logos/dell/e3b7fc2911b6a772-dark.svg"
+    }
+  },
+  {
+    "instrument_id": 50,
+    "instrument_type": "perpetual",
+    "category": "equity",
+    "isolated_only": false,
+    "symbol": "CXMT-USD",
+    "close_only": false,
+    "base_asset": "CXMT",
+    "quote_asset": "pUSD",
+    "funding_interval": "1h",
+    "quantity_decimals": 2,
+    "price_decimals": 4,
+    "price_bounds": "0.10",
+    "liquidation_fee": "0.005",
+    "max_order_count": 200,
+    "min_notional": "10",
+    "max_market_notional": "500000",
+    "max_limit_notional": "2500000",
+    "max_leverage": 10,
+    "risk_tiers": [
+      {
+        "lower_bound": "0",
+        "max_leverage": 10
+      },
+      {
+        "lower_bound": "500000",
+        "max_leverage": 5
+      },
+      {
+        "lower_bound": "1000000",
+        "max_leverage": 3
+      },
+      {
+        "lower_bound": "3000000",
+        "max_leverage": 2
+      },
+      {
+        "lower_bound": "5000000",
+        "max_leverage": 1
+      }
+    ],
+    "ui_live_time": 1786982400000,
+    "logo": {
+      "light": "https://assets.perpetuals.polymarket.com/logos/cxmt/483a31d76df2d154-light.svg",
+      "dark": "https://assets.perpetuals.polymarket.com/logos/cxmt/92c6ab23a67f422c-dark.svg"
+    }
+  },
+  {
+    "instrument_id": 52,
+    "instrument_type": "perpetual",
+    "category": "equity",
+    "isolated_only": false,
+    "symbol": "SAMSUNG-USD",
+    "close_only": false,
+    "base_asset": "SAMSUNG",
+    "quote_asset": "pUSD",
+    "funding_interval": "1h",
+    "quantity_decimals": 4,
+    "price_decimals": 2,
+    "price_bounds": "0.10",
+    "liquidation_fee": "0.005",
+    "max_order_count": 200,
+    "min_notional": "10",
+    "max_market_notional": "500000",
+    "max_limit_notional": "2500000",
+    "max_leverage": 10,
+    "risk_tiers": [
+      {
+        "lower_bound": "0",
+        "max_leverage": 10
+      },
+      {
+        "lower_bound": "500000",
+        "max_leverage": 5
+      },
+      {
+        "lower_bound": "1000000",
+        "max_leverage": 3
+      },
+      {
+        "lower_bound": "3000000",
+        "max_leverage": 2
+      },
+      {
+        "lower_bound": "5000000",
+        "max_leverage": 1
+      }
+    ],
+    "ui_live_time": 1786982400000,
+    "logo": {
+      "light": "https://assets.perpetuals.polymarket.com/logos/samsung/e9adfd2126f7d5c5-light.svg",
+      "dark": "https://assets.perpetuals.polymarket.com/logos/samsung/142ad77f785799d6-dark.svg"
+    }
+  },
+  {
+    "instrument_id": 53,
+    "instrument_type": "perpetual",
+    "category": "equity",
+    "isolated_only": false,
+    "symbol": "CRWV-USD",
+    "close_only": false,
+    "base_asset": "CRWV",
+    "quote_asset": "pUSD",
+    "funding_interval": "1h",
+    "quantity_decimals": 3,
+    "price_decimals": 3,
+    "price_bounds": "0.10",
+    "liquidation_fee": "0.005",
+    "max_order_count": 200,
+    "min_notional": "10",
+    "max_market_notional": "500000",
+    "max_limit_notional": "2500000",
+    "max_leverage": 10,
+    "risk_tiers": [
+      {
+        "lower_bound": "0",
+        "max_leverage": 10
+      },
+      {
+        "lower_bound": "500000",
+        "max_leverage": 5
+      },
+      {
+        "lower_bound": "1000000",
+        "max_leverage": 3
+      },
+      {
+        "lower_bound": "3000000",
+        "max_leverage": 2
+      },
+      {
+        "lower_bound": "5000000",
+        "max_leverage": 1
+      }
+    ],
+    "ui_live_time": 1786982400000,
+    "logo": {
+      "light": "https://assets.perpetuals.polymarket.com/logos/crwv/400673989568f7c2-light.svg",
+      "dark": "https://assets.perpetuals.polymarket.com/logos/crwv/af4b6f62f0180e2d-dark.svg"
+    }
+  },
+  {
+    "instrument_id": 54,
+    "instrument_type": "perpetual",
+    "category": "crypto",
+    "isolated_only": false,
+    "symbol": "AAVE-USD",
+    "close_only": false,
+    "base_asset": "AAVE",
+    "quote_asset": "pUSD",
+    "funding_interval": "1h",
+    "quantity_decimals": 4,
+    "price_decimals": 2,
+    "price_bounds": "0.10",
+    "liquidation_fee": "0.005",
+    "max_order_count": 200,
+    "min_notional": "10",
+    "max_market_notional": "500000",
+    "max_limit_notional": "2500000",
+    "max_leverage": 10,
+    "risk_tiers": [
+      {
+        "lower_bound": "0",
+        "max_leverage": 10
+      },
+      {
+        "lower_bound": "500000",
+        "max_leverage": 8
+      },
+      {
+        "lower_bound": "1000000",
+        "max_leverage": 6
+      },
+      {
+        "lower_bound": "2000000",
+        "max_leverage": 5
+      },
+      {
+        "lower_bound": "3000000",
+        "max_leverage": 2
+      },
+      {
+        "lower_bound": "5000000",
+        "max_leverage": 1
+      }
+    ],
+    "ui_live_time": 1787772225512,
+    "logo": {
+      "light": "https://assets.perpetuals.polymarket.com/logos/aave/277927787a83c4a2-light.svg",
+      "dark": "https://assets.perpetuals.polymarket.com/logos/aave/277927787a83c4a2-dark.svg"
+    }
+  },
+  {
+    "instrument_id": 55,
+    "instrument_type": "perpetual",
+    "category": "crypto",
+    "isolated_only": false,
+    "symbol": "UNI-USD",
+    "close_only": false,
+    "base_asset": "UNI",
+    "quote_asset": "pUSD",
+    "funding_interval": "1h",
+    "quantity_decimals": 2,
+    "price_decimals": 4,
+    "price_bounds": "0.10",
+    "liquidation_fee": "0.005",
+    "max_order_count": 200,
+    "min_notional": "10",
+    "max_market_notional": "500000",
+    "max_limit_notional": "2500000",
+    "max_leverage": 10,
+    "risk_tiers": [
+      {
+        "lower_bound": "0",
+        "max_leverage": 10
+      },
+      {
+        "lower_bound": "500000",
+        "max_leverage": 8
+      },
+      {
+        "lower_bound": "1000000",
+        "max_leverage": 6
+      },
+      {
+        "lower_bound": "2000000",
+        "max_leverage": 5
+      },
+      {
+        "lower_bound": "3000000",
+        "max_leverage": 2
+      },
+      {
+        "lower_bound": "5000000",
+        "max_leverage": 1
+      }
+    ],
+    "ui_live_time": 1787773569258,
+    "logo": {
+      "light": "https://assets.perpetuals.polymarket.com/logos/uni/afe522ef68d32323-light.svg",
+      "dark": "https://assets.perpetuals.polymarket.com/logos/uni/afe522ef68d32323-dark.svg"
+    }
+  },
+  {
+    "instrument_id": 56,
+    "instrument_type": "perpetual",
+    "category": "crypto",
+    "isolated_only": false,
+    "symbol": "WLD-USD",
+    "close_only": false,
+    "base_asset": "WLD",
+    "quote_asset": "pUSD",
+    "funding_interval": "1h",
+    "quantity_decimals": 1,
+    "price_decimals": 5,
+    "price_bounds": "0.10",
+    "liquidation_fee": "0.005",
+    "max_order_count": 200,
+    "min_notional": "10",
+    "max_market_notional": "500000",
+    "max_limit_notional": "2500000",
+    "max_leverage": 10,
+    "risk_tiers": [
+      {
+        "lower_bound": "0",
+        "max_leverage": 10
+      },
+      {
+        "lower_bound": "500000",
+        "max_leverage": 8
+      },
+      {
+        "lower_bound": "1000000",
+        "max_leverage": 6
+      },
+      {
+        "lower_bound": "2000000",
+        "max_leverage": 5
+      },
+      {
+        "lower_bound": "3000000",
+        "max_leverage": 2
+      },
+      {
+        "lower_bound": "5000000",
+        "max_leverage": 1
+      }
+    ],
+    "ui_live_time": 1787773570444,
+    "logo": {
+      "light": "https://assets.perpetuals.polymarket.com/logos/wld/c9f12beefe0dd641-light.svg",
+      "dark": "https://assets.perpetuals.polymarket.com/logos/wld/c84705146e236eef-dark.svg"
+    }
+  },
+  {
+    "instrument_id": 57,
+    "instrument_type": "perpetual",
+    "category": "crypto",
+    "isolated_only": false,
+    "symbol": "NEAR-USD",
+    "close_only": false,
+    "base_asset": "NEAR",
+    "quote_asset": "pUSD",
+    "funding_interval": "1h",
+    "quantity_decimals": 2,
+    "price_decimals": 4,
+    "price_bounds": "0.10",
+    "liquidation_fee": "0.005",
+    "max_order_count": 200,
+    "min_notional": "10",
+    "max_market_notional": "500000",
+    "max_limit_notional": "2500000",
+    "max_leverage": 10,
+    "risk_tiers": [
+      {
+        "lower_bound": "0",
+        "max_leverage": 10
+      },
+      {
+        "lower_bound": "500000",
+        "max_leverage": 8
+      },
+      {
+        "lower_bound": "1000000",
+        "max_leverage": 6
+      },
+      {
+        "lower_bound": "2000000",
+        "max_leverage": 5
+      },
+      {
+        "lower_bound": "3000000",
+        "max_leverage": 2
+      },
+      {
+        "lower_bound": "5000000",
+        "max_leverage": 1
+      }
+    ],
+    "ui_live_time": 1787773571587,
+    "logo": {
+      "light": "https://assets.perpetuals.polymarket.com/logos/near/bede602b0871171b-light.svg",
+      "dark": "https://assets.perpetuals.polymarket.com/logos/near/d89120bd8268ea55-dark.svg"
+    }
+  },
+  {
+    "instrument_id": 58,
+    "instrument_type": "perpetual",
+    "category": "crypto",
+    "isolated_only": false,
+    "symbol": "KSHIB-USD",
+    "close_only": false,
+    "base_asset": "KSHIB",
+    "quote_asset": "pUSD",
+    "funding_interval": "1h",
+    "quantity_decimals": 0,
+    "price_decimals": 6,
+    "price_bounds": "0.10",
+    "liquidation_fee": "0.005",
+    "max_order_count": 200,
+    "min_notional": "10",
+    "max_market_notional": "500000",
+    "max_limit_notional": "2500000",
+    "max_leverage": 10,
+    "risk_tiers": [
+      {
+        "lower_bound": "0",
+        "max_leverage": 10
+      },
+      {
+        "lower_bound": "500000",
+        "max_leverage": 8
+      },
+      {
+        "lower_bound": "1000000",
+        "max_leverage": 6
+      },
+      {
+        "lower_bound": "2000000",
+        "max_leverage": 5
+      },
+      {
+        "lower_bound": "3000000",
+        "max_leverage": 2
+      },
+      {
+        "lower_bound": "5000000",
+        "max_leverage": 1
+      }
+    ],
+    "ui_live_time": 1787772225512,
+    "logo": {
+      "light": "https://assets.perpetuals.polymarket.com/logos/kshib/60af06880c63f64b-light.svg",
+      "dark": "https://assets.perpetuals.polymarket.com/logos/kshib/60af06880c63f64b-dark.svg"
+    }
+  },
+  {
+    "instrument_id": 59,
+    "instrument_type": "perpetual",
+    "category": "crypto",
+    "isolated_only": false,
+    "symbol": "FARTCOIN-USD",
+    "close_only": false,
+    "base_asset": "FARTCOIN",
+    "quote_asset": "pUSD",
+    "funding_interval": "1h",
+    "quantity_decimals": 1,
+    "price_decimals": 5,
+    "price_bounds": "0.10",
+    "liquidation_fee": "0.005",
+    "max_order_count": 200,
+    "min_notional": "10",
+    "max_market_notional": "500000",
+    "max_limit_notional": "2500000",
+    "max_leverage": 10,
+    "risk_tiers": [
+      {
+        "lower_bound": "0",
+        "max_leverage": 10
+      },
+      {
+        "lower_bound": "500000",
+        "max_leverage": 8
+      },
+      {
+        "lower_bound": "1000000",
+        "max_leverage": 6
+      },
+      {
+        "lower_bound": "2000000",
+        "max_leverage": 5
+      },
+      {
+        "lower_bound": "3000000",
+        "max_leverage": 2
+      },
+      {
+        "lower_bound": "5000000",
+        "max_leverage": 1
+      }
+    ],
+    "ui_live_time": 1787773572926,
+    "logo": {
+      "light": "https://assets.perpetuals.polymarket.com/logos/fartcoin/3e41af60be4e1081-light.svg",
+      "dark": "https://assets.perpetuals.polymarket.com/logos/fartcoin/3e41af60be4e1081-dark.svg"
+    }
+  },
+  {
+    "instrument_id": 60,
+    "instrument_type": "perpetual",
+    "category": "crypto",
+    "isolated_only": false,
+    "symbol": "DOGE-USD",
+    "close_only": false,
+    "base_asset": "DOGE",
+    "quote_asset": "pUSD",
+    "funding_interval": "1h",
+    "quantity_decimals": 0,
+    "price_decimals": 6,
+    "price_bounds": "0.10",
+    "liquidation_fee": "0.005",
+    "max_order_count": 200,
+    "min_notional": "10",
+    "max_market_notional": "500000",
+    "max_limit_notional": "2500000",
+    "max_leverage": 10,
+    "risk_tiers": [
+      {
+        "lower_bound": "0",
+        "max_leverage": 10
+      },
+      {
+        "lower_bound": "500000",
+        "max_leverage": 8
+      },
+      {
+        "lower_bound": "1000000",
+        "max_leverage": 6
+      },
+      {
+        "lower_bound": "2000000",
+        "max_leverage": 5
+      },
+      {
+        "lower_bound": "3000000",
+        "max_leverage": 2
+      },
+      {
+        "lower_bound": "5000000",
+        "max_leverage": 1
+      }
+    ],
+    "ui_live_time": 1787772225512,
+    "logo": {
+      "light": "https://assets.perpetuals.polymarket.com/logos/doge/0dcaf720c3c69d99-light.svg",
+      "dark": "https://assets.perpetuals.polymarket.com/logos/doge/0dcaf720c3c69d99-dark.svg"
+    }
+  },
+  {
+    "instrument_id": 61,
+    "instrument_type": "perpetual",
+    "category": "crypto",
+    "isolated_only": false,
+    "symbol": "ENA-USD",
+    "close_only": false,
+    "base_asset": "ENA",
+    "quote_asset": "pUSD",
+    "funding_interval": "1h",
+    "quantity_decimals": 1,
+    "price_decimals": 5,
+    "price_bounds": "0.10",
+    "liquidation_fee": "0.005",
+    "max_order_count": 200,
+    "min_notional": "10",
+    "max_market_notional": "500000",
+    "max_limit_notional": "2500000",
+    "max_leverage": 10,
+    "risk_tiers": [
+      {
+        "lower_bound": "0",
+        "max_leverage": 10
+      },
+      {
+        "lower_bound": "500000",
+        "max_leverage": 8
+      },
+      {
+        "lower_bound": "1000000",
+        "max_leverage": 6
+      },
+      {
+        "lower_bound": "2000000",
+        "max_leverage": 5
+      },
+      {
+        "lower_bound": "3000000",
+        "max_leverage": 2
+      },
+      {
+        "lower_bound": "5000000",
+        "max_leverage": 1
+      }
+    ],
+    "ui_live_time": 1787773574046,
+    "logo": {
+      "light": "https://assets.perpetuals.polymarket.com/logos/ena/638cc7bae7a64cd3-light.svg",
+      "dark": "https://assets.perpetuals.polymarket.com/logos/ena/638cc7bae7a64cd3-dark.svg"
+    }
+  },
+  {
+    "instrument_id": 62,
+    "instrument_type": "perpetual",
+    "category": "crypto",
+    "isolated_only": false,
+    "symbol": "ONDO-USD",
+    "close_only": false,
+    "base_asset": "ONDO",
+    "quote_asset": "pUSD",
+    "funding_interval": "1h",
+    "quantity_decimals": 1,
+    "price_decimals": 5,
+    "price_bounds": "0.10",
+    "liquidation_fee": "0.005",
+    "max_order_count": 200,
+    "min_notional": "10",
+    "max_market_notional": "500000",
+    "max_limit_notional": "2500000",
+    "max_leverage": 10,
+    "risk_tiers": [
+      {
+        "lower_bound": "0",
+        "max_leverage": 10
+      },
+      {
+        "lower_bound": "500000",
+        "max_leverage": 8
+      },
+      {
+        "lower_bound": "1000000",
+        "max_leverage": 6
+      },
+      {
+        "lower_bound": "2000000",
+        "max_leverage": 5
+      },
+      {
+        "lower_bound": "3000000",
+        "max_leverage": 2
+      },
+      {
+        "lower_bound": "5000000",
+        "max_leverage": 1
+      }
+    ],
+    "ui_live_time": 1787772225512,
+    "logo": {
+      "light": "https://assets.perpetuals.polymarket.com/logos/ondo/85ccee7bd5a9fce8-light.svg",
+      "dark": "https://assets.perpetuals.polymarket.com/logos/ondo/19691e917dfced98-dark.svg"
+    }
+  },
+  {
+    "instrument_id": 63,
+    "instrument_type": "perpetual",
+    "category": "crypto",
+    "isolated_only": false,
+    "symbol": "SUI-USD",
+    "close_only": false,
+    "base_asset": "SUI",
+    "quote_asset": "pUSD",
+    "funding_interval": "1h",
+    "quantity_decimals": 1,
+    "price_decimals": 5,
+    "price_bounds": "0.10",
+    "liquidation_fee": "0.005",
+    "max_order_count": 200,
+    "min_notional": "10",
+    "max_market_notional": "500000",
+    "max_limit_notional": "2500000",
+    "max_leverage": 10,
+    "risk_tiers": [
+      {
+        "lower_bound": "0",
+        "max_leverage": 10
+      },
+      {
+        "lower_bound": "500000",
+        "max_leverage": 8
+      },
+      {
+        "lower_bound": "1000000",
+        "max_leverage": 6
+      },
+      {
+        "lower_bound": "2000000",
+        "max_leverage": 5
+      },
+      {
+        "lower_bound": "3000000",
+        "max_leverage": 2
+      },
+      {
+        "lower_bound": "5000000",
+        "max_leverage": 1
+      }
+    ],
+    "ui_live_time": 1787772225512,
+    "logo": {
+      "light": "https://assets.perpetuals.polymarket.com/logos/sui/84db4154f5ee543c-light.svg",
+      "dark": "https://assets.perpetuals.polymarket.com/logos/sui/84db4154f5ee543c-dark.svg"
+    }
+  },
+  {
+    "instrument_id": 64,
+    "instrument_type": "perpetual",
+    "category": "crypto",
+    "isolated_only": false,
+    "symbol": "VVV-USD",
+    "close_only": false,
+    "base_asset": "VVV",
+    "quote_asset": "pUSD",
+    "funding_interval": "1h",
+    "quantity_decimals": 3,
+    "price_decimals": 3,
+    "price_bounds": "0.3333333333333333333333333333",
+    "liquidation_fee": "0.005",
+    "max_order_count": 200,
+    "min_notional": "10",
+    "max_market_notional": "50000",
+    "max_limit_notional": "250000",
+    "max_leverage": 3,
+    "risk_tiers": [
+      {
+        "lower_bound": "0",
+        "max_leverage": 3
+      },
+      {
+        "lower_bound": "500000",
+        "max_leverage": 2
+      },
+      {
+        "lower_bound": "1000000",
+        "max_leverage": 1
+      }
+    ],
+    "ui_live_time": 1787773575174,
+    "logo": {
+      "light": "https://assets.perpetuals.polymarket.com/logos/vvv/1e7663d9195793b9-light.svg",
+      "dark": "https://assets.perpetuals.polymarket.com/logos/vvv/1e7663d9195793b9-dark.svg"
+    }
+  },
+  {
+    "instrument_id": 65,
+    "instrument_type": "perpetual",
+    "category": "crypto",
+    "isolated_only": false,
+    "symbol": "TAO-USD",
+    "close_only": false,
+    "base_asset": "TAO",
+    "quote_asset": "pUSD",
+    "funding_interval": "1h",
+    "quantity_decimals": 4,
+    "price_decimals": 2,
+    "price_bounds": "0.20",
+    "liquidation_fee": "0.005",
+    "max_order_count": 200,
+    "min_notional": "10",
+    "max_market_notional": "50000",
+    "max_limit_notional": "250000",
+    "max_leverage": 5,
+    "risk_tiers": [
+      {
+        "lower_bound": "0",
+        "max_leverage": 5
+      },
+      {
+        "lower_bound": "500000",
+        "max_leverage": 4
+      },
+      {
+        "lower_bound": "1000000",
+        "max_leverage": 3
+      },
+      {
+        "lower_bound": "1500000",
+        "max_leverage": 2
+      },
+      {
+        "lower_bound": "2000000",
+        "max_leverage": 1
+      }
+    ],
+    "ui_live_time": 1787773576275,
+    "logo": {
+      "light": "https://assets.perpetuals.polymarket.com/logos/tao/4386c7a471720338-light.svg",
+      "dark": "https://assets.perpetuals.polymarket.com/logos/tao/d381024da2721f8f-dark.svg"
+    }
+  },
+  {
+    "instrument_id": 66,
+    "instrument_type": "perpetual",
+    "category": "crypto",
+    "isolated_only": false,
+    "symbol": "ADA-USD",
+    "close_only": false,
+    "base_asset": "ADA",
+    "quote_asset": "pUSD",
+    "funding_interval": "1h",
+    "quantity_decimals": 1,
+    "price_decimals": 5,
+    "price_bounds": "0.10",
+    "liquidation_fee": "0.005",
+    "max_order_count": 200,
+    "min_notional": "10",
+    "max_market_notional": "500000",
+    "max_limit_notional": "2500000",
+    "max_leverage": 10,
+    "risk_tiers": [
+      {
+        "lower_bound": "0",
+        "max_leverage": 10
+      },
+      {
+        "lower_bound": "500000",
+        "max_leverage": 8
+      },
+      {
+        "lower_bound": "1000000",
+        "max_leverage": 6
+      },
+      {
+        "lower_bound": "2000000",
+        "max_leverage": 5
+      },
+      {
+        "lower_bound": "3000000",
+        "max_leverage": 2
+      },
+      {
+        "lower_bound": "5000000",
+        "max_leverage": 1
+      }
+    ],
+    "ui_live_time": 1787773577450,
+    "logo": {
+      "light": "https://assets.perpetuals.polymarket.com/logos/ada/e4cd3f55c4e2b464-light.svg",
+      "dark": "https://assets.perpetuals.polymarket.com/logos/ada/62dc12b76dfe2325-dark.svg"
+    }
+  },
+  {
+    "instrument_id": 67,
+    "instrument_type": "perpetual",
+    "category": "crypto",
+    "isolated_only": false,
+    "symbol": "ZRO-USD",
+    "close_only": false,
+    "base_asset": "ZRO",
+    "quote_asset": "pUSD",
+    "funding_interval": "1h",
+    "quantity_decimals": 2,
+    "price_decimals": 4,
+    "price_bounds": "0.20",
+    "liquidation_fee": "0.005",
+    "max_order_count": 200,
+    "min_notional": "10",
+    "max_market_notional": "50000",
+    "max_limit_notional": "250000",
+    "max_leverage": 5,
+    "risk_tiers": [
+      {
+        "lower_bound": "0",
+        "max_leverage": 5
+      },
+      {
+        "lower_bound": "500000",
+        "max_leverage": 4
+      },
+      {
+        "lower_bound": "1000000",
+        "max_leverage": 3
+      },
+      {
+        "lower_bound": "1500000",
+        "max_leverage": 2
+      },
+      {
+        "lower_bound": "2000000",
+        "max_leverage": 1
+      }
+    ],
+    "ui_live_time": 1787774127651,
+    "logo": {
+      "light": "https://assets.perpetuals.polymarket.com/logos/zro/de32f0900fabba8f-light.svg",
+      "dark": "https://assets.perpetuals.polymarket.com/logos/zro/56b42658f948f258-dark.svg"
+    }
+  },
+  {
+    "instrument_id": 68,
+    "instrument_type": "perpetual",
+    "category": "crypto",
+    "isolated_only": false,
+    "symbol": "BNB-USD",
+    "close_only": false,
+    "base_asset": "BNB",
+    "quote_asset": "pUSD",
+    "funding_interval": "1h",
+    "quantity_decimals": 4,
+    "price_decimals": 2,
+    "price_bounds": "0.10",
+    "liquidation_fee": "0.005",
+    "max_order_count": 200,
+    "min_notional": "10",
+    "max_market_notional": "500000",
+    "max_limit_notional": "2500000",
+    "max_leverage": 10,
+    "risk_tiers": [
+      {
+        "lower_bound": "0",
+        "max_leverage": 10
+      },
+      {
+        "lower_bound": "500000",
+        "max_leverage": 8
+      },
+      {
+        "lower_bound": "1000000",
+        "max_leverage": 6
+      },
+      {
+        "lower_bound": "2000000",
+        "max_leverage": 5
+      },
+      {
+        "lower_bound": "3000000",
+        "max_leverage": 2
+      },
+      {
+        "lower_bound": "5000000",
+        "max_leverage": 1
+      }
+    ],
+    "ui_live_time": 1787772225512,
+    "logo": {
+      "light": "https://assets.perpetuals.polymarket.com/logos/bnb/35320566e79664b7-light.svg",
+      "dark": "https://assets.perpetuals.polymarket.com/logos/bnb/35320566e79664b7-dark.svg"
+    }
+  },
+  {
+    "instrument_id": 69,
+    "instrument_type": "perpetual",
+    "category": "crypto",
+    "isolated_only": false,
+    "symbol": "PONS-USD",
+    "close_only": false,
+    "base_asset": "PONS",
+    "quote_asset": "pUSD",
+    "funding_interval": "1h",
+    "quantity_decimals": 1,
+    "price_decimals": 5,
+    "price_bounds": "0.3333333333333333333333333333",
+    "liquidation_fee": "0.005",
+    "max_order_count": 200,
+    "min_notional": "10",
+    "max_market_notional": "50000",
+    "max_limit_notional": "250000",
+    "max_leverage": 3,
+    "risk_tiers": [
+      {
+        "lower_bound": "0",
+        "max_leverage": 3
+      },
+      {
+        "lower_bound": "500000",
+        "max_leverage": 2
+      },
+      {
+        "lower_bound": "1000000",
+        "max_leverage": 1
+      }
+    ],
+    "ui_live_time": 1789068819000,
+    "logo": {
+      "light": "https://assets.perpetuals.polymarket.com/logos/pons/7505e4173a264d52-light.svg",
+      "dark": "https://assets.perpetuals.polymarket.com/logos/pons/7505e4173a264d52-dark.svg"
+    }
+  },
+  {
+    "instrument_id": 70,
+    "instrument_type": "perpetual",
+    "category": "crypto",
+    "isolated_only": false,
+    "symbol": "CASHCAT-USD",
+    "close_only": false,
+    "base_asset": "CASHCAT",
+    "quote_asset": "pUSD",
+    "funding_interval": "1h",
+    "quantity_decimals": 1,
+    "price_decimals": 5,
+    "price_bounds": "0.3333333333333333333333333333",
+    "liquidation_fee": "0.005",
+    "max_order_count": 200,
+    "min_notional": "10",
+    "max_market_notional": "50000",
+    "max_limit_notional": "250000",
+    "max_leverage": 3,
+    "risk_tiers": [
+      {
+        "lower_bound": "0",
+        "max_leverage": 3
+      },
+      {
+        "lower_bound": "500000",
+        "max_leverage": 2
+      },
+      {
+        "lower_bound": "1000000",
+        "max_leverage": 1
+      }
+    ],
+    "ui_live_time": 1789070267000,
+    "logo": {
+      "light": "https://assets.perpetuals.polymarket.com/logos/cashcat/6943901c039abea8-light.svg",
+      "dark": "https://assets.perpetuals.polymarket.com/logos/cashcat/6943901c039abea8-dark.svg"
+    }
+  },
+  {
+    "instrument_id": 71,
+    "instrument_type": "perpetual",
+    "category": "crypto",
+    "isolated_only": false,
+    "symbol": "USELESS-USD",
+    "close_only": false,
+    "base_asset": "USELESS",
+    "quote_asset": "pUSD",
+    "funding_interval": "1h",
+    "quantity_decimals": 1,
+    "price_decimals": 5,
+    "price_bounds": "0.3333333333333333333333333333",
+    "liquidation_fee": "0.005",
+    "max_order_count": 200,
+    "min_notional": "10",
+    "max_market_notional": "50000",
+    "max_limit_notional": "250000",
+    "max_leverage": 3,
+    "risk_tiers": [
+      {
+        "lower_bound": "0",
+        "max_leverage": 3
+      },
+      {
+        "lower_bound": "500000",
+        "max_leverage": 2
+      },
+      {
+        "lower_bound": "1000000",
+        "max_leverage": 1
+      }
+    ],
+    "ui_live_time": 1789070299000,
+    "logo": {
+      "light": "https://assets.perpetuals.polymarket.com/logos/useless/e25cb4ea5ea33904-light.svg",
+      "dark": "https://assets.perpetuals.polymarket.com/logos/useless/e25cb4ea5ea33904-dark.svg"
+    }
+  },
+  {
+    "instrument_id": 72,
+    "instrument_type": "perpetual",
+    "category": "crypto",
+    "isolated_only": false,
+    "symbol": "KAITO-USD",
+    "close_only": false,
+    "base_asset": "KAITO",
+    "quote_asset": "pUSD",
+    "funding_interval": "1h",
+    "quantity_decimals": 1,
+    "price_decimals": 5,
+    "price_bounds": "0.20",
+    "liquidation_fee": "0.005",
+    "max_order_count": 200,
+    "min_notional": "10",
+    "max_market_notional": "50000",
+    "max_limit_notional": "250000",
+    "max_leverage": 5,
+    "risk_tiers": [
+      {
+        "lower_bound": "0",
+        "max_leverage": 5
+      },
+      {
+        "lower_bound": "500000",
+        "max_leverage": 4
+      },
+      {
+        "lower_bound": "1000000",
+        "max_leverage": 3
+      },
+      {
+        "lower_bound": "1500000",
+        "max_leverage": 2
+      },
+      {
+        "lower_bound": "2000000",
+        "max_leverage": 1
+      }
+    ],
+    "ui_live_time": 1789070319000,
+    "logo": {
+      "light": "https://assets.perpetuals.polymarket.com/logos/kaito/9dcdd5413d1ea8a6-light.svg",
+      "dark": "https://assets.perpetuals.polymarket.com/logos/kaito/9dcdd5413d1ea8a6-dark.svg"
+    }
+  },
+  {
+    "instrument_id": 73,
+    "instrument_type": "perpetual",
+    "category": "crypto",
+    "isolated_only": false,
+    "symbol": "ARB-USD",
+    "close_only": false,
+    "base_asset": "ARB",
+    "quote_asset": "pUSD",
+    "funding_interval": "1h",
+    "quantity_decimals": 1,
+    "price_decimals": 5,
+    "price_bounds": "0.10",
+    "liquidation_fee": "0.005",
+    "max_order_count": 200,
+    "min_notional": "10",
+    "max_market_notional": "500000",
+    "max_limit_notional": "2500000",
+    "max_leverage": 10,
+    "risk_tiers": [
+      {
+        "lower_bound": "0",
+        "max_leverage": 10
+      },
+      {
+        "lower_bound": "500000",
+        "max_leverage": 8
+      },
+      {
+        "lower_bound": "1000000",
+        "max_leverage": 6
+      },
+      {
+        "lower_bound": "2000000",
+        "max_leverage": 5
+      },
+      {
+        "lower_bound": "3000000",
+        "max_leverage": 2
+      },
+      {
+        "lower_bound": "5000000",
+        "max_leverage": 1
+      }
+    ],
+    "ui_live_time": 1789063810000,
+    "logo": {
+      "light": "https://assets.perpetuals.polymarket.com/logos/arb/f5d98d9937326691-light.svg",
+      "dark": "https://assets.perpetuals.polymarket.com/logos/arb/f5d98d9937326691-dark.svg"
+    }
+  },
+  {
+    "instrument_id": 74,
+    "instrument_type": "perpetual",
+    "category": "crypto",
+    "isolated_only": false,
+    "symbol": "LDO-USD",
+    "close_only": false,
+    "base_asset": "LDO",
+    "quote_asset": "pUSD",
+    "funding_interval": "1h",
+    "quantity_decimals": 1,
+    "price_decimals": 5,
+    "price_bounds": "0.20",
+    "liquidation_fee": "0.005",
+    "max_order_count": 200,
+    "min_notional": "10",
+    "max_market_notional": "50000",
+    "max_limit_notional": "250000",
+    "max_leverage": 5,
+    "risk_tiers": [
+      {
+        "lower_bound": "0",
+        "max_leverage": 5
+      },
+      {
+        "lower_bound": "500000",
+        "max_leverage": 4
+      },
+      {
+        "lower_bound": "1000000",
+        "max_leverage": 3
+      },
+      {
+        "lower_bound": "1500000",
+        "max_leverage": 2
+      },
+      {
+        "lower_bound": "2000000",
+        "max_leverage": 1
+      }
+    ],
+    "ui_live_time": 1789070333000,
+    "logo": {
+      "light": "https://assets.perpetuals.polymarket.com/logos/ldo/65edc8fac67e81dc-light.svg",
+      "dark": "https://assets.perpetuals.polymarket.com/logos/ldo/65edc8fac67e81dc-dark.svg"
+    }
+  },
+  {
+    "instrument_id": 75,
+    "instrument_type": "perpetual",
+    "category": "crypto",
+    "isolated_only": false,
+    "symbol": "AVAX-USD",
+    "close_only": false,
+    "base_asset": "AVAX",
+    "quote_asset": "pUSD",
+    "funding_interval": "1h",
+    "quantity_decimals": 2,
+    "price_decimals": 4,
+    "price_bounds": "0.10",
+    "liquidation_fee": "0.005",
+    "max_order_count": 200,
+    "min_notional": "10",
+    "max_market_notional": "500000",
+    "max_limit_notional": "2500000",
+    "max_leverage": 10,
+    "risk_tiers": [
+      {
+        "lower_bound": "0",
+        "max_leverage": 10
+      },
+      {
+        "lower_bound": "500000",
+        "max_leverage": 8
+      },
+      {
+        "lower_bound": "1000000",
+        "max_leverage": 6
+      },
+      {
+        "lower_bound": "2000000",
+        "max_leverage": 5
+      },
+      {
+        "lower_bound": "3000000",
+        "max_leverage": 2
+      },
+      {
+        "lower_bound": "5000000",
+        "max_leverage": 1
+      }
+    ],
+    "ui_live_time": 1789061080000,
+    "logo": {
+      "light": "https://assets.perpetuals.polymarket.com/logos/avax/9ce33a6236f26aba-light.svg",
+      "dark": "https://assets.perpetuals.polymarket.com/logos/avax/9ce33a6236f26aba-dark.svg"
+    }
+  },
+  {
+    "instrument_id": 76,
+    "instrument_type": "perpetual",
+    "category": "crypto",
+    "isolated_only": false,
+    "symbol": "LTC-USD",
+    "close_only": false,
+    "base_asset": "LTC",
+    "quote_asset": "pUSD",
+    "funding_interval": "1h",
+    "quantity_decimals": 3,
+    "price_decimals": 3,
+    "price_bounds": "0.10",
+    "liquidation_fee": "0.005",
+    "max_order_count": 200,
+    "min_notional": "10",
+    "max_market_notional": "500000",
+    "max_limit_notional": "2500000",
+    "max_leverage": 10,
+    "risk_tiers": [
+      {
+        "lower_bound": "0",
+        "max_leverage": 10
+      },
+      {
+        "lower_bound": "500000",
+        "max_leverage": 8
+      },
+      {
+        "lower_bound": "1000000",
+        "max_leverage": 6
+      },
+      {
+        "lower_bound": "2000000",
+        "max_leverage": 5
+      },
+      {
+        "lower_bound": "3000000",
+        "max_leverage": 2
+      },
+      {
+        "lower_bound": "5000000",
+        "max_leverage": 1
+      }
+    ],
+    "ui_live_time": 1789068906000,
+    "logo": {
+      "light": "https://assets.perpetuals.polymarket.com/logos/ltc/4cd397b3e4876948-light.svg",
+      "dark": "https://assets.perpetuals.polymarket.com/logos/ltc/4cd397b3e4876948-dark.svg"
+    }
+  },
+  {
+    "instrument_id": 77,
+    "instrument_type": "perpetual",
+    "category": "crypto",
+    "isolated_only": false,
+    "symbol": "XPL-USD",
+    "close_only": false,
+    "base_asset": "XPL",
+    "quote_asset": "pUSD",
+    "funding_interval": "1h",
+    "quantity_decimals": 0,
+    "price_decimals": 6,
+    "price_bounds": "0.10",
+    "liquidation_fee": "0.005",
+    "max_order_count": 200,
+    "min_notional": "10",
+    "max_market_notional": "500000",
+    "max_limit_notional": "2500000",
+    "max_leverage": 10,
+    "risk_tiers": [
+      {
+        "lower_bound": "0",
+        "max_leverage": 10
+      },
+      {
+        "lower_bound": "500000",
+        "max_leverage": 8
+      },
+      {
+        "lower_bound": "1000000",
+        "max_leverage": 6
+      },
+      {
+        "lower_bound": "2000000",
+        "max_leverage": 5
+      },
+      {
+        "lower_bound": "3000000",
+        "max_leverage": 2
+      },
+      {
+        "lower_bound": "5000000",
+        "max_leverage": 1
+      }
+    ],
+    "ui_live_time": 1789068962000,
+    "logo": {
+      "light": "https://assets.perpetuals.polymarket.com/logos/xpl/f30288abfd0da8d2-light.svg",
+      "dark": "https://assets.perpetuals.polymarket.com/logos/xpl/f30288abfd0da8d2-dark.svg"
+    }
+  },
+  {
+    "instrument_id": 78,
+    "instrument_type": "perpetual",
+    "category": "crypto",
+    "isolated_only": false,
+    "symbol": "XMR-USD",
+    "close_only": false,
+    "base_asset": "XMR",
+    "quote_asset": "pUSD",
+    "funding_interval": "1h",
+    "quantity_decimals": 4,
+    "price_decimals": 2,
+    "price_bounds": "0.20",
+    "liquidation_fee": "0.005",
+    "max_order_count": 200,
+    "min_notional": "10",
+    "max_market_notional": "50000",
+    "max_limit_notional": "250000",
+    "max_leverage": 5,
+    "risk_tiers": [
+      {
+        "lower_bound": "0",
+        "max_leverage": 5
+      },
+      {
+        "lower_bound": "500000",
+        "max_leverage": 4
+      },
+      {
+        "lower_bound": "1000000",
+        "max_leverage": 3
+      },
+      {
+        "lower_bound": "1500000",
+        "max_leverage": 2
+      },
+      {
+        "lower_bound": "2000000",
+        "max_leverage": 1
+      }
+    ],
+    "ui_live_time": 1789062050000,
+    "logo": {
+      "light": "https://assets.perpetuals.polymarket.com/logos/xmr/b0204ebfe75b0234-light.svg",
+      "dark": "https://assets.perpetuals.polymarket.com/logos/xmr/b0204ebfe75b0234-dark.svg"
+    }
+  },
+  {
+    "instrument_id": 79,
+    "instrument_type": "perpetual",
+    "category": "crypto",
+    "isolated_only": false,
+    "symbol": "LINK-USD",
+    "close_only": false,
+    "base_asset": "LINK",
+    "quote_asset": "pUSD",
+    "funding_interval": "1h",
+    "quantity_decimals": 3,
+    "price_decimals": 3,
+    "price_bounds": "0.10",
+    "liquidation_fee": "0.005",
+    "max_order_count": 200,
+    "min_notional": "10",
+    "max_market_notional": "500000",
+    "max_limit_notional": "2500000",
+    "max_leverage": 10,
+    "risk_tiers": [
+      {
+        "lower_bound": "0",
+        "max_leverage": 10
+      },
+      {
+        "lower_bound": "500000",
+        "max_leverage": 8
+      },
+      {
+        "lower_bound": "1000000",
+        "max_leverage": 6
+      },
+      {
+        "lower_bound": "2000000",
+        "max_leverage": 5
+      },
+      {
+        "lower_bound": "3000000",
+        "max_leverage": 2
+      },
+      {
+        "lower_bound": "5000000",
+        "max_leverage": 1
+      }
+    ],
+    "ui_live_time": 1789069013000,
+    "logo": {
+      "light": "https://assets.perpetuals.polymarket.com/logos/link/0c72616d49dcbe5b-light.svg",
+      "dark": "https://assets.perpetuals.polymarket.com/logos/link/0c72616d49dcbe5b-dark.svg"
+    }
+  },
+  {
+    "instrument_id": 80,
+    "instrument_type": "perpetual",
+    "category": "crypto",
+    "isolated_only": false,
+    "symbol": "VIRTUAL-USD",
+    "close_only": false,
+    "base_asset": "VIRTUAL",
+    "quote_asset": "pUSD",
+    "funding_interval": "1h",
+    "quantity_decimals": 1,
+    "price_decimals": 5,
+    "price_bounds": "0.20",
+    "liquidation_fee": "0.005",
+    "max_order_count": 200,
+    "min_notional": "10",
+    "max_market_notional": "50000",
+    "max_limit_notional": "250000",
+    "max_leverage": 5,
+    "risk_tiers": [
+      {
+        "lower_bound": "0",
+        "max_leverage": 5
+      },
+      {
+        "lower_bound": "500000",
+        "max_leverage": 4
+      },
+      {
+        "lower_bound": "1000000",
+        "max_leverage": 3
+      },
+      {
+        "lower_bound": "1500000",
+        "max_leverage": 2
+      },
+      {
+        "lower_bound": "2000000",
+        "max_leverage": 1
+      }
+    ],
+    "ui_live_time": 1789070351000,
+    "logo": {
+      "light": "https://assets.perpetuals.polymarket.com/logos/virtual/c47437990420f326-light.svg",
+      "dark": "https://assets.perpetuals.polymarket.com/logos/virtual/c47437990420f326-dark.svg"
+    }
+  },
+  {
+    "instrument_id": 81,
+    "instrument_type": "perpetual",
+    "category": "crypto",
+    "isolated_only": false,
+    "symbol": "JUP-USD",
+    "close_only": false,
+    "base_asset": "JUP",
+    "quote_asset": "pUSD",
+    "funding_interval": "1h",
+    "quantity_decimals": 1,
+    "price_decimals": 5,
+    "price_bounds": "0.10",
+    "liquidation_fee": "0.005",
+    "max_order_count": 200,
+    "min_notional": "10",
+    "max_market_notional": "500000",
+    "max_limit_notional": "2500000",
+    "max_leverage": 10,
+    "risk_tiers": [
+      {
+        "lower_bound": "0",
+        "max_leverage": 10
+      },
+      {
+        "lower_bound": "500000",
+        "max_leverage": 8
+      },
+      {
+        "lower_bound": "1000000",
+        "max_leverage": 6
+      },
+      {
+        "lower_bound": "2000000",
+        "max_leverage": 5
+      },
+      {
+        "lower_bound": "3000000",
+        "max_leverage": 2
+      },
+      {
+        "lower_bound": "5000000",
+        "max_leverage": 1
+      }
+    ],
+    "ui_live_time": 1789069078000,
+    "logo": {
+      "light": "https://assets.perpetuals.polymarket.com/logos/jup/dd1f6d195f807858-light.svg",
+      "dark": "https://assets.perpetuals.polymarket.com/logos/jup/dd1f6d195f807858-dark.svg"
+    }
+  },
+  {
+    "instrument_id": 82,
+    "instrument_type": "perpetual",
+    "category": "crypto",
+    "isolated_only": false,
+    "symbol": "ETHFI-USD",
+    "close_only": false,
+    "base_asset": "ETHFI",
+    "quote_asset": "pUSD",
+    "funding_interval": "1h",
+    "quantity_decimals": 1,
+    "price_decimals": 5,
+    "price_bounds": "0.20",
+    "liquidation_fee": "0.005",
+    "max_order_count": 200,
+    "min_notional": "10",
+    "max_market_notional": "50000",
+    "max_limit_notional": "250000",
+    "max_leverage": 5,
+    "risk_tiers": [
+      {
+        "lower_bound": "0",
+        "max_leverage": 5
+      },
+      {
+        "lower_bound": "500000",
+        "max_leverage": 4
+      },
+      {
+        "lower_bound": "1000000",
+        "max_leverage": 3
+      },
+      {
+        "lower_bound": "1500000",
+        "max_leverage": 2
+      },
+      {
+        "lower_bound": "2000000",
+        "max_leverage": 1
+      }
+    ],
+    "ui_live_time": 1789070365000,
+    "logo": {
+      "light": "https://assets.perpetuals.polymarket.com/logos/ethfi/cd50de333f01952d-light.svg",
+      "dark": "https://assets.perpetuals.polymarket.com/logos/ethfi/cd50de333f01952d-dark.svg"
+    }
+  },
+  {
+    "instrument_id": 83,
+    "instrument_type": "perpetual",
+    "category": "crypto",
+    "isolated_only": false,
+    "symbol": "PENDLE-USD",
+    "close_only": false,
+    "base_asset": "PENDLE",
+    "quote_asset": "pUSD",
+    "funding_interval": "1h",
+    "quantity_decimals": 2,
+    "price_decimals": 4,
+    "price_bounds": "0.20",
+    "liquidation_fee": "0.005",
+    "max_order_count": 200,
+    "min_notional": "10",
+    "max_market_notional": "50000",
+    "max_limit_notional": "250000",
+    "max_leverage": 5,
+    "risk_tiers": [
+      {
+        "lower_bound": "0",
+        "max_leverage": 5
+      },
+      {
+        "lower_bound": "500000",
+        "max_leverage": 4
+      },
+      {
+        "lower_bound": "1000000",
+        "max_leverage": 3
+      },
+      {
+        "lower_bound": "1500000",
+        "max_leverage": 2
+      },
+      {
+        "lower_bound": "2000000",
+        "max_leverage": 1
+      }
+    ],
+    "ui_live_time": 1789070380000,
+    "logo": {
+      "light": "https://assets.perpetuals.polymarket.com/logos/pendle/38779297950e68e9-light.svg",
+      "dark": "https://assets.perpetuals.polymarket.com/logos/pendle/38779297950e68e9-dark.svg"
+    }
+  },
+  {
+    "instrument_id": 84,
+    "instrument_type": "perpetual",
+    "category": "crypto",
+    "isolated_only": false,
+    "symbol": "MORPHO-USD",
+    "close_only": false,
+    "base_asset": "MORPHO",
+    "quote_asset": "pUSD",
+    "funding_interval": "1h",
+    "quantity_decimals": 2,
+    "price_decimals": 4,
+    "price_bounds": "0.20",
+    "liquidation_fee": "0.005",
+    "max_order_count": 200,
+    "min_notional": "10",
+    "max_market_notional": "50000",
+    "max_limit_notional": "250000",
+    "max_leverage": 5,
+    "risk_tiers": [
+      {
+        "lower_bound": "0",
+        "max_leverage": 5
+      },
+      {
+        "lower_bound": "500000",
+        "max_leverage": 4
+      },
+      {
+        "lower_bound": "1000000",
+        "max_leverage": 3
+      },
+      {
+        "lower_bound": "1500000",
+        "max_leverage": 2
+      },
+      {
+        "lower_bound": "2000000",
+        "max_leverage": 1
+      }
+    ],
+    "ui_live_time": 1789070395000,
+    "logo": {
+      "light": "https://assets.perpetuals.polymarket.com/logos/morpho/33e24309b9a9e408-light.svg",
+      "dark": "https://assets.perpetuals.polymarket.com/logos/morpho/33e24309b9a9e408-dark.svg"
+    }
+  },
+  {
+    "instrument_id": 85,
+    "instrument_type": "perpetual",
+    "category": "equity",
+    "isolated_only": false,
+    "symbol": "CBRS-USD",
+    "close_only": false,
+    "base_asset": "CBRS",
+    "quote_asset": "pUSD",
+    "funding_interval": "1h",
+    "quantity_decimals": 4,
+    "price_decimals": 2,
+    "price_bounds": "0.10",
+    "liquidation_fee": "0.005",
+    "max_order_count": 200,
+    "min_notional": "10",
+    "max_market_notional": "500000",
+    "max_limit_notional": "2500000",
+    "max_leverage": 10,
+    "risk_tiers": [
+      {
+        "lower_bound": "0",
+        "max_leverage": 10
+      }
+    ],
+    "ui_live_time": 1789579473163,
+    "logo": {
+      "light": "https://assets.perpetuals.polymarket.com/logos/cbrs/0daef8ccf52106d5-light.svg",
+      "dark": "https://assets.perpetuals.polymarket.com/logos/cbrs/0daef8ccf52106d5-dark.svg"
+    }
+  },
+  {
+    "instrument_id": 86,
+    "instrument_type": "perpetual",
+    "category": "equity",
+    "isolated_only": false,
+    "symbol": "MRVL-USD",
+    "close_only": false,
+    "base_asset": "MRVL",
+    "quote_asset": "pUSD",
+    "funding_interval": "1h",
+    "quantity_decimals": 4,
+    "price_decimals": 2,
+    "price_bounds": "0.10",
+    "liquidation_fee": "0.005",
+    "max_order_count": 200,
+    "min_notional": "10",
+    "max_market_notional": "500000",
+    "max_limit_notional": "2500000",
+    "max_leverage": 10,
+    "risk_tiers": [
+      {
+        "lower_bound": "0",
+        "max_leverage": 10
+      }
+    ],
+    "ui_live_time": 1789579891729,
+    "logo": {
+      "light": "https://assets.perpetuals.polymarket.com/logos/mrvl/55c77b48ac2b303e-light.svg",
+      "dark": "https://assets.perpetuals.polymarket.com/logos/mrvl/0cb48186c84a7e79-dark.svg"
+    }
+  },
+  {
+    "instrument_id": 87,
+    "instrument_type": "perpetual",
+    "category": "index",
+    "isolated_only": false,
+    "symbol": "EWY-USD",
+    "close_only": false,
+    "base_asset": "EWY",
+    "quote_asset": "pUSD",
+    "funding_interval": "1h",
+    "quantity_decimals": 4,
+    "price_decimals": 2,
+    "price_bounds": "0.05",
+    "liquidation_fee": "0.005",
+    "max_order_count": 200,
+    "min_notional": "10",
+    "max_market_notional": "1000000",
+    "max_limit_notional": "5000000",
+    "max_leverage": 20,
+    "risk_tiers": [
+      {
+        "lower_bound": "0",
+        "max_leverage": 20
+      }
+    ],
+    "ui_live_time": 1789579895727,
+    "logo": {
+      "light": "https://assets.perpetuals.polymarket.com/logos/ewy/f4f4588566e95dc6-light.svg",
+      "dark": "https://assets.perpetuals.polymarket.com/logos/ewy/f4f4588566e95dc6-dark.svg"
+    }
+  },
+  {
+    "instrument_id": 88,
+    "instrument_type": "perpetual",
+    "category": "index",
+    "isolated_only": false,
+    "symbol": "NCLD-USD",
+    "close_only": false,
+    "base_asset": "NCLD",
+    "quote_asset": "pUSD",
+    "funding_interval": "1h",
+    "quantity_decimals": 3,
+    "price_decimals": 3,
+    "price_bounds": "0.10",
+    "liquidation_fee": "0.005",
+    "max_order_count": 200,
+    "min_notional": "10",
+    "max_market_notional": "500000",
+    "max_limit_notional": "2500000",
+    "max_leverage": 10,
+    "risk_tiers": [
+      {
+        "lower_bound": "0",
+        "max_leverage": 10
+      }
+    ],
+    "ui_live_time": 1789629032799,
+    "logo": {
+      "light": "https://assets.perpetuals.polymarket.com/logos/ncld/d96a350b8ae0d666-light.svg",
+      "dark": "https://assets.perpetuals.polymarket.com/logos/ncld/d96a350b8ae0d666-dark.svg"
+    }
+  },
+  {
+    "instrument_id": 89,
+    "instrument_type": "perpetual",
+    "category": "index",
+    "isolated_only": false,
+    "symbol": "SOXL-USD",
+    "close_only": false,
+    "base_asset": "SOXL",
+    "quote_asset": "pUSD",
+    "funding_interval": "1h",
+    "quantity_decimals": 4,
+    "price_decimals": 2,
+    "price_bounds": "0.10",
+    "liquidation_fee": "0.005",
+    "max_order_count": 200,
+    "min_notional": "10",
+    "max_market_notional": "500000",
+    "max_limit_notional": "2500000",
+    "max_leverage": 10,
+    "risk_tiers": [
+      {
+        "lower_bound": "0",
+        "max_leverage": 10
+      }
+    ],
+    "ui_live_time": 1789579477019,
+    "logo": {
+      "light": "https://assets.perpetuals.polymarket.com/logos/soxl/2cfc7cca207c19c3-light.svg",
+      "dark": "https://assets.perpetuals.polymarket.com/logos/soxl/2cfc7cca207c19c3-dark.svg"
+    }
+  },
+  {
+    "instrument_id": 90,
+    "instrument_type": "perpetual",
+    "category": "equity",
+    "isolated_only": false,
+    "symbol": "UNITREE-USD",
+    "close_only": false,
+    "base_asset": "UNITREE",
+    "quote_asset": "pUSD",
+    "funding_interval": "1h",
+    "quantity_decimals": 3,
+    "price_decimals": 3,
+    "price_bounds": "0.10",
+    "liquidation_fee": "0.005",
+    "max_order_count": 200,
+    "min_notional": "10",
+    "max_market_notional": "500000",
+    "max_limit_notional": "2500000",
+    "max_leverage": 10,
+    "risk_tiers": [
+      {
+        "lower_bound": "0",
+        "max_leverage": 10
+      }
+    ],
+    "ui_live_time": 1789583780154,
+    "logo": {
+      "light": "https://assets.perpetuals.polymarket.com/logos/unitree/2db1f929843e3712-light.svg",
+      "dark": "https://assets.perpetuals.polymarket.com/logos/unitree/2db1f929843e3712-dark.svg"
+    }
+  }
+]

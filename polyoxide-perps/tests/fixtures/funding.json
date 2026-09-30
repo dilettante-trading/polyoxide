@@ -1,0 +1,101 @@
+{
+  "data": [
+    {
+      "funding_rate": "0.00000625",
+      "timestamp": 1790758800019
+    },
+    {
+      "funding_rate": "0.00000625",
+      "timestamp": 1790755200032
+    },
+    {
+      "funding_rate": "0.00000625",
+      "timestamp": 1790751600013
+    },
+    {
+      "funding_rate": "0.00000625",
+      "timestamp": 1790748000012
+    },
+    {
+      "funding_rate": "0.00000625",
+      "timestamp": 1790744400016
+    },
+    {
+      "funding_rate": "0.00000625",
+      "timestamp": 1790740800079
+    },
+    {
+      "funding_rate": "0.00000625",
+      "timestamp": 1790737200013
+    },
+    {
+      "funding_rate": "0.00000625",
+      "timestamp": 1790733600015
+    },
+    {
+      "funding_rate": "0.00000625",
+      "timestamp": 1790730000015
+    },
+    {
+      "funding_rate": "0.00000625",
+      "timestamp": 1790726400022
+    },
+    {
+      "funding_rate": "0.00000625",
+      "timestamp": 1790722800018
+    },
+    {
+      "funding_rate": "0.00000625",
+      "timestamp": 1790719200019
+    },
+    {
+      "funding_rate": "0.00000625",
+      "timestamp": 1790715600013
+    },
+    {
+      "funding_rate": "0.00000625",
+      "timestamp": 1790712000038
+    },
+    {
+      "funding_rate": "0.00000625",
+      "timestamp": 1790708400018
+    },
+    {
+      "funding_rate": "0.00000625",
+      "timestamp": 1790704800058
+    },
+    {
+      "funding_rate": "0.00000625",
+      "timestamp": 1790701200017
+    },
+    {
+      "funding_rate": "0.00000625",
+      "timestamp": 1790697600015
+    },
+    {
+      "funding_rate": "0.00000625",
+      "timestamp": 1790694000011
+    },
+    {
+      "funding_rate": "0.00000625",
+      "timestamp": 1790690400054
+    },
+    {
+      "funding_rate": "0.00000625",
+      "timestamp": 1790686800025
+    },
+    {
+      "funding_rate": "0.00000625",
+      "timestamp": 1790683200016
+    },
+    {
+      "funding_rate": "0.00000625",
+      "timestamp": 1790679600017
+    },
+    {
+      "funding_rate": "0.00000625",
+      "timestamp": 1790676000019
+    }
+  ],
+  "more": false
+}

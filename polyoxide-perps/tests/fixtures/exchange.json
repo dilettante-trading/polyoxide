@@ -1,0 +1,8 @@
+{
+  "name": "Polymarket",
+  "version": "1",
+  "chain_id": 137,
+  "contract": "0xDCa4af75705dbB50f62437045afF9921947917d2",
+  "cancel_only": false,
+  "engine_version": "0.0.78"
+}
