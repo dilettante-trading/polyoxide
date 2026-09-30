@@ -13,7 +13,7 @@ categories = ["api-bindings", "web-programming::http-client"]
 [features]
 default = []
 # WebSocket streaming of the public channels.
-ws = ["dep:tokio", "dep:tokio-tungstenite", "dep:futures-util", "dep:rustls", "tokio/net", "tokio/sync", "tokio/rt", "tokio/time"]
+ws = ["dep:tokio", "dep:tokio-tungstenite", "dep:futures-util", "dep:rustls", "tokio/net", "tokio/sync", "tokio/rt", "tokio/time", "tokio/macros"]
 # Exposes the scripted local server for integration tests. Not for consumers.
 test-server = ["ws"]
 
