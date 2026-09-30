@@ -133,22 +133,21 @@ portfolio: pin 30 per 10s ([(1.0, Clean), (2.0, Clean), (3.0, Clean), (4.0, Thro
 bbo: pin 50 per 10s ([(5.0, Clean), (10.0, Throttled { after: 20.772812787s, code: "ip_rate_limited" })])
 ```
 
-The throttle is not a block: after the first 429 the other workers went on
-receiving origin replies, and a throttled stage refused only a few per cent
-of its requests (klines at 4 req/s: 164 origin, 6 throttled; trades at
-2 req/s: 99 origin, 3 throttled; bbo at 10 req/s: 369 origin, 5 throttled).
-That is the shape of a token bucket refilling just below the stage rate:
-each route sustains a steady rate and refuses a few per cent once the rate
-exceeds it, rather than refusing everything once some in-flight count is
-reached. The budgets differ per route, so each soaked route has its own row;
-the mixed validation runs below show the budget is also partly shared, which
-is what the general bucket models. Every route answered from the origin on distinct URLs
+After the first 429 the remaining workers went on receiving origin replies
+at a declining rate (klines at 4 req/s: 164 origin, 6 throttled, last reply
+at 42.8 s of 60; trades at 2 req/s: 99 origin, 3 throttled; bbo at 10 req/s:
+369 origin, 5 throttled). The harness stops each worker at its first 429, so
+a stage can record at most 8 throttles and the counts say nothing about what
+share of requests the host would refuse under sustained overload. The
+budgets differ per route, so each soaked route has its own row; the mixed
+validation runs below show the budget is also partly shared, which is what
+the general bucket models. Every route answered from the origin on distinct URLs
 (`x-cache: Miss from cloudfront`); bbo, whose URL space is one per
 instrument, saw 4 and 3 cache hits per 300-plus replies.
 
-Validation (`--route all --pace client`, 120 s, 4 in-flight per route, all
-four routes through one shared limiter) was run twice on 2026-09-30, and the
-two runs are what set the general bucket:
+Validation (`--route all --pace client`, 120 s, 4 tasks per route on one
+client, so at most 4 requests in flight overall, the client's default) was
+run twice on 2026-09-30, and the two runs are what set the general bucket:
 
 | General bucket | Result |
 |----------------|--------|

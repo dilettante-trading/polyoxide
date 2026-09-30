@@ -18,6 +18,7 @@
 //! as saturated rather than clean.
 
 use std::{
+    collections::BTreeMap,
     process::ExitCode,
     sync::{
         atomic::{AtomicU64, Ordering},
@@ -115,7 +116,10 @@ impl Probes {
     }
 }
 
-async fn load_probes(perps: &Perps, addresses: usize) -> Probes {
+/// Distinct inputs for the probes. The leaderboard walk is only made when a
+/// portfolio run needs addresses; the other routes vary timestamps or
+/// instruments.
+async fn load_probes(perps: &Perps, addresses: usize, need_addresses: bool) -> Probes {
     let instruments = perps
         .exchange()
         .instruments()
@@ -127,7 +131,7 @@ async fn load_probes(perps: &Perps, addresses: usize) -> Probes {
         .collect::<Vec<_>>();
     let mut found = Vec::new();
     let mut offset = 0u64;
-    while found.len() < addresses {
+    while need_addresses && found.len() < addresses {
         let page = perps
             .public()
             .leaderboard()
@@ -143,7 +147,14 @@ async fn load_probes(perps: &Perps, addresses: usize) -> Probes {
         offset += page.entries.len() as u64;
         found.extend(page.entries.into_iter().map(|e| e.account));
     }
-    assert!(!instruments.is_empty() && !found.is_empty(), "no probes");
+    assert!(
+        !instruments.is_empty(),
+        "no instruments listed: nothing to probe"
+    );
+    assert!(
+        !need_addresses || !found.is_empty(),
+        "leaderboard is empty: no addresses for portfolio probes"
+    );
     Probes {
         instruments,
         addresses: found,
@@ -188,12 +199,28 @@ fn classify(status: u16, x_cache: Option<&str>, retry_after: Option<&str>, body:
 #[derive(Debug, Clone, PartialEq)]
 enum Verdict {
     Clean,
-    Throttled { after: Duration, code: String },
-    Saturated { origin_share: f64 },
-    Invalid { errors: usize },
+    Throttled {
+        after: Duration,
+        code: String,
+    },
+    Saturated {
+        origin_share: f64,
+    },
+    Invalid {
+        errors: usize,
+    },
+    /// The harness did not reach its own target rate, so a clean result
+    /// would be about a lower rate than the one it is labelled with.
+    UnderDriven {
+        achieved: f64,
+    },
 }
 
-fn judge(replies: &[(Duration, Reply)]) -> Verdict {
+/// Share of the target rate a stage must actually achieve for a clean
+/// verdict to mean anything.
+const MIN_ACHIEVED_SHARE: f64 = 0.9;
+
+fn judge(replies: &[(Duration, Reply)], rate: f64, secs: u64) -> Verdict {
     if let Some((at, Reply::Throttled { code, .. })) = replies
         .iter()
         .find(|(_, r)| matches!(r, Reply::Throttled { .. }))
@@ -209,6 +236,10 @@ fn judge(replies: &[(Duration, Reply)]) -> Verdict {
         .count();
     if errors > 0 {
         return Verdict::Invalid { errors };
+    }
+    let achieved = replies.len() as f64 / secs as f64;
+    if achieved < MIN_ACHIEVED_SHARE * rate {
+        return Verdict::UnderDriven { achieved };
     }
     let origin = replies.iter().filter(|(_, r)| *r == Reply::Ok).count();
     let share = if replies.is_empty() {
@@ -233,7 +264,7 @@ fn summarize(replies: &[(Duration, Reply)]) -> String {
     let throttled = count(&|r| matches!(r, Reply::Throttled { .. }));
     let errors = count(&|r| matches!(r, Reply::Error(_)));
     let retry_after = replies.iter().find_map(|(_, r)| match r {
-        Reply::Throttled { retry_after, .. } => Some(*retry_after),
+        Reply::Throttled { retry_after, .. } => *retry_after,
         _ => None,
     });
     let last = replies.last().map_or(Duration::ZERO, |(at, _)| *at);
@@ -295,7 +326,15 @@ impl Visit for MessageVisitor {
     }
 }
 
-struct ThrottleLayer(Arc<AtomicU64>);
+/// Retried-away 429s per request path, read off the retry loop's WARN
+/// message (`Retriable status 429 Too Many Requests on /v1/info/trades, …`),
+/// so a mixed run says which route was refused.
+struct ThrottleLayer(Arc<Mutex<BTreeMap<String, u64>>>);
+
+fn throttled_path(message: &str) -> Option<&str> {
+    let rest = message.split(" on ").nth(1)?;
+    Some(rest.split(',').next()?.trim())
+}
 
 impl<S: tracing::Subscriber> Layer<S> for ThrottleLayer {
     fn on_event(
@@ -309,11 +348,9 @@ impl<S: tracing::Subscriber> Layer<S> for ThrottleLayer {
         }
         let mut visitor = MessageVisitor::default();
         event.record(&mut visitor);
-        if visitor
-            .0
-            .is_some_and(|m| m.contains("Retriable status 429"))
-        {
-            self.0.fetch_add(1, Ordering::Relaxed);
+        if let Some(message) = visitor.0.filter(|m| m.contains("Retriable status 429")) {
+            let path = throttled_path(&message).unwrap_or("?").to_owned();
+            *self.0.lock().unwrap().entry(path).or_insert(0) += 1;
         }
     }
 }
@@ -384,7 +421,7 @@ async fn ramp_stage(
 
 async fn run_ramp(cfg: &Config, route: Route) -> ExitCode {
     let perps = Perps::builder().base_url(&cfg.base_url).build().unwrap();
-    let probes = load_probes(&perps, cfg.addresses).await;
+    let probes = load_probes(&perps, cfg.addresses, route == Route::Portfolio).await;
     let client = reqwest::Client::builder()
         .timeout(Duration::from_secs(30))
         .build()
@@ -406,7 +443,7 @@ async fn run_ramp(cfg: &Config, route: Route) -> ExitCode {
             cfg.concurrency,
         )
         .await;
-        let verdict = judge(&replies);
+        let verdict = judge(&replies, rate, cfg.stage_secs);
         eprintln!("   {} replies, verdict {verdict:?}", replies.len());
         eprintln!("   {}", summarize(&replies));
         let stop = verdict != Verdict::Clean;
@@ -433,20 +470,25 @@ async fn run_ramp(cfg: &Config, route: Route) -> ExitCode {
 }
 
 async fn run_validation(cfg: &Config) -> ExitCode {
-    let throttles = Arc::new(AtomicU64::new(0));
+    let throttles = Arc::new(Mutex::new(BTreeMap::new()));
     tracing_subscriber::registry()
         .with(ThrottleLayer(Arc::clone(&throttles)))
         .init();
+    // The shipped client, untouched: its own limiter and its own default
+    // concurrency cap, which bounds in-flight requests for the whole run.
     let perps = Perps::builder().base_url(&cfg.base_url).build().unwrap();
-    let probes = Arc::new(load_probes(&perps, cfg.addresses).await);
+    let needs_addresses = cfg.routes.contains(&Route::Portfolio);
+    let probes = Arc::new(load_probes(&perps, cfg.addresses, needs_addresses).await);
     let deadline = Instant::now() + Duration::from_secs(cfg.stage_secs);
     let sent = Arc::new(AtomicU64::new(0));
+    let failed = Arc::new(AtomicU64::new(0));
     let mut workers = Vec::new();
     for route in &cfg.routes {
         for _ in 0..cfg.concurrency {
             let perps = perps.clone();
             let probes = Arc::clone(&probes);
             let sent = Arc::clone(&sent);
+            let failed = Arc::clone(&failed);
             let route = *route;
             workers.push(tokio::spawn(async move {
                 while Instant::now() < deadline {
@@ -486,6 +528,7 @@ async fn run_validation(cfg: &Config) -> ExitCode {
                     };
                     sent.fetch_add(1, Ordering::Relaxed);
                     if let Err(e) = result {
+                        failed.fetch_add(1, Ordering::Relaxed);
                         eprintln!("{}: {e}", route.name());
                     }
                 }
@@ -496,12 +539,19 @@ async fn run_validation(cfg: &Config) -> ExitCode {
         let _ = w.await;
     }
     let sent = sent.load(Ordering::Relaxed);
-    let throttled = throttles.load(Ordering::Relaxed);
+    let failed = failed.load(Ordering::Relaxed);
+    let throttles = throttles.lock().unwrap();
+    let throttled: u64 = throttles.values().sum();
+    // `sent` counts calls: a call the retry loop re-sends is several
+    // requests on the wire but one here; the throttle counts are per request.
     println!(
-        "validation: {sent} requests over {}s, {throttled} throttled",
+        "validation: {sent} calls over {}s, {throttled} throttled, {failed} failed",
         cfg.stage_secs
     );
-    if throttled == 0 {
+    for (path, count) in throttles.iter() {
+        println!("  {path}: {count} throttled");
+    }
+    if throttled == 0 && failed == 0 {
         ExitCode::SUCCESS
     } else {
         ExitCode::from(1)
@@ -510,7 +560,7 @@ async fn run_validation(cfg: &Config) -> ExitCode {
 
 // ── Configuration ───────────────────────────────────────────────
 
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Debug, Clone)]
 struct Config {
     routes: Vec<Route>,
     stages: Vec<f64>,
@@ -535,7 +585,9 @@ Usage: info_soak --route <routes> [options]
                           require zero 429s
   --stage-secs <n>        Seconds per stage (default: 60 ramp, 120 validation)
   --cooldown-secs <n>     Idle seconds between ramp stages (default: 120)
-  --concurrency <n>       In-flight requests per route (default: 8 ramp, 4 validation)
+  --concurrency <n>       Ramp: workers per route (default 8). Validation: tasks
+                          per route (default 4); in-flight requests are capped
+                          by the client's own default of 4 overall
   --addresses <n>         Leaderboard addresses to draw portfolio probes from (default: 500)
   --base-url <url>        Override the host
   -h, --help              Show this message";
@@ -601,6 +653,9 @@ impl Config {
             }
         }
         let routes = routes.ok_or("--route is required")?;
+        if concurrency == Some(0) || stage_secs == Some(0) {
+            return Err("--concurrency and --stage-secs must be at least 1".into());
+        }
         if !client_paced && routes.len() != 1 {
             return Err(
                 "a ramp measures one route at a time; list several only with --pace client".into(),
@@ -689,7 +744,7 @@ mod tests {
             ok(9),
         ];
         assert_eq!(
-            judge(&replies),
+            judge(&replies, 1.0, 10),
             Verdict::Throttled {
                 after: Duration::from_secs(7),
                 code: "ip_rate_limited".into()
@@ -708,7 +763,23 @@ mod tests {
                 }
             })
             .collect();
-        assert_eq!(judge(&replies), Verdict::Saturated { origin_share: 0.5 });
+        assert_eq!(
+            judge(&replies, 1.0, 10),
+            Verdict::Saturated { origin_share: 0.5 }
+        );
+    }
+
+    #[test]
+    fn a_stage_that_did_not_reach_its_rate_is_under_driven_not_clean() {
+        // 5 replies in 10 s at a 1 req/s target is half the rate: a clean
+        // verdict here would pin a number the host was never asked for.
+        let replies: Vec<_> = (0..5).map(ok).collect();
+        assert_eq!(
+            judge(&replies, 1.0, 10),
+            Verdict::UnderDriven { achieved: 0.5 }
+        );
+        let replies: Vec<_> = (0..10).map(ok).collect();
+        assert_eq!(judge(&replies, 1.0, 10), Verdict::Clean);
     }
 
     #[test]
@@ -753,6 +824,30 @@ mod tests {
         .unwrap();
         assert_eq!(cfg.routes.len(), 4);
         assert_eq!(cfg.stage_secs, 120);
+    }
+
+    #[test]
+    fn zero_concurrency_or_stage_seconds_is_refused() {
+        // A validation with no workers reports "0 throttled" and exits 0: a
+        // vacuous pass.
+        let err = Config::from_args(
+            ["--route", "all", "--pace", "client", "--concurrency", "0"]
+                .map(String::from)
+                .into_iter(),
+        )
+        .unwrap_err();
+        assert!(err.contains("at least 1"));
+    }
+
+    #[test]
+    fn the_throttled_path_is_read_off_the_retry_loop_message() {
+        assert_eq!(
+            throttled_path(
+                "Retriable status 429 Too Many Requests on /v1/info/trades, retry 1 after 500ms"
+            ),
+            Some("/v1/info/trades")
+        );
+        assert_eq!(throttled_path("no path here"), None);
     }
 
     #[test]

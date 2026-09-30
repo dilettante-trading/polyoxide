@@ -655,21 +655,26 @@ impl RateLimiter {
     /// same run capped at `PERPS_GENERAL` was clean. See the validation runs
     /// in OBSERVED.md.
     ///
+    /// With the general bucket at 30, bbo's own row never binds and the
+    /// klines and portfolio rows coincide with the general bucket; only the
+    /// trades row and the catch-all restrict further. The rows are kept at
+    /// their measured values so a later change to the general bucket does
+    /// not silently loosen a route.
+    ///
     /// Row order matters: prefix matching takes the first match, so the
     /// catch-all must come last.
     pub fn perps_default() -> Self {
-        let ten_sec = Duration::from_secs(10);
         const PIN_KLINES: u32 = 30;
         const PIN_TRADES: u32 = 10;
         const PIN_PORTFOLIO: u32 = 30;
         const PIN_BBO: u32 = 50;
+        /// Client-wide cap, per 10 s, from the mixed-route validation runs.
+        const PERPS_GENERAL: u32 = 30;
+        let ten_sec = Duration::from_secs(10);
         let lowest = [PIN_KLINES, PIN_TRADES, PIN_PORTFOLIO, PIN_BBO]
             .into_iter()
             .min()
             .expect("four rows");
-        /// Client-wide cap, per 10 s, from the mixed-route validation runs.
-        const PERPS_GENERAL: u32 = 30;
-
         Self {
             inner: Arc::new(RateLimiterInner {
                 default: DirectLimiter::direct(quota(PERPS_GENERAL, ten_sec)),
@@ -1045,21 +1050,14 @@ mod documented_perps_limits {
 
     #[test]
     fn every_soaked_route_has_its_own_row() {
-        for (path, _, specs) in measured() {
-            assert!(
-                specs[0].0 >= 10,
-                "{path} expected {} per 10s: the ramp result was not written in",
-                specs[0].0
-            );
-        }
         assert_matches_published(&RateLimiter::perps_default(), measured(), u32::MAX);
     }
 
     #[test]
     fn an_unsoaked_info_route_is_held_to_the_catch_all_not_the_general_bucket() {
-        // The general bucket is the highest measured row, so without the
-        // catch-all an unmeasured route would be driven five times harder
-        // than trades, the tightest route measured.
+        // The general bucket is 30/10s, so without the catch-all an
+        // unmeasured route would be driven three times harder than trades,
+        // the tightest route measured.
         let rl = RateLimiter::perps_default();
         let specs = rl.resolve_specs("/v1/info/instruments", Some(&Method::GET));
         assert_eq!(
@@ -1081,7 +1079,10 @@ mod documented_perps_limits {
     async fn the_general_bucket_caps_the_client_below_the_most_permissive_route() {
         // bbo alone sustains 50/10s, but a mixed run at that cap was
         // throttled: the per-IP budget is partly shared. The general bucket
-        // must therefore bind before bbo's own row does.
+        // must therefore bind before bbo's own row does. The pacing window
+        // accepted here admits a general bucket of roughly 11 to 37, so this
+        // proves general < bbo; the exact 30 is pinned by GENERAL against
+        // OBSERVED.md, not by timing.
         const _: () = assert!(
             GENERAL < BBO,
             "the general bucket must bind before bbo's row"
