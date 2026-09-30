@@ -4074,14 +4074,17 @@ dependencies = [
 name = "polyoxide-perps"
 version = "0.33.1"
 dependencies = [
+ "futures-util",
  "mockito",
  "polyoxide-core",
  "reqwest 0.12.28",
  "rust_decimal",
+ "rustls",
  "serde",
  "serde_json",
  "thiserror 2.0.18",
  "tokio",
+ "tokio-tungstenite",
  "tracing",
  "tracing-subscriber",
  "url",

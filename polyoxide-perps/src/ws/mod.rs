@@ -14,9 +14,9 @@ pub mod error;
 pub mod event;
 pub mod frame;
 // pub mod supervised;
-// #[cfg(any(test, feature = "test-server"))]
-// #[doc(hidden)]
-// pub mod test_server;
+#[cfg(any(test, feature = "test-server"))]
+#[doc(hidden)]
+pub mod test_server;
 
 pub use channel::{Channel, StreamDepth};
 // pub use client::PerpsWs;
