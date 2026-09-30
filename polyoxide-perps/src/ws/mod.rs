@@ -12,7 +12,7 @@ pub mod channel;
 // pub mod client;
 // pub mod error;
 // pub mod event;
-// pub mod frame;
+pub mod frame;
 // pub mod supervised;
 // #[cfg(any(test, feature = "test-server"))]
 // #[doc(hidden)]
