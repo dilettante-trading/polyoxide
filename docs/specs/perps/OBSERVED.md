@@ -21,13 +21,14 @@ in `polyoxide-perps/tests/spec_agreement.rs`.
 | `AccountTradeData` | `builder_fee` | `"0"` | on every row |
 | `AccountTradeData` | `total_fee` | decimal string | on every row; equal to `fee` when `builder_fee` is `0` |
 | `AccountTradeData` | `settlement` | `false` | on every row |
-| `LimitTier` | `connects_per_minute_limit` | integer | WebSocket budget |
-| `LimitTier` | `max_connections` | integer | WebSocket budget |
-| `LimitTier` | `ws_messages_burst_limit` | integer | WebSocket budget |
-| `LimitTier` | `ws_messages_per_minute_limit` | integer | WebSocket budget |
+| `LimitTier` | `connects_per_minute_limit` | `4294967295` on every tier | WebSocket budget name |
+| `LimitTier` | `max_connections` | `4294967295` on every tier | WebSocket budget name |
+| `LimitTier` | `ws_messages_burst_limit` | `4294967295` on every tier | WebSocket budget name |
+| `LimitTier` | `ws_messages_per_minute_limit` | `4294967295` on every tier | WebSocket budget name |
 
-The four `LimitTier` extras are the only published figures for the WebSocket
-inbound budget the AsyncAPI calls "weighted"; plan 2 reads them.
+The four `LimitTier` extras are `u32::MAX` on all four tiers in
+`limit_tiers.json`: a sentinel (unset or unlimited), not a budget. They must
+not be used to size a client bucket; the WebSocket budget remains unpublished.
 
 ## `tickers` and `statistics` ignore `instrument_id`
 
@@ -77,22 +78,23 @@ Every response carries `x-cache: Hit from cloudfront` or `Miss from cloudfront`
 and a `cache-control` of `public, max-age=0` (`instruments`) or
 `public, max-age=1, must-revalidate` (`book`), observed 2026-09-30. A repeated
 URL can be answered without reaching the origin, so a rate-limit soak must vary
-the URL (`examples/info_soak.rs`), and `/v1/info/instruments` cannot be soaked
+the URL (`examples/info_soak.rs`, added by the rate-limit task), and
+`/v1/info/instruments` cannot be soaked
 at all: it has only 88 × 5 distinct parameterisations.
 
 ## Long decimals and `Decimal` precision
 
-The longest value in the 2026-09-30 capture is
+The longest values in the 2026-09-30 capture have 28 fractional places:
 `"previous_entry_price":"4.9027684994968432815256990529"` on
-`/v1/info/position-fills`: 28 fractional places, 29 significant digits.
-`rust_decimal::Decimal` holds up to 28 fractional places on a 96-bit mantissa,
-so this sits exactly at the limit and round-trips byte for byte (checked when
-the fixture was captured). `/v1/info/portfolio` sends `unrealized_pnl` with
-25 fractional places and `/v1/info/exchange-stats` sends `open_interest` with
-18. A longer fraction would be rounded on decode, since the crate's string
-serde uses `Decimal::from_str`, not `from_str_exact`. No capture has exceeded
-the limit yet; `wire_agreement.rs` compares key paths, not values, so a
-rounded value would not fail it.
+`/v1/info/position-fills` (29 significant digits) and
+`"return_on_equity":"-0.3510891034606133314543425132"` on `/v1/info/portfolio`
+(28). `rust_decimal::Decimal` holds up to 28 fractional places on a 96-bit
+mantissa, so each fits because its mantissa is below 2^96, and both round-trip
+byte for byte. `/v1/info/portfolio` also sends `unrealized_pnl` with 25
+fractional places and `/v1/info/exchange-stats` sends `open_interest` with 18.
+A longer fraction would be rounded on decode, since the crate's string serde
+uses `Decimal::from_str`, not `from_str_exact`. `wire_agreement.rs` compares
+values as well as key paths, so a rounded or overflowed value fails it.
 
 ## Leaderboard `account` is request-dependent
 

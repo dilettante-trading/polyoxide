@@ -126,7 +126,10 @@ async fn live_market_data_for_a_quoting_instrument() {
         .send()
         .await
         .expect("bbo");
-    assert!(bbo[0].bid_price < bbo[0].ask_price);
+    let best = bbo
+        .first()
+        .expect("no suitable market: bbo answered no rows for the selected instrument");
+    assert!(best.bid_price < best.ask_price);
 
     let start = now_ms() - 6 * 60 * 60 * 1000;
     let klines = perps

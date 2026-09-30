@@ -58,8 +58,8 @@ fn is_nullable(schemas: &Map<String, Value>, prop: &Value) -> bool {
 /// of any object it descends into. A positional row (`kline` and `mark_point`
 /// have no `items`; `level` has primitive `items` and `maxItems: 2`) is taken
 /// from its `example`, and so is a string, since the decimal fields are
-/// `type: string` with a numeric `example` and a `Decimal` field would reject
-/// a placeholder.
+/// `type: string` whose `example` is a decimal spelled as a string, and a
+/// `Decimal` field would reject a placeholder.
 fn synth(schemas: &Map<String, Value>, prop: &Value, full: bool) -> Value {
     if let Some(r) = prop["$ref"].as_str() {
         let target = &schemas[ref_name(r)];
@@ -178,8 +178,19 @@ const OBSERVED_EXTRA: &[(&str, &str)] = &[
     ("LimitTier", "ws_messages_per_minute_limit"),
 ];
 
+/// Holds one type to one schema. A required-but-nullable field is treated as
+/// omittable: it is left out of the minimal object and set to `null` in the
+/// null check, which is why `ExchangeStatistics.open_interest` carries
+/// `serde(default)`.
 fn check<T: DeserializeOwned + Serialize>(schemas: &Map<String, Value>, name: &str) {
     let (props, required) = fields(schemas, &schemas[name]);
+
+    for (_, field) in OBSERVED_EXTRA.iter().filter(|(schema, _)| *schema == name) {
+        assert!(
+            !props.contains_key(*field),
+            "{name}.{field} is now documented; drop the OBSERVED_EXTRA row and the OBSERVED.md entry"
+        );
+    }
 
     let minimal = synth_object(schemas, name, false);
     if let Err(e) = serde_json::from_value::<T>(minimal.clone()) {

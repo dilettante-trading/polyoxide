@@ -6,7 +6,6 @@ Each file is the complete response body, pretty-printed. Inputs were chosen live
 
 | Fixture | Request |
 |---------|---------|
-| `ping.json` | `https://api.perpetuals.polymarket.com/v1/info/ping` |
 | `time.json` | `https://api.perpetuals.polymarket.com/v1/info/time` |
 | `exchange.json` | `https://api.perpetuals.polymarket.com/v1/info/exchange` |
 | `assets.json` | `https://api.perpetuals.polymarket.com/v1/info/assets` |

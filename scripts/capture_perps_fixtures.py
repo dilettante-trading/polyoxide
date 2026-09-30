@@ -53,7 +53,6 @@ def main():
     now = int(time.time() * 1000)
     day_ago = now - DAY_MS
 
-    save("ping", "/v1/info/ping")
     save("time", "/v1/info/time")
     save("exchange", "/v1/info/exchange")
     save("assets", "/v1/info/assets")

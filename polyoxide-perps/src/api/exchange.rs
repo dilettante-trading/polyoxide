@@ -232,7 +232,8 @@ pub struct FeeTier {
 /// One volume-based rate-limit tier.
 ///
 /// The four `Option` fields are on the wire and not in the published schema
-/// (`docs/specs/perps/OBSERVED.md`); they describe the WebSocket budget.
+/// (`docs/specs/perps/OBSERVED.md`); they name the WebSocket budget but carry
+/// a sentinel today.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[non_exhaustive]
 pub struct LimitTier {
@@ -251,12 +252,16 @@ pub struct LimitTier {
     pub open_orders_limit: u64,
     /// Display-only messages-per-minute figure.
     pub messages_per_minute: u64,
-    /// WebSocket connects per minute. Undocumented.
+    /// WebSocket connects per minute. Undocumented. Observed as `u32::MAX` on
+    /// every tier (a sentinel), 2026-09-30.
     pub connects_per_minute_limit: Option<u64>,
-    /// Concurrent WebSocket connections. Undocumented.
+    /// Concurrent WebSocket connections. Undocumented. Observed as `u32::MAX`
+    /// on every tier (a sentinel), 2026-09-30.
     pub max_connections: Option<u64>,
-    /// WebSocket inbound-message burst allowance. Undocumented.
+    /// WebSocket inbound-message burst allowance. Undocumented. Observed as
+    /// `u32::MAX` on every tier (a sentinel), 2026-09-30.
     pub ws_messages_burst_limit: Option<u64>,
-    /// WebSocket inbound messages per minute. Undocumented.
+    /// WebSocket inbound messages per minute. Undocumented. Observed as
+    /// `u32::MAX` on every tier (a sentinel), 2026-09-30.
     pub ws_messages_per_minute_limit: Option<u64>,
 }
