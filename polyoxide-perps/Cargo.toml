@@ -10,6 +10,13 @@ description = "Rust client library for the Polymarket Perps API"
 keywords = ["polymarket", "perpetuals", "trading"]
 categories = ["api-bindings", "web-programming::http-client"]
 
+[features]
+default = []
+# WebSocket streaming of the public channels.
+ws = ["dep:tokio-tungstenite", "dep:futures-util", "dep:rustls", "tokio/net", "tokio/sync", "tokio/rt"]
+# Exposes the scripted local server for integration tests. Not for consumers.
+test-server = ["ws"]
+
 [dependencies]
 polyoxide-core = { workspace = true }
 reqwest = { workspace = true }
@@ -17,10 +24,17 @@ rust_decimal = { workspace = true }
 serde = { workspace = true }
 serde_json = { workspace = true }
 thiserror = { workspace = true }
+tokio = { workspace = true, features = ["time"] }
+tokio-tungstenite = { workspace = true, optional = true }
+futures-util = { version = "0.3", optional = true }
+# Needed only to install a process-default rustls CryptoProvider; see
+# `ensure_crypto_provider` in src/ws/mod.rs.
+rustls = { version = "0.23", default-features = false, features = ["ring", "std"], optional = true }
 tracing = { workspace = true }
 url = { workspace = true }
 
 [dev-dependencies]
+futures-util = "0.3"
 mockito = { workspace = true }
 tokio = { workspace = true, features = ["macros", "rt-multi-thread", "time"] }
 tracing-subscriber = { workspace = true }
@@ -31,3 +45,15 @@ tracing-subscriber = { workspace = true }
 name = "info_soak"
 path = "examples/info_soak.rs"
 test = true
+
+# The `ws` integration tests import items that only exist behind the feature;
+# `required-features` keeps a plain `cargo test --all-targets` from trying to
+# build them. Uncomment each block when its file lands, since Cargo refuses a
+# manifest that names a test file that does not exist.
+# [[test]]
+# name = "ws_wire_agreement"
+# required-features = ["ws"]
+#
+# [[test]]
+# name = "live_ws"
+# required-features = ["ws"]
