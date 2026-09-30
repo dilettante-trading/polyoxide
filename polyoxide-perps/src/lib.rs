@@ -2,7 +2,7 @@
 //!
 //! This crate covers the public `/v1/info/*` routes, which need no credentials.
 //!
-//! ```text
+//! ```no_run
 //! use polyoxide_perps::Perps;
 //!
 //! # async fn example() -> Result<(), polyoxide_perps::PerpsError> {

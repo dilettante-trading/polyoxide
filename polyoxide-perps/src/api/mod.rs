@@ -1,5 +1,7 @@
 //! API namespaces, one module per group of routes.
 
+pub mod health;
+
 use polyoxide_core::{HttpClient, Request};
 use serde::de::DeserializeOwned;
 

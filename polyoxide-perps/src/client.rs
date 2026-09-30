@@ -4,7 +4,7 @@ use polyoxide_core::{
     HttpClient, HttpClientBuilder, RateLimiter, RetryConfig, DEFAULT_POOL_SIZE, DEFAULT_TIMEOUT_MS,
 };
 
-use crate::error::PerpsError;
+use crate::{api::health::Health, error::PerpsError};
 
 /// Production Perps HTTP API host.
 pub const DEFAULT_BASE_URL: &str = "https://api.perpetuals.polymarket.com";
@@ -28,6 +28,13 @@ impl Perps {
     /// Start configuring a client.
     pub fn builder() -> PerpsBuilder {
         PerpsBuilder::new()
+    }
+
+    /// Liveness: `ping`, `time`.
+    pub fn health(&self) -> Health {
+        Health {
+            http_client: self.http_client.clone(),
+        }
     }
 }
 
