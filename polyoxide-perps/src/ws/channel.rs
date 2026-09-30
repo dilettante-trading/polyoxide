@@ -7,19 +7,13 @@ use crate::types::{InstrumentId, Interval, UnknownVariant};
 
 /// Levels per side the `book` channel can deliver. The REST route takes a
 /// different set (`crate::types::BookDepth`).
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Default)]
 pub enum StreamDepth {
     /// Top 20 levels per side, the server default.
+    #[default]
     Twenty,
     /// Top 50 levels per side.
     Fifty,
-}
-
-impl Default for StreamDepth {
-    /// The server default, 20 levels.
-    fn default() -> Self {
-        StreamDepth::Twenty
-    }
 }
 
 impl StreamDepth {

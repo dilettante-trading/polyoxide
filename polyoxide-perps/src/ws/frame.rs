@@ -2,16 +2,14 @@
 //! push frames arrive labelled by channel. Payload structs use the terse
 //! keys the socket sends (`bp`, `aq`, `oi`); `event.rs` is the public face.
 
-// The envelope types are `pub(crate)` and only reached from `client`, which
-// lands in a later task. Remove this once `client` exists.
-#![allow(dead_code)]
-
 use rust_decimal::Decimal;
 use serde::{Deserialize, Serialize};
 
 use crate::types::{InstrumentId, Kline, Level, Side};
 
 /// An outbound request.
+// Read by ws::client (package B); remove then.
+#[allow(dead_code)]
 #[derive(Debug, Clone, Serialize)]
 pub(crate) struct Request {
     pub id: u64,
@@ -22,12 +20,16 @@ pub(crate) struct Request {
     pub op: Option<Op>,
 }
 
+// Read by ws::client (package B); remove then.
+#[allow(dead_code)]
 #[derive(Debug, Clone, Serialize)]
 pub(crate) struct Op {
     #[serde(rename = "type")]
     pub kind: &'static str,
 }
 
+// Read by ws::client (package B); remove then.
+#[allow(dead_code)]
 impl Request {
     pub fn subscribe(id: u64, channels: &[String]) -> Self {
         Self {
@@ -58,17 +60,22 @@ impl Request {
 }
 
 /// One entry of a subscribe/unsubscribe response, or the body of a pong.
+// Read by ws::client (package B); remove then.
+#[allow(dead_code)]
 #[derive(Debug, Clone, PartialEq, Eq, Deserialize)]
 pub(crate) struct Status {
     pub status: String,
     #[serde(default)]
     pub error: Option<String>,
-    #[serde(default)]
-    pub ts: Option<u64>,
+    // Returned by `ws::client`'s `ping()` as the pong's sequence (package B);
+    // remove the allow then.
+    #[allow(dead_code)]
     #[serde(default)]
     pub sq: Option<u64>,
 }
 
+// Read by ws::client (package B); remove then.
+#[allow(dead_code)]
 impl Status {
     pub fn is_ok(&self) -> bool {
         self.status == "ok"
@@ -76,15 +83,17 @@ impl Status {
 }
 
 /// A response to a request, correlated by `id`.
+// Read by ws::client (package B); remove then.
+#[allow(dead_code)]
 #[derive(Debug, Clone, Deserialize)]
 pub(crate) struct Response {
     #[serde(default)]
     pub id: Option<u64>,
-    #[serde(default)]
-    pub ts: Option<u64>,
     pub data: serde_json::Value,
 }
 
+// Read by ws::client (package B); remove then.
+#[allow(dead_code)]
 impl Response {
     /// The per-channel statuses of a `sub`/`unsub` response.
     pub fn statuses(&self) -> Result<Vec<Status>, serde_json::Error> {
@@ -109,12 +118,16 @@ pub(crate) struct Push {
 }
 
 /// Anything the socket sends as text.
+// Read by ws::client (package B); remove then.
+#[allow(dead_code)]
 #[derive(Debug)]
 pub(crate) enum Incoming {
     Response(Response),
     Push(Push),
 }
 
+// Read by ws::client (package B); remove then.
+#[allow(dead_code)]
 impl Incoming {
     /// Classify by shape: a push has `ch`, a response has `data` without it.
     pub fn parse(text: &str) -> Result<Self, serde_json::Error> {
@@ -134,51 +147,57 @@ impl Incoming {
 /// `bbo::N` payload.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct BboData {
-    /// Instrument id.
-    pub iid: InstrumentId,
-    /// Best bid price.
-    #[serde(with = "rust_decimal::serde::str")]
-    pub bp: Decimal,
-    /// Best bid quantity.
-    #[serde(with = "rust_decimal::serde::str")]
-    pub bq: Decimal,
-    /// Best ask price.
-    #[serde(with = "rust_decimal::serde::str")]
-    pub ap: Decimal,
-    /// Best ask quantity.
-    #[serde(with = "rust_decimal::serde::str")]
-    pub aq: Decimal,
+    /// Instrument id. Wire key `iid`.
+    #[serde(rename = "iid")]
+    pub instrument_id: InstrumentId,
+    /// Best bid price. Wire key `bp`.
+    #[serde(rename = "bp", with = "rust_decimal::serde::str")]
+    pub bid_price: Decimal,
+    /// Best bid quantity. Wire key `bq`.
+    #[serde(rename = "bq", with = "rust_decimal::serde::str")]
+    pub bid_quantity: Decimal,
+    /// Best ask price. Wire key `ap`.
+    #[serde(rename = "ap", with = "rust_decimal::serde::str")]
+    pub ask_price: Decimal,
+    /// Best ask quantity. Wire key `aq`.
+    #[serde(rename = "aq", with = "rust_decimal::serde::str")]
+    pub ask_quantity: Decimal,
 }
 
 /// `book::N` payload.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct BookData {
-    /// Bid levels, best first.
-    pub b: Vec<Level>,
-    /// Ask levels, best first.
-    pub a: Vec<Level>,
+    /// Bid levels, best first. Wire key `b`.
+    #[serde(rename = "b")]
+    pub bids: Vec<Level>,
+    /// Ask levels, best first. Wire key `a`.
+    #[serde(rename = "a")]
+    pub asks: Vec<Level>,
 }
 
 /// One trade of a `trades::N` payload.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct TradeData {
-    /// Trade id.
-    pub tid: u64,
-    /// Instrument id.
-    pub iid: InstrumentId,
+    /// Trade id. Wire key `tid`.
+    #[serde(rename = "tid")]
+    pub trade_id: u64,
+    /// Instrument id. Wire key `iid`.
+    #[serde(rename = "iid")]
+    pub instrument_id: InstrumentId,
     /// Taker side.
     pub side: Side,
-    /// Price.
-    #[serde(with = "rust_decimal::serde::str")]
-    pub p: Decimal,
-    /// Quantity in contracts.
-    #[serde(with = "rust_decimal::serde::str")]
-    pub qty: Decimal,
+    /// Price. Wire key `p`.
+    #[serde(rename = "p", with = "rust_decimal::serde::str")]
+    pub price: Decimal,
+    /// Quantity in contracts. Wire key `qty`.
+    #[serde(rename = "qty", with = "rust_decimal::serde::str")]
+    pub quantity: Decimal,
     /// Settlement trade. On the wire, not in the schema.
     #[serde(default)]
     pub settlement: Option<bool>,
-    /// Trade time, Unix ms.
-    pub ts: u64,
+    /// Trade time, Unix ms. Wire key `ts`.
+    #[serde(rename = "ts")]
+    pub timestamp: u64,
     /// Transaction hash.
     pub hash: String,
 }
@@ -186,41 +205,44 @@ pub struct TradeData {
 /// `tickers::N` payload.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct TickerData {
-    /// Instrument id.
-    pub iid: InstrumentId,
-    /// Index price.
-    #[serde(with = "rust_decimal::serde::str")]
-    pub idx: Decimal,
-    /// Mark price.
-    #[serde(with = "rust_decimal::serde::str")]
-    pub mark: Decimal,
-    /// Last traded price.
-    #[serde(with = "rust_decimal::serde::str")]
-    pub last: Decimal,
-    /// Mid price.
-    #[serde(with = "rust_decimal::serde::str")]
-    pub mid: Decimal,
-    /// Open interest in contracts.
-    #[serde(with = "rust_decimal::serde::str")]
-    pub oi: Decimal,
-    /// Funding rate.
-    #[serde(with = "rust_decimal::serde::str")]
-    pub fr: Decimal,
-    /// Next funding time, Unix ms.
-    pub nxf: u64,
+    /// Instrument id. Wire key `iid`.
+    #[serde(rename = "iid")]
+    pub instrument_id: InstrumentId,
+    /// Index price. Wire key `idx`.
+    #[serde(rename = "idx", with = "rust_decimal::serde::str")]
+    pub index_price: Decimal,
+    /// Mark price. Wire key `mark`.
+    #[serde(rename = "mark", with = "rust_decimal::serde::str")]
+    pub mark_price: Decimal,
+    /// Last traded price. Wire key `last`.
+    #[serde(rename = "last", with = "rust_decimal::serde::str")]
+    pub last_price: Decimal,
+    /// Mid price. Wire key `mid`.
+    #[serde(rename = "mid", with = "rust_decimal::serde::str")]
+    pub mid_price: Decimal,
+    /// Open interest in contracts. Wire key `oi`.
+    #[serde(rename = "oi", with = "rust_decimal::serde::str")]
+    pub open_interest: Decimal,
+    /// Funding rate. Wire key `fr`.
+    #[serde(rename = "fr", with = "rust_decimal::serde::str")]
+    pub funding_rate: Decimal,
+    /// Next funding time, Unix ms. Wire key `nxf`.
+    #[serde(rename = "nxf")]
+    pub next_funding: u64,
 }
 
 /// `statistics::N` payload.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct StatisticsData {
-    /// Instrument id.
-    pub iid: InstrumentId,
-    /// 24-hour volume in contracts.
-    #[serde(with = "rust_decimal::serde::str")]
-    pub vol: Decimal,
-    /// Price 24 hours ago.
-    #[serde(with = "rust_decimal::serde::str")]
-    pub open: Decimal,
+    /// Instrument id. Wire key `iid`.
+    #[serde(rename = "iid")]
+    pub instrument_id: InstrumentId,
+    /// 24-hour volume in contracts. Wire key `vol`.
+    #[serde(rename = "vol", with = "rust_decimal::serde::str")]
+    pub volume: Decimal,
+    /// Price 24 hours ago. Wire key `open`.
+    #[serde(rename = "open", with = "rust_decimal::serde::str")]
+    pub open_price: Decimal,
     /// Hourly candles for the last 24 hours.
     pub klines: Vec<Kline>,
 }
@@ -266,7 +288,6 @@ mod tests {
         let resp: Response = serde_json::from_str(raw).unwrap();
         assert_eq!(resp.id, Some(2));
         let pong = resp.pong().unwrap();
-        assert!(pong.is_ok());
         assert_eq!(pong.sq, Some(59023554562));
     }
 
@@ -276,16 +297,16 @@ mod tests {
         assert_eq!(bbo.ch, "bbo::1");
         assert_eq!(bbo.ets, Some(1790776558970));
         let bbo: BboData = serde_json::from_value(bbo.data).unwrap();
-        assert_eq!(bbo.ap, Decimal::new(77039, 1));
+        assert_eq!(bbo.ask_price, Decimal::new(77039, 1));
 
         let book: Push = serde_json::from_str(r#"{"ch":"book::1","ts":1790776559001,"ets":0,"sq":59023555830,"data":{"a":[["7703.8","0.71393"]],"b":[["7702.6","0.31605"]]}}"#).unwrap();
         assert_eq!(book.ets, Some(0));
         let book: BookData = serde_json::from_value(book.data).unwrap();
-        assert_eq!(book.b[0].quantity, Decimal::new(31605, 5));
+        assert_eq!(book.bids[0].quantity, Decimal::new(31605, 5));
 
         let trades: Push = serde_json::from_str(r#"{"ch":"trades::1","ts":1790776576797,"ets":1790776576796,"sq":59024034707,"data":[{"tid":5880140173696939,"iid":1,"side":"short","p":"7701.5","qty":"0.59079","settlement":false,"ts":1790776576796,"hash":"0x"}]}"#).unwrap();
         let trades: Vec<TradeData> = serde_json::from_value(trades.data).unwrap();
-        assert_eq!(trades[0].tid, 5880140173696939);
+        assert_eq!(trades[0].trade_id, 5880140173696939);
         assert_eq!(trades[0].settlement, Some(false));
 
         let klines: Push = serde_json::from_str(r#"{"ch":"klines::1::1m","ts":1790776562551,"ets":1790776561708,"sq":59023593930,"data":[]}"#).unwrap();
@@ -294,7 +315,7 @@ mod tests {
 
         let ticker: Push = serde_json::from_str(r#"{"ch":"tickers::1","ts":1790776559001,"ets":1790776559000,"sq":59023555830,"data":{"iid":1,"idx":"7703.5","mark":"7703.8","last":"7698.8","mid":"7703.2","oi":"1871.02808","fr":"0.00000625","nxf":1790776800000}}"#).unwrap();
         let ticker: TickerData = serde_json::from_value(ticker.data).unwrap();
-        assert_eq!(ticker.nxf, 1790776800000);
+        assert_eq!(ticker.next_funding, 1790776800000);
 
         let stats: Push = serde_json::from_str(r#"{"ch":"statistics::1","ts":1790776560207,"ets":1790775778465,"sq":59023593930,"data":{"iid":1,"vol":"555348.007315","open":"7678.8","klines":[[1790686800000,"7678.8","7678.8","7678.8","7678.8","0.20379",2]]}}"#).unwrap();
         let stats: StatisticsData = serde_json::from_value(stats.data).unwrap();

@@ -13,7 +13,7 @@ categories = ["api-bindings", "web-programming::http-client"]
 [features]
 default = []
 # WebSocket streaming of the public channels.
-ws = ["dep:tokio-tungstenite", "dep:futures-util", "dep:rustls", "tokio/net", "tokio/sync", "tokio/rt"]
+ws = ["dep:tokio", "dep:tokio-tungstenite", "dep:futures-util", "dep:rustls", "tokio/net", "tokio/sync", "tokio/rt", "tokio/time"]
 # Exposes the scripted local server for integration tests. Not for consumers.
 test-server = ["ws"]
 
@@ -24,7 +24,7 @@ rust_decimal = { workspace = true }
 serde = { workspace = true }
 serde_json = { workspace = true }
 thiserror = { workspace = true }
-tokio = { workspace = true, features = ["time"] }
+tokio = { workspace = true, optional = true }
 tokio-tungstenite = { workspace = true, optional = true }
 futures-util = { version = "0.3", optional = true }
 # Needed only to install a process-default rustls CryptoProvider; see

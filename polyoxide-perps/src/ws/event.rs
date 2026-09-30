@@ -162,7 +162,17 @@ mod tests {
         );
         assert_eq!(update.ets, None);
         assert_eq!(update.sq, 9);
-        assert!(matches!(update.payload, Payload::Book(ref b) if b.b.len() == 1));
+        assert!(matches!(update.payload, Payload::Book(ref b) if b.bids.len() == 1));
+    }
+
+    #[test]
+    fn a_missing_ets_is_unattested_too() {
+        let frame =
+            Frame::from_push(push(r#"{"ch":"trades::1","ts":5,"sq":9,"data":[]}"#), "").unwrap();
+        let Frame::Update(update) = frame else {
+            panic!("expected an update")
+        };
+        assert_eq!(update.ets, None);
     }
 
     #[test]

@@ -18,6 +18,11 @@ pub struct Script {
     pub refuse: Vec<(String, String)>,
     /// Push frames to send after the first subscribe response, in order.
     pub pushes: Vec<String>,
+    /// Raw WebSocket messages to send after `pushes`. The only way to drive
+    /// the non-text arms of the client's `Stream` impl: a server-initiated
+    /// Ping or a Binary frame must be skipped, not treated as the end of the
+    /// stream.
+    pub raw_pushes: Vec<Message>,
     /// Whether to close the connection after the pushes (else hold it open).
     pub close_after: bool,
     /// Whether to answer pings. `false` models a dead socket.
@@ -31,6 +36,7 @@ impl Default for Script {
         Self {
             refuse: Vec::new(),
             pushes: Vec::new(),
+            raw_pushes: Vec::new(),
             close_after: false,
             answer_pings: true,
             reject_handshake: false,
@@ -88,6 +94,12 @@ impl ScriptedServer {
     }
 
     /// Connections accepted so far.
+    ///
+    /// Counted at accept, before the handshake, so it can run ahead of
+    /// [`subscriptions`](Self::subscriptions), which is recorded once the
+    /// first text frame arrives. The two are not synchronised with each
+    /// other; [`wait_for`](Self::wait_for) on the later one is how a test
+    /// orders them.
     pub fn connection_count(&self) -> usize {
         self.connections.load(Ordering::SeqCst)
     }
@@ -98,6 +110,9 @@ impl ScriptedServer {
     }
 
     /// The first frame of each connection.
+    ///
+    /// Recorded when the frame arrives, after the connection is already in
+    /// [`connection_count`](Self::connection_count); see the caveat there.
     pub fn subscriptions(&self) -> Vec<String> {
         self.recorder.subscriptions.lock().unwrap().clone()
     }
@@ -121,6 +136,10 @@ impl ScriptedServer {
 }
 
 /// Answer one request the way the host does.
+///
+/// A `sub`/`unsub` gets one status per channel in request order; a `post`
+/// whose `op.type` is `ping` gets a pong (unless the script says not to
+/// answer pings); any other `post`, and anything else, gets no reply.
 fn answer(script: &Script, request: &serde_json::Value) -> Option<String> {
     let id = request
         .get("id")
@@ -149,10 +168,12 @@ fn answer(script: &Script, request: &serde_json::Value) -> Option<String> {
                 .unwrap_or_default();
             Some(serde_json::json!({"id": id, "data": statuses}).to_string())
         }
-        Some("post") if script.answer_pings => Some(
-            serde_json::json!({"id": id, "ts": 1, "data": {"status": "ok", "ts": 1, "sq": 1}})
-                .to_string(),
-        ),
+        Some("post") if script.answer_pings && request["op"]["type"].as_str() == Some("ping") => {
+            Some(
+                serde_json::json!({"id": id, "ts": 1, "data": {"status": "ok", "ts": 1, "sq": 1}})
+                    .to_string(),
+            )
+        }
         _ => None,
     }
 }
@@ -185,6 +206,9 @@ async fn serve(
     for push in &script.pushes {
         ws.send(Message::Text(push.clone().into())).await?;
     }
+    for raw in &script.raw_pushes {
+        ws.send(raw.clone()).await?;
+    }
     if script.close_after {
         let _ = ws.close(None).await;
         return Ok(());
@@ -210,4 +234,83 @@ async fn serve(
         }
     }
     Ok(())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn reply(script: &Script, request: &str) -> Option<serde_json::Value> {
+        answer(script, &serde_json::from_str(request).unwrap())
+            .map(|text| serde_json::from_str(&text).unwrap())
+    }
+
+    #[test]
+    fn a_subscribe_gets_one_ok_per_channel_in_order() {
+        let got = reply(
+            &Script::default(),
+            r#"{"id":7,"req":"sub","chs":["bbo::1","book::1::50","trades::2"]}"#,
+        )
+        .unwrap();
+        assert_eq!(got["id"], 7);
+        assert_eq!(got["data"].as_array().unwrap().len(), 3);
+        assert!(got["data"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .all(|s| s == &serde_json::json!({"status": "ok"})));
+    }
+
+    #[test]
+    fn a_scripted_refusal_lands_at_its_channels_index() {
+        let script = Script {
+            refuse: vec![("nonsense::1".to_owned(), "invalid channel".to_owned())],
+            ..Script::default()
+        };
+        let got = reply(
+            &script,
+            r#"{"id":1,"req":"sub","chs":["bbo::1","nonsense::1","trades::1"]}"#,
+        )
+        .unwrap();
+        let data = got["data"].as_array().unwrap();
+        assert_eq!(data[0], serde_json::json!({"status": "ok"}));
+        assert_eq!(
+            data[1],
+            serde_json::json!({"status": "err", "error": "invalid channel"})
+        );
+        assert_eq!(data[2], serde_json::json!({"status": "ok"}));
+    }
+
+    #[test]
+    fn a_ping_gets_a_pong_with_a_sequence() {
+        let got = reply(
+            &Script::default(),
+            r#"{"id":2,"req":"post","op":{"type":"ping"}}"#,
+        )
+        .unwrap();
+        assert_eq!(got["id"], 2);
+        assert_eq!(got["data"]["status"], "ok");
+        assert!(got["data"]["sq"].is_u64());
+    }
+
+    #[test]
+    fn a_post_that_is_not_a_ping_gets_no_reply() {
+        assert!(reply(
+            &Script::default(),
+            r#"{"id":3,"req":"post","op":{"type":"order"}}"#
+        )
+        .is_none());
+        assert!(reply(&Script::default(), r#"{"id":4,"req":"post"}"#).is_none());
+    }
+
+    #[test]
+    fn a_dead_socket_does_not_answer_pings() {
+        let script = Script {
+            answer_pings: false,
+            ..Script::default()
+        };
+        assert!(reply(&script, r#"{"id":2,"req":"post","op":{"type":"ping"}}"#).is_none());
+        // Subscriptions are still answered; only the keep-alive is dead.
+        assert!(reply(&script, r#"{"id":1,"req":"sub","chs":["bbo::1"]}"#).is_some());
+    }
 }

@@ -8,6 +8,7 @@
 //! Everything the published AsyncAPI gets wrong about the wire is in
 //! `docs/specs/perps/OBSERVED.md`.
 
+// TODO(package B): restore intra-doc links to PerpsWs, PerpsWs::ping, SupervisedPerpsWs
 pub mod channel;
 // pub mod client;
 pub mod error;
@@ -20,7 +21,7 @@ pub mod test_server;
 
 pub use channel::{Channel, StreamDepth};
 // pub use client::PerpsWs;
-pub use error::{PerpsWsError, Recovery};
+pub use error::{PerpsWsError, Recovery, Refusal};
 pub use event::{Event, Frame, Payload, Update};
 // pub use supervised::{MembershipHandle, PerpsWsBuilder, SupervisedPerpsWs};
 
