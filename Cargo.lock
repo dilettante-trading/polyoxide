@@ -4070,6 +4070,23 @@ dependencies = [
 ]
 
 [[package]]
+name = "polyoxide-perps"
+version = "0.33.1"
+dependencies = [
+ "mockito",
+ "polyoxide-core",
+ "reqwest 0.12.28",
+ "rust_decimal",
+ "serde",
+ "serde_json",
+ "thiserror 2.0.18",
+ "tokio",
+ "tracing",
+ "tracing-subscriber",
+ "url",
+]
+
+[[package]]
 name = "polyoxide-py"
 version = "0.33.1"
 dependencies = [

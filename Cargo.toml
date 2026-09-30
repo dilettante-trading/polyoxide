@@ -6,6 +6,7 @@ members = [
   "polyoxide-core",
   "polyoxide-data",
   "polyoxide-gamma",
+  "polyoxide-perps",
   "polyoxide-py",
   "polyoxide-relay",
   "polyoxide-rtds",
@@ -24,6 +25,7 @@ rust-version = "1.91"
 polyoxide-core = { path = "polyoxide-core", version = "0.33.1" }
 polyoxide-clob = { path = "polyoxide-clob", version = "0.33.1" }
 polyoxide-gamma = { path = "polyoxide-gamma", version = "0.33.1" }
+polyoxide-perps = { path = "polyoxide-perps", version = "0.33.1" }
 polyoxide-data = { path = "polyoxide-data", version = "0.33.1" }
 polyoxide-relay = { path = "polyoxide-relay", version = "0.33.1" }
 polyoxide-rtds = { path = "polyoxide-rtds", version = "0.33.1" }
