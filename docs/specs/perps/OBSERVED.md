@@ -137,12 +137,12 @@ The throttle is not a block: after the first 429 the other workers went on
 receiving origin replies, and a throttled stage refused only a few per cent
 of its requests (klines at 4 req/s: 164 origin, 6 throttled; trades at
 2 req/s: 99 origin, 3 throttled; bbo at 10 req/s: 369 origin, 5 throttled).
-That is the shape of a token bucket refilling just below the stage rate, not
-of a per-IP in-flight cap: single-request latency is 0.4 to 0.7 s on every
-route, so trades at 2 req/s had about one request in flight when it was
-throttled while bbo at 5 req/s was clean with several. The budgets differ
-per route, so they are modelled as separate rows and not as one shared
-per-IP bucket. Every route answered from the origin on distinct URLs
+That is the shape of a token bucket refilling just below the stage rate:
+each route sustains a steady rate and refuses a few per cent once the rate
+exceeds it, rather than refusing everything once some in-flight count is
+reached. The budgets differ per route, so each soaked route has its own row;
+the mixed validation runs below show the budget is also partly shared, which
+is what the general bucket models. Every route answered from the origin on distinct URLs
 (`x-cache: Miss from cloudfront`); bbo, whose URL space is one per
 instrument, saw 4 and 3 cache hits per 300-plus replies.
 
@@ -156,7 +156,9 @@ two runs are what set the general bucket:
 | 30 per 10 s | 327 requests, 0 throttled |
 
 So the per-IP budget is partly shared across routes: each route sustains its
-own row alone, but a mix capped at bbo's rate is refused. A 429 body seen
+own row alone, but a mix capped at bbo's rate is refused. 30 was the first
+cap tried below 50 and was clean; 40 was not run, so 30 is a clean point, not
+the highest clean cap. A 429 body seen
 during the ramps was `{"status":"err","error":"ip_rate_limited"}` with
 `Retry-After: 1`.
 
