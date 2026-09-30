@@ -12,6 +12,8 @@ Perpetual futures trading: account state, order placement, and market info.
 Machine-readable schema: [openapi.json](openapi.json) (mirror of
 `https://docs.polymarket.com/api-spec/perps-openapi.json`).
 
+Observed behaviour the schema does not describe: [OBSERVED.md](OBSERVED.md).
+
 ## Auth
 
 Two API-key headers, unrelated to the CLOB `POLY_*` L2 headers:
