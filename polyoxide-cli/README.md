@@ -247,7 +247,7 @@ polyoxide data live-volume --event-id 42,43
 
 ### WebSocket
 
-Subscribe to real-time market data and user updates.
+Stream real-time market, user and sports updates.
 
 #### `ws market`
 
@@ -302,7 +302,7 @@ No credentials needed. Reconnects on its own; connection notices go to stderr.
 # Every live match in every league
 polyoxide ws sports
 
-# Some leagues, or some games (numeric ids and cricket's id… ids alike)
+# Some leagues, or some games (numeric ids and cricket's id-prefixed ids alike)
 polyoxide ws sports --league atp,wta
 polyoxide ws sports --game 1712005,id2704098174740616
 

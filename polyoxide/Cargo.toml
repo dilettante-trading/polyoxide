@@ -6,7 +6,7 @@ license.workspace = true
 authors.workspace = true
 repository.workspace = true
 rust-version.workspace = true
-description = "Unified Rust client for Polymarket APIs (CLOB, Gamma, Data, RTDS and Perps)"
+description = "Unified Rust client for Polymarket APIs (CLOB, Gamma, Data, RTDS, Perps and Sports)"
 keywords = ["polymarket", "prediction-markets", "api", "trading"]
 categories = ["api-bindings", "web-programming::http-client"]
 

@@ -119,4 +119,3 @@ Status flow: MATCHED → MINED → CONFIRMED (or RETRYING → FAILED)
 ### Keep-Alive
 
 Send `PING` every 10 seconds. Server responds with `PONG`.
-

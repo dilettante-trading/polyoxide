@@ -37,8 +37,11 @@ with **no secrets configured**:
 |-------|---------------|
 | polyoxide-gamma | `live_api` |
 | polyoxide-data | `live_api` |
-| polyoxide-clob | `live_api`, `live_ws` (built with `--features ws`) |
+| polyoxide-clob | `live_api`, `live_ws` (built with `--features ws`); `live_session_keys` in its own row |
 | polyoxide-relay | `live_api` |
+| polyoxide-rtds | `live_api` |
+| polyoxide-perps | `live_api`, `live_ws` (built with `--features ws`) |
+| polyoxide-sports | `live_api` (20-minute budget for its 180 s wire-agreement window) |
 | polyoxide-cli | `live_api` |
 
 Failures are classified by `.github/scripts/classify_failures.py` — the single
@@ -47,7 +50,7 @@ place that defines "what counts as a real failure":
 | Verdict | Trigger | Consequence |
 |---------|---------|-------------|
 | **auth-gated** | Panic matches `POLYMARKET_* env vars required` or `POLYMARKET_PRIVATE_KEY required` | Logged, skipped. Lights up automatically once secrets are wired in. |
-| **environmental** | Panic contains `legitimately time out` — the test itself declares the world may have no signal (e.g. the sports channel with no live match anywhere at 06:00 UTC) | Logged to `environmental.txt`, skipped. Never retried, never reported. |
+| **environmental** | Panic contains `legitimately time out` — the test itself declares the world may have no signal (e.g. the sports feed with no live match anywhere at 06:00 UTC) | Logged to `environmental.txt`, skipped. Never retried, never reported. |
 | **transient** | HTTP 429/5xx, connection refused/reset, timeouts, DNS failures | Retried in a second nextest pass with `--retries 2`. Passes on retry are forgiven; persistent failures are promoted to real. |
 | **real** | Everything else | Aggregated into a single tracking issue. |
 
