@@ -24,9 +24,8 @@
 //!   [`WebSocket::connect_user_all_markets`] — to receive events for every market, and
 //!   use [`WebSocket::subscribe_markets`] to adjust the filter on a live connection.
 //!
-//! - **Sports Channel**: Public channel for live match updates, on its own host and
-//!   taking no subscription payload. See [`SportsUpdateMessage`]; note its frames carry
-//!   no `event_type` discriminator, unlike the other two channels.
+//! The live sports feed is not a CLOB channel. It is served by another host and
+//! lives in the `polyoxide-sports` crate.
 //!
 //! # Basic Example
 //!
@@ -119,7 +118,6 @@ mod auth;
 mod client;
 mod error;
 mod market;
-mod sports;
 mod subscription;
 mod user;
 
@@ -130,11 +128,10 @@ pub use market::{
     BestBidAskMessage, BookMessage, LastTradePriceMessage, MarketMessage, MarketResolvedMessage,
     NewMarketMessage, OrderSummary, PriceChange, PriceChangeMessage, TickSizeChangeMessage,
 };
-pub use sports::{SportsMessage, SportsUpdateMessage};
 pub use subscription::{
     ChannelType, MarketSubscription, MarketSubscriptionOptions, MarketSubscriptionUpdate,
     SubscriptionLevel, SubscriptionOperation, UserSubscription, UserSubscriptionUpdate,
-    WS_MARKET_URL, WS_SPORTS_URL, WS_USER_URL,
+    WS_MARKET_URL, WS_USER_URL,
 };
 pub use user::{MakerOrder, OrderEventType, OrderMessage, TradeMessage, TradeStatus, UserMessage};
 
@@ -146,6 +143,4 @@ pub enum Channel {
     Market(MarketMessage),
     /// User channel message
     User(UserMessage),
-    /// Sports channel message
-    Sports(SportsMessage),
 }

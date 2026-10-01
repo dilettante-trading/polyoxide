@@ -10,12 +10,6 @@ pub const WS_MARKET_URL: &str = "wss://ws-subscriptions-clob.polymarket.com/ws/m
 /// WebSocket endpoint URL for user channel
 pub const WS_USER_URL: &str = "wss://ws-subscriptions-clob.polymarket.com/ws/user";
 
-/// WebSocket endpoint URL for the sports channel
-///
-/// Note the different host: sports updates are served by `sports-api`, not by
-/// `ws-subscriptions-clob` like the market and user channels.
-pub const WS_SPORTS_URL: &str = "wss://sports-api.polymarket.com/ws";
-
 /// Channel type for WebSocket subscription
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "lowercase")]
@@ -24,12 +18,6 @@ pub enum ChannelType {
     Market,
     /// User channel for authenticated order and trade updates
     User,
-    /// Sports channel for live game state updates
-    ///
-    /// Unlike the other two, this variant is never sent on the wire — the
-    /// sports channel takes no subscription payload. It exists so a connected
-    /// [`WebSocket`](crate::ws::WebSocket) can report which channel it is on.
-    Sports,
 }
 
 /// Order book depth level for a market subscription.
@@ -525,15 +513,6 @@ mod options_tests {
         assert_eq!(
             SubscriptionLevel::try_from(2u8).unwrap(),
             SubscriptionLevel::Two
-        );
-    }
-
-    #[test]
-    fn sports_url_uses_its_own_host() {
-        assert!(WS_SPORTS_URL.starts_with("wss://"));
-        assert!(
-            !WS_SPORTS_URL.contains("ws-subscriptions-clob"),
-            "sports is served by sports-api, not the clob subscriptions host"
         );
     }
 }

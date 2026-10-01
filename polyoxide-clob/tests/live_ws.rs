@@ -4,99 +4,18 @@
 //! cargo test -p polyoxide-clob --features ws --test live_ws -- --ignored --nocapture
 //! ```
 //!
-//! These exist because the sports channel shipped as a public method that
-//! yielded a permanently empty stream, and no test could have noticed: the unit
-//! tests fed the parser a fabricated frame carrying a field the venue never
-//! sends. Only a real connection catches that class of bug.
+//! Only a real connection catches a parser that silently discards every frame:
+//! unit tests fed a fabricated frame pass regardless. The sports channel shipped
+//! that way before it moved to `polyoxide-sports`, whose live suite now carries
+//! its tests.
 
 #![cfg(feature = "ws")]
 
 use std::time::Duration;
 
 use futures_util::{SinkExt, StreamExt};
-use polyoxide_clob::ws::{Channel, WebSocket};
+use polyoxide_clob::ws::WebSocket;
 use polyoxide_clob::{Account, ClobBuilder, Credentials};
-
-/// How long to wait for the venue to push something before giving up.
-const RECV_WINDOW: Duration = Duration::from_secs(45);
-
-/// The sports channel must actually deliver parsed frames.
-///
-/// Asserting "connects without error" is not enough — that passed throughout
-/// the period when every frame was being silently discarded.
-#[tokio::test]
-#[ignore]
-async fn live_sports_channel_yields_frames() {
-    let mut ws = WebSocket::connect_sports()
-        .await
-        .expect("connect to sports channel");
-
-    let first = tokio::time::timeout(RECV_WINDOW, ws.next())
-        .await
-        .expect(
-            "sports channel should push a frame within the window; if no matches are live \
-                 anywhere this can legitimately time out, so re-run before concluding a defect",
-        )
-        .expect("stream ended instead of yielding a frame")
-        .expect("frame should parse");
-
-    let Channel::Sports(update) = first else {
-        panic!("sports connection yielded a non-sports channel message");
-    };
-
-    // SportsMessage is #[non_exhaustive], so this is refutable outside the crate.
-    let polyoxide_clob::ws::SportsMessage::Update(update) = update else {
-        panic!("unexpected sports message variant");
-    };
-    assert!(
-        !update.league_abbreviation.is_empty(),
-        "frame parsed but carries no league: {update:?}"
-    );
-
-    // Every match is identified one way or the other; cricket uses the string
-    // form and has no numeric gameId.
-    assert!(
-        update.game_id.is_some() || update.metadata_game_id.is_some(),
-        "frame identifies no match: {update:?}"
-    );
-
-    println!("first sports frame: {update:?}");
-}
-
-/// The connection must survive longer than the server's keep-alive interval.
-///
-/// Upstream documents a text `"ping"`/`"pong"` exchange that a client must
-/// implement or be disconnected within 10 seconds. Observation says the server
-/// actually sends protocol-level pings that the transport answers on our
-/// behalf. This test is what distinguishes those two claims: if upstream's
-/// description were right, an SDK that never sends a text `"pong"` would be
-/// dropped well before this window elapses.
-#[tokio::test]
-#[ignore]
-async fn live_sports_connection_survives_the_keepalive_interval() {
-    let mut ws = WebSocket::connect_sports()
-        .await
-        .expect("connect to sports channel");
-
-    let deadline = tokio::time::Instant::now() + Duration::from_secs(40);
-    let mut frames = 0usize;
-
-    while tokio::time::Instant::now() < deadline {
-        let remaining = deadline - tokio::time::Instant::now();
-        match tokio::time::timeout(remaining, ws.next()).await {
-            Ok(Some(Ok(_))) => frames += 1,
-            Ok(Some(Err(e))) => panic!("stream errored after {frames} frames: {e}"),
-            Ok(None) => panic!(
-                "server closed the connection after {frames} frames — the keep-alive is not \
-                 being answered, so upstream's text ping/pong description may be correct \
-                 after all"
-            ),
-            Err(_) => break, // window elapsed with the connection still open
-        }
-    }
-
-    println!("survived 40s with {frames} frames and no disconnect");
-}
 
 // ── User channel: is `markets` actually optional? ───────────────
 

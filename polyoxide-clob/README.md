@@ -14,7 +14,7 @@ More information about this crate can be found in the [crate documentation](http
 - **API Key Management**: Create, list, and delete standard, read-only, and builder API keys
 - **Liquidity Rewards**: Query earnings, percentages, and reward markets
 - **Notifications**: List and dismiss user notifications
-- **WebSocket**: Real-time market, user, and sports channels (feature-gated)
+- **WebSocket**: Real-time market and user channels (feature-gated). Live sports scores are in [polyoxide-sports](https://docs.rs/polyoxide-sports/).
 
 ## Installation
 
@@ -332,27 +332,6 @@ while let Some(msg) = ws.next().await {
 
 `MarketMessage` and `Channel` are `#[non_exhaustive]`, so matches need a `_`
 arm — upstream adds event types without a major release.
-
-#### Sports Channel
-
-Live game state updates. Served by a different host
-(`sports-api.polymarket.com`) and needs no subscription payload:
-
-```rust
-# async fn doctest() -> Result<(), Box<dyn std::error::Error>> {
-use polyoxide_clob::ws::{Channel, WebSocket};
-use futures_util::StreamExt;
-
-let mut ws = WebSocket::connect_sports().await?;
-
-while let Some(msg) = ws.next().await {
-    if let Channel::Sports(update) = msg? {
-        println!("{update:?}");
-    }
-}
-# Ok(())
-# }
-```
 
 #### User Channel
 

@@ -13,10 +13,9 @@ use super::{
     auth::ApiCredentials,
     error::WebSocketError,
     market::MarketMessage,
-    sports::SportsMessage,
     subscription::{
         ChannelType, MarketSubscription, MarketSubscriptionOptions, MarketSubscriptionUpdate,
-        UserSubscription, UserSubscriptionUpdate, WS_MARKET_URL, WS_SPORTS_URL, WS_USER_URL,
+        UserSubscription, UserSubscriptionUpdate, WS_MARKET_URL, WS_USER_URL,
     },
     user::UserMessage,
     Channel,
@@ -39,7 +38,7 @@ const OUTBOUND_QUEUE_DEPTH: usize = 64;
 /// `polyoxide-core`) and `aws-lc-rs` with `reqwest 0.13` (pulled in by
 /// `alloy`, a mandatory dependency here). Faced with two candidates rustls
 /// installs neither and panics inside `connect_async`, which made *every*
-/// channel — market, user and sports alike — abort at connect time for any
+/// channel — market and user alike — abort at connect time for any
 /// consumer of this crate.
 ///
 /// Installing the default is deliberately best-effort: `install_default`
@@ -143,20 +142,16 @@ fn parse_channel_message(
     }
 
     match channel_type {
-        // The clob channels tag every event with `event_type`, so a frame
-        // without one is a heartbeat or a subscription ack. This filter must
-        // stay channel-scoped: applying it before the dispatch also silenced
-        // the sports channel, and removing it outright would push clob
-        // heartbeats into `from_json` and turn them into hard stream errors.
+        // Both channels tag every event with `event_type`, so a frame
+        // without one is a heartbeat or a subscription ack. Removing this
+        // filter would push heartbeats into `from_json` and turn them into
+        // hard stream errors.
         ChannelType::Market | ChannelType::User if !text.contains("event_type") => {
             tracing::trace!("Skipping non-event message: {}", text);
             Ok(None)
         }
         ChannelType::Market => Ok(Some(Channel::Market(MarketMessage::from_json(text)?))),
         ChannelType::User => Ok(Some(Channel::User(UserMessage::from_json(text)?))),
-        // Sports frames carry no discriminator at all — every field is match
-        // data. Verified against 229 live frames on 2026-07-25.
-        ChannelType::Sports => Ok(Some(Channel::Sports(SportsMessage::from_json(text)?))),
     }
 }
 
@@ -164,8 +159,7 @@ fn parse_channel_message(
 ///
 /// Each channel has its own update frame — the market channel's is keyed on
 /// asset IDs ([`MarketSubscriptionUpdate`]), the user channel's on condition
-/// IDs ([`UserSubscriptionUpdate`]) — and the sports channel takes no
-/// subscription payload at all.
+/// IDs ([`UserSubscriptionUpdate`]).
 fn require_channel(actual: ChannelType, expected: ChannelType) -> Result<(), WebSocketError> {
     if actual != expected {
         return Err(WebSocketError::InvalidMessage(format!(
@@ -286,45 +280,6 @@ impl WebSocket {
         Ok(Self {
             inner: ws,
             channel_type: ChannelType::Market,
-        })
-    }
-
-    /// Connect to the sports channel for live match updates.
-    ///
-    /// This channel takes no subscription payload — connecting is enough. Note
-    /// that it is served by a different host (`sports-api.polymarket.com`)
-    /// than the market and user channels, and that its frames carry no
-    /// `event_type` discriminator.
-    ///
-    /// Keep-alive needs no help from the caller: the server sends WebSocket
-    /// protocol ping frames, which the underlying transport answers
-    /// automatically. Upstream's documentation describes a text `"ping"` /
-    /// `"pong"` exchange instead; that is not what the server does.
-    ///
-    /// # Example
-    ///
-    /// ```no_run
-    /// use polyoxide_clob::ws::{Channel, WebSocket};
-    /// use futures_util::StreamExt;
-    ///
-    /// #[tokio::main]
-    /// async fn main() -> Result<(), Box<dyn std::error::Error>> {
-    ///     let mut ws = WebSocket::connect_sports().await?;
-    ///
-    ///     while let Some(msg) = ws.next().await {
-    ///         if let Channel::Sports(update) = msg? {
-    ///             println!("{update:?}");
-    ///         }
-    ///     }
-    ///     Ok(())
-    /// }
-    /// ```
-    pub async fn connect_sports() -> Result<Self, WebSocketError> {
-        let ws = connect_ws(WS_SPORTS_URL, DEFAULT_CONNECT_TIMEOUT).await?;
-
-        Ok(Self {
-            inner: ws,
-            channel_type: ChannelType::Sports,
         })
     }
 
@@ -904,11 +859,6 @@ mod connect_tests {
             matches!(err, WebSocketError::InvalidMessage(ref m) if m.contains("User") && m.contains("Market")),
             "the error names both channels: {err}"
         );
-        let err = require_channel(ChannelType::Sports, ChannelType::User).unwrap_err();
-        assert!(
-            matches!(err, WebSocketError::InvalidMessage(ref m) if m.contains("Sports") && m.contains("User")),
-            "the error names both channels: {err}"
-        );
     }
 
     #[test]
@@ -1040,7 +990,6 @@ mod tests {
 #[cfg(test)]
 mod dispatch_tests {
     use super::*;
-    use crate::ws::sports::fixtures;
 
     const BOOK: &str = r#"{"event_type":"book","asset_id":"a","market":"m","timestamp":"1",
         "hash":"h","bids":[],"asks":[],"last_trade_price":null}"#;
@@ -1060,30 +1009,8 @@ mod dispatch_tests {
     }
 
     #[test]
-    fn every_real_sports_frame_reaches_the_caller() {
-        // The regression this pins: the `event_type` pre-filter is correct for
-        // the two clob channels and catastrophic for sports, whose frames carry
-        // no such field. Every one of these was silently dropped, leaving
-        // `connect_sports` a public method that yielded an empty stream.
-        for (i, frame) in fixtures::ALL.iter().enumerate() {
-            assert!(
-                !frame.contains("event_type"),
-                "fixture {i} must be a real frame, not one invented to suit the filter"
-            );
-            assert!(
-                matches!(
-                    parse_channel_message(ChannelType::Sports, frame).unwrap(),
-                    Some(Channel::Sports(_))
-                ),
-                "sports fixture {i} was dropped by the dispatcher"
-            );
-        }
-    }
-
-    #[test]
     fn the_event_type_filter_still_guards_market_and_user() {
-        // Scoping the fix to sports must not remove the filter from the
-        // channels that need it: without it, clob heartbeats and subscription
+        // Without the filter, clob heartbeats and subscription
         // acks reach `from_json` and become hard stream errors.
         for ch in [ChannelType::Market, ChannelType::User] {
             assert!(
@@ -1096,22 +1023,9 @@ mod dispatch_tests {
     }
 
     #[test]
-    fn sports_frames_do_not_yield_market_events() {
-        // Guards the dispatch itself: routing a sports frame to the market
-        // parser must never produce a market event.
-        for frame in fixtures::ALL {
-            let routed = parse_channel_message(ChannelType::Market, frame);
-            assert!(
-                !matches!(routed, Ok(Some(Channel::Market(_)))),
-                "a sports frame must not be read as a market event"
-            );
-        }
-    }
-
-    #[test]
     fn skips_keepalive_frames_on_every_channel() {
         for text in ["PONG", "{}", ""] {
-            for ch in [ChannelType::Market, ChannelType::User, ChannelType::Sports] {
+            for ch in [ChannelType::Market, ChannelType::User] {
                 assert!(
                     parse_channel_message(ch, text).unwrap().is_none(),
                     "{ch:?} should skip {text:?}"
