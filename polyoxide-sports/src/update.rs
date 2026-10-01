@@ -23,12 +23,17 @@ use serde_json::{Map, Value};
 /// with `==` against the last frame for the same [`GameKey`] to drop
 /// repeats.
 ///
+/// That comparison may miss repeats of frames that carry `eventState`. In
+/// the July 2026 capture its `createdAt` and `updatedAt` looked stamped on
+/// each send, which would make every rebroadcast compare unequal. No capture
+/// since has carried `eventState`, so this is unconfirmed.
+///
 /// The frame saying a match ended is sent once. A consumer that is
 /// disconnected at that moment never sees it; the supervised stream's
 /// `Event::Reconnected` says when that may have happened.
 ///
 /// Fields this type does not model are kept in [`extra`](Self::extra), and
-/// serialising a parsed frame reproduces it exactly.
+/// serialising a parsed frame gives back an equal JSON value.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 #[non_exhaustive]
@@ -58,7 +63,8 @@ pub struct MatchUpdate {
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub away_team: Option<String>,
     /// Venue status string. Casing is not normalised upstream: `"InProgress"`,
-    /// `"inprogress"`, `"running"` and `"finished"` have all been seen.
+    /// `"inprogress"`, `"running"`, `"finished"` and `"not_started"` have all
+    /// been seen.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub status: Option<String>,
     /// Elapsed time within the period, as `"MM:SS"` or minutes. Often absent.
@@ -72,6 +78,9 @@ pub struct MatchUpdate {
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub event_state: Option<Value>,
     /// Every key this type does not model, kept rather than dropped.
+    ///
+    /// A later release may promote a key to a typed field, so read it with
+    /// `.get()`: indexing a missing key panics.
     #[serde(flatten)]
     pub extra: Map<String, Value>,
 }
@@ -100,10 +109,11 @@ impl MatchUpdate {
 ///
 /// Only the numeric form can be reconciled. After a reconnect, look up a game
 /// that may have ended during the gap with
-/// `gamma.events().list().game_id([id as i64])`: the event comes back with its
+/// `gamma.events().list().game_id([i64::try_from(id)?])`: the event comes back with its
 /// `ended` flag and final `score`. Gamma refuses cricket's string form with
 /// `invalid integer`, so a cricket game cannot be reconciled that way.
 #[derive(Debug, Clone, PartialEq, Eq, Hash, PartialOrd, Ord)]
+#[non_exhaustive]
 pub enum GameKey {
     /// The numeric `gameId`.
     Game(u64),

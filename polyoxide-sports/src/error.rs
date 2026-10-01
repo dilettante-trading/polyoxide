@@ -12,23 +12,24 @@ use tokio_tungstenite::tungstenite;
 #[derive(Debug, thiserror::Error)]
 #[non_exhaustive]
 pub enum SportsError {
-    /// The WebSocket handshake failed.
+    /// The connection could not be opened: the URL, DNS, TCP, TLS or the
+    /// WebSocket upgrade failed.
     #[error("could not connect to the sports feed: {source}")]
     Connect {
         /// What the transport reported.
         #[source]
         source: Box<tungstenite::Error>,
     },
-    /// The handshake did not finish within the connect timeout.
+    /// Opening the connection took longer than the connect timeout.
     #[error("connecting to the sports feed took longer than {after:?}")]
     ConnectTimeout {
         /// The timeout that elapsed.
         after: Duration,
     },
     /// The server closed the connection, or the stream ended.
-    #[error("the sports feed closed the connection (code {code:?}, reason {reason:?})")]
+    #[error("the sports feed closed the connection{}", describe_close(.code, .reason))]
     Closed {
-        /// The close code, when the server sent a close frame.
+        /// The close status code, when the server's close frame carried one.
         code: Option<u16>,
         /// The close reason, empty when none was given.
         reason: String,
@@ -57,9 +58,32 @@ pub enum SportsError {
     },
 }
 
+/// The tail of the close message: the status code and reason when present.
+fn describe_close(code: &Option<u16>, reason: &str) -> String {
+    match (code, reason.is_empty()) {
+        (Some(code), true) => format!(" with code {code}"),
+        (Some(code), false) => format!(" with code {code}: {reason}"),
+        (None, true) => " without a status code".to_owned(),
+        (None, false) => format!(": {reason}"),
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn a_close_without_a_code_says_so() {
+        let text = SportsError::Closed {
+            code: None,
+            reason: String::new(),
+        }
+        .to_string();
+        assert_eq!(
+            text,
+            "the sports feed closed the connection without a status code"
+        );
+    }
 
     #[test]
     fn errors_cross_threads() {

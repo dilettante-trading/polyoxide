@@ -6,7 +6,7 @@ use std::{
     time::Duration,
 };
 
-use futures_util::{Stream, StreamExt};
+use futures_util::{SinkExt, Stream, StreamExt};
 use tokio::net::TcpStream;
 use tokio_tungstenite::{
     connect_async,
@@ -111,6 +111,10 @@ pub(crate) fn closed(frame: Option<CloseFrame>) -> SportsError {
 ///
 /// For a feed that reconnects on its own, use `SportsWsBuilder`.
 ///
+/// An `Err(SportsError::Decode { .. })` reports one frame this crate could
+/// not read, and the stream carries on after it. Any other `Err` is the
+/// last item: the stream yields `None` after it.
+///
 /// The server sends a protocol ping every 15 seconds. The transport queues
 /// the pong when it reads the ping and sends it at the start of the next
 /// read, so pongs go out as long as the stream is being polled.
@@ -119,13 +123,19 @@ pub(crate) fn closed(frame: Option<CloseFrame>) -> SportsError {
 ///
 /// ```no_run
 /// use futures_util::StreamExt;
-/// use polyoxide_sports::SportsWs;
+/// use polyoxide_sports::{SportsError, SportsWs};
 ///
-/// # async fn run() -> Result<(), polyoxide_sports::SportsError> {
+/// # async fn run() -> Result<(), SportsError> {
 /// let mut feed = SportsWs::connect().await?;
-/// while let Some(update) = feed.next().await {
-///     let update = update?;
-///     println!("{} {} {}", update.league_abbreviation, update.score, update.period);
+/// while let Some(item) = feed.next().await {
+///     match item {
+///         Ok(update) => {
+///             println!("{} {} {}", update.league_abbreviation, update.score, update.period)
+///         }
+///         // One frame this crate could not read; the stream carries on.
+///         Err(SportsError::Decode { raw, .. }) => eprintln!("skipped a frame: {raw}"),
+///         Err(other) => return Err(other),
+///     }
 /// }
 /// # Ok(())
 /// # }
@@ -179,6 +189,10 @@ impl Stream for SportsWs {
                 // Reading again is what sends the pong for a ping just read.
                 Inbound::Alive => continue,
                 Inbound::Closed(reason) => {
+                    // RFC 6455 requires a close reply. tungstenite has queued
+                    // it, but sends it only on the next read or flush, and
+                    // this stream never reads again.
+                    let _ = self.socket.poll_flush_unpin(cx);
                     tracing::debug!(%reason, "the sports feed closed");
                     self.finished = true;
                     return Poll::Ready(None);
