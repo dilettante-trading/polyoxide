@@ -18,6 +18,7 @@ directory, copy the frames worth keeping here, and list each one in
 | `cricket_finished.json` | 2026-07-25 | A cricket frame carrying `finishedTimestamp` |
 | `league_with_space.json` | 2026-10-01 | `leagueAbbreviation` of `wta challenger`, with a space |
 | `finished_numeric.json` | 2026-10-01 | `gameId` with `finishedTimestamp` and `status: finished` |
+| `elapsed_without_event_state.json` | 2026-10-01 | Soccer (`fif`) with `elapsed` but no `eventState` |
 
 ## Captures
 
@@ -30,5 +31,5 @@ directory, copy the frames worth keeping here, and list each one in
 - **2026-10-01, 14:11 UTC**, 176 frames over four minutes across cs2,
   challenger, dota2, fif, r6siege, cricket, atp and val. No frame carried
   `eventState` or a key `MatchUpdate` does not model. It first showed
-  `status: not_started`. No frame from it is kept as a fixture: every
-  key-set it carried is already covered.
+  `status: not_started`. Its one new key-set, `elapsed` without
+  `eventState`, is kept as `elapsed_without_event_state.json`.

@@ -19,8 +19,12 @@ pub const LEAGUE_WITH_SPACE: &str = include_str!("../tests/fixtures/league_with_
 /// A finished match with a numeric `gameId` (2026-10-01).
 pub const FINISHED_NUMERIC: &str = include_str!("../tests/fixtures/finished_numeric.json");
 
+/// Soccer with `elapsed` but no `eventState` (2026-10-01).
+pub const ELAPSED_WITHOUT_EVENT_STATE: &str =
+    include_str!("../tests/fixtures/elapsed_without_event_state.json");
+
 /// Every fixture, keyed by its file stem.
-pub const ALL: [(&str, &str); 7] = [
+pub const ALL: [(&str, &str); 8] = [
     ("soccer", SOCCER),
     ("tennis_event_state", TENNIS_EVENT_STATE),
     ("esports", ESPORTS),
@@ -28,6 +32,7 @@ pub const ALL: [(&str, &str); 7] = [
     ("cricket_finished", CRICKET_FINISHED),
     ("league_with_space", LEAGUE_WITH_SPACE),
     ("finished_numeric", FINISHED_NUMERIC),
+    ("elapsed_without_event_state", ELAPSED_WITHOUT_EVENT_STATE),
 ];
 
 #[cfg(test)]
