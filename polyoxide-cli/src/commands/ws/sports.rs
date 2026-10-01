@@ -56,9 +56,9 @@ pub struct SportsArgs {
 
 /// Connect to the production feed and stream until `-n`, `-t` or Ctrl+C.
 ///
-/// Unlike `ws prices`, no Ctrl+C handler is installed: there is nothing to
-/// close, and every printed line is already flushed, so the default signal
-/// exit loses nothing.
+/// Unlike `ws prices`, no Ctrl+C handler is installed. Every printed line is
+/// already flushed, and the socket closes when the process exits, so the
+/// default signal exit loses nothing.
 pub async fn run(args: SportsArgs) -> Result<()> {
     eprintln!("Connecting to the sports feed...");
     let feed = SportsWsBuilder::new().connect().await?;
@@ -129,7 +129,8 @@ where
             // The supervised feed's only `Err`: one frame it could not read.
             Some(Err(SportsError::Decode { raw, source })) => writeln!(
                 err,
-                "# skipped a frame that did not parse ({source}): {raw}"
+                "# skipped a frame that did not parse ({source}): {}",
+                excerpt(&raw)
             )?,
             Some(Err(error)) => return Err(error.into()),
             None => {
@@ -248,6 +249,23 @@ fn print_update(update: &MatchUpdate, format: OutputFormat, out: &mut dyn Write)
     out.flush()
 }
 
+/// The first 200 characters of a frame from the server, escaped, so an
+/// oversized frame or one carrying newlines or terminal escapes stays one
+/// readable stderr line.
+fn excerpt(raw: &str) -> String {
+    const LIMIT: usize = 200;
+    let escaped: String = raw
+        .chars()
+        .take(LIMIT)
+        .flat_map(char::escape_debug)
+        .collect();
+    if raw.chars().count() > LIMIT {
+        escaped + "…"
+    } else {
+        escaped
+    }
+}
+
 /// Width of the teams column in pretty output.
 const TEAMS_WIDTH: usize = 44;
 
@@ -314,5 +332,27 @@ mod tests {
         assert_eq!(args.count, Some(3));
         assert_eq!(args.timeout, Some(Duration::from_secs(300)));
         assert_eq!(args.format, OutputFormat::Json);
+    }
+
+    #[test]
+    fn fit_keeps_text_that_fits_and_cuts_on_a_character_boundary() {
+        let exact = "x".repeat(TEAMS_WIDTH);
+        assert_eq!(fit(&exact, TEAMS_WIDTH), exact);
+        let over = "x".repeat(TEAMS_WIDTH + 1);
+        assert_eq!(
+            fit(&over, TEAMS_WIDTH),
+            format!("{}…", "x".repeat(TEAMS_WIDTH - 1))
+        );
+        // Multibyte characters are counted and cut whole.
+        assert_eq!(fit("Ñandú v Ñandú", 6), "Ñandú…");
+    }
+
+    #[test]
+    fn an_excerpt_is_one_escaped_line_of_bounded_length() {
+        assert_eq!(excerpt("a\nb\u{1b}[31m"), "a\\nb\\u{1b}[31m");
+        let long = "y".repeat(300);
+        let cut = excerpt(&long);
+        assert_eq!(cut.chars().count(), 201);
+        assert!(cut.ends_with('…'));
     }
 }

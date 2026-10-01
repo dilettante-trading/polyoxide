@@ -123,9 +123,9 @@ pub mod prelude {
     pub use polyoxide_rtds::{
         PriceEvent, PriceUpdate, Rtds, RtdsBuilder, Subscription, Topic, TwapWindow,
     };
-    #[cfg(feature = "sports")]
     // Aliased: a bare `MatchUpdate` beside the CLOB types reads like an
     // order-match update.
+    #[cfg(feature = "sports")]
     pub use polyoxide_sports::{
         Event as SportsEvent, GameKey as SportsGameKey, MatchUpdate as SportsMatchUpdate,
         SportsError, SportsWs, SportsWsBuilder, SupervisedSportsWs,
