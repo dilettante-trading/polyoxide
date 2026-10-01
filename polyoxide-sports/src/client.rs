@@ -109,7 +109,7 @@ pub(crate) fn closed(frame: Option<CloseFrame>) -> SportsError {
 
 /// One connection to the sports feed. Ends when the connection does.
 ///
-/// For a feed that reconnects on its own, use `SportsWsBuilder`.
+/// For a feed that reconnects on its own, use [`SportsWsBuilder`](crate::SportsWsBuilder).
 ///
 /// An `Err(SportsError::Decode { .. })` reports one frame this crate could
 /// not read, and the stream carries on after it. Any other `Err` is the

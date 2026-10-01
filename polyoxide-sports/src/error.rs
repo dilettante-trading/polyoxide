@@ -7,7 +7,7 @@ use tokio_tungstenite::tungstenite;
 /// Everything that can go wrong on the sports feed.
 ///
 /// On the supervised stream only [`Decode`](Self::Decode) reaches the caller
-/// as an `Err`. Every other variant arrives inside `Event::Disconnected`,
+/// as an `Err`. Every other variant arrives inside [`Event::Disconnected`](crate::Event::Disconnected),
 /// after the stream has already acted on it.
 #[derive(Debug, thiserror::Error)]
 #[non_exhaustive]

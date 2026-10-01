@@ -29,8 +29,8 @@ use serde_json::{Map, Value};
 /// since has carried `eventState`, so this is unconfirmed.
 ///
 /// The frame saying a match ended is sent once. A consumer that is
-/// disconnected at that moment never sees it; the supervised stream's
-/// `Event::Reconnected` says when that may have happened.
+/// disconnected at that moment never sees it;
+/// [`Event::Reconnected`](crate::Event::Reconnected) says when that may have happened.
 ///
 /// Fields this type does not model are kept in [`extra`](Self::extra), and
 /// serialising a parsed frame gives back an equal JSON value.
