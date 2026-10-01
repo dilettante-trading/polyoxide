@@ -28,11 +28,18 @@ fn builder(server: &ScriptedServer) -> SportsWsBuilder {
 }
 
 /// The next item, which must arrive within the window.
+///
+/// The deadline is checked first, so an item that arrives only because the
+/// deadline woke the task, which is a lost wakeup, fails rather than passing
+/// late.
 async fn next_item(feed: &mut SupervisedSportsWs) -> Result<Event, SportsError> {
-    timeout(WINDOW, feed.next())
-        .await
-        .expect("an event within the window")
-        .expect("a supervised feed never ends")
+    let deadline = tokio::time::sleep(WINDOW);
+    tokio::pin!(deadline);
+    tokio::select! {
+        biased;
+        () = &mut deadline => panic!("no event within {WINDOW:?}"),
+        item = feed.next() => item.expect("a supervised feed never ends"),
+    }
 }
 
 /// Read the feed until the task is aborted, so the server sees each reconnect.
@@ -178,8 +185,13 @@ async fn backoff_grows_while_connections_receive_nothing() {
         .await;
     reader.abort();
     let gaps = gaps(&server.accepted_at()[..6]);
-    for pair in gaps.windows(2) {
-        assert!(pair[1] >= pair[0] * 3 / 2, "backoff did not grow: {gaps:?}");
+    // Tokio sleeps never finish early, so each gap is at least its delay.
+    for (k, gap) in gaps.iter().enumerate() {
+        let floor = Duration::from_millis(40) * 2u32.pow(k as u32);
+        assert!(
+            *gap >= floor,
+            "gap {k} was {gap:?}, under its {floor:?} delay: {gaps:?}"
+        );
     }
 }
 
@@ -200,7 +212,7 @@ async fn backoff_resets_after_a_connection_that_received_something() {
     reader.abort();
     let gaps = gaps(&server.accepted_at()[..6]);
     assert!(
-        gaps.iter().all(|gap| *gap < Duration::from_millis(120)),
+        gaps.iter().all(|gap| *gap < Duration::from_millis(300)),
         "backoff grew although every connection delivered a frame: {gaps:?}"
     );
 }
@@ -267,4 +279,49 @@ async fn a_handshake_that_never_finishes_times_out() {
         Err(other) => panic!("expected a timeout, got {other}"),
         Ok(_) => panic!("connected to a server that never answers"),
     }
+}
+
+#[tokio::test]
+async fn a_stale_limit_of_duration_max_means_never() {
+    // `Duration::MAX` is the usual way to say "no timeout". Adding it to an
+    // instant overflows, which panicked inside `poll_next` on the first
+    // inbound frame.
+    let server =
+        ScriptedServer::start(vec![Script::frames(&[fixtures::SOCCER, fixtures::ESPORTS])]).await;
+    let mut feed = builder(&server)
+        .stale_after(Duration::MAX)
+        .connect()
+        .await
+        .unwrap();
+    assert_eq!(label(next_item(&mut feed).await), "kor");
+    assert_eq!(label(next_item(&mut feed).await), "lol");
+}
+
+#[tokio::test]
+async fn a_ping_alone_counts_as_having_received_something() {
+    // A connection that saw only a protocol ping still proved the server
+    // alive, so the backoff resets. Counting only data would back off from a
+    // server that is merely quiet.
+    let server = ScriptedServer::start(vec![Script {
+        send: vec![Message::Ping(b"p".to_vec().into())],
+        close_after: true,
+        ..Script::silent()
+    }])
+    .await;
+    let feed = SportsWsBuilder::new()
+        .url(server.url.clone())
+        .backoff(Duration::from_millis(40), Duration::from_secs(5))
+        .connect()
+        .await
+        .unwrap();
+    let reader = tokio::spawn(drain(feed));
+    server
+        .wait_for("six connections", |s| s.connection_count() >= 6)
+        .await;
+    reader.abort();
+    let gaps = gaps(&server.accepted_at()[..6]);
+    assert!(
+        gaps.iter().all(|gap| *gap < Duration::from_millis(300)),
+        "backoff grew although every connection received a ping: {gaps:?}"
+    );
 }

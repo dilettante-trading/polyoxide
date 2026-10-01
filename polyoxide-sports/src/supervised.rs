@@ -29,8 +29,9 @@ pub enum Event {
     /// A match update. Boxed because it is several times larger than the
     /// other variants; it dereferences to [`MatchUpdate`].
     Update(Box<MatchUpdate>),
-    /// The connection was lost. Scores are stale from here until
-    /// [`Event::Reconnected`].
+    /// The connection was lost, and scores are stale from here. After
+    /// [`Event::Reconnected`], each game is current again once its next
+    /// frame arrives, which the server sends every 20 to 90 seconds.
     Disconnected {
         /// Why the connection was given up.
         reason: SportsError,
@@ -53,9 +54,14 @@ struct Backoff {
     next: Duration,
 }
 
+/// The shortest delay. Zero would never grow, so a dead server would be
+/// retried on every timer tick.
+const MIN_BACKOFF: Duration = Duration::from_millis(1);
+
 impl Backoff {
     fn new(initial: Duration, max: Duration) -> Self {
-        let initial = initial.min(max);
+        let max = max.max(MIN_BACKOFF);
+        let initial = initial.clamp(MIN_BACKOFF, max);
         Self {
             initial,
             max,
@@ -140,6 +146,11 @@ impl SportsWsBuilder {
 
     /// Reconnect delay bounds. The delay doubles from `initial` up to `max`,
     /// and returns to `initial` after a connection that received anything.
+    ///
+    /// A protocol ping counts as receiving something. So a server that
+    /// accepts, sends anything at all, and drops the connection resets the
+    /// schedule each time, and reconnects repeat at `initial` rather than
+    /// backing off.
     pub fn backoff(mut self, initial: Duration, max: Duration) -> Self {
         self.initial_backoff = initial;
         self.max_backoff = max;
@@ -313,7 +324,11 @@ fn poll_reading(
         // hour the server sends nothing else.
         if !matches!(inbound, Inbound::Closed(_)) {
             *received = true;
-            stale.as_mut().reset(Instant::now() + stale_after);
+            // A limit too large to add, such as `Duration::MAX`, means never
+            // stale: the timer `sleep` armed lies at its far-future fallback.
+            if let Some(deadline) = Instant::now().checked_add(stale_after) {
+                stale.as_mut().reset(deadline);
+            }
         }
         match inbound {
             Inbound::Update(update) => return Step::Yield(Ok(Event::Update(update))),
@@ -365,6 +380,15 @@ mod tests {
     fn an_initial_delay_above_the_ceiling_is_clamped() {
         let mut backoff = Backoff::new(MS * 5000, MS * 1000);
         assert_eq!(backoff.take(), MS * 1000);
+    }
+
+    #[test]
+    fn a_zero_initial_delay_still_grows() {
+        // Zero doubles to zero, which would retry a dead server on every
+        // timer tick for ever.
+        let mut backoff = Backoff::new(Duration::ZERO, MS * 1000);
+        assert_eq!(backoff.take(), MS);
+        assert_eq!(backoff.take(), MS * 2);
     }
 
     #[test]
