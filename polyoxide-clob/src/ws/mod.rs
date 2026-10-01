@@ -6,7 +6,7 @@
 //!
 //! # Channels
 //!
-//! Three channels are available:
+//! Two channels are available:
 //!
 //! - **Market Channel**: Public channel for order book and price updates. Subscribe with
 //!   asset IDs (token IDs) to receive [`BookMessage`], [`PriceChangeMessage`],
