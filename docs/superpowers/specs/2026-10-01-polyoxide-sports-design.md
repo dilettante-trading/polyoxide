@@ -155,7 +155,9 @@ the caller.
 ```rust
 #[non_exhaustive]
 pub enum Event {
-    Update(MatchUpdate),
+    /// Boxed: `MatchUpdate` is 296 bytes against 40 for the other variants, which
+    /// trips clippy's `large_enum_variant`, and the repo allows no lint exceptions.
+    Update(Box<MatchUpdate>),
     /// The connection was lost. Scores are stale from here until `Reconnected`.
     Disconnected { reason: SportsError },
     /// A new connection is up. Games that ended during the gap were not re-sent;
@@ -264,8 +266,9 @@ polyoxide ws sports [--league atp,wta] [--game 1712005,id2704098174740616]
 
 ### Spec docs
 
-- `git mv docs/specs/clob/asyncapi-sports.json docs/specs/sports/asyncapi.json`, byte for
-  byte.
+- `git mv docs/specs/clob/asyncapi-sports.json docs/specs/sports/asyncapi.json`. The one
+  annotation naming `SportsUpdateMessage` is updated to `MatchUpdate`; upstream's text is
+  untouched.
 - New `docs/specs/sports/INDEX.md` (host, routes `/ws` and `/health`, crate) and
   `docs/specs/sports/OBSERVED.md` (the July and October findings above).
 - Live references updated: CLAUDE.md, `SELF-HEALING.md`, `docs/specs/gamma/OBSERVED.md`,
@@ -337,6 +340,9 @@ gets the ping, decode and close cases.
 - Bare: a frame arrives and parses (moved from clob).
 - Bare: the connection survives 40 s (moved from clob).
 - Supervised: held 50 s, past the 45 s stale limit, with no `Disconnected`.
+- Raw socket: at least two protocol pings in 40 s, none more than 20 s apart. The 50 s test
+  alone cannot show that pings count, because data resets staleness whenever a match is
+  live; this one shows the signal the 45 s default rests on is there.
 - Wire agreement: every frame in a window round-trips losslessly and leaves `extra`
   empty. A new top-level key fails the test and names it. `nightly-schema.yml` excludes
   this host, so this test is its drift detector, and the tracking issue it raises is the
