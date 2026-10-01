@@ -105,7 +105,7 @@ workflow:
 
 ### Deliberate exclusions
 
-- **`docs/specs/clob/asyncapi-sports.json`** — this mirror intentionally does
+- **`docs/specs/sports/asyncapi.json`** — this mirror intentionally does
   *not* match upstream's published document: upstream documents a
   `slug`-keyed payload and text ping/pong that the server never sends, so the
   mirror is modelled on captured wire frames (see its `x-observed-payload`).

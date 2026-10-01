@@ -31,7 +31,7 @@ Three authentication levels. See [auth.md](auth.md) for details.
 | [rewards.md](rewards.md) | /rewards/user, /rewards/user/total, /rewards/user/percentages, /rewards/user/markets, /rewards/markets/current, /rewards/markets/{id}, /rewards/markets/multi, /rebates/current | Mixed |
 | [rfq.md](rfq.md) | /rfq/request, /rfq/quote, /rfq/quotes, /rfq/requests, /rfq/prices | L2 |
 | [notifications.md](notifications.md) | /notifications | L2 |
-| [websocket.md](websocket.md) | ws/market, ws/user, ws/sports | Mixed |
+| [websocket.md](websocket.md) | ws/market, ws/user | Mixed |
 
 ## Rate Limits
 

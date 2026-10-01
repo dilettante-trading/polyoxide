@@ -7,7 +7,7 @@ places where that document and upstream's own server disagree, which the drift
 check structurally cannot see: it compares mirror to document, never to the
 live host.
 
-This is the same phenomenon as `docs/specs/clob/asyncapi-sports.json`, which
+This is the same phenomenon as `docs/specs/sports/asyncapi.json`, which
 carries `x-observed-payload` inline. That mirror can be annotated because it is
 excluded from drift checking; gamma's cannot.
 

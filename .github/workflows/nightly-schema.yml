@@ -30,7 +30,7 @@ jobs:
         # by the API host itself rather than the docs site — llms.txt links
         # it there, and nothing under /api-spec/ covers the /v2 routes.
         # Deliberately absent:
-        #   - clob sports AsyncAPI (docs/specs/clob/asyncapi-sports.json):
+        #   - sports AsyncAPI (docs/specs/sports/asyncapi.json):
         #     the mirror is modelled on captured wire frames because
         #     upstream's published contract does not match the wire — diffing
         #     it would report perpetual false drift.

@@ -1,8 +1,7 @@
 # CLOB WebSocket
 
 Machine-readable schemas (mirrors of `https://docs.polymarket.com/asyncapi*.json`):
-[asyncapi-market.json](asyncapi-market.json), [asyncapi-user.json](asyncapi-user.json),
-[asyncapi-sports.json](asyncapi-sports.json).
+[asyncapi-market.json](asyncapi-market.json), [asyncapi-user.json](asyncapi-user.json).
 
 ## Endpoints
 
@@ -10,19 +9,9 @@ Machine-readable schemas (mirrors of `https://docs.polymarket.com/asyncapi*.json
 |---------|-----|------|
 | Market | `wss://ws-subscriptions-clob.polymarket.com/ws/market` | None |
 | User | `wss://ws-subscriptions-clob.polymarket.com/ws/user` | L2 credentials |
-| Sports | `wss://sports-api.polymarket.com/ws` | None |
 
-Note the sports channel is on a **different host** and takes **no subscription
-payload** — connecting is enough to start receiving updates.
-
-> **The upstream sports contract is wrong.** Verified against 229 frames on
-> 2026-07-25: the payload has no `slug`, `last_update` or `turn` field, and the
-> keep-alive is a WebSocket **protocol** ping (opcode `0x9`), not the text
-> `"ping"`/`"pong"` exchange upstream describes. See `x-observed-payload` and
-> `x-observed-keepalive` in [asyncapi-sports.json](asyncapi-sports.json) for the
-> real shape. `SportsUpdateMessage` is modelled on the observed frames.
-> A parity audit that diffs polyoxide against the mirror will flag this as a
-> polyoxide defect; it is not.
+The live sports feed on `sports-api.polymarket.com` is a separate host and
+protocol. See [../sports/INDEX.md](../sports/INDEX.md).
 
 ## Market events
 
@@ -131,8 +120,3 @@ Status flow: MATCHED → MINED → CONFIRMED (or RETRYING → FAILED)
 
 Send `PING` every 10 seconds. Server responds with `PONG`.
 
-## Sports Channel
-
-Server sends `ping` every 5 seconds. Respond with `pong` within 10 seconds or connection closes.
-
-Message type: `sport_result` (game scores and status).
