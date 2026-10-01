@@ -15,8 +15,11 @@ Rust SDK toolkit for Polymarket APIs. It includes library crates for use in your
 | [polyoxide-core](./polyoxide-core) | Core utilities and shared types |
 | [polyoxide-data](./polyoxide-data) | Client library for Polymarket Data API |
 | [polyoxide-gamma](./polyoxide-gamma) | Client library for Polymarket Gamma (market data) API |
+| [polyoxide-perps](./polyoxide-perps) | Client library for Polymarket Perps (perpetual futures) public market data |
 | [polyoxide-py](./polyoxide-py) | Python bindings via PyO3 (`publish = false`, wheels on PyPI) |
 | [polyoxide-relay](./polyoxide-relay) | Client library for Polymarket Relayer API (gasless transactions) |
+| [polyoxide-rtds](./polyoxide-rtds) | Client for Polymarket's RTDS crypto price streams |
+| [polyoxide-sports](./polyoxide-sports) | Client for Polymarket's live sports score feed |
 
 ## Installation
 

@@ -45,6 +45,7 @@ jobs:
           - { crate: polyoxide-clob,  suite: session-keys, timeout: 40, flags: "--test live_session_keys" }
           - { crate: polyoxide-relay, suite: live,         timeout: 15, flags: "--test live_api" }
           - { crate: polyoxide-rtds,  suite: live,         timeout: 15, flags: "--test live_api" }
+          - { crate: polyoxide-sports, suite: live,        timeout: 20, flags: "--test live_api" }
           - { crate: polyoxide-perps, suite: live,         timeout: 15, flags: "--features ws --test live_api --test live_ws" }
           - { crate: polyoxide-cli,   suite: live,         timeout: 15, flags: "--test live_api" }
     steps:

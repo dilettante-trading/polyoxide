@@ -52,7 +52,7 @@ cargo test -p polyoxide-clob --test live_api -- --ignored
 
 ## Workspace Architecture
 
-Ten crates with this dependency graph:
+Eleven crates with this dependency graph:
 
 ```
 polyoxide-core          (shared: auth, HTTP client, errors, macros)
@@ -61,14 +61,20 @@ polyoxide-core          (shared: auth, HTTP client, errors, macros)
 ├── polyoxide-data      (read-only user positions/trades API)
 ├── polyoxide-perps     (perpetual futures: public market data; auth and trading pending)
 ├── polyoxide-clob      (order book trading, depends on core; gamma optional, default-on)
-│   └── polyoxide        (unified client re-exporting clob/gamma/data/rtds/perps, feature-gated)
+│   └── polyoxide        (unified client re-exporting clob/gamma/data/rtds/perps/sports, feature-gated)
 ├── polyoxide-cli       (CLI tool using clap)
 └── polyoxide-py        (Python bindings via PyO3 + maturin, publish = false)
 
 polyoxide-rtds          (RTDS crypto price streams — depends on NOTHING in-workspace)
+polyoxide-sports        (live sports scores WebSocket — depends on NOTHING in-workspace)
 ```
 
-Note: `polyoxide-cli` does **not** depend on the unified `polyoxide` crate. It depends directly on the component crates — `polyoxide-clob` (with `ws`), `polyoxide-data`, `polyoxide-gamma` and `polyoxide-rtds` — plus `polyoxide-core` and `polyoxide-relay` only under the optional `keychain` feature.
+Note: `polyoxide-cli` does **not** depend on the unified `polyoxide` crate. It depends directly on the component crates — `polyoxide-clob` (with `ws`), `polyoxide-data`, `polyoxide-gamma`, `polyoxide-rtds` and `polyoxide-sports` — plus `polyoxide-core` and `polyoxide-relay` only under the optional `keychain` feature.
+
+The CLI's `ws` group streams `market` and `user` (clob), `prices` (rtds) and `sports`
+(`polyoxide-sports`). `ws sports` takes comma-separated `--league` and `--game` filters and
+`--changes-only`. Its `run_with` takes any event stream, so `polyoxide-cli/tests/ws_sports.rs`
+drives every flag with captured frames.
 
 The CLI's `clob` command group currently exposes `clob prices download` — a bulk,
 resumable, rate-limited downloader for CLOB historical price data
@@ -90,7 +96,7 @@ arguments against mock servers serving `polyoxide-data`'s v2 fixtures.
 `data` list flag shipped that way, and no test caught it because the parse tests never
 passed those flags.
 
-**polyoxide** (the unified crate) uses feature flags: `clob`, `gamma`, `data`, `ws` (WebSocket), `rtds`, `perps`, `full` (all). Default = clob + gamma + data.
+**polyoxide** (the unified crate) uses feature flags: `clob`, `gamma`, `data`, `ws` (WebSocket), `rtds`, `perps`, `sports`, `full` (all). Default = clob + gamma + data.
 
 ## Key Patterns
 
@@ -317,7 +323,7 @@ Mock HTTP tests use `mockito` (workspace dev-dependency). Each crate with mock t
 
 Two GitHub Actions workflows run at `0 6 * * *` UTC and on `workflow_dispatch`:
 
-- `.github/workflows/nightly-behavioral.yml` — runs `--ignored` live tests across the five crates with live suites (gamma, data, clob incl. `live_ws` under `--features ws`, relay, cli). Failures are classified by `.github/scripts/classify_failures.py` into:
+- `.github/workflows/nightly-behavioral.yml` — runs `--ignored` live tests across every crate with a live suite (gamma, data, clob incl. `live_ws` under `--features ws`, relay, rtds, perps incl. `live_ws`, sports, cli). Failures are classified by `.github/scripts/classify_failures.py` into:
   - **auth-gated** (matches the `POLYMARKET_* env vars required` / `POLYMARKET_PRIVATE_KEY required` panics) — silently skipped
   - **environmental** (test says the world can't provide signal right now, e.g. the sports channel with no live matches — matches `legitimately time out`) — logged and skipped
   - **transient** (HTTP 429/5xx, connection refused, timeouts, DNS) — retried up to 2× with `cargo nextest --retries 2`
@@ -335,15 +341,19 @@ Most crates follow a consistent layout:
 - `types.rs` — domain types
 - `api/` — namespace modules, one file per API group (markets, orders, etc.)
 
-**WebSocket** support for the CLOB lives in `polyoxide-clob/src/ws/` (not core), feature-gated behind `ws` (not enabled by default in polyoxide-clob; default = `["gamma"]`). Three channels: `WebSocket::connect_market(asset_ids)` (public), `WebSocket::connect_user(condition_ids, credentials)` (authenticated), and `WebSocket::connect_sports()` (public, served by `sports-api.polymarket.com` and taking no subscription payload). Implements `futures_util::Stream`. `WebSocketBuilder` provides auto-ping keep-alive for long-running connections. The Perps socket (`polyoxide-perps/src/ws/`, feature `ws`) and RTDS (`polyoxide-rtds`) are separate protocols in their own crates, each with its own `ensure_crypto_provider` copy.
+**WebSocket** support for the CLOB lives in `polyoxide-clob/src/ws/` (not core), feature-gated behind `ws` (not enabled by default in polyoxide-clob; default = `["gamma"]`). Two channels: `WebSocket::connect_market(asset_ids)` (public) and `WebSocket::connect_user(condition_ids, credentials)` (authenticated). Implements `futures_util::Stream`. `WebSocketBuilder` provides auto-ping keep-alive for long-running connections. The Perps socket (`polyoxide-perps/src/ws/`, feature `ws`), RTDS (`polyoxide-rtds`) and the sports feed (`polyoxide-sports`) are separate protocols in their own crates, each with its own `ensure_crypto_provider` copy.
 
 Three market events — `best_bid_ask`, `new_market`, `market_resolved` — are withheld by the server unless the subscription sets `custom_feature_enabled`. Use `WebSocket::connect_market_with(ids, MarketSubscriptionOptions::default().with_custom_features())` to receive them. `MarketMessage` and `Channel` are `#[non_exhaustive]`, since upstream adds event types over time.
 
 The user channel's market filter is optional: `WebSocket::connect_user_all_markets(creds)` omits it and receives events for every market, and `subscribe_markets` / `unsubscribe_markets` adjust it on a live connection without reconnecting. The market channel changes membership the same way — `subscribe_assets` / `unsubscribe_assets`, or a `MembershipHandle` (from `WebSocketWithPing::membership`, taken **before** `run`) while the ping loop drives the socket. Both frames are documented in the AsyncAPI mirrors (`SubscriptionRequestUpdate`). Verified live 2026-09-09: an added asset gets a fresh `book` in ~155 ms, a duplicate add gets nothing (unsubscribe then subscribe to force a snapshot), and an empty-membership socket stays open under the 10 s `PING` but is reset after ~125 s without it.
 
-The WebSocket contracts are published as AsyncAPI, not OpenAPI — mirrored in `docs/specs/clob/asyncapi-{market,user,sports}.json`. A parity audit that only diffs the OpenAPI files will miss this whole surface.
+The WebSocket contracts are published as AsyncAPI, not OpenAPI — mirrored in `docs/specs/clob/asyncapi-{market,user}.json` and `docs/specs/sports/asyncapi.json`. A parity audit that only diffs the OpenAPI files will miss this whole surface.
 
-**The sports mirror does not match the wire.** Upstream's own page documents a `slug`-keyed payload and a text `"ping"`/`"pong"` keep-alive; the server sends neither. `SportsUpdateMessage` is modelled on 229 captured frames instead — see `x-observed-payload` in `asyncapi-sports.json`. Diffing polyoxide against that mirror will report a false positive.
+**The sports feed is its own crate.** `polyoxide-sports` covers `wss://sports-api.polymarket.com/ws`, which takes no subscription and pushes every live match. It depends on nothing in the workspace, for the same reason as rtds. Upstream's AsyncAPI documents a `slug`-keyed payload and a text `"ping"`/`"pong"`; the server sends neither, so `docs/specs/sports/asyncapi.json` carries `x-observed-*` annotations and is excluded from `nightly-schema.yml`. `MatchUpdate` is modelled on the captured frames in `polyoxide-sports/tests/fixtures/` (refresh with `scripts/capture_sports_fixtures.py`), and the live test `live_frames_round_trip_and_carry_no_unmodelled_keys` is the host's drift detector.
+
+**Pings are the sports feed's liveness signal, the opposite of rtds.** The server sends a protocol PING every 15 s, and data only while a match is live, so a quiet hour has no data at all. `SupervisedSportsWs` resets its 45 s staleness timer on any inbound frame, pings included; counting only data would drop a healthy connection every quiet hour. It is a `Stream` state machine with no background task, because nothing is ever sent to this host, so the perps task shape is not needed. Pongs therefore go out only while the caller polls.
+
+**A sports frame is state, not an event.** The server re-sends unchanged state on a timer (56 of 121 frames in one capture were repeats), and the `ended: true` frame is usually sent once. `Event::Reconnected` tells a caller to reconcile games through gamma's `events?game_id=`; cricket's `metadataGameId` cannot be reconciled. See `docs/specs/sports/OBSERVED.md`.
 
 **WebSocket TLS needs a nudge.** `reqwest 0.12` (via core) and `alloy`'s `reqwest 0.13` enable `ring` and `aws-lc-rs` on one shared `rustls`, which then installs no default `CryptoProvider`. `ws/client.rs` installs one before connecting; any code that calls `tokio_tungstenite::connect_async` directly must do the same or it will panic. `polyoxide-rtds` has its own copy for this reason, and declares `rustls`'s `std` feature explicitly — clob only compiles without it because `reqwest`/`alloy` turn it on transitively, and rtds has no such neighbour by design.
 
@@ -357,4 +367,4 @@ The WebSocket contracts are published as AsyncAPI, not OpenAPI — mirrored in `
 
 ## Publishing Order
 
-Crates must be published in dependency order: core → rtds → perps → relay → gamma → data → clob → polyoxide. (`polyoxide-rtds` depends on nothing in-workspace, so its position only has to precede `polyoxide`; `polyoxide-perps` depends only on core, so it only has to follow core and precede `polyoxide`.) The release workflow in `.github/workflows/release.yml` handles this automatically. `polyoxide-py` is `publish = false` (not on crates.io); its Python wheels are built and published to PyPI via a separate step in the release workflow.
+Crates must be published in dependency order: core → rtds → sports → perps → relay → gamma → data → clob → polyoxide. (`polyoxide-rtds` depends on nothing in-workspace, so its position only has to precede `polyoxide`; `polyoxide-sports` is the same; `polyoxide-perps` depends only on core, so it only has to follow core and precede `polyoxide`.) The release workflow in `.github/workflows/release.yml` handles this automatically. `polyoxide-py` is `publish = false` (not on crates.io); its Python wheels are built and published to PyPI via a separate step in the release workflow.

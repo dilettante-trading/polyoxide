@@ -294,6 +294,22 @@ polyoxide ws user <MARKET_ID> --filter order
 polyoxide ws user <MARKET_ID> --format summary --timeout 5m
 ```
 
+#### `ws sports`
+
+No credentials needed. Reconnects on its own; connection notices go to stderr.
+
+```bash
+# Every live match in every league
+polyoxide ws sports
+
+# Some leagues, or some games (numeric ids and cricket's id… ids alike)
+polyoxide ws sports --league atp,wta
+polyoxide ws sports --game 1712005,id2704098174740616
+
+# Drop the server's repeated frames, print JSON, stop after 10 updates
+polyoxide ws sports --changes-only --format json -n 10
+```
+
 ---
 
 ### Credentials (feature `keychain`)
