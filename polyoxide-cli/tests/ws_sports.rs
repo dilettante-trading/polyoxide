@@ -220,6 +220,35 @@ async fn changes_only_tracks_each_game_separately() {
     assert_eq!(run.field("score"), ["21-178", "116-38"]);
 }
 
+#[tokio::test]
+async fn changes_only_prints_each_game_again_after_a_reconnect() {
+    // After a gap, an unchanged frame is the only sign a game is current
+    // again, so it must not be swallowed as a repeat.
+    let run = run(
+        &["--changes-only"],
+        vec![
+            update(fixtures::SOCCER),
+            update(fixtures::SOCCER),
+            Ok(Event::Reconnected),
+            update(fixtures::SOCCER),
+        ],
+    )
+    .await;
+    assert_eq!(run.field("score"), ["2-1", "2-1"]);
+}
+
+#[tokio::test]
+async fn a_timeout_too_large_to_add_means_no_deadline() {
+    let cli =
+        Cli::try_parse_from(["sports", "--format", "json", "-t", "18446744073709551615s"]).unwrap();
+    let events = stream::iter(vec![update(fixtures::SOCCER)]);
+    let (mut out, mut err) = (Vec::new(), Vec::new());
+    run_with(cli.args, events, &mut out, &mut err)
+        .await
+        .unwrap();
+    assert_eq!(String::from_utf8(out).unwrap().lines().count(), 1);
+}
+
 /// A writer whose reader has gone away, as stdout is under `| head -1`.
 struct ClosedPipe;
 

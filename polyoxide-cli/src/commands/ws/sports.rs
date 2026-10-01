@@ -30,14 +30,14 @@ pub struct SportsArgs {
     #[arg(long, value_delimiter = ',', value_parser = parse_list_entry)]
     pub league: Vec<String>,
 
-    /// Games to keep, comma-separated. Takes numeric ids and cricket's id…
-    /// ids alike. Omit to keep every game.
+    /// Games to keep, comma-separated. Takes numeric ids and cricket's
+    /// id-prefixed ids alike. Omit to keep every game.
     #[arg(long, value_delimiter = ',', value_parser = parse_list_entry)]
     pub game: Vec<String>,
 
     /// Skip a frame identical to the last one printed for its game. The
     /// server re-sends unchanged state on a timer, so many frames are
-    /// repeats.
+    /// repeats. After a reconnect, each game's next frame is printed again.
     #[arg(long)]
     pub changes_only: bool,
 
@@ -81,7 +81,11 @@ pub async fn run_with<S>(
 where
     S: Stream<Item = Result<Event, SportsError>> + Unpin,
 {
-    let deadline = args.timeout.map(|t| tokio::time::Instant::now() + t);
+    // A timeout too large to add, such as `-t 18446744073709551615s`, means
+    // no deadline rather than a panic.
+    let deadline = args
+        .timeout
+        .and_then(|t| tokio::time::Instant::now().checked_add(t));
     let mut filter = Filter::new(&args);
     if let Some(summary) = filter.describe() {
         writeln!(err, "# keeping {summary}")?;
@@ -120,10 +124,15 @@ where
                 err,
                 "# disconnected: {reason}. Scores are stale until reconnected."
             )?,
-            Some(Ok(Event::Reconnected)) => writeln!(
-                err,
-                "# reconnected. Games that ended during the gap were not re-sent."
-            )?,
+            Some(Ok(Event::Reconnected)) => {
+                // Print each game's next frame even if unchanged: it is what
+                // confirms the game is current again.
+                filter.forget_printed();
+                writeln!(
+                    err,
+                    "# reconnected. Games that ended during the gap were not re-sent."
+                )?
+            }
             // `Event` is #[non_exhaustive]; a future variant is not a fault.
             Some(Ok(_)) => {}
             // The supervised feed's only `Err`: one frame it could not read.
@@ -170,6 +179,11 @@ impl Filter {
             changes_only: args.changes_only,
             last: HashMap::new(),
         }
+    }
+
+    /// Forget every frame remembered for `--changes-only`.
+    fn forget_printed(&mut self) {
+        self.last.clear();
     }
 
     /// The active filters, for one line on stderr, so a mistyped league is
