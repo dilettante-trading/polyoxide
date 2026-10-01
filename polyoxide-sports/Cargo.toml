@@ -1,0 +1,36 @@
+[package]
+name = "polyoxide-sports"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+authors.workspace = true
+repository.workspace = true
+rust-version.workspace = true
+description = "Rust client for Polymarket's live sports score WebSocket"
+keywords = ["polymarket", "websocket", "sports", "scores"]
+categories = ["api-bindings", "web-programming::websocket"]
+
+[features]
+# Exposes the scripted local server and the captured frames, so integration
+# tests here and in polyoxide-cli can use them. Not for consumers; both
+# modules are `#[doc(hidden)]`.
+test-server = []
+
+# Tasks 6 and 8 add `[[test]]` entries here as they create those files.
+# Cargo refuses a manifest whose named test file does not exist yet.
+
+[dependencies]
+tokio = { workspace = true, features = ["macros", "net", "time", "rt"] }
+tokio-tungstenite = { workspace = true }
+futures-util = "0.3"
+serde = { workspace = true }
+serde_json = { workspace = true }
+thiserror = { workspace = true }
+tracing = { workspace = true }
+# Needed only to install a process-default rustls CryptoProvider. See
+# `ensure_crypto_provider` in src/client.rs. `std` is declared explicitly
+# because this crate has no neighbour that turns it on transitively.
+rustls = { version = "0.23", default-features = false, features = ["ring", "std"] }
+
+[dev-dependencies]
+tokio = { workspace = true, features = ["macros", "rt-multi-thread", "time", "net"] }

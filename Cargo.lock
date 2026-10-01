@@ -4143,6 +4143,20 @@ dependencies = [
 ]
 
 [[package]]
+name = "polyoxide-sports"
+version = "0.35.0"
+dependencies = [
+ "futures-util",
+ "rustls",
+ "serde",
+ "serde_json",
+ "thiserror 2.0.18",
+ "tokio",
+ "tokio-tungstenite",
+ "tracing",
+]
+
+[[package]]
 name = "portable-atomic"
 version = "1.13.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"

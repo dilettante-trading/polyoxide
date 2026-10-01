@@ -10,6 +10,7 @@ members = [
   "polyoxide-py",
   "polyoxide-relay",
   "polyoxide-rtds",
+  "polyoxide-sports",
 ]
 resolver = "2"
 
@@ -29,6 +30,7 @@ polyoxide-perps = { path = "polyoxide-perps", version = "0.35.0" }
 polyoxide-data = { path = "polyoxide-data", version = "0.35.0" }
 polyoxide-relay = { path = "polyoxide-relay", version = "0.35.0" }
 polyoxide-rtds = { path = "polyoxide-rtds", version = "0.35.0" }
+polyoxide-sports = { path = "polyoxide-sports", version = "0.35.0" }
 tokio = { version = "1.41" }
 reqwest = { version = "0.12", features = ["json", "rustls-tls"], default-features = false }
 serde = { version = "1.0", features = ["derive"] }
