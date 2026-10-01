@@ -151,7 +151,7 @@ mod data_v2 {
 mod ws_sports {
     use clap::Parser;
     use polyoxide_cli::commands::ws::sports::{run_with, SportsArgs};
-    use polyoxide_sports::SportsWsBuilder;
+    use polyoxide_sports::{SportsError, SportsWsBuilder};
     use serde_json::Value;
 
     #[derive(Parser)]
@@ -166,10 +166,15 @@ mod ws_sports {
         let cli =
             Cli::try_parse_from(["sports", "-n", "1", "--format", "json", "--timeout", "60s"])
                 .unwrap();
-        let feed = SportsWsBuilder::new()
-            .connect()
-            .await
-            .expect("connect to the sports feed");
+        // Worded so the nightly classifier files a connect timeout as
+        // transient; the Debug form of any other failure names its cause.
+        let feed = match SportsWsBuilder::new().connect().await {
+            Ok(feed) => feed,
+            Err(SportsError::ConnectTimeout { after }) => {
+                panic!("the connect operation timed out after {after:?}")
+            }
+            Err(other) => panic!("could not connect to the sports feed: {other:?}"),
+        };
         let (mut out, mut err) = (Vec::new(), Vec::new());
         run_with(cli.args, feed, &mut out, &mut err).await.unwrap();
         let out = String::from_utf8(out).unwrap();

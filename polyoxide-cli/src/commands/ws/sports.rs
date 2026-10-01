@@ -1,6 +1,10 @@
 //! `polyoxide ws sports`: stream live match updates from the sports feed.
 
-use std::{collections::HashMap, io::Write, time::Duration};
+use std::{
+    collections::HashMap,
+    io::{self, Write},
+    time::Duration,
+};
 
 use clap::Args;
 use color_eyre::eyre::Result;
@@ -21,19 +25,19 @@ pub enum OutputFormat {
 
 #[derive(Args, Debug)]
 pub struct SportsArgs {
-    /// Leagues to keep, comma-separated, e.g. `atp,wta`. Matching ignores
+    /// Leagues to keep, comma-separated, e.g. atp,wta. Matching ignores
     /// case. Omit to keep every league.
     #[arg(long, value_delimiter = ',', value_parser = parse_list_entry)]
     pub league: Vec<String>,
 
-    /// Games to keep, comma-separated. Takes numeric ids and cricket's `id…`
+    /// Games to keep, comma-separated. Takes numeric ids and cricket's id…
     /// ids alike. Omit to keep every game.
     #[arg(long, value_delimiter = ',', value_parser = parse_list_entry)]
     pub game: Vec<String>,
 
     /// Skip a frame identical to the last one printed for its game. The
-    /// server re-sends unchanged state on a timer, so about half of all
-    /// frames are repeats.
+    /// server re-sends unchanged state on a timer, so many frames are
+    /// repeats.
     #[arg(long)]
     pub changes_only: bool,
 
@@ -51,6 +55,10 @@ pub struct SportsArgs {
 }
 
 /// Connect to the production feed and stream until `-n`, `-t` or Ctrl+C.
+///
+/// Unlike `ws prices`, no Ctrl+C handler is installed: there is nothing to
+/// close, and every printed line is already flushed, so the default signal
+/// exit loses nothing.
 pub async fn run(args: SportsArgs) -> Result<()> {
     eprintln!("Connecting to the sports feed...");
     let feed = SportsWsBuilder::new().connect().await?;
@@ -75,10 +83,16 @@ where
 {
     let deadline = args.timeout.map(|t| tokio::time::Instant::now() + t);
     let mut filter = Filter::new(&args);
+    if let Some(summary) = filter.describe() {
+        writeln!(err, "# keeping {summary}")?;
+    }
     let mut printed: u64 = 0;
     loop {
-        if args.count.is_some_and(|n| printed >= n) {
-            break;
+        if let Some(n) = args.count {
+            if printed >= n {
+                writeln!(err, "Reached {n} update(s)")?;
+                break;
+            }
         }
         let next = match deadline {
             Some(deadline) => match tokio::time::timeout_at(deadline, events.next()).await {
@@ -93,8 +107,13 @@ where
         match next {
             Some(Ok(Event::Update(update))) => {
                 if filter.admits(&update) {
-                    print_update(&update, args.format, out)?;
-                    printed += 1;
+                    match print_update(&update, args.format, out) {
+                        Ok(()) => printed += 1,
+                        // The reader went away, as with `| head -1`. That
+                        // ends the run; it is not an error.
+                        Err(error) if error.kind() == io::ErrorKind::BrokenPipe => break,
+                        Err(error) => return Err(error.into()),
+                    }
                 }
             }
             Some(Ok(Event::Disconnected { reason })) => writeln!(
@@ -107,7 +126,12 @@ where
             )?,
             // `Event` is #[non_exhaustive]; a future variant is not a fault.
             Some(Ok(_)) => {}
-            Some(Err(error)) => writeln!(err, "# skipped a frame: {error}")?,
+            // The supervised feed's only `Err`: one frame it could not read.
+            Some(Err(SportsError::Decode { raw, source })) => writeln!(
+                err,
+                "# skipped a frame that did not parse ({source}): {raw}"
+            )?,
+            Some(Err(error)) => return Err(error.into()),
             None => {
                 writeln!(err, "The feed ended")?;
                 break;
@@ -128,13 +152,44 @@ struct Filter {
 impl Filter {
     fn new(args: &SportsArgs) -> Self {
         Self {
-            leagues: args.league.iter().map(|l| l.to_lowercase()).collect(),
-            games: args.game.clone(),
+            // An empty entry, as in `--league atp,` or `--league ""`, would
+            // match nothing and silently hide every update.
+            leagues: args
+                .league
+                .iter()
+                .filter(|l| !l.is_empty())
+                .map(|l| l.to_lowercase())
+                .collect(),
+            games: args
+                .game
+                .iter()
+                .filter(|g| !g.is_empty())
+                .cloned()
+                .collect(),
             changes_only: args.changes_only,
             last: HashMap::new(),
         }
     }
 
+    /// The active filters, for one line on stderr, so a mistyped league is
+    /// not mistaken for a quiet feed.
+    fn describe(&self) -> Option<String> {
+        let mut parts = Vec::new();
+        if !self.leagues.is_empty() {
+            parts.push(format!("leagues {}", self.leagues.join(", ")));
+        }
+        if !self.games.is_empty() {
+            parts.push(format!("games {}", self.games.join(", ")));
+        }
+        if self.changes_only {
+            parts.push("changes only".to_owned());
+        }
+        (!parts.is_empty()).then(|| parts.join("; "))
+    }
+
+    /// Whether to print `update`. With `--changes-only` this keeps the last
+    /// frame of every game seen, which grows by a few hundred bytes per game
+    /// over a session.
     fn admits(&mut self, update: &MatchUpdate) -> bool {
         if !self.leagues.is_empty()
             && !self
@@ -162,7 +217,9 @@ impl Filter {
     }
 }
 
-fn print_update(update: &MatchUpdate, format: OutputFormat, out: &mut dyn Write) -> Result<()> {
+/// Print one update and flush it, so a reader sees it at once whatever kind of
+/// writer `out` is.
+fn print_update(update: &MatchUpdate, format: OutputFormat, out: &mut dyn Write) -> io::Result<()> {
     match format {
         OutputFormat::Json => writeln!(out, "{}", serde_json::to_string(update)?)?,
         OutputFormat::Pretty => {
@@ -171,7 +228,7 @@ fn print_update(update: &MatchUpdate, format: OutputFormat, out: &mut dyn Write)
                 .map(|key| key.to_string())
                 .unwrap_or_else(|| "-".into());
             let teams = match (&update.home_team, &update.away_team) {
-                (Some(home), Some(away)) => format!("{home} v {away}"),
+                (Some(home), Some(away)) => fit(&format!("{home} v {away}"), TEAMS_WIDTH),
                 _ => "-".into(),
             };
             let state = if update.ended {
@@ -183,12 +240,27 @@ fn print_update(update: &MatchUpdate, format: OutputFormat, out: &mut dyn Write)
             };
             writeln!(
                 out,
-                "{:<16} {:>20}  {:<44} {:>18} {:>6}  {}",
+                "{:<16} {:>18}  {:<TEAMS_WIDTH$} {:>18} {:>6}  {}",
                 update.league_abbreviation, id, teams, update.score, update.period, state
             )?;
         }
     }
-    Ok(())
+    out.flush()
+}
+
+/// Width of the teams column in pretty output.
+const TEAMS_WIDTH: usize = 44;
+
+/// `text` cut to `width` characters, ending in an ellipsis when cut, so a long
+/// pairing does not push the score and period out of their columns.
+fn fit(text: &str, width: usize) -> String {
+    if text.chars().count() <= width {
+        text.to_owned()
+    } else {
+        let mut cut: String = text.chars().take(width - 1).collect();
+        cut.push('…');
+        cut
+    }
 }
 
 #[cfg(test)]
