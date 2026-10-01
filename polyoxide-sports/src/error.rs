@@ -111,9 +111,9 @@ mod tests {
             reason: "going away".into(),
         }
         .to_string();
-        assert!(
-            text.contains("1001") && text.contains("going away"),
-            "{text}"
+        assert_eq!(
+            text,
+            "the sports feed closed the connection with code 1001: going away"
         );
     }
 }

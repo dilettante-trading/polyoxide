@@ -27,3 +27,8 @@ directory, copy the frames worth keeping here, and list each one in
 - **2026-10-01, 06:20 UTC**, 121 frames over five minutes across atp, wta,
   wta challenger, cricket, mlbb and dota2. No frame carried `eventState`.
   Protocol pings arrived every 15.0 s, and no text ping was sent.
+- **2026-10-01, 14:11 UTC**, 176 frames over four minutes across cs2,
+  challenger, dota2, fif, r6siege, cricket, atp and val. No frame carried
+  `eventState` or a key `MatchUpdate` does not model. It first showed
+  `status: not_started`. No frame from it is kept as a fixture: every
+  key-set it carried is already covered.
