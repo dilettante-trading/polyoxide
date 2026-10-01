@@ -92,9 +92,25 @@ async def record(seconds: int) -> None:
 
 
 def json_type(value: object) -> str:
-    return {dict: "object", list: "array", str: "string", bool: "boolean", type(None): "null"}.get(
-        type(value), "number"
-    )
+    """The JSON type, with integers told apart from other numbers: a `gameId`
+    arriving as `1.0` would break a `u64` field."""
+    return {
+        dict: "object",
+        list: "array",
+        str: "string",
+        bool: "boolean",
+        int: "integer",
+        type(None): "null",
+    }.get(type(value), "number")
+
+
+def hashable(value: object) -> object:
+    """A scalar as itself; an object or array as its canonical JSON. A value
+    that turns into an object is exactly the drift worth keeping, and must
+    not crash the set it is checked against."""
+    if isinstance(value, (str, int, float, bool, type(None))):
+        return value
+    return json.dumps(value, sort_keys=True)
 
 
 def shape_marks(raw: str) -> list[tuple[str, object]]:
@@ -107,13 +123,13 @@ def shape_marks(raw: str) -> list[tuple[str, object]]:
         return [("not-an-object", type(frame).__name__)]
     marks: list[tuple[str, object]] = [
         ("keys", tuple(sorted((key, json_type(value)) for key, value in frame.items()))),
-        ("status", frame.get("status")),
-        ("live-ended", (frame.get("live"), frame.get("ended"))),
-        ("league", frame.get("leagueAbbreviation")),
+        ("status", hashable(frame.get("status"))),
+        ("live-ended", (hashable(frame.get("live")), hashable(frame.get("ended")))),
+        ("league", hashable(frame.get("leagueAbbreviation"))),
     ]
     state = frame.get("eventState")
     if isinstance(state, dict):
-        marks.append(("eventState", state.get("type")))
+        marks.append(("eventState", hashable(state.get("type"))))
     return marks
 
 

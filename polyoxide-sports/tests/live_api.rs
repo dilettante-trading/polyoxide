@@ -6,9 +6,9 @@
 //!
 //! The feed carries only matches that are live somewhere. A test that waits
 //! for a frame says so when it times out, in the words the nightly
-//! classifier treats as environmental. Only a window with no data frame of
-//! any kind earns those words: binary frames, which this crate does not
-//! read, fail as a real fault.
+//! classifier treats as environmental. In the wire-agreement test only a
+//! window with no data frame of any kind earns those words: binary frames,
+//! which this crate does not read, fail there as a real fault.
 //!
 //! `nightly-schema.yml` excludes this host, because the published AsyncAPI
 //! document does not match the wire. So
@@ -249,9 +249,9 @@ async fn live_frames_round_trip_and_carry_no_unmodelled_keys() {
     assert!(checked > 0, "no frames within {WIRE_WINDOW:?}; {QUIET}");
     assert!(
         unmodelled.is_empty(),
-        "the feed sends keys MatchUpdate does not model; the first frame carrying each: \
-         {unmodelled:#?}. Capture fixtures with scripts/capture_sports_fixtures.py, model the \
-         keys in MatchUpdate, and record them in docs/specs/sports/OBSERVED.md"
+        "the feed sends keys MatchUpdate does not model. Capture fixtures with \
+         scripts/capture_sports_fixtures.py, model the keys in MatchUpdate, and record them \
+         in docs/specs/sports/OBSERVED.md. The first frame carrying each: {unmodelled:#?}"
     );
     println!("checked {checked} frames over {WIRE_WINDOW:?}, by league: {leagues:?}");
 }
