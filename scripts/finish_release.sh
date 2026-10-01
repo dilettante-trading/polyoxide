@@ -14,6 +14,10 @@ echo "📦 Publishing polyoxide-rtds..."
 cargo publish -p polyoxide-rtds
 echo "✅ polyoxide-rtds published"
 
+echo "📦 Publishing polyoxide-sports..."
+cargo publish -p polyoxide-sports
+echo "✅ polyoxide-sports published"
+
 echo "📦 Publishing polyoxide-perps..."
 cargo publish -p polyoxide-perps
 echo "✅ polyoxide-perps published"
