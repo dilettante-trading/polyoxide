@@ -3,9 +3,11 @@
 
 #![warn(missing_docs)]
 
+pub mod client;
 pub mod error;
 pub mod update;
 
+pub use client::{SportsWs, SPORTS_WS_URL};
 pub use error::SportsError;
 pub use update::{GameKey, MatchUpdate};
 
