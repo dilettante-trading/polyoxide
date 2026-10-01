@@ -31,7 +31,8 @@ pub enum Event {
     Update(Box<MatchUpdate>),
     /// The connection was lost, and scores are stale from here. After
     /// [`Event::Reconnected`], each game is current again once its next
-    /// frame arrives, which the server sends every 20 to 90 seconds.
+    /// frame arrives. When last measured the server re-sent esports games
+    /// every 20 s and tennis every 30 to 90 s; other sports are unmeasured.
     Disconnected {
         /// Why the connection was given up.
         reason: SportsError,
@@ -146,6 +147,8 @@ impl SportsWsBuilder {
 
     /// Reconnect delay bounds. The delay doubles from `initial` up to `max`,
     /// and returns to `initial` after a connection that received anything.
+    /// Both are raised to at least 1 ms, and an `initial` above `max` is
+    /// lowered to `max`.
     ///
     /// A protocol ping counts as receiving something. So a server that
     /// accepts, sends anything at all, and drops the connection resets the

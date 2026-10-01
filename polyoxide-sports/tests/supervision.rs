@@ -295,6 +295,10 @@ async fn a_stale_limit_of_duration_max_means_never() {
         .unwrap();
     assert_eq!(label(next_item(&mut feed).await), "kor");
     assert_eq!(label(next_item(&mut feed).await), "lol");
+    assert!(
+        timeout(STALE * 2, feed.next()).await.is_err(),
+        "went stale with Duration::MAX"
+    );
 }
 
 #[tokio::test]
