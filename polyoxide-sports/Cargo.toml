@@ -23,6 +23,10 @@ test-server = []
 name = "bare"
 required-features = ["test-server"]
 
+[[test]]
+name = "supervision"
+required-features = ["test-server"]
+
 [dependencies]
 tokio = { workspace = true, features = ["macros", "net", "time", "rt"] }
 tokio-tungstenite = { workspace = true }
