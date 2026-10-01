@@ -3956,6 +3956,7 @@ dependencies = [
  "polyoxide-gamma",
  "polyoxide-perps",
  "polyoxide-rtds",
+ "polyoxide-sports",
  "thiserror 2.0.18",
  "tokio",
 ]

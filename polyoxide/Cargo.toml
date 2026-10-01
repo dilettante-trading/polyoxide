@@ -19,7 +19,8 @@ ws = ["clob", "polyoxide-clob/ws"]
 rtds = ["dep:polyoxide-rtds"]
 perps = ["dep:polyoxide-perps"]
 perps-ws = ["perps", "polyoxide-perps/ws"]
-full = ["clob", "gamma", "data", "ws", "rtds", "perps", "perps-ws"]
+sports = ["dep:polyoxide-sports"]
+full = ["clob", "gamma", "data", "ws", "rtds", "perps", "perps-ws", "sports"]
 keychain = ["polyoxide-clob?/keychain"]
 
 [dependencies]
@@ -28,6 +29,7 @@ polyoxide-clob = { workspace = true, optional = true }
 polyoxide-data = { workspace = true, optional = true }
 polyoxide-rtds = { workspace = true, optional = true }
 polyoxide-perps = { workspace = true, optional = true }
+polyoxide-sports = { workspace = true, optional = true }
 thiserror = { workspace = true }
 
 [dev-dependencies]

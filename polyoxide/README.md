@@ -1,12 +1,12 @@
 # polyoxide
 
-Unified Rust client for [Polymarket](https://polymarket.com) APIs, re-exporting the CLOB (trading), Gamma (market data), Data (user positions/trades), RTDS (price streams) and Perps (perpetual futures market data) crates behind feature flags.
+Unified Rust client for [Polymarket](https://polymarket.com) APIs, re-exporting the CLOB (trading), Gamma (market data), Data (user positions/trades), RTDS (price streams), Perps (perpetual futures market data) and Sports (live scores) crates behind feature flags.
 
 More information about this crate can be found in the [crate documentation](https://docs.rs/polyoxide/).
 
 ## Installation
 
-By default, the three REST API modules (CLOB, Gamma, Data) are enabled; `rtds`, `perps` and `perps-ws` are opt-in:
+By default, the three REST API modules (CLOB, Gamma, Data) are enabled; `rtds`, `perps`, `perps-ws` and `sports` are opt-in:
 
 ```bash
 cargo add polyoxide
@@ -39,7 +39,8 @@ cargo add polyoxide --no-default-features --features full
 | `rtds`  | no  | RTDS crypto price streams via `polyoxide-rtds` |
 | `perps` | no  | Perps public market data via `polyoxide-perps` |
 | `perps-ws` | no | Perps WebSocket streaming (implies `perps`) |
-| `full`  | no  | Enables `clob` + `gamma` + `data` + `ws` + `rtds` + `perps` + `perps-ws` |
+| `sports` | no | Live sports scores via `polyoxide-sports` |
+| `full`  | no  | Enables `clob` + `gamma` + `data` + `ws` + `rtds` + `perps` + `perps-ws` + `sports` |
 | `keychain` | no | OS keychain credential storage; off by default |
 
 ## Usage

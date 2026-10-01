@@ -1,13 +1,14 @@
 //! # polyoxide
 //!
 //! Unified Rust client for Polymarket APIs, combining CLOB (trading), Gamma (market data)
-//! and Data APIs, with RTDS price streams and Perps market data behind feature flags.
+//! and Data APIs, with RTDS price streams, Perps market data and live sports scores behind
+//! feature flags.
 //!
 //! ## Features
 //!
-//! - Unified access to CLOB, Gamma, and Data APIs, plus RTDS price streams and
-//!   Perps public market data behind the `rtds` and `perps` features, and the
-//!   Perps WebSocket channels behind `perps-ws`
+//! - Unified access to CLOB, Gamma, and Data APIs, plus RTDS price streams, Perps
+//!   public market data and live sports scores behind the `rtds`, `perps` and
+//!   `sports` features, and the Perps WebSocket channels behind `perps-ws`
 //! - Type-safe API with idiomatic Rust patterns
 //! - EIP-712 order signing and HMAC authentication
 //! - Comprehensive market data and trading operations
@@ -91,6 +92,8 @@ pub use polyoxide_gamma;
 pub use polyoxide_perps;
 #[cfg(feature = "rtds")]
 pub use polyoxide_rtds;
+#[cfg(feature = "sports")]
+pub use polyoxide_sports;
 
 #[cfg(all(feature = "clob", feature = "gamma", feature = "data"))]
 use polyoxide_clob::{Account, Chain, Clob, ClobBuilder};
@@ -119,6 +122,11 @@ pub mod prelude {
     #[cfg(feature = "rtds")]
     pub use polyoxide_rtds::{
         PriceEvent, PriceUpdate, Rtds, RtdsBuilder, Subscription, Topic, TwapWindow,
+    };
+    #[cfg(feature = "sports")]
+    pub use polyoxide_sports::{
+        Event as SportsEvent, GameKey, MatchUpdate, SportsError, SportsWs, SportsWsBuilder,
+        SupervisedSportsWs,
     };
 
     #[cfg(all(feature = "clob", feature = "gamma", feature = "data"))]
