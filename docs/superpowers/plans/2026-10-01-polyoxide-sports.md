@@ -2416,6 +2416,187 @@ MSG
 
 ---
 
+### Task 9a: Fixes from the P2 code review
+
+Added after P2's review. Each "replace" names text that appears exactly once.
+
+**Files:**
+- Modify: `polyoxide-sports/src/supervised.rs`, `polyoxide-sports/tests/supervision.rs`
+
+- [ ] **Step 1: Write the two failing tests**
+
+In `polyoxide-sports/src/supervised.rs`, add to the unit test module after `an_initial_delay_above_the_ceiling_is_clamped`:
+
+```rust
+    #[test]
+    fn a_zero_initial_delay_still_grows() {
+        // Zero doubles to zero, which would retry a dead server on every
+        // timer tick for ever.
+        let mut backoff = Backoff::new(Duration::ZERO, MS * 1000);
+        assert_eq!(backoff.take(), MS);
+        assert_eq!(backoff.take(), MS * 2);
+    }
+```
+
+In `polyoxide-sports/tests/supervision.rs`, append:
+
+```rust
+#[tokio::test]
+async fn a_stale_limit_of_duration_max_means_never() {
+    // `Duration::MAX` is the usual way to say "no timeout". Adding it to an
+    // instant overflows, which panicked inside `poll_next` on the first
+    // inbound frame.
+    let server =
+        ScriptedServer::start(vec![Script::frames(&[fixtures::SOCCER, fixtures::ESPORTS])])
+            .await;
+    let mut feed = builder(&server)
+        .stale_after(Duration::MAX)
+        .connect()
+        .await
+        .unwrap();
+    assert_eq!(label(next_item(&mut feed).await), "kor");
+    assert_eq!(label(next_item(&mut feed).await), "lol");
+}
+
+#[tokio::test]
+async fn a_ping_alone_counts_as_having_received_something() {
+    // A connection that saw only a protocol ping still proved the server
+    // alive, so the backoff resets. Counting only data would back off from a
+    // server that is merely quiet.
+    let server = ScriptedServer::start(vec![Script {
+        send: vec![Message::Ping(b"p".to_vec().into())],
+        close_after: true,
+        ..Script::silent()
+    }])
+    .await;
+    let feed = SportsWsBuilder::new()
+        .url(server.url.clone())
+        .backoff(Duration::from_millis(40), Duration::from_secs(5))
+        .connect()
+        .await
+        .unwrap();
+    let reader = tokio::spawn(drain(feed));
+    server
+        .wait_for("six connections", |s| s.connection_count() >= 6)
+        .await;
+    reader.abort();
+    let gaps = gaps(&server.accepted_at()[..6]);
+    assert!(
+        gaps.iter().all(|gap| *gap < Duration::from_millis(300)),
+        "backoff grew although every connection received a ping: {gaps:?}"
+    );
+}
+```
+
+Run `cargo test -p polyoxide-sports a_zero_initial`, then `cargo test -p polyoxide-sports --features test-server --test supervision a_stale_limit`.
+Expected: the first FAILS (`left: 0ns, right: 1ms`); the second FAILS with a panic containing `overflow when adding duration to instant`. `a_ping_alone_counts_as_having_received_something` already passes; Step 4 proves it.
+
+- [ ] **Step 2: Fix `supervised.rs`**
+
+1. Above `impl Backoff {`, add:
+
+   ```rust
+   /// The shortest delay. Zero would never grow, so a dead server would be
+   /// retried on every timer tick.
+   const MIN_BACKOFF: Duration = Duration::from_millis(1);
+   ```
+
+   and replace the first line of `Backoff::new`'s body, `let initial = initial.min(max);`, with:
+
+   ```rust
+           let max = max.max(MIN_BACKOFF);
+           let initial = initial.clamp(MIN_BACKOFF, max);
+   ```
+
+   keeping the `Self { initial, max, next: initial }` that follows.
+
+2. In `poll_reading`, replace `stale.as_mut().reset(Instant::now() + stale_after);` with:
+
+   ```rust
+               // A limit too large to add, such as `Duration::MAX`, means never
+               // stale: the timer `sleep` armed lies at its far-future fallback.
+               if let Some(deadline) = Instant::now().checked_add(stale_after) {
+                   stale.as_mut().reset(deadline);
+               }
+   ```
+
+3. Replace the `Disconnected` variant's two doc lines (`/// The connection was lost. Scores are stale from here until` / `/// [`Event::Reconnected`].`) with:
+
+   ```rust
+       /// The connection was lost, and scores are stale from here. After
+       /// [`Event::Reconnected`], each game is current again once its next
+       /// frame arrives, which the server sends every 20 to 90 seconds.
+   ```
+
+4. In `SportsWsBuilder::backoff`'s doc, after the line `/// and returns to `initial` after a connection that received anything.`, add:
+
+   ```rust
+       ///
+       /// A protocol ping counts as receiving something. So a server that
+       /// accepts, sends anything at all, and drops the connection resets the
+       /// schedule each time, and reconnects repeat at `initial` rather than
+       /// backing off.
+   ```
+
+- [ ] **Step 3: Make the timing tests deterministic in `tests/supervision.rs`**
+
+1. Replace the whole `next_item` function, doc comment included, with:
+
+   ```rust
+   /// The next item, which must arrive within the window.
+   ///
+   /// The deadline is checked first, so an item that arrives only because the
+   /// deadline woke the task, which is a lost wakeup, fails rather than passing
+   /// late.
+   async fn next_item(feed: &mut SupervisedSportsWs) -> Result<Event, SportsError> {
+       let deadline = tokio::time::sleep(WINDOW);
+       tokio::pin!(deadline);
+       tokio::select! {
+           biased;
+           () = &mut deadline => panic!("no event within {WINDOW:?}"),
+           item = feed.next() => item.expect("a supervised feed never ends"),
+       }
+   }
+   ```
+
+2. In `backoff_grows_while_connections_receive_nothing`, replace the `for pair in gaps.windows(2) { ... }` loop with:
+
+   ```rust
+       // Tokio sleeps never finish early, so each gap is at least its delay.
+       for (k, gap) in gaps.iter().enumerate() {
+           let floor = Duration::from_millis(40) * 2u32.pow(k as u32);
+           assert!(*gap >= floor, "gap {k} was {gap:?}, under its {floor:?} delay: {gaps:?}");
+       }
+   ```
+
+3. In `backoff_resets_after_a_connection_that_received_something`, change `Duration::from_millis(120)` to `Duration::from_millis(300)`. Without the reset the fourth gap would be 320 ms and the fifth 640 ms, so 300 ms keeps the test sharp with far more slack.
+
+- [ ] **Step 4: Verify, and prove the ping test**
+
+Run: `cargo fmt --all && cargo test -p polyoxide-sports --all-features && cargo clippy -p polyoxide-sports --all-targets --all-features -- -D warnings`
+Expected: 32 unit tests, 6 bare, 13 supervision, 2 doctests, all pass; clippy clean.
+
+Prove the ping test: in `poll_reading`, change `if !matches!(inbound, Inbound::Closed(_)) {` to `if matches!(inbound, Inbound::Update(_) | Inbound::Undecodable(_)) {`. Run `cargo test -p polyoxide-sports --features test-server --test supervision a_ping_alone`. Expected: FAIL with `backoff grew although every connection received a ping`. Revert, rerun the file to PASS, and confirm `git diff polyoxide-sports/src` shows only Step 2's changes.
+
+- [ ] **Step 5: Commit**
+
+```bash
+git add polyoxide-sports/src/supervised.rs polyoxide-sports/tests/supervision.rs
+git commit -F - <<'MSG'
+fix(sports): Duration::MAX staleness no longer panics; backoff floor
+
+From the P2 review: an overflowing stale deadline left the stream
+panicking on its first frame, and a zero initial backoff never grew.
+The timing tests now assert deterministic floors, and next_item fails
+on a lost wakeup instead of passing late.
+
+Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>
+Claude-Session: https://claude.ai/code/session_01EsF5q2Es2z3F68VQLynqmK
+MSG
+```
+
+---
+
 ### Task 10: README and crate documentation
 
 **Files:**
