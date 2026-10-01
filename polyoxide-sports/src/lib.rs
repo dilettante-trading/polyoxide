@@ -14,3 +14,7 @@ pub use update::{GameKey, MatchUpdate};
 #[cfg(any(test, feature = "test-server"))]
 #[doc(hidden)]
 pub mod fixtures;
+
+#[cfg(any(test, feature = "test-server"))]
+#[doc(hidden)]
+pub mod test_server;
