@@ -4784,8 +4784,10 @@ MSG
 Add after the `polyoxide-rtds` row of the matrix:
 
 ```yaml
-          - { crate: polyoxide-sports, suite: live,        timeout: 15, flags: "--test live_api" }
+          - { crate: polyoxide-sports, suite: live,        timeout: 20, flags: "--test live_api" }
 ```
+
+The 20-minute budget, not the usual 15, is for the wire-agreement test's 180 s window. The first pass and up to two `nextest --retries` passes of it, plus the build, can come close to 15 minutes, and a job killed at its timeout never reaches the classify and merge steps.
 
 - [ ] **Step 3: Rewrite the CLAUDE.md passages**
 
