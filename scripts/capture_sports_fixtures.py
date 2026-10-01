@@ -4,11 +4,16 @@
 Usage:
     uv run --with websockets --with certifi python3 scripts/capture_sports_fixtures.py OUT_DIR [SECONDS]
 
-Records wss://sports-api.polymarket.com/ws for SECONDS (default 300). Keeps
-the first frame of each distinct top-level key-set, and of each
-`eventState.type`, byte for byte as `<league>-<n>.json`. Writes
-PROVENANCE.md with the date, the frame count per league, the protocol ping
-times and the longest gap between data frames.
+Records wss://sports-api.polymarket.com/ws for SECONDS (default 300) and
+keeps, byte for byte as `<league>-<n>.json`, the first frame of each shape
+not seen before. A shape is any of: the top-level keys with each value's JSON
+type, the `eventState.type`, the `status` value, the `(live, ended)` pair, or
+the league, since score formats differ by sport. Writes PROVENANCE.md with
+the date, what ended the capture, frame counts per league, binary frames,
+protocol ping times and the longest gap between data frames.
+
+A dropped connection or Ctrl-C ends the capture early, and everything
+received until then is still written.
 
 Write to a scratch directory, not the fixtures directory. Copy the frames
 worth keeping into polyoxide-sports/tests/fixtures/ and list each one in
@@ -29,9 +34,28 @@ from pathlib import Path
 
 import certifi
 from websockets.asyncio.client import ClientConnection, connect
+from websockets.exceptions import ConnectionClosed
 from websockets.frames import Opcode
 
 URL = "wss://sports-api.polymarket.com/ws"
+
+
+class Capture:
+    """Everything recorded, held outside the coroutine so that an interrupted
+    capture still has it."""
+
+    def __init__(self) -> None:
+        self.started = time.monotonic()
+        self.frames: list[tuple[float, str]] = []
+        self.pings: list[float] = []
+        self.binary = 0
+        self.ended_by = "the time limit"
+
+    def elapsed(self) -> float:
+        return round(time.monotonic() - self.started, 2)
+
+
+CAPTURE = Capture()
 
 
 class PingRecorder(ClientConnection):
@@ -41,41 +65,52 @@ class PingRecorder(ClientConnection):
     no opcode, so the check must not assume one.
     """
 
-    started = 0.0
-    pings: list[float] = []
-
     def process_event(self, event):
         if getattr(event, "opcode", None) is Opcode.PING:
-            PingRecorder.pings.append(round(time.monotonic() - PingRecorder.started, 2))
+            CAPTURE.pings.append(CAPTURE.elapsed())
         return super().process_event(event)
 
 
-async def record(seconds: int) -> list[tuple[float, str]]:
-    """Every text frame received in `seconds`, with its arrival time."""
+async def record(seconds: int) -> None:
+    """Receive for `seconds`, into CAPTURE."""
     ctx = ssl.create_default_context(cafile=certifi.where())
-    frames = []
-    PingRecorder.started = time.monotonic()
+    CAPTURE.started = time.monotonic()
     async with connect(URL, ssl=ctx, ping_interval=None, create_connection=PingRecorder) as ws:
-        end = PingRecorder.started + seconds
+        end = CAPTURE.started + seconds
         while (remaining := end - time.monotonic()) > 0:
             try:
                 message = await asyncio.wait_for(ws.recv(), remaining)
             except asyncio.TimeoutError:
-                break
+                return
+            except ConnectionClosed as closed:
+                CAPTURE.ended_by = f"the connection closing at {CAPTURE.elapsed()} s: {closed}"
+                return
             if isinstance(message, str):
-                frames.append((round(time.monotonic() - PingRecorder.started, 2), message))
-    return frames
+                CAPTURE.frames.append((CAPTURE.elapsed(), message))
+            else:
+                CAPTURE.binary += 1
+
+
+def json_type(value: object) -> str:
+    return {dict: "object", list: "array", str: "string", bool: "boolean", type(None): "null"}.get(
+        type(value), "number"
+    )
 
 
 def shape_marks(raw: str) -> list[tuple[str, object]]:
-    """What makes a frame's shape distinct: its key-set and eventState type."""
+    """Every shape a frame has; it is kept if any of them is new."""
     try:
         frame = json.loads(raw)
     except json.JSONDecodeError:
         return [("unparsed", raw[:40])]
     if not isinstance(frame, dict):
         return [("not-an-object", type(frame).__name__)]
-    marks: list[tuple[str, object]] = [("keys", tuple(sorted(frame)))]
+    marks: list[tuple[str, object]] = [
+        ("keys", tuple(sorted((key, json_type(value)) for key, value in frame.items()))),
+        ("status", frame.get("status")),
+        ("live-ended", (frame.get("live"), frame.get("ended"))),
+        ("league", frame.get("leagueAbbreviation")),
+    ]
     state = frame.get("eventState")
     if isinstance(state, dict):
         marks.append(("eventState", state.get("type")))
@@ -101,40 +136,49 @@ def main() -> None:
     out.mkdir(parents=True, exist_ok=True)
 
     captured_at = datetime.now(timezone.utc).strftime("%Y-%m-%d %H:%M UTC")
-    frames = asyncio.run(record(seconds))
+    try:
+        asyncio.run(record(seconds))
+    except KeyboardInterrupt:
+        CAPTURE.ended_by = f"Ctrl-C at {CAPTURE.elapsed()} s"
+    frames = CAPTURE.frames
 
     seen: set = set()
     kept = []
     for _, raw in frames:
-        marks = shape_marks(raw)
-        if any(mark not in seen for mark in marks):
-            seen.update(marks)
+        new = [mark for mark in shape_marks(raw) if mark not in seen]
+        if new:
+            seen.update(new)
             name = f"{slug(league_of(raw))}-{len(kept)}.json"
-            # No trailing newline: the file is the frame, byte for byte.
-            (out / name).write_text(raw, encoding="utf-8")
-            kept.append((name, marks))
+            # Bytes, not text: no newline translation on any platform, and the
+            # received UTF-8 re-encodes exactly. No trailing newline.
+            (out / name).write_bytes(raw.encode("utf-8"))
+            kept.append((name, new))
 
     times = [t for t, _ in frames]
-    longest_gap = max((b - a for a, b in zip(times, times[1:])), default=0.0)
+    if len(times) > 1:
+        longest_gap = f"{max(b - a for a, b in zip(times, times[1:])):.1f} s"
+    else:
+        longest_gap = "n/a, fewer than two frames"
     leagues = Counter(league_of(raw) for _, raw in frames)
     lines = [
         "# Sports capture provenance",
         "",
-        f"- Captured: {captured_at}, for {seconds} s, from `{URL}`",
-        f"- Frames: {len(frames)}",
-        f"- Protocol pings at (s): {PingRecorder.pings}",
-        f"- Longest gap between data frames: {longest_gap:.1f} s",
+        f"- Captured: {captured_at}, for up to {seconds} s, from `{URL}`",
+        f"- Ended by: {CAPTURE.ended_by}",
+        f"- Text frames: {len(frames)}; binary frames: {CAPTURE.binary}",
+        f"- Protocol pings at (s): {CAPTURE.pings}",
+        f"- Longest gap between data frames: {longest_gap}",
         "",
         "| League | Frames |",
         "|---|---|",
         *[f"| {league} | {count} |" for league, count in leagues.most_common()],
         "",
-        "| File | Shape |",
+        "| File | New shapes |",
         "|---|---|",
-        *[f"| `{name}` | {marks} |" for name, marks in kept],
+        *[f"| `{name}` | {new} |" for name, new in kept],
     ]
     (out / "PROVENANCE.md").write_text("\n".join(lines) + "\n", encoding="utf-8")
-    print(f"{len(frames)} frames, {len(kept)} distinct shapes, written to {out}")
+    print(f"{len(frames)} frames, {len(kept)} kept, written to {out}")
 
 
 if __name__ == "__main__":

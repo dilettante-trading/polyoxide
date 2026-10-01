@@ -362,9 +362,10 @@ private intra-doc link would withhold the release tag.
 
 - **North American leagues are unseen.** Neither capture overlapped NFL, NBA, MLB or NHL
   play, nor a soccer weekend. Their frames may carry new keys or `eventState` types. The
-  live wire-agreement test will name any new top-level key; a capture during a busy
-  window (a Saturday or Sunday afternoon UTC) should refresh the fixtures before release
-  if one can be scheduled.
+  live wire-agreement test names any new top-level key, but only for leagues live while
+  it runs, and the 06:00 UTC nightly misses these. A capture during a busy window (a
+  Saturday or Sunday afternoon UTC) is how they will be seen, and should refresh the
+  fixtures before release if one can be scheduled.
 - **The server's pong deadline** is unmeasured. The upstream page's 10 s describes a text
   exchange the server does not use.
 - **Cricket reconciliation.** Whether any gamma field carries `metadataGameId` is
