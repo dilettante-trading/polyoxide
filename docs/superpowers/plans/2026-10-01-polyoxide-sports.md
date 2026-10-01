@@ -87,16 +87,8 @@ categories = ["api-bindings", "web-programming::websocket"]
 # modules are `#[doc(hidden)]`.
 test-server = []
 
-# These import `test_server` and `fixtures`, which exist only behind the
-# feature. `required-features` makes a plain `cargo test --all-targets` skip
-# them instead of failing to build them.
-[[test]]
-name = "bare"
-required-features = ["test-server"]
-
-[[test]]
-name = "supervision"
-required-features = ["test-server"]
+# Tasks 6 and 8 add `[[test]]` entries here as they create those files.
+# Cargo refuses a manifest whose named test file does not exist yet.
 
 [dependencies]
 tokio = { workspace = true, features = ["macros", "net", "time", "rt"] }
@@ -139,7 +131,7 @@ printf '%s' '{"gameId":6352662,"leagueAbbreviation":"wta","homeTeam":"Yulia Star
 cd -
 ```
 
-The first five are the July constants from `polyoxide-clob/src/ws/sports.rs`; confirm with `grep -c 90106111 polyoxide-clob/src/ws/sports.rs` (expect 1). The last two are from the 2026-10-01 capture.
+The first five are the July constants from `polyoxide-clob/src/ws/sports.rs`; confirm with `grep -c 90106111 polyoxide-clob/src/ws/sports.rs` (expect 2: the constant and one test assertion). The last two are from the 2026-10-01 capture.
 
 - [ ] **Step 4: Write `polyoxide-sports/tests/fixtures/PROVENANCE.md`**
 
@@ -1315,6 +1307,7 @@ MSG
 
 **Files:**
 - Create: `polyoxide-sports/tests/bare.rs`
+- Modify: `polyoxide-sports/Cargo.toml`
 
 - [ ] **Step 1: Write the tests**
 
@@ -1417,10 +1410,21 @@ async fn dropping_the_stream_closes_the_socket() {
 }
 ```
 
-- [ ] **Step 2: Run them**
+- [ ] **Step 2: Gate the file on the feature, then run it**
+
+In `polyoxide-sports/Cargo.toml`, replace the comment `# Tasks 6 and 8 add `[[test]]` entries here...` (both lines) with:
+
+```toml
+# These import `test_server` and `fixtures`, which exist only behind the
+# feature. `required-features` makes a plain `cargo test --all-targets` skip
+# them instead of failing to build them.
+[[test]]
+name = "bare"
+required-features = ["test-server"]
+```
 
 Run: `cargo test -p polyoxide-sports --features test-server --test bare`
-Expected: 5 passed.
+Expected: 5 passed. Then `cargo test -p polyoxide-sports --all-targets` (no features) must also pass, skipping `bare`.
 
 - [ ] **Step 3: Prove the pong test catches a read loop that stops after a ping**
 
@@ -1430,7 +1434,7 @@ Expected: FAIL with `timed out waiting for a pong`. Revert the change and rerun 
 - [ ] **Step 4: Commit**
 
 ```bash
-git add polyoxide-sports/tests/bare.rs
+git add polyoxide-sports/tests/bare.rs polyoxide-sports/Cargo.toml
 git commit -F - <<'MSG'
 test(sports): bare tier against the scripted server
 
@@ -1869,6 +1873,7 @@ These tests come after the state machine because each exists to catch one specif
 
 **Files:**
 - Create: `polyoxide-sports/tests/supervision.rs`
+- Modify: `polyoxide-sports/Cargo.toml`
 
 - [ ] **Step 1: Write the helpers and the liveness tests**
 
@@ -1993,7 +1998,16 @@ async fn the_supervised_feed_answers_pings() {
 }
 ```
 
-- [ ] **Step 2: Run them**
+- [ ] **Step 2: Gate the file on the feature, then run it**
+
+In `polyoxide-sports/Cargo.toml`, add directly after the `bare` `[[test]]` entry:
+
+```toml
+
+[[test]]
+name = "supervision"
+required-features = ["test-server"]
+```
 
 Run: `cargo test -p polyoxide-sports --features test-server --test supervision`
 Expected: 3 passed. The compiler may warn that `fixtures`, `gaps`, `label` and `text` are unused until Task 9. That is expected here; Task 9 uses them all.
@@ -2011,7 +2025,7 @@ Expected: FAIL with `an event within the window`. Revert, then run the whole fil
 - [ ] **Step 5: Commit**
 
 ```bash
-git add polyoxide-sports/tests/supervision.rs
+git add polyoxide-sports/tests/supervision.rs polyoxide-sports/Cargo.toml
 git commit -F - <<'MSG'
 test(sports): supervised liveness on protocol pings
 
