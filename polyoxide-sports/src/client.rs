@@ -83,7 +83,10 @@ pub(crate) fn classify(message: Message) -> Inbound {
         },
         Message::Close(frame) => Inbound::Closed(closed(frame)),
         Message::Binary(bytes) => {
-            tracing::debug!(len = bytes.len(), "skipping a binary frame on the sports feed");
+            tracing::debug!(
+                len = bytes.len(),
+                "skipping a binary frame on the sports feed"
+            );
             Inbound::Alive
         }
         Message::Ping(_) | Message::Pong(_) | Message::Frame(_) => Inbound::Alive,
@@ -243,8 +246,7 @@ mod tests {
 
     #[test]
     fn a_bare_close_has_no_code() {
-        let Inbound::Closed(SportsError::Closed { code, reason }) =
-            classify(Message::Close(None))
+        let Inbound::Closed(SportsError::Closed { code, reason }) = classify(Message::Close(None))
         else {
             panic!("a bare close was not classified as closed");
         };

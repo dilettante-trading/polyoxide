@@ -74,7 +74,10 @@ mod tests {
             after: Duration::from_secs(45),
         }
         .to_string();
-        assert!(text.contains("45s") && text.contains("pings included"), "{text}");
+        assert!(
+            text.contains("45s") && text.contains("pings included"),
+            "{text}"
+        );
     }
 
     #[test]
@@ -84,6 +87,9 @@ mod tests {
             reason: "going away".into(),
         }
         .to_string();
-        assert!(text.contains("1001") && text.contains("going away"), "{text}");
+        assert!(
+            text.contains("1001") && text.contains("going away"),
+            "{text}"
+        );
     }
 }

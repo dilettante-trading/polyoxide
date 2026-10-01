@@ -54,7 +54,10 @@ mod tests {
     #[test]
     fn every_fixture_is_one_captured_line() {
         for (name, frame) in ALL {
-            assert!(!frame.contains('\n'), "{name} is not a single captured line");
+            assert!(
+                !frame.contains('\n'),
+                "{name} is not a single captured line"
+            );
             let value: serde_json::Value =
                 serde_json::from_str(frame).unwrap_or_else(|e| panic!("{name}: {e}"));
             assert!(value.is_object(), "{name} is not a JSON object");
