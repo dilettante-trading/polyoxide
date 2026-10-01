@@ -155,6 +155,17 @@ mod tests {
     }
 
     #[test]
+    fn ws_sports_parses_with_no_arguments() {
+        let cli = try_parse(&["polyoxide", "ws", "sports"]).unwrap();
+        assert!(matches!(
+            cli.command,
+            super::Commands::Ws {
+                command: polyoxide_cli::commands::WsCommand::Sports { .. }
+            }
+        ));
+    }
+
+    #[test]
     fn ws_user_requires_market_ids() {
         let result = try_parse(&["polyoxide", "ws", "user"]);
         assert!(result.is_err());

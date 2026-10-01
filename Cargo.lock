@@ -3979,6 +3979,7 @@ dependencies = [
  "polyoxide-gamma",
  "polyoxide-relay",
  "polyoxide-rtds",
+ "polyoxide-sports",
  "serde",
  "serde_json",
  "tempfile",

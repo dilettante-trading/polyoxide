@@ -1,5 +1,6 @@
 mod market;
 mod prices;
+pub mod sports;
 mod user;
 
 use clap::Subcommand;
@@ -22,6 +23,11 @@ pub enum WsCommand {
         #[command(flatten)]
         args: prices::PricesArgs,
     },
+    /// Stream live match scores from the sports feed
+    Sports {
+        #[command(flatten)]
+        args: sports::SportsArgs,
+    },
 }
 
 impl WsCommand {
@@ -30,6 +36,7 @@ impl WsCommand {
             Self::Market { args } => market::run(args).await,
             Self::User { args } => user::run(args).await,
             Self::Prices { args } => prices::run(args).await,
+            Self::Sports { args } => sports::run(args).await,
         }
     }
 }

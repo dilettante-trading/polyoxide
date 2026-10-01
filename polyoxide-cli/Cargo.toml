@@ -29,6 +29,7 @@ polyoxide-relay = { workspace = true, optional = true, features = ["keychain"] }
 polyoxide-data = { workspace = true }
 polyoxide-gamma = { workspace = true }
 polyoxide-rtds = { workspace = true }
+polyoxide-sports = { workspace = true }
 tokio = { workspace = true, features = ["macros", "rt-multi-thread", "time", "net"] }
 clap = { version = "4.5", features = ["derive", "env"] }
 clap_complete = "4.5"
@@ -46,3 +47,5 @@ parquet = { version = "54", optional = true }
 mockito = { workspace = true }
 tempfile = "3"
 tokio = { workspace = true, features = ["macros", "rt-multi-thread", "time"] }
+# The captured frames, for the `ws sports` tests.
+polyoxide-sports = { workspace = true, features = ["test-server"] }
