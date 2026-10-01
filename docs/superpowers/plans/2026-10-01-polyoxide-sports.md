@@ -1039,6 +1039,155 @@ MSG
 
 ---
 
+### Task 4a: Fixes from the P1 code review
+
+Added after P1's review. Plain text replacements in three files, then one commit. Each "replace" names text that appears exactly once.
+
+**Files:**
+- Modify: `polyoxide-sports/src/update.rs`, `polyoxide-sports/src/error.rs`, `polyoxide-sports/src/client.rs`
+
+- [ ] **Step 1: `update.rs` docs**
+
+1. After the paragraph ending `/// with `==` against the last frame for the same [`GameKey`] to drop` / `/// repeats.`, insert:
+
+   ```rust
+   ///
+   /// That comparison may miss repeats of frames that carry `eventState`. In
+   /// the July 2026 capture its `createdAt` and `updatedAt` looked stamped on
+   /// each send, which would make every rebroadcast compare unequal. No capture
+   /// since has carried `eventState`, so this is unconfirmed.
+   ```
+
+2. Replace `/// serialising a parsed frame reproduces it exactly.` with `/// serialising a parsed frame gives back an equal JSON value.`
+3. Replace the two `status` doc lines (`/// Venue status string. Casing is not normalised upstream: `"InProgress"`,` / `/// `"inprogress"`, `"running"` and `"finished"` have all been seen.`) with:
+
+   ```rust
+       /// Venue status string. Casing is not normalised upstream: `"InProgress"`,
+       /// `"inprogress"`, `"running"`, `"finished"` and `"not_started"` have all
+       /// been seen.
+   ```
+
+4. Replace `    /// Every key this type does not model, kept rather than dropped.` with:
+
+   ```rust
+       /// Every key this type does not model, kept rather than dropped.
+       ///
+       /// A later release may promote a key to a typed field, so read it with
+       /// `.get()`: indexing a missing key panics.
+   ```
+
+5. In the `GameKey` doc, replace `` `gamma.events().list().game_id([id as i64])` `` with `` `gamma.events().list().game_id([i64::try_from(id)?])` ``, and add `#[non_exhaustive]` on the line after `#[derive(Debug, Clone, PartialEq, Eq, Hash, PartialOrd, Ord)]`, so a later identifier is not a breaking change.
+
+- [ ] **Step 2: `error.rs` messages and docs**
+
+1. Replace `    /// The WebSocket handshake failed.` with:
+
+   ```rust
+       /// The connection could not be opened: the URL, DNS, TCP, TLS or the
+       /// WebSocket upgrade failed.
+   ```
+
+2. Replace `    /// The handshake did not finish within the connect timeout.` with `    /// Opening the connection took longer than the connect timeout.`
+3. Replace `#[error("the sports feed closed the connection (code {code:?}, reason {reason:?})")]` with `#[error("the sports feed closed the connection{}", describe_close(.code, .reason))]`, and `/// The close code, when the server sent a close frame.` with `/// The close status code, when the server's close frame carried one.`
+4. Insert directly above `#[cfg(test)]`:
+
+   ```rust
+   /// The tail of the close message: the status code and reason when present.
+   fn describe_close(code: &Option<u16>, reason: &str) -> String {
+       match (code, reason.is_empty()) {
+           (Some(code), true) => format!(" with code {code}"),
+           (Some(code), false) => format!(" with code {code}: {reason}"),
+           (None, true) => " without a status code".to_owned(),
+           (None, false) => format!(": {reason}"),
+       }
+   }
+   ```
+
+5. Add this test first in the test module:
+
+   ```rust
+       #[test]
+       fn a_close_without_a_code_says_so() {
+           let text = SportsError::Closed {
+               code: None,
+               reason: String::new(),
+           }
+           .to_string();
+           assert_eq!(
+               text,
+               "the sports feed closed the connection without a status code"
+           );
+       }
+   ```
+
+- [ ] **Step 3: `client.rs` close reply and doc example**
+
+1. Change `use futures_util::{Stream, StreamExt};` to `use futures_util::{SinkExt, Stream, StreamExt};`.
+2. In `SportsWs::poll_next`, make the `Inbound::Closed(reason) =>` arm begin with:
+
+   ```rust
+                   Inbound::Closed(reason) => {
+                       // RFC 6455 requires a close reply. tungstenite has queued
+                       // it, but sends it only on the next read or flush, and
+                       // this stream never reads again.
+                       let _ = self.socket.poll_flush_unpin(cx);
+   ```
+
+   keeping the existing `tracing::debug!`, `self.finished = true;` and `return Poll::Ready(None);` after it.
+3. In the `SportsWs` doc comment, insert after the line `/// For a feed that reconnects on its own, use `SportsWsBuilder`.` and its following `///`:
+
+   ```rust
+   /// An `Err(SportsError::Decode { .. })` reports one frame this crate could
+   /// not read, and the stream carries on after it. Any other `Err` is the
+   /// last item: the stream yields `None` after it.
+   ///
+   ```
+
+4. Replace the example's body, from `/// use futures_util::StreamExt;` through `/// # }`, with:
+
+   ```rust
+   /// use futures_util::StreamExt;
+   /// use polyoxide_sports::{SportsError, SportsWs};
+   ///
+   /// # async fn run() -> Result<(), SportsError> {
+   /// let mut feed = SportsWs::connect().await?;
+   /// while let Some(item) = feed.next().await {
+   ///     match item {
+   ///         Ok(update) => {
+   ///             println!("{} {} {}", update.league_abbreviation, update.score, update.period)
+   ///         }
+   ///         // One frame this crate could not read; the stream carries on.
+   ///         Err(SportsError::Decode { raw, .. }) => eprintln!("skipped a frame: {raw}"),
+   ///         Err(other) => return Err(other),
+   ///     }
+   /// }
+   /// # Ok(())
+   /// # }
+   ```
+
+The flush is tested in Tasks 6 and 9, once the scripted server can record a close reply.
+
+- [ ] **Step 4: Verify and commit**
+
+Run: `cargo fmt --all && cargo test -p polyoxide-sports && cargo clippy -p polyoxide-sports --all-targets --all-features -- -D warnings && RUSTDOCFLAGS="-D warnings" cargo doc -p polyoxide-sports --no-deps --all-features`
+Expected: 26 passed plus 1 doctest; clippy and doc clean.
+
+```bash
+git add polyoxide-sports/src
+git commit -F - <<'MSG'
+fix(sports): reply to close frames; doc examples survive a bad frame
+
+From the P1 review: the bare tier now flushes the close reply RFC 6455
+requires, the close message no longer prints Option debug text, GameKey
+is non_exhaustive, and the doc example treats Decode as recoverable.
+
+Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>
+Claude-Session: https://claude.ai/code/session_01EsF5q2Es2z3F68VQLynqmK
+MSG
+```
+
+---
+
 ### Task 5: The scripted test server
 
 **Files:**
@@ -1143,6 +1292,7 @@ struct Recorder {
     handshakes: AtomicUsize,
     pongs: Mutex<Vec<Vec<u8>>>,
     client_ended: AtomicUsize,
+    close_replies: AtomicUsize,
 }
 
 /// A running local server.
@@ -1205,6 +1355,11 @@ impl ScriptedServer {
         self.recorder.client_ended.load(Ordering::SeqCst)
     }
 
+    /// Close frames the client sent in reply to the server's own.
+    pub fn close_reply_count(&self) -> usize {
+        self.recorder.close_replies.load(Ordering::SeqCst)
+    }
+
     /// Poll until `predicate` holds, or panic naming `label` after five
     /// seconds.
     pub async fn wait_for(&self, label: &str, predicate: impl Fn(&Self) -> bool) {
@@ -1241,6 +1396,12 @@ async fn serve(
     }
     if script.close_after {
         let _ = ws.close(None).await;
+        // RFC 6455 requires the client to answer with its own close frame.
+        if let Ok(Some(Ok(Message::Close(_)))) =
+            tokio::time::timeout(Duration::from_secs(1), ws.next()).await
+        {
+            recorder.close_replies.fetch_add(1, Ordering::SeqCst);
+        }
         return Ok(());
     }
     let mut pings = script
@@ -1396,6 +1557,21 @@ async fn ends_when_the_server_closes() {
 }
 
 #[tokio::test]
+async fn replies_to_the_servers_close_frame() {
+    let server =
+        ScriptedServer::start(vec![Script::frames(&[fixtures::SOCCER]).then_close()]).await;
+    let mut feed = SportsWs::connect_to(&server.url).await.unwrap();
+    assert!(matches!(
+        timeout(WINDOW, feed.next()).await.unwrap(),
+        Some(Ok(_))
+    ));
+    assert!(timeout(WINDOW, feed.next()).await.unwrap().is_none());
+    server
+        .wait_for("the client's close reply", |s| s.close_reply_count() == 1)
+        .await;
+}
+
+#[tokio::test]
 async fn dropping_the_stream_closes_the_socket() {
     let server = ScriptedServer::start(vec![Script::silent()]).await;
     let feed = SportsWs::connect_to(&server.url).await.unwrap();
@@ -1425,12 +1601,14 @@ required-features = ["test-server"]
 ```
 
 Run: `cargo test -p polyoxide-sports --features test-server --test bare`
-Expected: 5 passed. Then `cargo test -p polyoxide-sports --all-targets` (no features) must also pass, skipping `bare`.
+Expected: 6 passed. Then `cargo test -p polyoxide-sports --all-targets` (no features) must also pass, skipping `bare`.
 
 - [ ] **Step 3: Prove the pong test catches a read loop that stops after a ping**
 
 In `polyoxide-sports/src/client.rs`, inside `SportsWs::poll_next`, change `Inbound::Alive => continue,` to `Inbound::Alive => return Poll::Pending,`. Run `cargo test -p polyoxide-sports --features test-server --test bare answers_a_protocol_ping`.
-Expected: FAIL with `timed out waiting for a pong`. Revert the change and rerun the whole file to PASS.
+Expected: FAIL with `timed out waiting for a pong`. Revert the change.
+
+Then delete the line `let _ = self.socket.poll_flush_unpin(cx);` from the `Inbound::Closed` arm and run `cargo test -p polyoxide-sports --features test-server --test bare replies_to`. Expected: FAIL with `timed out waiting for the client's close reply`. Revert, and rerun the whole file to PASS.
 
 - [ ] **Step 4: Commit**
 
@@ -1528,7 +1706,7 @@ use std::{
     time::Duration,
 };
 
-use futures_util::{Stream, StreamExt};
+use futures_util::{SinkExt, Stream, StreamExt};
 use tokio::time::{sleep, Instant, Sleep};
 
 use crate::{
@@ -1840,7 +2018,12 @@ fn poll_reading(
             Inbound::Undecodable(error) => return Step::Yield(Err(error)),
             // Reading again is what sends the pong for a ping just read.
             Inbound::Alive => continue,
-            Inbound::Closed(reason) => return Step::Lost(reason),
+            Inbound::Closed(reason) => {
+                // Send the close reply tungstenite queued; nothing reads this
+                // socket again.
+                let _ = socket.poll_flush_unpin(cx);
+                return Step::Lost(reason);
+            }
         }
     }
 }
@@ -1849,7 +2032,7 @@ fn poll_reading(
 - [ ] **Step 4: Run to see it pass, and lint**
 
 Run: `cargo test -p polyoxide-sports && cargo clippy -p polyoxide-sports --all-targets --all-features -- -D warnings`
-Expected: all pass, 30 unit tests; clippy clean. If clippy reports `large_enum_variant`, a variant holding a socket or a `MatchUpdate` is not boxed. Box it, do not allow the lint.
+Expected: all pass, 31 unit tests; clippy clean. If clippy reports `large_enum_variant`, a variant holding a socket or a `MatchUpdate` is not boxed. Box it, do not allow the lint.
 
 - [ ] **Step 5: Commit**
 
@@ -2058,6 +2241,9 @@ async fn a_closed_connection_yields_its_updates_then_one_marker_pair() {
         labels.push(label(next_item(&mut feed).await));
     }
     assert_eq!(labels, ["kor", "lol", "disconnected", "reconnected", "atp"]);
+    server
+        .wait_for("the client's close reply", |s| s.close_reply_count() == 1)
+        .await;
 }
 
 #[tokio::test]
@@ -2266,13 +2452,16 @@ use polyoxide_sports::{Event, SportsWsBuilder};
 # async fn run() -> Result<(), polyoxide_sports::SportsError> {
 let mut feed = SportsWsBuilder::new().connect().await?;
 while let Some(event) = feed.next().await {
-    match event? {
-        Event::Update(update) => {
+    match event {
+        Ok(Event::Update(update)) => {
             println!("{} {} {}", update.league_abbreviation, update.score, update.period)
         }
-        Event::Disconnected { reason } => eprintln!("scores are stale: {reason}"),
-        Event::Reconnected => eprintln!("reconnected"),
-        _ => {}
+        Ok(Event::Disconnected { reason }) => eprintln!("scores are stale: {reason}"),
+        Ok(Event::Reconnected) => eprintln!("reconnected"),
+        Ok(_) => {}
+        // Only a frame this crate could not read arrives as an error, and
+        // the feed carries on after it.
+        Err(error) => eprintln!("skipped a frame: {error}"),
     }
 }
 # Ok(())
@@ -2288,7 +2477,8 @@ when its connection does.
   state. The server re-sends unchanged state on a timer, so roughly half of
   all frames repeat the previous one for their game. `MatchUpdate`
   implements `PartialEq`: compare against the last frame per `GameKey` to
-  keep only changes.
+  keep only changes. Frames carrying `eventState` may defeat this, if its
+  timestamps change on every send; see the `MatchUpdate` docs.
 - **The ended frame is sent once.** A feed that is disconnected when a
   match ends never sees it. After `Event::Reconnected`, look up games that
   may have ended through gamma's events list, which filters on `game_id`.
