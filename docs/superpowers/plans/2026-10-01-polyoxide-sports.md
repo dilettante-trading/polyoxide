@@ -3137,6 +3137,539 @@ MSG
 
 ---
 
+### Task 12a: Fixes from the P3 code review
+
+Added after P3's review. The live suite is this host's only drift detector, and the review found three ways it could miss drift. Binary frames would have been classed "environmental" every night. A 60 s window and a 100-frame cap cut short exactly the busy runs that matter. Failure messages dropped close codes, raw frames and values. The capture script also could not record a value-type change, and it lost everything on a dropped connection. Both replacement files below were compiled, linted, and run in full against the live server before this task was written: 5 of 5 passed, and the wire test checked 114 frames in 180 s. The script was run once for its full window and once interrupted with Ctrl-C.
+
+**Files:**
+- Replace: `polyoxide-sports/tests/live_api.rs`, `scripts/capture_sports_fixtures.py`
+- Modify: `polyoxide-sports/README.md`, `docs/superpowers/specs/2026-10-01-polyoxide-sports-design.md`
+
+- [ ] **Step 1: Replace `polyoxide-sports/tests/live_api.rs` with**
+
+```rust
+//! Live tests against wss://sports-api.polymarket.com/ws. Ignored by default:
+//!
+//! ```text
+//! cargo test -p polyoxide-sports --test live_api -- --ignored --nocapture
+//! ```
+//!
+//! The feed carries only matches that are live somewhere. A test that waits
+//! for a frame says so when it times out, in the words the nightly
+//! classifier treats as environmental. Only a window with no data frame of
+//! any kind earns those words: binary frames, which this crate does not
+//! read, fail as a real fault.
+//!
+//! `nightly-schema.yml` excludes this host, because the published AsyncAPI
+//! document does not match the wire. So
+//! `live_frames_round_trip_and_carry_no_unmodelled_keys` is this host's drift
+//! detector. It sees only what is live while it runs, so the 06:00 UTC
+//! nightly misses most North American leagues and weekend soccer; a capture
+//! in a busy window covers those.
+
+use std::{collections::BTreeMap, time::Duration};
+
+use futures_util::StreamExt;
+use polyoxide_sports::{Event, MatchUpdate, SportsError, SportsWs, SportsWsBuilder, SPORTS_WS_URL};
+use serde_json::Value;
+use tokio::{
+    net::TcpStream,
+    time::{timeout, timeout_at, Instant},
+};
+use tokio_tungstenite::{
+    connect_async,
+    tungstenite::{protocol::CloseFrame, Message},
+    MaybeTlsStream, WebSocketStream,
+};
+
+const RECV_WINDOW: Duration = Duration::from_secs(45);
+/// How long the wire-agreement test reads: long enough for tennis's 30 to
+/// 90 s rebroadcast to come round at least twice.
+const WIRE_WINDOW: Duration = Duration::from_secs(180);
+const CONNECT_TIMEOUT: Duration = Duration::from_secs(10);
+const QUIET: &str = "if no matches are live anywhere this can legitimately time out, \
+                     so re-run before concluding a defect";
+
+type RawSocket = WebSocketStream<MaybeTlsStream<TcpStream>>;
+
+/// Fail a connect in words the nightly classifier reads correctly: a timeout
+/// is transient, and the Debug form of anything else names its cause.
+fn connect_failed<T>(error: SportsError) -> T {
+    match error {
+        SportsError::ConnectTimeout { after } => {
+            panic!("the connect operation timed out after {after:?}")
+        }
+        other => panic!("could not connect to the sports feed: {other:?}"),
+    }
+}
+
+/// Open a raw socket, bounded like the crate's own connects. These tests call
+/// `connect_async` directly, so they install the TLS provider the crate
+/// would; see `ensure_crypto_provider` in src/client.rs.
+async fn connect_raw() -> RawSocket {
+    let _ = rustls::crypto::ring::default_provider().install_default();
+    let connected = match timeout(CONNECT_TIMEOUT, connect_async(SPORTS_WS_URL)).await {
+        Ok(connected) => connected,
+        Err(_) => panic!("the connect operation timed out after {CONNECT_TIMEOUT:?}"),
+    };
+    let (socket, _) =
+        connected.unwrap_or_else(|e| panic!("could not connect to the sports feed: {e:?}"));
+    socket
+}
+
+/// What a close frame said, for a failure message.
+fn describe_close(frame: Option<CloseFrame>) -> String {
+    match frame {
+        Some(frame) => format!(
+            "code {}, reason {:?}",
+            u16::from(frame.code),
+            frame.reason.as_str()
+        ),
+        None => "a close frame with no code".to_owned(),
+    }
+}
+
+#[tokio::test]
+#[ignore]
+async fn live_bare_feed_yields_a_parsed_frame() {
+    let mut feed = SportsWs::connect().await.unwrap_or_else(connect_failed);
+    let update = timeout(RECV_WINDOW, feed.next())
+        .await
+        .unwrap_or_else(|_| panic!("no frame within {RECV_WINDOW:?}; {QUIET}"))
+        .expect("the stream ended instead of yielding a frame")
+        .expect("the frame parses");
+    assert!(!update.league_abbreviation.is_empty(), "{update:?}");
+    assert!(
+        update.key().is_some(),
+        "the frame identifies no match: {update:?}"
+    );
+    println!("first frame: {update:?}");
+}
+
+/// Upstream documents a text "ping"/"pong" exchange that a client must
+/// answer within 10 seconds. The server actually sends protocol pings that
+/// the transport answers. If upstream were right, a client that never sends
+/// a text "pong" would be dropped well inside this window.
+#[tokio::test]
+#[ignore]
+async fn live_bare_connection_survives_the_keepalive_interval() {
+    let mut feed = SportsWs::connect().await.unwrap_or_else(connect_failed);
+    let deadline = Instant::now() + Duration::from_secs(40);
+    let mut frames = 0usize;
+    loop {
+        match timeout_at(deadline, feed.next()).await {
+            Err(_) => break,
+            Ok(Some(Ok(_))) => frames += 1,
+            Ok(Some(Err(SportsError::Decode { raw, source }))) => {
+                panic!("a frame did not parse after {frames} frames ({source}): {raw}")
+            }
+            Ok(Some(Err(e))) => panic!("the connection failed after {frames} frames: {e}"),
+            Ok(None) => panic!(
+                "the server ended the connection after {frames} frames, inside 40 s. An \
+                 unanswered keep-alive would do this, and so would a server restart, so \
+                 re-run before concluding which"
+            ),
+        }
+    }
+    println!("survived 40 s with {frames} frames");
+}
+
+/// The 45-second staleness default rests on this cadence. The assertion
+/// allows up to 20 s between pings.
+#[tokio::test]
+#[ignore]
+async fn live_server_sends_protocol_pings_every_15_seconds() {
+    let mut socket = connect_raw().await;
+    let started = Instant::now();
+    let deadline = started + Duration::from_secs(40);
+    let mut pings = Vec::new();
+    loop {
+        match timeout_at(deadline, socket.next()).await {
+            Err(_) => break,
+            Ok(Some(Ok(Message::Ping(_)))) => pings.push(started.elapsed()),
+            Ok(Some(Ok(Message::Close(frame)))) => {
+                panic!("the server closed the socket: {}", describe_close(frame))
+            }
+            Ok(Some(Ok(_))) => {}
+            Ok(Some(Err(e))) => panic!("the socket failed: {e}"),
+            Ok(None) => panic!("the socket ended without a close frame"),
+        }
+    }
+    assert!(
+        pings.len() >= 2,
+        "expected at least two protocol pings in 40 s, saw {pings:?}; the staleness limit depends on them"
+    );
+    let gaps: Vec<Duration> = pings.windows(2).map(|pair| pair[1] - pair[0]).collect();
+    assert!(
+        gaps.iter().all(|gap| *gap < Duration::from_secs(20)),
+        "ping gaps {gaps:?} exceed 20 s; revisit the 45 s staleness default"
+    );
+}
+
+/// Held past the 45-second staleness limit with default settings, the
+/// supervised feed must not disconnect. In a busy hour data frames alone keep
+/// the staleness timer fed, so this proves ping-only liveness only when
+/// updates are sparse. The printed longest gap between updates says which
+/// kind of run it was.
+#[tokio::test]
+#[ignore]
+async fn live_supervised_feed_holds_past_the_stale_limit() {
+    let mut feed = SportsWsBuilder::new()
+        .connect()
+        .await
+        .unwrap_or_else(connect_failed);
+    let deadline = Instant::now() + Duration::from_secs(50);
+    let mut updates = 0usize;
+    let mut last = Instant::now();
+    let mut longest = Duration::ZERO;
+    loop {
+        match timeout_at(deadline, feed.next()).await {
+            Err(_) => break,
+            Ok(Some(Ok(Event::Update(_)))) => {
+                updates += 1;
+                longest = longest.max(last.elapsed());
+                last = Instant::now();
+            }
+            Ok(Some(Ok(Event::Disconnected { reason }))) => {
+                panic!("disconnected after {updates} updates: {reason}")
+            }
+            Ok(Some(Ok(other))) => panic!("unexpected event {other:?}"),
+            Ok(Some(Err(SportsError::Decode { raw, source }))) => {
+                panic!("a live frame did not parse ({source}): {raw}")
+            }
+            Ok(Some(Err(e))) => panic!("unexpected error: {e}"),
+            Ok(None) => panic!("a supervised feed never ends"),
+        }
+    }
+    longest = longest.max(last.elapsed());
+    println!("held 50 s with {updates} updates; longest gap between updates {longest:?}");
+}
+
+#[tokio::test]
+#[ignore]
+async fn live_frames_round_trip_and_carry_no_unmodelled_keys() {
+    let mut socket = connect_raw().await;
+    let deadline = Instant::now() + WIRE_WINDOW;
+    let mut leagues: BTreeMap<String, usize> = BTreeMap::new();
+    let mut binary = 0usize;
+    // Each unmodelled key, with the first frame that carried it.
+    let mut unmodelled: BTreeMap<String, String> = BTreeMap::new();
+    loop {
+        let message = match timeout_at(deadline, socket.next()).await {
+            Err(_) => break,
+            Ok(Some(Ok(message))) => message,
+            Ok(Some(Err(e))) => panic!("the socket failed: {e}"),
+            Ok(None) => panic!("the socket ended without a close frame"),
+        };
+        let text = match message {
+            Message::Text(text) => text,
+            Message::Binary(_) => {
+                binary += 1;
+                continue;
+            }
+            Message::Close(frame) => {
+                panic!("the server closed the socket: {}", describe_close(frame))
+            }
+            _ => continue,
+        };
+        let update = MatchUpdate::from_json(&text)
+            .unwrap_or_else(|e| panic!("a live frame did not parse: {e}\n{}", text.as_str()));
+        let original: Value = serde_json::from_str(&text).unwrap();
+        assert_eq!(
+            serde_json::to_value(&update).unwrap(),
+            original,
+            "a live frame changed on a round trip:\n{}",
+            text.as_str()
+        );
+        for key in update.extra.keys() {
+            unmodelled
+                .entry(key.clone())
+                .or_insert_with(|| text.as_str().to_owned());
+        }
+        *leagues
+            .entry(update.league_abbreviation.clone())
+            .or_default() += 1;
+    }
+    assert_eq!(
+        binary, 0,
+        "the feed sent {binary} binary frames; this crate reads only text frames and would \
+         skip them as mere liveness"
+    );
+    let checked: usize = leagues.values().sum();
+    assert!(checked > 0, "no frames within {WIRE_WINDOW:?}; {QUIET}");
+    assert!(
+        unmodelled.is_empty(),
+        "the feed sends keys MatchUpdate does not model; the first frame carrying each: \
+         {unmodelled:#?}. Capture fixtures with scripts/capture_sports_fixtures.py, model the \
+         keys in MatchUpdate, and record them in docs/specs/sports/OBSERVED.md"
+    );
+    println!("checked {checked} frames over {WIRE_WINDOW:?}, by league: {leagues:?}");
+}
+```
+
+- [ ] **Step 2: Replace `scripts/capture_sports_fixtures.py` with**
+
+Keep the file executable.
+
+```python
+#!/usr/bin/env python3
+"""Capture live frames from Polymarket's sports feed as test fixtures.
+
+Usage:
+    uv run --with websockets --with certifi python3 scripts/capture_sports_fixtures.py OUT_DIR [SECONDS]
+
+Records wss://sports-api.polymarket.com/ws for SECONDS (default 300) and
+keeps, byte for byte as `<league>-<n>.json`, the first frame of each shape
+not seen before. A shape is any of: the top-level keys with each value's JSON
+type, the `eventState.type`, the `status` value, the `(live, ended)` pair, or
+the league, since score formats differ by sport. Writes PROVENANCE.md with
+the date, what ended the capture, frame counts per league, binary frames,
+protocol ping times and the longest gap between data frames.
+
+A dropped connection or Ctrl-C ends the capture early, and everything
+received until then is still written.
+
+Write to a scratch directory, not the fixtures directory. Copy the frames
+worth keeping into polyoxide-sports/tests/fixtures/ and list each one in
+polyoxide-sports/src/fixtures.rs; `every_fixture_file_is_listed` fails
+otherwise. Run it in a busy window, such as a weekend afternoon UTC, to
+see the most sports.
+"""
+
+import asyncio
+import json
+import re
+import ssl
+import sys
+import time
+from collections import Counter
+from datetime import datetime, timezone
+from pathlib import Path
+
+import certifi
+from websockets.asyncio.client import ClientConnection, connect
+from websockets.exceptions import ConnectionClosed
+from websockets.frames import Opcode
+
+URL = "wss://sports-api.polymarket.com/ws"
+
+
+class Capture:
+    """Everything recorded, held outside the coroutine so that an interrupted
+    capture still has it."""
+
+    def __init__(self) -> None:
+        self.started = time.monotonic()
+        self.frames: list[tuple[float, str]] = []
+        self.pings: list[float] = []
+        self.binary = 0
+        self.ended_by = "the time limit"
+
+    def elapsed(self) -> float:
+        return round(time.monotonic() - self.started, 2)
+
+
+CAPTURE = Capture()
+
+
+class PingRecorder(ClientConnection):
+    """Notes when each protocol ping arrives.
+
+    The handshake response passes through `process_event` too, and it has
+    no opcode, so the check must not assume one.
+    """
+
+    def process_event(self, event):
+        if getattr(event, "opcode", None) is Opcode.PING:
+            CAPTURE.pings.append(CAPTURE.elapsed())
+        return super().process_event(event)
+
+
+async def record(seconds: int) -> None:
+    """Receive for `seconds`, into CAPTURE."""
+    ctx = ssl.create_default_context(cafile=certifi.where())
+    CAPTURE.started = time.monotonic()
+    async with connect(URL, ssl=ctx, ping_interval=None, create_connection=PingRecorder) as ws:
+        end = CAPTURE.started + seconds
+        while (remaining := end - time.monotonic()) > 0:
+            try:
+                message = await asyncio.wait_for(ws.recv(), remaining)
+            except asyncio.TimeoutError:
+                return
+            except ConnectionClosed as closed:
+                CAPTURE.ended_by = f"the connection closing at {CAPTURE.elapsed()} s: {closed}"
+                return
+            if isinstance(message, str):
+                CAPTURE.frames.append((CAPTURE.elapsed(), message))
+            else:
+                CAPTURE.binary += 1
+
+
+def json_type(value: object) -> str:
+    return {dict: "object", list: "array", str: "string", bool: "boolean", type(None): "null"}.get(
+        type(value), "number"
+    )
+
+
+def shape_marks(raw: str) -> list[tuple[str, object]]:
+    """Every shape a frame has; it is kept if any of them is new."""
+    try:
+        frame = json.loads(raw)
+    except json.JSONDecodeError:
+        return [("unparsed", raw[:40])]
+    if not isinstance(frame, dict):
+        return [("not-an-object", type(frame).__name__)]
+    marks: list[tuple[str, object]] = [
+        ("keys", tuple(sorted((key, json_type(value)) for key, value in frame.items()))),
+        ("status", frame.get("status")),
+        ("live-ended", (frame.get("live"), frame.get("ended"))),
+        ("league", frame.get("leagueAbbreviation")),
+    ]
+    state = frame.get("eventState")
+    if isinstance(state, dict):
+        marks.append(("eventState", state.get("type")))
+    return marks
+
+
+def league_of(raw: str) -> str:
+    try:
+        return str(json.loads(raw).get("leagueAbbreviation", "unknown"))
+    except (json.JSONDecodeError, AttributeError):
+        return "unparsed"
+
+
+def slug(text: str) -> str:
+    return re.sub(r"[^a-z0-9]+", "_", text.lower()).strip("_") or "unknown"
+
+
+def main() -> None:
+    if len(sys.argv) < 2:
+        sys.exit(__doc__)
+    out = Path(sys.argv[1])
+    seconds = int(sys.argv[2]) if len(sys.argv) > 2 else 300
+    out.mkdir(parents=True, exist_ok=True)
+
+    captured_at = datetime.now(timezone.utc).strftime("%Y-%m-%d %H:%M UTC")
+    try:
+        asyncio.run(record(seconds))
+    except KeyboardInterrupt:
+        CAPTURE.ended_by = f"Ctrl-C at {CAPTURE.elapsed()} s"
+    frames = CAPTURE.frames
+
+    seen: set = set()
+    kept = []
+    for _, raw in frames:
+        new = [mark for mark in shape_marks(raw) if mark not in seen]
+        if new:
+            seen.update(new)
+            name = f"{slug(league_of(raw))}-{len(kept)}.json"
+            # Bytes, not text: no newline translation on any platform, and the
+            # received UTF-8 re-encodes exactly. No trailing newline.
+            (out / name).write_bytes(raw.encode("utf-8"))
+            kept.append((name, new))
+
+    times = [t for t, _ in frames]
+    if len(times) > 1:
+        longest_gap = f"{max(b - a for a, b in zip(times, times[1:])):.1f} s"
+    else:
+        longest_gap = "n/a, fewer than two frames"
+    leagues = Counter(league_of(raw) for _, raw in frames)
+    lines = [
+        "# Sports capture provenance",
+        "",
+        f"- Captured: {captured_at}, for up to {seconds} s, from `{URL}`",
+        f"- Ended by: {CAPTURE.ended_by}",
+        f"- Text frames: {len(frames)}; binary frames: {CAPTURE.binary}",
+        f"- Protocol pings at (s): {CAPTURE.pings}",
+        f"- Longest gap between data frames: {longest_gap}",
+        "",
+        "| League | Frames |",
+        "|---|---|",
+        *[f"| {league} | {count} |" for league, count in leagues.most_common()],
+        "",
+        "| File | New shapes |",
+        "|---|---|",
+        *[f"| `{name}` | {new} |" for name, new in kept],
+    ]
+    (out / "PROVENANCE.md").write_text("\n".join(lines) + "\n", encoding="utf-8")
+    print(f"{len(frames)} frames, {len(kept)} kept, written to {out}")
+
+
+if __name__ == "__main__":
+    main()
+```
+
+- [ ] **Step 3: README wording in `polyoxide-sports/README.md`**
+
+1. Replace `` `SportsWs` is the bare stream underneath. It yields `MatchUpdate`s and ends `` and the next line `` when its connection does. `` with:
+
+   ```markdown
+   `SportsWs` is a bare stream for callers who handle reconnects themselves. It
+   yields `MatchUpdate`s and ends when its connection does.
+   ```
+
+2. Replace `` state. The server re-sends unchanged state on a timer, so roughly half of `` and the next line `` all frames repeat the previous one for their game. `MatchUpdate` `` with:
+
+   ```markdown
+     state. The server re-sends unchanged state on a timer: in one five-minute
+     capture, 56 of 121 frames repeated the previous one for their game. `MatchUpdate`
+   ```
+
+3. Replace `- **The ended frame is sent once.** A feed` with `- **The ended frame is usually sent once.** A feed`.
+4. After the line `  feed counts them toward its 45-second staleness limit.`, add:
+
+   ```markdown
+     Pongs go out only while the stream is polled, so keep slow work out of
+     the loop: a long pause gets the connection dropped, which shows up as a
+     disconnect.
+   ```
+
+- [ ] **Step 4: Spec wording**
+
+In `docs/superpowers/specs/2026-10-01-polyoxide-sports-design.md`, replace the three lines `  live wire-agreement test will name any new top-level key; a capture during a busy` / `  window (a Saturday or Sunday afternoon UTC) should refresh the fixtures before release` / `  if one can be scheduled.` with:
+
+```markdown
+  live wire-agreement test names any new top-level key, but only for leagues live while
+  it runs, and the 06:00 UTC nightly misses these. A capture during a busy window (a
+  Saturday or Sunday afternoon UTC) is how they will be seen, and should refresh the
+  fixtures before release if one can be scheduled.
+```
+
+- [ ] **Step 5: Verify and commit**
+
+Run:
+
+```bash
+cargo fmt --all
+cargo clippy -p polyoxide-sports --all-targets --all-features -- -D warnings
+cargo test -p polyoxide-sports --all-features
+cargo test -p polyoxide-sports --doc --all-features
+python3 -m py_compile scripts/capture_sports_fixtures.py && rm -rf scripts/__pycache__
+git ls-files -s scripts/capture_sports_fixtures.py
+```
+
+Expected: clippy clean. Tests: 32 unit, 6 bare, 13 supervision, 5 live ignored, 3 doctests. The script compiles. Its mode stays `100755`. Do not run the live suite or the capture again; both ran in full for this task.
+
+```bash
+git add polyoxide-sports/tests/live_api.rs scripts/capture_sports_fixtures.py polyoxide-sports/README.md docs/superpowers/specs/2026-10-01-polyoxide-sports-design.md
+git commit -F - <<'MSG'
+test(sports): live drift detection that cannot go quiet
+
+From the P3 review. The wire test fails on binary frames instead of
+timing out as environmental, reads for 180 s with no frame cap, and
+reports close codes, raw frames and the first frame carrying each
+unmodelled key. Connect timeouts are worded so the nightly classifier
+treats them as transient. The capture script now keeps frames whose
+value types, status or live/ended pair are new, writes bytes, and saves
+what it has when the connection drops or Ctrl-C arrives.
+
+Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>
+Claude-Session: https://claude.ai/code/session_01EsF5q2Es2z3F68VQLynqmK
+MSG
+```
+
+---
+
 ### Task 13: `polyoxide ws sports`
 
 **Files:**
@@ -4282,7 +4815,7 @@ Make each change exactly:
 
     **Pings are the sports feed's liveness signal, the opposite of rtds.** The server sends a protocol PING every 15 s, and data only while a match is live, so a quiet hour has no data at all. `SupervisedSportsWs` resets its 45 s staleness timer on any inbound frame, pings included; counting only data would drop a healthy connection every quiet hour. It is a `Stream` state machine with no background task, because nothing is ever sent to this host, so the perps task shape is not needed. Pongs therefore go out only while the caller polls.
 
-    **A sports frame is state, not an event.** The server re-sends unchanged state on a timer, so about half of all frames are repeats, and the `ended: true` frame is sent once. `Event::Reconnected` tells a caller to reconcile games through gamma's `events?game_id=`; cricket's `metadataGameId` cannot be reconciled. See `docs/specs/sports/OBSERVED.md`.
+    **A sports frame is state, not an event.** The server re-sends unchanged state on a timer (56 of 121 frames in one capture were repeats), and the `ended: true` frame is usually sent once. `Event::Reconnected` tells a caller to reconcile games through gamma's `events?game_id=`; cricket's `metadataGameId` cannot be reconciled. See `docs/specs/sports/OBSERVED.md`.
     ```
 
 11. In **Publishing Order**, `core → rtds → perps → relay → gamma → data → clob → polyoxide` becomes `core → rtds → sports → perps → relay → gamma → data → clob → polyoxide`, and in the parenthetical, after `so its position only has to precede `polyoxide`;` add ` `polyoxide-sports` is the same;`.
