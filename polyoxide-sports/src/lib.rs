@@ -5,10 +5,12 @@
 
 pub mod client;
 pub mod error;
+pub mod supervised;
 pub mod update;
 
 pub use client::{SportsWs, SPORTS_WS_URL};
 pub use error::SportsError;
+pub use supervised::{Event, SportsWsBuilder, SupervisedSportsWs};
 pub use update::{GameKey, MatchUpdate};
 
 #[cfg(any(test, feature = "test-server"))]
