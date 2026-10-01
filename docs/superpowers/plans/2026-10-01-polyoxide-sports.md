@@ -4659,8 +4659,14 @@ from `nightly-schema.yml`. This host's drift detector is the live test
 | Longest gap between data frames | not measured | 12.8 s |
 | Frames identical to that game's previous frame | not measured | 56 of 121 |
 
-Neither capture overlapped NFL, NBA, MLB or NHL play, or a soccer weekend.
-Those leagues' frames are unseen.
+A third capture, 2026-10-01 at 14:11 UTC, read 176 frames over four minutes
+across cs2, challenger, dota2, fif, r6siege, cricket, atp and val. It carried
+no `eventState` and no key outside the model. It first showed
+`status: not_started`, and soccer (`fif`) frames with `elapsed` but no
+`eventState`.
+
+No capture overlapped NFL, NBA, MLB or NHL play, or a soccer weekend. Those
+leagues' frames are unseen.
 
 ## Behaviour a client must allow for
 
@@ -4670,7 +4676,7 @@ Those leagues' frames are unseen.
   a string beginning `id`, on cricket. No frame carried both.
 - **Unchanged state is re-sent.** Each live esports game was re-sent every
   20 s whether or not it changed, and tennis every 30 to 90 s.
-- **The ended frame is sent once.** 14 of 15 games that finished during the
+- **The ended frame is usually sent once.** 14 of 15 games that finished during the
   October capture produced exactly one `ended: true` frame. A client that is
   disconnected at that moment never learns the game ended.
 - **Cricket ends in sweeps.** 14 cricket matches carried the same
@@ -4678,8 +4684,8 @@ Those leagues' frames are unseen.
   never seen live. Cricket's `ended` may mean the feed dropped the match,
   not that it finished.
 - **League labels are free text.** `wta challenger` arrived with a space.
-- **Status casing varies.** `InProgress`, `inprogress`, `running` and
-  `finished` have all been seen.
+- **Status casing varies.** `InProgress`, `inprogress`, `running`,
+  `finished` and `not_started` have all been seen.
 - **`eventState` comes and goes.** It was on soccer and tennis in July, and
   on no frame in October, tennis included.
 - **Silence is normal.** When nothing is live, no data arrives at all. The
