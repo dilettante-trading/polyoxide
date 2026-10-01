@@ -23,6 +23,7 @@
   ```
 
 - Conventional commit subjects. git-cliff builds the changelog from them, and a `!` marks a breaking change.
+- Run `cargo fmt --all` before every commit. The code blocks in this plan are not wrapped the way rustfmt wants, and CI's format job fails on any difference.
 - Never create scratch or backup files inside the repository. Loom stages new files automatically, and stray ones leave ghost index entries. Use `$TMPDIR` or the session scratchpad.
 - If `rustc` dies with signal 15 or exit 254, that is earlyoom on this machine, not a code fault. Rerun with `-j 2`.
 - Doc comments may intra-link only to items that already exist when the task lands. `cargo doc` runs with `-D warnings` in CI, and a link to a missing item fails it. Use plain backticks for anything later tasks create.
