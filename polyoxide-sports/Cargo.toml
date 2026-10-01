@@ -16,8 +16,12 @@ categories = ["api-bindings", "web-programming::websocket"]
 # modules are `#[doc(hidden)]`.
 test-server = []
 
-# Tasks 6 and 8 add `[[test]]` entries here as they create those files.
-# Cargo refuses a manifest whose named test file does not exist yet.
+# These import `test_server` and `fixtures`, which exist only behind the
+# feature. `required-features` makes a plain `cargo test --all-targets` skip
+# them instead of failing to build them.
+[[test]]
+name = "bare"
+required-features = ["test-server"]
 
 [dependencies]
 tokio = { workspace = true, features = ["macros", "net", "time", "rt"] }
