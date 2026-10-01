@@ -7,8 +7,14 @@ use tokio_tungstenite::tungstenite;
 /// Everything that can go wrong on the sports feed.
 ///
 /// On the supervised stream only [`Decode`](Self::Decode) reaches the caller
-/// as an `Err`. Every other variant arrives inside [`Event::Disconnected`](crate::Event::Disconnected),
-/// after the stream has already acted on it.
+/// as an `Err`. A lost connection arrives as [`Transport`](Self::Transport),
+/// [`Closed`](Self::Closed) or [`Stale`](Self::Stale) inside
+/// [`Event::Disconnected`](crate::Event::Disconnected), after the stream has
+/// acted on it. [`Connect`](Self::Connect) and
+/// [`ConnectTimeout`](Self::ConnectTimeout) come back from
+/// [`SportsWsBuilder::connect`](crate::SportsWsBuilder::connect) for the first
+/// connection only; a failed reconnect attempt is retried and logged at
+/// `WARN` through `tracing`, not yielded.
 #[derive(Debug, thiserror::Error)]
 #[non_exhaustive]
 pub enum SportsError {

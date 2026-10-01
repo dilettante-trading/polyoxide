@@ -55,7 +55,7 @@ documents a `slug`-keyed payload and a text `"ping"`/`"pong"` every 5 seconds; n
 exists on the wire. The oracle is captured frames, and this host is excluded from
 `nightly-schema.yml`.
 
-| Fact | July 2026-07-25 (229 frames, 5 min) | October 2026-10-01 06:20 UTC (121 frames, 5 min) |
+| Fact | July 2026-07-25 (229 frames, 5 min) | October 2026-10-01 06:23 UTC (121 frames, 5 min) |
 |---|---|---|
 | Keep-alive | Protocol PING roughly every 15 s, no text ping | Protocol PING every 15.0 s from connect, no text ping |
 | Subscription | None; every live match is pushed | Same |
@@ -68,7 +68,7 @@ exists on the wire. The oracle is captured frames, and this host is excluded fro
 October findings that shape the design:
 
 - **Rebroadcast.** Each live esports game is re-sent every 20 s whether or not it changed;
-  tennis every 30 to 90 s. A frame is not a change.
+  tennis irregularly, 22 to 153 s apart. A frame is not a change.
 - **The ended frame is sent once.** 14 of 15 finished games produced exactly one
   `ended: true` frame. A reconnect across that moment never learns the game ended.
 - **Cricket sweep.** 14 cricket matches carried the same `finishedTimestamp` to the

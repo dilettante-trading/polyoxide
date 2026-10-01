@@ -12,13 +12,13 @@ from `nightly-schema.yml`. This host's drift detector is the live test
 
 | Documented | Observed |
 |---|---|
-| Payload keyed on `slug`, with `last_update` and `turn` | None of 350 captured frames carried any of them. Frames are keyed on `leagueAbbreviation` plus `gameId`, or `metadataGameId` on cricket |
+| Payload keyed on `slug`, with `last_update` and `turn` | None of 526 frames across three captures carried any of them. Frames are keyed on `leagueAbbreviation` plus `gameId`, or `metadataGameId` on cricket |
 | Text `"ping"` every 5 s, `"pong"` required within 10 s | WebSocket protocol PING frames every 15.0 s, answered by the transport. No text ping has been seen |
 | Message type `sport_result` | Frames carry no discriminator of any kind |
 
 ## Captures
 
-| | 2026-07-25 | 2026-10-01, 06:20 UTC |
+| | 2026-07-25 | 2026-10-01, 06:23 UTC |
 |---|---|---|
 | Duration | 5 min | 5 min |
 | Frames | 229 | 121 |
@@ -40,17 +40,19 @@ leagues' frames are unseen.
 ## Behaviour a client must allow for
 
 - **Required fields.** `leagueAbbreviation`, `score`, `period`, `live` and
-  `ended` were on every frame in both captures. Everything else is optional.
+  `ended` were on every frame in all three captures. Everything else is
+  optional.
 - **Two identifiers.** `gameId`, an integer, on most sports. `metadataGameId`,
   a string beginning `id`, on cricket. No frame carried both.
 - **Unchanged state is re-sent.** Each live esports game was re-sent every
-  20 s whether or not it changed, and tennis every 30 to 90 s.
+  20 s whether or not it changed. Tennis repeats came irregularly, 22 to
+  153 s apart.
 - **The ended frame is usually sent once.** 14 of 15 games that finished during the
-  October capture produced exactly one `ended: true` frame. A client that is
+  06:23 UTC capture produced exactly one `ended: true` frame. A client that is
   disconnected at that moment never learns the game ended.
-- **Cricket ends in sweeps.** 14 cricket matches carried the same
-  `finishedTimestamp` to the millisecond (`2026-10-01T06:26:58.54`), most
-  never seen live. Cricket's `ended` may mean the feed dropped the match,
+- **Cricket ends in sweeps.** 14 cricket matches carried `finishedTimestamp`
+  values within 4 ms of one another (`2026-10-01T06:26:58.537` to `.541`),
+  most never seen live. Cricket's `ended` may mean the feed dropped the match,
   not that it finished.
 - **League labels are free text.** `wta challenger` arrived with a space.
 - **Status casing varies.** `InProgress`, `inprogress`, `running`,

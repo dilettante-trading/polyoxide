@@ -25,7 +25,7 @@ directory, copy the frames worth keeping here, and list each one in
 - **2026-07-25**, 229 frames over five minutes, covering soccer, tennis,
   cricket and the lol, val, cs2, dota2 and mlbb esports titles. These five
   frames were first held as constants in `polyoxide-clob/src/ws/sports.rs`.
-- **2026-10-01, 06:20 UTC**, 121 frames over five minutes across atp, wta,
+- **2026-10-01, 06:23 UTC**, 121 frames over five minutes across atp, wta,
   wta challenger, cricket, mlbb and dota2. No frame carried `eventState`.
   Protocol pings arrived every 15.0 s, and no text ping was sent.
 - **2026-10-01, 14:11 UTC**, 176 frames over four minutes across cs2,

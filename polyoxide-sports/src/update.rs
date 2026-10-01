@@ -9,16 +9,18 @@ use serde_json::{Map, Value};
 ///
 /// # Field requiredness
 ///
-/// Modelled on frames captured on 2026-07-25 (229 frames) and 2026-10-01
-/// (121 frames). Only the five fields present on every frame are required.
+/// Modelled on frames captured on 2026-07-25 (229 frames) and in two captures
+/// on 2026-10-01 (121 and 176 frames). Only the five fields present on every
+/// frame are required.
 /// Cricket frames carry no `gameId`, `homeTeam`, `awayTeam` or `status`, and
 /// identify the match with `metadataGameId` instead. Use
 /// [`key`](Self::key) rather than either id field directly.
 ///
 /// # Frames are state, not events
 ///
-/// The server re-sends unchanged state on a timer: every 20 seconds per live
-/// esports game, and every 30 to 90 seconds for tennis. Consecutive frames
+/// The server re-sends unchanged state on a timer. When last measured, each
+/// live esports game came every 20 seconds, and tennis irregularly, 22 to 153
+/// seconds apart. Consecutive frames
 /// for one game are often identical, so a frame is not a change. Compare it
 /// with `==` against the last frame for the same [`GameKey`] to drop
 /// repeats.
@@ -28,7 +30,7 @@ use serde_json::{Map, Value};
 /// each send, which would make every rebroadcast compare unequal. No capture
 /// since has carried `eventState`, so this is unconfirmed.
 ///
-/// The frame saying a match ended is sent once. A consumer that is
+/// The frame saying a match ended is usually sent once. A consumer that is
 /// disconnected at that moment never sees it;
 /// [`Event::Reconnected`](crate::Event::Reconnected) says when that may have happened.
 ///

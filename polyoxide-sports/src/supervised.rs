@@ -32,14 +32,15 @@ pub enum Event {
     /// The connection was lost, and scores are stale from here. After
     /// [`Event::Reconnected`], each game is current again once its next
     /// frame arrives. When last measured the server re-sent esports games
-    /// every 20 s and tennis every 30 to 90 s; other sports are unmeasured.
+    /// every 20 s and tennis irregularly, 22 to 153 s apart; other sports are
+    /// unmeasured.
     Disconnected {
         /// Why the connection was given up.
         reason: SportsError,
     },
     /// A new connection is up.
     ///
-    /// The frame saying a match ended is sent once, so games that ended
+    /// The frame saying a match ended is usually sent once, so games that ended
     /// during the gap were not re-sent. Reconcile them through gamma by
     /// [`GameKey::Game`](crate::GameKey::Game). Cricket games cannot be
     /// reconciled.

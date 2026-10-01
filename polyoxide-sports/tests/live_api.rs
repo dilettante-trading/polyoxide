@@ -33,8 +33,8 @@ use tokio_tungstenite::{
 };
 
 const RECV_WINDOW: Duration = Duration::from_secs(45);
-/// How long the wire-agreement test reads: long enough for tennis's 30 to
-/// 90 s rebroadcast to come round at least twice.
+/// How long the wire-agreement test reads: long enough for most live games to
+/// be re-sent at least once, though tennis repeats have come up to 153 s apart.
 const WIRE_WINDOW: Duration = Duration::from_secs(180);
 const CONNECT_TIMEOUT: Duration = Duration::from_secs(10);
 const QUIET: &str = "if no matches are live anywhere this can legitimately time out, \

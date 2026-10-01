@@ -44,6 +44,31 @@ while let Some(event) = feed.next().await {
 `SportsWs` is a bare stream for callers who handle reconnects themselves. It
 yields `MatchUpdate`s and ends when its connection does.
 
+## Migrating from `polyoxide-clob`
+
+Until 0.36.0 the sports feed was a channel of `polyoxide-clob`'s `ws` module.
+It now lives here, and clob no longer has it.
+
+| Before, in `polyoxide_clob::ws` | Now, in `polyoxide_sports` |
+|---|---|
+| `WebSocket::connect_sports()` | `SportsWs::connect()`, or `SportsWsBuilder::new().connect()` to reconnect on its own |
+| `Channel::Sports(SportsMessage::Update(update))` | `MatchUpdate` from `SportsWs`; `Event::Update(Box<MatchUpdate>)` from the supervised stream |
+| `SportsUpdateMessage` | `MatchUpdate`, with the same field names |
+| `SportsMessage::from_json` | `MatchUpdate::from_json` |
+| `WS_SPORTS_URL` | `SPORTS_WS_URL` |
+| `WebSocketError` | `SportsError` |
+
+Details that can affect existing code:
+
+- `MatchUpdate` is `#[non_exhaustive]`, so it cannot be built with a struct
+  literal; parse it with `MatchUpdate::from_json`.
+- `extra` is a `serde_json::Map`, not a `serde_json::Value`.
+- Serialising a `MatchUpdate` omits absent optional fields rather than
+  writing `null`.
+- In the unified `polyoxide` crate, enable the `sports` feature. The prelude
+  exports `SportsWs`, `SportsWsBuilder`, `SupervisedSportsWs`, `SportsError`,
+  and the aliases `SportsEvent`, `SportsMatchUpdate` and `SportsGameKey`.
+
 ## What the feed sends
 
 - **Full state, often repeated.** Each frame is a match's whole current
