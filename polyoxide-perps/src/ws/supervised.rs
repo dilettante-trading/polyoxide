@@ -11,7 +11,7 @@ use std::{
 use futures_util::{Stream, StreamExt};
 use tokio::{
     sync::{mpsc, oneshot},
-    time::{timeout, timeout_at, Instant},
+    time::{timeout, Instant},
 };
 
 use crate::ws::{
@@ -43,9 +43,14 @@ struct Backoff {
     next: Duration,
 }
 
+/// The shortest delay. Zero would never grow, so a dead server would be
+/// retried on every timer tick.
+const MIN_BACKOFF: Duration = Duration::from_millis(1);
+
 impl Backoff {
     fn new(initial: Duration, max: Duration) -> Self {
-        let initial = initial.min(max);
+        let max = max.max(MIN_BACKOFF);
+        let initial = initial.clamp(MIN_BACKOFF, max);
         Self {
             initial,
             max,
@@ -55,7 +60,7 @@ impl Backoff {
 
     fn take(&mut self) -> Duration {
         let delay = self.next;
-        self.next = (self.next * 2).min(self.max);
+        self.next = self.next.saturating_mul(2).min(self.max);
         delay
     }
 
@@ -116,7 +121,9 @@ impl PerpsWsBuilder {
     }
 
     /// Reconnect delay schedule: `initial`, doubling to `max`. There is no
-    /// cap on reconnect attempts; only the delay is capped, at `max`.
+    /// cap on reconnect attempts; only the delay is capped, at `max`. Both
+    /// are raised to at least 1 ms, and an `initial` above `max` is lowered
+    /// to `max`.
     ///
     /// The same schedule spaces the three retries of a rate-limited
     /// subscribe, and those retries share the request's `stale_after`
@@ -423,7 +430,12 @@ async fn pump(
                 }
             }
         }
-        let deadline = (last_ping + config.ping_interval).min(last_frame + config.stale_after);
+        // A wait, not an `Instant`: a limit such as `Duration::MAX` overflows
+        // when added to one, and `timeout` falls back to a far-future deadline.
+        let wait = config
+            .ping_interval
+            .saturating_sub(last_ping.elapsed())
+            .min(config.stale_after.saturating_sub(last_frame.elapsed()));
 
         tokio::select! {
             biased;
@@ -468,7 +480,7 @@ async fn pump(
                     }
                 }
             },
-            next = timeout_at(deadline, stream.next()) => match next {
+            next = timeout(wait, stream.next()) => match next {
                 Err(_) => {
                     // A consumer that dropped the stream without `close`
                     // is only noticed when something is sent to it; check
@@ -611,6 +623,85 @@ mod tests {
         assert_eq!(b.take(), Duration::from_millis(100));
         b.after_connection_ended(false);
         assert_eq!(b.take(), Duration::from_millis(200));
+    }
+
+    #[test]
+    fn a_zero_initial_delay_still_grows() {
+        // Zero doubles to zero, which would retry a dead server on every
+        // timer tick for ever.
+        let mut b = Backoff::new(Duration::ZERO, Duration::from_secs(1));
+        assert_eq!(b.take(), Duration::from_millis(1));
+        assert_eq!(b.take(), Duration::from_millis(2));
+    }
+
+    #[test]
+    fn a_huge_delay_saturates_instead_of_panicking() {
+        let mut b = Backoff::new(Duration::MAX, Duration::MAX);
+        assert_eq!(b.take(), Duration::MAX);
+        assert_eq!(b.take(), Duration::MAX);
+    }
+
+    #[tokio::test]
+    async fn a_stale_limit_of_duration_max_means_never() {
+        // `Duration::MAX` is the usual way to say "no timeout". Adding it to
+        // an instant overflowed, which panicked the task on its first pass
+        // and ended the stream with no error. The server does not answer
+        // pings, so only the limit keeps this connection up.
+        let server = ScriptedServer::start(vec![Script {
+            pushes: vec![bbo(1), bbo(2)],
+            answer_pings: false,
+            ..Default::default()
+        }])
+        .await;
+        let mut ws = fast()
+            .stale_after(Duration::MAX)
+            .url(&server.url)
+            .connect([Channel::Bbo(InstrumentId(1))])
+            .await
+            .unwrap();
+        assert!(matches!(next_event(&mut ws).await, Event::Update(u) if u.sq == 1));
+        assert!(matches!(next_event(&mut ws).await, Event::Update(u) if u.sq == 2));
+        assert!(
+            tokio::time::timeout(Duration::from_millis(600), ws.next())
+                .await
+                .is_err(),
+            "went stale with Duration::MAX"
+        );
+        assert_eq!(server.connection_count(), 1);
+        let pings = server
+            .client_frames()
+            .iter()
+            .filter(|f| f.contains(r#""type":"ping""#))
+            .count();
+        assert!(pings >= 2, "pings stopped; saw {pings}");
+        ws.close().await.unwrap();
+    }
+
+    #[tokio::test]
+    async fn a_ping_interval_of_duration_max_means_never() {
+        let server = ScriptedServer::start(vec![Script {
+            pushes: vec![bbo(1), bbo(2)],
+            ..Default::default()
+        }])
+        .await;
+        let mut ws = fast()
+            .ping_interval(Duration::MAX)
+            .url(&server.url)
+            .connect([Channel::Bbo(InstrumentId(1))])
+            .await
+            .unwrap();
+        assert!(matches!(next_event(&mut ws).await, Event::Update(u) if u.sq == 1));
+        assert!(matches!(next_event(&mut ws).await, Event::Update(u) if u.sq == 2));
+        // With no pings nothing refreshes the 300 ms window, so staleness
+        // still replaces the connection.
+        assert!(matches!(next_event(&mut ws).await, Event::Reconnected));
+        let pings: Vec<String> = server
+            .client_frames()
+            .into_iter()
+            .filter(|f| f.contains(r#""type":"ping""#))
+            .collect();
+        assert!(pings.is_empty(), "a ping went out: {pings:?}");
+        ws.close().await.unwrap();
     }
 
     #[tokio::test]
