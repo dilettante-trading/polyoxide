@@ -1,5 +1,8 @@
+use std::io::IsTerminal;
+
 use clap::{Parser, Subcommand};
 use color_eyre::eyre::Result;
+use tracing_subscriber::EnvFilter;
 
 use polyoxide_cli::commands;
 
@@ -43,6 +46,7 @@ enum Commands {
 #[tokio::main]
 async fn main() -> Result<()> {
     color_eyre::install()?;
+    init_logging();
 
     let cli = Cli::parse();
 
@@ -57,6 +61,22 @@ async fn main() -> Result<()> {
     }
 
     Ok(())
+}
+
+/// Send the libraries' log lines to stderr, at `WARN` unless `RUST_LOG` says
+/// otherwise.
+///
+/// `WARN` is where the libraries report what they recover from on their own:
+/// a WebSocket reconnect being retried, or a `429` being waited out. Without a
+/// subscriber those lines are discarded, and a feed retrying a dead host
+/// looks exactly like a quiet one.
+fn init_logging() {
+    let filter = EnvFilter::try_from_default_env().unwrap_or_else(|_| EnvFilter::new("warn"));
+    let _ = tracing_subscriber::fmt()
+        .with_env_filter(filter)
+        .with_writer(std::io::stderr)
+        .with_ansi(std::io::stderr().is_terminal())
+        .try_init();
 }
 
 #[cfg(test)]

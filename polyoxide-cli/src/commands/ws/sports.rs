@@ -135,12 +135,13 @@ where
             }
             // `Event` is #[non_exhaustive]; a future variant is not a fault.
             Some(Ok(_)) => {}
-            // The supervised feed's only `Err`: one frame it could not read.
+            // One frame the feed could not read; it carries on.
             Some(Err(SportsError::Decode { raw, source })) => writeln!(
                 err,
                 "# skipped a frame that did not parse ({source}): {}",
                 excerpt(&raw)
             )?,
+            // A reconnect refused for good, such as a 404; the feed has ended.
             Some(Err(error)) => return Err(error.into()),
             None => {
                 writeln!(err, "The feed ended")?;

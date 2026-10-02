@@ -297,6 +297,8 @@ polyoxide ws user <MARKET_ID> --format summary --timeout 5m
 #### `ws sports`
 
 No credentials needed. Reconnects on its own; connection notices go to stderr.
+A reconnect refused in a way retrying cannot fix, such as a `404`, ends the
+command with an error.
 
 ```bash
 # Every live match in every league
@@ -374,6 +376,11 @@ The WebSocket user channel reads credentials from environment variables when fla
 | `POLYMARKET_API_PASSPHRASE`  | `ws user`  | L2 API passphrase  |
 
 The `gamma` and `data` commands are read-only and do not require authentication.
+
+`RUST_LOG` sets how much the libraries log to stderr. The default is `warn`,
+which shows what they recover from on their own, such as a reconnect being
+retried or a rate limit being waited out. `RUST_LOG=info` or `RUST_LOG=debug`
+shows more.
 
 ## License
 
