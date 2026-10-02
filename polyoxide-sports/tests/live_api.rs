@@ -15,9 +15,10 @@
 //! `nightly-schema.yml` excludes this host, because the published AsyncAPI
 //! document does not match the wire. So
 //! `live_frames_round_trip_and_carry_no_unmodelled_keys` is this host's drift
-//! detector. It sees only what is live while it runs, so the 06:00 UTC
-//! nightly misses most North American leagues and weekend soccer; a capture
-//! in a busy window covers those.
+//! detector. It sees only what is live while it runs. The 06:00 UTC nightly
+//! misses most North American leagues and weekend soccer, so the nightly also
+//! runs at 18:30 UTC on Saturday and Sunday. That run still misses NBA and NHL
+//! evening games; a capture in a busy window covers those.
 
 use std::{collections::BTreeMap, time::Duration};
 
