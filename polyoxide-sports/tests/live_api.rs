@@ -188,7 +188,7 @@ async fn live_supervised_feed_holds_past_the_stale_limit() {
                 panic!("a live frame did not parse ({source}): {raw}")
             }
             Ok(Some(Err(e))) => panic!("unexpected error: {e}"),
-            Ok(None) => panic!("a supervised feed never ends"),
+            Ok(None) => panic!("the feed ended"),
         }
     }
     longest = longest.max(last.elapsed());

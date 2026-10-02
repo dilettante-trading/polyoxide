@@ -13,7 +13,7 @@ use polyoxide_sports::{
     Event, SportsError, SportsWsBuilder, SupervisedSportsWs,
 };
 use tokio::time::{timeout, Instant};
-use tokio_tungstenite::tungstenite::Message;
+use tokio_tungstenite::tungstenite::{self, Message};
 
 const STALE: Duration = Duration::from_millis(300);
 const WINDOW: Duration = Duration::from_secs(3);
@@ -38,7 +38,7 @@ async fn next_item(feed: &mut SupervisedSportsWs) -> Result<Event, SportsError> 
     tokio::select! {
         biased;
         () = &mut deadline => panic!("no event within {WINDOW:?}"),
-        item = feed.next() => item.expect("a supervised feed never ends"),
+        item = feed.next() => item.expect("the feed ended"),
     }
 }
 
@@ -268,6 +268,60 @@ async fn the_first_connection_failure_is_returned() {
         Err(other) => panic!("expected a connect error, got {other}"),
         Ok(_) => panic!("connected to a server that drops every handshake"),
     }
+}
+
+#[tokio::test]
+async fn a_reconnect_refused_for_good_ends_the_stream() {
+    // A 404 says the request is wrong, and repeating it cannot help. Retried,
+    // it looped for as long as the feed was held, visible only in a log.
+    let server = ScriptedServer::start(vec![
+        Script::frames(&[fixtures::SOCCER]).then_close(),
+        Script::refuse_upgrade(404),
+    ])
+    .await;
+    let mut feed = builder(&server).connect().await.unwrap();
+    assert_eq!(label(next_item(&mut feed).await), "kor");
+    assert_eq!(label(next_item(&mut feed).await), "disconnected");
+    match next_item(&mut feed).await {
+        Err(SportsError::Connect { source }) => match *source {
+            tungstenite::Error::Http(response) => assert_eq!(response.status(), 404),
+            other => panic!("expected an HTTP refusal, got {other}"),
+        },
+        other => panic!("expected the refusal, got {}", label(other)),
+    }
+    assert!(
+        timeout(WINDOW, feed.next())
+            .await
+            .expect("the feed ended within the window")
+            .is_none(),
+        "the feed went on after a refusal it cannot get past"
+    );
+    // Well past the 20 ms backoff: no attempt follows the refusal.
+    tokio::time::sleep(Duration::from_millis(200)).await;
+    assert_eq!(server.connection_count(), 2);
+}
+
+#[tokio::test]
+async fn a_reconnect_refused_by_an_unwell_server_is_retried() {
+    // 503 and 429 are the host being unwell or throttling, which passes.
+    let server = ScriptedServer::start(vec![
+        Script::close_at_once(),
+        Script::refuse_upgrade(503),
+        Script::refuse_upgrade(429),
+        Script::frames(&[fixtures::SOCCER]),
+    ])
+    .await;
+    let mut feed = builder(&server)
+        .stale_after(Duration::from_secs(10))
+        .connect()
+        .await
+        .unwrap();
+    let mut labels = Vec::new();
+    for _ in 0..3 {
+        labels.push(label(next_item(&mut feed).await));
+    }
+    assert_eq!(labels, ["disconnected", "reconnected", "kor"]);
+    assert_eq!(server.connection_count(), 4);
 }
 
 #[tokio::test]

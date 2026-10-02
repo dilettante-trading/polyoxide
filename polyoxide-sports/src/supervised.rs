@@ -1,5 +1,6 @@
 //! The supervised tier: a feed that reconnects for as long as it is held,
-//! and says when its scores may be stale.
+//! unless a reconnect is refused in a way retrying cannot fix, and says when
+//! its scores may be stale.
 
 use std::{
     future::Future,
@@ -170,7 +171,10 @@ impl SportsWsBuilder {
     /// Make the first connection and start supervising.
     ///
     /// Fails if the first connection fails, so a wrong URL or a network with
-    /// no route surfaces at once. Every later failure is retried.
+    /// no route surfaces at once. Later failures are retried, except a
+    /// refusal retrying cannot fix: an HTTP status other than 408, 425, 429
+    /// or 5xx, or a malformed URL. That one is yielded as
+    /// [`SportsError::Connect`] and ends the stream.
     pub async fn connect(self) -> Result<SupervisedSportsWs, SportsError> {
         let socket = open(self.url.clone(), self.connect_timeout).await?;
         Ok(SupervisedSportsWs {
@@ -194,6 +198,8 @@ enum State {
     Waiting(Pin<Box<Sleep>>),
     /// A connection attempt in flight.
     Connecting(Attempt),
+    /// A reconnect was refused for good. The stream yields nothing more.
+    Ended,
 }
 
 impl State {
@@ -219,11 +225,16 @@ enum Step {
 
 /// A sports feed that reconnects for as long as it is held.
 ///
-/// Yields [`Event`]s. Only an undecodable frame arrives as `Err`, and the
-/// stream carries on after it. Every outage yields one
-/// [`Event::Disconnected`] when the connection is lost and one
-/// [`Event::Reconnected`] when a new one is up, however many attempts that
-/// takes. The stream never ends while held, and dropping it closes the
+/// Yields [`Event`]s. Every outage yields one [`Event::Disconnected`] when
+/// the connection is lost and one [`Event::Reconnected`] when a new one is
+/// up, however many attempts that takes. Two things arrive as `Err`:
+///
+/// - [`SportsError::Decode`], for an undecodable frame. The stream carries on.
+/// - [`SportsError::Connect`], for a reconnect refused in a way retrying
+///   cannot fix, such as a `404` or `403` on the upgrade. It follows the
+///   outage's `Disconnected`, and the stream ends after it.
+///
+/// Otherwise the stream never ends while held. Dropping it closes the
 /// connection.
 ///
 /// A connection that receives nothing, protocol pings included, for the
@@ -273,6 +284,7 @@ impl Stream for SupervisedSportsWs {
                     Poll::Ready(Err(error)) => Step::AttemptFailed(error),
                     Poll::Pending => Step::Pending,
                 },
+                State::Ended => return Poll::Ready(None),
             };
             match step {
                 Step::Pending => return Poll::Pending,
@@ -288,6 +300,11 @@ impl Stream for SupervisedSportsWs {
                     tracing::info!("reconnected to the sports feed");
                     this.state = State::reading(socket, this.config.stale_after);
                     return Poll::Ready(Some(Ok(Event::Reconnected)));
+                }
+                Step::AttemptFailed(error) if !error.retrying_can_fix() => {
+                    tracing::warn!(%error, "sports feed refused the reconnect; giving up");
+                    this.state = State::Ended;
+                    return Poll::Ready(Some(Err(error)));
                 }
                 Step::AttemptFailed(error) => {
                     let delay = this.backoff.take();

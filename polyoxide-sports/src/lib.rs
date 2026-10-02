@@ -12,7 +12,8 @@
 //! - [`SportsWs`] is a bare stream that ends when its connection does.
 //! - [`SportsWsBuilder`] builds a [`SupervisedSportsWs`], which reconnects
 //!   for as long as it is held and yields [`Event::Disconnected`] and
-//!   [`Event::Reconnected`] around every outage.
+//!   [`Event::Reconnected`] around every outage. A reconnect refused in a
+//!   way retrying cannot fix, such as a `404`, ends it with an error instead.
 //!
 //! The AsyncAPI document Polymarket publishes for this host does not match
 //! the wire. Everything here is modelled on captured frames, and the

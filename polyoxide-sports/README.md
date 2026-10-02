@@ -20,7 +20,7 @@ scores may be stale:
 
 ```no_run
 use futures_util::StreamExt;
-use polyoxide_sports::{Event, SportsWsBuilder};
+use polyoxide_sports::{Event, SportsError, SportsWsBuilder};
 
 # async fn run() -> Result<(), polyoxide_sports::SportsError> {
 let mut feed = SportsWsBuilder::new().connect().await?;
@@ -32,9 +32,10 @@ while let Some(event) = feed.next().await {
         Ok(Event::Disconnected { reason }) => eprintln!("scores are stale: {reason}"),
         Ok(Event::Reconnected) => eprintln!("reconnected"),
         Ok(_) => {}
-        // Only a frame this crate could not read arrives as an error, and
-        // the feed carries on after it.
-        Err(error) => eprintln!("skipped a frame: {error}"),
+        // A frame this crate could not read; the feed carries on.
+        Err(SportsError::Decode { source, .. }) => eprintln!("skipped a frame: {source}"),
+        // A reconnect refused for good, such as a 404. The feed ends.
+        Err(error) => return Err(error),
     }
 }
 # Ok(())

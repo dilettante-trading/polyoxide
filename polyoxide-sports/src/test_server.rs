@@ -15,7 +15,14 @@ use tokio::{
     net::{TcpListener, TcpStream},
     time::Instant,
 };
-use tokio_tungstenite::{accept_async, tungstenite::Message};
+use tokio_tungstenite::{
+    accept_async, accept_hdr_async,
+    tungstenite::{
+        handshake::server::{ErrorResponse, Request, Response},
+        http::StatusCode,
+        Message,
+    },
+};
 
 /// How the server behaves on one connection.
 #[derive(Debug, Clone, Default)]
@@ -24,6 +31,10 @@ pub struct Script {
     pub reject_handshake: bool,
     /// Accept the TCP connection and never answer the handshake.
     pub stall_handshake: bool,
+    /// Answer the WebSocket upgrade with this HTTP status instead of `101`.
+    /// It must not be a 2xx, which the handshake rejects as a malformed
+    /// refusal.
+    pub refuse_upgrade: Option<u16>,
     /// Messages to send right after the handshake, in order.
     pub send: Vec<Message>,
     /// Send a close frame after `send`. Otherwise hold the connection open.
@@ -69,6 +80,15 @@ impl Script {
     pub fn reject() -> Self {
         Self {
             reject_handshake: true,
+            ..Self::default()
+        }
+    }
+
+    /// Answer the WebSocket upgrade with an HTTP status, such as `404`, as
+    /// a server that refuses the request does.
+    pub fn refuse_upgrade(status: u16) -> Self {
+        Self {
+            refuse_upgrade: Some(status),
             ..Self::default()
         }
     }
@@ -189,6 +209,19 @@ async fn serve(
         // Hold the socket without reading it until the test ends.
         let _held = stream;
         std::future::pending::<()>().await;
+        return Ok(());
+    }
+    if let Some(status) = script.refuse_upgrade {
+        // The return type is tungstenite's `Callback` contract; it cannot be
+        // boxed.
+        #[allow(clippy::result_large_err)]
+        let refuse = move |_: &Request, _: Response| -> Result<Response, ErrorResponse> {
+            let mut refusal = ErrorResponse::new(None);
+            *refusal.status_mut() = StatusCode::from_u16(status).expect("an HTTP status");
+            Err(refusal)
+        };
+        // Writes the refusal, then reports the handshake as failed.
+        let _ = accept_hdr_async(stream, refuse).await;
         return Ok(());
     }
     let mut ws = accept_async(stream).await?;
