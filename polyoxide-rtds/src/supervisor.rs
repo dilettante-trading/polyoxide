@@ -41,15 +41,20 @@ struct Backoff {
     next: Duration,
 }
 
+/// The shortest delay. Zero would never grow, so a dead host would be
+/// retried on every timer tick.
+const MIN_BACKOFF: Duration = Duration::from_millis(1);
+
 impl Backoff {
     /// A schedule starting at `initial` and doubling towards `max`.
     ///
     /// `initial` is clamped to `max`: [`RtdsBuilder::backoff`] takes the two
     /// independently and nothing stops a caller passing them the wrong way
     /// round, which would otherwise wait the larger delay once before the
-    /// ceiling took effect.
+    /// ceiling took effect. Both are raised to [`MIN_BACKOFF`] first.
     fn new(initial: Duration, max: Duration) -> Self {
-        let initial = initial.min(max);
+        let max = max.max(MIN_BACKOFF);
+        let initial = initial.clamp(MIN_BACKOFF, max);
         Self {
             initial,
             max,
@@ -60,7 +65,7 @@ impl Backoff {
     /// The delay to wait before the next attempt, advancing the schedule.
     fn take(&mut self) -> Duration {
         let delay = self.next;
-        self.next = (self.next * 2).min(self.max);
+        self.next = self.next.saturating_mul(2).min(self.max);
         delay
     }
 
@@ -136,6 +141,8 @@ impl RtdsBuilder {
     }
 
     /// Reconnect backoff bounds. The delay doubles from `initial` up to `max`.
+    /// Both are raised to at least 1 ms, and an `initial` above `max` is
+    /// lowered to `max`.
     pub fn backoff(mut self, initial: Duration, max: Duration) -> Self {
         self.initial_backoff = initial;
         self.max_backoff = max;
@@ -436,6 +443,23 @@ mod tests {
 
             backoff.after_connection_ended(true);
             assert_eq!(backoff.take(), millis(1), "a reset must respect it too");
+        }
+
+        #[test]
+        fn a_zero_initial_delay_still_grows() {
+            // Zero doubles to zero, which would retry a dead host on every
+            // timer tick for ever.
+            let mut backoff = Backoff::new(Duration::ZERO, millis(80));
+            assert_eq!(
+                take_n(&mut backoff, 3),
+                vec![millis(1), millis(2), millis(4)]
+            );
+        }
+
+        #[test]
+        fn a_huge_delay_saturates_rather_than_panicking() {
+            let mut backoff = Backoff::new(Duration::MAX, Duration::MAX);
+            assert_eq!(take_n(&mut backoff, 2), vec![Duration::MAX, Duration::MAX]);
         }
     }
 
