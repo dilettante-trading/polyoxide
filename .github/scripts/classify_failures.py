@@ -96,6 +96,30 @@ TRANSIENT_RES: list[re.Pattern[str]] = [
     re.compile(r"\bDNS lookup failed\b", re.IGNORECASE),
     re.compile(r"\bfailed to lookup address\b", re.IGNORECASE),
     re.compile(r"\bname resolution failed\b", re.IGNORECASE),
+    # WebSocket drops. These have no `is_retriable` arm, because the HTTP
+    # client never sees them, but they are the socket's equivalent of a reset
+    # by peer or a 5xx: a server restart or a proxy dropping the connection
+    # mid-test. A drop that keeps happening is still caught, because `merge`
+    # promotes a transient that fails its retries.
+    #
+    # tungstenite reports an EOF after TLS close_notify but before a close
+    # frame as ResetWithoutClosingHandshake; rustls reports an EOF without
+    # close_notify as UnexpectedEof, with the same text in Debug and Display.
+    re.compile(r"\bResetWithoutClosingHandshake\b"),
+    re.compile(r"\bConnection reset without closing handshake\b", re.IGNORECASE),
+    re.compile(r"\bpeer closed connection without sending TLS close_notify\b"),
+    # Close codes 1001 Going Away, 1011 Internal Error, 1012 Service Restart
+    # and 1013 Try Again Later. Display spells the number after "code";
+    # polyoxide-sports' Debug wraps it in `Some(..)`, and tungstenite's
+    # CloseFrame Debug names the variant. The "code" prefix keeps a bare 1001
+    # inside a hex id from matching.
+    re.compile(r"\bcode (?:1001|1011|1012|1013)\b"),
+    re.compile(r"\bcode: Some\((?:1001|1011|1012|1013)\)"),
+    re.compile(r"\bCloseFrame \{ code: (?:Away|Error|Restart|Again)\b"),
+    # A test that cannot see a close code, because the bare stream ends
+    # without one, says this. The phrase is a convention like ENVIRONMENTAL's
+    # "legitimately time out": the retry tells a restart from a defect.
+    re.compile(r"\bserver ended the connection\b"),
 ]
 
 

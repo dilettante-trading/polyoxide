@@ -31,7 +31,9 @@ async fn reports_whether_a_second_subscribe_frame_is_accepted() {
             }
             Ok(Some(Ok(_))) => continue,
             Ok(Some(Err(err))) => panic!("stream error: {err}"),
-            Ok(None) => panic!("stream ended early"),
+            // The bare stream hides the close code; the nightly retries this
+            // phrase as a possible restart.
+            Ok(None) => panic!("the server ended the connection early"),
             Err(_) => continue,
         }
     }

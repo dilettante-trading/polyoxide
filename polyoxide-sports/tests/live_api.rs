@@ -6,7 +6,9 @@
 //!
 //! The feed carries only matches that are live somewhere. A test that waits
 //! for a frame says so when it times out, in the words the nightly
-//! classifier treats as environmental. In the wire-agreement test only a
+//! classifier treats as environmental. A bare stream that ends shows no close
+//! code, so its tests say "the server ended the connection", which the
+//! classifier retries as a possible restart. In the wire-agreement test only a
 //! window with no data frame of any kind earns those words: binary frames,
 //! which this crate does not read, fail there as a real fault.
 //!
@@ -86,7 +88,7 @@ async fn live_bare_feed_yields_a_parsed_frame() {
     let update = timeout(RECV_WINDOW, feed.next())
         .await
         .unwrap_or_else(|_| panic!("no frame within {RECV_WINDOW:?}; {QUIET}"))
-        .expect("the stream ended instead of yielding a frame")
+        .expect("the server ended the connection instead of yielding a frame")
         .expect("the frame parses");
     assert!(!update.league_abbreviation.is_empty(), "{update:?}");
     assert!(
@@ -116,8 +118,8 @@ async fn live_bare_connection_survives_the_keepalive_interval() {
             Ok(Some(Err(e))) => panic!("the connection failed after {frames} frames: {e}"),
             Ok(None) => panic!(
                 "the server ended the connection after {frames} frames, inside 40 s. An \
-                 unanswered keep-alive would do this, and so would a server restart, so \
-                 re-run before concluding which"
+                 unanswered keep-alive would do this, and so would a server restart; the \
+                 nightly retries it to tell which"
             ),
         }
     }

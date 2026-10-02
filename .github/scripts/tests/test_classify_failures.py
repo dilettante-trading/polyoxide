@@ -196,6 +196,91 @@ def test_non_retriable_arms_stay_real(label: str, text: str) -> None:
     assert classify(text) == Verdict.REAL, f"{label} was wrongly skipped as transient"
 
 
+# A WebSocket server restarting, or a proxy dropping the connection, in each
+# shape a live test's panic carries it. None is an `is_retriable` arm: these
+# are the socket's equivalent of a 5xx or a reset by peer.
+WEBSOCKET_DROPS: list[tuple[str, str]] = [
+    (
+        "reset without close / Display",
+        "disconnected after 12 updates: the sports feed connection failed: "
+        "WebSocket protocol error: Connection reset without closing handshake",
+    ),
+    (
+        "reset without close / Debug",
+        "the frame parses: Transport { source: Protocol(ResetWithoutClosingHandshake) }",
+    ),
+    (
+        "TLS EOF without close_notify",
+        "stream error: RTDS connection error: IO error: peer closed connection "
+        "without sending TLS close_notify: "
+        "https://docs.rs/rustls/latest/rustls/manual/_03_howto/index.html#unexpected-eof",
+    ),
+    (
+        "close 1012 / raw socket",
+        'the server closed the socket: code 1012, reason "restarting"',
+    ),
+    (
+        "close 1001 / SportsError Display",
+        "disconnected after 3 updates: the sports feed closed the connection "
+        "with code 1001: going away",
+    ),
+    (
+        "close 1013 / SportsError Debug",
+        'unexpected: Closed { code: Some(1013), reason: "try again later" }',
+    ),
+    (
+        "close Away / tungstenite Debug",
+        "server closed the connection: Some(CloseFrame { code: Away, "
+        'reason: Utf8Bytes(b"going away") })',
+    ),
+    (
+        "close Error / tungstenite Debug",
+        "server closed the connection: Some(CloseFrame { code: Error, "
+        'reason: Utf8Bytes(b"") })',
+    ),
+    (
+        "no close code visible",
+        "the server ended the connection after 4 frames, inside 40 s",
+    ),
+]
+
+
+@pytest.mark.parametrize("label,text", WEBSOCKET_DROPS, ids=[a[0] for a in WEBSOCKET_DROPS])
+def test_a_dropped_websocket_is_transient(label: str, text: str) -> None:
+    assert classify(text) == Verdict.TRANSIENT, f"{label} fell through to REAL"
+
+
+# Close codes and faults that say the client is at fault, or that the feed's
+# content is wrong, must stay REAL.
+WEBSOCKET_FAULTS_STAY_REAL: list[tuple[str, str]] = [
+    ("normal close", 'the server closed the socket: code 1000, reason ""'),
+    ("policy close", "the sports feed closed the connection with code 1008: policy"),
+    (
+        "policy close / Debug",
+        'server closed the connection: Some(CloseFrame { code: Policy, reason: Utf8Bytes(b"") })',
+    ),
+    (
+        "1001 inside a hex id",
+        "no book for 0xbd31dc8a20211944f6b70f31557f1001557b59905b7738480ca09bd4532f84af",
+    ),
+    ("frame did not parse", "a live frame did not parse: missing field `score`"),
+    (
+        "stale",
+        "disconnected after 2 updates: nothing received from the sports feed for 45s, "
+        "pings included",
+    ),
+]
+
+
+@pytest.mark.parametrize(
+    "label,text",
+    WEBSOCKET_FAULTS_STAY_REAL,
+    ids=[a[0] for a in WEBSOCKET_FAULTS_STAY_REAL],
+)
+def test_a_websocket_fault_stays_real(label: str, text: str) -> None:
+    assert classify(text) == Verdict.REAL, f"{label} was wrongly skipped as transient"
+
+
 def test_classify_environmental_sports_timeout() -> None:
     """live_sports_channel_yields_frames documents that it can legitimately
     time out when no matches are live anywhere; that is a fact about the
