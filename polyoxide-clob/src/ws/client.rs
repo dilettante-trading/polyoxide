@@ -6,7 +6,7 @@ use std::{
 };
 
 use futures_util::{SinkExt, Stream, StreamExt};
-use tokio::{net::TcpStream, time::interval};
+use tokio::net::TcpStream;
 use tokio_tungstenite::{client_async_tls, tungstenite::Message, MaybeTlsStream, WebSocketStream};
 
 use super::{
@@ -569,7 +569,8 @@ impl WebSocketBuilder {
     ///
     /// Connections created from this builder always send keep-alive pings while
     /// driven by [`WebSocketWithPing::run`]. This method overrides the default
-    /// 10-second interval.
+    /// 10-second interval. The interval is raised to at least 1 ms, and
+    /// `Duration::MAX` sends only the ping that opens the run.
     pub fn ping_interval(mut self, interval: Duration) -> Self {
         self.ping_interval = Some(interval);
         self
@@ -783,11 +784,17 @@ impl WebSocketWithPing {
         F: FnMut(Channel) -> Fut,
         Fut: std::future::Future<Output = Result<(), WebSocketError>>,
     {
-        let mut ping_interval = interval(self.ping_interval);
+        // Not `interval`: it panics on a zero period, and on `Duration::MAX`
+        // once a tick is late. `sleep` falls back to a far-future deadline.
+        let period = self.ping_interval.max(Duration::from_millis(1));
+        // The first ping goes out at once.
+        let ping = tokio::time::sleep(Duration::ZERO);
+        tokio::pin!(ping);
 
         loop {
             tokio::select! {
-                _ = ping_interval.tick() => {
+                () = &mut ping => {
+                    ping.set(tokio::time::sleep(period));
                     self.inner.send(Message::Text("PING".into())).await?;
                 }
                 // `self` holds a sender, so this arm never sees `None`.
@@ -1051,6 +1058,10 @@ mod dispatch_tests {
 mod membership_tests {
     use super::*;
     use futures_util::StreamExt;
+    use std::sync::{
+        atomic::{AtomicUsize, Ordering},
+        Arc,
+    };
     use tokio::net::TcpListener;
     use tokio::sync::mpsc;
 
@@ -1086,6 +1097,14 @@ mod membership_tests {
     /// `wss://`, so the connection is assembled directly, exactly as
     /// `connect_market` would.
     async fn connect_plain(port: u16, channel_type: ChannelType) -> WebSocketWithPing {
+        connect_plain_with(port, channel_type, Duration::from_secs(10)).await
+    }
+
+    async fn connect_plain_with(
+        port: u16,
+        channel_type: ChannelType,
+        ping_interval: Duration,
+    ) -> WebSocketWithPing {
         let tcp = TcpStream::connect(("127.0.0.1", port)).await.unwrap();
         let (inner, _) = tokio_tungstenite::client_async(
             format!("ws://127.0.0.1:{port}/ws/market"),
@@ -1093,7 +1112,52 @@ mod membership_tests {
         )
         .await
         .unwrap();
-        WebSocketWithPing::new(inner, channel_type, Duration::from_secs(10))
+        WebSocketWithPing::new(inner, channel_type, ping_interval)
+    }
+
+    /// A loopback WebSocket server that counts the PINGs it receives and
+    /// holds the connection open.
+    async fn ping_counting_server() -> (u16, Arc<AtomicUsize>) {
+        let listener = TcpListener::bind("127.0.0.1:0").await.unwrap();
+        let port = listener.local_addr().unwrap().port();
+        let pings = Arc::new(AtomicUsize::new(0));
+        let counted = Arc::clone(&pings);
+        tokio::spawn(async move {
+            let (stream, _) = listener.accept().await.unwrap();
+            let mut ws = tokio_tungstenite::accept_async(stream).await.unwrap();
+            while let Some(Ok(msg)) = ws.next().await {
+                if matches!(&msg, Message::Text(t) if t.as_str() == "PING") {
+                    counted.fetch_add(1, Ordering::SeqCst);
+                }
+            }
+        });
+        (port, pings)
+    }
+
+    #[tokio::test]
+    async fn a_zero_ping_interval_pings_without_panicking() {
+        // tokio's `interval` asserts a non-zero period, so this panicked the
+        // moment `run` was first polled.
+        let (port, pings) = ping_counting_server().await;
+        let ws = connect_plain_with(port, ChannelType::Market, Duration::ZERO).await;
+        let run = tokio::spawn(ws.run(|_| async { Ok(()) }));
+        tokio::time::sleep(Duration::from_millis(100)).await;
+        assert!(!run.is_finished(), "run ended: {:?}", run.await);
+        assert!(pings.load(Ordering::SeqCst) >= 2, "pings were not repeated");
+        run.abort();
+    }
+
+    #[tokio::test]
+    async fn a_duration_max_ping_interval_sends_only_the_opening_ping() {
+        // `interval` added the period to a late tick unchecked, so
+        // `Duration::MAX` could panic depending on scheduling.
+        let (port, pings) = ping_counting_server().await;
+        let ws = connect_plain_with(port, ChannelType::Market, Duration::MAX).await;
+        let run = tokio::spawn(ws.run(|_| async { Ok(()) }));
+        tokio::time::sleep(Duration::from_millis(100)).await;
+        assert!(!run.is_finished(), "run ended: {:?}", run.await);
+        assert_eq!(pings.load(Ordering::SeqCst), 1);
+        run.abort();
     }
 
     #[tokio::test]
