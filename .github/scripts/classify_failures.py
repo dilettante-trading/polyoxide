@@ -85,6 +85,14 @@ TRANSIENT_RES: list[re.Pattern[str]] = [
     re.compile(r"\bRateLimited \{"),
     re.compile(r"\bVenue \{ status: (?:408|425|5\d{2})\b"),
     re.compile(r"\bbinance answered (?:408|425|5\d{2}):"),
+    # UsdmWsError (polyoxide-binance's streams): ConnectTimeout's Debug and
+    # Display, a refused handshake's Display ("HTTP error: 503 Service
+    # Unavailable"; its Debug `status: 503` is matched above), and a server
+    # close's Display ("the server closed the connection (Some(1011): …)").
+    re.compile(r"\bConnectTimeout\("),
+    re.compile(r"\bno connection within\b"),
+    re.compile(r"\bHTTP error: (?:408|425|429|5\d{2})\b"),
+    re.compile(r"\bthe server closed the connection \(Some\((?:1001|1011|1012|1013)\)"),
     # ApiError::Timeout (HTTP 408) — Display "Request timeout"; Debug is the bare
     # unit variant, matched only through the wrapper the crate errors add, since
     # `Timeout` on its own is too common a word in ordinary panic prose.

@@ -256,6 +256,19 @@ WEBSOCKET_DROPS: list[tuple[str, str]] = [
         "no close code visible",
         "the server ended the connection after 4 frames, inside 40 s",
     ),
+    (
+        "Binance ConnectTimeout",
+        "connect: no connection within 10s (ConnectTimeout(10s))",
+    ),
+    (
+        "Binance handshake 503 / Display",
+        "connect: WebSocket transport error: HTTP error: 503 Service Unavailable",
+    ),
+    (
+        "Binance close 1011 / Display",
+        "the server closed the connection (Some(1011): Internal error)",
+    ),
+    ("Binance stream ended", "market: the server ended the connection"),
 ]
 
 
@@ -282,6 +295,23 @@ WEBSOCKET_FAULTS_STAY_REAL: list[tuple[str, str]] = [
         "stale",
         "disconnected after 2 updates: nothing received from the sports feed for 45s, "
         "pings included",
+    ),
+    (
+        "Binance close 1008 Invalid request / Display",
+        "the server closed the connection (Some(1008): Invalid request)",
+    ),
+    (
+        "Binance handshake 404 / Display",
+        "connect: WebSocket transport error: HTTP error: 404 Not Found",
+    ),
+    ("Binance pong unanswered", "pong: NoAnswer { id: 1, timeout: 10s }"),
+    (
+        "Binance kind delivered nothing",
+        'in 60 s these kinds delivered nothing: ["kline"]; last outage: Some("market: Stale")',
+    ),
+    (
+        "Binance stream sent nothing to check",
+        'market: in 10 s these streams sent no frame to check: ["btcusdt@kline_1m"]',
     ),
 ]
 
