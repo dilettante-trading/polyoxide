@@ -1976,6 +1976,8 @@ It rewrites `PROVENANCE.md` with the symbols it picked. The TradFi perpetual is 
 Run: `cargo test -j 4 -p polyoxide-binance --test wire_agreement`
 Expected: PASS, 2 tests. If it fails with `the server sent [...], which the type does not model`, Binance has added a field since 2026-10-07: model it, and add it to Task 9's `OBSERVED.md`.
 
+Code review added a follow-up commit (2638f71). The module header links `[`Decimal`]` plainly, since this task's import makes an explicit target fail rustdoc. `Filter`'s known variants are `#[non_exhaustive]`. The fixture test also fails on any `Filter::Other`, because a misspelled parse arm otherwise passes every test, and both of its `Other` checks print the offending values.
+
 - [ ] **Step 8: Commit**
 
 ```bash
