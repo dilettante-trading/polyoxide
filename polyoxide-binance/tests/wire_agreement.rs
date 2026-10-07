@@ -68,7 +68,7 @@ fn the_fixtures_cover_the_cases_the_types_exist_for() {
     };
 
     let info: ExchangeInfo = serde_json::from_str(&read("exchange_info")).unwrap();
-    use polyoxide_binance::usdm::types::{ContractType, SymbolStatus, UnderlyingType};
+    use polyoxide_binance::usdm::types::{ContractType, Filter, SymbolStatus, UnderlyingType};
     let has = |f: &dyn Fn(&polyoxide_binance::usdm::types::SymbolInfo) -> bool| {
         info.symbols.iter().any(f)
     };
@@ -94,11 +94,31 @@ fn the_fixtures_cover_the_cases_the_types_exist_for() {
     );
     // An unknown value would land in `Other` and decode fine; failing here
     // is how a value Binance adds gets modelled instead of passing silently.
+    let unnamed: Vec<_> = info
+        .symbols
+        .iter()
+        .filter(|s| {
+            matches!(s.contract_type, ContractType::Other(_))
+                || matches!(s.status, SymbolStatus::Other(_))
+                || matches!(s.underlying_type, UnderlyingType::Other(_))
+        })
+        .map(|s| (&s.symbol, &s.contract_type, &s.status, &s.underlying_type))
+        .collect();
     assert!(
-        !has(&|s| matches!(s.contract_type, ContractType::Other(_))
-            || matches!(s.status, SymbolStatus::Other(_))
-            || matches!(s.underlying_type, UnderlyingType::Other(_))),
-        "a contract type, status or underlying type the enums do not name: model it"
+        unnamed.is_empty(),
+        "values the enums do not name, model them: {unnamed:?}"
+    );
+    // The same for filters: a misspelled parse arm would otherwise turn a
+    // PRICE_FILTER into `Other`, and every other test would still pass.
+    let unnamed: Vec<&Filter> = info
+        .symbols
+        .iter()
+        .flat_map(|s| &s.filters)
+        .filter(|f| matches!(f, Filter::Other { .. }))
+        .collect();
+    assert!(
+        unnamed.is_empty(),
+        "filter types Filter does not name, model them: {unnamed:?}"
     );
 
     let funding: Vec<FundingInfo> = serde_json::from_str(&read("funding_info")).unwrap();

@@ -1,6 +1,6 @@
 //! Vocabulary and response rows for USDⓈ-M futures.
 //!
-//! Prices, quantities and rates are [`Decimal`](rust_decimal::Decimal),
+//! Prices, quantities and rates are [`Decimal`],
 //! decoded from the decimal strings Binance sends, so no value passes through
 //! an `f64`. Timestamps are Unix milliseconds. Field names are the long forms;
 //! where the wire uses one-letter keys (`aggTrades`, `depth`), they are serde
@@ -407,12 +407,14 @@ pub struct SymbolInfo {
 /// An `exchangeInfo` filter, named after its wire `filterType`.
 ///
 /// A filter type this version does not know is kept whole in [`Filter::Other`],
-/// so a new one never fails the response. A known type whose fields change
-/// still fails, which is how that drift is noticed.
+/// so a new one never fails the response. A known type that loses or retypes a
+/// field still fails; one that gains a field decodes without it, and the
+/// wire-agreement tests are what notice.
 #[derive(Debug, Clone, PartialEq)]
 #[non_exhaustive]
 pub enum Filter {
     /// `PRICE_FILTER`.
+    #[non_exhaustive]
     PriceFilter {
         /// Lowest price.
         min_price: Decimal,
@@ -422,6 +424,7 @@ pub enum Filter {
         tick_size: Decimal,
     },
     /// `LOT_SIZE`: limit orders.
+    #[non_exhaustive]
     LotSize {
         /// Smallest quantity.
         min_qty: Decimal,
@@ -431,6 +434,7 @@ pub enum Filter {
         step_size: Decimal,
     },
     /// `MARKET_LOT_SIZE`: market orders.
+    #[non_exhaustive]
     MarketLotSize {
         /// Smallest quantity.
         min_qty: Decimal,
@@ -440,16 +444,19 @@ pub enum Filter {
         step_size: Decimal,
     },
     /// `MAX_NUM_ORDERS`.
+    #[non_exhaustive]
     MaxNumOrders {
         /// Most open orders.
         limit: u32,
     },
     /// `MIN_NOTIONAL`.
+    #[non_exhaustive]
     MinNotional {
         /// Smallest order value.
         notional: Decimal,
     },
     /// `PERCENT_PRICE`.
+    #[non_exhaustive]
     PercentPrice {
         /// Highest price as a multiple of the mark price.
         multiplier_up: Decimal,
@@ -459,6 +466,7 @@ pub enum Filter {
         multiplier_decimal: Decimal,
     },
     /// `POSITION_RISK_CONTROL`.
+    #[non_exhaustive]
     PositionRiskControl {
         /// Which side's position is controlled, such as `NONE`.
         position_control_side: String,
