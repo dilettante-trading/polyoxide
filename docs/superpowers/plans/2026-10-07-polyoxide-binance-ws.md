@@ -2612,6 +2612,8 @@ Notes for the reviewer:
 Run: `cargo test -j 4 -p polyoxide-binance --features test-server --lib usdm::ws`
 Expected: PASS, 24 tests, in about a second.
 
+Code review added a follow-up commit (9ae997f). Three of the tier's guarantees had no test that could fail: matching an answer by `id`, keeping updates read during a request, and `poll_next` dropping an answer nobody awaits. `Script::hold_answer` holds one answer until the next request. `a_late_answer_is_not_taken_for_the_next_and_updates_read_meanwhile_are_kept` and `an_answer_nobody_awaits_is_not_yielded` pin all three. `a_ping_is_answered_and_unsubscribe_leaves_the_rest` now checks `streams()`, which the supervised tier replays. A request on a connection the server closed reports the close code, and the docs say the control methods are not cancel-safe. `usdm::ws` then has 26 tests.
+
 - [ ] **Step 6: Commit**
 
 ```bash
@@ -4377,7 +4379,7 @@ Run: `cargo test -j 4 -p polyoxide-binance --features test-server --test supervi
 Expected: PASS, 21 tests, in under four seconds.
 
 Run: `cargo test -j 4 -p polyoxide-binance --features test-server --lib`
-Expected: PASS, 65 tests.
+Expected: PASS, 67 tests.
 
 - [ ] **Step 5: Show the tests can fail**
 
