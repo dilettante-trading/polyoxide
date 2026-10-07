@@ -3,6 +3,8 @@
 pub mod api;
 pub mod request;
 pub mod types;
+#[cfg(feature = "ws")]
+pub mod ws;
 
 use polyoxide_core::{
     HttpClient, HttpClientBuilder, RetryConfig, DEFAULT_POOL_SIZE, DEFAULT_TIMEOUT_MS,
