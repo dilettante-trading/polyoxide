@@ -221,13 +221,22 @@ leaves.
 - REST rows named after their response (`ExchangeInfo`, `SymbolInfo`, `RateLimit`,
   `FundingInfo`, `Ticker24h`, `PremiumIndex`, `Kline`, `FundingRate`, `OpenInterest`,
   `AggTrade`, `Depth`), `Decimal` with `rust_decimal::serde::str` for prices, quantities and
-  rates, `u64` for timestamps and ids, long field names over the wire's terse keys where
-  the wire is terse (`aggTrades`). `#[non_exhaustive]`. `underlyingSubType` stays
-  `Vec<String>` (24 free-text tags on 2026-10-07). `Kline` and depth levels are positional
-  arrays on the wire and get hand-written serde.
+  rates, `u64` for timestamps and ids, `Option<u64>` where the wire sends `null`
+  (`fundingInfo`'s `updateTime` is `null` for `BTCUSDT`), long field names over the
+  wire's terse keys where the wire is terse (`aggTrades`). `#[non_exhaustive]`.
+  `underlyingSubType` stays `Vec<String>` (24 free-text tags on 2026-10-07). `Kline` and
+  depth levels are positional arrays on the wire and get hand-written serde.
 - Stream payloads are separate structs (`TickerEvent`, `MarkPriceEvent`, `AggTradeEvent`,
   `KlineEvent`, `PartialDepthEvent`, `BookTickerEvent`), because the socket uses one-letter
   keys and different fields than REST. They share the vocabulary types above, not rows.
+- Two fields the docs list and every capture carries. `st`, "(After CM migration) Symbol
+  type: 1 = UM, 2 = CM", is on every stream payload except `KlineEvent`, and becomes
+  `symbol_type: SymbolType` (`Um`, `Cm`, `Other(u8)`); every captured frame has `1`. `nq`,
+  "Normal quantity without the trades involving RPI orders", is on `AggTrade` and
+  `AggTradeEvent`, and becomes `normal_quantity: Decimal` beside `quantity`. It is
+  required: `aggTrades` refuses a window older than two days (`-4166` "Search window is
+  restricted to recent 2 days only.", 2026-10-07), so no trade from before the field
+  existed can be fetched.
 
 ### Errors
 
@@ -312,8 +321,8 @@ Methods on `&mut self`: `subscribe(&[StreamName])`, `unsubscribe(&[StreamName])`
 `list_subscriptions()`, `ping()`, `close()`. A stream for the other path is refused
 (`WrongPath`), and so is a subscribe that would pass 1024 streams (`TooManyStreams`). In
 both cases nothing is sent. Requests are batched at most 200 names each, sent no faster
-than 5 per second (half the documented limit, since 16 back to back closed the
-connection), and each waits for the answer carrying its `id`. Protocol pings are answered
+than 5 per second (half the documented 10; of 40 sent back to back, 15 were answered
+before the server closed the connection), and each waits for the answer carrying its `id`. Protocol pings are answered
 while the caller polls, as in sports.
 
 ### WebSocket, supervised tier
@@ -430,7 +439,8 @@ stream kind (arrays trimmed to two rows, depth sides to three levels), and write
 
 Every fixture deserialises, every declared field appears in at least one fixture, and
 values survive a round trip where the wire form is preserved. A price with more digits
-than an `f64` keeps survives exactly.
+than an `f64` keeps survives exactly. `funding_info.json`'s `null` `updateTime` decodes
+as `None`.
 
 ### Mock HTTP (`tests/mock_api.rs`, mockito)
 
