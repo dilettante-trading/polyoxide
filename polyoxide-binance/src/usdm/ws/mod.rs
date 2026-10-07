@@ -18,6 +18,7 @@ pub mod event;
 #[doc(hidden)]
 pub mod fixtures;
 pub mod stream;
+pub mod supervised;
 #[cfg(any(test, feature = "test-server"))]
 #[doc(hidden)]
 pub mod test_server;
@@ -31,6 +32,7 @@ pub use event::{
     Payload, SymbolType, TickerEvent, Update,
 };
 pub use stream::{DepthLevels, DepthSpeed, InvalidStreamName, StreamName};
+pub use supervised::{DisconnectReason, Event, MembershipHandle, SupervisedUsdmWs, UsdmWsBuilder};
 
 /// The production stream host.
 pub const USDM_WS_BASE: &str = "wss://fstream.binance.com";

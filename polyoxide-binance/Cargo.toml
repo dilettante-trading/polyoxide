@@ -54,3 +54,7 @@ test = true
 [[test]]
 name = "ws_wire_agreement"
 required-features = ["test-server"]
+
+[[test]]
+name = "supervision"
+required-features = ["test-server"]
