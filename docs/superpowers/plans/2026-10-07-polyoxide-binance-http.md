@@ -4852,12 +4852,14 @@ the prose pages and the wire:
 - REST pages: `https://developers.binance.com/docs/derivatives/usds-margined-futures/`
 - Stream pages: `https://developers.binance.com/en/docs/catalog/core-trading-derivatives-trading-usd-s-m-futures/api/ws-streams/`
   (`market` and `public`). The old stream URLs under the REST prefix land on a generic
-  page since 2026-10-07.
+  page as of 2026-10-07.
 
 Where the pages and the wire disagree, the wire wins and [OBSERVED.md](OBSERVED.md)
 records it. The drift detector is the live suite:
 `polyoxide-binance/tests/live_api.rs::live_responses_carry_no_unmodelled_keys` fails on any
 key the types do not model.
+A new value of an enum decodes as `Other` and is not seen, and a changed weight goes
+unseen until `weight_probe` is run by hand.
 
 ## Routes covered
 
@@ -4866,11 +4868,11 @@ key the types do not model.
 | `/fapi/v1/ping` | `usdm.health().ping()` | 1 |
 | `/fapi/v1/time` | `usdm.health().time()` | 1 |
 | `/fapi/v1/exchangeInfo` | `usdm.exchange().exchange_info()` | 1 |
-| `/fapi/v1/fundingInfo` | `usdm.exchange().funding_info()` | funding limit |
+| `/fapi/v1/fundingInfo` | `usdm.exchange().funding_info()` | funding limit, 500 per 5 minutes |
 | `/fapi/v1/ticker/24hr` | `usdm.market().ticker_24h(&s)` / `tickers_24h()` | 1 / 40 |
 | `/fapi/v1/premiumIndex` | `usdm.market().premium_index(&s)` / `premium_indices()` | 1 / 10 |
 | `/fapi/v1/klines` | `usdm.market().klines(&s, interval)` | 1 to 10 by `limit`, 5 without |
-| `/fapi/v1/fundingRate` | `usdm.market().funding_rate()` | funding limit |
+| `/fapi/v1/fundingRate` | `usdm.market().funding_rate()` | funding limit, 500 per 5 minutes |
 | `/fapi/v1/openInterest` | `usdm.market().open_interest(&s)` | 1 |
 | `/fapi/v1/aggTrades` | `usdm.market().agg_trades(&s)` | 20 |
 | `/fapi/v1/depth` | `usdm.market().depth(&s)` | 1 without `limit`, 2 to 20 with |
@@ -4884,7 +4886,8 @@ The weight table is `Route::cost` in `polyoxide-binance/src/weight.rs`, pinned b
 - `polyoxide-binance/tests/fixtures/rest/`: refreshed by
   `python3 -I scripts/capture_binance_fixtures.py polyoxide-binance/tests/fixtures`.
 - `polyoxide-binance/tests/fixtures/ws/`: stream envelopes captured 2026-10-07.
-- `probes/`: the stdlib scripts behind the design spec's measurements.
+- `probes/`: the stdlib scripts behind most of the design spec's measurements. Its
+  `capture.py` is superseded by `scripts/capture_binance_fixtures.py`.
 ````
 
 - [ ] **Step 2: Write the observations**
@@ -4894,15 +4897,18 @@ The weight table is `Route::cost` in `polyoxide-binance/src/weight.rs`, pinned b
 ````markdown
 # Binance USDⓈ-M: what the host does
 
-Measured against `fapi.binance.com` and `fstream.binance.com`. Each entry gives the date
-and the method, so it can be re-checked. The design spec is
+Measured against `fapi.binance.com` and `fstream.binance.com` on 2026-10-07 unless an
+entry says otherwise. The weights and the window name their method; the other entries are
+single requests made while writing the design spec,
 `docs/superpowers/specs/2026-10-07-polyoxide-binance-design.md`.
 
 ## Request weight
 
 Method: the rise in `X-MBX-USED-WEIGHT-1M` across back-to-back requests inside one
-minute (`docs/specs/binance/probes/probe_rest.py`, then
-`polyoxide-binance/examples/weight_probe.rs`).
+minute. `polyoxide-binance/examples/weight_probe.rs` re-measures every weighted row; the
+`klines` edges it skips (99, 499, 999, 1500) and the refusals below were probed while
+writing the design spec, with `docs/specs/binance/probes/probe_rest.py` and single
+requests.
 
 | Route | Measured 2026-10-07 | The page says |
 |---|---|---|
@@ -4915,10 +4921,11 @@ minute (`docs/specs/binance/probes/probe_rest.py`, then
 | `fundingInfo`, `fundingRate` | no header | share 500 per 5 minutes per IP |
 
 `klines` was measured at every band edge (99, 100, 101, 499, 500, 501, 999, 1000, 1001,
-1500), twice: each band is inclusive at the top, one off from the page at every edge. A
-request without `limit` returns 500 rows for 5 where an explicit `limit=500` costs 2.
+1500), twice: each band is inclusive at the top, which puts the page one off at the 100
+and 500 edges; the 1000 edge agrees. A request without `limit` returns 500 rows for 5
+where an explicit `limit=500` costs 2.
 `depth` without `limit` returns 500 levels for 1 where an explicit `limit=500` costs 10.
-A refused request still costs weight. An unknown symbol costs its route's weight: 1 on
+A request refused with `400` still costs weight. An unknown symbol costs its route's weight: 1 on
 `premiumIndex` and 20 on `aggTrades`. A `klines` limit of 1501 costs 10, and a `depth`
 limit of 7 costs 1.
 
@@ -4926,7 +4933,7 @@ limit of 7 costs 1.
 
 The UTC clock minute. On 2026-10-07 a `ping` every 3 s read 10 at 08:34:59.5 and 1 at
 08:35:02.9, then 16 at 08:35:57.3 and 1 at 08:36:00.9. A sliding 60-second window would
-have read 10, not 1, at 08:35:02.9.
+have read 10 or more, not 1, at 08:35:02.9.
 
 ## Errors
 
@@ -4945,21 +4952,22 @@ have read 10, not 1, at 08:35:02.9.
 - `fundingInfo`'s `updateTime` is `null` on 57 of 805 rows, `BTCUSDT` among them.
 - `fundingInfo` also lists COIN-M perpetuals (`BTCUSD_PERP`, `ETHUSD_PERP`, …) that
   `exchangeInfo` on this host does not, which is one reason row symbols are `String`.
-- `fundingRate`'s `markPrice` is `""` for funding events before about 2022
-  (`startTime=1568102400000` and `startTime=1640995200000` both answered `""`).
+- `fundingRate`'s `markPrice` is `""` for funding events through at least 2022-01-01
+  (`startTime=1568102400000` and `startTime=1640995200000` both answered `""`; the
+  cutoff was not located).
 - `ticker/24hr` without `symbol` lists only `TRADING` contracts (789 of 924);
   `premiumIndex` lists 927 rows.
 - The REST host accepts a lowercase symbol (`premiumIndex?symbol=btcusdt`) and answers
   with `BTCUSDT`. No listed symbol has a lowercase ASCII letter.
-- Quarterly symbols carry an underscore (`BTCUSDT_261225`). Of 924 symbols on 2026-10-07
-  no other symbol used a character other than a letter or a digit; five were
+- Quarterly symbols carry an underscore (`BTCUSDT_261225`). Of the 924 symbols in
+  `exchangeInfo` on 2026-10-07 no other symbol used a character other than a letter or a digit; five were
   Chinese-character symbols; the longest was 17 characters.
 - `underlyingType` took nine values: `COIN`, `EQUITY`, `HK_EQUITY`, `COMMODITY`,
   `KR_EQUITY`, `PREMARKET`, `INDEX`, `CN_EQUITY`, `FX`. The docs list none.
 - `aggTrades` rows carry `nq`, documented as the quantity without trades involving RPI
   orders.
 
-## What the page says and the host does not enforce
+## What the page says and the host did not refuse
 
 - `aggTrades` with both `startTime` and `endTime` "must span less than an hour": a
   two-hour window was answered `200` on 2026-10-07.
@@ -5026,7 +5034,7 @@ parameters, so the crate has its own `WeightBudget` (`src/weight.rs`) instead of
 minute its request was charged in, a separate bucket for the weightless funding routes
 (450 per 5 minutes, depth one), and a `429` or `418` held as a client-wide cooldown that
 is only ever extended. The weight table, `Route::cost`, is measured, not copied:
-Binance's page is off by one at every `klines` band edge and does not say that omitting
+Binance's page is off by one at two of the three `klines` band edges and does not say that omitting
 `limit` costs 5 on `klines` and 1 on `depth`. `cargo run -p polyoxide-binance --example
 weight_probe` re-measures it. Response rows carry symbols as `String`; `Symbol` is for
 what a caller sends, uppercases ASCII, and accepts `_` for quarterlies

@@ -111,7 +111,7 @@ The weight budget is `REQUEST_WEIGHT` 2400 per minute per IP, from `exchangeInfo
 `rateLimits`, reported on every weighted response in `X-MBX-USED-WEIGHT-1M`.
 
 Errors are `{"code": <negative int>, "msg": <string>}` on a 4xx: an unknown symbol is
-`400 {"code":-1121,"msg":"Invalid symbol."}` and costs weight 1. A 429 carries
+`400 {"code":-1121,"msg":"Invalid symbol."}` and costs its route's weight. A 429 carries
 `Retry-After` in seconds; continuing after one earns a 418, an IP ban the docs say lasts
 from 2 minutes to 3 days. A 451 means the caller's location is restricted, a 403 is the
 web application firewall. Classification is by status; the bodies of 418, 451 and 403
