@@ -157,7 +157,7 @@ polyoxide-binance/
   README.md         included as crate docs, so its examples are doctests
   src/
     lib.rs          re-exports usdm
-    error.rs        BinanceError; UsdmWsError (ws)
+    error.rs        BinanceError
     weight.rs       WeightBudget, the funding bucket, the weight table
     usdm/
       mod.rs        Usdm, UsdmBuilder, DEFAULT_BASE_URL
@@ -171,11 +171,13 @@ polyoxide-binance/
                     funding_rate, open_interest, agg_trades, depth
       ws/           feature = "ws"
         mod.rs      ensure_crypto_provider (fifth copy), USDM_WS_BASE, StreamPath
-        stream.rs   StreamName: typed constructors, path(), Display, FromStr
-        event.rs    Event, Payload and the eight payload types
+        stream.rs   StreamName, DepthLevels, DepthSpeed: path(), Display, FromStr
+        event.rs    Update, Payload and the six payload types, SymbolType
+        error.rs    UsdmWsError, Recovery
         client.rs   UsdmWs, the bare tier (one connection, one path)
         supervised.rs  UsdmWsBuilder, SupervisedUsdmWs, MembershipHandle, Backoff
         test_server.rs scripted server; cfg(test) or feature test-server
+        fixtures.rs    the captured frames as constants; cfg(test) or test-server
   examples/
     weight_probe.rs measures weights live; its unit tests pin the table (test = true)
   tests/
@@ -281,10 +283,12 @@ serialisation, URL) and adds:
 `is_retriable()` follows the last column. Bodies are clipped before they are kept, as
 `polyoxide-core` clips them for logs.
 
-`UsdmWsError`: `Connect`, `Closed { code, reason }`, `Refused { code, msg }` (an error
-answer to a request), `TooManyStreams { path, limit }` (refused client-side, never sent),
-`WrongPath { stream, path }` (bare tier only), `Frame { stream, raw }`, `Stopped`, each
-with a `Recovery` as in perps. Staleness is not an error: only the supervised tier detects
+`UsdmWsError`: `Connect`, `ConnectTimeout`, `Closed { code, reason }`, `Refused { code,
+msg }` (an error answer to a request), `NoAnswer { id, timeout }`, `Response { id, raw }`
+(a malformed answer), `TooManyStreams { path, limit }` (refused client-side, never sent),
+`WrongPath { stream, path }` (bare tier only), `Frame { stream, raw, reason }`, `Stopped`,
+each with a `Recovery` as in perps. Every variant can be built outside the crate; only the
+enum is `#[non_exhaustive]`. Staleness is not an error: only the supervised tier detects
 it, and reports it as a `DisconnectReason`.
 
 ### Weight limiter
@@ -321,30 +325,43 @@ and uses only `HttpClient`'s public API.
 
 ### WebSocket: streams and paths
 
-`StreamName` is the only way to name a stream:
+`StreamName` is the only way to name a stream. It is an enum, as prader-rs's contract
+matches on its variants:
 
-| Constructor | Wire name | Path |
+| Variant | Wire name | Path |
 |---|---|---|
-| `all_tickers()` | `!ticker@arr` | market |
-| `all_mark_prices()` | `!markPrice@arr@1s` | market |
-| `agg_trade(symbol)` | `<s>@aggTrade` | market |
-| `kline(symbol, interval)` | `<s>@kline_<i>` | market |
-| `mark_price(symbol)` | `<s>@markPrice@1s` | market |
-| `ticker(symbol)` | `<s>@ticker` | market |
-| `partial_depth(symbol, levels, speed)` | `<s>@depth<5\|10\|20>@<100ms\|250ms\|500ms>` | public |
-| `book_ticker(symbol)` | `<s>@bookTicker` | public |
+| `AllTickers` | `!ticker@arr` | market |
+| `AllMarkPrices` | `!markPrice@arr@1s` | market |
+| `AggTrade(Symbol)` | `<s>@aggTrade` | market |
+| `Kline(Symbol, Interval)` | `<s>@kline_<i>` | market |
+| `MarkPrice(Symbol)` | `<s>@markPrice@1s` | market |
+| `Ticker(Symbol)` | `<s>@ticker` | market |
+| `PartialDepth(Symbol, DepthLevels, DepthSpeed)` | `<s>@depth<5\|10\|20>@<100ms\|250ms\|500ms>` | public |
+| `BookTicker(Symbol)` | `<s>@bookTicker` | public |
 
-`<s>` is the symbol lowercased, so an uppercase name cannot be built. `Display` renders
-the wire name and `FromStr` parses an echoed one; the two round-trip under a property test.
-`path()` says which connection carries the stream. A frame's symbol comes from its
-payload's `s`, which keeps Binance's case.
+`<s>` is the symbol with its ASCII letters lowercased, so an uppercase name cannot be
+built. `Display` renders the wire name and `FromStr` parses an echoed one, refusing an
+uppercase symbol; since `Symbol::new` uppercases ASCII, the two round-trip for every
+variant. `path()` says which connection carries the stream. A payload's symbol is a
+`String` from its `s`, in the listing's case.
+
+`Update::from_json(&str)` decodes one combined-stream envelope, failing with
+`UsdmWsError::Frame`, and an `Update` serialises back to its envelope, so the CLI's JSON
+output is the frame as sent, less the kline's `B`, which Binance documents as "Ignore".
+`Payload` has one variant per stream kind plus `Unknown { event_type, raw }`, for an
+object whose event type is not its stream's: kept whole rather than failing the frame,
+and the live suite fails on one. Each payload carries `symbol_type: SymbolType` from `st`
+(`Um`, `Cm`, `Other(u64)`) except the kline event, which has none; COIN-M rows do arrive
+on this host (30 of 745 in one `!markPrice@arr@1s` frame, and `AAVEUSD_PERP` in
+`!ticker@arr`). A mark-price row with no funding scheduled sends `T: 0` and
+`r: "0.00000000"` (51 of 745 rows), so `next_funding_time: u64` reads 0 as none.
 
 ### WebSocket, bare tier
 
 `UsdmWs::connect(path, streams)` connects to one path with a 10 s timeout and sends one
 `SUBSCRIBE`. It implements `Stream<Item = Result<Update, UsdmWsError>>`, where
 `Update { stream: StreamName, payload: Payload }` and `Payload` has one variant per stream
-kind plus `Unknown { stream, raw }`. Both are `#[non_exhaustive]`.
+kind plus `Unknown { event_type, raw }`. Both are `#[non_exhaustive]`.
 
 Methods on `&mut self`: `subscribe(&[StreamName])`, `unsubscribe(&[StreamName])`,
 `list_subscriptions()`, `ping()`, `close()`. A stream for the other path is refused
@@ -385,16 +402,27 @@ nothing until the first `subscribe`. Each task:
 - reports an error answer to the membership call that sent it. Code 4 ("Too many
   subscriptions") cannot happen, because the cap is enforced before sending.
 
-`Event` is `Update(Update)`, `Disconnected { path, reason }` or `Reconnected { path }`,
-where `DisconnectReason` is `Closed { code, reason }`, `Error(UsdmWsError)`, `Stale` or
-`Rotation`. A
-consumer drops book state for that path on `Reconnected` and can show staleness from
-`Disconnected`, which `polyoxide-perps` does not offer today. Its consumers infer outages
-from silence instead.
+`Event` is `Update(Box<Update>)` (boxed, as sports boxes its update, because the other
+variants are small), `Disconnected { path, reason }` or `Reconnected { path }`, where
+`DisconnectReason` is `Closed { code, reason }`, `Error(UsdmWsError)`, `Stale` or
+`Rotation`. A consumer drops book state for that path on `Reconnected` and can show
+staleness from `Disconnected`, which `polyoxide-perps` does not offer today. Its consumers
+infer outages from silence instead.
+
+Every `Disconnected { path }` is followed by `Reconnected { path }` while the client
+runs. prader-rs folds per-path outages into one state on that invariant, so it holds even
+when the path's last stream leaves during the outage: the task stops reconnecting and
+yields `Reconnected`, since nothing on the path can then be stale. A path that closes
+for want of streams while up yields neither. A fatal error, such as the server refusing
+the replay after a reconnect, is yielded as `Err` and ends the stream.
 
 `MembershipHandle::subscribe` and `unsubscribe` take `StreamName`s and route each to its
 path. The membership is a set: subscribing a name twice holds it once, and reference
-counting is the caller's.
+counting is the caller's. During a path's outage a change is recorded and answered `Ok`
+at once, and the replay applies it. A change that opens a path waits for that path's first
+connect: a refusal fails the call, and a transport failure is answered `Ok` and reported
+as an outage like any other. A call fails only with `Refused`, `TooManyStreams` or
+`Stopped`.
 
 ### CLI
 
@@ -409,7 +437,8 @@ polyoxide ws binance [--symbol BTCUSDT,币安人生USDT]
   `Interval` spelling. `--symbol` and `--kind` are `Vec<String>` with
   `value_delimiter = ','`, per CLAUDE.md's clap note. Each symbol goes through
   `Symbol::new`, each kind through a parser naming the valid kinds.
-- Updates go to stdout, one line each in pretty mode, compact JSON in json mode.
+- Updates go to stdout: in pretty mode one line each, and one per row of an array stream;
+  in json mode the frame's envelope as compact JSON, one per line.
   `Disconnected` and `Reconnected` go to stderr. `-n` counts printed updates, `-t` exits 0
   when it elapses.
 - Filtering and output live in `run_with(events, stdout, stderr)`, generic over any
@@ -450,8 +479,8 @@ each supervision and limiter test going red.
 `scripts/capture_binance_fixtures.py OUT_DIR` records one response per route (with
 `exchangeInfo` trimmed to a crypto perpetual, a Chinese-character perpetual, a TradFi
 perpetual, a `SETTLING` perpetual and a quarterly) and one combined-stream envelope per
-stream kind (arrays trimmed to two rows, depth sides to three levels), and writes
-`PROVENANCE.md`. It keeps every top-level key: the 2026-10-07 captures handed over with
+stream kind (an array keeps a USDⓈ-M row with a scheduled funding time and, when the
+frame has one, a COIN-M row; depth sides keep three levels), and writes `PROVENANCE.md`. It keeps every top-level key: the 2026-10-07 captures handed over with
 this spec built `exchangeInfo` from chosen keys and dropped `futuresType`
 (`"U_MARGINED"`), so the HTTP plan re-captures them.
 
