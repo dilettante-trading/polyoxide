@@ -262,7 +262,7 @@ leaves.
   keys and different fields than REST. They share the vocabulary types above, not rows.
 - Two fields the docs list and every capture carries. `st`, "(After CM migration) Symbol
   type: 1 = UM, 2 = CM", is on every stream payload except `KlineEvent`, and becomes
-  `symbol_type: SymbolType` (`Um`, `Cm`, `Other(u8)`); every captured frame has `1`. `nq`,
+  `symbol_type: SymbolType` (`Um`, `Cm`, `Other(u64)`); the handover's fixture rows have `1`, and live array frames carry `2` on COIN-M rows. `nq`,
   "Normal quantity without the trades involving RPI orders", is on `AggTrade` and
   `AggTradeEvent`, and becomes `normal_quantity: Decimal` beside `quantity`. It is
   required: `aggTrades` refuses a window older than two days (`-4166` "Search window is

@@ -1592,6 +1592,8 @@ Expected: PASS, 14 tests.
 Run: `cargo test -j 4 -p polyoxide-binance --features test-server --test ws_wire_agreement --test wire_agreement`
 Expected: PASS, 1 and 2 tests.
 
+Code review added a follow-up commit (8fb967f). A round trip proves each payload's key set, not which field a key lands in: swapping bid and ask on the book ticker, or the mark and estimated settle prices, passed every test. `each_field_holds_the_value_of_its_own_key` compares each field with its own key in the raw frame, so it holds for any capture, Task 6's included. The docs say COIN-M rows count contracts, and that their `quote_volume` is base-asset volume. They also say the two array streams check no row's `e`, and that one bad row fails the whole frame. `usdm::ws` then has 15 tests.
+
 - [ ] **Step 5: Commit**
 
 ```bash
@@ -2608,7 +2610,7 @@ Notes for the reviewer:
 - [ ] **Step 5: Run the tests**
 
 Run: `cargo test -j 4 -p polyoxide-binance --features test-server --lib usdm::ws`
-Expected: PASS, 23 tests, in about a second.
+Expected: PASS, 24 tests, in about a second.
 
 - [ ] **Step 6: Commit**
 
@@ -4375,7 +4377,7 @@ Run: `cargo test -j 4 -p polyoxide-binance --features test-server --test supervi
 Expected: PASS, 21 tests, in under four seconds.
 
 Run: `cargo test -j 4 -p polyoxide-binance --features test-server --lib`
-Expected: PASS, 64 tests.
+Expected: PASS, 65 tests.
 
 - [ ] **Step 5: Show the tests can fail**
 
