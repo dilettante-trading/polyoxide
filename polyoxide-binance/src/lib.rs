@@ -2,3 +2,6 @@
 //! (`fapi.binance.com`).
 
 pub mod usdm;
+pub mod weight;
+
+pub use weight::WeightBudget;
