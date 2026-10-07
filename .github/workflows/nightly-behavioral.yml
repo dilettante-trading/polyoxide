@@ -38,8 +38,9 @@ jobs:
       fail-fast: false
       matrix:
         # `flags` selects each crate's live test binaries (and any features
-        # they need). polyoxide-clob's and polyoxide-perps's WebSocket tests
-        # live in a separate `live_ws` binary behind the non-default `ws` feature.
+        # they need). polyoxide-clob's, polyoxide-perps's and polyoxide-binance's
+        # WebSocket tests live in a separate `live_ws` binary behind the
+        # non-default `ws` feature.
         #
         # `live_session_keys` gets its own row because its registry and
         # transaction waits can legitimately take ~25 minutes, which would

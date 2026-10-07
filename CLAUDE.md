@@ -72,8 +72,8 @@ polyoxide-sports        (live sports scores WebSocket — depends on NOTHING in-
 
 Note: `polyoxide-cli` does **not** depend on the unified `polyoxide` crate. It depends directly on the component crates — `polyoxide-clob` (with `ws`), `polyoxide-data`, `polyoxide-gamma`, `polyoxide-rtds`, `polyoxide-sports` and `polyoxide-binance` (with `ws`) — plus `polyoxide-core` and `polyoxide-relay` only under the optional `keychain` feature.
 
-The CLI's `ws` group streams `market` and `user` (clob), `prices` (rtds) and `sports`
-(`polyoxide-sports`). `ws sports` takes comma-separated `--league` and `--game` filters and
+The CLI's `ws` group streams `market` and `user` (clob), `prices` (rtds), `sports`
+(`polyoxide-sports`) and `binance` (`polyoxide-binance`). `ws sports` takes comma-separated `--league` and `--game` filters and
 `--changes-only`. Its `run_with` takes any event stream, so `polyoxide-cli/tests/ws_sports.rs`
 drives every flag with captured frames.
 
@@ -268,7 +268,8 @@ market data on `fapi.binance.com` (`Usdm::new()`, namespaces `health()`, `exchan
 `polyoxide` umbrella crate or `full`. Binance publishes no OpenAPI or AsyncAPI for
 USDⓈ-M, so `docs/specs/binance/` is not a mirror: `OBSERVED.md` records what the host
 does, `nightly-schema.yml` has nothing to diff, and
-`tests/live_api.rs::live_responses_carry_no_unmodelled_keys` is the drift detector.
+`tests/live_api.rs::live_responses_carry_no_unmodelled_keys` is the REST drift detector and
+`tests/live_ws.rs::live_frames_carry_no_unmodelled_keys` the streams'.
 Binance limits each IP by request *weight*, which depends on the route and its
 parameters, so the crate has its own `WeightBudget` (`src/weight.rs`) instead of core's
 `RateLimiter`: the UTC clock minute at 2160 of the published 2400 (the tenth core's
@@ -291,7 +292,7 @@ which is why four rate-limit examples pin `.gzip(false)`.
 With the `ws` feature `polyoxide-binance` also streams eight USDⓈ-M market streams on
 `fstream.binance.com`: `UsdmWs` (one connection on one path) and
 `UsdmWsBuilder`/`SupervisedUsdmWs` (one connection per routed path, `/market` or
-`/public`, since a stream subscribed on the wrong path delivers nothing; pings on the wall
+`/public`, since a stream on the wrong path may deliver nothing; pings on the wall
 clock; staleness counting pongs and the server's pings; reconnect with a paced replay;
 rotation at 23 h 50 min, under Binance's 24-hour cutoff). Binance acknowledges every
 `SUBSCRIBE`, unknown and uppercase names and an explicit `@250ms` depth included (a

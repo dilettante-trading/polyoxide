@@ -181,7 +181,7 @@ file a false-positive PR.
 ## Testing the machinery itself
 
 The helper scripts are a `uv` project with a pytest suite
-(`.github/scripts/tests/`, 32 tests) that runs on every PR via the
+(`.github/scripts/tests/`) that runs on every PR via the
 `CI Scripts` job in `ci.yml`. The design history — including the latent bugs
 found before first deployment (nextest's experimental-JSON opt-in, the
 binary-qualified name mismatch) — is recorded in

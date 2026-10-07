@@ -78,7 +78,9 @@ have read 10 or more, not 1, at 08:35:02.9.
 ## Streams
 
 Measured on `fstream.binance.com` on 2026-10-07 with `probes/probe_ws.py`,
-`probe_ws2.py` and `probe_ws_ping.py`, and from full frames read while planning.
+`probe_ws2.py` and `probe_ws_ping.py`, and from full frames read while planning. The depth
+speed, non-ASCII and legacy-path rows come from single live probes with no stored script.
+The limits were measured on `/market`; `/public` is assumed to share them.
 
 | Rule | Documented | Measured on `/market` |
 |---|---|---|

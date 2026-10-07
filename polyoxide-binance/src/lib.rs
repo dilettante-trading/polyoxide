@@ -1,5 +1,6 @@
 //! Rust client for Binance USDⓈ-M futures public market data
-//! (`fapi.binance.com`).
+//! (`fapi.binance.com`) and, with the `ws` feature, its market streams
+//! (`fstream.binance.com`).
 //!
 //! No credentials are needed. Every request is charged against a
 //! [`WeightBudget`], because Binance limits each IP by request *weight*, which

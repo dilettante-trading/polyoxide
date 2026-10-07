@@ -6,7 +6,7 @@ license.workspace = true
 authors.workspace = true
 repository.workspace = true
 rust-version.workspace = true
-description = "Rust client library for Binance USDⓈ-M futures public market data"
+description = "Rust client library for Binance USDⓈ-M futures market data and streams"
 keywords = ["binance", "futures", "perpetuals", "market-data"]
 categories = ["api-bindings", "web-programming::http-client"]
 
