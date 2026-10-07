@@ -85,20 +85,21 @@ impl BinanceError {
                     code: venue.code,
                     msg: clip(&venue.msg),
                 },
-                Err(_) => Self::Api(ApiError::from_status_and_body(status, &clip(body))),
+                Err(_) => Self::Api(core_error(status, body)),
             },
         }
     }
 
     /// Whether re-sending the same request could plausibly succeed.
     ///
-    /// A `429` and a 5xx are; a ban, a region block and a firewall refusal are
-    /// not, because sending again does not change them, and sending after a
-    /// `418` lengthens the ban.
+    /// A `429`, and a `408`, `425` or 5xx however its body is shaped, are, as
+    /// core's `ApiError::is_retriable` says for those statuses. A ban, a region
+    /// block and a firewall refusal are not: sending again does not change
+    /// them, and sending after a `418` lengthens the ban.
     pub fn is_retriable(&self) -> bool {
         match self {
             Self::Api(err) => err.is_retriable(),
-            Self::Venue { status, .. } => *status >= 500,
+            Self::Venue { status, .. } => matches!(*status, 408 | 425) || *status >= 500,
             Self::RateLimited { .. } => true,
             Self::IpBanned { .. } | Self::RegionBlocked { .. } | Self::Forbidden { .. } => false,
         }
@@ -121,8 +122,9 @@ impl BinanceError {
     }
 }
 
-/// Parses `Retry-After` as seconds, whole or fractional. Zero, negative and
-/// unparsable values are `None`; anything past [`MAX_COOLDOWN`] is clamped to it.
+/// Parses `Retry-After` as seconds, whole or fractional. Zero, negative,
+/// non-finite and unparsable values, and any that round to zero, are `None`;
+/// anything past [`MAX_COOLDOWN`] is clamped to it.
 pub(crate) fn retry_after_secs(value: Option<&str>) -> Option<Duration> {
     let secs = value?.trim().parse::<f64>().ok()?;
     if !secs.is_finite() || secs <= 0.0 {
@@ -131,6 +133,22 @@ pub(crate) fn retry_after_secs(value: Option<&str>) -> Option<Duration> {
     Some(Duration::from_secs_f64(
         secs.min(MAX_COOLDOWN.as_secs_f64()),
     ))
+    .filter(|wait| !wait.is_zero())
+}
+
+/// Core's classification of a body in some other shape, read whole so its
+/// `error` or `message` field is found, then clipped.
+fn core_error(status: u16, body: &str) -> ApiError {
+    match ApiError::from_status_and_body(status, body) {
+        ApiError::Api { status, message } => ApiError::Api {
+            status,
+            message: clip(&message),
+        },
+        ApiError::Authentication(message) => ApiError::Authentication(clip(&message)),
+        ApiError::Validation(message) => ApiError::Validation(clip(&message)),
+        ApiError::RateLimit(message) => ApiError::RateLimit(clip(&message)),
+        other => other,
+    }
 }
 
 fn clip(text: &str) -> String {
@@ -182,12 +200,17 @@ mod tests {
             matches!(&firewall, BinanceError::Forbidden { msg } if msg == "<html>denied</html>")
         );
         assert!(!firewall.is_retriable());
+
+        let firewall_json = BinanceError::from_response_parts(403, None, body);
+        assert!(matches!(firewall_json, BinanceError::Forbidden { .. }));
     }
 
     #[test]
     fn a_5xx_venue_error_is_retriable_and_a_4xx_is_not() {
         let body = r#"{"code":-1001,"msg":"Internal error; unable to process your request."}"#;
         assert!(BinanceError::from_response_parts(503, None, body).is_retriable());
+        assert!(BinanceError::from_response_parts(500, None, body).is_retriable());
+        assert!(!BinanceError::from_response_parts(499, None, body).is_retriable());
         assert!(!BinanceError::from_response_parts(400, None, body).is_retriable());
     }
 
@@ -203,13 +226,51 @@ mod tests {
     }
 
     #[test]
-    fn bodies_are_clipped_before_they_are_kept() {
-        let body = "x".repeat(10_000);
-        let BinanceError::Forbidden { msg } = BinanceError::from_response_parts(403, None, &body)
-        else {
-            panic!("a 403 is Forbidden");
+    fn every_kept_body_is_clipped() {
+        let long = "x".repeat(10_000);
+        let venue = format!(r#"{{"code":-1121,"msg":"{long}"}}"#);
+        let kept = |err: BinanceError| match err {
+            BinanceError::Venue { msg, .. }
+            | BinanceError::RegionBlocked { msg }
+            | BinanceError::Forbidden { msg } => msg,
+            BinanceError::Api(ApiError::Api { message, .. }) => message,
+            other => panic!("unexpected {other:?}"),
         };
-        assert!(msg.len() < 600, "kept {} bytes", msg.len());
+        for err in [
+            BinanceError::from_response_parts(400, None, &venue),
+            BinanceError::from_response_parts(451, None, &long),
+            BinanceError::from_response_parts(403, None, &long),
+            BinanceError::from_response_parts(502, None, &long),
+        ] {
+            let msg = kept(err);
+            assert!(
+                msg.len() <= 512 + "... [truncated]".len(),
+                "kept {} bytes",
+                msg.len()
+            );
+        }
+    }
+
+    #[test]
+    fn core_reads_a_long_json_body_before_it_is_clipped() {
+        let body = format!(r#"{{"message":"short","pad":"{}"}}"#, "p".repeat(600));
+        let err = BinanceError::from_response_parts(502, None, &body);
+        assert!(
+            matches!(&err, BinanceError::Api(ApiError::Api { status: 502, message }) if message == "short"),
+            "{err:?}"
+        );
+    }
+
+    #[test]
+    fn venue_and_api_errors_agree_on_retriability() {
+        // A status classifies the same whether or not the body had Binance's
+        // shape, so a retry policy does not depend on which layer answered.
+        let body = r#"{"code":-1,"msg":"x"}"#;
+        for status in [400u16, 401, 404, 408, 409, 425, 500, 502, 503, 504] {
+            let venue = BinanceError::from_response_parts(status, None, body);
+            let api = ApiError::from_status_and_body(status, "x");
+            assert_eq!(venue.is_retriable(), api.is_retriable(), "status {status}");
+        }
     }
 
     #[test]
@@ -219,7 +280,7 @@ mod tests {
             retry_after_secs(Some(" 1.5 ")),
             Some(Duration::from_millis(1500))
         );
-        for junk in ["0", "-3", "soon", "NaN", "inf"] {
+        for junk in ["0", "-3", "soon", "NaN", "inf", "0.0000000004", "1e400"] {
             assert_eq!(retry_after_secs(Some(junk)), None, "{junk:?}");
         }
         assert_eq!(retry_after_secs(None), None);
