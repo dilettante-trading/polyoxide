@@ -711,6 +711,8 @@ Notes for the reviewer:
 Run: `cargo test -j 4 -p polyoxide-binance --lib`
 Expected: PASS, 4 tests.
 
+Code review added two tests in a follow-up commit, which pin the wire spellings and `Symbol`'s character counting and ASCII-only uppercasing. From here on the crate has 6 vocabulary tests, and every later count below includes them.
+
 - [ ] **Step 6: Commit**
 
 ```bash
@@ -1817,7 +1819,7 @@ Notes for the reviewer:
 - `Kline` drops the twelfth element Binance documents as "ignore" and tolerates more; `Level` is a `[price, quantity]` pair. Both serialise decimals with `to_string`, which keeps the wire's scale (`"84142.00"`).
 
 Run: `cargo test -j 4 -p polyoxide-binance --lib`
-Expected: PASS, 9 tests.
+Expected: PASS, 11 tests.
 
 - [ ] **Step 4: Watch the handover fixture fail**
 
@@ -2586,7 +2588,7 @@ Notes for the reviewer:
 - [ ] **Step 4: Run the tests**
 
 Run: `cargo test -j 4 -p polyoxide-binance --lib`
-Expected: PASS, 19 tests. Dead-code warnings are expected until Task 6 calls the budget: `Charge` is never constructed, `funding_interval`, `cooldown_until` and `next_funding` are never read, and `acquire`, `try_charge`, `record_used`, `begin_cooldown`, `await_cooldown` and `reserve_funding_slot` are never used.
+Expected: PASS, 21 tests. Dead-code warnings are expected until Task 6 calls the budget: `Charge` is never constructed, `funding_interval`, `cooldown_until` and `next_funding` are never read, and `acquire`, `try_charge`, `record_used`, `begin_cooldown`, `await_cooldown` and `reserve_funding_slot` are never used.
 
 - [ ] **Step 5: Show the tests can fail**
 
@@ -2902,7 +2904,7 @@ Notes for the reviewer:
 - [ ] **Step 4: Run the tests**
 
 Run: `cargo test -j 4 -p polyoxide-binance --lib`
-Expected: PASS, 26 tests. `never used` warnings for `from_response_parts` and `retry_after_secs` are expected until Task 6.
+Expected: PASS, 28 tests. `never used` warnings for `from_response_parts` and `retry_after_secs` are expected until Task 6.
 
 - [ ] **Step 5: Commit**
 
@@ -4270,7 +4272,7 @@ let b = Usdm::builder().weight_budget(budget).build()?;
 - [ ] **Step 6: Run everything**
 
 Run: `cargo test -j 4 -p polyoxide-binance --all-targets && cargo test -j 4 -p polyoxide-binance --doc`
-Expected: PASS: 29 unit tests, 19 in `mock_api`, 2 in `wire_agreement`, 3 doctests. `a_418_is_not_retried_and_holds_the_next_request` and `a_429_cools_down_then_succeeds` each take about a second; `a_high_used_weight_header_holds_the_next_request` may first wait up to three seconds to stay clear of a minute boundary.
+Expected: PASS: 31 unit tests, 19 in `mock_api`, 2 in `wire_agreement`, 3 doctests. `a_418_is_not_retried_and_holds_the_next_request` and `a_429_cools_down_then_succeeds` each take about a second; `a_high_used_weight_header_holds_the_next_request` may first wait up to three seconds to stay clear of a minute boundary.
 
 - [ ] **Step 7: Show the send loop's tests can fail**
 
