@@ -4562,6 +4562,13 @@ async fn live_responses_carry_no_unmodelled_keys() {
 Run: `cargo test -j 4 -p polyoxide-binance --test live_api -- --ignored`
 Expected: PASS, 4 tests, in about 12 seconds.
 
+Code review added two follow-up commits:
+
+- **f727235.** The weight header check could fail at a minute boundary, and it passed with the header never read, because the client's own two charges made 2. It now uses two clients with their own budgets, so a count of 2 can only come from the server, and a pair that straddles a minute is sent again. `raw` has a 30 s deadline, and it spells a failed status as core does (`API error: 503 Service Unavailable`), which the nightly classifier reads as transient; reqwest's `error_for_status` prose read as real. The drift detector also checks that kline rows have 12 values and book levels 2, since positional rows have no keys.
+- **023121b.** The nightly classifier learns `BinanceError`'s retriable arms: `RateLimited { .. }`, and a `Venue` 408, 425 or 5xx in both renderings. Twelve pytest rows pin them, and the non-retriable arms stay real.
+
+Whether a `451` from a US runner is environmental is settled in Task 11.
+
 - [ ] **Step 3: Commit**
 
 ```bash
