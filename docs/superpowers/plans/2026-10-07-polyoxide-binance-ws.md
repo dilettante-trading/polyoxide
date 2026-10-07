@@ -4613,6 +4613,8 @@ required-features = ["ws"]
 Run: `cargo test -j 4 -p polyoxide-binance --features ws --test live_ws -- --ignored`
 Expected: PASS, 4 tests, in about 25 seconds.
 
+Code review added two follow-up commits. The raw-frame loop ended silently on a timeout or a close, so a host that sent nothing passed. Now (b881c0c) it fails naming any stream that sent no frame to check. It also checks each book level's length (`LEVEL_VALUES`) and fails on an unknown `SymbolType`. The every-kind test no longer calls a missing kind a quiet market: that phrase classified as environmental, and eight BTCUSDT streams are never all quiet. It names the missing kinds and the last outage instead. Every failure prints its error's Display and Debug, so that the nightly classifies it. The raw connect has a deadline and uses `USDM_WS_BASE`, and the quiet test's staleness window is 8 s. The classifier also learns `UsdmWsError`'s `ConnectTimeout`, a refused handshake's Display and a server close's Display, pinned by nine pytest rows (5137f2f).
+
 - [ ] **Step 3: Commit**
 
 ```bash
