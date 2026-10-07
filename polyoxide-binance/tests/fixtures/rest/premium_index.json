@@ -1,0 +1,32 @@
+[
+ {
+  "symbol": "BTCUSDT",
+  "markPrice": "84141.40000000",
+  "indexPrice": "84182.79282609",
+  "estimatedSettlePrice": "84290.32607029",
+  "lastFundingRate": "-0.00004200",
+  "interestRate": "0.00010000",
+  "nextFundingTime": 1791360000000,
+  "time": 1791354113000
+ },
+ {
+  "symbol": "TSLAUSDT",
+  "markPrice": "378.74000000",
+  "indexPrice": "378.57295711",
+  "estimatedSettlePrice": "378.66880085",
+  "lastFundingRate": "0.00000000",
+  "interestRate": "0.00000000",
+  "nextFundingTime": 1791360000000,
+  "time": 1791354112307
+ },
+ {
+  "symbol": "币安人生USDT",
+  "markPrice": "0.48683834",
+  "indexPrice": "0.48680952",
+  "estimatedSettlePrice": "0.48747529",
+  "lastFundingRate": "0.00005000",
+  "interestRate": "0.00010000",
+  "nextFundingTime": 1791360000000,
+  "time": 1791354113000
+ }
+]
