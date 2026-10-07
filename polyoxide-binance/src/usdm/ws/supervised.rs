@@ -186,7 +186,9 @@ impl UsdmWsBuilder {
 
     /// Silence after which a connection is presumed dead and replaced. Pongs
     /// and the server's pings count, so a quiet connection that answers stays
-    /// up. Also bounds each request's wait for its answer.
+    /// up. Also bounds each request's wait for its answer. A connection whose
+    /// task is parked behind a full event buffer reads nothing, so a consumer
+    /// that stops polling for longer than this sees it reported `Stale`.
     pub fn stale_after(mut self, stale_after: Duration) -> Self {
         self.stale_after = stale_after;
         self
@@ -311,7 +313,8 @@ enum PathCommand {
 /// would pass 1024 streams on a path ([`UsdmWsError::TooManyStreams`], nothing
 /// sent), when the first connect of a path it opens fails in a way retrying
 /// cannot fix ([`UsdmWsError::Connect`]), or when the client has stopped
-/// ([`UsdmWsError::Stopped`]).
+/// ([`UsdmWsError::Stopped`]). A subscription of more than 200 names is sent
+/// in batches, so one refused part-way may leave the earlier batches applied.
 ///
 /// A call waits for the path task, which cannot take it while parked behind a
 /// full event buffer (1024 unread events). Make membership changes from a task

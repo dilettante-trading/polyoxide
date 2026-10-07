@@ -66,3 +66,7 @@ required-features = ["test-server"]
 [[test]]
 name = "live_ws"
 required-features = ["ws"]
+
+# docs.rs documents the streams too; `test-server` stays out of the docs.
+[package.metadata.docs.rs]
+features = ["ws"]

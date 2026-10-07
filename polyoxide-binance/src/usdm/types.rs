@@ -2,8 +2,8 @@
 //!
 //! Prices, quantities and rates are [`Decimal`],
 //! decoded from the decimal strings Binance sends, so no value passes through
-//! an `f64`. Timestamps are Unix milliseconds. Field names are the long forms;
-//! where the wire uses one-letter keys (`aggTrades`, `depth`), they are serde
+//! an `f64`. Timestamps are Unix milliseconds. Where the wire uses one-letter
+//! keys (`aggTrades`, `depth`), fields take spelled-out names through serde
 //! renames.
 
 use std::{fmt, str::FromStr};
@@ -699,7 +699,8 @@ impl Serialize for Filter {
 #[serde(rename_all = "camelCase")]
 #[non_exhaustive]
 pub struct FundingInfo {
-    /// The contract.
+    /// The contract. This host's list also carries COIN-M perpetuals
+    /// (`BTCUSD_PERP`), which `exchangeInfo` here does not.
     pub symbol: String,
     /// Highest funding rate.
     #[serde(with = "rust_decimal::serde::str")]
@@ -787,7 +788,7 @@ pub struct PremiumIndex {
     /// Interest rate.
     #[serde(with = "rust_decimal::serde::str")]
     pub interest_rate: Decimal,
-    /// Next funding event.
+    /// Next funding event, or `0` for a contract with none scheduled.
     pub next_funding_time: u64,
     /// When the values were computed.
     pub time: u64,

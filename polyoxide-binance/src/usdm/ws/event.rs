@@ -377,7 +377,7 @@ pub enum Payload {
     Unknown {
         /// The payload's `e`, or empty when it has none.
         event_type: String,
-        /// The payload as sent.
+        /// The payload, re-serialised: its values as sent, its keys sorted.
         raw: String,
     },
 }
