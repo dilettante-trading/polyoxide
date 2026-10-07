@@ -6033,6 +6033,8 @@ with
 Run: `grep -n 'polyoxide-binance' .github/workflows/nightly-behavioral.yml`
 Expected: the row with `--features ws --test live_api --test live_ws`.
 
+Code review added a follow-up commit (df241a5). The README's stream example now skips a `SkipFrame` error instead of ending the loop, says that the pairing holds while the client runs, and gives the `ws` feature line. The crate description, the lib docs and the README intro name the streams. CLAUDE.md lists `ws binance` in the `ws` group, names both drift detectors, and no longer claims an unmeasured wrong-path silence. OBSERVED says which rows had no stored probe, and that `/public`'s limits are assumed.
+
 - [ ] **Step 5: The full gate**
 
 ```bash
