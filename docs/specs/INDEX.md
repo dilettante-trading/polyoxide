@@ -40,7 +40,7 @@ Not Polymarket hosts. Read by a polyoxide crate for consumers that trade both ve
 
 | API | Base URL | Description | Crate |
 |-----|----------|-------------|-------|
-| [Binance USDⓈ-M](binance/INDEX.md) | `https://fapi.binance.com` | Futures public market data. No published spec, so not a mirror | `polyoxide-binance` |
+| [Binance USDⓈ-M](binance/INDEX.md) | `https://fapi.binance.com`, `wss://fstream.binance.com` | Futures public market data and market streams. No published spec, so not a mirror | `polyoxide-binance` (streams behind `ws`) |
 
 ## Hosts with no upstream spec
 

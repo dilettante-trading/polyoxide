@@ -10,7 +10,7 @@ Rust SDK toolkit for Polymarket APIs. It includes library crates for use in your
 | Crate | Description |
 |-------|-------------|
 | [polyoxide](./polyoxide) | Unified client for Polymarket APIs (CLOB, Gamma, Data, WebSocket) |
-| [polyoxide-binance](./polyoxide-binance) | Client library for Binance USDⓈ-M futures public market data (not part of the unified crate) |
+| [polyoxide-binance](./polyoxide-binance) | Client library for Binance USDⓈ-M futures market data and streams (not part of the unified crate) |
 | [polyoxide-cli](./polyoxide-cli) | CLI tool for querying Polymarket APIs |
 | [polyoxide-clob](./polyoxide-clob) | Client library for Polymarket CLOB (order book) API |
 | [polyoxide-core](./polyoxide-core) | Core utilities and shared types |

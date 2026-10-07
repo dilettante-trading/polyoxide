@@ -60,7 +60,7 @@ polyoxide-core          (shared: auth, HTTP client, errors, macros)
 ├── polyoxide-gamma     (read-only market data API)
 ├── polyoxide-data      (read-only user positions/trades API)
 ├── polyoxide-perps     (perpetual futures: public market data; auth and trading pending)
-├── polyoxide-binance   (Binance USDⓈ-M futures public market data; not in the umbrella crate)
+├── polyoxide-binance   (Binance USDⓈ-M futures market data and streams; not in the umbrella crate)
 ├── polyoxide-clob      (order book trading, depends on core; gamma optional, default-on)
 │   └── polyoxide        (unified client re-exporting clob/gamma/data/rtds/perps/sports, feature-gated)
 ├── polyoxide-cli       (CLI tool using clap)
@@ -70,12 +70,19 @@ polyoxide-rtds          (RTDS crypto price streams — depends on NOTHING in-wor
 polyoxide-sports        (live sports scores WebSocket — depends on NOTHING in-workspace)
 ```
 
-Note: `polyoxide-cli` does **not** depend on the unified `polyoxide` crate. It depends directly on the component crates — `polyoxide-clob` (with `ws`), `polyoxide-data`, `polyoxide-gamma`, `polyoxide-rtds` and `polyoxide-sports` — plus `polyoxide-core` and `polyoxide-relay` only under the optional `keychain` feature.
+Note: `polyoxide-cli` does **not** depend on the unified `polyoxide` crate. It depends directly on the component crates — `polyoxide-clob` (with `ws`), `polyoxide-data`, `polyoxide-gamma`, `polyoxide-rtds`, `polyoxide-sports` and `polyoxide-binance` (with `ws`) — plus `polyoxide-core` and `polyoxide-relay` only under the optional `keychain` feature.
 
 The CLI's `ws` group streams `market` and `user` (clob), `prices` (rtds) and `sports`
 (`polyoxide-sports`). `ws sports` takes comma-separated `--league` and `--game` filters and
 `--changes-only`. Its `run_with` takes any event stream, so `polyoxide-cli/tests/ws_sports.rs`
 drives every flag with captured frames.
+
+`ws binance` streams Binance USDⓈ-M market data through `polyoxide-binance`'s supervised
+tier. `--symbol` and `--kind` are comma-separated, and each kind is streamed for each
+symbol; `--all-tickers` and `--all-mark-prices` add the two array streams. Outage markers
+go to stderr, and `--format json` prints each frame's envelope. Its `run_with` takes any
+event stream, and `polyoxide-cli/tests/ws_binance.rs` drives it with the crate's captured
+frames (`polyoxide_binance::usdm::ws::fixtures`, feature `test-server`).
 
 The CLI installs a `tracing` subscriber that writes to stderr at `warn`, and `RUST_LOG`
 overrides the level. That is how the libraries' recoveries become visible: a reconnect being
@@ -281,6 +288,24 @@ this crate turns it on (`exchangeInfo` is 1.15 MB raw, 51 KB gzipped); with reqw
 `gzip` feature on workspace-wide, any client built without core would ask for gzip,
 which is why four rate-limit examples pin `.gzip(false)`.
 
+With the `ws` feature `polyoxide-binance` also streams eight USDⓈ-M market streams on
+`fstream.binance.com`: `UsdmWs` (one connection on one path) and
+`UsdmWsBuilder`/`SupervisedUsdmWs` (one connection per routed path, `/market` or
+`/public`, since a stream subscribed on the wrong path delivers nothing; pings on the wall
+clock; staleness counting pongs and the server's pings; reconnect with a paced replay;
+rotation at 23 h 50 min, under Binance's 24-hour cutoff). Binance acknowledges every
+`SUBSCRIBE`, unknown and uppercase names and an explicit `@250ms` depth included (a
+250 ms partial depth is the bare `<s>@depth<N>`), and enforces its rules by closing the
+connection (on the 1025th stream, or after about 15 requests in a burst), so the client
+enforces them first: `StreamName` is the only way to name a stream, and a connection
+carries at most 1024 streams, 200 names per request, one request per 200 ms. Every
+`Event::Disconnected { path }` is followed by `Event::Reconnected { path }` while the
+client runs, even when the path's last stream leaves mid-outage; prader-rs folds outages
+on that invariant, and `tests/supervision.rs` and `tests/supervision_edges.rs` pin it.
+COIN-M rows (`st: 2`) arrive on this host and count contracts, not USDT, so they do not sum
+with USDⓈ-M rows. The offline tests drive the scripted server in `src/usdm/ws/test_server.rs` (feature
+`test-server`), which also exposes the captured frames as `usdm::ws::fixtures`.
+
 **Data API v2** (`data-v2/`, 20 endpoints under `/v2` on `data-api.polymarket.com`)
 is implemented by `polyoxide-data` as `data.v2()`, alongside the v1 routes, which
 upstream says keep working. v2 uses a different contract: a `data` envelope,
@@ -366,7 +391,7 @@ Mock HTTP tests use `mockito` (workspace dev-dependency). Each crate with mock t
 
 Two GitHub Actions workflows run at `0 6 * * *` UTC and on `workflow_dispatch`. The behavioral one also runs on Saturday and Sunday at 18:30 UTC (`30 18 * * 6,0`). The sports feed carries only what is live, and 06:00 UTC misses North American leagues and weekend soccer, which the drift detector would otherwise never see. That run covers the whole matrix, so its clean result may close the issue.
 
-- `.github/workflows/nightly-behavioral.yml` — runs `--ignored` live tests across every crate with a live suite (gamma, data, clob incl. `live_ws` under `--features ws`, clob session keys, relay, rtds, perps incl. `live_ws`, sports, binance, cli). Failures are classified by `.github/scripts/classify_failures.py` into:
+- `.github/workflows/nightly-behavioral.yml` — runs `--ignored` live tests across every crate with a live suite (gamma, data, clob incl. `live_ws` under `--features ws`, clob session keys, relay, rtds, perps incl. `live_ws`, sports, binance incl. `live_ws`, cli). Failures are classified by `.github/scripts/classify_failures.py` into:
   - **auth-gated** (matches the `POLYMARKET_* env vars required` / `POLYMARKET_PRIVATE_KEY required` panics) — silently skipped
   - **environmental** (test says the world can't provide signal right now, e.g. the sports feed with no live matches — matches `legitimately time out` — or Binance refusing a US runner's location with a 451) — logged and skipped
   - **transient** (HTTP 429/5xx, connection refused, timeouts, DNS) — retried up to 2× with `cargo nextest --retries 2`. A dropped WebSocket also counts: a reset without a closing handshake, a TLS EOF without `close_notify`, close codes 1001/1011/1012/1013, or a test's own "server ended the connection", which the sports and rtds tests write where the bare stream hides the close code.
@@ -384,7 +409,7 @@ Most crates follow a consistent layout:
 - `types.rs` — domain types
 - `api/` — namespace modules, one file per API group (markets, orders, etc.)
 
-**WebSocket** support for the CLOB lives in `polyoxide-clob/src/ws/` (not core), feature-gated behind `ws` (not enabled by default in polyoxide-clob; default = `["gamma"]`). Two channels: `WebSocket::connect_market(asset_ids)` (public) and `WebSocket::connect_user(condition_ids, credentials)` (authenticated). Implements `futures_util::Stream`. `WebSocketBuilder` provides auto-ping keep-alive for long-running connections. The Perps socket (`polyoxide-perps/src/ws/`, feature `ws`), RTDS (`polyoxide-rtds`) and the sports feed (`polyoxide-sports`) are separate protocols in their own crates, each with its own `ensure_crypto_provider` copy.
+**WebSocket** support for the CLOB lives in `polyoxide-clob/src/ws/` (not core), feature-gated behind `ws` (not enabled by default in polyoxide-clob; default = `["gamma"]`). Two channels: `WebSocket::connect_market(asset_ids)` (public) and `WebSocket::connect_user(condition_ids, credentials)` (authenticated). Implements `futures_util::Stream`. `WebSocketBuilder` provides auto-ping keep-alive for long-running connections. The Perps socket (`polyoxide-perps/src/ws/`, feature `ws`), RTDS (`polyoxide-rtds`), the sports feed (`polyoxide-sports`) and Binance's market streams (`polyoxide-binance/src/usdm/ws/`, feature `ws`) are separate protocols in their own crates, each with its own `ensure_crypto_provider` copy.
 
 Three market events — `best_bid_ask`, `new_market`, `market_resolved` — are withheld by the server unless the subscription sets `custom_feature_enabled`. Use `WebSocket::connect_market_with(ids, MarketSubscriptionOptions::default().with_custom_features())` to receive them. `MarketMessage` and `Channel` are `#[non_exhaustive]`, since upstream adds event types over time.
 

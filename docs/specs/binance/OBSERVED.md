@@ -77,6 +77,34 @@ have read 10 or more, not 1, at 08:35:02.9.
 
 ## Streams
 
-Recorded in the design spec's venue contract (1024 streams per connection, about 15
-requests back to back before a close, every `SUBSCRIBE` acknowledged, server pings about
-every 180 s) and moved here by the WebSocket plan.
+Measured on `fstream.binance.com` on 2026-10-07 with `probes/probe_ws.py`,
+`probe_ws2.py` and `probe_ws_ping.py`, and from full frames read while planning.
+
+| Rule | Documented | Measured on `/market` |
+|---|---|---|
+| Streams per connection | 1024 | 1024 accepted. The 1025th is answered `{"error":{"code":4,"msg":"Too many subscriptions"}}`, then the server closes with 1008 "Invalid request", losing all 1024 |
+| Incoming messages | 10 per second | 15 back-to-back requests all answered; of 40 sent back to back, 15 were answered, then a close with 1008 "Too many requests" |
+| Acknowledgement | | Every `SUBSCRIBE` is acknowledged: an unknown symbol, a stream type that does not exist, an uppercase symbol. `LIST_SUBSCRIPTIONS` echoes them. An `UNSUBSCRIBE` of a name never subscribed is acknowledged |
+| Case | Symbols in stream names are lowercase | `BTCUSDT@aggTrade` is acknowledged and delivers nothing; `btcusdt@aggTrade` delivers |
+| Server ping | Every 3 minutes; no pong for 10 minutes disconnects | Pings at 140 s and 320 s on a quiet connection, payload a millisecond timestamp |
+| Client ping | | Answered in about 0.3 s |
+| Request size | | 200 names in one `SUBSCRIBE` acknowledged |
+| Non-ASCII symbols | | Raw UTF-8 in `SUBSCRIBE` accepted; the stream name is echoed exactly |
+| Depth speed | `<s>@depth<levels>` for 250 ms, or with `@100ms` or `@500ms` | `@250ms` is acknowledged and delivers nothing, at every level; the bare name pushes every 250 ms. Every kline interval from `1m` to `1M` delivers |
+| Paths | `/public` for depth and book tickers, `/market` for the rest | The legacy `/stream` served depth but sent nothing for `!markPrice@arr@1s` |
+| Connection lifetime | 24 hours | Not measured; the supervised tier rotates at 23 h 50 min |
+
+So an acknowledgement proves nothing about a stream's validity, and a name that will never
+deliver looks like a quiet one. `StreamName` builds every name, and both tiers enforce the
+cap, 200 names per request and one request per 200 ms before sending.
+
+Payloads:
+
+- `!markPrice@arr@1s` sends two frames a second (745 and 217 rows). A row with no funding
+  scheduled (51 of 745, delisted contracts) sends `T: 0` and `r: "0.00000000"`. `ap` is
+  the "mark price moving average", equal to `p` on every row seen.
+- `!ticker@arr` sends only the symbols that changed: 226 rows in one frame.
+- `st`, "(After CM migration) Symbol type: 1 = UM, 2 = CM", is on every payload but the
+  kline event. COIN-M rows arrive on this USDⓈ-M host: 30 of 745 mark-price rows, and
+  `AAVEUSD_PERP` in `!ticker@arr`.
+- The kline's `B` is documented as "Ignore" and is not modelled.

@@ -7,7 +7,7 @@ umbrella crate.
 | Surface | Host | Crate |
 |---|---|---|
 | REST, public market data | `https://fapi.binance.com` | `polyoxide-binance` (`Usdm`) |
-| Market streams | `wss://fstream.binance.com/{market,public}/stream` | the WebSocket plan, not yet implemented |
+| Market streams | `wss://fstream.binance.com/{market,public}/stream` | `polyoxide-binance` with the `ws` feature (`UsdmWs`, `UsdmWsBuilder`) |
 
 **This directory is not a mirror.** Binance publishes no OpenAPI or AsyncAPI document for
 USDⓈ-M futures (`github.com/binance/binance-api-swagger` holds `spot_api.yaml` only), so
@@ -20,9 +20,9 @@ the prose pages and the wire:
   page as of 2026-10-07.
 
 Where the pages and the wire disagree, the wire wins and [OBSERVED.md](OBSERVED.md)
-records it. The drift detector is the live suite:
-`polyoxide-binance/tests/live_api.rs::live_responses_carry_no_unmodelled_keys` fails on any
-key the types do not model.
+records it. The drift detectors are the live suites:
+`polyoxide-binance/tests/live_api.rs::live_responses_carry_no_unmodelled_keys` and
+`live_ws.rs::live_frames_carry_no_unmodelled_keys` fail on any key the types do not model.
 A new enum value or filter type decodes as `Other` and is not seen, and a changed weight
 goes unseen until `weight_probe` is run by hand.
 
@@ -46,10 +46,24 @@ The weight table is `Route::cost` in `polyoxide-binance/src/weight.rs`, pinned b
 `documented_weights` test and re-measured live by
 `cargo run -p polyoxide-binance --example weight_probe`.
 
+## Streams covered
+
+| Stream | `StreamName` | Path | `Payload` |
+|---|---|---|---|
+| `!ticker@arr` | `AllTickers` | market | `Tickers(Vec<TickerEvent>)` |
+| `!markPrice@arr@1s` | `AllMarkPrices` | market | `MarkPrices(Vec<MarkPriceEvent>)` |
+| `<s>@aggTrade` | `AggTrade(symbol)` | market | `AggTrade(AggTradeEvent)` |
+| `<s>@kline_<interval>` | `Kline(symbol, interval)` | market | `Kline(KlineEvent)` |
+| `<s>@markPrice@1s` | `MarkPrice(symbol)` | market | `MarkPrice(MarkPriceEvent)` |
+| `<s>@ticker` | `Ticker(symbol)` | market | `Ticker(TickerEvent)` |
+| `<s>@depth<5\|10\|20>`, then `@100ms`, `@500ms` or nothing (250 ms) | `PartialDepth(symbol, levels, speed)` | public | `PartialDepth(PartialDepthEvent)` |
+| `<s>@bookTicker` | `BookTicker(symbol)` | public | `BookTicker(BookTickerEvent)` |
+
 ## Fixtures and probes
 
 - `polyoxide-binance/tests/fixtures/rest/`: refreshed by
   `python3 -I scripts/capture_binance_fixtures.py polyoxide-binance/tests/fixtures`.
-- `polyoxide-binance/tests/fixtures/ws/`: stream envelopes captured 2026-10-07.
+- `polyoxide-binance/tests/fixtures/ws/`: stream envelopes, refreshed by the same script and
+  compiled into `polyoxide_binance::usdm::ws::fixtures` under `test-server`.
 - `probes/`: the stdlib scripts behind most of the design spec's measurements. Its
-  `capture.py` is superseded by `scripts/capture_binance_fixtures.py`.
+  `capture.py` and `capture_ws.py` are superseded by `scripts/capture_binance_fixtures.py`.

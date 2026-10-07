@@ -247,7 +247,7 @@ polyoxide data live-volume --event-id 42,43
 
 ### WebSocket
 
-Stream real-time market, user and sports updates.
+Stream real-time market, user and sports updates, and Binance futures market data.
 
 #### `ws market`
 
@@ -311,6 +311,25 @@ polyoxide ws sports --game 1712005,id2704098174740616
 # Drop the server's repeated frames, print JSON, stop after 10 updates
 polyoxide ws sports --changes-only --format json -n 10
 ```
+
+#### `ws binance`
+
+Binance USDⓈ-M futures market data. No credentials needed. Each `--kind` is streamed for
+each `--symbol`; connection notices go to stderr.
+
+```bash
+# Every symbol's mark price and funding, each second
+polyoxide ws binance --all-mark-prices
+
+# Trades and hourly klines for two symbols
+polyoxide ws binance --symbol BTCUSDT,ETHUSDT --kind agg-trade,kline-1h
+
+# Top 20 book levels every 100 ms, as JSON envelopes, stop after 10 updates
+polyoxide ws binance --symbol BTCUSDT --kind depth20 --format json -n 10
+```
+
+Kinds: `agg-trade`, `book-ticker`, `depth5`, `depth10`, `depth20`, `kline-<interval>`
+(`1m` to `1M`), `mark-price`, `ticker`.
 
 ---
 
