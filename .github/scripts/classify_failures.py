@@ -29,13 +29,23 @@ AUTH_GATED_RE = re.compile(r"POLYMARKET_(?:\*|[A-Z_]+) (?:env vars )?required", 
 # same run won't change the world, and filing an issue would be a false
 # positive — so these are logged and skipped, like auth-gated tests.
 #
-# Two shapes so far: the sports channel's `legitimately time out`, and the
+# Three shapes so far. The sports channel's `legitimately time out`. The
 # order-placing tests refusing to post because no open market's book satisfies
 # their price precondition (`no qualifying market` from the selection helper,
-# `no suitable market` from a test's own guard). The phrase is required in
-# full — a bare `market` would swallow most genuine CLOB failures.
+# `no suitable market` from a test's own guard); the phrase is required in
+# full — a bare `market` would swallow most genuine CLOB failures. And Binance
+# refusing the caller's location with HTTP 451: GitHub's hosted runners run in
+# US regions, which Binance is reported not to serve, so there its live suites
+# can only report the block. It is skipped, not filed, and the suites still run
+# wherever Binance serves the caller. The 451 is matched in each spelling a
+# panic carries: `BinanceError::RegionBlocked` (Display and Debug), the live
+# suite's `API error: 451 Unavailable For Legal Reasons`, a refused stream
+# handshake's Display (`HTTP error: 451 Unavailable For Legal Reasons`) and its
+# Debug (`Response { status: 451, .. }`).
 ENVIRONMENTAL_RE = re.compile(
-    r"legitimately time out|no (?:qualifying|suitable) market",
+    r"legitimately time out|no (?:qualifying|suitable) market"
+    r"|does not serve this location \(451\)|\bRegionBlocked \{"
+    r"|\b451 Unavailable For Legal Reasons\b|\bstatus: 451\b",
     re.IGNORECASE,
 )
 

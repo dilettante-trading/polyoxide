@@ -54,6 +54,7 @@ jobs:
           - { crate: polyoxide-rtds,  suite: live,         timeout: 15, flags: "--test live_api" }
           - { crate: polyoxide-sports, suite: live,        timeout: 20, flags: "--test live_api" }
           - { crate: polyoxide-perps, suite: live,         timeout: 15, flags: "--features ws --test live_api --test live_ws" }
+          - { crate: polyoxide-binance, suite: live,       timeout: 15, flags: "--test live_api" }
           - { crate: polyoxide-cli,   suite: live,         timeout: 15, flags: "--test live_api" }
     steps:
       - uses: actions/checkout@v5

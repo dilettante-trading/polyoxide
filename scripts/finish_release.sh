@@ -22,6 +22,10 @@ echo "📦 Publishing polyoxide-perps..."
 cargo publish -p polyoxide-perps
 echo "✅ polyoxide-perps published"
 
+echo "📦 Publishing polyoxide-binance..."
+cargo publish -p polyoxide-binance
+echo "✅ polyoxide-binance published"
+
 echo "📦 Publishing polyoxide-relay..."
 cargo publish -p polyoxide-relay
 echo "✅ polyoxide-relay published"

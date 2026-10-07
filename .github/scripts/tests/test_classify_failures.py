@@ -336,6 +336,49 @@ def test_classify_environmental_no_suitable_market() -> None:
     assert classify(text) == Verdict.ENVIRONMENTAL
 
 
+# Binance refuses a caller in a place it does not serve with HTTP 451, on REST
+# and on the stream handshake. Every spelling a Binance live test's panic can
+# carry it in is environmental.
+BINANCE_REGION_BLOCKS: list[tuple[str, str]] = [
+    (
+        "RegionBlocked / Display",
+        "live_x: binance does not serve this location (451): "
+        "Service unavailable from a restricted location",
+    ),
+    (
+        "RegionBlocked / Debug",
+        'live_x: RegionBlocked { msg: "Service unavailable from a restricted location" }',
+    ),
+    ("raw status", "/fapi/v1/time: API error: 451 Unavailable For Legal Reasons"),
+    (
+        "handshake / Display",
+        "live_x: WebSocket transport error: HTTP error: 451 Unavailable For Legal Reasons",
+    ),
+    (
+        "handshake / Debug",
+        "live_x: Connect(Http(Response { status: 451, version: HTTP/1.1, headers: {} }))",
+    ),
+]
+
+
+@pytest.mark.parametrize(
+    "label,text", BINANCE_REGION_BLOCKS, ids=[a[0] for a in BINANCE_REGION_BLOCKS]
+)
+def test_a_binance_region_block_is_environmental(label: str, text: str) -> None:
+    assert classify(text) == Verdict.ENVIRONMENTAL, f"{label} was not skipped"
+
+
+def test_other_binance_refusals_are_not_environmental() -> None:
+    """A firewall refusal or a ban is about how this client behaved, not where
+    it runs, so each still files an issue."""
+    for text in (
+        "live_x: binance's firewall refused the request (403): <html>",
+        "live_x: IpBanned { retry_after: None }",
+        "/fapi/v1/time: API error: 403 Forbidden",
+    ):
+        assert classify(text) == Verdict.REAL, text
+
+
 def test_classify_bare_market_word_is_real() -> None:
     """The environmental pattern must require the `no qualifying/suitable
     market` phrasing, not merely the word `market` — otherwise most CLOB
