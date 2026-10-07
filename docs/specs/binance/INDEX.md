@@ -23,8 +23,8 @@ Where the pages and the wire disagree, the wire wins and [OBSERVED.md](OBSERVED.
 records it. The drift detector is the live suite:
 `polyoxide-binance/tests/live_api.rs::live_responses_carry_no_unmodelled_keys` fails on any
 key the types do not model.
-A new value of an enum decodes as `Other` and is not seen, and a changed weight goes
-unseen until `weight_probe` is run by hand.
+A new enum value or filter type decodes as `Other` and is not seen, and a changed weight
+goes unseen until `weight_probe` is run by hand.
 
 ## Routes covered
 

@@ -4858,8 +4858,8 @@ Where the pages and the wire disagree, the wire wins and [OBSERVED.md](OBSERVED.
 records it. The drift detector is the live suite:
 `polyoxide-binance/tests/live_api.rs::live_responses_carry_no_unmodelled_keys` fails on any
 key the types do not model.
-A new value of an enum decodes as `Other` and is not seen, and a changed weight goes
-unseen until `weight_probe` is run by hand.
+A new enum value or filter type decodes as `Other` and is not seen, and a changed weight
+goes unseen until `weight_probe` is run by hand.
 
 ## Routes covered
 
@@ -4906,9 +4906,9 @@ single requests made while writing the design spec,
 
 Method: the rise in `X-MBX-USED-WEIGHT-1M` across back-to-back requests inside one
 minute. `polyoxide-binance/examples/weight_probe.rs` re-measures every weighted row; the
-`klines` edges it skips (99, 499, 999, 1500) and the refusals below were probed while
-writing the design spec, with `docs/specs/binance/probes/probe_rest.py` and single
-requests.
+`klines` edges it skips (99, 499, 999, 1500), `aggTrades` at limits 100 and 1000, and
+the refusals below were probed on 2026-10-07, with `docs/specs/binance/probes/probe_rest.py`
+and single requests.
 
 | Route | Measured 2026-10-07 | The page says |
 |---|---|---|
@@ -4925,9 +4925,9 @@ requests.
 and 500 edges; the 1000 edge agrees. A request without `limit` returns 500 rows for 5
 where an explicit `limit=500` costs 2.
 `depth` without `limit` returns 500 levels for 1 where an explicit `limit=500` costs 10.
-A request refused with `400` still costs weight. An unknown symbol costs its route's weight: 1 on
-`premiumIndex` and 20 on `aggTrades`. A `klines` limit of 1501 costs 10, and a `depth`
-limit of 7 costs 1.
+A request refused with `400` still costs weight. An unknown symbol costs its route's
+weight: 1 on `premiumIndex` and 20 on `aggTrades`. A `klines` limit of 1501 costs 10,
+and a `depth` limit of 7 costs 1.
 
 ## The weight window
 
@@ -4960,8 +4960,8 @@ have read 10 or more, not 1, at 08:35:02.9.
 - The REST host accepts a lowercase symbol (`premiumIndex?symbol=btcusdt`) and answers
   with `BTCUSDT`. No listed symbol has a lowercase ASCII letter.
 - Quarterly symbols carry an underscore (`BTCUSDT_261225`). Of the 924 symbols in
-  `exchangeInfo` on 2026-10-07 no other symbol used a character other than a letter or a digit; five were
-  Chinese-character symbols; the longest was 17 characters.
+  `exchangeInfo` on 2026-10-07 no other symbol used a character other than a letter or
+  a digit; five were Chinese-character symbols; the longest was 17 characters.
 - `underlyingType` took nine values: `COIN`, `EQUITY`, `HK_EQUITY`, `COMMODITY`,
   `KR_EQUITY`, `PREMARKET`, `INDEX`, `CN_EQUITY`, `FX`. The docs list none.
 - `aggTrades` rows carry `nq`, documented as the quantity without trades involving RPI
