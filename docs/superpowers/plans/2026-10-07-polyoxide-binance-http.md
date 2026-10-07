@@ -5116,7 +5116,7 @@ Claude-Session: https://claude.ai/code/session_01KDbtfY1gMjGiQXvcFGcPeN"
 The crate publishes with the next release, which the WebSocket plan cuts as 0.37.0. Until then the order only has to be right.
 
 **Files:**
-- Modify: `.github/workflows/release.yml`, `scripts/finish_release.sh`, `.github/workflows/nightly-behavioral.yml`
+- Modify: `.github/workflows/release.yml`, `scripts/finish_release.sh`, `.github/workflows/nightly-behavioral.yml`, `.github/scripts/classify_failures.py`, `.github/scripts/tests/test_classify_failures.py`, `CLAUDE.md`, `SELF-HEALING.md`
 
 - [ ] **Step 1: release.yml**
 
@@ -5168,7 +5168,126 @@ In `.github/workflows/nightly-behavioral.yml`, after the `polyoxide-perps` row o
 Run: `grep -n 'polyoxide-binance' .github/workflows/release.yml .github/workflows/nightly-behavioral.yml scripts/finish_release.sh`
 Expected: one line in each workflow, three in the script.
 
-- [ ] **Step 4: The full gate**
+- [ ] **Step 4: A region block is environmental**
+
+Binance answers HTTP 451 to callers in places it does not serve, and US cloud regions are reported to be among them. GitHub's hosted runners run there. As written, a 451 would file a `real` nightly issue every night. The owner decided on 2026-10-07 that a Binance region block is **environmental**: logged and skipped, never filed. The suites still run wherever Binance serves the caller, so if the runners turn out to be served, the drift detector runs nightly.
+
+In `.github/scripts/classify_failures.py`, replace
+
+```python
+# Two shapes so far: the sports channel's `legitimately time out`, and the
+# order-placing tests refusing to post because no open market's book satisfies
+# their price precondition (`no qualifying market` from the selection helper,
+# `no suitable market` from a test's own guard). The phrase is required in
+# full — a bare `market` would swallow most genuine CLOB failures.
+ENVIRONMENTAL_RE = re.compile(
+    r"legitimately time out|no (?:qualifying|suitable) market",
+    re.IGNORECASE,
+)
+```
+
+with
+
+```python
+# Three shapes so far. The sports channel's `legitimately time out`. The
+# order-placing tests refusing to post because no open market's book satisfies
+# their price precondition (`no qualifying market` from the selection helper,
+# `no suitable market` from a test's own guard); the phrase is required in
+# full — a bare `market` would swallow most genuine CLOB failures. And Binance
+# refusing the caller's location with HTTP 451: GitHub's hosted runners run in
+# US regions, which Binance is reported not to serve, so there its live suites
+# can only report the block. It is skipped, not filed, and the suites still run
+# wherever Binance serves the caller. The 451 is matched in each spelling a
+# panic carries: `BinanceError::RegionBlocked` (Display and Debug), the live
+# suite's `API error: 451 Unavailable For Legal Reasons`, a refused stream
+# handshake's Display (`HTTP error: 451 Unavailable For Legal Reasons`) and its
+# Debug (`Response { status: 451, .. }`).
+ENVIRONMENTAL_RE = re.compile(
+    r"legitimately time out|no (?:qualifying|suitable) market"
+    r"|does not serve this location \(451\)|\bRegionBlocked \{"
+    r"|\b451 Unavailable For Legal Reasons\b|\bstatus: 451\b",
+    re.IGNORECASE,
+)
+```
+
+In `.github/scripts/tests/test_classify_failures.py`, directly before `def test_classify_bare_market_word_is_real() -> None:`, add:
+
+```python
+# Binance refuses a caller in a place it does not serve with HTTP 451, on REST
+# and on the stream handshake. Every spelling a Binance live test's panic can
+# carry it in is environmental.
+BINANCE_REGION_BLOCKS: list[tuple[str, str]] = [
+    (
+        "RegionBlocked / Display",
+        "live_x: binance does not serve this location (451): "
+        "Service unavailable from a restricted location",
+    ),
+    (
+        "RegionBlocked / Debug",
+        'live_x: RegionBlocked { msg: "Service unavailable from a restricted location" }',
+    ),
+    ("raw status", "/fapi/v1/time: API error: 451 Unavailable For Legal Reasons"),
+    (
+        "handshake / Display",
+        "live_x: WebSocket transport error: HTTP error: 451 Unavailable For Legal Reasons",
+    ),
+    (
+        "handshake / Debug",
+        "live_x: Connect(Http(Response { status: 451, version: HTTP/1.1, headers: {} }))",
+    ),
+]
+
+
+@pytest.mark.parametrize(
+    "label,text", BINANCE_REGION_BLOCKS, ids=[a[0] for a in BINANCE_REGION_BLOCKS]
+)
+def test_a_binance_region_block_is_environmental(label: str, text: str) -> None:
+    assert classify(text) == Verdict.ENVIRONMENTAL, f"{label} was not skipped"
+
+
+def test_other_binance_refusals_are_not_environmental() -> None:
+    """A firewall refusal or a ban is about how this client behaved, not where
+    it runs, so each still files an issue."""
+    for text in (
+        "live_x: binance's firewall refused the request (403): <html>",
+        "live_x: IpBanned { retry_after: None }",
+        "/fapi/v1/time: API error: 403 Forbidden",
+    ):
+        assert classify(text) == Verdict.REAL, text
+
+
+```
+
+In `CLAUDE.md`, replace
+
+```
+matches `legitimately time out`) — logged and skipped
+```
+
+with
+
+```
+matches `legitimately time out` — or Binance refusing a US runner's location with a 451) — logged and skipped
+```
+
+In `SELF-HEALING.md`, replace
+
+```
+(e.g. the sports feed with no live match anywhere at 06:00 UTC) |
+```
+
+with
+
+```
+(e.g. the sports feed with no live match anywhere at 06:00 UTC), or Binance refuses the runner's location with HTTP 451 |
+```
+
+Run: `cd .github/scripts && uv run pytest tests/ -q && cd ../..`
+Expected: PASS, 156 tests (150 before, plus five region-block rows and one test that keeps other refusals real).
+
+Then prove the new pattern is what classifies each row. Delete the line `    r"|\b451 Unavailable For Legal Reasons\b|\bstatus: 451\b",` and run the tests again: `raw status`, `handshake / Display` and `handshake / Debug` must fail. Restore the line.
+
+- [ ] **Step 5: The full gate**
 
 Run each; all must be clean:
 
@@ -5177,15 +5296,21 @@ cargo fmt --all -- --check
 cargo clippy -j 4 --all-targets --all-features -- -D warnings
 cargo test -j 4 --all-features --workspace
 RUSTDOCFLAGS="-D warnings" cargo doc -j 4 --no-deps --all-features --workspace
+(cd .github/scripts && uv run pytest tests/ -q)
 ```
 
 The workspace test and doc builds are the heavy ones. If they are reaped (`signal: 15`), rerun them with `-j 2`, or run `-p polyoxide-binance -p polyoxide-core -p polyoxide-data -p polyoxide-gamma` and leave the rest to CI.
 
-- [ ] **Step 5: Commit**
+- [ ] **Step 6: Commit**
 
 ```bash
-git add .github/workflows/release.yml .github/workflows/nightly-behavioral.yml scripts/finish_release.sh
+git add .github/workflows/release.yml .github/workflows/nightly-behavioral.yml scripts/finish_release.sh \
+  .github/scripts/classify_failures.py .github/scripts/tests/test_classify_failures.py CLAUDE.md SELF-HEALING.md
 git commit -m "ci: publish polyoxide-binance after perps; nightly live_api row
+
+A Binance region block (HTTP 451) is classified environmental: GitHub's
+hosted runners are in US regions, which Binance is reported not to
+serve, so a 451 there is skipped, not filed.
 
 Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>
 Claude-Session: https://claude.ai/code/session_01KDbtfY1gMjGiQXvcFGcPeN"
