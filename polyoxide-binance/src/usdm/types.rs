@@ -1,9 +1,11 @@
 //! Vocabulary and response rows for USDⓈ-M futures.
 //!
-//! Prices, quantities and rates are [`Decimal`], decoded from the decimal
-//! strings Binance sends, so no value passes through an `f64`. Timestamps are
-//! Unix milliseconds. Field names are the long forms; the wire's terse keys
-//! (`aggTrades`, `depth`) are serde renames.
+//! Prices, quantities and rates are [`Decimal`](rust_decimal::Decimal),
+//! decoded from the decimal strings Binance sends, so no value passes through
+//! an `f64`. Timestamps are Unix milliseconds. Field names are the long forms;
+//! where the wire uses one-letter keys (`aggTrades`, `depth`), they are serde
+//! renames.
+
 use std::{fmt, str::FromStr};
 
 use serde::{Deserialize, Deserializer, Serialize, Serializer};
@@ -213,7 +215,9 @@ open_enum! {
 }
 
 open_enum! {
-    /// A contract's status, from `exchangeInfo`.
+    /// A contract's status, from `exchangeInfo`. The variants are the list in
+    /// Binance's common definitions; `exchangeInfo` used three of them on
+    /// 2026-10-07.
     SymbolStatus {
         PendingTrading => "PENDING_TRADING",
         Trading => "TRADING",
@@ -285,6 +289,30 @@ mod tests {
             Symbol::new("币安人生usdt").unwrap().as_str(),
             "币安人生USDT"
         );
+    }
+
+    #[test]
+    fn symbols_are_measured_in_characters_and_only_ascii_changes_case() {
+        // `to_uppercase` would turn ß into SS, and `len` would count bytes.
+        assert_eq!(Symbol::new("straße").unwrap().as_str(), "STRAßE");
+        assert!(Symbol::new("币".repeat(32)).is_ok());
+        assert!(Symbol::new("币".repeat(33)).is_err());
+    }
+
+    #[test]
+    fn wire_spellings_are_binance_s() {
+        // `as_str` and `from_str` share each literal, so a round trip cannot
+        // see a wrong one; these are the spellings the host accepted.
+        let intervals: Vec<&str> = Interval::ALL.iter().map(|i| i.as_str()).collect();
+        assert_eq!(
+            intervals,
+            [
+                "1m", "3m", "5m", "15m", "30m", "1h", "2h", "4h", "6h", "8h", "12h", "1d", "3d",
+                "1w", "1M"
+            ]
+        );
+        let limits: Vec<&str> = DepthLimit::ALL.iter().map(|l| l.as_str()).collect();
+        assert_eq!(limits, ["5", "10", "20", "50", "100", "500", "1000"]);
     }
 
     #[test]
