@@ -5289,7 +5289,9 @@ with
 Run: `cd .github/scripts && uv run pytest tests/ -q && cd ../..`
 Expected: PASS, 156 tests (150 before, plus five region-block rows and one test that keeps other refusals real).
 
-Then prove the new pattern is what classifies each row. Delete the line `    r"|\b451 Unavailable For Legal Reasons\b|\bstatus: 451\b",` and run the tests again: `raw status`, `handshake / Display` and `handshake / Debug` must fail. Restore the line.
+Then prove the new pattern is what classifies each row. Delete the line `    r"|\b451 Unavailable For Legal Reasons\b|\bstatus: 451\b",` and move its trailing comma onto the line above, so the call still parses, then run the tests again: `raw status`, `handshake / Display` and `handshake / Debug` must fail, and nothing else. Restore the file.
+
+Executed 2026-10-07 (0d12b78): 156 passed; the mutation failed exactly those three rows; the full gate was clean, 1936 workspace tests.
 
 - [ ] **Step 5: The full gate**
 
