@@ -647,5 +647,30 @@ mod tests {
         let second =
             tokio::time::timeout(Duration::from_secs(5), budget.acquire(Cost::Weight(2000))).await;
         assert!(second.is_err(), "charged into a minute already counted");
+        // A request charged from the stepped-back clock is counted in the
+        // newest minute, so its response's header still applies.
+        let stale = tokio::time::timeout(Duration::from_secs(5), budget.acquire(Cost::Weight(1)))
+            .await
+            .expect("2001 fits under 2160");
+        budget.record_used(stale, 2100);
+        assert_eq!(budget.used(), 2100);
+    }
+
+    #[tokio::test(start_paused = true)]
+    async fn a_cooldown_begun_during_the_slot_wait_holds_the_funding_request() {
+        // Sent anyway, a request during a 418 ban can lengthen the ban.
+        let budget = budget(PUBLISHED_WEIGHT_PER_MINUTE, ON_A_MINUTE);
+        budget.acquire(Cost::Funding).await; // slot 0; the next is ~668 ms away
+        let start = Instant::now();
+        let waiter = {
+            let budget = budget.clone();
+            tokio::spawn(async move {
+                budget.acquire(Cost::Funding).await;
+                start.elapsed()
+            })
+        };
+        tokio::time::sleep(Duration::from_millis(100)).await;
+        budget.begin_cooldown(Duration::from_secs(10));
+        assert_eq!(waiter.await.unwrap(), Duration::from_millis(10_100));
     }
 }
