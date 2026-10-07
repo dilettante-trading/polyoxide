@@ -116,6 +116,60 @@ rather than sending `[]`. `ListEvents::include_markets` sends it.
 the request says which one it is. `ListKeysetEvents` has no
 `include_markets` builder yet.
 
+## Protocol V2: `version`, `positionIds` and `resolutionStatus` on `Market`
+
+The nightly flagged it on 2026-10-06 (issue #50). Upstream's published
+`openapi.yaml` added two nullable `Market` properties, `version` (string)
+and `positionIds` (array of string). They belong to Polymarket Protocol V2,
+documented at `docs.polymarket.com/migrate/polymarket-v2/`, a section the
+vendored `polymarket-llms.txt` snapshot predates. V2 markets have their own
+position ids and trade on a new exchange, ExchangeV3, which signs under
+domain version `"3"` with `verifyingContract`
+`0xe3333700cA9d93003F00f0F71f8515005F6c00Aa`. CLOB balance reads for V2
+positions use `asset_type=CONDITIONAL-V2`. CTF (v1) orders keep domain
+version `"2"`, which is what `polyoxide-clob` signs.
+
+**The served `Market.json` says more than the published spec**, and outranks
+it:
+
+| Property | `openapi.yaml` | `Market.json` (served `$schema`) |
+|----------|----------------|----------------------------------|
+| `version` | nullable string | `enum: [v1, v2]`, "Clients must match exact values and treat unknown values as unsupported." |
+| `positionIds` | nullable array of string | `type: [array, null]`, items string |
+| `resolutionStatus` | absent | `enum: [inactive, active, resolved]`, "Only written for v2 markets; v1 markets keep using umaResolutionStatus." |
+
+**Choose the trading id by `version`, not by which field is present.**
+Upstream's API migration page says so "even when both fields are present":
+`v2` takes `positionIds`, a real array; `v1` takes `clobTokenIds`, a
+JSON-encoded array. Both fields are present on 35% of the open markets
+sampled, so the rule is not hypothetical. Probed 2026-10-07:
+
+| What | Server |
+|------|--------|
+| `version` on the first 40,000 open markets from `/markets/keyset` | `"v1"` on every one. No `v2` market was found |
+| `positionIds` on those markets | present on 13,977, every one a 2-element array; absent from the rest. Never `null` |
+| `positionIds` on the newest 100 open and 100 newest closed from `/markets?order=id&ascending=false` | absent from all open ones; present on 4 closed sports markets created that day |
+| `resolutionStatus` | absent from all 40,000 |
+| market `559651` (v1) | the same `positionIds` on `/markets/559651`, `/markets?id=` and `/markets/keyset?id=` |
+| `GET clob.polymarket.com/book?token_id=<559651's positionId>` | `404` `{"error":"No orderbook exists for the requested token id"}` |
+| same with its `clobTokenIds[0]` | `200` with the book |
+
+A v1 market's two position ids are consecutive integers (`…792`, `…793`),
+unrelated to its clob token ids. A caller who prefers `positionIds` whenever
+it is present asks the CLOB for books that do not exist.
+
+**What polyoxide does.** `Market::version` is an `Option<ProtocolVersion>`.
+Its variants are `V1` and `V2`, and any other value arrives verbatim as
+`Other(String)` rather than failing the page. Matching is exact, so `"V1"`
+is `Other`. `Market::position_ids` is `Option<Vec<String>>`, and
+`Market::resolution_status` is `Option<ResolutionStatus>`, built the same
+way. `version` stays `Option` although every market sampled sends it,
+because neither schema lists it in `required`. Trading a V2 market
+(ExchangeV3 signing, `CONDITIONAL-V2`, the new approvals) is not implemented.
+`live_markets_carry_a_known_protocol_version` in
+`polyoxide-gamma/tests/live_api.rs` fails if the newest markets stop sending
+`version` or send one `ProtocolVersion` does not name.
+
 ## More instances
 
 The 2026-08-19 type parity sweep found nine further places where the spec and

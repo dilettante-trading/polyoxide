@@ -366,6 +366,43 @@ async fn live_market_maker_address_filter_is_still_applied() {
     );
 }
 
+/// Every market says which protocol it trades on, in a spelling this SDK
+/// knows. Upstream's migration guide tells callers to choose a market's
+/// trading ids by `version` and to reject a missing or unrecognised one, so
+/// either failure stops a caller from trading that market. An `Other` here
+/// means the server has a protocol `ProtocolVersion` does not name yet.
+/// Samples the newest markets because Protocol V2 markets are new.
+#[tokio::test]
+#[ignore]
+async fn live_markets_carry_a_known_protocol_version() {
+    use polyoxide_gamma::types::ProtocolVersion;
+
+    let gamma = client();
+    for closed in [false, true] {
+        let markets = gamma
+            .markets()
+            .list()
+            .closed(closed)
+            .order("id")
+            .ascending(false)
+            .limit(100)
+            .send()
+            .await
+            .expect("list newest markets");
+        assert!(!markets.is_empty(), "closed={closed}: no markets came back");
+        for m in &markets {
+            match &m.version {
+                Some(v) => assert!(
+                    ProtocolVersion::ALL.contains(v),
+                    "market {} (closed={closed}) has unrecognised version {v:?}",
+                    m.id
+                ),
+                None => panic!("market {} (closed={closed}) has no version", m.id),
+            }
+        }
+    }
+}
+
 // ── Events ──────────────────────────────────────────────────────
 
 #[tokio::test]
