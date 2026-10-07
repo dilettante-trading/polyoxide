@@ -4022,6 +4022,7 @@ dependencies = [
  "governor",
  "mockito",
  "parquet",
+ "polyoxide-binance",
  "polyoxide-clob",
  "polyoxide-core",
  "polyoxide-data",

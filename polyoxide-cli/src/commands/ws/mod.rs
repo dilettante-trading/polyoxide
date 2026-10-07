@@ -1,3 +1,4 @@
+pub mod binance;
 mod market;
 mod prices;
 pub mod sports;
@@ -28,6 +29,12 @@ pub enum WsCommand {
         #[command(flatten)]
         args: sports::SportsArgs,
     },
+    /// Stream Binance USDⓈ-M futures market data: trades, klines, mark prices,
+    /// tickers, depth and book tickers
+    Binance {
+        #[command(flatten)]
+        args: binance::BinanceArgs,
+    },
 }
 
 impl WsCommand {
@@ -37,6 +44,7 @@ impl WsCommand {
             Self::User { args } => user::run(args).await,
             Self::Prices { args } => prices::run(args).await,
             Self::Sports { args } => sports::run(args).await,
+            Self::Binance { args } => binance::run(args).await,
         }
     }
 }

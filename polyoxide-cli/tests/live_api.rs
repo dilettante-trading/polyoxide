@@ -189,3 +189,56 @@ mod ws_sports {
         assert!(update["leagueAbbreviation"].is_string(), "{update}");
     }
 }
+
+// ── ws binance ───────────────────────────────────────────────────────
+
+mod ws_binance {
+    use clap::Parser;
+    use polyoxide_binance::usdm::ws::UsdmWsBuilder;
+    use polyoxide_cli::commands::ws::binance::{run_with, BinanceArgs};
+    use serde_json::Value;
+
+    #[derive(Parser)]
+    struct Cli {
+        #[command(flatten)]
+        args: BinanceArgs,
+    }
+
+    #[tokio::test]
+    #[ignore = "hits the real Binance API"]
+    async fn live_ws_binance_prints_one_json_line() {
+        let cli = Cli::try_parse_from([
+            "binance",
+            "--all-mark-prices",
+            "-n",
+            "1",
+            "--format",
+            "json",
+            "--timeout",
+            "60s",
+        ])
+        .unwrap();
+        let feed = UsdmWsBuilder::new()
+            .streams(cli.args.streams().unwrap())
+            .connect()
+            .await
+            .unwrap_or_else(|e| panic!("could not connect to Binance: {e:?}"));
+        let (mut out, mut err) = (Vec::new(), Vec::new());
+        run_with(cli.args, feed, &mut out, &mut err).await.unwrap();
+        let out = String::from_utf8(out).unwrap();
+        let line = out.lines().next().unwrap_or_else(|| {
+            panic!(
+                "no update within 60 s; stderr: {}",
+                String::from_utf8_lossy(&err)
+            )
+        });
+        let frame: Value = serde_json::from_str(line).unwrap();
+        assert_eq!(frame["stream"], "!markPrice@arr@1s");
+        assert!(
+            frame["data"]
+                .as_array()
+                .is_some_and(|rows| !rows.is_empty()),
+            "{frame}"
+        );
+    }
+}

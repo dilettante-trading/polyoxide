@@ -23,6 +23,7 @@ path = "src/main.rs"
 doc = false
 
 [dependencies]
+polyoxide-binance = { workspace = true, features = ["ws"] }
 polyoxide-clob = { workspace = true, features = ["ws"] }
 polyoxide-core = { workspace = true, optional = true, features = ["keychain"] }
 polyoxide-relay = { workspace = true, optional = true, features = ["keychain"] }
@@ -50,3 +51,5 @@ tempfile = "3"
 tokio = { workspace = true, features = ["macros", "rt-multi-thread", "time"] }
 # The captured frames, for the `ws sports` tests.
 polyoxide-sports = { workspace = true, features = ["test-server"] }
+# The captured frames, for the `ws binance` tests.
+polyoxide-binance = { workspace = true, features = ["test-server"] }
