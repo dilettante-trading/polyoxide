@@ -261,7 +261,7 @@ pub struct HttpClientBuilder {
     rate_limiter: Option<RateLimiter>,
     retry_config: RetryConfig,
     max_concurrent: Option<usize>,
-    gzip: bool,
+    gzip: Option<bool>,
 }
 
 impl HttpClientBuilder {
@@ -274,7 +274,7 @@ impl HttpClientBuilder {
             rate_limiter: None,
             retry_config: RetryConfig::default(),
             max_concurrent: None,
-            gzip: false,
+            gzip: None,
         }
     }
 
@@ -315,22 +315,25 @@ impl HttpClientBuilder {
         self
     }
 
-    /// Ask for gzip-compressed responses and decode them.
+    /// Ask for gzip-compressed responses and decode them, or pin that off.
     ///
-    /// Off by default. The workspace enables reqwest's `gzip` feature for
-    /// hosts with large bodies (Binance's `exchangeInfo` is 1.15 MB raw and
-    /// 51 KB gzipped), and with the feature on reqwest would otherwise send
-    /// `Accept-Encoding: gzip` from every client. Leaving it off keeps every
-    /// other crate's requests byte-identical to before the feature existed.
+    /// Unset by default, which leaves reqwest's own default. This crate enables
+    /// reqwest's `gzip` feature, so an unset client asks for gzip and decodes
+    /// the body transparently, as every client did for a consumer whose
+    /// workspace enabled the feature before this setting existed. 0.37.0 set
+    /// it off unless asked, which took compression away from those consumers.
     pub fn gzip(mut self, enabled: bool) -> Self {
-        self.gzip = enabled;
+        self.gzip = Some(enabled);
         self
     }
 
     /// Build the HTTP client.
     pub fn build(self) -> Result<HttpClient, ApiError> {
-        let client = reqwest::Client::builder()
-            .gzip(self.gzip)
+        let mut builder = reqwest::Client::builder();
+        if let Some(enabled) = self.gzip {
+            builder = builder.gzip(enabled);
+        }
+        let client = builder
             .timeout(Duration::from_millis(self.timeout_ms))
             .connect_timeout(Duration::from_secs(10))
             .redirect(reqwest::redirect::Policy::none())
@@ -358,7 +361,7 @@ impl Default for HttpClientBuilder {
             rate_limiter: None,
             retry_config: RetryConfig::default(),
             max_concurrent: None,
-            gzip: false,
+            gzip: None,
         }
     }
 }
@@ -757,10 +760,25 @@ mod tests {
     // ── gzip ─────────────────────────────────────────────────────
 
     #[tokio::test]
-    async fn gzip_is_off_unless_asked_for() {
-        // The workspace turns on reqwest's `gzip` feature for one host. With the
-        // feature on, reqwest asks every server for gzip unless told not to, so
-        // this pins that no other crate's requests changed.
+    async fn gzip_follows_reqwest_unless_set() {
+        // Unset, the client leaves reqwest's default, which asks for gzip with
+        // the feature on. 0.37.0 forced it off, so a consumer whose workspace
+        // had the feature on lost compression on every polyoxide client.
+        let mut server = mockito::Server::new_async().await;
+        let mock = server
+            .mock("GET", "/plain")
+            .match_header("accept-encoding", mockito::Matcher::Regex("gzip".into()))
+            .with_body("ok")
+            .create_async()
+            .await;
+
+        let client = HttpClientBuilder::new(server.url()).build().unwrap();
+        assert_eq!(client.get_bytes("/plain", &[]).await.unwrap(), b"ok");
+        mock.assert_async().await;
+    }
+
+    #[tokio::test]
+    async fn gzip_false_asks_for_no_compression() {
         let mut server = mockito::Server::new_async().await;
         let mock = server
             .mock("GET", "/plain")
@@ -769,7 +787,10 @@ mod tests {
             .create_async()
             .await;
 
-        let client = HttpClientBuilder::new(server.url()).build().unwrap();
+        let client = HttpClientBuilder::new(server.url())
+            .gzip(false)
+            .build()
+            .unwrap();
         assert_eq!(client.get_bytes("/plain", &[]).await.unwrap(), b"ok");
         mock.assert_async().await;
     }

@@ -284,10 +284,13 @@ at the 100 and 500 `klines` edges and does not say that omitting `limit` costs 5
 re-measures it. Response rows carry symbols as `String`; `Symbol` is for what a caller
 sends, uppercases ASCII, and accepts `_` for quarterlies (`BTCUSDT_261225`).
 `FundingRate::mark_price` is an `Option` because funding events through at least
-2022-01-01 send `""`. Core's `HttpClientBuilder::gzip` is off by default and only
-this crate turns it on (`exchangeInfo` is 1.15 MB raw, 51 KB gzipped); with reqwest's
-`gzip` feature on workspace-wide, any client built without core would ask for gzip,
-which is why four rate-limit examples pin `.gzip(false)`.
+2022-01-01 send `""`. Core enables reqwest's `gzip` feature
+(`exchangeInfo` is 1.15 MB raw, 51 KB gzipped), and `HttpClientBuilder::gzip` is unset by
+default, which leaves reqwest's default: every polyoxide client asks for gzip, as each did
+before 0.37 for a consumer whose workspace enabled the feature. 0.37.0 forced it off unless
+set, which took compression away from those consumers (prader-rs among them); 0.37.1
+restored it. Four rate-limit examples pin `.gzip(false)` on their bare clients, so the soak
+measurements keep the wire they were made on.
 
 With the `ws` feature `polyoxide-binance` also streams eight USDⓈ-M market streams on
 `fstream.binance.com`: `UsdmWs` (one connection on one path) and
