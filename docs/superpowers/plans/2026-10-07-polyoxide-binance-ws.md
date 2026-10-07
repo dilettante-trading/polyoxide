@@ -4877,8 +4877,10 @@ Expected: `captured: agg_trades.json, ... time.json and stream_all_markPrice_arr
 
 - [ ] **Step 3: Run every offline test against the new captures**
 
-Run: `cargo test -j 4 -p polyoxide-binance --all-features --lib --test wire_agreement --test ws_wire_agreement --test mock_api`
-Expected: PASS. A failure naming a key the server sent is drift since 2026-10-07: model it, and record it in Task 8's `OBSERVED.md`.
+Run: `cargo test -j 4 -p polyoxide-binance --all-features --all-targets`
+Expected: PASS; every suite that reads the fixtures runs, the supervision suites included. A failure naming a key the server sent is drift since 2026-10-07: model it, and record it in Task 8's `OBSERVED.md`.
+
+Code review added a follow-up commit (6cf61ac). The first `!markPrice@arr@1s` frame is often a partial one with no COIN-M row, so the script now reads an array stream until a frame carries one, within 30 s. `the_array_fixtures_carry_a_coin_m_row` in `ws_wire_agreement.rs` pins a USDⓈ-M then a COIN-M row in both array fixtures. The script writes nothing until every capture has succeeded, so a failed or quiet run leaves the fixtures as they were. PROVENANCE names the rows each array kept. `pick_two`'s edge cases and a handshake cut short exit with a message, and an HTTP error prints its body. `ws_wire_agreement` then has 2 tests.
 
 - [ ] **Step 4: Commit**
 
@@ -5766,6 +5768,18 @@ with
 ````markdown
 - `polyoxide-binance/tests/fixtures/ws/`: stream envelopes, refreshed by the same script and
   compiled into `polyoxide_binance::usdm::ws::fixtures` under `test-server`.
+````
+
+and replace
+
+````markdown
+  `capture.py` is superseded by `scripts/capture_binance_fixtures.py`.
+````
+
+with
+
+````markdown
+  `capture.py` and `capture_ws.py` are superseded by `scripts/capture_binance_fixtures.py`.
 ````
 
 - [ ] **Step 2: The crate README**
