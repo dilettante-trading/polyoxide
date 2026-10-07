@@ -11,15 +11,20 @@
 //! [`MAX_STREAMS_PER_CONNECTION`] streams, [`MAX_NAMES_PER_REQUEST`] names per
 //! request, and one request per [`MIN_REQUEST_INTERVAL`]. The measurements are
 //! in `docs/specs/binance/OBSERVED.md`.
+pub mod client;
 pub mod error;
 pub mod event;
 #[cfg(any(test, feature = "test-server"))]
 #[doc(hidden)]
 pub mod fixtures;
 pub mod stream;
+#[cfg(any(test, feature = "test-server"))]
+#[doc(hidden)]
+pub mod test_server;
 
 use std::{fmt, time::Duration};
 
+pub use client::UsdmWs;
 pub use error::{Recovery, UsdmWsError};
 pub use event::{
     AggTradeEvent, BookTickerEvent, KlineBar, KlineEvent, MarkPriceEvent, PartialDepthEvent,
