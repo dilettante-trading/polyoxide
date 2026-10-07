@@ -5839,13 +5839,13 @@ frames (`polyoxide_binance::usdm::ws::fixtures`, feature `test-server`).
 In `CLAUDE.md`, replace
 
 ````markdown
-which is why three rate-limit examples pin `.gzip(false)`.
+which is why four rate-limit examples pin `.gzip(false)`.
 ````
 
 with
 
 ````markdown
-which is why three rate-limit examples pin `.gzip(false)`.
+which is why four rate-limit examples pin `.gzip(false)`.
 
 With the `ws` feature `polyoxide-binance` also streams eight USDⓈ-M market streams on
 `fstream.binance.com`: `UsdmWs` (one connection on one path) and
@@ -6050,7 +6050,7 @@ A non-zero left count means `main` has moved: integrate first and derive the num
 - Every crate README's install line from `"0.36"` to `"0.37"`, `polyoxide-binance/README.md` included (`grep -rn '"0\.36"' */README.md`).
 - `cargo update --workspace` (never `cargo generate-lockfile`, which re-resolves every transitive dependency).
 - `git-cliff --unreleased --tag v0.37.0 --prepend CHANGELOG.md`, then restore the blank line `--prepend` omits before the next `##`. Never `-o`, which re-renders shipped sections.
-- At the top of the new section, write two sentences by hand: `polyoxide-binance` is new and is not in the `polyoxide` umbrella crate or `full`, and `HttpClientBuilder::gzip` is new and off by default.
+- At the top of the new section, write three sentences by hand: `polyoxide-binance` is new and is not in the `polyoxide` umbrella crate or `full`; `HttpClientBuilder::gzip` is new and off by default; and the crates now enable reqwest 0.12's `gzip` feature, which feature unification turns on for a consumer's own reqwest 0.12 clients too, so those send `Accept-Encoding: gzip` unless built with `.gzip(false)`.
 
 - [ ] **Step 4: Check and commit, last**
 

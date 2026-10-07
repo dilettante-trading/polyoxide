@@ -208,9 +208,9 @@ Add after `gzip_is_off_unless_asked_for`:
 Run: `cargo test -j 4 -p polyoxide-core --lib gzip`
 Expected: PASS, 2 tests.
 
-- [ ] **Step 6: Keep the three measuring examples' requests as they were**
+- [ ] **Step 6: Keep the four measuring examples' requests as they were**
 
-Three examples build their own `reqwest::Client`, so the feature now turns gzip on for them. Two of them probe rate limits and one soaks them, and a CDN may key its cache on `Accept-Encoding`, so pin each one off.
+Four examples build their own `reqwest::Client`, so the feature now turns gzip on for them. Two of them probe rate limits and two soak them, and a CDN may key its cache on `Accept-Encoding`, so pin each one off.
 
 In `polyoxide-data/examples/v2_soak/main.rs`, replace
 
@@ -263,10 +263,27 @@ with
         .timeout(Duration::from_secs(15))
 ```
 
-Run: `cargo check -j 4 -p polyoxide-data --example v2_soak -p polyoxide-gamma --example cf_burst_probe --example gamma_batch_ceiling`
+In `polyoxide-perps/examples/info_soak.rs`, replace
+
+```rust
+    let client = reqwest::Client::builder()
+        .timeout(Duration::from_secs(30))
+```
+
+with
+
+```rust
+    let client = reqwest::Client::builder()
+        // The workspace enables reqwest's `gzip` feature for polyoxide-binance;
+        // keep this soak's requests as they were measured.
+        .gzip(false)
+        .timeout(Duration::from_secs(30))
+```
+
+Run: `cargo check -j 4 -p polyoxide-data --example v2_soak -p polyoxide-gamma --example cf_burst_probe --example gamma_batch_ceiling -p polyoxide-perps --example info_soak`
 Expected: `Finished`, no warnings.
 
-No other crate builds its own `reqwest::Client` outside tests. `polyoxide-clob/src/request.rs` builds two in a test, only to read the headers it set, and never sends them.
+No other crate builds its own `reqwest::Client` outside tests (`grep -rn 'Client::builder\|Client::new()' --include='*.rs'`). `polyoxide-clob/src/request.rs` builds two in a test, only to read the headers it set, and never sends them.
 
 - [ ] **Step 7: Run core's tests and commit**
 
@@ -275,13 +292,13 @@ Expected: PASS (148 tests).
 
 ```bash
 cargo fmt --all
-git add Cargo.toml Cargo.lock polyoxide-core/src/client.rs polyoxide-data/examples/v2_soak/main.rs polyoxide-gamma/examples/cf_burst_probe.rs polyoxide-gamma/examples/gamma_batch_ceiling.rs
+git add Cargo.toml Cargo.lock polyoxide-core/src/client.rs polyoxide-data/examples/v2_soak/main.rs polyoxide-gamma/examples/cf_burst_probe.rs polyoxide-gamma/examples/gamma_batch_ceiling.rs polyoxide-perps/examples/info_soak.rs
 git commit -m "feat(core): HttpClientBuilder::gzip, off by default
 
 Enables reqwest's gzip feature for the workspace, for Binance's 1.15 MB
 exchangeInfo. With the feature on, reqwest would ask every server for
 gzip from every client; the switch keeps every other crate's requests
-unchanged, and gzip_is_off_unless_asked_for pins that. Three examples
+unchanged, and gzip_is_off_unless_asked_for pins that. Four examples
 that build their own client and measure rate limits pin gzip(false).
 
 Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>
@@ -4989,7 +5006,7 @@ what a caller sends, uppercases ASCII, and accepts `_` for quarterlies
 before about 2022 send `""`. Core's `HttpClientBuilder::gzip` is off by default and only
 this crate turns it on (`exchangeInfo` is 1.15 MB raw, 51 KB gzipped); with reqwest's
 `gzip` feature on workspace-wide, any client built without core would ask for gzip,
-which is why three rate-limit examples pin `.gzip(false)`.
+which is why four rate-limit examples pin `.gzip(false)`.
 ```
 
 - [ ] **Step 2: README.md**
