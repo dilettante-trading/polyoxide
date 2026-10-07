@@ -8,12 +8,12 @@
   "updateTime": 1760955417544
  },
  {
-  "symbol": "TSLAUSDT",
-  "adjustedFundingRateCap": "0.02000000",
-  "adjustedFundingRateFloor": "-0.02000000",
-  "fundingIntervalHours": 8,
+  "symbol": "XAUUSDT",
+  "adjustedFundingRateCap": "0.00500000",
+  "adjustedFundingRateFloor": "-0.00500000",
+  "fundingIntervalHours": 4,
   "disclaimer": false,
-  "updateTime": 1769775454495
+  "updateTime": 1769796333728
  },
  {
   "symbol": "BTCUSDT",
