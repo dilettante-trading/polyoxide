@@ -123,14 +123,18 @@ fn stream(symbol: Symbol, kind: &str) -> Result<StreamName> {
             .and_then(|i| i.parse::<Interval>().ok())
         {
             Some(interval) => StreamName::Kline(symbol, interval),
-            None => bail!(
-                "unknown kind {kind:?}; expected one of {KINDS}, where <interval> is one of {}",
-                Interval::ALL
-                    .iter()
-                    .map(|i| i.as_str())
-                    .collect::<Vec<_>>()
-                    .join(" ")
-            ),
+            // In a block, as a statement: Rust 1.99 rejects `bail!`, which
+            // expands to `return Err(..);`, as a match arm's value.
+            None => {
+                bail!(
+                    "unknown kind {kind:?}; expected one of {KINDS}, where <interval> is one of {}",
+                    Interval::ALL
+                        .iter()
+                        .map(|i| i.as_str())
+                        .collect::<Vec<_>>()
+                        .join(" ")
+                );
+            }
         },
     })
 }
