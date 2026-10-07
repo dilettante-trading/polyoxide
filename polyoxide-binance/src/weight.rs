@@ -158,9 +158,16 @@ impl Route {
 ///   was charged in.
 /// - **Funding.** `fundingRate` and `fundingInfo` carry no weight and share a
 ///   documented 500 requests per 5 minutes, paced here at 450 with a depth of
-///   one, so they never burst.
+///   one, so they never burst, not even when a cooldown ends.
 /// - **Cooldown.** A `429` or `418` holds every request, on both limits, for
 ///   the delay the server asked for. A cooldown is only ever extended.
+/// - **In flight.** A response's header is applied only to the minute its
+///   request was charged in, so a request in flight across a minute boundary is
+///   counted by the server in a minute this budget no longer sees. The reserve
+///   of 240 absorbs that while the weight in flight stays under it: one `Usdm`
+///   at its default of 4 concurrent requests has at most 160 in flight (4 × the
+///   heaviest route, 40). A higher `max_concurrent`, or several clients sharing
+///   one budget, can pass it.
 #[derive(Debug, Clone)]
 pub struct WeightBudget {
     inner: Arc<Inner>,
@@ -192,23 +199,28 @@ pub(crate) struct Charge {
 }
 
 /// Where the current UTC minute comes from.
-#[derive(Debug, Clone, Copy)]
+#[derive(Debug, Clone)]
 enum Clock {
     /// The system clock, which is what Binance's minute follows.
     System,
     /// Wall time derived from tokio's clock, so a paused-time test controls it.
     #[cfg(test)]
     Tokio { start: Instant, start_ms: u64 },
+    /// A clock a test sets by hand, to step it backwards.
+    #[cfg(test)]
+    Manual(Arc<std::sync::atomic::AtomicU64>),
 }
 
 impl Clock {
-    fn now_ms(self) -> u64 {
+    fn now_ms(&self) -> u64 {
         match self {
             Self::System => SystemTime::now()
                 .duration_since(UNIX_EPOCH)
                 .map_or(0, |since| since.as_millis() as u64),
             #[cfg(test)]
-            Self::Tokio { start, start_ms } => start_ms + start.elapsed().as_millis() as u64,
+            Self::Tokio { start, start_ms } => *start_ms + start.elapsed().as_millis() as u64,
+            #[cfg(test)]
+            Self::Manual(ms) => ms.load(std::sync::atomic::Ordering::SeqCst),
         }
     }
 }
@@ -263,22 +275,29 @@ impl WeightBudget {
     pub fn used(&self) -> u32 {
         let minute = self.inner.clock.now_ms() / MINUTE_MS;
         let state = self.lock();
-        if state.minute == minute {
-            state.used
-        } else {
+        if minute > state.minute {
             0
+        } else {
+            state.used
         }
     }
 
     /// Waits until the request can go, then charges it.
     pub(crate) async fn acquire(&self, cost: Cost) -> Charge {
         match cost {
-            Cost::Funding => {
+            Cost::Funding => loop {
+                // Wait out a cooldown before taking a slot: a slot taken first
+                // and slept on through a cooldown is in the past when it ends,
+                // and every request parked that way would go at once.
+                self.await_cooldown().await;
                 let slot = self.reserve_funding_slot();
                 tokio::time::sleep_until(slot).await;
-                self.await_cooldown().await;
-                Charge { minute: None }
-            }
+                if !self.in_cooldown() {
+                    return Charge { minute: None };
+                }
+                // A cooldown began while this request waited for its slot: the
+                // slot is spent, and the request queues again behind it.
+            },
             Cost::Weight(weight) => loop {
                 self.await_cooldown().await;
                 match self.try_charge(weight) {
@@ -295,16 +314,19 @@ impl WeightBudget {
     /// budget is sent alone rather than held forever.
     fn try_charge(&self, weight: u32) -> Result<Charge, Duration> {
         let now_ms = self.inner.clock.now_ms();
-        let minute = now_ms / MINUTE_MS;
         let mut state = self.lock();
-        if state.minute != minute {
+        // The minute only moves forward. A read that lands in an earlier minute,
+        // from a stale read racing a boundary or a clock stepped back, charges
+        // the newest minute seen instead of resetting its count.
+        let minute = now_ms / MINUTE_MS;
+        if minute > state.minute {
             state.minute = minute;
             state.used = 0;
         }
         if state.used == 0 || state.used.saturating_add(weight) <= self.inner.per_minute {
             state.used = state.used.saturating_add(weight);
             Ok(Charge {
-                minute: Some(minute),
+                minute: Some(state.minute),
             })
         } else {
             Err(Duration::from_millis(MINUTE_MS - now_ms % MINUTE_MS))
@@ -344,6 +366,12 @@ impl WeightBudget {
         }
     }
 
+    fn in_cooldown(&self) -> bool {
+        self.lock()
+            .cooldown_until
+            .is_some_and(|until| until > Instant::now())
+    }
+
     fn reserve_funding_slot(&self) -> Instant {
         let now = Instant::now();
         let mut state = self.lock();
@@ -365,6 +393,7 @@ impl WeightBudget {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use std::sync::atomic::{AtomicU64, Ordering};
 
     /// 2026-10-07 08:35:00 UTC, a minute boundary.
     const ON_A_MINUTE: u64 = 1_791_362_100_000;
@@ -378,6 +407,16 @@ mod tests {
                 start_ms,
             },
         )
+    }
+
+    fn manual_budget(start_ms: u64) -> (WeightBudget, Arc<AtomicU64>) {
+        let clock = Arc::new(AtomicU64::new(start_ms));
+        let budget = WeightBudget::with_clock(
+            PUBLISHED_WEIGHT_PER_MINUTE,
+            PUBLISHED_FUNDING_PER_FIVE_MINUTES,
+            Clock::Manual(Arc::clone(&clock)),
+        );
+        (budget, clock)
     }
 
     #[test]
@@ -552,5 +591,61 @@ mod tests {
             "{:?}",
             start.elapsed()
         );
+    }
+
+    #[tokio::test(start_paused = true)]
+    async fn a_cooldown_extended_mid_wait_is_waited_out_in_full() {
+        let budget = budget(PUBLISHED_WEIGHT_PER_MINUTE, ON_A_MINUTE);
+        budget.begin_cooldown(Duration::from_secs(2));
+        let extender = budget.clone();
+        tokio::spawn(async move {
+            tokio::time::sleep(Duration::from_secs(1)).await;
+            extender.begin_cooldown(Duration::from_secs(10));
+        });
+        let start = Instant::now();
+        budget.acquire(Cost::Weight(1)).await;
+        assert_eq!(start.elapsed(), Duration::from_secs(11));
+    }
+
+    #[tokio::test(start_paused = true)]
+    async fn funding_requests_parked_by_a_cooldown_are_paced_when_it_ends() {
+        let budget = budget(PUBLISHED_WEIGHT_PER_MINUTE, ON_A_MINUTE);
+        budget.begin_cooldown(Duration::from_secs(60));
+        let start = Instant::now();
+        let tasks: Vec<_> = (0..10)
+            .map(|_| {
+                let budget = budget.clone();
+                tokio::spawn(async move {
+                    budget.acquire(Cost::Funding).await;
+                    start.elapsed()
+                })
+            })
+            .collect();
+        let mut released = Vec::new();
+        for task in tasks {
+            released.push(task.await.unwrap());
+        }
+        released.sort();
+        assert_eq!(released[0], Duration::from_secs(60));
+        for pair in released.windows(2) {
+            assert!(
+                pair[1] - pair[0] >= Duration::from_millis(668),
+                "released together: {released:?}"
+            );
+        }
+    }
+
+    #[tokio::test(start_paused = true)]
+    async fn the_counted_minute_never_moves_backwards() {
+        let (budget, clock) = manual_budget(ON_A_MINUTE + 1_000);
+        budget.acquire(Cost::Weight(2000)).await;
+        // The clock steps back into the previous minute, as an NTP step or a
+        // read racing the boundary can. Resetting the count there would admit
+        // another 2000 in what the server counts as the same minute.
+        clock.store(ON_A_MINUTE - 1_000, Ordering::SeqCst);
+        assert_eq!(budget.used(), 2000);
+        let second =
+            tokio::time::timeout(Duration::from_secs(5), budget.acquire(Cost::Weight(2000))).await;
+        assert!(second.is_err(), "charged into a minute already counted");
     }
 }
