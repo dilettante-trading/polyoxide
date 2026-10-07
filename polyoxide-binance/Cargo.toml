@@ -29,3 +29,10 @@ mockito = { workspace = true }
 # `test-util` gives the limiter tests a paused clock, so a minute's wait is
 # asserted without actually waiting a minute.
 tokio = { workspace = true, features = ["macros", "rt-multi-thread", "time", "test-util"] }
+
+# `cargo test` builds examples but does not run their unit tests unless
+# asked; the checks that the probe measures the routes it names live here.
+[[example]]
+name = "weight_probe"
+path = "examples/weight_probe.rs"
+test = true
