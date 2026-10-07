@@ -5634,6 +5634,8 @@ Also run `RUSTDOCFLAGS="-D warnings" cargo doc -j 4 --no-deps --all-features -p 
 
 Code review added a follow-up commit (0d829d0). The `--kind` help had a bare `kline-<interval>`, which failed the doc gate; it is now in backticks. Tests now fail if `-t` is ignored, if a closed reader no longer ends the run, if the deadline overflows, if `-n` waits for another frame, if a symbol is dropped silently beside `--all-tickers`, if an empty list entry counts, or if any payload kind prints wrongly, buy and sell included. Feeds chain `stream::pending()`, so a missed stop shows as a timeout. Errors are skipped by the library's `recovery()`. `run` names the streams on stderr and closes the feed with a handshake. The classifier reads an unanswered request and the CLI's restart marker as transient. `ws_binance` then has 13 tests.
 
+A later commit (4cec2ad) puts the unknown-kind arm's `bail!` in a block as a statement. Rust 1.99, CI's stable, rejects `bail!` as a match arm's value; the local 1.95 accepts it. Run clippy under 1.99 before pushing.
+
 - [ ] **Step 5: Commit**
 
 ```bash
