@@ -1,5 +1,8 @@
-//! Wire-agreement machinery shared by `wire_agreement.rs` (fixtures) and
-//! `live_api.rs` (the live host).
+//! Wire-agreement machinery shared by the REST and stream agreement tests and
+//! the live suites.
+
+// Each test file that includes this module uses a different part of it.
+#![allow(dead_code)]
 
 use std::collections::BTreeSet;
 
@@ -65,13 +68,16 @@ pub fn compare<T: DeserializeOwned + Serialize>(what: &str, text: &str) -> Disag
     let wire: Value =
         serde_json::from_str(text).unwrap_or_else(|e| panic!("{what}: not JSON: {e}"));
     let parsed: T = serde_json::from_str(text).unwrap_or_else(|e| panic!("{what}: {e}"));
-    let emitted = serde_json::to_value(&parsed).unwrap();
-    assert_values_agree(what, "", &wire, &emitted);
+    compare_values(what, &wire, &serde_json::to_value(&parsed).unwrap())
+}
 
+/// Compares what the wire sent with what a type emitted after decoding it.
+pub fn compare_values(what: &str, wire: &Value, emitted: &Value) -> Disagreement {
+    assert_values_agree(what, "", wire, emitted);
     let mut sent = BTreeSet::new();
-    key_paths(&wire, "", &mut sent);
+    key_paths(wire, "", &mut sent);
     let mut modelled = BTreeSet::new();
-    key_paths(&emitted, "", &mut modelled);
+    key_paths(emitted, "", &mut modelled);
     Disagreement {
         unmodelled: sent.difference(&modelled).cloned().collect(),
         invented: modelled.difference(&sent).cloned().collect(),

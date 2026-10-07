@@ -47,3 +47,10 @@ tokio = { workspace = true, features = ["macros", "rt-multi-thread", "time", "te
 name = "weight_probe"
 path = "examples/weight_probe.rs"
 test = true
+
+# The socket tests import items that exist only behind their feature;
+# `required-features` keeps a plain `cargo test --all-targets` from building
+# them without it.
+[[test]]
+name = "ws_wire_agreement"
+required-features = ["test-server"]

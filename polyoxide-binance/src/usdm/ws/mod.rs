@@ -12,11 +12,19 @@
 //! request, and one request per [`MIN_REQUEST_INTERVAL`]. The measurements are
 //! in `docs/specs/binance/OBSERVED.md`.
 pub mod error;
+pub mod event;
+#[cfg(any(test, feature = "test-server"))]
+#[doc(hidden)]
+pub mod fixtures;
 pub mod stream;
 
 use std::{fmt, time::Duration};
 
 pub use error::{Recovery, UsdmWsError};
+pub use event::{
+    AggTradeEvent, BookTickerEvent, KlineBar, KlineEvent, MarkPriceEvent, PartialDepthEvent,
+    Payload, SymbolType, TickerEvent, Update,
+};
 pub use stream::{DepthLevels, DepthSpeed, InvalidStreamName, StreamName};
 
 /// The production stream host.
