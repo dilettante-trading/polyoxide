@@ -53,6 +53,10 @@ pub struct Script {
     pub refuse: Vec<(String, i64, String)>,
     /// Leave every request after the first unanswered.
     pub ignore_later_requests: bool,
+    /// Leave the request with this id unanswered until the next request
+    /// arrives; then send this frame, the held answer and that request's
+    /// answer, in that order: an answer that arrives after its caller gave up.
+    pub hold_answer: Option<(u64, String)>,
     /// Accept the TCP connection and drop it without a handshake.
     pub reject_handshake: bool,
 }
@@ -238,6 +242,7 @@ async fn serve(
     let mut pushed = false;
     let mut push_every = script.push_every.map(tokio::time::interval);
     let mut ping_every = script.ping_every.map(tokio::time::interval);
+    let mut held: Option<Value> = None;
 
     loop {
         tokio::select! {
@@ -280,6 +285,16 @@ async fn serve(
                         continue;
                     }
                     let reply = answer(&script, &request, &mut streams);
+                    if let Some((held_id, before)) = &script.hold_answer {
+                        if request.get("id").and_then(Value::as_u64) == Some(*held_id) {
+                            held = Some(reply);
+                            continue;
+                        }
+                        if let Some(late) = held.take() {
+                            ws.send(Message::Text(before.clone().into())).await?;
+                            ws.send(Message::Text(late.to_string().into())).await?;
+                        }
+                    }
                     ws.send(Message::Text(reply.to_string().into())).await?;
                     answered += 1;
                     if answered == 1 {

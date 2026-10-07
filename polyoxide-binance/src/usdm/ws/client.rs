@@ -34,10 +34,13 @@ pub const ANSWER_TIMEOUT: Duration = Duration::from_secs(10);
 /// per 200 ms; each waits for the answer carrying its id, and updates read
 /// meanwhile are kept and yielded by the stream afterwards. A stream for the
 /// other path, or one that would take the connection past 1024 streams, is
-/// refused before anything is sent. The server's protocol pings are answered
-/// while the caller polls. Binance closes a connection after 24 hours; the
-/// supervised tier ([`UsdmWsBuilder`](crate::usdm::ws::UsdmWsBuilder))
-/// replaces it before then, and this tier does not.
+/// refused before anything is sent. The control methods are not cancel-safe,
+/// and after a `NoAnswer` the server's membership is unknown: replace the
+/// connection rather than reuse it, as the supervised tier does. The server's
+/// protocol pings are answered while the caller polls. Binance closes a
+/// connection after 24 hours; the supervised tier
+/// ([`UsdmWsBuilder`](crate::usdm::ws::UsdmWsBuilder)) replaces it before
+/// then, and this tier does not.
 ///
 /// ```no_run
 /// use futures_util::StreamExt;
@@ -291,6 +294,11 @@ impl UsdmWs {
         method: &str,
         params: Option<&[StreamName]>,
     ) -> Result<Value, UsdmWsError> {
+        // A connection the server closed reports its close code, not a send
+        // error.
+        if self.close_frame.is_some() {
+            return Err(self.closed_error());
+        }
         if let Some(last) = self.last_request {
             tokio::time::sleep_until(last + MIN_REQUEST_INTERVAL).await;
         }
@@ -536,6 +544,8 @@ mod tests {
         assert!(ws.ping().await.unwrap() < Duration::from_secs(1));
         ws.unsubscribe(&[agg("BTCUSDT")]).await.unwrap();
         assert_eq!(ws.list_subscriptions().await.unwrap(), ["ethusdt@aggTrade"]);
+        // The supervised tier replays from this list after a reconnect.
+        assert_eq!(ws.streams(), &[agg("ETHUSDT")]);
     }
 
     #[tokio::test]
@@ -559,5 +569,57 @@ mod tests {
             matches!(err, UsdmWsError::Connect(_) | UsdmWsError::Closed { .. }),
             "{err:?}"
         );
+    }
+
+    #[tokio::test]
+    async fn a_late_answer_is_not_taken_for_the_next_and_updates_read_meanwhile_are_kept() {
+        // Request 2 is refused, but its answer is held until request 3 has
+        // been sent, by when request 2 has timed out. Request 3 must skip that
+        // answer and take its own, and the update sent ahead of them is kept.
+        let server = ScriptedServer::start(vec![Script {
+            refuse: vec![("bbbusdt@aggTrade".into(), 2, "Invalid request".into())],
+            hold_answer: Some((2, fixtures::AGG_TRADE.into())),
+            ..Default::default()
+        }])
+        .await;
+        let mut ws = UsdmWs::open(
+            &server.url,
+            StreamPath::Market,
+            CONNECT_TIMEOUT,
+            Duration::from_millis(200),
+        )
+        .await
+        .unwrap();
+        ws.subscribe(&[agg("AAAUSDT")]).await.unwrap();
+        let err = ws.subscribe(&[agg("BBBUSDT")]).await.unwrap_err();
+        assert!(
+            matches!(err, UsdmWsError::NoAnswer { id: 2, .. }),
+            "{err:?}"
+        );
+        ws.subscribe(&[agg("CCCUSDT")]).await.unwrap();
+        assert_eq!(ws.streams(), &[agg("AAAUSDT"), agg("CCCUSDT")]);
+        let update = tokio::time::timeout(Duration::from_secs(2), ws.next())
+            .await
+            .expect("the update read during request 3 was dropped")
+            .unwrap()
+            .unwrap();
+        assert!(matches!(update.payload, Payload::AggTrade(_)));
+    }
+
+    #[tokio::test]
+    async fn an_answer_nobody_awaits_is_not_yielded() {
+        let server = ScriptedServer::start(vec![Script {
+            pushes: vec![
+                r#"{"result":null,"id":99}"#.into(),
+                fixtures::AGG_TRADE.into(),
+            ],
+            ..Default::default()
+        }])
+        .await;
+        let mut ws = UsdmWs::connect_to(&server.url, StreamPath::Market, [agg("BTCUSDT")])
+            .await
+            .unwrap();
+        let update = ws.next().await.unwrap().unwrap();
+        assert!(matches!(update.payload, Payload::AggTrade(_)));
     }
 }
