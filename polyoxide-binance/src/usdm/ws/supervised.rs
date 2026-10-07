@@ -178,6 +178,7 @@ impl UsdmWsBuilder {
     }
 
     /// How often each connection sends a protocol ping, whatever its traffic.
+    /// Binance closes a connection that sends more than 10 messages a second.
     pub fn ping_interval(mut self, interval: Duration) -> Self {
         self.ping_interval = interval;
         self
@@ -208,6 +209,7 @@ impl UsdmWsBuilder {
 
     /// How long a connection may live before it is replaced, without backoff,
     /// ahead of Binance's 24-hour cutoff.
+    /// Each replacement is a new connection, and Binance allows 300 connection attempts per 5 minutes per IP.
     pub fn max_connection_age(mut self, age: Duration) -> Self {
         self.max_connection_age = age;
         self
@@ -298,11 +300,18 @@ enum PathCommand {
 /// a set: subscribing a stream twice holds it once, and counting references is
 /// the caller's job.
 ///
-/// During a path's outage a change is recorded and answered `Ok` at once, and
-/// the replay applies it. A call fails only when the server refuses it
-/// ([`UsdmWsError::Refused`]), when it would pass 1024 streams on a path
-/// ([`UsdmWsError::TooManyStreams`], nothing sent), or when the client has
-/// stopped ([`UsdmWsError::Stopped`]).
+/// During a path's outage a change is recorded and answered `Ok`, and the
+/// replay applies it. It is answered when the path task is between attempts:
+/// a change that arrives while a connect or a replay is in flight waits for
+/// that attempt, up to the connect timeout and each unanswered batch's wait.
+/// Calls are served one at a time across paths, so a change for a healthy
+/// path can wait behind another path's attempt.
+///
+/// A call fails when the server refuses it ([`UsdmWsError::Refused`]), when it
+/// would pass 1024 streams on a path ([`UsdmWsError::TooManyStreams`], nothing
+/// sent), when the first connect of a path it opens fails in a way retrying
+/// cannot fix ([`UsdmWsError::Connect`]), or when the client has stopped
+/// ([`UsdmWsError::Stopped`]).
 ///
 /// A call waits for the path task, which cannot take it while parked behind a
 /// full event buffer (1024 unread events). Make membership changes from a task
@@ -349,11 +358,14 @@ impl MembershipHandle {
 /// stream left, while it is up, yields neither.
 ///
 /// A fatal error, such as the server refusing a replay after a reconnect, is
-/// yielded as `Err` and then the stream ends.
+/// yielded as `Err` and then the stream ends. An `Err` whose
+/// [`recovery`](crate::usdm::ws::UsdmWsError::recovery) is
+/// [`Recovery::SkipFrame`], a frame that
+/// did not decode, does not end it.
 ///
 /// ```no_run
 /// use futures_util::StreamExt;
-/// use polyoxide_binance::usdm::{types::Symbol, ws::{Event, StreamName, UsdmWsBuilder}};
+/// use polyoxide_binance::usdm::{types::Symbol, ws::{Event, Recovery, StreamName, UsdmWsBuilder}};
 ///
 /// # async fn example() -> Result<(), Box<dyn std::error::Error>> {
 /// let btc = Symbol::new("BTCUSDT")?;
@@ -363,7 +375,13 @@ impl MembershipHandle {
 ///     .await?;
 /// let membership = feed.membership();
 /// while let Some(event) = feed.next().await {
-///     match event? {
+///     let event = match event {
+///         Ok(event) => event,
+///         // A frame that did not decode is skipped; anything else ends the stream.
+///         Err(err) if err.recovery() == Recovery::SkipFrame => continue,
+///         Err(err) => return Err(err.into()),
+///     };
+///     match event {
 ///         Event::Update(update) => println!("{}", serde_json::to_string(&update)?),
 ///         Event::Disconnected { path, reason } => eprintln!("{path} down: {reason}"),
 ///         Event::Reconnected { path } => eprintln!("{path} back"),
@@ -791,8 +809,9 @@ async fn run_path(
 }
 
 /// Wait out `delay`, then connect and replay, repeating with backoff while
-/// retrying can fix the failure. Membership changes during the wait are
-/// recorded and answered at once.
+/// retrying can fix the failure. Membership changes during the backoff sleep
+/// are recorded and answered at once; one that arrives during a connect or a
+/// replay waits for it.
 async fn recover(
     config: &UsdmWsBuilder,
     path: StreamPath,

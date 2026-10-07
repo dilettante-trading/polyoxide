@@ -58,3 +58,7 @@ required-features = ["test-server"]
 [[test]]
 name = "supervision"
 required-features = ["test-server"]
+
+[[test]]
+name = "supervision_edges"
+required-features = ["test-server"]
