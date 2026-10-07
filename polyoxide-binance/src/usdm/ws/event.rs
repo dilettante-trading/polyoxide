@@ -25,7 +25,9 @@ use crate::usdm::{
 pub enum SymbolType {
     /// `1`: USDⓈ-M.
     Um,
-    /// `2`: COIN-M.
+    /// `2`: COIN-M. These rows arrive on the USDⓈ-M socket too. Their
+    /// quantities and volumes count contracts, and a ticker's `quote_volume`
+    /// is base-asset volume, so they do not sum with USDⓈ-M rows.
     Cm,
     /// A value this version does not know, kept as sent.
     Other(u64),
@@ -91,10 +93,10 @@ pub struct TickerEvent {
     /// Lowest price.
     #[serde(rename = "l", with = "rust_decimal::serde::str")]
     pub low_price: Decimal,
-    /// Base-asset volume.
+    /// Base-asset volume; contracts on a COIN-M row.
     #[serde(rename = "v", with = "rust_decimal::serde::str")]
     pub volume: Decimal,
-    /// Quote-asset volume.
+    /// Quote-asset volume; base-asset volume on a COIN-M row.
     #[serde(rename = "q", with = "rust_decimal::serde::str")]
     pub quote_volume: Decimal,
     /// Window start.
@@ -351,9 +353,11 @@ pub struct BookTickerEvent {
 #[derive(Debug, Clone, PartialEq, Eq)]
 #[non_exhaustive]
 pub enum Payload {
-    /// `!ticker@arr`.
+    /// `!ticker@arr`: only the symbols that changed. A row's `e` is not
+    /// checked, and one row that does not decode fails the whole frame.
     Tickers(Vec<TickerEvent>),
-    /// `!markPrice@arr@1s`.
+    /// `!markPrice@arr@1s`. A row's `e` is not checked, and one row that does
+    /// not decode fails the whole frame.
     MarkPrices(Vec<MarkPriceEvent>),
     /// `<s>@aggTrade`.
     AggTrade(AggTradeEvent),
@@ -367,9 +371,9 @@ pub enum Payload {
     PartialDepth(PartialDepthEvent),
     /// `<s>@bookTicker`.
     BookTicker(BookTickerEvent),
-    /// An object whose event type (`e`) is not the one its stream carries,
-    /// kept whole rather than failing the frame. The live suite fails on one,
-    /// since it means Binance renamed an event.
+    /// A single-symbol stream's object whose event type (`e`) is not the one
+    /// its stream carries, kept whole rather than failing the frame. The live
+    /// suite fails on one, since it means Binance renamed an event.
     Unknown {
         /// The payload's `e`, or empty when it has none.
         event_type: String,
@@ -508,6 +512,192 @@ mod tests {
         assert!(rows[0].mark_price > Decimal::ZERO);
         assert!(rows[0].next_funding_time > 0);
         assert_eq!(rows[0].symbol_type, SymbolType::Um);
+    }
+
+    /// The round trip proves the key set, not which field a key lands in: two
+    /// fields of one type swapped would pass it. Each field is compared here
+    /// with its own key in the raw frame, as Binance's pages define the keys,
+    /// so this holds for any capture. Where two keys carry equal values on
+    /// every frame (`p` and `ap`), a swap of those two stays invisible.
+    #[test]
+    fn each_field_holds_the_value_of_its_own_key() {
+        use serde_json::Value;
+        fn data(frame: &str) -> Value {
+            serde_json::from_str::<Value>(frame).unwrap()["data"].clone()
+        }
+        fn dec(row: &Value, key: &str) -> Decimal {
+            row[key]
+                .as_str()
+                .unwrap_or_else(|| panic!("{key} is not a string"))
+                .parse()
+                .unwrap()
+        }
+        fn int(row: &Value, key: &str) -> u64 {
+            row[key]
+                .as_u64()
+                .unwrap_or_else(|| panic!("{key} is not a u64"))
+        }
+        fn payload(frame: &str) -> Payload {
+            Update::from_json(frame).unwrap().payload
+        }
+        fn ticker(e: &TickerEvent, row: &Value) {
+            assert_eq!(
+                [
+                    e.price_change,
+                    e.price_change_percent,
+                    e.weighted_avg_price,
+                    e.last_price,
+                    e.last_quantity,
+                    e.open_price,
+                    e.high_price,
+                    e.low_price,
+                    e.volume,
+                    e.quote_volume,
+                ],
+                ["p", "P", "w", "c", "Q", "o", "h", "l", "v", "q"].map(|k| dec(row, k)),
+                "{}",
+                e.symbol
+            );
+            assert_eq!(
+                [e.event_time, e.open_time, e.close_time, e.trade_count],
+                ["E", "O", "C", "n"].map(|k| int(row, k)),
+                "{}",
+                e.symbol
+            );
+        }
+        fn mark(e: &MarkPriceEvent, row: &Value) {
+            assert_eq!(
+                [
+                    e.mark_price,
+                    e.mark_price_moving_average,
+                    e.estimated_settle_price,
+                    e.index_price,
+                    e.funding_rate,
+                ],
+                ["p", "ap", "P", "i", "r"].map(|k| dec(row, k)),
+                "{}",
+                e.symbol
+            );
+            assert_eq!(
+                [e.event_time, e.next_funding_time],
+                ["E", "T"].map(|k| int(row, k)),
+                "{}",
+                e.symbol
+            );
+        }
+
+        let Payload::Tickers(rows) = payload(fixtures::ALL_TICKERS) else {
+            panic!("not Tickers");
+        };
+        for (e, row) in rows
+            .iter()
+            .zip(data(fixtures::ALL_TICKERS).as_array().unwrap())
+        {
+            ticker(e, row);
+        }
+        let Payload::Ticker(e) = payload(fixtures::TICKER) else {
+            panic!("not Ticker");
+        };
+        ticker(&e, &data(fixtures::TICKER));
+        let Payload::MarkPrices(rows) = payload(fixtures::ALL_MARK_PRICES) else {
+            panic!("not MarkPrices");
+        };
+        for (e, row) in rows
+            .iter()
+            .zip(data(fixtures::ALL_MARK_PRICES).as_array().unwrap())
+        {
+            mark(e, row);
+        }
+        let Payload::MarkPrice(e) = payload(fixtures::MARK_PRICE) else {
+            panic!("not MarkPrice");
+        };
+        mark(&e, &data(fixtures::MARK_PRICE));
+
+        let row = data(fixtures::AGG_TRADE);
+        let Payload::AggTrade(e) = payload(fixtures::AGG_TRADE) else {
+            panic!("not AggTrade");
+        };
+        assert_eq!(
+            [e.price, e.quantity, e.normal_quantity],
+            ["p", "q", "nq"].map(|k| dec(&row, k))
+        );
+        assert_eq!(
+            [
+                e.event_time,
+                e.id,
+                e.first_trade_id,
+                e.last_trade_id,
+                e.trade_time
+            ],
+            ["E", "a", "f", "l", "T"].map(|k| int(&row, k))
+        );
+
+        let row = data(fixtures::KLINE)["k"].clone();
+        let Payload::Kline(e) = payload(fixtures::KLINE) else {
+            panic!("not Kline");
+        };
+        let k = &e.kline;
+        assert_eq!(
+            [
+                k.open,
+                k.close,
+                k.high,
+                k.low,
+                k.volume,
+                k.quote_volume,
+                k.taker_buy_base_volume,
+                k.taker_buy_quote_volume,
+            ],
+            ["o", "c", "h", "l", "v", "q", "V", "Q"].map(|key| dec(&row, key))
+        );
+        assert_eq!(
+            [k.open_time, k.close_time, k.trade_count],
+            ["t", "T", "n"].map(|key| int(&row, key))
+        );
+
+        let row = data(fixtures::PARTIAL_DEPTH);
+        let Payload::PartialDepth(e) = payload(fixtures::PARTIAL_DEPTH) else {
+            panic!("not PartialDepth");
+        };
+        assert_eq!(
+            [
+                e.event_time,
+                e.transaction_time,
+                e.first_update_id,
+                e.final_update_id,
+                e.previous_final_update_id,
+            ],
+            ["E", "T", "U", "u", "pu"].map(|k| int(&row, k))
+        );
+        for (side, key) in [(&e.bids, "b"), (&e.asks, "a")] {
+            let sent: Vec<(Decimal, Decimal)> = row[key]
+                .as_array()
+                .unwrap()
+                .iter()
+                .map(|level| {
+                    (
+                        level[0].as_str().unwrap().parse().unwrap(),
+                        level[1].as_str().unwrap().parse().unwrap(),
+                    )
+                })
+                .collect();
+            let decoded: Vec<(Decimal, Decimal)> =
+                side.iter().map(|l| (l.price, l.quantity)).collect();
+            assert_eq!(decoded, sent, "{key}");
+        }
+
+        let row = data(fixtures::BOOK_TICKER);
+        let Payload::BookTicker(e) = payload(fixtures::BOOK_TICKER) else {
+            panic!("not BookTicker");
+        };
+        assert_eq!(
+            [e.bid_price, e.bid_quantity, e.ask_price, e.ask_quantity],
+            ["b", "B", "a", "A"].map(|k| dec(&row, k))
+        );
+        assert_eq!(
+            [e.update_id, e.transaction_time, e.event_time],
+            ["u", "T", "E"].map(|k| int(&row, k))
+        );
     }
 
     #[test]
