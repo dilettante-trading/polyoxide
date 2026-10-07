@@ -4,7 +4,7 @@
 
 mod common;
 
-use polyoxide_binance::usdm::ws::{fixtures, Payload, Update};
+use polyoxide_binance::usdm::ws::{fixtures, Payload, SymbolType, Update};
 use serde_json::Value;
 
 /// `(fixture, path, reason)` the types deliberately drop.
@@ -43,4 +43,23 @@ fn every_stream_fixture_agrees_with_its_type() {
         IGNORED.len(),
         "an IGNORED entry no fixture needs"
     );
+}
+
+#[test]
+fn the_array_fixtures_carry_a_coin_m_row() {
+    // The capture reads an array stream until a frame carries a COIN-M row, so
+    // both arrays keep one after a USDⓈ-M row; a re-capture that lost it would
+    // leave the COIN-M row's shape untested.
+    for (fixture, frame) in [
+        ("stream_all_ticker_arr", fixtures::ALL_TICKERS),
+        ("stream_all_markPrice_arr_1s", fixtures::ALL_MARK_PRICES),
+    ] {
+        let update = Update::from_json(frame).unwrap();
+        let types: Vec<SymbolType> = match update.payload {
+            Payload::Tickers(rows) => rows.iter().map(|r| r.symbol_type).collect(),
+            Payload::MarkPrices(rows) => rows.iter().map(|r| r.symbol_type).collect(),
+            other => panic!("{fixture}: {other:?}"),
+        };
+        assert_eq!(types, [SymbolType::Um, SymbolType::Cm], "{fixture}");
+    }
 }

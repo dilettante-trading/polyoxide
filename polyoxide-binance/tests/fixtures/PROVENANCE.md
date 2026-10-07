@@ -24,8 +24,10 @@ Captured 2026-10-07 from `wss://fstream.binance.com` by the same script: one com
 envelope (`{"stream", "data"}`) per stream, from `/market/stream` for `!ticker@arr`,
 `!markPrice@arr@1s`, `btcusdt@aggTrade`, `btcusdt@kline_1m`, `btcusdt@markPrice@1s` and
 `btcusdt@ticker`, and from `/public/stream` for `btcusdt@depth20@100ms` and
-`btcusdt@bookTicker`. An array keeps two rows: a USDⓈ-M row (`st: 1`) with a scheduled
-funding time, and a COIN-M row (`st: 2`) when the frame carried one. Depth sides keep
+`btcusdt@bookTicker`. An array stream is read until a frame carries a COIN-M row, within
+30 s, and keeps two of its rows: the first USDⓈ-M row (`st: 1`) with a scheduled funding
+time (ticker rows have no `T`, so there the first USDⓈ-M row), then the first COIN-M row
+(`st: 2`), or the next row when no frame had one. This run: `!markPrice@arr@1s` kept `BTCUSDT` (`st: 1`) and `BTCUSD_PERP` (`st: 2`); `!ticker@arr` kept `QCOMUSDT` (`st: 1`) and `ETCUSD_PERP` (`st: 2`). Depth sides keep
 three levels. Files: `stream_all_markPrice_arr_1s.json`, `stream_all_ticker_arr.json`, `stream_btcusdt_aggTrade.json`, `stream_btcusdt_bookTicker.json`, `stream_btcusdt_depth20_100ms.json`, `stream_btcusdt_kline_1m.json`, `stream_btcusdt_markPrice_1s.json`, `stream_btcusdt_ticker.json`.
 
 ## Probes
