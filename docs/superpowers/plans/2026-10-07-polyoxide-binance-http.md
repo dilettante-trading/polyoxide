@@ -2918,6 +2918,8 @@ Notes for the reviewer:
 Run: `cargo test -j 4 -p polyoxide-binance --lib`
 Expected: PASS, 32 tests. `never used` warnings for `from_response_parts` and `retry_after_secs` are expected until Task 6.
 
+Code review added a follow-up commit (e08683a). Core reads a non-Binance body whole before its message is clipped. A `Venue` error with 408 or 425 is retriable, as core says for those statuses, and a test pins the agreement. A `Retry-After` that rounds to zero is `None`. Tests cover every clip site, a 403 with Binance's body, and the 500 boundary. The crate then has 34 unit tests.
+
 - [ ] **Step 5: Commit**
 
 ```bash
@@ -4284,7 +4286,7 @@ let b = Usdm::builder().weight_budget(budget).build()?;
 - [ ] **Step 6: Run everything**
 
 Run: `cargo test -j 4 -p polyoxide-binance --all-targets && cargo test -j 4 -p polyoxide-binance --doc`
-Expected: PASS: 35 unit tests, 19 in `mock_api`, 2 in `wire_agreement`, 3 doctests. `a_418_is_not_retried_and_holds_the_next_request` and `a_429_cools_down_then_succeeds` each take about a second; `a_high_used_weight_header_holds_the_next_request` may first wait up to three seconds to stay clear of a minute boundary.
+Expected: PASS: 37 unit tests, 19 in `mock_api`, 2 in `wire_agreement`, 3 doctests. `a_418_is_not_retried_and_holds_the_next_request` and `a_429_cools_down_then_succeeds` each take about a second; `a_high_used_weight_header_holds_the_next_request` may first wait up to three seconds to stay clear of a minute boundary.
 
 - [ ] **Step 7: Show the send loop's tests can fail**
 

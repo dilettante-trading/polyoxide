@@ -274,7 +274,7 @@ serialisation, URL) and adds:
 
 | Variant | From | Retriable |
 |---|---|---|
-| `Venue { status, code, msg }` | any non-success whose body is `{code, msg}` | 5xx only |
+| `Venue { status, code, msg }` | any non-success whose body is `{code, msg}` | 408, 425 and 5xx, as core's `ApiError::is_retriable` for the same statuses |
 | `RateLimited { retry_after }` | a 429 still refused after the retry schedule | yes |
 | `IpBanned { retry_after }` | 418 | no; the budget holds every request until it lifts |
 | `RegionBlocked { msg }` | 451 | no |
