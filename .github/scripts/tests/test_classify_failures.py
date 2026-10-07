@@ -168,6 +168,15 @@ RETRIABLE_ARMS: list[tuple[str, str]] = [
         "live_x: Network error: error sending request for url "
         "(https://clob.polymarket.com/ok)",
     ),
+    # BinanceError's own retriable arms, in both renderings. Its `Api(..)` arm
+    # wraps core's, which the rows above cover.
+    ("Binance RateLimited / Debug", "live_x: RateLimited { retry_after: Some(1s) }"),
+    ("Binance RateLimited / Display", "live_x: binance rate limit (429), retry after Some(1s)"),
+    ("Binance Venue 5xx / Debug", 'live_x: Venue { status: 503, code: -1001, msg: "Internal error" }'),
+    ("Binance Venue 5xx / Display", "live_x: binance answered 503: -1001 Internal error"),
+    ("Binance Venue 408 / Debug", 'live_x: Venue { status: 408, code: -1007, msg: "Timeout" }'),
+    ("Binance Venue 408 / Display", "live_x: binance answered 408: -1007 Timeout"),
+    ("Binance raw status / 503", "/fapi/v1/time: API error: 503 Service Unavailable"),
 ]
 
 
@@ -186,6 +195,11 @@ NON_RETRIABLE_ARMS: list[tuple[str, str]] = [
     ("Api 4xx / Display", "live_x: API error: 404 - not found"),
     ("Serialization / Display", "live_x: Serialization error: invalid type at line 1"),
     ("plain assertion", "assertion `left == right` failed\n  left: 3\n right: 4"),
+    ("Binance Venue 4xx / Debug", 'live_x: Venue { status: 400, code: -1121, msg: "Invalid symbol." }'),
+    ("Binance Venue 4xx / Display", "live_x: binance answered 400: -1121 Invalid symbol."),
+    ("Binance IpBanned / Debug", "live_x: IpBanned { retry_after: None }"),
+    ("Binance IpBanned / Display", "live_x: binance has banned this IP (418), retry after None"),
+    ("Binance Forbidden / Display", "live_x: binance's firewall refused the request (403): <html>"),
 ]
 
 

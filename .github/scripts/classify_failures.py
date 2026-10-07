@@ -67,6 +67,14 @@ TRANSIENT_RES: list[re.Pattern[str]] = [
     # narrowed to RateLimit. Display is "API error: {status} - {message}", Debug
     # is `Api { status: 503, .. }`, and reqwest's own status prose says "HTTP 503".
     re.compile(r"\b(?:HTTP|status:|API error:)\s*(?:425|429|5\d{2})\b", re.IGNORECASE),
+    # BinanceError (polyoxide-binance). RateLimited's Debug is a struct, not
+    # core's tuple, and its Display, "binance rate limit (429)", is matched
+    # above. A Venue error is retriable for 408, 425 and 5xx, as core is; its
+    # Debug spells `Venue { status: 503, .. }` and its Display "binance
+    # answered 503: …".
+    re.compile(r"\bRateLimited \{"),
+    re.compile(r"\bVenue \{ status: (?:408|425|5\d{2})\b"),
+    re.compile(r"\bbinance answered (?:408|425|5\d{2}):"),
     # ApiError::Timeout (HTTP 408) — Display "Request timeout"; Debug is the bare
     # unit variant, matched only through the wrapper the crate errors add, since
     # `Timeout` on its own is too common a word in ordinary panic prose.
