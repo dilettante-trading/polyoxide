@@ -57,9 +57,12 @@ streams; Python bindings; a `binance` feature on the `polyoxide` umbrella crate.
 
 Binance publishes no OpenAPI or AsyncAPI document for USDⓈ-M futures:
 `github.com/binance/binance-api-swagger` holds `spot_api.yaml` only, and `binance-sdk` is
-generated from inputs that are not public. The sources are the prose pages under
-`developers.binance.com/docs/derivatives/usds-margined-futures/` and the wire, captured and
-probed on 2026-10-07. Where they disagree, the wire wins and `OBSERVED.md` records it. The
+generated from inputs that are not public. The sources are the prose pages and the wire,
+captured and probed on 2026-10-07. The REST pages are under
+`developers.binance.com/docs/derivatives/usds-margined-futures/`. The stream pages have
+moved to `developers.binance.com/en/docs/catalog/core-trading-derivatives-trading-usd-s-m-futures/api/ws-streams/`,
+one page per path (`market`, `public`), and their old URLs land on a generic page. Where
+the pages and the wire disagree, the wire wins and `OBSERVED.md` records it. The
 host is excluded from `nightly-schema.yml`; the live suites are its drift detector, as for
 rtds and sports.
 
@@ -81,7 +84,7 @@ on REST (`BTCUSDT`, and Chinese-character symbols such as `币安人生USDT`).
 | `/fapi/v1/klines` | `symbol`, `interval`; `startTime`, `endTime`, `limit` (≤ 1500) | `[Kline]`, positional arrays | by `limit`: under 100 → 1, 100–499 → 2, 500–1000 → 5, over 1000 → 10 |
 | `/fapi/v1/fundingRate` | `symbol`, `startTime`, `endTime`, `limit` (≤ 1000), all optional | `[FundingRate]` | none; shares 500 per 5 min |
 | `/fapi/v1/openInterest` | `symbol` | `OpenInterest` | 1 |
-| `/fapi/v1/aggTrades` | `symbol`; `fromId`, `startTime`, `endTime`, `limit` (≤ 1000) | `[AggTrade]` | 20 |
+| `/fapi/v1/aggTrades` | `symbol`; `fromId`, `startTime`, `endTime`, `limit` (≤ 1000); last 48 h only | `[AggTrade]` | 20 |
 | `/fapi/v1/depth` | `symbol`; `limit` ∈ 5, 10, 20, 50, 100, 500, 1000 | `Depth` | 2 up to 50, 5 at 100, 10 at 500, 20 at 1000 |
 
 Measured on 2026-10-07 from `X-MBX-USED-WEIGHT-1M` deltas: `exchangeInfo` 1, `ticker/24hr`
@@ -89,6 +92,12 @@ Measured on 2026-10-07 from `X-MBX-USED-WEIGHT-1M` deltas: `exchangeInfo` 1, `ti
 1, `aggTrades` 20 at 100, `depth` 2 at 20 and 5 at 100. The klines 500–1000 and depth 500
 and 1000 rows are the documented values, unmeasured. `fundingInfo` and `fundingRate`
 answer with no weight header.
+
+`aggTrades` serves only the last 48 hours, as its page documents. An older window is
+refused with `400 {"code":-4166,"msg":"Search window is restricted to recent 2 days
+only."}` (2026-10-07; the page does not give the code), so a backfill cannot reach further
+back. The page also says a window with both `startTime` and `endTime` must span less than
+an hour; that was not probed.
 
 The weight budget is `REQUEST_WEIGHT` 2400 per minute per IP, from `exchangeInfo`'s
 `rateLimits`, reported on every weighted response in `X-MBX-USED-WEIGHT-1M`.
