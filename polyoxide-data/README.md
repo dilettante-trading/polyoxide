@@ -17,14 +17,14 @@ More information about this crate can be found in the [crate documentation](http
 
 ```toml
 [dependencies]
-polyoxide-data = "0.36"
+polyoxide-data = "0.37"
 ```
 
 Or use the unified client:
 
 ```toml
 [dependencies]
-polyoxide = "0.36"
+polyoxide = "0.37"
 ```
 
 ## Data API v2

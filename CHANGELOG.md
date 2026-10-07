@@ -1,3 +1,43 @@
+## [0.37.0] - 2026-10-07
+
+Adds `polyoxide-binance`, a new credential-free crate for Binance USDⓈ-M
+futures public market data on `fapi.binance.com` and, behind its `ws` feature,
+the market streams on `fstream.binance.com`. It is not a Polymarket host, so it
+is not in the `polyoxide` umbrella crate or `full`. Core gains
+`HttpClientBuilder::gzip`, off by default. The crates now enable reqwest 0.12's
+`gzip` feature, and feature unification turns it on for a consumer's own
+reqwest 0.12 clients too, so those send `Accept-Encoding: gzip` unless built
+with `.gzip(false)`.
+
+### 🚀 Features
+
+- *(binance)* New `polyoxide-binance` crate. `Usdm::new()` reads eleven public routes through the namespaces `health()`, `exchange()` and `market()`: contracts, tickers, the premium index and funding, klines, open interest, aggregate trades and order book snapshots. `Symbol` uppercases ASCII and accepts `_` for quarterlies (`BTCUSDT_261225`)
+- *(binance)* `WeightBudget` charges every request its measured weight against the UTC minute, at 2160 of the published 2400. It follows the server's `X-MBX-USED-WEIGHT-1M` header, paces the weightless funding routes separately, and holds a `429` or `418` as a client-wide cooldown that only ever extends. A `429` with no retry left holds every request to the next minute, since sending into a spent minute is how a `429` becomes a `418` ban
+- *(binance)* The `ws` feature streams eight USDⓈ-M market streams. `UsdmWs` is one connection on one path. `UsdmWsBuilder`/`SupervisedUsdmWs` runs one supervised connection per routed path (`/market` or `/public`). It pings on the wall clock, treats silence as staleness, reconnects with a paced replay and rotates before Binance's 24-hour cutoff. Every `Event::Disconnected { path }` is followed by `Event::Reconnected { path }`. `StreamName` is the only way to name a stream, and the client enforces Binance's limits before sending, rather than letting the server close the connection: 1024 streams per connection, 200 names per request, one request per 200 ms
+- *(binance)* The `test-server` feature exposes the scripted Binance server and the captured frames as `usdm::ws::fixtures` for downstream tests
+- *(binance)* `cargo run -p polyoxide-binance --example weight_probe` re-measures the weight table against the live host
+- *(core)* `HttpClientBuilder::gzip`, off by default. Only `polyoxide-binance` turns it on (`exchangeInfo` is 1.15 MB raw, 51 KB gzipped)
+- *(cli)* `polyoxide ws binance` streams Binance market data through the supervised tier. `--symbol` and `--kind` are comma-separated, and `--all-tickers` and `--all-mark-prices` add the two array streams. Outage markers go to stderr, and `--format json` prints each frame's envelope
+
+### 🐛 Bug Fixes
+
+- *(perps)* `info_soak` pins `.gzip(false)`, like the other rate-limit measuring examples, so its measurements are not skewed by compression
+
+### 📚 Documentation
+
+- *(specs)* `docs/specs/binance/` records what the host does in `INDEX.md` and `OBSERVED.md`. Binance publishes no OpenAPI or AsyncAPI for USDⓈ-M, so there is nothing for `nightly-schema.yml` to diff. The weight table is measured, not copied: Binance's page is one off at the 100 and 500 `klines` edges, and does not say that omitting `limit` costs 5 on `klines` and 1 on `depth`
+
+### 🧪 Testing
+
+- *(binance)* Wire agreement tests check the REST rows and stream payloads against captured fixtures, which `scripts/capture_binance_fixtures.py` refreshes. The live suites' `live_responses_carry_no_unmodelled_keys` and `live_frames_carry_no_unmodelled_keys`, run nightly, are the host's drift detectors
+- *(binance)* Offline tests drive a scripted server through the supervised tier's liveness, reconnect, replay and rotation paths, and pin the `Disconnected`/`Reconnected` pairing
+- *(cli)* `tests/ws_binance.rs` drives `ws binance` with the crate's captured frames
+
+### ⚙️ Miscellaneous Tasks
+
+- `release.yml` publishes `polyoxide-binance` after `polyoxide-perps`
+- The behavioral nightly runs the Binance live suites. It classifies `BinanceError`'s retriable arms and dropped streams as transient, and a region block (HTTP 451) as environmental
+
 ## [0.36.0] - 2026-10-07
 
 Adds `polyoxide-sports`, a new credential-free crate for the live sports

@@ -18,7 +18,7 @@ More information about this crate can be found in the [crate documentation](http
 
 ```toml
 [dependencies]
-polyoxide-binance = "0.36"
+polyoxide-binance = "0.37"
 ```
 
 ## Usage
@@ -74,7 +74,7 @@ tickers). `UsdmWsBuilder` keeps each connection alive, replaces a dead one, rota
 before Binance's 24-hour cutoff, replays its streams at Binance's pace, and reports each
 outage: while the client runs, every `Event::Disconnected { path }` is followed by
 `Event::Reconnected { path }`, after which anything built from that path's streams should
-be rebuilt. Enable it with `polyoxide-binance = { version = "0.36", features = ["ws"] }`.
+be rebuilt. Enable it with `polyoxide-binance = { version = "0.37", features = ["ws"] }`.
 
 ```text
 use futures_util::StreamExt;

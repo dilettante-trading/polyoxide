@@ -10,7 +10,7 @@ More information about this crate can be found in the [crate documentation](http
 
 ```toml
 [dependencies]
-polyoxide-sports = "0.36"
+polyoxide-sports = "0.37"
 ```
 
 ## Usage
