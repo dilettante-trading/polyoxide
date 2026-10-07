@@ -5033,13 +5033,15 @@ parameters, so the crate has its own `WeightBudget` (`src/weight.rs`) instead of
 `RESERVED_FRACTION`), raised by every response's `X-MBX-USED-WEIGHT-1M` but only for the
 minute its request was charged in, a separate bucket for the weightless funding routes
 (450 per 5 minutes, depth one), and a `429` or `418` held as a client-wide cooldown that
-is only ever extended. The weight table, `Route::cost`, is measured, not copied:
-Binance's page is off by one at two of the three `klines` band edges and does not say that omitting
-`limit` costs 5 on `klines` and 1 on `depth`. `cargo run -p polyoxide-binance --example
-weight_probe` re-measures it. Response rows carry symbols as `String`; `Symbol` is for
-what a caller sends, uppercases ASCII, and accepts `_` for quarterlies
-(`BTCUSDT_261225`). `FundingRate::mark_price` is an `Option` because funding events
-before about 2022 send `""`. Core's `HttpClientBuilder::gzip` is off by default and only
+is only ever extended. A `429` with no retry left and no `Retry-After` holds every
+request to the next minute: sending into a spent minute is how a `429` becomes a `418`
+ban. The weight table, `Route::cost`, is measured, not copied: Binance's page is one off
+at the 100 and 500 `klines` edges and does not say that omitting `limit` costs 5 on
+`klines` and 1 on `depth`. `cargo run -p polyoxide-binance --example weight_probe`
+re-measures it. Response rows carry symbols as `String`; `Symbol` is for what a caller
+sends, uppercases ASCII, and accepts `_` for quarterlies (`BTCUSDT_261225`).
+`FundingRate::mark_price` is an `Option` because funding events through at least
+2022-01-01 send `""`. Core's `HttpClientBuilder::gzip` is off by default and only
 this crate turns it on (`exchangeInfo` is 1.15 MB raw, 51 KB gzipped); with reqwest's
 `gzip` feature on workspace-wide, any client built without core would ask for gzip,
 which is why four rate-limit examples pin `.gzip(false)`.
