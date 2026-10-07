@@ -186,6 +186,26 @@ mod tests {
     }
 
     #[test]
+    fn ws_binance_parses_with_a_symbol_and_kind() {
+        let cli = try_parse(&[
+            "polyoxide",
+            "ws",
+            "binance",
+            "--symbol",
+            "BTCUSDT",
+            "--kind",
+            "ticker",
+        ])
+        .unwrap();
+        assert!(matches!(
+            cli.command,
+            super::Commands::Ws {
+                command: polyoxide_cli::commands::WsCommand::Binance { .. }
+            }
+        ));
+    }
+
+    #[test]
     fn ws_user_requires_market_ids() {
         let result = try_parse(&["polyoxide", "ws", "user"]);
         assert!(result.is_err());

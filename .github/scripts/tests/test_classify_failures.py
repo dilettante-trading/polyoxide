@@ -269,6 +269,15 @@ WEBSOCKET_DROPS: list[tuple[str, str]] = [
         "the server closed the connection (Some(1011): Internal error)",
     ),
     ("Binance stream ended", "market: the server ended the connection"),
+    (
+        "Binance NoAnswer / Display",
+        "connect: no answer to request 1 within 10s",
+    ),
+    (
+        "Binance close 1011 / CLI marker",
+        "# market disconnected: closed by the server (1011 Internal error). "
+        "Its streams are stale until it reconnects.",
+    ),
 ]
 
 
@@ -305,6 +314,11 @@ WEBSOCKET_FAULTS_STAY_REAL: list[tuple[str, str]] = [
         "connect: WebSocket transport error: HTTP error: 404 Not Found",
     ),
     ("Binance pong unanswered", "pong: NoAnswer { id: 1, timeout: 10s }"),
+    (
+        "Binance close 1008 / CLI marker",
+        "# market disconnected: closed by the server (1008 Invalid request). "
+        "Its streams are stale until it reconnects.",
+    ),
     (
         "Binance kind delivered nothing",
         'in 60 s these kinds delivered nothing: ["kline"]; last outage: Some("market: Stale")',

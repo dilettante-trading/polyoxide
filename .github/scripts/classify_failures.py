@@ -93,6 +93,10 @@ TRANSIENT_RES: list[re.Pattern[str]] = [
     re.compile(r"\bno connection within\b"),
     re.compile(r"\bHTTP error: (?:408|425|429|5\d{2})\b"),
     re.compile(r"\bthe server closed the connection \(Some\((?:1001|1011|1012|1013)\)"),
+    # The Display of an unanswered request, and the CLI's outage marker for a
+    # server restart or error close: both reconnect, as `recovery()` says.
+    re.compile(r"\bno answer to request\b"),
+    re.compile(r"\bclosed by the server \((?:1001|1011|1012|1013)\b"),
     # ApiError::Timeout (HTTP 408) — Display "Request timeout"; Debug is the bare
     # unit variant, matched only through the wrapper the crate errors add, since
     # `Timeout` on its own is too common a word in ordinary panic prose.

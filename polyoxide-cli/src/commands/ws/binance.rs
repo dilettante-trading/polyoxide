@@ -12,7 +12,8 @@ use polyoxide_binance::usdm::{
     types::{Interval, Symbol},
     ws::{
         AggTradeEvent, BookTickerEvent, DepthLevels, DepthSpeed, Event, KlineEvent, MarkPriceEvent,
-        PartialDepthEvent, Payload, StreamName, TickerEvent, Update, UsdmWsBuilder, UsdmWsError,
+        PartialDepthEvent, Payload, Recovery, StreamName, TickerEvent, Update, UsdmWsBuilder,
+        UsdmWsError,
     },
 };
 
@@ -40,8 +41,9 @@ pub struct BinanceArgs {
     pub symbol: Vec<String>,
 
     /// Kinds to stream for each symbol, comma-separated: agg-trade,
-    /// book-ticker, depth5, depth10, depth20 (100 ms), kline-<interval>
-    /// (kline-1m, kline-1h, kline-1d, ...), mark-price, ticker.
+    /// book-ticker, depth5, depth10 and depth20 (each every 100 ms),
+    /// `kline-<interval>` (kline-1m, kline-1h, kline-1d, ...; `1M` is a month,
+    /// `1m` a minute), mark-price, ticker. Kinds are case-sensitive.
     #[arg(long, value_delimiter = ',', value_parser = parse_list_entry)]
     pub kind: Vec<String>,
 
@@ -136,10 +138,27 @@ fn stream(symbol: Symbol, kind: &str) -> Result<StreamName> {
 /// Connect to the production host and stream until `-n`, `-t` or Ctrl+C.
 pub async fn run(args: BinanceArgs) -> Result<()> {
     let streams = args.streams()?;
-    eprintln!("Connecting to Binance USDⓈ-M streams...");
-    let feed = UsdmWsBuilder::new().streams(streams).connect().await?;
+    let names: Vec<String> = streams.iter().map(ToString::to_string).collect();
+    let listed = if names.len() <= 10 {
+        names.join(", ")
+    } else {
+        format!("{} streams", names.len())
+    };
+    eprintln!("Connecting to Binance USDⓈ-M streams: {listed}");
+    let mut feed = UsdmWsBuilder::new().streams(streams).connect().await?;
     eprintln!("Connected. Press Ctrl+C to exit.");
-    run_with(args, feed, &mut std::io::stdout(), &mut std::io::stderr()).await
+    // As in `ws sports`, there is no Ctrl+C handler: the process ends with the
+    // signal. On `-n`, `-t` or the end of the feed the connections are closed
+    // with a handshake.
+    let result = run_with(
+        args,
+        &mut feed,
+        &mut std::io::stdout(),
+        &mut std::io::stderr(),
+    )
+    .await;
+    let _ = feed.close().await;
+    result
 }
 
 /// Print events from any stream until `-n` or `-t` is reached or the stream
@@ -204,6 +223,11 @@ where
                 "# skipped a frame on {stream:?} that did not decode ({reason}): {}",
                 excerpt(&raw)
             )?,
+            // Any other error the library says to skip; `UsdmWsError` is
+            // #[non_exhaustive].
+            Some(Err(error)) if error.recovery() == Recovery::SkipFrame => {
+                writeln!(err, "# skipped a frame: {error}")?
+            }
             Some(Err(error)) => return Err(error.into()),
             None => {
                 writeln!(err, "The feed ended")?;
