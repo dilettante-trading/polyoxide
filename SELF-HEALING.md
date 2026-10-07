@@ -30,7 +30,7 @@ rather than creating duplicates, and recovery closes them.
 
 ## Behavioral drift — `.github/workflows/nightly-behavioral.yml`
 
-Runs every crate's `#[ignore]`d live tests against the real Polymarket APIs,
+Runs every crate's `#[ignore]`d live tests against the real upstream APIs,
 with **no secrets configured**. Besides the 06:00 UTC run, it also runs on
 Saturday and Sunday at 18:30 UTC. The sports feed carries only what is live,
 and that is when North American leagues and weekend soccer are on.

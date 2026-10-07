@@ -5013,9 +5013,11 @@ After the line `├── polyoxide-perps     (perpetual futures: public market 
 
 In the "Nightly API Smoketest" list, replace `perps incl. \`live_ws\`, sports, cli)` with `perps incl. \`live_ws\`, sports, binance, cli)`.
 
-In the same section, replace `and the undocumented \`user-pnl-api\`/\`lb-api\` hosts (nothing to diff).` with `the undocumented \`user-pnl-api\`/\`lb-api\` hosts (nothing to diff), and Binance (\`docs/specs/binance/\`: Binance publishes no spec for USDⓈ-M, and its live suite is the drift check).`
+In the same section, replace `doc) and the undocumented \`user-pnl-api\`/\`lb-api\` hosts (nothing to diff).` with `doc), the undocumented \`user-pnl-api\`/\`lb-api\` hosts (nothing to diff), and Binance (\`docs/specs/binance/\`: Binance publishes no spec for USDⓈ-M, and its live suite is the drift check).`
 
-In "Publishing Order", replace `core → rtds → sports → perps → relay → gamma → data → clob → polyoxide.` with `core → rtds → sports → perps → binance → relay → gamma → data → clob → polyoxide.`, and replace `so it only has to follow core and precede \`polyoxide\`.)` with `so it only has to follow core and precede \`polyoxide\`; \`polyoxide-binance\` is the same.)`.
+In "Publishing Order", replace `core → rtds → sports → perps → relay → gamma → data → clob → polyoxide.` with `core → rtds → sports → perps → binance → relay → gamma → data → clob → polyoxide.`, and replace `so it only has to follow core and precede \`polyoxide\`.)` with `so it only has to follow core and precede \`polyoxide\`; \`polyoxide-binance\` only has to follow core, since no published crate depends on it.)`.
+
+In "Testing Conventions", replace `They hit the real Polymarket APIs.` with `They hit the real upstream APIs.`
 
 Insert this paragraph directly before the paragraph that begins `**Data API v2**`:
 
@@ -5029,8 +5031,8 @@ does, `nightly-schema.yml` has nothing to diff, and
 `tests/live_api.rs::live_responses_carry_no_unmodelled_keys` is the drift detector.
 Binance limits each IP by request *weight*, which depends on the route and its
 parameters, so the crate has its own `WeightBudget` (`src/weight.rs`) instead of core's
-`RateLimiter`: the UTC clock minute at 2160 of the published 2400 (core's
-`RESERVED_FRACTION`), raised by every response's `X-MBX-USED-WEIGHT-1M` but only for the
+`RateLimiter`: the UTC clock minute at 2160 of the published 2400 (the tenth core's
+`RESERVED_FRACTION` also reserves), raised by every response's `X-MBX-USED-WEIGHT-1M` but only for the
 minute its request was charged in, a separate bucket for the weightless funding routes
 (450 per 5 minutes, depth one), and a `429` or `418` held as a client-wide cooldown that
 is only ever extended. A `429` with no retry left and no `Retry-After` holds every
@@ -5077,6 +5079,8 @@ In the nightly table, after the `polyoxide-sports` row, add:
 ```markdown
 | polyoxide-binance | `live_api` |
 ```
+
+Replace `against the real Polymarket APIs,` with `against the real upstream APIs,`.
 
 Under `### Deliberate exclusions`, after the `user-pnl-api` / `lb-api` bullet, add:
 
