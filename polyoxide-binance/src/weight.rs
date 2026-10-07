@@ -355,9 +355,12 @@ impl WeightBudget {
 
     /// Holds every request until the next UTC minute, when the weight window
     /// resets: what a `429` with no `Retry-After` and no retry left calls for.
-    pub(crate) fn hold_until_next_minute(&self) {
+    /// Returns the hold, for the log.
+    pub(crate) fn hold_until_next_minute(&self) -> Duration {
         let now_ms = self.inner.clock.now_ms();
-        self.begin_cooldown(Duration::from_millis(MINUTE_MS - now_ms % MINUTE_MS));
+        let hold = Duration::from_millis(MINUTE_MS - now_ms % MINUTE_MS);
+        self.begin_cooldown(hold);
+        hold
     }
 
     async fn await_cooldown(&self) {
@@ -571,6 +574,17 @@ mod tests {
         let start = Instant::now();
         budget.acquire(Cost::Weight(1)).await;
         assert_eq!(start.elapsed(), MAX_COOLDOWN);
+    }
+
+    #[tokio::test(start_paused = true)]
+    async fn a_hold_lasts_until_the_next_minute_for_both_limits() {
+        for cost in [Cost::Weight(1), Cost::Funding] {
+            let budget = budget(PUBLISHED_WEIGHT_PER_MINUTE, ON_A_MINUTE + 15_000);
+            assert_eq!(budget.hold_until_next_minute(), Duration::from_secs(45));
+            let start = Instant::now();
+            budget.acquire(cost).await;
+            assert_eq!(start.elapsed(), Duration::from_secs(45), "{cost:?}");
+        }
     }
 
     #[tokio::test(start_paused = true)]

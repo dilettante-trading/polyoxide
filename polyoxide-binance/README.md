@@ -61,5 +61,6 @@ let b = Usdm::builder().weight_budget(budget).build()?;
 ```
 
 Each client may have `max_concurrent` requests in flight (default 4), and the budget's
-reserve absorbs in-flight weight only up to 240, so two clients sharing a budget should
-each set `max_concurrent(3)`.
+reserve absorbs in-flight weight only while it stays under 240, so two clients that send
+weighted routes should each set `max_concurrent(2)` (2 × 2 × 40 = 160). A client that sends
+only the funding routes carries no weight and can keep the default.

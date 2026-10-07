@@ -133,18 +133,21 @@ impl<T: DeserializeOwned> WeightedRequest<T> {
                     .http
                     .should_retry(status, attempt, retry_after.as_deref());
                 let asked = retry_after_secs(retry_after.as_deref());
-                match (retry, asked) {
+                let cooldown = match (retry, asked) {
                     (None, None) => self.budget.hold_until_next_minute(),
-                    _ => self
-                        .budget
-                        .begin_cooldown(retry.unwrap_or_default().max(asked.unwrap_or_default())),
-                }
+                    _ => {
+                        let cooldown = retry.unwrap_or_default().max(asked.unwrap_or_default());
+                        self.budget.begin_cooldown(cooldown);
+                        cooldown
+                    }
+                };
                 if retry.is_some() {
                     attempt += 1;
-                    tracing::warn!("429 on {path}, retry {attempt} after the cooldown");
+                    tracing::warn!("429 on {path}, retry {attempt} after {cooldown:?}");
                     drop(permit);
                     continue;
                 }
+                tracing::warn!("429 on {path}, no retry left: every request held {cooldown:?}");
             }
 
             if !status.is_success() {

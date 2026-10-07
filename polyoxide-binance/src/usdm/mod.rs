@@ -124,6 +124,8 @@ impl UsdmBuilder {
     /// default, one client has at most 160 (4 × the heaviest route, 40).
     /// `WeightBudget` explains why a request in flight across a minute
     /// boundary is not counted by it.
+    ///
+    /// At least 1: zero admits no request, so every send waits forever.
     pub fn max_concurrent(mut self, max: usize) -> Self {
         self.max_concurrent = Some(max);
         self

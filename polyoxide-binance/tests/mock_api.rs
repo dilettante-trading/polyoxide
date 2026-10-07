@@ -613,10 +613,10 @@ async fn retry_after_outlasts_a_shorter_backoff() {
     );
     let start = Instant::now();
     client.market().open_interest(&btc()).send().await.unwrap();
+    let held = start.elapsed();
     assert!(
-        start.elapsed() >= Duration::from_millis(900),
-        "{:?}",
-        start.elapsed()
+        held >= Duration::from_millis(900) && held < Duration::from_secs(5),
+        "{held:?}"
     );
     limited.assert_async().await;
     ok.assert_async().await;
