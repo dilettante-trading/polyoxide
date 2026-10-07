@@ -117,11 +117,12 @@ impl UsdmWsError {
         use tokio_tungstenite::tungstenite::Error as Ws;
         match self {
             Self::Connect(err) => match &**err {
-                // A handshake refused with 5xx or 429 is the host being unwell
-                // or throttling; any other status is our request.
+                // A handshake refused with 408, 425, 429 or 5xx is the host
+                // being unwell or throttling, as core's `is_retriable` reads
+                // those statuses; any other status is our request.
                 Ws::Http(response) => {
                     let status = response.status();
-                    if status.is_server_error() || status.as_u16() == 429 {
+                    if status.is_server_error() || matches!(status.as_u16(), 408 | 425 | 429) {
                         Recovery::Reconnect
                     } else {
                         Recovery::Fatal
@@ -160,8 +161,11 @@ mod tests {
     fn a_handshake_refused_by_the_host_reconnects_and_one_refused_for_us_is_fatal() {
         assert_eq!(http_error(503).recovery(), Recovery::Reconnect);
         assert_eq!(http_error(429).recovery(), Recovery::Reconnect);
+        assert_eq!(http_error(408).recovery(), Recovery::Reconnect);
+        assert_eq!(http_error(425).recovery(), Recovery::Reconnect);
         assert_eq!(http_error(451).recovery(), Recovery::Fatal);
         assert_eq!(http_error(404).recovery(), Recovery::Fatal);
+        assert_eq!(http_error(418).recovery(), Recovery::Fatal);
     }
 
     #[test]
@@ -176,6 +180,10 @@ mod tests {
             UsdmWsError::NoAnswer {
                 id: 3,
                 timeout: Duration::from_secs(10),
+            },
+            UsdmWsError::Response {
+                id: 4,
+                raw: "{\"id\":4}".into(),
             },
         ] {
             assert_eq!(err.recovery(), Recovery::Reconnect, "{err}");
@@ -204,6 +212,19 @@ mod tests {
             full.to_string(),
             "a market connection carries at most 1024 streams"
         );
+        let wrong = UsdmWsError::WrongPath {
+            stream: StreamName::BookTicker(crate::usdm::types::Symbol::new("BTCUSDT").unwrap()),
+            path: StreamPath::Market,
+        };
+        assert_eq!(wrong.recovery(), Recovery::Fatal);
+        assert_eq!(
+            wrong.to_string(),
+            "btcusdt@bookTicker rides the public path, not market"
+        );
+        let url = UsdmWsError::from(tungstenite::Error::Url(
+            tungstenite::error::UrlError::NoHostName,
+        ));
+        assert_eq!(url.recovery(), Recovery::Fatal);
         assert_eq!(UsdmWsError::Stopped.recovery(), Recovery::Fatal);
     }
 

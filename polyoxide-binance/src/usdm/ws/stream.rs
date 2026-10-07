@@ -1,10 +1,12 @@
 //! Stream names: the only way to name a USDⓈ-M market stream.
 //!
-//! Binance acknowledges every `SUBSCRIBE`, including an unknown symbol, a
-//! stream type that does not exist and an uppercase symbol, and the last two
-//! deliver nothing. A name that will never deliver is indistinguishable from a
-//! quiet one, so names are built here, by construction, and never accepted as
-//! caller strings.
+//! Binance acknowledges every `SUBSCRIBE`, including a stream type that does
+//! not exist, an uppercase symbol, a spelling it does not serve (`@250ms`) and
+//! an unknown or delisted symbol, and none of those deliver anything. A name
+//! that will never deliver is indistinguishable from a quiet one, so names are
+//! built here, by construction, and never accepted as caller strings. The
+//! symbol is the one part this cannot check: `exchange().exchange_info()` lists
+//! the symbols that trade.
 
 use std::{fmt, str::FromStr};
 
@@ -42,7 +44,8 @@ impl DepthLevels {
 pub enum DepthSpeed {
     /// `@100ms`.
     Ms100,
-    /// `@250ms`.
+    /// No suffix: Binance's default. An explicit `@250ms` is acknowledged and
+    /// delivers nothing (measured 2026-10-07).
     Ms250,
     /// `@500ms`.
     Ms500,
@@ -52,11 +55,12 @@ impl DepthSpeed {
     /// Every value, in order.
     pub const ALL: &'static [Self] = &[Self::Ms100, Self::Ms250, Self::Ms500];
 
-    fn as_str(self) -> &'static str {
+    /// What follows the levels in a stream name.
+    fn suffix(self) -> &'static str {
         match self {
-            Self::Ms100 => "100ms",
-            Self::Ms250 => "250ms",
-            Self::Ms500 => "500ms",
+            Self::Ms100 => "@100ms",
+            Self::Ms250 => "",
+            Self::Ms500 => "@500ms",
         }
     }
 }
@@ -126,13 +130,9 @@ impl fmt::Display for StreamName {
             Self::Kline(s, interval) => write!(f, "{}@kline_{interval}", lower(s)),
             Self::MarkPrice(s) => write!(f, "{}@markPrice@1s", lower(s)),
             Self::Ticker(s) => write!(f, "{}@ticker", lower(s)),
-            Self::PartialDepth(s, levels, speed) => write!(
-                f,
-                "{}@depth{}@{}",
-                lower(s),
-                levels.as_str(),
-                speed.as_str()
-            ),
+            Self::PartialDepth(s, levels, speed) => {
+                write!(f, "{}@depth{}{}", lower(s), levels.as_str(), speed.suffix())
+            }
             Self::BookTicker(s) => write!(f, "{}@bookTicker", lower(s)),
         }
     }
@@ -140,7 +140,7 @@ impl fmt::Display for StreamName {
 
 /// A string that is not a stream name this crate builds.
 #[derive(Debug, Clone, PartialEq, Eq, thiserror::Error)]
-#[error("{0:?} is not a USDⓈ-M stream name this crate supports")]
+#[error("{0:?} is not a USDⓈ-M stream name this crate supports: StreamName builds every one, with its symbol in lowercase")]
 pub struct InvalidStreamName(pub String);
 
 impl FromStr for StreamName {
@@ -171,14 +171,10 @@ impl FromStr for StreamName {
                     return Ok(Self::Kline(symbol, interval));
                 }
                 let depth = kind.strip_prefix("depth").ok_or_else(invalid)?;
-                let (levels, speed) = depth.split_once('@').ok_or_else(invalid)?;
-                let levels = *DepthLevels::ALL
+                let (levels, speed) = DepthLevels::ALL
                     .iter()
-                    .find(|l| l.as_str() == levels)
-                    .ok_or_else(invalid)?;
-                let speed = *DepthSpeed::ALL
-                    .iter()
-                    .find(|s| s.as_str() == speed)
+                    .flat_map(|l| DepthSpeed::ALL.iter().map(move |s| (*l, *s)))
+                    .find(|(l, s)| depth.strip_prefix(l.as_str()) == Some(s.suffix()))
                     .ok_or_else(invalid)?;
                 Ok(Self::PartialDepth(symbol, levels, speed))
             }
@@ -215,7 +211,13 @@ mod tests {
 
     #[test]
     fn every_name_round_trips_through_its_wire_spelling() {
-        for symbol in ["BTCUSDT", "BTCUSDT_261225", "币安人生USDT", "1000PEPEUSDT"] {
+        for symbol in [
+            "BTCUSDT",
+            "BTCUSDT_261225",
+            "币安人生USDT",
+            "1000PEPEUSDT",
+            "ÉTÉUSDT",
+        ] {
             for name in every_kind(symbol) {
                 let wire = name.to_string();
                 assert_eq!(wire.parse::<StreamName>(), Ok(name.clone()), "{wire}");
@@ -249,6 +251,36 @@ mod tests {
     }
 
     #[test]
+    fn every_depth_name_is_one_binance_delivers() {
+        // Measured 2026-10-07: each of these delivered frames; the explicit
+        // `@250ms` spelling was acknowledged and delivered nothing.
+        let btc = Symbol::new("BTCUSDT").unwrap();
+        for (levels, speed, wire) in [
+            (DepthLevels::Five, DepthSpeed::Ms100, "btcusdt@depth5@100ms"),
+            (DepthLevels::Five, DepthSpeed::Ms250, "btcusdt@depth5"),
+            (DepthLevels::Five, DepthSpeed::Ms500, "btcusdt@depth5@500ms"),
+            (DepthLevels::Ten, DepthSpeed::Ms100, "btcusdt@depth10@100ms"),
+            (DepthLevels::Ten, DepthSpeed::Ms250, "btcusdt@depth10"),
+            (DepthLevels::Ten, DepthSpeed::Ms500, "btcusdt@depth10@500ms"),
+            (
+                DepthLevels::Twenty,
+                DepthSpeed::Ms100,
+                "btcusdt@depth20@100ms",
+            ),
+            (DepthLevels::Twenty, DepthSpeed::Ms250, "btcusdt@depth20"),
+            (
+                DepthLevels::Twenty,
+                DepthSpeed::Ms500,
+                "btcusdt@depth20@500ms",
+            ),
+        ] {
+            let name = StreamName::PartialDepth(btc.clone(), levels, speed);
+            assert_eq!(name.to_string(), wire);
+            assert_eq!(wire.parse::<StreamName>(), Ok(name));
+        }
+    }
+
+    #[test]
     fn depth_and_book_ticker_ride_the_public_path_and_the_rest_the_market_path() {
         for name in every_kind("BTCUSDT") {
             let expected = match name {
@@ -265,7 +297,8 @@ mod tests {
             "BTCUSDT@aggTrade",
             "btcusdt@nonsense",
             "btcusdt@depth7@100ms",
-            "btcusdt@depth5",
+            "btcusdt@depth5@250ms",
+            "btcusdt@depth50",
             "btcusdt@kline_1s",
             "btcusdt",
             "!bookTicker",
