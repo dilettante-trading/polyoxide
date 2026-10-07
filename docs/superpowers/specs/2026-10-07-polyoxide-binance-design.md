@@ -97,7 +97,8 @@ The page's bands (under 100, 100 to 499, 500 to 1000) are off by one at each edg
 request without `limit` costs 5 although it returns 500 rows. `depth` costs 2 at 20 and 50,
 5 at 100, 10 at 500 and 20 at 1000, and 1 without `limit`, which also returns 500 levels.
 `fundingInfo` and `fundingRate` answer with no weight header. A request the venue refuses
-still costs weight: an unknown symbol 1, a `klines` limit of 1501 10.
+still costs weight, an unknown symbol its route's: 1 on `premiumIndex`, 20 on `aggTrades`.
+A `klines` limit of 1501 costs 10.
 
 `aggTrades` serves only the last 48 hours, as its page documents. An older window is
 refused with `400 {"code":-4166,"msg":"Search window is restricted to recent 2 days

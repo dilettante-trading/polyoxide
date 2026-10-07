@@ -4916,8 +4916,9 @@ minute (`docs/specs/binance/probes/probe_rest.py`, then
 1500), twice: each band is inclusive at the top, one off from the page at every edge. A
 request without `limit` returns 500 rows for 5 where an explicit `limit=500` costs 2.
 `depth` without `limit` returns 500 levels for 1 where an explicit `limit=500` costs 10.
-A refused request still costs weight: an unknown symbol 1, a `klines` limit of 1501 10,
-a `depth` limit of 7 1.
+A refused request still costs weight. An unknown symbol costs its route's weight: 1 on
+`premiumIndex` and 20 on `aggTrades`. A `klines` limit of 1501 costs 10, and a `depth`
+limit of 7 costs 1.
 
 ## The weight window
 
