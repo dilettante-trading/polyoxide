@@ -34,6 +34,14 @@ Mirrored for reference, **not implemented** by any crate:
 | [Bridge](bridge/INDEX.md) | `https://bridge.polymarket.com` | Cross-chain deposits and withdrawals |
 | [Combos RFQ](combos-rfq/INDEX.md) | `https://combos-rfq-api.polymarket.com` | Maker quoting for combinatorial markets |
 
+## Other venues
+
+Not Polymarket hosts. Read by a polyoxide crate for consumers that trade both venues:
+
+| API | Base URL | Description | Crate |
+|-----|----------|-------------|-------|
+| [Binance USDⓈ-M](binance/INDEX.md) | `https://fapi.binance.com` | Futures public market data. No published spec, so not a mirror | `polyoxide-binance` |
+
 ## Hosts with no upstream spec
 
 Some Polymarket APIs are published in **no** OpenAPI or AsyncAPI document.

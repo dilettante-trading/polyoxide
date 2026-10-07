@@ -45,6 +45,9 @@ jobs:
         #     relayer OpenAPI (only `/deployed?type=WALLET` appears), so the
         #     record there is prose plus SDK-generated fixtures. Nothing to
         #     diff; the fixtures are the drift check.
+        #   - Binance USDⓈ-M (docs/specs/binance/): not a Polymarket host,
+        #     and Binance publishes no OpenAPI or AsyncAPI for it. The live
+        #     suite in polyoxide-binance is the drift check.
         include:
           - { id: clob,           url: "https://docs.polymarket.com/api-spec/clob-openapi.yaml",       vendored: docs/specs/clob/openapi.yaml }
           - { id: gamma,          url: "https://docs.polymarket.com/api-spec/gamma-openapi.yaml",      vendored: docs/specs/gamma/openapi.yaml }

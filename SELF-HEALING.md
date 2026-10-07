@@ -44,6 +44,7 @@ and that is when North American leagues and weekend soccer are on.
 | polyoxide-rtds | `live_api` |
 | polyoxide-perps | `live_api`, `live_ws` (built with `--features ws`) |
 | polyoxide-sports | `live_api` (20-minute budget for its 180 s wire-agreement window) |
+| polyoxide-binance | `live_api` |
 | polyoxide-cli | `live_api` |
 
 Failures are classified by `.github/scripts/classify_failures.py` — the single
@@ -117,6 +118,9 @@ workflow:
   Diffing it would report false drift forever.
 - **`user-pnl-api` / `lb-api`** (`docs/specs/undocumented/`) — no published
   spec exists to diff against; their shapes were derived from live responses.
+- **`docs/specs/binance/`** — Binance publishes no OpenAPI or AsyncAPI for USDⓈ-M
+  futures, so the directory records observations, not a mirror.
+  `polyoxide-binance/tests/live_api.rs` is the drift check.
 
 ## Failure taxonomy — what goes where
 
