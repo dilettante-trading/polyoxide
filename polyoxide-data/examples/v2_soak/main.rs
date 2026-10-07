@@ -530,6 +530,9 @@ async fn main() -> ExitCode {
     };
 
     let http = match reqwest::Client::builder()
+        // The workspace enables reqwest's `gzip` feature for polyoxide-binance;
+        // keep this soak's requests as they were measured.
+        .gzip(false)
         .timeout(Duration::from_secs(30))
         .user_agent("polyoxide-v2-soak")
         .build()

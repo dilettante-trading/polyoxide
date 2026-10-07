@@ -21,6 +21,9 @@ const INTER_REQUEST_PAUSE_MS: u64 = 150;
 #[tokio::main]
 async fn main() {
     let client = reqwest::Client::builder()
+        // The workspace enables reqwest's `gzip` feature for polyoxide-binance;
+        // keep this probe's requests as they were measured.
+        .gzip(false)
         .timeout(Duration::from_secs(15))
         .build()
         .expect("reqwest client");

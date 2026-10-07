@@ -25,6 +25,9 @@ const SAMPLE_EVERY: u32 = 250;
 #[tokio::main]
 async fn main() {
     let client = reqwest::Client::builder()
+        // The workspace enables reqwest's `gzip` feature for polyoxide-binance;
+        // keep this probe's requests as they were measured.
+        .gzip(false)
         .timeout(Duration::from_secs(10))
         .build()
         .expect("reqwest client");

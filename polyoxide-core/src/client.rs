@@ -261,6 +261,7 @@ pub struct HttpClientBuilder {
     rate_limiter: Option<RateLimiter>,
     retry_config: RetryConfig,
     max_concurrent: Option<usize>,
+    gzip: bool,
 }
 
 impl HttpClientBuilder {
@@ -273,6 +274,7 @@ impl HttpClientBuilder {
             rate_limiter: None,
             retry_config: RetryConfig::default(),
             max_concurrent: None,
+            gzip: false,
         }
     }
 
@@ -313,9 +315,22 @@ impl HttpClientBuilder {
         self
     }
 
+    /// Ask for gzip-compressed responses and decode them.
+    ///
+    /// Off by default. The workspace enables reqwest's `gzip` feature for
+    /// hosts with large bodies (Binance's `exchangeInfo` is 1.15 MB raw and
+    /// 51 KB gzipped), and with the feature on reqwest would otherwise send
+    /// `Accept-Encoding: gzip` from every client. Leaving it off keeps every
+    /// other crate's requests byte-identical to before the feature existed.
+    pub fn gzip(mut self, enabled: bool) -> Self {
+        self.gzip = enabled;
+        self
+    }
+
     /// Build the HTTP client.
     pub fn build(self) -> Result<HttpClient, ApiError> {
         let client = reqwest::Client::builder()
+            .gzip(self.gzip)
             .timeout(Duration::from_millis(self.timeout_ms))
             .connect_timeout(Duration::from_secs(10))
             .redirect(reqwest::redirect::Policy::none())
@@ -343,6 +358,7 @@ impl Default for HttpClientBuilder {
             rate_limiter: None,
             retry_config: RetryConfig::default(),
             max_concurrent: None,
+            gzip: false,
         }
     }
 }
@@ -735,6 +751,52 @@ mod tests {
         let client = HttpClientBuilder::new(server.url()).build().unwrap();
         let out = client.get_bytes("/raw", &[]).await.unwrap();
         assert_eq!(out, b"hello");
+        mock.assert_async().await;
+    }
+
+    // ── gzip ─────────────────────────────────────────────────────
+
+    #[tokio::test]
+    async fn gzip_is_off_unless_asked_for() {
+        // The workspace turns on reqwest's `gzip` feature for one host. With the
+        // feature on, reqwest asks every server for gzip unless told not to, so
+        // this pins that no other crate's requests changed.
+        let mut server = mockito::Server::new_async().await;
+        let mock = server
+            .mock("GET", "/plain")
+            .match_header("accept-encoding", mockito::Matcher::Missing)
+            .with_body("ok")
+            .create_async()
+            .await;
+
+        let client = HttpClientBuilder::new(server.url()).build().unwrap();
+        assert_eq!(client.get_bytes("/plain", &[]).await.unwrap(), b"ok");
+        mock.assert_async().await;
+    }
+
+    #[tokio::test]
+    async fn gzip_asks_for_and_decodes_a_compressed_body() {
+        // `{"serverTime":1}` compressed by python3's `gzip.compress(.., mtime=0)`.
+        const GZIPPED: &[u8] = &[
+            0x1f, 0x8b, 0x08, 0x00, 0x00, 0x00, 0x00, 0x00, 0x02, 0xff, 0xab, 0x56, 0x2a, 0x4e,
+            0x2d, 0x2a, 0x4b, 0x2d, 0x0a, 0xc9, 0xcc, 0x4d, 0x55, 0xb2, 0x32, 0xac, 0x05, 0x00,
+            0xe2, 0x1d, 0x3e, 0x1a, 0x10, 0x00, 0x00, 0x00,
+        ];
+        let mut server = mockito::Server::new_async().await;
+        let mock = server
+            .mock("GET", "/time")
+            .match_header("accept-encoding", mockito::Matcher::Regex("gzip".into()))
+            .with_header("content-encoding", "gzip")
+            .with_body(GZIPPED)
+            .create_async()
+            .await;
+
+        let client = HttpClientBuilder::new(server.url())
+            .gzip(true)
+            .build()
+            .unwrap();
+        let body = client.get_bytes("/time", &[]).await.unwrap();
+        assert_eq!(body, br#"{"serverTime":1}"#);
         mock.assert_async().await;
     }
 
