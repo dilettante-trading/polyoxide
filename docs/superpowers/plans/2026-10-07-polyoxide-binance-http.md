@@ -902,7 +902,7 @@ fn the_fixtures_cover_the_cases_the_types_exist_for() {
     };
 
     let info: ExchangeInfo = serde_json::from_str(&read("exchange_info")).unwrap();
-    use polyoxide_binance::usdm::types::{ContractType, SymbolStatus};
+    use polyoxide_binance::usdm::types::{ContractType, SymbolStatus, UnderlyingType};
     let has = |f: &dyn Fn(&polyoxide_binance::usdm::types::SymbolInfo) -> bool| {
         info.symbols.iter().any(f)
     };
@@ -925,6 +925,14 @@ fn the_fixtures_cover_the_cases_the_types_exist_for() {
     assert!(
         has(&|s| s.symbol.as_str().contains('_')),
         "a symbol with an underscore"
+    );
+    // An unknown value would land in `Other` and decode fine; failing here
+    // is how a value Binance adds gets modelled instead of passing silently.
+    assert!(
+        !has(&|s| matches!(s.contract_type, ContractType::Other(_))
+            || matches!(s.status, SymbolStatus::Other(_))
+            || matches!(s.underlying_type, UnderlyingType::Other(_))),
+        "a contract type, status or underlying type the enums do not name: model it"
     );
 
     let funding: Vec<FundingInfo> = serde_json::from_str(&read("funding_info")).unwrap();
