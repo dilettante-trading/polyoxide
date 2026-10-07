@@ -9,14 +9,14 @@ Read-only Rust client for the [Polymarket Gamma](https://gamma-api.polymarket.co
 
 ```toml
 [dependencies]
-polyoxide-gamma = "0.36"
+polyoxide-gamma = "0.37"
 ```
 
 Or use the unified `polyoxide` crate (includes Gamma by default):
 
 ```toml
 [dependencies]
-polyoxide = "0.36"
+polyoxide = "0.37"
 ```
 
 ## Quick start
