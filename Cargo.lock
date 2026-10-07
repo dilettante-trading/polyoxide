@@ -3991,6 +3991,22 @@ dependencies = [
 ]
 
 [[package]]
+name = "polyoxide-binance"
+version = "0.36.0"
+dependencies = [
+ "mockito",
+ "polyoxide-core",
+ "reqwest 0.12.28",
+ "rust_decimal",
+ "serde",
+ "serde_json",
+ "thiserror 2.0.18",
+ "tokio",
+ "tracing",
+ "url",
+]
+
+[[package]]
 name = "polyoxide-cli"
 version = "0.36.0"
 dependencies = [

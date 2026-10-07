@@ -1,0 +1,31 @@
+[package]
+name = "polyoxide-binance"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+authors.workspace = true
+repository.workspace = true
+rust-version.workspace = true
+description = "Rust client library for Binance USDⓈ-M futures public market data"
+keywords = ["binance", "futures", "perpetuals", "market-data"]
+categories = ["api-bindings", "web-programming::http-client"]
+
+[features]
+default = []
+
+[dependencies]
+polyoxide-core = { workspace = true }
+reqwest = { workspace = true }
+rust_decimal = { workspace = true }
+serde = { workspace = true }
+serde_json = { workspace = true }
+thiserror = { workspace = true }
+tokio = { workspace = true, features = ["time", "sync"] }
+tracing = { workspace = true }
+url = { workspace = true }
+
+[dev-dependencies]
+mockito = { workspace = true }
+# `test-util` gives the limiter tests a paused clock, so a minute's wait is
+# asserted without actually waiting a minute.
+tokio = { workspace = true, features = ["macros", "rt-multi-thread", "time", "test-util"] }
