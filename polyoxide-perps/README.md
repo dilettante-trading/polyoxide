@@ -12,7 +12,7 @@ More information about this crate can be found in the [crate documentation](http
 
 ```toml
 [dependencies]
-polyoxide-perps = "0.35"
+polyoxide-perps = "0.36"
 ```
 
 ## Usage

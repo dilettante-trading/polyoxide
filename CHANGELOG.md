@@ -1,3 +1,70 @@
+## [0.36.0] - 2026-10-07
+
+Adds `polyoxide-sports`, a new credential-free crate for the live sports
+scores feed on `sports-api.polymarket.com`, and removes that feed from
+`polyoxide-clob`. It has two tiers: `SportsWs`, a bare `Stream`, and
+`SupervisedSportsWs`, which treats the server's protocol pings as liveness and
+reconnects on its own. The unified crate exposes it as `sports`, which `full`
+now includes, and the CLI streams it as `polyoxide ws sports`. Gamma's
+`Market` gains Polymarket Protocol V2's `version`, `position_ids` and
+`resolution_status`. Trading a V2 market is not implemented (#51).
+
+**Breaking changes.**
+
+The sports channel is gone from `polyoxide_clob::ws`:
+
+| Before, in `polyoxide_clob::ws` | Now, in `polyoxide_sports` |
+|---|---|
+| `WebSocket::connect_sports()` | `SportsWs::connect()`, or `SportsWsBuilder::new().connect()` to reconnect on its own |
+| `Channel::Sports(SportsMessage::Update(update))` | `MatchUpdate` from `SportsWs`; `Event::Update(Box<MatchUpdate>)` from the supervised stream |
+| `SportsUpdateMessage` | `MatchUpdate`, with the same field names |
+| `SportsMessage::from_json` | `MatchUpdate::from_json` |
+| `WS_SPORTS_URL` | `SPORTS_WS_URL` |
+| `WebSocketError` | `SportsError` |
+
+`ChannelType::Sports` is removed too. `MatchUpdate` is `#[non_exhaustive]`, its
+`extra` is a `serde_json::Map` rather than a `Value`, and serialising it omits
+absent optional fields rather than writing `null`. In the unified crate,
+enable `sports`. The prelude exports `SportsWs`, `SportsWsBuilder`,
+`SupervisedSportsWs`, `SportsError` and the aliases `SportsEvent`,
+`SportsMatchUpdate` and `SportsGameKey`.
+
+`polyoxide_gamma::types::Market` has three new public fields and is not
+`#[non_exhaustive]`, so code that builds one with a struct literal must set
+them. Deserializing is unaffected.
+
+### 🚀 Features
+
+- *(sports)* New `polyoxide-sports` crate. `MatchUpdate` and `GameKey` are modelled on captured frames, not on upstream's AsyncAPI, whose `slug`-keyed payload and text ping the server never sends. It depends on nothing else in the workspace
+- *(sports)* `SupervisedSportsWs`, built with `SportsWsBuilder`. Any inbound frame resets its staleness timer, pings included, because the server sends data only while a match is live. It yields `Event::Update` and `Event::Reconnected`. A reconnect refused in a way retrying cannot fix (an HTTP status other than 408, 425, 429 or 5xx, or a malformed URL) is yielded as `SportsError::Connect` and ends the stream
+- *(cli)* `polyoxide ws sports` streams live match scores, with comma-separated `--league` and `--game` filters and `--changes-only`. It reprints the games after a reconnect and ends cleanly on a closed pipe
+- *(cli)* A `tracing` subscriber writes library warnings to stderr at `warn`, so retried reconnects and waited-out 429s are visible. `RUST_LOG` sets the level
+- *(polyoxide)* `sports` feature re-exporting `polyoxide-sports`, included in `full`. `release.yml` and `finish_release.sh` publish the crate after `polyoxide-rtds`
+- *(gamma)* `Market::version` (`ProtocolVersion::{V1, V2}`, anything else kept as `Other`), `Market::position_ids` and `Market::resolution_status`. Choose a market's trading ids by `version`, never by which field is present: many `v1` markets also carry `position_ids`, and the CLOB has no book for them
+- *(data,py)* `first_entry_at` on v2 positions, in Rust and on the Python class. `docs/specs/data-v2/OBSERVED.md` records that a user's CLOSED positions are served in `REALIZED_PNL` order whatever the sort key
+
+### 🐛 Bug Fixes
+
+- *(perps)* A `Duration::MAX` staleness or ping interval no longer panics inside the spawned task, which had ended the stream silently
+- *(rtds)* Reconnect backoff has a 1 ms floor and saturates instead of overflowing
+- *(clob)* A zero or `Duration::MAX` ping interval no longer panics `run`
+- *(ci)* The nightly classifier treats a dropped WebSocket as transient: a reset without a closing handshake, a TLS EOF without `close_notify`, close codes 1001/1011/1012/1013, or a test's own "server ended the connection"
+
+### 📚 Documentation
+
+- *(specs)* The sports AsyncAPI mirror moves to `docs/specs/sports/`, with `x-observed-*` annotations and an `OBSERVED.md`. It stays out of `nightly-schema.yml`
+- *(gamma)* `docs/specs/gamma/OBSERVED.md` and CLAUDE.md tell Polymarket Protocol V2 apart from the CLOB V2 migration
+
+### 🧪 Testing
+
+- *(sports)* Offline tests drive a scripted local server through liveness, reconnect, backoff and refusal paths. The live suite's wire agreement test, run nightly, is the host's drift detector
+- *(cli)* `tests/ws_sports.rs` drives every `ws sports` flag with captured frames
+
+### ⚙️ Miscellaneous Tasks
+
+- The behavioral nightly also runs at 18:30 UTC on Saturday and Sunday, when North American leagues and weekend soccer are live
+- The workspace builds clean under Rust 1.99's lints
+
 ## [0.35.0] - 2026-09-30
 
 Adds the public Perps WebSocket to `polyoxide-perps`, behind a new `ws`
