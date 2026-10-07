@@ -2613,6 +2613,8 @@ Break each rule, run `cargo test -j 4 -p polyoxide-binance --lib weight`, see th
 
 Run `git diff --stat polyoxide-binance/src/weight.rs` afterwards; the file must be new and unmodified from Step 3.
 
+Code review added a follow-up commit (2442708) with three changes and three tests. Funding requests wait out a cooldown before taking a slot, and requeue if one begins while they wait, so a cooldown no longer releases them all at once. A cooldown extended mid-wait is now tested. The counted minute only moves forward, so a stale read or a clock stepped back cannot reset the count; a test-only `Clock::Manual` steps the clock back. The doc states the in-flight invariant the header rule relies on. The crate then has 24 unit tests, and later counts include them. At this commit the doc gate still fails, on links to `crate::Usdm` and `crate::UsdmBuilder::weight_budget`; Task 6 resolves them.
+
 - [ ] **Step 6: Commit**
 
 ```bash
@@ -2914,7 +2916,7 @@ Notes for the reviewer:
 - [ ] **Step 4: Run the tests**
 
 Run: `cargo test -j 4 -p polyoxide-binance --lib`
-Expected: PASS, 28 tests. `never used` warnings for `from_response_parts` and `retry_after_secs` are expected until Task 6.
+Expected: PASS, 31 tests. `never used` warnings for `from_response_parts` and `retry_after_secs` are expected until Task 6.
 
 - [ ] **Step 5: Commit**
 
@@ -4282,7 +4284,7 @@ let b = Usdm::builder().weight_budget(budget).build()?;
 - [ ] **Step 6: Run everything**
 
 Run: `cargo test -j 4 -p polyoxide-binance --all-targets && cargo test -j 4 -p polyoxide-binance --doc`
-Expected: PASS: 31 unit tests, 19 in `mock_api`, 2 in `wire_agreement`, 3 doctests. `a_418_is_not_retried_and_holds_the_next_request` and `a_429_cools_down_then_succeeds` each take about a second; `a_high_used_weight_header_holds_the_next_request` may first wait up to three seconds to stay clear of a minute boundary.
+Expected: PASS: 34 unit tests, 19 in `mock_api`, 2 in `wire_agreement`, 3 doctests. `a_418_is_not_retried_and_holds_the_next_request` and `a_429_cools_down_then_succeeds` each take about a second; `a_high_used_weight_header_holds_the_next_request` may first wait up to three seconds to stay clear of a minute boundary.
 
 - [ ] **Step 7: Show the send loop's tests can fail**
 
