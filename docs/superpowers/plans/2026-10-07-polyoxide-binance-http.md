@@ -4803,6 +4803,8 @@ Expected: PASS, 2 tests.
 Run: `cargo run -j 4 -q -p polyoxide-binance --example weight_probe`
 Expected: up to a minute's wait for a fresh minute, then 24 rows, each ending `ok`, and exit status 0. A `DIFFERS` row means Binance changed a weight, or another process spent weight on this IP during the run: run it again, and if the row still differs, update `Route::cost`, `documented_weights` and `OBSERVED.md`.
 
+Code review added a follow-up commit (d904aae). The probe now stops at the first answer that is not 200. It prints the status, the `Retry-After` and the body, sends nothing more, and exits 2: before, a `429` midway was taken as a measurement, and a refused request printed `ok`. A count that falls mid-run is reported as a minute rollover, where it used to show as a weight of 0. The wait now lands three seconds past the boundary. A busy IP is named before the table, and every request has a 30 s deadline.
+
 - [ ] **Step 4: Commit**
 
 ```bash
