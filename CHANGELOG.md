@@ -1,3 +1,16 @@
+## [0.37.1] - 2026-10-07
+
+Every polyoxide client asks for gzip again. In 0.37.0 `HttpClientBuilder::gzip`
+was off unless set, which took compression away from the Gamma, Data, CLOB and
+perps clients of a consumer whose workspace enables reqwest's `gzip` feature, as
+0.36 had not. Unset, it now leaves reqwest's default, which asks for gzip because
+the crates enable the feature, and decodes the body transparently.
+`.gzip(false)` still opts out.
+
+### 🐛 Bug Fixes
+
+- *(core)* Gzip follows reqwest's default unless set
+
 ## [0.37.0] - 2026-10-07
 
 Adds `polyoxide-binance`, a new credential-free crate for Binance USDⓈ-M
