@@ -77,23 +77,34 @@ fn cases() -> Vec<(Route, String)> {
     cases
 }
 
+/// Sends one request and returns the minute's count after it. Stops the probe
+/// on any answer but 200: a refused request is not a call the client makes,
+/// and sending on after a 429 is how a ban starts.
 async fn used_after(client: &reqwest::Client, path: &str) -> u32 {
     let response = client
         .get(format!("{BASE}{path}"))
         .send()
         .await
         .unwrap_or_else(|e| panic!("{path}: {e}"));
+    let status = response.status();
+    if status != reqwest::StatusCode::OK {
+        let retry_after = response
+            .headers()
+            .get("retry-after")
+            .and_then(|v| v.to_str().ok())
+            .unwrap_or("none")
+            .to_owned();
+        let body = response.text().await.unwrap_or_default();
+        eprintln!("{path} answered {status} (Retry-After {retry_after}): {body:.300}");
+        eprintln!("stopping: nothing further is sent");
+        std::process::exit(2);
+    }
     response
         .headers()
         .get("x-mbx-used-weight-1m")
         .and_then(|v| v.to_str().ok())
         .and_then(|v| v.parse().ok())
-        .unwrap_or_else(|| {
-            panic!(
-                "{path} answered {} with no weight header",
-                response.status()
-            )
-        })
+        .unwrap_or_else(|| panic!("{path} answered {status} with no weight header"))
 }
 
 async fn wait_for_a_fresh_minute() {
@@ -102,22 +113,41 @@ async fn wait_for_a_fresh_minute() {
         .unwrap()
         .as_millis() as u64
         % 60_000;
-    if ms > 20_000 {
-        let wait = 61_000 - ms;
-        eprintln!("waiting {} s for a fresh minute", wait / 1000);
+    // Three seconds past the boundary: the server's count was seen to fall to
+    // 1 only within 3 s of it, and the local clock is not the server's.
+    if !(3_000..=20_000).contains(&ms) {
+        let wait = (63_000 - ms) % 60_000;
+        eprintln!("waiting {} s for a fresh minute", wait.div_ceil(1000));
         tokio::time::sleep(Duration::from_millis(wait)).await;
     }
 }
 
 #[tokio::main]
 async fn main() {
-    let client = reqwest::Client::builder().gzip(true).build().unwrap();
+    let client = reqwest::Client::builder()
+        .gzip(true)
+        .timeout(Duration::from_secs(30))
+        .build()
+        .unwrap();
     wait_for_a_fresh_minute().await;
     let mut previous = used_after(&client, "/fapi/v1/ping").await;
+    if previous > 1 {
+        eprintln!(
+            "the minute's count is {previous} after one ping: another process on this IP is \
+             spending weight, and rows may differ"
+        );
+    }
     let mut differing = 0;
     for (route, path) in cases() {
         let now = used_after(&client, &path).await;
-        let measured = now.saturating_sub(previous);
+        if now < previous {
+            eprintln!(
+                "{path}: the minute's count fell from {previous} to {now}, so the minute \
+                 rolled over mid-run; run the probe again"
+            );
+            std::process::exit(2);
+        }
+        let measured = now - previous;
         previous = now;
         let Cost::Weight(table) = route.cost() else {
             continue;
@@ -131,7 +161,7 @@ async fn main() {
         println!("{path:58} table {table:>3}  measured {measured:>3}  {verdict}");
     }
     if differing > 0 {
-        eprintln!("{differing} rows differ from Route::cost; update it and docs/specs/binance/OBSERVED.md");
+        eprintln!("{differing} rows differ from Route::cost; run the probe again, and if they still differ, update it and docs/specs/binance/OBSERVED.md");
         std::process::exit(1);
     }
 }
