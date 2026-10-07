@@ -4,6 +4,106 @@ use std::fmt;
 use chrono::{DateTime, Utc};
 use serde::{Deserialize, Serialize};
 
+/// Declares a string enum whose unknown wire values are kept verbatim in
+/// `Other(String)` instead of failing the response. The same shape as
+/// `polyoxide-data`'s v2 `open_enum!`.
+macro_rules! open_enum {
+    (
+        $(#[$meta:meta])*
+        pub enum $name:ident {
+            $( $(#[$vmeta:meta])* $variant:ident => $wire:literal, )+
+        }
+    ) => {
+        $(#[$meta])*
+        #[derive(Debug, Clone, PartialEq, Eq, Hash)]
+        #[non_exhaustive]
+        pub enum $name {
+            $( $(#[$vmeta])* $variant, )+
+            /// A value this version of the SDK does not recognise, kept verbatim.
+            Other(String),
+        }
+
+        impl $name {
+            /// Every variant this SDK knows, in declaration order. `Other` is not
+            /// among them: it holds whatever else the server sends.
+            pub const ALL: &'static [Self] = &[$( Self::$variant ),+];
+
+            /// The wire spelling.
+            pub fn as_str(&self) -> &str {
+                match self {
+                    $( Self::$variant => $wire, )+
+                    Self::Other(raw) => raw,
+                }
+            }
+        }
+
+        impl fmt::Display for $name {
+            fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+                f.write_str(self.as_str())
+            }
+        }
+
+        impl std::str::FromStr for $name {
+            type Err = std::convert::Infallible;
+
+            fn from_str(s: &str) -> Result<Self, Self::Err> {
+                Ok(match s {
+                    $( $wire => Self::$variant, )+
+                    other => Self::Other(other.to_owned()),
+                })
+            }
+        }
+
+        impl Serialize for $name {
+            fn serialize<S: serde::Serializer>(&self, serializer: S) -> Result<S::Ok, S::Error> {
+                serializer.serialize_str(self.as_str())
+            }
+        }
+
+        impl<'de> Deserialize<'de> for $name {
+            fn deserialize<D: serde::Deserializer<'de>>(deserializer: D) -> Result<Self, D::Error> {
+                let raw = String::deserialize(deserializer)?;
+                let Ok(value) = raw.parse();
+                Ok(value)
+            }
+        }
+
+        #[cfg(feature = "specta")]
+        impl specta::Type for $name {
+            fn inline(type_map: &mut specta::TypeMap, generics: specta::Generics) -> specta::DataType {
+                <String as specta::Type>::inline(type_map, generics)
+            }
+        }
+    };
+}
+
+open_enum! {
+    /// The protocol a market trades on, from [`Market::version`].
+    ///
+    /// This is Polymarket Protocol V2, not the CLOB V2 exchange migration:
+    /// a `V1` market trades on the exchange `polyoxide-clob` signs for.
+    pub enum ProtocolVersion {
+        /// The CTF/CLOB protocol. Outcome ids are in [`Market::clob_token_ids`].
+        V1 => "v1",
+        /// Polymarket Protocol V2. Outcome ids are in [`Market::position_ids`].
+        V2 => "v2",
+    }
+}
+
+open_enum! {
+    /// A Protocol V2 market's resolution state, from
+    /// [`Market::resolution_status`]. V1 markets use
+    /// [`Market::uma_resolution_status`] instead.
+    pub enum ResolutionStatus {
+        /// Drafted, not yet deployed on chain.
+        Inactive => "inactive",
+        /// Deployed, not resolved yet.
+        Active => "active",
+        /// Resolved.
+        Resolved => "resolved",
+    }
+}
+
 /// Market data from Gamma API
 #[cfg_attr(feature = "specta", derive(specta::Type))]
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
@@ -100,6 +200,12 @@ pub struct Market {
     pub uma_resolution_status: Option<String>,
     pub uma_end_date_iso: Option<String>,
     pub uma_resolution_statuses: Option<String>,
+    /// A `v2` market's resolution state. `v1` markets do not send it and use
+    /// [`uma_resolution_status`](Self::uma_resolution_status) instead.
+    ///
+    /// Absent from the published OpenAPI. The server's own `Market.json`
+    /// schema documents it. See `docs/specs/gamma/OBSERVED.md`.
+    pub resolution_status: Option<ResolutionStatus>,
     pub enable_order_book: Option<bool>,
     pub order_price_min_tick_size: Option<f64>,
     pub order_min_size: Option<f64>,
@@ -113,7 +219,32 @@ pub struct Market {
     pub game_start_time: Option<String>,
     #[cfg_attr(feature = "specta", specta(type = Option<f64>))]
     pub seconds_delay: Option<i64>,
+    /// The protocol the market trades on, which says where its outcome ids
+    /// are: [`clob_token_ids`](Self::clob_token_ids) for `v1`,
+    /// [`position_ids`](Self::position_ids) for `v2`.
+    ///
+    /// Choose by this field, never by which id field is present. `v1` markets
+    /// can carry `position_ids` too (35% of open markets on 2026-10-07), and
+    /// the CLOB has no order book for those ids. Upstream says to treat any
+    /// other value, or a missing one, as unsupported. Unknown values arrive as
+    /// [`ProtocolVersion::Other`].
+    ///
+    /// `polyoxide-clob` signs orders for `v1` markets only. A `v2` market
+    /// needs a different exchange and signing domain, which it does not
+    /// implement yet. See `docs/specs/gamma/OBSERVED.md`.
+    pub version: Option<ProtocolVersion>,
+    /// A `v1` market's outcome ids: a JSON-encoded array of decimal strings,
+    /// in the same order as [`outcomes`](Self::outcomes).
     pub clob_token_ids: Option<String>,
+    /// A `v2` market's outcome ids, as decimal strings in the same order as
+    /// [`outcomes`](Self::outcomes). Unlike
+    /// [`clob_token_ids`](Self::clob_token_ids) this is a real array, not
+    /// JSON text.
+    ///
+    /// Present on some `v1` markets too, where it is not the trading id.
+    /// Read it only when [`version`](Self::version) is
+    /// [`ProtocolVersion::V2`].
+    pub position_ids: Option<Vec<String>>,
     pub disqus_thread: Option<String>,
     pub short_outcomes: Option<String>,
     pub team_aid: Option<String>,
@@ -1126,6 +1257,166 @@ mod tests {
         }"#;
         let market: Market = serde_json::from_str(json).unwrap();
         assert_eq!(market.submitted_by.as_deref(), Some("0xdeadbeef"));
+    }
+
+    // ── Protocol V2 fields ──────────────────────────────────────
+
+    /// Market 5395209 as served on 2026-10-07: a `v1` market that also
+    /// carries `positionIds`. The `version` and both id fields are verbatim;
+    /// the rest are placeholders. Upstream's migration guide says to choose
+    /// the trading id by `version` "even when both fields are present", so
+    /// this is the shape a caller must not misread.
+    const V1_MARKET_WITH_POSITION_IDS: &str = r#"{
+        "id": "5395209",
+        "conditionId": "0xcond",
+        "question": "Test?",
+        "marketMakerAddress": "",
+        "version": "v1",
+        "clobTokenIds": "[\"112925816673745545179613936565005661033628405733343475050160157543472056345245\", \"2770004481423765289749508640972127321682185045612542406085122731663919882192\"]",
+        "positionIds": [
+            "494655540530335556258342732391076141689377678617461664777021297651588530176",
+            "494655540530335556258342732391076141689377678617461664777021297651588530177"
+        ],
+        "umaResolutionStatus": "resolved"
+    }"#;
+
+    #[test]
+    fn market_version_and_position_ids_deserialize() {
+        let market: Market = serde_json::from_str(V1_MARKET_WITH_POSITION_IDS).unwrap();
+        assert_eq!(market.version, Some(ProtocolVersion::V1));
+        assert_eq!(
+            market.position_ids.as_deref(),
+            Some(
+                &[
+                    "494655540530335556258342732391076141689377678617461664777021297651588530176"
+                        .to_string(),
+                    "494655540530335556258342732391076141689377678617461664777021297651588530177"
+                        .to_string(),
+                ][..]
+            )
+        );
+        // A v1 market's trading ids are still the clob token ids.
+        assert!(market.clob_token_ids.is_some());
+        assert!(market.resolution_status.is_none());
+    }
+
+    #[test]
+    fn v2_fields_serialize_under_their_wire_names() {
+        let market: Market = serde_json::from_str(V1_MARKET_WITH_POSITION_IDS).unwrap();
+        let value = serde_json::to_value(&market).unwrap();
+        assert_eq!(value["version"], "v1");
+        assert_eq!(value["positionIds"].as_array().map(Vec::len), Some(2));
+    }
+
+    #[test]
+    fn market_without_v2_fields_deserializes() {
+        let json = r#"{
+            "id": "1",
+            "conditionId": "0xcond",
+            "question": "Test?",
+            "marketMakerAddress": ""
+        }"#;
+        let market: Market = serde_json::from_str(json).unwrap();
+        assert!(market.version.is_none());
+        assert!(market.position_ids.is_none());
+        assert!(market.resolution_status.is_none());
+    }
+
+    #[test]
+    fn null_position_ids_is_none() {
+        let json = r#"{
+            "id": "1",
+            "conditionId": "0xcond",
+            "question": "Test?",
+            "marketMakerAddress": "",
+            "positionIds": null
+        }"#;
+        let market: Market = serde_json::from_str(json).unwrap();
+        assert!(market.position_ids.is_none());
+    }
+
+    #[test]
+    fn v2_market_resolution_status_deserializes() {
+        let json = r#"{
+            "id": "1",
+            "conditionId": "0xcond",
+            "question": "Test?",
+            "marketMakerAddress": "",
+            "version": "v2",
+            "resolutionStatus": "resolved"
+        }"#;
+        let market: Market = serde_json::from_str(json).unwrap();
+        assert_eq!(market.version, Some(ProtocolVersion::V2));
+        assert_eq!(market.resolution_status, Some(ResolutionStatus::Resolved));
+    }
+
+    #[test]
+    fn protocol_version_round_trips_every_wire_spelling() {
+        for (version, wire) in [(ProtocolVersion::V1, "v1"), (ProtocolVersion::V2, "v2")] {
+            assert_eq!(serde_json::to_value(&version).unwrap(), wire);
+            assert_eq!(
+                serde_json::from_value::<ProtocolVersion>(wire.into()).unwrap(),
+                version
+            );
+            assert_eq!(version.to_string(), wire);
+        }
+        assert_eq!(
+            ProtocolVersion::ALL,
+            &[ProtocolVersion::V1, ProtocolVersion::V2]
+        );
+    }
+
+    #[test]
+    fn resolution_status_round_trips_every_wire_spelling() {
+        for (status, wire) in [
+            (ResolutionStatus::Inactive, "inactive"),
+            (ResolutionStatus::Active, "active"),
+            (ResolutionStatus::Resolved, "resolved"),
+        ] {
+            assert_eq!(serde_json::to_value(&status).unwrap(), wire);
+            assert_eq!(
+                serde_json::from_value::<ResolutionStatus>(wire.into()).unwrap(),
+                status
+            );
+        }
+        assert_eq!(ResolutionStatus::ALL.len(), 3);
+    }
+
+    /// The served schema tells clients to "treat unknown values as
+    /// unsupported". That is the caller's decision to make, so an unknown
+    /// version must reach them intact rather than fail the whole page.
+    #[test]
+    fn unrecognised_protocol_version_is_kept_verbatim() {
+        let json = r#"{
+            "id": "1",
+            "conditionId": "0xcond",
+            "question": "Test?",
+            "marketMakerAddress": "",
+            "version": "v3",
+            "resolutionStatus": "disputed"
+        }"#;
+        let market: Market = serde_json::from_str(json).unwrap();
+        assert_eq!(market.version, Some(ProtocolVersion::Other("v3".into())));
+        assert_eq!(
+            market.resolution_status,
+            Some(ResolutionStatus::Other("disputed".into()))
+        );
+        let value = serde_json::to_value(&market).unwrap();
+        assert_eq!(value["version"], "v3");
+        assert_eq!(value["resolutionStatus"], "disputed");
+    }
+
+    /// Exact matching, as the served schema requires: a near miss is not a
+    /// known version.
+    #[test]
+    fn protocol_version_matches_exactly() {
+        for near_miss in ["V1", " v1", "v1 ", "1"] {
+            assert_eq!(
+                near_miss.parse::<ProtocolVersion>().unwrap(),
+                ProtocolVersion::Other(near_miss.into()),
+                "{near_miss:?} must not parse as a known version"
+            );
+        }
     }
 
     // ── SeriesInfo ──────────────────────────────────────────────

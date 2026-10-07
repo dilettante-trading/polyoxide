@@ -300,6 +300,17 @@ mirror to the published document, never to the live host. The mirror itself must
 stay byte-faithful or `nightly-schema.yml` alarms forever, so the observations
 live beside it rather than inside it.
 
+**Polymarket Protocol V2 is not implemented, and is not the CLOB V2 migration.**
+Gamma's `Market::version` says which protocol a market trades on. A `v2` market
+takes its outcome ids from `position_ids`, signs orders for ExchangeV3 (domain
+version `"3"`) and reads balances as `CONDITIONAL-V2`. `polyoxide-clob` signs
+domain `"2"` only, which is correct for `v1` markets. Choose ids by `version`,
+never by which field is present: 35% of open `v1` markets also carry
+`position_ids`, and the CLOB has no book for them. No `v2` market existed on
+2026-10-07. Trading support is tracked in #51. Upstream's guide is
+`docs.polymarket.com/migrate/polymarket-v2/`; the wire facts are in
+`docs/specs/gamma/OBSERVED.md`.
+
 **Deposit Wallets and session keys have no mirror at all.** `docs/specs/session-keys/`
 holds the contract (`README.md`) and the SDK behaviours the pages omit (`OBSERVED.md`):
 signature type 3, `GET /v1/user/session-signers`, and the relayer's `type: WALLET`
