@@ -62,7 +62,10 @@ impl MarketApi {
     }
 
     /// `GET /fapi/v1/fundingRate`: funding history, oldest first. Paced by
-    /// the funding limit, not by weight.
+    /// the funding limit, not by weight: one request every 668 ms after the
+    /// first. A waiting request holds one of the client's concurrent slots, so
+    /// a long backfill can delay the weight routes; give it its own `Usdm`
+    /// built with the same `WeightBudget`.
     pub fn funding_rate(&self) -> GetFundingRate {
         GetFundingRate {
             request: self.request(Route::FundingRate),
@@ -140,7 +143,8 @@ pub struct GetFundingRate {
 }
 
 impl GetFundingRate {
-    /// Restrict to one symbol. Without it, the latest event of every symbol.
+    /// Restrict to one symbol. Without it, the most recent `limit` funding
+    /// events across all symbols.
     pub fn symbol(mut self, symbol: &Symbol) -> Self {
         self.request = self.request.query("symbol", symbol);
         self

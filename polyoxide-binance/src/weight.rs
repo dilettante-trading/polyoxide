@@ -353,6 +353,13 @@ impl WeightBudget {
         }
     }
 
+    /// Holds every request until the next UTC minute, when the weight window
+    /// resets: what a `429` with no `Retry-After` and no retry left calls for.
+    pub(crate) fn hold_until_next_minute(&self) {
+        let now_ms = self.inner.clock.now_ms();
+        self.begin_cooldown(Duration::from_millis(MINUTE_MS - now_ms % MINUTE_MS));
+    }
+
     async fn await_cooldown(&self) {
         loop {
             // Copy the deadline out so the guard is not held across the await.

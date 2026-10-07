@@ -9,9 +9,18 @@ use polyoxide_binance::{
     weight::Cost,
     BinanceError, Usdm,
 };
+use polyoxide_core::RetryConfig;
 
 fn usdm(server: &ServerGuard) -> Usdm {
     Usdm::builder().base_url(server.url()).build().unwrap()
+}
+
+fn usdm_with_retries(server: &ServerGuard, config: RetryConfig) -> Usdm {
+    Usdm::builder()
+        .base_url(server.url())
+        .with_retry_config(config)
+        .build()
+        .unwrap()
 }
 
 fn fixture(name: &str) -> String {
@@ -431,10 +440,10 @@ async fn a_418_is_not_retried_and_holds_the_next_request() {
 
     let start = Instant::now();
     let _ = client.market().open_interest(&btc()).send().await;
+    let held = start.elapsed();
     assert!(
-        start.elapsed() >= Duration::from_millis(900),
-        "{:?}",
-        start.elapsed()
+        held >= Duration::from_millis(900) && held < Duration::from_secs(5),
+        "{held:?}"
     );
 }
 
@@ -465,10 +474,10 @@ async fn a_429_cools_down_then_succeeds() {
         .await
         .unwrap();
     assert_eq!(oi.symbol, "BTCUSDT");
+    let held = start.elapsed();
     assert!(
-        start.elapsed() >= Duration::from_millis(900),
-        "{:?}",
-        start.elapsed()
+        held >= Duration::from_millis(900) && held < Duration::from_secs(5),
+        "{held:?}"
     );
     limited.assert_async().await;
     ok.assert_async().await;
@@ -524,4 +533,182 @@ async fn a_gzip_body_is_requested_and_decoded() {
     let time = usdm(&server).health().time().send().await.unwrap();
     mock.assert_async().await;
     assert_eq!(time.server_time, 1);
+}
+
+#[tokio::test]
+async fn a_refused_request_s_weight_header_is_recorded() {
+    clear_of_a_minute_boundary().await;
+    let mut server = Server::new_async().await;
+    let _mock = failing(
+        &mut server,
+        400,
+        &[("x-mbx-used-weight-1m", "2160")],
+        r#"{"code":-1121,"msg":"Invalid symbol."}"#,
+    )
+    .await;
+    let client = usdm(&server);
+    client
+        .market()
+        .open_interest(&btc())
+        .send()
+        .await
+        .unwrap_err();
+    assert_eq!(client.weight_budget().used(), 2160);
+}
+
+#[tokio::test]
+async fn a_retry_is_charged_again() {
+    clear_of_a_minute_boundary().await;
+    let mut server = Server::new_async().await;
+    let limited = failing(
+        &mut server,
+        429,
+        &[("retry-after", "1")],
+        r#"{"code":-1003,"msg":"Too many requests."}"#,
+    )
+    .await
+    .expect(1);
+    let ok = server
+        .mock("GET", "/fapi/v1/openInterest")
+        .match_query(Matcher::Any)
+        .with_status(200)
+        .with_body(fixture("open_interest"))
+        .create_async()
+        .await;
+    let client = usdm(&server);
+    client.market().open_interest(&btc()).send().await.unwrap();
+    assert_eq!(
+        client.weight_budget().used(),
+        2,
+        "the server charges every attempt"
+    );
+    limited.assert_async().await;
+    ok.assert_async().await;
+}
+
+#[tokio::test]
+async fn retry_after_outlasts_a_shorter_backoff() {
+    let mut server = Server::new_async().await;
+    let limited = failing(
+        &mut server,
+        429,
+        &[("retry-after", "1")],
+        r#"{"code":-1003,"msg":"Too many requests."}"#,
+    )
+    .await
+    .expect(1);
+    let ok = route(
+        &mut server,
+        "/fapi/v1/openInterest",
+        "symbol=BTCUSDT",
+        &fixture("open_interest"),
+    )
+    .await;
+    let client = usdm_with_retries(
+        &server,
+        RetryConfig {
+            max_backoff_ms: 100,
+            ..RetryConfig::default()
+        },
+    );
+    let start = Instant::now();
+    client.market().open_interest(&btc()).send().await.unwrap();
+    assert!(
+        start.elapsed() >= Duration::from_millis(900),
+        "{:?}",
+        start.elapsed()
+    );
+    limited.assert_async().await;
+    ok.assert_async().await;
+}
+
+#[tokio::test]
+async fn a_429_out_of_retries_is_rate_limited_and_still_holds_the_next_request() {
+    let mut server = Server::new_async().await;
+    let _limited = failing(
+        &mut server,
+        429,
+        &[("retry-after", "1")],
+        r#"{"code":-1003,"msg":"Too many requests."}"#,
+    )
+    .await;
+    let client = usdm_with_retries(
+        &server,
+        RetryConfig {
+            max_retries: 0,
+            ..RetryConfig::default()
+        },
+    );
+    let err = client
+        .market()
+        .open_interest(&btc())
+        .send()
+        .await
+        .unwrap_err();
+    assert!(
+        matches!(err, BinanceError::RateLimited { retry_after: Some(d) } if d == Duration::from_secs(1)),
+        "{err:?}"
+    );
+    let start = Instant::now();
+    let _ = client.market().open_interest(&btc()).send().await;
+    let held = start.elapsed();
+    assert!(
+        held >= Duration::from_millis(900) && held < Duration::from_secs(5),
+        "{held:?}"
+    );
+}
+
+#[tokio::test]
+async fn a_429_with_no_retry_after_and_no_retry_left_holds_until_the_next_minute() {
+    clear_of_a_minute_boundary().await;
+    let mut server = Server::new_async().await;
+    let _limited = failing(
+        &mut server,
+        429,
+        &[],
+        r#"{"code":-1003,"msg":"Too many requests."}"#,
+    )
+    .await;
+    let client = usdm_with_retries(
+        &server,
+        RetryConfig {
+            max_retries: 0,
+            ..RetryConfig::default()
+        },
+    );
+    let err = client
+        .market()
+        .open_interest(&btc())
+        .send()
+        .await
+        .unwrap_err();
+    assert!(
+        matches!(err, BinanceError::RateLimited { retry_after: None }),
+        "{err:?}"
+    );
+    let held = tokio::time::timeout(
+        Duration::from_millis(500),
+        client.market().open_interest(&btc()).send(),
+    )
+    .await;
+    assert!(
+        held.is_err(),
+        "the next request must wait for the weight window to reset"
+    );
+}
+
+#[tokio::test]
+async fn each_route_is_charged_its_own_weight() {
+    clear_of_a_minute_boundary().await;
+    let mut server = Server::new_async().await;
+    let _mock = route(
+        &mut server,
+        "/fapi/v1/ticker/24hr",
+        "",
+        &fixture("ticker_24hr"),
+    )
+    .await;
+    let client = usdm(&server);
+    client.market().tickers_24h().send().await.unwrap();
+    assert_eq!(client.weight_budget().used(), 40);
 }

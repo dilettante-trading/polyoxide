@@ -119,6 +119,11 @@ impl UsdmBuilder {
     }
 
     /// Maximum in-flight requests (default 4).
+    ///
+    /// Keep the weight in flight under the budget's reserve of 240: at the
+    /// default, one client has at most 160 (4 × the heaviest route, 40).
+    /// `WeightBudget` explains why a request in flight across a minute
+    /// boundary is not counted by it.
     pub fn max_concurrent(mut self, max: usize) -> Self {
         self.max_concurrent = Some(max);
         self

@@ -59,3 +59,7 @@ let b = Usdm::builder().weight_budget(budget).build()?;
 # Ok(())
 # }
 ```
+
+Each client may have `max_concurrent` requests in flight (default 4), and the budget's
+reserve absorbs in-flight weight only up to 240, so two clients sharing a budget should
+each set `max_concurrent(3)`.

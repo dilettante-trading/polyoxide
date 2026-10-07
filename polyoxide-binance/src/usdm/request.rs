@@ -61,8 +61,13 @@ impl<T: DeserializeOwned> WeightedRequest<T> {
     /// Waits for the budget, sends, and decodes the response.
     ///
     /// A `429` starts a cooldown every request on the budget waits out, then
-    /// this request is retried on core's schedule. A `418` starts a cooldown
-    /// for its `Retry-After`, or 2 minutes, and is not retried.
+    /// this request is retried on core's schedule; with no retry left and no
+    /// `Retry-After`, the cooldown runs to the next UTC minute. A `418` starts a
+    /// cooldown for its `Retry-After`, or 2 minutes, and is not retried.
+    ///
+    /// The wait has no deadline of its own: a request can wait out a minute's
+    /// spent budget or a ban, which Binance documents at up to 3 days. Wrap the
+    /// call in `tokio::time::timeout` where a caller needs a deadline.
     pub async fn send(self) -> Result<T, BinanceError> {
         let text = self.send_text().await?;
         serde_json::from_str(&text).map_err(|err| {
@@ -82,6 +87,10 @@ impl<T: DeserializeOwned> WeightedRequest<T> {
         let mut attempt = 0u32;
 
         loop {
+            // The permit first, then the budget: the charge then stays next to
+            // its send, which keeps the weight in flight under the budget's
+            // reserve. Charging first would let charged requests queue for a
+            // permit across a minute boundary, where their headers are dropped.
             let permit = self.http.acquire_concurrency().await;
             let charge = self.budget.acquire(cost).await;
 
@@ -101,19 +110,38 @@ impl<T: DeserializeOwned> WeightedRequest<T> {
 
             if status == StatusCode::IM_A_TEAPOT {
                 let ban = retry_after_secs(retry_after.as_deref()).unwrap_or(DEFAULT_BAN);
-                tracing::warn!("418 on {path}: IP banned, every request held {ban:?}");
                 self.budget.begin_cooldown(ban);
-            } else if status == StatusCode::TOO_MANY_REQUESTS {
-                // Retry-After only ever extends the wait, as in core.
+                // The body is Binance's -1003 text, which names when the ban
+                // ends; the error's fields have no room for it, so it is logged.
+                let body = response.text().await.unwrap_or_default();
+                tracing::warn!(
+                    "418 on {path}: IP banned, every request held {ban:?}: {}",
+                    truncate_for_log(&body)
+                );
+                return Err(BinanceError::from_response_parts(
+                    status.as_u16(),
+                    retry_after.as_deref(),
+                    &body,
+                ));
+            }
+            if status == StatusCode::TOO_MANY_REQUESTS {
+                // Retry-After only ever extends the wait, as in core. With no
+                // retry left and no Retry-After, every request still holds until
+                // the weight window resets: sending again into a spent minute is
+                // how a 429 becomes a 418 ban.
                 let retry = self
                     .http
                     .should_retry(status, attempt, retry_after.as_deref());
-                let asked = retry_after_secs(retry_after.as_deref()).unwrap_or_default();
-                let cooldown = retry.unwrap_or_default().max(asked);
-                self.budget.begin_cooldown(cooldown);
+                let asked = retry_after_secs(retry_after.as_deref());
+                match (retry, asked) {
+                    (None, None) => self.budget.hold_until_next_minute(),
+                    _ => self
+                        .budget
+                        .begin_cooldown(retry.unwrap_or_default().max(asked.unwrap_or_default())),
+                }
                 if retry.is_some() {
                     attempt += 1;
-                    tracing::warn!("429 on {path}, retry {attempt} after {cooldown:?}");
+                    tracing::warn!("429 on {path}, retry {attempt} after the cooldown");
                     drop(permit);
                     continue;
                 }
