@@ -8,7 +8,9 @@ Python bindings are later specs.
 **Consumer:** prader-rs's Binance perps venue
 (`prader-rs/docs/superpowers/specs/2026-10-07-binance-perps-venue-design.md`, being amended
 to read Binance through this crate instead of `binance-sdk`).
-**Plan:** `docs/superpowers/plans/2026-10-07-polyoxide-binance.md`, written next.
+**Plans:** `docs/superpowers/plans/2026-10-07-polyoxide-binance-http.md` (the crate, the
+weight limiter and the REST routes) and `docs/superpowers/plans/2026-10-07-polyoxide-binance-ws.md`
+(the sockets and `polyoxide ws binance`), as perps was split.
 
 ## Goal
 
@@ -81,23 +83,28 @@ on REST (`BTCUSDT`, and Chinese-character symbols such as `币安人生USDT`).
 | `/fapi/v1/fundingInfo` | | `[FundingInfo]` | none; shares 500 per 5 min per IP with `fundingRate` |
 | `/fapi/v1/ticker/24hr` | `symbol` optional | one `Ticker24h`, or all without `symbol` | 1, or 40 for all |
 | `/fapi/v1/premiumIndex` | `symbol` optional | one `PremiumIndex`, or all | 1, or 10 for all |
-| `/fapi/v1/klines` | `symbol`, `interval`; `startTime`, `endTime`, `limit` (≤ 1500) | `[Kline]`, positional arrays | by `limit`: under 100 → 1, 100–499 → 2, 500–1000 → 5, over 1000 → 10 |
+| `/fapi/v1/klines` | `symbol`, `interval`; `startTime`, `endTime`, `limit` (≤ 1500) | `[Kline]`, positional arrays | by `limit`: up to 100 → 1, up to 500 → 2, up to 1000 → 5, over 1000 → 10; no `limit` → 5 |
 | `/fapi/v1/fundingRate` | `symbol`, `startTime`, `endTime`, `limit` (≤ 1000), all optional | `[FundingRate]` | none; shares 500 per 5 min |
 | `/fapi/v1/openInterest` | `symbol` | `OpenInterest` | 1 |
 | `/fapi/v1/aggTrades` | `symbol`; `fromId`, `startTime`, `endTime`, `limit` (≤ 1000); last 48 h only | `[AggTrade]` | 20 |
-| `/fapi/v1/depth` | `symbol`; `limit` ∈ 5, 10, 20, 50, 100, 500, 1000 | `Depth` | 2 up to 50, 5 at 100, 10 at 500, 20 at 1000 |
+| `/fapi/v1/depth` | `symbol`; `limit` ∈ 5, 10, 20, 50, 100, 500, 1000 | `Depth` | 2 up to 50, 5 at 100, 10 at 500, 20 at 1000; no `limit` → 1 |
 
-Measured on 2026-10-07 from `X-MBX-USED-WEIGHT-1M` deltas: `exchangeInfo` 1, `ticker/24hr`
-40 and 1, `premiumIndex` 10 and 1, `klines` 10 at 1500, 2 at 499, 1 at 99, `openInterest`
-1, `aggTrades` 20 at 100, `depth` 2 at 20 and 5 at 100. The klines 500–1000 and depth 500
-and 1000 rows are the documented values, unmeasured. `fundingInfo` and `fundingRate`
-answer with no weight header.
+Measured on 2026-10-07 from `X-MBX-USED-WEIGHT-1M` deltas, every row except `ping` and
+`time`: `exchangeInfo` 1, `ticker/24hr` 40 and 1, `premiumIndex` 10 and 1, `openInterest`
+1, `aggTrades` 20 at limits 1, 100 and 1000. `klines` was measured at every band edge,
+twice: 99 and 100 cost 1, 101 to 500 cost 2, 501 to 1000 cost 5, 1001 and 1500 cost 10.
+The page's bands (under 100, 100 to 499, 500 to 1000) are off by one at each edge, and a
+request without `limit` costs 5 although it returns 500 rows. `depth` costs 2 at 20 and 50,
+5 at 100, 10 at 500 and 20 at 1000, and 1 without `limit`, which also returns 500 levels.
+`fundingInfo` and `fundingRate` answer with no weight header. A request the venue refuses
+still costs weight: an unknown symbol 1, a `klines` limit of 1501 10.
 
 `aggTrades` serves only the last 48 hours, as its page documents. An older window is
 refused with `400 {"code":-4166,"msg":"Search window is restricted to recent 2 days
 only."}` (2026-10-07; the page does not give the code), so a backfill cannot reach further
 back. The page also says a window with both `startTime` and `endTime` must span less than
-an hour; that was not probed.
+an hour, but a two-hour window was answered `200` on 2026-10-07, so the client does not
+enforce the rule.
 
 The weight budget is `REQUEST_WEIGHT` 2400 per minute per IP, from `exchangeInfo`'s
 `rateLimits`, reported on every weighted response in `X-MBX-USED-WEIGHT-1M`.
@@ -190,7 +197,7 @@ explicitly, for the reason in CLAUDE.md's TLS note.
 ### Client
 
 `Usdm::new()` and `Usdm::builder()` with `base_url`, `timeout_ms`, `pool_size`,
-`with_retry_config`, `with_max_concurrent` (default 4, as perps) and
+`with_retry_config`, `max_concurrent` (default 4, as perps) and
 `weight_budget(WeightBudget)`, mirroring `PerpsBuilder`. The client is built with no core
 `RateLimiter`, because core's path quotas do not model weights, and with `gzip(true)`. The
 budget is per process and shared by cloning, because Binance's limit is per IP: two
@@ -211,12 +218,16 @@ leaves.
 
 ### Types
 
-- `Symbol`: 1 to 32 characters, each a Unicode letter or digit, because Binance lists
-  Chinese-character symbols (`币安人生USDT`; the longest live symbol is 17 characters).
-  `Symbol::new` refuses anything else. It serialises as given on REST and renders
+- `Symbol`: 1 to 32 characters, each a Unicode letter, a digit or `_`, because Binance
+  lists Chinese-character symbols (`币安人生USDT`) and quarterly contracts carry their
+  delivery date after an underscore (`BTCUSDT_261225`). On 2026-10-07 the 924 listed
+  symbols used no other character and the longest was 17. `Symbol::new` refuses anything
+  else; a symbol decoded from a response is taken as sent, so a new character never fails
+  a whole `exchangeInfo`. It serialises as given on REST and renders
   lowercased in stream names.
 - `Interval`: Binance's fifteen (`1m 3m 5m 15m 30m 1h 2h 4h 6h 8h 12h 1d 3d 1w 1M`), with
-  the exact wire spelling, shared by REST `klines` and the kline stream.
+  the exact wire spelling, shared by REST `klines` and the kline stream. The docs' list
+  also has `1s`, which this host refuses (`-1120 "Invalid interval."`).
 - `ContractType` (`Perpetual`, `TradifiPerpetual`, `CurrentQuarter`, `NextQuarter`),
   `SymbolStatus` (`Trading`, `Settling`, `PendingTrading`, and the documented others) and
   `UnderlyingType` (`Coin`, `Index`, `Premarket`, `Commodity`, `Equity`, `CnEquity`,
@@ -276,9 +287,11 @@ it, and reports it as a `DisconnectReason`.
 - **Budget.** 2400 per minute less a tenth, 2160, following core's `RESERVED_FRACTION`
   lesson that aiming at a published quota is a bug.
 - **Charging.** `acquire(weight)` waits while the window's count plus `weight` would pass
-  the budget, then adds `weight`. The window is the clock minute that the header's `-1M`
-  names; the plan's first task checks that by reading the header across a minute
-  boundary, and the limiter follows what it shows.
+  the budget, then adds `weight`. The window is the UTC clock minute: on 2026-10-07 the
+  header fell to 1 within 3 s after 08:35:00 and again after 08:36:00, where a sliding
+  window would have kept counting. A response's header is applied only to the window its
+  request was charged in, so a request in flight across a boundary cannot carry the old
+  minute's count into the new one.
 - **Server count.** Every response's `X-MBX-USED-WEIGHT-1M` raises the window's count to
   at least that value, because other processes on the same IP spend the same budget. The
   count never moves down within a window.
@@ -431,7 +444,9 @@ each supervision and limiter test going red.
 `exchangeInfo` trimmed to a crypto perpetual, a Chinese-character perpetual, a TradFi
 perpetual, a `SETTLING` perpetual and a quarterly) and one combined-stream envelope per
 stream kind (arrays trimmed to two rows, depth sides to three levels), and writes
-`PROVENANCE.md`. The initial set is the 2026-10-07 captures handed over with this spec.
+`PROVENANCE.md`. It keeps every top-level key: the 2026-10-07 captures handed over with
+this spec built `exchangeInfo` from chosen keys and dropped `futuresType`
+(`"U_MARGINED"`), so the HTTP plan re-captures them.
 
 ### Types and limiter (unit)
 
@@ -502,8 +517,8 @@ lines parse); live `ws binance --all-mark-prices -n 1 --format json`.
 
 ## Open questions settled by evidence, not by this spec
 
-- **The weight window** is assumed to be the clock minute. The plan's first task reads the
-  header across a minute boundary and the limiter follows the result.
+- **The weight window** is the UTC clock minute, measured across two boundaries while
+  planning.
 - **The funding bucket** (500 per 5 minutes) is documented and unmeasured: those routes
   send no header.
 - **The `/public` path's limits** are assumed equal to `/market`'s; only `/market` was
@@ -512,5 +527,6 @@ lines parse); live `ws binance --all-mark-prices -n 1 --format json`.
   status alone.
 - **Make-before-break rotation**, opening the new connection before closing the old,
   would remove the brief outage at rotation. It is deferred until a consumer needs it.
-- **Klines at limits 500 to 1000, and depth at 500 and 1000,** use the documented weights.
-  `weight_probe.rs` will measure them.
+- **Klines at limits 500 to 1000, and depth at 500 and 1000,** were measured while
+  planning; the table above has the results, which differ from the page at every klines
+  band edge and for a request without `limit`.
