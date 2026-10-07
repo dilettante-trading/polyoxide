@@ -4381,6 +4381,8 @@ Expected: PASS, 21 tests, in under four seconds.
 Run: `cargo test -j 4 -p polyoxide-binance --features test-server --lib`
 Expected: PASS, 67 tests.
 
+Code review added a follow-up commit (ccb47b9). The pairing invariant held on every path, but seven contract behaviours had no test that could fail. The reviewer's probes became `tests/supervision_edges.rs`, 7 tests, each catching one mutation: a path closed for want of streams reopening; a new path whose first connect drops being an outage, not an error; a partial unsubscribe during an outage; a subscribe or unsubscribe the connection died under; a path refused at its first connect being wanted again; and the backoff resetting after a connection that delivered. The docs no longer promise that a change during an outage is answered at once. Such a change waits for an attempt already in flight, and calls are served one at a time across paths. Answering during an attempt is left as a later improvement. The docs also name the `Connect` error that a new path's first connect can return, show a stream loop that skips an undecodable frame, and give Binance's limits on pings and connections.
+
 - [ ] **Step 5: Show the tests can fail**
 
 Break each rule, run `cargo test -j 4 -p polyoxide-binance --features test-server --no-fail-fast --lib --test supervision`, see the named test fail, then restore the line:

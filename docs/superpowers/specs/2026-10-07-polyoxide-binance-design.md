@@ -420,11 +420,14 @@ the replay after a reconnect, is yielded as `Err` and ends the stream.
 
 `MembershipHandle::subscribe` and `unsubscribe` take `StreamName`s and route each to its
 path. The membership is a set: subscribing a name twice holds it once, and reference
-counting is the caller's. During a path's outage a change is recorded and answered `Ok`
-at once, and the replay applies it. A change that opens a path waits for that path's first
-connect: a refusal fails the call, and a transport failure is answered `Ok` and reported
-as an outage like any other. A call fails only with `Refused`, `TooManyStreams` or
-`Stopped`.
+counting is the caller's. During a path's outage a change is recorded and answered `Ok`,
+and the replay applies it; it is answered between attempts, so one that arrives while a
+connect or a replay is in flight waits for it, and calls are served one at a time across
+paths (a change for a healthy path can wait behind another path's attempt; answering
+during an attempt is a later improvement). A change that opens a path waits for that
+path's first connect: a refusal fails the call, a transport failure is answered `Ok` and
+reported as an outage like any other, and a failure retrying cannot fix fails it with
+`Connect`. A call fails only with `Refused`, `TooManyStreams`, `Connect` or `Stopped`.
 
 ### CLI
 
