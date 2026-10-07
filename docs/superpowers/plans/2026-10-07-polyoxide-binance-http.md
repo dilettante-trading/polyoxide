@@ -4288,6 +4288,8 @@ let b = Usdm::builder().weight_budget(budget).build()?;
 Run: `cargo test -j 4 -p polyoxide-binance --all-targets && cargo test -j 4 -p polyoxide-binance --doc`
 Expected: PASS: 37 unit tests, 19 in `mock_api`, 2 in `wire_agreement`, 3 doctests. `a_418_is_not_retried_and_holds_the_next_request` and `a_429_cools_down_then_succeeds` each take about a second; `a_high_used_weight_header_holds_the_next_request` may first wait up to three seconds to stay clear of a minute boundary.
 
+Code review added a follow-up commit (781cb7a). A `429` with no retry left and no `Retry-After` started no cooldown, so the next request went out at once; it now holds every request until the next UTC minute (`WeightBudget::hold_until_next_minute`), since core's backoff floor is zero at `max_retries: 0`. A `418` logs a clipped excerpt of its body, which names when the ban ends. Six mock tests pin rules that no test could fail before: a refused request's header is recorded, a retry is charged again, `Retry-After` outlasts a shorter backoff, the out-of-retries path for both a `429` that has a `Retry-After` and one that has none, and each route's own weight. The cooldown tests gain upper bounds. The docs state the in-flight reserve, that `send` has no deadline, and the cost of a funding backfill to the weight routes. `mock_api` then has 25 tests.
+
 - [ ] **Step 7: Show the send loop's tests can fail**
 
 Break each rule, run `cargo test -j 4 -p polyoxide-binance --test mock_api`, see the named test fail, then restore:
