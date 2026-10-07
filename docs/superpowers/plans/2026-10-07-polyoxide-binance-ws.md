@@ -747,7 +747,7 @@ Run: `cargo test -j 4 -p polyoxide-binance --features ws --lib usdm::ws`
 Expected: PASS, 8 tests. Dead-code warnings for `StreamPath::url` and `ensure_crypto_provider` are expected until Task 3.
 
 Run: `cargo test -j 4 -p polyoxide-binance --lib`
-Expected: PASS, 34 tests: without the feature nothing new compiles.
+Expected: PASS, 35 tests: without the feature nothing new compiles.
 
 - [ ] **Step 7: Commit**
 
@@ -4373,7 +4373,7 @@ Run: `cargo test -j 4 -p polyoxide-binance --features test-server --test supervi
 Expected: PASS, 21 tests, in under four seconds.
 
 Run: `cargo test -j 4 -p polyoxide-binance --features test-server --lib`
-Expected: PASS, 59 tests.
+Expected: PASS, 60 tests.
 
 - [ ] **Step 5: Show the tests can fail**
 
