@@ -163,7 +163,9 @@ impl ListPositions {
         self
     }
 
-    /// Sort key. Upstream default depends on [`status`](Self::status).
+    /// Sort key. Upstream default depends on [`status`](Self::status), and on
+    /// a user's `CLOSED` positions four of the keys sort by realized PnL; see
+    /// [`PositionSortBy`].
     pub fn sort_by(mut self, sort_by: PositionSortBy) -> Self {
         self.inner = self.inner.query("sort_by", sort_by);
         self

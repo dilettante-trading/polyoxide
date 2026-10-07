@@ -5,7 +5,10 @@ Each file is the complete response body, pretty-printed. Inputs were chosen live
 (see the script), so the wallets and markets here are whatever was active then.
 
 `resolutions_pending.json` alone was captured 2026-09-29T18:17:22Z, when upstream
-added settlement estimates to `/v2/resolutions`; a full re-run captures all at once.
+added settlement estimates to `/v2/resolutions`. `positions.json` and
+`positions_closed.json` were re-captured 2026-10-07T04:40:07Z from the URLs below,
+when upstream added `first_entry_at` to `/v2/positions` rows. A full re-run
+captures all at once.
 
 | Fixture | Request |
 |---------|---------|

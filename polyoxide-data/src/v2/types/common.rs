@@ -272,6 +272,12 @@ closed_enum! {
     /// Sort key for `/v2/positions`. The upstream default depends on the
     /// status: `CURRENT_VALUE` for `OPEN`/`REDEEMABLE`/`REDEEMABLE_LOST`,
     /// `TOKENS` for `MERGEABLE`, `REALIZED_PNL` for `CLOSED`.
+    ///
+    /// On a user's `CLOSED` positions, `TOKENS`, `CURRENT_VALUE`, `PRICE` and
+    /// `UNREALIZED_PNL` describe a holding that no longer exists, so upstream
+    /// serves those pages in `REALIZED_PNL` order. The cursor still binds the
+    /// key that was requested: a later page must restate that key (as
+    /// `.pages()` does) or omit it, and restating `REALIZED_PNL` is a `400`.
     pub enum PositionSortBy {
         /// `CURRENT_VALUE`
         CurrentValue => "CURRENT_VALUE",

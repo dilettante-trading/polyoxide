@@ -98,8 +98,9 @@ fn synth(schemas: &Map<String, Value>, prop: &Value, full: bool) -> Value {
 }
 
 /// An object schema's properties and required names. An `allOf` contributes
-/// every arm's, so `ResolutionWithSettlementTime` (`Resolution` plus one
-/// property) reads as the one flat row the server sends.
+/// every arm's, so a schema that extends another reads as the one flat row the
+/// server sends. None does now; `/v2/resolutions` rows were one from
+/// 2026-09-29 until upstream folded the extension back into `Resolution`.
 fn fields(schemas: &Map<String, Value>, schema: &Value) -> (Map<String, Value>, BTreeSet<String>) {
     if let Some(r) = schema["$ref"].as_str() {
         return fields(schemas, &schemas[r.rsplit('/').next().unwrap()]);
@@ -226,7 +227,7 @@ agreement! {
     "PortfolioValue" => PortfolioValue,
     "Position" => Position,
     "PricePoint" => PricePoint,
-    "ResolutionWithSettlementTime" => Resolution,
+    "Resolution" => Resolution,
     "ServiceStatus" => ServiceStatus,
     "ServingFreshness" => ServingFreshness,
     "ServingMechanism" => ServingMechanism,
@@ -261,10 +262,6 @@ const NOT_MODELLED: &[(&str, &str)] = &[
         "LeaderboardResponse",
         "oneOf split into leaderboard() and leaderboard_user()",
     ),
-    (
-        "Resolution",
-        "no route serves it bare; checked as the allOf base of ResolutionWithSettlementTime",
-    ),
 ];
 
 #[test]
@@ -283,6 +280,35 @@ fn every_spec_schema_is_modelled_or_excused() {
     assert!(
         unaccounted.is_empty(),
         "schemas neither modelled nor excused: {unaccounted:?}"
+    );
+}
+
+/// The converse: every table entry names a schema the spec still has, and
+/// none is both modelled and excused. When upstream deletes a modelled schema
+/// the other tests fail only with serde_json's `no entry found for key`, and a
+/// deleted excused schema fails nothing at all.
+#[test]
+fn every_table_entry_names_a_current_schema() {
+    let schemas = schemas();
+    let excused: BTreeSet<&str> = NOT_MODELLED.iter().map(|(n, _)| *n).collect();
+    let gone: Vec<&str> = MODELLED
+        .iter()
+        .chain(&excused)
+        .copied()
+        .filter(|n| !schemas.contains_key(*n))
+        .collect();
+    assert!(
+        gone.is_empty(),
+        "table entries the spec no longer has: {gone:?}"
+    );
+    let both: Vec<&str> = MODELLED
+        .iter()
+        .copied()
+        .filter(|n| excused.contains(n))
+        .collect();
+    assert!(
+        both.is_empty(),
+        "schemas both modelled and excused: {both:?}"
     );
 }
 

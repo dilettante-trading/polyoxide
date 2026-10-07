@@ -54,7 +54,8 @@ pub enum PositionsSubcommand {
         /// Include positions on archived markets (not valid with --status closed)
         #[arg(long)]
         include_archived: bool,
-        /// Sort field (API default depends on --status)
+        /// Sort field (API default depends on --status). With --status closed,
+        /// tokens, current-value, price and unrealized-pnl sort by realized P&L
         #[arg(long, value_enum)]
         sort_by: Option<PositionSortField>,
         /// Sort direction

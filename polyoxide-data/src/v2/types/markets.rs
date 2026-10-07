@@ -196,8 +196,11 @@ pub struct Resolution {
     /// Block the condition resolved at.
     #[cfg_attr(feature = "specta", specta(type = Option<f64>))]
     pub resolved_block: Option<i64>,
-    /// How `expected_settlement_time` was derived: `managed_proposal_expiration`,
-    /// `liveness` or `dvm_round_estimate`.
+    /// How `expected_settlement_time` was derived: `managed_proposal_expiration`
+    /// or `proposal_expiration` (the end of a live proposal's challenge
+    /// window), `liveness` (the end of a proposal window on the v2 oracle) or
+    /// `dvm_round_estimate` (the earliest end of the voting round a disputed
+    /// market can settle in).
     pub settlement_time_basis: Option<String>,
     /// Lifecycle state: initialized, posed, proposed, challenged, reproposed,
     /// disputed or resolved; condition-keyed rows can also serve active and

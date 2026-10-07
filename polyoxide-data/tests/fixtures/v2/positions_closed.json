@@ -18,7 +18,7 @@
       "percent_pnl": 0.0,
       "percent_realized_pnl": 166.7399,
       "status": "CLOSED",
-      "redeemable": true,
+      "redeemable": false,
       "mergeable": false,
       "negative_risk": true,
       "archived": false,
@@ -33,6 +33,7 @@
       "opposite_token_id": "5222174362251812412450344137756298255984284223812021204960072649921489423063",
       "end_date": "2026-08-22",
       "last_event_at": 1787437197,
+      "first_entry_at": 1787211408,
       "name": "jaboobelite",
       "profile_image": "",
       "verified": false
@@ -55,7 +56,7 @@
       "percent_pnl": 0.0,
       "percent_realized_pnl": 295.0819,
       "status": "CLOSED",
-      "redeemable": true,
+      "redeemable": false,
       "mergeable": true,
       "negative_risk": true,
       "archived": false,
@@ -70,6 +71,7 @@
       "opposite_token_id": "58284671320079826590069013690380007128395476201709650649008189718837714116096",
       "end_date": "2026-08-11",
       "last_event_at": 1786435251,
+      "first_entry_at": 1786428931,
       "name": "jaboobelite",
       "profile_image": "",
       "verified": false

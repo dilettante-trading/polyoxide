@@ -107,6 +107,26 @@ types (`TRADE` … `TAKER_REBATE`, `TIP`) are accepted by `/v2/activity?type=`.
 supported`, but `sort_direction=ASC` is accepted and returns ascending rows
 (2026-09-14). The spec's "`ASC` or `DESC`" is right; the message is not.
 
+## `/v2/positions` `CLOSED` sorts bind the requested key
+
+By 2026-10-06 the spec said that on a user's `CLOSED` positions, `TOKENS`,
+`CURRENT_VALUE`, `PRICE` and `UNREALIZED_PNL` are served in `REALIZED_PNL` order,
+and that their cursors "bind their realized-PnL ranking". Probed 2026-10-07 on
+`0x379a410a36c101e3b8dfb6c90d1176eb0def4b1a` (more than 50 closed positions) at
+`limit=7`, in both directions:
+
+- Page 1 for each of the four keys was row for row the `REALIZED_PNL` page.
+  `TOTAL_PNL` matched too, but only because `unrealized_pnl` is ~0 on this arm.
+  `TIMESTAMP` did not.
+- Page 2, sending the cursor with the requested key restated, returned `200`.
+  Omitting the key also returned `200`. Restating `REALIZED_PNL` returned `400
+  invalid cursor` (`invalid_request`, not retryable).
+
+So the cursor binds the key the walk asked for, not the order it was served in.
+`.pages()` restates the original key on every page, which is the accepted form.
+The spec also says cursors minted for these sorts before the change return `400`;
+none was available to test.
+
 ## `/v2/resolutions` condition rows can omit documented fields
 
 `GET /v2/resolutions?condition=0x789f0872f66cfffd21a33020e5c90e11f95f947e03be77ac2df7e86b0cb71527`
@@ -149,6 +169,14 @@ basis seen; `scripts/capture_v2_fixtures.py` picks them the same way.
 **Consequence:** both are `Option<String>` on `Resolution`. `settlement_time_basis`
 stays a string, like the row's other closed sets (`status`, `reporter`,
 `market_type`).
+
+By 2026-10-06 upstream had folded `settlement_time_basis` into `Resolution`
+itself, removing the `ResolutionWithSettlementTime` wrapper, and documented a
+fourth basis, `proposal_expiration`. On 2026-10-07 all 344 conditions gamma listed
+as `proposed` or `disputed` were looked up again. 247 rows carried
+`managed_proposal_expiration` and 4 carried `dvm_round_estimate`. Neither
+`proposal_expiration` nor `liveness` appeared, and the two keys still came
+together or not at all.
 
 ## Combo trades carry 62-digit condition ids
 

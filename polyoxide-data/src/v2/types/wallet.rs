@@ -250,6 +250,10 @@ pub struct Position {
     pub event_id: String,
     /// Parent event slug.
     pub event_slug: String,
+    /// First acquisition of the position (buy, split, mint or transfer in),
+    /// epoch seconds; 0 when no acquisition is recorded.
+    #[cfg_attr(feature = "specta", specta(type = f64))]
+    pub first_entry_at: i64,
     /// Market icon URL.
     pub icon: String,
     /// The row's last economics event, epoch seconds; 0 without native state.

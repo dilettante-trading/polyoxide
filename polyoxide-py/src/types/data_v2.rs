@@ -33,6 +33,7 @@ py_type!(
     entry_fees_usdc,
     event_id,
     event_slug,
+    first_entry_at,
     icon,
     last_event_at,
     mergeable,
