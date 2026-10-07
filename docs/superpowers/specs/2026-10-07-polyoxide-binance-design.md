@@ -222,9 +222,12 @@ leaves.
   lists Chinese-character symbols (`币安人生USDT`) and quarterly contracts carry their
   delivery date after an underscore (`BTCUSDT_261225`). On 2026-10-07 the 924 listed
   symbols used no other character and the longest was 17. `Symbol::new` refuses anything
-  else; a symbol decoded from a response is taken as sent, so a new character never fails
-  a whole `exchangeInfo`. It serialises as given on REST and renders
-  lowercased in stream names.
+  else and uppercases ASCII letters: no listed symbol has a lowercase one, the REST host
+  accepts `btcusdt` and answers `BTCUSDT`, and stream names spell symbols in lowercase, so
+  uppercasing is what lets an echoed stream name parse back to the symbol that built it.
+  `Symbol` is for what a caller sends; response rows carry symbols as `String`, taken as
+  sent, so a symbol `Symbol::new` would refuse (`fundingInfo` also lists COIN-M symbols
+  such as `BTCUSD_PERP`) never fails a whole response.
 - `Interval`: Binance's fifteen (`1m 3m 5m 15m 30m 1h 2h 4h 6h 8h 12h 1d 3d 1w 1M`), with
   the exact wire spelling, shared by REST `klines` and the kline stream. The docs' list
   also has `1s`, which this host refuses (`-1120 "Invalid interval."`).
@@ -234,16 +237,20 @@ leaves.
   `HkEquity`, `KrEquity`, `Fx`, seen live on 2026-10-07): each with an `Other(String)`
   variant, because Binance adds values (`TRADIFI_PERPETUAL` and three regional equity
   types are recent).
-- `Filter`: the seven types seen live (`PRICE_FILTER`, `LOT_SIZE`, `MARKET_LOT_SIZE`,
-  `MAX_NUM_ORDERS`, `MIN_NOTIONAL`, `PERCENT_PRICE`, `POSITION_RISK_CONTROL`) and
-  `Other { filter_type, raw }`, with a hand-written `Deserialize`, so an unseen filter type
-  never fails a whole `exchangeInfo` (the closed enum in `binance-rs` does exactly that).
+- `Filter`: the seven types seen live as struct variants named after the wire
+  (`PriceFilter { tick_size, .. }`, `LotSize`, `MarketLotSize`, `MaxNumOrders`,
+  `MinNotional`, `PercentPrice`, `PositionRiskControl`) and `Other { filter_type, raw }`,
+  with hand-written serde, so an unseen filter type never fails a whole `exchangeInfo`
+  (the closed enum in `binance-rs` does exactly that).
+- `DepthLimit` (`Five`, `Ten`, `Twenty`, `Fifty`, `Hundred`, `FiveHundred`, `Thousand`),
+  so a `depth` limit Binance refuses (`-4021`) cannot be built. Other limits are `u32`.
 - REST rows named after their response (`ExchangeInfo`, `SymbolInfo`, `RateLimit`,
   `FundingInfo`, `Ticker24h`, `PremiumIndex`, `Kline`, `FundingRate`, `OpenInterest`,
   `AggTrade`, `Depth`), `Decimal` with `rust_decimal::serde::str` for prices, quantities and
   rates, `u64` for timestamps and ids, `Option<u64>` where the wire sends `null`
   (`fundingInfo`'s `updateTime` is `null` for `BTCUSDT`), long field names over the
-  wire's terse keys where the wire is terse (`aggTrades`). `#[non_exhaustive]`.
+  wire's terse keys where the wire is terse (`aggTrades`: `is_buyer_maker` for `m`).
+  `#[non_exhaustive]`.
   `underlyingSubType` stays `Vec<String>` (24 free-text tags on 2026-10-07). `Kline` and
   depth levels are positional arrays on the wire and get hand-written serde.
 - Stream payloads are separate structs (`TickerEvent`, `MarkPriceEvent`, `AggTradeEvent`,
