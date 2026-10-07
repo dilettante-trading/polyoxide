@@ -1,0 +1,61 @@
+# polyoxide-binance
+
+Rust client library for Binance USDⓈ-M futures public market data
+(`fapi.binance.com`): contracts, tickers, the premium index and funding, klines,
+open interest, aggregate trades and order book snapshots. No credentials are
+needed.
+
+Every request is charged against a `WeightBudget`, because Binance limits each
+IP by request *weight*, which varies with the route and its parameters, rather
+than by request count. The budget follows the server's own count from the
+`X-MBX-USED-WEIGHT-1M` header, and a `429` or `418` holds every request until
+the server's wait is over.
+
+More information about this crate can be found in the [crate documentation](https://docs.rs/polyoxide-binance/).
+
+## Installation
+
+```toml
+[dependencies]
+polyoxide-binance = "0.36"
+```
+
+## Usage
+
+```no_run
+use polyoxide_binance::{
+    usdm::types::{Interval, Symbol},
+    Usdm,
+};
+
+# async fn example() -> Result<(), Box<dyn std::error::Error>> {
+let usdm = Usdm::new()?;
+let btc = Symbol::new("BTCUSDT")?;
+
+let index = usdm.market().premium_index(&btc).send().await?;
+println!("mark {} index {}", index.mark_price, index.index_price);
+
+let candles = usdm
+    .market()
+    .klines(&btc, Interval::H1)
+    .limit(24)
+    .send()
+    .await?;
+println!("{} hourly candles", candles.len());
+# Ok(())
+# }
+```
+
+Clients in one process should share one budget, since Binance counts weight
+per IP:
+
+```no_run
+use polyoxide_binance::{Usdm, WeightBudget};
+
+# fn example() -> Result<(), polyoxide_binance::BinanceError> {
+let budget = WeightBudget::new();
+let a = Usdm::builder().weight_budget(budget.clone()).build()?;
+let b = Usdm::builder().weight_budget(budget).build()?;
+# Ok(())
+# }
+```
