@@ -1,32 +1,32 @@
 [
  {
   "symbol": "BTCUSDT",
-  "markPrice": "83697.20000000",
-  "indexPrice": "83747.07543478",
-  "estimatedSettlePrice": "83838.14877234",
-  "lastFundingRate": "-0.00005054",
+  "markPrice": "83067.30000000",
+  "indexPrice": "83114.69956522",
+  "estimatedSettlePrice": "83195.99445417",
+  "lastFundingRate": "0.00000078",
   "interestRate": "0.00010000",
   "nextFundingTime": 1791388800000,
-  "time": 1791369414001
- },
- {
-  "symbol": "币安人生USDT",
-  "markPrice": "0.48119864",
-  "indexPrice": "0.48119031",
-  "estimatedSettlePrice": "0.48171591",
-  "lastFundingRate": "0.00005000",
-  "interestRate": "0.00010000",
-  "nextFundingTime": 1791374400000,
-  "time": 1791369414001
+  "time": 1791382985000
  },
  {
   "symbol": "XAUUSDT",
-  "markPrice": "4117.10000000",
-  "indexPrice": "4113.88578675",
-  "estimatedSettlePrice": "4116.54053799",
-  "lastFundingRate": "0.00014499",
+  "markPrice": "4102.86000000",
+  "indexPrice": "4099.25528349",
+  "estimatedSettlePrice": "4098.72491039",
+  "lastFundingRate": "0.00019799",
   "interestRate": "0.00000000",
-  "nextFundingTime": 1791374400000,
-  "time": 1791369413685
+  "nextFundingTime": 1791388800000,
+  "time": 1791382984684
+ },
+ {
+  "symbol": "币安人生USDT",
+  "markPrice": "0.47620000",
+  "indexPrice": "0.47561174",
+  "estimatedSettlePrice": "0.47580283",
+  "lastFundingRate": "0.00005000",
+  "interestRate": "0.00010000",
+  "nextFundingTime": 1791388800000,
+  "time": 1791382985000
  }
 ]

@@ -20,12 +20,13 @@ list lengths are trimmed.
 
 ## Streams (`ws/`)
 
-Captured 2026-10-07 by the stdlib scripts handed over with the design spec
-(`docs/specs/binance/probes/capture_ws.py`): one combined-stream envelope
-(`{"stream", "data"}`) per stream, from `/market/stream` for `!ticker@arr`,
+Captured 2026-10-07 from `wss://fstream.binance.com` by the same script: one combined-stream
+envelope (`{"stream", "data"}`) per stream, from `/market/stream` for `!ticker@arr`,
 `!markPrice@arr@1s`, `btcusdt@aggTrade`, `btcusdt@kline_1m`, `btcusdt@markPrice@1s` and
 `btcusdt@ticker`, and from `/public/stream` for `btcusdt@depth20@100ms` and
-`btcusdt@bookTicker`. Arrays are trimmed to two rows and depth sides to three levels.
+`btcusdt@bookTicker`. An array keeps two rows: a USDⓈ-M row (`st: 1`) with a scheduled
+funding time, and a COIN-M row (`st: 2`) when the frame carried one. Depth sides keep
+three levels. Files: `stream_all_markPrice_arr_1s.json`, `stream_all_ticker_arr.json`, `stream_btcusdt_aggTrade.json`, `stream_btcusdt_bookTicker.json`, `stream_btcusdt_depth20_100ms.json`, `stream_btcusdt_kline_1m.json`, `stream_btcusdt_markPrice_1s.json`, `stream_btcusdt_ticker.json`.
 
 ## Probes
 

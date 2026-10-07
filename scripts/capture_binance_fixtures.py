@@ -1,21 +1,34 @@
 #!/usr/bin/env python3
-"""Capture Binance USDⓈ-M REST responses as test fixtures for polyoxide-binance.
+"""Capture Binance USDⓈ-M REST responses and stream frames as test fixtures for
+polyoxide-binance.
 
 Usage: python3 -I scripts/capture_binance_fixtures.py polyoxide-binance/tests/fixtures
 
-Writes one JSON file per route under OUT_DIR/rest/ and rewrites OUT_DIR/PROVENANCE.md.
-Every top-level key of every response is kept; only list lengths are trimmed, so a
-wire-agreement test sees each field the server sends. Stdlib only, no credentials.
-Costs about 60 request weight, well inside the 2400 per minute.
+Writes one JSON file per route under OUT_DIR/rest/, one combined-stream envelope per
+stream kind under OUT_DIR/ws/, and rewrites OUT_DIR/PROVENANCE.md. Every key is kept;
+only list lengths are trimmed, so a wire-agreement test sees each field the server
+sends. Stdlib only, no credentials. Costs about 60 request weight, well inside the
+2400 per minute, and two short WebSocket connections.
 """
+import base64
 import datetime
 import json
 import os
+import socket
+import ssl
+import struct
 import sys
+import time
 import urllib.parse
 import urllib.request
 
 BASE = "https://fapi.binance.com"
+WS_HOST = "fstream.binance.com"
+STREAMS = {
+    "market": ["!ticker@arr", "!markPrice@arr@1s", "btcusdt@aggTrade", "btcusdt@kline_1m",
+               "btcusdt@markPrice@1s", "btcusdt@ticker"],
+    "public": ["btcusdt@depth20@100ms", "btcusdt@bookTicker"],
+}
 
 
 def get(path, **params):
@@ -37,6 +50,92 @@ def first(rows, predicate, what):
         if predicate(row):
             return row
     sys.exit(f"no {what} listed; pick the fixture rows by hand")
+
+
+def ws_open(path):
+    raw = socket.create_connection((WS_HOST, 443), timeout=15)
+    sock = ssl.create_default_context().wrap_socket(raw, server_hostname=WS_HOST)
+    key = base64.b64encode(os.urandom(16)).decode()
+    sock.sendall((f"GET {path} HTTP/1.1\r\nHost: {WS_HOST}\r\nUpgrade: websocket\r\n"
+                  f"Connection: Upgrade\r\nSec-WebSocket-Key: {key}\r\n"
+                  f"Sec-WebSocket-Version: 13\r\n\r\n").encode())
+    head = b""
+    while b"\r\n\r\n" not in head:
+        head += sock.recv(1)
+    status = head.split(b"\r\n")[0]
+    if b" 101 " not in status:
+        sys.exit(f"{path}: handshake refused: {status.decode()}")
+    return sock
+
+
+def read_exact(sock, n):
+    buf = b""
+    while len(buf) < n:
+        chunk = sock.recv(n - len(buf))
+        if not chunk:
+            raise EOFError("the server closed the connection")
+        buf += chunk
+    return buf
+
+
+def read_message(sock):
+    """One message as (opcode, payload), joining continuation frames."""
+    opcode, payload = None, b""
+    while True:
+        b1, b2 = read_exact(sock, 2)
+        length = b2 & 0x7F
+        if length == 126:
+            length = struct.unpack(">H", read_exact(sock, 2))[0]
+        elif length == 127:
+            length = struct.unpack(">Q", read_exact(sock, 8))[0]
+        if b2 & 0x80:
+            read_exact(sock, 4)
+        data = read_exact(sock, length)
+        if b1 & 0x0F:
+            opcode = b1 & 0x0F
+        payload += data
+        if b1 & 0x80:
+            return opcode, payload
+
+
+def pick_two(rows):
+    """A USDⓈ-M row (`st: 1`) with a funding time when the payload has one, and a
+    COIN-M row (`st: 2`) when the frame carries one, else another row."""
+    first_row = next((r for r in rows if r.get("st") == 1 and r.get("T", 1) > 0), rows[0])
+    second = next((r for r in rows if r.get("st") == 2), None)
+    if second is None:
+        second = next(r for r in rows if r is not first_row)
+    return [first_row, second]
+
+
+def capture_streams(out):
+    ws_dir = os.path.join(out, "ws")
+    os.makedirs(ws_dir, exist_ok=True)
+    for path, streams in STREAMS.items():
+        sock = ws_open(f"/{path}/stream?streams=" + "/".join(streams))
+        sock.settimeout(15)
+        wanted = set(streams)
+        deadline = time.time() + 30
+        while wanted and time.time() < deadline:
+            opcode, data = read_message(sock)
+            if opcode != 1:
+                continue
+            envelope = json.loads(data.decode("utf-8"))
+            name = envelope.get("stream")
+            if name not in wanted:
+                continue
+            wanted.discard(name)
+            if isinstance(envelope["data"], list):
+                envelope["data"] = pick_two(envelope["data"])
+            elif "@depth" in name:
+                envelope["data"]["b"] = envelope["data"]["b"][:3]
+                envelope["data"]["a"] = envelope["data"]["a"][:3]
+            file = "stream_" + name.replace("!", "all_").replace("@", "_") + ".json"
+            save(ws_dir, file, envelope)
+        sock.close()
+        if wanted:
+            sys.exit(f"no frame within 30 s on {sorted(wanted)}; run again")
+    return sorted(os.listdir(ws_dir))
 
 
 def main():
@@ -77,6 +176,7 @@ def main():
     save(rest, "open_interest.json", get("/fapi/v1/openInterest", symbol="BTCUSDT"))
     save(rest, "agg_trades.json", get("/fapi/v1/aggTrades", symbol="BTCUSDT", limit=3))
     save(rest, "depth.json", get("/fapi/v1/depth", symbol="BTCUSDT", limit=5))
+    stream_files = capture_streams(out)
 
     today = datetime.datetime.now(datetime.timezone.utc).strftime("%Y-%m-%d")
     with open(os.path.join(out, "PROVENANCE.md"), "w", encoding="utf-8") as f:
@@ -102,12 +202,13 @@ list lengths are trimmed.
 
 ## Streams (`ws/`)
 
-Captured 2026-10-07 by the stdlib scripts handed over with the design spec
-(`docs/specs/binance/probes/capture_ws.py`): one combined-stream envelope
-(`{{"stream", "data"}}`) per stream, from `/market/stream` for `!ticker@arr`,
+Captured {today} from `wss://fstream.binance.com` by the same script: one combined-stream
+envelope (`{{"stream", "data"}}`) per stream, from `/market/stream` for `!ticker@arr`,
 `!markPrice@arr@1s`, `btcusdt@aggTrade`, `btcusdt@kline_1m`, `btcusdt@markPrice@1s` and
 `btcusdt@ticker`, and from `/public/stream` for `btcusdt@depth20@100ms` and
-`btcusdt@bookTicker`. Arrays are trimmed to two rows and depth sides to three levels.
+`btcusdt@bookTicker`. An array keeps two rows: a USDⓈ-M row (`st: 1`) with a scheduled
+funding time, and a COIN-M row (`st: 2`) when the frame carried one. Depth sides keep
+three levels. Files: {", ".join(f"`{f}`" for f in stream_files)}.
 
 ## Probes
 
@@ -116,7 +217,7 @@ Captured 2026-10-07 by the stdlib scripts handed over with the design spec
 `probe_ws2.py` (acknowledgements, case, the 1024 cap, the message rate),
 `probe_ws_ping.py` (server ping cadence), and `wsprobe.py` (the frame reader they share).
 """)
-    print("captured:", ", ".join(sorted(os.listdir(rest))))
+    print("captured:", ", ".join(sorted(os.listdir(rest))), "and", ", ".join(stream_files))
 
 
 if __name__ == "__main__":
