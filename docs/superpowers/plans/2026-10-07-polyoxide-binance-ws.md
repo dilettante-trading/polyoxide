@@ -749,6 +749,8 @@ Expected: PASS, 8 tests. Dead-code warnings for `StreamPath::url` and `ensure_cr
 Run: `cargo test -j 4 -p polyoxide-binance --lib`
 Expected: PASS, 38 tests: without the feature nothing new compiles.
 
+Code review added a follow-up commit (16db51d), from a live probe on 2026-10-07: Binance acknowledges `btcusdt@depth5@250ms` and delivers nothing at any level, while the bare `btcusdt@depth5` pushes every 250 ms. `DepthSpeed::Ms250` therefore spells as the bare name (`suffix()` replaces `as_str()`), parses from it, and rejects the explicit suffix. `every_depth_name_is_one_binance_delivers` pins all nine names as measured. A handshake refused with 408 or 425 reconnects, as core reads those statuses. The tests also cover ASCII-only lowercasing (`ÉTÉUSDT`), `Response`, `WrongPath` and a URL error. `usdm::ws` then has 9 tests. The doc gate fails on this commit, on `ws/mod.rs`'s links to `UsdmWs` and `UsdmWsBuilder`, until Tasks 3 and 4 define them.
+
 - [ ] **Step 7: Commit**
 
 ```bash
@@ -1585,7 +1587,7 @@ Notes for the reviewer:
 - [ ] **Step 4: Run the tests**
 
 Run: `cargo test -j 4 -p polyoxide-binance --features test-server --lib usdm::ws`
-Expected: PASS, 13 tests.
+Expected: PASS, 14 tests.
 
 Run: `cargo test -j 4 -p polyoxide-binance --features test-server --test ws_wire_agreement --test wire_agreement`
 Expected: PASS, 1 and 2 tests.
@@ -2606,7 +2608,7 @@ Notes for the reviewer:
 - [ ] **Step 5: Run the tests**
 
 Run: `cargo test -j 4 -p polyoxide-binance --features test-server --lib usdm::ws`
-Expected: PASS, 22 tests, in about a second.
+Expected: PASS, 23 tests, in about a second.
 
 - [ ] **Step 6: Commit**
 
@@ -4373,7 +4375,7 @@ Run: `cargo test -j 4 -p polyoxide-binance --features test-server --test supervi
 Expected: PASS, 21 tests, in under four seconds.
 
 Run: `cargo test -j 4 -p polyoxide-binance --features test-server --lib`
-Expected: PASS, 63 tests.
+Expected: PASS, 64 tests.
 
 - [ ] **Step 5: Show the tests can fail**
 
@@ -5672,6 +5674,7 @@ Measured on `fstream.binance.com` on 2026-10-07 with `probes/probe_ws.py`,
 | Client ping | | Answered in about 0.3 s |
 | Request size | | 200 names in one `SUBSCRIBE` acknowledged |
 | Non-ASCII symbols | | Raw UTF-8 in `SUBSCRIBE` accepted; the stream name is echoed exactly |
+| Depth speed | `<s>@depth<levels>` for 250 ms, or with `@100ms` or `@500ms` | `@250ms` is acknowledged and delivers nothing, at every level; the bare name pushes every 250 ms. Every kline interval from `1m` to `1M` delivers |
 | Paths | `/public` for depth and book tickers, `/market` for the rest | The legacy `/stream` served depth but sent nothing for `!markPrice@arr@1s` |
 | Connection lifetime | 24 hours | Not measured; the supervised tier rotates at 23 h 50 min |
 
@@ -5738,7 +5741,7 @@ with
 | `<s>@kline_<interval>` | `Kline(symbol, interval)` | market | `Kline(KlineEvent)` |
 | `<s>@markPrice@1s` | `MarkPrice(symbol)` | market | `MarkPrice(MarkPriceEvent)` |
 | `<s>@ticker` | `Ticker(symbol)` | market | `Ticker(TickerEvent)` |
-| `<s>@depth<5\|10\|20>@<100ms\|250ms\|500ms>` | `PartialDepth(symbol, levels, speed)` | public | `PartialDepth(PartialDepthEvent)` |
+| `<s>@depth<5\|10\|20>`, then `@100ms`, `@500ms` or nothing (250 ms) | `PartialDepth(symbol, levels, speed)` | public | `PartialDepth(PartialDepthEvent)` |
 | `<s>@bookTicker` | `BookTicker(symbol)` | public | `BookTicker(BookTickerEvent)` |
 
 ## Fixtures and probes

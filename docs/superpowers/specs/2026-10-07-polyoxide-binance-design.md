@@ -29,7 +29,8 @@ In:
   `aggTrades`, `depth`.
 - Eight market streams on the two routed socket paths: `!ticker@arr`, `!markPrice@arr@1s`,
   `<s>@aggTrade`, `<s>@kline_<i>`, `<s>@markPrice@1s`, `<s>@ticker` on `/market`;
-  `<s>@depth<5|10|20>@<100ms|250ms|500ms>`, `<s>@bookTicker` on `/public`.
+  `<s>@depth<5|10|20>` (250 ms) or with `@100ms` or `@500ms`, `<s>@bookTicker` on `/public`.
+  An explicit `@250ms` is acknowledged and delivers nothing (measured 2026-10-07).
 - A bare socket and a supervised one (keep-alive, staleness, reconnect with resubscribe,
   outage markers, rotation before the 24 h cutoff, a membership handle).
 - A crate-local request-weight limiter whose weights are measured and pinned.
@@ -337,7 +338,7 @@ matches on its variants:
 | `Kline(Symbol, Interval)` | `<s>@kline_<i>` | market |
 | `MarkPrice(Symbol)` | `<s>@markPrice@1s` | market |
 | `Ticker(Symbol)` | `<s>@ticker` | market |
-| `PartialDepth(Symbol, DepthLevels, DepthSpeed)` | `<s>@depth<5\|10\|20>@<100ms\|250ms\|500ms>` | public |
+| `PartialDepth(Symbol, DepthLevels, DepthSpeed)` | `<s>@depth<5\|10\|20>`, then `@100ms` or `@500ms` or nothing for 250 ms | public |
 | `BookTicker(Symbol)` | `<s>@bookTicker` | public |
 
 `<s>` is the symbol with its ASCII letters lowercased, so an uppercase name cannot be
