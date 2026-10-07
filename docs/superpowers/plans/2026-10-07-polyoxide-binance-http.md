@@ -4962,7 +4962,7 @@ In the "Nightly API Smoketest" list, replace `perps incl. \`live_ws\`, sports, c
 
 In the same section, replace `and the undocumented \`user-pnl-api\`/\`lb-api\` hosts (nothing to diff).` with `the undocumented \`user-pnl-api\`/\`lb-api\` hosts (nothing to diff), and Binance (\`docs/specs/binance/\`: Binance publishes no spec for USDⓈ-M, and its live suite is the drift check).`
 
-In "Publishing Order", replace `core → rtds → sports → perps → relay → gamma → data → clob → polyoxide.` with `core → rtds → sports → perps → binance → relay → gamma → data → clob → polyoxide.`, and after `so it only has to follow core and precede \`polyoxide\`;` insert `\`polyoxide-binance\` likewise depends only on core;`.
+In "Publishing Order", replace `core → rtds → sports → perps → relay → gamma → data → clob → polyoxide.` with `core → rtds → sports → perps → binance → relay → gamma → data → clob → polyoxide.`, and replace `so it only has to follow core and precede \`polyoxide\`.)` with `so it only has to follow core and precede \`polyoxide\`; \`polyoxide-binance\` is the same.)`.
 
 Insert this paragraph directly before the paragraph that begins `**Data API v2**`:
 
