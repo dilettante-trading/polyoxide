@@ -423,6 +423,9 @@ async fn run_ramp(cfg: &Config, route: Route) -> ExitCode {
     let perps = Perps::builder().base_url(&cfg.base_url).build().unwrap();
     let probes = load_probes(&perps, cfg.addresses, route == Route::Portfolio).await;
     let client = reqwest::Client::builder()
+        // The workspace enables reqwest's `gzip` feature for polyoxide-binance;
+        // keep this soak's requests as they were measured.
+        .gzip(false)
         .timeout(Duration::from_secs(30))
         .build()
         .unwrap();
