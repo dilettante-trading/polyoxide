@@ -200,7 +200,7 @@ async fn serve(
     stream: TcpStream,
     script: Script,
     recorder: Arc<Recorder>,
-) -> Result<(), tokio_tungstenite::tungstenite::Error> {
+) -> Result<(), Box<dyn std::error::Error>> {
     if script.reject_handshake {
         drop(stream);
         return Ok(());

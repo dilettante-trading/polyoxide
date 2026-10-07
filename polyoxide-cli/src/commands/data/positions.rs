@@ -160,7 +160,7 @@ impl PositionsCommand {
                 print_pretty(&request.send().await?, out)
             }
             PositionsSubcommand::Closed { .. } => {
-                bail!("`positions closed` was removed: use `positions list --status closed`")
+                bail!("`positions closed` was removed: use `positions list --status closed`");
             }
             PositionsSubcommand::Activity(filters) => filters.run(data, &self.user, out, err).await,
         }
