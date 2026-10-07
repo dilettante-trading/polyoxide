@@ -5882,14 +5882,16 @@ With the `ws` feature `polyoxide-binance` also streams eight USDⓈ-M market str
 `/public`, since a stream subscribed on the wrong path delivers nothing; pings on the wall
 clock; staleness counting pongs and the server's pings; reconnect with a paced replay;
 rotation at 23 h 50 min, under Binance's 24-hour cutoff). Binance acknowledges every
-`SUBSCRIBE`, unknown and uppercase names included, and enforces its rules by closing the
+`SUBSCRIBE`, unknown and uppercase names and an explicit `@250ms` depth included (a
+250 ms partial depth is the bare `<s>@depth<N>`), and enforces its rules by closing the
 connection (on the 1025th stream, or after about 15 requests in a burst), so the client
 enforces them first: `StreamName` is the only way to name a stream, and a connection
 carries at most 1024 streams, 200 names per request, one request per 200 ms. Every
 `Event::Disconnected { path }` is followed by `Event::Reconnected { path }` while the
 client runs, even when the path's last stream leaves mid-outage; prader-rs folds outages
-on that invariant, and `tests/supervision.rs` pins it. COIN-M rows (`st: 2`) arrive on this
-host. The offline tests drive the scripted server in `src/usdm/ws/test_server.rs` (feature
+on that invariant, and `tests/supervision.rs` and `tests/supervision_edges.rs` pin it.
+COIN-M rows (`st: 2`) arrive on this host and count contracts, not USDT, so they do not sum
+with USDⓈ-M rows. The offline tests drive the scripted server in `src/usdm/ws/test_server.rs` (feature
 `test-server`), which also exposes the captured frames as `usdm::ws::fixtures`.
 ````
 
