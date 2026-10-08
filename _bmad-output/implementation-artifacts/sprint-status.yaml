@@ -1,0 +1,148 @@
+# STATUS DEFINITIONS:
+# ==================
+# Epic Status:
+#   - backlog: Epic not yet started
+#   - in-progress: Epic actively being worked on
+#   - done: All stories in epic completed
+
+# Story Status:
+#   - backlog: Story only exists in epic file
+#   - ready-for-dev: Story file created, ready for development
+#   - in-progress: Developer actively working on implementation
+#   - review: Implementation complete, ready for review
+#   - done: Story completed
+
+# Retrospective Status:
+#   - optional: Can be completed but not required
+#   - done: Retrospective has been completed
+
+# Action Item Status:
+#   - open: Committed during a retrospective, not yet addressed
+#   - in-progress: Actively being worked on
+#   - done: Completed
+
+# WORKFLOW NOTES:
+# ===============
+# - Epic transitions to 'in-progress' automatically when its first story starts (via build's sprint sync)
+# - Stories can be worked in parallel if team capacity allows
+# - Developer typically creates the next story after the previous one is 'done' to incorporate learnings
+# - Dev moves story to 'review', then runs code-review (fresh context, different LLM recommended)
+# - Retrospective appends its action items to action_items; the status view surfaces open ones
+generated: 10-08-2026 14:57
+last_updated: 10-08-2026 14:58
+project: polyoxide
+project_key: NOKEY
+tracking_system: file-system
+story_location: _bmad-output/implementation-artifacts
+development_status:
+  # SEQUENCING (spine AD-16). The order is the plan's, not this file's: statuses alone do not enforce it.
+  # S1 = Epics 1-4, shipped as one release by Story 4.11. Run attended with bmad-build.
+  #   - Epic 1 goes first. 1.2 lands before any new crate exists, and no release is cut from main until it does.
+  #   - 1.7 (the removal gate) is a declared predecessor of Epics 2-4.
+  #   - Epics 3 and 4 start only after 2.6, then run in parallel. 2.7-2.10 may overlap them.
+  #   - 4.11 needs Epics 1-4 complete.
+  # S2 = Epic 5: one loom integration session with a draft PR to main. Nothing reaches main until 5.12.
+  # S3 = Epics 6-8, additive only. Epic 6 before Epics 7 and 8; Epic 4 before Epic 7.
+  #   Epic 8 touches only AD-13's new-venue set, and its nightly needs Kalshi demo credentials or it is auth-gated.
+  #   bmad-build-auto suits S2 and S3 once the patterns settle.
+  # Keep notes in this block: sprint_plan.py drops every other comment in development_status when it reruns.
+  #
+  # Epic 1 gates:
+  #   - 1.1: branch fast-forwarded to main (v0.38.1 + planning, 2ed438c) on 10-08-2026. Still open: confirm the
+  #     crates.io version, record the S1 start tag (v0.38.1 expected), re-audit the gamma and sports inventory rows.
+  #   - 1.2: its release.yml trigger guard is the same fix AD-25 asks for on main now. If main fixes it first,
+  #     1.2 verifies that fix and does not rewrite it.
+  #   - 1.7: predecessor of Epics 2-4.
+  epic-1: backlog
+  1-1-re-baseline-on-current-main: backlog
+  1-2-publish-order-script-and-resumable-releases: backlog
+  1-3-package-every-crate-on-every-pr: backlog
+  1-4-registration-metadata-and-the-generator: backlog
+  1-5-nightly-and-schema-rows-derived-from-metadata: backlog
+  1-6-workspace-hygiene-gates: backlog
+  1-7-the-s1-removal-gate: backlog
+  1-8-the-agent-guide-lands: backlog
+  epic-1-retrospective: optional
+
+  epic-2: backlog
+  2-1-the-classification-vocabulary: backlog
+  2-2-classify-today-s-error-enums: backlog
+  2-3-the-test-toolkit-crate-and-the-failure-tag-reporter: backlog
+  2-4-the-classifier-reads-tags: backlog
+  2-5-migrate-the-http-live-suites: backlog
+  2-6-migrate-the-socket-live-suites: backlog
+  2-7-retire-the-regex-fallback: backlog
+  2-8-shared-agreement-helpers-adopted-by-data-v2-and-perps: backlog
+  2-9-gamma-and-binance-on-the-shared-agreement-helpers: backlog
+  2-10-shared-soak-harness-and-capture-helpers: backlog
+  epic-2-retrospective: optional
+
+  epic-3: backlog
+  3-1-the-one-send-loop-and-its-hook-contract: backlog
+  3-2-the-public-window-quota-table: backlog
+  3-3-capacity-buckets-and-polymarket-s-composed-throttle: backlog
+  3-4-clob-on-the-one-loop: backlog
+  3-5-relay-on-the-one-loop-gating-holes-closed: backlog
+  3-6-binance-on-the-one-loop: backlog
+  3-7-one-client-builder-one-namespace-pattern-one-health-ping: backlog
+  3-8-one-query-setter-macro: backlog
+  3-9-one-wire-enum-vocabulary: backlog
+  3-10-one-retry-after-parser-and-one-retriable-status-rule: backlog
+  3-11-polymarket-http-errors-reshaped: backlog
+  3-12-binance-http-errors-reshaped-and-python-maps-by-class: backlog
+  3-13-transport-ownership-for-http-and-venue-isolation: backlog
+  epic-3-retrospective: optional
+
+  epic-4: backlog
+  4-1-the-socket-kit-crate: backlog
+  4-2-connect-classify-and-close-once: backlog
+  4-3-one-socket-error-classification-table: backlog
+  4-4-one-scripted-test-server: backlog
+  4-5-the-generic-supervisor: backlog
+  4-6-perps-on-the-supervisor: backlog
+  4-7-binance-on-the-supervisor: backlog
+  4-8-rtds-and-sports-on-the-kit: backlog
+  4-9-clob-s-sockets-on-the-kit: backlog
+  4-10-socket-error-enums-reshaped-and-socket-transport-ownership: backlog
+  4-11-cut-the-s1-release: backlog
+  epic-4-retrospective: optional
+
+  epic-5: backlog
+  5-1-open-the-s2-integration-session: backlog
+  5-2-polyoxide-polymarket-and-a-venue-neutral-core: backlog
+  5-3-gamma-and-data-become-modules: backlog
+  5-4-clob-and-relay-become-modules: backlog
+  5-5-perps-rtds-and-sports-become-modules: backlog
+  5-6-binance-follows-the-conventions: backlog
+  5-7-the-multi-venue-umbrella: backlog
+  5-8-the-cli-on-the-venue-axis: backlog
+  5-9-cli-credentials-over-a-shared-trait: backlog
+  5-10-python-on-the-venue-axis: backlog
+  5-11-docs-and-standing-rules-for-a-multi-venue-toolkit: backlog
+  5-12-the-s2-release: backlog
+  epic-5-retrospective: optional
+
+  epic-6: backlog
+  6-1-shared-records-and-typed-extensions: backlog
+  6-2-canonical-market-keys: backlog
+  6-3-the-market-data-traits-implemented-for-binance-usd-m: backlog
+  6-4-polymarket-perps-through-the-traits: backlog
+  6-5-the-polymarket-clob-through-the-traits: backlog
+  6-6-one-generic-function-across-venues: backlog
+  epic-6-retrospective: optional
+
+  epic-7: backlog
+  7-1-a-supervised-clob-market-socket: backlog
+  7-2-a-supervised-clob-user-socket: backlog
+  7-3-the-trading-trait: backlog
+  7-4-trading-on-the-polymarket-clob: backlog
+  7-5-the-kalshi-trading-mapping: backlog
+  epic-7-retrospective: optional
+
+  epic-8: backlog
+  8-1-register-kalshi-by-the-recipe: backlog
+  8-2-signed-kalshi-requests-and-exchange-status: backlog
+  8-3-kalshi-market-data-through-the-traits: backlog
+  8-4-a-supervised-kalshi-socket-with-a-signed-handshake: backlog
+  8-5-the-guide-validated: backlog
+  epic-8-retrospective: optional
