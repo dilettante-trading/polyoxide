@@ -39,7 +39,7 @@ cargo fmt --all -- --check
 cargo fmt --all
 ```
 
-CI runs four jobs: **format** (standalone), **lint & test** (clippy, `cargo nextest run`, doctest, then `cargo doc` — sequentially in one job), **python bindings** (`uv run pytest tests/` in `polyoxide-py`, gated on **format** passing), and **CI scripts** (`uv run pytest tests/` in `.github/scripts`). Clippy uses `-D warnings` (all warnings are errors).
+CI runs five jobs: **format** (standalone), **lint & test** (clippy, `cargo nextest run`, doctest, then `cargo doc` — sequentially in one job), **package** (`cargo publish --workspace --dry-run --no-verify`, plus `scripts/publish_order.py check-manifests`, which fails when a publishable crate lacks a description or a licence, since cargo only warns about those), **python bindings** (`uv run pytest tests/` in `polyoxide-py`, gated on **format** passing), and **CI scripts** (`uv run pytest tests/` in `.github/scripts`). Clippy uses `-D warnings` (all warnings are errors). The package job catches a manifest fault on the PR that introduces it rather than halfway through a release, and skips `publish = false` members on its own.
 
 **Clippy and tests passing is not enough.** The lint & test job ends with `cargo doc` under `RUSTDOCFLAGS: -D warnings`, which makes `rustdoc::private_intra_doc_links` an error: a doc comment on a `pub` item may not use ``[`link`]`` syntax to reference a `pub(crate)` item. Doctests do not catch this — they run the code in doc comments and say nothing about whether the prose links resolve. Either make the referenced item `pub` or state the fact inline.
 

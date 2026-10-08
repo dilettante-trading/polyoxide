@@ -812,3 +812,52 @@ def test_list_exits_1_when_crates_io_fails(capsys: pytest.CaptureFixture[str]) -
     run = StubRunner({("cargo", "metadata"): (0, json.dumps(metadata(package("a"))), "")})
     assert publish_order.main(["list"], get=stub.get, sleep=stub.sleep, run=run) == 1
     assert capsys.readouterr().err.startswith("::error::crates.io answered 503")
+
+
+# --- manifests crates.io would refuse ------------------------------------------
+
+
+def described(p: dict, description: str | None = "a crate", license: str | None = "MIT",
+              license_file: str | None = None) -> dict:
+    return {**p, "description": description, "license": license, "license_file": license_file}
+
+
+@pytest.mark.parametrize("fields", [
+    {"description": None},
+    {"description": ""},
+    {"license": None},
+    {"license": ""},
+])
+def test_a_publishable_crate_without_a_description_or_licence_is_reported(fields: dict) -> None:
+    """cargo only warns about these when packaging; crates.io refuses the upload."""
+    meta = metadata(described(package("ok")), described(package("bad"), **fields))
+    assert publish_order.missing_metadata(meta) == ["bad"]
+
+
+def test_a_licence_file_stands_in_for_a_licence() -> None:
+    meta = metadata(described(package("a"), license=None, license_file="LICENSE"))
+    assert publish_order.missing_metadata(meta) == []
+
+
+def test_unpublishable_crates_need_no_metadata() -> None:
+    meta = metadata(described(package("py", publish=[]), description=None, license=None),
+                    described(package("other", publish=["other"]), description=None))
+    assert publish_order.missing_metadata(meta) == []
+
+
+def test_check_manifests_fails_naming_the_crates(capsys: pytest.CaptureFixture[str]) -> None:
+    meta = metadata(described(package("b"), description=None),
+                    described(package("a"), license=None))
+    result = subprocess.CompletedProcess([], 0, stdout=json.dumps(meta), stderr="")
+    assert publish_order.main(["check-manifests"], run=lambda *a, **k: result) == 1
+    assert "a, b" in capsys.readouterr().err
+
+
+def test_check_manifests_fails_when_cargo_metadata_fails() -> None:
+    """A failed `cargo metadata` must not read as "nothing missing"."""
+    failed = subprocess.CompletedProcess([], 101, stdout="", stderr="error: bad manifest")
+    assert publish_order.main(["check-manifests"], run=lambda *a, **k: failed) == 4
+
+
+def test_the_real_workspace_has_complete_manifests() -> None:
+    assert publish_order.main(["check-manifests"]) == 0

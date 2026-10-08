@@ -12,3 +12,12 @@
 - source_spec: `_bmad-output/implementation-artifacts/spec-1-2-publish-order-script-and-resumable-releases.md`
   summary: Before the next release from `main`, confirm the crates.io token (`CARGO_REGISTRY_TOKEN`) has the publish-new scope for `polyoxide-cli`, which the release loop now publishes for the first time.
   evidence: `polyoxide-cli` returns 404 on crates.io; it sorts last in the publish order, so a token without publish-new uploads every other crate and then fails, leaving the release untagged until a re-run with a fixed token. AD-25 and Story 4.11 also ask for the crate-scope check before the S1 release.
+- source_spec: `_bmad-output/implementation-artifacts/spec-1-3-package-every-crate-on-every-pr.md`
+  summary: `main` has no branch protection or required status checks, so a red CI job (the new Package job included) does not block a merge; it then withholds the release on `main`. Make the CI jobs required checks (repository setting), and widen CLAUDE.md's "A red doc build costs more than it looks" paragraph to every CI job.
+  evidence: `gh api repos/dilettante-trading/polyoxide/branches/main` reports `protected: false` (2026-10-08); `release.yml` proceeds only on a successful CI run. Required checks match by job name: the job is "Package (publish dry run)".
+- source_spec: `_bmad-output/implementation-artifacts/spec-1-3-package-every-crate-on-every-pr.md`
+  summary: Add the package gate's local commands (`python3 scripts/publish_order.py check-manifests`, `cargo publish --workspace --dry-run --no-verify --locked`) to CLAUDE.md's Build & Development Commands block, so an agent runs them before pushing.
+  evidence: That block lists the other must-pass gates (clippy, doc, fmt) but not this one.
+- source_spec: `_bmad-output/implementation-artifacts/spec-1-3-package-every-crate-on-every-pr.md`
+  summary: When Epic 5 adds `tombstones/*`, extend the CI package job to dry-run each tombstone with `--manifest-path`; the workspace dry run cannot see them because the root `Cargo.toml` excludes `tombstones`.
+  evidence: `finish_release.sh` publishes tombstones after the workspace crates; no PR-time check packages them.

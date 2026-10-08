@@ -47,6 +47,30 @@ jobs:
         env:
           RUSTDOCFLAGS: -D warnings
 
+  # Manifest faults (a dependency without a version, a regular path-only
+  # dependency, missing metadata) fail here, on the PR that introduces them,
+  # instead of halfway through a release. The dry run packages every member
+  # whose `publish` is not false. With `--no-verify` it never compiles, so it
+  # does not prove each `.crate` builds on its own: a file the package leaves
+  # out (a gitignored file, an `include_str!` outside the crate) goes unseen.
+  # The other jobs build every crate from the repository instead.
+  package:
+    name: Package (publish dry run)
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    env:
+      # Nothing here compiles; say so rather than inherit the sccache wrapper.
+      RUSTC_WRAPPER: ""
+    steps:
+      - uses: actions/checkout@v5
+      - uses: dtolnay/rust-toolchain@stable
+      # cargo only warns when a manifest lacks a description or a licence, and
+      # crates.io then refuses the upload. Offline and quick, so it runs first.
+      - run: python3 scripts/publish_order.py check-manifests
+      # Runs even when the check above failed, so a PR sees both kinds of fault at once.
+      - if: ${{ !cancelled() }}
+        run: cargo publish --workspace --dry-run --no-verify --locked
+
   python:
     name: Python Bindings
     runs-on: ubuntu-latest

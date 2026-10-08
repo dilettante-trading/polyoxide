@@ -155,6 +155,16 @@ def publishable(metadata: dict) -> list[dict]:
     return [p for p in members(metadata) if is_publishable(p)]
 
 
+def missing_metadata(metadata: dict) -> list[str]:
+    """Publishable members crates.io would refuse: no description, or no licence.
+
+    cargo only warns about these when packaging, so the CI package job asks here.
+    """
+    return sorted(
+        p["name"] for p in publishable(metadata)
+        if not p.get("description") or not (p.get("license") or p.get("license_file")))
+
+
 def is_path_only(dependency: dict) -> bool:
     """A `path` with no `version`. cargo strips such a dev-dependency when publishing."""
     return dependency.get("path") is not None and dependency["req"] == "*"
@@ -475,6 +485,9 @@ def _parser() -> argparse.ArgumentParser:
                           help="a manual run: requires CI to have passed on the commit")
     checking = commands.add_parser("ci-passed", help="exit 0 if CI passed on SHA, else 1")
     checking.add_argument("sha", metavar="SHA")
+    commands.add_parser(
+        "check-manifests",
+        help="exit 1 if a publishable member lacks a description or a licence")
     return parser
 
 
@@ -496,6 +509,12 @@ def main(argv: list[str] | None = None, get: Getter = http_status,
             sha = tag_sha(args.version, run)
             if sha:
                 print(sha)
+        elif args.command == "check-manifests":
+            missing = missing_metadata(workspace_metadata(run))
+            if missing:
+                print("::error::Publishable crates missing a description or a licence, "
+                      f"which crates.io refuses: {', '.join(missing)}", file=sys.stderr)
+                return 1
         elif args.command == "ci-passed":
             if not ci_passed(args.sha, run):
                 print(f"::error::CI has not passed on {args.sha}", file=sys.stderr)
