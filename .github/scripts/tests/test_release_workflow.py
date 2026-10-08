@@ -195,3 +195,37 @@ def test_the_registry_token_reaches_cargo_through_the_environment() -> None:
     for job in JOBS.values():
         for step in job.get("steps", []):
             assert "secrets." not in step.get("run", ""), step.get("name")
+
+
+# --- the semver job ----------------------------------------------------------
+
+SEMVER = JOBS["semver"]
+
+
+def test_the_semver_job_runs_only_when_releasing() -> None:
+    assert SEMVER["needs"] == "version"
+    assert " ".join(SEMVER["if"].split()) == "needs.version.outputs.should_release == 'true'"
+
+
+@pytest.mark.parametrize("job", ["publish", "publish-python"])
+def test_nothing_publishes_before_the_semver_job_passes(job: str) -> None:
+    """A job runs only when every job it needs succeeded, so a patch bump that
+    removes an item fails `semver` and neither registry sees the release."""
+    assert "semver" in JOBS[job]["needs"]
+
+
+def test_the_semver_job_checks_against_the_previous_release_tag() -> None:
+    checkout = SEMVER["steps"][0]
+    assert checkout["uses"].startswith("actions/checkout")
+    assert checkout["with"] == {"ref": "${{ needs.version.outputs.sha }}", "fetch-depth": 0}
+    [step] = [s for s in SEMVER["steps"] if "run" in s]
+    assert step["env"] == {"SHA": "${{ needs.version.outputs.sha }}"}
+    assert step["run"].split("\n")[:2] == [
+        'BASELINE=$(python3 scripts/publish_order.py previous-tag "$SHA")',
+        'python3 scripts/api_removals.py release --baseline "$BASELINE"',
+    ]
+
+
+def test_the_semver_job_only_reads() -> None:
+    assert SEMVER["permissions"] == {"contents": "read"}
+    assert "secrets." not in yaml.safe_dump(SEMVER)

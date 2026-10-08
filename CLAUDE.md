@@ -6,6 +6,14 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 Polyoxide is a Rust SDK toolkit for Polymarket APIs. It provides library crates for CLOB trading, market data (Gamma), user data, gasless relay transactions, Python bindings, and a standalone CLI. Hard fork of [polyte](https://github.com/roushou/polyte).
 
+## Architecture guide
+
+[`docs/ARCHITECTURE.md`](docs/ARCHITECTURE.md) is the agent's guide to the multi-venue restructure: the shape it builds towards, where each kind of change goes, the rules that bite, and the release stage the workspace is in. Read it before moving code between crates or adding one. It is copied from the architecture spine's `ARCHITECTURE-GUIDE.md` by `scripts/gen_registry.py --write` and is only ever regenerated from the spine, never edited by hand; CI fails when the two differ. Its stage line is a generated region fed by `[workspace.metadata.polyoxide] stage` in the root `Cargo.toml`.
+
+The two documents describe different things. This file describes the code as it is now; the guide describes the target, mostly in the present tense, and says where each kind of change goes. A rule here stands until the commit that supersedes it lands, and that commit edits the rule here (AD-21). The guide's "Standing rules this replaces" table lists the rules due to go, not ones already gone: "call `note_rate_limited` before `should_retry`" still holds at six call sites today, which `docs/MUTANTS.md` lists.
+
+[`docs/MUTANTS.md`](docs/MUTANTS.md) lists the mutation-tested rules: for each, the line it holds on, the mutation, and the tests that fail under it. Move one of those lines or tests and the ledger moves with it, re-proved.
+
 ## Build & Development Commands
 
 **MSRV:** 1.91 (set in workspace `Cargo.toml`).
@@ -39,11 +47,13 @@ cargo fmt --all -- --check
 cargo fmt --all
 ```
 
-CI runs five jobs: **format** (standalone), **lint & test** (clippy, `cargo nextest run`, doctest, then `cargo doc` — sequentially in one job), **package** (`cargo publish --workspace --dry-run --no-verify`, plus `scripts/publish_order.py check-manifests`, which fails when a publishable crate lacks a description or a licence, since cargo only warns about those), **python bindings** (`uv run pytest tests/` in `polyoxide-py`, gated on **format** passing), and **CI scripts** (`uv run pytest tests/` in `.github/scripts`). Clippy uses `-D warnings` (all warnings are errors). The package job catches a manifest fault on the PR that introduces it rather than halfway through a release, and skips `publish = false` members on its own.
+CI runs eight jobs: **format** (standalone), **lint & test** (clippy, `cargo nextest run`, doctest, then `cargo doc` — sequentially in one job), **package** (`cargo publish --workspace --dry-run --no-verify`, plus `scripts/publish_order.py check-manifests`, which fails when a publishable crate lacks a description or a licence, since cargo only warns about those), **msrv** (`cargo check` and `cargo doc` on Rust 1.91, warnings allowed), **features** (`cargo hack check --workspace --each-feature --no-dev-deps --ignore-private`, so a feature that compiles only alongside another fails), **removals** (`scripts/api_removals.py check` against the S1 start tag `v0.38.1`; see below), **python bindings** (`uv run pytest tests/` in `polyoxide-py`, gated on **format** passing), and **CI scripts** (`uv run pytest tests/` in `.github/scripts`). Clippy uses `-D warnings` (all warnings are errors). The package job catches a manifest fault on the PR that introduces it rather than halfway through a release, and skips `publish = false` members on its own.
+
+**Removing a public item needs a line in [`docs/s1-removals.md`](docs/s1-removals.md).** The removals job runs cargo-semver-checks against `v0.38.1` with `--release-type patch` and fails on any reported removal that file does not list, printing each one's key to copy there. cargo-semver-checks cannot see `#[doc(hidden)]` items or type aliases, so the job also imports each such path the file lists, in one scratch crate per crate and feature set, so no entry compiles through another's features. A key is `<crate> <lint id>: <item> (<file>)`, and a deleted crate is `<crate> crate_missing`. cargo-semver-checks 0.51.0 and Rust 1.99.0 are pinned together in `ci.yml` and `release.yml`, because the tool reads only the rustdoc JSON some toolchains emit; upgrade both at once. `release.yml`'s `semver` job runs the same tool against the newest release tag behind the commit, before anything publishes, and lets it infer the release type from the two versions. On a 0.x patch bump it fails on any major-level change, not only a removal: a new required field, a changed signature, an enum made non-exhaustive. It also runs the compile test. When it fails, raise the 0.x minor in a new version-bump commit on `main` (see Publishing Order); the release that failed was never tagged, so the next green push releases the new version.
 
 **Clippy and tests passing is not enough.** The lint & test job ends with `cargo doc` under `RUSTDOCFLAGS: -D warnings`, which makes `rustdoc::private_intra_doc_links` an error: a doc comment on a `pub` item may not use ``[`link`]`` syntax to reference a `pub(crate)` item. Doctests do not catch this — they run the code in doc comments and say nothing about whether the prose links resolve. Either make the referenced item `pub` or state the fact inline.
 
-A red doc build costs more than it looks: `release.yml` triggers on `workflow_run: [CI], conclusion == 'success'`, so a failed doc build **silently withholds the release tag**. The version bump lands on `main` and nothing publishes, with no obvious connection between the two symptoms. Fixing the build forward is enough: the next green push to `main` releases any version that is still untagged (see Publishing Order).
+A red doc build costs more than it looks: `release.yml` triggers on `workflow_run: [CI], conclusion == 'success'`, so a failed doc build, or any other red CI job (msrv, features and removals included), **silently withholds the release tag**. The version bump lands on `main` and nothing publishes, with no obvious connection between the two symptoms. Fixing the build forward is enough: the next green push to `main` releases any version that is still untagged (see Publishing Order).
 
 ```bash
 # Run live integration tests (hit real APIs, skipped in CI)
@@ -52,7 +62,7 @@ cargo test -p polyoxide-clob --test live_api -- --ignored
 
 ## Workspace Architecture
 
-Text between `<!-- generated:begin <id> -->` and `<!-- generated:end <id> -->` markers, here and in README.md, docs/specs/INDEX.md, SELF-HEALING.md and the two nightly workflows, is written by `scripts/gen_registry.py` from each crate's `[package.metadata.polyoxide]`, the root manifest's `[workspace.metadata.polyoxide.mirrors]` and `cargo metadata`, so never edit it by hand: change the metadata, run `python3 scripts/gen_registry.py --write`, and expect CI's scripts job to fail on any region that differs from what the generator produces.
+Text between `<!-- generated:begin <id> -->` and `<!-- generated:end <id> -->` markers, here and in README.md, docs/specs/INDEX.md, docs/ARCHITECTURE.md, SELF-HEALING.md and the two nightly workflows, is written by `scripts/gen_registry.py` from each crate's `[package.metadata.polyoxide]`, the root manifest's `[workspace.metadata.polyoxide]` (`stage` and `mirrors`) and `cargo metadata`, so never edit it by hand: change the metadata, run `python3 scripts/gen_registry.py --write`, and expect CI's scripts job to fail on any region that differs from what the generator produces.
 
 <!-- generated:begin claude-crate-count -->
 Twelve crates, in publish order, each with the workspace crates its build needs. Crates that are not published come last:

@@ -1,0 +1,86 @@
+"""docs/MUTANTS.md's citations still point at the code they were proved on.
+
+Each row of the ledger names a `file:line` (or `file:start-end`) where a rule
+holds and the tests a mutant there must fail. A line that moves leaves the row
+pointing at something else, and nothing would say so; this file records, for each
+citation, a piece of the code it names, and fails when that line no longer holds it.
+A range is checked at both ends. Re-prove the mutant whenever a row changes.
+"""
+
+from __future__ import annotations
+
+import re
+from pathlib import Path
+
+import pytest
+
+REPO = Path(__file__).resolve().parents[3]
+LEDGER = REPO / "docs" / "MUTANTS.md"
+CITATION = re.compile(r"(polyoxide[a-z-]*/[A-Za-z0-9_/.-]+\.rs):(\d+)(?:-(\d+))?")
+
+# (file, line) -> a piece of that line.
+SNIPPETS = {
+    ("polyoxide-core/src/request.rs", 155): "http_client.note_rate_limited(status, retry_after.as_deref());",
+    ("polyoxide-core/src/request.rs", 157): "if let Some(backoff) = http_client.should_retry(status, attempt",
+    ("polyoxide-binance/src/usdm/request.rs", 136): "let cooldown = match (retry, asked) {",
+    ("polyoxide-binance/src/usdm/request.rs", 149): "}",
+    ("polyoxide-binance/tests/mock_api.rs", 626): "fn a_429_out_of_retries_is_rate_limited_and_still_holds_the_next_request(",
+    ("polyoxide-binance/tests/mock_api.rs", 662): "fn a_429_with_no_retry_after_and_no_retry_left_holds_until_the_next_minute(",
+    ("polyoxide-core/src/client.rs", 149): ".filter(|secs| secs.is_finite() && *secs > 0.0)",
+    ("polyoxide-core/src/client.rs", 154): "requested.map_or(computed, |r| r.max(computed))",
+    ("polyoxide-core/src/client.rs", 215): "self.note_rate_limited(status, retry_after.as_deref());",
+    ("polyoxide-core/src/client.rs", 509): "fn retry_after_below_our_own_backoff_does_not_shorten_the_wait(",
+    ("polyoxide-core/src/client.rs", 532): "fn retry_after_zero_still_backs_off_exponentially_across_attempts(",
+    ("polyoxide-data/tests/mock_api.rs", 1509): "fn retry_after_zero_does_not_turn_the_retry_loop_into_a_hot_loop(",
+    ("polyoxide-data/tests/mock_api.rs", 1532): "fn a_429_makes_the_next_request_wait_even_though_it_never_saw_one(",
+    ("polyoxide-core/src/rate_limit.rs", 165): "fn quota(count: u32, period: Duration) -> Quota {",
+    ("polyoxide-core/src/rate_limit.rs", 167): "}",
+    ("polyoxide-core/src/rate_limit.rs", 244): "fn no_quota_admits_more_than_its_published_count_in_one_window(",
+    ("polyoxide-core/src/rate_limit.rs", 261): "fn every_quota_reserves_headroom_below_the_published_count(",
+    ("polyoxide-core/src/rate_limit.rs", 284): "fn every_configured_bucket_satisfies_the_quota_it_publishes(",
+    ("polyoxide-core/src/rate_limit.rs", 363): "if slot.is_none_or(|current| until > current) {",
+    ("polyoxide-core/src/rate_limit.rs", 381): "async fn await_cooldown(&self) {",
+    ("polyoxide-core/src/rate_limit.rs", 394): "tokio::time::sleep_until(deadline).await;",
+    ("polyoxide-core/src/rate_limit.rs", 396): "}",
+    ("polyoxide-core/src/rate_limit.rs", 1907): "fn a_shorter_cooldown_never_cuts_a_longer_one_short(",
+    ("polyoxide-core/src/rate_limit.rs", 1925): "fn a_cooldown_extended_mid_wait_is_honoured_in_full(",
+    ("polyoxide-clob/src/error.rs", 89): "let m = message.to_ascii_lowercase();",
+    ("polyoxide-clob/src/error.rs", 92): 'if m.contains("fak order") && (m.contains("no match")',
+    ("polyoxide-clob/src/error.rs", 110): "ApiError::Validation(msg) => {",
+    ("polyoxide-clob/src/error.rs", 113): "other => Self::Api(other),",
+    ("polyoxide-clob/src/error.rs", 273): "fn test_classify_recognizes_verbatim_venue_messages(",
+    ("polyoxide-clob/src/error.rs", 285): "fn test_classify_preserves_message_verbatim(",
+    ("polyoxide-clob/src/error.rs", 293): "fn test_classify_is_case_insensitive(",
+    ("polyoxide-clob/src/error.rs", 306): "fn test_classify_tolerates_curly_apostrophe_in_fok_message(",
+    ("polyoxide-clob/src/error.rs", 317): "fn test_classify_does_not_capture_neighbouring_400s(",
+    ("polyoxide-clob/src/error.rs", 348): "fn test_classify_requires_both_tokens(",
+    ("polyoxide-clob/tests/mock_api.rs", 3365): "fn fak_unmatched_maps_to_typed_error_not_generic_validation(",
+    ("polyoxide-clob/tests/mock_api.rs", 3399): "fn fok_unfilled_maps_to_typed_error_not_generic_validation(",
+    ("polyoxide-clob/tests/mock_api.rs", 3462): "fn fak_prose_on_non_400_status_is_not_reclassified(",
+    ("polyoxide-clob/src/request.rs", 262): "http_client.note_rate_limited(status, retry_after.as_deref());",
+    ("polyoxide-relay/src/client.rs", 293): ".note_rate_limited(resp.status(), retry_after.as_deref());",
+    ("polyoxide-relay/src/client.rs", 392): ".note_rate_limited(resp.status(), retry_after.as_deref());",
+    ("polyoxide-relay/src/client.rs", 1836): ".note_rate_limited(status, retry_after.as_deref());",
+}
+
+
+def cited() -> set[tuple[str, int]]:
+    lines = set()
+    for match in CITATION.finditer(LEDGER.read_text()):
+        lines.add((match[1], int(match[2])))
+        if match[3]:
+            lines.add((match[1], int(match[3])))
+    return lines
+
+
+def test_every_citation_has_a_recorded_snippet_and_every_snippet_is_cited() -> None:
+    assert cited() == set(SNIPPETS)
+
+
+@pytest.mark.parametrize(("path", "line"), sorted(SNIPPETS))
+def test_each_cited_line_still_holds_its_code(path: str, line: int) -> None:
+    source = (REPO / path).read_text().splitlines()
+    assert line <= len(source), f"{path} has only {len(source)} lines"
+    assert SNIPPETS[(path, line)] in source[line - 1], (
+        f"{path}:{line} is now {source[line - 1].strip()!r}; move the MUTANTS.md row "
+        f"and prove its mutant again")

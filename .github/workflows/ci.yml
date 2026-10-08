@@ -71,6 +71,74 @@ jobs:
       - if: ${{ !cancelled() }}
         run: cargo publish --workspace --dry-run --no-verify --locked
 
+  # The MSRV the manifests declare. Warnings are allowed here, since lints
+  # change between releases; the deny-warnings doc gate stays on stable (AD-22).
+  msrv:
+    name: MSRV (1.91)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v5
+      - uses: dtolnay/rust-toolchain@1.91
+      - uses: mozilla-actions/sccache-action@v0.0.9
+        with:
+          version: "v0.14.0"
+      - run: cargo check --workspace --all-features
+      - run: cargo doc --no-deps --workspace --all-features
+
+  # Each feature of each publishable crate on its own, so a module that compiles
+  # only because another feature, or a dev-dependency, switched something on
+  # fails here (AD-22). `--no-dev-deps` rewrites every manifest while it runs and
+  # restores them after, so nothing else may edit a manifest meanwhile.
+  features:
+    name: Each feature
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v5
+      - uses: dtolnay/rust-toolchain@stable
+      - uses: taiki-e/install-action@v2
+        with:
+          tool: cargo-hack@0.6.45
+      - uses: mozilla-actions/sccache-action@v0.0.9
+        with:
+          version: "v0.14.0"
+      - run: cargo hack check --workspace --each-feature --no-dev-deps --ignore-private
+
+  # Every public item removed since the S1 start tag must be listed in
+  # docs/s1-removals.md, and the doc-hidden paths consumers import must still
+  # compile (AD-22). The script passes `--release-type patch`, so removals are
+  # reported across a 0.x minor bump too.
+  removals:
+    name: Removal gate
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+    env:
+      S1_BASELINE: v0.38.1
+    steps:
+      - uses: actions/checkout@v5
+        with:
+          # Every tag, so the baseline is in the checkout for cargo-semver-checks
+          # to extract.
+          fetch-depth: 0
+      # cargo-semver-checks 0.51.0 reads rustdoc JSON v57, v60 and v61, which only
+      # Rust 1.93 to 1.99 emit. The tool and the toolchain are pinned together and
+      # upgraded together, here and in release.yml.
+      - uses: dtolnay/rust-toolchain@1.99.0
+      - uses: taiki-e/install-action@v2
+        with:
+          tool: cargo-semver-checks@0.51.0
+      # The baseline's rustdoc builds stay valid until the baseline, the toolchain
+      # or the tool changes, and building them cold takes about eight minutes. Only
+      # the baseline's tree is cached; the current crates' builds change with every
+      # pull request and would double the entry.
+      - uses: actions/cache@v4
+        with:
+          path: target/semver-checks/git-*
+          key: semver-checks-${{ env.S1_BASELINE }}-rust-1.99.0-cargo-semver-checks-0.51.0
+      - uses: mozilla-actions/sccache-action@v0.0.9
+        with:
+          version: "v0.14.0"
+      - run: python3 scripts/api_removals.py check --baseline "$S1_BASELINE"
+
   python:
     name: Python Bindings
     runs-on: ubuntu-latest

@@ -29,7 +29,7 @@
 # - Dev moves story to 'review', then runs code-review (fresh context, different LLM recommended)
 # - Retrospective appends its action items to action_items; the status view surfaces open ones
 generated: 10-08-2026 14:57
-last_updated: 10-08-2026 17:38
+last_updated: 10-08-2026 18:47
 project: polyoxide
 project_key: NOKEY
 tracking_system: file-system
@@ -62,9 +62,9 @@ development_status:
   1-3-package-every-crate-on-every-pr: review
   1-4-registration-metadata-and-the-generator: review
   1-5-nightly-and-schema-rows-derived-from-metadata: review
-  1-6-workspace-hygiene-gates: backlog
-  1-7-the-s1-removal-gate: backlog
-  1-8-the-agent-guide-lands: backlog
+  1-6-workspace-hygiene-gates: review
+  1-7-the-s1-removal-gate: review
+  1-8-the-agent-guide-lands: review
   epic-1-retrospective: optional
 
   epic-2: backlog

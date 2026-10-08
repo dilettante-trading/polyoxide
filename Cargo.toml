@@ -14,7 +14,7 @@ members = [
   "polyoxide-sports",
 ]
 exclude = ["tombstones"]
-resolver = "2"
+resolver = "3"
 
 [workspace.package]
 version = "0.38.1"
@@ -71,6 +71,12 @@ inherits = "release"
 opt-level = 2
 lto = "thin"
 codegen-units = 16
+
+# The restructure's release stage (AD-16): `S1` internals, `S2` renames, `S3`
+# additions. `scripts/gen_registry.py` writes it into docs/ARCHITECTURE.md, the
+# one line there that is not copied from the architecture spine's guide.
+[workspace.metadata.polyoxide]
+stage = "S1"
 
 # The API mirrors under docs/specs/, one table per directory. Crates name the
 # directories they cover in their own `[package.metadata.polyoxide] mirrors`;

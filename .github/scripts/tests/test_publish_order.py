@@ -500,6 +500,62 @@ def test_a_failed_parent_lookup_raises(failing: tuple[str, ...]) -> None:
         publish_order.parent_version(HEAD, StubRunner(answers))
 
 
+GIT_TAG = ("git", "tag")
+
+
+def _tags(*tags: str) -> StubRunner:
+    """The tags `git tag --merged` reports, and a workspace at 1.0.0."""
+    return StubRunner({
+        GIT_TAG: (0, "".join(f"{t}\n" for t in tags), ""),
+        ("cargo", "metadata"): (0, json.dumps(metadata(package("a"), package("b"))), ""),
+    })
+
+
+def test_previous_tag_is_the_newest_reachable_tag_below_the_version() -> None:
+    run = _tags("v0.8.0", "v0.10.0", "v0.9.1", "v0.9.0")
+    assert publish_order.previous_tag(HEAD, "1.0.0", run) == "v0.10.0"
+    assert run.calls == [["git", "tag", "--list", "v*", "--merged", f"{HEAD}^"]]
+
+
+def test_an_empty_commit_after_an_untagged_bump_reaches_back_to_the_last_tag() -> None:
+    """A fix-forward or empty commit after a red bump to 1.0.0 is released by
+    `decide`, and its parent carries 1.0.0, which was never tagged."""
+    run = _tags("v0.9.0", "v0.8.0")
+    assert publish_order.previous_tag(HEAD, "1.0.0", run) == "v0.9.0"
+
+
+def test_a_rebump_over_an_untagged_version_reaches_back_to_the_last_tag() -> None:
+    """0.9.0 was tagged, 0.10.0 failed its semver job and was never tagged, and the
+    release is retried as 1.0.0."""
+    run = _tags("v0.9.0")
+    assert publish_order.previous_tag(HEAD, "1.0.0", run) == "v0.9.0"
+
+
+def test_tags_at_or_above_the_version_and_other_tags_are_ignored() -> None:
+    run = _tags("v1.0.0", "v1.2.0", "vnext", "v0.9.0-rc.1", "v0.9.0")
+    assert publish_order.previous_tag(HEAD, "1.0.0", run) == "v0.9.0"
+
+
+def test_previous_tag_prints_the_tag(capsys: pytest.CaptureFixture[str]) -> None:
+    assert publish_order.main(["previous-tag", HEAD], run=_tags("v0.9.0")) == 0
+    assert capsys.readouterr().out == "v0.9.0\n"
+
+
+def test_previous_tag_fails_when_there_is_none(capsys: pytest.CaptureFixture[str]) -> None:
+    """release.yml's semver job takes its baseline from this, so no tag is an error,
+    never an empty baseline."""
+    assert publish_order.main(["previous-tag", HEAD], run=_tags("v1.0.0")) == 1
+    out, err = capsys.readouterr()
+    assert out == ""
+    assert err == f"::error::no version tag below v1.0.0 is reachable from {HEAD}^\n"
+
+
+def test_a_failed_tag_lookup_fails() -> None:
+    run = StubRunner({GIT_TAG: (128, "", "fatal: bad revision")})
+    with pytest.raises(PublishOrderError, match="bad revision"):
+        publish_order.previous_tag(HEAD, "1.0.0", run)
+
+
 GH_RELEASE = ("gh", "release", "view")
 
 

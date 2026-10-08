@@ -34,6 +34,15 @@ The crate table:
     secrets = ["NAME"]        # every env name the target reads, exactly
     note = "..."              # optional, for SELF-HEALING.md's table
 
+The workspace table:
+
+    [workspace.metadata.polyoxide]
+    stage = "S1"              # the release stage (AD-16) docs/ARCHITECTURE.md states
+
+docs/ARCHITECTURE.md also holds the architecture spine's guide, `GUIDE`, copied
+byte for byte into its `architecture-guide` region, so regenerating the guide from
+the spine and running `--write` is the whole update.
+
 The mirror table, in the order every generated list follows:
 
     [workspace.metadata.polyoxide.mirrors.<directory>]
@@ -72,11 +81,16 @@ import publish_order  # noqa: E402
 
 REPO = publish_order.REPO
 SPECS = "docs/specs"
+GUIDE = ("_bmad-output/planning-artifacts/architecture/architecture-polyoxide-2026-10-08/"
+         "ARCHITECTURE-GUIDE.md")
+# The guide's heading that says what each stage is, as GitHub anchors it.
+STAGE_ANCHOR = "which-stage-the-workspace-is-in-ad-16"
 UMBRELLA = "polyoxide"
 CLI = "polyoxide-cli"
 
 ID = re.compile(r"^[a-z][a-z0-9-]*$")
 SECRET = re.compile(r"^[A-Z][A-Z0-9_]*$")
+STAGE = re.compile(r"^S[1-9][0-9]*$")
 SECTIONS = ("covered", "not-implemented", "other-venue", "excluded")
 KINDS = {"openapi": "OpenAPI", "asyncapi": "AsyncAPI"}
 # The page an INDEX.md table links for a mirror: the first of these it has.
@@ -84,6 +98,7 @@ PAGES = ("INDEX.md", "README.md", "OBSERVED.md")
 NUMBERS = ("zero one two three four five six seven eight nine ten eleven twelve "
            "thirteen fourteen fifteen sixteen seventeen eighteen nineteen twenty").split()
 
+WORKSPACE_KEYS = {"stage", "mirrors"}
 CRATE_KEYS = {"readme", "venue", "products", "mirrors", "notes", "live"}
 LIVE_KEYS = {"suite", "timeout", "features", "secrets", "note"}
 MIRROR_KEYS = {"name", "section", "base_urls", "description", "crate_note", "exclude", "specs"}
@@ -208,6 +223,10 @@ class Registry:
     crates: tuple[Crate, ...]
     # As the root manifest lists them.
     mirrors: tuple[Mirror, ...]
+    # The release stage, `S1` and on.
+    stage: str
+    # The architecture guide's lines, without their line endings.
+    guide: tuple[str, ...] = ()
 
     def crate(self, name: str) -> Crate:
         return next(c for c in self.crates if c.name == name)
@@ -265,7 +284,7 @@ def build(root: Path, metadata: dict, workspace: dict, manifests: dict[str, dict
     order += sorted(n for n, p in packages.items() if not publish_order.is_publishable(p))
     crates = tuple(_crate(root, packages[n], manifests[n], set(packages)) for n in order)
     _check_products(crates)
-    return Registry(crates, _mirrors(root, workspace, crates))
+    return Registry(crates, _mirrors(root, workspace, crates), _stage(workspace), _guide(root))
 
 
 def _get(table: dict, *keys: str) -> dict:
@@ -421,6 +440,28 @@ def _check_products(crates: tuple[Crate, ...]) -> None:
         if len(names) > 1:
             raise RegistryError(f"({venue}, {product}) is declared by more than one crate: "
                                 f"{', '.join(names)}. Each (venue, product) pair has one crate.")
+
+
+def _stage(workspace: dict) -> str:
+    where = "[workspace.metadata.polyoxide]"
+    meta = _get(workspace, "workspace", "metadata", "polyoxide")
+    _unknown(where, meta, WORKSPACE_KEYS)
+    stage = meta.get("stage")
+    if not isinstance(stage, str) or not STAGE.fullmatch(stage):
+        raise RegistryError(f"{where} stage {stage!r} is not a release stage: stages match "
+                            f"{STAGE.pattern}, as in `stage = \"S1\"`")
+    return stage
+
+
+def _guide(root: Path) -> tuple[str, ...]:
+    try:
+        text = (root / GUIDE).read_bytes().decode("utf-8")
+    except (OSError, UnicodeDecodeError) as err:
+        raise RegistryError(f"{GUIDE} cannot be read: {err}") from err
+    if not text.endswith("\n"):
+        raise RegistryError(f"{GUIDE} must end with a newline, or docs/ARCHITECTURE.md "
+                            f"cannot hold it byte for byte")
+    return tuple(text[:-1].split("\n"))
 
 
 def _mirrors(root: Path, workspace: dict, crates: tuple[Crate, ...]) -> tuple[Mirror, ...]:
@@ -828,6 +869,15 @@ def schema_exclusions(r: Registry) -> list[str]:
     return lines
 
 
+def architecture_stage(r: Registry) -> list[str]:
+    return [f"**The workspace is in stage {r.stage}.** [Which stage the workspace is in]"
+            f"(#{STAGE_ANCHOR}) says what each stage changes."]
+
+
+def architecture_guide(r: Registry) -> list[str]:
+    return list(r.guide)
+
+
 Renderer = Callable[[Registry], list[str]]
 
 # Each generated file, its marker style, and the regions it must hold.
@@ -862,6 +912,10 @@ FILES: dict[str, dict[str, Renderer]] = {
     ".github/workflows/nightly-schema.yml": {
         "schema-watch": schema_watch,
         "schema-exclusions": schema_exclusions,
+    },
+    "docs/ARCHITECTURE.md": {
+        "architecture-stage": architecture_stage,
+        "architecture-guide": architecture_guide,
     },
 }
 

@@ -10,6 +10,7 @@ but no network.
 from __future__ import annotations
 
 import importlib.util
+import re
 import shutil
 import sys
 from pathlib import Path
@@ -32,6 +33,7 @@ def _load_gen_registry():
 
 gen_registry = _load_gen_registry()
 RegistryError = gen_registry.RegistryError
+GUIDE = REPO / gen_registry.GUIDE
 
 
 # --- the real tree -----------------------------------------------------------
@@ -91,6 +93,50 @@ def test_write_undoes_a_hand_edit_and_keeps_the_rest(
     assert gen_registry.main(["--write"], root=tmp_path) == 0
     assert readme.read_text() == original
     assert gen_registry.main(["--check"], root=tmp_path) == 0
+
+
+def test_the_architecture_guide_is_the_spines_guide_byte_for_byte() -> None:
+    """docs/ARCHITECTURE.md is regenerated only from the spine (AD-21). Its guide
+    region is the spine's guide byte for byte, so an edit to either side alone fails
+    here, and the file ends with the region."""
+    text = (REPO / "docs/ARCHITECTURE.md").read_bytes()
+    head, begin, rest = text.partition(b"<!-- generated:begin architecture-guide -->\n")
+    body, end, tail = rest.partition(b"<!-- generated:end architecture-guide -->\n")
+    assert begin and end, "docs/ARCHITECTURE.md has lost its architecture-guide region"
+    assert b"Copied from the spine's guide; do not edit." in head
+    assert b"<!-- generated:end architecture-stage -->" in head
+    assert body == GUIDE.read_bytes()
+    assert tail == b""
+
+
+def test_write_copies_the_guide_into_the_architecture_file(
+    tmp_path: Path, registry, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Copying the guide is a generator step, not a hand splice under a do-not-edit
+    header."""
+    _copy_generated_files(tmp_path)
+    target = tmp_path / "docs/ARCHITECTURE.md"
+    original = target.read_bytes()
+    head, begin, rest = original.partition(b"<!-- generated:begin architecture-guide -->\n")
+    _, end, tail = rest.partition(b"<!-- generated:end architecture-guide -->\n")
+    target.write_bytes(head + begin + end + tail)
+    monkeypatch.setattr(gen_registry, "load", lambda root, run=None: registry)
+
+    assert gen_registry.main(["--write"], root=tmp_path) == 0
+    assert target.read_bytes() == original
+
+
+def _anchor(heading: str) -> str:
+    """GitHub's anchor for a Markdown heading's text."""
+    return re.sub(r"[^\w\- ]", "", heading.strip().lower()).replace(" ", "-")
+
+
+def test_the_stage_line_links_a_heading_the_guide_has() -> None:
+    headings = [line.lstrip("#") for line in GUIDE.read_text().splitlines()
+                if re.match(r"^#{1,6} ", line)]
+    assert gen_registry.STAGE_ANCHOR in {_anchor(h) for h in headings}
+    assert f"(#{gen_registry.STAGE_ANCHOR})" in gen_registry.architecture_stage(
+        gen_registry.load(REPO))[0]
 
 
 def test_check_and_write_are_required_and_exclusive() -> None:
@@ -210,8 +256,13 @@ def spec(id: str, kind: str, vendored: str, **extra) -> dict:
     return {"id": id, "kind": kind, "vendored": vendored, **extra}
 
 
+FIXTURE_GUIDE = "# A guide\n\n### Which stage the workspace is in (AD-16)\n\n  indented text \n"
+
+
 def fixture(root: Path) -> tuple[dict, dict, dict]:
     """(cargo metadata, root manifest, member manifests) for the fixture workspace."""
+    (root / gen_registry.GUIDE).parent.mkdir(parents=True)
+    (root / gen_registry.GUIDE).write_text(FIXTURE_GUIDE)
     for directory, files in {
         "alpha": ["INDEX.md", "openapi.yaml", "asyncapi.json"],
         "beta": ["INDEX.md", "openapi.yaml"],
@@ -262,7 +313,7 @@ def fixture(root: Path) -> tuple[dict, dict, dict]:
             "description": "Another venue", "exclude": "Omega publishes no spec.",
         },
     }
-    workspace = {"workspace": {"metadata": {"polyoxide": {"mirrors": mirrors}}}}
+    workspace = {"workspace": {"metadata": {"polyoxide": {"stage": "S1", "mirrors": mirrors}}}}
     manifests = {
         "polyoxide": manifest(
             {"default": ["alpha"], "alpha": ["dep:polyoxide-alpha"],
@@ -462,6 +513,35 @@ def test_a_spec_id_is_unique(tmp_path: Path) -> None:
         build(tmp_path, twice)
 
 
+@pytest.mark.parametrize("stage", [None, "s1", "S0", "S", "stage 1", 1, "S1\n", " S1", "S1 "])
+def test_a_missing_or_bad_stage_fails(tmp_path: Path, stage) -> None:
+    def bad(metadata, workspace, manifests):
+        meta = workspace["workspace"]["metadata"]["polyoxide"]
+        if stage is None:
+            del meta["stage"]
+        else:
+            meta["stage"] = stage
+
+    with pytest.raises(RegistryError, match="is not a release stage"):
+        build(tmp_path, bad)
+
+
+def test_a_guide_without_a_final_newline_fails(tmp_path: Path) -> None:
+    def chop(metadata, workspace, manifests):
+        (tmp_path / gen_registry.GUIDE).write_text(FIXTURE_GUIDE.rstrip("\n"))
+
+    with pytest.raises(RegistryError, match="must end with a newline"):
+        build(tmp_path, chop)
+
+
+def test_an_unknown_workspace_key_fails(tmp_path: Path) -> None:
+    def typo(metadata, workspace, manifests):
+        workspace["workspace"]["metadata"]["polyoxide"]["stages"] = "S2"
+
+    with pytest.raises(RegistryError, match=r"\[workspace.metadata.polyoxide\]: unknown key stages"):
+        build(tmp_path, typo)
+
+
 def test_a_spec_level_exclusion_is_listed_and_not_watched(tmp_path: Path) -> None:
     def exclude(metadata, workspace, manifests):
         specs = workspace["workspace"]["metadata"]["polyoxide"]["mirrors"]["alpha"]["specs"]
@@ -642,6 +722,12 @@ EXPECTED = {
         "#     against.",
         "#   - Omega (docs/specs/omega/): Omega publishes no spec.",
     ],
+    "architecture-stage": [
+        "**The workspace is in stage S1.** [Which stage the workspace is in]"
+        "(#which-stage-the-workspace-is-in-ad-16) says what each stage changes.",
+    ],
+    "architecture-guide": ["# A guide", "", "### Which stage the workspace is in (AD-16)", "",
+                           "  indented text "],
 }
 
 RENDERERS = {region: renderer for regions in gen_registry.FILES.values()

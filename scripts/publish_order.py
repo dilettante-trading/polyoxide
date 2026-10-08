@@ -2,7 +2,7 @@
 """Publish order and release decisions for the workspace, read from `cargo metadata`.
 
 `release.yml` and `scripts/finish_release.sh` publish through this script, so no
-crate list is kept by hand. Four subcommands:
+crate list is kept by hand. Subcommands:
 
     list     The (crate, version) pairs crates.io does not have yet, in the order
              they must be published: the workspace members, each after every
@@ -13,6 +13,10 @@ crate list is kept by hand. Four subcommands:
     version  The version every publishable member carries. Fails if they disagree.
     tag-sha  The commit origin's `vVERSION` tag points at, or nothing when there is
              no such tag.
+    previous-tag  The newest `v*` tag reachable from SHA's first parent whose
+             version sorts below the workspace version: the release before this
+             one, even when the commits between hold a bump that never got its
+             tag. Exits 1 when there is none.
     decide   Whether a release.yml run releases the checked-out commit. Prints
              `release` or `skip` on stdout and a log line on stderr, or exits 1
              with `::error::`.
@@ -32,6 +36,7 @@ Usage:
     python3 scripts/publish_order.py [list] [--max-new-names N]
     python3 scripts/publish_order.py version
     python3 scripts/publish_order.py tag-sha VERSION
+    python3 scripts/publish_order.py previous-tag SHA
     python3 scripts/publish_order.py decide --head-sha SHA [--dispatch]
     python3 scripts/publish_order.py ci-passed SHA
 """
@@ -372,6 +377,28 @@ def parent_version(sha: str, run: Runner = run_command) -> str | None:
         ) from err
 
 
+def previous_tag(sha: str, current: str, run: Runner = run_command) -> str | None:
+    """The newest `v<version>` tag reachable from `sha`'s first parent below `current`.
+
+    Not simply `v<parent's version>`: `decide` releases any untagged version, so the
+    parent may carry a bump that was never tagged, after a red CI run on the bump or
+    a failed release. A tag that is not a version is ignored.
+    """
+    command = ["git", "tag", "--list", "v*", "--merged", f"{sha}^"]
+    result = run(command)
+    if result.returncode != 0:
+        raise _failed(command, result)
+    below = []
+    for tag in result.stdout.split():
+        try:
+            key = _semver_key(tag[1:])
+        except PublishOrderError:
+            continue
+        if key < _semver_key(current):
+            below.append((key, tag))
+    return max(below)[1] if below else None
+
+
 def release_exists(version: str, run: Runner = run_command) -> bool:
     """Whether GitHub has a release named for `v<version>`.
 
@@ -478,6 +505,9 @@ def _parser() -> argparse.ArgumentParser:
     commands.add_parser("version", help="the workspace version")
     tagging = commands.add_parser("tag-sha", help="the commit origin's vVERSION tag names")
     tagging.add_argument("version", metavar="VERSION", help="the version, without the v")
+    previous = commands.add_parser(
+        "previous-tag", help="the newest release tag before SHA's workspace version")
+    previous.add_argument("sha", metavar="SHA")
     deciding = commands.add_parser(
         "decide", help="whether a release.yml run releases the checked-out commit")
     deciding.add_argument("--head-sha", required=True, help="the checked-out commit")
@@ -509,6 +539,14 @@ def main(argv: list[str] | None = None, get: Getter = http_status,
             sha = tag_sha(args.version, run)
             if sha:
                 print(sha)
+        elif args.command == "previous-tag":
+            current = workspace_version(workspace_metadata(run))
+            tag = previous_tag(args.sha, current, run)
+            if tag is None:
+                print(f"::error::no version tag below v{current} is reachable from "
+                      f"{args.sha}^", file=sys.stderr)
+                return 1
+            print(tag)
         elif args.command == "check-manifests":
             missing = missing_metadata(workspace_metadata(run))
             if missing:

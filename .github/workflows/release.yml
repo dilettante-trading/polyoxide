@@ -85,12 +85,47 @@ jobs:
             echo "should_release=false" >> "$GITHUB_OUTPUT"
           fi
 
+  # A release that removes or breaks a public item must raise the 0.x minor
+  # (AD-25). The baseline is the newest release tag behind this commit, not
+  # v<the parent's version>: a bump whose CI went red, or whose release failed,
+  # was never tagged. With no `--release-type`, cargo-semver-checks infers one
+  # from the two versions, so on a patch bump any major-level change fails this
+  # job, and both publish jobs wait for it.
+  semver:
+    name: Semver check against the previous release
+    needs: version
+    if: needs.version.outputs.should_release == 'true'
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@v5
+        with:
+          ref: ${{ needs.version.outputs.sha }}
+          # Every tag, for the baseline.
+          fetch-depth: 0
+
+      # Pinned together with cargo-semver-checks, as in ci.yml's removals job:
+      # 0.51.0 reads the rustdoc JSON that only Rust 1.93 to 1.99 emit.
+      - uses: dtolnay/rust-toolchain@1.99.0
+      - uses: taiki-e/install-action@v2
+        with:
+          tool: cargo-semver-checks@0.51.0
+
+      - name: Check the public API against the previous release
+        env:
+          SHA: ${{ needs.version.outputs.sha }}
+        run: |
+          BASELINE=$(python3 scripts/publish_order.py previous-tag "$SHA")
+          python3 scripts/api_removals.py release --baseline "$BASELINE"
+
   publish:
     name: Publish to crates.io
     if: |
       needs.version.outputs.should_release == 'true' &&
       github.repository == 'dilettante-trading/polyoxide'
-    needs: [version, build-cli, build-python, build-python-sdist]
+    needs: [version, semver, build-cli, build-python, build-python-sdist]
     runs-on: ubuntu-latest
     environment: cargo
     # Job-level, so a run that never releases cannot queue in the group and cancel a pending real one.
@@ -238,7 +273,7 @@ jobs:
 
   publish-python:
     name: Publish to PyPI
-    needs: [version, build-python, build-python-sdist]
+    needs: [version, semver, build-python, build-python-sdist]
     if: |
       needs.version.outputs.should_release == 'true' &&
       github.repository == 'dilettante-trading/polyoxide'

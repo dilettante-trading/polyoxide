@@ -1,0 +1,133 @@
+     Cloning v0.38.1
+    Building polyoxide v0.38.1 (current)
+       Built [  43.460s] (current)
+     Parsing polyoxide v0.38.1 (current)
+      Parsed [   0.003s] (current)
+    Building polyoxide v0.38.1 (baseline)
+       Built [  30.565s] (baseline)
+     Parsing polyoxide v0.38.1 (baseline)
+      Parsed [   0.003s] (baseline)
+    Checking polyoxide v0.38.1 -> v0.38.1 (assume patch change)
+     Checked [   0.003s] 229 checks: 229 pass, 31 skip
+     Summary no semver update required
+    Finished [  98.565s] polyoxide
+    Building polyoxide-binance v0.38.1 (current)
+       Built [   9.084s] (current)
+     Parsing polyoxide-binance v0.38.1 (current)
+      Parsed [   0.023s] (current)
+    Building polyoxide-binance v0.38.1 (baseline)
+       Built [   5.584s] (baseline)
+     Parsing polyoxide-binance v0.38.1 (baseline)
+      Parsed [   0.024s] (baseline)
+    Checking polyoxide-binance v0.38.1 -> v0.38.1 (assume patch change)
+     Checked [   0.014s] 229 checks: 229 pass, 31 skip
+     Summary no semver update required
+    Finished [  20.910s] polyoxide-binance
+    Building polyoxide-cli v0.38.1 (current)
+       Built [  38.030s] (current)
+     Parsing polyoxide-cli v0.38.1 (current)
+      Parsed [   0.016s] (current)
+    Building polyoxide-cli v0.38.1 (baseline)
+       Built [  34.279s] (baseline)
+     Parsing polyoxide-cli v0.38.1 (baseline)
+      Parsed [   0.015s] (baseline)
+    Checking polyoxide-cli v0.38.1 -> v0.38.1 (assume patch change)
+     Checked [   0.005s] 229 checks: 229 pass, 31 skip
+     Summary no semver update required
+    Finished [ 100.485s] polyoxide-cli
+    Building polyoxide-clob v0.38.1 (current)
+       Built [  29.302s] (current)
+     Parsing polyoxide-clob v0.38.1 (current)
+      Parsed [   0.031s] (current)
+    Building polyoxide-clob v0.38.1 (baseline)
+       Built [  29.266s] (baseline)
+     Parsing polyoxide-clob v0.38.1 (baseline)
+      Parsed [   0.035s] (baseline)
+    Checking polyoxide-clob v0.38.1 -> v0.38.1 (assume patch change)
+     Checked [   0.025s] 229 checks: 229 pass, 31 skip
+     Summary no semver update required
+    Finished [  75.688s] polyoxide-clob
+    Building polyoxide-core v0.38.1 (current)
+       Built [   9.275s] (current)
+     Parsing polyoxide-core v0.38.1 (current)
+      Parsed [   0.006s] (current)
+    Building polyoxide-core v0.38.1 (baseline)
+       Built [   7.741s] (baseline)
+     Parsing polyoxide-core v0.38.1 (baseline)
+      Parsed [   0.006s] (baseline)
+    Checking polyoxide-core v0.38.1 -> v0.38.1 (assume patch change)
+     Checked [   0.006s] 229 checks: 229 pass, 31 skip
+     Summary no semver update required
+    Finished [  30.699s] polyoxide-core
+    Building polyoxide-data v0.38.1 (current)
+       Built [   7.009s] (current)
+     Parsing polyoxide-data v0.38.1 (current)
+      Parsed [   0.046s] (current)
+    Building polyoxide-data v0.38.1 (baseline)
+       Built [   5.985s] (baseline)
+     Parsing polyoxide-data v0.38.1 (baseline)
+      Parsed [   0.039s] (baseline)
+    Checking polyoxide-data v0.38.1 -> v0.38.1 (assume patch change)
+     Checked [   0.022s] 229 checks: 229 pass, 31 skip
+     Summary no semver update required
+    Finished [  29.164s] polyoxide-data
+    Building polyoxide-gamma v0.38.1 (current)
+       Built [   8.100s] (current)
+     Parsing polyoxide-gamma v0.38.1 (current)
+      Parsed [   0.014s] (current)
+    Building polyoxide-gamma v0.38.1 (baseline)
+       Built [   7.067s] (baseline)
+     Parsing polyoxide-gamma v0.38.1 (baseline)
+      Parsed [   0.014s] (baseline)
+    Checking polyoxide-gamma v0.38.1 -> v0.38.1 (assume patch change)
+     Checked [   0.018s] 229 checks: 229 pass, 31 skip
+     Summary no semver update required
+    Finished [  27.053s] polyoxide-gamma
+    Building polyoxide-perps v0.38.1 (current)
+       Built [   6.713s] (current)
+     Parsing polyoxide-perps v0.38.1 (current)
+      Parsed [   0.022s] (current)
+    Building polyoxide-perps v0.38.1 (baseline)
+       Built [   5.741s] (baseline)
+     Parsing polyoxide-perps v0.38.1 (baseline)
+      Parsed [   0.022s] (baseline)
+    Checking polyoxide-perps v0.38.1 -> v0.38.1 (assume patch change)
+     Checked [   0.017s] 229 checks: 229 pass, 31 skip
+     Summary no semver update required
+    Finished [  17.108s] polyoxide-perps
+    Building polyoxide-relay v0.38.1 (current)
+       Built [  29.060s] (current)
+     Parsing polyoxide-relay v0.38.1 (current)
+      Parsed [   0.031s] (current)
+    Building polyoxide-relay v0.38.1 (baseline)
+       Built [  28.690s] (baseline)
+     Parsing polyoxide-relay v0.38.1 (baseline)
+      Parsed [   0.014s] (baseline)
+    Checking polyoxide-relay v0.38.1 -> v0.38.1 (assume patch change)
+     Checked [   0.007s] 229 checks: 229 pass, 31 skip
+     Summary no semver update required
+    Finished [  74.431s] polyoxide-relay
+    Building polyoxide-rtds v0.38.1 (current)
+       Built [   4.935s] (current)
+     Parsing polyoxide-rtds v0.38.1 (current)
+      Parsed [   0.008s] (current)
+    Building polyoxide-rtds v0.38.1 (baseline)
+       Built [   3.999s] (baseline)
+     Parsing polyoxide-rtds v0.38.1 (baseline)
+      Parsed [   0.007s] (baseline)
+    Checking polyoxide-rtds v0.38.1 -> v0.38.1 (assume patch change)
+     Checked [   0.006s] 229 checks: 229 pass, 31 skip
+     Summary no semver update required
+    Finished [  13.074s] polyoxide-rtds
+    Building polyoxide-sports v0.38.1 (current)
+       Built [   3.869s] (current)
+     Parsing polyoxide-sports v0.38.1 (current)
+      Parsed [   0.005s] (current)
+    Building polyoxide-sports v0.38.1 (baseline)
+       Built [   3.387s] (baseline)
+     Parsing polyoxide-sports v0.38.1 (baseline)
+      Parsed [   0.004s] (baseline)
+    Checking polyoxide-sports v0.38.1 -> v0.38.1 (assume patch change)
+     Checked [   0.003s] 229 checks: 229 pass, 31 skip
+     Summary no semver update required
+    Finished [  14.443s] polyoxide-sports
