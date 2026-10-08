@@ -6,3 +6,9 @@
 - source_spec: `_bmad-output/implementation-artifacts/spec-1-1-re-baseline-on-current-main.md`
   summary: The gamma–sports `game_id` join uses three types (`i64` setters, `u64` on `Event` and sports `MatchUpdate`, `String` on `Market`), so a caller casts `u64` to `i64` to filter `/events` by the id sports sends.
   evidence: `polyoxide-gamma/src/api/events.rs:421,589` take `i64`; `polyoxide-gamma/src/types.rs:479` and `polyoxide-sports/src/update.rs:57` are `Option<u64>`; `types.rs:333` is `Option<String>`. Shipped in v0.38.0; S2 puts gamma and sports in one crate, a natural point to align them (a breaking change, so S2's rename stage).
+- source_spec: `_bmad-output/implementation-artifacts/spec-1-2-publish-order-script-and-resumable-releases.md`
+  summary: Restrict the `cargo` and `pypi` GitHub environments to deployments from `main` (AD-25's second guard against fork-triggered publishes); a repository setting the agent does not change.
+  evidence: `gh api repos/dilettante-trading/polyoxide/environments/{cargo,pypi}` returns `deployment_branch_policy: null` (2026-10-08). The exact `gh api` commands are in the spec's Design Notes.
+- source_spec: `_bmad-output/implementation-artifacts/spec-1-2-publish-order-script-and-resumable-releases.md`
+  summary: Before the next release from `main`, confirm the crates.io token (`CARGO_REGISTRY_TOKEN`) has the publish-new scope for `polyoxide-cli`, which the release loop now publishes for the first time.
+  evidence: `polyoxide-cli` returns 404 on crates.io; it sorts last in the publish order, so a token without publish-new uploads every other crate and then fails, leaving the release untagged until a re-run with a fixed token. AD-25 and Story 4.11 also ask for the crate-scope check before the S1 release.

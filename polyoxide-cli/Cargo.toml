@@ -6,8 +6,8 @@ license.workspace = true
 authors.workspace = true
 repository.workspace = true
 rust-version.workspace = true
-description = "CLI tool for querying Polymarket Gamma API"
-keywords = ["polymarket", "prediction-markets", "cli", "gamma"]
+description = "Command-line client for the Polymarket APIs and streams, and Binance USDⓈ-M market data"
+keywords = ["polymarket", "prediction-markets", "cli", "trading", "binance"]
 categories = ["command-line-utilities"]
 
 [features]

@@ -43,7 +43,7 @@ CI runs four jobs: **format** (standalone), **lint & test** (clippy, `cargo next
 
 **Clippy and tests passing is not enough.** The lint & test job ends with `cargo doc` under `RUSTDOCFLAGS: -D warnings`, which makes `rustdoc::private_intra_doc_links` an error: a doc comment on a `pub` item may not use ``[`link`]`` syntax to reference a `pub(crate)` item. Doctests do not catch this — they run the code in doc comments and say nothing about whether the prose links resolve. Either make the referenced item `pub` or state the fact inline.
 
-A red doc build costs more than it looks: `release.yml` triggers on `workflow_run: [CI], conclusion == 'success'`, so a failed doc build **silently withholds the release tag**. The version bump lands on `main` and nothing publishes, with no obvious connection between the two symptoms.
+A red doc build costs more than it looks: `release.yml` triggers on `workflow_run: [CI], conclusion == 'success'`, so a failed doc build **silently withholds the release tag**. The version bump lands on `main` and nothing publishes, with no obvious connection between the two symptoms. Fixing the build forward is enough: the next green push to `main` releases any version that is still untagged (see Publishing Order).
 
 ```bash
 # Run live integration tests (hit real APIs, skipped in CI)
@@ -439,4 +439,24 @@ The WebSocket contracts are published as AsyncAPI, not OpenAPI — mirrored in `
 
 ## Publishing Order
 
-Crates must be published in dependency order: core → rtds → sports → perps → binance → relay → gamma → data → clob → polyoxide. (`polyoxide-rtds` depends on nothing in-workspace, so its position only has to precede `polyoxide`; `polyoxide-sports` is the same; `polyoxide-perps` depends only on core, so it only has to follow core and precede `polyoxide`; `polyoxide-binance` only has to follow core, since no published crate depends on it.) The release workflow in `.github/workflows/release.yml` handles this automatically. `polyoxide-py` is `publish = false` (not on crates.io); its Python wheels are built and published to PyPI via a separate step in the release workflow.
+The order is computed, not written down. `scripts/publish_order.py` reads `cargo metadata` and puts each publishable member (`publish` unset, or naming `crates-io`) after every member it needs on crates.io first: its normal and build dependencies, and any dev-dependency that carries a version, since that one stays in the published manifest. A path-only dev-dependency is stripped at publish time and orders nothing. A cycle, or a normal or build dependency on a `publish = false` member, fails the release before anything is uploaded. Each `tombstones/*/Cargo.toml` comes after every workspace crate; the workspace excludes `tombstones`, or `cargo metadata` could not read them.
+
+The dependency facts the order follows: `polyoxide-rtds` and `polyoxide-sports` depend on nothing in-workspace, so each only has to precede `polyoxide` and `polyoxide-cli`; `polyoxide-perps` depends only on core, so it only has to follow core and precede `polyoxide`; `polyoxide-binance` only has to follow core and precede `polyoxide-cli`, the one published crate that depends on it. `polyoxide-cli` is published like every other member. `polyoxide-py` is `publish = false` (not on crates.io); its Python wheels are built and published to PyPI via a separate step in the release workflow.
+
+**One resumable loop.** `release.yml`'s publish job runs `scripts/finish_release.sh`, which makes up to three attempts. Each asks `publish_order.py list --max-new-names 5` for the (crate, version) pairs crates.io lacks, publishes the workspace pairs in one `cargo publish --no-verify -p A -p B …` (cargo orders them and waits for each to reach the index), then each tombstone by `--manifest-path`. A final recount confirms nothing is left. So a re-run after a partial release publishes only what is left. Exit 3 means more than five new crate names: crates.io rate-limits new registrations, so split the release. Exit 4 means the workspace cannot be published as it stands (a cycle, a dependency on a `publish = false` member, a manifest `cargo metadata` cannot read). Retrying cannot help either, so the loop stops at once on both. A recount that cannot reach crates.io ends in "could not confirm", which is not "still unpublished".
+
+**What releases.** `release.yml` runs for a push to `main` in this repository, or a manual run (`workflow_dispatch`) on `main`. Its `branches: [main]` filter is not the guard, since it also matches a fork's pull request from a branch named `main`; the `version` job checks that the CI run was a `push` to this repository's `main`. Then `publish_order.py decide` reads the `v<version>` tag on origin (the peeled commit, since release tags are annotated), and the first matching rule wins:
+
+1. A manual run on a commit CI has not passed fails, since every publish is `--no-verify`.
+2. No tag: release. So the next green push to `main` releases any version still untagged, a fix-forward or an empty commit after a red version-bump commit included.
+3. A tag at this commit and a GitHub release: skip. The run is a re-run of a finished release.
+4. A tag at this commit and no GitHub release: release, resuming one whose last jobs failed. Publishing skips what crates.io has, and the tag is not pushed twice.
+5. A tag at another commit, on a push that leaves the version as its parent had it: skip, with a plain log line. Every ordinary push lands here.
+6. A tag at another commit, with the version lower than the parent's: skip with a warning.
+7. A tag at another commit otherwise fails the run with `::error::`: the version was already released, so bump it.
+
+A lookup that fails (`git ls-remote`, `gh`) fails the run rather than reading as "not released".
+
+**Recovering a release.** Run Release by hand on `main` (`gh workflow run Release --ref main`). It publishes what is missing and finishes the tag, the GitHub release and the wheels. Running `scripts/finish_release.sh` by hand is a crates.io-only fallback: it refuses a dirty tree, a HEAD that is not on `origin/main`, or one CI has not passed on (`publish_order.py ci-passed`), and it takes `CARGO_REGISTRY_TOKEN` or a prior `cargo login`.
+
+**The second guard is pending.** The `cargo` and `pypi` environments should accept deployments only from `main`, so that a run from any other branch, an edited `release.yml` on a feature branch among them, cannot reach the tokens. Neither has that branch restriction yet. It is a repository setting, not a file in this repository.

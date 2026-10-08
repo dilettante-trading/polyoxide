@@ -13,6 +13,7 @@ members = [
   "polyoxide-rtds",
   "polyoxide-sports",
 ]
+exclude = ["tombstones"]
 resolver = "2"
 
 [workspace.package]
