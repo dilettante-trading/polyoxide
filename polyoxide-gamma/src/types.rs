@@ -124,6 +124,26 @@ where
     Ok(Option::<Vec<T>>::deserialize(deserializer)?.unwrap_or_default())
 }
 
+/// Reads an id that Gamma sometimes sends as a negative sentinel, taking any
+/// negative value as `None`. A plain `Option<u64>` would fail the whole
+/// response on it.
+fn negative_as_none<'de, D>(deserializer: D) -> Result<Option<u64>, D::Error>
+where
+    D: serde::Deserializer<'de>,
+{
+    #[derive(Deserialize)]
+    #[serde(untagged)]
+    enum Id {
+        Unsigned(u64),
+        Negative(i64),
+    }
+    Ok(match Option::<Id>::deserialize(deserializer)? {
+        Some(Id::Unsigned(id)) => Some(id),
+        Some(Id::Negative(id)) => u64::try_from(id).ok(),
+        None => None,
+    })
+}
+
 /// Market data from Gamma API
 #[cfg_attr(feature = "specta", derive(specta::Type))]
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
@@ -474,7 +494,12 @@ pub struct Event {
     /// with `closed` or the event's dates. Current cricket events have none;
     /// their provider id is a string in [`event_metadata`](Self::event_metadata).
     ///
+    /// A negative `gameId` reads as `None`. Gamma sent `-1` on a politics
+    /// event (`blue-wave-in-2026`) on 2026-10-08, apparently meaning "no
+    /// game", and it was the only negative in 54,528 events walked.
+    ///
     /// [`ListEvents::game_id`]: crate::api::events::ListEvents::game_id
+    #[serde(default, deserialize_with = "negative_as_none")]
     #[cfg_attr(feature = "specta", specta(type = Option<f64>))]
     pub game_id: Option<u64>,
     /// The teams playing, each with its [`ordering`](Team::ordering) (home or
@@ -1533,6 +1558,26 @@ mod tests {
     fn event_tolerates_null_teams() {
         let event: Event = serde_json::from_str(r#"{"id": "1", "teams": null}"#).unwrap();
         assert!(event.teams.is_empty());
+    }
+
+    /// The captured `-1` is pinned in `tests/wire_agreement.rs`; these are
+    /// the shapes no capture shows.
+    #[test]
+    fn event_game_id_reads_negatives_as_none_and_keeps_the_full_u64_range() {
+        let game_id = |json: &str| serde_json::from_str::<Event>(json).unwrap().game_id;
+        assert_eq!(game_id(r#"{"id": "1"}"#), None);
+        assert_eq!(game_id(r#"{"id": "1", "gameId": null}"#), None);
+        assert_eq!(game_id(r#"{"id": "1", "gameId": -2}"#), None);
+        assert_eq!(game_id(r#"{"id": "1", "gameId": 0}"#), Some(0));
+        assert_eq!(
+            game_id(r#"{"id": "1", "gameId": 10079774}"#),
+            Some(10079774)
+        );
+        assert_eq!(
+            game_id(r#"{"id": "1", "gameId": 18446744073709551615}"#),
+            Some(u64::MAX)
+        );
+        assert!(serde_json::from_str::<Event>(r#"{"id": "1", "gameId": "7"}"#).is_err());
     }
 
     // ── SeriesInfo ──────────────────────────────────────────────

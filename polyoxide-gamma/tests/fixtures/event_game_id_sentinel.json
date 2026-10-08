@@ -1,0 +1,104 @@
+[
+  {
+    "id": "103161",
+    "ticker": "blue-wave-in-2026",
+    "slug": "blue-wave-in-2026",
+    "title": "Blue wave in 2026?",
+    "description": "This market will resolve to “Yes” if both of the following conditions are met as a result of the 2026 midterm elections:\n\n- Democrats have a seat count of 218 or more in the House\n- Democrats have a seat count of 49 or more in the Senate\n\nOtherwise, this market will resolve to “No”.\n\nThe Senate seat count includes all regular and special Senate elections that determine representation in the upcoming 120th Congress and are scheduled to take place in November 2026 as of October 31, 2026. Vacant Senate seats for which no election or special election to fill the seat is scheduled to take place in November 2026 as of October 31, 2026 will be treated as held by the party affiliation of the most recent member to hold that seat. The House seat count includes all House elections in the 2026 United States midterm election that elect voting members and determine representation in the upcoming 120th Congress. Where a Senate or House seat is decided by a runoff, the runoff result will determine attribution of that seat, even if it takes place after November 2026.\n\nFor seats contested in the specified election, seats are attributed to the party under which the member was elected. If a member-elect changes party affiliation, or vacates their seat, between election day and the formal organization of Congress, the seat is attributed to the party under which the member was elected. \n\nFor seats not contested in the specified election, seats are attributed to the party that holds the seat as of the date of the election. If a current sitting member of the U.S. Senate who is not up for election changes party affiliation or vacates their seat after the date of the election, the seat is attributed to the party under which the member was affiliated at the time of the election.\n\nSenate and House members elected as independents who formally caucus with, or, for newly elected members, who announce their intent to caucus with a party are included in that party’s count. If the caucus decisions of members of the Senate or House elected as independents cannot be determined on the date of the election, this market may remain open until the earlier of (i) an announcement from the relevant members of their intents to caucus, or (ii) January 4th, 11:59 PM ET of the following calendar year. If no such announcement is made by January 4th, 11:59 PM ET of the following calendar year, the member will not count towards the seat count of any party.\n\nThe resolution sources for this market will be official information from relevant state electoral authorities, the United States Congress, and a consensus of credible reporting.",
+    "resolutionSource": "",
+    "startDate": "2026-01-14T00:53:07.49Z",
+    "creationDate": "2026-01-14T00:53:31.595275Z",
+    "endDate": "2027-01-05T04:59:00Z",
+    "image": "https://polymarket-upload.s3.us-east-2.amazonaws.com/blue-wave-in-2026-0KUoAzFzj56z.jpg",
+    "icon": "https://polymarket-upload.s3.us-east-2.amazonaws.com/blue-wave-in-2026-0KUoAzFzj56z.jpg",
+    "active": true,
+    "closed": false,
+    "archived": false,
+    "new": false,
+    "featured": false,
+    "restricted": true,
+    "liquidity": 24288.9636,
+    "volume": 79991.718006,
+    "openInterest": 15573.809184,
+    "createdAt": "2025-12-12T12:25:12.756094Z",
+    "updatedAt": "2026-10-08T16:38:32.570647Z",
+    "competitive": 0.8936350841134023,
+    "volume24hr": 41,
+    "volume1wk": 2783.58435,
+    "volume1mo": 12855.778651,
+    "volume1yr": 79991.71800600001,
+    "enableOrderBook": true,
+    "liquidityClob": 24288.9636,
+    "commentCount": 13,
+    "tags": [
+      {
+        "id": "2",
+        "label": "Politics",
+        "slug": "politics",
+        "forceShow": false,
+        "publishedAt": "2023-10-25 18:55:50.674+00",
+        "updatedBy": 13,
+        "createdAt": "2023-10-25T18:55:50.681Z",
+        "updatedAt": "2026-04-17T20:39:54.201881Z",
+        "forceHide": true
+      },
+      {
+        "id": "514",
+        "label": "Congress",
+        "slug": "congress",
+        "forceShow": false,
+        "publishedAt": "2023-11-16 16:28:14.421+00",
+        "createdAt": "2023-11-16T16:28:14.438Z",
+        "updatedAt": "2026-04-15T21:09:13.731814Z"
+      },
+      {
+        "id": "102289",
+        "label": "Midterms",
+        "slug": "midterms",
+        "createdAt": "2025-06-19T20:54:40.884795Z",
+        "updatedAt": "2026-04-17T20:51:49.953987Z"
+      },
+      {
+        "id": "144",
+        "label": "Elections",
+        "slug": "elections",
+        "forceShow": false,
+        "publishedAt": "2023-11-02 21:24:31.008+00",
+        "updatedBy": 13,
+        "createdAt": "2023-11-02T21:24:31.198Z",
+        "updatedAt": "2026-04-17T17:22:31.696566Z",
+        "forceHide": true
+      },
+      {
+        "id": "1101",
+        "label": "US Election",
+        "slug": "us-presidential-election",
+        "forceShow": false,
+        "publishedAt": "2024-02-06 19:42:10.126+00",
+        "createdAt": "2024-02-06T19:42:10.132Z",
+        "updatedAt": "2026-04-17T20:37:36.506311Z"
+      },
+      {
+        "id": "101337",
+        "label": "Parlays",
+        "slug": "parlays",
+        "createdAt": "2024-11-27T20:28:32.874197Z",
+        "updatedAt": "2026-04-17T20:57:11.879826Z"
+      }
+    ],
+    "cyom": false,
+    "showAllOutcomes": true,
+    "showMarketImages": true,
+    "enableNegRisk": false,
+    "automaticallyActive": true,
+    "startTime": "2026-11-30T00:00:00Z",
+    "negRiskAugmented": false,
+    "pendingDeployment": false,
+    "deploying": false,
+    "gameId": -1,
+    "eventMetadata": {
+      "context_requires_regen": false
+    },
+    "version": "v1"
+  }
+]

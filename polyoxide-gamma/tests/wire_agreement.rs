@@ -62,6 +62,7 @@ const SEARCH_RESPONSE_PROFILES: &str = include_str!("fixtures/search_response_pr
 const EVENT_GAME_FULL: &str = include_str!("fixtures/event_game_full.json");
 const EVENT_GAME_CHILD: &str = include_str!("fixtures/event_game_child.json");
 const EVENT_CRICKET: &str = include_str!("fixtures/event_cricket.json");
+const EVENT_GAME_ID_SENTINEL: &str = include_str!("fixtures/event_game_id_sentinel.json");
 const TEAM_FULL: &str = include_str!("fixtures/team_full.json");
 const TEAM_SPARSE: &str = include_str!("fixtures/team_sparse.json");
 const SPORT_METADATA: &str = include_str!("fixtures/sport_metadata.json");
@@ -597,6 +598,22 @@ fn a_cricket_event_carries_its_id_only_in_event_metadata() {
             .and_then(|m| m.get("gameId")),
         Some(&json!("1000170151LIVE2026"))
     );
+}
+
+/// Gamma sends `gameId: -1` on at least one event that is not a game. It
+/// failed prader-sync's whole `/events/keyset` page on 0.38.1, and the sync
+/// then retried that cursor for ever, so it reads as no game.
+#[test]
+fn a_negative_game_id_reads_as_no_game() {
+    let (wire, event) = captured_event(EVENT_GAME_ID_SENTINEL);
+    assert_eq!(
+        wire["gameId"],
+        json!(-1),
+        "the capture must carry the sentinel"
+    );
+    assert_eq!(event.game_id, None);
+    assert_eq!(event.parent_event_id, None);
+    assert!(event.teams.is_empty());
 }
 
 #[test]

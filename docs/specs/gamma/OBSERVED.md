@@ -234,6 +234,17 @@ Across 600 sports events sampled on 2026-10-08 (provenance in
   `egy1`, `ucl` and `itf` game, and some tennis.
 - **`sport` and `Team::league` usually agree.** The exception seen was
   `cs2` games with `csgo` teams.
+- **`gameId` can be `-1` on an event that is not a game.** `Event.json`
+  types it int64, and 0.38 read it as `u64`, so event `103161`
+  (`blue-wave-in-2026`, politics, no `parentEventId`, no `teams`) failed a
+  whole `/events/keyset` page. A walk on 2026-10-08 of every open event
+  (22,428) and 32,100 closed ones (the 30,000 oldest by keyset order, the
+  2,100 newest by `id`), all with `include_markets=false`, found it to be the
+  only negative `gameId` and the only event `Event` could not decode. The
+  other unsigned fields in that walk were in range: `sport.id` 2–885,
+  `tags[].createdBy`/`updatedBy` 13–15. Negative `commentCount`s (down to
+  `-61`) are common, but `Event::comment_count` is signed. `Event::game_id`
+  reads any negative as `None`.
 
 `Event.json` also lists `rescheduledFromGameId`, `turnProviderId`, `usId` and
 `lastHighlight*`, and `Team.json` and `SportsMetadata.json` list
