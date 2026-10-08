@@ -2,7 +2,7 @@
 
 This is the checklist behind the success signal. Every row must end with exactly one definition.
 
-- Locations come from the 2026-10-08 audit of commit `e3d8c3e`. Line counts are rough and include tests.
+- Locations come from the 2026-10-08 audit of commit `e3d8c3e` (v0.37.1). Gamma and sports rows were re-audited at `v0.38.1` (`12e8316`); nothing else cited here changed between the two. Line counts are rough and include tests.
 - "Class" is IDENTICAL or PARAMETRIC; see `glossary.md`.
 - Rows whose copies also differ in ways that carry behaviour point to `divergences.md`, which governs what may merge.
 
@@ -18,7 +18,7 @@ This is the checklist behind the success signal. Every row must end with exactly
 | H6 | Client builder knobs: `base_url`, `timeout_ms`, `pool_size`, `with_retry_config`, `max_concurrent`, limiter, gzip | gamma, data, perps, clob, relay, binance builders; core `HttpClientBuilder::new` vs `Default` | PARAMETRIC (default concurrency 2, 4 or 8) | 540 |
 | H7 | Namespace accessors `X { http_client: clone }` and their structs | gamma 9, data 14, perps 4, clob 8, binance 3 | IDENTICAL shape | 430 |
 | H8 | `ping` / health | gamma, data, clob, perps, relay, binance (6 hand-written versions) plus `ping_propagates_*` test pairs | PARAMETRIC | 285 |
-| H9 | Query setters `fn x(mut self, v) -> Self` | gamma ~197, data ~144, clob ~54, binance 12; perps has a `pub(crate)` `setter!` | IDENTICAL shape | 2,000 |
+| H9 | Query setters `fn x(mut self, v) -> Self` | gamma ~197 at `e3d8c3e`, +2 in v0.38 (`ListEvents::game_id` and `ListKeysetEvents::include_markets`, `api/events.rs`), data ~144, clob ~54, binance 12; perps has a `pub(crate)` `setter!` | IDENTICAL shape | 2,000 |
 | H10 | Open/closed string-enum macros and `UnknownVariant` | `open_enum!` in data `v2/types/common.rs:5`, gamma `types.rs:10`, binance `usdm/types.rs:132`; relay `open_string_enum!`; `wire_enum!` in perps `types.rs:41`, binance `usdm/types.rs:94`; data `closed_enum!`; `UnknownVariant` in perps and binance | PARAMETRIC | 390 |
 | H11 | Positional decimal-array serde (klines, mark points) | perps `types.rs:155-264`; binance `usdm/types.rs:828-1036` | PARAMETRIC (the `Interval` enums differ on purpose) | 300 |
 | H12 | Retriable-status rule 408/425/429/5xx | core `error.rs:93`; perps `error.rs:77`; binance `error.rs:102` | IDENTICAL | 30 + pinning tests |
@@ -53,7 +53,7 @@ This is the checklist behind the success signal. Every row must end with exactly
 |---|---|---|---|---|
 | T1 | `key_paths` | data `tests/v2_wire_agreement.rs:158`; binance `tests/common/mod.rs:14`; perps `tests/wire_agreement.rs:52`, `tests/ws_wire_agreement.rs:33` | IDENTICAL | 80 |
 | T2 | `assert_values_agree` | binance `common/mod.rs:35`; perps `wire_agreement.rs:73`, `ws_wire_agreement.rs:49` | IDENTICAL | 60 |
-| T3 | Allow-lists (IGNORED / EXPECTED_ABSENT / NEVER_ON_WIRE) with a stale-excuse check | perps `wire_agreement.rs:97-181`; data `v2_wire_agreement.rs:186-290`; gamma's dotted-path version differs | PARAMETRIC | 180 |
+| T3 | Allow-lists (IGNORED / EXPECTED_ABSENT / NEVER_ON_WIRE) with a stale-excuse check | perps `wire_agreement.rs:97-181`; data `v2_wire_agreement.rs:186-290`; gamma's dotted-path version differs. Its one `check` walker (`tests/wire_agreement.rs:261`) is fed by `round_trip` (`:311`, Comment only), six inline decode-and-re-emit test bodies (`:330`, `:339`, `:348`, `:357`, `:415`, `:424`; Profile, UserResponse, SearchProfile), a generic `agrees<T>` (`:462`) and `captured_event` (`:476`), whose `Event` feeds direct `check` calls on `teams` and `sport`. `sports_events_carry_no_unmodelled_top_level_keys` (`:499`) checks direction 2 only, at an event's top level, and never consults `IGNORED`; the shared helper must support that to keep the assertion. `agrees<T>`, `captured_event` and the top-level check arrived in v0.38.0 | PARAMETRIC | 180 |
 | T4 | OpenAPI synthesiser (`spec`, `schemas`, `is_nullable`, `synth`, `fields`, `check`, `agreement!`) | data `v2_spec_agreement.rs:45-203`; perps `spec_agreement.rs:24-254` (a fork that adds `$ref`-nullable, enum and example handling, and `OBSERVED_EXTRA`) | PARAMETRIC | 380 |
 | T5 | `query_keys_sent` / `Fire` | data `v2_spec_agreement.rs:345`; perps `spec_agreement.rs:399` | IDENTICAL apart from the client type | 70 |
 | T6 | Fixture loader from `CARGO_MANIFEST_DIR/tests/fixtures` | 6 copies | IDENTICAL | 30 |

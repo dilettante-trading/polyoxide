@@ -65,7 +65,7 @@ This is the first epic of stage S1, the internals release in which crate names d
 
 ## Cross-Story Dependencies
 
-- **1.1 goes first.** It records the S1 start tag (v0.38.1 expected), which 1.7 uses as its baseline.
+- **1.1 goes first.** It records the S1 start tag, `v0.38.1` (commit `12e83164e86aebb6270298dd25d2a77d1450f720`), which 1.7 uses as its baseline.
 - **1.2 merges before Epics 2–4 create any new crate.** No release is cut from `main` until it lands. After it, the generator (1.4) is next in the S1 order.
 - **1.3 depends on 1.2,** which corrects `polyoxide-cli`'s manifest, so that 1.3's packaging job can pass on it. The job skips `publish = false` members.
 - **1.5 builds on 1.4.** Epic 2's credential loaders consume the `secrets` declarations.
