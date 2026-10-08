@@ -1,3 +1,22 @@
+## [0.38.0] - 2026-10-08
+
+Gamma's game events now carry what joins them to a `polyoxide-sports` score.
+`Event` gains `game_id` (`u64`, the same number as `GameKey::Game`), `teams`,
+`sport`, `event_metadata` and `parent_event_id`, plus `volume`, `comment_count`,
+`neg_risk_augmented` and `version`. `Team` gains `provider_id`, `color` and
+`ordering`, a new `HomeAway`. `SportMetadata` gains `name` and `primary_tag_id`.
+`ListEvents::game_id` filters `GET /events` by game. One game id can return the
+game and its child events, so keep the one with no `parent_event_id`. Cricket
+events carry no `game_id`. See `docs/specs/gamma/OBSERVED.md`.
+
+**Breaking changes.** `Event`, `Team` and `SportMetadata` have new public fields
+and are not `#[non_exhaustive]`, so code that builds one with a struct literal
+must set them. Deserializing is unaffected.
+
+### 🚀 Features
+
+- *(gamma)* [**breaking**] Model game events' sports fields and filter /events by game_id
+
 ## [0.37.1] - 2026-10-07
 
 Every polyoxide client asks for gzip again. In 0.37.0 `HttpClientBuilder::gzip`
