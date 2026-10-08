@@ -48,6 +48,10 @@ hex = "0.4"
 tracing = "0.1"
 tracing-subscriber = "0.3"
 tokio-tungstenite = { version = "0.26", features = ["rustls-tls-native-roots"] }
+# One declaration for every socket crate (DRIFT R5). `default-features = false`
+# keeps aws-lc-rs out; `std` is declared here rather than left to reqwest or
+# alloy, so a crate without them still builds.
+rustls = { version = "0.23", default-features = false, features = ["ring", "std"] }
 rust_decimal = { version = "1.37", features = ["serde-with-str"] }
 governor = { version = "0.8", features = ["std"] }
 fastrand = "2"

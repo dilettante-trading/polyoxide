@@ -49,9 +49,7 @@ futures-util = { version = "0.3", optional = true }
 # `ensure_crypto_provider` in src/ws/client.rs. default-features = false keeps
 # us from pulling aws-lc-rs (and its cmake/nasm build requirements) into the
 # graph on top of the ring backend already present.
-rustls = { version = "0.23", default-features = false, features = [
-    "ring",
-], optional = true }
+rustls = { workspace = true, optional = true }
 
 [dev-dependencies]
 polyoxide-relay = { workspace = true }
