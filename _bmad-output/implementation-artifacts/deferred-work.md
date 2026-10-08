@@ -36,3 +36,9 @@
 - source_spec: `_bmad-output/implementation-artifacts/spec-2-1-2-2-classification-vocabulary-and-today-s-enums.md`
   summary: Make a 451 region block a non-fault (`is_fault() == false`) on the socket side too: `RtdsError::Server { status: 451 }` and the shared handshake-status rule (`class_for_handshake_status`), as the HTTP status-rule impls already do since 543d1cb. Fold it into Story 4.3's single socket table.
   evidence: Bundle C's review made 451 a non-fault for `ApiError::Api`, perps `VenueError`, data `V2Error` and `BinanceError::Venue`; the socket paths were outside that patch's list, so a 451 there still counts as a fault.
+- source_spec: `_bmad-output/implementation-artifacts/spec-2-3-2-4-test-toolkit-and-tag-classifier.md`
+  summary: When the S3 venue traits start returning `ClassifiedError`, give `polyoxide-test-support` a `fail_classified(ctx, &ClassifiedError)` (or an `or_fail` for `Result<_, ClassifiedError>`), since `ClassifiedError` deliberately does not implement `Classify`.
+  evidence: A blanket `ResultExt` for `E: Classify` cannot also cover `ClassifiedError` (coherence, E0119); no live test holds a `ClassifiedError` before Epic 6.
+- source_spec: `_bmad-output/implementation-artifacts/spec-2-3-2-4-test-toolkit-and-tag-classifier.md`
+  summary: In Story 4.10's socket error reshape, keep the stopping cause on Binance's supervised `Stopped`, so a stream stopped by a reconnect refused with 451 reports `is_fault() == false` and tags `environmental` rather than `real`.
+  evidence: `UsdmWsError::Stopped` carries no cause today (`polyoxide-binance/src/usdm/ws/error.rs:200-207`); adding one is a variant change, which AD-16 forbids before the classifier stops relying on error text.

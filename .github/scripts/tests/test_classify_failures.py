@@ -568,3 +568,215 @@ def test_cli_merge_promotes_persistent_transients_to_real(tmp_path: Path) -> Non
     assert (out_dir / "retry-tests.txt").read_text() == ""
     environmental = (out_dir / "environmental.txt").read_text().splitlines()
     assert environmental == ["polyoxide-clob::live_ws$live_sports_frames"]
+
+
+# --- tag lines (AD-14) --------------------------------------------------------
+#
+# A test that fails through polyoxide-test-support prints `polyoxide-class=<tag>`
+# alone on a line just before it panics. The tag decides; the regexes above only
+# see a log with no tag line.
+
+REPORT = (
+    "\nthread 'live_x' (4811) panicked at polyoxide-gamma/tests/live_api.rs:42:10:\n"
+    "{message}\n"
+    "note: run with `RUST_BACKTRACE=1` environment variable to display a backtrace\n"
+)
+
+
+def _tagged(tag: str, message: str) -> str:
+    return f"polyoxide-class={tag}\n" + REPORT.format(message=message)
+
+
+@pytest.mark.parametrize("tag,message,regex_verdict", [
+    # Each message on its own classifies otherwise, so only the tag explains the verdict.
+    ("transient", 'markets: V2(V2Error { code: "dependency_unavailable" })', Verdict.REAL),
+    ("real", "markets: the HTTP 503 page did not parse", Verdict.TRANSIENT),
+    ("environmental", "markets: Api(Api { status: 503 })", Verdict.TRANSIENT),
+    ("auth-gated", "credentials not configured: KEY absent or empty in the environment", Verdict.REAL),
+    ("real", "POLYMARKET_* env vars required for authenticated tests", Verdict.AUTH_GATED),
+    ("transient", "no qualifying market with a best ask above 0.05", Verdict.ENVIRONMENTAL),
+])
+def test_a_tag_beats_whatever_the_regexes_say(tag: str, message: str, regex_verdict: Verdict) -> None:
+    assert classify(REPORT.format(message=message)) == regex_verdict, "the row proves nothing"
+    assert classify(_tagged(tag, message)) == Verdict(tag)
+
+
+def test_the_tag_just_before_the_final_report_decides() -> None:
+    # The hook's own output: the tag, then a blank line, then the report.
+    assert classify(_tagged("environmental", "nothing live")) == Verdict.ENVIRONMENTAL
+    # A caught transient, then a final environmental failure.
+    text = _tagged("transient", "first connect") + _tagged("environmental", "nothing live")
+    assert classify(text) == Verdict.ENVIRONMENTAL
+
+
+@pytest.mark.parametrize("stale", ["transient", "environmental", "auth-gated"])
+def test_a_stale_tag_before_an_untagged_final_panic_is_ignored(stale: str) -> None:
+    """A caught tagged panic, or a spawned task's, then the test failing through
+    a bare `assert!` or `unwrap()`: the tag is not about the final failure."""
+    text = _tagged(stale, "first connect") + REPORT.format(message="assertion failed: frames > 0")
+    assert classify(text) == Verdict.REAL
+    # The untagged path still applies, regexes included.
+    text = _tagged(stale, "first connect") + REPORT.format(message="markets: Api { status: 503 }")
+    assert classify(text) == Verdict.TRANSIENT
+
+
+def test_a_tag_parted_from_the_report_by_other_output_is_ignored() -> None:
+    text = "polyoxide-class=transient\nsome other hook ran\n" + REPORT.format(message="x")
+    assert classify(text) == Verdict.REAL
+
+
+@pytest.mark.parametrize("later", ["environmental", "transient", "auth-gated"])
+def test_a_real_tag_is_never_outranked_by_a_later_one(later: str) -> None:
+    """A fault the test caught, or a spawned task hit, still files an issue."""
+    text = _tagged("real", "a frame did not parse") + _tagged(later, "nothing live")
+    assert classify(text) == Verdict.REAL
+
+
+@pytest.mark.parametrize("text", [
+    "panicked: polyoxide-class=transient",
+    "  polyoxide-class=transient",
+    "polyoxide-class=transient because the feed dropped",
+    "the test printed polyoxide-class=environmental in its message\n",
+])
+def test_a_tag_that_is_not_alone_on_its_line_is_ignored(text: str) -> None:
+    assert classify(text) == Verdict.REAL
+    # So the regexes still decide.
+    assert classify(text + "\nHTTP 503") == Verdict.TRANSIENT
+
+
+@pytest.mark.parametrize("text", [
+    "polyoxide-class=transient\n\nthread 'x' panicked at a.rs:1:1:\nboom\n",
+    "polyoxide-class=transient\nthread 'x' (7) panicked at a.rs:1:1:\nboom",
+    "polyoxide-class=transient   \n\nthread 'x' panicked at a.rs:1:1:\n",
+    "polyoxide-class=transient\r\n\r\nthread 'x' (7) panicked at a.rs:1:1:\r\nboom\r\n",
+    "earlier output\npolyoxide-class=transient\n\nthread 'x' panicked at a.rs:1:1:\n",
+])
+def test_a_tag_alone_on_its_line_is_read(text: str) -> None:
+    assert classify(text) == Verdict.TRANSIENT
+
+
+def test_a_tag_with_no_panic_report_after_it_is_ignored() -> None:
+    assert classify("polyoxide-class=transient\n") == Verdict.REAL
+
+
+@pytest.mark.parametrize("tag", ["flaky", "pass", "Transient", "transient-ish"])
+def test_an_unknown_tag_is_real(tag: str) -> None:
+    # Even when the regexes would have skipped or retried the failure.
+    assert classify(_tagged(tag, "Api { status: 503 }")) == Verdict.REAL
+    assert classify(_tagged(tag, "POLYMARKET_* env vars required")) == Verdict.REAL
+
+
+def test_an_unknown_last_tag_is_real_even_after_a_known_one() -> None:
+    assert classify(_tagged("transient", "x") + _tagged("bogus", "y")) == Verdict.REAL
+
+
+def test_parse_tagged_fixture() -> None:
+    outcomes = parse_nextest_json(FIXTURES / "nextest-tagged.json")
+    verdicts = {o.name: o.verdict for o in outcomes}
+    assert verdicts == {
+        "polyoxide-gamma::live_api$live_list_markets": Verdict.PASS,
+        "polyoxide-gamma::live_api$live_get_market": Verdict.TRANSIENT,
+        "polyoxide-gamma::live_api$live_search_markets": Verdict.REAL,
+        "polyoxide-clob::live_api$live_create_order": Verdict.AUTH_GATED,
+        "polyoxide-clob::live_api$live_fak_unmatched_is_typed_error": Verdict.ENVIRONMENTAL,
+        # Untagged: decided by the regex fallback.
+        "polyoxide-clob::live_api$live_get_order": Verdict.TRANSIENT,
+        # A caught real failure, then a final environmental one, in a log the
+        # regexes call transient: the fault still files.
+        "polyoxide-sports::live_api$live_api_channel_yields_frames": Verdict.REAL,
+    }
+
+
+def test_every_tagged_fixture_row_disagrees_with_the_regexes() -> None:
+    """Guards the test above: a row the regexes alone classify the same way
+    would pass whether or not the tag was read."""
+    import classify_failures
+
+    for outcome in parse_nextest_json(FIXTURES / "nextest-tagged.json"):
+        if classify_failures.TAG_LINE.search(outcome.output):
+            untagged = classify_failures.TAG_LINE.sub("", outcome.output)
+            assert classify(untagged) != outcome.verdict, outcome.name
+
+
+def test_cli_classify_reads_tags_end_to_end(tmp_path: Path) -> None:
+    out_dir = tmp_path / "out"
+    subprocess.run(
+        [
+            sys.executable, str(SCRIPT), "classify",
+            "--input", str(FIXTURES / "nextest-tagged.json"),
+            "--output-dir", str(out_dir),
+        ],
+        capture_output=True,
+        text=True,
+        check=True,
+    )
+    assert (out_dir / "retry-tests.txt").read_text().splitlines() == [
+        "polyoxide-gamma::live_api$live_get_market",
+        "polyoxide-clob::live_api$live_get_order",
+    ]
+    assert (out_dir / "real-failures.txt").read_text().splitlines() == [
+        "polyoxide-gamma::live_api$live_search_markets",
+        "polyoxide-sports::live_api$live_api_channel_yields_frames",
+    ]
+    assert (out_dir / "auth-gated.txt").read_text().splitlines() == [
+        "polyoxide-clob::live_api$live_create_order",
+    ]
+    assert (out_dir / "environmental.txt").read_text().splitlines() == [
+        "polyoxide-clob::live_api$live_fak_unmatched_is_typed_error",
+    ]
+
+
+def test_a_tag_opening_stderr_starts_a_line_after_a_stdout_without_one(tmp_path: Path) -> None:
+    """Joined bare, `stdout`'s last line and the tag would share a line, and the
+    tag would be read as quoted text."""
+    fixture = tmp_path / "split.json"
+    event = {
+        "type": "test", "event": "failed", "name": "polyoxide-gamma::live_api$live_x",
+        "stdout": "fetched 3 markets",
+        "stderr": "polyoxide-class=environmental\n" + REPORT.format(message="nothing live"),
+    }
+    fixture.write_text(json.dumps(event) + "\n")
+    [outcome] = parse_nextest_json(fixture)
+    assert outcome.verdict == Verdict.ENVIRONMENTAL
+    assert outcome.output.startswith("fetched 3 markets\npolyoxide-class=environmental\n")
+
+
+# --- retried names -----------------------------------------------------------
+
+
+def test_parse_strips_the_attempt_suffix_nextest_adds_to_a_retried_test() -> None:
+    names = [o.name for o in parse_nextest_json(FIXTURES / "nextest-retry-suffix.json")]
+    assert names == [
+        "polyoxide-gamma::live_api$live_search_markets",
+        "polyoxide-clob::live_api$live_get_order",
+    ]
+
+
+def test_cli_merge_promotes_a_suffixed_persistent_transient_to_real(tmp_path: Path) -> None:
+    """The retry pass runs with `--retries 2`, so nextest names a test that
+    failed every attempt `...$live_search_markets#3`. Looked up bare, it was
+    missing from the retry results and merged as a PASS, so a persistent
+    transient was never filed."""
+    raw = (FIXTURES / "nextest-retry-suffix.json").read_text()
+    assert "$live_search_markets#3" in raw and "$live_get_order#2" in raw
+
+    out_dir = tmp_path / "out"
+    subprocess.run(
+        [
+            sys.executable, str(SCRIPT), "merge",
+            "--first-pass", str(FIXTURES / "nextest-mixed.json"),
+            "--retry", str(FIXTURES / "nextest-retry-suffix.json"),
+            "--output-dir", str(out_dir),
+        ],
+        capture_output=True,
+        text=True,
+        check=True,
+    )
+    real = (out_dir / "real-failures.txt").read_text().splitlines()
+    # live_get_market was REAL on first pass. live_search_markets failed all
+    # three attempts. live_get_order passed on its second attempt.
+    assert sorted(real) == sorted([
+        "polyoxide-gamma::live_api$live_get_market",
+        "polyoxide-gamma::live_api$live_search_markets",
+    ])
+    assert "live_search_markets" in (out_dir / "report.md").read_text()

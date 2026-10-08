@@ -571,6 +571,124 @@ LOADERS = {
     "Account::from_env(": ("polyoxide-clob/src/account/mod.rs", "env"),
 }
 CONSTANT = re.compile(r"const\s+[A-Z0-9_]+\s*:\s*&str\s*=\s*\"([A-Za-z_][A-Za-z0-9_]*)\"")
+# A call to one of polyoxide-test-support's credential loaders, which name the
+# variables they read in their arguments: `load_env(&["A", ...])`,
+# `optional_env("A")` and `keychain(service, &[("A", key), ...])`. A method call or
+# a longer name (`from_keychain(`) is not one.
+TEST_LOADER = re.compile(r"(?<![A-Za-z0-9_.])(load_env|optional_env|keychain)\s*\(")
+NAME_LITERAL = re.compile(r"\"([A-Za-z_][A-Za-z0-9_]*)\"")
+SLICE = re.compile(r"&\s*\[(.*)\]", re.S)
+TUPLE = re.compile(r"\((.*)\)", re.S)
+
+
+# What each character of Rust source is, as `lex` labels it.
+CODE, STRING, COMMENT, LINE_COMMENT = "c", "s", "m", "l"
+RAW_OPEN = re.compile(r'r(#*)"')
+
+
+def lex(source: str) -> str:
+    """A label for each character of Rust `source`, the same length, newlines kept.
+
+    `CODE` covers code and the delimiters of string and character literals,
+    `STRING` their contents, `LINE_COMMENT` the text after a `//`, and `COMMENT`
+    the rest of every comment. `view` turns the labels back into text.
+    """
+    kinds: list[str] = []
+
+    def label(text: str, kind: str) -> None:
+        kinds.extend("\n" if ch == "\n" else kind for ch in text)
+
+    i, n = 0, len(source)
+    depth = 0  # block-comment nesting
+    raw: str | None = None  # the closing delimiter of the raw string we are in
+    in_string = in_comment = False
+    while i < n:
+        c = source[i]
+        if c == "\n":
+            in_comment = False
+            label(c, CODE)
+            i += 1
+        elif in_comment:
+            label(c, LINE_COMMENT)
+            i += 1
+        elif depth:
+            if source.startswith("/*", i) or source.startswith("*/", i):
+                depth += 1 if source[i] == "/" else -1
+                label(source[i:i + 2], COMMENT)
+                i += 2
+            else:
+                label(c, COMMENT)
+                i += 1
+        elif raw is not None:
+            if source.startswith(raw, i):
+                label(raw, CODE)
+                i += len(raw)
+                raw = None
+            else:
+                label(c, STRING)
+                i += 1
+        elif in_string:
+            if c == "\\":
+                # An escaped newline still ends a line.
+                step = 1 if source.startswith("\n", i + 1) else 2
+                label(source[i:i + step], STRING)
+                i += step
+            else:
+                if c == '"':
+                    in_string = False
+                label(c, CODE if c == '"' else STRING)
+                i += 1
+        elif source.startswith("//", i):
+            in_comment = True
+            label("//", COMMENT)
+            i += 2
+        elif source.startswith("/*", i):
+            depth = 1
+            label("/*", COMMENT)
+            i += 2
+        elif c == '"':
+            in_string = True
+            label(c, CODE)
+            i += 1
+        elif c == "r" and (match := RAW_OPEN.match(source, i)) and not _continues_identifier(source, i):
+            raw = '"' + match[1]
+            label(match[0], CODE)
+            i += len(match[0])
+        elif c == "'" and (end := _char_literal_end(source, i)):
+            label("'", CODE)
+            label(source[i + 1:end - 1], STRING)
+            label("'", CODE)
+            i = end
+        else:
+            label(c, CODE)
+            i += 1
+    return "".join(kinds)
+
+
+def view(source: str, kinds: str, keep: str) -> str:
+    """`source` with every character whose label is not in `keep` blanked to a
+    space, newlines kept, so offsets still line up with `source`."""
+    return "".join(ch if kind in keep or ch == "\n" else " " for ch, kind in zip(source, kinds))
+
+
+def _continues_identifier(source: str, i: int) -> bool:
+    """Whether `source[i]` continues an identifier, so an `r` there opens no raw
+    string. A `b` may come before it, for a raw byte string `br"..."`."""
+    before = source[i - 1] if i else ""
+    if before == "b":
+        return _continues_identifier(source, i - 1)
+    return before.isalnum() or before == "_"
+
+
+def _char_literal_end(source: str, i: int) -> int | None:
+    """The index after the character literal opened by the `'` at `i`, or `None`
+    when that quote opens a lifetime or a label."""
+    if source.startswith("'\\", i):
+        end = source.find("'", i + 3)
+        return end + 1 if end != -1 else None
+    if i + 2 < len(source) and source[i + 2] == "'" and source[i + 1] != "\n":
+        return i + 3
+    return None
 
 
 def _code(source: str) -> str:
@@ -606,6 +724,99 @@ def module_files(path: Path) -> list[Path]:
     return files
 
 
+def _arguments(code: str, open_paren: int) -> str:
+    """The text between the `(` at `open_paren` and the `)` that closes it."""
+    depth, i, in_string = 0, open_paren, False
+    while i < len(code):
+        c = code[i]
+        if in_string:
+            if c == "\\":
+                i += 1
+            elif c == '"':
+                in_string = False
+        elif c == '"':
+            in_string = True
+        elif c in "([{":
+            depth += 1
+        elif c in ")]}":
+            depth -= 1
+            if depth == 0:
+                return code[open_paren + 1:i]
+        i += 1
+    raise RegistryError(f"`{code[max(0, open_paren - 20):open_paren + 40]}...` never closes its call")
+
+
+def _split(text: str) -> list[str]:
+    """`text` split at its top-level commas, each part stripped, a trailing comma dropped."""
+    parts, depth, start, in_string, i = [], 0, 0, False, 0
+    while i < len(text):
+        c = text[i]
+        if in_string:
+            if c == "\\":
+                i += 1
+            elif c == '"':
+                in_string = False
+        elif c == '"':
+            in_string = True
+        elif c in "([{":
+            depth += 1
+        elif c in ")]}":
+            depth -= 1
+        elif c == "," and depth == 0:
+            parts.append(text[start:i].strip())
+            start = i + 1
+        i += 1
+    parts.append(text[start:].strip())
+    return parts[:-1] if parts and not parts[-1] else parts
+
+
+def _literal(call: str, argument: str) -> str:
+    match = NAME_LITERAL.fullmatch(argument)
+    if match is None:
+        raise RegistryError(
+            f"`{call}(...)` names an environment variable with `{argument}`; pass a string "
+            f"literal, since the secrets check reads the names from the call")
+    return match[1]
+
+
+def _slice(call: str, argument: str) -> list[str]:
+    match = SLICE.fullmatch(argument)
+    if match is None:
+        raise RegistryError(
+            f"`{call}(...)` takes `{argument}`; write the slice out, `&[...]`, since the "
+            f"secrets check reads the names from the call")
+    return _split(match[1])
+
+
+def loader_call_names(source: str) -> set[str]:
+    """The variable names polyoxide-test-support's credential loaders are called with
+    in Rust `source`, refusing any not passed as a string literal. A loader's name
+    inside a string or a comment is not a call."""
+    kinds = lex(source)
+    code, literals = view(source, kinds, CODE), view(source, kinds, CODE + STRING)
+    names = set()
+    for match in TEST_LOADER.finditer(code):
+        if re.search(r"\bfn\s+$", code[:match.start()]):
+            continue  # a definition, not a call
+        call = match[1]
+        arguments = _split(_arguments(literals, match.end() - 1))
+        if call == "optional_env" and len(arguments) == 1:
+            names.add(_literal(call, arguments[0]))
+        elif call == "load_env" and len(arguments) == 1:
+            names |= {_literal(call, name) for name in _slice(call, arguments[0])}
+        elif call == "keychain" and len(arguments) == 2:
+            for entry in _slice(call, arguments[1]):
+                pair = TUPLE.fullmatch(entry)
+                parts = _split(pair[1]) if pair else []
+                if len(parts) != 2:
+                    raise RegistryError(f"`keychain(...)` takes `{entry}`, not a `(name, key)` pair")
+                names.add(_literal(call, parts[0]))
+        else:
+            raise RegistryError(f"`{call}(...)` takes {len(arguments)} arguments here, which "
+                                f"is not the credential loader's signature")
+    return names
+
+
 def target_source(path: Path) -> str:
     """The text of a test target and the modules it declares, for `env_names`."""
     return "\n".join(file.read_text() for file in module_files(path))
@@ -614,13 +825,15 @@ def target_source(path: Path) -> str:
 def env_names(source: str, root: Path = REPO) -> set[str]:
     """The environment variables a live test target reads.
 
-    A static scan, until the credential loaders of Epic 2 replace it: string
-    literals passed to `var`, `var_os`, `env!` or `option_env!`, plus what each
-    library loader in `LOADERS` reads, from its constants. Pass `target_source`,
-    so a read in a shared module counts.
+    A static scan: the names passed to polyoxide-test-support's credential
+    loaders, which must be string literals (`loader_call_names`), string
+    literals passed to `var`, `var_os`, `env!` or `option_env!`, and what each
+    library loader in `LOADERS` reads, from its constants. The last two go once
+    every live suite reads through the loaders. Pass `target_source`, so a read
+    in a shared module counts.
     """
     code = _code(source)
-    names = set(ENV_LITERAL.findall(code))
+    names = set(ENV_LITERAL.findall(code)) | loader_call_names(source)
     for call, (path, module) in LOADERS.items():
         if call in code:
             names |= loader_names(root / path, module)

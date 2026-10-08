@@ -4219,6 +4219,15 @@ dependencies = [
 ]
 
 [[package]]
+name = "polyoxide-test-support"
+version = "0.38.1"
+dependencies = [
+ "dotenvy",
+ "polyoxide-core",
+ "polyoxide-venue",
+]
+
+[[package]]
 name = "polyoxide-venue"
 version = "0.38.1"
 

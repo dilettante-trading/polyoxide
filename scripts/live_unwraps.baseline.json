@@ -1,0 +1,71 @@
+{
+  "unwraps": {
+    "polyoxide-binance/tests/common/mod.rs": 1,
+    "polyoxide-binance/tests/live_api.rs": 23,
+    "polyoxide-binance/tests/live_ws.rs": 12,
+    "polyoxide-cli/tests/live_api.rs": 16,
+    "polyoxide-clob/tests/live_api.rs": 98,
+    "polyoxide-clob/tests/live_session_keys.rs": 26,
+    "polyoxide-clob/tests/live_ws.rs": 5,
+    "polyoxide-data/tests/live_api.rs": 61,
+    "polyoxide-gamma/tests/live_api.rs": 116,
+    "polyoxide-perps/tests/live_api.rs": 23,
+    "polyoxide-perps/tests/live_ws.rs": 18,
+    "polyoxide-relay/tests/live_api.rs": 10,
+    "polyoxide-rtds/tests/live_api.rs": 3,
+    "polyoxide-sports/tests/live_api.rs": 4
+  },
+  "opted_out": {},
+  "classifier": {
+    "AUTH_GATED_RE": [
+      "(?i)POLYMARKET_(?:\\*|[A-Z_]+) (?:env vars )?required"
+    ],
+    "ENVIRONMENTAL_RE": [
+      "(?i)legitimately time out|no (?:qualifying|suitable) market|does not serve this location \\(451\\)|\\bRegionBlocked \\{|\\b451 Unavailable For Legal Reasons\\b|\\bstatus: 451\\b"
+    ],
+    "TRANSIENT_RES": [
+      "(?i)\\bToo Many Requests\\b",
+      "(?i)\\brate limit\\b",
+      "\\bRateLimit\\(",
+      "(?i)\\b(?:HTTP|status:|API error:)\\s*(?:425|429|5\\d{2})\\b",
+      "\\bRateLimited \\{",
+      "\\bVenue \\{ status: (?:408|425|5\\d{2})\\b",
+      "\\bbinance answered (?:408|425|5\\d{2}):",
+      "\\bConnectTimeout\\(",
+      "\\bno connection within\\b",
+      "\\bHTTP error: (?:408|425|429|5\\d{2})\\b",
+      "\\bthe server closed the connection \\(Some\\((?:1001|1011|1012|1013)\\)",
+      "\\bno answer to request\\b",
+      "\\bclosed by the server \\((?:1001|1011|1012|1013)\\b",
+      "(?i)\\brequest timeout\\b",
+      "\\bApi\\(Timeout\\)",
+      "\\bTimedOut\\b",
+      "(?i)\\b(?:request|operation) timed out\\b",
+      "hyper_util::client::legacy::Error\\(Connect\\b",
+      "(?i)\\btcp connect error\\b",
+      "(?i)\\berror sending request\\b",
+      "(?i)\\bConnection refused\\b",
+      "(?i)\\bConnection reset by peer\\b",
+      "(?i)\\bbroken pipe\\b",
+      "(?i)\\bDNS lookup failed\\b",
+      "(?i)\\bfailed to lookup address\\b",
+      "(?i)\\bname resolution failed\\b",
+      "\\bResetWithoutClosingHandshake\\b",
+      "(?i)\\bConnection reset without closing handshake\\b",
+      "\\bpeer closed connection without sending TLS close_notify\\b",
+      "\\bcode (?:1001|1011|1012|1013)\\b",
+      "\\bcode: Some\\((?:1001|1011|1012|1013)\\)",
+      "\\bCloseFrame \\{ code: (?:Away|Error|Restart|Again)\\b",
+      "\\bserver ended the connection\\b"
+    ],
+    "TAG_LINE": [
+      "(?m)^polyoxide-class=(\\S+)\\s*$"
+    ],
+    "PANIC_REPORT": [
+      "^thread '.*' (?:\\(\\d+\\) )?panicked at "
+    ],
+    "ATTEMPT": [
+      "#\\d+$"
+    ]
+  }
+}

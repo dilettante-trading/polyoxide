@@ -195,8 +195,10 @@ file a false-positive PR.
   `features`, `secrets`) to the crate's `Cargo.toml` and run
   `python3 scripts/gen_registry.py --write`; CI fails a `tests/live_*.rs`
   without one. If the new tests have a
-  skip-worthy failure mode, encode its panic message in the classifier (and a
-  fixture) rather than special-casing the workflow.
+  skip-worthy failure mode, tag it where it fails, with `environmental(reason)`
+  or `transient(reason)` from `polyoxide-test-support`, rather than
+  special-casing the workflow. The classifier's regexes are frozen by
+  `scripts/live_unwraps.py`, so a new panic message cannot be matched there.
 - **Tuning classification**: all patterns live in
   `.github/scripts/classify_failures.py`; the fixtures under
   `.github/scripts/tests/fixtures/` are the specification by example — they

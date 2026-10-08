@@ -176,6 +176,11 @@ fn transport_class(err: &tungstenite::Error) -> Class {
 /// refused request a `VenueRefusal` with Binance's code in decimal, an answer
 /// or frame that did not parse a `Decode`, and the client's own refusals an
 /// `InvalidRequest`.
+///
+/// Every error is a fault except a handshake refused with `451`: Binance does
+/// not serve the caller's region, a defined outcome, as
+/// [`BinanceError::RegionBlocked`](crate::BinanceError::RegionBlocked) is on
+/// REST. A `418` ban and a `403` from the firewall stay faults.
 impl Classify for UsdmWsError {
     fn class(&self) -> Class {
         match self {
@@ -189,6 +194,16 @@ impl Classify for UsdmWsError {
             Self::TooManyStreams { .. } | Self::WrongPath { .. } | Self::Stopped => {
                 Class::InvalidRequest
             }
+        }
+    }
+
+    fn is_fault(&self) -> bool {
+        match self {
+            Self::Connect(err) => !matches!(
+                &**err,
+                tungstenite::Error::Http(response) if response.status().as_u16() == 451
+            ),
+            _ => true,
         }
     }
 }
@@ -326,18 +341,22 @@ mod tests {
             assert!(err.is_fault(), "{err:?}");
             assert_eq!(err.retry_after(), None, "{err:?}");
         }
-        for (status, class) in [
-            (401, Class::Unauthorized),
+        // (status, class, is_fault)
+        for (status, class, fault) in [
+            (401, Class::Unauthorized, true),
             // Binance's firewall, as on REST.
-            (403, Class::Restricted),
-            (404, Class::VenueRefusal { code: None }),
-            (418, Class::Restricted),
-            (429, Class::RateLimited { retry_after: None }),
-            (451, Class::Restricted),
-            (503, Class::Unavailable { code: None }),
-            (200, Class::Decode),
+            (403, Class::Restricted, true),
+            (404, Class::VenueRefusal { code: None }, true),
+            // A ban the client earned by overspending its weight.
+            (418, Class::Restricted, true),
+            (429, Class::RateLimited { retry_after: None }, true),
+            // A region block, as `BinanceError::RegionBlocked` is on REST.
+            (451, Class::Restricted, false),
+            (503, Class::Unavailable { code: None }, true),
+            (200, Class::Decode, true),
         ] {
             assert_eq!(http_error(status).class(), class, "{status}");
+            assert_eq!(http_error(status).is_fault(), fault, "{status}");
         }
     }
 

@@ -2,9 +2,10 @@
 title: 'Stories 2.3 and 2.4: The test toolkit crate and failure tags, and the classifier reads tags'
 type: 'feature'
 created: '2026-10-08'
-status: 'ready-for-dev'
+status: 'done'
 route: 'dispatch'
 review_loop_iteration: 0
+baseline_commit: 'e352316b27503ad540d777f6673d5bb3840b822d'
 context:
   - '{project-root}/_bmad-output/implementation-artifacts/epic-2-context.md'
 ---
@@ -97,12 +98,12 @@ context:
 ## Tasks & Acceptance
 
 **Execution:**
-- [ ] `polyoxide-test-support/` -- new crate, registered as above.
+- [x] `polyoxide-test-support/` -- new crate, registered as above.
   - **Tagging:** `ResultExt::or_fail(ctx)` for `Result<T, E: Classify + Debug>`; `environmental(reason) -> !` and `transient(reason) -> !`; `fn tag_for(&Class) -> Tag`.
   - **Loaders:** `load_env(&[..]) -> Result<Creds, Missing>`, `optional_env(name) -> Option<String>` (empty counts as `None`), `keychain(service, &[(env, key)]) -> Result<Creds, Missing>` (`NotFound` or `Backend` counts as absent), and `Missing::or_auth_gated()`. Missing variables are named, never their values. `Creds::get`.
   - **The hook:** a chained `Once` with a thread-local tag. A doc comment explains why.
-- [ ] Root `Cargo.toml` -- add the member, then run `gen_registry.py --write`.
-- [ ] `polyoxide-test-support/tests/` -- prove these in child processes, by re-running `current_exe()` with `--exact <name> --ignored --nocapture` and asserting stderr:
+- [x] Root `Cargo.toml` -- add the member, then run `gen_registry.py --write`.
+- [x] `polyoxide-test-support/tests/` -- prove these in child processes, by re-running `current_exe()` with `--exact <name> --ignored --nocapture` and asserting stderr:
   - every class maps to its tag;
   - exactly one tag line appears, before "panicked at";
   - a hook set beforehand still runs, which proves the chaining;
@@ -110,27 +111,27 @@ context:
   - empty is absent;
   - all-or-nothing;
   - `environmental` and `transient` print their own tags.
-- [ ] `.github/scripts/classify_failures.py`:
+- [x] `.github/scripts/classify_failures.py`:
   - in `classify()`, the last `^polyoxide-class=(\S+)\s*$` line wins, an unknown tag is `REAL`, and otherwise the existing regexes apply;
   - `parse_nextest_json` strips a trailing `#\d+` from test names.
-- [ ] `.github/scripts/tests/test_classify_failures.py` -- add tests, with the 27 kept unchanged:
+- [x] `.github/scripts/tests/test_classify_failures.py` -- add tests, with the 27 kept unchanged:
   - a tag beats a matching regex, in both directions;
   - the last tag wins;
   - a tag in the middle of a line is ignored;
   - an unknown tag is `REAL`;
   - a tagged fixture parsed end to end;
   - a merge that promotes a `…#3` persistent transient, with a new fixture carrying the suffix.
-- [ ] `scripts/live_unwraps.py` and `scripts/live_unwraps.baseline.json` -- new.
+- [x] `scripts/live_unwraps.py` and `scripts/live_unwraps.baseline.json` -- new.
   - The counts include `mod` files and ignore comments and opted-out lines.
   - It fails when a count rises, falls without the baseline being lowered, or belongs to a file missing from the baseline.
   - It fails when the classifier's pattern set differs from the frozen list.
   - **Test:** `.github/scripts/tests/test_live_unwraps.py` runs it on the real tree, plus cases for added and removed unwraps, a new file, and a new regex.
-- [ ] `scripts/gen_registry.py` -- `env_names()` also collects literal arguments of `load_env(`, `optional_env(` and `keychain(`, and refuses non-literals. Add tests.
-- [ ] `.github/scripts/tests/test_test_support_edges.py` -- from `cargo metadata`:
+- [x] `scripts/gen_registry.py` -- `env_names()` also collects literal arguments of `load_env(`, `optional_env(` and `keychain(`, and refuses non-literals. Add tests.
+- [x] `.github/scripts/tests/test_test_support_edges.py` -- from `cargo metadata`:
   - test-support's in-workspace dependencies are a subset of {core, venue};
   - every edge into it is a path-only dev-dependency;
   - core and venue never depend on it.
-- [ ] `CLAUDE.md` -- under the nightly section, one paragraph:
+- [x] `CLAUDE.md` -- under the nightly section, one paragraph:
   - tags come first: `or_fail`, loaders, `environmental`, `transient`;
   - the regexes are a fallback for untagged logs, and `live_unwraps.py` counts down to zero;
   - remove the old "add a regex" guidance if any.
@@ -145,7 +146,29 @@ context:
 
 ## Spec Change Log
 
+- **Mid-implementation amendment (Claude, as the user's delegate, 2026-10-08), found by the D2 investigation.**
+  - **The tag map:** `Restricted` tags `environmental` only when `is_fault()` is false, and `real` otherwise. This is recorded as proposed spine amendment A2-1 in `_bmad-output/planning-artifacts/architecture/architecture-polyoxide-2026-10-08/spine-amendments/epic-2.md`. It supersedes the frozen Decision "Restricted → environmental" and Story 2.3's "class alone". Binance's 418 ban and WAF 403 are faults, so they stay `real`; a region block or a 451 is not, so it is `environmental`.
+  - **The toolkit gains `fail(ctx, &E) -> !`** for `E: Classify + Debug + ?Sized`, because Story 2.5 needs it for match arms, borrowed errors and error chains.
+  - **`UsdmWsError` reports a handshake 451 as a non-fault.**
+
 ## Review Triage Log
+
+One layer (edge-case hunter), with 18 findings.
+
+**Patched:**
+- **Medium:** last-tag-wins lets a stale tag decide, including a `real` tag followed by an `environmental` one. A tag now counts only when it directly precedes the final `panicked at`.
+- **Medium:** the regex freeze misses inline and in-function regexes, and a non-pattern table item reads as removed. This is the acceptance criterion's own claim.
+- **Medium:** opt-out comments bypass the ratchet silently. Opt-out counts are now baselined.
+- **Medium:** `.env` `set_var` races under multi-threaded `cargo test`, and a malformed line truncates loading silently.
+- **Low:** the tag can join the end of an unterminated stdout line; the loader scan fails on a loader name inside a string or comment; `Result::unwrap` used as a path is not counted.
+
+**Deferred** (deferred-work.md): `fail_classified` for `ClassifiedError` (S3); a Binance supervised `Stopped` caused by a 451 keeps no cause (Story 4.10).
+
+**Rejected:**
+- **A later non-chaining panic hook drops tags.** Low and unlikely, and the AC requires the hook design.
+- **A loader used as a value or imported under an alias, and nested or `#[path]` `mod` files.** Low and unlikely in live tests.
+- **A versioned dev-dependency on the toolkit is invisible to the edges test.** The package job's publish dry run already fails on it.
+- **The implementation departs from the frozen "Restricted → environmental".** This is amendment A2-1, recorded in the Spec Change Log and in `spine-amendments/epic-2.md`.
 
 ## Verification
 

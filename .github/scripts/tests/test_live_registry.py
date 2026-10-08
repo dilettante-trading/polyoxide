@@ -10,8 +10,10 @@ would run in CI against a live host, a target missing `required-features`
 compiles to an empty binary, and a secret the job does not pass is a test that
 can never authenticate.
 
-The secrets check is a static scan of each file (`gen_registry.env_names`) until
-Epic 2's credential loaders replace it.
+The secrets check is a static scan of each file (`gen_registry.env_names`). It
+reads the names passed to polyoxide-test-support's credential loaders, which must
+be string literals, and the literal `std::env::var` reads the suites not yet on
+the loaders still make.
 """
 
 from __future__ import annotations
@@ -378,6 +380,73 @@ let g = some_var("NOT_ENV");
 assert_eq!(t, "PONG");
 """
     assert gen_registry.env_names(source) == {"A_KEY", "B_KEY", "C_KEY", "D_KEY", "E_KEY"}
+
+
+def test_the_scan_reads_the_credential_loaders_arguments() -> None:
+    source = """
+use polyoxide_test_support::{keychain, load_env, optional_env};
+
+let creds = load_env(&[
+    "A_KEY",
+    "B_KEY",
+])
+.or_else(|_| polyoxide_test_support::keychain(SERVICE, &[("A_KEY", "a"), ("B_KEY", key()),]))
+.unwrap_or_else(|missing| missing.or_auth_gated());
+let c = optional_env("C_KEY");
+let d = keychain("svc", &[("D_KEY", "d")]);
+"""
+    assert gen_registry.env_names(source) == {"A_KEY", "B_KEY", "C_KEY", "D_KEY"}
+
+
+def test_the_scan_skips_what_only_looks_like_a_loader_call() -> None:
+    source = """
+// load_env(NOT_A_CALL)
+/// optional_env(also_prose)
+pub fn load_env(names: &[&str]) -> Result<Creds, Missing> { todo!() }
+fn keychain(service: &str) {}
+let a = Account::from_keychain();
+let b = polyoxide_core::keychain::get("svc", "key");
+let c = store.keychain(service);
+#[cfg(feature = "keychain")]
+fn reload_env() {}
+"""
+    assert gen_registry.env_names(source) == set()
+
+
+def test_a_loader_name_in_a_string_or_a_comment_is_not_a_call() -> None:
+    source = """
+let a = std::env::var("A_KEY").expect("keychain (macOS) or load_env (CI)");
+let b = r#"optional_env(raw)"#; // keychain (old) and load_env(NAMES)
+/* optional_env(name) */
+let creds = load_env(&[ // the keys (both)
+    "B_KEY", /* , */ "C_KEY",
+]);
+"""
+    assert gen_registry.env_names(source) == {"A_KEY", "B_KEY", "C_KEY"}
+
+
+@pytest.mark.parametrize("call", [
+    "load_env(NAMES)",
+    "load_env(&[NAME])",
+    'load_env(&["A_KEY", name])',
+    "optional_env(name)",
+    'optional_env(&format!("{PREFIX}_KEY"))',
+    'keychain("svc", ENTRIES)',
+    'keychain("svc", &[(NAME, "k")])',
+    'keychain("svc", &["A_KEY"])',
+    'load_env(&["A_KEY"], extra)',
+])
+def test_a_loader_call_without_literal_names_is_refused(call: str) -> None:
+    with pytest.raises(gen_registry.RegistryError, match="loader|literal|slice|pair"):
+        gen_registry.env_names(f"let creds = {call};\n")
+
+
+def test_a_renamed_loader_argument_fails_the_check() -> None:
+    """The mutation `test_renaming_one_env_literal_fails_the_check` makes, on a loader call."""
+    declared = {"A_KEY", "B_KEY"}
+    source = 'let creds = load_env(&["A_KEY", "B_KEY"]);\n'
+    assert gen_registry.env_names(source) == declared
+    assert gen_registry.env_names(source.replace('"B_KEY"', '"B_KEY_RENAMED"')) == {"A_KEY", "B_KEY_RENAMED"}
 
 
 def _target_with_module(root: Path, module_path: str, module: str) -> Path:

@@ -12,6 +12,7 @@ members = [
   "polyoxide-relay",
   "polyoxide-rtds",
   "polyoxide-sports",
+  "polyoxide-test-support",
   "polyoxide-venue",
 ]
 exclude = ["tombstones"]

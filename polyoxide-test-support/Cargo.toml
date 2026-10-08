@@ -1,0 +1,27 @@
+[package]
+name = "polyoxide-test-support"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+authors.workspace = true
+repository.workspace = true
+rust-version.workspace = true
+description = "What polyoxide's live tests share: the failure tags the nightly classifier reads, and the credential loaders"
+# Never published. A crate takes it only as a path-only dev-dependency (no
+# `version`), which cargo strips when it publishes that crate.
+publish = false
+
+# Only `polyoxide-core` and `polyoxide-venue` from the workspace, never a venue
+# crate: a test builds its own client from the strings the loaders return.
+[dependencies]
+polyoxide-core = { workspace = true, features = ["keychain"] }
+polyoxide-venue = { workspace = true }
+dotenvy = "0.15"
+
+# Registration, read by scripts/gen_registry.py: the README line, venue and
+# product ids, the docs/specs/ mirrors covered, and one entry per live test
+# target, which becomes a nightly job. Run `python3 scripts/gen_registry.py
+# --write` after an edit.
+[package.metadata.polyoxide]
+readme = "Live-test toolkit: the failure tags the nightly classifier reads, and the credential loaders (`publish = false`)"
+notes = ["a path-only dev-dependency of the crates whose live tests use it; it names no venue"]

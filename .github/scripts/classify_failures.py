@@ -1,5 +1,12 @@
 #!/usr/bin/env python3
-"""Classify cargo nextest failures into auth-gated / transient / real."""
+"""Classify cargo nextest failures into auth-gated / environmental / transient / real.
+
+A failure that went through `polyoxide-test-support` says which it is: the test
+prints `polyoxide-class=<tag>` alone on a line just before it panics, and that
+line decides. The regex tables below are the fallback for a log with no tag
+line. They are frozen in `scripts/live_unwraps.baseline.json`, so none may be
+added; a new failure mode is tagged where it fails instead.
+"""
 
 from __future__ import annotations
 
@@ -153,13 +160,50 @@ TRANSIENT_RES: list[re.Pattern[str]] = [
 ]
 
 
+# The line `polyoxide-test-support` prints before a test panics. It must be
+# alone on its line: a tag quoted inside other text, such as a panic message,
+# is not one.
+TAG_LINE = re.compile(r"^polyoxide-class=(\S+)\s*$", re.MULTILINE)
+TAGS = {v.value: v for v in (Verdict.AUTH_GATED, Verdict.ENVIRONMENTAL, Verdict.TRANSIENT, Verdict.REAL)}
+# The first line of the report Rust's default panic hook prints, which the
+# test-support hook calls right after printing the tag.
+PANIC_REPORT = re.compile(r"^thread '.*' (?:\(\d+\) )?panicked at ")
+
+
+def _final_tag(failure_output: str) -> str | None:
+    """The tag of the panic that failed the test: the tag line just before the
+    last panic report, blank lines aside, or `None` when there is none there.
+
+    A tag anywhere else belongs to an earlier panic, one the test caught or a
+    spawned task raised, and says nothing about how the test itself failed.
+    """
+    lines = failure_output.splitlines()
+    reports = [i for i, line in enumerate(lines) if PANIC_REPORT.match(line)]
+    if not reports:
+        return None
+    above = reports[-1] - 1
+    while above >= 0 and not lines[above].strip():
+        above -= 1
+    tag = TAG_LINE.match(lines[above]) if above >= 0 else None
+    return tag[1] if tag else None
+
+
 def classify(failure_output: str) -> Verdict:
     """Classify a single failure's combined stdout+stderr text.
 
-    Auth-gated takes precedence over transient (an auth panic message could
-    plausibly contain a substring matching a transient pattern; we want the
-    auth verdict in that case).
+    A tag line decides when it is the one just before the last panic report,
+    which is where the test-support hook prints it; a tag this script does not
+    know is REAL. Any tag that is REAL, wherever it is, makes the failure REAL:
+    a fault the test caught, or a spawned task hit, is still a fault. Every
+    other log reaches the regexes. Among those, auth-gated takes precedence
+    over transient (an auth panic message could plausibly contain a substring
+    matching a transient pattern; we want the auth verdict in that case).
     """
+    if any(TAGS.get(tag, Verdict.REAL) == Verdict.REAL for tag in TAG_LINE.findall(failure_output)):
+        return Verdict.REAL
+    tag = _final_tag(failure_output)
+    if tag is not None:
+        return TAGS[tag]
     if AUTH_GATED_RE.search(failure_output):
         return Verdict.AUTH_GATED
     if ENVIRONMENTAL_RE.search(failure_output):
@@ -177,12 +221,28 @@ class TestOutcome:
     output: str  # raw stdout+stderr; empty for PASS
 
 
+# The attempt number nextest appends to a retried test's name.
+ATTEMPT = re.compile(r"#\d+$")
+
+
+def _joined(stdout: str, stderr: str) -> str:
+    """`stdout` then `stderr`, with a newline between them when `stdout` lacks
+    one, so a tag line opening `stderr` still starts a line."""
+    if stdout and stderr and not stdout.endswith("\n"):
+        return f"{stdout}\n{stderr}"
+    return stdout + stderr
+
+
 def parse_nextest_json(path: Path) -> list[TestOutcome]:
     """Parse a nextest libtest-json NDJSON file into TestOutcomes.
 
     Each line is a JSON object. We care about events with `type == "test"`
     and `event in ("ok", "failed")`. Other events (suite-level, started)
     are ignored.
+
+    nextest appends `#<attempt>` to the name of a test it ran more than once,
+    as the retry pass does (`crate::binary$live_x#3`). The suffix is dropped,
+    so `merge` finds a retried test under the name the first pass gave it.
     """
     outcomes: list[TestOutcome] = []
     with path.open() as f:
@@ -194,11 +254,11 @@ def parse_nextest_json(path: Path) -> list[TestOutcome]:
             if event.get("type") != "test":
                 continue
             kind = event.get("event")
-            name = event.get("name", "")
+            name = ATTEMPT.sub("", event.get("name", ""))
             if kind == "ok":
                 outcomes.append(TestOutcome(name=name, verdict=Verdict.PASS, output=""))
             elif kind == "failed":
-                output = event.get("stdout", "") + event.get("stderr", "")
+                output = _joined(event.get("stdout", ""), event.get("stderr", ""))
                 outcomes.append(TestOutcome(name=name, verdict=classify(output), output=output))
     return outcomes
 
