@@ -596,6 +596,49 @@ async fn live_list_events_keyset() {
     let _ = resp; // events may be empty on some configurations; deserialization is the assertion
 }
 
+/// `include_markets=false` drops `markets` from `/events/keyset`, which
+/// `openapi.yaml` does not list for this route. An ignored parameter is
+/// silent, so the control selects events that do carry markets and the
+/// same ids must then come back without them.
+#[tokio::test]
+#[ignore]
+async fn live_keyset_events_apply_include_markets() {
+    let gamma = client();
+    let with = gamma
+        .events()
+        .list_keyset()
+        .closed(false)
+        .limit(10)
+        .send()
+        .await
+        .expect("list events (keyset) with markets");
+    let ids: Vec<i64> = with
+        .events
+        .iter()
+        .filter(|e| !e.markets.is_empty())
+        .map(|e| e.id.parse().expect("event ids are integers"))
+        .collect();
+    assert!(
+        !ids.is_empty(),
+        "none of {} open events carries markets, so there is no control",
+        with.events.len()
+    );
+
+    let without = gamma
+        .events()
+        .list_keyset()
+        .id(ids.clone())
+        .include_markets(false)
+        .send()
+        .await
+        .expect("list events (keyset) without markets");
+    assert_eq!(without.events.len(), ids.len(), "id={ids:?}");
+    assert!(
+        without.events.iter().all(|e| e.markets.is_empty()),
+        "include_markets=false was ignored on /events/keyset"
+    );
+}
+
 // ── Tags ────────────────────────────────────────────────────────
 
 #[tokio::test]

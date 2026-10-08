@@ -106,15 +106,25 @@ but no `include_markets`. The server applies it. Probed 2026-09-23 with
 | `include_markets=true` | has `markets` (23 entries) |
 | `include_markets=false` | no `markets` key at all |
 
-`GET /events/keyset?limit=3&closed=false` behaves the same way: `markets` is
-present by default and missing with `include_markets=false`.
+`GET /events/keyset` behaves the same way, and `openapi.yaml` does not list
+the parameter there either. Probed 2026-10-08 with
+`limit=100&closed=false&tag_id=1`:
+
+| Query | Events with `markets` | Body |
+|-------|-----------------------|------|
+| no `include_markets` | 100 of 100 | 5.9 MB |
+| `include_markets=true` | 100 of 100 | 5.9 MB |
+| `include_markets=false` | 0 of 100 | 366 KB |
+| `include_markets=0` | 0 of 100 | 366 KB |
+| `exclude_markets=true` | 100 of 100 | 5.9 MB |
 
 So omitting the parameter is the same as `true`, and `false` removes the key
-rather than sending `[]`. `ListEvents::include_markets` sends it.
-`Event::markets` is `#[serde(default)]`, so the missing key parses as an empty
-`Vec`. That empty `Vec` looks the same as an event with no markets, and only
-the request says which one it is. `ListKeysetEvents` has no
-`include_markets` builder yet.
+rather than sending `[]`. `exclude_markets` is ignored, not rejected.
+`ListEvents::include_markets` and `ListKeysetEvents::include_markets` send it,
+and `live_keyset_events_apply_include_markets` fails if the keyset route stops
+applying it. `Event::markets` is `#[serde(default)]`, so the missing key parses
+as an empty `Vec`. That empty `Vec` looks the same as an event with no markets,
+and only the request says which one it is.
 
 ## Protocol V2: `version`, `positionIds` and `resolutionStatus` on `Market`
 

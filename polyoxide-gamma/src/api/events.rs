@@ -489,6 +489,13 @@ impl ListKeysetEvents {
         self
     }
 
+    /// Include the nested `markets` array in each event (the server's default).
+    /// With `false` the server omits the key, so every `Event::markets` is empty.
+    pub fn include_markets(mut self, include: bool) -> Self {
+        self.request = self.request.query("include_markets", include);
+        self
+    }
+
     /// Set the response locale.
     pub fn locale(mut self, locale: impl Into<String>) -> Self {
         self.request = self.request.query("locale", locale.into());
