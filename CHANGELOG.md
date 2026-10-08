@@ -1,3 +1,20 @@
+## [0.38.2] - 2026-10-08
+
+`Event::game_id` reads a negative `gameId` as `None`. Gamma sends `-1` on at
+least one event that is not a game (`blue-wave-in-2026`), and on 0.38.0 and
+0.38.1 that one event failed the whole `GET /events` or `/events/keyset` page
+it was on. The field is still `Option<u64>`. A walk of 54,528 events found no
+other value that `Event` could not decode. Everything else in the workspace is
+unchanged from 0.38.1.
+
+### 🐛 Bug Fixes
+
+- *(gamma)* Read a negative Event::game_id as None
+
+### 📚 Documentation
+
+- *(planning)* Venue-extensibility spec, architecture spine and epics
+
 ## [0.38.1] - 2026-10-08
 
 Adds `ListKeysetEvents::include_markets`, which `ListEvents` has had since
