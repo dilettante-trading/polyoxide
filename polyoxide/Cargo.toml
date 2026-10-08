@@ -24,6 +24,7 @@ full = ["clob", "gamma", "data", "ws", "rtds", "perps", "perps-ws", "sports"]
 keychain = ["polyoxide-clob?/keychain"]
 
 [dependencies]
+polyoxide-venue = { workspace = true }
 polyoxide-gamma = { workspace = true, optional = true }
 polyoxide-clob = { workspace = true, optional = true }
 polyoxide-data = { workspace = true, optional = true }

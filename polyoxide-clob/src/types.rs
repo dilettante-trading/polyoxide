@@ -9,6 +9,13 @@ use thiserror::Error;
 #[error("invalid tick size: {0}. Valid values are 0.1, 0.01, 0.001, or 0.0001")]
 pub struct ParseTickSizeError(String);
 
+/// An `InvalidRequest`: the caller passed a tick size the venue does not use.
+impl polyoxide_venue::Classify for ParseTickSizeError {
+    fn class(&self) -> polyoxide_venue::Class {
+        polyoxide_venue::Class::InvalidRequest
+    }
+}
+
 /// Side of an order (buy or sell).
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Deserialize)]
 #[serde(rename_all = "UPPERCASE")]
@@ -551,6 +558,17 @@ mod tests {
         assert!(TickSize::try_from("1.0").is_err());
         assert!(TickSize::try_from("abc").is_err());
         assert!(TickSize::try_from("0.00001").is_err());
+    }
+
+    #[test]
+    fn a_tick_size_that_does_not_parse_is_an_invalid_request() {
+        use polyoxide_venue::{Class, Classify};
+
+        let err = TickSize::try_from("0.5").unwrap_err();
+        assert_eq!(err.class(), Class::InvalidRequest);
+        assert!(err.is_fault());
+        assert_eq!(err.retry_after(), None);
+        assert!(!err.is_retriable());
     }
 
     #[test]

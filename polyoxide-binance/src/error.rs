@@ -3,6 +3,7 @@
 use std::time::Duration;
 
 use polyoxide_core::{truncate_for_log, ApiError};
+use polyoxide_venue::{class_for_status, Class, Classify};
 use serde::Deserialize;
 use thiserror::Error;
 
@@ -155,6 +156,51 @@ fn clip(text: &str) -> String {
     truncate_for_log(text).into_owned()
 }
 
+/// `Api` delegates, and `Venue` follows the status rule with Binance's code
+/// in decimal. A `429` is `RateLimited`, and a ban, a region block and a
+/// firewall refusal are all `Restricted`: Binance documents its `403` as the
+/// firewall's, not as a credential failure.
+///
+/// A region block is the venue answering as designed, so it is not a fault. A
+/// ban's [`Classify::retry_after`] is still the time it lifts.
+impl Classify for BinanceError {
+    fn class(&self) -> Class {
+        match self {
+            Self::Api(err) => err.class(),
+            Self::Venue { status, code, .. } => class_for_status(*status)
+                .unwrap_or(Class::Decode)
+                .with_code(code.to_string()),
+            Self::RateLimited { retry_after } => {
+                Class::RateLimited { retry_after: None }.with_retry_after(*retry_after)
+            }
+            Self::IpBanned { .. } | Self::RegionBlocked { .. } | Self::Forbidden { .. } => {
+                Class::Restricted
+            }
+        }
+    }
+
+    fn is_fault(&self) -> bool {
+        match self {
+            Self::Api(err) => err.is_fault(),
+            Self::RegionBlocked { .. } => false,
+            // Unreachable today, since a 451 is `RegionBlocked`, but a region
+            // block whichever variant carries it.
+            Self::Venue { status, .. } => *status != 451,
+            Self::RateLimited { .. } | Self::IpBanned { .. } | Self::Forbidden { .. } => true,
+        }
+    }
+
+    fn retry_after(&self) -> Option<Duration> {
+        match self {
+            Self::Api(err) => Classify::retry_after(err),
+            Self::RateLimited { retry_after } | Self::IpBanned { retry_after } => {
+                retry_after.filter(|wait| !wait.is_zero())
+            }
+            Self::Venue { .. } | Self::RegionBlocked { .. } | Self::Forbidden { .. } => None,
+        }
+    }
+}
+
 polyoxide_core::impl_api_error_conversions!(BinanceError);
 
 #[cfg(test)]
@@ -286,6 +332,102 @@ mod tests {
         assert_eq!(retry_after_secs(None), None);
         // A week is longer than any documented ban; it is clamped, not trusted.
         assert_eq!(retry_after_secs(Some("604800")), Some(MAX_COOLDOWN));
+    }
+
+    #[test]
+    fn every_variant_classifies() {
+        let body = r#"{"code":-1121,"msg":"Invalid symbol."}"#;
+        let parts =
+            |status, retry_after| BinanceError::from_response_parts(status, retry_after, body);
+        let code = |c: &str| Some(std::sync::Arc::from(c));
+        let week = Some(MAX_COOLDOWN);
+        // (error, class, is_fault, retry_after(), inherent is_retriable)
+        let rows = [
+            (
+                parts(502, None),
+                Class::Unavailable {
+                    code: code("-1121"),
+                },
+                true,
+                None,
+                true,
+            ),
+            (
+                BinanceError::from_response_parts(502, None, "<html>bad gateway</html>"),
+                Class::Unavailable { code: None },
+                true,
+                None,
+                true,
+            ),
+            (
+                parts(400, None),
+                Class::VenueRefusal {
+                    code: code("-1121"),
+                },
+                true,
+                None,
+                false,
+            ),
+            (
+                parts(408, None),
+                Class::Unavailable {
+                    code: code("-1121"),
+                },
+                true,
+                None,
+                true,
+            ),
+            (
+                parts(429, Some("7")),
+                Class::RateLimited {
+                    retry_after: Some(Duration::from_secs(7)),
+                },
+                true,
+                Some(Duration::from_secs(7)),
+                true,
+            ),
+            (
+                parts(429, None),
+                Class::RateLimited { retry_after: None },
+                true,
+                None,
+                true,
+            ),
+            // A ban says when it lifts, though its class has no wait of its own.
+            (
+                parts(418, Some("604800")),
+                Class::Restricted,
+                true,
+                week,
+                false,
+            ),
+            (parts(451, None), Class::Restricted, false, None, false),
+            // Built by hand: a 451 always becomes `RegionBlocked`, but a region
+            // block is not a fault whichever variant carries it.
+            (
+                BinanceError::Venue {
+                    status: 451,
+                    code: -1,
+                    msg: "restricted".into(),
+                },
+                Class::Restricted,
+                false,
+                None,
+                false,
+            ),
+            (parts(403, None), Class::Restricted, true, None, false),
+        ];
+        for (err, class, fault, wait, inherent) in rows {
+            assert_eq!(err.class(), class, "{err:?}");
+            assert_eq!(err.is_fault(), fault, "{err:?}");
+            assert_eq!(Classify::retry_after(&err), wait, "{err:?}");
+            assert_eq!(
+                Classify::is_retriable(&err),
+                class.is_retriable(),
+                "{err:?}"
+            );
+            assert_eq!(err.is_retriable(), inherent, "{err:?}");
+        }
     }
 
     #[test]

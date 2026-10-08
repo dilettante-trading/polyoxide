@@ -3,6 +3,7 @@
 use std::time::Duration;
 
 use polyoxide_core::{retry_after_header, ApiError, RequestError};
+use polyoxide_venue::{class_for_status, Class, Classify};
 use serde::Deserialize;
 use thiserror::Error;
 
@@ -118,6 +119,51 @@ impl RequestError for PerpsError {
     }
 }
 
+/// The status rule, with `code` as the class's code and any status outside
+/// 400–599 a [`Class::Decode`]. A 451 is not a fault: the venue does not serve
+/// the caller's region, as designed. [`Classify::retry_after`] is the
+/// response's `Retry-After` whatever the status, and `None` when it was zero.
+impl Classify for VenueError {
+    fn class(&self) -> Class {
+        class_for_status(self.status)
+            .unwrap_or(Class::Decode)
+            .with_code(self.code.as_str())
+            .with_retry_after(self.retry_after)
+    }
+
+    fn is_fault(&self) -> bool {
+        self.status != 451
+    }
+
+    fn retry_after(&self) -> Option<Duration> {
+        self.retry_after.filter(|wait| !wait.is_zero())
+    }
+}
+
+/// Delegates to the error each variant wraps.
+impl Classify for PerpsError {
+    fn class(&self) -> Class {
+        match self {
+            Self::Api(err) => err.class(),
+            Self::Venue(err) => err.class(),
+        }
+    }
+
+    fn is_fault(&self) -> bool {
+        match self {
+            Self::Api(err) => err.is_fault(),
+            Self::Venue(err) => err.is_fault(),
+        }
+    }
+
+    fn retry_after(&self) -> Option<Duration> {
+        match self {
+            Self::Api(err) => Classify::retry_after(err),
+            Self::Venue(err) => Classify::retry_after(err),
+        }
+    }
+}
+
 polyoxide_core::impl_api_error_conversions!(PerpsError);
 
 #[cfg(test)]
@@ -200,6 +246,114 @@ mod tests {
                 venue.is_retriable(),
                 api.is_retriable()
             );
+        }
+    }
+
+    #[test]
+    fn every_variant_classifies() {
+        let venue = |status, retry_after, code: &str| {
+            let body = format!(r#"{{"status":"err","error":"{code}"}}"#);
+            PerpsError::Venue(VenueError::from_parts(status, retry_after, &body).unwrap())
+        };
+        let code = |c: &str| Some(std::sync::Arc::from(c));
+        let secs = |n| Some(Duration::from_secs(n));
+        // (error, class, is_fault, (trait retry_after, inherent retry_after),
+        // inherent is_retriable)
+        let rows = [
+            (
+                PerpsError::from(ApiError::Timeout),
+                Class::Unavailable { code: None },
+                true,
+                (None, None),
+                true,
+            ),
+            (
+                PerpsError::from(ApiError::Api {
+                    status: 502,
+                    message: "<html>bad gateway</html>".into(),
+                }),
+                Class::Unavailable { code: None },
+                true,
+                (None, None),
+                true,
+            ),
+            (
+                venue(400, None, "invalid query parameters"),
+                Class::VenueRefusal {
+                    code: code("invalid query parameters"),
+                },
+                true,
+                (None, None),
+                false,
+            ),
+            (
+                venue(404, None, "not_found"),
+                Class::VenueRefusal {
+                    code: code("not_found"),
+                },
+                true,
+                (None, None),
+                false,
+            ),
+            (
+                venue(429, Some("2"), "ip_rate_limited"),
+                Class::RateLimited {
+                    retry_after: secs(2),
+                },
+                true,
+                (secs(2), secs(2)),
+                true,
+            ),
+            // The two disagree on a zero wait, until Epic 3 removes the
+            // inherent method.
+            (
+                venue(429, Some("0"), "ip_rate_limited"),
+                Class::RateLimited { retry_after: None },
+                true,
+                (None, secs(0)),
+                true,
+            ),
+            (
+                venue(503, Some("5"), "unavailable"),
+                Class::Unavailable {
+                    code: code("unavailable"),
+                },
+                true,
+                (secs(5), secs(5)),
+                true,
+            ),
+            // A region block is the venue answering as designed.
+            (
+                venue(451, None, "restricted"),
+                Class::Restricted,
+                false,
+                (None, None),
+                false,
+            ),
+            (
+                venue(200, None, "odd"),
+                Class::Decode,
+                true,
+                (None, None),
+                false,
+            ),
+        ];
+        for (err, class, fault, (wait, inherent_wait), inherent) in rows {
+            assert_eq!(err.class(), class, "{err:?}");
+            assert_eq!(err.is_fault(), fault, "{err:?}");
+            assert_eq!(Classify::retry_after(&err), wait, "{err:?}");
+            assert_eq!(err.retry_after(), inherent_wait, "{err:?}");
+            assert_eq!(
+                Classify::is_retriable(&err),
+                class.is_retriable(),
+                "{err:?}"
+            );
+            assert_eq!(err.is_retriable(), inherent, "{err:?}");
+            if let PerpsError::Venue(venue) = &err {
+                assert_eq!(venue.class(), class, "{venue:?}");
+                assert_eq!(venue.is_fault(), fault, "{venue:?}");
+                assert_eq!(venue.is_retriable(), inherent, "{venue:?}");
+            }
         }
     }
 

@@ -2,7 +2,9 @@
 
 use std::time::Duration;
 
+use polyoxide_venue::{class_for_handshake_status, class_for_status, Class, Classify};
 use thiserror::Error;
+use tokio_tungstenite::tungstenite;
 
 use crate::topic::Topic;
 
@@ -168,6 +170,47 @@ impl RtdsError {
     }
 }
 
+/// A transport failure, by the socket table: a refused upgrade by its status,
+/// misuse and a bad URL or TLS name an `InvalidRequest`, and everything else,
+/// an I/O or protocol error or a closed connection, `Network`.
+fn transport_class(err: &tungstenite::Error) -> Class {
+    use tungstenite::Error as Ws;
+    match err {
+        Ws::Http(response) => class_for_handshake_status(response.status().as_u16()),
+        Ws::Url(_)
+        | Ws::HttpFormat(_)
+        | Ws::Tls(_)
+        | Ws::AttackAttempt
+        | Ws::Capacity(_)
+        | Ws::AlreadyClosed => Class::InvalidRequest,
+        // Io (a TLS EOF included), Protocol, ConnectionClosed,
+        // WriteBufferFull, Utf8 and any later variant.
+        _ => Class::Network,
+    }
+}
+
+/// The transport by the socket table, a lost or silent connection `Network`,
+/// a frame or price that did not decode a `Decode`, and the client's own
+/// refusals an `InvalidRequest`.
+///
+/// A rejected subscription follows the status rule on its `statusCode`, with
+/// any status outside 400–599 a `Decode`. The status is not trustworthy (an
+/// unknown topic reports `401`), but the class goes by it until the venue
+/// documents otherwise.
+impl Classify for RtdsError {
+    fn class(&self) -> Class {
+        match self {
+            Self::Connection(err) => transport_class(err),
+            Self::Json { .. } | Self::Precision { .. } => Class::Decode,
+            Self::ConnectionClosed | Self::Stalled { .. } => Class::Network,
+            Self::Server { status_code, .. } => {
+                class_for_status(*status_code).unwrap_or(Class::Decode)
+            }
+            Self::Url(_) | Self::EmptySubscription => Class::InvalidRequest,
+        }
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -265,5 +308,106 @@ mod tests {
 
         let err = RtdsError::from(tokio_tungstenite::tungstenite::Error::AlreadyClosed);
         assert!(err.source().is_some());
+    }
+
+    #[test]
+    fn the_transport_follows_the_socket_table() {
+        use tokio_tungstenite::tungstenite::{error, http, Message};
+
+        let bad_header = http::header::HeaderName::from_bytes(b"in valid").unwrap_err();
+        let handshake = |status: u16| {
+            tungstenite::Error::Http(http::Response::builder().status(status).body(None).unwrap())
+        };
+        let rows = [
+            (tungstenite::Error::ConnectionClosed, Class::Network),
+            (
+                tungstenite::Error::Io(std::io::ErrorKind::ConnectionReset.into()),
+                Class::Network,
+            ),
+            (
+                tungstenite::Error::Protocol(error::ProtocolError::ResetWithoutClosingHandshake),
+                Class::Network,
+            ),
+            (
+                tungstenite::Error::WriteBufferFull(Message::Close(None)),
+                Class::Network,
+            ),
+            (tungstenite::Error::Utf8, Class::Network),
+            (tungstenite::Error::AlreadyClosed, Class::InvalidRequest),
+            (
+                tungstenite::Error::Url(error::UrlError::NoHostName),
+                Class::InvalidRequest,
+            ),
+            (
+                tungstenite::Error::HttpFormat(bad_header.into()),
+                Class::InvalidRequest,
+            ),
+            (
+                tungstenite::Error::Tls(error::TlsError::InvalidDnsName),
+                Class::InvalidRequest,
+            ),
+            (tungstenite::Error::AttackAttempt, Class::InvalidRequest),
+            (
+                tungstenite::Error::Capacity(error::CapacityError::TooManyHeaders),
+                Class::InvalidRequest,
+            ),
+            (handshake(401), Class::Unauthorized),
+            (handshake(404), Class::VenueRefusal { code: None }),
+            (handshake(429), Class::RateLimited { retry_after: None }),
+            (handshake(503), Class::Unavailable { code: None }),
+            (handshake(200), Class::Decode),
+        ];
+        for (err, class) in rows {
+            let err = RtdsError::from(err);
+            assert_eq!(err.class(), class, "{err:?}");
+            assert!(err.is_fault(), "{err:?}");
+            assert_eq!(err.retry_after(), None, "{err:?}");
+        }
+    }
+
+    #[test]
+    fn every_variant_classifies() {
+        let source = serde_json::from_str::<serde_json::Value>("{not json").unwrap_err();
+        let server = |status_code| RtdsError::Server {
+            status_code,
+            message: "topic: nope and type: update not found".into(),
+        };
+        let rows = [
+            (
+                RtdsError::from(tokio_tungstenite::tungstenite::Error::ConnectionClosed),
+                Class::Network,
+            ),
+            (RtdsError::json("{not json", source), Class::Decode),
+            (RtdsError::ConnectionClosed, Class::Network),
+            // An unknown topic reports 401 for what its message calls a not-found.
+            (server(401), Class::Unauthorized),
+            (server(404), Class::VenueRefusal { code: None }),
+            (server(500), Class::Unavailable { code: None }),
+            (server(200), Class::Decode),
+            (
+                RtdsError::Precision {
+                    raw: "1".repeat(40),
+                    topic: Topic::ChainlinkSpot,
+                },
+                Class::Decode,
+            ),
+            (
+                RtdsError::Stalled {
+                    elapsed: Duration::from_secs(30),
+                },
+                Class::Network,
+            ),
+            (
+                RtdsError::Url(url::ParseError::EmptyHost),
+                Class::InvalidRequest,
+            ),
+            (RtdsError::EmptySubscription, Class::InvalidRequest),
+        ];
+        for (err, class) in rows {
+            assert_eq!(err.class(), class, "{err:?}");
+            assert!(err.is_fault(), "{err:?}");
+            assert_eq!(err.retry_after(), None, "{err:?}");
+            assert_eq!(err.is_retriable(), class.is_retriable(), "{err:?}");
+        }
     }
 }

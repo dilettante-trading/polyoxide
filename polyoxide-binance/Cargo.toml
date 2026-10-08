@@ -20,6 +20,7 @@ test-server = ["ws"]
 
 [dependencies]
 polyoxide-core = { workspace = true }
+polyoxide-venue = { workspace = true }
 reqwest = { workspace = true }
 rust_decimal = { workspace = true }
 serde = { workspace = true }

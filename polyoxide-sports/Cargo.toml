@@ -28,6 +28,7 @@ name = "supervision"
 required-features = ["test-server"]
 
 [dependencies]
+polyoxide-venue = { workspace = true }
 tokio = { workspace = true, features = ["macros", "net", "time", "rt"] }
 tokio-tungstenite = { workspace = true }
 futures-util = "0.3"
@@ -52,7 +53,7 @@ readme = "Client for Polymarket's live sports score feed"
 venue = "polymarket"
 products = ["sports"]
 mirrors = ["sports"]
-notes = ["kept free of workspace dependencies, like `polyoxide-rtds`"]
+notes = ["no other workspace crate, like `polyoxide-rtds`"]
 
 [package.metadata.polyoxide.live.live_api]
 suite = "live"

@@ -1,3 +1,4 @@
+use polyoxide_venue::{Class, Classify};
 use thiserror::Error;
 
 /// Error types for relay operations.
@@ -29,6 +30,37 @@ pub enum RelayError {
 
     #[error("Core API error: {0}")]
     Core(#[from] polyoxide_core::ApiError),
+}
+
+/// A transport failure by core's reqwest rule, a local signing or URL failure
+/// an `InvalidRequest`, a response that did not parse a `Decode`, and a
+/// relayer refusal, whatever its status, a `VenueRefusal` until `Api` carries
+/// the status.
+impl Classify for RelayError {
+    fn class(&self) -> Class {
+        match self {
+            Self::Reqwest(err) => polyoxide_core::error::classify_reqwest(err),
+            Self::UrlParse(_) | Self::Signer(_) | Self::MissingSigner => Class::InvalidRequest,
+            Self::SerdeJson(_) => Class::Decode,
+            Self::Api(_) => Class::VenueRefusal { code: None },
+            Self::RateLimit => Class::RateLimited { retry_after: None },
+            Self::Core(err) => err.class(),
+        }
+    }
+
+    fn is_fault(&self) -> bool {
+        match self {
+            Self::Core(err) => err.is_fault(),
+            _ => true,
+        }
+    }
+
+    fn retry_after(&self) -> Option<std::time::Duration> {
+        match self {
+            Self::Core(err) => Classify::retry_after(err),
+            _ => None,
+        }
+    }
 }
 
 #[cfg(test)]
@@ -86,6 +118,42 @@ mod tests {
         match relay_err {
             RelayError::Core(_) => {}
             other => panic!("Expected Core, got: {other:?}"),
+        }
+    }
+
+    #[test]
+    fn every_variant_classifies() {
+        let builder = reqwest::Client::new().get("not a url").build().unwrap_err();
+        let rows = [
+            (RelayError::Reqwest(builder), Class::InvalidRequest),
+            (
+                RelayError::UrlParse(url::ParseError::EmptyHost),
+                Class::InvalidRequest,
+            ),
+            (
+                RelayError::SerdeJson(serde_json::from_str::<String>("x").unwrap_err()),
+                Class::Decode,
+            ),
+            (RelayError::Signer("bad key".into()), Class::InvalidRequest),
+            (
+                RelayError::Api("server returned 500".into()),
+                Class::VenueRefusal { code: None },
+            ),
+            (
+                RelayError::RateLimit,
+                Class::RateLimited { retry_after: None },
+            ),
+            (RelayError::MissingSigner, Class::InvalidRequest),
+            (
+                RelayError::Core(polyoxide_core::ApiError::Timeout),
+                Class::Unavailable { code: None },
+            ),
+        ];
+        for (err, class) in rows {
+            assert_eq!(err.class(), class, "{err:?}");
+            assert!(err.is_fault(), "{err:?}");
+            assert_eq!(err.retry_after(), None, "{err:?}");
+            assert_eq!(err.is_retriable(), class.is_retriable(), "{err:?}");
         }
     }
 }

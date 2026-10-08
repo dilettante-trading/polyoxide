@@ -43,3 +43,11 @@ pub use client::{SportsWs, SPORTS_WS_URL};
 pub use error::SportsError;
 pub use supervised::{Event, SportsWsBuilder, SupervisedSportsWs};
 pub use update::{GameKey, MatchUpdate};
+
+// Every public error type implements `Classify`; one without it fails the
+// build here. `.github/scripts/tests/test_classify_coverage.py` fails when a
+// public error type is missing from this list.
+const _: fn() = || {
+    fn is<T: polyoxide_venue::Classify>() {}
+    is::<SportsError>();
+};

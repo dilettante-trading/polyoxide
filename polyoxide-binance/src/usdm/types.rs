@@ -36,6 +36,13 @@ pub struct Symbol(String);
 #[error("{0:?} is not a Binance symbol: 1 to 32 letters, digits or underscores")]
 pub struct InvalidSymbol(pub String);
 
+/// An `InvalidRequest`: the caller named a symbol no request can carry.
+impl polyoxide_venue::Classify for InvalidSymbol {
+    fn class(&self) -> polyoxide_venue::Class {
+        polyoxide_venue::Class::InvalidRequest
+    }
+}
+
 impl Symbol {
     /// The longest symbol [`Symbol::new`] accepts, in characters.
     pub const MAX_LEN: usize = 32;
@@ -87,6 +94,15 @@ pub struct UnknownVariant {
     pub type_name: &'static str,
     /// The offending input.
     pub value: String,
+}
+
+/// An `InvalidRequest`: the caller parsed a spelling no variant has. Only
+/// `FromStr` builds one, on a value the caller supplies; a stream name in a
+/// server frame that does not parse becomes a `UsdmWsError::Frame` instead.
+impl polyoxide_venue::Classify for UnknownVariant {
+    fn class(&self) -> polyoxide_venue::Class {
+        polyoxide_venue::Class::InvalidRequest
+    }
 }
 
 /// A closed set the client sends: one wire spelling per variant, and an `ALL`
@@ -1039,6 +1055,26 @@ impl Serialize for Level {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn a_refused_symbol_and_an_unknown_spelling_are_invalid_requests() {
+        use polyoxide_venue::{Class, Classify};
+
+        let symbol = Symbol::new("BTC USDT").unwrap_err();
+        assert_eq!(symbol.class(), Class::InvalidRequest);
+        assert!(symbol.is_fault());
+        assert_eq!(symbol.retry_after(), None);
+        assert!(!symbol.is_retriable());
+
+        let spelling = UnknownVariant {
+            type_name: "Interval",
+            value: "2m".into(),
+        };
+        assert_eq!(spelling.class(), Class::InvalidRequest);
+        assert!(spelling.is_fault());
+        assert_eq!(spelling.retry_after(), None);
+        assert!(!spelling.is_retriable());
+    }
 
     #[test]
     fn symbols_take_letters_digits_and_underscores_in_any_script() {

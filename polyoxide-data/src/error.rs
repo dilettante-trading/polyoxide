@@ -1,6 +1,7 @@
 use std::time::Duration;
 
 use polyoxide_core::{retry_after_header, ApiError, RequestError};
+use polyoxide_venue::{Class, Classify};
 use thiserror::Error;
 
 use crate::v2::V2Error;
@@ -69,6 +70,37 @@ impl RequestError for DataApiError {
     }
 }
 
+/// `Api` and `V2` delegate to the error they wrap, and a pagination failure,
+/// a page that did not continue the walk, is a [`Class::Decode`].
+///
+/// For a v2 error the class comes from the status, so it can disagree with
+/// [`DataApiError::is_retriable`], which keeps the server's `retryable` flag.
+impl Classify for DataApiError {
+    fn class(&self) -> Class {
+        match self {
+            Self::Api(err) => err.class(),
+            Self::V2(err) => err.class(),
+            Self::Pagination(_) => Class::Decode,
+        }
+    }
+
+    fn is_fault(&self) -> bool {
+        match self {
+            Self::Api(err) => err.is_fault(),
+            Self::V2(err) => err.is_fault(),
+            Self::Pagination(_) => true,
+        }
+    }
+
+    fn retry_after(&self) -> Option<Duration> {
+        match self {
+            Self::Api(err) => Classify::retry_after(err),
+            Self::V2(err) => Classify::retry_after(err),
+            Self::Pagination(_) => None,
+        }
+    }
+}
+
 // Implement standard error conversions using the macro
 polyoxide_core::impl_api_error_conversions!(DataApiError);
 
@@ -113,6 +145,82 @@ mod tests {
 
         let walk = DataApiError::Pagination("server returned the cursor it was sent".into());
         assert!(!walk.is_retriable());
+    }
+
+    #[test]
+    fn every_variant_classifies() {
+        let v2 = |status, retry_after, retryable: bool| {
+            let body = format!(
+                r#"{{"error":"x","code":"dependency_unavailable","retryable":{retryable},"trace_id":"t"}}"#
+            );
+            DataApiError::V2(V2Error::from_parts(status, retry_after, &body).unwrap())
+        };
+        let unavailable = Class::Unavailable {
+            code: Some("dependency_unavailable".into()),
+        };
+        let secs = |n| Some(Duration::from_secs(n));
+        // (error, class, is_fault, (trait retry_after, inherent retry_after),
+        // inherent is_retriable)
+        let rows = [
+            (
+                DataApiError::from(ApiError::Timeout),
+                Class::Unavailable { code: None },
+                true,
+                (None, None),
+                true,
+            ),
+            (
+                DataApiError::from(ApiError::Validation("bad".into())),
+                Class::VenueRefusal { code: None },
+                true,
+                (None, None),
+                false,
+            ),
+            // The server's flag and the class disagree here, and each keeps
+            // its own answer.
+            (
+                v2(503, Some("3"), false),
+                unavailable.clone(),
+                true,
+                (secs(3), secs(3)),
+                false,
+            ),
+            // So do the two waits on a zero, until Epic 3 removes the inherent
+            // method.
+            (
+                v2(503, Some("0"), true),
+                unavailable,
+                true,
+                (None, secs(0)),
+                true,
+            ),
+            (
+                v2(451, None, false),
+                Class::Restricted,
+                false,
+                (None, None),
+                false,
+            ),
+            (
+                DataApiError::Pagination("the server returned the cursor it was sent".into()),
+                Class::Decode,
+                true,
+                (None, None),
+                false,
+            ),
+        ];
+        for (err, class, fault, (wait, inherent_wait), inherent) in rows {
+            assert_eq!(err.class(), class, "{err:?}");
+            assert_eq!(err.is_fault(), fault, "{err:?}");
+            assert_eq!(Classify::retry_after(&err), wait, "{err:?}");
+            assert_eq!(err.retry_after(), inherent_wait, "{err:?}");
+            assert_eq!(
+                Classify::is_retriable(&err),
+                class.is_retriable(),
+                "{err:?}"
+            );
+            assert_eq!(err.is_retriable(), inherent, "{err:?}");
+        }
     }
 
     #[test]

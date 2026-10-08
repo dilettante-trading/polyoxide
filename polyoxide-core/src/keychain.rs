@@ -7,6 +7,7 @@
 //! Gated behind the `keychain` feature flag.
 
 use keyring::Entry;
+use polyoxide_venue::{Class, Classify};
 
 /// Error type for keychain operations.
 #[derive(Debug, thiserror::Error)]
@@ -23,6 +24,16 @@ pub enum KeychainError {
     /// An error from the underlying keychain backend.
     #[error("Keychain error: {0}")]
     Backend(#[from] keyring::Error),
+}
+
+/// Every keychain failure is [`Class::InvalidRequest`]: the credential the
+/// caller asked for cannot be read on this machine, and no venue was asked.
+impl Classify for KeychainError {
+    fn class(&self) -> Class {
+        match self {
+            Self::NotFound { .. } | Self::Backend(_) => Class::InvalidRequest,
+        }
+    }
 }
 
 /// Retrieve a credential from the OS keychain.
@@ -94,5 +105,22 @@ mod tests {
         let err = KeychainError::Backend(keyring::Error::NoEntry);
         let msg = err.to_string();
         assert!(msg.contains("Keychain error"), "unexpected: {msg}");
+    }
+
+    #[test]
+    fn every_variant_classifies() {
+        let rows = [
+            KeychainError::NotFound {
+                service: "svc".into(),
+                key: "key".into(),
+            },
+            KeychainError::Backend(keyring::Error::NoEntry),
+        ];
+        for err in rows {
+            assert_eq!(err.class(), Class::InvalidRequest, "{err:?}");
+            assert!(err.is_fault(), "{err:?}");
+            assert_eq!(err.retry_after(), None, "{err:?}");
+            assert!(!err.is_retriable(), "{err:?}");
+        }
     }
 }

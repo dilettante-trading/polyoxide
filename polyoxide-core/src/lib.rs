@@ -78,6 +78,17 @@ pub use signer_limit::{
 #[cfg(feature = "keychain")]
 pub use keychain::KeychainError;
 
+// Every public error type implements `Classify`; one without it fails the
+// build here. `.github/scripts/tests/test_classify_coverage.py` fails when a
+// public error type is missing from this list.
+const _: fn() = || {
+    fn is<T: polyoxide_venue::Classify>() {}
+    is::<ApiError>();
+    is::<BurstCapacityExceeded>();
+    #[cfg(feature = "keychain")]
+    is::<KeychainError>();
+};
+
 #[cfg(test)]
 mod tests {
     use super::*;

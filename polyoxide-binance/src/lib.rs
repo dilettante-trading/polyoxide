@@ -29,3 +29,17 @@ pub mod weight;
 pub use error::BinanceError;
 pub use usdm::{Usdm, UsdmBuilder};
 pub use weight::WeightBudget;
+
+// Every public error type implements `Classify`; one without it fails the
+// build here. `.github/scripts/tests/test_classify_coverage.py` fails when a
+// public error type is missing from this list.
+const _: fn() = || {
+    fn is<T: polyoxide_venue::Classify>() {}
+    is::<BinanceError>();
+    is::<usdm::types::InvalidSymbol>();
+    is::<usdm::types::UnknownVariant>();
+    #[cfg(feature = "ws")]
+    is::<usdm::ws::UsdmWsError>();
+    #[cfg(feature = "ws")]
+    is::<usdm::ws::InvalidStreamName>();
+};

@@ -191,3 +191,14 @@ pub use types::{
     Order, OrderKind, OrderSide, ParseTickSizeError, PartialCreateOrderOptions, SignatureType,
     SignedOrder, TickSize,
 };
+
+// Every public error type implements `Classify`; one without it fails the
+// build here. `.github/scripts/tests/test_classify_coverage.py` fails when a
+// public error type is missing from this list.
+const _: fn() = || {
+    fn is<T: polyoxide_venue::Classify>() {}
+    is::<ClobError>();
+    is::<ParseTickSizeError>();
+    #[cfg(feature = "ws")]
+    is::<ws::WebSocketError>();
+};

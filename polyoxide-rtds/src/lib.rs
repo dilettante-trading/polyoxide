@@ -53,3 +53,11 @@ pub use payload::{
 pub use subscription::{Subscription, SubscriptionRequest};
 pub use supervisor::{RtdsBuilder, SupervisedRtds};
 pub use topic::{Topic, TwapWindow};
+
+// Every public error type implements `Classify`; one without it fails the
+// build here. `.github/scripts/tests/test_classify_coverage.py` fails when a
+// public error type is missing from this list.
+const _: fn() = || {
+    fn is<T: polyoxide_venue::Classify>() {}
+    is::<RtdsError>();
+};

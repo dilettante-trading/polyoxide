@@ -143,6 +143,13 @@ impl fmt::Display for StreamName {
 #[error("{0:?} is not a USDⓈ-M stream name this crate supports: StreamName builds every one, with its symbol in lowercase")]
 pub struct InvalidStreamName(pub String);
 
+/// An `InvalidRequest`: the caller named a stream this crate does not build.
+impl polyoxide_venue::Classify for InvalidStreamName {
+    fn class(&self) -> polyoxide_venue::Class {
+        polyoxide_venue::Class::InvalidRequest
+    }
+}
+
 impl FromStr for StreamName {
     type Err = InvalidStreamName;
 
@@ -310,5 +317,16 @@ mod tests {
                 "{bad}"
             );
         }
+    }
+
+    #[test]
+    fn a_name_that_does_not_parse_is_an_invalid_request() {
+        use polyoxide_venue::{Class, Classify};
+
+        let err = "btcusdt".parse::<StreamName>().unwrap_err();
+        assert_eq!(err.class(), Class::InvalidRequest);
+        assert!(err.is_fault());
+        assert_eq!(err.retry_after(), None);
+        assert!(!err.is_retriable());
     }
 }

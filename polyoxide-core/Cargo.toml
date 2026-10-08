@@ -15,6 +15,7 @@ default = []
 keychain = ["dep:keyring"]
 
 [dependencies]
+polyoxide-venue = { workspace = true }
 base64 = { workspace = true }
 hmac = { workspace = true }
 reqwest = { workspace = true }

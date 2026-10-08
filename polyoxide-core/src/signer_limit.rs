@@ -242,6 +242,14 @@ pub struct BurstCapacityExceeded {
     pub bucket: TradingBucket,
 }
 
+/// [`polyoxide_venue::Class::InvalidRequest`]: the client refused a batch no
+/// bucket can ever hold, and nothing was sent.
+impl polyoxide_venue::Classify for BurstCapacityExceeded {
+    fn class(&self) -> polyoxide_venue::Class {
+        polyoxide_venue::Class::InvalidRequest
+    }
+}
+
 type DirectLimiter = governor::RateLimiter<
     governor::state::NotKeyed,
     governor::state::InMemoryState,
@@ -731,5 +739,21 @@ mod tests {
                 "{tier:?} could absorb a 2,000-ID batch — check the published table"
             );
         }
+    }
+
+    #[test]
+    fn an_over_capacity_batch_is_an_invalid_request_and_not_retriable() {
+        use polyoxide_venue::{Class, Classify};
+
+        let err = BurstCapacityExceeded {
+            cost: 2_000,
+            capacity: 120,
+            tier: Tier::Standard,
+            bucket: TradingBucket::Cancel,
+        };
+        assert_eq!(err.class(), Class::InvalidRequest);
+        assert!(err.is_fault());
+        assert_eq!(err.retry_after(), None);
+        assert!(!err.is_retriable());
     }
 }

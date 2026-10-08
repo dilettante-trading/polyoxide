@@ -2,6 +2,7 @@
 
 use std::time::Duration;
 
+use polyoxide_venue::{class_for_close_code, class_for_handshake_status, Class, Classify};
 use tokio_tungstenite::tungstenite;
 
 /// Everything that can go wrong on the sports feed.
@@ -93,6 +94,39 @@ impl SportsError {
             | tungstenite::Error::HttpFormat(_)
             | tungstenite::Error::AttackAttempt => false,
             _ => true,
+        }
+    }
+}
+
+/// A transport failure, by the socket table: a refused upgrade by its status,
+/// misuse and a bad URL or TLS name an `InvalidRequest`, and everything else,
+/// an I/O or protocol error or a closed connection, `Network`.
+fn transport_class(err: &tungstenite::Error) -> Class {
+    use tungstenite::Error as Ws;
+    match err {
+        Ws::Http(response) => class_for_handshake_status(response.status().as_u16()),
+        Ws::Url(_)
+        | Ws::HttpFormat(_)
+        | Ws::Tls(_)
+        | Ws::AttackAttempt
+        | Ws::Capacity(_)
+        | Ws::AlreadyClosed => Class::InvalidRequest,
+        // Io (a TLS EOF included), Protocol, ConnectionClosed,
+        // WriteBufferFull, Utf8 and any later variant.
+        _ => Class::Network,
+    }
+}
+
+/// The transport by the socket table, a server close by its close code, a
+/// timeout or a silent feed `Network`, and a frame that did not parse a
+/// `Decode`.
+impl Classify for SportsError {
+    fn class(&self) -> Class {
+        match self {
+            Self::Connect { source } | Self::Transport { source } => transport_class(source),
+            Self::ConnectTimeout { .. } | Self::Stale { .. } => Class::Network,
+            Self::Closed { code, .. } => class_for_close_code(*code),
+            Self::Decode { .. } => Class::Decode,
         }
     }
 }
@@ -199,5 +233,126 @@ mod tests {
             text,
             "the sports feed closed the connection with code 1001: going away"
         );
+    }
+
+    #[test]
+    fn the_transport_follows_the_socket_table() {
+        let bad_header =
+            tungstenite::http::header::HeaderName::from_bytes(b"in valid").unwrap_err();
+        let rows = [
+            (tungstenite::Error::ConnectionClosed, Class::Network),
+            (
+                tungstenite::Error::Io(std::io::ErrorKind::ConnectionReset.into()),
+                Class::Network,
+            ),
+            (
+                tungstenite::Error::Protocol(
+                    tungstenite::error::ProtocolError::ResetWithoutClosingHandshake,
+                ),
+                Class::Network,
+            ),
+            (
+                tungstenite::Error::WriteBufferFull(tungstenite::Message::Close(None)),
+                Class::Network,
+            ),
+            (tungstenite::Error::Utf8, Class::Network),
+            (tungstenite::Error::AlreadyClosed, Class::InvalidRequest),
+            (
+                tungstenite::Error::Url(tungstenite::error::UrlError::NoHostName),
+                Class::InvalidRequest,
+            ),
+            (
+                tungstenite::Error::HttpFormat(bad_header.into()),
+                Class::InvalidRequest,
+            ),
+            (
+                tungstenite::Error::Tls(tungstenite::error::TlsError::InvalidDnsName),
+                Class::InvalidRequest,
+            ),
+            (tungstenite::Error::AttackAttempt, Class::InvalidRequest),
+            (
+                tungstenite::Error::Capacity(tungstenite::error::CapacityError::TooManyHeaders),
+                Class::InvalidRequest,
+            ),
+        ];
+        for (err, class) in rows {
+            let err = SportsError::Transport {
+                source: Box::new(err),
+            };
+            assert_eq!(err.class(), class, "{err:?}");
+            assert!(err.is_fault(), "{err:?}");
+            assert_eq!(err.retry_after(), None, "{err:?}");
+        }
+        for (status, class) in [
+            (301, Class::Decode),
+            (401, Class::Unauthorized),
+            (403, Class::Unauthorized),
+            (404, Class::VenueRefusal { code: None }),
+            (429, Class::RateLimited { retry_after: None }),
+            (503, Class::Unavailable { code: None }),
+        ] {
+            assert_eq!(http_error(status).class(), class, "{status}");
+        }
+    }
+
+    #[test]
+    fn every_variant_classifies() {
+        let rows = [
+            (http_error(503), Class::Unavailable { code: None }),
+            (
+                SportsError::ConnectTimeout {
+                    after: Duration::from_secs(10),
+                },
+                Class::Network,
+            ),
+            (
+                SportsError::Closed {
+                    code: Some(1001),
+                    reason: "going away".into(),
+                },
+                Class::Network,
+            ),
+            (
+                SportsError::Closed {
+                    code: Some(1008),
+                    reason: "policy".into(),
+                },
+                Class::VenueRefusal {
+                    code: Some("1008".into()),
+                },
+            ),
+            (
+                SportsError::Closed {
+                    code: None,
+                    reason: String::new(),
+                },
+                Class::Network,
+            ),
+            (
+                SportsError::Transport {
+                    source: Box::new(tungstenite::Error::ConnectionClosed),
+                },
+                Class::Network,
+            ),
+            (
+                SportsError::Stale {
+                    after: Duration::from_secs(45),
+                },
+                Class::Network,
+            ),
+            (
+                SportsError::Decode {
+                    raw: "{".into(),
+                    source: serde_json::from_str::<u8>("{").unwrap_err(),
+                },
+                Class::Decode,
+            ),
+        ];
+        for (err, class) in rows {
+            assert_eq!(err.class(), class, "{err:?}");
+            assert!(err.is_fault(), "{err:?}");
+            assert_eq!(err.retry_after(), None, "{err:?}");
+            assert_eq!(err.is_retriable(), class.is_retriable(), "{err:?}");
+        }
     }
 }

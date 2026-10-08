@@ -31,6 +31,7 @@ alloy = { version = "1.1.2", features = [
     "sol-types",
 ] }
 polyoxide-core = { workspace = true }
+polyoxide-venue = { workspace = true }
 reqwest = { workspace = true }
 polyoxide-gamma = { workspace = true, optional = true }
 serde = { workspace = true }

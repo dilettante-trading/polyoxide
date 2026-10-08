@@ -25,6 +25,7 @@ name = "supervision"
 required-features = ["test-fixtures"]
 
 [dependencies]
+polyoxide-venue = { workspace = true }
 tokio = { workspace = true, features = ["macros", "net", "time", "rt"] }
 tokio-tungstenite = { workspace = true }
 futures-util = "0.3"
@@ -51,7 +52,7 @@ readme = "Client for Polymarket's RTDS crypto price streams"
 venue = "polymarket"
 products = ["rtds"]
 mirrors = ["rtds"]
-notes = ["kept free of workspace dependencies, so a credential-free price feed does not pull in `alloy`"]
+notes = ["no other workspace crate, `reqwest` or `alloy`, so a credential-free price feed builds no HTTP or signing stack"]
 
 [package.metadata.polyoxide.live.live_api]
 suite = "live"

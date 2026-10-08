@@ -13,6 +13,8 @@ fails when a cited line no longer holds the code it was cited for.
 Every row was proved on 2026-10-08 at commit `a35a8ee`, on Rust 1.95 with `-j 4`, by
 running `cargo test -p <crate> <target> -j 4 -- <test names>` with the mutant in place,
 then without it.
+Rows (e) and (e), case were proved again the same day on top of `8aac730`, after Stories
+2.1 and 2.2 moved their `polyoxide-clob/src/error.rs` tests 41 lines down.
 
 ## The rules
 
@@ -25,11 +27,11 @@ then without it.
 | (c) Cooldowns only extend | `polyoxide-core/src/rate_limit.rs:363`, `begin_cooldown` keeps the later deadline | Assign `*slot = Some(until)` unconditionally | `polyoxide-core/src/rate_limit.rs:1907` `a_shorter_cooldown_never_cuts_a_longer_one_short` |
 | (c), a cooldown extended mid-wait | `polyoxide-core/src/rate_limit.rs:381-396`, `await_cooldown` re-reads the deadline after each sleep | `return` after the `sleep_until` at `polyoxide-core/src/rate_limit.rs:394`, so it sleeps once | `polyoxide-core/src/rate_limit.rs:1925` `a_cooldown_extended_mid_wait_is_honoured_in_full` |
 | (d) `quota()` leaves depth at one token, with no `allow_burst` | `polyoxide-core/src/rate_limit.rs:165-167` | Append `.allow_burst(NonZeroU32::new(count).unwrap())` | `polyoxide-core/src/rate_limit.rs:244` `no_quota_admits_more_than_its_published_count_in_one_window`; `polyoxide-core/src/rate_limit.rs:261` `every_quota_reserves_headroom_below_the_published_count`; `polyoxide-core/src/rate_limit.rs:284` `every_configured_bucket_satisfies_the_quota_it_publishes` |
-| (e) `classify_order_kill` needs both the order kind and the kill token | `polyoxide-clob/src/error.rs:92` | `&&` → `\|\|` after `m.contains("fak order")` | `polyoxide-clob/src/error.rs:348` `test_classify_requires_both_tokens` |
-| (e), case | `polyoxide-clob/src/error.rs:89`, the message is lowercased before matching | `let m = message.to_string();` | `polyoxide-clob/src/error.rs:273` `test_classify_recognizes_verbatim_venue_messages`; `polyoxide-clob/src/error.rs:285` `test_classify_preserves_message_verbatim`; `polyoxide-clob/src/error.rs:293` `test_classify_is_case_insensitive`; `polyoxide-clob/src/error.rs:306` `test_classify_tolerates_curly_apostrophe_in_fok_message`; `polyoxide-clob/tests/mock_api.rs:3365` `fak_unmatched_maps_to_typed_error_not_generic_validation`; `polyoxide-clob/tests/mock_api.rs:3399` `fok_unfilled_maps_to_typed_error_not_generic_validation` |
+| (e) `classify_order_kill` needs both the order kind and the kill token | `polyoxide-clob/src/error.rs:92` | `&&` → `\|\|` after `m.contains("fak order")` | `polyoxide-clob/src/error.rs:389` `test_classify_requires_both_tokens` |
+| (e), case | `polyoxide-clob/src/error.rs:89`, the message is lowercased before matching | `let m = message.to_string();` | `polyoxide-clob/src/error.rs:314` `test_classify_recognizes_verbatim_venue_messages`; `polyoxide-clob/src/error.rs:326` `test_classify_preserves_message_verbatim`; `polyoxide-clob/src/error.rs:334` `test_classify_is_case_insensitive`; `polyoxide-clob/src/error.rs:347` `test_classify_tolerates_curly_apostrophe_in_fok_message`; `polyoxide-clob/tests/mock_api.rs:3365` `fak_unmatched_maps_to_typed_error_not_generic_validation`; `polyoxide-clob/tests/mock_api.rs:3399` `fok_unfilled_maps_to_typed_error_not_generic_validation` |
 | (e), only a 400 is classified | `polyoxide-clob/src/error.rs:110-113`, `from_response` classifies `ApiError::Validation` alone | Add an `ApiError::Api { status, message }` arm that classifies `message` too | `polyoxide-clob/tests/mock_api.rs:3462` `fak_prose_on_non_400_status_is_not_reclassified` |
 
-`polyoxide-clob/src/error.rs:317` `test_classify_does_not_capture_neighbouring_400s` fails
+`polyoxide-clob/src/error.rs:358` `test_classify_does_not_capture_neighbouring_400s` fails
 under none of the mutants above. It pins the 400s that neighbour the kill outcomes, so keep
 it, but do not count it as holding any of these rules.
 

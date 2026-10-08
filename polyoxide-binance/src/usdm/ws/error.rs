@@ -2,7 +2,9 @@
 
 use std::time::Duration;
 
+use polyoxide_venue::{class_for_close_code, class_for_handshake_status, Class, Classify};
 use thiserror::Error;
+use tokio_tungstenite::tungstenite;
 
 use crate::usdm::ws::{stream::StreamName, StreamPath};
 
@@ -146,6 +148,51 @@ impl UsdmWsError {
     }
 }
 
+/// A transport failure, by the socket table: a refused upgrade by its status,
+/// misuse and a bad URL or TLS name an `InvalidRequest`, and everything else,
+/// an I/O or protocol error or a closed connection, `Network`.
+///
+/// A handshake refused with `403` is `Restricted`, as on REST: Binance's
+/// firewall answers it, and it is not a credential failure, since the
+/// streams need none.
+fn transport_class(err: &tungstenite::Error) -> Class {
+    use tungstenite::Error as Ws;
+    match err {
+        Ws::Http(response) if response.status().as_u16() == 403 => Class::Restricted,
+        Ws::Http(response) => class_for_handshake_status(response.status().as_u16()),
+        Ws::Url(_)
+        | Ws::HttpFormat(_)
+        | Ws::Tls(_)
+        | Ws::AttackAttempt
+        | Ws::Capacity(_)
+        | Ws::AlreadyClosed => Class::InvalidRequest,
+        // Io (a TLS EOF included), Protocol, ConnectionClosed,
+        // WriteBufferFull, Utf8 and any later variant.
+        _ => Class::Network,
+    }
+}
+
+/// The transport by the socket table, a server close by its close code, a
+/// refused request a `VenueRefusal` with Binance's code in decimal, an answer
+/// or frame that did not parse a `Decode`, and the client's own refusals an
+/// `InvalidRequest`.
+impl Classify for UsdmWsError {
+    fn class(&self) -> Class {
+        match self {
+            Self::Connect(err) => transport_class(err),
+            Self::ConnectTimeout(_) | Self::NoAnswer { .. } => Class::Network,
+            Self::Closed { code, .. } => class_for_close_code(*code),
+            Self::Refused { code, .. } => Class::VenueRefusal {
+                code: Some(code.to_string().into()),
+            },
+            Self::Response { .. } | Self::Frame { .. } => Class::Decode,
+            Self::TooManyStreams { .. } | Self::WrongPath { .. } | Self::Stopped => {
+                Class::InvalidRequest
+            }
+        }
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -232,5 +279,152 @@ mod tests {
     fn usdm_ws_error_is_send_sync() {
         fn assert_send_sync<T: Send + Sync>() {}
         assert_send_sync::<UsdmWsError>();
+    }
+
+    #[test]
+    fn the_transport_follows_the_socket_table() {
+        let bad_header = http::header::HeaderName::from_bytes(b"in valid").unwrap_err();
+        let rows = [
+            (tungstenite::Error::ConnectionClosed, Class::Network),
+            (
+                tungstenite::Error::Io(std::io::ErrorKind::ConnectionReset.into()),
+                Class::Network,
+            ),
+            (
+                tungstenite::Error::Protocol(
+                    tungstenite::error::ProtocolError::ResetWithoutClosingHandshake,
+                ),
+                Class::Network,
+            ),
+            (
+                tungstenite::Error::WriteBufferFull(tungstenite::Message::Close(None)),
+                Class::Network,
+            ),
+            (tungstenite::Error::Utf8, Class::Network),
+            (tungstenite::Error::AlreadyClosed, Class::InvalidRequest),
+            (
+                tungstenite::Error::Url(tungstenite::error::UrlError::NoHostName),
+                Class::InvalidRequest,
+            ),
+            (
+                tungstenite::Error::HttpFormat(bad_header.into()),
+                Class::InvalidRequest,
+            ),
+            (
+                tungstenite::Error::Tls(tungstenite::error::TlsError::InvalidDnsName),
+                Class::InvalidRequest,
+            ),
+            (tungstenite::Error::AttackAttempt, Class::InvalidRequest),
+            (
+                tungstenite::Error::Capacity(tungstenite::error::CapacityError::TooManyHeaders),
+                Class::InvalidRequest,
+            ),
+        ];
+        for (err, class) in rows {
+            let err = UsdmWsError::from(err);
+            assert_eq!(err.class(), class, "{err:?}");
+            assert!(err.is_fault(), "{err:?}");
+            assert_eq!(err.retry_after(), None, "{err:?}");
+        }
+        for (status, class) in [
+            (401, Class::Unauthorized),
+            // Binance's firewall, as on REST.
+            (403, Class::Restricted),
+            (404, Class::VenueRefusal { code: None }),
+            (418, Class::Restricted),
+            (429, Class::RateLimited { retry_after: None }),
+            (451, Class::Restricted),
+            (503, Class::Unavailable { code: None }),
+            (200, Class::Decode),
+        ] {
+            assert_eq!(http_error(status).class(), class, "{status}");
+        }
+    }
+
+    #[test]
+    fn every_variant_classifies() {
+        let symbol = crate::usdm::types::Symbol::new("BTCUSDT").unwrap();
+        let rows = [
+            (http_error(503), Class::Unavailable { code: None }),
+            (
+                UsdmWsError::ConnectTimeout(Duration::from_secs(10)),
+                Class::Network,
+            ),
+            (
+                UsdmWsError::Closed {
+                    code: Some(1008),
+                    reason: "Too many requests".into(),
+                },
+                Class::VenueRefusal {
+                    code: Some("1008".into()),
+                },
+            ),
+            (
+                UsdmWsError::Closed {
+                    code: Some(1001),
+                    reason: String::new(),
+                },
+                Class::Network,
+            ),
+            (
+                UsdmWsError::Closed {
+                    code: None,
+                    reason: String::new(),
+                },
+                Class::Network,
+            ),
+            (
+                UsdmWsError::Refused {
+                    code: 2,
+                    msg: "Invalid request".into(),
+                },
+                Class::VenueRefusal {
+                    code: Some("2".into()),
+                },
+            ),
+            (
+                UsdmWsError::NoAnswer {
+                    id: 3,
+                    timeout: Duration::from_secs(10),
+                },
+                Class::Network,
+            ),
+            (
+                UsdmWsError::Response {
+                    id: 4,
+                    raw: "{}".into(),
+                },
+                Class::Decode,
+            ),
+            (
+                UsdmWsError::TooManyStreams {
+                    path: StreamPath::Market,
+                    limit: 1024,
+                },
+                Class::InvalidRequest,
+            ),
+            (
+                UsdmWsError::WrongPath {
+                    stream: StreamName::BookTicker(symbol),
+                    path: StreamPath::Market,
+                },
+                Class::InvalidRequest,
+            ),
+            (
+                UsdmWsError::Frame {
+                    stream: "btcusdt@aggTrade".into(),
+                    raw: "{}".into(),
+                    reason: "missing field".into(),
+                },
+                Class::Decode,
+            ),
+            (UsdmWsError::Stopped, Class::InvalidRequest),
+        ];
+        for (err, class) in rows {
+            assert_eq!(err.class(), class, "{err:?}");
+            assert!(err.is_fault(), "{err:?}");
+            assert_eq!(err.retry_after(), None, "{err:?}");
+            assert_eq!(err.is_retriable(), class.is_retriable(), "{err:?}");
+        }
     }
 }

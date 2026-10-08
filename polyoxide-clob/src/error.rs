@@ -181,6 +181,47 @@ impl From<serde_json::Error> for ClobError {
     }
 }
 
+/// The FAK and FOK kills are a [`VenueRefusal`](polyoxide_venue::Class::VenueRefusal)
+/// that is not a fault: the venue killed the order as its time-in-force
+/// says. `Api` and `BurstCapacityExceeded` delegate, local signing failures
+/// are an `InvalidRequest`, and a tick size that did not parse is a `Decode`.
+impl polyoxide_venue::Classify for ClobError {
+    fn class(&self) -> polyoxide_venue::Class {
+        use polyoxide_venue::Class;
+        match self {
+            Self::Api(err) => err.class(),
+            Self::Crypto(_) | Self::Alloy(_) => Class::InvalidRequest,
+            Self::InvalidTickSize(_) => Class::Decode,
+            Self::FakUnmatched { .. } | Self::FokUnfilled { .. } => {
+                Class::VenueRefusal { code: None }
+            }
+            Self::BurstCapacityExceeded(err) => err.class(),
+        }
+    }
+
+    fn is_fault(&self) -> bool {
+        match self {
+            Self::Api(err) => err.is_fault(),
+            Self::FakUnmatched { .. } | Self::FokUnfilled { .. } => false,
+            Self::BurstCapacityExceeded(err) => err.is_fault(),
+            Self::Crypto(_) | Self::Alloy(_) | Self::InvalidTickSize(_) => true,
+        }
+    }
+
+    fn retry_after(&self) -> Option<std::time::Duration> {
+        use polyoxide_venue::Classify;
+        match self {
+            Self::Api(err) => Classify::retry_after(err),
+            Self::BurstCapacityExceeded(err) => Classify::retry_after(err),
+            Self::Crypto(_)
+            | Self::Alloy(_)
+            | Self::InvalidTickSize(_)
+            | Self::FakUnmatched { .. }
+            | Self::FokUnfilled { .. } => None,
+        }
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -402,5 +443,92 @@ FAK orders are partially filled or killed if no match is found.";
             message: FOK_UNFILLED.into(),
         };
         assert!(fok.to_string().starts_with("FOK order killed unfilled:"));
+    }
+
+    // ── Classify ────────────────────────────────────────────────
+
+    #[test]
+    fn every_variant_classifies() {
+        use polyoxide_core::{BurstCapacityExceeded, Tier, TradingBucket};
+        use polyoxide_venue::{Class, Classify};
+
+        let tick = crate::types::TickSize::try_from("0.5").unwrap_err();
+        let burst = BurstCapacityExceeded {
+            cost: 2_000,
+            capacity: 120,
+            tier: Tier::Standard,
+            bucket: TradingBucket::Cancel,
+        };
+        let refusal = Class::VenueRefusal { code: None };
+        // (error, class, is_fault, inherent is_retriable). No ClobError carries
+        // a wait.
+        let rows = [
+            (
+                ClobError::Api(ApiError::Timeout),
+                Class::Unavailable { code: None },
+                true,
+                true,
+            ),
+            (
+                ClobError::validation("bad input"),
+                refusal.clone(),
+                true,
+                false,
+            ),
+            // Any failure of the Gamma dependency, a 4xx and a local failure
+            // included, so it is not retried.
+            (
+                ClobError::service("gamma failed"),
+                refusal.clone(),
+                true,
+                false,
+            ),
+            (
+                ClobError::Crypto("signing failed".into()),
+                Class::InvalidRequest,
+                true,
+                false,
+            ),
+            (
+                ClobError::Alloy("hex decode failed".into()),
+                Class::InvalidRequest,
+                true,
+                false,
+            ),
+            (ClobError::InvalidTickSize(tick), Class::Decode, true, false),
+            (
+                ClobError::FakUnmatched {
+                    message: FAK_UNMATCHED.into(),
+                },
+                refusal.clone(),
+                false,
+                false,
+            ),
+            (
+                ClobError::FokUnfilled {
+                    message: FOK_UNFILLED.into(),
+                },
+                refusal,
+                false,
+                false,
+            ),
+            (
+                ClobError::BurstCapacityExceeded(burst),
+                Class::InvalidRequest,
+                true,
+                false,
+            ),
+        ];
+        for (err, class, fault, inherent) in rows {
+            assert_eq!(err.class(), class, "{err:?}");
+            assert_eq!(err.is_fault(), fault, "{err:?}");
+            assert_eq!(Classify::retry_after(&err), None, "{err:?}");
+            assert_eq!(
+                Classify::is_retriable(&err),
+                class.is_retriable(),
+                "{err:?}"
+            );
+            assert_eq!(err.is_retriable(), inherent, "{err:?}");
+        }
     }
 }

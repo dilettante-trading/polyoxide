@@ -35,6 +35,15 @@ pub struct UnknownVariant {
     pub value: String,
 }
 
+/// An `InvalidRequest`: the caller parsed a spelling no variant has. Only
+/// `FromStr` builds one, on a value the caller supplies; a push frame whose
+/// channel does not parse becomes an unknown frame instead.
+impl polyoxide_venue::Classify for UnknownVariant {
+    fn class(&self) -> polyoxide_venue::Class {
+        polyoxide_venue::Class::InvalidRequest
+    }
+}
+
 /// A closed set with one wire spelling per variant. Generates serde renames,
 /// `Display`, `FromStr` and an `ALL` table, so every spelling lives in one
 /// place and the agreement test can walk them.
@@ -306,6 +315,17 @@ mod tests {
     fn an_unknown_spelling_names_the_type_and_the_value() {
         let err = "2m".parse::<Interval>().unwrap_err();
         assert_eq!(err.to_string(), "\"2m\" is not a valid Interval");
+    }
+
+    #[test]
+    fn an_unknown_spelling_is_an_invalid_request() {
+        use polyoxide_venue::{Class, Classify};
+
+        let err = "2m".parse::<Interval>().unwrap_err();
+        assert_eq!(err.class(), Class::InvalidRequest);
+        assert!(err.is_fault());
+        assert_eq!(err.retry_after(), None);
+        assert!(!err.is_retriable());
     }
 
     #[test]

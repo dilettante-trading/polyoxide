@@ -12,6 +12,7 @@ members = [
   "polyoxide-relay",
   "polyoxide-rtds",
   "polyoxide-sports",
+  "polyoxide-venue",
 ]
 exclude = ["tombstones"]
 resolver = "3"
@@ -34,6 +35,7 @@ polyoxide-data = { path = "polyoxide-data", version = "0.38.1" }
 polyoxide-relay = { path = "polyoxide-relay", version = "0.38.1" }
 polyoxide-rtds = { path = "polyoxide-rtds", version = "0.38.1" }
 polyoxide-sports = { path = "polyoxide-sports", version = "0.38.1" }
+polyoxide-venue = { path = "polyoxide-venue", version = "0.38.1" }
 tokio = { version = "1.41" }
 reqwest = { version = "0.12", features = ["json", "rustls-tls", "gzip"], default-features = false }
 serde = { version = "1.0", features = ["derive"] }
