@@ -70,3 +70,25 @@ required-features = ["ws"]
 # docs.rs documents the streams too; `test-server` stays out of the docs.
 [package.metadata.docs.rs]
 features = ["ws"]
+
+# Registration, read by scripts/gen_registry.py: the README line, venue and
+# product ids, the docs/specs/ mirrors covered, and one entry per live test
+# target, which becomes a nightly job. Run `python3 scripts/gen_registry.py
+# --write` after an edit.
+[package.metadata.polyoxide]
+readme = "Client library for Binance USDⓈ-M futures market data and streams (not part of the unified crate)"
+venue = "binance"
+products = ["usdm"]
+mirrors = ["binance"]
+
+[package.metadata.polyoxide.live.live_api]
+suite = "live"
+timeout = 15
+features = []
+secrets = []
+
+[package.metadata.polyoxide.live.live_ws]
+suite = "live"
+timeout = 15
+features = ["ws"]
+secrets = []

@@ -30,3 +30,10 @@ serde_json = { workspace = true }
 [dev-dependencies]
 pyo3 = { workspace = true, features = ["auto-initialize"] }
 serde = { workspace = true }
+
+# Registration, read by scripts/gen_registry.py: the README line, venue and
+# product ids, the docs/specs/ mirrors covered, and one entry per live test
+# target, which becomes a nightly job. Run `python3 scripts/gen_registry.py
+# --write` after an edit.
+[package.metadata.polyoxide]
+readme = "Python bindings via PyO3 (`publish = false`, wheels on PyPI)"

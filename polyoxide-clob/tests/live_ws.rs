@@ -34,10 +34,15 @@ use polyoxide_clob::{Account, ClobBuilder, Credentials};
 ///
 /// The panic keeps the phrase `POLYMARKET_PRIVATE_KEY required` verbatim:
 /// `AUTH_GATED_RE` in `.github/scripts/classify_failures.py` matches on it to
-/// skip these in the nightly rather than filing an issue.
+/// skip these in the nightly rather than filing an issue. An empty value counts
+/// as unset, since the nightly passes an unset repository secret as `""`, which
+/// would otherwise fail `Account::new` in words the classifier files as real.
 fn l1_account() -> Account {
     dotenvy::dotenv().ok();
-    if let Ok(private_key) = std::env::var("POLYMARKET_PRIVATE_KEY") {
+    if let Some(private_key) = std::env::var("POLYMARKET_PRIVATE_KEY")
+        .ok()
+        .filter(|key| !key.is_empty())
+    {
         return Account::new(
             private_key,
             Credentials {

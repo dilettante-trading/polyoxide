@@ -52,25 +52,30 @@ cargo test -p polyoxide-clob --test live_api -- --ignored
 
 ## Workspace Architecture
 
-Twelve crates with this dependency graph:
+Text between `<!-- generated:begin <id> -->` and `<!-- generated:end <id> -->` markers, here and in README.md, docs/specs/INDEX.md, SELF-HEALING.md and the two nightly workflows, is written by `scripts/gen_registry.py` from each crate's `[package.metadata.polyoxide]`, the root manifest's `[workspace.metadata.polyoxide.mirrors]` and `cargo metadata`, so never edit it by hand: change the metadata, run `python3 scripts/gen_registry.py --write`, and expect CI's scripts job to fail on any region that differs from what the generator produces.
 
-```
-polyoxide-core          (shared: auth, HTTP client, errors, macros)
-├── polyoxide-relay     (gasless transactions via Polygon relayer)
-├── polyoxide-gamma     (read-only market data API)
-├── polyoxide-data      (read-only user positions/trades API)
-├── polyoxide-perps     (perpetual futures: public market data; auth and trading pending)
-├── polyoxide-binance   (Binance USDⓈ-M futures market data and streams; not in the umbrella crate)
-├── polyoxide-clob      (order book trading, depends on core; gamma optional, default-on)
-│   └── polyoxide        (unified client re-exporting clob/gamma/data/rtds/perps/sports, feature-gated)
-├── polyoxide-cli       (CLI tool using clap)
-└── polyoxide-py        (Python bindings via PyO3 + maturin, publish = false)
+<!-- generated:begin claude-crate-count -->
+Twelve crates, in publish order, each with the workspace crates its build needs. Crates that are not published come last:
+<!-- generated:end claude-crate-count -->
 
-polyoxide-rtds          (RTDS crypto price streams — depends on NOTHING in-workspace)
-polyoxide-sports        (live sports scores WebSocket — depends on NOTHING in-workspace)
-```
+<!-- generated:begin claude-graph -->
+- `polyoxide-core` — Core utilities and shared types; needs: nothing in the workspace; shared auth, HTTP client, errors and macros
+- `polyoxide-binance` — Client library for Binance USDⓈ-M futures market data and streams (not part of the unified crate); needs: `polyoxide-core`
+- `polyoxide-data` — Client library for Polymarket Data API; needs: `polyoxide-core`
+- `polyoxide-gamma` — Client library for Polymarket Gamma (market data) API; needs: `polyoxide-core`
+- `polyoxide-perps` — Client library for Polymarket Perps (perpetual futures) public market data; needs: `polyoxide-core`; auth and trading pending
+- `polyoxide-relay` — Client library for Polymarket Relayer API (gasless transactions); needs: `polyoxide-core`
+- `polyoxide-clob` — Client library for Polymarket CLOB (order book) API; needs: `polyoxide-core`, `polyoxide-gamma` (under `gamma`, on by default); published after `polyoxide-relay`, a versioned dev-dependency
+- `polyoxide-rtds` — Client for Polymarket's RTDS crypto price streams; needs: nothing in the workspace; kept free of workspace dependencies, so a credential-free price feed does not pull in `alloy`
+- `polyoxide-sports` — Client for Polymarket's live sports score feed; needs: nothing in the workspace; kept free of workspace dependencies, like `polyoxide-rtds`
+- `polyoxide` — Unified client for Polymarket APIs (CLOB, Gamma, Data, WebSocket, RTDS, Perps, Sports); needs: `polyoxide-clob` (under `clob`, on by default), `polyoxide-data` (under `data`, on by default), `polyoxide-gamma` (under `gamma`, on by default), `polyoxide-perps` (under `perps`), `polyoxide-rtds` (under `rtds`), `polyoxide-sports` (under `sports`)
+- `polyoxide-cli` — CLI tool for querying Polymarket APIs and Binance USDⓈ-M market data; needs: `polyoxide-binance` (with `ws`), `polyoxide-clob` (with `ws`), `polyoxide-core` (with `keychain`, under `keychain`), `polyoxide-data`, `polyoxide-gamma`, `polyoxide-relay` (with `keychain`, under `keychain`), `polyoxide-rtds`, `polyoxide-sports`
+- `polyoxide-py` — Python bindings via PyO3 (`publish = false`, wheels on PyPI); needs: `polyoxide-clob` (without default features), `polyoxide-data`, `polyoxide-gamma`
+<!-- generated:end claude-graph -->
 
-Note: `polyoxide-cli` does **not** depend on the unified `polyoxide` crate. It depends directly on the component crates — `polyoxide-clob` (with `ws`), `polyoxide-data`, `polyoxide-gamma`, `polyoxide-rtds`, `polyoxide-sports` and `polyoxide-binance` (with `ws`) — plus `polyoxide-core` and `polyoxide-relay` only under the optional `keychain` feature.
+<!-- generated:begin claude-cli-deps -->
+Note: `polyoxide-cli` does **not** depend on the unified `polyoxide` crate. It depends directly on the component crates — `polyoxide-binance` (with `ws`), `polyoxide-clob` (with `ws`), `polyoxide-data`, `polyoxide-gamma`, `polyoxide-rtds` and `polyoxide-sports` — plus `polyoxide-core` (with `keychain`) and `polyoxide-relay` (with `keychain`) only under the optional `keychain` feature.
+<!-- generated:end claude-cli-deps -->
 
 The CLI's `ws` group streams `market` and `user` (clob), `prices` (rtds), `sports`
 (`polyoxide-sports`) and `binance` (`polyoxide-binance`). `ws sports` takes comma-separated `--league` and `--game` filters and
@@ -109,7 +114,9 @@ arguments against mock servers serving `polyoxide-data`'s v2 fixtures.
 `data` list flag shipped that way, and no test caught it because the parse tests never
 passed those flags.
 
-**polyoxide** (the unified crate) uses feature flags: `clob`, `gamma`, `data`, `ws` (WebSocket), `rtds`, `perps`, `sports`, `full` (all). Default = clob + gamma + data.
+<!-- generated:begin claude-umbrella-features -->
+**polyoxide** (the unified crate) uses feature flags: `clob`, `gamma`, `data`, `ws` (`polyoxide-clob/ws`), `rtds`, `perps`, `perps-ws` (`polyoxide-perps/ws`), `sports`, `full` (all but `keychain`), `keychain` (`polyoxide-clob?/keychain`). Default = clob + gamma + data.
+<!-- generated:end claude-umbrella-features -->
 
 ## Key Patterns
 
@@ -393,14 +400,39 @@ Mock HTTP tests use `mockito` (workspace dev-dependency). Each crate with mock t
 
 ## Nightly API Smoketest
 
-Two GitHub Actions workflows run at `0 6 * * *` UTC and on `workflow_dispatch`. The behavioral one also runs on Saturday and Sunday at 18:30 UTC (`30 18 * * 6,0`). The sports feed carries only what is live, and 06:00 UTC misses North American leagues and weekend soccer, which the drift detector would otherwise never see. That run covers the whole matrix, so its clean result may close the issue.
+Two GitHub Actions workflows run at `0 6 * * *` UTC and on `workflow_dispatch`. The behavioral one also runs on Saturday and Sunday at 18:30 UTC (`30 18 * * 6,0`). The sports feed carries only what is live, and 06:00 UTC misses North American leagues and weekend soccer, which the drift detector would otherwise never see. That run covers every live job, so its clean result may close the issue.
 
-- `.github/workflows/nightly-behavioral.yml` — runs `--ignored` live tests across every crate with a live suite (gamma, data, clob incl. `live_ws` under `--features ws`, clob session keys, relay, rtds, perps incl. `live_ws`, sports, binance incl. `live_ws`, cli). Failures are classified by `.github/scripts/classify_failures.py` into:
+- `.github/workflows/nightly-behavioral.yml` — runs `--ignored` live tests, one job per crate and suite, each job's `env:` holding only the secrets its tests read. An unset repository secret arrives as `""`, which the live loaders treat as unset:
+  <!-- generated:begin claude-nightly -->
+  - `live-polyoxide-binance-live` (15 min): `live_api`, `live_ws` with `--features ws`
+  - `live-polyoxide-data-live` (15 min): `live_api`
+  - `live-polyoxide-gamma-live` (15 min): `live_api`
+  - `live-polyoxide-perps-live` (15 min): `live_api`, `live_ws` with `--features ws`
+  - `live-polyoxide-relay-live` (15 min): `live_api`; secrets `BUILDER_API_KEY`, `BUILDER_PASS_PHRASE`, `BUILDER_SECRET`, `POLYMARKET_PRIVATE_KEY`, `RELAYER_API_KEY`, `RELAYER_API_KEY_ADDRESS`
+  - `live-polyoxide-clob-live` (15 min): `live_api`, `live_ws` with `--features ws`; secrets `POLYMARKET_API_KEY`, `POLYMARKET_API_PASSPHRASE`, `POLYMARKET_API_SECRET`, `POLYMARKET_BUILDER_CODE`, `POLYMARKET_PRIVATE_KEY`
+  - `live-polyoxide-clob-session-keys` (40 min): `live_session_keys`; secrets `BUILDER_API_KEY`, `BUILDER_PASS_PHRASE`, `BUILDER_SECRET`, `POLYMARKET_DW_OWNER_PRIVATE_KEY`, `POLYMARKET_DW_SESSION_PRIVATE_KEY`, `POLYMARKET_DW_WALLET`
+  - `live-polyoxide-rtds-live` (15 min): `live_api`
+  - `live-polyoxide-sports-live` (20 min): `live_api`
+  - `live-polyoxide-cli-live` (15 min): `live_api`
+  <!-- generated:end claude-nightly -->
+  Failures are classified by `.github/scripts/classify_failures.py` into:
   - **auth-gated** (matches the `POLYMARKET_* env vars required` / `POLYMARKET_PRIVATE_KEY required` panics) — silently skipped
   - **environmental** (test says the world can't provide signal right now, e.g. the sports feed with no live matches — matches `legitimately time out` — or Binance refusing a US runner's location with a 451) — logged and skipped
   - **transient** (HTTP 429/5xx, connection refused, timeouts, DNS) — retried up to 2× with `cargo nextest --retries 2`. A dropped WebSocket also counts: a reset without a closing handshake, a TLS EOF without `close_notify`, close codes 1001/1011/1012/1013, or a test's own "server ended the connection", which the sports and rtds tests write where the bare stream hides the close code.
   - **real** (everything else) — files or updates a tracking issue with the `nightly-behavioral` label
-- `.github/workflows/nightly-schema.yml` — fetches each published upstream spec (eight OpenAPI: clob, gamma, data, data-v2, relay, perps, bridge, combos-rfq; four AsyncAPI: clob market/user, perps WS, combos-rfq WS) and compares against the vendored mirror in `docs/specs/`. On drift, files a tracking issue labelled `schema-drift` **and** `spec:<id>`. It creates no branches and opens no PRs — Actions cannot open PRs here (org policy: 12 refusals, 0 PRs in run 31811673456), and adopting a drift is one `curl`, which the issue body spells out. The workflow holds `contents: read` and `issues: write` only. The issue is found by label intersection, never by title: `gh issue list --search "<title> in:title"` is a tokenized full-text search, so `perps` also matches `perps-ws` — that collision let one spec's job edit and close another's issue for eleven days, and made `combos-rfq-ws` look like it was flapping. A spec we deliberately will not sync is recorded in `docs/specs/.drift-acknowledged.json`, keyed by the SHA-256 of the canonical diff, which makes the check exit 3 and close the issue. Fingerprinting the *disagreement* rather than upstream means the acknowledgement expires the moment either side moves, so it is never permanent blindness. `clob` is acknowledged because upstream's own re-serialization made `example: 'Yes'` parse as boolean `true` on a `type: string` field. The issue body carries a key-path summary (changed JSON pointers with before → after, so drift inside `components.schemas` is named rather than merely counted) plus the canonicalized diff, composed in Python under GitHub's 65536-character cap. Deliberately excluded: the sports AsyncAPI mirror (modelled on captured wire frames, so it never matches upstream's published doc), the undocumented `user-pnl-api`/`lb-api` hosts (nothing to diff), and Binance (`docs/specs/binance/`: Binance publishes no spec for USDⓈ-M, and its live suite is the drift check).
+- `.github/workflows/nightly-schema.yml` — fetches each published upstream spec and compares it against the vendored mirror in `docs/specs/`.
+  <!-- generated:begin claude-schema-watch -->
+  It watches eight OpenAPI (`clob`, `gamma`, `data`, `data-v2`, `relay`, `perps`, `bridge`, `combos-rfq`) and four AsyncAPI (`clob-ws-market`, `clob-ws-user`, `perps-ws`, `combos-rfq-ws`), each filed under its own `spec:<id>` label.
+  <!-- generated:end claude-schema-watch -->
+  On drift, files a tracking issue labelled `schema-drift` **and** `spec:<id>`. It creates no branches and opens no PRs — Actions cannot open PRs here (org policy: 12 refusals, 0 PRs in run 31811673456), and adopting a drift is one `curl`, which the issue body spells out. The workflow holds `contents: read` and `issues: write` only. The issue is found by label intersection, never by title: `gh issue list --search "<title> in:title"` is a tokenized full-text search, so `perps` also matches `perps-ws` — that collision let one spec's job edit and close another's issue for eleven days, and made `combos-rfq-ws` look like it was flapping. A spec we deliberately will not sync is recorded in `docs/specs/.drift-acknowledged.json`, keyed by the SHA-256 of the canonical diff, which makes the check exit 3 and close the issue. Fingerprinting the *disagreement* rather than upstream means the acknowledgement expires the moment either side moves, so it is never permanent blindness. `clob` is acknowledged because upstream's own re-serialization made `example: 'Yes'` parse as boolean `true` on a `type: string` field. The issue body carries a key-path summary (changed JSON pointers with before → after, so drift inside `components.schemas` is named rather than merely counted) plus the canonicalized diff, composed in Python under GitHub's 65536-character cap.
+  Deliberately excluded, each for one reason:
+  <!-- generated:begin claude-schema-exclusions -->
+  - Sports (`docs/specs/sports/`): Upstream's AsyncAPI documents a `slug`-keyed payload and a text ping/pong that the server never sends, so the mirror is modelled on captured wire frames, and diffing it would report drift forever.
+  - Undocumented hosts (`docs/specs/undocumented/`): `user-pnl-api` and `lb-api` publish no spec to diff against; their shapes were derived from live responses, and `polyoxide-data`'s live suite is the drift check.
+  - RTDS (`docs/specs/rtds/`): Upstream publishes no AsyncAPI for `ws-live-data`; the mirror is modelled on captured wire frames, so there is nothing to diff it against.
+  - Deposit Wallets and session keys (`docs/specs/session-keys/`): The surface is almost entirely absent from the published CLOB and relayer OpenAPI (only `/deployed?type=WALLET` appears), so there is no mirror to diff; the SDK-generated fixtures are the drift check.
+  - Binance USDⓈ-M (`docs/specs/binance/`): Not a Polymarket host, and Binance publishes no OpenAPI or AsyncAPI for USDⓈ-M futures; the live suites in `polyoxide-binance` are the drift check.
+  <!-- generated:end claude-schema-exclusions -->
 
 To enable CLOB/relay's auth-gated tests (currently ~25 + 8 tests), set the `POLYMARKET_*` and `BUILDER_*` repo secrets and remove the auth patterns from `AUTH_GATED_RE` in `.github/scripts/classify_failures.py`. Auth tests will then start contributing real signal.
 
@@ -441,7 +473,11 @@ The WebSocket contracts are published as AsyncAPI, not OpenAPI — mirrored in `
 
 The order is computed, not written down. `scripts/publish_order.py` reads `cargo metadata` and puts each publishable member (`publish` unset, or naming `crates-io`) after every member it needs on crates.io first: its normal and build dependencies, and any dev-dependency that carries a version, since that one stays in the published manifest. A path-only dev-dependency is stripped at publish time and orders nothing. A cycle, or a normal or build dependency on a `publish = false` member, fails the release before anything is uploaded. Each `tombstones/*/Cargo.toml` comes after every workspace crate; the workspace excludes `tombstones`, or `cargo metadata` could not read them.
 
-The dependency facts the order follows: `polyoxide-rtds` and `polyoxide-sports` depend on nothing in-workspace, so each only has to precede `polyoxide` and `polyoxide-cli`; `polyoxide-perps` depends only on core, so it only has to follow core and precede `polyoxide`; `polyoxide-binance` only has to follow core and precede `polyoxide-cli`, the one published crate that depends on it. `polyoxide-cli` is published like every other member. `polyoxide-py` is `publish = false` (not on crates.io); its Python wheels are built and published to PyPI via a separate step in the release workflow.
+<!-- generated:begin claude-publish-order -->
+Today's order: `polyoxide-core` → `polyoxide-binance` → `polyoxide-data` → `polyoxide-gamma` → `polyoxide-perps` → `polyoxide-relay` → `polyoxide-clob` → `polyoxide-rtds` → `polyoxide-sports` → `polyoxide` → `polyoxide-cli`.
+<!-- generated:end claude-publish-order -->
+
+What each crate waits for is in the crate list under Workspace Architecture. `polyoxide-cli` is published like every other member. `polyoxide-py` is `publish = false` (not on crates.io); its Python wheels are built and published to PyPI via a separate step in the release workflow.
 
 **One resumable loop.** `release.yml`'s publish job runs `scripts/finish_release.sh`, which makes up to three attempts. Each asks `publish_order.py list --max-new-names 5` for the (crate, version) pairs crates.io lacks, publishes the workspace pairs in one `cargo publish --no-verify -p A -p B …` (cargo orders them and waits for each to reach the index), then each tombstone by `--manifest-path`. A final recount confirms nothing is left. So a re-run after a partial release publishes only what is left. Exit 3 means more than five new crate names: crates.io rate-limits new registrations, so split the release. Exit 4 means the workspace cannot be published as it stands (a cycle, a dependency on a `publish = false` member, a manifest `cargo metadata` cannot read). Retrying cannot help either, so the loop stops at once on both. A recount that cannot reach crates.io ends in "could not confirm", which is not "still unpublished".
 

@@ -38,3 +38,26 @@ rand = { version = "0.9.2", features = ["std"] }
 tokio = { workspace = true, features = ["macros", "rt-multi-thread"] }
 dotenvy = "0.15"
 mockito = { workspace = true }
+
+# Registration, read by scripts/gen_registry.py: the README line, venue and
+# product ids, the docs/specs/ mirrors covered, and one entry per live test
+# target, which becomes a nightly job. Run `python3 scripts/gen_registry.py
+# --write` after an edit.
+[package.metadata.polyoxide]
+readme = "Client library for Polymarket Relayer API (gasless transactions)"
+venue = "polymarket"
+products = ["relay"]
+mirrors = ["relay", "session-keys"]
+
+[package.metadata.polyoxide.live.live_api]
+suite = "live"
+timeout = 15
+features = []
+secrets = [
+  "BUILDER_API_KEY",
+  "BUILDER_PASS_PHRASE",
+  "BUILDER_SECRET",
+  "POLYMARKET_PRIVATE_KEY",
+  "RELAYER_API_KEY",
+  "RELAYER_API_KEY_ADDRESS",
+]

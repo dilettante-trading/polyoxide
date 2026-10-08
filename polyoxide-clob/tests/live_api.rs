@@ -775,8 +775,12 @@ async fn live_builder_trades() {
     dotenvy::dotenv().ok();
     // `builder_code` is required by the endpoint and is account-specific, so it
     // lives in the environment rather than being hard-coded. Skip when absent
-    // so a non-builder account doesn't see a spurious failure.
-    let Ok(builder_code) = std::env::var("POLYMARKET_BUILDER_CODE") else {
+    // so a non-builder account doesn't see a spurious failure. Empty counts as
+    // absent: the nightly passes an unset repository secret as `""`.
+    let Some(builder_code) = std::env::var("POLYMARKET_BUILDER_CODE")
+        .ok()
+        .filter(|code| !code.is_empty())
+    else {
         eprintln!("skipping live_builder_trades: POLYMARKET_BUILDER_CODE not set");
         return;
     };

@@ -53,15 +53,22 @@ struct Fixture {
 
 /// Load the fixture account, or panic in the auth-gated wording. Never
 /// soft-skip: a test that asserted nothing must not report `ok`.
+///
+/// An empty value counts as unset: the nightly passes an unset repository
+/// secret as `""`, which would otherwise fail a `parse` below in words the
+/// classifier files as a real failure.
 fn load_fixture() -> Fixture {
     dotenvy::dotenv().ok();
     let var = |name: &str| {
-        std::env::var(name).unwrap_or_else(|_| {
-            panic!(
-                "POLYMARKET_* env vars required for the Deposit Wallet round trip \
-                 ({name} unset; see docs/specs/session-keys/README.md, Live verification)"
-            )
-        })
+        std::env::var(name)
+            .ok()
+            .filter(|value| !value.is_empty())
+            .unwrap_or_else(|| {
+                panic!(
+                    "POLYMARKET_* env vars required for the Deposit Wallet round trip \
+                     ({name} unset or empty; see docs/specs/session-keys/README.md, Live verification)"
+                )
+            })
     };
     let owner: PrivateKeySigner = var("POLYMARKET_DW_OWNER_PRIVATE_KEY")
         .parse()
@@ -75,7 +82,9 @@ fn load_fixture() -> Fixture {
     let builder = BuilderConfig::new(
         var("BUILDER_API_KEY"),
         var("BUILDER_SECRET"),
-        std::env::var("BUILDER_PASS_PHRASE").ok(),
+        std::env::var("BUILDER_PASS_PHRASE")
+            .ok()
+            .filter(|value| !value.is_empty()),
     );
     Fixture {
         owner,

@@ -2,9 +2,10 @@
 title: 'Stories 1.4 and 1.5: Registration metadata, the generator, and nightly rows derived from it'
 type: 'feature'
 created: '2026-10-08'
-status: 'ready-for-dev'
+status: 'done'
 route: 'dispatch'
 review_loop_iteration: 0
+baseline_commit: '70c1679714f3c8236e369287ae80a93ebf225548'
 context:
   - '{project-root}/_bmad-output/implementation-artifacts/epic-1-context.md'
 ---
@@ -134,18 +135,18 @@ context:
 ## Tasks & Acceptance
 
 **Execution:**
-- [ ] The root `Cargo.toml` -- `[workspace.metadata.polyoxide.mirrors.<dir>]` for every directory in the Code Map:
+- [x] The root `Cargo.toml` -- `[workspace.metadata.polyoxide.mirrors.<dir>]` for every directory in the Code Map:
   - `name`, `section` (`covered` | `not-implemented` | `other-venue` | `excluded`), `base_urls`, `description`;
   - an optional `crate_note`;
   - optional `exclude` (a reason sentence);
   - `specs = [{id, kind, url, vendored, covers?}]`.
-- [ ] Each member's `Cargo.toml` -- `[package.metadata.polyoxide]`:
+- [x] Each member's `Cargo.toml` -- `[package.metadata.polyoxide]`:
   - `readme` (the README line, corrected);
   - `venue` and `products`, where they apply;
   - `mirrors` (directory ids);
   - `notes` (an optional list of free-text graph annotations that cannot be derived);
   - `[package.metadata.polyoxide.live.<target>]` for each of today's 10 nightly rows: `suite`, `timeout`, `features`, `secrets = []`, `note?`.
-- [ ] `scripts/gen_registry.py` -- new.
+- [x] `scripts/gen_registry.py` -- new.
   - **Modes:** `--write` (rewrite the regions) and `--check` (exit 1 with a unified diff when they differ).
   - **Validation:** `(venue, product)` uniqueness and the id format; a crate listing an unknown mirror directory; every mirror directory existing under `docs/specs/`.
   - **Renderers**, one per region id:
@@ -153,24 +154,24 @@ context:
     - `index-upstream`, `index-covered`, `index-not-implemented`, `index-other-venues`, `index-asyncapi`;
     - `claude-crate-count`, `claude-graph`, `claude-umbrella-features` (from the umbrella's `[features]`, in order), `claude-cli-deps`, `claude-publish-order`, `claude-nightly`, `claude-schema-watch`, `claude-schema-exclusions`;
     - `selfheal-behavioral`, `selfheal-watch`, `selfheal-exclusions`.
-- [ ] `README.md`, `docs/specs/INDEX.md`, `CLAUDE.md`, `SELF-HEALING.md` -- insert the markers, restructure the inline lists onto their own lines, and run `--write`. CLAUDE.md gains one sentence saying these regions come from `scripts/gen_registry.py` and Cargo metadata, and must not be edited by hand (AD-21).
-- [ ] `.github/actions/live-suite/action.yml` -- new composite action. Inputs are `crate`, `suite` and `flags`. It holds today's per-row steps verbatim from checkout onward (the job does the checkout first), with `shell: bash` on each `run`.
-- [ ] `.github/workflows/nightly-behavioral.yml`:
+- [x] `README.md`, `docs/specs/INDEX.md`, `CLAUDE.md`, `SELF-HEALING.md` -- insert the markers, restructure the inline lists onto their own lines, and run `--write`. CLAUDE.md gains one sentence saying these regions come from `scripts/gen_registry.py` and Cargo metadata, and must not be edited by hand (AD-21).
+- [x] `.github/actions/live-suite/action.yml` -- new composite action. Inputs are `crate`, `suite` and `flags`. It holds today's per-row steps verbatim from checkout onward (the job does the checkout first), with `shell: bash` on each `run`.
+- [x] `.github/workflows/nightly-behavioral.yml`:
   - **Generated region `nightly-live-jobs`:** one job per `(crate, suite)`, with job id `live-<crate>-<suite>`, `name: Live tests (<crate>, <suite>)`, `timeout-minutes` (the targets' maximum), `env:` (`NAME: ${{ secrets.NAME }}` for the union of declared secrets, sorted), and steps of checkout plus `uses: ./.github/actions/live-suite`.
   - **Generated region `nightly-aggregate-needs`:** the aggregate job's `needs:`. Its close guard uses `!contains(needs.*.result, …)` for failure, cancelled and skipped.
   - The 15-line explanatory comment stays outside the regions.
-- [ ] `.github/workflows/nightly-schema.yml` -- generated regions `schema-watch` (the `include:` rows `{id, url, vendored}`) and `schema-exclusions` (the comment block, one reason per excluded mirror or spec). The `spec:<id>` labels are unchanged.
-- [ ] Rust test edits:
+- [x] `.github/workflows/nightly-schema.yml` -- generated regions `schema-watch` (the `include:` rows `{id, url, vendored}`) and `schema-exclusions` (the comment block, one reason per excluded mirror or spec). The `spec:<id>` labels are unchanged.
+- [x] Rust test edits:
   - clob `live_ws.rs` `l1_account()` and `live_session_keys.rs` `load_fixture()` treat `""` as absent;
   - clob `Cargo.toml` gains `[[test]] name = "live_ws"` with `required-features = ["ws"]`;
   - data's `hash64_shape_matches_what_holders_accepts` moves to a new non-live test file, keeping its name and body.
-- [ ] `.github/scripts/tests/test_live_registry.py` -- new. Cover:
+- [x] `.github/scripts/tests/test_live_registry.py` -- new. Cover:
   - the `live_*` targets in `cargo metadata` equal the `live` metadata entries, which equal the generated jobs;
   - every `#[test]` or `#[tokio::test]` in a `tests/live_*.rs` is `#[ignore]`d;
   - each target's `features` are within its `required-features`, and a target that needs a feature declares it;
   - the scanned env names of each live file equal its target's `secrets`, with a mutation check: renaming one literal must fail;
   - the aggregate's `needs` equals the generated job ids.
-- [ ] `.github/scripts/tests/test_gen_registry.py` -- new. Cover:
+- [x] `.github/scripts/tests/test_gen_registry.py` -- new. Cover:
   - the real tree passes `--check`;
   - a hand edit inside a region fails it;
   - text outside markers is kept byte for byte;
@@ -189,9 +190,59 @@ context:
 
 ## Implementation Notes
 
+- **Metadata:** 13 mirror directories, plus `[package.metadata.polyoxide]` on all 12 members, with 13 live targets in 10 jobs. Secrets are the exact env names each live file and its `mod` files read.
+- **`scripts/gen_registry.py`:** stdlib only, with 21 renderers, `--write` and `--check`.
+  - Validation covers: unique `(venue, product)`; id format; unknown or undeclared mirror directories; unique spec ids; a watched spec without a URL; secret names; a note's minutes against its timeout.
+  - `env_names()` and `target_source()` are the secrets scan that Epic 2 replaces.
+- **Additions beyond the spec:** an optional spec `note` (Data v2's "served by the API host") and a derived link page (rtds has no INDEX.md).
+- **Ordering:** generated lists follow publish order, so SELF-HEALING's table and CLAUDE.md's nightly list are reordered. README stays sorted, and the 12 schema rows keep their exact order.
+- **Workflows:**
+  - `.github/actions/live-suite` holds today's steps; the only changes are `matrix.*` → `inputs.*` and `shell: bash`.
+  - nightly-behavioral has 10 generated `live-<crate>-<suite>` jobs. The aggregate's `needs:` is generated, and the issue closes only when every needed job succeeded.
+  - nightly-schema's rows are byte-identical, and its exclusions comment is generated.
+- **Rust:**
+  - the clob `live_ws`, `live_session_keys` and `live_api` builder-code reads treat `""` as absent;
+  - clob gains `[[test]] live_ws` with `required-features = ["ws"]`;
+  - data's offline test moved to `tests/holders_shape.rs`, with its name and body kept and `is_hash64` shared through `tests/common/mod.rs`.
+- **Prose outside regions edited because the change made it wrong:** CLAUDE.md's dependency-facts sentence, the "matrix" wording, and SELF-HEALING's two "adding a spec or suite" bullets. SELF-HEALING's auto-PR prose is untouched.
+- **Verification:**
+  - `--check` exits 0;
+  - 466 scripts tests pass;
+  - clippy `-D warnings` on clob and data is clean, and so is fmt;
+  - the moved data test passes;
+  - with every secret `""`, the clob loaders panic with auth-gated wording (HEAD's `live_ws.rs` panicked "build account from private key");
+  - mutations in the real tree each fail the suite: a removed stanza, an un-ignored test, an unregistered `live_x.rs`, a renamed env literal or loader constant, and a hand edit inside a region.
+
 ## Spec Change Log
 
 ## Review Triage Log
+
+One layer (edge-case hunter), with 24 findings.
+
+**Patched:**
+- **Shared `mod` files are not scanned** (env names, `#[ignore]`). Medium. Data and binance live targets pull from `tests/common/mod.rs`.
+- **Other test macros escape the ignore check.** Low. The fix is a direct regex correction.
+- **`POLYMARKET_BUILDER_CODE=""` does not soft-skip** (`live_api.rs:779`). Low. The same empty-as-absent correction as the other two loaders.
+- **SELF-HEALING's data-v2 row lost its "served by the API host" hint.** Low. Patched by rendering the spec's note.
+
+**Deferred:** a partly configured credential set fails as real. Medium. `Account::from_env()` accepts empty L2 values; that is library code and AD-14's loaders in Epic 2 (deferred-work.md).
+
+**Rejected, low:** unlikely in this workspace, and each fix adds a guard for a state nobody has shown can occur.
+- **Possible crashes on unusual inputs:** an empty CLI direct-dependency list; an empty watch list; a renamed umbrella or CLI crate (`StopIteration`); a missing `docs/specs` or target file; a job-id collision from hyphenated names.
+- **Unchecked or misleading metadata:**
+  - a note's minutes against the suite maximum;
+  - `..` in `vendored`;
+  - an optional dependency enabled without `?`;
+  - a member declared twice;
+  - a CLI optional dependency without default features;
+  - a `publish = false` crate with a versioned dev-dependency;
+  - a newline or `|` in a readme string;
+  - a hidden directory under `docs/specs`.
+- **Scanner and test-fixture edge cases:** an attribute and its fn on one line (rustfmt forbids it); an env name inside a comment (fails loudly by demanding a declaration, never silently); a test fixture picking an empty region (none renders empty today).
+
+**Rejected, false:**
+- `full` enabling a feature only transitively: `polyoxide/Cargo.toml` lists every feature except `keychain` directly, and the region says "all but `keychain`".
+- The CLAUDE.md "dependency facts" paragraph deleted: what each crate needs is now generated, and what waits for it can be read from the same list.
 
 ## Design Notes
 

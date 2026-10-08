@@ -52,3 +52,19 @@ test = true
 name = "closed_positions_burst_probe"
 path = "examples/closed_positions_burst_probe.rs"
 test = true
+
+# Registration, read by scripts/gen_registry.py: the README line, venue and
+# product ids, the docs/specs/ mirrors covered, and one entry per live test
+# target, which becomes a nightly job. Run `python3 scripts/gen_registry.py
+# --write` after an edit.
+[package.metadata.polyoxide]
+readme = "Client library for Polymarket Data API"
+venue = "polymarket"
+products = ["data"]
+mirrors = ["data", "data-v2", "undocumented"]
+
+[package.metadata.polyoxide.live.live_api]
+suite = "live"
+timeout = 15
+features = []
+secrets = []

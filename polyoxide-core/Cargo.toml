@@ -35,3 +35,11 @@ serde = { workspace = true }
 # `test-util` gives the cooldown tests a paused clock, so they assert the full
 # backoff without actually sleeping for it.
 tokio = { workspace = true, features = ["macros", "rt-multi-thread", "test-util"] }
+
+# Registration, read by scripts/gen_registry.py: the README line, venue and
+# product ids, the docs/specs/ mirrors covered, and one entry per live test
+# target, which becomes a nightly job. Run `python3 scripts/gen_registry.py
+# --write` after an edit.
+[package.metadata.polyoxide]
+readme = "Core utilities and shared types"
+notes = ["shared auth, HTTP client, errors and macros"]

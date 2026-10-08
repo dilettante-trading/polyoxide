@@ -42,3 +42,21 @@ rustls = { version = "0.23", default-features = false, features = ["ring", "std"
 
 [dev-dependencies]
 tokio = { workspace = true, features = ["macros", "rt-multi-thread", "time", "net"] }
+
+# Registration, read by scripts/gen_registry.py: the README line, venue and
+# product ids, the docs/specs/ mirrors covered, and one entry per live test
+# target, which becomes a nightly job. Run `python3 scripts/gen_registry.py
+# --write` after an edit.
+[package.metadata.polyoxide]
+readme = "Client for Polymarket's live sports score feed"
+venue = "polymarket"
+products = ["sports"]
+mirrors = ["sports"]
+notes = ["kept free of workspace dependencies, like `polyoxide-rtds`"]
+
+[package.metadata.polyoxide.live.live_api]
+suite = "live"
+timeout = 20
+features = []
+secrets = []
+note = "20-minute budget for its 180 s wire-agreement window"

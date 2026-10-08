@@ -21,3 +21,6 @@
 - source_spec: `_bmad-output/implementation-artifacts/spec-1-3-package-every-crate-on-every-pr.md`
   summary: When Epic 5 adds `tombstones/*`, extend the CI package job to dry-run each tombstone with `--manifest-path`; the workspace dry run cannot see them because the root `Cargo.toml` excludes `tombstones`.
   evidence: `finish_release.sh` publishes tombstones after the workspace crates; no PR-time check packages them.
+- source_spec: `_bmad-output/implementation-artifacts/spec-1-4-1-5-registration-and-derived-nightly-rows.md`
+  summary: With only part of a credential set configured as repository secrets, the unset ones arrive as `""` and `Account::from_env()` accepts empty L2 credentials, so clob's live tests fail as real instead of auth-gated. Make the credential loaders treat `""` as absent (AD-14), which Epic 2's shared loaders own.
+  evidence: The nightly jobs now wire each target's declared secrets; GitHub expands an unset secret to an empty string. With every secret empty the tests panic auth-gated (verified); a partial set reaches `Account::from_env()` (`polyoxide-clob/src/account/mod.rs:185-208`), which does not filter empty values.

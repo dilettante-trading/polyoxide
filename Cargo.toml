@@ -67,3 +67,192 @@ inherits = "release"
 opt-level = 2
 lto = "thin"
 codegen-units = 16
+
+# The API mirrors under docs/specs/, one table per directory. Crates name the
+# directories they cover in their own `[package.metadata.polyoxide] mirrors`;
+# a directory no crate names is mirrored for reference only. The tables keep
+# the order written here, and `scripts/gen_registry.py` renders README.md,
+# docs/specs/INDEX.md, CLAUDE.md, SELF-HEALING.md and the nightly workflows'
+# generated regions from them. Run `python3 scripts/gen_registry.py --write`
+# after an edit.
+#
+# `section` places the directory in INDEX.md: `covered`, `not-implemented`,
+# `other-venue`, or `excluded` for one with prose of its own there. `exclude`
+# keeps a whole directory, or one spec, out of nightly-schema.yml, and its
+# sentence is the reason every generated exclusion list gives.
+
+[workspace.metadata.polyoxide.mirrors.clob]
+name = "CLOB"
+section = "covered"
+base_urls = ["https://clob.polymarket.com"]
+description = "Order book trading, market data, rewards, RFQ"
+
+[[workspace.metadata.polyoxide.mirrors.clob.specs]]
+id = "clob"
+kind = "openapi"
+url = "https://docs.polymarket.com/api-spec/clob-openapi.yaml"
+vendored = "docs/specs/clob/openapi.yaml"
+
+[[workspace.metadata.polyoxide.mirrors.clob.specs]]
+id = "clob-ws-market"
+kind = "asyncapi"
+url = "https://docs.polymarket.com/asyncapi.json"
+vendored = "docs/specs/clob/asyncapi-market.json"
+covers = "Market channel (11 messages)"
+
+[[workspace.metadata.polyoxide.mirrors.clob.specs]]
+id = "clob-ws-user"
+kind = "asyncapi"
+url = "https://docs.polymarket.com/asyncapi-user.json"
+vendored = "docs/specs/clob/asyncapi-user.json"
+covers = "User channel (6 messages)"
+
+[workspace.metadata.polyoxide.mirrors.gamma]
+name = "Gamma"
+section = "covered"
+base_urls = ["https://gamma-api.polymarket.com"]
+description = "Market/event metadata, search, comments"
+
+[[workspace.metadata.polyoxide.mirrors.gamma.specs]]
+id = "gamma"
+kind = "openapi"
+url = "https://docs.polymarket.com/api-spec/gamma-openapi.yaml"
+vendored = "docs/specs/gamma/openapi.yaml"
+
+[workspace.metadata.polyoxide.mirrors.data]
+name = "Data"
+section = "covered"
+base_urls = ["https://data-api.polymarket.com"]
+description = "User positions, trades, combos, leaderboard"
+
+[[workspace.metadata.polyoxide.mirrors.data.specs]]
+id = "data"
+kind = "openapi"
+url = "https://docs.polymarket.com/api-spec/data-openapi.yaml"
+vendored = "docs/specs/data/openapi.yaml"
+
+[workspace.metadata.polyoxide.mirrors.data-v2]
+name = "Data v2"
+section = "covered"
+base_urls = ["https://data-api.polymarket.com/v2"]
+description = "The Data API's second contract: `data` envelope, cursor pagination, snake_case"
+crate_note = "`data.v2()`"
+
+[[workspace.metadata.polyoxide.mirrors.data-v2.specs]]
+id = "data-v2"
+kind = "openapi"
+url = "https://data-api.polymarket.com/v2/openapi.json"
+vendored = "docs/specs/data-v2/openapi.json"
+note = "served by the API host, not the docs site"
+
+[workspace.metadata.polyoxide.mirrors.relay]
+name = "Relay"
+section = "covered"
+base_urls = ["https://relayer-v2.polymarket.com"]
+description = "Gasless relay transactions"
+
+[[workspace.metadata.polyoxide.mirrors.relay.specs]]
+id = "relay"
+kind = "openapi"
+url = "https://docs.polymarket.com/api-spec/relayer-openapi.yaml"
+vendored = "docs/specs/relay/openapi.yaml"
+
+[workspace.metadata.polyoxide.mirrors.sports]
+name = "Sports"
+section = "covered"
+base_urls = ["wss://sports-api.polymarket.com/ws"]
+description = "Live match scores, server push only"
+exclude = "Upstream's AsyncAPI documents a `slug`-keyed payload and a text ping/pong that the server never sends, so the mirror is modelled on captured wire frames, and diffing it would report drift forever."
+
+[[workspace.metadata.polyoxide.mirrors.sports.specs]]
+id = "sports"
+kind = "asyncapi"
+url = "https://docs.polymarket.com/asyncapi-sports.json"
+vendored = "docs/specs/sports/asyncapi.json"
+covers = "Sports feed. **Does not match the wire**; implemented from captured frames, see [sports/OBSERVED.md](sports/OBSERVED.md)"
+
+[workspace.metadata.polyoxide.mirrors.undocumented]
+name = "Undocumented hosts"
+section = "excluded"
+base_urls = ["https://user-pnl-api.polymarket.com", "https://lb-api.polymarket.com"]
+description = "Profit and loss series and leaderboard rankings, derived from live responses"
+exclude = "`user-pnl-api` and `lb-api` publish no spec to diff against; their shapes were derived from live responses, and `polyoxide-data`'s live suite is the drift check."
+
+[workspace.metadata.polyoxide.mirrors.rtds]
+name = "RTDS"
+section = "covered"
+base_urls = ["wss://ws-live-data.polymarket.com"]
+description = "Crypto price streams, Binance and Chainlink; observed, not published upstream"
+exclude = "Upstream publishes no AsyncAPI for `ws-live-data`; the mirror is modelled on captured wire frames, so there is nothing to diff it against."
+
+[[workspace.metadata.polyoxide.mirrors.rtds.specs]]
+id = "rtds"
+kind = "asyncapi"
+vendored = "docs/specs/rtds/asyncapi-live-data.json"
+covers = "RTDS crypto prices (4 topics) — **observed, not published upstream**; see [rtds/OBSERVED.md](rtds/OBSERVED.md)"
+
+[workspace.metadata.polyoxide.mirrors.perps]
+name = "Perps"
+section = "covered"
+base_urls = ["https://api.perpetuals.polymarket.com"]
+description = "Perpetual futures: market info implemented; accounts and orders pending"
+crate_note = "public `/v1/info/*`"
+
+[[workspace.metadata.polyoxide.mirrors.perps.specs]]
+id = "perps"
+kind = "openapi"
+url = "https://docs.polymarket.com/api-spec/perps-openapi.json"
+vendored = "docs/specs/perps/openapi.json"
+
+[[workspace.metadata.polyoxide.mirrors.perps.specs]]
+id = "perps-ws"
+kind = "asyncapi"
+url = "https://docs.polymarket.com/asyncapi-perps.json"
+vendored = "docs/specs/perps/asyncapi.json"
+covers = "Perps WebSocket (27 channels) — six public channels implemented (`ws` feature); private channels and trading pending; see [perps/OBSERVED.md](perps/OBSERVED.md)"
+
+[workspace.metadata.polyoxide.mirrors.bridge]
+name = "Bridge"
+section = "not-implemented"
+base_urls = ["https://bridge.polymarket.com"]
+description = "Cross-chain deposits and withdrawals"
+
+[[workspace.metadata.polyoxide.mirrors.bridge.specs]]
+id = "bridge"
+kind = "openapi"
+url = "https://docs.polymarket.com/api-spec/bridge-openapi.yaml"
+vendored = "docs/specs/bridge/openapi.yaml"
+
+[workspace.metadata.polyoxide.mirrors.combos-rfq]
+name = "Combos RFQ"
+section = "not-implemented"
+base_urls = ["https://combos-rfq-api.polymarket.com"]
+description = "Maker quoting for combinatorial markets"
+
+[[workspace.metadata.polyoxide.mirrors.combos-rfq.specs]]
+id = "combos-rfq"
+kind = "openapi"
+url = "https://docs.polymarket.com/api-spec/combos-rfq-openapi.yaml"
+vendored = "docs/specs/combos-rfq/openapi.yaml"
+
+[[workspace.metadata.polyoxide.mirrors.combos-rfq.specs]]
+id = "combos-rfq-ws"
+kind = "asyncapi"
+url = "https://docs.polymarket.com/asyncapi-rfq.json"
+vendored = "docs/specs/combos-rfq/asyncapi.json"
+covers = "RFQ quoter gateway — not implemented"
+
+[workspace.metadata.polyoxide.mirrors.session-keys]
+name = "Deposit Wallets and session keys"
+section = "excluded"
+base_urls = ["https://clob.polymarket.com", "https://relayer-v2.polymarket.com"]
+description = "Order signature type 3, session signers and the relayer's `type: WALLET` dialect"
+exclude = "The surface is almost entirely absent from the published CLOB and relayer OpenAPI (only `/deployed?type=WALLET` appears), so there is no mirror to diff; the SDK-generated fixtures are the drift check."
+
+[workspace.metadata.polyoxide.mirrors.binance]
+name = "Binance USDⓈ-M"
+section = "other-venue"
+base_urls = ["https://fapi.binance.com", "wss://fstream.binance.com"]
+description = "Futures public market data and market streams. No published spec, so not a mirror"
+crate_note = "streams behind `ws`"
+exclude = "Not a Polymarket host, and Binance publishes no OpenAPI or AsyncAPI for USDⓈ-M futures; the live suites in `polyoxide-binance` are the drift check."

@@ -44,3 +44,20 @@ rustls = { version = "0.23", default-features = false, features = [
 [dev-dependencies]
 tokio = { workspace = true, features = ["macros", "rt-multi-thread", "time", "net"] }
 tracing-subscriber = { version = "0.3", features = ["env-filter"] }
+
+# Registration, read by scripts/gen_registry.py: the README line, venue and
+# product ids, the docs/specs/ mirrors covered, and one entry per live test
+# target, which becomes a nightly job. Run `python3 scripts/gen_registry.py
+# --write` after an edit.
+[package.metadata.polyoxide]
+readme = "Client for Polymarket's RTDS crypto price streams"
+venue = "polymarket"
+products = ["rtds"]
+mirrors = ["rtds"]
+notes = ["kept free of workspace dependencies, so a credential-free price feed does not pull in `alloy`"]
+
+[package.metadata.polyoxide.live.live_api]
+suite = "live"
+timeout = 15
+features = []
+secrets = []
