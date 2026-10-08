@@ -1,3 +1,14 @@
+## [0.38.1] - 2026-10-08
+
+Adds `ListKeysetEvents::include_markets`, which `ListEvents` has had since
+0.32.1. `include_markets(false)` drops each event's `markets` key from
+`GET /events/keyset`: 100 open sports events came to 366 KB instead of 5.9 MB.
+Everything else in the workspace is unchanged from 0.38.0.
+
+### 🚀 Features
+
+- *(gamma)* Add include_markets(bool) to ListKeysetEvents
+
 ## [0.38.0] - 2026-10-08
 
 Gamma's game events now carry what joins them to a `polyoxide-sports` score.
