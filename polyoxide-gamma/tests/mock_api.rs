@@ -552,6 +552,35 @@ async fn list_events_keyset_last_page_has_no_cursor() {
 }
 
 #[tokio::test]
+async fn list_events_keyset_forwards_include_markets() {
+    let mut server = Server::new_async().await;
+    let mock = server
+        .mock("GET", "/events/keyset")
+        .match_query(Matcher::UrlEncoded(
+            "include_markets".into(),
+            "false".into(),
+        ))
+        .with_status(200)
+        .with_header("content-type", "application/json")
+        // With `include_markets=false` the server omits the key entirely.
+        .with_body(r#"{"events": [{"id": "k1"}], "next_cursor": "next-token"}"#)
+        .create_async()
+        .await;
+
+    let gamma = test_gamma(&server);
+    let resp = gamma
+        .events()
+        .list_keyset()
+        .include_markets(false)
+        .send()
+        .await
+        .unwrap();
+    assert_eq!(resp.events.len(), 1);
+    assert!(resp.events[0].markets.is_empty());
+    mock.assert_async().await;
+}
+
+#[tokio::test]
 async fn malformed_json_returns_serialization_error() {
     let mut server = Server::new_async().await;
 
@@ -1093,6 +1122,34 @@ async fn ping_propagates_5xx_as_error() {
         "expected ApiError for 5xx, got {err:?}"
     );
 
+    mock.assert_async().await;
+}
+
+#[tokio::test]
+async fn list_events_filters_by_game_id() {
+    let mut server = Server::new_async().await;
+
+    let mock = server
+        .mock("GET", "/events")
+        // Repeated keys, matched by regex: `Matcher::UrlEncoded` only sees the
+        // last occurrence of a repeated key.
+        .match_query(Matcher::Regex("game_id=10079774&game_id=90115236".into()))
+        .with_status(200)
+        .with_header("content-type", "application/json")
+        .with_body(r#"[{"id": "1113725", "gameId": 10079774}]"#)
+        .create_async()
+        .await;
+
+    let gamma = test_gamma(&server);
+    let events = gamma
+        .events()
+        .list()
+        .game_id([10079774, 90115236])
+        .send()
+        .await
+        .unwrap();
+
+    assert_eq!(events[0].game_id, Some(10079774));
     mock.assert_async().await;
 }
 

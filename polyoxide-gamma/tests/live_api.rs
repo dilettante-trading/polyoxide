@@ -419,6 +419,78 @@ async fn live_list_events() {
     assert!(!events.is_empty(), "should return at least one event");
 }
 
+/// A game event carries what joins it to a `polyoxide-sports` score: its
+/// `gameId`, its two sides and its league. `/events` must apply `game_id`
+/// rather than ignore it; `openapi.yaml` does not list it for this route.
+#[tokio::test]
+#[ignore]
+async fn live_game_events_carry_their_sports_fields() {
+    use polyoxide_gamma::types::HomeAway;
+
+    let gamma = client();
+    let events = gamma
+        .events()
+        .list()
+        .tag_id(1)
+        .closed(false)
+        .include_markets(false)
+        .order("startTime")
+        .ascending(false)
+        .limit(100)
+        .send()
+        .await
+        .expect("list open sports events");
+    // Selected on the precondition: tag 1 also holds futures and child
+    // events, which are not one game with two sides.
+    let game = events
+        .iter()
+        .find(|e| e.game_id.is_some() && e.parent_event_id.is_none() && e.teams.len() == 2)
+        .unwrap_or_else(|| {
+            panic!(
+                "none of {} open sports events is a game with two teams",
+                events.len()
+            )
+        });
+
+    let mut sides: Vec<_> = game.teams.iter().map(|t| t.ordering.clone()).collect();
+    sides.sort_by_key(|s| s.as_ref().map(|s| s.as_str().to_owned()));
+    assert_eq!(
+        sides,
+        [Some(HomeAway::Away), Some(HomeAway::Home)],
+        "event {}: a game's teams are one home and one away",
+        game.id
+    );
+    let sport = game
+        .sport
+        .as_ref()
+        .unwrap_or_else(|| panic!("event {}: a game carries its league", game.id));
+    assert!(
+        sport.primary_tag_id.is_some(),
+        "event {}: league {} has no primaryTagId",
+        game.id,
+        sport.sport
+    );
+
+    let game_id = game.game_id.expect("selected on game_id");
+    let by_game = gamma
+        .events()
+        .list()
+        .game_id([i64::try_from(game_id).expect("game ids fit in i64")])
+        .include_markets(false)
+        .send()
+        .await
+        .expect("list events by game_id");
+    assert!(
+        by_game.iter().any(|e| e.id == game.id),
+        "game_id={game_id} did not return event {}",
+        game.id
+    );
+    assert!(
+        by_game.iter().all(|e| e.game_id == Some(game_id)),
+        "game_id={game_id} returned other games, so the filter was ignored"
+    );
+}
+
 #[tokio::test]
 #[ignore]
 async fn live_get_event_by_id() {
@@ -522,6 +594,49 @@ async fn live_list_events_keyset() {
         .await
         .expect("list events (keyset)");
     let _ = resp; // events may be empty on some configurations; deserialization is the assertion
+}
+
+/// `include_markets=false` drops `markets` from `/events/keyset`, which
+/// `openapi.yaml` does not list for this route. An ignored parameter is
+/// silent, so the control selects events that do carry markets and the
+/// same ids must then come back without them.
+#[tokio::test]
+#[ignore]
+async fn live_keyset_events_apply_include_markets() {
+    let gamma = client();
+    let with = gamma
+        .events()
+        .list_keyset()
+        .closed(false)
+        .limit(10)
+        .send()
+        .await
+        .expect("list events (keyset) with markets");
+    let ids: Vec<i64> = with
+        .events
+        .iter()
+        .filter(|e| !e.markets.is_empty())
+        .map(|e| e.id.parse().expect("event ids are integers"))
+        .collect();
+    assert!(
+        !ids.is_empty(),
+        "none of {} open events carries markets, so there is no control",
+        with.events.len()
+    );
+
+    let without = gamma
+        .events()
+        .list_keyset()
+        .id(ids.clone())
+        .include_markets(false)
+        .send()
+        .await
+        .expect("list events (keyset) without markets");
+    assert_eq!(without.events.len(), ids.len(), "id={ids:?}");
+    assert!(
+        without.events.iter().all(|e| e.markets.is_empty()),
+        "include_markets=false was ignored on /events/keyset"
+    );
 }
 
 // ── Tags ────────────────────────────────────────────────────────

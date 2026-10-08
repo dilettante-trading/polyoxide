@@ -19,6 +19,12 @@ spec is wrong.
 | `search_response_profiles.json` | `GET /public-search?q=sports&search_profiles=true&limit_per_type=20` | 2026-08-19 | `events` truncated from 20 entries to `[]` — this fixture exercises `SearchResponse`/`SearchProfile`, not `Event`, and keeping real `Event` payloads here would drag the known `Market`/`Event` parity findings into this guard. `pagination` kept verbatim. **`profiles` is untouched**: all 20 entries, including the server's own JSON `null` at index 12 — reproduced on 5/5 attempts against the live host, see `docs/specs/gamma/OBSERVED.md`. |
 | `search_profile_full.json` | One `profiles[]` entry from `GET /public-search?q=degen&search_profiles=true&limit_per_type=20` | 2026-08-19 | Verbatim. The richest profile shape observed across a 228-profile, 12-query sweep (`poly, trader, crypto, whale, a, bot, john, mod, degen, market, sports, e`): carries `bio` and `profileImage` together, which only 34/228 and 41/228 sampled profiles do respectively. |
 | `search_profile_sparse.json` | One `profiles[]` entry from `GET /public-search?q=crypto&search_profiles=true&limit_per_type=20` | 2026-08-19 | Verbatim. The sparsest profile shape observed in the same sweep: only `name`, `displayUsernamePublic` and `proxyWallet` — missing `pseudonym`, which 223/228 sampled profiles carry. |
+| `event_game_full.json` | `GET /events?id=1113725&include_markets=false` | 2026-10-08 | Verbatim (re-indented to 2 spaces; **no keys added or removed**). `include_markets=false` makes the server omit `markets`, so nothing was trimmed. A finished MLB game (Brewers at Padres) with no `parentEventId`, both teams carrying all twelve team keys, `sport`, and an `eventMetadata` with the `opticOdds*` keys. |
+| `event_game_child.json` | `GET /events?id=1015724&include_markets=false` | 2026-10-08 | Verbatim, same treatment. A "More Markets" child of event `1015530`, sharing its `gameId` `90115236`. Its teams lack `alias`. |
+| `event_cricket.json` | `GET /events?id=1133142&include_markets=false` | 2026-10-08 | Verbatim, same treatment. A cricket game with `teams` and `sport` but no `gameId`; its id is the string `eventMetadata.gameId`. |
+| `team_full.json` | `GET /teams/100493` | 2026-10-08 | Verbatim (re-indented). Carries every key `/teams` was seen to send. |
+| `team_sparse.json` | `GET /teams/3290454` | 2026-10-08 | Verbatim (re-indented). Lacks `alias`, `color`, `providerId` and `updatedAt`, the sparsest shape in the first 50 `/teams` rows. |
+| `sport_metadata.json` | The `nba` entry of `GET /sports` | 2026-10-08 | Verbatim (re-indented). Every one of the 474 rows carried the same ten keys. |
 
 Across the 39-address sweep backing the `user_response_*` pair, top-level key
 frequency was: `$schema`, `createdAt`, `proxyWallet`, `displayUsernamePublic`,
@@ -51,6 +57,19 @@ key, so there is no published contract to model `SearchProfile` against;
 228/228 is a strong sample but not a guarantee, so every field stays
 `Option`. See `docs/specs/gamma/OBSERVED.md` for the full writeup, including
 the `profiles[]` array's JSON `null` entries.
+
+The sports fixtures were chosen from 600 events tagged `1` (sports), sampled on
+2026-10-08: four pages of 100 open events ordered by `startTime` descending
+and two pages of 100 closed events ordered by `endDate` descending. `gameId`
+was on 420 of them, always an integer. `teams` and `sport` were on 444, never
+as JSON `null`. Each `teams` array held two entries; of those 888, `ordering`
+was `home` on 444 and `away` on 444, `providerId` was on 864, `updatedAt` on
+852, `color` on 846 and `alias` on 488. `eventMetadata` was on 590.
+`parentEventId` was on 233. Of the 227 child events whose parent was also in
+the sample, 204 carried the parent's `gameId` and 23 carried none; none carried
+a different one. The first 50 rows of `GET /teams` carried `alias` on 6, `color` on
+42, `providerId` on 44, `updatedAt` on 43 and `record` on 45. None carried
+`ordering`.
 
 ## Recapturing
 

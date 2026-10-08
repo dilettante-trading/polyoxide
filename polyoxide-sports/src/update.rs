@@ -112,7 +112,8 @@ impl MatchUpdate {
 /// Only the numeric form can be reconciled. After a reconnect, look up a game
 /// that may have ended during the gap with
 /// `gamma.events().list().game_id([i64::try_from(id)?])`: the event comes back with its
-/// `ended` flag and final `score`. Gamma refuses cricket's string form with
+/// `ended` flag and final `score`, possibly alongside the game's child events, which
+/// carry a `parent_event_id`. Gamma refuses cricket's string form with
 /// `invalid integer`, so a cricket game cannot be reconciled that way.
 #[derive(Debug, Clone, PartialEq, Eq, Hash, PartialOrd, Ord)]
 #[non_exhaustive]

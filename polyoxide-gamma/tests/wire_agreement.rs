@@ -1,5 +1,6 @@
-//! Agreement between the comment types and payloads captured from the live
-//! Gamma host. Provenance is in `tests/fixtures/README.md`.
+//! Agreement between gamma's comment, profile, user and sports types and
+//! payloads captured from the live Gamma host. Provenance is in
+//! `tests/fixtures/README.md`.
 //!
 //! Two directions, both of which must fail if a type drifts from the wire:
 //!
@@ -43,8 +44,11 @@
 
 use polyoxide_gamma::api::search::{SearchProfile, SearchResponse};
 use polyoxide_gamma::api::user::UserResponse;
-use polyoxide_gamma::types::{Comment, ParentEntityType, Profile};
-use serde_json::Value;
+use polyoxide_gamma::types::{
+    Comment, Event, HomeAway, ParentEntityType, Profile, ProtocolVersion, SportMetadata, Team,
+};
+use serde::{de::DeserializeOwned, Serialize};
+use serde_json::{json, Value};
 
 const FULL: &str = include_str!("fixtures/comment_full.json");
 const SPARSE: &str = include_str!("fixtures/comment_sparse.json");
@@ -55,6 +59,12 @@ const USER_RESPONSE_SPARSE: &str = include_str!("fixtures/user_response_sparse.j
 const SEARCH_PROFILE_FULL: &str = include_str!("fixtures/search_profile_full.json");
 const SEARCH_PROFILE_SPARSE: &str = include_str!("fixtures/search_profile_sparse.json");
 const SEARCH_RESPONSE_PROFILES: &str = include_str!("fixtures/search_response_profiles.json");
+const EVENT_GAME_FULL: &str = include_str!("fixtures/event_game_full.json");
+const EVENT_GAME_CHILD: &str = include_str!("fixtures/event_game_child.json");
+const EVENT_CRICKET: &str = include_str!("fixtures/event_cricket.json");
+const TEAM_FULL: &str = include_str!("fixtures/team_full.json");
+const TEAM_SPARSE: &str = include_str!("fixtures/team_sparse.json");
+const SPORT_METADATA: &str = include_str!("fixtures/sport_metadata.json");
 
 /// Wire keys deliberately left unmodelled, each with a reason.
 ///
@@ -69,6 +79,11 @@ const IGNORED: &[(&str, &str)] = &[
     ),
     (
         "user.$schema",
+        "response metadata (a link to the published JSON Schema for this \
+         endpoint), not data — see docs/specs/gamma/OBSERVED.md",
+    ),
+    (
+        "team.$schema",
         "response metadata (a link to the published JSON Schema for this \
          endpoint), not data — see docs/specs/gamma/OBSERVED.md",
     ),
@@ -206,6 +221,38 @@ const EXPECTED_ABSENT: &[(&str, &str)] = &[
         "searchProfile.pseudonym",
         "the sparse capture's subject has not set one; present in 223/228 sampled \
          profiles (see tests/fixtures/README.md)",
+    ),
+    (
+        "team.ordering",
+        "sent only on a team embedded in an event, where it names the team's \
+         side; /teams/{id} omits it",
+    ),
+    (
+        "team.alias",
+        "the sparse capture's team has none; on 6/50 sampled /teams rows (see \
+         tests/fixtures/README.md)",
+    ),
+    (
+        "team.color",
+        "the sparse capture's team has none; on 42/50 sampled /teams rows",
+    ),
+    (
+        "team.providerId",
+        "the sparse capture's team has none; on 44/50 sampled /teams rows",
+    ),
+    (
+        "team.updatedAt",
+        "the sparse capture's team has none; on 43/50 sampled /teams rows",
+    ),
+    (
+        "event.teams[0].alias",
+        "the child and cricket captures' teams have none; on 488 of 888 \
+         event-embedded teams sampled (see tests/fixtures/README.md)",
+    ),
+    (
+        "event.teams[1].alias",
+        "the child and cricket captures' teams have none; on 488 of 888 \
+         event-embedded teams sampled (see tests/fixtures/README.md)",
     ),
 ];
 
@@ -409,4 +456,160 @@ fn search_response_tolerates_null_profile_entries() {
         typed.profiles[0].is_some(),
         "a populated entry must still decode to Some"
     );
+}
+
+/// Both directions, for a type re-emitted from a captured payload.
+fn agrees<T: DeserializeOwned + Serialize>(fixture: &str, path: &str) {
+    let wire: Value = serde_json::from_str(fixture).expect("fixture is valid JSON");
+    let typed: T = serde_json::from_value(wire.clone()).unwrap_or_else(|e| {
+        panic!(
+            "captured payload must deserialize into {}: {e}",
+            std::any::type_name::<T>()
+        )
+    });
+    let emitted = serde_json::to_value(&typed).expect("type must serialize");
+    check(&wire, &emitted, path);
+}
+
+/// The one event in a captured `/events?id=…&include_markets=false` response,
+/// as the wire sent it and as `Event` decoded it.
+fn captured_event(fixture: &str) -> (Value, Event) {
+    let wire: Value = serde_json::from_str(fixture).expect("fixture is valid JSON");
+    let [wire] = <[Value; 1]>::try_from(wire.as_array().expect("an /events response").clone())
+        .expect("the capture holds exactly one event");
+    let event = serde_json::from_value(wire.clone())
+        .unwrap_or_else(|e| panic!("captured payload must deserialize into Event: {e}"));
+    (wire, event)
+}
+
+const SPORTS_EVENTS: [(&str, &str); 3] = [
+    ("event_game_full", EVENT_GAME_FULL),
+    ("event_game_child", EVENT_GAME_CHILD),
+    ("event_cricket", EVENT_CRICKET),
+];
+
+/// Direction 2 at an event's top level: every key the server sent is modelled.
+///
+/// Direction 1 is not applied at this level. `Event` declares over a hundred
+/// fields and a game event carries about half of them, so a field absent from
+/// a capture is the normal case here, not a sign of invention.
+/// `series` and `tags` are not walked; the sports objects nested in an event
+/// get both directions in `event_teams_and_sport_agree_with_captured_payload`.
+#[test]
+fn sports_events_carry_no_unmodelled_top_level_keys() {
+    for (name, fixture) in SPORTS_EVENTS {
+        let (wire, event) = captured_event(fixture);
+        let emitted = serde_json::to_value(&event).expect("Event must serialize");
+        let emitted = emitted
+            .as_object()
+            .expect("an Event serializes to an object");
+        for key in wire.as_object().expect("an event is an object").keys() {
+            assert!(
+                emitted.contains_key(key),
+                "{name}: event.{key} is sent by the server but not modelled by Event"
+            );
+        }
+    }
+}
+
+#[test]
+fn event_teams_and_sport_agree_with_captured_payload() {
+    for (name, fixture) in SPORTS_EVENTS {
+        let (wire, event) = captured_event(fixture);
+        let emitted = serde_json::to_value(&event).expect("Event must serialize");
+        // Selected because they carry both: without this, a capture missing
+        // either key would compare `null` with `null` and prove nothing.
+        assert!(wire["teams"].is_array(), "{name} must carry teams");
+        assert!(wire["sport"].is_object(), "{name} must carry a sport");
+        check(&wire["teams"], &emitted["teams"], "event.teams");
+        check(&wire["sport"], &emitted["sport"], "event.sport");
+    }
+}
+
+/// The key checks above cannot see a value falling through to
+/// `HomeAway::Other`, or an id decoded into the wrong field, so pin values.
+#[test]
+fn game_event_decodes_its_game_id_teams_and_league() {
+    let (_, event) = captured_event(EVENT_GAME_FULL);
+
+    assert_eq!(event.game_id, Some(10079774));
+    assert_eq!(event.parent_event_id, None);
+
+    let sides: Vec<_> = event
+        .teams
+        .iter()
+        .map(|t| (t.name.as_deref(), t.ordering.clone()))
+        .collect();
+    assert_eq!(
+        sides,
+        [
+            (Some("Milwaukee Brewers"), Some(HomeAway::Away)),
+            (Some("San Diego Padres"), Some(HomeAway::Home)),
+        ]
+    );
+    assert_eq!(event.teams[0].provider_id, Some(32));
+    assert_eq!(event.teams[0].color.as_deref(), Some("#224C8F"));
+
+    let sport = event
+        .sport
+        .as_ref()
+        .expect("a game event carries its league");
+    assert_eq!(sport.sport, "mlb");
+    assert_eq!(sport.name.as_deref(), Some("MLB"));
+    assert_eq!(sport.primary_tag_id, Some(100381));
+
+    let metadata = event.event_metadata.as_ref().expect("eventMetadata");
+    assert_eq!(
+        metadata.get("opticOddsGameId"),
+        Some(&json!("37337-25683-2026-10-07-19"))
+    );
+}
+
+#[test]
+fn game_event_decodes_its_volume_comment_count_and_version() {
+    let (_, event) = captured_event(EVENT_GAME_FULL);
+    assert_eq!(event.volume, Some(1144235.9190239997));
+    assert_eq!(event.comment_count, Some(0));
+    assert_eq!(event.neg_risk_augmented, Some(false));
+    assert_eq!(event.version, Some(ProtocolVersion::V1));
+}
+
+/// A game's child events ("More Markets", "Exact Score", …) carry the same
+/// `gameId` as the game, so `game_id` alone does not identify one event.
+#[test]
+fn a_child_event_shares_its_parents_game_id() {
+    let (_, child) = captured_event(EVENT_GAME_CHILD);
+    assert_eq!(child.game_id, Some(90115236));
+    assert_eq!(child.parent_event_id, Some(1015530));
+}
+
+/// Cricket events have teams and a league but no `gameId`. The id they do
+/// carry is a string inside `eventMetadata`.
+#[test]
+fn a_cricket_event_carries_its_id_only_in_event_metadata() {
+    let (_, cricket) = captured_event(EVENT_CRICKET);
+    assert_eq!(cricket.game_id, None);
+    assert_eq!(cricket.teams.len(), 2);
+    assert_eq!(
+        cricket
+            .event_metadata
+            .as_ref()
+            .and_then(|m| m.get("gameId")),
+        Some(&json!("1000170151LIVE2026"))
+    );
+}
+
+#[test]
+fn full_team_agrees_with_captured_payload() {
+    agrees::<Team>(TEAM_FULL, "team");
+}
+
+#[test]
+fn sparse_team_agrees_with_captured_payload() {
+    agrees::<Team>(TEAM_SPARSE, "team");
+}
+
+#[test]
+fn sport_metadata_agrees_with_captured_payload() {
+    agrees::<SportMetadata>(SPORT_METADATA, "sport");
 }

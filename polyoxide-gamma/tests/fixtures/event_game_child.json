@@ -1,0 +1,148 @@
+[
+  {
+    "id": "1015724",
+    "ticker": "el1-don-oxf-2026-09-26-more-markets",
+    "slug": "el1-don-oxf-2026-09-26-more-markets",
+    "title": "Doncaster Rovers FC vs. Oxford United FC - More Markets",
+    "description": "More markets for the League One game, scheduled for September 26 at 10:00 AM ET.",
+    "resolutionSource": "https://www.efl.com/",
+    "startDate": "2026-09-13T08:46:39Z",
+    "creationDate": "2026-09-13T08:49:12.034408Z",
+    "endDate": "2026-12-15T19:45:00Z",
+    "image": "https://polymarket-upload.s3.us-east-2.amazonaws.com/soccer-leagues/el1.png",
+    "icon": "https://polymarket-upload.s3.us-east-2.amazonaws.com/soccer-leagues/el1.png",
+    "active": true,
+    "closed": false,
+    "archived": false,
+    "new": false,
+    "featured": false,
+    "restricted": true,
+    "liquidity": 350.5594,
+    "createdAt": "2026-09-13T08:46:03.604118Z",
+    "updatedAt": "2026-10-08T07:44:56.007902Z",
+    "competitive": 0.19801980198019803,
+    "parentEventId": 1015530,
+    "enableOrderBook": true,
+    "liquidityClob": 350.5594,
+    "negRisk": false,
+    "commentCount": 0,
+    "series": [
+      {
+        "id": "11435",
+        "ticker": "soccer-el1",
+        "slug": "soccer-el1",
+        "title": "League One",
+        "seriesType": "single",
+        "recurrence": "daily",
+        "image": "https://polymarket-upload.s3.us-east-2.amazonaws.com/soccer-leagues/el1.png",
+        "icon": "https://polymarket-upload.s3.us-east-2.amazonaws.com/soccer-leagues/el1.png",
+        "active": true,
+        "closed": false,
+        "archived": false,
+        "featured": false,
+        "restricted": true,
+        "createdAt": "2026-03-26T22:29:38.024221Z",
+        "updatedAt": "2026-10-08T07:45:17.567512Z",
+        "volume24hr": 4792.188703,
+        "volume": 17469.04384,
+        "liquidity": 1723064.80713,
+        "commentCount": 0
+      }
+    ],
+    "tags": [
+      {
+        "id": "1",
+        "label": "Sports",
+        "slug": "sports",
+        "forceShow": false,
+        "publishedAt": "2023-10-24 22:37:50.296+00",
+        "updatedBy": 15,
+        "createdAt": "2023-10-24T22:37:50.31Z",
+        "updatedAt": "2026-04-17T20:47:16.461062Z",
+        "forceHide": true
+      },
+      {
+        "id": "100639",
+        "label": "Games",
+        "slug": "games",
+        "forceShow": false,
+        "createdAt": "2024-09-23T22:41:37.670714Z",
+        "updatedAt": "2026-03-09T22:28:03.358133Z"
+      },
+      {
+        "id": "100350",
+        "label": "Soccer",
+        "slug": "soccer",
+        "forceShow": false,
+        "createdAt": "2024-08-21T16:31:18.953213Z",
+        "updatedAt": "2026-04-17T20:33:09.955379Z"
+      },
+      {
+        "id": "104319",
+        "label": "League One",
+        "slug": "soccer-el1",
+        "createdAt": "2026-03-26T22:29:38.181566Z",
+        "updatedAt": "2026-04-17T20:49:04.254618Z"
+      }
+    ],
+    "cyom": false,
+    "showAllOutcomes": true,
+    "showMarketImages": false,
+    "enableNegRisk": false,
+    "automaticallyActive": true,
+    "eventDate": "2026-12-15",
+    "startTime": "2026-12-15T19:45:00Z",
+    "seriesSlug": "soccer-el1",
+    "negRiskAugmented": false,
+    "pendingDeployment": false,
+    "deploying": false,
+    "gameId": 90115236,
+    "teams": [
+      {
+        "id": 3267964,
+        "name": "Doncaster Rovers FC",
+        "league": "el1",
+        "record": "1-3-3",
+        "logo": "https://polymarket-upload.s3.us-east-2.amazonaws.com/team_logos/el1/doncaster-rovers-fc.png",
+        "abbreviation": "don",
+        "createdAt": "2026-03-26T22:37:47.660576Z",
+        "updatedAt": "2026-07-22T18:45:54.223825Z",
+        "providerId": 2062,
+        "color": "#7a4a35",
+        "ordering": "home"
+      },
+      {
+        "id": 3284264,
+        "name": "Oxford United FC",
+        "league": "el1",
+        "record": "3-2-1",
+        "logo": "https://polymarket-upload.s3.us-east-2.amazonaws.com/team_logos/el1/oxford-united-fc-2201.png",
+        "abbreviation": "oxf",
+        "createdAt": "2026-08-02T08:15:01.596364Z",
+        "updatedAt": "2026-08-05T08:15:04.14426Z",
+        "providerId": 2201,
+        "color": "#fef100",
+        "ordering": "away"
+      }
+    ],
+    "sport": {
+      "id": 268,
+      "sport": "el1",
+      "name": "League One",
+      "image": "https://polymarket-upload.s3.us-east-2.amazonaws.com/league-icons/el1-c9906fad.png",
+      "resolution": "https://www.efl.com/",
+      "ordering": "home",
+      "tags": "1,100639,100350,104319",
+      "primaryTagId": 104319,
+      "series": "11435",
+      "createdAt": "2026-06-04T16:20:49.640496Z"
+    },
+    "eventMetadata": {
+      "context_requires_regen": false,
+      "opticOddsFixtureId": "20260926FFD0E124",
+      "opticOddsGameId": "15244-11446-2026-09-26",
+      "opticOddsNumericalId": 951824
+    },
+    "version": "v1"
+  }
+]
