@@ -81,7 +81,8 @@ Details that can affect existing code:
 - **The ended frame is usually sent once.** A feed that is disconnected when a
   match ends never sees it. After `Event::Reconnected`, look up games that
   may have ended through gamma's events list, which filters on `game_id`.
-  Cricket uses a string id that gamma does not accept.
+  It can return a game's child events too; the game is the one with no
+  `parent_event_id`. Cricket uses a string id that gamma does not accept.
 - **Two kinds of id.** Most sports send a numeric `gameId`; cricket sends a
   string `metadataGameId` instead. `MatchUpdate::key` returns a `GameKey`
   that covers both.

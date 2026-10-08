@@ -1097,6 +1097,34 @@ async fn ping_propagates_5xx_as_error() {
 }
 
 #[tokio::test]
+async fn list_events_filters_by_game_id() {
+    let mut server = Server::new_async().await;
+
+    let mock = server
+        .mock("GET", "/events")
+        // Repeated keys, matched by regex: `Matcher::UrlEncoded` only sees the
+        // last occurrence of a repeated key.
+        .match_query(Matcher::Regex("game_id=10079774&game_id=90115236".into()))
+        .with_status(200)
+        .with_header("content-type", "application/json")
+        .with_body(r#"[{"id": "1113725", "gameId": 10079774}]"#)
+        .create_async()
+        .await;
+
+    let gamma = test_gamma(&server);
+    let events = gamma
+        .events()
+        .list()
+        .game_id([10079774, 90115236])
+        .send()
+        .await
+        .unwrap();
+
+    assert_eq!(events[0].game_id, Some(10079774));
+    mock.assert_async().await;
+}
+
+#[tokio::test]
 async fn keyset_events_forwards_newly_added_filters() {
     let mut server = Server::new_async().await;
 

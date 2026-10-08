@@ -1,0 +1,12 @@
+{
+  "id": 34,
+  "sport": "nba",
+  "name": "NBA",
+  "image": "https://polymarket-upload.s3.us-east-2.amazonaws.com/league-icons/nba-7a8bf611.png",
+  "resolution": "https://www.nba.com/",
+  "ordering": "away",
+  "tags": "1,745,100639",
+  "primaryTagId": 745,
+  "series": "10345",
+  "createdAt": "2025-11-05T19:27:45.399303Z"
+}

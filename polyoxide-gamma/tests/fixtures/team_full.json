@@ -1,0 +1,14 @@
+{
+  "$schema": "https://gamma-api.polymarket.com/schemas/Team.json",
+  "id": 100493,
+  "name": "Bucks",
+  "league": "nba",
+  "record": "0-0",
+  "logo": "https://polymarket-upload.s3.us-east-2.amazonaws.com/NBA+Team+Logos/MIL.png",
+  "abbreviation": "mil",
+  "alias": "Bucks",
+  "createdAt": "2024-10-11T19:41:10.857956Z",
+  "updatedAt": "2025-11-05T00:19:50.99364Z",
+  "providerId": 15,
+  "color": "#208040"
+}

@@ -101,13 +101,8 @@ impl Events {
     /// sets. Use `next_cursor` from each response as `after_cursor` in the
     /// next request; pagination is complete when `next_cursor` is `None`.
     ///
-    /// Note: a handful of obscure upstream query parameters
-    /// (`start_time_min/max`, `event_date`, `event_week`, `recurrence`,
-    /// `created_by`, `parent_event_id`, `include_children`, `partner_slug`,
-    /// `include_best_lines`, `locale`, `decimalized`, `tag_match`) are not
-    /// yet exposed. The majority of filters are available; callers needing
-    /// the omitted params can reach the endpoint directly via
-    /// [`Request::query`].
+    /// Every query parameter upstream documents for this route has a builder
+    /// method except `offset`, which the route refuses with `422`.
     pub fn list_keyset(&self) -> ListKeysetEvents {
         ListKeysetEvents {
             request: Request::new(self.http_client.clone(), "/events/keyset"),
@@ -573,6 +568,22 @@ impl ListEvents {
         self
     }
 
+    /// Filter by game IDs, the [`Event::game_id`] a live score from
+    /// `polyoxide-sports` carries.
+    ///
+    /// Not in upstream's `openapi.yaml` for this route, but the server applies
+    /// it (verified 2026-10-08): an id with no game returns `[]`, and a
+    /// non-integer is refused with `invalid integer`. One id can return
+    /// several events, a game and its child events; see
+    /// [`Event::parent_event_id`].
+    ///
+    /// [`Event::game_id`]: crate::types::Event::game_id
+    /// [`Event::parent_event_id`]: crate::types::Event::parent_event_id
+    pub fn game_id(mut self, game_ids: impl IntoIterator<Item = i64>) -> Self {
+        self.request = self.request.query_many("game_id", game_ids);
+        self
+    }
+
     /// Filter by tag identifier
     pub fn tag_id(mut self, tag_id: i64) -> Self {
         self.request = self.request.query("tag_id", tag_id);
@@ -736,6 +747,7 @@ mod tests {
             .order("volume")
             .ascending(true)
             .id(vec![1i64, 2])
+            .game_id(vec![10079774i64])
             .tag_id(42)
             .exclude_tag_id(vec![99i64])
             .slug(vec!["slug-a"])

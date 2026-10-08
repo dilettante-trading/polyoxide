@@ -170,6 +170,68 @@ because neither schema lists it in `required`. Trading a V2 market
 `polyoxide-gamma/tests/live_api.rs` fails if the newest markets stop sending
 `version` or send one `ProtocolVersion` does not name.
 
+## Sports games on `GET /events`: `game_id`, `gameId`, `teams` and `sport`
+
+`openapi.yaml` lists a `game_id` filter on `GET /events/keyset` but not on
+`GET /events`. The server applies it on both. Probed 2026-10-08 with
+`include_markets=false`:
+
+| Query | Result |
+|-------|--------|
+| `game_id=20023868` | one event, `1111336` |
+| `game_id=20023868&game_id=20023869` | both games |
+| `game_id=20023868&closed=true` | `[]` (the game is open) |
+| `game_id=987654321987` | `[]` |
+| `game_id=abc` | `{"type":"validation error","error":"invalid integer"}` |
+| `game_id=1` | 28 closed cricket events from 2025, all carrying `gameId` `1` |
+
+`ListEvents::game_id` sends it.
+
+The fields that describe a game are missing from `openapi.yaml`'s `Event`:
+`gameId`, `teams`, `sport`, `eventMetadata`, `parentEventId`,
+`negRiskAugmented` and `version`. The served `Event.json`, which `GET
+/events/{id}` links from its `$schema` key, has all seven: `gameId` int64,
+`teams` an array or `null` of `Team.json`, `sport` a `SportsMetadata.json`,
+and `eventMetadata` an object with arbitrary values. `openapi.yaml`'s `Team`
+lacks `providerId`, `color` and `ordering`, and its `SportsMetadata` lacks
+`id`, `name`, `primaryTagId` and `createdAt`. All of these are modelled from
+the served schemas and checked against `polyoxide-gamma/tests/fixtures/`
+(`event_*`, `team_*`, `sport_metadata.json`).
+
+Across 600 sports events sampled on 2026-10-08 (provenance in
+`polyoxide-gamma/tests/fixtures/README.md`):
+
+- **`gameId` is not one event's id.** A game's child events ("More Markets",
+  "Exact Score", "Halftime Result", …) carry `parentEventId`, and 204 of 227
+  sampled children carried the parent's `gameId`; the other 23 carried none.
+  `game_id=90115236` returns the game and five children. Old ids also collide
+  with current ones, as `game_id=1` shows.
+- **Each team names its side.** A team embedded in an event carries
+  `ordering`, `home` or `away`, exactly one of each per game. `GET /teams`
+  never sends `ordering`. The league's own `ordering` says which side it lists
+  first.
+- **Cricket cannot be joined on `gameId`.** Current cricket events have teams
+  and a league but no `gameId`. Their id is a string in `eventMetadata.gameId`
+  (`1000170151LIVE2026`), a different form from the sports feed's cricket
+  `metadataGameId` (`id2703438269077680`), and no mapping between the two is
+  known.
+- **The event is the join point, not the market.** `Market.gameId` is a
+  string, and only 4 of 8,333 markets in game events carried it: the event's
+  id on a `moneyline` market, other ids on `child_moneyline`. `teamAID` and
+  `teamBID` were on none.
+- **`primaryTagId` does not find every game.** 94 of 444 game events did not
+  carry their league's `primaryTagId` among their `tags`: every `col1`,
+  `egy1`, `ucl` and `itf` game, and some tennis.
+- **`sport` and `Team::league` usually agree.** The exception seen was
+  `cs2` games with `csgo` teams.
+
+`Event.json` also lists `rescheduledFromGameId`, `turnProviderId`, `usId` and
+`lastHighlight*`, and `Team.json` and `SportsMetadata.json` list
+`externalPartners`. None of them was on any sampled event, so none is
+modelled. `GET /sports/{id}` answers too, though `openapi.yaml` lists only
+`GET /sports`; its body links `SportsMetadata.json`. The SDK has no method
+for it.
+
 ## More instances
 
 The 2026-08-19 type parity sweep found nine further places where the spec and
@@ -182,7 +244,7 @@ here.
 Some Gamma responses carry a `"$schema"` key pointing at
 `https://gamma-api.polymarket.com/schemas/<Name>.json` — an authoritative,
 machine-readable schema for that exact endpoint, served live by the same host.
-Two are known to do this:
+These are known to do this:
 
 | Endpoint | `$schema` |
 |---|---|
@@ -191,9 +253,12 @@ Two are known to do this:
 | `GET /markets/{id}` | `Market.json` |
 | `GET /markets/keyset` | `MarketsKeysetListResponse.json` (items `$ref` `Market.json`) |
 | `GET /events/keyset` | `EventsKeysetListResponse.json` (items `$ref` `Event.json`) |
+| `GET /events/{id}` | `Event.json` |
+| `GET /teams/{id}` | `Team.json` |
+| `GET /sports/{id}` | `SportsMetadata.json` |
 
-The first two were found on 2026-08-19; the last three were seen on 2026-09-14
-and may have been serving it earlier. `/markets`, `/events`, `/series`, `/tags`,
+The first two were found on 2026-08-19; the next three were seen on 2026-09-14
+and may have been serving it earlier; the last three were seen on 2026-10-08. `/markets`, `/events`, `/series`, `/tags`,
 `/comments` and `/public-search` do **not** send a `$schema` key, so it is not a
 universal feature of the API. `Market.json` still describes what `/markets`
 returns even though that route does not link it: every key across 200 sampled

@@ -104,6 +104,26 @@ open_enum! {
     }
 }
 
+open_enum! {
+    /// Which side of a game a team is on, from [`Team::ordering`].
+    pub enum HomeAway {
+        /// The home team.
+        Home => "home",
+        /// The away team.
+        Away => "away",
+    }
+}
+
+/// Reads an array the served schema types `["array","null"]`, taking `null`
+/// as empty. `#[serde(default)]` alone covers only a missing key.
+fn null_as_empty<'de, D, T>(deserializer: D) -> Result<Vec<T>, D::Error>
+where
+    D: serde::Deserializer<'de>,
+    T: Deserialize<'de>,
+{
+    Ok(Option::<Vec<T>>::deserialize(deserializer)?.unwrap_or_default())
+}
+
 /// Market data from Gamma API
 #[cfg_attr(feature = "specta", derive(specta::Type))]
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
@@ -359,6 +379,8 @@ pub struct Event {
     pub featured: Option<bool>,
     pub restricted: Option<bool>,
     pub liquidity: Option<f64>,
+    /// All-time volume.
+    pub volume: Option<f64>,
     pub open_interest: Option<f64>,
     pub sort_by: Option<String>,
     pub category: Option<String>,
@@ -372,6 +394,8 @@ pub struct Event {
     pub created_at: Option<String>,
     pub updated_at: Option<String>,
     pub comments_enabled: Option<bool>,
+    #[cfg_attr(feature = "specta", specta(type = Option<f64>))]
+    pub comment_count: Option<i64>,
     pub competitive: Option<f64>,
     #[serde(rename = "volume24hr")]
     pub volume_24hr: Option<f64>,
@@ -384,6 +408,13 @@ pub struct Event {
     pub featured_image: Option<String>,
     pub disqus_thread: Option<String>,
     pub parent_event: Option<String>,
+    /// The game event this one hangs off, on a game's child events ("More
+    /// Markets", "Exact Score", …). A child usually carries its parent's
+    /// [`game_id`](Self::game_id): 204 of 227 sampled did, and the rest
+    /// carried none. Filter on `parent_event_id.is_none()` to keep one event
+    /// per game.
+    #[cfg_attr(feature = "specta", specta(type = Option<f64>))]
+    pub parent_event_id: Option<i64>,
     pub enable_order_book: Option<bool>,
     pub liquidity_amm: Option<f64>,
     pub liquidity_clob: Option<f64>,
@@ -391,6 +422,7 @@ pub struct Event {
     pub neg_risk_market_id: Option<String>,
     #[cfg_attr(feature = "specta", specta(type = Option<f64>))]
     pub neg_risk_fee_bips: Option<i64>,
+    pub neg_risk_augmented: Option<bool>,
     #[serde(default)]
     pub sub_events: Vec<String>,
     #[serde(default)]
@@ -433,6 +465,34 @@ pub struct Event {
     pub deploying_timestamp: Option<String>,
     pub schedule_deployment_timestamp: Option<String>,
     pub game_status: Option<String>,
+    /// The game's id, the same number `polyoxide-sports` keys a live score
+    /// by (`GameKey::Game`). Filter on it with [`ListEvents::game_id`].
+    ///
+    /// Not unique to one event. A game's child events carry it too (see
+    /// [`parent_event_id`](Self::parent_event_id)), and old events collide
+    /// with new ones: 28 closed 2025 cricket events all carry `1`. Pair it
+    /// with `closed` or the event's dates. Current cricket events have none;
+    /// their provider id is a string in [`event_metadata`](Self::event_metadata).
+    ///
+    /// [`ListEvents::game_id`]: crate::api::events::ListEvents::game_id
+    #[cfg_attr(feature = "specta", specta(type = Option<f64>))]
+    pub game_id: Option<u64>,
+    /// The teams playing, each with its [`ordering`](Team::ordering) (home or
+    /// away). Empty on events that are not a single game.
+    #[serde(default, deserialize_with = "null_as_empty")]
+    pub teams: Vec<Team>,
+    /// The league's row from `GET /sports`, on events that are a game.
+    pub sport: Option<SportMetadata>,
+    /// Free-form provider metadata. Keys seen on 2026-10-08:
+    /// `context_requires_regen`, `opticOddsFixtureId`, `opticOddsGameId`,
+    /// `opticOddsNumericalId`, `league`, `format`, `tournament`,
+    /// `leagueTier`, `pandascoreMatchId`, and cricket's string `gameId`.
+    /// Upstream documents none of them.
+    #[cfg_attr(feature = "specta", specta(type = Option<HashMap<String, String>>))]
+    pub event_metadata: Option<HashMap<String, serde_json::Value>>,
+    /// The protocol the event's markets trade on. Matching is exact, as for
+    /// [`Market::version`].
+    pub version: Option<ProtocolVersion>,
 }
 
 /// Series information within an event
@@ -601,23 +661,40 @@ pub struct RelatedTag {
     pub rank: Option<i64>,
 }
 
-/// Sports metadata
+/// A league's metadata, from `GET /sports` and embedded in a game
+/// [`Event`] as [`Event::sport`].
 #[cfg_attr(feature = "specta", derive(specta::Type))]
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct SportMetadata {
     #[cfg_attr(feature = "specta", specta(type = f64))]
     pub id: u64,
+    /// The league's slug, e.g. `nba`. Usually the same string as
+    /// [`Team::league`], but not always: `cs2` games carry `csgo` teams.
     pub sport: String,
+    /// Display name, e.g. `NBA`.
+    pub name: Option<String>,
     pub image: Option<String>,
     pub resolution: Option<String>,
+    /// Which side the league lists first, `home` or `away`; the spellings
+    /// of [`HomeAway`].
     pub ordering: Option<String>,
+    /// Comma-separated tag ids, shared base tags included.
     pub tags: Option<String>,
+    /// The league's own tag, as opposed to the shared base tags in
+    /// [`tags`](Self::tags).
+    ///
+    /// Filtering events on it can miss games: 94 of 444 game events sampled
+    /// on 2026-10-08 did not carry their league's tag (all of `col1`, `egy1`,
+    /// `ucl` and `itf`, and some tennis).
+    #[cfg_attr(feature = "specta", specta(type = Option<f64>))]
+    pub primary_tag_id: Option<i64>,
     pub series: Option<String>,
     pub created_at: Option<String>,
 }
 
-/// Sports team
+/// A team or player, from `GET /teams` and embedded in a game [`Event`] as
+/// [`Event::teams`].
 #[cfg_attr(feature = "specta", derive(specta::Type))]
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
@@ -632,6 +709,15 @@ pub struct Team {
     pub alias: Option<String>,
     pub created_at: Option<DateTime<Utc>>,
     pub updated_at: Option<DateTime<Utc>>,
+    /// `providerId` on the wire. Upstream does not document what it
+    /// identifies.
+    #[cfg_attr(feature = "specta", specta(type = Option<f64>))]
+    pub provider_id: Option<i64>,
+    /// Hex colour, e.g. `#224C8F`.
+    pub color: Option<String>,
+    /// The team's side in the game. Sent only on a team embedded in an
+    /// [`Event`]; `GET /teams` omits it.
+    pub ordering: Option<HomeAway>,
 }
 
 /// What a comment is attached to.
@@ -1417,6 +1503,36 @@ mod tests {
                 "{near_miss:?} must not parse as a known version"
             );
         }
+    }
+
+    // ── Teams ───────────────────────────────────────────────────
+
+    #[test]
+    fn home_away_round_trips_every_wire_spelling() {
+        for (side, wire) in [(HomeAway::Home, "home"), (HomeAway::Away, "away")] {
+            assert_eq!(serde_json::to_value(&side).unwrap(), wire);
+            assert_eq!(
+                serde_json::from_value::<HomeAway>(wire.into()).unwrap(),
+                side
+            );
+        }
+        assert_eq!(HomeAway::ALL, &[HomeAway::Home, HomeAway::Away]);
+    }
+
+    /// A side this SDK does not know (a neutral venue, say) must reach the
+    /// caller rather than fail the whole event list.
+    #[test]
+    fn unrecognised_team_ordering_is_kept_verbatim() {
+        let team: Team = serde_json::from_str(r#"{"id": 1, "ordering": "neutral"}"#).unwrap();
+        assert_eq!(team.ordering, Some(HomeAway::Other("neutral".into())));
+        assert_eq!(serde_json::to_value(&team).unwrap()["ordering"], "neutral");
+    }
+
+    /// `teams` is typed `["array","null"]` by the served `Event.json`.
+    #[test]
+    fn event_tolerates_null_teams() {
+        let event: Event = serde_json::from_str(r#"{"id": "1", "teams": null}"#).unwrap();
+        assert!(event.teams.is_empty());
     }
 
     // ── SeriesInfo ──────────────────────────────────────────────

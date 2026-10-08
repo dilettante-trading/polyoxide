@@ -1,0 +1,10 @@
+{
+  "$schema": "https://gamma-api.polymarket.com/schemas/Team.json",
+  "id": 3290454,
+  "name": "Gabriel Augusto Carvalho",
+  "league": "itf",
+  "record": "0-0",
+  "logo": "https://polymarket-upload.s3.us-east-2.amazonaws.com/country-flags/un.png",
+  "abbreviation": "carval2",
+  "createdAt": "2026-09-07T22:29:01.259775Z"
+}

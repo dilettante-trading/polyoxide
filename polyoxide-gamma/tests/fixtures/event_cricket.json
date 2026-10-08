@@ -1,0 +1,153 @@
+[
+  {
+    "id": "1133142",
+    "ticker": "crint-kwt-tha-2026-10-07",
+    "slug": "crint-kwt-tha-2026-10-07",
+    "title": "T20 World Cup Asia Sub-Regional Qualifier A: Kuwait vs Thailand",
+    "description": "This market refers to the cricket match between Kuwait and Thailand scheduled for October 7 2026 at 9:15 PM ET in T20 World Cup Asia Sub-Regional Qualifier A.\n\nDLS/DRS, over-rate penalties, forfeit/walkover, or any other on-field ruling that leads the competition to declare a winner are treated as ordinary wins.\n\nIf the match ends tied and the playing conditions provide an on-field tiebreak (e.g., Super Over), the winner determined by that tiebreak will be used for resolution. If the match ends tied and no on-field tiebreak is used or available under the playing conditions (e.g., group-stage ODI with no Super Over), the market will resolve 50-50.\n\nIf the match is postponed/rescheduled, the market remains open until the listed fixture is completed. If the match is permanently canceled or abandoned or otherwise is completed without a winner, the market resolves 50-50.\n\nThe primary resolution source for this market is the official statistics of the event as recognized by the governing body or event organizers. However, if the governing body or event organizers have not published final match statistics within 2 hours after the event's conclusion, a consensus of credible reporting may be used instead.\n",
+    "resolutionSource": "https://www.espncricinfo.com/",
+    "startDate": "2026-10-04T20:04:48Z",
+    "creationDate": "2026-10-08T01:15:00Z",
+    "endDate": "2026-10-15T01:15:00Z",
+    "image": "https://polymarket-upload.s3.us-east-2.amazonaws.com/cricket-ball-a0b0bf2dc9.png",
+    "icon": "https://polymarket-upload.s3.us-east-2.amazonaws.com/cricket-ball-a0b0bf2dc9.png",
+    "active": true,
+    "closed": true,
+    "archived": false,
+    "new": false,
+    "featured": false,
+    "restricted": true,
+    "volume": 47545.104742999996,
+    "openInterest": 26361.964743,
+    "createdAt": "2026-10-04T20:04:36.89728Z",
+    "updatedAt": "2026-10-08T07:25:06.595935Z",
+    "volume24hr": 47322.18512,
+    "volume1wk": 47545.104743,
+    "volume1mo": 47545.104743,
+    "volume1yr": 47545.104743,
+    "enableOrderBook": true,
+    "negRisk": false,
+    "commentCount": 0,
+    "series": [
+      {
+        "id": "10528",
+        "ticker": "international-cricket",
+        "slug": "international-cricket",
+        "title": "International Cricket",
+        "seriesType": "single",
+        "recurrence": "daily",
+        "image": "",
+        "icon": "",
+        "active": true,
+        "closed": false,
+        "archived": false,
+        "featured": false,
+        "restricted": true,
+        "createdAt": "2025-11-05T19:16:23.611391Z",
+        "updatedAt": "2026-10-08T07:45:17.567512Z",
+        "volume24hr": 281480.37424100004,
+        "volume": 225761.084321,
+        "liquidity": 104055.53062,
+        "commentCount": 3764
+      }
+    ],
+    "tags": [
+      {
+        "id": "1",
+        "label": "Sports",
+        "slug": "sports",
+        "forceShow": false,
+        "publishedAt": "2023-10-24 22:37:50.296+00",
+        "updatedBy": 15,
+        "createdAt": "2023-10-24T22:37:50.31Z",
+        "updatedAt": "2026-04-17T20:47:16.461062Z",
+        "forceHide": true
+      },
+      {
+        "id": "100639",
+        "label": "Games",
+        "slug": "games",
+        "forceShow": false,
+        "createdAt": "2024-09-23T22:41:37.670714Z",
+        "updatedAt": "2026-03-09T22:28:03.358133Z"
+      },
+      {
+        "id": "517",
+        "label": "Cricket",
+        "slug": "cricket",
+        "forceShow": false,
+        "publishedAt": "2023-11-16 17:32:51.449+00",
+        "createdAt": "2023-11-16T17:32:51.462Z",
+        "updatedAt": "2026-04-15T21:09:13.730078Z"
+      },
+      {
+        "id": "102803",
+        "label": "International Cricket",
+        "slug": "international-cricket",
+        "forceShow": false,
+        "createdAt": "2025-11-05T19:21:10.166315Z",
+        "updatedAt": "2026-04-17T20:55:28.057742Z",
+        "isCarousel": false
+      }
+    ],
+    "cyom": false,
+    "closedTime": "2026-10-08T06:40:00Z",
+    "showAllOutcomes": true,
+    "showMarketImages": false,
+    "automaticallyResolved": true,
+    "enableNegRisk": false,
+    "automaticallyActive": true,
+    "eventDate": "2026-10-07",
+    "startTime": "2026-10-08T01:15:00Z",
+    "seriesSlug": "international-cricket",
+    "negRiskAugmented": false,
+    "pendingDeployment": false,
+    "deploying": false,
+    "teams": [
+      {
+        "id": 3084140,
+        "name": "Kuwait",
+        "league": "crint",
+        "record": "0-0",
+        "logo": "https://polymarket-upload.s3.us-east-2.amazonaws.com/Kuwait-61ddb94223.png",
+        "abbreviation": "kwt",
+        "createdAt": "2026-02-21T17:09:10.150913Z",
+        "updatedAt": "2026-09-30T20:17:52.81352Z",
+        "providerId": 7300000,
+        "color": "#357941",
+        "ordering": "home"
+      },
+      {
+        "id": 2937096,
+        "name": "Thailand",
+        "league": "crint",
+        "record": "0-0",
+        "logo": "https://polymarket-upload.s3.us-east-2.amazonaws.com/Thailand-08d2c525ba.png",
+        "abbreviation": "tha",
+        "createdAt": "2026-02-19T17:13:45.833661Z",
+        "updatedAt": "2026-09-30T20:17:53.840349Z",
+        "providerId": 16100000,
+        "color": "#4a4681",
+        "ordering": "away"
+      }
+    ],
+    "sport": {
+      "id": 87,
+      "sport": "crint",
+      "name": "International",
+      "image": "https://polymarket-upload.s3.us-east-2.amazonaws.com/league-icons/crint.png",
+      "resolution": "https://www.icc-cricket.com/",
+      "ordering": "home",
+      "tags": "1,100639,517,102803",
+      "primaryTagId": 102803,
+      "series": "10528",
+      "createdAt": "2025-12-07T00:14:46.041607Z"
+    },
+    "eventMetadata": {
+      "context_requires_regen": false,
+      "gameId": "1000170151LIVE2026",
+      "league": "T20 World Cup Asia Sub-Regional Qualifier A"
+    },
+    "version": "v1"
+  }
+]

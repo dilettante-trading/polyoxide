@@ -72,6 +72,16 @@ finished tennis match showing `ended: true` and its final score.
 `{"type":"validation error","error":"invalid integer"}`, so cricket games
 cannot be reconciled this way.
 
+One event per id is not guaranteed. On 2026-10-08 `game_id=90115236` returned
+a soccer game and five child events ("More Markets", "Exact Score", …), each
+carrying `parentEventId`; the game is the one without it. `game_id=1` returned
+28 closed cricket events from 2025. gamma's current cricket events carry no
+`gameId` at all: their id is the string `eventMetadata.gameId`, in a different
+form from this feed's `metadataGameId` (`1000170151LIVE2026` against
+`id2703438269077680`). In `polyoxide-gamma` these are `Event::game_id`,
+`Event::parent_event_id` and `Event::event_metadata`; see
+`docs/specs/gamma/OBSERVED.md`.
+
 ## Routes on the host
 
 `/ws`, and `/health` answering an empty `200`. Every other path probed on
