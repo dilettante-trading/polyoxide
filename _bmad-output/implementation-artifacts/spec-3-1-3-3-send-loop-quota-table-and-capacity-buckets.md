@@ -302,14 +302,14 @@ The rows assume Polymarket's policy and `max_retries = 3`. "Retry left" means `r
 ## Tasks & Acceptance
 
 **Execution:**
-- [ ] **Commit 0: the two new mutant rows.**
+- [x] **Commit 0: the two new mutant rows.**
   - Add the golden test `a_published_150_per_10s_admits_135_per_window` to `rate_limit.rs::quota_arithmetic`. It asserts `admitted_in_one_window(&quota(150, 10 s), 10 s) == 135`.
   - Record row (j), the reserved tenth. Its mutants are:
     - `RESERVED_FRACTION = 20`, which fails the new test;
     - `let target = count;` at :178, which fails the new test and :261.
   - Record row (i), the signer layer's `allow_burst`. Its mutant is "delete `.allow_burst(..)` at `signer_limit.rs:272`", which fails the four `limiter_tests` in the Decisions.
   - Prove both rows, add their snippets, and mark those two items of the 1-6/1-8 deferred entry done.
-- [ ] **Commit 1, Story 3.1: the loop and its hooks.**
+- [x] **Commit 1, Story 3.1: the loop and its hooks.**
   - `Cargo.toml`: add `dynosaur = "0.3.1"`. Core takes it, plus `tracing-subscriber` as a dev-dependency.
   - New `src/hooks.rs` holds the Design Notes items, `NoThrottle` and `DefaultRetryPolicy`.
   - `ApiError::Refused` (`is_retriable` false, `InvalidRequest`), with its `every_variant_classifies` row. `Refused` derives `Error`, implements `Classify` and is listed in `lib.rs`.
@@ -320,7 +320,7 @@ The rows assume Polymarket's policy and `max_retries = 3`. "Retry left" means `r
   - The four transitional methods are reimplemented, with docs naming who removes them.
   - `impl Throttle for RateLimiter`.
   - New `src/polymarket/` holds `PolymarketRetryPolicy`. The gamma, data and perps builders install it.
-- [ ] **Commit 1: new tests** in `polyoxide-core/tests/send_loop.rs`:
+- [x] **Commit 1: new tests** in `polyoxide-core/tests/send_loop.rs`:
   - `each_attempt_runs_acquire_sign_send_observe_decide_hold_in_order`;
   - `acquire_waits_for_the_permit`;
   - `sign_runs_on_every_attempt_with_its_number`;
@@ -336,24 +336,24 @@ The rows assume Polymarket's policy and `max_retries = 3`. "Retry left" means `r
   - `get_bytes_retries_a_429_and_holds`.
 
   Data `mock_api.rs` gains `a_429_on_the_pnl_host_holds_the_data_host`.
-- [ ] **Commit 1: `MUTANTS.md` and the ledger.**
+- [x] **Commit 1: `MUTANTS.md` and the ledger.**
   - (a) moves to the loop's `hold` call, with the mutant "call `hold` only on `Retry`".
   - New "(a), the policy": the 429 arm's hold, with the mutant "`hold` only when `retries_left > 0`". Both are pinned by data :1532 and `a_429_with_no_retry_left_still_holds`.
   - (b) moves to `RetryConfig::retry_delay`.
   - New (f): `observe` runs on every response, with the mutant "`observe` only when `retries_left > 0`".
   - New (g): the floor, with the mutant "sleep `wait`", pinned by `a_zero_wait_still_sleeps_the_floor`, data :1509 and perps :544.
   - Drop `get_bytes` from "not yet covered".
-- [ ] **Commit 1: CLAUDE.md and the spine.**
+- [x] **Commit 1: CLAUDE.md and the spine.**
   - Rewrite CLAUDE.md :13, :178, :195 and :200 to describe the loop and the policy. Clob's and relay's four hand-written loops keep `note_rate_limited` before `should_retry` until 3.4 and 3.5. Add a short "One send loop" paragraph.
   - New `…/spine-amendments/epic-3.md` holds A3-1 and A3-2.
-- [ ] **Commit 2, H3.**
+- [x] **Commit 2, H3.**
   - Add `pub fn decode_json<T: DeserializeOwned>(path: &str, text: &str) -> Result<T, serde_json::Error>` to `send.rs`.
   - Core's `Request::send`, clob's `Request::send`, Binance's `WeightedRequest::send` and relay's `post_json` call it, each keeping its own error mapping.
   - Re-cite clob :262 and Binance :136/:149.
-- [ ] **Commit 3, DRIFT R10.**
+- [x] **Commit 3, DRIFT R10.**
   - The loop warns once on a hold that is not a retry.
   - New tests: `a_retry_warns_once_under_polyoxide_core` (exact text and target prefix, for 429 and 425) and `a_hold_with_no_retry_left_warns`.
-- [ ] **Commit 4, Story 3.2: the builder and tables.**
+- [x] **Commit 4, Story 3.2: the builder and tables.**
   - The `WindowQuotaTable` builder:
     - general bucket;
     - shared `BucketId`s;
@@ -367,12 +367,12 @@ The rows assume Polymarket's policy and `max_retries = 3`. "Retry left" means `r
   - Remove the five `RateLimiter::*_default` methods and list them. The predicted keys are `polyoxide-core inherent_method_missing: RateLimiter::{clob,gamma,data,relay,perps}_default (src/rate_limit.rs)`; confirm them in the gate's output.
   - Update CLAUDE.md :186, :264 and :352, the README, the spec docs and v2_soak.
   - Re-cite rows (c), (d) and (j).
-- [ ] **Commit 5, the public-API rewrite.**
+- [x] **Commit 5, the public-API rewrite.**
   - `agreement` uses `effective_quota` and `paced_interval`.
   - The 21 `documented_*` tests, the 11 internal-reading `tests` tests and `every_configured_bucket_…` use `rows()`, `effective_quota`, `BucketId` (where `Arc::ptr_eq` was used) and `admitted_in_one_window()`.
   - Report the counts, and re-prove rows (c) and (d).
-- [ ] **Commit 6, the location-only move.** The 48 tests and `agreement` move to `polyoxide-core/tests/polymarket_limits.rs`, keeping their module names. Core's lib goes from 154 to 106, plus the new tests. Re-cite rows (c) and (d), and fix the path in the gamma `rate-limits.md`.
-- [ ] **Commit 7, Story 3.3: the hold.**
+- [x] **Commit 6, the location-only move.** The 48 tests and `agreement` move to `polyoxide-core/tests/polymarket_limits.rs`, keeping their module names. Core's lib goes from 154 to 106, plus the new tests. Re-cite rows (c) and (d), and fix the path in the gamma `rate-limits.md`.
+- [x] **Commit 7, Story 3.3: the hold.**
   - New `src/hold.rs` holds `Hold`, with `unbounded`, `with_ceiling`, `extend` and `wait`, moved from `RateLimiter`.
   - `RateLimiter` holds a `Hold`. The builder accepts one.
   - `acquire` re-checks the hold after its bucket waits.
@@ -382,7 +382,7 @@ The rows assume Polymarket's policy and `max_retries = 3`. "Retry left" means `r
     - `a_hold_never_shortens`, on `Hold` directly;
     - `a_huge_delay_saturates_rather_than_panics`.
   - Re-cite rows (c) at `hold.rs`; their tests stay in `polymarket_limits.rs`.
-- [ ] **Commit 8: the capacity bucket and the signer layer.**
+- [x] **Commit 8: the capacity bucket and the signer layer.**
   - New `src/capacity.rs` holds `CapacityBucket` (`new(layer, capacity, refill_per_sec, hold)`, `provisional(..)`, `acquire(units, exact)`, `resize`, `confirm`, `hold()`), with unit tests:
     - starts full;
     - never holds more than capacity;
@@ -396,14 +396,14 @@ The rows assume Polymarket's policy and `max_retries = 3`. "Retry left" means `r
   - Re-prove row (i) against the bucket's capacity argument (mutant: capacity `1`). Its four tests are unchanged.
   - The signer suite (22) and clob's suites keep their counts.
   - Update the module doc, which links `RateLimiter`.
-- [ ] **Commit 9: `polymarket::ClobThrottle`.** It comes with `clob_throttle()`, the three `LayerId`s and `signer_cost`. New `polyoxide-core/tests/polymarket_throttle.rs`, through `HttpClient::send` and mockito:
+- [x] **Commit 9: `polymarket::ClobThrottle`.** It comes with `clob_throttle()`, the three `LayerId`s and `signer_cost`. New `polyoxide-core/tests/polymarket_throttle.rs`, through `HttpClient::send` and mockito:
   - `charges_the_ip_layer_one_and_the_signer_layer_n`;
   - `an_exact_batch_above_capacity_is_refused_without_sending`, with `expect(0)` and `match_query(Any)`, asserted;
   - `a_hold_on_the_throttle_stops_both_layers`;
   - `the_hold_survives_a_tier_change`;
   - `a_tier_on_a_429_is_adopted`;
   - `a_429_holds_both_layers`.
-- [ ] **Commit 10: the CAP-2 test.** `polyoxide-test-support/tests/token_cost_throttle.rs` implements `Throttle` for separate read and write `CapacityBucket`s over one `Hold`, with integer `Cost`s. It asserts:
+- [x] **Commit 10: the CAP-2 test.** `polyoxide-test-support/tests/token_cost_throttle.rs` implements `Throttle` for separate read and write `CapacityBucket`s over one `Hold`, with integer `Cost`s. It asserts:
   - the two layers are independent;
   - a 10-unit write drains 10;
   - an above-capacity cost is refused once confirmed, and waits while provisional;
@@ -411,7 +411,7 @@ The rows assume Polymarket's policy and `max_retries = 3`. "Retry left" means `r
   - a hold stops both layers.
 
   It needs no edit to core.
-- [ ] **Deferred work.** In `deferred-work.md`, record for 4.11's notes:
+- [x] **Deferred work.** In `deferred-work.md`, record for 4.11's notes:
   - `ApiError::Refused` is added;
   - the decode-error log targets moved;
   - the new hold WARN;
@@ -472,6 +472,34 @@ Core does not re-export the `reqwest` types in these signatures. Story 3.13 deci
 - `python3 scripts/api_removals.py check --baseline v0.38.1`, once -- expected: only the five listed keys.
 
 ## Implementation Notes
+
+Commits 0–2 (`e05410c`, `0461462`, `50eca25`) were made by the first implementer; 3–10 are
+`d425a23`, `13c00ed`, `ed0741d`, `14c23f1`, `dc1127a`, `34d60d3`, `2042d2d` and the CAP-2 commit.
+
+- **`WindowQuotaTable`'s shape.** `new(count, period)` makes the general bucket;
+  `bucket(count, period) -> BucketId`, `row(Matching, pattern, Option<Method>, &[BucketId])`,
+  `prefix(pattern, method, count, period)` (a row with a bucket of its own), `with_hold(Hold)`,
+  `build()` and `paced_interval`. The builder methods take `&mut self`. A `BucketId` carries
+  the id of the table that made it, and `row` panics on a foreign one. Patterns are
+  `&'static str`. `EffectiveQuota::admitted_in_one_window` returns `u128`, as the arithmetic
+  tests' helper did.
+- **The public-API rewrite.** `agreement::resolve_specs` became an extension trait over
+  `effective_quota` that slices off the general bucket and compares `(count, period)`, so the
+  test bodies that call it did not change.
+- **Row (c), a hold extended mid-wait.** AD-23's re-check in `RateLimiter::acquire` also waits
+  out an extended hold, so the cooldown test passes under that row's mutant. The row is now held
+  by `Hold`'s own `a_hold_extended_mid_wait_is_honoured_in_full`, and the re-check has a row of
+  its own, held by `a_hold_set_during_a_bucket_wait_is_honoured`.
+- **`CapacityBucket`.** `refill_per_sec` is a `u32`, and zero panics. `acquire` is an
+  `async fn` (clippy's `manual_async_fn`) with a compile-time `Send` assertion. A provisional
+  bucket makes an above-capacity cost wait whether or not it is exact.
+- **`ClobThrottle::new(table, signer)`** puts the signer layer on the table's hold with
+  `SignerLimiter::with_hold`, which builds a new limiter; `signer()` and `table()` lend the
+  layers. `SignerLimiter` also gained `hold()`.
+- **The removal gate** ran once, after commit 4, with the local Rust 1.95.0 rather than CI's
+  pinned 1.99.0: the five listed removals, plus `enum_variant_added` and
+  `auto_trait_impl_removed` (recorded in `deferred-work.md`). `target/semver-checks` was
+  deleted after.
 
 ## Spec Change Log
 
