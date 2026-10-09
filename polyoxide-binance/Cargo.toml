@@ -38,7 +38,7 @@ url = { workspace = true }
 [dev-dependencies]
 # The live suites' failure tags and credential loaders. Path-only: it is never
 # published, and cargo strips a path-only dev-dependency on publish.
-polyoxide-test-support = { path = "../polyoxide-test-support" }
+polyoxide-test-support = { path = "../polyoxide-test-support", features = ["query"] }
 futures-util = "0.3"
 mockito = { workspace = true }
 # `test-util` gives the limiter tests a paused clock, so a minute's wait is

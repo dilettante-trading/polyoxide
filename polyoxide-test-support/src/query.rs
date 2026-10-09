@@ -1,5 +1,5 @@
-//! The query keys a request builder sends, read off a mock server, and the
-//! keys a vendored OpenAPI document declares for the route.
+//! The query keys and pairs a request builder sends, read off a mock server,
+//! and the keys a vendored OpenAPI document declares for the route.
 //!
 //! A builder called with every argument and setter it has must send exactly
 //! the documented parameter names. Comparing [`keys_sent`] with
@@ -62,6 +62,47 @@ where
     url.query_pairs().map(|(key, _)| key.into_owned()).collect()
 }
 
+/// Answers `GET path` on a mock server, calls `fire` with the server's base
+/// URL, and returns the request's query as ordered `(key, value)` pairs,
+/// decoded, a repeated key once per value.
+///
+/// `fire` builds the client against that URL and sends one request; what it
+/// returns is ignored, so the body (`{}`) need not decode as the route's
+/// type. Panics when no request reaches `path`.
+pub async fn pairs_sent<F, Fut>(path: &str, fire: F) -> Vec<(String, String)>
+where
+    F: FnOnce(String) -> Fut,
+    Fut: Future,
+{
+    let mut server = Server::new_async().await;
+    let seen = Arc::new(Mutex::new(Vec::<String>::new()));
+    let sink = Arc::clone(&seen);
+    let mock = server
+        .mock("GET", path)
+        .match_query(Matcher::Any)
+        .match_request(move |request| {
+            sink.lock()
+                .unwrap()
+                .push(request.path_and_query().to_owned());
+            true
+        })
+        .with_status(200)
+        .with_body("{}")
+        .create_async()
+        .await;
+
+    fire(server.url()).await;
+    if !mock.matched_async().await {
+        panic!("{path}: no request was sent");
+    }
+
+    let seen = seen.lock().unwrap();
+    let url = url::Url::parse(&format!("http://mock{}", seen.last().unwrap())).unwrap();
+    url.query_pairs()
+        .map(|(key, value)| (key.into_owned(), value.into_owned()))
+        .collect()
+}
+
 /// The parameter names `spec` documents for `GET path`, or `None` when the
 /// document has no such operation. A documented operation without
 /// `parameters` documents none. Panics on a parameter without a name.
@@ -113,6 +154,36 @@ mod tests {
             Err::<(), _>("refused")
         })
         .await;
+    }
+
+    #[tokio::test]
+    async fn pairs_sent_reads_every_pair_in_order() {
+        let pairs = pairs_sent("/v1/rows", |base| async move {
+            reqwest::get(format!("{base}/v1/rows?limit=2&id=a&id=b&q=x%20y"))
+                .await
+                .unwrap();
+        })
+        .await;
+        assert_eq!(
+            pairs,
+            [("limit", "2"), ("id", "a"), ("id", "b"), ("q", "x y")]
+                .map(|(k, v)| (k.to_owned(), v.to_owned()))
+        );
+    }
+
+    #[tokio::test]
+    async fn pairs_sent_does_not_need_the_body_to_decode() {
+        let pairs = pairs_sent("/v1/rows", |base| async move {
+            let body = reqwest::get(format!("{base}/v1/rows?limit=2"))
+                .await
+                .unwrap()
+                .text()
+                .await
+                .unwrap();
+            serde_json::from_str::<Vec<u8>>(&body).unwrap_err()
+        })
+        .await;
+        assert_eq!(pairs, [("limit".to_owned(), "2".to_owned())]);
     }
 
     #[test]
