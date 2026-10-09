@@ -311,16 +311,16 @@ mod quota_arithmetic {
             ("data", polymarket::data_limits()),
             ("relay", polymarket::relay_limits()),
         ] {
-            for limit in &rl.inner.limits {
-                for bucket in &limit.buckets {
-                    let RateSpec { count, period } = bucket.spec;
-                    let admitted = admitted_in_one_window(&quota(count, period), period);
+            for row in rl.rows() {
+                for bucket in &row.buckets {
+                    let EffectiveQuota { count, period, .. } = *bucket;
+                    let admitted = bucket.admitted_in_one_window();
 
                     assert!(
                         admitted <= u128::from(count),
                         "{surface} {} is published as {count}/{period:?} but admits \
                          {admitted} in one window",
-                        limit.path_prefix,
+                        row.pattern,
                     );
                 }
             }
@@ -635,18 +635,6 @@ impl RateLimiter {
     fn row_for(&self, path: &str, method: Option<&Method>) -> Option<&EndpointLimit> {
         self.inner.limits.iter().find(|l| l.matches(path, method))
     }
-
-    /// The quotas a request would be held to, in the order they are awaited.
-    ///
-    /// Empty when nothing matches — meaning the request is governed only by the
-    /// general bucket, which is the shape every over-permit bug in this table
-    /// has taken.
-    #[cfg(test)]
-    fn resolve_specs(&self, path: &str, method: Option<&Method>) -> Vec<RateSpec> {
-        self.row_for(path, method)
-            .map(|l| l.buckets.iter().map(|b| b.spec).collect())
-            .unwrap_or_default()
-    }
 }
 
 /// Counts requests: each attempt is charged one request against the general
@@ -952,6 +940,39 @@ mod agreement {
 
     use super::*;
 
+    /// A quota as published: `count` requests per `period`.
+    #[derive(Debug, Clone, Copy, PartialEq, Eq)]
+    pub struct Spec {
+        pub count: u32,
+        pub period: Duration,
+    }
+
+    /// The quotas a request resolves to, read through
+    /// [`RateLimiter::effective_quota`].
+    pub trait ResolveSpecs {
+        /// The quotas a request would be held to beyond the general bucket, in
+        /// the order they are awaited.
+        ///
+        /// Empty when nothing matches — meaning the request is governed only by
+        /// the general bucket, which is the shape every over-permit bug in this
+        /// table has taken.
+        fn resolve_specs(&self, path: &str, method: Option<&Method>) -> Vec<Spec>;
+    }
+
+    impl ResolveSpecs for RateLimiter {
+        fn resolve_specs(&self, path: &str, method: Option<&Method>) -> Vec<Spec> {
+            let method = method.expect("every rule asserted here names its method");
+            // `effective_quota` lists the general bucket first; slice it off.
+            self.effective_quota(method, path)[1..]
+                .iter()
+                .map(|q| Spec {
+                    count: q.count,
+                    period: q.period,
+                })
+                .collect()
+        }
+    }
+
     /// One published rule: the request it applies to, and the buckets it must
     /// pass, as `(count, window_secs)` in the order `acquire` awaits them.
     pub type DocumentedRule = (&'static str, Option<Method>, Vec<(u32, u64)>);
@@ -1015,7 +1036,7 @@ mod agreement {
         count: u32,
         period: Duration,
     ) {
-        let interval = period / sustained_slots(count);
+        let interval = WindowQuotaTable::paced_interval(count, period);
 
         rl.acquire(path, Some(&Method::GET)).await;
 
@@ -1323,7 +1344,7 @@ mod documented_limits {
     //! in the right order, which is why `/balance-allowance` could be absent
     //! entirely while every test passed.
 
-    use super::agreement::{assert_paced_by_its_own_quota, DocumentedRule};
+    use super::agreement::{assert_paced_by_its_own_quota, DocumentedRule, ResolveSpecs};
     use super::*;
     use crate::polymarket;
 
@@ -1447,19 +1468,16 @@ mod documented_limits {
         let group: Vec<_> = ["/trades", "/orders", "/order", "/notifications"]
             .iter()
             .map(|p| {
-                rl.inner
-                    .limits
-                    .iter()
-                    .find(|l| l.matches(p, Some(&Method::GET)))
+                rl.effective_quota(&Method::GET, p)
+                    .get(1)
                     .unwrap_or_else(|| panic!("{p} should match a ledger entry"))
-                    .buckets[0]
-                    .clone()
+                    .bucket
             })
             .collect();
 
         for other in &group[1..] {
             assert!(
-                Arc::ptr_eq(&group[0], other),
+                group[0] == *other,
                 "ledger endpoints must share one bucket, not hold copies"
             );
         }
@@ -1493,7 +1511,7 @@ mod documented_limits {
 
     #[tokio::test]
     async fn the_ledger_group_allowance_is_consumed_jointly() {
-        // The runtime counterpart to the Arc::ptr_eq check: consuming the group
+        // The runtime counterpart to the shared-bucket check: consuming the group
         // through one endpoint must leave a *different* group member throttled.
         // The shared 900/10s bucket paces at ~11ms; with four independent
         // buckets /orders would only meet the general 9,000/10s one at ~1.1ms.
@@ -1529,6 +1547,7 @@ mod documented_limits {
 
 #[cfg(test)]
 mod tests {
+    use super::agreement::ResolveSpecs;
     use super::*;
     use crate::polymarket;
 
@@ -1651,26 +1670,26 @@ mod tests {
     #[test]
     fn test_clob_default_construction() {
         let rl = polymarket::clob_limits();
-        assert_eq!(rl.inner.limits.len(), 27);
+        assert_eq!(rl.rows().len(), 27);
         assert!(format!("{:?}", rl).contains("endpoints"));
     }
 
     #[test]
     fn test_gamma_default_construction() {
         let rl = polymarket::gamma_limits();
-        assert_eq!(rl.inner.limits.len(), 6);
+        assert_eq!(rl.rows().len(), 6);
     }
 
     #[test]
     fn test_data_default_construction() {
         let rl = polymarket::data_limits();
-        assert_eq!(rl.inner.limits.len(), 11);
+        assert_eq!(rl.rows().len(), 11);
     }
 
     #[test]
     fn test_relay_default_construction() {
         let rl = polymarket::relay_limits();
-        assert_eq!(rl.inner.limits.len(), 0);
+        assert_eq!(rl.rows().len(), 0);
     }
 
     #[test]
@@ -1689,11 +1708,10 @@ mod tests {
         // prefix of another. Asserting on fixed indices made this test brittle
         // and told us nothing; assert the actual constraint instead.
         let rl = polymarket::clob_limits();
+        let rows = rl.rows();
         let index_of = |path: &str| {
-            rl.inner
-                .limits
-                .iter()
-                .position(|l| l.path_prefix == path)
+            rows.iter()
+                .position(|l| l.pattern == path)
                 .unwrap_or_else(|| panic!("{path} should be configured"))
         };
 
@@ -1731,18 +1749,18 @@ mod tests {
     #[tokio::test]
     async fn test_acquire_prefix_respects_segment_boundary() {
         let rl = polymarket::clob_limits();
-        let limits = &rl.inner.limits;
+        let limits = rl.rows();
 
         // Find the /price entry
         let price_idx = limits
             .iter()
-            .position(|l| l.path_prefix == "/price")
+            .position(|l| l.pattern == "/price")
             .expect("/price endpoint exists");
 
         // /prices-history must NOT match /price — it's a different endpoint
         let prices_history_idx = limits
             .iter()
-            .position(|l| l.path_prefix == "/prices-history")
+            .position(|l| l.pattern == "/prices-history")
             .expect("/prices-history endpoint exists");
 
         // /prices-history should have its own entry, ordered before /price
@@ -1824,20 +1842,20 @@ mod tests {
     #[test]
     fn test_clob_price_and_prices_history_are_distinct() {
         let rl = polymarket::clob_limits();
-        let limits = &rl.inner.limits;
+        let limits = rl.rows();
 
-        let price = limits.iter().find(|l| l.path_prefix == "/price").unwrap();
+        let price = limits.iter().find(|l| l.pattern == "/price").unwrap();
         let prices_history = limits
             .iter()
-            .find(|l| l.path_prefix == "/prices-history")
+            .find(|l| l.pattern == "/prices-history")
             .unwrap();
 
         // Both should use Prefix mode
-        assert_eq!(price.match_mode, Matching::Prefix);
-        assert_eq!(prices_history.match_mode, Matching::Prefix);
+        assert_eq!(price.matching, Matching::Prefix);
+        assert_eq!(prices_history.matching, Matching::Prefix);
 
         // Verify "/prices-history" does NOT match the "/price" pattern
-        if let Some(rest) = "/prices-history".strip_prefix(price.path_prefix) {
+        if let Some(rest) = "/prices-history".strip_prefix(price.pattern) {
             assert!(
                 !rest.is_empty() && !rest.starts_with('/') && !rest.starts_with('?'),
                 "/prices-history must not match /price pattern, rest = '{rest}'"
@@ -1858,16 +1876,13 @@ mod tests {
         assert_eq!(closed, positions, "both are published at 150/10s");
 
         let bucket_for = |path: &str| {
-            rl.inner
-                .limits
-                .iter()
-                .find(|l| l.matches(path, Some(&Method::GET)))
+            rl.effective_quota(&Method::GET, path)
+                .get(1)
                 .unwrap_or_else(|| panic!("{path} should match a rule"))
-                .buckets[0]
-                .clone()
+                .bucket
         };
         assert!(
-            !Arc::ptr_eq(&bucket_for("/closed-positions"), &bucket_for("/positions")),
+            bucket_for("/closed-positions") != bucket_for("/positions"),
             "equal quotas must still be separate buckets — upstream publishes \
              150/10s each, not 150/10s combined"
         );
@@ -1876,12 +1891,12 @@ mod tests {
     #[test]
     fn test_all_clob_endpoints_have_match_mode() {
         let rl = polymarket::clob_limits();
-        for limit in &rl.inner.limits {
+        for limit in &rl.rows() {
             // Every endpoint should have an explicit match mode
             assert!(
-                limit.match_mode == Matching::Prefix || limit.match_mode == Matching::Exact,
+                limit.matching == Matching::Prefix || limit.matching == Matching::Exact,
                 "endpoint {} has no valid match mode",
-                limit.path_prefix
+                limit.pattern
             );
         }
     }
@@ -1959,10 +1974,9 @@ mod tests {
     fn test_clob_post_order_has_dual_window() {
         let rl = polymarket::clob_limits();
         let post_order = rl
-            .inner
-            .limits
-            .iter()
-            .find(|l| l.path_prefix == "/order" && l.method == Some(Method::POST))
+            .rows()
+            .into_iter()
+            .find(|l| l.pattern == "/order" && l.method == Some(&Method::POST))
             .expect("POST /order endpoint should exist");
 
         assert_eq!(
@@ -1979,10 +1993,9 @@ mod tests {
         // publishes 5,000/10s burst plus 120,000/10min sustained.
         let rl = polymarket::clob_limits();
         let delete_order = rl
-            .inner
-            .limits
-            .iter()
-            .find(|l| l.path_prefix == "/order" && l.method == Some(Method::DELETE))
+            .rows()
+            .into_iter()
+            .find(|l| l.pattern == "/order" && l.method == Some(&Method::DELETE))
             .expect("DELETE /order endpoint should exist");
 
         assert_eq!(
