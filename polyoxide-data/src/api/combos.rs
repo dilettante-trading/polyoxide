@@ -49,79 +49,41 @@ pub struct ListComboPositions {
 }
 
 impl ListComboPositions {
-    /// Filter by one or more resolution statuses.
-    ///
-    /// Omit for the default listing (open positions plus resolved positions
-    /// with a recorded resolution). [`ComboStatus::Unknown`] is dropped, since
-    /// the upstream API has no matching value to filter on.
-    pub fn status(mut self, statuses: impl IntoIterator<Item = ComboStatus>) -> Self {
-        let values: Vec<String> = statuses
-            .into_iter()
-            .filter(|s| *s != ComboStatus::Unknown)
-            .map(|s| s.to_string())
-            .collect();
-        if !values.is_empty() {
-            self.request = self.request.query("status", values.join(","));
-        }
-        self
-    }
-
-    /// Set the sort order (default: `current_value_desc`).
-    pub fn sort(mut self, sort: ComboSort) -> Self {
-        self.request = self.request.query("sort", sort);
-        self
-    }
-
-    /// Filter by combo condition ID(s) (`0x` + 62 hex).
-    pub fn market_id(mut self, ids: impl IntoIterator<Item = impl ToString>) -> Self {
-        let values: Vec<String> = ids.into_iter().map(|s| s.to_string()).collect();
-        if !values.is_empty() {
-            self.request = self.request.query("market_id", values.join(","));
-        }
-        self
-    }
-
-    /// Set results per page (0-1000, default: 20).
-    pub fn limit(mut self, limit: u32) -> Self {
-        self.request = self.request.query("limit", limit);
-        self
-    }
-
-    /// Set the pagination offset (0-100000, default: 0).
-    ///
-    /// Ignored when [`cursor`](Self::cursor) is set.
-    pub fn offset(mut self, offset: u32) -> Self {
-        self.request = self.request.query("offset", offset);
-        self
-    }
-
-    /// Incremental-sync watermark (epoch seconds, inclusive): return only rows
-    /// whose `updated_at` is at or after this time.
-    ///
-    /// Positions mutate on resolution and redemption, so this catches changes a
-    /// creation-time filter cannot. Pair with [`ComboSort::UpdatedAsc`].
-    pub fn updated_after(mut self, timestamp: i64) -> Self {
-        self.request = self.request.query("updatedAfter", timestamp);
-        self
-    }
-
-    /// Optional upper bound (epoch seconds, inclusive) for `updated_at`.
-    ///
-    /// Clamped to the safety lag; must be greater than or equal to
-    /// [`updated_after`](Self::updated_after).
-    pub fn updated_before(mut self, timestamp: i64) -> Self {
-        self.request = self.request.query("updatedBefore", timestamp);
-        self
-    }
-
-    /// Continue from a previous response's `pagination.next_cursor`.
-    ///
-    /// When present this supersedes [`offset`](Self::offset), which is ignored.
-    /// Keep the same [`sort`](Self::sort) across pages. Invalid, tampered, or
-    /// cross-endpoint tokens return a 400.
-    pub fn cursor(mut self, cursor: impl Into<String>) -> Self {
-        self.request = self.request.query("cursor", cursor.into());
-        self
+    polyoxide_core::query_setters! {
+        /// Filter by one or more resolution statuses.
+        ///
+        /// Omit for the default listing (open positions plus resolved positions
+        /// with a recorded resolution). [`ComboStatus::Unknown`] is dropped, since
+        /// the upstream API has no matching value to filter on.
+        status(statuses: impl IntoIterator<Item = ComboStatus>) => csv "status"
+            = statuses.into_iter().filter(|s| *s != ComboStatus::Unknown),
+        /// Set the sort order (default: `current_value_desc`).
+        sort: ComboSort => "sort",
+        /// Filter by combo condition ID(s) (`0x` + 62 hex).
+        market_id: csv impl IntoIterator<Item = impl ToString> => "market_id",
+        /// Set results per page (0-1000, default: 20).
+        limit: u32 => "limit",
+        /// Set the pagination offset (0-100000, default: 0).
+        ///
+        /// Ignored when [`cursor`](Self::cursor) is set.
+        offset: u32 => "offset",
+        /// Incremental-sync watermark (epoch seconds, inclusive): return only rows
+        /// whose `updated_at` is at or after this time.
+        ///
+        /// Positions mutate on resolution and redemption, so this catches changes a
+        /// creation-time filter cannot. Pair with [`ComboSort::UpdatedAsc`].
+        updated_after: i64 => "updatedAfter",
+        /// Optional upper bound (epoch seconds, inclusive) for `updated_at`.
+        ///
+        /// Clamped to the safety lag; must be greater than or equal to
+        /// [`updated_after`](Self::updated_after).
+        updated_before: i64 => "updatedBefore",
+        /// Continue from a previous response's `pagination.next_cursor`.
+        ///
+        /// When present this supersedes [`offset`](Self::offset), which is ignored.
+        /// Keep the same [`sort`](Self::sort) across pages. Invalid, tampered, or
+        /// cross-endpoint tokens return a 400.
+        cursor: impl Into<String> => "cursor",
     }
 
     /// Execute the request.
@@ -136,36 +98,20 @@ pub struct ListComboActivity {
 }
 
 impl ListComboActivity {
-    /// Filter by combo condition ID(s) (`0x` + 62 hex).
-    pub fn market_id(mut self, ids: impl IntoIterator<Item = impl ToString>) -> Self {
-        let values: Vec<String> = ids.into_iter().map(|s| s.to_string()).collect();
-        if !values.is_empty() {
-            self.request = self.request.query("market_id", values.join(","));
-        }
-        self
-    }
-
-    /// Set results per page (0-500, default: 50).
-    pub fn limit(mut self, limit: u32) -> Self {
-        self.request = self.request.query("limit", limit);
-        self
-    }
-
-    /// Set the pagination offset (0-10000, default: 0).
-    ///
-    /// Ignored when [`cursor`](Self::cursor) is set.
-    pub fn offset(mut self, offset: u32) -> Self {
-        self.request = self.request.query("offset", offset);
-        self
-    }
-
-    /// Continue from a previous response's `pagination.next_cursor`.
-    ///
-    /// When present this supersedes [`offset`](Self::offset), which is ignored.
-    /// Invalid, tampered, or cross-endpoint tokens return a 400.
-    pub fn cursor(mut self, cursor: impl Into<String>) -> Self {
-        self.request = self.request.query("cursor", cursor.into());
-        self
+    polyoxide_core::query_setters! {
+        /// Filter by combo condition ID(s) (`0x` + 62 hex).
+        market_id: csv impl IntoIterator<Item = impl ToString> => "market_id",
+        /// Set results per page (0-500, default: 50).
+        limit: u32 => "limit",
+        /// Set the pagination offset (0-10000, default: 0).
+        ///
+        /// Ignored when [`cursor`](Self::cursor) is set.
+        offset: u32 => "offset",
+        /// Continue from a previous response's `pagination.next_cursor`.
+        ///
+        /// When present this supersedes [`offset`](Self::offset), which is ignored.
+        /// Invalid, tampered, or cross-endpoint tokens return a 400.
+        cursor: impl Into<String> => "cursor",
     }
 
     /// Execute the request.

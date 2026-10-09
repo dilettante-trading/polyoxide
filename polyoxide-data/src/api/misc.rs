@@ -43,10 +43,9 @@ pub struct ListRevisions {
 }
 
 impl ListRevisions {
-    /// Set maximum number of revisions returned (0-500, default: 100).
-    pub fn limit(mut self, limit: u32) -> Self {
-        self.request = self.request.query("limit", limit);
-        self
+    polyoxide_core::query_setters! {
+        /// Set maximum number of revisions returned (0-500, default: 100).
+        limit: u32 => "limit",
     }
 
     /// Execute the request.

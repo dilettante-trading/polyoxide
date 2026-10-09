@@ -48,20 +48,15 @@ pub struct UserPnlRequest {
 }
 
 impl UserPnlRequest {
-    /// Restrict the series to a trailing window (e.g. `"1d"`, `"1w"`, `"all"`).
-    ///
-    /// Omitted by default, which yields the upstream default window. Unlike
-    /// [`fidelity`](Self::fidelity), the accepted values are not enumerated by
-    /// the API's own error messages, so this takes a string.
-    pub fn interval(mut self, interval: impl Into<String>) -> Self {
-        self.request = self.request.query("interval", interval.into());
-        self
-    }
-
-    /// Set the sampling resolution of the returned series.
-    pub fn fidelity(mut self, fidelity: PnlFidelity) -> Self {
-        self.request = self.request.query("fidelity", fidelity);
-        self
+    polyoxide_core::query_setters! {
+        /// Restrict the series to a trailing window (e.g. `"1d"`, `"1w"`, `"all"`).
+        ///
+        /// Omitted by default, which yields the upstream default window. Unlike
+        /// [`fidelity`](Self::fidelity), the accepted values are not enumerated by
+        /// the API's own error messages, so this takes a string.
+        interval: impl Into<String> => "interval",
+        /// Set the sampling resolution of the returned series.
+        fidelity: PnlFidelity => "fidelity",
     }
 
     /// Execute the request.

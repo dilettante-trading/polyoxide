@@ -81,70 +81,27 @@ pub struct ListPositions {
 }
 
 impl ListPositions {
-    /// Filter by specific market condition IDs (comma-separated)
-    pub fn market(mut self, condition_ids: impl IntoIterator<Item = impl ToString>) -> Self {
-        let ids: Vec<String> = condition_ids.into_iter().map(|s| s.to_string()).collect();
-        if !ids.is_empty() {
-            self.request = self.request.query("market", ids.join(","));
-        }
-        self
-    }
-
-    /// Filter by event IDs (comma-separated)
-    pub fn event_id(mut self, event_ids: impl IntoIterator<Item = impl ToString>) -> Self {
-        let ids: Vec<String> = event_ids.into_iter().map(|s| s.to_string()).collect();
-        if !ids.is_empty() {
-            self.request = self.request.query("eventId", ids.join(","));
-        }
-        self
-    }
-
-    /// Set minimum position size filter (default: 1)
-    pub fn size_threshold(mut self, threshold: f64) -> Self {
-        self.request = self.request.query("sizeThreshold", threshold);
-        self
-    }
-
-    /// Filter for redeemable positions only
-    pub fn redeemable(mut self, redeemable: bool) -> Self {
-        self.request = self.request.query("redeemable", redeemable);
-        self
-    }
-
-    /// Filter for mergeable positions only
-    pub fn mergeable(mut self, mergeable: bool) -> Self {
-        self.request = self.request.query("mergeable", mergeable);
-        self
-    }
-
-    /// Set maximum number of results (0-500, default: 100)
-    pub fn limit(mut self, limit: u32) -> Self {
-        self.request = self.request.query("limit", limit);
-        self
-    }
-
-    /// Set pagination offset (0-10000, default: 0)
-    pub fn offset(mut self, offset: u32) -> Self {
-        self.request = self.request.query("offset", offset);
-        self
-    }
-
-    /// Set sort field
-    pub fn sort_by(mut self, sort_by: PositionSortBy) -> Self {
-        self.request = self.request.query("sortBy", sort_by);
-        self
-    }
-
-    /// Set sort direction (default: DESC)
-    pub fn sort_direction(mut self, direction: SortDirection) -> Self {
-        self.request = self.request.query("sortDirection", direction);
-        self
-    }
-
-    /// Filter by market title (max 100 chars)
-    pub fn title(mut self, title: impl Into<String>) -> Self {
-        self.request = self.request.query("title", title.into());
-        self
+    polyoxide_core::query_setters! {
+        /// Filter by specific market condition IDs (comma-separated)
+        market: csv impl IntoIterator<Item = impl ToString> => "market",
+        /// Filter by event IDs (comma-separated)
+        event_id: csv impl IntoIterator<Item = impl ToString> => "eventId",
+        /// Set minimum position size filter (default: 1)
+        size_threshold: f64 => "sizeThreshold",
+        /// Filter for redeemable positions only
+        redeemable: bool => "redeemable",
+        /// Filter for mergeable positions only
+        mergeable: bool => "mergeable",
+        /// Set maximum number of results (0-500, default: 100)
+        limit: u32 => "limit",
+        /// Set pagination offset (0-10000, default: 0)
+        offset: u32 => "offset",
+        /// Set sort field
+        sort_by: PositionSortBy => "sortBy",
+        /// Set sort direction (default: DESC)
+        sort_direction: SortDirection => "sortDirection",
+        /// Filter by market title (max 100 chars)
+        title: impl Into<String> => "title",
     }
 
     /// Execute the request
@@ -159,13 +116,9 @@ pub struct GetPositionValue {
 }
 
 impl GetPositionValue {
-    /// Filter by specific market condition IDs (comma-separated)
-    pub fn market(mut self, condition_ids: impl IntoIterator<Item = impl ToString>) -> Self {
-        let ids: Vec<String> = condition_ids.into_iter().map(|s| s.to_string()).collect();
-        if !ids.is_empty() {
-            self.request = self.request.query("market", ids.join(","));
-        }
-        self
+    polyoxide_core::query_setters! {
+        /// Filter by specific market condition IDs (comma-separated)
+        market: csv impl IntoIterator<Item = impl ToString> => "market",
     }
 
     /// Execute the request
@@ -180,57 +133,26 @@ pub struct ListClosedPositions {
 }
 
 impl ListClosedPositions {
-    /// Filter by specific market condition IDs (comma-separated)
-    pub fn market(mut self, condition_ids: impl IntoIterator<Item = impl ToString>) -> Self {
-        let ids: Vec<String> = condition_ids.into_iter().map(|s| s.to_string()).collect();
-        if !ids.is_empty() {
-            self.request = self.request.query("market", ids.join(","));
-        }
-        self
-    }
-
-    /// Filter by event IDs (comma-separated)
-    pub fn event_id(mut self, event_ids: impl IntoIterator<Item = impl ToString>) -> Self {
-        let ids: Vec<String> = event_ids.into_iter().map(|s| s.to_string()).collect();
-        if !ids.is_empty() {
-            self.request = self.request.query("eventId", ids.join(","));
-        }
-        self
-    }
-
-    /// Filter by market title (max 100 chars)
-    pub fn title(mut self, title: impl Into<String>) -> Self {
-        self.request = self.request.query("title", title.into());
-        self
-    }
-
-    /// Set maximum number of results (0-50, default: 10).
-    ///
-    /// Unlike most other `limit()` builders in this crate, this cap is
-    /// strictly enforced server-side: passing a value above 50 fails the
-    /// request with a 400 ("max closed positions limit of 50 exceeded")
-    /// rather than being clamped or paginated by the API.
-    pub fn limit(mut self, limit: u32) -> Self {
-        self.request = self.request.query("limit", limit);
-        self
-    }
-
-    /// Set pagination offset (0-100000, default: 0)
-    pub fn offset(mut self, offset: u32) -> Self {
-        self.request = self.request.query("offset", offset);
-        self
-    }
-
-    /// Set sort field (default: REALIZED_PNL)
-    pub fn sort_by(mut self, sort_by: ClosedPositionSortBy) -> Self {
-        self.request = self.request.query("sortBy", sort_by);
-        self
-    }
-
-    /// Set sort direction (default: DESC)
-    pub fn sort_direction(mut self, direction: SortDirection) -> Self {
-        self.request = self.request.query("sortDirection", direction);
-        self
+    polyoxide_core::query_setters! {
+        /// Filter by specific market condition IDs (comma-separated)
+        market: csv impl IntoIterator<Item = impl ToString> => "market",
+        /// Filter by event IDs (comma-separated)
+        event_id: csv impl IntoIterator<Item = impl ToString> => "eventId",
+        /// Filter by market title (max 100 chars)
+        title: impl Into<String> => "title",
+        /// Set maximum number of results (0-50, default: 10).
+        ///
+        /// Unlike most other `limit()` builders in this crate, this cap is
+        /// strictly enforced server-side: passing a value above 50 fails the
+        /// request with a 400 ("max closed positions limit of 50 exceeded")
+        /// rather than being clamped or paginated by the API.
+        limit: u32 => "limit",
+        /// Set pagination offset (0-100000, default: 0)
+        offset: u32 => "offset",
+        /// Set sort field (default: REALIZED_PNL)
+        sort_by: ClosedPositionSortBy => "sortBy",
+        /// Set sort direction (default: DESC)
+        sort_direction: SortDirection => "sortDirection",
     }
 
     /// Execute the request
@@ -245,60 +167,25 @@ pub struct ListUserTrades {
 }
 
 impl ListUserTrades {
-    /// Filter by market condition IDs (comma-separated)
-    /// Note: Mutually exclusive with `event_id`
-    pub fn market(mut self, condition_ids: impl IntoIterator<Item = impl ToString>) -> Self {
-        let ids: Vec<String> = condition_ids.into_iter().map(|s| s.to_string()).collect();
-        if !ids.is_empty() {
-            self.request = self.request.query("market", ids.join(","));
-        }
-        self
-    }
-
-    /// Filter by event IDs (comma-separated)
-    /// Note: Mutually exclusive with `market`
-    pub fn event_id(mut self, event_ids: impl IntoIterator<Item = impl ToString>) -> Self {
-        let ids: Vec<String> = event_ids.into_iter().map(|s| s.to_string()).collect();
-        if !ids.is_empty() {
-            self.request = self.request.query("eventId", ids.join(","));
-        }
-        self
-    }
-
-    /// Filter by trade side (BUY or SELL)
-    pub fn side(mut self, side: TradeSide) -> Self {
-        self.request = self.request.query("side", side);
-        self
-    }
-
-    /// Filter for taker trades only (default: true)
-    pub fn taker_only(mut self, taker_only: bool) -> Self {
-        self.request = self.request.query("takerOnly", taker_only);
-        self
-    }
-
-    /// Set filter type (must be paired with `filter_amount`)
-    pub fn filter_type(mut self, filter_type: TradeFilterType) -> Self {
-        self.request = self.request.query("filterType", filter_type);
-        self
-    }
-
-    /// Set filter amount (must be paired with `filter_type`)
-    pub fn filter_amount(mut self, amount: f64) -> Self {
-        self.request = self.request.query("filterAmount", amount);
-        self
-    }
-
-    /// Set maximum number of results (0-10000, default: 100)
-    pub fn limit(mut self, limit: u32) -> Self {
-        self.request = self.request.query("limit", limit);
-        self
-    }
-
-    /// Set pagination offset (0-10000, default: 0)
-    pub fn offset(mut self, offset: u32) -> Self {
-        self.request = self.request.query("offset", offset);
-        self
+    polyoxide_core::query_setters! {
+        /// Filter by market condition IDs (comma-separated)
+        /// Note: Mutually exclusive with `event_id`
+        market: csv impl IntoIterator<Item = impl ToString> => "market",
+        /// Filter by event IDs (comma-separated)
+        /// Note: Mutually exclusive with `market`
+        event_id: csv impl IntoIterator<Item = impl ToString> => "eventId",
+        /// Filter by trade side (BUY or SELL)
+        side: TradeSide => "side",
+        /// Filter for taker trades only (default: true)
+        taker_only: bool => "takerOnly",
+        /// Set filter type (must be paired with `filter_amount`)
+        filter_type: TradeFilterType => "filterType",
+        /// Set filter amount (must be paired with `filter_type`)
+        filter_amount: f64 => "filterAmount",
+        /// Set maximum number of results (0-10000, default: 100)
+        limit: u32 => "limit",
+        /// Set pagination offset (0-10000, default: 0)
+        offset: u32 => "offset",
     }
 
     /// Execute the request
@@ -313,105 +200,52 @@ pub struct ListActivity {
 }
 
 impl ListActivity {
-    /// Filter by market condition IDs (comma-separated)
-    pub fn market(mut self, condition_ids: impl IntoIterator<Item = impl ToString>) -> Self {
-        let ids: Vec<String> = condition_ids.into_iter().map(|s| s.to_string()).collect();
-        if !ids.is_empty() {
-            self.request = self.request.query("market", ids.join(","));
-        }
-        self
-    }
-
-    /// Filter by event IDs (comma-separated)
-    pub fn event_id(mut self, event_ids: impl IntoIterator<Item = impl ToString>) -> Self {
-        let ids: Vec<String> = event_ids.into_iter().map(|s| s.to_string()).collect();
-        if !ids.is_empty() {
-            self.request = self.request.query("eventId", ids.join(","));
-        }
-        self
-    }
-
-    /// Filter by activity types (comma-separated). `ActivityType::Unknown` is
-    /// silently dropped since the upstream API has no matching value to filter on.
-    pub fn activity_type(mut self, types: impl IntoIterator<Item = ActivityType>) -> Self {
-        let type_strs: Vec<String> = types
-            .into_iter()
-            .filter(|t| *t != ActivityType::Unknown)
-            .map(|t| t.to_string())
-            .collect();
-        if !type_strs.is_empty() {
-            self.request = self.request.query("type", type_strs.join(","));
-        }
-        self
-    }
-
-    /// Include deposit and withdrawal rows (`excludeDepositsWithdrawals`).
-    ///
-    /// Upstream defaults this to `true` and applies the default **even when
-    /// [`activity_type`](Self::activity_type) explicitly requests**
-    /// [`ActivityType::Deposit`] or [`ActivityType::Withdrawal`], so those two
-    /// filters return an empty list unless this is called with `false`.
-    ///
-    /// Leaving it unset sends no parameter, preserving upstream's default.
-    pub fn exclude_deposits_withdrawals(mut self, exclude: bool) -> Self {
-        self.request = self.request.query("excludeDepositsWithdrawals", exclude);
-        self
-    }
-
-    /// Filter by trade side (BUY or SELL)
-    pub fn side(mut self, side: TradeSide) -> Self {
-        self.request = self.request.query("side", side);
-        self
-    }
-
-    /// Lower-bound timestamp (epoch seconds) for the activity window.
-    ///
-    /// Omit or pass `0` for the default window (most recent ~3 years); pass a
-    /// positive epoch (e.g. `1`) to retrieve full history. With
-    /// [`sort_direction(SortDirection::Asc)`](Self::sort_direction), omitting
-    /// `start` anchors paging to the default window's floor.
-    pub fn start(mut self, timestamp: i64) -> Self {
-        self.request = self.request.query("start", timestamp);
-        self
-    }
-
-    /// Upper-bound timestamp (epoch seconds) for the activity window.
-    ///
-    /// Omit for the default (current time); rows newer than `end` are excluded.
-    pub fn end(mut self, timestamp: i64) -> Self {
-        self.request = self.request.query("end", timestamp);
-        self
-    }
-
-    /// Set maximum number of results (0-500, default: 100)
-    ///
-    /// Values above the maximum are clamped to 500 server-side.
-    pub fn limit(mut self, limit: u32) -> Self {
-        self.request = self.request.query("limit", limit);
-        self
-    }
-
-    /// Set pagination offset (0-5000, default: 0)
-    ///
-    /// Requests past the cap are rejected with a 400 rather than silently
-    /// clamped. To read history deeper than offset 5000, page inside successive
-    /// [`start`](Self::start)/[`end`](Self::end) windows — each window has its
-    /// own offset budget.
-    pub fn offset(mut self, offset: u32) -> Self {
-        self.request = self.request.query("offset", offset);
-        self
-    }
-
-    /// Set sort field (default: TIMESTAMP)
-    pub fn sort_by(mut self, sort_by: ActivitySortBy) -> Self {
-        self.request = self.request.query("sortBy", sort_by);
-        self
-    }
-
-    /// Set sort direction (default: DESC)
-    pub fn sort_direction(mut self, direction: SortDirection) -> Self {
-        self.request = self.request.query("sortDirection", direction);
-        self
+    polyoxide_core::query_setters! {
+        /// Filter by market condition IDs (comma-separated)
+        market: csv impl IntoIterator<Item = impl ToString> => "market",
+        /// Filter by event IDs (comma-separated)
+        event_id: csv impl IntoIterator<Item = impl ToString> => "eventId",
+        /// Filter by activity types (comma-separated). `ActivityType::Unknown` is
+        /// silently dropped since the upstream API has no matching value to filter on.
+        activity_type(types: impl IntoIterator<Item = ActivityType>) => csv "type"
+            = types.into_iter().filter(|t| *t != ActivityType::Unknown),
+        /// Include deposit and withdrawal rows (`excludeDepositsWithdrawals`).
+        ///
+        /// Upstream defaults this to `true` and applies the default **even when
+        /// [`activity_type`](Self::activity_type) explicitly requests**
+        /// [`ActivityType::Deposit`] or [`ActivityType::Withdrawal`], so those two
+        /// filters return an empty list unless this is called with `false`.
+        ///
+        /// Leaving it unset sends no parameter, preserving upstream's default.
+        exclude_deposits_withdrawals: bool => "excludeDepositsWithdrawals",
+        /// Filter by trade side (BUY or SELL)
+        side: TradeSide => "side",
+        /// Lower-bound timestamp (epoch seconds) for the activity window.
+        ///
+        /// Omit or pass `0` for the default window (most recent ~3 years); pass a
+        /// positive epoch (e.g. `1`) to retrieve full history. With
+        /// [`sort_direction(SortDirection::Asc)`](Self::sort_direction), omitting
+        /// `start` anchors paging to the default window's floor.
+        start: i64 => "start",
+        /// Upper-bound timestamp (epoch seconds) for the activity window.
+        ///
+        /// Omit for the default (current time); rows newer than `end` are excluded.
+        end: i64 => "end",
+        /// Set maximum number of results (0-500, default: 100)
+        ///
+        /// Values above the maximum are clamped to 500 server-side.
+        limit: u32 => "limit",
+        /// Set pagination offset (0-5000, default: 0)
+        ///
+        /// Requests past the cap are rejected with a 400 rather than silently
+        /// clamped. To read history deeper than offset 5000, page inside successive
+        /// [`start`](Self::start)/[`end`](Self::end) windows — each window has its
+        /// own offset budget.
+        offset: u32 => "offset",
+        /// Set sort field (default: TIMESTAMP)
+        sort_by: ActivitySortBy => "sortBy",
+        /// Set sort direction (default: DESC)
+        sort_direction: SortDirection => "sortDirection",
     }
 
     /// Execute the request

@@ -1,4 +1,4 @@
-use polyoxide_core::{HttpClient, QueryBuilder, Request};
+use polyoxide_core::{HttpClient, Request};
 use serde::{Deserialize, Serialize};
 
 use crate::{error::DataApiError, types::TimePeriod};
@@ -23,49 +23,24 @@ pub struct GetLeaderboard {
 }
 
 impl GetLeaderboard {
-    /// Filter by category (default: OVERALL)
-    pub fn category(mut self, category: LeaderboardCategory) -> Self {
-        self.request = self.request.query("category", category);
-        self
-    }
-
-    /// Set the aggregation time period (default: DAY).
-    ///
-    /// Verified live on 2026-07-25: omitting the parameter returns the same
-    /// rankings as `timePeriod=DAY`, not `ALL`.
-    pub fn time_period(mut self, period: TimePeriod) -> Self {
-        self.request = self.request.query("timePeriod", period);
-        self
-    }
-
-    /// Set the ordering field (default: PNL)
-    pub fn order_by(mut self, order_by: LeaderboardOrderBy) -> Self {
-        self.request = self.request.query("orderBy", order_by);
-        self
-    }
-
-    /// Set maximum number of results (1-50, default: 25)
-    pub fn limit(mut self, limit: u32) -> Self {
-        self.request = self.request.query("limit", limit);
-        self
-    }
-
-    /// Set pagination offset (0-1000, default: 0)
-    pub fn offset(mut self, offset: u32) -> Self {
-        self.request = self.request.query("offset", offset);
-        self
-    }
-
-    /// Filter by user wallet address
-    pub fn user(mut self, address: impl Into<String>) -> Self {
-        self.request = self.request.query("user", address.into());
-        self
-    }
-
-    /// Filter by username
-    pub fn user_name(mut self, name: impl Into<String>) -> Self {
-        self.request = self.request.query("userName", name.into());
-        self
+    polyoxide_core::query_setters! {
+        /// Filter by category (default: OVERALL)
+        category: LeaderboardCategory => "category",
+        /// Set the aggregation time period (default: DAY).
+        ///
+        /// Verified live on 2026-07-25: omitting the parameter returns the same
+        /// rankings as `timePeriod=DAY`, not `ALL`.
+        time_period: TimePeriod => "timePeriod",
+        /// Set the ordering field (default: PNL)
+        order_by: LeaderboardOrderBy => "orderBy",
+        /// Set maximum number of results (1-50, default: 25)
+        limit: u32 => "limit",
+        /// Set pagination offset (0-1000, default: 0)
+        offset: u32 => "offset",
+        /// Filter by user wallet address
+        user: impl Into<String> => "user",
+        /// Filter by username
+        user_name: impl Into<String> => "userName",
     }
 
     /// Execute the request

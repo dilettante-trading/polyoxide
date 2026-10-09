@@ -1,4 +1,4 @@
-use polyoxide_core::{HttpClient, QueryBuilder, Request};
+use polyoxide_core::{HttpClient, Request};
 
 use crate::{
     error::DataApiError,
@@ -55,17 +55,12 @@ pub struct RankingRequest {
 }
 
 impl RankingRequest {
-    /// Set the ranking window. An unrecognized value is rejected upstream with
-    /// `{"error": "invalid request"}`, which is why this is an enum.
-    pub fn window(mut self, window: RankingWindow) -> Self {
-        self.request = self.request.query("window", window);
-        self
-    }
-
-    /// Limit the number of ranked entries returned.
-    pub fn limit(mut self, limit: u32) -> Self {
-        self.request = self.request.query("limit", limit);
-        self
+    polyoxide_core::query_setters! {
+        /// Set the ranking window. An unrecognized value is rejected upstream with
+        /// `{"error": "invalid request"}`, which is why this is an enum.
+        window: RankingWindow => "window",
+        /// Limit the number of ranked entries returned.
+        limit: u32 => "limit",
     }
 
     /// Execute the request.

@@ -79,24 +79,15 @@ pub struct ListHolders {
 }
 
 impl ListHolders {
-    /// Minimum net balance in shares. Upstream default: `0`.
-    pub fn min_balance(mut self, min_balance: f64) -> Self {
-        self.inner = self.inner.query("min_balance", min_balance);
-        self
-    }
-
-    /// Add per-holder entry cost and PnL, and switch to per-side gross
-    /// balances. Upstream then requires exactly one condition and a `limit`
-    /// of at most 100.
-    pub fn include_pnl(mut self, include: bool) -> Self {
-        self.inner = self.inner.query("include_pnl", include);
-        self
-    }
-
-    /// Rows per outcome token (at most 1000, or 100 with `include_pnl`).
-    pub fn limit(mut self, limit: u32) -> Self {
-        self.inner = self.inner.query("limit", limit);
-        self
+    polyoxide_core::query_setters! { self.inner;
+        /// Minimum net balance in shares. Upstream default: `0`.
+        min_balance: f64 => "min_balance",
+        /// Add per-holder entry cost and PnL, and switch to per-side gross
+        /// balances. Upstream then requires exactly one condition and a `limit`
+        /// of at most 100.
+        include_pnl: bool => "include_pnl",
+        /// Rows per outcome token (at most 1000, or 100 with `include_pnl`).
+        limit: u32 => "limit",
     }
 
     paged_builder_methods!(MetaHolder);
@@ -120,17 +111,10 @@ pub struct GetOpenInterest {
 }
 
 impl GetOpenInterest {
-    /// Only these markets (at most 20). An id missing from the result did not
-    /// resolve to a servable market. An empty list is omitted.
-    pub fn conditions<I, S>(mut self, conditions: I) -> Self
-    where
-        I: IntoIterator<Item = S>,
-        S: ToString,
-    {
-        if let Some(value) = csv(conditions) {
-            self.request = self.request.query("condition", value);
-        }
-        self
+    polyoxide_core::query_setters! {
+        /// Only these markets (at most 20). An id missing from the result did not
+        /// resolve to a servable market. An empty list is omitted.
+        conditions: csv<I, S> => "condition",
     }
 
     /// Fetch the rows.
@@ -145,43 +129,22 @@ pub struct ListPricesHistory {
 }
 
 impl ListPricesHistory {
-    /// Window start, epoch seconds, inclusive. Alone it means "up to now", capped
-    /// at 15 days back. Pass [`end`](Self::end) too when walking pages.
-    pub fn start(mut self, start: i64) -> Self {
-        self.inner = self.inner.query("start", start);
-        self
-    }
-
-    /// Window end, epoch seconds, exclusive. Requires [`start`](Self::start).
-    pub fn end(mut self, end: i64) -> Self {
-        self.inner = self.inner.query("end", end);
-        self
-    }
-
-    /// Relative window, instead of `start`/`end`.
-    pub fn interval(mut self, interval: PricesInterval) -> Self {
-        self.inner = self.inner.query("interval", interval);
-        self
-    }
-
-    /// Bucket width in seconds (60 to 86400). Omit it to let the server size
-    /// the width to the window.
-    pub fn bucket_seconds(mut self, seconds: u32) -> Self {
-        self.inner = self.inner.query("bucket_seconds", seconds);
-        self
-    }
-
-    /// Point-in-time read: the latest observation at or before this epoch
-    /// second. Cannot be combined with a window.
-    pub fn as_of(mut self, as_of: i64) -> Self {
-        self.inner = self.inner.query("as_of", as_of);
-        self
-    }
-
-    /// First-page size (at most 10,000, which is also the upstream default).
-    pub fn limit(mut self, limit: u32) -> Self {
-        self.inner = self.inner.query("limit", limit);
-        self
+    polyoxide_core::query_setters! { self.inner;
+        /// Window start, epoch seconds, inclusive. Alone it means "up to now", capped
+        /// at 15 days back. Pass [`end`](Self::end) too when walking pages.
+        start: i64 => "start",
+        /// Window end, epoch seconds, exclusive. Requires [`start`](Self::start).
+        end: i64 => "end",
+        /// Relative window, instead of `start`/`end`.
+        interval: PricesInterval => "interval",
+        /// Bucket width in seconds (60 to 86400). Omit it to let the server size
+        /// the width to the window.
+        bucket_seconds: u32 => "bucket_seconds",
+        /// Point-in-time read: the latest observation at or before this epoch
+        /// second. Cannot be combined with a window.
+        as_of: i64 => "as_of",
+        /// First-page size (at most 10,000, which is also the upstream default).
+        limit: u32 => "limit",
     }
 
     paged_builder_methods!(PricePoint);

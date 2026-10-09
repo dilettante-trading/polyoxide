@@ -1,4 +1,4 @@
-use polyoxide_core::{HttpClient, QueryBuilder, Request};
+use polyoxide_core::{HttpClient, Request};
 use serde::{Deserialize, Serialize};
 
 use crate::error::DataApiError;
@@ -34,22 +34,13 @@ pub struct GetBuilderLeaderboard {
 }
 
 impl GetBuilderLeaderboard {
-    /// Set the aggregation time period (default: DAY)
-    pub fn time_period(mut self, period: TimePeriod) -> Self {
-        self.request = self.request.query("timePeriod", period);
-        self
-    }
-
-    /// Set maximum number of results (0-50, default: 25)
-    pub fn limit(mut self, limit: u32) -> Self {
-        self.request = self.request.query("limit", limit);
-        self
-    }
-
-    /// Set pagination offset (0-1000, default: 0)
-    pub fn offset(mut self, offset: u32) -> Self {
-        self.request = self.request.query("offset", offset);
-        self
+    polyoxide_core::query_setters! {
+        /// Set the aggregation time period (default: DAY)
+        time_period: TimePeriod => "timePeriod",
+        /// Set maximum number of results (0-50, default: 25)
+        limit: u32 => "limit",
+        /// Set pagination offset (0-1000, default: 0)
+        offset: u32 => "offset",
     }
 
     /// Execute the request
@@ -82,10 +73,9 @@ pub struct GetBuilderVolume {
 }
 
 impl GetBuilderVolume {
-    /// Set the time period filter (default: DAY)
-    pub fn time_period(mut self, period: TimePeriod) -> Self {
-        self.request = self.request.query("timePeriod", period);
-        self
+    polyoxide_core::query_setters! {
+        /// Set the time period filter (default: DAY)
+        time_period: TimePeriod => "timePeriod",
     }
 
     /// Execute the request

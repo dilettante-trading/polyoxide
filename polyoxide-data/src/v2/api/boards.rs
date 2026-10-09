@@ -72,23 +72,14 @@ pub struct ListBiggestWinners {
 }
 
 impl ListBiggestWinners {
-    /// Window on `resolved_at`. Upstream default: `day`.
-    pub fn time_period(mut self, period: TimePeriod) -> Self {
-        self.inner = self.inner.query("time_period", period);
-        self
-    }
-
-    /// `overall` (the default), a Gamma category such as `sports`, `combos`,
-    /// or `esports`.
-    pub fn category(mut self, category: impl Into<String>) -> Self {
-        self.inner = self.inner.query("category", category.into());
-        self
-    }
-
-    /// First-page size (at most 1000).
-    pub fn limit(mut self, limit: u32) -> Self {
-        self.inner = self.inner.query("limit", limit);
-        self
+    polyoxide_core::query_setters! { self.inner;
+        /// Window on `resolved_at`. Upstream default: `day`.
+        time_period: TimePeriod => "time_period",
+        /// `overall` (the default), a Gamma category such as `sports`, `combos`,
+        /// or `esports`.
+        category: impl Into<String> => "category",
+        /// First-page size (at most 1000).
+        limit: u32 => "limit",
     }
 
     paged_builder_methods!(BiggestWinner);
@@ -100,16 +91,11 @@ pub struct ListBuildersLeaderboard {
 }
 
 impl ListBuildersLeaderboard {
-    /// Window. Upstream default: `day`.
-    pub fn time_period(mut self, period: TimePeriod) -> Self {
-        self.inner = self.inner.query("time_period", period);
-        self
-    }
-
-    /// First-page size (at most 1000).
-    pub fn limit(mut self, limit: u32) -> Self {
-        self.inner = self.inner.query("limit", limit);
-        self
+    polyoxide_core::query_setters! { self.inner;
+        /// Window. Upstream default: `day`.
+        time_period: TimePeriod => "time_period",
+        /// First-page size (at most 1000).
+        limit: u32 => "limit",
     }
 
     paged_builder_methods!(BuilderStanding);
@@ -121,17 +107,12 @@ pub struct GetBuilderVolume {
 }
 
 impl GetBuilderVolume {
-    /// Bucket width. Upstream default: `day`.
-    pub fn interval(mut self, interval: TimePeriod) -> Self {
-        self.request = self.request.query("interval", interval);
-        self
-    }
-
-    /// How many of the most recent buckets to return (at most 90; upstream
-    /// default 30).
-    pub fn limit(mut self, limit: u32) -> Self {
-        self.request = self.request.query("limit", limit);
-        self
+    polyoxide_core::query_setters! {
+        /// Bucket width. Upstream default: `day`.
+        interval: TimePeriod => "interval",
+        /// How many of the most recent buckets to return (at most 90; upstream
+        /// default 30).
+        limit: u32 => "limit",
     }
 
     /// Fetch the buckets.
@@ -146,29 +127,16 @@ pub struct ListLeaderboard {
 }
 
 impl ListLeaderboard {
-    /// Window. Upstream default: `day`.
-    pub fn time_period(mut self, period: TimePeriod) -> Self {
-        self.inner = self.inner.query("time_period", period);
-        self
-    }
-
-    /// `overall` (the default), a Gamma category such as `sports`, `combos`
-    /// (PnL board only), or `esports`.
-    pub fn category(mut self, category: impl Into<String>) -> Self {
-        self.inner = self.inner.query("category", category.into());
-        self
-    }
-
-    /// Which board. Upstream default: `PNL`.
-    pub fn board(mut self, board: LeaderboardBoard) -> Self {
-        self.inner = self.inner.query("sort_by", board);
-        self
-    }
-
-    /// First-page size (at most 1000).
-    pub fn limit(mut self, limit: u32) -> Self {
-        self.inner = self.inner.query("limit", limit);
-        self
+    polyoxide_core::query_setters! { self.inner;
+        /// Window. Upstream default: `day`.
+        time_period: TimePeriod => "time_period",
+        /// `overall` (the default), a Gamma category such as `sports`, `combos`
+        /// (PnL board only), or `esports`.
+        category: impl Into<String> => "category",
+        /// Which board. Upstream default: `PNL`.
+        board: LeaderboardBoard => "sort_by",
+        /// First-page size (at most 1000).
+        limit: u32 => "limit",
     }
 
     paged_builder_methods!(LeaderboardEntry);
@@ -180,16 +148,11 @@ pub struct GetLeaderboardUser {
 }
 
 impl GetLeaderboardUser {
-    /// Window. Upstream default: `day`.
-    pub fn time_period(mut self, period: TimePeriod) -> Self {
-        self.request = self.request.query("time_period", period);
-        self
-    }
-
-    /// `overall` (the default), a Gamma category, `combos` or `esports`.
-    pub fn category(mut self, category: impl Into<String>) -> Self {
-        self.request = self.request.query("category", category.into());
-        self
+    polyoxide_core::query_setters! {
+        /// Window. Upstream default: `day`.
+        time_period: TimePeriod => "time_period",
+        /// `overall` (the default), a Gamma category, `combos` or `esports`.
+        category: impl Into<String> => "category",
     }
 
     /// Fetch the standing; `None` for an unknown wallet.
