@@ -743,3 +743,31 @@ async fn every_usdm_on_one_budget_is_held_by_one_ban() {
         "the other client went after {held:?}, inside the ban"
     );
 }
+
+#[tokio::test]
+async fn a_425_and_a_5xx_are_not_retried() {
+    // Binance's policy retries only a 429: a 425 or a 5xx reaches the caller
+    // after one request, with retries left.
+    for status in [425, 500, 503] {
+        let mut server = Server::new_async().await;
+        let mock = failing(
+            &mut server,
+            status,
+            &[],
+            r#"{"code":-1001,"msg":"Internal error; unable to process your request."}"#,
+        )
+        .await
+        .expect(1);
+        let err = usdm(&server)
+            .market()
+            .open_interest(&btc())
+            .send()
+            .await
+            .unwrap_err();
+        assert!(
+            matches!(err, BinanceError::Venue { status: s, .. } if usize::from(s) == status),
+            "{status}: {err:?}"
+        );
+        mock.assert_async().await;
+    }
+}

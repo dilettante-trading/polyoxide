@@ -364,11 +364,11 @@ Lines are today's. **[AFTER-F]** marks a file F's commits edit; re-cite those af
 ## Tasks & Acceptance
 
 **Execution:**
-- [ ] **G0 — Binance's 418 hold on the ledger.**
+- [x] **G0 — Binance's 418 hold on the ledger.**
   - Add row (k), "a 418 holds every request on the budget", at `polyoxide-binance/src/usdm/request.rs:111-113` [AFTER-F].
   - Mutant: delete `self.budget.begin_cooldown(ban);`. It fails `mock_api.rs:409` `a_418_is_not_retried_and_holds_the_next_request`.
   - Prove it, add the snippets, and mark the 418 item of the 1-6/1-8 deferred entry done.
-- [ ] **G1 — DRIFT R4: one `Retry-After` parser.**
+- [x] **G1 — DRIFT R4: one `Retry-After` parser.**
   - The callers:
     - `RetryConfig::retry_delay` [AFTER-F] becomes `polyoxide_venue::retry_delay(ra.and_then(|v| parse_retry_after(v, max_backoff)), self.backoff(attempt))`, and so does F's `ResponseMeta::retry_after` if it parses;
     - Binance's `retry_after_secs` becomes a wrapper over `MAX_COOLDOWN`;
@@ -379,12 +379,12 @@ Lines are today's. **[AFTER-F]** marks a file F's commits edit; re-cite those af
   - Ledger: re-cite (b) and (b)-zero to `retry_after.rs:29`, `:35` and `:45`. The zero mutant now needs all three edits. Prove it.
   - CLAUDE.md :176.
   - deferred-work: R4 for the release notes.
-- [ ] **G2 — Story 3.10: one retriable-status rule.**
+- [x] **G2 — Story 3.10: one retriable-status rule.**
   - core `error.rs:98`, perps `:78` and Binance `:103` call `class_for_status(s).is_some_and(|c| c.is_retriable())`.
   - Core's three table rows and comment :505 change, and CLAUDE.md :176's "a 408 in `Api` final" goes.
   - The commit message names each changed row: `api(408)` false → true, `api(429)` false → true, `api(600)` true → false.
   - Record the edge answers in deferred-work.
-- [ ] **G3 — Story 3.4 (core): what clob, relay and Binance need from core, with F's spec unchanged.**
+- [x] **G3 — Story 3.4 (core): what clob, relay and Binance need from core, with F's spec unchanged.**
   - `Request`:
     - `method`, `body` (via `Value`, setting `Content-Type`), `authenticator` and `with_cost`;
     - `Clone` covers them;
@@ -397,7 +397,7 @@ Lines are today's. **[AFTER-F]** marks a file F's commits edit; re-cite those af
     - `mock_request.rs`: `a_post_sends_its_body_serialised_once`, `an_authenticator_signs_every_attempt_of_a_request`, `a_request_s_costs_reach_the_throttle`, `a_request_parts_timeout_bounds_its_attempt`;
     - `send_loop.rs`: `a_429_with_no_retry_left_is_fail_with_its_hold`.
   - `spine-amendments/epic-3.md`: the A3-2 resolution, and the new A3-3.
-- [ ] **G4 — Story 3.4: clob on the one loop.**
+- [x] **G4 — Story 3.4: clob on the one loop.**
   - New private `src/authenticator.rs` holds `L2Auth`, `L1Auth` and `L1Signed`. Clob's two `request.rs` tests move there under their own names, calling `sign` on `RequestParts`.
   - `Account` holds `Secret<Credentials>` and an `Arc`'d `L2Auth`.
   - The namespaces build `polyoxide_core::Request<T, ClobError>` with `.method`, `.body`, `.authenticator` and `.with_cost(signer_cost(..))`.
@@ -409,15 +409,15 @@ Lines are today's. **[AFTER-F]** marks a file F's commits edit; re-cite those af
   - Removals: `polyoxide-clob module_missing: mod polyoxide_clob::request …`, `struct_missing … request::Request`, `enum_missing … request::AuthMode` (predicted; confirm against the gate).
   - CLAUDE.md: clob's loop leaves the `note_rate_limited` text.
   - [AFTER-F] Check that `ClobThrottle::observe` reads the signer headers only when the charge holds a signer layer, as clob does today. Record it if not.
-- [ ] **G5 — DRIFT R8: the four unlooped sends.**
+- [x] **G5 — DRIFT R8: the four unlooped sends.**
   - The clob, gamma and data pings call `HttpClient::send` with a private timing authenticator; gamma's `post_json` calls `send` too.
   - Tests:
     - clob `api/health.rs` `ping_waits_on_the_shared_request_gate`;
     - `a_429_on_ping_holds_the_next_request`, appended to clob's, gamma's and data's `mock_api.rs`;
     - gamma `a_429_on_query_by_information_is_retried_and_holds`.
   - deferred-work: pings and `post_json` now retry.
-- [ ] **G6 — Story 3.5: relay's credentials in `Secret`.** `RelayClient`, `RelayClientBuilder` and `BuilderAccount` hold `Option<Secret<AuthConfig>>`; public types and accessors are unchanged.
-- [ ] **G7 — DRIFT R7: relay on the one loop.**
+- [x] **G6 — Story 3.5: relay's credentials in `Secret`.** `RelayClient`, `RelayClientBuilder` and `BuilderAccount` hold `Option<Secret<AuthConfig>>`; public types and accessors are unchanged.
+- [x] **G7 — DRIFT R7: relay on the one loop.**
   - The private send helper, `RelayGetAuth { auth, sign_path }` and `RelayPostAuth { auth, extra_headers }`.
   - Auth checks run before `send`; the session-signer posts set `timeout`.
   - The builder installs `PolymarketRetryPolicy`.
@@ -428,7 +428,7 @@ Lines are today's. **[AFTER-F]** marks a file F's commits edit; re-cite those af
   - Ledger: drop relay's three lines and the "not yet covered" section.
   - Removals: `polyoxide-relay enum_variant_missing: variant RelayError::RateLimit …` and `… RelayError::Core …`.
   - CLAUDE.md :174, :200; deferred-work: relay's changed variants and `Display`.
-- [ ] **G8 — Story 3.6: Binance on the one loop.**
+- [x] **G8 — Story 3.6: Binance on the one loop.**
   - `weight.rs`:
     - `Hold::with_ceiling(MAX_COOLDOWN)` replaces `cooldown_until` and `await_cooldown`, and `in_cooldown` calls `is_held`;
     - `funding_interval` comes from `paced_interval`;
@@ -448,18 +448,18 @@ Lines are today's. **[AFTER-F]** marks a file F's commits edit; re-cite those af
   - Ledger: move (a)-Binance to the policy's no-retry arm (mutant: "hold only when `retries_left > 0`"; tests :616, :652), and (k) to the 418 arm (mutants `hold: None` → :409, and `unwrap_or(Duration::ZERO)` → `a_418_without_retry_after_holds_two_minutes`). Prove both.
   - Removals: `polyoxide-binance struct_missing: struct polyoxide_binance::usdm::request::WeightedRequest …`, plus the `usdm::WeightedRequest` path if printed separately.
   - CLAUDE.md :292-301; deferred-work: the new builders and the log lines.
-- [ ] **G9 — Story 3.6: the governor fence.** `.github/scripts/tests/test_dependency_fences.py`:
+- [x] **G9 — Story 3.6: the governor fence.** `.github/scripts/tests/test_dependency_fences.py`:
   - `test_no_venue_crate_depends_on_governor`, on the real `cargo metadata` through `publish_order.cargo_metadata`;
   - `test_the_fence_names_a_venue_crate_that_depends_on_governor`, on synthetic metadata.
-- [ ] **G10 — The transitional methods' tests on public API.**
+- [x] **G10 — The transitional methods' tests on public API.**
   - Rewrite the 17 test callers per the Decisions, on G3's `attempt_info` and the policy's `Fail`. Names and asserted values stay.
   - Report the counts.
-- [ ] **G11 — Remove `should_retry`, `note_rate_limited` and `acquire_rate_limit`.**
+- [x] **G11 — Remove `should_retry`, `note_rate_limited` and `acquire_rate_limit`.**
   - Move `should_retry`'s "deliberately narrow" rationale to `PolymarketRetryPolicy`'s docs, unless F already did.
   - Re-cite and re-prove (b) at the shifted `client.rs` tests.
   - Removals: `polyoxide-core inherent_method_missing: HttpClient::{should_retry,note_rate_limited,acquire_rate_limit} (src/client.rs)` (three keys).
   - CLAUDE.md's last mention of the three.
-- [ ] **Deferred work, in the commit that causes each item** (in `deferred-work.md`, with `source_spec` set to this spec).
+- [x] **Deferred work, in the commit that causes each item** (in `deferred-work.md`, with `source_spec` set to this spec).
   - For 4.11's release notes and prader, as F does:
     - R4's answers: a zero `Retry-After` reads as none on perps and data v2 and in Python; perps reads fractions; core honours padded values; a huge data v2 value no longer panics;
     - H12's three edge answers;
@@ -536,6 +536,23 @@ impl From<ApiError> for ClobError {
 - `python3 scripts/api_removals.py check --baseline v0.38.1`, once at the end, then `rm -rf target/semver-checks` -- expected: only listed keys.
 
 ## Implementation Notes
+
+G0–G11 are `3aeddc2`, `d63ce46`, `a0d2771`, `d8cc425`, `925d8da`, `f86a25d`, `cf0892a`, `207c70f`, `f52745d`, `590a93f`, `6180817` and `01c86e3`. The matrix-audit tests are the commit after them.
+
+- **Verification, 2026-10-09, on a fresh `target/` with the local Rust 1.95.0.** `cargo fmt --check`, clippy with `-D warnings`, the workspace's tests (2,259 passed, 0 failed, 178 ignored), `cargo doc` with `-D warnings`, `cargo hack --each-feature`, `.github/scripts` (902 passed) and `polyoxide-py` (326 passed) are all green. MSRV 1.91 was not checked: no 1.91 toolchain is installed locally.
+- **Counts.** They match the Verification list, except where G added a test it does not name or F's review had already moved the baseline:
+  - relay `mock_api` 43 → 46, which adds `a_relay_503_is_not_retried_and_a_425_is`;
+  - clob `mock_api` 106 → 110, which adds G5's ping test;
+  - gamma `mock_api` 43 → 45 and data `mock_api` 39 → 40, because F's review had added one test to each.
+- **Matrix audit.** 21 rows are asserted end to end. Four partial rows gained a test:
+  - R4 zero in Python: `test_rate_limited_is_a_rate_limit_error` asserts `retry_after is None`;
+  - Binance 425 and 5xx: `a_425_and_a_5xx_are_not_retried`, in binance's `mock_api.rs`;
+  - relay's local refusal: `a_refused_relay_call_sends_nothing`, which matches `Api(Validation)` and asserts nothing was sent.
+- **Partial rows left as they are,** each asserted in parts that compose:
+  - **Clob 429 with a retry left.** The WARN and the two-layer hold are asserted generically: core's `a_retry_warns_once_under_polyoxide_core` and `polymarket_throttle.rs`'s `a_429_holds_both_layers` on `clob_throttle`. Clob's own test asserts the re-signing.
+  - **Clob batch above burst.** The end-to-end test asserts the cost, the capacity and that nothing is sent. `burst_from_refused_recovers_the_tier_and_bucket_of_every_tier` asserts the tier and the bucket.
+  - **Relay session signer, 300 s.** `session_signer_requests_wait_five_minutes_like_py_sdk` pins the constant, and core's `a_request_parts_timeout_bounds_its_attempt` pins the per-attempt bound. No relay test shows that `post_json` sets `parts.timeout`: `RelayClientBuilder` has no timeout setter, so an end-to-end proof would wait out the 30 s client default.
+  - **The hold-without-retry WARN for a Binance 418.** The WARN branch in `send.rs` does not depend on the policy, and core's `a_hold_with_no_retry_left_warns` asserts it for a 429.
 
 ## Spec Change Log
 

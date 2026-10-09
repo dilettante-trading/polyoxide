@@ -579,6 +579,8 @@ def test_rate_limited_is_a_rate_limit_error(server) -> None:
 
     assert raised.value.code == "rate_limited"
     assert raised.value.retryable is True
+    # DRIFT R4: a zero Retry-After is no wait, so it reads as None, not 0.0.
+    assert raised.value.retry_after is None
     assert len(server.requests) == 4
 
 

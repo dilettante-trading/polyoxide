@@ -2024,3 +2024,28 @@ async fn a_relay_503_is_not_retried_and_a_425_is() {
         .expect("a 425 is the matching engine restarting, retried to the success");
     mock.assert_async().await;
 }
+
+#[tokio::test]
+async fn a_refused_relay_call_sends_nothing() {
+    // A refusal made before sending is `Api(Validation)`, and the server never
+    // sees the request.
+    let mut server = Server::new_async().await;
+    let mock = server
+        .mock("GET", "/transactions")
+        .match_query(Matcher::Any)
+        .expect(0)
+        .create_async()
+        .await;
+    let err = client_unauthed(&server)
+        .list_transactions()
+        .await
+        .expect_err("no auth is configured");
+    assert!(
+        matches!(
+            err,
+            polyoxide_relay::RelayError::Api(polyoxide_core::ApiError::Validation(_))
+        ),
+        "{err:?}"
+    );
+    mock.assert_async().await;
+}
