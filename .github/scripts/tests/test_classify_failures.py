@@ -1,10 +1,30 @@
-"""Unit tests for classify_failures.py."""
+"""Unit tests for classify_failures.py.
+
+A failing live test prints `polyoxide-class=<tag>` just before it panics, and
+that line alone decides its verdict. A log without one is `real`.
+
+Until Story 2.7 the classifier fell back to regexes over the panic text, and
+the tests below held its cases. Each case is now a row of a tag table: the tag
+the migrated live test prints at that failure site (`None` where it
+deliberately prints none, so the failure files), the panic text the regex-era
+table matched, and the verdict the regexes gave it (`was`). Every row still
+reaches `was`, except a row marked with the AD-14 rule that changed it
+(`now`). The same text with no tag is `real`, which is what shows no regex is
+left to read it.
+
+A row that names an error the tests can build has a Rust `twin`, a test that
+builds that error, checks it renders the row's text, and asserts it fails a
+test with the row's tag. So a row's tag is the one the live test really
+prints, not one chosen to make the row pass.
+"""
 
 from __future__ import annotations
 
 import json
+import re
 import subprocess
 import sys
+from dataclasses import dataclass
 from pathlib import Path
 
 import pytest
@@ -13,6 +33,58 @@ from classify_failures import Verdict, classify, parse_nextest_json
 
 FIXTURES = Path(__file__).parent / "fixtures"
 SCRIPT = Path(__file__).parent.parent / "classify_failures.py"
+REPO = Path(__file__).resolve().parents[3]
+
+# The Rust twins, by the file that holds them.
+CORE = "polyoxide-test-support/tests/failure_tags.rs"
+BINANCE = "polyoxide-binance/tests/failure_tags.rs"
+SPORTS = "polyoxide-sports/tests/failure_tags.rs"
+RTDS = "polyoxide-rtds/tests/failure_tags.rs"
+
+# What Rust's default panic hook prints after the test-support hook's tag line.
+REPORT = (
+    "\nthread 'live_x' (4811) panicked at polyoxide-gamma/tests/live_api.rs:42:10:\n"
+    "{message}\n"
+    "note: run with `RUST_BACKTRACE=1` environment variable to display a backtrace\n"
+)
+
+
+def _tagged(tag: str, message: str) -> str:
+    return f"polyoxide-class={tag}\n" + REPORT.format(message=message)
+
+
+@dataclass(frozen=True)
+class Row:
+    """One regex-era case, as the tag the live test now prints plus the text
+    the old table matched."""
+
+    label: str
+    tag: str | None
+    text: str
+    was: Verdict
+    twin: str | None = None
+    # Set only where AD-14's tables give a different verdict than the regexes
+    # did, with the rule that changed it.
+    now: Verdict | None = None
+    changed_by: str | None = None
+
+    @property
+    def verdict(self) -> Verdict:
+        return self.was if self.now is None else self.now
+
+    def log(self) -> str:
+        return _tagged(self.tag, self.text) if self.tag else REPORT.format(message=self.text)
+
+
+def _check(row: Row) -> None:
+    """The row's log reaches its verdict, and its text alone is real."""
+    assert classify(row.log()) == row.verdict, f"{row.label}: {classify(row.log())}"
+    assert classify(REPORT.format(message=row.text)) == Verdict.REAL, (
+        f"{row.label}: the text decided without a tag")
+
+
+def _ids(rows: list[Row]) -> list[str]:
+    return [row.label for row in rows]
 
 
 def _load_fixture_failure_text(name: str) -> str:
@@ -29,406 +101,429 @@ def _load_fixture_failure_text(name: str) -> str:
     raise AssertionError(f"no failed-event found in {name}")
 
 
+def _check_fixture(name: str, verdict: Verdict) -> None:
+    text = _load_fixture_failure_text(name)
+    assert classify(text) == verdict
+    untagged = re.sub(r"(?m)^polyoxide-class=\S+\n", "", text)
+    assert classify(untagged) == Verdict.REAL, "the fixture's text decided without its tag"
+
+
 def test_classify_real_assertion_failure() -> None:
+    """A bare assertion prints no tag, so it files."""
     text = _load_fixture_failure_text("nextest-real-failure.json")
+    assert "polyoxide-class=" not in text
     assert classify(text) == Verdict.REAL
 
 
 def test_classify_transient_429() -> None:
-    text = _load_fixture_failure_text("nextest-transient-429.json")
-    assert classify(text) == Verdict.TRANSIENT
+    """Twin: `rate_limit` in polyoxide-test-support's failure_tags.rs."""
+    _check_fixture("nextest-transient-429.json", Verdict.TRANSIENT)
 
 
 def test_classify_transient_503() -> None:
-    text = _load_fixture_failure_text("nextest-transient-503.json")
-    assert classify(text) == Verdict.TRANSIENT
+    """Twin: `api_5xx` in polyoxide-test-support's failure_tags.rs."""
+    _check_fixture("nextest-transient-503.json", Verdict.TRANSIENT)
 
 
 def test_classify_transient_connection_refused() -> None:
-    text = _load_fixture_failure_text("nextest-transient-connection.json")
-    assert classify(text) == Verdict.TRANSIENT
+    """Twin: `network_connect` in polyoxide-test-support's failure_tags.rs."""
+    _check_fixture("nextest-transient-connection.json", Verdict.TRANSIENT)
 
 
 def test_classify_auth_gated() -> None:
-    text = _load_fixture_failure_text("nextest-auth-gated.json")
-    assert classify(text) == Verdict.AUTH_GATED
+    """The credential loaders print `auth-gated`; polyoxide-test-support's
+    tests/loaders.rs proves it in a child process."""
+    _check_fixture("nextest-auth-gated.json", Verdict.AUTH_GATED)
+
+
+PRIVATE_KEY_ONLY = Row(
+    "private key only", "auth-gated",
+    "POLYMARKET_PRIVATE_KEY required; the L2 triple is derived from it",
+    Verdict.AUTH_GATED,
+)
 
 
 def test_classify_auth_gated_private_key_variant() -> None:
-    """live_ws.rs derives L2 credentials from the private key alone, so its
-    auth panic names one concrete var instead of the `POLYMARKET_*` glob."""
-    text = (
-        "thread 'live_user_subscription_accepts_omitted_markets' panicked at "
-        "polyoxide-clob/tests/live_ws.rs:111:10:\n"
-        "POLYMARKET_PRIVATE_KEY required; the L2 triple is derived from it"
-    )
-    assert classify(text) == Verdict.AUTH_GATED
+    """live_ws.rs derives L2 credentials from the private key alone, and its
+    loader names only that variable. Its loader prints `auth-gated` either way."""
+    _check(PRIVATE_KEY_ONLY)
+
+
+AUTH_BEATS_503 = Row(
+    "auth beats 503", "auth-gated",
+    "POLYMARKET_* env vars required for authenticated tests: HTTP 503",
+    Verdict.AUTH_GATED,
+)
 
 
 def test_classify_auth_gated_takes_precedence_over_transient() -> None:
-    """If both patterns match, AUTH_GATED wins (defensive ordering)."""
-    text = "POLYMARKET_* env vars required for authenticated tests: HTTP 503"
-    assert classify(text) == Verdict.AUTH_GATED
+    """A credential failure whose text names a 503 is still auth-gated: the tag
+    decides, and no text competes with it."""
+    _check(AUTH_BEATS_503)
+
+
+ISSUE_32_TIMEOUT = Row(
+    "issue #32 timeout", "transient",
+    "last_trade_price should succeed: Api(Network(reqwest::Error "
+    '{ kind: Request, url: "https://clob.polymarket.com/last-trade-price'
+    '?token_id=3233822019007135143577280177972530224457577521641332595144'
+    '3816017994629993401", source: TimedOut }))',
+    Verdict.TRANSIENT, twin=f"{CORE}::network_timeout",
+)
 
 
 def test_classify_transient_reqwest_debug_timeout() -> None:
-    """A panic renders its error with `Debug`, not `Display`.
+    """Verbatim from the nightly run that filed issue #32: a reqwest timeout,
+    which the regexes missed because `.expect()` renders it with `Debug` as
+    the bare token `TimedOut`. `or_fail` tags it from its class instead."""
+    _check(ISSUE_32_TIMEOUT)
 
-    Verbatim from the nightly run that filed issue #32. reqwest's timeout
-    marker is a unit struct: `Display` writes "operation timed out" (which the
-    table already matched), but the derived `Debug` writes the bare token
-    `TimedOut`. `.expect()` formats with `{:?}`, so only the second one ever
-    reaches this classifier.
-    """
-    text = (
-        "thread 'live_last_trade_price' (7718) panicked at "
-        "polyoxide-clob/tests/live_api.rs:620:10:\n"
-        "last_trade_price should succeed: Api(Network(reqwest::Error "
-        '{ kind: Request, url: "https://clob.polymarket.com/last-trade-price'
-        '?token_id=3233822019007135143577280177972530224457577521641332595144'
-        '3816017994629993401", source: TimedOut }))'
-    )
-    assert classify(text) == Verdict.TRANSIENT
+
+UNREACHABLE_HOST = Row(
+    "unreachable host", "transient",
+    "markets should succeed: Api(Network(reqwest::Error { kind: Request, "
+    'url: "https://gamma-api.polymarket.com/markets", source: '
+    "hyper_util::client::legacy::Error(Connect, ConnectError("
+    '"tcp connect error", Os { code: 101, kind: NetworkUnreachable, '
+    'message: "Network is unreachable" })) }))',
+    Verdict.TRANSIENT, twin=f"{CORE}::network_connect",
+)
 
 
 def test_classify_transient_reqwest_debug_connect_error() -> None:
-    """The same Debug-vs-Display gap for a failed connect.
+    """The same Debug-vs-Display gap for a failed connect."""
+    _check(UNREACHABLE_HOST)
 
-    hyper-util labels the source "tcp connect error" and reqwest's own
-    `Display` for a request-phase failure is "error sending request"; neither
-    appeared in the table, so a connect failure whose OS message was not
-    literally "Connection refused" (a TLS handshake abort, an unreachable
-    host) classified as REAL.
-    """
-    text = (
-        "thread 'live_markets' panicked at polyoxide-gamma/tests/live_api.rs:42:10:\n"
-        "markets should succeed: Api(Network(reqwest::Error { kind: Request, "
-        'url: "https://gamma-api.polymarket.com/markets", source: '
-        "hyper_util::client::legacy::Error(Connect, ConnectError("
-        '"tcp connect error", Os { code: 101, kind: NetworkUnreachable, '
-        'message: "Network is unreachable" })) }))'
-    )
-    assert classify(text) == Verdict.TRANSIENT
+
+ISSUE_32_VALIDATION = Row(
+    "issue #32 validation", "real",
+    "holders should deserialize: Api(Validation("
+    "\"required query param 'market' not provided\"))",
+    Verdict.REAL, twin=f"{CORE}::validation",
+)
 
 
 def test_classify_real_is_not_broadened_by_the_debug_patterns() -> None:
-    """The Debug patterns must not swallow genuine contract failures.
-
-    Issue #32 also carried two real ones — a venue validation error reached
-    through the same `Api(...)` wrapper. Matching on the wrapper, or on a bare
-    `Request`/`Connect` token, would have hidden them.
-    """
-    text = (
-        "thread 'live_holders' (4811) panicked at "
-        "polyoxide-data/tests/live_api.rs:209:10:\n"
-        "holders should deserialize: Api(Validation("
-        "\"required query param 'market' not provided\"))"
-    )
-    assert classify(text) == Verdict.REAL
+    """Issue #32 also carried a venue validation error reached through the same
+    `Api(...)` wrapper. Its class is a venue refusal, so it files."""
+    _check(ISSUE_32_VALIDATION)
 
 
-# Every arm `ApiError::is_retriable()` answers `true` for, in both of the
-# renderings a panic can carry. `.expect()` formats with `{:?}`, and
-# `panic!("...: {e}")` with `{}`; the table has to match either, and for the
-# `Network` arms the two share no words at all.
-#
-# Keep this in step with `is_retriable` in polyoxide-core/src/error.rs. A row
-# that only proves "some pattern exists" is worth little — each of these is the
-# text a real panic produces, so a pattern that stops matching fails here.
-RETRIABLE_ARMS: list[tuple[str, str]] = [
-    # (label, panic text)
-    ("Api 5xx / Debug", 'live_x: Api { status: 503, message: "bad gateway" }'),
-    ("Api 5xx / Display", "live_x: API error: 503 - bad gateway"),
-    ("Api 425 / Debug", 'live_x: Api { status: 425, message: "too early" }'),
-    ("Api 425 / Display", "live_x: API error: 425 - too early"),
-    ("RateLimit / Debug", 'live_x: RateLimit("slow down")'),
-    ("RateLimit / Display", "live_x: Rate limit exceeded: slow down"),
-    ("Timeout / Debug", "live_x: Api(Timeout)"),
-    ("Timeout / Display", "live_x: Request timeout"),
-    (
-        "Network is_timeout / Debug",
+# Every arm `ApiError::is_retriable()` answers `true` for, in both renderings a
+# panic could carry, and Binance's own retriable arms. Each now fails through
+# `or_fail`, which tags it from its class.
+RETRIABLE_ARMS: list[Row] = [
+    Row("Api 5xx / Debug", "transient", 'live_x: Api { status: 503, message: "bad gateway" }',
+        Verdict.TRANSIENT, f"{CORE}::api_5xx"),
+    Row("Api 5xx / Display", "transient", "live_x: API error: 503 - bad gateway",
+        Verdict.TRANSIENT, f"{CORE}::api_5xx"),
+    Row("Api 425 / Debug", "transient", 'live_x: Api { status: 425, message: "too early" }',
+        Verdict.TRANSIENT, f"{CORE}::api_425"),
+    Row("Api 425 / Display", "transient", "live_x: API error: 425 - too early",
+        Verdict.TRANSIENT, f"{CORE}::api_425"),
+    Row("RateLimit / Debug", "transient", 'live_x: RateLimit("slow down")',
+        Verdict.TRANSIENT, f"{CORE}::rate_limit"),
+    Row("RateLimit / Display", "transient", "live_x: Rate limit exceeded: slow down",
+        Verdict.TRANSIENT, f"{CORE}::rate_limit"),
+    Row("Timeout / Debug", "transient", "live_x: Api(Timeout)", Verdict.TRANSIENT,
+        f"{CORE}::timeout"),
+    Row("Timeout / Display", "transient", "live_x: Request timeout", Verdict.TRANSIENT,
+        f"{CORE}::timeout"),
+    Row("Network is_timeout / Debug", "transient",
         'live_x: Network(reqwest::Error { kind: Request, '
         'url: "https://clob.polymarket.com/ok", source: TimedOut })',
-    ),
-    (
-        "Network is_timeout / Display",
-        "live_x: Network error: error sending request for url "
-        "(https://clob.polymarket.com/ok)",
-    ),
-    (
-        "Network is_connect / Debug",
+        Verdict.TRANSIENT, f"{CORE}::network_timeout"),
+    Row("Network is_timeout / Display", "transient",
+        "live_x: Network error: error sending request for url (https://clob.polymarket.com/ok)",
+        Verdict.TRANSIENT, f"{CORE}::network_timeout"),
+    Row("Network is_connect / Debug", "transient",
         'live_x: Network(reqwest::Error { kind: Request, '
         'url: "https://clob.polymarket.com/ok", source: '
         "hyper_util::client::legacy::Error(Connect, ConnectError("
         '"tcp connect error", Os { code: 111, kind: ConnectionRefused, '
         'message: "Connection refused" })) })',
-    ),
-    (
-        "Network is_connect / Display",
-        "live_x: Network error: error sending request for url "
-        "(https://clob.polymarket.com/ok)",
-    ),
-    # BinanceError's own retriable arms, in both renderings. Its `Api(..)` arm
-    # wraps core's, which the rows above cover.
-    ("Binance RateLimited / Debug", "live_x: RateLimited { retry_after: Some(1s) }"),
-    ("Binance RateLimited / Display", "live_x: binance rate limit (429), retry after Some(1s)"),
-    ("Binance Venue 5xx / Debug", 'live_x: Venue { status: 503, code: -1001, msg: "Internal error" }'),
-    ("Binance Venue 5xx / Display", "live_x: binance answered 503: -1001 Internal error"),
-    ("Binance Venue 408 / Debug", 'live_x: Venue { status: 408, code: -1007, msg: "Timeout" }'),
-    ("Binance Venue 408 / Display", "live_x: binance answered 408: -1007 Timeout"),
-    ("Binance raw status / 503", "/fapi/v1/time: API error: 503 Service Unavailable"),
+        Verdict.TRANSIENT, f"{CORE}::network_connect"),
+    Row("Network is_connect / Display", "transient",
+        "live_x: Network error: error sending request for url (https://clob.polymarket.com/ok)",
+        Verdict.TRANSIENT, f"{CORE}::network_connect"),
+    Row("Binance RateLimited / Debug", "transient",
+        "live_x: RateLimited { retry_after: Some(1s) }", Verdict.TRANSIENT,
+        f"{BINANCE}::rate_limited"),
+    Row("Binance RateLimited / Display", "transient",
+        "live_x: binance rate limit (429), retry after Some(1s)", Verdict.TRANSIENT,
+        f"{BINANCE}::rate_limited"),
+    Row("Binance Venue 5xx / Debug", "transient",
+        'live_x: Venue { status: 503, code: -1001, msg: "Internal error" }', Verdict.TRANSIENT,
+        f"{BINANCE}::venue_5xx"),
+    Row("Binance Venue 5xx / Display", "transient",
+        "live_x: binance answered 503: -1001 Internal error", Verdict.TRANSIENT,
+        f"{BINANCE}::venue_5xx"),
+    Row("Binance Venue 408 / Debug", "transient",
+        'live_x: Venue { status: 408, code: -1007, msg: "Timeout" }', Verdict.TRANSIENT,
+        f"{BINANCE}::venue_408"),
+    Row("Binance Venue 408 / Display", "transient",
+        "live_x: binance answered 408: -1007 Timeout", Verdict.TRANSIENT,
+        f"{BINANCE}::venue_408"),
+    # live_api's `raw()` fails a refused fetch with core's reading of its status.
+    Row("Binance raw status / 503", "transient",
+        "/fapi/v1/time: API error: 503 Service Unavailable", Verdict.TRANSIENT,
+        f"{BINANCE}::raw_status_503"),
 ]
 
 
-@pytest.mark.parametrize("label,text", RETRIABLE_ARMS, ids=[a[0] for a in RETRIABLE_ARMS])
-def test_every_retriable_arm_classifies_transient(label: str, text: str) -> None:
-    assert classify(text) == Verdict.TRANSIENT, f"{label} fell through to REAL"
+@pytest.mark.parametrize("row", RETRIABLE_ARMS, ids=_ids(RETRIABLE_ARMS))
+def test_every_retriable_arm_classifies_transient(row: Row) -> None:
+    _check(row)
 
 
-# The mirror image: arms `is_retriable()` answers `false` for must stay REAL,
-# so widening the table for issue #32 cannot quietly start skipping defects.
-NON_RETRIABLE_ARMS: list[tuple[str, str]] = [
-    ("Validation / Debug", "live_x: Validation(\"required query param 'market' not provided\")"),
-    ("Validation / Display", "live_x: Validation error: bad request"),
-    ("Authentication / Debug", 'live_x: Authentication("invalid signature")'),
-    ("Api 4xx / Debug", 'live_x: Api { status: 404, message: "not found" }'),
-    ("Api 4xx / Display", "live_x: API error: 404 - not found"),
-    ("Serialization / Display", "live_x: Serialization error: invalid type at line 1"),
-    ("plain assertion", "assertion `left == right` failed\n  left: 3\n right: 4"),
-    ("Binance Venue 4xx / Debug", 'live_x: Venue { status: 400, code: -1121, msg: "Invalid symbol." }'),
-    ("Binance Venue 4xx / Display", "live_x: binance answered 400: -1121 Invalid symbol."),
-    ("Binance IpBanned / Debug", "live_x: IpBanned { retry_after: None }"),
-    ("Binance IpBanned / Display", "live_x: binance has banned this IP (418), retry after None"),
-    ("Binance Forbidden / Display", "live_x: binance's firewall refused the request (403): <html>"),
+# The mirror image: arms `is_retriable()` answers `false` for still file.
+NON_RETRIABLE_ARMS: list[Row] = [
+    Row("Validation / Debug", "real",
+        "live_x: Validation(\"required query param 'market' not provided\")", Verdict.REAL,
+        f"{CORE}::validation"),
+    Row("Validation / Display", "real", "live_x: Validation error: bad request", Verdict.REAL,
+        f"{CORE}::validation"),
+    Row("Authentication / Debug", "real", 'live_x: Authentication("invalid signature")',
+        Verdict.REAL, f"{CORE}::authentication"),
+    Row("Api 4xx / Debug", "real", 'live_x: Api { status: 404, message: "not found" }',
+        Verdict.REAL, f"{CORE}::api_4xx"),
+    Row("Api 4xx / Display", "real", "live_x: API error: 404 - not found", Verdict.REAL,
+        f"{CORE}::api_4xx"),
+    Row("Serialization / Display", "real",
+        "live_x: Serialization error: invalid type at line 1", Verdict.REAL,
+        f"{CORE}::serialization"),
+    # An assertion prints no tag.
+    Row("plain assertion", None, "assertion `left == right` failed\n  left: 3\n right: 4",
+        Verdict.REAL),
+    Row("Binance Venue 4xx / Debug", "real",
+        'live_x: Venue { status: 400, code: -1121, msg: "Invalid symbol." }', Verdict.REAL,
+        f"{BINANCE}::venue_4xx"),
+    Row("Binance Venue 4xx / Display", "real",
+        "live_x: binance answered 400: -1121 Invalid symbol.", Verdict.REAL,
+        f"{BINANCE}::venue_4xx"),
+    # A ban and the firewall's refusal are restricted and faults, so they file
+    # (amendment A2-1).
+    Row("Binance IpBanned / Debug", "real", "live_x: IpBanned { retry_after: None }",
+        Verdict.REAL, f"{BINANCE}::ip_banned"),
+    Row("Binance IpBanned / Display", "real",
+        "live_x: binance has banned this IP (418), retry after None", Verdict.REAL,
+        f"{BINANCE}::ip_banned"),
+    Row("Binance Forbidden / Display", "real",
+        "live_x: binance's firewall refused the request (403): <html>", Verdict.REAL,
+        f"{BINANCE}::forbidden"),
 ]
 
 
-@pytest.mark.parametrize(
-    "label,text", NON_RETRIABLE_ARMS, ids=[a[0] for a in NON_RETRIABLE_ARMS]
-)
-def test_non_retriable_arms_stay_real(label: str, text: str) -> None:
-    assert classify(text) == Verdict.REAL, f"{label} was wrongly skipped as transient"
+@pytest.mark.parametrize("row", NON_RETRIABLE_ARMS, ids=_ids(NON_RETRIABLE_ARMS))
+def test_non_retriable_arms_stay_real(row: Row) -> None:
+    _check(row)
 
 
 # A WebSocket server restarting, or a proxy dropping the connection, in each
-# shape a live test's panic carries it. None is an `is_retriable` arm: these
-# are the socket's equivalent of a 5xx or a reset by peer.
-WEBSOCKET_DROPS: list[tuple[str, str]] = [
-    (
-        "reset without close / Display",
+# shape a live test's panic carried it. The suites now fail each through its
+# venue's error, a raw socket's close frame and transport error wrapped in it
+# first, or call `transient` for a bare stream that ends.
+WEBSOCKET_DROPS: list[Row] = [
+    Row("reset without close / Display", "transient",
         "disconnected after 12 updates: the sports feed connection failed: "
         "WebSocket protocol error: Connection reset without closing handshake",
-    ),
-    (
-        "reset without close / Debug",
+        Verdict.TRANSIENT, f"{SPORTS}::reset_without_closing_handshake"),
+    Row("reset without close / Debug", "transient",
         "the frame parses: Transport { source: Protocol(ResetWithoutClosingHandshake) }",
-    ),
-    (
-        "TLS EOF without close_notify",
+        Verdict.TRANSIENT, f"{SPORTS}::reset_without_closing_handshake"),
+    Row("TLS EOF without close_notify", "transient",
         "stream error: RTDS connection error: IO error: peer closed connection "
         "without sending TLS close_notify: "
         "https://docs.rs/rustls/latest/rustls/manual/_03_howto/index.html#unexpected-eof",
-    ),
-    (
-        "close 1012 / raw socket",
-        'the server closed the socket: code 1012, reason "restarting"',
-    ),
-    (
-        "close 1001 / SportsError Display",
+        Verdict.TRANSIENT, f"{RTDS}::tls_eof"),
+    Row("close 1012 / raw socket", "transient",
+        'the server closed the socket: code 1012, reason "restarting"', Verdict.TRANSIENT,
+        f"{SPORTS}::close_1012"),
+    Row("close 1001 / SportsError Display", "transient",
         "disconnected after 3 updates: the sports feed closed the connection "
-        "with code 1001: going away",
-    ),
-    (
-        "close 1013 / SportsError Debug",
+        "with code 1001: going away", Verdict.TRANSIENT, f"{SPORTS}::close_1001"),
+    Row("close 1013 / SportsError Debug", "transient",
         'unexpected: Closed { code: Some(1013), reason: "try again later" }',
-    ),
-    (
-        "close Away / tungstenite Debug",
+        Verdict.TRANSIENT, f"{SPORTS}::close_1013"),
+    # clob's live_ws probe calls `transient` for a close frame the socket table
+    # classes `Network`, so these name no error to build.
+    Row("close Away / tungstenite Debug", "transient",
         "server closed the connection: Some(CloseFrame { code: Away, "
-        'reason: Utf8Bytes(b"going away") })',
-    ),
-    (
-        "close Error / tungstenite Debug",
+        'reason: Utf8Bytes(b"going away") })', Verdict.TRANSIENT),
+    Row("close Error / tungstenite Debug", "transient",
         "server closed the connection: Some(CloseFrame { code: Error, "
-        'reason: Utf8Bytes(b"") })',
-    ),
-    (
-        "no close code visible",
-        "the server ended the connection after 4 frames, inside 40 s",
-    ),
-    (
-        "Binance ConnectTimeout",
-        "connect: no connection within 10s (ConnectTimeout(10s))",
-    ),
-    (
-        "Binance handshake 503 / Display",
+        'reason: Utf8Bytes(b"") })', Verdict.TRANSIENT),
+    Row("no close code visible", "transient",
+        "the server ended the connection after 4 frames, inside 40 s", Verdict.TRANSIENT),
+    Row("Binance ConnectTimeout", "transient",
+        "connect: no connection within 10s (ConnectTimeout(10s))", Verdict.TRANSIENT,
+        f"{BINANCE}::streams::connect_timeout"),
+    Row("Binance handshake 503 / Display", "transient",
         "connect: WebSocket transport error: HTTP error: 503 Service Unavailable",
-    ),
-    (
-        "Binance close 1011 / Display",
-        "the server closed the connection (Some(1011): Internal error)",
-    ),
-    ("Binance stream ended", "market: the server ended the connection"),
-    (
-        "Binance NoAnswer / Display",
-        "connect: no answer to request 1 within 10s",
-    ),
-    (
-        "Binance close 1011 / CLI marker",
+        Verdict.TRANSIENT, f"{BINANCE}::streams::handshake_503"),
+    Row("Binance close 1011 / Display", "transient",
+        "the server closed the connection (Some(1011): Internal error)", Verdict.TRANSIENT,
+        f"{BINANCE}::streams::close_1011"),
+    Row("Binance stream ended", "transient", "market: the server ended the connection",
+        Verdict.TRANSIENT),
+    Row("Binance NoAnswer / Display", "transient", "connect: no answer to request 1 within 10s",
+        Verdict.TRANSIENT, f"{BINANCE}::streams::no_answer"),
+    # polyoxide-cli's live suite rebuilds the close its stderr reports.
+    Row("Binance close 1011 / CLI marker", "transient",
         "# market disconnected: closed by the server (1011 Internal error). "
-        "Its streams are stale until it reconnects.",
-    ),
+        "Its streams are stale until it reconnects.", Verdict.TRANSIENT,
+        f"{BINANCE}::streams::close_1011"),
 ]
 
 
-@pytest.mark.parametrize("label,text", WEBSOCKET_DROPS, ids=[a[0] for a in WEBSOCKET_DROPS])
-def test_a_dropped_websocket_is_transient(label: str, text: str) -> None:
-    assert classify(text) == Verdict.TRANSIENT, f"{label} fell through to REAL"
+@pytest.mark.parametrize("row", WEBSOCKET_DROPS, ids=_ids(WEBSOCKET_DROPS))
+def test_a_dropped_websocket_is_transient(row: Row) -> None:
+    _check(row)
 
 
 # Close codes and faults that say the client is at fault, or that the feed's
-# content is wrong, must stay REAL.
-WEBSOCKET_FAULTS_STAY_REAL: list[tuple[str, str]] = [
-    ("normal close", 'the server closed the socket: code 1000, reason ""'),
-    ("policy close", "the sports feed closed the connection with code 1008: policy"),
-    (
-        "policy close / Debug",
+# content is wrong, file. A site that is itself the property under test, such
+# as staleness or an unanswered ping, prints no tag.
+WEBSOCKET_FAULTS_STAY_REAL: list[Row] = [
+    Row("normal close", "transient", 'the server closed the socket: code 1000, reason ""',
+        Verdict.REAL, f"{SPORTS}::close_1000", now=Verdict.TRANSIENT,
+        changed_by="AD-14's socket table: a server's 1000 mid-test is a drop, so it is retried"),
+    Row("policy close", "real", "the sports feed closed the connection with code 1008: policy",
+        Verdict.REAL, f"{SPORTS}::close_1008"),
+    # clob's probe returns any other close as a rejection, which its assertion files.
+    Row("policy close / Debug", None,
         'server closed the connection: Some(CloseFrame { code: Policy, reason: Utf8Bytes(b"") })',
-    ),
-    (
-        "1001 inside a hex id",
+        Verdict.REAL),
+    Row("1001 inside a hex id", None,
         "no book for 0xbd31dc8a20211944f6b70f31557f1001557b59905b7738480ca09bd4532f84af",
-    ),
-    ("frame did not parse", "a live frame did not parse: missing field `score`"),
-    (
-        "stale",
+        Verdict.REAL),
+    Row("frame did not parse", "real", "a live frame did not parse: missing field `score`",
+        Verdict.REAL, f"{SPORTS}::decode"),
+    Row("stale", None,
         "disconnected after 2 updates: nothing received from the sports feed for 45s, "
-        "pings included",
-    ),
-    (
-        "Binance close 1008 Invalid request / Display",
-        "the server closed the connection (Some(1008): Invalid request)",
-    ),
-    (
-        "Binance handshake 404 / Display",
-        "connect: WebSocket transport error: HTTP error: 404 Not Found",
-    ),
-    ("Binance pong unanswered", "pong: NoAnswer { id: 1, timeout: 10s }"),
-    (
-        "Binance close 1008 / CLI marker",
+        "pings included", Verdict.REAL),
+    Row("Binance close 1008 Invalid request / Display", "real",
+        "the server closed the connection (Some(1008): Invalid request)", Verdict.REAL,
+        f"{BINANCE}::streams::close_1008"),
+    Row("Binance handshake 404 / Display", "real",
+        "connect: WebSocket transport error: HTTP error: 404 Not Found", Verdict.REAL,
+        f"{BINANCE}::streams::handshake_404"),
+    Row("Binance pong unanswered", None, "pong: NoAnswer { id: 1, timeout: 10s }", Verdict.REAL),
+    Row("Binance close 1008 / CLI marker", "real",
         "# market disconnected: closed by the server (1008 Invalid request). "
-        "Its streams are stale until it reconnects.",
-    ),
-    (
-        "Binance kind delivered nothing",
+        "Its streams are stale until it reconnects.", Verdict.REAL,
+        f"{BINANCE}::streams::close_1008"),
+    Row("Binance kind delivered nothing", None,
         'in 60 s these kinds delivered nothing: ["kline"]; last outage: Some("market: Stale")',
-    ),
-    (
-        "Binance stream sent nothing to check",
+        Verdict.REAL),
+    Row("Binance stream sent nothing to check", None,
         'market: in 10 s these streams sent no frame to check: ["btcusdt@kline_1m"]',
-    ),
+        Verdict.REAL),
 ]
 
 
-@pytest.mark.parametrize(
-    "label,text",
-    WEBSOCKET_FAULTS_STAY_REAL,
-    ids=[a[0] for a in WEBSOCKET_FAULTS_STAY_REAL],
+@pytest.mark.parametrize("row", WEBSOCKET_FAULTS_STAY_REAL, ids=_ids(WEBSOCKET_FAULTS_STAY_REAL))
+def test_a_websocket_fault_stays_real(row: Row) -> None:
+    _check(row)
+
+
+SPORTS_TIMEOUT = Row(
+    "sports timeout", "environmental",
+    "sports channel should push a frame within the window; if no matches "
+    "are live anywhere this can legitimately time out, so re-run before "
+    "concluding a defect: Elapsed(())",
+    Verdict.ENVIRONMENTAL,
 )
-def test_a_websocket_fault_stays_real(label: str, text: str) -> None:
-    assert classify(text) == Verdict.REAL, f"{label} was wrongly skipped as transient"
 
 
 def test_classify_environmental_sports_timeout() -> None:
-    """live_sports_channel_yields_frames documents that it can legitimately
-    time out when no matches are live anywhere; that is a fact about the
-    world, not the SDK, so it must not be reported as a real failure."""
-    text = (
-        "thread 'live_sports_channel_yields_frames' panicked at "
-        "polyoxide-clob/tests/live_ws.rs:35:10:\n"
-        "sports channel should push a frame within the window; if no matches "
-        "are live anywhere this can legitimately time out, so re-run before "
-        "concluding a defect: Elapsed(())"
-    )
-    assert classify(text) == Verdict.ENVIRONMENTAL
+    """A feed with no match live anywhere is a fact about the world, so the
+    test calls `environmental`."""
+    _check(SPORTS_TIMEOUT)
+
+
+NO_QUALIFYING_MARKET = Row(
+    "no qualifying market", "environmental",
+    "no qualifying market with a best ask above 0.05 in the 100 open "
+    "markets gamma lists; market conditions rather than a defect, "
+    "so re-run before concluding otherwise",
+    Verdict.ENVIRONMENTAL,
+)
 
 
 def test_classify_environmental_no_qualifying_market() -> None:
     """The order-placing tests need a market whose book satisfies a price
-    precondition. When the open listing offers none, the helper refuses to
-    post rather than spend money on a crossing order. That is a fact about
-    today's markets, not the SDK."""
-    text = (
-        "thread 'live_fak_unmatched_is_typed_error' panicked at "
-        "polyoxide-clob/tests/live_api.rs:47:5:\n"
-        "no qualifying market with a best ask above 0.05 in the 100 open "
-        "markets gamma lists; market conditions rather than a defect, "
-        "so re-run before concluding otherwise"
-    )
-    assert classify(text) == Verdict.ENVIRONMENTAL
+    precondition, and call `environmental` when none does."""
+    _check(NO_QUALIFYING_MARKET)
+
+
+NO_SUITABLE_MARKET = Row(
+    "no suitable market", "environmental",
+    "no suitable market: best ask 0.042 is too cheap for a safe "
+    "non-crossing test; market conditions rather than a defect",
+    Verdict.ENVIRONMENTAL,
+)
 
 
 def test_classify_environmental_no_suitable_market() -> None:
-    """The in-test guard fires when gamma's cached best_ask and the CLOB book
-    disagree at the threshold. Same category: market state, not a defect."""
-    text = (
-        "thread 'live_fak_unmatched_is_typed_error' panicked at "
-        "polyoxide-clob/tests/live_api.rs:1062:5:\n"
-        "no suitable market: best ask 0.042 is too cheap for a safe "
-        "non-crossing test; market conditions rather than a defect"
-    )
-    assert classify(text) == Verdict.ENVIRONMENTAL
+    """The in-test guard is a precondition check that calls `environmental`."""
+    _check(NO_SUITABLE_MARKET)
 
 
 # Binance refuses a caller in a place it does not serve with HTTP 451, on REST
-# and on the stream handshake. Every spelling a Binance live test's panic can
-# carry it in is environmental.
-BINANCE_REGION_BLOCKS: list[tuple[str, str]] = [
-    (
-        "RegionBlocked / Display",
+# and on the stream handshake. A 451 is restricted and not a fault, so it is
+# environmental however it arrives.
+BINANCE_REGION_BLOCKS: list[Row] = [
+    Row("RegionBlocked / Display", "environmental",
         "live_x: binance does not serve this location (451): "
-        "Service unavailable from a restricted location",
-    ),
-    (
-        "RegionBlocked / Debug",
+        "Service unavailable from a restricted location", Verdict.ENVIRONMENTAL,
+        f"{BINANCE}::region_blocked"),
+    Row("RegionBlocked / Debug", "environmental",
         'live_x: RegionBlocked { msg: "Service unavailable from a restricted location" }',
-    ),
-    ("raw status", "/fapi/v1/time: API error: 451 Unavailable For Legal Reasons"),
-    (
-        "handshake / Display",
+        Verdict.ENVIRONMENTAL, f"{BINANCE}::region_blocked"),
+    Row("raw status", "environmental",
+        "/fapi/v1/time: API error: 451 Unavailable For Legal Reasons", Verdict.ENVIRONMENTAL,
+        f"{BINANCE}::raw_status_451"),
+    Row("handshake / Display", "environmental",
         "live_x: WebSocket transport error: HTTP error: 451 Unavailable For Legal Reasons",
-    ),
-    (
-        "handshake / Debug",
+        Verdict.ENVIRONMENTAL, f"{BINANCE}::streams::handshake_451"),
+    Row("handshake / Debug", "environmental",
         "live_x: Connect(Http(Response { status: 451, version: HTTP/1.1, headers: {} }))",
-    ),
+        Verdict.ENVIRONMENTAL, f"{BINANCE}::streams::handshake_451"),
 ]
 
 
-@pytest.mark.parametrize(
-    "label,text", BINANCE_REGION_BLOCKS, ids=[a[0] for a in BINANCE_REGION_BLOCKS]
-)
-def test_a_binance_region_block_is_environmental(label: str, text: str) -> None:
-    assert classify(text) == Verdict.ENVIRONMENTAL, f"{label} was not skipped"
+@pytest.mark.parametrize("row", BINANCE_REGION_BLOCKS, ids=_ids(BINANCE_REGION_BLOCKS))
+def test_a_binance_region_block_is_environmental(row: Row) -> None:
+    _check(row)
+
+
+OTHER_BINANCE_REFUSALS: list[Row] = [
+    Row("firewall", "real", "live_x: binance's firewall refused the request (403): <html>",
+        Verdict.REAL, f"{BINANCE}::forbidden"),
+    Row("ban", "real", "live_x: IpBanned { retry_after: None }", Verdict.REAL,
+        f"{BINANCE}::ip_banned"),
+    Row("raw 403", "real", "/fapi/v1/time: API error: 403 Forbidden", Verdict.REAL,
+        f"{BINANCE}::raw_status_403"),
+]
 
 
 def test_other_binance_refusals_are_not_environmental() -> None:
     """A firewall refusal or a ban is about how this client behaved, not where
-    it runs, so each still files an issue."""
-    for text in (
-        "live_x: binance's firewall refused the request (403): <html>",
-        "live_x: IpBanned { retry_after: None }",
-        "/fapi/v1/time: API error: 403 Forbidden",
-    ):
-        assert classify(text) == Verdict.REAL, text
+    it runs, so each is restricted and a fault, and files (amendment A2-1)."""
+    for row in OTHER_BINANCE_REFUSALS:
+        _check(row)
+
+
+MARKET_WORD = Row(
+    "market word", None, "market_by_token returned the wrong condition_id for the market",
+    Verdict.REAL,
+)
 
 
 def test_classify_bare_market_word_is_real() -> None:
-    """The environmental pattern must require the `no qualifying/suitable
-    market` phrasing, not merely the word `market` — otherwise most CLOB
-    failures would be silently skipped."""
-    text = "market_by_token returned the wrong condition_id for the market"
-    assert classify(text) == Verdict.REAL
+    """An assertion that mentions a market is not market conditions."""
+    _check(MARKET_WORD)
 
 
 def test_classify_empty_string_is_real() -> None:
@@ -436,9 +531,52 @@ def test_classify_empty_string_is_real() -> None:
     assert classify("") == Verdict.REAL
 
 
+FIVE_HUNDRED_IN_PROSE = Row(
+    "500 in prose", None, "computed value 500 differs from expected 600", Verdict.REAL,
+)
+
+
 def test_classify_unrelated_5xx_substring_does_not_match() -> None:
-    """The pattern requires `HTTP 5xx` or `status: 5xx`, not arbitrary 5xx."""
-    assert classify("computed value 500 differs from expected 600") == Verdict.REAL
+    _check(FIVE_HUNDRED_IN_PROSE)
+
+
+# The fixtures' twins, by fixture, for the rows the fixture tests check.
+FIXTURE_TWINS = {
+    "nextest-transient-429.json": f"{CORE}::rate_limit",
+    "nextest-transient-503.json": f"{CORE}::api_5xx",
+    "nextest-transient-connection.json": f"{CORE}::network_connect",
+}
+SINGLE_ROWS: list[Row] = [
+    PRIVATE_KEY_ONLY, AUTH_BEATS_503, ISSUE_32_TIMEOUT, UNREACHABLE_HOST, ISSUE_32_VALIDATION,
+    SPORTS_TIMEOUT, NO_QUALIFYING_MARKET, NO_SUITABLE_MARKET, MARKET_WORD, FIVE_HUNDRED_IN_PROSE,
+]
+ALL_ROWS = (RETRIABLE_ARMS + NON_RETRIABLE_ARMS + WEBSOCKET_DROPS + WEBSOCKET_FAULTS_STAY_REAL
+            + BINANCE_REGION_BLOCKS + OTHER_BINANCE_REFUSALS + SINGLE_ROWS)
+TWINS = sorted({row.twin for row in ALL_ROWS if row.twin} | set(FIXTURE_TWINS.values()))
+
+
+@pytest.mark.parametrize("twin", TWINS)
+def test_every_twin_exists(twin: str) -> None:
+    """A row's twin names a Rust test that is really there."""
+    path, name = twin.split("::", 1)
+    source = (REPO / path).read_text(encoding="utf-8")
+    assert re.search(rf"^\s*(?:async )?fn {re.escape(name.split('::')[-1])}\(\)", source, re.M), twin
+    for module in name.split("::")[:-1]:
+        assert re.search(rf"^\s*mod {re.escape(module)} \{{", source, re.M), twin
+
+
+def test_only_marked_rows_changed_verdict() -> None:
+    """Every row reaches the regex era's verdict but those AD-14 changed, and
+    each of those says which rule changed it."""
+    changed = [row for row in ALL_ROWS if row.verdict != row.was]
+    assert [row.label for row in changed] == ["normal close"]
+    assert all(row.changed_by for row in changed)
+    assert all(row.changed_by is None for row in ALL_ROWS if row.now is None)
+
+
+def test_a_row_without_a_tag_names_no_twin() -> None:
+    """A twin asserts a tag, so a row whose site prints none has nothing to twin."""
+    assert not [row.label for row in ALL_ROWS if row.tag is None and row.twin]
 
 
 def test_parse_mixed_fixture() -> None:
@@ -535,7 +673,7 @@ def test_cli_merge_promotes_persistent_transients_to_real(tmp_path: Path) -> Non
     retry_file.write_text(
         '{"type":"suite","event":"started","test_count":2}\n'
         '{"type":"test","event":"started","name":"polyoxide-gamma::live_api$live_search_markets"}\n'
-        '{"type":"test","name":"polyoxide-gamma::live_api$live_search_markets","event":"failed","stdout":"thread panic: HTTP 429"}\n'
+        '{"type":"test","name":"polyoxide-gamma::live_api$live_search_markets","event":"failed","stdout":"polyoxide-class=transient\\n\\nthread \'live_search_markets\' panicked at a.rs:1:1:\\nHTTP 429"}\n'
         '{"type":"test","event":"started","name":"polyoxide-clob::live_api$live_get_order"}\n'
         '{"type":"test","name":"polyoxide-clob::live_api$live_get_order","event":"ok"}\n'
         '{"type":"suite","event":"failed","passed":1,"failed":1,"ignored":0,"measured":0,"filtered_out":0,"exec_time":0.5}\n'
@@ -570,34 +708,62 @@ def test_cli_merge_promotes_persistent_transients_to_real(tmp_path: Path) -> Non
     assert environmental == ["polyoxide-clob::live_ws$live_sports_frames"]
 
 
+def test_cli_merge_keeps_an_environmental_or_auth_gated_retry(tmp_path: Path) -> None:
+    """A transient first pass whose retry is environmental (a dropped connection,
+    then a quiet feed) or auth-gated takes the retry's verdict, not REAL."""
+    retry_file = tmp_path / "retry.json"
+    retry_file.write_text(
+        '{"type":"suite","event":"started","test_count":2}\n'
+        '{"type":"test","event":"started","name":"polyoxide-gamma::live_api$live_search_markets"}\n'
+        '{"type":"test","name":"polyoxide-gamma::live_api$live_search_markets","event":"failed","stdout":"polyoxide-class=environmental\\n\\nthread \'live_search_markets\' panicked at a.rs:1:1:\\nquiet"}\n'
+        '{"type":"test","event":"started","name":"polyoxide-clob::live_api$live_get_order"}\n'
+        '{"type":"test","name":"polyoxide-clob::live_api$live_get_order","event":"failed","stdout":"polyoxide-class=auth-gated\\n\\nthread \'live_get_order\' panicked at a.rs:1:1:\\nunset"}\n'
+        '{"type":"suite","event":"failed","passed":0,"failed":2,"ignored":0,"measured":0,"filtered_out":0,"exec_time":0.5}\n'
+    )
+
+    out_dir = tmp_path / "out"
+    out_dir.mkdir()
+    subprocess.run(
+        [
+            sys.executable, str(SCRIPT), "merge",
+            "--first-pass", str(FIXTURES / "nextest-mixed.json"),
+            "--retry", str(retry_file),
+            "--output-dir", str(out_dir),
+        ],
+        capture_output=True,
+        text=True,
+        check=True,
+    )
+
+    real = (out_dir / "real-failures.txt").read_text().splitlines()
+    assert real == ["polyoxide-gamma::live_api$live_get_market"]
+    environmental = (out_dir / "environmental.txt").read_text().splitlines()
+    assert sorted(environmental) == sorted([
+        "polyoxide-clob::live_ws$live_sports_frames",
+        "polyoxide-gamma::live_api$live_search_markets",
+    ])
+    auth = (out_dir / "auth-gated.txt").read_text().splitlines()
+    assert "polyoxide-clob::live_api$live_get_order" in auth
+
+
 # --- tag lines (AD-14) --------------------------------------------------------
 #
 # A test that fails through polyoxide-test-support prints `polyoxide-class=<tag>`
-# alone on a line just before it panics. The tag decides; the regexes above only
-# see a log with no tag line.
-
-REPORT = (
-    "\nthread 'live_x' (4811) panicked at polyoxide-gamma/tests/live_api.rs:42:10:\n"
-    "{message}\n"
-    "note: run with `RUST_BACKTRACE=1` environment variable to display a backtrace\n"
-)
+# alone on a line just before it panics. The tag decides, and a log without one
+# is real.
 
 
-def _tagged(tag: str, message: str) -> str:
-    return f"polyoxide-class={tag}\n" + REPORT.format(message=message)
-
-
-@pytest.mark.parametrize("tag,message,regex_verdict", [
-    # Each message on its own classifies otherwise, so only the tag explains the verdict.
-    ("transient", 'markets: V2(V2Error { code: "dependency_unavailable" })', Verdict.REAL),
-    ("real", "markets: the HTTP 503 page did not parse", Verdict.TRANSIENT),
-    ("environmental", "markets: Api(Api { status: 503 })", Verdict.TRANSIENT),
-    ("auth-gated", "credentials not configured: KEY absent or empty in the environment", Verdict.REAL),
-    ("real", "POLYMARKET_* env vars required for authenticated tests", Verdict.AUTH_GATED),
-    ("transient", "no qualifying market with a best ask above 0.05", Verdict.ENVIRONMENTAL),
+@pytest.mark.parametrize("tag,message", [
+    # Each message is one the regex era classified otherwise.
+    ("transient", 'markets: V2(V2Error { code: "dependency_unavailable" })'),
+    ("real", "markets: the HTTP 503 page did not parse"),
+    ("environmental", "markets: Api(Api { status: 503 })"),
+    ("auth-gated", "credentials not configured: KEY absent or empty in the environment"),
+    ("real", "POLYMARKET_* env vars required for authenticated tests"),
+    ("transient", "no qualifying market with a best ask above 0.05"),
 ])
-def test_a_tag_beats_whatever_the_regexes_say(tag: str, message: str, regex_verdict: Verdict) -> None:
-    assert classify(REPORT.format(message=message)) == regex_verdict, "the row proves nothing"
+def test_a_tag_decides_whatever_the_text_says(tag: str, message: str) -> None:
+    assert classify(REPORT.format(message=message)) == Verdict.REAL
     assert classify(_tagged(tag, message)) == Verdict(tag)
 
 
@@ -615,9 +781,9 @@ def test_a_stale_tag_before_an_untagged_final_panic_is_ignored(stale: str) -> No
     a bare `assert!` or `unwrap()`: the tag is not about the final failure."""
     text = _tagged(stale, "first connect") + REPORT.format(message="assertion failed: frames > 0")
     assert classify(text) == Verdict.REAL
-    # The untagged path still applies, regexes included.
+    # Nor does the final panic's text decide.
     text = _tagged(stale, "first connect") + REPORT.format(message="markets: Api { status: 503 }")
-    assert classify(text) == Verdict.TRANSIENT
+    assert classify(text) == Verdict.REAL
 
 
 def test_a_tag_parted_from_the_report_by_other_output_is_ignored() -> None:
@@ -640,8 +806,7 @@ def test_a_real_tag_is_never_outranked_by_a_later_one(later: str) -> None:
 ])
 def test_a_tag_that_is_not_alone_on_its_line_is_ignored(text: str) -> None:
     assert classify(text) == Verdict.REAL
-    # So the regexes still decide.
-    assert classify(text + "\nHTTP 503") == Verdict.TRANSIENT
+    assert classify(text + REPORT.format(message="HTTP 503")) == Verdict.REAL
 
 
 @pytest.mark.parametrize("text", [
@@ -661,7 +826,7 @@ def test_a_tag_with_no_panic_report_after_it_is_ignored() -> None:
 
 @pytest.mark.parametrize("tag", ["flaky", "pass", "Transient", "transient-ish"])
 def test_an_unknown_tag_is_real(tag: str) -> None:
-    # Even when the regexes would have skipped or retried the failure.
+    # Even when the text names a retriable status or missing credentials.
     assert classify(_tagged(tag, "Api { status: 503 }")) == Verdict.REAL
     assert classify(_tagged(tag, "POLYMARKET_* env vars required")) == Verdict.REAL
 
@@ -679,23 +844,26 @@ def test_parse_tagged_fixture() -> None:
         "polyoxide-gamma::live_api$live_search_markets": Verdict.REAL,
         "polyoxide-clob::live_api$live_create_order": Verdict.AUTH_GATED,
         "polyoxide-clob::live_api$live_fak_unmatched_is_typed_error": Verdict.ENVIRONMENTAL,
-        # Untagged: decided by the regex fallback.
-        "polyoxide-clob::live_api$live_get_order": Verdict.TRANSIENT,
+        # Untagged: real, whatever its text says.
+        "polyoxide-clob::live_api$live_get_order": Verdict.REAL,
         # A caught real failure, then a final environmental one, in a log the
         # regexes call transient: the fault still files.
         "polyoxide-sports::live_api$live_api_channel_yields_frames": Verdict.REAL,
     }
 
 
-def test_every_tagged_fixture_row_disagrees_with_the_regexes() -> None:
-    """Guards the test above: a row the regexes alone classify the same way
-    would pass whether or not the tag was read."""
+def test_every_tagged_fixture_row_is_decided_by_its_tag() -> None:
+    """Guards the test above: each tagged row that is not real would be real
+    without its tag, so it passes only if the tag was read."""
     import classify_failures
 
-    for outcome in parse_nextest_json(FIXTURES / "nextest-tagged.json"):
-        if classify_failures.TAG_LINE.search(outcome.output):
-            untagged = classify_failures.TAG_LINE.sub("", outcome.output)
-            assert classify(untagged) != outcome.verdict, outcome.name
+    tagged = [o for o in parse_nextest_json(FIXTURES / "nextest-tagged.json")
+              if classify_failures.TAG_LINE.search(o.output)]
+    assert {o.verdict for o in tagged} >= {Verdict.TRANSIENT, Verdict.AUTH_GATED,
+                                           Verdict.ENVIRONMENTAL}
+    for outcome in tagged:
+        untagged = classify_failures.TAG_LINE.sub("", outcome.output)
+        assert classify(untagged) == Verdict.REAL, outcome.name
 
 
 def test_cli_classify_reads_tags_end_to_end(tmp_path: Path) -> None:
@@ -712,10 +880,10 @@ def test_cli_classify_reads_tags_end_to_end(tmp_path: Path) -> None:
     )
     assert (out_dir / "retry-tests.txt").read_text().splitlines() == [
         "polyoxide-gamma::live_api$live_get_market",
-        "polyoxide-clob::live_api$live_get_order",
     ]
     assert (out_dir / "real-failures.txt").read_text().splitlines() == [
         "polyoxide-gamma::live_api$live_search_markets",
+        "polyoxide-clob::live_api$live_get_order",
         "polyoxide-sports::live_api$live_api_channel_yields_frames",
     ]
     assert (out_dir / "auth-gated.txt").read_text().splitlines() == [

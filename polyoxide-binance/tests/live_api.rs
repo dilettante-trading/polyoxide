@@ -22,10 +22,12 @@ use polyoxide_binance::{
     },
     BinanceError, Usdm,
 };
+use polyoxide_core::ApiError;
+use polyoxide_test_support::{environmental, fail, transient, ResultExt};
 use serde::{de::DeserializeOwned, Serialize};
 
 fn client() -> Usdm {
-    Usdm::new().expect("binance client")
+    Usdm::new().or_fail("binance client")
 }
 
 /// BTCUSDT, a trading TradFi perpetual and a trading Chinese-character
@@ -37,7 +39,7 @@ async fn three_kinds_of_symbol(usdm: &Usdm) -> Vec<Symbol> {
         .exchange_info()
         .send()
         .await
-        .expect("exchangeInfo");
+        .or_fail("exchangeInfo");
     let trading =
         |s: &&polyoxide_binance::usdm::types::SymbolInfo| s.status == SymbolStatus::Trading;
     let tradfi = info
@@ -45,17 +47,21 @@ async fn three_kinds_of_symbol(usdm: &Usdm) -> Vec<Symbol> {
         .iter()
         .filter(trading)
         .find(|s| s.contract_type == ContractType::TradifiPerpetual)
-        .expect("no suitable market: no trading TradFi perpetual is listed");
+        .unwrap_or_else(|| {
+            environmental("no suitable market: no trading TradFi perpetual is listed")
+        });
     let chinese = info
         .symbols
         .iter()
         .filter(trading)
         .find(|s| !s.symbol.as_str().is_ascii())
-        .expect("no suitable market: no trading Chinese-character symbol is listed");
+        .unwrap_or_else(|| {
+            environmental("no suitable market: no trading Chinese-character symbol is listed")
+        });
     vec![
-        Symbol::new("BTCUSDT").unwrap(),
-        Symbol::new(&*tradfi.symbol).unwrap(),
-        Symbol::new(&*chinese.symbol).unwrap(),
+        Symbol::new("BTCUSDT").or_fail("BTCUSDT"),
+        Symbol::new(&*tradfi.symbol).or_fail(&tradfi.symbol),
+        Symbol::new(&*chinese.symbol).or_fail(&chinese.symbol),
     ]
 }
 
@@ -63,7 +69,7 @@ async fn three_kinds_of_symbol(usdm: &Usdm) -> Vec<Symbol> {
 #[ignore]
 async fn live_ping_time_and_the_weight_header() {
     let usdm = client();
-    let latency = usdm.health().ping().await.expect("ping");
+    let latency = usdm.health().ping().await.or_fail("ping");
     assert!(latency < Duration::from_secs(10), "latency {latency:?}");
 
     // Two clients, each with its own budget: the second has charged only its
@@ -73,8 +79,8 @@ async fn live_ping_time_and_the_weight_header() {
     for _ in 0..3 {
         let before = unix_minute();
         let (first, second) = (client(), client());
-        let a = first.health().time().send().await.expect("time");
-        let b = second.health().time().send().await.expect("time");
+        let a = first.health().time().send().await.or_fail("time");
+        let b = second.health().time().send().await.or_fail("time");
         assert!(b.server_time > 1_790_000_000_000);
         if a.server_time / 60_000 != b.server_time / 60_000 || unix_minute() != before {
             continue;
@@ -86,13 +92,15 @@ async fn live_ping_time_and_the_weight_header() {
         );
         return;
     }
-    panic!("three pairs of requests each straddled a minute boundary");
+    // Each pair takes a fraction of a second, so three straddles in a row is a
+    // stalled host rather than bad luck, and a retry runs on fresh minutes.
+    transient("three pairs of requests each straddled a minute boundary");
 }
 
 fn unix_minute() -> u64 {
     std::time::SystemTime::now()
         .duration_since(std::time::UNIX_EPOCH)
-        .expect("a clock after 1970")
+        .expect("a clock after 1970") // live-unwraps: the clock is after the epoch
         .as_secs()
         / 60
 }
@@ -103,13 +111,13 @@ async fn live_every_market_route_answers_for_three_kinds_of_symbol() {
     let usdm = client();
     for symbol in three_kinds_of_symbol(&usdm).await {
         let market = usdm.market();
-        let ticker = market.ticker_24h(&symbol).send().await.expect("ticker");
+        let ticker = market.ticker_24h(&symbol).send().await.or_fail("ticker");
         assert_eq!(ticker.symbol, symbol.as_str());
         let index = market
             .premium_index(&symbol)
             .send()
             .await
-            .expect("premiumIndex");
+            .or_fail("premiumIndex");
         assert!(
             index.mark_price > 0.into(),
             "{symbol} mark {}",
@@ -120,27 +128,27 @@ async fn live_every_market_route_answers_for_three_kinds_of_symbol() {
             .limit(2)
             .send()
             .await
-            .expect("klines");
+            .or_fail("klines");
         assert_eq!(candles.len(), 2, "{symbol}");
         let oi = market
             .open_interest(&symbol)
             .send()
             .await
-            .expect("openInterest");
+            .or_fail("openInterest");
         assert_eq!(oi.symbol, symbol.as_str());
         let trades = market
             .agg_trades(&symbol)
             .limit(2)
             .send()
             .await
-            .expect("aggTrades");
+            .or_fail("aggTrades");
         assert!(trades.len() <= 2, "{symbol}");
         let book = market
             .depth(&symbol)
             .limit(DepthLimit::Five)
             .send()
             .await
-            .expect("depth");
+            .or_fail("depth");
         assert!(book.bids.len() <= 5 && book.asks.len() <= 5, "{symbol}");
         let funding = market
             .funding_rate()
@@ -148,7 +156,7 @@ async fn live_every_market_route_answers_for_three_kinds_of_symbol() {
             .limit(2)
             .send()
             .await
-            .expect("fundingRate");
+            .or_fail("fundingRate");
         assert!(funding.iter().all(|row| row.symbol == symbol.as_str()));
     }
 }
@@ -158,21 +166,23 @@ async fn live_every_market_route_answers_for_three_kinds_of_symbol() {
 async fn live_an_unknown_symbol_is_venue_error_1121() {
     let err = client()
         .market()
-        .open_interest(&Symbol::new("NOTASYMBOLUSDT").unwrap())
+        .open_interest(&Symbol::new("NOTASYMBOLUSDT").or_fail("NOTASYMBOLUSDT"))
         .send()
         .await
-        .unwrap_err();
-    assert!(
-        matches!(
-            err,
-            BinanceError::Venue {
-                status: 400,
-                code: -1121,
-                ..
-            }
-        ),
-        "{err:?}"
-    );
+        .unwrap_err(); // live-unwraps: the venue must refuse an unknown symbol
+
+    // Any other error fails by its class, so a 5xx or a dropped connection is
+    // retried rather than filed.
+    if !matches!(
+        err,
+        BinanceError::Venue {
+            status: 400,
+            code: -1121,
+            ..
+        }
+    ) {
+        fail("expected venue error -1121", &err);
+    }
 }
 
 /// Fetches a route's raw JSON, outside the client, for the key comparison.
@@ -181,28 +191,37 @@ async fn raw(http: &reqwest::Client, path: &str) -> String {
         .get(format!("https://fapi.binance.com{path}"))
         .send()
         .await
-        .unwrap_or_else(|e| panic!("{path}: {e}"));
+        .map_err(ApiError::Network)
+        .or_fail(path);
     let status = response.status();
-    // Spelled as core spells a status, so the nightly classifier reads a 429
-    // or a 5xx as transient; reqwest's `error_for_status` prose reads as real.
-    assert!(status.is_success(), "{path}: API error: {status}");
+    // A refusal fails as core classifies its status, so its tag says what the
+    // nightly does with it: a 451 is environmental, a 429 or a 5xx transient,
+    // and a 403 from the firewall or a 418 ban real.
+    if !status.is_success() {
+        let body = response.text().await.unwrap_or_default();
+        fail(
+            path,
+            &ApiError::from_status_and_body(status.as_u16(), &body),
+        );
+    }
     response
         .text()
         .await
-        .unwrap_or_else(|e| panic!("{path}: {e:?}"))
+        .map_err(ApiError::Network)
+        .or_fail(path)
 }
 
 fn json(text: &str) -> serde_json::Value {
-    serde_json::from_str(text).expect("a JSON body")
+    serde_json::from_str(text).expect("a JSON body") // live-unwraps: an assertion on the response
 }
 
 /// Positional rows of any length but `len`. The key comparison cannot see a
 /// value appended to a kline or a book level, since neither has keys.
 fn rows_not_of_length(path: &str, rows: &serde_json::Value, len: usize) -> Vec<String> {
     rows.as_array()
-        .expect("an array of rows")
+        .expect("an array of rows") // live-unwraps: an assertion on the response
         .iter()
-        .map(|row| row.as_array().expect("a positional row").len())
+        .map(|row| row.as_array().expect("a positional row").len()) // live-unwraps: an assertion on the response
         .filter(|&n| n != len)
         .map(|n| format!("{path}: a row of {n} values, not {len}"))
         .collect()
@@ -231,7 +250,7 @@ async fn live_responses_carry_no_unmodelled_keys() {
         .gzip(true)
         .timeout(Duration::from_secs(30))
         .build()
-        .unwrap();
+        .expect("a reqwest client"); // live-unwraps: builds a local client
     let mut unmodelled = Vec::new();
     let mut check = |found: Vec<String>| unmodelled.extend(found);
 

@@ -10,49 +10,64 @@
 
 use alloy::primitives::Address;
 use polyoxide_relay::{BuilderAccount, BuilderConfig, RelayClient};
+use polyoxide_test_support::{load_env, optional_env, ResultExt};
 use std::time::Duration;
 
 fn client() -> RelayClient {
     RelayClient::builder()
-        .expect("default builder URL is valid")
+        .or_fail("default builder URL is valid")
         .build()
-        .expect("relay client should build without account")
+        .or_fail("relay client should build without account")
 }
 
 /// Build a relay client using builder HMAC credentials from the environment.
-/// Returns `None` if the required env vars are missing.
-fn client_with_builder_env() -> Option<RelayClient> {
-    let _ = dotenvy::dotenv();
+/// Fails the test as `auth-gated` when any required variable is absent or
+/// empty, which the nightly skips silently.
+fn client_with_builder_env() -> RelayClient {
+    let creds = load_env(&[
+        "POLYMARKET_PRIVATE_KEY",
+        "BUILDER_API_KEY",
+        "BUILDER_SECRET",
+    ])
+    .unwrap_or_else(|missing| missing.or_auth_gated());
+    let passphrase = optional_env("BUILDER_PASS_PHRASE");
 
-    let private_key = std::env::var("POLYMARKET_PRIVATE_KEY").ok()?;
-    let key = std::env::var("BUILDER_API_KEY").ok()?;
-    let secret = std::env::var("BUILDER_SECRET").ok()?;
-    let passphrase = std::env::var("BUILDER_PASS_PHRASE").ok();
-
-    let config = BuilderConfig::new(key, secret, passphrase);
-    let account = BuilderAccount::new(private_key, Some(config)).ok()?;
+    let config = BuilderConfig::new(
+        creds.get("BUILDER_API_KEY").to_owned(),
+        creds.get("BUILDER_SECRET").to_owned(),
+        passphrase,
+    );
+    let account = BuilderAccount::new(creds.get("POLYMARKET_PRIVATE_KEY"), Some(config))
+        .or_fail("builder account from the environment");
     RelayClient::builder()
-        .ok()?
+        .or_fail("default builder URL is valid")
         .with_account(account)
         .build()
-        .ok()
+        .or_fail("relay client should build with builder credentials")
 }
 
 /// Build a relay client using static relayer API key credentials from the environment.
-/// Returns `None` if the required env vars are missing.
-fn client_with_relayer_api_key_env() -> Option<RelayClient> {
-    let _ = dotenvy::dotenv();
+/// Fails the test as `auth-gated` when any required variable is absent or
+/// empty, which the nightly skips silently.
+fn client_with_relayer_api_key_env() -> RelayClient {
+    let creds = load_env(&[
+        "POLYMARKET_PRIVATE_KEY",
+        "RELAYER_API_KEY",
+        "RELAYER_API_KEY_ADDRESS",
+    ])
+    .unwrap_or_else(|missing| missing.or_auth_gated());
 
-    let private_key = std::env::var("POLYMARKET_PRIVATE_KEY").ok()?;
-    let key = std::env::var("RELAYER_API_KEY").ok()?;
-    let address = std::env::var("RELAYER_API_KEY_ADDRESS").ok()?;
-
-    let account = BuilderAccount::with_relayer_api_key(private_key, key, address).ok()?;
+    let account = BuilderAccount::with_relayer_api_key(
+        creds.get("POLYMARKET_PRIVATE_KEY"),
+        creds.get("RELAYER_API_KEY").to_owned(),
+        creds.get("RELAYER_API_KEY_ADDRESS").to_owned(),
+    )
+    .or_fail("relayer API key account from the environment");
     RelayClient::builder()
-        .ok()?
+        .or_fail("default builder URL is valid")
         .with_account(account)
         .build()
-        .ok()
+        .or_fail("relay client should build with a relayer API key")
 }
 
 // ── Health ───────────────────────────────────────────────────────
@@ -61,7 +76,7 @@ fn client_with_relayer_api_key_env() -> Option<RelayClient> {
 #[ignore]
 async fn live_ping() {
     let client = client();
-    let latency = client.ping().await.expect("ping should succeed");
+    let latency = client.ping().await.or_fail("ping should succeed");
     assert!(
         latency < Duration::from_secs(10),
         "latency too high: {:?}",
@@ -78,7 +93,7 @@ async fn live_get_deployed_zero_address() {
     let deployed = client
         .get_deployed(Address::ZERO)
         .await
-        .expect("get_deployed should succeed for zero address");
+        .or_fail("get_deployed should succeed for zero address");
     // The zero address is almost certainly not a deployed Safe
     assert!(!deployed, "zero address should not be deployed");
 }
@@ -90,12 +105,12 @@ async fn live_get_deployed_known_address() {
     // but is not a deployed Safe wallet, so result should be false.
     let addr: Address = "0xaacFeEa03eb1561C4e67d661e40682Bd20E3541b"
         .parse()
-        .expect("valid address");
+        .expect("valid address"); // live-unwraps: parses a constant
     let client = client();
     let deployed = client
         .get_deployed(addr)
         .await
-        .expect("get_deployed should deserialize");
+        .or_fail("get_deployed should deserialize");
     // We just care that it returns a bool without error
     let _ = deployed;
 }
@@ -110,7 +125,7 @@ async fn live_get_nonce() {
     let nonce = client
         .get_nonce(Address::ZERO)
         .await
-        .expect("get_nonce should succeed for zero address");
+        .or_fail("get_nonce should succeed for zero address");
     assert_eq!(nonce, 0, "zero address should have nonce 0");
 }
 
@@ -119,14 +134,11 @@ async fn live_get_nonce() {
 #[tokio::test]
 #[ignore]
 async fn live_list_transactions_with_builder_auth() {
-    let Some(client) = client_with_builder_env() else {
-        eprintln!("skipping: POLYMARKET_PRIVATE_KEY / BUILDER_* env vars not set");
-        return;
-    };
+    let client = client_with_builder_env();
     let txs = client
         .list_transactions()
         .await
-        .expect("list_transactions should succeed");
+        .or_fail("list_transactions should succeed");
     // Just assert deserialization succeeded; count depends on user activity.
     let _ = txs;
 }
@@ -134,14 +146,11 @@ async fn live_list_transactions_with_builder_auth() {
 #[tokio::test]
 #[ignore]
 async fn live_list_transactions_with_relayer_api_key() {
-    let Some(client) = client_with_relayer_api_key_env() else {
-        eprintln!("skipping: POLYMARKET_PRIVATE_KEY / RELAYER_API_KEY* env vars not set");
-        return;
-    };
+    let client = client_with_relayer_api_key_env();
     let txs = client
         .list_transactions()
         .await
-        .expect("list_transactions should succeed");
+        .or_fail("list_transactions should succeed");
     let _ = txs;
 }
 
@@ -150,14 +159,11 @@ async fn live_list_transactions_with_relayer_api_key() {
 #[tokio::test]
 #[ignore]
 async fn live_list_relayer_api_keys() {
-    let Some(client) = client_with_relayer_api_key_env() else {
-        eprintln!("skipping: POLYMARKET_PRIVATE_KEY / RELAYER_API_KEY* env vars not set");
-        return;
-    };
+    let client = client_with_relayer_api_key_env();
     let keys = client
         .list_relayer_api_keys()
         .await
-        .expect("list_relayer_api_keys should succeed");
+        .or_fail("list_relayer_api_keys should succeed");
     // OpenAPI guarantees an empty array is valid, so no count check - just deserialization.
     let _ = keys;
 }

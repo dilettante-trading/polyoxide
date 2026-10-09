@@ -3998,6 +3998,7 @@ dependencies = [
  "futures-util",
  "mockito",
  "polyoxide-core",
+ "polyoxide-test-support",
  "polyoxide-venue",
  "reqwest 0.12.28",
  "rust_decimal",
@@ -4032,6 +4033,7 @@ dependencies = [
  "polyoxide-relay",
  "polyoxide-rtds",
  "polyoxide-sports",
+ "polyoxide-test-support",
  "serde",
  "serde_json",
  "tempfile",
@@ -4051,6 +4053,7 @@ dependencies = [
  "polyoxide-core",
  "polyoxide-gamma",
  "polyoxide-relay",
+ "polyoxide-test-support",
  "polyoxide-venue",
  "rand 0.9.4",
  "reqwest 0.12.28",
@@ -4096,6 +4099,7 @@ dependencies = [
  "futures-util",
  "mockito",
  "polyoxide-core",
+ "polyoxide-test-support",
  "polyoxide-venue",
  "reqwest 0.12.28",
  "rust_decimal",
@@ -4116,6 +4120,7 @@ dependencies = [
  "chrono",
  "mockito",
  "polyoxide-core",
+ "polyoxide-test-support",
  "polyoxide-venue",
  "reqwest 0.12.28",
  "serde",
@@ -4135,6 +4140,7 @@ dependencies = [
  "futures-util",
  "mockito",
  "polyoxide-core",
+ "polyoxide-test-support",
  "polyoxide-venue",
  "reqwest 0.12.28",
  "rust_decimal",
@@ -4174,6 +4180,7 @@ dependencies = [
  "hex",
  "mockito",
  "polyoxide-core",
+ "polyoxide-test-support",
  "polyoxide-venue",
  "rand 0.9.4",
  "reqwest 0.12.28",
@@ -4190,6 +4197,7 @@ name = "polyoxide-rtds"
 version = "0.38.1"
 dependencies = [
  "futures-util",
+ "polyoxide-test-support",
  "polyoxide-venue",
  "rust_decimal",
  "rustls",
@@ -4208,6 +4216,7 @@ name = "polyoxide-sports"
 version = "0.38.1"
 dependencies = [
  "futures-util",
+ "polyoxide-test-support",
  "polyoxide-venue",
  "rustls",
  "serde",
@@ -4225,6 +4234,9 @@ dependencies = [
  "dotenvy",
  "polyoxide-core",
  "polyoxide-venue",
+ "reqwest 0.12.28",
+ "serde_json",
+ "tokio",
 ]
 
 [[package]]

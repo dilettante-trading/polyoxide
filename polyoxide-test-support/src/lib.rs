@@ -3,12 +3,14 @@
 //! What every live test shares: a failure that tells the nightly run what kind
 //! of failure it is, and credentials that load the same way in every suite.
 //!
-//! A failing test prints one line to stderr just before it panics, which
-//! `.github/scripts/classify_failures.py` reads before anything else:
+//! A failing test prints one line to stderr just before it panics:
 //!
 //! ```text
 //! polyoxide-class=transient
 //! ```
+//!
+//! That line is all `.github/scripts/classify_failures.py` reads, and a failure
+//! that prints none is filed as a fault.
 //!
 //! - [`ResultExt::or_fail`] unwraps a `Result` whose error implements
 //!   [`Classify`](polyoxide_venue::Classify). On an error it prints the tag

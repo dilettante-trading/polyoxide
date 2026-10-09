@@ -1,22 +1,32 @@
 #!/usr/bin/env python3
-"""Live tests may only lose unwraps, and the nightly classifier may not gain a regex (AD-14).
+"""Every live test failure is tagged, and the nightly classifier may not gain a regex (AD-14).
 
 A live test that fails through `.or_fail(ctx)`, `fail(ctx, &err)`, a
 credential loader, `environmental(reason)` or `transient(reason)` from
 `polyoxide-test-support` prints the tag the nightly classifier reads. One that
-fails through `.unwrap()` or `.expect(..)` prints none, and only the
-classifier's regexes can sort it. This script holds both halves of that in
-place with `scripts/live_unwraps.baseline.json`:
+fails through `.unwrap()`, `.expect(..)` or a bare `panic!` prints none, and the
+classifier files it as `real`, whatever it was. This script holds that in place
+with `scripts/live_unwraps.baseline.json`:
 
 - `unwraps`: the number of unwrap calls in each live test file,
   `polyoxide-*/tests/live_*.rs` and the `mod` files each declares: every
-  `.unwrap()` and `.expect(`, and every `Result::unwrap`, `Result::expect`,
-  `Option::unwrap` and `Option::expect` named as a path. Each count must equal
-  the baseline's. One that rose is an unwrap to replace with `.or_fail(ctx)`;
-  one that fell is a baseline to lower, so it cannot rise again unnoticed. A
-  file with a count must be in the baseline, and a file at zero must not be.
-  The regex fallback is deleted when this table is empty.
-- `opted_out`: the same count for the lines that opt out (below), held the same
+  `.unwrap()`, `.expect(`, `.unwrap_err()` and `.expect_err(`, and every
+  `Result::unwrap`, `Result::expect`, `Option::unwrap` and `Option::expect` (or
+  its `_err` form) named as a path.
+- `bare`: the bare failure sites in the same files: every `panic!`,
+  `unreachable!`, `todo!` and `unimplemented!`, and every `assert!`, `assert_eq!` or `assert_ne!` (or its
+  `debug_` form) whose message names an error or a status, by interpolating or
+  passing a value named `e`, `err`, `error` or `status`, or one ending in
+  `_err`, `_error` or `_status`. An assertion on data prints no tag and files,
+  which is right; one whose message carries an error has an error in hand to
+  `fail` with.
+
+  Both tables are empty, and each count must equal the baseline's, so an unwrap
+  or a bare site added to a live test fails here: replace it with a tagged
+  failure. A file with a count must be in the baseline, and a file at zero must
+  not be, so a count that falls must be lowered and cannot rise again
+  unnoticed.
+- `opted_out`: the calls and sites on lines that opt out (below), held the same
   way, so an opt-out is never silent: adding one means raising this table by
   hand, where a reviewer sees it.
 - `classifier`: every regex `.github/scripts/classify_failures.py` builds, read
@@ -28,12 +38,15 @@ place with `scripts/live_unwraps.baseline.json`:
   module-level statement it is in: an assignment's target, or `name()` for a
   function. The set is frozen: a new failure mode is tagged where it fails,
   never matched by a new regex. Only a removed literal pattern may be lowered.
+  The regexes that read panic text are gone; what is left parses the tag line,
+  the panic report and nextest's retry suffix.
 
 Text cannot tell a polyoxide `Result` from any other, so every call counts;
 over-counting is the safe direction. Comments and string literals are not
-code, so nothing in them counts. A line that must keep its unwraps, such as one
-that parses a constant, opts out with a trailing comment giving the reason, and
-its calls count under `opted_out` instead:
+code, so nothing in them counts. A line that must keep an unwrap or a panic,
+such as one that parses a constant or asserts on the response, opts out with a
+trailing comment giving the reason, and its calls and sites count under
+`opted_out` instead. It fails untagged, so the nightly files it as `real`:
 
     let url: Url = "https://example.test".parse().unwrap(); // live-unwraps: a constant
 
@@ -64,8 +77,19 @@ REPO = gen_registry.REPO
 BASELINE = REPO / "scripts" / "live_unwraps.baseline.json"
 CLASSIFIER = REPO / ".github" / "scripts" / "classify_failures.py"
 
-UNWRAP = re.compile(r"\.\s*(?:unwrap\s*\(\s*\)|expect\s*\()|\b(?:Result|Option)::(?:unwrap|expect)\b")
+UNWRAP = re.compile(r"\.\s*(?:unwrap(?:_err)?\s*\(\s*\)|expect(?:_err)?\s*\()"
+                    r"|\b(?:Result|Option)::(?:unwrap|expect)(?:_err)?\b")
 OPT_OUT = re.compile(r"^\s*live-unwraps:\s*\S")
+# A bare failure site: a panic the test raises itself, or an assertion. Only an
+# assertion whose message names an error or a status counts (`names_error`).
+BARE = re.compile(
+    r"(?<![A-Za-z0-9_])(panic|unreachable|todo|unimplemented|(?:debug_)?assert(?:_eq|_ne)?)!\s*\(")
+PANICS = {"panic", "unreachable", "todo", "unimplemented"}
+# A value named for an error or a status: `e`, `err`, `error`, `status`, or a
+# name ending in `_err`, `_error` or `_status`.
+NAMED = r"(?:e|err|error|status|\w+_(?:err|error|status))"
+PLACEHOLDER = re.compile(rf"\{{\s*{NAMED}\s*(?::[^}}]*)?\}}")
+EXPRESSION = re.compile(rf"\b{NAMED}\b|\.(?:unwrap_)?err\(\)")
 # The `re` flags a pattern's spelling records, as inline-flag letters.
 FLAGS = ((re.IGNORECASE, "i"), (re.MULTILINE, "m"), (re.DOTALL, "s"), (re.VERBOSE, "x"))
 # Each `re` function that takes a pattern, with the position of its `flags`.
@@ -100,6 +124,42 @@ def count(source: str) -> tuple[int, int]:
     return counted, opted_out
 
 
+def names_error(part: str) -> bool:
+    """Whether one argument of an assertion's message names an error or a
+    status: a format string that interpolates one (`"{err:?}"`), or an argument
+    that passes one (`resp.status`, `result.err()`). The words of a format
+    string do not count."""
+    if part.startswith(('"', 'r"', "r#")):
+        return bool(PLACEHOLDER.search(part))
+    return bool(EXPRESSION.search(part))
+
+
+def bare_sites(source: str) -> tuple[int, int]:
+    """The bare failure sites in `source`'s code: (counted, on lines that opt out).
+
+    A site is a `panic!`, `unreachable!`, `todo!` or `unimplemented!`, or an `assert!`-family macro whose
+    message names an error or a status (`names_error`), counted on the line its
+    name is on.
+    """
+    kinds = gen_registry.lex(source)
+    code = gen_registry.view(source, kinds, gen_registry.CODE)
+    literals = gen_registry.view(source, kinds, gen_registry.CODE + gen_registry.STRING)
+    comments = gen_registry.view(source, kinds, gen_registry.LINE_COMMENT).split("\n")
+    counted = opted_out = 0
+    for match in BARE.finditer(code):
+        name = match[1]
+        if name not in PANICS:
+            arguments = gen_registry._split(gen_registry._arguments(literals, match.end() - 1))
+            message = arguments[2 if name.endswith(("_eq", "_ne")) else 1:]
+            if not any(map(names_error, message)):
+                continue
+        if OPT_OUT.match(comments[code.count("\n", 0, match.start())]):
+            opted_out += 1
+        else:
+            counted += 1
+    return counted, opted_out
+
+
 def live_files(root: Path) -> list[Path]:
     """Every live test target under `root` and the `mod` files each declares."""
     files: dict[Path, None] = {}
@@ -109,13 +169,16 @@ def live_files(root: Path) -> list[Path]:
     return list(files)
 
 
-def counts(root: Path) -> tuple[dict[str, int], dict[str, int]]:
-    """The counted and the opted-out calls of each live test file under `root`
-    that has any, by path from `root`."""
-    found = {f.relative_to(root).as_posix(): count(f.read_text(encoding="utf-8"))
-             for f in live_files(root)}
-    return ({path: n for path, (n, _) in sorted(found.items()) if n},
-            {path: n for path, (_, n) in sorted(found.items()) if n})
+def counts(root: Path) -> tuple[dict[str, int], dict[str, int], dict[str, int]]:
+    """The counted unwrap calls, the counted bare failure sites, and the calls
+    and sites that opt out, of each live test file under `root` that has any,
+    by path from `root`."""
+    found = {}
+    for file in live_files(root):
+        source = file.read_text(encoding="utf-8")
+        (unwraps, unwraps_out), (bare, bare_out) = count(source), bare_sites(source)
+        found[file.relative_to(root).as_posix()] = (unwraps, bare, unwraps_out + bare_out)
+    return tuple({path: n[i] for path, n in sorted(found.items()) if n[i]} for i in range(3))
 
 
 # --- the classifier's regexes ----------------------------------------------------
@@ -232,9 +295,10 @@ def unwrap_problems(actual: dict[str, int], baseline: dict[str, int],
         now, allowed = actual.get(path, 0), baseline.get(path)
         if opted_out and (allowed is None or now > allowed):
             found.append((NEW_FILE if allowed is None else ROSE,
-                f"{path} opts {now} unwrap(s) out with `// live-unwraps:`, more than its "
-                f"`opted_out` baseline of {allowed or 0}. An opt-out is an exception a "
-                f"reviewer must see: use `.or_fail(ctx)`, or raise the entry in "
+                f"{path} opts {now} unwrap(s) or site(s) out with `// live-unwraps:`, more "
+                f"than its `opted_out` baseline of {allowed or 0}. An opt-out is an exception "
+                f"a reviewer must see: use `.or_fail(ctx)`, `fail(ctx, &err)`, "
+                f"`environmental(reason)` or `transient(reason)`, or raise the entry in "
                 f"{BASELINE.name} by hand."))
         elif allowed is None:
             found.append((NEW_FILE,
@@ -253,6 +317,28 @@ def unwrap_problems(actual: dict[str, int], baseline: dict[str, int],
                 f"`{table}` baseline of {allowed}: {fix} in {BASELINE.name}, so they "
                 f"cannot come back unnoticed (`python3 scripts/live_unwraps.py --lower` "
                 f"does it)."))
+    return found
+
+
+def bare_problems(actual: dict[str, int], baseline: dict[str, int]) -> list[tuple[str, str]]:
+    """(kind, message) for each file whose count of bare failure sites differs
+    from its `bare` baseline."""
+    found = []
+    for path in sorted(set(actual) | set(baseline)):
+        now, allowed = actual.get(path, 0), baseline.get(path, 0)
+        if now > allowed:
+            found.append((NEW_FILE if path not in baseline else ROSE,
+                f"{path} has {now} bare failure site(s), {now - allowed} more than its "
+                f"`bare` baseline of {allowed}: a `panic!`, an `unreachable!`, or an "
+                f"`assert!` whose message names an error or a status prints no tag. Fail "
+                f"with `fail(ctx, &err)`, `environmental(reason)` or `transient(reason)` "
+                f"from polyoxide-test-support."))
+        elif now < allowed:
+            fix = f"lower its entry to {now}" if now else "remove its entry"
+            found.append((FELL,
+                f"{path} has {now} bare failure sites, below its `bare` baseline of "
+                f"{allowed}: {fix} in {BASELINE.name}, so they cannot come back unnoticed "
+                f"(`python3 scripts/live_unwraps.py --lower` does it)."))
     return found
 
 
@@ -287,10 +373,10 @@ def read_baseline(path: Path) -> dict:
     return json.loads(path.read_text(encoding="utf-8"))
 
 
-def write_baseline(path: Path, unwraps: dict[str, int], opted_out: dict[str, int],
-                   classifier: dict[str, list[str]]) -> None:
-    text = json.dumps({"unwraps": unwraps, "opted_out": opted_out, "classifier": classifier},
-                      indent=2, ensure_ascii=False)
+def write_baseline(path: Path, unwraps: dict[str, int], bare: dict[str, int],
+                   opted_out: dict[str, int], classifier: dict[str, list[str]]) -> None:
+    text = json.dumps({"unwraps": unwraps, "bare": bare, "opted_out": opted_out,
+                       "classifier": classifier}, indent=2, ensure_ascii=False)
     path.write_text(text + "\n", encoding="utf-8")
 
 
@@ -298,8 +384,9 @@ def problems(root: Path = REPO, baseline: Path = BASELINE,
              classifier: Path = CLASSIFIER) -> list[tuple[str, str]]:
     """(kind, message) for every way the tree under `root` differs from `baseline`."""
     frozen = read_baseline(baseline)
-    unwraps, opted_out = counts(root)
+    unwraps, bare, opted_out = counts(root)
     return (unwrap_problems(unwraps, frozen["unwraps"])
+            + bare_problems(bare, frozen["bare"])
             + unwrap_problems(opted_out, frozen["opted_out"], opted_out=True)
             + pattern_problems(classifier_patterns(classifier), frozen["classifier"]))
 
@@ -340,10 +427,12 @@ def main(argv: list[str] | None = None) -> int:
         return 1
     frozen = read_baseline(BASELINE)
     total = sum(frozen["unwraps"].values())
+    bare = sum(frozen["bare"].values())
     opted = sum(frozen["opted_out"].values())
     regexes = sum(len(v) for v in frozen["classifier"].values())
-    print(f"live unwraps: {total} in {len(frozen['unwraps'])} files and {opted} opted out, "
-          f"as the baseline allows; classifier: {regexes} regexes, none added")
+    print(f"live unwraps: {total} in {len(frozen['unwraps'])} files, {bare} bare failure "
+          f"sites, and {opted} opted out, as the baseline allows; classifier: {regexes} "
+          f"regexes, none added")
     return 0
 
 

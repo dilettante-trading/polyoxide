@@ -12,15 +12,15 @@ can never authenticate.
 
 The secrets check is a static scan of each file (`gen_registry.env_names`). It
 reads the names passed to polyoxide-test-support's credential loaders, which must
-be string literals, and the literal `std::env::var` reads the suites not yet on
-the loaders still make.
+be string literals. A live target reads the environment no other way: a
+`std::env::var`, `dotenvy` or a library's `from_env()` would read names the scan
+cannot see, so each is refused (`gen_registry.direct_env_reads`).
 """
 
 from __future__ import annotations
 
 import importlib.util
 import re
-import shutil
 import sys
 from pathlib import Path
 
@@ -345,41 +345,48 @@ def test_renaming_one_env_literal_fails_the_check(crate: str, target: str, name:
     assert f"{name}_RENAMED" in mutated
 
 
-def test_renaming_a_library_loader_constant_fails_the_check(tmp_path: Path) -> None:
-    """`Account::from_env()` reads the names in clob's `account::env` module."""
-    loader = "polyoxide-clob/src/account/mod.rs"
-    (tmp_path / loader).parent.mkdir(parents=True)
-    shutil.copyfile(REPO / loader, tmp_path / loader)
-    source = _source("polyoxide-clob", "live_api")
-    declared = set(registered(REGISTRY)[("polyoxide-clob", "live_api")].secrets)
-    assert gen_registry.env_names(source, tmp_path) == declared
-
-    text = (tmp_path / loader).read_text()
-    (tmp_path / loader).write_text(text.replace('"POLYMARKET_API_SECRET"', '"POLYMARKET_SECRET"', 1))
-    assert gen_registry.env_names(source, tmp_path) == declared - {"POLYMARKET_API_SECRET"} | {
-        "POLYMARKET_SECRET"}
+@pytest.mark.parametrize("key", sorted(live_targets(METADATA)), ids="/".join)
+def test_no_live_target_reads_the_environment_but_through_the_loaders(key: tuple[str, str]) -> None:
+    reads = gen_registry.direct_env_reads(_source(*key))
+    assert not reads, (
+        f"{key[0]} {key[1]}.rs reads the environment around polyoxide-test-support's "
+        f"loaders, where the secrets check cannot see the names: {reads}. Use `load_env`, "
+        f"`optional_env` or `keychain`.")
 
 
-def test_the_loader_table_reads_four_names() -> None:
-    assert gen_registry.loader_names(REPO / "polyoxide-clob/src/account/mod.rs", "env") == {
-        "POLYMARKET_PRIVATE_KEY", "POLYMARKET_API_KEY", "POLYMARKET_API_SECRET",
-        "POLYMARKET_API_PASSPHRASE"}
-
-
-def test_the_scan_reads_env_reads_and_nothing_else() -> None:
+def test_a_direct_env_read_is_found() -> None:
     source = """
-//! Reads `NOT_READ` in prose only.
-// std::env::var("COMMENTED_OUT")
+//! Prose may name `std::env::var` and `dotenvy::dotenv()`.
+// let a = std::env::var("COMMENTED_OUT");
+let s = "std::env::var(\"IN_A_STRING\")";
 let a = std::env::var("A_KEY").ok();
 let b = env::var_os("B_KEY");
-let c = var("C_KEY");
-let d = option_env!("D_KEY");
+use std::env::vars;
+dotenvy::dotenv().ok();
+let account = Account::from_env().unwrap();
+let c = some_var("NOT_ENV");
+let d = Config::from_env_or_default();
+use std::env::{self, var};
 let e = env!("E_KEY");
-let f = Symbol::new("BTCUSDT");
-let g = some_var("NOT_ENV");
-assert_eq!(t, "PONG");
+let f = option_env!("F_KEY");
+let g = polyoxide_test_support::load_env(&["G_KEY"]);
+let h = my_env::thing();
+let i = crate::env::thing();
 """
-    assert gen_registry.env_names(source) == {"A_KEY", "B_KEY", "C_KEY", "D_KEY", "E_KEY"}
+    assert [read.split(":")[0] for read in gen_registry.direct_env_reads(source)] == [
+        "line 5", "line 6", "line 7", "line 8", "line 9", "line 12", "line 13", "line 14"]
+
+
+def test_the_scan_reads_only_the_loaders() -> None:
+    """A direct read names nothing the scan counts; the test above refuses it."""
+    source = """
+let a = std::env::var("A_KEY").ok();
+let b = env::var_os("B_KEY");
+let d = option_env!("D_KEY");
+let f = Symbol::new("BTCUSDT");
+let g = optional_env("G_KEY");
+"""
+    assert gen_registry.env_names(source) == {"G_KEY"}
 
 
 def test_the_scan_reads_the_credential_loaders_arguments() -> None:
@@ -415,7 +422,7 @@ fn reload_env() {}
 
 def test_a_loader_name_in_a_string_or_a_comment_is_not_a_call() -> None:
     source = """
-let a = std::env::var("A_KEY").expect("keychain (macOS) or load_env (CI)");
+let a = optional_env("A_KEY").expect("keychain (macOS) or load_env (CI)");
 let b = r#"optional_env(raw)"#; // keychain (old) and load_env(NAMES)
 /* optional_env(name) */
 let creds = load_env(&[ // the keys (both)
@@ -461,7 +468,7 @@ def _target_with_module(root: Path, module_path: str, module: str) -> Path:
 @pytest.mark.parametrize("module_path", ["common/mod.rs", "common.rs"])
 def test_an_env_read_in_a_shared_module_must_be_declared(tmp_path: Path, module_path: str) -> None:
     target = _target_with_module(tmp_path, module_path,
-                                 'pub fn key() -> String { std::env::var("SHARED_KEY").unwrap() }\n')
+                                 'pub fn key() -> Option<String> { optional_env("SHARED_KEY") }\n')
     assert gen_registry.module_files(target) == [target, tmp_path / "tests" / module_path]
     assert gen_registry.env_names(target.read_text()) == set()
     assert gen_registry.env_names(gen_registry.target_source(target)) == {"SHARED_KEY"}

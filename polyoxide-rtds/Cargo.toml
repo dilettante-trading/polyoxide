@@ -40,6 +40,9 @@ url = { workspace = true }
 rustls = { workspace = true }
 
 [dev-dependencies]
+# The live suites' failure tags and credential loaders. Path-only: it is never
+# published, and cargo strips a path-only dev-dependency on publish.
+polyoxide-test-support = { path = "../polyoxide-test-support" }
 tokio = { workspace = true, features = ["macros", "rt-multi-thread", "time", "net"] }
 tracing-subscriber = { version = "0.3", features = ["env-filter"] }
 

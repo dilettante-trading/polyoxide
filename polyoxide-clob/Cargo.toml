@@ -53,6 +53,9 @@ futures-util = { version = "0.3", optional = true }
 rustls = { workspace = true, optional = true }
 
 [dev-dependencies]
+# The live suites' failure tags and credential loaders. Path-only: it is never
+# published, and cargo strips a path-only dev-dependency on publish.
+polyoxide-test-support = { path = "../polyoxide-test-support" }
 polyoxide-relay = { workspace = true }
 mockito = { workspace = true }
 tokio = { workspace = true, features = ["macros", "rt-multi-thread"] }

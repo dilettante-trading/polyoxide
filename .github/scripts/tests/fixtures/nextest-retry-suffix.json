@@ -1,6 +1,6 @@
 {"type": "suite", "event": "started", "test_count": 2}
 {"type": "test", "event": "started", "name": "polyoxide-gamma::live_api$live_search_markets#3"}
-{"type": "test", "name": "polyoxide-gamma::live_api$live_search_markets#3", "event": "failed", "stdout": "\nthread 'live_search_markets' (4811) panicked at polyoxide-gamma/tests/live_api.rs:80:10:\nsearch markets: ApiError(Http { status: 429, message: \"Too Many Requests\" })\nnote: run with `RUST_BACKTRACE=1` environment variable to display a backtrace\n"}
+{"type": "test", "name": "polyoxide-gamma::live_api$live_search_markets#3", "event": "failed", "stdout": "polyoxide-class=transient\n\nthread 'live_search_markets' (4811) panicked at polyoxide-gamma/tests/live_api.rs:80:10:\nsearch markets: ApiError(Http { status: 429, message: \"Too Many Requests\" })\nnote: run with `RUST_BACKTRACE=1` environment variable to display a backtrace\n"}
 {"type": "test", "event": "started", "name": "polyoxide-clob::live_api$live_get_order#2"}
 {"type": "test", "name": "polyoxide-clob::live_api$live_get_order#2", "event": "ok"}
 {"type": "suite", "event": "failed", "passed": 1, "failed": 1, "ignored": 0, "measured": 0, "filtered_out": 0, "exec_time": 9.4}

@@ -1,9 +1,9 @@
-"""`scripts/live_unwraps.py`: live tests may only lose unwraps, and the
+"""`scripts/live_unwraps.py`: every live test failure is tagged, and the
 nightly classifier may not gain a regex (AD-14).
 
-The first test runs the check on the real tree, which is what fails CI when a
-PR adds an unwrap to a live test or a regex to the classifier. The rest build
-small trees to prove each way the check can fail.
+The first tests run the check on the real tree, which is what fails CI when a
+PR adds an unwrap or a bare panic to a live test, or a regex to the classifier.
+The rest build small trees to prove each way the check can fail.
 """
 
 from __future__ import annotations
@@ -40,6 +40,10 @@ def counted(source: str) -> int:
     return live_unwraps.count(source)[0]
 
 
+def bare(source: str) -> tuple[int, int]:
+    return live_unwraps.bare_sites(source)
+
+
 # --- the real tree -------------------------------------------------------------
 
 
@@ -49,16 +53,26 @@ def test_the_real_tree_matches_its_baseline() -> None:
     assert "none added" in result.stdout
 
 
-def test_the_baseline_freezes_every_regex_table_the_classifier_has() -> None:
+def test_every_live_failure_is_tagged_or_opted_out() -> None:
+    """Story 2.7's precondition, held: no live test unwraps or panics bare."""
+    baseline = live_unwraps.read_baseline(live_unwraps.BASELINE)
+    assert baseline["unwraps"] == {} and baseline["bare"] == {}
+    unwraps, bare_sites, _ = live_unwraps.counts(REPO)
+    assert unwraps == {} and bare_sites == {}
+
+
+def test_the_classifier_keeps_no_regex_over_panic_text() -> None:
+    """The regex fallback is gone: what the classifier still builds parses the
+    tag line, the panic report and nextest's retry suffix, and nothing else."""
     frozen = live_unwraps.read_baseline(live_unwraps.BASELINE)["classifier"]
-    assert {"AUTH_GATED_RE", "ENVIRONMENTAL_RE", "TRANSIENT_RES", "TAG_LINE", "PANIC_REPORT"} <= set(frozen)
-    assert len(frozen["TRANSIENT_RES"]) >= 30
+    assert set(frozen) == {"TAG_LINE", "PANIC_REPORT", "ATTEMPT"}
+    assert live_unwraps.classifier_patterns(live_unwraps.CLASSIFIER) == frozen
 
 
 def test_the_real_tree_counts_a_shared_module_once() -> None:
     """binance's two live targets both declare `mod common;`."""
-    unwraps, _ = live_unwraps.counts(REPO)
-    assert unwraps["polyoxide-binance/tests/common/mod.rs"] >= 1
+    _, _, opted_out = live_unwraps.counts(REPO)
+    assert opted_out["polyoxide-binance/tests/common/mod.rs"] >= 1
     files = [f.relative_to(REPO).as_posix() for f in live_unwraps.live_files(REPO)]
     assert files.count("polyoxide-binance/tests/common/mod.rs") == 1
 
@@ -75,8 +89,10 @@ let b = client
     .await
     .expect("markets");
 let c = x.unwrap().y.expect(&format!("{}", 1)).z . unwrap ( );
+let d = x.unwrap_err();
+let e = x.expect_err("must fail");
 """
-    assert counted(source) == 5
+    assert counted(source) == 7
 
 
 def test_an_unwrap_named_as_a_path_counts() -> None:
@@ -87,16 +103,15 @@ let c = items.map(Result::expect);
 let d = items.map(Option::unwrap);
 let e = items.map(Result::unwrap_or_default);
 let f = items.map(Option::unwrap_or);
+let g = items.map(Result::unwrap_err);
 """
-    assert counted(source) == 4
+    assert counted(source) == 5
 
 
 def test_lookalikes_do_not_count() -> None:
     source = """
 let a = x.unwrap_or(1);
 let b = x.unwrap_or_else(|| 1);
-let c = x.unwrap_err();
-let d = x.expect_err("must fail");
 let e = x.unwrap_or_default();
 fn unwrap() {}
 """
@@ -144,17 +159,84 @@ def test_only_a_trailing_comment_with_a_reason_opts_a_line_out(line: str, split:
     assert live_unwraps.count(line) == split
 
 
+def test_every_panic_and_unreachable_is_a_bare_site() -> None:
+    source = """
+panic!("no market");
+std::panic!("{e}");
+core::panic! ("x");
+unreachable!();
+let a = x.unwrap_or_else(|e| panic!("{path}: {e}"));
+todo!();
+unimplemented!("x");
+"""
+    assert bare(source) == (7, 0)
+
+
+@pytest.mark.parametrize("line,counts", [
+    ('assert!(ok, "{err:?}");', 1),
+    ('assert!(status.is_success(), "{path}: API error: {status}");', 1),
+    ('assert!(ok, "failed: {e}");', 1),
+    ('assert!(ok, "failed: {}", e);', 1),
+    ('assert!(ok, "failed: {:?}", result.err());', 1),
+    ('assert!(ok, "failed: {:?}", resp.status);', 1),
+    ('assert!(ok, "{send_error}");', 1),
+    ('assert_eq!(a, b, "{err}");', 1),
+    ('assert_ne!(a, b, "{}", last_error);', 1),
+    ('debug_assert!(ok, "{error:#?}");', 1),
+    # Data, not an error or a status.
+    ('assert!(ok);', 0),
+    ('assert!(ok, "latency {latency:?}");', 0),
+    ('assert!(ok, "the error message was empty");', 0),
+    ('assert!(ok, "{}", resp.error_msg);', 0),
+    ('assert!(err.is_retriable());', 0),
+    ('assert!(matches!(err, Error::A), "{other:?}");', 0),
+    ('assert_eq!(err, status);', 0),
+    ('assert_eq!(v2.status, 400);', 0),
+    ('assert_eq!(a, b, "{e}", e = value);', 1),
+])
+def test_an_assertion_counts_when_its_message_names_an_error_or_a_status(line: str, counts: int) -> None:
+    assert bare(line) == (counts, 0)
+
+
+def test_a_bare_site_in_a_comment_or_a_string_does_not_count() -> None:
+    source = r"""
+// panic!("in a comment");
+/* unreachable!() */
+let a = "panic!(\"in a string\")";
+let b = r#"assert!(ok, "{err}")"#;
+"""
+    assert bare(source) == (0, 0)
+
+
+def test_a_bare_site_opts_out_on_the_line_its_name_is_on() -> None:
+    source = """
+panic!("the property under test"); // live-unwraps: the property under test
+panic!( // live-unwraps: a multi-line panic opts out where it starts
+    "x"
+);
+panic!(
+    "x"
+); // live-unwraps: too late, the site is above
+"""
+    assert bare(source) == (1, 2)
+
+
 # --- trees -------------------------------------------------------------------------
 
 
+# A list of regexes, shaped as the classifier's deleted fallback tables were,
+# appended to the copied classifier so the tests below have a table to edit.
+LEGACY_TABLE = 'LEGACY_RES: list[re.Pattern[str]] = [\n    re.compile(r"\\bRateLimit\\("),\n]\n'
+
+
 def _tree(root: Path, files: dict[str, str]) -> Path:
-    """A fake workspace at `root` with `files`, plus the real classifier, and a
-    baseline matching both."""
+    """A fake workspace at `root` with `files`, plus the real classifier with a
+    regex table appended, and a baseline matching both."""
     for path, text in files.items():
         (root / path).parent.mkdir(parents=True, exist_ok=True)
         (root / path).write_text(text)
     classifier = root / "classify_failures.py"
-    shutil.copyfile(live_unwraps.CLASSIFIER, classifier)
+    classifier.write_text(live_unwraps.CLASSIFIER.read_text() + "\n\n" + LEGACY_TABLE)
     _rebaseline(root)
     return root
 
@@ -174,6 +256,7 @@ def _lower(root: Path) -> list[str]:
 
 
 LIVE = "mod common;\n\n#[tokio::test]\n#[ignore]\nasync fn live_x() {\n    x().unwrap();\n    y().expect(\"y\");\n}\n"
+PANIC = '    panic!("no market");\n'
 COMMON = "pub fn client() -> Client {\n    Client::new().unwrap()\n}\n"
 OPTED_OUT = '    let u: Url = "https://x.test".parse().unwrap(); // live-unwraps: a constant\n'
 
@@ -199,7 +282,37 @@ def test_a_tree_matching_its_baseline_passes(tree: Path) -> None:
         "polyoxide-x/tests/common/mod.rs": 1,
         "polyoxide-x/tests/live_api.rs": 2,
     }, "a mock suite is not a live one"
+    assert baseline["bare"] == {}
     assert baseline["opted_out"] == {}
+
+
+def test_an_added_panic_fails(tree: Path) -> None:
+    _add_to_live(tree, PANIC)
+    problems = _check(tree)
+    assert len(problems) == 1
+    assert problems[0].startswith(
+        "polyoxide-x/tests/live_api.rs has 1 bare failure site(s), 1 more than its `bare` "
+        "baseline of 0")
+    assert "environmental(reason)" in problems[0]
+    assert _lower(tree) == problems
+
+
+def test_an_opted_out_panic_counts_as_an_opt_out(tree: Path) -> None:
+    _add_to_live(tree, PANIC.replace(";\n", "; // live-unwraps: the property under test\n"))
+    problems = _check(tree)
+    assert len(problems) == 1 and "opts 1 unwrap(s) or site(s) out" in problems[0], problems
+
+
+def test_a_removed_panic_fails_until_the_baseline_is_lowered(tree: Path) -> None:
+    _add_to_live(tree, PANIC)
+    _rebaseline(tree)
+    live = tree / "polyoxide-x/tests/live_api.rs"
+    live.write_text(live.read_text().replace(PANIC, ""))
+    problems = _check(tree)
+    assert len(problems) == 1
+    assert "has 0 bare failure sites, below its `bare` baseline of 1: remove its entry" in problems[0]
+    assert _lower(tree) == []
+    assert _check(tree) == []
 
 
 def test_an_added_unwrap_fails(tree: Path) -> None:
@@ -221,7 +334,7 @@ def test_an_added_opt_out_fails_and_cannot_be_lowered(tree: Path) -> None:
     _add_to_live(tree, OPTED_OUT)
     problems = _check(tree)
     assert len(problems) == 1
-    assert "polyoxide-x/tests/live_api.rs opts 1 unwrap(s) out with `// live-unwraps:`" in problems[0]
+    assert "polyoxide-x/tests/live_api.rs opts 1 unwrap(s) or site(s) out with `// live-unwraps:`" in problems[0]
     assert _lower(tree) == problems
     # Accepted only when the baseline is raised by hand, in a diff a reviewer sees.
     _rebaseline(tree)
@@ -235,7 +348,7 @@ def test_a_second_opt_out_in_a_file_that_has_one_fails(tree: Path) -> None:
     _rebaseline(tree)
     _add_to_live(tree, OPTED_OUT)
     problems = _check(tree)
-    assert len(problems) == 1 and "opts 2 unwrap(s) out" in problems[0], problems
+    assert len(problems) == 1 and "opts 2 unwrap(s) or site(s) out" in problems[0], problems
     assert _lower(tree) == problems
 
 
@@ -307,7 +420,7 @@ def _edit_classifier(tree: Path, old: str, new: str) -> None:
     path.write_text(text.replace(old, new, 1))
 
 
-TRANSIENT_TABLE = "TRANSIENT_RES: list[re.Pattern[str]] = [\n"
+LEGACY = "LEGACY_RES: list[re.Pattern[str]] = [\n"
 CLASSIFY_BODY = '    """\n    if any(TAGS.get(tag'
 
 
@@ -326,12 +439,20 @@ def test_the_regexes_are_read_from_the_source_alone(tree: Path) -> None:
     assert live_unwraps.classifier_patterns(live_unwraps.CLASSIFIER) == built
 
 
-def test_a_new_transient_regex_fails(tree: Path) -> None:
-    _edit_classifier(tree, TRANSIENT_TABLE, TRANSIENT_TABLE + "    re.compile(r\"\\bflaky\\b\"),\n")
+def test_a_new_regex_in_a_table_fails(tree: Path) -> None:
+    _edit_classifier(tree, LEGACY, LEGACY + "    re.compile(r\"\\bflaky\\b\"),\n")
     problems = _check(tree)
     assert len(problems) == 1
-    assert "TRANSIENT_RES gained `\\bflaky\\b`" in problems[0]
+    assert "LEGACY_RES gained `\\bflaky\\b`" in problems[0]
     assert "No regex may be added" in problems[0]
+
+
+def test_the_deleted_fallback_cannot_come_back(tree: Path) -> None:
+    _edit_classifier(tree, "\n\ndef classify(",
+                     "\n\nTRANSIENT_RES = [re.compile(r\"\\bToo Many Requests\\b\")]\n\n\ndef classify(")
+    problems = _check(tree)
+    assert len(problems) == 1 and "TRANSIENT_RES gained" in problems[0], problems
+    assert _lower(tree) == problems
 
 
 def test_an_inline_search_in_classify_fails(tree: Path) -> None:
@@ -371,10 +492,10 @@ def test_a_regex_called_through_an_imported_name_is_frozen(tree: Path) -> None:
 
 
 def test_a_non_regex_item_in_a_frozen_table_fails_and_cannot_be_lowered(tree: Path) -> None:
-    _edit_classifier(tree, TRANSIENT_TABLE, TRANSIENT_TABLE + "    \"hiccup\",\n")
+    _edit_classifier(tree, LEGACY, LEGACY + "    \"hiccup\",\n")
     problems = _check(tree)
     assert len(problems) == 1
-    assert "TRANSIENT_RES gained `<not a regex: 'hiccup'>`" in problems[0]
+    assert "LEGACY_RES gained `<not a regex: 'hiccup'>`" in problems[0]
     assert _lower(tree) == problems
 
 
@@ -398,7 +519,7 @@ def test_a_removed_regex_fails_until_the_baseline_drops_it(tree: Path) -> None:
     _edit_classifier(tree, '    re.compile(r"\\bRateLimit\\("),\n', "")
     problems = _check(tree)
     assert len(problems) == 1
-    assert "TRANSIENT_RES no longer holds the regex `\\bRateLimit\\(`" in problems[0]
+    assert "LEGACY_RES no longer holds the regex `\\bRateLimit\\(`" in problems[0]
     assert _lower(tree) == []
     assert _check(tree) == []
 
@@ -423,7 +544,7 @@ def test_lower_refuses_anything_that_grew(tree: Path, change: str) -> None:
     elif change == "new file":
         (tree / "polyoxide-x/tests/live_ws.rs").write_text("fn f() { x().unwrap(); }\n")
     elif change == "new regex":
-        _edit_classifier(tree, TRANSIENT_TABLE, TRANSIENT_TABLE + "    re.compile(r\"x\"),\n")
+        _edit_classifier(tree, LEGACY, LEGACY + "    re.compile(r\"x\"),\n")
     else:
         _add_to_live(tree, OPTED_OUT)
     before = (tree / "baseline.json").read_text()

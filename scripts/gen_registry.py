@@ -562,15 +562,15 @@ def _spec(root: Path, directory: str, mirror_where: str, entry: dict, excluded: 
 
 # --- the secrets scan ------------------------------------------------------
 
-# A string literal in the position that names an environment variable.
-ENV_LITERAL = re.compile(
-    r"(?<![A-Za-z0-9_])(?:var|var_os|env!|option_env!)\s*\(\s*\"([A-Za-z_][A-Za-z0-9_]*)\"")
-# Library calls that read environment variables the calling file never names,
-# and the constants module in the library listing what they read.
-LOADERS = {
-    "Account::from_env(": ("polyoxide-clob/src/account/mod.rs", "env"),
-}
-CONSTANT = re.compile(r"const\s+[A-Z0-9_]+\s*:\s*&str\s*=\s*\"([A-Za-z_][A-Za-z0-9_]*)\"")
+# A read of the environment that does not go through a credential loader: any
+# use of `std::env` or an `env::` path (so `use std::env::{self, var}` and a
+# bare `var(..)` after it are refused too), the `env!` and `option_env!`
+# macros, `dotenvy`, and a library constructor that reads its own variables
+# (`Account::from_env()`). The scan below cannot see what such a read names, so
+# a live test target may make none (`direct_env_reads`).
+DIRECT_ENV_READ = re.compile(
+    r"\bstd::env\b|(?<![A-Za-z0-9_:])env::|(?<![A-Za-z0-9_])(?:option_)?env!\s*\("
+    r"|\bdotenvy\b|(?<![A-Za-z0-9_])from_env\s*\(")
 # A call to one of polyoxide-test-support's credential loaders, which name the
 # variables they read in their arguments: `load_env(&["A", ...])`,
 # `optional_env("A")` and `keychain(service, &[("A", key), ...])`. A method call or
@@ -696,15 +696,6 @@ def _code(source: str) -> str:
     return "\n".join(line for line in source.splitlines() if not line.lstrip().startswith("//"))
 
 
-def loader_names(path: Path, module: str) -> set[str]:
-    """The string constants in `pub mod <module> { ... }` of the Rust file at `path`."""
-    source = path.read_text()
-    match = re.search(rf"^(\s*)pub mod {module} \{{\n(.*?)^\1\}}", source, re.M | re.S)
-    if match is None:
-        raise RegistryError(f"{path} has no `pub mod {module}` block to read env names from")
-    return set(CONSTANT.findall(match.group(2)))
-
-
 # A `mod x;` declaration, whose body is another file.
 MODULE = re.compile(r"^\s*(?:pub(?:\([^)]*\))?\s+)?mod\s+(\w+)\s*;", re.M)
 
@@ -822,22 +813,24 @@ def target_source(path: Path) -> str:
     return "\n".join(file.read_text() for file in module_files(path))
 
 
-def env_names(source: str, root: Path = REPO) -> set[str]:
-    """The environment variables a live test target reads.
-
-    A static scan: the names passed to polyoxide-test-support's credential
-    loaders, which must be string literals (`loader_call_names`), string
-    literals passed to `var`, `var_os`, `env!` or `option_env!`, and what each
-    library loader in `LOADERS` reads, from its constants. The last two go once
-    every live suite reads through the loaders. Pass `target_source`, so a read
+def env_names(source: str) -> set[str]:
+    """The environment variables a live test target reads: the names it passes
+    to polyoxide-test-support's credential loaders, which must be string
+    literals (`loader_call_names`). A live target reads the environment no
+    other way, which `direct_env_reads` holds. Pass `target_source`, so a read
     in a shared module counts.
     """
-    code = _code(source)
-    names = set(ENV_LITERAL.findall(code)) | loader_call_names(source)
-    for call, (path, module) in LOADERS.items():
-        if call in code:
-            names |= loader_names(root / path, module)
-    return names
+    return loader_call_names(source)
+
+
+def direct_env_reads(source: str) -> list[str]:
+    """`line N: <code>` for each line of Rust `source` that reads the
+    environment other than through a credential loader (`DIRECT_ENV_READ`).
+    Comments and string literals are not code, so prose naming one is not a
+    read."""
+    code = view(source, lex(source), CODE).split("\n")
+    return [f"line {number}: {line.strip()}" for number, line in enumerate(code, 1)
+            if DIRECT_ENV_READ.search(line)]
 
 
 # --- rendering -------------------------------------------------------------

@@ -28,6 +28,9 @@ urlencoding = "2.1"
 specta = { version = "=2.0.0-rc.20", features = ["derive", "serde", "chrono"], optional = true }
 
 [dev-dependencies]
+# The live suites' failure tags and credential loaders. Path-only: it is never
+# published, and cargo strips a path-only dev-dependency on publish.
+polyoxide-test-support = { path = "../polyoxide-test-support" }
 mockito = { workspace = true }
 tokio = { workspace = true, features = ["macros", "rt-multi-thread"] }
 tracing-subscriber = { version = "0.3", features = ["env-filter"] }

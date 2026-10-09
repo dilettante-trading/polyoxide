@@ -47,7 +47,8 @@ pub fn assert_values_agree(what: &str, path: &str, wire: &Value, emitted: &Value
             }
         }
         (Value::Object(_) | Value::Array(_), _) | (_, Value::Object(_) | Value::Array(_)) => {
-            panic!("{what}: {path} decoded as {emitted} but the wire sent {wire}")
+            let finding = format!("{what}: {path} decoded as {emitted} but the wire sent {wire}");
+            panic!("{finding}"); // live-unwraps: an assertion on the wire
         }
         _ => assert_eq!(
             wire, emitted,
@@ -66,9 +67,10 @@ pub struct Disagreement {
 /// Decodes `text` as `T`, re-encodes it, and compares the two.
 pub fn compare<T: DeserializeOwned + Serialize>(what: &str, text: &str) -> Disagreement {
     let wire: Value =
-        serde_json::from_str(text).unwrap_or_else(|e| panic!("{what}: not JSON: {e}"));
-    let parsed: T = serde_json::from_str(text).unwrap_or_else(|e| panic!("{what}: {e}"));
-    compare_values(what, &wire, &serde_json::to_value(&parsed).unwrap())
+        serde_json::from_str(text).unwrap_or_else(|e| panic!("{what}: not JSON: {e}")); // live-unwraps: an assertion on the wire
+    let parsed: T = serde_json::from_str(text).unwrap_or_else(|e| panic!("{what}: {e}")); // live-unwraps: an assertion on the wire
+    let emitted = serde_json::to_value(&parsed).expect("a value serialises"); // live-unwraps: serialising test data
+    compare_values(what, &wire, &emitted)
 }
 
 /// Compares what the wire sent with what a type emitted after decoding it.

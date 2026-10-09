@@ -3,9 +3,12 @@
 
 A failure that went through `polyoxide-test-support` says which it is: the test
 prints `polyoxide-class=<tag>` alone on a line just before it panics, and that
-line decides. The regex tables below are the fallback for a log with no tag
-line. They are frozen in `scripts/live_unwraps.baseline.json`, so none may be
-added; a new failure mode is tagged where it fails instead.
+line decides. A log with no tag line is `real`. Nothing reads the panic text:
+the regexes that once guessed a failure's kind from it are gone, and
+`scripts/live_unwraps.py` freezes this module's regexes so none comes back. A
+new failure mode is tagged where it fails instead, and the same script holds
+every live test's unwraps and bare panics at zero, so each failure is tagged or
+deliberately left `real`.
 """
 
 from __future__ import annotations
@@ -25,139 +28,6 @@ class Verdict(str, Enum):
     ENVIRONMENTAL = "environmental"
     TRANSIENT = "transient"
     REAL = "real"
-
-
-# Two shapes in the tree: live_api's `POLYMARKET_* env vars required for
-# authenticated tests` and live_ws's `POLYMARKET_PRIVATE_KEY required; ...`.
-AUTH_GATED_RE = re.compile(r"POLYMARKET_(?:\*|[A-Z_]+) (?:env vars )?required", re.IGNORECASE)
-
-# Tests that depend on the state of the world (e.g. the sports channel with no
-# match live anywhere) announce it in their panic message. Retrying within the
-# same run won't change the world, and filing an issue would be a false
-# positive — so these are logged and skipped, like auth-gated tests.
-#
-# Three shapes so far. The sports channel's `legitimately time out`. The
-# order-placing tests refusing to post because no open market's book satisfies
-# their price precondition (`no qualifying market` from the selection helper,
-# `no suitable market` from a test's own guard); the phrase is required in
-# full — a bare `market` would swallow most genuine CLOB failures. And Binance
-# refusing the caller's location with HTTP 451: GitHub's hosted runners run in
-# US regions, which Binance is reported not to serve, so there its live suites
-# can only report the block. It is skipped, not filed, and the suites still run
-# wherever Binance serves the caller. The 451 is matched in each spelling a
-# panic carries: `BinanceError::RegionBlocked` (Display and Debug), the live
-# suite's `API error: 451 Unavailable For Legal Reasons`, a refused stream
-# handshake's Display (`HTTP error: 451 Unavailable For Legal Reasons`) and its
-# Debug (`Response { status: 451, .. }`).
-ENVIRONMENTAL_RE = re.compile(
-    r"legitimately time out|no (?:qualifying|suitable) market"
-    r"|does not serve this location \(451\)|\bRegionBlocked \{"
-    r"|\b451 Unavailable For Legal Reasons\b|\bstatus: 451\b",
-    re.IGNORECASE,
-)
-
-# The transient set mirrors `ApiError::is_retriable()` in polyoxide-core, which
-# is the SDK's canonical answer to "could re-sending change this?". This script
-# cannot call it, so each arm is matched by prose instead — and every arm needs
-# *two* spellings, because a panic can render its error either way:
-#
-#   .expect("...")          formats with `{:?}`  → Debug
-#   panic!("...: {e}")      formats with `{}`    → Display
-#
-# The two disagree completely for `Network`. reqwest's Display for any
-# request-phase failure is the bare phrase "error sending request" — it never
-# names the cause — while its Debug prints the source chain, where a timeout
-# appears as the unit struct `TimedOut` and a connect failure as a hyper-util
-# error tagged `Connect`. The original table matched neither, so the genuine
-# connect timeout in issue #32 was reported as a real failure.
-#
-# Misclassifying transient-as-real is the expensive direction: it files an issue
-# immediately. The reverse is self-correcting, because `merge` promotes a
-# transient that is still failing on retry back to real.
-TRANSIENT_RES: list[re.Pattern[str]] = [
-    # ApiError::RateLimit — Display "Rate limit exceeded: {0}" spaces the words,
-    # Debug `RateLimit("…")` does not, so neither spelling matches the other.
-    re.compile(r"\bToo Many Requests\b", re.IGNORECASE),
-    re.compile(r"\brate limit\b", re.IGNORECASE),
-    re.compile(r"\bRateLimit\("),
-    # ApiError::Api { status } for 425 Too Early and 5xx, plus 429 before it is
-    # narrowed to RateLimit. Display is "API error: {status} - {message}", Debug
-    # is `Api { status: 503, .. }`, and reqwest's own status prose says "HTTP 503".
-    re.compile(r"\b(?:HTTP|status:|API error:)\s*(?:425|429|5\d{2})\b", re.IGNORECASE),
-    # BinanceError (polyoxide-binance). RateLimited's Debug is a struct, not
-    # core's tuple, and its Display, "binance rate limit (429)", is matched
-    # above. A Venue error is retriable for 408, 425 and 5xx, as core is; its
-    # Debug spells `Venue { status: 503, .. }` and its Display "binance
-    # answered 503: …".
-    re.compile(r"\bRateLimited \{"),
-    re.compile(r"\bVenue \{ status: (?:408|425|5\d{2})\b"),
-    re.compile(r"\bbinance answered (?:408|425|5\d{2}):"),
-    # UsdmWsError (polyoxide-binance's streams): ConnectTimeout's Debug and
-    # Display, a refused handshake's Display ("HTTP error: 503 Service
-    # Unavailable"; its Debug `status: 503` is matched above), and a server
-    # close's Display ("the server closed the connection (Some(1011): …)").
-    re.compile(r"\bConnectTimeout\("),
-    re.compile(r"\bno connection within\b"),
-    re.compile(r"\bHTTP error: (?:408|425|429|5\d{2})\b"),
-    re.compile(r"\bthe server closed the connection \(Some\((?:1001|1011|1012|1013)\)"),
-    # The Display of an unanswered request, and the CLI's outage marker for a
-    # server restart or error close: both reconnect, as `recovery()` says.
-    re.compile(r"\bno answer to request\b"),
-    re.compile(r"\bclosed by the server \((?:1001|1011|1012|1013)\b"),
-    # ApiError::Timeout (HTTP 408) — Display "Request timeout"; Debug is the bare
-    # unit variant, matched only through the wrapper the crate errors add, since
-    # `Timeout` on its own is too common a word in ordinary panic prose.
-    re.compile(r"\brequest timeout\b", re.IGNORECASE),
-    re.compile(r"\bApi\(Timeout\)"),
-    # ApiError::Network(e) where e.is_timeout(). reqwest's marker struct and
-    # io::ErrorKind share the name, so one token covers `source: TimedOut`,
-    # `kind: TimedOut` and `Kind(TimedOut)`. Case-sensitive: the Display strings
-    # below are the separate, spaced spelling.
-    re.compile(r"\bTimedOut\b"),
-    re.compile(r"\b(?:request|operation) timed out\b", re.IGNORECASE),
-    # ApiError::Network(e) where e.is_connect(). reqwest decides this by walking
-    # its source chain for a hyper-util error whose kind is `Connect`; that type
-    # Debug-prints as a tuple named for itself with the kind first, so this
-    # matches exactly what `is_connect()` does.
-    re.compile(r"hyper_util::client::legacy::Error\(Connect\b"),
-    re.compile(r"\btcp connect error\b", re.IGNORECASE),
-    # Under Display both Network arms collapse to this one phrase — it is
-    # reqwest's entire vocabulary for a request-phase failure.
-    re.compile(r"\berror sending request\b", re.IGNORECASE),
-    # Socket-level causes, reached through either Network arm. An OS-backed
-    # io::Error carries its message in both renderings.
-    re.compile(r"\bConnection refused\b", re.IGNORECASE),
-    re.compile(r"\bConnection reset by peer\b", re.IGNORECASE),
-    re.compile(r"\bbroken pipe\b", re.IGNORECASE),
-    # DNS, which fails before either arm can be decided.
-    re.compile(r"\bDNS lookup failed\b", re.IGNORECASE),
-    re.compile(r"\bfailed to lookup address\b", re.IGNORECASE),
-    re.compile(r"\bname resolution failed\b", re.IGNORECASE),
-    # WebSocket drops. These have no `is_retriable` arm, because the HTTP
-    # client never sees them, but they are the socket's equivalent of a reset
-    # by peer or a 5xx: a server restart or a proxy dropping the connection
-    # mid-test. A drop that keeps happening is still caught, because `merge`
-    # promotes a transient that fails its retries.
-    #
-    # tungstenite reports an EOF after TLS close_notify but before a close
-    # frame as ResetWithoutClosingHandshake; rustls reports an EOF without
-    # close_notify as UnexpectedEof, with the same text in Debug and Display.
-    re.compile(r"\bResetWithoutClosingHandshake\b"),
-    re.compile(r"\bConnection reset without closing handshake\b", re.IGNORECASE),
-    re.compile(r"\bpeer closed connection without sending TLS close_notify\b"),
-    # Close codes 1001 Going Away, 1011 Internal Error, 1012 Service Restart
-    # and 1013 Try Again Later. Display spells the number after "code";
-    # polyoxide-sports' Debug wraps it in `Some(..)`, and tungstenite's
-    # CloseFrame Debug names the variant. The "code" prefix keeps a bare 1001
-    # inside a hex id from matching.
-    re.compile(r"\bcode (?:1001|1011|1012|1013)\b"),
-    re.compile(r"\bcode: Some\((?:1001|1011|1012|1013)\)"),
-    re.compile(r"\bCloseFrame \{ code: (?:Away|Error|Restart|Again)\b"),
-    # A test that cannot see a close code, because the bare stream ends
-    # without one, says this. The phrase is a convention like ENVIRONMENTAL's
-    # "legitimately time out": the retry tells a restart from a defect.
-    re.compile(r"\bserver ended the connection\b"),
-]
 
 
 # The line `polyoxide-test-support` prints before a test panics. It must be
@@ -194,24 +64,14 @@ def classify(failure_output: str) -> Verdict:
     A tag line decides when it is the one just before the last panic report,
     which is where the test-support hook prints it; a tag this script does not
     know is REAL. Any tag that is REAL, wherever it is, makes the failure REAL:
-    a fault the test caught, or a spawned task hit, is still a fault. Every
-    other log reaches the regexes. Among those, auth-gated takes precedence
-    over transient (an auth panic message could plausibly contain a substring
-    matching a transient pattern; we want the auth verdict in that case).
+    a fault the test caught, or a spawned task hit, is still a fault. A log
+    with no tag there is REAL too, whatever its text says: a failure nothing
+    tagged is one nobody decided is safe to skip or retry.
     """
     if any(TAGS.get(tag, Verdict.REAL) == Verdict.REAL for tag in TAG_LINE.findall(failure_output)):
         return Verdict.REAL
     tag = _final_tag(failure_output)
-    if tag is not None:
-        return TAGS[tag]
-    if AUTH_GATED_RE.search(failure_output):
-        return Verdict.AUTH_GATED
-    if ENVIRONMENTAL_RE.search(failure_output):
-        return Verdict.ENVIRONMENTAL
-    for pat in TRANSIENT_RES:
-        if pat.search(failure_output):
-            return Verdict.TRANSIENT
-    return Verdict.REAL
+    return Verdict.REAL if tag is None else TAGS[tag]
 
 
 @dataclass(frozen=True)
@@ -327,7 +187,9 @@ def _cmd_classify(args: argparse.Namespace) -> int:
 
 def _cmd_merge(args: argparse.Namespace) -> int:
     """Merge first-pass and retry. A test is REAL iff it was REAL on first pass
-    OR was TRANSIENT on first pass and (still TRANSIENT or REAL) on retry."""
+    OR was TRANSIENT on first pass and (still TRANSIENT or REAL) on retry. A
+    TRANSIENT whose retry is ENVIRONMENTAL or AUTH_GATED takes the retry's
+    verdict: a dropped connection followed by a quiet feed is not a defect."""
     first = parse_nextest_json(args.first_pass)
     retry = parse_nextest_json(args.retry)
     by_name_retry = {o.name: o for o in retry}
@@ -340,6 +202,8 @@ def _cmd_merge(args: argparse.Namespace) -> int:
             r = by_name_retry.get(o.name)
             if r is None or r.verdict == Verdict.PASS:
                 merged.append(TestOutcome(o.name, Verdict.PASS, ""))
+            elif r.verdict in (Verdict.ENVIRONMENTAL, Verdict.AUTH_GATED):
+                merged.append(TestOutcome(o.name, r.verdict, r.output))
             else:
                 # Still TRANSIENT or escalated to REAL — treat as REAL in the report.
                 merged.append(TestOutcome(o.name, Verdict.REAL, r.output or o.output))

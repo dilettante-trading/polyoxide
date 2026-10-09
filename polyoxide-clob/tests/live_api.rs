@@ -8,8 +8,12 @@
 //! cargo test -p polyoxide-clob --test live_api -- --ignored
 //! ```
 
+#[cfg(feature = "keychain")]
+use polyoxide_test_support::keychain;
+use polyoxide_test_support::{environmental, fail, load_env, ResultExt};
+
 use polyoxide_clob::{
-    Account, Clob, ClobBuilder, CreateOrderParams, OrderKind, OrderSide, SignatureType,
+    Account, Clob, ClobBuilder, CreateOrderParams, Credentials, OrderKind, OrderSide, SignatureType,
 };
 use polyoxide_core::QueryBuilder;
 use polyoxide_gamma::Gamma;
@@ -22,29 +26,46 @@ fn public_client() -> Clob {
 
 /// Load the account these tests authenticate as.
 ///
-/// Environment first (`POLYMARKET_*`, including a `.env` picked up by dotenvy),
-/// then the OS keychain under the `polyoxide-clob` service when the `keychain`
-/// feature is enabled. The keychain leg exists so a developer whose credentials
-/// already live in the keyring can run these without first materialising the
-/// secrets into a file on disk.
+/// Environment first (`POLYMARKET_*`, including a `.env` file), then the OS
+/// keychain under the `polyoxide-clob` service when the `keychain` feature is
+/// enabled. The keychain leg exists so a developer whose credentials already
+/// live in the keyring can run these without first materialising the secrets
+/// into a file on disk.
 ///
-/// When neither source has them this panics rather than soft-skipping, so the
-/// run is loudly gated instead of reporting `ok` for tests that asserted
-/// nothing — the failure mode `polyoxide-relay`'s live suite still has. CI has
-/// no keychain, so it lands here; the wording is matched by `AUTH_GATED_RE` in
-/// `.github/scripts/classify_failures.py` and must keep the phrase
-/// `POLYMARKET_* env vars required`, or the nightly starts filing issues for
-/// every auth-gated test.
+/// When neither source has all four, the loader fails the test as
+/// `auth-gated` rather than soft-skipping, so the run is loudly gated instead
+/// of reporting `ok` for tests that asserted nothing. The nightly skips an
+/// `auth-gated` failure silently. An empty value counts as absent, since the
+/// nightly passes an unset repository secret as `""`.
 fn load_account() -> Account {
-    dotenvy::dotenv().ok();
-    if let Ok(account) = Account::from_env() {
-        return account;
-    }
+    let creds = load_env(&[
+        "POLYMARKET_PRIVATE_KEY",
+        "POLYMARKET_API_KEY",
+        "POLYMARKET_API_SECRET",
+        "POLYMARKET_API_PASSPHRASE",
+    ]);
     #[cfg(feature = "keychain")]
-    if let Ok(account) = Account::from_keychain() {
-        return account;
-    }
-    panic!("POLYMARKET_* env vars required for authenticated tests");
+    let creds = creds.or_else(|_| {
+        keychain(
+            "polyoxide-clob",
+            &[
+                ("POLYMARKET_PRIVATE_KEY", "private_key"),
+                ("POLYMARKET_API_KEY", "api_key"),
+                ("POLYMARKET_API_SECRET", "api_secret"),
+                ("POLYMARKET_API_PASSPHRASE", "api_passphrase"),
+            ],
+        )
+    });
+    let creds = creds.unwrap_or_else(|missing| missing.or_auth_gated());
+    Account::new(
+        creds.get("POLYMARKET_PRIVATE_KEY"),
+        Credentials {
+            key: creds.get("POLYMARKET_API_KEY").to_owned(),
+            secret: creds.get("POLYMARKET_API_SECRET").to_owned(),
+            passphrase: creds.get("POLYMARKET_API_PASSPHRASE").to_owned(),
+        },
+    )
+    .or_fail("build the account from POLYMARKET_*")
 }
 
 fn authenticated_client() -> Clob {
@@ -56,7 +77,7 @@ fn authenticated_client() -> Clob {
         .with_account(account)
         .signature_type(SignatureType::PolyProxy)
         .build()
-        .expect("authenticated clob client")
+        .or_fail("authenticated clob client")
 }
 
 fn authenticated_address() -> String {
@@ -68,26 +89,26 @@ fn authenticated_address() -> String {
 /// The CLOB `/markets` listing returns mostly resolved markets. Gamma's
 /// `closed=false` filter reliably returns markets with live order books.
 async fn find_active_token_id() -> String {
-    let gamma = Gamma::builder().build().expect("gamma client");
+    let gamma = Gamma::builder().build().or_fail("gamma client");
     let markets = gamma
         .markets()
         .list()
         .closed(false)
         .send()
         .await
-        .expect("gamma list markets");
+        .or_fail("gamma list markets");
 
-    markets
-        .iter()
-        .find_map(|m| {
-            // clob_token_ids is a JSON-encoded array string: '["id1", "id2"]'
-            m.clob_token_ids.as_ref().and_then(|ids| {
-                serde_json::from_str::<Vec<String>>(ids)
-                    .ok()
-                    .and_then(|v| v.into_iter().next())
-            })
+    // Gamma always lists open markets with token ids, so finding none is a
+    // defect, a decode regression most likely, and not market conditions.
+    let token_id = markets.iter().find_map(|m| {
+        // clob_token_ids is a JSON-encoded array string: '["id1", "id2"]'
+        m.clob_token_ids.as_ref().and_then(|ids| {
+            serde_json::from_str::<Vec<String>>(ids)
+                .ok()
+                .and_then(|v| v.into_iter().next())
         })
-        .expect("should find at least one active market with a token_id via Gamma")
+    });
+    token_id.expect("an open market with a token_id via Gamma") // live-unwraps: an assertion on the response
 }
 
 /// How many gamma-listed candidates we are willing to confirm against the CLOB
@@ -108,11 +129,13 @@ const MAX_BOOK_PROBES: usize = 10;
 /// caller asserts on the book: selecting on one and asserting on the other
 /// would be the same mismatch in a new place.
 ///
-/// Panics with market-state wording (not defect wording) when nothing
-/// qualifies, so the nightly classifier logs and skips it instead of filing an
-/// issue about the weather.
+/// Fails as `environmental` when nothing qualifies, so the nightly logs and
+/// skips it instead of filing an issue about the weather. A book request that
+/// errors is not "nothing qualifies": when every probe errored, the last error
+/// fails the test with its own tag, so an outage is not reported as market
+/// conditions.
 async fn find_token_id_with_min_ask(min_ask: Decimal) -> String {
-    let gamma = Gamma::builder().build().expect("gamma client");
+    let gamma = Gamma::builder().build().or_fail("gamma client");
     // gamma's default page is 20 markets — narrow enough that the whole
     // candidate pool once came down to a single 4c book. 100 is its maximum.
     let markets = gamma
@@ -122,10 +145,12 @@ async fn find_token_id_with_min_ask(min_ask: Decimal) -> String {
         .limit(100)
         .send()
         .await
-        .expect("gamma list markets");
+        .or_fail("gamma list markets");
 
     let clob = public_client();
     let mut probed = 0usize;
+    let mut errored = 0usize;
+    let mut last_error = None;
 
     for market in markets.iter() {
         let gamma_ask = market.best_ask.and_then(|ask| Decimal::try_from(ask).ok());
@@ -143,10 +168,16 @@ async fn find_token_id_with_min_ask(min_ask: Decimal) -> String {
         };
 
         probed += 1;
-        if let Ok(book) = clob.markets().order_book(&token_id).send().await {
-            let best_ask = book.asks.iter().map(|level| level.price).min();
-            if best_ask.is_some_and(|ask| ask > min_ask) {
-                return token_id;
+        match clob.markets().order_book(&token_id).send().await {
+            Ok(book) => {
+                let best_ask = book.asks.iter().map(|level| level.price).min();
+                if best_ask.is_some_and(|ask| ask > min_ask) {
+                    return token_id;
+                }
+            }
+            Err(err) => {
+                errored += 1;
+                last_error = Some(err);
             }
         }
         if probed >= MAX_BOOK_PROBES {
@@ -154,11 +185,14 @@ async fn find_token_id_with_min_ask(min_ask: Decimal) -> String {
         }
     }
 
-    panic!(
+    if let Some(err) = last_error.filter(|_| errored == probed) {
+        fail(&format!("every one of {probed} book probe(s) failed"), &err);
+    }
+    environmental(&format!(
         "no qualifying market with a best ask above {min_ask} among the open markets gamma \
          lists ({probed} book(s) probed); market conditions rather than a defect, so re-run \
          before concluding otherwise"
-    );
+    ));
 }
 
 // ── Health ───────────────────────────────────────────────────────
@@ -167,7 +201,7 @@ async fn find_token_id_with_min_ask(min_ask: Decimal) -> String {
 #[ignore]
 async fn live_ping() {
     let client = public_client();
-    let latency = client.health().ping().await.expect("ping should succeed");
+    let latency = client.health().ping().await.or_fail("ping should succeed");
     assert!(
         latency < Duration::from_secs(10),
         "latency too high: {:?}",
@@ -181,7 +215,7 @@ async fn live_ping() {
 #[ignore]
 async fn live_list_markets() {
     let client = public_client();
-    let resp = client.markets().list().send().await.expect("list markets");
+    let resp = client.markets().list().send().await.or_fail("list markets");
     assert!(!resp.data.is_empty(), "should return at least one market");
 }
 
@@ -194,7 +228,7 @@ async fn live_simplified_markets() {
         .simplified()
         .send()
         .await
-        .expect("simplified markets");
+        .or_fail("simplified markets");
     assert!(
         !resp.data.is_empty(),
         "should return at least one simplified market"
@@ -210,7 +244,7 @@ async fn live_sampling_markets() {
         .sampling()
         .send()
         .await
-        .expect("sampling markets should deserialize");
+        .or_fail("sampling markets should deserialize");
 }
 
 #[tokio::test]
@@ -222,7 +256,7 @@ async fn live_sampling_simplified_markets() {
         .sampling_simplified()
         .send()
         .await
-        .expect("sampling simplified markets should deserialize");
+        .or_fail("sampling simplified markets should deserialize");
 }
 
 #[tokio::test]
@@ -236,7 +270,7 @@ async fn live_fee_rate() {
         .fee_rate(&token_id)
         .send()
         .await
-        .expect("fee_rate should deserialize");
+        .or_fail("fee_rate should deserialize");
 
     assert!(
         resp.base_fee <= 10_000,
@@ -256,9 +290,9 @@ async fn live_midpoint() {
         .midpoint(&token_id)
         .send()
         .await
-        .expect("midpoint should succeed");
+        .or_fail("midpoint should succeed");
 
-    let mid: f64 = resp.mid.parse().expect("mid should be a number");
+    let mid: f64 = resp.mid.parse().expect("mid should be a number"); // live-unwraps: parses the response's field
     assert!(
         (0.0..=1.0).contains(&mid),
         "midpoint {mid} should be between 0 and 1"
@@ -276,7 +310,7 @@ async fn live_order_book() {
         .order_book(&token_id)
         .send()
         .await
-        .expect("order book should succeed");
+        .or_fail("order book should succeed");
 
     assert!(
         !book.bids.is_empty() || !book.asks.is_empty(),
@@ -295,9 +329,9 @@ async fn live_price() {
         .price(&token_id, OrderSide::Buy)
         .send()
         .await
-        .expect("price should succeed");
+        .or_fail("price should succeed");
 
-    let price: f64 = resp.price.parse().expect("price should be a number");
+    let price: f64 = resp.price.parse().expect("price should be a number"); // live-unwraps: parses the response's field
     assert!(
         (0.0..=1.0).contains(&price),
         "price {price} should be between 0 and 1"
@@ -316,7 +350,7 @@ async fn live_prices_history() {
         .query("interval", "max")
         .send()
         .await
-        .expect("prices_history should succeed");
+        .or_fail("prices_history should succeed");
 
     assert!(
         !resp.history.is_empty(),
@@ -335,7 +369,7 @@ async fn live_neg_risk() {
         .neg_risk(&token_id)
         .send()
         .await
-        .expect("neg_risk should deserialize");
+        .or_fail("neg_risk should deserialize");
 }
 
 #[tokio::test]
@@ -349,12 +383,12 @@ async fn live_tick_size() {
         .tick_size(&token_id)
         .send()
         .await
-        .expect("tick_size should succeed");
+        .or_fail("tick_size should succeed");
 
     let tick: f64 = resp
         .minimum_tick_size
         .parse()
-        .expect("minimum_tick_size should be a number");
+        .expect("minimum_tick_size should be a number"); // live-unwraps: parses the response's field
     assert!(tick > 0.0, "tick size {tick} should be positive");
 }
 
@@ -364,11 +398,11 @@ async fn live_get_market() {
     let client = public_client();
 
     // Get a condition_id from the market list
-    let list = client.markets().list().send().await.expect("list markets");
+    let list = client.markets().list().send().await.or_fail("list markets");
     let condition_id = &list
         .data
         .first()
-        .expect("should have at least one market")
+        .expect("should have at least one market") // live-unwraps: an assertion on the response
         .condition_id;
 
     let market = client
@@ -376,7 +410,7 @@ async fn live_get_market() {
         .get(condition_id)
         .send()
         .await
-        .expect("get market should succeed");
+        .or_fail("get market should succeed");
 
     assert_eq!(
         &market.condition_id, condition_id,
@@ -395,7 +429,7 @@ async fn live_get_markets_by_token_ids() {
         .get_by_token_ids(vec![token_id.clone()])
         .send()
         .await
-        .expect("get_by_token_ids should succeed");
+        .or_fail("get_by_token_ids should succeed");
 
     assert!(
         !resp.data.is_empty(),
@@ -416,7 +450,7 @@ async fn live_fee_rate_path() {
         .fee_rate_path(&token_id)
         .send()
         .await
-        .expect("fee_rate_path should deserialize");
+        .or_fail("fee_rate_path should deserialize");
 
     assert!(
         resp.base_fee <= 10_000,
@@ -436,12 +470,12 @@ async fn live_tick_size_path() {
         .tick_size_path(&token_id)
         .send()
         .await
-        .expect("tick_size_path should deserialize");
+        .or_fail("tick_size_path should deserialize");
 
     let tick: f64 = resp
         .minimum_tick_size
         .parse()
-        .expect("minimum_tick_size should parse");
+        .expect("minimum_tick_size should parse"); // live-unwraps: parses the response's field
     assert!(tick > 0.0, "tick size {tick} should be positive");
 }
 
@@ -456,18 +490,18 @@ async fn live_neg_risk_path() {
         .neg_risk_path(&token_id)
         .send()
         .await
-        .expect("neg_risk_path should deserialize");
+        .or_fail("neg_risk_path should deserialize");
 }
 
 #[tokio::test]
 #[ignore]
 async fn live_clob_market_details() {
     let client = public_client();
-    let list = client.markets().list().send().await.expect("list markets");
+    let list = client.markets().list().send().await.or_fail("list markets");
     let condition_id = &list
         .data
         .first()
-        .expect("should have at least one market")
+        .expect("should have at least one market") // live-unwraps: an assertion on the response
         .condition_id;
 
     let _details = client
@@ -475,7 +509,7 @@ async fn live_clob_market_details() {
         .clob_market_details(condition_id)
         .send()
         .await
-        .expect("clob_market_details should deserialize");
+        .or_fail("clob_market_details should deserialize");
 }
 
 #[tokio::test]
@@ -489,7 +523,7 @@ async fn live_market_by_token() {
         .market_by_token(&token_id)
         .send()
         .await
-        .expect("market_by_token should deserialize");
+        .or_fail("market_by_token should deserialize");
 
     assert!(
         !resp.condition_id.is_empty(),
@@ -505,11 +539,11 @@ async fn live_market_by_token() {
 #[ignore]
 async fn live_live_activity_market() {
     let client = public_client();
-    let list = client.markets().list().send().await.expect("list markets");
+    let list = client.markets().list().send().await.or_fail("list markets");
     let condition_id = &list
         .data
         .first()
-        .expect("should have at least one market")
+        .expect("should have at least one market") // live-unwraps: an assertion on the response
         .condition_id;
 
     let _resp = client
@@ -517,14 +551,14 @@ async fn live_live_activity_market() {
         .live_activity_market(condition_id)
         .send()
         .await
-        .expect("live_activity_market should deserialize");
+        .or_fail("live_activity_market should deserialize");
 }
 
 #[tokio::test]
 #[ignore]
 async fn live_live_activity_bulk() {
     let client = public_client();
-    let list = client.markets().list().send().await.expect("list markets");
+    let list = client.markets().list().send().await.or_fail("list markets");
     let ids: Vec<String> = list
         .data
         .iter()
@@ -532,16 +566,16 @@ async fn live_live_activity_bulk() {
         .map(|m| m.condition_id.clone())
         .collect();
     if ids.is_empty() {
-        return;
+        environmental("the CLOB listed no markets, so there is no condition_id to ask about");
     }
 
     let _resp = client
         .markets()
         .live_activity_bulk(ids)
-        .expect("body construction")
+        .or_fail("body construction")
         .send()
         .await
-        .expect("live_activity_bulk should deserialize");
+        .or_fail("live_activity_bulk should deserialize");
 }
 
 #[tokio::test]
@@ -559,10 +593,10 @@ async fn live_batch_prices_history() {
     let _resp = client
         .markets()
         .batch_prices_history(&req)
-        .expect("body construction")
+        .or_fail("body construction")
         .send()
         .await
-        .expect("batch_prices_history should deserialize");
+        .or_fail("batch_prices_history should deserialize");
 }
 
 // ── Health: server time ─────────────────────────────────────────
@@ -576,7 +610,7 @@ async fn live_server_time() {
         .server_time()
         .send()
         .await
-        .expect("server_time should succeed");
+        .or_fail("server_time should succeed");
 
     assert!(
         resp.time > 0,
@@ -598,9 +632,9 @@ async fn live_spread() {
         .spread(&token_id)
         .send()
         .await
-        .expect("spread should succeed");
+        .or_fail("spread should succeed");
 
-    let spread: f64 = resp.spread.parse().expect("spread should be a number");
+    let spread: f64 = resp.spread.parse().expect("spread should be a number"); // live-unwraps: parses the response's field
     assert!(spread >= 0.0, "spread {spread} should be non-negative");
 }
 
@@ -617,13 +651,13 @@ async fn live_last_trade_price() {
         .last_trade_price(&token_id)
         .send()
         .await
-        .expect("last_trade_price should succeed");
+        .or_fail("last_trade_price should succeed");
 
     let price_str = resp
         .price
         .or(resp.last_trade_price)
-        .expect("response should have price or last_trade_price");
-    let price: f64 = price_str.parse().expect("price should be a number");
+        .expect("response should have price or last_trade_price"); // live-unwraps: an assertion on the response
+    let price: f64 = price_str.parse().expect("price should be a number"); // live-unwraps: parses the response's field
     assert!(
         (0.0..=1.0).contains(&price),
         "last trade price {price} should be between 0 and 1"
@@ -638,13 +672,13 @@ async fn live_usdc_balance() {
     let client = authenticated_client();
     let resp = client
         .account_api()
-        .expect("account_api")
+        .or_fail("account_api")
         .usdc_balance()
         .send()
         .await
-        .expect("usdc_balance should deserialize");
+        .or_fail("usdc_balance should deserialize");
 
-    let balance: f64 = resp.balance.parse().expect("balance should be a number");
+    let balance: f64 = resp.balance.parse().expect("balance should be a number"); // live-unwraps: parses the response's field
     assert!(balance >= 0.0, "balance {balance} should be non-negative");
 }
 
@@ -655,11 +689,11 @@ async fn live_balance_allowance() {
     let client = authenticated_client();
     let _resp = client
         .account_api()
-        .expect("account_api")
+        .or_fail("account_api")
         .balance_allowance(&token_id)
         .send()
         .await
-        .expect("balance_allowance should deserialize");
+        .or_fail("balance_allowance should deserialize");
 }
 
 #[tokio::test]
@@ -668,10 +702,10 @@ async fn live_update_balance_allowance() {
     let client = authenticated_client();
     let _resp = client
         .account_api()
-        .expect("account_api")
+        .or_fail("account_api")
         .update_balance_allowance("COLLATERAL", None, None)
         .await
-        .expect("update_balance_allowance should succeed");
+        .or_fail("update_balance_allowance should succeed");
 }
 
 #[tokio::test]
@@ -681,11 +715,11 @@ async fn live_list_trades() {
     let maker = authenticated_address();
     let _trades = client
         .account_api()
-        .expect("account_api")
+        .or_fail("account_api")
         .trades(maker)
         .send()
         .await
-        .expect("trades should deserialize");
+        .or_fail("trades should deserialize");
 }
 
 /// Live shape check for `Trade.owner` on `GET /data/trades`.
@@ -711,19 +745,18 @@ async fn live_trade_owner_is_a_uuid_not_an_address() {
 
     let trades = client
         .account_api()
-        .expect("account_api")
+        .or_fail("account_api")
         .trades(maker)
         .send()
         .await
-        .expect("GET /data/trades must deserialize");
+        .or_fail("GET /data/trades must deserialize");
 
     if trades.data.is_empty() {
-        eprintln!(
+        environmental(
             "live_trade_owner_is_a_uuid_not_an_address PROVED NOTHING: the test \
              account has no trades, so no `Trade` row was deserialized. This \
-             assertion only carries signal for an account that has traded."
+             assertion only carries signal for an account that has traded.",
         );
-        return;
     }
 
     for trade in &trades.data {
@@ -759,12 +792,12 @@ async fn live_list_trades_with_filter() {
     let maker = authenticated_address();
     let _trades = client
         .account_api()
-        .expect("account_api")
+        .or_fail("account_api")
         .trades(maker)
         .after("0")
         .send()
         .await
-        .expect("trades with after filter should deserialize");
+        .or_fail("trades with after filter should deserialize");
 }
 
 /// ── Authenticated: Account — builder trades ────────────────────
@@ -772,27 +805,24 @@ async fn live_list_trades_with_filter() {
 #[tokio::test]
 #[ignore]
 async fn live_builder_trades() {
-    dotenvy::dotenv().ok();
     // `builder_code` is required by the endpoint and is account-specific, so it
-    // lives in the environment rather than being hard-coded. Skip when absent
-    // so a non-builder account doesn't see a spurious failure. Empty counts as
-    // absent: the nightly passes an unset repository secret as `""`.
-    let Some(builder_code) = std::env::var("POLYMARKET_BUILDER_CODE")
-        .ok()
-        .filter(|code| !code.is_empty())
-    else {
-        eprintln!("skipping live_builder_trades: POLYMARKET_BUILDER_CODE not set");
-        return;
-    };
+    // lives in the environment rather than being hard-coded. Without it the
+    // test fails as `auth-gated`, which the nightly skips, rather than reporting
+    // `ok` for a test that asserted nothing. Empty counts as absent: the nightly
+    // passes an unset repository secret as `""`.
+    let builder_code = load_env(&["POLYMARKET_BUILDER_CODE"])
+        .unwrap_or_else(|missing| missing.or_auth_gated())
+        .get("POLYMARKET_BUILDER_CODE")
+        .to_owned();
 
     let client = authenticated_client();
     let _trades = client
         .account_api()
-        .expect("account_api")
+        .or_fail("account_api")
         .builder_trades(builder_code)
         .send()
         .await
-        .expect("builder_trades should deserialize");
+        .or_fail("builder_trades should deserialize");
 }
 
 // ── Authenticated: Account — heartbeat ──────────────────────────
@@ -803,10 +833,10 @@ async fn live_heartbeat() {
     let client = authenticated_client();
     let _resp = client
         .account_api()
-        .expect("account_api")
+        .or_fail("account_api")
         .heartbeat()
         .await
-        .expect("heartbeat should succeed");
+        .or_fail("heartbeat should succeed");
 }
 
 // ── Authenticated: Notifications ────────────────────────────────
@@ -817,11 +847,11 @@ async fn live_list_notifications() {
     let client = authenticated_client();
     let _notifications = client
         .notifications()
-        .expect("notifications")
+        .or_fail("notifications")
         .list()
         .send()
         .await
-        .expect("list notifications should deserialize");
+        .or_fail("list notifications should deserialize");
 }
 
 /// Live shape check for `Notification` on `GET /notifications`.
@@ -846,19 +876,18 @@ async fn live_notification_field_types_match_the_wire() {
 
     let notifications = client
         .notifications()
-        .expect("notifications")
+        .or_fail("notifications")
         .list()
         .send()
         .await
-        .expect("GET /notifications must deserialize");
+        .or_fail("GET /notifications must deserialize");
 
     if notifications.is_empty() {
-        eprintln!(
+        environmental(
             "live_notification_field_types_match_the_wire PROVED NOTHING: the \
              account has no notifications, so no `Notification` row was \
-             deserialized. Re-run when the account has activity."
+             deserialized. Re-run when the account has activity.",
         );
-        return;
     }
 
     for notif in &notifications {
@@ -902,11 +931,11 @@ async fn live_l1_derive_api_key() {
     let client = authenticated_client();
     let resp = client
         .auth()
-        .expect("auth")
+        .or_fail("auth")
         .derive_api_key(0)
         .send()
         .await
-        .expect("L1 derive_api_key should be accepted by the server");
+        .or_fail("L1 derive_api_key should be accepted by the server");
 
     assert!(!resp.api_key.is_empty(), "apiKey should deserialize");
     assert!(!resp.secret.is_empty(), "secret should deserialize");
@@ -921,11 +950,11 @@ async fn live_closed_only_status() {
     let client = authenticated_client();
     let _resp = client
         .auth()
-        .expect("auth")
+        .or_fail("auth")
         .closed_only_status()
         .send()
         .await
-        .expect("closed_only_status should deserialize");
+        .or_fail("closed_only_status should deserialize");
 }
 
 // ── Authenticated: Rewards ─────────────────────────────────────
@@ -936,11 +965,11 @@ async fn live_reward_earnings() {
     let client = authenticated_client();
     let _resp = client
         .rewards()
-        .expect("rewards")
+        .or_fail("rewards")
         .earnings("2024-01-01")
         .send()
         .await
-        .expect("earnings should deserialize");
+        .or_fail("earnings should deserialize");
 }
 
 #[tokio::test]
@@ -949,11 +978,11 @@ async fn live_reward_total_earnings() {
     let client = authenticated_client();
     let _resp = client
         .rewards()
-        .expect("rewards")
+        .or_fail("rewards")
         .total_earnings("2024-01-01")
         .send()
         .await
-        .expect("total_earnings should deserialize");
+        .or_fail("total_earnings should deserialize");
 }
 
 #[tokio::test]
@@ -962,11 +991,11 @@ async fn live_reward_percentages() {
     let client = authenticated_client();
     let _resp = client
         .rewards()
-        .expect("rewards")
+        .or_fail("rewards")
         .percentages()
         .send()
         .await
-        .expect("percentages should deserialize");
+        .or_fail("percentages should deserialize");
 }
 
 #[tokio::test]
@@ -975,11 +1004,11 @@ async fn live_reward_market_earnings() {
     let client = authenticated_client();
     let _resp = client
         .rewards()
-        .expect("rewards")
+        .or_fail("rewards")
         .market_earnings()
         .send()
         .await
-        .expect("market_earnings should deserialize");
+        .or_fail("market_earnings should deserialize");
 }
 
 #[tokio::test]
@@ -988,11 +1017,11 @@ async fn live_reward_current_markets() {
     let client = authenticated_client();
     let _resp = client
         .rewards()
-        .expect("rewards")
+        .or_fail("rewards")
         .current_markets()
         .send()
         .await
-        .expect("current_markets should deserialize");
+        .or_fail("current_markets should deserialize");
 }
 
 // ── Authenticated: Orders ───────────────────────────────────────
@@ -1015,11 +1044,11 @@ async fn live_list_open_orders() {
     let client = authenticated_client();
     let resp = client
         .orders()
-        .expect("orders")
+        .or_fail("orders")
         .list()
         .send()
         .await
-        .expect("list open orders should deserialize");
+        .or_fail("list open orders should deserialize");
 
     if resp.data.is_empty() {
         eprintln!(
@@ -1047,16 +1076,25 @@ async fn live_v2_place_and_cancel() {
     // gamma's first listing and asserting about it afterwards.
     let min_ask = Decimal::new(1, 2);
     let token_id = find_token_id_with_min_ask(min_ask).await;
-    let book = clob.markets().order_book(&token_id).send().await.unwrap();
+    let book = clob
+        .markets()
+        .order_book(&token_id)
+        .send()
+        .await
+        .or_fail("order book");
     let best_ask: f64 = book
         .asks
         .iter()
         .map(|l| l.price)
         .min()
-        .expect("asks")
+        .unwrap_or_else(|| {
+            environmental(
+                "no suitable market: the book has no asks; market conditions rather than a defect",
+            )
+        })
         .to_string()
         .parse()
-        .unwrap();
+        .unwrap(); // live-unwraps: a Decimal's own rendering parses as an f64
 
     // Rest, do not fill. This previously bid the best ask, which crosses the
     // spread and executes immediately — leaving a real position bought at the
@@ -1065,11 +1103,12 @@ async fn live_v2_place_and_cancel() {
     // 0.01 is the minimum tick on most markets and a valid multiple on
     // finer-ticked ones, so a bid there sits at the bottom of the book.
     const RESTING_PRICE: f64 = 0.01;
-    assert!(
-        RESTING_PRICE < best_ask,
-        "no suitable market: best ask {best_ask} leaves no room to rest under it; \
-         market conditions rather than a defect"
-    );
+    if best_ask <= RESTING_PRICE {
+        environmental(&format!(
+            "no suitable market: best ask {best_ask} leaves no room to rest under it; \
+             market conditions rather than a defect"
+        ));
+    }
 
     let params = CreateOrderParams {
         token_id,
@@ -1085,32 +1124,35 @@ async fn live_v2_place_and_cancel() {
         funder: None,
         signature_type: Some(SignatureType::PolyProxy),
     };
-    let order = clob.create_order(&params, None).await.unwrap();
-    let signed = clob.sign_order(&order).await.unwrap();
+    let order = clob
+        .create_order(&params, None)
+        .await
+        .or_fail("create order");
+    let signed = clob.sign_order(&order).await.or_fail("sign order");
     let resp = clob
         .post_order(&signed, OrderKind::Gtc, true)
         .await
-        .unwrap();
+        .or_fail("post order");
     assert!(resp.success, "V2 order rejected: {:?}", resp.error_msg);
-    let id = resp.order_id.expect("accepted order must return an id");
+    let id = resp.order_id.expect("accepted order must return an id"); // live-unwraps: an assertion on the response
 
     // Prove it rested. Without this the test passes just as happily when the
     // order fills, which is what hid the original behaviour.
     tokio::time::sleep(Duration::from_secs(3)).await;
     let open = clob
         .orders()
-        .expect("orders")
+        .or_fail("orders")
         .list()
         .send()
         .await
-        .expect("list open orders");
+        .or_fail("list open orders");
     let resting = open.data.iter().find(|o| o.id == id);
     assert!(
         resting.is_some(),
         "order {id} is not resting — it filled or was rejected"
     );
     assert_eq!(
-        resting.unwrap().size_matched,
+        resting.unwrap().size_matched, // live-unwraps: asserted present just above
         "0",
         "order must rest unfilled, not execute"
     );
@@ -1118,11 +1160,11 @@ async fn live_v2_place_and_cancel() {
     // Always clean up, and verify the cleanup.
     let cancelled = clob
         .orders()
-        .expect("orders")
+        .or_fail("orders")
         .cancel(id.clone())
         .send()
         .await
-        .expect("cancel");
+        .or_fail("cancel");
     assert!(
         cancelled.canceled.contains(&id),
         "cancel did not report {id}: {cancelled:?}"
@@ -1164,13 +1206,23 @@ async fn live_fak_unmatched_is_typed_error() {
 
     // Backstop: selection already confirmed this book against the CLOB, but it
     // can move in between. A cheap book here is market state, not a defect.
-    let book = clob.markets().order_book(&token_id).send().await.unwrap();
-    let best_ask = book.asks.iter().map(|l| l.price).min().expect("asks");
-    assert!(
-        best_ask > min_ask,
-        "no suitable market: best ask {best_ask} is too cheap for a safe non-crossing \
-         test; market conditions rather than a defect"
-    );
+    let book = clob
+        .markets()
+        .order_book(&token_id)
+        .send()
+        .await
+        .or_fail("order book");
+    let best_ask = book.asks.iter().map(|l| l.price).min().unwrap_or_else(|| {
+        environmental(
+            "no suitable market: the book has no asks; market conditions rather than a defect",
+        )
+    });
+    if best_ask <= min_ask {
+        environmental(&format!(
+            "no suitable market: best ask {best_ask} is too cheap for a safe non-crossing \
+             test; market conditions rather than a defect"
+        ));
+    }
 
     let params = CreateOrderParams {
         token_id,
@@ -1187,7 +1239,7 @@ async fn live_fak_unmatched_is_typed_error() {
     let err = clob
         .place_order(&params, None)
         .await
-        .expect_err("a non-crossing FAK must be killed, not filled");
+        .expect_err("a non-crossing FAK must be killed, not filled"); // live-unwraps: the venue must kill a non-crossing FAK
 
     match &err {
         ClobError::FakUnmatched { message } => {
@@ -1197,8 +1249,9 @@ async fn live_fak_unmatched_is_typed_error() {
             );
         }
         // Surface the actual error: a min-notional rejection means the order never
-        // reached the matching engine and this run proved nothing.
-        other => panic!("expected ClobError::FakUnmatched, got: {other:?}"),
+        // reached the matching engine and this run proved nothing. It fails by its
+        // own class, so a refusal files and an outage is retried.
+        other => fail("expected ClobError::FakUnmatched, got", other),
     }
 
     assert!(

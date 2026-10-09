@@ -52,15 +52,18 @@ and that is when North American leagues and weekend soccer are on.
 | polyoxide-cli | `live_api` |
 <!-- generated:end selfheal-behavioral -->
 
-Failures are classified by `.github/scripts/classify_failures.py` — the single
-place that defines "what counts as a real failure":
+Failures are classified by `.github/scripts/classify_failures.py`. It reads one
+line: the `polyoxide-class=<tag>` a test prints just before it panics, through
+`polyoxide-test-support`. The test decides what its failure means at the place
+it fails; the classifier never reads the panic text, and a failure with no tag
+is real.
 
-| Verdict | Trigger | Consequence |
-|---------|---------|-------------|
-| **auth-gated** | Panic matches `POLYMARKET_* env vars required` or `POLYMARKET_PRIVATE_KEY required` | Logged, skipped. Lights up automatically once secrets are wired in. |
-| **environmental** | Panic contains `legitimately time out` — the test itself declares the world may have no signal (e.g. the sports feed with no live match anywhere at 06:00 UTC), or Binance refuses the runner's location with HTTP 451 | Logged to `environmental.txt`, skipped. Never retried, never reported. |
-| **transient** | HTTP 429/5xx, connection refused/reset, timeouts, DNS failures; a dropped WebSocket (reset without a closing handshake, TLS EOF without `close_notify`, close codes 1001/1011/1012/1013, or a test's own "server ended the connection") | Retried in a second nextest pass with `--retries 2`. Passes on retry are forgiven; persistent failures are promoted to real. |
-| **real** | Everything else | Aggregated into a single tracking issue. |
+| Verdict | Tag printed by | Consequence |
+|---------|----------------|-------------|
+| **auth-gated** | A credential loader (`load_env`, `optional_env`, `keychain`) that found a secret absent or empty | Logged, skipped. Lights up automatically once secrets are wired in. |
+| **environmental** | `environmental(reason)`, where the test declares the world has no signal (the sports feed with no live match anywhere at 06:00 UTC, no market satisfying an order test's precondition); or an error whose class is `Restricted` and not a fault, such as Binance refusing the runner's location with HTTP 451 | Logged to `environmental.txt`, skipped. Never retried, never reported. |
+| **transient** | An error whose class is `Network`, `Unavailable` or `RateLimited` (HTTP 408/425/429/5xx, connection refused/reset, timeouts, DNS failures, a dropped WebSocket and close codes 1000/1001/1006/1011–1013); or `transient(reason)`, where a bare stream ends without a close code | Retried in a second nextest pass with `--retries 2`. Passes on retry are forgiven; persistent failures are promoted to real, except that an environmental or auth-gated retry keeps its own verdict. |
+| **real** | Every other error class, a `Restricted` error that is a fault (a 418 ban, Binance's firewall), and every untagged failure: a bare assertion, or an unwrap a test opted out with `// live-unwraps:` | Aggregated into a single tracking issue. |
 
 The retry pass is driven by `retry-filter.txt`, a nextest filterset the
 classifier emits with `binary_id(=crate::binary) & test(=name)` clauses —
@@ -182,10 +185,11 @@ file a false-positive PR.
   refusal as a warning, not a failure. The drift branch is still pushed and the
   tracking issue still filed, so no signal is lost — a maintainer just opens
   the PR by hand. Any other `gh pr create` failure still fails the job.
-- **Enabling authenticated coverage** (~25 CLOB + 8 relay tests): set the
-  `POLYMARKET_*` and `BUILDER_*` repo secrets and remove the auth patterns
-  from `AUTH_GATED_RE` in `.github/scripts/classify_failures.py`. The tests
-  light up with no other changes.
+- **Enabling authenticated coverage** (CLOB's authenticated tests, the
+  session-key round trip and relay's credentialed tests): set the
+  `POLYMARKET_*`, `BUILDER_*` and `RELAYER_*` repo secrets each target declares.
+  The loaders find them and the tests light up with no other changes; until
+  then each fails as `auth-gated` and is skipped.
 - **Adding a new spec to watch**: add a spec (`id`, `kind`, `url`,
   `vendored`) to its directory's `[workspace.metadata.polyoxide.mirrors]`
   entry in the root `Cargo.toml` and run `python3 scripts/gen_registry.py
@@ -194,15 +198,22 @@ file a false-positive PR.
   `[package.metadata.polyoxide.live.<target>]` entry (`suite`, `timeout`,
   `features`, `secrets`) to the crate's `Cargo.toml` and run
   `python3 scripts/gen_registry.py --write`; CI fails a `tests/live_*.rs`
-  without one. If the new tests have a
-  skip-worthy failure mode, tag it where it fails, with `environmental(reason)`
-  or `transient(reason)` from `polyoxide-test-support`, rather than
-  special-casing the workflow. The classifier's regexes are frozen by
-  `scripts/live_unwraps.py`, so a new panic message cannot be matched there.
-- **Tuning classification**: all patterns live in
-  `.github/scripts/classify_failures.py`; the fixtures under
+  without one. Fail its tests through `polyoxide-test-support`: `.or_fail(ctx)`
+  or `fail(ctx, &err)` for an error, the loaders for credentials, and
+  `environmental(reason)` or `transient(reason)` for a skip-worthy failure mode
+  no error carries, rather than special-casing the workflow.
+  `scripts/live_unwraps.py` fails CI on an `.unwrap()`, `.expect(`, `panic!`
+  or `unreachable!` in a live test, and on an assertion whose message names an
+  error or a status, unless the line opts out with `// live-unwraps: <reason>`
+  and the baseline's `opted_out` count is raised by hand.
+- **Tuning classification**: there are no patterns to tune. A failure's
+  verdict is the tag its test prints, so a misclassified failure is fixed in
+  the test, or in the error's `Classify` impl, never in the classifier, whose
+  regexes `scripts/live_unwraps.py` freezes. The fixtures under
   `.github/scripts/tests/fixtures/` are the specification by example — they
-  mirror real nextest libtest-json output, qualified names and all.
+  mirror real nextest libtest-json output, tag lines, qualified names and all —
+  and `test_classify_failures.py` holds the regex era's cases as a tag table,
+  each row naming an error twinned by a Rust test that asserts its tag.
 
 ## Testing the machinery itself
 

@@ -29,7 +29,7 @@
 # - Dev moves story to 'review', then runs code-review (fresh context, different LLM recommended)
 # - Retrospective appends its action items to action_items; the status view surfaces open ones
 generated: 10-08-2026 14:57
-last_updated: 10-08-2026 20:59
+last_updated: 10-09-2026 09:36
 project: polyoxide
 project_key: NOKEY
 tracking_system: file-system
@@ -72,9 +72,9 @@ development_status:
   2-2-classify-today-s-error-enums: review
   2-3-the-test-toolkit-crate-and-the-failure-tag-reporter: review
   2-4-the-classifier-reads-tags: review
-  2-5-migrate-the-http-live-suites: backlog
-  2-6-migrate-the-socket-live-suites: backlog
-  2-7-retire-the-regex-fallback: backlog
+  2-5-migrate-the-http-live-suites: review
+  2-6-migrate-the-socket-live-suites: review
+  2-7-retire-the-regex-fallback: review
   2-8-shared-agreement-helpers-adopted-by-data-v2-and-perps: backlog
   2-9-gamma-and-binance-on-the-shared-agreement-helpers: backlog
   2-10-shared-soak-harness-and-capture-helpers: backlog

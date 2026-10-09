@@ -46,6 +46,9 @@ arrow = { version = "54", optional = true }
 parquet = { version = "54", optional = true }
 
 [dev-dependencies]
+# The live suites' failure tags and credential loaders. Path-only: it is never
+# published, and cargo strips a path-only dev-dependency on publish.
+polyoxide-test-support = { path = "../polyoxide-test-support" }
 mockito = { workspace = true }
 tempfile = "3"
 tokio = { workspace = true, features = ["macros", "rt-multi-thread", "time"] }

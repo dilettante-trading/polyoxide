@@ -9,10 +9,12 @@
 //! array row whose `e` changed, nor a new value of any other enum, which
 //! decodes as `Other`.
 //!
-//! A failure's panic text decides how the nightly files it, so each prints its
-//! error's Display and Debug: a connect timeout, a 5xx or a reset reads as
-//! transient, a 451 as environmental, and a kind that delivered nothing as
-//! real, since eight BTCUSDT streams are never all quiet for a minute.
+//! Each failure prints the tag the nightly classifier reads, taken from its
+//! error's class: a connect timeout, a 5xx or a reset is transient, a 451
+//! environmental, and a 418, a 403 or a malformed frame real. A stream that
+//! ends without saying why is transient. A kind that delivered nothing is
+//! real, since eight BTCUSDT streams are never all quiet for a minute, and so
+//! is an unanswered ping, which is what `live_a_client_ping_is_answered` tests.
 
 mod common;
 
@@ -23,14 +25,15 @@ use polyoxide_binance::usdm::{
     types::{Interval, Symbol},
     ws::{
         client::CONNECT_TIMEOUT, DepthLevels, DepthSpeed, Event, Payload, StreamName, StreamPath,
-        SymbolType, Update, UsdmWs, UsdmWsBuilder, USDM_WS_BASE,
+        SymbolType, Update, UsdmWs, UsdmWsBuilder, UsdmWsError, USDM_WS_BASE,
     },
 };
+use polyoxide_test_support::{fail, transient, ResultExt};
 use serde_json::Value;
 use tokio_tungstenite::{connect_async, tungstenite::Message};
 
 fn btc() -> Symbol {
-    Symbol::new("BTCUSDT").unwrap()
+    Symbol::new("BTCUSDT").or_fail("BTCUSDT")
 }
 
 fn every_kind() -> Vec<StreamName> {
@@ -94,7 +97,7 @@ async fn live_every_stream_kind_delivers_on_its_path() {
         .streams(every_kind())
         .connect()
         .await
-        .unwrap_or_else(|e| panic!("connect: {e} ({e:?})"));
+        .or_fail("connect");
     let mut seen = HashSet::new();
     let mut last_outage = None;
     let deadline = tokio::time::Instant::now() + Duration::from_secs(60);
@@ -103,13 +106,14 @@ async fn live_every_stream_kind_delivers_on_its_path() {
             // Eight BTCUSDT streams are never all quiet for a minute: a kind
             // missing here stopped delivering, or its path never came back.
             let missing: Vec<&str> = KINDS.into_iter().filter(|k| !seen.contains(k)).collect();
-            panic!(
+            let finding = format!(
                 "in 60 s these kinds delivered nothing: {missing:?}; last outage: {last_outage:?}"
             );
+            panic!("{finding}"); // live-unwraps: a kind that delivered nothing is the fault under test
         };
         let event = next
-            .expect("the server ended the connection")
-            .unwrap_or_else(|e| panic!("{e} ({e:?})"));
+            .unwrap_or_else(|| transient("the server ended the connection"))
+            .or_fail("the supervised feed");
         match event {
             Event::Update(update) => {
                 assert!(
@@ -124,7 +128,7 @@ async fn live_every_stream_kind_delivers_on_its_path() {
             _ => {}
         }
     }
-    feed.close().await.unwrap();
+    feed.close().await.or_fail("close");
 }
 
 #[tokio::test]
@@ -143,27 +147,30 @@ async fn live_frames_carry_no_unmodelled_keys() {
             path.as_str(),
             names.join("/")
         );
+        let connect = format!("{path}: connect");
         let Ok(connected) = tokio::time::timeout(CONNECT_TIMEOUT, connect_async(url)).await else {
-            panic!("{path}: no connection within {CONNECT_TIMEOUT:?}");
+            fail(&connect, &UsdmWsError::ConnectTimeout(CONNECT_TIMEOUT));
         };
-        let (mut socket, _) = connected.unwrap_or_else(|e| panic!("{path}: connect: {e} ({e:?})"));
+        let (mut socket, _) = connected.map_err(UsdmWsError::from).or_fail(&connect);
         let mut checked = HashSet::new();
         let deadline = tokio::time::Instant::now() + Duration::from_secs(10);
         while let Ok(next) = tokio::time::timeout_at(deadline, socket.next()).await {
             let Some(message) = next else {
-                panic!("{path}: the server ended the connection");
+                transient(&format!("{path}: the server ended the connection"));
             };
-            let message = message.unwrap_or_else(|e| panic!("{path}: {e} ({e:?})"));
+            let message = message
+                .map_err(UsdmWsError::from)
+                .or_fail(&format!("{path}: read"));
             let Message::Text(text) = message else {
                 continue;
             };
-            let update = Update::from_json(&text).unwrap_or_else(|e| panic!("{e}: {text}"));
+            let update = Update::from_json(&text).or_fail(&text);
             assert!(!matches!(update.payload, Payload::Unknown { .. }), "{text}");
             let stream = update.stream.to_string();
             checked.insert(stream.clone());
-            let wire: Value = serde_json::from_str(&text).unwrap();
-            let diff =
-                common::compare_values(&stream, &wire, &serde_json::to_value(&update).unwrap());
+            let wire: Value = serde_json::from_str(&text).expect("a JSON frame"); // live-unwraps: the frame decoded above
+            let emitted = serde_json::to_value(&update).expect("an update serialises"); // live-unwraps: serialising test data
+            let diff = common::compare_values(&stream, &wire, &emitted);
             for key in diff.unmodelled {
                 // Binance documents the kline's `B` as "Ignore".
                 if key != "/data/k/B" {
@@ -174,8 +181,9 @@ async fn live_frames_carry_no_unmodelled_keys() {
             // only by its length.
             if matches!(update.payload, Payload::PartialDepth(_)) {
                 for side in ["b", "a"] {
-                    for level in wire["data"][side].as_array().expect("a book side") {
-                        let n = level.as_array().expect("a book level").len();
+                    let levels = wire["data"][side].as_array().expect("a book side"); // live-unwraps: an assertion on the frame
+                    for level in levels {
+                        let n = level.as_array().expect("a book level").len(); // live-unwraps: an assertion on the frame
                         if n != LEVEL_VALUES {
                             unmodelled.push(format!(
                                 "{stream}: a {side} level of {n} values, not {LEVEL_VALUES}"
@@ -212,17 +220,17 @@ async fn live_frames_carry_no_unmodelled_keys() {
 async fn live_a_quiet_supervised_connection_stays_up() {
     // An unlisted symbol: Binance acknowledges the subscription, and nothing
     // arrives but pings and pongs.
-    let quiet = StreamName::AggTrade(Symbol::new("ZZ0000USDT").unwrap());
+    let quiet = StreamName::AggTrade(Symbol::new("ZZ0000USDT").or_fail("ZZ0000USDT"));
     let mut feed = UsdmWsBuilder::new()
         .ping_interval(Duration::from_secs(2))
         .stale_after(Duration::from_secs(8))
         .streams([quiet])
         .connect()
         .await
-        .unwrap_or_else(|e| panic!("connect: {e} ({e:?})"));
+        .or_fail("connect");
     let held = tokio::time::timeout(Duration::from_secs(12), feed.next()).await;
     assert!(held.is_err(), "expected silence, got {held:?}");
-    feed.close().await.unwrap();
+    feed.close().await.or_fail("close");
 }
 
 #[tokio::test]
@@ -230,12 +238,18 @@ async fn live_a_quiet_supervised_connection_stays_up() {
 async fn live_a_client_ping_is_answered() {
     let mut ws = UsdmWs::connect(StreamPath::Market, [StreamName::MarkPrice(btc())])
         .await
-        .unwrap_or_else(|e| panic!("connect: {e} ({e:?})"));
-    let rtt = ws.ping().await.expect("pong");
+        .or_fail("connect");
+    // An unanswered ping is the fault under test, so it files whatever its
+    // class; any other error, a server restart among them, fails by its class.
+    let rtt = match ws.ping().await {
+        Ok(rtt) => rtt,
+        Err(err @ UsdmWsError::NoAnswer { .. }) => panic!("pong: {err:?}"), // live-unwraps: the property under test
+        Err(err) => fail("ping", &err),
+    };
     assert!(rtt < Duration::from_secs(5), "{rtt:?}");
     assert_eq!(
-        ws.list_subscriptions().await.expect("list"),
+        ws.list_subscriptions().await.or_fail("list"),
         ["btcusdt@markPrice@1s"]
     );
-    ws.close().await.unwrap();
+    ws.close().await.or_fail("close");
 }

@@ -18,6 +18,13 @@ polyoxide-core = { workspace = true, features = ["keychain"] }
 polyoxide-venue = { workspace = true }
 dotenvy = "0.15"
 
+# `tests/failure_tags.rs` builds core's network errors from real local sockets,
+# and a serde error from a real parse.
+[dev-dependencies]
+reqwest = { workspace = true }
+serde_json = { workspace = true }
+tokio = { workspace = true, features = ["macros", "rt-multi-thread", "net", "time"] }
+
 # Registration, read by scripts/gen_registry.py: the README line, venue and
 # product ids, the docs/specs/ mirrors covered, and one entry per live test
 # target, which becomes a nightly job. Run `python3 scripts/gen_registry.py

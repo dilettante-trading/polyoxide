@@ -42,3 +42,9 @@
 - source_spec: `_bmad-output/implementation-artifacts/spec-2-3-2-4-test-toolkit-and-tag-classifier.md`
   summary: In Story 4.10's socket error reshape, keep the stopping cause on Binance's supervised `Stopped`, so a stream stopped by a reconnect refused with 451 reports `is_fault() == false` and tags `environmental` rather than `real`.
   evidence: `UsdmWsError::Stopped` carries no cause today (`polyoxide-binance/src/usdm/ws/error.rs:200-207`); adding one is a variant change, which AD-16 forbids before the classifier stops relying on error text.
+- source_spec: `_bmad-output/implementation-artifacts/spec-2-5-2-7-live-suites-migrated-and-regex-retired.md`
+  summary: In the book-probe helpers (clob `find_token_id_with_min_ask`, `live_session_keys` :232-254, perps `a_quoting_instrument` in `live_api` and `live_ws`), fail with a probe error whose class is a defect (`Decode`) even when another probe answered, instead of reporting `environmental` "no suitable market".
+  evidence: A decode regression that affects only some books, while every other probed book is cheap or one-sided, reads as market conditions every night. Unverified how often; a 404 for a token with no book must stay environmental, so the rule cannot be "any real-tagged error".
+- source_spec: `_bmad-output/implementation-artifacts/spec-2-5-2-7-live-suites-migrated-and-regex-retired.md`
+  summary: Make clob's order-placing live tests cancel the order they posted when a later step fails (listing open orders, cancelling), or sweep the test token's resting 0.01 bids at start, so a nextest retry does not leave one resting order per attempt.
+  evidence: `polyoxide-clob/tests/live_api.rs:1140-1172` propagates a failure after the order rests; nextest `--retries 2` re-runs the test. Pre-existing, and auth-gated in the nightly until the clob secrets are set.
