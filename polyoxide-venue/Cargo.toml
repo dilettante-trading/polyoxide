@@ -6,7 +6,7 @@ license.workspace = true
 authors.workspace = true
 repository.workspace = true
 rust-version.workspace = true
-description = "Shared vocabulary for the polyoxide venue clients: error classes, the status and close-code maps, and the Retry-After parser"
+description = "Shared vocabulary for the polyoxide venue clients: error classes, the status and close-code maps, the Retry-After parser, wire enums, positional decimals and Unix-millisecond time"
 keywords = ["polymarket", "trading", "errors", "retry"]
 categories = ["api-bindings"]
 
@@ -33,5 +33,5 @@ serde_json = { workspace = true }
 # target, which becomes a nightly job. Run `python3 scripts/gen_registry.py
 # --write` after an edit.
 [package.metadata.polyoxide]
-readme = "Shared vocabulary: error classes, the status and close-code maps, the `Retry-After` parser"
-notes = ["every public error type in the workspace implements its `Classify` trait; it has no HTTP, socket or signing dependency"]
+readme = "Shared vocabulary: error classes, the status and close-code maps, the `Retry-After` parser, the wire-enum macros and `UnknownVariant`, positional decimal serde (feature `decimal`) and `UnixMillis`"
+notes = ["every public error type in the workspace implements its `Classify` trait; by default it depends on nothing, and it has no HTTP, socket or signing dependency"]

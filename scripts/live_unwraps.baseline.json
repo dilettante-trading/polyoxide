@@ -2,7 +2,7 @@
   "unwraps": {},
   "bare": {},
   "opted_out": {
-    "polyoxide-binance/tests/live_api.rs": 6,
+    "polyoxide-binance/tests/live_api.rs": 5,
     "polyoxide-binance/tests/live_ws.rs": 6,
     "polyoxide-cli/tests/live_api.rs": 17,
     "polyoxide-clob/tests/live_api.rs": 16,
@@ -10,7 +10,6 @@
     "polyoxide-clob/tests/live_ws.rs": 1,
     "polyoxide-data/tests/live_api.rs": 6,
     "polyoxide-gamma/tests/live_api.rs": 40,
-    "polyoxide-perps/tests/live_api.rs": 1,
     "polyoxide-perps/tests/live_ws.rs": 8,
     "polyoxide-relay/tests/live_api.rs": 1,
     "polyoxide-sports/tests/live_api.rs": 5

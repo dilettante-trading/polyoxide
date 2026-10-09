@@ -6,17 +6,11 @@
 //! minute; outside it, the wait lands at `land_at` milliseconds into the next
 //! minute, or into this one when `land_at` is still ahead.
 
-use std::{
-    ops::RangeInclusive,
-    time::{Duration, SystemTime, UNIX_EPOCH},
-};
+use std::{ops::RangeInclusive, time::Duration};
 
 /// Milliseconds into the current UTC minute, by the local clock.
 pub fn ms_into_minute() -> u64 {
-    let now = SystemTime::now()
-        .duration_since(UNIX_EPOCH)
-        .expect("the clock is after 1970");
-    (now.as_millis() % 60_000) as u64
+    polyoxide_venue::UnixMillis::now().0 % 60_000
 }
 
 /// How long to wait, at `at` milliseconds into the minute, to be inside

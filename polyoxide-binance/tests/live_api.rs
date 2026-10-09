@@ -98,11 +98,7 @@ async fn live_ping_time_and_the_weight_header() {
 }
 
 fn unix_minute() -> u64 {
-    std::time::SystemTime::now()
-        .duration_since(std::time::UNIX_EPOCH)
-        .expect("a clock after 1970") // live-unwraps: the clock is after the epoch
-        .as_secs()
-        / 60
+    polyoxide_venue::UnixMillis::now().0 / 60_000
 }
 
 #[tokio::test]

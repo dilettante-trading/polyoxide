@@ -6,7 +6,7 @@
 //! cargo test -p polyoxide-perps --test live_api -- --ignored
 //! ```
 
-use std::time::{Duration, SystemTime, UNIX_EPOCH};
+use std::time::Duration;
 
 use polyoxide_perps::{
     api::exchange::Instrument,
@@ -20,10 +20,7 @@ fn client() -> Perps {
 }
 
 fn now_ms() -> u64 {
-    SystemTime::now()
-        .duration_since(UNIX_EPOCH)
-        .unwrap() // live-unwraps: the clock is after the epoch
-        .as_millis() as u64
+    polyoxide_venue::UnixMillis::now().0
 }
 
 /// An instrument that is currently quoting, so book and bbo assertions have

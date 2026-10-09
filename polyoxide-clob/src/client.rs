@@ -331,10 +331,7 @@ impl Clob {
             .resolve_maker_address(params.funder, signature_type, account)
             .await?;
 
-        let timestamp_ms = std::time::SystemTime::now()
-            .duration_since(std::time::UNIX_EPOCH)
-            .map(|d| d.as_millis())
-            .unwrap_or(0);
+        let timestamp_ms = polyoxide_venue::UnixMillis::now().0;
 
         // Build order
         Ok(Self::build_order_v2(
@@ -429,10 +426,7 @@ impl Clob {
             .resolve_maker_address(params.funder, signature_type, account)
             .await?;
 
-        let timestamp_ms = std::time::SystemTime::now()
-            .duration_since(std::time::UNIX_EPOCH)
-            .map(|d| d.as_millis())
-            .unwrap_or(0);
+        let timestamp_ms = polyoxide_venue::UnixMillis::now().0;
 
         // Build order with expiration set to 0 for market orders
         Ok(Self::build_order_v2(
@@ -621,7 +615,7 @@ impl Clob {
         expiration: Option<u64>,
         builder: B256,
         metadata: B256,
-        timestamp_ms: u128,
+        timestamp_ms: u64,
     ) -> Order {
         Order {
             salt: generate_salt(),

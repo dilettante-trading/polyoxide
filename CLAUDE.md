@@ -69,7 +69,7 @@ Fourteen crates, in publish order, each with the workspace crates its build need
 <!-- generated:end claude-crate-count -->
 
 <!-- generated:begin claude-graph -->
-- `polyoxide-venue` — Shared vocabulary: error classes, the status and close-code maps, the `Retry-After` parser; needs: nothing in the workspace; every public error type in the workspace implements its `Classify` trait; it has no HTTP, socket or signing dependency
+- `polyoxide-venue` — Shared vocabulary: error classes, the status and close-code maps, the `Retry-After` parser, the wire-enum macros and `UnknownVariant`, positional decimal serde (feature `decimal`) and `UnixMillis`; needs: nothing in the workspace; every public error type in the workspace implements its `Classify` trait; by default it depends on nothing, and it has no HTTP, socket or signing dependency
 - `polyoxide-core` — Core utilities and shared types; needs: `polyoxide-venue`; shared auth, HTTP client, errors and macros
 - `polyoxide-binance` — Client library for Binance USDⓈ-M futures market data and streams (not part of the unified crate); needs: `polyoxide-core`, `polyoxide-venue` (with `decimal`)
 - `polyoxide-data` — Client library for Polymarket Data API; needs: `polyoxide-core`, `polyoxide-venue`

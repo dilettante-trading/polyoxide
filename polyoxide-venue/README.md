@@ -2,10 +2,13 @@
 
 The vocabulary every polyoxide crate shares: the eight error classes, the
 `Classify` trait every public error type implements, the status and close-code
-maps, the one `Retry-After` parser, and `Secret`.
+maps, the one `Retry-After` parser, `Secret`, the `wire_enum!` and `open_enum!`
+macros with their `UnknownVariant`, `UnixMillis`, and, behind the `decimal`
+feature, the positional decimal serde of rows sent as bare arrays.
 
-It depends on nothing, so the credential-free socket crates (`polyoxide-rtds`,
-`polyoxide-sports`) can use it without building an HTTP or signing stack.
+By default it depends on nothing, so the credential-free socket crates
+(`polyoxide-rtds`, `polyoxide-sports`) can use it without building an HTTP or
+signing stack.
 
 More information about this crate can be found in the [crate documentation](https://docs.rs/polyoxide-venue/).
 

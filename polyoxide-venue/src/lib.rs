@@ -10,7 +10,8 @@
 //!   [`class_for_handshake_status`] are the one status and close-code table.
 //! - [`parse_retry_after`] is the one `Retry-After` parser, and
 //!   [`retry_delay`] lets it only lengthen the client's own backoff.
-//! - [`Secret`] holds a value its `Debug` never prints.
+//! - [`Secret`] holds a value its `Debug` never prints, and [`UnixMillis`] is
+//!   the time venues stamp things with.
 //! - [`wire_enum!`] and [`open_enum!`] declare an enum whose variants each have
 //!   one wire spelling; a closed one refuses an unknown spelling with
 //!   [`UnknownVariant`], and an open one keeps it in `Other`.
@@ -44,6 +45,7 @@ mod retry_after;
 mod secret;
 mod socket;
 mod status;
+mod time;
 mod wire;
 
 pub use class::{Class, ClassifiedError, Classify};
@@ -51,6 +53,7 @@ pub use retry_after::{parse_retry_after, retry_delay};
 pub use secret::Secret;
 pub use socket::{class_for_close_code, class_for_handshake_status};
 pub use status::class_for_status;
+pub use time::UnixMillis;
 pub use wire::UnknownVariant;
 
 // Every public error type implements `Classify`; one without it fails the

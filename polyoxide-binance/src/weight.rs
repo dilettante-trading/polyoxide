@@ -8,7 +8,7 @@
 //! it are in `docs/specs/binance/OBSERVED.md`.
 
 use std::sync::{Arc, Mutex, MutexGuard};
-use std::time::{Duration, SystemTime, UNIX_EPOCH};
+use std::time::Duration;
 
 use polyoxide_core::{
     AttemptInfo, Charge, Hold, LayerCharge, LayerId, Refused, RequestMeta, ResponseMeta, Throttle,
@@ -248,9 +248,7 @@ enum Clock {
 impl Clock {
     fn now_ms(&self) -> u64 {
         match self {
-            Self::System => SystemTime::now()
-                .duration_since(UNIX_EPOCH)
-                .map_or(0, |since| since.as_millis() as u64),
+            Self::System => polyoxide_venue::UnixMillis::now().0,
             #[cfg(test)]
             Self::Tokio { start, start_ms } => *start_ms + start.elapsed().as_millis() as u64,
             #[cfg(test)]

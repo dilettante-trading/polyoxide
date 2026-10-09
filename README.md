@@ -23,7 +23,7 @@ Rust SDK toolkit for Polymarket APIs. It includes library crates for use in your
 | [polyoxide-rtds](./polyoxide-rtds) | Client for Polymarket's RTDS crypto price streams |
 | [polyoxide-sports](./polyoxide-sports) | Client for Polymarket's live sports score feed |
 | [polyoxide-test-support](./polyoxide-test-support) | Test toolkit: the failure tags the nightly classifier reads, the credential loaders, and the agreement, fixture and soak helpers (`publish = false`) |
-| [polyoxide-venue](./polyoxide-venue) | Shared vocabulary: error classes, the status and close-code maps, the `Retry-After` parser |
+| [polyoxide-venue](./polyoxide-venue) | Shared vocabulary: error classes, the status and close-code maps, the `Retry-After` parser, the wire-enum macros and `UnknownVariant`, positional decimal serde (feature `decimal`) and `UnixMillis` |
 <!-- generated:end readme-crates -->
 
 ## Installation
