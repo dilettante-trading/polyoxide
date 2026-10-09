@@ -97,18 +97,18 @@ impl Clob {
         self.account.as_ref()
     }
 
-    /// Get markets namespace
-    pub fn markets(&self) -> Markets {
-        Markets {
-            http_client: self.http_client.clone(),
-        }
-    }
-
-    /// Get health namespace for latency and health checks
-    pub fn health(&self) -> Health {
-        Health {
-            http_client: self.http_client.clone(),
-        }
+    polyoxide_core::namespaces! { http_client;
+        /// Get markets namespace
+        markets: Markets,
+        /// Get health namespace for latency and health checks
+        health: Health,
+        /// Get the unauthenticated rewards namespace.
+        ///
+        /// `GET /rewards/markets/current`, `/rewards/markets/{condition_id}`,
+        /// `/rewards/markets/multi`, and `/rebates/current` are public upstream, so
+        /// they are reachable without an account. Use [`Self::rewards`] for the
+        /// L2-authenticated user endpoints.
+        public_rewards: PublicRewards,
     }
 
     /// The trading tier currently in force for this client's signer.
@@ -167,18 +167,6 @@ impl Clob {
             l2: account.l2_auth(),
             signature_type: self.signature_type,
         })
-    }
-
-    /// Get the unauthenticated rewards namespace.
-    ///
-    /// `GET /rewards/markets/current`, `/rewards/markets/{condition_id}`,
-    /// `/rewards/markets/multi`, and `/rebates/current` are public upstream, so
-    /// they are reachable without an account. Use [`Self::rewards`] for the
-    /// L2-authenticated user endpoints.
-    pub fn public_rewards(&self) -> PublicRewards {
-        PublicRewards {
-            http_client: self.http_client.clone(),
-        }
     }
 
     /// Get rewards namespace for liquidity reward operations

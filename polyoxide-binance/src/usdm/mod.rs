@@ -42,26 +42,14 @@ impl Usdm {
         UsdmBuilder::new()
     }
 
-    /// Liveness: `ping`, `time`.
-    pub fn health(&self) -> Health {
-        Health {
-            http: self.http.clone(),
-        }
-    }
-
-    /// Reference data: `exchangeInfo`, `fundingInfo`.
-    pub fn exchange(&self) -> ExchangeApi {
-        ExchangeApi {
-            http: self.http.clone(),
-        }
-    }
-
-    /// Market data: tickers, premium index, klines, funding, open interest,
-    /// trades and depth.
-    pub fn market(&self) -> MarketApi {
-        MarketApi {
-            http: self.http.clone(),
-        }
+    polyoxide_core::namespaces! { http;
+        /// Liveness: `ping`, `time`.
+        health: Health,
+        /// Reference data: `exchangeInfo`, `fundingInfo`.
+        exchange: ExchangeApi,
+        /// Market data: tickers, premium index, klines, funding, open interest,
+        /// trades and depth.
+        market: MarketApi,
     }
 
     /// The budget this client charges.

@@ -30,67 +30,25 @@ impl Gamma {
         GammaBuilder::new()
     }
 
-    /// Get markets namespace
-    pub fn markets(&self) -> Markets {
-        Markets {
-            http_client: self.http_client.clone(),
-        }
-    }
-
-    /// Get events namespace
-    pub fn events(&self) -> Events {
-        Events {
-            http_client: self.http_client.clone(),
-        }
-    }
-
-    /// Get series namespace
-    pub fn series(&self) -> Series {
-        Series {
-            http_client: self.http_client.clone(),
-        }
-    }
-
-    /// Get tags namespace
-    pub fn tags(&self) -> Tags {
-        Tags {
-            http_client: self.http_client.clone(),
-        }
-    }
-
-    /// Get sports namespace
-    pub fn sports(&self) -> Sports {
-        Sports {
-            http_client: self.http_client.clone(),
-        }
-    }
-
-    /// Get comments namespace
-    pub fn comments(&self) -> Comments {
-        Comments {
-            http_client: self.http_client.clone(),
-        }
-    }
-
-    /// Get search namespace
-    pub fn search(&self) -> Search {
-        Search {
-            http_client: self.http_client.clone(),
-        }
-    }
-
-    /// Get user namespace
-    pub fn user(&self) -> User {
-        User {
-            http_client: self.http_client.clone(),
-        }
-    }
-
-    /// Get health namespace
-    pub fn health(&self) -> Health {
-        Health {
-            http_client: self.http_client.clone(),
-        }
+    polyoxide_core::namespaces! { http_client;
+        /// Get markets namespace
+        markets: Markets,
+        /// Get events namespace
+        events: Events,
+        /// Get series namespace
+        series: Series,
+        /// Get tags namespace
+        tags: Tags,
+        /// Get sports namespace
+        sports: Sports,
+        /// Get comments namespace
+        comments: Comments,
+        /// Get search namespace
+        search: Search,
+        /// Get user namespace
+        user: User,
+        /// Get health namespace
+        health: Health,
     }
 }
 

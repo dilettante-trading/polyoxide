@@ -57,6 +57,9 @@ pub mod signer_limit;
 #[cfg(feature = "keychain")]
 pub mod keychain;
 
+#[cfg(test)]
+mod macro_tests;
+
 /// Maximum number of characters to include in log messages containing response bodies.
 const LOG_BODY_MAX_LEN: usize = 512;
 

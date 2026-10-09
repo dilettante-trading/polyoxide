@@ -53,21 +53,52 @@ impl DataApi {
         DataApiBuilder::new()
     }
 
-    /// Data API v2 routes (`/v2/*`).
-    ///
-    /// Shares this client's connection pool, rate limiter, 429 cooldown and
-    /// concurrency budget: v1 and v2 are served by the same host.
-    pub fn v2(&self) -> DataV2 {
-        DataV2 {
-            http_client: self.http_client.clone(),
-        }
-    }
-
-    /// Get health namespace
-    pub fn health(&self) -> Health {
-        Health {
-            http_client: self.http_client.clone(),
-        }
+    polyoxide_core::namespaces! { http_client;
+        /// Data API v2 routes (`/v2/*`).
+        ///
+        /// Shares this client's connection pool, rate limiter, 429 cooldown and
+        /// concurrency budget: v1 and v2 are served by the same host.
+        v2: DataV2,
+        /// Get health namespace
+        health: Health,
+        /// Get trades namespace
+        trades: Trades,
+        /// Get holders namespace
+        holders: Holders,
+        /// Get open interest namespace
+        open_interest: OpenInterestApi,
+        /// Get live volume namespace
+        live_volume: LiveVolumeApi,
+        /// Get builders namespace
+        builders: BuildersApi,
+        /// Get leaderboard namespace
+        leaderboard: LeaderboardApi,
+        /// Get market-positions namespace (`/v1/market-positions`)
+        market_positions: MarketPositionsApi,
+        /// Get accounting namespace (`/v1/accounting/snapshot`, returns ZIP bytes)
+        accounting: AccountingApi,
+        /// Get combos namespace (`/v1/positions/combos`, `/v1/activity/combos`)
+        combos: CombosApi,
+        /// Get approvals namespace (`/v1/approvals`). The route now returns `404`;
+        /// use [`v2().approvals()`](crate::v2::DataV2::approvals) instead.
+        #[deprecated(
+            note = "`/v1/approvals` was removed upstream and now returns 404; use `data.v2().approvals(user)`"
+        )]
+        #[allow(deprecated)]
+        approvals: crate::api::approvals::ApprovalsApi,
+        /// Get misc namespace (`/other`, `/revisions`)
+        misc: MiscApi,
+        /// Get PnL namespace (`/user-pnl` on `user-pnl-api.polymarket.com`)
+        ///
+        /// This host has no published OpenAPI spec — see [`PnlApi`] for the
+        /// stability caveat.
+        pnl: PnlApi { http_client: pnl_http_client },
+        /// Get rankings namespace (`/volume`, `/profit` on `lb-api.polymarket.com`)
+        ///
+        /// Distinct from [`Self::leaderboard`], which calls `/v1/leaderboard` on
+        /// the main Data API host. This host has no published OpenAPI spec — see
+        /// [`RankingsApi`] for the stability caveat.
+        rankings: RankingsApi { http_client: rankings_http_client },
     }
 
     /// Get user namespace for user-specific operations
@@ -87,109 +118,6 @@ impl DataApi {
     pub fn traded(&self, user_address: impl Into<String>) -> Traded {
         Traded {
             user_api: self.user(user_address),
-        }
-    }
-
-    /// Get trades namespace
-    pub fn trades(&self) -> Trades {
-        Trades {
-            http_client: self.http_client.clone(),
-        }
-    }
-
-    /// Get holders namespace
-    pub fn holders(&self) -> Holders {
-        Holders {
-            http_client: self.http_client.clone(),
-        }
-    }
-
-    /// Get open interest namespace
-    pub fn open_interest(&self) -> OpenInterestApi {
-        OpenInterestApi {
-            http_client: self.http_client.clone(),
-        }
-    }
-
-    /// Get live volume namespace
-    pub fn live_volume(&self) -> LiveVolumeApi {
-        LiveVolumeApi {
-            http_client: self.http_client.clone(),
-        }
-    }
-
-    /// Get builders namespace
-    pub fn builders(&self) -> BuildersApi {
-        BuildersApi {
-            http_client: self.http_client.clone(),
-        }
-    }
-
-    /// Get leaderboard namespace
-    pub fn leaderboard(&self) -> LeaderboardApi {
-        LeaderboardApi {
-            http_client: self.http_client.clone(),
-        }
-    }
-
-    /// Get market-positions namespace (`/v1/market-positions`)
-    pub fn market_positions(&self) -> MarketPositionsApi {
-        MarketPositionsApi {
-            http_client: self.http_client.clone(),
-        }
-    }
-
-    /// Get accounting namespace (`/v1/accounting/snapshot`, returns ZIP bytes)
-    pub fn accounting(&self) -> AccountingApi {
-        AccountingApi {
-            http_client: self.http_client.clone(),
-        }
-    }
-
-    /// Get combos namespace (`/v1/positions/combos`, `/v1/activity/combos`)
-    pub fn combos(&self) -> CombosApi {
-        CombosApi {
-            http_client: self.http_client.clone(),
-        }
-    }
-
-    /// Get approvals namespace (`/v1/approvals`). The route now returns `404`;
-    /// use [`v2().approvals()`](crate::v2::DataV2::approvals) instead.
-    #[deprecated(
-        note = "`/v1/approvals` was removed upstream and now returns 404; use `data.v2().approvals(user)`"
-    )]
-    #[allow(deprecated)]
-    pub fn approvals(&self) -> crate::api::approvals::ApprovalsApi {
-        crate::api::approvals::ApprovalsApi {
-            http_client: self.http_client.clone(),
-        }
-    }
-
-    /// Get misc namespace (`/other`, `/revisions`)
-    pub fn misc(&self) -> MiscApi {
-        MiscApi {
-            http_client: self.http_client.clone(),
-        }
-    }
-
-    /// Get PnL namespace (`/user-pnl` on `user-pnl-api.polymarket.com`)
-    ///
-    /// This host has no published OpenAPI spec — see [`PnlApi`] for the
-    /// stability caveat.
-    pub fn pnl(&self) -> PnlApi {
-        PnlApi {
-            http_client: self.pnl_http_client.clone(),
-        }
-    }
-
-    /// Get rankings namespace (`/volume`, `/profit` on `lb-api.polymarket.com`)
-    ///
-    /// Distinct from [`Self::leaderboard`], which calls `/v1/leaderboard` on
-    /// the main Data API host. This host has no published OpenAPI spec — see
-    /// [`RankingsApi`] for the stability caveat.
-    pub fn rankings(&self) -> RankingsApi {
-        RankingsApi {
-            http_client: self.rankings_http_client.clone(),
         }
     }
 }

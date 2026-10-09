@@ -34,32 +34,15 @@ impl Perps {
         PerpsBuilder::new()
     }
 
-    /// Liveness: `ping`, `time`.
-    pub fn health(&self) -> Health {
-        Health {
-            http_client: self.http_client.clone(),
-        }
-    }
-
-    /// Reference data: exchange, assets, instruments, fees, limit tiers.
-    pub fn exchange(&self) -> ExchangeApi {
-        ExchangeApi {
-            http_client: self.http_client.clone(),
-        }
-    }
-
-    /// Market data keyed by instrument.
-    pub fn market(&self) -> MarketApi {
-        MarketApi {
-            http_client: self.http_client.clone(),
-        }
-    }
-
-    /// Public-by-address lookups: portfolio, position fills, leaderboard, invite.
-    pub fn public(&self) -> PublicApi {
-        PublicApi {
-            http_client: self.http_client.clone(),
-        }
+    polyoxide_core::namespaces! { http_client;
+        /// Liveness: `ping`, `time`.
+        health: Health,
+        /// Reference data: exchange, assets, instruments, fees, limit tiers.
+        exchange: ExchangeApi,
+        /// Market data keyed by instrument.
+        market: MarketApi,
+        /// Public-by-address lookups: portfolio, position fills, leaderboard, invite.
+        public: PublicApi,
     }
 }
 

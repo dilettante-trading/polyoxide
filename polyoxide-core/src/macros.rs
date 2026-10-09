@@ -110,3 +110,68 @@ macro_rules! client_config_setters {
         }
     };
 }
+
+/// Generates a client's namespace accessors: each clones the listed client
+/// fields into the same-named fields of its namespace struct.
+///
+/// The invocation starts with the fields every namespace takes, then lists
+/// one accessor per namespace, with its attributes. An accessor may instead
+/// name its own field mapping, `name: Type { to: from, .. }`, which clones
+/// `self.from` into `Type::to`. The namespace structs stay declared by hand,
+/// since their paths are public API.
+///
+/// ```
+/// #[derive(Clone)]
+/// pub struct Http;
+///
+/// pub struct Markets {
+///     http_client: Http,
+/// }
+///
+/// pub struct Pnl {
+///     http_client: Http,
+/// }
+///
+/// pub struct Client {
+///     http_client: Http,
+///     pnl_http_client: Http,
+/// }
+///
+/// impl Client {
+///     polyoxide_core::namespaces! { http_client;
+///         /// The markets namespace.
+///         markets: Markets,
+///         /// The PnL namespace, on its own host.
+///         pnl: Pnl { http_client: pnl_http_client },
+///     }
+/// }
+/// ```
+#[macro_export]
+macro_rules! namespaces {
+    (@accessors [$($field:ident),+]) => {};
+    (@accessors [$($field:ident),+]
+        $(#[$meta:meta])* $name:ident: $ns:path { $($to:ident: $from:ident),+ $(,)? }
+        $(, $($rest:tt)*)?
+    ) => {
+        $(#[$meta])*
+        pub fn $name(&self) -> $ns {
+            $ns { $($to: self.$from.clone()),+ }
+        }
+
+        $crate::namespaces!(@accessors [$($field),+] $($($rest)*)?);
+    };
+    (@accessors [$($field:ident),+]
+        $(#[$meta:meta])* $name:ident: $ns:path
+        $(, $($rest:tt)*)?
+    ) => {
+        $(#[$meta])*
+        pub fn $name(&self) -> $ns {
+            $ns { $($field: self.$field.clone()),+ }
+        }
+
+        $crate::namespaces!(@accessors [$($field),+] $($($rest)*)?);
+    };
+    ($($field:ident),+; $($accessors:tt)*) => {
+        $crate::namespaces!(@accessors [$($field),+] $($accessors)*);
+    };
+}
