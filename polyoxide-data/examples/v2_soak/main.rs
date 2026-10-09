@@ -38,9 +38,9 @@
 //!
 //! A ramp stops at the first stage that is throttled, saturated or invalid,
 //! and prints the count to pin (the highest clean rate, per 10 seconds). The
-//! rules are in `verdict.rs` and unit-tested. Exit code 0 means a count was
-//! found, 1 that even the first stage was not clean, 2 that the run was
-//! invalid.
+//! rules are `polyoxide_test_support::soak::verdict::tolerant`, unit-tested
+//! there. Exit code 0 means a count was found, 1 that even the first stage was
+//! not clean, 2 that the run was invalid.
 
 use std::{
     collections::HashSet,
@@ -54,14 +54,11 @@ use std::{
 };
 
 use polyoxide_core::RateLimiter;
+use polyoxide_test_support::soak::{self, verdict::tolerant as verdict, Pacer};
 use reqwest::Method;
 
-#[path = "../common/mod.rs"]
-mod common;
 mod probes;
-mod verdict;
 
-use common::Pacer;
 use probes::{is_market_condition_id, parse_routes, Pools, ProbeSource, Route, SeenUrls};
 use verdict::{classify, judge, pin, Abort, Layer, Pin, Reply, Sample, Stage, Verdict};
 
@@ -118,31 +115,7 @@ Usage: v2_soak --route <routes> [options]
   -h, --help              Show this message";
 
 fn parse_stages(raw: &str) -> Result<Vec<f64>, String> {
-    let stages: Vec<f64> = raw
-        .split(',')
-        .map(|s| {
-            s.trim()
-                .parse::<f64>()
-                .map_err(|_| format!("bad stage rate: {s:?}"))
-        })
-        .collect::<Result<_, _>>()?;
-    if stages.is_empty() {
-        return Err("--stages needs at least one rate".into());
-    }
-    for rate in &stages {
-        if !rate.is_finite() || *rate <= 0.0 {
-            return Err(format!("stage rate {rate} must be positive"));
-        }
-        if *rate > CEILING_RPS {
-            return Err(format!(
-                "stage rate {rate} is above the {CEILING_RPS} req/s ceiling"
-            ));
-        }
-    }
-    if stages.windows(2).any(|w| w[1] <= w[0]) {
-        return Err("--stages must be strictly ascending".into());
-    }
-    Ok(stages)
+    soak::parse_stages(raw, CEILING_RPS)
 }
 
 impl Config {

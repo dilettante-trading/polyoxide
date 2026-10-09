@@ -12,6 +12,7 @@ use clap::Parser;
 use mockito::{Matcher, Server, ServerGuard};
 use polyoxide_cli::commands::DataCommand;
 use polyoxide_data::DataApi;
+use polyoxide_test_support::Fixtures;
 use serde_json::Value;
 
 #[derive(Parser)]
@@ -24,11 +25,11 @@ type Pairs = Vec<(String, String)>;
 
 /// A response captured from the live API by `polyoxide-data`.
 fn fixture(name: &str) -> String {
-    let path = format!(
-        "{}/../polyoxide-data/tests/fixtures/v2/{name}.json",
-        env!("CARGO_MANIFEST_DIR")
-    );
-    std::fs::read_to_string(&path).unwrap_or_else(|e| panic!("{path}: {e}"))
+    Fixtures::at(concat!(
+        env!("CARGO_MANIFEST_DIR"),
+        "/../polyoxide-data/tests/fixtures/v2"
+    ))
+    .text(name)
 }
 
 /// What a command returned and wrote.

@@ -2,9 +2,10 @@
 title: 'Stories 2.8, 2.9 and 2.10: Shared agreement, fixture, soak and capture helpers'
 type: 'refactor'
 created: '2026-10-08'
-status: 'ready-for-dev'
+status: 'done'
 route: 'dispatch'
 review_loop_iteration: 0
+baseline_commit: 'e35dcd285bd9f6db12bf91e4f213b89945af2e43'
 context:
   - '{project-root}/_bmad-output/implementation-artifacts/epic-2-context.md'
 ---
@@ -108,18 +109,18 @@ context:
 ## Tasks & Acceptance
 
 **Execution:**
-- [ ] `polyoxide-test-support/` -- new modules `fixtures`, `agreement` (with `excuse` and `dotted`), `openapi`, `query` (feature), `minute`, and `soak` (feature: `observe` and `verdict::{tolerant,strict}`). Each comes with its own unit tests and the WARN-detection test.
-- [ ] data, perps, gamma, binance and CLI tests and examples -- switch to the shared helpers through local shims. Delete each copy, binance's `tests/common/mod.rs`, and data's `examples/common/mod.rs`.
-- [ ] `docs/MUTANTS.md`, `.github/scripts/tests/test_mutants_ledger.py` -- update binance's citations and re-prove its mutants.
-- [ ] `_bmad-output/specs/spec-venue-extensibility/duplication-inventory.md` -- mark rows T1–T9 resolved, through `bmad-spec` update.
-- [ ] `scripts/capture_common.py` -- new. All six capture scripts use it, and binance becomes PEP 723 with `websockets`. Its tests, in `.github/scripts/tests/test_capture_common.py`, use a local `http.server` and need no network; the `websockets` parts are skipped when the package is absent.
-- [ ] Re-run each capture script once:
+- [x] `polyoxide-test-support/` -- new modules `fixtures`, `agreement` (with `excuse` and `dotted`), `openapi`, `query` (feature), `minute`, and `soak` (feature: `observe` and `verdict::{tolerant,strict}`). Each comes with its own unit tests and the WARN-detection test.
+- [x] data, perps, gamma, binance and CLI tests and examples -- switch to the shared helpers through local shims. Delete each copy, binance's `tests/common/mod.rs`, and data's `examples/common/mod.rs`.
+- [x] `docs/MUTANTS.md`, `.github/scripts/tests/test_mutants_ledger.py` -- update binance's citations and re-prove its mutants.
+- [x] `_bmad-output/specs/spec-venue-extensibility/duplication-inventory.md` -- mark rows T1–T9 resolved, through `bmad-spec` update.
+- [x] `scripts/capture_common.py` -- new. All six capture scripts use it, and binance becomes PEP 723 with `websockets`. Its tests, in `.github/scripts/tests/test_capture_common.py`, use a local `http.server` and need no network; the `websockets` parts are skipped when the package is absent.
+- [x] Re-run each capture script once:
   - session keys must be byte-identical;
   - v2, perps, perps_ws (instrument 6) and binance must keep the same file list, formatting and key paths;
   - sports must emit frames covering the committed shapes.
 
   Record the outcomes, and restore any live-data changes to the committed fixtures unless a shape changed.
-- [ ] CLAUDE.md -- one paragraph naming the shared helpers and `capture_common.py`. Update any sentence that points at a removed copy.
+- [x] CLAUDE.md -- one paragraph naming the shared helpers and `capture_common.py`. Update any sentence that points at a removed copy.
 
 **Acceptance Criteria:**
 - Given rows T1–T9, when the tree is searched, then no copy remains in data, perps, gamma, binance or the capture scripts.
@@ -128,9 +129,70 @@ context:
 
 ## Implementation Notes
 
+**NFR7 counts** (`cargo test -- --list`, before at `e35dcd2`, after in the working tree). Every name in a before list exists after; none was lost.
+
+| File | Before | After |
+| --- | --- | --- |
+| data `v2_spec_agreement` | 6 | 6 |
+| data `v2_wire_agreement` | 1 | 1 |
+| perps `spec_agreement` | 5 | 5 |
+| perps `wire_agreement` | 1 | 1 |
+| perps `ws_wire_agreement` | 3 | 3 |
+| gamma `wire_agreement` | 20 | 20 |
+| binance `wire_agreement` | 2 | 2 |
+| binance `ws_wire_agreement` | 2 | 2 |
+| binance `mock_api` | 25 | 25 |
+| binance `weight_probe` | 2 | 2 |
+| data `examples/common` | 10 in each of 3 examples | 0; the 10 moved once to test-support (`soak::observe` 5, `soak` 5) |
+| data `v2_soak` | main 10, probes 10, verdict 21 | main 10, probes 10; the 21 moved to `soak::verdict::tolerant` |
+| data `closed_positions_soak` | 20 (+10 common) | 20 |
+| data `closed_positions_burst_probe` | 10 (+10 common) | 10 |
+| perps `info_soak` | 11 | 3 (the two config tests and `stages_must_ascend_and_stay_under_the_ceiling`, which calls the shim); 6 moved to `soak::verdict::strict`, `pacer_never_hands_out_a_slot_in_the_past` to `soak`, `the_throttled_path_is_read_off_the_retry_loop_message` to `soak::observe` |
+| CLI `data_v2` | 24 | 24 |
+
+Test-support: 39 moved unit tests (names and assertions unchanged), 39 new unit tests, 3 new integration tests in `tests/observe.rs`, and 4 in `tests/locations.rs`, which require a helper's panic to be reported in the calling test's file (each fails if a helper panics inside a closure or drops `#[track_caller]`); its unit total is 86 with `--all-features` (8 before).
+
+**Behaviour recorded, per the spec:**
+- perps `parse_routes` now refuses a duplicate (`--route klines,klines --pace client`), and its unknown-route message lists the names. Its `parse_stages` takes data's finer messages; the accepted set is unchanged.
+- perps' synthesiser gains data's "declared by two allOf arms" assertion; perps' 30 schemas pass. Data's synthesiser now follows `$ref` for nullability and takes `enum` and `example`; a scratch test (removed) compared the old and the shared synthesiser on data's 43 modelled schemas, minimal and full objects and strict-required judgements, and found them identical.
+- perps ws's value assertion messages gain a `push fixture:` prefix (`assert_values_agree` takes `what`); the conditions are unchanged. Gamma's top-level test reports every unmodelled key joined, with the same message for one.
+- `minute::wait_needed(window, land_at, at)` takes the millisecond as an argument so it stays pure; `ms_into_minute()` reads the clock.
+- `query::keys_sent` is async, so it cannot carry `#[track_caller]` (unstable on async fns); its panics name the path and fixture. Every synchronous asserting helper and shim carries it.
+- `Ledger` keys used entries by `(fixture, path)` across its lists, as data's and perps' sets did; binance ws keeps its count check, gamma has none. `excuse` refuses a list the ledger was not built over (compared by content, since a `const` slice has no promised address).
+
+**Gates touched:** binance `tests/common/mod.rs` gone, so its `opted_out` entry left `scripts/live_unwraps.baseline.json`; two CI-script tests pinned to it were repointed: `test_live_registry.py::test_the_real_shared_modules_are_scanned` now checks data alone, and `test_live_unwraps.py`'s real-tree shared-module test became `test_a_module_two_live_targets_share_counts_once` on a built tree, since no crate has two live targets sharing a module any more. `docs/MUTANTS.md` row (a), Binance's own loop, moved to `mock_api.rs:616` and `:652` and was proved again: both tests fail under the mutant and pass without it. The WARN detection was proved by mutating the observer's target prefix and level filter: the two 429 tests fail under each. `polyoxide-test-support`'s registration (`readme`, `notes`, `description`) now names the helpers, and `gen_registry.py --write` regenerated README.md and CLAUDE.md. data's `tracing` and `tracing-subscriber` and perps' `tracing-subscriber` dev-dependencies were dropped, unused once the observer moved.
+
+**Capture re-runs** (each once, into scratch; no committed fixture changed):
+- session keys: all five files byte-identical (`cmp`).
+- v2: 29 files, same names and layout, no key-path differences.
+- perps: 21 files, same names and layout. New on the wire: `/entries[]/roi` on `leaderboard` and `/account/roi` and `/entries[]/roi` on `leaderboard_account`, an upstream shape change the committed fixtures and the types do not carry; `/cursor` on `position_fills` is live variance (already in `EXPECTED_ABSENT`). Modelling `roi` and refreshing those fixtures is left as a follow-up.
+- perps ws (instrument 6): 10 of 11 files; `trades` was quiet for 20 s. Layout and key paths of the 10 match.
+- binance: no 451 from this host; rest 11 and ws 8 files, same names, layout and key paths.
+- sports: 300 s, 131 frames, 11 kept; every committed top-level (key, type) pair seen except `eventState` as an object, which only the live leagues lacked at 08:00 UTC.
+- `capture_common` checks certificates against `certifi` when installed, since a `uv`-installed Python did not find this host's system roots.
+
 ## Spec Change Log
 
 ## Review Triage Log
+
+One layer (edge-case hunter), with 13 findings.
+After the patches, these all passed (2026-10-09): `cargo test --all-features --tests --examples` for test-support, data, perps, gamma, binance and cli; workspace clippy and `cargo doc` with `-D warnings`; `cargo fmt --check`; the scripts suite (876 passed, none skipped); `live_unwraps.py`; and `gen_registry.py --check`.
+
+**Patched:**
+- **Low:** a `panic!` inside an `unwrap_or_else` closure in a `#[track_caller]` helper reported test-support's line, not the test's (`fixtures.rs`, `agreement/mod.rs`, `openapi.rs`). Each is now a `match` or `let … else`, and data's `documented_parameters` shim was fixed the same way. The spec requires failures to point at the test. `tests/locations.rs` pins the location for each helper, and was proved by reintroducing one closure and dropping one `#[track_caller]`.
+- **Low:** `synth`, `synth_object_inline`, `synth_object`, `is_nullable` and `documented_parameters` lacked `#[track_caller]`. Added (same root cause as above).
+- **Medium:** CI's scripts job had no `websockets`, so the three `ws_session` tests were always skipped. It is now in the `dev` group (`uv.lock` adds only websockets 17.2), and all 23 run.
+
+**Rejected:**
+- **`dotted::check` ignores an object facing null or a scalar.** False as a regression: gamma's walker had the same `_ => {}` arm, and the spec moves it verbatim.
+- **`never_on_wire` matches a string prefix, not a segment.** False as a regression: perps' rule was `p.starts_with(np)`, moved verbatim, and it fails loudly rather than hiding.
+- **A positional array with `example: []` now skips element decoding in data's suite.** Low and unreachable: the shared synthesiser builds identical objects on data's 43 schemas.
+- **A self-referencing schema overflows the stack.** Low and pre-existing: both originals recursed the same way, and no mirrored schema is recursive.
+- **`minute::wait_needed` and `verdict::strict` misbehave on impossible arguments** (a millisecond past the minute, a zero-second stage). Low: every caller passes constants or parsed, refused-at-zero values.
+- **`Reply.headers` is a case-sensitive dict.** Low: no capture script reads it.
+- **Binance's capture blames the server for a client-side close** (the size cap or an unanswered keepalive). Low: a developer-run script, and only the message is wrong.
+- **The live-unwraps gate no longer counts panics in the agreement helpers binance's live suites call.** Out of scope by intent: the Boundaries accept that moved helpers keep panicking untagged (real) from test-support, outside the counter.
+- **Claim: test bodies are unchanged.** Low and accepted. Data's and perps' stale loops now read `Ledger::stale()`, and gamma's top-level assertion joins its keys into one message. Checked: each pass and fail condition is identical, each kept its stale-check form as the Decision requires, and the changes are recorded in Implementation Notes.
 
 ## Verification
 

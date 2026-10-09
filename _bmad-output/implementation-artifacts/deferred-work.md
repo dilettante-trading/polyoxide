@@ -48,3 +48,6 @@
 - source_spec: `_bmad-output/implementation-artifacts/spec-2-5-2-7-live-suites-migrated-and-regex-retired.md`
   summary: Make clob's order-placing live tests cancel the order they posted when a later step fails (listing open orders, cancelling), or sweep the test token's resting 0.01 bids at start, so a nextest retry does not leave one resting order per attempt.
   evidence: `polyoxide-clob/tests/live_api.rs:1140-1172` propagates a failure after the order rests; nextest `--retries 2` re-runs the test. Pre-existing, and auth-gated in the nightly until the clob secrets are set.
+- source_spec: `_bmad-output/implementation-artifacts/spec-2-8-2-10-shared-agreement-fixture-soak-and-capture-helpers.md`
+  summary: Model perps' new leaderboard `roi` field (`/entries[]/roi`, `/account/roi`) in `polyoxide-perps`'s types, and refresh the perps fixtures with `scripts/capture_perps_fixtures.py`.
+  evidence: Bundle E's capture re-run (2026-10-09, scratch only) found upstream sending `roi`, which neither the committed fixtures nor the types carry, so the next fixture refresh fails perps' `wire_agreement` until the field is modelled.

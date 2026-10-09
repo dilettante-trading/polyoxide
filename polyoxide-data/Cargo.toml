@@ -30,18 +30,18 @@ url = { workspace = true }
 specta = { version = "=2.0.0-rc.20", features = ["derive", "serde", "rust_decimal"], optional = true }
 
 [dev-dependencies]
-# The live suites' failure tags and credential loaders. Path-only: it is never
-# published, and cargo strips a path-only dev-dependency on publish.
-polyoxide-test-support = { path = "../polyoxide-test-support" }
+# The live suites' failure tags and credential loaders, and the agreement and
+# soak helpers (`query` fires a builder at a mock server; `soak` is the
+# harnesses' pacer, observer and verdicts). Path-only: it is never published,
+# and cargo strips a path-only dev-dependency on publish.
+polyoxide-test-support = { path = "../polyoxide-test-support", features = ["query", "soak"] }
 mockito = { workspace = true }
 tokio = { workspace = true, features = ["macros", "rt-multi-thread", "time"] }
-tracing = { workspace = true }
-tracing-subscriber = { workspace = true }
 
 # `cargo test` and `cargo nextest` build examples but do not run their unit
-# tests unless asked, so the rate-limit harnesses' tests (including the
-# verdict rules that pinned `RateLimiter::data_default`'s v2 rows) would
-# otherwise never run in CI.
+# tests unless asked, so the rate-limit harnesses' tests would otherwise never
+# run in CI. The verdict rules that pinned `RateLimiter::data_default`'s v2
+# rows are polyoxide-test-support's `soak::verdict::tolerant`, tested there.
 [[example]]
 name = "v2_soak"
 path = "examples/v2_soak/main.rs"

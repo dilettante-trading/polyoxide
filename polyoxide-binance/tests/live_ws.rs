@@ -16,7 +16,7 @@
 //! real, since eight BTCUSDT streams are never all quiet for a minute, and so
 //! is an unanswered ping, which is what `live_a_client_ping_is_answered` tests.
 
-mod common;
+use polyoxide_test_support::agreement as common;
 
 use std::{collections::HashSet, time::Duration};
 

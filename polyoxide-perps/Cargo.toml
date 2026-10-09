@@ -35,16 +35,19 @@ tracing = { workspace = true }
 url = { workspace = true }
 
 [dev-dependencies]
-# The live suites' failure tags and credential loaders. Path-only: it is never
-# published, and cargo strips a path-only dev-dependency on publish.
-polyoxide-test-support = { path = "../polyoxide-test-support" }
+# The live suites' failure tags and credential loaders, and the agreement and
+# soak helpers (`query` fires a builder at a mock server; `soak` is the
+# harnesses' pacer, observer and verdicts). Path-only: it is never published,
+# and cargo strips a path-only dev-dependency on publish.
+polyoxide-test-support = { path = "../polyoxide-test-support", features = ["query", "soak"] }
 futures-util = "0.3"
 mockito = { workspace = true }
 tokio = { workspace = true, features = ["macros", "rt-multi-thread", "time"] }
-tracing-subscriber = { workspace = true }
 
 # `cargo test` builds examples but does not run their unit tests unless
-# asked; the verdict rules that pin `RateLimiter::perps_default` live here.
+# asked; the harness's argument checks live here. The verdict rules that pin
+# `RateLimiter::perps_default` are polyoxide-test-support's
+# `soak::verdict::strict`, tested there.
 [[example]]
 name = "info_soak"
 path = "examples/info_soak.rs"

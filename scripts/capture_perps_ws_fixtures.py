@@ -16,14 +16,11 @@ and `PROVENANCE.md`.
 """
 import asyncio
 import json
-import ssl
 import sys
 import time
-from datetime import datetime, timezone
 from pathlib import Path
 
-import certifi
-import websockets
+import capture_common
 
 URL = "wss://ws.perpetuals.polymarket.com/v1/ws"
 SECONDS = 20
@@ -37,10 +34,9 @@ async def main():
     WANTED = {f"bbo::{iid}": "bbo", f"book::{iid}": "book", f"book::{iid}::50": "book_50", f"trades::{iid}": "trades",
               f"klines::{iid}::1m": "klines", f"tickers::{iid}": "tickers", f"statistics::{iid}": "statistics"}
     out.mkdir(parents=True, exist_ok=True)
-    ctx = ssl.create_default_context(cafile=certifi.where())
     captured = {}
-    started = datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
-    async with websockets.connect(URL, max_size=2**22, ssl=ctx) as ws:
+    started = capture_common.stamp()
+    async with capture_common.ws_session(URL, max_size=2**22) as ws:
         await ws.send(json.dumps({"id": 1, "req": "sub", "chs": CHANNELS}))
         await ws.send(json.dumps({"id": 2, "req": "post", "op": {"type": "ping"}}))
         await ws.send(json.dumps({"id": 3, "req": "sub", "chs": ["bbo::999999", "nonsense::1", f"book::{iid}::30"]}))
@@ -74,18 +70,17 @@ async def main():
                 captured["response_unsubscribe"] = text
     missing = [n for n in list(WANTED.values()) + ["response_subscribe", "response_ping", "response_refused", "response_unsubscribe"] if n not in captured]
     for name, text in captured.items():
-        (out / f"{name}.json").write_text(json.dumps(json.loads(text), indent=2) + "\n")
+        capture_common.write_json(out / f"{name}.json", json.loads(text), ensure_ascii=True)
     lines = ["# Perps WebSocket fixtures", "",
              f"Captured {started} by `scripts/capture_perps_ws_fixtures.py` from `{URL}`:",
              f"one `sub` for {CHANNELS}, a ping, a malformed `sub`, {SECONDS} s of frames, then an `unsub`.",
              f"Instrument {iid}. Each file is the first frame seen for its label, pretty-printed",
              "(for `klines`, the first frame with a non-empty `data` when one arrived).", "",
              f"`tickers::all` and `statistics::all` fanned out as {len(fanout)} per-instrument labels; no frame carried an `::all` label.", "",
-             "| Fixture | Label or request |", "|---------|------------------|"]
-    lines += [f"| `{n}.json` | `{n}` |" for n in captured]
+             *capture_common.provenance_table(("Fixture", "Label or request"), [(f"`{n}.json`", f"`{n}`") for n in captured])]
     if missing:
         lines += ["", f"Not captured this run (quiet channel or no reply): {missing}"]
-    (out / "PROVENANCE.md").write_text("\n".join(lines) + "\n")
+    capture_common.write_provenance(out, lines)
     print(f"captured {len(captured)} fixtures; missing {missing}")
 
 

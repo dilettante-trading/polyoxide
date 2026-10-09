@@ -11,7 +11,7 @@
 //! keys, and the length of the positional kline and book rows. It does not see
 //! a new value of an enum, which decodes as that enum's `Other` variant.
 
-mod common;
+use polyoxide_test_support::agreement as common;
 
 use std::time::Duration;
 

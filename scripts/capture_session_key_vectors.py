@@ -34,7 +34,6 @@ review the diff before committing.
 """
 import dataclasses
 import importlib.metadata
-import json
 import re
 import sys
 import tomllib
@@ -93,6 +92,8 @@ from polymarket.models.trading import MissingTradingApprovals
 from polymarket.models.types import TokenId
 from polymarket.session_keys import SessionKeyKnownScope
 from polymarket.types import EvmAddress, HexString
+
+import capture_common
 
 ANVIL_KEY_0 = "0xac0974bec39a17e36ba4a6b4d238ff944bacb478cbed5efcae784d7bf4f2ff80"
 ANVIL_ADDR_1 = "0x70997970C51812dc3A010C7d01b50e0d17dc79C8"
@@ -548,7 +549,7 @@ its signature over Anvil key #0, at chain id 137, timestamp 1700000000, nonce 42
 | `order_vectors.json` | `{COMMAND}` |
 | `clob_auth.json` | `{COMMAND}` |
 """
-    (out_dir / "PROVENANCE.md").write_text(text)
+    capture_common.write_provenance(out_dir, text)
 
 
 def write_relay_provenance(
@@ -619,7 +620,7 @@ POSTs (`_SESSION_KEY_RELAYER_SUBMISSION_TIMEOUT`), both from
 |---|---|
 | `relay_vectors.json` | `{COMMAND}` |
 """
-    (out_dir / "PROVENANCE.md").write_text(text)
+    capture_common.write_provenance(out_dir, text)
 
 
 def main(out_dir: Path, relay_dir: Path) -> None:
@@ -677,14 +678,14 @@ def main(out_dir: Path, relay_dir: Path) -> None:
 
     # --- both goldens passed; write everything. ---
     out_dir.mkdir(parents=True, exist_ok=True)
-    (out_dir / "order_vectors.json").write_text(json.dumps(out, indent=2) + "\n")
-    (out_dir / "clob_auth.json").write_text(json.dumps(clob_auth, indent=2) + "\n")
+    capture_common.write_json(out_dir / "order_vectors.json", out, ensure_ascii=True)
+    capture_common.write_json(out_dir / "clob_auth.json", clob_auth, ensure_ascii=True)
     write_provenance(out_dir, sdk_version, dependency_cutoff)
     print(f"wrote {out_dir / 'order_vectors.json'}")
     print(f"wrote {out_dir / 'clob_auth.json'}")
 
     relay_dir.mkdir(parents=True, exist_ok=True)
-    (relay_dir / "relay_vectors.json").write_text(json.dumps(vectors, indent=2) + "\n")
+    capture_common.write_json(relay_dir / "relay_vectors.json", vectors, ensure_ascii=True)
     write_relay_provenance(
         relay_dir, sdk_version, dependency_cutoff, vectors["config"]["deposit_wallet_factory"]
     )

@@ -13,6 +13,10 @@ use polyoxide_perps::{
     types::InstrumentId,
     ws::{incoming_from_text_for_tests, Channel, Frame, IncomingForTests, Payload, StreamDepth},
 };
+use polyoxide_test_support::{
+    agreement::{self, Arrays},
+    fixtures,
+};
 use serde_json::Value;
 
 /// The instrument the fixtures were captured for: the busiest by 24-hour
@@ -21,48 +25,18 @@ use serde_json::Value;
 const INSTRUMENT: InstrumentId = InstrumentId(6);
 
 fn fixture(name: &str) -> (String, Value) {
-    let path = format!(
-        "{}/tests/fixtures/ws/{name}.json",
-        env!("CARGO_MANIFEST_DIR")
-    );
-    let text = std::fs::read_to_string(&path).unwrap_or_else(|e| panic!("{path}: {e}"));
+    let text = fixtures!("ws").text(name);
     let value = serde_json::from_str(&text).unwrap();
     (text, value)
 }
 
 fn key_paths(value: &Value, prefix: &str, out: &mut BTreeSet<String>) {
-    match value {
-        Value::Object(map) => {
-            for (k, v) in map {
-                let p = format!("{prefix}/{k}");
-                out.insert(p.clone());
-                key_paths(v, &p, out);
-            }
-        }
-        Value::Array(items) => items
-            .iter()
-            .for_each(|i| key_paths(i, &format!("{prefix}[]"), out)),
-        _ => {}
-    }
+    agreement::key_paths(value, prefix, out)
 }
 
+#[track_caller]
 fn assert_values_agree(wire: &Value, emitted: &Value, path: &str) {
-    match (wire, emitted) {
-        (Value::Object(w), Value::Object(e)) => {
-            for (k, wv) in w {
-                if let Some(ev) = e.get(k) {
-                    assert_values_agree(wv, ev, &format!("{path}/{k}"));
-                }
-            }
-        }
-        (Value::Array(w), Value::Array(e)) => {
-            assert_eq!(w.len(), e.len(), "{path}: array length");
-            for (i, (wv, ev)) in w.iter().zip(e).enumerate() {
-                assert_values_agree(wv, ev, &format!("{path}[{i}]"));
-            }
-        }
-        (w, e) => assert_eq!(w, e, "{path}: decoded as {e} but the wire sent {w}"),
-    }
+    agreement::assert_values_agree("push fixture", path, wire, emitted, Arrays::SameLength)
 }
 
 /// Decode a push fixture through the crate's parser and hand back the

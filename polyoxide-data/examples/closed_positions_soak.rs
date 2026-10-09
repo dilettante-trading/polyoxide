@@ -25,7 +25,8 @@
 //! # How throttling is detected
 //!
 //! A 429 the client retries away is invisible to the caller, so detection
-//! runs through a counting `tracing` subscriber. See `examples/common/mod.rs`.
+//! runs through a counting `tracing` subscriber. See
+//! `polyoxide_test_support::soak::observe`.
 
 use std::{
     fmt::Write as _,
@@ -38,13 +39,22 @@ use std::{
 };
 
 use polyoxide_data::DataApi;
-
-#[path = "common/mod.rs"]
-mod common;
-use common::{
-    install_observer, percentile, Pacer, ThrottleObserver, DEFAULT_CONCURRENCY, DEFAULT_USER,
-    MAX_PAGE_LIMIT,
+use polyoxide_test_support::soak::{
+    observe::{install_observer, ThrottleObserver},
+    percentile, Pacer,
 };
+
+/// The repo's conventional probe address (see `tests/live_api.rs`). Holds no
+/// closed positions, so responses are an empty array; pass a real trader's
+/// address to exercise realistic payload sizes.
+const DEFAULT_USER: &str = "0x0000000000000000000000000000000000000001";
+
+/// Matches `DataApiBuilder`'s own default, so runs measure the shipped
+/// configuration rather than a bespoke one.
+const DEFAULT_CONCURRENCY: usize = 4;
+
+/// Server-enforced ceiling for `/closed-positions` — above 50 it 400s.
+const MAX_PAGE_LIMIT: u32 = 50;
 
 const DEFAULT_DURATION_SECS: u64 = 180;
 

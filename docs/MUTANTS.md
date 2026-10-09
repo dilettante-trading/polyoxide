@@ -15,13 +15,15 @@ running `cargo test -p <crate> <target> -j 4 -- <test names>` with the mutant in
 then without it.
 Rows (e) and (e), case were proved again the same day on top of `8aac730`, after Stories
 2.1 and 2.2 moved their `polyoxide-clob/src/error.rs` tests 41 lines down.
+Row (a), Binance's own loop, was proved again on 2026-10-09 on top of `e35dcd2`, after
+Stories 2.8 to 2.10 moved its `polyoxide-binance/tests/mock_api.rs` tests 10 lines up.
 
 ## The rules
 
 | Rule | Where it holds | Mutation | Tests that fail |
 | --- | --- | --- | --- |
 | (a) A 429 feeds the shared limiter before the retry decision, so a request with no retry left still publishes it | `polyoxide-core/src/request.rs:155`, `note_rate_limited`, before `should_retry` at `polyoxide-core/src/request.rs:157` (core's `Request` loop) | Move the `note_rate_limited` call into the `if let Some(backoff)` retry branch | `polyoxide-data/tests/mock_api.rs:1532` `a_429_makes_the_next_request_wait_even_though_it_never_saw_one` |
-| (a), Binance's own loop | `polyoxide-binance/src/usdm/request.rs:136-149`, which holds the weight budget before deciding whether to retry | Replace the `match` with the cooldown arithmetic alone, and call `begin_cooldown` only inside `if retry.is_some()` | `polyoxide-binance/tests/mock_api.rs:626` `a_429_out_of_retries_is_rate_limited_and_still_holds_the_next_request`; `polyoxide-binance/tests/mock_api.rs:662` `a_429_with_no_retry_after_and_no_retry_left_holds_until_the_next_minute` |
+| (a), Binance's own loop | `polyoxide-binance/src/usdm/request.rs:136-149`, which holds the weight budget before deciding whether to retry | Replace the `match` with the cooldown arithmetic alone, and call `begin_cooldown` only inside `if retry.is_some()` | `polyoxide-binance/tests/mock_api.rs:616` `a_429_out_of_retries_is_rate_limited_and_still_holds_the_next_request`; `polyoxide-binance/tests/mock_api.rs:652` `a_429_with_no_retry_after_and_no_retry_left_holds_until_the_next_minute` |
 | (b) `Retry-After` only extends a wait, never shortens it | `polyoxide-core/src/client.rs:154`, `requested.map_or(computed, \|r\| r.max(computed))` | `requested.unwrap_or(computed)` | `polyoxide-core/src/client.rs:509` `retry_after_below_our_own_backoff_does_not_shorten_the_wait` |
 | (b), a zero `Retry-After` | `polyoxide-core/src/client.rs:149` (`*secs > 0.0`) and `polyoxide-core/src/client.rs:154` | `*secs >= 0.0` at the first and `requested.unwrap_or(computed)` at the second, which obeys Cloudflare's zero verbatim | `polyoxide-core/src/client.rs:509`; `polyoxide-core/src/client.rs:532` `retry_after_zero_still_backs_off_exponentially_across_attempts`; `polyoxide-data/tests/mock_api.rs:1509` `retry_after_zero_does_not_turn_the_retry_loop_into_a_hot_loop`; `polyoxide-data/tests/mock_api.rs:1532` |
 | (c) Cooldowns only extend | `polyoxide-core/src/rate_limit.rs:363`, `begin_cooldown` keeps the later deadline | Assign `*slot = Some(until)` unconditionally | `polyoxide-core/src/rate_limit.rs:1907` `a_shorter_cooldown_never_cuts_a_longer_one_short` |

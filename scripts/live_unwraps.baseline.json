@@ -2,7 +2,6 @@
   "unwraps": {},
   "bare": {},
   "opted_out": {
-    "polyoxide-binance/tests/common/mod.rs": 4,
     "polyoxide-binance/tests/live_api.rs": 6,
     "polyoxide-binance/tests/live_ws.rs": 6,
     "polyoxide-cli/tests/live_api.rs": 17,

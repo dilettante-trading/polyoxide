@@ -2,9 +2,10 @@
 //! `tests/fixtures/ws/`, by the rules of `wire_agreement.rs`: nothing
 //! unmodelled, nothing invented, nothing altered.
 
-mod common;
+use polyoxide_test_support::agreement as common;
 
 use polyoxide_binance::usdm::ws::{fixtures, Payload, SymbolType, Update};
+use polyoxide_test_support::agreement::Ledger;
 use serde_json::Value;
 
 /// `(fixture, path, reason)` the types deliberately drop.
@@ -16,6 +17,7 @@ pub const IGNORED: &[(&str, &str, &str)] = &[(
 
 #[test]
 fn every_stream_fixture_agrees_with_its_type() {
+    let mut ledger = Ledger::new(&[IGNORED]);
     let mut used = Vec::new();
     for (fixture, frame) in fixtures::ALL {
         let update = Update::from_json(frame).unwrap_or_else(|e| panic!("{fixture}: {e}"));
@@ -27,7 +29,7 @@ fn every_stream_fixture_agrees_with_its_type() {
         let emitted = serde_json::to_value(&update).unwrap();
         let diff = common::compare_values(fixture, &wire, &emitted);
         for path in diff.unmodelled {
-            match IGNORED.iter().find(|(f, p, _)| f == fixture && *p == path) {
+            match ledger.excuse(IGNORED, fixture, &path) {
                 Some(entry) => used.push(entry),
                 None => panic!("{fixture}: the server sent {path}, which the type does not model"),
             }

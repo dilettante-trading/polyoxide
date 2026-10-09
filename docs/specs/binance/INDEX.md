@@ -62,7 +62,7 @@ The weight table is `Route::cost` in `polyoxide-binance/src/weight.rs`, pinned b
 ## Fixtures and probes
 
 - `polyoxide-binance/tests/fixtures/rest/`: refreshed by
-  `python3 -I scripts/capture_binance_fixtures.py polyoxide-binance/tests/fixtures`.
+  `uv run scripts/capture_binance_fixtures.py polyoxide-binance/tests/fixtures`.
 - `polyoxide-binance/tests/fixtures/ws/`: stream envelopes, refreshed by the same script and
   compiled into `polyoxide_binance::usdm::ws::fixtures` under `test-server`.
 - `probes/`: the stdlib scripts behind most of the design spec's measurements. Its

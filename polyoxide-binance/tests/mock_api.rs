@@ -1,7 +1,7 @@
 //! Mock-server tests: every route's path and exact query, the decoding of a
 //! captured body, error mapping, and the budget's response to the server.
 
-use std::time::{Duration, Instant, SystemTime, UNIX_EPOCH};
+use std::time::{Duration, Instant};
 
 use mockito::{Matcher, Mock, Server, ServerGuard};
 use polyoxide_binance::{
@@ -10,6 +10,7 @@ use polyoxide_binance::{
     BinanceError, Usdm,
 };
 use polyoxide_core::RetryConfig;
+use polyoxide_test_support::{fixtures, minute};
 
 fn usdm(server: &ServerGuard) -> Usdm {
     Usdm::builder().base_url(server.url()).build().unwrap()
@@ -24,11 +25,7 @@ fn usdm_with_retries(server: &ServerGuard, config: RetryConfig) -> Usdm {
 }
 
 fn fixture(name: &str) -> String {
-    std::fs::read_to_string(format!(
-        "{}/tests/fixtures/rest/{name}.json",
-        env!("CARGO_MANIFEST_DIR")
-    ))
-    .unwrap()
+    fixtures!("rest").text(name)
 }
 
 fn btc() -> Symbol {
@@ -56,14 +53,7 @@ async fn route(server: &mut ServerGuard, path: &str, query: &str, body: &str) ->
 /// Waits out the end of a minute, so a test that holds the budget for a moment
 /// cannot see the window roll over underneath it.
 async fn clear_of_a_minute_boundary() {
-    let ms = SystemTime::now()
-        .duration_since(UNIX_EPOCH)
-        .unwrap()
-        .as_millis() as u64
-        % 60_000;
-    if ms > 57_000 {
-        tokio::time::sleep(Duration::from_millis(60_100 - ms)).await;
-    }
+    minute::wait_unless_within(0..=57_000, 100).await;
 }
 
 // ── health and exchange ─────────────────────────────────────────

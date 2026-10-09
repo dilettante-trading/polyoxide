@@ -11,12 +11,13 @@
 //! row read high. Costs about 150 weight. The funding routes report no header
 //! and are not probed. Exits 1 if any row differs from the table.
 
-use std::time::{Duration, SystemTime, UNIX_EPOCH};
+use std::time::Duration;
 
 use polyoxide_binance::{
     usdm::types::DepthLimit,
     weight::{Cost, Route},
 };
+use polyoxide_test_support::minute;
 
 const BASE: &str = "https://fapi.binance.com";
 
@@ -108,17 +109,14 @@ async fn used_after(client: &reqwest::Client, path: &str) -> u32 {
 }
 
 async fn wait_for_a_fresh_minute() {
-    let ms = SystemTime::now()
-        .duration_since(UNIX_EPOCH)
-        .unwrap()
-        .as_millis() as u64
-        % 60_000;
     // Three seconds past the boundary: the server's count was seen to fall to
     // 1 only within 3 s of it, and the local clock is not the server's.
-    if !(3_000..=20_000).contains(&ms) {
-        let wait = (63_000 - ms) % 60_000;
-        eprintln!("waiting {} s for a fresh minute", wait.div_ceil(1000));
-        tokio::time::sleep(Duration::from_millis(wait)).await;
+    if let Some(wait) = minute::wait_needed(3_000..=20_000, 3_000, minute::ms_into_minute()) {
+        eprintln!(
+            "waiting {} s for a fresh minute",
+            wait.as_millis().div_ceil(1000)
+        );
+        tokio::time::sleep(wait).await;
     }
 }
 

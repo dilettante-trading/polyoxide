@@ -69,12 +69,20 @@ def test_the_classifier_keeps_no_regex_over_panic_text() -> None:
     assert live_unwraps.classifier_patterns(live_unwraps.CLASSIFIER) == frozen
 
 
-def test_the_real_tree_counts_a_shared_module_once() -> None:
-    """binance's two live targets both declare `mod common;`."""
-    _, _, opted_out = live_unwraps.counts(REPO)
-    assert opted_out["polyoxide-binance/tests/common/mod.rs"] >= 1
-    files = [f.relative_to(REPO).as_posix() for f in live_unwraps.live_files(REPO)]
-    assert files.count("polyoxide-binance/tests/common/mod.rs") == 1
+def test_a_module_two_live_targets_share_counts_once(tmp_path: Path) -> None:
+    """Two live targets that both declare `mod common;` count it once. No crate
+    in the tree does since binance's helpers moved to polyoxide-test-support,
+    so the case is built here."""
+    _tree(tmp_path, {
+        "polyoxide-x/tests/live_api.rs": LIVE,
+        "polyoxide-x/tests/live_ws.rs": "mod common;\n",
+        "polyoxide-x/tests/common/mod.rs": COMMON + "fn url() -> Url {\n" + OPTED_OUT + "    u\n}\n",
+    })
+    unwraps, _, opted_out = live_unwraps.counts(tmp_path)
+    assert unwraps["polyoxide-x/tests/common/mod.rs"] == 1
+    assert opted_out == {"polyoxide-x/tests/common/mod.rs": 1}
+    files = [f.relative_to(tmp_path).as_posix() for f in live_unwraps.live_files(tmp_path)]
+    assert files.count("polyoxide-x/tests/common/mod.rs") == 1
 
 
 # --- counting --------------------------------------------------------------------

@@ -63,11 +63,43 @@
 //! The crate names no venue and depends on no venue crate. A test passes the
 //! environment variable names its target declares as `secrets`, and builds its
 //! own client from the strings the loaders return.
+//!
+//! # The agreement, fixture and soak helpers
+//!
+//! The offline suites that hold a type to its wire and its schema share their
+//! machinery here too, each module the superset of the copies it replaced. A
+//! suite keeps a thin local function with its old name, which states its own
+//! allow-lists and venue facts and calls in:
+//!
+//! - [`fixtures!`] and [`Fixtures`] read captured payloads from the calling
+//!   crate's `tests/fixtures/`.
+//! - [`agreement`] compares a decoded and re-encoded payload with the wire:
+//!   key paths both ways, scalar values, the allow-lists and their stale
+//!   entries ([`agreement::Ledger`]), and the dotted-path walker.
+//! - [`openapi`] synthesises values from a vendored OpenAPI schema and holds a
+//!   type to it.
+//! - `query` (feature `query`) reads the query keys a builder sends off a mock
+//!   server, for comparison with the documented parameters.
+//! - [`minute`] keeps a test or a probe clear of a UTC minute boundary.
+//! - `soak` (feature `soak`) is the rate-limit harnesses' pacer, arguments,
+//!   throttle observer and verdict rulebooks.
+//!
+//! Their failures panic with no tag, so the nightly classifier files them as
+//! `real`: a wire or schema disagreement is a fault.
 
 #![warn(missing_docs)]
 
+pub mod agreement;
 mod creds;
+mod fixtures;
+pub mod minute;
+pub mod openapi;
+#[cfg(feature = "query")]
+pub mod query;
+#[cfg(feature = "soak")]
+pub mod soak;
 mod tag;
 
 pub use creds::{keychain, load_env, optional_env, Creds, Missing};
+pub use fixtures::Fixtures;
 pub use tag::{environmental, fail, tag_for, transient, ResultExt, Tag};

@@ -21,6 +21,10 @@
 use std::collections::BTreeSet;
 
 use polyoxide_perps::api::{exchange::*, health::*, market::*, public::*};
+use polyoxide_test_support::{
+    agreement::{self, Arrays, Ledger},
+    fixtures,
+};
 use serde::{de::DeserializeOwned, Serialize};
 use serde_json::Value;
 
@@ -50,59 +54,22 @@ const NEVER_ON_WIRE: &[(&str, &str, &str)] = &[(
 )];
 
 fn key_paths(value: &Value, prefix: &str, out: &mut BTreeSet<String>) {
-    match value {
-        Value::Object(map) => {
-            for (k, v) in map {
-                let p = format!("{prefix}/{k}");
-                out.insert(p.clone());
-                key_paths(v, &p, out);
-            }
-        }
-        Value::Array(items) => {
-            for item in items {
-                key_paths(item, &format!("{prefix}[]"), out);
-            }
-        }
-        _ => {}
-    }
+    agreement::key_paths(value, prefix, out)
 }
 
 /// Asserts every scalar present on both sides is equal, recursing objects by
 /// key and arrays by index. Paths on one side only are the key-set checks'
 /// business, not this one's.
+#[track_caller]
 fn assert_values_agree(fixture: &str, path: &str, wire: &Value, emitted: &Value) {
-    match (wire, emitted) {
-        (Value::Object(w), Value::Object(e)) => {
-            for (k, wv) in w {
-                if let Some(ev) = e.get(k) {
-                    assert_values_agree(fixture, &format!("{path}/{k}"), wv, ev);
-                }
-            }
-        }
-        (Value::Array(w), Value::Array(e)) => {
-            for (i, (wv, ev)) in w.iter().zip(e).enumerate() {
-                assert_values_agree(fixture, &format!("{path}[{i}]"), wv, ev);
-            }
-        }
-        (Value::Object(_) | Value::Array(_), _) | (_, Value::Object(_) | Value::Array(_)) => {
-            panic!("{fixture}: {path} decoded as {emitted} but the wire sent {wire}")
-        }
-        _ => assert_eq!(
-            wire, emitted,
-            "{fixture}: {path} decoded as {emitted} but the wire sent {wire}"
-        ),
-    }
+    agreement::assert_values_agree(fixture, path, wire, emitted, Arrays::Zip)
 }
 
 fn check<T: DeserializeOwned + Serialize>(
     fixture: &str,
-    used: &mut BTreeSet<(&'static str, &'static str)>,
+    used: &mut Ledger<(&'static str, &'static str, &'static str)>,
 ) {
-    let path = format!(
-        "{}/tests/fixtures/{fixture}.json",
-        env!("CARGO_MANIFEST_DIR")
-    );
-    let text = std::fs::read_to_string(&path).unwrap_or_else(|e| panic!("{path}: {e}"));
+    let text = fixtures!().text(fixture);
     let wire: Value = serde_json::from_str(&text).unwrap();
     let parsed: T = serde_json::from_str(&text).unwrap_or_else(|e| panic!("{fixture}: {e}"));
     let emitted = serde_json::to_value(&parsed).unwrap();
@@ -115,37 +82,21 @@ fn check<T: DeserializeOwned + Serialize>(
     key_paths(&emitted, "", &mut modelled);
 
     for p in sent.difference(&modelled) {
-        match IGNORED.iter().find(|(f, ip, _)| *f == fixture && *ip == p) {
-            Some((f, ip, _)) => {
-                used.insert((f, ip));
-            }
-            None => panic!("{fixture}: server sent {p}, which the type does not model"),
+        if used.excuse(IGNORED, fixture, p).is_none() {
+            panic!("{fixture}: server sent {p}, which the type does not model");
         }
     }
     for p in modelled.difference(&sent) {
-        match EXPECTED_ABSENT
-            .iter()
-            .find(|(f, ap, _)| *f == fixture && *ap == p)
-        {
-            Some((f, ap, _)) => {
-                used.insert((f, ap));
-            }
-            None => panic!("{fixture}: the type emits {p}, which the server did not send"),
+        if used.excuse(EXPECTED_ABSENT, fixture, p).is_none() {
+            panic!("{fixture}: the type emits {p}, which the server did not send");
         }
     }
-    for (f, np, reason) in NEVER_ON_WIRE.iter().filter(|(f, _, _)| *f == fixture) {
-        let present = sent.iter().any(|p| p.starts_with(np));
-        assert!(
-            !present,
-            "{fixture}: the server now sends {np} ({reason}); verify the shape by hand and remove the NEVER_ON_WIRE row"
-        );
-        used.insert((f, np));
-    }
+    used.never_on_wire(NEVER_ON_WIRE, fixture, &sent);
 }
 
 #[test]
 fn every_fixture_agrees_with_its_type() {
-    let mut used = BTreeSet::new();
+    let mut used = Ledger::new(&[IGNORED, EXPECTED_ABSENT, NEVER_ON_WIRE]);
     check::<Time>("time", &mut used);
     check::<Exchange>("exchange", &mut used);
     check::<Vec<Asset>>("assets", &mut used);
@@ -168,13 +119,7 @@ fn every_fixture_agrees_with_its_type() {
     check::<Leaderboard>("leaderboard_account", &mut used);
     check::<InviteCheck>("invite", &mut used);
 
-    let listed: BTreeSet<(&str, &str)> = IGNORED
-        .iter()
-        .chain(EXPECTED_ABSENT.iter())
-        .chain(NEVER_ON_WIRE.iter())
-        .map(|(f, p, _)| (*f, *p))
-        .collect();
-    let stale: Vec<_> = listed.difference(&used).collect();
+    let stale: Vec<_> = used.stale().into_iter().map(|(f, p, _)| (f, p)).collect();
     assert!(
         stale.is_empty(),
         "allowance entries no fixture needs: {stale:?}"

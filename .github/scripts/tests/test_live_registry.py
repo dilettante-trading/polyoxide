@@ -481,7 +481,8 @@ def test_an_unignored_test_in_a_shared_module_is_caught(tmp_path: Path) -> None:
 
 
 def test_the_real_shared_modules_are_scanned() -> None:
-    """data's and binance's live suites declare `mod common;`."""
-    for key in [("polyoxide-data", "live_api"), ("polyoxide-binance", "live_api")]:
+    """data's live suite declares `mod common;`. binance's did until its wire
+    helpers moved to polyoxide-test-support."""
+    for key in [("polyoxide-data", "live_api")]:
         files = gen_registry.module_files(_path(*key))
         assert [f.relative_to(_path(*key).parent).as_posix() for f in files[1:]] == ["common/mod.rs"]

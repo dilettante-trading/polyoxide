@@ -30,15 +30,14 @@ use std::{
     collections::{BTreeMap, BTreeSet},
     future::Future,
     pin::Pin,
-    sync::{Arc, Mutex},
 };
 
-use mockito::{Matcher, Server};
 use polyoxide_data::{
     types::SortDirection,
     v2::{types::*, Page, Pagination},
     DataApi, DataApiError,
 };
+use polyoxide_test_support::{fixtures, openapi, query};
 use serde::{de::DeserializeOwned, Serialize};
 use serde_json::{Map, Value};
 
@@ -49,146 +48,13 @@ fn spec() -> Value {
 }
 
 fn schemas() -> Map<String, Value> {
-    spec()["components"]["schemas"]
-        .as_object()
-        .expect("components.schemas")
-        .clone()
+    openapi::schemas(&spec())
 }
 
-fn is_nullable(prop: &Value) -> bool {
-    if let Some(types) = prop["type"].as_array() {
-        return types.iter().any(|t| t == "null");
-    }
-    prop["oneOf"]
-        .as_array()
-        .is_some_and(|arms| arms.iter().any(|a| a["type"] == "null"))
-}
-
-/// A value of the property's type. `full` also fills non-required properties
-/// of any object it descends into.
-fn synth(schemas: &Map<String, Value>, prop: &Value, full: bool) -> Value {
-    if let Some(r) = prop["$ref"].as_str() {
-        let name = r.rsplit('/').next().unwrap();
-        return synth_object(schemas, name, full);
-    }
-    if let Some(arms) = prop["oneOf"].as_array() {
-        let arm = arms
-            .iter()
-            .find(|a| a["type"] != "null")
-            .expect("non-null arm");
-        return synth(schemas, arm, full);
-    }
-    let ty = match &prop["type"] {
-        Value::String(t) => t.as_str(),
-        Value::Array(ts) => ts
-            .iter()
-            .filter_map(Value::as_str)
-            .find(|t| *t != "null")
-            .unwrap(),
-        other => panic!("unsupported type {other}"),
-    };
-    match ty {
-        "string" => Value::from("x"),
-        "integer" => Value::from(1),
-        "number" => Value::from(1.5),
-        "boolean" => Value::from(true),
-        "array" => Value::Array(vec![synth(schemas, &prop["items"], full)]),
-        other => panic!("unsupported type {other}"),
-    }
-}
-
-/// An object schema's properties and required names. An `allOf` contributes
-/// every arm's, so a schema that extends another reads as the one flat row the
-/// server sends. None does now; `/v2/resolutions` rows were one from
-/// 2026-09-29 until upstream folded the extension back into `Resolution`.
-fn fields(schemas: &Map<String, Value>, schema: &Value) -> (Map<String, Value>, BTreeSet<String>) {
-    if let Some(r) = schema["$ref"].as_str() {
-        return fields(schemas, &schemas[r.rsplit('/').next().unwrap()]);
-    }
-    let own = schema["properties"].as_object();
-    let arms = schema["allOf"].as_array();
-    assert!(
-        own.is_some() || arms.is_some(),
-        "neither properties nor allOf: {schema}"
-    );
-    let mut props = own.cloned().unwrap_or_default();
-    let mut required: BTreeSet<String> = schema["required"]
-        .as_array()
-        .map(|r| {
-            r.iter()
-                .filter_map(Value::as_str)
-                .map(str::to_owned)
-                .collect()
-        })
-        .unwrap_or_default();
-    for arm in arms.into_iter().flatten() {
-        let (arm_props, arm_required) = fields(schemas, arm);
-        for (key, prop) in arm_props {
-            assert!(
-                props.insert(key.clone(), prop).is_none(),
-                "{key} is declared by two allOf arms"
-            );
-        }
-        required.extend(arm_required);
-    }
-    (props, required)
-}
-
-fn synth_object(schemas: &Map<String, Value>, name: &str, full: bool) -> Value {
-    let (props, required) = fields(schemas, &schemas[name]);
-    let mut out = Map::new();
-    for (key, prop) in &props {
-        if full || (required.contains(key) && !is_nullable(prop)) {
-            out.insert(key.clone(), synth(schemas, prop, full));
-        }
-    }
-    Value::Object(out)
-}
-
+/// Holds one type to one schema. Data v2 declares no wire-only fields.
+#[track_caller]
 fn check<T: DeserializeOwned + Serialize>(schemas: &Map<String, Value>, name: &str) {
-    let (props, required) = fields(schemas, &schemas[name]);
-
-    let minimal = synth_object(schemas, name, false);
-    if let Err(e) = serde_json::from_value::<T>(minimal.clone()) {
-        panic!("{name}: only required fields present should deserialize: {e}");
-    }
-
-    for (key, prop) in &props {
-        let strictly_required = required.contains(key) && !is_nullable(prop);
-        if strictly_required {
-            let mut without = minimal.clone();
-            without.as_object_mut().unwrap().remove(key);
-            assert!(
-                serde_json::from_value::<T>(without).is_err(),
-                "{name}.{key} is required and non-nullable in the spec but the type accepts it missing"
-            );
-        } else {
-            let mut with_null = minimal.clone();
-            with_null
-                .as_object_mut()
-                .unwrap()
-                .insert(key.clone(), Value::Null);
-            if let Err(e) = serde_json::from_value::<T>(with_null) {
-                panic!("{name}.{key} is optional or nullable in the spec but the type rejects null: {e}");
-            }
-        }
-    }
-
-    let full = synth_object(schemas, name, true);
-    let parsed: T = serde_json::from_value(full)
-        .unwrap_or_else(|e| panic!("{name}: every field present should deserialize: {e}"));
-    let emitted = serde_json::to_value(&parsed).unwrap();
-    let emitted: BTreeSet<&str> = emitted
-        .as_object()
-        .unwrap()
-        .keys()
-        .map(String::as_str)
-        .collect();
-    let documented: BTreeSet<&str> = props.keys().map(String::as_str).collect();
-    assert_eq!(
-        emitted, documented,
-        "{name}: emitted keys differ from the spec's properties"
-    );
+    openapi::check::<T>(schemas, name, &[]);
 }
 
 macro_rules! agreement {
@@ -347,37 +213,11 @@ type Fire = fn(DataApi) -> Pin<Box<dyn Future<Output = Result<(), DataApiError>>
 /// Sends one request through `fire`, requires its response to decode, and
 /// returns the query keys it carried.
 async fn query_keys_sent(path: &str, fixture: &str, fire: Fire) -> BTreeSet<String> {
-    let body_path = format!(
-        "{}/tests/fixtures/v2/{fixture}.json",
-        env!("CARGO_MANIFEST_DIR")
-    );
-    let body = std::fs::read_to_string(&body_path).unwrap_or_else(|e| panic!("{body_path}: {e}"));
-    let mut server = Server::new_async().await;
-    let seen = Arc::new(Mutex::new(Vec::<String>::new()));
-    let sink = Arc::clone(&seen);
-    let mock = server
-        .mock("GET", path)
-        .match_query(Matcher::Any)
-        .match_request(move |request| {
-            sink.lock()
-                .unwrap()
-                .push(request.path_and_query().to_owned());
-            true
-        })
-        .with_status(200)
-        .with_body(body)
-        .create_async()
-        .await;
-
-    let decoded = fire(DataApi::builder().base_url(server.url()).build().unwrap()).await;
-    mock.assert_async().await;
-    if let Err(e) = decoded {
-        panic!("{path}: the builder did not decode `{fixture}.json`: {e}");
-    }
-
-    let seen = seen.lock().unwrap();
-    let url = url::Url::parse(&format!("http://mock{}", seen.last().unwrap())).unwrap();
-    url.query_pairs().map(|(key, _)| key.into_owned()).collect()
+    let body = fixtures!("v2").text(fixture);
+    query::keys_sent(path, fixture, body, |url| {
+        fire(DataApi::builder().base_url(url).build().unwrap())
+    })
+    .await
 }
 
 /// One entry per builder: its path, the captured response it must decode (from
@@ -655,19 +495,12 @@ const ROUTES: &[(&str, &str, Fire)] = &[
     }),
 ];
 
+#[track_caller]
 fn documented_parameters(path: &str) -> BTreeSet<String> {
-    let spec = spec();
-    let operation = &spec["paths"][path]["get"];
-    assert!(operation.is_object(), "{path} is not a documented route");
-    operation["parameters"]
-        .as_array()
-        .map(|params| {
-            params
-                .iter()
-                .map(|p| p["name"].as_str().unwrap().to_owned())
-                .collect()
-        })
-        .unwrap_or_default()
+    let Some(names) = query::documented_parameters(&spec(), path) else {
+        panic!("{path} is not a documented route")
+    };
+    names
 }
 
 #[tokio::test]

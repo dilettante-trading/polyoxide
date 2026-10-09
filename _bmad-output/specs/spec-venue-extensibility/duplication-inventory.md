@@ -49,6 +49,13 @@ This is the checklist behind the success signal. Every row must end with exactly
 
 ## Tests, examples, scripts (CAP-9)
 
+Rows T1–T9 are resolved (Stories 2.8–2.10, 2026-10-09); the copies below are the audit record. Each concern has one definition, and callers keep thin same-named shims:
+
+- T1, T2, T3: `polyoxide-test-support` `agreement` (`key_paths`; `assert_values_agree` with `Arrays::Zip` or `Arrays::SameLength`; `excuse::{Excuse, Ledger}`; `dotted::{check, unmodelled_top_level}`, the latter allow-list-free).
+- T4: `openapi`. T5: `query` (feature `query`). T6: `fixtures!` and `Fixtures`. T7: `minute`.
+- T8: `soak` (feature `soak`): `Pacer`, `percentile`, `parse_stages`, `parse_routes`, `observe`, and two rulebooks kept apart as different policies, `verdict::tolerant` (data's) and `verdict::strict` (perps').
+- T9: `scripts/capture_common.py`, used by all six capture scripts; binance's RFC 6455 client is gone.
+
 | # | Concern | Copies | Class | ~Lines |
 |---|---|---|---|---|
 | T1 | `key_paths` | data `tests/v2_wire_agreement.rs:158`; binance `tests/common/mod.rs:14`; perps `tests/wire_agreement.rs:52`, `tests/ws_wire_agreement.rs:33` | IDENTICAL | 80 |

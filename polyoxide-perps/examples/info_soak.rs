@@ -15,10 +15,10 @@
 //! Every URL in a ramp is distinct, because CloudFront fronts the host and a
 //! repeated URL is answered from cache (`docs/specs/perps/OBSERVED.md`). A
 //! stage whose origin-served share falls below `MIN_ORIGIN_SHARE` is reported
-//! as saturated rather than clean.
+//! as saturated rather than clean. The rules are
+//! `polyoxide_test_support::soak::verdict::strict`, unit-tested there.
 
 use std::{
-    collections::BTreeMap,
     process::ExitCode,
     sync::{
         atomic::{AtomicU64, Ordering},
@@ -28,15 +28,16 @@ use std::{
 };
 
 use polyoxide_perps::{types::InstrumentId, Perps};
-use tracing::field::{Field, Visit};
-use tracing_subscriber::{layer::SubscriberExt, util::SubscriberInitExt, Layer};
+use polyoxide_test_support::soak::{
+    self,
+    observe::install_observer,
+    verdict::strict::{classify, judge, pin, summarize, Reply, Verdict},
+    Pacer,
+};
 
 const DEFAULT_BASE_URL: &str = "https://api.perpetuals.polymarket.com";
 const DEFAULT_STAGES: [f64; 5] = [5.0, 10.0, 15.0, 20.0, 30.0];
 const CEILING_RPS: f64 = 40.0;
-/// Below this share of origin-served replies a stage measured the CDN, not
-/// the host.
-const MIN_ORIGIN_SHARE: f64 = 0.9;
 
 // ── Routes ──────────────────────────────────────────────────────
 
@@ -71,18 +72,7 @@ impl Route {
 }
 
 fn parse_routes(raw: &str) -> Result<Vec<Route>, String> {
-    if raw == "all" {
-        return Ok(Route::ALL.to_vec());
-    }
-    raw.split(',')
-        .map(|s| match s.trim() {
-            "klines" => Ok(Route::Klines),
-            "trades" => Ok(Route::Trades),
-            "portfolio" => Ok(Route::Portfolio),
-            "bbo" => Ok(Route::Bbo),
-            other => Err(format!("unknown route {other:?}")),
-        })
-        .collect()
+    soak::parse_routes(raw, &Route::ALL, Route::name)
 }
 
 /// Distinct URLs for a route, drawn from live inputs.
@@ -159,199 +149,6 @@ async fn load_probes(perps: &Perps, addresses: usize, need_addresses: bool) -> P
         instruments,
         addresses: found,
         counter: AtomicU64::new(0),
-    }
-}
-
-// ── Verdicts (pure, unit-tested) ────────────────────────────────
-
-#[derive(Debug, Clone, PartialEq, Eq)]
-enum Reply {
-    Ok,
-    CacheHit,
-    Throttled {
-        code: String,
-        retry_after: Option<u64>,
-    },
-    Error(u16),
-}
-
-fn classify(status: u16, x_cache: Option<&str>, retry_after: Option<&str>, body: &str) -> Reply {
-    if status == 429 {
-        let code = serde_json::from_str::<serde_json::Value>(body)
-            .ok()
-            .and_then(|v| v.get("error").and_then(|c| c.as_str()).map(str::to_owned))
-            .unwrap_or_else(|| "unknown".to_owned());
-        return Reply::Throttled {
-            code,
-            retry_after: retry_after.and_then(|v| v.trim().parse().ok()),
-        };
-    }
-    if x_cache.is_some_and(|v| v.to_ascii_lowercase().starts_with("hit")) {
-        return Reply::CacheHit;
-    }
-    if (200..300).contains(&status) {
-        Reply::Ok
-    } else {
-        Reply::Error(status)
-    }
-}
-
-#[derive(Debug, Clone, PartialEq)]
-enum Verdict {
-    Clean,
-    Throttled {
-        after: Duration,
-        code: String,
-    },
-    Saturated {
-        origin_share: f64,
-    },
-    Invalid {
-        errors: usize,
-    },
-    /// The harness did not reach its own target rate, so a clean result
-    /// would be about a lower rate than the one it is labelled with.
-    UnderDriven {
-        achieved: f64,
-    },
-}
-
-/// Share of the target rate a stage must actually achieve for a clean
-/// verdict to mean anything.
-const MIN_ACHIEVED_SHARE: f64 = 0.9;
-
-fn judge(replies: &[(Duration, Reply)], rate: f64, secs: u64) -> Verdict {
-    if let Some((at, Reply::Throttled { code, .. })) = replies
-        .iter()
-        .find(|(_, r)| matches!(r, Reply::Throttled { .. }))
-    {
-        return Verdict::Throttled {
-            after: *at,
-            code: code.clone(),
-        };
-    }
-    let errors = replies
-        .iter()
-        .filter(|(_, r)| matches!(r, Reply::Error(_)))
-        .count();
-    if errors > 0 {
-        return Verdict::Invalid { errors };
-    }
-    let achieved = replies.len() as f64 / secs as f64;
-    if achieved < MIN_ACHIEVED_SHARE * rate {
-        return Verdict::UnderDriven { achieved };
-    }
-    let origin = replies.iter().filter(|(_, r)| *r == Reply::Ok).count();
-    let share = if replies.is_empty() {
-        0.0
-    } else {
-        origin as f64 / replies.len() as f64
-    };
-    if share < MIN_ORIGIN_SHARE {
-        return Verdict::Saturated {
-            origin_share: share,
-        };
-    }
-    Verdict::Clean
-}
-
-/// One line of reply counts for a stage, plus the first throttle's
-/// `Retry-After`, which `OBSERVED.md` records alongside the 429 body.
-fn summarize(replies: &[(Duration, Reply)]) -> String {
-    let count = |f: &dyn Fn(&Reply) -> bool| replies.iter().filter(|(_, r)| f(r)).count();
-    let ok = count(&|r| *r == Reply::Ok);
-    let cached = count(&|r| *r == Reply::CacheHit);
-    let throttled = count(&|r| matches!(r, Reply::Throttled { .. }));
-    let errors = count(&|r| matches!(r, Reply::Error(_)));
-    let retry_after = replies.iter().find_map(|(_, r)| match r {
-        Reply::Throttled { retry_after, .. } => *retry_after,
-        _ => None,
-    });
-    let last = replies.last().map_or(Duration::ZERO, |(at, _)| *at);
-    format!(
-        "{ok} origin, {cached} cached, {throttled} throttled, {errors} errors; \
-         last reply at {last:.1?}; first Retry-After {retry_after:?}"
-    )
-}
-
-/// The count to pin for a 10-second window: the highest clean stage rate.
-fn pin(stages: &[(f64, Verdict)]) -> Option<u32> {
-    stages
-        .iter()
-        .take_while(|(_, v)| *v == Verdict::Clean)
-        .last()
-        .map(|(rate, _)| (rate * 10.0).floor() as u32)
-}
-
-// ── Pacing ──────────────────────────────────────────────────────
-
-struct Pacer {
-    interval: Duration,
-    next: Mutex<Option<Instant>>,
-}
-
-impl Pacer {
-    fn new(interval: Duration) -> Self {
-        Self {
-            interval,
-            next: Mutex::new(None),
-        }
-    }
-
-    /// The next slot, never in the past: an idle pacer must not bank credit
-    /// and release it as a burst.
-    fn reserve(&self, now: Instant) -> Instant {
-        let mut next = self.next.lock().unwrap();
-        let slot = next.map_or(now, |claimed| claimed.max(now));
-        *next = Some(slot + self.interval);
-        slot
-    }
-
-    async fn wait(&self) {
-        let slot = self.reserve(Instant::now());
-        tokio::time::sleep_until(tokio::time::Instant::from_std(slot)).await;
-    }
-}
-
-// ── Throttle observer for validation mode ───────────────────────
-
-#[derive(Default)]
-struct MessageVisitor(Option<String>);
-
-impl Visit for MessageVisitor {
-    fn record_debug(&mut self, field: &Field, value: &dyn std::fmt::Debug) {
-        if field.name() == "message" {
-            self.0 = Some(format!("{value:?}"));
-        }
-    }
-}
-
-/// Retried-away 429s per request path, read off the retry loop's WARN
-/// message (`Retriable status 429 Too Many Requests on /v1/info/trades, …`),
-/// so a mixed run says which route was refused.
-struct ThrottleLayer(Arc<Mutex<BTreeMap<String, u64>>>);
-
-fn throttled_path(message: &str) -> Option<&str> {
-    let rest = message.split(" on ").nth(1)?;
-    Some(rest.split(',').next()?.trim())
-}
-
-impl<S: tracing::Subscriber> Layer<S> for ThrottleLayer {
-    fn on_event(
-        &self,
-        event: &tracing::Event<'_>,
-        _ctx: tracing_subscriber::layer::Context<'_, S>,
-    ) {
-        let meta = event.metadata();
-        if !meta.target().starts_with("polyoxide_core") || *meta.level() != tracing::Level::WARN {
-            return;
-        }
-        let mut visitor = MessageVisitor::default();
-        event.record(&mut visitor);
-        if let Some(message) = visitor.0.filter(|m| m.contains("Retriable status 429")) {
-            let path = throttled_path(&message).unwrap_or("?").to_owned();
-            *self.0.lock().unwrap().entry(path).or_insert(0) += 1;
-        }
     }
 }
 
@@ -473,10 +270,7 @@ async fn run_ramp(cfg: &Config, route: Route) -> ExitCode {
 }
 
 async fn run_validation(cfg: &Config) -> ExitCode {
-    let throttles = Arc::new(Mutex::new(BTreeMap::new()));
-    tracing_subscriber::registry()
-        .with(ThrottleLayer(Arc::clone(&throttles)))
-        .init();
+    let observer = install_observer(Instant::now());
     // The shipped client, untouched: its own limiter and its own default
     // concurrency cap, which bounds in-flight requests for the whole run.
     let perps = Perps::builder().base_url(&cfg.base_url).build().unwrap();
@@ -543,7 +337,7 @@ async fn run_validation(cfg: &Config) -> ExitCode {
     }
     let sent = sent.load(Ordering::Relaxed);
     let failed = failed.load(Ordering::Relaxed);
-    let throttles = throttles.lock().unwrap();
+    let throttles = observer.throttles_by_path();
     let throttled: u64 = throttles.values().sum();
     // `sent` counts calls: a call the retry loop re-sends is several
     // requests on the wire but one here; the throttle counts are per request.
@@ -596,25 +390,7 @@ Usage: info_soak --route <routes> [options]
   -h, --help              Show this message";
 
 fn parse_stages(raw: &str) -> Result<Vec<f64>, String> {
-    let stages: Vec<f64> = raw
-        .split(',')
-        .map(|s| {
-            s.trim()
-                .parse::<f64>()
-                .map_err(|_| format!("bad stage rate: {s:?}"))
-        })
-        .collect::<Result<_, _>>()?;
-    if stages.is_empty()
-        || stages
-            .iter()
-            .any(|r| !r.is_finite() || *r <= 0.0 || *r > CEILING_RPS)
-    {
-        return Err(format!("stages must be positive and at most {CEILING_RPS}"));
-    }
-    if stages.windows(2).any(|w| w[1] <= w[0]) {
-        return Err("--stages must be strictly ascending".into());
-    }
-    Ok(stages)
+    soak::parse_stages(raw, CEILING_RPS)
 }
 
 impl Config {
@@ -701,118 +477,6 @@ async fn main() -> ExitCode {
 mod tests {
     use super::*;
 
-    fn ok(at: u64) -> (Duration, Reply) {
-        (Duration::from_secs(at), Reply::Ok)
-    }
-
-    #[test]
-    fn a_429_is_throttled_with_its_identifier_and_retry_after() {
-        assert_eq!(
-            classify(
-                429,
-                None,
-                Some("2"),
-                r#"{"status":"err","error":"ip_rate_limited"}"#
-            ),
-            Reply::Throttled {
-                code: "ip_rate_limited".into(),
-                retry_after: Some(2)
-            }
-        );
-    }
-
-    #[test]
-    fn a_cache_hit_is_not_an_origin_reply() {
-        assert_eq!(
-            classify(200, Some("Hit from cloudfront"), None, "[]"),
-            Reply::CacheHit
-        );
-        assert_eq!(
-            classify(200, Some("Miss from cloudfront"), None, "[]"),
-            Reply::Ok
-        );
-    }
-
-    #[test]
-    fn a_stage_with_any_throttle_is_throttled_at_its_first() {
-        let replies = vec![
-            ok(1),
-            (
-                Duration::from_secs(7),
-                Reply::Throttled {
-                    code: "ip_rate_limited".into(),
-                    retry_after: None,
-                },
-            ),
-            ok(9),
-        ];
-        assert_eq!(
-            judge(&replies, 1.0, 10),
-            Verdict::Throttled {
-                after: Duration::from_secs(7),
-                code: "ip_rate_limited".into()
-            }
-        );
-    }
-
-    #[test]
-    fn a_stage_mostly_served_from_cache_is_saturated_not_clean() {
-        let replies: Vec<_> = (0..10)
-            .map(|i| {
-                if i < 5 {
-                    ok(i)
-                } else {
-                    (Duration::from_secs(i), Reply::CacheHit)
-                }
-            })
-            .collect();
-        assert_eq!(
-            judge(&replies, 1.0, 10),
-            Verdict::Saturated { origin_share: 0.5 }
-        );
-    }
-
-    #[test]
-    fn a_stage_that_did_not_reach_its_rate_is_under_driven_not_clean() {
-        // 5 replies in 10 s at a 1 req/s target is half the rate: a clean
-        // verdict here would pin a number the host was never asked for.
-        let replies: Vec<_> = (0..5).map(ok).collect();
-        assert_eq!(
-            judge(&replies, 1.0, 10),
-            Verdict::UnderDriven { achieved: 0.5 }
-        );
-        let replies: Vec<_> = (0..10).map(ok).collect();
-        assert_eq!(judge(&replies, 1.0, 10), Verdict::Clean);
-    }
-
-    #[test]
-    fn pin_is_the_last_clean_stage_before_the_first_unclean_one() {
-        let stages = vec![
-            (5.0, Verdict::Clean),
-            (10.0, Verdict::Clean),
-            (
-                15.0,
-                Verdict::Throttled {
-                    after: Duration::from_secs(3),
-                    code: "x".into(),
-                },
-            ),
-            (20.0, Verdict::Clean),
-        ];
-        assert_eq!(pin(&stages), Some(100));
-        assert_eq!(pin(&[(5.0, Verdict::Invalid { errors: 1 })]), None);
-    }
-
-    #[test]
-    fn pacer_never_hands_out_a_slot_in_the_past() {
-        let pacer = Pacer::new(Duration::from_millis(10));
-        let start = Instant::now();
-        pacer.reserve(start);
-        let later = start + Duration::from_secs(10);
-        assert_eq!(pacer.reserve(later), later);
-        assert_eq!(pacer.reserve(later), later + Duration::from_millis(10));
-    }
-
     #[test]
     fn a_ramp_takes_exactly_one_route() {
         let err = Config::from_args(["--route", "klines,trades"].map(String::from).into_iter())
@@ -840,17 +504,6 @@ mod tests {
         )
         .unwrap_err();
         assert!(err.contains("at least 1"));
-    }
-
-    #[test]
-    fn the_throttled_path_is_read_off_the_retry_loop_message() {
-        assert_eq!(
-            throttled_path(
-                "Retriable status 429 Too Many Requests on /v1/info/trades, retry 1 after 500ms"
-            ),
-            Some("/v1/info/trades")
-        );
-        assert_eq!(throttled_path("no path here"), None);
     }
 
     #[test]

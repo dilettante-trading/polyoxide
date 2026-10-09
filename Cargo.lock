@@ -4108,8 +4108,6 @@ dependencies = [
  "specta",
  "thiserror 2.0.18",
  "tokio",
- "tracing",
- "tracing-subscriber",
  "url",
 ]
 
@@ -4151,7 +4149,6 @@ dependencies = [
  "tokio",
  "tokio-tungstenite",
  "tracing",
- "tracing-subscriber",
  "url",
 ]
 
@@ -4232,11 +4229,16 @@ name = "polyoxide-test-support"
 version = "0.38.1"
 dependencies = [
  "dotenvy",
+ "mockito",
  "polyoxide-core",
  "polyoxide-venue",
  "reqwest 0.12.28",
+ "serde",
  "serde_json",
  "tokio",
+ "tracing",
+ "tracing-subscriber",
+ "url",
 ]
 
 [[package]]
