@@ -13,7 +13,7 @@ Source: <https://docs.polymarket.com/api-reference/rate-limits>, re-fetched 2026
 An earlier revision of this page carried stale trading numbers (`POST /order` at
 3,500/10s rather than 5,000, `DELETE /order` with no sustained window at all).
 `polymarket::clob_limits()` in `polyoxide-core` is pinned against the table
-below by the `documented_limits` tests.
+below by the `documented_limits` tests in `polyoxide-core/tests/polymarket_limits.rs`.
 
 ## General
 

@@ -43,6 +43,6 @@ Upstream also publishes a 900/10s cap shared across `/markets` + `/events`
 listing. polyoxide deliberately does not model it: the per-endpoint caps sum to
 300 + 500 = 800, so the group cap can never bind. The
 `the_markets_plus_events_group_cap_can_never_bind` test in
-`polyoxide-core/src/rate_limit.rs` watches that arithmetic — if either
+`polyoxide-core/tests/polymarket_limits.rs` watches that arithmetic — if either
 per-endpoint cap is raised upstream, the omission stops being safe and the shared
 bucket has to be added.
