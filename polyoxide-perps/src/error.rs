@@ -68,13 +68,13 @@ impl VenueError {
     }
 
     /// Whether re-sending the same request could plausibly succeed: a 408,
-    /// a 425, a 429 or any 5xx.
+    /// a 425, a 429 or any 5xx, by [`polyoxide_venue::class_for_status`].
     ///
-    /// Mirrors [`ApiError::is_retriable`] status for status, so a response
+    /// The same rule as [`ApiError::is_retriable`]'s, so a response
     /// classifies the same whether or not its body had the venue shape;
     /// `venue_and_api_errors_agree_on_retriability` pins the two together.
     pub fn is_retriable(&self) -> bool {
-        matches!(self.status, 408 | 425 | 429) || self.status >= 500
+        class_for_status(self.status).is_some_and(|c| c.is_retriable())
     }
 }
 

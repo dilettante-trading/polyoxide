@@ -87,22 +87,24 @@ impl ApiError {
     /// [`polyoxide_venue::Classify::is_retriable`] instead, which reads the
     /// error's class and answers the same way for every crate. This method
     /// remains until Epic 3 removes it, and may disagree with the class: it
-    /// calls a 408 in [`ApiError::Api`] and a transport failure that is neither
-    /// a connect nor a timeout final, and a status of 600 or more retriable.
+    /// calls a transport failure that is neither a connect nor a timeout
+    /// final.
     ///
-    /// Retriable: rate limits, timeouts, connection failures, `425 Too Early`
-    /// (Polymarket's matching engine restarting), and any 5xx. Not retriable:
-    /// authentication failures, validation failures, and local encode/decode errors —
-    /// all of which are deterministic for a given request.
+    /// Retriable: rate limits, timeouts, connection failures, and the statuses
+    /// [`polyoxide_venue::class_for_status`] classes retriable: `408`, `425 Too
+    /// Early` (Polymarket's matching engine restarting), `429` and any 5xx. Not
+    /// retriable: authentication failures, validation failures, and local
+    /// encode/decode errors — all of which are deterministic for a given request.
     ///
     /// Note this describes the *error*, not the *operation*: a retriable error on a
     /// non-idempotent request (order placement) still needs caller-side judgement
     /// about whether resubmitting is safe.
     pub fn is_retriable(&self) -> bool {
         match self {
-            // 425 Too Early is the matching engine restarting; 5xx is a server fault.
-            // Both are documented upstream as "retry with exponential backoff".
-            Self::Api { status, .. } => *status == 425 || *status >= 500,
+            // polyoxide-venue's one status rule: 425 Too Early is the matching
+            // engine restarting and 5xx a server fault, both documented upstream
+            // as "retry with exponential backoff".
+            Self::Api { status, .. } => class_for_status(*status).is_some_and(|c| c.is_retriable()),
             Self::RateLimit(_) | Self::Timeout => true,
             Self::Network(e) => e.is_timeout() || e.is_connect(),
             Self::Authentication(_) | Self::Validation(_) => false,
@@ -428,20 +430,20 @@ mod tests {
             (api(401), Class::Unauthorized, true, false),
             (api(403), Class::Unauthorized, true, false),
             (api(404), refusal.clone(), true, false),
-            (api(408), unavailable.clone(), true, false),
+            (api(408), unavailable.clone(), true, true),
             (api(418), Class::Restricted, true, false),
             (api(425), unavailable.clone(), true, true),
             (
                 api(429),
                 Class::RateLimited { retry_after: None },
                 true,
-                false,
+                true,
             ),
             // A region block is the venue answering as designed.
             (api(451), Class::Restricted, false, false),
             (api(500), unavailable.clone(), true, true),
             (api(503), unavailable.clone(), true, true),
-            (api(600), Class::Decode, true, true),
+            (api(600), Class::Decode, true, false),
             (
                 ApiError::Authentication("no".into()),
                 Class::Unauthorized,
@@ -521,9 +523,9 @@ mod tests {
                 class.is_retriable(),
                 "{err:?}"
             );
-            // Pinned separately: the two disagree on a 408 or a status of 600
-            // or more in `Api`, and on a transport failure that is neither a
-            // connect nor a timeout, until Epic 3 removes the inherent method.
+            // Pinned separately: the two disagree on a transport failure that
+            // is neither a connect nor a timeout, until Epic 3 removes the
+            // inherent method.
             assert_eq!(err.is_retriable(), inherent, "{err:?}");
         }
     }

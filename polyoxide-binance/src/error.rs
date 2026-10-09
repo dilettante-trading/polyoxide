@@ -93,14 +93,17 @@ impl BinanceError {
 
     /// Whether re-sending the same request could plausibly succeed.
     ///
-    /// A `429`, and a `408`, `425` or 5xx however its body is shaped, are, as
-    /// core's `ApiError::is_retriable` says for those statuses. A ban, a region
-    /// block and a firewall refusal are not: sending again does not change
-    /// them, and sending after a `418` lengthens the ban.
+    /// A `429`, and a `408`, `425` or 5xx however its body is shaped, are, by
+    /// [`polyoxide_venue::class_for_status`], the rule core's
+    /// `ApiError::is_retriable` also uses. A ban, a region block and a firewall
+    /// refusal are not: sending again does not change them, and sending after a
+    /// `418` lengthens the ban.
     pub fn is_retriable(&self) -> bool {
         match self {
             Self::Api(err) => err.is_retriable(),
-            Self::Venue { status, .. } => matches!(*status, 408 | 425) || *status >= 500,
+            Self::Venue { status, .. } => {
+                class_for_status(*status).is_some_and(|c| c.is_retriable())
+            }
             Self::RateLimited { .. } => true,
             Self::IpBanned { .. } | Self::RegionBlocked { .. } | Self::Forbidden { .. } => false,
         }
