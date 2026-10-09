@@ -1,7 +1,7 @@
 use std::sync::Arc;
 use std::time::Duration;
 
-use reqwest::{Method, StatusCode};
+use reqwest::Method;
 use tokio::sync::{OwnedSemaphorePermit, Semaphore};
 use url::Url;
 
@@ -9,8 +9,8 @@ use reqwest::header::RETRY_AFTER;
 
 use crate::error::ApiError;
 use crate::hooks::{
-    DefaultRetryPolicy, DynRetryPolicy, DynThrottle, NoThrottle, RequestMeta, RequestParts,
-    RetryPolicy, Throttle,
+    DefaultRetryPolicy, DynRetryPolicy, DynThrottle, NoThrottle, RequestParts, RetryPolicy,
+    Throttle,
 };
 use crate::rate_limit::{RateLimiter, RetryConfig};
 
@@ -94,25 +94,6 @@ impl HttpClient {
         })
     }
 
-    /// Charge the throttle for one request to `path`, as [`send`](Self::send)
-    /// does for each attempt. `None` is charged as `GET`.
-    ///
-    /// Transitional: relay's three hand-written loops call it until Story 3.5
-    /// moves them onto [`send`](Self::send). The clob, gamma and data pings
-    /// and gamma's `post_json` called it until DRIFT R8 moved them onto
-    /// [`send`](Self::send) too. It is removed with its last caller, and
-    /// `docs/s1-removals.md` names [`send`](Self::send) as its replacement.
-    pub async fn acquire_rate_limit(&self, path: &str, method: Option<&Method>) {
-        let meta = RequestMeta {
-            method: method.unwrap_or(&Method::GET),
-            path,
-            query: &[],
-            costs: &[],
-        };
-        // A request with no costs leaves a throttle nothing to refuse.
-        let _ = self.throttle.acquire(&meta).await;
-    }
-
     /// Acquire a concurrency permit, if a limiter is configured.
     ///
     /// The returned permit **must** be held until the HTTP response has been
@@ -132,51 +113,6 @@ impl HttpClient {
                 .await
                 .expect("concurrency semaphore is never closed"),
         )
-    }
-
-    /// Check if a response should be retried; returns backoff duration if yes.
-    ///
-    /// Retries `429` and `425` while `attempt` is below `max_retries`, after
-    /// [`RetryConfig::retry_delay`] for the attempt: Polymarket's retry set,
-    /// which [`send`](Self::send) takes from
-    /// [`PolymarketRetryPolicy`](crate::polymarket::PolymarketRetryPolicy)
-    /// instead, whose documentation says why 5xx is not in it.
-    ///
-    /// Transitional: no crate calls it since Stories 3.4 to 3.6 moved the
-    /// hand-written loops onto [`send`](Self::send), only its own tests. It
-    /// is removed with them, and `docs/s1-removals.md` names
-    /// [`send`](Self::send) as its replacement.
-    pub fn should_retry(
-        &self,
-        status: StatusCode,
-        attempt: u32,
-        retry_after: Option<&str>,
-    ) -> Option<Duration> {
-        let retriable = status == StatusCode::TOO_MANY_REQUESTS || status == StatusCode::TOO_EARLY;
-        if !retriable || attempt >= self.retry_config.max_retries {
-            return None;
-        }
-        Some(self.retry_config.retry_delay(attempt, retry_after))
-    }
-
-    /// Record that the server rate-limited us, so every request sharing this
-    /// client's throttle waits — not just the one that saw the 429.
-    ///
-    /// Holds the throttle for [`RetryConfig::retry_delay`] at attempt 0, as
-    /// [`send`](Self::send)'s policies do. It is a no-op for any status other
-    /// than 429, and for a client built without a throttle. Call it once per
-    /// response, before [`should_retry`](Self::should_retry) and whatever it
-    /// answers: a request with no retry left still has to publish the 429.
-    ///
-    /// Transitional: clob's and relay's hand-written loops call it until
-    /// Stories 3.4 and 3.5 move them onto [`send`](Self::send), which holds
-    /// through its policy. It is removed with its last caller, and
-    /// `docs/s1-removals.md` names [`send`](Self::send) as its replacement.
-    pub fn note_rate_limited(&self, status: StatusCode, retry_after: Option<&str>) {
-        if status == StatusCode::TOO_MANY_REQUESTS {
-            self.throttle
-                .hold(self.retry_config.retry_delay(0, retry_after));
-        }
     }
 
     /// GET a URL and return the raw response body as bytes.
@@ -359,6 +295,7 @@ impl Default for HttpClientBuilder {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use reqwest::StatusCode;
 
     // ── Polymarket's retry decision and the retry delay ──────────
     //

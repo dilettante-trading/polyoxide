@@ -38,6 +38,9 @@ To remove a public item in a PR:
 - `polyoxide-relay enum_variant_missing: variant RelayError::RateLimit (src/error.rs)` Story 3.5 (DRIFT R7): it was never constructed; a relayer 429 is `RelayError::Api(ApiError::RateLimit(_))`, classed `RateLimited`.
 - `polyoxide-relay enum_variant_missing: variant RelayError::Core (src/error.rs)` Story 3.5 (DRIFT R7): `RelayError::Api` now wraps `ApiError` itself, and `From<ApiError>` builds it.
 - `polyoxide-binance struct_missing: struct polyoxide_binance::usdm::request::WeightedRequest (src/usdm/request.rs)` Story 3.6: each route returns its own builder over core's `Request`, with the same `cost()` and `send()`: `GetTime`, `GetExchangeInfo`, `GetFundingInfo`, `GetTicker24h`, `GetTickers24h`, `GetPremiumIndex`, `GetPremiumIndices` and `GetOpenInterest`, beside the existing `GetKlines`, `GetFundingRate`, `GetAggTrades` and `GetDepth`.
+- `polyoxide-core inherent_method_missing: HttpClient::should_retry (src/client.rs)` Stories 3.4 to 3.6: send through `HttpClient::send`, whose client's `RetryPolicy` decides (`polymarket::PolymarketRetryPolicy` retries 429 and 425); for the delay alone, `RetryConfig::retry_delay`.
+- `polyoxide-core inherent_method_missing: HttpClient::note_rate_limited (src/client.rs)` Stories 3.4 and 3.5: send through `HttpClient::send`, which applies the policy's hold to the throttle; to hold a throttle by hand, `Throttle::hold`, or `RateLimiter::begin_cooldown`.
+- `polyoxide-core inherent_method_missing: HttpClient::acquire_rate_limit (src/client.rs)` Stories 3.4 and 3.5: send through `HttpClient::send`, which charges the throttle for every attempt; to charge a `RateLimiter` by hand, `RateLimiter::acquire`.
 
 ## Doc-hidden paths consumers import
 
