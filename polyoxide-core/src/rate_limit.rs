@@ -150,10 +150,13 @@ struct RateLimiterInner {
 /// Depth is not free capacity; it is borrowed against the rate. Satisfying the
 /// bound with a burst of `B` costs `B` requests of sustained allowance forever,
 /// so the minimum depth is also the maximum throughput: 149/10s here rather
-/// than the 135/10s a 10% burst would leave. It is the safer shape too — the
-/// client never concentrates requests into an instant, including on release
-/// from a cooldown, when every parked request resumes at once and a burst
-/// allowance would fire them as a spike immediately after a ban.
+/// than the 135/10s a 10% burst would leave. It is the safer shape too: a
+/// request that arrives during a hold waits before any bucket and is paced
+/// when the hold ends, where a burst allowance would fire every one of them
+/// as a spike immediately after a ban. Only a request already waiting on a
+/// bucket when the hold began takes its token during the hold; those are
+/// released together when it ends, so that burst is at most the requests in
+/// flight then (on the send loop, the concurrency permits).
 ///
 /// `count < 2` degenerates to admitting 2 per window, since a bucket cannot
 /// hold less than one token. No published row is that small.
@@ -378,8 +381,13 @@ pub struct QuotaRow<'a> {
 /// - A token bucket admits its depth *plus* everything its refill adds. A
 ///   bucket holding `count` tokens and refilling `count` per `period` admits
 ///   twice the quota in one window. Depth is borrowed against the rate, so
-///   the least depth is also the most throughput, and nothing parked behind
-///   a hold resumes as a spike.
+///   the least depth is also the most throughput.
+/// - A request that arrives during a hold waits before any bucket, and is
+///   paced when the hold ends. A request already waiting on a bucket when the
+///   hold begins takes its token, then waits out the hold too, and is
+///   released with the others when it ends: that burst is at most the
+///   requests in flight when the hold began (on the send loop, the
+///   concurrency permits).
 /// - A published count is reachable as a burst and not as a rate. On
 ///   Polymarket's `/closed-positions` (150 per 10 s) a sustained 95% was
 ///   refused and 90% ran clean for 180 s, so a bucket keeps a tenth back.
@@ -422,6 +430,12 @@ pub struct WindowQuotaTable {
 
 impl WindowQuotaTable {
     /// A table whose general bucket admits `count` requests per `period`.
+    ///
+    /// # Panics
+    ///
+    /// When `period` is too short to pace `count`, since a bucket that paces
+    /// at an interval of zero would never hold anyone back: a zero `period`,
+    /// or one shorter than a nanosecond per request it paces.
     pub fn new(count: u32, period: Duration) -> Self {
         let mut table = Self {
             id: TABLES.fetch_add(1, Ordering::Relaxed),
@@ -435,6 +449,12 @@ impl WindowQuotaTable {
 
     /// Make a bucket admitting `count` requests per `period`, for rows to
     /// name.
+    ///
+    /// # Panics
+    ///
+    /// When `period` is too short to pace `count`, since a bucket that paces
+    /// at an interval of zero would never hold anyone back: a zero `period`,
+    /// or one shorter than a nanosecond per request it paces.
     pub fn bucket(&mut self, count: u32, period: Duration) -> BucketId {
         let id = BucketId {
             table: self.id,
@@ -478,6 +498,12 @@ impl WindowQuotaTable {
 
     /// Add a [`Matching::Prefix`] row with a bucket of its own, admitting
     /// `count` requests per `period`.
+    ///
+    /// # Panics
+    ///
+    /// When `period` is too short to pace `count`, since a bucket that paces
+    /// at an interval of zero would never hold anyone back: a zero `period`,
+    /// or one shorter than a nanosecond per request it paces.
     pub fn prefix(
         &mut self,
         pattern: &'static str,

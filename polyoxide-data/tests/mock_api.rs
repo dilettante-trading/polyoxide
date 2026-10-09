@@ -1695,3 +1695,44 @@ async fn approvals_returns_contracts() {
     assert_eq!(resp.contracts[0].id, "UsdcExchange");
     mock.assert_async().await;
 }
+
+#[tokio::test]
+async fn the_builder_installs_polymarkets_retry_policy_so_a_425_is_retried() {
+    // Core's own default policy does not retry a 425 (AD-17); only the builder's
+    // `with_retry_policy(PolymarketRetryPolicy)` makes this succeed.
+    let mut server = Server::new_async().await;
+    let early = server
+        .mock("GET", "/closed-positions")
+        .match_query(Matcher::Any)
+        .with_status(425)
+        .expect(1)
+        .create_async()
+        .await;
+    let ok = server
+        .mock("GET", "/closed-positions")
+        .match_query(Matcher::Any)
+        .with_status(200)
+        .with_header("content-type", "application/json")
+        .with_body(r#"[]"#)
+        .expect(1)
+        .create_async()
+        .await;
+
+    let client = DataApi::builder()
+        .base_url(server.url())
+        .with_retry_config(polyoxide_core::RetryConfig {
+            max_retries: 3,
+            initial_backoff_ms: 1,
+            max_backoff_ms: 10,
+        })
+        .build()
+        .unwrap();
+    client
+        .user("0xaddr")
+        .closed_positions()
+        .send()
+        .await
+        .expect("a 425 is the matching engine restarting, retried to the success");
+    early.assert_async().await;
+    ok.assert_async().await;
+}

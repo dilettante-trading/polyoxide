@@ -156,9 +156,13 @@ impl CapacityBucket {
     ///
     /// # Errors
     ///
-    /// [`Refused`] at once when `exact` and `units` exceed the capacity of a
-    /// bucket that is not provisional. Nothing is taken.
+    /// [`Refused`] at once, before any hold, when `exact` and `units` exceed
+    /// the capacity of a bucket that is not provisional. Nothing is taken.
     pub async fn acquire(&self, units: u32, exact: bool) -> Result<(), Refused> {
+        // No wait can make room for it, so it is not made to wait out a hold.
+        if let Some(refused) = self.refuses(units, exact) {
+            return Err(refused);
+        }
         self.inner.hold.wait().await;
         loop {
             // Made before the look, so a `confirm` between the look and the
@@ -174,6 +178,16 @@ impl CapacityBucket {
         // AD-23: a hold set while this call waited for tokens is honoured.
         self.inner.hold.wait().await;
         Ok(())
+    }
+
+    /// The refusal of an exact cost a confirmed bucket can never hold.
+    fn refuses(&self, units: u32, exact: bool) -> Option<Refused> {
+        let state = self.lock();
+        (exact && !state.provisional && units > state.capacity).then(|| Refused {
+            layer: self.inner.layer,
+            units,
+            capacity: state.capacity,
+        })
     }
 
     /// One look at the bucket: take the tokens, refuse, or say how long to
@@ -325,6 +339,26 @@ mod tests {
             timed(&bucket, 10).await,
             Duration::ZERO,
             "a refusal took tokens"
+        );
+    }
+
+    #[tokio::test(start_paused = true)]
+    async fn an_exact_cost_above_capacity_is_refused_without_waiting_out_a_hold() {
+        let bucket = bucket(10, 1);
+        bucket.hold().extend(Duration::from_secs(60));
+        let t = Instant::now();
+        assert_eq!(
+            bucket.acquire(11, true).await,
+            Err(Refused {
+                layer: LAYER,
+                units: 11,
+                capacity: 10
+            })
+        );
+        assert_eq!(
+            t.elapsed(),
+            Duration::ZERO,
+            "the refusal waited out the hold"
         );
     }
 

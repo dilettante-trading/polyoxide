@@ -2,7 +2,7 @@
 title: 'Stories 3.1, 3.2 and 3.3: One send loop, the public window-quota table, and capacity buckets with Polymarket''s composed throttle'
 type: 'refactor'
 created: '2026-10-09'
-status: 'in-progress'
+status: 'in-review'
 route: 'dispatch'
 review_loop_iteration: 0
 baseline_commit: '9cca9971a370a66e25827c6632ceb543e0c7a055'
@@ -504,3 +504,60 @@ Commits 0–2 (`e05410c`, `0461462`, `50eca25`) were made by the first implement
 ## Spec Change Log
 
 ## Review Triage Log
+
+All three layers ran: blind (17 findings), edge-case (16) and verification-gap (2 gaps, 1 other finding). Of the 36, 3 are medium, 30 low and 3 false; none is maybe-false. No finding needs the spec changed, so there is no loopback.
+Three patches correct CLAUDE.md sentences that this bundle wrote or made false. As in spec 1-6/1-8, they are patched rather than deferred, since AD-21 has each commit edit the rule it changes.
+After the patches, gamma's, data's and perps' `mock_api` each have one more test, and core's lib has one more capacity test.
+
+**Patched:**
+- **Medium:** `WindowQuotaTable`'s doc, `quota()`'s doc and CLAUDE.md:206 said nothing parked behind a hold resumes as a spike (blind). But AD-23's second wait holds back every request that took its tokens while the hold was in force, then releases them together. The behaviour is the spec's, and it beats baseline, which sent those requests into the hold. All three docs now describe it, bounded by the requests that were waiting on a bucket when the hold began.
+- **Medium:** gamma, data and perps retried a 425 only because each builder installs `PolymarketRetryPolicy`, and no test went through the builders (gap). Each crate's `mock_api.rs` now serves 425, then 200, through its public builder.
+- **Low:** CLAUDE.md:178 said every decode failure logs through `decode_json` (blind). Gamma's `post_json`, relay's nine `resp.json` reads and clob's `api/account.rs:102` do not, and the spec keeps them out of F. The sentence now names the four H3 call sites.
+- **Low:** core's README was behind the new modules, and so was CLAUDE.md:176 (blind). Patched:
+  - the README module table lacked `hooks`, `send`, `hold` and `capacity`;
+  - its `error` row lacked `Refused`;
+  - its `polymarket` row lacked `ClobThrottle`, `clob_throttle()` and `signer_cost`;
+  - CLAUDE.md:176's `Classify` list lacked `Refused`.
+- **Low:** `CapacityBucket::acquire` waited out an active hold before refusing an exact cost above a confirmed capacity (edge). The spec and the docs say it refuses at once. The refusal is now checked before the first hold wait, with a test. `ClobThrottle` still refuses after its hold and its IP charge, in the order the spec gives.
+- **Low:** MUTANTS row (c), the re-check, cited `rate_limit.rs:553` (blind). Its snippet also stands at :543, so the ledger could not see the first wait shift onto :553. The row now cites :551-553, starting at the unique `// AD-23:` line, and is re-proved.
+- **Low:** `WindowQuotaTable::new`, `bucket` and `prefix` panic on a zero or too-short period, and had no `# Panics` section (blind, edge). Each has one now.
+
+**Deferred** (deferred-work.md):
+- **The hold WARN reads `no retry left` for any hold that is not retried** (blind, edge, gap). So a custom policy's `Fail` with a hold misreads, and so would Binance's 418 in Story 3.6. G8 rewords it, as G's draft plans. The other half of the blind finding is false: baseline logged nothing for a 429 on the last attempt, so `observe.rs` counts the same as before.
+- **`note_rate_limited` lost its only covering test when `send_raw` stopped calling it** (gap, medium). Clob's loop and relay's three loops still call it. Bundle G removes it with those four callers (G11), and G's clob and relay 429 rows cover the hold through the loop. S1 ships as one release (AD-16), so the gap does not reach a release.
+- **`send` returns `Ok(response)` for `Fail`, against AD-8** (blind). Only this spec's [RISK] note says Story 3.11 changes that. Recorded for 3.11, which the frozen Decision names.
+- **No `send_loop` test sends a body or fails `sign`** (blind). Bundle G's clob and relay moves are the first callers of both, and G's I/O matrix tests both. The rest of that finding is false:
+  - the server reads `x-attempt` in `sign_runs_on_every_attempt_with_its_number`;
+  - `polymarket_throttle.rs` sends POSTs;
+  - deleting `drop(permit)` would hold the permit through the 1 s sleep that `mock_request.rs`'s `retry_releases_permit_during_backoff` checks.
+
+**Rejected:**
+- **A cost naming a layer the throttle lacks is dropped silently** (blind, edge). Low. `signer_cost` yields only the throttle's own layers, nothing passes costs before bundle G, and the fix is a guard.
+- **`acquire_rate_limit` discards `Refused`** (blind, edge). Low:
+  - `RateLimiter` and `NoThrottle` never refuse a request with no costs;
+  - the spec keeps the transitional signatures unchanged;
+  - G11 removes the method.
+- **`CapacityBucket` is not fair between small and large costs** (blind, edge). Low. Baseline's governor `until_n_ready` races the same way, and the fix is a waiter queue.
+- **A provisional bucket can wait forever, inexact costs included** (blind, edge). Low, and specified:
+  - the spec's I/O row has an above-capacity cost wait for `confirm` or `resize`;
+  - Implementation Notes record the choice for inexact costs;
+  - no shipped caller makes a provisional bucket.
+- **A composed throttle charges the IP layer before the signer layer refuses** (blind, edge). Low. The spec puts the refusal after the IP charge, as clob's loop does today, and it costs one IP token per refused batch.
+- **Clob callers stop matching `BurstCapacityExceeded`** (blind). False today: no clob path returns `ApiError::Refused`, and G4 plans `burst_from_refused` with its test.
+- **The new public types are exhaustive, so each change is another breaking release** (blind). False. S1 ships as one release, or as few as practical, after the error reshape (AD-16), and 3.11 owns `ApiError`'s shape.
+- **`signer_limit` and `polymarket` import each other** (blind). False. Modules within one crate may import each other, and `SignerLimiter` is Polymarket code that moves with the module in S2.
+- **`WindowQuotaTable`'s other edges** (blind), not patched:
+  - the order of `effective_quota(&Method, path)` against `acquire(path, Option<&Method>)` is false as a defect, since both signatures are the spec's Decisions;
+  - a missing `Debug` and a row with no buckets are low misuse, and their fixes add surface or a guard.
+- **The sweep skips the general bucket and perps** (blind). Low, and inherited from baseline. Every bucket is built by the one `quota()`, so row (d)'s mutant already fails on the row buckets, and NFR7 keeps the moved test's assertions.
+- **A tier adopted mid-wait leaves the waiter on the old bucket** (edge). Low, and pre-existing: baseline cloned the governor `Arc` the same way, and the tier follows 30-day volume, so it seldom changes.
+- **A capacity of zero, a ceiling of zero, a drained limiter handed to `ClobThrottle::new`** (edge). Low misuse:
+  - the only callers pass a tier burst with `.max(1)`, a 3-day ceiling (Story 3.6) and `SignerLimiter::new()`;
+  - each fix is a guard.
+- **`LayerCharge` overstates an inexact signer charge** (edge). Low. `ClobThrottle::observe` ignores the charge, so nothing reads it.
+- **Three edges of a failed attempt** (edge). Low:
+  - a refusal or a sign failure on a retry hides the earlier 429;
+  - a charge is spent when `sign` or the transport fails;
+  - a path that `sign` rewrites is ignored.
+
+  Nothing refuses or signs before bundle G. Baseline also charged before a transport error, and `sign`'s contract is to add headers or query parameters.
