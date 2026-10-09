@@ -571,7 +571,7 @@ async fn a_hold_with_no_retry_left_warns() {
     assert_eq!(
         message,
         &format!(
-            "Status 429 Too Many Requests on {path}, no retry left: every request held {held}ms"
+            "Status 429 Too Many Requests on {path}, not retried: every request held {held}ms"
         )
     );
 }

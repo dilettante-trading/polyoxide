@@ -1,6 +1,7 @@
 //! Binance USDⓈ-M futures on `fapi.binance.com`.
 
 pub mod api;
+mod policy;
 pub mod request;
 pub mod types;
 #[cfg(feature = "ws")]
@@ -12,11 +13,12 @@ use polyoxide_core::{
 
 use crate::{
     error::BinanceError,
-    usdm::api::{exchange::ExchangeApi, health::Health, market::MarketApi},
+    usdm::{
+        api::{exchange::ExchangeApi, health::Health, market::MarketApi},
+        policy::UsdmRetryPolicy,
+    },
     weight::WeightBudget,
 };
-
-pub use request::WeightedRequest;
 
 /// Production USDⓈ-M futures REST host.
 pub const DEFAULT_BASE_URL: &str = "https://fapi.binance.com";
@@ -46,7 +48,6 @@ impl Usdm {
     pub fn health(&self) -> Health {
         Health {
             http: self.http.clone(),
-            budget: self.budget.clone(),
         }
     }
 
@@ -54,7 +55,6 @@ impl Usdm {
     pub fn exchange(&self) -> ExchangeApi {
         ExchangeApi {
             http: self.http.clone(),
-            budget: self.budget.clone(),
         }
     }
 
@@ -63,7 +63,6 @@ impl Usdm {
     pub fn market(&self) -> MarketApi {
         MarketApi {
             http: self.http.clone(),
-            budget: self.budget.clone(),
         }
     }
 
@@ -143,20 +142,26 @@ impl UsdmBuilder {
     /// Build the client.
     ///
     /// It asks for gzip, since `exchangeInfo` is 1.15 MB raw and 51 KB
-    /// compressed, and has no core `RateLimiter`: the [`WeightBudget`] paces
-    /// every request instead.
+    /// compressed, and has no core `RateLimiter`: the [`WeightBudget`] is its
+    /// throttle, and paces every request instead. Its retry policy holds that
+    /// budget on a `429` or a `418`, so every client sharing it waits.
     pub fn build(self) -> Result<Usdm, BinanceError> {
+        let budget = self.budget.unwrap_or_default();
         let mut builder = HttpClientBuilder::new(&self.base_url)
             .timeout_ms(self.timeout_ms)
             .pool_size(self.pool_size)
             .with_max_concurrent(self.max_concurrent.unwrap_or(DEFAULT_MAX_CONCURRENT))
+            .with_throttle(budget.clone())
+            .with_retry_policy(UsdmRetryPolicy {
+                budget: budget.clone(),
+            })
             .gzip(true);
         if let Some(config) = self.retry_config {
             builder = builder.with_retry_config(config);
         }
         Ok(Usdm {
             http: builder.build()?,
-            budget: self.budget.unwrap_or_default(),
+            budget,
         })
     }
 }

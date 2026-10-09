@@ -702,3 +702,44 @@ async fn each_route_is_charged_its_own_weight() {
     client.market().tickers_24h().send().await.unwrap();
     assert_eq!(client.weight_budget().used(), 40);
 }
+
+#[tokio::test]
+async fn every_usdm_on_one_budget_is_held_by_one_ban() {
+    // Binance bans an IP, not a client: a 418 on one Usdm holds every Usdm
+    // built with the same budget, which is the throttle they all send through.
+    let mut server = Server::new_async().await;
+    let banned = failing(
+        &mut server,
+        418,
+        &[("retry-after", "1")],
+        r#"{"code":-1003,"msg":"banned"}"#,
+    )
+    .await
+    .expect(1);
+    let budget = polyoxide_binance::WeightBudget::new();
+    let client = |budget: &polyoxide_binance::WeightBudget| {
+        Usdm::builder()
+            .base_url(server.url())
+            .weight_budget(budget.clone())
+            .build()
+            .unwrap()
+    };
+    let (first, second) = (client(&budget), client(&budget));
+
+    let err = first
+        .market()
+        .open_interest(&btc())
+        .send()
+        .await
+        .unwrap_err();
+    assert!(matches!(err, BinanceError::IpBanned { .. }), "{err:?}");
+    banned.assert_async().await;
+
+    let start = Instant::now();
+    let _ = second.health().time().send().await;
+    let held = start.elapsed();
+    assert!(
+        held >= Duration::from_millis(900) && held < Duration::from_secs(5),
+        "the other client went after {held:?}, inside the ban"
+    );
+}

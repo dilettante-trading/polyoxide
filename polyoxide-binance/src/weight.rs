@@ -10,8 +10,13 @@
 use std::sync::{Arc, Mutex, MutexGuard};
 use std::time::{Duration, SystemTime, UNIX_EPOCH};
 
+use polyoxide_core::{
+    AttemptInfo, Charge, Hold, LayerCharge, LayerId, Refused, RequestMeta, ResponseMeta, Throttle,
+    WindowQuotaTable,
+};
 use tokio::time::Instant;
 
+use crate::usdm::request::USED_WEIGHT_HEADER;
 use crate::usdm::types::DepthLimit;
 
 /// `exchangeInfo`'s `REQUEST_WEIGHT` limit per minute, per IP.
@@ -41,6 +46,14 @@ fn after_reserve(published: u32) -> u32 {
     published - published.div_ceil(RESERVED_FRACTION)
 }
 
+/// The per-minute request-weight layer of a [`WeightBudget`], as a request's
+/// [`polyoxide_core::Cost`] names it.
+pub const WEIGHT_LAYER: LayerId = LayerId("binance-weight");
+
+/// The funding routes' own layer of a [`WeightBudget`], as a request's
+/// [`polyoxide_core::Cost`] names it.
+pub const FUNDING_LAYER: LayerId = LayerId("binance-funding");
+
 /// What one request costs, and which limit it draws on.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum Cost {
@@ -48,6 +61,22 @@ pub enum Cost {
     Weight(u32),
     /// One request against the funding routes' own limit.
     Funding,
+}
+
+/// The cost a request builder hands core's send loop: its weight against
+/// [`WEIGHT_LAYER`], or one request against [`FUNDING_LAYER`]. Both are exact.
+impl From<Cost> for polyoxide_core::Cost {
+    fn from(cost: Cost) -> Self {
+        let (layer, units) = match cost {
+            Cost::Weight(weight) => (WEIGHT_LAYER, weight),
+            Cost::Funding => (FUNDING_LAYER, 1),
+        };
+        Self {
+            layer,
+            units,
+            exact: true,
+        }
+    }
 }
 
 /// A REST route, with the parameters its weight depends on.
@@ -160,7 +189,12 @@ impl Route {
 ///   documented 500 requests per 5 minutes, paced here at 450 with a depth of
 ///   one, so they never burst, not even when a cooldown ends.
 /// - **Cooldown.** A `429` or `418` holds every request, on both limits, for
-///   the delay the server asked for. A cooldown is only ever extended.
+///   the delay the server asked for. A cooldown is core's [`Hold`], with a
+///   ceiling of [`MAX_COOLDOWN`], so it is only ever extended.
+/// - **Throttle.** The budget is the [`Throttle`] every [`Usdm`](crate::Usdm)
+///   built with it sends through: a request's weight or funding cost is
+///   charged before it is sent, and each response's `X-MBX-USED-WEIGHT-1M` is
+///   applied to the minute it was charged in.
 /// - **In flight.** A response's header is applied only to the minute its
 ///   request was charged in, so a request in flight across a minute boundary is
 ///   counted by the server in a minute this budget no longer sees. The reserve
@@ -178,6 +212,7 @@ struct Inner {
     per_minute: u32,
     funding_interval: Duration,
     clock: Clock,
+    hold: Hold,
     state: Mutex<State>,
 }
 
@@ -186,7 +221,6 @@ struct State {
     /// The UTC minute (milliseconds / 60 000) that `used` counts.
     minute: u64,
     used: u32,
-    cooldown_until: Option<Instant>,
     next_funding: Option<Instant>,
 }
 
@@ -194,7 +228,7 @@ struct State {
 /// that minute and no other. `None` for the funding routes, which report no
 /// weight.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub(crate) struct Charge {
+pub(crate) struct MinuteCharge {
     minute: Option<u64>,
 }
 
@@ -242,22 +276,36 @@ impl WeightBudget {
     }
 
     fn with_clock(weight_per_minute: u32, funding_per_five_minutes: u32, clock: Clock) -> Self {
-        // One slot of the funding target is the bucket's depth; the rest is
-        // paced, so no five-minute window admits more than the target.
-        let funding_slots = after_reserve(funding_per_five_minutes).max(2) - 1;
         Self {
             inner: Arc::new(Inner {
                 per_minute: after_reserve(weight_per_minute),
-                funding_interval: FUNDING_PERIOD / funding_slots,
+                // One slot of the funding target is the bucket's depth; the
+                // rest is paced, so no five-minute window admits more than the
+                // target. Core's one pacing formula, on this budget's own
+                // clock.
+                funding_interval: WindowQuotaTable::paced_interval(
+                    funding_per_five_minutes,
+                    FUNDING_PERIOD,
+                ),
                 clock,
+                hold: Hold::with_ceiling(MAX_COOLDOWN),
                 state: Mutex::new(State {
                     minute: 0,
                     used: 0,
-                    cooldown_until: None,
                     next_funding: None,
                 }),
             }),
         }
+    }
+
+    /// A budget on a clock a test sets by hand, starting at `start_ms`.
+    #[cfg(test)]
+    pub(crate) fn at_ms(start_ms: u64) -> Self {
+        Self::with_clock(
+            PUBLISHED_WEIGHT_PER_MINUTE,
+            PUBLISHED_FUNDING_PER_FIVE_MINUTES,
+            Clock::Manual(Arc::new(std::sync::atomic::AtomicU64::new(start_ms))),
+        )
     }
 
     /// Whether two handles charge one budget.
@@ -283,7 +331,7 @@ impl WeightBudget {
     }
 
     /// Waits until the request can go, then charges it.
-    pub(crate) async fn acquire(&self, cost: Cost) -> Charge {
+    pub(crate) async fn acquire(&self, cost: Cost) -> MinuteCharge {
         match cost {
             Cost::Funding => loop {
                 // Wait out a cooldown before taking a slot: a slot taken first
@@ -293,7 +341,7 @@ impl WeightBudget {
                 let slot = self.reserve_funding_slot();
                 tokio::time::sleep_until(slot).await;
                 if !self.in_cooldown() {
-                    return Charge { minute: None };
+                    return MinuteCharge { minute: None };
                 }
                 // A cooldown began while this request waited for its slot: the
                 // slot is spent, and the request queues again behind it.
@@ -312,7 +360,7 @@ impl WeightBudget {
     ///
     /// An empty minute admits any weight, so a request heavier than the whole
     /// budget is sent alone rather than held forever.
-    fn try_charge(&self, weight: u32) -> Result<Charge, Duration> {
+    fn try_charge(&self, weight: u32) -> Result<MinuteCharge, Duration> {
         let now_ms = self.inner.clock.now_ms();
         let mut state = self.lock();
         // The minute only moves forward. A read that lands in an earlier minute,
@@ -325,7 +373,7 @@ impl WeightBudget {
         }
         if state.used == 0 || state.used.saturating_add(weight) <= self.inner.per_minute {
             state.used = state.used.saturating_add(weight);
-            Ok(Charge {
+            Ok(MinuteCharge {
                 minute: Some(state.minute),
             })
         } else {
@@ -334,7 +382,7 @@ impl WeightBudget {
     }
 
     /// Raises the minute's count to what the server reported for it.
-    pub(crate) fn record_used(&self, charge: Charge, used: u32) {
+    pub(crate) fn record_used(&self, charge: MinuteCharge, used: u32) {
         let Some(minute) = charge.minute else { return };
         let mut state = self.lock();
         if state.minute == minute && used > state.used {
@@ -346,40 +394,33 @@ impl WeightBudget {
     /// shortens one: concurrent requests see the same `429` milliseconds
     /// apart, and taking the latest delay would release them all early.
     pub(crate) fn begin_cooldown(&self, delay: Duration) {
-        let until = Instant::now() + delay.min(MAX_COOLDOWN);
-        let mut state = self.lock();
-        if state.cooldown_until.is_none_or(|current| until > current) {
-            state.cooldown_until = Some(until);
-        }
+        self.inner.hold.extend(delay);
     }
 
     /// Holds every request until the next UTC minute, when the weight window
     /// resets: what a `429` with no `Retry-After` and no retry left calls for.
-    /// Returns the hold, for the log.
+    /// Returns the hold. The client's retry policy asks for the same hold
+    /// through the send loop, with [`until_next_minute`](Self::until_next_minute).
+    #[cfg(test)]
     pub(crate) fn hold_until_next_minute(&self) -> Duration {
-        let now_ms = self.inner.clock.now_ms();
-        let hold = Duration::from_millis(MINUTE_MS - now_ms % MINUTE_MS);
+        let hold = self.until_next_minute();
         self.begin_cooldown(hold);
         hold
     }
 
+    /// Time to the next UTC minute on this budget's clock.
+    pub(crate) fn until_next_minute(&self) -> Duration {
+        let now_ms = self.inner.clock.now_ms();
+        Duration::from_millis(MINUTE_MS - now_ms % MINUTE_MS)
+    }
+
+    /// Waits out the cooldown, and any extension of it made meanwhile.
     async fn await_cooldown(&self) {
-        loop {
-            // Copy the deadline out so the guard is not held across the await.
-            let until = self.lock().cooldown_until;
-            match until {
-                // Loop rather than return: another response may extend the
-                // cooldown while this one sleeps.
-                Some(until) if until > Instant::now() => tokio::time::sleep_until(until).await,
-                _ => return,
-            }
-        }
+        self.inner.hold.wait().await;
     }
 
     fn in_cooldown(&self) -> bool {
-        self.lock()
-            .cooldown_until
-            .is_some_and(|until| until > Instant::now())
+        self.inner.hold.is_held()
     }
 
     fn reserve_funding_slot(&self) -> Instant {
@@ -398,6 +439,69 @@ impl WeightBudget {
             .lock()
             .unwrap_or_else(|poisoned| poisoned.into_inner())
     }
+}
+
+/// The budget as core's send loop sees it.
+///
+/// [`acquire`](Throttle::acquire) charges the request's [`WEIGHT_LAYER`] or
+/// [`FUNDING_LAYER`] cost against the minute or the funding pace, after any
+/// cooldown, and records the UTC minute a weight was charged in as its
+/// charge's `window`.
+/// [`observe`](Throttle::observe) applies `X-MBX-USED-WEIGHT-1M` to that minute
+/// alone, whatever the status. [`hold`](Throttle::hold) extends the cooldown.
+impl Throttle for WeightBudget {
+    async fn acquire(&self, meta: &RequestMeta<'_>) -> Result<Charge, Refused> {
+        let cost = meta.costs.iter().find_map(|cost| match cost.layer {
+            WEIGHT_LAYER => Some((cost.layer, Cost::Weight(cost.units))),
+            FUNDING_LAYER => Some((cost.layer, Cost::Funding)),
+            _ => None,
+        });
+        let Some((layer, cost)) = cost else {
+            // Nothing to charge, but a request still waits out a ban.
+            self.await_cooldown().await;
+            return Ok(Charge::none());
+        };
+        let charged = WeightBudget::acquire(self, cost).await;
+        Ok(Charge::none().with(LayerCharge {
+            layer,
+            units: match cost {
+                Cost::Weight(weight) => weight,
+                Cost::Funding => 1,
+            },
+            window: charged.minute,
+        }))
+    }
+
+    fn observe(&self, charge: &Charge, response: &ResponseMeta<'_>, _attempt: &AttemptInfo) {
+        let Some(used) = used_weight(response.headers) else {
+            return;
+        };
+        for layer in charge.layers() {
+            if layer.layer == WEIGHT_LAYER {
+                self.record_used(
+                    MinuteCharge {
+                        minute: layer.window,
+                    },
+                    used,
+                );
+            }
+        }
+    }
+
+    fn hold(&self, delay: Duration) {
+        self.begin_cooldown(delay);
+    }
+}
+
+/// The IP's weight used this minute, as a response reports it.
+fn used_weight(headers: &reqwest::header::HeaderMap) -> Option<u32> {
+    headers
+        .get(USED_WEIGHT_HEADER)?
+        .to_str()
+        .ok()?
+        .trim()
+        .parse()
+        .ok()
 }
 
 #[cfg(test)]

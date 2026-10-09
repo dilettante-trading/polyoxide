@@ -120,10 +120,10 @@ impl HttpClient {
     /// Returns `None` when no concurrency limit is set.
     ///
     /// [`send`](Self::send) takes one for each attempt. Transitional for any
-    /// other caller: the hand-written loops call it until Stories 3.4 to 3.6
-    /// move them onto [`send`](Self::send). It is removed from the public API
-    /// with its last outside caller, and `docs/s1-removals.md` names
-    /// [`send`](Self::send) as its replacement.
+    /// other caller: no crate calls it since Stories 3.4 to 3.6 moved the
+    /// hand-written loops onto [`send`](Self::send), but tests observe the
+    /// permit through it. It is removed from the public API once they can
+    /// observe it another way, and `docs/s1-removals.md` names [`send`](Self::send).
     pub async fn acquire_concurrency(&self) -> Option<OwnedSemaphorePermit> {
         let sem = self.concurrency_limiter.as_ref()?;
         Some(
@@ -142,9 +142,9 @@ impl HttpClient {
     /// [`PolymarketRetryPolicy`](crate::polymarket::PolymarketRetryPolicy)
     /// instead, whose documentation says why 5xx is not in it.
     ///
-    /// Transitional: clob's, relay's and Binance's hand-written loops call it
-    /// until Stories 3.4 to 3.6 move them onto [`send`](Self::send). It is
-    /// removed with its last caller, and `docs/s1-removals.md` names
+    /// Transitional: no crate calls it since Stories 3.4 to 3.6 moved the
+    /// hand-written loops onto [`send`](Self::send), only its own tests. It
+    /// is removed with them, and `docs/s1-removals.md` names
     /// [`send`](Self::send) as its replacement.
     pub fn should_retry(
         &self,

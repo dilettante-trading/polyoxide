@@ -29,7 +29,7 @@ impl HttpClient {
     ///
     /// Each retry logs a `WARN` under the `polyoxide_core` target,
     /// `Retriable status <code> on <path>, retry <n> after <ms>ms`, and so does
-    /// a hold that is not a retry: `Status <code> on <path>, no retry left:
+    /// a hold that is not a retry: `Status <code> on <path>, not retried:
     /// every request held <ms>ms`.
     ///
     /// Returns the last response, whatever its status, for the caller to
@@ -108,7 +108,7 @@ impl HttpClient {
                     // nothing is retried (DRIFT R10).
                     if let Some(hold) = decision.hold {
                         tracing::warn!(
-                            "Status {} on {}, no retry left: every request held {}ms",
+                            "Status {} on {}, not retried: every request held {}ms",
                             status,
                             parts.path,
                             hold.as_millis()

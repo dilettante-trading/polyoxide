@@ -2,7 +2,7 @@
 
 use std::time::Duration;
 
-use polyoxide_core::{truncate_for_log, ApiError};
+use polyoxide_core::{truncate_for_log, ApiError, RequestError};
 use polyoxide_venue::{class_for_status, Class, Classify};
 use serde::Deserialize;
 use thiserror::Error;
@@ -123,6 +123,28 @@ impl BinanceError {
             Self::RateLimited { retry_after } | Self::IpBanned { retry_after } => *retry_after,
             _ => None,
         }
+    }
+}
+
+/// An unsuccessful response, read whole: its status, `Retry-After` and body.
+///
+/// A `418`'s body is Binance's `-1003` text, which names when the ban ends.
+/// The error's fields have no room for it, so it is logged at WARN under
+/// `polyoxide_binance`; the send loop warns of the hold itself.
+impl RequestError for BinanceError {
+    async fn from_response(response: reqwest::Response) -> Self {
+        let status = response.status().as_u16();
+        let path = response.url().path().to_owned();
+        let retry_after = response
+            .headers()
+            .get(reqwest::header::RETRY_AFTER)
+            .and_then(|value| value.to_str().ok())
+            .map(str::to_owned);
+        let body = response.text().await.unwrap_or_default();
+        if status == 418 {
+            tracing::warn!("418 on {path}: IP banned: {}", truncate_for_log(&body));
+        }
+        Self::from_response_parts(status, retry_after.as_deref(), &body)
     }
 }
 
