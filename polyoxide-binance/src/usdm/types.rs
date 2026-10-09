@@ -8,9 +8,10 @@
 
 use std::{fmt, str::FromStr};
 
+use polyoxide_venue::positional::{drain, element, DecimalStr};
 use rust_decimal::Decimal;
 use serde::{
-    de::{self, DeserializeOwned, IgnoredAny, SeqAccess, Visitor},
+    de::{self, DeserializeOwned, SeqAccess, Visitor},
     ser::SerializeSeq,
     Deserialize, Deserializer, Serialize, Serializer,
 };
@@ -726,29 +727,6 @@ pub struct Kline {
     pub taker_buy_quote_volume: Decimal,
 }
 
-/// A decimal string inside a positional array.
-struct DecimalStr(Decimal);
-
-impl<'de> Deserialize<'de> for DecimalStr {
-    fn deserialize<D: Deserializer<'de>>(deserializer: D) -> Result<Self, D::Error> {
-        rust_decimal::serde::str::deserialize(deserializer).map(Self)
-    }
-}
-
-fn next<'de, T: Deserialize<'de>, A: SeqAccess<'de>>(
-    seq: &mut A,
-    index: usize,
-    what: &str,
-) -> Result<T, A::Error> {
-    seq.next_element()?
-        .ok_or_else(|| de::Error::invalid_length(index, &what))
-}
-
-fn drain<'de, A: SeqAccess<'de>>(seq: &mut A) -> Result<(), A::Error> {
-    while seq.next_element::<IgnoredAny>()?.is_some() {}
-    Ok(())
-}
-
 impl<'de> Deserialize<'de> for Kline {
     fn deserialize<D: Deserializer<'de>>(deserializer: D) -> Result<Self, D::Error> {
         struct KlineVisitor;
@@ -763,17 +741,17 @@ impl<'de> Deserialize<'de> for Kline {
             fn visit_seq<A: SeqAccess<'de>>(self, mut seq: A) -> Result<Kline, A::Error> {
                 const WHAT: &str = "a kline array of at least 11 elements";
                 let kline = Kline {
-                    open_time: next(&mut seq, 0, WHAT)?,
-                    open: next::<DecimalStr, _>(&mut seq, 1, WHAT)?.0,
-                    high: next::<DecimalStr, _>(&mut seq, 2, WHAT)?.0,
-                    low: next::<DecimalStr, _>(&mut seq, 3, WHAT)?.0,
-                    close: next::<DecimalStr, _>(&mut seq, 4, WHAT)?.0,
-                    volume: next::<DecimalStr, _>(&mut seq, 5, WHAT)?.0,
-                    close_time: next(&mut seq, 6, WHAT)?,
-                    quote_volume: next::<DecimalStr, _>(&mut seq, 7, WHAT)?.0,
-                    trade_count: next(&mut seq, 8, WHAT)?,
-                    taker_buy_base_volume: next::<DecimalStr, _>(&mut seq, 9, WHAT)?.0,
-                    taker_buy_quote_volume: next::<DecimalStr, _>(&mut seq, 10, WHAT)?.0,
+                    open_time: element(&mut seq, 0, WHAT)?,
+                    open: element::<DecimalStr, _>(&mut seq, 1, WHAT)?.0,
+                    high: element::<DecimalStr, _>(&mut seq, 2, WHAT)?.0,
+                    low: element::<DecimalStr, _>(&mut seq, 3, WHAT)?.0,
+                    close: element::<DecimalStr, _>(&mut seq, 4, WHAT)?.0,
+                    volume: element::<DecimalStr, _>(&mut seq, 5, WHAT)?.0,
+                    close_time: element(&mut seq, 6, WHAT)?,
+                    quote_volume: element::<DecimalStr, _>(&mut seq, 7, WHAT)?.0,
+                    trade_count: element(&mut seq, 8, WHAT)?,
+                    taker_buy_base_volume: element::<DecimalStr, _>(&mut seq, 9, WHAT)?.0,
+                    taker_buy_quote_volume: element::<DecimalStr, _>(&mut seq, 10, WHAT)?.0,
                 };
                 drain(&mut seq)?;
                 Ok(kline)
@@ -916,8 +894,8 @@ impl<'de> Deserialize<'de> for Level {
             fn visit_seq<A: SeqAccess<'de>>(self, mut seq: A) -> Result<Level, A::Error> {
                 const WHAT: &str = "a [price, quantity] array";
                 let level = Level {
-                    price: next::<DecimalStr, _>(&mut seq, 0, WHAT)?.0,
-                    quantity: next::<DecimalStr, _>(&mut seq, 1, WHAT)?.0,
+                    price: element::<DecimalStr, _>(&mut seq, 0, WHAT)?.0,
+                    quantity: element::<DecimalStr, _>(&mut seq, 1, WHAT)?.0,
                 };
                 drain(&mut seq)?;
                 Ok(level)

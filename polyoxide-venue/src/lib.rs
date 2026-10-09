@@ -15,6 +15,8 @@
 //!   one wire spelling; a closed one refuses an unknown spelling with
 //!   [`UnknownVariant`], and an open one keeps it in `Other`.
 //!   [`specta_as_string!`] gives open enums their `specta` shape.
+//! - With the `decimal` feature, `positional` reads and writes rows sent as
+//!   bare arrays of decimal strings.
 //!
 //! The crate depends on nothing, so a credential-free socket crate can use it
 //! without building an HTTP or signing stack. The enum macros name `::serde`,
@@ -36,6 +38,8 @@
 struct ReadmeDoctests;
 
 mod class;
+#[cfg(feature = "decimal")]
+pub mod positional;
 mod retry_after;
 mod secret;
 mod socket;

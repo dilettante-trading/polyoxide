@@ -71,10 +71,10 @@ Fourteen crates, in publish order, each with the workspace crates its build need
 <!-- generated:begin claude-graph -->
 - `polyoxide-venue` — Shared vocabulary: error classes, the status and close-code maps, the `Retry-After` parser; needs: nothing in the workspace; every public error type in the workspace implements its `Classify` trait; it has no HTTP, socket or signing dependency
 - `polyoxide-core` — Core utilities and shared types; needs: `polyoxide-venue`; shared auth, HTTP client, errors and macros
-- `polyoxide-binance` — Client library for Binance USDⓈ-M futures market data and streams (not part of the unified crate); needs: `polyoxide-core`, `polyoxide-venue`
+- `polyoxide-binance` — Client library for Binance USDⓈ-M futures market data and streams (not part of the unified crate); needs: `polyoxide-core`, `polyoxide-venue` (with `decimal`)
 - `polyoxide-data` — Client library for Polymarket Data API; needs: `polyoxide-core`, `polyoxide-venue`
 - `polyoxide-gamma` — Client library for Polymarket Gamma (market data) API; needs: `polyoxide-core`, `polyoxide-venue`
-- `polyoxide-perps` — Client library for Polymarket Perps (perpetual futures) public market data; needs: `polyoxide-core`, `polyoxide-venue`; auth and trading pending
+- `polyoxide-perps` — Client library for Polymarket Perps (perpetual futures) public market data; needs: `polyoxide-core`, `polyoxide-venue` (with `decimal`); auth and trading pending
 - `polyoxide-relay` — Client library for Polymarket Relayer API (gasless transactions); needs: `polyoxide-core`, `polyoxide-venue`
 - `polyoxide-clob` — Client library for Polymarket CLOB (order book) API; needs: `polyoxide-core`, `polyoxide-gamma` (under `gamma`, on by default), `polyoxide-venue`; published after `polyoxide-relay`, a versioned dev-dependency
 - `polyoxide-rtds` — Client for Polymarket's RTDS crypto price streams; needs: `polyoxide-venue`; no other workspace crate, `reqwest` or `alloy`, so a credential-free price feed builds no HTTP or signing stack
@@ -262,8 +262,10 @@ enums and query keys against `docs/specs/perps/openapi.json`, restricted to
 schemas reachable from `/v1/info/*`), `tests/wire_agreement.rs` (against
 `tests/fixtures/`, refreshed by `scripts/capture_perps_fixtures.py`) and
 `tests/live_api.rs`. Wire-only fields are allowed through `OBSERVED_EXTRA` and
-recorded in `docs/specs/perps/OBSERVED.md`. Klines and mark points are
-positional arrays on the wire and have hand-written serde. The host ignores
+recorded in `docs/specs/perps/OBSERVED.md`. Klines, mark points and book levels are
+positional arrays on the wire, decoded through tuples of exact arity over
+`polyoxide_venue::positional::DecimalStr`; Binance's klines and levels use the same
+module's `element` and `drain` in visitors that tolerate extra elements. The host ignores
 `instrument_id` on `/v1/info/tickers` and `/v1/info/statistics` and returns
 every instrument, so a caller filters client-side. The four WebSocket fields on
 `LimitTier` are a `u32::MAX` sentinel, not a budget, and must not size a
@@ -499,7 +501,7 @@ The WebSocket contracts are published as AsyncAPI, not OpenAPI — mirrored in `
 
 **WebSocket TLS needs a nudge.** `reqwest 0.12` (via core) and `alloy`'s `reqwest 0.13` enable `ring` and `aws-lc-rs` on one shared `rustls`, which then installs no default `CryptoProvider`. `ws/client.rs` installs one before connecting; any code that calls `tokio_tungstenite::connect_async` directly must do the same or it will panic. `polyoxide-rtds` has its own copy for this reason. Every socket crate takes `rustls` from one `[workspace.dependencies]` entry that declares `ring` and `std`, so none relies on `reqwest` or `alloy` to turn `std` on; clob once compiled only because they did (DRIFT R5).
 
-**RTDS is a separate crate and a separate protocol.** `polyoxide-rtds` covers `wss://ws-live-data.polymarket.com`, which multiplexes many topics over one connection under an `action`/`subscriptions` envelope — unlike the CLOB channels, which are one channel per connection. Its one workspace dependency is `polyoxide-venue`, which depends on nothing; it does not depend on core, `reqwest` or `alloy`, so a credential-free price feed does not pull in `alloy`: `polyoxide-clob --features ws` builds 352 crates against core's 161, and none of that signing stack is needed to read a price. Two tiers: `Rtds` is a bare `Stream`; `RtdsBuilder`/`SupervisedRtds` adds keep-alive, a staleness watchdog and reconnect-with-resubscribe.
+**RTDS is a separate crate and a separate protocol.** `polyoxide-rtds` covers `wss://ws-live-data.polymarket.com`, which multiplexes many topics over one connection under an `action`/`subscriptions` envelope — unlike the CLOB channels, which are one channel per connection. Its one workspace dependency is `polyoxide-venue`, which depends on nothing by default (its `decimal` feature, which only perps and Binance enable, adds rust_decimal and serde for `positional`); it does not depend on core, `reqwest` or `alloy`, so a credential-free price feed does not pull in `alloy`: `polyoxide-clob --features ws` builds 352 crates against core's 161, and none of that signing stack is needed to read a price. Two tiers: `Rtds` is a bare `Stream`; `RtdsBuilder`/`SupervisedRtds` adds keep-alive, a staleness watchdog and reconnect-with-resubscribe.
 
 **`full_accuracy_value` does not mean the same thing on every topic.** It is E18 fixed-point on the three Chainlink topics and a **plain decimal** on `crypto_prices` (Binance). Two frames captured a second apart both report BTC at ≈$79,697 with byte-identical payload keys, differing only in that scale — so the two spot payloads are separate types and the scale is never a runtime decision. A test asserting only "the value is a positive Decimal" passes on both and proves nothing; `the_two_spot_topics_do_not_share_a_scale` in `event.rs` is the one that holds this up, and it has been observed failing in both directions.
 

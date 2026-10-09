@@ -38,6 +38,16 @@ Recorded per AD-21: an epic records each proposed amendment here, and one sessio
   - **No other field fits.** Headers and query reach the wire; a timeout is a property of the attempt.
 - **Follow-up in the code:** none. Story 3.5 sets it on the two session-signer posts.
 
+## A3-4: `polyoxide-venue`'s rust_decimal and serde are optional (amends AD-3's dependency rule)
+
+- **Proposed by:** Claude, as the user's delegate, 2026-10-09, during Epic 3's bundle I (Story 3.9).
+- **Current rule (AD-3):** `polyoxide-venue` "depends only on rust_decimal, serde, thiserror, futures-core and dynosaur."
+- **Proposed rule:** the default build depends on nothing. A `decimal` feature turns on `rust_decimal` (with `serde-with-str`) and `serde` for `polyoxide_venue::positional` (`DecimalStr`, `element`, `drain`), the positional decimal serde AD-3 assigns to the crate; perps and Binance enable it. The enum macros (`wire_enum!`, `open_enum!`, `specta_as_string!`) expand to `::serde` paths, so a crate that invokes them depends on serde itself, and venue takes serde and serde_json as dev-dependencies only, for its own tests. Any later dependency AD-3 allows arrives the same way, behind a feature, when a socket-only crate would otherwise build it.
+- **Why:**
+  - **The socket-only crates build nothing new.** `polyoxide-rtds` and `polyoxide-sports` depend on venue alone and use none of the decimal helpers; `cargo tree -e normal` for both is unchanged by Story 3.9, as venue's `Cargo.toml` comment has promised since Story 2.1.
+  - **AD-3's list is an allowance, not a requirement.** Each item arrives with the first code that needs it.
+- **Follow-up in the code:** none. Story 3.9 ships the feature, and perps and Binance enable it.
+
 ## A3-5: `health` takes the route's costs and returns a `Pong` (amends the H8 row's `health(path)`)
 
 - **Proposed by:** Claude, as the user's delegate, 2026-10-09, during Epic 3's bundle I (Story 3.7).

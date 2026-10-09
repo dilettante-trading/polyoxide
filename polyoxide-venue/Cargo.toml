@@ -10,10 +10,17 @@ description = "Shared vocabulary for the polyoxide venue clients: error classes,
 keywords = ["polymarket", "trading", "errors", "retry"]
 categories = ["api-bindings"]
 
-# Nothing yet. AD-3 allows rust_decimal, serde, thiserror, futures-core and
-# dynosaur; each arrives with the first item that needs it, so the socket-only
-# crates that depend on this one build nothing they do not use.
+# Nothing by default. AD-3 allows rust_decimal, serde, thiserror, futures-core
+# and dynosaur; each arrives with the first item that needs it, behind a
+# feature where a crate that depends on this one may not want it, so the
+# socket-only crates build nothing they do not use.
 [dependencies]
+rust_decimal = { workspace = true, optional = true }
+serde = { workspace = true, optional = true }
+
+[features]
+# `positional`: the decimal-string helpers for rows sent as bare arrays.
+decimal = ["dep:rust_decimal", "dep:serde"]
 
 # The enum macros' own tests: the expansion names `::serde`, which a calling
 # crate provides.

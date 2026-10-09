@@ -3,6 +3,7 @@
 
 use std::fmt;
 
+use polyoxide_venue::positional::DecimalStr;
 use rust_decimal::Decimal;
 use serde::{Deserialize, Deserializer, Serialize, Serializer};
 
@@ -103,10 +104,6 @@ impl fmt::Display for BookDepth {
     }
 }
 
-fn parse_decimal<E: serde::de::Error>(s: &str) -> Result<Decimal, E> {
-    s.parse::<Decimal>().map_err(E::custom)
-}
-
 /// One candle. On the wire this is a positional array:
 /// `[open_time, open, high, low, close, volume, trades]`.
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -128,8 +125,18 @@ pub struct Kline {
     pub trades: u64,
 }
 
+/// A kline's wire form. A tuple of exactly seven, so a longer or shorter
+/// array is refused.
 #[derive(Serialize, Deserialize)]
-struct KlineWire(u64, String, String, String, String, String, u64);
+struct KlineWire(
+    u64,
+    DecimalStr,
+    DecimalStr,
+    DecimalStr,
+    DecimalStr,
+    DecimalStr,
+    u64,
+);
 
 impl<'de> Deserialize<'de> for Kline {
     fn deserialize<D: Deserializer<'de>>(deserializer: D) -> Result<Self, D::Error> {
@@ -137,11 +144,11 @@ impl<'de> Deserialize<'de> for Kline {
             KlineWire::deserialize(deserializer)?;
         Ok(Self {
             open_time,
-            open: parse_decimal(&open)?,
-            high: parse_decimal(&high)?,
-            low: parse_decimal(&low)?,
-            close: parse_decimal(&close)?,
-            volume: parse_decimal(&volume)?,
+            open: open.0,
+            high: high.0,
+            low: low.0,
+            close: close.0,
+            volume: volume.0,
             trades,
         })
     }
@@ -151,11 +158,11 @@ impl Serialize for Kline {
     fn serialize<S: Serializer>(&self, serializer: S) -> Result<S::Ok, S::Error> {
         KlineWire(
             self.open_time,
-            self.open.to_string(),
-            self.high.to_string(),
-            self.low.to_string(),
-            self.close.to_string(),
-            self.volume.to_string(),
+            DecimalStr(self.open),
+            DecimalStr(self.high),
+            DecimalStr(self.low),
+            DecimalStr(self.close),
+            DecimalStr(self.volume),
             self.trades,
         )
         .serialize(serializer)
@@ -174,17 +181,14 @@ pub struct MarkPoint {
 
 impl<'de> Deserialize<'de> for MarkPoint {
     fn deserialize<D: Deserializer<'de>>(deserializer: D) -> Result<Self, D::Error> {
-        let (time, mark_price): (u64, String) = Deserialize::deserialize(deserializer)?;
-        Ok(Self {
-            time,
-            mark_price: parse_decimal(&mark_price)?,
-        })
+        let (time, DecimalStr(mark_price)) = Deserialize::deserialize(deserializer)?;
+        Ok(Self { time, mark_price })
     }
 }
 
 impl Serialize for MarkPoint {
     fn serialize<S: Serializer>(&self, serializer: S) -> Result<S::Ok, S::Error> {
-        (self.time, self.mark_price.to_string()).serialize(serializer)
+        (self.time, DecimalStr(self.mark_price)).serialize(serializer)
     }
 }
 
@@ -200,17 +204,14 @@ pub struct Level {
 
 impl<'de> Deserialize<'de> for Level {
     fn deserialize<D: Deserializer<'de>>(deserializer: D) -> Result<Self, D::Error> {
-        let (price, quantity): (String, String) = Deserialize::deserialize(deserializer)?;
-        Ok(Self {
-            price: parse_decimal(&price)?,
-            quantity: parse_decimal(&quantity)?,
-        })
+        let (DecimalStr(price), DecimalStr(quantity)) = Deserialize::deserialize(deserializer)?;
+        Ok(Self { price, quantity })
     }
 }
 
 impl Serialize for Level {
     fn serialize<S: Serializer>(&self, serializer: S) -> Result<S::Ok, S::Error> {
-        (self.price.to_string(), self.quantity.to_string()).serialize(serializer)
+        (DecimalStr(self.price), DecimalStr(self.quantity)).serialize(serializer)
     }
 }
 
@@ -324,5 +325,13 @@ mod tests {
             serde_json::to_string(&level).unwrap(),
             r#"["7688.5","0.31605"]"#
         );
+    }
+
+    #[test]
+    fn a_level_accepts_an_exponent() {
+        // As every other perps decimal does, through `rust_decimal::serde::str`.
+        let level: Level = serde_json::from_str(r#"["1e-5","2"]"#).unwrap();
+        assert_eq!(level.price, Decimal::new(1, 5));
+        assert_eq!(level.quantity, Decimal::from(2));
     }
 }
