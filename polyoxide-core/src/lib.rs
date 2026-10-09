@@ -10,7 +10,8 @@
 //! - One send loop, [`HttpClient::send`], with the hooks a venue supplies
 //!   ([`Throttle`], [`RetryPolicy`], [`Authenticator`])
 //! - Per-endpoint window quotas ([`WindowQuotaTable`], which builds a
-//!   [`RateLimiter`]) and the retry schedule ([`RetryConfig`])
+//!   [`RateLimiter`]), token-cost buckets ([`CapacityBucket`]), the
+//!   [`Hold`] their layers share, and the retry schedule ([`RetryConfig`])
 //! - Optional OS keychain credential storage (behind the `keychain` feature)
 //!
 //! ## HTTP Client
@@ -40,6 +41,7 @@ struct ReadmeDoctests;
 pub mod macros;
 
 pub mod auth;
+pub mod capacity;
 pub mod client;
 pub mod error;
 pub mod hold;
@@ -71,6 +73,7 @@ pub fn truncate_for_log(s: &str) -> std::borrow::Cow<'_, str> {
 }
 
 pub use auth::{current_timestamp, Base64Format, Signer};
+pub use capacity::CapacityBucket;
 pub use client::{
     retry_after_header, HttpClient, HttpClientBuilder, DEFAULT_POOL_SIZE, DEFAULT_TIMEOUT_MS,
 };

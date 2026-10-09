@@ -6,11 +6,16 @@
 //!
 //! The two layers count different things: Cloudflare counts *requests*, this one
 //! counts *orders*. For batch endpoints they diverge by the batch size, which is
-//! why this module exists at all — [`RateLimiter`](crate::RateLimiter) charges
-//! exactly one token per call and cannot express "this request costs 500".
+//! why this module exists at all — a [`RateLimiter`](crate::RateLimiter) charges
+//! exactly one token per call and cannot express "this request costs 500", so
+//! each signer bucket is a [`CapacityBucket`], which charges a request's cost.
 //!
 //! Transcribed from <https://docs.polymarket.com/api-reference/trading-rate-limits>
 //! as fetched 2026-08-05; mirrored in `docs/specs/clob/trading-rate-limits.md`.
+
+use crate::capacity::CapacityBucket;
+use crate::hold::Hold;
+use crate::hooks::LayerId;
 
 /// Which of a signer's two buckets a request draws from.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
@@ -250,32 +255,42 @@ impl polyoxide_venue::Classify for BurstCapacityExceeded {
     }
 }
 
-type DirectLimiter = governor::RateLimiter<
-    governor::state::NotKeyed,
-    governor::state::InMemoryState,
-    governor::clock::DefaultClock,
->;
+/// The order bucket's layer.
+const ORDER_LAYER: LayerId = LayerId("signer-order");
+/// The cancel bucket's layer.
+const CANCEL_LAYER: LayerId = LayerId("signer-cancel");
 
 struct Buckets {
     tier: Tier,
-    order: std::sync::Arc<DirectLimiter>,
-    cancel: std::sync::Arc<DirectLimiter>,
+    order: CapacityBucket,
+    cancel: CapacityBucket,
 }
 
 impl Buckets {
-    fn for_tier(tier: Tier) -> Self {
-        let build = |bucket: TradingBucket| {
-            let rate = tier.rate(bucket).max(1);
-            let burst = tier.burst(bucket).max(1);
-            let quota = governor::Quota::with_period(std::time::Duration::from_secs(1) / rate)
-                .expect("per-token interval is non-zero")
-                .allow_burst(std::num::NonZeroU32::new(burst).expect("burst is non-zero"));
-            std::sync::Arc::new(DirectLimiter::direct(quota))
+    /// Both buckets at `tier`, full, waiting out `hold`.
+    ///
+    /// Each holds its published burst. Polymarket publishes a rate *and* a
+    /// burst for this layer, and says the burst is the bucket's capacity, so
+    /// holding it is a faithful model of a bucket the venue also implements as
+    /// one. The Cloudflare tables publish a window count with no capacity
+    /// term, and a bucket holding that count spends it twice; the two models
+    /// must not be made alike.
+    fn for_tier(tier: Tier, hold: &Hold) -> Self {
+        let build = |bucket: TradingBucket, layer: LayerId| {
+            let capacity = tier.burst(bucket).max(1);
+            CapacityBucket::new(layer, capacity, tier.rate(bucket).max(1), hold.clone())
         };
         Self {
             tier,
-            order: build(TradingBucket::Order),
-            cancel: build(TradingBucket::Cancel),
+            order: build(TradingBucket::Order, ORDER_LAYER),
+            cancel: build(TradingBucket::Cancel, CANCEL_LAYER),
+        }
+    }
+
+    fn get(&self, bucket: TradingBucket) -> &CapacityBucket {
+        match bucket {
+            TradingBucket::Order => &self.order,
+            TradingBucket::Cancel => &self.cancel,
         }
     }
 }
@@ -285,20 +300,22 @@ impl Buckets {
 /// Starts at [`Tier::Standard`] — the tightest — and resizes both buckets the
 /// first time a `Poly-RateLimit-Tier` header reports something different.
 ///
-/// # The resize discards accumulated state
+/// # A new tier starts full
 ///
-/// governor buckets cannot be resized in place, so adopting a new tier replaces
-/// them with fresh ones at full capacity. Moving *up* a tier is therefore safe:
-/// the venue already permits the wider allowance. Moving *down* briefly permits
-/// a full burst at the narrower capacity, which the venue may throttle. Tier
-/// changes are rare (they track 30-day volume), so this is preferred to the
-/// complexity of draining the old bucket into the new one.
+/// Adopting a new tier replaces both buckets with fresh ones at full capacity,
+/// keeping the [`Hold`]. Moving *up* a tier is therefore safe: the venue
+/// already permits the wider allowance. Moving *down* briefly permits a full
+/// burst at the narrower capacity, which the venue may throttle. Tier changes
+/// are rare (they track 30-day volume), so this is preferred to carrying the
+/// old bucket's tokens into the new one, which
+/// [`CapacityBucket::resize`] would do.
 #[derive(Clone)]
 pub struct SignerLimiter {
     inner: std::sync::Arc<SignerLimiterInner>,
 }
 
 struct SignerLimiterInner {
+    hold: Hold,
     buckets: std::sync::RwLock<Buckets>,
     status: std::sync::RwLock<RateLimitStatus>,
 }
@@ -318,14 +335,38 @@ impl Default for SignerLimiter {
 }
 
 impl SignerLimiter {
-    /// Create a limiter at the default (tightest) tier.
+    /// Create a limiter at the default (tightest) tier, with a hold of its
+    /// own.
     pub fn new() -> Self {
+        Self::build(
+            Tier::default(),
+            RateLimitStatus::default(),
+            Hold::unbounded(),
+        )
+    }
+
+    /// This limiter, waiting out `hold`, so that it holds together with every
+    /// other layer sharing it. The tier and telemetry carry over.
+    ///
+    /// The result is a new limiter: clones of `self` keep their own buckets
+    /// and hold.
+    pub fn with_hold(self, hold: Hold) -> Self {
+        Self::build(self.tier(), self.last_status(), hold)
+    }
+
+    fn build(tier: Tier, status: RateLimitStatus, hold: Hold) -> Self {
         Self {
             inner: std::sync::Arc::new(SignerLimiterInner {
-                buckets: std::sync::RwLock::new(Buckets::for_tier(Tier::default())),
-                status: std::sync::RwLock::new(RateLimitStatus::default()),
+                buckets: std::sync::RwLock::new(Buckets::for_tier(tier, &hold)),
+                hold,
+                status: std::sync::RwLock::new(status),
             }),
         }
+    }
+
+    /// The hold both buckets wait out.
+    pub fn hold(&self) -> &Hold {
+        &self.inner.hold
     }
 
     /// The tier currently in force.
@@ -359,39 +400,38 @@ impl SignerLimiter {
             let mut buckets = self.inner.buckets.write().expect("lock is never poisoned");
             if buckets.tier != tier {
                 tracing::debug!("adopting rate limit tier {tier:?} (was {:?})", buckets.tier);
-                *buckets = Buckets::for_tier(tier);
+                *buckets = Buckets::for_tier(tier, &self.inner.hold);
             }
         }
     }
 
     /// Wait for `request`'s token cost to be available, then consume it.
     ///
+    /// Waits out the hold first, and again after waiting for tokens. A cost
+    /// that is not exact ([`TradingRequest::cost_is_exact`]) above the
+    /// bucket's capacity is charged at capacity.
+    ///
     /// # Errors
     ///
-    /// [`BurstCapacityExceeded`] when the cost exceeds the bucket's capacity.
-    /// This returns immediately rather than waiting forever.
+    /// [`BurstCapacityExceeded`] when an exact cost exceeds the bucket's
+    /// capacity. This returns immediately rather than waiting forever.
     pub async fn acquire(&self, request: TradingRequest) -> Result<(), BurstCapacityExceeded> {
         let bucket = request.bucket();
 
-        // Clone the Arc out under the lock and drop the guard before awaiting:
-        // an RwLock guard held across an await would make this future !Send.
+        // Clone the bucket out under the lock and drop the guard before
+        // awaiting: an RwLock guard held across an await would make this
+        // future !Send.
         let (tier, limiter) = {
             let buckets = self.inner.buckets.read().expect("lock is never poisoned");
-            let limiter = match bucket {
-                TradingBucket::Order => buckets.order.clone(),
-                TradingBucket::Cancel => buckets.cancel.clone(),
-            };
-            (buckets.tier, limiter)
+            (buckets.tier, buckets.get(bucket).clone())
         };
 
         let cost = request.cost().max(1);
-        let n = std::num::NonZeroU32::new(cost).expect("cost floor is 1");
-
-        // governor reports InsufficientCapacity when n exceeds the bucket's
-        // burst — exactly the permanently-impossible case, and it returns
-        // straight away rather than parking the task forever.
+        // The bucket refuses an exact cost above its capacity at once: the
+        // permanently-impossible case, returned straight away rather than
+        // parking the task forever.
         limiter
-            .until_n_ready(n)
+            .acquire(cost, request.cost_is_exact())
             .await
             .map_err(|_| BurstCapacityExceeded {
                 cost,
