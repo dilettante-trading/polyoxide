@@ -42,6 +42,7 @@ pub mod macros;
 pub mod auth;
 pub mod client;
 pub mod error;
+pub mod hold;
 pub mod hooks;
 pub mod polymarket;
 pub mod rate_limit;
@@ -74,6 +75,7 @@ pub use client::{
     retry_after_header, HttpClient, HttpClientBuilder, DEFAULT_POOL_SIZE, DEFAULT_TIMEOUT_MS,
 };
 pub use error::ApiError;
+pub use hold::Hold;
 pub use hooks::{
     AttemptInfo, Authenticator, Charge, Cost, Decision, DefaultRetryPolicy, DynAuthenticator,
     DynRetryPolicy, DynThrottle, LayerCharge, LayerId, NoThrottle, Outcome, Refused, RequestMeta,

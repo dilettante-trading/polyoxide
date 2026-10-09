@@ -4,14 +4,13 @@
 //! Polymarket's tables are built in [`polymarket`](crate::polymarket).
 
 use std::sync::atomic::{AtomicU32, Ordering};
-use std::sync::{Arc, Mutex};
+use std::sync::Arc;
 use std::time::Duration;
 
+use crate::hold::Hold;
+use crate::hooks::{AttemptInfo, Charge, Refused, RequestMeta, ResponseMeta, Throttle};
 use governor::Quota;
 use reqwest::Method;
-use tokio::time::Instant;
-
-use crate::hooks::{AttemptInfo, Charge, Refused, RequestMeta, ResponseMeta, Throttle};
 
 type DirectLimiter = governor::RateLimiter<
     governor::state::NotKeyed,
@@ -115,7 +114,7 @@ impl EndpointLimit {
 ///
 /// Built by [`WindowQuotaTable`]. Polymarket's tables are
 /// [`polymarket::clob_limits`](crate::polymarket::clob_limits) and its
-/// siblings. A clone shares the buckets and the cooldown.
+/// siblings. A clone shares the buckets and the [`Hold`].
 #[derive(Clone)]
 pub struct RateLimiter {
     inner: Arc<RateLimiterInner>,
@@ -132,14 +131,9 @@ impl std::fmt::Debug for RateLimiter {
 struct RateLimiterInner {
     limits: Vec<EndpointLimit>,
     general: Arc<Bucket>,
-    /// Deadline before which no request on this limiter may proceed.
-    ///
-    /// The buckets above encode the quota Polymarket *publishes*; this encodes
-    /// what the server actually just said. They disagree more often than the
-    /// tables suggest — Cloudflare's `error code: 1015` is an IP-scoped block
-    /// with its own window, and it answers 429 no matter how many tokens the
-    /// buckets still hold.
-    cooldown_until: Mutex<Option<Instant>>,
+    /// What the server said, as against what the buckets model: no request
+    /// on this limiter proceeds before it.
+    hold: Hold,
 }
 
 /// Helper to create a quota: at most `count` requests in *any* window of
@@ -423,6 +417,7 @@ pub struct WindowQuotaTable {
     /// The general bucket first, then every bucket in the order it was made.
     buckets: Vec<Arc<Bucket>>,
     rows: Vec<EndpointLimit>,
+    hold: Hold,
 }
 
 impl WindowQuotaTable {
@@ -432,6 +427,7 @@ impl WindowQuotaTable {
             id: TABLES.fetch_add(1, Ordering::Relaxed),
             buckets: Vec::new(),
             rows: Vec::new(),
+            hold: Hold::unbounded(),
         };
         table.bucket(count, period);
         table
@@ -493,13 +489,20 @@ impl WindowQuotaTable {
         self.row(Matching::Prefix, pattern, method, &[bucket])
     }
 
+    /// Wait out `hold` instead of a hold of the limiter's own, so that
+    /// every layer sharing it holds together. Default: [`Hold::unbounded`].
+    pub fn with_hold(&mut self, hold: Hold) -> &mut Self {
+        self.hold = hold;
+        self
+    }
+
     /// The limiter, with every bucket full.
     pub fn build(self) -> RateLimiter {
         RateLimiter {
             inner: Arc::new(RateLimiterInner {
                 general: self.buckets[0].clone(),
                 limits: self.rows,
-                cooldown_until: Mutex::new(None),
+                hold: self.hold,
             }),
         }
     }
@@ -514,61 +517,30 @@ impl WindowQuotaTable {
 }
 
 impl RateLimiter {
-    /// Hold every request on this limiter for `delay`.
-    ///
-    /// Extends an existing cooldown but never shortens one: several concurrent
-    /// requests typically see the same 429 within a few milliseconds of each
-    /// other, and taking the most recent value would let whichever response
-    /// carried the smallest delay release all of them early.
+    /// Hold every request on this limiter for `delay`: [`Hold::extend`] on
+    /// its hold, which extends a hold in force but never shortens one.
     ///
     /// The send loop holds through [`Throttle::hold`], which calls this, when
     /// its policy decides a response holds the client. Reach for this directly
     /// only when driving the limiter from a transport this crate does not own.
     pub fn begin_cooldown(&self, delay: Duration) {
-        let until = Instant::now() + delay;
-        let mut slot = self.lock_cooldown();
-        if slot.is_none_or(|current| until > current) {
-            *slot = Some(until);
-        }
+        self.inner.hold.extend(delay);
     }
 
-    /// A poison-tolerant lock on the cooldown slot.
-    ///
-    /// A panic elsewhere must not turn the rate limiter into a permanent
-    /// outage; the worst a torn write can cost here is one early or late
-    /// wakeup.
-    fn lock_cooldown(&self) -> std::sync::MutexGuard<'_, Option<Instant>> {
-        self.inner
-            .cooldown_until
-            .lock()
-            .unwrap_or_else(|poisoned| poisoned.into_inner())
-    }
-
-    /// Wait out any cooldown currently in force.
-    async fn await_cooldown(&self) {
-        loop {
-            // Read the deadline and release the guard before awaiting. Holding
-            // a `std::sync::MutexGuard` across an await makes the future
-            // `!Send`, which every caller of `acquire` needs it to be.
-            let deadline = *self.lock_cooldown();
-            let Some(deadline) = deadline else { return };
-            if deadline <= Instant::now() {
-                return;
-            }
-            // Loop rather than return after sleeping: a sibling's 429 can push
-            // the deadline out while we wait, and waking into a still-active
-            // block is how the storm restarts.
-            tokio::time::sleep_until(deadline).await;
-        }
+    /// The hold every request on this limiter waits out, to share with
+    /// another layer.
+    pub fn hold(&self) -> &Hold {
+        &self.inner.hold
     }
 
     /// Await the appropriate limiter(s) for this endpoint.
     ///
-    /// Waits out any cooldown a previous 429 imposed, then awaits the default
+    /// Waits out any hold a previous 429 imposed, then awaits the default
     /// (general) limiter, then additionally awaits the first matching
-    /// endpoint-specific limiter (burst + sustained).
+    /// endpoint-specific limiter (burst + sustained), then waits out the hold
+    /// again, in case it moved while this call waited on a bucket.
     pub async fn acquire(&self, path: &str, method: Option<&Method>) {
-        self.await_cooldown().await;
+        self.inner.hold.wait().await;
         self.inner.general.limiter.until_ready().await;
 
         if let Some(limit) = self.row_for(path, method) {
@@ -576,6 +548,9 @@ impl RateLimiter {
                 bucket.limiter.until_ready().await;
             }
         }
+        // AD-23: a hold set while this call waited on a bucket is honoured,
+        // rather than sending into it.
+        self.inner.hold.wait().await;
     }
 
     /// The quotas a request is held to, in the order
@@ -613,8 +588,8 @@ impl RateLimiter {
 }
 
 /// Counts requests: each attempt is charged one request against the general
-/// bucket and its row's buckets, found from the method and path. The hold is
-/// the cooldown.
+/// bucket and its row's buckets, found from the method and path, and
+/// [`hold`](Throttle::hold) extends the limiter's [`Hold`].
 impl Throttle for RateLimiter {
     async fn acquire(&self, meta: &RequestMeta<'_>) -> Result<Charge, Refused> {
         RateLimiter::acquire(self, meta.path, Some(meta.method)).await;
@@ -626,7 +601,7 @@ impl Throttle for RateLimiter {
     fn observe(&self, _charge: &Charge, _response: &ResponseMeta<'_>, _attempt: &AttemptInfo) {}
 
     fn hold(&self, delay: Duration) {
-        self.begin_cooldown(delay);
+        self.inner.hold.extend(delay);
     }
 }
 
@@ -822,6 +797,34 @@ mod window_table {
         assert_eq!(
             WindowQuotaTable::paced_interval(150, TEN_SECONDS),
             TEN_SECONDS / 134
+        );
+    }
+
+    #[tokio::test]
+    async fn a_hold_set_during_a_bucket_wait_is_honoured() {
+        // 2 per 300ms paces one request every 300ms. The second request waits
+        // for its token; 50ms in, a 429 elsewhere holds the limiter for 600ms.
+        // Going out when the token arrives would send into that hold.
+        let mut table = WindowQuotaTable::new(100_000, TEN_SECONDS);
+        table.prefix("/slow", None, 2, Duration::from_millis(300));
+        let limiter = table.build();
+        limiter.acquire("/slow", None).await;
+
+        let start = std::time::Instant::now();
+        let holder = {
+            let limiter = limiter.clone();
+            tokio::spawn(async move {
+                tokio::time::sleep(Duration::from_millis(50)).await;
+                limiter.begin_cooldown(Duration::from_millis(600));
+            })
+        };
+        limiter.acquire("/slow", None).await;
+        holder.await.unwrap();
+        assert!(
+            start.elapsed() >= Duration::from_millis(600),
+            "the request went out after {:?}, inside a hold set while it waited for its \
+             token",
+            start.elapsed()
         );
     }
 
