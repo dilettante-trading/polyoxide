@@ -32,6 +32,9 @@ To remove a public item in a PR:
 - `polyoxide-core inherent_method_missing: RateLimiter::data_default (src/rate_limit.rs)` Story 3.2: use `polyoxide_core::polymarket::data_limits()`, which returns the same table; build any other table with `WindowQuotaTable`.
 - `polyoxide-core inherent_method_missing: RateLimiter::relay_default (src/rate_limit.rs)` Story 3.2: use `polyoxide_core::polymarket::relay_limits()`, which returns the same table; build any other table with `WindowQuotaTable`.
 - `polyoxide-core inherent_method_missing: RateLimiter::perps_default (src/rate_limit.rs)` Story 3.2: use `polyoxide_core::polymarket::perps_limits()`, which returns the same table; build any other table with `WindowQuotaTable`.
+- `polyoxide-clob module_missing: mod polyoxide_clob::request (src/request.rs)` Story 3.4: clob's namespaces build core's one request builder, `polyoxide_core::Request<T, polyoxide_clob::ClobError>`, which every namespace method now returns.
+- `polyoxide-clob struct_missing: struct polyoxide_clob::request::Request (src/request.rs)` Story 3.4: use `polyoxide_core::Request<T, polyoxide_clob::ClobError>`, which every namespace method now returns, with the same `query`, `send` and `send_raw`.
+- `polyoxide-clob enum_missing: enum polyoxide_clob::request::AuthMode (src/request.rs)` Story 3.4: nothing to name; each namespace method signs its request itself (L1 for key creation, L2 for the rest), and a signature produced elsewhere goes through `Clob::create_api_key_with_signature` or `Clob::derive_api_key_with_signature`.
 
 ## Doc-hidden paths consumers import
 

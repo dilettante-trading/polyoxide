@@ -1,47 +1,29 @@
-use polyoxide_core::{HttpClient, QueryBuilder};
+use std::sync::Arc;
+
+use polyoxide_core::{DynAuthenticator, HttpClient, QueryBuilder, Request};
 use serde::{Deserialize, Serialize};
 
-use crate::{
-    account::{Credentials, Signer, Wallet},
-    error::ClobError,
-    request::{AuthMode, Request},
-    types::SignatureType,
-};
+use crate::{error::ClobError, types::SignatureType};
 
 /// Rewards namespace for liquidity reward operations
 #[derive(Clone)]
 pub struct Rewards {
     pub(crate) http_client: HttpClient,
-    pub(crate) wallet: Wallet,
-    pub(crate) credentials: Credentials,
-    pub(crate) signer: Signer,
-    pub(crate) chain_id: u64,
+    pub(crate) l2: Arc<DynAuthenticator<'static>>,
     pub(crate) signature_type: SignatureType,
 }
 
 impl Rewards {
-    fn l2_auth(&self) -> AuthMode {
-        AuthMode::L2 {
-            address: self.wallet.address(),
-            credentials: self.credentials.clone(),
-            signer: self.signer.clone(),
-        }
-    }
-
     /// Get user earnings for a specific day (`GET /rewards/user`).
     ///
     /// `date` must be in `YYYY-MM-DD` format (required by the API). The
     /// `signature_type` query parameter is taken from the client configuration.
     pub fn earnings(&self, date: impl Into<String>) -> UserEarningsRequest {
         UserEarningsRequest {
-            request: Request::get(
-                self.http_client.clone(),
-                "/rewards/user",
-                self.l2_auth(),
-                self.chain_id,
-            )
-            .query("date", date.into())
-            .query("signature_type", self.signature_type as u8),
+            request: Request::new(self.http_client.clone(), "/rewards/user")
+                .authenticator(self.l2.clone())
+                .query("date", date.into())
+                .query("signature_type", self.signature_type as u8),
         }
     }
 
@@ -51,27 +33,19 @@ impl Rewards {
     /// returns an array of totals grouped by asset address.
     pub fn total_earnings(&self, date: impl Into<String>) -> UserTotalEarningsRequest {
         UserTotalEarningsRequest {
-            request: Request::get(
-                self.http_client.clone(),
-                "/rewards/user/total",
-                self.l2_auth(),
-                self.chain_id,
-            )
-            .query("date", date.into())
-            .query("signature_type", self.signature_type as u8),
+            request: Request::new(self.http_client.clone(), "/rewards/user/total")
+                .authenticator(self.l2.clone())
+                .query("date", date.into())
+                .query("signature_type", self.signature_type as u8),
         }
     }
 
     /// Get user reward percentages (`GET /rewards/user/percentages`).
     pub fn percentages(&self) -> UserPercentagesRequest {
         UserPercentagesRequest {
-            request: Request::get(
-                self.http_client.clone(),
-                "/rewards/user/percentages",
-                self.l2_auth(),
-                self.chain_id,
-            )
-            .query("signature_type", self.signature_type as u8),
+            request: Request::new(self.http_client.clone(), "/rewards/user/percentages")
+                .authenticator(self.l2.clone())
+                .query("signature_type", self.signature_type as u8),
         }
     }
 
@@ -82,13 +56,9 @@ impl Rewards {
     /// [`ListUserRewardMarkets::next_cursor`] until it reads `"LTE="`.
     pub fn market_earnings(&self) -> ListUserRewardMarkets {
         ListUserRewardMarkets {
-            request: Request::get(
-                self.http_client.clone(),
-                "/rewards/user/markets",
-                self.l2_auth(),
-                self.chain_id,
-            )
-            .query("signature_type", self.signature_type as u8),
+            request: Request::new(self.http_client.clone(), "/rewards/user/markets")
+                .authenticator(self.l2.clone())
+                .query("signature_type", self.signature_type as u8),
         }
     }
 
@@ -96,7 +66,6 @@ impl Rewards {
     fn public(&self) -> PublicRewards {
         PublicRewards {
             http_client: self.http_client.clone(),
-            chain_id: self.chain_id,
         }
     }
 
@@ -135,7 +104,7 @@ impl Rewards {
         &self,
         date: impl Into<String>,
         maker_address: impl Into<String>,
-    ) -> Request<Vec<RebatedFees>> {
+    ) -> Request<Vec<RebatedFees>, ClobError> {
         self.public().current_rebates(date, maker_address)
     }
 }
@@ -150,7 +119,6 @@ impl Rewards {
 #[derive(Clone)]
 pub struct PublicRewards {
     pub(crate) http_client: HttpClient,
-    pub(crate) chain_id: u64,
 }
 
 impl PublicRewards {
@@ -160,26 +128,19 @@ impl PublicRewards {
     /// the reward markets are in the `data` field.
     pub fn current_markets(&self) -> ListRewardMarkets {
         ListRewardMarkets {
-            request: Request::get(
-                self.http_client.clone(),
-                "/rewards/markets/current",
-                AuthMode::None,
-                self.chain_id,
-            ),
+            request: Request::new(self.http_client.clone(), "/rewards/markets/current"),
         }
     }
 
     /// Get rewards for a specific market (`GET /rewards/markets/{condition_id}`).
     pub fn market(&self, condition_id: impl Into<String>) -> RewardMarketRequest {
         RewardMarketRequest {
-            request: Request::get(
+            request: Request::new(
                 self.http_client.clone(),
                 format!(
                     "/rewards/markets/{}",
                     urlencoding::encode(&condition_id.into())
                 ),
-                AuthMode::None,
-                self.chain_id,
             ),
         }
     }
@@ -192,12 +153,7 @@ impl PublicRewards {
     /// marks the last page.
     pub fn multi_markets(&self) -> ListMultiRewardMarkets {
         ListMultiRewardMarkets {
-            request: Request::get(
-                self.http_client.clone(),
-                "/rewards/markets/multi",
-                AuthMode::None,
-                self.chain_id,
-            ),
+            request: Request::new(self.http_client.clone(), "/rewards/markets/multi"),
         }
     }
 
@@ -210,15 +166,10 @@ impl PublicRewards {
         &self,
         date: impl Into<String>,
         maker_address: impl Into<String>,
-    ) -> Request<Vec<RebatedFees>> {
-        Request::get(
-            self.http_client.clone(),
-            "/rebates/current",
-            AuthMode::None,
-            self.chain_id,
-        )
-        .query("date", date.into())
-        .query("maker_address", maker_address.into())
+    ) -> Request<Vec<RebatedFees>, ClobError> {
+        Request::new(self.http_client.clone(), "/rebates/current")
+            .query("date", date.into())
+            .query("maker_address", maker_address.into())
     }
 }
 
@@ -368,7 +319,7 @@ impl std::fmt::Display for UserRewardMarketOrderBy {
 
 /// Request builder for `GET /rewards/user`.
 pub struct UserEarningsRequest {
-    request: Request<RewardEarnings>,
+    request: Request<RewardEarnings, ClobError>,
 }
 
 impl UserEarningsRequest {
@@ -398,7 +349,7 @@ impl UserEarningsRequest {
 
 /// Request builder for `GET /rewards/user/total`.
 pub struct UserTotalEarningsRequest {
-    request: Request<Vec<RewardTotalEarnings>>,
+    request: Request<Vec<RewardTotalEarnings>, ClobError>,
 }
 
 impl UserTotalEarningsRequest {
@@ -422,7 +373,7 @@ impl UserTotalEarningsRequest {
 
 /// Request builder for `GET /rewards/user/percentages`.
 pub struct UserPercentagesRequest {
-    request: Request<RewardPercentages>,
+    request: Request<RewardPercentages, ClobError>,
 }
 
 impl UserPercentagesRequest {
@@ -440,7 +391,7 @@ impl UserPercentagesRequest {
 
 /// Request builder for `GET /rewards/markets/current`.
 pub struct ListRewardMarkets {
-    request: Request<Paginated<RewardMarket>>,
+    request: Request<Paginated<RewardMarket>, ClobError>,
 }
 
 impl ListRewardMarkets {
@@ -464,7 +415,7 @@ impl ListRewardMarkets {
 
 /// Request builder for `GET /rewards/markets/{condition_id}`.
 pub struct RewardMarketRequest {
-    request: Request<RewardMarket>,
+    request: Request<RewardMarket, ClobError>,
 }
 
 impl RewardMarketRequest {
@@ -488,7 +439,7 @@ impl RewardMarketRequest {
 
 /// Request builder for `GET /rewards/markets/multi`.
 pub struct ListMultiRewardMarkets {
-    request: Request<Paginated<RewardMarket>>,
+    request: Request<Paginated<RewardMarket>, ClobError>,
 }
 
 impl ListMultiRewardMarkets {
@@ -584,7 +535,7 @@ impl ListMultiRewardMarkets {
 
 /// Request builder for `GET /rewards/user/markets`.
 pub struct ListUserRewardMarkets {
-    request: Request<Paginated<RewardMarketEarning>>,
+    request: Request<Paginated<RewardMarketEarning>, ClobError>,
 }
 
 impl ListUserRewardMarkets {

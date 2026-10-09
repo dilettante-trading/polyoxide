@@ -1,4 +1,7 @@
-use polyoxide_core::ApiError;
+use polyoxide_core::{
+    polymarket::{SIGNER_CANCEL, SIGNER_ORDER},
+    ApiError, BurstCapacityExceeded, Refused, RequestError, Tier, TradingBucket,
+};
 use thiserror::Error;
 
 use crate::types::ParseTickSizeError;
@@ -14,7 +17,7 @@ use crate::types::ParseTickSizeError;
 pub enum ClobError {
     /// Core API error
     #[error(transparent)]
-    Api(#[from] ApiError),
+    Api(ApiError),
 
     /// Cryptographic operation failed
     #[error("Crypto error: {0}")]
@@ -62,7 +65,7 @@ pub enum ClobError {
     /// Splitting the batch is the only remedy, so this is
     /// **not** retriable. See `docs/specs/clob/trading-rate-limits.md`.
     #[error(transparent)]
-    BurstCapacityExceeded(#[from] polyoxide_core::BurstCapacityExceeded),
+    BurstCapacityExceeded(#[from] BurstCapacityExceeded),
 }
 
 /// Recognise the matching-engine kill outcomes Polymarket reports as HTTP 400.
@@ -148,6 +151,64 @@ impl ClobError {
             status: 0,
             message: msg.into(),
         })
+    }
+}
+
+/// Written by hand rather than with `#[from]`, so that what core's loop
+/// carries for clob comes back as clob's own variant: a refused batch is
+/// [`ClobError::BurstCapacityExceeded`], and a signing failure is the clob
+/// error the signer raised.
+impl From<ApiError> for ClobError {
+    fn from(err: ApiError) -> Self {
+        match err {
+            ApiError::Refused(refused) => burst_from_refused(&refused).map_or(
+                Self::Api(ApiError::Refused(refused)),
+                Self::BurstCapacityExceeded,
+            ),
+            ApiError::Sign(err) => err
+                .downcast::<ClobError>()
+                .map_or_else(|err| Self::Api(ApiError::Sign(err)), |err| *err),
+            other => Self::Api(other),
+        }
+    }
+}
+
+/// The per-signer refusal core's throttle reports, as the burst-capacity error
+/// clob has always returned.
+///
+/// The bucket is the layer's, and the tier is the one whose published burst
+/// for that bucket is the refused capacity: each bucket's eight bursts are
+/// distinct, so the match is exact. `None` for any other layer.
+pub(crate) fn burst_from_refused(refused: &Refused) -> Option<BurstCapacityExceeded> {
+    let bucket = match refused.layer {
+        SIGNER_ORDER => TradingBucket::Order,
+        SIGNER_CANCEL => TradingBucket::Cancel,
+        _ => return None,
+    };
+    let tier = [
+        Tier::Standard,
+        Tier::Copper,
+        Tier::Bronze,
+        Tier::Silver,
+        Tier::Gold,
+        Tier::Platinum,
+        Tier::Diamond,
+        Tier::Elite,
+    ]
+    .into_iter()
+    .find(|tier| tier.burst(bucket) == refused.capacity)?;
+    Some(BurstCapacityExceeded {
+        cost: refused.units,
+        capacity: refused.capacity,
+        tier,
+        bucket,
+    })
+}
+
+/// A non-2xx response, with the FAK and FOK kills split out.
+impl RequestError for ClobError {
+    async fn from_response(response: reqwest::Response) -> Self {
+        ClobError::from_response(response).await
     }
 }
 
@@ -449,7 +510,6 @@ FAK orders are partially filled or killed if no match is found.";
 
     #[test]
     fn every_variant_classifies() {
-        use polyoxide_core::{BurstCapacityExceeded, Tier, TradingBucket};
         use polyoxide_venue::{Class, Classify};
 
         let tick = crate::types::TickSize::try_from("0.5").unwrap_err();
@@ -530,5 +590,60 @@ FAK orders are partially filled or killed if no match is found.";
             );
             assert_eq!(err.is_retriable(), inherent, "{err:?}");
         }
+    }
+
+    #[test]
+    fn burst_from_refused_recovers_the_tier_and_bucket_of_every_tier() {
+        use polyoxide_core::LayerId;
+
+        for tier in [
+            Tier::Standard,
+            Tier::Copper,
+            Tier::Bronze,
+            Tier::Silver,
+            Tier::Gold,
+            Tier::Platinum,
+            Tier::Diamond,
+            Tier::Elite,
+        ] {
+            for (layer, bucket) in [
+                (SIGNER_ORDER, TradingBucket::Order),
+                (SIGNER_CANCEL, TradingBucket::Cancel),
+            ] {
+                let capacity = tier.burst(bucket);
+                let refused = Refused {
+                    layer,
+                    units: capacity + 1,
+                    capacity,
+                };
+                assert_eq!(
+                    burst_from_refused(&refused),
+                    Some(BurstCapacityExceeded {
+                        cost: capacity + 1,
+                        capacity,
+                        tier,
+                        bucket,
+                    }),
+                    "{tier:?} {bucket:?}"
+                );
+                // Through `From`, as the request path maps it.
+                assert!(matches!(
+                    ClobError::from(ApiError::Refused(refused)),
+                    ClobError::BurstCapacityExceeded(e) if e.tier == tier && e.bucket == bucket
+                ));
+            }
+        }
+
+        // Another layer's refusal is not a signer burst, and stays core's.
+        let other = Refused {
+            layer: LayerId("cloudflare"),
+            units: 2,
+            capacity: 1,
+        };
+        assert_eq!(burst_from_refused(&other), None);
+        assert!(matches!(
+            ClobError::from(ApiError::Refused(other)),
+            ClobError::Api(ApiError::Refused(_))
+        ));
     }
 }

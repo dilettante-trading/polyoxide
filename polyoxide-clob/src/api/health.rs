@@ -1,17 +1,13 @@
-use polyoxide_core::HttpClient;
+use polyoxide_core::{HttpClient, Request};
 use serde::{Deserialize, Serialize};
 use std::time::{Duration, Instant};
 
-use crate::{
-    error::ClobError,
-    request::{AuthMode, Request},
-};
+use crate::error::ClobError;
 
 /// Health namespace for API health and latency operations
 #[derive(Clone)]
 pub struct Health {
     pub(crate) http_client: HttpClient,
-    pub(crate) chain_id: u64,
 }
 
 impl Health {
@@ -49,13 +45,8 @@ impl Health {
     }
 
     /// Get the current server time
-    pub fn server_time(&self) -> Request<ServerTimeResponse> {
-        Request::get(
-            self.http_client.clone(),
-            "/time",
-            AuthMode::None,
-            self.chain_id,
-        )
+    pub fn server_time(&self) -> Request<ServerTimeResponse, ClobError> {
+        Request::new(self.http_client.clone(), "/time")
     }
 }
 

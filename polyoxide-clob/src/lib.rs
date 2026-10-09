@@ -134,10 +134,10 @@ struct ReadmeDoctests;
 
 pub mod account;
 pub mod api;
+mod authenticator;
 pub mod client;
 pub mod core;
 pub mod error;
-pub mod request;
 pub mod types;
 pub mod utils;
 

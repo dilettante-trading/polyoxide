@@ -1,44 +1,33 @@
 use std::collections::HashMap;
 
-use polyoxide_core::{HttpClient, QueryBuilder};
+use polyoxide_core::{HttpClient, QueryBuilder, Request};
+use reqwest::Method;
 use rust_decimal::Decimal;
 use serde::{Deserialize, Serialize};
 
-use crate::{
-    error::ClobError,
-    request::{AuthMode, Request},
-    types::OrderSide,
-};
+use crate::{error::ClobError, types::OrderSide};
 
 /// Markets namespace for market-related operations
 #[derive(Clone)]
 pub struct Markets {
     pub(crate) http_client: HttpClient,
-    pub(crate) chain_id: u64,
 }
 
 impl Markets {
     /// Get a market by condition ID
-    pub fn get(&self, condition_id: impl Into<String>) -> Request<Market> {
-        Request::get(
+    pub fn get(&self, condition_id: impl Into<String>) -> Request<Market, ClobError> {
+        Request::new(
             self.http_client.clone(),
             format!("/markets/{}", urlencoding::encode(&condition_id.into())),
-            AuthMode::None,
-            self.chain_id,
         )
     }
 
     pub fn get_by_token_ids(
         &self,
         token_ids: impl Into<Vec<String>>,
-    ) -> Request<ListMarketsResponse> {
-        Request::get(
-            self.http_client.clone(),
-            "/markets",
-            AuthMode::None,
-            self.chain_id,
-        )
-        .query_many("clob_token_ids", token_ids.into())
+    ) -> Request<ListMarketsResponse, ClobError> {
+        Request::new(self.http_client.clone(), "/markets")
+            .query_many("clob_token_ids", token_ids.into())
     }
 
     /// List all markets (`GET /markets`).
@@ -48,51 +37,36 @@ impl Markets {
     /// page. A cursor of `"LTE="` marks the end of the list.
     pub fn list(&self) -> ListClobMarkets {
         ListClobMarkets {
-            request: Request::get(
-                self.http_client.clone(),
-                "/markets",
-                AuthMode::None,
-                self.chain_id,
-            ),
+            request: Request::new(self.http_client.clone(), "/markets"),
         }
     }
 
     /// Get order book for a token
-    pub fn order_book(&self, token_id: impl Into<String>) -> Request<OrderBook> {
-        Request::get(
-            self.http_client.clone(),
-            "/book",
-            AuthMode::None,
-            self.chain_id,
-        )
-        .query("token_id", token_id.into())
+    pub fn order_book(&self, token_id: impl Into<String>) -> Request<OrderBook, ClobError> {
+        Request::new(self.http_client.clone(), "/book").query("token_id", token_id.into())
     }
 
     /// Get price for a token and side
-    pub fn price(&self, token_id: impl Into<String>, side: OrderSide) -> Request<PriceResponse> {
-        Request::get(
-            self.http_client.clone(),
-            "/price",
-            AuthMode::None,
-            self.chain_id,
-        )
-        .query("token_id", token_id.into())
-        .query("side", side.as_str())
+    pub fn price(
+        &self,
+        token_id: impl Into<String>,
+        side: OrderSide,
+    ) -> Request<PriceResponse, ClobError> {
+        Request::new(self.http_client.clone(), "/price")
+            .query("token_id", token_id.into())
+            .query("side", side.as_str())
     }
 
     /// Get midpoint price for a token
-    pub fn midpoint(&self, token_id: impl Into<String>) -> Request<MidpointResponse> {
-        Request::get(
-            self.http_client.clone(),
-            "/midpoint",
-            AuthMode::None,
-            self.chain_id,
-        )
-        .query("token_id", token_id.into())
+    pub fn midpoint(&self, token_id: impl Into<String>) -> Request<MidpointResponse, ClobError> {
+        Request::new(self.http_client.clone(), "/midpoint").query("token_id", token_id.into())
     }
 
     /// Get historical prices for a token (no extra filters).
-    pub fn prices_history(&self, token_id: impl Into<String>) -> Request<PricesHistoryResponse> {
+    pub fn prices_history(
+        &self,
+        token_id: impl Into<String>,
+    ) -> Request<PricesHistoryResponse, ClobError> {
         self.prices_history_with(token_id, &PricesHistoryQuery::default())
     }
 
@@ -101,80 +75,62 @@ impl Markets {
         &self,
         token_id: impl Into<String>,
         params: &PricesHistoryQuery,
-    ) -> Request<PricesHistoryResponse> {
-        Request::get(
-            self.http_client.clone(),
-            "/prices-history",
-            AuthMode::None,
-            self.chain_id,
-        )
-        .query("market", token_id.into())
-        .query_opt("interval", params.interval.as_deref())
-        .query_opt("fidelity", params.fidelity)
-        .query_opt("startTs", params.start_ts)
-        .query_opt("endTs", params.end_ts)
+    ) -> Request<PricesHistoryResponse, ClobError> {
+        Request::new(self.http_client.clone(), "/prices-history")
+            .query("market", token_id.into())
+            .query_opt("interval", params.interval.as_deref())
+            .query_opt("fidelity", params.fidelity)
+            .query_opt("startTs", params.start_ts)
+            .query_opt("endTs", params.end_ts)
     }
 
     /// Get neg_risk status for a token
-    pub fn neg_risk(&self, token_id: impl Into<String>) -> Request<NegRiskResponse> {
-        Request::get(
-            self.http_client.clone(),
-            "/neg-risk".to_string(),
-            AuthMode::None,
-            self.chain_id,
-        )
-        .query("token_id", token_id.into())
+    pub fn neg_risk(&self, token_id: impl Into<String>) -> Request<NegRiskResponse, ClobError> {
+        Request::new(self.http_client.clone(), "/neg-risk".to_string())
+            .query("token_id", token_id.into())
     }
 
     /// Get the current fee rate for a token
-    pub fn fee_rate(&self, token_id: impl Into<String>) -> Request<FeeRateResponse> {
-        Request::get(
-            self.http_client.clone(),
-            "/fee-rate",
-            AuthMode::None,
-            self.chain_id,
-        )
-        .query("token_id", token_id.into())
+    pub fn fee_rate(&self, token_id: impl Into<String>) -> Request<FeeRateResponse, ClobError> {
+        Request::new(self.http_client.clone(), "/fee-rate").query("token_id", token_id.into())
     }
 
     /// Get tick size for a token
-    pub fn tick_size(&self, token_id: impl Into<String>) -> Request<TickSizeResponse> {
-        Request::get(
-            self.http_client.clone(),
-            "/tick-size".to_string(),
-            AuthMode::None,
-            self.chain_id,
-        )
-        .query("token_id", token_id.into())
+    pub fn tick_size(&self, token_id: impl Into<String>) -> Request<TickSizeResponse, ClobError> {
+        Request::new(self.http_client.clone(), "/tick-size".to_string())
+            .query("token_id", token_id.into())
     }
 
     /// Get neg_risk flag via path parameter (`GET /neg-risk/{token_id}`).
-    pub fn neg_risk_path(&self, token_id: impl Into<String>) -> Request<NegRiskResponse> {
-        Request::get(
+    pub fn neg_risk_path(
+        &self,
+        token_id: impl Into<String>,
+    ) -> Request<NegRiskResponse, ClobError> {
+        Request::new(
             self.http_client.clone(),
             format!("/neg-risk/{}", urlencoding::encode(&token_id.into())),
-            AuthMode::None,
-            self.chain_id,
         )
     }
 
     /// Get fee rate via path parameter (`GET /fee-rate/{token_id}`).
-    pub fn fee_rate_path(&self, token_id: impl Into<String>) -> Request<FeeRateResponse> {
-        Request::get(
+    pub fn fee_rate_path(
+        &self,
+        token_id: impl Into<String>,
+    ) -> Request<FeeRateResponse, ClobError> {
+        Request::new(
             self.http_client.clone(),
             format!("/fee-rate/{}", urlencoding::encode(&token_id.into())),
-            AuthMode::None,
-            self.chain_id,
         )
     }
 
     /// Get tick size via path parameter (`GET /tick-size/{token_id}`).
-    pub fn tick_size_path(&self, token_id: impl Into<String>) -> Request<TickSizeResponse> {
-        Request::get(
+    pub fn tick_size_path(
+        &self,
+        token_id: impl Into<String>,
+    ) -> Request<TickSizeResponse, ClobError> {
+        Request::new(
             self.http_client.clone(),
             format!("/tick-size/{}", urlencoding::encode(&token_id.into())),
-            AuthMode::None,
-            self.chain_id,
         )
     }
 
@@ -185,15 +141,13 @@ impl Markets {
     pub fn clob_market_details(
         &self,
         condition_id: impl Into<String>,
-    ) -> Request<ClobMarketDetails> {
-        Request::get(
+    ) -> Request<ClobMarketDetails, ClobError> {
+        Request::new(
             self.http_client.clone(),
             format!(
                 "/clob-markets/{}",
                 urlencoding::encode(&condition_id.into())
             ),
-            AuthMode::None,
-            self.chain_id,
         )
     }
 
@@ -201,15 +155,16 @@ impl Markets {
     ///
     /// Returns the condition ID and both token IDs for the market that owns
     /// the given token ID.
-    pub fn market_by_token(&self, token_id: impl Into<String>) -> Request<MarketByTokenResponse> {
-        Request::get(
+    pub fn market_by_token(
+        &self,
+        token_id: impl Into<String>,
+    ) -> Request<MarketByTokenResponse, ClobError> {
+        Request::new(
             self.http_client.clone(),
             format!(
                 "/markets-by-token/{}",
                 urlencoding::encode(&token_id.into())
             ),
-            AuthMode::None,
-            self.chain_id,
         )
     }
 
@@ -218,15 +173,13 @@ impl Markets {
     pub fn live_activity_market(
         &self,
         condition_id: impl Into<String>,
-    ) -> Request<LiveActivityMarket> {
-        Request::get(
+    ) -> Request<LiveActivityMarket, ClobError> {
+        Request::new(
             self.http_client.clone(),
             format!(
                 "/markets/live-activity/{}",
                 urlencoding::encode(&condition_id.into())
             ),
-            AuthMode::None,
-            self.chain_id,
         )
     }
 
@@ -235,13 +188,12 @@ impl Markets {
     pub fn live_activity_bulk(
         &self,
         condition_ids: Vec<String>,
-    ) -> Result<Request<Vec<LiveActivityMarket>>, ClobError> {
-        Request::<Vec<LiveActivityMarket>>::post(
+    ) -> Result<Request<Vec<LiveActivityMarket>, ClobError>, ClobError> {
+        Request::<Vec<LiveActivityMarket>, ClobError>::new(
             self.http_client.clone(),
             "/markets/live-activity".to_string(),
-            AuthMode::None,
-            self.chain_id,
         )
+        .method(Method::POST)
         .body(&condition_ids)
     }
 
@@ -250,36 +202,27 @@ impl Markets {
     pub fn batch_prices_history(
         &self,
         req: &BatchPricesHistoryRequest,
-    ) -> Result<Request<BatchPricesHistoryResponse>, ClobError> {
-        Request::<BatchPricesHistoryResponse>::post(
+    ) -> Result<Request<BatchPricesHistoryResponse, ClobError>, ClobError> {
+        Request::<BatchPricesHistoryResponse, ClobError>::new(
             self.http_client.clone(),
             "/batch-prices-history".to_string(),
-            AuthMode::None,
-            self.chain_id,
         )
+        .method(Method::POST)
         .body(req)
     }
 
     /// Get bid-ask spread for a token
-    pub fn spread(&self, token_id: impl Into<String>) -> Request<SpreadResponse> {
-        Request::get(
-            self.http_client.clone(),
-            "/spread",
-            AuthMode::None,
-            self.chain_id,
-        )
-        .query("token_id", token_id.into())
+    pub fn spread(&self, token_id: impl Into<String>) -> Request<SpreadResponse, ClobError> {
+        Request::new(self.http_client.clone(), "/spread").query("token_id", token_id.into())
     }
 
     /// Get last trade price for a token
-    pub fn last_trade_price(&self, token_id: impl Into<String>) -> Request<LastTradePriceResponse> {
-        Request::get(
-            self.http_client.clone(),
-            "/last-trade-price",
-            AuthMode::None,
-            self.chain_id,
-        )
-        .query("token_id", token_id.into())
+    pub fn last_trade_price(
+        &self,
+        token_id: impl Into<String>,
+    ) -> Request<LastTradePriceResponse, ClobError> {
+        Request::new(self.http_client.clone(), "/last-trade-price")
+            .query("token_id", token_id.into())
     }
 
     /// List simplified markets (reduced payload for performance).
@@ -287,12 +230,7 @@ impl Markets {
     /// Cursor-paginated — see [`ListClobMarkets::next_cursor`].
     pub fn simplified(&self) -> ListClobMarkets {
         ListClobMarkets {
-            request: Request::get(
-                self.http_client.clone(),
-                "/simplified-markets",
-                AuthMode::None,
-                self.chain_id,
-            ),
+            request: Request::new(self.http_client.clone(), "/simplified-markets"),
         }
     }
 
@@ -301,12 +239,7 @@ impl Markets {
     /// Cursor-paginated — see [`ListClobMarkets::next_cursor`].
     pub fn sampling(&self) -> ListClobMarkets {
         ListClobMarkets {
-            request: Request::get(
-                self.http_client.clone(),
-                "/sampling-markets",
-                AuthMode::None,
-                self.chain_id,
-            ),
+            request: Request::new(self.http_client.clone(), "/sampling-markets"),
         }
     }
 
@@ -315,12 +248,7 @@ impl Markets {
     /// Cursor-paginated — see [`ListClobMarkets::next_cursor`].
     pub fn sampling_simplified(&self) -> ListClobMarkets {
         ListClobMarkets {
-            request: Request::get(
-                self.http_client.clone(),
-                "/sampling-simplified-markets",
-                AuthMode::None,
-                self.chain_id,
-            ),
+            request: Request::new(self.http_client.clone(), "/sampling-simplified-markets"),
         }
     }
 
@@ -331,12 +259,11 @@ impl Markets {
         side: OrderSide,
         amount: impl Into<String>,
     ) -> Result<CalculatePriceResponse, ClobError> {
-        Request::<CalculatePriceResponse>::post(
+        Request::<CalculatePriceResponse, ClobError>::new(
             self.http_client.clone(),
             "/calculate-price".to_string(),
-            AuthMode::None,
-            self.chain_id,
         )
+        .method(Method::POST)
         .body(&CalculatePriceParams {
             token_id: token_id.into(),
             side,
@@ -348,25 +275,20 @@ impl Markets {
 
     /// Get order books for multiple tokens
     pub async fn order_books(&self, params: &[BookParams]) -> Result<Vec<OrderBook>, ClobError> {
-        Request::<Vec<OrderBook>>::post(
-            self.http_client.clone(),
-            "/books".to_string(),
-            AuthMode::None,
-            self.chain_id,
-        )
-        .body(params)?
-        .send()
-        .await
+        Request::<Vec<OrderBook>, ClobError>::new(self.http_client.clone(), "/books".to_string())
+            .method(Method::POST)
+            .body(params)?
+            .send()
+            .await
     }
 
     /// Get prices for multiple tokens
     pub async fn prices(&self, params: &[BookParams]) -> Result<Vec<PriceResponse>, ClobError> {
-        Request::<Vec<PriceResponse>>::post(
+        Request::<Vec<PriceResponse>, ClobError>::new(
             self.http_client.clone(),
             "/prices".to_string(),
-            AuthMode::None,
-            self.chain_id,
         )
+        .method(Method::POST)
         .body(params)?
         .send()
         .await
@@ -377,12 +299,11 @@ impl Markets {
         &self,
         params: &[BookParams],
     ) -> Result<Vec<MidpointResponse>, ClobError> {
-        Request::<Vec<MidpointResponse>>::post(
+        Request::<Vec<MidpointResponse>, ClobError>::new(
             self.http_client.clone(),
             "/midpoints".to_string(),
-            AuthMode::None,
-            self.chain_id,
         )
+        .method(Method::POST)
         .body(params)?
         .send()
         .await
@@ -390,12 +311,11 @@ impl Markets {
 
     /// Get spreads for multiple tokens
     pub async fn spreads(&self, params: &[BookParams]) -> Result<Vec<SpreadResponse>, ClobError> {
-        Request::<Vec<SpreadResponse>>::post(
+        Request::<Vec<SpreadResponse>, ClobError>::new(
             self.http_client.clone(),
             "/spreads".to_string(),
-            AuthMode::None,
-            self.chain_id,
         )
+        .method(Method::POST)
         .body(params)?
         .send()
         .await
@@ -406,12 +326,11 @@ impl Markets {
         &self,
         params: &[BookParams],
     ) -> Result<Vec<LastTradePriceResponse>, ClobError> {
-        Request::<Vec<LastTradePriceResponse>>::post(
+        Request::<Vec<LastTradePriceResponse>, ClobError>::new(
             self.http_client.clone(),
             "/last-trades-prices".to_string(),
-            AuthMode::None,
-            self.chain_id,
         )
+        .method(Method::POST)
         .body(params)?
         .send()
         .await
@@ -451,7 +370,7 @@ pub struct ListMarketsResponse {
 /// (`/markets`, `/simplified-markets`, `/sampling-markets`,
 /// `/sampling-simplified-markets`).
 pub struct ListClobMarkets {
-    request: Request<ListMarketsResponse>,
+    request: Request<ListMarketsResponse, ClobError>,
 }
 
 impl ListClobMarkets {

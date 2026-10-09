@@ -9,15 +9,19 @@ mod target;
 mod wallet;
 
 use std::path::Path;
+use std::sync::Arc;
 
 use alloy::primitives::Address;
 pub use credentials::Credentials;
+use polyoxide_core::DynAuthenticator;
+use polyoxide_venue::Secret;
 use serde::{Deserialize, Serialize};
 pub use signer::Signer;
 pub use target::{DepositWalletRole, SigningTarget};
 pub use wallet::{DynSigner, Wallet};
 
 use crate::{
+    authenticator::L2Auth,
     core::eip712::{sign_clob_auth, sign_order_as},
     error::ClobError,
     types::{Order, SignedOrder},
@@ -80,12 +84,27 @@ impl std::fmt::Debug for AccountConfig {
 /// println!("Address: {:?}", account.address());
 /// # Ok::<(), polyoxide_clob::ClobError>(())
 /// ```
-#[derive(Clone, Debug)]
+#[derive(Clone)]
 pub struct Account {
     wallet: Wallet,
-    credentials: Credentials,
+    credentials: Secret<Credentials>,
     signer: Signer,
     target: SigningTarget,
+    /// Signs every L2 request this account makes, shared by every namespace.
+    l2: Arc<DynAuthenticator<'static>>,
+}
+
+/// Written by hand: the L2 authenticator is a trait object, and holds what
+/// the other fields already show.
+impl std::fmt::Debug for Account {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("Account")
+            .field("wallet", &self.wallet)
+            .field("credentials", &self.credentials)
+            .field("signer", &self.signer)
+            .field("target", &self.target)
+            .finish()
+    }
 }
 
 impl Account {
@@ -143,11 +162,18 @@ impl Account {
     /// Assemble an account from its signing half and its L2 credentials.
     fn from_parts(wallet: Wallet, credentials: Credentials) -> Self {
         let signer = Signer::new(&credentials.secret);
+        let credentials = Secret::new(credentials);
+        let l2 = DynAuthenticator::new_arc(L2Auth {
+            address: wallet.address(),
+            credentials: credentials.clone(),
+            signer: signer.clone(),
+        });
         Self {
             wallet,
             credentials,
             signer,
             target: SigningTarget::default(),
+            l2,
         }
     }
 
@@ -332,11 +358,11 @@ impl Account {
     fn save_to_keychain_in_service(&self, service: &str) -> Result<(), ClobError> {
         use polyoxide_core::keychain;
 
-        keychain::set(service, "api_key", &self.credentials.key)
+        keychain::set(service, "api_key", &self.credentials().key)
             .map_err(|e| ClobError::validation(format!("Keychain error: {e}")))?;
-        keychain::set(service, "api_secret", &self.credentials.secret)
+        keychain::set(service, "api_secret", &self.credentials().secret)
             .map_err(|e| ClobError::validation(format!("Keychain error: {e}")))?;
-        keychain::set(service, "api_passphrase", &self.credentials.passphrase)
+        keychain::set(service, "api_passphrase", &self.credentials().passphrase)
             .map_err(|e| ClobError::validation(format!("Keychain error: {e}")))?;
         Ok(())
     }
@@ -377,7 +403,12 @@ impl Account {
 
     /// Get a reference to the credentials.
     pub fn credentials(&self) -> &Credentials {
-        &self.credentials
+        self.credentials.expose()
+    }
+
+    /// The authenticator that signs this account's L2 requests.
+    pub(crate) fn l2_auth(&self) -> Arc<DynAuthenticator<'static>> {
+        Arc::clone(&self.l2)
     }
 
     /// Get a reference to the HMAC signer.

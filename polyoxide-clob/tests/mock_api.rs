@@ -3999,3 +3999,283 @@ async fn balance_allowance_defaults_to_the_targets_signature_type() {
         .unwrap();
     type0_mock.assert_async().await;
 }
+
+// ── Signing on every attempt (Story 3.4) ─────────────────────────
+
+/// One served request: its `POLY_*` headers, by name, and its body.
+type Attempt = (Vec<(String, String)>, String);
+
+/// The `POLY_*` headers and body of each request a mock served, in order.
+#[derive(Clone, Default)]
+struct Attempts(std::sync::Arc<std::sync::Mutex<Vec<Attempt>>>);
+
+impl Attempts {
+    fn record(&self, request: &mockito::Request) {
+        let headers = [
+            "poly_address",
+            "poly_signature",
+            "poly_timestamp",
+            "poly_nonce",
+            "poly_api_key",
+            "poly_passphrase",
+        ]
+        .iter()
+        .filter_map(|name| {
+            let value = request.header(*name).first()?.to_str().ok()?.to_owned();
+            Some((name.to_string(), value))
+        })
+        .collect();
+        let body = String::from_utf8_lossy(request.body().unwrap()).into_owned();
+        self.0.lock().unwrap().push((headers, body));
+    }
+
+    fn all(&self) -> Vec<Attempt> {
+        self.0.lock().unwrap().clone()
+    }
+}
+
+fn header<'a>(headers: &'a [(String, String)], name: &str) -> &'a str {
+    &headers.iter().find(|(n, _)| n == name).unwrap().1
+}
+
+/// A mock answering 429 with `Retry-After: 1.1` once, then 200 with `body`,
+/// recording every attempt. The wait puts the attempts in different seconds,
+/// so a fresh signature has a different timestamp from the first.
+async fn throttled_once(
+    server: &mut mockito::ServerGuard,
+    method: &str,
+    path: &str,
+    body: &'static str,
+    attempts: &Attempts,
+) -> mockito::Mock {
+    let attempts = attempts.clone();
+    let served = std::sync::atomic::AtomicUsize::new(0);
+    server
+        .mock(method, path)
+        .match_query(Matcher::Any)
+        .with_status_code_from_request(move |request| {
+            attempts.record(request);
+            match served.fetch_add(1, std::sync::atomic::Ordering::SeqCst) {
+                0 => 429,
+                _ => 200,
+            }
+        })
+        .with_header("retry-after", "1.1")
+        .with_header("content-type", "application/json")
+        .with_body(body)
+        .expect(2)
+        .create_async()
+        .await
+}
+
+#[tokio::test]
+async fn a_retried_l2_request_is_signed_on_every_attempt() {
+    use polyoxide_core::{Base64Format, Signer};
+
+    let mut server = Server::new_async().await;
+    let attempts = Attempts::default();
+    let mock = throttled_once(
+        &mut server,
+        "POST",
+        "/order",
+        r#"{"success":true,"orderID":"0xabc"}"#,
+        &attempts,
+    )
+    .await;
+
+    let clob = test_authed_clob(&server);
+    let signed = polyoxide_clob::SignedOrder {
+        order: polyoxide_clob::Order {
+            salt: "1".into(),
+            maker: alloy::primitives::Address::ZERO,
+            signer: alloy::primitives::Address::ZERO,
+            token_id: "100".into(),
+            maker_amount: "1".into(),
+            taker_amount: "1".into(),
+            side: polyoxide_clob::OrderSide::Buy,
+            expiration: "0".into(),
+            signature_type: SignatureType::Eoa,
+            timestamp: "1700000000000".into(),
+            metadata: alloy::primitives::B256::ZERO,
+            builder: alloy::primitives::B256::ZERO,
+            neg_risk: false,
+        },
+        signature: "0xabc".into(),
+    };
+    let resp = clob
+        .post_order(&signed, polyoxide_clob::OrderKind::Gtc, false)
+        .await
+        .unwrap();
+    assert!(resp.success);
+    mock.assert_async().await;
+
+    let attempts = attempts.all();
+    assert_eq!(attempts.len(), 2);
+    let hmac = Signer::new("c2VjcmV0");
+    for (headers, body) in &attempts {
+        // Hardhat account #0, lowercase, as L2 has always sent it.
+        assert_eq!(
+            header(headers, "poly_address"),
+            "0xf39fd6e51aad88f6f4ce6ab8827279cfffb92266"
+        );
+        assert_eq!(header(headers, "poly_api_key"), "test-key");
+        assert_eq!(header(headers, "poly_passphrase"), "test-pass");
+        let timestamp: u64 = header(headers, "poly_timestamp").parse().unwrap();
+        let message = Signer::create_message(timestamp, "POST", "/order", Some(body));
+        assert_eq!(
+            header(headers, "poly_signature"),
+            hmac.sign(&message, Base64Format::UrlSafe).unwrap(),
+            "the signature covers this attempt's own timestamp and body"
+        );
+    }
+    assert_eq!(attempts[0].1, attempts[1].1, "the body is resent as is");
+    assert_ne!(
+        header(&attempts[0].0, "poly_timestamp"),
+        header(&attempts[1].0, "poly_timestamp"),
+        "the retry was signed afresh, a second later"
+    );
+}
+
+#[tokio::test]
+async fn a_retried_l1_request_is_signed_on_every_attempt() {
+    use alloy::signers::local::PrivateKeySigner;
+    use polyoxide_clob::core::eip712::sign_clob_auth;
+
+    let mut server = Server::new_async().await;
+    let attempts = Attempts::default();
+    let mock = throttled_once(
+        &mut server,
+        "POST",
+        "/auth/api-key",
+        r#"{"apiKey":"k","secret":"c2VjcmV0","passphrase":"p"}"#,
+        &attempts,
+    )
+    .await;
+
+    let clob = test_authed_clob(&server);
+    let created = clob.auth().unwrap().create_api_key(7).send().await.unwrap();
+    assert_eq!(created.api_key, "k");
+    mock.assert_async().await;
+
+    let signer: PrivateKeySigner =
+        "0xac0974bec39a17e36ba4a6b4d238ff944bacb478cbed5efcae784d7bf4f2ff80"
+            .parse()
+            .unwrap();
+    let attempts = attempts.all();
+    assert_eq!(attempts.len(), 2);
+    for (headers, _) in &attempts {
+        // EIP-55 checksummed, as L1 has always sent it.
+        assert_eq!(
+            header(headers, "poly_address"),
+            "0xf39Fd6e51aad88F6F4ce6aB8827279cffFb92266"
+        );
+        assert_eq!(header(headers, "poly_nonce"), "7");
+        let timestamp: u64 = header(headers, "poly_timestamp").parse().unwrap();
+        assert_eq!(
+            header(headers, "poly_signature"),
+            sign_clob_auth(&signer, 137, timestamp, 7).await.unwrap(),
+            "the EIP-712 signature covers this attempt's own timestamp"
+        );
+    }
+    assert_ne!(
+        header(&attempts[0].0, "poly_timestamp"),
+        header(&attempts[1].0, "poly_timestamp"),
+        "the retry was signed afresh, a second later"
+    );
+
+    // A signature produced elsewhere cannot be renewed: every attempt resends
+    // the same four headers.
+    let mut server = Server::new_async().await;
+    let attempts = Attempts::default();
+    let mock = throttled_once(
+        &mut server,
+        "POST",
+        "/auth/api-key",
+        r#"{"apiKey":"k","secret":"c2VjcmV0","passphrase":"p"}"#,
+        &attempts,
+    )
+    .await;
+    let timestamp = 1_700_000_000;
+    let signature = sign_clob_auth(&signer, 137, timestamp, 7).await.unwrap();
+    test_public_clob(&server)
+        .create_api_key_with_signature(signer.address(), timestamp, 7, signature)
+        .await
+        .unwrap();
+    mock.assert_async().await;
+    let attempts = attempts.all();
+    assert_eq!(attempts.len(), 2);
+    assert_eq!(attempts[0].0, attempts[1].0);
+}
+
+/// An `alloy` signer whose key is unreachable: every signature fails.
+struct UnreachableKey(alloy::primitives::Address);
+
+impl alloy::signers::Signer for UnreachableKey {
+    fn sign_hash<'a, 'b, 'c>(
+        &'a self,
+        _hash: &'b alloy::primitives::B256,
+    ) -> std::pin::Pin<
+        Box<
+            dyn std::future::Future<Output = alloy::signers::Result<alloy::primitives::Signature>>
+                + Send
+                + 'c,
+        >,
+    >
+    where
+        'a: 'c,
+        'b: 'c,
+        Self: 'c,
+    {
+        Box::pin(async { Err(alloy::signers::Error::other("the key's vault is down")) })
+    }
+
+    fn address(&self) -> alloy::primitives::Address {
+        self.0
+    }
+
+    fn chain_id(&self) -> Option<alloy::primitives::ChainId> {
+        None
+    }
+
+    fn set_chain_id(&mut self, _chain_id: Option<alloy::primitives::ChainId>) {}
+}
+
+#[tokio::test]
+async fn an_l1_signer_that_fails_sends_nothing() {
+    let mut server = Server::new_async().await;
+    let mock = server
+        .mock("POST", "/auth/api-key")
+        .match_query(Matcher::Any)
+        .expect(0)
+        .create_async()
+        .await;
+
+    let account = Account::with_signer(
+        UnreachableKey(alloy::primitives::Address::repeat_byte(0x11)),
+        Credentials {
+            key: "test-key".into(),
+            secret: "c2VjcmV0".into(),
+            passphrase: "test-pass".into(),
+        },
+    );
+    let clob = ClobBuilder::new()
+        .base_url(server.url())
+        .with_account(account)
+        .build()
+        .unwrap();
+    let err = clob
+        .auth()
+        .unwrap()
+        .create_api_key(0)
+        .send()
+        .await
+        .unwrap_err();
+
+    // The signer's own error, carried through core's loop and out again.
+    match &err {
+        ClobError::Alloy(message) => assert!(message.contains("vault is down"), "{message}"),
+        other => panic!("expected ClobError::Alloy, got {other:?}"),
+    }
+    assert!(!err.is_retriable());
+    mock.assert_async().await;
+}

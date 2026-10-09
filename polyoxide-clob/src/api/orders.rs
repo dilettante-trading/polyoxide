@@ -1,23 +1,19 @@
 use std::collections::HashMap;
+use std::sync::Arc;
 
-use polyoxide_core::{HttpClient, QueryBuilder, SignerLimiter, TradingRequest};
+use polyoxide_core::{
+    polymarket::signer_cost, DynAuthenticator, HttpClient, QueryBuilder, Request, TradingRequest,
+};
+use reqwest::Method;
 use serde::{Deserialize, Serialize};
 
-use crate::{
-    account::{Credentials, Signer, Wallet},
-    error::ClobError,
-    request::{AuthMode, Request},
-};
+use crate::error::ClobError;
 
 /// Orders namespace for order-related operations
 #[derive(Clone)]
 pub struct Orders {
     pub(crate) http_client: HttpClient,
-    pub(crate) signer_limiter: SignerLimiter,
-    pub(crate) wallet: Wallet,
-    pub(crate) credentials: Credentials,
-    pub(crate) signer: Signer,
-    pub(crate) chain_id: u64,
+    pub(crate) l2: Arc<DynAuthenticator<'static>>,
 }
 
 impl Orders {
@@ -31,16 +27,8 @@ impl Orders {
     /// via [`ListOrders::next_cursor`] to fetch the next page.
     pub fn list(&self) -> ListOrders {
         ListOrders {
-            request: Request::get(
-                self.http_client.clone(),
-                "/data/orders",
-                AuthMode::L2 {
-                    address: self.wallet.address(),
-                    credentials: self.credentials.clone(),
-                    signer: self.signer.clone(),
-                },
-                self.chain_id,
-            ),
+            request: Request::new(self.http_client.clone(), "/data/orders")
+                .authenticator(self.l2.clone()),
         }
     }
 
@@ -49,49 +37,31 @@ impl Orders {
     /// Unlike [`Orders::list`], this returns canceled and fully matched orders
     /// too, so it is the way to read an order's final `status` and
     /// `size_matched` after it leaves the book.
-    pub fn get(&self, order_id: impl Into<String>) -> Request<OpenOrder> {
-        Request::get(
+    pub fn get(&self, order_id: impl Into<String>) -> Request<OpenOrder, ClobError> {
+        Request::new(
             self.http_client.clone(),
             format!("/data/order/{}", urlencoding::encode(&order_id.into())),
-            AuthMode::L2 {
-                address: self.wallet.address(),
-                credentials: self.credentials.clone(),
-                signer: self.signer.clone(),
-            },
-            self.chain_id,
         )
+        .authenticator(self.l2.clone())
     }
 
     /// Cancel an order
     pub fn cancel(&self, order_id: impl Into<String>) -> CancelOrderRequest {
         CancelOrderRequest {
             http_client: self.http_client.clone(),
-            signer_limiter: self.signer_limiter.clone(),
-            auth: AuthMode::L2 {
-                address: self.wallet.address(),
-                credentials: self.credentials.clone(),
-                signer: self.signer.clone(),
-            },
-            chain_id: self.chain_id,
+            auth: self.l2.clone(),
             order_id: order_id.into(),
         }
     }
 
     /// Cancel all open orders
     pub async fn cancel_all(&self) -> Result<BatchCancelResponse, ClobError> {
-        Request::<BatchCancelResponse>::delete(
-            self.http_client.clone(),
-            "/cancel-all",
-            AuthMode::L2 {
-                address: self.wallet.address(),
-                credentials: self.credentials.clone(),
-                signer: self.signer.clone(),
-            },
-            self.chain_id,
-        )
-        .trading(&self.signer_limiter, TradingRequest::CancelAll)
-        .send()
-        .await
+        Request::<BatchCancelResponse, ClobError>::new(self.http_client.clone(), "/cancel-all")
+            .method(Method::DELETE)
+            .authenticator(self.l2.clone())
+            .with_cost(signer_cost(TradingRequest::CancelAll))
+            .send()
+            .await
     }
 
     /// Cancel all orders for a specific market and asset
@@ -106,17 +76,13 @@ impl Orders {
             asset_id: String,
         }
 
-        Request::<BatchCancelResponse>::delete(
+        Request::<BatchCancelResponse, ClobError>::new(
             self.http_client.clone(),
             "/cancel-market-orders",
-            AuthMode::L2 {
-                address: self.wallet.address(),
-                credentials: self.credentials.clone(),
-                signer: self.signer.clone(),
-            },
-            self.chain_id,
         )
-        .trading(&self.signer_limiter, TradingRequest::CancelMarketOrders)
+        .method(Method::DELETE)
+        .authenticator(self.l2.clone())
+        .with_cost(signer_cost(TradingRequest::CancelMarketOrders))
         .body(&Body {
             market: market.into(),
             asset_id: asset_id.into(),
@@ -126,36 +92,23 @@ impl Orders {
     }
 
     /// Check if an order is being scored for rewards
-    pub fn is_scoring(&self, order_id: impl Into<String>) -> Request<OrderScoringResponse> {
-        Request::get(
-            self.http_client.clone(),
-            "/order-scoring",
-            AuthMode::L2 {
-                address: self.wallet.address(),
-                credentials: self.credentials.clone(),
-                signer: self.signer.clone(),
-            },
-            self.chain_id,
-        )
-        .query("order_id", order_id.into())
+    pub fn is_scoring(
+        &self,
+        order_id: impl Into<String>,
+    ) -> Request<OrderScoringResponse, ClobError> {
+        Request::new(self.http_client.clone(), "/order-scoring")
+            .authenticator(self.l2.clone())
+            .query("order_id", order_id.into())
     }
 
     /// Check if multiple orders are being scored for rewards
     pub fn are_scoring(
         &self,
         order_ids: impl Into<Vec<String>>,
-    ) -> Request<Vec<OrderScoringResponse>> {
-        Request::get(
-            self.http_client.clone(),
-            "/orders-scoring",
-            AuthMode::L2 {
-                address: self.wallet.address(),
-                credentials: self.credentials.clone(),
-                signer: self.signer.clone(),
-            },
-            self.chain_id,
-        )
-        .query_many("order_ids", order_ids.into())
+    ) -> Request<Vec<OrderScoringResponse>, ClobError> {
+        Request::new(self.http_client.clone(), "/orders-scoring")
+            .authenticator(self.l2.clone())
+            .query_many("order_ids", order_ids.into())
     }
 
     /// Cancel multiple orders by ID (up to 3000)
@@ -165,34 +118,22 @@ impl Orders {
     ) -> Result<BatchCancelResponse, ClobError> {
         let ids: Vec<String> = order_ids.into();
 
-        Request::<BatchCancelResponse>::delete(
-            self.http_client.clone(),
-            "/orders",
-            AuthMode::L2 {
-                address: self.wallet.address(),
-                credentials: self.credentials.clone(),
-                signer: self.signer.clone(),
-            },
-            self.chain_id,
-        )
-        .trading(
-            &self.signer_limiter,
-            TradingRequest::CancelOrders {
+        Request::<BatchCancelResponse, ClobError>::new(self.http_client.clone(), "/orders")
+            .method(Method::DELETE)
+            .authenticator(self.l2.clone())
+            .with_cost(signer_cost(TradingRequest::CancelOrders {
                 count: ids.len() as u32,
-            },
-        )
-        .body(&ids)?
-        .send()
-        .await
+            }))
+            .body(&ids)?
+            .send()
+            .await
     }
 }
 
 /// Request builder for canceling an order
 pub struct CancelOrderRequest {
     http_client: HttpClient,
-    signer_limiter: SignerLimiter,
-    auth: AuthMode,
-    chain_id: u64,
+    auth: Arc<DynAuthenticator<'static>>,
     order_id: String,
 }
 
@@ -209,8 +150,10 @@ impl CancelOrderRequest {
             order_id: self.order_id,
         };
 
-        Request::delete(self.http_client, "/order", self.auth, self.chain_id)
-            .trading(&self.signer_limiter, TradingRequest::CancelOrder)
+        Request::new(self.http_client, "/order")
+            .method(Method::DELETE)
+            .authenticator(self.auth)
+            .with_cost(signer_cost(TradingRequest::CancelOrder))
             .body(&request)?
             .send()
             .await
@@ -329,7 +272,7 @@ pub struct ListOrdersResponse {
 
 /// Request builder for listing open orders with optional filters.
 pub struct ListOrders {
-    request: Request<ListOrdersResponse>,
+    request: Request<ListOrdersResponse, ClobError>,
 }
 
 impl ListOrders {

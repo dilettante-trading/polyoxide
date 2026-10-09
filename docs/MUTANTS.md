@@ -50,6 +50,9 @@ Bundle G's core additions (`RequestParts::timeout`, `RetryConfig::attempt_info`,
 and `PolymarketRetryPolicy`'s `Fail` with no retry left) moved the loop's lines 3 up, the
 policy's hold 4 down and `Hold`'s tests 5 down; rows (a), (a), the policy, (f), (g) and (c)
 were proved again on top of `a0d2771`.
+Story 3.4 moved clob onto the send loop; its error imports moved rows (e) 3 lines down and the
+hand-written `From<ApiError>` moved their tests 61 down. Rows (e), (e), case and (e), only a
+400 were proved again on top of `d8cc425`.
 
 ## The rules
 
@@ -64,9 +67,9 @@ were proved again on top of `a0d2771`.
 | (c), a hold extended mid-wait | `polyoxide-core/src/hold.rs:78-93`, `Hold::wait` re-reads the deadline after each sleep | `return` after the `sleep_until` at `polyoxide-core/src/hold.rs:91`, so it sleeps once | `polyoxide-core/src/hold.rs:150` `a_hold_extended_mid_wait_is_honoured_in_full` |
 | (c), the re-check after a bucket wait (AD-23) | `polyoxide-core/src/rate_limit.rs:577-579`, `RateLimiter::acquire` waits out the hold again after its buckets | Delete that second `wait` | `polyoxide-core/src/rate_limit.rs:830` `a_hold_set_during_a_bucket_wait_is_honoured` |
 | (d) `quota()` leaves depth at one token, with no `allow_burst` | `polyoxide-core/src/rate_limit.rs:183-186` | Append `.allow_burst(NonZeroU32::new(count).unwrap())` | `polyoxide-core/src/rate_limit.rs:263` `no_quota_admits_more_than_its_published_count_in_one_window`; `polyoxide-core/src/rate_limit.rs:280` `every_quota_reserves_headroom_below_the_published_count`; `polyoxide-core/tests/polymarket_limits.rs:20` `every_configured_bucket_satisfies_the_quota_it_publishes` |
-| (e) `classify_order_kill` needs both the order kind and the kill token | `polyoxide-clob/src/error.rs:92` | `&&` → `\|\|` after `m.contains("fak order")` | `polyoxide-clob/src/error.rs:389` `test_classify_requires_both_tokens` |
-| (e), case | `polyoxide-clob/src/error.rs:89`, the message is lowercased before matching | `let m = message.to_string();` | `polyoxide-clob/src/error.rs:314` `test_classify_recognizes_verbatim_venue_messages`; `polyoxide-clob/src/error.rs:326` `test_classify_preserves_message_verbatim`; `polyoxide-clob/src/error.rs:334` `test_classify_is_case_insensitive`; `polyoxide-clob/src/error.rs:347` `test_classify_tolerates_curly_apostrophe_in_fok_message`; `polyoxide-clob/tests/mock_api.rs:3365` `fak_unmatched_maps_to_typed_error_not_generic_validation`; `polyoxide-clob/tests/mock_api.rs:3399` `fok_unfilled_maps_to_typed_error_not_generic_validation` |
-| (e), only a 400 is classified | `polyoxide-clob/src/error.rs:110-113`, `from_response` classifies `ApiError::Validation` alone | Add an `ApiError::Api { status, message }` arm that classifies `message` too | `polyoxide-clob/tests/mock_api.rs:3462` `fak_prose_on_non_400_status_is_not_reclassified` |
+| (e) `classify_order_kill` needs both the order kind and the kill token | `polyoxide-clob/src/error.rs:95` | `&&` → `\|\|` after `m.contains("fak order")` | `polyoxide-clob/src/error.rs:450` `test_classify_requires_both_tokens` |
+| (e), case | `polyoxide-clob/src/error.rs:92`, the message is lowercased before matching | `let m = message.to_string();` | `polyoxide-clob/src/error.rs:375` `test_classify_recognizes_verbatim_venue_messages`; `polyoxide-clob/src/error.rs:387` `test_classify_preserves_message_verbatim`; `polyoxide-clob/src/error.rs:395` `test_classify_is_case_insensitive`; `polyoxide-clob/src/error.rs:408` `test_classify_tolerates_curly_apostrophe_in_fok_message`; `polyoxide-clob/tests/mock_api.rs:3365` `fak_unmatched_maps_to_typed_error_not_generic_validation`; `polyoxide-clob/tests/mock_api.rs:3399` `fok_unfilled_maps_to_typed_error_not_generic_validation` |
+| (e), only a 400 is classified | `polyoxide-clob/src/error.rs:113-116`, `from_response` classifies `ApiError::Validation` alone | Add an `ApiError::Api { status, message }` arm that classifies `message` too | `polyoxide-clob/tests/mock_api.rs:3462` `fak_prose_on_non_400_status_is_not_reclassified` |
 | (f) `observe` runs on every response, the last attempt included | `polyoxide-core/src/send.rs:81`, before the policy decides | Call `observe` only when `retries_left > 0` | `polyoxide-core/tests/send_loop.rs:252` `observe_sees_the_last_attempt` |
 | (g) A retry sleeps at least the loop's floor, whatever wait the policy returns | `polyoxide-core/src/send.rs:94`, `floor.max(wait)` | Sleep `wait` | `polyoxide-core/tests/send_loop.rs:278` `a_zero_wait_still_sleeps_the_floor`; `polyoxide-core/tests/send_loop.rs:322` `the_429_hold_is_retry_delay_zero_not_the_attempts_wait` |
 | (i) The per-signer layer's buckets hold their published burst, as governor's `allow_burst` did before Story 3.3 | `polyoxide-core/src/signer_limit.rs:276`, where each signer `CapacityBucket` takes the tier's burst as its capacity | `let capacity = 1;`, a bucket of one token | `polyoxide-core/src/signer_limit.rs:523` `a_batch_within_capacity_is_admitted`; `polyoxide-core/src/signer_limit.rs:532` `adopting_a_higher_tier_admits_a_batch_that_was_impossible`; `polyoxide-core/src/signer_limit.rs:548` `the_order_and_cancel_buckets_are_independent`; `polyoxide-core/src/signer_limit.rs:570` `batch_cost_is_charged_in_full_not_as_one_request` |
@@ -78,7 +81,7 @@ held row (c), a hold extended mid-wait, until Story 3.3. It drives `RateLimiter:
 re-check after its buckets now also waits out an extended hold, so it passes under that row's
 mutant; `Hold`'s own test holds the row, and the re-check has a row of its own.
 
-`polyoxide-clob/src/error.rs:358` `test_classify_does_not_capture_neighbouring_400s` fails
+`polyoxide-clob/src/error.rs:419` `test_classify_does_not_capture_neighbouring_400s` fails
 under none of the mutants above. It pins the 400s that neighbour the kill outcomes, so keep
 it, but do not count it as holding any of these rules.
 
@@ -91,11 +94,11 @@ and on perps the route's own bucket does too. Neither counts as holding (g).
 
 ## Rule (a): sites not yet covered
 
-The same call order, `note_rate_limited` before `should_retry`, also stands at four
+The same call order, `note_rate_limited` before `should_retry`, also stands at relay's three
 hand-written loops, and no mutant is proved at any of them. No tests are written for them,
-because Stories 3.4 and 3.5 move them onto core's one send loop (AD-8), whose rows are above.
-Until then, review an edit at one of these sites by hand.
+because Story 3.5 moves them onto core's one send loop (AD-8), whose rows are above. Until
+then, review an edit at one of these sites by hand. Clob's loop moved onto the send loop in
+Story 3.4.
 
-- `polyoxide-clob/src/request.rs:255`, clob's request loop
 - `polyoxide-relay/src/client.rs:293`, `polyoxide-relay/src/client.rs:392` and
   `polyoxide-relay/src/client.rs:1836`, relay's three loops
