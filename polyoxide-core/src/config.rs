@@ -190,4 +190,12 @@ mod tests {
         assert_eq!(knobs.config.max_concurrent, Some(6));
         assert_eq!(knobs.config.default_max_concurrent, 4);
     }
+
+    #[test]
+    fn the_core_defaults_are_thirty_seconds_and_ten_idle() {
+        let config = ClientConfig::new("https://x", 4);
+        assert_eq!(config.timeout_ms, 30_000);
+        assert_eq!(config.pool_size, 10);
+        assert!(config.retry_config.is_none());
+    }
 }
