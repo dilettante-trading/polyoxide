@@ -45,7 +45,7 @@ leaves the real health route governed only by the 1,000/10s general bucket, a
 
 ## Sibling hosts
 
-Two namespaces target sibling hosts that share one `RateLimiter` with the main
+Two namespaces target sibling hosts that share one `RateLimiter` (`polymarket::data_limits()`) with the main
 Data API client (see `HttpClient::with_base_url`).
 
 | Host | Namespace | Limit | Window |

@@ -1,5 +1,5 @@
 use polyoxide_core::{
-    HttpClient, HttpClientBuilder, RateLimitStatus, RateLimiter, RetryConfig, SignerLimiter, Tier,
+    polymarket, HttpClient, HttpClientBuilder, RateLimitStatus, RetryConfig, SignerLimiter, Tier,
     TradingRequest, DEFAULT_POOL_SIZE, DEFAULT_TIMEOUT_MS,
 };
 
@@ -998,7 +998,7 @@ impl ClobBuilder {
         let mut builder = HttpClientBuilder::new(&self.base_url)
             .timeout_ms(self.timeout_ms)
             .pool_size(self.pool_size)
-            .with_rate_limiter(RateLimiter::clob_default())
+            .with_rate_limiter(polymarket::clob_limits())
             .with_max_concurrent(self.max_concurrent.unwrap_or(8));
         if let Some(config) = self.retry_config {
             builder = builder.with_retry_config(config);

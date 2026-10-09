@@ -1,6 +1,6 @@
 use polyoxide_core::{
-    polymarket::PolymarketRetryPolicy, HttpClient, HttpClientBuilder, RateLimiter, RetryConfig,
-    DEFAULT_POOL_SIZE, DEFAULT_TIMEOUT_MS,
+    polymarket::{self, PolymarketRetryPolicy},
+    HttpClient, HttpClientBuilder, RetryConfig, DEFAULT_POOL_SIZE, DEFAULT_TIMEOUT_MS,
 };
 
 use crate::{
@@ -151,7 +151,7 @@ impl GammaBuilder {
         let mut builder = HttpClientBuilder::new(&self.base_url)
             .timeout_ms(self.timeout_ms)
             .pool_size(self.pool_size)
-            .with_rate_limiter(RateLimiter::gamma_default())
+            .with_rate_limiter(polymarket::gamma_limits())
             .with_retry_policy(PolymarketRetryPolicy)
             .with_max_concurrent(self.max_concurrent.unwrap_or(4));
         if let Some(config) = self.retry_config {

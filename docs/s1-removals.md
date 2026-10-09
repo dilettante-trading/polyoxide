@@ -27,7 +27,11 @@ To remove a public item in a PR:
 
 ## Removed
 
-None yet.
+- `polyoxide-core inherent_method_missing: RateLimiter::clob_default (src/rate_limit.rs)` Story 3.2: use `polyoxide_core::polymarket::clob_limits()`, which returns the same table; build any other table with `WindowQuotaTable`.
+- `polyoxide-core inherent_method_missing: RateLimiter::gamma_default (src/rate_limit.rs)` Story 3.2: use `polyoxide_core::polymarket::gamma_limits()`, which returns the same table; build any other table with `WindowQuotaTable`.
+- `polyoxide-core inherent_method_missing: RateLimiter::data_default (src/rate_limit.rs)` Story 3.2: use `polyoxide_core::polymarket::data_limits()`, which returns the same table; build any other table with `WindowQuotaTable`.
+- `polyoxide-core inherent_method_missing: RateLimiter::relay_default (src/rate_limit.rs)` Story 3.2: use `polyoxide_core::polymarket::relay_limits()`, which returns the same table; build any other table with `WindowQuotaTable`.
+- `polyoxide-core inherent_method_missing: RateLimiter::perps_default (src/rate_limit.rs)` Story 3.2: use `polyoxide_core::polymarket::perps_limits()`, which returns the same table; build any other table with `WindowQuotaTable`.
 
 ## Doc-hidden paths consumers import
 

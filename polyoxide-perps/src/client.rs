@@ -1,8 +1,8 @@
 //! The `Perps` client and its builder.
 
 use polyoxide_core::{
-    polymarket::PolymarketRetryPolicy, HttpClient, HttpClientBuilder, RateLimiter, RetryConfig,
-    DEFAULT_POOL_SIZE, DEFAULT_TIMEOUT_MS,
+    polymarket::{self, PolymarketRetryPolicy},
+    HttpClient, HttpClientBuilder, RateLimiter, RetryConfig, DEFAULT_POOL_SIZE, DEFAULT_TIMEOUT_MS,
 };
 
 use crate::{
@@ -79,7 +79,7 @@ impl PerpsBuilder {
             base_url: DEFAULT_BASE_URL.to_string(),
             timeout_ms: DEFAULT_TIMEOUT_MS,
             pool_size: DEFAULT_POOL_SIZE,
-            rate_limiter: Some(RateLimiter::perps_default()),
+            rate_limiter: Some(polymarket::perps_limits()),
             retry_config: None,
             max_concurrent: None,
         }

@@ -40,7 +40,7 @@ tokio = { workspace = true, features = ["macros", "rt-multi-thread", "time"] }
 
 # `cargo test` and `cargo nextest` build examples but do not run their unit
 # tests unless asked, so the rate-limit harnesses' tests would otherwise never
-# run in CI. The verdict rules that pinned `RateLimiter::data_default`'s v2
+# run in CI. The verdict rules that pinned `polymarket::data_limits`'s v2
 # rows are polyoxide-test-support's `soak::verdict::tolerant`, tested there.
 [[example]]
 name = "v2_soak"

@@ -503,7 +503,7 @@ async fn portfolio_position_fills_and_invite_decode() {
 
 #[tokio::test]
 async fn the_default_client_paces_by_the_perps_table() {
-    // `PerpsBuilder` installs `RateLimiter::perps_default()` unless told
+    // `PerpsBuilder` installs `polymarket::perps_limits()` unless told
     // otherwise. Nothing else observes that: the limiter is a private field,
     // so without this test the line could be deleted and every offline test
     // would still pass. The trades row is 10 per 10 s, which `quota()` paces

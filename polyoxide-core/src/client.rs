@@ -575,7 +575,7 @@ mod tests {
     #[tokio::test]
     async fn test_builder_with_rate_limiter() {
         let client = HttpClientBuilder::new("https://example.com")
-            .with_rate_limiter(RateLimiter::clob_default())
+            .with_rate_limiter(crate::polymarket::clob_limits())
             .build()
             .unwrap();
         let start = std::time::Instant::now();

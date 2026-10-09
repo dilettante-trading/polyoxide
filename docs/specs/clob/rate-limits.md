@@ -12,7 +12,7 @@ orders rather than requests — see
 Source: <https://docs.polymarket.com/api-reference/rate-limits>, re-fetched 2026-07-25.
 An earlier revision of this page carried stale trading numbers (`POST /order` at
 3,500/10s rather than 5,000, `DELETE /order` with no sustained window at all).
-`RateLimiter::clob_default()` in `polyoxide-core` is pinned against the table
+`polymarket::clob_limits()` in `polyoxide-core` is pinned against the table
 below by the `documented_limits` tests.
 
 ## General
@@ -81,7 +81,7 @@ tighter per-endpoint cap (`/notifications` does), in which case both apply.
 tables can only hold at once if the group cap governs the ledger *reads*; a
 900/10s cap across all methods would make the published trading burst
 unreachable. The SDK therefore scopes the group to `GET`. If upstream ever
-clarifies otherwise, `clob_default()` is where to change it.
+clarifies otherwise, `clob_limits()` is where to change it.
 
 ## Auth
 
@@ -109,4 +109,4 @@ For reference — these are enforced by the sibling APIs, not the CLOB host.
 | Relayer `/submit` | 25 | 1 min |
 
 The Gamma `/markets` + `/events` shared cap of 900/10s is not modelled in
-`gamma_default()` because it can never bind: the per-endpoint caps sum to 800.
+`gamma_limits()` because it can never bind: the per-endpoint caps sum to 800.

@@ -46,7 +46,7 @@ tokio = { workspace = true, features = ["macros", "rt-multi-thread", "time"] }
 
 # `cargo test` builds examples but does not run their unit tests unless
 # asked; the harness's argument checks live here. The verdict rules that pin
-# `RateLimiter::perps_default` are polyoxide-test-support's
+# `polymarket::perps_limits` are polyoxide-test-support's
 # `soak::verdict::strict`, tested there.
 [[example]]
 name = "info_soak"

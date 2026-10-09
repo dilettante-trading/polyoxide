@@ -1,4 +1,4 @@
-//! Polymarket's hooks for core's send loop.
+//! Polymarket's hooks for core's send loop, and its rate limit tables.
 //!
 //! Every Polymarket client shares them: gamma, data and perps today, clob and
 //! relay once Stories 3.4 and 3.5 move their loops onto
@@ -11,6 +11,10 @@ use reqwest::StatusCode;
 
 use crate::hooks::{AttemptInfo, Decision, DefaultRetryPolicy, Outcome, ResponseMeta, RetryPolicy};
 use crate::rate_limit::RetryConfig;
+
+mod limits;
+
+pub use limits::{clob_limits, data_limits, gamma_limits, perps_limits, relay_limits};
 
 /// Polymarket's one retry policy: core's [`DefaultRetryPolicy`], plus
 /// `425 Too Early`.

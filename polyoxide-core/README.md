@@ -12,7 +12,8 @@ This is an **internal** crate. End users should depend on [`polyoxide`](https://
 | `error` | `ApiError` -- shared error enum (Api, Authentication, Validation, RateLimit, Timeout, Network, Serialization, Url) with `from_response()` for automatic status-code mapping |
 | `auth` | `Signer` (HMAC-SHA256), `Base64Format`, `current_timestamp()` -- authentication building blocks for L2 API credentials |
 | `request` | `Request<T, E>`, `QueryBuilder` trait, `RequestError` trait -- generic GET request builder with automatic deserialization, retry, and rate-limit integration |
-| `rate_limit` | `RateLimiter` with per-endpoint burst/sustained windows and `RetryConfig` for exponential backoff with jitter. Factory methods: `clob_default()`, `gamma_default()`, `data_default()`, `relay_default()` |
+| `rate_limit` | `WindowQuotaTable`, which builds a `RateLimiter` from a general bucket and per-endpoint rows (shared buckets, prefix or exact matching, scoped by method), with `effective_quota()` and `rows()` for inspection; `RetryConfig` for exponential backoff with jitter |
+| `polymarket` | Polymarket's retry policy and its five tables: `clob_limits()`, `gamma_limits()`, `data_limits()`, `relay_limits()`, `perps_limits()` |
 | `macros` | `impl_api_error_conversions!` -- generates `From<reqwest::Error>` and `From<url::ParseError>` for crate-specific error wrappers |
 | `keychain` | OS credential storage via `keyring` -- `get`, `set`, `delete` helpers and `KeychainError` (feature-gated behind `keychain`) |
 
@@ -50,7 +51,8 @@ use polyoxide_core::{Signer, Base64Format, current_timestamp};
 use polyoxide_core::{Request, QueryBuilder, RequestError};
 
 // Rate limiting & retry
-use polyoxide_core::{RateLimiter, RetryConfig};
+use polyoxide_core::{RateLimiter, RetryConfig, WindowQuotaTable};
+use polyoxide_core::polymarket::{clob_limits, PolymarketRetryPolicy};
 ```
 
 ## Installation

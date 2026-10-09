@@ -18,7 +18,7 @@ use alloy::providers::{Provider, ProviderBuilder};
 use alloy::rpc::types::TransactionRequest;
 use alloy::sol_types::{Eip712Domain, SolCall, SolStruct, SolValue};
 use polyoxide_core::{
-    retry_after_header, DepositWalletRole, HttpClient, HttpClientBuilder, RateLimiter, RetryConfig,
+    polymarket, retry_after_header, DepositWalletRole, HttpClient, HttpClientBuilder, RetryConfig,
     SessionSignerScope,
 };
 use serde::Serialize;
@@ -2020,7 +2020,7 @@ impl RelayClientBuilder {
             .ok_or_else(|| RelayError::Api(format!("Unsupported chain ID: {}", self.chain_id)))?;
 
         let mut builder = HttpClientBuilder::new(base_url.as_str())
-            .with_rate_limiter(RateLimiter::relay_default())
+            .with_rate_limiter(polymarket::relay_limits())
             .with_max_concurrent(self.max_concurrent.unwrap_or(2));
         if let Some(config) = self.retry_config {
             builder = builder.with_retry_config(config);

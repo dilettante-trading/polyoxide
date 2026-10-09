@@ -9,7 +9,8 @@
 //! - HMAC API-credential signing ([`Signer`])
 //! - One send loop, [`HttpClient::send`], with the hooks a venue supplies
 //!   ([`Throttle`], [`RetryPolicy`], [`Authenticator`])
-//! - Per-endpoint rate limiting with retry/backoff ([`RateLimiter`])
+//! - Per-endpoint window quotas ([`WindowQuotaTable`], which builds a
+//!   [`RateLimiter`]) and the retry schedule ([`RetryConfig`])
 //! - Optional OS keychain credential storage (behind the `keychain` feature)
 //!
 //! ## HTTP Client
@@ -78,7 +79,9 @@ pub use hooks::{
     DynRetryPolicy, DynThrottle, LayerCharge, LayerId, NoThrottle, Outcome, Refused, RequestMeta,
     RequestParts, ResponseMeta, RetryPolicy, Throttle,
 };
-pub use rate_limit::{RateLimiter, RetryConfig};
+pub use rate_limit::{
+    BucketId, EffectiveQuota, Matching, QuotaRow, RateLimiter, RetryConfig, WindowQuotaTable,
+};
 pub use request::{QueryBuilder, Request, RequestError};
 pub use send::decode_json;
 pub use session_signer::{DepositWalletRole, SessionSignerScope};

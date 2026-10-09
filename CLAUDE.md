@@ -185,12 +185,12 @@ see `docs/specs/session-keys/`.
 
 | Layer | Module | Keyed on | Counts | Applies to |
 |-------|--------|----------|--------|------------|
-| Cloudflare IP throttling | `polyoxide-core/src/rate_limit.rs` | client IP | **requests** | every host |
+| Cloudflare IP throttling | `polyoxide-core/src/rate_limit.rs` (`WindowQuotaTable`), tables in `polyoxide-core/src/polymarket/limits.rs` | client IP | **requests** | every host |
 | Per-signer token buckets | `polyoxide-core/src/signer_limit.rs` | signer address | **orders** | CLOB order/cancel only |
 
 The per-signer layer charges batch endpoints their full size (`POST /orders` costs N, `DELETE /orders` costs N, `cancel-all` costs 1+N), so a batch can cost more than the bucket's burst capacity can *ever* hold — permanently rejected, not throttled. `SignerLimiter::acquire` refuses those client-side as `ClobError::BurstCapacityExceeded` (non-retriable) rather than letting the retry loop burn attempts on a 429 it would misread as transient. Tier starts at `Standard` (tightest) and is adopted from the `Poly-RateLimit-Tier` response header, since it derives from 30-day volume the client cannot compute. `cancel-all`/`cancel-market-orders` costs are *not* knowable client-side — `TradingRequest::cost_is_exact` flags that.
 
-Both tables are pinned by `documented_*_limits` agreement tests asserting the **effective quota a request resolves to**, not merely that an entry exists. Tests that only check presence and ordering are how `/balance-allowance` went missing and `/closed-positions` sat at 66x its cap, both undetected.
+Both tables are pinned by `documented_*_limits` agreement tests asserting the **effective quota a request resolves to** (`RateLimiter::effective_quota`, which lists the general bucket first, then the matched row's buckets), not merely that an entry exists. Tests that only check presence and ordering are how `/balance-allowance` went missing and `/closed-positions` sat at 66x its cap, both undetected.
 
 **Published rate limit tables name routes that 404** — upstream lists `Health check (/ok)` under every surface, but only `clob.polymarket.com` serves it. Data's health route is `/`, Gamma's is `/status`. Probe the path on the host before pinning a row.
 
@@ -201,7 +201,7 @@ Both tables are pinned by `documented_*_limits` agreement tests asserting the **
 
 The send loop applies a policy's hold **before** it decides whether to retry, and whatever it decides — a request that is out of attempts still has to publish what it learned. Clob's loop and relay's three keep that order by calling `note_rate_limited` before `should_retry`, unconditionally, until Stories 3.4 and 3.5 move them onto the send loop.
 
-**A bucket's depth and its refill rate are two spends of one budget.** `quota()` deliberately does not call `allow_burst`, leaving capacity at governor's default of one token. The obvious spelling — capacity `count`, refilling at `count/period` — reads like a faithful transcription of "150 per 10 seconds" and is wrong: a bucket starting full admits its depth *plus* everything the refill adds, so its first window lets through `count + count`. Every entry in every table over-permitted by exactly 2x until this was measured.
+**A bucket's depth and its refill rate are two spends of one budget.** `quota()` deliberately does not call `allow_burst`, leaving capacity at governor's default of one token, and `WindowQuotaTable` offers no burst setting, so no table can ask for one. The obvious spelling — capacity `count`, refilling at `count/period` — reads like a faithful transcription of "150 per 10 seconds" and is wrong: a bucket starting full admits its depth *plus* everything the refill adds, so its first window lets through `count + count`. Every entry in every table over-permitted by exactly 2x until this was measured.
 
 Depth is not spare capacity; it is borrowed against the rate, and `burst + rate × period ≤ count` means any burst of `B` costs `B` requests of sustained allowance permanently. Minimum depth is therefore also maximum throughput — and the safest shape, since the client never concentrates requests into an instant, including on release from a cooldown when every parked request resumes at once. This is inherent to token buckets against a sliding-window server, not an artifact of this implementation: satisfying the bound with `rate = count/period` forces `B ≤ 0`.
 
@@ -263,7 +263,7 @@ positional arrays on the wire and have hand-written serde. The host ignores
 every instrument, so a caller filters client-side. The four WebSocket fields on
 `LimitTier` are a `u32::MAX` sentinel, not a budget, and must not size a
 bucket. Every index has empty constituents today. The host is fronted by
-CloudFront, so the rate rows in `RateLimiter::perps_default` were measured
+CloudFront, so the rate rows in `polymarket::perps_limits` were measured
 with `polyoxide-perps/examples/info_soak.rs` over distinct URLs: klines 30,
 trades 10, portfolio 30 and bbo 50 per 10 s, a `/v1/info` catch-all at 10 for
 the routes not soaked, and a client-wide general bucket of 30 set by two mixed
@@ -351,7 +351,7 @@ optionality and field names and every builder's query keys against that schema.
 (`scripts/capture_v2_fixtures.py` refreshes them). `docs/specs/data-v2/OBSERVED.md`
 records where the server and the schema part ways. Notably `/v2/user-pnl` is **not** the
 `data.pnl()` series and `/v2/leaderboard` ranks volume in shares, not USDC, so neither
-replaces the undocumented host. The v2 rows in `RateLimiter::data_default` were measured with
+replaces the undocumented host. The v2 rows in `polymarket::data_limits` were measured with
 `polyoxide-data/examples/v2_soak`, which sends raw requests over distinct URLs: several v2
 routes are CDN-cached, and a repeated URL is answered by CloudFront without reaching the
 origin, so a soak that repeats URLs reports a clean run at any rate. The runs are in

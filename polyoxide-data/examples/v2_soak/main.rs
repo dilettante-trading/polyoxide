@@ -1,6 +1,6 @@
 //! Measures, then validates, the rate limits for Data API v2 routes.
 //!
-//! Upstream publishes no v2 figures, so `RateLimiter::data_default` started
+//! Upstream publishes no v2 figures, so `polymarket::data_limits` started
 //! with rows borrowed from v1. This harness replaces them with measured ones.
 //!
 //! ```sh
@@ -53,7 +53,7 @@ use std::{
     time::{Duration, Instant, SystemTime, UNIX_EPOCH},
 };
 
-use polyoxide_core::RateLimiter;
+use polyoxide_core::{polymarket, RateLimiter};
 use polyoxide_test_support::soak::{self, verdict::tolerant as verdict, Pacer};
 use reqwest::Method;
 
@@ -103,7 +103,7 @@ Usage: v2_soak --route <routes> [options]
                           --pace client also takes a comma list or `all`
   --stages <r1,r2,...>    Ramp rates in req/s, ascending, at most 40
                           (default: 10,15,20,30,40)
-  --pace client           Validate instead: pace by RateLimiter::data_default
+  --pace client           Validate instead: pace by polymarket::data_limits
                           and require zero 429s
   --stage-secs <n>        Seconds per stage (default: 60 ramp, 120 validation)
   --cooldown-secs <n>     Idle seconds between ramp stages (default: 120)
@@ -569,13 +569,8 @@ async fn main() -> ExitCode {
                 config.stage_secs,
                 config.concurrency
             );
-            let stage = run_stage(
-                &run,
-                Pace::Client(RateLimiter::data_default()),
-                None,
-                planned,
-            )
-            .await;
+            let stage =
+                run_stage(&run, Pace::Client(polymarket::data_limits()), None, planned).await;
             let verdict = judge(&stage, None);
             println!("{TABLE_HEADER}\n{}", stage_row("client", &stage, &verdict));
             if let Some(advice) = cooldown_advice(&verdict) {

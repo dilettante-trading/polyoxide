@@ -1,3 +1,9 @@
+//! Window quotas: [`WindowQuotaTable`] builds a [`RateLimiter`], which counts
+//! requests against the buckets a request's method and path resolve to.
+//!
+//! Polymarket's tables are built in [`polymarket`](crate::polymarket).
+
+use std::sync::atomic::{AtomicU32, Ordering};
 use std::sync::{Arc, Mutex};
 use std::time::Duration;
 
@@ -13,19 +19,18 @@ type DirectLimiter = governor::RateLimiter<
     governor::clock::DefaultClock,
 >;
 
-/// How an endpoint pattern should be matched against request paths.
+/// How a row's pattern is matched against a request path.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-#[allow(dead_code)]
-enum MatchMode {
-    /// Match if the path starts with the pattern followed by a segment
-    /// boundary (`/`, `?`, or end-of-string). Prevents `/price` from
-    /// matching `/prices-history`.
+pub enum Matching {
+    /// The path starts with the pattern at a segment boundary: followed by
+    /// `/`, `?`, or nothing. `/price` matches `/price`, `/price/1` and
+    /// `/price?id=1`, and never `/prices-history`.
     Prefix,
-    /// Match only the exact path string.
+    /// The path is the pattern, and nothing more.
     Exact,
 }
 
-/// A quota as published by Polymarket: `count` requests per `period`.
+/// A quota as published: `count` requests per `period`.
 ///
 /// Kept alongside the limiter so tests can assert the configured allowance
 /// against the documented table rather than merely checking an entry exists.
@@ -41,19 +46,31 @@ struct RateSpec {
 /// `/trades`, `/orders`, `/notifications` and `/order` to 900/10s *combined*,
 /// which four independent buckets would silently turn into 3,600/10s.
 struct Bucket {
-    /// The configured allowance. Read only by the agreement tests, which check
-    /// it against the published table.
-    #[cfg_attr(not(test), allow(dead_code))]
+    id: BucketId,
     spec: RateSpec,
+    /// The quota `limiter` was built from, read back by [`EffectiveQuota`].
+    quota: Quota,
     limiter: DirectLimiter,
 }
 
 impl Bucket {
-    fn new(count: u32, period: Duration) -> Arc<Self> {
+    fn new(id: BucketId, count: u32, period: Duration) -> Arc<Self> {
+        let quota = quota(count, period);
         Arc::new(Self {
+            id,
             spec: RateSpec { count, period },
-            limiter: DirectLimiter::direct(quota(count, period)),
+            quota,
+            limiter: DirectLimiter::direct(quota),
         })
+    }
+
+    fn effective(&self) -> EffectiveQuota {
+        EffectiveQuota {
+            bucket: self.id,
+            count: self.spec.count,
+            period: self.spec.period,
+            quota: self.quota,
+        }
     }
 }
 
@@ -61,7 +78,7 @@ impl Bucket {
 struct EndpointLimit {
     path_prefix: &'static str,
     method: Option<Method>,
-    match_mode: MatchMode,
+    match_mode: Matching,
     /// Every bucket a matching request must pass, awaited in order.
     buckets: Vec<Arc<Bucket>>,
 }
@@ -69,12 +86,12 @@ struct EndpointLimit {
 impl EndpointLimit {
     /// Whether this entry governs the given request.
     ///
-    /// Shared by [`RateLimiter::acquire`] and the agreement tests so the two
-    /// cannot disagree about which rule applies.
+    /// Shared by [`RateLimiter::acquire`] and [`RateLimiter::effective_quota`]
+    /// so the two cannot disagree about which rule applies.
     fn matches(&self, path: &str, method: Option<&Method>) -> bool {
         let path_matches = match self.match_mode {
-            MatchMode::Exact => path == self.path_prefix,
-            MatchMode::Prefix => {
+            Matching::Exact => path == self.path_prefix,
+            Matching::Prefix => {
                 // Ensure we're at a segment boundary, not a partial word match.
                 // "/price" should match "/price" and "/price/foo" but not "/prices-history".
                 match path.strip_prefix(self.path_prefix) {
@@ -93,10 +110,12 @@ impl EndpointLimit {
     }
 }
 
-/// Holds all rate limiters for one API surface.
+/// Window quotas for one API surface: a general bucket every request passes,
+/// then the buckets of the first row its method and path match.
 ///
-/// Created via factory methods like [`RateLimiter::clob_default()`] which
-/// configure hardcoded limits matching Polymarket's documented rate limits.
+/// Built by [`WindowQuotaTable`]. Polymarket's tables are
+/// [`polymarket::clob_limits`](crate::polymarket::clob_limits) and its
+/// siblings. A clone shares the buckets and the cooldown.
 #[derive(Clone)]
 pub struct RateLimiter {
     inner: Arc<RateLimiterInner>,
@@ -112,7 +131,7 @@ impl std::fmt::Debug for RateLimiter {
 
 struct RateLimiterInner {
     limits: Vec<EndpointLimit>,
-    default: DirectLimiter,
+    general: Arc<Bucket>,
     /// Deadline before which no request on this limiter may proceed.
     ///
     /// The buckets above encode the quota Polymarket *publishes*; this encodes
@@ -165,14 +184,26 @@ struct RateLimiterInner {
 /// at it. [`RESERVED_FRACTION`] is that margin, measured rather than
 /// conventional: 95% is known-refused, 90% is known-clean.
 fn quota(count: u32, period: Duration) -> Quota {
-    Quota::with_period(period / sustained_slots(count)).expect("quota interval must be non-zero")
+    Quota::with_period(WindowQuotaTable::paced_interval(count, period))
+        .expect("quota interval must be non-zero")
+}
+
+/// Requests `q` admits in the worst-case window of length `period`: the full
+/// bucket drained at `t=0`, plus every token the refill adds by `t=period`.
+///
+/// This is the quantity the published table bounds. Buckets start full, so the
+/// worst case is always a fresh limiter.
+fn admitted_in_one_window(q: &Quota, period: Duration) -> u128 {
+    let refilled = period.as_nanos() / q.replenish_interval().as_nanos();
+    u128::from(q.burst_size().get()) + refilled
 }
 
 /// Slots per `period` the client actually paces out for a published `count`:
 /// the count, less its reserve, less the single token of depth.
 ///
-/// Shared with the runtime agreement tests so their expected pacing cannot
-/// drift from what [`quota`] builds. They would still catch a request routed to
+/// Read through [`WindowQuotaTable::paced_interval`], which the runtime
+/// agreement tests share, so their expected pacing cannot drift from what
+/// [`quota`] builds. They would still catch a request routed to
 /// the wrong bucket — a different `count` yields a different interval — but a
 /// hand-copied formula here would silently loosen them the next time the
 /// reserve changes.
@@ -207,17 +238,7 @@ mod quota_arithmetic {
     //! count and window; the client was spending it twice.
 
     use super::*;
-
-    /// Requests `q` admits in the worst-case window of length `period`: the
-    /// full bucket drained at `t=0`, plus every token the refill adds by
-    /// `t=period`.
-    ///
-    /// This is the quantity the published table bounds. Buckets start full, so
-    /// the worst case is always a fresh limiter.
-    fn admitted_in_one_window(q: &Quota, period: Duration) -> u128 {
-        let refilled = period.as_nanos() / q.replenish_interval().as_nanos();
-        u128::from(q.burst_size().get()) + refilled
-    }
+    use crate::polymarket;
 
     /// The four general-purpose default buckets, plus a spread of endpoint
     /// shapes for good measure.
@@ -285,10 +306,10 @@ mod quota_arithmetic {
     #[test]
     fn every_configured_bucket_satisfies_the_quota_it_publishes() {
         for (surface, rl) in [
-            ("clob", RateLimiter::clob_default()),
-            ("gamma", RateLimiter::gamma_default()),
-            ("data", RateLimiter::data_default()),
-            ("relay", RateLimiter::relay_default()),
+            ("clob", polymarket::clob_limits()),
+            ("gamma", polymarket::gamma_limits()),
+            ("data", polymarket::data_limits()),
+            ("relay", polymarket::relay_limits()),
         ] {
             for limit in &rl.inner.limits {
                 for bucket in &limit.buckets {
@@ -317,45 +338,204 @@ mod quota_arithmetic {
     }
 }
 
-/// Create an endpoint rate limit configuration from its own buckets.
-fn endpoint_limit(
-    path_prefix: &'static str,
-    method: Option<Method>,
-    buckets: Vec<Arc<Bucket>>,
-) -> EndpointLimit {
-    EndpointLimit {
-        path_prefix,
-        method,
-        match_mode: MatchMode::Prefix,
-        buckets,
+/// One bucket of a [`WindowQuotaTable`], and of the [`RateLimiter`] it builds.
+///
+/// Rows that name one `BucketId` share one allowance.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+pub struct BucketId {
+    table: u32,
+    index: u32,
+}
+
+/// Tables made so far, so each [`BucketId`] names the table that made it.
+static TABLES: AtomicU32 = AtomicU32::new(0);
+
+/// A quota a request is held to: one bucket, admitting `count` requests per
+/// `period` and paced as [`WindowQuotaTable`] describes.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct EffectiveQuota {
+    /// The bucket. Two quotas naming one bucket are one allowance.
+    pub bucket: BucketId,
+    /// The published count.
+    pub count: u32,
+    /// The published window.
+    pub period: Duration,
+    quota: Quota,
+}
+
+impl EffectiveQuota {
+    /// The interval the bucket paces requests at, read from the bucket itself.
+    pub fn interval(&self) -> Duration {
+        self.quota.replenish_interval()
+    }
+
+    /// Requests the bucket admits in the worst-case window of length
+    /// `period`: its whole depth at once, plus every token its refill adds by
+    /// the window's end. A fresh bucket is the worst case, since buckets
+    /// start full.
+    pub fn admitted_in_one_window(&self) -> u128 {
+        admitted_in_one_window(&self.quota, self.period)
     }
 }
 
-/// A single-window endpoint limit: `count` requests per `period`.
-fn simple_limit(
-    path_prefix: &'static str,
-    method: Option<Method>,
-    count: u32,
-    period: Duration,
-) -> EndpointLimit {
-    endpoint_limit(path_prefix, method, vec![Bucket::new(count, period)])
+/// One row of a [`RateLimiter`], as [`RateLimiter::rows`] reports it.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct QuotaRow<'a> {
+    /// The path pattern.
+    pub pattern: &'static str,
+    /// The method the row is scoped to. `None` matches every method.
+    pub method: Option<&'a Method>,
+    /// How `pattern` is matched.
+    pub matching: Matching,
+    /// The row's buckets, in the order a request awaits them.
+    pub buckets: Vec<EffectiveQuota>,
 }
 
-/// A dual-window endpoint limit: a burst window plus a sustained window.
-fn dual_limit(
-    path_prefix: &'static str,
-    method: Method,
-    burst: (u32, Duration),
-    sustained: (u32, Duration),
-) -> EndpointLimit {
-    endpoint_limit(
-        path_prefix,
-        Some(method),
-        vec![
-            Bucket::new(burst.0, burst.1),
-            Bucket::new(sustained.0, sustained.1),
-        ],
-    )
+/// Builds a [`RateLimiter`] from a venue's window quotas: `count` requests in
+/// any window of length `period`.
+///
+/// Every request passes the general bucket, then the buckets of the first row
+/// whose pattern and method it matches, in the order the row lists them. Two
+/// rows naming one [`BucketId`] share one allowance: Polymarket caps four
+/// ledger routes at 900 per 10 s combined, which four buckets of their own
+/// would turn into 3,600.
+///
+/// # How a bucket paces
+///
+/// Each bucket holds one token and refills one every
+/// [`paced_interval`](Self::paced_interval), which aims at nine tenths of
+/// `count`. There is no burst setting, on purpose:
+///
+/// - A token bucket admits its depth *plus* everything its refill adds. A
+///   bucket holding `count` tokens and refilling `count` per `period` admits
+///   twice the quota in one window. Depth is borrowed against the rate, so
+///   the least depth is also the most throughput, and nothing parked behind
+///   a hold resumes as a spike.
+/// - A published count is reachable as a burst and not as a rate. On
+///   Polymarket's `/closed-positions` (150 per 10 s) a sustained 95% was
+///   refused and 90% ran clean for 180 s, so a bucket keeps a tenth back.
+///
+/// A count below 2 paces as 2 per window, since a bucket holds at least one
+/// token.
+///
+/// # Example
+///
+/// ```
+/// use std::time::Duration;
+///
+/// use polyoxide_core::{Matching, WindowQuotaTable};
+/// use reqwest::Method;
+///
+/// let ten_seconds = Duration::from_secs(10);
+/// let mut table = WindowQuotaTable::new(1_000, ten_seconds);
+/// let ledger = table.bucket(900, ten_seconds);
+/// table
+///     .prefix("/positions", None, 150, ten_seconds)
+///     .row(Matching::Prefix, "/trades", Some(Method::GET), &[ledger])
+///     .row(Matching::Exact, "/orders", Some(Method::GET), &[ledger]);
+/// let limiter = table.build();
+///
+/// // The general bucket first, then the row's.
+/// let trades = limiter.effective_quota(&Method::GET, "/trades");
+/// let orders = limiter.effective_quota(&Method::GET, "/orders");
+/// assert_eq!(trades[1].bucket, orders[1].bucket);
+/// assert_eq!(trades[1].admitted_in_one_window(), 810);
+/// // An exact row does not match a sub-path.
+/// assert_eq!(limiter.effective_quota(&Method::GET, "/orders/1").len(), 1);
+/// ```
+pub struct WindowQuotaTable {
+    id: u32,
+    /// The general bucket first, then every bucket in the order it was made.
+    buckets: Vec<Arc<Bucket>>,
+    rows: Vec<EndpointLimit>,
+}
+
+impl WindowQuotaTable {
+    /// A table whose general bucket admits `count` requests per `period`.
+    pub fn new(count: u32, period: Duration) -> Self {
+        let mut table = Self {
+            id: TABLES.fetch_add(1, Ordering::Relaxed),
+            buckets: Vec::new(),
+            rows: Vec::new(),
+        };
+        table.bucket(count, period);
+        table
+    }
+
+    /// Make a bucket admitting `count` requests per `period`, for rows to
+    /// name.
+    pub fn bucket(&mut self, count: u32, period: Duration) -> BucketId {
+        let id = BucketId {
+            table: self.id,
+            index: u32::try_from(self.buckets.len()).expect("fewer than 2^32 buckets"),
+        };
+        self.buckets.push(Bucket::new(id, count, period));
+        id
+    }
+
+    /// Add a row: a request whose path matches `pattern`, and whose method is
+    /// `method` when one is given, awaits `buckets` in order.
+    ///
+    /// Only the first row a request matches applies, so a pattern goes before
+    /// any shorter one that also matches it.
+    ///
+    /// # Panics
+    ///
+    /// When one of `buckets` was made by another table.
+    pub fn row(
+        &mut self,
+        matching: Matching,
+        pattern: &'static str,
+        method: Option<Method>,
+        buckets: &[BucketId],
+    ) -> &mut Self {
+        let buckets = buckets
+            .iter()
+            .map(|id| {
+                assert_eq!(id.table, self.id, "{id:?} was made by another table");
+                self.buckets[id.index as usize].clone()
+            })
+            .collect();
+        self.rows.push(EndpointLimit {
+            path_prefix: pattern,
+            method,
+            match_mode: matching,
+            buckets,
+        });
+        self
+    }
+
+    /// Add a [`Matching::Prefix`] row with a bucket of its own, admitting
+    /// `count` requests per `period`.
+    pub fn prefix(
+        &mut self,
+        pattern: &'static str,
+        method: Option<Method>,
+        count: u32,
+        period: Duration,
+    ) -> &mut Self {
+        let bucket = self.bucket(count, period);
+        self.row(Matching::Prefix, pattern, method, &[bucket])
+    }
+
+    /// The limiter, with every bucket full.
+    pub fn build(self) -> RateLimiter {
+        RateLimiter {
+            inner: Arc::new(RateLimiterInner {
+                general: self.buckets[0].clone(),
+                limits: self.rows,
+                cooldown_until: Mutex::new(None),
+            }),
+        }
+    }
+
+    /// The interval a bucket for `count` requests per `period` paces at:
+    /// `period` over nine tenths of `count`, less the one token of depth.
+    ///
+    /// The one place the pacing formula lives; every bucket is built from it.
+    pub fn paced_interval(count: u32, period: Duration) -> Duration {
+        period / sustained_slots(count)
+    }
 }
 
 impl RateLimiter {
@@ -414,13 +594,46 @@ impl RateLimiter {
     /// endpoint-specific limiter (burst + sustained).
     pub async fn acquire(&self, path: &str, method: Option<&Method>) {
         self.await_cooldown().await;
-        self.inner.default.until_ready().await;
+        self.inner.general.limiter.until_ready().await;
 
-        if let Some(limit) = self.inner.limits.iter().find(|l| l.matches(path, method)) {
+        if let Some(limit) = self.row_for(path, method) {
             for bucket in &limit.buckets {
                 bucket.limiter.until_ready().await;
             }
         }
+    }
+
+    /// The quotas a request is held to, in the order
+    /// [`acquire`](Self::acquire) awaits them: the general bucket first, then
+    /// the buckets of the first row `method` and `path` match.
+    pub fn effective_quota(&self, method: &Method, path: &str) -> Vec<EffectiveQuota> {
+        std::iter::once(&self.inner.general)
+            .chain(
+                self.row_for(path, Some(method))
+                    .into_iter()
+                    .flat_map(|limit| &limit.buckets),
+            )
+            .map(|bucket| bucket.effective())
+            .collect()
+    }
+
+    /// Every row, in the order requests are matched against them.
+    pub fn rows(&self) -> Vec<QuotaRow<'_>> {
+        self.inner
+            .limits
+            .iter()
+            .map(|limit| QuotaRow {
+                pattern: limit.path_prefix,
+                method: limit.method.as_ref(),
+                matching: limit.match_mode,
+                buckets: limit.buckets.iter().map(|b| b.effective()).collect(),
+            })
+            .collect()
+    }
+
+    /// The first row a request matches.
+    fn row_for(&self, path: &str, method: Option<&Method>) -> Option<&EndpointLimit> {
+        self.inner.limits.iter().find(|l| l.matches(path, method))
     }
 
     /// The quotas a request would be held to, in the order they are awaited.
@@ -430,276 +643,9 @@ impl RateLimiter {
     /// has taken.
     #[cfg(test)]
     fn resolve_specs(&self, path: &str, method: Option<&Method>) -> Vec<RateSpec> {
-        self.inner
-            .limits
-            .iter()
-            .find(|l| l.matches(path, method))
+        self.row_for(path, method)
             .map(|l| l.buckets.iter().map(|b| b.spec).collect())
             .unwrap_or_default()
-    }
-
-    /// CLOB API rate limits.
-    ///
-    /// Transcribed from <https://docs.polymarket.com/api-reference/rate-limits>
-    /// as fetched on 2026-07-25, and pinned by the `documented_limits` tests.
-    ///
-    /// Two things about the published tables need interpreting:
-    ///
-    /// - The **ledger group cap** (900/10s across `/trades`, `/orders`,
-    ///   `/notifications` and `/order`) is genuinely shared, so those entries
-    ///   hold clones of one shared bucket rather than four of their own.
-    /// - That group names `/order` and `/orders`, which also appear in the
-    ///   trading table at 5,000 and 2,000 per 10s. Both tables can only hold
-    ///   simultaneously if the group cap governs the ledger *reads*; a 900/10s
-    ///   cap on all methods would make the published trading burst
-    ///   unreachable. The group is therefore scoped to `GET`.
-    ///
-    /// Ordering matters wherever one pattern is a path-segment prefix of
-    /// another: `/balance-allowance/update` must precede `/balance-allowance`,
-    /// and the specific `/data/*` routes must precede the `/data` catch-all.
-    pub fn clob_default() -> Self {
-        let ten_sec = Duration::from_secs(10);
-        let ten_min = Duration::from_secs(600);
-        let get = Some(Method::GET);
-
-        // Shared across the ledger read endpoints — one bucket, four patterns.
-        let ledger_group = Bucket::new(900, ten_sec);
-
-        Self {
-            inner: Arc::new(RateLimiterInner {
-                default: DirectLimiter::direct(quota(9_000, ten_sec)),
-                cooldown_until: Mutex::new(None),
-                limits: vec![
-                    // ── Account. The tighter /update route must come first:
-                    // it matches the /balance-allowance prefix at a boundary.
-                    simple_limit("/balance-allowance/update", None, 50, ten_sec),
-                    simple_limit("/balance-allowance", None, 200, ten_sec),
-                    // ── Trading (dual window: burst + sustained).
-                    dual_limit("/order", Method::POST, (5_000, ten_sec), (120_000, ten_min)),
-                    dual_limit(
-                        "/order",
-                        Method::DELETE,
-                        (5_000, ten_sec),
-                        (120_000, ten_min),
-                    ),
-                    dual_limit("/orders", Method::POST, (2_000, ten_sec), (21_000, ten_min)),
-                    dual_limit(
-                        "/orders",
-                        Method::DELETE,
-                        (2_000, ten_sec),
-                        (15_000, ten_min),
-                    ),
-                    dual_limit(
-                        "/cancel-all",
-                        Method::DELETE,
-                        (250, ten_sec),
-                        (6_000, ten_min),
-                    ),
-                    dual_limit(
-                        "/cancel-market-orders",
-                        Method::DELETE,
-                        (1_500, ten_sec),
-                        (21_000, ten_min),
-                    ),
-                    // ── Ledger reads, sharing one 900/10s bucket.
-                    // /notifications additionally carries its own 125/10s cap.
-                    endpoint_limit(
-                        "/notifications",
-                        None,
-                        vec![ledger_group.clone(), Bucket::new(125, ten_sec)],
-                    ),
-                    endpoint_limit("/trades", get.clone(), vec![ledger_group.clone()]),
-                    endpoint_limit("/orders", get.clone(), vec![ledger_group.clone()]),
-                    endpoint_limit("/order", get.clone(), vec![ledger_group]),
-                    // Specific /data routes before the catch-all. The previous
-                    // pattern here was "/data/", which the segment-boundary
-                    // rule can never match — it was dead configuration.
-                    simple_limit("/data/orders", None, 500, ten_sec),
-                    simple_limit("/data/trades", None, 500, ten_sec),
-                    simple_limit("/data", None, 500, ten_sec),
-                    // ── Auth (matches /auth/derive-api-key etc.)
-                    simple_limit("/auth", None, 100, ten_sec),
-                    // ── Market data. The batch forms are 3x tighter than their
-                    // singular siblings and do not match them: the boundary
-                    // rule means "/books" never resolves through "/book".
-                    simple_limit("/prices-history", None, 1_000, ten_sec),
-                    simple_limit("/book", None, 1_500, ten_sec),
-                    simple_limit("/books", None, 500, ten_sec),
-                    simple_limit("/price", None, 1_500, ten_sec),
-                    simple_limit("/prices", None, 500, ten_sec),
-                    simple_limit("/midpoint", None, 1_500, ten_sec),
-                    simple_limit("/midpoints", None, 500, ten_sec),
-                    simple_limit("/tick-size", None, 200, ten_sec),
-                    // ── Health.
-                    simple_limit("/ok", None, 100, ten_sec),
-                    // ── Not in the published table. These are local, deliberately
-                    // conservative caps kept from earlier revisions; they only
-                    // ever permit less than the general bucket would. Listed
-                    // last so no documented rule is shadowed by them.
-                    simple_limit("/markets", None, 1_500, ten_sec),
-                    simple_limit("/neg-risk", None, 1_500, ten_sec),
-                ],
-            }),
-        }
-    }
-
-    /// Gamma API rate limits.
-    ///
-    /// - General: 4,000/10s
-    /// - /events: 500/10s
-    /// - /markets: 300/10s
-    /// - /public-search: 350/10s
-    /// - /comments: 200/10s
-    /// - /tags: 200/10s
-    /// - `/status` (health): 100/10s
-    ///
-    /// Upstream also lists a 900/10s cap shared by `/markets` + `/events`.
-    /// It is not modelled because it can never bind: the per-endpoint caps of
-    /// 300 and 500 sum to 800, which is already below it.
-    ///
-    /// The published table spells the health row `/ok`, but that path answers
-    /// **404** on `gamma-api.polymarket.com` — `/status` is the route that
-    /// answers 200, and the one `Gamma::health().ping()` requests. `/ok` is
-    /// boilerplate repeated into every surface's table; only the CLOB host
-    /// serves it.
-    pub fn gamma_default() -> Self {
-        let ten_sec = Duration::from_secs(10);
-
-        Self {
-            inner: Arc::new(RateLimiterInner {
-                default: DirectLimiter::direct(quota(4_000, ten_sec)),
-                cooldown_until: Mutex::new(None),
-                limits: vec![
-                    simple_limit("/comments", None, 200, ten_sec),
-                    simple_limit("/tags", None, 200, ten_sec),
-                    simple_limit("/markets", None, 300, ten_sec),
-                    simple_limit("/public-search", None, 350, ten_sec),
-                    simple_limit("/events", None, 500, ten_sec),
-                    simple_limit("/status", None, 100, ten_sec),
-                ],
-            }),
-        }
-    }
-
-    /// Data API rate limits.
-    ///
-    /// - General: 1,000/10s
-    /// - /trades: 200/10s
-    /// - /positions and /closed-positions: 150/10s
-    /// - `/` (health): 100/10s
-    /// - Data API v2: measured per route, since upstream publishes no figures;
-    ///   see `docs/specs/data-v2/OBSERVED.md`
-    ///
-    /// The published table spells the health row `/ok`, but that path answers
-    /// **404** on `data-api.polymarket.com` — `/` answers 200 `{"data":"OK"}`,
-    /// and is the route this crate requests. `/ok` is boilerplate repeated into
-    /// every surface's table; only the CLOB host serves it.
-    ///
-    /// Matching `/` is safe despite entries being prefix-matched: the
-    /// segment-boundary rule means `strip_prefix("/")` on `/positions` leaves
-    /// `positions`, which starts with neither `/` nor `?`, so the entry matches
-    /// only the bare root and the root with a query string.
-    ///
-    /// This limiter is shared with the two sibling hosts, so it also carries
-    /// their rules:
-    ///
-    /// - `/user-pnl`: 200/10s, published as the *host-wide* allowance for
-    ///   `user-pnl-api.polymarket.com`. Modelled per-path because it is the
-    ///   only route polyoxide calls there and matching has no host dimension.
-    /// - `lb-api.polymarket.com` (`/volume`, `/profit`) has no published limit,
-    ///   so those fall to the general bucket.
-    pub fn data_default() -> Self {
-        let ten_sec = Duration::from_secs(10);
-
-        Self {
-            inner: Arc::new(RateLimiterInner {
-                default: DirectLimiter::direct(quota(1_000, ten_sec)),
-                cooldown_until: Mutex::new(None),
-                limits: vec![
-                    simple_limit("/closed-positions", None, 150, ten_sec),
-                    simple_limit("/positions", None, 150, ten_sec),
-                    simple_limit("/trades", None, 200, ten_sec),
-                    simple_limit("/user-pnl", None, 200, ten_sec),
-                    // Data API v2. Upstream publishes no v2 figures; each count is the
-                    // highest clean rate from the ramps in
-                    // docs/specs/data-v2/OBSERVED.md, and `quota()` reserves a tenth.
-                    // `/v2/positions/combos` must precede `/v2/positions`: prefix
-                    // matching takes the first row that matches.
-                    simple_limit("/v2/positions/combos", None, 400, ten_sec),
-                    simple_limit("/v2/positions", None, 200, ten_sec),
-                    simple_limit("/v2/trades", None, 200, ten_sec),
-                    simple_limit("/v2/activity", None, 400, ten_sec),
-                    simple_limit("/v2/user-pnl", None, 400, ten_sec),
-                    simple_limit("/v2/holders", None, 400, ten_sec),
-                    simple_limit("/", None, 100, ten_sec),
-                ],
-            }),
-        }
-    }
-
-    /// Relay API rate limits.
-    ///
-    /// - 25 requests per 1 minute (single limiter, no endpoint-specific limits)
-    pub fn relay_default() -> Self {
-        Self {
-            inner: Arc::new(RateLimiterInner {
-                default: DirectLimiter::direct(quota(25, Duration::from_secs(60))),
-                cooldown_until: Mutex::new(None),
-                limits: vec![],
-            }),
-        }
-    }
-
-    /// Perps API rate limits.
-    ///
-    /// Upstream publishes no figure for the public `/v1/info/*` routes, only
-    /// that a per-IP token bucket exists. Each count is the highest clean
-    /// ramp stage measured by `polyoxide-perps/examples/info_soak.rs` on
-    /// 2026-09-30 and recorded in `docs/specs/perps/OBSERVED.md`; `quota()`
-    /// reserves a tenth. The four routes throttle at different rates (a 429
-    /// on one arrived while the others kept being served), so each has its
-    /// own row. The 17 routes that were not soaked share a `/v1/info`
-    /// catch-all at the lowest measured rate, so an unmeasured route cannot
-    /// be driven harder than any measured one. The general bucket is a
-    /// client-wide cap measured separately: the budget is partly shared
-    /// across routes, so a mixed run capped at the most permissive route's
-    /// 50 per 10 s was throttled (11 of 487 requests over 120 s) while the
-    /// same run capped at `PERPS_GENERAL` was clean. See the validation runs
-    /// in OBSERVED.md.
-    ///
-    /// With the general bucket at 30, bbo's own row never binds and the
-    /// klines and portfolio rows coincide with the general bucket; only the
-    /// trades row and the catch-all restrict further. The rows are kept at
-    /// their measured values so a later change to the general bucket does
-    /// not silently loosen a route.
-    ///
-    /// Row order matters: prefix matching takes the first match, so the
-    /// catch-all must come last.
-    pub fn perps_default() -> Self {
-        const PIN_KLINES: u32 = 30;
-        const PIN_TRADES: u32 = 10;
-        const PIN_PORTFOLIO: u32 = 30;
-        const PIN_BBO: u32 = 50;
-        /// Client-wide cap, per 10 s, from the mixed-route validation runs.
-        const PERPS_GENERAL: u32 = 30;
-        let ten_sec = Duration::from_secs(10);
-        let lowest = [PIN_KLINES, PIN_TRADES, PIN_PORTFOLIO, PIN_BBO]
-            .into_iter()
-            .min()
-            .expect("four rows");
-        Self {
-            inner: Arc::new(RateLimiterInner {
-                default: DirectLimiter::direct(quota(PERPS_GENERAL, ten_sec)),
-                cooldown_until: Mutex::new(None),
-                limits: vec![
-                    simple_limit("/v1/info/klines", None, PIN_KLINES, ten_sec),
-                    simple_limit("/v1/info/trades", None, PIN_TRADES, ten_sec),
-                    simple_limit("/v1/info/portfolio", None, PIN_PORTFOLIO, ten_sec),
-                    simple_limit("/v1/info/bbo", None, PIN_BBO, ten_sec),
-                    simple_limit("/v1/info", None, lowest, ten_sec),
-                ],
-            }),
-        }
     }
 }
 
@@ -718,6 +664,212 @@ impl Throttle for RateLimiter {
 
     fn hold(&self, delay: Duration) {
         self.begin_cooldown(delay);
+    }
+}
+
+#[cfg(test)]
+mod window_table {
+    //! [`WindowQuotaTable`], through the API a venue outside core sees.
+
+    use super::*;
+
+    const TEN_SECONDS: Duration = Duration::from_secs(10);
+    const TEN_MINUTES: Duration = Duration::from_secs(600);
+
+    /// `(count, period)` of each quota, general bucket first.
+    fn shape(quotas: &[EffectiveQuota]) -> Vec<(u32, Duration)> {
+        quotas.iter().map(|q| (q.count, q.period)).collect()
+    }
+
+    #[test]
+    fn a_request_awaits_the_general_bucket_then_its_rows_buckets_in_order() {
+        let mut table = WindowQuotaTable::new(1_000, TEN_SECONDS);
+        let burst = table.bucket(500, TEN_SECONDS);
+        let sustained = table.bucket(6_000, TEN_MINUTES);
+        table.row(
+            Matching::Prefix,
+            "/order",
+            Some(Method::POST),
+            &[burst, sustained],
+        );
+        let limiter = table.build();
+
+        let quotas = limiter.effective_quota(&Method::POST, "/order");
+        assert_eq!(
+            shape(&quotas),
+            [
+                (1_000, TEN_SECONDS),
+                (500, TEN_SECONDS),
+                (6_000, TEN_MINUTES)
+            ]
+        );
+        assert_eq!(quotas[1].bucket, burst);
+        assert_eq!(quotas[2].bucket, sustained);
+        assert_eq!(
+            shape(&limiter.effective_quota(&Method::GET, "/elsewhere")),
+            [(1_000, TEN_SECONDS)],
+            "an unmatched request is held to the general bucket alone"
+        );
+    }
+
+    #[tokio::test]
+    async fn two_rows_naming_one_bucket_share_one_allowance() {
+        let mut table = WindowQuotaTable::new(100_000, TEN_SECONDS);
+        let shared = table.bucket(100, TEN_SECONDS);
+        table
+            .row(Matching::Prefix, "/a", None, &[shared])
+            .row(Matching::Prefix, "/b", None, &[shared])
+            .prefix("/c", None, 100, TEN_SECONDS);
+        let limiter = table.build();
+
+        let a = limiter.effective_quota(&Method::GET, "/a")[1].bucket;
+        let b = limiter.effective_quota(&Method::GET, "/b")[1].bucket;
+        let c = limiter.effective_quota(&Method::GET, "/c")[1].bucket;
+        assert_eq!(a, b);
+        assert_ne!(a, c, "a row's own bucket is shared with nobody");
+
+        // 100 per 10 s paces at ~112ms: /b waits for the token /a took.
+        limiter.acquire("/a", None).await;
+        let start = std::time::Instant::now();
+        limiter.acquire("/b", None).await;
+        assert!(
+            start.elapsed() >= Duration::from_millis(80),
+            "/b went out after {:?}, so /a and /b are not one allowance",
+            start.elapsed()
+        );
+    }
+
+    #[test]
+    fn the_first_matching_row_wins() {
+        let mut table = WindowQuotaTable::new(1_000, TEN_SECONDS);
+        table
+            .prefix("/data/orders", None, 50, TEN_SECONDS)
+            .prefix("/data", None, 500, TEN_SECONDS)
+            .prefix("/data/trades", None, 60, TEN_SECONDS);
+        let limiter = table.build();
+
+        let count = |path| limiter.effective_quota(&Method::GET, path)[1].count;
+        assert_eq!(count("/data/orders"), 50);
+        assert_eq!(count("/data"), 500);
+        assert_eq!(
+            count("/data/trades"),
+            500,
+            "a row after a shorter pattern that matches it is never reached"
+        );
+    }
+
+    #[test]
+    fn a_prefix_row_matches_only_at_a_segment_boundary() {
+        let mut table = WindowQuotaTable::new(1_000, TEN_SECONDS);
+        table.prefix("/price", None, 100, TEN_SECONDS);
+        let limiter = table.build();
+
+        for path in ["/price", "/price/1", "/price?token=1"] {
+            assert_eq!(
+                limiter.effective_quota(&Method::GET, path).len(),
+                2,
+                "{path}"
+            );
+        }
+        for path in ["/prices-history", "/pricing", "/midpoint"] {
+            assert_eq!(
+                limiter.effective_quota(&Method::GET, path).len(),
+                1,
+                "{path}"
+            );
+        }
+    }
+
+    #[test]
+    fn an_exact_row_matches_only_its_own_path() {
+        let mut table = WindowQuotaTable::new(1_000, TEN_SECONDS);
+        let bucket = table.bucket(100, TEN_SECONDS);
+        table.row(Matching::Exact, "/trades", None, &[bucket]);
+        let limiter = table.build();
+
+        assert_eq!(limiter.effective_quota(&Method::GET, "/trades").len(), 2);
+        for path in ["/trades/1", "/trades?limit=10", "/traded"] {
+            assert_eq!(
+                limiter.effective_quota(&Method::GET, path).len(),
+                1,
+                "{path}"
+            );
+        }
+    }
+
+    #[test]
+    fn a_method_scoped_row_ignores_other_methods() {
+        let mut table = WindowQuotaTable::new(1_000, TEN_SECONDS);
+        table
+            .prefix("/order", Some(Method::POST), 500, TEN_SECONDS)
+            .prefix("/order", None, 90, TEN_SECONDS);
+        let limiter = table.build();
+
+        let count = |method| limiter.effective_quota(&method, "/order")[1].count;
+        assert_eq!(count(Method::POST), 500);
+        assert_eq!(count(Method::GET), 90);
+        assert_eq!(count(Method::DELETE), 90);
+    }
+
+    #[test]
+    fn rows_reports_every_row_in_match_order() {
+        let mut table = WindowQuotaTable::new(1_000, TEN_SECONDS);
+        let shared = table.bucket(900, TEN_SECONDS);
+        table
+            .prefix("/balance-allowance/update", None, 50, TEN_SECONDS)
+            .row(Matching::Exact, "/trades", Some(Method::GET), &[shared]);
+        let limiter = table.build();
+
+        let rows = limiter.rows();
+        assert_eq!(rows.len(), 2);
+        assert_eq!(rows[0].pattern, "/balance-allowance/update");
+        assert_eq!(rows[0].method, None);
+        assert_eq!(rows[0].matching, Matching::Prefix);
+        assert_eq!(shape(&rows[0].buckets), [(50, TEN_SECONDS)]);
+        assert_eq!(rows[1].pattern, "/trades");
+        assert_eq!(rows[1].method, Some(&Method::GET));
+        assert_eq!(rows[1].matching, Matching::Exact);
+        assert_eq!(rows[1].buckets[0].bucket, shared);
+        assert_eq!(format!("{limiter:?}"), "RateLimiter { endpoints: 2 }");
+    }
+
+    #[test]
+    fn every_bucket_paces_at_its_paced_interval_and_keeps_a_tenth_back() {
+        for (count, period) in [
+            (25, TEN_SECONDS * 6),
+            (150, TEN_SECONDS),
+            (9_000, TEN_SECONDS),
+        ] {
+            let mut table = WindowQuotaTable::new(count, period);
+            table.prefix("/row", None, count, period);
+            let limiter = table.build();
+
+            for quota in limiter.effective_quota(&Method::GET, "/row") {
+                assert_eq!(
+                    quota.interval(),
+                    WindowQuotaTable::paced_interval(count, period)
+                );
+                assert!(
+                    quota.admitted_in_one_window() <= u128::from(count - count.div_ceil(10)),
+                    "{count}/{period:?} admits {} in one window",
+                    quota.admitted_in_one_window()
+                );
+            }
+        }
+        assert_eq!(
+            WindowQuotaTable::paced_interval(150, TEN_SECONDS),
+            TEN_SECONDS / 134
+        );
+    }
+
+    #[test]
+    #[should_panic(expected = "was made by another table")]
+    fn a_bucket_from_another_table_is_refused() {
+        let mut other = WindowQuotaTable::new(1_000, TEN_SECONDS);
+        let foreign = other.bucket(100, TEN_SECONDS);
+        let mut table = WindowQuotaTable::new(1_000, TEN_SECONDS);
+        table.bucket(100, TEN_SECONDS);
+        table.row(Matching::Prefix, "/a", None, &[foreign]);
     }
 }
 
@@ -905,6 +1057,7 @@ mod documented_data_limits {
 
     use super::agreement::*;
     use super::*;
+    use crate::polymarket;
 
     /// The published table, transcribed by hand. This is the golden vector.
     fn documented() -> Vec<DocumentedRule> {
@@ -919,7 +1072,7 @@ mod documented_data_limits {
 
     #[test]
     fn every_documented_endpoint_resolves_to_its_published_quota() {
-        assert_matches_published(&RateLimiter::data_default(), documented(), 1_000);
+        assert_matches_published(&polymarket::data_limits(), documented(), 1_000);
     }
 
     /// Data API v2 rows. Upstream publishes no v2 figures; each count is the
@@ -937,14 +1090,14 @@ mod documented_data_limits {
 
     #[test]
     fn every_v2_route_resolves_to_its_measured_quota() {
-        assert_matches_published(&RateLimiter::data_default(), measured_v2(), 1_000);
+        assert_matches_published(&polymarket::data_limits(), measured_v2(), 1_000);
     }
 
     #[test]
     fn the_health_cap_is_attached_to_the_route_the_host_answers_on() {
         // `/ok` is a 404 on data-api. An entry there caps nothing and leaves
         // the real health route — `/` — on the 10x-looser general bucket.
-        assert_unconfigured(&RateLimiter::data_default(), "/ok");
+        assert_unconfigured(&polymarket::data_limits(), "/ok");
     }
 
     #[test]
@@ -952,7 +1105,7 @@ mod documented_data_limits {
         // `/` under prefix matching could plausibly match everything. The
         // segment-boundary rule saves it: `strip_prefix("/")` on `/positions`
         // leaves `positions`, which starts with neither `/` nor `?`.
-        let rl = RateLimiter::data_default();
+        let rl = polymarket::data_limits();
         for (path, expected) in [
             ("/positions", 150),
             ("/closed-positions", 150),
@@ -971,7 +1124,7 @@ mod documented_data_limits {
     async fn the_closed_positions_cap_actually_throttles() {
         // 150/10s paces one request every ~67ms.
         assert_paced_by_its_own_quota(
-            &RateLimiter::data_default(),
+            &polymarket::data_limits(),
             "/closed-positions",
             150,
             Duration::from_secs(10),
@@ -989,7 +1142,7 @@ mod documented_data_limits {
         // that much because the request still passes the surface's general
         // 1,000/10s bucket). Both sides of that gap are load-bearing, so the
         // threshold sits between them rather than at zero.
-        let rl = RateLimiter::data_default();
+        let rl = polymarket::data_limits();
         rl.acquire("/closed-positions", Some(&Method::GET)).await;
 
         let start = std::time::Instant::now();
@@ -1012,6 +1165,7 @@ mod documented_gamma_limits {
 
     use super::agreement::*;
     use super::*;
+    use crate::polymarket;
 
     /// The published table, transcribed by hand. This is the golden vector.
     fn documented() -> Vec<DocumentedRule> {
@@ -1027,12 +1181,12 @@ mod documented_gamma_limits {
 
     #[test]
     fn every_documented_endpoint_resolves_to_its_published_quota() {
-        assert_matches_published(&RateLimiter::gamma_default(), documented(), 4_000);
+        assert_matches_published(&polymarket::gamma_limits(), documented(), 4_000);
     }
 
     #[test]
     fn the_health_cap_is_attached_to_the_route_the_host_answers_on() {
-        assert_unconfigured(&RateLimiter::gamma_default(), "/ok");
+        assert_unconfigured(&polymarket::gamma_limits(), "/ok");
     }
 
     #[test]
@@ -1041,7 +1195,7 @@ mod documented_gamma_limits {
         // It is deliberately not modelled because the per-endpoint caps sum to
         // less than it. If either cap is ever raised, this stops being true and
         // the group bucket has to be added — that is what this test watches.
-        let rl = RateLimiter::gamma_default();
+        let rl = polymarket::gamma_limits();
         let markets = rl.resolve_specs("/markets", Some(&Method::GET))[0].count;
         let events = rl.resolve_specs("/events", Some(&Method::GET))[0].count;
         assert!(
@@ -1054,7 +1208,7 @@ mod documented_gamma_limits {
     #[tokio::test]
     async fn the_markets_cap_actually_throttles() {
         assert_paced_by_its_own_quota(
-            &RateLimiter::gamma_default(),
+            &polymarket::gamma_limits(),
             "/markets",
             300,
             Duration::from_secs(10),
@@ -1070,6 +1224,7 @@ mod documented_perps_limits {
 
     use super::agreement::*;
     use super::*;
+    use crate::polymarket;
 
     /// The measured table, transcribed by hand from the OBSERVED.md runs.
     /// This is the golden vector: a second transcription, separate from the
@@ -1108,7 +1263,7 @@ mod documented_perps_limits {
 
     #[test]
     fn every_soaked_route_has_its_own_row() {
-        assert_matches_published(&RateLimiter::perps_default(), measured(), u32::MAX);
+        assert_matches_published(&polymarket::perps_limits(), measured(), u32::MAX);
     }
 
     #[test]
@@ -1116,7 +1271,7 @@ mod documented_perps_limits {
         // The general bucket is 30/10s, so without the catch-all an
         // unmeasured route would be driven three times harder than trades,
         // the tightest route measured.
-        let rl = RateLimiter::perps_default();
+        let rl = polymarket::perps_limits();
         let specs = rl.resolve_specs("/v1/info/instruments", Some(&Method::GET));
         assert_eq!(
             specs.len(),
@@ -1145,13 +1300,13 @@ mod documented_perps_limits {
             GENERAL < BBO,
             "the general bucket must bind before bbo's row"
         );
-        let rl = RateLimiter::perps_default();
+        let rl = polymarket::perps_limits();
         assert_paced_by_its_own_quota(&rl, "/v1/info/bbo", GENERAL, Duration::from_secs(10)).await;
     }
 
     #[tokio::test]
     async fn the_klines_row_actually_paces() {
-        let rl = RateLimiter::perps_default();
+        let rl = polymarket::perps_limits();
         let count = rl.resolve_specs("/v1/info/klines", Some(&Method::GET))[0].count;
         assert_paced_by_its_own_quota(&rl, "/v1/info/klines", count, Duration::from_secs(10)).await;
     }
@@ -1170,6 +1325,7 @@ mod documented_limits {
 
     use super::agreement::{assert_paced_by_its_own_quota, DocumentedRule};
     use super::*;
+    use crate::polymarket;
 
     /// The published table, transcribed by hand. This is the golden vector.
     fn documented() -> Vec<DocumentedRule> {
@@ -1240,7 +1396,7 @@ mod documented_limits {
 
     #[test]
     fn every_documented_endpoint_resolves_to_its_published_quota() {
-        let rl = RateLimiter::clob_default();
+        let rl = polymarket::clob_limits();
 
         for (path, method, expected) in documented() {
             let resolved = rl.resolve_specs(path, method.as_ref());
@@ -1266,7 +1422,7 @@ mod documented_limits {
     fn batch_endpoints_do_not_inherit_their_singular_sibling() {
         // `/books` must not resolve through the `/book` rule: they are
         // different endpoints with a 3x difference in allowance.
-        let rl = RateLimiter::clob_default();
+        let rl = polymarket::clob_limits();
         for (batch, singular) in [
             ("/books", "/book"),
             ("/prices", "/price"),
@@ -1287,7 +1443,7 @@ mod documented_limits {
         // Upstream caps `/trades`, `/orders`, `/notifications` and `/order`
         // at 900/10s *combined*. Modelling that as four independent 900/10s
         // buckets would permit 3,600/10s.
-        let rl = RateLimiter::clob_default();
+        let rl = polymarket::clob_limits();
         let group: Vec<_> = ["/trades", "/orders", "/order", "/notifications"]
             .iter()
             .map(|p| {
@@ -1314,7 +1470,7 @@ mod documented_limits {
         // `/balance-allowance/update` starts with `/balance-allowance` at a
         // segment boundary, so ordering decides which rule wins. The update
         // route is four times tighter.
-        let rl = RateLimiter::clob_default();
+        let rl = polymarket::clob_limits();
         let update = rl.resolve_specs("/balance-allowance/update", Some(&Method::GET));
         assert_eq!(
             update[0].count, 50,
@@ -1327,7 +1483,7 @@ mod documented_limits {
         // Matching specs is not the same as enforcing them. `/tick-size` is
         // 200/10s, which paces one request every ~50ms.
         assert_paced_by_its_own_quota(
-            &RateLimiter::clob_default(),
+            &polymarket::clob_limits(),
             "/tick-size",
             200,
             Duration::from_secs(10),
@@ -1341,7 +1497,7 @@ mod documented_limits {
         // through one endpoint must leave a *different* group member throttled.
         // The shared 900/10s bucket paces at ~11ms; with four independent
         // buckets /orders would only meet the general 9,000/10s one at ~1.1ms.
-        let rl = RateLimiter::clob_default();
+        let rl = polymarket::clob_limits();
         rl.acquire("/trades", Some(&Method::GET)).await;
 
         let start = std::time::Instant::now();
@@ -1361,7 +1517,7 @@ mod documented_limits {
         // /order 5,000/10s. Both can only hold if the group cap is the ledger
         // *read*. Applying it to POST would make the published burst
         // unreachable.
-        let rl = RateLimiter::clob_default();
+        let rl = polymarket::clob_limits();
         let specs = rl.resolve_specs("/order", Some(&Method::POST));
         assert_eq!(specs[0].count, 5_000);
         assert!(
@@ -1374,6 +1530,7 @@ mod documented_limits {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::polymarket;
 
     // ── RetryConfig ──────────────────────────────────────────────
 
@@ -1493,32 +1650,32 @@ mod tests {
 
     #[test]
     fn test_clob_default_construction() {
-        let rl = RateLimiter::clob_default();
+        let rl = polymarket::clob_limits();
         assert_eq!(rl.inner.limits.len(), 27);
         assert!(format!("{:?}", rl).contains("endpoints"));
     }
 
     #[test]
     fn test_gamma_default_construction() {
-        let rl = RateLimiter::gamma_default();
+        let rl = polymarket::gamma_limits();
         assert_eq!(rl.inner.limits.len(), 6);
     }
 
     #[test]
     fn test_data_default_construction() {
-        let rl = RateLimiter::data_default();
+        let rl = polymarket::data_limits();
         assert_eq!(rl.inner.limits.len(), 11);
     }
 
     #[test]
     fn test_relay_default_construction() {
-        let rl = RateLimiter::relay_default();
+        let rl = polymarket::relay_limits();
         assert_eq!(rl.inner.limits.len(), 0);
     }
 
     #[test]
     fn test_rate_limiter_debug_format() {
-        let rl = RateLimiter::clob_default();
+        let rl = polymarket::clob_limits();
         let dbg = format!("{:?}", rl);
         assert!(dbg.contains("RateLimiter"), "missing struct name: {dbg}");
         assert!(dbg.contains("endpoints: 27"), "missing count: {dbg}");
@@ -1531,7 +1688,7 @@ mod tests {
         // Ordering is only load-bearing where one pattern is a path-segment
         // prefix of another. Asserting on fixed indices made this test brittle
         // and told us nothing; assert the actual constraint instead.
-        let rl = RateLimiter::clob_default();
+        let rl = polymarket::clob_limits();
         let index_of = |path: &str| {
             rl.inner
                 .limits
@@ -1556,7 +1713,7 @@ mod tests {
 
     #[tokio::test]
     async fn test_acquire_single_completes_immediately() {
-        let rl = RateLimiter::clob_default();
+        let rl = polymarket::clob_limits();
         let start = std::time::Instant::now();
         rl.acquire("/order", Some(&Method::POST)).await;
         assert!(start.elapsed() < Duration::from_millis(50));
@@ -1564,7 +1721,7 @@ mod tests {
 
     #[tokio::test]
     async fn test_acquire_matches_endpoint_by_prefix() {
-        let rl = RateLimiter::clob_default();
+        let rl = polymarket::clob_limits();
         let start = std::time::Instant::now();
         // /order/123 should match the /order prefix
         rl.acquire("/order/123", Some(&Method::POST)).await;
@@ -1573,7 +1730,7 @@ mod tests {
 
     #[tokio::test]
     async fn test_acquire_prefix_respects_segment_boundary() {
-        let rl = RateLimiter::clob_default();
+        let rl = polymarket::clob_limits();
         let limits = &rl.inner.limits;
 
         // Find the /price entry
@@ -1636,7 +1793,7 @@ mod tests {
 
     #[tokio::test]
     async fn test_acquire_method_filtering() {
-        let rl = RateLimiter::clob_default();
+        let rl = polymarket::clob_limits();
         let start = std::time::Instant::now();
         // GET /order shouldn't match POST or DELETE /order endpoints — falls to default only
         rl.acquire("/order", Some(&Method::GET)).await;
@@ -1645,7 +1802,7 @@ mod tests {
 
     #[tokio::test]
     async fn test_acquire_no_endpoint_match_uses_default_only() {
-        let rl = RateLimiter::clob_default();
+        let rl = polymarket::clob_limits();
         let start = std::time::Instant::now();
         rl.acquire("/unknown/path", None).await;
         assert!(start.elapsed() < Duration::from_millis(50));
@@ -1653,7 +1810,7 @@ mod tests {
 
     #[tokio::test]
     async fn test_acquire_method_none_matches_any_method() {
-        let rl = RateLimiter::gamma_default();
+        let rl = polymarket::gamma_limits();
         let start = std::time::Instant::now();
         // /events has method: None — should match GET, POST, and None
         rl.acquire("/events", Some(&Method::GET)).await;
@@ -1666,7 +1823,7 @@ mod tests {
 
     #[test]
     fn test_clob_price_and_prices_history_are_distinct() {
-        let rl = RateLimiter::clob_default();
+        let rl = polymarket::clob_limits();
         let limits = &rl.inner.limits;
 
         let price = limits.iter().find(|l| l.path_prefix == "/price").unwrap();
@@ -1676,8 +1833,8 @@ mod tests {
             .unwrap();
 
         // Both should use Prefix mode
-        assert_eq!(price.match_mode, MatchMode::Prefix);
-        assert_eq!(prices_history.match_mode, MatchMode::Prefix);
+        assert_eq!(price.match_mode, Matching::Prefix);
+        assert_eq!(prices_history.match_mode, Matching::Prefix);
 
         // Verify "/prices-history" does NOT match the "/price" pattern
         if let Some(rest) = "/prices-history".strip_prefix(price.path_prefix) {
@@ -1694,7 +1851,7 @@ mod tests {
         // — a tautology about two string literals that never touched the
         // limiter, and so held even with `/closed-positions` set to 66x its
         // published cap. Ask the limiter instead.
-        let rl = RateLimiter::data_default();
+        let rl = polymarket::data_limits();
 
         let closed = rl.resolve_specs("/closed-positions", Some(&Method::GET));
         let positions = rl.resolve_specs("/positions", Some(&Method::GET));
@@ -1718,11 +1875,11 @@ mod tests {
 
     #[test]
     fn test_all_clob_endpoints_have_match_mode() {
-        let rl = RateLimiter::clob_default();
+        let rl = polymarket::clob_limits();
         for limit in &rl.inner.limits {
             // Every endpoint should have an explicit match mode
             assert!(
-                limit.match_mode == MatchMode::Prefix || limit.match_mode == MatchMode::Exact,
+                limit.match_mode == Matching::Prefix || limit.match_mode == Matching::Exact,
                 "endpoint {} has no valid match mode",
                 limit.path_prefix
             );
@@ -1744,7 +1901,7 @@ mod tests {
         const TASKS: u32 = 10;
         let interval = Duration::from_secs(10) / (1_500 - 1);
 
-        let rl = std::sync::Arc::new(RateLimiter::clob_default());
+        let rl = std::sync::Arc::new(polymarket::clob_limits());
 
         let start = std::time::Instant::now();
         let mut handles = Vec::new();
@@ -1773,7 +1930,7 @@ mod tests {
     #[tokio::test]
     async fn test_acquire_concurrent_different_endpoints() {
         // Concurrent tasks hitting different endpoints should not block each other
-        let rl = std::sync::Arc::new(RateLimiter::clob_default());
+        let rl = std::sync::Arc::new(polymarket::clob_limits());
 
         let rl1 = rl.clone();
         let rl2 = rl.clone();
@@ -1800,7 +1957,7 @@ mod tests {
 
     #[test]
     fn test_clob_post_order_has_dual_window() {
-        let rl = RateLimiter::clob_default();
+        let rl = polymarket::clob_limits();
         let post_order = rl
             .inner
             .limits
@@ -1820,7 +1977,7 @@ mod tests {
         // This previously asserted the *opposite* — that DELETE /order had only
         // a burst window — and so pinned the omission in place. Upstream
         // publishes 5,000/10s burst plus 120,000/10min sustained.
-        let rl = RateLimiter::clob_default();
+        let rl = polymarket::clob_limits();
         let delete_order = rl
             .inner
             .limits
@@ -1839,7 +1996,7 @@ mod tests {
     async fn test_dual_window_both_burst_and_sustained_are_awaited() {
         // POST /order should await both burst and sustained limiters.
         // With high limits, a single acquire should still complete fast.
-        let rl = RateLimiter::clob_default();
+        let rl = polymarket::clob_limits();
         let start = std::time::Instant::now();
         rl.acquire("/order", Some(&Method::POST)).await;
         assert!(
@@ -1911,10 +2068,11 @@ mod cooldown_tests {
     //! longer the more it is hit.
 
     use super::*;
+    use crate::polymarket;
 
     #[tokio::test(start_paused = true)]
     async fn acquire_is_immediate_without_a_cooldown() {
-        let rl = RateLimiter::data_default();
+        let rl = polymarket::data_limits();
         let t = tokio::time::Instant::now();
         rl.acquire("/closed-positions", None).await;
         assert!(
@@ -1926,7 +2084,7 @@ mod cooldown_tests {
 
     #[tokio::test(start_paused = true)]
     async fn a_cooldown_holds_back_a_path_that_never_saw_the_429() {
-        let rl = RateLimiter::data_default();
+        let rl = polymarket::data_limits();
         rl.begin_cooldown(Duration::from_secs(5));
 
         // /trades has its own bucket, full and untouched. It must wait anyway:
@@ -1942,7 +2100,7 @@ mod cooldown_tests {
 
     #[tokio::test(start_paused = true)]
     async fn concurrent_requests_all_observe_one_cooldown() {
-        let rl = RateLimiter::data_default();
+        let rl = polymarket::data_limits();
         rl.begin_cooldown(Duration::from_secs(3));
 
         // The shape from the report: several /closed-positions calls in flight
@@ -1963,7 +2121,7 @@ mod cooldown_tests {
 
     #[tokio::test(start_paused = true)]
     async fn a_shorter_cooldown_never_cuts_a_longer_one_short() {
-        let rl = RateLimiter::data_default();
+        let rl = polymarket::data_limits();
         rl.begin_cooldown(Duration::from_secs(10));
         // A sibling's 429 lands next, carrying a smaller delay. Taking the
         // latest value would let the shortest response win the race and
@@ -1981,7 +2139,7 @@ mod cooldown_tests {
 
     #[tokio::test(start_paused = true)]
     async fn a_cooldown_extended_mid_wait_is_honoured_in_full() {
-        let rl = RateLimiter::data_default();
+        let rl = polymarket::data_limits();
         rl.begin_cooldown(Duration::from_secs(2));
 
         let extender = {
@@ -2006,7 +2164,7 @@ mod cooldown_tests {
 
     #[tokio::test(start_paused = true)]
     async fn an_expired_cooldown_stops_delaying() {
-        let rl = RateLimiter::data_default();
+        let rl = polymarket::data_limits();
         rl.begin_cooldown(Duration::from_secs(2));
         rl.acquire("/closed-positions", None).await;
 
