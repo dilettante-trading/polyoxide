@@ -621,3 +621,68 @@ async fn the_builder_installs_polymarkets_retry_policy_so_a_425_is_retried() {
     early.assert_async().await;
     ok.assert_async().await;
 }
+
+#[tokio::test]
+async fn a_retried_ping_reports_the_answering_attempt() {
+    // Story 3.7: the ping runs on `HttpClient::health`, so its latency is the
+    // round trip of the attempt that answered, as every venue's is. It used
+    // to time the whole call, the retry's backoff included.
+    let mut server = Server::new_async().await;
+    let served = std::sync::atomic::AtomicUsize::new(0);
+    let mock = server
+        .mock("GET", "/v1/info/ping")
+        .with_status_code_from_request(move |_| {
+            match served.fetch_add(1, std::sync::atomic::Ordering::SeqCst) {
+                0 => 429,
+                _ => 200,
+            }
+        })
+        .with_body(r#"{"status":"ok"}"#)
+        .expect(2)
+        .create_async()
+        .await;
+    let perps = Perps::builder()
+        .base_url(server.url())
+        .with_retry_config(polyoxide_core::RetryConfig {
+            max_retries: 1,
+            initial_backoff_ms: 400,
+            max_backoff_ms: 10_000,
+        })
+        .build()
+        .unwrap();
+
+    let start = std::time::Instant::now();
+    let latency = perps.health().ping().await.expect("retried to the 200");
+    let elapsed = start.elapsed();
+    mock.assert_async().await;
+    assert!(
+        elapsed >= std::time::Duration::from_millis(300),
+        "the call took {elapsed:?}, inside the retry's 300ms floor"
+    );
+    assert!(
+        latency < std::time::Duration::from_millis(300),
+        "the latency is the answering attempt's, without the backoff: {latency:?}"
+    );
+}
+
+#[tokio::test]
+async fn a_degraded_ping_is_an_api_error() {
+    let mut server = Server::new_async().await;
+    let mock = server
+        .mock("GET", "/v1/info/ping")
+        .with_status(200)
+        .with_body(r#"{"status":"degraded"}"#)
+        .create_async()
+        .await;
+
+    let err = test_perps(&server).health().ping().await.unwrap_err();
+    mock.assert_async().await;
+    assert!(
+        matches!(
+            &err,
+            PerpsError::Api(polyoxide_core::ApiError::Api { status: 200, message })
+                if message.contains("degraded")
+        ),
+        "{err:?}"
+    );
+}

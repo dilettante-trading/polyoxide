@@ -1,8 +1,8 @@
 //! Liveness routes: `/fapi/v1/ping` and `/fapi/v1/time`.
 
-use std::time::{Duration, Instant};
+use std::time::Duration;
 
-use polyoxide_core::HttpClient;
+use polyoxide_core::{decode_json, ApiError, HttpClient};
 use serde::Deserialize;
 
 use crate::{
@@ -27,11 +27,17 @@ struct Empty {}
 impl Health {
     /// Round-trip time to the host, via `GET /fapi/v1/ping` (weight 1).
     ///
-    /// Includes any wait for the budget, as every route's latency does.
+    /// The latency is that of the attempt that answered, as
+    /// [`HttpClient::health`] times it.
     pub async fn ping(&self) -> Result<Duration, BinanceError> {
-        let start = Instant::now();
-        Routed::<Empty>::new(&self.http, Route::Ping).send().await?;
-        Ok(start.elapsed())
+        let route = Route::Ping;
+        let pong = self
+            .http
+            .health::<BinanceError>(route.path(), &[route.cost().into()])
+            .await?;
+        let text = pong.response.text().await.map_err(ApiError::from)?;
+        let _: Empty = decode_json(route.path(), &text).map_err(ApiError::from)?;
+        Ok(pong.round_trip)
     }
 
     /// Server time, via `GET /fapi/v1/time` (weight 1).

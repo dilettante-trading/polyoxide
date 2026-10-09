@@ -24,7 +24,7 @@ use polyoxide_core::{
 };
 use reqwest::Method;
 use serde::Serialize;
-use std::time::{Duration, Instant};
+use std::time::Duration;
 use url::Url;
 
 // Safe/Proxy wallet operation types
@@ -372,7 +372,9 @@ impl RelayClient {
 
     /// Measure the round-trip time (RTT) to the Relay API.
     ///
-    /// Makes a GET request to the API base URL and returns the latency.
+    /// Makes a GET request to the API base URL, path prefix included, and
+    /// returns the latency of the attempt that answered, as
+    /// [`HttpClient::health`](polyoxide_core::HttpClient::health) times it.
     ///
     /// # Example
     ///
@@ -387,10 +389,9 @@ impl RelayClient {
     /// # }
     /// ```
     pub async fn ping(&self) -> Result<Duration, RelayError> {
-        let url = self.http_client.base_url.clone();
-        let start = Instant::now();
-        let _resp = self.get(&url).await?;
-        Ok(start.elapsed())
+        let path = self.http_client.base_url.path();
+        let pong = self.http_client.health::<RelayError>(path, &[]).await?;
+        Ok(pong.round_trip)
     }
 
     /// Fetch the current transaction nonce for an address from the relayer.

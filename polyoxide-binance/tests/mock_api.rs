@@ -809,3 +809,47 @@ async fn funding_requests_through_the_client_are_paced() {
     info.assert_async().await;
     rate.assert_async().await;
 }
+
+#[tokio::test]
+async fn a_retried_ping_reports_the_answering_attempt() {
+    // Story 3.7: the ping runs on `HttpClient::health`, so its latency is the
+    // round trip of the attempt that answered, as every venue's is. It used
+    // to time the whole call, the wait for the budget and the retry included.
+    let mut server = Server::new_async().await;
+    let served = std::sync::atomic::AtomicUsize::new(0);
+    let mock = server
+        .mock("GET", "/fapi/v1/ping")
+        .match_query(Matcher::Missing)
+        .with_status_code_from_request(move |_| {
+            match served.fetch_add(1, std::sync::atomic::Ordering::SeqCst) {
+                0 => 429,
+                _ => 200,
+            }
+        })
+        .with_header("x-mbx-used-weight-1m", "1")
+        .with_body("{}")
+        .expect(2)
+        .create_async()
+        .await;
+    let usdm = usdm_with_retries(
+        &server,
+        RetryConfig {
+            max_retries: 1,
+            initial_backoff_ms: 400,
+            max_backoff_ms: 10_000,
+        },
+    );
+
+    let start = Instant::now();
+    let latency = usdm.health().ping().await.expect("retried to the 200");
+    let elapsed = start.elapsed();
+    mock.assert_async().await;
+    assert!(
+        elapsed >= Duration::from_millis(300),
+        "the call took {elapsed:?}, inside the retry's 300ms floor"
+    );
+    assert!(
+        latency < Duration::from_millis(300),
+        "the latency is the answering attempt's, without the backoff: {latency:?}"
+    );
+}

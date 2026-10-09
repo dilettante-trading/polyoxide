@@ -1,8 +1,8 @@
 //! Liveness routes: `/v1/info/ping` and `/v1/info/time`.
 
-use std::time::{Duration, Instant};
+use std::time::Duration;
 
-use polyoxide_core::{ApiError, HttpClient, Request};
+use polyoxide_core::{decode_json, ApiError, HttpClient};
 use serde::{Deserialize, Serialize};
 
 use crate::{
@@ -33,13 +33,13 @@ impl Health {
     /// Round-trip time to the host, via `GET /v1/info/ping`.
     ///
     /// Goes through the same rate limiter and concurrency budget as every
-    /// other route.
+    /// other route. The latency is that of the attempt that answered, as
+    /// [`HttpClient::health`](polyoxide_core::HttpClient::health) times it.
     pub async fn ping(&self) -> Result<Duration, PerpsError> {
-        let start = Instant::now();
-        let ping: Ping =
-            Request::<Ping, PerpsError>::new(self.http_client.clone(), "/v1/info/ping")
-                .send()
-                .await?;
+        const PATH: &str = "/v1/info/ping";
+        let pong = self.http_client.health::<PerpsError>(PATH, &[]).await?;
+        let text = pong.response.text().await.map_err(ApiError::from)?;
+        let ping: Ping = decode_json(PATH, &text).map_err(ApiError::from)?;
         if ping.status != "ok" {
             return Err(ApiError::Api {
                 status: 200,
@@ -47,7 +47,7 @@ impl Health {
             }
             .into());
         }
-        Ok(start.elapsed())
+        Ok(pong.round_trip)
     }
 
     /// Server time, via `GET /v1/info/time`.

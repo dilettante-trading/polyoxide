@@ -38,6 +38,15 @@ impl RelayError {
     }
 }
 
+/// A relayer response that failed, read as core reads one, so a
+/// [`HttpClient::health`](polyoxide_core::HttpClient::health) ping fails as
+/// every other route does.
+impl polyoxide_core::RequestError for RelayError {
+    async fn from_response(response: reqwest::Response) -> Self {
+        Self::Api(ApiError::from_response(response).await)
+    }
+}
+
 /// A transport failure by core's reqwest rule, a local signing or URL failure
 /// an `InvalidRequest`, a response that did not parse a `Decode`, and `Api`
 /// as core classes it: a relayer response by its status, and a local refusal a

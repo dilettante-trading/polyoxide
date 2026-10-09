@@ -37,3 +37,14 @@ Recorded per AD-21: an epic records each proposed amendment here, and one sessio
   - **Per attempt, not per request.** The client's own timeout is per attempt, so the override is too; a retried request gets the same bound on every attempt.
   - **No other field fits.** Headers and query reach the wire; a timeout is a property of the attempt.
 - **Follow-up in the code:** none. Story 3.5 sets it on the two session-signer posts.
+
+## A3-5: `health` takes the route's costs and returns a `Pong` (amends the H8 row's `health(path)`)
+
+- **Proposed by:** Claude, as the user's delegate, 2026-10-09, during Epic 3's bundle I (Story 3.7).
+- **Current rule (H8 row):** `polyoxide-core` `health(path)` through the send loop.
+- **Proposed rule:** `HttpClient::health::<E: RequestError>(&self, path: &str, costs: &[Cost]) -> Result<Pong, E>`, with `Pong { round_trip: Duration, response: reqwest::Response }` marked `#[non_exhaustive]`. It sends one `GET` on `HttpClient::send`, charging `costs`, so the ping takes the permit, the throttle, the retry and the hold. `round_trip` is that of the attempt that answered, timed from its signing by a core-private authenticator, and a final non-2xx response is `E::from_response`.
+- **Why:**
+  - **Binance's ping has a weight.** `/fapi/v1/ping` costs 1 on the weight budget, which a request-counting layer cannot find from the path, so the caller hands the cost in, as `Request::with_cost` does.
+  - **Two venues check the body.** Perps reads `{"status":"ok"}` and Binance decodes `{}`, so the response comes back unread; a ping returning a bare `Duration` would have to drop it.
+  - **One meaning for latency.** Every venue's `ping` returns `round_trip`, so the latency leaves out the waits everywhere, settling DRIFT R8's open question.
+- **Follow-up in the code:** none. Story 3.7 ships this signature, and the six pings call it.

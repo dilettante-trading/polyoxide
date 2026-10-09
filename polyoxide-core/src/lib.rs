@@ -8,7 +8,8 @@
 //! - Request builder utilities
 //! - HMAC API-credential signing ([`Signer`])
 //! - One send loop, [`HttpClient::send`], with the hooks a venue supplies
-//!   ([`Throttle`], [`RetryPolicy`], [`Authenticator`])
+//!   ([`Throttle`], [`RetryPolicy`], [`Authenticator`]), and one health
+//!   ping on it, [`HttpClient::health`]
 //! - Per-endpoint window quotas ([`WindowQuotaTable`], which builds a
 //!   [`RateLimiter`]), token-cost buckets ([`CapacityBucket`]), the
 //!   [`Hold`] their layers share, and the retry schedule ([`RetryConfig`])
@@ -45,6 +46,7 @@ pub mod capacity;
 pub mod client;
 pub mod config;
 pub mod error;
+pub mod health;
 pub mod hold;
 pub mod hooks;
 pub mod polymarket;
@@ -83,6 +85,7 @@ pub use client::{
 };
 pub use config::ClientConfig;
 pub use error::ApiError;
+pub use health::Pong;
 pub use hold::Hold;
 pub use hooks::{
     AttemptInfo, Authenticator, Charge, Cost, Decision, DefaultRetryPolicy, DynAuthenticator,
