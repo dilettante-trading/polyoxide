@@ -660,8 +660,8 @@ async fn a_retried_ping_reports_the_answering_attempt() {
         "the call took {elapsed:?}, inside the retry's 300ms floor"
     );
     assert!(
-        latency < std::time::Duration::from_millis(300),
-        "the latency is the answering attempt's, without the backoff: {latency:?}"
+        elapsed.saturating_sub(latency) >= std::time::Duration::from_millis(300),
+        "the latency is the answering attempt's, without the backoff: {latency:?} of {elapsed:?}"
     );
 }
 

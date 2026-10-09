@@ -4,23 +4,11 @@
 //! changed name or argument type fails to compile; a changed key, value or
 //! order fails the test.
 
-use std::{future::Future, pin::Pin};
-
 use polyoxide_gamma::{types::ParentEntityType, Gamma};
+use polyoxide_test_support::query::{assert_cases, Case};
 
 fn client(base: &str) -> Gamma {
     Gamma::builder().base_url(base).build().unwrap()
-}
-
-type Fire = fn(String) -> Pin<Box<dyn Future<Output = ()> + Send>>;
-
-/// A builder, the path it sends to, a call of every setter it has, and the
-/// pairs that call sends.
-struct Case {
-    builder: &'static str,
-    path: &'static str,
-    fire: Fire,
-    sends: &'static [(&'static str, &'static str)],
 }
 
 const CASES: &[Case] = &[
@@ -712,12 +700,5 @@ const CASES: &[Case] = &[
 
 #[tokio::test]
 async fn every_setter_sends_its_key_and_value() {
-    for case in CASES {
-        let pairs = polyoxide_test_support::query::pairs_sent(case.path, case.fire).await;
-        let sent: Vec<(&str, &str)> = pairs
-            .iter()
-            .map(|(k, v)| (k.as_str(), v.as_str()))
-            .collect();
-        assert_eq!(sent, case.sends, "{} on {}", case.builder, case.path);
-    }
+    assert_cases(CASES).await;
 }

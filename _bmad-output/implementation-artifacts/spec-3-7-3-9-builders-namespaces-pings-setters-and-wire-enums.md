@@ -2,7 +2,7 @@
 title: 'Stories 3.7, 3.8 and 3.9: One client builder, namespace pattern and health ping; one query-setter macro; one wire-enum vocabulary'
 type: 'refactor'
 created: '2026-10-09'
-status: 'in-progress'
+status: 'done'
 route: 'dispatch'
 review_loop_iteration: 0
 baseline_commit: 'be83cfc8ded1d8d8418594575dc5b98e3d75e181'
@@ -395,7 +395,7 @@ Line numbers are taken at `be83cfc`, after bundle G.
 ## Tasks & Acceptance
 
 **Execution:**
-- [ ] **I0 — before any edit, record the baseline.**
+- [x] **I0 — before any edit, record the baseline.**
   - Take `--list` counts for every target below, and `cargo tree -e normal` for rtds and sports. At `be83cfc` (by attribute) they are:
     - core lib 133, `mock_request` 15, `send_loop` 17;
     - venue 17;
@@ -406,7 +406,7 @@ Line numbers are taken at `be83cfc`, after bundle G.
     - relay lib 117, `mock_api` 50;
     - Binance lib 79, `mock_api` 28;
     - test-support lib 86.
-- [ ] **I1 — Story 3.7: one builder.**
+- [x] **I1 — Story 3.7: one builder.**
   - New `polyoxide-core/src/config.rs` holds `ClientConfig`. `client_config_setters!` is appended to `macros.rs`. Both are exported.
   - Core tests:
     - `a_new_config_holds_the_core_defaults`;
@@ -423,11 +423,11 @@ Line numbers are taken at `be83cfc`, after bundle G.
     - it fails when `parts.timeout = timeout;` in `post_json` is deleted (prove it, then restore);
     - append a deferred-work line saying that entry is done.
   - CLAUDE.md: builder pattern.
-- [ ] **I2 — Story 3.7: one namespace pattern.**
+- [x] **I2 — Story 3.7: one namespace pattern.**
   - Append `namespaces!` to `macros.rs`, with the test `namespaces_clone_the_listed_fields_and_map_one_from_another`.
   - The 34 accessors adopt it.
   - CLAUDE.md: namespaces.
-- [ ] **I3 — Story 3.7: one health ping.**
+- [x] **I3 — Story 3.7: one health ping.**
   - New `polyoxide-core/src/health.rs` holds `HttpClient::health` and `Pong`.
   - New `polyoxide-core/tests/health.rs`:
     - `health_reports_the_round_trip_of_the_attempt_that_answered`;
@@ -444,25 +444,25 @@ Line numbers are taken at `be83cfc`, after bundle G.
     - `Pong` and relay's `RequestError` impl;
     - [RISK] perps', Binance's and relay's pings no longer include the waits;
     - a line saying G's relay-ping-timing entry is done, and that R8's "whether a ping times only its last attempt" is settled.
-- [ ] **I4 — Story 3.8: the proof.**
+- [x] **I4 — Story 3.8: the proof.**
   - `query::pairs_sent`, with tests `pairs_sent_reads_every_pair_in_order` and `pairs_sent_does_not_need_the_body_to_decode`.
   - New `tests/query_setters.rs` in gamma, data, clob and Binance. Each holds one table-driven test, `every_setter_sends_its_key_and_value`, that names the builder and path on failure and covers every builder in the Code Map.
   - Gamma, clob and Binance take test-support's `query` feature.
   - It must be green on the hand-written setters, and must fail when one key or value is edited by hand (try one, then revert).
-- [ ] **I5 — Story 3.8: the macro, and perps.**
+- [x] **I5 — Story 3.8: the macro, and perps.**
   - Append `query_setters!` to `macros.rs`. Add `polyoxide_core::csv`, with data's two tests moved under their own names.
   - One core unit test per arm, `query_setters_<arm>`, reading `Request.query`.
   - Perps' 21 invocations convert, and `setter!` goes.
-- [ ] **I6 — Story 3.8: gamma (196).**
-- [ ] **I7 — Story 3.8: data (153).**
+- [x] **I6 — Story 3.8: gamma (196).**
+- [x] **I7 — Story 3.8: data (153).**
   - v1 and v2 convert. v2's `csv` goes, and v2 uses `self.inner;`.
   - The message names the `[""]` change.
   - deferred-work: the `[""]` change.
-- [ ] **I8 — Story 3.8: clob (56) and Binance (10).**
+- [x] **I8 — Story 3.8: clob (56) and Binance (10).**
   - The two Binance `limit`s stay.
   - Remove unused `QueryBuilder` imports.
   - CLAUDE.md: request builder fluency.
-- [ ] **I9 — Story 3.9: one wire-enum vocabulary.**
+- [x] **I9 — Story 3.9: one wire-enum vocabulary.**
   - Venue gains `UnknownVariant`, `open_enum!`, `wire_enum!` and `specta_as_string!`, plus serde and serde_json as dev-dependencies.
   - Venue tests:
     - `an_unknown_variant_names_the_type_and_the_value`;
@@ -482,7 +482,7 @@ Line numbers are taken at `be83cfc`, after bundle G.
     - `polyoxide-binance struct_missing: struct polyoxide_binance::usdm::types::UnknownVariant (src/usdm/types.rs)`.
   - CLAUDE.md: "both `UnknownVariant`s" and the assertion sentence.
   - deferred-work: data's closed-enum `Err` and `as_str`, the new `from_wire` and `ALL`, and the new `FromStr::Err` paths.
-- [ ] **I10 — Story 3.9: positional decimal serde.**
+- [x] **I10 — Story 3.9: positional decimal serde.**
   - The `decimal` feature and `positional`, with venue tests:
     - `a_decimal_str_keeps_every_digit`;
     - `element_names_the_missing_index`;
@@ -490,7 +490,7 @@ Line numbers are taken at `be83cfc`, after bundle G.
   - Perps (removing `parse_decimal`) and Binance (removing `DecimalStr`, `next` and `drain`) adopt it.
   - Add A3-4.
   - deferred-work: perps' exponent row.
-- [ ] **I11 — Story 3.9: `UnixMillis::now()`.**
+- [x] **I11 — Story 3.9: `UnixMillis::now()`.**
   - The type, with the test `now_is_after_2026_and_never_runs_backwards_between_two_calls`.
   - The adopters adopt it, and `live_unwraps.py --lower` runs.
   - The venue metadata and `description` change, and `gen_registry.py --write` runs.
@@ -567,6 +567,77 @@ Arm order matters: macro_rules does not backtrack inside a fragment. The literal
 
 ## Implementation Notes
 
+I1–I11 are `3b356b0`, `6bdf026`, `6f05dcd`, `6992277`, `e5f5d80`, `1333ac9`, `b8fea35`, `b24fa78`, `2daadbb`, `f4c7822` (I10, amended so that its manifest change regenerates the crate list at that commit) and `2e38c6a`. The matrix-audit tests are `5187c22`.
+
+- **Departures from the Tasks:**
+  - Core's `lib.rs` gained its `mod` lines and re-exports beside the existing ones rather than at the end, since an item after the test module trips clippy's `items_after_test_module`. No MUTANTS line is in that file.
+  - The macro tests live in a new `polyoxide-core/src/macro_tests.rs`, so `macros.rs` only grew at its end.
+  - Data v2's `csv` moved to core in I5, with its two tests, so it was never untested between commits.
+  - Relay had a twelfth field-reading builder test, `test_builder_custom_retry_config`, which now reads `builder.config.retry_config`.
+  - The knob docs are uniform. Data's "`base_url` covers every namespace except pnl and rankings" and Binance's weight-in-flight note on `max_concurrent` moved to the builder structs' docs.
+- **Tests beyond the plan,** each for an I/O row:
+  - `a_level_accepts_an_exponent` (perps lib);
+  - `a_degraded_ping_is_an_api_error` (perps `mock_api`);
+  - `a_clock_before_1970_reads_zero` (venue);
+  - from the matrix audit, `the_core_defaults_are_thirty_seconds_and_ten_idle` (core) and `an_unknown_filter_type_names_the_type_and_the_value` (data `v2_enum_wire`).
+- **Partial rows left as they are,** each asserted in parts that compose:
+  - **Ping retried, refused and gated, per venue.** Core's `tests/health.rs` asserts each on `HttpClient::health`, which every ping now calls. Every venue asserts its own retried ping, and relay's 429 tests run its ping route through `RelayError::from_response`.
+  - **Open, unknown on relay's own type.** The write-back is asserted on venue's `open_enum!`, which relay's enums expand from.
+- **Verification, 2026-10-09, local Rust 1.95.0.** All green:
+  - `cargo fmt --check`, clippy with `-D warnings`, and `cargo doc` with `-D warnings`;
+  - the workspace's tests: 2,318 passed, 0 failed, 178 ignored;
+  - `cargo hack --each-feature`;
+  - `.github/scripts`: 904 passed;
+  - `polyoxide-py`: 326 passed;
+  - `live_unwraps.py` and `gen_registry.py --check`.
+
+  The rtds and sports trees are unchanged, and venue's new dependencies are optional, behind `decimal`. The implementer's removal-gate run reported 17 removals, all listed. MSRV 1.91 was not checked, because no 1.91 toolchain is installed locally.
+- **After the review's patches, 2026-10-09.** The checks above are green again: 2,327 tests passed, 0 failed, and the scripts' 904. One Python run failed `test_live_api.py::TestDataV2Sync::test_market_routes` and passed twice on re-run (326 in all). The recent trade it picked carried a zero-padded condition id that the Data API refuses, so that is an environment failure, and deferred-work records the live helper's missing precondition.
+- **The removal gate** (local Rust 1.95.0) ran once at the end. It reports 17 removals, all listed (F's, G's and I's two `UnknownVariant` keys), and 14 other changes that S1 allows: F's and G's `ApiError` variants and auto traits, and `method_receiver_ref_became_owned` on data's ten closed enums' `as_str`. `target/semver-checks` was deleted after.
+- **`a_300ms_floor()`** in core's `tests/health.rs` uses a 440 ms initial backoff, so that its jittered floor (330 ms) clears the 300 ms the hold test asserts.
+
 ## Spec Change Log
 
 ## Review Triage Log
+
+All three layers ran on `2a1b3c8`..`5187c22`:
+- blind: 17 findings;
+- edge-case: 7;
+- verification-gap: 4 gaps and 1 other finding.
+
+After merging the two reports of relay's ping dropping a base-URL query string:
+- 28 remain: 3 medium, 22 low and 3 false;
+- no finding needs the spec changed, so there is no loopback;
+- the CLAUDE.md patches are applied, not deferred, as in specs 3-1/3-3 and 3-4/3-10 (AD-21).
+
+**Patched** (by the implementer, re-engaged):
+- **Medium: Binance's ping charging its weight was untested** (gap). Passing `&[]` as its costs would send the ping unpaced into a spent minute and drop the server's used weight. `a_ping_is_charged_its_weight` now asserts `used() == 1`.
+- **Medium: relay's new `base_url` setter was untested** (gap). Dropping `build`'s write-back of the normalised URL would lose a path prefix on every route. `a_base_url_without_a_slash_keeps_its_prefix` now holds it.
+- **Medium: relay's new `timeout_ms` was never shown to take effect** (gap). So `a_session_signer_post_outlasts_the_client_timeout` could pass on the 30 s default. `relay_timeout_ms_bounds_a_plain_request` now checks the premise.
+- **Low: Binance's ping body check was untested** (gap). `a_ping_whose_body_does_not_decode_is_an_error` holds it.
+- **Low: CLAUDE.md's wire-enum rule overstated** (blind). Clob's, relay's and Binance's hand-written string enums, and the `#[serde(other)] Unknown` ones, contradicted "is declared once". The rule now names what 3.9 converted, and deferred-work lists the rest.
+- **Low: CLAUDE.md's test-support paragraph omitted `pairs_sent`** (blind).
+- **Low: the golden harness was copied four times** (blind). That broke the rule that the helpers exist once in `polyoxide-test-support`. `Case` and its runner moved there, and the four tests keep their names and cases.
+- **Low: `health`'s refused-cost and transport-error paths were untested** (blind). Two tests were added to core's `tests/health.rs`.
+- **Low: five timing assertions could flake** (blind). They had an absolute `< 300ms` bound. They now assert the property, that the latency leaves out the backoff.
+- **Low: docs.rs would omit `positional`** (blind). Venue now documents its `decimal` feature on docs.rs.
+- **Low: `wire_enum!` needs serde's `derive` feature, and no doc said so** (blind).
+- **Low: the `[""]` change was unpinned on a real data v1 setter** (blind). `a_v1_csv_setter_omits_an_empty_value` now pins it.
+- **Low: `pairs_sent` misreported a doubled request as none sent** (edge).
+
+**Rejected:**
+- **The sprint status lags the spec** (blind). False. The workflow syncs it when the review closes.
+- **`ClientConfig` is public, and nothing accepts it** (blind). Low. The builders' field type must be nameable where the macro expands, and S1 is breaking anyway. Clob's default Gamma copying only timeout and pool is pre-existing.
+- **`UnixMillis`'s test assumes a monotonic clock** (blind). Low. An NTP step between two consecutive reads is practically never met, and clob and Binance read `SystemTime` the same way before.
+- **`current_timestamp` is a second clock** (blind). Low and pre-existing. It returns seconds for the auth headers, and H16 covers the Unix-ms copies.
+- **The golden tests reuse one value per type** (blind). Low. Setters are told apart by key and order, and a constant would have to equal the test value. Reworking 417 cases is more than a correction.
+- **`UnknownVariant` cannot gain a field without a break** (blind). Low. A breaking release can add one, and a hidden constructor adds surface.
+- **Default concurrency is set two ways, and the docs restate it** (blind). Low. Each crate's `test_default_concurrency_limit_is_N` pins the code, so only doc text could drift.
+- **The macro's shared docs lost two rationales** (blind). Low. Cloudflare's 1015 and Binance's 429 are in CLAUDE.md's rate-limit sections, and the knob docs are uniform by design.
+- **`polyoxide_core::csv` is a poor name** (blind). Low. The name is the spec's decision.
+- **`max_concurrent(0)` hangs** (edge). Low and pre-existing: `HttpClientBuilder` took a zero before I too.
+- **Relay's `from_response` loses a mid-body break's `Network` class** (edge). False as a defect. The frozen decision chose core's `ApiError::from_response`, which every venue uses, and deferred-work records the difference.
+- **`csv(["", ""])` sends a bare comma** (edge). Low and pre-existing: v1 and v2 joined the same way before.
+- **Relay's ping drops a base-URL query string** (edge, gap). Low. A relayer base URL with a query string is unlikely, and every other relay route already dropped it through `Url::join`.
+- **The spec says eleven field-reading tests, but relay had a twelfth** (edge). False. The Implementation Notes record it.
+- **The umbrella's `timeout_ms` is hand-written** (edge). Low. It forwards to three builders. AC 3.7 names the six venue builders, and the Code Map lists `PolymarketBuilder` as a caller that needs no change.

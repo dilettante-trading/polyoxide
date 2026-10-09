@@ -19,9 +19,11 @@
 //! - With the `decimal` feature, `positional` reads and writes rows sent as
 //!   bare arrays of decimal strings.
 //!
-//! The crate depends on nothing, so a credential-free socket crate can use it
-//! without building an HTTP or signing stack. The enum macros name `::serde`,
-//! so a crate that invokes them depends on serde itself.
+//! By default the crate depends on nothing, so a credential-free socket crate
+//! can use it without building an HTTP or signing stack. The enum macros name
+//! `::serde`, so a crate that invokes them depends on serde itself, with
+//! serde's `derive` feature for `wire_enum!`, which derives the two traits;
+//! `open_enum!` implements them by hand.
 //!
 //! ```
 //! use polyoxide_venue::{class_for_status, Class};

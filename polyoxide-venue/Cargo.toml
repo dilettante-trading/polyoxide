@@ -28,6 +28,10 @@ decimal = ["dep:rust_decimal", "dep:serde"]
 serde = { workspace = true }
 serde_json = { workspace = true }
 
+# docs.rs documents `positional`, which only the `decimal` feature builds.
+[package.metadata.docs.rs]
+features = ["decimal"]
+
 # Registration, read by scripts/gen_registry.py: the README line, venue and
 # product ids, the docs/specs/ mirrors covered, and one entry per live test
 # target, which becomes a nightly job. Run `python3 scripts/gen_registry.py

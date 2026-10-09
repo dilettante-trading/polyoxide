@@ -10,6 +10,7 @@ use std::{
     collections::BTreeSet,
     fmt::Display,
     future::Future,
+    pin::Pin,
     sync::{Arc, Mutex},
 };
 
@@ -88,6 +89,9 @@ where
         })
         .with_status(200)
         .with_body("{}")
+        // Without it a mock expects exactly one hit, and a request sent twice
+        // would read as none sent.
+        .expect_at_least(1)
         .create_async()
         .await;
 
@@ -101,6 +105,36 @@ where
     url.query_pairs()
         .map(|(key, value)| (key.into_owned(), value.into_owned()))
         .collect()
+}
+
+/// Sends one request builder's call against the mock server at the given
+/// base URL; what it returns is ignored.
+pub type Fire = fn(String) -> Pin<Box<dyn Future<Output = ()> + Send>>;
+
+/// A builder, the path it sends to, a call of every setter it has, and the
+/// pairs that call sends.
+pub struct Case {
+    /// The builder's name, for the failure message.
+    pub builder: &'static str,
+    /// The path the call sends to.
+    pub path: &'static str,
+    /// The call.
+    pub fire: Fire,
+    /// The `(key, value)` pairs it sends, in order.
+    pub sends: &'static [(&'static str, &'static str)],
+}
+
+/// Fires each case through [`pairs_sent`] and asserts it sends exactly its
+/// pairs, in order. A failure names the builder and the path.
+pub async fn assert_cases(cases: &[Case]) {
+    for case in cases {
+        let pairs = pairs_sent(case.path, case.fire).await;
+        let sent: Vec<(&str, &str)> = pairs
+            .iter()
+            .map(|(k, v)| (k.as_str(), v.as_str()))
+            .collect();
+        assert_eq!(sent, case.sends, "{} on {}", case.builder, case.path);
+    }
 }
 
 /// The parameter names `spec` documents for `GET path`, or `None` when the

@@ -40,7 +40,8 @@ impl Classify for UnknownVariant {
 /// [`UnknownVariant`]. Attributes written above the enum, such as
 /// `#[non_exhaustive]`, are kept, and so are those above each variant.
 ///
-/// The expansion names `::serde`, so the calling crate depends on serde.
+/// The expansion derives `::serde::Serialize` and `::serde::Deserialize`,
+/// so the calling crate depends on serde with its `derive` feature.
 ///
 /// ```
 /// polyoxide_venue::wire_enum! {
@@ -114,7 +115,9 @@ macro_rules! wire_enum {
 /// `Serialize` and `Deserialize` as a string. Attributes written above the
 /// enum and each variant are kept.
 ///
-/// The expansion names `::serde`, so the calling crate depends on serde.
+/// The expansion implements serde's `Serialize` and `Deserialize` by hand,
+/// naming `::serde`, so the calling crate depends on serde, without needing
+/// its `derive` feature.
 ///
 /// ```
 /// polyoxide_venue::open_enum! {

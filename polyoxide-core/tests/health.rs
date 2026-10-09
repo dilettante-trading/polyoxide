@@ -45,11 +45,12 @@ async fn scripted(server: &mut ServerGuard, path: &str, statuses: &'static [usiz
         .await
 }
 
-/// A retry schedule whose first backoff is at least 300ms.
+/// A retry schedule whose first backoff is at least 300ms: 330ms after
+/// jitter, so a 429's hold still has 300ms left when the next call starts.
 fn a_300ms_floor(max_retries: u32) -> RetryConfig {
     RetryConfig {
         max_retries,
-        initial_backoff_ms: 400,
+        initial_backoff_ms: 440,
         max_backoff_ms: 10_000,
     }
 }
@@ -75,8 +76,9 @@ async fn health_reports_the_round_trip_of_the_attempt_that_answered() {
         "the call took {elapsed:?}, inside the retry's backoff"
     );
     assert!(
-        pong.round_trip > Duration::ZERO && pong.round_trip < Duration::from_millis(300),
-        "the round trip is the answering attempt's, without the backoff: {:?}",
+        pong.round_trip > Duration::ZERO
+            && elapsed.saturating_sub(pong.round_trip) >= Duration::from_millis(300),
+        "the round trip is the answering attempt's, without the backoff: {:?} of {elapsed:?}",
         pong.round_trip
     );
 }
@@ -140,14 +142,14 @@ async fn a_429_on_health_holds_the_next_request() {
 
     let start = Instant::now();
     let pong = http.health::<PingError>("/status", &[]).await.unwrap();
+    let elapsed = start.elapsed();
     assert!(
-        start.elapsed() >= Duration::from_millis(300),
-        "the next ping went after {:?}, inside the 429's hold",
-        start.elapsed()
+        elapsed >= Duration::from_millis(300),
+        "the next ping went after {elapsed:?}, inside the 429's hold"
     );
     assert!(
-        pong.round_trip < Duration::from_millis(300),
-        "the round trip leaves out the hold: {:?}",
+        elapsed.saturating_sub(pong.round_trip) >= Duration::from_millis(300),
+        "the round trip leaves out the hold: {:?} of {elapsed:?}",
         pong.round_trip
     );
     mock.assert_async().await;
@@ -196,5 +198,71 @@ async fn health_charges_its_costs() {
         *throttle.0.lock().unwrap(),
         [vec![weight], vec![weight]],
         "every attempt is charged the ping's costs"
+    );
+}
+
+/// A throttle that refuses every charge.
+struct RefusingThrottle;
+
+impl Throttle for RefusingThrottle {
+    async fn acquire(&self, meta: &RequestMeta<'_>) -> Result<Charge, Refused> {
+        Err(Refused {
+            layer: meta.costs[0].layer,
+            units: meta.costs[0].units,
+            capacity: 0,
+        })
+    }
+
+    fn observe(&self, _charge: &Charge, _response: &ResponseMeta<'_>, _attempt: &AttemptInfo) {}
+
+    fn hold(&self, _delay: Duration) {}
+}
+
+#[tokio::test]
+async fn a_refused_health_cost_is_the_callers_error() {
+    let mut server = Server::new_async().await;
+    let mock = server
+        .mock("GET", "/fapi/v1/ping")
+        .expect(0)
+        .create_async()
+        .await;
+    let http = HttpClientBuilder::new(server.url())
+        .with_throttle(RefusingThrottle)
+        .build()
+        .unwrap();
+    let weight = Cost {
+        layer: LayerId("weight"),
+        units: 1,
+        exact: true,
+    };
+
+    let err = http
+        .health::<PingError>("/fapi/v1/ping", &[weight])
+        .await
+        .expect_err("the throttle refused the ping's cost");
+    assert!(
+        matches!(&err, PingError::Api(ApiError::Refused(r)) if r.layer == LayerId("weight")),
+        "{err:?}"
+    );
+    mock.assert_async().await;
+}
+
+#[tokio::test]
+async fn a_transport_failure_on_health_is_the_callers_error() {
+    // A port nothing listens on: the connection is refused.
+    let closed = std::net::TcpListener::bind("127.0.0.1:0").unwrap();
+    let addr = closed.local_addr().unwrap();
+    drop(closed);
+    let http = HttpClientBuilder::new(format!("http://{addr}"))
+        .build()
+        .unwrap();
+
+    let err = http
+        .health::<PingError>("/status", &[])
+        .await
+        .expect_err("nothing listens there");
+    assert!(
+        matches!(&err, PingError::Api(ApiError::Network(_))),
+        "{err:?}"
     );
 }

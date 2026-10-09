@@ -2333,7 +2333,64 @@ async fn a_retried_ping_reports_the_answering_attempt() {
         "the call took {elapsed:?}, inside the retry's 300ms floor"
     );
     assert!(
-        latency < std::time::Duration::from_millis(300),
-        "the latency is the answering attempt's, without the backoff: {latency:?}"
+        elapsed.saturating_sub(latency) >= std::time::Duration::from_millis(300),
+        "the latency is the answering attempt's, without the backoff: {latency:?} of {elapsed:?}"
+    );
+}
+
+#[tokio::test]
+async fn a_base_url_without_a_slash_keeps_its_prefix() {
+    // `base_url` is checked by `build`, which adds the trailing slash `url`
+    // adds, so the ping keeps the prefix.
+    let mut server = Server::new_async().await;
+    let mock = server
+        .mock("GET", "/prefix/")
+        .with_status(200)
+        .with_body("ok")
+        .expect(1)
+        .create_async()
+        .await;
+    let client = RelayClient::builder()
+        .unwrap()
+        .base_url(format!("{}/prefix", server.url()))
+        .build()
+        .unwrap();
+
+    client.ping().await.expect("the ping reaches /prefix/");
+    mock.assert_async().await;
+}
+
+#[tokio::test]
+async fn relay_timeout_ms_bounds_a_plain_request() {
+    // The counterpart of `a_session_signer_post_outlasts_the_client_timeout`:
+    // a request without its own timeout gives up at the client's.
+    let mut server = Server::new_async().await;
+    let _mock = server
+        .mock("GET", "/")
+        .with_status(200)
+        .with_body_from_request(|_| {
+            std::thread::sleep(std::time::Duration::from_millis(400));
+            b"ok".to_vec()
+        })
+        .create_async()
+        .await;
+    let client = RelayClient::builder()
+        .unwrap()
+        .url(&server.url())
+        .unwrap()
+        .timeout_ms(100)
+        .build()
+        .unwrap();
+
+    let err = client
+        .ping()
+        .await
+        .expect_err("the client gives up at 100ms");
+    assert!(
+        matches!(
+            &err,
+            polyoxide_relay::RelayError::Api(polyoxide_core::ApiError::Network(e)) if e.is_timeout()
+        ),
+        "{err:?}"
     );
 }

@@ -849,7 +849,34 @@ async fn a_retried_ping_reports_the_answering_attempt() {
         "the call took {elapsed:?}, inside the retry's 300ms floor"
     );
     assert!(
-        latency < Duration::from_millis(300),
-        "the latency is the answering attempt's, without the backoff: {latency:?}"
+        elapsed.saturating_sub(latency) >= Duration::from_millis(300),
+        "the latency is the answering attempt's, without the backoff: {latency:?} of {elapsed:?}"
     );
+}
+
+#[tokio::test]
+async fn a_ping_is_charged_its_weight() {
+    // No weight header, so only the client's own charge can count the ping.
+    clear_of_a_minute_boundary().await;
+    let mut server = Server::new_async().await;
+    let mock = server
+        .mock("GET", "/fapi/v1/ping")
+        .match_query(Matcher::Missing)
+        .with_status(200)
+        .with_body("{}")
+        .create_async()
+        .await;
+    let client = usdm(&server);
+    client.health().ping().await.unwrap();
+    mock.assert_async().await;
+    assert_eq!(client.weight_budget().used(), 1);
+}
+
+#[tokio::test]
+async fn a_ping_whose_body_does_not_decode_is_an_error() {
+    let mut server = Server::new_async().await;
+    let mock = route(&mut server, "/fapi/v1/ping", "", "<html>").await;
+    let result = usdm(&server).health().ping().await;
+    mock.assert_async().await;
+    assert!(result.is_err(), "{result:?}");
 }

@@ -29,7 +29,7 @@
 # - Dev moves story to 'review', then runs code-review (fresh context, different LLM recommended)
 # - Retrospective appends its action items to action_items; the status view surfaces open ones
 generated: 10-08-2026 14:57
-last_updated: 10-09-2026 16:50
+last_updated: 10-09-2026 22:00
 project: polyoxide
 project_key: NOKEY
 tracking_system: file-system
@@ -87,9 +87,9 @@ development_status:
   3-4-clob-on-the-one-loop: review
   3-5-relay-on-the-one-loop-gating-holes-closed: review
   3-6-binance-on-the-one-loop: review
-  3-7-one-client-builder-one-namespace-pattern-one-health-ping: in-progress
-  3-8-one-query-setter-macro: in-progress
-  3-9-one-wire-enum-vocabulary: in-progress
+  3-7-one-client-builder-one-namespace-pattern-one-health-ping: review
+  3-8-one-query-setter-macro: review
+  3-9-one-wire-enum-vocabulary: review
   3-10-one-retry-after-parser-and-one-retriable-status-rule: review
   3-11-polymarket-http-errors-reshaped: backlog
   3-12-binance-http-errors-reshaped-and-python-maps-by-class: backlog
