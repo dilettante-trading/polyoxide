@@ -2,7 +2,7 @@
 title: 'Stories 3.1, 3.2 and 3.3: One send loop, the public window-quota table, and capacity buckets with Polymarket''s composed throttle'
 type: 'refactor'
 created: '2026-10-09'
-status: 'in-review'
+status: 'done'
 route: 'dispatch'
 review_loop_iteration: 0
 baseline_commit: '9cca9971a370a66e25827c6632ceb543e0c7a055'

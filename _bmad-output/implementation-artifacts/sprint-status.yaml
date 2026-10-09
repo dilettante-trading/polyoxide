@@ -81,9 +81,9 @@ development_status:
   epic-2-retrospective: optional
 
   epic-3: in-progress
-  3-1-the-one-send-loop-and-its-hook-contract: in-progress
-  3-2-the-public-window-quota-table: in-progress
-  3-3-capacity-buckets-and-polymarket-s-composed-throttle: in-progress
+  3-1-the-one-send-loop-and-its-hook-contract: review
+  3-2-the-public-window-quota-table: review
+  3-3-capacity-buckets-and-polymarket-s-composed-throttle: review
   3-4-clob-on-the-one-loop: backlog
   3-5-relay-on-the-one-loop-gating-holes-closed: backlog
   3-6-binance-on-the-one-loop: backlog
