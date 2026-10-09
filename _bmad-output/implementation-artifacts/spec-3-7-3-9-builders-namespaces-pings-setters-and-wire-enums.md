@@ -2,7 +2,7 @@
 title: 'Stories 3.7, 3.8 and 3.9: One client builder, namespace pattern and health ping; one query-setter macro; one wire-enum vocabulary'
 type: 'refactor'
 created: '2026-10-09'
-status: 'ready-for-dev'
+status: 'in-progress'
 route: 'dispatch'
 review_loop_iteration: 0
 baseline_commit: 'be83cfc8ded1d8d8418594575dc5b98e3d75e181'
