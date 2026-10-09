@@ -65,6 +65,8 @@ SNIPPETS = {
     ("polyoxide-core/src/rate_limit.rs", 208): "let target = count.saturating_sub(count.div_ceil(RESERVED_FRACTION));",
     ("polyoxide-core/src/rate_limit.rs", 216): "const RESERVED_FRACTION: u32 = 10;",
     ("polyoxide-core/src/rate_limit.rs", 303): "fn a_published_150_per_10s_admits_135_per_window(",
+    ("polyoxide-binance/src/usdm/request.rs", 107): "self.budget.begin_cooldown(ban);",
+    ("polyoxide-binance/tests/mock_api.rs", 409): "async fn a_418_is_not_retried_and_holds_the_next_request(",
     ("polyoxide-clob/src/error.rs", 89): "let m = message.to_ascii_lowercase();",
     ("polyoxide-clob/src/error.rs", 92): 'if m.contains("fak order") && (m.contains("no match")',
     ("polyoxide-clob/src/error.rs", 110): "ApiError::Validation(msg) => {",
