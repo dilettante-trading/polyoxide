@@ -303,6 +303,16 @@ mod quota_arithmetic {
             }
         }
     }
+
+    #[test]
+    fn a_published_150_per_10s_admits_135_per_window() {
+        // The reserve's golden value. On `/closed-positions` (150/10s) a
+        // sustained 135 per 10s ran clean for 180s and 142.5 was refused. The
+        // two sweeps above derive their ceiling from `RESERVED_FRACTION`
+        // itself, so a changed reserve still passes them; this pins the 90%.
+        let period = Duration::from_secs(10);
+        assert_eq!(admitted_in_one_window(&quota(150, period), period), 135);
+    }
 }
 
 /// Create an endpoint rate limit configuration from its own buckets.
