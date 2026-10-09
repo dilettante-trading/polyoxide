@@ -1,4 +1,6 @@
-use polyoxide_core::{ApiError, HttpClient, QueryBuilder, Request, RequestError};
+use polyoxide_core::{ApiError, HttpClient, QueryBuilder, Request, RequestError, RequestParts};
+use reqwest::header::{HeaderValue, CONTENT_TYPE};
+use reqwest::Method;
 
 use crate::{
     error::GammaError,
@@ -129,28 +131,27 @@ impl Markets {
 /// `query` carries pagination (`limit`, `offset`) because the upstream server
 /// ignores those fields when sent inside the JSON body — they must be on the
 /// URL query string to take effect.
+///
+/// Runs on the send loop, so it takes the permit before the throttle, and a
+/// 429 is retried and holds the client (DRIFT R8). The body is
+/// `serde_json::to_string`'s, the bytes reqwest's `.json` sent, not core's
+/// `Request::body`, which would sort the keys.
 async fn post_json<B: serde::Serialize, T: serde::de::DeserializeOwned>(
     http: &HttpClient,
     path: &str,
     body: &B,
     query: &[(&str, String)],
 ) -> Result<T, GammaError> {
-    let url = http
-        .base_url
-        .join(path)
-        .map_err(|e| GammaError::Api(ApiError::from(e)))?;
-
-    http.acquire_rate_limit(path, Some(&reqwest::Method::POST))
-        .await;
-    let _permit = http.acquire_concurrency().await;
-    let response = http
-        .client
-        .post(url)
-        .query(query)
-        .json(body)
-        .send()
-        .await
-        .map_err(|e| GammaError::Api(ApiError::from(e)))?;
+    let mut parts = RequestParts::new(Method::POST, path);
+    parts.query = query
+        .iter()
+        .map(|(key, value)| ((*key).to_owned(), value.clone()))
+        .collect();
+    parts
+        .headers
+        .insert(CONTENT_TYPE, HeaderValue::from_static("application/json"));
+    parts.body = Some(serde_json::to_string(body).map_err(|e| GammaError::Api(ApiError::from(e)))?);
+    let response = http.send(parts, &[], None).await?;
 
     if !response.status().is_success() {
         return Err(GammaError::from_response(response).await);

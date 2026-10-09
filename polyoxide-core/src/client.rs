@@ -97,11 +97,11 @@ impl HttpClient {
     /// Charge the throttle for one request to `path`, as [`send`](Self::send)
     /// does for each attempt. `None` is charged as `GET`.
     ///
-    /// Transitional: clob's and relay's hand-written loops, and gamma's
-    /// `post_json` and the gamma and data pings, call it until Stories 3.4 and
-    /// 3.5 move them onto [`send`](Self::send). It is removed with its last
-    /// caller, and `docs/s1-removals.md` names [`send`](Self::send) as its
-    /// replacement.
+    /// Transitional: relay's three hand-written loops call it until Story 3.5
+    /// moves them onto [`send`](Self::send). The clob, gamma and data pings
+    /// and gamma's `post_json` called it until DRIFT R8 moved them onto
+    /// [`send`](Self::send) too. It is removed with its last caller, and
+    /// `docs/s1-removals.md` names [`send`](Self::send) as its replacement.
     pub async fn acquire_rate_limit(&self, path: &str, method: Option<&Method>) {
         let meta = RequestMeta {
             method: method.unwrap_or(&Method::GET),

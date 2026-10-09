@@ -1,7 +1,38 @@
-use polyoxide_core::{HttpClient, RequestError};
+use polyoxide_core::{
+    ApiError, Authenticator, DynAuthenticator, HttpClient, RequestError, RequestParts,
+};
+use reqwest::Method;
+use std::sync::Mutex;
 use std::time::{Duration, Instant};
 
 use crate::error::GammaError;
+
+/// Notes when an attempt is signed, which is just before it is sent, so a
+/// ping's latency leaves out the waits for a permit, the throttle and a
+/// retry's backoff: the last attempt's round trip, as before the ping ran on
+/// the send loop.
+#[derive(Default)]
+struct Stopwatch(Mutex<Option<Instant>>);
+
+impl Stopwatch {
+    /// Time since the last attempt was signed.
+    fn elapsed(&self) -> Duration {
+        self.0
+            .lock()
+            .unwrap_or_else(|poisoned| poisoned.into_inner())
+            .map_or(Duration::ZERO, |sent| sent.elapsed())
+    }
+}
+
+impl Authenticator for Stopwatch {
+    async fn sign(&self, _parts: &mut RequestParts, _attempt: u32) -> Result<(), ApiError> {
+        *self
+            .0
+            .lock()
+            .unwrap_or_else(|poisoned| poisoned.into_inner()) = Some(Instant::now());
+        Ok(())
+    }
+}
 
 /// Health namespace for API health and latency operations
 #[derive(Clone)]
@@ -25,19 +56,18 @@ impl Health {
     /// # }
     /// ```
     pub async fn ping(&self) -> Result<Duration, GammaError> {
-        let url = self.http_client.base_url.join("/status")?;
-
-        // Health checks are capped like any other route (100/10s). This reaches
-        // for `client` directly rather than going through `Request`, so the
-        // gating has to be applied by hand — omitting it bypassed both the
-        // limiter and the concurrency budget that keeps Cloudflare from seeing
-        // a burst from this process.
-        let _permit = self.http_client.acquire_concurrency().await;
-        self.http_client.acquire_rate_limit("/status", None).await;
-
-        let start = Instant::now();
-        let response = self.http_client.client.get(url).send().await?;
-        let latency = start.elapsed();
+        // Health checks are capped like any other route (100/10s), and run on
+        // the send loop, so a 429 is retried and holds the client (DRIFT R8).
+        let stopwatch = Stopwatch::default();
+        let response = self
+            .http_client
+            .send(
+                RequestParts::new(Method::GET, "/status"),
+                &[],
+                Some(DynAuthenticator::from_ref(&stopwatch)),
+            )
+            .await?;
+        let latency = stopwatch.elapsed();
 
         if !response.status().is_success() {
             return Err(GammaError::from_response(response).await);
@@ -54,11 +84,11 @@ mod tests {
 
     /// `ping` must go through the same gating as every other request.
     ///
-    /// It reaches for `http_client.client` directly rather than going through
-    /// `Request`, so nothing structural forces it to respect the limiter — only
-    /// this test does. Holding the single concurrency permit is the cheap,
-    /// deterministic way to prove it queues: if `ping` bypasses the gate it
-    /// returns immediately instead of timing out.
+    /// It discards its body, so it calls the send loop rather than going
+    /// through `Request`, and only this test shows it respects the gate.
+    /// Holding the single concurrency permit is the cheap, deterministic way
+    /// to prove it queues: if `ping` bypasses the gate it returns immediately
+    /// instead of timing out.
     #[tokio::test]
     async fn ping_waits_on_the_shared_request_gate() {
         let mut server = mockito::Server::new_async().await;

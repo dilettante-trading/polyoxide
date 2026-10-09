@@ -4279,3 +4279,49 @@ async fn an_l1_signer_that_fails_sends_nothing() {
     assert!(!err.is_retriable());
     mock.assert_async().await;
 }
+
+#[tokio::test]
+async fn a_429_on_ping_holds_the_next_request() {
+    // DRIFT R8: the ping skipped every gate, so a 429 on it was neither
+    // retried nor fed back. On the send loop it is both.
+    let mut server = Server::new_async().await;
+    let served = std::sync::atomic::AtomicUsize::new(0);
+    let mock = server
+        .mock("GET", "/")
+        .with_status_code_from_request(move |_| {
+            match served.fetch_add(1, std::sync::atomic::Ordering::SeqCst) {
+                0 | 1 => 429,
+                _ => 200,
+            }
+        })
+        .with_body("OK")
+        .expect(3)
+        .create_async()
+        .await;
+    let clob = ClobBuilder::new()
+        .base_url(server.url())
+        .with_retry_config(RetryConfig {
+            max_retries: 1,
+            initial_backoff_ms: 300,
+            max_backoff_ms: 10_000,
+        })
+        .build()
+        .unwrap();
+
+    // Retried once, then out of retries: the 429 is the caller's.
+    let err = clob.health().ping().await.unwrap_err();
+    assert!(
+        matches!(err, ClobError::Api(polyoxide_core::ApiError::RateLimit(_))),
+        "{err:?}"
+    );
+
+    // Its hold, the schedule's first delay (225-375ms), stops the next request.
+    let start = std::time::Instant::now();
+    clob.health().ping().await.unwrap();
+    assert!(
+        start.elapsed() >= std::time::Duration::from_millis(200),
+        "the next request went after {:?}, inside the ping's hold",
+        start.elapsed()
+    );
+    mock.assert_async().await;
+}

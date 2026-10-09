@@ -1736,3 +1736,43 @@ async fn the_builder_installs_polymarkets_retry_policy_so_a_425_is_retried() {
     early.assert_async().await;
     ok.assert_async().await;
 }
+
+#[tokio::test]
+async fn a_429_on_ping_holds_the_next_request() {
+    // DRIFT R8: the ping fed no 429 back. On the send loop it is retried and
+    // holds the client.
+    let mut server = Server::new_async().await;
+    let served = std::sync::atomic::AtomicUsize::new(0);
+    let mock = server
+        .mock("GET", "/")
+        .with_status_code_from_request(move |_| {
+            match served.fetch_add(1, std::sync::atomic::Ordering::SeqCst) {
+                0 | 1 => 429,
+                _ => 200,
+            }
+        })
+        .with_header("content-type", "application/json")
+        .with_body(r#"{"data":"OK"}"#)
+        .expect(3)
+        .create_async()
+        .await;
+    let data = throttled_data(&server, 300, 1);
+
+    let err = data.health().ping().await.unwrap_err();
+    assert!(
+        matches!(
+            err,
+            polyoxide_data::DataApiError::Api(polyoxide_core::ApiError::RateLimit(_))
+        ),
+        "{err:?}"
+    );
+
+    let start = std::time::Instant::now();
+    data.health().ping().await.unwrap();
+    assert!(
+        start.elapsed() >= std::time::Duration::from_millis(200),
+        "the next request went after {:?}, inside the ping's hold",
+        start.elapsed()
+    );
+    mock.assert_async().await;
+}

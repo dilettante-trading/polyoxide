@@ -1,8 +1,39 @@
-use polyoxide_core::{HttpClient, Request, RequestError};
+use polyoxide_core::{
+    ApiError, Authenticator, DynAuthenticator, HttpClient, Request, RequestError, RequestParts,
+};
+use reqwest::Method;
 use serde::{Deserialize, Serialize};
+use std::sync::Mutex;
 use std::time::{Duration, Instant};
 
 use crate::error::DataApiError;
+
+/// Notes when an attempt is signed, which is just before it is sent, so a
+/// ping's latency leaves out the waits for a permit, the throttle and a
+/// retry's backoff: the last attempt's round trip, as before the ping ran on
+/// the send loop.
+#[derive(Default)]
+struct Stopwatch(Mutex<Option<Instant>>);
+
+impl Stopwatch {
+    /// Time since the last attempt was signed.
+    fn elapsed(&self) -> Duration {
+        self.0
+            .lock()
+            .unwrap_or_else(|poisoned| poisoned.into_inner())
+            .map_or(Duration::ZERO, |sent| sent.elapsed())
+    }
+}
+
+impl Authenticator for Stopwatch {
+    async fn sign(&self, _parts: &mut RequestParts, _attempt: u32) -> Result<(), ApiError> {
+        *self
+            .0
+            .lock()
+            .unwrap_or_else(|poisoned| poisoned.into_inner()) = Some(Instant::now());
+        Ok(())
+    }
+}
 
 /// Health namespace for API health operations
 #[derive(Clone)]
@@ -35,17 +66,19 @@ impl Health {
     /// # }
     /// ```
     pub async fn ping(&self) -> Result<Duration, DataApiError> {
-        let _permit = self.http_client.acquire_concurrency().await;
-        self.http_client.acquire_rate_limit("/", None).await;
-
-        let start = Instant::now();
+        // On the send loop, so a 429 is retried and holds the client (DRIFT
+        // R8). The path is the base URL's own, as the ping has always sent.
+        let path = self.http_client.base_url.path().to_owned();
+        let stopwatch = Stopwatch::default();
         let response = self
             .http_client
-            .client
-            .get(self.http_client.base_url.clone())
-            .send()
+            .send(
+                RequestParts::new(Method::GET, path),
+                &[],
+                Some(DynAuthenticator::from_ref(&stopwatch)),
+            )
             .await?;
-        let latency = start.elapsed();
+        let latency = stopwatch.elapsed();
 
         if !response.status().is_success() {
             return Err(DataApiError::from_response(response).await);
