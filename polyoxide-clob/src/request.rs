@@ -176,19 +176,12 @@ impl<T> QueryBuilder for Request<T> {
 impl<T: DeserializeOwned> Request<T> {
     /// Execute the request and deserialize response
     pub async fn send(self) -> Result<T, ClobError> {
+        let path = self.path.clone();
         let response = self.send_raw().await?;
 
         let text = response.text().await?;
 
-        // Deserialize and provide better error context
-        serde_json::from_str(&text).map_err(|e| {
-            tracing::error!("Deserialization failed: {}", e);
-            tracing::error!(
-                "Failed to deserialize: {}",
-                polyoxide_core::truncate_for_log(&text)
-            );
-            e.into()
-        })
+        polyoxide_core::decode_json(&path, &text).map_err(Into::into)
     }
 
     /// Execute the request and return raw response

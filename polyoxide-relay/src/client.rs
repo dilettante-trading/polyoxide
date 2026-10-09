@@ -1864,17 +1864,8 @@ impl RelayClient {
             }
 
             let response_text = resp.text().await?;
-
-            // Try to deserialize
-            return serde_json::from_str(&response_text).map_err(|e| {
-                tracing::error!(
-                    "Failed to decode response from {}: {}. Raw body: {}",
-                    endpoint,
-                    e,
-                    polyoxide_core::truncate_for_log(&response_text)
-                );
-                RelayError::SerdeJson(e)
-            });
+            return polyoxide_core::decode_json(&path, &response_text)
+                .map_err(RelayError::SerdeJson);
         }
     }
 }

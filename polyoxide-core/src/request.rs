@@ -104,20 +104,15 @@ impl<T, E> QueryBuilder for Request<T, E> {
 impl<T: DeserializeOwned, E: RequestError> Request<T, E> {
     /// Execute the request and deserialize response
     pub async fn send(self) -> Result<T, E> {
+        let path = self.path.clone();
         let response = self.send_raw().await?;
 
-        // Get text for debugging
         let text = response
             .text()
             .await
             .map_err(|e| E::from(ApiError::from(e)))?;
 
-        // Deserialize and provide better error context
-        serde_json::from_str(&text).map_err(|e| {
-            tracing::error!("Deserialization failed: {}", e);
-            tracing::error!("Failed to deserialize: {}", crate::truncate_for_log(&text));
-            E::from(ApiError::from(e))
-        })
+        crate::decode_json(&path, &text).map_err(|e| E::from(ApiError::from(e)))
     }
 
     /// Execute the request and return raw response

@@ -1,6 +1,7 @@
 //! [`HttpClient::send`]: core's one send loop.
 
 use reqwest::Response;
+use serde::de::DeserializeOwned;
 use url::Url;
 
 use crate::client::HttpClient;
@@ -119,4 +120,19 @@ impl HttpClient {
         }
         request
     }
+}
+
+/// Decode a response body as JSON, logging a failure once.
+///
+/// A failure logs one ERROR line under `polyoxide_core`,
+/// `Failed to decode {path}: {err}: {body}`, with the body truncated for the
+/// log, and returns the error for the caller to map into its own type.
+pub fn decode_json<T: DeserializeOwned>(path: &str, text: &str) -> Result<T, serde_json::Error> {
+    serde_json::from_str(text).map_err(|err| {
+        tracing::error!(
+            "Failed to decode {path}: {err}: {}",
+            crate::truncate_for_log(text)
+        );
+        err
+    })
 }

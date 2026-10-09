@@ -80,6 +80,7 @@ pub use hooks::{
 };
 pub use rate_limit::{RateLimiter, RetryConfig};
 pub use request::{QueryBuilder, Request, RequestError};
+pub use send::decode_json;
 pub use session_signer::{DepositWalletRole, SessionSignerScope};
 pub use signer_limit::{
     BurstCapacityExceeded, RateLimitStatus, SignerLimiter, Tier, TradingBucket, TradingRequest,

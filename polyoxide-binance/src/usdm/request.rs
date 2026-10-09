@@ -70,14 +70,8 @@ impl<T: DeserializeOwned> WeightedRequest<T> {
     /// call in `tokio::time::timeout` where a caller needs a deadline.
     pub async fn send(self) -> Result<T, BinanceError> {
         let text = self.send_text().await?;
-        serde_json::from_str(&text).map_err(|err| {
-            tracing::error!(
-                "Failed to decode {}: {err}: {}",
-                self.route.path(),
-                truncate_for_log(&text)
-            );
-            BinanceError::from(ApiError::from(err))
-        })
+        polyoxide_core::decode_json(self.route.path(), &text)
+            .map_err(|err| BinanceError::from(ApiError::from(err)))
     }
 
     async fn send_text(&self) -> Result<String, BinanceError> {
