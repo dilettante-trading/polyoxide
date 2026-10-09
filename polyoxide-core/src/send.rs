@@ -27,6 +27,11 @@ impl HttpClient {
     /// never retries past [`RetryConfig::max_retries`], whatever the policy
     /// says.
     ///
+    /// Each retry logs a `WARN` under the `polyoxide_core` target,
+    /// `Retriable status <code> on <path>, retry <n> after <ms>ms`, and so does
+    /// a hold that is not a retry: `Status <code> on <path>, no retry left:
+    /// every request held <ms>ms`.
+    ///
     /// Returns the last response, whatever its status, for the caller to
     /// decode.
     ///
@@ -101,7 +106,19 @@ impl HttpClient {
                     drop(permit);
                     tokio::time::sleep(sleep).await;
                 }
-                Outcome::Done | Outcome::Fail | Outcome::Retry(_) => return Ok(response),
+                Outcome::Done | Outcome::Fail | Outcome::Retry(_) => {
+                    // A hold outlives this request, so it is logged even when
+                    // nothing is retried (DRIFT R10).
+                    if let Some(hold) = decision.hold {
+                        tracing::warn!(
+                            "Status {} on {}, no retry left: every request held {}ms",
+                            status,
+                            parts.path,
+                            hold.as_millis()
+                        );
+                    }
+                    return Ok(response);
+                }
             }
         }
     }

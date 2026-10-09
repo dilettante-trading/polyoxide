@@ -1,6 +1,7 @@
 //! Core's send loop, driven against a mock server with hooks that record what
 //! the loop asks of them.
 
+use std::fmt::Debug;
 use std::sync::atomic::{AtomicUsize, Ordering};
 use std::sync::{Arc, Mutex};
 use std::time::{Duration, Instant};
@@ -14,6 +15,8 @@ use polyoxide_core::{
 };
 use polyoxide_venue::{Class, Classify};
 use reqwest::{Method, StatusCode};
+use tracing::field::{Field, Visit};
+use tracing_subscriber::layer::{Context, SubscriberExt};
 
 /// What the hooks and the server saw, in order.
 #[derive(Clone, Default)]
@@ -106,16 +109,17 @@ impl Authenticator for Stamp {
     }
 }
 
-/// A server answering `GET /v1/rows` with `statuses` in turn, then the last of
+/// A server answering `GET path` with `statuses` in turn, then the last of
 /// them for good, logging each request it serves as `send <x-attempt>`. The
 /// mock expects exactly `hits` requests.
-async fn scripted(statuses: &[usize], hits: usize, log: &Log) -> (ServerGuard, Mock) {
+async fn scripted(path: &str, statuses: &[usize], hits: usize, log: &Log) -> (ServerGuard, Mock) {
+    capture_warnings();
     let mut server = Server::new_async().await;
     let statuses = statuses.to_vec();
     let served = AtomicUsize::new(0);
     let log = log.clone();
     let mock = server
-        .mock("GET", "/v1/rows")
+        .mock("GET", path)
         .match_query(Matcher::Any)
         .with_status_code_from_request(move |request| {
             let stamp = request
@@ -161,7 +165,7 @@ fn rows() -> RequestParts {
 async fn each_attempt_runs_acquire_sign_send_observe_decide_hold_in_order() {
     let throttle = Recorder::default();
     let log = throttle.log.clone();
-    let (server, mock) = scripted(&[429, 200], 2, &log).await;
+    let (server, mock) = scripted("/v1/rows", &[429, 200], 2, &log).await;
     let http = client(&server, &throttle, schedule(3, 1));
     let stamp = Stamp(log.clone());
 
@@ -193,7 +197,7 @@ async fn each_attempt_runs_acquire_sign_send_observe_decide_hold_in_order() {
 #[tokio::test]
 async fn acquire_waits_for_the_permit() {
     let throttle = Recorder::default();
-    let (server, mock) = scripted(&[200], 1, &throttle.log).await;
+    let (server, mock) = scripted("/v1/rows", &[200], 1, &throttle.log).await;
     let http = HttpClientBuilder::new(server.url())
         .with_throttle(throttle.clone())
         .with_max_concurrent(1)
@@ -223,7 +227,7 @@ async fn acquire_waits_for_the_permit() {
 async fn sign_runs_on_every_attempt_with_its_number() {
     let throttle = Recorder::default();
     let log = throttle.log.clone();
-    let (server, mock) = scripted(&[429, 425, 200], 3, &log).await;
+    let (server, mock) = scripted("/v1/rows", &[429, 425, 200], 3, &log).await;
     let http = client(&server, &throttle, schedule(3, 1));
     let stamp = Stamp(log.clone());
 
@@ -247,7 +251,7 @@ async fn sign_runs_on_every_attempt_with_its_number() {
 #[tokio::test]
 async fn observe_sees_the_last_attempt() {
     let throttle = Recorder::default();
-    let (server, mock) = scripted(&[429], 2, &throttle.log).await;
+    let (server, mock) = scripted("/v1/rows", &[429], 2, &throttle.log).await;
     let http = client(&server, &throttle, schedule(1, 1));
 
     let response = http.send(rows(), &[], None).await.unwrap();
@@ -275,7 +279,7 @@ async fn a_zero_wait_still_sleeps_the_floor() {
     // A 425 is retried with a wait of zero and no hold, so nothing but the
     // loop's own floor stands between the two attempts.
     let throttle = Recorder::default();
-    let (server, mock) = scripted(&[425, 200], 2, &throttle.log).await;
+    let (server, mock) = scripted("/v1/rows", &[425, 200], 2, &throttle.log).await;
     let http = client(&server, &throttle, schedule(3, 300));
 
     let start = Instant::now();
@@ -294,7 +298,7 @@ async fn a_zero_wait_still_sleeps_the_floor() {
 #[tokio::test]
 async fn a_429_with_no_retry_left_still_holds() {
     let throttle = Recorder::default();
-    let (server, mock) = scripted(&[429], 1, &throttle.log).await;
+    let (server, mock) = scripted("/v1/rows", &[429], 1, &throttle.log).await;
     let http = client(&server, &throttle, schedule(0, 400));
 
     let response = http.send(rows(), &[], None).await.unwrap();
@@ -319,7 +323,7 @@ async fn the_429_hold_is_retry_delay_zero_not_the_attempts_wait() {
     // Three 429s at a 40ms base: the retries wait 30-50ms, 60-100ms and
     // 120-200ms, while every hold stays at the first delay.
     let throttle = Recorder::default();
-    let (server, mock) = scripted(&[429, 429, 429, 200], 4, &throttle.log).await;
+    let (server, mock) = scripted("/v1/rows", &[429, 429, 429, 200], 4, &throttle.log).await;
     let http = client(&server, &throttle, schedule(3, 40));
 
     let start = Instant::now();
@@ -346,7 +350,7 @@ async fn the_429_hold_is_retry_delay_zero_not_the_attempts_wait() {
 #[tokio::test]
 async fn a_425_retries_without_holding() {
     let throttle = Recorder::default();
-    let (server, mock) = scripted(&[425, 200], 2, &throttle.log).await;
+    let (server, mock) = scripted("/v1/rows", &[425, 200], 2, &throttle.log).await;
     let http = client(&server, &throttle, schedule(3, 1));
 
     let response = http.send(rows(), &[], None).await.unwrap();
@@ -361,7 +365,7 @@ async fn a_425_retries_without_holding() {
 #[tokio::test]
 async fn the_default_policy_does_not_retry_425() {
     let throttle = Recorder::default();
-    let (server, mock) = scripted(&[425], 1, &throttle.log).await;
+    let (server, mock) = scripted("/v1/rows", &[425], 1, &throttle.log).await;
     let http = HttpClientBuilder::new(server.url())
         .with_throttle(throttle.clone())
         .with_retry_config(schedule(3, 1))
@@ -378,7 +382,7 @@ async fn the_default_policy_does_not_retry_425() {
 async fn a_5xx_and_a_408_are_not_retried() {
     for status in [500, 502, 503, 408] {
         let throttle = Recorder::default();
-        let (server, mock) = scripted(&[status], 1, &throttle.log).await;
+        let (server, mock) = scripted("/v1/rows", &[status], 1, &throttle.log).await;
         let http = client(&server, &throttle, schedule(3, 1));
 
         let response = http.send(rows(), &[], None).await.unwrap();
@@ -455,7 +459,7 @@ async fn get_bytes_retries_a_429_and_holds() {
     // Core's default policy: get_bytes runs on the loop, so a 429 is retried
     // and holds the client like any other request.
     let throttle = Recorder::default();
-    let (server, mock) = scripted(&[429, 200], 2, &throttle.log).await;
+    let (server, mock) = scripted("/v1/rows", &[429, 200], 2, &throttle.log).await;
     let http = HttpClientBuilder::new(server.url())
         .with_throttle(throttle.clone())
         .with_retry_config(schedule(3, 1))
@@ -467,4 +471,107 @@ async fn get_bytes_retries_a_429_and_holds() {
     mock.assert_async().await;
     assert_eq!(throttle.holds().len(), 1);
     assert_eq!(throttle.log.count("acquire"), 2);
+}
+
+/// Every `WARN` logged while this binary runs, as `(target, message)`.
+static WARNINGS: Mutex<Vec<(String, String)>> = Mutex::new(Vec::new());
+
+/// Installs, once and before any request is sent, the global subscriber that
+/// fills [`WARNINGS`]. A subscriber scoped to one test would race: a callsite
+/// first reached from a test with none caches `Interest::never` for every
+/// thread, and the scoped test then sees nothing.
+fn capture_warnings() {
+    static INSTALL: std::sync::Once = std::sync::Once::new();
+    INSTALL.call_once(|| {
+        tracing::subscriber::set_global_default(tracing_subscriber::registry().with(Warnings))
+            .expect("this binary installs no other subscriber");
+    });
+}
+
+/// The warnings that name `path`, which each test keeps to itself.
+fn warnings_on(path: &str) -> Vec<(String, String)> {
+    let needle = format!(" on {path},");
+    WARNINGS
+        .lock()
+        .unwrap()
+        .iter()
+        .filter(|(_, message)| message.contains(&needle))
+        .cloned()
+        .collect()
+}
+
+struct Warnings;
+
+impl<S: tracing::Subscriber> tracing_subscriber::Layer<S> for Warnings {
+    fn on_event(&self, event: &tracing::Event<'_>, _ctx: Context<'_, S>) {
+        if *event.metadata().level() != tracing::Level::WARN {
+            return;
+        }
+        let mut message = Message(String::new());
+        event.record(&mut message);
+        WARNINGS
+            .lock()
+            .unwrap()
+            .push((event.metadata().target().to_owned(), message.0));
+    }
+}
+
+struct Message(String);
+
+impl Visit for Message {
+    fn record_debug(&mut self, field: &Field, value: &dyn Debug) {
+        if field.name() == "message" {
+            self.0 = format!("{value:?}");
+        }
+    }
+}
+
+#[tokio::test]
+async fn a_retry_warns_once_under_polyoxide_core() {
+    for (status, reason) in [(429, "Too Many Requests"), (425, "Too Early")] {
+        let path = format!("/v1/retry-{status}");
+        let throttle = Recorder::default();
+        let (server, mock) = scripted(&path, &[status, 200], 2, &throttle.log).await;
+        let http = client(&server, &throttle, schedule(3, 1));
+
+        http.send(RequestParts::new(Method::GET, &path), &[], None)
+            .await
+            .unwrap();
+        mock.assert_async().await;
+
+        let seen = warnings_on(&path);
+        assert_eq!(seen.len(), 1, "one retry, one warning: {seen:?}");
+        let (target, message) = &seen[0];
+        assert!(target.starts_with("polyoxide_core"), "{target}");
+        let expected = format!("Retriable status {status} {reason} on {path}, retry 1 after ");
+        assert!(
+            message.starts_with(&expected) && message.ends_with("ms"),
+            "{message:?} is not {expected:?}<ms>ms"
+        );
+    }
+}
+
+#[tokio::test]
+async fn a_hold_with_no_retry_left_warns() {
+    let path = "/v1/held";
+    let throttle = Recorder::default();
+    let (server, mock) = scripted(path, &[429], 1, &throttle.log).await;
+    let http = client(&server, &throttle, schedule(0, 400));
+
+    http.send(RequestParts::new(Method::GET, path), &[], None)
+        .await
+        .unwrap();
+    mock.assert_async().await;
+
+    let seen = warnings_on(path);
+    assert_eq!(seen.len(), 1, "{seen:?}");
+    let (target, message) = &seen[0];
+    assert!(target.starts_with("polyoxide_core"), "{target}");
+    let held = throttle.holds()[0].as_millis();
+    assert_eq!(
+        message,
+        &format!(
+            "Status 429 Too Many Requests on {path}, no retry left: every request held {held}ms"
+        )
+    );
 }
