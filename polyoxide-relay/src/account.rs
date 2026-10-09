@@ -3,6 +3,7 @@ use crate::error::RelayError;
 use alloy::primitives::Address;
 use alloy::signers::local::PrivateKeySigner;
 use alloy::signers::Signer as AlloySigner;
+use polyoxide_venue::Secret;
 use std::sync::Arc;
 
 /// Any `alloy` signer, type-erased. Local keys and KMS-backed signers work for
@@ -26,7 +27,7 @@ pub const KEYCHAIN_SERVICE: &str = "polyoxide-relay";
 pub struct BuilderAccount {
     pub(crate) signer: Arc<DynSigner>,
     pub(crate) address: Address,
-    pub(crate) config: Option<AuthConfig>,
+    pub(crate) config: Option<Secret<AuthConfig>>,
 }
 
 fn parse_signer(private_key: impl Into<String>) -> Result<PrivateKeySigner, RelayError> {
@@ -90,7 +91,7 @@ impl BuilderAccount {
         Self {
             address: signer.address(),
             signer: Arc::new(signer),
-            config,
+            config: config.map(Secret::new),
         }
     }
 
@@ -106,7 +107,7 @@ impl BuilderAccount {
 
     /// Returns the auth config, if one was provided.
     pub fn auth_config(&self) -> Option<&AuthConfig> {
-        self.config.as_ref()
+        self.config.as_ref().map(Secret::expose)
     }
 
     /// Load account from the OS keychain with builder API credentials.

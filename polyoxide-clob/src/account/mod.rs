@@ -736,4 +736,27 @@ mod tests {
                 .unwrap()
         );
     }
+
+    #[test]
+    fn account_debug_prints_no_credential() {
+        let account = Account::new(
+            "0xac0974bec39a17e36ba4a6b4d238ff944bacb478cbed5efcae784d7bf4f2ff80",
+            Credentials {
+                key: "key-7f3a".into(),
+                secret: "c2VjcmV0LTdmM2E=".into(),
+                passphrase: "pass-7f3a".into(),
+            },
+        )
+        .unwrap();
+        let printed = format!("{account:?} {account:#?}");
+        for secret in [
+            "key-7f3a",
+            "c2VjcmV0LTdmM2E=",
+            "pass-7f3a",
+            "ac0974bec39a17e36ba4a6b4d238ff944bacb478cbed5efcae784d7bf4f2ff80",
+        ] {
+            assert!(!printed.contains(secret), "{secret} in {printed}");
+        }
+        assert!(printed.contains("Secret([REDACTED])"), "{printed}");
+    }
 }

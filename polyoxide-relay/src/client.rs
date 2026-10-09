@@ -241,7 +241,7 @@ pub struct RelayClient {
     http_client: HttpClient,
     chain_id: u64,
     account: Option<BuilderAccount>,
-    auth: Option<AuthConfig>,
+    auth: Option<polyoxide_venue::Secret<AuthConfig>>,
     contract_config: ContractConfig,
     wallet_type: WalletType,
     deposit_wallet: Option<Address>,
@@ -322,7 +322,7 @@ impl RelayClient {
     /// otherwise the one given to [`RelayClientBuilder::with_auth`].
     fn auth(&self) -> Result<&AuthConfig, RelayError> {
         if let Some(auth) = &self.auth {
-            return Ok(auth);
+            return Ok(auth.expose());
         }
         if self.account.is_none() {
             return Err(RelayError::Api(
@@ -1878,7 +1878,7 @@ pub struct RelayClientBuilder {
     base_url: String,
     chain_id: u64,
     account: Option<BuilderAccount>,
-    auth: Option<AuthConfig>,
+    auth: Option<polyoxide_venue::Secret<AuthConfig>>,
     wallet_type: WalletType,
     deposit_wallet: Option<Address>,
     deposit_wallet_role: DepositWalletRole,
@@ -1968,7 +1968,7 @@ impl RelayClientBuilder {
     /// `submit_*` call that takes a signature produced elsewhere). An account's own
     /// auth config, if also set, takes precedence over this.
     pub fn with_auth(mut self, auth: AuthConfig) -> Self {
-        self.auth = Some(auth);
+        self.auth = Some(polyoxide_venue::Secret::new(auth));
         self
     }
 
@@ -2030,7 +2030,7 @@ impl RelayClientBuilder {
         let auth = self
             .account
             .as_ref()
-            .and_then(|a| a.auth_config().cloned())
+            .and_then(|a| a.config.clone())
             .or(self.auth);
 
         Ok(RelayClient {
@@ -2602,5 +2602,35 @@ mod tests {
             "Expected multiSend selector, got: {}",
             &data_hex[..8.min(data_hex.len())]
         );
+    }
+
+    #[test]
+    fn a_client_s_debug_prints_no_credential() {
+        let builder = BuilderConfig::new(
+            "key-7f3a".into(),
+            "c2VjcmV0LTdmM2E=".into(),
+            Some("pass-7f3a".into()),
+        );
+        let account = BuilderAccount::new(
+            "ac0974bec39a17e36ba4a6b4d238ff944bacb478cbed5efcae784d7bf4f2ff80",
+            Some(builder.clone()),
+        )
+        .unwrap();
+        let with_account = RelayClient::from_account(account.clone()).unwrap();
+        let with_auth = RelayClient::builder()
+            .unwrap()
+            .with_auth(AuthConfig::Builder(builder))
+            .build()
+            .unwrap();
+        let printed = format!("{account:?} {with_account:?} {with_auth:#?}");
+        for secret in [
+            "key-7f3a",
+            "c2VjcmV0LTdmM2E=",
+            "pass-7f3a",
+            "ac0974bec39a17e36ba4a6b4d238ff944bacb478cbed5efcae784d7bf4f2ff80",
+        ] {
+            assert!(!printed.contains(secret), "{secret} in {printed}");
+        }
+        assert!(printed.contains("Secret([REDACTED])"), "{printed}");
     }
 }
