@@ -360,62 +360,64 @@ impl Default for HttpClientBuilder {
 mod tests {
     use super::*;
 
-    // ── should_retry() ───────────────────────────────────────────
+    // ── Polymarket's retry decision and the retry delay ──────────
+    //
+    // These tests drove `HttpClient::should_retry` until the hand-written
+    // loops that called it moved onto the send loop. They keep their names
+    // and their answers, read from the policy the loop asks and from
+    // `RetryConfig::retry_delay`, the loop's own floor.
+
+    /// Whether Polymarket's policy retries `status` on `attempt` under
+    /// `config`. `decide` itself fails a request with no retry left, so this
+    /// is the send loop's answer.
+    fn retries(config: &RetryConfig, status: StatusCode, attempt: u32) -> bool {
+        use crate::hooks::{Outcome, ResponseMeta};
+
+        let headers = reqwest::header::HeaderMap::new();
+        let response = ResponseMeta {
+            status,
+            headers: &headers,
+        };
+        matches!(
+            crate::polymarket::PolymarketRetryPolicy
+                .decide(&response, &config.attempt_info(attempt), config)
+                .outcome,
+            Outcome::Retry(_)
+        )
+    }
 
     #[test]
     fn test_should_retry_429_under_max() {
-        let client = HttpClientBuilder::new("https://example.com")
-            .build()
-            .unwrap();
+        let config = RetryConfig::default();
         // Default max_retries=3, so attempts 0 and 2 should retry
-        assert!(client
-            .should_retry(StatusCode::TOO_MANY_REQUESTS, 0, None)
-            .is_some());
-        assert!(client
-            .should_retry(StatusCode::TOO_MANY_REQUESTS, 2, None)
-            .is_some());
+        assert!(retries(&config, StatusCode::TOO_MANY_REQUESTS, 0));
+        assert!(retries(&config, StatusCode::TOO_MANY_REQUESTS, 2));
     }
 
     #[test]
     fn test_should_retry_429_at_max() {
-        let client = HttpClientBuilder::new("https://example.com")
-            .build()
-            .unwrap();
+        let config = RetryConfig::default();
         // attempt == max_retries → no retry
-        assert!(client
-            .should_retry(StatusCode::TOO_MANY_REQUESTS, 3, None)
-            .is_none());
+        assert!(!retries(&config, StatusCode::TOO_MANY_REQUESTS, 3));
     }
 
     #[test]
     fn test_should_retry_425_under_max() {
-        let client = HttpClientBuilder::new("https://example.com")
-            .build()
-            .unwrap();
+        let config = RetryConfig::default();
         // 425 Too Early — Polymarket's matching engine restarting.
-        assert!(client
-            .should_retry(StatusCode::TOO_EARLY, 0, None)
-            .is_some());
-        assert!(client
-            .should_retry(StatusCode::TOO_EARLY, 2, None)
-            .is_some());
+        assert!(retries(&config, StatusCode::TOO_EARLY, 0));
+        assert!(retries(&config, StatusCode::TOO_EARLY, 2));
     }
 
     #[test]
     fn test_should_retry_425_at_max() {
-        let client = HttpClientBuilder::new("https://example.com")
-            .build()
-            .unwrap();
-        assert!(client
-            .should_retry(StatusCode::TOO_EARLY, 3, None)
-            .is_none());
+        let config = RetryConfig::default();
+        assert!(!retries(&config, StatusCode::TOO_EARLY, 3));
     }
 
     #[test]
     fn test_should_retry_ignores_other_statuses() {
-        let client = HttpClientBuilder::new("https://example.com")
-            .build()
-            .unwrap();
+        let config = RetryConfig::default();
         for status in [
             StatusCode::OK,
             StatusCode::INTERNAL_SERVER_ERROR,
@@ -428,10 +430,7 @@ mod tests {
             // block inside a request, and it rejects orders wholesale.
             StatusCode::SERVICE_UNAVAILABLE,
         ] {
-            assert!(
-                client.should_retry(status, 0, None).is_none(),
-                "expected None for {status}"
-            );
+            assert!(!retries(&config, status, 0), "expected None for {status}");
         }
     }
 
@@ -439,12 +438,8 @@ mod tests {
     fn test_should_retry_5xx_not_retried_despite_being_is_retriable() {
         // The two notions differ on purpose. `ApiError::is_retriable` describes the
         // error; this loop resends non-idempotent writes, so it stays narrower.
-        let client = HttpClientBuilder::new("https://example.com")
-            .build()
-            .unwrap();
-        assert!(client
-            .should_retry(StatusCode::INTERNAL_SERVER_ERROR, 0, None)
-            .is_none());
+        let config = RetryConfig::default();
+        assert!(!retries(&config, StatusCode::INTERNAL_SERVER_ERROR, 0));
         assert!(ApiError::Api {
             status: 500,
             message: String::new()
@@ -454,52 +449,35 @@ mod tests {
 
     #[test]
     fn test_should_retry_custom_config() {
-        let client = HttpClientBuilder::new("https://example.com")
-            .with_retry_config(RetryConfig {
-                max_retries: 1,
-                ..RetryConfig::default()
-            })
-            .build()
-            .unwrap();
-        assert!(client
-            .should_retry(StatusCode::TOO_MANY_REQUESTS, 0, None)
-            .is_some());
-        assert!(client
-            .should_retry(StatusCode::TOO_MANY_REQUESTS, 1, None)
-            .is_none());
+        let config = RetryConfig {
+            max_retries: 1,
+            ..RetryConfig::default()
+        };
+        assert!(retries(&config, StatusCode::TOO_MANY_REQUESTS, 0));
+        assert!(!retries(&config, StatusCode::TOO_MANY_REQUESTS, 1));
     }
 
     #[test]
     fn test_should_retry_uses_retry_after_header() {
-        let client = HttpClientBuilder::new("https://example.com")
-            .build()
-            .unwrap();
-        let d = client
-            .should_retry(StatusCode::TOO_MANY_REQUESTS, 0, Some("2"))
-            .unwrap();
+        let config = RetryConfig::default();
+        let d = config.retry_delay(0, Some("2"));
         assert_eq!(d, Duration::from_millis(2000));
     }
 
     #[test]
     fn test_should_retry_retry_after_fractional_seconds() {
-        let client = HttpClientBuilder::new("https://example.com")
-            .build()
-            .unwrap();
+        let config = RetryConfig::default();
         // 1.5s, not the 0.5s this once used: a server-supplied delay is only
         // honoured when it exceeds the client's own backoff, and attempt 0's
         // jitter range is [375, 625]ms — straddling it made the assertion
         // depend on the roll. The point here is that fractions parse.
-        let d = client
-            .should_retry(StatusCode::TOO_MANY_REQUESTS, 0, Some("1.5"))
-            .unwrap();
+        let d = config.retry_delay(0, Some("1.5"));
         assert_eq!(d, Duration::from_millis(1500));
     }
 
     #[test]
     fn retry_after_below_our_own_backoff_does_not_shorten_the_wait() {
-        let client = HttpClientBuilder::new("https://example.com")
-            .build()
-            .unwrap();
+        let config = RetryConfig::default();
         // Cloudflare answers a tripped rate limit with 429 + `error code: 1015`
         // and a Retry-After that floors to zero. Taking it verbatim collapsed
         // the sleep to nothing: the observed failure was three "retry after 0ms"
@@ -507,9 +485,7 @@ mod tests {
         // out. A server asking us to wait *longer* is honoured; one asking us to
         // wait less than our own policy is not.
         for header in ["0", "0.0", "-1", "-30", "0.0001"] {
-            let d = client
-                .should_retry(StatusCode::TOO_MANY_REQUESTS, 0, Some(header))
-                .unwrap();
+            let d = config.retry_delay(0, Some(header));
             assert!(
                 d >= Duration::from_millis(375),
                 "Retry-After: {header:?} produced a {d:?} sleep; the floor is the \
@@ -520,16 +496,12 @@ mod tests {
 
     #[test]
     fn retry_after_zero_still_backs_off_exponentially_across_attempts() {
-        let client = HttpClientBuilder::new("https://example.com")
-            .build()
-            .unwrap();
+        let config = RetryConfig::default();
         // Flooring at a flat minimum would still let a 1015 ban be hammered at a
         // fixed cadence. The floor has to be the *attempt's* backoff, so a
         // degenerate header still yields 500ms, 1s, 2s.
         for (attempt, min_ms) in [(0u32, 375u64), (1, 750), (2, 1_500)] {
-            let d = client
-                .should_retry(StatusCode::TOO_MANY_REQUESTS, attempt, Some("0"))
-                .unwrap();
+            let d = config.retry_delay(attempt, Some("0"));
             assert!(
                 d >= Duration::from_millis(min_ms),
                 "attempt {attempt} with Retry-After: 0 slept {d:?}, expected >={min_ms}ms"
@@ -539,29 +511,17 @@ mod tests {
 
     #[test]
     fn test_should_retry_retry_after_clamped_to_max_backoff() {
-        let client = HttpClientBuilder::new("https://example.com")
-            .build()
-            .unwrap();
+        let config = RetryConfig::default();
         // Default max_backoff_ms = 10_000; header says 60s
-        let d = client
-            .should_retry(StatusCode::TOO_MANY_REQUESTS, 0, Some("60"))
-            .unwrap();
+        let d = config.retry_delay(0, Some("60"));
         assert_eq!(d, Duration::from_millis(10_000));
     }
 
     #[test]
     fn test_should_retry_retry_after_invalid_falls_back() {
-        let client = HttpClientBuilder::new("https://example.com")
-            .build()
-            .unwrap();
+        let config = RetryConfig::default();
         // Non-numeric Retry-After (HTTP-date format) falls back to computed backoff
-        let d = client
-            .should_retry(
-                StatusCode::TOO_MANY_REQUESTS,
-                0,
-                Some("Wed, 21 Oct 2025 07:28:00 GMT"),
-            )
-            .unwrap();
+        let d = config.retry_delay(0, Some("Wed, 21 Oct 2025 07:28:00 GMT"));
         // Should be in the jitter range for attempt 0: [375, 625]ms
         let ms = d.as_millis() as u64;
         assert!(
@@ -572,29 +532,53 @@ mod tests {
 
     // ── Builder wiring ───────────────────────────────────────────
 
-    #[tokio::test]
-    async fn test_builder_with_rate_limiter() {
-        let client = HttpClientBuilder::new("https://example.com")
-            .with_rate_limiter(crate::polymarket::clob_limits())
-            .build()
-            .unwrap();
+    /// Notes when it signs: just after the throttle let the attempt go.
+    #[derive(Default)]
+    struct SignedAt(std::sync::Mutex<Option<std::time::Instant>>);
+
+    impl crate::hooks::Authenticator for SignedAt {
+        async fn sign(&self, _parts: &mut RequestParts, _attempt: u32) -> Result<(), ApiError> {
+            *self.0.lock().unwrap() = Some(std::time::Instant::now());
+            Ok(())
+        }
+    }
+
+    /// How long `client` takes to let a `POST /order` through to its signing,
+    /// against a mock server.
+    async fn time_to_sign(builder: HttpClientBuilder, server: &mockito::ServerGuard) -> Duration {
+        let client = builder.build().unwrap();
+        let client = client.with_base_url(&server.url()).unwrap();
+        let signed = SignedAt::default();
         let start = std::time::Instant::now();
         client
-            .acquire_rate_limit("/order", Some(&reqwest::Method::POST))
-            .await;
-        assert!(start.elapsed() < Duration::from_millis(50));
+            .send(
+                RequestParts::new(Method::POST, "/order"),
+                &[],
+                Some(crate::hooks::DynAuthenticator::from_ref(&signed)),
+            )
+            .await
+            .unwrap();
+        let at = signed.0.lock().unwrap().expect("the request was signed");
+        at - start
+    }
+
+    #[tokio::test]
+    async fn test_builder_with_rate_limiter() {
+        let mut server = mockito::Server::new_async().await;
+        let _order = server.mock("POST", "/order").create_async().await;
+        let builder = HttpClientBuilder::new("https://example.com")
+            .with_rate_limiter(crate::polymarket::clob_limits());
+        let elapsed = time_to_sign(builder, &server).await;
+        assert!(elapsed < Duration::from_millis(50));
     }
 
     #[tokio::test]
     async fn test_builder_without_rate_limiter() {
-        let client = HttpClientBuilder::new("https://example.com")
-            .build()
-            .unwrap();
-        let start = std::time::Instant::now();
-        client
-            .acquire_rate_limit("/order", Some(&reqwest::Method::POST))
-            .await;
-        assert!(start.elapsed() < Duration::from_millis(10));
+        let mut server = mockito::Server::new_async().await;
+        let _order = server.mock("POST", "/order").create_async().await;
+        let builder = HttpClientBuilder::new("https://example.com");
+        let elapsed = time_to_sign(builder, &server).await;
+        assert!(elapsed < Duration::from_millis(10));
     }
 
     // ── Concurrency limiter ─────────────────────────────────────

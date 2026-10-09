@@ -1121,50 +1121,58 @@ mod tests {
     }
 
     // ── should_retry edge cases ─────────────────────────────────
+    //
+    // Driven through Polymarket's policy, which the send loop asks, since the
+    // hand-written loops that called `HttpClient::should_retry` are gone.
+
+    /// Whether Polymarket's policy retries a 429 on `attempt` under `config`.
+    fn retries_a_429(config: &RetryConfig, attempt: u32) -> bool {
+        use crate::hooks::{Outcome, ResponseMeta, RetryPolicy};
+
+        let headers = reqwest::header::HeaderMap::new();
+        let response = ResponseMeta {
+            status: reqwest::StatusCode::TOO_MANY_REQUESTS,
+            headers: &headers,
+        };
+        matches!(
+            crate::polymarket::PolymarketRetryPolicy
+                .decide(&response, &config.attempt_info(attempt), config)
+                .outcome,
+            Outcome::Retry(_)
+        )
+    }
 
     #[test]
     fn test_should_retry_exhaustion() {
         // After max_retries, should_retry must return None
-        let client = crate::HttpClientBuilder::new("https://example.com")
-            .with_retry_config(RetryConfig {
-                max_retries: 3,
-                ..RetryConfig::default()
-            })
-            .build()
-            .unwrap();
+        let config = RetryConfig {
+            max_retries: 3,
+            ..RetryConfig::default()
+        };
 
         // Attempts 0, 1, 2 should succeed
         for attempt in 0..3 {
             assert!(
-                client
-                    .should_retry(reqwest::StatusCode::TOO_MANY_REQUESTS, attempt, None)
-                    .is_some(),
+                retries_a_429(&config, attempt),
                 "attempt {attempt} should allow retry"
             );
         }
         // Attempt 3 should give up
         assert!(
-            client
-                .should_retry(reqwest::StatusCode::TOO_MANY_REQUESTS, 3, None)
-                .is_none(),
+            !retries_a_429(&config, 3),
             "attempt 3 should exhaust retries"
         );
     }
 
     #[test]
     fn test_should_retry_zero_max_retries_never_retries() {
-        let client = crate::HttpClientBuilder::new("https://example.com")
-            .with_retry_config(RetryConfig {
-                max_retries: 0,
-                ..RetryConfig::default()
-            })
-            .build()
-            .unwrap();
+        let config = RetryConfig {
+            max_retries: 0,
+            ..RetryConfig::default()
+        };
 
         assert!(
-            client
-                .should_retry(reqwest::StatusCode::TOO_MANY_REQUESTS, 0, None)
-                .is_none(),
+            !retries_a_429(&config, 0),
             "max_retries=0 should never retry"
         );
     }
