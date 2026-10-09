@@ -1,4 +1,4 @@
-use polyoxide_core::{HttpClient, QueryBuilder, Request};
+use polyoxide_core::{HttpClient, Request};
 
 use crate::{
     error::GammaError,
@@ -59,62 +59,32 @@ pub struct ListComments {
 }
 
 impl ListComments {
-    /// Bound the number of top-level comments, not the number of rows
-    /// returned: replies come along with their parents and are not counted
-    /// against `limit`. Measured 2026-08-19 (`docs/specs/gamma/OBSERVED.md`):
-    /// `limit=2` returned 8 rows, `limit=64` returned 160. Callers sizing a
-    /// buffer from `limit` will under-allocate.
-    pub fn limit(mut self, limit: u32) -> Self {
-        self.request = self.request.query("limit", limit);
-        self
-    }
-
-    /// Set pagination offset (minimum: 0)
-    pub fn offset(mut self, offset: u32) -> Self {
-        self.request = self.request.query("offset", offset);
-        self
-    }
-
-    /// Set order fields (comma-separated list)
-    pub fn order(mut self, order: impl Into<String>) -> Self {
-        self.request = self.request.query("order", order.into());
-        self
-    }
-
-    /// Set sort direction
-    pub fn ascending(mut self, ascending: bool) -> Self {
-        self.request = self.request.query("ascending", ascending);
-        self
-    }
-
-    /// Filter by parent entity type.
-    ///
-    /// [`ParentEntityType::Unknown`] is not a filter the server understands,
-    /// so passing it sends no parameter at all — mirroring
-    /// `ListActivity::activity_type` in `polyoxide-data`.
-    pub fn parent_entity_type(mut self, entity_type: ParentEntityType) -> Self {
-        if entity_type != ParentEntityType::Unknown {
-            self.request = self.request.query("parent_entity_type", entity_type);
-        }
-        self
-    }
-
-    /// Filter by parent entity ID
-    pub fn parent_entity_id(mut self, id: i64) -> Self {
-        self.request = self.request.query("parent_entity_id", id);
-        self
-    }
-
-    /// Include position data in response
-    pub fn get_positions(mut self, include: bool) -> Self {
-        self.request = self.request.query("get_positions", include);
-        self
-    }
-
-    /// Restrict results to position holders only
-    pub fn holders_only(mut self, holders_only: bool) -> Self {
-        self.request = self.request.query("holders_only", holders_only);
-        self
+    polyoxide_core::query_setters! {
+        /// Bound the number of top-level comments, not the number of rows
+        /// returned: replies come along with their parents and are not counted
+        /// against `limit`. Measured 2026-08-19 (`docs/specs/gamma/OBSERVED.md`):
+        /// `limit=2` returned 8 rows, `limit=64` returned 160. Callers sizing a
+        /// buffer from `limit` will under-allocate.
+        limit: u32 => "limit",
+        /// Set pagination offset (minimum: 0)
+        offset: u32 => "offset",
+        /// Set order fields (comma-separated list)
+        order: impl Into<String> => "order",
+        /// Set sort direction
+        ascending: bool => "ascending",
+        /// Filter by parent entity type.
+        ///
+        /// [`ParentEntityType::Unknown`] is not a filter the server understands,
+        /// so passing it sends no parameter at all — mirroring
+        /// `ListActivity::activity_type` in `polyoxide-data`.
+        parent_entity_type(entity_type: ParentEntityType) => "parent_entity_type"
+            if entity_type != ParentEntityType::Unknown,
+        /// Filter by parent entity ID
+        parent_entity_id: i64 => "parent_entity_id",
+        /// Include position data in response
+        get_positions: bool => "get_positions",
+        /// Restrict results to position holders only
+        holders_only: bool => "holders_only",
     }
 
     /// Execute the request
