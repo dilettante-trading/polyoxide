@@ -80,10 +80,10 @@ development_status:
   2-10-shared-soak-harness-and-capture-helpers: review
   epic-2-retrospective: optional
 
-  epic-3: backlog
-  3-1-the-one-send-loop-and-its-hook-contract: backlog
-  3-2-the-public-window-quota-table: backlog
-  3-3-capacity-buckets-and-polymarket-s-composed-throttle: backlog
+  epic-3: in-progress
+  3-1-the-one-send-loop-and-its-hook-contract: in-progress
+  3-2-the-public-window-quota-table: in-progress
+  3-3-capacity-buckets-and-polymarket-s-composed-throttle: in-progress
   3-4-clob-on-the-one-loop: backlog
   3-5-relay-on-the-one-loop-gating-holes-closed: backlog
   3-6-binance-on-the-one-loop: backlog
