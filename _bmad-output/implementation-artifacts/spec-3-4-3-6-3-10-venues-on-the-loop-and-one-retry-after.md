@@ -2,9 +2,10 @@
 title: 'Stories 3.4, 3.5, 3.6 and 3.10: clob, relay and Binance on the one send loop, one Retry-After parser and one retriable-status rule'
 type: 'refactor'
 created: '2026-10-09'
-status: 'ready-for-dev'
+status: 'in-progress'
 route: 'dispatch'
 review_loop_iteration: 0
+baseline_commit: 'ecad4c76254c771ca8b12b0a632a2ed0a9e9ca2c'
 context:
   - '{project-root}/_bmad-output/implementation-artifacts/epic-3-context.md'
 ---
