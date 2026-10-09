@@ -3,7 +3,7 @@
 use std::time::Duration;
 
 use polyoxide_core::{retry_after_header, ApiError, RequestError};
-use polyoxide_venue::{class_for_status, Class, Classify};
+use polyoxide_venue::{class_for_status, parse_retry_after, Class, Classify};
 use serde::Deserialize;
 use thiserror::Error;
 
@@ -62,9 +62,8 @@ impl VenueError {
             status,
             code: body.error,
             reference: body.reference,
-            retry_after: retry_after
-                .and_then(|v| v.trim().parse::<u64>().ok())
-                .map(Duration::from_secs),
+            // Surfaced, never slept on, so not clamped.
+            retry_after: retry_after.and_then(|v| parse_retry_after(v, Duration::MAX)),
         })
     }
 
@@ -304,13 +303,13 @@ mod tests {
                 (secs(2), secs(2)),
                 true,
             ),
-            // The two disagree on a zero wait, until Epic 3 removes the
-            // inherent method.
+            // A zero is no wait, to the trait and the inherent method alike
+            // (DRIFT R4).
             (
                 venue(429, Some("0"), "ip_rate_limited"),
                 Class::RateLimited { retry_after: None },
                 true,
-                (None, secs(0)),
+                (None, None),
                 true,
             ),
             (
@@ -361,5 +360,33 @@ mod tests {
     fn perps_error_is_send_sync() {
         fn assert_send_sync<T: Send + Sync>() {}
         assert_send_sync::<PerpsError>();
+    }
+
+    #[test]
+    fn the_one_retry_after_parser_settles_the_old_disagreements() {
+        // DRIFT R4. Perps read whole seconds only, so a fraction was no wait,
+        // a zero was a wait of nothing, and a value past `u64` was no wait.
+        let body = r#"{"status":"err","error":"ip_rate_limited"}"#;
+        let at = |header| {
+            VenueError::from_parts(429, Some(header), body)
+                .unwrap()
+                .retry_after
+        };
+        assert_eq!(at("1.5"), Some(Duration::from_millis(1500)));
+        assert_eq!(at("0"), None);
+        assert_eq!(at("99999999999999999999"), Some(Duration::MAX));
+        // Unchanged: no clamp short of what a `Duration` holds, and junk is no
+        // wait.
+        assert_eq!(at("604800"), Some(Duration::from_secs(604_800)));
+        for junk in [
+            "Wed, 21 Oct 2026 07:28:00 GMT",
+            "abc",
+            "NaN",
+            "inf",
+            "-1",
+            "",
+        ] {
+            assert_eq!(at(junk), None, "{junk:?}");
+        }
     }
 }

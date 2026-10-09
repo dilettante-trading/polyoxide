@@ -2,7 +2,7 @@
 
 use std::time::Duration;
 
-use polyoxide_venue::{class_for_status, Class, Classify};
+use polyoxide_venue::{class_for_status, parse_retry_after, Class, Classify};
 use serde::Deserialize;
 
 /// Stable classification of a v2 failure, for programmatic branching.
@@ -92,10 +92,8 @@ impl V2Error {
             retryable: body.retryable,
             trace_id: body.trace_id,
             parameter: body.parameter,
-            retry_after: retry_after
-                .and_then(|v| v.trim().parse::<f64>().ok())
-                .filter(|secs| secs.is_finite() && *secs >= 0.0)
-                .map(Duration::from_secs_f64),
+            // Surfaced, never slept on, so not clamped.
+            retry_after: retry_after.and_then(|v| parse_retry_after(v, Duration::MAX)),
         })
     }
 }
@@ -292,5 +290,34 @@ mod tests {
             err.to_string(),
             "Data API 400 invalid_request: required query param 'user' not provided (trace_id 8f8b7e5e64d241d1bc6e8d5eef76fc4e)"
         );
+    }
+
+    #[test]
+    fn the_one_retry_after_parser_settles_the_old_disagreements() {
+        // DRIFT R4. Data v2 read any finite value from zero up, so a zero or a
+        // `-0` was a wait of nothing, and `1e300` panicked in
+        // `Duration::from_secs_f64`.
+        let body = r#"{"error":"slow down","code":"rate_limited","retryable":true,"trace_id":"t"}"#;
+        let at = |header| {
+            V2Error::from_parts(429, Some(header), body)
+                .unwrap()
+                .retry_after
+        };
+        assert_eq!(at("0"), None);
+        assert_eq!(at("-0"), None);
+        assert_eq!(at("1e300"), Some(Duration::MAX));
+        // Unchanged: no clamp short of what a `Duration` holds, and junk is no
+        // wait.
+        assert_eq!(at("604800"), Some(Duration::from_secs(604_800)));
+        for junk in [
+            "Wed, 21 Oct 2026 07:28:00 GMT",
+            "abc",
+            "NaN",
+            "inf",
+            "-1",
+            "",
+        ] {
+            assert_eq!(at(junk), None, "{junk:?}");
+        }
     }
 }

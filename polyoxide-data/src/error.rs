@@ -185,13 +185,13 @@ mod tests {
                 (secs(3), secs(3)),
                 false,
             ),
-            // So do the two waits on a zero, until Epic 3 removes the inherent
-            // method.
+            // A zero is no wait, to the trait and the inherent method alike
+            // (DRIFT R4).
             (
                 v2(503, Some("0"), true),
                 unavailable,
                 true,
-                (None, secs(0)),
+                (None, None),
                 true,
             ),
             (

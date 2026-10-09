@@ -915,19 +915,17 @@ impl RetryConfig {
     /// on. Values that do not parse as a float (e.g. the HTTP-date form) are
     /// ignored the same way.
     ///
+    /// The header is read by [`polyoxide_venue::parse_retry_after`], the one
+    /// parser every crate uses, clamped to `max_backoff_ms`, and the longer
+    /// wait is taken by [`polyoxide_venue::retry_delay`].
+    ///
     /// The send loop's floor and a policy's hold both come from here, so a
     /// response cannot hold the client by one rule and pace its own retry by
     /// another.
     pub fn retry_delay(&self, attempt: u32, retry_after: Option<&str>) -> Duration {
-        let computed = self.backoff(attempt);
-        let requested = retry_after
-            .and_then(|v| v.parse::<f64>().ok())
-            .filter(|secs| secs.is_finite() && *secs > 0.0)
-            .map(|secs| {
-                let ms = (secs * 1000.0) as u64;
-                Duration::from_millis(ms.min(self.max_backoff_ms))
-            });
-        requested.map_or(computed, |r| r.max(computed))
+        let clamp = Duration::from_millis(self.max_backoff_ms);
+        let requested = retry_after.and_then(|v| polyoxide_venue::parse_retry_after(v, clamp));
+        polyoxide_venue::retry_delay(requested, self.backoff(attempt))
     }
 }
 
@@ -1029,6 +1027,30 @@ mod tests {
             below >= 20 && above >= 20,
             "jitter looks degenerate: {below} below midpoint, {above} above"
         );
+    }
+
+    #[test]
+    fn the_one_retry_after_parser_settles_the_old_disagreements() {
+        // DRIFT R4. Core read the header untrimmed, so a padded value was
+        // ignored and the client fell back to its own backoff.
+        let cfg = RetryConfig::default();
+        assert_eq!(cfg.retry_delay(0, Some(" 2 ")), Duration::from_secs(2));
+        // Unchanged: the clamp is `max_backoff_ms`, and junk is no wait.
+        assert_eq!(
+            cfg.retry_delay(0, Some("604800")),
+            Duration::from_millis(cfg.max_backoff_ms)
+        );
+        for junk in [
+            "Wed, 21 Oct 2026 07:28:00 GMT",
+            "abc",
+            "NaN",
+            "inf",
+            "-1",
+            "",
+        ] {
+            let ms = cfg.retry_delay(0, Some(junk)).as_millis();
+            assert!((375..=625).contains(&ms), "{junk:?} waited {ms}ms");
+        }
     }
 
     // ── quota() ──────────────────────────────────────────────────

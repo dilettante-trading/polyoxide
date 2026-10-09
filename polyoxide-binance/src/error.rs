@@ -123,18 +123,11 @@ impl BinanceError {
     }
 }
 
-/// Parses `Retry-After` as seconds, whole or fractional. Zero, negative,
-/// non-finite and unparsable values, and any that round to zero, are `None`;
-/// anything past [`MAX_COOLDOWN`] is clamped to it.
+/// Parses `Retry-After` with [`polyoxide_venue::parse_retry_after`], clamped
+/// to [`MAX_COOLDOWN`]: seconds, whole or fractional, and `None` for zero,
+/// negative, non-finite and unparsable values.
 pub(crate) fn retry_after_secs(value: Option<&str>) -> Option<Duration> {
-    let secs = value?.trim().parse::<f64>().ok()?;
-    if !secs.is_finite() || secs <= 0.0 {
-        return None;
-    }
-    Some(Duration::from_secs_f64(
-        secs.min(MAX_COOLDOWN.as_secs_f64()),
-    ))
-    .filter(|wait| !wait.is_zero())
+    value.and_then(|value| polyoxide_venue::parse_retry_after(value, MAX_COOLDOWN))
 }
 
 /// Core's classification of a body in some other shape, read whole so its
