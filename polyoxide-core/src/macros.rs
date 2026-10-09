@@ -175,3 +175,186 @@ macro_rules! namespaces {
         $crate::namespaces!(@accessors [$($field),+] $($accessors)*);
     };
 }
+
+/// Generates a request builder's query-parameter setters.
+///
+/// Each setter writes its parameter to `self.request`, or to
+/// `self.<field>` when the invocation starts with `self.<field>;`. The field
+/// may be core's `Request`, or any type with a `query(key, impl ToString)`
+/// method of its own, which is then preferred (and `query_many`, for the
+/// `many` arm). Each setter keeps the attributes written above it, its doc
+/// comment included.
+///
+/// The arms, one per setter, separated by commas:
+///
+/// - `name: T => "key"` takes a `T` and sends it as `key`.
+/// - `name: impl Into<String> => "key"` takes anything that converts into a
+///   `String`.
+/// - `name: many T => "key"` takes `T`, an iterator, and repeats `key` once
+///   per value.
+/// - `name: csv T => "key"` takes `T`, an iterator, and sends its values
+///   comma-joined, or nothing when the joined value is empty.
+/// - `name: csv<I, S> => "key"` is the same, with explicit generics
+///   (`I: IntoIterator<Item = S>`, `S: ToString`).
+/// - `name(arg: T) => "key" = expr` sends `expr`, computed from `arg`.
+/// - `name(arg: T) => "key" if cond` sends `arg` only when `cond` holds.
+/// - `name(arg: T) => csv "key" = expr` comma-joins the iterator `expr`.
+///
+/// ```
+/// use polyoxide_core::{ApiError, HttpClientBuilder, Request};
+///
+/// pub struct ListThings {
+///     request: Request<Vec<String>, ApiError>,
+/// }
+///
+/// impl ListThings {
+///     polyoxide_core::query_setters! {
+///         /// Page size.
+///         limit: u32 => "limit",
+///         /// Only things with these ids.
+///         ids: many impl IntoIterator<Item = i64> => "id",
+///         /// Only open things.
+///         open(open: bool) => "closed" = !open,
+///     }
+/// }
+///
+/// let http = HttpClientBuilder::new("https://example.com").build().unwrap();
+/// let _things = ListThings { request: Request::new(http, "/things") }
+///     .limit(10)
+///     .ids([1, 2])
+///     .open(true);
+/// ```
+#[macro_export]
+macro_rules! query_setters {
+    (@setters $field:ident;) => {};
+    (@setters $field:ident;
+        $(#[$meta:meta])* $name:ident: impl Into<String> => $key:literal
+        $(, $($rest:tt)*)?
+    ) => {
+        $(#[$meta])*
+        pub fn $name(mut self, value: impl Into<String>) -> Self {
+            #[allow(unused_imports)]
+            use $crate::QueryBuilder as _;
+            self.$field = self.$field.query($key, value.into());
+            self
+        }
+
+        $crate::query_setters!(@setters $field; $($($rest)*)?);
+    };
+    (@setters $field:ident;
+        $(#[$meta:meta])* $name:ident: many $ty:ty => $key:literal
+        $(, $($rest:tt)*)?
+    ) => {
+        $(#[$meta])*
+        pub fn $name(mut self, values: $ty) -> Self {
+            #[allow(unused_imports)]
+            use $crate::QueryBuilder as _;
+            self.$field = self.$field.query_many($key, values);
+            self
+        }
+
+        $crate::query_setters!(@setters $field; $($($rest)*)?);
+    };
+    (@setters $field:ident;
+        $(#[$meta:meta])* $name:ident: csv<I, S> => $key:literal
+        $(, $($rest:tt)*)?
+    ) => {
+        $(#[$meta])*
+        pub fn $name<I, S>(mut self, values: I) -> Self
+        where
+            I: IntoIterator<Item = S>,
+            S: ToString,
+        {
+            #[allow(unused_imports)]
+            use $crate::QueryBuilder as _;
+            if let Some(joined) = $crate::csv(values) {
+                self.$field = self.$field.query($key, joined);
+            }
+            self
+        }
+
+        $crate::query_setters!(@setters $field; $($($rest)*)?);
+    };
+    (@setters $field:ident;
+        $(#[$meta:meta])* $name:ident: csv $ty:ty => $key:literal
+        $(, $($rest:tt)*)?
+    ) => {
+        $(#[$meta])*
+        pub fn $name(mut self, values: $ty) -> Self {
+            #[allow(unused_imports)]
+            use $crate::QueryBuilder as _;
+            if let Some(joined) = $crate::csv(values) {
+                self.$field = self.$field.query($key, joined);
+            }
+            self
+        }
+
+        $crate::query_setters!(@setters $field; $($($rest)*)?);
+    };
+    (@setters $field:ident;
+        $(#[$meta:meta])* $name:ident($arg:ident: $ty:ty) => csv $key:literal = $value:expr
+        $(, $($rest:tt)*)?
+    ) => {
+        $(#[$meta])*
+        pub fn $name(mut self, $arg: $ty) -> Self {
+            #[allow(unused_imports)]
+            use $crate::QueryBuilder as _;
+            if let Some(joined) = $crate::csv($value) {
+                self.$field = self.$field.query($key, joined);
+            }
+            self
+        }
+
+        $crate::query_setters!(@setters $field; $($($rest)*)?);
+    };
+    (@setters $field:ident;
+        $(#[$meta:meta])* $name:ident($arg:ident: $ty:ty) => $key:literal = $value:expr
+        $(, $($rest:tt)*)?
+    ) => {
+        $(#[$meta])*
+        pub fn $name(mut self, $arg: $ty) -> Self {
+            #[allow(unused_imports)]
+            use $crate::QueryBuilder as _;
+            self.$field = self.$field.query($key, $value);
+            self
+        }
+
+        $crate::query_setters!(@setters $field; $($($rest)*)?);
+    };
+    (@setters $field:ident;
+        $(#[$meta:meta])* $name:ident($arg:ident: $ty:ty) => $key:literal if $cond:expr
+        $(, $($rest:tt)*)?
+    ) => {
+        $(#[$meta])*
+        pub fn $name(mut self, $arg: $ty) -> Self {
+            #[allow(unused_imports)]
+            use $crate::QueryBuilder as _;
+            if $cond {
+                self.$field = self.$field.query($key, $arg);
+            }
+            self
+        }
+
+        $crate::query_setters!(@setters $field; $($($rest)*)?);
+    };
+    (@setters $field:ident;
+        $(#[$meta:meta])* $name:ident: $ty:ty => $key:literal
+        $(, $($rest:tt)*)?
+    ) => {
+        $(#[$meta])*
+        pub fn $name(mut self, value: $ty) -> Self {
+            #[allow(unused_imports)]
+            use $crate::QueryBuilder as _;
+            self.$field = self.$field.query($key, value);
+            self
+        }
+
+        $crate::query_setters!(@setters $field; $($($rest)*)?);
+    };
+    (self.$field:ident; $($setters:tt)*) => {
+        $crate::query_setters!(@setters $field; $($setters)*);
+    };
+    ($($setters:tt)*) => {
+        $crate::query_setters!(@setters request; $($setters)*);
+    };
+}

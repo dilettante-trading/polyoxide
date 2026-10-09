@@ -1,11 +1,11 @@
 //! Reference data: `/v1/info/{exchange,assets,instruments,fees,limit-tiers}`.
 
-use polyoxide_core::{HttpClient, QueryBuilder, Request};
+use polyoxide_core::{HttpClient, Request};
 use rust_decimal::Decimal;
 use serde::{Deserialize, Serialize};
 
 use crate::{
-    api::{fetch, setter, Fetch},
+    api::{fetch, Fetch},
     error::PerpsError,
     types::{InstrumentCategory, InstrumentId, InstrumentType},
 };
@@ -51,17 +51,13 @@ pub struct ListInstruments {
 }
 
 impl ListInstruments {
-    setter! {
+    polyoxide_core::query_setters! {
         /// Restrict to one instrument.
-        instrument_id: InstrumentId => "instrument_id"
-    }
-    setter! {
+        instrument_id: InstrumentId => "instrument_id",
         /// Restrict to one instrument type.
-        instrument_type: InstrumentType => "instrument_type"
-    }
-    setter! {
+        instrument_type: InstrumentType => "instrument_type",
         /// Restrict to one category.
-        category: InstrumentCategory => "category"
+        category: InstrumentCategory => "category",
     }
 
     /// Execute the request.

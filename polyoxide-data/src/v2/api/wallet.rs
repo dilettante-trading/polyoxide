@@ -1,12 +1,12 @@
 //! `wallet` routes: approvals, positions, combo positions, PnL, stats, volume
 //! and portfolio value.
 
-use polyoxide_core::{QueryBuilder, Request};
+use polyoxide_core::{csv, QueryBuilder, Request};
 
 use crate::{
     types::SortDirection,
     v2::{
-        envelope::{csv, Envelope, Paged},
+        envelope::{Envelope, Paged},
         types::{
             Approvals, ComboPosition, ComboPositionSortBy, ComboPositionStatus, FilterType,
             PnlFidelity, PnlInterval, PortfolioValue, Position, PositionAnchor, PositionSortBy,

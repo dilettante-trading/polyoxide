@@ -1,11 +1,11 @@
 //! `feeds` routes: trades, activity and combo activity.
 
-use polyoxide_core::Request;
+use polyoxide_core::{csv, Request};
 
 use crate::{
     types::SortDirection,
     v2::{
-        envelope::{csv, Paged},
+        envelope::Paged,
         types::{
             Activity, ActivitySortBy, ActivityType, ComboActivity, FilterType, Trade, TradeSide,
         },

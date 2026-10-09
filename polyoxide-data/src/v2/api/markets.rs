@@ -1,11 +1,11 @@
 //! `markets` routes: holders, live volume, open interest, price history and
 //! resolutions.
 
-use polyoxide_core::{QueryBuilder, Request};
+use polyoxide_core::{csv, QueryBuilder, Request};
 
 use crate::{
     v2::{
-        envelope::{csv, Envelope, Paged},
+        envelope::{Envelope, Paged},
         types::{
             LiveVolume, MetaHolder, OpenInterest, PricePoint, PricesInterval, Resolution,
             ResolutionKey,

@@ -50,6 +50,7 @@ pub mod health;
 pub mod hold;
 pub mod hooks;
 pub mod polymarket;
+mod query;
 pub mod rate_limit;
 pub mod request;
 pub mod send;
@@ -92,6 +93,7 @@ pub use hooks::{
     DynRetryPolicy, DynThrottle, LayerCharge, LayerId, NoThrottle, Outcome, Refused, RequestMeta,
     RequestParts, ResponseMeta, RetryPolicy, Throttle,
 };
+pub use query::csv;
 pub use rate_limit::{
     BucketId, EffectiveQuota, Matching, QuotaRow, RateLimiter, RetryConfig, WindowQuotaTable,
 };

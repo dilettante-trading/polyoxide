@@ -127,3 +127,6 @@
 - source_spec: `_bmad-output/implementation-artifacts/spec-3-7-3-9-builders-namespaces-pings-setters-and-wire-enums.md`
   summary: Done (bundle I, I3): the entry above asking Story 3.7's `health(path)` to time relay's ping as clob's, gamma's and data's are. Every venue's ping now returns `HttpClient::health`'s `round_trip`, which also settles DRIFT R8's open question of whether a ping times only its last attempt: it does, everywhere.
   evidence: `polyoxide-relay/src/client.rs` `ping` calls `HttpClient::health`; relay's `a_retried_ping_reports_the_answering_attempt` pins it, with a path-prefixed base URL.
+- source_spec: `_bmad-output/implementation-artifacts/spec-3-7-3-9-builders-namespaces-pings-setters-and-wire-enums.md`
+  summary: For Story 4.11's S1 release notes, name what Story 3.8's macro (bundle I, I5) adds that a consumer can see. `polyoxide_core::query_setters!` (promoted from perps' private `setter!`, which is gone) and `polyoxide_core::csv` (moved from data v2's private `envelope::csv`, with its two tests) are new public items. Perps' 21 setters keep their names, argument types and keys.
+  evidence: `polyoxide-core/src/macros.rs`, `query.rs` and `macro_tests.rs` (one `query_setters_<arm>` test per arm) at bundle I's I5 commit; perps' `spec_agreement` `every_builder_sends_exactly_the_documented_query_keys` passes unchanged.
