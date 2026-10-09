@@ -15,7 +15,8 @@
 
 use crate::capacity::CapacityBucket;
 use crate::hold::Hold;
-use crate::hooks::LayerId;
+use crate::hooks::{LayerId, Refused};
+use crate::polymarket::{SIGNER_CANCEL, SIGNER_ORDER};
 
 /// Which of a signer's two buckets a request draws from.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
@@ -255,11 +256,6 @@ impl polyoxide_venue::Classify for BurstCapacityExceeded {
     }
 }
 
-/// The order bucket's layer.
-const ORDER_LAYER: LayerId = LayerId("signer-order");
-/// The cancel bucket's layer.
-const CANCEL_LAYER: LayerId = LayerId("signer-cancel");
-
 struct Buckets {
     tier: Tier,
     order: CapacityBucket,
@@ -282,8 +278,8 @@ impl Buckets {
         };
         Self {
             tier,
-            order: build(TradingBucket::Order, ORDER_LAYER),
-            cancel: build(TradingBucket::Cancel, CANCEL_LAYER),
+            order: build(TradingBucket::Order, SIGNER_ORDER),
+            cancel: build(TradingBucket::Cancel, SIGNER_CANCEL),
         }
     }
 
@@ -418,14 +414,7 @@ impl SignerLimiter {
     pub async fn acquire(&self, request: TradingRequest) -> Result<(), BurstCapacityExceeded> {
         let bucket = request.bucket();
 
-        // Clone the bucket out under the lock and drop the guard before
-        // awaiting: an RwLock guard held across an await would make this
-        // future !Send.
-        let (tier, limiter) = {
-            let buckets = self.inner.buckets.read().expect("lock is never poisoned");
-            (buckets.tier, buckets.get(bucket).clone())
-        };
-
+        let (tier, limiter) = self.bucket(bucket);
         let cost = request.cost().max(1);
         // The bucket refuses an exact cost above its capacity at once: the
         // permanently-impossible case, returned straight away rather than
@@ -439,6 +428,30 @@ impl SignerLimiter {
                 tier,
                 bucket,
             })
+    }
+
+    /// Charge `bucket` `units` tokens, as [`acquire`](Self::acquire) does for
+    /// a request: the per-signer layer of
+    /// [`ClobThrottle`](crate::polymarket::ClobThrottle), which is handed a
+    /// cost rather than a request.
+    pub(crate) async fn charge(
+        &self,
+        bucket: TradingBucket,
+        units: u32,
+        exact: bool,
+    ) -> Result<(), Refused> {
+        let (_, limiter) = self.bucket(bucket);
+        limiter.acquire(units, exact).await
+    }
+
+    /// The tier in force and a handle on one of its buckets.
+    ///
+    /// Clones the bucket out under the lock and drops the guard before the
+    /// caller awaits: an RwLock guard held across an await would make the
+    /// future !Send.
+    fn bucket(&self, bucket: TradingBucket) -> (Tier, CapacityBucket) {
+        let buckets = self.inner.buckets.read().expect("lock is never poisoned");
+        (buckets.tier, buckets.get(bucket).clone())
     }
 }
 

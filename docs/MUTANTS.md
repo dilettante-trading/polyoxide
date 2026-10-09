@@ -38,6 +38,8 @@ and (j) were proved again on top of `14c23f1`: (c) with the new `a_hold_never_sh
 hold extended mid-wait, with `Hold`'s own test, and the new row for the re-check.
 Its `CapacityBucket` replaced the signer layer's governor buckets; row (i) was re-cited at the
 bucket's capacity argument and proved again on top of `dc1127a`, its four tests unchanged.
+`polymarket::ClobThrottle` moved the signer layer's lines; row (i) was proved again on top of
+`34d60d3`.
 
 ## The rules
 
@@ -57,7 +59,7 @@ bucket's capacity argument and proved again on top of `dc1127a`, its four tests 
 | (e), only a 400 is classified | `polyoxide-clob/src/error.rs:110-113`, `from_response` classifies `ApiError::Validation` alone | Add an `ApiError::Api { status, message }` arm that classifies `message` too | `polyoxide-clob/tests/mock_api.rs:3462` `fak_prose_on_non_400_status_is_not_reclassified` |
 | (f) `observe` runs on every response, the last attempt included | `polyoxide-core/src/send.rs:84`, before the policy decides | Call `observe` only when `retries_left > 0` | `polyoxide-core/tests/send_loop.rs:252` `observe_sees_the_last_attempt` |
 | (g) A retry sleeps at least the loop's floor, whatever wait the policy returns | `polyoxide-core/src/send.rs:97`, `floor.max(wait)` | Sleep `wait` | `polyoxide-core/tests/send_loop.rs:278` `a_zero_wait_still_sleeps_the_floor`; `polyoxide-core/tests/send_loop.rs:322` `the_429_hold_is_retry_delay_zero_not_the_attempts_wait` |
-| (i) The per-signer layer's buckets hold their published burst, as governor's `allow_burst` did before Story 3.3 | `polyoxide-core/src/signer_limit.rs:280`, where each signer `CapacityBucket` takes the tier's burst as its capacity | `let capacity = 1;`, a bucket of one token | `polyoxide-core/src/signer_limit.rs:510` `a_batch_within_capacity_is_admitted`; `polyoxide-core/src/signer_limit.rs:519` `adopting_a_higher_tier_admits_a_batch_that_was_impossible`; `polyoxide-core/src/signer_limit.rs:535` `the_order_and_cancel_buckets_are_independent`; `polyoxide-core/src/signer_limit.rs:557` `batch_cost_is_charged_in_full_not_as_one_request` |
+| (i) The per-signer layer's buckets hold their published burst, as governor's `allow_burst` did before Story 3.3 | `polyoxide-core/src/signer_limit.rs:276`, where each signer `CapacityBucket` takes the tier's burst as its capacity | `let capacity = 1;`, a bucket of one token | `polyoxide-core/src/signer_limit.rs:523` `a_batch_within_capacity_is_admitted`; `polyoxide-core/src/signer_limit.rs:532` `adopting_a_higher_tier_admits_a_batch_that_was_impossible`; `polyoxide-core/src/signer_limit.rs:548` `the_order_and_cancel_buckets_are_independent`; `polyoxide-core/src/signer_limit.rs:570` `batch_cost_is_charged_in_full_not_as_one_request` |
 | (j) A window quota aims at 90% of its published count, the reserve measured on `/closed-positions` | `polyoxide-core/src/rate_limit.rs:213`, `RESERVED_FRACTION`, and `polyoxide-core/src/rate_limit.rs:205`, where `sustained_slots` takes the reserve off | `RESERVED_FRACTION = 20` at the first, which fails only the first test; `let target = count;` at the second | `polyoxide-core/src/rate_limit.rs:300` `a_published_150_per_10s_admits_135_per_window`; `polyoxide-core/src/rate_limit.rs:277` `every_quota_reserves_headroom_below_the_published_count` (the second mutant only) |
 
 `polyoxide-core/tests/polymarket_limits.rs:1053` `a_cooldown_extended_mid_wait_is_honoured_in_full`
