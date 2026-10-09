@@ -1,13 +1,17 @@
 use std::sync::Arc;
 use std::time::Duration;
 
-use reqwest::StatusCode;
+use reqwest::{Method, StatusCode};
 use tokio::sync::{OwnedSemaphorePermit, Semaphore};
 use url::Url;
 
 use reqwest::header::RETRY_AFTER;
 
 use crate::error::ApiError;
+use crate::hooks::{
+    DefaultRetryPolicy, DynRetryPolicy, DynThrottle, NoThrottle, RequestMeta, RequestParts,
+    RetryPolicy, Throttle,
+};
 use crate::rate_limit::{RateLimiter, RetryConfig};
 
 /// Extract the `Retry-After` header value as a string, if present and valid UTF-8.
@@ -25,29 +29,45 @@ pub const DEFAULT_TIMEOUT_MS: u64 = 30_000;
 /// Default connection pool size per host
 pub const DEFAULT_POOL_SIZE: usize = 10;
 
-/// Shared HTTP client with base URL, optional rate limiter, and retry config.
+/// Shared HTTP client with base URL, throttle, retry policy and retry config.
 ///
-/// This is the common structure used by all API clients to hold
-/// the configured reqwest client, base URL, and rate-limiting state.
-#[derive(Debug, Clone)]
+/// This is the common structure used by all API clients to hold the
+/// configured reqwest client, base URL, and the hooks its send loop,
+/// [`send`](Self::send), runs on every request.
+#[derive(Clone)]
 pub struct HttpClient {
     /// The underlying reqwest HTTP client
     pub client: reqwest::Client,
     /// Base URL for API requests
     pub base_url: Url,
-    rate_limiter: Option<RateLimiter>,
-    retry_config: RetryConfig,
+    pub(crate) throttle: Arc<DynThrottle<'static>>,
+    pub(crate) policy: Arc<DynRetryPolicy<'static>>,
+    pub(crate) retry_config: RetryConfig,
     concurrency_limiter: Option<Arc<Semaphore>>,
+}
+
+/// Written by hand: the throttle and the policy are trait objects, which
+/// print nothing useful.
+impl std::fmt::Debug for HttpClient {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("HttpClient")
+            .field("client", &self.client)
+            .field("base_url", &self.base_url)
+            .field("retry_config", &self.retry_config)
+            .field("concurrency_limiter", &self.concurrency_limiter)
+            .finish_non_exhaustive()
+    }
 }
 
 impl HttpClient {
     /// Clone this client, pointed at a different base URL.
     ///
-    /// The underlying reqwest client (and so its connection pool), rate
-    /// limiter, retry config, and concurrency limiter are all shared with the
-    /// original. Use this to reach a sibling API host that should share the
-    /// same transport configuration and request budget — several Polymarket
-    /// APIs live on their own subdomains but are consumed by one client.
+    /// The underlying reqwest client (and so its connection pool), throttle
+    /// (and so its hold), retry policy, retry config, and concurrency limiter
+    /// are all shared with the original. Use this to reach a sibling API host
+    /// that should share the same transport configuration and request budget —
+    /// several Polymarket APIs live on their own subdomains but are consumed by
+    /// one client, and a 429 on one holds them all.
     ///
     /// Sharing the concurrency limiter is deliberate: the limit exists to keep
     /// Cloudflare from seeing a burst from this process, and that is a
@@ -74,11 +94,23 @@ impl HttpClient {
         })
     }
 
-    /// Await rate limiter for the given endpoint path + method.
-    pub async fn acquire_rate_limit(&self, path: &str, method: Option<&reqwest::Method>) {
-        if let Some(rl) = &self.rate_limiter {
-            rl.acquire(path, method).await;
-        }
+    /// Charge the throttle for one request to `path`, as [`send`](Self::send)
+    /// does for each attempt. `None` is charged as `GET`.
+    ///
+    /// Transitional: clob's and relay's hand-written loops, and gamma's
+    /// `post_json` and the gamma and data pings, call it until Stories 3.4 and
+    /// 3.5 move them onto [`send`](Self::send). It is removed with its last
+    /// caller, and `docs/s1-removals.md` names [`send`](Self::send) as its
+    /// replacement.
+    pub async fn acquire_rate_limit(&self, path: &str, method: Option<&Method>) {
+        let meta = RequestMeta {
+            method: method.unwrap_or(&Method::GET),
+            path,
+            query: &[],
+            costs: &[],
+        };
+        // A request with no costs leaves a throttle nothing to refuse.
+        let _ = self.throttle.acquire(&meta).await;
     }
 
     /// Acquire a concurrency permit, if a limiter is configured.
@@ -86,6 +118,12 @@ impl HttpClient {
     /// The returned permit **must** be held until the HTTP response has been
     /// received. Dropping the permit releases the concurrency slot.
     /// Returns `None` when no concurrency limit is set.
+    ///
+    /// [`send`](Self::send) takes one for each attempt. Transitional for any
+    /// other caller: the hand-written loops call it until Stories 3.4 to 3.6
+    /// move them onto [`send`](Self::send). It is removed from the public API
+    /// with its last outside caller, and `docs/s1-removals.md` names
+    /// [`send`](Self::send) as its replacement.
     pub async fn acquire_concurrency(&self) -> Option<OwnedSemaphorePermit> {
         let sem = self.concurrency_limiter.as_ref()?;
         Some(
@@ -98,31 +136,16 @@ impl HttpClient {
 
     /// Check if a response should be retried; returns backoff duration if yes.
     ///
-    /// Retries two statuses, both of which upstream documents as "retry with
-    /// exponential backoff":
+    /// Retries `429` and `425` while `attempt` is below `max_retries`, after
+    /// [`RetryConfig::retry_delay`] for the attempt: Polymarket's retry set,
+    /// which [`send`](Self::send) takes from
+    /// [`PolymarketRetryPolicy`](crate::polymarket::PolymarketRetryPolicy)
+    /// instead, whose documentation says why 5xx is not in it.
     ///
-    /// - `429 Too Many Requests` — rate limited.
-    /// - `425 Too Early` — Polymarket's matching engine is restarting. It returns
-    ///   this with no body, so nothing was processed.
-    ///
-    /// Deliberately narrow: 5xx is *not* retried here. It is retriable in the
-    /// [`ApiError::is_retriable`] sense, but a 5xx can mean the request was
-    /// partially applied, and this loop resends non-idempotent writes. The two
-    /// statuses above are safe because neither reaches the matching engine — and
-    /// for order placement the resent body is byte-identical, so the order hash
-    /// is unchanged and the venue rejects a genuine double-submit as a duplicate.
-    /// Callers wanting broader retry semantics should drive them from
-    /// [`ApiError::is_retriable`] with their own idempotency judgement.
-    ///
-    /// `Retry-After` can only *extend* the wait, never shorten it. A server
-    /// asking for longer than the client-computed backoff is obeyed (clamped to
-    /// `max_backoff_ms`); one asking for less — including the zero that
-    /// Cloudflare returns alongside `error code: 1015` — leaves the exponential
-    /// backoff in place. Taking the header verbatim made a tripped Cloudflare
-    /// limit self-perpetuating: `Duration::from_millis(0)` is not a backoff, and
-    /// the three retries landed inside 65ms, extending the ban they were waiting
-    /// on. Values that do not parse as a float (e.g. the HTTP-date form) are
-    /// ignored the same way.
+    /// Transitional: clob's, relay's and Binance's hand-written loops call it
+    /// until Stories 3.4 to 3.6 move them onto [`send`](Self::send). It is
+    /// removed with its last caller, and `docs/s1-removals.md` names
+    /// [`send`](Self::send) as its replacement.
     pub fn should_retry(
         &self,
         status: StatusCode,
@@ -133,56 +156,34 @@ impl HttpClient {
         if !retriable || attempt >= self.retry_config.max_retries {
             return None;
         }
-        Some(self.retry_delay(attempt, retry_after))
-    }
-
-    /// The delay a rate-limited request should wait before its next attempt.
-    ///
-    /// Shared by [`should_retry`](Self::should_retry) and
-    /// [`note_rate_limited`](Self::note_rate_limited) so a single response
-    /// cannot produce one delay for the request that saw it and a different one
-    /// for the client-wide cooldown it triggers.
-    fn retry_delay(&self, attempt: u32, retry_after: Option<&str>) -> Duration {
-        let computed = self.retry_config.backoff(attempt);
-        let requested = retry_after
-            .and_then(|v| v.parse::<f64>().ok())
-            .filter(|secs| secs.is_finite() && *secs > 0.0)
-            .map(|secs| {
-                let ms = (secs * 1000.0) as u64;
-                Duration::from_millis(ms.min(self.retry_config.max_backoff_ms))
-            });
-        requested.map_or(computed, |r| r.max(computed))
+        Some(self.retry_config.retry_delay(attempt, retry_after))
     }
 
     /// Record that the server rate-limited us, so every request sharing this
-    /// client's limiter waits — not just the one that saw the 429.
+    /// client's throttle waits — not just the one that saw the 429.
     ///
-    /// A 429 is a fact about the host, but the retry loop treats it as private
-    /// to one request. With the default concurrency of 4, three in-flight
-    /// siblings kept firing into a limit that had already tripped, then each
-    /// burned its own three retries: ~16 doomed requests in 200ms. Cloudflare's
-    /// 1015 is a *timed ban*, so that traffic does not merely fail, it prolongs
-    /// the block. Feeding the 429 back into the shared limiter converts it into
-    /// backpressure the whole client observes.
+    /// Holds the throttle for [`RetryConfig::retry_delay`] at attempt 0, as
+    /// [`send`](Self::send)'s policies do. It is a no-op for any status other
+    /// than 429, and for a client built without a throttle. Call it once per
+    /// response, before [`should_retry`](Self::should_retry) and whatever it
+    /// answers: a request with no retry left still has to publish the 429.
     ///
-    /// Call this once per response, before [`should_retry`](Self::should_retry).
-    /// It is a no-op for any status other than 429 and for clients built without
-    /// a rate limiter.
+    /// Transitional: clob's and relay's hand-written loops call it until
+    /// Stories 3.4 and 3.5 move them onto [`send`](Self::send), which holds
+    /// through its policy. It is removed with its last caller, and
+    /// `docs/s1-removals.md` names [`send`](Self::send) as its replacement.
     pub fn note_rate_limited(&self, status: StatusCode, retry_after: Option<&str>) {
-        if status != StatusCode::TOO_MANY_REQUESTS {
-            return;
-        }
-        if let Some(rl) = &self.rate_limiter {
-            rl.begin_cooldown(self.retry_delay(0, retry_after));
+        if status == StatusCode::TOO_MANY_REQUESTS {
+            self.throttle
+                .hold(self.retry_config.retry_delay(0, retry_after));
         }
     }
 
     /// GET a URL and return the raw response body as bytes.
     ///
     /// Use this for endpoints that return non-JSON payloads (e.g. `application/zip`
-    /// downloads). Applies the same rate-limiting, concurrency gating, and
-    /// [`should_retry`](Self::should_retry) behavior as the JSON-oriented
-    /// [`Request`](crate::Request) helper.
+    /// downloads). It runs on [`send`](Self::send), so it is throttled, gated,
+    /// retried and held as every other request is.
     ///
     /// Non-2xx responses are mapped to [`ApiError`] via
     /// [`ApiError::from_response`].
@@ -196,45 +197,16 @@ impl HttpClient {
         path: &str,
         query: &[(String, String)],
     ) -> Result<Vec<u8>, ApiError> {
-        let url = self.base_url.join(path)?;
-        let mut attempt = 0u32;
+        let mut parts = RequestParts::new(Method::GET, path);
+        parts.query = query.to_vec();
+        let response = self.send(parts, &[], None).await?;
 
-        loop {
-            let _permit = self.acquire_concurrency().await;
-            self.acquire_rate_limit(path, None).await;
-
-            let mut request = self.client.get(url.clone());
-            if !query.is_empty() {
-                request = request.query(query);
-            }
-
-            let response = request.send().await?;
-            let status = response.status();
-            let retry_after = retry_after_header(&response);
-
-            self.note_rate_limited(status, retry_after.as_deref());
-
-            if let Some(backoff) = self.should_retry(status, attempt, retry_after.as_deref()) {
-                attempt += 1;
-                tracing::warn!(
-                    "Retriable status {} on {}, retry {} after {}ms",
-                    status,
-                    path,
-                    attempt,
-                    backoff.as_millis()
-                );
-                drop(_permit);
-                tokio::time::sleep(backoff).await;
-                continue;
-            }
-
-            if !status.is_success() {
-                return Err(ApiError::from_response(response).await);
-            }
-
-            let bytes = response.bytes().await?;
-            return Ok(bytes.to_vec());
+        if !response.status().is_success() {
+            return Err(ApiError::from_response(response).await);
         }
+
+        let bytes = response.bytes().await?;
+        Ok(bytes.to_vec())
     }
 }
 
@@ -258,7 +230,8 @@ pub struct HttpClientBuilder {
     base_url: String,
     timeout_ms: u64,
     pool_size: usize,
-    rate_limiter: Option<RateLimiter>,
+    throttle: Option<Arc<DynThrottle<'static>>>,
+    policy: Option<Arc<DynRetryPolicy<'static>>>,
     retry_config: RetryConfig,
     max_concurrent: Option<usize>,
     gzip: Option<bool>,
@@ -271,7 +244,8 @@ impl HttpClientBuilder {
             base_url: base_url.into(),
             timeout_ms: DEFAULT_TIMEOUT_MS,
             pool_size: DEFAULT_POOL_SIZE,
-            rate_limiter: None,
+            throttle: None,
+            policy: None,
             retry_config: RetryConfig::default(),
             max_concurrent: None,
             gzip: None,
@@ -294,13 +268,32 @@ impl HttpClientBuilder {
         self
     }
 
-    /// Set a rate limiter for this client.
-    pub fn with_rate_limiter(mut self, limiter: RateLimiter) -> Self {
-        self.rate_limiter = Some(limiter);
+    /// Set a rate limiter for this client: [`with_throttle`](Self::with_throttle)
+    /// with a [`RateLimiter`].
+    pub fn with_rate_limiter(self, limiter: RateLimiter) -> Self {
+        self.with_throttle(limiter)
+    }
+
+    /// Set the throttle every request on this client goes through, shared
+    /// with every [`with_base_url`](HttpClient::with_base_url) sibling.
+    ///
+    /// Default: [`NoThrottle`], which charges and holds
+    /// nothing.
+    pub fn with_throttle(mut self, throttle: impl Throttle + 'static) -> Self {
+        self.throttle = Some(DynThrottle::new_arc(throttle));
         self
     }
 
-    /// Set retry configuration for 429 responses.
+    /// Set the policy that decides what follows each response.
+    ///
+    /// Default: [`DefaultRetryPolicy`], which
+    /// retries a 429 and nothing else.
+    pub fn with_retry_policy(mut self, policy: impl RetryPolicy + 'static) -> Self {
+        self.policy = Some(DynRetryPolicy::new_arc(policy));
+        self
+    }
+
+    /// Set the retry schedule: how many retries, and the backoff between them.
     pub fn with_retry_config(mut self, config: RetryConfig) -> Self {
         self.retry_config = config;
         self
@@ -345,7 +338,12 @@ impl HttpClientBuilder {
         Ok(HttpClient {
             client,
             base_url,
-            rate_limiter: self.rate_limiter,
+            throttle: self
+                .throttle
+                .unwrap_or_else(|| DynThrottle::new_arc(NoThrottle)),
+            policy: self
+                .policy
+                .unwrap_or_else(|| DynRetryPolicy::new_arc(DefaultRetryPolicy)),
             retry_config: self.retry_config,
             concurrency_limiter: self.max_concurrent.map(|n| Arc::new(Semaphore::new(n))),
         })
@@ -354,15 +352,7 @@ impl HttpClientBuilder {
 
 impl Default for HttpClientBuilder {
     fn default() -> Self {
-        Self {
-            base_url: String::new(),
-            timeout_ms: DEFAULT_TIMEOUT_MS,
-            pool_size: DEFAULT_POOL_SIZE,
-            rate_limiter: None,
-            retry_config: RetryConfig::default(),
-            max_concurrent: None,
-            gzip: None,
-        }
+        Self::new(String::new())
     }
 }
 

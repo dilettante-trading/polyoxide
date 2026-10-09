@@ -1553,6 +1553,52 @@ async fn a_429_makes_the_next_request_wait_even_though_it_never_saw_one() {
 }
 
 #[tokio::test]
+async fn a_429_on_the_pnl_host_holds_the_data_host() {
+    // The sibling hosts share one throttle, so a 429 from the PnL host holds
+    // requests to the main host too: Cloudflare's budget is per IP, not per
+    // host.
+    let pnl = rate_limited_server().await;
+    let mut main = Server::new_async().await;
+    let trades = main
+        .mock("GET", "/trades")
+        .with_status(200)
+        .with_header("content-type", "application/json")
+        .with_body("[]")
+        .expect(1)
+        .create_async()
+        .await;
+    let data = DataApi::builder()
+        .base_url(main.url())
+        .pnl_base_url(pnl.url())
+        .with_retry_config(polyoxide_core::RetryConfig {
+            max_retries: 0,
+            initial_backoff_ms: 600,
+            max_backoff_ms: 10_000,
+        })
+        .build()
+        .unwrap();
+
+    let limited = data.pnl().history("0xaddr").send().await;
+    assert!(
+        matches!(
+            limited,
+            Err(DataApiError::Api(polyoxide_core::ApiError::RateLimit(_)))
+        ),
+        "{limited:?}"
+    );
+
+    let start = std::time::Instant::now();
+    data.trades().list().send().await.unwrap();
+    let elapsed = start.elapsed();
+    trades.assert_async().await;
+    assert!(
+        elapsed >= std::time::Duration::from_millis(400),
+        "the main host was asked after only {elapsed:?}; the PnL host's 429 did not \
+         hold its sibling"
+    );
+}
+
+#[tokio::test]
 async fn activity_sends_exclude_deposits_withdrawals_when_set() {
     let mut server = Server::new_async().await;
     let mock = server

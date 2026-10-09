@@ -57,6 +57,8 @@ tokio-tungstenite = { version = "0.26", features = ["rustls-tls-native-roots"] }
 rustls = { version = "0.23", default-features = false, features = ["ring", "std"] }
 rust_decimal = { version = "1.37", features = ["serde-with-str"] }
 governor = { version = "0.8", features = ["std"] }
+# The hook traits of core's send loop are dyn-compatible through it (AD-8).
+dynosaur = "0.3.1"
 fastrand = "2"
 keyring = { version = "3", features = ["apple-native", "windows-native", "async-secret-service", "crypto-rust"] }
 mockito = "1.7"

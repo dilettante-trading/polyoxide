@@ -1,6 +1,8 @@
 use polyoxide_venue::{class_for_status, Class, Classify};
 use thiserror::Error;
 
+use crate::hooks::Refused;
+
 /// Core API error types shared across Polyoxide clients
 #[derive(Error, Debug)]
 pub enum ApiError {
@@ -35,6 +37,11 @@ pub enum ApiError {
     /// URL parsing error
     #[error("URL error: {0}")]
     Url(#[from] url::ParseError),
+
+    /// The throttle refused a cost no layer can ever hold, and nothing was
+    /// sent.
+    #[error("Refused before sending: {0}")]
+    Refused(#[from] Refused),
 }
 
 impl ApiError {
@@ -100,6 +107,7 @@ impl ApiError {
             Self::Network(e) => e.is_timeout() || e.is_connect(),
             Self::Authentication(_) | Self::Validation(_) => false,
             Self::Serialization(_) | Self::Url(_) => false,
+            Self::Refused(_) => false,
         }
     }
 }
@@ -179,6 +187,7 @@ impl Classify for ApiError {
             Self::Network(err) => classify_reqwest(err),
             Self::Serialization(_) => Class::Decode,
             Self::Url(_) => Class::InvalidRequest,
+            Self::Refused(refused) => refused.class(),
         }
     }
 
@@ -492,6 +501,16 @@ mod tests {
             (ApiError::Network(reqwest.not_found), refusal, true, false),
             (ApiError::Serialization(json), Class::Decode, true, false),
             (ApiError::Url(url), Class::InvalidRequest, true, false),
+            (
+                ApiError::Refused(Refused {
+                    layer: crate::LayerId("order"),
+                    units: 2_000,
+                    capacity: 120,
+                }),
+                Class::InvalidRequest,
+                true,
+                false,
+            ),
         ];
         for (err, class, fault, inherent) in rows {
             assert_eq!(err.class(), class, "{err:?}");

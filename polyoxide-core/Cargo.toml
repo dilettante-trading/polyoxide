@@ -26,6 +26,7 @@ thiserror = { workspace = true }
 tracing = { workspace = true }
 url = { workspace = true }
 governor = { workspace = true }
+dynosaur = { workspace = true }
 fastrand = { workspace = true }
 keyring = { workspace = true, optional = true }
 tokio = { workspace = true, features = ["time", "sync"] }
@@ -33,6 +34,8 @@ tokio = { workspace = true, features = ["time", "sync"] }
 [dev-dependencies]
 mockito = { workspace = true }
 serde = { workspace = true }
+# The send loop's tests read its warnings.
+tracing-subscriber = { workspace = true }
 # `test-util` gives the cooldown tests a paused clock, so they assert the full
 # backoff without actually sleeping for it.
 tokio = { workspace = true, features = ["macros", "rt-multi-thread", "test-util"] }

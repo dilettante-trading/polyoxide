@@ -7,6 +7,8 @@
 //! - HTTP client configuration
 //! - Request builder utilities
 //! - HMAC API-credential signing ([`Signer`])
+//! - One send loop, [`HttpClient::send`], with the hooks a venue supplies
+//!   ([`Throttle`], [`RetryPolicy`], [`Authenticator`])
 //! - Per-endpoint rate limiting with retry/backoff ([`RateLimiter`])
 //! - Optional OS keychain credential storage (behind the `keychain` feature)
 //!
@@ -39,8 +41,11 @@ pub mod macros;
 pub mod auth;
 pub mod client;
 pub mod error;
+pub mod hooks;
+pub mod polymarket;
 pub mod rate_limit;
 pub mod request;
+pub mod send;
 pub mod session_signer;
 pub mod signer_limit;
 
@@ -68,6 +73,11 @@ pub use client::{
     retry_after_header, HttpClient, HttpClientBuilder, DEFAULT_POOL_SIZE, DEFAULT_TIMEOUT_MS,
 };
 pub use error::ApiError;
+pub use hooks::{
+    AttemptInfo, Authenticator, Charge, Cost, Decision, DefaultRetryPolicy, DynAuthenticator,
+    DynRetryPolicy, DynThrottle, LayerCharge, LayerId, NoThrottle, Outcome, Refused, RequestMeta,
+    RequestParts, ResponseMeta, RetryPolicy, Throttle,
+};
 pub use rate_limit::{RateLimiter, RetryConfig};
 pub use request::{QueryBuilder, Request, RequestError};
 pub use session_signer::{DepositWalletRole, SessionSignerScope};
@@ -85,6 +95,7 @@ const _: fn() = || {
     fn is<T: polyoxide_venue::Classify>() {}
     is::<ApiError>();
     is::<BurstCapacityExceeded>();
+    is::<Refused>();
     #[cfg(feature = "keychain")]
     is::<KeychainError>();
 };

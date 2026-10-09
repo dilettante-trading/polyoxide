@@ -1,9 +1,10 @@
 use std::marker::PhantomData;
 
-use reqwest::Response;
+use reqwest::{Method, Response};
 use serde::de::DeserializeOwned;
 
-use crate::client::{retry_after_header, HttpClient};
+use crate::client::HttpClient;
+use crate::hooks::RequestParts;
 use crate::ApiError;
 
 /// Query parameter builder
@@ -120,65 +121,24 @@ impl<T: DeserializeOwned, E: RequestError> Request<T, E> {
     }
 
     /// Execute the request and return raw response
+    ///
+    /// It runs on [`HttpClient::send`], so it is throttled, gated, retried and
+    /// held by the client's hooks.
     pub async fn send_raw(self) -> Result<Response, E> {
-        let url = self
-            .http_client
-            .base_url
-            .join(&self.path)
-            .map_err(|e| E::from(ApiError::from(e)))?;
+        let mut parts = RequestParts::new(Method::GET, self.path);
+        parts.query = self.query;
+        let response = self.http_client.send(parts, &[], None).await?;
+        let status = response.status();
 
-        let http_client = self.http_client;
-        let query = self.query;
-        let path = self.path;
-        let mut attempt = 0u32;
+        tracing::debug!("Response status: {}", status);
 
-        loop {
-            let _permit = http_client.acquire_concurrency().await;
-            http_client.acquire_rate_limit(&path, None).await;
-
-            let mut request = http_client.client.get(url.clone());
-
-            if !query.is_empty() {
-                request = request.query(&query);
-            }
-
-            let response = request
-                .send()
-                .await
-                .map_err(|e| E::from(ApiError::from(e)))?;
-            let status = response.status();
-            let retry_after = retry_after_header(&response);
-
-            // Before `should_retry`, and unconditionally: a 429 has to become
-            // backpressure for every request on this limiter even when *this*
-            // request is out of attempts and about to give up.
-            http_client.note_rate_limited(status, retry_after.as_deref());
-
-            if let Some(backoff) = http_client.should_retry(status, attempt, retry_after.as_deref())
-            {
-                attempt += 1;
-                tracing::warn!(
-                    "Retriable status {} on {}, retry {} after {}ms",
-                    status,
-                    path,
-                    attempt,
-                    backoff.as_millis()
-                );
-                drop(_permit);
-                tokio::time::sleep(backoff).await;
-                continue;
-            }
-
-            tracing::debug!("Response status: {}", status);
-
-            if !status.is_success() {
-                let error = E::from_response(response).await;
-                tracing::error!("Request failed: {:?}", error);
-                return Err(error);
-            }
-
-            return Ok(response);
+        if !status.is_success() {
+            let error = E::from_response(response).await;
+            tracing::error!("Request failed: {:?}", error);
+            return Err(error);
         }
+
+        Ok(response)
     }
 }
 

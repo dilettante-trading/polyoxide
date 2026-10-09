@@ -5,6 +5,8 @@ use governor::Quota;
 use reqwest::Method;
 use tokio::time::Instant;
 
+use crate::hooks::{AttemptInfo, Charge, Refused, RequestMeta, ResponseMeta, Throttle};
+
 type DirectLimiter = governor::RateLimiter<
     governor::state::NotKeyed,
     governor::state::InMemoryState,
@@ -364,9 +366,9 @@ impl RateLimiter {
     /// other, and taking the most recent value would let whichever response
     /// carried the smallest delay release all of them early.
     ///
-    /// Prefer [`HttpClient::note_rate_limited`](crate::HttpClient::note_rate_limited),
-    /// which derives the delay from the response. Reach for this directly only
-    /// when driving the limiter from a transport this crate does not own.
+    /// The send loop holds through [`Throttle::hold`], which calls this, when
+    /// its policy decides a response holds the client. Reach for this directly
+    /// only when driving the limiter from a transport this crate does not own.
     pub fn begin_cooldown(&self, delay: Duration) {
         let until = Instant::now() + delay;
         let mut slot = self.lock_cooldown();
@@ -701,6 +703,24 @@ impl RateLimiter {
     }
 }
 
+/// Counts requests: each attempt is charged one request against the general
+/// bucket and its row's buckets, found from the method and path. The hold is
+/// the cooldown.
+impl Throttle for RateLimiter {
+    async fn acquire(&self, meta: &RequestMeta<'_>) -> Result<Charge, Refused> {
+        RateLimiter::acquire(self, meta.path, Some(meta.method)).await;
+        Ok(Charge::none())
+    }
+
+    /// Nothing to record: the buckets model the published quota, not what a
+    /// response says.
+    fn observe(&self, _charge: &Charge, _response: &ResponseMeta<'_>, _attempt: &AttemptInfo) {}
+
+    fn hold(&self, delay: Duration) {
+        self.begin_cooldown(delay);
+    }
+}
+
 /// Configuration for retry-on-429 with exponential backoff.
 #[derive(Debug, Clone)]
 pub struct RetryConfig {
@@ -736,6 +756,34 @@ impl RetryConfig {
         let jitter_factor = 0.75 + (fastrand::f64() * 0.5);
         let ms = (capped as f64 * jitter_factor) as u64;
         Duration::from_millis(ms.max(1))
+    }
+
+    /// The delay before the attempt after `attempt`: its [`backoff`](Self::backoff),
+    /// lengthened by the server's `Retry-After`.
+    ///
+    /// `Retry-After` can only *extend* the wait, never shorten it. A server
+    /// asking for longer than the client-computed backoff is obeyed (clamped to
+    /// `max_backoff_ms`); one asking for less — including the zero that
+    /// Cloudflare returns alongside `error code: 1015` — leaves the exponential
+    /// backoff in place. Taking the header verbatim made a tripped Cloudflare
+    /// limit self-perpetuating: `Duration::from_millis(0)` is not a backoff, and
+    /// the three retries landed inside 65ms, extending the ban they were waiting
+    /// on. Values that do not parse as a float (e.g. the HTTP-date form) are
+    /// ignored the same way.
+    ///
+    /// The send loop's floor and a policy's hold both come from here, so a
+    /// response cannot hold the client by one rule and pace its own retry by
+    /// another.
+    pub fn retry_delay(&self, attempt: u32, retry_after: Option<&str>) -> Duration {
+        let computed = self.backoff(attempt);
+        let requested = retry_after
+            .and_then(|v| v.parse::<f64>().ok())
+            .filter(|secs| secs.is_finite() && *secs > 0.0)
+            .map(|secs| {
+                let ms = (secs * 1000.0) as u64;
+                Duration::from_millis(ms.min(self.max_backoff_ms))
+            });
+        requested.map_or(computed, |r| r.max(computed))
     }
 }
 

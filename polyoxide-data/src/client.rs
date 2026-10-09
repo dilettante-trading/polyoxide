@@ -1,5 +1,6 @@
 use polyoxide_core::{
-    HttpClient, HttpClientBuilder, RateLimiter, RetryConfig, DEFAULT_POOL_SIZE, DEFAULT_TIMEOUT_MS,
+    polymarket::PolymarketRetryPolicy, HttpClient, HttpClientBuilder, RateLimiter, RetryConfig,
+    DEFAULT_POOL_SIZE, DEFAULT_TIMEOUT_MS,
 };
 
 use crate::{
@@ -281,14 +282,15 @@ impl DataApiBuilder {
             .timeout_ms(self.timeout_ms)
             .pool_size(self.pool_size)
             .with_rate_limiter(RateLimiter::data_default())
+            .with_retry_policy(PolymarketRetryPolicy)
             .with_max_concurrent(self.max_concurrent.unwrap_or(4));
         if let Some(config) = self.retry_config {
             builder = builder.with_retry_config(config);
         }
         let http_client = builder.build()?;
 
-        // Sibling hosts reuse the same reqwest client, rate limiter, and
-        // concurrency permit pool — only the base URL differs.
+        // Sibling hosts reuse the same reqwest client, throttle (and so its
+        // hold), and concurrency permit pool — only the base URL differs.
         let pnl_http_client = http_client.with_base_url(&self.pnl_base_url)?;
         let rankings_http_client = http_client.with_base_url(&self.rankings_base_url)?;
 
