@@ -42,6 +42,12 @@ pub enum ApiError {
     /// sent.
     #[error("Refused before sending: {0}")]
     Refused(#[from] Refused),
+
+    /// An [`Authenticator`](crate::Authenticator) could not sign the request,
+    /// and nothing was sent. Carries the venue's own error, which the venue's
+    /// `From<ApiError>` takes back out.
+    #[error("Signing failed: {0}")]
+    Sign(Box<dyn std::error::Error + Send + Sync>),
 }
 
 impl ApiError {
@@ -109,7 +115,7 @@ impl ApiError {
             Self::Network(e) => e.is_timeout() || e.is_connect(),
             Self::Authentication(_) | Self::Validation(_) => false,
             Self::Serialization(_) | Self::Url(_) => false,
-            Self::Refused(_) => false,
+            Self::Refused(_) | Self::Sign(_) => false,
         }
     }
 }
@@ -174,7 +180,9 @@ fn status_class(status: u16) -> Class {
 /// the venue does not serve the caller's region, as designed.
 /// [`ApiError::Validation`] is a [`Class::VenueRefusal`] even when clob raised
 /// it locally, until the two are separate variants. [`ApiError::Timeout`] is
-/// built only from a 408, so it is [`Class::Unavailable`].
+/// built only from a 408, so it is [`Class::Unavailable`]. [`ApiError::Sign`]
+/// is a [`Class::InvalidRequest`]: the client could not sign, and nothing was
+/// sent.
 ///
 /// Where this disagrees with [`ApiError::is_retriable`], the inherent method
 /// keeps its answer.
@@ -190,6 +198,7 @@ impl Classify for ApiError {
             Self::Serialization(_) => Class::Decode,
             Self::Url(_) => Class::InvalidRequest,
             Self::Refused(refused) => refused.class(),
+            Self::Sign(_) => Class::InvalidRequest,
         }
     }
 
@@ -509,6 +518,12 @@ mod tests {
                     units: 2_000,
                     capacity: 120,
                 }),
+                Class::InvalidRequest,
+                true,
+                false,
+            ),
+            (
+                ApiError::Sign("no key to sign with".into()),
                 Class::InvalidRequest,
                 true,
                 false,

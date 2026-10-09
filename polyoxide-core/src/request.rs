@@ -1,10 +1,13 @@
 use std::marker::PhantomData;
+use std::sync::Arc;
 
+use reqwest::header::{HeaderValue, CONTENT_TYPE};
 use reqwest::{Method, Response};
 use serde::de::DeserializeOwned;
+use serde::Serialize;
 
 use crate::client::HttpClient;
-use crate::hooks::RequestParts;
+use crate::hooks::{Cost, DynAuthenticator, RequestParts};
 use crate::ApiError;
 
 /// Query parameter builder
@@ -60,36 +63,91 @@ pub trait RequestError: From<ApiError> + std::fmt::Debug {
     fn from_response(response: Response) -> impl std::future::Future<Output = Self> + Send;
 }
 
-/// Generic request builder for simple GET-only APIs (Gamma, Data)
+/// The one request builder: a method, a path and its query, an optional JSON
+/// body, the [`Authenticator`](crate::Authenticator) that signs it and the
+/// [`Cost`]s it charges the client's throttle.
+///
+/// [`send`](Self::send) runs it on [`HttpClient::send`], decodes the body as
+/// `T`, and turns an unsuccessful response into `E`.
 pub struct Request<T, E> {
     pub(crate) http_client: HttpClient,
+    pub(crate) method: Method,
     pub(crate) path: String,
     pub(crate) query: Vec<(String, String)>,
+    pub(crate) body: Option<String>,
+    pub(crate) authenticator: Option<Arc<DynAuthenticator<'static>>>,
+    pub(crate) costs: Vec<Cost>,
     pub(crate) _marker: PhantomData<(T, E)>,
 }
 
 impl<T, E> Request<T, E> {
-    /// Create a new request
+    /// Create a new `GET` request
     pub fn new(http_client: HttpClient, path: impl Into<String>) -> Self {
         Self {
             http_client,
+            method: Method::GET,
             path: path.into(),
             query: Vec::new(),
+            body: None,
+            authenticator: None,
+            costs: Vec::new(),
             _marker: PhantomData,
         }
+    }
+
+    /// Send with `method` instead of `GET`.
+    pub fn method(mut self, method: Method) -> Self {
+        self.method = method;
+        self
+    }
+
+    /// Sign every attempt with `auth`.
+    pub fn authenticator(mut self, auth: Arc<DynAuthenticator<'static>>) -> Self {
+        self.authenticator = Some(auth);
+        self
+    }
+
+    /// Charge the client's throttle `cost` for every attempt, as well as
+    /// whatever its request-counting layers charge.
+    pub fn with_cost(mut self, cost: Cost) -> Self {
+        self.costs.push(cost);
+        self
+    }
+}
+
+impl<T, E: From<ApiError>> Request<T, E> {
+    /// Send `body` as JSON, with `Content-Type: application/json`.
+    ///
+    /// The body is serialised once, here, through [`serde_json::Value`], so
+    /// every attempt sends, and an authenticator signs, the same bytes. A
+    /// `Value` sorts an object's keys, so those bytes need not follow the
+    /// struct's field order.
+    ///
+    /// # Errors
+    ///
+    /// [`ApiError::Serialization`] when `body` does not serialise.
+    pub fn body<B: Serialize + ?Sized>(mut self, body: &B) -> Result<Self, E> {
+        let value = serde_json::to_value(body).map_err(ApiError::from)?;
+        self.body = Some(value.to_string());
+        Ok(self)
     }
 }
 
 // Written by hand: `#[derive(Clone)]` would require `T: Clone` and `E: Clone`
 // through `PhantomData<(T, E)>`, but both are only type markers. Cloning a
-// request copies its client handle, path and query, which is what lets a
-// paginated walk re-send identical filters on every page.
+// request copies its client handle, method, path, query, body, authenticator
+// and costs, which is what lets a paginated walk re-send identical filters on
+// every page.
 impl<T, E> Clone for Request<T, E> {
     fn clone(&self) -> Self {
         Self {
             http_client: self.http_client.clone(),
+            method: self.method.clone(),
             path: self.path.clone(),
             query: self.query.clone(),
+            body: self.body.clone(),
+            authenticator: self.authenticator.clone(),
+            costs: self.costs.clone(),
             _marker: PhantomData,
         }
     }
@@ -117,12 +175,21 @@ impl<T: DeserializeOwned, E: RequestError> Request<T, E> {
 
     /// Execute the request and return raw response
     ///
-    /// It runs on [`HttpClient::send`], so it is throttled, gated, retried and
-    /// held by the client's hooks.
+    /// It runs on [`HttpClient::send`], so it is throttled, gated, signed,
+    /// retried and held by the client's hooks.
     pub async fn send_raw(self) -> Result<Response, E> {
-        let mut parts = RequestParts::new(Method::GET, self.path);
+        let mut parts = RequestParts::new(self.method, self.path);
         parts.query = self.query;
-        let response = self.http_client.send(parts, &[], None).await?;
+        if let Some(body) = self.body {
+            parts
+                .headers
+                .insert(CONTENT_TYPE, HeaderValue::from_static("application/json"));
+            parts.body = Some(body);
+        }
+        let response = self
+            .http_client
+            .send(parts, &self.costs, self.authenticator.as_deref())
+            .await?;
         let status = response.status();
 
         tracing::debug!("Response status: {}", status);

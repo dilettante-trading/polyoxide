@@ -354,3 +354,242 @@ async fn concurrency_limit_serializes_requests() {
 
     mock.assert_async().await;
 }
+
+// ── Method, body, authenticator and costs ───────────────────────
+
+/// What a test authenticator saw and stamped on each attempt.
+#[derive(Clone, Default)]
+struct Seen(std::sync::Arc<std::sync::Mutex<Vec<String>>>);
+
+impl Seen {
+    fn push(&self, entry: String) {
+        self.0.lock().unwrap().push(entry);
+    }
+
+    fn entries(&self) -> Vec<String> {
+        self.0.lock().unwrap().clone()
+    }
+}
+
+/// Stamps the attempt on the request and records the body it signs.
+struct StampAttempt(Seen);
+
+impl polyoxide_core::Authenticator for StampAttempt {
+    async fn sign(
+        &self,
+        parts: &mut polyoxide_core::RequestParts,
+        attempt: u32,
+    ) -> Result<(), ApiError> {
+        self.0.push(format!(
+            "sign {attempt} {}",
+            parts.body.as_deref().unwrap_or("-")
+        ));
+        parts.headers.insert("x-attempt", attempt.into());
+        Ok(())
+    }
+}
+
+/// A mock, not yet created, answering `method path` with `statuses` in turn,
+/// then the last of them for good, logging each request as
+/// `send <x-attempt> <body>`.
+fn scripted(
+    server: &mut mockito::ServerGuard,
+    method: &str,
+    path: &str,
+    statuses: &[usize],
+    seen: &Seen,
+) -> mockito::Mock {
+    let statuses = statuses.to_vec();
+    let served = std::sync::atomic::AtomicUsize::new(0);
+    let seen = seen.clone();
+    server
+        .mock(method, path)
+        .match_query(mockito::Matcher::Any)
+        .with_status_code_from_request(move |request| {
+            let stamp = request
+                .header("x-attempt")
+                .first()
+                .and_then(|v| v.to_str().ok())
+                .unwrap_or("-")
+                .to_owned();
+            let body = String::from_utf8_lossy(request.body().unwrap()).into_owned();
+            seen.push(format!("send {stamp} {body}"));
+            let n = served.fetch_add(1, std::sync::atomic::Ordering::SeqCst);
+            statuses[n.min(statuses.len() - 1)]
+        })
+        .with_header("content-type", "application/json")
+        .with_body(r#"{"value": "ok"}"#)
+}
+
+fn quick_retries() -> RetryConfig {
+    RetryConfig {
+        max_retries: 3,
+        initial_backoff_ms: 1,
+        max_backoff_ms: 5,
+    }
+}
+
+#[tokio::test]
+async fn a_post_sends_its_body_serialised_once() {
+    #[derive(serde::Serialize)]
+    struct Order {
+        side: &'static str,
+        price: &'static str,
+    }
+
+    let mut server = Server::new_async().await;
+    let seen = Seen::default();
+    // Through `serde_json::Value`, whose keys sort: `price` before `side`.
+    let wire = r#"{"price":"0.5","side":"BUY"}"#;
+    let mock = scripted(&mut server, "POST", "/order", &[429, 200], &seen)
+        .match_header("content-type", "application/json")
+        .match_body(wire)
+        .expect(2)
+        .create_async()
+        .await;
+
+    let http = HttpClientBuilder::new(server.url())
+        .with_retry_config(quick_retries())
+        .build()
+        .unwrap();
+    let auth = polyoxide_core::DynAuthenticator::new_arc(StampAttempt(seen.clone()));
+    let resp = Request::<TestResponse, TestError>::new(http, "/order")
+        .method(reqwest::Method::POST)
+        .authenticator(auth)
+        .body(&Order {
+            side: "BUY",
+            price: "0.5",
+        })
+        .unwrap()
+        .send()
+        .await
+        .unwrap();
+    assert_eq!(resp.value, "ok");
+    mock.assert_async().await;
+
+    assert_eq!(
+        seen.entries(),
+        [
+            format!("sign 0 {wire}"),
+            format!("send 0 {wire}"),
+            format!("sign 1 {wire}"),
+            format!("send 1 {wire}"),
+        ],
+        "every attempt signs and sends the bytes serialised once"
+    );
+}
+
+#[tokio::test]
+async fn an_authenticator_signs_every_attempt_of_a_request() {
+    let mut server = Server::new_async().await;
+    let seen = Seen::default();
+    let mock = scripted(&mut server, "GET", "/signed", &[429, 429, 200], &seen)
+        .expect(3)
+        .create_async()
+        .await;
+
+    let http = HttpClientBuilder::new(server.url())
+        .with_retry_config(quick_retries())
+        .build()
+        .unwrap();
+    let auth = polyoxide_core::DynAuthenticator::new_arc(StampAttempt(seen.clone()));
+    let request = Request::<TestResponse, TestError>::new(http, "/signed").authenticator(auth);
+    // A clone carries the authenticator, as a paginated walk's pages do.
+    request.clone().send().await.unwrap();
+    mock.assert_async().await;
+
+    assert_eq!(
+        seen.entries(),
+        ["sign 0 -", "send 0 ", "sign 1 -", "send 1 ", "sign 2 -", "send 2 "],
+        "each attempt is signed afresh, and the server sees that attempt's signature"
+    );
+}
+
+/// A throttle that records the costs each attempt carries.
+#[derive(Clone, Default)]
+struct CostRecorder(std::sync::Arc<std::sync::Mutex<Vec<Vec<polyoxide_core::Cost>>>>);
+
+impl polyoxide_core::Throttle for CostRecorder {
+    async fn acquire(
+        &self,
+        meta: &polyoxide_core::RequestMeta<'_>,
+    ) -> Result<polyoxide_core::Charge, polyoxide_core::Refused> {
+        self.0.lock().unwrap().push(meta.costs.to_vec());
+        Ok(polyoxide_core::Charge::none())
+    }
+
+    fn observe(
+        &self,
+        _charge: &polyoxide_core::Charge,
+        _response: &polyoxide_core::ResponseMeta<'_>,
+        _attempt: &polyoxide_core::AttemptInfo,
+    ) {
+    }
+
+    fn hold(&self, _delay: Duration) {}
+}
+
+#[tokio::test]
+async fn a_request_s_costs_reach_the_throttle() {
+    let mut server = Server::new_async().await;
+    let seen = Seen::default();
+    let mock = scripted(&mut server, "DELETE", "/orders", &[429, 200], &seen)
+        .expect(2)
+        .create_async()
+        .await;
+
+    let throttle = CostRecorder::default();
+    let http = HttpClientBuilder::new(server.url())
+        .with_throttle(throttle.clone())
+        .with_retry_config(quick_retries())
+        .build()
+        .unwrap();
+    let write = polyoxide_core::Cost {
+        layer: polyoxide_core::LayerId("write"),
+        units: 7,
+        exact: true,
+    };
+    let read = polyoxide_core::Cost {
+        layer: polyoxide_core::LayerId("read"),
+        units: 1,
+        exact: false,
+    };
+    Request::<TestResponse, TestError>::new(http, "/orders")
+        .method(reqwest::Method::DELETE)
+        .with_cost(write)
+        .with_cost(read)
+        .send()
+        .await
+        .unwrap();
+    mock.assert_async().await;
+
+    assert_eq!(
+        *throttle.0.lock().unwrap(),
+        [vec![write, read], vec![write, read]],
+        "every attempt is charged the request's costs, in order"
+    );
+}
+
+#[tokio::test]
+async fn a_request_parts_timeout_bounds_its_attempt() {
+    // A listener that never accepts: the connection opens and no answer comes.
+    let silent = std::net::TcpListener::bind("127.0.0.1:0").unwrap();
+    let http = HttpClientBuilder::new(format!("http://{}", silent.local_addr().unwrap()))
+        .build()
+        .unwrap();
+    let mut parts = polyoxide_core::RequestParts::new(reqwest::Method::GET, "/slow");
+    parts.timeout = Some(Duration::from_millis(200));
+
+    let start = std::time::Instant::now();
+    let err = http.send(parts, &[], None).await.unwrap_err();
+    let elapsed = start.elapsed();
+    assert!(
+        matches!(&err, ApiError::Network(e) if e.is_timeout()),
+        "{err:?}"
+    );
+    assert!(
+        elapsed >= Duration::from_millis(150) && elapsed < Duration::from_secs(5),
+        "the attempt ended after {elapsed:?}, not at its own 200ms timeout \
+         (the client's is 30s)"
+    );
+}

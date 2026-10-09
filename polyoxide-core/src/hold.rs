@@ -92,6 +92,11 @@ impl Hold {
         }
     }
 
+    /// Whether a hold is in force now.
+    pub fn is_held(&self) -> bool {
+        self.lock().is_some_and(|until| until > Instant::now())
+    }
+
     /// A poison-tolerant lock on the deadline.
     ///
     /// A panic elsewhere must not turn the throttle into a permanent outage;

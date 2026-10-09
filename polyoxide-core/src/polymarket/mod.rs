@@ -34,11 +34,16 @@ pub use throttle::{
 ///   this with no body, so nothing was processed. It is retried after the
 ///   loop's floor and holds nothing: only the request that saw it waits.
 ///
+/// With no retry left (`retries_left == 0`), either status is a
+/// [`Outcome::Fail`], and a `429` keeps its hold.
+///
 /// Deliberately narrow: 5xx and 408 are *not* retried. A 5xx is retriable in
 /// the [`Classify`](polyoxide_venue::Classify) sense, but it can mean the
 /// request was partially applied, and the loop resends non-idempotent
-/// writes. The two statuses above are safe because neither reaches the
-/// matching engine — and for order placement the resent body is
+/// writes. 503 in particular is what post-only mode answers, with a
+/// `Retry-After` of about 79 s: far too long to block inside a request, and it
+/// rejects orders wholesale. The two statuses above are safe because neither
+/// reaches the matching engine — and for order placement the resent body is
 /// byte-identical, so the order hash is unchanged and the venue rejects a
 /// genuine double-submit as a duplicate. Callers wanting broader retry
 /// semantics should drive them from the error's class with their own
@@ -53,12 +58,21 @@ impl RetryPolicy for PolymarketRetryPolicy {
         attempt: &AttemptInfo,
         schedule: &RetryConfig,
     ) -> Decision {
-        if response.status == StatusCode::TOO_EARLY {
-            return Decision {
+        let decision = if response.status == StatusCode::TOO_EARLY {
+            Decision {
                 outcome: Outcome::Retry(Duration::ZERO),
                 hold: None,
-            };
+            }
+        } else {
+            DefaultRetryPolicy.decide(response, attempt, schedule)
+        };
+        match decision.outcome {
+            // Out of attempts: the request fails, and a 429's hold stands.
+            Outcome::Retry(_) if attempt.retries_left == 0 => Decision {
+                outcome: Outcome::Fail,
+                ..decision
+            },
+            _ => decision,
         }
-        DefaultRetryPolicy.decide(response, attempt, schedule)
     }
 }

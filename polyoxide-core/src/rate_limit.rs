@@ -927,6 +927,16 @@ impl RetryConfig {
         let requested = retry_after.and_then(|v| polyoxide_venue::parse_retry_after(v, clamp));
         polyoxide_venue::retry_delay(requested, self.backoff(attempt))
     }
+
+    /// What [`HttpClient::send`](crate::HttpClient::send) tells its hooks
+    /// about `attempt`: the attempt, from 0, and the retries this schedule
+    /// still allows after it.
+    pub fn attempt_info(&self, attempt: u32) -> AttemptInfo {
+        AttemptInfo {
+            attempt,
+            retries_left: self.max_retries.saturating_sub(attempt),
+        }
+    }
 }
 
 #[cfg(test)]

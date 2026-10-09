@@ -7,8 +7,8 @@ use url::Url;
 use crate::client::HttpClient;
 use crate::error::ApiError;
 use crate::hooks::{
-    AttemptInfo, Authenticator, Cost, DynAuthenticator, Outcome, RequestMeta, RequestParts,
-    ResponseMeta, RetryPolicy, Throttle,
+    Authenticator, Cost, DynAuthenticator, Outcome, RequestMeta, RequestParts, ResponseMeta,
+    RetryPolicy, Throttle,
 };
 
 impl HttpClient {
@@ -16,7 +16,7 @@ impl HttpClient {
     ///
     /// Each attempt takes a concurrency permit, waits while the throttle
     /// charges it ([`Throttle::acquire`], with `costs`), is signed by `auth`
-    /// when one is given, and is sent. The throttle then sees the response
+    /// when one is given, and is sent, within `parts.timeout` when it is set. The throttle then sees the response
     /// ([`Throttle::observe`]), the policy decides what follows
     /// ([`RetryPolicy::decide`]), and a hold the decision carries is applied
     /// ([`Throttle::hold`]) whether or not the request is retried.
@@ -73,10 +73,7 @@ impl HttpClient {
             let response = self.request(&url, signed).send().await?;
 
             let status = response.status();
-            let info = AttemptInfo {
-                attempt,
-                retries_left: self.retry_config.max_retries.saturating_sub(attempt),
-            };
+            let info = self.retry_config.attempt_info(attempt);
             let meta = ResponseMeta {
                 status,
                 headers: response.headers(),
@@ -134,6 +131,9 @@ impl HttpClient {
         }
         if let Some(body) = parts.body {
             request = request.body(body);
+        }
+        if let Some(timeout) = parts.timeout {
+            request = request.timeout(timeout);
         }
         request
     }

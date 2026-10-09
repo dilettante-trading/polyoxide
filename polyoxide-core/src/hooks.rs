@@ -161,10 +161,13 @@ pub struct RequestParts {
     pub headers: HeaderMap,
     /// The body, sent as given.
     pub body: Option<String>,
+    /// How long each attempt may take, in place of the client's timeout.
+    /// `None` keeps the client's.
+    pub timeout: Option<Duration>,
 }
 
 impl RequestParts {
-    /// A request with no query, headers or body.
+    /// A request with no query, headers, body or timeout of its own.
     pub fn new(method: Method, path: impl Into<String>) -> Self {
         Self {
             method,
@@ -172,6 +175,7 @@ impl RequestParts {
             query: Vec::new(),
             headers: HeaderMap::new(),
             body: None,
+            timeout: None,
         }
     }
 }

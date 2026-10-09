@@ -9,13 +9,13 @@ This is an **internal** crate. End users should depend on [`polyoxide`](https://
 | Module | Purpose |
 |---|---|
 | `client` | `HttpClient` / `HttpClientBuilder` -- configurable reqwest wrapper with base URL, connection pooling, concurrency limiting, and 429 retry logic |
-| `error` | `ApiError` -- shared error enum (Api, Authentication, Validation, RateLimit, Timeout, Network, Serialization, Url, Refused) with `from_response()` for automatic status-code mapping |
+| `error` | `ApiError` -- shared error enum (Api, Authentication, Validation, RateLimit, Timeout, Network, Serialization, Url, Refused, Sign) with `from_response()` for automatic status-code mapping |
 | `auth` | `Signer` (HMAC-SHA256), `Base64Format`, `current_timestamp()` -- authentication building blocks for L2 API credentials |
 | `hooks` | `Throttle`, `RetryPolicy` and `Authenticator` -- the hooks a venue gives the send loop -- with the types they take (`RequestMeta`, `ResponseMeta`, `AttemptInfo`, `RequestParts`, `Decision`, `Cost`, `Charge`, `Refused`), `NoThrottle` and `DefaultRetryPolicy` |
 | `send` | `HttpClient::send`, core's one send loop, and `decode_json`, which logs a decode failure once |
 | `hold` | `Hold` -- the extend-only deadline every layer of one throttle waits out, with an optional ceiling |
 | `capacity` | `CapacityBucket` -- a token bucket holding a published capacity, charging integer costs, refusing a cost it can never hold, resizable in place |
-| `request` | `Request<T, E>`, `QueryBuilder` trait, `RequestError` trait -- generic GET request builder with automatic deserialization, retry, and rate-limit integration |
+| `request` | `Request<T, E>`, `QueryBuilder` trait, `RequestError` trait -- the one request builder: method, query, JSON body, authenticator and throttle costs, sent on the send loop with automatic deserialization |
 | `rate_limit` | `WindowQuotaTable`, which builds a `RateLimiter` from a general bucket and per-endpoint rows (shared buckets, prefix or exact matching, scoped by method), with `effective_quota()` and `rows()` for inspection; `RetryConfig` for exponential backoff with jitter |
 | `polymarket` | Polymarket's retry policy, its five tables (`clob_limits()`, `gamma_limits()`, `data_limits()`, `relay_limits()`, `perps_limits()`), and `ClobThrottle` / `clob_throttle()`, which composes the IP table and the signer layer over one `Hold`, with `signer_cost()` and the `LayerId`s `CLOUDFLARE`, `SIGNER_ORDER` and `SIGNER_CANCEL` |
 | `macros` | `impl_api_error_conversions!` -- generates `From<reqwest::Error>` and `From<url::ParseError>` for crate-specific error wrappers |

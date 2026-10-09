@@ -575,3 +575,40 @@ async fn a_hold_with_no_retry_left_warns() {
         )
     );
 }
+
+#[test]
+fn a_429_with_no_retry_left_is_fail_with_its_hold() {
+    let schedule = schedule(3, 400);
+    let headers = reqwest::header::HeaderMap::new();
+    let decide = |status: StatusCode, attempt: u32| {
+        PolymarketRetryPolicy.decide(
+            &ResponseMeta {
+                status,
+                headers: &headers,
+            },
+            &schedule.attempt_info(attempt),
+            &schedule,
+        )
+    };
+
+    let last = decide(StatusCode::TOO_MANY_REQUESTS, 3);
+    assert_eq!(last.outcome, polyoxide_core::Outcome::Fail);
+    let hold = last.hold.expect("a 429 with no retry left still holds");
+    assert!(
+        (300..=500).contains(&hold.as_millis()),
+        "the hold is the schedule's first delay, 300-500ms: {hold:?}"
+    );
+
+    // With a retry left, the same 429 is retried with the same hold.
+    let earlier = decide(StatusCode::TOO_MANY_REQUESTS, 2);
+    assert_eq!(
+        earlier.outcome,
+        polyoxide_core::Outcome::Retry(Duration::ZERO)
+    );
+    assert!(earlier.hold.is_some());
+
+    // A 425 out of attempts fails too, and still holds nobody.
+    let early = decide(StatusCode::TOO_EARLY, 3);
+    assert_eq!(early.outcome, polyoxide_core::Outcome::Fail);
+    assert_eq!(early.hold, None);
+}
