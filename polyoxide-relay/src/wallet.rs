@@ -86,11 +86,11 @@ pub fn derive_safe(owner: Address, cfg: &ContractConfig) -> Address {
 
 /// The Proxy wallet a signer owns. Salt is `keccak256(abi.encodePacked(owner))`.
 pub fn derive_proxy(owner: Address, cfg: &ContractConfig) -> Result<Address, RelayError> {
-    let factory = cfg
-        .proxy_factory
-        .ok_or_else(|| RelayError::Api("Proxy wallet not supported on this chain".to_string()))?;
+    let factory = cfg.proxy_factory.ok_or_else(|| {
+        RelayError::validation("Proxy wallet not supported on this chain".to_string())
+    })?;
     let implementation = cfg.proxy_implementation.ok_or_else(|| {
-        RelayError::Api("Proxy implementation not configured for this chain".to_string())
+        RelayError::validation("Proxy implementation not configured for this chain".to_string())
     })?;
     let mut bytecode = Vec::with_capacity(
         PROXY_INIT_PREFIX.len() + 20 + PROXY_INIT_MIDDLE.len() + 20 + PROXY_INIT_SUFFIX.len(),
@@ -113,7 +113,7 @@ fn deposit_wallet_args(owner: Address, factory: Address) -> Vec<u8> {
 
 fn deposit_wallet_factory(cfg: &ContractConfig) -> Result<Address, RelayError> {
     cfg.deposit_wallet_factory.ok_or_else(|| {
-        RelayError::Api("Deposit Wallets are not supported on this chain".to_string())
+        RelayError::validation("Deposit Wallets are not supported on this chain".to_string())
     })
 }
 
@@ -134,7 +134,9 @@ pub fn derive_deposit_wallet_uups(
 ) -> Result<Address, RelayError> {
     let factory = deposit_wallet_factory(cfg)?;
     let implementation = cfg.deposit_wallet_implementation.ok_or_else(|| {
-        RelayError::Api("Deposit Wallet implementation not configured for this chain".to_string())
+        RelayError::validation(
+            "Deposit Wallet implementation not configured for this chain".to_string(),
+        )
     })?;
     let args = deposit_wallet_args(owner, factory);
     let mut code = Vec::new();
@@ -154,7 +156,7 @@ pub fn derive_deposit_wallet_beacon(
 ) -> Result<Address, RelayError> {
     let factory = deposit_wallet_factory(cfg)?;
     let beacon = cfg.deposit_wallet_beacon.ok_or_else(|| {
-        RelayError::Api("Deposit Wallet beacon not configured for this chain".to_string())
+        RelayError::validation("Deposit Wallet beacon not configured for this chain".to_string())
     })?;
     let args = deposit_wallet_args(owner, factory);
     let mut code = Vec::new();

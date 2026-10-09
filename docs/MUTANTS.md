@@ -53,6 +53,8 @@ were proved again on top of `a0d2771`.
 Story 3.4 moved clob onto the send loop; its error imports moved rows (e) 3 lines down and the
 hand-written `From<ApiError>` moved their tests 61 down. Rows (e), (e), case and (e), only a
 400 were proved again on top of `d8cc425`.
+Story 3.5 moved relay's three loops, the last sites rule (a) did not cover, onto the send loop,
+whose rows hold them.
 
 ## The rules
 
@@ -91,14 +93,3 @@ in three runs), and `polyoxide-perps/tests/mock_api.rs:544`
 `a_429_is_retried_and_retry_after_zero_does_not_shorten_the_backoff` never does: a 429's
 hold, `retry_delay(0)`, already keeps the next attempt back for as long as the floor would,
 and on perps the route's own bucket does too. Neither counts as holding (g).
-
-## Rule (a): sites not yet covered
-
-The same call order, `note_rate_limited` before `should_retry`, also stands at relay's three
-hand-written loops, and no mutant is proved at any of them. No tests are written for them,
-because Story 3.5 moves them onto core's one send loop (AD-8), whose rows are above. Until
-then, review an edit at one of these sites by hand. Clob's loop moved onto the send loop in
-Story 3.4.
-
-- `polyoxide-relay/src/client.rs:293`, `polyoxide-relay/src/client.rs:392` and
-  `polyoxide-relay/src/client.rs:1836`, relay's three loops

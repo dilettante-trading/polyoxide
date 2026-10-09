@@ -84,9 +84,6 @@ SNIPPETS = {
     ("polyoxide-clob/tests/mock_api.rs", 3365): "fn fak_unmatched_maps_to_typed_error_not_generic_validation(",
     ("polyoxide-clob/tests/mock_api.rs", 3399): "fn fok_unfilled_maps_to_typed_error_not_generic_validation(",
     ("polyoxide-clob/tests/mock_api.rs", 3462): "fn fak_prose_on_non_400_status_is_not_reclassified(",
-    ("polyoxide-relay/src/client.rs", 293): ".note_rate_limited(resp.status(), retry_after.as_deref());",
-    ("polyoxide-relay/src/client.rs", 392): ".note_rate_limited(resp.status(), retry_after.as_deref());",
-    ("polyoxide-relay/src/client.rs", 1836): ".note_rate_limited(status, retry_after.as_deref());",
 }
 
 

@@ -35,25 +35,25 @@ pub const SESSION_SIGNER_REQUEST_TIMEOUT: std::time::Duration = std::time::Durat
 /// so `Other("ALL")` counts as `ALL`.
 pub fn validate_scopes(scopes: &[SessionSignerScope]) -> Result<(), RelayError> {
     if scopes.is_empty() {
-        return Err(RelayError::Api(
-            "session-signer scopes need at least one entry".into(),
+        return Err(RelayError::validation(
+            "session-signer scopes need at least one entry",
         ));
     }
     let mut seen = std::collections::HashSet::new();
     for scope in scopes {
         if scope.as_str().is_empty() {
-            return Err(RelayError::Api(
-                "session-signer scope must not be empty".into(),
+            return Err(RelayError::validation(
+                "session-signer scope must not be empty",
             ));
         }
         if !seen.insert(scope.as_str()) {
-            return Err(RelayError::Api(format!(
+            return Err(RelayError::validation(format!(
                 "duplicate session-signer scope {scope}"
             )));
         }
     }
     if scopes.iter().any(|s| s.as_str() == "ALL") && scopes.len() > 1 {
-        return Err(RelayError::Api("scope ALL must be requested alone".into()));
+        return Err(RelayError::validation("scope ALL must be requested alone"));
     }
     Ok(())
 }

@@ -35,6 +35,8 @@ To remove a public item in a PR:
 - `polyoxide-clob module_missing: mod polyoxide_clob::request (src/request.rs)` Story 3.4: clob's namespaces build core's one request builder, `polyoxide_core::Request<T, polyoxide_clob::ClobError>`, which every namespace method now returns.
 - `polyoxide-clob struct_missing: struct polyoxide_clob::request::Request (src/request.rs)` Story 3.4: use `polyoxide_core::Request<T, polyoxide_clob::ClobError>`, which every namespace method now returns, with the same `query`, `send` and `send_raw`.
 - `polyoxide-clob enum_missing: enum polyoxide_clob::request::AuthMode (src/request.rs)` Story 3.4: nothing to name; each namespace method signs its request itself (L1 for key creation, L2 for the rest), and a signature produced elsewhere goes through `Clob::create_api_key_with_signature` or `Clob::derive_api_key_with_signature`.
+- `polyoxide-relay enum_variant_missing: variant RelayError::RateLimit (src/error.rs)` Story 3.5 (DRIFT R7): it was never constructed; a relayer 429 is `RelayError::Api(ApiError::RateLimit(_))`, classed `RateLimited`.
+- `polyoxide-relay enum_variant_missing: variant RelayError::Core (src/error.rs)` Story 3.5 (DRIFT R7): `RelayError::Api` now wraps `ApiError` itself, and `From<ApiError>` builds it.
 
 ## Doc-hidden paths consumers import
 

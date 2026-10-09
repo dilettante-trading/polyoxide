@@ -206,12 +206,12 @@ impl RelayerApiKeyConfig {
     /// Returns an error if `key` or `address` is empty or whitespace-only.
     pub fn new(key: String, address: String) -> Result<Self, RelayError> {
         if key.trim().is_empty() {
-            return Err(RelayError::Api(
+            return Err(RelayError::validation(
                 "RelayerApiKeyConfig: key must not be empty or whitespace".to_string(),
             ));
         }
         if address.trim().is_empty() {
-            return Err(RelayError::Api(
+            return Err(RelayError::validation(
                 "RelayerApiKeyConfig: address must not be empty or whitespace".to_string(),
             ));
         }

@@ -1680,3 +1680,347 @@ async fn deposit_wallet_metadata_over_500_characters_is_refused_before_io() {
     params.assert_async().await;
     submit.assert_async().await;
 }
+
+// ── Every route on the send loop (DRIFT R7) ─────────────────────
+
+type Sent = std::pin::Pin<
+    Box<dyn std::future::Future<Output = Result<(), polyoxide_relay::RelayError>> + Send>,
+>;
+
+/// One relayer route: the method and path a mock answers, the body it answers
+/// with, the client that may call it, and the call.
+struct Route {
+    method: &'static str,
+    path: &'static str,
+    body: &'static str,
+    relayer_api_key: bool,
+    call: fn(RelayClient) -> Sent,
+}
+
+/// The twelve routes the client calls on the relayer.
+fn every_relay_route() -> Vec<Route> {
+    fn owner() -> alloy::primitives::Address {
+        "0xf39Fd6e51aad88F6F4ce6aB8827279cffFb92266"
+            .parse()
+            .unwrap()
+    }
+    fn deposit_wallet_call() -> polyoxide_relay::DepositWalletCall {
+        let b = &relay_vectors()["approval_batch"];
+        polyoxide_relay::DepositWalletCall {
+            target: b["calls"][0]["target"].as_str().unwrap().parse().unwrap(),
+            value: alloy::primitives::U256::ZERO,
+            data: alloy::primitives::hex::decode(b["calls"][0]["data"].as_str().unwrap())
+                .unwrap()
+                .into(),
+        }
+    }
+    fn session_wallets() -> (alloy::primitives::Address, alloy::primitives::Address) {
+        let v = relay_vectors();
+        (
+            v["wallet"].as_str().unwrap().parse().unwrap(),
+            v["session_signer"].as_str().unwrap().parse().unwrap(),
+        )
+    }
+
+    vec![
+        Route {
+            method: "GET",
+            path: "/",
+            body: "ok",
+            relayer_api_key: false,
+            call: |c| Box::pin(async move { c.ping().await.map(drop) }),
+        },
+        Route {
+            method: "GET",
+            path: "/nonce",
+            body: r#"{"nonce":"5"}"#,
+            relayer_api_key: false,
+            call: |c| Box::pin(async move { c.get_nonce(owner()).await.map(drop) }),
+        },
+        Route {
+            method: "GET",
+            path: "/transaction",
+            body: r#"{"transactionID":"tx-1","state":"STATE_NEW"}"#,
+            relayer_api_key: false,
+            call: |c| Box::pin(async move { c.get_transaction("tx-1").await.map(drop) }),
+        },
+        Route {
+            method: "GET",
+            path: "/transactions",
+            body: "[]",
+            relayer_api_key: false,
+            call: |c| Box::pin(async move { c.list_transactions().await.map(drop) }),
+        },
+        Route {
+            method: "GET",
+            path: "/relayer/api/keys",
+            body: "[]",
+            relayer_api_key: true,
+            call: |c| Box::pin(async move { c.list_relayer_api_keys().await.map(drop) }),
+        },
+        Route {
+            method: "GET",
+            path: "/deployed",
+            body: r#"{"deployed":true}"#,
+            relayer_api_key: false,
+            call: |c| Box::pin(async move { c.get_deployed(owner()).await.map(drop) }),
+        },
+        Route {
+            method: "GET",
+            path: "/v1/account/transactions/params",
+            body: r#"{"address":"0xf39Fd6e51aad88F6F4ce6aB8827279cffFb92266","nonce":"12"}"#,
+            relayer_api_key: false,
+            call: |c| {
+                Box::pin(async move {
+                    c.get_execute_params(owner(), polyoxide_relay::WalletType::DepositWallet)
+                        .await
+                        .map(drop)
+                })
+            },
+        },
+        Route {
+            method: "GET",
+            path: "/v1/account/transactions/tx-77",
+            body: r#"{"transaction_id":"tx-77","transaction_hash":null,"state":"STATE_NEW","error_msg":null}"#,
+            relayer_api_key: false,
+            call: |c| Box::pin(async move { c.get_gasless_transaction("tx-77").await.map(drop) }),
+        },
+        Route {
+            method: "GET",
+            path: "/relay-payload",
+            body: r#"{"address":"0xf39Fd6e51aad88F6F4ce6aB8827279cffFb92266","nonce":"1"}"#,
+            relayer_api_key: false,
+            call: |c| Box::pin(async move { c.get_relay_payload(owner()).await.map(drop) }),
+        },
+        Route {
+            method: "POST",
+            path: "/submit",
+            body: r#"{"transactionID":"tx-1","state":"STATE_NEW"}"#,
+            relayer_api_key: false,
+            call: |c| {
+                Box::pin(async move {
+                    let v = relay_vectors();
+                    let (wallet, _) = session_wallets();
+                    c.submit_deposit_wallet_batch(
+                        wallet,
+                        &[deposit_wallet_call()],
+                        3,
+                        1_800_000_000,
+                        v["approval_batch"]["signature"].as_str().unwrap(),
+                        None,
+                    )
+                    .await
+                    .map(drop)
+                })
+            },
+        },
+        Route {
+            method: "POST",
+            path: "/v1/session-signers/authorizations",
+            body: r#"{"operationId":"op-1","status":"SUBMITTED","transactionHash":null,"transactionId":"tx-9"}"#,
+            relayer_api_key: false,
+            call: |c| {
+                Box::pin(async move {
+                    let v = relay_vectors();
+                    let (wallet, session) = session_wallets();
+                    let (_, request) = c.authorize_session_signer_typed_data_with_valid_until(
+                        wallet,
+                        session,
+                        vec![polyoxide_core::SessionSignerScope::Clob],
+                        1815534000,
+                        4,
+                        1800000600,
+                    )?;
+                    c.submit_session_signer_authorization(
+                        &request,
+                        v["authorize_batch"]["signature"].as_str().unwrap(),
+                        "idem-1",
+                    )
+                    .await
+                    .map(drop)
+                })
+            },
+        },
+        Route {
+            method: "POST",
+            path: "/v1/session-signers/revocations",
+            body: r#"{"operationId":"op-2","status":"FENCED","fenced":true,"transactionId":"tx-10"}"#,
+            relayer_api_key: false,
+            call: |c| {
+                Box::pin(async move {
+                    let v = relay_vectors();
+                    let (wallet, session) = session_wallets();
+                    let (_, request) =
+                        c.revoke_session_signer_typed_data(wallet, session, 5, 1800000600);
+                    c.submit_session_signer_revocation(
+                        &request,
+                        v["revoke_batch"]["signature"].as_str().unwrap(),
+                        "idem-2",
+                    )
+                    .await
+                    .map(drop)
+                })
+            },
+        },
+    ]
+}
+
+/// A client for `route` on `server`, retrying at most `max_retries` times
+/// at a 200ms base.
+fn retrying_client(server: &mockito::ServerGuard, route: &Route, max_retries: u32) -> RelayClient {
+    let account = if route.relayer_api_key {
+        BuilderAccount::with_relayer_api_key(TEST_PRIVATE_KEY, "rk-abc".into(), "0xabc123".into())
+            .unwrap()
+    } else {
+        let config = BuilderConfig::new("builder-key".into(), "c2VjcmV0".into(), Some("pp".into()));
+        BuilderAccount::new(TEST_PRIVATE_KEY, Some(config)).unwrap()
+    };
+    let wallet: alloy::primitives::Address =
+        relay_vectors()["wallet"].as_str().unwrap().parse().unwrap();
+    RelayClient::builder()
+        .unwrap()
+        .url(&server.url())
+        .unwrap()
+        .with_account(account)
+        .wallet_type(polyoxide_relay::WalletType::DepositWallet)
+        .deposit_wallet(wallet)
+        .with_retry_config(polyoxide_core::RetryConfig {
+            max_retries,
+            initial_backoff_ms: 200,
+            max_backoff_ms: 10_000,
+        })
+        .build()
+        .unwrap()
+}
+
+/// A mock for `route` answering `statuses` in turn, then the last of them for
+/// good, with `headers` on every response, expecting `hits` requests.
+async fn scripted_route(
+    server: &mut mockito::ServerGuard,
+    route: &Route,
+    statuses: &'static [usize],
+    headers: &[(&str, &str)],
+    hits: usize,
+) -> mockito::Mock {
+    let served = std::sync::atomic::AtomicUsize::new(0);
+    let mut mock = server
+        .mock(route.method, route.path)
+        .match_query(Matcher::Any)
+        .with_status_code_from_request(move |_| {
+            let n = served.fetch_add(1, std::sync::atomic::Ordering::SeqCst);
+            statuses[n.min(statuses.len() - 1)]
+        })
+        .with_header("content-type", "application/json");
+    for (name, value) in headers {
+        mock = mock.with_header(*name, value);
+    }
+    mock.with_body(route.body).expect(hits).create_async().await
+}
+
+/// Runs `check` on every route at once: relay's table paces a client at one
+/// request every 2.9s, so one route after another would take minutes. A
+/// failure names its route.
+async fn on_every_route(
+    check: fn(Route) -> std::pin::Pin<Box<dyn std::future::Future<Output = ()> + Send>>,
+) {
+    let tasks: Vec<_> = every_relay_route()
+        .into_iter()
+        .map(|route| tokio::spawn(check(route)))
+        .collect();
+    for task in tasks {
+        task.await.unwrap();
+    }
+}
+
+#[tokio::test]
+async fn each_relay_route_retries_a_429() {
+    // DRIFT R7: relay's own loops are gone; every route runs on core's send
+    // loop with Polymarket's policy, so a 429 with a retry left is retried.
+    on_every_route(|route| {
+        Box::pin(async move {
+            let name = format!("{} {}", route.method, route.path);
+            let mut server = Server::new_async().await;
+            let mock = scripted_route(&mut server, &route, &[429, 200], &[], 2).await;
+            let client = retrying_client(&server, &route, 1);
+
+            let result = (route.call)(client).await;
+            assert!(result.is_ok(), "{name}: {:?}", result.err());
+            mock.assert_async().await;
+        })
+    })
+    .await;
+}
+
+#[tokio::test]
+async fn each_relay_route_s_429_holds_the_next_request() {
+    // The 429 asks for 4s, past relay's own pacing of 2.9s, so only its hold
+    // can keep the next request back that long.
+    on_every_route(|route| {
+        Box::pin(async move {
+            use polyoxide_venue::{Class, Classify};
+
+            let name = format!("{} {}", route.method, route.path);
+            let mut server = Server::new_async().await;
+            let mock =
+                scripted_route(&mut server, &route, &[429, 200], &[("retry-after", "4")], 2).await;
+            let client = retrying_client(&server, &route, 0);
+
+            // No retry left: the 429 is the caller's, classed by its status.
+            let err = (route.call)(client.clone())
+                .await
+                .expect_err(&format!("{name}: a 429 and no retry"));
+            assert!(
+                matches!(
+                    err,
+                    polyoxide_relay::RelayError::Api(polyoxide_core::ApiError::RateLimit(_))
+                ),
+                "{name}: {err:?}"
+            );
+            assert_eq!(
+                err.class(),
+                Class::RateLimited { retry_after: None },
+                "{name}"
+            );
+
+            // Its hold stops the next request on the client.
+            let start = std::time::Instant::now();
+            let result = (route.call)(client).await;
+            assert!(result.is_ok(), "{name}: {:?}", result.err());
+            assert!(
+                start.elapsed() >= std::time::Duration::from_millis(3_500),
+                "{name}: the next request went after {:?}, inside the 429's 4s hold",
+                start.elapsed()
+            );
+            mock.assert_async().await;
+        })
+    })
+    .await;
+}
+
+#[tokio::test]
+async fn a_relay_503_is_not_retried_and_a_425_is() {
+    use polyoxide_venue::{Class, Classify};
+
+    let route = &every_relay_route()[1];
+    let mut server = Server::new_async().await;
+    let mock = scripted_route(&mut server, route, &[503], &[], 1).await;
+    let err = (route.call)(retrying_client(&server, route, 3))
+        .await
+        .unwrap_err();
+    assert!(
+        matches!(
+            err,
+            polyoxide_relay::RelayError::Api(polyoxide_core::ApiError::Api { status: 503, .. })
+        ),
+        "{err:?}"
+    );
+    assert_eq!(err.class(), Class::Unavailable { code: None });
+    mock.assert_async().await;
+
+    let mut server = Server::new_async().await;
+    let mock = scripted_route(&mut server, route, &[425, 200], &[], 2).await;
+    (route.call)(retrying_client(&server, route, 3))
+        .await
+        .expect("a 425 is the matching engine restarting, retried to the success");
+    mock.assert_async().await;
+}

@@ -1,10 +1,12 @@
+use polyoxide_core::ApiError;
 use polyoxide_venue::{Class, Classify};
 use thiserror::Error;
 
 /// Error types for relay operations.
 ///
-/// Wraps underlying HTTP, serialization, and signing errors, plus relay-specific
-/// API failures and rate limiting.
+/// Wraps underlying HTTP, serialization, and signing errors. Every failure of
+/// a request to the relayer, and every local refusal, is an [`ApiError`] in
+/// [`Api`](RelayError::Api).
 #[derive(Error, Debug)]
 pub enum RelayError {
     #[error("Reqwest error: {0}")]
@@ -19,45 +21,47 @@ pub enum RelayError {
     #[error("Signer error: {0}")]
     Signer(String),
 
-    #[error("Relayer API error: {0}")]
-    Api(String),
-
-    #[error("Rate limit exceeded")]
-    RateLimit,
+    /// A request to the relayer that failed, classed by its status, or a
+    /// refusal made before anything was sent ([`ApiError::Validation`]).
+    #[error(transparent)]
+    Api(#[from] ApiError),
 
     #[error("Missing signer")]
     MissingSigner,
+}
 
-    #[error("Core API error: {0}")]
-    Core(#[from] polyoxide_core::ApiError),
+impl RelayError {
+    /// A request refused before anything was sent: bad input, missing auth or
+    /// configuration, or a header that could not be built.
+    pub(crate) fn validation(msg: impl Into<String>) -> Self {
+        Self::Api(ApiError::Validation(msg.into()))
+    }
 }
 
 /// A transport failure by core's reqwest rule, a local signing or URL failure
-/// an `InvalidRequest`, a response that did not parse a `Decode`, and a
-/// relayer refusal, whatever its status, a `VenueRefusal` until `Api` carries
-/// the status.
+/// an `InvalidRequest`, a response that did not parse a `Decode`, and `Api`
+/// as core classes it: a relayer response by its status, and a local refusal a
+/// `VenueRefusal` until Story 3.11 moves it to `InvalidRequest`.
 impl Classify for RelayError {
     fn class(&self) -> Class {
         match self {
             Self::Reqwest(err) => polyoxide_core::error::classify_reqwest(err),
             Self::UrlParse(_) | Self::Signer(_) | Self::MissingSigner => Class::InvalidRequest,
             Self::SerdeJson(_) => Class::Decode,
-            Self::Api(_) => Class::VenueRefusal { code: None },
-            Self::RateLimit => Class::RateLimited { retry_after: None },
-            Self::Core(err) => err.class(),
+            Self::Api(err) => err.class(),
         }
     }
 
     fn is_fault(&self) -> bool {
         match self {
-            Self::Core(err) => err.is_fault(),
+            Self::Api(err) => err.is_fault(),
             _ => true,
         }
     }
 
     fn retry_after(&self) -> Option<std::time::Duration> {
         match self {
-            Self::Core(err) => Classify::retry_after(err),
+            Self::Api(err) => Classify::retry_after(err),
             _ => None,
         }
     }
@@ -75,14 +79,16 @@ mod tests {
 
     #[test]
     fn test_api_error_display() {
-        let err = RelayError::Api("server returned 500".into());
-        assert_eq!(format!("{err}"), "Relayer API error: server returned 500");
-    }
-
-    #[test]
-    fn test_rate_limit_display() {
-        let err = RelayError::RateLimit;
-        assert_eq!(format!("{err}"), "Rate limit exceeded");
+        let err = RelayError::Api(ApiError::Api {
+            status: 500,
+            message: "server returned 500".into(),
+        });
+        assert_eq!(format!("{err}"), "API error: 500 - server returned 500");
+        let err = RelayError::validation("idempotency key must not be empty");
+        assert_eq!(
+            format!("{err}"),
+            "Validation error: idempotency key must not be empty"
+        );
     }
 
     #[test]
@@ -116,8 +122,8 @@ mod tests {
         let core_err = polyoxide_core::ApiError::Timeout;
         let relay_err: RelayError = core_err.into();
         match relay_err {
-            RelayError::Core(_) => {}
-            other => panic!("Expected Core, got: {other:?}"),
+            RelayError::Api(_) => {}
+            other => panic!("Expected Api, got: {other:?}"),
         }
     }
 
@@ -136,17 +142,20 @@ mod tests {
             ),
             (RelayError::Signer("bad key".into()), Class::InvalidRequest),
             (
-                RelayError::Api("server returned 500".into()),
-                Class::VenueRefusal { code: None },
+                RelayError::Api(ApiError::Api {
+                    status: 503,
+                    message: "server returned 503".into(),
+                }),
+                Class::Unavailable { code: None },
             ),
             (
-                RelayError::RateLimit,
+                RelayError::Api(ApiError::RateLimit("slow down".into())),
                 Class::RateLimited { retry_after: None },
             ),
             (RelayError::MissingSigner, Class::InvalidRequest),
             (
-                RelayError::Core(polyoxide_core::ApiError::Timeout),
-                Class::Unavailable { code: None },
+                RelayError::validation("idempotency key must not be empty"),
+                Class::VenueRefusal { code: None },
             ),
         ];
         for (err, class) in rows {

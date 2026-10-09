@@ -130,17 +130,18 @@ impl BuilderAccount {
         use polyoxide_core::keychain;
 
         let private_key = keychain::get(service, "private_key")
-            .map_err(|e| RelayError::Api(format!("Keychain error for private_key: {e}")))?;
+            .map_err(|e| RelayError::validation(format!("Keychain error for private_key: {e}")))?;
 
         let config = match keychain::get(service, "api_key") {
             Ok(key) => {
-                let secret = keychain::get(service, "api_secret")
-                    .map_err(|e| RelayError::Api(format!("Keychain error for api_secret: {e}")))?;
+                let secret = keychain::get(service, "api_secret").map_err(|e| {
+                    RelayError::validation(format!("Keychain error for api_secret: {e}"))
+                })?;
                 let passphrase = keychain::get(service, "passphrase").ok();
                 Some(BuilderConfig::new(key, secret, passphrase))
             }
             Err(polyoxide_core::KeychainError::NotFound { .. }) => None,
-            Err(e) => return Err(RelayError::Api(format!("Keychain error: {e}"))),
+            Err(e) => return Err(RelayError::validation(format!("Keychain error: {e}"))),
         };
 
         Self::new(private_key, config)
@@ -165,11 +166,12 @@ impl BuilderAccount {
         use polyoxide_core::keychain;
 
         let private_key = keychain::get(service, "private_key")
-            .map_err(|e| RelayError::Api(format!("Keychain error for private_key: {e}")))?;
-        let key = keychain::get(service, "relayer_api_key")
-            .map_err(|e| RelayError::Api(format!("Keychain error for relayer_api_key: {e}")))?;
+            .map_err(|e| RelayError::validation(format!("Keychain error for private_key: {e}")))?;
+        let key = keychain::get(service, "relayer_api_key").map_err(|e| {
+            RelayError::validation(format!("Keychain error for relayer_api_key: {e}"))
+        })?;
         let address = keychain::get(service, "relayer_api_key_address").map_err(|e| {
-            RelayError::Api(format!("Keychain error for relayer_api_key_address: {e}"))
+            RelayError::validation(format!("Keychain error for relayer_api_key_address: {e}"))
         })?;
 
         Self::with_relayer_api_key(private_key, key, address)
@@ -197,7 +199,7 @@ impl BuilderAccount {
             "relayer_api_key_address",
         ] {
             keychain::delete(service, key)
-                .map_err(|e| RelayError::Api(format!("Keychain error: {e}")))?;
+                .map_err(|e| RelayError::validation(format!("Keychain error: {e}")))?;
         }
         Ok(())
     }
@@ -218,7 +220,7 @@ fn save_private_key_to_keychain_in_service(
     private_key: &str,
 ) -> Result<(), RelayError> {
     polyoxide_core::keychain::set(service, "private_key", private_key)
-        .map_err(|e| RelayError::Api(format!("Keychain error: {e}")))?;
+        .map_err(|e| RelayError::validation(format!("Keychain error: {e}")))?;
     Ok(())
 }
 
@@ -242,17 +244,17 @@ fn save_builder_config_to_keychain_in_service(
     use polyoxide_core::keychain;
 
     keychain::set(service, "api_key", &config.key)
-        .map_err(|e| RelayError::Api(format!("Keychain error: {e}")))?;
+        .map_err(|e| RelayError::validation(format!("Keychain error: {e}")))?;
     keychain::set(service, "api_secret", &config.secret)
-        .map_err(|e| RelayError::Api(format!("Keychain error: {e}")))?;
+        .map_err(|e| RelayError::validation(format!("Keychain error: {e}")))?;
     match &config.passphrase {
         Some(passphrase) => {
             keychain::set(service, "passphrase", passphrase)
-                .map_err(|e| RelayError::Api(format!("Keychain error: {e}")))?;
+                .map_err(|e| RelayError::validation(format!("Keychain error: {e}")))?;
         }
         None => {
             keychain::delete(service, "passphrase")
-                .map_err(|e| RelayError::Api(format!("Keychain error: {e}")))?;
+                .map_err(|e| RelayError::validation(format!("Keychain error: {e}")))?;
         }
     }
     Ok(())
