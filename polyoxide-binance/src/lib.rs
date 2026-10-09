@@ -37,7 +37,6 @@ const _: fn() = || {
     fn is<T: polyoxide_venue::Classify>() {}
     is::<BinanceError>();
     is::<usdm::types::InvalidSymbol>();
-    is::<usdm::types::UnknownVariant>();
     #[cfg(feature = "ws")]
     is::<usdm::ws::UsdmWsError>();
     #[cfg(feature = "ws")]

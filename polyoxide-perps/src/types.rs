@@ -1,7 +1,7 @@
 //! Vocabulary shared by every namespace: identifiers, closed sets the spec
 //! enumerates, and the positional rows the host sends as bare arrays.
 
-use std::{fmt, str::FromStr};
+use std::fmt;
 
 use rust_decimal::Decimal;
 use serde::{Deserialize, Deserializer, Serialize, Serializer};
@@ -25,100 +25,42 @@ impl From<u64> for InstrumentId {
     }
 }
 
-/// A string that is not one of a closed set's wire spellings.
-#[derive(Debug, Clone, PartialEq, Eq, thiserror::Error)]
-#[error("{value:?} is not a valid {type_name}")]
-pub struct UnknownVariant {
-    /// The Rust type being parsed.
-    pub type_name: &'static str,
-    /// The offending input.
-    pub value: String,
-}
-
-/// An `InvalidRequest`: the caller parsed a spelling no variant has. Only
-/// `FromStr` builds one, on a value the caller supplies; a push frame whose
-/// channel does not parse becomes an unknown frame instead.
-impl polyoxide_venue::Classify for UnknownVariant {
-    fn class(&self) -> polyoxide_venue::Class {
-        polyoxide_venue::Class::InvalidRequest
-    }
-}
-
-/// A closed set with one wire spelling per variant. Generates serde renames,
-/// `Display`, `FromStr` and an `ALL` table, so every spelling lives in one
-/// place and the agreement test can walk them.
-macro_rules! wire_enum {
-    ($(#[$meta:meta])* $name:ident { $($variant:ident => $wire:literal),+ $(,)? }) => {
-        $(#[$meta])*
-        #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize)]
-        pub enum $name {
-            $( #[serde(rename = $wire)] $variant, )+
-        }
-
-        impl $name {
-            /// Every variant, in declaration order.
-            pub const ALL: &'static [$name] = &[$( $name::$variant, )+];
-
-            /// The wire spelling.
-            pub fn as_str(self) -> &'static str {
-                match self { $( $name::$variant => $wire, )+ }
-            }
-        }
-
-        impl fmt::Display for $name {
-            fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-                f.write_str(self.as_str())
-            }
-        }
-
-        impl FromStr for $name {
-            type Err = UnknownVariant;
-            fn from_str(s: &str) -> Result<Self, Self::Err> {
-                match s {
-                    $( $wire => Ok($name::$variant), )+
-                    _ => Err(UnknownVariant { type_name: stringify!($name), value: s.to_owned() }),
-                }
-            }
-        }
-    };
-}
-
-wire_enum! {
+polyoxide_venue::wire_enum! {
     /// Kline and mark-history bucket width. Also the `klines` channel suffix.
-    Interval {
+    pub enum Interval {
         S1 => "1s", M1 => "1m", M5 => "5m", M15 => "15m", M30 => "30m",
         H1 => "1h", H4 => "4h", H6 => "6h", H12 => "12h", D1 => "1d", W1 => "1w",
     }
 }
 
-wire_enum! {
+polyoxide_venue::wire_enum! {
     /// Side of a trade or position.
-    Side { Long => "long", Short => "short" }
+    pub enum Side { Long => "long", Short => "short" }
 }
 
-wire_enum! {
+polyoxide_venue::wire_enum! {
     /// Instrument type. Only perpetuals are listed today.
-    InstrumentType { Perpetual => "perpetual" }
+    pub enum InstrumentType { Perpetual => "perpetual" }
 }
 
-wire_enum! {
+polyoxide_venue::wire_enum! {
     /// Instrument category.
-    InstrumentCategory { Equity => "equity", Commodity => "commodity", Index => "index", Crypto => "crypto" }
+    pub enum InstrumentCategory { Equity => "equity", Commodity => "commodity", Index => "index", Crypto => "crypto" }
 }
 
-wire_enum! {
+polyoxide_venue::wire_enum! {
     /// Leaderboard window.
-    LeaderboardWindow { Day => "day", Week => "week", Month => "month", All => "all" }
+    pub enum LeaderboardWindow { Day => "day", Week => "week", Month => "month", All => "all" }
 }
 
-wire_enum! {
+polyoxide_venue::wire_enum! {
     /// Leaderboard ranking key.
-    LeaderboardSort { Pnl => "pnl", Notional => "notional", AccountValue => "account_value" }
+    pub enum LeaderboardSort { Pnl => "pnl", Notional => "notional", AccountValue => "account_value" }
 }
 
-wire_enum! {
+polyoxide_venue::wire_enum! {
     /// Sort direction for paged history.
-    SortOrder { Desc => "desc", Asc => "asc" }
+    pub enum SortOrder { Desc => "desc", Asc => "asc" }
 }
 
 /// Levels per side that `GET /v1/info/book` can return. The WebSocket `book`
@@ -274,6 +216,8 @@ impl Serialize for Level {
 
 #[cfg(test)]
 mod tests {
+    use std::str::FromStr;
+
     use super::*;
 
     #[test]

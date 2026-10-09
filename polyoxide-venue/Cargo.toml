@@ -15,6 +15,12 @@ categories = ["api-bindings"]
 # crates that depend on this one build nothing they do not use.
 [dependencies]
 
+# The enum macros' own tests: the expansion names `::serde`, which a calling
+# crate provides.
+[dev-dependencies]
+serde = { workspace = true }
+serde_json = { workspace = true }
+
 # Registration, read by scripts/gen_registry.py: the README line, venue and
 # product ids, the docs/specs/ mirrors covered, and one entry per live test
 # target, which becomes a nightly job. Run `python3 scripts/gen_registry.py

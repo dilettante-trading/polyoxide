@@ -8,7 +8,8 @@ Each crate's lib.rs holds
         ...
     };
 
-so a listed type without the impl fails the build. A type nobody listed fails
+so a listed type without the impl fails the build (`polyoxide-venue`, which defines
+the trait, names it `crate::Classify`). A type nobody listed fails
 nothing, and that is the half these tests close: they sweep every `pub enum` and
 `pub struct` under `polyoxide*/src` that is an error, and fail naming each one
 its crate's assertion leaves out.
@@ -42,7 +43,8 @@ AUXILIARY = frozenset({"UnknownVariant", "InvalidSymbol", "InvalidStreamName", "
 ITEM = re.compile(r"^\s*pub (?:enum|struct) (\w+)")
 DERIVES_ERROR = re.compile(r"#\[derive\([^)]*\bError\b[^)]*\)\]", re.S)
 IMPLS_ERROR = re.compile(r"\bimpl(?:<[^>]*>)?\s+(?:(?:std|core)::error::)?Error\s+for\s+(\w+)")
-ASSERTION = re.compile(r"fn is<T: polyoxide_venue::Classify>\(\) \{\}(.*?)\n\};", re.S)
+# The vocabulary crate names its own trait as `crate::Classify`.
+ASSERTION = re.compile(r"fn is<T: (?:polyoxide_venue|crate)::Classify>\(\) \{\}(.*?)\n\};", re.S)
 LISTED = re.compile(r"\bis::<([\w:]+)>\(\)")
 
 
@@ -120,9 +122,9 @@ def test_every_public_error_type_is_listed_in_its_crates_assertion() -> None:
     ("polyoxide-core", {"ApiError", "BurstCapacityExceeded", "KeychainError"}),
     ("polyoxide-data", {"DataApiError", "V2Error"}),
     ("polyoxide-clob", {"ClobError", "ParseTickSizeError", "WebSocketError"}),
-    ("polyoxide-perps", {"PerpsError", "VenueError", "UnknownVariant", "PerpsWsError"}),
-    ("polyoxide-binance", {"BinanceError", "InvalidSymbol", "UnknownVariant", "UsdmWsError",
-                           "InvalidStreamName"}),
+    ("polyoxide-perps", {"PerpsError", "VenueError", "PerpsWsError"}),
+    ("polyoxide-binance", {"BinanceError", "InvalidSymbol", "UsdmWsError", "InvalidStreamName"}),
+    (VOCABULARY, {"UnknownVariant"}),
     ("polyoxide", {"PolymarketError"}),
 ])
 def test_the_sweep_finds_the_known_types(crate: str, names: set[str]) -> None:
@@ -222,6 +224,14 @@ pub struct Plain;
         "polyoxide-manual: Underflow (polyoxide-manual/src/error.rs)",
         "polyoxide-manual: Wrapped (polyoxide-manual/src/error.rs)",
     ]
+
+
+def test_the_vocabulary_crate_s_own_assertion_names_crate_classify(tmp_path: Path) -> None:
+    lib = LIB.replace("polyoxide_venue::Classify", "crate::Classify")
+    _crate(tmp_path, VOCABULARY, lib, "pub struct ClassifiedError;\npub enum FakeError {}\n"
+           "pub enum NewError {}\n")
+    assert asserted(tmp_path / VOCABULARY / "src" / "lib.rs") == {"FakeError", "FakeWsError"}
+    assert unlisted(tmp_path) == [f"{VOCABULARY}: NewError ({VOCABULARY}/src/error.rs)"]
 
 
 def test_the_vocabulary_crate_exempts_only_classified_error(tmp_path: Path) -> None:

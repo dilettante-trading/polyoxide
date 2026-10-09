@@ -37,7 +37,6 @@ const _: fn() = || {
     fn is<T: polyoxide_venue::Classify>() {}
     is::<PerpsError>();
     is::<VenueError>();
-    is::<types::UnknownVariant>();
     #[cfg(feature = "ws")]
     is::<ws::PerpsWsError>();
 };

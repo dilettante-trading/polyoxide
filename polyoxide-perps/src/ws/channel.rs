@@ -3,7 +3,9 @@
 
 use std::{fmt, str::FromStr};
 
-use crate::types::{InstrumentId, Interval, UnknownVariant};
+use polyoxide_venue::UnknownVariant;
+
+use crate::types::{InstrumentId, Interval};
 
 /// Levels per side the `book` channel can deliver. The REST route takes a
 /// different set (`crate::types::BookDepth`).

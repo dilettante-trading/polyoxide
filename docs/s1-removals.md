@@ -42,6 +42,8 @@ To remove a public item in a PR:
 - `polyoxide-core inherent_method_missing: HttpClient::should_retry (src/client.rs)` Stories 3.4 to 3.6: send through `HttpClient::send`, whose client's `RetryPolicy` decides (`polymarket::PolymarketRetryPolicy` retries 429 and 425); for the delay alone, `RetryConfig::retry_delay`.
 - `polyoxide-core inherent_method_missing: HttpClient::note_rate_limited (src/client.rs)` Stories 3.4 and 3.5: send through `HttpClient::send`, which applies the policy's hold to the throttle; to hold a throttle by hand, `Throttle::hold`, or `RateLimiter::begin_cooldown`.
 - `polyoxide-core inherent_method_missing: HttpClient::acquire_rate_limit (src/client.rs)` Stories 3.4 and 3.5: send through `HttpClient::send`, which charges the throttle for every attempt; to charge a `RateLimiter` by hand, `RateLimiter::acquire`.
+- `polyoxide-perps struct_missing: struct polyoxide_perps::types::UnknownVariant (src/types.rs)` Story 3.9: use `polyoxide_venue::UnknownVariant`, the one copy, with the same public fields, `Display` and class; every perps enum's and `ws::Channel`'s `FromStr::Err` is now that type.
+- `polyoxide-binance struct_missing: struct polyoxide_binance::usdm::types::UnknownVariant (src/usdm/types.rs)` Story 3.9: use `polyoxide_venue::UnknownVariant`, the one copy, with the same public fields, `Display` and class; `Interval`'s and `DepthLimit`'s `FromStr::Err` is now that type.
 
 ## Doc-hidden paths consumers import
 

@@ -4267,6 +4267,10 @@ dependencies = [
 [[package]]
 name = "polyoxide-venue"
 version = "0.38.1"
+dependencies = [
+ "serde",
+ "serde_json",
+]
 
 [[package]]
 name = "portable-atomic"

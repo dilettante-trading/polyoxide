@@ -16,7 +16,6 @@ use polyoxide_core::SessionSignerScope;
 use serde::{Deserialize, Serialize};
 
 use crate::error::RelayError;
-use crate::types::open_string_enum;
 
 /// How long a session-signer `POST` waits for the venue's answer.
 ///
@@ -58,9 +57,9 @@ pub fn validate_scopes(scopes: &[SessionSignerScope]) -> Result<(), RelayError> 
     Ok(())
 }
 
-open_string_enum! {
+polyoxide_venue::open_enum! {
     /// Status of a session-signer authorization operation.
-    SessionSignerAuthorizationStatus {
+    pub enum SessionSignerAuthorizationStatus {
         /// Accepted; batch not yet broadcast.
         Submitted => "SUBMITTED",
         /// Broadcast; not yet in the session-signer registry.
@@ -83,9 +82,9 @@ impl SessionSignerAuthorizationStatus {
     }
 }
 
-open_string_enum! {
+polyoxide_venue::open_enum! {
     /// Status of a session-signer revocation operation.
-    SessionSignerRevocationStatus {
+    pub enum SessionSignerRevocationStatus {
         /// Accepted.
         Pending => "PENDING",
         /// The key is fenced out of the registry; its open orders are being cancelled.
