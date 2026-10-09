@@ -593,3 +593,33 @@ async fn a_request_parts_timeout_bounds_its_attempt() {
          (the client's is 30s)"
     );
 }
+
+#[tokio::test]
+async fn a_request_parts_timeout_outlasts_the_client_s() {
+    // Relay's session-signer posts wait 300s on a client whose own timeout is
+    // 30s: the request's timeout replaces the client's, longer as well as
+    // shorter. A server that answers after 400ms, a client that gives up
+    // after 100ms, and a request allowed 5s.
+    let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+    let addr = listener.local_addr().unwrap();
+    tokio::spawn(async move {
+        use tokio::io::{AsyncReadExt, AsyncWriteExt};
+        let (mut socket, _) = listener.accept().await.unwrap();
+        let mut request = [0u8; 1024];
+        let _ = socket.read(&mut request).await.unwrap();
+        tokio::time::sleep(Duration::from_millis(400)).await;
+        socket
+            .write_all(b"HTTP/1.1 200 OK\r\ncontent-length: 0\r\nconnection: close\r\n\r\n")
+            .await
+            .unwrap();
+    });
+    let http = HttpClientBuilder::new(format!("http://{addr}"))
+        .timeout_ms(100)
+        .build()
+        .unwrap();
+    let mut parts = polyoxide_core::RequestParts::new(reqwest::Method::GET, "/slow");
+    parts.timeout = Some(Duration::from_secs(5));
+
+    let response = http.send(parts, &[], None).await.unwrap();
+    assert_eq!(response.status(), reqwest::StatusCode::OK);
+}

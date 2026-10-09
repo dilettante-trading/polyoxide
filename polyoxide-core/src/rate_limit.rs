@@ -1144,7 +1144,7 @@ mod tests {
 
     #[test]
     fn test_should_retry_exhaustion() {
-        // After max_retries, should_retry must return None
+        // After max_retries, the policy must not retry
         let config = RetryConfig {
             max_retries: 3,
             ..RetryConfig::default()

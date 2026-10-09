@@ -2,7 +2,9 @@
 
 use std::time::Duration;
 
-use polyoxide_venue::{class_for_close_code, class_for_handshake_status, Class, Classify};
+use polyoxide_venue::{
+    class_for_close_code, class_for_handshake_status, class_for_status, Class, Classify,
+};
 use tokio_tungstenite::tungstenite;
 
 /// Everything that can go wrong on the sports feed.
@@ -75,9 +77,10 @@ pub enum SportsError {
 impl SportsError {
     /// Whether a reconnect attempt that failed this way is worth repeating.
     ///
-    /// The statuses are the ones polyoxide-core's `is_retriable` treats as
-    /// passing: a timeout, the matching engine restarting, a rate limit, a
-    /// server fault. polyoxide-perps retries only 429 and 5xx.
+    /// The statuses are the ones polyoxide-venue's one status rule classes
+    /// retriable, as polyoxide-core's `is_retriable` does: a timeout, the
+    /// matching engine restarting, a rate limit, a server fault.
+    /// polyoxide-perps retries only 429 and 5xx.
     pub(crate) fn retrying_can_fix(&self) -> bool {
         let Self::Connect { source } = self else {
             return true;
@@ -85,7 +88,7 @@ impl SportsError {
         match &**source {
             tungstenite::Error::Http(response) => {
                 let status = response.status().as_u16();
-                matches!(status, 408 | 425 | 429) || status >= 500
+                class_for_status(status).is_some_and(|c| c.is_retriable())
             }
             // `Tls` is only an invalid server name here: rustls reports a
             // certificate it rejects as an IO error, which is retried.
@@ -190,7 +193,7 @@ mod tests {
 
     #[test]
     fn a_refused_request_is_not_retried_but_an_unwell_host_is() {
-        for status in [301, 401, 403, 404] {
+        for status in [301, 401, 403, 404, 600] {
             assert!(!http_error(status).retrying_can_fix(), "{status}");
         }
         for status in [408, 425, 429, 500, 502, 503] {

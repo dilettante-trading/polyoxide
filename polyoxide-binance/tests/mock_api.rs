@@ -771,3 +771,41 @@ async fn a_425_and_a_5xx_are_not_retried() {
         mock.assert_async().await;
     }
 }
+
+#[tokio::test]
+async fn funding_requests_through_the_client_are_paced() {
+    // `fundingRate` and `fundingInfo` carry no weight and share their own
+    // bucket: 450 per five minutes with a depth of one, so the second request
+    // on a client goes 300s / 449, about 668ms, after the first was charged.
+    // The clock starts before the first, since that is when the second's slot
+    // is fixed. Charged as weight instead, both would go at once.
+    let mut server = Server::new_async().await;
+    let info = route(
+        &mut server,
+        "/fapi/v1/fundingInfo",
+        "",
+        &fixture("funding_info"),
+    )
+    .await
+    .expect(1);
+    let rate = route(
+        &mut server,
+        "/fapi/v1/fundingRate",
+        "",
+        &fixture("funding_rate"),
+    )
+    .await
+    .expect(1);
+    let client = usdm(&server);
+
+    let start = Instant::now();
+    client.exchange().funding_info().send().await.unwrap();
+    client.market().funding_rate().send().await.unwrap();
+    let paced = start.elapsed();
+    assert!(
+        paced >= Duration::from_millis(600) && paced < Duration::from_secs(5),
+        "the second funding request went {paced:?} after the first was charged"
+    );
+    info.assert_async().await;
+    rate.assert_async().await;
+}

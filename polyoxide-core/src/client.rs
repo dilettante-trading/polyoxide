@@ -367,7 +367,7 @@ mod tests {
             // block inside a request, and it rejects orders wholesale.
             StatusCode::SERVICE_UNAVAILABLE,
         ] {
-            assert!(!retries(&config, status, 0), "expected None for {status}");
+            assert!(!retries(&config, status, 0), "{status} was retried");
         }
     }
 

@@ -2049,3 +2049,187 @@ async fn a_refused_relay_call_sends_nothing() {
     );
     mock.assert_async().await;
 }
+
+// ── What each attempt is signed over ────────────────────────────
+
+/// One served request: its `POLY_BUILDER_TIMESTAMP`, its
+/// `POLY_BUILDER_SIGNATURE` and its body.
+type Attempt = (u64, String, String);
+
+/// The signature and body of each request a mock served, in order.
+#[derive(Clone, Default)]
+struct Attempts(std::sync::Arc<std::sync::Mutex<Vec<Attempt>>>);
+
+impl Attempts {
+    fn record(&self, request: &mockito::Request) {
+        let header = |name: &str| request.header(name)[0].to_str().unwrap().to_owned();
+        let timestamp = header("poly_builder_timestamp").parse().unwrap();
+        let signature = header("poly_builder_signature");
+        let body = String::from_utf8_lossy(request.body().unwrap()).into_owned();
+        self.0.lock().unwrap().push((timestamp, signature, body));
+    }
+
+    fn all(&self) -> Vec<Attempt> {
+        self.0.lock().unwrap().clone()
+    }
+}
+
+/// A mock for `route` answering 429 with `Retry-After: 1.1` once, then 200,
+/// recording every attempt. The wait puts the attempts in different seconds,
+/// so a fresh signature has a different timestamp from the first.
+async fn throttled_once(
+    server: &mut mockito::ServerGuard,
+    route: &Route,
+    attempts: &Attempts,
+) -> mockito::Mock {
+    let attempts = attempts.clone();
+    let served = std::sync::atomic::AtomicUsize::new(0);
+    server
+        .mock(route.method, route.path)
+        .match_query(Matcher::Any)
+        .with_status_code_from_request(move |request| {
+            attempts.record(request);
+            match served.fetch_add(1, std::sync::atomic::Ordering::SeqCst) {
+                0 => 429,
+                _ => 200,
+            }
+        })
+        .with_header("retry-after", "1.1")
+        .with_header("content-type", "application/json")
+        .with_body(route.body)
+        .expect(2)
+        .create_async()
+        .await
+}
+
+/// The Builder HMAC the relayer recomputes for one attempt: the secret
+/// `c2VjcmV0` over the attempt's own timestamp, the method, the path and the
+/// body.
+fn builder_signature(timestamp: u64, method: &str, path: &str, body: Option<&str>) -> String {
+    use polyoxide_core::{Base64Format, Signer};
+
+    Signer::new("c2VjcmV0")
+        .sign(
+            &Signer::create_message(timestamp, method, path, body),
+            Base64Format::UrlSafe,
+        )
+        .unwrap()
+}
+
+/// The route in [`every_relay_route`] at `method` and `path`.
+fn relay_route(method: &str, path: &str) -> Route {
+    every_relay_route()
+        .into_iter()
+        .find(|route| route.method == method && route.path == path)
+        .unwrap()
+}
+
+#[tokio::test]
+async fn a_retried_relay_post_is_signed_over_its_path_and_body() {
+    let route = relay_route("POST", "/submit");
+    let mut server = Server::new_async().await;
+    let attempts = Attempts::default();
+    let mock = throttled_once(&mut server, &route, &attempts).await;
+
+    (route.call)(retrying_client(&server, &route, 1))
+        .await
+        .unwrap();
+    mock.assert_async().await;
+
+    let attempts = attempts.all();
+    assert_eq!(attempts.len(), 2);
+    for (timestamp, signature, body) in &attempts {
+        assert!(!body.is_empty(), "a submit carries its batch");
+        assert_eq!(
+            *signature,
+            builder_signature(*timestamp, "POST", "/submit", Some(body)),
+            "the signature covers this attempt's own timestamp, the path and the body"
+        );
+    }
+    assert_eq!(attempts[0].2, attempts[1].2, "the body is resent as is");
+    assert_ne!(
+        attempts[0].0, attempts[1].0,
+        "the retry was signed afresh, a second later"
+    );
+}
+
+#[tokio::test]
+async fn a_relay_get_is_signed_over_its_path() {
+    let route = relay_route("GET", "/transactions");
+    let mut server = Server::new_async().await;
+    let attempts = Attempts::default();
+    let mock = throttled_once(&mut server, &route, &attempts).await;
+
+    (route.call)(retrying_client(&server, &route, 1))
+        .await
+        .unwrap();
+    mock.assert_async().await;
+
+    let attempts = attempts.all();
+    assert_eq!(attempts.len(), 2);
+    for (timestamp, signature, body) in &attempts {
+        assert!(body.is_empty(), "a GET carries no body: {body:?}");
+        assert_eq!(
+            *signature,
+            builder_signature(*timestamp, "GET", "/transactions", None),
+            "the signature covers this attempt's own timestamp, GET and the path"
+        );
+    }
+    assert_ne!(
+        attempts[0].0, attempts[1].0,
+        "the retry was signed afresh, a second later"
+    );
+}
+
+#[tokio::test]
+async fn a_relayer_refusal_keeps_its_reason() {
+    // A non-2xx is classed by its status and keeps the relayer's reason: the
+    // `error` field of a JSON body, or the body itself.
+    let owner: alloy::primitives::Address = "0xf39Fd6e51aad88F6F4ce6aB8827279cffFb92266"
+        .parse()
+        .unwrap();
+
+    let mut server = Server::new_async().await;
+    let mock = server
+        .mock("GET", "/nonce")
+        .match_query(Matcher::Any)
+        .with_status(400)
+        .with_header("content-type", "application/json")
+        .with_body(r#"{"error":"insufficient funds"}"#)
+        .expect(1)
+        .create_async()
+        .await;
+    let err = client_unauthed(&server)
+        .get_nonce(owner)
+        .await
+        .expect_err("the relayer refused it");
+    match &err {
+        polyoxide_relay::RelayError::Api(polyoxide_core::ApiError::Validation(message)) => {
+            assert_eq!(message, "insufficient funds")
+        }
+        other => panic!("expected Api(Validation), got {other:?}"),
+    }
+    mock.assert_async().await;
+
+    let mut server = Server::new_async().await;
+    let mock = server
+        .mock("GET", "/nonce")
+        .match_query(Matcher::Any)
+        .with_status(500)
+        .with_body("upstream exploded")
+        .expect(1)
+        .create_async()
+        .await;
+    let err = client_unauthed(&server)
+        .get_nonce(owner)
+        .await
+        .expect_err("the relayer failed");
+    match &err {
+        polyoxide_relay::RelayError::Api(polyoxide_core::ApiError::Api { status, message }) => {
+            assert_eq!(*status, 500);
+            assert!(message.contains("upstream exploded"), "{message:?}");
+        }
+        other => panic!("expected Api(Api {{ status: 500 }}), got {other:?}"),
+    }
+    mock.assert_async().await;
+}

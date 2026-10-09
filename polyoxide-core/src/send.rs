@@ -16,7 +16,8 @@ impl HttpClient {
     ///
     /// Each attempt takes a concurrency permit, waits while the throttle
     /// charges it ([`Throttle::acquire`], with `costs`), is signed by `auth`
-    /// when one is given, and is sent, within `parts.timeout` when it is set. The throttle then sees the response
+    /// when one is given, and is sent, within `parts.timeout` when it is set.
+    /// The throttle then sees the response
     /// ([`Throttle::observe`]), the policy decides what follows
     /// ([`RetryPolicy::decide`]), and a hold the decision carries is applied
     /// ([`Throttle::hold`]) whether or not the request is retried.
@@ -28,9 +29,11 @@ impl HttpClient {
     /// says.
     ///
     /// Each retry logs a `WARN` under the `polyoxide_core` target,
-    /// `Retriable status <code> on <path>, retry <n> after <ms>ms`, and so does
-    /// a hold that is not a retry: `Status <code> on <path>, not retried:
-    /// every request held <ms>ms`.
+    /// `Retriable status <code> on <path>, retry <n> after <ms>ms`, where
+    /// `<ms>` is the longer of the retry's sleep and the hold its decision
+    /// set, since the retry waits out both. A hold that is not a retry logs
+    /// one too: `Status <code> on <path>, not retried: every request held
+    /// <ms>ms`.
     ///
     /// Returns the last response, whatever its status, for the caller to
     /// decode.
@@ -93,12 +96,17 @@ impl HttpClient {
                     let floor = self.retry_config.retry_delay(attempt, meta.retry_after());
                     let sleep = floor.max(wait);
                     attempt += 1;
+                    // The retry also waits out the hold this decision set, so
+                    // the logged wait is the longer of the two.
                     tracing::warn!(
                         "Retriable status {} on {}, retry {} after {}ms",
                         status,
                         parts.path,
                         attempt,
-                        sleep.as_millis()
+                        decision
+                            .hold
+                            .map_or(sleep, |hold| hold.max(sleep))
+                            .as_millis()
                     );
                     drop(permit);
                     tokio::time::sleep(sleep).await;

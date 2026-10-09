@@ -1768,11 +1768,15 @@ async fn a_429_on_ping_holds_the_next_request() {
     );
 
     let start = std::time::Instant::now();
-    data.health().ping().await.unwrap();
+    let latency = data.health().ping().await.unwrap();
     assert!(
         start.elapsed() >= std::time::Duration::from_millis(200),
         "the next request went after {:?}, inside the ping's hold",
         start.elapsed()
+    );
+    assert!(
+        latency > std::time::Duration::ZERO && latency < std::time::Duration::from_millis(200),
+        "the ping's latency is its last attempt's round trip, which leaves out the hold: {latency:?}"
     );
     mock.assert_async().await;
 }

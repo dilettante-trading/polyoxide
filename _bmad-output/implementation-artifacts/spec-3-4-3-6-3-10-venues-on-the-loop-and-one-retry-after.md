@@ -2,7 +2,7 @@
 title: 'Stories 3.4, 3.5, 3.6 and 3.10: clob, relay and Binance on the one send loop, one Retry-After parser and one retriable-status rule'
 type: 'refactor'
 created: '2026-10-09'
-status: 'in-progress'
+status: 'done'
 route: 'dispatch'
 review_loop_iteration: 0
 baseline_commit: 'ecad4c76254c771ca8b12b0a632a2ed0a9e9ca2c'
@@ -553,7 +553,59 @@ G0–G11 are `3aeddc2`, `d63ce46`, `a0d2771`, `d8cc425`, `925d8da`, `f86a25d`, `
   - **Clob batch above burst.** The end-to-end test asserts the cost, the capacity and that nothing is sent. `burst_from_refused_recovers_the_tier_and_bucket_of_every_tier` asserts the tier and the bucket.
   - **Relay session signer, 300 s.** `session_signer_requests_wait_five_minutes_like_py_sdk` pins the constant, and core's `a_request_parts_timeout_bounds_its_attempt` pins the per-attempt bound. No relay test shows that `post_json` sets `parts.timeout`: `RelayClientBuilder` has no timeout setter, so an end-to-end proof would wait out the 30 s client default.
   - **The hold-without-retry WARN for a Binance 418.** The WARN branch in `send.rs` does not depend on the policy, and core's `a_hold_with_no_retry_left_warns` asserts it for a 429.
+- **After the review's patches, 2026-10-09.** The same checks are green again: 2,269 tests passed and 0 failed, the scripts' 902, and Python's 326.
+- **The removal gate** (`scripts/api_removals.py check --baseline v0.38.1`, local Rust 1.95.0) ran once at the end. It reports 15 removals, all listed, and 4 other changes that S1 allows: `ApiError::Refused` (F), `ApiError::Sign` (G3) and `HttpClientBuilder`'s two auto traits (F). Its first run found the `usdm::WeightedRequest` re-export unlisted, and it is now listed. `target/semver-checks` was deleted after.
 
 ## Spec Change Log
 
 ## Review Triage Log
+
+All three layers ran on `ecad4c7`..`acadd99`:
+- blind: 16 findings;
+- edge-case: 9;
+- verification-gap: 7 gaps and 2 other findings.
+
+After merging findings that share a root cause:
+- 31 remain: 5 are medium, 20 low, 5 false and 1 maybe-false;
+- no finding needs the spec changed, so there is no loopback;
+- the CLAUDE.md patch is applied, not deferred, as in spec 3-1/3-3, since AD-21 has each change edit the rule it changes.
+
+**Patched:**
+- **Medium: the retry WARN understated the wait** (blind, edge). On a Binance 429 whose `Retry-After` outlasts the floor, the policy holds up to 3 days. The WARN logged the floor (at most `max_backoff_ms`), and the deleted Binance loop had logged the real cooldown. The WARN now logs the longer of the sleep and the decision's hold, which the retry waits out in the throttle. Core's `a_retry_s_warning_names_the_hold_it_waits_out` holds it, and fails on the old value. MUTANTS rows (a), (f) and (g) moved three lines in `send.rs` and were proved again.
+- **Medium: a funding route's cost bridge was never exercised** (gap). Mapping `Cost::Funding` to the weight layer would have sent unpaced funding bursts without failing any test. Binance's `mock_api.rs` now times two funding requests through one client.
+- **Medium: `post_orders` above burst had no test** (gap). Deleting its `.with_cost` sent a 2,000-order batch to the venue. Clob's `mock_api.rs` now refuses an over-capacity `post_orders` with nothing sent.
+- **Medium: relay's HMAC inputs were never checked against the wire** (gap). Every mock matched the signature with `Any`. Relay's `mock_api.rs` now recomputes a retried POST's signature over its path and body, and a GET's over its path.
+- **Medium: a ping's "last attempt only" latency was unasserted** (gap). Each crate's `a_429_on_ping_holds_the_next_request` now asserts that the second ping's latency is above zero and shorter than the hold it waited out.
+- **Low: two documents still described the transitional state** (blind). CLAUDE.md said "Clob moves onto it in Story 3.4; until then it calls `SignerLimiter` directly" and that `SignerLimiter::acquire` refuses a batch. `polymarket/mod.rs` said "clob and relay once Stories 3.4 and 3.5…". Both now describe the code as it is.
+- **Low: a per-request timeout longer than the client's was untested** (blind). Relay's 300 s session-signer posts depend on reqwest's per-request timeout replacing the client's 30 s. Core's `a_request_parts_timeout_outlasts_the_client_s` now holds it, and fails when `parts.timeout` is dropped.
+- **Low: sports kept a copy of the status rule** (edge). That made CLAUDE.md's "its statuses mirror core's `is_retriable`" false at 600 and above after H12. `retrying_can_fix` now calls `class_for_status`, and its table gains a 600 row that fails on the old copy.
+- **Low: MUTANTS row (b), a zero, said "any two alone leave the tests passing"** (edge). False: the `:45` edit alone is row (b)'s own mutant. The clause now says so.
+- **Low: a relayer refusal's reason was unasserted** (gap). Relay's `mock_api.rs` now checks that a 400's `error` field, and a 500's text body, reach the caller.
+- **Low: Binance's 418 body WARN was unasserted** (gap). Binance's tests now capture it.
+- **Low: the removal keys were unconfirmed** (blind). The gate, run after these patches, printed one key the list lacked: `polyoxide_binance::usdm::WeightedRequest`, the re-export G8 had said might print separately. It is now listed, and the re-run reports only listed keys. MSRV is left to CI's msrv job, since no 1.91 toolchain is installed locally.
+- **Low: two rewritten core tests kept wording for `should_retry`** (blind). A comment said "should_retry must return None", and a message said "expected None". Their names stay, per NFR7.
+
+**Deferred** (deferred-work.md):
+- **Relay's session-signer posts are not shown to set `parts.timeout`** (gap, blind). `RelayClientBuilder` has no timeout setter, so an end-to-end proof waits out 30 s. Core now pins both directions of the override.
+- **The single-order trading routes' signer costs are unpinned** (gap). Nothing at the client level observes `post_order`'s, `cancel`'s, `cancel_all`'s or `cancel_market`'s charge. The tier tests pinned `cancel`'s cost only by accident, while observing was gated on it.
+- **Relay's ping still times the permit, the 2.9 s pacing and backoff** (blind). It is pre-existing, outside R8's three pings. Story 3.7's one `health(path)` settles all four.
+
+**Rejected:**
+- **Relay's signing failures are `Validation`, not `Sign`** (blind). Low. G7 keeps every local refusal's class and message. A header-generation failure was a `VenueRefusal` before G and still is, and 3.11 reshapes the errors.
+- **Binance's 429 hold grows with the attempt, against CLAUDE.md** (blind). False. CLAUDE.md's Binance paragraph says the policy holds "the longer of its backoff and its `Retry-After`". The `retry_delay(0)` rule is in the Polymarket section, and Polymarket's policy keeps it.
+- **The contract at `retries_left == 0` is unstated** (blind). False. `Outcome::Retry`'s docs say the loop never retries past `max_retries`, the send-loop tests count attempts, and the loop ignores `DefaultRetryPolicy`'s `Retry` at zero.
+- **`Stopwatch` is copied three times** (blind). False as unrecorded: the R8 deferred-work entry names Story 3.7's `health(path)` as replacing the three pings.
+- **The sprint status lags the spec** (blind). False. The workflow syncs it when the review closes.
+- **Deviations are logged only in deferred-work** (blind). The fix edits this spec. The Implementation Notes and deferred-work record them.
+- **`ClobThrottle::observe` adopts telemetry from every response** (blind, gap). Maybe-false, and low if true. Nobody knows whether the venue sends `Poly-RateLimit-*` on a non-trading response. If it does, the tier it carries is the same account's. A live probe of an authenticated non-trading route's headers would settle it. The G4 deferred-work entry (item 6) records it.
+- **`burst_from_refused` lists the tiers by hand** (blind, edge). Low. A new tier also edits `allowances` and the tier tests, and the fix adds a public `Tier::ALL`.
+- **Perps and data v2 surface `Duration::MAX`** (blind, edge). Low. It takes a server sending an absurd `Retry-After`, the frozen R4 row specifies `Duration::MAX`, and tokio's `sleep` accepts it.
+- **The ledger claims relay coverage it never proved** (blind). False. The rows hold the send loop's lines, which relay now runs on.
+- **The rest of the rewritten-test findings** (blind). Low:
+  - NFR7 keeps the test names;
+  - the two builder tests were vacuous before G too (`acquire_rate_limit` let the first request through at once);
+  - `a_425_and_a_5xx_fail_with_no_hold` is the spec's name.
+- **A failed body read on an error response loses the status** (edge). Low and pre-existing: relay's old loops also used `text().await?`. `Reqwest` is classed by `classify_reqwest`, so a mid-body break is still `Network`.
+- **A relayer 400 and a local refusal share `Api(Validation)`** (edge, gap). Low. Both were `Api(String)` before G, clob's `ApiError::Validation` has the same ambiguity, and core's docs name the split as pending for 3.11.
+- **An empty batch is sent and charged one token** (edge). Low and pre-existing: the old charge also took `cost().max(1)`, and the venue answers.
+- **`RequestParts::timeout` of zero fails every attempt** (edge). Low misuse: the only caller passes 300 s, and the fix is a guard.

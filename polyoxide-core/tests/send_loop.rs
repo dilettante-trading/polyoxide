@@ -612,3 +612,56 @@ fn a_429_with_no_retry_left_is_fail_with_its_hold() {
     assert_eq!(early.outcome, polyoxide_core::Outcome::Fail);
     assert_eq!(early.hold, None);
 }
+
+/// Retries a 429 at once, holding the throttle for a long time, as Binance's
+/// policy does when the `Retry-After` outlasts the loop's floor.
+struct LongHold;
+
+impl RetryPolicy for LongHold {
+    fn decide(
+        &self,
+        response: &ResponseMeta<'_>,
+        _attempt: &AttemptInfo,
+        _schedule: &RetryConfig,
+    ) -> Decision {
+        if response.status == StatusCode::TOO_MANY_REQUESTS {
+            Decision {
+                outcome: polyoxide_core::Outcome::Retry(Duration::ZERO),
+                hold: Some(Duration::from_secs(5)),
+            }
+        } else {
+            Decision {
+                outcome: polyoxide_core::Outcome::Done,
+                hold: None,
+            }
+        }
+    }
+}
+
+#[tokio::test]
+async fn a_retry_s_warning_names_the_hold_it_waits_out() {
+    // The retry sleeps the loop's 1ms floor, then waits out the 5s hold in
+    // the throttle: the warning names the wait, not the floor. This throttle
+    // records the hold without enforcing it, so the test does not wait.
+    let path = "/v1/long-hold";
+    let throttle = Recorder::default();
+    let (server, mock) = scripted(path, &[429, 200], 2, &throttle.log).await;
+    let http = HttpClientBuilder::new(server.url())
+        .with_throttle(throttle.clone())
+        .with_retry_policy(LongHold)
+        .with_retry_config(schedule(3, 1))
+        .build()
+        .unwrap();
+
+    http.send(RequestParts::new(Method::GET, path), &[], None)
+        .await
+        .unwrap();
+    mock.assert_async().await;
+
+    let seen = warnings_on(path);
+    assert_eq!(seen.len(), 1, "{seen:?}");
+    assert_eq!(
+        seen[0].1,
+        format!("Retriable status 429 Too Many Requests on {path}, retry 1 after 5000ms")
+    );
+}

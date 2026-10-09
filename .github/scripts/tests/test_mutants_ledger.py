@@ -20,10 +20,10 @@ CITATION = re.compile(r"(polyoxide[a-z-]*/[A-Za-z0-9_/.-]+\.rs):(\d+)(?:-(\d+))?
 
 # (file, line) -> a piece of that line.
 SNIPPETS = {
-    ("polyoxide-core/src/send.rs", 81): "self.throttle.observe(&charge, &meta, &info);",
-    ("polyoxide-core/src/send.rs", 88): "self.throttle.hold(hold);",
-    ("polyoxide-core/src/send.rs", 92): "Outcome::Retry(wait) if info.retries_left > 0 => {",
-    ("polyoxide-core/src/send.rs", 94): "let sleep = floor.max(wait);",
+    ("polyoxide-core/src/send.rs", 84): "self.throttle.observe(&charge, &meta, &info);",
+    ("polyoxide-core/src/send.rs", 91): "self.throttle.hold(hold);",
+    ("polyoxide-core/src/send.rs", 95): "Outcome::Retry(wait) if info.retries_left > 0 => {",
+    ("polyoxide-core/src/send.rs", 97): "let sleep = floor.max(wait);",
     ("polyoxide-core/src/hooks.rs", 297): "hold: Some(schedule.retry_delay(0, response.retry_after())),",
     ("polyoxide-core/tests/send_loop.rs", 252): "async fn observe_sees_the_last_attempt(",
     ("polyoxide-core/tests/send_loop.rs", 278): "async fn a_zero_wait_still_sleeps_the_floor(",

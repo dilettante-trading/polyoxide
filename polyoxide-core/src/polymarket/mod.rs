@@ -1,10 +1,9 @@
 //! Polymarket's hooks for core's send loop: its retry policy, its rate limit
 //! tables, and the CLOB's composed throttle.
 //!
-//! Every Polymarket client shares them: gamma, data and perps today, clob and
-//! relay once Stories 3.4 and 3.5 move their loops onto
-//! [`HttpClient::send`](crate::HttpClient::send). The module moves to
-//! `polyoxide-polymarket` in S2.
+//! Every Polymarket client shares them on
+//! [`HttpClient::send`](crate::HttpClient::send): gamma, data, perps, clob and
+//! relay. The module moves to `polyoxide-polymarket` in S2.
 
 use std::time::Duration;
 

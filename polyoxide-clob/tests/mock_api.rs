@@ -4317,11 +4317,78 @@ async fn a_429_on_ping_holds_the_next_request() {
 
     // Its hold, the schedule's first delay (225-375ms), stops the next request.
     let start = std::time::Instant::now();
-    clob.health().ping().await.unwrap();
+    let latency = clob.health().ping().await.unwrap();
     assert!(
         start.elapsed() >= std::time::Duration::from_millis(200),
         "the next request went after {:?}, inside the ping's hold",
         start.elapsed()
     );
+    assert!(
+        latency > std::time::Duration::ZERO && latency < std::time::Duration::from_millis(200),
+        "the ping's latency is its last attempt's round trip, which leaves out the hold: {latency:?}"
+    );
+    mock.assert_async().await;
+}
+
+#[tokio::test]
+async fn over_capacity_batch_post_is_rejected_without_sending_a_request() {
+    // `POST /orders` costs one order token per order, and Standard's order
+    // bucket holds 60. A batch of 61 can never fit, so it is refused before
+    // the send, as an over-capacity cancel is.
+    let mut server = mockito::Server::new_async().await;
+    let mock = server
+        .mock("POST", "/orders")
+        .with_status(200)
+        .with_header("content-type", "application/json")
+        .with_body("[]")
+        .expect(0) // must never be reached
+        .create_async()
+        .await;
+
+    let clob = test_authed_clob(&server);
+    let params = polyoxide_clob::CreateOrderParams {
+        token_id: "100".into(),
+        price: 0.50,
+        size: 10.0,
+        side: polyoxide_clob::OrderSide::Buy,
+        order_type: polyoxide_clob::OrderKind::Gtc,
+        post_only: false,
+        expiration: None,
+        funder: None,
+        signature_type: None,
+    };
+    // Supplying the market's metadata keeps the setup off the network too.
+    let options = polyoxide_clob::PartialCreateOrderOptions {
+        neg_risk: Some(false),
+        tick_size: Some(polyoxide_clob::TickSize::Hundredth),
+    };
+    let order = clob.create_order(&params, Some(options)).await.unwrap();
+    let signed = clob.sign_order(&order).await.unwrap();
+    let batch = vec![
+        polyoxide_clob::SignedOrderPayload {
+            order: signed,
+            order_type: polyoxide_clob::OrderKind::Gtc,
+            post_only: false,
+        };
+        61
+    ];
+
+    let err = clob
+        .post_orders(&batch)
+        .await
+        .expect_err("an over-capacity batch must be refused");
+
+    match &err {
+        ClobError::BurstCapacityExceeded(e) => {
+            assert_eq!(e.cost, 61, "one token per order");
+            assert_eq!(e.capacity, 60, "Standard tier order burst");
+            assert_eq!(e.tier, polyoxide_core::Tier::Standard);
+            assert_eq!(e.bucket, polyoxide_core::TradingBucket::Order);
+        }
+        other => panic!("expected BurstCapacityExceeded, got {other:?}"),
+    }
+    assert!(!err.is_retriable(), "splitting is the only remedy");
+
+    // The decisive assertion: nothing went over the wire.
     mock.assert_async().await;
 }
