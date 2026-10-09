@@ -19,8 +19,8 @@ use alloy::rpc::types::TransactionRequest;
 use alloy::sol_types::{Eip712Domain, SolCall, SolStruct, SolValue};
 use polyoxide_core::{
     polymarket::{self, PolymarketRetryPolicy},
-    ApiError, Authenticator, DepositWalletRole, DynAuthenticator, HttpClient, HttpClientBuilder,
-    RequestParts, RetryConfig, SessionSignerScope,
+    ApiError, Authenticator, ClientConfig, DepositWalletRole, DynAuthenticator, HttpClient,
+    RequestParts, SessionSignerScope,
 };
 use reqwest::Method;
 use serde::Serialize;
@@ -1825,16 +1825,19 @@ impl Authenticator for RelayPostAuth<'_> {
 ///
 /// Defaults to Polygon mainnet (chain ID 137) with the production relayer URL.
 /// Use [`Default::default()`] to also read `RELAYER_URL` and `CHAIN_ID` from the environment.
+/// It allows 2 concurrent in-flight requests by default.
+///
+/// The base URL can be set by [`url`](Self::url), which checks it at once, or
+/// by `base_url`, which is checked by [`build`](Self::build). Either way the
+/// client adds a trailing slash, so a path prefix is kept.
 pub struct RelayClientBuilder {
-    base_url: String,
+    config: ClientConfig,
     chain_id: u64,
     account: Option<BuilderAccount>,
     auth: Option<polyoxide_venue::Secret<AuthConfig>>,
     wallet_type: WalletType,
     deposit_wallet: Option<Address>,
     deposit_wallet_role: DepositWalletRole,
-    retry_config: Option<RetryConfig>,
-    max_concurrent: Option<usize>,
 }
 
 impl Default for RelayClientBuilder {
@@ -1863,15 +1866,13 @@ impl RelayClientBuilder {
         }
 
         Ok(Self {
-            base_url: base_url.to_string(),
+            config: ClientConfig::new(base_url.to_string(), 2),
             chain_id: 137,
             account: None,
             auth: None,
             wallet_type: WalletType::default(),
             deposit_wallet: None,
             deposit_wallet_role: DepositWalletRole::Owner,
-            retry_config: None,
-            max_concurrent: None,
         })
     }
 
@@ -1887,9 +1888,11 @@ impl RelayClientBuilder {
         if !base_url.path().ends_with('/') {
             base_url.set_path(&format!("{}/", base_url.path()));
         }
-        self.base_url = base_url.to_string();
+        self.config.base_url = base_url.to_string();
         Ok(self)
     }
+
+    polyoxide_core::client_config_setters!(config);
 
     /// Attach a [`BuilderAccount`] for authenticated relay operations.
     pub fn with_account(mut self, account: BuilderAccount) -> Self {
@@ -1944,41 +1947,26 @@ impl RelayClientBuilder {
         self
     }
 
-    /// Set retry configuration for 429 responses
-    pub fn with_retry_config(mut self, config: RetryConfig) -> Self {
-        self.retry_config = Some(config);
-        self
-    }
-
-    /// Set the maximum number of concurrent in-flight requests.
-    ///
-    /// Default: 2. Prevents Cloudflare 1015 errors from request bursts.
-    pub fn max_concurrent(mut self, max: usize) -> Self {
-        self.max_concurrent = Some(max);
-        self
-    }
-
     /// Build the [`RelayClient`].
     ///
     /// Returns an error if the chain ID is unsupported or the base URL is invalid.
-    pub fn build(self) -> Result<RelayClient, RelayError> {
-        let mut base_url = Url::parse(&self.base_url)?;
+    pub fn build(mut self) -> Result<RelayClient, RelayError> {
+        let mut base_url = Url::parse(&self.config.base_url)?;
         if !base_url.path().ends_with('/') {
             base_url.set_path(&format!("{}/", base_url.path()));
         }
+        self.config.base_url = base_url.to_string();
 
         let contract_config = get_contract_config(self.chain_id).ok_or_else(|| {
             RelayError::validation(format!("Unsupported chain ID: {}", self.chain_id))
         })?;
 
-        let mut builder = HttpClientBuilder::new(base_url.as_str())
+        let http_client = self
+            .config
+            .http_builder()
             .with_rate_limiter(polymarket::relay_limits())
             .with_retry_policy(PolymarketRetryPolicy)
-            .with_max_concurrent(self.max_concurrent.unwrap_or(2));
-        if let Some(config) = self.retry_config {
-            builder = builder.with_retry_config(config);
-        }
-        let http_client = builder.build()?;
+            .build()?;
 
         let auth = self
             .account
@@ -2003,6 +1991,7 @@ impl RelayClientBuilder {
 mod tests {
     use super::*;
     use alloy::primitives::address;
+    use polyoxide_core::RetryConfig;
 
     #[tokio::test]
     async fn test_ping() {
@@ -2165,7 +2154,7 @@ mod tests {
             max_backoff_ms: 30_000,
         };
         let builder = RelayClientBuilder::new().unwrap().with_retry_config(config);
-        let config = builder.retry_config.unwrap();
+        let config = builder.config.retry_config.unwrap();
         assert_eq!(config.max_retries, 5);
         assert_eq!(config.initial_backoff_ms, 1000);
     }

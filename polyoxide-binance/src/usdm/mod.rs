@@ -7,9 +7,7 @@ pub mod types;
 #[cfg(feature = "ws")]
 pub mod ws;
 
-use polyoxide_core::{
-    HttpClient, HttpClientBuilder, RetryConfig, DEFAULT_POOL_SIZE, DEFAULT_TIMEOUT_MS,
-};
+use polyoxide_core::{ClientConfig, HttpClient};
 
 use crate::{
     error::BinanceError,
@@ -73,64 +71,27 @@ impl Usdm {
 }
 
 /// Builder for [`Usdm`].
+///
+/// It allows [`DEFAULT_MAX_CONCURRENT`] in-flight requests unless told
+/// otherwise. Keep the weight in flight under the budget's reserve of 240: at
+/// the default, one client has at most 160 (4 × the heaviest route, 40).
+/// `WeightBudget` explains why a request in flight across a minute boundary
+/// is not counted by it.
 #[derive(Debug)]
 pub struct UsdmBuilder {
-    base_url: String,
-    timeout_ms: u64,
-    pool_size: usize,
-    retry_config: Option<RetryConfig>,
-    max_concurrent: Option<usize>,
+    config: ClientConfig,
     budget: Option<WeightBudget>,
 }
 
 impl UsdmBuilder {
     fn new() -> Self {
         Self {
-            base_url: DEFAULT_BASE_URL.to_owned(),
-            timeout_ms: DEFAULT_TIMEOUT_MS,
-            pool_size: DEFAULT_POOL_SIZE,
-            retry_config: None,
-            max_concurrent: None,
+            config: ClientConfig::new(DEFAULT_BASE_URL, DEFAULT_MAX_CONCURRENT),
             budget: None,
         }
     }
 
-    /// Override the host, for example to point at a mock server.
-    pub fn base_url(mut self, url: impl Into<String>) -> Self {
-        self.base_url = url.into();
-        self
-    }
-
-    /// Request timeout in milliseconds.
-    pub fn timeout_ms(mut self, timeout: u64) -> Self {
-        self.timeout_ms = timeout;
-        self
-    }
-
-    /// Idle connections kept per host.
-    pub fn pool_size(mut self, size: usize) -> Self {
-        self.pool_size = size;
-        self
-    }
-
-    /// Replace the retry policy for `429` responses.
-    pub fn with_retry_config(mut self, config: RetryConfig) -> Self {
-        self.retry_config = Some(config);
-        self
-    }
-
-    /// Maximum in-flight requests (default 4).
-    ///
-    /// Keep the weight in flight under the budget's reserve of 240: at the
-    /// default, one client has at most 160 (4 × the heaviest route, 40).
-    /// `WeightBudget` explains why a request in flight across a minute
-    /// boundary is not counted by it.
-    ///
-    /// At least 1: zero admits no request, so every send waits forever.
-    pub fn max_concurrent(mut self, max: usize) -> Self {
-        self.max_concurrent = Some(max);
-        self
-    }
+    polyoxide_core::client_config_setters!(config);
 
     /// Charge this budget instead of a new one. Binance limits weight per IP,
     /// so every client in a process should share one budget.
@@ -141,28 +102,20 @@ impl UsdmBuilder {
 
     /// Build the client.
     ///
-    /// It asks for gzip, since `exchangeInfo` is 1.15 MB raw and 51 KB
-    /// compressed, and has no core `RateLimiter`: the [`WeightBudget`] is its
-    /// throttle, and paces every request instead. Its retry policy holds that
-    /// budget on a `429` or a `418`, so every client sharing it waits.
+    /// It has no core `RateLimiter`: the [`WeightBudget`] is its throttle, and
+    /// paces every request instead. Its retry policy holds that budget on a
+    /// `429` or a `418`, so every client sharing it waits.
     pub fn build(self) -> Result<Usdm, BinanceError> {
         let budget = self.budget.unwrap_or_default();
-        let mut builder = HttpClientBuilder::new(&self.base_url)
-            .timeout_ms(self.timeout_ms)
-            .pool_size(self.pool_size)
-            .with_max_concurrent(self.max_concurrent.unwrap_or(DEFAULT_MAX_CONCURRENT))
+        let http = self
+            .config
+            .http_builder()
             .with_throttle(budget.clone())
             .with_retry_policy(UsdmRetryPolicy {
                 budget: budget.clone(),
             })
-            .gzip(true);
-        if let Some(config) = self.retry_config {
-            builder = builder.with_retry_config(config);
-        }
-        Ok(Usdm {
-            http: builder.build()?,
-            budget,
-        })
+            .build()?;
+        Ok(Usdm { http, budget })
     }
 }
 
@@ -196,5 +149,25 @@ mod tests {
         assert!(a.weight_budget().is_shared_with(b.weight_budget()));
         let c = Usdm::new().unwrap();
         assert!(!a.weight_budget().is_shared_with(c.weight_budget()));
+    }
+
+    #[tokio::test]
+    async fn test_default_concurrency_limit_is_4() {
+        let usdm = Usdm::new().unwrap();
+        let mut permits = Vec::new();
+        for _ in 0..4 {
+            permits.push(usdm.http.acquire_concurrency().await);
+        }
+        assert!(permits.iter().all(|p| p.is_some()));
+
+        let result = tokio::time::timeout(
+            std::time::Duration::from_millis(50),
+            usdm.http.acquire_concurrency(),
+        )
+        .await;
+        assert!(
+            result.is_err(),
+            "5th permit should block with default limit of 4"
+        );
     }
 }

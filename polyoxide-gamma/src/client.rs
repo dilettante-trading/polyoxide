@@ -1,6 +1,6 @@
 use polyoxide_core::{
     polymarket::{self, PolymarketRetryPolicy},
-    HttpClient, HttpClientBuilder, RetryConfig, DEFAULT_POOL_SIZE, DEFAULT_TIMEOUT_MS,
+    ClientConfig, HttpClient,
 };
 
 use crate::{
@@ -95,69 +95,29 @@ impl Gamma {
 }
 
 /// Builder for configuring Gamma client
+///
+/// It allows 4 concurrent in-flight requests by default.
 pub struct GammaBuilder {
-    base_url: String,
-    timeout_ms: u64,
-    pool_size: usize,
-    retry_config: Option<RetryConfig>,
-    max_concurrent: Option<usize>,
+    config: ClientConfig,
 }
 
 impl GammaBuilder {
     fn new() -> Self {
         Self {
-            base_url: DEFAULT_BASE_URL.to_string(),
-            timeout_ms: DEFAULT_TIMEOUT_MS,
-            pool_size: DEFAULT_POOL_SIZE,
-            retry_config: None,
-            max_concurrent: None,
+            config: ClientConfig::new(DEFAULT_BASE_URL, 4),
         }
     }
 
-    /// Set base URL for the API
-    pub fn base_url(mut self, url: impl Into<String>) -> Self {
-        self.base_url = url.into();
-        self
-    }
-
-    /// Set request timeout in milliseconds
-    pub fn timeout_ms(mut self, timeout: u64) -> Self {
-        self.timeout_ms = timeout;
-        self
-    }
-
-    /// Set connection pool size
-    pub fn pool_size(mut self, size: usize) -> Self {
-        self.pool_size = size;
-        self
-    }
-
-    /// Set retry configuration for 429 responses
-    pub fn with_retry_config(mut self, config: RetryConfig) -> Self {
-        self.retry_config = Some(config);
-        self
-    }
-
-    /// Set the maximum number of concurrent in-flight requests.
-    ///
-    /// Default: 4. Prevents Cloudflare 1015 errors from request bursts.
-    pub fn max_concurrent(mut self, max: usize) -> Self {
-        self.max_concurrent = Some(max);
-        self
-    }
+    polyoxide_core::client_config_setters!(config);
 
     /// Build the Gamma client
     pub fn build(self) -> Result<Gamma, GammaError> {
-        let mut builder = HttpClientBuilder::new(&self.base_url)
-            .timeout_ms(self.timeout_ms)
-            .pool_size(self.pool_size)
+        let http_client = self
+            .config
+            .http_builder()
             .with_rate_limiter(polymarket::gamma_limits())
             .with_retry_policy(PolymarketRetryPolicy)
-            .with_max_concurrent(self.max_concurrent.unwrap_or(4));
-        if let Some(config) = self.retry_config {
-            builder = builder.with_retry_config(config);
-        }
-        let http_client = builder.build()?;
+            .build()?;
 
         Ok(Gamma { http_client })
     }
@@ -172,31 +132,32 @@ impl Default for GammaBuilder {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use polyoxide_core::{RetryConfig, DEFAULT_POOL_SIZE, DEFAULT_TIMEOUT_MS};
 
     #[test]
     fn test_builder_default() {
         let builder = GammaBuilder::default();
-        assert_eq!(builder.base_url, DEFAULT_BASE_URL);
-        assert_eq!(builder.timeout_ms, DEFAULT_TIMEOUT_MS);
-        assert_eq!(builder.pool_size, DEFAULT_POOL_SIZE);
+        assert_eq!(builder.config.base_url, DEFAULT_BASE_URL);
+        assert_eq!(builder.config.timeout_ms, DEFAULT_TIMEOUT_MS);
+        assert_eq!(builder.config.pool_size, DEFAULT_POOL_SIZE);
     }
 
     #[test]
     fn test_builder_custom_url() {
         let builder = GammaBuilder::new().base_url("https://custom.api.com");
-        assert_eq!(builder.base_url, "https://custom.api.com");
+        assert_eq!(builder.config.base_url, "https://custom.api.com");
     }
 
     #[test]
     fn test_builder_custom_timeout() {
         let builder = GammaBuilder::new().timeout_ms(60_000);
-        assert_eq!(builder.timeout_ms, 60_000);
+        assert_eq!(builder.config.timeout_ms, 60_000);
     }
 
     #[test]
     fn test_builder_custom_pool_size() {
         let builder = GammaBuilder::new().pool_size(20);
-        assert_eq!(builder.pool_size, 20);
+        assert_eq!(builder.config.pool_size, 20);
     }
 
     #[test]
@@ -207,7 +168,7 @@ mod tests {
             max_backoff_ms: 30_000,
         };
         let builder = GammaBuilder::new().with_retry_config(config);
-        let config = builder.retry_config.unwrap();
+        let config = builder.config.retry_config.unwrap();
         assert_eq!(config.max_retries, 5);
         assert_eq!(config.initial_backoff_ms, 1000);
     }
@@ -227,7 +188,7 @@ mod tests {
     #[test]
     fn test_builder_custom_max_concurrent() {
         let builder = GammaBuilder::new().max_concurrent(10);
-        assert_eq!(builder.max_concurrent, Some(10));
+        assert_eq!(builder.config.max_concurrent, Some(10));
     }
 
     #[tokio::test]

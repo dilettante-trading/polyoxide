@@ -2233,3 +2233,61 @@ async fn a_relayer_refusal_keeps_its_reason() {
     }
     mock.assert_async().await;
 }
+
+#[tokio::test]
+async fn a_session_signer_post_outlasts_the_client_timeout() {
+    // The two session-signer posts wait five minutes, as py-sdk's do, because
+    // the relayer broadcasts the batch before it answers. A client that gives
+    // up after 100ms, and a relayer that answers the authorization after 400ms.
+    let v = relay_vectors();
+    let mut server = Server::new_async().await;
+    let mock = server
+        .mock("POST", "/v1/session-signers/authorizations")
+        .with_status(200)
+        .with_header("content-type", "application/json")
+        .with_body_from_request(|_| {
+            std::thread::sleep(std::time::Duration::from_millis(400));
+            br#"{"operationId":"op-1","status":"SUBMITTED","transactionHash":null,"transactionId":"tx-9"}"#
+                .to_vec()
+        })
+        .expect(1)
+        .create_async()
+        .await;
+
+    let config = BuilderConfig::new("builder-key".into(), "c2VjcmV0".into(), Some("pp".into()));
+    let account = BuilderAccount::new(TEST_PRIVATE_KEY, Some(config)).unwrap();
+    let wallet: alloy::primitives::Address = v["wallet"].as_str().unwrap().parse().unwrap();
+    let client = RelayClient::builder()
+        .expect("builder")
+        .url(&server.url())
+        .expect("valid mock URL")
+        .timeout_ms(100)
+        .with_account(account)
+        .wallet_type(polyoxide_relay::WalletType::DepositWallet)
+        .deposit_wallet(wallet)
+        .build()
+        .expect("build client");
+
+    let session: alloy::primitives::Address =
+        v["session_signer"].as_str().unwrap().parse().unwrap();
+    let (_, request) = client
+        .authorize_session_signer_typed_data_with_valid_until(
+            wallet,
+            session,
+            vec![polyoxide_core::SessionSignerScope::Clob],
+            1815534000,
+            4,
+            1800000600,
+        )
+        .unwrap();
+    let resp = client
+        .submit_session_signer_authorization(
+            &request,
+            v["authorize_batch"]["signature"].as_str().unwrap(),
+            "idem-1",
+        )
+        .await
+        .expect("the post waits past the client's 100ms timeout");
+    assert_eq!(resp.transaction_id, "tx-9");
+    mock.assert_async().await;
+}

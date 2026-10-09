@@ -1,7 +1,7 @@
 use polyoxide_core::{
     polymarket::{self, PolymarketRetryPolicy},
-    DynAuthenticator, HttpClient, HttpClientBuilder, RateLimitStatus, Request, RetryConfig,
-    SignerLimiter, Tier, TradingRequest, DEFAULT_POOL_SIZE, DEFAULT_TIMEOUT_MS,
+    ClientConfig, DynAuthenticator, HttpClient, RateLimitStatus, Request, SignerLimiter, Tier,
+    TradingRequest,
 };
 use reqwest::Method;
 
@@ -826,35 +826,29 @@ pub struct SignedOrderPayload {
 }
 
 /// Builder for CLOB client
+///
+/// It allows 8 concurrent in-flight requests by default.
 pub struct ClobBuilder {
-    base_url: String,
-    timeout_ms: u64,
-    pool_size: usize,
+    config: ClientConfig,
     chain: Chain,
     signature_type: Option<SignatureType>,
     builder_code: B256,
     account: Option<Account>,
     #[cfg(feature = "gamma")]
     gamma: Option<Gamma>,
-    retry_config: Option<RetryConfig>,
-    max_concurrent: Option<usize>,
 }
 
 impl ClobBuilder {
     /// Create a new builder with default configuration
     pub fn new() -> Self {
         Self {
-            base_url: DEFAULT_BASE_URL.to_string(),
-            timeout_ms: DEFAULT_TIMEOUT_MS,
-            pool_size: DEFAULT_POOL_SIZE,
+            config: ClientConfig::new(DEFAULT_BASE_URL, 8),
             chain: Chain::PolygonMainnet,
             signature_type: None,
             builder_code: B256::ZERO,
             account: None,
             #[cfg(feature = "gamma")]
             gamma: None,
-            retry_config: None,
-            max_concurrent: None,
         }
     }
 
@@ -864,23 +858,7 @@ impl ClobBuilder {
         self
     }
 
-    /// Set base URL for the API
-    pub fn base_url(mut self, url: impl Into<String>) -> Self {
-        self.base_url = url.into();
-        self
-    }
-
-    /// Set request timeout in milliseconds
-    pub fn timeout_ms(mut self, timeout: u64) -> Self {
-        self.timeout_ms = timeout;
-        self
-    }
-
-    /// Set connection pool size
-    pub fn pool_size(mut self, size: usize) -> Self {
-        self.pool_size = size;
-        self
-    }
+    polyoxide_core::client_config_setters!(config);
 
     /// Set chain
     pub fn chain(mut self, chain: Chain) -> Self {
@@ -937,20 +915,6 @@ impl ClobBuilder {
         self
     }
 
-    /// Set retry configuration for 429 responses
-    pub fn with_retry_config(mut self, config: RetryConfig) -> Self {
-        self.retry_config = Some(config);
-        self
-    }
-
-    /// Set the maximum number of concurrent in-flight requests.
-    ///
-    /// Default: 8. Prevents Cloudflare 1015 errors from request bursts.
-    pub fn max_concurrent(mut self, max: usize) -> Self {
-        self.max_concurrent = Some(max);
-        self
-    }
-
     /// Build the CLOB client
     pub fn build(self) -> Result<Clob, ClobError> {
         // The IP table and the per-signer buckets over one hold, so a 429
@@ -958,16 +922,12 @@ impl ClobBuilder {
         // tier and telemetry it adopts.
         let throttle = polymarket::clob_throttle();
         let signer_limiter = throttle.signer().clone();
-        let mut builder = HttpClientBuilder::new(&self.base_url)
-            .timeout_ms(self.timeout_ms)
-            .pool_size(self.pool_size)
+        let http_client = self
+            .config
+            .http_builder()
             .with_throttle(throttle)
             .with_retry_policy(PolymarketRetryPolicy)
-            .with_max_concurrent(self.max_concurrent.unwrap_or(8));
-        if let Some(config) = self.retry_config {
-            builder = builder.with_retry_config(config);
-        }
-        let http_client = builder.build()?;
+            .build()?;
 
         let signature_type = self.signature_type.unwrap_or_else(|| {
             self.account
@@ -981,8 +941,8 @@ impl ClobBuilder {
             gamma
         } else {
             polyoxide_gamma::Gamma::builder()
-                .timeout_ms(self.timeout_ms)
-                .pool_size(self.pool_size)
+                .timeout_ms(self.config.timeout_ms)
+                .pool_size(self.config.pool_size)
                 .build()
                 .map_err(|e| {
                     ClobError::service(format!("Failed to build default Gamma client: {}", e))
@@ -1011,6 +971,7 @@ impl Default for ClobBuilder {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use polyoxide_core::RetryConfig;
 
     #[test]
     fn build_order_v2_sets_builder_and_timestamp() {
@@ -1066,7 +1027,7 @@ mod tests {
     #[test]
     fn test_builder_custom_max_concurrent() {
         let builder = ClobBuilder::new().max_concurrent(16);
-        assert_eq!(builder.max_concurrent, Some(16));
+        assert_eq!(builder.config.max_concurrent, Some(16));
     }
 
     #[tokio::test]
@@ -1097,7 +1058,7 @@ mod tests {
             max_backoff_ms: 30_000,
         };
         let builder = ClobBuilder::new().with_retry_config(config);
-        let config = builder.retry_config.unwrap();
+        let config = builder.config.retry_config.unwrap();
         assert_eq!(config.max_retries, 5);
         assert_eq!(config.initial_backoff_ms, 1000);
     }

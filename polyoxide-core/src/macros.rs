@@ -46,3 +46,67 @@ macro_rules! impl_api_error_conversions {
         }
     };
 }
+
+/// Generates a client builder's five transport setters over a
+/// `ClientConfig` field: `base_url`, `timeout_ms`, `pool_size`,
+/// `with_retry_config` and `max_concurrent`.
+///
+/// Invoke it inside the builder's `impl`, naming the field that holds the
+/// config. The builder's `build` reads the config back through
+/// `ClientConfig::http_builder`.
+///
+/// ```
+/// use polyoxide_core::ClientConfig;
+///
+/// pub struct MyBuilder {
+///     config: ClientConfig,
+/// }
+///
+/// impl MyBuilder {
+///     polyoxide_core::client_config_setters!(config);
+/// }
+///
+/// let builder = MyBuilder { config: ClientConfig::new("https://example.com", 4) }
+///     .timeout_ms(5_000)
+///     .max_concurrent(2);
+/// assert_eq!(builder.config.timeout_ms, 5_000);
+/// assert_eq!(builder.config.max_concurrent, Some(2));
+/// ```
+#[macro_export]
+macro_rules! client_config_setters {
+    ($config:ident) => {
+        /// Set the base URL for the API.
+        pub fn base_url(mut self, url: impl Into<String>) -> Self {
+            self.$config.base_url = url.into();
+            self
+        }
+
+        /// Set the request timeout in milliseconds (default 30,000).
+        pub fn timeout_ms(mut self, timeout: u64) -> Self {
+            self.$config.timeout_ms = timeout;
+            self
+        }
+
+        /// Set the number of idle connections kept per host (default 10).
+        pub fn pool_size(mut self, size: usize) -> Self {
+            self.$config.pool_size = size;
+            self
+        }
+
+        /// Set the retry schedule: how many retries, and the backoff between
+        /// them.
+        pub fn with_retry_config(mut self, config: $crate::RetryConfig) -> Self {
+            self.$config.retry_config = Some(config);
+            self
+        }
+
+        /// Set the maximum number of concurrent in-flight requests.
+        ///
+        /// Each client has its own default. At least 1: zero admits no
+        /// request, so every send waits forever.
+        pub fn max_concurrent(mut self, max: usize) -> Self {
+            self.$config.max_concurrent = Some(max);
+            self
+        }
+    };
+}

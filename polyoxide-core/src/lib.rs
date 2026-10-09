@@ -43,6 +43,7 @@ pub mod macros;
 pub mod auth;
 pub mod capacity;
 pub mod client;
+pub mod config;
 pub mod error;
 pub mod hold;
 pub mod hooks;
@@ -77,6 +78,7 @@ pub use capacity::CapacityBucket;
 pub use client::{
     retry_after_header, HttpClient, HttpClientBuilder, DEFAULT_POOL_SIZE, DEFAULT_TIMEOUT_MS,
 };
+pub use config::ClientConfig;
 pub use error::ApiError;
 pub use hold::Hold;
 pub use hooks::{
