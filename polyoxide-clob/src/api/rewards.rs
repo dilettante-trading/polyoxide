@@ -323,22 +323,13 @@ pub struct UserEarningsRequest {
 }
 
 impl UserEarningsRequest {
-    /// Query earnings for a maker address other than the authenticated wallet.
-    pub fn maker_address(mut self, address: impl Into<String>) -> Self {
-        self.request = self.request.query("maker_address", address.into());
-        self
-    }
-
-    /// Restrict results to sponsored reward markets (default: `false`).
-    pub fn sponsored(mut self, sponsored: bool) -> Self {
-        self.request = self.request.query("sponsored", sponsored);
-        self
-    }
-
-    /// Continue from a pagination cursor.
-    pub fn next_cursor(mut self, cursor: impl Into<String>) -> Self {
-        self.request = self.request.query("next_cursor", cursor.into());
-        self
+    polyoxide_core::query_setters! {
+        /// Query earnings for a maker address other than the authenticated wallet.
+        maker_address: impl Into<String> => "maker_address",
+        /// Restrict results to sponsored reward markets (default: `false`).
+        sponsored: bool => "sponsored",
+        /// Continue from a pagination cursor.
+        next_cursor: impl Into<String> => "next_cursor",
     }
 
     /// Execute the request.
@@ -353,16 +344,11 @@ pub struct UserTotalEarningsRequest {
 }
 
 impl UserTotalEarningsRequest {
-    /// Query totals for a maker address other than the authenticated wallet.
-    pub fn maker_address(mut self, address: impl Into<String>) -> Self {
-        self.request = self.request.query("maker_address", address.into());
-        self
-    }
-
-    /// Restrict results to sponsored reward markets (default: `false`).
-    pub fn sponsored(mut self, sponsored: bool) -> Self {
-        self.request = self.request.query("sponsored", sponsored);
-        self
+    polyoxide_core::query_setters! {
+        /// Query totals for a maker address other than the authenticated wallet.
+        maker_address: impl Into<String> => "maker_address",
+        /// Restrict results to sponsored reward markets (default: `false`).
+        sponsored: bool => "sponsored",
     }
 
     /// Execute the request.
@@ -377,10 +363,9 @@ pub struct UserPercentagesRequest {
 }
 
 impl UserPercentagesRequest {
-    /// Query percentages for a maker address other than the authenticated wallet.
-    pub fn maker_address(mut self, address: impl Into<String>) -> Self {
-        self.request = self.request.query("maker_address", address.into());
-        self
+    polyoxide_core::query_setters! {
+        /// Query percentages for a maker address other than the authenticated wallet.
+        maker_address: impl Into<String> => "maker_address",
     }
 
     /// Execute the request.
@@ -395,16 +380,11 @@ pub struct ListRewardMarkets {
 }
 
 impl ListRewardMarkets {
-    /// Restrict results to sponsored reward markets (default: `false`).
-    pub fn sponsored(mut self, sponsored: bool) -> Self {
-        self.request = self.request.query("sponsored", sponsored);
-        self
-    }
-
-    /// Continue from a pagination cursor; `"LTE="` marks the last page.
-    pub fn next_cursor(mut self, cursor: impl Into<String>) -> Self {
-        self.request = self.request.query("next_cursor", cursor.into());
-        self
+    polyoxide_core::query_setters! {
+        /// Restrict results to sponsored reward markets (default: `false`).
+        sponsored: bool => "sponsored",
+        /// Continue from a pagination cursor; `"LTE="` marks the last page.
+        next_cursor: impl Into<String> => "next_cursor",
     }
 
     /// Execute the request.
@@ -419,16 +399,11 @@ pub struct RewardMarketRequest {
 }
 
 impl RewardMarketRequest {
-    /// Restrict results to sponsored reward markets (default: `false`).
-    pub fn sponsored(mut self, sponsored: bool) -> Self {
-        self.request = self.request.query("sponsored", sponsored);
-        self
-    }
-
-    /// Continue from a pagination cursor.
-    pub fn next_cursor(mut self, cursor: impl Into<String>) -> Self {
-        self.request = self.request.query("next_cursor", cursor.into());
-        self
+    polyoxide_core::query_setters! {
+        /// Restrict results to sponsored reward markets (default: `false`).
+        sponsored: bool => "sponsored",
+        /// Continue from a pagination cursor.
+        next_cursor: impl Into<String> => "next_cursor",
     }
 
     /// Execute the request.
@@ -443,88 +418,35 @@ pub struct ListMultiRewardMarkets {
 }
 
 impl ListMultiRewardMarkets {
-    /// Free-text search over market questions.
-    pub fn query_text(mut self, q: impl Into<String>) -> Self {
-        self.request = self.request.query("q", q.into());
-        self
-    }
-
-    /// Filter by tag slug.
-    pub fn tag_slug(mut self, slug: impl Into<String>) -> Self {
-        self.request = self.request.query("tag_slug", slug.into());
-        self
-    }
-
-    /// Filter by event ID.
-    pub fn event_id(mut self, event_id: impl Into<String>) -> Self {
-        self.request = self.request.query("event_id", event_id.into());
-        self
-    }
-
-    /// Filter by event title.
-    pub fn event_title(mut self, title: impl Into<String>) -> Self {
-        self.request = self.request.query("event_title", title.into());
-        self
-    }
-
-    /// Sort field.
-    pub fn order_by(mut self, order_by: MultiMarketOrderBy) -> Self {
-        self.request = self.request.query("order_by", order_by.as_str());
-        self
-    }
-
-    /// Sort direction.
-    pub fn position(mut self, position: SortPosition) -> Self {
-        self.request = self.request.query("position", position.as_str());
-        self
-    }
-
-    /// Minimum 24-hour volume.
-    pub fn min_volume_24hr(mut self, value: f64) -> Self {
-        self.request = self.request.query("min_volume_24hr", value);
-        self
-    }
-
-    /// Maximum 24-hour volume.
-    pub fn max_volume_24hr(mut self, value: f64) -> Self {
-        self.request = self.request.query("max_volume_24hr", value);
-        self
-    }
-
-    /// Minimum spread.
-    pub fn min_spread(mut self, value: f64) -> Self {
-        self.request = self.request.query("min_spread", value);
-        self
-    }
-
-    /// Maximum spread.
-    pub fn max_spread(mut self, value: f64) -> Self {
-        self.request = self.request.query("max_spread", value);
-        self
-    }
-
-    /// Minimum price.
-    pub fn min_price(mut self, value: f64) -> Self {
-        self.request = self.request.query("min_price", value);
-        self
-    }
-
-    /// Maximum price.
-    pub fn max_price(mut self, value: f64) -> Self {
-        self.request = self.request.query("max_price", value);
-        self
-    }
-
-    /// Page size (default 100, max 500).
-    pub fn page_size(mut self, page_size: u32) -> Self {
-        self.request = self.request.query("page_size", page_size);
-        self
-    }
-
-    /// Continue from a pagination cursor; `"LTE="` marks the last page.
-    pub fn next_cursor(mut self, cursor: impl Into<String>) -> Self {
-        self.request = self.request.query("next_cursor", cursor.into());
-        self
+    polyoxide_core::query_setters! {
+        /// Free-text search over market questions.
+        query_text: impl Into<String> => "q",
+        /// Filter by tag slug.
+        tag_slug: impl Into<String> => "tag_slug",
+        /// Filter by event ID.
+        event_id: impl Into<String> => "event_id",
+        /// Filter by event title.
+        event_title: impl Into<String> => "event_title",
+        /// Sort field.
+        order_by(order_by: MultiMarketOrderBy) => "order_by" = order_by.as_str(),
+        /// Sort direction.
+        position(position: SortPosition) => "position" = position.as_str(),
+        /// Minimum 24-hour volume.
+        min_volume_24hr: f64 => "min_volume_24hr",
+        /// Maximum 24-hour volume.
+        max_volume_24hr: f64 => "max_volume_24hr",
+        /// Minimum spread.
+        min_spread: f64 => "min_spread",
+        /// Maximum spread.
+        max_spread: f64 => "max_spread",
+        /// Minimum price.
+        min_price: f64 => "min_price",
+        /// Maximum price.
+        max_price: f64 => "max_price",
+        /// Page size (default 100, max 500).
+        page_size: u32 => "page_size",
+        /// Continue from a pagination cursor; `"LTE="` marks the last page.
+        next_cursor: impl Into<String> => "next_cursor",
     }
 
     /// Execute the request.
@@ -539,88 +461,35 @@ pub struct ListUserRewardMarkets {
 }
 
 impl ListUserRewardMarkets {
-    /// Restrict to a specific day (`YYYY-MM-DD`).
-    pub fn date(mut self, date: impl Into<String>) -> Self {
-        self.request = self.request.query("date", date.into());
-        self
-    }
-
-    /// Query a maker address other than the authenticated wallet.
-    pub fn maker_address(mut self, address: impl Into<String>) -> Self {
-        self.request = self.request.query("maker_address", address.into());
-        self
-    }
-
-    /// Restrict results to sponsored reward markets (default: `false`).
-    pub fn sponsored(mut self, sponsored: bool) -> Self {
-        self.request = self.request.query("sponsored", sponsored);
-        self
-    }
-
-    /// Free-text search over market questions.
-    pub fn query_text(mut self, q: impl Into<String>) -> Self {
-        self.request = self.request.query("q", q.into());
-        self
-    }
-
-    /// Filter by tag slug.
-    pub fn tag_slug(mut self, slug: impl Into<String>) -> Self {
-        self.request = self.request.query("tag_slug", slug.into());
-        self
-    }
-
-    /// Restrict to the caller's favorited markets (default: `false`).
-    pub fn favorite_markets(mut self, value: bool) -> Self {
-        self.request = self.request.query("favorite_markets", value);
-        self
-    }
-
-    /// Restrict to markets with no competing liquidity (default: `false`).
-    pub fn no_competition(mut self, value: bool) -> Self {
-        self.request = self.request.query("no_competition", value);
-        self
-    }
-
-    /// Restrict to markets with mergeable positions (default: `false`).
-    pub fn only_mergeable(mut self, value: bool) -> Self {
-        self.request = self.request.query("only_mergeable", value);
-        self
-    }
-
-    /// Restrict to markets where the caller has open orders (default: `false`).
-    pub fn only_open_orders(mut self, value: bool) -> Self {
-        self.request = self.request.query("only_open_orders", value);
-        self
-    }
-
-    /// Restrict to markets where the caller has open positions (default: `false`).
-    pub fn only_open_positions(mut self, value: bool) -> Self {
-        self.request = self.request.query("only_open_positions", value);
-        self
-    }
-
-    /// Sort field.
-    pub fn order_by(mut self, order_by: UserRewardMarketOrderBy) -> Self {
-        self.request = self.request.query("order_by", order_by.as_str());
-        self
-    }
-
-    /// Sort direction.
-    pub fn position(mut self, position: SortPosition) -> Self {
-        self.request = self.request.query("position", position.as_str());
-        self
-    }
-
-    /// Page size (default 100, max 500).
-    pub fn page_size(mut self, page_size: u32) -> Self {
-        self.request = self.request.query("page_size", page_size);
-        self
-    }
-
-    /// Continue from a pagination cursor; `"LTE="` marks the last page.
-    pub fn next_cursor(mut self, cursor: impl Into<String>) -> Self {
-        self.request = self.request.query("next_cursor", cursor.into());
-        self
+    polyoxide_core::query_setters! {
+        /// Restrict to a specific day (`YYYY-MM-DD`).
+        date: impl Into<String> => "date",
+        /// Query a maker address other than the authenticated wallet.
+        maker_address: impl Into<String> => "maker_address",
+        /// Restrict results to sponsored reward markets (default: `false`).
+        sponsored: bool => "sponsored",
+        /// Free-text search over market questions.
+        query_text: impl Into<String> => "q",
+        /// Filter by tag slug.
+        tag_slug: impl Into<String> => "tag_slug",
+        /// Restrict to the caller's favorited markets (default: `false`).
+        favorite_markets: bool => "favorite_markets",
+        /// Restrict to markets with no competing liquidity (default: `false`).
+        no_competition: bool => "no_competition",
+        /// Restrict to markets with mergeable positions (default: `false`).
+        only_mergeable: bool => "only_mergeable",
+        /// Restrict to markets where the caller has open orders (default: `false`).
+        only_open_orders: bool => "only_open_orders",
+        /// Restrict to markets where the caller has open positions (default: `false`).
+        only_open_positions: bool => "only_open_positions",
+        /// Sort field.
+        order_by(order_by: UserRewardMarketOrderBy) => "order_by" = order_by.as_str(),
+        /// Sort direction.
+        position(position: SortPosition) => "position" = position.as_str(),
+        /// Page size (default 100, max 500).
+        page_size: u32 => "page_size",
+        /// Continue from a pagination cursor; `"LTE="` marks the last page.
+        next_cursor: impl Into<String> => "next_cursor",
     }
 
     /// Execute the request.

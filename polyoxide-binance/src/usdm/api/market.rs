@@ -139,16 +139,11 @@ pub struct GetKlines {
 }
 
 impl GetKlines {
-    /// Earliest candle start, Unix milliseconds.
-    pub fn start_time(mut self, ms: u64) -> Self {
-        self.request = self.request.query("startTime", ms);
-        self
-    }
-
-    /// Latest candle start, Unix milliseconds.
-    pub fn end_time(mut self, ms: u64) -> Self {
-        self.request = self.request.query("endTime", ms);
-        self
+    polyoxide_core::query_setters! {
+        /// Earliest candle start, Unix milliseconds.
+        start_time: u64 => "startTime",
+        /// Latest candle start, Unix milliseconds.
+        end_time: u64 => "endTime",
     }
 
     /// Candles to return, up to 1500. Sets the weight: up to 100 costs 1, up
@@ -179,29 +174,16 @@ pub struct GetFundingRate {
 }
 
 impl GetFundingRate {
-    /// Restrict to one symbol. Without it, the most recent `limit` funding
-    /// events across all symbols.
-    pub fn symbol(mut self, symbol: &Symbol) -> Self {
-        self.request = self.request.query("symbol", symbol);
-        self
-    }
-
-    /// Earliest funding time, Unix milliseconds.
-    pub fn start_time(mut self, ms: u64) -> Self {
-        self.request = self.request.query("startTime", ms);
-        self
-    }
-
-    /// Latest funding time, Unix milliseconds.
-    pub fn end_time(mut self, ms: u64) -> Self {
-        self.request = self.request.query("endTime", ms);
-        self
-    }
-
-    /// Rows to return, up to 1000.
-    pub fn limit(mut self, limit: u32) -> Self {
-        self.request = self.request.query("limit", limit);
-        self
+    polyoxide_core::query_setters! {
+        /// Restrict to one symbol. Without it, the most recent `limit` funding
+        /// events across all symbols.
+        symbol: &Symbol => "symbol",
+        /// Earliest funding time, Unix milliseconds.
+        start_time: u64 => "startTime",
+        /// Latest funding time, Unix milliseconds.
+        end_time: u64 => "endTime",
+        /// Rows to return, up to 1000.
+        limit: u32 => "limit",
     }
 
     /// What sending this request will cost.
@@ -222,28 +204,15 @@ pub struct GetAggTrades {
 }
 
 impl GetAggTrades {
-    /// Start from this aggregate trade id, inclusive.
-    pub fn from_id(mut self, id: u64) -> Self {
-        self.request = self.request.query("fromId", id);
-        self
-    }
-
-    /// Earliest trade time, Unix milliseconds, within the last 48 hours.
-    pub fn start_time(mut self, ms: u64) -> Self {
-        self.request = self.request.query("startTime", ms);
-        self
-    }
-
-    /// Latest trade time, Unix milliseconds.
-    pub fn end_time(mut self, ms: u64) -> Self {
-        self.request = self.request.query("endTime", ms);
-        self
-    }
-
-    /// Rows to return, up to 1000. The weight is 20 whatever the limit.
-    pub fn limit(mut self, limit: u32) -> Self {
-        self.request = self.request.query("limit", limit);
-        self
+    polyoxide_core::query_setters! {
+        /// Start from this aggregate trade id, inclusive.
+        from_id: u64 => "fromId",
+        /// Earliest trade time, Unix milliseconds, within the last 48 hours.
+        start_time: u64 => "startTime",
+        /// Latest trade time, Unix milliseconds.
+        end_time: u64 => "endTime",
+        /// Rows to return, up to 1000. The weight is 20 whatever the limit.
+        limit: u32 => "limit",
     }
 
     /// What sending this request will cost.

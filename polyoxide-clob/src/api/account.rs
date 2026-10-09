@@ -168,40 +168,19 @@ pub struct ListClobTrades {
 }
 
 impl ListClobTrades {
-    /// Filter by specific trade ID
-    pub fn id(mut self, id: impl Into<String>) -> Self {
-        self.request = self.request.query("id", id.into());
-        self
-    }
-
-    /// Filter by market (condition ID)
-    pub fn market(mut self, condition_id: impl Into<String>) -> Self {
-        self.request = self.request.query("market", condition_id.into());
-        self
-    }
-
-    /// Filter by asset (token ID)
-    pub fn asset_id(mut self, token_id: impl Into<String>) -> Self {
-        self.request = self.request.query("asset_id", token_id.into());
-        self
-    }
-
-    /// Filter trades before this timestamp
-    pub fn before(mut self, timestamp: impl Into<String>) -> Self {
-        self.request = self.request.query("before", timestamp.into());
-        self
-    }
-
-    /// Filter trades after this timestamp
-    pub fn after(mut self, timestamp: impl Into<String>) -> Self {
-        self.request = self.request.query("after", timestamp.into());
-        self
-    }
-
-    /// Continue from a pagination cursor
-    pub fn next_cursor(mut self, cursor: impl Into<String>) -> Self {
-        self.request = self.request.query("next_cursor", cursor.into());
-        self
+    polyoxide_core::query_setters! {
+        /// Filter by specific trade ID
+        id: impl Into<String> => "id",
+        /// Filter by market (condition ID)
+        market: impl Into<String> => "market",
+        /// Filter by asset (token ID)
+        asset_id: impl Into<String> => "asset_id",
+        /// Filter trades before this timestamp
+        before: impl Into<String> => "before",
+        /// Filter trades after this timestamp
+        after: impl Into<String> => "after",
+        /// Continue from a pagination cursor
+        next_cursor: impl Into<String> => "next_cursor",
     }
 
     /// Execute the request
@@ -216,46 +195,21 @@ pub struct ListBuilderTrades {
 }
 
 impl ListBuilderTrades {
-    /// Filter trades after this cursor
-    pub fn after(mut self, cursor: impl Into<String>) -> Self {
-        self.request = self.request.query("after", cursor.into());
-        self
-    }
-
-    /// Filter by maker address
-    pub fn maker_address(mut self, address: impl Into<String>) -> Self {
-        self.request = self.request.query("maker_address", address.into());
-        self
-    }
-
-    /// Filter by market (condition ID)
-    pub fn market(mut self, condition_id: impl Into<String>) -> Self {
-        self.request = self.request.query("market", condition_id.into());
-        self
-    }
-
-    /// Filter by a specific trade ID
-    pub fn id(mut self, id: impl Into<String>) -> Self {
-        self.request = self.request.query("id", id.into());
-        self
-    }
-
-    /// Filter by asset (token ID)
-    pub fn asset_id(mut self, token_id: impl Into<String>) -> Self {
-        self.request = self.request.query("asset_id", token_id.into());
-        self
-    }
-
-    /// Filter trades before this Unix timestamp
-    pub fn before(mut self, timestamp: impl Into<String>) -> Self {
-        self.request = self.request.query("before", timestamp.into());
-        self
-    }
-
-    /// Continue from a pagination cursor
-    pub fn next_cursor(mut self, cursor: impl Into<String>) -> Self {
-        self.request = self.request.query("next_cursor", cursor.into());
-        self
+    polyoxide_core::query_setters! {
+        /// Filter trades after this cursor
+        after: impl Into<String> => "after",
+        /// Filter by maker address
+        maker_address: impl Into<String> => "maker_address",
+        /// Filter by market (condition ID)
+        market: impl Into<String> => "market",
+        /// Filter by a specific trade ID
+        id: impl Into<String> => "id",
+        /// Filter by asset (token ID)
+        asset_id: impl Into<String> => "asset_id",
+        /// Filter trades before this Unix timestamp
+        before: impl Into<String> => "before",
+        /// Continue from a pagination cursor
+        next_cursor: impl Into<String> => "next_cursor",
     }
 
     /// Execute the request

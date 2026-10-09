@@ -374,13 +374,12 @@ pub struct ListClobMarkets {
 }
 
 impl ListClobMarkets {
-    /// Continue from a pagination cursor.
-    ///
-    /// Pass the `next_cursor` value from the previous response. The end of the
-    /// list is signalled by a `next_cursor` of `"LTE="`.
-    pub fn next_cursor(mut self, cursor: impl Into<String>) -> Self {
-        self.request = self.request.query("next_cursor", cursor.into());
-        self
+    polyoxide_core::query_setters! {
+        /// Continue from a pagination cursor.
+        ///
+        /// Pass the `next_cursor` value from the previous response. The end of the
+        /// list is signalled by a `next_cursor` of `"LTE="`.
+        next_cursor: impl Into<String> => "next_cursor",
     }
 
     /// Execute the request.

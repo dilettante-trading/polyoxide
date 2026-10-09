@@ -151,7 +151,7 @@ subset that is public upstream (`/rewards/markets/current`,
 
 Example: `gamma.markets().list().open(true).send().await?`, `data.leaderboard().get().send().await?`.
 
-**Request builder fluency** — Query parameters are chained with builder methods before `.send().await?`.
+**Request builder fluency** — Query parameters are chained with builder methods before `.send().await?`. The setters come from `polyoxide_core::query_setters!`, one entry per setter keeping its doc comment, name, argument type and key: `name: T => "key"`, `name: impl Into<String>`, `name: many T` (repeats the key), `name: csv T` and `name: csv<I, S>` (comma-joined through `polyoxide_core::csv`, omitted when the joined value is empty), `name(arg: T) => "key" = expr`, `name(arg: T) => "key" if cond` and `name(arg: T) => csv "key" = expr`. Each writes `self.request` (core's `Request`), or the field named by a leading `self.<field>;` (data v2's paged builders use `self.inner;`); a field with an inherent `query`, such as Binance's private `Routed<T>`, which replaces a repeated key, keeps it. Seven setters stay hand-written because they are not single query writes: Binance's `GetKlines::limit` and `GetDepth::limit`, which also re-price the route, and gamma's `GetManyMarkets::include_tag` and the `limit` and `offset` of `QueryByInformation` and `QueryAbridged`, which store fields `send` writes. `tests/query_setters.rs` in gamma, data, clob and Binance calls every setter with a typed value and pins the exact ordered pairs it sends.
 
 **Two auth layers, three signing schemes** — managed through the `Account` type in `polyoxide-clob/src/account/`. Don't conflate them; they use different EIP-712 domains and are verified by different parties:
 

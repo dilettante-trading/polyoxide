@@ -276,31 +276,18 @@ pub struct ListOrders {
 }
 
 impl ListOrders {
-    /// Filter by a specific order ID.
-    ///
-    /// This lifts the live-only restriction: the order is returned whatever its
-    /// status, including canceled or fully matched.
-    pub fn id(mut self, order_id: impl Into<String>) -> Self {
-        self.request = self.request.query("id", order_id.into());
-        self
-    }
-
-    /// Filter by market (condition ID).
-    pub fn market(mut self, condition_id: impl Into<String>) -> Self {
-        self.request = self.request.query("market", condition_id.into());
-        self
-    }
-
-    /// Filter by asset (token ID).
-    pub fn asset_id(mut self, token_id: impl Into<String>) -> Self {
-        self.request = self.request.query("asset_id", token_id.into());
-        self
-    }
-
-    /// Continue from a pagination cursor.
-    pub fn next_cursor(mut self, cursor: impl Into<String>) -> Self {
-        self.request = self.request.query("next_cursor", cursor.into());
-        self
+    polyoxide_core::query_setters! {
+        /// Filter by a specific order ID.
+        ///
+        /// This lifts the live-only restriction: the order is returned whatever its
+        /// status, including canceled or fully matched.
+        id: impl Into<String> => "id",
+        /// Filter by market (condition ID).
+        market: impl Into<String> => "market",
+        /// Filter by asset (token ID).
+        asset_id: impl Into<String> => "asset_id",
+        /// Continue from a pagination cursor.
+        next_cursor: impl Into<String> => "next_cursor",
     }
 
     /// Execute the request.
