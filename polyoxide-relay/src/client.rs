@@ -17,12 +17,12 @@ use alloy::primitives::{address, keccak256, Address, Bytes, B256, U256};
 use alloy::providers::{Provider, ProviderBuilder};
 use alloy::rpc::types::TransactionRequest;
 use alloy::sol_types::{Eip712Domain, SolCall, SolStruct, SolValue};
+use polyoxide_core::reqwest::Method;
 use polyoxide_core::{
     polymarket::{self, PolymarketRetryPolicy},
     ApiError, Authenticator, ClientConfig, DepositWalletRole, DynAuthenticator, HttpClient,
     RequestParts, SessionSignerScope,
 };
-use reqwest::Method;
 use serde::Serialize;
 use std::time::Duration;
 use url::Url;
@@ -291,7 +291,7 @@ impl RelayClient {
         parts: RequestParts,
         auth: Option<&DynAuthenticator<'_>>,
         log_failure: Option<&str>,
-    ) -> Result<reqwest::Response, RelayError> {
+    ) -> Result<polyoxide_core::reqwest::Response, RelayError> {
         self.http_client
             .send(parts, &[], auth)
             .await
@@ -321,7 +321,7 @@ impl RelayClient {
     }
 
     /// GET `url` with no auth.
-    async fn get(&self, url: &Url) -> Result<reqwest::Response, RelayError> {
+    async fn get(&self, url: &Url) -> Result<polyoxide_core::reqwest::Response, RelayError> {
         self.send(Self::parts(Method::GET, url), None, None).await
     }
 
@@ -350,7 +350,7 @@ impl RelayClient {
         url: &Url,
         allow_builder: bool,
         allow_relayer_api_key: bool,
-    ) -> Result<reqwest::Response, RelayError> {
+    ) -> Result<polyoxide_core::reqwest::Response, RelayError> {
         let auth = self.auth()?;
         if !allow_builder && matches!(auth, AuthConfig::Builder(_)) {
             return Err(RelayError::validation(format!(
@@ -1363,15 +1363,15 @@ impl RelayClient {
     /// The `Idempotency-Key` header map, with the key trimmed; a blank key is refused.
     fn idempotency_headers(
         idempotency_key: &str,
-    ) -> Result<reqwest::header::HeaderMap, RelayError> {
+    ) -> Result<polyoxide_core::reqwest::header::HeaderMap, RelayError> {
         let idempotency_key = idempotency_key.trim();
         if idempotency_key.is_empty() {
             return Err(RelayError::validation("idempotency key must not be empty"));
         }
-        let mut headers = reqwest::header::HeaderMap::new();
+        let mut headers = polyoxide_core::reqwest::header::HeaderMap::new();
         headers.insert(
             "Idempotency-Key",
-            reqwest::header::HeaderValue::from_str(idempotency_key)
+            polyoxide_core::reqwest::header::HeaderValue::from_str(idempotency_key)
                 .map_err(|e| RelayError::validation(format!("invalid idempotency key: {e}")))?,
         );
         Ok(headers)
@@ -1770,7 +1770,7 @@ impl RelayClient {
         self.post_json(
             endpoint,
             body,
-            reqwest::header::HeaderMap::new(),
+            polyoxide_core::reqwest::header::HeaderMap::new(),
             true,
             None,
         )
@@ -1789,7 +1789,7 @@ impl RelayClient {
         &self,
         endpoint: &str,
         body: &B,
-        extra_headers: reqwest::header::HeaderMap,
+        extra_headers: polyoxide_core::reqwest::header::HeaderMap,
         allow_relayer_api_key: bool,
         timeout: Option<Duration>,
     ) -> Result<T, RelayError> {
@@ -1849,7 +1849,7 @@ impl Authenticator for RelayGetAuth<'_> {
 /// every attempt.
 struct RelayPostAuth<'a> {
     auth: &'a AuthConfig,
-    extra_headers: &'a reqwest::header::HeaderMap,
+    extra_headers: &'a polyoxide_core::reqwest::header::HeaderMap,
 }
 
 impl Authenticator for RelayPostAuth<'_> {
@@ -1862,8 +1862,8 @@ impl Authenticator for RelayPostAuth<'_> {
             headers.insert(name.clone(), value.clone());
         }
         headers.insert(
-            reqwest::header::CONTENT_TYPE,
-            reqwest::header::HeaderValue::from_static("application/json"),
+            polyoxide_core::reqwest::header::CONTENT_TYPE,
+            polyoxide_core::reqwest::header::HeaderValue::from_static("application/json"),
         );
         parts.headers.extend(headers);
         Ok(())

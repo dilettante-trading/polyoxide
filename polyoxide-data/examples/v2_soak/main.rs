@@ -53,9 +53,9 @@ use std::{
     time::{Duration, Instant, SystemTime, UNIX_EPOCH},
 };
 
+use polyoxide_core::reqwest::Method;
 use polyoxide_core::{polymarket, RateLimiter};
 use polyoxide_test_support::soak::{self, verdict::tolerant as verdict, Pacer};
-use reqwest::Method;
 
 mod probes;
 
@@ -204,7 +204,10 @@ fn push_distinct(into: &mut Vec<String>, seen: &mut HashSet<String>, item: &str,
 
 /// Collects live wallets and markets from the bare trade feed, one page per
 /// second, before any measurement starts.
-async fn bootstrap(http: &reqwest::Client, config: &Config) -> Result<Pools, String> {
+async fn bootstrap(
+    http: &polyoxide_core::reqwest::Client,
+    config: &Config,
+) -> Result<Pools, String> {
     let mut pools = Pools::default();
     let (mut seen_wallets, mut seen_conditions) = (HashSet::new(), HashSet::new());
     let mut cursor: Option<String> = None;
@@ -279,7 +282,7 @@ struct Lane {
 }
 
 struct Run {
-    http: reqwest::Client,
+    http: polyoxide_core::reqwest::Client,
     base_url: Arc<str>,
     lanes: Vec<Lane>,
     seen: Arc<SeenUrls>,
@@ -287,7 +290,7 @@ struct Run {
     concurrency: usize,
 }
 
-async fn send_probe(http: &reqwest::Client, url: &str) -> Reply {
+async fn send_probe(http: &polyoxide_core::reqwest::Client, url: &str) -> Reply {
     let response = match http.get(url).send().await {
         Ok(response) => response,
         Err(_) => return Reply::Error(0),
@@ -502,8 +505,8 @@ async fn main() -> ExitCode {
         }
     };
 
-    let http = match reqwest::Client::builder()
-        // The workspace enables reqwest's `gzip` feature for polyoxide-binance;
+    let http = match polyoxide_core::reqwest::Client::builder()
+        // Core enables reqwest's `gzip` feature, so a client asks for it;
         // keep this soak's requests as they were measured.
         .gzip(false)
         .timeout(Duration::from_secs(30))

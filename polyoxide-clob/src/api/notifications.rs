@@ -1,7 +1,7 @@
 use std::sync::Arc;
 
+use polyoxide_core::reqwest::Method;
 use polyoxide_core::{DynAuthenticator, HttpClient, QueryBuilder, Request};
-use reqwest::Method;
 use serde::{Deserialize, Serialize};
 
 use crate::{error::ClobError, types::SignatureType};

@@ -125,7 +125,7 @@ fn region_blocked() {
 /// status.
 fn raw(status: u16, body: &str) -> ApiError {
     ErrorResponse::new(
-        reqwest::StatusCode::from_u16(status).unwrap(),
+        polyoxide_core::reqwest::StatusCode::from_u16(status).unwrap(),
         Default::default(),
         body,
     )

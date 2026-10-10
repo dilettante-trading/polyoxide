@@ -155,7 +155,7 @@ async fn load_probes(perps: &Perps, addresses: usize, need_addresses: bool) -> P
 // ── Drivers ─────────────────────────────────────────────────────
 
 async fn ramp_stage(
-    client: &reqwest::Client,
+    client: &polyoxide_core::reqwest::Client,
     probes: &Probes,
     route: Route,
     base_url: &str,
@@ -219,8 +219,8 @@ async fn ramp_stage(
 async fn run_ramp(cfg: &Config, route: Route) -> ExitCode {
     let perps = Perps::builder().base_url(&cfg.base_url).build().unwrap();
     let probes = load_probes(&perps, cfg.addresses, route == Route::Portfolio).await;
-    let client = reqwest::Client::builder()
-        // The workspace enables reqwest's `gzip` feature for polyoxide-binance;
+    let client = polyoxide_core::reqwest::Client::builder()
+        // Core enables reqwest's `gzip` feature, so a client asks for it;
         // keep this soak's requests as they were measured.
         .gzip(false)
         .timeout(Duration::from_secs(30))

@@ -1,9 +1,9 @@
+use polyoxide_core::reqwest::Method;
 use polyoxide_core::{
     polymarket::{self, PolymarketRetryPolicy},
     ClientConfig, DynAuthenticator, HttpClient, RateLimitStatus, Request, SignerLimiter, Tier,
     TradingRequest,
 };
-use reqwest::Method;
 
 use crate::{
     account::{Account, Credentials},

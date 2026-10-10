@@ -81,14 +81,14 @@ fn cases() -> Vec<(Route, String)> {
 /// Sends one request and returns the minute's count after it. Stops the probe
 /// on any answer but 200: a refused request is not a call the client makes,
 /// and sending on after a 429 is how a ban starts.
-async fn used_after(client: &reqwest::Client, path: &str) -> u32 {
+async fn used_after(client: &polyoxide_core::reqwest::Client, path: &str) -> u32 {
     let response = client
         .get(format!("{BASE}{path}"))
         .send()
         .await
         .unwrap_or_else(|e| panic!("{path}: {e}"));
     let status = response.status();
-    if status != reqwest::StatusCode::OK {
+    if status != polyoxide_core::reqwest::StatusCode::OK {
         let retry_after = response
             .headers()
             .get("retry-after")
@@ -122,7 +122,7 @@ async fn wait_for_a_fresh_minute() {
 
 #[tokio::main]
 async fn main() {
-    let client = reqwest::Client::builder()
+    let client = polyoxide_core::reqwest::Client::builder()
         .gzip(true)
         .timeout(Duration::from_secs(30))
         .build()

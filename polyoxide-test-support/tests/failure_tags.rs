@@ -11,10 +11,10 @@
 
 use std::time::Duration;
 
+use polyoxide_core::reqwest::StatusCode;
 use polyoxide_core::{ApiError, ErrorResponse};
 use polyoxide_test_support::{tag_for, Tag};
 use polyoxide_venue::Classify;
-use reqwest::StatusCode;
 use tokio::net::TcpListener;
 
 /// The tag `err` fails a test with, through `or_fail` or `fail`.
@@ -141,7 +141,7 @@ async fn network_timeout() {
         tokio::time::sleep(Duration::from_secs(30)).await;
         drop(socket);
     });
-    let client = reqwest::Client::builder()
+    let client = polyoxide_core::reqwest::Client::builder()
         .timeout(Duration::from_millis(200))
         .build()
         .unwrap();
@@ -163,7 +163,7 @@ async fn network_connect() {
     let listener = TcpListener::bind("127.0.0.1:0").await.unwrap();
     let url = format!("http://{}/ok", listener.local_addr().unwrap());
     drop(listener);
-    let source = reqwest::get(&url).await.unwrap_err();
+    let source = polyoxide_core::reqwest::get(&url).await.unwrap_err();
     assert!(source.is_connect(), "{source:?}");
     let err = ApiError::Network(source);
     assert!(

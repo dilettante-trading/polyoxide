@@ -82,6 +82,14 @@ pub fn truncate_for_log(s: &str) -> std::borrow::Cow<'_, str> {
     }
 }
 
+/// The HTTP client core sends with, re-exported whole.
+///
+/// Venue crates name its types (`Response`, `StatusCode`, `HeaderMap`,
+/// `Method`) through this path and never depend on reqwest themselves, so
+/// core alone decides its features and every client sends the same headers
+/// (AD-18). CI's dependency fence fails when any other member declares it.
+pub use reqwest;
+
 pub use auth::{current_timestamp, Base64Format, Signer};
 pub use capacity::CapacityBucket;
 pub use client::{

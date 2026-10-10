@@ -243,7 +243,7 @@ mod tests {
     /// A response with `status` and the body `{"error": message}`.
     fn response(status: u16, message: &str) -> ApiError {
         ErrorResponse::new(
-            reqwest::StatusCode::from_u16(status).unwrap(),
+            polyoxide_core::reqwest::StatusCode::from_u16(status).unwrap(),
             Default::default(),
             serde_json::json!({ "error": message }).to_string(),
         )

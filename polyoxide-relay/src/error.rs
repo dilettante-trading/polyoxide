@@ -67,7 +67,7 @@ mod tests {
     /// A response with `status` and the body `{"error": message}`.
     fn response(status: u16, message: &str) -> ApiError {
         polyoxide_core::ErrorResponse::new(
-            reqwest::StatusCode::from_u16(status).unwrap(),
+            polyoxide_core::reqwest::StatusCode::from_u16(status).unwrap(),
             Default::default(),
             serde_json::json!({ "error": message }).to_string(),
         )
@@ -129,7 +129,10 @@ mod tests {
 
     #[test]
     fn every_variant_classifies() {
-        let builder = reqwest::Client::new().get("not a url").build().unwrap_err();
+        let builder = polyoxide_core::reqwest::Client::new()
+            .get("not a url")
+            .build()
+            .unwrap_err();
         // Was `Reqwest`, `UrlParse` and `SerdeJson` until Story 3.11.
         let rows = [
             (

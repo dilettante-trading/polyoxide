@@ -43,7 +43,7 @@ mod tests {
     /// A response with `status` and no body.
     fn response(status: u16) -> ApiError {
         polyoxide_core::ErrorResponse::new(
-            reqwest::StatusCode::from_u16(status).unwrap(),
+            polyoxide_core::reqwest::StatusCode::from_u16(status).unwrap(),
             Default::default(),
             "",
         )

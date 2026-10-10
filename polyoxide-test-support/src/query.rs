@@ -163,12 +163,13 @@ mod tests {
     #[tokio::test]
     async fn keys_sent_reads_the_query_off_the_request() {
         let keys = keys_sent("/v1/rows", "rows", "[]".to_owned(), |base| async move {
-            let body = reqwest::get(format!("{base}/v1/rows?limit=2&cursor=c&limit=3"))
-                .await
-                .map_err(|e| e.to_string())?
-                .text()
-                .await
-                .map_err(|e| e.to_string())?;
+            let body =
+                polyoxide_core::reqwest::get(format!("{base}/v1/rows?limit=2&cursor=c&limit=3"))
+                    .await
+                    .map_err(|e| e.to_string())?
+                    .text()
+                    .await
+                    .map_err(|e| e.to_string())?;
             serde_json::from_str::<Vec<u8>>(&body)
                 .map(|_| ())
                 .map_err(|e| e.to_string())
@@ -184,7 +185,9 @@ mod tests {
     #[should_panic(expected = "/v1/rows: the builder did not decode `rows.json`: refused")]
     async fn a_response_that_does_not_decode_fails() {
         keys_sent("/v1/rows", "rows", "[]".to_owned(), |base| async move {
-            reqwest::get(format!("{base}/v1/rows")).await.unwrap();
+            polyoxide_core::reqwest::get(format!("{base}/v1/rows"))
+                .await
+                .unwrap();
             Err::<(), _>("refused")
         })
         .await;
@@ -193,7 +196,7 @@ mod tests {
     #[tokio::test]
     async fn pairs_sent_reads_every_pair_in_order() {
         let pairs = pairs_sent("/v1/rows", |base| async move {
-            reqwest::get(format!("{base}/v1/rows?limit=2&id=a&id=b&q=x%20y"))
+            polyoxide_core::reqwest::get(format!("{base}/v1/rows?limit=2&id=a&id=b&q=x%20y"))
                 .await
                 .unwrap();
         })
@@ -208,7 +211,7 @@ mod tests {
     #[tokio::test]
     async fn pairs_sent_does_not_need_the_body_to_decode() {
         let pairs = pairs_sent("/v1/rows", |base| async move {
-            let body = reqwest::get(format!("{base}/v1/rows?limit=2"))
+            let body = polyoxide_core::reqwest::get(format!("{base}/v1/rows?limit=2"))
                 .await
                 .unwrap()
                 .text()

@@ -104,7 +104,7 @@ impl BinanceError {
         let retry_after = retry_after_secs(
             response
                 .headers
-                .get(reqwest::header::RETRY_AFTER)
+                .get(polyoxide_core::reqwest::header::RETRY_AFTER)
                 .and_then(|value| value.to_str().ok()),
         );
         match status {
@@ -202,12 +202,15 @@ mod tests {
 
     /// A response with `status`, `body` and, when given, a `Retry-After`.
     fn response(status: u16, retry_after: Option<&str>, body: &str) -> ApiError {
-        let mut headers = reqwest::header::HeaderMap::new();
+        let mut headers = polyoxide_core::reqwest::header::HeaderMap::new();
         if let Some(value) = retry_after {
-            headers.insert(reqwest::header::RETRY_AFTER, value.parse().unwrap());
+            headers.insert(
+                polyoxide_core::reqwest::header::RETRY_AFTER,
+                value.parse().unwrap(),
+            );
         }
         ErrorResponse::new(
-            reqwest::StatusCode::from_u16(status).unwrap(),
+            polyoxide_core::reqwest::StatusCode::from_u16(status).unwrap(),
             headers,
             body,
         )

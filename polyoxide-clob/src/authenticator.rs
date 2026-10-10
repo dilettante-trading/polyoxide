@@ -7,9 +7,9 @@
 //! signer raised.
 
 use alloy::primitives::Address;
+use polyoxide_core::reqwest::header::{HeaderMap, HeaderName, HeaderValue};
 use polyoxide_core::{current_timestamp, ApiError, Authenticator, RequestParts};
 use polyoxide_venue::Secret;
-use reqwest::header::{HeaderMap, HeaderName, HeaderValue};
 
 use crate::{
     account::{Credentials, Signer, Wallet},
@@ -157,7 +157,7 @@ fn l1_headers(
 mod tests {
     use super::*;
     use alloy::signers::local::PrivateKeySigner;
-    use reqwest::Method;
+    use polyoxide_core::reqwest::Method;
 
     // Anvil/Hardhat account #0.
     const ANVIL_KEY_0: &str = "ac0974bec39a17e36ba4a6b4d238ff944bacb478cbed5efcae784d7bf4f2ff80";

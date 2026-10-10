@@ -20,8 +20,8 @@ const INTER_REQUEST_PAUSE_MS: u64 = 150;
 
 #[tokio::main]
 async fn main() {
-    let client = reqwest::Client::builder()
-        // The workspace enables reqwest's `gzip` feature for polyoxide-binance;
+    let client = polyoxide_core::reqwest::Client::builder()
+        // Core enables reqwest's `gzip` feature, so a client asks for it;
         // keep this probe's requests as they were measured.
         .gzip(false)
         .timeout(Duration::from_secs(15))
@@ -73,7 +73,7 @@ struct Ceiling {
 }
 
 async fn binary_search_ceiling(
-    client: &reqwest::Client,
+    client: &polyoxide_core::reqwest::Client,
     param: &str,
     make: impl Fn(usize) -> Vec<String>,
 ) -> Ceiling {
@@ -148,7 +148,11 @@ enum ProbeResult {
     Fail { status: String, url_len: usize },
 }
 
-async fn send_n(client: &reqwest::Client, param: &str, ids: &[String]) -> ProbeResult {
+async fn send_n(
+    client: &polyoxide_core::reqwest::Client,
+    param: &str,
+    ids: &[String],
+) -> ProbeResult {
     let pairs: Vec<(&str, &str)> = ids.iter().map(|v| (param, v.as_str())).collect();
     let req = match client.get(BASE_URL).query(&pairs).build() {
         Ok(r) => r,

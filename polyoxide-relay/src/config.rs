@@ -1,7 +1,7 @@
 use crate::error::RelayError;
 use alloy::primitives::{address, b256, Address, B256};
+use polyoxide_core::reqwest::header::{HeaderMap, HeaderValue};
 use polyoxide_core::{current_timestamp, Base64Format, Signer};
-use reqwest::header::{HeaderMap, HeaderValue};
 
 /// On-chain contract addresses and RPC configuration for a specific chain.
 #[derive(Clone, Debug)]

@@ -182,7 +182,7 @@ async fn live_an_unknown_symbol_is_venue_error_1121() {
 }
 
 /// Fetches a route's raw JSON, outside the client, for the key comparison.
-async fn raw(http: &reqwest::Client, path: &str) -> String {
+async fn raw(http: &polyoxide_core::reqwest::Client, path: &str) -> String {
     let response = http
         .get(format!("https://fapi.binance.com{path}"))
         .send()
@@ -238,7 +238,7 @@ fn agrees<T: DeserializeOwned + Serialize>(path: &str, text: &str) -> Vec<String
 #[tokio::test]
 #[ignore]
 async fn live_responses_carry_no_unmodelled_keys() {
-    let http = reqwest::Client::builder()
+    let http = polyoxide_core::reqwest::Client::builder()
         .gzip(true)
         .timeout(Duration::from_secs(30))
         .build()

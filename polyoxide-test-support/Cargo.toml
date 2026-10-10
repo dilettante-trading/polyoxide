@@ -34,11 +34,10 @@ query = ["dep:mockito", "dep:url"]
 soak = ["dep:tracing-subscriber"]
 
 # `tests/failure_tags.rs` builds core's network errors from real local sockets,
-# and a serde error from a real parse. `tests/observe.rs` drives core's client
-# into a 429 against a mock server.
+# through the reqwest core re-exports, and a serde error from a real parse.
+# `tests/observe.rs` drives core's client into a 429 against a mock server.
 [dev-dependencies]
 mockito = { workspace = true }
-reqwest = { workspace = true }
 tokio = { workspace = true, features = ["macros", "rt-multi-thread", "net", "time"] }
 
 [[test]]

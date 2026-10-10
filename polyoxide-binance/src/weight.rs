@@ -492,7 +492,7 @@ impl Throttle for WeightBudget {
 }
 
 /// The IP's weight used this minute, as a response reports it.
-fn used_weight(headers: &reqwest::header::HeaderMap) -> Option<u32> {
+fn used_weight(headers: &polyoxide_core::reqwest::header::HeaderMap) -> Option<u32> {
     headers
         .get(USED_WEIGHT_HEADER)?
         .to_str()

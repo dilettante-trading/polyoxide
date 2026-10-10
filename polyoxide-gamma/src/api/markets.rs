@@ -1,6 +1,6 @@
+use polyoxide_core::reqwest::header::{HeaderValue, CONTENT_TYPE};
+use polyoxide_core::reqwest::Method;
 use polyoxide_core::{ApiError, HttpClient, QueryBuilder, Request, RequestParts};
-use reqwest::header::{HeaderValue, CONTENT_TYPE};
-use reqwest::Method;
 
 use crate::{
     error::GammaError,

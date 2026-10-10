@@ -18,7 +18,6 @@ specta = ["dep:specta"]
 futures-util = "0.3"
 polyoxide-core = { workspace = true }
 polyoxide-venue = { workspace = true }
-reqwest = { workspace = true }
 rust_decimal = { workspace = true }
 serde = { workspace = true }
 serde_json = { workspace = true }

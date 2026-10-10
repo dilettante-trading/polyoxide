@@ -3,10 +3,10 @@ use std::collections::HashMap;
 use alloy::primitives::Address;
 use std::sync::Arc;
 
+use polyoxide_core::reqwest::Method;
 use polyoxide_core::{
     ApiError, DynAuthenticator, HttpClient, QueryBuilder, Request, SessionSignerScope,
 };
-use reqwest::Method;
 use serde::{Deserialize, Serialize};
 
 use crate::{

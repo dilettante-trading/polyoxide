@@ -1,10 +1,10 @@
 use std::collections::HashMap;
 use std::sync::Arc;
 
+use polyoxide_core::reqwest::Method;
 use polyoxide_core::{
     polymarket::signer_cost, DynAuthenticator, HttpClient, QueryBuilder, Request, TradingRequest,
 };
-use reqwest::Method;
 use serde::{Deserialize, Serialize};
 
 use crate::error::ClobError;
@@ -311,7 +311,7 @@ impl ListOrders {
     /// # Ok(())
     /// # }
     /// ```
-    pub async fn send_raw(self) -> Result<reqwest::Response, ClobError> {
+    pub async fn send_raw(self) -> Result<polyoxide_core::reqwest::Response, ClobError> {
         self.request.send_raw().await
     }
 }
