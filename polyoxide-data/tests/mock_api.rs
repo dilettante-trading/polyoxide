@@ -1781,3 +1781,97 @@ async fn a_429_on_ping_holds_the_next_request() {
     );
     mock.assert_async().await;
 }
+
+// ── Bundle J's matrix rows (Story 3.11) ─────────────────────────
+
+#[tokio::test]
+async fn a_v1_503_is_core_s_response_and_retriable() {
+    use polyoxide_venue::Classify;
+
+    let mut server = Server::new_async().await;
+    let mock = server
+        .mock("GET", "/positions")
+        .match_query(Matcher::Any)
+        .with_status(503)
+        .with_body(r#"{"error": "down"}"#)
+        .expect(1)
+        .create_async()
+        .await;
+
+    let err = test_data(&server)
+        .user("0xabc")
+        .list_positions()
+        .send()
+        .await
+        .unwrap_err();
+    mock.assert_async().await;
+    assert!(
+        matches!(&err, DataApiError::Api(polyoxide_core::ApiError::Response(r)) if r.status == 503),
+        "{err:?}"
+    );
+    assert!(err.is_retriable());
+}
+
+#[tokio::test]
+async fn an_accounting_snapshot_decodes_a_v2_error_body() {
+    use polyoxide_venue::{Class, Classify};
+
+    // `snapshot` goes through `get_bytes`, which once never tried the v2
+    // envelope; the one decode reads it on that path too.
+    let mut server = Server::new_async().await;
+    let mock = server
+        .mock("GET", "/v1/accounting/snapshot")
+        .match_query(Matcher::Any)
+        .with_status(503)
+        .with_body(
+            r#"{"error":"datastore unavailable","code":"dependency_unavailable","retryable":true,"trace_id":"t-acc"}"#,
+        )
+        .expect(1)
+        .create_async()
+        .await;
+
+    let err = test_data(&server)
+        .accounting()
+        .snapshot("0xabc123")
+        .await
+        .unwrap_err();
+    mock.assert_async().await;
+    match &err {
+        DataApiError::V2(v2) => {
+            assert_eq!(v2.status, 503);
+            assert_eq!(v2.trace_id, "t-acc");
+        }
+        other => panic!("expected DataApiError::V2, got {other:?}"),
+    }
+    assert_eq!(
+        err.class(),
+        Class::Unavailable {
+            code: Some("dependency_unavailable".into())
+        }
+    );
+}
+
+#[tokio::test]
+async fn an_accounting_snapshot_keeps_another_body_as_core_s_response() {
+    let mut server = Server::new_async().await;
+    let mock = server
+        .mock("GET", "/v1/accounting/snapshot")
+        .match_query(Matcher::Any)
+        .with_status(503)
+        .with_body("upstream exploded")
+        .expect(1)
+        .create_async()
+        .await;
+
+    let err = test_data(&server)
+        .accounting()
+        .snapshot("0xabc123")
+        .await
+        .unwrap_err();
+    mock.assert_async().await;
+    assert!(
+        matches!(&err, DataApiError::Api(polyoxide_core::ApiError::Response(r))
+            if r.status == 503 && r.message == "upstream exploded"),
+        "{err:?}"
+    );
+}

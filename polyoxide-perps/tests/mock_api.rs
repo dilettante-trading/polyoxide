@@ -686,3 +686,70 @@ async fn a_degraded_ping_is_an_api_error() {
         "{err:?}"
     );
 }
+
+// ── Bundle J's matrix rows (Story 3.11) ─────────────────────────
+
+#[tokio::test]
+async fn a_503_in_another_shape_is_core_s_response_and_retriable() {
+    use polyoxide_venue::Classify;
+
+    let mut server = Server::new_async().await;
+    let mock = server
+        .mock("GET", "/v1/info/time")
+        .match_query(Matcher::Any)
+        .with_status(503)
+        .with_body("<html>service unavailable</html>")
+        .expect(1)
+        .create_async()
+        .await;
+
+    let err = test_perps(&server)
+        .health()
+        .time()
+        .send()
+        .await
+        .unwrap_err();
+    mock.assert_async().await;
+    assert!(
+        matches!(&err, PerpsError::Api(polyoxide_core::ApiError::Response(r)) if r.status == 503),
+        "{err:?}"
+    );
+    assert!(err.is_retriable());
+}
+
+#[tokio::test]
+async fn a_400_venue_body_is_a_venue_error_with_its_reference() {
+    use polyoxide_venue::{Class, Classify};
+
+    let mut server = Server::new_async().await;
+    let mock = server
+        .mock("GET", "/v1/info/time")
+        .match_query(Matcher::Any)
+        .with_status(400)
+        .with_body(r#"{"status":"err","error":"invalid query parameters","ref":"g-1224ed1744735"}"#)
+        .expect(1)
+        .create_async()
+        .await;
+
+    let err = test_perps(&server)
+        .health()
+        .time()
+        .send()
+        .await
+        .unwrap_err();
+    mock.assert_async().await;
+    match &err {
+        PerpsError::Venue(venue) => {
+            assert_eq!(venue.status, 400);
+            assert_eq!(venue.code, "invalid query parameters");
+            assert_eq!(venue.reference.as_deref(), Some("g-1224ed1744735"));
+        }
+        other => panic!("expected PerpsError::Venue, got {other:?}"),
+    }
+    assert_eq!(
+        err.class(),
+        Class::VenueRefusal {
+            code: Some("invalid query parameters".into())
+        }
+    );
+}

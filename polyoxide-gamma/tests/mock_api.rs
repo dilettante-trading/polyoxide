@@ -1500,3 +1500,77 @@ async fn a_429_on_query_by_information_is_retried_and_holds() {
     );
     mock.assert_async().await;
 }
+
+// ── Bundle J's matrix rows (Story 3.11) ─────────────────────────
+
+#[tokio::test]
+async fn a_503_is_core_s_response_and_retriable() {
+    use polyoxide_venue::Classify;
+
+    let mut server = Server::new_async().await;
+    let mock = server
+        .mock("GET", "/markets/1")
+        .match_query(Matcher::Any)
+        .with_status(503)
+        .with_body(r#"{"error": "down"}"#)
+        .expect(1)
+        .create_async()
+        .await;
+
+    let err = test_gamma(&server)
+        .markets()
+        .get("1")
+        .send()
+        .await
+        .unwrap_err();
+    mock.assert_async().await;
+    assert!(
+        matches!(&err, GammaError::Api(polyoxide_core::ApiError::Response(r)) if r.status == 503),
+        "{err:?}"
+    );
+    assert!(err.is_retriable());
+}
+
+#[tokio::test]
+async fn a_429_out_of_retries_reports_its_retry_after() {
+    use polyoxide_venue::{Class, Classify};
+    use std::time::Duration;
+
+    // A zero is no wait (DRIFT R4).
+    for (header, wait) in [("7", Some(Duration::from_secs(7))), ("0", None)] {
+        let mut server = Server::new_async().await;
+        let mock = server
+            .mock("GET", "/markets/1")
+            .match_query(Matcher::Any)
+            .with_status(429)
+            .with_header("retry-after", header)
+            .with_body(r#"{"error": "slow down"}"#)
+            .expect(2)
+            .create_async()
+            .await;
+        // One retry, then out of retries. The loop clamps the wait it sleeps
+        // to 10ms; the error reports the server's.
+        let gamma = Gamma::builder()
+            .base_url(server.url())
+            .with_retry_config(polyoxide_core::RetryConfig {
+                max_retries: 1,
+                initial_backoff_ms: 1,
+                max_backoff_ms: 10,
+            })
+            .build()
+            .unwrap();
+
+        let err = gamma.markets().get("1").send().await.unwrap_err();
+        mock.assert_async().await;
+        assert!(
+            matches!(&err, GammaError::Api(polyoxide_core::ApiError::Response(r)) if r.status == 429),
+            "Retry-After: {header}: {err:?}"
+        );
+        assert_eq!(
+            err.class(),
+            Class::RateLimited { retry_after: wait },
+            "Retry-After: {header}"
+        );
+        assert_eq!(err.retry_after(), wait, "Retry-After: {header}");
+    }
+}

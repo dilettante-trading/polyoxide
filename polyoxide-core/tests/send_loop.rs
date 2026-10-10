@@ -766,3 +766,55 @@ async fn a_failed_response_carries_its_headers_body_and_retry_after() {
     );
     assert_eq!(err.retry_after(), Some(Duration::from_secs(7)));
 }
+
+/// A venue's error, whose `From<ApiError>` is its one decode: a 404 becomes
+/// its own variant, and anything else stays core's.
+#[derive(Debug)]
+enum VenueError {
+    NotFound(String),
+    Core(#[allow(dead_code)] ApiError),
+}
+
+impl From<ApiError> for VenueError {
+    fn from(err: ApiError) -> Self {
+        match err {
+            ApiError::Response(response) if response.status == StatusCode::NOT_FOUND => {
+                Self::NotFound(response.body)
+            }
+            other => Self::Core(other),
+        }
+    }
+}
+
+#[tokio::test]
+async fn a_done_failure_reaches_the_venue_s_decode() {
+    // `Inverted` is done with a 404, so `send` hands it back, and `send_raw`
+    // and `send` turn it into the caller's error through its decode, not
+    // around it.
+    let throttle = Recorder::default();
+    let (server, mock) = scripted("/v1/rows", &[404], 2, &throttle.log).await;
+    let http = HttpClientBuilder::new(server.url())
+        .with_retry_policy(Inverted)
+        .build()
+        .unwrap();
+
+    let raw =
+        polyoxide_core::Request::<serde_json::Value, VenueError>::new(http.clone(), "/v1/rows")
+            .send_raw()
+            .await
+            .unwrap_err();
+    assert!(
+        matches!(&raw, VenueError::NotFound(body) if body == "ok"),
+        "{raw:?}"
+    );
+
+    let decoded = polyoxide_core::Request::<serde_json::Value, VenueError>::new(http, "/v1/rows")
+        .send()
+        .await
+        .unwrap_err();
+    assert!(
+        matches!(&decoded, VenueError::NotFound(body) if body == "ok"),
+        "{decoded:?}"
+    );
+    mock.assert_async().await;
+}

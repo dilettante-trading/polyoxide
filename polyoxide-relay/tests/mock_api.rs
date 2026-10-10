@@ -2401,3 +2401,33 @@ async fn relay_timeout_ms_bounds_a_plain_request() {
         "{err:?}"
     );
 }
+
+// ── Bundle J's matrix rows (Story 3.11) ─────────────────────────
+
+#[tokio::test]
+async fn a_refused_relay_call_is_an_invalid_request() {
+    use polyoxide_venue::{Class, Classify};
+
+    // A refusal made before sending is the client's, not the venue's.
+    let mut server = Server::new_async().await;
+    let mock = server
+        .mock("GET", "/transactions")
+        .match_query(Matcher::Any)
+        .expect(0)
+        .create_async()
+        .await;
+    let err = client_unauthed(&server)
+        .list_transactions()
+        .await
+        .expect_err("no auth is configured");
+    mock.assert_async().await;
+    assert!(
+        matches!(
+            err,
+            polyoxide_relay::RelayError::Api(polyoxide_core::ApiError::Validation(_))
+        ),
+        "{err:?}"
+    );
+    assert_eq!(err.class(), Class::InvalidRequest);
+    assert!(!err.is_retriable());
+}

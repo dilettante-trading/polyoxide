@@ -4394,3 +4394,138 @@ async fn over_capacity_batch_post_is_rejected_without_sending_a_request() {
     // The decisive assertion: nothing went over the wire.
     mock.assert_async().await;
 }
+
+// ── Bundle J's matrix rows (Story 3.11) ─────────────────────────
+
+#[tokio::test]
+async fn an_order_refused_before_sending_is_an_invalid_request() {
+    use polyoxide_venue::Class;
+
+    // A price outside (0, 1] fails validation before the market metadata is
+    // fetched, so neither it nor the order reaches the venue.
+    let mut server = Server::new_async().await;
+    let mut untouched = Vec::new();
+    for (method, path) in [
+        ("GET", "/neg-risk"),
+        ("GET", "/tick-size"),
+        ("POST", "/order"),
+    ] {
+        untouched.push(
+            server
+                .mock(method, path)
+                .match_query(Matcher::Any)
+                .expect(0)
+                .create_async()
+                .await,
+        );
+    }
+
+    let mut params = deep_otm_params("100", polyoxide_clob::OrderKind::Gtc);
+    params.price = 1.5;
+    let err = test_authed_clob(&server)
+        .place_order(&params, None)
+        .await
+        .unwrap_err();
+    for mock in &untouched {
+        mock.assert_async().await;
+    }
+    assert!(
+        matches!(
+            &err,
+            ClobError::Api(polyoxide_core::ApiError::Validation(_))
+        ),
+        "{err:?}"
+    );
+    assert_eq!(err.class(), Class::InvalidRequest);
+    assert!(!err.is_retriable());
+}
+
+#[cfg(feature = "gamma")]
+#[tokio::test]
+async fn a_gamma_404_during_the_profile_lookup_is_clob_s_gamma_error() {
+    use polyoxide_venue::Class;
+
+    // An EOA account ordering as a proxy: the maker is the proxy Gamma reports
+    // for the account, so clob asks its Gamma client, which answers 404.
+    let mut server = Server::new_async().await;
+    let gamma_mock = server
+        .mock("GET", "/public-profile")
+        .match_query(Matcher::Any)
+        .with_status(404)
+        .with_body(r#"{"error": "profile not found"}"#)
+        .expect(1)
+        .create_async()
+        .await;
+    let order_mock = server
+        .mock("POST", "/order")
+        .match_query(Matcher::Any)
+        .expect(0)
+        .create_async()
+        .await;
+    let creds = Credentials {
+        key: "test-key".into(),
+        secret: "c2VjcmV0".into(),
+        passphrase: "test-pass".into(),
+    };
+    let account = Account::new(
+        "0xac0974bec39a17e36ba4a6b4d238ff944bacb478cbed5efcae784d7bf4f2ff80",
+        creds,
+    )
+    .unwrap();
+    let clob = ClobBuilder::new()
+        .base_url(server.url())
+        .gamma(
+            polyoxide_gamma::Gamma::builder()
+                .base_url(server.url())
+                .build()
+                .unwrap(),
+        )
+        .with_account(account)
+        .build()
+        .unwrap();
+    let mut params = deep_otm_params("100", polyoxide_clob::OrderKind::Gtc);
+    params.signature_type = Some(SignatureType::PolyProxy);
+    let options = polyoxide_clob::PartialCreateOrderOptions {
+        tick_size: Some(polyoxide_clob::TickSize::try_from("0.01").unwrap()),
+        neg_risk: Some(false),
+    };
+
+    let err = clob.create_order(&params, Some(options)).await.unwrap_err();
+    gamma_mock.assert_async().await;
+    order_mock.assert_async().await;
+    assert!(
+        matches!(
+            &err,
+            ClobError::Gamma(polyoxide_gamma::GammaError::Api(
+                polyoxide_core::ApiError::Response(r)
+            )) if r.status == 404
+        ),
+        "{err:?}"
+    );
+    assert_eq!(err.class(), Class::VenueRefusal { code: None });
+    assert!(err.is_fault());
+}
+
+#[tokio::test]
+async fn a_fak_kill_on_the_wire_is_a_refusal_that_is_not_a_fault() {
+    use polyoxide_venue::Class;
+
+    let mut server = Server::new_async().await;
+    let post_mock = mock_order_rejection(&mut server, "100", 400, FAK_UNMATCHED_MSG).await;
+
+    let err = test_authed_clob(&server)
+        .place_order(
+            &deep_otm_params("100", polyoxide_clob::OrderKind::Fak),
+            None,
+        )
+        .await
+        .unwrap_err();
+    post_mock.assert_async().await;
+    assert!(
+        matches!(&err, ClobError::FakUnmatched { message } if message == FAK_UNMATCHED_MSG),
+        "{err:?}"
+    );
+    assert_eq!(err.class(), Class::VenueRefusal { code: None });
+    assert!(!err.is_fault(), "a kill is the order's defined outcome");
+    assert!(!err.is_retriable());
+}
