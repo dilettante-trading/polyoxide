@@ -40,7 +40,7 @@ pub enum Recovery {
 #[non_exhaustive]
 pub enum PerpsWsError {
     /// The connection could not be opened, or failed mid-stream: the kit's
-    /// one socket error, read through its [`Kind`](polyoxide_ws::Kind).
+    /// one socket error, read through its [`Kind`].
     #[error("WebSocket transport error: {0}")]
     Connection(#[from] WsError),
 

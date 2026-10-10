@@ -9,11 +9,13 @@
 //! Everything the published AsyncAPI gets wrong about the wire is in
 //! `docs/specs/perps/OBSERVED.md`.
 
+mod builder;
 pub mod channel;
 pub mod client;
 pub mod error;
 pub mod event;
 pub mod frame;
+mod protocol;
 #[cfg(test)]
 mod scripted;
 pub mod supervised;
@@ -21,12 +23,47 @@ pub mod supervised;
 #[doc(hidden)]
 pub mod test_server;
 
+pub use builder::PerpsWsBuilder;
 pub use channel::{Channel, StreamDepth};
 pub use client::PerpsWs;
 pub use error::{PerpsWsError, Recovery, Refusal};
 pub use event::{Event, Frame, Payload, Update};
 pub use frame::{BboData, BookData, StatisticsData, TickerData, TradeData};
-pub use supervised::{MembershipHandle, PerpsWsBuilder, SupervisedPerpsWs};
+pub use protocol::{MembershipChange, PerpsMembership, PerpsProtocol};
+pub use supervised::MembershipHandle;
+
+/// A supervised connection: a `Stream` of [`Event`]s that survives drops and
+/// stalls by reconnecting and replaying its subscriptions, run by the kit's
+/// `Supervisor` on [`PerpsProtocol`]. Build one with [`PerpsWsBuilder`].
+///
+/// It keeps the application ping going on the wall clock, even while the
+/// consumer is behind; the queue holds 1024 unread events, after which the
+/// task reads nothing more until the consumer catches up, and that wait does
+/// not count as silence. It ends after an error it cannot recover from,
+/// which it yields first; a frame that did not decode is yielded as an error
+/// and does not end it. Change its channels through
+/// [`membership`](polyoxide_ws::Supervised::membership) and
+/// [`PerpsMembership`], from a task other than the one reading the stream.
+///
+/// ```no_run
+/// use futures_util::StreamExt;
+/// use polyoxide_perps::{types::InstrumentId, ws::{Channel, Event, PerpsMembership, PerpsWsBuilder}};
+///
+/// # async fn example() -> Result<(), polyoxide_perps::ws::PerpsWsError> {
+/// let mut ws = PerpsWsBuilder::new().connect([Channel::Book(InstrumentId(1), Default::default())]).await?;
+/// let membership = ws.membership();
+/// while let Some(event) = ws.next().await {
+///     match event? {
+///         Event::Update(update) => println!("{} sq={}", update.channel, update.sq),
+///         Event::Reconnected | Event::SequenceRegressed { .. } => println!("resync the book"),
+///         _ => {}
+///     }
+/// }
+/// # membership.subscribe([Channel::Bbo(InstrumentId(2))]).await?;
+/// # Ok(())
+/// # }
+/// ```
+pub type SupervisedPerpsWs = polyoxide_ws::Supervised<PerpsProtocol>;
 
 /// The production WebSocket endpoint.
 pub const WS_URL: &str = "wss://ws.perpetuals.polymarket.com/v1/ws";
