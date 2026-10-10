@@ -27,6 +27,10 @@ decimal = ["dep:rust_decimal", "dep:serde"]
 [dev-dependencies]
 serde = { workspace = true }
 serde_json = { workspace = true }
+# `impl_ws_classification!`'s table test and doc example expand it against
+# `polyoxide_ws::WsError`, as a venue crate does. Path-only, so cargo strips
+# it on publish and the normal build stays free of any socket dependency.
+polyoxide-ws = { path = "../polyoxide-ws" }
 
 # docs.rs documents `positional`, which only the `decimal` feature builds.
 [package.metadata.docs.rs]
@@ -37,5 +41,5 @@ features = ["decimal"]
 # target, which becomes a nightly job. Run `python3 scripts/gen_registry.py
 # --write` after an edit.
 [package.metadata.polyoxide]
-readme = "Shared vocabulary: error classes, the status and close-code maps, the `Retry-After` parser, the wire-enum macros and `UnknownVariant`, positional decimal serde (feature `decimal`) and `UnixMillis`"
-notes = ["every public error type in the workspace implements its `Classify` trait; by default it depends on nothing, and it has no HTTP, socket or signing dependency"]
+readme = "Shared vocabulary: error classes, the status and close-code maps, the socket classification table (`impl_ws_classification!`), the `Retry-After` parser, the wire-enum macros and `UnknownVariant`, positional decimal serde (feature `decimal`) and `UnixMillis`"
+notes = ["every public error type in the workspace implements its `Classify` trait but `polyoxide-ws`'s `WsError`, which `impl_ws_classification!` classifies in each venue crate that wraps it; by default it depends on nothing, and it has no HTTP, socket or signing dependency"]

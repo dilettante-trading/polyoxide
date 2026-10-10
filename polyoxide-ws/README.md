@@ -7,6 +7,8 @@ error, read through its `Kind`.
 
 It depends on neither `polyoxide-core` nor `polyoxide-venue`, and builds no
 HTTP or signing stack, so a credential-free feed built on it stays light.
+`polyoxide_venue::impl_ws_classification!` classifies a `WsError` in the venue
+crate that wraps it.
 
 More information about this crate can be found in the [crate documentation](https://docs.rs/polyoxide-ws/).
 

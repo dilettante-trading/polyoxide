@@ -12,6 +12,8 @@
 //!   connect and rotation timings, [`timing_setters!`] gives a builder its
 //!   setters, and [`next_wait`] is the wait until the first deadline.
 //! - [`WsError`] is the one socket error, read through its [`Kind`].
+//!   `polyoxide_venue::impl_ws_classification!` classifies it in the venue
+//!   crate that wraps it.
 //! - [`connect`] opens a connection within a timeout, [`with_timeout`] bounds
 //!   a venue's own connect, and [`retrying_can_fix`] says whether a
 //!   reconnect can help after one failed.

@@ -4262,6 +4262,7 @@ dependencies = [
 name = "polyoxide-venue"
 version = "0.38.2"
 dependencies = [
+ "polyoxide-ws",
  "rust_decimal",
  "serde",
  "serde_json",

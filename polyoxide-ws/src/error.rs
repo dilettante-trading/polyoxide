@@ -8,9 +8,9 @@ use tokio_tungstenite::tungstenite::{self, http::header::RETRY_AFTER, protocol::
 /// or one of the kit's own timeouts.
 ///
 /// Opaque on purpose: read it through [`kind`](Self::kind), which no later
-/// tungstenite release can break, and classify it in the venue crate that
-/// wraps it. Its `source` is the transport error it came from, when there is
-/// one.
+/// tungstenite release can break, and classify it through
+/// `polyoxide_venue::impl_ws_classification!` in the venue crate that wraps
+/// it. Its `source` is the transport error it came from, when there is one.
 ///
 /// Built from a `tungstenite::Error` by `From`, and by
 /// [`connect_timeout`](Self::connect_timeout), [`closed`](Self::closed),
