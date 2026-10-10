@@ -172,6 +172,14 @@ The copies have drifted:
 
 ## Implementation Notes
 
+**DRIFT R3's wire probe (K3), run 2026-10-10 15:29 UTC against `wss://ws.perpetuals.polymarket.com/v1/ws`.** `cargo run -p polyoxide-ws --example close_reply_probe [-- --flush]`, the two patterns run side by side:
+- **The host does not idle-close a client that reads.** A first run with an ordinary stream saw a protocol `Ping` every 10 s for 180 s and no close: tungstenite's automatic pongs count as inbound messages. The probe therefore withholds every byte the client writes after the handshake until the Close is read (168 bytes of pongs), so the host sees a silent client.
+- **It then sent a Close frame:** after 70.0 s, code 1011 (`Error`), reason `pong_timeout`.
+- **Today's bare pattern** (return on the Close, no flush) wrote **0 bytes** to the TCP socket in the 2 s after reading it: no close reply.
+- **One flush after the Close** wrote **42 bytes**: one TLS record carrying the reply, which echoes the code and reason (2 + 4 + 14 bytes framed, plus 22 of TLS 1.3 record overhead).
+- **The fix** flushes the queued reply before the bare tier yields its last item, in `poll_next` and in a request's wait, and `close()` flushes it on a connection the server already closed. Three tests hold it, and all three fail with the flush removed.
+- **For Story 4.6:** perps' idle rule as observed is a 10 s server ping and a 1011 `pong_timeout` after about 70 s without a pong, not "60 s without an inbound message"; a client that reads answers the pings itself. `docs/specs/perps/OBSERVED.md` does not record this yet.
+
 ## Spec Change Log
 
 ## Review Triage Log

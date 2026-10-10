@@ -43,9 +43,11 @@ impl Mode {
 /// first, in the order they arrived. The server's pings are answered as the
 /// stream is read.
 ///
-/// Once it has ended on the server's close, [`closed`](Self::closed) says
-/// with what code and reason, as a [`Kind::Closed`](crate::Kind::Closed)
-/// error.
+/// The server's close is answered: the RFC 6455 close reply is flushed before
+/// the stream yields its last item, so it goes out even when the caller never
+/// reads again (DRIFT R3). Once the stream has ended on the close,
+/// [`closed`](Self::closed) says with what code and reason, as a
+/// [`Kind::Closed`](crate::Kind::Closed) error.
 ///
 /// The basis is `polyoxide-sports`' `SportsWs::poll_next` (`src/client.rs`)
 /// and its frame classifier, with the queue `polyoxide-perps` and
@@ -61,6 +63,8 @@ pub struct Connection {
     last_inbound: Instant,
     /// The server's close code and reason, once the stream ended on them.
     close: Option<(Option<u16>, String)>,
+    /// Whether tungstenite holds a close reply not yet flushed.
+    replying: bool,
     finished: bool,
     pub(crate) requests: Requests,
 }
@@ -85,6 +89,7 @@ impl Connection {
             buffered: VecDeque::new(),
             last_inbound: Instant::now(),
             close: None,
+            replying: false,
             finished: false,
             requests: Requests::default(),
         }
@@ -119,18 +124,24 @@ impl Connection {
         Ok(())
     }
 
-    /// Close the connection: send a close frame and flush it. A connection
-    /// the server already closed has nothing to send.
+    /// Close the connection: send a close frame and flush it. On a
+    /// connection the server already closed, flush the reply if it has not
+    /// gone out yet; there is nothing else to send.
     pub async fn close(&mut self) -> Result<(), WsError> {
         if self.close.is_some() {
+            self.flush_reply().await;
             return Ok(());
         }
+        // Sends the close frame and flushes it.
         self.socket.close(None).await?;
         Ok(())
     }
 
     /// Note the server's close frame, or the end of the stream without one.
+    /// tungstenite queues the reply to a close frame as it reads it, and sends
+    /// it on the next read or flush.
     pub(crate) fn record_close(&mut self, frame: Option<&Message>) {
+        self.replying = matches!(frame, Some(Message::Close(_)));
         self.close = Some(match frame {
             Some(Message::Close(Some(frame))) => {
                 (Some(u16::from(frame.code)), frame.reason.to_string())
@@ -141,9 +152,17 @@ impl Connection {
         tracing::debug!(close = ?self.close, "the server closed the WebSocket connection");
     }
 
-    /// Note a frame read while a request awaited its answer: a close ends
-    /// the connection, and anything else the stream would yield is kept for
-    /// it.
+    /// Send the queued close reply, if there is one.
+    pub(crate) async fn flush_reply(&mut self) {
+        if self.replying {
+            if let Err(err) = self.socket.flush().await {
+                tracing::debug!(%err, "the close reply could not be sent");
+            }
+            self.replying = false;
+        }
+    }
+
+    /// Keep a frame for the stream to yield later, if its mode yields it.
     pub(crate) fn keep(&mut self, message: Message) {
         if self.mode.yields(&message) {
             self.buffered.push_back(message);
@@ -176,13 +195,25 @@ impl Stream for Connection {
 
     fn poll_next(self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<Option<Self::Item>> {
         let this = self.get_mut();
-        if let Some(kept) = this.buffered.pop_front() {
-            return Poll::Ready(Some(Ok(kept)));
-        }
-        if this.finished {
-            return Poll::Ready(None);
-        }
         loop {
+            // RFC 6455 requires the close reply, and this stream may never be
+            // read again once it has yielded its last item.
+            if this.replying {
+                match this.socket.poll_flush_unpin(cx) {
+                    Poll::Pending => return Poll::Pending,
+                    Poll::Ready(Err(err)) => {
+                        tracing::debug!(%err, "the close reply could not be sent");
+                    }
+                    Poll::Ready(Ok(())) => {}
+                }
+                this.replying = false;
+            }
+            if let Some(kept) = this.buffered.pop_front() {
+                return Poll::Ready(Some(Ok(kept)));
+            }
+            if this.finished {
+                return Poll::Ready(None);
+            }
             let message = match this.socket.poll_next_unpin(cx) {
                 Poll::Ready(Some(Ok(message))) => message,
                 Poll::Ready(Some(Err(err))) => {
@@ -199,10 +230,7 @@ impl Stream for Connection {
             match message {
                 Message::Close(_) => {
                     this.record_close(Some(&message));
-                    return Poll::Ready(match this.mode {
-                        Mode::All => Some(Ok(message)),
-                        Mode::Data => None,
-                    });
+                    this.keep(message);
                 }
                 Message::Ping(_) if this.mode == Mode::All => {
                     // tungstenite has queued the pong, and sends it on the
@@ -342,6 +370,45 @@ mod tests {
                 reason: "bye"
             }
         );
+    }
+
+    #[tokio::test]
+    async fn a_server_close_is_answered_though_the_stream_is_never_read_again() {
+        // RFC 6455's close reply (DRIFT R3). tungstenite queues it as it reads
+        // the close and sends it only on a later read or flush, which a
+        // stream that has ended never makes.
+        for mode in [Mode::Data, Mode::All] {
+            let (url, replied) = loopback::close_awaiting_reply(1011, "pong_timeout").await;
+            let mut connection = open(&url, mode).await;
+            let last = next(&mut connection).await;
+            match mode {
+                Mode::Data => assert!(last.is_none(), "{last:?}"),
+                Mode::All => assert!(matches!(last, Some(Ok(Message::Close(_)))), "{last:?}"),
+            }
+            assert_eq!(
+                connection.closed().unwrap().kind(),
+                Kind::Closed {
+                    code: Some(1011),
+                    reason: "pong_timeout"
+                }
+            );
+            // Held open and never read again, as a caller that saw the end
+            // would leave it.
+            assert!(
+                replied.await.expect("the server reported"),
+                "the server got no close reply in {mode:?} mode"
+            );
+            drop(connection);
+        }
+    }
+
+    #[tokio::test]
+    async fn close_after_the_server_closed_succeeds() {
+        let (url, replied) = loopback::close_awaiting_reply(1000, "").await;
+        let mut connection = open(&url, Mode::Data).await;
+        assert!(next(&mut connection).await.is_none());
+        connection.close().await.expect("close");
+        assert!(replied.await.expect("the server reported"));
     }
 
     #[tokio::test]

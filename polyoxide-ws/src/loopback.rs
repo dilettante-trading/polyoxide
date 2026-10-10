@@ -168,3 +168,50 @@ pub(crate) async fn await_close() -> (String, oneshot::Receiver<()>) {
     .await;
     (url, rx)
 }
+
+/// Close with this code and reason, and report whether the client answered
+/// with its own close frame within a second.
+pub(crate) async fn close_awaiting_reply(
+    code: u16,
+    reason: &'static str,
+) -> (String, oneshot::Receiver<bool>) {
+    let (tx, rx) = oneshot::channel();
+    let url = upgraded(move |mut ws| async move {
+        let _ = tx.send(close_and_await_reply(&mut ws, code, reason).await);
+    })
+    .await;
+    (url, rx)
+}
+
+/// Close on the client's first text frame, and report whether it answered
+/// with its own close frame within a second.
+pub(crate) async fn close_on_request(
+    code: u16,
+    reason: &'static str,
+) -> (String, oneshot::Receiver<bool>) {
+    let (tx, rx) = oneshot::channel();
+    let url = upgraded(move |mut ws| async move {
+        while let Some(Ok(message)) = ws.next().await {
+            if let Message::Text(_) = message {
+                let _ = tx.send(close_and_await_reply(&mut ws, code, reason).await);
+                return;
+            }
+        }
+    })
+    .await;
+    (url, rx)
+}
+
+async fn close_and_await_reply(ws: &mut Server, code: u16, reason: &'static str) -> bool {
+    let frame = CloseFrame {
+        code: CloseCode::from(code),
+        reason: reason.into(),
+    };
+    if ws.close(Some(frame)).await.is_err() {
+        return false;
+    }
+    matches!(
+        tokio::time::timeout(std::time::Duration::from_secs(1), ws.next()).await,
+        Ok(Some(Ok(Message::Close(_))))
+    )
+}

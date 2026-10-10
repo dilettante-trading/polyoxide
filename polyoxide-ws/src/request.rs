@@ -154,6 +154,7 @@ impl Connection {
             if let Message::Close(_) = message {
                 self.record_close(Some(&message));
                 self.keep(message);
+                self.flush_reply().await;
                 continue;
             }
             match answer(&message) {
@@ -427,6 +428,29 @@ mod tests {
             .await
             .expect("a pong");
         assert_eq!(connection.next_id(), 1);
+    }
+
+    #[tokio::test]
+    async fn a_close_while_awaiting_is_answered() {
+        // DRIFT R3 on the request path: the reply goes out though nothing
+        // reads the connection again.
+        let (url, replied) = loopback::close_on_request(1008, "Too many requests").await;
+        let mut connection = open(&url).await;
+        let err = connection
+            .request(binance::subscribe("a@aggTrade"), binance::answer)
+            .await
+            .expect_err("closed");
+        assert!(
+            matches!(
+                err.kind(),
+                Kind::Closed {
+                    code: Some(1008),
+                    ..
+                }
+            ),
+            "{err:?}"
+        );
+        assert!(replied.await.expect("the server reported"));
     }
 
     #[tokio::test]
