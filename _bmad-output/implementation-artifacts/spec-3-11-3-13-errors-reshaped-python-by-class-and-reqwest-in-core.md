@@ -2,7 +2,7 @@
 title: 'Stories 3.11, 3.12 and 3.13: HTTP errors reshaped around one ApiError, Python exceptions by class, and reqwest owned by core'
 type: 'refactor'
 created: '2026-10-10'
-status: 'in-progress'
+status: 'done'
 route: 'dispatch'
 review_loop_iteration: 0
 baseline_commit: '14084076cf33fc4ddf039638d681d50404b282b9'
@@ -289,6 +289,60 @@ Commits: J0 `718a052`, J1 `8eee873`, J2 `e6df815`, J3 `fcf2c21`, J4 `d43c651`, J
 ## Spec Change Log
 
 ## Review Triage Log
+
+All three layers ran on `14084076`..`167d158` (the diff excludes `_bmad-output`):
+- blind: 15 findings;
+- edge-case: 9;
+- verification-gap: 2 gaps and 4 other findings.
+
+That is 30 findings: 15 patched in 7 fixes, 14 rejected and 1 deferred. Blind's header-pin finding is patched for its module list and rejected for its other three parts. No finding needs the spec changed, so there is no loopback. CLAUDE.md's patches are applied, not deferred (AD-21, as in bundles F, G and I). The removal gate ran before review: 33 removals, all listed, plus 15 other changes S1 allows.
+
+**Re-verified at `0d434a3`** (local Rust 1.95):
+- fmt, clippy `-D warnings` and `cargo doc -D warnings` are clean;
+- 2,368 workspace tests pass;
+- the six header pins pass in their minimal builds;
+- `cargo hack --each-feature` is clean;
+- `.github/scripts` has 908 passing and `polyoxide-py` 344;
+- `live_unwraps` and `gen_registry --check` are clean.
+
+The removal gate is not re-run, since the patches remove nothing. MSRV 1.91 is not checked, because no local toolchain is installed.
+
+The one Python failure in the first run, `test_live_api.py::TestDataV2Sync::test_market_routes`, was a live 503 `request_timeout` from the Data API. It passed twice on re-run, and is already in deferred-work.
+
+**Patched** (by the implementer, re-engaged):
+- **Medium: a failed response's body is read while its concurrency permit is held** (verification-gap other, blind, edge-case: three reports of one defect). `send.rs`'s `Fail | Retry(_)` arm awaits `ErrorResponse::read` with `permit` alive. A 2xx body is read by the caller after the permit drops. A slow error body therefore holds one of relay's two slots. The permit is now dropped first.
+- **Medium: `ErrorResponse`'s derived `Debug` is unbounded** (blind, edge-case). `Request::send_raw` logs `Request failed: {:?}` at ERROR for every answered failure. So each line carries every response header (`set-cookie` included) and the body, twice when the body is not JSON. Before, core logged the message once and no headers. `Debug` is now hand-written: the status, `retry_after`, the message and body through `truncate_for_log`, and only the header names.
+- **Medium: Binance's non-venue arm keeps the unclipped body** (verification-gap gap and other, edge-case). The old `core_error` kept only a clipped message. `every_kept_body_is_clipped` read only `message`. The body is now clipped too, and the test asserts it.
+- **Medium: the header pins' module list is hard-coded three times** (blind). A new venue crate on core's client, Kalshi for instance, could ship with no `tests/headers.rs` and stay green. `test_ci_workflow.py` now derives the list from cargo metadata.
+- **Low: `health`'s and `get_bytes`' own non-2xx branches have no test** (verification-gap gap). The default policy now fails a non-2xx inside the loop, so both branches run only under a `Done`-on-failure policy. Deleting either check would leave CI green. Tests now run both under `Inverted`.
+- **Low: Binance reads `Retry-After` twice, with different clamps** (verification-gap other, blind). The non-venue arm surfaced core's unclamped reading, while 429 and 418 surfaced the 3-day clamp. That arm now carries the clamped reading.
+- **Low: stale or inaccurate docs** (blind ×3, plus the docstring half of verification-gap's v2 finding). This covers six things:
+  - two comments and CLAUDE.md's sports paragraph cited core's removed inherent `is_retriable`;
+  - CLAUDE.md's guide paragraph did not record `impl_api_error_conversions!` going;
+  - CLAUDE.md's `parse_retry_after` sentence did not name `ErrorResponse`'s unclamped read;
+  - the fence's and the header pins' docstrings misstated 0.37.0, which was a code default in core's builder, not a feature switched on elsewhere;
+  - the s1-removals line for relay's `Reqwest` said "a body that failed to read", which is true only of a 2xx body;
+  - the docstrings of Python's `ApiError` and `ValidationError` did not mention data v2's by-code mapping.
+
+  The release notes now name the removed inherent `retry_after`s and the direct `polyoxide-venue` dependency that `Classify` needs.
+
+**Deferred:**
+- **Python exceptions leave `status` and `retry_after` as `None` for every non-v2 error** (blind). This predates J, and the spec keeps the six attributes unchanged. Every `ErrorResponse` now carries both values, so filling them in is a follow-up (deferred-work).
+
+**Rejected:**
+- **False: Python's v2 fallback ignores the class** (blind, edge-case, verification-gap other). The frozen intent keeps data v2's mapping by `code` exactly, and Story 3.12's AC says so. The docstrings that contradicted it are patched above.
+- **False: relay's private `send` dropped the non-2xx check** (blind). Relay installs `PolymarketRetryPolicy`, which is `Done` only on a 2xx, and its builder has no way to install another policy, so the case cannot be reached.
+- **False: Python's changed exceptions are undocumented** (blind). The Story 3.12 release-notes entry in deferred-work lists every changed raised type ((6) [RISK]), and the CHANGELOG is written from it at 4.11.
+- **False: the removals ledger is only predicted** (blind). The gate ran (`api_removals.py check --baseline v0.38.1`): 33 removals, all listed. The removed inherent `retry_after`s are not reported because each type's `Classify` impl defines `retry_after`.
+- **Rejected by the frozen decision: `Classify` is not re-exported** (blind). The spec decides "No `Classify` re-export from venue crates". The release notes now name the dependency.
+- **Low: `ErrorResponse` keeps no URL or path, so Binance's 418 WARN lost its path** (blind). Core's hold WARN still names the path, and every 418 holds. Adding a field adds public surface, for a log line that already exists.
+- **Low: `ClobError::Gamma` drops which lookup failed** (blind). It is rare, and keeping the operation needs a new variant shape.
+- **Low: the header pins check only the last request, only a GET, and `--no-default-features` is a no-op for five crates** (blind). The AC asks for one request. `-p <crate>` alone is what isolates features; a default feature is not. No client sends two requests for one call.
+- **Low (pre-existing): a JSON body with a non-string `error` and a string `message` keeps the raw body as its message** (edge-case). The logic is unchanged from `from_status_and_body`.
+- **Low (pre-existing): Binance's `Venue` arm has no `retry_after`** (edge-case). It had none before. Adding one adds a field.
+- **Low: three refusals made after a response are `Validation`, so they class `InvalidRequest` and not `Decode`** (edge-case). They are clob's malformed `minimum_tick_size`, clob's malformed proxy address from Gamma, and relay's malformed relay-payload address. Each refuses before the order or transaction is sent; both classes are non-retriable and tag `real`; the venue data is rarely malformed. A decode representation for them is more than a direct correction.
+- **Low: `headers_sent` would panic on mockito's thread for a non-ASCII header value** (edge-case). No polyoxide request sends one.
+- **Low: perps' not-ok ping message is now the body, and a `status: err` body becomes `Venue`** (edge-case). The body carries the not-ok status verbatim, and the class is `Decode` either way.
 
 ## Design Notes
 
