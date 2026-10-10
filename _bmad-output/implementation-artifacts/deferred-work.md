@@ -175,3 +175,6 @@
 - source_spec: `_bmad-output/implementation-artifacts/spec-4-1-4-4-socket-kit-classification-table-and-test-server.md`
   summary: For Story 4.10, add a fence that any crate whose error type wraps `polyoxide_ws::WsError` expands `impl_ws_classification!`. Also decide whether a refused upgrade's `Retry-After` should be surfaced for statuses other than 429, as HTTP's `ApiError::Response` surfaces every status's.
   evidence: Review findings B4 and E10/B3, rejected for K: no crate wraps `WsError` yet, so the fence would check nothing, and K-D3 (frozen) carries the wait only through `RateLimited`. `WsError` is exempt from `test_classify_coverage.py`, so only the venue enum's `Classify` impl is checked.
+- source_spec: none
+  summary: Bundle L2, Stories 4.7 (Binance on the Supervisor, with its suite switch per A4-1) and 4.8 (rtds and sports on the kit, with their suite switches, DRIFT R1/R2/R9 and the rtds and sports allowlists), follows bundle L1.
+  evidence: Bundle L (4.5–4.8) was split at the scope gate on 2026-10-10. The Supervisor, perps and Binance migrations together, each moving its suite, are too large for one implementation and one review round, so L1 (4.5 and 4.6) proves the Supervisor on perps first.
