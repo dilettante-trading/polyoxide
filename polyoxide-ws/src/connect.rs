@@ -88,7 +88,7 @@ mod tests {
     };
 
     use super::*;
-    use crate::loopback;
+    use crate::test_server::{Script, ScriptedServer};
 
     /// A stand-in for `polyoxide-venue`'s status rule, which this crate
     /// cannot see; venue's table test checks the real one against the
@@ -105,8 +105,8 @@ mod tests {
 
     #[tokio::test(start_paused = true)]
     async fn a_hung_handshake_times_out_at_the_default() {
-        let url = loopback::stall().await;
-        let err = connect(url.as_str(), DEFAULT_CONNECT_TIMEOUT)
+        let server = ScriptedServer::start(vec![Script::stall()]).await;
+        let err = connect(server.url.as_str(), DEFAULT_CONNECT_TIMEOUT)
             .await
             .expect_err("a server that never upgrades must not connect");
         assert_eq!(
@@ -119,8 +119,11 @@ mod tests {
 
     #[tokio::test]
     async fn a_refused_upgrade_keeps_its_status_and_retry_after() {
-        let url = loopback::refuse(429, &[("Retry-After", "7")]).await;
-        let err = connect(url.as_str(), DEFAULT_CONNECT_TIMEOUT)
+        let server = ScriptedServer::start(vec![
+            Script::refuse_upgrade(429).with_header("Retry-After", "7")
+        ])
+        .await;
+        let err = connect(server.url.as_str(), DEFAULT_CONNECT_TIMEOUT)
             .await
             .expect_err("a refused upgrade must not connect");
         assert_eq!(
@@ -134,12 +137,14 @@ mod tests {
 
     #[tokio::test]
     async fn a_503_upgrade_is_worth_retrying_and_a_404_is_not() {
-        let unwell = connect(
-            loopback::refuse(503, &[]).await.as_str(),
-            DEFAULT_CONNECT_TIMEOUT,
-        )
-        .await
-        .expect_err("503");
+        let server = ScriptedServer::start(vec![
+            Script::refuse_upgrade(503),
+            Script::refuse_upgrade(404),
+        ])
+        .await;
+        let unwell = connect(server.url.as_str(), DEFAULT_CONNECT_TIMEOUT)
+            .await
+            .expect_err("503");
         assert_eq!(
             unwell.kind(),
             Kind::Refused {
@@ -149,19 +154,16 @@ mod tests {
         );
         assert!(retrying_can_fix(&unwell, rule));
 
-        let missing = connect(
-            loopback::refuse(404, &[]).await.as_str(),
-            DEFAULT_CONNECT_TIMEOUT,
-        )
-        .await
-        .expect_err("404");
+        let missing = connect(server.url.as_str(), DEFAULT_CONNECT_TIMEOUT)
+            .await
+            .expect_err("404");
         assert!(!retrying_can_fix(&missing, rule));
     }
 
     #[tokio::test]
     async fn a_server_that_upgrades_connects() {
-        let url = loopback::serve(Vec::new(), |_| Vec::new()).await;
-        connect(url.as_str(), DEFAULT_CONNECT_TIMEOUT)
+        let server = ScriptedServer::start(vec![Script::hold()]).await;
+        connect(server.url.as_str(), DEFAULT_CONNECT_TIMEOUT)
             .await
             .expect("connect");
     }

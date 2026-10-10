@@ -170,13 +170,15 @@ impl Connection {
 
 #[cfg(test)]
 mod tests {
-    use std::sync::{Arc, Mutex};
-
     use serde_json::{json, Value};
     use tokio_tungstenite::tungstenite::protocol::{frame::coding::CloseCode, CloseFrame};
 
     use super::*;
-    use crate::{connect, loopback, Kind, Mode, DEFAULT_CONNECT_TIMEOUT};
+    use crate::{
+        connect,
+        test_server::{Script, ScriptedServer},
+        Kind, Mode, DEFAULT_CONNECT_TIMEOUT,
+    };
 
     fn text(value: Value) -> Message {
         Message::Text(value.to_string().into())
@@ -189,8 +191,17 @@ mod tests {
         }
     }
 
-    async fn open(url: &str) -> Connection {
-        let socket = connect(url, DEFAULT_CONNECT_TIMEOUT)
+    /// A server that holds each connection and answers with `answer`, the
+    /// same stateless answerer on every connection.
+    async fn answering<A>(answer: A) -> ScriptedServer
+    where
+        A: FnMut(&str) -> Vec<Message> + Clone + Send + 'static,
+    {
+        ScriptedServer::start_answering(vec![Script::hold()], move |_| answer.clone()).await
+    }
+
+    async fn open(server: &ScriptedServer) -> Connection {
+        let socket = connect(server.url.as_str(), DEFAULT_CONNECT_TIMEOUT)
             .await
             .expect("connect");
         Connection::new(socket, Mode::Data)
@@ -272,8 +283,8 @@ mod tests {
 
     #[tokio::test]
     async fn ids_count_from_one() {
-        let url = loopback::serve(Vec::new(), |_| Vec::new()).await;
-        let mut connection = open(&url).await;
+        let server = ScriptedServer::start(vec![Script::hold()]).await;
+        let mut connection = open(&server).await;
         assert_eq!(connection.next_id(), 1);
         assert_eq!(connection.take_id(), 1);
         assert_eq!(connection.take_id(), 2);
@@ -282,11 +293,11 @@ mod tests {
 
     #[tokio::test]
     async fn perps_pushes_read_before_the_answer_are_kept_and_yielded_in_order() {
-        let url = loopback::serve(Vec::new(), |request| {
+        let server = answering(|request: &str| {
             vec![perps::push(10), perps::push(11), perps::statuses(request)]
         })
         .await;
-        let mut connection = open(&url).await;
+        let mut connection = open(&server).await;
         let data = connection
             .request(perps::subscribe(&["bbo::1", "trades::1"]), perps::answer)
             .await
@@ -298,7 +309,7 @@ mod tests {
 
     #[tokio::test]
     async fn perps_an_answer_to_another_request_is_dropped() {
-        let url = loopback::serve(Vec::new(), |request| {
+        let server = answering(|request: &str| {
             vec![
                 text(json!({"id": 99, "data": {"status": "ok"}})),
                 perps::statuses(request),
@@ -306,7 +317,7 @@ mod tests {
             ]
         })
         .await;
-        let mut connection = open(&url).await;
+        let mut connection = open(&server).await;
         connection
             .request(perps::subscribe(&["bbo::1"]), perps::answer)
             .await
@@ -321,8 +332,8 @@ mod tests {
     #[tokio::test]
     async fn binance_requests_are_paced() {
         let interval = Duration::from_millis(50);
-        let url = loopback::serve(Vec::new(), |request| vec![binance::result(request)]).await;
-        let mut connection = open(&url).await.min_request_interval(interval);
+        let server = answering(|request: &str| vec![binance::result(request)]).await;
+        let mut connection = open(&server).await.min_request_interval(interval);
         let start = Instant::now();
         for name in ["a@aggTrade", "b@aggTrade", "c@aggTrade"] {
             let result = connection
@@ -341,8 +352,8 @@ mod tests {
     #[tokio::test]
     async fn binance_an_unanswered_request_is_no_answer_and_pushes_meanwhile_are_kept() {
         let after = Duration::from_millis(200);
-        let url = loopback::serve(Vec::new(), |_| vec![binance::push(1), binance::push(2)]).await;
-        let mut connection = open(&url).await.answer_timeout(after);
+        let server = answering(|_: &str| vec![binance::push(1), binance::push(2)]).await;
+        let mut connection = open(&server).await.answer_timeout(after);
         let err = connection
             .request(binance::subscribe("a@aggTrade"), binance::answer)
             .await
@@ -357,27 +368,30 @@ mod tests {
         // Request 2's answer is held until request 3 arrives, by when request
         // 2 has timed out. Request 3 must skip it and take its own, and the
         // push sent ahead of both is kept.
-        let held: Arc<Mutex<Option<Message>>> = Arc::default();
-        let url = loopback::serve(Vec::new(), move |request| {
-            let value: Value = serde_json::from_str(request).unwrap();
-            let mut held = held.lock().unwrap();
-            match value["id"].as_u64() {
-                Some(2) => {
-                    *held = Some(text(
-                        json!({"error": {"code": 2, "msg": "Invalid request"}, "id": 2}),
-                    ));
-                    Vec::new()
+        let server = ScriptedServer::start_answering(vec![Script::hold()], |_| {
+            let mut held: Option<Message> = None;
+            move |request: &str| {
+                let value: Value = serde_json::from_str(request).unwrap();
+                match value["id"].as_u64() {
+                    Some(2) => {
+                        held = Some(text(
+                            json!({"error": {"code": 2, "msg": "Invalid request"}, "id": 2}),
+                        ));
+                        Vec::new()
+                    }
+                    Some(3) => vec![
+                        binance::push(7),
+                        held.take().expect("request 2's answer"),
+                        binance::result(request),
+                    ],
+                    _ => vec![binance::result(request)],
                 }
-                Some(3) => vec![
-                    binance::push(7),
-                    held.take().expect("request 2's answer"),
-                    binance::result(request),
-                ],
-                _ => vec![binance::result(request)],
             }
         })
         .await;
-        let mut connection = open(&url).await.answer_timeout(Duration::from_millis(200));
+        let mut connection = open(&server)
+            .await
+            .answer_timeout(Duration::from_millis(200));
         for (name, expected) in [
             ("a@aggTrade", Ok(Ok(Value::Null))),
             ("b@aggTrade", Err(())),
@@ -397,14 +411,14 @@ mod tests {
 
     #[tokio::test]
     async fn binance_an_error_answer_is_the_callers_to_read() {
-        let url = loopback::serve(Vec::new(), |request| {
+        let server = answering(|request: &str| {
             let value: Value = serde_json::from_str(request).unwrap();
             vec![text(
                 json!({"error": {"code": 2, "msg": "Invalid request"}, "id": value["id"]}),
             )]
         })
         .await;
-        let mut connection = open(&url).await;
+        let mut connection = open(&server).await;
         let result = connection
             .request(binance::subscribe("a@aggTrade"), binance::answer)
             .await
@@ -414,8 +428,8 @@ mod tests {
 
     #[tokio::test]
     async fn a_protocol_ping_awaits_its_pong_without_taking_an_id() {
-        let url = loopback::serve(Vec::new(), |_| Vec::new()).await;
-        let mut connection = open(&url).await.answer_timeout(Duration::from_secs(2));
+        let server = ScriptedServer::start(vec![Script::hold()]).await;
+        let mut connection = open(&server).await.answer_timeout(Duration::from_secs(2));
         connection
             .send(Message::Ping(Vec::new().into()))
             .await
@@ -434,8 +448,12 @@ mod tests {
     async fn a_close_while_awaiting_is_answered() {
         // DRIFT R3 on the request path: the reply goes out though nothing
         // reads the connection again.
-        let (url, replied) = loopback::close_on_request(1008, "Too many requests").await;
-        let mut connection = open(&url).await;
+        let server = ScriptedServer::start(vec![Script::hold()
+            .after_first_frame()
+            .then_close()
+            .close_with(1008, "Too many requests")])
+        .await;
+        let mut connection = open(&server).await;
         let err = connection
             .request(binance::subscribe("a@aggTrade"), binance::answer)
             .await
@@ -450,19 +468,21 @@ mod tests {
             ),
             "{err:?}"
         );
-        assert!(replied.await.expect("the server reported"));
+        server
+            .wait_for("the close reply", |s| s.close_reply_count() == 1)
+            .await;
     }
 
     #[tokio::test]
     async fn a_close_while_awaiting_fails_the_request_and_every_later_one() {
-        let url = loopback::serve(Vec::new(), |_| {
+        let server = answering(|_: &str| {
             vec![Message::Close(Some(CloseFrame {
                 code: CloseCode::Policy,
                 reason: "Too many requests".into(),
             }))]
         })
         .await;
-        let mut connection = open(&url).await;
+        let mut connection = open(&server).await;
         let closed = Kind::Closed {
             code: Some(1008),
             reason: "Too many requests",

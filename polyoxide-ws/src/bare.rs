@@ -253,12 +253,16 @@ mod tests {
     use tokio_tungstenite::tungstenite::protocol::{frame::coding::CloseCode, CloseFrame};
 
     use super::*;
-    use crate::{connect, loopback, Kind, DEFAULT_CONNECT_TIMEOUT};
+    use crate::{
+        connect,
+        test_server::{Script, ScriptedServer},
+        Kind, DEFAULT_CONNECT_TIMEOUT,
+    };
 
     const WINDOW: Duration = Duration::from_secs(3);
 
-    async fn open(url: &str, mode: Mode) -> Connection {
-        let socket = connect(url, DEFAULT_CONNECT_TIMEOUT)
+    async fn open(server: &ScriptedServer, mode: Mode) -> Connection {
+        let socket = connect(server.url.as_str(), DEFAULT_CONNECT_TIMEOUT)
             .await
             .expect("connect");
         Connection::new(socket, mode)
@@ -281,8 +285,8 @@ mod tests {
 
     #[tokio::test]
     async fn data_mode_yields_text_and_binary_and_skips_control_frames() {
-        let url = loopback::push(frames()).await;
-        let mut connection = open(&url, Mode::Data).await;
+        let server = ScriptedServer::start(vec![Script::messages(frames())]).await;
+        let mut connection = open(&server, Mode::Data).await;
         assert_eq!(
             next(&mut connection).await.unwrap().unwrap(),
             Message::Binary(vec![1, 2, 3].into())
@@ -295,8 +299,8 @@ mod tests {
 
     #[tokio::test]
     async fn all_mode_yields_every_frame() {
-        let url = loopback::push(frames()).await;
-        let mut connection = open(&url, Mode::All).await;
+        let server = ScriptedServer::start(vec![Script::messages(frames())]).await;
+        let mut connection = open(&server, Mode::All).await;
         let mut seen = Vec::new();
         for _ in 0..4 {
             seen.push(next(&mut connection).await.unwrap().unwrap());
@@ -309,35 +313,40 @@ mod tests {
         // Data mode answers by reading on; all mode yields the ping and still
         // sends the pong, though the caller never reads again.
         for mode in [Mode::Data, Mode::All] {
-            let (url, pongs) = loopback::ping(b"p1").await;
-            let mut connection = open(&url, mode).await;
-            let reader = async {
-                if mode == Mode::All {
+            let server = ScriptedServer::start(vec![Script::messages(vec![Message::Ping(
+                b"p1".to_vec().into(),
+            )])])
+            .await;
+            let mut connection = open(&server, mode).await;
+            let reader = match mode {
+                Mode::Data => {
+                    tokio::spawn(async move { while connection.next().await.is_some() {} })
+                }
+                Mode::All => {
                     assert_eq!(
                         next(&mut connection).await.unwrap().unwrap(),
                         Message::Ping(b"p1".to_vec().into())
                     );
-                    std::future::pending::<()>().await;
-                } else {
-                    while connection.next().await.is_some() {}
+                    // Held, never read again.
+                    tokio::spawn(async move {
+                        let _held = connection;
+                        std::future::pending::<()>().await;
+                    })
                 }
             };
-            tokio::select! {
-                () = reader => panic!("the stream ended"),
-                pong = tokio::time::timeout(WINDOW, pongs) => assert_eq!(
-                    pong.expect("a pong within the window").expect("a pong"),
-                    b"p1".to_vec(),
-                    "{mode:?}"
-                ),
-            }
+            server
+                .wait_for("a pong", |s| s.pongs() == [b"p1".to_vec()])
+                .await;
+            reader.abort();
         }
     }
 
     #[tokio::test]
     async fn a_server_close_ends_the_stream_with_its_code_and_reason() {
         for (code, reason) in [(1011, "overloaded"), (1008, "policy")] {
-            let url = loopback::close_with(code, reason).await;
-            let mut connection = open(&url, Mode::Data).await;
+            let server =
+                ScriptedServer::start(vec![Script::close_at_once().close_with(code, reason)]).await;
+            let mut connection = open(&server, Mode::Data).await;
             assert!(connection.closed().is_none(), "open, so not closed yet");
             assert!(next(&mut connection).await.is_none());
             assert_eq!(
@@ -353,8 +362,9 @@ mod tests {
 
     #[tokio::test]
     async fn all_mode_yields_the_close_frame_last() {
-        let url = loopback::close_with(1001, "bye").await;
-        let mut connection = open(&url, Mode::All).await;
+        let server =
+            ScriptedServer::start(vec![Script::close_at_once().close_with(1001, "bye")]).await;
+        let mut connection = open(&server, Mode::All).await;
         assert_eq!(
             next(&mut connection).await.unwrap().unwrap(),
             Message::Close(Some(CloseFrame {
@@ -378,8 +388,11 @@ mod tests {
         // the close and sends it only on a later read or flush, which a
         // stream that has ended never makes.
         for mode in [Mode::Data, Mode::All] {
-            let (url, replied) = loopback::close_awaiting_reply(1011, "pong_timeout").await;
-            let mut connection = open(&url, mode).await;
+            let server = ScriptedServer::start(vec![
+                Script::close_at_once().close_with(1011, "pong_timeout")
+            ])
+            .await;
+            let mut connection = open(&server, mode).await;
             let last = next(&mut connection).await;
             match mode {
                 Mode::Data => assert!(last.is_none(), "{last:?}"),
@@ -394,28 +407,29 @@ mod tests {
             );
             // Held open and never read again, as a caller that saw the end
             // would leave it.
-            assert!(
-                replied.await.expect("the server reported"),
-                "the server got no close reply in {mode:?} mode"
-            );
+            server
+                .wait_for("the close reply", |s| s.close_reply_count() == 1)
+                .await;
             drop(connection);
         }
     }
 
     #[tokio::test]
     async fn close_after_the_server_closed_succeeds() {
-        let (url, replied) = loopback::close_awaiting_reply(1000, "").await;
-        let mut connection = open(&url, Mode::Data).await;
+        let server = ScriptedServer::start(vec![Script::close_at_once()]).await;
+        let mut connection = open(&server, Mode::Data).await;
         assert!(next(&mut connection).await.is_none());
         connection.close().await.expect("close");
-        assert!(replied.await.expect("the server reported"));
+        server
+            .wait_for("the close reply", |s| s.close_reply_count() == 1)
+            .await;
     }
 
     #[tokio::test]
     async fn a_failed_read_is_yielded_once_and_ends_the_stream() {
         // The server drops the TCP connection without a closing handshake.
-        let url = loopback::drop_after_handshake().await;
-        let mut connection = open(&url, Mode::Data).await;
+        let server = ScriptedServer::start(vec![Script::hold().then_cut()]).await;
+        let mut connection = open(&server, Mode::Data).await;
         let err = next(&mut connection).await.unwrap().unwrap_err();
         assert!(matches!(err.kind(), Kind::Protocol | Kind::Io), "{err:?}");
         assert!(next(&mut connection).await.is_none());
@@ -424,19 +438,21 @@ mod tests {
 
     #[tokio::test]
     async fn close_sends_a_close_frame_the_server_receives() {
-        let (url, closed) = loopback::await_close().await;
-        let mut connection = open(&url, Mode::Data).await;
+        let server = ScriptedServer::start(vec![Script::hold()]).await;
+        let mut connection = open(&server, Mode::Data).await;
         connection.close().await.expect("close");
-        tokio::time::timeout(WINDOW, closed)
-            .await
-            .expect("the server saw a close frame")
-            .expect("the server task ran");
+        server
+            .wait_for("a close frame", |s| s.close_count() == 1)
+            .await;
     }
 
     #[tokio::test]
     async fn every_frame_refreshes_last_inbound() {
-        let url = loopback::push(vec![Message::Pong(Vec::new().into())]).await;
-        let mut connection = open(&url, Mode::Data).await;
+        let server = ScriptedServer::start(vec![Script::messages(vec![Message::Pong(
+            Vec::new().into(),
+        )])])
+        .await;
+        let mut connection = open(&server, Mode::Data).await;
         let opened = connection.last_inbound();
         // The pong is skipped, so the read waits; it must still count.
         let _ = tokio::time::timeout(Duration::from_millis(200), connection.next()).await;

@@ -24,6 +24,10 @@
 //! [`tungstenite`] is re-exported, so a venue names `Message` and
 //! `CloseFrame` through this crate rather than depending on it.
 //!
+//! Behind the `test-server` feature, the doc-hidden `test_server` module holds
+//! the scripted local server and the helpers the offline suites share. It is
+//! for tests, not consumers.
+//!
 //! The crate depends on neither `polyoxide-core` nor `polyoxide-venue`, and
 //! builds no HTTP or signing stack, so a credential-free feed built on it
 //! stays light (AD-2). It logs under the `polyoxide_ws` target and never
@@ -39,9 +43,10 @@ mod backoff;
 mod bare;
 mod connect;
 mod error;
-#[cfg(test)]
-mod loopback;
 mod request;
+#[cfg(any(test, feature = "test-server"))]
+#[doc(hidden)]
+pub mod test_server;
 mod timing;
 mod tls;
 

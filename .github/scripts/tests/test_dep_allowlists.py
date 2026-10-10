@@ -120,7 +120,7 @@ def write() -> None:
 def test_the_allowlists_exist() -> None:
     # A glob that matched nothing would pass every test below vacuously.
     names = [p.name for p in allowlists()]
-    assert "polyoxide-ws.txt" in names, names
+    assert {"polyoxide-ws.txt", "polyoxide-ws@test-server.txt"} <= set(names), names
     assert "tokio-tungstenite" in read_allowlist(ALLOWLISTS / "polyoxide-ws.txt")
 
 
