@@ -4,6 +4,7 @@ use polyoxide_clob::{
     UserRewardMarketOrderBy,
 };
 use polyoxide_core::RetryConfig;
+use polyoxide_venue::Classify;
 
 fn test_public_clob(server: &mockito::ServerGuard) -> polyoxide_clob::Clob {
     ClobBuilder::new().base_url(server.url()).build().unwrap()
@@ -168,10 +169,10 @@ async fn authenticated_401_returns_authentication_error() {
     let err = clob.orders().unwrap().list().send().await.unwrap_err();
 
     match err {
-        ClobError::Api(polyoxide_core::ApiError::Authentication(msg)) => {
-            assert_eq!(msg, "invalid api key");
+        ClobError::Api(polyoxide_core::ApiError::Response(r)) if r.status.as_u16() == 401 => {
+            assert_eq!(r.message, "invalid api key");
         }
-        other => panic!("Expected Authentication error, got: {:?}", other),
+        other => panic!("Expected a 401, got: {:?}", other),
     }
 
     mock.assert_async().await;
@@ -953,8 +954,8 @@ async fn retry_429_exhausted_returns_rate_limit_error() {
 
     // After exhausting retries, the 429 is returned as a RateLimit error
     assert!(
-        matches!(err, ClobError::Api(polyoxide_core::ApiError::RateLimit(_))),
-        "Expected RateLimit error, got: {:?}",
+        matches!(&err, ClobError::Api(polyoxide_core::ApiError::Response(r)) if r.status.as_u16() == 429),
+        "Expected a 429, got: {:?}",
         err
     );
     // Verify it was retried exactly max_retries times (3 total requests)
@@ -979,8 +980,8 @@ async fn retry_429_with_retry_after_header() {
     let err = clob.health().server_time().send().await.unwrap_err();
 
     assert!(matches!(
-        err,
-        ClobError::Api(polyoxide_core::ApiError::RateLimit(_))
+        &err,
+        ClobError::Api(polyoxide_core::ApiError::Response(r)) if r.status.as_u16() == 429
     ));
     // Retry-After header respected — still 3 total requests
     mock.assert_async().await;
@@ -1039,7 +1040,7 @@ async fn retry_425_exhausted_returns_too_early_error() {
     let err = clob.health().server_time().send().await.unwrap_err();
 
     match &err {
-        ClobError::Api(polyoxide_core::ApiError::Api { status, .. }) => assert_eq!(*status, 425),
+        ClobError::Api(polyoxide_core::ApiError::Response(r)) => assert_eq!(r.status.as_u16(), 425),
         other => panic!("Expected Api error with status 425, got: {other:?}"),
     }
     // Still retriable once surfaced — the caller may back off further and retry.
@@ -1063,8 +1064,8 @@ async fn server_500_not_retried() {
     let err = clob.health().server_time().send().await.unwrap_err();
 
     match err {
-        ClobError::Api(polyoxide_core::ApiError::Api { status, .. }) => {
-            assert_eq!(status, 500);
+        ClobError::Api(polyoxide_core::ApiError::Response(r)) => {
+            assert_eq!(r.status.as_u16(), 500);
         }
         other => panic!("Expected Api error with status 500, got: {:?}", other),
     }
@@ -1088,8 +1089,8 @@ async fn server_502_not_retried() {
     let err = clob.health().server_time().send().await.unwrap_err();
 
     match err {
-        ClobError::Api(polyoxide_core::ApiError::Api { status, .. }) => {
-            assert_eq!(status, 502);
+        ClobError::Api(polyoxide_core::ApiError::Response(r)) => {
+            assert_eq!(r.status.as_u16(), 502);
         }
         other => panic!("Expected Api error with status 502, got: {:?}", other),
     }
@@ -1114,10 +1115,10 @@ async fn error_400_returns_validation_error() {
     let err = clob.health().server_time().send().await.unwrap_err();
 
     match err {
-        ClobError::Api(polyoxide_core::ApiError::Validation(msg)) => {
-            assert_eq!(msg, "invalid parameters");
+        ClobError::Api(polyoxide_core::ApiError::Response(r)) if r.status.as_u16() == 400 => {
+            assert_eq!(r.message, "invalid parameters");
         }
-        other => panic!("Expected Validation error, got: {:?}", other),
+        other => panic!("Expected a 400, got: {:?}", other),
     }
     mock.assert_async().await;
 }
@@ -1138,10 +1139,10 @@ async fn error_403_returns_authentication_error() {
     let err = clob.health().server_time().send().await.unwrap_err();
 
     match err {
-        ClobError::Api(polyoxide_core::ApiError::Authentication(msg)) => {
-            assert_eq!(msg, "forbidden");
+        ClobError::Api(polyoxide_core::ApiError::Response(r)) if r.status.as_u16() == 403 => {
+            assert_eq!(r.message, "forbidden");
         }
-        other => panic!("Expected Authentication error, got: {:?}", other),
+        other => panic!("Expected a 403, got: {:?}", other),
     }
     mock.assert_async().await;
 }
@@ -1163,9 +1164,9 @@ async fn error_message_field_fallback() {
     let err = clob.health().server_time().send().await.unwrap_err();
 
     match err {
-        ClobError::Api(polyoxide_core::ApiError::Api { status, message }) => {
-            assert_eq!(status, 500);
-            assert_eq!(message, "something broke");
+        ClobError::Api(polyoxide_core::ApiError::Response(r)) => {
+            assert_eq!(r.status.as_u16(), 500);
+            assert_eq!(r.message, "something broke");
         }
         other => panic!("Expected Api error, got: {:?}", other),
     }
@@ -1189,9 +1190,9 @@ async fn error_html_body_uses_raw_text() {
     let err = clob.health().server_time().send().await.unwrap_err();
 
     match err {
-        ClobError::Api(polyoxide_core::ApiError::Api { status, message }) => {
-            assert_eq!(status, 503);
-            assert!(message.contains("Service Unavailable"));
+        ClobError::Api(polyoxide_core::ApiError::Response(r)) => {
+            assert_eq!(r.status.as_u16(), 503);
+            assert!(r.message.contains("Service Unavailable"));
         }
         other => panic!("Expected Api error, got: {:?}", other),
     }
@@ -1214,8 +1215,8 @@ async fn error_empty_body() {
 
     // Empty body should still produce an error, not panic
     assert!(matches!(
-        err,
-        ClobError::Api(polyoxide_core::ApiError::Api { status: 500, .. })
+        &err,
+        ClobError::Api(polyoxide_core::ApiError::Response(r)) if r.status.as_u16() == 500
     ));
     mock.assert_async().await;
 }
@@ -1262,8 +1263,8 @@ async fn error_408_returns_timeout() {
     let err = clob.health().server_time().send().await.unwrap_err();
 
     assert!(
-        matches!(err, ClobError::Api(polyoxide_core::ApiError::Timeout)),
-        "Expected Timeout error, got: {:?}",
+        matches!(&err, ClobError::Api(polyoxide_core::ApiError::Response(r)) if r.status.as_u16() == 408),
+        "Expected a 408, got: {:?}",
         err
     );
     mock.assert_async().await;
@@ -3446,13 +3447,14 @@ async fn unrelated_400_still_maps_to_validation_error() {
         .unwrap_err();
 
     match &err {
-        ClobError::Api(polyoxide_core::ApiError::Validation(msg)) => {
+        ClobError::Api(polyoxide_core::ApiError::Response(r)) if r.status.as_u16() == 400 => {
             assert!(
-                msg.contains("minimum tick size"),
-                "unexpected message: {msg}"
+                r.message.contains("minimum tick size"),
+                "unexpected message: {}",
+                r.message
             );
         }
-        other => panic!("Expected a generic Validation error, got: {other:?}"),
+        other => panic!("Expected a generic 400, got: {other:?}"),
     }
     assert!(!err.is_retriable());
     post_mock.assert_async().await;
@@ -3478,7 +3480,7 @@ async fn fak_prose_on_non_400_status_is_not_reclassified() {
         .unwrap_err();
 
     match &err {
-        ClobError::Api(polyoxide_core::ApiError::Api { status, .. }) => assert_eq!(*status, 500),
+        ClobError::Api(polyoxide_core::ApiError::Response(r)) => assert_eq!(r.status.as_u16(), 500),
         other => panic!("Expected a generic Api error with status 500, got: {other:?}"),
     }
     assert!(err.is_retriable(), "a 5xx is a transient fault");
@@ -4311,7 +4313,7 @@ async fn a_429_on_ping_holds_the_next_request() {
     // Retried once, then out of retries: the 429 is the caller's.
     let err = clob.health().ping().await.unwrap_err();
     assert!(
-        matches!(err, ClobError::Api(polyoxide_core::ApiError::RateLimit(_))),
+        matches!(&err, ClobError::Api(polyoxide_core::ApiError::Response(r)) if r.status.as_u16() == 429),
         "{err:?}"
     );
 

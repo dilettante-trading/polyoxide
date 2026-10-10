@@ -57,11 +57,16 @@ pub trait QueryBuilder: Sized {
     }
 }
 
-/// Trait for error types that can be created from API responses
-pub trait RequestError: From<ApiError> + std::fmt::Debug {
-    /// Create error from HTTP response
-    fn from_response(response: Response) -> impl std::future::Future<Output = Self> + Send;
-}
+/// An error a [`Request`] can return: any type core's [`ApiError`] converts
+/// into.
+///
+/// The conversion is the type's one decode function. An unsuccessful response
+/// reaches it as [`ApiError::Response`], carrying the status, headers and body,
+/// so a venue reads its own body shape there, and a `?` on core's error
+/// anywhere decodes the same way.
+pub trait RequestError: From<ApiError> + std::fmt::Debug {}
+
+impl<E: From<ApiError> + std::fmt::Debug> RequestError for E {}
 
 /// The one request builder: a method, a path and its query, an optional JSON
 /// body, the [`Authenticator`](crate::Authenticator) that signs it and the
@@ -176,7 +181,8 @@ impl<T: DeserializeOwned, E: RequestError> Request<T, E> {
     /// Execute the request and return raw response
     ///
     /// It runs on [`HttpClient::send`], so it is throttled, gated, signed,
-    /// retried and held by the client's hooks.
+    /// retried and held by the client's hooks. A response that is not a 2xx
+    /// is never returned: it reaches `E` as [`ApiError::Response`].
     pub async fn send_raw(self) -> Result<Response, E> {
         let mut parts = RequestParts::new(self.method, self.path);
         parts.query = self.query;
@@ -186,21 +192,26 @@ impl<T: DeserializeOwned, E: RequestError> Request<T, E> {
                 .insert(CONTENT_TYPE, HeaderValue::from_static("application/json"));
             parts.body = Some(body);
         }
-        let response = self
+        let failure = match self
             .http_client
             .send(parts, &self.costs, self.authenticator.as_deref())
-            .await?;
-        let status = response.status();
-
-        tracing::debug!("Response status: {}", status);
-
-        if !status.is_success() {
-            let error = E::from_response(response).await;
+            .await
+        {
+            Ok(response) if response.status().is_success() => {
+                tracing::debug!("Response status: {}", response.status());
+                return Ok(response);
+            }
+            // Only a policy that is `Done` with a failed response gets here:
+            // core's and Polymarket's fail it, and the loop returns the error.
+            Ok(response) => ApiError::from_response(response).await,
+            Err(err) => err,
+        };
+        let answered = matches!(failure, ApiError::Response(_));
+        let error = E::from(failure);
+        if answered {
             tracing::error!("Request failed: {:?}", error);
-            return Err(error);
         }
-
-        Ok(response)
+        Err(error)
     }
 }
 

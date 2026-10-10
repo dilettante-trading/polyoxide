@@ -1,4 +1,4 @@
-use polyoxide_core::{ApiError, HttpClient, QueryBuilder, Request, RequestError, RequestParts};
+use polyoxide_core::{ApiError, HttpClient, QueryBuilder, Request, RequestParts};
 use reqwest::header::{HeaderValue, CONTENT_TYPE};
 use reqwest::Method;
 
@@ -153,8 +153,9 @@ async fn post_json<B: serde::Serialize, T: serde::de::DeserializeOwned>(
     parts.body = Some(serde_json::to_string(body).map_err(|e| GammaError::Api(ApiError::from(e)))?);
     let response = http.send(parts, &[], None).await?;
 
+    // Only a policy that is `Done` with a failed response gets here.
     if !response.status().is_success() {
-        return Err(GammaError::from_response(response).await);
+        return Err(ApiError::from_response(response).await.into());
     }
 
     let text = response

@@ -1971,14 +1971,18 @@ async fn each_relay_route_s_429_holds_the_next_request() {
                 .expect_err(&format!("{name}: a 429 and no retry"));
             assert!(
                 matches!(
-                    err,
-                    polyoxide_relay::RelayError::Api(polyoxide_core::ApiError::RateLimit(_))
+                    &err,
+                    polyoxide_relay::RelayError::Api(polyoxide_core::ApiError::Response(r))
+                        if r.status.as_u16() == 429
                 ),
                 "{name}: {err:?}"
             );
+            // The 429's Retry-After is its class's wait (Story 3.11).
             assert_eq!(
                 err.class(),
-                Class::RateLimited { retry_after: None },
+                Class::RateLimited {
+                    retry_after: Some(std::time::Duration::from_secs(4))
+                },
                 "{name}"
             );
 
@@ -2009,8 +2013,9 @@ async fn a_relay_503_is_not_retried_and_a_425_is() {
         .unwrap_err();
     assert!(
         matches!(
-            err,
-            polyoxide_relay::RelayError::Api(polyoxide_core::ApiError::Api { status: 503, .. })
+            &err,
+            polyoxide_relay::RelayError::Api(polyoxide_core::ApiError::Response(r))
+                if r.status.as_u16() == 503
         ),
         "{err:?}"
     );
@@ -2204,10 +2209,12 @@ async fn a_relayer_refusal_keeps_its_reason() {
         .await
         .expect_err("the relayer refused it");
     match &err {
-        polyoxide_relay::RelayError::Api(polyoxide_core::ApiError::Validation(message)) => {
-            assert_eq!(message, "insufficient funds")
+        polyoxide_relay::RelayError::Api(polyoxide_core::ApiError::Response(r))
+            if r.status.as_u16() == 400 =>
+        {
+            assert_eq!(r.message, "insufficient funds")
         }
-        other => panic!("expected Api(Validation), got {other:?}"),
+        other => panic!("expected Api(Response 400), got {other:?}"),
     }
     mock.assert_async().await;
 
@@ -2225,11 +2232,11 @@ async fn a_relayer_refusal_keeps_its_reason() {
         .await
         .expect_err("the relayer failed");
     match &err {
-        polyoxide_relay::RelayError::Api(polyoxide_core::ApiError::Api { status, message }) => {
-            assert_eq!(*status, 500);
-            assert!(message.contains("upstream exploded"), "{message:?}");
+        polyoxide_relay::RelayError::Api(polyoxide_core::ApiError::Response(r)) => {
+            assert_eq!(r.status.as_u16(), 500);
+            assert!(r.message.contains("upstream exploded"), "{:?}", r.message);
         }
-        other => panic!("expected Api(Api {{ status: 500 }}), got {other:?}"),
+        other => panic!("expected Api(Response 500), got {other:?}"),
     }
     mock.assert_async().await;
 }

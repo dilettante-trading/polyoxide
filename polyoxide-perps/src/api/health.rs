@@ -2,7 +2,7 @@
 
 use std::time::Duration;
 
-use polyoxide_core::{decode_json, ApiError, HttpClient};
+use polyoxide_core::{decode_json, ApiError, ErrorResponse, HttpClient};
 use serde::{Deserialize, Serialize};
 
 use crate::{
@@ -38,14 +38,13 @@ impl Health {
     pub async fn ping(&self) -> Result<Duration, PerpsError> {
         const PATH: &str = "/v1/info/ping";
         let pong = self.http_client.health::<PerpsError>(PATH, &[]).await?;
+        let status = pong.response.status();
+        let headers = pong.response.headers().clone();
         let text = pong.response.text().await.map_err(ApiError::from)?;
         let ping: Ping = decode_json(PATH, &text).map_err(ApiError::from)?;
         if ping.status != "ok" {
-            return Err(ApiError::Api {
-                status: 200,
-                message: format!("ping answered status {:?}", ping.status),
-            }
-            .into());
+            // A 2xx whose body says the host is not ok, classed `Decode`.
+            return Err(ApiError::from(ErrorResponse::new(status, headers, text)).into());
         }
         Ok(pong.round_trip)
     }

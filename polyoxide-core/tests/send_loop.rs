@@ -254,8 +254,8 @@ async fn observe_sees_the_last_attempt() {
     let (server, mock) = scripted("/v1/rows", &[429], 2, &throttle.log).await;
     let http = client(&server, &throttle, schedule(1, 1));
 
-    let response = http.send(rows(), &[], None).await.unwrap();
-    assert_eq!(response.status(), StatusCode::TOO_MANY_REQUESTS);
+    let err = http.send(rows(), &[], None).await.unwrap_err();
+    assert_eq!(failed(&err), StatusCode::TOO_MANY_REQUESTS);
     mock.assert_async().await;
 
     let observed: Vec<_> = throttle
@@ -301,8 +301,8 @@ async fn a_429_with_no_retry_left_still_holds() {
     let (server, mock) = scripted("/v1/rows", &[429], 1, &throttle.log).await;
     let http = client(&server, &throttle, schedule(0, 400));
 
-    let response = http.send(rows(), &[], None).await.unwrap();
-    assert_eq!(response.status(), StatusCode::TOO_MANY_REQUESTS);
+    let err = http.send(rows(), &[], None).await.unwrap_err();
+    assert_eq!(failed(&err), StatusCode::TOO_MANY_REQUESTS);
     mock.assert_async().await;
 
     let holds = throttle.holds();
@@ -372,8 +372,8 @@ async fn the_default_policy_does_not_retry_425() {
         .build()
         .unwrap();
 
-    let response = http.send(rows(), &[], None).await.unwrap();
-    assert_eq!(response.status(), StatusCode::TOO_EARLY);
+    let err = http.send(rows(), &[], None).await.unwrap_err();
+    assert_eq!(failed(&err), StatusCode::TOO_EARLY);
     mock.assert_async().await;
     assert!(throttle.holds().is_empty());
 }
@@ -385,8 +385,8 @@ async fn a_5xx_and_a_408_are_not_retried() {
         let (server, mock) = scripted("/v1/rows", &[status], 1, &throttle.log).await;
         let http = client(&server, &throttle, schedule(3, 1));
 
-        let response = http.send(rows(), &[], None).await.unwrap();
-        assert_eq!(response.status().as_u16(), status as u16);
+        let err = http.send(rows(), &[], None).await.unwrap_err();
+        assert_eq!(failed(&err).as_u16(), status as u16);
         mock.assert_async().await;
         assert!(throttle.holds().is_empty(), "{status} held the client");
     }
@@ -560,7 +560,7 @@ async fn a_hold_with_no_retry_left_warns() {
 
     http.send(RequestParts::new(Method::GET, path), &[], None)
         .await
-        .unwrap();
+        .unwrap_err();
     mock.assert_async().await;
 
     let seen = warnings_on(path);
@@ -664,4 +664,105 @@ async fn a_retry_s_warning_names_the_hold_it_waits_out() {
         seen[0].1,
         format!("Retriable status 429 Too Many Requests on {path}, retry 1 after 5000ms")
     );
+}
+
+/// The status of the response a failed send carries.
+fn failed(err: &ApiError) -> StatusCode {
+    match err {
+        ApiError::Response(response) => response.status,
+        other => panic!("expected a response, got {other:?}"),
+    }
+}
+
+/// Fails a 200 and is done with a 404: the outcome, not the status, decides
+/// whether `send` returns the response.
+struct Inverted;
+
+impl RetryPolicy for Inverted {
+    fn decide(
+        &self,
+        response: &ResponseMeta<'_>,
+        _attempt: &AttemptInfo,
+        _schedule: &RetryConfig,
+    ) -> Decision {
+        Decision {
+            outcome: if response.status.is_success() {
+                polyoxide_core::Outcome::Fail
+            } else {
+                polyoxide_core::Outcome::Done
+            },
+            hold: None,
+        }
+    }
+}
+
+#[tokio::test]
+async fn fail_is_an_error_and_done_is_the_response_whatever_the_status() {
+    let throttle = Recorder::default();
+    let (ok_server, ok_mock) = scripted("/v1/rows", &[200], 1, &throttle.log).await;
+    let http = HttpClientBuilder::new(ok_server.url())
+        .with_retry_policy(Inverted)
+        .build()
+        .unwrap();
+    let err = http.send(rows(), &[], None).await.unwrap_err();
+    ok_mock.assert_async().await;
+    match &err {
+        ApiError::Response(response) => {
+            assert_eq!(response.status, StatusCode::OK);
+            assert_eq!(response.body, "ok");
+        }
+        other => panic!("a `Fail` on a 200 is still an error: {other:?}"),
+    }
+
+    let (missing_server, missing_mock) = scripted("/v1/rows", &[404], 2, &throttle.log).await;
+    let http = HttpClientBuilder::new(missing_server.url())
+        .with_retry_policy(Inverted)
+        .build()
+        .unwrap();
+    let response = http.send(rows(), &[], None).await.unwrap();
+    assert_eq!(response.status(), StatusCode::NOT_FOUND);
+
+    // `Request::send_raw` never hands a caller a failed response as data.
+    let raw = polyoxide_core::Request::<(), ApiError>::new(http, "/v1/rows")
+        .send_raw()
+        .await
+        .unwrap_err();
+    missing_mock.assert_async().await;
+    assert_eq!(failed(&raw), StatusCode::NOT_FOUND);
+}
+
+#[tokio::test]
+async fn a_failed_response_carries_its_headers_body_and_retry_after() {
+    let mut server = Server::new_async().await;
+    let mock = server
+        .mock("GET", "/v1/rows")
+        .with_status(429)
+        .with_header("retry-after", "7")
+        .with_header("x-trace", "t-1")
+        .with_body(r#"{"error":"slow down"}"#)
+        .expect(1)
+        .create_async()
+        .await;
+    let http = HttpClientBuilder::new(server.url())
+        .with_retry_config(schedule(0, 1))
+        .build()
+        .unwrap();
+
+    let err = http.send(rows(), &[], None).await.unwrap_err();
+    mock.assert_async().await;
+    let ApiError::Response(response) = &err else {
+        panic!("expected a response, got {err:?}");
+    };
+    assert_eq!(response.status, StatusCode::TOO_MANY_REQUESTS);
+    assert_eq!(response.headers["x-trace"], "t-1");
+    assert_eq!(response.body, r#"{"error":"slow down"}"#);
+    assert_eq!(response.message, "slow down");
+    assert_eq!(response.retry_after, Some(Duration::from_secs(7)));
+    assert_eq!(
+        err.class(),
+        Class::RateLimited {
+            retry_after: Some(Duration::from_secs(7))
+        }
+    );
+    assert_eq!(err.retry_after(), Some(Duration::from_secs(7)));
 }

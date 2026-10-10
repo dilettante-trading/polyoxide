@@ -72,11 +72,11 @@ async fn a_418_logs_its_body_at_warn() {
     assert!(matches!(err, BinanceError::IpBanned { .. }), "{err:?}");
     banned.assert_async().await;
 
-    // The send loop warns of the hold under `polyoxide_core`; the body is
-    // Binance's own warning.
-    let seen: Vec<_> = WARNINGS
-        .lock()
-        .unwrap()
+    // The send loop warns of the hold under `polyoxide_core`, naming the
+    // path; the body is Binance's own warning, from its decode, which sees
+    // the response but not the request.
+    let warnings = WARNINGS.lock().unwrap().clone();
+    let seen: Vec<_> = warnings
         .iter()
         .filter(|(target, _)| target.starts_with("polyoxide_binance"))
         .cloned()
@@ -84,7 +84,15 @@ async fn a_418_logs_its_body_at_warn() {
     assert_eq!(seen.len(), 1, "one 418, one warning: {seen:?}");
     let (_, message) = &seen[0];
     assert!(
-        message.contains("418 on /fapi/") && message.contains("IP banned until 1700000000000"),
-        "{message:?} does not name the path and the ban's end"
+        message.contains("418") && message.contains("IP banned until 1700000000000"),
+        "{message:?} does not name the ban's end"
+    );
+    assert!(
+        warnings
+            .iter()
+            .any(|(target, message)| target.starts_with("polyoxide_core")
+                && message.starts_with("Status 418")
+                && message.contains(" on /fapi/v1/time,")),
+        "no warning names the path: {warnings:?}"
     );
 }

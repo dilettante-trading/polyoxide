@@ -38,19 +38,10 @@ impl RelayError {
     }
 }
 
-/// A relayer response that failed, read as core reads one, so a
-/// [`HttpClient::health`](polyoxide_core::HttpClient::health) ping fails as
-/// every other route does.
-impl polyoxide_core::RequestError for RelayError {
-    async fn from_response(response: reqwest::Response) -> Self {
-        Self::Api(ApiError::from_response(response).await)
-    }
-}
-
 /// A transport failure by core's reqwest rule, a local signing or URL failure
 /// an `InvalidRequest`, a response that did not parse a `Decode`, and `Api`
-/// as core classes it: a relayer response by its status, and a local refusal a
-/// `VenueRefusal` until Story 3.11 moves it to `InvalidRequest`.
+/// as core classes it: a relayer response by its status, and a local refusal
+/// an `InvalidRequest`.
 impl Classify for RelayError {
     fn class(&self) -> Class {
         match self {
@@ -80,6 +71,16 @@ impl Classify for RelayError {
 mod tests {
     use super::*;
 
+    /// A response with `status` and the body `{"error": message}`.
+    fn response(status: u16, message: &str) -> ApiError {
+        polyoxide_core::ErrorResponse::new(
+            reqwest::StatusCode::from_u16(status).unwrap(),
+            Default::default(),
+            serde_json::json!({ "error": message }).to_string(),
+        )
+        .into()
+    }
+
     #[test]
     fn test_signer_error_display() {
         let err = RelayError::Signer("bad key".into());
@@ -88,10 +89,7 @@ mod tests {
 
     #[test]
     fn test_api_error_display() {
-        let err = RelayError::Api(ApiError::Api {
-            status: 500,
-            message: "server returned 500".into(),
-        });
+        let err = RelayError::Api(response(500, "server returned 500"));
         assert_eq!(format!("{err}"), "API error: 500 - server returned 500");
         let err = RelayError::validation("idempotency key must not be empty");
         assert_eq!(
@@ -128,7 +126,7 @@ mod tests {
 
     #[test]
     fn test_from_core_api_error() {
-        let core_err = polyoxide_core::ApiError::Timeout;
+        let core_err = response(408, "timeout");
         let relay_err: RelayError = core_err.into();
         match relay_err {
             RelayError::Api(_) => {}
@@ -151,20 +149,18 @@ mod tests {
             ),
             (RelayError::Signer("bad key".into()), Class::InvalidRequest),
             (
-                RelayError::Api(ApiError::Api {
-                    status: 503,
-                    message: "server returned 503".into(),
-                }),
+                RelayError::Api(response(503, "server returned 503")),
                 Class::Unavailable { code: None },
             ),
             (
-                RelayError::Api(ApiError::RateLimit("slow down".into())),
+                RelayError::Api(response(429, "slow down")),
                 Class::RateLimited { retry_after: None },
             ),
             (RelayError::MissingSigner, Class::InvalidRequest),
+            // A refusal made before sending (Story 3.11).
             (
                 RelayError::validation("idempotency key must not be empty"),
-                Class::VenueRefusal { code: None },
+                Class::InvalidRequest,
             ),
         ];
         for (err, class) in rows {

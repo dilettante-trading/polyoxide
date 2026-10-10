@@ -121,8 +121,7 @@ impl HttpClient {
     /// downloads). It runs on [`send`](Self::send), so it is throttled, gated,
     /// retried and held as every other request is.
     ///
-    /// Non-2xx responses are mapped to [`ApiError`] via
-    /// [`ApiError::from_response`].
+    /// A non-2xx response is [`ApiError::Response`].
     ///
     /// # Errors
     ///
@@ -137,6 +136,7 @@ impl HttpClient {
         parts.query = query.to_vec();
         let response = self.send(parts, &[], None).await?;
 
+        // Only a policy that is `Done` with a failed response gets here.
         if !response.status().is_success() {
             return Err(ApiError::from_response(response).await);
         }
@@ -373,15 +373,15 @@ mod tests {
 
     #[test]
     fn test_should_retry_5xx_not_retried_despite_being_is_retriable() {
-        // The two notions differ on purpose. `ApiError::is_retriable` describes the
-        // error; this loop resends non-idempotent writes, so it stays narrower.
+        // The class describes the error; this loop resends writes, so it stays narrower.
         let config = RetryConfig::default();
         assert!(!retries(&config, StatusCode::INTERNAL_SERVER_ERROR, 0));
-        assert!(ApiError::Api {
-            status: 500,
-            message: String::new()
-        }
-        .is_retriable());
+        let err = ApiError::from(crate::error::ErrorResponse::new(
+            StatusCode::INTERNAL_SERVER_ERROR,
+            Default::default(),
+            "",
+        ));
+        assert!(polyoxide_venue::Classify::is_retriable(&err));
     }
 
     #[test]
@@ -643,11 +643,11 @@ mod tests {
         let client = HttpClientBuilder::new(server.url()).build().unwrap();
         let err = client.get_bytes("/does-not-exist", &[]).await.unwrap_err();
         match err {
-            ApiError::Api { status, message } => {
-                assert_eq!(status, 404);
-                assert_eq!(message, "not found");
+            ApiError::Response(response) => {
+                assert_eq!(response.status, StatusCode::NOT_FOUND);
+                assert_eq!(response.message, "not found");
             }
-            other => panic!("expected ApiError::Api, got {other:?}"),
+            other => panic!("expected ApiError::Response, got {other:?}"),
         }
         mock.assert_async().await;
     }

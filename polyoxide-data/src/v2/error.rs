@@ -2,7 +2,8 @@
 
 use std::time::Duration;
 
-use polyoxide_venue::{class_for_status, parse_retry_after, Class, Classify};
+use polyoxide_core::ErrorResponse;
+use polyoxide_venue::{class_for_status, Class, Classify};
 use serde::Deserialize;
 
 /// Stable classification of a v2 failure, for programmatic branching.
@@ -83,17 +84,19 @@ struct Body {
 impl V2Error {
     /// Parses a v2 error body; `None` when the body is some other shape (a v1
     /// `{"error"}` body, or Cloudflare's plain-text block page).
-    pub(crate) fn from_parts(status: u16, retry_after: Option<&str>, body: &str) -> Option<Self> {
-        let body: Body = serde_json::from_str(body).ok()?;
+    ///
+    /// The `Retry-After` is the response's, read by core unclamped: it is
+    /// surfaced, never slept on.
+    pub(crate) fn from_parts(response: &ErrorResponse) -> Option<Self> {
+        let body: Body = serde_json::from_str(&response.body).ok()?;
         Some(Self {
-            status,
+            status: response.status.as_u16(),
             code: body.code,
             message: body.error,
             retryable: body.retryable,
             trace_id: body.trace_id,
             parameter: body.parameter,
-            // Surfaced, never slept on, so not clamped.
-            retry_after: retry_after.and_then(|v| parse_retry_after(v, Duration::MAX)),
+            retry_after: response.retry_after,
         })
     }
 }
@@ -123,15 +126,29 @@ impl Classify for V2Error {
 }
 
 #[cfg(test)]
-mod tests {
+pub(crate) mod tests {
     use super::*;
+
+    /// [`V2Error::from_parts`] on a response with `status`, `body` and, when
+    /// given, a `Retry-After`.
+    pub(crate) fn parts(status: u16, retry_after: Option<&str>, body: &str) -> Option<V2Error> {
+        let mut headers = reqwest::header::HeaderMap::new();
+        if let Some(value) = retry_after {
+            headers.insert(reqwest::header::RETRY_AFTER, value.parse().unwrap());
+        }
+        V2Error::from_parts(&ErrorResponse::new(
+            reqwest::StatusCode::from_u16(status).unwrap(),
+            headers,
+            body,
+        ))
+    }
 
     /// Captured from `GET /v2/user-pnl` with no `user`, 2026-09-14.
     const MISSING_USER: &str = r#"{"error":"required query param 'user' not provided","code":"invalid_request","parameter":"user","retryable":false,"trace_id":"8f8b7e5e64d241d1bc6e8d5eef76fc4e"}"#;
 
     #[test]
     fn parses_every_field_of_a_v2_body() {
-        let err = V2Error::from_parts(400, None, MISSING_USER).expect("a v2 body");
+        let err = parts(400, None, MISSING_USER).expect("a v2 body");
 
         assert_eq!(err.status, 400);
         assert_eq!(err.code, ErrorCode::InvalidRequest);
@@ -144,33 +161,26 @@ mod tests {
 
     #[test]
     fn a_v1_body_or_plain_text_is_not_a_v2_error() {
-        assert!(V2Error::from_parts(
+        assert!(parts(
             400,
             None,
             r#"{"error":"required query param 'user' not provided"}"#
         )
         .is_none());
-        assert!(V2Error::from_parts(429, None, "error code: 1015").is_none());
-        assert!(V2Error::from_parts(500, None, "").is_none());
+        assert!(parts(429, None, "error code: 1015").is_none());
+        assert!(parts(500, None, "").is_none());
     }
 
     #[test]
     fn an_unrecognised_code_still_parses() {
         let body = r#"{"error":"new","code":"brand_new_code","retryable":true,"trace_id":"t"}"#;
-        assert_eq!(
-            V2Error::from_parts(500, None, body).unwrap().code,
-            ErrorCode::Unknown
-        );
+        assert_eq!(parts(500, None, body).unwrap().code, ErrorCode::Unknown);
     }
 
     #[test]
     fn retry_after_is_read_in_seconds() {
         let body = r#"{"error":"slow down","code":"rate_limited","retryable":true,"trace_id":"t"}"#;
-        let at = |header| {
-            V2Error::from_parts(429, Some(header), body)
-                .unwrap()
-                .retry_after
-        };
+        let at = |header| parts(429, Some(header), body).unwrap().retry_after;
 
         assert_eq!(at("7"), Some(Duration::from_secs(7)));
         assert_eq!(at("1.5"), Some(Duration::from_millis(1500)));
@@ -275,7 +285,7 @@ mod tests {
             (302, None, "internal", false, Class::Decode, true, None),
         ];
         for (status, retry_after, wire, retryable, class, fault, wait) in rows {
-            let err = V2Error::from_parts(status, retry_after, &body(wire, retryable)).unwrap();
+            let err = parts(status, retry_after, &body(wire, retryable)).unwrap();
             assert_eq!(err.class(), class, "{status} {wire}");
             assert_eq!(err.is_fault(), fault, "{status} {wire}");
             assert_eq!(Classify::retry_after(&err), wait, "{status} {wire}");
@@ -285,7 +295,7 @@ mod tests {
 
     #[test]
     fn display_names_the_code_and_trace_id() {
-        let err = V2Error::from_parts(400, None, MISSING_USER).unwrap();
+        let err = parts(400, None, MISSING_USER).unwrap();
         assert_eq!(
             err.to_string(),
             "Data API 400 invalid_request: required query param 'user' not provided (trace_id 8f8b7e5e64d241d1bc6e8d5eef76fc4e)"
@@ -298,11 +308,7 @@ mod tests {
         // `-0` was a wait of nothing, and `1e300` panicked in
         // `Duration::from_secs_f64`.
         let body = r#"{"error":"slow down","code":"rate_limited","retryable":true,"trace_id":"t"}"#;
-        let at = |header| {
-            V2Error::from_parts(429, Some(header), body)
-                .unwrap()
-                .retry_after
-        };
+        let at = |header| parts(429, Some(header), body).unwrap().retry_after;
         assert_eq!(at("0"), None);
         assert_eq!(at("-0"), None);
         assert_eq!(at("1e300"), Some(Duration::MAX));

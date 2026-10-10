@@ -56,8 +56,8 @@ impl HttpClient {
     ///
     /// # Errors
     ///
-    /// A final non-2xx response is `E::from_response`, and a failure before
-    /// one (a refused cost, a transport error) is the [`ApiError`] as `E`.
+    /// A final non-2xx response is [`ApiError::Response`] as `E`, and so is a
+    /// failure before one (a refused cost, a transport error).
     pub async fn health<E: RequestError>(&self, path: &str, costs: &[Cost]) -> Result<Pong, E> {
         let stopwatch = Stopwatch::default();
         let response = self
@@ -69,8 +69,9 @@ impl HttpClient {
             .await?;
         let round_trip = stopwatch.elapsed();
 
+        // Only a policy that is `Done` with a failed response gets here.
         if !response.status().is_success() {
-            return Err(E::from_response(response).await);
+            return Err(ApiError::from_response(response).await.into());
         }
 
         Ok(Pong {

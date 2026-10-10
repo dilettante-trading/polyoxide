@@ -194,11 +194,7 @@ async fn raw(http: &reqwest::Client, path: &str) -> String {
     // nightly does with it: a 451 is environmental, a 429 or a 5xx transient,
     // and a 403 from the firewall or a 418 ban real.
     if !status.is_success() {
-        let body = response.text().await.unwrap_or_default();
-        fail(
-            path,
-            &ApiError::from_status_and_body(status.as_u16(), &body),
-        );
+        fail(path, &ApiError::from_response(response).await);
     }
     response
         .text()

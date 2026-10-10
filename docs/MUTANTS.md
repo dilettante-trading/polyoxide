@@ -64,6 +64,10 @@ Removing `should_retry`, `note_rate_limited` and `acquire_rate_limit` moved thos
 up; rows (b) and (b), a zero were proved again on top of `6180817`.
 Bundle G's review documented the retry `WARN`'s wait in `send.rs`, moving rows (a), (f) and (g)
 three lines down; all three were proved again on top of `acadd99`.
+Story 3.11 made clob's `From<ApiError>` its one decode, which reads an `ApiError::Response`'s
+status where `from_response` matched `ApiError::Validation`, and moved the kill classifier 7
+lines down and its tests 29 up; row (e), only a 400 was re-written for the new arm, and rows
+(e), (e), case and (e), only a 400 were proved on 2026-10-10 on top of `718a052`.
 
 ## The rules
 
@@ -78,9 +82,9 @@ three lines down; all three were proved again on top of `acadd99`.
 | (c), a hold extended mid-wait | `polyoxide-core/src/hold.rs:78-93`, `Hold::wait` re-reads the deadline after each sleep | `return` after the `sleep_until` at `polyoxide-core/src/hold.rs:91`, so it sleeps once | `polyoxide-core/src/hold.rs:150` `a_hold_extended_mid_wait_is_honoured_in_full` |
 | (c), the re-check after a bucket wait (AD-23) | `polyoxide-core/src/rate_limit.rs:577-579`, `RateLimiter::acquire` waits out the hold again after its buckets | Delete that second `wait` | `polyoxide-core/src/rate_limit.rs:830` `a_hold_set_during_a_bucket_wait_is_honoured` |
 | (d) `quota()` leaves depth at one token, with no `allow_burst` | `polyoxide-core/src/rate_limit.rs:183-186` | Append `.allow_burst(NonZeroU32::new(count).unwrap())` | `polyoxide-core/src/rate_limit.rs:263` `no_quota_admits_more_than_its_published_count_in_one_window`; `polyoxide-core/src/rate_limit.rs:280` `every_quota_reserves_headroom_below_the_published_count`; `polyoxide-core/tests/polymarket_limits.rs:20` `every_configured_bucket_satisfies_the_quota_it_publishes` |
-| (e) `classify_order_kill` needs both the order kind and the kill token | `polyoxide-clob/src/error.rs:95` | `&&` → `\|\|` after `m.contains("fak order")` | `polyoxide-clob/src/error.rs:450` `test_classify_requires_both_tokens` |
-| (e), case | `polyoxide-clob/src/error.rs:92`, the message is lowercased before matching | `let m = message.to_string();` | `polyoxide-clob/src/error.rs:375` `test_classify_recognizes_verbatim_venue_messages`; `polyoxide-clob/src/error.rs:387` `test_classify_preserves_message_verbatim`; `polyoxide-clob/src/error.rs:395` `test_classify_is_case_insensitive`; `polyoxide-clob/src/error.rs:408` `test_classify_tolerates_curly_apostrophe_in_fok_message`; `polyoxide-clob/tests/mock_api.rs:3365` `fak_unmatched_maps_to_typed_error_not_generic_validation`; `polyoxide-clob/tests/mock_api.rs:3399` `fok_unfilled_maps_to_typed_error_not_generic_validation` |
-| (e), only a 400 is classified | `polyoxide-clob/src/error.rs:113-116`, `from_response` classifies `ApiError::Validation` alone | Add an `ApiError::Api { status, message }` arm that classifies `message` too | `polyoxide-clob/tests/mock_api.rs:3462` `fak_prose_on_non_400_status_is_not_reclassified` |
+| (e) `classify_order_kill` needs both the order kind and the kill token | `polyoxide-clob/src/error.rs:102` | `&&` → `\|\|` after `m.contains("fak order")` | `polyoxide-clob/src/error.rs:421` `test_classify_requires_both_tokens` |
+| (e), case | `polyoxide-clob/src/error.rs:99`, the message is lowercased before matching | `let m = message.to_string();` | `polyoxide-clob/src/error.rs:346` `test_classify_recognizes_verbatim_venue_messages`; `polyoxide-clob/src/error.rs:358` `test_classify_preserves_message_verbatim`; `polyoxide-clob/src/error.rs:366` `test_classify_is_case_insensitive`; `polyoxide-clob/src/error.rs:379` `test_classify_tolerates_curly_apostrophe_in_fok_message`; `polyoxide-clob/tests/mock_api.rs:3366` `fak_unmatched_maps_to_typed_error_not_generic_validation`; `polyoxide-clob/tests/mock_api.rs:3400` `fok_unfilled_maps_to_typed_error_not_generic_validation` |
+| (e), only a 400 is classified | `polyoxide-clob/src/error.rs:129`, clob's decode, `From<ApiError>`, classifies an `ApiError::Response` only when its status is 400 | Drop the arm's `if response.status.as_u16() == 400` guard, so every response's message is classified | `polyoxide-clob/tests/mock_api.rs:3464` `fak_prose_on_non_400_status_is_not_reclassified`; `polyoxide-clob/src/error.rs:460` `the_decode_splits_out_a_kill_only_on_a_400` |
 | (f) `observe` runs on every response, the last attempt included | `polyoxide-core/src/send.rs:84`, before the policy decides | Call `observe` only when `retries_left > 0` | `polyoxide-core/tests/send_loop.rs:252` `observe_sees_the_last_attempt` |
 | (g) A retry sleeps at least the loop's floor, whatever wait the policy returns | `polyoxide-core/src/send.rs:97`, `floor.max(wait)` | Sleep `wait` | `polyoxide-core/tests/send_loop.rs:278` `a_zero_wait_still_sleeps_the_floor`; `polyoxide-core/tests/send_loop.rs:322` `the_429_hold_is_retry_delay_zero_not_the_attempts_wait` |
 | (i) The per-signer layer's buckets hold their published burst, as governor's `allow_burst` did before Story 3.3 | `polyoxide-core/src/signer_limit.rs:276`, where each signer `CapacityBucket` takes the tier's burst as its capacity | `let capacity = 1;`, a bucket of one token | `polyoxide-core/src/signer_limit.rs:523` `a_batch_within_capacity_is_admitted`; `polyoxide-core/src/signer_limit.rs:532` `adopting_a_higher_tier_admits_a_batch_that_was_impossible`; `polyoxide-core/src/signer_limit.rs:548` `the_order_and_cancel_buckets_are_independent`; `polyoxide-core/src/signer_limit.rs:570` `batch_cost_is_charged_in_full_not_as_one_request` |
@@ -92,7 +96,7 @@ held row (c), a hold extended mid-wait, until Story 3.3. It drives `RateLimiter:
 re-check after its buckets now also waits out an extended hold, so it passes under that row's
 mutant; `Hold`'s own test holds the row, and the re-check has a row of its own.
 
-`polyoxide-clob/src/error.rs:419` `test_classify_does_not_capture_neighbouring_400s` fails
+`polyoxide-clob/src/error.rs:390` `test_classify_does_not_capture_neighbouring_400s` fails
 under none of the mutants above. It pins the 400s that neighbour the kill outcomes, so keep
 it, but do not count it as holding any of these rules.
 

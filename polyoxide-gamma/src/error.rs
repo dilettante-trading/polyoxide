@@ -1,19 +1,17 @@
-use polyoxide_core::{ApiError, RequestError};
+use polyoxide_core::ApiError;
 use polyoxide_venue::{Class, Classify};
 use thiserror::Error;
 
 /// Error types for gamma API operations
+///
+/// Gamma answers with Polymarket's `error` or `message` body, which core's
+/// [`ErrorResponse`](polyoxide_core::ErrorResponse) already reads, so the
+/// derived `From<ApiError>` is gamma's decode.
 #[derive(Error, Debug)]
 pub enum GammaError {
     /// Core API error
     #[error(transparent)]
     Api(#[from] ApiError),
-}
-
-impl RequestError for GammaError {
-    async fn from_response(response: reqwest::Response) -> Self {
-        Self::Api(ApiError::from_response(response).await)
-    }
 }
 
 /// Delegates to [`ApiError`]'s classification.
@@ -44,18 +42,23 @@ polyoxide_core::impl_api_error_conversions!(GammaError);
 mod tests {
     use super::*;
 
+    /// A response with `status` and no body.
+    fn response(status: u16) -> ApiError {
+        polyoxide_core::ErrorResponse::new(
+            reqwest::StatusCode::from_u16(status).unwrap(),
+            Default::default(),
+            "",
+        )
+        .into()
+    }
+
     #[test]
     fn every_variant_classifies_as_the_api_error_it_wraps() {
         let rows = [
-            (ApiError::Timeout, Class::Unavailable { code: None }),
-            (
-                ApiError::Validation("bad".into()),
-                Class::VenueRefusal { code: None },
-            ),
-            (
-                ApiError::RateLimit("slow".into()),
-                Class::RateLimited { retry_after: None },
-            ),
+            (response(408), Class::Unavailable { code: None }),
+            (response(400), Class::VenueRefusal { code: None }),
+            (ApiError::Validation("bad".into()), Class::InvalidRequest),
+            (response(429), Class::RateLimited { retry_after: None }),
         ];
         for (api, class) in rows {
             let err = GammaError::from(api);

@@ -1,6 +1,6 @@
 use std::time::Duration;
 
-use polyoxide_core::{retry_after_header, ApiError, RequestError};
+use polyoxide_core::ApiError;
 use polyoxide_venue::{Class, Classify};
 use thiserror::Error;
 
@@ -12,7 +12,7 @@ use crate::v2::V2Error;
 pub enum DataApiError {
     /// Core API error: transport, decoding, or a non-v2 error body.
     #[error(transparent)]
-    Api(#[from] ApiError),
+    Api(ApiError),
 
     /// A Data API v2 error, with the structured fields the server sent.
     #[error(transparent)]
@@ -28,10 +28,10 @@ impl DataApiError {
     ///
     /// For [`DataApiError::V2`] this is the server's own `retryable` flag, which
     /// takes precedence over any reading of the status code. Otherwise it
-    /// defers to [`ApiError::is_retriable`].
+    /// defers to the error's class.
     pub fn is_retriable(&self) -> bool {
         match self {
-            Self::Api(err) => err.is_retriable(),
+            Self::Api(err) => Classify::is_retriable(err),
             Self::V2(err) => err.retryable,
             Self::Pagination(_) => false,
         }
@@ -54,18 +54,20 @@ impl DataApiError {
     }
 }
 
-impl RequestError for DataApiError {
-    async fn from_response(response: reqwest::Response) -> Self {
-        let status = response.status().as_u16();
-        let retry_after = retry_after_header(&response);
-        let body = response.text().await.unwrap_or_default();
-
-        // Told apart by body shape, not by path: v1 routes send `{"error"}`,
-        // v2 routes add `code`, `retryable` and `trace_id`, and Cloudflare's
-        // block page is plain text.
-        match V2Error::from_parts(status, retry_after.as_deref(), &body) {
-            Some(err) => Self::V2(err),
-            None => Self::Api(ApiError::from_status_and_body(status, &body)),
+/// Data's one decode, on every path a request takes: a response with the v2
+/// error body is [`DataApiError::V2`], and anything else stays core's.
+///
+/// Told apart by body shape, not by path: v1 routes send `{"error"}`, v2
+/// routes add `code`, `retryable` and `trace_id`, and Cloudflare's block page
+/// is plain text.
+impl From<ApiError> for DataApiError {
+    fn from(err: ApiError) -> Self {
+        match err {
+            ApiError::Response(response) => match V2Error::from_parts(&response) {
+                Some(v2) => Self::V2(v2),
+                None => Self::Api(ApiError::Response(response)),
+            },
+            other => Self::Api(other),
         }
     }
 }
@@ -107,13 +109,21 @@ polyoxide_core::impl_api_error_conversions!(DataApiError);
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::v2::error::tests::parts;
+
+    /// A response with `status` and `body`.
+    fn response(status: u16, body: &str) -> ApiError {
+        polyoxide_core::ErrorResponse::new(
+            reqwest::StatusCode::from_u16(status).unwrap(),
+            Default::default(),
+            body,
+        )
+        .into()
+    }
 
     #[test]
     fn data_api_error_from_api_error() {
-        let api_err = ApiError::Api {
-            status: 404,
-            message: "not found".to_string(),
-        };
+        let api_err = response(404, r#"{"error":"not found"}"#);
         let data_err = DataApiError::from(api_err);
         let msg = format!("{}", data_err);
         assert!(
@@ -126,7 +136,7 @@ mod tests {
     #[test]
     fn a_v2_error_reports_the_servers_retryable_flag_and_trace_id() {
         let body = r#"{"error":"down","code":"dependency_unavailable","retryable":false,"trace_id":"t-1"}"#;
-        let err = DataApiError::V2(V2Error::from_parts(503, Some("3"), body).unwrap());
+        let err = DataApiError::V2(parts(503, Some("3"), body).unwrap());
 
         assert!(
             !err.is_retriable(),
@@ -138,7 +148,7 @@ mod tests {
 
     #[test]
     fn other_errors_have_no_trace_id_or_retry_after() {
-        let timeout = DataApiError::from(ApiError::Timeout);
+        let timeout = DataApiError::from(response(408, "timeout"));
         assert!(timeout.is_retriable());
         assert_eq!(timeout.trace_id(), None);
         assert_eq!(timeout.retry_after(), None);
@@ -153,7 +163,7 @@ mod tests {
             let body = format!(
                 r#"{{"error":"x","code":"dependency_unavailable","retryable":{retryable},"trace_id":"t"}}"#
             );
-            DataApiError::V2(V2Error::from_parts(status, retry_after, &body).unwrap())
+            DataApiError::V2(parts(status, retry_after, &body).unwrap())
         };
         let unavailable = Class::Unavailable {
             code: Some("dependency_unavailable".into()),
@@ -163,15 +173,22 @@ mod tests {
         // inherent is_retriable)
         let rows = [
             (
-                DataApiError::from(ApiError::Timeout),
+                DataApiError::from(response(408, "timeout")),
                 Class::Unavailable { code: None },
                 true,
                 (None, None),
                 true,
             ),
             (
-                DataApiError::from(ApiError::Validation("bad".into())),
+                DataApiError::from(response(400, r#"{"error":"bad"}"#)),
                 Class::VenueRefusal { code: None },
+                true,
+                (None, None),
+                false,
+            ),
+            (
+                DataApiError::from(ApiError::Validation("bad".into())),
+                Class::InvalidRequest,
                 true,
                 (None, None),
                 false,

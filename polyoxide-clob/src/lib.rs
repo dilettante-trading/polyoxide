@@ -58,12 +58,14 @@
 //! - [`ClobError::FokUnfilled`] — a Fill-Or-Kill order could not be filled entirely
 //!
 //! Both are deterministic: resubmitting the identical order cannot change the answer.
-//! [`ClobError::is_retriable`] reports that, and is the intended input to a caller's
-//! retry policy — so retriability never has to be re-derived from status codes or
-//! from the venue's prose, which changes without notice.
+//! Their class, through [`polyoxide_venue::Classify`], reports that, and its
+//! `is_retriable` is the intended input to a caller's retry policy — so
+//! retriability never has to be re-derived from status codes or from the venue's
+//! prose, which changes without notice.
 //!
 //! ```
 //! use polyoxide_clob::ClobError;
+//! use polyoxide_venue::Classify;
 //!
 //! fn handle(err: ClobError) {
 //!     match err {

@@ -282,30 +282,30 @@ impl RelayClient {
 
     /// Send `parts` on the client's send loop, signed by `auth` when given.
     ///
-    /// A non-2xx response is [`RelayError::Api`], classed by its status.
-    /// `log_failure` names a POST endpoint, whose failure is also logged at
-    /// ERROR with its body.
+    /// Polymarket's policy fails every response that is not a 2xx, so a
+    /// failure is the loop's [`ApiError::Response`] as [`RelayError::Api`],
+    /// classed by its status. `log_failure` names a POST endpoint, whose
+    /// failure is also logged at ERROR with its body.
     async fn send(
         &self,
         parts: RequestParts,
         auth: Option<&DynAuthenticator<'_>>,
         log_failure: Option<&str>,
     ) -> Result<reqwest::Response, RelayError> {
-        let response = self.http_client.send(parts, &[], auth).await?;
-        let status = response.status();
-        if status.is_success() {
-            return Ok(response);
-        }
-        let text = response.text().await?;
-        if let Some(endpoint) = log_failure {
-            tracing::error!(
-                "Request to {} failed with status {}: {}",
-                endpoint,
-                status,
-                polyoxide_core::truncate_for_log(&text)
-            );
-        }
-        Err(ApiError::from_status_and_body(status.as_u16(), &text).into())
+        self.http_client
+            .send(parts, &[], auth)
+            .await
+            .map_err(|err| {
+                if let (Some(endpoint), ApiError::Response(response)) = (log_failure, &err) {
+                    tracing::error!(
+                        "Request to {} failed with status {}: {}",
+                        endpoint,
+                        response.status,
+                        polyoxide_core::truncate_for_log(&response.body)
+                    );
+                }
+                err.into()
+            })
     }
 
     /// The parts of a request for `url`, which the caller joined onto the base

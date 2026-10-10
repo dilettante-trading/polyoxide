@@ -340,7 +340,7 @@ async fn a_v1_error_body_stays_an_api_error() {
     .await;
 
     assert!(
-        matches!(&err, DataApiError::Api(ApiError::Validation(m)) if m == "required query param 'user' not provided"),
+        matches!(&err, DataApiError::Api(ApiError::Response(r)) if r.status.as_u16() == 400 && r.message == "required query param 'user' not provided"),
         "got {err:?}"
     );
     assert_eq!(err.trace_id(), None);
@@ -350,7 +350,9 @@ async fn a_v1_error_body_stays_an_api_error() {
 async fn a_cloudflare_block_page_stays_a_rate_limit_error() {
     let err = error_for(429, "error code: 1015", None).await;
 
-    assert!(matches!(&err, DataApiError::Api(ApiError::RateLimit(m)) if m == "error code: 1015"));
+    assert!(
+        matches!(&err, DataApiError::Api(ApiError::Response(r)) if r.status.as_u16() == 429 && r.message == "error code: 1015")
+    );
 }
 
 #[tokio::test]
@@ -365,11 +367,13 @@ async fn the_servers_retryable_flag_overrides_the_status_heuristic() {
     let allowed = error_for(503, &body(true), None).await;
 
     // A bare 503 is retriable by status alone; the server said otherwise.
-    assert!(ApiError::Api {
-        status: 503,
-        message: String::new()
-    }
-    .is_retriable());
+    assert!(polyoxide_venue::Classify::is_retriable(&ApiError::from(
+        polyoxide_core::ErrorResponse::new(
+            reqwest::StatusCode::SERVICE_UNAVAILABLE,
+            Default::default(),
+            "",
+        )
+    )));
     assert!(!refused.is_retriable());
     assert!(allowed.is_retriable());
 }

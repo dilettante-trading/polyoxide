@@ -893,9 +893,9 @@ async fn error_404_returns_api_error() {
         .unwrap_err();
 
     match err {
-        DataApiError::Api(polyoxide_core::ApiError::Api { status, message }) => {
-            assert_eq!(status, 404);
-            assert_eq!(message, "not found");
+        DataApiError::Api(polyoxide_core::ApiError::Response(r)) => {
+            assert_eq!(r.status.as_u16(), 404);
+            assert_eq!(r.message, "not found");
         }
         other => panic!("Expected Api error, got: {:?}", other),
     }
@@ -1581,8 +1581,8 @@ async fn a_429_on_the_pnl_host_holds_the_data_host() {
     let limited = data.pnl().history("0xaddr").send().await;
     assert!(
         matches!(
-            limited,
-            Err(DataApiError::Api(polyoxide_core::ApiError::RateLimit(_)))
+            &limited,
+            Err(DataApiError::Api(polyoxide_core::ApiError::Response(r))) if r.status.as_u16() == 429
         ),
         "{limited:?}"
     );
@@ -1761,8 +1761,9 @@ async fn a_429_on_ping_holds_the_next_request() {
     let err = data.health().ping().await.unwrap_err();
     assert!(
         matches!(
-            err,
-            polyoxide_data::DataApiError::Api(polyoxide_core::ApiError::RateLimit(_))
+            &err,
+            polyoxide_data::DataApiError::Api(polyoxide_core::ApiError::Response(r))
+                if r.status.as_u16() == 429
         ),
         "{err:?}"
     );

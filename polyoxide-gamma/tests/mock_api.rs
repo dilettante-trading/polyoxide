@@ -231,11 +231,11 @@ async fn error_404_returns_api_error() {
     let err = gamma.markets().get("nonexistent").send().await.unwrap_err();
 
     match err {
-        GammaError::Api(polyoxide_core::ApiError::Api { status, message }) => {
-            assert_eq!(status, 404);
-            assert_eq!(message, "not found");
+        GammaError::Api(polyoxide_core::ApiError::Response(r)) => {
+            assert_eq!(r.status.as_u16(), 404);
+            assert_eq!(r.message, "not found");
         }
-        other => panic!("Expected ApiError::Api(404), got: {:?}", other),
+        other => panic!("Expected ApiError::Response(404), got: {:?}", other),
     }
 
     mock.assert_async().await;
@@ -257,10 +257,10 @@ async fn error_401_returns_authentication_error() {
     let err = gamma.markets().get("secret").send().await.unwrap_err();
 
     match err {
-        GammaError::Api(polyoxide_core::ApiError::Authentication(msg)) => {
-            assert_eq!(msg, "unauthorized");
+        GammaError::Api(polyoxide_core::ApiError::Response(r)) if r.status.as_u16() == 401 => {
+            assert_eq!(r.message, "unauthorized");
         }
-        other => panic!("Expected Authentication error, got: {:?}", other),
+        other => panic!("Expected a 401, got: {:?}", other),
     }
 
     mock.assert_async().await;
@@ -282,10 +282,10 @@ async fn error_400_returns_validation_error() {
     let err = gamma.markets().list().send().await.unwrap_err();
 
     match err {
-        GammaError::Api(polyoxide_core::ApiError::Validation(msg)) => {
-            assert_eq!(msg, "invalid limit parameter");
+        GammaError::Api(polyoxide_core::ApiError::Response(r)) if r.status.as_u16() == 400 => {
+            assert_eq!(r.message, "invalid limit parameter");
         }
-        other => panic!("Expected Validation error, got: {:?}", other),
+        other => panic!("Expected a 400, got: {:?}", other),
     }
 
     mock.assert_async().await;
@@ -1448,7 +1448,7 @@ async fn a_429_on_ping_holds_the_next_request() {
 
     let err = gamma.health().ping().await.unwrap_err();
     assert!(
-        matches!(err, GammaError::Api(polyoxide_core::ApiError::RateLimit(_))),
+        matches!(&err, GammaError::Api(polyoxide_core::ApiError::Response(r)) if r.status.as_u16() == 429),
         "{err:?}"
     );
 
@@ -1487,7 +1487,7 @@ async fn a_429_on_query_by_information_is_retried_and_holds() {
 
     let err = query().await.unwrap_err();
     assert!(
-        matches!(err, GammaError::Api(polyoxide_core::ApiError::RateLimit(_))),
+        matches!(&err, GammaError::Api(polyoxide_core::ApiError::Response(r)) if r.status.as_u16() == 429),
         "{err:?}"
     );
 

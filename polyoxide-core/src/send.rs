@@ -5,7 +5,7 @@ use serde::de::DeserializeOwned;
 use url::Url;
 
 use crate::client::HttpClient;
-use crate::error::ApiError;
+use crate::error::{ApiError, ErrorResponse};
 use crate::hooks::{
     Authenticator, Cost, DynAuthenticator, Outcome, RequestMeta, RequestParts, ResponseMeta,
     RetryPolicy, Throttle,
@@ -35,15 +35,15 @@ impl HttpClient {
     /// one too: `Status <code> on <path>, not retried: every request held
     /// <ms>ms`.
     ///
-    /// Returns the last response, whatever its status, for the caller to
-    /// decode.
+    /// Returns the response the policy is done with, whatever its status; one
+    /// it fails, or would retry with no retry left, is an error.
     ///
     /// # Errors
     ///
+    /// - [`ApiError::Response`] when the policy fails the last response.
     /// - [`ApiError::Url`] when `parts.path` does not join the base URL.
-    /// - [`ApiError::Refused`] when the throttle refuses a cost. Nothing is
-    ///   sent.
-    /// - The signing error, when `auth` fails. Nothing is sent.
+    /// - [`ApiError::Refused`] when the throttle refuses a cost, or the
+    ///   signing error when `auth` fails. Nothing is sent.
     /// - [`ApiError::Network`] when no response arrives. That attempt is
     ///   neither observed nor retried.
     ///
@@ -122,7 +122,15 @@ impl HttpClient {
                             hold.as_millis()
                         );
                     }
-                    return Ok(response);
+                    // `Done` hands the response back whatever its status. A
+                    // `Fail`, or a retry with none left, is the error AD-8
+                    // names: the status, headers, body and `Retry-After`.
+                    return match decision.outcome {
+                        Outcome::Done => Ok(response),
+                        Outcome::Fail | Outcome::Retry(_) => {
+                            Err(ErrorResponse::read(response).await.into())
+                        }
+                    };
                 }
             }
         }

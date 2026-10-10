@@ -11,7 +11,7 @@
 use std::time::Duration;
 
 use polyoxide_binance::BinanceError;
-use polyoxide_core::ApiError;
+use polyoxide_core::{ApiError, ErrorResponse};
 use polyoxide_test_support::{tag_for, Tag};
 use polyoxide_venue::Classify;
 
@@ -124,12 +124,19 @@ fn region_blocked() {
 /// `live_api`'s `raw()` fails a refused fetch with core's reading of its
 /// status.
 fn raw(status: u16, body: &str) -> ApiError {
-    ApiError::from_status_and_body(status, body)
+    ErrorResponse::new(
+        reqwest::StatusCode::from_u16(status).unwrap(),
+        Default::default(),
+        body,
+    )
+    .into()
 }
 
 #[test]
 fn raw_status_503() {
-    assert_eq!(tag(&raw(503, "Service Unavailable")), Tag::Transient);
+    let err = raw(503, "Service Unavailable");
+    assert_eq!(err.to_string(), "API error: 503 - Service Unavailable");
+    assert_eq!(tag(&err), Tag::Transient);
 }
 
 #[test]

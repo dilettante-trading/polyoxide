@@ -12,6 +12,7 @@ use polyoxide_core::{
     ApiError, AttemptInfo, Charge, HttpClient, HttpClientBuilder, LayerCharge, Refused,
     RequestMeta, RequestParts, ResponseMeta, RetryConfig, Throttle, Tier, TradingRequest,
 };
+use polyoxide_venue::Classify;
 use reqwest::header::{HeaderMap, HeaderValue};
 use reqwest::{Method, StatusCode};
 
@@ -227,11 +228,14 @@ async fn a_tier_on_a_429_is_adopted() {
     let http = client(&server, throttle.clone(), 0);
 
     let costs = [signer_cost(TradingRequest::PostOrder)];
-    let response = http
+    let err = http
         .send(RequestParts::new(Method::POST, "/order"), &costs, None)
         .await
-        .unwrap();
-    assert_eq!(response.status(), StatusCode::TOO_MANY_REQUESTS);
+        .unwrap_err();
+    assert!(
+        matches!(&err, ApiError::Response(r) if r.status == StatusCode::TOO_MANY_REQUESTS),
+        "{err:?}"
+    );
     mock.assert_async().await;
     assert_eq!(
         throttle.signer().tier(),
@@ -253,11 +257,14 @@ async fn a_429_holds_both_layers() {
     // No retry left: the 429 still holds, for retry_delay(0), 300-500ms.
     let http = client(&server, throttle.clone(), 0);
 
-    let response = http
+    let err = http
         .send(RequestParts::new(Method::GET, "/book"), &[], None)
         .await
-        .unwrap();
-    assert_eq!(response.status(), StatusCode::TOO_MANY_REQUESTS);
+        .unwrap_err();
+    assert!(
+        matches!(&err, ApiError::Response(r) if r.status == StatusCode::TOO_MANY_REQUESTS),
+        "{err:?}"
+    );
     mock.assert_async().await;
 
     let (ip, signer) = both_layers_wait(&throttle).await;

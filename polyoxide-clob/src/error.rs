@@ -1,6 +1,6 @@
 use polyoxide_core::{
     polymarket::{SIGNER_CANCEL, SIGNER_ORDER},
-    ApiError, BurstCapacityExceeded, Refused, RequestError, Tier, TradingBucket,
+    ApiError, BurstCapacityExceeded, Refused, Tier, TradingBucket,
 };
 use thiserror::Error;
 
@@ -18,6 +18,12 @@ pub enum ClobError {
     /// Core API error
     #[error(transparent)]
     Api(ApiError),
+
+    /// The Gamma client clob looks profiles up with failed, or could not be
+    /// built. Its class is the Gamma error's.
+    #[cfg(feature = "gamma")]
+    #[error("Gamma error: {0}")]
+    Gamma(polyoxide_gamma::GammaError),
 
     /// Cryptographic operation failed
     #[error("Crypto error: {0}")]
@@ -40,7 +46,8 @@ pub enum ClobError {
     /// payloads and banned addresses.
     ///
     /// It is deterministic — resubmitting the identical order cannot change the
-    /// answer — so [`ClobError::is_retriable`] returns `false` for it.
+    /// answer — so its class is a [`VenueRefusal`](polyoxide_venue::Class::VenueRefusal),
+    /// which is not retriable, and it is not a fault.
     ///
     /// `message` carries the venue's prose verbatim for logging. Match on the
     /// variant, not on the text.
@@ -86,8 +93,8 @@ pub enum ClobError {
 /// quoting is exactly the kind of detail that changes silently.
 ///
 /// If Polymarket rewrites these messages, this returns `None` and the caller
-/// sees the previous generic [`ApiError::Validation`] behaviour — a visible
-/// regression to the old symptom, not a silent misclassification.
+/// sees the generic 400, an [`ApiError::Response`] — a visible regression to
+/// the old symptom, not a silent misclassification.
 fn classify_order_kill(message: &str) -> Option<ClobError> {
     let m = message.to_ascii_lowercase();
     let owned = || message.to_string();
@@ -102,65 +109,27 @@ fn classify_order_kill(message: &str) -> Option<ClobError> {
 }
 
 impl ClobError {
-    /// Create error from HTTP response
-    pub(crate) async fn from_response(response: reqwest::Response) -> Self {
-        // Classify only bodies authored by the venue. Matching on `Validation`
-        // rather than re-reading the status is what gates this to HTTP 400:
-        // `ApiError::from_response` produces that variant for 400 and nothing
-        // else, so the two cannot drift apart. A 5xx carrying similar prose is
-        // an engine fault and stays retriable.
-        match ApiError::from_response(response).await {
-            ApiError::Validation(msg) => {
-                classify_order_kill(&msg).unwrap_or(Self::Api(ApiError::Validation(msg)))
-            }
-            other => Self::Api(other),
-        }
-    }
-
-    /// Whether re-sending the same request could plausibly produce a different result.
-    ///
-    /// Delegates to [`ApiError::is_retriable`] for transport and HTTP failures.
-    /// The FAK/FOK kill outcomes and all local signing/encoding failures are
-    /// deterministic and return `false`.
-    ///
-    /// ```
-    /// # use polyoxide_clob::ClobError;
-    /// let killed = ClobError::FakUnmatched { message: "no orders found to match".into() };
-    /// assert!(!killed.is_retriable());
-    /// ```
-    pub fn is_retriable(&self) -> bool {
-        match self {
-            Self::Api(e) => e.is_retriable(),
-            Self::FakUnmatched { .. } | Self::FokUnfilled { .. } => false,
-            // Deterministic: the batch is larger than the bucket can ever hold,
-            // so every retry would fail identically.
-            Self::BurstCapacityExceeded(_) => false,
-            Self::Crypto(_) | Self::Alloy(_) | Self::InvalidTickSize(_) => false,
-        }
-    }
-
-    /// Create validation error
+    /// A request refused before anything was sent.
     pub(crate) fn validation(msg: impl Into<String>) -> Self {
         Self::Api(ApiError::Validation(msg.into()))
     }
-
-    /// Create service error (external dependency failure)
-    #[cfg_attr(not(feature = "gamma"), allow(dead_code))]
-    pub(crate) fn service(msg: impl Into<String>) -> Self {
-        Self::Api(ApiError::Api {
-            status: 0,
-            message: msg.into(),
-        })
-    }
 }
 
-/// Written by hand rather than with `#[from]`, so that what core's loop
-/// carries for clob comes back as clob's own variant: a refused batch is
+/// Clob's one decode: what core's loop carries for clob comes back as clob's
+/// own variant.
+///
+/// A 400 whose message is a FAK or FOK kill is [`ClobError::FakUnmatched`] or
+/// [`ClobError::FokUnfilled`]. Only a 400 is read: a 5xx carrying similar
+/// prose is an engine fault and stays retriable. A refused batch is
 /// [`ClobError::BurstCapacityExceeded`], and a signing failure is the clob
 /// error the signer raised.
 impl From<ApiError> for ClobError {
     fn from(err: ApiError) -> Self {
         match err {
+            ApiError::Response(response) if response.status.as_u16() == 400 => {
+                classify_order_kill(&response.message)
+                    .unwrap_or_else(|| Self::Api(ApiError::Response(response)))
+            }
             ApiError::Refused(refused) => burst_from_refused(&refused).map_or(
                 Self::Api(ApiError::Refused(refused)),
                 Self::BurstCapacityExceeded,
@@ -205,13 +174,6 @@ pub(crate) fn burst_from_refused(refused: &Refused) -> Option<BurstCapacityExcee
     })
 }
 
-/// A non-2xx response, with the FAK and FOK kills split out.
-impl RequestError for ClobError {
-    async fn from_response(response: reqwest::Response) -> Self {
-        ClobError::from_response(response).await
-    }
-}
-
 impl From<alloy::signers::Error> for ClobError {
     fn from(err: alloy::signers::Error) -> Self {
         Self::Alloy(err.to_string())
@@ -224,33 +186,18 @@ impl From<alloy::hex::FromHexError> for ClobError {
     }
 }
 
-impl From<reqwest::Error> for ClobError {
-    fn from(err: reqwest::Error) -> Self {
-        Self::Api(ApiError::Network(err))
-    }
-}
-
-impl From<url::ParseError> for ClobError {
-    fn from(err: url::ParseError) -> Self {
-        Self::Api(ApiError::Url(err))
-    }
-}
-
-impl From<serde_json::Error> for ClobError {
-    fn from(err: serde_json::Error) -> Self {
-        Self::Api(ApiError::Serialization(err))
-    }
-}
-
 /// The FAK and FOK kills are a [`VenueRefusal`](polyoxide_venue::Class::VenueRefusal)
 /// that is not a fault: the venue killed the order as its time-in-force
-/// says. `Api` and `BurstCapacityExceeded` delegate, local signing failures
-/// are an `InvalidRequest`, and a tick size that did not parse is a `Decode`.
+/// says. `Api`, `Gamma` and `BurstCapacityExceeded` delegate, local signing
+/// failures are an `InvalidRequest`, and a tick size that did not parse is a
+/// `Decode`.
 impl polyoxide_venue::Classify for ClobError {
     fn class(&self) -> polyoxide_venue::Class {
         use polyoxide_venue::Class;
         match self {
             Self::Api(err) => err.class(),
+            #[cfg(feature = "gamma")]
+            Self::Gamma(err) => err.class(),
             Self::Crypto(_) | Self::Alloy(_) => Class::InvalidRequest,
             Self::InvalidTickSize(_) => Class::Decode,
             Self::FakUnmatched { .. } | Self::FokUnfilled { .. } => {
@@ -263,6 +210,8 @@ impl polyoxide_venue::Classify for ClobError {
     fn is_fault(&self) -> bool {
         match self {
             Self::Api(err) => err.is_fault(),
+            #[cfg(feature = "gamma")]
+            Self::Gamma(err) => err.is_fault(),
             Self::FakUnmatched { .. } | Self::FokUnfilled { .. } => false,
             Self::BurstCapacityExceeded(err) => err.is_fault(),
             Self::Crypto(_) | Self::Alloy(_) | Self::InvalidTickSize(_) => true,
@@ -273,6 +222,8 @@ impl polyoxide_venue::Classify for ClobError {
         use polyoxide_venue::Classify;
         match self {
             Self::Api(err) => Classify::retry_after(err),
+            #[cfg(feature = "gamma")]
+            Self::Gamma(err) => Classify::retry_after(err),
             Self::BurstCapacityExceeded(err) => Classify::retry_after(err),
             Self::Crypto(_)
             | Self::Alloy(_)
@@ -286,16 +237,35 @@ impl polyoxide_venue::Classify for ClobError {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use polyoxide_core::ErrorResponse;
+    use polyoxide_venue::Classify;
 
+    /// A response with `status` and the body `{"error": message}`.
+    fn response(status: u16, message: &str) -> ApiError {
+        ErrorResponse::new(
+            reqwest::StatusCode::from_u16(status).unwrap(),
+            Default::default(),
+            serde_json::json!({ "error": message }).to_string(),
+        )
+        .into()
+    }
+
+    /// A Gamma failure, as clob's profile lookup sees one.
+    #[cfg(feature = "gamma")]
+    fn gamma(status: u16, message: &str) -> ClobError {
+        ClobError::Gamma(response(status, message).into())
+    }
+
+    #[cfg(feature = "gamma")]
     #[test]
-    fn test_service_error_is_api_not_validation() {
-        let err = ClobError::service("Gamma client failed");
+    fn test_gamma_error_is_gamma_not_validation() {
+        let err = gamma(404, "Gamma client failed");
         match &err {
-            ClobError::Api(ApiError::Api { status, message }) => {
-                assert_eq!(*status, 0);
-                assert_eq!(message, "Gamma client failed");
+            ClobError::Gamma(polyoxide_gamma::GammaError::Api(ApiError::Response(r))) => {
+                assert_eq!(r.status.as_u16(), 404);
+                assert_eq!(r.message, "Gamma client failed");
             }
-            other => panic!("Expected ApiError::Api, got {:?}", other),
+            other => panic!("Expected ClobError::Gamma, got {:?}", other),
         }
     }
 
@@ -310,9 +280,10 @@ mod tests {
         }
     }
 
+    #[cfg(feature = "gamma")]
     #[test]
     fn test_service_and_validation_are_distinct() {
-        let service = ClobError::service("service failure");
+        let service = gamma(503, "service failure");
         let validation = ClobError::validation("validation failure");
 
         let service_msg = format!("{}", service);
@@ -349,7 +320,7 @@ mod tests {
     #[test]
     fn test_from_serde_json_error() {
         let json_err = serde_json::from_str::<String>("not valid json").unwrap_err();
-        let clob_err = ClobError::from(json_err);
+        let clob_err = ClobError::from(ApiError::from(json_err));
         assert!(matches!(
             clob_err,
             ClobError::Api(ApiError::Serialization(_))
@@ -359,7 +330,7 @@ mod tests {
     #[test]
     fn test_from_url_parse_error() {
         let url_err = url::Url::parse("://bad").unwrap_err();
-        let clob_err = ClobError::from(url_err);
+        let clob_err = ClobError::from(ApiError::from(url_err));
         assert!(matches!(clob_err, ClobError::Api(ApiError::Url(_))));
     }
 
@@ -454,7 +425,7 @@ FAK orders are partially filled or killed if no match is found.";
         assert!(classify_order_kill("FOK order rejected: bad payload").is_none());
     }
 
-    // ── is_retriable ────────────────────────────────────────────
+    // ── retriability, through the class ─────────────────────────
 
     #[test]
     fn test_kill_outcomes_are_not_retriable() {
@@ -478,19 +449,32 @@ FAK orders are partially filled or killed if no match is found.";
 
     #[test]
     fn test_transient_failures_are_retriable() {
-        assert!(ClobError::Api(ApiError::RateLimit("slow down".into())).is_retriable());
-        assert!(ClobError::Api(ApiError::Timeout).is_retriable());
-        assert!(ClobError::Api(ApiError::Api {
-            status: 500,
-            message: "order timed out".into()
-        })
-        .is_retriable());
+        assert!(ClobError::from(response(429, "slow down")).is_retriable());
+        assert!(ClobError::from(response(408, "timeout")).is_retriable());
+        assert!(ClobError::from(response(500, "order timed out")).is_retriable());
         // 425 Too Early — matching engine restarting.
-        assert!(ClobError::Api(ApiError::Api {
-            status: 425,
-            message: String::new()
-        })
-        .is_retriable());
+        assert!(ClobError::from(response(425, "")).is_retriable());
+    }
+
+    #[test]
+    fn the_decode_splits_out_a_kill_only_on_a_400() {
+        assert!(matches!(
+            ClobError::from(response(400, FAK_UNMATCHED)),
+            ClobError::FakUnmatched { message } if message == FAK_UNMATCHED
+        ));
+        assert!(matches!(
+            ClobError::from(response(400, FOK_UNFILLED)),
+            ClobError::FokUnfilled { .. }
+        ));
+        assert!(matches!(
+            ClobError::from(response(400, "Invalid order payload")),
+            ClobError::Api(ApiError::Response(r)) if r.status.as_u16() == 400
+        ));
+        // A 5xx with the same prose is an engine fault.
+        assert!(matches!(
+            ClobError::from(response(500, FAK_UNMATCHED)),
+            ClobError::Api(ApiError::Response(r)) if r.status.as_u16() == 500
+        ));
     }
 
     #[test]
@@ -510,7 +494,7 @@ FAK orders are partially filled or killed if no match is found.";
 
     #[test]
     fn every_variant_classifies() {
-        use polyoxide_venue::{Class, Classify};
+        use polyoxide_venue::Class;
 
         let tick = crate::types::TickSize::try_from("0.5").unwrap_err();
         let burst = BurstCapacityExceeded {
@@ -520,75 +504,68 @@ FAK orders are partially filled or killed if no match is found.";
             bucket: TradingBucket::Cancel,
         };
         let refusal = Class::VenueRefusal { code: None };
-        // (error, class, is_fault, inherent is_retriable). No ClobError carries
-        // a wait.
-        let rows = [
+        // (error, class, is_fault). No ClobError here carries a wait.
+        #[allow(unused_mut)]
+        let mut rows = vec![
             (
-                ClobError::Api(ApiError::Timeout),
+                ClobError::from(response(408, "timeout")),
                 Class::Unavailable { code: None },
                 true,
-                true,
             ),
+            // A refusal made before sending.
             (
                 ClobError::validation("bad input"),
-                refusal.clone(),
+                Class::InvalidRequest,
                 true,
-                false,
             ),
-            // Any failure of the Gamma dependency, a 4xx and a local failure
-            // included, so it is not retried.
+            // The venue's own 400 that is not a kill.
             (
-                ClobError::service("gamma failed"),
+                ClobError::from(response(400, "Invalid order payload")),
                 refusal.clone(),
                 true,
-                false,
             ),
             (
                 ClobError::Crypto("signing failed".into()),
                 Class::InvalidRequest,
                 true,
-                false,
             ),
             (
                 ClobError::Alloy("hex decode failed".into()),
                 Class::InvalidRequest,
                 true,
-                false,
             ),
-            (ClobError::InvalidTickSize(tick), Class::Decode, true, false),
+            (ClobError::InvalidTickSize(tick), Class::Decode, true),
             (
                 ClobError::FakUnmatched {
                     message: FAK_UNMATCHED.into(),
                 },
                 refusal.clone(),
                 false,
-                false,
             ),
             (
                 ClobError::FokUnfilled {
                     message: FOK_UNFILLED.into(),
                 },
-                refusal,
-                false,
+                refusal.clone(),
                 false,
             ),
             (
                 ClobError::BurstCapacityExceeded(burst),
                 Class::InvalidRequest,
                 true,
-                false,
             ),
         ];
-        for (err, class, fault, inherent) in rows {
+        // A failure of the Gamma dependency is classed as Gamma's error.
+        #[cfg(feature = "gamma")]
+        rows.extend([
+            (gamma(404, "no profile"), refusal, true),
+            (gamma(503, "down"), Class::Unavailable { code: None }, true),
+        ]);
+        for (err, class, fault) in rows {
             assert_eq!(err.class(), class, "{err:?}");
             assert_eq!(err.is_fault(), fault, "{err:?}");
             assert_eq!(Classify::retry_after(&err), None, "{err:?}");
-            assert_eq!(
-                Classify::is_retriable(&err),
-                class.is_retriable(),
-                "{err:?}"
-            );
-            assert_eq!(err.is_retriable(), inherent, "{err:?}");
+            assert_eq!(err.is_retriable(), class.is_retriable(), "{err:?}");
         }
     }
 

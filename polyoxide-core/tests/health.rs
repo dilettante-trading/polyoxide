@@ -6,10 +6,10 @@ use std::time::{Duration, Instant};
 use mockito::{Mock, Server, ServerGuard};
 use polyoxide_core::{
     polymarket, ApiError, AttemptInfo, Charge, Cost, HttpClientBuilder, LayerId, Refused,
-    RequestError, RequestMeta, ResponseMeta, RetryConfig, Throttle,
+    RequestMeta, ResponseMeta, RetryConfig, Throttle,
 };
 
-/// A caller's error that says whether `from_response` built it.
+/// A caller's error that says whether a response reached its decode.
 #[derive(Debug)]
 enum PingError {
     Response(u16),
@@ -18,15 +18,14 @@ enum PingError {
     Api(ApiError),
 }
 
+/// The caller's one decode: a response becomes `Response`, anything else
+/// stays core's.
 impl From<ApiError> for PingError {
     fn from(e: ApiError) -> Self {
-        Self::Api(e)
-    }
-}
-
-impl RequestError for PingError {
-    async fn from_response(response: reqwest::Response) -> Self {
-        Self::Response(response.status().as_u16())
+        match e {
+            ApiError::Response(response) => Self::Response(response.status.as_u16()),
+            other => Self::Api(other),
+        }
     }
 }
 

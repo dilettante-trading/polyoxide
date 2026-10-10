@@ -85,7 +85,7 @@ pub use client::{
     retry_after_header, HttpClient, HttpClientBuilder, DEFAULT_POOL_SIZE, DEFAULT_TIMEOUT_MS,
 };
 pub use config::ClientConfig;
-pub use error::ApiError;
+pub use error::{ApiError, ErrorResponse};
 pub use health::Pong;
 pub use hold::Hold;
 pub use hooks::{

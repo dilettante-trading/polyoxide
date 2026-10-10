@@ -680,8 +680,8 @@ async fn a_degraded_ping_is_an_api_error() {
     assert!(
         matches!(
             &err,
-            PerpsError::Api(polyoxide_core::ApiError::Api { status: 200, message })
-                if message.contains("degraded")
+            PerpsError::Api(polyoxide_core::ApiError::Response(r))
+                if r.status.as_u16() == 200 && r.message.contains("degraded")
         ),
         "{err:?}"
     );

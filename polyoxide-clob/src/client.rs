@@ -560,9 +560,7 @@ impl Clob {
                     .get(account.address().to_string())
                     .send()
                     .await
-                    .map_err(|e| {
-                        ClobError::service(format!("Failed to fetch user profile: {}", e))
-                    })?;
+                    .map_err(ClobError::Gamma)?;
 
                 return profile
                     .proxy
@@ -926,9 +924,7 @@ impl ClobBuilder {
                 .timeout_ms(self.config.timeout_ms)
                 .pool_size(self.config.pool_size)
                 .build()
-                .map_err(|e| {
-                    ClobError::service(format!("Failed to build default Gamma client: {}", e))
-                })?
+                .map_err(ClobError::Gamma)?
         };
 
         Ok(Clob {

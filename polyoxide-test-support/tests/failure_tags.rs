@@ -11,9 +11,10 @@
 
 use std::time::Duration;
 
-use polyoxide_core::ApiError;
+use polyoxide_core::{ApiError, ErrorResponse};
 use polyoxide_test_support::{tag_for, Tag};
 use polyoxide_venue::Classify;
+use reqwest::StatusCode;
 use tokio::net::TcpListener;
 
 /// The tag `err` fails a test with, through `or_fail` or `fail`.
@@ -21,19 +22,23 @@ fn tag(err: &ApiError) -> Tag {
     tag_for(&err.class(), err.is_fault())
 }
 
+/// A response with `status` and the body `{"error": message}`, as core reads
+/// one since Story 3.11 replaced the variants each status once built.
 fn api(status: u16, message: &str) -> ApiError {
-    ApiError::Api {
-        status,
-        message: message.to_owned(),
-    }
+    ErrorResponse::new(
+        StatusCode::from_u16(status).unwrap(),
+        Default::default(),
+        serde_json::json!({ "error": message }).to_string(),
+    )
+    .into()
 }
 
 #[test]
 fn api_5xx() {
     let err = api(503, "bad gateway");
-    assert_eq!(
-        format!("{err:?}"),
-        r#"Api { status: 503, message: "bad gateway" }"#
+    assert!(
+        format!("{err:?}").starts_with("Response(ErrorResponse { status: 503,"),
+        "{err:?}"
     );
     assert_eq!(err.to_string(), "API error: 503 - bad gateway");
     assert_eq!(tag(&err), Tag::Transient);
@@ -42,9 +47,9 @@ fn api_5xx() {
 #[test]
 fn api_425() {
     let err = api(425, "too early");
-    assert_eq!(
-        format!("{err:?}"),
-        r#"Api { status: 425, message: "too early" }"#
+    assert!(
+        format!("{err:?}").starts_with("Response(ErrorResponse { status: 425,"),
+        "{err:?}"
     );
     assert_eq!(err.to_string(), "API error: 425 - too early");
     assert_eq!(tag(&err), Tag::Transient);
@@ -53,30 +58,32 @@ fn api_425() {
 #[test]
 fn api_4xx() {
     let err = api(404, "not found");
-    assert_eq!(
-        format!("{err:?}"),
-        r#"Api { status: 404, message: "not found" }"#
+    assert!(
+        format!("{err:?}").starts_with("Response(ErrorResponse { status: 404,"),
+        "{err:?}"
     );
     assert_eq!(err.to_string(), "API error: 404 - not found");
     assert_eq!(tag(&err), Tag::Real);
 }
 
+/// Was `ApiError::RateLimit`, built from a 429.
 #[test]
 fn rate_limit() {
-    let err = ApiError::RateLimit("slow down".into());
-    assert_eq!(format!("{err:?}"), r#"RateLimit("slow down")"#);
-    assert_eq!(err.to_string(), "Rate limit exceeded: slow down");
+    let err = api(429, "slow down");
+    assert_eq!(err.to_string(), "API error: 429 - slow down");
     assert_eq!(tag(&err), Tag::Transient);
 }
 
+/// Was `ApiError::Timeout`, built from a 408.
 #[test]
 fn timeout() {
-    let err = ApiError::Timeout;
-    assert_eq!(format!("{err:?}"), "Timeout");
-    assert_eq!(err.to_string(), "Request timeout");
+    let err = api(408, "request timeout");
+    assert_eq!(err.to_string(), "API error: 408 - request timeout");
     assert_eq!(tag(&err), Tag::Transient);
 }
 
+/// A server 400, which `ApiError::Validation` carried until Story 3.11, and
+/// a local refusal, which it still does: both file.
 #[test]
 fn validation() {
     let err = ApiError::Validation("required query param 'market' not provided".into());
@@ -89,13 +96,26 @@ fn validation() {
         "Validation error: bad request"
     );
     assert_eq!(tag(&err), Tag::Real);
+
+    let server = api(400, "required query param 'market' not provided");
+    assert_eq!(
+        server.to_string(),
+        "API error: 400 - required query param 'market' not provided"
+    );
+    assert_eq!(tag(&server), Tag::Real);
 }
 
+/// Was `ApiError::Authentication`, built from a 401 or a 403.
 #[test]
 fn authentication() {
-    let err = ApiError::Authentication("invalid signature".into());
-    assert_eq!(format!("{err:?}"), r#"Authentication("invalid signature")"#);
-    assert_eq!(tag(&err), Tag::Real);
+    for status in [401, 403] {
+        let err = api(status, "invalid signature");
+        assert_eq!(
+            err.to_string(),
+            format!("API error: {status} - invalid signature")
+        );
+        assert_eq!(tag(&err), Tag::Real);
+    }
 }
 
 #[test]

@@ -10,7 +10,7 @@
 use std::{future::Future, sync::Arc, time::Instant};
 
 use mockito::{Server, ServerGuard};
-use polyoxide_core::{ApiError, HttpClient, HttpClientBuilder, Request, RequestError, RetryConfig};
+use polyoxide_core::{ApiError, HttpClient, HttpClientBuilder, Request, RetryConfig};
 use polyoxide_test_support::soak::observe::{ThrottleLayer, ThrottleObserver};
 use tracing_subscriber::layer::SubscriberExt;
 
@@ -101,12 +101,6 @@ struct Refused(#[allow(dead_code)] ApiError);
 impl From<ApiError> for Refused {
     fn from(err: ApiError) -> Self {
         Self(err)
-    }
-}
-
-impl RequestError for Refused {
-    async fn from_response(response: reqwest::Response) -> Self {
-        Self(ApiError::from_response(response).await)
     }
 }
 

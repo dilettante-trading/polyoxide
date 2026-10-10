@@ -1232,7 +1232,7 @@ async fn live_get_profile_by_address() {
                 "takerTierName must not be empty"
             );
         }
-        Err(GammaError::Api(ApiError::Api { status: 404, .. })) => {
+        Err(GammaError::Api(ApiError::Response(r))) if r.status.as_u16() == 404 => {
             environmental(&format!("{address} has no profile (404)"));
         }
         Err(e) => fail(&format!("get_by_address({address}) failed"), &e),

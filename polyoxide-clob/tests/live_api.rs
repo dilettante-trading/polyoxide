@@ -17,6 +17,7 @@ use polyoxide_clob::{
 };
 use polyoxide_core::QueryBuilder;
 use polyoxide_gamma::Gamma;
+use polyoxide_venue::Classify;
 use rust_decimal::Decimal;
 use std::time::Duration;
 

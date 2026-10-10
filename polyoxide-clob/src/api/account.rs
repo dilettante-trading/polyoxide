@@ -3,7 +3,9 @@ use std::collections::HashMap;
 use alloy::primitives::Address;
 use std::sync::Arc;
 
-use polyoxide_core::{DynAuthenticator, HttpClient, QueryBuilder, Request, SessionSignerScope};
+use polyoxide_core::{
+    ApiError, DynAuthenticator, HttpClient, QueryBuilder, Request, SessionSignerScope,
+};
 use reqwest::Method;
 use serde::{Deserialize, Serialize};
 
@@ -74,11 +76,16 @@ impl AccountApi {
         // The endpoint returns 200 with an empty body on success, so parse the
         // body manually and treat an empty body as a null JSON value rather than
         // letting `send()` fail with "EOF while parsing a value".
-        let text = request.send_raw().await?.text().await?;
+        let text = request
+            .send_raw()
+            .await?
+            .text()
+            .await
+            .map_err(ApiError::from)?;
         if text.trim().is_empty() {
             return Ok(serde_json::Value::Null);
         }
-        Ok(serde_json::from_str(&text)?)
+        Ok(serde_json::from_str(&text).map_err(ApiError::from)?)
     }
 
     /// Send a basic heartbeat to keep the session alive

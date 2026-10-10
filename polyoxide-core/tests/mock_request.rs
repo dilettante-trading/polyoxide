@@ -1,7 +1,8 @@
 use std::time::Duration;
 
 use mockito::Server;
-use polyoxide_core::{ApiError, HttpClientBuilder, Request, RequestError, RetryConfig};
+use polyoxide_core::{ApiError, HttpClientBuilder, Request, RetryConfig};
+use reqwest::StatusCode;
 use serde::Deserialize;
 
 /// Simple response type for testing deserialization.
@@ -17,12 +18,6 @@ struct TestError(ApiError);
 impl From<ApiError> for TestError {
     fn from(e: ApiError) -> Self {
         Self(e)
-    }
-}
-
-impl RequestError for TestError {
-    async fn from_response(response: reqwest::Response) -> Self {
-        Self(ApiError::from_response(response).await)
     }
 }
 
@@ -98,10 +93,10 @@ async fn exhausts_retries_returns_rate_limit_error() {
 
     let err = req.send().await.unwrap_err();
     match err.0 {
-        ApiError::RateLimit(msg) => {
-            assert_eq!(msg, "slow down");
+        ApiError::Response(response) if response.status == StatusCode::TOO_MANY_REQUESTS => {
+            assert_eq!(response.message, "slow down");
         }
-        other => panic!("Expected RateLimit error, got: {:?}", other),
+        other => panic!("Expected a 429, got: {:?}", other),
     }
 
     mock.assert_async().await;
@@ -123,11 +118,11 @@ async fn non_429_error_does_not_retry() {
     let err = req.send().await.unwrap_err();
 
     match err.0 {
-        ApiError::Api { status, message } => {
-            assert_eq!(status, 500);
-            assert_eq!(message, "internal error");
+        ApiError::Response(response) => {
+            assert_eq!(response.status, StatusCode::INTERNAL_SERVER_ERROR);
+            assert_eq!(response.message, "internal error");
         }
-        other => panic!("Expected Api error, got: {:?}", other),
+        other => panic!("Expected Response error, got: {:?}", other),
     }
 
     mock.assert_async().await;
@@ -149,13 +144,13 @@ async fn from_response_parses_json_error_field() {
     let err = req.send().await.unwrap_err();
 
     match err.0 {
-        ApiError::Validation(msg) => {
+        ApiError::Response(response) if response.status == StatusCode::BAD_REQUEST => {
             assert_eq!(
-                msg, "bad input",
+                response.message, "bad input",
                 "Should extract 'error' field from JSON, not raw body"
             );
         }
-        other => panic!("Expected Validation error, got: {:?}", other),
+        other => panic!("Expected a 400, got: {:?}", other),
     }
 
     mock.assert_async().await;
@@ -178,10 +173,10 @@ async fn error_401_returns_authentication_error() {
     let err = req.send().await.unwrap_err();
 
     match err.0 {
-        ApiError::Authentication(msg) => {
-            assert_eq!(msg, "unauthorized");
+        ApiError::Response(response) if response.status == StatusCode::UNAUTHORIZED => {
+            assert_eq!(response.message, "unauthorized");
         }
-        other => panic!("Expected Authentication error, got: {:?}", other),
+        other => panic!("Expected a 401, got: {:?}", other),
     }
 
     mock.assert_async().await;
@@ -204,10 +199,10 @@ async fn error_403_returns_authentication_error() {
     let err = req.send().await.unwrap_err();
 
     match err.0 {
-        ApiError::Authentication(msg) => {
-            assert_eq!(msg, "forbidden");
+        ApiError::Response(response) if response.status == StatusCode::FORBIDDEN => {
+            assert_eq!(response.message, "forbidden");
         }
-        other => panic!("Expected Authentication error for 403, got: {:?}", other),
+        other => panic!("Expected a 403, got: {:?}", other),
     }
 
     mock.assert_async().await;
@@ -229,8 +224,8 @@ async fn error_408_returns_timeout_error() {
     let err = req.send().await.unwrap_err();
 
     match err.0 {
-        ApiError::Timeout => {}
-        other => panic!("Expected Timeout error, got: {:?}", other),
+        ApiError::Response(response) if response.status == StatusCode::REQUEST_TIMEOUT => {}
+        other => panic!("Expected a 408, got: {:?}", other),
     }
 
     mock.assert_async().await;
