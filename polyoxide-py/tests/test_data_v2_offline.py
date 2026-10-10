@@ -527,14 +527,15 @@ def test_response_enums_pass_unknown_values_through(server) -> None:
     assert server.requests[0][1] == {"user": "0xuser", "type": "FUTURE_TYPE", "side": "FUTURE_SIDE"}
 
 
-def test_a_walk_that_repeats_its_cursor_stops_with_the_base_error(server) -> None:
+def test_a_walk_that_repeats_its_cursor_stops_with_a_decode_error(server) -> None:
     server.reply("/v2/trades", page_of("trades", "same"))
     walk = polyoxide.DataApiSync(base_url=server.url).v2().iter_trades(cursor="same")
 
     with pytest.raises(polyoxide.PolyoxideError) as err:
         next(walk)
 
-    assert type(err.value) is polyoxide.PolyoxideError
+    # A walk that cannot continue is classed `Decode` (Story 3.12).
+    assert type(err.value) is polyoxide.DecodeError
     assert "server returned the cursor it was sent" in str(err.value)
     assert err.value.code is None
 

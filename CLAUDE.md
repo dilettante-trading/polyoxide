@@ -81,7 +81,7 @@ Fourteen crates, in publish order, each with the workspace crates its build need
 - `polyoxide-sports` — Client for Polymarket's live sports score feed; needs: `polyoxide-venue`; no other workspace crate, like `polyoxide-rtds`
 - `polyoxide` — Unified client for Polymarket APIs (CLOB, Gamma, Data, WebSocket, RTDS, Perps, Sports); needs: `polyoxide-clob` (under `clob`, on by default), `polyoxide-data` (under `data`, on by default), `polyoxide-gamma` (under `gamma`, on by default), `polyoxide-perps` (under `perps`), `polyoxide-rtds` (under `rtds`), `polyoxide-sports` (under `sports`), `polyoxide-venue`
 - `polyoxide-cli` — CLI tool for querying Polymarket APIs and Binance USDⓈ-M market data; needs: `polyoxide-binance` (with `ws`), `polyoxide-clob` (with `ws`), `polyoxide-core` (with `keychain`, under `keychain`), `polyoxide-data`, `polyoxide-gamma`, `polyoxide-relay` (with `keychain`, under `keychain`), `polyoxide-rtds`, `polyoxide-sports`
-- `polyoxide-py` — Python bindings via PyO3 (`publish = false`, wheels on PyPI); needs: `polyoxide-clob` (without default features), `polyoxide-data`, `polyoxide-gamma`
+- `polyoxide-py` — Python bindings via PyO3 (`publish = false`, wheels on PyPI); needs: `polyoxide-clob` (without default features), `polyoxide-data`, `polyoxide-gamma`, `polyoxide-venue`
 - `polyoxide-test-support` — Test toolkit: the failure tags the nightly classifier reads, the credential loaders, and the agreement, fixture and soak helpers (`publish = false`); needs: `polyoxide-core` (with `keychain`), `polyoxide-venue`; a path-only dev-dependency of the crates whose tests use it; it names no venue
 <!-- generated:end claude-graph -->
 
@@ -380,9 +380,15 @@ Three tests hold the bindings up. `every_v2_getter_reads_its_own_key` in
 key, which stub consistency cannot see. `test_stub_consistency.py` checks `v2.pyi` members
 and signatures against the compiled module. `test_data_v2_offline.py` calls every route
 with every argument against a local server. Enum arguments take the exact wire spelling. A
-v2 error maps by `code`, and every SDK exception carries `status`, `code`, `retryable`,
-`trace_id`, `parameter` and `retry_after`, which are `None` unless the error came from a v2
-route.
+v2 error maps by `code`; every other error maps by its class, one class to one exception
+(`exception_for` in `polyoxide-py/src/error.rs`): `Network` `NetworkError`, `Unavailable`
+`UnavailableError`, `RateLimited` `RateLimitError`, `Unauthorized` `AuthenticationError`,
+`InvalidRequest` `ValidationError`, `VenueRefusal` `ApiError`, `Restricted`
+`RestrictedError` and `Decode` `DecodeError`, never by its message (C4).
+`TimeoutError`, which only v2's `request_timeout` raises, subclasses `UnavailableError`, and
+`tests/test_errors_offline.py` asserts each class's exact type. Every SDK exception carries
+`status`, `code`, `retryable`, `trace_id`, `parameter` and `retry_after`, which are `None`
+unless the error came from a v2 route.
 
 For the upstream hosted docs, [`docs/specs/polymarket-llms.txt`](docs/specs/polymarket-llms.txt) is a snapshot of Polymarket's own documentation index (`https://docs.polymarket.com/llms.txt`) — a flat list of every doc page (with `.md` URLs) covering CLOB/auth/orders, builder attribution, and the CLOB V2 migration. Use it to locate the authoritative upstream page for a topic when the local `docs/specs/` copies are insufficient.
 

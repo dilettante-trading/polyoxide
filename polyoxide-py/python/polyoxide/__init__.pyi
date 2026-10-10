@@ -31,27 +31,39 @@ class PolyoxideError(Exception):
     """The `Retry-After` delay in seconds, when the response carried one."""
 
 class ApiError(PolyoxideError):
-    """API returned an error response."""
+    """The venue refused the request (a 4xx not named below, such as a 400 or a 404)."""
     ...
 
 class AuthenticationError(PolyoxideError):
-    """Authentication credentials are invalid or missing."""
+    """Authentication credentials are invalid or missing (401, 403)."""
     ...
 
 class ValidationError(PolyoxideError):
-    """Request parameters failed validation."""
+    """The request was refused before it was sent, or could not be built or signed."""
     ...
 
 class RateLimitError(PolyoxideError):
-    """API rate limit was exceeded."""
+    """API rate limit was exceeded (429)."""
     ...
 
 class NetworkError(PolyoxideError):
-    """Network connectivity error."""
+    """No response arrived: a failed connect, a timeout, or a dropped connection."""
     ...
 
-class TimeoutError(PolyoxideError):
-    """Request timed out."""
+class UnavailableError(PolyoxideError):
+    """The venue is unavailable for now (408, 425, 5xx); retrying may succeed."""
+    ...
+
+class RestrictedError(PolyoxideError):
+    """The venue will not serve this caller (418, 451)."""
+    ...
+
+class DecodeError(PolyoxideError):
+    """A response arrived but did not decode, or a page walk could not continue."""
+    ...
+
+class TimeoutError(UnavailableError):
+    """A Data API v2 `request_timeout`: the request deadline or the datastore's statement timeout."""
     ...
 
 # =============================================================================

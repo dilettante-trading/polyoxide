@@ -178,20 +178,25 @@ except PolyoxideError as e:
     print(f"something else: {e}")
 ```
 
-| Exception | When |
-|-----------|------|
-| `ApiError` | API returned an error response |
-| `AuthenticationError` | Invalid or missing credentials |
-| `ValidationError` | Request parameters failed validation |
-| `RateLimitError` | Rate limit exceeded (HTTP 429) |
-| `NetworkError` | Connection failure |
-| `TimeoutError` | Request timed out |
+Each exception follows the error's class, one class to one exception, so the
+type never depends on the wording of a message:
+
+| Exception | Class | When |
+|-----------|-------|------|
+| `NetworkError` | `Network` | No response arrived: a failed connect, a timeout, a dropped connection |
+| `UnavailableError` | `Unavailable` | The venue is unavailable for now (408, 425, 5xx); retrying may succeed |
+| `RateLimitError` | `RateLimited` | Rate limit exceeded (HTTP 429) |
+| `AuthenticationError` | `Unauthorized` | Invalid or missing credentials (401, 403) |
+| `ValidationError` | `InvalidRequest` | Refused before sending: bad input, a URL that does not parse, a signing failure |
+| `ApiError` | `VenueRefusal` | The venue refused the request (any other 4xx, a 400 included) |
+| `RestrictedError` | `Restricted` | The venue will not serve this caller (418, 451) |
+| `DecodeError` | `Decode` | A response that did not decode, or a page walk that could not continue |
 
 A Data API v2 error maps by its `code`: `invalid_request` to `ValidationError`,
-`rate_limited` to `RateLimitError`, `request_timeout` to `TimeoutError`, and
-any other code to `ApiError`. Every exception also carries `status`, `code`,
-`retryable`, `trace_id`, `parameter` and `retry_after`, which are `None` unless
-the error came from a v2 route.
+`rate_limited` to `RateLimitError`, `request_timeout` to `TimeoutError` (a
+subclass of `UnavailableError`), and any other code to `ApiError`. Every
+exception also carries `status`, `code`, `retryable`, `trace_id`, `parameter`
+and `retry_after`, which are `None` unless the error came from a v2 route.
 
 ## Async Support
 

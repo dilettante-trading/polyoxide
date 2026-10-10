@@ -557,7 +557,10 @@ class TestErrors:
         assert issubclass(polyoxide.ValidationError, polyoxide.PolyoxideError)
         assert issubclass(polyoxide.RateLimitError, polyoxide.PolyoxideError)
         assert issubclass(polyoxide.NetworkError, polyoxide.PolyoxideError)
-        assert issubclass(polyoxide.TimeoutError, polyoxide.PolyoxideError)
+        assert issubclass(polyoxide.UnavailableError, polyoxide.PolyoxideError)
+        assert issubclass(polyoxide.RestrictedError, polyoxide.PolyoxideError)
+        assert issubclass(polyoxide.DecodeError, polyoxide.PolyoxideError)
+        assert issubclass(polyoxide.TimeoutError, polyoxide.UnavailableError)
 
     def test_polyoxide_error_is_exception(self):
         assert issubclass(polyoxide.PolyoxideError, Exception)

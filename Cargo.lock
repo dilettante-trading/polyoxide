@@ -4183,6 +4183,7 @@ dependencies = [
  "polyoxide-clob",
  "polyoxide-data",
  "polyoxide-gamma",
+ "polyoxide-venue",
  "pyo3",
  "pyo3-async-runtimes",
  "pythonize",

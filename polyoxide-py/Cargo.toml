@@ -13,6 +13,8 @@ crate-type = ["cdylib"]
 polyoxide-gamma = { workspace = true }
 polyoxide-data = { workspace = true }
 polyoxide-clob = { path = "../polyoxide-clob", default-features = false }
+# Each exception is picked from the error's class.
+polyoxide-venue = { workspace = true }
 pyo3 = { workspace = true }
 pyo3-async-runtimes = { workspace = true }
 futures-util = "0.3"
