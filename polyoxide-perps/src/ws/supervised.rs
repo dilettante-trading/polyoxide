@@ -577,7 +577,7 @@ mod tests {
     use super::*;
     use crate::{
         types::InstrumentId,
-        ws::test_server::{Script, ScriptedServer},
+        ws::scripted::{self, Script},
     };
     use futures_util::StreamExt;
     use std::time::Duration;
@@ -647,7 +647,7 @@ mod tests {
         // an instant overflowed, which panicked the task on its first pass
         // and ended the stream with no error. The server does not answer
         // pings, so only the limit keeps this connection up.
-        let server = ScriptedServer::start(vec![Script {
+        let server = scripted::start(vec![Script {
             pushes: vec![bbo(1), bbo(2)],
             answer_pings: false,
             ..Default::default()
@@ -679,7 +679,7 @@ mod tests {
 
     #[tokio::test]
     async fn a_ping_interval_of_duration_max_means_never() {
-        let server = ScriptedServer::start(vec![Script {
+        let server = scripted::start(vec![Script {
             pushes: vec![bbo(1), bbo(2)],
             ..Default::default()
         }])
@@ -709,7 +709,7 @@ mod tests {
         // A pong that is not `ok` is `PerpsWsError::Response`. The control
         // channel of that connection is unreliable; a fresh connection is
         // the fix, not a permanent end of the stream.
-        let server = ScriptedServer::start(vec![
+        let server = scripted::start(vec![
             Script {
                 pushes: vec![bbo(1)],
                 pong_status: "err",
@@ -735,7 +735,7 @@ mod tests {
 
     #[tokio::test]
     async fn a_dropped_connection_is_replaced_and_resubscribed() {
-        let server = ScriptedServer::start(vec![
+        let server = scripted::start(vec![
             Script {
                 pushes: vec![bbo(1)],
                 close_after: true,
@@ -756,7 +756,7 @@ mod tests {
         assert!(matches!(next_event(&mut ws).await, Event::Reconnected));
         assert!(matches!(next_event(&mut ws).await, Event::Update(u) if u.sq == 2));
         assert_eq!(server.connection_count(), 2);
-        let subs = server.subscriptions();
+        let subs = server.first_frames();
         assert_eq!(subs.len(), 2);
         assert!(
             subs[1].contains("bbo::1"),
@@ -769,7 +769,7 @@ mod tests {
     async fn silence_is_a_stall_and_pings_go_out_meanwhile() {
         // A socket that answers pings is alive by definition, so the first
         // connection must not answer them for silence to mean a stall.
-        let server = ScriptedServer::start(vec![
+        let server = scripted::start(vec![
             Script {
                 answer_pings: false,
                 ..Default::default()
@@ -802,7 +802,7 @@ mod tests {
     async fn membership_changes_reach_the_server_and_survive_a_reconnect() {
         // The first connection answers membership requests but not pings,
         // so once it goes quiet it is a stall and gets replaced.
-        let server = ScriptedServer::start(vec![
+        let server = scripted::start(vec![
             Script {
                 pushes: vec![bbo(1)],
                 answer_pings: false,
@@ -840,7 +840,7 @@ mod tests {
             .await;
         // Force a reconnect by staleness (the first script sends nothing more).
         assert!(matches!(next_event(&mut ws).await, Event::Reconnected));
-        let subs = server.subscriptions();
+        let subs = server.first_frames();
         assert!(
             subs[1].contains("trades::2") && !subs[1].contains("bbo::1"),
             "resubscribed with the wrong set: {}",
@@ -850,7 +850,7 @@ mod tests {
 
     #[tokio::test]
     async fn a_sequence_going_backwards_is_reported() {
-        let server = ScriptedServer::start(vec![Script {
+        let server = scripted::start(vec![Script {
             pushes: vec![bbo(5), bbo(3)],
             ..Default::default()
         }])
@@ -874,7 +874,7 @@ mod tests {
 
     #[tokio::test]
     async fn a_rate_limited_subscribe_is_retried_then_reported() {
-        let server = ScriptedServer::start(vec![Script {
+        let server = scripted::start(vec![Script {
             refuse: vec![("trades::2".into(), "message_rate_limited".into())],
             ..Default::default()
         }])
@@ -900,7 +900,7 @@ mod tests {
 
     #[tokio::test]
     async fn a_refused_channel_at_connect_is_an_immediate_error() {
-        let server = ScriptedServer::start(vec![Script {
+        let server = scripted::start(vec![Script {
             refuse: vec![("bbo::1".into(), "invalid channel".into())],
             ..Default::default()
         }])
@@ -915,7 +915,7 @@ mod tests {
 
     #[tokio::test]
     async fn close_ends_the_stream_and_the_handle() {
-        let server = ScriptedServer::start(vec![Script::default()]).await;
+        let server = scripted::start(vec![Script::default()]).await;
         let ws = fast()
             .url(&server.url)
             .connect([Channel::Bbo(InstrumentId(1))])
@@ -935,7 +935,7 @@ mod tests {
     #[tokio::test]
     async fn a_quiet_connection_that_answers_pings_is_alive() {
         // No pushes at all for three staleness windows; the pongs keep it.
-        let server = ScriptedServer::start(vec![Script::default()]).await;
+        let server = scripted::start(vec![Script::default()]).await;
         let mut ws = fast()
             .url(&server.url)
             .connect([Channel::Bbo(InstrumentId(1))])
@@ -954,7 +954,7 @@ mod tests {
 
     #[tokio::test]
     async fn pings_keep_going_under_steady_traffic() {
-        let server = ScriptedServer::start(vec![Script {
+        let server = scripted::start(vec![Script {
             pushes: vec![bbo(1)],
             push_every: Some(Duration::from_millis(10)),
             ..Default::default()
@@ -988,7 +988,7 @@ mod tests {
         // More pushes than the event buffer holds, and nobody reading: the
         // task is parked in `events.send`. `close` must still return.
         let pushes: Vec<String> = (1..=1100).map(bbo).collect();
-        let server = ScriptedServer::start(vec![Script {
+        let server = scripted::start(vec![Script {
             pushes,
             ..Default::default()
         }])
@@ -1009,7 +1009,7 @@ mod tests {
 
     #[tokio::test]
     async fn close_is_honoured_during_the_reconnect_backoff() {
-        let server = ScriptedServer::start(vec![
+        let server = scripted::start(vec![
             Script {
                 pushes: vec![bbo(1)],
                 close_after: true,
@@ -1043,7 +1043,7 @@ mod tests {
 
     #[tokio::test]
     async fn a_membership_change_the_server_never_answers_is_a_stall() {
-        let server = ScriptedServer::start(vec![
+        let server = scripted::start(vec![
             Script {
                 answer_subscribes_after_first: false,
                 ..Default::default()
@@ -1072,7 +1072,7 @@ mod tests {
 
     #[tokio::test]
     async fn a_failed_reconnect_attempt_is_retried() {
-        let server = ScriptedServer::start(vec![
+        let server = scripted::start(vec![
             Script {
                 pushes: vec![bbo(1)],
                 close_after: true,
@@ -1101,7 +1101,7 @@ mod tests {
 
     #[tokio::test]
     async fn a_refusal_on_reconnect_is_fatal_and_ends_the_stream() {
-        let server = ScriptedServer::start(vec![
+        let server = scripted::start(vec![
             Script {
                 pushes: vec![bbo(1)],
                 close_after: true,

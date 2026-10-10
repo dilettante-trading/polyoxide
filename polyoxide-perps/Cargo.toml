@@ -39,6 +39,9 @@ url = { workspace = true }
 # harnesses' pacer, observer and verdicts). Path-only: it is never published,
 # and cargo strips a path-only dev-dependency on publish.
 polyoxide-test-support = { path = "../polyoxide-test-support", features = ["query", "soak"] }
+# The shared scripted WebSocket server the `ws` suites run on, with perps'
+# answer (`src/ws/scripted.rs`). Path-only, so cargo strips it on publish.
+polyoxide-ws = { path = "../polyoxide-ws", features = ["test-server"] }
 futures-util = "0.3"
 mockito = { workspace = true }
 tokio = { workspace = true, features = ["macros", "rt-multi-thread", "time"] }

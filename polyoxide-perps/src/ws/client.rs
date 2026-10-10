@@ -276,18 +276,18 @@ mod tests {
         types::InstrumentId,
         ws::{
             event::Payload,
-            test_server::{Script, ScriptedServer},
+            scripted::{self, Script},
         },
     };
     use futures_util::StreamExt;
-    use tokio_tungstenite::tungstenite::Message;
+    use polyoxide_ws::tungstenite::Message;
 
     const BBO: &str = r#"{"ch":"bbo::1","ts":1,"ets":1,"sq":10,"data":{"iid":1,"bp":"1","bq":"1","ap":"2","aq":"1"}}"#;
     const FILLS: &str = r#"{"ch":"fills","ts":1,"sq":11,"data":{}}"#;
 
     #[tokio::test]
     async fn connect_subscribes_and_yields_pushes_in_order() {
-        let server = ScriptedServer::start(vec![Script {
+        let server = scripted::start(vec![Script {
             pushes: vec![BBO.into(), FILLS.into()],
             ..Default::default()
         }])
@@ -297,7 +297,7 @@ mod tests {
             .expect("connect");
         assert_eq!(ws.channels(), &[Channel::Bbo(InstrumentId(1))]);
         assert_eq!(
-            server.subscriptions(),
+            server.first_frames(),
             vec![r#"{"id":1,"req":"sub","chs":["bbo::1"]}"#.to_owned()]
         );
 
@@ -314,7 +314,7 @@ mod tests {
 
     #[tokio::test]
     async fn a_refused_channel_fails_connect_with_the_identifier() {
-        let server = ScriptedServer::start(vec![Script {
+        let server = scripted::start(vec![Script {
             refuse: vec![("bbo::1".into(), "invalid channel".into())],
             ..Default::default()
         }])
@@ -343,7 +343,7 @@ mod tests {
         // The server sends its pushes right after the subscribe response, so
         // by the time the ping goes out they are already in flight ahead of
         // the pong. `ping` must park them and the stream must yield them.
-        let server = ScriptedServer::start(vec![Script {
+        let server = scripted::start(vec![Script {
             pushes: vec![BBO.into(), BBO.into()],
             ..Default::default()
         }])
@@ -364,7 +364,7 @@ mod tests {
 
     #[tokio::test]
     async fn a_pong_carries_the_servers_sequence() {
-        let server = ScriptedServer::start(vec![Script::default()]).await;
+        let server = scripted::start(vec![Script::default()]).await;
         let mut ws = PerpsWs::connect_to(&server.url, [Channel::Bbo(InstrumentId(1))])
             .await
             .unwrap();
@@ -373,7 +373,7 @@ mod tests {
 
     #[tokio::test]
     async fn subscribe_and_unsubscribe_adjust_membership_and_reach_the_server() {
-        let server = ScriptedServer::start(vec![Script::default()]).await;
+        let server = scripted::start(vec![Script::default()]).await;
         let mut ws = PerpsWs::connect_to(&server.url, [Channel::Bbo(InstrumentId(1))])
             .await
             .unwrap();
@@ -396,7 +396,7 @@ mod tests {
 
     #[tokio::test]
     async fn a_server_close_ends_the_stream() {
-        let server = ScriptedServer::start(vec![Script {
+        let server = scripted::start(vec![Script {
             pushes: vec![BBO.into()],
             close_after: true,
             ..Default::default()
@@ -411,7 +411,7 @@ mod tests {
 
     #[tokio::test]
     async fn connecting_with_no_channels_is_refused_locally() {
-        let server = ScriptedServer::start(vec![Script::default()]).await;
+        let server = scripted::start(vec![Script::default()]).await;
         let err = PerpsWs::connect_to(&server.url, []).await.unwrap_err();
         assert!(matches!(err, PerpsWsError::EmptySubscription));
         assert_eq!(server.connection_count(), 0);
@@ -419,7 +419,7 @@ mod tests {
 
     #[tokio::test]
     async fn a_malformed_text_frame_is_an_error_the_stream_survives() {
-        let server = ScriptedServer::start(vec![Script {
+        let server = scripted::start(vec![Script {
             pushes: vec!["not json".into(), BBO.into()],
             ..Default::default()
         }])
@@ -438,7 +438,7 @@ mod tests {
     async fn non_text_frames_are_skipped_and_the_next_push_still_arrives() {
         // A server Ping and a Binary frame are not the end of the stream and
         // not frames either; the text push queued behind them must come out.
-        let server = ScriptedServer::start(vec![Script {
+        let server = scripted::start(vec![Script {
             raw_pushes: vec![
                 Message::Ping(vec![1, 2, 3].into()),
                 Message::Binary(vec![0xff].into()),

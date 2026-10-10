@@ -14,6 +14,8 @@ pub mod client;
 pub mod error;
 pub mod event;
 pub mod frame;
+#[cfg(test)]
+mod scripted;
 pub mod supervised;
 #[cfg(any(test, feature = "test-server"))]
 #[doc(hidden)]
