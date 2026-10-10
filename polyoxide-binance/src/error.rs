@@ -67,36 +67,10 @@ struct VenueBody {
 }
 
 impl BinanceError {
-    /// Whether re-sending the same request could plausibly succeed.
-    ///
-    /// A `429`, and a `408`, `425` or 5xx however its body is shaped, are, by
-    /// [`polyoxide_venue::class_for_status`], the rule core's
-    /// `ApiError::is_retriable` also uses. A ban, a region block and a firewall
-    /// refusal are not: sending again does not change them, and sending after a
-    /// `418` lengthens the ban.
-    pub fn is_retriable(&self) -> bool {
-        match self {
-            Self::Api(err) => Classify::is_retriable(err),
-            Self::Venue { status, .. } => {
-                class_for_status(*status).is_some_and(|c| c.is_retriable())
-            }
-            Self::RateLimited { .. } => true,
-            Self::IpBanned { .. } | Self::RegionBlocked { .. } | Self::Forbidden { .. } => false,
-        }
-    }
-
     /// Binance's error code, for a [`Venue`](Self::Venue) error.
     pub fn code(&self) -> Option<i64> {
         match self {
             Self::Venue { code, .. } => Some(*code),
-            _ => None,
-        }
-    }
-
-    /// The `Retry-After` delay, for a `429` or a `418` that carried one.
-    pub fn retry_after(&self) -> Option<Duration> {
-        match self {
-            Self::RateLimited { retry_after } | Self::IpBanned { retry_after } => *retry_after,
             _ => None,
         }
     }
@@ -176,10 +150,14 @@ fn clip(text: &str) -> String {
 /// `Api` delegates, and `Venue` follows the status rule with Binance's code
 /// in decimal. A `429` is `RateLimited`, and a ban, a region block and a
 /// firewall refusal are all `Restricted`: Binance documents its `403` as the
-/// firewall's, not as a credential failure.
+/// firewall's, not as a credential failure (D14). So a `429`, and a `408`,
+/// `425` or 5xx however its body is shaped, are retriable, and a ban, a region
+/// block and a firewall refusal are not: sending again does not change them,
+/// and sending after a `418` lengthens the ban.
 ///
 /// A region block is the venue answering as designed, so it is not a fault. A
-/// ban's [`Classify::retry_after`] is still the time it lifts.
+/// `429`'s or a ban's [`Classify::retry_after`] is its `Retry-After`, clamped
+/// to 3 days: for a ban, the time it lifts.
 impl Classify for BinanceError {
     fn class(&self) -> Class {
         match self {
@@ -374,7 +352,7 @@ mod tests {
         let coded = |status, retry_after| parts(status, retry_after, body);
         let code = |c: &str| Some(std::sync::Arc::from(c));
         let week = Some(MAX_COOLDOWN);
-        // (error, class, is_fault, retry_after(), inherent is_retriable)
+        // (error, class, is_fault, retry_after())
         let rows = [
             (
                 coded(502, None),
@@ -383,14 +361,12 @@ mod tests {
                 },
                 true,
                 None,
-                true,
             ),
             (
                 parts(502, None, "<html>bad gateway</html>"),
                 Class::Unavailable { code: None },
                 true,
                 None,
-                true,
             ),
             (
                 coded(400, None),
@@ -399,7 +375,6 @@ mod tests {
                 },
                 true,
                 None,
-                false,
             ),
             (
                 coded(408, None),
@@ -408,7 +383,6 @@ mod tests {
                 },
                 true,
                 None,
-                true,
             ),
             (
                 coded(429, Some("7")),
@@ -417,24 +391,16 @@ mod tests {
                 },
                 true,
                 Some(Duration::from_secs(7)),
-                true,
             ),
             (
                 coded(429, None),
                 Class::RateLimited { retry_after: None },
                 true,
                 None,
-                true,
             ),
             // A ban says when it lifts, though its class has no wait of its own.
-            (
-                coded(418, Some("604800")),
-                Class::Restricted,
-                true,
-                week,
-                false,
-            ),
-            (coded(451, None), Class::Restricted, false, None, false),
+            (coded(418, Some("604800")), Class::Restricted, true, week),
+            (coded(451, None), Class::Restricted, false, None),
             // Built by hand: a 451 always becomes `RegionBlocked`, but a region
             // block is not a fault whichever variant carries it.
             (
@@ -446,11 +412,10 @@ mod tests {
                 Class::Restricted,
                 false,
                 None,
-                false,
             ),
-            (coded(403, None), Class::Restricted, true, None, false),
+            (coded(403, None), Class::Restricted, true, None),
         ];
-        for (err, class, fault, wait, inherent) in rows {
+        for (err, class, fault, wait) in rows {
             assert_eq!(err.class(), class, "{err:?}");
             assert_eq!(err.is_fault(), fault, "{err:?}");
             assert_eq!(Classify::retry_after(&err), wait, "{err:?}");
@@ -459,7 +424,6 @@ mod tests {
                 class.is_retriable(),
                 "{err:?}"
             );
-            assert_eq!(err.is_retriable(), inherent, "{err:?}");
         }
     }
 
