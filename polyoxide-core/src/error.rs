@@ -11,7 +11,10 @@ use crate::hooks::Refused;
 ///
 /// The send loop builds one when the client's policy fails a response, and a
 /// venue's `From<ApiError>` decodes its own body shape from [`body`](Self::body).
-#[derive(Debug, Clone)]
+///
+/// Its `Debug`, which the `Request failed` ERROR line prints, names the
+/// headers without their values and truncates the message and the body.
+#[derive(Clone)]
 #[non_exhaustive]
 pub struct ErrorResponse {
     /// The response's status.
@@ -63,6 +66,21 @@ impl ErrorResponse {
         let body = response.text().await.unwrap_or_default();
         tracing::debug!("API error response body: {}", body);
         Self::new(status, headers, body)
+    }
+}
+
+/// Written by hand so a log line never carries a header's value (a token, a
+/// cookie) or an unbounded body.
+impl std::fmt::Debug for ErrorResponse {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        let header_names: Vec<&str> = self.headers.keys().map(|name| name.as_str()).collect();
+        f.debug_struct("ErrorResponse")
+            .field("status", &self.status)
+            .field("headers", &header_names)
+            .field("message", &crate::truncate_for_log(&self.message))
+            .field("body", &crate::truncate_for_log(&self.body))
+            .field("retry_after", &self.retry_after)
+            .finish()
     }
 }
 
@@ -276,6 +294,29 @@ mod tests {
             assert_eq!(at(junk), None, "{junk:?}");
         }
         assert_eq!(response(429, "", None).retry_after, None);
+    }
+
+    #[test]
+    fn test_error_response_debug_is_bounded_and_names_headers_only() {
+        let mut headers = HeaderMap::new();
+        headers.insert("authorization", "Bearer s3cr3t-t0ken".parse().unwrap());
+        headers.insert("set-cookie", "session=c00kie-value".parse().unwrap());
+        // Not JSON, so the message is the body too.
+        let body = "x".repeat(10_000);
+        let response = ErrorResponse::new(StatusCode::BAD_GATEWAY, headers, body);
+
+        let debug = format!("{:?}", ApiError::from(response));
+        assert!(
+            debug.len() < 1_500,
+            "{} bytes of Debug for a 10 kB body",
+            debug.len()
+        );
+        assert!(debug.contains("authorization") && debug.contains("set-cookie"));
+        assert!(
+            !debug.contains("s3cr3t-t0ken") && !debug.contains("c00kie-value"),
+            "{debug}"
+        );
+        assert!(debug.starts_with("Response(ErrorResponse { status: 502,"));
     }
 
     #[test]

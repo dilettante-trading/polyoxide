@@ -8,6 +8,9 @@ commands and pins their stories fixed.
 
 from __future__ import annotations
 
+import importlib.util
+import re
+import sys
 from pathlib import Path
 
 import pytest
@@ -85,20 +88,61 @@ def test_the_features_job_checks_each_feature_with_the_pinned_cargo_hack() -> No
         "cargo hack check --workspace --each-feature --no-dev-deps --ignore-private")
 
 
-# The HTTP modules whose `tests/headers.rs` pins one request's full header set.
-HTTP_MODULES = ["gamma", "data", "perps", "clob", "relay", "binance"]
+def _load_publish_order():
+    """`scripts/publish_order.py`, which lives outside this uv project."""
+    if "publish_order" in sys.modules:
+        return sys.modules["publish_order"]
+    spec = importlib.util.spec_from_file_location("publish_order", REPO / "scripts" / "publish_order.py")
+    module = importlib.util.module_from_spec(spec)
+    sys.modules[spec.name] = module
+    spec.loader.exec_module(module)
+    return module
+
+
+def http_modules(metadata: dict) -> list[str]:
+    """The members that send on core's HTTP client: each declares a venue and
+    depends directly on polyoxide-core. Each must pin its header set."""
+    publish_order = _load_publish_order()
+    return sorted(
+        p["name"] for p in publish_order.members(metadata)
+        if ((p.get("metadata") or {}).get("polyoxide") or {}).get("venue")
+        and any(dep["name"] == "polyoxide-core" and dep["kind"] is None
+                for dep in p["dependencies"]))
 
 
 def test_the_features_job_runs_each_header_pin_in_its_minimal_build() -> None:
     """One `-p` per command, so no module's features are unified with another's;
-    the workspace build runs the same files, against the same literal (AD-18)."""
+    the workspace build runs the same files, against the same literal (AD-18).
+    The modules come from `cargo metadata`, so a new venue crate on core's client
+    fails here until it pins its headers and the step names it."""
+    metadata = _load_publish_order().cargo_metadata(REPO / "Cargo.toml")
+    modules = http_modules(metadata)
+    assert len(modules) >= 6, f"too few HTTP modules found, so the check is vacuous: {modules}"
     [step] = [s for s in _steps("features") if "--test headers" in s.get("run", "")]
-    commands = step["run"].strip().splitlines()
-    assert commands == [
-        f"cargo test -p polyoxide-{m} --no-default-features --test headers" for m in HTTP_MODULES
+    named = []
+    for command in step["run"].strip().splitlines():
+        match = re.fullmatch(r"cargo test -p (\S+) --no-default-features --test headers", command)
+        assert match, f"not one module's header pin with one `-p`: {command!r}"
+        named.append(match[1])
+    assert sorted(named) == modules
+    for module in modules:
+        assert (REPO / module / "tests" / "headers.rs").is_file(), module
+
+
+def test_http_modules_are_venue_crates_on_core() -> None:
+    def package(name: str, venue: str | None, deps: list[str]) -> dict:
+        return {"id": name, "name": name,
+                "metadata": {"polyoxide": {"venue": venue}} if venue else None,
+                "dependencies": [{"name": d, "kind": None} for d in deps]}
+
+    packages = [
+        package("polyoxide-core", None, ["reqwest"]),
+        package("polyoxide-kalshi", "kalshi", ["polyoxide-core"]),
+        package("polyoxide-rtds", "polymarket", ["polyoxide-venue"]),
+        package("polyoxide-cli", None, ["polyoxide-core"]),
     ]
-    for module in HTTP_MODULES:
-        assert (REPO / f"polyoxide-{module}" / "tests" / "headers.rs").is_file(), module
+    metadata = {"packages": packages, "workspace_members": [p["id"] for p in packages]}
+    assert http_modules(metadata) == ["polyoxide-kalshi"]
 
 
 def test_the_removals_job_runs_the_gate_against_the_s1_baseline() -> None:

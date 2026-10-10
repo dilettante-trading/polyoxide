@@ -128,6 +128,10 @@ impl HttpClient {
                     return match decision.outcome {
                         Outcome::Done => Ok(response),
                         Outcome::Fail | Outcome::Retry(_) => {
+                            // Read outside the permit, as a caller reads a
+                            // 2xx body after the loop drops it, so a slow
+                            // error body holds no slot.
+                            drop(permit);
                             Err(ErrorResponse::read(response).await.into())
                         }
                     };

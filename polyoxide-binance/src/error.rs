@@ -82,7 +82,8 @@ impl BinanceError {
 /// observed from a test IP, and the status is what decides what a caller
 /// should do. Anything else with Binance's `{code, msg}` body is
 /// [`Venue`](BinanceError::Venue); any other body stays core's
-/// [`ApiError::Response`], its message clipped. Every other [`ApiError`] stays
+/// [`ApiError::Response`], its message and body clipped and its `Retry-After`
+/// clamped to 3 days, as every arm reads it. Every other [`ApiError`] stays
 /// core's.
 ///
 /// A `418`'s body is Binance's `-1003` text, which names when the ban ends.
@@ -126,9 +127,12 @@ impl BinanceError {
                     msg: clip(&venue.msg),
                 },
                 // Core read the whole body for its `error` or `message`
-                // field; only what is kept is clipped.
+                // field; only what is kept is clipped. The wait is Binance's
+                // reading, clamped as the other arms clamp it.
                 Err(_) => {
                     response.message = clip(&response.message);
+                    response.body = clip(&response.body);
+                    response.retry_after = retry_after;
                     Self::Api(response.into())
                 }
             },
@@ -286,11 +290,12 @@ mod tests {
     fn every_kept_body_is_clipped() {
         let long = "x".repeat(10_000);
         let venue = format!(r#"{{"code":-1121,"msg":"{long}"}}"#);
+        // Every text the error keeps: a core response keeps its body too.
         let kept = |err: BinanceError| match err {
             BinanceError::Venue { msg, .. }
             | BinanceError::RegionBlocked { msg }
-            | BinanceError::Forbidden { msg } => msg,
-            BinanceError::Api(ApiError::Response(r)) => r.message,
+            | BinanceError::Forbidden { msg } => vec![msg],
+            BinanceError::Api(ApiError::Response(r)) => vec![r.message, r.body],
             other => panic!("unexpected {other:?}"),
         };
         for err in [
@@ -299,12 +304,13 @@ mod tests {
             parts(403, None, &long),
             parts(502, None, &long),
         ] {
-            let msg = kept(err);
-            assert!(
-                msg.len() <= 512 + "... [truncated]".len(),
-                "kept {} bytes",
-                msg.len()
-            );
+            for msg in kept(err) {
+                assert!(
+                    msg.len() <= 512 + "... [truncated]".len(),
+                    "kept {} bytes",
+                    msg.len()
+                );
+            }
         }
     }
 
@@ -332,6 +338,20 @@ mod tests {
                 "status {status}"
             );
         }
+    }
+
+    #[test]
+    fn a_core_response_keeps_binance_s_clamped_wait() {
+        // One reading of `Retry-After` in every arm: Binance's, clamped to 3
+        // days, where core's own reading is unclamped.
+        let err = parts(503, Some("604800"), "<html>down</html>");
+        match &err {
+            BinanceError::Api(ApiError::Response(r)) => {
+                assert_eq!(r.retry_after, Some(MAX_COOLDOWN));
+            }
+            other => panic!("unexpected {other:?}"),
+        }
+        assert_eq!(Classify::retry_after(&err), Some(MAX_COOLDOWN));
     }
 
     #[test]

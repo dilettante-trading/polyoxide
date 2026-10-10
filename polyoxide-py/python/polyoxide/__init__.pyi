@@ -31,7 +31,11 @@ class PolyoxideError(Exception):
     """The `Retry-After` delay in seconds, when the response carried one."""
 
 class ApiError(PolyoxideError):
-    """The venue refused the request (a 4xx not named below, such as a 400 or a 404)."""
+    """The venue refused the request (a 4xx not named below, such as a 400 or a 404).
+
+    A Data API v2 error maps by its `code` instead, and every code but
+    `invalid_request`, `rate_limited` and `request_timeout` raises this one.
+    """
     ...
 
 class AuthenticationError(PolyoxideError):
@@ -39,7 +43,10 @@ class AuthenticationError(PolyoxideError):
     ...
 
 class ValidationError(PolyoxideError):
-    """The request was refused before it was sent, or could not be built or signed."""
+    """The request was refused before it was sent, or could not be built or signed.
+
+    A Data API v2 error maps by its `code` instead, and `invalid_request` raises this one.
+    """
     ...
 
 class RateLimitError(PolyoxideError):

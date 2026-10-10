@@ -59,7 +59,8 @@ pub fn clob_err(e: polyoxide_clob::ClobError) -> PyErr {
 ///
 /// A class this version does not know, since `Class` is non-exhaustive, is a
 /// bare `PolyoxideError`. The message is the error's `Display`, which never
-/// decides the type.
+/// decides the type. A Data API v2 error does not come here: `data_err`
+/// maps it by its `code`.
 fn exception_for(e: &impl Classify) -> PyErr {
     let msg = e.to_string();
     match e.class() {

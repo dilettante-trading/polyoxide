@@ -187,8 +187,8 @@ type never depends on the wording of a message:
 | `UnavailableError` | `Unavailable` | The venue is unavailable for now (408, 425, 5xx); retrying may succeed |
 | `RateLimitError` | `RateLimited` | Rate limit exceeded (HTTP 429) |
 | `AuthenticationError` | `Unauthorized` | Invalid or missing credentials (401, 403) |
-| `ValidationError` | `InvalidRequest` | Refused before sending: bad input, a URL that does not parse, a signing failure |
-| `ApiError` | `VenueRefusal` | The venue refused the request (any other 4xx, a 400 included) |
+| `ValidationError` | `InvalidRequest` | Refused before sending: bad input, a URL that does not parse, a signing failure; and a v2 `invalid_request` |
+| `ApiError` | `VenueRefusal` | The venue refused the request (any other 4xx, a 400 included); and a v2 error with any code not mapped below |
 | `RestrictedError` | `Restricted` | The venue will not serve this caller (418, 451) |
 | `DecodeError` | `Decode` | A response that did not decode, or a page walk that could not continue |
 

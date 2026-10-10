@@ -77,9 +77,10 @@ pub enum SportsError {
 impl SportsError {
     /// Whether a reconnect attempt that failed this way is worth repeating.
     ///
-    /// The statuses are the ones polyoxide-venue's one status rule classes
-    /// retriable, as polyoxide-core's `is_retriable` does: a timeout, the
-    /// matching engine restarting, a rate limit, a server fault.
+    /// The statuses are the ones polyoxide-venue's one status rule
+    /// (`class_for_status`, which `Classify::is_retriable` reads) classes
+    /// retriable: a timeout, the matching engine restarting, a rate limit, a
+    /// server fault.
     /// polyoxide-perps retries only 429 and 5xx.
     pub(crate) fn retrying_can_fix(&self) -> bool {
         let Self::Connect { source } = self else {

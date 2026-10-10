@@ -120,8 +120,9 @@ impl UsdmWsError {
         match self {
             Self::Connect(err) => match &**err {
                 // A handshake refused with 408, 425, 429 or 5xx is the host
-                // being unwell or throttling, as core's `is_retriable` reads
-                // those statuses; any other status is our request.
+                // being unwell or throttling, as polyoxide-venue's status rule
+                // (`class_for_status`) reads those statuses; any other status
+                // is our request.
                 Ws::Http(response) => {
                     let status = response.status();
                     if status.is_server_error() || matches!(status.as_u16(), 408 | 425 | 429) {

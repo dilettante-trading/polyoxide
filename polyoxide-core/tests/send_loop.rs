@@ -732,6 +732,28 @@ async fn fail_is_an_error_and_done_is_the_response_whatever_the_status() {
 }
 
 #[tokio::test]
+async fn get_bytes_and_health_turn_a_done_failure_into_a_response_error() {
+    // Their own non-2xx branches, which only a policy that is done with a
+    // failure reaches.
+    let throttle = Recorder::default();
+    let (server, mock) = scripted("/v1/rows", &[404], 2, &throttle.log).await;
+    let http = HttpClientBuilder::new(server.url())
+        .with_retry_policy(Inverted)
+        .build()
+        .unwrap();
+
+    let bytes = http.get_bytes("/v1/rows", &[]).await.unwrap_err();
+    assert_eq!(failed(&bytes), StatusCode::NOT_FOUND);
+
+    let ping = http
+        .health::<ApiError>("/v1/rows", &[])
+        .await
+        .expect_err("a 404 is not a pong");
+    assert_eq!(failed(&ping), StatusCode::NOT_FOUND);
+    mock.assert_async().await;
+}
+
+#[tokio::test]
 async fn a_failed_response_carries_its_headers_body_and_retry_after() {
     let mut server = Server::new_async().await;
     let mock = server

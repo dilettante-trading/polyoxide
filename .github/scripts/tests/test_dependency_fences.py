@@ -12,10 +12,11 @@ And core owns the HTTP client (AD-18, Story 3.13):
 
 - no member but `polyoxide-core` depends directly on `reqwest`, in any
   dependency kind. Every other member names its types through
-  `polyoxide_core::reqwest`, so no crate can change reqwest's features for the
-  rest, which is how 0.37.0 took gzip away from every client. A copy that
-  arrives through another crate, such as alloy's reqwest 0.13, is not a direct
-  dependency and passes.
+  `polyoxide_core::reqwest`, so reqwest's features are set in one manifest,
+  core's. (0.37.0's gzip regression was a code default in core's builder, not
+  a feature; each HTTP module's `tests/headers.rs` is what catches a change of
+  that kind.) A copy that arrives through another crate, such as alloy's
+  reqwest 0.13, is not a direct dependency and passes.
 """
 
 from __future__ import annotations
