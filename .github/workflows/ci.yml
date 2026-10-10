@@ -102,6 +102,18 @@ jobs:
         with:
           version: "v0.14.0"
       - run: cargo hack check --workspace --each-feature --no-dev-deps --ignore-private
+      # Each HTTP module's header pin in that crate's minimal build, one `-p`
+      # per command, since several at once would unify their features. The
+      # lint & test job runs the same files in the workspace build, and both
+      # must match one literal header set (AD-18).
+      - name: Header pins, minimal builds
+        run: |
+          cargo test -p polyoxide-gamma --no-default-features --test headers
+          cargo test -p polyoxide-data --no-default-features --test headers
+          cargo test -p polyoxide-perps --no-default-features --test headers
+          cargo test -p polyoxide-clob --no-default-features --test headers
+          cargo test -p polyoxide-relay --no-default-features --test headers
+          cargo test -p polyoxide-binance --no-default-features --test headers
 
   # Every public item removed since the S1 start tag must be listed in
   # docs/s1-removals.md, and the doc-hidden paths consumers import must still

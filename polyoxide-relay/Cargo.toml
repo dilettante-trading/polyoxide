@@ -37,7 +37,7 @@ rand = { version = "0.9.2", features = ["std"] }
 [dev-dependencies]
 # The live suites' failure tags and credential loaders. Path-only: it is never
 # published, and cargo strips a path-only dev-dependency on publish.
-polyoxide-test-support = { path = "../polyoxide-test-support" }
+polyoxide-test-support = { path = "../polyoxide-test-support", features = ["query"] }
 tokio = { workspace = true, features = ["macros", "rt-multi-thread"] }
 dotenvy = "0.15"
 mockito = { workspace = true }

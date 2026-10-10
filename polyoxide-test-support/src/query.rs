@@ -107,6 +107,53 @@ where
         .collect()
 }
 
+/// Answers `GET path` on a mock server, calls `fire` with the server's base
+/// URL, and returns every header of the request it sent as ordered
+/// `(lowercased name, value)` pairs, a repeated header once per value.
+///
+/// `fire` builds the client against that URL and sends one request; what it
+/// returns is ignored, as with [`pairs_sent`]. Panics when no request reaches
+/// `path`, or when a header's value is not visible ASCII.
+pub async fn headers_sent<F, Fut>(path: &str, fire: F) -> Vec<(String, String)>
+where
+    F: FnOnce(String) -> Fut,
+    Fut: Future,
+{
+    let mut server = Server::new_async().await;
+    let seen = Arc::new(Mutex::new(Vec::<Vec<(String, String)>>::new()));
+    let sink = Arc::clone(&seen);
+    let mock = server
+        .mock("GET", path)
+        .match_query(Matcher::Any)
+        .match_request(move |request| {
+            let headers = request
+                .headers()
+                .iter()
+                .map(|(name, value)| {
+                    let value = value.to_str().unwrap_or_else(|_| {
+                        panic!("{name}: a header value that is not visible ASCII")
+                    });
+                    (name.as_str().to_ascii_lowercase(), value.to_owned())
+                })
+                .collect();
+            sink.lock().unwrap().push(headers);
+            true
+        })
+        .with_status(200)
+        .with_body("{}")
+        .expect_at_least(1)
+        .create_async()
+        .await;
+
+    fire(server.url()).await;
+    if !mock.matched_async().await {
+        panic!("{path}: no request was sent");
+    }
+
+    let seen = seen.lock().unwrap();
+    seen.last().unwrap().clone()
+}
+
 /// Sends one request builder's call against the mock server at the given
 /// base URL; what it returns is ignored.
 pub type Fire = fn(String) -> Pin<Box<dyn Future<Output = ()> + Send>>;
@@ -221,6 +268,31 @@ mod tests {
         })
         .await;
         assert_eq!(pairs, [("limit".to_owned(), "2".to_owned())]);
+    }
+
+    #[tokio::test]
+    async fn headers_sent_reads_every_header_lowercased() {
+        let mut base = String::new();
+        let headers = headers_sent("/v1/rows", |url| {
+            base = url.clone();
+            async move {
+                polyoxide_core::reqwest::Client::new()
+                    .get(format!("{url}/v1/rows?limit=2"))
+                    .header("X-Trace", "t-1")
+                    .header("x-trace", "t-2")
+                    .send()
+                    .await
+                    .unwrap();
+            }
+        })
+        .await;
+        let host = base.trim_start_matches("http://");
+        for expected in [("x-trace", "t-1"), ("x-trace", "t-2"), ("host", host)] {
+            assert!(
+                headers.contains(&(expected.0.to_owned(), expected.1.to_owned())),
+                "{expected:?} is not in {headers:?}"
+            );
+        }
     }
 
     #[test]

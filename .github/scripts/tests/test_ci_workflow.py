@@ -81,8 +81,24 @@ def test_the_msrv_job_does_not_deny_warnings() -> None:
 
 def test_the_features_job_checks_each_feature_with_the_pinned_cargo_hack() -> None:
     assert _installed("features") == ["cargo-hack@0.6.45"]
-    assert _job_runs("features") == [
-        "cargo hack check --workspace --each-feature --no-dev-deps --ignore-private"]
+    assert _job_runs("features")[0] == (
+        "cargo hack check --workspace --each-feature --no-dev-deps --ignore-private")
+
+
+# The HTTP modules whose `tests/headers.rs` pins one request's full header set.
+HTTP_MODULES = ["gamma", "data", "perps", "clob", "relay", "binance"]
+
+
+def test_the_features_job_runs_each_header_pin_in_its_minimal_build() -> None:
+    """One `-p` per command, so no module's features are unified with another's;
+    the workspace build runs the same files, against the same literal (AD-18)."""
+    [step] = [s for s in _steps("features") if "--test headers" in s.get("run", "")]
+    commands = step["run"].strip().splitlines()
+    assert commands == [
+        f"cargo test -p polyoxide-{m} --no-default-features --test headers" for m in HTTP_MODULES
+    ]
+    for module in HTTP_MODULES:
+        assert (REPO / f"polyoxide-{module}" / "tests" / "headers.rs").is_file(), module
 
 
 def test_the_removals_job_runs_the_gate_against_the_s1_baseline() -> None:
