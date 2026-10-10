@@ -25,11 +25,11 @@ tracing = { workspace = true }
 
 [dev-dependencies]
 serde_json = { workspace = true }
-tokio = { workspace = true, features = ["macros", "rt-multi-thread", "net", "time", "test-util"] }
+tokio = { workspace = true, features = ["macros", "rt-multi-thread", "net", "sync", "time", "test-util"] }
 
 # Registration, read by scripts/gen_registry.py: the README line and the notes
 # CLAUDE.md's crate list carries. Run `python3 scripts/gen_registry.py --write`
 # after an edit.
 [package.metadata.polyoxide]
-readme = "The socket kit: the TLS install, `Backoff`, `Timing` and its setters, the deadline arithmetic and `WsError`"
+readme = "The socket kit: the TLS install, `Backoff`, `Timing` and its setters, the deadline arithmetic, `WsError`, connect with a timeout, the bare tier and request/answer correlation"
 notes = ["depends on neither `polyoxide-core` nor `polyoxide-venue`, and builds only tokio, tokio-tungstenite, futures-util, thiserror, tracing and rustls"]

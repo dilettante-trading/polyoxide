@@ -12,6 +12,12 @@
 //!   connect and rotation timings, [`timing_setters!`] gives a builder its
 //!   setters, and [`next_wait`] is the wait until the first deadline.
 //! - [`WsError`] is the one socket error, read through its [`Kind`].
+//! - [`connect`] opens a connection within a timeout, [`with_timeout`] bounds
+//!   a venue's own connect, and [`retrying_can_fix`] says whether a
+//!   reconnect can help after one failed.
+//! - [`Connection`] is the bare tier: one connection as a `Stream` of its
+//!   frames in a [`Mode`], with the server's close captured, and requests
+//!   correlated with their answers through [`Correlated`].
 //!
 //! [`tungstenite`] is re-exported, so a venue names `Message` and
 //! `CloseFrame` through this crate rather than depending on it.
@@ -28,12 +34,20 @@
 struct ReadmeDoctests;
 
 mod backoff;
+mod bare;
+mod connect;
 mod error;
+#[cfg(test)]
+mod loopback;
+mod request;
 mod timing;
 mod tls;
 
 pub use backoff::{Backoff, MIN_BACKOFF};
+pub use bare::{Connection, Mode};
+pub use connect::{connect, retrying_can_fix, with_timeout, Socket, DEFAULT_CONNECT_TIMEOUT};
 pub use error::{Kind, WsError};
+pub use request::Correlated;
 pub use timing::{next_wait, Timing};
 pub use tls::ensure_crypto_provider;
 /// The WebSocket library the kit is built on, re-exported so a venue names

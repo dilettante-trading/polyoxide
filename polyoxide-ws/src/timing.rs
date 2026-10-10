@@ -3,7 +3,7 @@
 
 use std::time::Duration;
 
-use crate::Backoff;
+use crate::{Backoff, DEFAULT_CONNECT_TIMEOUT};
 
 /// The timings a supervised connection runs on.
 ///
@@ -50,7 +50,7 @@ impl Default for Timing {
             stale_after: Duration::from_secs(30),
             initial_backoff: Duration::from_millis(500),
             max_backoff: Duration::from_secs(60),
-            connect_timeout: Duration::from_secs(10),
+            connect_timeout: DEFAULT_CONNECT_TIMEOUT,
             max_connection_age: None,
         }
     }
