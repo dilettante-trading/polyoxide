@@ -52,6 +52,13 @@ To remove a public item in a PR:
 - `polyoxide-core inherent_method_missing: ApiError::is_retriable (src/error.rs)` Story 3.11: import `polyoxide_venue::Classify` and call its `is_retriable`, which reads the error's class; a transport failure that is neither a connect nor a timeout is now retriable, as its class always said.
 - `polyoxide-core trait_method_missing: method from_response of trait RequestError (src/request.rs)` Story 3.11: `RequestError` is a marker implemented for every `From<ApiError> + Debug` type; a failed response reaches that `From` as `ApiError::Response`, so a venue decodes its body there.
 - `polyoxide-clob inherent_method_missing: ClobError::is_retriable (src/error.rs)` Story 3.11: import `polyoxide_venue::Classify` and call its `is_retriable`; the FAK and FOK kills and every local failure still answer `false`.
+- `polyoxide-core declarative_macro_missing: macro impl_api_error_conversions (src/macros.rs)` Story 3.11: nothing to generate; a crate's error type wraps `ApiError`, its `From<ApiError>` is its decode, and a foreign error enters through `ApiError` (`.map_err(ApiError::from)?`).
+- `polyoxide-data inherent_method_missing: DataApiError::is_retriable (src/error.rs)` Story 3.11: import `polyoxide_venue::Classify` and call its `is_retriable`, which reads the class, so a v2 error's status decides; the server's own flag stays readable as `V2Error::retryable`.
+- `polyoxide-perps inherent_method_missing: PerpsError::is_retriable (src/error.rs)` Story 3.11: import `polyoxide_venue::Classify` and call its `is_retriable`, which answers as the inherent method did.
+- `polyoxide-perps inherent_method_missing: VenueError::is_retriable (src/error.rs)` Story 3.11: import `polyoxide_venue::Classify` and call its `is_retriable`, which answers as the inherent method did.
+- `polyoxide-relay enum_variant_missing: variant RelayError::Reqwest (src/error.rs)` Story 3.11: a transport failure, or a body that failed to read, is `RelayError::Api(ApiError::Network(_))`.
+- `polyoxide-relay enum_variant_missing: variant RelayError::UrlParse (src/error.rs)` Story 3.11: a URL that does not parse, `RelayClientBuilder::url` included, is `RelayError::Api(ApiError::Url(_))`.
+- `polyoxide-relay enum_variant_missing: variant RelayError::SerdeJson (src/error.rs)` Story 3.11: JSON that does not serialise or decode is `RelayError::Api(ApiError::Serialization(_))`.
 
 ## Doc-hidden paths consumers import
 

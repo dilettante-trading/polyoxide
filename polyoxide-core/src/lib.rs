@@ -30,7 +30,10 @@
 //!
 //! ## Error Handling
 //!
-//! Use the [`impl_api_error_conversions`] macro to reduce boilerplate in error types.
+//! An unsuccessful response is [`ApiError::Response`], carrying an
+//! [`ErrorResponse`]: its status, headers, body, message and `Retry-After`.
+//! A venue's error type wraps [`ApiError`], and its `From<ApiError>` is its
+//! one decode, so a `?` on core's error anywhere reads the venue's body.
 
 // Compile the crate README's `rust` code fences as doctests so broken examples
 // fail CI. `#[cfg(doctest)]` keeps this out of normal builds and `cargo doc`.

@@ -68,40 +68,13 @@ impl VenueError {
             retry_after: response.retry_after,
         })
     }
-
-    /// Whether re-sending the same request could plausibly succeed: a 408,
-    /// a 425, a 429 or any 5xx, by [`polyoxide_venue::class_for_status`].
-    ///
-    /// The same rule as the class of an [`ApiError`] with that status, so a
-    /// response classifies the same whether or not its body had the venue
-    /// shape; `venue_and_api_errors_agree_on_retriability` pins the two
-    /// together.
-    pub fn is_retriable(&self) -> bool {
-        class_for_status(self.status).is_some_and(|c| c.is_retriable())
-    }
 }
 
 impl PerpsError {
-    /// Whether re-sending the same request could plausibly succeed.
-    pub fn is_retriable(&self) -> bool {
-        match self {
-            Self::Api(err) => Classify::is_retriable(err),
-            Self::Venue(err) => err.is_retriable(),
-        }
-    }
-
     /// The venue's error identifier, for venue errors.
     pub fn code(&self) -> Option<&str> {
         match self {
             Self::Venue(err) => Some(&err.code),
-            Self::Api(_) => None,
-        }
-    }
-
-    /// The `Retry-After` delay, for venue errors that carried one.
-    pub fn retry_after(&self) -> Option<Duration> {
-        match self {
-            Self::Venue(err) => err.retry_after,
             Self::Api(_) => None,
         }
     }
@@ -166,8 +139,6 @@ impl Classify for PerpsError {
         }
     }
 }
-
-polyoxide_core::impl_api_error_conversions!(PerpsError);
 
 #[cfg(test)]
 mod tests {
@@ -270,15 +241,13 @@ mod tests {
         };
         let code = |c: &str| Some(std::sync::Arc::from(c));
         let secs = |n| Some(Duration::from_secs(n));
-        // (error, class, is_fault, (trait retry_after, inherent retry_after),
-        // inherent is_retriable)
+        // (error, class, is_fault, retry_after())
         let rows = [
             (
                 PerpsError::from(ApiError::from(response(408, None, "timeout"))),
                 Class::Unavailable { code: None },
                 true,
-                (None, None),
-                true,
+                None,
             ),
             (
                 PerpsError::from(ApiError::from(response(
@@ -288,8 +257,7 @@ mod tests {
                 ))),
                 Class::Unavailable { code: None },
                 true,
-                (None, None),
-                true,
+                None,
             ),
             (
                 venue(400, None, "invalid query parameters"),
@@ -297,8 +265,7 @@ mod tests {
                     code: code("invalid query parameters"),
                 },
                 true,
-                (None, None),
-                false,
+                None,
             ),
             (
                 venue(404, None, "not_found"),
@@ -306,8 +273,7 @@ mod tests {
                     code: code("not_found"),
                 },
                 true,
-                (None, None),
-                false,
+                None,
             ),
             (
                 venue(429, Some("2"), "ip_rate_limited"),
@@ -315,17 +281,14 @@ mod tests {
                     retry_after: secs(2),
                 },
                 true,
-                (secs(2), secs(2)),
-                true,
+                secs(2),
             ),
-            // A zero is no wait, to the trait and the inherent method alike
-            // (DRIFT R4).
+            // A zero is no wait (DRIFT R4).
             (
                 venue(429, Some("0"), "ip_rate_limited"),
                 Class::RateLimited { retry_after: None },
                 true,
-                (None, None),
-                true,
+                None,
             ),
             (
                 venue(503, Some("5"), "unavailable"),
@@ -333,40 +296,26 @@ mod tests {
                     code: code("unavailable"),
                 },
                 true,
-                (secs(5), secs(5)),
-                true,
+                secs(5),
             ),
             // A region block is the venue answering as designed.
             (
                 venue(451, None, "restricted"),
                 Class::Restricted,
                 false,
-                (None, None),
-                false,
+                None,
             ),
-            (
-                venue(200, None, "odd"),
-                Class::Decode,
-                true,
-                (None, None),
-                false,
-            ),
+            (venue(200, None, "odd"), Class::Decode, true, None),
         ];
-        for (err, class, fault, (wait, inherent_wait), inherent) in rows {
+        for (err, class, fault, wait) in rows {
             assert_eq!(err.class(), class, "{err:?}");
             assert_eq!(err.is_fault(), fault, "{err:?}");
-            assert_eq!(Classify::retry_after(&err), wait, "{err:?}");
-            assert_eq!(err.retry_after(), inherent_wait, "{err:?}");
-            assert_eq!(
-                Classify::is_retriable(&err),
-                class.is_retriable(),
-                "{err:?}"
-            );
-            assert_eq!(err.is_retriable(), inherent, "{err:?}");
+            assert_eq!(err.retry_after(), wait, "{err:?}");
+            assert_eq!(err.is_retriable(), class.is_retriable(), "{err:?}");
             if let PerpsError::Venue(venue) = &err {
                 assert_eq!(venue.class(), class, "{venue:?}");
                 assert_eq!(venue.is_fault(), fault, "{venue:?}");
-                assert_eq!(venue.is_retriable(), inherent, "{venue:?}");
+                assert_eq!(venue.retry_after(), wait, "{venue:?}");
             }
         }
     }

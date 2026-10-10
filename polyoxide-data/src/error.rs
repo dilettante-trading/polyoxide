@@ -24,31 +24,10 @@ pub enum DataApiError {
 }
 
 impl DataApiError {
-    /// Whether re-sending the same request could plausibly succeed.
-    ///
-    /// For [`DataApiError::V2`] this is the server's own `retryable` flag, which
-    /// takes precedence over any reading of the status code. Otherwise it
-    /// defers to the error's class.
-    pub fn is_retriable(&self) -> bool {
-        match self {
-            Self::Api(err) => Classify::is_retriable(err),
-            Self::V2(err) => err.retryable,
-            Self::Pagination(_) => false,
-        }
-    }
-
     /// The server's trace id, for v2 errors.
     pub fn trace_id(&self) -> Option<&str> {
         match self {
             Self::V2(err) => Some(&err.trace_id),
-            _ => None,
-        }
-    }
-
-    /// The `Retry-After` delay, for v2 errors that carried one.
-    pub fn retry_after(&self) -> Option<Duration> {
-        match self {
-            Self::V2(err) => err.retry_after,
             _ => None,
         }
     }
@@ -75,8 +54,8 @@ impl From<ApiError> for DataApiError {
 /// `Api` and `V2` delegate to the error they wrap, and a pagination failure,
 /// a page that did not continue the walk, is a [`Class::Decode`].
 ///
-/// For a v2 error the class comes from the status, so it can disagree with
-/// [`DataApiError::is_retriable`], which keeps the server's `retryable` flag.
+/// For a v2 error the class comes from the status: the server's `retryable`
+/// flag is surfaced on [`V2Error::retryable`], not obeyed.
 impl Classify for DataApiError {
     fn class(&self) -> Class {
         match self {
@@ -102,9 +81,6 @@ impl Classify for DataApiError {
         }
     }
 }
-
-// Implement standard error conversions using the macro
-polyoxide_core::impl_api_error_conversions!(DataApiError);
 
 #[cfg(test)]
 mod tests {
@@ -138,10 +114,9 @@ mod tests {
         let body = r#"{"error":"down","code":"dependency_unavailable","retryable":false,"trace_id":"t-1"}"#;
         let err = DataApiError::V2(parts(503, Some("3"), body).unwrap());
 
-        assert!(
-            !err.is_retriable(),
-            "the server's flag wins over the 503 status"
-        );
+        // The flag is surfaced, not obeyed: the 503's class is retriable.
+        assert!(matches!(&err, DataApiError::V2(v2) if !v2.retryable));
+        assert!(err.is_retriable(), "the class decides, from the 503");
         assert_eq!(err.trace_id(), Some("t-1"));
         assert_eq!(err.retry_after(), Some(Duration::from_secs(3)));
     }
@@ -169,74 +144,48 @@ mod tests {
             code: Some("dependency_unavailable".into()),
         };
         let secs = |n| Some(Duration::from_secs(n));
-        // (error, class, is_fault, (trait retry_after, inherent retry_after),
-        // inherent is_retriable)
+        // (error, class, is_fault, retry_after())
         let rows = [
             (
                 DataApiError::from(response(408, "timeout")),
                 Class::Unavailable { code: None },
                 true,
-                (None, None),
-                true,
+                None,
             ),
             (
                 DataApiError::from(response(400, r#"{"error":"bad"}"#)),
                 Class::VenueRefusal { code: None },
                 true,
-                (None, None),
-                false,
+                None,
             ),
             (
                 DataApiError::from(ApiError::Validation("bad".into())),
                 Class::InvalidRequest,
                 true,
-                (None, None),
-                false,
+                None,
             ),
-            // The server's flag and the class disagree here, and each keeps
-            // its own answer.
+            // The server's flag says no; the class, which decides, says yes.
             (
                 v2(503, Some("3"), false),
                 unavailable.clone(),
                 true,
-                (secs(3), secs(3)),
-                false,
+                secs(3),
             ),
-            // A zero is no wait, to the trait and the inherent method alike
-            // (DRIFT R4).
-            (
-                v2(503, Some("0"), true),
-                unavailable,
-                true,
-                (None, None),
-                true,
-            ),
-            (
-                v2(451, None, false),
-                Class::Restricted,
-                false,
-                (None, None),
-                false,
-            ),
+            // A zero is no wait (DRIFT R4).
+            (v2(503, Some("0"), true), unavailable, true, None),
+            (v2(451, None, false), Class::Restricted, false, None),
             (
                 DataApiError::Pagination("the server returned the cursor it was sent".into()),
                 Class::Decode,
                 true,
-                (None, None),
-                false,
+                None,
             ),
         ];
-        for (err, class, fault, (wait, inherent_wait), inherent) in rows {
+        for (err, class, fault, wait) in rows {
             assert_eq!(err.class(), class, "{err:?}");
             assert_eq!(err.is_fault(), fault, "{err:?}");
-            assert_eq!(Classify::retry_after(&err), wait, "{err:?}");
-            assert_eq!(err.retry_after(), inherent_wait, "{err:?}");
-            assert_eq!(
-                Classify::is_retriable(&err),
-                class.is_retriable(),
-                "{err:?}"
-            );
-            assert_eq!(err.is_retriable(), inherent, "{err:?}");
+            assert_eq!(err.retry_after(), wait, "{err:?}");
+            assert_eq!(err.is_retriable(), class.is_retriable(), "{err:?}");
         }
     }
 

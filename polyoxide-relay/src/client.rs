@@ -396,13 +396,17 @@ impl RelayClient {
 
     /// Fetch the current transaction nonce for an address from the relayer.
     pub async fn get_nonce(&self, address: Address) -> Result<u64, RelayError> {
-        let url = self.http_client.base_url.join(&format!(
-            "nonce?address={}&type={}",
-            address,
-            self.wallet_type.as_str()
-        ))?;
+        let url = self
+            .http_client
+            .base_url
+            .join(&format!(
+                "nonce?address={}&type={}",
+                address,
+                self.wallet_type.as_str()
+            ))
+            .map_err(ApiError::from)?;
         let resp = self.get(&url).await?;
-        let data = resp.json::<NonceResponse>().await?;
+        let data = resp.json::<NonceResponse>().await.map_err(ApiError::from)?;
         Ok(data.nonce)
     }
 
@@ -414,9 +418,12 @@ impl RelayClient {
         let url = self
             .http_client
             .base_url
-            .join(&format!("transaction?id={}", transaction_id))?;
+            .join(&format!("transaction?id={}", transaction_id))
+            .map_err(ApiError::from)?;
         let resp = self.get(&url).await?;
-        resp.json::<RelayerTransaction>().await.map_err(Into::into)
+        resp.json::<RelayerTransaction>()
+            .await
+            .map_err(|e| ApiError::from(e).into())
     }
 
     /// List the most recent relayer transactions owned by the authenticated user.
@@ -429,11 +436,15 @@ impl RelayClient {
     ///
     /// See `GET /transactions` in `docs/specs/relay/openapi.yaml`.
     pub async fn list_transactions(&self) -> Result<Vec<RelayerTransaction>, RelayError> {
-        let url = self.http_client.base_url.join("transactions")?;
+        let url = self
+            .http_client
+            .base_url
+            .join("transactions")
+            .map_err(ApiError::from)?;
         let resp = self.get_authed("/transactions", &url, true, true).await?;
         resp.json::<Vec<RelayerTransaction>>()
             .await
-            .map_err(Into::into)
+            .map_err(|e| ApiError::from(e).into())
     }
 
     /// List all relayer API keys owned by the authenticated address.
@@ -444,11 +455,17 @@ impl RelayClient {
     ///
     /// See `GET /relayer/api/keys` in `docs/specs/relay/openapi.yaml`.
     pub async fn list_relayer_api_keys(&self) -> Result<Vec<RelayerApiKey>, RelayError> {
-        let url = self.http_client.base_url.join("relayer/api/keys")?;
+        let url = self
+            .http_client
+            .base_url
+            .join("relayer/api/keys")
+            .map_err(ApiError::from)?;
         let resp = self
             .get_authed("/relayer/api/keys", &url, false, true)
             .await?;
-        resp.json::<Vec<RelayerApiKey>>().await.map_err(Into::into)
+        resp.json::<Vec<RelayerApiKey>>()
+            .await
+            .map_err(|e| ApiError::from(e).into())
     }
 
     /// Check whether a Safe wallet has been deployed on-chain.
@@ -456,9 +473,13 @@ impl RelayClient {
         let url = self
             .http_client
             .base_url
-            .join(&format!("deployed?address={}", safe_address))?;
+            .join(&format!("deployed?address={}", safe_address))
+            .map_err(ApiError::from)?;
         let resp = self.get(&url).await?;
-        let data = resp.json::<DeployedResponse>().await?;
+        let data = resp
+            .json::<DeployedResponse>()
+            .await
+            .map_err(ApiError::from)?;
         Ok(data.deployed)
     }
 
@@ -471,13 +492,21 @@ impl RelayClient {
         wallet: Address,
         wallet_type: WalletType,
     ) -> Result<bool, RelayError> {
-        let url = self.http_client.base_url.join(&format!(
-            "deployed?address={}&type={}",
-            wallet,
-            wallet_type.as_str()
-        ))?;
+        let url = self
+            .http_client
+            .base_url
+            .join(&format!(
+                "deployed?address={}&type={}",
+                wallet,
+                wallet_type.as_str()
+            ))
+            .map_err(ApiError::from)?;
         let resp = self.get(&url).await?;
-        Ok(resp.json::<DeployedResponse>().await?.deployed)
+        Ok(resp
+            .json::<DeployedResponse>()
+            .await
+            .map_err(ApiError::from)?
+            .deployed)
     }
 
     /// Fetch the next nonce for `owner`'s wallet of `wallet_type`
@@ -490,13 +519,21 @@ impl RelayClient {
         owner: Address,
         wallet_type: WalletType,
     ) -> Result<u64, RelayError> {
-        let url = self.http_client.base_url.join(&format!(
-            "v1/account/transactions/params?address={}&type={}",
-            owner,
-            wallet_type.as_str()
-        ))?;
+        let url = self
+            .http_client
+            .base_url
+            .join(&format!(
+                "v1/account/transactions/params?address={}&type={}",
+                owner,
+                wallet_type.as_str()
+            ))
+            .map_err(ApiError::from)?;
         let resp = self.get(&url).await?;
-        Ok(resp.json::<ExecuteParams>().await?.nonce)
+        Ok(resp
+            .json::<ExecuteParams>()
+            .await
+            .map_err(ApiError::from)?
+            .nonce)
     }
 
     /// Poll a submitted transaction (`GET /v1/account/transactions/{id}`).
@@ -508,13 +545,19 @@ impl RelayClient {
         &self,
         transaction_id: &str,
     ) -> Result<GaslessTransaction, RelayError> {
-        let mut url = self.http_client.base_url.join("v1/account/transactions/")?;
+        let mut url = self
+            .http_client
+            .base_url
+            .join("v1/account/transactions/")
+            .map_err(ApiError::from)?;
         url.path_segments_mut()
             .map_err(|_| RelayError::validation("base URL cannot be a base"))?
             .pop_if_empty()
             .push(transaction_id);
         let resp = self.get(&url).await?;
-        resp.json::<GaslessTransaction>().await.map_err(Into::into)
+        resp.json::<GaslessTransaction>()
+            .await
+            .map_err(|e| ApiError::from(e).into())
     }
 
     /// Find which account wallet `owner` has deployed.
@@ -600,9 +643,10 @@ impl RelayClient {
         let url = self
             .http_client
             .base_url
-            .join(&format!("relay-payload?address={}&type=PROXY", address))?;
+            .join(&format!("relay-payload?address={}&type=PROXY", address))
+            .map_err(ApiError::from)?;
         let resp = self.get(&url).await?;
-        let data = resp.json::<RelayPayload>().await?;
+        let data = resp.json::<RelayPayload>().await.map_err(ApiError::from)?;
         let relay_address: Address = data
             .address
             .parse()
@@ -1749,7 +1793,11 @@ impl RelayClient {
         allow_relayer_api_key: bool,
         timeout: Option<Duration>,
     ) -> Result<T, RelayError> {
-        let url = self.http_client.base_url.join(endpoint)?;
+        let url = self
+            .http_client
+            .base_url
+            .join(endpoint)
+            .map_err(ApiError::from)?;
         let path = format!("/{}", endpoint);
         // Checked before the send, so a refused call spends no permit and no
         // token.
@@ -1759,7 +1807,7 @@ impl RelayClient {
         }
 
         let mut parts = Self::parts(Method::POST, &url);
-        parts.body = Some(serde_json::to_string(body)?);
+        parts.body = Some(serde_json::to_string(body).map_err(ApiError::from)?);
         parts.timeout = timeout;
         let signer = RelayPostAuth {
             auth,
@@ -1772,8 +1820,8 @@ impl RelayClient {
                 Some(endpoint),
             )
             .await?;
-        let response_text = resp.text().await?;
-        polyoxide_core::decode_json(&path, &response_text).map_err(RelayError::SerdeJson)
+        let response_text = resp.text().await.map_err(ApiError::from)?;
+        polyoxide_core::decode_json(&path, &response_text).map_err(|e| ApiError::from(e).into())
     }
 }
 
@@ -1861,7 +1909,8 @@ impl Default for RelayClientBuilder {
 impl RelayClientBuilder {
     /// Create a new builder with default settings (Polygon mainnet, production relayer URL).
     pub fn new() -> Result<Self, RelayError> {
-        let mut base_url = Url::parse("https://relayer-v2.polymarket.com")?;
+        let mut base_url =
+            Url::parse("https://relayer-v2.polymarket.com").map_err(ApiError::from)?;
         if !base_url.path().ends_with('/') {
             base_url.set_path(&format!("{}/", base_url.path()));
         }
@@ -1885,7 +1934,7 @@ impl RelayClientBuilder {
 
     /// Set a custom relayer API base URL.
     pub fn url(mut self, url: &str) -> Result<Self, RelayError> {
-        let mut base_url = Url::parse(url)?;
+        let mut base_url = Url::parse(url).map_err(ApiError::from)?;
         if !base_url.path().ends_with('/') {
             base_url.set_path(&format!("{}/", base_url.path()));
         }
@@ -1952,7 +2001,7 @@ impl RelayClientBuilder {
     ///
     /// Returns an error if the chain ID is unsupported or the base URL is invalid.
     pub fn build(mut self) -> Result<RelayClient, RelayError> {
-        let mut base_url = Url::parse(&self.config.base_url)?;
+        let mut base_url = Url::parse(&self.config.base_url).map_err(ApiError::from)?;
         if !base_url.path().ends_with('/') {
             base_url.set_path(&format!("{}/", base_url.path()));
         }

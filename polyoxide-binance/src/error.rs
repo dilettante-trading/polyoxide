@@ -218,8 +218,6 @@ impl Classify for BinanceError {
     }
 }
 
-polyoxide_core::impl_api_error_conversions!(BinanceError);
-
 #[cfg(test)]
 mod tests {
     use super::*;

@@ -18,24 +18,37 @@ This is an **internal** crate. End users should depend on [`polyoxide`](https://
 | `request` | `Request<T, E>`, `QueryBuilder` trait, `RequestError` marker trait (any `From<ApiError> + Debug` type, whose `From` is its decode) -- the one request builder: method, query, JSON body, authenticator and throttle costs, sent on the send loop with automatic deserialization |
 | `rate_limit` | `WindowQuotaTable`, which builds a `RateLimiter` from a general bucket and per-endpoint rows (shared buckets, prefix or exact matching, scoped by method), with `effective_quota()` and `rows()` for inspection; `RetryConfig` for exponential backoff with jitter |
 | `polymarket` | Polymarket's retry policy, its five tables (`clob_limits()`, `gamma_limits()`, `data_limits()`, `relay_limits()`, `perps_limits()`), and `ClobThrottle` / `clob_throttle()`, which composes the IP table and the signer layer over one `Hold`, with `signer_cost()` and the `LayerId`s `CLOUDFLARE`, `SIGNER_ORDER` and `SIGNER_CANCEL` |
-| `macros` | `impl_api_error_conversions!` -- generates `From<reqwest::Error>` and `From<url::ParseError>` for crate-specific error wrappers |
+| `macros` | `client_config_setters!`, `namespaces!` and `query_setters!` -- a builder's transport setters, a client's namespace accessors, and a request builder's query setters |
 | `keychain` | OS credential storage via `keyring` -- `get`, `set`, `delete` helpers and `KeychainError` (feature-gated behind `keychain`) |
 
 ## Error hierarchy
 
-Each downstream crate defines its own error enum (e.g. `ClobError`, `GammaError`) with an `Api(ApiError)` variant. The `impl_api_error_conversions!` macro wires up the `From` conversions so `reqwest::Error` and `url::ParseError` flow through `ApiError` automatically:
+Each downstream crate defines its own error enum (e.g. `ClobError`, `GammaError`) with an `Api(ApiError)` variant. An unsuccessful response reaches it as `ApiError::Response`, which carries the whole response (`ErrorResponse`: status, headers, body, message and `Retry-After`), and the crate's `From<ApiError>` is its one decode: a `?` on core's error anywhere reads the venue's own body shape there. Transport, URL and JSON failures enter the same way, as `ApiError::Network`, `Url` and `Serialization`:
 
 ```rust
-use polyoxide_core::{ApiError, impl_api_error_conversions};
+use polyoxide_core::ApiError;
 use thiserror::Error;
 
 #[derive(Error, Debug)]
+#[non_exhaustive]
 pub enum MyCrateError {
     #[error(transparent)]
-    Api(#[from] ApiError),
+    Api(ApiError),
+    #[error("venue refused: {0}")]
+    Venue(String),
 }
 
-impl_api_error_conversions!(MyCrateError);
+impl From<ApiError> for MyCrateError {
+    fn from(err: ApiError) -> Self {
+        match err {
+            // The venue's own body shape becomes its own variant.
+            ApiError::Response(response) if response.body.starts_with(r#"{"venue""#) => {
+                Self::Venue(response.message)
+            }
+            other => Self::Api(other),
+        }
+    }
+}
 ```
 
 ## Key exports

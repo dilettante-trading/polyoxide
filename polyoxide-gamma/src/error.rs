@@ -8,6 +8,7 @@ use thiserror::Error;
 /// [`ErrorResponse`](polyoxide_core::ErrorResponse) already reads, so the
 /// derived `From<ApiError>` is gamma's decode.
 #[derive(Error, Debug)]
+#[non_exhaustive]
 pub enum GammaError {
     /// Core API error
     #[error(transparent)]
@@ -34,9 +35,6 @@ impl Classify for GammaError {
         }
     }
 }
-
-// Implement standard error conversions using the macro
-polyoxide_core::impl_api_error_conversions!(GammaError);
 
 #[cfg(test)]
 mod tests {

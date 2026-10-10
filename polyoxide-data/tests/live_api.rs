@@ -551,6 +551,7 @@ mod v2 {
     use polyoxide_data::v2::ErrorCode;
     use polyoxide_data::{DataApi, DataApiError};
     use polyoxide_test_support::{fail, ResultExt};
+    use polyoxide_venue::Classify;
 
     use super::client;
 

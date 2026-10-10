@@ -73,6 +73,7 @@ while let Some(page) = pages.try_next().await? {
 ```rust
 # use polyoxide_data::DataApi;
 use polyoxide_data::{v2::ErrorCode, DataApiError};
+use polyoxide_venue::Classify;
 
 # async fn doctest() -> Result<(), Box<dyn std::error::Error>> {
 # let data = DataApi::builder().build()?;
