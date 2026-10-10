@@ -40,7 +40,7 @@ Stage S1. Epic 3 starts after Story 2.6 and runs in parallel with Epic 4. Today 
     - the clob ping, which is ungated;
     - the gamma and data pings, which skip 429 feedback.
 
-    All four go through the loop or `health(path)`, and a test pins each one.
+    All four go through the loop or core's `health`, and a test pins each one.
   - **R10.** Every venue logs `Retriable status <code> on <path>, retry <n> after <ms>ms` at `WARN`, under the target prefix `polyoxide_core`. Holds and bans that are not retries warn there too. The soaks match `Retriable status 429`, so keep that line, or move the soaks to a structured signal in the same change.
 - **CAP-1 mutants.** Each must fail a test and be recorded in `docs/MUTANTS.md`:
   - dropping the hold on a last-attempt 429;
@@ -88,14 +88,15 @@ Stage S1. Epic 3 starts after Story 2.6 and runs in parallel with Epic 4. Today 
     - `acquire(&RequestMeta { method, path, query, costs: &[Cost] }) -> Result<Charge, Refused>`, async;
     - `observe(&Charge, &ResponseMeta { status, headers }, &AttemptInfo { attempt, retries_left })`, sync, run on every response;
     - `hold(delay)`, sync.
-  - `RetryPolicy::decide`, sync, returns `Decision { outcome: Done | Retry(wait) | Fail, hold: Option<Duration> }`.
-  - `Authenticator::sign(&mut RequestParts { method, path, query, headers, body }, attempt)`, async.
+  - `RetryPolicy::decide(&ResponseMeta, &AttemptInfo, schedule: &RetryConfig) -> Decision { outcome: Done | Retry(wait) | Fail, hold: Option<Duration> }`, sync (A3-1). The schedule is the loop's own `RetryConfig`, so a policy sizes its hold from the one schedule the client was configured with. It never keeps a copy, and it can never shorten the loop's floor.
+  - `Authenticator::sign(&mut RequestParts { method, path, query, headers, body, timeout }, attempt) -> Result<(), ApiError>`, async (A3-2). A signing failure ends the request before anything is sent.
+  - `RequestParts::timeout: Option<Duration>` bounds each attempt in place of the client's timeout, and `None` keeps the client's (A3-3). It is per attempt, like the client's own timeout. Relay's two session-signer posts set 300 s, because the venue broadcasts the batch before answering.
   - All three:
     - write async methods as `fn … -> impl Future<Output = …> + Send`;
     - are `Send + Sync`, never `'static`, with no associated consts;
     - carry `#[dynosaur::dynosaur(pub Dyn<Trait> = dyn(box) <Trait>)]`, held as `Arc<Dyn<Trait><'static>>`.
 
-    If dynosaur fails the MSRV, clippy or rustdoc gates, every trait moves to async-trait in one change.
+    No venue's error type enters a hook signature, so each `Dyn` wrapper stays one type the loop holds. If dynosaur fails the MSRV, clippy or rustdoc gates, every trait moves to async-trait in one change.
 - **The loop.**
   - Each attempt runs permit, `acquire`, `sign`, send, `observe`, `decide`, hold, log.
   - It sleeps `max(backoff floored by Retry-After, wait)`. The floor belongs to the loop, never to a policy.
@@ -103,7 +104,14 @@ Stage S1. Epic 3 starts after Story 2.6 and runs in parallel with Epic 4. Today 
   - It releases the permit before sleeping.
   - A transport error that gets no response skips `observe` and `decide`, is not retried, and is classed `Network`.
   - `Fail` returns `ApiError`, carrying status, headers, body and the parsed `Retry-After`. `Refused` returns `ApiError::Refused`.
+  - A signing failure is returned unchanged as `ApiError::Sign(Box<dyn Error + Send + Sync>)`. It is classed `InvalidRequest` and never retried (A3-2). A venue's authenticator boxes its own error into `Sign`, and the venue's `From<ApiError>` downcasts it back, so an L1 signer failure still reaches the caller as `ClobError::Alloy`.
   - `get_bytes` and decode-and-log (H3) use the same loop.
+- **Health ping (A3-5).**
+  - `HttpClient::health::<E: RequestError>(&self, path: &str, costs: &[Cost]) -> Result<Pong, E>`.
+  - `Pong { round_trip: Duration, response: reqwest::Response }` is `#[non_exhaustive]`.
+  - It sends one `GET` on the send loop, charging `costs`, so a ping takes the permit, the throttle, the retry and the hold. Binance passes its ping's weight this way, because a request-counting layer cannot find it from the path.
+  - `round_trip` covers only the attempt that answered, timed from its signing by a core-private authenticator. Every venue's latency therefore leaves out the waits, which settles R8's open question.
+  - The response comes back unread, because perps checks `{"status":"ok"}` and Binance checks `{}`. A final non-2xx becomes `E::from_response`.
 - **Retry sets (AD-17, D17).**
   - Core's default policy retries 429.
   - Polymarket's one policy retries 429 and 425, and gamma, data, perps, clob and relay all share it.
@@ -114,7 +122,7 @@ Stage S1. Epic 3 starts after Story 2.6 and runs in parallel with Epic 4. Today 
   - Only a 429 or a venue ban sets a hold.
     - A 425 waits for its own request only.
     - Every 429 holds, even with no retry left.
-    - Core's 429 hold is `retry_delay(0)`, and its wait is `retry_delay(attempt)`.
+    - Core's 429 hold is `retry_delay(0)`, taken from the schedule `decide` receives, and its wait is `retry_delay(attempt)`.
   - Binance:
     - a 429 with a retry left holds for `max(wait, Retry-After)`;
     - a 429 with none left holds for its `Retry-After`, or until the next UTC minute when it has none;
@@ -153,10 +161,16 @@ Stage S1. Epic 3 starts after Story 2.6 and runs in parallel with Epic 4. Today 
   - Clob's and relay's credentials are held in `Secret<T>`.
   - Relay's alloy gas estimation stays outside the loop, as the documented exception.
 - **Shared vocabulary.**
-  - Core provides the builder macro (H6), namespace accessors (H7) and `health(path)` (H8).
+  - Core provides the builder macro (H6) and the namespace accessors (H7). The health ping (H8) is the `health` method above.
   - Core also provides a query-setter macro promoted from perps' `setter!` (H9). Every setter keeps its name, its argument type and its query key.
   - `polyoxide-venue` provides `open_enum!`, `wire_enum!`, `UnknownVariant`, positional decimal serde and `UnixMillis::now()` (H10, H11, H16).
   - Perps and Binance keep separate `Interval` enums (D16).
+- **`polyoxide-venue`'s dependencies (A3-4).**
+  - Its default build depends on nothing, so rtds's and sports's `cargo tree -e normal` stay unchanged.
+  - A `decimal` feature turns on `rust_decimal` (with `serde-with-str`) and `serde` for `polyoxide_venue::positional` (`DecimalStr`, `element`, `drain`). Perps and Binance enable it.
+  - `wire_enum!`, `open_enum!` and `specta_as_string!` expand to `::serde` paths, so the crate that invokes them depends on serde itself. `wire_enum!` also needs serde's `derive` feature; `open_enum!` implements serde by hand.
+  - Venue takes serde and serde_json as dev-dependencies only.
+  - Any later dependency arrives behind a feature whenever a socket-only crate would otherwise build it.
 - **Retry-After.**
   - Venues switch to Story 2.1's parser, and Binance passes its 3-day clamp.
   - Tests pin each case where the old parsers disagreed.
@@ -170,6 +184,7 @@ Stage S1. Epic 3 starts after Story 2.6 and runs in parallel with Epic 4. Today 
       - perps: `{status, error, ref}`;
       - Binance: `{code, msg}`.
     - There is no catch-all variant.
+    - Each `From<ApiError>` keeps the existing mappings back out: `Refused` to the module's variant, and `Sign` downcast to the venue's own error.
   - **Classification.**
     - The status decides the class before the body, through `polyoxide-venue`'s map.
     - The only override is Binance's WAF 403, which becomes `Restricted` (D14).
@@ -188,20 +203,22 @@ Stage S1. Epic 3 starts after Story 2.6 and runs in parallel with Epic 4. Today 
   - Story 2.6.
   - Story 1.7's removal gate.
   - Stories 2.1 and 2.2: `Classify`, the status rule, the parser and `Secret<T>`.
-- **Epic 2 overlap.** Stories 2.7–2.10 may overlap this epic.
-  - Story 3.8 needs `query_keys_sent`, and Story 3.9 the wire-agreement helpers, both from Stories 2.8 and 2.9.
-  - Story 2.10's soak harness matches R10's line.
+- **Epic 2's helpers.** Stories 2.8–2.10 have landed them, and the inventory marks T1–T9 resolved.
+  - Story 3.8's `query_keys_sent` checks use test-support's `query` feature, and Story 3.9 uses the shared wire-agreement helpers.
+  - Story 2.10's soak observer matches R10's line.
 - **Within Epic 3.** Story 3.1 comes first.
   - Stories 3.2 and 3.3 build on its `Throttle` and hold.
-  - Story 3.4 needs 3.3's composed throttle.
+  - Stories 3.4 to 3.6 build their policies on A3-1's `decide` signature.
+  - Story 3.4 needs 3.3's composed throttle and A3-2's `ApiError::Sign`.
   - Story 3.6 needs 3.2's table.
-  - Story 3.5 uses 3.7's `health(path)` if it has landed, and the loop otherwise.
-  - Story 3.11 needs 3.1's `ApiError` and the `Refused` mapping from 3.3 and 3.4.
+  - Story 3.5 uses 3.7's `health` if it has landed, and the loop otherwise, and A3-3's per-attempt timeout.
+  - Story 3.11 needs 3.1's `ApiError` and the `Refused` and `Sign` mappings from 3.3 and 3.4.
   - Story 3.12 follows 3.6 and 3.11.
 - **Epic 4.**
   - It runs in parallel, and its kit takes the venue status rule as an injected function.
   - Story 4.10 folds its tungstenite and rustls check into Story 3.13's, if that check exists.
   - Story 4.11 cuts S1 once Epics 1–4 are done, with notes naming R4 and the moved log targets.
+- **Spine merge.** Amendments A2-1 and A3-1 to A3-5 are accepted but not yet merged into the spine; one later session merges them and regenerates the guide. Until then they override the spine where the two differ.
 - **Epic 5.**
   - Story 5.2 moves core's `polymarket` module into `polyoxide-polymarket`, with empty test-body diffs.
   - Error enum renames, such as `BinanceError` to `UsdmError`, wait for S2.
