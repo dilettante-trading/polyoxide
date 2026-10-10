@@ -97,10 +97,10 @@ development_status:
   epic-3-retrospective: optional
 
   epic-4: in-progress
-  4-1-the-socket-kit-crate: in-progress
-  4-2-connect-classify-and-close-once: in-progress
-  4-3-one-socket-error-classification-table: in-progress
-  4-4-one-scripted-test-server: in-progress
+  4-1-the-socket-kit-crate: review
+  4-2-connect-classify-and-close-once: review
+  4-3-one-socket-error-classification-table: review
+  4-4-one-scripted-test-server: review
   4-5-the-generic-supervisor: backlog
   4-6-perps-on-the-supervisor: backlog
   4-7-binance-on-the-supervisor: backlog

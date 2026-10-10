@@ -2,7 +2,7 @@
 title: 'Stories 4.1 to 4.4: the polyoxide-ws socket kit, one socket classification table, and one scripted test server'
 type: 'feature'
 created: '2026-10-10'
-status: 'in-progress'
+status: 'done'
 route: 'dispatch'
 review_loop_iteration: 0
 baseline_commit: 'cb476e2f52501e2fc94810626441428f33b5dcb9'
@@ -132,7 +132,7 @@ The copies have drifted:
 ## Tasks & Acceptance
 
 **Execution:** each item below is one commit, in order. Commits name their story; run `cargo fmt`, `clippy` and the touched tests before each.
-- [ ] **K1 (4.1).** Covers `polyoxide-ws/` (new: `Cargo.toml`, `src/lib.rs`, `src/tls.rs`, `src/backoff.rs`, `src/timing.rs`, `src/error.rs`), the root `Cargo.toml`, `Cargo.lock`, the generated regions, `ci/dep-allowlists/` and `.github/scripts/tests/test_dep_allowlists.py`.
+- [x] **K1 (4.1).** Covers `polyoxide-ws/` (new: `Cargo.toml`, `src/lib.rs`, `src/tls.rs`, `src/backoff.rs`, `src/timing.rs`, `src/error.rs`), the root `Cargo.toml`, `Cargo.lock`, the generated regions, `ci/dep-allowlists/` and `.github/scripts/tests/test_dep_allowlists.py`.
   - **Crate and registration.** Create the crate with `[package.metadata.polyoxide]` `readme` and `notes`, register it and run `gen_registry.py --write`.
   - **W1.** `ensure_crypto_provider` is public; port rtds' test.
   - **W3.** `Backoff` with the seven tests.
@@ -140,25 +140,25 @@ The copies have drifted:
   - **W5.** A deadline function: saturating, with `Duration::MAX` meaning never.
   - **W6.** `WsError` and `Kind` (K-D2), and the `tungstenite` re-export (K-D5).
   - **Allowlist check.** `ci/dep-allowlists/polyoxide-ws.txt` and `polyoxide-ws@test-server.txt` (the latter lands with K5) hold the sorted unique crate names from `cargo tree -p polyoxide-ws -e normal --prefix none [--features …]`. The test diffs each file against cargo, prints the extra and missing names, and asserts non-vacuity. It also carries a synthetic parser test.
-- [ ] **K2 (4.2).** Covers `polyoxide-ws/src/connect.rs`, `src/bare.rs` and `src/request.rs`.
+- [x] **K2 (4.2).** Covers `polyoxide-ws/src/connect.rs`, `src/bare.rs` and `src/request.rs`.
   - **W8.** `connect(request, timeout)` and `DEFAULT_CONNECT_TIMEOUT` (10 s). It calls `ensure_crypto_provider` and returns the `Socket` alias. A `with_timeout(timeout, fut)` wraps a caller's own connect future, for clob.
   - **W7.** `retrying_can_fix` (K-D4).
   - **W9.** The close frame is captured into `Kind::Closed`.
   - **W11.** The bare-tier `Stream` has a data-only mode (skips Ping, Pong and Frame) and an all-frames mode. It drains a buffered queue first and exposes `closed()` and `close()`. The close reply is not sent yet.
   - **W12.** Request/answer correlation: it allocates ids, buffers pushes, and takes an optional minimum request interval and an answer timeout giving `NoAnswer`. It is generic over the envelope, through a caller-supplied builder and an answer matcher. Tests model both the perps envelope and the Binance envelope against a minimal in-test server; K5's server replaces that server.
-- [ ] **K3 (DRIFT R3).** Covers `polyoxide-ws/src/bare.rs`, `examples/close_reply_probe.rs` and Implementation Notes.
+- [x] **K3 (DRIFT R3).** Covers `polyoxide-ws/src/bare.rs`, `examples/close_reply_probe.rs` and Implementation Notes.
   - **The probe.** Before the fix, it connects with tokio-tungstenite over a stream wrapper that counts bytes written after a Close frame is read. It uses today's bare pattern (return on Close, no flush) and runs once against perps' `WS_URL` (`wss://ws.perpetuals.polymarket.com/v1/ws`, `polyoxide-perps/src/ws/mod.rs:30`), idle until the host's 60 s close.
   - **Recording the result.** Record whether the host sent a Close frame and the byte counts in Implementation Notes and the commit message. If no live host sends a Close within 3 minutes, record that and rely on the code evidence (only sports flushes).
   - **The fix.** On a server Close, the bare tier flushes the reply before ending, and `close()` sends a close and flushes.
-- [ ] **K4 (4.3).** Covers `polyoxide-venue/src/socket.rs` or a new `src/ws_table.rs`, `polyoxide-venue/Cargo.toml` (path-only dev-dependency on `polyoxide-ws`), `polyoxide-venue/tests/ws_classification.rs` and `test_classify_coverage.py`.
+- [x] **K4 (4.3).** Covers `polyoxide-venue/src/socket.rs` or a new `src/ws_table.rs`, `polyoxide-venue/Cargo.toml` (path-only dev-dependency on `polyoxide-ws`), `polyoxide-venue/tests/ws_classification.rs` and `test_classify_coverage.py`.
   - **The macro.** `impl_ws_classification!` (K-D3) is `#[macro_export]`ed with its docs.
   - **The table test.** The test invokes the macro and covers every row: each `Kind`, close codes 1000–1013 and 4000/4999, statuses 100–599 against `class_for_handshake_status`, the 429 `Retry-After` and its zero, and the 451 non-fault. It also asserts that `retrying_can_fix(e, venue_rule)` equals `ws_class(e).is_retriable()` for every `Refused` status.
   - **The exemption.** Add `("polyoxide-ws", "WsError")` to `EXEMPT`, with the reason that it is classified through each venue's enum.
-- [ ] **K5 (4.4).** Covers `polyoxide-ws/src/test_server/` (feature `test-server`, doc-hidden like the venue copies, built only from crates ws already depends on) and its allowlist file.
+- [x] **K5 (4.4).** Covers `polyoxide-ws/src/test_server/` (feature `test-server`, doc-hidden like the venue copies, built only from crates ws already depends on) and its allowlist file.
   - **The server.** `ScriptedServer::start(Vec<Script>)` provides the actions, recorders, `connection_count`, `wait_for` (5 s) and the interval idiom from the Code Map. It takes a pluggable `answer` with per-connection state, plus an option to record the first frame before sending (rtds).
   - **The helpers (W15).** `next_event`, `fast() -> Timing` (ping 50 ms, stale 300 ms, backoff 10/20 ms) and ping counting.
   - **Self-tests.** Port the venue servers' self-tests (perps 5, Binance 2, rtds 8), expressing perps' and Binance's answers as in-test closures to prove the hook fits. Move K2's correlation tests onto this server.
-- [ ] **K6 (docs).** Covers `CLAUDE.md`, `_bmad-output/planning-artifacts/architecture/architecture-polyoxide-2026-10-08/spine-amendments/epic-4.md` (new) and `deferred-work.md`.
+- [x] **K6 (docs).** Covers `CLAUDE.md`, `_bmad-output/planning-artifacts/architecture/architecture-polyoxide-2026-10-08/spine-amendments/epic-4.md` (new) and `deferred-work.md`.
   - **CLAUDE.md.** The Module Organization WebSocket paragraph names `polyoxide-ws` and what each venue adopts in Stories 4.6–4.9. The `test-server` text names the shared server. The scripts-job sentence names the allowlist check. Fix the stale "socket errors keep their inherent `is_retriable`/`retry_after` until Epic 4" clause, since none has one now.
   - **Amendments.** A4-1 is K-D1, A4-2 is K-D2/K-D3 (macro shape, `Kind`) and A4-3 is K-D4.
   - **Deferred work.** Release-notes entries addressed to Story 4.11.
@@ -192,6 +192,50 @@ The copies have drifted:
 ## Spec Change Log
 
 ## Review Triage Log
+
+Three layers on `bundle-k-review.diff` (cb476e2..8631916; the spec, epic context and sprint status left out). E = edge-case, B = blind, G = verification-gap. 39 findings: 18 patched, 1 deferred, 20 rejected.
+
+| # | Finding | Verdict | Evidence | Route |
+|---|---|---|---|---|
+| E1 | `request()` after a failed read takes an id and sends on the dead socket | low | `request.rs:98-107` checks `closed()` only; `fail()` leaves `close` `None` | patch (A) |
+| E2 | `min_request_interval(Duration::MAX)` overflows `last + interval` | low | `request.rs:104` adds an `Instant` and a `Duration` unchecked; `checked_add` is a direct correction | patch |
+| E3 | `take_id` + `send` skip the pacing | low | only `request()` sleeps and records `last_request` (`request.rs:101-108`); no caller yet, so a doc fix | patch (B) |
+| E4 | the answer timeout does not bound the send | medium | `request.rs:107` awaits `send` outside `await_answer`'s timeout; a peer that stops reading hangs the call | patch |
+| E5 | a read failure in `read_until` ends the stream with no cause | false | the `Err` goes to the request's caller, who owns the connection; `poll_next` does the same (`Err`, then `None`) | reject |
+| E6 | an All-mode pong waits for the next read when the flush is `Pending` | low | needs write backpressure as a ping arrives; the fix adds state | reject |
+| E7 | the close-reply flush has no deadline | low | needs a peer that sends Close and then stops reading; supervision staleness covers it; the fix adds a deadline | reject |
+| E8 | `close()` after a failed read errors | low | `bare.rs:130-137` sends on the dead socket; same cause as E1 | patch (A) |
+| E9 | zero timings are unguarded | low | perps' basis setters (`ws/supervised.rs:110-121`) take zero as well; only a caller's error reaches it; the fix adds guards | reject |
+| E10 | a refused upgrade's `Retry-After` is lost for every status but 429 | low | frozen K-D3 carries the wait only through `RateLimited`, as epic-4-context planned; no socket reads `Retry-After` today, so nothing regresses; the fix edits the frozen spec (noted for Story 4.10) | reject |
+| E11 | `Capacity` is `false` in `retrying_can_fix`, where sports retries it | low | frozen K-D4 lists `Capacity` as false; sports is unchanged until Story 4.8, which keeps or names it (noted) | reject |
+| E12 | the test server's `close` reads one frame, so an in-flight frame hides the reply | medium | `test_server/mod.rs:418-426`; a pong or app ping sent before the reply leaves `close_reply_count` at 0, the assertion 4.6–4.9 rely on | patch (C) |
+| E13 | `go_silent` parks before the loop, so `drop_after` never fires | low | `test_server/mod.rs:448-452` awaits `pending()` in `send_scripted`; `drop_after`'s doc says "whatever else is happening" | patch (D) |
+| E14 | the server drops the socket on a client Close without sending its reply | low | `test_server/mod.rs:583-587` returns with the reply queued | patch (E) |
+| E15 | zero or `MAX` `push_every`/`ping_every`/`drop_after` panic in the server task | low | test-only misuse; the fix adds guards | reject |
+| E16 | an invalid `refuse_upgrade` status panics in the server task | low | test-only misuse; the fix adds validation | reject |
+| E17 | a failing `cargo tree` hides its stderr | low | `test_dep_allowlists.py` runs with `check=True`, and `CalledProcessError` does not print stderr | patch |
+| E18 | the probe drops TLS records, so its post-Close bytes prove only that the client wrote | low | `close_reply_probe.rs:77-80` withholds below TLS; the absence today (0 bytes) stands, the proof of the fix is a client write | patch (F) |
+| E19 | the probe cannot parse an IPv6 literal host | low | the probe targets perps' `WS_URL` only | reject |
+| E20 | `test-server` adds tokio-macros to the tree | false | tokio is already a dependency, and its `macros` feature brings in its own proc-macro crate, which the allowlist records; AD-1 forbids test-support, not a feature | reject |
+| B1 | the macro's rationale wrongly blames the orphan rule for venue | medium | venue may implement its own trait for any type; what stops it is AD-2 (no ws dependency). Wrong in `ws_table.rs`, the coverage docstring, CLAUDE.md and A4-2 | patch |
+| B2 | the macro's absolute `::polyoxide_ws` path breaks under a renamed dependency; Kind is not tied to a version; a new Kind is silently Network | low | no workspace crate renames it, and both crates release in lockstep at one workspace version; the wildcard is mandatory for a `#[non_exhaustive]` enum and documented | reject |
+| B3 | = E10 | low | as E10 | reject |
+| B4 | nothing forces a crate wrapping `WsError` to expand the macro | low | no crate wraps `WsError` before Story 4.10, so a fence would check nothing now (noted for Story 4.10) | reject |
+| B5 | a request after a failed read reports `AlreadyClosed` | low | same cause as E1; after the patch it refuses before sending | patch (A) |
+| B6 | = E3 | low | as E3 | patch (B) |
+| B7 | = E12 | medium | as E12 | patch (C) |
+| B8 | the allowlist docstring says "the tree a consumer builds", but `-e normal` leaves out build dependencies; rtds and sports are unpinned | low | ring's `cc` is a build dependency missing from the list, so fix the docstring; rtds and sports are Story 4.8's by plan | patch (docstring) |
+| B9 | the ws README describes only Story 4.1 | medium | `polyoxide-ws/README.md` omits connect, the bare tier, correlation and `test-server`; it is the crates.io page on first publish | patch |
+| B10 | `Timing`'s doc says its defaults are shared; `#[non_exhaustive]` blocks other crates from constructing it | low | rtds pings at 5 s and sports stales at 45 s with no ping, so fix the doc; the fields are `pub`, so a venue mutates `Timing::default()`, and the shape is false | patch (doc) |
+| B11 | `Kind::Closed` also covers an end with no close frame, and its text merges no-code with abrupt | low | `record_close(None)` at `bare.rs:224` gives `Closed{None}`; both classes are Network, so a doc fix | patch |
+| B12 | the probe's module doc still says perps idle-closes at 60 s; its byte count proves only a client write | low | the probe found a `1011 pong_timeout` at 70 s, with pongs withheld; second half as E18 | patch (F) |
+| B13 | = E13 | low | as E13 | patch (D) |
+| B14 | = E9 | low | as E9 | reject |
+| B15 | = E7 | low | as E7 | reject |
+| B16 | the server sends no reply to a client Close; `client_frames()` copies `received()`'s doc; `drain_reads_to_the_end` asserts nothing | low | (a) as E14; (b) and (c) confirmed in `test_server/` | patch (E, docs, test) |
+| G1 | `last_inbound()` is unchecked across a request | gap | removing `touch()` at `request.rs:153` leaves every test passing | patch |
+| G2 | an All-mode Close read during a request is unchecked | gap | removing `keep()` at `request.rs:156` leaves every test passing | patch |
+| G3 | `close_after_the_server_closed_succeeds` cannot see `close()`'s own flush | gap | `poll_next` has already flushed it; reaching `close()` with the reply still queued needs a `Pending` write, which loopback does not give | defer |
 
 ## Design Notes
 
