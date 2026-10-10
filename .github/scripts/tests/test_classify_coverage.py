@@ -19,7 +19,10 @@ A type is an error when its name ends in `Error`, when it derives `Error`
 `std::error::Error` for it by hand, or when it is one of the auxiliary names
 below. `polyoxide-venue` is swept too, with one exemption: `ClassifiedError`
 must not implement `Classify`, or the blanket `From` would overlap
-`From<T> for T`.
+`From<T> for T`. So is `polyoxide-ws`, whose `WsError` is exempt: the kit does
+not depend on `polyoxide-venue`, and the orphan rule keeps venue from
+implementing the trait for it, so it is classified through each venue's enum
+that wraps it.
 
 A doc comment or a `pub(crate)` item is not swept. Gating is not checked here:
 an assertion gated differently from its type fails `cargo hack --each-feature`.
@@ -35,8 +38,11 @@ import pytest
 REPO = Path(__file__).resolve().parents[3]
 # The vocabulary crate, which defines `Classify`.
 VOCABULARY = "polyoxide-venue"
-# (crate, type) pairs that must not implement `Classify`.
-EXEMPT = frozenset({(VOCABULARY, "ClassifiedError")})
+# The socket kit, which cannot see `Classify`.
+SOCKET_KIT = "polyoxide-ws"
+# (crate, type) pairs that do not implement `Classify`: `ClassifiedError` must
+# not, and `WsError` cannot, being classified through each venue's enum.
+EXEMPT = frozenset({(VOCABULARY, "ClassifiedError"), (SOCKET_KIT, "WsError")})
 # Public error types whose names do not end in `Error`.
 AUXILIARY = frozenset({"UnknownVariant", "InvalidSymbol", "InvalidStreamName", "BurstCapacityExceeded"})
 
@@ -135,6 +141,16 @@ def test_the_sweep_finds_the_known_types(crate: str, names: set[str]) -> None:
 def test_the_vocabulary_crate_is_swept_but_classified_error_is_exempt() -> None:
     assert "ClassifiedError" in error_types(REPO / VOCABULARY / "src")
     assert not any(p.startswith(f"{VOCABULARY}:") for p in unlisted(REPO))
+
+
+def test_the_socket_kit_is_swept_but_ws_error_is_exempt() -> None:
+    assert "WsError" in error_types(REPO / SOCKET_KIT / "src")
+    assert not any(p.startswith(f"{SOCKET_KIT}:") for p in unlisted(REPO))
+
+
+def test_the_socket_kit_exempts_only_ws_error(tmp_path: Path) -> None:
+    _crate(tmp_path, SOCKET_KIT, None, "pub struct WsError;\npub enum OtherError {}\n")
+    assert unlisted(tmp_path) == [f"{SOCKET_KIT}: OtherError ({SOCKET_KIT}/src/error.rs)"]
 
 
 LIB = """\
