@@ -2,7 +2,7 @@
 title: 'Stories 3.11, 3.12 and 3.13: HTTP errors reshaped around one ApiError, Python exceptions by class, and reqwest owned by core'
 type: 'refactor'
 created: '2026-10-10'
-status: 'ready-for-dev'
+status: 'in-progress'
 route: 'dispatch'
 review_loop_iteration: 0
 baseline_commit: '14084076cf33fc4ddf039638d681d50404b282b9'
