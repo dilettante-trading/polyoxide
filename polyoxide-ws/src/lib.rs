@@ -20,6 +20,10 @@
 //! - [`Connection`] is the bare tier: one connection as a `Stream` of its
 //!   frames in a [`Mode`], with the server's close captured, and requests
 //!   correlated with their answers through [`Correlated`].
+//! - [`Supervisor`] runs one supervised connection for a venue's
+//!   [`Protocol`]: pings on the wall clock, staleness, reconnect with backoff
+//!   and a replay of the membership, rotation, outage markers, and membership
+//!   changes through a [`MembershipHandle`], yielding a [`Supervised`] stream.
 //!
 //! [`tungstenite`] is re-exported, so a venue names `Message` and
 //! `CloseFrame` through this crate rather than depending on it.
@@ -44,6 +48,7 @@ mod bare;
 mod connect;
 mod error;
 mod request;
+mod supervisor;
 #[cfg(any(test, feature = "test-server"))]
 #[doc(hidden)]
 pub mod test_server;
@@ -55,6 +60,9 @@ pub use bare::{Connection, Mode};
 pub use connect::{connect, retrying_can_fix, with_timeout, Socket, DEFAULT_CONNECT_TIMEOUT};
 pub use error::{Kind, WsError};
 pub use request::Correlated;
+pub use supervisor::{
+    Decoded, MembershipHandle, Offline, Outage, Protocol, Queue, Recovery, Supervised, Supervisor,
+};
 pub use timing::{next_wait, Timing};
 pub use tls::ensure_crypto_provider;
 /// The WebSocket library the kit is built on, re-exported so a venue names

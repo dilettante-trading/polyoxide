@@ -18,6 +18,13 @@ they would otherwise each carry:
   the server's close with the RFC 6455 reply, says how the server closed, and
   correlates requests with their answers through a caller's builder and
   matcher (`Correlated`), with optional pacing and an answer timeout.
+- `Supervisor` runs one supervised connection for a venue's `Protocol`: pings
+  on the wall clock, even while the consumer's queue is full, staleness,
+  reconnect with backoff and a replay of the membership, rotation, outage
+  markers, and membership changes through a `MembershipHandle`, all as one
+  `Supervised` stream. A venue keeps only what is its own: its frames, its
+  ping, what counts as liveness, how it recovers and whether it announces an
+  outage.
 - `WsError` is the one socket error, read through its `Kind`.
   `polyoxide_venue::impl_ws_classification!` classifies it in the venue crate
   that wraps it.

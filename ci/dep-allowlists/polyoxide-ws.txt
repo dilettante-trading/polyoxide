@@ -45,6 +45,7 @@ syn
 thiserror
 thiserror-impl
 tokio
+tokio-macros
 tokio-rustls
 tokio-tungstenite
 tracing

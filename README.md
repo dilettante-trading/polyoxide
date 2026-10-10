@@ -24,7 +24,7 @@ Rust SDK toolkit for Polymarket APIs. It includes library crates for use in your
 | [polyoxide-sports](./polyoxide-sports) | Client for Polymarket's live sports score feed |
 | [polyoxide-test-support](./polyoxide-test-support) | Test toolkit: the failure tags the nightly classifier reads, the credential loaders, and the agreement, fixture and soak helpers (`publish = false`) |
 | [polyoxide-venue](./polyoxide-venue) | Shared vocabulary: error classes, the status and close-code maps, the socket classification table (`impl_ws_classification!`), the `Retry-After` parser, the wire-enum macros and `UnknownVariant`, positional decimal serde (feature `decimal`) and `UnixMillis` |
-| [polyoxide-ws](./polyoxide-ws) | The socket kit: the TLS install, `Backoff`, `Timing` and its setters, the deadline arithmetic, `WsError`, connect with a timeout, the bare tier, request/answer correlation, and the scripted test server (feature `test-server`) |
+| [polyoxide-ws](./polyoxide-ws) | The socket kit: the TLS install, `Backoff`, `Timing` and its setters, the deadline arithmetic, `WsError`, connect with a timeout, the bare tier, request/answer correlation, the generic `Supervisor` for a venue `Protocol`, and the scripted test server (feature `test-server`) |
 <!-- generated:end readme-crates -->
 
 ## Installation
