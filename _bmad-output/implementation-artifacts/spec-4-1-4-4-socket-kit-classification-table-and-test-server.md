@@ -180,6 +180,14 @@ The copies have drifted:
 - **The fix** flushes the queued reply before the bare tier yields its last item, in `poll_next` and in a request's wait, and `close()` flushes it on a connection the server already closed. Three tests hold it, and all three fail with the flush removed.
 - **For Story 4.6:** perps' idle rule as observed is a 10 s server ping and a 1011 `pong_timeout` after about 70 s without a pong, not "60 s without an inbound message"; a client that reads answers the pings itself. `docs/specs/perps/OBSERVED.md` does not record this yet.
 
+**Where the code departs from the plan, and why:**
+- **The classify-coverage exemption landed in K1, not K4.** `WsError` is swept as soon as it exists, so leaving `("polyoxide-ws", "WsError")` for K4 would have left K1–K3's scripts suite red. CLAUDE.md states the exemption from K1, and K4 adds that the macro is how venues classify it.
+- **The answer hook is `ScriptedServer::start_answering(scripts, answer)`.** `start(scripts)` answers nothing; `answer` is called once per connection with its index and returns that connection's answerer, `FnMut(&str) -> Vec<Message>`, which owns the protocol state: Binance's streams, a held answer, perps' dead pings and refusals. Binance's `hold_answer`, `ignore_later_requests` and `refuse`, and perps' `refuse`, `answer_pings`, `pong_status` and `answer_subscribes_after_first`, are closure state, not `Script` fields.
+- **One action beyond the four servers' union: `Script::then_cut()`,** which drops the TCP connection after `send` with no close frame. K2's failed-read test needed it once the loopback helpers went. `Script::hold()` is the default (sports called it `silent()`); `after_first_frame()` is rtds' record-before-sending. `close_after` waits a second for the client's reply and counts it, as sports' did; Binance's did not wait. `ping_every` is sports' shape (first ping one period in, big-endian sequence payload); Binance's sent its first ping at once with an empty payload, which its suites, at 50 ms pings, should not notice.
+- **The bare tier is `Connection`, the request API is on it.** `Connection::new(socket, Mode)`; `request(build, answer)` takes the id it allocated in both closures, `await_answer(answer)` serves a protocol ping's pong without taking an id, and `take_id`/`next_id` cover perps' and Binance's id handling. A frame the matcher calls `Push` is kept only when the connection's `Mode` yields it. `last_inbound()` counts every frame, those read while awaiting an answer included, for Binance's liveness rule (D5).
+- **MSRV was not checked locally.** There is no rustup on this machine; nothing used is newer than 1.91 by inspection, and CI's msrv job is the check.
+- **Venue test counts are unchanged by construction:** `git diff cb476e2 -- polyoxide-binance polyoxide-perps polyoxide-rtds polyoxide-sports polyoxide-clob` is empty.
+
 ## Spec Change Log
 
 ## Review Triage Log
