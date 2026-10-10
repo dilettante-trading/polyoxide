@@ -163,6 +163,60 @@ pub enum PolymarketError {
     Config(String),
 }
 
+/// Each API variant delegates to the error it wraps, and a configuration
+/// error is an `InvalidRequest`.
+impl polyoxide_venue::Classify for PolymarketError {
+    fn class(&self) -> polyoxide_venue::Class {
+        match self {
+            #[cfg(feature = "clob")]
+            Self::Clob(err) => err.class(),
+            #[cfg(feature = "data")]
+            Self::Data(err) => err.class(),
+            #[cfg(feature = "gamma")]
+            Self::Gamma(err) => err.class(),
+            #[cfg(feature = "perps")]
+            Self::Perps(err) => err.class(),
+            Self::Config(_) => polyoxide_venue::Class::InvalidRequest,
+        }
+    }
+
+    fn is_fault(&self) -> bool {
+        match self {
+            #[cfg(feature = "clob")]
+            Self::Clob(err) => err.is_fault(),
+            #[cfg(feature = "data")]
+            Self::Data(err) => err.is_fault(),
+            #[cfg(feature = "gamma")]
+            Self::Gamma(err) => err.is_fault(),
+            #[cfg(feature = "perps")]
+            Self::Perps(err) => err.is_fault(),
+            Self::Config(_) => true,
+        }
+    }
+
+    fn retry_after(&self) -> Option<std::time::Duration> {
+        match self {
+            #[cfg(feature = "clob")]
+            Self::Clob(err) => polyoxide_venue::Classify::retry_after(err),
+            #[cfg(feature = "data")]
+            Self::Data(err) => polyoxide_venue::Classify::retry_after(err),
+            #[cfg(feature = "gamma")]
+            Self::Gamma(err) => polyoxide_venue::Classify::retry_after(err),
+            #[cfg(feature = "perps")]
+            Self::Perps(err) => polyoxide_venue::Classify::retry_after(err),
+            Self::Config(_) => None,
+        }
+    }
+}
+
+// Every public error type implements `Classify`; one without it fails the
+// build here. `.github/scripts/tests/test_classify_coverage.py` fails when a
+// public error type is missing from this list.
+const _: fn() = || {
+    fn is<T: polyoxide_venue::Classify>() {}
+    is::<PolymarketError>();
+};
+
 /// Unified Polymarket client
 #[cfg(all(feature = "clob", feature = "gamma", feature = "data"))]
 #[derive(Clone)]
@@ -284,5 +338,68 @@ impl PolymarketBuilder {
         let data = data_builder.build()?;
 
         Ok(Polymarket { clob, gamma, data })
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use polyoxide_venue::{Class, Classify};
+
+    #[test]
+    fn every_variant_classifies_as_the_error_it_wraps() {
+        // Only `Config` exists with every feature off.
+        #[allow(unused_mut)]
+        let mut rows = vec![(
+            PolymarketError::Config("no account".into()),
+            Class::InvalidRequest,
+            true,
+        )];
+        #[cfg(feature = "clob")]
+        rows.push((
+            PolymarketError::Clob(polyoxide_clob::ClobError::FakUnmatched {
+                message: "no orders found to match with FAK order".into(),
+            }),
+            Class::VenueRefusal { code: None },
+            false,
+        ));
+        #[cfg(feature = "data")]
+        rows.push((
+            PolymarketError::Data(polyoxide_data::DataApiError::Pagination("stuck".into())),
+            Class::Decode,
+            true,
+        ));
+        // A base URL that does not parse, the one core error reachable here
+        // without depending on core.
+        #[cfg(feature = "gamma")]
+        rows.push((
+            PolymarketError::Gamma(
+                polyoxide_gamma::Gamma::builder()
+                    .base_url("not a url")
+                    .build()
+                    .err()
+                    .expect("a base URL that does not parse"),
+            ),
+            Class::InvalidRequest,
+            true,
+        ));
+        #[cfg(feature = "perps")]
+        rows.push((
+            PolymarketError::Perps(
+                polyoxide_perps::Perps::builder()
+                    .base_url("not a url")
+                    .build()
+                    .err()
+                    .expect("a base URL that does not parse"),
+            ),
+            Class::InvalidRequest,
+            true,
+        ));
+        for (err, class, fault) in rows {
+            assert_eq!(err.class(), class, "{err:?}");
+            assert_eq!(err.is_fault(), fault, "{err:?}");
+            assert_eq!(Classify::retry_after(&err), None, "{err:?}");
+            assert_eq!(err.is_retriable(), class.is_retriable(), "{err:?}");
+        }
     }
 }

@@ -203,7 +203,7 @@ both `/v2/user-stats` and `/v2/leaderboard?user=` (2026-09-14).
 Upstream publishes no v2 figures. Each route below was ramped with
 `polyoxide-data/examples/v2_soak` (raw requests, every URL distinct so the CDN
 cannot answer, abort on the first 429) and then validated at the shipped
-limiter's pace. `RateLimiter::data_default` pins the counts in the table at the
+limiter's pace. `polymarket::data_limits` pins the counts in the table at the
 end of this section.
 
 ### Ramps

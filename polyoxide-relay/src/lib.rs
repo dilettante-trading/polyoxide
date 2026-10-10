@@ -157,3 +157,11 @@ pub use account::{BuilderAccount, DynSigner};
 pub use account::{
     save_builder_config_to_keychain, save_private_key_to_keychain, KEYCHAIN_SERVICE,
 };
+
+// Every public error type implements `Classify`; one without it fails the
+// build here. `.github/scripts/tests/test_classify_coverage.py` fails when a
+// public error type is missing from this list.
+const _: fn() = || {
+    fn is<T: polyoxide_venue::Classify>() {}
+    is::<RelayError>();
+};

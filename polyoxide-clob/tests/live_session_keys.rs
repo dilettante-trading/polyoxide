@@ -13,7 +13,7 @@
 //! cargo test -p polyoxide-clob --test live_session_keys -- --ignored
 //! ```
 //!
-//! Environment (a `.env` is picked up by dotenvy):
+//! Environment (a `.env` file is read too):
 //!
 //! | Variable | Meaning |
 //! |---|---|
@@ -22,9 +22,8 @@
 //! | `POLYMARKET_DW_SESSION_PRIVATE_KEY` | A fresh EOA the test authorizes and then revokes. |
 //! | `BUILDER_API_KEY`, `BUILDER_SECRET`, `BUILDER_PASS_PHRASE` (optional) | Builder HMAC credentials, enabled for session-key management. |
 //!
-//! When any is missing the test panics with the wording the nightly classifier
-//! treats as auth-gated (`AUTH_GATED_RE` in `.github/scripts/classify_failures.py`),
-//! so the nightly logs and skips it instead of filing an issue.
+//! When any required one is missing or empty the credential loader fails the
+//! test as `auth-gated`, which the nightly skips instead of filing an issue.
 
 use std::time::{Duration, Instant};
 
@@ -36,6 +35,7 @@ use polyoxide_clob::{
 };
 use polyoxide_gamma::Gamma;
 use polyoxide_relay::{BuilderAccount, BuilderConfig, RelayClient, WalletType};
+use polyoxide_test_support::{environmental, fail, load_env, optional_env, ResultExt};
 use rust_decimal::Decimal;
 
 /// How long to wait for the relayer to report a session-signer batch terminal
@@ -51,31 +51,38 @@ struct Fixture {
     builder: BuilderConfig,
 }
 
-/// Load the fixture account, or panic in the auth-gated wording. Never
-/// soft-skip: a test that asserted nothing must not report `ok`.
+/// Load the fixture account, or fail as `auth-gated` (see
+/// docs/specs/session-keys/README.md, Live verification). Never soft-skip: a
+/// test that asserted nothing must not report `ok`.
+///
+/// An empty value counts as unset: the nightly passes an unset repository
+/// secret as `""`, which would otherwise fail a `parse` below as a real
+/// failure.
 fn load_fixture() -> Fixture {
-    dotenvy::dotenv().ok();
-    let var = |name: &str| {
-        std::env::var(name).unwrap_or_else(|_| {
-            panic!(
-                "POLYMARKET_* env vars required for the Deposit Wallet round trip \
-                 ({name} unset; see docs/specs/session-keys/README.md, Live verification)"
-            )
-        })
-    };
-    let owner: PrivateKeySigner = var("POLYMARKET_DW_OWNER_PRIVATE_KEY")
+    let creds = load_env(&[
+        "POLYMARKET_DW_OWNER_PRIVATE_KEY",
+        "POLYMARKET_DW_WALLET",
+        "POLYMARKET_DW_SESSION_PRIVATE_KEY",
+        "BUILDER_API_KEY",
+        "BUILDER_SECRET",
+    ])
+    .unwrap_or_else(|missing| missing.or_auth_gated());
+    let owner: PrivateKeySigner = creds
+        .get("POLYMARKET_DW_OWNER_PRIVATE_KEY")
         .parse()
-        .expect("POLYMARKET_DW_OWNER_PRIVATE_KEY is a hex private key");
-    let wallet: Address = var("POLYMARKET_DW_WALLET")
+        .expect("POLYMARKET_DW_OWNER_PRIVATE_KEY is a hex private key"); // live-unwraps: parses a configured secret
+    let wallet: Address = creds
+        .get("POLYMARKET_DW_WALLET")
         .parse()
-        .expect("POLYMARKET_DW_WALLET is an address");
-    let session: PrivateKeySigner = var("POLYMARKET_DW_SESSION_PRIVATE_KEY")
+        .expect("POLYMARKET_DW_WALLET is an address"); // live-unwraps: parses a configured secret
+    let session: PrivateKeySigner = creds
+        .get("POLYMARKET_DW_SESSION_PRIVATE_KEY")
         .parse()
-        .expect("POLYMARKET_DW_SESSION_PRIVATE_KEY is a hex private key");
+        .expect("POLYMARKET_DW_SESSION_PRIVATE_KEY is a hex private key"); // live-unwraps: parses a configured secret
     let builder = BuilderConfig::new(
-        var("BUILDER_API_KEY"),
-        var("BUILDER_SECRET"),
-        std::env::var("BUILDER_PASS_PHRASE").ok(),
+        creds.get("BUILDER_API_KEY").to_owned(),
+        creds.get("BUILDER_SECRET").to_owned(),
+        optional_env("BUILDER_PASS_PHRASE"),
     );
     Fixture {
         owner,
@@ -97,17 +104,20 @@ async fn clob_for(signer: &PrivateKeySigner, wallet: Address, role: DepositWalle
     let l1 = ClobBuilder::new()
         .with_account(Account::with_signer(signer.clone(), placeholder))
         .build()
-        .expect("L1 client");
-    let derived = match l1.auth().expect("auth").derive_api_key(0).send().await {
+        .or_fail("L1 client");
+    let derived = match l1.auth().or_fail("auth").derive_api_key(0).send().await {
         Ok(creds) => creds,
         Err(derive_err) => l1
             .auth()
-            .expect("auth")
+            .or_fail("auth")
             .create_api_key(0)
             .send()
             .await
             .unwrap_or_else(|create_err| {
-                panic!("derive api key failed ({derive_err}); create api key failed ({create_err})")
+                fail(
+                    &format!("derive api key failed ({derive_err}); create api key failed"),
+                    &create_err,
+                )
             }),
     };
     let credentials = Credentials {
@@ -121,7 +131,7 @@ async fn clob_for(signer: &PrivateKeySigner, wallet: Address, role: DepositWalle
                 .with_target(SigningTarget::DepositWallet { wallet, role }),
         )
         .build()
-        .expect("deposit wallet clob client")
+        .or_fail("deposit wallet clob client")
 }
 
 fn relay_for_owner(fx: &Fixture) -> RelayClient {
@@ -130,12 +140,12 @@ fn relay_for_owner(fx: &Fixture) -> RelayClient {
         Some(polyoxide_relay::AuthConfig::Builder(fx.builder.clone())),
     );
     RelayClient::builder()
-        .expect("relay builder")
+        .or_fail("relay builder")
         .with_account(account)
         .wallet_type(WalletType::DepositWallet)
         .deposit_wallet(fx.wallet)
         .build()
-        .expect("relay client")
+        .or_fail("relay client")
 }
 
 /// Wait until the owner's session-signer list does (`present == true`) or does
@@ -145,10 +155,10 @@ async fn wait_for_registry(owner_clob: &Clob, session: Address, present: bool) {
     loop {
         let listed = owner_clob
             .account_api()
-            .expect("account api")
+            .or_fail("account api")
             .list_session_signers()
             .await
-            .expect("list session signers");
+            .or_fail("list session signers");
         let found = listed.signers.iter().any(|s| s.address == session);
         if found == present {
             return;
@@ -174,7 +184,7 @@ async fn wait_for_transaction(relay: &RelayClient, id: &str) {
         let tx = relay
             .get_gasless_transaction(id)
             .await
-            .expect("get gasless transaction");
+            .or_fail("get gasless transaction");
         if tx.state.is_terminal() {
             assert!(tx.state.is_success(), "transaction {id} failed: {tx:?}");
             return;
@@ -192,7 +202,7 @@ async fn wait_for_transaction(relay: &RelayClient, id: &str) {
 /// `min_ask` rests. Same selection as `live_api.rs`; selected on the URL it is
 /// asserted on, never on gamma's cached figure alone.
 async fn find_token_id_with_min_ask(min_ask: Decimal) -> String {
-    let gamma = Gamma::builder().build().expect("gamma client");
+    let gamma = Gamma::builder().build().or_fail("gamma client");
     let markets = gamma
         .markets()
         .list()
@@ -200,9 +210,11 @@ async fn find_token_id_with_min_ask(min_ask: Decimal) -> String {
         .limit(100)
         .send()
         .await
-        .expect("gamma list markets");
+        .or_fail("gamma list markets");
     let clob = Clob::public();
     let mut probed = 0usize;
+    let mut errored = 0usize;
+    let mut last_error = None;
     for market in markets.iter() {
         let gamma_ask = market.best_ask.and_then(|ask| Decimal::try_from(ask).ok());
         if gamma_ask.is_none_or(|ask| ask <= min_ask) {
@@ -217,17 +229,28 @@ async fn find_token_id_with_min_ask(min_ask: Decimal) -> String {
             continue;
         };
         probed += 1;
-        if let Ok(book) = clob.markets().order_book(&token_id).send().await {
-            let best_ask = book.asks.iter().map(|level| level.price).min();
-            if best_ask.is_some_and(|ask| ask > min_ask) {
-                return token_id;
+        match clob.markets().order_book(&token_id).send().await {
+            Ok(book) => {
+                let best_ask = book.asks.iter().map(|level| level.price).min();
+                if best_ask.is_some_and(|ask| ask > min_ask) {
+                    return token_id;
+                }
+            }
+            Err(err) => {
+                errored += 1;
+                last_error = Some(err);
             }
         }
         if probed >= MAX_BOOK_PROBES {
             break;
         }
     }
-    panic!("no suitable market: no open market with a best ask above {min_ask} in {probed} books");
+    if let Some(err) = last_error.filter(|_| errored == probed) {
+        fail(&format!("every one of {probed} book probe(s) failed"), &err);
+    }
+    environmental(&format!(
+        "no suitable market: no open market with a best ask above {min_ask} in {probed} books"
+    ));
 }
 
 #[tokio::test]
@@ -247,10 +270,10 @@ async fn live_session_key_round_trip() {
     //    perhaps an order resting. Revocation also sweeps the key's open orders.
     let listed = owner_clob
         .account_api()
-        .expect("account api")
+        .or_fail("account api")
         .list_session_signers()
         .await
-        .expect("list session signers");
+        .or_fail("list session signers");
     if listed.signers.iter().any(|s| s.address == session_address) {
         eprintln!(
             "cleanup: session signer {session_address} is still authorized from an earlier \
@@ -259,7 +282,7 @@ async fn live_session_key_round_trip() {
         let revoked = relay
             .revoke_session_signer(session_address)
             .await
-            .expect("revoke leftover session signer");
+            .or_fail("revoke leftover session signer");
         assert!(
             !revoked.status.is_terminal_failure(),
             "revocation of the leftover session signer refused: {revoked:?}"
@@ -274,7 +297,7 @@ async fn live_session_key_round_trip() {
     let submitted = relay
         .authorize_session_signer(session_address, vec![SessionSignerScope::Clob])
         .await
-        .expect("authorize session signer");
+        .or_fail("authorize session signer");
     assert!(
         !submitted.status.is_terminal_failure(),
         "authorization refused: {submitted:?}"
@@ -300,13 +323,13 @@ async fn live_session_key_round_trip() {
     let resp = session_clob
         .place_order(&params, None)
         .await
-        .expect("place order as session key");
+        .or_fail("place order as session key");
     assert!(
         resp.success,
         "session-key order rejected: {:?}",
         resp.error_msg
     );
-    let order_id = resp.order_id.expect("accepted order must return an id");
+    let order_id = resp.order_id.expect("accepted order must return an id"); // live-unwraps: an assertion on the response
 
     // 3. Visibility, both directions. The page says the owner cannot see it; the
     //    assertion is one-directional and the owner's answer is only recorded.
@@ -315,18 +338,18 @@ async fn live_session_key_round_trip() {
     tokio::time::sleep(Duration::from_secs(3)).await;
     let from_session = session_clob
         .orders()
-        .expect("orders")
+        .or_fail("orders")
         .list()
         .send()
         .await
-        .expect("list as session key");
+        .or_fail("list as session key");
     let session_view = from_session
         .data
         .iter()
         .find(|o| o.id == order_id)
         .map(|o| o.size_matched.clone());
     // Record-only: an owner listing error must not abort before the cancel.
-    match owner_clob.orders().expect("orders").list().send().await {
+    match owner_clob.orders().or_fail("orders").list().send().await {
         Ok(from_owner) => eprintln!(
             "visibility: owner {} order {order_id} placed by the session key",
             if from_owner.data.iter().any(|o| o.id == order_id) {
@@ -341,11 +364,11 @@ async fn live_session_key_round_trip() {
     // 4. Cancel with the key that placed it.
     let cancelled = session_clob
         .orders()
-        .expect("orders")
+        .or_fail("orders")
         .cancel(order_id.clone())
         .send()
         .await
-        .expect("cancel as session key");
+        .or_fail("cancel as session key");
     assert!(
         cancelled.canceled.contains(&order_id),
         "cancel did not report {order_id}: {cancelled:?}"
@@ -367,7 +390,7 @@ async fn live_session_key_round_trip() {
     let revoked = relay
         .revoke_session_signer(session_address)
         .await
-        .expect("revoke session signer");
+        .or_fail("revoke session signer");
     assert!(
         !revoked.status.is_terminal_failure(),
         "revocation refused: {revoked:?}"

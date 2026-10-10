@@ -92,18 +92,7 @@ impl FromStr for Route {
 
 /// Parses `all`, or one or more comma-separated route names.
 pub fn parse_routes(raw: &str) -> Result<Vec<Route>, String> {
-    if raw == "all" {
-        return Ok(Route::ALL.to_vec());
-    }
-    let routes = raw
-        .split(',')
-        .map(|name| name.trim().parse::<Route>())
-        .collect::<Result<Vec<_>, _>>()?;
-    let mut seen = HashSet::new();
-    if let Some(repeat) = routes.iter().find(|route| !seen.insert(**route)) {
-        return Err(format!("{repeat} is listed twice"));
-    }
-    Ok(routes)
+    polyoxide_test_support::soak::parse_routes(raw, &Route::ALL, Route::name)
 }
 
 /// Whether `id` is a market condition id: `0x` and 64 hex digits.

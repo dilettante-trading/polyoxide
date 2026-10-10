@@ -1,6 +1,6 @@
-use polyoxide_core::{HttpClient, Request, RequestError};
+use polyoxide_core::{HttpClient, Request};
 use serde::{Deserialize, Serialize};
-use std::time::{Duration, Instant};
+use std::time::Duration;
 
 use crate::error::DataApiError;
 
@@ -20,7 +20,9 @@ impl Health {
 
     /// Measure the round-trip time (RTT) to the Polymarket Data API.
     ///
-    /// Makes a GET request to the API root and returns the latency.
+    /// Makes a GET request to the API root and returns the latency of the
+    /// attempt that answered, as
+    /// [`HttpClient::health`](polyoxide_core::HttpClient::health) times it.
     ///
     /// # Example
     ///
@@ -35,23 +37,11 @@ impl Health {
     /// # }
     /// ```
     pub async fn ping(&self) -> Result<Duration, DataApiError> {
-        let _permit = self.http_client.acquire_concurrency().await;
-        self.http_client.acquire_rate_limit("/", None).await;
-
-        let start = Instant::now();
-        let response = self
-            .http_client
-            .client
-            .get(self.http_client.base_url.clone())
-            .send()
-            .await?;
-        let latency = start.elapsed();
-
-        if !response.status().is_success() {
-            return Err(DataApiError::from_response(response).await);
-        }
-
-        Ok(latency)
+        // On the send loop, so a 429 is retried and holds the client (DRIFT
+        // R8). The path is the base URL's own, as the ping has always sent.
+        let path = self.http_client.base_url.path();
+        let pong = self.http_client.health::<DataApiError>(path, &[]).await?;
+        Ok(pong.round_trip)
     }
 }
 

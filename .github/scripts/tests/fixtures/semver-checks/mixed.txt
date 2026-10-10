@@ -1,0 +1,70 @@
+     Cloning v0.38.1
+    Building polyoxide-rtds v0.38.1 (current)
+       Built [   0.222s] (current)
+     Parsing polyoxide-rtds v0.38.1 (current)
+      Parsed [   0.007s] (current)
+    Building polyoxide-rtds v0.38.1 (baseline)
+       Built [   0.226s] (baseline)
+     Parsing polyoxide-rtds v0.38.1 (baseline)
+      Parsed [   0.007s] (baseline)
+    Checking polyoxide-rtds v0.38.1 -> v0.38.1 (assume patch change)
+     Checked [   0.009s] 229 checks: 227 pass, 2 fail, 0 warn, 31 skip
+
+--- failure function_missing: pub fn removed or renamed ---
+
+Description:
+A publicly-visible function cannot be imported by its prior path. A `pub use` may have been removed, or the function itself may have been renamed or removed entirely.
+        ref: https://doc.rust-lang.org/cargo/reference/semver.html#item-remove
+       impl: https://github.com/obi1kenobi/cargo-semver-checks/tree/v0.51.0/src/lints/function_missing.ron
+
+Failed in:
+  function polyoxide_rtds::decode::decode_plain, previously in file /home/runner/work/polyoxide/polyoxide/target/semver-checks/git-v0_38_1/1d045c7f91e24b0e3f1f2169d64cc419a74b733d/polyoxide-rtds/src/decode.rs:52
+
+--- failure struct_marked_non_exhaustive: struct marked #[non_exhaustive] ---
+
+Description:
+A public struct has been marked #[non_exhaustive], which will prevent it from being constructed using a struct literal outside of its crate. It previously had no private fields, so a struct literal could be used to construct it outside its crate.
+        ref: https://doc.rust-lang.org/cargo/reference/semver.html#attr-adding-non-exhaustive
+       impl: https://github.com/obi1kenobi/cargo-semver-checks/tree/v0.51.0/src/lints/struct_marked_non_exhaustive.ron
+
+Failed in:
+  struct DisplayPoint in /home/runner/work/polyoxide/polyoxide/polyoxide-rtds/src/payload.rs:81
+  struct DisplayPoint in /home/runner/work/polyoxide/polyoxide/polyoxide-rtds/src/payload.rs:81
+
+     Summary semver requires new major version: 2 major and 0 minor checks failed
+    Finished [  15.315s] polyoxide-rtds
+    Building polyoxide-sports v0.38.1 (current)
+       Built [   0.181s] (current)
+     Parsing polyoxide-sports v0.38.1 (current)
+      Parsed [   0.003s] (current)
+    Building polyoxide-sports v0.38.1 (baseline)
+       Built [   0.181s] (baseline)
+     Parsing polyoxide-sports v0.38.1 (baseline)
+      Parsed [   0.003s] (baseline)
+    Checking polyoxide-sports v0.38.1 -> v0.38.1 (assume patch change)
+     Checked [   0.003s] 229 checks: 227 pass, 2 fail, 0 warn, 31 skip
+
+--- failure inherent_method_missing: pub method removed or renamed ---
+
+Description:
+A publicly-visible method or associated fn is no longer available under its prior name. It may have been renamed or removed entirely.
+        ref: https://doc.rust-lang.org/cargo/reference/semver.html#item-remove
+       impl: https://github.com/obi1kenobi/cargo-semver-checks/tree/v0.51.0/src/lints/inherent_method_missing.ron
+
+Failed in:
+  MatchUpdate::key, previously in file /home/runner/work/polyoxide/polyoxide/target/semver-checks/git-v0_38_1/1d045c7f91e24b0e3f1f2169d64cc419a74b733d/polyoxide-sports/src/update.rs:101
+  MatchUpdate::key, previously in file /home/runner/work/polyoxide/polyoxide/target/semver-checks/git-v0_38_1/1d045c7f91e24b0e3f1f2169d64cc419a74b733d/polyoxide-sports/src/update.rs:101
+
+--- failure inherent_method_must_use_added: inherent method #[must_use] added ---
+
+Description:
+An inherent method is now #[must_use]. Downstream crates that did not use its return value will get a compiler lint.
+        ref: https://doc.rust-lang.org/reference/attributes/diagnostics.html#the-must_use-attribute
+       impl: https://github.com/obi1kenobi/cargo-semver-checks/tree/v0.51.0/src/lints/inherent_method_must_use_added.ron
+
+Failed in:
+  method polyoxide_sports::supervised::SportsWsBuilder::new in /home/runner/work/polyoxide/polyoxide/polyoxide-sports/src/supervised.rs:125
+  method polyoxide_sports::SportsWsBuilder::new in /home/runner/work/polyoxide/polyoxide/polyoxide-sports/src/supervised.rs:125
+
+     Summary semver requires new major version: 1 major and 1 minor checks failed
+    Finished [   2.425s] polyoxide-sports

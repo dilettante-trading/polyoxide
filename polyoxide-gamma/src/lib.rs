@@ -57,3 +57,11 @@ pub mod types;
 
 pub use client::{Gamma, GammaBuilder};
 pub use error::GammaError;
+
+// Every public error type implements `Classify`; one without it fails the
+// build here. `.github/scripts/tests/test_classify_coverage.py` fails when a
+// public error type is missing from this list.
+const _: fn() = || {
+    fn is<T: polyoxide_venue::Classify>() {}
+    is::<GammaError>();
+};

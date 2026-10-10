@@ -1,23 +1,21 @@
-use polyoxide_core::HttpClient;
+use polyoxide_core::{HttpClient, Request};
 use serde::{Deserialize, Serialize};
-use std::time::{Duration, Instant};
+use std::time::Duration;
 
-use crate::{
-    error::ClobError,
-    request::{AuthMode, Request},
-};
+use crate::error::ClobError;
 
 /// Health namespace for API health and latency operations
 #[derive(Clone)]
 pub struct Health {
     pub(crate) http_client: HttpClient,
-    pub(crate) chain_id: u64,
 }
 
 impl Health {
     /// Measure the round-trip time (RTT) to the Polymarket CLOB API.
     ///
-    /// Makes a GET request to the API root and returns the latency.
+    /// Makes a GET request to the API root and returns the latency of the
+    /// attempt that answered, as
+    /// [`HttpClient::health`](polyoxide_core::HttpClient::health) times it.
     ///
     /// # Example
     ///
@@ -32,30 +30,17 @@ impl Health {
     /// # }
     /// ```
     pub async fn ping(&self) -> Result<Duration, ClobError> {
-        let start = Instant::now();
-        let response = self
-            .http_client
-            .client
-            .get(self.http_client.base_url.clone())
-            .send()
-            .await?;
-        let latency = start.elapsed();
-
-        if !response.status().is_success() {
-            return Err(ClobError::from_response(response).await);
-        }
-
-        Ok(latency)
+        // On the send loop, so it waits for a permit and the throttle, and a
+        // 429 is retried and holds the client (DRIFT R8). The path is the base
+        // URL's own, as the ping has always sent.
+        let path = self.http_client.base_url.path();
+        let pong = self.http_client.health::<ClobError>(path, &[]).await?;
+        Ok(pong.round_trip)
     }
 
     /// Get the current server time
-    pub fn server_time(&self) -> Request<ServerTimeResponse> {
-        Request::get(
-            self.http_client.clone(),
-            "/time",
-            AuthMode::None,
-            self.chain_id,
-        )
+    pub fn server_time(&self) -> Request<ServerTimeResponse, ClobError> {
+        Request::new(self.http_client.clone(), "/time")
     }
 }
 
@@ -99,5 +84,39 @@ mod tests {
     fn server_time_response_rejects_string() {
         let json = r#""1700000000""#;
         assert!(serde_json::from_str::<ServerTimeResponse>(json).is_err());
+    }
+
+    /// `ping` must go through the same gating as every other request: it
+    /// used to reach for the reqwest client directly, past the permit and the
+    /// throttle. Holding the single concurrency permit is the cheap,
+    /// deterministic way to prove it queues.
+    #[tokio::test]
+    async fn ping_waits_on_the_shared_request_gate() {
+        let mut server = mockito::Server::new_async().await;
+        let _mock = server
+            .mock("GET", "/")
+            .with_status(200)
+            .with_body("OK")
+            .create_async()
+            .await;
+
+        let http_client = polyoxide_core::HttpClientBuilder::new(server.url())
+            .with_rate_limiter(polyoxide_core::polymarket::clob_limits())
+            .with_max_concurrent(1)
+            .build()
+            .unwrap();
+        let health = Health {
+            http_client: http_client.clone(),
+        };
+
+        // Hold the only permit, so anything respecting the gate must queue.
+        let _permit = http_client.acquire_concurrency().await.unwrap();
+
+        let result = tokio::time::timeout(Duration::from_millis(100), health.ping()).await;
+        assert!(
+            result.is_err(),
+            "ping() completed while the concurrency budget was exhausted — it is \
+             bypassing the rate limiting infrastructure"
+        );
     }
 }

@@ -1,12 +1,12 @@
 //! `wallet` routes: approvals, positions, combo positions, PnL, stats, volume
 //! and portfolio value.
 
-use polyoxide_core::{QueryBuilder, Request};
+use polyoxide_core::{csv, QueryBuilder, Request};
 
 use crate::{
     types::SortDirection,
     v2::{
-        envelope::{csv, Envelope, Paged},
+        envelope::{Envelope, Paged},
         types::{
             Approvals, ComboPosition, ComboPositionSortBy, ComboPositionStatus, FilterType,
             PnlFidelity, PnlInterval, PortfolioValue, Position, PositionAnchor, PositionSortBy,
@@ -115,85 +115,38 @@ pub struct ListPositions {
 }
 
 impl ListPositions {
-    /// Lifecycle filter. Upstream default: `OPEN`, which also includes
-    /// redeemable rows.
-    pub fn status(mut self, status: PositionStatus) -> Self {
-        self.inner = self.inner.query("status", status);
-        self
-    }
-
-    /// Only positions in these Gamma events (at most 20 distinct ids).
-    /// Wallet-anchored requests only. An empty list is omitted.
-    pub fn event_ids<I, S>(mut self, event_ids: I) -> Self
-    where
-        I: IntoIterator<Item = S>,
-        S: ToString,
-    {
-        if let Some(value) = csv(event_ids) {
-            self.inner = self.inner.query("event_id", value);
-        }
-        self
-    }
-
-    /// Case-insensitive market-title substring (at most 200 characters). SQL
-    /// `LIKE` wildcards keep their meaning. The cursor does not carry this
-    /// filter, so it must be re-sent on every page; `.pages()` does.
-    pub fn title(mut self, title: impl Into<String>) -> Self {
-        self.inner = self.inner.query("title", title.into());
-        self
-    }
-
-    /// Unit of [`filter_amount`](Self::filter_amount). Upstream default: `TOKENS`.
-    pub fn filter_type(mut self, filter_type: FilterType) -> Self {
-        self.inner = self.inner.query("filter_type", filter_type);
-        self
-    }
-
-    /// Floor on the current holding: shares for `TOKENS` (upstream default
-    /// 0.1), mark-to-market USDC for `CASH`.
-    pub fn filter_amount(mut self, amount: f64) -> Self {
-        self.inner = self.inner.query("filter_amount", amount);
-        self
-    }
-
-    /// Include positions on archived markets. Not valid with `CLOSED`, which
-    /// upstream rejects; every other status accepts it.
-    pub fn include_archived(mut self, include: bool) -> Self {
-        self.inner = self.inner.query("include_archived", include);
-        self
-    }
-
-    /// Sort key. Upstream default depends on [`status`](Self::status), and on
-    /// a user's `CLOSED` positions four of the keys sort by realized PnL; see
-    /// [`PositionSortBy`].
-    pub fn sort_by(mut self, sort_by: PositionSortBy) -> Self {
-        self.inner = self.inner.query("sort_by", sort_by);
-        self
-    }
-
-    /// Sort direction. Upstream default: `DESC`.
-    pub fn sort_direction(mut self, direction: SortDirection) -> Self {
-        self.inner = self.inner.query("sort_direction", direction);
-        self
-    }
-
-    /// Inclusive lower bound on `last_event_at`, epoch seconds. Any bound
-    /// excludes positions that have no `last_event_at`.
-    pub fn start(mut self, start: i64) -> Self {
-        self.inner = self.inner.query("start", start);
-        self
-    }
-
-    /// Inclusive upper bound on `last_event_at`, epoch seconds.
-    pub fn end(mut self, end: i64) -> Self {
-        self.inner = self.inner.query("end", end);
-        self
-    }
-
-    /// First-page size (at most 1000).
-    pub fn limit(mut self, limit: u32) -> Self {
-        self.inner = self.inner.query("limit", limit);
-        self
+    polyoxide_core::query_setters! { self.inner;
+        /// Lifecycle filter. Upstream default: `OPEN`, which also includes
+        /// redeemable rows.
+        status: PositionStatus => "status",
+        /// Only positions in these Gamma events (at most 20 distinct ids).
+        /// Wallet-anchored requests only. An empty list is omitted.
+        event_ids: csv<I, S> => "event_id",
+        /// Case-insensitive market-title substring (at most 200 characters). SQL
+        /// `LIKE` wildcards keep their meaning. The cursor does not carry this
+        /// filter, so it must be re-sent on every page; `.pages()` does.
+        title: impl Into<String> => "title",
+        /// Unit of [`filter_amount`](Self::filter_amount). Upstream default: `TOKENS`.
+        filter_type: FilterType => "filter_type",
+        /// Floor on the current holding: shares for `TOKENS` (upstream default
+        /// 0.1), mark-to-market USDC for `CASH`.
+        filter_amount: f64 => "filter_amount",
+        /// Include positions on archived markets. Not valid with `CLOSED`, which
+        /// upstream rejects; every other status accepts it.
+        include_archived: bool => "include_archived",
+        /// Sort key. Upstream default depends on [`status`](Self::status), and on
+        /// a user's `CLOSED` positions four of the keys sort by realized PnL; see
+        /// [`PositionSortBy`].
+        sort_by: PositionSortBy => "sort_by",
+        /// Sort direction. Upstream default: `DESC`.
+        sort_direction: SortDirection => "sort_direction",
+        /// Inclusive lower bound on `last_event_at`, epoch seconds. Any bound
+        /// excludes positions that have no `last_event_at`.
+        start: i64 => "start",
+        /// Inclusive upper bound on `last_event_at`, epoch seconds.
+        end: i64 => "end",
+        /// First-page size (at most 1000).
+        limit: u32 => "limit",
     }
 
     paged_builder_methods!(Position);
@@ -205,55 +158,22 @@ pub struct ListComboPositions {
 }
 
 impl ListComboPositions {
-    /// Only these combo condition ids (at most 20). An empty list is omitted.
-    pub fn conditions<I, S>(mut self, conditions: I) -> Self
-    where
-        I: IntoIterator<Item = S>,
-        S: ToString,
-    {
-        if let Some(value) = csv(conditions) {
-            self.inner = self.inner.query("condition", value);
-        }
-        self
-    }
-
-    /// Status filter. Several values may be combined, except `REDEEMABLE`,
-    /// which upstream requires alone. An empty list is omitted.
-    pub fn statuses(mut self, statuses: impl IntoIterator<Item = ComboPositionStatus>) -> Self {
-        if let Some(value) = csv(statuses) {
-            self.inner = self.inner.query("status", value);
-        }
-        self
-    }
-
-    /// Sort key. Upstream default: `FIRST_ENTRY` (`ENTRY_COST` under `REDEEMABLE`).
-    pub fn sort_by(mut self, sort_by: ComboPositionSortBy) -> Self {
-        self.inner = self.inner.query("sort_by", sort_by);
-        self
-    }
-
-    /// Sort direction. Upstream default: `DESC`.
-    pub fn sort_direction(mut self, direction: SortDirection) -> Self {
-        self.inner = self.inner.query("sort_direction", direction);
-        self
-    }
-
-    /// Incremental-sync watermark: inclusive lower bound on `updated_at`, epoch seconds.
-    pub fn updated_after(mut self, after: i64) -> Self {
-        self.inner = self.inner.query("updated_after", after);
-        self
-    }
-
-    /// Incremental-sync watermark: inclusive upper bound on `updated_at`, epoch seconds.
-    pub fn updated_before(mut self, before: i64) -> Self {
-        self.inner = self.inner.query("updated_before", before);
-        self
-    }
-
-    /// First-page size (at most 1000).
-    pub fn limit(mut self, limit: u32) -> Self {
-        self.inner = self.inner.query("limit", limit);
-        self
+    polyoxide_core::query_setters! { self.inner;
+        /// Only these combo condition ids (at most 20). An empty list is omitted.
+        conditions: csv<I, S> => "condition",
+        /// Status filter. Several values may be combined, except `REDEEMABLE`,
+        /// which upstream requires alone. An empty list is omitted.
+        statuses: csv impl IntoIterator<Item = ComboPositionStatus> => "status",
+        /// Sort key. Upstream default: `FIRST_ENTRY` (`ENTRY_COST` under `REDEEMABLE`).
+        sort_by: ComboPositionSortBy => "sort_by",
+        /// Sort direction. Upstream default: `DESC`.
+        sort_direction: SortDirection => "sort_direction",
+        /// Incremental-sync watermark: inclusive lower bound on `updated_at`, epoch seconds.
+        updated_after: i64 => "updated_after",
+        /// Incremental-sync watermark: inclusive upper bound on `updated_at`, epoch seconds.
+        updated_before: i64 => "updated_before",
+        /// First-page size (at most 1000).
+        limit: u32 => "limit",
     }
 
     paged_builder_methods!(ComboPosition);
@@ -265,16 +185,11 @@ pub struct GetUserPnl {
 }
 
 impl GetUserPnl {
-    /// Window. Upstream default: `1d`.
-    pub fn interval(mut self, interval: PnlInterval) -> Self {
-        self.request = self.request.query("interval", interval);
-        self
-    }
-
-    /// Output grid. Upstream default: `1h`.
-    pub fn fidelity(mut self, fidelity: PnlFidelity) -> Self {
-        self.request = self.request.query("fidelity", fidelity);
-        self
+    polyoxide_core::query_setters! {
+        /// Window. Upstream default: `1d`.
+        interval: PnlInterval => "interval",
+        /// Output grid. Upstream default: `1h`.
+        fidelity: PnlFidelity => "fidelity",
     }
 
     /// Fetch the series.
@@ -301,16 +216,11 @@ pub struct GetUserVolume {
 }
 
 impl GetUserVolume {
-    /// Window start, epoch seconds, floored to its UTC day. Omitted or `0` is unbounded.
-    pub fn start(mut self, start: i64) -> Self {
-        self.request = self.request.query("start", start);
-        self
-    }
-
-    /// Window end, epoch seconds, floored to its UTC day. Omitted or `0` is unbounded.
-    pub fn end(mut self, end: i64) -> Self {
-        self.request = self.request.query("end", end);
-        self
+    polyoxide_core::query_setters! {
+        /// Window start, epoch seconds, floored to its UTC day. Omitted or `0` is unbounded.
+        start: i64 => "start",
+        /// Window end, epoch seconds, floored to its UTC day. Omitted or `0` is unbounded.
+        end: i64 => "end",
     }
 
     /// Fetch the volume.
@@ -325,17 +235,10 @@ pub struct GetValue {
 }
 
 impl GetValue {
-    /// Value only these markets (at most 20). Any condition filter also drops
-    /// the portfolio-level combo term. An empty list is omitted.
-    pub fn conditions<I, S>(mut self, conditions: I) -> Self
-    where
-        I: IntoIterator<Item = S>,
-        S: ToString,
-    {
-        if let Some(value) = csv(conditions) {
-            self.request = self.request.query("condition", value);
-        }
-        self
+    polyoxide_core::query_setters! {
+        /// Value only these markets (at most 20). Any condition filter also drops
+        /// the portfolio-level combo term. An empty list is omitted.
+        conditions: csv<I, S> => "condition",
     }
 
     /// Fetch the value.

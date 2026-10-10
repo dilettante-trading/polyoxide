@@ -6,48 +6,57 @@ use polyoxide_core::HttpClient;
 use crate::{
     error::BinanceError,
     usdm::{
-        request::WeightedRequest,
+        request::{route_builder, Routed},
         types::{
             AggTrade, Depth, DepthLimit, FundingRate, Interval, Kline, OpenInterest, PremiumIndex,
             Symbol, Ticker24h,
         },
     },
-    weight::{Cost, Route, WeightBudget},
+    weight::{Cost, Route},
 };
 
 /// Market namespace.
 #[derive(Debug, Clone)]
 pub struct MarketApi {
     pub(crate) http: HttpClient,
-    pub(crate) budget: WeightBudget,
 }
 
 impl MarketApi {
-    fn request<T>(&self, route: Route) -> WeightedRequest<T> {
-        WeightedRequest::new(&self.http, &self.budget, route)
+    fn request<T>(&self, route: Route) -> Routed<T> {
+        Routed::new(&self.http, route)
     }
 
     /// `GET /fapi/v1/ticker/24hr` for one symbol (weight 1).
-    pub fn ticker_24h(&self, symbol: &Symbol) -> WeightedRequest<Ticker24h> {
-        self.request(Route::Ticker24h { all: false })
-            .query("symbol", symbol)
+    pub fn ticker_24h(&self, symbol: &Symbol) -> GetTicker24h {
+        GetTicker24h {
+            request: self
+                .request(Route::Ticker24h { all: false })
+                .query("symbol", symbol),
+        }
     }
 
     /// `GET /fapi/v1/ticker/24hr` for every trading symbol (weight 40).
-    pub fn tickers_24h(&self) -> WeightedRequest<Vec<Ticker24h>> {
-        self.request(Route::Ticker24h { all: true })
+    pub fn tickers_24h(&self) -> GetTickers24h {
+        GetTickers24h {
+            request: self.request(Route::Ticker24h { all: true }),
+        }
     }
 
     /// `GET /fapi/v1/premiumIndex` for one symbol (weight 1): mark price,
     /// index price and funding.
-    pub fn premium_index(&self, symbol: &Symbol) -> WeightedRequest<PremiumIndex> {
-        self.request(Route::PremiumIndex { all: false })
-            .query("symbol", symbol)
+    pub fn premium_index(&self, symbol: &Symbol) -> GetPremiumIndex {
+        GetPremiumIndex {
+            request: self
+                .request(Route::PremiumIndex { all: false })
+                .query("symbol", symbol),
+        }
     }
 
     /// `GET /fapi/v1/premiumIndex` for every symbol (weight 10).
-    pub fn premium_indices(&self) -> WeightedRequest<Vec<PremiumIndex>> {
-        self.request(Route::PremiumIndex { all: true })
+    pub fn premium_indices(&self) -> GetPremiumIndices {
+        GetPremiumIndices {
+            request: self.request(Route::PremiumIndex { all: true }),
+        }
     }
 
     /// `GET /fapi/v1/klines`: candles, newest last. Weight 5 without a limit,
@@ -73,8 +82,10 @@ impl MarketApi {
     }
 
     /// `GET /fapi/v1/openInterest` (weight 1).
-    pub fn open_interest(&self, symbol: &Symbol) -> WeightedRequest<OpenInterest> {
-        self.request(Route::OpenInterest).query("symbol", symbol)
+    pub fn open_interest(&self, symbol: &Symbol) -> GetOpenInterest {
+        GetOpenInterest {
+            request: self.request(Route::OpenInterest).query("symbol", symbol),
+        }
     }
 
     /// `GET /fapi/v1/aggTrades` (weight 20 at any limit). Serves only the last
@@ -96,23 +107,43 @@ impl MarketApi {
     }
 }
 
+route_builder! {
+    /// Request builder for `GET /fapi/v1/ticker/24hr` for one symbol.
+    GetTicker24h => Ticker24h
+}
+
+route_builder! {
+    /// Request builder for `GET /fapi/v1/ticker/24hr` for every symbol.
+    GetTickers24h => Vec<Ticker24h>
+}
+
+route_builder! {
+    /// Request builder for `GET /fapi/v1/premiumIndex` for one symbol.
+    GetPremiumIndex => PremiumIndex
+}
+
+route_builder! {
+    /// Request builder for `GET /fapi/v1/premiumIndex` for every symbol.
+    GetPremiumIndices => Vec<PremiumIndex>
+}
+
+route_builder! {
+    /// Request builder for `GET /fapi/v1/openInterest`.
+    GetOpenInterest => OpenInterest
+}
+
 /// Request builder for `GET /fapi/v1/klines`.
 #[must_use = "a request does nothing until it is sent"]
 pub struct GetKlines {
-    request: WeightedRequest<Vec<Kline>>,
+    request: Routed<Vec<Kline>>,
 }
 
 impl GetKlines {
-    /// Earliest candle start, Unix milliseconds.
-    pub fn start_time(mut self, ms: u64) -> Self {
-        self.request = self.request.query("startTime", ms);
-        self
-    }
-
-    /// Latest candle start, Unix milliseconds.
-    pub fn end_time(mut self, ms: u64) -> Self {
-        self.request = self.request.query("endTime", ms);
-        self
+    polyoxide_core::query_setters! {
+        /// Earliest candle start, Unix milliseconds.
+        start_time: u64 => "startTime",
+        /// Latest candle start, Unix milliseconds.
+        end_time: u64 => "endTime",
     }
 
     /// Candles to return, up to 1500. Sets the weight: up to 100 costs 1, up
@@ -139,33 +170,20 @@ impl GetKlines {
 /// Request builder for `GET /fapi/v1/fundingRate`.
 #[must_use = "a request does nothing until it is sent"]
 pub struct GetFundingRate {
-    request: WeightedRequest<Vec<FundingRate>>,
+    request: Routed<Vec<FundingRate>>,
 }
 
 impl GetFundingRate {
-    /// Restrict to one symbol. Without it, the most recent `limit` funding
-    /// events across all symbols.
-    pub fn symbol(mut self, symbol: &Symbol) -> Self {
-        self.request = self.request.query("symbol", symbol);
-        self
-    }
-
-    /// Earliest funding time, Unix milliseconds.
-    pub fn start_time(mut self, ms: u64) -> Self {
-        self.request = self.request.query("startTime", ms);
-        self
-    }
-
-    /// Latest funding time, Unix milliseconds.
-    pub fn end_time(mut self, ms: u64) -> Self {
-        self.request = self.request.query("endTime", ms);
-        self
-    }
-
-    /// Rows to return, up to 1000.
-    pub fn limit(mut self, limit: u32) -> Self {
-        self.request = self.request.query("limit", limit);
-        self
+    polyoxide_core::query_setters! {
+        /// Restrict to one symbol. Without it, the most recent `limit` funding
+        /// events across all symbols.
+        symbol: &Symbol => "symbol",
+        /// Earliest funding time, Unix milliseconds.
+        start_time: u64 => "startTime",
+        /// Latest funding time, Unix milliseconds.
+        end_time: u64 => "endTime",
+        /// Rows to return, up to 1000.
+        limit: u32 => "limit",
     }
 
     /// What sending this request will cost.
@@ -182,32 +200,19 @@ impl GetFundingRate {
 /// Request builder for `GET /fapi/v1/aggTrades`.
 #[must_use = "a request does nothing until it is sent"]
 pub struct GetAggTrades {
-    request: WeightedRequest<Vec<AggTrade>>,
+    request: Routed<Vec<AggTrade>>,
 }
 
 impl GetAggTrades {
-    /// Start from this aggregate trade id, inclusive.
-    pub fn from_id(mut self, id: u64) -> Self {
-        self.request = self.request.query("fromId", id);
-        self
-    }
-
-    /// Earliest trade time, Unix milliseconds, within the last 48 hours.
-    pub fn start_time(mut self, ms: u64) -> Self {
-        self.request = self.request.query("startTime", ms);
-        self
-    }
-
-    /// Latest trade time, Unix milliseconds.
-    pub fn end_time(mut self, ms: u64) -> Self {
-        self.request = self.request.query("endTime", ms);
-        self
-    }
-
-    /// Rows to return, up to 1000. The weight is 20 whatever the limit.
-    pub fn limit(mut self, limit: u32) -> Self {
-        self.request = self.request.query("limit", limit);
-        self
+    polyoxide_core::query_setters! {
+        /// Start from this aggregate trade id, inclusive.
+        from_id: u64 => "fromId",
+        /// Earliest trade time, Unix milliseconds, within the last 48 hours.
+        start_time: u64 => "startTime",
+        /// Latest trade time, Unix milliseconds.
+        end_time: u64 => "endTime",
+        /// Rows to return, up to 1000. The weight is 20 whatever the limit.
+        limit: u32 => "limit",
     }
 
     /// What sending this request will cost.
@@ -224,7 +229,7 @@ impl GetAggTrades {
 /// Request builder for `GET /fapi/v1/depth`.
 #[must_use = "a request does nothing until it is sent"]
 pub struct GetDepth {
-    request: WeightedRequest<Depth>,
+    request: Routed<Depth>,
 }
 
 impl GetDepth {

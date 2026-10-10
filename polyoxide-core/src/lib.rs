@@ -7,7 +7,12 @@
 //! - HTTP client configuration
 //! - Request builder utilities
 //! - HMAC API-credential signing ([`Signer`])
-//! - Per-endpoint rate limiting with retry/backoff ([`RateLimiter`])
+//! - One send loop, [`HttpClient::send`], with the hooks a venue supplies
+//!   ([`Throttle`], [`RetryPolicy`], [`Authenticator`]), and one health
+//!   ping on it, [`HttpClient::health`]
+//! - Per-endpoint window quotas ([`WindowQuotaTable`], which builds a
+//!   [`RateLimiter`]), token-cost buckets ([`CapacityBucket`]), the
+//!   [`Hold`] their layers share, and the retry schedule ([`RetryConfig`])
 //! - Optional OS keychain credential storage (behind the `keychain` feature)
 //!
 //! ## HTTP Client
@@ -25,7 +30,10 @@
 //!
 //! ## Error Handling
 //!
-//! Use the [`impl_api_error_conversions`] macro to reduce boilerplate in error types.
+//! An unsuccessful response is [`ApiError::Response`], carrying an
+//! [`ErrorResponse`]: its status, headers, body, message and `Retry-After`.
+//! A venue's error type wraps [`ApiError`], and its `From<ApiError>` is its
+//! one decode, so a `?` on core's error anywhere reads the venue's body.
 
 // Compile the crate README's `rust` code fences as doctests so broken examples
 // fail CI. `#[cfg(doctest)]` keeps this out of normal builds and `cargo doc`.
@@ -37,15 +45,26 @@ struct ReadmeDoctests;
 pub mod macros;
 
 pub mod auth;
+pub mod capacity;
 pub mod client;
+pub mod config;
 pub mod error;
+pub mod health;
+pub mod hold;
+pub mod hooks;
+pub mod polymarket;
+mod query;
 pub mod rate_limit;
 pub mod request;
+pub mod send;
 pub mod session_signer;
 pub mod signer_limit;
 
 #[cfg(feature = "keychain")]
 pub mod keychain;
+
+#[cfg(test)]
+mod macro_tests;
 
 /// Maximum number of characters to include in log messages containing response bodies.
 const LOG_BODY_MAX_LEN: usize = 512;
@@ -63,13 +82,34 @@ pub fn truncate_for_log(s: &str) -> std::borrow::Cow<'_, str> {
     }
 }
 
+/// The HTTP client core sends with, re-exported whole.
+///
+/// Venue crates name its types (`Response`, `StatusCode`, `HeaderMap`,
+/// `Method`) through this path and never depend on reqwest themselves, so
+/// core alone decides its features and every client sends the same headers
+/// (AD-18). CI's dependency fence fails when any other member declares it.
+pub use reqwest;
+
 pub use auth::{current_timestamp, Base64Format, Signer};
+pub use capacity::CapacityBucket;
 pub use client::{
     retry_after_header, HttpClient, HttpClientBuilder, DEFAULT_POOL_SIZE, DEFAULT_TIMEOUT_MS,
 };
-pub use error::ApiError;
-pub use rate_limit::{RateLimiter, RetryConfig};
+pub use config::ClientConfig;
+pub use error::{ApiError, ErrorResponse};
+pub use health::Pong;
+pub use hold::Hold;
+pub use hooks::{
+    AttemptInfo, Authenticator, Charge, Cost, Decision, DefaultRetryPolicy, DynAuthenticator,
+    DynRetryPolicy, DynThrottle, LayerCharge, LayerId, NoThrottle, Outcome, Refused, RequestMeta,
+    RequestParts, ResponseMeta, RetryPolicy, Throttle,
+};
+pub use query::csv;
+pub use rate_limit::{
+    BucketId, EffectiveQuota, Matching, QuotaRow, RateLimiter, RetryConfig, WindowQuotaTable,
+};
 pub use request::{QueryBuilder, Request, RequestError};
+pub use send::decode_json;
 pub use session_signer::{DepositWalletRole, SessionSignerScope};
 pub use signer_limit::{
     BurstCapacityExceeded, RateLimitStatus, SignerLimiter, Tier, TradingBucket, TradingRequest,
@@ -77,6 +117,18 @@ pub use signer_limit::{
 
 #[cfg(feature = "keychain")]
 pub use keychain::KeychainError;
+
+// Every public error type implements `Classify`; one without it fails the
+// build here. `.github/scripts/tests/test_classify_coverage.py` fails when a
+// public error type is missing from this list.
+const _: fn() = || {
+    fn is<T: polyoxide_venue::Classify>() {}
+    is::<ApiError>();
+    is::<BurstCapacityExceeded>();
+    is::<Refused>();
+    #[cfg(feature = "keychain")]
+    is::<KeychainError>();
+};
 
 #[cfg(test)]
 mod tests {

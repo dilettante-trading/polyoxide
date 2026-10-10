@@ -1,7 +1,8 @@
 //! The `Perps` client and its builder.
 
 use polyoxide_core::{
-    HttpClient, HttpClientBuilder, RateLimiter, RetryConfig, DEFAULT_POOL_SIZE, DEFAULT_TIMEOUT_MS,
+    polymarket::{self, PolymarketRetryPolicy},
+    ClientConfig, HttpClient, RateLimiter,
 };
 
 use crate::{
@@ -33,74 +34,34 @@ impl Perps {
         PerpsBuilder::new()
     }
 
-    /// Liveness: `ping`, `time`.
-    pub fn health(&self) -> Health {
-        Health {
-            http_client: self.http_client.clone(),
-        }
-    }
-
-    /// Reference data: exchange, assets, instruments, fees, limit tiers.
-    pub fn exchange(&self) -> ExchangeApi {
-        ExchangeApi {
-            http_client: self.http_client.clone(),
-        }
-    }
-
-    /// Market data keyed by instrument.
-    pub fn market(&self) -> MarketApi {
-        MarketApi {
-            http_client: self.http_client.clone(),
-        }
-    }
-
-    /// Public-by-address lookups: portfolio, position fills, leaderboard, invite.
-    pub fn public(&self) -> PublicApi {
-        PublicApi {
-            http_client: self.http_client.clone(),
-        }
+    polyoxide_core::namespaces! { http_client;
+        /// Liveness: `ping`, `time`.
+        health: Health,
+        /// Reference data: exchange, assets, instruments, fees, limit tiers.
+        exchange: ExchangeApi,
+        /// Market data keyed by instrument.
+        market: MarketApi,
+        /// Public-by-address lookups: portfolio, position fills, leaderboard, invite.
+        public: PublicApi,
     }
 }
 
-/// Builder for [`Perps`].
+/// Builder for [`Perps`]. It allows [`DEFAULT_MAX_CONCURRENT`] in-flight
+/// requests unless told otherwise.
 pub struct PerpsBuilder {
-    base_url: String,
-    timeout_ms: u64,
-    pool_size: usize,
+    config: ClientConfig,
     rate_limiter: Option<RateLimiter>,
-    retry_config: Option<RetryConfig>,
-    max_concurrent: Option<usize>,
 }
 
 impl PerpsBuilder {
     fn new() -> Self {
         Self {
-            base_url: DEFAULT_BASE_URL.to_string(),
-            timeout_ms: DEFAULT_TIMEOUT_MS,
-            pool_size: DEFAULT_POOL_SIZE,
-            rate_limiter: Some(RateLimiter::perps_default()),
-            retry_config: None,
-            max_concurrent: None,
+            config: ClientConfig::new(DEFAULT_BASE_URL, DEFAULT_MAX_CONCURRENT),
+            rate_limiter: Some(polymarket::perps_limits()),
         }
     }
 
-    /// Override the host, for example to point at a mock server.
-    pub fn base_url(mut self, url: impl Into<String>) -> Self {
-        self.base_url = url.into();
-        self
-    }
-
-    /// Request timeout in milliseconds.
-    pub fn timeout_ms(mut self, timeout: u64) -> Self {
-        self.timeout_ms = timeout;
-        self
-    }
-
-    /// Idle connections kept per host.
-    pub fn pool_size(mut self, size: usize) -> Self {
-        self.pool_size = size;
-        self
-    }
+    polyoxide_core::client_config_setters!(config);
 
     /// Replace the rate limiter.
     pub fn with_rate_limiter(mut self, limiter: RateLimiter) -> Self {
@@ -108,29 +69,14 @@ impl PerpsBuilder {
         self
     }
 
-    /// Replace the retry policy.
-    pub fn with_retry_config(mut self, config: RetryConfig) -> Self {
-        self.retry_config = Some(config);
-        self
-    }
-
-    /// Maximum in-flight requests (default 4).
-    pub fn max_concurrent(mut self, max: usize) -> Self {
-        self.max_concurrent = Some(max);
-        self
-    }
-
     /// Build the client.
     pub fn build(self) -> Result<Perps, PerpsError> {
-        let mut builder = HttpClientBuilder::new(&self.base_url)
-            .timeout_ms(self.timeout_ms)
-            .pool_size(self.pool_size)
-            .with_max_concurrent(self.max_concurrent.unwrap_or(DEFAULT_MAX_CONCURRENT));
+        let mut builder = self
+            .config
+            .http_builder()
+            .with_retry_policy(PolymarketRetryPolicy);
         if let Some(limiter) = self.rate_limiter {
             builder = builder.with_rate_limiter(limiter);
-        }
-        if let Some(config) = self.retry_config {
-            builder = builder.with_retry_config(config);
         }
         Ok(Perps {
             http_client: builder.build()?,
@@ -162,5 +108,25 @@ mod tests {
             err,
             PerpsError::Api(polyoxide_core::ApiError::Url(_))
         ));
+    }
+
+    #[tokio::test]
+    async fn test_default_concurrency_limit_is_4() {
+        let perps = Perps::new().unwrap();
+        let mut permits = Vec::new();
+        for _ in 0..4 {
+            permits.push(perps.http_client.acquire_concurrency().await);
+        }
+        assert!(permits.iter().all(|p| p.is_some()));
+
+        let result = tokio::time::timeout(
+            std::time::Duration::from_millis(50),
+            perps.http_client.acquire_concurrency(),
+        )
+        .await;
+        assert!(
+            result.is_err(),
+            "5th permit should block with default limit of 4"
+        );
     }
 }

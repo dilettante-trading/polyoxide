@@ -29,3 +29,14 @@ pub mod ws;
 
 pub use client::{Perps, PerpsBuilder, DEFAULT_BASE_URL, DEFAULT_MAX_CONCURRENT};
 pub use error::{PerpsError, VenueError};
+
+// Every public error type implements `Classify`; one without it fails the
+// build here. `.github/scripts/tests/test_classify_coverage.py` fails when a
+// public error type is missing from this list.
+const _: fn() = || {
+    fn is<T: polyoxide_venue::Classify>() {}
+    is::<PerpsError>();
+    is::<VenueError>();
+    #[cfg(feature = "ws")]
+    is::<ws::PerpsWsError>();
+};

@@ -24,6 +24,7 @@ full = ["clob", "gamma", "data", "ws", "rtds", "perps", "perps-ws", "sports"]
 keychain = ["polyoxide-clob?/keychain"]
 
 [dependencies]
+polyoxide-venue = { workspace = true }
 polyoxide-gamma = { workspace = true, optional = true }
 polyoxide-clob = { workspace = true, optional = true }
 polyoxide-data = { workspace = true, optional = true }
@@ -36,3 +37,10 @@ thiserror = { workspace = true }
 tokio = { workspace = true, features = ["macros", "rt-multi-thread"] }
 # Needed only so the WebSocket README doctests can bring `StreamExt` into scope.
 futures-util = "0.3"
+
+# Registration, read by scripts/gen_registry.py: the README line, venue and
+# product ids, the docs/specs/ mirrors covered, and one entry per live test
+# target, which becomes a nightly job. Run `python3 scripts/gen_registry.py
+# --write` after an edit.
+[package.metadata.polyoxide]
+readme = "Unified client for Polymarket APIs (CLOB, Gamma, Data, WebSocket, RTDS, Perps, Sports)"

@@ -15,20 +15,17 @@
 //! thing dropped on purpose; positional arrays are compared by index only as
 //! far as the shorter side goes.
 
-mod common;
+use polyoxide_test_support::agreement as common;
 
 use polyoxide_binance::usdm::types::{
     AggTrade, Depth, ExchangeInfo, FundingInfo, FundingRate, Kline, OpenInterest, PremiumIndex,
     ServerTime, Ticker24h,
 };
+use polyoxide_test_support::fixtures;
 use serde::{de::DeserializeOwned, Serialize};
 
 fn check<T: DeserializeOwned + Serialize>(fixture: &str) {
-    let path = format!(
-        "{}/tests/fixtures/rest/{fixture}.json",
-        env!("CARGO_MANIFEST_DIR")
-    );
-    let text = std::fs::read_to_string(&path).unwrap_or_else(|e| panic!("{path}: {e}"));
+    let text = fixtures!("rest").text(fixture);
     let diff = common::compare::<T>(fixture, &text);
     assert!(
         diff.unmodelled.is_empty(),
@@ -59,13 +56,7 @@ fn every_rest_fixture_agrees_with_its_type() {
 
 #[test]
 fn the_fixtures_cover_the_cases_the_types_exist_for() {
-    let read = |name: &str| {
-        std::fs::read_to_string(format!(
-            "{}/tests/fixtures/rest/{name}.json",
-            env!("CARGO_MANIFEST_DIR")
-        ))
-        .unwrap()
-    };
+    let read = |name: &str| fixtures!("rest").text(name);
 
     let info: ExchangeInfo = serde_json::from_str(&read("exchange_info")).unwrap();
     use polyoxide_binance::usdm::types::{ContractType, Filter, SymbolStatus, UnderlyingType};

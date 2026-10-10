@@ -1,4 +1,4 @@
-use polyoxide_core::{HttpClient, QueryBuilder, Request};
+use polyoxide_core::{HttpClient, Request};
 
 use crate::{
     error::GammaError,
@@ -63,10 +63,9 @@ pub struct GetSeries {
 }
 
 impl GetSeries {
-    /// Include chat data in response
-    pub fn include_chat(mut self, include: bool) -> Self {
-        self.request = self.request.query("include_chat", include);
-        self
+    polyoxide_core::query_setters! {
+        /// Include chat data in response
+        include_chat: bool => "include_chat",
     }
 
     /// Execute the request
@@ -81,79 +80,38 @@ pub struct ListSeries {
 }
 
 impl ListSeries {
-    /// Limit the number of results
-    pub fn limit(mut self, limit: u32) -> Self {
-        self.request = self.request.query("limit", limit);
-        self
-    }
-
-    /// Offset the results
-    pub fn offset(mut self, offset: u32) -> Self {
-        self.request = self.request.query("offset", offset);
-        self
-    }
-
-    /// Sort in ascending order
-    pub fn ascending(mut self, ascending: bool) -> Self {
-        self.request = self.request.query("ascending", ascending);
-        self
-    }
-
-    /// Filter by closed status
-    pub fn closed(mut self, closed: bool) -> Self {
-        self.request = self.request.query("closed", closed);
-        self
-    }
-
-    /// Filter by slugs
-    ///
-    /// Safe batch size: ≤ 150 per request. URL length is capped at ~8 KB
-    /// upstream; slug entries vary so pick a cap based on your longest slug.
-    pub fn slug(mut self, slugs: impl IntoIterator<Item = impl ToString>) -> Self {
-        self.request = self.request.query_many("slug", slugs);
-        self
-    }
-
-    /// Filter by category IDs
-    ///
-    /// Safe batch size: ≤ 100 per request. URLs over ~8 KB are rejected
-    /// upstream with `414 URI Too Long`.
-    pub fn categories_ids(mut self, ids: impl IntoIterator<Item = impl ToString>) -> Self {
-        self.request = self.request.query_many("categories_ids", ids);
-        self
-    }
-
-    /// Filter by category labels
-    ///
-    /// Safe batch size: ≤ 150 per request. URL length is capped at ~8 KB
-    /// upstream; label entries vary so pick a cap based on your longest label.
-    pub fn categories_labels(mut self, labels: impl IntoIterator<Item = impl ToString>) -> Self {
-        self.request = self.request.query_many("categories_labels", labels);
-        self
-    }
-
-    /// Include chat data in response
-    pub fn include_chat(mut self, include: bool) -> Self {
-        self.request = self.request.query("include_chat", include);
-        self
-    }
-
-    /// Filter by recurrence pattern
-    pub fn recurrence(mut self, recurrence: impl Into<String>) -> Self {
-        self.request = self.request.query("recurrence", recurrence.into());
-        self
-    }
-
-    /// Comma-separated list of JSON field names to order by.
-    pub fn order(mut self, order: impl Into<String>) -> Self {
-        self.request = self.request.query("order", order.into());
-        self
-    }
-
-    /// Omit the nested `events` relation from each series.
-    pub fn exclude_events(mut self, exclude: bool) -> Self {
-        self.request = self.request.query("exclude_events", exclude);
-        self
+    polyoxide_core::query_setters! {
+        /// Limit the number of results
+        limit: u32 => "limit",
+        /// Offset the results
+        offset: u32 => "offset",
+        /// Sort in ascending order
+        ascending: bool => "ascending",
+        /// Filter by closed status
+        closed: bool => "closed",
+        /// Filter by slugs
+        ///
+        /// Safe batch size: ≤ 150 per request. URL length is capped at ~8 KB
+        /// upstream; slug entries vary so pick a cap based on your longest slug.
+        slug: many impl IntoIterator<Item = impl ToString> => "slug",
+        /// Filter by category IDs
+        ///
+        /// Safe batch size: ≤ 100 per request. URLs over ~8 KB are rejected
+        /// upstream with `414 URI Too Long`.
+        categories_ids: many impl IntoIterator<Item = impl ToString> => "categories_ids",
+        /// Filter by category labels
+        ///
+        /// Safe batch size: ≤ 150 per request. URL length is capped at ~8 KB
+        /// upstream; label entries vary so pick a cap based on your longest label.
+        categories_labels: many impl IntoIterator<Item = impl ToString> => "categories_labels",
+        /// Include chat data in response
+        include_chat: bool => "include_chat",
+        /// Filter by recurrence pattern
+        recurrence: impl Into<String> => "recurrence",
+        /// Comma-separated list of JSON field names to order by.
+        order: impl Into<String> => "order",
+        /// Omit the nested `events` relation from each series.
+        exclude_events: bool => "exclude_events",
     }
 
     /// Execute the request

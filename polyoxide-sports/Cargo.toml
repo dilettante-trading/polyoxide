@@ -28,6 +28,7 @@ name = "supervision"
 required-features = ["test-server"]
 
 [dependencies]
+polyoxide-venue = { workspace = true }
 tokio = { workspace = true, features = ["macros", "net", "time", "rt"] }
 tokio-tungstenite = { workspace = true }
 futures-util = "0.3"
@@ -38,7 +39,28 @@ tracing = { workspace = true }
 # Needed only to install a process-default rustls CryptoProvider. See
 # `ensure_crypto_provider` in src/client.rs. `std` is declared explicitly
 # because this crate has no neighbour that turns it on transitively.
-rustls = { version = "0.23", default-features = false, features = ["ring", "std"] }
+rustls = { workspace = true }
 
 [dev-dependencies]
+# The live suites' failure tags and credential loaders. Path-only: it is never
+# published, and cargo strips a path-only dev-dependency on publish.
+polyoxide-test-support = { path = "../polyoxide-test-support" }
 tokio = { workspace = true, features = ["macros", "rt-multi-thread", "time", "net"] }
+
+# Registration, read by scripts/gen_registry.py: the README line, venue and
+# product ids, the docs/specs/ mirrors covered, and one entry per live test
+# target, which becomes a nightly job. Run `python3 scripts/gen_registry.py
+# --write` after an edit.
+[package.metadata.polyoxide]
+readme = "Client for Polymarket's live sports score feed"
+venue = "polymarket"
+products = ["sports"]
+mirrors = ["sports"]
+notes = ["no other workspace crate, like `polyoxide-rtds`"]
+
+[package.metadata.polyoxide.live.live_api]
+suite = "live"
+timeout = 20
+features = []
+secrets = []
+note = "20-minute budget for its 180 s wire-agreement window"

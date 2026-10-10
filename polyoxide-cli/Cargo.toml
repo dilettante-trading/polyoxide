@@ -6,8 +6,8 @@ license.workspace = true
 authors.workspace = true
 repository.workspace = true
 rust-version.workspace = true
-description = "CLI tool for querying Polymarket Gamma API"
-keywords = ["polymarket", "prediction-markets", "cli", "gamma"]
+description = "Command-line client for the Polymarket APIs and streams, and Binance USDⓈ-M market data"
+keywords = ["polymarket", "prediction-markets", "cli", "trading", "binance"]
 categories = ["command-line-utilities"]
 
 [features]
@@ -46,6 +46,9 @@ arrow = { version = "54", optional = true }
 parquet = { version = "54", optional = true }
 
 [dev-dependencies]
+# The live suites' failure tags and credential loaders. Path-only: it is never
+# published, and cargo strips a path-only dev-dependency on publish.
+polyoxide-test-support = { path = "../polyoxide-test-support" }
 mockito = { workspace = true }
 tempfile = "3"
 tokio = { workspace = true, features = ["macros", "rt-multi-thread", "time"] }
@@ -53,3 +56,16 @@ tokio = { workspace = true, features = ["macros", "rt-multi-thread", "time"] }
 polyoxide-sports = { workspace = true, features = ["test-server"] }
 # The captured frames, for the `ws binance` tests.
 polyoxide-binance = { workspace = true, features = ["test-server"] }
+
+# Registration, read by scripts/gen_registry.py: the README line, venue and
+# product ids, the docs/specs/ mirrors covered, and one entry per live test
+# target, which becomes a nightly job. Run `python3 scripts/gen_registry.py
+# --write` after an edit.
+[package.metadata.polyoxide]
+readme = "CLI tool for querying Polymarket APIs and Binance USDⓈ-M market data"
+
+[package.metadata.polyoxide.live.live_api]
+suite = "live"
+timeout = 15
+features = []
+secrets = []

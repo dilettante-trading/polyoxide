@@ -1,6 +1,6 @@
 //! Measures, then validates, the rate limits for Data API v2 routes.
 //!
-//! Upstream publishes no v2 figures, so `RateLimiter::data_default` started
+//! Upstream publishes no v2 figures, so `polymarket::data_limits` started
 //! with rows borrowed from v1. This harness replaces them with measured ones.
 //!
 //! ```sh
@@ -38,9 +38,9 @@
 //!
 //! A ramp stops at the first stage that is throttled, saturated or invalid,
 //! and prints the count to pin (the highest clean rate, per 10 seconds). The
-//! rules are in `verdict.rs` and unit-tested. Exit code 0 means a count was
-//! found, 1 that even the first stage was not clean, 2 that the run was
-//! invalid.
+//! rules are `polyoxide_test_support::soak::verdict::tolerant`, unit-tested
+//! there. Exit code 0 means a count was found, 1 that even the first stage was
+//! not clean, 2 that the run was invalid.
 
 use std::{
     collections::HashSet,
@@ -53,15 +53,12 @@ use std::{
     time::{Duration, Instant, SystemTime, UNIX_EPOCH},
 };
 
-use polyoxide_core::RateLimiter;
-use reqwest::Method;
+use polyoxide_core::reqwest::Method;
+use polyoxide_core::{polymarket, RateLimiter};
+use polyoxide_test_support::soak::{self, verdict::tolerant as verdict, Pacer};
 
-#[path = "../common/mod.rs"]
-mod common;
 mod probes;
-mod verdict;
 
-use common::Pacer;
 use probes::{is_market_condition_id, parse_routes, Pools, ProbeSource, Route, SeenUrls};
 use verdict::{classify, judge, pin, Abort, Layer, Pin, Reply, Sample, Stage, Verdict};
 
@@ -106,7 +103,7 @@ Usage: v2_soak --route <routes> [options]
                           --pace client also takes a comma list or `all`
   --stages <r1,r2,...>    Ramp rates in req/s, ascending, at most 40
                           (default: 10,15,20,30,40)
-  --pace client           Validate instead: pace by RateLimiter::data_default
+  --pace client           Validate instead: pace by polymarket::data_limits
                           and require zero 429s
   --stage-secs <n>        Seconds per stage (default: 60 ramp, 120 validation)
   --cooldown-secs <n>     Idle seconds between ramp stages (default: 120)
@@ -118,31 +115,7 @@ Usage: v2_soak --route <routes> [options]
   -h, --help              Show this message";
 
 fn parse_stages(raw: &str) -> Result<Vec<f64>, String> {
-    let stages: Vec<f64> = raw
-        .split(',')
-        .map(|s| {
-            s.trim()
-                .parse::<f64>()
-                .map_err(|_| format!("bad stage rate: {s:?}"))
-        })
-        .collect::<Result<_, _>>()?;
-    if stages.is_empty() {
-        return Err("--stages needs at least one rate".into());
-    }
-    for rate in &stages {
-        if !rate.is_finite() || *rate <= 0.0 {
-            return Err(format!("stage rate {rate} must be positive"));
-        }
-        if *rate > CEILING_RPS {
-            return Err(format!(
-                "stage rate {rate} is above the {CEILING_RPS} req/s ceiling"
-            ));
-        }
-    }
-    if stages.windows(2).any(|w| w[1] <= w[0]) {
-        return Err("--stages must be strictly ascending".into());
-    }
-    Ok(stages)
+    soak::parse_stages(raw, CEILING_RPS)
 }
 
 impl Config {
@@ -231,7 +204,10 @@ fn push_distinct(into: &mut Vec<String>, seen: &mut HashSet<String>, item: &str,
 
 /// Collects live wallets and markets from the bare trade feed, one page per
 /// second, before any measurement starts.
-async fn bootstrap(http: &reqwest::Client, config: &Config) -> Result<Pools, String> {
+async fn bootstrap(
+    http: &polyoxide_core::reqwest::Client,
+    config: &Config,
+) -> Result<Pools, String> {
     let mut pools = Pools::default();
     let (mut seen_wallets, mut seen_conditions) = (HashSet::new(), HashSet::new());
     let mut cursor: Option<String> = None;
@@ -306,7 +282,7 @@ struct Lane {
 }
 
 struct Run {
-    http: reqwest::Client,
+    http: polyoxide_core::reqwest::Client,
     base_url: Arc<str>,
     lanes: Vec<Lane>,
     seen: Arc<SeenUrls>,
@@ -314,7 +290,7 @@ struct Run {
     concurrency: usize,
 }
 
-async fn send_probe(http: &reqwest::Client, url: &str) -> Reply {
+async fn send_probe(http: &polyoxide_core::reqwest::Client, url: &str) -> Reply {
     let response = match http.get(url).send().await {
         Ok(response) => response,
         Err(_) => return Reply::Error(0),
@@ -529,8 +505,8 @@ async fn main() -> ExitCode {
         }
     };
 
-    let http = match reqwest::Client::builder()
-        // The workspace enables reqwest's `gzip` feature for polyoxide-binance;
+    let http = match polyoxide_core::reqwest::Client::builder()
+        // Core enables reqwest's `gzip` feature, so a client asks for it;
         // keep this soak's requests as they were measured.
         .gzip(false)
         .timeout(Duration::from_secs(30))
@@ -596,13 +572,8 @@ async fn main() -> ExitCode {
                 config.stage_secs,
                 config.concurrency
             );
-            let stage = run_stage(
-                &run,
-                Pace::Client(RateLimiter::data_default()),
-                None,
-                planned,
-            )
-            .await;
+            let stage =
+                run_stage(&run, Pace::Client(polymarket::data_limits()), None, planned).await;
             let verdict = judge(&stage, None);
             println!("{TABLE_HEADER}\n{}", stage_row("client", &stage, &verdict));
             if let Some(advice) = cooldown_advice(&verdict) {

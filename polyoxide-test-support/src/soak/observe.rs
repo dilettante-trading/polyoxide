@@ -1,21 +1,18 @@
-//! Shared throttle detection and pacing for the live rate-limit harnesses.
-//!
-//! Included by `closed_positions_soak.rs`, `closed_positions_burst_probe.rs` and
-//! `v2_soak/main.rs` via `#[path]`. Cargo only auto-discovers
-//! `examples/*.rs` and `examples/*/main.rs`, so this file is not itself built
-//! as an example.
-//!
-//! # Why detection needs a tracing subscriber
+//! Throttle detection for the rate-limit harnesses.
 //!
 //! A 429 the client retries away is invisible to the caller: the retry loops
-//! in `polyoxide-core/src/{client,request}.rs` log a `WARN` and then return
-//! `Ok`. A harness that counts successes alone would report a clean run
-//! through an hour of throttling. Everything here exists so that the failure
-//! these harnesses look for can actually be seen.
-
-#![allow(dead_code)] // Each example uses a different subset.
+//! in `polyoxide-core` log a `WARN` and then return `Ok`. A harness that
+//! counts successes alone would report a clean run through an hour of
+//! throttling. So detection runs through a `tracing` layer, [`ThrottleLayer`],
+//! that counts `polyoxide-core`'s warnings into a [`ThrottleObserver`].
+//!
+//! The retry loops are the only `warn!` call sites in that crate, so target
+//! and level identify them without matching on message text. The text is
+//! read afterwards only to tell a 429 from a 425, and to say which path was
+//! refused.
 
 use std::{
+    collections::BTreeMap,
     sync::{
         atomic::{AtomicU64, Ordering},
         Arc, Mutex,
@@ -26,17 +23,8 @@ use std::{
 use tracing::field::{Field, Visit};
 use tracing_subscriber::{layer::SubscriberExt, util::SubscriberInitExt, Layer};
 
-/// The repo's conventional probe address (see `tests/live_api.rs`). Holds no
-/// closed positions, so responses are an empty array; pass a real trader's
-/// address to exercise realistic payload sizes.
-pub const DEFAULT_USER: &str = "0x0000000000000000000000000000000000000001";
-
-/// Matches `DataApiBuilder`'s own default, so runs measure the shipped
-/// configuration rather than a bespoke one.
-pub const DEFAULT_CONCURRENCY: usize = 4;
-
-/// Server-enforced ceiling for `/closed-positions` — above 50 it 400s.
-pub const MAX_PAGE_LIMIT: u32 = 50;
+/// The target prefix of every event `polyoxide-core` logs.
+pub const CORE_TARGET: &str = "polyoxide_core";
 
 const MAX_WARN_SAMPLES: usize = 8;
 
@@ -51,12 +39,21 @@ pub enum WarnKind {
     Other,
 }
 
+/// Whether a retry-loop warning is a throttle.
 pub fn classify(message: &str) -> WarnKind {
     if message.contains("Retriable status 429") {
         WarnKind::Throttle
     } else {
         WarnKind::Other
     }
+}
+
+/// The request path in a retry-loop warning (`Retriable status 429 Too Many
+/// Requests on /v1/rows, retry 1 after 500ms`), so a run over several routes
+/// says which one was refused.
+pub fn throttled_path(message: &str) -> Option<&str> {
+    let rest = message.split(" on ").nth(1)?;
+    Some(rest.split(',').next()?.trim())
 }
 
 /// Shared tally of what the retry loops logged.
@@ -71,9 +68,12 @@ pub struct ThrottleObserver {
     /// Micros since `start` of the first throttle; `u64::MAX` means none yet.
     first_throttle_micros: AtomicU64,
     samples: Mutex<Vec<String>>,
+    /// Throttles per request path, `?` when the message names none.
+    by_path: Mutex<BTreeMap<String, u64>>,
 }
 
 impl ThrottleObserver {
+    /// An empty tally, timing throttles from `start`.
     pub fn new(start: Instant) -> Self {
         Self {
             start,
@@ -81,9 +81,11 @@ impl ThrottleObserver {
             other_warnings: AtomicU64::new(0),
             first_throttle_micros: AtomicU64::new(u64::MAX),
             samples: Mutex::new(Vec::new()),
+            by_path: Mutex::new(BTreeMap::new()),
         }
     }
 
+    /// Counts one retry-loop warning.
     pub fn record(&self, message: &str) {
         match classify(message) {
             WarnKind::Throttle => {
@@ -96,31 +98,36 @@ impl ThrottleObserver {
                     Ordering::Relaxed,
                     Ordering::Relaxed,
                 );
+                let path = throttled_path(message).unwrap_or("?").to_owned();
+                *lock(&self.by_path).entry(path).or_insert(0) += 1;
             }
             WarnKind::Other => {
                 self.other_warnings.fetch_add(1, Ordering::Relaxed);
             }
         }
 
-        if let Ok(mut samples) = self.samples.lock() {
-            if samples.len() < MAX_WARN_SAMPLES {
-                samples.push(message.to_owned());
-            }
+        let mut samples = lock(&self.samples);
+        if samples.len() < MAX_WARN_SAMPLES {
+            samples.push(message.to_owned());
         }
     }
 
+    /// Whether any throttle was seen.
     pub fn throttled(&self) -> bool {
         self.throttle_count() > 0
     }
 
+    /// Throttles seen.
     pub fn throttle_count(&self) -> u64 {
         self.throttles.load(Ordering::Relaxed)
     }
 
+    /// Warnings seen that were not throttles.
     pub fn other_warning_count(&self) -> u64 {
         self.other_warnings.load(Ordering::Relaxed)
     }
 
+    /// When the first throttle was seen, from `start`.
     pub fn first_throttle_at(&self) -> Option<Duration> {
         match self.first_throttle_micros.load(Ordering::Relaxed) {
             u64::MAX => None,
@@ -128,26 +135,33 @@ impl ThrottleObserver {
         }
     }
 
+    /// The first few warnings, verbatim.
     pub fn warn_samples(&self) -> Vec<String> {
-        match self.samples.lock() {
-            Ok(samples) => samples.clone(),
-            Err(poisoned) => poisoned.into_inner().clone(),
-        }
+        lock(&self.samples).clone()
     }
 
-    /// Clears the tally so one process can run several independent trials.
-    ///
-    /// The burst probe depends on this: each trial needs a verdict about its
-    /// own requests, not a running total across the ramp.
+    /// Throttles per request path.
+    pub fn throttles_by_path(&self) -> BTreeMap<String, u64> {
+        lock(&self.by_path).clone()
+    }
+
+    /// Clears the tally so one process can run several independent trials,
+    /// each judged on its own requests rather than a running total.
     pub fn reset(&self) {
         self.throttles.store(0, Ordering::Relaxed);
         self.other_warnings.store(0, Ordering::Relaxed);
         self.first_throttle_micros
             .store(u64::MAX, Ordering::Relaxed);
-        if let Ok(mut samples) = self.samples.lock() {
-            samples.clear();
-        }
+        lock(&self.samples).clear();
+        lock(&self.by_path).clear();
     }
+}
+
+/// A poisoned tally is still a tally.
+fn lock<T>(mutex: &Mutex<T>) -> std::sync::MutexGuard<'_, T> {
+    mutex
+        .lock()
+        .unwrap_or_else(|poisoned| poisoned.into_inner())
 }
 
 /// Pulls the formatted `message` field out of a `tracing` event.
@@ -162,12 +176,10 @@ impl Visit for MessageVisitor {
     }
 }
 
-/// Counts `WARN` events from `polyoxide-core`.
-///
-/// The retry loops in `client.rs` and `request.rs` are the only `warn!` call
-/// sites in that crate, so target + level identifies them without matching on
-/// message text. The text is used afterwards only to tell a 429 from a 425.
-struct ThrottleLayer(Arc<ThrottleObserver>);
+/// Counts `WARN` events whose target starts with [`CORE_TARGET`] into a
+/// [`ThrottleObserver`].
+#[derive(Debug, Clone)]
+pub struct ThrottleLayer(pub Arc<ThrottleObserver>);
 
 impl<S: tracing::Subscriber> Layer<S> for ThrottleLayer {
     fn on_event(
@@ -176,8 +188,7 @@ impl<S: tracing::Subscriber> Layer<S> for ThrottleLayer {
         _ctx: tracing_subscriber::layer::Context<'_, S>,
     ) {
         let metadata = event.metadata();
-        if !metadata.target().starts_with("polyoxide_core")
-            || *metadata.level() != tracing::Level::WARN
+        if !metadata.target().starts_with(CORE_TARGET) || *metadata.level() != tracing::Level::WARN
         {
             return;
         }
@@ -190,7 +201,9 @@ impl<S: tracing::Subscriber> Layer<S> for ThrottleLayer {
     }
 }
 
-/// Installs the counting subscriber and returns the observer it feeds.
+/// Installs the counting layer as the process's global subscriber and returns
+/// the observer it feeds. For a harness's `main`; a test scopes the layer
+/// with `tracing::subscriber::with_default` instead.
 ///
 /// No `fmt` layer is installed: the observer captures the warning text, so
 /// harness output stays clean.
@@ -200,55 +213,6 @@ pub fn install_observer(start: Instant) -> Arc<ThrottleObserver> {
         .with(ThrottleLayer(Arc::clone(&observer)))
         .init();
     observer
-}
-
-/// Hands out send slots at a fixed interval, shared by every worker.
-///
-/// Asking what rate the *server* tolerates means driving a rate the client
-/// would not pick, which means pacing outside the client's own limiter. A
-/// harness that paces through a polyoxide client can only go below that
-/// client's sustained rate, or its limiter binds first and the run measures
-/// polyoxide instead of the server; `v2_soak` sends raw requests for exactly
-/// that reason.
-pub struct Pacer {
-    interval: Duration,
-    /// The earliest unclaimed slot; `None` until the first reservation.
-    next: Mutex<Option<Instant>>,
-}
-
-impl Pacer {
-    pub fn new(interval: Duration) -> Self {
-        Self {
-            interval,
-            next: Mutex::new(None),
-        }
-    }
-
-    /// Claim the next slot, given the current time.
-    pub fn reserve(&self, now: Instant) -> Instant {
-        let mut next = self
-            .next
-            .lock()
-            .unwrap_or_else(|poisoned| poisoned.into_inner());
-        let slot = next.map_or(now, |claimed| claimed.max(now));
-        *next = Some(slot + self.interval);
-        slot
-    }
-
-    pub async fn wait(&self) {
-        let slot = self.reserve(Instant::now());
-        tokio::time::sleep_until(tokio::time::Instant::from_std(slot)).await;
-    }
-}
-
-/// Nearest-rank percentile over an ascending slice.
-pub fn percentile(sorted: &[Duration], p: f64) -> Duration {
-    if sorted.is_empty() {
-        return Duration::ZERO;
-    }
-    let last = sorted.len() - 1;
-    let rank = (p / 100.0 * last as f64).round() as usize;
-    sorted[rank.min(last)]
 }
 
 #[cfg(test)]
@@ -314,62 +278,36 @@ mod tests {
         assert_eq!(observer.other_warning_count(), 0);
         assert_eq!(observer.first_throttle_at(), None);
         assert!(observer.warn_samples().is_empty());
-    }
-
-    // ── pacer ───────────────────────────────────────────────────
-
-    const TEN_MS: Duration = Duration::from_millis(10);
-
-    #[test]
-    fn pacer_hands_out_the_first_slot_immediately() {
-        let now = Instant::now();
-        assert_eq!(Pacer::new(TEN_MS).reserve(now), now);
+        assert!(observer.throttles_by_path().is_empty());
     }
 
     #[test]
-    fn pacer_spaces_consecutive_slots_by_the_interval() {
-        let pacer = Pacer::new(TEN_MS);
-        let now = Instant::now();
-
-        assert_eq!(pacer.reserve(now), now);
-        assert_eq!(pacer.reserve(now), now + TEN_MS);
-        assert_eq!(pacer.reserve(now), now + 2 * TEN_MS);
-    }
-
-    #[test]
-    fn pacer_does_not_bank_credit_while_idle() {
-        // The whole point of the harness is to hold a rate, and a pacer that
-        // carries its cursor forward from an idle period releases the backlog
-        // in one burst the moment traffic resumes — the same defect as a token
-        // bucket with depth, which is what this run exists to measure the
-        // absence of. A slot may never be in the past.
-        let pacer = Pacer::new(TEN_MS);
-        let start = Instant::now();
-        pacer.reserve(start);
-
-        let after_a_long_stall = start + Duration::from_secs(10);
+    fn the_throttled_path_is_read_off_the_retry_loop_message() {
         assert_eq!(
-            pacer.reserve(after_a_long_stall),
-            after_a_long_stall,
-            "the pacer banked credit during the stall and would now burst"
+            throttled_path(
+                "Retriable status 429 Too Many Requests on /v1/info/trades, retry 1 after 500ms"
+            ),
+            Some("/v1/info/trades")
         );
+        assert_eq!(throttled_path("no path here"), None);
+    }
+
+    #[test]
+    fn throttles_are_counted_per_path_and_other_warnings_are_not() {
+        let observer = ThrottleObserver::new(Instant::now());
+        observer.record("Retriable status 429 Too Many Requests on /v1/a, retry 1 after 5ms");
+        observer.record("Retriable status 429 Too Many Requests on /v1/a, retry 2 after 9ms");
+        observer.record("Retriable status 429 Too Many Requests on /v1/b, retry 1 after 5ms");
+        observer.record("Retriable status 425 Too Early on /v1/c, retry 1 after 5ms");
+        observer.record("Retriable status 429 with no path");
         assert_eq!(
-            pacer.reserve(after_a_long_stall),
-            after_a_long_stall + TEN_MS,
-            "the cursor did not resume from the stall, so the backlog survives it"
+            observer.throttles_by_path(),
+            BTreeMap::from([
+                ("/v1/a".to_owned(), 2),
+                ("/v1/b".to_owned(), 1),
+                ("?".to_owned(), 1)
+            ])
         );
-    }
-
-    #[test]
-    fn percentile_of_empty_is_zero() {
-        assert_eq!(percentile(&[], 50.0), Duration::ZERO);
-    }
-
-    #[test]
-    fn percentile_picks_by_nearest_rank() {
-        let sorted: Vec<Duration> = (1..=100).map(Duration::from_millis).collect();
-        assert_eq!(percentile(&sorted, 50.0), Duration::from_millis(51));
-        assert_eq!(percentile(&sorted, 99.0), Duration::from_millis(99));
-        assert_eq!(percentile(&sorted, 100.0), Duration::from_millis(100));
+        assert_eq!(observer.throttle_count(), 4);
     }
 }

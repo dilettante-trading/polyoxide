@@ -1,3 +1,4 @@
+use polyoxide_venue::{Class, Classify};
 use pyo3::create_exception;
 use pyo3::exceptions::PyException;
 use pyo3::prelude::*;
@@ -8,14 +9,19 @@ create_exception!(polyoxide, AuthenticationError, PolyoxideError);
 create_exception!(polyoxide, ValidationError, PolyoxideError);
 create_exception!(polyoxide, RateLimitError, PolyoxideError);
 create_exception!(polyoxide, NetworkError, PolyoxideError);
-create_exception!(polyoxide, TimeoutError, PolyoxideError);
+create_exception!(polyoxide, UnavailableError, PolyoxideError);
+create_exception!(polyoxide, RestrictedError, PolyoxideError);
+create_exception!(polyoxide, DecodeError, PolyoxideError);
+// Only Data API v2's `request_timeout` code raises it: the host is
+// unavailable for the moment, so it is an `UnavailableError`.
+create_exception!(polyoxide, TimeoutError, UnavailableError);
 
 pub fn gamma_err(e: polyoxide_gamma::GammaError) -> PyErr {
-    with_details(map_api_err(&e), None)
+    with_details(exception_for(&e), None)
 }
 
-/// A Data API v2 error body maps by its stable `code`; anything else keeps the
-/// message matching the v1 routes have always used.
+/// A Data API v2 error body maps by its stable `code`; anything else by its
+/// class, as every other error does.
 pub fn data_err(e: polyoxide_data::DataApiError) -> PyErr {
     use polyoxide_data::{v2::ErrorCode, DataApiError};
 
@@ -30,29 +36,43 @@ pub fn data_err(e: polyoxide_data::DataApiError) -> PyErr {
             };
             with_details(err, Some(v2))
         }
-        DataApiError::Pagination(_) => with_details(PolyoxideError::new_err(e.to_string()), None),
-        _ => with_details(map_api_err(&e), None),
+        _ => with_details(exception_for(&e), None),
     }
 }
 
 pub fn clob_err(e: polyoxide_clob::ClobError) -> PyErr {
-    with_details(map_api_err(&e), None)
+    with_details(exception_for(&e), None)
 }
 
-fn map_api_err(e: &dyn std::fmt::Display) -> PyErr {
+/// The exception for an error's class, one class to one exception:
+///
+/// | Class | Exception |
+/// | --- | --- |
+/// | `Network` | `NetworkError` |
+/// | `Unavailable` | `UnavailableError` |
+/// | `RateLimited` | `RateLimitError` |
+/// | `Unauthorized` | `AuthenticationError` |
+/// | `InvalidRequest` | `ValidationError` |
+/// | `VenueRefusal` | `ApiError` |
+/// | `Restricted` | `RestrictedError` |
+/// | `Decode` | `DecodeError` |
+///
+/// A class this version does not know, since `Class` is non-exhaustive, is a
+/// bare `PolyoxideError`. The message is the error's `Display`, which never
+/// decides the type. A Data API v2 error does not come here: `data_err`
+/// maps it by its `code`.
+fn exception_for(e: &impl Classify) -> PyErr {
     let msg = e.to_string();
-    if msg.contains("Authentication") {
-        AuthenticationError::new_err(msg)
-    } else if msg.contains("Rate limit") || msg.contains("429") {
-        RateLimitError::new_err(msg)
-    } else if msg.contains("Validation") {
-        ValidationError::new_err(msg)
-    } else if msg.contains("timeout") || msg.contains("Timeout") {
-        TimeoutError::new_err(msg)
-    } else if msg.contains("Network") || msg.contains("connection") {
-        NetworkError::new_err(msg)
-    } else {
-        ApiError::new_err(msg)
+    match e.class() {
+        Class::Network => NetworkError::new_err(msg),
+        Class::Unavailable { .. } => UnavailableError::new_err(msg),
+        Class::RateLimited { .. } => RateLimitError::new_err(msg),
+        Class::Unauthorized => AuthenticationError::new_err(msg),
+        Class::InvalidRequest => ValidationError::new_err(msg),
+        Class::VenueRefusal { .. } => ApiError::new_err(msg),
+        Class::Restricted => RestrictedError::new_err(msg),
+        Class::Decode => DecodeError::new_err(msg),
+        _ => PolyoxideError::new_err(msg),
     }
 }
 
@@ -87,6 +107,9 @@ pub fn register(m: &Bound<'_, PyModule>) -> PyResult<()> {
     m.add("ValidationError", m.py().get_type::<ValidationError>())?;
     m.add("RateLimitError", m.py().get_type::<RateLimitError>())?;
     m.add("NetworkError", m.py().get_type::<NetworkError>())?;
+    m.add("UnavailableError", m.py().get_type::<UnavailableError>())?;
+    m.add("RestrictedError", m.py().get_type::<RestrictedError>())?;
+    m.add("DecodeError", m.py().get_type::<DecodeError>())?;
     m.add("TimeoutError", m.py().get_type::<TimeoutError>())?;
     Ok(())
 }

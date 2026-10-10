@@ -1,47 +1,29 @@
-use polyoxide_core::{HttpClient, QueryBuilder};
+use std::sync::Arc;
+
+use polyoxide_core::{DynAuthenticator, HttpClient, QueryBuilder, Request};
 use serde::{Deserialize, Serialize};
 
-use crate::{
-    account::{Credentials, Signer, Wallet},
-    error::ClobError,
-    request::{AuthMode, Request},
-    types::SignatureType,
-};
+use crate::{error::ClobError, types::SignatureType};
 
 /// Rewards namespace for liquidity reward operations
 #[derive(Clone)]
 pub struct Rewards {
     pub(crate) http_client: HttpClient,
-    pub(crate) wallet: Wallet,
-    pub(crate) credentials: Credentials,
-    pub(crate) signer: Signer,
-    pub(crate) chain_id: u64,
+    pub(crate) l2: Arc<DynAuthenticator<'static>>,
     pub(crate) signature_type: SignatureType,
 }
 
 impl Rewards {
-    fn l2_auth(&self) -> AuthMode {
-        AuthMode::L2 {
-            address: self.wallet.address(),
-            credentials: self.credentials.clone(),
-            signer: self.signer.clone(),
-        }
-    }
-
     /// Get user earnings for a specific day (`GET /rewards/user`).
     ///
     /// `date` must be in `YYYY-MM-DD` format (required by the API). The
     /// `signature_type` query parameter is taken from the client configuration.
     pub fn earnings(&self, date: impl Into<String>) -> UserEarningsRequest {
         UserEarningsRequest {
-            request: Request::get(
-                self.http_client.clone(),
-                "/rewards/user",
-                self.l2_auth(),
-                self.chain_id,
-            )
-            .query("date", date.into())
-            .query("signature_type", self.signature_type as u8),
+            request: Request::new(self.http_client.clone(), "/rewards/user")
+                .authenticator(self.l2.clone())
+                .query("date", date.into())
+                .query("signature_type", self.signature_type as u8),
         }
     }
 
@@ -51,27 +33,19 @@ impl Rewards {
     /// returns an array of totals grouped by asset address.
     pub fn total_earnings(&self, date: impl Into<String>) -> UserTotalEarningsRequest {
         UserTotalEarningsRequest {
-            request: Request::get(
-                self.http_client.clone(),
-                "/rewards/user/total",
-                self.l2_auth(),
-                self.chain_id,
-            )
-            .query("date", date.into())
-            .query("signature_type", self.signature_type as u8),
+            request: Request::new(self.http_client.clone(), "/rewards/user/total")
+                .authenticator(self.l2.clone())
+                .query("date", date.into())
+                .query("signature_type", self.signature_type as u8),
         }
     }
 
     /// Get user reward percentages (`GET /rewards/user/percentages`).
     pub fn percentages(&self) -> UserPercentagesRequest {
         UserPercentagesRequest {
-            request: Request::get(
-                self.http_client.clone(),
-                "/rewards/user/percentages",
-                self.l2_auth(),
-                self.chain_id,
-            )
-            .query("signature_type", self.signature_type as u8),
+            request: Request::new(self.http_client.clone(), "/rewards/user/percentages")
+                .authenticator(self.l2.clone())
+                .query("signature_type", self.signature_type as u8),
         }
     }
 
@@ -82,13 +56,9 @@ impl Rewards {
     /// [`ListUserRewardMarkets::next_cursor`] until it reads `"LTE="`.
     pub fn market_earnings(&self) -> ListUserRewardMarkets {
         ListUserRewardMarkets {
-            request: Request::get(
-                self.http_client.clone(),
-                "/rewards/user/markets",
-                self.l2_auth(),
-                self.chain_id,
-            )
-            .query("signature_type", self.signature_type as u8),
+            request: Request::new(self.http_client.clone(), "/rewards/user/markets")
+                .authenticator(self.l2.clone())
+                .query("signature_type", self.signature_type as u8),
         }
     }
 
@@ -96,7 +66,6 @@ impl Rewards {
     fn public(&self) -> PublicRewards {
         PublicRewards {
             http_client: self.http_client.clone(),
-            chain_id: self.chain_id,
         }
     }
 
@@ -135,7 +104,7 @@ impl Rewards {
         &self,
         date: impl Into<String>,
         maker_address: impl Into<String>,
-    ) -> Request<Vec<RebatedFees>> {
+    ) -> Request<Vec<RebatedFees>, ClobError> {
         self.public().current_rebates(date, maker_address)
     }
 }
@@ -150,7 +119,6 @@ impl Rewards {
 #[derive(Clone)]
 pub struct PublicRewards {
     pub(crate) http_client: HttpClient,
-    pub(crate) chain_id: u64,
 }
 
 impl PublicRewards {
@@ -160,26 +128,19 @@ impl PublicRewards {
     /// the reward markets are in the `data` field.
     pub fn current_markets(&self) -> ListRewardMarkets {
         ListRewardMarkets {
-            request: Request::get(
-                self.http_client.clone(),
-                "/rewards/markets/current",
-                AuthMode::None,
-                self.chain_id,
-            ),
+            request: Request::new(self.http_client.clone(), "/rewards/markets/current"),
         }
     }
 
     /// Get rewards for a specific market (`GET /rewards/markets/{condition_id}`).
     pub fn market(&self, condition_id: impl Into<String>) -> RewardMarketRequest {
         RewardMarketRequest {
-            request: Request::get(
+            request: Request::new(
                 self.http_client.clone(),
                 format!(
                     "/rewards/markets/{}",
                     urlencoding::encode(&condition_id.into())
                 ),
-                AuthMode::None,
-                self.chain_id,
             ),
         }
     }
@@ -192,12 +153,7 @@ impl PublicRewards {
     /// marks the last page.
     pub fn multi_markets(&self) -> ListMultiRewardMarkets {
         ListMultiRewardMarkets {
-            request: Request::get(
-                self.http_client.clone(),
-                "/rewards/markets/multi",
-                AuthMode::None,
-                self.chain_id,
-            ),
+            request: Request::new(self.http_client.clone(), "/rewards/markets/multi"),
         }
     }
 
@@ -210,15 +166,10 @@ impl PublicRewards {
         &self,
         date: impl Into<String>,
         maker_address: impl Into<String>,
-    ) -> Request<Vec<RebatedFees>> {
-        Request::get(
-            self.http_client.clone(),
-            "/rebates/current",
-            AuthMode::None,
-            self.chain_id,
-        )
-        .query("date", date.into())
-        .query("maker_address", maker_address.into())
+    ) -> Request<Vec<RebatedFees>, ClobError> {
+        Request::new(self.http_client.clone(), "/rebates/current")
+            .query("date", date.into())
+            .query("maker_address", maker_address.into())
     }
 }
 
@@ -368,26 +319,17 @@ impl std::fmt::Display for UserRewardMarketOrderBy {
 
 /// Request builder for `GET /rewards/user`.
 pub struct UserEarningsRequest {
-    request: Request<RewardEarnings>,
+    request: Request<RewardEarnings, ClobError>,
 }
 
 impl UserEarningsRequest {
-    /// Query earnings for a maker address other than the authenticated wallet.
-    pub fn maker_address(mut self, address: impl Into<String>) -> Self {
-        self.request = self.request.query("maker_address", address.into());
-        self
-    }
-
-    /// Restrict results to sponsored reward markets (default: `false`).
-    pub fn sponsored(mut self, sponsored: bool) -> Self {
-        self.request = self.request.query("sponsored", sponsored);
-        self
-    }
-
-    /// Continue from a pagination cursor.
-    pub fn next_cursor(mut self, cursor: impl Into<String>) -> Self {
-        self.request = self.request.query("next_cursor", cursor.into());
-        self
+    polyoxide_core::query_setters! {
+        /// Query earnings for a maker address other than the authenticated wallet.
+        maker_address: impl Into<String> => "maker_address",
+        /// Restrict results to sponsored reward markets (default: `false`).
+        sponsored: bool => "sponsored",
+        /// Continue from a pagination cursor.
+        next_cursor: impl Into<String> => "next_cursor",
     }
 
     /// Execute the request.
@@ -398,20 +340,15 @@ impl UserEarningsRequest {
 
 /// Request builder for `GET /rewards/user/total`.
 pub struct UserTotalEarningsRequest {
-    request: Request<Vec<RewardTotalEarnings>>,
+    request: Request<Vec<RewardTotalEarnings>, ClobError>,
 }
 
 impl UserTotalEarningsRequest {
-    /// Query totals for a maker address other than the authenticated wallet.
-    pub fn maker_address(mut self, address: impl Into<String>) -> Self {
-        self.request = self.request.query("maker_address", address.into());
-        self
-    }
-
-    /// Restrict results to sponsored reward markets (default: `false`).
-    pub fn sponsored(mut self, sponsored: bool) -> Self {
-        self.request = self.request.query("sponsored", sponsored);
-        self
+    polyoxide_core::query_setters! {
+        /// Query totals for a maker address other than the authenticated wallet.
+        maker_address: impl Into<String> => "maker_address",
+        /// Restrict results to sponsored reward markets (default: `false`).
+        sponsored: bool => "sponsored",
     }
 
     /// Execute the request.
@@ -422,14 +359,13 @@ impl UserTotalEarningsRequest {
 
 /// Request builder for `GET /rewards/user/percentages`.
 pub struct UserPercentagesRequest {
-    request: Request<RewardPercentages>,
+    request: Request<RewardPercentages, ClobError>,
 }
 
 impl UserPercentagesRequest {
-    /// Query percentages for a maker address other than the authenticated wallet.
-    pub fn maker_address(mut self, address: impl Into<String>) -> Self {
-        self.request = self.request.query("maker_address", address.into());
-        self
+    polyoxide_core::query_setters! {
+        /// Query percentages for a maker address other than the authenticated wallet.
+        maker_address: impl Into<String> => "maker_address",
     }
 
     /// Execute the request.
@@ -440,20 +376,15 @@ impl UserPercentagesRequest {
 
 /// Request builder for `GET /rewards/markets/current`.
 pub struct ListRewardMarkets {
-    request: Request<Paginated<RewardMarket>>,
+    request: Request<Paginated<RewardMarket>, ClobError>,
 }
 
 impl ListRewardMarkets {
-    /// Restrict results to sponsored reward markets (default: `false`).
-    pub fn sponsored(mut self, sponsored: bool) -> Self {
-        self.request = self.request.query("sponsored", sponsored);
-        self
-    }
-
-    /// Continue from a pagination cursor; `"LTE="` marks the last page.
-    pub fn next_cursor(mut self, cursor: impl Into<String>) -> Self {
-        self.request = self.request.query("next_cursor", cursor.into());
-        self
+    polyoxide_core::query_setters! {
+        /// Restrict results to sponsored reward markets (default: `false`).
+        sponsored: bool => "sponsored",
+        /// Continue from a pagination cursor; `"LTE="` marks the last page.
+        next_cursor: impl Into<String> => "next_cursor",
     }
 
     /// Execute the request.
@@ -464,20 +395,15 @@ impl ListRewardMarkets {
 
 /// Request builder for `GET /rewards/markets/{condition_id}`.
 pub struct RewardMarketRequest {
-    request: Request<RewardMarket>,
+    request: Request<RewardMarket, ClobError>,
 }
 
 impl RewardMarketRequest {
-    /// Restrict results to sponsored reward markets (default: `false`).
-    pub fn sponsored(mut self, sponsored: bool) -> Self {
-        self.request = self.request.query("sponsored", sponsored);
-        self
-    }
-
-    /// Continue from a pagination cursor.
-    pub fn next_cursor(mut self, cursor: impl Into<String>) -> Self {
-        self.request = self.request.query("next_cursor", cursor.into());
-        self
+    polyoxide_core::query_setters! {
+        /// Restrict results to sponsored reward markets (default: `false`).
+        sponsored: bool => "sponsored",
+        /// Continue from a pagination cursor.
+        next_cursor: impl Into<String> => "next_cursor",
     }
 
     /// Execute the request.
@@ -488,92 +414,39 @@ impl RewardMarketRequest {
 
 /// Request builder for `GET /rewards/markets/multi`.
 pub struct ListMultiRewardMarkets {
-    request: Request<Paginated<RewardMarket>>,
+    request: Request<Paginated<RewardMarket>, ClobError>,
 }
 
 impl ListMultiRewardMarkets {
-    /// Free-text search over market questions.
-    pub fn query_text(mut self, q: impl Into<String>) -> Self {
-        self.request = self.request.query("q", q.into());
-        self
-    }
-
-    /// Filter by tag slug.
-    pub fn tag_slug(mut self, slug: impl Into<String>) -> Self {
-        self.request = self.request.query("tag_slug", slug.into());
-        self
-    }
-
-    /// Filter by event ID.
-    pub fn event_id(mut self, event_id: impl Into<String>) -> Self {
-        self.request = self.request.query("event_id", event_id.into());
-        self
-    }
-
-    /// Filter by event title.
-    pub fn event_title(mut self, title: impl Into<String>) -> Self {
-        self.request = self.request.query("event_title", title.into());
-        self
-    }
-
-    /// Sort field.
-    pub fn order_by(mut self, order_by: MultiMarketOrderBy) -> Self {
-        self.request = self.request.query("order_by", order_by.as_str());
-        self
-    }
-
-    /// Sort direction.
-    pub fn position(mut self, position: SortPosition) -> Self {
-        self.request = self.request.query("position", position.as_str());
-        self
-    }
-
-    /// Minimum 24-hour volume.
-    pub fn min_volume_24hr(mut self, value: f64) -> Self {
-        self.request = self.request.query("min_volume_24hr", value);
-        self
-    }
-
-    /// Maximum 24-hour volume.
-    pub fn max_volume_24hr(mut self, value: f64) -> Self {
-        self.request = self.request.query("max_volume_24hr", value);
-        self
-    }
-
-    /// Minimum spread.
-    pub fn min_spread(mut self, value: f64) -> Self {
-        self.request = self.request.query("min_spread", value);
-        self
-    }
-
-    /// Maximum spread.
-    pub fn max_spread(mut self, value: f64) -> Self {
-        self.request = self.request.query("max_spread", value);
-        self
-    }
-
-    /// Minimum price.
-    pub fn min_price(mut self, value: f64) -> Self {
-        self.request = self.request.query("min_price", value);
-        self
-    }
-
-    /// Maximum price.
-    pub fn max_price(mut self, value: f64) -> Self {
-        self.request = self.request.query("max_price", value);
-        self
-    }
-
-    /// Page size (default 100, max 500).
-    pub fn page_size(mut self, page_size: u32) -> Self {
-        self.request = self.request.query("page_size", page_size);
-        self
-    }
-
-    /// Continue from a pagination cursor; `"LTE="` marks the last page.
-    pub fn next_cursor(mut self, cursor: impl Into<String>) -> Self {
-        self.request = self.request.query("next_cursor", cursor.into());
-        self
+    polyoxide_core::query_setters! {
+        /// Free-text search over market questions.
+        query_text: impl Into<String> => "q",
+        /// Filter by tag slug.
+        tag_slug: impl Into<String> => "tag_slug",
+        /// Filter by event ID.
+        event_id: impl Into<String> => "event_id",
+        /// Filter by event title.
+        event_title: impl Into<String> => "event_title",
+        /// Sort field.
+        order_by(order_by: MultiMarketOrderBy) => "order_by" = order_by.as_str(),
+        /// Sort direction.
+        position(position: SortPosition) => "position" = position.as_str(),
+        /// Minimum 24-hour volume.
+        min_volume_24hr: f64 => "min_volume_24hr",
+        /// Maximum 24-hour volume.
+        max_volume_24hr: f64 => "max_volume_24hr",
+        /// Minimum spread.
+        min_spread: f64 => "min_spread",
+        /// Maximum spread.
+        max_spread: f64 => "max_spread",
+        /// Minimum price.
+        min_price: f64 => "min_price",
+        /// Maximum price.
+        max_price: f64 => "max_price",
+        /// Page size (default 100, max 500).
+        page_size: u32 => "page_size",
+        /// Continue from a pagination cursor; `"LTE="` marks the last page.
+        next_cursor: impl Into<String> => "next_cursor",
     }
 
     /// Execute the request.
@@ -584,92 +457,39 @@ impl ListMultiRewardMarkets {
 
 /// Request builder for `GET /rewards/user/markets`.
 pub struct ListUserRewardMarkets {
-    request: Request<Paginated<RewardMarketEarning>>,
+    request: Request<Paginated<RewardMarketEarning>, ClobError>,
 }
 
 impl ListUserRewardMarkets {
-    /// Restrict to a specific day (`YYYY-MM-DD`).
-    pub fn date(mut self, date: impl Into<String>) -> Self {
-        self.request = self.request.query("date", date.into());
-        self
-    }
-
-    /// Query a maker address other than the authenticated wallet.
-    pub fn maker_address(mut self, address: impl Into<String>) -> Self {
-        self.request = self.request.query("maker_address", address.into());
-        self
-    }
-
-    /// Restrict results to sponsored reward markets (default: `false`).
-    pub fn sponsored(mut self, sponsored: bool) -> Self {
-        self.request = self.request.query("sponsored", sponsored);
-        self
-    }
-
-    /// Free-text search over market questions.
-    pub fn query_text(mut self, q: impl Into<String>) -> Self {
-        self.request = self.request.query("q", q.into());
-        self
-    }
-
-    /// Filter by tag slug.
-    pub fn tag_slug(mut self, slug: impl Into<String>) -> Self {
-        self.request = self.request.query("tag_slug", slug.into());
-        self
-    }
-
-    /// Restrict to the caller's favorited markets (default: `false`).
-    pub fn favorite_markets(mut self, value: bool) -> Self {
-        self.request = self.request.query("favorite_markets", value);
-        self
-    }
-
-    /// Restrict to markets with no competing liquidity (default: `false`).
-    pub fn no_competition(mut self, value: bool) -> Self {
-        self.request = self.request.query("no_competition", value);
-        self
-    }
-
-    /// Restrict to markets with mergeable positions (default: `false`).
-    pub fn only_mergeable(mut self, value: bool) -> Self {
-        self.request = self.request.query("only_mergeable", value);
-        self
-    }
-
-    /// Restrict to markets where the caller has open orders (default: `false`).
-    pub fn only_open_orders(mut self, value: bool) -> Self {
-        self.request = self.request.query("only_open_orders", value);
-        self
-    }
-
-    /// Restrict to markets where the caller has open positions (default: `false`).
-    pub fn only_open_positions(mut self, value: bool) -> Self {
-        self.request = self.request.query("only_open_positions", value);
-        self
-    }
-
-    /// Sort field.
-    pub fn order_by(mut self, order_by: UserRewardMarketOrderBy) -> Self {
-        self.request = self.request.query("order_by", order_by.as_str());
-        self
-    }
-
-    /// Sort direction.
-    pub fn position(mut self, position: SortPosition) -> Self {
-        self.request = self.request.query("position", position.as_str());
-        self
-    }
-
-    /// Page size (default 100, max 500).
-    pub fn page_size(mut self, page_size: u32) -> Self {
-        self.request = self.request.query("page_size", page_size);
-        self
-    }
-
-    /// Continue from a pagination cursor; `"LTE="` marks the last page.
-    pub fn next_cursor(mut self, cursor: impl Into<String>) -> Self {
-        self.request = self.request.query("next_cursor", cursor.into());
-        self
+    polyoxide_core::query_setters! {
+        /// Restrict to a specific day (`YYYY-MM-DD`).
+        date: impl Into<String> => "date",
+        /// Query a maker address other than the authenticated wallet.
+        maker_address: impl Into<String> => "maker_address",
+        /// Restrict results to sponsored reward markets (default: `false`).
+        sponsored: bool => "sponsored",
+        /// Free-text search over market questions.
+        query_text: impl Into<String> => "q",
+        /// Filter by tag slug.
+        tag_slug: impl Into<String> => "tag_slug",
+        /// Restrict to the caller's favorited markets (default: `false`).
+        favorite_markets: bool => "favorite_markets",
+        /// Restrict to markets with no competing liquidity (default: `false`).
+        no_competition: bool => "no_competition",
+        /// Restrict to markets with mergeable positions (default: `false`).
+        only_mergeable: bool => "only_mergeable",
+        /// Restrict to markets where the caller has open orders (default: `false`).
+        only_open_orders: bool => "only_open_orders",
+        /// Restrict to markets where the caller has open positions (default: `false`).
+        only_open_positions: bool => "only_open_positions",
+        /// Sort field.
+        order_by(order_by: UserRewardMarketOrderBy) => "order_by" = order_by.as_str(),
+        /// Sort direction.
+        position(position: SortPosition) => "position" = position.as_str(),
+        /// Page size (default 100, max 500).
+        page_size: u32 => "page_size",
+        /// Continue from a pagination cursor; `"LTE="` marks the last page.
+        next_cursor: impl Into<String> => "next_cursor",
     }
 
     /// Execute the request.

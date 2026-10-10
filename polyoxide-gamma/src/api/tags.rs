@@ -1,4 +1,4 @@
-use polyoxide_core::{HttpClient, QueryBuilder, Request};
+use polyoxide_core::{HttpClient, Request};
 
 use crate::{
     error::GammaError,
@@ -97,16 +97,11 @@ pub struct RelatedTags {
 }
 
 impl RelatedTags {
-    /// Omit tags with no events
-    pub fn omit_empty(mut self, omit: bool) -> Self {
-        self.request = self.request.query("omit_empty", omit);
-        self
-    }
-
-    /// Filter by tag status
-    pub fn status(mut self, status: impl Into<String>) -> Self {
-        self.request = self.request.query("status", status.into());
-        self
+    polyoxide_core::query_setters! {
+        /// Omit tags with no events
+        omit_empty: bool => "omit_empty",
+        /// Filter by tag status
+        status: impl Into<String> => "status",
     }
 
     /// Execute the request
@@ -121,40 +116,19 @@ pub struct ListTags {
 }
 
 impl ListTags {
-    /// Set maximum number of results (minimum: 0)
-    pub fn limit(mut self, limit: u32) -> Self {
-        self.request = self.request.query("limit", limit);
-        self
-    }
-
-    /// Set pagination offset (minimum: 0)
-    pub fn offset(mut self, offset: u32) -> Self {
-        self.request = self.request.query("offset", offset);
-        self
-    }
-
-    /// Set order fields (comma-separated list)
-    pub fn order(mut self, order: impl Into<String>) -> Self {
-        self.request = self.request.query("order", order.into());
-        self
-    }
-
-    /// Set sort direction
-    pub fn ascending(mut self, ascending: bool) -> Self {
-        self.request = self.request.query("ascending", ascending);
-        self
-    }
-
-    /// Include template data in response
-    pub fn include_template(mut self, include: bool) -> Self {
-        self.request = self.request.query("include_template", include);
-        self
-    }
-
-    /// Filter by carousel status
-    pub fn is_carousel(mut self, is_carousel: bool) -> Self {
-        self.request = self.request.query("is_carousel", is_carousel);
-        self
+    polyoxide_core::query_setters! {
+        /// Set maximum number of results (minimum: 0)
+        limit: u32 => "limit",
+        /// Set pagination offset (minimum: 0)
+        offset: u32 => "offset",
+        /// Set order fields (comma-separated list)
+        order: impl Into<String> => "order",
+        /// Set sort direction
+        ascending: bool => "ascending",
+        /// Include template data in response
+        include_template: bool => "include_template",
+        /// Filter by carousel status
+        is_carousel: bool => "is_carousel",
     }
 
     /// Execute the request

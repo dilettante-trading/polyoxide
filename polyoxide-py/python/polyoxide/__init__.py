@@ -14,6 +14,9 @@ from ._polyoxide import (
     ValidationError,
     RateLimitError,
     NetworkError,
+    UnavailableError,
+    RestrictedError,
+    DecodeError,
     TimeoutError,
     # Gamma types
     Market,
@@ -87,6 +90,9 @@ __all__ = [
     "ValidationError",
     "RateLimitError",
     "NetworkError",
+    "UnavailableError",
+    "RestrictedError",
+    "DecodeError",
     "TimeoutError",
     # Gamma types
     "Market",

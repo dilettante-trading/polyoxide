@@ -1,100 +1,74 @@
-use polyoxide_core::{HttpClient, QueryBuilder};
+use std::sync::Arc;
+
+use polyoxide_core::reqwest::Method;
+use polyoxide_core::{DynAuthenticator, HttpClient, QueryBuilder, Request};
 use serde::{Deserialize, Serialize};
 
-use crate::{
-    account::{Credentials, Signer, Wallet},
-    error::ClobError,
-    request::{AuthMode, Request},
-};
+use crate::{account::Wallet, authenticator::L1Auth, error::ClobError};
 
 /// Auth namespace for API key management operations
 #[derive(Clone)]
 pub struct Auth {
     pub(crate) http_client: HttpClient,
     pub(crate) wallet: Wallet,
-    pub(crate) credentials: Credentials,
-    pub(crate) signer: Signer,
+    pub(crate) l2: Arc<DynAuthenticator<'static>>,
     pub(crate) chain_id: u64,
 }
 
 impl Auth {
-    fn l1_auth(&self, nonce: u32) -> AuthMode {
-        AuthMode::L1 {
+    /// L1 auth for `nonce`: signed afresh, with a new timestamp, on every
+    /// attempt.
+    fn l1_auth(&self, nonce: u32) -> Arc<DynAuthenticator<'static>> {
+        DynAuthenticator::new_arc(L1Auth {
             wallet: self.wallet.clone(),
             nonce,
-        }
-    }
-
-    fn l2_auth(&self) -> AuthMode {
-        AuthMode::L2 {
-            address: self.wallet.address(),
-            credentials: self.credentials.clone(),
-            signer: self.signer.clone(),
-        }
+            chain_id: self.chain_id,
+        })
     }
 
     // --- Standard API keys ---
 
     /// Create a new API key (L1 auth)
-    pub fn create_api_key(&self, nonce: u32) -> Request<ApiKeyResponse> {
-        Request::post(
-            self.http_client.clone(),
-            "/auth/api-key".to_string(),
-            self.l1_auth(nonce),
-            self.chain_id,
-        )
+    pub fn create_api_key(&self, nonce: u32) -> Request<ApiKeyResponse, ClobError> {
+        Request::new(self.http_client.clone(), "/auth/api-key".to_string())
+            .method(Method::POST)
+            .authenticator(self.l1_auth(nonce))
     }
 
     /// Derive an existing API key (L1 auth)
-    pub fn derive_api_key(&self, nonce: u32) -> Request<ApiKeyResponse> {
-        Request::get(
-            self.http_client.clone(),
-            "/auth/derive-api-key",
-            self.l1_auth(nonce),
-            self.chain_id,
-        )
+    pub fn derive_api_key(&self, nonce: u32) -> Request<ApiKeyResponse, ClobError> {
+        Request::new(self.http_client.clone(), "/auth/derive-api-key")
+            .authenticator(self.l1_auth(nonce))
     }
 
     /// List all API keys (L2 auth)
-    pub fn list_api_keys(&self) -> Request<Vec<ApiKeyInfo>> {
-        Request::get(
-            self.http_client.clone(),
-            "/auth/api-keys",
-            self.l2_auth(),
-            self.chain_id,
-        )
+    pub fn list_api_keys(&self) -> Request<Vec<ApiKeyInfo>, ClobError> {
+        Request::new(self.http_client.clone(), "/auth/api-keys").authenticator(self.l2.clone())
     }
 
     /// Delete the current API key (L2 auth)
-    pub fn delete_api_key(&self) -> Request<serde_json::Value> {
-        Request::delete(
-            self.http_client.clone(),
-            "/auth/api-key",
-            self.l2_auth(),
-            self.chain_id,
-        )
+    pub fn delete_api_key(&self) -> Request<serde_json::Value, ClobError> {
+        Request::new(self.http_client.clone(), "/auth/api-key")
+            .method(Method::DELETE)
+            .authenticator(self.l2.clone())
     }
 
     // --- Read-only API keys ---
 
     /// Create a new read-only API key (L1 auth)
-    pub fn create_readonly_key(&self, nonce: u32) -> Request<ReadonlyApiKeyResponse> {
-        Request::post(
+    pub fn create_readonly_key(&self, nonce: u32) -> Request<ReadonlyApiKeyResponse, ClobError> {
+        Request::new(
             self.http_client.clone(),
             "/auth/readonly-api-key".to_string(),
-            self.l1_auth(nonce),
-            self.chain_id,
         )
+        .method(Method::POST)
+        .authenticator(self.l1_auth(nonce))
     }
 
     /// List all read-only API keys (L2 auth)
-    pub fn list_readonly_keys(&self) -> Request<Vec<ReadonlyApiKeyResponse>> {
-        Request::get(
-            self.http_client.clone(),
-            "/auth/readonly-api-keys",
-            self.l2_auth(),
-            self.chain_id,
-        )
+    pub fn list_readonly_keys(&self) -> Request<Vec<ReadonlyApiKeyResponse>, ClobError> {
+        Request::new(self.http_client.clone(), "/auth/readonly-api-keys")
+            .authenticator(self.l2.clone())
     }
 
     /// Delete a read-only API key (L2 auth)
@@ -108,12 +82,12 @@ impl Auth {
             api_key: String,
         }
 
-        Request::<serde_json::Value>::delete(
+        Request::<serde_json::Value, ClobError>::new(
             self.http_client.clone(),
             "/auth/readonly-api-key",
-            self.l2_auth(),
-            self.chain_id,
         )
+        .method(Method::DELETE)
+        .authenticator(self.l2.clone())
         .body(&Body {
             api_key: key.into(),
         })?
@@ -126,59 +100,43 @@ impl Auth {
         &self,
         address: impl Into<String>,
         key: impl Into<String>,
-    ) -> Request<ValidateKeyResponse> {
-        Request::get(
-            self.http_client.clone(),
-            "/auth/validate-readonly-api-key",
-            AuthMode::None,
-            self.chain_id,
-        )
-        .query("address", address.into())
-        .query("api_key", key.into())
+    ) -> Request<ValidateKeyResponse, ClobError> {
+        Request::new(self.http_client.clone(), "/auth/validate-readonly-api-key")
+            .query("address", address.into())
+            .query("api_key", key.into())
     }
 
     // --- Builder API keys ---
 
     /// Create a new builder API key (L2 auth)
-    pub fn create_builder_key(&self) -> Request<BuilderApiKeyResponse> {
-        Request::post(
+    pub fn create_builder_key(&self) -> Request<BuilderApiKeyResponse, ClobError> {
+        Request::new(
             self.http_client.clone(),
             "/auth/builder-api-key".to_string(),
-            self.l2_auth(),
-            self.chain_id,
         )
+        .method(Method::POST)
+        .authenticator(self.l2.clone())
     }
 
     /// List all builder API keys (L2 auth)
-    pub fn list_builder_keys(&self) -> Request<Vec<ApiKeyInfo>> {
-        Request::get(
-            self.http_client.clone(),
-            "/auth/builder-api-key",
-            self.l2_auth(),
-            self.chain_id,
-        )
+    pub fn list_builder_keys(&self) -> Request<Vec<ApiKeyInfo>, ClobError> {
+        Request::new(self.http_client.clone(), "/auth/builder-api-key")
+            .authenticator(self.l2.clone())
     }
 
     /// Delete the current builder API key (L2 auth)
-    pub fn delete_builder_key(&self) -> Request<serde_json::Value> {
-        Request::delete(
-            self.http_client.clone(),
-            "/auth/builder-api-key",
-            self.l2_auth(),
-            self.chain_id,
-        )
+    pub fn delete_builder_key(&self) -> Request<serde_json::Value, ClobError> {
+        Request::new(self.http_client.clone(), "/auth/builder-api-key")
+            .method(Method::DELETE)
+            .authenticator(self.l2.clone())
     }
 
     // --- Ban status ---
 
     /// Check if the account is in closed-only mode
-    pub fn closed_only_status(&self) -> Request<ClosedOnlyResponse> {
-        Request::get(
-            self.http_client.clone(),
-            "/auth/ban-status/closed-only",
-            self.l2_auth(),
-            self.chain_id,
-        )
+    pub fn closed_only_status(&self) -> Request<ClosedOnlyResponse, ClobError> {
+        Request::new(self.http_client.clone(), "/auth/ban-status/closed-only")
+            .authenticator(self.l2.clone())
     }
 }
 

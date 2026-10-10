@@ -1,0 +1,25 @@
+     Cloning v0.38.1
+    Building polyoxide-data v0.38.1 (current)
+       Built [   1.207s] (current)
+     Parsing polyoxide-data v0.38.1 (current)
+      Parsed [   0.077s] (current)
+    Building polyoxide-data v0.38.1 (baseline)
+       Built [   2.380s] (baseline)
+     Parsing polyoxide-data v0.38.1 (baseline)
+      Parsed [   0.047s] (baseline)
+    Checking polyoxide-data v0.38.1 -> v0.38.1 (assume patch change)
+     Checked [   0.025s] 229 checks: 228 pass, 1 fail, 0 warn, 31 skip
+
+--- failure inherent_method_missing: pub method removed or renamed ---
+
+Description:
+A publicly-visible method or associated fn is no longer available under its prior name. It may have been renamed or removed entirely.
+        ref: https://doc.rust-lang.org/cargo/reference/semver.html#item-remove
+       impl: https://github.com/obi1kenobi/cargo-semver-checks/tree/v0.51.0/src/lints/inherent_method_missing.ron
+
+Failed in:
+  ListTrades::limit, previously in file /home/runner/work/polyoxide/polyoxide/target/semver-checks/git-v0_38_1/1d045c7f91e24b0e3f1f2169d64cc419a74b733d/polyoxide-data/src/v2/api/feeds.rs:132
+  ListTrades::limit, previously in file /home/runner/work/polyoxide/polyoxide/target/semver-checks/git-v0_38_1/1d045c7f91e24b0e3f1f2169d64cc419a74b733d/polyoxide-data/src/api/trades.rs:80
+
+     Summary semver requires new major version: 1 major and 0 minor checks failed
+    Finished [  13.244s] polyoxide-data

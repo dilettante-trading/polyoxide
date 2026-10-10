@@ -7,11 +7,12 @@ Rust SDK toolkit for Polymarket APIs. It includes library crates for use in your
 
 ## Crates
 
+<!-- generated:begin readme-crates -->
 | Crate | Description |
 |-------|-------------|
-| [polyoxide](./polyoxide) | Unified client for Polymarket APIs (CLOB, Gamma, Data, WebSocket) |
+| [polyoxide](./polyoxide) | Unified client for Polymarket APIs (CLOB, Gamma, Data, WebSocket, RTDS, Perps, Sports) |
 | [polyoxide-binance](./polyoxide-binance) | Client library for Binance USDⓈ-M futures market data and streams (not part of the unified crate) |
-| [polyoxide-cli](./polyoxide-cli) | CLI tool for querying Polymarket APIs |
+| [polyoxide-cli](./polyoxide-cli) | CLI tool for querying Polymarket APIs and Binance USDⓈ-M market data |
 | [polyoxide-clob](./polyoxide-clob) | Client library for Polymarket CLOB (order book) API |
 | [polyoxide-core](./polyoxide-core) | Core utilities and shared types |
 | [polyoxide-data](./polyoxide-data) | Client library for Polymarket Data API |
@@ -21,6 +22,9 @@ Rust SDK toolkit for Polymarket APIs. It includes library crates for use in your
 | [polyoxide-relay](./polyoxide-relay) | Client library for Polymarket Relayer API (gasless transactions) |
 | [polyoxide-rtds](./polyoxide-rtds) | Client for Polymarket's RTDS crypto price streams |
 | [polyoxide-sports](./polyoxide-sports) | Client for Polymarket's live sports score feed |
+| [polyoxide-test-support](./polyoxide-test-support) | Test toolkit: the failure tags the nightly classifier reads, the credential loaders, and the agreement, fixture and soak helpers (`publish = false`) |
+| [polyoxide-venue](./polyoxide-venue) | Shared vocabulary: error classes, the status and close-code maps, the `Retry-After` parser, the wire-enum macros and `UnknownVariant`, positional decimal serde (feature `decimal`) and `UnixMillis` |
+<!-- generated:end readme-crates -->
 
 ## Installation
 

@@ -893,9 +893,9 @@ async fn error_404_returns_api_error() {
         .unwrap_err();
 
     match err {
-        DataApiError::Api(polyoxide_core::ApiError::Api { status, message }) => {
-            assert_eq!(status, 404);
-            assert_eq!(message, "not found");
+        DataApiError::Api(polyoxide_core::ApiError::Response(r)) => {
+            assert_eq!(r.status.as_u16(), 404);
+            assert_eq!(r.message, "not found");
         }
         other => panic!("Expected Api error, got: {:?}", other),
     }
@@ -1553,6 +1553,52 @@ async fn a_429_makes_the_next_request_wait_even_though_it_never_saw_one() {
 }
 
 #[tokio::test]
+async fn a_429_on_the_pnl_host_holds_the_data_host() {
+    // The sibling hosts share one throttle, so a 429 from the PnL host holds
+    // requests to the main host too: Cloudflare's budget is per IP, not per
+    // host.
+    let pnl = rate_limited_server().await;
+    let mut main = Server::new_async().await;
+    let trades = main
+        .mock("GET", "/trades")
+        .with_status(200)
+        .with_header("content-type", "application/json")
+        .with_body("[]")
+        .expect(1)
+        .create_async()
+        .await;
+    let data = DataApi::builder()
+        .base_url(main.url())
+        .pnl_base_url(pnl.url())
+        .with_retry_config(polyoxide_core::RetryConfig {
+            max_retries: 0,
+            initial_backoff_ms: 600,
+            max_backoff_ms: 10_000,
+        })
+        .build()
+        .unwrap();
+
+    let limited = data.pnl().history("0xaddr").send().await;
+    assert!(
+        matches!(
+            &limited,
+            Err(DataApiError::Api(polyoxide_core::ApiError::Response(r))) if r.status.as_u16() == 429
+        ),
+        "{limited:?}"
+    );
+
+    let start = std::time::Instant::now();
+    data.trades().list().send().await.unwrap();
+    let elapsed = start.elapsed();
+    trades.assert_async().await;
+    assert!(
+        elapsed >= std::time::Duration::from_millis(400),
+        "the main host was asked after only {elapsed:?}; the PnL host's 429 did not \
+         hold its sibling"
+    );
+}
+
+#[tokio::test]
 async fn activity_sends_exclude_deposits_withdrawals_when_set() {
     let mut server = Server::new_async().await;
     let mock = server
@@ -1648,4 +1694,184 @@ async fn approvals_returns_contracts() {
     assert_eq!(resp.chain_id, 137);
     assert_eq!(resp.contracts[0].id, "UsdcExchange");
     mock.assert_async().await;
+}
+
+#[tokio::test]
+async fn the_builder_installs_polymarkets_retry_policy_so_a_425_is_retried() {
+    // Core's own default policy does not retry a 425 (AD-17); only the builder's
+    // `with_retry_policy(PolymarketRetryPolicy)` makes this succeed.
+    let mut server = Server::new_async().await;
+    let early = server
+        .mock("GET", "/closed-positions")
+        .match_query(Matcher::Any)
+        .with_status(425)
+        .expect(1)
+        .create_async()
+        .await;
+    let ok = server
+        .mock("GET", "/closed-positions")
+        .match_query(Matcher::Any)
+        .with_status(200)
+        .with_header("content-type", "application/json")
+        .with_body(r#"[]"#)
+        .expect(1)
+        .create_async()
+        .await;
+
+    let client = DataApi::builder()
+        .base_url(server.url())
+        .with_retry_config(polyoxide_core::RetryConfig {
+            max_retries: 3,
+            initial_backoff_ms: 1,
+            max_backoff_ms: 10,
+        })
+        .build()
+        .unwrap();
+    client
+        .user("0xaddr")
+        .closed_positions()
+        .send()
+        .await
+        .expect("a 425 is the matching engine restarting, retried to the success");
+    early.assert_async().await;
+    ok.assert_async().await;
+}
+
+#[tokio::test]
+async fn a_429_on_ping_holds_the_next_request() {
+    // DRIFT R8: the ping fed no 429 back. On the send loop it is retried and
+    // holds the client.
+    let mut server = Server::new_async().await;
+    let served = std::sync::atomic::AtomicUsize::new(0);
+    let mock = server
+        .mock("GET", "/")
+        .with_status_code_from_request(move |_| {
+            match served.fetch_add(1, std::sync::atomic::Ordering::SeqCst) {
+                0 | 1 => 429,
+                _ => 200,
+            }
+        })
+        .with_header("content-type", "application/json")
+        .with_body(r#"{"data":"OK"}"#)
+        .expect(3)
+        .create_async()
+        .await;
+    let data = throttled_data(&server, 300, 1);
+
+    let err = data.health().ping().await.unwrap_err();
+    assert!(
+        matches!(
+            &err,
+            polyoxide_data::DataApiError::Api(polyoxide_core::ApiError::Response(r))
+                if r.status.as_u16() == 429
+        ),
+        "{err:?}"
+    );
+
+    let start = std::time::Instant::now();
+    let latency = data.health().ping().await.unwrap();
+    assert!(
+        start.elapsed() >= std::time::Duration::from_millis(200),
+        "the next request went after {:?}, inside the ping's hold",
+        start.elapsed()
+    );
+    assert!(
+        latency > std::time::Duration::ZERO && latency < std::time::Duration::from_millis(200),
+        "the ping's latency is its last attempt's round trip, which leaves out the hold: {latency:?}"
+    );
+    mock.assert_async().await;
+}
+
+// ── Bundle J's matrix rows (Story 3.11) ─────────────────────────
+
+#[tokio::test]
+async fn a_v1_503_is_core_s_response_and_retriable() {
+    use polyoxide_venue::Classify;
+
+    let mut server = Server::new_async().await;
+    let mock = server
+        .mock("GET", "/positions")
+        .match_query(Matcher::Any)
+        .with_status(503)
+        .with_body(r#"{"error": "down"}"#)
+        .expect(1)
+        .create_async()
+        .await;
+
+    let err = test_data(&server)
+        .user("0xabc")
+        .list_positions()
+        .send()
+        .await
+        .unwrap_err();
+    mock.assert_async().await;
+    assert!(
+        matches!(&err, DataApiError::Api(polyoxide_core::ApiError::Response(r)) if r.status == 503),
+        "{err:?}"
+    );
+    assert!(err.is_retriable());
+}
+
+#[tokio::test]
+async fn an_accounting_snapshot_decodes_a_v2_error_body() {
+    use polyoxide_venue::{Class, Classify};
+
+    // `snapshot` goes through `get_bytes`, which once never tried the v2
+    // envelope; the one decode reads it on that path too.
+    let mut server = Server::new_async().await;
+    let mock = server
+        .mock("GET", "/v1/accounting/snapshot")
+        .match_query(Matcher::Any)
+        .with_status(503)
+        .with_body(
+            r#"{"error":"datastore unavailable","code":"dependency_unavailable","retryable":true,"trace_id":"t-acc"}"#,
+        )
+        .expect(1)
+        .create_async()
+        .await;
+
+    let err = test_data(&server)
+        .accounting()
+        .snapshot("0xabc123")
+        .await
+        .unwrap_err();
+    mock.assert_async().await;
+    match &err {
+        DataApiError::V2(v2) => {
+            assert_eq!(v2.status, 503);
+            assert_eq!(v2.trace_id, "t-acc");
+        }
+        other => panic!("expected DataApiError::V2, got {other:?}"),
+    }
+    assert_eq!(
+        err.class(),
+        Class::Unavailable {
+            code: Some("dependency_unavailable".into())
+        }
+    );
+}
+
+#[tokio::test]
+async fn an_accounting_snapshot_keeps_another_body_as_core_s_response() {
+    let mut server = Server::new_async().await;
+    let mock = server
+        .mock("GET", "/v1/accounting/snapshot")
+        .match_query(Matcher::Any)
+        .with_status(503)
+        .with_body("upstream exploded")
+        .expect(1)
+        .create_async()
+        .await;
+
+    let err = test_data(&server)
+        .accounting()
+        .snapshot("0xabc123")
+        .await
+        .unwrap_err();
+    mock.assert_async().await;
+    assert!(
+        matches!(&err, DataApiError::Api(polyoxide_core::ApiError::Response(r))
+            if r.status == 503 && r.message == "upstream exploded"),
+        "{err:?}"
+    );
 }

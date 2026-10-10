@@ -47,6 +47,7 @@ use polyoxide_gamma::api::user::UserResponse;
 use polyoxide_gamma::types::{
     Comment, Event, HomeAway, ParentEntityType, Profile, ProtocolVersion, SportMetadata, Team,
 };
+use polyoxide_test_support::agreement::dotted;
 use serde::{de::DeserializeOwned, Serialize};
 use serde_json::{json, Value};
 
@@ -259,54 +260,9 @@ const EXPECTED_ABSENT: &[(&str, &str)] = &[
 
 /// Walk a captured payload against what the type re-emits, asserting both
 /// directions at every level of nesting.
+#[track_caller]
 fn check(wire: &Value, emitted: &Value, path: &str) {
-    match (wire, emitted) {
-        (Value::Object(w), Value::Object(e)) => {
-            // Direction 1: nothing invented. A key present on both sides
-            // recurses so nested mismatches are caught too; a key the type
-            // emits but the wire lacks must be declared in EXPECTED_ABSENT.
-            for (key, value) in e {
-                let full = format!("{path}.{key}");
-                match w.get(key) {
-                    Some(wire_value) => check(wire_value, value, &full),
-                    None => assert!(
-                        EXPECTED_ABSENT.iter().any(|(k, _)| *k == full.as_str()),
-                        "{full} is emitted by the type but absent from the captured \
-                         payload, and not listed in EXPECTED_ABSENT with a reason — \
-                         the field may be invented"
-                    ),
-                }
-            }
-            // Direction 2: nothing unmodelled. Keys present on both sides
-            // were already recursed into above.
-            for key in w.keys() {
-                if e.contains_key(key) {
-                    continue;
-                }
-                let full = format!("{path}.{key}");
-                assert!(
-                    IGNORED.iter().any(|(k, _)| *k == full.as_str()),
-                    "{full} is sent by the server but not modelled, and not listed \
-                     in IGNORED with a reason"
-                );
-            }
-        }
-        (Value::Array(w), Value::Array(e)) => {
-            assert_eq!(
-                w.len(),
-                e.len(),
-                "{path} has {} elements on the wire but the type re-emits {} — a \
-                 truncated collection would otherwise pass unnoticed by comparing \
-                 only the shorter length",
-                w.len(),
-                e.len()
-            );
-            for (i, (wi, ei)) in w.iter().zip(e).enumerate() {
-                check(wi, ei, &format!("{path}[{i}]"));
-            }
-        }
-        _ => {}
-    }
+    dotted::check(wire, emitted, path, IGNORED, EXPECTED_ABSENT)
 }
 
 fn round_trip(fixture: &str, path: &str) {
@@ -501,15 +457,12 @@ fn sports_events_carry_no_unmodelled_top_level_keys() {
     for (name, fixture) in SPORTS_EVENTS {
         let (wire, event) = captured_event(fixture);
         let emitted = serde_json::to_value(&event).expect("Event must serialize");
-        let emitted = emitted
-            .as_object()
-            .expect("an Event serializes to an object");
-        for key in wire.as_object().expect("an event is an object").keys() {
-            assert!(
-                emitted.contains_key(key),
-                "{name}: event.{key} is sent by the server but not modelled by Event"
-            );
-        }
+        let unmodelled = dotted::unmodelled_top_level(&wire, &emitted);
+        assert!(
+            unmodelled.is_empty(),
+            "{name}: event.{} is sent by the server but not modelled by Event",
+            unmodelled.join(", event.")
+        );
     }
 }
 

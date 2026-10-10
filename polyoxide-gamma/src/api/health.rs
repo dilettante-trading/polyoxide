@@ -1,5 +1,5 @@
-use polyoxide_core::{HttpClient, RequestError};
-use std::time::{Duration, Instant};
+use polyoxide_core::HttpClient;
+use std::time::Duration;
 
 use crate::error::GammaError;
 
@@ -10,7 +10,9 @@ pub struct Health {
 }
 
 impl Health {
-    /// Measure the round-trip time (RTT) to the Polymarket Gamma API.
+    /// Measure the round-trip time (RTT) to the Polymarket Gamma API: that of
+    /// the attempt that answered, as
+    /// [`HttpClient::health`](polyoxide_core::HttpClient::health) times it.
     ///
     /// # Example
     ///
@@ -25,40 +27,28 @@ impl Health {
     /// # }
     /// ```
     pub async fn ping(&self) -> Result<Duration, GammaError> {
-        let url = self.http_client.base_url.join("/status")?;
-
-        // Health checks are capped like any other route (100/10s). This reaches
-        // for `client` directly rather than going through `Request`, so the
-        // gating has to be applied by hand — omitting it bypassed both the
-        // limiter and the concurrency budget that keeps Cloudflare from seeing
-        // a burst from this process.
-        let _permit = self.http_client.acquire_concurrency().await;
-        self.http_client.acquire_rate_limit("/status", None).await;
-
-        let start = Instant::now();
-        let response = self.http_client.client.get(url).send().await?;
-        let latency = start.elapsed();
-
-        if !response.status().is_success() {
-            return Err(GammaError::from_response(response).await);
-        }
-
-        Ok(latency)
+        // Health checks are capped like any other route (100/10s), and run on
+        // the send loop, so a 429 is retried and holds the client (DRIFT R8).
+        let pong = self
+            .http_client
+            .health::<GammaError>("/status", &[])
+            .await?;
+        Ok(pong.round_trip)
     }
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
-    use polyoxide_core::{HttpClientBuilder, RateLimiter};
+    use polyoxide_core::{polymarket, HttpClientBuilder};
 
     /// `ping` must go through the same gating as every other request.
     ///
-    /// It reaches for `http_client.client` directly rather than going through
-    /// `Request`, so nothing structural forces it to respect the limiter — only
-    /// this test does. Holding the single concurrency permit is the cheap,
-    /// deterministic way to prove it queues: if `ping` bypasses the gate it
-    /// returns immediately instead of timing out.
+    /// It discards its body, so it calls the send loop rather than going
+    /// through `Request`, and only this test shows it respects the gate.
+    /// Holding the single concurrency permit is the cheap, deterministic way
+    /// to prove it queues: if `ping` bypasses the gate it returns immediately
+    /// instead of timing out.
     #[tokio::test]
     async fn ping_waits_on_the_shared_request_gate() {
         let mut server = mockito::Server::new_async().await;
@@ -70,7 +60,7 @@ mod tests {
             .await;
 
         let http_client = HttpClientBuilder::new(server.url())
-            .with_rate_limiter(RateLimiter::gamma_default())
+            .with_rate_limiter(polymarket::gamma_limits())
             .with_max_concurrent(1)
             .build()
             .unwrap();

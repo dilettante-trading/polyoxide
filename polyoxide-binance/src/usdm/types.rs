@@ -8,9 +8,10 @@
 
 use std::{fmt, str::FromStr};
 
+use polyoxide_venue::positional::{drain, element, DecimalStr};
 use rust_decimal::Decimal;
 use serde::{
-    de::{self, DeserializeOwned, IgnoredAny, SeqAccess, Visitor},
+    de::{self, DeserializeOwned, SeqAccess, Visitor},
     ser::SerializeSeq,
     Deserialize, Deserializer, Serialize, Serializer,
 };
@@ -35,6 +36,13 @@ pub struct Symbol(String);
 #[derive(Debug, Clone, PartialEq, Eq, thiserror::Error)]
 #[error("{0:?} is not a Binance symbol: 1 to 32 letters, digits or underscores")]
 pub struct InvalidSymbol(pub String);
+
+/// An `InvalidRequest`: the caller named a symbol no request can carry.
+impl polyoxide_venue::Classify for InvalidSymbol {
+    fn class(&self) -> polyoxide_venue::Class {
+        polyoxide_venue::Class::InvalidRequest
+    }
+}
 
 impl Symbol {
     /// The longest symbol [`Symbol::new`] accepts, in characters.
@@ -79,116 +87,10 @@ impl AsRef<str> for Symbol {
     }
 }
 
-/// A string that is not one of a closed set's wire spellings.
-#[derive(Debug, Clone, PartialEq, Eq, thiserror::Error)]
-#[error("{value:?} is not a valid {type_name}")]
-pub struct UnknownVariant {
-    /// The Rust type being parsed.
-    pub type_name: &'static str,
-    /// The offending input.
-    pub value: String,
-}
-
-/// A closed set the client sends: one wire spelling per variant, and an `ALL`
-/// table so a test can walk every spelling.
-macro_rules! wire_enum {
-    ($(#[$meta:meta])* $name:ident { $($(#[$vmeta:meta])* $variant:ident => $wire:literal),+ $(,)? }) => {
-        $(#[$meta])*
-        #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize)]
-        pub enum $name {
-            $( $(#[$vmeta])* #[serde(rename = $wire)] $variant, )+
-        }
-
-        impl $name {
-            /// Every variant, in declaration order.
-            pub const ALL: &'static [$name] = &[$( $name::$variant, )+];
-
-            /// The wire spelling.
-            pub fn as_str(self) -> &'static str {
-                match self { $( $name::$variant => $wire, )+ }
-            }
-        }
-
-        impl fmt::Display for $name {
-            fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-                f.write_str(self.as_str())
-            }
-        }
-
-        impl FromStr for $name {
-            type Err = UnknownVariant;
-            fn from_str(s: &str) -> Result<Self, Self::Err> {
-                match s {
-                    $( $wire => Ok($name::$variant), )+
-                    _ => Err(UnknownVariant { type_name: stringify!($name), value: s.to_owned() }),
-                }
-            }
-        }
-    };
-}
-
-/// A set Binance reports and extends over time: a value this version does not
-/// know is kept verbatim in `Other` instead of failing the response.
-macro_rules! open_enum {
-    ($(#[$meta:meta])* $name:ident { $($(#[$vmeta:meta])* $variant:ident => $wire:literal),+ $(,)? }) => {
-        $(#[$meta])*
-        #[derive(Debug, Clone, PartialEq, Eq, Hash)]
-        #[non_exhaustive]
-        pub enum $name {
-            $( $(#[$vmeta])* $variant, )+
-            /// A value this version of the SDK does not recognise, kept verbatim.
-            Other(String),
-        }
-
-        impl $name {
-            /// Every variant this SDK knows, in declaration order.
-            pub const ALL: &'static [Self] = &[$( Self::$variant ),+];
-
-            /// The wire spelling.
-            pub fn as_str(&self) -> &str {
-                match self {
-                    $( Self::$variant => $wire, )+
-                    Self::Other(raw) => raw,
-                }
-            }
-        }
-
-        impl fmt::Display for $name {
-            fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-                f.write_str(self.as_str())
-            }
-        }
-
-        impl FromStr for $name {
-            type Err = std::convert::Infallible;
-            fn from_str(s: &str) -> Result<Self, Self::Err> {
-                Ok(match s {
-                    $( $wire => Self::$variant, )+
-                    other => Self::Other(other.to_owned()),
-                })
-            }
-        }
-
-        impl Serialize for $name {
-            fn serialize<S: Serializer>(&self, serializer: S) -> Result<S::Ok, S::Error> {
-                serializer.serialize_str(self.as_str())
-            }
-        }
-
-        impl<'de> Deserialize<'de> for $name {
-            fn deserialize<D: Deserializer<'de>>(deserializer: D) -> Result<Self, D::Error> {
-                let raw = String::deserialize(deserializer)?;
-                let Ok(value) = raw.parse();
-                Ok(value)
-            }
-        }
-    };
-}
-
-wire_enum! {
+polyoxide_venue::wire_enum! {
     /// Kline width, shared by REST `klines` and the kline stream. The docs'
     /// list also has `1s`, which this host refuses (`-1120`).
-    Interval {
+    pub enum Interval {
         M1 => "1m", M3 => "3m", M5 => "5m", M15 => "15m", M30 => "30m",
         H1 => "1h", H2 => "2h", H4 => "4h", H6 => "6h", H8 => "8h", H12 => "12h",
         D1 => "1d", D3 => "3d", W1 => "1w",
@@ -197,18 +99,18 @@ wire_enum! {
     }
 }
 
-wire_enum! {
+polyoxide_venue::wire_enum! {
     /// Levels per side `depth` can return. Any other `limit` is refused
     /// (`-4021`).
-    DepthLimit {
+    pub enum DepthLimit {
         Five => "5", Ten => "10", Twenty => "20", Fifty => "50",
         Hundred => "100", FiveHundred => "500", Thousand => "1000",
     }
 }
 
-open_enum! {
+polyoxide_venue::open_enum! {
     /// A contract's type, from `exchangeInfo`.
-    ContractType {
+    pub enum ContractType {
         Perpetual => "PERPETUAL",
         /// A perpetual on a traditional-finance underlying (equities, metals, FX).
         TradifiPerpetual => "TRADIFI_PERPETUAL",
@@ -220,11 +122,11 @@ open_enum! {
     }
 }
 
-open_enum! {
+polyoxide_venue::open_enum! {
     /// A contract's status, from `exchangeInfo`. The variants are the list in
     /// Binance's common definitions; `exchangeInfo` used three of them on
     /// 2026-10-07.
-    SymbolStatus {
+    pub enum SymbolStatus {
         PendingTrading => "PENDING_TRADING",
         Trading => "TRADING",
         PreDelivering => "PRE_DELIVERING",
@@ -239,10 +141,10 @@ open_enum! {
     }
 }
 
-open_enum! {
+polyoxide_venue::open_enum! {
     /// What a contract's underlying is, from `exchangeInfo`. The values seen on
     /// 2026-10-07; Binance's docs give no list.
-    UnderlyingType {
+    pub enum UnderlyingType {
         Coin => "COIN",
         Index => "INDEX",
         Premarket => "PREMARKET",
@@ -825,29 +727,6 @@ pub struct Kline {
     pub taker_buy_quote_volume: Decimal,
 }
 
-/// A decimal string inside a positional array.
-struct DecimalStr(Decimal);
-
-impl<'de> Deserialize<'de> for DecimalStr {
-    fn deserialize<D: Deserializer<'de>>(deserializer: D) -> Result<Self, D::Error> {
-        rust_decimal::serde::str::deserialize(deserializer).map(Self)
-    }
-}
-
-fn next<'de, T: Deserialize<'de>, A: SeqAccess<'de>>(
-    seq: &mut A,
-    index: usize,
-    what: &str,
-) -> Result<T, A::Error> {
-    seq.next_element()?
-        .ok_or_else(|| de::Error::invalid_length(index, &what))
-}
-
-fn drain<'de, A: SeqAccess<'de>>(seq: &mut A) -> Result<(), A::Error> {
-    while seq.next_element::<IgnoredAny>()?.is_some() {}
-    Ok(())
-}
-
 impl<'de> Deserialize<'de> for Kline {
     fn deserialize<D: Deserializer<'de>>(deserializer: D) -> Result<Self, D::Error> {
         struct KlineVisitor;
@@ -862,17 +741,17 @@ impl<'de> Deserialize<'de> for Kline {
             fn visit_seq<A: SeqAccess<'de>>(self, mut seq: A) -> Result<Kline, A::Error> {
                 const WHAT: &str = "a kline array of at least 11 elements";
                 let kline = Kline {
-                    open_time: next(&mut seq, 0, WHAT)?,
-                    open: next::<DecimalStr, _>(&mut seq, 1, WHAT)?.0,
-                    high: next::<DecimalStr, _>(&mut seq, 2, WHAT)?.0,
-                    low: next::<DecimalStr, _>(&mut seq, 3, WHAT)?.0,
-                    close: next::<DecimalStr, _>(&mut seq, 4, WHAT)?.0,
-                    volume: next::<DecimalStr, _>(&mut seq, 5, WHAT)?.0,
-                    close_time: next(&mut seq, 6, WHAT)?,
-                    quote_volume: next::<DecimalStr, _>(&mut seq, 7, WHAT)?.0,
-                    trade_count: next(&mut seq, 8, WHAT)?,
-                    taker_buy_base_volume: next::<DecimalStr, _>(&mut seq, 9, WHAT)?.0,
-                    taker_buy_quote_volume: next::<DecimalStr, _>(&mut seq, 10, WHAT)?.0,
+                    open_time: element(&mut seq, 0, WHAT)?,
+                    open: element::<DecimalStr, _>(&mut seq, 1, WHAT)?.0,
+                    high: element::<DecimalStr, _>(&mut seq, 2, WHAT)?.0,
+                    low: element::<DecimalStr, _>(&mut seq, 3, WHAT)?.0,
+                    close: element::<DecimalStr, _>(&mut seq, 4, WHAT)?.0,
+                    volume: element::<DecimalStr, _>(&mut seq, 5, WHAT)?.0,
+                    close_time: element(&mut seq, 6, WHAT)?,
+                    quote_volume: element::<DecimalStr, _>(&mut seq, 7, WHAT)?.0,
+                    trade_count: element(&mut seq, 8, WHAT)?,
+                    taker_buy_base_volume: element::<DecimalStr, _>(&mut seq, 9, WHAT)?.0,
+                    taker_buy_quote_volume: element::<DecimalStr, _>(&mut seq, 10, WHAT)?.0,
                 };
                 drain(&mut seq)?;
                 Ok(kline)
@@ -1015,8 +894,8 @@ impl<'de> Deserialize<'de> for Level {
             fn visit_seq<A: SeqAccess<'de>>(self, mut seq: A) -> Result<Level, A::Error> {
                 const WHAT: &str = "a [price, quantity] array";
                 let level = Level {
-                    price: next::<DecimalStr, _>(&mut seq, 0, WHAT)?.0,
-                    quantity: next::<DecimalStr, _>(&mut seq, 1, WHAT)?.0,
+                    price: element::<DecimalStr, _>(&mut seq, 0, WHAT)?.0,
+                    quantity: element::<DecimalStr, _>(&mut seq, 1, WHAT)?.0,
                 };
                 drain(&mut seq)?;
                 Ok(level)
@@ -1039,6 +918,26 @@ impl Serialize for Level {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn a_refused_symbol_and_an_unknown_spelling_are_invalid_requests() {
+        use polyoxide_venue::{Class, Classify, UnknownVariant};
+
+        let symbol = Symbol::new("BTC USDT").unwrap_err();
+        assert_eq!(symbol.class(), Class::InvalidRequest);
+        assert!(symbol.is_fault());
+        assert_eq!(symbol.retry_after(), None);
+        assert!(!symbol.is_retriable());
+
+        let spelling = UnknownVariant {
+            type_name: "Interval",
+            value: "2m".into(),
+        };
+        assert_eq!(spelling.class(), Class::InvalidRequest);
+        assert!(spelling.is_fault());
+        assert_eq!(spelling.retry_after(), None);
+        assert!(!spelling.is_retriable());
+    }
 
     #[test]
     fn symbols_take_letters_digits_and_underscores_in_any_script() {

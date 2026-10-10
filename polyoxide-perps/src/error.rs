@@ -2,7 +2,8 @@
 
 use std::time::Duration;
 
-use polyoxide_core::{retry_after_header, ApiError, RequestError};
+use polyoxide_core::{ApiError, ErrorResponse};
+use polyoxide_venue::{class_for_status, Class, Classify};
 use serde::Deserialize;
 use thiserror::Error;
 
@@ -12,7 +13,7 @@ use thiserror::Error;
 pub enum PerpsError {
     /// Transport, decoding, or an error body in some other shape.
     #[error(transparent)]
-    Api(#[from] ApiError),
+    Api(ApiError),
 
     /// The venue answered with its `{status: "err", error}` body.
     #[error(transparent)]
@@ -52,41 +53,24 @@ struct Body {
 impl VenueError {
     /// Parses a venue error body; `None` when the body is some other shape
     /// (a CDN error page, or a body without `status: "err"`).
-    pub(crate) fn from_parts(status: u16, retry_after: Option<&str>, body: &str) -> Option<Self> {
-        let body: Body = serde_json::from_str(body).ok()?;
+    ///
+    /// The `Retry-After` is the response's, read by core unclamped: it is
+    /// surfaced, never slept on.
+    pub(crate) fn from_response(response: &ErrorResponse) -> Option<Self> {
+        let body: Body = serde_json::from_str(&response.body).ok()?;
         if body.status != "err" {
             return None;
         }
         Some(Self {
-            status,
+            status: response.status.as_u16(),
             code: body.error,
             reference: body.reference,
-            retry_after: retry_after
-                .and_then(|v| v.trim().parse::<u64>().ok())
-                .map(Duration::from_secs),
+            retry_after: response.retry_after,
         })
-    }
-
-    /// Whether re-sending the same request could plausibly succeed: a 408,
-    /// a 425, a 429 or any 5xx.
-    ///
-    /// Mirrors [`ApiError::is_retriable`] status for status, so a response
-    /// classifies the same whether or not its body had the venue shape;
-    /// `venue_and_api_errors_agree_on_retriability` pins the two together.
-    pub fn is_retriable(&self) -> bool {
-        matches!(self.status, 408 | 425 | 429) || self.status >= 500
     }
 }
 
 impl PerpsError {
-    /// Whether re-sending the same request could plausibly succeed.
-    pub fn is_retriable(&self) -> bool {
-        match self {
-            Self::Api(err) => err.is_retriable(),
-            Self::Venue(err) => err.is_retriable(),
-        }
-    }
-
     /// The venue's error identifier, for venue errors.
     pub fn code(&self) -> Option<&str> {
         match self {
@@ -94,40 +78,96 @@ impl PerpsError {
             Self::Api(_) => None,
         }
     }
+}
 
-    /// The `Retry-After` delay, for venue errors that carried one.
-    pub fn retry_after(&self) -> Option<Duration> {
+/// Perps' one decode: a response with the venue's `{status: "err", error,
+/// ref}` body is [`PerpsError::Venue`], told apart by body shape, not by path
+/// or status, and anything else stays core's.
+impl From<ApiError> for PerpsError {
+    fn from(err: ApiError) -> Self {
+        match err {
+            ApiError::Response(response) => match VenueError::from_response(&response) {
+                Some(venue) => Self::Venue(venue),
+                None => Self::Api(ApiError::Response(response)),
+            },
+            other => Self::Api(other),
+        }
+    }
+}
+
+/// The status rule, with `code` as the class's code and any status outside
+/// 400–599 a [`Class::Decode`]. A 451 is not a fault: the venue does not serve
+/// the caller's region, as designed. [`Classify::retry_after`] is the
+/// response's `Retry-After` whatever the status, and `None` when it was zero.
+impl Classify for VenueError {
+    fn class(&self) -> Class {
+        class_for_status(self.status)
+            .unwrap_or(Class::Decode)
+            .with_code(self.code.as_str())
+            .with_retry_after(self.retry_after)
+    }
+
+    fn is_fault(&self) -> bool {
+        self.status != 451
+    }
+
+    fn retry_after(&self) -> Option<Duration> {
+        self.retry_after.filter(|wait| !wait.is_zero())
+    }
+}
+
+/// Delegates to the error each variant wraps.
+impl Classify for PerpsError {
+    fn class(&self) -> Class {
         match self {
-            Self::Venue(err) => err.retry_after,
-            Self::Api(_) => None,
+            Self::Api(err) => err.class(),
+            Self::Venue(err) => err.class(),
+        }
+    }
+
+    fn is_fault(&self) -> bool {
+        match self {
+            Self::Api(err) => err.is_fault(),
+            Self::Venue(err) => err.is_fault(),
+        }
+    }
+
+    fn retry_after(&self) -> Option<Duration> {
+        match self {
+            Self::Api(err) => Classify::retry_after(err),
+            Self::Venue(err) => Classify::retry_after(err),
         }
     }
 }
-
-impl RequestError for PerpsError {
-    async fn from_response(response: reqwest::Response) -> Self {
-        let status = response.status().as_u16();
-        let retry_after = retry_after_header(&response);
-        let body = response.text().await.unwrap_or_default();
-
-        // Told apart by body shape, not by path or status.
-        match VenueError::from_parts(status, retry_after.as_deref(), &body) {
-            Some(err) => Self::Venue(err),
-            None => Self::Api(ApiError::from_status_and_body(status, &body)),
-        }
-    }
-}
-
-polyoxide_core::impl_api_error_conversions!(PerpsError);
 
 #[cfg(test)]
 mod tests {
     use super::*;
 
+    /// A response with `status`, `body` and, when given, a `Retry-After`.
+    fn response(status: u16, retry_after: Option<&str>, body: &str) -> ErrorResponse {
+        let mut headers = polyoxide_core::reqwest::header::HeaderMap::new();
+        if let Some(value) = retry_after {
+            headers.insert(
+                polyoxide_core::reqwest::header::RETRY_AFTER,
+                value.parse().unwrap(),
+            );
+        }
+        ErrorResponse::new(
+            polyoxide_core::reqwest::StatusCode::from_u16(status).unwrap(),
+            headers,
+            body,
+        )
+    }
+
+    /// [`VenueError::from_response`] on that response.
+    fn parts(status: u16, retry_after: Option<&str>, body: &str) -> Option<VenueError> {
+        VenueError::from_response(&response(status, retry_after, body))
+    }
+
     #[test]
     fn a_404_body_becomes_a_venue_error_with_its_identifier() {
-        let err = VenueError::from_parts(404, None, r#"{"status":"err","error":"not_found"}"#)
-            .expect("venue shape");
+        let err = parts(404, None, r#"{"status":"err","error":"not_found"}"#).expect("venue shape");
         assert_eq!(err.code, "not_found");
         assert_eq!(err.reference, None);
         assert!(!err.is_retriable());
@@ -138,7 +178,7 @@ mod tests {
         // Captured 2026-09-30: validation failures carry `arts`, `ts` and `ref`
         // beyond the schema's two fields.
         let body = r#"{"status":"err","error":"invalid query parameters: missing field `instrument_id`","arts":1790758475821,"ts":1790758475821,"ref":"g-1224ed1744735"}"#;
-        let err = VenueError::from_parts(400, None, body).expect("venue shape");
+        let err = parts(400, None, body).expect("venue shape");
         assert_eq!(err.reference.as_deref(), Some("g-1224ed1744735"));
         assert!(err.code.starts_with("invalid query parameters"));
     }
@@ -146,7 +186,7 @@ mod tests {
     #[test]
     fn a_429_is_retriable_and_reads_retry_after_as_whole_seconds() {
         let err = PerpsError::Venue(
-            VenueError::from_parts(
+            parts(
                 429,
                 Some("2"),
                 r#"{"status":"err","error":"ip_rate_limited"}"#,
@@ -157,26 +197,19 @@ mod tests {
         assert_eq!(err.code(), Some("ip_rate_limited"));
         assert_eq!(err.retry_after(), Some(Duration::from_secs(2)));
 
-        let too_early =
-            VenueError::from_parts(425, None, r#"{"status":"err","error":"too_early"}"#).unwrap();
+        let too_early = parts(425, None, r#"{"status":"err","error":"too_early"}"#).unwrap();
         assert!(too_early.is_retriable());
     }
 
     #[test]
     fn a_body_without_status_err_is_not_a_venue_error() {
-        assert_eq!(
-            VenueError::from_parts(200, None, r#"{"status":"ok"}"#),
-            None
-        );
-        assert_eq!(
-            VenueError::from_parts(502, None, "<html>bad gateway</html>"),
-            None
-        );
+        assert_eq!(parts(200, None, r#"{"status":"ok"}"#), None);
+        assert_eq!(parts(502, None, "<html>bad gateway</html>"), None);
     }
 
     #[test]
     fn api_errors_have_no_code_or_retry_after() {
-        let err = PerpsError::from(ApiError::Timeout);
+        let err = PerpsError::from(ApiError::from(response(408, None, "timeout")));
         assert!(err.is_retriable());
         assert_eq!(err.code(), None);
         assert_eq!(err.retry_after(), None);
@@ -191,15 +224,102 @@ mod tests {
         for status in [
             400u16, 401, 403, 404, 408, 409, 413, 422, 425, 429, 500, 502, 503, 504,
         ] {
-            let venue = VenueError::from_parts(status, None, body).unwrap();
-            let api = ApiError::from_status_and_body(status, body);
+            let venue = parts(status, None, body).unwrap();
+            let api = ApiError::from(response(status, None, "x"));
             assert_eq!(
                 venue.is_retriable(),
-                api.is_retriable(),
+                Classify::is_retriable(&api),
                 "status {status}: VenueError says {} but ApiError says {}",
                 venue.is_retriable(),
-                api.is_retriable()
+                Classify::is_retriable(&api)
             );
+        }
+    }
+
+    #[test]
+    fn every_variant_classifies() {
+        let venue = |status, retry_after, code: &str| {
+            let body = format!(r#"{{"status":"err","error":"{code}"}}"#);
+            PerpsError::Venue(parts(status, retry_after, &body).unwrap())
+        };
+        let code = |c: &str| Some(std::sync::Arc::from(c));
+        let secs = |n| Some(Duration::from_secs(n));
+        // (error, class, is_fault, retry_after())
+        let rows = [
+            (
+                PerpsError::from(ApiError::from(response(408, None, "timeout"))),
+                Class::Unavailable { code: None },
+                true,
+                None,
+            ),
+            (
+                PerpsError::from(ApiError::from(response(
+                    502,
+                    None,
+                    "<html>bad gateway</html>",
+                ))),
+                Class::Unavailable { code: None },
+                true,
+                None,
+            ),
+            (
+                venue(400, None, "invalid query parameters"),
+                Class::VenueRefusal {
+                    code: code("invalid query parameters"),
+                },
+                true,
+                None,
+            ),
+            (
+                venue(404, None, "not_found"),
+                Class::VenueRefusal {
+                    code: code("not_found"),
+                },
+                true,
+                None,
+            ),
+            (
+                venue(429, Some("2"), "ip_rate_limited"),
+                Class::RateLimited {
+                    retry_after: secs(2),
+                },
+                true,
+                secs(2),
+            ),
+            // A zero is no wait (DRIFT R4).
+            (
+                venue(429, Some("0"), "ip_rate_limited"),
+                Class::RateLimited { retry_after: None },
+                true,
+                None,
+            ),
+            (
+                venue(503, Some("5"), "unavailable"),
+                Class::Unavailable {
+                    code: code("unavailable"),
+                },
+                true,
+                secs(5),
+            ),
+            // A region block is the venue answering as designed.
+            (
+                venue(451, None, "restricted"),
+                Class::Restricted,
+                false,
+                None,
+            ),
+            (venue(200, None, "odd"), Class::Decode, true, None),
+        ];
+        for (err, class, fault, wait) in rows {
+            assert_eq!(err.class(), class, "{err:?}");
+            assert_eq!(err.is_fault(), fault, "{err:?}");
+            assert_eq!(err.retry_after(), wait, "{err:?}");
+            assert_eq!(err.is_retriable(), class.is_retriable(), "{err:?}");
+            if let PerpsError::Venue(venue) = &err {
+                assert_eq!(venue.class(), class, "{venue:?}");
+                assert_eq!(venue.is_fault(), fault, "{venue:?}");
+                assert_eq!(venue.retry_after(), wait, "{venue:?}");
+            }
         }
     }
 
@@ -207,5 +327,29 @@ mod tests {
     fn perps_error_is_send_sync() {
         fn assert_send_sync<T: Send + Sync>() {}
         assert_send_sync::<PerpsError>();
+    }
+
+    #[test]
+    fn the_one_retry_after_parser_settles_the_old_disagreements() {
+        // DRIFT R4. Perps read whole seconds only, so a fraction was no wait,
+        // a zero was a wait of nothing, and a value past `u64` was no wait.
+        let body = r#"{"status":"err","error":"ip_rate_limited"}"#;
+        let at = |header| parts(429, Some(header), body).unwrap().retry_after;
+        assert_eq!(at("1.5"), Some(Duration::from_millis(1500)));
+        assert_eq!(at("0"), None);
+        assert_eq!(at("99999999999999999999"), Some(Duration::MAX));
+        // Unchanged: no clamp short of what a `Duration` holds, and junk is no
+        // wait.
+        assert_eq!(at("604800"), Some(Duration::from_secs(604_800)));
+        for junk in [
+            "Wed, 21 Oct 2026 07:28:00 GMT",
+            "abc",
+            "NaN",
+            "inf",
+            "-1",
+            "",
+        ] {
+            assert_eq!(at(junk), None, "{junk:?}");
+        }
     }
 }

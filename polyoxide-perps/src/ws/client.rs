@@ -13,7 +13,7 @@ use tokio_tungstenite::{connect_async, tungstenite::Message, MaybeTlsStream, Web
 use crate::ws::{
     channel::Channel,
     ensure_crypto_provider,
-    error::{PerpsWsError, Refusal},
+    error::{PerpsWsError, Refusal, NO_REASON},
     event::Frame,
     frame::{Incoming, Request, Response},
     WS_URL,
@@ -157,7 +157,7 @@ impl PerpsWs {
             } else {
                 refused.push(Refusal {
                     channel: *channel,
-                    reason: status.error.clone().unwrap_or_else(|| "err".to_owned()),
+                    reason: status.error.clone().unwrap_or_else(|| NO_REASON.to_owned()),
                 });
             }
         }

@@ -6,7 +6,7 @@ use rust_decimal::Decimal;
 use serde::{Deserialize, Serialize};
 
 use crate::{
-    api::{setter, Fetch},
+    api::Fetch,
     error::PerpsError,
     types::{InstrumentId, LeaderboardSort, LeaderboardWindow, Side, SortOrder},
 };
@@ -62,13 +62,11 @@ pub struct ListPositionFills {
 }
 
 impl ListPositionFills {
-    setter! {
+    polyoxide_core::query_setters! {
         /// Resume from a previous page's `cursor`.
-        cursor: impl Into<String> => "cursor"
-    }
-    setter! {
+        cursor: impl Into<String> => "cursor",
         /// Sort order. The server default is descending.
-        sort: SortOrder => "sort"
+        sort: SortOrder => "sort",
     }
 
     /// Execute the request.
@@ -83,25 +81,17 @@ pub struct GetLeaderboard {
 }
 
 impl GetLeaderboard {
-    setter! {
+    polyoxide_core::query_setters! {
         /// Window. The server default is `day`.
-        window: LeaderboardWindow => "window"
-    }
-    setter! {
+        window: LeaderboardWindow => "window",
         /// Ranking key. The server default is `pnl`.
-        sort_by: LeaderboardSort => "sort_by"
-    }
-    setter! {
+        sort_by: LeaderboardSort => "sort_by",
         /// Page size.
-        limit: u32 => "limit"
-    }
-    setter! {
+        limit: u32 => "limit",
         /// Page offset.
-        offset: u64 => "offset"
-    }
-    setter! {
+        offset: u64 => "offset",
         /// Also return this account's own standing as `account`.
-        address: impl Into<String> => "address"
+        address: impl Into<String> => "address",
     }
 
     /// Execute the request.
@@ -116,9 +106,9 @@ pub struct CheckInvite {
 }
 
 impl CheckInvite {
-    setter! {
+    polyoxide_core::query_setters! {
         /// The address that would redeem the code.
-        address: impl Into<String> => "address"
+        address: impl Into<String> => "address",
     }
 
     /// Execute the request.

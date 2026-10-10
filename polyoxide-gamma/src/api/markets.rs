@@ -1,4 +1,6 @@
-use polyoxide_core::{ApiError, HttpClient, QueryBuilder, Request, RequestError};
+use polyoxide_core::reqwest::header::{HeaderValue, CONTENT_TYPE};
+use polyoxide_core::reqwest::Method;
+use polyoxide_core::{ApiError, HttpClient, QueryBuilder, Request, RequestParts};
 
 use crate::{
     error::GammaError,
@@ -129,31 +131,31 @@ impl Markets {
 /// `query` carries pagination (`limit`, `offset`) because the upstream server
 /// ignores those fields when sent inside the JSON body — they must be on the
 /// URL query string to take effect.
+///
+/// Runs on the send loop, so it takes the permit before the throttle, and a
+/// 429 is retried and holds the client (DRIFT R8). The body is
+/// `serde_json::to_string`'s, the bytes reqwest's `.json` sent, not core's
+/// `Request::body`, which would sort the keys.
 async fn post_json<B: serde::Serialize, T: serde::de::DeserializeOwned>(
     http: &HttpClient,
     path: &str,
     body: &B,
     query: &[(&str, String)],
 ) -> Result<T, GammaError> {
-    let url = http
-        .base_url
-        .join(path)
-        .map_err(|e| GammaError::Api(ApiError::from(e)))?;
+    let mut parts = RequestParts::new(Method::POST, path);
+    parts.query = query
+        .iter()
+        .map(|(key, value)| ((*key).to_owned(), value.clone()))
+        .collect();
+    parts
+        .headers
+        .insert(CONTENT_TYPE, HeaderValue::from_static("application/json"));
+    parts.body = Some(serde_json::to_string(body).map_err(|e| GammaError::Api(ApiError::from(e)))?);
+    let response = http.send(parts, &[], None).await?;
 
-    http.acquire_rate_limit(path, Some(&reqwest::Method::POST))
-        .await;
-    let _permit = http.acquire_concurrency().await;
-    let response = http
-        .client
-        .post(url)
-        .query(query)
-        .json(body)
-        .send()
-        .await
-        .map_err(|e| GammaError::Api(ApiError::from(e)))?;
-
+    // Only a policy that is `Done` with a failed response gets here.
     if !response.status().is_success() {
-        return Err(GammaError::from_response(response).await);
+        return Err(ApiError::from_response(response).await.into());
     }
 
     let text = response
@@ -254,10 +256,9 @@ pub struct GetMarket {
 }
 
 impl GetMarket {
-    /// Include tag data in response
-    pub fn include_tag(mut self, include: bool) -> Self {
-        self.request = self.request.query("include_tag", include);
-        self
+    polyoxide_core::query_setters! {
+        /// Include tag data in response
+        include_tag: bool => "include_tag",
     }
 
     /// Execute the request
@@ -322,225 +323,110 @@ pub struct ListMarkets {
 }
 
 impl ListMarkets {
-    /// Set maximum number of results (minimum: 0)
-    pub fn limit(mut self, limit: u32) -> Self {
-        self.request = self.request.query("limit", limit);
-        self
-    }
-
-    /// Set pagination offset (minimum: 0)
-    pub fn offset(mut self, offset: u32) -> Self {
-        self.request = self.request.query("offset", offset);
-        self
-    }
-
-    /// Set order fields (comma-separated list)
-    pub fn order(mut self, order: impl Into<String>) -> Self {
-        self.request = self.request.query("order", order.into());
-        self
-    }
-
-    /// Set sort direction
-    pub fn ascending(mut self, ascending: bool) -> Self {
-        self.request = self.request.query("ascending", ascending);
-        self
-    }
-
-    /// Filter by specific market IDs
-    ///
-    /// Safe batch size: ≤ 400 per request. URLs over ~8 KB are rejected
-    /// upstream with `414 URI Too Long`; empirically the ceiling is ~583.
-    ///
-    /// # Note on closed markets
-    ///
-    /// The upstream `/markets` endpoint applies an implicit `closed=false`
-    /// default when no `closed` param is sent, so this filter silently drops
-    /// closed markets unless `.closed(true)` is also set. For pinpoint lookup
-    /// by ID regardless of status, use [`Markets::get_many`].
-    pub fn id(mut self, ids: impl IntoIterator<Item = i64>) -> Self {
-        self.request = self.request.query_many("id", ids);
-        self
-    }
-
-    /// Filter by market slugs
-    ///
-    /// Safe batch size: ≤ 100 per request. URL length is capped at ~8 KB
-    /// upstream; slug entries vary so pick a cap based on your longest slug.
-    ///
-    /// # Note on closed markets
-    ///
-    /// Same trap as [`Self::id`]: upstream defaults to `closed=false`, so this
-    /// filter drops closed markets unless `.closed(true)` is also set.
-    pub fn slug(mut self, slugs: impl IntoIterator<Item = impl ToString>) -> Self {
-        self.request = self.request.query_many("slug", slugs);
-        self
-    }
-
-    /// Filter by CLOB token IDs
-    ///
-    /// Safe batch size: ≤ 50 per request. Token IDs are 77-digit decimals
-    /// (~90 B/entry on the wire); URLs over ~8 KB are rejected with `414`.
-    pub fn clob_token_ids(mut self, token_ids: impl IntoIterator<Item = impl ToString>) -> Self {
-        self.request = self.request.query_many("clob_token_ids", token_ids);
-        self
-    }
-
-    /// Filter by condition IDs
-    ///
-    /// Safe batch size: ≤ 60 per request. Condition IDs are 66-char hex
-    /// (~80 B/entry); empirically the upstream ceiling is exactly 100 before
-    /// `414 URI Too Long`.
-    ///
-    /// # Note on closed markets
-    ///
-    /// Same trap as [`Self::id`]: upstream defaults to `closed=false`, so this
-    /// filter drops closed markets unless `.closed(true)` is also set.
-    pub fn condition_ids(mut self, condition_ids: impl IntoIterator<Item = impl ToString>) -> Self {
-        self.request = self.request.query_many("condition_ids", condition_ids);
-        self
-    }
-
-    /// Filter by market maker addresses
-    ///
-    /// Safe batch size: ≤ 80 per request. Ethereum addresses are 42 chars
-    /// (~60 B/entry); URLs over ~8 KB are rejected upstream with `414`.
-    ///
-    /// Upstream's published spec dropped this parameter in 2026-09, but the
-    /// server still applies it (verified 2026-09-14). Only markets created on
-    /// the old AMM carry a non-empty address, so most markets never match. See
-    /// `docs/specs/gamma/OBSERVED.md`.
-    pub fn market_maker_address(
-        mut self,
-        addresses: impl IntoIterator<Item = impl ToString>,
-    ) -> Self {
-        self.request = self.request.query_many("market_maker_address", addresses);
-        self
-    }
-
-    /// Set minimum liquidity threshold
-    pub fn liquidity_num_min(mut self, min: f64) -> Self {
-        self.request = self.request.query("liquidity_num_min", min);
-        self
-    }
-
-    /// Set maximum liquidity threshold
-    pub fn liquidity_num_max(mut self, max: f64) -> Self {
-        self.request = self.request.query("liquidity_num_max", max);
-        self
-    }
-
-    /// Set minimum trading volume
-    pub fn volume_num_min(mut self, min: f64) -> Self {
-        self.request = self.request.query("volume_num_min", min);
-        self
-    }
-
-    /// Set maximum trading volume
-    pub fn volume_num_max(mut self, max: f64) -> Self {
-        self.request = self.request.query("volume_num_max", max);
-        self
-    }
-
-    /// Set earliest market start date (ISO 8601 format)
-    pub fn start_date_min(mut self, date: impl Into<String>) -> Self {
-        self.request = self.request.query("start_date_min", date.into());
-        self
-    }
-
-    /// Set latest market start date (ISO 8601 format)
-    pub fn start_date_max(mut self, date: impl Into<String>) -> Self {
-        self.request = self.request.query("start_date_max", date.into());
-        self
-    }
-
-    /// Set earliest market end date (ISO 8601 format)
-    pub fn end_date_min(mut self, date: impl Into<String>) -> Self {
-        self.request = self.request.query("end_date_min", date.into());
-        self
-    }
-
-    /// Set latest market end date (ISO 8601 format)
-    pub fn end_date_max(mut self, date: impl Into<String>) -> Self {
-        self.request = self.request.query("end_date_max", date.into());
-        self
-    }
-
-    /// Filter by tag identifier
-    pub fn tag_id(mut self, tag_id: i64) -> Self {
-        self.request = self.request.query("tag_id", tag_id);
-        self
-    }
-
-    /// Include related tags in response
-    pub fn related_tags(mut self, include: bool) -> Self {
-        self.request = self.request.query("related_tags", include);
-        self
-    }
-
-    /// Filter for create-your-own markets
-    pub fn cyom(mut self, cyom: bool) -> Self {
-        self.request = self.request.query("cyom", cyom);
-        self
-    }
-
-    /// Filter by UMA resolution status
-    pub fn uma_resolution_status(mut self, status: impl Into<String>) -> Self {
-        self.request = self.request.query("uma_resolution_status", status.into());
-        self
-    }
-
-    /// Filter by game identifier
-    pub fn game_id(mut self, game_id: impl Into<String>) -> Self {
-        self.request = self.request.query("game_id", game_id.into());
-        self
-    }
-
-    /// Filter by sports market types
-    ///
-    /// Safe batch size: ≤ 150 per request. URL length is capped at ~8 KB
-    /// upstream (`414 URI Too Long`).
-    pub fn sports_market_types(mut self, types: impl IntoIterator<Item = impl ToString>) -> Self {
-        self.request = self.request.query_many("sports_market_types", types);
-        self
-    }
-
-    /// Set minimum rewards threshold
-    pub fn rewards_min_size(mut self, min: f64) -> Self {
-        self.request = self.request.query("rewards_min_size", min);
-        self
-    }
-
-    /// Filter by question identifiers
-    ///
-    /// Safe batch size: ≤ 60 per request. Question IDs are 66-char hex
-    /// (~80 B/entry); URLs over ~8 KB are rejected upstream with `414`.
-    pub fn question_ids(mut self, question_ids: impl IntoIterator<Item = impl ToString>) -> Self {
-        self.request = self.request.query_many("question_ids", question_ids);
-        self
-    }
-
-    /// Include tag data in results
-    pub fn include_tag(mut self, include: bool) -> Self {
-        self.request = self.request.query("include_tag", include);
-        self
-    }
-
-    /// Filter for closed or active markets
-    pub fn closed(mut self, closed: bool) -> Self {
-        self.request = self.request.query("closed", closed);
-        self
-    }
-
-    /// Filter by open status (convenience method, opposite of closed)
-    pub fn open(mut self, open: bool) -> Self {
-        self.request = self.request.query("closed", !open);
-        self
-    }
-
-    /// Filter by archived status
-    pub fn archived(mut self, archived: bool) -> Self {
-        self.request = self.request.query("archived", archived);
-        self
+    polyoxide_core::query_setters! {
+        /// Set maximum number of results (minimum: 0)
+        limit: u32 => "limit",
+        /// Set pagination offset (minimum: 0)
+        offset: u32 => "offset",
+        /// Set order fields (comma-separated list)
+        order: impl Into<String> => "order",
+        /// Set sort direction
+        ascending: bool => "ascending",
+        /// Filter by specific market IDs
+        ///
+        /// Safe batch size: ≤ 400 per request. URLs over ~8 KB are rejected
+        /// upstream with `414 URI Too Long`; empirically the ceiling is ~583.
+        ///
+        /// # Note on closed markets
+        ///
+        /// The upstream `/markets` endpoint applies an implicit `closed=false`
+        /// default when no `closed` param is sent, so this filter silently drops
+        /// closed markets unless `.closed(true)` is also set. For pinpoint lookup
+        /// by ID regardless of status, use [`Markets::get_many`].
+        id: many impl IntoIterator<Item = i64> => "id",
+        /// Filter by market slugs
+        ///
+        /// Safe batch size: ≤ 100 per request. URL length is capped at ~8 KB
+        /// upstream; slug entries vary so pick a cap based on your longest slug.
+        ///
+        /// # Note on closed markets
+        ///
+        /// Same trap as [`Self::id`]: upstream defaults to `closed=false`, so this
+        /// filter drops closed markets unless `.closed(true)` is also set.
+        slug: many impl IntoIterator<Item = impl ToString> => "slug",
+        /// Filter by CLOB token IDs
+        ///
+        /// Safe batch size: ≤ 50 per request. Token IDs are 77-digit decimals
+        /// (~90 B/entry on the wire); URLs over ~8 KB are rejected with `414`.
+        clob_token_ids: many impl IntoIterator<Item = impl ToString> => "clob_token_ids",
+        /// Filter by condition IDs
+        ///
+        /// Safe batch size: ≤ 60 per request. Condition IDs are 66-char hex
+        /// (~80 B/entry); empirically the upstream ceiling is exactly 100 before
+        /// `414 URI Too Long`.
+        ///
+        /// # Note on closed markets
+        ///
+        /// Same trap as [`Self::id`]: upstream defaults to `closed=false`, so this
+        /// filter drops closed markets unless `.closed(true)` is also set.
+        condition_ids: many impl IntoIterator<Item = impl ToString> => "condition_ids",
+        /// Filter by market maker addresses
+        ///
+        /// Safe batch size: ≤ 80 per request. Ethereum addresses are 42 chars
+        /// (~60 B/entry); URLs over ~8 KB are rejected upstream with `414`.
+        ///
+        /// Upstream's published spec dropped this parameter in 2026-09, but the
+        /// server still applies it (verified 2026-09-14). Only markets created on
+        /// the old AMM carry a non-empty address, so most markets never match. See
+        /// `docs/specs/gamma/OBSERVED.md`.
+        market_maker_address: many impl IntoIterator<Item = impl ToString>
+            => "market_maker_address",
+        /// Set minimum liquidity threshold
+        liquidity_num_min: f64 => "liquidity_num_min",
+        /// Set maximum liquidity threshold
+        liquidity_num_max: f64 => "liquidity_num_max",
+        /// Set minimum trading volume
+        volume_num_min: f64 => "volume_num_min",
+        /// Set maximum trading volume
+        volume_num_max: f64 => "volume_num_max",
+        /// Set earliest market start date (ISO 8601 format)
+        start_date_min: impl Into<String> => "start_date_min",
+        /// Set latest market start date (ISO 8601 format)
+        start_date_max: impl Into<String> => "start_date_max",
+        /// Set earliest market end date (ISO 8601 format)
+        end_date_min: impl Into<String> => "end_date_min",
+        /// Set latest market end date (ISO 8601 format)
+        end_date_max: impl Into<String> => "end_date_max",
+        /// Filter by tag identifier
+        tag_id: i64 => "tag_id",
+        /// Include related tags in response
+        related_tags: bool => "related_tags",
+        /// Filter for create-your-own markets
+        cyom: bool => "cyom",
+        /// Filter by UMA resolution status
+        uma_resolution_status: impl Into<String> => "uma_resolution_status",
+        /// Filter by game identifier
+        game_id: impl Into<String> => "game_id",
+        /// Filter by sports market types
+        ///
+        /// Safe batch size: ≤ 150 per request. URL length is capped at ~8 KB
+        /// upstream (`414 URI Too Long`).
+        sports_market_types: many impl IntoIterator<Item = impl ToString> => "sports_market_types",
+        /// Set minimum rewards threshold
+        rewards_min_size: f64 => "rewards_min_size",
+        /// Filter by question identifiers
+        ///
+        /// Safe batch size: ≤ 60 per request. Question IDs are 66-char hex
+        /// (~80 B/entry); URLs over ~8 KB are rejected upstream with `414`.
+        question_ids: many impl IntoIterator<Item = impl ToString> => "question_ids",
+        /// Include tag data in results
+        include_tag: bool => "include_tag",
+        /// Filter for closed or active markets
+        closed: bool => "closed",
+        /// Filter by open status (convenience method, opposite of closed)
+        open(open: bool) => "closed" = !open,
+        /// Filter by archived status
+        archived: bool => "archived",
     }
 
     /// Execute the request
@@ -555,190 +441,71 @@ pub struct ListKeysetMarkets {
 }
 
 impl ListKeysetMarkets {
-    /// Maximum number of results to return (upstream max 1000).
-    pub fn limit(mut self, limit: u32) -> Self {
-        self.request = self.request.query("limit", limit);
-        self
-    }
-
-    /// Comma-separated list of JSON field names to order by.
-    pub fn order(mut self, order: impl Into<String>) -> Self {
-        self.request = self.request.query("order", order.into());
-        self
-    }
-
-    /// Sort direction (used only when `order` is set).
-    pub fn ascending(mut self, ascending: bool) -> Self {
-        self.request = self.request.query("ascending", ascending);
-        self
-    }
-
-    /// Opaque cursor token from a previous response's `next_cursor`.
-    pub fn after_cursor(mut self, cursor: impl Into<String>) -> Self {
-        self.request = self.request.query("after_cursor", cursor.into());
-        self
-    }
-
-    /// Filter by specific market IDs.
-    pub fn id(mut self, ids: impl IntoIterator<Item = i64>) -> Self {
-        self.request = self.request.query_many("id", ids);
-        self
-    }
-
-    /// Filter by market slugs.
-    pub fn slug(mut self, slugs: impl IntoIterator<Item = impl ToString>) -> Self {
-        self.request = self.request.query_many("slug", slugs);
-        self
-    }
-
-    /// Filter by closed status (defaults to `false` upstream).
-    pub fn closed(mut self, closed: bool) -> Self {
-        self.request = self.request.query("closed", closed);
-        self
-    }
-
-    /// Filter by CLOB token IDs.
-    pub fn clob_token_ids(mut self, ids: impl IntoIterator<Item = impl ToString>) -> Self {
-        self.request = self.request.query_many("clob_token_ids", ids);
-        self
-    }
-
-    /// Filter by condition IDs.
-    pub fn condition_ids(mut self, ids: impl IntoIterator<Item = impl ToString>) -> Self {
-        self.request = self.request.query_many("condition_ids", ids);
-        self
-    }
-
-    /// Filter by question IDs.
-    pub fn question_ids(mut self, ids: impl IntoIterator<Item = impl ToString>) -> Self {
-        self.request = self.request.query_many("question_ids", ids);
-        self
-    }
-
-    /// Filter by market-maker addresses.
-    ///
-    /// Undocumented upstream since 2026-09 but still applied by the server —
-    /// see [`ListMarkets::market_maker_address`].
-    pub fn market_maker_address(
-        mut self,
-        addresses: impl IntoIterator<Item = impl ToString>,
-    ) -> Self {
-        self.request = self.request.query_many("market_maker_address", addresses);
-        self
-    }
-
-    /// Set minimum liquidity threshold.
-    pub fn liquidity_num_min(mut self, min: f64) -> Self {
-        self.request = self.request.query("liquidity_num_min", min);
-        self
-    }
-
-    /// Set maximum liquidity threshold.
-    pub fn liquidity_num_max(mut self, max: f64) -> Self {
-        self.request = self.request.query("liquidity_num_max", max);
-        self
-    }
-
-    /// Set minimum trading volume.
-    pub fn volume_num_min(mut self, min: f64) -> Self {
-        self.request = self.request.query("volume_num_min", min);
-        self
-    }
-
-    /// Set maximum trading volume.
-    pub fn volume_num_max(mut self, max: f64) -> Self {
-        self.request = self.request.query("volume_num_max", max);
-        self
-    }
-
-    /// Set earliest market start date (ISO 8601 format).
-    pub fn start_date_min(mut self, date: impl Into<String>) -> Self {
-        self.request = self.request.query("start_date_min", date.into());
-        self
-    }
-
-    /// Set latest market start date (ISO 8601 format).
-    pub fn start_date_max(mut self, date: impl Into<String>) -> Self {
-        self.request = self.request.query("start_date_max", date.into());
-        self
-    }
-
-    /// Set earliest market end date (ISO 8601 format).
-    pub fn end_date_min(mut self, date: impl Into<String>) -> Self {
-        self.request = self.request.query("end_date_min", date.into());
-        self
-    }
-
-    /// Set latest market end date (ISO 8601 format).
-    pub fn end_date_max(mut self, date: impl Into<String>) -> Self {
-        self.request = self.request.query("end_date_max", date.into());
-        self
-    }
-
-    /// Filter by tag IDs.
-    pub fn tag_id(mut self, tag_ids: impl IntoIterator<Item = i64>) -> Self {
-        self.request = self.request.query_many("tag_id", tag_ids);
-        self
-    }
-
-    /// Include related tags in response.
-    pub fn related_tags(mut self, include: bool) -> Self {
-        self.request = self.request.query("related_tags", include);
-        self
-    }
-
-    /// Filter create-your-own markets.
-    pub fn cyom(mut self, cyom: bool) -> Self {
-        self.request = self.request.query("cyom", cyom);
-        self
-    }
-
-    /// Filter markets with RFQ enabled.
-    pub fn rfq_enabled(mut self, enabled: bool) -> Self {
-        self.request = self.request.query("rfq_enabled", enabled);
-        self
-    }
-
-    /// Filter by UMA resolution status.
-    pub fn uma_resolution_status(mut self, status: impl Into<String>) -> Self {
-        self.request = self.request.query("uma_resolution_status", status.into());
-        self
-    }
-
-    /// Filter by game identifier.
-    pub fn game_id(mut self, game_id: impl Into<String>) -> Self {
-        self.request = self.request.query("game_id", game_id.into());
-        self
-    }
-
-    /// Filter by sports market types.
-    pub fn sports_market_types(mut self, types: impl IntoIterator<Item = impl ToString>) -> Self {
-        self.request = self.request.query_many("sports_market_types", types);
-        self
-    }
-
-    /// Include tag data in results.
-    pub fn include_tag(mut self, include: bool) -> Self {
-        self.request = self.request.query("include_tag", include);
-        self
-    }
-
-    /// Return decimalized price and size fields.
-    pub fn decimalized(mut self, decimalized: bool) -> Self {
-        self.request = self.request.query("decimalized", decimalized);
-        self
-    }
-
-    /// Tag matching mode.
-    pub fn tag_match(mut self, mode: impl Into<String>) -> Self {
-        self.request = self.request.query("tag_match", mode.into());
-        self
-    }
-
-    /// Set the response locale.
-    pub fn locale(mut self, locale: impl Into<String>) -> Self {
-        self.request = self.request.query("locale", locale.into());
-        self
+    polyoxide_core::query_setters! {
+        /// Maximum number of results to return (upstream max 1000).
+        limit: u32 => "limit",
+        /// Comma-separated list of JSON field names to order by.
+        order: impl Into<String> => "order",
+        /// Sort direction (used only when `order` is set).
+        ascending: bool => "ascending",
+        /// Opaque cursor token from a previous response's `next_cursor`.
+        after_cursor: impl Into<String> => "after_cursor",
+        /// Filter by specific market IDs.
+        id: many impl IntoIterator<Item = i64> => "id",
+        /// Filter by market slugs.
+        slug: many impl IntoIterator<Item = impl ToString> => "slug",
+        /// Filter by closed status (defaults to `false` upstream).
+        closed: bool => "closed",
+        /// Filter by CLOB token IDs.
+        clob_token_ids: many impl IntoIterator<Item = impl ToString> => "clob_token_ids",
+        /// Filter by condition IDs.
+        condition_ids: many impl IntoIterator<Item = impl ToString> => "condition_ids",
+        /// Filter by question IDs.
+        question_ids: many impl IntoIterator<Item = impl ToString> => "question_ids",
+        /// Filter by market-maker addresses.
+        ///
+        /// Undocumented upstream since 2026-09 but still applied by the server —
+        /// see [`ListMarkets::market_maker_address`].
+        market_maker_address: many impl IntoIterator<Item = impl ToString>
+            => "market_maker_address",
+        /// Set minimum liquidity threshold.
+        liquidity_num_min: f64 => "liquidity_num_min",
+        /// Set maximum liquidity threshold.
+        liquidity_num_max: f64 => "liquidity_num_max",
+        /// Set minimum trading volume.
+        volume_num_min: f64 => "volume_num_min",
+        /// Set maximum trading volume.
+        volume_num_max: f64 => "volume_num_max",
+        /// Set earliest market start date (ISO 8601 format).
+        start_date_min: impl Into<String> => "start_date_min",
+        /// Set latest market start date (ISO 8601 format).
+        start_date_max: impl Into<String> => "start_date_max",
+        /// Set earliest market end date (ISO 8601 format).
+        end_date_min: impl Into<String> => "end_date_min",
+        /// Set latest market end date (ISO 8601 format).
+        end_date_max: impl Into<String> => "end_date_max",
+        /// Filter by tag IDs.
+        tag_id: many impl IntoIterator<Item = i64> => "tag_id",
+        /// Include related tags in response.
+        related_tags: bool => "related_tags",
+        /// Filter create-your-own markets.
+        cyom: bool => "cyom",
+        /// Filter markets with RFQ enabled.
+        rfq_enabled: bool => "rfq_enabled",
+        /// Filter by UMA resolution status.
+        uma_resolution_status: impl Into<String> => "uma_resolution_status",
+        /// Filter by game identifier.
+        game_id: impl Into<String> => "game_id",
+        /// Filter by sports market types.
+        sports_market_types: many impl IntoIterator<Item = impl ToString> => "sports_market_types",
+        /// Include tag data in results.
+        include_tag: bool => "include_tag",
+        /// Return decimalized price and size fields.
+        decimalized: bool => "decimalized",
+        /// Tag matching mode.
+        tag_match: impl Into<String> => "tag_match",
+        /// Set the response locale.
+        locale: impl Into<String> => "locale",
     }
 
     // Note: `/markets/keyset` documents `offset` as "Not allowed. Returns 422 if

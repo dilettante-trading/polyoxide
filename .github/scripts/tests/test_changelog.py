@@ -14,12 +14,13 @@ CI cannot catch this on its own. `release.yml` runs git-cliff with
 `--latest --strip header` purely to compose the GitHub release *body*; it never
 writes the file back, so CHANGELOG.md is only ever updated by hand.
 
-These tests read Cargo.toml and CHANGELOG.md and nothing else -- no git, no
-network. That matters: `actions/checkout` clones shallow and tagless by
-default, and CI runs on every branch, so any invariant phrased against tags or
-against "commits since the last release" would be both unavailable and wrong
-(it would fail on every in-flight branch). What is asserted here holds on every
-commit of every branch.
+These tests read Cargo.toml and CHANGELOG.md, and the workspace version through
+`scripts/publish_order.py`, which runs `cargo metadata --offline` -- no network.
+Nor git: `actions/checkout` clones shallow and tagless by default, and CI runs
+on every branch, so any invariant phrased against tags or against "commits
+since the last release" would be both unavailable and wrong (it would fail on
+every in-flight branch). What is asserted here holds on every commit of every
+branch.
 
 Deliberately NOT covered: a commit that lands *after* the release commit but
 *before* CI cuts the tag is released with no changelog entry, and this file
@@ -31,12 +32,28 @@ which is a property of the process, not of these two files.
 
 from __future__ import annotations
 
+import importlib.util
 import re
+import sys
 from pathlib import Path
 
 import pytest
 
 REPO = Path(__file__).resolve().parents[3]
+
+
+def _load_publish_order():
+    """`scripts/publish_order.py`, which lives outside this uv project."""
+    spec = importlib.util.spec_from_file_location(
+        "publish_order", REPO / "scripts" / "publish_order.py"
+    )
+    module = importlib.util.module_from_spec(spec)
+    sys.modules[spec.name] = module
+    spec.loader.exec_module(module)
+    return module
+
+
+publish_order = _load_publish_order()
 
 # `## [0.28.0] - 2026-08-19`. The date is matched, not merely tolerated: an
 # undated heading is how a half-finished release announces itself.
@@ -49,9 +66,7 @@ SECTION_RE = re.compile(
 # held apart from the workspace series rather than interleaved with it.
 LEGACY_PREFIX = "cli-v"
 
-# `version = "0.28.0"` under `[workspace.package]`, and the same string repeated
-# in each `[workspace.dependencies]` path pin.
-WORKSPACE_VERSION_RE = re.compile(r'^version = "(?P<version>[^"]+)"$', re.MULTILINE)
+# The workspace version, repeated in each `[workspace.dependencies]` path pin.
 PATH_PIN_RE = re.compile(
     r'^(?P<crate>polyoxide-[a-z]+) = \{ path = "[^"]+", version = "(?P<version>[^"]+)" \}$',
     re.MULTILINE,
@@ -76,18 +91,12 @@ def sections() -> list[tuple[str, str]]:
 
 
 def workspace_version() -> str:
-    """The version every crate inherits via `version.workspace = true`.
+    """The version every publishable crate carries, as release.yml reads it.
 
-    `[workspace.package]` is the first table in Cargo.toml carrying a bare
-    `version` key, so the first match is the workspace version. The pins under
-    `[workspace.dependencies]` use a different shape and cannot collide.
+    Read from `cargo metadata` rather than by pattern, so a reformatted
+    Cargo.toml cannot make it read the wrong `version` line.
     """
-    match = WORKSPACE_VERSION_RE.search(_cargo())
-    assert match is not None, (
-        "No `version = \"...\"` line found in Cargo.toml. The workspace manifest "
-        "was restructured; update WORKSPACE_VERSION_RE in this file to match."
-    )
-    return match.group("version")
+    return publish_order.workspace_version()
 
 
 def _order_key(version: str) -> tuple[int, ...]:
@@ -97,9 +106,9 @@ def _order_key(version: str) -> tuple[int, ...]:
 def test_workspace_version_has_a_changelog_section() -> None:
     """The version Cargo.toml claims must be a released, dated section.
 
-    This is the assertion that 0.27.0 would have failed. release.yml greps this
-    same version out of Cargo.toml and cuts a tag from it, so a version with no
-    section is a release with no notes.
+    This is the assertion that 0.27.0 would have failed. release.yml reads this
+    same version through scripts/publish_order.py and cuts a tag from it, so a
+    version with no section is a release with no notes.
     """
     version = workspace_version()
     documented = {found for found, _ in sections()}
@@ -183,11 +192,11 @@ def test_workspace_dependency_pins_match_the_workspace_version() -> None:
     )
 
 
-@pytest.mark.parametrize("regex", [SECTION_RE, WORKSPACE_VERSION_RE, PATH_PIN_RE])
+@pytest.mark.parametrize("regex", [SECTION_RE, PATH_PIN_RE])
 def test_parsers_still_match_something(regex: re.Pattern[str]) -> None:
     """Guard the guards: a reformat must fail loudly, not pass vacuously.
 
-    Every assertion above is built on one of these three patterns. If a file is
+    Every assertion above is built on one of these patterns. If a file is
     reformatted so a pattern stops matching, the checks would quietly degrade
     into assertions about an empty list. This separates "the invariant broke"
     from "the parser stopped seeing the file".

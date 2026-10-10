@@ -27,88 +27,39 @@ pub struct PublicSearch {
 }
 
 impl PublicSearch {
-    /// Include profile results in search
-    pub fn search_profiles(mut self, include: bool) -> Self {
-        self.request = self.request.query("search_profiles", include);
-        self
-    }
-
-    /// Set maximum results per type
-    pub fn limit_per_type(mut self, limit: u32) -> Self {
-        self.request = self.request.query("limit_per_type", limit);
-        self
-    }
-
-    /// Set page number
-    pub fn page(mut self, page: u32) -> Self {
-        self.request = self.request.query("page", page);
-        self
-    }
-
-    /// Enable/disable caching
-    pub fn cache(mut self, cache: bool) -> Self {
-        self.request = self.request.query("cache", cache);
-        self
-    }
-
-    /// Filter by event status
-    pub fn events_status(mut self, status: impl Into<String>) -> Self {
-        self.request = self.request.query("events_status", status.into());
-        self
-    }
-
-    /// Filter by event tag IDs
-    ///
-    /// Safe batch size: ≤ 200 per request. URLs over ~8 KB are rejected
-    /// upstream with `414 URI Too Long`.
-    pub fn events_tag(mut self, tag_ids: impl IntoIterator<Item = impl ToString>) -> Self {
-        self.request = self.request.query_many("events_tag", tag_ids);
-        self
-    }
-
-    /// Include closed markets in results
-    pub fn keep_closed_markets(mut self, keep: i32) -> Self {
-        self.request = self.request.query("keep_closed_markets", keep);
-        self
-    }
-
-    /// Set sort order
-    pub fn sort(mut self, sort: impl Into<String>) -> Self {
-        self.request = self.request.query("sort", sort.into());
-        self
-    }
-
-    /// Sort direction (used only when [`sort`](Self::sort) is set).
-    pub fn ascending(mut self, ascending: bool) -> Self {
-        self.request = self.request.query("ascending", ascending);
-        self
-    }
-
-    /// Include tag search results
-    pub fn search_tags(mut self, include: bool) -> Self {
-        self.request = self.request.query("search_tags", include);
-        self
-    }
-
-    /// Filter by recurrence pattern
-    pub fn recurrence(mut self, recurrence: impl Into<String>) -> Self {
-        self.request = self.request.query("recurrence", recurrence.into());
-        self
-    }
-
-    /// Exclude events with specified tag IDs
-    ///
-    /// Safe batch size: ≤ 500 per request. Tag IDs are short integers
-    /// (~5 B/entry); URLs over ~8 KB are rejected upstream with `414`.
-    pub fn exclude_tag_id(mut self, tag_ids: impl IntoIterator<Item = i64>) -> Self {
-        self.request = self.request.query_many("exclude_tag_id", tag_ids);
-        self
-    }
-
-    /// Enable optimized search
-    pub fn optimized(mut self, optimized: bool) -> Self {
-        self.request = self.request.query("optimized", optimized);
-        self
+    polyoxide_core::query_setters! {
+        /// Include profile results in search
+        search_profiles: bool => "search_profiles",
+        /// Set maximum results per type
+        limit_per_type: u32 => "limit_per_type",
+        /// Set page number
+        page: u32 => "page",
+        /// Enable/disable caching
+        cache: bool => "cache",
+        /// Filter by event status
+        events_status: impl Into<String> => "events_status",
+        /// Filter by event tag IDs
+        ///
+        /// Safe batch size: ≤ 200 per request. URLs over ~8 KB are rejected
+        /// upstream with `414 URI Too Long`.
+        events_tag: many impl IntoIterator<Item = impl ToString> => "events_tag",
+        /// Include closed markets in results
+        keep_closed_markets: i32 => "keep_closed_markets",
+        /// Set sort order
+        sort: impl Into<String> => "sort",
+        /// Sort direction (used only when [`sort`](Self::sort) is set).
+        ascending: bool => "ascending",
+        /// Include tag search results
+        search_tags: bool => "search_tags",
+        /// Filter by recurrence pattern
+        recurrence: impl Into<String> => "recurrence",
+        /// Exclude events with specified tag IDs
+        ///
+        /// Safe batch size: ≤ 500 per request. Tag IDs are short integers
+        /// (~5 B/entry); URLs over ~8 KB are rejected upstream with `414`.
+        exclude_tag_id: many impl IntoIterator<Item = i64> => "exclude_tag_id",
+        /// Enable optimized search
+        optimized: bool => "optimized",
     }
 
     /// Execute the request

@@ -231,11 +231,11 @@ async fn error_404_returns_api_error() {
     let err = gamma.markets().get("nonexistent").send().await.unwrap_err();
 
     match err {
-        GammaError::Api(polyoxide_core::ApiError::Api { status, message }) => {
-            assert_eq!(status, 404);
-            assert_eq!(message, "not found");
+        GammaError::Api(polyoxide_core::ApiError::Response(r)) => {
+            assert_eq!(r.status.as_u16(), 404);
+            assert_eq!(r.message, "not found");
         }
-        other => panic!("Expected ApiError::Api(404), got: {:?}", other),
+        other => panic!("Expected ApiError::Response(404), got: {:?}", other),
     }
 
     mock.assert_async().await;
@@ -257,10 +257,10 @@ async fn error_401_returns_authentication_error() {
     let err = gamma.markets().get("secret").send().await.unwrap_err();
 
     match err {
-        GammaError::Api(polyoxide_core::ApiError::Authentication(msg)) => {
-            assert_eq!(msg, "unauthorized");
+        GammaError::Api(polyoxide_core::ApiError::Response(r)) if r.status.as_u16() == 401 => {
+            assert_eq!(r.message, "unauthorized");
         }
-        other => panic!("Expected Authentication error, got: {:?}", other),
+        other => panic!("Expected a 401, got: {:?}", other),
     }
 
     mock.assert_async().await;
@@ -282,10 +282,10 @@ async fn error_400_returns_validation_error() {
     let err = gamma.markets().list().send().await.unwrap_err();
 
     match err {
-        GammaError::Api(polyoxide_core::ApiError::Validation(msg)) => {
-            assert_eq!(msg, "invalid limit parameter");
+        GammaError::Api(polyoxide_core::ApiError::Response(r)) if r.status.as_u16() == 400 => {
+            assert_eq!(r.message, "invalid limit parameter");
         }
-        other => panic!("Expected Validation error, got: {:?}", other),
+        other => panic!("Expected a 400, got: {:?}", other),
     }
 
     mock.assert_async().await;
@@ -1356,4 +1356,221 @@ async fn list_comments_sends_typed_parent_entity_type() {
 
     assert!(comments.is_empty());
     mock.assert_async().await;
+}
+
+#[tokio::test]
+async fn the_builder_installs_polymarkets_retry_policy_so_a_425_is_retried() {
+    // Core's own default policy does not retry a 425 (AD-17); only the builder's
+    // `with_retry_policy(PolymarketRetryPolicy)` makes this succeed.
+    let mut server = Server::new_async().await;
+    let early = server
+        .mock("GET", "/markets")
+        .match_query(Matcher::Any)
+        .with_status(425)
+        .expect(1)
+        .create_async()
+        .await;
+    let ok = server
+        .mock("GET", "/markets")
+        .match_query(Matcher::Any)
+        .with_status(200)
+        .with_header("content-type", "application/json")
+        .with_body(r#"[]"#)
+        .expect(1)
+        .create_async()
+        .await;
+
+    let client = Gamma::builder()
+        .base_url(server.url())
+        .with_retry_config(polyoxide_core::RetryConfig {
+            max_retries: 3,
+            initial_backoff_ms: 1,
+            max_backoff_ms: 10,
+        })
+        .build()
+        .unwrap();
+    client
+        .markets()
+        .list()
+        .send()
+        .await
+        .expect("a 425 is the matching engine restarting, retried to the success");
+    early.assert_async().await;
+    ok.assert_async().await;
+}
+
+/// A mock answering `method path` with two 429s, then `body` for good.
+async fn throttled_twice(
+    server: &mut mockito::ServerGuard,
+    method: &str,
+    path: &str,
+    body: &str,
+    hits: usize,
+) -> mockito::Mock {
+    let served = std::sync::atomic::AtomicUsize::new(0);
+    server
+        .mock(method, path)
+        .match_query(Matcher::Any)
+        .with_status_code_from_request(move |_| {
+            match served.fetch_add(1, std::sync::atomic::Ordering::SeqCst) {
+                0 | 1 => 429,
+                _ => 200,
+            }
+        })
+        .with_header("content-type", "application/json")
+        .with_body(body)
+        .expect(hits)
+        .create_async()
+        .await
+}
+
+/// One retry, at a 300ms base, so a hold is the schedule's first delay,
+/// 225-375ms.
+fn gamma_with_one_retry(server: &mockito::ServerGuard) -> Gamma {
+    Gamma::builder()
+        .base_url(server.url())
+        .with_retry_config(polyoxide_core::RetryConfig {
+            max_retries: 1,
+            initial_backoff_ms: 300,
+            max_backoff_ms: 10_000,
+        })
+        .build()
+        .unwrap()
+}
+
+#[tokio::test]
+async fn a_429_on_ping_holds_the_next_request() {
+    // DRIFT R8: the ping fed no 429 back. On the send loop it is retried and
+    // holds the client.
+    let mut server = Server::new_async().await;
+    let mock = throttled_twice(&mut server, "GET", "/status", "OK", 3).await;
+    let gamma = gamma_with_one_retry(&server);
+
+    let err = gamma.health().ping().await.unwrap_err();
+    assert!(
+        matches!(&err, GammaError::Api(polyoxide_core::ApiError::Response(r)) if r.status.as_u16() == 429),
+        "{err:?}"
+    );
+
+    let start = std::time::Instant::now();
+    let latency = gamma.health().ping().await.unwrap();
+    assert!(
+        start.elapsed() >= std::time::Duration::from_millis(200),
+        "the next request went after {:?}, inside the ping's hold",
+        start.elapsed()
+    );
+    assert!(
+        latency > std::time::Duration::ZERO && latency < std::time::Duration::from_millis(200),
+        "the ping's latency is its last attempt's round trip, which leaves out the hold: {latency:?}"
+    );
+    mock.assert_async().await;
+}
+
+#[tokio::test]
+async fn a_429_on_query_by_information_is_retried_and_holds() {
+    // DRIFT R8: `post_json` took the limiter before the permit, never retried
+    // and fed no 429 back.
+    use polyoxide_gamma::types::MarketsInformationBody;
+
+    let mut server = Server::new_async().await;
+    let mock = throttled_twice(&mut server, "POST", "/markets/information", "[]", 3).await;
+    let gamma = gamma_with_one_retry(&server);
+    let query = || {
+        gamma
+            .markets()
+            .query_by_information(MarketsInformationBody {
+                id: vec![1],
+                ..Default::default()
+            })
+            .send()
+    };
+
+    let err = query().await.unwrap_err();
+    assert!(
+        matches!(&err, GammaError::Api(polyoxide_core::ApiError::Response(r)) if r.status.as_u16() == 429),
+        "{err:?}"
+    );
+
+    let start = std::time::Instant::now();
+    assert!(query().await.unwrap().is_empty());
+    assert!(
+        start.elapsed() >= std::time::Duration::from_millis(200),
+        "the next request went after {:?}, inside the 429's hold",
+        start.elapsed()
+    );
+    mock.assert_async().await;
+}
+
+// ── Bundle J's matrix rows (Story 3.11) ─────────────────────────
+
+#[tokio::test]
+async fn a_503_is_core_s_response_and_retriable() {
+    use polyoxide_venue::Classify;
+
+    let mut server = Server::new_async().await;
+    let mock = server
+        .mock("GET", "/markets/1")
+        .match_query(Matcher::Any)
+        .with_status(503)
+        .with_body(r#"{"error": "down"}"#)
+        .expect(1)
+        .create_async()
+        .await;
+
+    let err = test_gamma(&server)
+        .markets()
+        .get("1")
+        .send()
+        .await
+        .unwrap_err();
+    mock.assert_async().await;
+    assert!(
+        matches!(&err, GammaError::Api(polyoxide_core::ApiError::Response(r)) if r.status == 503),
+        "{err:?}"
+    );
+    assert!(err.is_retriable());
+}
+
+#[tokio::test]
+async fn a_429_out_of_retries_reports_its_retry_after() {
+    use polyoxide_venue::{Class, Classify};
+    use std::time::Duration;
+
+    // A zero is no wait (DRIFT R4).
+    for (header, wait) in [("7", Some(Duration::from_secs(7))), ("0", None)] {
+        let mut server = Server::new_async().await;
+        let mock = server
+            .mock("GET", "/markets/1")
+            .match_query(Matcher::Any)
+            .with_status(429)
+            .with_header("retry-after", header)
+            .with_body(r#"{"error": "slow down"}"#)
+            .expect(2)
+            .create_async()
+            .await;
+        // One retry, then out of retries. The loop clamps the wait it sleeps
+        // to 10ms; the error reports the server's.
+        let gamma = Gamma::builder()
+            .base_url(server.url())
+            .with_retry_config(polyoxide_core::RetryConfig {
+                max_retries: 1,
+                initial_backoff_ms: 1,
+                max_backoff_ms: 10,
+            })
+            .build()
+            .unwrap();
+
+        let err = gamma.markets().get("1").send().await.unwrap_err();
+        mock.assert_async().await;
+        assert!(
+            matches!(&err, GammaError::Api(polyoxide_core::ApiError::Response(r)) if r.status == 429),
+            "Retry-After: {header}: {err:?}"
+        );
+        assert_eq!(
+            err.class(),
+            Class::RateLimited { retry_after: wait },
+            "Retry-After: {header}"
+        );
+        assert_eq!(err.retry_after(), wait, "Retry-After: {header}");
+    }
 }

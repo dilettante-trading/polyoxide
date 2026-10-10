@@ -1,7 +1,7 @@
 //! Mock-server tests: every route's path and exact query, the decoding of a
 //! captured body, error mapping, and the budget's response to the server.
 
-use std::time::{Duration, Instant, SystemTime, UNIX_EPOCH};
+use std::time::{Duration, Instant};
 
 use mockito::{Matcher, Mock, Server, ServerGuard};
 use polyoxide_binance::{
@@ -10,6 +10,7 @@ use polyoxide_binance::{
     BinanceError, Usdm,
 };
 use polyoxide_core::RetryConfig;
+use polyoxide_test_support::{fixtures, minute};
 
 fn usdm(server: &ServerGuard) -> Usdm {
     Usdm::builder().base_url(server.url()).build().unwrap()
@@ -24,11 +25,7 @@ fn usdm_with_retries(server: &ServerGuard, config: RetryConfig) -> Usdm {
 }
 
 fn fixture(name: &str) -> String {
-    std::fs::read_to_string(format!(
-        "{}/tests/fixtures/rest/{name}.json",
-        env!("CARGO_MANIFEST_DIR")
-    ))
-    .unwrap()
+    fixtures!("rest").text(name)
 }
 
 fn btc() -> Symbol {
@@ -56,14 +53,7 @@ async fn route(server: &mut ServerGuard, path: &str, query: &str, body: &str) ->
 /// Waits out the end of a minute, so a test that holds the budget for a moment
 /// cannot see the window roll over underneath it.
 async fn clear_of_a_minute_boundary() {
-    let ms = SystemTime::now()
-        .duration_since(UNIX_EPOCH)
-        .unwrap()
-        .as_millis() as u64
-        % 60_000;
-    if ms > 57_000 {
-        tokio::time::sleep(Duration::from_millis(60_100 - ms)).await;
-    }
+    minute::wait_unless_within(0..=57_000, 100).await;
 }
 
 // ── health and exchange ─────────────────────────────────────────
@@ -711,4 +701,182 @@ async fn each_route_is_charged_its_own_weight() {
     let client = usdm(&server);
     client.market().tickers_24h().send().await.unwrap();
     assert_eq!(client.weight_budget().used(), 40);
+}
+
+#[tokio::test]
+async fn every_usdm_on_one_budget_is_held_by_one_ban() {
+    // Binance bans an IP, not a client: a 418 on one Usdm holds every Usdm
+    // built with the same budget, which is the throttle they all send through.
+    let mut server = Server::new_async().await;
+    let banned = failing(
+        &mut server,
+        418,
+        &[("retry-after", "1")],
+        r#"{"code":-1003,"msg":"banned"}"#,
+    )
+    .await
+    .expect(1);
+    let budget = polyoxide_binance::WeightBudget::new();
+    let client = |budget: &polyoxide_binance::WeightBudget| {
+        Usdm::builder()
+            .base_url(server.url())
+            .weight_budget(budget.clone())
+            .build()
+            .unwrap()
+    };
+    let (first, second) = (client(&budget), client(&budget));
+
+    let err = first
+        .market()
+        .open_interest(&btc())
+        .send()
+        .await
+        .unwrap_err();
+    assert!(matches!(err, BinanceError::IpBanned { .. }), "{err:?}");
+    banned.assert_async().await;
+
+    let start = Instant::now();
+    let _ = second.health().time().send().await;
+    let held = start.elapsed();
+    assert!(
+        held >= Duration::from_millis(900) && held < Duration::from_secs(5),
+        "the other client went after {held:?}, inside the ban"
+    );
+}
+
+#[tokio::test]
+async fn a_425_and_a_5xx_are_not_retried() {
+    // Binance's policy retries only a 429: a 425 or a 5xx reaches the caller
+    // after one request, with retries left.
+    for status in [425, 500, 503] {
+        let mut server = Server::new_async().await;
+        let mock = failing(
+            &mut server,
+            status,
+            &[],
+            r#"{"code":-1001,"msg":"Internal error; unable to process your request."}"#,
+        )
+        .await
+        .expect(1);
+        let err = usdm(&server)
+            .market()
+            .open_interest(&btc())
+            .send()
+            .await
+            .unwrap_err();
+        assert!(
+            matches!(err, BinanceError::Venue { status: s, .. } if usize::from(s) == status),
+            "{status}: {err:?}"
+        );
+        mock.assert_async().await;
+    }
+}
+
+#[tokio::test]
+async fn funding_requests_through_the_client_are_paced() {
+    // `fundingRate` and `fundingInfo` carry no weight and share their own
+    // bucket: 450 per five minutes with a depth of one, so the second request
+    // on a client goes 300s / 449, about 668ms, after the first was charged.
+    // The clock starts before the first, since that is when the second's slot
+    // is fixed. Charged as weight instead, both would go at once.
+    let mut server = Server::new_async().await;
+    let info = route(
+        &mut server,
+        "/fapi/v1/fundingInfo",
+        "",
+        &fixture("funding_info"),
+    )
+    .await
+    .expect(1);
+    let rate = route(
+        &mut server,
+        "/fapi/v1/fundingRate",
+        "",
+        &fixture("funding_rate"),
+    )
+    .await
+    .expect(1);
+    let client = usdm(&server);
+
+    let start = Instant::now();
+    client.exchange().funding_info().send().await.unwrap();
+    client.market().funding_rate().send().await.unwrap();
+    let paced = start.elapsed();
+    assert!(
+        paced >= Duration::from_millis(600) && paced < Duration::from_secs(5),
+        "the second funding request went {paced:?} after the first was charged"
+    );
+    info.assert_async().await;
+    rate.assert_async().await;
+}
+
+#[tokio::test]
+async fn a_retried_ping_reports_the_answering_attempt() {
+    // Story 3.7: the ping runs on `HttpClient::health`, so its latency is the
+    // round trip of the attempt that answered, as every venue's is. It used
+    // to time the whole call, the wait for the budget and the retry included.
+    let mut server = Server::new_async().await;
+    let served = std::sync::atomic::AtomicUsize::new(0);
+    let mock = server
+        .mock("GET", "/fapi/v1/ping")
+        .match_query(Matcher::Missing)
+        .with_status_code_from_request(move |_| {
+            match served.fetch_add(1, std::sync::atomic::Ordering::SeqCst) {
+                0 => 429,
+                _ => 200,
+            }
+        })
+        .with_header("x-mbx-used-weight-1m", "1")
+        .with_body("{}")
+        .expect(2)
+        .create_async()
+        .await;
+    let usdm = usdm_with_retries(
+        &server,
+        RetryConfig {
+            max_retries: 1,
+            initial_backoff_ms: 400,
+            max_backoff_ms: 10_000,
+        },
+    );
+
+    let start = Instant::now();
+    let latency = usdm.health().ping().await.expect("retried to the 200");
+    let elapsed = start.elapsed();
+    mock.assert_async().await;
+    assert!(
+        elapsed >= Duration::from_millis(300),
+        "the call took {elapsed:?}, inside the retry's 300ms floor"
+    );
+    assert!(
+        elapsed.saturating_sub(latency) >= Duration::from_millis(300),
+        "the latency is the answering attempt's, without the backoff: {latency:?} of {elapsed:?}"
+    );
+}
+
+#[tokio::test]
+async fn a_ping_is_charged_its_weight() {
+    // No weight header, so only the client's own charge can count the ping.
+    clear_of_a_minute_boundary().await;
+    let mut server = Server::new_async().await;
+    let mock = server
+        .mock("GET", "/fapi/v1/ping")
+        .match_query(Matcher::Missing)
+        .with_status(200)
+        .with_body("{}")
+        .create_async()
+        .await;
+    let client = usdm(&server);
+    client.health().ping().await.unwrap();
+    mock.assert_async().await;
+    assert_eq!(client.weight_budget().used(), 1);
+}
+
+#[tokio::test]
+async fn a_ping_whose_body_does_not_decode_is_an_error() {
+    let mut server = Server::new_async().await;
+    let mock = route(&mut server, "/fapi/v1/ping", "", "<html>").await;
+    let result = usdm(&server).health().ping().await;
+    mock.assert_async().await;
+    assert!(result.is_err(), "{result:?}");
 }

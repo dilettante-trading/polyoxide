@@ -1,32 +1,32 @@
 #!/usr/bin/env python3
+# /// script
+# requires-python = ">=3.11"
+# dependencies = ["websockets>=13", "certifi"]
+# ///
 """Capture Binance USDⓈ-M REST responses and stream frames as test fixtures for
 polyoxide-binance.
 
-Usage: python3 -I scripts/capture_binance_fixtures.py polyoxide-binance/tests/fixtures
+Usage: uv run scripts/capture_binance_fixtures.py polyoxide-binance/tests/fixtures
 
 Writes one JSON file per route under OUT_DIR/rest/, one combined-stream envelope per
 stream kind under OUT_DIR/ws/, and rewrites OUT_DIR/PROVENANCE.md. Nothing is written
 until every capture has succeeded, so a failed run leaves the fixtures as they were.
 Every key is kept; only list lengths are trimmed, so a wire-agreement test sees each
-field the server sends. Stdlib only, no credentials. Costs 76 request weight, well
-inside the 2400 per minute, and two short WebSocket connections. Review the diff before
-committing.
+field the server sends. No credentials. Costs 76 request weight, well inside the 2400
+per minute, and two short WebSocket connections. Review the diff before committing.
 """
-import base64
-import datetime
+import asyncio
 import json
 import os
-import socket
-import ssl
-import struct
 import sys
 import time
-import urllib.error
-import urllib.parse
-import urllib.request
+
+from websockets.exceptions import ConnectionClosed, InvalidHandshake
+
+import capture_common
 
 BASE = "https://fapi.binance.com"
-WS_HOST = "fstream.binance.com"
+WS_BASE = "wss://fstream.binance.com"
 STREAMS = {
     "market": ["!ticker@arr", "!markPrice@arr@1s", "btcusdt@aggTrade", "btcusdt@kline_1m",
                "btcusdt@markPrice@1s", "btcusdt@ticker"],
@@ -34,23 +34,18 @@ STREAMS = {
 }
 
 
+def identity(_method, _url):
+    """Asks for an uncompressed body."""
+    return {"Accept-Encoding": "identity"}
+
+
 def get(path, **params):
-    query = urllib.parse.urlencode(params)
-    url = f"{BASE}{path}" + (f"?{query}" if query else "")
-    request = urllib.request.Request(url, headers={"Accept-Encoding": "identity"})
-    try:
-        with urllib.request.urlopen(request, timeout=60) as response:
-            return json.loads(response.read().decode("utf-8"))
-    except urllib.error.HTTPError as err:
-        body = err.read().decode("utf-8", "replace")[:300]
-        sys.exit(f"GET {url}: {err.code} {err.reason}: {body}")
+    reply = capture_common.get(f"{BASE}{path}", params=params, headers=identity, timeout=60)
+    return capture_common.require_ok(reply, f"GET {path}")
 
 
 def write(path, value):
-    os.makedirs(os.path.dirname(path), exist_ok=True)
-    with open(path, "w", encoding="utf-8") as f:
-        json.dump(value, f, ensure_ascii=False, indent=1)
-        f.write("\n")
+    capture_common.write_json(path, value, indent=1)
 
 
 def first(rows, predicate, what):
@@ -58,55 +53,6 @@ def first(rows, predicate, what):
         if predicate(row):
             return row
     sys.exit(f"no {what} listed; pick the fixture rows by hand")
-
-
-def ws_open(path):
-    raw = socket.create_connection((WS_HOST, 443), timeout=15)
-    sock = ssl.create_default_context().wrap_socket(raw, server_hostname=WS_HOST)
-    key = base64.b64encode(os.urandom(16)).decode()
-    sock.sendall((f"GET {path} HTTP/1.1\r\nHost: {WS_HOST}\r\nUpgrade: websocket\r\n"
-                  f"Connection: Upgrade\r\nSec-WebSocket-Key: {key}\r\n"
-                  f"Sec-WebSocket-Version: 13\r\n\r\n").encode())
-    head = b""
-    while b"\r\n\r\n" not in head:
-        byte = sock.recv(1)
-        if not byte:
-            sys.exit(f"{path}: the server closed the connection during the handshake")
-        head += byte
-    status = head.split(b"\r\n")[0]
-    if b" 101 " not in status:
-        sys.exit(f"{path}: handshake refused: {status.decode()}")
-    return sock
-
-
-def read_exact(sock, n):
-    buf = b""
-    while len(buf) < n:
-        chunk = sock.recv(n - len(buf))
-        if not chunk:
-            raise EOFError("the server closed the connection")
-        buf += chunk
-    return buf
-
-
-def read_message(sock):
-    """One message as (opcode, payload), joining continuation frames."""
-    opcode, payload = None, b""
-    while True:
-        b1, b2 = read_exact(sock, 2)
-        length = b2 & 0x7F
-        if length == 126:
-            length = struct.unpack(">H", read_exact(sock, 2))[0]
-        elif length == 127:
-            length = struct.unpack(">Q", read_exact(sock, 8))[0]
-        if b2 & 0x80:
-            read_exact(sock, 4)
-        data = read_exact(sock, length)
-        if b1 & 0x0F:
-            opcode = b1 & 0x0F
-        payload += data
-        if b1 & 0x80:
-            return opcode, payload
 
 
 def pick_two(name, rows):
@@ -124,43 +70,55 @@ def pick_two(name, rows):
     return [first_row, second]
 
 
-def capture_streams():
-    """One envelope per stream, by file name, and the rows each array kept.
+async def read_streams(path, streams):
+    """The first envelope of each non-array stream on one connection, and for each
+    array stream the latest envelope read and whether it carries a COIN-M row.
 
     An array stream is read until a frame carries a COIN-M row, within the 30 s: the
     first `!markPrice@arr@1s` frame of a second is often a partial one without them.
     """
+    url = f"{WS_BASE}/{path}/stream?streams=" + "/".join(streams)
+    envelopes, arrays, wanted = {}, {}, set(streams)
+    try:
+        async with capture_common.ws_session(url, max_size=2**22) as ws:
+            deadline = time.time() + 30
+            while (wanted or any(not coin_m for _, coin_m in arrays.values())) and time.time() < deadline:
+                try:
+                    message = await asyncio.wait_for(ws.recv(), 5)
+                except TimeoutError:
+                    continue
+                if not isinstance(message, str):
+                    continue
+                envelope = json.loads(message)
+                name = envelope.get("stream")
+                if isinstance(envelope.get("data"), list):
+                    if name in wanted or (name in arrays and not arrays[name][1]):
+                        wanted.discard(name)
+                        has_coin_m = any(r.get("st") == 2 for r in envelope["data"])
+                        arrays[name] = (envelope, has_coin_m)
+                    continue
+                if name not in wanted:
+                    continue
+                wanted.discard(name)
+                if "@depth" in name:
+                    envelope["data"]["b"] = envelope["data"]["b"][:3]
+                    envelope["data"]["a"] = envelope["data"]["a"][:3]
+                envelopes[name] = envelope
+    except InvalidHandshake as err:
+        sys.exit(f"/{path}: handshake refused: {err}")
+    except ConnectionClosed as err:
+        sys.exit(f"/{path}: the server closed the connection: {err}")
+    return envelopes, arrays, wanted
+
+
+def capture_streams():
+    """One envelope per stream, by file name, and the rows each array kept."""
     envelopes, kept = {}, {}
     for path, streams in STREAMS.items():
-        sock = ws_open(f"/{path}/stream?streams=" + "/".join(streams))
-        sock.settimeout(5)
-        wanted, arrays = set(streams), {}
-        deadline = time.time() + 30
-        while (wanted or any(not coin_m for _, coin_m in arrays.values())) and time.time() < deadline:
-            try:
-                opcode, data = read_message(sock)
-            except (socket.timeout, TimeoutError):
-                continue
-            if opcode != 1:
-                continue
-            envelope = json.loads(data.decode("utf-8"))
-            name = envelope.get("stream")
-            if isinstance(envelope.get("data"), list):
-                if name in wanted or (name in arrays and not arrays[name][1]):
-                    wanted.discard(name)
-                    has_coin_m = any(r.get("st") == 2 for r in envelope["data"])
-                    arrays[name] = (envelope, has_coin_m)
-                continue
-            if name not in wanted:
-                continue
-            wanted.discard(name)
-            if "@depth" in name:
-                envelope["data"]["b"] = envelope["data"]["b"][:3]
-                envelope["data"]["a"] = envelope["data"]["a"][:3]
-            envelopes[name] = envelope
-        sock.close()
+        found, arrays, wanted = asyncio.run(read_streams(path, streams))
         if wanted:
             sys.exit(f"no frame within 30 s on {sorted(wanted)}; run again")
+        envelopes.update(found)
         for name, (envelope, _) in arrays.items():
             envelope["data"] = pick_two(name, envelope["data"])
             kept[name] = [(r["s"], r["st"]) for r in envelope["data"]]
@@ -217,9 +175,8 @@ def main():
         f"`{name}` kept " + " and ".join(f"`{s}` (`st: {st}`)" for s, st in rows)
         for name, rows in sorted(kept.items()))
 
-    today = datetime.datetime.now(datetime.timezone.utc).strftime("%Y-%m-%d")
-    with open(os.path.join(out, "PROVENANCE.md"), "w", encoding="utf-8") as f:
-        f.write(f"""# Provenance
+    today = capture_common.stamp("%Y-%m-%d")
+    capture_common.write_provenance(out, f"""# Provenance
 
 REST fixtures (`rest/`) captured {today} from `https://fapi.binance.com` by
 `scripts/capture_binance_fixtures.py`. No credentials. Every top-level key is kept; only

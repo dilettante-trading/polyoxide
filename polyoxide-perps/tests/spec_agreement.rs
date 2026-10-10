@@ -9,15 +9,14 @@ use std::{
     collections::{BTreeMap, BTreeSet},
     future::Future,
     pin::Pin,
-    sync::{Arc, Mutex},
 };
 
-use mockito::{Matcher, Server};
 use polyoxide_perps::{
     api::{exchange::*, health::*, market::*, public::*},
     types::*,
     Perps, PerpsError,
 };
+use polyoxide_test_support::{fixtures, openapi, query};
 use serde::{de::DeserializeOwned, Serialize};
 use serde_json::{Map, Value};
 
@@ -28,138 +27,11 @@ fn spec() -> Value {
 }
 
 fn schemas() -> Map<String, Value> {
-    spec()["components"]["schemas"]
-        .as_object()
-        .expect("components.schemas")
-        .clone()
+    openapi::schemas(&spec())
 }
 
 fn ref_name(r: &str) -> &str {
-    r.rsplit('/').next().unwrap()
-}
-
-/// Whether a property admits `null`. The perps schema puts `nullable: true`
-/// on the `$ref` target (`exchange_open_interest`, `ui_live_time`), not on
-/// the property, so the reference is followed.
-fn is_nullable(schemas: &Map<String, Value>, prop: &Value) -> bool {
-    if let Some(r) = prop["$ref"].as_str() {
-        return is_nullable(schemas, &schemas[ref_name(r)]);
-    }
-    if let Some(types) = prop["type"].as_array() {
-        return types.iter().any(|t| t == "null");
-    }
-    prop["nullable"] == true
-        || prop["oneOf"]
-            .as_array()
-            .is_some_and(|arms| arms.iter().any(|a| a["type"] == "null"))
-}
-
-/// A value of the property's type. `full` also fills non-required properties
-/// of any object it descends into. A positional row (`kline` and `mark_point`
-/// have no `items`; `level` has primitive `items` and `maxItems: 2`) is taken
-/// from its `example`, and so is a string, since the decimal fields are
-/// `type: string` whose `example` is a decimal spelled as a string, and a
-/// `Decimal` field would reject a placeholder.
-fn synth(schemas: &Map<String, Value>, prop: &Value, full: bool) -> Value {
-    if let Some(r) = prop["$ref"].as_str() {
-        let target = &schemas[ref_name(r)];
-        if target["type"] == "object"
-            || target.get("allOf").is_some()
-            || target.get("properties").is_some()
-        {
-            return synth_object(schemas, ref_name(r), full);
-        }
-        return synth(schemas, target, full);
-    }
-    if let Some(arms) = prop["oneOf"].as_array() {
-        let arm = arms
-            .iter()
-            .find(|a| a["type"] != "null")
-            .expect("non-null arm");
-        return synth(schemas, arm, full);
-    }
-    if let Some(e) = prop["enum"].as_array() {
-        return e[0].clone();
-    }
-    let ty = match &prop["type"] {
-        Value::String(t) => t.as_str(),
-        Value::Array(ts) => ts
-            .iter()
-            .filter_map(Value::as_str)
-            .find(|t| *t != "null")
-            .unwrap(),
-        other => panic!("unsupported type {other} in {prop}"),
-    };
-    match ty {
-        "string" => prop
-            .get("example")
-            .filter(|e| e.is_string())
-            .cloned()
-            .unwrap_or_else(|| Value::from("x")),
-        "integer" => Value::from(1),
-        "number" => Value::from(1.5),
-        "boolean" => Value::from(true),
-        "array" => {
-            let items = prop.get("items");
-            let positional = items.is_none_or(|i| i.get("$ref").is_none() && i["type"] != "object");
-            match prop.get("example") {
-                Some(example) if positional => example.clone(),
-                _ => {
-                    let items =
-                        items.unwrap_or_else(|| panic!("array without items or example: {prop}"));
-                    Value::Array(vec![synth(schemas, items, full)])
-                }
-            }
-        }
-        "object" => synth_object_inline(schemas, prop, full),
-        other => panic!("unsupported type {other}"),
-    }
-}
-
-/// An object schema's properties and required names, flattening `allOf`.
-fn fields(schemas: &Map<String, Value>, schema: &Value) -> (Map<String, Value>, BTreeSet<String>) {
-    if let Some(r) = schema["$ref"].as_str() {
-        return fields(schemas, &schemas[ref_name(r)]);
-    }
-    let own = schema["properties"].as_object();
-    let arms = schema["allOf"].as_array();
-    assert!(
-        own.is_some() || arms.is_some(),
-        "neither properties nor allOf: {schema}"
-    );
-    let mut props = own.cloned().unwrap_or_default();
-    let mut required: BTreeSet<String> = schema["required"]
-        .as_array()
-        .map(|r| {
-            r.iter()
-                .filter_map(Value::as_str)
-                .map(str::to_owned)
-                .collect()
-        })
-        .unwrap_or_default();
-    for arm in arms.into_iter().flatten() {
-        let (arm_props, arm_required) = fields(schemas, arm);
-        for (key, prop) in arm_props {
-            props.insert(key, prop);
-        }
-        required.extend(arm_required);
-    }
-    (props, required)
-}
-
-fn synth_object_inline(schemas: &Map<String, Value>, schema: &Value, full: bool) -> Value {
-    let (props, required) = fields(schemas, schema);
-    let mut out = Map::new();
-    for (key, prop) in &props {
-        if full || (required.contains(key) && !is_nullable(schemas, prop)) {
-            out.insert(key.clone(), synth(schemas, prop, full));
-        }
-    }
-    Value::Object(out)
-}
-
-fn synth_object(schemas: &Map<String, Value>, name: &str, full: bool) -> Value {
-    synth_object_inline(schemas, &schemas[name], full)
+    openapi::ref_name(r)
 }
 
 /// `(schema, field)` pairs on the wire but not in the spec. Each must be an
@@ -178,68 +50,15 @@ const OBSERVED_EXTRA: &[(&str, &str)] = &[
     ("LimitTier", "ws_messages_per_minute_limit"),
 ];
 
-/// Holds one type to one schema. A required-but-nullable field is treated as
-/// omittable: it is left out of the minimal object and set to `null` in the
-/// null check, which is why `ExchangeStatistics.open_interest` carries
-/// `serde(default)`.
+/// Holds one type to one schema. The perps schema puts `nullable: true` on
+/// the `$ref` target (`exchange_open_interest`, `ui_live_time`), not on the
+/// property, which the shared check follows. A required-but-nullable field is
+/// treated as omittable: it is left out of the minimal object and set to
+/// `null` in the null check, which is why `ExchangeStatistics.open_interest`
+/// carries `serde(default)`.
+#[track_caller]
 fn check<T: DeserializeOwned + Serialize>(schemas: &Map<String, Value>, name: &str) {
-    let (props, required) = fields(schemas, &schemas[name]);
-
-    for (_, field) in OBSERVED_EXTRA.iter().filter(|(schema, _)| *schema == name) {
-        assert!(
-            !props.contains_key(*field),
-            "{name}.{field} is now documented; drop the OBSERVED_EXTRA row and the OBSERVED.md entry"
-        );
-    }
-
-    let minimal = synth_object(schemas, name, false);
-    if let Err(e) = serde_json::from_value::<T>(minimal.clone()) {
-        panic!("{name}: only required fields present should deserialize: {e}");
-    }
-
-    for (key, prop) in &props {
-        if required.contains(key) && !is_nullable(schemas, prop) {
-            let mut without = minimal.clone();
-            without.as_object_mut().unwrap().remove(key);
-            assert!(
-                serde_json::from_value::<T>(without).is_err(),
-                "{name}.{key} is required and non-nullable in the spec but the type accepts it missing"
-            );
-        } else {
-            let mut with_null = minimal.clone();
-            with_null
-                .as_object_mut()
-                .unwrap()
-                .insert(key.clone(), Value::Null);
-            if let Err(e) = serde_json::from_value::<T>(with_null) {
-                panic!(
-                    "{name}.{key} is optional or nullable in the spec but the type rejects null: {e}"
-                );
-            }
-        }
-    }
-
-    let full = synth_object(schemas, name, true);
-    let parsed: T = serde_json::from_value(full)
-        .unwrap_or_else(|e| panic!("{name}: every field present should deserialize: {e}"));
-    let emitted = serde_json::to_value(&parsed).unwrap();
-    let emitted: BTreeSet<&str> = emitted
-        .as_object()
-        .unwrap()
-        .keys()
-        .map(String::as_str)
-        .collect();
-    let mut documented: BTreeSet<&str> = props.keys().map(String::as_str).collect();
-    documented.extend(
-        OBSERVED_EXTRA
-            .iter()
-            .filter(|(schema, _)| *schema == name)
-            .map(|(_, field)| *field),
-    );
-    assert_eq!(
-        emitted, documented,
-        "{name}: emitted keys differ from the spec's properties"
-    );
+    openapi::check::<T>(schemas, name, OBSERVED_EXTRA);
 }
 
 macro_rules! agreement {
@@ -401,37 +220,11 @@ type Fire = fn(Perps) -> Pin<Box<dyn Future<Output = Result<(), PerpsError>> + S
 /// Sends one request through `fire`, requires its response to decode, and
 /// returns the query keys it carried.
 async fn query_keys_sent(path: &str, fixture: &str, fire: Fire) -> BTreeSet<String> {
-    let body_path = format!(
-        "{}/tests/fixtures/{fixture}.json",
-        env!("CARGO_MANIFEST_DIR")
-    );
-    let body = std::fs::read_to_string(&body_path).unwrap_or_else(|e| panic!("{body_path}: {e}"));
-    let mut server = Server::new_async().await;
-    let seen = Arc::new(Mutex::new(Vec::<String>::new()));
-    let sink = Arc::clone(&seen);
-    let mock = server
-        .mock("GET", path)
-        .match_query(Matcher::Any)
-        .match_request(move |request| {
-            sink.lock()
-                .unwrap()
-                .push(request.path_and_query().to_owned());
-            true
-        })
-        .with_status(200)
-        .with_body(body)
-        .create_async()
-        .await;
-
-    let decoded = fire(Perps::builder().base_url(server.url()).build().unwrap()).await;
-    mock.assert_async().await;
-    if let Err(e) = decoded {
-        panic!("{path}: the builder did not decode `{fixture}.json`: {e}");
-    }
-
-    let seen = seen.lock().unwrap();
-    let url = url::Url::parse(&format!("http://mock{}", seen.last().unwrap())).unwrap();
-    url.query_pairs().map(|(key, _)| key.into_owned()).collect()
+    let body = fixtures!().text(fixture);
+    query::keys_sent(path, fixture, body, |url| {
+        fire(Perps::builder().base_url(url).build().unwrap())
+    })
+    .await
 }
 
 /// One entry per builder: its path, the fixture it must decode, and a call
@@ -603,14 +396,8 @@ async fn every_builder_sends_exactly_the_documented_query_keys() {
             .extend(query_keys_sent(path, fixture, *fire).await);
     }
     for (path, sent) in by_path {
-        let documented: BTreeSet<String> = spec["paths"][path]["get"]["parameters"]
-            .as_array()
-            .map(|ps| {
-                ps.iter()
-                    .map(|p| p["name"].as_str().unwrap().to_owned())
-                    .collect()
-            })
-            .unwrap_or_default();
+        let documented: BTreeSet<String> =
+            query::documented_parameters(&spec, path).unwrap_or_default();
         assert_eq!(
             sent, documented,
             "{path}: query keys sent differ from the spec's parameters"

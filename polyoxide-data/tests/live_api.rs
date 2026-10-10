@@ -8,12 +8,16 @@
 //! cargo test -p polyoxide-data --test live_api -- --ignored
 //! ```
 
+mod common;
+
+use common::is_hash64;
 use polyoxide_data::api::holders::MarketHolders;
 use polyoxide_data::DataApi;
+use polyoxide_test_support::{environmental, ResultExt};
 use std::time::Duration;
 
 fn client() -> DataApi {
-    DataApi::new().expect("data api client")
+    DataApi::new().or_fail("data api client")
 }
 
 // An address to test user endpoints (doesn't need to be active)
@@ -25,7 +29,7 @@ const TEST_USER: &str = "0x0000000000000000000000000000000000000001";
 #[ignore]
 async fn live_health_check() {
     let client = client();
-    let health = client.health().check().await.expect("health check");
+    let health = client.health().check().await.or_fail("health check");
     assert_eq!(health.data, "OK", "health response should be OK");
 }
 
@@ -33,7 +37,7 @@ async fn live_health_check() {
 #[ignore]
 async fn live_ping() {
     let client = client();
-    let latency = client.health().ping().await.expect("ping");
+    let latency = client.health().ping().await.or_fail("ping");
     assert!(
         latency < Duration::from_secs(10),
         "latency too high: {:?}",
@@ -52,7 +56,7 @@ async fn live_open_interest() {
         .get()
         .send()
         .await
-        .expect("open interest");
+        .or_fail("open interest");
     assert!(!oi.is_empty(), "should return at least one market's OI");
 }
 
@@ -68,7 +72,7 @@ async fn live_list_trades() {
         .limit(5)
         .send()
         .await
-        .expect("list trades");
+        .or_fail("list trades");
     assert!(!trades.is_empty(), "should return at least one trade");
 }
 
@@ -83,7 +87,7 @@ async fn live_user_traded() {
         .user(TEST_USER)
         .traded()
         .await
-        .expect("user traded should deserialize");
+        .or_fail("user traded should deserialize");
     assert_eq!(traded.user, TEST_USER, "should echo back the user address");
 }
 
@@ -98,7 +102,7 @@ async fn live_user_positions() {
         .limit(5)
         .send()
         .await
-        .expect("list positions should succeed");
+        .or_fail("list positions should succeed");
 }
 
 // ── Builders ─────────────────────────────────────────────────────
@@ -113,7 +117,7 @@ async fn live_builder_leaderboard() {
         .limit(5)
         .send()
         .await
-        .expect("builder leaderboard");
+        .or_fail("builder leaderboard");
     assert!(
         !leaderboard.is_empty(),
         "should return at least one builder"
@@ -132,7 +136,7 @@ async fn live_user_positions_value() {
         .positions_value()
         .send()
         .await
-        .expect("positions value should deserialize");
+        .or_fail("positions value should deserialize");
 }
 
 // ── User: closed_positions ──────────────────────────────────────
@@ -147,7 +151,7 @@ async fn live_user_closed_positions() {
         .limit(5)
         .send()
         .await
-        .expect("closed positions should deserialize");
+        .or_fail("closed positions should deserialize");
 }
 
 // ── User: trades ────────────────────────────────────────────────
@@ -162,7 +166,7 @@ async fn live_user_trades() {
         .limit(5)
         .send()
         .await
-        .expect("user trades should deserialize");
+        .or_fail("user trades should deserialize");
 }
 
 // ── User: activity ──────────────────────────────────────────────
@@ -177,52 +181,10 @@ async fn live_user_activity() {
         .limit(5)
         .send()
         .await
-        .expect("user activity should deserialize");
+        .or_fail("user activity should deserialize");
 }
 
 // ── Holders ─────────────────────────────────────────────────────
-
-/// Whether `condition_id` has the shape `GET /holders` validates `market`
-/// against: `0x` followed by exactly 64 hex digits.
-///
-/// The check runs before any lookup, and a value that fails it is reported as
-/// `required query param 'market' not provided` — the *missing*-parameter
-/// message, not a malformed-value one. A caller reading that error has no way
-/// to tell it sent a bad id rather than none.
-fn is_hash64(condition_id: &str) -> bool {
-    condition_id.len() == 66
-        && condition_id.starts_with("0x")
-        && condition_id[2..].bytes().all(|b| b.is_ascii_hexdigit())
-}
-
-/// Pins the shape rule above against values taken from the live trade feed.
-///
-/// Not `#[ignore]`d: it needs no network, and the reject case is the actual
-/// `conditionId` that broke `live_holders` in the 2026-08-26 nightly (issue
-/// #32) — `0x` plus 62 hex digits, zero-padded on the right.
-#[test]
-fn hash64_shape_matches_what_holders_accepts() {
-    assert!(is_hash64(
-        "0x94f56a80d387a41395ae464e5e3eb2e23d1a6032014b40590074b75aa3447f90"
-    ));
-
-    // Straight from `GET /trades`. 62 hex digits, so 64 characters, not 66.
-    assert!(!is_hash64(
-        "0x03474f36a86039e6c40479b1844401d81a0000000000000000000000000000"
-    ));
-    // Missing prefix, over-long, non-hex, and the empty string an absent field
-    // would produce — the venue rejects every one of these identically.
-    assert!(!is_hash64(
-        "94f56a80d387a41395ae464e5e3eb2e23d1a6032014b40590074b75aa3447f90"
-    ));
-    assert!(!is_hash64(
-        "0x94f56a80d387a41395ae464e5e3eb2e23d1a6032014b40590074b75aa3447f900"
-    ));
-    assert!(!is_hash64(
-        "0xZZ4f56a80d387a41395ae464e5e3eb2e23d1a6032014b40590074b75aa3447f9"
-    ));
-    assert!(!is_hash64(""));
-}
 
 /// Page size the market probe asks for, and the bound `live_holders` checks.
 const HOLDERS_PROBE_LIMIT: u32 = 5;
@@ -254,7 +216,7 @@ async fn holders_market(client: &DataApi) -> (String, Vec<MarketHolders>) {
         .limit(100)
         .send()
         .await
-        .expect("trades for holders test");
+        .or_fail("trades for holders test");
     assert!(
         !trades.is_empty(),
         "need at least one trade for holders test"
@@ -277,7 +239,7 @@ async fn holders_market(client: &DataApi) -> (String, Vec<MarketHolders>) {
             .limit(HOLDERS_PROBE_LIMIT)
             .send()
             .await
-            .expect("holders should deserialize");
+            .or_fail("holders should deserialize");
         if !holders.is_empty() {
             return (condition_id.to_string(), holders);
         }
@@ -286,14 +248,14 @@ async fn holders_market(client: &DataApi) -> (String, Vec<MarketHolders>) {
         }
     }
 
-    panic!(
+    environmental(&format!(
         "no qualifying market among the {} most recent trades: probed {} \
          distinct Hash64 condition ids and /holders returned rows for none. \
          Market conditions rather than a defect, so re-run before concluding \
          otherwise",
         trades.len(),
         seen.len()
-    );
+    ));
 }
 
 #[tokio::test]
@@ -336,7 +298,7 @@ async fn live_holders_limit_bounds() {
         .list(vec![condition_id.as_str()])
         .send()
         .await
-        .expect("holders with default limit");
+        .or_fail("holders with default limit");
     if let Some(market) = defaulted.first() {
         assert!(
             market.holders.len() <= 20,
@@ -352,7 +314,7 @@ async fn live_holders_limit_bounds() {
         .limit(100)
         .send()
         .await
-        .expect("limit=100 must be accepted");
+        .or_fail("limit=100 must be accepted");
 
     // 500 is the documented ceiling and is accepted.
     client
@@ -361,7 +323,7 @@ async fn live_holders_limit_bounds() {
         .limit(500)
         .send()
         .await
-        .expect("limit=500 must be accepted");
+        .or_fail("limit=500 must be accepted");
 
     // Above the ceiling the venue clamps rather than rejects. This changed
     // upstream between 2026-07-25 and 2026-08-03: `limit=501` used to return
@@ -378,7 +340,7 @@ async fn live_holders_limit_bounds() {
         .limit(5000)
         .send()
         .await
-        .expect("limit above the ceiling is clamped, not rejected");
+        .or_fail("limit above the ceiling is clamped, not rejected");
     for market in &over {
         assert!(
             market.holders.len() <= 500,
@@ -398,7 +360,7 @@ async fn live_holders_limit_bounds() {
         .limit(0)
         .send()
         .await
-        .expect("limit=0 must read as an empty list, not an error");
+        .or_fail("limit=0 must read as an empty list, not an error");
     assert!(
         zero.is_empty(),
         "limit=0 should return no rows, got {} markets",
@@ -419,7 +381,7 @@ async fn live_live_volume() {
         .live_volume()
         .get(1)
         .await
-        .expect("live volume should deserialize");
+        .or_fail("live volume should deserialize");
 }
 
 // ── Trader Leaderboard ──────────────────────────────────────────
@@ -434,7 +396,7 @@ async fn live_trader_leaderboard() {
         .limit(5)
         .send()
         .await
-        .expect("trader leaderboard");
+        .or_fail("trader leaderboard");
     assert!(!leaderboard.is_empty(), "should return at least one trader");
 }
 
@@ -449,7 +411,7 @@ async fn live_builder_volume() {
         .volume()
         .send()
         .await
-        .expect("builder volume");
+        .or_fail("builder volume");
     assert!(
         !volume.is_empty(),
         "should return at least one builder volume entry"
@@ -470,7 +432,7 @@ async fn live_market_positions() {
         .limit(1)
         .send()
         .await
-        .expect("trades for market_positions test");
+        .or_fail("trades for market_positions test");
     assert!(
         !trades.is_empty(),
         "need at least one trade for market_positions test"
@@ -484,7 +446,7 @@ async fn live_market_positions() {
         .limit(5)
         .send()
         .await
-        .expect("market positions should deserialize");
+        .or_fail("market positions should deserialize");
 }
 
 // ── Accounting Snapshot ─────────────────────────────────────────
@@ -497,7 +459,7 @@ async fn live_accounting_snapshot() {
         .accounting()
         .snapshot(TEST_USER)
         .await
-        .expect("accounting snapshot should succeed");
+        .or_fail("accounting snapshot should succeed");
     // ZIP archives start with the local-file-header signature "PK\x03\x04".
     // The Polymarket API may return a minimal archive for empty users, but the
     // header bytes must still be present.
@@ -531,7 +493,7 @@ async fn live_user_pnl_series() {
         .fidelity(polyoxide_data::types::PnlFidelity::OneHour)
         .send()
         .await
-        .expect("user-pnl should succeed");
+        .or_fail("user-pnl should succeed");
 
     assert!(!points.is_empty(), "expected a non-empty PnL series");
     assert!(
@@ -553,7 +515,7 @@ async fn live_rankings_volume_and_profit() {
         .limit(3)
         .send()
         .await
-        .expect("rankings volume should succeed");
+        .or_fail("rankings volume should succeed");
     assert!(!volume.is_empty(), "expected ranked entries");
     assert!(
         volume[0]
@@ -571,7 +533,7 @@ async fn live_rankings_volume_and_profit() {
         .limit(3)
         .send()
         .await
-        .expect("rankings profit should succeed");
+        .or_fail("rankings profit should succeed");
     assert!(!profit.is_empty(), "expected ranked entries");
 }
 
@@ -588,17 +550,25 @@ mod v2 {
     };
     use polyoxide_data::v2::ErrorCode;
     use polyoxide_data::{DataApi, DataApiError};
+    use polyoxide_test_support::{fail, ResultExt};
+    use polyoxide_venue::Classify;
 
     use super::client;
 
     /// A recent trade's wallet, condition id and token id.
     async fn recent_trade(data: &DataApi) -> (String, String, String) {
-        let page = data.v2().trades().limit(1).send().await.expect("v2 trades");
+        let page = data
+            .v2()
+            .trades()
+            .limit(1)
+            .send()
+            .await
+            .or_fail("v2 trades");
         let trade = page
             .data
             .into_iter()
             .next()
-            .expect("the bare feed is never empty");
+            .expect("the bare feed is never empty"); // live-unwraps: an assertion on the response
         (trade.proxy_wallet, trade.condition_id, trade.token_id)
     }
 
@@ -607,7 +577,7 @@ mod v2 {
     fn unknown_wallet() -> String {
         let nanos = std::time::SystemTime::now()
             .duration_since(std::time::UNIX_EPOCH)
-            .unwrap()
+            .unwrap() // live-unwraps: the clock is after the epoch
             .as_nanos();
         format!(
             "0x{:040x}",
@@ -621,9 +591,14 @@ mod v2 {
         let data = client();
         let pages: Vec<_> = data.v2().trades().limit(2).pages().take(2).collect().await;
 
+        // A failed page ends the walk, so page 1's error is examined before the
+        // count: a transient one is retried rather than filed as a short walk.
+        if let Some(Err(e)) = pages.first() {
+            fail("page 1", e);
+        }
         assert_eq!(pages.len(), 2);
-        let first = pages[0].as_ref().expect("page 1");
-        let second = pages[1].as_ref().expect("page 2");
+        let first = pages[0].as_ref().unwrap_or_else(|e| fail("page 1", e));
+        let second = pages[1].as_ref().unwrap_or_else(|e| fail("page 2", e));
         assert!(
             first.pagination.next_cursor.is_some(),
             "the feed has more than 2 rows"
@@ -645,41 +620,41 @@ mod v2 {
             .limit(2)
             .send()
             .await
-            .expect("activity");
+            .or_fail("activity");
         v2.combo_activity(&wallet)
             .limit(2)
             .send()
             .await
-            .expect("combo activity");
+            .or_fail("combo activity");
         v2.positions(wallet.as_str())
             .limit(2)
             .send()
             .await
-            .expect("positions");
+            .or_fail("positions");
         v2.positions(wallet.as_str())
             .status(PositionStatus::Closed)
             .limit(2)
             .send()
             .await
-            .expect("closed positions");
+            .or_fail("closed positions");
         v2.combo_positions(&wallet)
             .limit(2)
             .send()
             .await
-            .expect("combo positions");
-        v2.approvals(&wallet).send().await.expect("approvals");
+            .or_fail("combo positions");
+        v2.approvals(&wallet).send().await.or_fail("approvals");
         let pnl = v2
             .user_pnl(&wallet)
             .interval(PnlInterval::OneWeek)
             .fidelity(PnlFidelity::OneDay)
             .send()
             .await
-            .expect("user pnl");
+            .or_fail("user pnl");
         assert_eq!(pnl.proxy_wallet.to_lowercase(), wallet.to_lowercase());
-        let stats = v2.user_stats(&wallet).send().await.expect("user stats");
+        let stats = v2.user_stats(&wallet).send().await.or_fail("user stats");
         assert!(stats.is_some(), "a wallet that just traded is a known user");
-        v2.user_volume(&wallet).send().await.expect("user volume");
-        v2.value(&wallet).send().await.expect("value");
+        v2.user_volume(&wallet).send().await.or_fail("user volume");
+        v2.value(&wallet).send().await.or_fail("value");
     }
 
     #[tokio::test]
@@ -693,14 +668,14 @@ mod v2 {
             .user_stats(&wallet)
             .send()
             .await
-            .expect("user stats")
+            .or_fail("user stats")
             .is_none());
         assert!(data
             .v2()
             .leaderboard_user(&wallet)
             .send()
             .await
-            .expect("leaderboard user")
+            .or_fail("leaderboard user")
             .is_none());
     }
 
@@ -715,22 +690,22 @@ mod v2 {
             .limit(2)
             .send()
             .await
-            .expect("holders");
+            .or_fail("holders");
         v2.positions(PositionAnchor::Condition(condition.clone()))
             .limit(2)
             .send()
             .await
-            .expect("market positions");
+            .or_fail("market positions");
         v2.open_interest()
             .conditions([condition.as_str()])
             .send()
             .await
-            .expect("open interest");
+            .or_fail("open interest");
         let global = v2
             .open_interest()
             .send()
             .await
-            .expect("global open interest");
+            .or_fail("global open interest");
         assert_eq!(global.len(), 1);
         assert_eq!(global[0].condition_id, "GLOBAL");
         v2.prices_history(&token_id)
@@ -738,7 +713,7 @@ mod v2 {
             .limit(10)
             .send()
             .await
-            .expect("prices history");
+            .or_fail("prices history");
 
         let winners = v2
             .biggest_winners()
@@ -746,19 +721,19 @@ mod v2 {
             .limit(5)
             .send()
             .await
-            .expect("winners");
+            .or_fail("winners");
         let resolved = winners
             .data
             .iter()
             .find(|w| w.kind == "market")
-            .expect("a market win on the weekly board");
+            .expect("a market win on the weekly board"); // live-unwraps: an assertion on the response
         let rows = v2
             .resolutions(ResolutionKey::Conditions(vec![resolved
                 .condition_id
                 .clone()]))
             .send()
             .await
-            .expect("resolutions");
+            .or_fail("resolutions");
         assert!(
             !rows.is_empty(),
             "a market on the winners board has resolved"
@@ -766,7 +741,7 @@ mod v2 {
         v2.live_volume([resolved.event_id])
             .send()
             .await
-            .expect("live volume");
+            .or_fail("live volume");
     }
 
     #[tokio::test]
@@ -781,31 +756,31 @@ mod v2 {
             .limit(2)
             .send()
             .await
-            .expect("leaderboard");
+            .or_fail("leaderboard");
         let leader = &board
             .data
             .first()
-            .expect("the weekly board is never empty")
+            .expect("the weekly board is never empty") // live-unwraps: an assertion on the response
             .user_id;
         let standing = v2
             .leaderboard_user(leader)
             .time_period(TimePeriod::Week)
             .send()
             .await
-            .expect("leaderboard user")
-            .expect("the board's leader has a standing");
+            .or_fail("leaderboard user")
+            .expect("the board's leader has a standing"); // live-unwraps: an assertion on the response
         assert!(standing.rank_pnl.is_some() || standing.rank_volume.is_some());
         v2.builders_leaderboard()
             .limit(2)
             .send()
             .await
-            .expect("builders leaderboard");
+            .or_fail("builders leaderboard");
         v2.builder_volume()
             .limit(2)
             .send()
             .await
-            .expect("builder volume");
-        v2.status().send().await.expect("status");
+            .or_fail("builder volume");
+        v2.status().send().await.or_fail("status");
     }
 
     #[tokio::test]
@@ -818,10 +793,12 @@ mod v2 {
             .cursor("garbage")
             .send()
             .await
-            .unwrap_err();
+            .unwrap_err(); // live-unwraps: the venue must refuse a garbage cursor
 
+        // Any other error fails by its class: a 5xx or a dropped connection is
+        // retried, and a 400 whose body was not read as v2 files.
         let DataApiError::V2(v2) = &err else {
-            panic!("expected a structured v2 error, got {err:?}");
+            fail("expected a structured v2 error", &err);
         };
         assert_eq!(v2.status, 400);
         assert_eq!(v2.code, ErrorCode::InvalidRequest);

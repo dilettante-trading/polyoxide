@@ -18,8 +18,22 @@ env:
 jobs:
   version:
     name: Get Version
-    if: github.event_name == 'workflow_dispatch' || github.event.workflow_run.conclusion == 'success'
+    # A release comes only from a push to main in this repository, or a manual run on
+    # main. `branches: [main]` above is not enough on its own: it matches the triggering
+    # run's head branch, which for a fork's pull request is the fork's branch name.
+    if: >-
+      (github.event_name == 'workflow_dispatch' && github.ref == 'refs/heads/main') ||
+      (github.event_name == 'workflow_run' &&
+      github.event.workflow_run.conclusion == 'success' &&
+      github.event.workflow_run.event == 'push' &&
+      github.event.workflow_run.head_branch == 'main' &&
+      github.event.workflow_run.head_repository.full_name == github.repository)
     runs-on: ubuntu-latest
+    timeout-minutes: 15
+    # `decide` reads the tag and the GitHub release, and on a manual run CI's runs.
+    permissions:
+      contents: read
+      actions: read
     outputs:
       version: ${{ steps.version.outputs.version }}
       should_release: ${{ steps.check.outputs.should_release }}
@@ -37,35 +51,87 @@ jobs:
       - uses: actions/checkout@v5
         with:
           ref: ${{ steps.sha.outputs.sha }}
+          # The parent commit too, to tell a version-bump commit from any other.
+          fetch-depth: 2
 
-      - name: Extract version from Cargo.toml
+      - uses: dtolnay/rust-toolchain@stable
+
+      - name: Read the version from cargo metadata
         id: version
         run: |
-          VERSION=$(grep -m1 '^version' Cargo.toml | sed 's/.*"\(.*\)".*/\1/')
+          VERSION=$(python3 scripts/publish_order.py version)
           echo "version=$VERSION" >> "$GITHUB_OUTPUT"
           echo "Detected version: $VERSION"
 
-      - name: Check if release exists
+      # The rules are `decide` in scripts/publish_order.py. A version already tagged
+      # at another commit fails this job unless this push left the version alone, and
+      # so does a failed lookup, which must never read as "not released yet".
+      - name: Decide whether to release
         id: check
         env:
           GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
+          HEAD_SHA: ${{ steps.sha.outputs.sha }}
+          DISPATCH: ${{ github.event_name == 'workflow_dispatch' }}
         run: |
-          if gh release view "v${{ steps.version.outputs.version }}" &>/dev/null; then
-            echo "should_release=false" >> "$GITHUB_OUTPUT"
-            echo "::notice::Release v${{ steps.version.outputs.version }} already exists, skipping release"
-          else
-            echo "should_release=true" >> "$GITHUB_OUTPUT"
-            echo "::notice::Release v${{ steps.version.outputs.version }} will be created"
+          ARGS=(--head-sha "$HEAD_SHA")
+          if [ "$DISPATCH" = "true" ]; then
+            ARGS+=(--dispatch)
           fi
+          DECISION=$(python3 scripts/publish_order.py decide "${ARGS[@]}")
+          if [ "$DECISION" = "release" ]; then
+            echo "should_release=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "should_release=false" >> "$GITHUB_OUTPUT"
+          fi
+
+  # A release that removes or breaks a public item must raise the 0.x minor
+  # (AD-25). The baseline is the newest release tag behind this commit, not
+  # v<the parent's version>: a bump whose CI went red, or whose release failed,
+  # was never tagged. With no `--release-type`, cargo-semver-checks infers one
+  # from the two versions, so on a patch bump any major-level change fails this
+  # job, and both publish jobs wait for it.
+  semver:
+    name: Semver check against the previous release
+    needs: version
+    if: needs.version.outputs.should_release == 'true'
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@v5
+        with:
+          ref: ${{ needs.version.outputs.sha }}
+          # Every tag, for the baseline.
+          fetch-depth: 0
+
+      # Pinned together with cargo-semver-checks, as in ci.yml's removals job:
+      # 0.51.0 reads the rustdoc JSON that only Rust 1.93 to 1.99 emit.
+      - uses: dtolnay/rust-toolchain@1.99.0
+      - uses: taiki-e/install-action@v2
+        with:
+          tool: cargo-semver-checks@0.51.0
+
+      - name: Check the public API against the previous release
+        env:
+          SHA: ${{ needs.version.outputs.sha }}
+        run: |
+          BASELINE=$(python3 scripts/publish_order.py previous-tag "$SHA")
+          python3 scripts/api_removals.py release --baseline "$BASELINE"
 
   publish:
     name: Publish to crates.io
     if: |
       needs.version.outputs.should_release == 'true' &&
       github.repository == 'dilettante-trading/polyoxide'
-    needs: [version, build-cli, build-python, build-python-sdist]
+    needs: [version, semver, build-cli, build-python, build-python-sdist]
     runs-on: ubuntu-latest
     environment: cargo
+    # Job-level, so a run that never releases cannot queue in the group and cancel a pending real one.
+    concurrency:
+      group: release
+      cancel-in-progress: false
     steps:
       - uses: actions/checkout@v5
         with:
@@ -73,41 +139,13 @@ jobs:
 
       - uses: dtolnay/rust-toolchain@stable
 
-      - name: Login to crates.io
-        run: cargo login ${{ secrets.CARGO_REGISTRY_TOKEN }}
-
-      # Publish in dependency order: core -> rtds -> sports -> perps -> binance -> relay -> gamma -> data -> clob -> polyoxide
+      # Publishes, in dependency order, only the crate versions crates.io lacks, so a
+      # re-run after a partial release picks up where it stopped. cargo reads the
+      # token from the environment, so it never appears in a command line.
       - name: Publish crates to crates.io
-        run: |
-          VERSION="${{ needs.version.outputs.version }}"
-          CRATES=("polyoxide-core" "polyoxide-rtds" "polyoxide-sports" "polyoxide-perps" "polyoxide-binance" "polyoxide-relay" "polyoxide-gamma" "polyoxide-data" "polyoxide-clob" "polyoxide")
-
-          for crate in "${CRATES[@]}"; do
-            PUBLISHED=$(cargo search "$crate" --limit 1 | grep -oP "$crate = \"\K[^\"]+" || echo "0.0.0")
-            if [ "$VERSION" = "$PUBLISHED" ]; then
-              echo "$crate $VERSION already published, skipping"
-              continue
-            fi
-
-            echo "Publishing $crate $VERSION (current: $PUBLISHED)"
-            for attempt in $(seq 1 6); do
-              OUTPUT=$(cargo publish -p "$crate" --no-verify 2>&1) && {
-                echo "$crate $VERSION published successfully"
-                break
-              }
-              if echo "$OUTPUT" | grep -qE "already uploaded|already exists"; then
-                echo "$crate $VERSION already exists, skipping"
-                break
-              fi
-              if [ "$attempt" -eq 6 ]; then
-                echo "::error::Failed to publish $crate after 6 attempts"
-                echo "$OUTPUT"
-                exit 1
-              fi
-              echo "Attempt $attempt failed, retrying in 5s..."
-              sleep 5
-            done
-          done
+        env:
+          CARGO_REGISTRY_TOKEN: ${{ secrets.CARGO_REGISTRY_TOKEN }}
+        run: bash scripts/finish_release.sh
 
   build-cli:
     name: Build CLI (${{ matrix.target }})
@@ -235,7 +273,7 @@ jobs:
 
   publish-python:
     name: Publish to PyPI
-    needs: [version, build-python, build-python-sdist]
+    needs: [version, semver, build-python, build-python-sdist]
     if: |
       needs.version.outputs.should_release == 'true' &&
       github.repository == 'dilettante-trading/polyoxide'
@@ -258,7 +296,9 @@ jobs:
   release:
     name: Create Release
     needs: [version, publish, build-cli, publish-python]
-    if: needs.version.outputs.should_release == 'true'
+    if: |
+      needs.version.outputs.should_release == 'true' &&
+      github.repository == 'dilettante-trading/polyoxide'
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v5
@@ -266,12 +306,22 @@ jobs:
           ref: ${{ needs.version.outputs.sha }}
           fetch-depth: 0
 
+      # Asked again here rather than taken from the version job, because re-running
+      # only this job reuses that job's outputs from before the tag was pushed.
       - name: Create git tag
+        env:
+          VERSION: ${{ needs.version.outputs.version }}
+          SHA: ${{ needs.version.outputs.sha }}
         run: |
+          TAG_SHA=$(python3 scripts/publish_order.py tag-sha "$VERSION")
+          if [ "$TAG_SHA" = "$SHA" ]; then
+            echo "v$VERSION already points at $SHA, so this run is resuming; not tagging again"
+            exit 0
+          fi
           git config user.name "github-actions[bot]"
           git config user.email "github-actions[bot]@users.noreply.github.com"
-          git tag -a "v${{ needs.version.outputs.version }}" -m "Release v${{ needs.version.outputs.version }}"
-          git push origin "v${{ needs.version.outputs.version }}"
+          git tag -a "v$VERSION" -m "Release v$VERSION"
+          git push origin "v$VERSION"
 
       - name: Generate release notes
         uses: orhun/git-cliff-action@v4

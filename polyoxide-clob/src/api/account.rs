@@ -1,13 +1,17 @@
 use std::collections::HashMap;
 
 use alloy::primitives::Address;
-use polyoxide_core::{HttpClient, QueryBuilder, SessionSignerScope};
+use std::sync::Arc;
+
+use polyoxide_core::reqwest::Method;
+use polyoxide_core::{
+    ApiError, DynAuthenticator, HttpClient, QueryBuilder, Request, SessionSignerScope,
+};
 use serde::{Deserialize, Serialize};
 
 use crate::{
-    account::{Credentials, Signer, SigningTarget, Wallet},
+    account::SigningTarget,
     error::ClobError,
-    request::{AuthMode, Request},
     types::{OrderSide, SignatureType},
 };
 
@@ -15,10 +19,7 @@ use crate::{
 #[derive(Clone)]
 pub struct AccountApi {
     pub(crate) http_client: HttpClient,
-    pub(crate) wallet: Wallet,
-    pub(crate) credentials: Credentials,
-    pub(crate) signer: Signer,
-    pub(crate) chain_id: u64,
+    pub(crate) l2: Arc<DynAuthenticator<'static>>,
     pub(crate) signature_type: SignatureType,
     pub(crate) target: SigningTarget,
 }
@@ -28,36 +29,20 @@ impl AccountApi {
     pub fn balance_allowance(
         &self,
         token_id: impl Into<String>,
-    ) -> Request<BalanceAllowanceResponse> {
-        Request::get(
-            self.http_client.clone(),
-            "/balance-allowance",
-            AuthMode::L2 {
-                address: self.wallet.clone().address(),
-                credentials: self.credentials.clone(),
-                signer: self.signer.clone(),
-            },
-            self.chain_id,
-        )
-        .query("asset_type", "CONDITIONAL")
-        .query("token_id", token_id.into())
-        .query("signature_type", self.signature_type as u8)
+    ) -> Request<BalanceAllowanceResponse, ClobError> {
+        Request::new(self.http_client.clone(), "/balance-allowance")
+            .authenticator(self.l2.clone())
+            .query("asset_type", "CONDITIONAL")
+            .query("token_id", token_id.into())
+            .query("signature_type", self.signature_type as u8)
     }
 
     /// Get the caller's USDC (collateral) balance and allowance.
-    pub fn usdc_balance(&self) -> Request<BalanceAllowanceResponse> {
-        Request::get(
-            self.http_client.clone(),
-            "/balance-allowance",
-            AuthMode::L2 {
-                address: self.wallet.clone().address(),
-                credentials: self.credentials.clone(),
-                signer: self.signer.clone(),
-            },
-            self.chain_id,
-        )
-        .query("asset_type", "COLLATERAL")
-        .query("signature_type", self.signature_type as u8)
+    pub fn usdc_balance(&self) -> Request<BalanceAllowanceResponse, ClobError> {
+        Request::new(self.http_client.clone(), "/balance-allowance")
+            .authenticator(self.l2.clone())
+            .query("asset_type", "COLLATERAL")
+            .query("signature_type", self.signature_type as u8)
     }
 
     /// Force a refresh of the caller's balance and allowances from on-chain data.
@@ -75,16 +60,11 @@ impl AccountApi {
         token_id: Option<String>,
         signature_type: Option<u8>,
     ) -> Result<serde_json::Value, ClobError> {
-        let mut request = Request::<serde_json::Value>::get(
+        let mut request = Request::<serde_json::Value, ClobError>::new(
             self.http_client.clone(),
             "/balance-allowance/update".to_string(),
-            AuthMode::L2 {
-                address: self.wallet.clone().address(),
-                credentials: self.credentials.clone(),
-                signer: self.signer.clone(),
-            },
-            self.chain_id,
         )
+        .authenticator(self.l2.clone())
         .query("asset_type", asset_type.into());
         if let Some(token_id) = token_id {
             request = request.query("token_id", token_id);
@@ -96,11 +76,16 @@ impl AccountApi {
         // The endpoint returns 200 with an empty body on success, so parse the
         // body manually and treat an empty body as a null JSON value rather than
         // letting `send()` fail with "EOF while parsing a value".
-        let text = request.send_raw().await?.text().await?;
+        let text = request
+            .send_raw()
+            .await?
+            .text()
+            .await
+            .map_err(ApiError::from)?;
         if text.trim().is_empty() {
             return Ok(serde_json::Value::Null);
         }
-        Ok(serde_json::from_str(&text)?)
+        Ok(serde_json::from_str(&text).map_err(ApiError::from)?)
     }
 
     /// Send a basic heartbeat to keep the session alive
@@ -109,16 +94,12 @@ impl AccountApi {
     /// If heartbeats are not sent regularly, all open orders for the user will be
     /// automatically canceled.
     pub async fn heartbeat(&self) -> Result<HeartbeatResponse, ClobError> {
-        Request::<HeartbeatResponse>::post(
+        Request::<HeartbeatResponse, ClobError>::new(
             self.http_client.clone(),
             "/heartbeats".to_string(),
-            AuthMode::L2 {
-                address: self.wallet.clone().address(),
-                credentials: self.credentials.clone(),
-                signer: self.signer.clone(),
-            },
-            self.chain_id,
         )
+        .method(Method::POST)
+        .authenticator(self.l2.clone())
         .send()
         .await
     }
@@ -127,16 +108,12 @@ impl AccountApi {
     ///
     /// Calls `POST /v1/heartbeats`.
     pub async fn heartbeat_v1(&self) -> Result<serde_json::Value, ClobError> {
-        Request::<serde_json::Value>::post(
+        Request::<serde_json::Value, ClobError>::new(
             self.http_client.clone(),
             "/v1/heartbeats".to_string(),
-            AuthMode::L2 {
-                address: self.wallet.clone().address(),
-                credentials: self.credentials.clone(),
-                signer: self.signer.clone(),
-            },
-            self.chain_id,
         )
+        .method(Method::POST)
+        .authenticator(self.l2.clone())
         .send()
         .await
     }
@@ -147,33 +124,17 @@ impl AccountApi {
     /// `builder_code` is required by `GET /builder/trades`; the API rejects the
     /// request with "builder code is required" when it is omitted.
     pub fn builder_trades(&self, builder_code: impl Into<String>) -> ListBuilderTrades {
-        let request = Request::get(
-            self.http_client.clone(),
-            "/builder/trades",
-            AuthMode::L2 {
-                address: self.wallet.clone().address(),
-                credentials: self.credentials.clone(),
-                signer: self.signer.clone(),
-            },
-            self.chain_id,
-        )
-        .query("builder_code", builder_code.into());
+        let request = Request::new(self.http_client.clone(), "/builder/trades")
+            .authenticator(self.l2.clone())
+            .query("builder_code", builder_code.into());
         ListBuilderTrades { request }
     }
 
     /// Get trades for a maker address (required), with optional additional filtering
     pub fn trades(&self, maker_address: impl Into<String>) -> ListClobTrades {
-        let request = Request::get(
-            self.http_client.clone(),
-            "/data/trades",
-            AuthMode::L2 {
-                address: self.wallet.clone().address(),
-                credentials: self.credentials.clone(),
-                signer: self.signer.clone(),
-            },
-            self.chain_id,
-        )
-        .query("maker_address", maker_address.into());
+        let request = Request::new(self.http_client.clone(), "/data/trades")
+            .authenticator(self.l2.clone())
+            .query("maker_address", maker_address.into());
         ListClobTrades { request }
     }
 
@@ -189,18 +150,11 @@ impl AccountApi {
     /// the venue; if the response names a different wallet for such an account,
     /// the mismatch error above would be misleading.
     pub async fn list_session_signers(&self) -> Result<SessionSigners, ClobError> {
-        let listed: SessionSigners = Request::get(
-            self.http_client.clone(),
-            "/v1/user/session-signers",
-            AuthMode::L2 {
-                address: self.wallet.address(),
-                credentials: self.credentials.clone(),
-                signer: self.signer.clone(),
-            },
-            self.chain_id,
-        )
-        .send()
-        .await?;
+        let listed: SessionSigners =
+            Request::<_, ClobError>::new(self.http_client.clone(), "/v1/user/session-signers")
+                .authenticator(self.l2.clone())
+                .send()
+                .await?;
         if let Some((wallet, _)) = self.target.deposit_wallet() {
             if listed.wallet != wallet {
                 return Err(ClobError::validation(format!(
@@ -217,44 +171,23 @@ impl AccountApi {
 
 /// Request builder for listing CLOB trades with optional filters
 pub struct ListClobTrades {
-    request: Request<ListTradesResponse>,
+    request: Request<ListTradesResponse, ClobError>,
 }
 
 impl ListClobTrades {
-    /// Filter by specific trade ID
-    pub fn id(mut self, id: impl Into<String>) -> Self {
-        self.request = self.request.query("id", id.into());
-        self
-    }
-
-    /// Filter by market (condition ID)
-    pub fn market(mut self, condition_id: impl Into<String>) -> Self {
-        self.request = self.request.query("market", condition_id.into());
-        self
-    }
-
-    /// Filter by asset (token ID)
-    pub fn asset_id(mut self, token_id: impl Into<String>) -> Self {
-        self.request = self.request.query("asset_id", token_id.into());
-        self
-    }
-
-    /// Filter trades before this timestamp
-    pub fn before(mut self, timestamp: impl Into<String>) -> Self {
-        self.request = self.request.query("before", timestamp.into());
-        self
-    }
-
-    /// Filter trades after this timestamp
-    pub fn after(mut self, timestamp: impl Into<String>) -> Self {
-        self.request = self.request.query("after", timestamp.into());
-        self
-    }
-
-    /// Continue from a pagination cursor
-    pub fn next_cursor(mut self, cursor: impl Into<String>) -> Self {
-        self.request = self.request.query("next_cursor", cursor.into());
-        self
+    polyoxide_core::query_setters! {
+        /// Filter by specific trade ID
+        id: impl Into<String> => "id",
+        /// Filter by market (condition ID)
+        market: impl Into<String> => "market",
+        /// Filter by asset (token ID)
+        asset_id: impl Into<String> => "asset_id",
+        /// Filter trades before this timestamp
+        before: impl Into<String> => "before",
+        /// Filter trades after this timestamp
+        after: impl Into<String> => "after",
+        /// Continue from a pagination cursor
+        next_cursor: impl Into<String> => "next_cursor",
     }
 
     /// Execute the request
@@ -265,50 +198,25 @@ impl ListClobTrades {
 
 /// Request builder for listing builder trades with optional filters
 pub struct ListBuilderTrades {
-    request: Request<ListBuilderTradesResponse>,
+    request: Request<ListBuilderTradesResponse, ClobError>,
 }
 
 impl ListBuilderTrades {
-    /// Filter trades after this cursor
-    pub fn after(mut self, cursor: impl Into<String>) -> Self {
-        self.request = self.request.query("after", cursor.into());
-        self
-    }
-
-    /// Filter by maker address
-    pub fn maker_address(mut self, address: impl Into<String>) -> Self {
-        self.request = self.request.query("maker_address", address.into());
-        self
-    }
-
-    /// Filter by market (condition ID)
-    pub fn market(mut self, condition_id: impl Into<String>) -> Self {
-        self.request = self.request.query("market", condition_id.into());
-        self
-    }
-
-    /// Filter by a specific trade ID
-    pub fn id(mut self, id: impl Into<String>) -> Self {
-        self.request = self.request.query("id", id.into());
-        self
-    }
-
-    /// Filter by asset (token ID)
-    pub fn asset_id(mut self, token_id: impl Into<String>) -> Self {
-        self.request = self.request.query("asset_id", token_id.into());
-        self
-    }
-
-    /// Filter trades before this Unix timestamp
-    pub fn before(mut self, timestamp: impl Into<String>) -> Self {
-        self.request = self.request.query("before", timestamp.into());
-        self
-    }
-
-    /// Continue from a pagination cursor
-    pub fn next_cursor(mut self, cursor: impl Into<String>) -> Self {
-        self.request = self.request.query("next_cursor", cursor.into());
-        self
+    polyoxide_core::query_setters! {
+        /// Filter trades after this cursor
+        after: impl Into<String> => "after",
+        /// Filter by maker address
+        maker_address: impl Into<String> => "maker_address",
+        /// Filter by market (condition ID)
+        market: impl Into<String> => "market",
+        /// Filter by a specific trade ID
+        id: impl Into<String> => "id",
+        /// Filter by asset (token ID)
+        asset_id: impl Into<String> => "asset_id",
+        /// Filter trades before this Unix timestamp
+        before: impl Into<String> => "before",
+        /// Continue from a pagination cursor
+        next_cursor: impl Into<String> => "next_cursor",
     }
 
     /// Execute the request

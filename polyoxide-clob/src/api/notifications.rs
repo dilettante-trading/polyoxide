@@ -1,45 +1,28 @@
-use polyoxide_core::{HttpClient, QueryBuilder};
+use std::sync::Arc;
+
+use polyoxide_core::reqwest::Method;
+use polyoxide_core::{DynAuthenticator, HttpClient, QueryBuilder, Request};
 use serde::{Deserialize, Serialize};
 
-use crate::{
-    account::{Credentials, Signer, Wallet},
-    error::ClobError,
-    request::{AuthMode, Request},
-    types::SignatureType,
-};
+use crate::{error::ClobError, types::SignatureType};
 
 /// Notifications namespace for notification operations
 #[derive(Clone)]
 pub struct Notifications {
     pub(crate) http_client: HttpClient,
-    pub(crate) wallet: Wallet,
-    pub(crate) credentials: Credentials,
-    pub(crate) signer: Signer,
-    pub(crate) chain_id: u64,
+    pub(crate) l2: Arc<DynAuthenticator<'static>>,
     pub(crate) signature_type: SignatureType,
 }
 
 impl Notifications {
-    fn l2_auth(&self) -> AuthMode {
-        AuthMode::L2 {
-            address: self.wallet.address(),
-            credentials: self.credentials.clone(),
-            signer: self.signer.clone(),
-        }
-    }
-
     /// List notifications for the current user.
     ///
     /// The CLOB API requires a `signature_type` query parameter to derive the
     /// account address; it is taken from the client configuration.
-    pub fn list(&self) -> Request<Vec<Notification>> {
-        Request::get(
-            self.http_client.clone(),
-            "/notifications",
-            self.l2_auth(),
-            self.chain_id,
-        )
-        .query("signature_type", self.signature_type as u8)
+    pub fn list(&self) -> Request<Vec<Notification>, ClobError> {
+        Request::new(self.http_client.clone(), "/notifications")
+            .authenticator(self.l2.clone())
+            .query("signature_type", self.signature_type as u8)
     }
 
     /// Drop (dismiss) notifications by ID.
@@ -57,15 +40,12 @@ impl Notifications {
             ids: Vec<u64>,
         }
 
-        Request::<serde_json::Value>::delete(
-            self.http_client.clone(),
-            "/notifications",
-            self.l2_auth(),
-            self.chain_id,
-        )
-        .body(&Body { ids: ids.into() })?
-        .send()
-        .await
+        Request::<serde_json::Value, ClobError>::new(self.http_client.clone(), "/notifications")
+            .method(Method::DELETE)
+            .authenticator(self.l2.clone())
+            .body(&Body { ids: ids.into() })?
+            .send()
+            .await
     }
 }
 

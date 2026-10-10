@@ -4,80 +4,7 @@ use std::fmt;
 use chrono::{DateTime, Utc};
 use serde::{Deserialize, Serialize};
 
-/// Declares a string enum whose unknown wire values are kept verbatim in
-/// `Other(String)` instead of failing the response. The same shape as
-/// `polyoxide-data`'s v2 `open_enum!`.
-macro_rules! open_enum {
-    (
-        $(#[$meta:meta])*
-        pub enum $name:ident {
-            $( $(#[$vmeta:meta])* $variant:ident => $wire:literal, )+
-        }
-    ) => {
-        $(#[$meta])*
-        #[derive(Debug, Clone, PartialEq, Eq, Hash)]
-        #[non_exhaustive]
-        pub enum $name {
-            $( $(#[$vmeta])* $variant, )+
-            /// A value this version of the SDK does not recognise, kept verbatim.
-            Other(String),
-        }
-
-        impl $name {
-            /// Every variant this SDK knows, in declaration order. `Other` is not
-            /// among them: it holds whatever else the server sends.
-            pub const ALL: &'static [Self] = &[$( Self::$variant ),+];
-
-            /// The wire spelling.
-            pub fn as_str(&self) -> &str {
-                match self {
-                    $( Self::$variant => $wire, )+
-                    Self::Other(raw) => raw,
-                }
-            }
-        }
-
-        impl fmt::Display for $name {
-            fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-                f.write_str(self.as_str())
-            }
-        }
-
-        impl std::str::FromStr for $name {
-            type Err = std::convert::Infallible;
-
-            fn from_str(s: &str) -> Result<Self, Self::Err> {
-                Ok(match s {
-                    $( $wire => Self::$variant, )+
-                    other => Self::Other(other.to_owned()),
-                })
-            }
-        }
-
-        impl Serialize for $name {
-            fn serialize<S: serde::Serializer>(&self, serializer: S) -> Result<S::Ok, S::Error> {
-                serializer.serialize_str(self.as_str())
-            }
-        }
-
-        impl<'de> Deserialize<'de> for $name {
-            fn deserialize<D: serde::Deserializer<'de>>(deserializer: D) -> Result<Self, D::Error> {
-                let raw = String::deserialize(deserializer)?;
-                let Ok(value) = raw.parse();
-                Ok(value)
-            }
-        }
-
-        #[cfg(feature = "specta")]
-        impl specta::Type for $name {
-            fn inline(type_map: &mut specta::TypeMap, generics: specta::Generics) -> specta::DataType {
-                <String as specta::Type>::inline(type_map, generics)
-            }
-        }
-    };
-}
-
-open_enum! {
+polyoxide_venue::open_enum! {
     /// The protocol a market trades on, from [`Market::version`].
     ///
     /// This is Polymarket Protocol V2, not the CLOB V2 exchange migration:
@@ -90,7 +17,7 @@ open_enum! {
     }
 }
 
-open_enum! {
+polyoxide_venue::open_enum! {
     /// A Protocol V2 market's resolution state, from
     /// [`Market::resolution_status`]. V1 markets use
     /// [`Market::uma_resolution_status`] instead.
@@ -104,7 +31,7 @@ open_enum! {
     }
 }
 
-open_enum! {
+polyoxide_venue::open_enum! {
     /// Which side of a game a team is on, from [`Team::ordering`].
     pub enum HomeAway {
         /// The home team.
@@ -113,6 +40,8 @@ open_enum! {
         Away => "away",
     }
 }
+
+polyoxide_venue::specta_as_string!(ProtocolVersion, ResolutionStatus, HomeAway);
 
 /// Reads an array the served schema types `["array","null"]`, taking `null`
 /// as empty. `#[serde(default)]` alone covers only a missing key.

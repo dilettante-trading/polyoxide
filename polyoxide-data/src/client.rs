@@ -1,5 +1,6 @@
 use polyoxide_core::{
-    HttpClient, HttpClientBuilder, RateLimiter, RetryConfig, DEFAULT_POOL_SIZE, DEFAULT_TIMEOUT_MS,
+    polymarket::{self, PolymarketRetryPolicy},
+    ClientConfig, HttpClient,
 };
 
 use crate::{
@@ -52,21 +53,52 @@ impl DataApi {
         DataApiBuilder::new()
     }
 
-    /// Data API v2 routes (`/v2/*`).
-    ///
-    /// Shares this client's connection pool, rate limiter, 429 cooldown and
-    /// concurrency budget: v1 and v2 are served by the same host.
-    pub fn v2(&self) -> DataV2 {
-        DataV2 {
-            http_client: self.http_client.clone(),
-        }
-    }
-
-    /// Get health namespace
-    pub fn health(&self) -> Health {
-        Health {
-            http_client: self.http_client.clone(),
-        }
+    polyoxide_core::namespaces! { http_client;
+        /// Data API v2 routes (`/v2/*`).
+        ///
+        /// Shares this client's connection pool, rate limiter, 429 cooldown and
+        /// concurrency budget: v1 and v2 are served by the same host.
+        v2: DataV2,
+        /// Get health namespace
+        health: Health,
+        /// Get trades namespace
+        trades: Trades,
+        /// Get holders namespace
+        holders: Holders,
+        /// Get open interest namespace
+        open_interest: OpenInterestApi,
+        /// Get live volume namespace
+        live_volume: LiveVolumeApi,
+        /// Get builders namespace
+        builders: BuildersApi,
+        /// Get leaderboard namespace
+        leaderboard: LeaderboardApi,
+        /// Get market-positions namespace (`/v1/market-positions`)
+        market_positions: MarketPositionsApi,
+        /// Get accounting namespace (`/v1/accounting/snapshot`, returns ZIP bytes)
+        accounting: AccountingApi,
+        /// Get combos namespace (`/v1/positions/combos`, `/v1/activity/combos`)
+        combos: CombosApi,
+        /// Get approvals namespace (`/v1/approvals`). The route now returns `404`;
+        /// use [`v2().approvals()`](crate::v2::DataV2::approvals) instead.
+        #[deprecated(
+            note = "`/v1/approvals` was removed upstream and now returns 404; use `data.v2().approvals(user)`"
+        )]
+        #[allow(deprecated)]
+        approvals: crate::api::approvals::ApprovalsApi,
+        /// Get misc namespace (`/other`, `/revisions`)
+        misc: MiscApi,
+        /// Get PnL namespace (`/user-pnl` on `user-pnl-api.polymarket.com`)
+        ///
+        /// This host has no published OpenAPI spec — see [`PnlApi`] for the
+        /// stability caveat.
+        pnl: PnlApi { http_client: pnl_http_client },
+        /// Get rankings namespace (`/volume`, `/profit` on `lb-api.polymarket.com`)
+        ///
+        /// Distinct from [`Self::leaderboard`], which calls `/v1/leaderboard` on
+        /// the main Data API host. This host has no published OpenAPI spec — see
+        /// [`RankingsApi`] for the stability caveat.
+        rankings: RankingsApi { http_client: rankings_http_client },
     }
 
     /// Get user namespace for user-specific operations
@@ -88,144 +120,30 @@ impl DataApi {
             user_api: self.user(user_address),
         }
     }
-
-    /// Get trades namespace
-    pub fn trades(&self) -> Trades {
-        Trades {
-            http_client: self.http_client.clone(),
-        }
-    }
-
-    /// Get holders namespace
-    pub fn holders(&self) -> Holders {
-        Holders {
-            http_client: self.http_client.clone(),
-        }
-    }
-
-    /// Get open interest namespace
-    pub fn open_interest(&self) -> OpenInterestApi {
-        OpenInterestApi {
-            http_client: self.http_client.clone(),
-        }
-    }
-
-    /// Get live volume namespace
-    pub fn live_volume(&self) -> LiveVolumeApi {
-        LiveVolumeApi {
-            http_client: self.http_client.clone(),
-        }
-    }
-
-    /// Get builders namespace
-    pub fn builders(&self) -> BuildersApi {
-        BuildersApi {
-            http_client: self.http_client.clone(),
-        }
-    }
-
-    /// Get leaderboard namespace
-    pub fn leaderboard(&self) -> LeaderboardApi {
-        LeaderboardApi {
-            http_client: self.http_client.clone(),
-        }
-    }
-
-    /// Get market-positions namespace (`/v1/market-positions`)
-    pub fn market_positions(&self) -> MarketPositionsApi {
-        MarketPositionsApi {
-            http_client: self.http_client.clone(),
-        }
-    }
-
-    /// Get accounting namespace (`/v1/accounting/snapshot`, returns ZIP bytes)
-    pub fn accounting(&self) -> AccountingApi {
-        AccountingApi {
-            http_client: self.http_client.clone(),
-        }
-    }
-
-    /// Get combos namespace (`/v1/positions/combos`, `/v1/activity/combos`)
-    pub fn combos(&self) -> CombosApi {
-        CombosApi {
-            http_client: self.http_client.clone(),
-        }
-    }
-
-    /// Get approvals namespace (`/v1/approvals`). The route now returns `404`;
-    /// use [`v2().approvals()`](crate::v2::DataV2::approvals) instead.
-    #[deprecated(
-        note = "`/v1/approvals` was removed upstream and now returns 404; use `data.v2().approvals(user)`"
-    )]
-    #[allow(deprecated)]
-    pub fn approvals(&self) -> crate::api::approvals::ApprovalsApi {
-        crate::api::approvals::ApprovalsApi {
-            http_client: self.http_client.clone(),
-        }
-    }
-
-    /// Get misc namespace (`/other`, `/revisions`)
-    pub fn misc(&self) -> MiscApi {
-        MiscApi {
-            http_client: self.http_client.clone(),
-        }
-    }
-
-    /// Get PnL namespace (`/user-pnl` on `user-pnl-api.polymarket.com`)
-    ///
-    /// This host has no published OpenAPI spec — see [`PnlApi`] for the
-    /// stability caveat.
-    pub fn pnl(&self) -> PnlApi {
-        PnlApi {
-            http_client: self.pnl_http_client.clone(),
-        }
-    }
-
-    /// Get rankings namespace (`/volume`, `/profit` on `lb-api.polymarket.com`)
-    ///
-    /// Distinct from [`Self::leaderboard`], which calls `/v1/leaderboard` on
-    /// the main Data API host. This host has no published OpenAPI spec — see
-    /// [`RankingsApi`] for the stability caveat.
-    pub fn rankings(&self) -> RankingsApi {
-        RankingsApi {
-            http_client: self.rankings_http_client.clone(),
-        }
-    }
 }
 
 /// Builder for configuring Data API client
+///
+/// Its `base_url` covers every namespace except [`DataApi::pnl`] and
+/// [`DataApi::rankings`], which live on their own hosts and have their own
+/// setters. It allows 4 concurrent in-flight requests by default, shared by
+/// all three hosts.
 pub struct DataApiBuilder {
-    base_url: String,
+    config: ClientConfig,
     pnl_base_url: String,
     rankings_base_url: String,
-    timeout_ms: u64,
-    pool_size: usize,
-    retry_config: Option<RetryConfig>,
-    max_concurrent: Option<usize>,
 }
 
 impl DataApiBuilder {
     fn new() -> Self {
         Self {
-            base_url: DEFAULT_BASE_URL.to_string(),
+            config: ClientConfig::new(DEFAULT_BASE_URL, 4),
             pnl_base_url: DEFAULT_PNL_BASE_URL.to_string(),
             rankings_base_url: DEFAULT_RANKINGS_BASE_URL.to_string(),
-            timeout_ms: DEFAULT_TIMEOUT_MS,
-            pool_size: DEFAULT_POOL_SIZE,
-            retry_config: None,
-            max_concurrent: None,
         }
     }
 
-    /// Set base URL for the API
-    ///
-    /// This covers every namespace except [`DataApi::pnl`] and
-    /// [`DataApi::rankings`], which live on their own hosts and have their own
-    /// setters.
-    pub fn base_url(mut self, url: impl Into<String>) -> Self {
-        self.base_url = url.into();
-        self
-    }
+    polyoxide_core::client_config_setters!(config);
 
     /// Set base URL for the PnL host (default:
     /// `https://user-pnl-api.polymarket.com`)
@@ -249,46 +167,17 @@ impl DataApiBuilder {
         self
     }
 
-    /// Set request timeout in milliseconds
-    pub fn timeout_ms(mut self, timeout: u64) -> Self {
-        self.timeout_ms = timeout;
-        self
-    }
-
-    /// Set connection pool size
-    pub fn pool_size(mut self, size: usize) -> Self {
-        self.pool_size = size;
-        self
-    }
-
-    /// Set retry configuration for 429 responses
-    pub fn with_retry_config(mut self, config: RetryConfig) -> Self {
-        self.retry_config = Some(config);
-        self
-    }
-
-    /// Set the maximum number of concurrent in-flight requests.
-    ///
-    /// Default: 4. Prevents Cloudflare 1015 errors from request bursts.
-    pub fn max_concurrent(mut self, max: usize) -> Self {
-        self.max_concurrent = Some(max);
-        self
-    }
-
     /// Build the Data API client
     pub fn build(self) -> Result<DataApi, DataApiError> {
-        let mut builder = HttpClientBuilder::new(&self.base_url)
-            .timeout_ms(self.timeout_ms)
-            .pool_size(self.pool_size)
-            .with_rate_limiter(RateLimiter::data_default())
-            .with_max_concurrent(self.max_concurrent.unwrap_or(4));
-        if let Some(config) = self.retry_config {
-            builder = builder.with_retry_config(config);
-        }
-        let http_client = builder.build()?;
+        let http_client = self
+            .config
+            .http_builder()
+            .with_rate_limiter(polymarket::data_limits())
+            .with_retry_policy(PolymarketRetryPolicy)
+            .build()?;
 
-        // Sibling hosts reuse the same reqwest client, rate limiter, and
-        // concurrency permit pool — only the base URL differs.
+        // Sibling hosts reuse the same reqwest client, throttle (and so its
+        // hold), and concurrency permit pool — only the base URL differs.
         let pnl_http_client = http_client.with_base_url(&self.pnl_base_url)?;
         let rankings_http_client = http_client.with_base_url(&self.rankings_base_url)?;
 
@@ -321,11 +210,12 @@ impl Traded {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use polyoxide_core::RetryConfig;
 
     #[test]
     fn test_builder_default() {
         let builder = DataApiBuilder::default();
-        assert_eq!(builder.base_url, DEFAULT_BASE_URL);
+        assert_eq!(builder.config.base_url, DEFAULT_BASE_URL);
     }
 
     #[test]
@@ -336,7 +226,7 @@ mod tests {
             max_backoff_ms: 30_000,
         };
         let builder = DataApiBuilder::new().with_retry_config(config);
-        let config = builder.retry_config.unwrap();
+        let config = builder.config.retry_config.unwrap();
         assert_eq!(config.max_retries, 5);
         assert_eq!(config.initial_backoff_ms, 1000);
     }
@@ -344,7 +234,7 @@ mod tests {
     #[test]
     fn test_builder_custom_max_concurrent() {
         let builder = DataApiBuilder::new().max_concurrent(10);
-        assert_eq!(builder.max_concurrent, Some(10));
+        assert_eq!(builder.config.max_concurrent, Some(10));
     }
 
     #[tokio::test]

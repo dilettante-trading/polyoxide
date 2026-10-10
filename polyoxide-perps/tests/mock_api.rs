@@ -503,7 +503,7 @@ async fn portfolio_position_fills_and_invite_decode() {
 
 #[tokio::test]
 async fn the_default_client_paces_by_the_perps_table() {
-    // `PerpsBuilder` installs `RateLimiter::perps_default()` unless told
+    // `PerpsBuilder` installs `polymarket::perps_limits()` unless told
     // otherwise. Nothing else observes that: the limiter is a private field,
     // so without this test the line could be deleted and every offline test
     // would still pass. The trades row is 10 per 10 s, which `quota()` paces
@@ -578,5 +578,178 @@ async fn a_429_is_retried_and_retry_after_zero_does_not_shorten_the_backoff() {
         start.elapsed() >= Duration::from_millis(375),
         "retry landed after {:?}: Retry-After: 0 shortened the backoff",
         start.elapsed()
+    );
+}
+
+#[tokio::test]
+async fn the_builder_installs_polymarkets_retry_policy_so_a_425_is_retried() {
+    // Core's own default policy does not retry a 425 (AD-17); only the builder's
+    // `with_retry_policy(PolymarketRetryPolicy)` makes this succeed.
+    let mut server = Server::new_async().await;
+    let early = server
+        .mock("GET", "/v1/info/time")
+        .match_query(Matcher::Any)
+        .with_status(425)
+        .expect(1)
+        .create_async()
+        .await;
+    let ok = server
+        .mock("GET", "/v1/info/time")
+        .match_query(Matcher::Any)
+        .with_status(200)
+        .with_header("content-type", "application/json")
+        .with_body(r#"{"time":1}"#)
+        .expect(1)
+        .create_async()
+        .await;
+
+    let client = Perps::builder()
+        .base_url(server.url())
+        .with_retry_config(polyoxide_core::RetryConfig {
+            max_retries: 3,
+            initial_backoff_ms: 1,
+            max_backoff_ms: 10,
+        })
+        .build()
+        .unwrap();
+    client
+        .health()
+        .time()
+        .send()
+        .await
+        .expect("a 425 is the matching engine restarting, retried to the success");
+    early.assert_async().await;
+    ok.assert_async().await;
+}
+
+#[tokio::test]
+async fn a_retried_ping_reports_the_answering_attempt() {
+    // Story 3.7: the ping runs on `HttpClient::health`, so its latency is the
+    // round trip of the attempt that answered, as every venue's is. It used
+    // to time the whole call, the retry's backoff included.
+    let mut server = Server::new_async().await;
+    let served = std::sync::atomic::AtomicUsize::new(0);
+    let mock = server
+        .mock("GET", "/v1/info/ping")
+        .with_status_code_from_request(move |_| {
+            match served.fetch_add(1, std::sync::atomic::Ordering::SeqCst) {
+                0 => 429,
+                _ => 200,
+            }
+        })
+        .with_body(r#"{"status":"ok"}"#)
+        .expect(2)
+        .create_async()
+        .await;
+    let perps = Perps::builder()
+        .base_url(server.url())
+        .with_retry_config(polyoxide_core::RetryConfig {
+            max_retries: 1,
+            initial_backoff_ms: 400,
+            max_backoff_ms: 10_000,
+        })
+        .build()
+        .unwrap();
+
+    let start = std::time::Instant::now();
+    let latency = perps.health().ping().await.expect("retried to the 200");
+    let elapsed = start.elapsed();
+    mock.assert_async().await;
+    assert!(
+        elapsed >= std::time::Duration::from_millis(300),
+        "the call took {elapsed:?}, inside the retry's 300ms floor"
+    );
+    assert!(
+        elapsed.saturating_sub(latency) >= std::time::Duration::from_millis(300),
+        "the latency is the answering attempt's, without the backoff: {latency:?} of {elapsed:?}"
+    );
+}
+
+#[tokio::test]
+async fn a_degraded_ping_is_an_api_error() {
+    let mut server = Server::new_async().await;
+    let mock = server
+        .mock("GET", "/v1/info/ping")
+        .with_status(200)
+        .with_body(r#"{"status":"degraded"}"#)
+        .create_async()
+        .await;
+
+    let err = test_perps(&server).health().ping().await.unwrap_err();
+    mock.assert_async().await;
+    assert!(
+        matches!(
+            &err,
+            PerpsError::Api(polyoxide_core::ApiError::Response(r))
+                if r.status.as_u16() == 200 && r.message.contains("degraded")
+        ),
+        "{err:?}"
+    );
+}
+
+// ── Bundle J's matrix rows (Story 3.11) ─────────────────────────
+
+#[tokio::test]
+async fn a_503_in_another_shape_is_core_s_response_and_retriable() {
+    use polyoxide_venue::Classify;
+
+    let mut server = Server::new_async().await;
+    let mock = server
+        .mock("GET", "/v1/info/time")
+        .match_query(Matcher::Any)
+        .with_status(503)
+        .with_body("<html>service unavailable</html>")
+        .expect(1)
+        .create_async()
+        .await;
+
+    let err = test_perps(&server)
+        .health()
+        .time()
+        .send()
+        .await
+        .unwrap_err();
+    mock.assert_async().await;
+    assert!(
+        matches!(&err, PerpsError::Api(polyoxide_core::ApiError::Response(r)) if r.status == 503),
+        "{err:?}"
+    );
+    assert!(err.is_retriable());
+}
+
+#[tokio::test]
+async fn a_400_venue_body_is_a_venue_error_with_its_reference() {
+    use polyoxide_venue::{Class, Classify};
+
+    let mut server = Server::new_async().await;
+    let mock = server
+        .mock("GET", "/v1/info/time")
+        .match_query(Matcher::Any)
+        .with_status(400)
+        .with_body(r#"{"status":"err","error":"invalid query parameters","ref":"g-1224ed1744735"}"#)
+        .expect(1)
+        .create_async()
+        .await;
+
+    let err = test_perps(&server)
+        .health()
+        .time()
+        .send()
+        .await
+        .unwrap_err();
+    mock.assert_async().await;
+    match &err {
+        PerpsError::Venue(venue) => {
+            assert_eq!(venue.status, 400);
+            assert_eq!(venue.code, "invalid query parameters");
+            assert_eq!(venue.reference.as_deref(), Some("g-1224ed1744735"));
+        }
+        other => panic!("expected PerpsError::Venue, got {other:?}"),
+    }
+    assert_eq!(
+        err.class(),
+        Class::VenueRefusal {
+            code: Some("invalid query parameters".into())
+        }
     );
 }

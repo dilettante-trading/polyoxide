@@ -6,7 +6,7 @@ use rust_decimal::Decimal;
 use serde::{Deserialize, Serialize};
 
 use crate::{
-    api::{setter, Fetch},
+    api::Fetch,
     error::PerpsError,
     types::{BookDepth, InstrumentId, Interval, Kline, Level, MarkPoint, Side},
 };
@@ -126,13 +126,13 @@ pub struct ListTickers {
 }
 
 impl ListTickers {
-    setter! {
+    polyoxide_core::query_setters! {
         /// Restrict to one instrument.
         ///
         /// Verified live 2026-09-30: the host ignores this filter and returns
         /// every instrument; `bbo` and `instruments` honour theirs. Filter
         /// client-side until `docs/specs/perps/OBSERVED.md` says otherwise.
-        instrument_id: InstrumentId => "instrument_id"
+        instrument_id: InstrumentId => "instrument_id",
     }
 
     /// Execute the request.
@@ -147,13 +147,13 @@ pub struct ListStatistics {
 }
 
 impl ListStatistics {
-    setter! {
+    polyoxide_core::query_setters! {
         /// Restrict to one instrument.
         ///
         /// Verified live 2026-09-30: the host ignores this filter and returns
         /// every instrument; `bbo` and `instruments` honour theirs. Filter
         /// client-side until `docs/specs/perps/OBSERVED.md` says otherwise.
-        instrument_id: InstrumentId => "instrument_id"
+        instrument_id: InstrumentId => "instrument_id",
     }
 
     /// Execute the request.
@@ -168,9 +168,9 @@ pub struct GetKlines {
 }
 
 impl GetKlines {
-    setter! {
+    polyoxide_core::query_setters! {
         /// End of the range, Unix ms. Defaults to now.
-        end: u64 => "end_timestamp"
+        end: u64 => "end_timestamp",
     }
 
     /// Execute the request.
@@ -185,9 +185,9 @@ pub struct GetMarkHistory {
 }
 
 impl GetMarkHistory {
-    setter! {
+    polyoxide_core::query_setters! {
         /// End of the range, Unix ms. Defaults to now.
-        end: u64 => "end_timestamp"
+        end: u64 => "end_timestamp",
     }
 
     /// Execute the request.
@@ -202,9 +202,9 @@ pub struct ListBbo {
 }
 
 impl ListBbo {
-    setter! {
+    polyoxide_core::query_setters! {
         /// Restrict to one instrument.
-        instrument_id: InstrumentId => "instrument_id"
+        instrument_id: InstrumentId => "instrument_id",
     }
 
     /// Execute the request.
@@ -219,9 +219,9 @@ pub struct GetBook {
 }
 
 impl GetBook {
-    setter! {
+    polyoxide_core::query_setters! {
         /// Levels per side. The server default is 100.
-        depth: BookDepth => "depth"
+        depth: BookDepth => "depth",
     }
 
     /// Execute the request.
@@ -236,13 +236,11 @@ pub struct ListTrades {
 }
 
 impl ListTrades {
-    setter! {
+    polyoxide_core::query_setters! {
         /// Start of the range, Unix ms.
-        start: u64 => "start_timestamp"
-    }
-    setter! {
+        start: u64 => "start_timestamp",
         /// End of the range, Unix ms.
-        end: u64 => "end_timestamp"
+        end: u64 => "end_timestamp",
     }
 
     /// Execute the request.
@@ -257,13 +255,11 @@ pub struct GetFunding {
 }
 
 impl GetFunding {
-    setter! {
+    polyoxide_core::query_setters! {
         /// Start of the range, Unix ms.
-        start: u64 => "start_timestamp"
-    }
-    setter! {
+        start: u64 => "start_timestamp",
         /// End of the range, Unix ms.
-        end: u64 => "end_timestamp"
+        end: u64 => "end_timestamp",
     }
 
     /// Execute the request.

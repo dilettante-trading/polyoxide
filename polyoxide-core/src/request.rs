@@ -1,9 +1,13 @@
 use std::marker::PhantomData;
+use std::sync::Arc;
 
-use reqwest::Response;
+use reqwest::header::{HeaderValue, CONTENT_TYPE};
+use reqwest::{Method, Response};
 use serde::de::DeserializeOwned;
+use serde::Serialize;
 
-use crate::client::{retry_after_header, HttpClient};
+use crate::client::HttpClient;
+use crate::hooks::{Cost, DynAuthenticator, RequestParts};
 use crate::ApiError;
 
 /// Query parameter builder
@@ -53,42 +57,102 @@ pub trait QueryBuilder: Sized {
     }
 }
 
-/// Trait for error types that can be created from API responses
-pub trait RequestError: From<ApiError> + std::fmt::Debug {
-    /// Create error from HTTP response
-    fn from_response(response: Response) -> impl std::future::Future<Output = Self> + Send;
-}
+/// An error a [`Request`] can return: any type core's [`ApiError`] converts
+/// into.
+///
+/// The conversion is the type's one decode function. An unsuccessful response
+/// reaches it as [`ApiError::Response`], carrying the status, headers and body,
+/// so a venue reads its own body shape there, and a `?` on core's error
+/// anywhere decodes the same way.
+pub trait RequestError: From<ApiError> + std::fmt::Debug {}
 
-/// Generic request builder for simple GET-only APIs (Gamma, Data)
+impl<E: From<ApiError> + std::fmt::Debug> RequestError for E {}
+
+/// The one request builder: a method, a path and its query, an optional JSON
+/// body, the [`Authenticator`](crate::Authenticator) that signs it and the
+/// [`Cost`]s it charges the client's throttle.
+///
+/// [`send`](Self::send) runs it on [`HttpClient::send`], decodes the body as
+/// `T`, and turns an unsuccessful response into `E`.
 pub struct Request<T, E> {
     pub(crate) http_client: HttpClient,
+    pub(crate) method: Method,
     pub(crate) path: String,
     pub(crate) query: Vec<(String, String)>,
+    pub(crate) body: Option<String>,
+    pub(crate) authenticator: Option<Arc<DynAuthenticator<'static>>>,
+    pub(crate) costs: Vec<Cost>,
     pub(crate) _marker: PhantomData<(T, E)>,
 }
 
 impl<T, E> Request<T, E> {
-    /// Create a new request
+    /// Create a new `GET` request
     pub fn new(http_client: HttpClient, path: impl Into<String>) -> Self {
         Self {
             http_client,
+            method: Method::GET,
             path: path.into(),
             query: Vec::new(),
+            body: None,
+            authenticator: None,
+            costs: Vec::new(),
             _marker: PhantomData,
         }
+    }
+
+    /// Send with `method` instead of `GET`.
+    pub fn method(mut self, method: Method) -> Self {
+        self.method = method;
+        self
+    }
+
+    /// Sign every attempt with `auth`.
+    pub fn authenticator(mut self, auth: Arc<DynAuthenticator<'static>>) -> Self {
+        self.authenticator = Some(auth);
+        self
+    }
+
+    /// Charge the client's throttle `cost` for every attempt, as well as
+    /// whatever its request-counting layers charge.
+    pub fn with_cost(mut self, cost: Cost) -> Self {
+        self.costs.push(cost);
+        self
+    }
+}
+
+impl<T, E: From<ApiError>> Request<T, E> {
+    /// Send `body` as JSON, with `Content-Type: application/json`.
+    ///
+    /// The body is serialised once, here, through [`serde_json::Value`], so
+    /// every attempt sends, and an authenticator signs, the same bytes. A
+    /// `Value` sorts an object's keys, so those bytes need not follow the
+    /// struct's field order.
+    ///
+    /// # Errors
+    ///
+    /// [`ApiError::Serialization`] when `body` does not serialise.
+    pub fn body<B: Serialize + ?Sized>(mut self, body: &B) -> Result<Self, E> {
+        let value = serde_json::to_value(body).map_err(ApiError::from)?;
+        self.body = Some(value.to_string());
+        Ok(self)
     }
 }
 
 // Written by hand: `#[derive(Clone)]` would require `T: Clone` and `E: Clone`
 // through `PhantomData<(T, E)>`, but both are only type markers. Cloning a
-// request copies its client handle, path and query, which is what lets a
-// paginated walk re-send identical filters on every page.
+// request copies its client handle, method, path, query, body, authenticator
+// and costs, which is what lets a paginated walk re-send identical filters on
+// every page.
 impl<T, E> Clone for Request<T, E> {
     fn clone(&self) -> Self {
         Self {
             http_client: self.http_client.clone(),
+            method: self.method.clone(),
             path: self.path.clone(),
             query: self.query.clone(),
+            body: self.body.clone(),
+            authenticator: self.authenticator.clone(),
+            costs: self.costs.clone(),
             _marker: PhantomData,
         }
     }
@@ -103,82 +167,51 @@ impl<T, E> QueryBuilder for Request<T, E> {
 impl<T: DeserializeOwned, E: RequestError> Request<T, E> {
     /// Execute the request and deserialize response
     pub async fn send(self) -> Result<T, E> {
+        let path = self.path.clone();
         let response = self.send_raw().await?;
 
-        // Get text for debugging
         let text = response
             .text()
             .await
             .map_err(|e| E::from(ApiError::from(e)))?;
 
-        // Deserialize and provide better error context
-        serde_json::from_str(&text).map_err(|e| {
-            tracing::error!("Deserialization failed: {}", e);
-            tracing::error!("Failed to deserialize: {}", crate::truncate_for_log(&text));
-            E::from(ApiError::from(e))
-        })
+        crate::decode_json(&path, &text).map_err(|e| E::from(ApiError::from(e)))
     }
 
     /// Execute the request and return raw response
+    ///
+    /// It runs on [`HttpClient::send`], so it is throttled, gated, signed,
+    /// retried and held by the client's hooks. A response that is not a 2xx
+    /// is never returned: it reaches `E` as [`ApiError::Response`].
     pub async fn send_raw(self) -> Result<Response, E> {
-        let url = self
-            .http_client
-            .base_url
-            .join(&self.path)
-            .map_err(|e| E::from(ApiError::from(e)))?;
-
-        let http_client = self.http_client;
-        let query = self.query;
-        let path = self.path;
-        let mut attempt = 0u32;
-
-        loop {
-            let _permit = http_client.acquire_concurrency().await;
-            http_client.acquire_rate_limit(&path, None).await;
-
-            let mut request = http_client.client.get(url.clone());
-
-            if !query.is_empty() {
-                request = request.query(&query);
-            }
-
-            let response = request
-                .send()
-                .await
-                .map_err(|e| E::from(ApiError::from(e)))?;
-            let status = response.status();
-            let retry_after = retry_after_header(&response);
-
-            // Before `should_retry`, and unconditionally: a 429 has to become
-            // backpressure for every request on this limiter even when *this*
-            // request is out of attempts and about to give up.
-            http_client.note_rate_limited(status, retry_after.as_deref());
-
-            if let Some(backoff) = http_client.should_retry(status, attempt, retry_after.as_deref())
-            {
-                attempt += 1;
-                tracing::warn!(
-                    "Retriable status {} on {}, retry {} after {}ms",
-                    status,
-                    path,
-                    attempt,
-                    backoff.as_millis()
-                );
-                drop(_permit);
-                tokio::time::sleep(backoff).await;
-                continue;
-            }
-
-            tracing::debug!("Response status: {}", status);
-
-            if !status.is_success() {
-                let error = E::from_response(response).await;
-                tracing::error!("Request failed: {:?}", error);
-                return Err(error);
-            }
-
-            return Ok(response);
+        let mut parts = RequestParts::new(self.method, self.path);
+        parts.query = self.query;
+        if let Some(body) = self.body {
+            parts
+                .headers
+                .insert(CONTENT_TYPE, HeaderValue::from_static("application/json"));
+            parts.body = Some(body);
         }
+        let failure = match self
+            .http_client
+            .send(parts, &self.costs, self.authenticator.as_deref())
+            .await
+        {
+            Ok(response) if response.status().is_success() => {
+                tracing::debug!("Response status: {}", response.status());
+                return Ok(response);
+            }
+            // Only a policy that is `Done` with a failed response gets here:
+            // core's and Polymarket's fail it, and the loop returns the error.
+            Ok(response) => ApiError::from_response(response).await,
+            Err(err) => err,
+        };
+        let answered = matches!(failure, ApiError::Response(_));
+        let error = E::from(failure);
+        if answered {
+            tracing::error!("Request failed: {:?}", error);
+        }
+        Err(error)
     }
 }
 

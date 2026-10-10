@@ -31,40 +31,19 @@ pub struct ListMarketPositions {
 }
 
 impl ListMarketPositions {
-    /// Filter to a single user by proxy wallet address.
-    pub fn user(mut self, user_address: impl Into<String>) -> Self {
-        self.request = self.request.query("user", user_address.into());
-        self
-    }
-
-    /// Filter positions by status (default: `ALL`).
-    pub fn status(mut self, status: MarketPositionStatus) -> Self {
-        self.request = self.request.query("status", status);
-        self
-    }
-
-    /// Sort positions by field (default: `TOTAL_PNL`).
-    pub fn sort_by(mut self, sort_by: MarketPositionSortBy) -> Self {
-        self.request = self.request.query("sortBy", sort_by);
-        self
-    }
-
-    /// Set sort direction (default: `DESC`).
-    pub fn sort_direction(mut self, direction: SortDirection) -> Self {
-        self.request = self.request.query("sortDirection", direction);
-        self
-    }
-
-    /// Maximum number of positions per outcome token (0-500, default: 50).
-    pub fn limit(mut self, limit: u32) -> Self {
-        self.request = self.request.query("limit", limit);
-        self
-    }
-
-    /// Pagination offset per outcome token (0-10000, default: 0).
-    pub fn offset(mut self, offset: u32) -> Self {
-        self.request = self.request.query("offset", offset);
-        self
+    polyoxide_core::query_setters! {
+        /// Filter to a single user by proxy wallet address.
+        user: impl Into<String> => "user",
+        /// Filter positions by status (default: `ALL`).
+        status: MarketPositionStatus => "status",
+        /// Sort positions by field (default: `TOTAL_PNL`).
+        sort_by: MarketPositionSortBy => "sortBy",
+        /// Set sort direction (default: `DESC`).
+        sort_direction: SortDirection => "sortDirection",
+        /// Maximum number of positions per outcome token (0-500, default: 50).
+        limit: u32 => "limit",
+        /// Pagination offset per outcome token (0-10000, default: 0).
+        offset: u32 => "offset",
     }
 
     /// Execute the request.

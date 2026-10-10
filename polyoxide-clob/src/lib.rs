@@ -58,12 +58,14 @@
 //! - [`ClobError::FokUnfilled`] — a Fill-Or-Kill order could not be filled entirely
 //!
 //! Both are deterministic: resubmitting the identical order cannot change the answer.
-//! [`ClobError::is_retriable`] reports that, and is the intended input to a caller's
-//! retry policy — so retriability never has to be re-derived from status codes or
-//! from the venue's prose, which changes without notice.
+//! Their class, through [`polyoxide_venue::Classify`], reports that, and its
+//! `is_retriable` is the intended input to a caller's retry policy — so
+//! retriability never has to be re-derived from status codes or from the venue's
+//! prose, which changes without notice.
 //!
 //! ```
 //! use polyoxide_clob::ClobError;
+//! use polyoxide_venue::Classify;
 //!
 //! fn handle(err: ClobError) {
 //!     match err {
@@ -134,10 +136,10 @@ struct ReadmeDoctests;
 
 pub mod account;
 pub mod api;
+mod authenticator;
 pub mod client;
 pub mod core;
 pub mod error;
-pub mod request;
 pub mod types;
 pub mod utils;
 
@@ -190,4 +192,15 @@ pub use polyoxide_core::SessionSignerScope;
 pub use types::{
     Order, OrderKind, OrderSide, ParseTickSizeError, PartialCreateOrderOptions, SignatureType,
     SignedOrder, TickSize,
+};
+
+// Every public error type implements `Classify`; one without it fails the
+// build here. `.github/scripts/tests/test_classify_coverage.py` fails when a
+// public error type is missing from this list.
+const _: fn() = || {
+    fn is<T: polyoxide_venue::Classify>() {}
+    is::<ClobError>();
+    is::<ParseTickSizeError>();
+    #[cfg(feature = "ws")]
+    is::<ws::WebSocketError>();
 };

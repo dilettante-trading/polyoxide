@@ -9,28 +9,46 @@ This is an **internal** crate. End users should depend on [`polyoxide`](https://
 | Module | Purpose |
 |---|---|
 | `client` | `HttpClient` / `HttpClientBuilder` -- configurable reqwest wrapper with base URL, connection pooling, concurrency limiting, and 429 retry logic |
-| `error` | `ApiError` -- shared error enum (Api, Authentication, Validation, RateLimit, Timeout, Network, Serialization, Url) with `from_response()` for automatic status-code mapping |
+| `error` | `ApiError` -- shared error enum (Response, Validation, Network, Serialization, Url, Refused, Sign), classed through `polyoxide_venue::Classify`; `ErrorResponse` -- an unsuccessful response read whole (status, headers, body, message, `Retry-After`), which `ApiError::Response` carries |
 | `auth` | `Signer` (HMAC-SHA256), `Base64Format`, `current_timestamp()` -- authentication building blocks for L2 API credentials |
-| `request` | `Request<T, E>`, `QueryBuilder` trait, `RequestError` trait -- generic GET request builder with automatic deserialization, retry, and rate-limit integration |
-| `rate_limit` | `RateLimiter` with per-endpoint burst/sustained windows and `RetryConfig` for exponential backoff with jitter. Factory methods: `clob_default()`, `gamma_default()`, `data_default()`, `relay_default()` |
-| `macros` | `impl_api_error_conversions!` -- generates `From<reqwest::Error>` and `From<url::ParseError>` for crate-specific error wrappers |
+| `hooks` | `Throttle`, `RetryPolicy` and `Authenticator` -- the hooks a venue gives the send loop -- with the types they take (`RequestMeta`, `ResponseMeta`, `AttemptInfo`, `RequestParts`, `Decision`, `Cost`, `Charge`, `Refused`), `NoThrottle` and `DefaultRetryPolicy` |
+| `send` | `HttpClient::send`, core's one send loop, and `decode_json`, which logs a decode failure once |
+| `hold` | `Hold` -- the extend-only deadline every layer of one throttle waits out, with an optional ceiling |
+| `capacity` | `CapacityBucket` -- a token bucket holding a published capacity, charging integer costs, refusing a cost it can never hold, resizable in place |
+| `request` | `Request<T, E>`, `QueryBuilder` trait, `RequestError` marker trait (any `From<ApiError> + Debug` type, whose `From` is its decode) -- the one request builder: method, query, JSON body, authenticator and throttle costs, sent on the send loop with automatic deserialization |
+| `rate_limit` | `WindowQuotaTable`, which builds a `RateLimiter` from a general bucket and per-endpoint rows (shared buckets, prefix or exact matching, scoped by method), with `effective_quota()` and `rows()` for inspection; `RetryConfig` for exponential backoff with jitter |
+| `polymarket` | Polymarket's retry policy, its five tables (`clob_limits()`, `gamma_limits()`, `data_limits()`, `relay_limits()`, `perps_limits()`), and `ClobThrottle` / `clob_throttle()`, which composes the IP table and the signer layer over one `Hold`, with `signer_cost()` and the `LayerId`s `CLOUDFLARE`, `SIGNER_ORDER` and `SIGNER_CANCEL` |
+| `macros` | `client_config_setters!`, `namespaces!` and `query_setters!` -- a builder's transport setters, a client's namespace accessors, and a request builder's query setters |
 | `keychain` | OS credential storage via `keyring` -- `get`, `set`, `delete` helpers and `KeychainError` (feature-gated behind `keychain`) |
 
 ## Error hierarchy
 
-Each downstream crate defines its own error enum (e.g. `ClobError`, `GammaError`) with an `Api(ApiError)` variant. The `impl_api_error_conversions!` macro wires up the `From` conversions so `reqwest::Error` and `url::ParseError` flow through `ApiError` automatically:
+Each downstream crate defines its own error enum (e.g. `ClobError`, `GammaError`) with an `Api(ApiError)` variant. An unsuccessful response reaches it as `ApiError::Response`, which carries the whole response (`ErrorResponse`: status, headers, body, message and `Retry-After`), and the crate's `From<ApiError>` is its one decode: a `?` on core's error anywhere reads the venue's own body shape there. Transport, URL and JSON failures enter the same way, as `ApiError::Network`, `Url` and `Serialization`:
 
 ```rust
-use polyoxide_core::{ApiError, impl_api_error_conversions};
+use polyoxide_core::ApiError;
 use thiserror::Error;
 
 #[derive(Error, Debug)]
+#[non_exhaustive]
 pub enum MyCrateError {
     #[error(transparent)]
-    Api(#[from] ApiError),
+    Api(ApiError),
+    #[error("venue refused: {0}")]
+    Venue(String),
 }
 
-impl_api_error_conversions!(MyCrateError);
+impl From<ApiError> for MyCrateError {
+    fn from(err: ApiError) -> Self {
+        match err {
+            // The venue's own body shape becomes its own variant.
+            ApiError::Response(response) if response.body.starts_with(r#"{"venue""#) => {
+                Self::Venue(response.message)
+            }
+            other => Self::Api(other),
+        }
+    }
+}
 ```
 
 ## Key exports
@@ -41,7 +59,7 @@ impl_api_error_conversions!(MyCrateError);
 use polyoxide_core::{HttpClient, HttpClientBuilder, DEFAULT_TIMEOUT_MS, DEFAULT_POOL_SIZE};
 
 // Errors
-use polyoxide_core::ApiError;
+use polyoxide_core::{ApiError, ErrorResponse};
 
 // Auth
 use polyoxide_core::{Signer, Base64Format, current_timestamp};
@@ -50,7 +68,8 @@ use polyoxide_core::{Signer, Base64Format, current_timestamp};
 use polyoxide_core::{Request, QueryBuilder, RequestError};
 
 // Rate limiting & retry
-use polyoxide_core::{RateLimiter, RetryConfig};
+use polyoxide_core::{RateLimiter, RetryConfig, WindowQuotaTable};
+use polyoxide_core::polymarket::{clob_limits, PolymarketRetryPolicy};
 ```
 
 ## Installation

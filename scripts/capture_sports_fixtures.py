@@ -25,17 +25,16 @@ see the most sports.
 import asyncio
 import json
 import re
-import ssl
 import sys
 import time
 from collections import Counter
-from datetime import datetime, timezone
 from pathlib import Path
 
-import certifi
-from websockets.asyncio.client import ClientConnection, connect
+from websockets.asyncio.client import ClientConnection
 from websockets.exceptions import ConnectionClosed
 from websockets.frames import Opcode
+
+import capture_common
 
 URL = "wss://sports-api.polymarket.com/ws"
 
@@ -73,9 +72,10 @@ class PingRecorder(ClientConnection):
 
 async def record(seconds: int) -> None:
     """Receive for `seconds`, into CAPTURE."""
-    ctx = ssl.create_default_context(cafile=certifi.where())
     CAPTURE.started = time.monotonic()
-    async with connect(URL, ssl=ctx, ping_interval=None, create_connection=PingRecorder) as ws:
+    async with capture_common.ws_session(
+        URL, ping_interval=None, create_connection=PingRecorder
+    ) as ws:
         end = CAPTURE.started + seconds
         while (remaining := end - time.monotonic()) > 0:
             try:
@@ -151,7 +151,7 @@ def main() -> None:
     seconds = int(sys.argv[2]) if len(sys.argv) > 2 else 300
     out.mkdir(parents=True, exist_ok=True)
 
-    captured_at = datetime.now(timezone.utc).strftime("%Y-%m-%d %H:%M UTC")
+    captured_at = capture_common.stamp("%Y-%m-%d %H:%M UTC")
     try:
         asyncio.run(record(seconds))
     except KeyboardInterrupt:
@@ -167,7 +167,7 @@ def main() -> None:
             name = f"{slug(league_of(raw))}-{len(kept)}.json"
             # Bytes, not text: no newline translation on any platform, and the
             # received UTF-8 re-encodes exactly. No trailing newline.
-            (out / name).write_bytes(raw.encode("utf-8"))
+            capture_common.write_raw(out / name, raw)
             kept.append((name, new))
 
     times = [t for t, _ in frames]
@@ -185,15 +185,17 @@ def main() -> None:
         f"- Protocol pings at (s): {CAPTURE.pings}",
         f"- Longest gap between data frames: {longest_gap}",
         "",
-        "| League | Frames |",
-        "|---|---|",
-        *[f"| {league} | {count} |" for league, count in leagues.most_common()],
+        *capture_common.provenance_table(
+            ("League", "Frames"),
+            [(league, str(count)) for league, count in leagues.most_common()],
+            short_rule=True,
+        ),
         "",
-        "| File | New shapes |",
-        "|---|---|",
-        *[f"| `{name}` | {new} |" for name, new in kept],
+        *capture_common.provenance_table(
+            ("File", "New shapes"), [(f"`{name}`", str(new)) for name, new in kept], short_rule=True
+        ),
     ]
-    (out / "PROVENANCE.md").write_text("\n".join(lines) + "\n", encoding="utf-8")
+    capture_common.write_provenance(out, lines)
     print(f"{len(frames)} frames, {len(kept)} kept, written to {out}")
 
 

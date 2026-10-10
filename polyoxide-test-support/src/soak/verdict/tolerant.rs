@@ -1,17 +1,25 @@
-//! What a response, a stage and a whole ramp mean. Pure functions, so the
+//! The tolerant rulebook: what a response, a stage and a whole ramp mean for
+//! a harness that drives raw requests at a fixed rate, tells the origin's 429
+//! from the CDN's, and reads saturation off latency. Pure functions, so the
 //! rules that decide a pinned rate limit are unit-tested rather than read off
 //! a terminal.
+//!
+//! A stage is invalid, not clean, when a probe URL repeats or any response
+//! came from the CDN cache, when 1% of its requests failed, when it ended
+//! early, or when it fell short of its target rate. A p99 more than
+//! [`SATURATION_FACTOR`] times the first stage's is saturation, which stops a
+//! ramp as a throttle does.
 
 use std::time::Duration;
 
-use crate::common::percentile;
+use super::super::percentile;
 
 /// Where a 429 came from. The two layers have different windows and different
 /// consequences: Cloudflare's `error code: 1015` blocks the whole host for this
 /// IP, and traffic during the block prolongs it.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum Layer {
-    /// The v2 origin's per-client allowance: a JSON body with `code: rate_limited`.
+    /// The origin's per-client allowance: a JSON body with `code: rate_limited`.
     Origin,
     /// Cloudflare's IP rule: a plain-text `error code: 1015` body.
     Cloudflare,
@@ -22,16 +30,23 @@ pub enum Layer {
 /// One response, as the soak sees it.
 #[derive(Debug, Clone, PartialEq)]
 pub enum Reply {
+    /// A 2xx served by the origin.
     Ok,
     /// Served by CloudFront from cache; the origin never saw the request.
     CacheHit,
+    /// A 429.
     Throttled {
+        /// Which layer sent it.
         layer: Layer,
+        /// Its `Retry-After`, when it parsed as non-negative seconds.
         retry_after: Option<Duration>,
     },
+    /// Any other status, or `0` when no response arrived.
     Error(u16),
 }
 
+/// What a response means: its status, its `x-cache` and `Retry-After`
+/// headers, and its body.
 pub fn classify(
     status: u16,
     x_cache: Option<&str>,
@@ -63,31 +78,41 @@ pub fn classify(
     }
 }
 
+/// One response in a stage.
 #[derive(Debug, Clone, PartialEq)]
 pub struct Sample {
     /// The route's path, so a mixed run can say which route was throttled.
     pub path: &'static str,
     /// From stage start to this response completing.
     pub finished_at: Duration,
+    /// From sending the request to this response completing.
     pub latency: Duration,
+    /// What the response meant.
     pub reply: Reply,
 }
 
 /// Why a stage stopped before its planned duration, other than a reply.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum Abort {
+    /// A probe URL repeated, so the CDN cache could answer it.
     DuplicateUrl,
+    /// The probe space ran out of distinct URLs.
     ProbeSpaceExhausted,
 }
 
+/// One stage of a ramp, or a whole validation run.
 #[derive(Debug, Clone, PartialEq)]
 pub struct Stage {
     /// Requests per second driven by the harness; `None` when the shipped
     /// limiter set the pace.
     pub target_rps: Option<f64>,
+    /// How long the stage was meant to run.
     pub planned: Duration,
+    /// How long it ran.
     pub elapsed: Duration,
+    /// Every response, in completion order.
     pub samples: Vec<Sample>,
+    /// Why it stopped early, other than a reply.
     pub abort: Option<Abort>,
 }
 
@@ -104,20 +129,24 @@ impl Stage {
         }
     }
 
+    /// Every sample's latency, ascending.
     pub fn latencies(&self) -> Vec<Duration> {
         let mut sorted: Vec<Duration> = self.samples.iter().map(|s| s.latency).collect();
         sorted.sort_unstable();
         sorted
     }
 
+    /// The median latency.
     pub fn p50(&self) -> Duration {
         percentile(&self.latencies(), 50.0)
     }
 
+    /// The 99th-percentile latency.
     pub fn p99(&self) -> Duration {
         percentile(&self.latencies(), 99.0)
     }
 
+    /// How many samples' replies satisfy `pred`.
     pub fn count(&self, pred: impl Fn(&Reply) -> bool) -> usize {
         self.samples.iter().filter(|s| pred(&s.reply)).count()
     }
@@ -132,19 +161,30 @@ pub const SATURATION_FACTOR: u32 = 3;
 /// that rate: the harness, not the server, was the bottleneck.
 pub const MIN_ACHIEVED_SHARE: f64 = 0.9;
 
+/// What one stage says.
 #[derive(Debug, Clone, PartialEq)]
 pub enum Verdict {
+    /// No throttle, nothing invalid, no saturation.
     Clean,
+    /// The first 429 of the stage.
     Throttled {
+        /// The route it answered.
         path: &'static str,
+        /// Which layer sent it.
         layer: Layer,
+        /// Its `Retry-After`.
         retry_after: Option<Duration>,
+        /// When it completed, from stage start.
         at: Duration,
     },
+    /// Latency climbed past [`SATURATION_FACTOR`] times the baseline.
     Saturated {
+        /// This stage's p99.
         p99: Duration,
+        /// The first stage's p99.
         baseline_p99: Duration,
     },
+    /// The stage measured nothing it could pin, and why.
     Invalid(String),
 }
 
@@ -237,6 +277,7 @@ pub enum Pin {
     Count(u32),
     /// Not even the lowest stage was clean: re-run with lower stages.
     RetryLower,
+    /// A stage was invalid, so nothing may be pinned, and why.
     Invalid(String),
 }
 

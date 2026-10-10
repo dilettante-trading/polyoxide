@@ -1,10 +1,16 @@
 //! Tests against the real RTDS host. Ignored by default; run with
 //! `cargo test -p polyoxide-rtds --test live_api -- --ignored`.
+//!
+//! A feed that stays silent may be upstream being down, so a test that hears
+//! nothing fails as `environmental`; the bare stream ending fails as
+//! `transient`, since it hides the close code. Every other failure carries the
+//! tag of its `RtdsError`.
 
 use std::{collections::HashSet, time::Duration};
 
 use futures_util::StreamExt;
 use polyoxide_rtds::{PriceEvent, Rtds, Subscription, Topic, TwapWindow};
+use polyoxide_test_support::{environmental, fail, transient, ResultExt};
 
 /// Answers the design's open question: does RTDS accept a second subscribe
 /// frame on an open connection?
@@ -18,7 +24,7 @@ async fn reports_whether_a_second_subscribe_frame_is_accepted() {
         Subscription::for_topic(Topic::ChainlinkTwap(TwapWindow::Thirty)).symbols(["btc/usd"]),
     )
     .await
-    .expect("connect");
+    .or_fail("connect");
 
     // Drain the first topic's traffic briefly to confirm the feed is alive.
     let mut saw_first = false;
@@ -30,19 +36,20 @@ async fn reports_whether_a_second_subscribe_frame_is_accepted() {
                 break;
             }
             Ok(Some(Ok(_))) => continue,
-            Ok(Some(Err(err))) => panic!("stream error: {err}"),
-            // The bare stream hides the close code; the nightly retries this
-            // phrase as a possible restart.
-            Ok(None) => panic!("the server ended the connection early"),
+            Ok(Some(Err(err))) => fail("stream error", &err),
+            // The bare stream hides the close code, so the nightly retries
+            // this as a possible restart.
+            Ok(None) => transient("the server ended the connection early"),
             Err(_) => continue,
         }
     }
 
-    assert!(
-        saw_first,
-        "no updates on an unfiltered-cadence topic in 20s; the feed may \
-         legitimately time out if upstream is down"
-    );
+    if !saw_first {
+        environmental(
+            "no updates on an unfiltered-cadence topic in 20s; the feed may \
+             legitimately time out if upstream is down",
+        );
+    }
 
     // Now send a second subscribe frame on the same open connection, widening
     // to a different topic, and see whether the venue honours it.
@@ -51,7 +58,7 @@ async fn reports_whether_a_second_subscribe_frame_is_accepted() {
         .await
     {
         Ok(()) => {}
-        Err(err) => panic!("subscribe_more was rejected outright: {err}"),
+        Err(err) => fail("subscribe_more was rejected outright", &err),
     }
 
     // Record which topics produce update frames over the next 30 seconds.
@@ -74,8 +81,8 @@ async fn reports_whether_a_second_subscribe_frame_is_accepted() {
                 server_rejection = Some(format!("status {status_code}: {message}"));
                 break;
             }
-            Ok(Some(Err(err))) => panic!("stream error: {err}"),
-            Ok(None) => break,
+            Ok(Some(Err(err))) => fail("stream error", &err),
+            Ok(None) => transient("the server ended the connection"),
             Err(_) => continue,
         }
         if topics_seen.contains(&Topic::ChainlinkTwap(TwapWindow::Thirty))
@@ -108,7 +115,7 @@ async fn reports_whether_a_second_subscribe_frame_is_accepted() {
 
 /// Collect the symbols seen on one subscription within a time budget.
 async fn symbols_seen(subscriptions: Vec<Subscription>, budget: Duration) -> HashSet<String> {
-    let mut stream = Rtds::connect(subscriptions).await.expect("connect");
+    let mut stream = Rtds::connect(subscriptions).await.or_fail("connect");
     let mut symbols = HashSet::new();
     let deadline = tokio::time::Instant::now() + budget;
 
@@ -118,8 +125,8 @@ async fn symbols_seen(subscriptions: Vec<Subscription>, budget: Duration) -> Has
                 symbols.insert(update.symbol().to_string());
             }
             Ok(Some(Ok(_))) => continue,
-            Ok(Some(Err(err))) => panic!("stream error: {err}"),
-            Ok(None) => break,
+            Ok(Some(Err(err))) => fail("stream error", &err),
+            Ok(None) => transient("the server ended the connection"),
             Err(_) => continue,
         }
     }
@@ -146,10 +153,10 @@ async fn the_symbol_filter_actually_binds() {
     eprintln!("filtered symbols: {filtered:?}");
 
     if control.is_empty() {
-        panic!(
+        environmental(&format!(
             "no frames on an unfiltered subscription in {budget:?}; upstream may \
              legitimately time out"
-        );
+        ));
     }
 
     assert!(
@@ -182,7 +189,7 @@ async fn twap_updates_decode_to_a_plausible_price() {
         Subscription::for_topic(Topic::ChainlinkTwap(TwapWindow::Sixty)).symbols(["btc/usd"]),
     )
     .await
-    .expect("connect");
+    .or_fail("connect");
 
     let deadline = tokio::time::Instant::now() + budget;
     while tokio::time::Instant::now() < deadline {
@@ -202,10 +209,12 @@ async fn twap_updates_decode_to_a_plausible_price() {
                 return;
             }
             Ok(Some(Ok(_))) => continue,
-            Ok(Some(Err(err))) => panic!("stream error: {err}"),
-            Ok(None) => break,
+            Ok(Some(Err(err))) => fail("stream error", &err),
+            Ok(None) => transient("the server ended the connection"),
             Err(_) => continue,
         }
     }
-    panic!("no TWAP updates in {budget:?}; upstream may legitimately time out");
+    environmental(&format!(
+        "no TWAP updates in {budget:?}; upstream may legitimately time out"
+    ));
 }

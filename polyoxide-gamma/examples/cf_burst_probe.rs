@@ -10,7 +10,7 @@
 //! ```
 //!
 //! Behaviour:
-//!   - Bypasses the SDK's rate limiter (uses `reqwest::Client` directly).
+//!   - Bypasses the SDK's rate limiter (uses `polyoxide_core::reqwest::Client` directly).
 //!   - Fires requests in concurrent batches until the server returns non-2xx.
 //!   - Dumps the triggering response's status, key headers, and body preview.
 //!   - Hard-caps at `MAX_REQUESTS` to stay well-behaved if no limit trips.
@@ -24,8 +24,8 @@ const SAMPLE_EVERY: u32 = 250;
 
 #[tokio::main]
 async fn main() {
-    let client = reqwest::Client::builder()
-        // The workspace enables reqwest's `gzip` feature for polyoxide-binance;
+    let client = polyoxide_core::reqwest::Client::builder()
+        // Core enables reqwest's `gzip` feature, so a client asks for it;
         // keep this probe's requests as they were measured.
         .gzip(false)
         .timeout(Duration::from_secs(10))
@@ -110,7 +110,7 @@ async fn main() {
     eprintln!("═══════════════════════════════════════════════════════════════");
 }
 
-async fn dump(resp: reqwest::Response, include_body: bool) {
+async fn dump(resp: polyoxide_core::reqwest::Response, include_body: bool) {
     const RELEVANT: &[&str] = &[
         "retry-after",
         "cf-ray",

@@ -31,7 +31,7 @@ alloy = { version = "1.1.2", features = [
     "sol-types",
 ] }
 polyoxide-core = { workspace = true }
-reqwest = { workspace = true }
+polyoxide-venue = { workspace = true }
 polyoxide-gamma = { workspace = true, optional = true }
 serde = { workspace = true }
 serde_json = { workspace = true }
@@ -49,11 +49,12 @@ futures-util = { version = "0.3", optional = true }
 # `ensure_crypto_provider` in src/ws/client.rs. default-features = false keeps
 # us from pulling aws-lc-rs (and its cmake/nasm build requirements) into the
 # graph on top of the ring backend already present.
-rustls = { version = "0.23", default-features = false, features = [
-    "ring",
-], optional = true }
+rustls = { workspace = true, optional = true }
 
 [dev-dependencies]
+# The live suites' failure tags and credential loaders. Path-only: it is never
+# published, and cargo strips a path-only dev-dependency on publish.
+polyoxide-test-support = { path = "../polyoxide-test-support", features = ["query"] }
 polyoxide-relay = { workspace = true }
 mockito = { workspace = true }
 tokio = { workspace = true, features = ["macros", "rt-multi-thread"] }
@@ -61,3 +62,51 @@ tracing-subscriber = { version = "0.3", features = ["env-filter"] }
 futures-util = "0.3"
 dotenvy = "0.15"
 rust_decimal_macros = "1.37"
+
+# `live_ws.rs` is `#![cfg(feature = "ws")]`. Without this stanza a build
+# without the feature compiles it to an empty binary that runs no tests.
+[[test]]
+name = "live_ws"
+required-features = ["ws"]
+
+# Registration, read by scripts/gen_registry.py: the README line, venue and
+# product ids, the docs/specs/ mirrors covered, and one entry per live test
+# target, which becomes a nightly job. Run `python3 scripts/gen_registry.py
+# --write` after an edit.
+[package.metadata.polyoxide]
+readme = "Client library for Polymarket CLOB (order book) API"
+venue = "polymarket"
+products = ["clob"]
+mirrors = ["clob", "session-keys"]
+
+[package.metadata.polyoxide.live.live_api]
+suite = "live"
+timeout = 15
+features = []
+secrets = [
+  "POLYMARKET_API_KEY",
+  "POLYMARKET_API_PASSPHRASE",
+  "POLYMARKET_API_SECRET",
+  "POLYMARKET_BUILDER_CODE",
+  "POLYMARKET_PRIVATE_KEY",
+]
+
+[package.metadata.polyoxide.live.live_ws]
+suite = "live"
+timeout = 15
+features = ["ws"]
+secrets = ["POLYMARKET_PRIVATE_KEY"]
+
+[package.metadata.polyoxide.live.live_session_keys]
+suite = "session-keys"
+timeout = 40
+features = []
+secrets = [
+  "BUILDER_API_KEY",
+  "BUILDER_PASS_PHRASE",
+  "BUILDER_SECRET",
+  "POLYMARKET_DW_OWNER_PRIVATE_KEY",
+  "POLYMARKET_DW_SESSION_PRIVATE_KEY",
+  "POLYMARKET_DW_WALLET",
+]
+note = "40-minute budget in its own job, since its registry and transaction waits can take ~25 minutes"

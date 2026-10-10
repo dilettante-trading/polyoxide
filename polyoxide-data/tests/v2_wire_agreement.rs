@@ -19,6 +19,7 @@
 use std::collections::BTreeSet;
 
 use polyoxide_data::v2::{types::*, Page};
+use polyoxide_test_support::{agreement, agreement::Ledger, fixtures};
 use serde::{de::DeserializeOwned, Deserialize, Serialize};
 use serde_json::Value;
 
@@ -156,36 +157,17 @@ const EXPECTED_ABSENT: &[(&str, &str, &str)] = &[
 ];
 
 fn key_paths(value: &Value, prefix: &str, out: &mut BTreeSet<String>) {
-    match value {
-        Value::Object(map) => {
-            for (key, child) in map {
-                let path = format!("{prefix}/{key}");
-                out.insert(path.clone());
-                key_paths(child, &path, out);
-            }
-        }
-        Value::Array(items) => {
-            for item in items {
-                key_paths(item, &format!("{prefix}[]"), out);
-            }
-        }
-        _ => {}
-    }
+    agreement::key_paths(value, prefix, out)
 }
 
 fn load(fixture: &str) -> Value {
-    let path = format!(
-        "{}/tests/fixtures/v2/{fixture}.json",
-        env!("CARGO_MANIFEST_DIR")
-    );
-    let text = std::fs::read_to_string(&path).unwrap_or_else(|e| panic!("{path}: {e}"));
-    serde_json::from_str(&text).unwrap()
+    fixtures!("v2").json(fixture)
 }
 
 /// Returns the unexcused differences for one fixture, and marks the excuses used.
 fn diff<T: DeserializeOwned + Serialize>(
     fixture: &str,
-    used: &mut BTreeSet<(String, String)>,
+    used: &mut Ledger<(&str, &str, &str)>,
 ) -> Vec<String> {
     let wire = load(fixture);
     let parsed: T = serde_json::from_value(wire.clone())
@@ -199,21 +181,14 @@ fn diff<T: DeserializeOwned + Serialize>(
 
     let mut problems = Vec::new();
     for path in sent.difference(&modelled) {
-        if IGNORED.iter().any(|(f, p, _)| *f == fixture && p == path) {
-            used.insert((fixture.to_owned(), path.clone()));
-        } else {
+        if used.excuse(IGNORED, fixture, path).is_none() {
             problems.push(format!(
                 "{fixture}: server sent {path}, which no type models"
             ));
         }
     }
     for path in modelled.difference(&sent) {
-        if EXPECTED_ABSENT
-            .iter()
-            .any(|(f, p, _)| *f == fixture && p == path)
-        {
-            used.insert((fixture.to_owned(), path.clone()));
-        } else {
+        if used.excuse(EXPECTED_ABSENT, fixture, path).is_none() {
             problems.push(format!(
                 "{fixture}: type emits {path}, which the server did not send"
             ));
@@ -224,7 +199,7 @@ fn diff<T: DeserializeOwned + Serialize>(
 
 #[test]
 fn every_fixture_agrees_with_its_type_in_both_directions() {
-    let mut used = BTreeSet::new();
+    let mut used = Ledger::new(&[IGNORED, EXPECTED_ABSENT]);
     let mut problems = Vec::new();
     let mut check = |p: Vec<String>| problems.extend(p);
 
@@ -278,12 +253,10 @@ fn every_fixture_agrees_with_its_type_in_both_directions() {
     ));
     check(diff::<Data<ServiceStatus>>("status", &mut used));
 
-    for (fixture, path, _) in IGNORED.iter().chain(EXPECTED_ABSENT) {
-        if !used.contains(&((*fixture).to_owned(), (*path).to_owned())) {
-            problems.push(format!(
-                "{fixture}: stale excuse for {path}; no difference needs it"
-            ));
-        }
+    for (fixture, path, _) in used.stale() {
+        problems.push(format!(
+            "{fixture}: stale excuse for {path}; no difference needs it"
+        ));
     }
 
     assert!(problems.is_empty(), "\n{}\n", problems.join("\n"));

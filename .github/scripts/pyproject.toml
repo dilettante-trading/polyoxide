@@ -10,6 +10,8 @@ dependencies = [
 [dependency-groups]
 dev = [
     "pytest>=8.0",
+    # `test_capture_common.py`'s `ws_session` tests run against a local server.
+    "websockets>=13",
 ]
 
 [tool.pytest.ini_options]

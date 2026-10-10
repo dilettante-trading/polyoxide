@@ -14,8 +14,12 @@
 use std::time::Duration;
 
 use futures_util::{SinkExt, StreamExt};
-use polyoxide_clob::ws::WebSocket;
+use polyoxide_clob::ws::{WebSocket, WebSocketError};
 use polyoxide_clob::{Account, ClobBuilder, Credentials};
+#[cfg(feature = "keychain")]
+use polyoxide_test_support::keychain;
+use polyoxide_test_support::{fail, load_env, transient, ResultExt};
+use polyoxide_venue::{class_for_close_code, Class};
 
 // ── User channel: is `markets` actually optional? ───────────────
 
@@ -27,32 +31,32 @@ use polyoxide_clob::{Account, ClobBuilder, Credentials};
 /// Build the L1-signing account from `POLYMARKET_PRIVATE_KEY`, else the keychain.
 ///
 /// L1 ignores the L2 credential entirely, so both sources reach the same
-/// `derive_api_key` call below: the env leg supplies placeholder credentials
-/// purely to satisfy `Account`'s constructor, and the keychain leg happens to
-/// carry a real triple that is then ignored. The derive path is what runs
-/// either way.
+/// `derive_api_key` call below with placeholder credentials, there purely to
+/// satisfy `Account`'s constructor. The derive path is what runs either way.
 ///
-/// The panic keeps the phrase `POLYMARKET_PRIVATE_KEY required` verbatim:
-/// `AUTH_GATED_RE` in `.github/scripts/classify_failures.py` matches on it to
-/// skip these in the nightly rather than filing an issue.
+/// When neither source has the key, the loader fails the test as
+/// `auth-gated`, which the nightly skips rather than filing an issue. An empty
+/// value counts as unset, since the nightly passes an unset repository secret
+/// as `""`, which would otherwise fail `Account::new` as a real failure.
 fn l1_account() -> Account {
-    dotenvy::dotenv().ok();
-    if let Ok(private_key) = std::env::var("POLYMARKET_PRIVATE_KEY") {
-        return Account::new(
-            private_key,
-            Credentials {
-                key: String::new(),
-                secret: String::new(),
-                passphrase: String::new(),
-            },
-        )
-        .expect("build account from private key");
-    }
+    let creds = load_env(&["POLYMARKET_PRIVATE_KEY"]);
     #[cfg(feature = "keychain")]
-    if let Ok(account) = Account::from_keychain() {
-        return account;
-    }
-    panic!("POLYMARKET_PRIVATE_KEY required; the L2 triple is derived from it");
+    let creds = creds.or_else(|_| {
+        keychain(
+            "polyoxide-clob",
+            &[("POLYMARKET_PRIVATE_KEY", "private_key")],
+        )
+    });
+    let creds = creds.unwrap_or_else(|missing| missing.or_auth_gated());
+    Account::new(
+        creds.get("POLYMARKET_PRIVATE_KEY"),
+        Credentials {
+            key: String::new(),
+            secret: String::new(),
+            passphrase: String::new(),
+        },
+    )
+    .or_fail("build account from private key")
 }
 
 async fn derive_credentials() -> (String, String, String) {
@@ -61,15 +65,15 @@ async fn derive_credentials() -> (String, String, String) {
     let clob = ClobBuilder::new()
         .with_account(account)
         .build()
-        .expect("clob client");
+        .or_fail("clob client");
 
     let resp = clob
         .auth()
-        .expect("auth namespace")
+        .or_fail("auth namespace")
         .derive_api_key(0)
         .send()
         .await
-        .expect("derive_api_key should be accepted");
+        .or_fail("derive_api_key should be accepted");
 
     (resp.api_key, resp.secret, resp.passphrase)
 }
@@ -79,6 +83,11 @@ async fn derive_credentials() -> (String, String, String) {
 /// Deliberately raw rather than going through `UserSubscription`: the point is
 /// to find out what the venue accepts *before* changing the SDK type, not to
 /// confirm that a change we already made round-trips.
+///
+/// `Err` is the venue rejecting the frame. A failure that says nothing about
+/// the frame fails the test from here with its own tag: a transport error by
+/// its class, and a stream that ends, or closes with a code the socket table
+/// treats as a dropped connection, as `transient`.
 async fn probe_user_subscription(frame: String) -> Result<usize, String> {
     use tokio_tungstenite::{connect_async, tungstenite::Message};
 
@@ -89,11 +98,13 @@ async fn probe_user_subscription(frame: String) -> Result<usize, String> {
 
     let (mut ws, _) = connect_async("wss://ws-subscriptions-clob.polymarket.com/ws/user")
         .await
-        .map_err(|e| format!("connect failed: {e}"))?;
+        .map_err(WebSocketError::from)
+        .or_fail("connect failed");
 
     ws.send(Message::Text(frame.into()))
         .await
-        .map_err(|e| format!("send failed: {e}"))?;
+        .map_err(WebSocketError::from)
+        .or_fail("send failed");
 
     // A rejected subscription shows up as a close frame or an error payload
     // within the first few seconds. An accepted one simply stays quiet until
@@ -119,11 +130,15 @@ async fn probe_user_subscription(frame: String) -> Result<usize, String> {
                 frames += 1;
             }
             Ok(Some(Ok(Message::Close(c)))) => {
+                let code = c.as_ref().map(|frame| u16::from(frame.code));
+                if matches!(class_for_close_code(code), Class::Network) {
+                    transient(&format!("server closed the connection: {c:?}"));
+                }
                 return Err(format!("server closed the connection: {c:?}"));
             }
             Ok(Some(Ok(_))) => continue,
-            Ok(Some(Err(e))) => return Err(format!("stream error: {e}")),
-            Ok(None) => return Err("server ended the stream".to_string()),
+            Ok(Some(Err(e))) => fail("stream error", &WebSocketError::from(e)),
+            Ok(None) => transient("the server ended the stream without a close frame"),
             Err(_) => return Ok(frames),
         }
     }
@@ -177,12 +192,15 @@ async fn live_user_subscription_accepts_omitted_markets() {
                  ({frames} event frames in the window)"
             );
         }
-        Err(e) => panic!(
-            "server did NOT accept an omitted `markets` field: {e}\n\
-             If this is reproducible, `markets` is genuinely required and the \
-             AsyncAPI mirror is wrong — leave the SDK type as Vec<String> and \
-             record the divergence."
-        ),
+        Err(e) => {
+            let finding = format!(
+                "server did NOT accept an omitted `markets` field: {e}\n\
+                 If this is reproducible, `markets` is genuinely required and the \
+                 AsyncAPI mirror is wrong — leave the SDK type as Vec<String> and \
+                 record the divergence."
+            );
+            panic!("{finding}"); // live-unwraps: the venue refusing the omitted field is the finding
+        }
     }
 }
 
@@ -200,14 +218,14 @@ async fn live_connect_user_all_markets_is_accepted() {
     let mut ws =
         WebSocket::connect_user_all_markets(ApiCredentials::new(api_key, secret, passphrase))
             .await
-            .expect("unfiltered user subscription should connect");
+            .or_fail("unfiltered user subscription should connect");
 
     // No events are expected on an idle account; what matters is that the
     // server does not reject or close the subscription.
     match tokio::time::timeout(Duration::from_secs(20), ws.next()).await {
         Err(_) => println!("connection held open for 20s with no market filter"),
         Ok(Some(Ok(msg))) => println!("received a user event: {msg:?}"),
-        Ok(Some(Err(e))) => panic!("server rejected the unfiltered subscription: {e}"),
-        Ok(None) => panic!("server closed the unfiltered subscription"),
+        Ok(Some(Err(e))) => fail("server rejected the unfiltered subscription", &e),
+        Ok(None) => transient("the server ended the connection on the unfiltered subscription"),
     }
 }

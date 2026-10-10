@@ -1,8 +1,9 @@
 //! Vocabulary shared by every namespace: identifiers, closed sets the spec
 //! enumerates, and the positional rows the host sends as bare arrays.
 
-use std::{fmt, str::FromStr};
+use std::fmt;
 
+use polyoxide_venue::positional::DecimalStr;
 use rust_decimal::Decimal;
 use serde::{Deserialize, Deserializer, Serialize, Serializer};
 
@@ -25,91 +26,42 @@ impl From<u64> for InstrumentId {
     }
 }
 
-/// A string that is not one of a closed set's wire spellings.
-#[derive(Debug, Clone, PartialEq, Eq, thiserror::Error)]
-#[error("{value:?} is not a valid {type_name}")]
-pub struct UnknownVariant {
-    /// The Rust type being parsed.
-    pub type_name: &'static str,
-    /// The offending input.
-    pub value: String,
-}
-
-/// A closed set with one wire spelling per variant. Generates serde renames,
-/// `Display`, `FromStr` and an `ALL` table, so every spelling lives in one
-/// place and the agreement test can walk them.
-macro_rules! wire_enum {
-    ($(#[$meta:meta])* $name:ident { $($variant:ident => $wire:literal),+ $(,)? }) => {
-        $(#[$meta])*
-        #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize)]
-        pub enum $name {
-            $( #[serde(rename = $wire)] $variant, )+
-        }
-
-        impl $name {
-            /// Every variant, in declaration order.
-            pub const ALL: &'static [$name] = &[$( $name::$variant, )+];
-
-            /// The wire spelling.
-            pub fn as_str(self) -> &'static str {
-                match self { $( $name::$variant => $wire, )+ }
-            }
-        }
-
-        impl fmt::Display for $name {
-            fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-                f.write_str(self.as_str())
-            }
-        }
-
-        impl FromStr for $name {
-            type Err = UnknownVariant;
-            fn from_str(s: &str) -> Result<Self, Self::Err> {
-                match s {
-                    $( $wire => Ok($name::$variant), )+
-                    _ => Err(UnknownVariant { type_name: stringify!($name), value: s.to_owned() }),
-                }
-            }
-        }
-    };
-}
-
-wire_enum! {
+polyoxide_venue::wire_enum! {
     /// Kline and mark-history bucket width. Also the `klines` channel suffix.
-    Interval {
+    pub enum Interval {
         S1 => "1s", M1 => "1m", M5 => "5m", M15 => "15m", M30 => "30m",
         H1 => "1h", H4 => "4h", H6 => "6h", H12 => "12h", D1 => "1d", W1 => "1w",
     }
 }
 
-wire_enum! {
+polyoxide_venue::wire_enum! {
     /// Side of a trade or position.
-    Side { Long => "long", Short => "short" }
+    pub enum Side { Long => "long", Short => "short" }
 }
 
-wire_enum! {
+polyoxide_venue::wire_enum! {
     /// Instrument type. Only perpetuals are listed today.
-    InstrumentType { Perpetual => "perpetual" }
+    pub enum InstrumentType { Perpetual => "perpetual" }
 }
 
-wire_enum! {
+polyoxide_venue::wire_enum! {
     /// Instrument category.
-    InstrumentCategory { Equity => "equity", Commodity => "commodity", Index => "index", Crypto => "crypto" }
+    pub enum InstrumentCategory { Equity => "equity", Commodity => "commodity", Index => "index", Crypto => "crypto" }
 }
 
-wire_enum! {
+polyoxide_venue::wire_enum! {
     /// Leaderboard window.
-    LeaderboardWindow { Day => "day", Week => "week", Month => "month", All => "all" }
+    pub enum LeaderboardWindow { Day => "day", Week => "week", Month => "month", All => "all" }
 }
 
-wire_enum! {
+polyoxide_venue::wire_enum! {
     /// Leaderboard ranking key.
-    LeaderboardSort { Pnl => "pnl", Notional => "notional", AccountValue => "account_value" }
+    pub enum LeaderboardSort { Pnl => "pnl", Notional => "notional", AccountValue => "account_value" }
 }
 
-wire_enum! {
+polyoxide_venue::wire_enum! {
     /// Sort direction for paged history.
-    SortOrder { Desc => "desc", Asc => "asc" }
+    pub enum SortOrder { Desc => "desc", Asc => "asc" }
 }
 
 /// Levels per side that `GET /v1/info/book` can return. The WebSocket `book`
@@ -152,10 +104,6 @@ impl fmt::Display for BookDepth {
     }
 }
 
-fn parse_decimal<E: serde::de::Error>(s: &str) -> Result<Decimal, E> {
-    s.parse::<Decimal>().map_err(E::custom)
-}
-
 /// One candle. On the wire this is a positional array:
 /// `[open_time, open, high, low, close, volume, trades]`.
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -177,8 +125,18 @@ pub struct Kline {
     pub trades: u64,
 }
 
+/// A kline's wire form. A tuple of exactly seven, so a longer or shorter
+/// array is refused.
 #[derive(Serialize, Deserialize)]
-struct KlineWire(u64, String, String, String, String, String, u64);
+struct KlineWire(
+    u64,
+    DecimalStr,
+    DecimalStr,
+    DecimalStr,
+    DecimalStr,
+    DecimalStr,
+    u64,
+);
 
 impl<'de> Deserialize<'de> for Kline {
     fn deserialize<D: Deserializer<'de>>(deserializer: D) -> Result<Self, D::Error> {
@@ -186,11 +144,11 @@ impl<'de> Deserialize<'de> for Kline {
             KlineWire::deserialize(deserializer)?;
         Ok(Self {
             open_time,
-            open: parse_decimal(&open)?,
-            high: parse_decimal(&high)?,
-            low: parse_decimal(&low)?,
-            close: parse_decimal(&close)?,
-            volume: parse_decimal(&volume)?,
+            open: open.0,
+            high: high.0,
+            low: low.0,
+            close: close.0,
+            volume: volume.0,
             trades,
         })
     }
@@ -200,11 +158,11 @@ impl Serialize for Kline {
     fn serialize<S: Serializer>(&self, serializer: S) -> Result<S::Ok, S::Error> {
         KlineWire(
             self.open_time,
-            self.open.to_string(),
-            self.high.to_string(),
-            self.low.to_string(),
-            self.close.to_string(),
-            self.volume.to_string(),
+            DecimalStr(self.open),
+            DecimalStr(self.high),
+            DecimalStr(self.low),
+            DecimalStr(self.close),
+            DecimalStr(self.volume),
             self.trades,
         )
         .serialize(serializer)
@@ -223,17 +181,14 @@ pub struct MarkPoint {
 
 impl<'de> Deserialize<'de> for MarkPoint {
     fn deserialize<D: Deserializer<'de>>(deserializer: D) -> Result<Self, D::Error> {
-        let (time, mark_price): (u64, String) = Deserialize::deserialize(deserializer)?;
-        Ok(Self {
-            time,
-            mark_price: parse_decimal(&mark_price)?,
-        })
+        let (time, DecimalStr(mark_price)) = Deserialize::deserialize(deserializer)?;
+        Ok(Self { time, mark_price })
     }
 }
 
 impl Serialize for MarkPoint {
     fn serialize<S: Serializer>(&self, serializer: S) -> Result<S::Ok, S::Error> {
-        (self.time, self.mark_price.to_string()).serialize(serializer)
+        (self.time, DecimalStr(self.mark_price)).serialize(serializer)
     }
 }
 
@@ -249,22 +204,21 @@ pub struct Level {
 
 impl<'de> Deserialize<'de> for Level {
     fn deserialize<D: Deserializer<'de>>(deserializer: D) -> Result<Self, D::Error> {
-        let (price, quantity): (String, String) = Deserialize::deserialize(deserializer)?;
-        Ok(Self {
-            price: parse_decimal(&price)?,
-            quantity: parse_decimal(&quantity)?,
-        })
+        let (DecimalStr(price), DecimalStr(quantity)) = Deserialize::deserialize(deserializer)?;
+        Ok(Self { price, quantity })
     }
 }
 
 impl Serialize for Level {
     fn serialize<S: Serializer>(&self, serializer: S) -> Result<S::Ok, S::Error> {
-        (self.price.to_string(), self.quantity.to_string()).serialize(serializer)
+        (DecimalStr(self.price), DecimalStr(self.quantity)).serialize(serializer)
     }
 }
 
 #[cfg(test)]
 mod tests {
+    use std::str::FromStr;
+
     use super::*;
 
     #[test]
@@ -306,6 +260,17 @@ mod tests {
     fn an_unknown_spelling_names_the_type_and_the_value() {
         let err = "2m".parse::<Interval>().unwrap_err();
         assert_eq!(err.to_string(), "\"2m\" is not a valid Interval");
+    }
+
+    #[test]
+    fn an_unknown_spelling_is_an_invalid_request() {
+        use polyoxide_venue::{Class, Classify};
+
+        let err = "2m".parse::<Interval>().unwrap_err();
+        assert_eq!(err.class(), Class::InvalidRequest);
+        assert!(err.is_fault());
+        assert_eq!(err.retry_after(), None);
+        assert!(!err.is_retriable());
     }
 
     #[test]
@@ -360,5 +325,13 @@ mod tests {
             serde_json::to_string(&level).unwrap(),
             r#"["7688.5","0.31605"]"#
         );
+    }
+
+    #[test]
+    fn a_level_accepts_an_exponent() {
+        // As every other perps decimal does, through `rust_decimal::serde::str`.
+        let level: Level = serde_json::from_str(r#"["1e-5","2"]"#).unwrap();
+        assert_eq!(level.price, Decimal::new(1, 5));
+        assert_eq!(level.quantity, Decimal::from(2));
     }
 }

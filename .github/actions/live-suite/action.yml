@@ -1,0 +1,92 @@
+name: Live suite
+description: >-
+  Runs one crate's ignored live tests, classifies the failures, retries the
+  transient ones, and uploads the result as `behavioral-<crate>-<suite>`. The
+  steps every job in nightly-behavioral.yml shares; the calling job checks the
+  repository out first, and its `env:` carries the secrets the tests read.
+
+inputs:
+  crate:
+    description: The package to test, as `cargo nextest run -p` takes it.
+    required: true
+  suite:
+    description: Names the artifact, so two jobs for one crate stay distinct.
+    required: true
+  flags:
+    description: The `--features` and `--test` flags selecting the live test binaries.
+    required: true
+
+runs:
+  using: composite
+  steps:
+    - uses: dtolnay/rust-toolchain@stable
+    - uses: taiki-e/install-action@nextest
+    - uses: astral-sh/setup-uv@v7
+    - run: uv sync
+      shell: bash
+      working-directory: .github/scripts
+
+    - name: Run live (no-auth) tests — first pass
+      shell: bash
+      run: |
+        mkdir -p artifacts/${{ inputs.crate }}
+        cargo nextest run \
+          -p ${{ inputs.crate }} ${{ inputs.flags }} \
+          --run-ignored only \
+          --no-fail-fast \
+          --message-format libtest-json \
+          > artifacts/${{ inputs.crate }}/first-pass.json 2>artifacts/${{ inputs.crate }}/first-pass.stderr || true
+        # `|| true` exists so test failures don't stop the pipeline, but it
+        # also swallows nextest refusing to run at all (build error, bad
+        # flags). An empty JSON would classify as "no failures" — silent
+        # green. Distinguish the two here: no output means infra failure.
+        if [ ! -s artifacts/${{ inputs.crate }}/first-pass.json ]; then
+          echo "::error::nextest produced no libtest-json output — build failure or bad invocation:"
+          cat artifacts/${{ inputs.crate }}/first-pass.stderr
+          exit 1
+        fi
+
+    - name: Classify first-pass failures
+      shell: bash
+      run: |
+        uv run python ${{ github.workspace }}/.github/scripts/classify_failures.py classify \
+          --input ${{ github.workspace }}/artifacts/${{ inputs.crate }}/first-pass.json \
+          --output-dir ${{ github.workspace }}/artifacts/${{ inputs.crate }}/classified
+      working-directory: .github/scripts
+
+    - name: Retry transient failures
+      shell: bash
+      run: |
+        # retry-filter.txt is a ready-made nextest filterset built by the
+        # classifier: libtest-json names are `crate::binary$test`, so each
+        # clause pins binary_id AND bare test name.
+        FILTER_FILE="artifacts/${{ inputs.crate }}/classified/retry-filter.txt"
+        if [ -s "$FILTER_FILE" ]; then
+          cargo nextest run \
+            -p ${{ inputs.crate }} ${{ inputs.flags }} \
+            --run-ignored only \
+            --no-fail-fast \
+            --message-format libtest-json \
+            --retries 2 \
+            -E "$(cat "$FILTER_FILE")" \
+            > artifacts/${{ inputs.crate }}/retry.json 2>artifacts/${{ inputs.crate }}/retry.stderr || true
+        else
+          echo '{"type":"suite","event":"started","test_count":0}' > artifacts/${{ inputs.crate }}/retry.json
+          echo '{"type":"suite","event":"ok","passed":0,"failed":0,"ignored":0,"measured":0,"filtered_out":0,"exec_time":0.0}' >> artifacts/${{ inputs.crate }}/retry.json
+        fi
+
+    - name: Merge first-pass + retry
+      shell: bash
+      run: |
+        uv run python ${{ github.workspace }}/.github/scripts/classify_failures.py merge \
+          --first-pass ${{ github.workspace }}/artifacts/${{ inputs.crate }}/first-pass.json \
+          --retry ${{ github.workspace }}/artifacts/${{ inputs.crate }}/retry.json \
+          --output-dir ${{ github.workspace }}/artifacts/${{ inputs.crate }}/merged
+      working-directory: .github/scripts
+
+    - name: Upload artifacts
+      if: always()
+      uses: actions/upload-artifact@v6
+      with:
+        name: behavioral-${{ inputs.crate }}-${{ inputs.suite }}
+        path: artifacts/${{ inputs.crate }}/

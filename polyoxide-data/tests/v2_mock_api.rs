@@ -18,6 +18,7 @@ use polyoxide_data::{
     },
     DataApi, DataApiError,
 };
+use polyoxide_venue::Classify;
 
 fn client(server: &ServerGuard) -> DataApi {
     DataApi::builder().base_url(server.url()).build().unwrap()
@@ -340,7 +341,7 @@ async fn a_v1_error_body_stays_an_api_error() {
     .await;
 
     assert!(
-        matches!(&err, DataApiError::Api(ApiError::Validation(m)) if m == "required query param 'user' not provided"),
+        matches!(&err, DataApiError::Api(ApiError::Response(r)) if r.status.as_u16() == 400 && r.message == "required query param 'user' not provided"),
         "got {err:?}"
     );
     assert_eq!(err.trace_id(), None);
@@ -350,11 +351,13 @@ async fn a_v1_error_body_stays_an_api_error() {
 async fn a_cloudflare_block_page_stays_a_rate_limit_error() {
     let err = error_for(429, "error code: 1015", None).await;
 
-    assert!(matches!(&err, DataApiError::Api(ApiError::RateLimit(m)) if m == "error code: 1015"));
+    assert!(
+        matches!(&err, DataApiError::Api(ApiError::Response(r)) if r.status.as_u16() == 429 && r.message == "error code: 1015")
+    );
 }
 
 #[tokio::test]
-async fn the_servers_retryable_flag_overrides_the_status_heuristic() {
+async fn the_servers_retryable_flag_is_surfaced_and_the_status_decides() {
     let body = |retryable: bool| {
         format!(
             r#"{{"error":"datastore unavailable","code":"dependency_unavailable","retryable":{retryable},"trace_id":"t-503"}}"#
@@ -364,14 +367,12 @@ async fn the_servers_retryable_flag_overrides_the_status_heuristic() {
     let refused = error_for(503, &body(false), None).await;
     let allowed = error_for(503, &body(true), None).await;
 
-    // A bare 503 is retriable by status alone; the server said otherwise.
-    assert!(ApiError::Api {
-        status: 503,
-        message: String::new()
-    }
-    .is_retriable());
-    assert!(!refused.is_retriable());
+    // A 503 is retriable by its class, whatever the server's flag says; the
+    // flag is surfaced on the v2 error (Story 3.11).
+    assert!(refused.is_retriable());
     assert!(allowed.is_retriable());
+    assert!(matches!(&refused, DataApiError::V2(e) if !e.retryable));
+    assert!(matches!(&allowed, DataApiError::V2(e) if e.retryable));
 }
 
 #[tokio::test]

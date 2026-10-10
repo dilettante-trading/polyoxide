@@ -17,3 +17,7 @@ account.json
 .claude-squad/
 # loom local data
 .loom/
+# BMad runtime: config.toml is shared; scripts are a plugin copy and render/ holds per-worktree snapshots
+_bmad/render/
+_bmad/scripts/
+_bmad/toolbox/

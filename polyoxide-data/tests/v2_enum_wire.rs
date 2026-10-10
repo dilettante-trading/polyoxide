@@ -219,3 +219,19 @@ fn a_response_enum_keeps_an_unknown_value_verbatim() {
         .iter()
         .any(|t| matches!(t, ActivityType::Other(_))));
 }
+
+#[test]
+fn an_unknown_filter_type_names_the_type_and_the_value() {
+    use polyoxide_venue::{Class, Classify, UnknownVariant};
+
+    let err = "NOPE".parse::<FilterType>().unwrap_err();
+    assert_eq!(
+        err,
+        UnknownVariant {
+            type_name: "FilterType",
+            value: "NOPE".into(),
+        }
+    );
+    assert_eq!(err.to_string(), r#""NOPE" is not a valid FilterType"#);
+    assert_eq!(err.class(), Class::InvalidRequest);
+}

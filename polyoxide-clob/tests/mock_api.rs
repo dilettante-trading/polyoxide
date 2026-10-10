@@ -4,6 +4,7 @@ use polyoxide_clob::{
     UserRewardMarketOrderBy,
 };
 use polyoxide_core::RetryConfig;
+use polyoxide_venue::Classify;
 
 fn test_public_clob(server: &mockito::ServerGuard) -> polyoxide_clob::Clob {
     ClobBuilder::new().base_url(server.url()).build().unwrap()
@@ -168,10 +169,10 @@ async fn authenticated_401_returns_authentication_error() {
     let err = clob.orders().unwrap().list().send().await.unwrap_err();
 
     match err {
-        ClobError::Api(polyoxide_core::ApiError::Authentication(msg)) => {
-            assert_eq!(msg, "invalid api key");
+        ClobError::Api(polyoxide_core::ApiError::Response(r)) if r.status.as_u16() == 401 => {
+            assert_eq!(r.message, "invalid api key");
         }
-        other => panic!("Expected Authentication error, got: {:?}", other),
+        other => panic!("Expected a 401, got: {:?}", other),
     }
 
     mock.assert_async().await;
@@ -953,8 +954,8 @@ async fn retry_429_exhausted_returns_rate_limit_error() {
 
     // After exhausting retries, the 429 is returned as a RateLimit error
     assert!(
-        matches!(err, ClobError::Api(polyoxide_core::ApiError::RateLimit(_))),
-        "Expected RateLimit error, got: {:?}",
+        matches!(&err, ClobError::Api(polyoxide_core::ApiError::Response(r)) if r.status.as_u16() == 429),
+        "Expected a 429, got: {:?}",
         err
     );
     // Verify it was retried exactly max_retries times (3 total requests)
@@ -979,8 +980,8 @@ async fn retry_429_with_retry_after_header() {
     let err = clob.health().server_time().send().await.unwrap_err();
 
     assert!(matches!(
-        err,
-        ClobError::Api(polyoxide_core::ApiError::RateLimit(_))
+        &err,
+        ClobError::Api(polyoxide_core::ApiError::Response(r)) if r.status.as_u16() == 429
     ));
     // Retry-After header respected — still 3 total requests
     mock.assert_async().await;
@@ -1039,7 +1040,7 @@ async fn retry_425_exhausted_returns_too_early_error() {
     let err = clob.health().server_time().send().await.unwrap_err();
 
     match &err {
-        ClobError::Api(polyoxide_core::ApiError::Api { status, .. }) => assert_eq!(*status, 425),
+        ClobError::Api(polyoxide_core::ApiError::Response(r)) => assert_eq!(r.status.as_u16(), 425),
         other => panic!("Expected Api error with status 425, got: {other:?}"),
     }
     // Still retriable once surfaced — the caller may back off further and retry.
@@ -1063,8 +1064,8 @@ async fn server_500_not_retried() {
     let err = clob.health().server_time().send().await.unwrap_err();
 
     match err {
-        ClobError::Api(polyoxide_core::ApiError::Api { status, .. }) => {
-            assert_eq!(status, 500);
+        ClobError::Api(polyoxide_core::ApiError::Response(r)) => {
+            assert_eq!(r.status.as_u16(), 500);
         }
         other => panic!("Expected Api error with status 500, got: {:?}", other),
     }
@@ -1088,8 +1089,8 @@ async fn server_502_not_retried() {
     let err = clob.health().server_time().send().await.unwrap_err();
 
     match err {
-        ClobError::Api(polyoxide_core::ApiError::Api { status, .. }) => {
-            assert_eq!(status, 502);
+        ClobError::Api(polyoxide_core::ApiError::Response(r)) => {
+            assert_eq!(r.status.as_u16(), 502);
         }
         other => panic!("Expected Api error with status 502, got: {:?}", other),
     }
@@ -1114,10 +1115,10 @@ async fn error_400_returns_validation_error() {
     let err = clob.health().server_time().send().await.unwrap_err();
 
     match err {
-        ClobError::Api(polyoxide_core::ApiError::Validation(msg)) => {
-            assert_eq!(msg, "invalid parameters");
+        ClobError::Api(polyoxide_core::ApiError::Response(r)) if r.status.as_u16() == 400 => {
+            assert_eq!(r.message, "invalid parameters");
         }
-        other => panic!("Expected Validation error, got: {:?}", other),
+        other => panic!("Expected a 400, got: {:?}", other),
     }
     mock.assert_async().await;
 }
@@ -1138,10 +1139,10 @@ async fn error_403_returns_authentication_error() {
     let err = clob.health().server_time().send().await.unwrap_err();
 
     match err {
-        ClobError::Api(polyoxide_core::ApiError::Authentication(msg)) => {
-            assert_eq!(msg, "forbidden");
+        ClobError::Api(polyoxide_core::ApiError::Response(r)) if r.status.as_u16() == 403 => {
+            assert_eq!(r.message, "forbidden");
         }
-        other => panic!("Expected Authentication error, got: {:?}", other),
+        other => panic!("Expected a 403, got: {:?}", other),
     }
     mock.assert_async().await;
 }
@@ -1163,9 +1164,9 @@ async fn error_message_field_fallback() {
     let err = clob.health().server_time().send().await.unwrap_err();
 
     match err {
-        ClobError::Api(polyoxide_core::ApiError::Api { status, message }) => {
-            assert_eq!(status, 500);
-            assert_eq!(message, "something broke");
+        ClobError::Api(polyoxide_core::ApiError::Response(r)) => {
+            assert_eq!(r.status.as_u16(), 500);
+            assert_eq!(r.message, "something broke");
         }
         other => panic!("Expected Api error, got: {:?}", other),
     }
@@ -1189,9 +1190,9 @@ async fn error_html_body_uses_raw_text() {
     let err = clob.health().server_time().send().await.unwrap_err();
 
     match err {
-        ClobError::Api(polyoxide_core::ApiError::Api { status, message }) => {
-            assert_eq!(status, 503);
-            assert!(message.contains("Service Unavailable"));
+        ClobError::Api(polyoxide_core::ApiError::Response(r)) => {
+            assert_eq!(r.status.as_u16(), 503);
+            assert!(r.message.contains("Service Unavailable"));
         }
         other => panic!("Expected Api error, got: {:?}", other),
     }
@@ -1214,8 +1215,8 @@ async fn error_empty_body() {
 
     // Empty body should still produce an error, not panic
     assert!(matches!(
-        err,
-        ClobError::Api(polyoxide_core::ApiError::Api { status: 500, .. })
+        &err,
+        ClobError::Api(polyoxide_core::ApiError::Response(r)) if r.status.as_u16() == 500
     ));
     mock.assert_async().await;
 }
@@ -1262,8 +1263,8 @@ async fn error_408_returns_timeout() {
     let err = clob.health().server_time().send().await.unwrap_err();
 
     assert!(
-        matches!(err, ClobError::Api(polyoxide_core::ApiError::Timeout)),
-        "Expected Timeout error, got: {:?}",
+        matches!(&err, ClobError::Api(polyoxide_core::ApiError::Response(r)) if r.status.as_u16() == 408),
+        "Expected a 408, got: {:?}",
         err
     );
     mock.assert_async().await;
@@ -3446,13 +3447,14 @@ async fn unrelated_400_still_maps_to_validation_error() {
         .unwrap_err();
 
     match &err {
-        ClobError::Api(polyoxide_core::ApiError::Validation(msg)) => {
+        ClobError::Api(polyoxide_core::ApiError::Response(r)) if r.status.as_u16() == 400 => {
             assert!(
-                msg.contains("minimum tick size"),
-                "unexpected message: {msg}"
+                r.message.contains("minimum tick size"),
+                "unexpected message: {}",
+                r.message
             );
         }
-        other => panic!("Expected a generic Validation error, got: {other:?}"),
+        other => panic!("Expected a generic 400, got: {other:?}"),
     }
     assert!(!err.is_retriable());
     post_mock.assert_async().await;
@@ -3478,7 +3480,7 @@ async fn fak_prose_on_non_400_status_is_not_reclassified() {
         .unwrap_err();
 
     match &err {
-        ClobError::Api(polyoxide_core::ApiError::Api { status, .. }) => assert_eq!(*status, 500),
+        ClobError::Api(polyoxide_core::ApiError::Response(r)) => assert_eq!(r.status.as_u16(), 500),
         other => panic!("Expected a generic Api error with status 500, got: {other:?}"),
     }
     assert!(err.is_retriable(), "a 5xx is a transient fault");
@@ -3998,4 +4000,532 @@ async fn balance_allowance_defaults_to_the_targets_signature_type() {
         .await
         .unwrap();
     type0_mock.assert_async().await;
+}
+
+// ── Signing on every attempt (Story 3.4) ─────────────────────────
+
+/// One served request: its `POLY_*` headers, by name, and its body.
+type Attempt = (Vec<(String, String)>, String);
+
+/// The `POLY_*` headers and body of each request a mock served, in order.
+#[derive(Clone, Default)]
+struct Attempts(std::sync::Arc<std::sync::Mutex<Vec<Attempt>>>);
+
+impl Attempts {
+    fn record(&self, request: &mockito::Request) {
+        let headers = [
+            "poly_address",
+            "poly_signature",
+            "poly_timestamp",
+            "poly_nonce",
+            "poly_api_key",
+            "poly_passphrase",
+        ]
+        .iter()
+        .filter_map(|name| {
+            let value = request.header(*name).first()?.to_str().ok()?.to_owned();
+            Some((name.to_string(), value))
+        })
+        .collect();
+        let body = String::from_utf8_lossy(request.body().unwrap()).into_owned();
+        self.0.lock().unwrap().push((headers, body));
+    }
+
+    fn all(&self) -> Vec<Attempt> {
+        self.0.lock().unwrap().clone()
+    }
+}
+
+fn header<'a>(headers: &'a [(String, String)], name: &str) -> &'a str {
+    &headers.iter().find(|(n, _)| n == name).unwrap().1
+}
+
+/// A mock answering 429 with `Retry-After: 1.1` once, then 200 with `body`,
+/// recording every attempt. The wait puts the attempts in different seconds,
+/// so a fresh signature has a different timestamp from the first.
+async fn throttled_once(
+    server: &mut mockito::ServerGuard,
+    method: &str,
+    path: &str,
+    body: &'static str,
+    attempts: &Attempts,
+) -> mockito::Mock {
+    let attempts = attempts.clone();
+    let served = std::sync::atomic::AtomicUsize::new(0);
+    server
+        .mock(method, path)
+        .match_query(Matcher::Any)
+        .with_status_code_from_request(move |request| {
+            attempts.record(request);
+            match served.fetch_add(1, std::sync::atomic::Ordering::SeqCst) {
+                0 => 429,
+                _ => 200,
+            }
+        })
+        .with_header("retry-after", "1.1")
+        .with_header("content-type", "application/json")
+        .with_body(body)
+        .expect(2)
+        .create_async()
+        .await
+}
+
+#[tokio::test]
+async fn a_retried_l2_request_is_signed_on_every_attempt() {
+    use polyoxide_core::{Base64Format, Signer};
+
+    let mut server = Server::new_async().await;
+    let attempts = Attempts::default();
+    let mock = throttled_once(
+        &mut server,
+        "POST",
+        "/order",
+        r#"{"success":true,"orderID":"0xabc"}"#,
+        &attempts,
+    )
+    .await;
+
+    let clob = test_authed_clob(&server);
+    let signed = polyoxide_clob::SignedOrder {
+        order: polyoxide_clob::Order {
+            salt: "1".into(),
+            maker: alloy::primitives::Address::ZERO,
+            signer: alloy::primitives::Address::ZERO,
+            token_id: "100".into(),
+            maker_amount: "1".into(),
+            taker_amount: "1".into(),
+            side: polyoxide_clob::OrderSide::Buy,
+            expiration: "0".into(),
+            signature_type: SignatureType::Eoa,
+            timestamp: "1700000000000".into(),
+            metadata: alloy::primitives::B256::ZERO,
+            builder: alloy::primitives::B256::ZERO,
+            neg_risk: false,
+        },
+        signature: "0xabc".into(),
+    };
+    let resp = clob
+        .post_order(&signed, polyoxide_clob::OrderKind::Gtc, false)
+        .await
+        .unwrap();
+    assert!(resp.success);
+    mock.assert_async().await;
+
+    let attempts = attempts.all();
+    assert_eq!(attempts.len(), 2);
+    let hmac = Signer::new("c2VjcmV0");
+    for (headers, body) in &attempts {
+        // Hardhat account #0, lowercase, as L2 has always sent it.
+        assert_eq!(
+            header(headers, "poly_address"),
+            "0xf39fd6e51aad88f6f4ce6ab8827279cfffb92266"
+        );
+        assert_eq!(header(headers, "poly_api_key"), "test-key");
+        assert_eq!(header(headers, "poly_passphrase"), "test-pass");
+        let timestamp: u64 = header(headers, "poly_timestamp").parse().unwrap();
+        let message = Signer::create_message(timestamp, "POST", "/order", Some(body));
+        assert_eq!(
+            header(headers, "poly_signature"),
+            hmac.sign(&message, Base64Format::UrlSafe).unwrap(),
+            "the signature covers this attempt's own timestamp and body"
+        );
+    }
+    assert_eq!(attempts[0].1, attempts[1].1, "the body is resent as is");
+    assert_ne!(
+        header(&attempts[0].0, "poly_timestamp"),
+        header(&attempts[1].0, "poly_timestamp"),
+        "the retry was signed afresh, a second later"
+    );
+}
+
+#[tokio::test]
+async fn a_retried_l1_request_is_signed_on_every_attempt() {
+    use alloy::signers::local::PrivateKeySigner;
+    use polyoxide_clob::core::eip712::sign_clob_auth;
+
+    let mut server = Server::new_async().await;
+    let attempts = Attempts::default();
+    let mock = throttled_once(
+        &mut server,
+        "POST",
+        "/auth/api-key",
+        r#"{"apiKey":"k","secret":"c2VjcmV0","passphrase":"p"}"#,
+        &attempts,
+    )
+    .await;
+
+    let clob = test_authed_clob(&server);
+    let created = clob.auth().unwrap().create_api_key(7).send().await.unwrap();
+    assert_eq!(created.api_key, "k");
+    mock.assert_async().await;
+
+    let signer: PrivateKeySigner =
+        "0xac0974bec39a17e36ba4a6b4d238ff944bacb478cbed5efcae784d7bf4f2ff80"
+            .parse()
+            .unwrap();
+    let attempts = attempts.all();
+    assert_eq!(attempts.len(), 2);
+    for (headers, _) in &attempts {
+        // EIP-55 checksummed, as L1 has always sent it.
+        assert_eq!(
+            header(headers, "poly_address"),
+            "0xf39Fd6e51aad88F6F4ce6aB8827279cffFb92266"
+        );
+        assert_eq!(header(headers, "poly_nonce"), "7");
+        let timestamp: u64 = header(headers, "poly_timestamp").parse().unwrap();
+        assert_eq!(
+            header(headers, "poly_signature"),
+            sign_clob_auth(&signer, 137, timestamp, 7).await.unwrap(),
+            "the EIP-712 signature covers this attempt's own timestamp"
+        );
+    }
+    assert_ne!(
+        header(&attempts[0].0, "poly_timestamp"),
+        header(&attempts[1].0, "poly_timestamp"),
+        "the retry was signed afresh, a second later"
+    );
+
+    // A signature produced elsewhere cannot be renewed: every attempt resends
+    // the same four headers.
+    let mut server = Server::new_async().await;
+    let attempts = Attempts::default();
+    let mock = throttled_once(
+        &mut server,
+        "POST",
+        "/auth/api-key",
+        r#"{"apiKey":"k","secret":"c2VjcmV0","passphrase":"p"}"#,
+        &attempts,
+    )
+    .await;
+    let timestamp = 1_700_000_000;
+    let signature = sign_clob_auth(&signer, 137, timestamp, 7).await.unwrap();
+    test_public_clob(&server)
+        .create_api_key_with_signature(signer.address(), timestamp, 7, signature)
+        .await
+        .unwrap();
+    mock.assert_async().await;
+    let attempts = attempts.all();
+    assert_eq!(attempts.len(), 2);
+    assert_eq!(attempts[0].0, attempts[1].0);
+}
+
+/// An `alloy` signer whose key is unreachable: every signature fails.
+struct UnreachableKey(alloy::primitives::Address);
+
+impl alloy::signers::Signer for UnreachableKey {
+    fn sign_hash<'a, 'b, 'c>(
+        &'a self,
+        _hash: &'b alloy::primitives::B256,
+    ) -> std::pin::Pin<
+        Box<
+            dyn std::future::Future<Output = alloy::signers::Result<alloy::primitives::Signature>>
+                + Send
+                + 'c,
+        >,
+    >
+    where
+        'a: 'c,
+        'b: 'c,
+        Self: 'c,
+    {
+        Box::pin(async { Err(alloy::signers::Error::other("the key's vault is down")) })
+    }
+
+    fn address(&self) -> alloy::primitives::Address {
+        self.0
+    }
+
+    fn chain_id(&self) -> Option<alloy::primitives::ChainId> {
+        None
+    }
+
+    fn set_chain_id(&mut self, _chain_id: Option<alloy::primitives::ChainId>) {}
+}
+
+#[tokio::test]
+async fn an_l1_signer_that_fails_sends_nothing() {
+    let mut server = Server::new_async().await;
+    let mock = server
+        .mock("POST", "/auth/api-key")
+        .match_query(Matcher::Any)
+        .expect(0)
+        .create_async()
+        .await;
+
+    let account = Account::with_signer(
+        UnreachableKey(alloy::primitives::Address::repeat_byte(0x11)),
+        Credentials {
+            key: "test-key".into(),
+            secret: "c2VjcmV0".into(),
+            passphrase: "test-pass".into(),
+        },
+    );
+    let clob = ClobBuilder::new()
+        .base_url(server.url())
+        .with_account(account)
+        .build()
+        .unwrap();
+    let err = clob
+        .auth()
+        .unwrap()
+        .create_api_key(0)
+        .send()
+        .await
+        .unwrap_err();
+
+    // The signer's own error, carried through core's loop and out again.
+    match &err {
+        ClobError::Alloy(message) => assert!(message.contains("vault is down"), "{message}"),
+        other => panic!("expected ClobError::Alloy, got {other:?}"),
+    }
+    assert!(!err.is_retriable());
+    mock.assert_async().await;
+}
+
+#[tokio::test]
+async fn a_429_on_ping_holds_the_next_request() {
+    // DRIFT R8: the ping skipped every gate, so a 429 on it was neither
+    // retried nor fed back. On the send loop it is both.
+    let mut server = Server::new_async().await;
+    let served = std::sync::atomic::AtomicUsize::new(0);
+    let mock = server
+        .mock("GET", "/")
+        .with_status_code_from_request(move |_| {
+            match served.fetch_add(1, std::sync::atomic::Ordering::SeqCst) {
+                0 | 1 => 429,
+                _ => 200,
+            }
+        })
+        .with_body("OK")
+        .expect(3)
+        .create_async()
+        .await;
+    let clob = ClobBuilder::new()
+        .base_url(server.url())
+        .with_retry_config(RetryConfig {
+            max_retries: 1,
+            initial_backoff_ms: 300,
+            max_backoff_ms: 10_000,
+        })
+        .build()
+        .unwrap();
+
+    // Retried once, then out of retries: the 429 is the caller's.
+    let err = clob.health().ping().await.unwrap_err();
+    assert!(
+        matches!(&err, ClobError::Api(polyoxide_core::ApiError::Response(r)) if r.status.as_u16() == 429),
+        "{err:?}"
+    );
+
+    // Its hold, the schedule's first delay (225-375ms), stops the next request.
+    let start = std::time::Instant::now();
+    let latency = clob.health().ping().await.unwrap();
+    assert!(
+        start.elapsed() >= std::time::Duration::from_millis(200),
+        "the next request went after {:?}, inside the ping's hold",
+        start.elapsed()
+    );
+    assert!(
+        latency > std::time::Duration::ZERO && latency < std::time::Duration::from_millis(200),
+        "the ping's latency is its last attempt's round trip, which leaves out the hold: {latency:?}"
+    );
+    mock.assert_async().await;
+}
+
+#[tokio::test]
+async fn over_capacity_batch_post_is_rejected_without_sending_a_request() {
+    // `POST /orders` costs one order token per order, and Standard's order
+    // bucket holds 60. A batch of 61 can never fit, so it is refused before
+    // the send, as an over-capacity cancel is.
+    let mut server = mockito::Server::new_async().await;
+    let mock = server
+        .mock("POST", "/orders")
+        .with_status(200)
+        .with_header("content-type", "application/json")
+        .with_body("[]")
+        .expect(0) // must never be reached
+        .create_async()
+        .await;
+
+    let clob = test_authed_clob(&server);
+    let params = polyoxide_clob::CreateOrderParams {
+        token_id: "100".into(),
+        price: 0.50,
+        size: 10.0,
+        side: polyoxide_clob::OrderSide::Buy,
+        order_type: polyoxide_clob::OrderKind::Gtc,
+        post_only: false,
+        expiration: None,
+        funder: None,
+        signature_type: None,
+    };
+    // Supplying the market's metadata keeps the setup off the network too.
+    let options = polyoxide_clob::PartialCreateOrderOptions {
+        neg_risk: Some(false),
+        tick_size: Some(polyoxide_clob::TickSize::Hundredth),
+    };
+    let order = clob.create_order(&params, Some(options)).await.unwrap();
+    let signed = clob.sign_order(&order).await.unwrap();
+    let batch = vec![
+        polyoxide_clob::SignedOrderPayload {
+            order: signed,
+            order_type: polyoxide_clob::OrderKind::Gtc,
+            post_only: false,
+        };
+        61
+    ];
+
+    let err = clob
+        .post_orders(&batch)
+        .await
+        .expect_err("an over-capacity batch must be refused");
+
+    match &err {
+        ClobError::BurstCapacityExceeded(e) => {
+            assert_eq!(e.cost, 61, "one token per order");
+            assert_eq!(e.capacity, 60, "Standard tier order burst");
+            assert_eq!(e.tier, polyoxide_core::Tier::Standard);
+            assert_eq!(e.bucket, polyoxide_core::TradingBucket::Order);
+        }
+        other => panic!("expected BurstCapacityExceeded, got {other:?}"),
+    }
+    assert!(!err.is_retriable(), "splitting is the only remedy");
+
+    // The decisive assertion: nothing went over the wire.
+    mock.assert_async().await;
+}
+
+// ── Bundle J's matrix rows (Story 3.11) ─────────────────────────
+
+#[tokio::test]
+async fn an_order_refused_before_sending_is_an_invalid_request() {
+    use polyoxide_venue::Class;
+
+    // A price outside (0, 1] fails validation before the market metadata is
+    // fetched, so neither it nor the order reaches the venue.
+    let mut server = Server::new_async().await;
+    let mut untouched = Vec::new();
+    for (method, path) in [
+        ("GET", "/neg-risk"),
+        ("GET", "/tick-size"),
+        ("POST", "/order"),
+    ] {
+        untouched.push(
+            server
+                .mock(method, path)
+                .match_query(Matcher::Any)
+                .expect(0)
+                .create_async()
+                .await,
+        );
+    }
+
+    let mut params = deep_otm_params("100", polyoxide_clob::OrderKind::Gtc);
+    params.price = 1.5;
+    let err = test_authed_clob(&server)
+        .place_order(&params, None)
+        .await
+        .unwrap_err();
+    for mock in &untouched {
+        mock.assert_async().await;
+    }
+    assert!(
+        matches!(
+            &err,
+            ClobError::Api(polyoxide_core::ApiError::Validation(_))
+        ),
+        "{err:?}"
+    );
+    assert_eq!(err.class(), Class::InvalidRequest);
+    assert!(!err.is_retriable());
+}
+
+#[cfg(feature = "gamma")]
+#[tokio::test]
+async fn a_gamma_404_during_the_profile_lookup_is_clob_s_gamma_error() {
+    use polyoxide_venue::Class;
+
+    // An EOA account ordering as a proxy: the maker is the proxy Gamma reports
+    // for the account, so clob asks its Gamma client, which answers 404.
+    let mut server = Server::new_async().await;
+    let gamma_mock = server
+        .mock("GET", "/public-profile")
+        .match_query(Matcher::Any)
+        .with_status(404)
+        .with_body(r#"{"error": "profile not found"}"#)
+        .expect(1)
+        .create_async()
+        .await;
+    let order_mock = server
+        .mock("POST", "/order")
+        .match_query(Matcher::Any)
+        .expect(0)
+        .create_async()
+        .await;
+    let creds = Credentials {
+        key: "test-key".into(),
+        secret: "c2VjcmV0".into(),
+        passphrase: "test-pass".into(),
+    };
+    let account = Account::new(
+        "0xac0974bec39a17e36ba4a6b4d238ff944bacb478cbed5efcae784d7bf4f2ff80",
+        creds,
+    )
+    .unwrap();
+    let clob = ClobBuilder::new()
+        .base_url(server.url())
+        .gamma(
+            polyoxide_gamma::Gamma::builder()
+                .base_url(server.url())
+                .build()
+                .unwrap(),
+        )
+        .with_account(account)
+        .build()
+        .unwrap();
+    let mut params = deep_otm_params("100", polyoxide_clob::OrderKind::Gtc);
+    params.signature_type = Some(SignatureType::PolyProxy);
+    let options = polyoxide_clob::PartialCreateOrderOptions {
+        tick_size: Some(polyoxide_clob::TickSize::try_from("0.01").unwrap()),
+        neg_risk: Some(false),
+    };
+
+    let err = clob.create_order(&params, Some(options)).await.unwrap_err();
+    gamma_mock.assert_async().await;
+    order_mock.assert_async().await;
+    assert!(
+        matches!(
+            &err,
+            ClobError::Gamma(polyoxide_gamma::GammaError::Api(
+                polyoxide_core::ApiError::Response(r)
+            )) if r.status == 404
+        ),
+        "{err:?}"
+    );
+    assert_eq!(err.class(), Class::VenueRefusal { code: None });
+    assert!(err.is_fault());
+}
+
+#[tokio::test]
+async fn a_fak_kill_on_the_wire_is_a_refusal_that_is_not_a_fault() {
+    use polyoxide_venue::Class;
+
+    let mut server = Server::new_async().await;
+    let post_mock = mock_order_rejection(&mut server, "100", 400, FAK_UNMATCHED_MSG).await;
+
+    let err = test_authed_clob(&server)
+        .place_order(
+            &deep_otm_params("100", polyoxide_clob::OrderKind::Fak),
+            None,
+        )
+        .await
+        .unwrap_err();
+    post_mock.assert_async().await;
+    assert!(
+        matches!(&err, ClobError::FakUnmatched { message } if message == FAK_UNMATCHED_MSG),
+        "{err:?}"
+    );
+    assert_eq!(err.class(), Class::VenueRefusal { code: None });
+    assert!(!err.is_fault(), "a kill is the order's defined outcome");
+    assert!(!err.is_retriable());
 }

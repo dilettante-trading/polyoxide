@@ -1,0 +1,41 @@
+[package]
+name = "polyoxide-venue"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+authors.workspace = true
+repository.workspace = true
+rust-version.workspace = true
+description = "Shared vocabulary for the polyoxide venue clients: error classes, the status and close-code maps, the Retry-After parser, wire enums, positional decimals and Unix-millisecond time"
+keywords = ["polymarket", "trading", "errors", "retry"]
+categories = ["api-bindings"]
+
+# Nothing by default. AD-3 allows rust_decimal, serde, thiserror, futures-core
+# and dynosaur; each arrives with the first item that needs it, behind a
+# feature where a crate that depends on this one may not want it, so the
+# socket-only crates build nothing they do not use.
+[dependencies]
+rust_decimal = { workspace = true, optional = true }
+serde = { workspace = true, optional = true }
+
+[features]
+# `positional`: the decimal-string helpers for rows sent as bare arrays.
+decimal = ["dep:rust_decimal", "dep:serde"]
+
+# The enum macros' own tests: the expansion names `::serde`, which a calling
+# crate provides.
+[dev-dependencies]
+serde = { workspace = true }
+serde_json = { workspace = true }
+
+# docs.rs documents `positional`, which only the `decimal` feature builds.
+[package.metadata.docs.rs]
+features = ["decimal"]
+
+# Registration, read by scripts/gen_registry.py: the README line, venue and
+# product ids, the docs/specs/ mirrors covered, and one entry per live test
+# target, which becomes a nightly job. Run `python3 scripts/gen_registry.py
+# --write` after an edit.
+[package.metadata.polyoxide]
+readme = "Shared vocabulary: error classes, the status and close-code maps, the `Retry-After` parser, the wire-enum macros and `UnknownVariant`, positional decimal serde (feature `decimal`) and `UnixMillis`"
+notes = ["every public error type in the workspace implements its `Classify` trait; by default it depends on nothing, and it has no HTTP, socket or signing dependency"]

@@ -4,13 +4,14 @@
 //! cargo test -p polyoxide-sports --test live_api -- --ignored --nocapture
 //! ```
 //!
-//! The feed carries only matches that are live somewhere. A test that waits
-//! for a frame says so when it times out, in the words the nightly
-//! classifier treats as environmental. A bare stream that ends shows no close
-//! code, so its tests say "the server ended the connection", which the
-//! classifier retries as a possible restart. In the wire-agreement test only a
-//! window with no data frame of any kind earns those words: binary frames,
-//! which this crate does not read, fail there as a real fault.
+//! The feed carries only matches that are live somewhere, so a test that times
+//! out waiting for a frame fails as `environmental`. A bare stream that ends
+//! shows no close code, so it fails as `transient`, which the nightly retries
+//! to tell a restart from a defect. Every other failure carries the tag of its
+//! `SportsError`: a server close by its close code, a raw socket's close frame
+//! and transport error wrapped in the same error first. In the wire-agreement
+//! test only a window with no data frame of any kind is environmental: binary
+//! frames, which this crate does not read, fail there as a real fault.
 //!
 //! `nightly-schema.yml` excludes this host, because the published AsyncAPI
 //! document does not match the wire. So
@@ -24,6 +25,7 @@ use std::{collections::BTreeMap, time::Duration};
 
 use futures_util::StreamExt;
 use polyoxide_sports::{Event, MatchUpdate, SportsError, SportsWs, SportsWsBuilder, SPORTS_WS_URL};
+use polyoxide_test_support::{environmental, fail, transient, ResultExt};
 use serde_json::Value;
 use tokio::{
     net::TcpStream,
@@ -45,15 +47,10 @@ const QUIET: &str = "if no matches are live anywhere this can legitimately time 
 
 type RawSocket = WebSocketStream<MaybeTlsStream<TcpStream>>;
 
-/// Fail a connect in words the nightly classifier reads correctly: a timeout
-/// is transient, and the Debug form of anything else names its cause.
+/// Fail a connect with its error's tag: a timeout or a 5xx is transient, a
+/// refused upgrade real.
 fn connect_failed<T>(error: SportsError) -> T {
-    match error {
-        SportsError::ConnectTimeout { after } => {
-            panic!("the connect operation timed out after {after:?}")
-        }
-        other => panic!("could not connect to the sports feed: {other:?}"),
-    }
+    fail("could not connect to the sports feed", &error)
 }
 
 /// Open a raw socket, bounded like the crate's own connects. These tests call
@@ -63,22 +60,33 @@ async fn connect_raw() -> RawSocket {
     let _ = rustls::crypto::ring::default_provider().install_default();
     let connected = match timeout(CONNECT_TIMEOUT, connect_async(SPORTS_WS_URL)).await {
         Ok(connected) => connected,
-        Err(_) => panic!("the connect operation timed out after {CONNECT_TIMEOUT:?}"),
+        Err(_) => connect_failed(SportsError::ConnectTimeout {
+            after: CONNECT_TIMEOUT,
+        }),
     };
-    let (socket, _) =
-        connected.unwrap_or_else(|e| panic!("could not connect to the sports feed: {e:?}"));
+    let (socket, _) = connected.unwrap_or_else(|e| {
+        connect_failed(SportsError::Connect {
+            source: Box::new(e),
+        })
+    });
     socket
 }
 
-/// What a close frame said, for a failure message.
-fn describe_close(frame: Option<CloseFrame>) -> String {
-    match frame {
-        Some(frame) => format!(
-            "code {}, reason {:?}",
-            u16::from(frame.code),
-            frame.reason.as_str()
-        ),
-        None => "a close frame with no code".to_owned(),
+/// A raw socket's close frame as the crate reports a server close, so the
+/// failure takes its tag from the close code.
+fn closed(frame: Option<CloseFrame>) -> SportsError {
+    SportsError::Closed {
+        code: frame.as_ref().map(|frame| u16::from(frame.code)),
+        reason: frame
+            .map(|frame| frame.reason.to_string())
+            .unwrap_or_default(),
+    }
+}
+
+/// A raw socket's transport error as the crate reports one.
+fn transport(error: tokio_tungstenite::tungstenite::Error) -> SportsError {
+    SportsError::Transport {
+        source: Box::new(error),
     }
 }
 
@@ -88,9 +96,9 @@ async fn live_bare_feed_yields_a_parsed_frame() {
     let mut feed = SportsWs::connect().await.unwrap_or_else(connect_failed);
     let update = timeout(RECV_WINDOW, feed.next())
         .await
-        .unwrap_or_else(|_| panic!("no frame within {RECV_WINDOW:?}; {QUIET}"))
-        .expect("the server ended the connection instead of yielding a frame")
-        .expect("the frame parses");
+        .unwrap_or_else(|_| environmental(&format!("no frame within {RECV_WINDOW:?}; {QUIET}")))
+        .unwrap_or_else(|| transient("the server ended the connection instead of yielding a frame"))
+        .or_fail("the frame parses");
     assert!(!update.league_abbreviation.is_empty(), "{update:?}");
     assert!(
         update.key().is_some(),
@@ -113,15 +121,15 @@ async fn live_bare_connection_survives_the_keepalive_interval() {
         match timeout_at(deadline, feed.next()).await {
             Err(_) => break,
             Ok(Some(Ok(_))) => frames += 1,
-            Ok(Some(Err(SportsError::Decode { raw, source }))) => {
-                panic!("a frame did not parse after {frames} frames ({source}): {raw}")
+            Ok(Some(Err(e @ SportsError::Decode { .. }))) => {
+                fail(&format!("a frame did not parse after {frames} frames"), &e)
             }
-            Ok(Some(Err(e))) => panic!("the connection failed after {frames} frames: {e}"),
-            Ok(None) => panic!(
+            Ok(Some(Err(e))) => fail(&format!("the connection failed after {frames} frames"), &e),
+            Ok(None) => transient(&format!(
                 "the server ended the connection after {frames} frames, inside 40 s. An \
                  unanswered keep-alive would do this, and so would a server restart; the \
                  nightly retries it to tell which"
-            ),
+            )),
         }
     }
     println!("survived 40 s with {frames} frames");
@@ -141,11 +149,11 @@ async fn live_server_sends_protocol_pings_every_15_seconds() {
             Err(_) => break,
             Ok(Some(Ok(Message::Ping(_)))) => pings.push(started.elapsed()),
             Ok(Some(Ok(Message::Close(frame)))) => {
-                panic!("the server closed the socket: {}", describe_close(frame))
+                fail("the server closed the socket", &closed(frame))
             }
             Ok(Some(Ok(_))) => {}
-            Ok(Some(Err(e))) => panic!("the socket failed: {e}"),
-            Ok(None) => panic!("the socket ended without a close frame"),
+            Ok(Some(Err(e))) => fail("the socket failed", &transport(e)),
+            Ok(None) => transient("the server ended the connection without a close frame"),
         }
     }
     assert!(
@@ -183,15 +191,21 @@ async fn live_supervised_feed_holds_past_the_stale_limit() {
                 longest = longest.max(last.elapsed());
                 last = Instant::now();
             }
+            // Going stale is the failure under test, so it files whatever its
+            // class; any other cause fails by its own.
+            Ok(Some(Ok(Event::Disconnected {
+                reason: reason @ SportsError::Stale { .. },
+            }))) => {
+                panic!("disconnected after {updates} updates: {reason}") // live-unwraps: the property under test
+            }
             Ok(Some(Ok(Event::Disconnected { reason }))) => {
-                panic!("disconnected after {updates} updates: {reason}")
+                fail(&format!("disconnected after {updates} updates"), &reason)
             }
-            Ok(Some(Ok(other))) => panic!("unexpected event {other:?}"),
-            Ok(Some(Err(SportsError::Decode { raw, source }))) => {
-                panic!("a live frame did not parse ({source}): {raw}")
-            }
-            Ok(Some(Err(e))) => panic!("unexpected error: {e}"),
-            Ok(None) => panic!("the feed ended"),
+            Ok(Some(Ok(other))) => panic!("unexpected event {other:?}"), // live-unwraps: an assertion on the event
+            Ok(Some(Err(e @ SportsError::Decode { .. }))) => fail("a live frame did not parse", &e),
+            Ok(Some(Err(e))) => fail("unexpected error", &e),
+            // The supervised feed ends only after an error it cannot recover from.
+            Ok(None) => panic!("the feed ended"), // live-unwraps: the supervised feed ended
         }
     }
     longest = longest.max(last.elapsed());
@@ -211,8 +225,8 @@ async fn live_frames_round_trip_and_carry_no_unmodelled_keys() {
         let message = match timeout_at(deadline, socket.next()).await {
             Err(_) => break,
             Ok(Some(Ok(message))) => message,
-            Ok(Some(Err(e))) => panic!("the socket failed: {e}"),
-            Ok(None) => panic!("the socket ended without a close frame"),
+            Ok(Some(Err(e))) => fail("the socket failed", &transport(e)),
+            Ok(None) => transient("the server ended the connection without a close frame"),
         };
         let text = match message {
             Message::Text(text) => text,
@@ -220,16 +234,19 @@ async fn live_frames_round_trip_and_carry_no_unmodelled_keys() {
                 binary += 1;
                 continue;
             }
-            Message::Close(frame) => {
-                panic!("the server closed the socket: {}", describe_close(frame))
-            }
+            Message::Close(frame) => fail("the server closed the socket", &closed(frame)),
             _ => continue,
         };
         let update = MatchUpdate::from_json(&text)
-            .unwrap_or_else(|e| panic!("a live frame did not parse: {e}\n{}", text.as_str()));
-        let original: Value = serde_json::from_str(&text).unwrap();
+            .map_err(|source| SportsError::Decode {
+                raw: text.to_string(),
+                source,
+            })
+            .or_fail("a live frame did not parse");
+        let original: Value = serde_json::from_str(&text).expect("a JSON frame"); // live-unwraps: the frame decoded above
+        let round_trip = serde_json::to_value(&update).expect("an update serialises"); // live-unwraps: serialising test data
         assert_eq!(
-            serde_json::to_value(&update).unwrap(),
+            round_trip,
             original,
             "a live frame changed on a round trip:\n{}",
             text.as_str()
@@ -249,7 +266,9 @@ async fn live_frames_round_trip_and_carry_no_unmodelled_keys() {
          skip them as mere liveness"
     );
     let checked: usize = leagues.values().sum();
-    assert!(checked > 0, "no frames within {WIRE_WINDOW:?}; {QUIET}");
+    if checked == 0 {
+        environmental(&format!("no frames within {WIRE_WINDOW:?}; {QUIET}"));
+    }
     assert!(
         unmodelled.is_empty(),
         "the feed sends keys MatchUpdate does not model. Capture fixtures with \

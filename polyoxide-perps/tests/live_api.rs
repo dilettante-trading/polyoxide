@@ -6,23 +6,21 @@
 //! cargo test -p polyoxide-perps --test live_api -- --ignored
 //! ```
 
-use std::time::{Duration, SystemTime, UNIX_EPOCH};
+use std::time::Duration;
 
 use polyoxide_perps::{
     api::exchange::Instrument,
     types::{BookDepth, InstrumentId, Interval, LeaderboardWindow},
     Perps,
 };
+use polyoxide_test_support::{environmental, fail, ResultExt};
 
 fn client() -> Perps {
-    Perps::new().expect("perps client")
+    Perps::new().or_fail("perps client")
 }
 
 fn now_ms() -> u64 {
-    SystemTime::now()
-        .duration_since(UNIX_EPOCH)
-        .unwrap()
-        .as_millis() as u64
+    polyoxide_venue::UnixMillis::now().0
 }
 
 /// An instrument that is currently quoting, so book and bbo assertions have
@@ -33,7 +31,11 @@ async fn a_quoting_instrument(perps: &Perps) -> Instrument {
         .instruments()
         .send()
         .await
-        .expect("instruments");
+        .or_fail("instruments");
+    // A probe that errors is skipped, but its error is kept: when every probe
+    // errored, the host is failing, and that is not "no suitable market".
+    let mut answered = false;
+    let mut last_error = None;
     for instrument in instruments {
         let book = perps
             .market()
@@ -41,25 +43,32 @@ async fn a_quoting_instrument(perps: &Perps) -> Instrument {
             .depth(BookDepth::Ten)
             .send()
             .await;
-        if let Ok(book) = book {
-            if !book.bids.is_empty() && !book.asks.is_empty() {
-                return instrument;
+        match book {
+            Ok(book) => {
+                if !book.bids.is_empty() && !book.asks.is_empty() {
+                    return instrument;
+                }
+                answered = true;
             }
+            Err(err) => last_error = Some(err),
         }
     }
-    panic!("no suitable market: no instrument has a two-sided book right now");
+    if let (false, Some(err)) = (answered, &last_error) {
+        fail("every book probe failed", err);
+    }
+    environmental("no suitable market: no instrument has a two-sided book right now");
 }
 
 #[tokio::test]
 #[ignore]
 async fn live_ping_and_time() {
     let perps = client();
-    let latency = perps.health().ping().await.expect("ping");
+    let latency = perps.health().ping().await.or_fail("ping");
     assert!(
         latency < Duration::from_secs(10),
         "latency too high: {latency:?}"
     );
-    let time = perps.health().time().send().await.expect("time");
+    let time = perps.health().time().send().await.or_fail("time");
     let skew = time.time.abs_diff(now_ms());
     assert!(skew < 60_000, "server clock differs from ours by {skew} ms");
 }
@@ -68,18 +77,18 @@ async fn live_ping_and_time() {
 #[ignore]
 async fn live_reference_data() {
     let perps = client();
-    let exchange = perps.exchange().exchange().send().await.expect("exchange");
+    let exchange = perps.exchange().exchange().send().await.or_fail("exchange");
     assert_eq!(exchange.chain_id, 137);
-    let assets = perps.exchange().assets().send().await.expect("assets");
+    let assets = perps.exchange().assets().send().await.or_fail("assets");
     assert!(assets.iter().any(|a| a.asset == "pUSD"));
-    let fees = perps.exchange().fees().send().await.expect("fees");
+    let fees = perps.exchange().fees().send().await.or_fail("fees");
     assert!(!fees.fee_schedule.is_empty());
     let tiers = perps
         .exchange()
         .limit_tiers()
         .send()
         .await
-        .expect("limit tiers");
+        .or_fail("limit tiers");
     assert!(!tiers.is_empty());
 }
 
@@ -99,7 +108,7 @@ async fn live_market_data_for_a_quoting_instrument() {
         .instrument_id(iid)
         .send()
         .await
-        .expect("tickers");
+        .or_fail("tickers");
     assert!(
         tickers.len() > 1,
         "the tickers instrument_id filter is now honoured; update OBSERVED.md and this assertion"
@@ -112,7 +121,7 @@ async fn live_market_data_for_a_quoting_instrument() {
         .instrument_id(iid)
         .send()
         .await
-        .expect("statistics");
+        .or_fail("statistics");
     assert!(
         statistics.len() > 1,
         "the statistics instrument_id filter is now honoured; update OBSERVED.md and this assertion"
@@ -125,10 +134,10 @@ async fn live_market_data_for_a_quoting_instrument() {
         .instrument_id(iid)
         .send()
         .await
-        .expect("bbo");
-    let best = bbo
-        .first()
-        .expect("no suitable market: bbo answered no rows for the selected instrument");
+        .or_fail("bbo");
+    let best = bbo.first().unwrap_or_else(|| {
+        environmental("no suitable market: bbo answered no rows for the selected instrument")
+    });
     assert!(best.bid_price < best.ask_price);
 
     let start = now_ms() - 6 * 60 * 60 * 1000;
@@ -137,7 +146,7 @@ async fn live_market_data_for_a_quoting_instrument() {
         .klines(iid, Interval::H1, start)
         .send()
         .await
-        .expect("klines");
+        .or_fail("klines");
     assert!(!klines.data.is_empty());
 
     let marks = perps
@@ -145,13 +154,13 @@ async fn live_market_data_for_a_quoting_instrument() {
         .mark_history(iid, Interval::H1, start)
         .send()
         .await
-        .expect("mark history");
+        .or_fail("mark history");
     assert!(!marks.data.is_empty());
 
-    let trades = perps.market().trades(iid).send().await.expect("trades");
+    let trades = perps.market().trades(iid).send().await.or_fail("trades");
     assert!(trades.data.iter().all(|t| t.instrument_id == iid));
 
-    let funding = perps.market().funding(iid).send().await.expect("funding");
+    let funding = perps.market().funding(iid).send().await.or_fail("funding");
     assert!(!funding.data.is_empty());
 
     let index = perps
@@ -159,7 +168,7 @@ async fn live_market_data_for_a_quoting_instrument() {
         .index(&instrument.base_asset)
         .send()
         .await
-        .expect("index");
+        .or_fail("index");
     assert_eq!(index.asset, instrument.base_asset);
 
     let stats = perps
@@ -167,7 +176,7 @@ async fn live_market_data_for_a_quoting_instrument() {
         .exchange_stats(start, now_ms())
         .send()
         .await
-        .expect("exchange stats");
+        .or_fail("exchange stats");
     assert!(stats.end_timestamp >= stats.start_timestamp);
 }
 
@@ -182,7 +191,7 @@ async fn live_public_lookups() {
         .limit(3)
         .send()
         .await
-        .expect("leaderboard");
+        .or_fail("leaderboard");
     assert!(!board.entries.is_empty());
     let address = &board.entries[0].account;
 
@@ -191,7 +200,7 @@ async fn live_public_lookups() {
         .portfolio(address)
         .send()
         .await
-        .expect("portfolio");
+        .or_fail("portfolio");
     let iid = portfolio
         .positions
         .first()
@@ -202,7 +211,7 @@ async fn live_public_lookups() {
         .position_fills(address, iid)
         .send()
         .await
-        .expect("position fills");
+        .or_fail("position fills");
     assert!(fills.data.iter().all(|f| f.instrument_id == iid));
 
     let invite = perps
@@ -210,6 +219,6 @@ async fn live_public_lookups() {
         .invite("polyoxide-live-test")
         .send()
         .await
-        .expect("invite");
+        .or_fail("invite");
     assert!(!invite.valid);
 }

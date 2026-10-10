@@ -55,30 +55,25 @@ pub struct ListHolders {
 }
 
 impl ListHolders {
-    /// Set maximum number of results per market (1-500, default: 20).
-    ///
-    /// Verified live on 2026-08-03: omitting the parameter yields 20 rows, and
-    /// `limit=500` succeeds. Values above the ceiling are **clamped, not
-    /// rejected** — `limit=5000` returns HTTP 200 with the response silently
-    /// truncated to 500 rows per token, so a caller cannot tell from the status
-    /// code that it asked for more than it got.
-    ///
-    /// This is a behavior change. Until at least 2026-07-25 the venue returned
-    /// HTTP 400 `{"error":"max holders limit of 500 exceeded"}` for `limit=501`.
-    ///
-    /// `limit=0` returns no rows: the venue answers with a bare `null` body,
-    /// which [`send`](Self::send) reads as an empty list.
-    ///
-    /// The value is not range-checked here — it is passed through to the venue.
-    pub fn limit(mut self, limit: u32) -> Self {
-        self.request = self.request.query("limit", limit);
-        self
-    }
-
-    /// Set minimum balance filter (0-999999, default: 1)
-    pub fn min_balance(mut self, min_balance: u32) -> Self {
-        self.request = self.request.query("minBalance", min_balance);
-        self
+    polyoxide_core::query_setters! {
+        /// Set maximum number of results per market (1-500, default: 20).
+        ///
+        /// Verified live on 2026-08-03: omitting the parameter yields 20 rows, and
+        /// `limit=500` succeeds. Values above the ceiling are **clamped, not
+        /// rejected** — `limit=5000` returns HTTP 200 with the response silently
+        /// truncated to 500 rows per token, so a caller cannot tell from the status
+        /// code that it asked for more than it got.
+        ///
+        /// This is a behavior change. Until at least 2026-07-25 the venue returned
+        /// HTTP 400 `{"error":"max holders limit of 500 exceeded"}` for `limit=501`.
+        ///
+        /// `limit=0` returns no rows: the venue answers with a bare `null` body,
+        /// which [`send`](Self::send) reads as an empty list.
+        ///
+        /// The value is not range-checked here — it is passed through to the venue.
+        limit: u32 => "limit",
+        /// Set minimum balance filter (0-999999, default: 1)
+        min_balance: u32 => "minBalance",
     }
 
     /// Execute the request.

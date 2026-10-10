@@ -52,3 +52,12 @@ pub mod v2;
 
 pub use client::{DataApi, DataApiBuilder};
 pub use error::DataApiError;
+
+// Every public error type implements `Classify`; one without it fails the
+// build here. `.github/scripts/tests/test_classify_coverage.py` fails when a
+// public error type is missing from this list.
+const _: fn() = || {
+    fn is<T: polyoxide_venue::Classify>() {}
+    is::<DataApiError>();
+    is::<v2::V2Error>();
+};

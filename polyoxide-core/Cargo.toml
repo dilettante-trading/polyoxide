@@ -15,9 +15,14 @@ default = []
 keychain = ["dep:keyring"]
 
 [dependencies]
+polyoxide-venue = { workspace = true }
 base64 = { workspace = true }
 hmac = { workspace = true }
-reqwest = { workspace = true }
+# The one HTTP client, and the only member that declares it (AD-18): every
+# venue crate names its types through `polyoxide_core::reqwest`, so no other
+# crate can change its features for the rest. `gzip` is on, so every client
+# asks for compressed bodies unless a builder turns it off.
+reqwest = { version = "0.12", features = ["json", "rustls-tls", "gzip"], default-features = false }
 serde = { workspace = true }
 serde_json = { workspace = true }
 sha2 = { workspace = true }
@@ -25,6 +30,7 @@ thiserror = { workspace = true }
 tracing = { workspace = true }
 url = { workspace = true }
 governor = { workspace = true }
+dynosaur = { workspace = true }
 fastrand = { workspace = true }
 keyring = { workspace = true, optional = true }
 tokio = { workspace = true, features = ["time", "sync"] }
@@ -32,6 +38,16 @@ tokio = { workspace = true, features = ["time", "sync"] }
 [dev-dependencies]
 mockito = { workspace = true }
 serde = { workspace = true }
+# The send loop's tests read its warnings.
+tracing-subscriber = { workspace = true }
 # `test-util` gives the cooldown tests a paused clock, so they assert the full
 # backoff without actually sleeping for it.
 tokio = { workspace = true, features = ["macros", "rt-multi-thread", "test-util"] }
+
+# Registration, read by scripts/gen_registry.py: the README line, venue and
+# product ids, the docs/specs/ mirrors covered, and one entry per live test
+# target, which becomes a nightly job. Run `python3 scripts/gen_registry.py
+# --write` after an edit.
+[package.metadata.polyoxide]
+readme = "Core utilities and shared types"
+notes = ["shared auth, HTTP client, errors and macros"]

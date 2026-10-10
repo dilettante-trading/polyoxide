@@ -1,4 +1,4 @@
-use polyoxide_core::{HttpClient, QueryBuilder, Request};
+use polyoxide_core::{HttpClient, Request};
 
 use crate::{error::DataApiError, types::OpenInterest};
 
@@ -23,13 +23,9 @@ pub struct GetOpenInterest {
 }
 
 impl GetOpenInterest {
-    /// Filter by specific market condition IDs
-    pub fn market(mut self, condition_ids: impl IntoIterator<Item = impl ToString>) -> Self {
-        let ids: Vec<String> = condition_ids.into_iter().map(|s| s.to_string()).collect();
-        if !ids.is_empty() {
-            self.request = self.request.query("market", ids.join(","));
-        }
-        self
+    polyoxide_core::query_setters! {
+        /// Filter by specific market condition IDs
+        market: csv impl IntoIterator<Item = impl ToString> => "market",
     }
 
     /// Execute the request

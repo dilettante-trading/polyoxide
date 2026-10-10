@@ -194,80 +194,12 @@ pub struct RelayerApiKey {
     pub updated_at: String,
 }
 
-/// A string enum that keeps unknown wire values instead of rejecting them.
-macro_rules! open_string_enum {
-    (
-        $(#[$meta:meta])*
-        $name:ident { $( $(#[$vmeta:meta])* $variant:ident => $wire:literal ),+ $(,)? }
-    ) => {
-        $(#[$meta])*
-        #[derive(Debug, Clone, PartialEq, Eq, Hash)]
-        #[non_exhaustive]
-        pub enum $name {
-            $( $(#[$vmeta])* $variant, )+
-            /// A value this crate does not know yet, kept verbatim.
-            ///
-            /// Build this via [`Self::from_wire`] or [`std::str::FromStr::from_str`],
-            /// never by constructing it directly: `Other("STATE_CONFIRMED".into())`
-            /// serialises identically to the named variant but does not compare
-            /// equal to it, and any state-dependent method (e.g. `is_success`) would
-            /// silently disagree with the wire value it holds.
-            Other(String),
-        }
-
-        impl $name {
-            /// The wire spelling.
-            pub fn as_str(&self) -> &str {
-                match self {
-                    $( Self::$variant => $wire, )+
-                    Self::Other(s) => s,
-                }
-            }
-
-            /// Parse a wire spelling; anything unrecognised becomes `Other`.
-            pub fn from_wire(s: &str) -> Self {
-                match s {
-                    $( $wire => Self::$variant, )+
-                    other => Self::Other(other.to_string()),
-                }
-            }
-        }
-
-        impl std::fmt::Display for $name {
-            fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-                f.write_str(self.as_str())
-            }
-        }
-
-        impl std::str::FromStr for $name {
-            type Err = std::convert::Infallible;
-            fn from_str(s: &str) -> Result<Self, Self::Err> {
-                Ok(Self::from_wire(s))
-            }
-        }
-
-        impl Serialize for $name {
-            fn serialize<S: serde::Serializer>(&self, serializer: S) -> Result<S::Ok, S::Error> {
-                serializer.serialize_str(self.as_str())
-            }
-        }
-
-        impl<'de> Deserialize<'de> for $name {
-            fn deserialize<D: serde::Deserializer<'de>>(deserializer: D) -> Result<Self, D::Error> {
-                let s = String::deserialize(deserializer)?;
-                Ok(Self::from_wire(&s))
-            }
-        }
-    };
-}
-pub(crate) use open_string_enum;
-
-open_string_enum! {
+polyoxide_venue::open_enum! {
     /// Lifecycle state of a relayer transaction (`GET /v1/account/transactions/{id}`).
     ///
     /// `Confirmed` is the only success; `Failed` and `Invalid` are terminal
     /// failures; everything else is still in flight.
-    TransactionState {
+    pub enum TransactionState {
         /// Accepted by the relayer, not yet broadcast.
         New => "STATE_NEW",
         /// Broadcast to the chain.

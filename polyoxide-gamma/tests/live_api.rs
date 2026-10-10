@@ -11,10 +11,11 @@
 use polyoxide_core::ApiError;
 use polyoxide_gamma::types::ParentEntityType;
 use polyoxide_gamma::{Gamma, GammaError};
+use polyoxide_test_support::{environmental, fail, ResultExt};
 use std::time::Duration;
 
 fn client() -> Gamma {
-    Gamma::builder().build().expect("gamma client")
+    Gamma::builder().build().or_fail("gamma client")
 }
 
 // ── Health ───────────────────────────────────────────────────────
@@ -23,7 +24,7 @@ fn client() -> Gamma {
 #[ignore]
 async fn live_ping() {
     let gamma = client();
-    let latency = gamma.health().ping().await.expect("ping should succeed");
+    let latency = gamma.health().ping().await.or_fail("ping should succeed");
     assert!(
         latency < Duration::from_secs(10),
         "latency too high: {latency:?}"
@@ -42,7 +43,7 @@ async fn live_list_markets() {
         .limit(5)
         .send()
         .await
-        .expect("list markets");
+        .or_fail("list markets");
     assert!(!markets.is_empty(), "should return at least one market");
 }
 
@@ -56,8 +57,8 @@ async fn live_get_market_by_id() {
         .limit(1)
         .send()
         .await
-        .expect("list markets to discover id");
-    let first = markets.first().expect("need at least one market");
+        .or_fail("list markets to discover id");
+    let first = markets.first().expect("need at least one market"); // live-unwraps: an assertion on the response
     let id = first.id.clone();
 
     let market = gamma
@@ -65,7 +66,7 @@ async fn live_get_market_by_id() {
         .get(&id)
         .send()
         .await
-        .expect("get market by id");
+        .or_fail("get market by id");
     assert_eq!(market.id, id);
 }
 
@@ -79,19 +80,19 @@ async fn live_get_market_by_slug() {
         .limit(10)
         .send()
         .await
-        .expect("list markets to discover slug");
+        .or_fail("list markets to discover slug");
     let market_with_slug = markets
         .iter()
         .find(|m| m.slug.is_some())
-        .expect("need at least one market with a slug");
-    let slug = market_with_slug.slug.as_ref().unwrap().clone();
+        .expect("need at least one market with a slug"); // live-unwraps: an assertion on the response
+    let slug = market_with_slug.slug.as_ref().unwrap().clone(); // live-unwraps: selected on slug.is_some()
 
     let market = gamma
         .markets()
         .get_by_slug(&slug)
         .send()
         .await
-        .expect("get market by slug");
+        .or_fail("get market by slug");
     assert_eq!(market.slug.as_deref(), Some(slug.as_str()));
 }
 
@@ -106,7 +107,7 @@ async fn live_list_markets_closed_true() {
         .limit(5)
         .send()
         .await
-        .expect("list closed markets");
+        .or_fail("list closed markets");
     assert!(
         !markets.is_empty(),
         "should return at least one closed market"
@@ -127,7 +128,7 @@ async fn live_list_markets_closed_false() {
         .limit(5)
         .send()
         .await
-        .expect("list open markets");
+        .or_fail("list open markets");
     assert!(
         !markets.is_empty(),
         "should return at least one open market"
@@ -150,7 +151,7 @@ async fn live_get_many_returns_both_open_and_closed() {
         .limit(1)
         .send()
         .await
-        .expect("list open markets");
+        .or_fail("list open markets");
     let closed = gamma
         .markets()
         .list()
@@ -158,27 +159,27 @@ async fn live_get_many_returns_both_open_and_closed() {
         .limit(1)
         .send()
         .await
-        .expect("list closed markets");
+        .or_fail("list closed markets");
 
     let open_id: i64 = open
         .first()
-        .expect("need an open market")
+        .expect("need an open market") // live-unwraps: an assertion on the response
         .id
         .parse()
-        .expect("open market id should be numeric");
+        .expect("open market id should be numeric"); // live-unwraps: an assertion on the response's id
     let closed_id: i64 = closed
         .first()
-        .expect("need a closed market")
+        .expect("need a closed market") // live-unwraps: an assertion on the response
         .id
         .parse()
-        .expect("closed market id should be numeric");
+        .expect("closed market id should be numeric"); // live-unwraps: an assertion on the response's id
 
     let markets = gamma
         .markets()
         .get_many([open_id, closed_id])
         .send()
         .await
-        .expect("get_many should succeed");
+        .or_fail("get_many should succeed");
 
     let open_str = open_id.to_string();
     let closed_str = closed_id.to_string();
@@ -209,15 +210,15 @@ async fn live_get_market_description() {
         .limit(1)
         .send()
         .await
-        .expect("list markets to discover id");
-    let first = markets.first().expect("need at least one market");
+        .or_fail("list markets to discover id");
+    let first = markets.first().expect("need at least one market"); // live-unwraps: an assertion on the response
 
     let desc = gamma
         .markets()
         .get_description(&first.id)
         .send()
         .await
-        .expect("get market description");
+        .or_fail("get market description");
     // Deserialization succeeded; description may be None/empty on some markets.
     let _ = desc;
 }
@@ -236,9 +237,9 @@ async fn live_query_markets_by_information() {
         .limit(1)
         .send()
         .await
-        .expect("list markets");
-    let first = markets.first().expect("need at least one market");
-    let id: i64 = first.id.parse().expect("market id should be numeric");
+        .or_fail("list markets");
+    let first = markets.first().expect("need at least one market"); // live-unwraps: an assertion on the response
+    let id: i64 = first.id.parse().expect("market id should be numeric"); // live-unwraps: an assertion on the response's id
 
     let body = MarketsInformationBody {
         id: vec![id],
@@ -249,7 +250,7 @@ async fn live_query_markets_by_information() {
         .query_by_information(body)
         .send()
         .await
-        .expect("POST /markets/information");
+        .or_fail("POST /markets/information");
     assert!(
         found.iter().any(|m| m.id == first.id),
         "expected market {} in response",
@@ -272,7 +273,7 @@ async fn live_query_abridged_markets() {
         .query_abridged(body)
         .send()
         .await
-        .expect("POST /markets/abridged");
+        .or_fail("POST /markets/abridged");
     // Deserialization is the primary assertion; the array may be empty.
     let _ = found;
 }
@@ -287,7 +288,7 @@ async fn live_list_markets_keyset() {
         .limit(5)
         .send()
         .await
-        .expect("list markets (keyset)");
+        .or_fail("list markets (keyset)");
     // Deserialization is the assertion; upstream may page differently.
     let _ = resp;
 }
@@ -317,7 +318,7 @@ async fn live_market_maker_address_filter_is_still_applied() {
         .limit(5)
         .send()
         .await
-        .expect("unfiltered list");
+        .or_fail("unfiltered list");
     assert!(!baseline.is_empty(), "the control needs an unfiltered page");
 
     let listed = gamma
@@ -327,7 +328,7 @@ async fn live_market_maker_address_filter_is_still_applied() {
         .limit(5)
         .send()
         .await
-        .expect("GET /markets with market_maker_address");
+        .or_fail("GET /markets with market_maker_address");
     assert!(
         listed.is_empty(),
         "GET /markets ignored market_maker_address: {} markets came back",
@@ -341,7 +342,7 @@ async fn live_market_maker_address_filter_is_still_applied() {
         .limit(5)
         .send()
         .await
-        .expect("GET /markets/keyset with market_maker_address");
+        .or_fail("GET /markets/keyset with market_maker_address");
     assert!(
         keyset.markets.is_empty(),
         "GET /markets/keyset ignored market_maker_address: {} markets came back",
@@ -358,7 +359,7 @@ async fn live_market_maker_address_filter_is_still_applied() {
         .limit(5)
         .send()
         .await
-        .expect("POST /markets/information with marketMakerAddress");
+        .or_fail("POST /markets/information with marketMakerAddress");
     assert!(
         posted.is_empty(),
         "POST /markets/information ignored marketMakerAddress: {} markets came back",
@@ -388,7 +389,7 @@ async fn live_markets_carry_a_known_protocol_version() {
             .limit(100)
             .send()
             .await
-            .expect("list newest markets");
+            .or_fail("list newest markets");
         assert!(!markets.is_empty(), "closed={closed}: no markets came back");
         for m in &markets {
             match &m.version {
@@ -397,7 +398,7 @@ async fn live_markets_carry_a_known_protocol_version() {
                     "market {} (closed={closed}) has unrecognised version {v:?}",
                     m.id
                 ),
-                None => panic!("market {} (closed={closed}) has no version", m.id),
+                None => panic!("market {} (closed={closed}) has no version", m.id), // live-unwraps: an assertion on the response
             }
         }
     }
@@ -415,7 +416,7 @@ async fn live_list_events() {
         .limit(5)
         .send()
         .await
-        .expect("list events");
+        .or_fail("list events");
     assert!(!events.is_empty(), "should return at least one event");
 }
 
@@ -439,17 +440,16 @@ async fn live_game_events_carry_their_sports_fields() {
         .limit(100)
         .send()
         .await
-        .expect("list open sports events");
+        .or_fail("list open sports events");
     // Selected on the precondition: tag 1 also holds futures and child
     // events, which are not one game with two sides.
     let game = events
         .iter()
         .find(|e| e.game_id.is_some() && e.parent_event_id.is_none() && e.teams.len() == 2)
         .unwrap_or_else(|| {
-            panic!(
-                "none of {} open sports events is a game with two teams",
-                events.len()
-            )
+            let listed = events.len();
+            let message = format!("none of {listed} open sports events is a game with two teams");
+            panic!("{message}"); // live-unwraps: an assertion on the response
         });
 
     let mut sides: Vec<_> = game.teams.iter().map(|t| t.ordering.clone()).collect();
@@ -463,7 +463,7 @@ async fn live_game_events_carry_their_sports_fields() {
     let sport = game
         .sport
         .as_ref()
-        .unwrap_or_else(|| panic!("event {}: a game carries its league", game.id));
+        .unwrap_or_else(|| panic!("event {}: a game carries its league", game.id)); // live-unwraps: an assertion on the response
     assert!(
         sport.primary_tag_id.is_some(),
         "event {}: league {} has no primaryTagId",
@@ -471,15 +471,15 @@ async fn live_game_events_carry_their_sports_fields() {
         sport.sport
     );
 
-    let game_id = game.game_id.expect("selected on game_id");
+    let game_id = game.game_id.expect("selected on game_id"); // live-unwraps: selected on game_id.is_some()
     let by_game = gamma
         .events()
         .list()
-        .game_id([i64::try_from(game_id).expect("game ids fit in i64")])
+        .game_id([i64::try_from(game_id).expect("game ids fit in i64")]) // live-unwraps: an assertion on the response's game id
         .include_markets(false)
         .send()
         .await
-        .expect("list events by game_id");
+        .or_fail("list events by game_id");
     assert!(
         by_game.iter().any(|e| e.id == game.id),
         "game_id={game_id} did not return event {}",
@@ -501,8 +501,8 @@ async fn live_get_event_by_id() {
         .limit(1)
         .send()
         .await
-        .expect("list events to discover id");
-    let first = events.first().expect("need at least one event");
+        .or_fail("list events to discover id");
+    let first = events.first().expect("need at least one event"); // live-unwraps: an assertion on the response
     let id = first.id.clone();
 
     let event = gamma
@@ -510,7 +510,7 @@ async fn live_get_event_by_id() {
         .get(&id)
         .send()
         .await
-        .expect("get event by id");
+        .or_fail("get event by id");
     assert_eq!(event.id, id);
 }
 
@@ -524,19 +524,19 @@ async fn live_get_event_by_slug() {
         .limit(10)
         .send()
         .await
-        .expect("list events to discover slug");
+        .or_fail("list events to discover slug");
     let event_with_slug = events
         .iter()
         .find(|e| e.slug.is_some())
-        .expect("need at least one event with a slug");
-    let slug = event_with_slug.slug.as_ref().unwrap().clone();
+        .expect("need at least one event with a slug"); // live-unwraps: an assertion on the response
+    let slug = event_with_slug.slug.as_ref().unwrap().clone(); // live-unwraps: selected on slug.is_some()
 
     let event = gamma
         .events()
         .get_by_slug(&slug)
         .send()
         .await
-        .expect("get event by slug");
+        .or_fail("get event by slug");
     assert_eq!(event.slug.as_deref(), Some(slug.as_str()));
 }
 
@@ -550,7 +550,7 @@ async fn live_list_event_creators() {
         .limit(5)
         .send()
         .await
-        .expect("list event creators");
+        .or_fail("list event creators");
     let _ = creators; // may be empty; deserialization is the assertion
 }
 
@@ -564,7 +564,7 @@ async fn live_list_events_pagination() {
         .limit(3)
         .send()
         .await
-        .expect("list paginated events");
+        .or_fail("list paginated events");
     // Data may be empty when no matching events; struct must deserialize.
     let _ = resp;
 }
@@ -579,7 +579,7 @@ async fn live_list_events_results() {
         .limit(3)
         .send()
         .await
-        .expect("list event results");
+        .or_fail("list event results");
 }
 
 #[tokio::test]
@@ -592,7 +592,7 @@ async fn live_list_events_keyset() {
         .limit(5)
         .send()
         .await
-        .expect("list events (keyset)");
+        .or_fail("list events (keyset)");
     let _ = resp; // events may be empty on some configurations; deserialization is the assertion
 }
 
@@ -611,12 +611,12 @@ async fn live_keyset_events_apply_include_markets() {
         .limit(10)
         .send()
         .await
-        .expect("list events (keyset) with markets");
+        .or_fail("list events (keyset) with markets");
     let ids: Vec<i64> = with
         .events
         .iter()
         .filter(|e| !e.markets.is_empty())
-        .map(|e| e.id.parse().expect("event ids are integers"))
+        .map(|e| e.id.parse().expect("event ids are integers")) // live-unwraps: an assertion on the response's id
         .collect();
     assert!(
         !ids.is_empty(),
@@ -631,7 +631,7 @@ async fn live_keyset_events_apply_include_markets() {
         .include_markets(false)
         .send()
         .await
-        .expect("list events (keyset) without markets");
+        .or_fail("list events (keyset) without markets");
     assert_eq!(without.events.len(), ids.len(), "id={ids:?}");
     assert!(
         without.events.iter().all(|e| e.markets.is_empty()),
@@ -651,7 +651,7 @@ async fn live_list_tags() {
         .limit(5)
         .send()
         .await
-        .expect("list tags");
+        .or_fail("list tags");
     assert!(!tags.is_empty(), "should return at least one tag");
 }
 
@@ -665,11 +665,11 @@ async fn live_get_tag_by_id() {
         .limit(1)
         .send()
         .await
-        .expect("list tags to discover id");
-    let first = tags.first().expect("need at least one tag");
+        .or_fail("list tags to discover id");
+    let first = tags.first().expect("need at least one tag"); // live-unwraps: an assertion on the response
     let id = first.id.clone();
 
-    let tag = gamma.tags().get(&id).send().await.expect("get tag by id");
+    let tag = gamma.tags().get(&id).send().await.or_fail("get tag by id");
     assert_eq!(tag.id, id);
 }
 
@@ -683,8 +683,8 @@ async fn live_get_tag_by_slug() {
         .limit(10)
         .send()
         .await
-        .expect("list tags to discover slug");
-    let first = tags.first().expect("need at least one tag");
+        .or_fail("list tags to discover slug");
+    let first = tags.first().expect("need at least one tag"); // live-unwraps: an assertion on the response
     let slug = first.slug.clone();
 
     let tag = gamma
@@ -692,7 +692,7 @@ async fn live_get_tag_by_slug() {
         .get_by_slug(&slug)
         .send()
         .await
-        .expect("get tag by slug");
+        .or_fail("get tag by slug");
     assert_eq!(tag.slug, slug);
 }
 
@@ -711,7 +711,7 @@ async fn live_get_related_tags() {
         .get_related_by_slug("politics")
         .send()
         .await
-        .expect("get related tags");
+        .or_fail("get related tags");
 
     assert!(
         !related.is_empty(),
@@ -735,13 +735,13 @@ async fn live_get_related_tags() {
     // The by-ID route must return the same rows as the by-slug route.
     let tag_id = related[0]
         .tag_id
-        .expect("the queried tag's own id should be populated");
+        .expect("the queried tag's own id should be populated"); // live-unwraps: an assertion on the response
     let by_id = gamma
         .tags()
         .get_related(tag_id.to_string())
         .send()
         .await
-        .expect("get related tags by id");
+        .or_fail("get related tags by id");
     assert_eq!(
         by_id.len(),
         related.len(),
@@ -755,7 +755,7 @@ async fn live_get_related_tags() {
         .get_related_detailed_by_slug("politics")
         .send()
         .await
-        .expect("get detailed related tags");
+        .or_fail("get detailed related tags");
     assert!(
         detailed.iter().all(|t| !t.slug.is_empty()),
         "/related-tags/tags must return Tag objects with slugs"
@@ -774,7 +774,7 @@ async fn live_list_series() {
         .limit(5)
         .send()
         .await
-        .expect("list series");
+        .or_fail("list series");
     assert!(!series.is_empty(), "should return at least one series");
 }
 
@@ -788,8 +788,8 @@ async fn live_get_series_by_id() {
         .limit(1)
         .send()
         .await
-        .expect("list series to discover id");
-    let first = series.first().expect("need at least one series");
+        .or_fail("list series to discover id");
+    let first = series.first().expect("need at least one series"); // live-unwraps: an assertion on the response
     let id = first.id.clone();
 
     let s = gamma
@@ -797,7 +797,7 @@ async fn live_get_series_by_id() {
         .get(&id)
         .send()
         .await
-        .expect("get series by id");
+        .or_fail("get series by id");
     assert_eq!(s.id, id);
 }
 
@@ -811,15 +811,15 @@ async fn live_get_series_summary() {
         .limit(1)
         .send()
         .await
-        .expect("list series to discover id");
-    let first = series.first().expect("need at least one series");
+        .or_fail("list series to discover id");
+    let first = series.first().expect("need at least one series"); // live-unwraps: an assertion on the response
 
     let summary = gamma
         .series()
         .get_summary(&first.id)
         .send()
         .await
-        .expect("get series summary by id");
+        .or_fail("get series summary by id");
     assert_eq!(summary.id, first.id);
 }
 
@@ -833,8 +833,8 @@ async fn live_get_series_summary_by_slug() {
         .limit(1)
         .send()
         .await
-        .expect("list series to discover slug");
-    let first = series.first().expect("need at least one series");
+        .or_fail("list series to discover slug");
+    let first = series.first().expect("need at least one series"); // live-unwraps: an assertion on the response
     let slug = first.slug.clone();
 
     let summary = gamma
@@ -842,7 +842,7 @@ async fn live_get_series_summary_by_slug() {
         .get_summary_by_slug(&slug)
         .send()
         .await
-        .expect("get series summary by slug");
+        .or_fail("get series summary by slug");
     // The upstream may map slug to a different summary id, but deserialization
     // is the primary assertion here.
     let _ = summary;
@@ -858,14 +858,14 @@ async fn live_series_comment_count() {
         .limit(1)
         .send()
         .await
-        .expect("list series to discover id");
-    let first = series.first().expect("need at least one series");
+        .or_fail("list series to discover id");
+    let first = series.first().expect("need at least one series"); // live-unwraps: an assertion on the response
     let count = gamma
         .series()
         .comment_count(&first.id)
         .send()
         .await
-        .expect("get series comment count");
+        .or_fail("get series comment count");
     // Deserialization is the primary assertion; count is u64 so any value is
     // valid.
     let _ = count;
@@ -877,7 +877,7 @@ async fn live_series_comment_count() {
 #[ignore]
 async fn live_list_sports() {
     let gamma = client();
-    let sports = gamma.sports().list().send().await.expect("list sports");
+    let sports = gamma.sports().list().send().await.or_fail("list sports");
     assert!(
         !sports.is_empty(),
         "should return at least one sport metadata entry"
@@ -894,7 +894,7 @@ async fn live_list_teams() {
         .limit(5)
         .send()
         .await
-        .expect("list teams");
+        .or_fail("list teams");
     assert!(!teams.is_empty(), "should return at least one team");
 }
 
@@ -908,8 +908,8 @@ async fn live_get_team_by_id() {
         .limit(1)
         .send()
         .await
-        .expect("list teams to discover id");
-    let first = teams.first().expect("need at least one team");
+        .or_fail("list teams to discover id");
+    let first = teams.first().expect("need at least one team"); // live-unwraps: an assertion on the response
     let id = first.id.to_string();
 
     let team = gamma
@@ -917,7 +917,7 @@ async fn live_get_team_by_id() {
         .get_team(&id)
         .send()
         .await
-        .expect("get team by id");
+        .or_fail("get team by id");
     assert_eq!(team.id, first.id);
 }
 
@@ -936,9 +936,9 @@ async fn live_list_comments() {
         .limit(5)
         .send()
         .await
-        .expect("list events to discover id for comments");
-    let first = events.first().expect("need at least one event");
-    let event_id: i64 = first.id.parse().expect("event id should be numeric");
+        .or_fail("list events to discover id for comments");
+    let first = events.first().expect("need at least one event"); // live-unwraps: an assertion on the response
+    let event_id: i64 = first.id.parse().expect("event id should be numeric"); // live-unwraps: an assertion on the response's id
 
     let comments = gamma
         .comments()
@@ -948,16 +948,15 @@ async fn live_list_comments() {
         .limit(5)
         .send()
         .await
-        .expect("list comments");
+        .or_fail("list comments");
     // An empty result is not signal: the discovered event may simply have no
     // comments, which is exactly the luck that let issue #28 hide for months.
     // Say so out loud rather than passing silently.
     if comments.is_empty() {
-        eprintln!(
-            "SKIPPED: no comments on event {event_id}; this run did not exercise \
+        environmental(&format!(
+            "no comments on event {event_id}; this run did not exercise \
              comment deserialization"
-        );
-        return;
+        ));
     }
     assert!(
         comments.iter().all(|c| !c.id.is_empty()),
@@ -980,9 +979,9 @@ async fn live_get_comment_by_id() {
         .limit(5)
         .send()
         .await
-        .expect("list events");
-    let first = events.first().expect("need at least one event");
-    let event_id: i64 = first.id.parse().expect("event id should be numeric");
+        .or_fail("list events");
+    let first = events.first().expect("need at least one event"); // live-unwraps: an assertion on the response
+    let event_id: i64 = first.id.parse().expect("event id should be numeric"); // live-unwraps: an assertion on the response's id
 
     let comments = gamma
         .comments()
@@ -992,18 +991,19 @@ async fn live_get_comment_by_id() {
         .limit(1)
         .send()
         .await
-        .expect("list comments");
+        .or_fail("list comments");
 
     let Some(comment) = comments.first() else {
-        eprintln!("SKIPPED: no comments on event {event_id}; nothing to fetch by id");
-        return;
+        environmental(&format!(
+            "no comments on event {event_id}; nothing to fetch by id"
+        ));
     };
     let thread = gamma
         .comments()
         .get(&comment.id)
         .send()
         .await
-        .expect("get comment thread by id");
+        .or_fail("get comment thread by id");
     // Upstream returns the whole thread, with the requested id somewhere
     // inside it — not necessarily first.
     assert!(
@@ -1024,15 +1024,15 @@ async fn live_event_tags() {
         .limit(1)
         .send()
         .await
-        .expect("list events");
-    let first = events.first().expect("need at least one event");
+        .or_fail("list events");
+    let first = events.first().expect("need at least one event"); // live-unwraps: an assertion on the response
 
     let _tags = gamma
         .events()
         .tags(&first.id)
         .send()
         .await
-        .expect("get event tags");
+        .or_fail("get event tags");
 }
 
 // ── Markets: tags ──────────────────────────────────────────────
@@ -1047,15 +1047,15 @@ async fn live_market_tags() {
         .limit(1)
         .send()
         .await
-        .expect("list markets");
-    let first = markets.first().expect("need at least one market");
+        .or_fail("list markets");
+    let first = markets.first().expect("need at least one market"); // live-unwraps: an assertion on the response
 
     let _tags = gamma
         .markets()
         .tags(&first.id)
         .send()
         .await
-        .expect("get market tags");
+        .or_fail("get market tags");
 }
 
 // ── Sports: market types ───────────────────────────────────────
@@ -1069,7 +1069,7 @@ async fn live_sports_market_types() {
         .market_types()
         .send()
         .await
-        .expect("sports market types should deserialize");
+        .or_fail("sports market types should deserialize");
 }
 
 // ── Search ──────────────────────────────────────────────────────
@@ -1085,7 +1085,7 @@ async fn live_public_search() {
         .limit_per_type(5)
         .send()
         .await
-        .expect("public search");
+        .or_fail("public search");
     // Search may return empty results for some queries,
     // but deserialization must succeed.
     let _ = results;
@@ -1107,7 +1107,7 @@ async fn live_public_search_sports_profiles() {
         .limit_per_type(20)
         .send()
         .await
-        .expect("public search must deserialize even when profiles contains a null entry");
+        .or_fail("public search must deserialize even when profiles contains a null entry");
     let _ = results;
 }
 
@@ -1126,9 +1126,9 @@ async fn live_get_user() {
         .limit(5)
         .send()
         .await
-        .expect("list events");
-    let first = events.first().expect("need at least one event");
-    let event_id: i64 = first.id.parse().expect("event id should be numeric");
+        .or_fail("list events");
+    let first = events.first().expect("need at least one event"); // live-unwraps: an assertion on the response
+    let event_id: i64 = first.id.parse().expect("event id should be numeric"); // live-unwraps: an assertion on the response's id
 
     let comments = gamma
         .comments()
@@ -1138,24 +1138,28 @@ async fn live_get_user() {
         .limit(20)
         .send()
         .await
-        .expect("list comments to find a user");
+        .or_fail("list comments to find a user");
 
-    let Some(comment) = comments.first() else {
-        eprintln!("SKIPPED: no comments on event {event_id}; no address to resolve");
-        return;
-    };
+    if comments.is_empty() {
+        environmental(&format!(
+            "no comments on event {event_id}; no address to resolve"
+        ));
+    }
     // `/public-profile` wants an address. The old code passed `comment.user.id`,
-    // which was an id-shaped field that never existed on the wire.
-    let Some(address) = comment.user_address.as_deref() else {
-        eprintln!("SKIPPED: comment {} carries no userAddress", comment.id);
-        return;
-    };
+    // which was an id-shaped field that never existed on the wire. Comments
+    // that all lack one is how a `userAddress` decode regression looks.
+    let address = comments
+        .iter()
+        .find_map(|comment| comment.user_address.as_deref())
+        .unwrap_or_else(|| {
+            panic!("none of {} comments carries a userAddress", comments.len()) // live-unwraps: an assertion on the response
+        });
     let user = gamma
         .user()
         .get(address)
         .send()
         .await
-        .expect("get user profile");
+        .or_fail("get user profile");
     let _ = user;
 }
 
@@ -1174,9 +1178,11 @@ async fn live_get_profile_by_address() {
         .limit(5)
         .send()
         .await
-        .expect("list events");
-    let Some(first) = events.first() else { return };
-    let event_id: i64 = first.id.parse().expect("event id should be numeric");
+        .or_fail("list events");
+    let Some(first) = events.first() else {
+        environmental("no active events listed; no address to resolve");
+    };
+    let event_id: i64 = first.id.parse().expect("event id should be numeric"); // live-unwraps: an assertion on the response's id
 
     let comments = gamma
         .comments()
@@ -1186,22 +1192,29 @@ async fn live_get_profile_by_address() {
         .limit(20)
         .send()
         .await
-        .expect("list comments to find an address");
+        .or_fail("list comments to find an address");
 
-    let Some(comment) = comments.first() else {
-        return;
-    };
-    let Some(user_address) = comment.user_address.as_deref() else {
-        return;
-    };
+    if comments.is_empty() {
+        environmental(&format!(
+            "no comments on event {event_id}; no address to resolve"
+        ));
+    }
+    let user_address = comments
+        .iter()
+        .find_map(|comment| comment.user_address.as_deref())
+        .unwrap_or_else(|| {
+            panic!("none of {} comments carries a userAddress", comments.len()) // live-unwraps: an assertion on the response
+        });
     let user = gamma
         .user()
         .get(user_address)
         .send()
         .await
-        .expect("resolve user to proxy wallet");
+        .or_fail("resolve user to proxy wallet");
     let Some(address) = user.proxy.clone() else {
-        return;
+        environmental(&format!(
+            "user {user_address} has no proxy wallet; no address to look up"
+        ));
     };
 
     // The endpoint returns 200 for almost any address that has ever touched
@@ -1219,10 +1232,10 @@ async fn live_get_profile_by_address() {
                 "takerTierName must not be empty"
             );
         }
-        Err(GammaError::Api(ApiError::Api { status: 404, .. })) => {
-            eprintln!("SKIPPED: {address} has no profile (404)");
+        Err(GammaError::Api(ApiError::Response(r))) if r.status.as_u16() == 404 => {
+            environmental(&format!("{address} has no profile (404)"));
         }
-        Err(e) => panic!("get_by_address({address}) failed: {e}"),
+        Err(e) => fail(&format!("get_by_address({address}) failed"), &e),
     }
 }
 
@@ -1236,16 +1249,16 @@ async fn live_get_event_creator_by_id() {
         .limit(1)
         .send()
         .await
-        .expect("list event creators to discover id");
+        .or_fail("list event creators to discover id");
     let Some(first) = creators.first() else {
-        return; // No creators available; treat as skip.
+        environmental("no event creators listed; nothing to fetch by id");
     };
     let _ = gamma
         .events()
         .get_creator(&first.id)
         .send()
         .await
-        .expect("get event creator by id");
+        .or_fail("get event creator by id");
 }
 
 #[tokio::test]
@@ -1258,14 +1271,14 @@ async fn live_get_related_detailed_by_id() {
         .limit(1)
         .send()
         .await
-        .expect("list tags to discover id");
-    let first = tags.first().expect("need at least one tag");
+        .or_fail("list tags to discover id");
+    let first = tags.first().expect("need at least one tag"); // live-unwraps: an assertion on the response
     let _ = gamma
         .tags()
         .get_related_detailed(&first.id)
         .send()
         .await
-        .expect("get related detailed by id");
+        .or_fail("get related detailed by id");
 }
 
 #[tokio::test]
@@ -1278,12 +1291,12 @@ async fn live_get_related_detailed_by_slug() {
         .limit(1)
         .send()
         .await
-        .expect("list tags to discover slug");
-    let first = tags.first().expect("need at least one tag");
+        .or_fail("list tags to discover slug");
+    let first = tags.first().expect("need at least one tag"); // live-unwraps: an assertion on the response
     let _ = gamma
         .tags()
         .get_related_detailed_by_slug(&first.slug)
         .send()
         .await
-        .expect("get related detailed by slug");
+        .or_fail("get related detailed by slug");
 }

@@ -1,6 +1,8 @@
+use polyoxide_core::reqwest::Method;
 use polyoxide_core::{
-    HttpClient, HttpClientBuilder, RateLimitStatus, RateLimiter, RetryConfig, SignerLimiter, Tier,
-    TradingRequest, DEFAULT_POOL_SIZE, DEFAULT_TIMEOUT_MS,
+    polymarket::{self, PolymarketRetryPolicy},
+    ClientConfig, DynAuthenticator, HttpClient, RateLimitStatus, Request, SignerLimiter, Tier,
+    TradingRequest,
 };
 
 use crate::{
@@ -13,9 +15,9 @@ use crate::{
         rewards::{PublicRewards, Rewards},
         Health, Markets, Orders,
     },
+    authenticator::L1Signed,
     core::chain::Chain,
     error::ClobError,
-    request::{AuthMode, Request},
     types::*,
     utils::{
         calculate_market_order_amounts, calculate_market_price, calculate_order_amounts,
@@ -54,8 +56,9 @@ pub struct Clob {
     /// [`B256::ZERO`] (no attribution).
     pub(crate) builder_code: B256,
     pub(crate) account: Option<Account>,
-    /// Per-signer order/cancel token buckets. Independent of the IP-based
-    /// limiter on `http_client`; see `docs/specs/clob/trading-rate-limits.md`.
+    /// Per-signer order/cancel token buckets: the signer layer of the
+    /// client's `ClobThrottle`, shared with it, for the tier and telemetry it
+    /// adopts. See `docs/specs/clob/trading-rate-limits.md`.
     pub(crate) signer_limiter: SignerLimiter,
     #[cfg(feature = "gamma")]
     pub(crate) gamma: Gamma,
@@ -94,20 +97,18 @@ impl Clob {
         self.account.as_ref()
     }
 
-    /// Get markets namespace
-    pub fn markets(&self) -> Markets {
-        Markets {
-            http_client: self.http_client.clone(),
-            chain_id: self.chain_id,
-        }
-    }
-
-    /// Get health namespace for latency and health checks
-    pub fn health(&self) -> Health {
-        Health {
-            http_client: self.http_client.clone(),
-            chain_id: self.chain_id,
-        }
+    polyoxide_core::namespaces! { http_client;
+        /// Get markets namespace
+        markets: Markets,
+        /// Get health namespace for latency and health checks
+        health: Health,
+        /// Get the unauthenticated rewards namespace.
+        ///
+        /// `GET /rewards/markets/current`, `/rewards/markets/{condition_id}`,
+        /// `/rewards/markets/multi`, and `/rebates/current` are public upstream, so
+        /// they are reachable without an account. Use [`Self::rewards`] for the
+        /// L2-authenticated user endpoints.
+        public_rewards: PublicRewards,
     }
 
     /// The trading tier currently in force for this client's signer.
@@ -135,11 +136,7 @@ impl Clob {
 
         Ok(Orders {
             http_client: self.http_client.clone(),
-            signer_limiter: self.signer_limiter.clone(),
-            wallet: account.wallet().clone(),
-            credentials: account.credentials().clone(),
-            signer: account.signer().clone(),
-            chain_id: self.chain_id,
+            l2: account.l2_auth(),
         })
     }
 
@@ -152,10 +149,7 @@ impl Clob {
 
         Ok(AccountApi {
             http_client: self.http_client.clone(),
-            wallet: account.wallet().clone(),
-            credentials: account.credentials().clone(),
-            signer: account.signer().clone(),
-            chain_id: self.chain_id,
+            l2: account.l2_auth(),
             signature_type: self.signature_type,
             target: account.target(),
         })
@@ -170,25 +164,9 @@ impl Clob {
 
         Ok(Notifications {
             http_client: self.http_client.clone(),
-            wallet: account.wallet().clone(),
-            credentials: account.credentials().clone(),
-            signer: account.signer().clone(),
-            chain_id: self.chain_id,
+            l2: account.l2_auth(),
             signature_type: self.signature_type,
         })
-    }
-
-    /// Get the unauthenticated rewards namespace.
-    ///
-    /// `GET /rewards/markets/current`, `/rewards/markets/{condition_id}`,
-    /// `/rewards/markets/multi`, and `/rebates/current` are public upstream, so
-    /// they are reachable without an account. Use [`Self::rewards`] for the
-    /// L2-authenticated user endpoints.
-    pub fn public_rewards(&self) -> PublicRewards {
-        PublicRewards {
-            http_client: self.http_client.clone(),
-            chain_id: self.chain_id,
-        }
     }
 
     /// Get rewards namespace for liquidity reward operations
@@ -200,10 +178,7 @@ impl Clob {
 
         Ok(Rewards {
             http_client: self.http_client.clone(),
-            wallet: account.wallet().clone(),
-            credentials: account.credentials().clone(),
-            signer: account.signer().clone(),
-            chain_id: self.chain_id,
+            l2: account.l2_auth(),
             signature_type: self.signature_type,
         })
     }
@@ -218,8 +193,7 @@ impl Clob {
         Ok(Auth {
             http_client: self.http_client.clone(),
             wallet: account.wallet().clone(),
-            credentials: account.credentials().clone(),
-            signer: account.signer().clone(),
+            l2: account.l2_auth(),
             chain_id: self.chain_id,
         })
     }
@@ -289,19 +263,16 @@ impl Clob {
         signature: impl Into<String>,
     ) -> Result<crate::api::auth::ApiKeyResponse, ClobError> {
         let signature = self.checked_l1_signature(address, timestamp, nonce, signature)?;
-        Request::post(
-            self.http_client.clone(),
-            "/auth/api-key".to_string(),
-            AuthMode::L1Signed {
+        Request::new(self.http_client.clone(), "/auth/api-key")
+            .method(Method::POST)
+            .authenticator(DynAuthenticator::new_arc(L1Signed {
                 address,
                 nonce,
                 timestamp,
                 signature,
-            },
-            self.chain_id,
-        )
-        .send()
-        .await
+            }))
+            .send()
+            .await
     }
 
     /// `GET /auth/derive-api-key` with a signature produced outside this process.
@@ -318,19 +289,15 @@ impl Clob {
         signature: impl Into<String>,
     ) -> Result<crate::api::auth::ApiKeyResponse, ClobError> {
         let signature = self.checked_l1_signature(address, timestamp, nonce, signature)?;
-        Request::get(
-            self.http_client.clone(),
-            "/auth/derive-api-key",
-            AuthMode::L1Signed {
+        Request::new(self.http_client.clone(), "/auth/derive-api-key")
+            .authenticator(DynAuthenticator::new_arc(L1Signed {
                 address,
                 nonce,
                 timestamp,
                 signature,
-            },
-            self.chain_id,
-        )
-        .send()
-        .await
+            }))
+            .send()
+            .await
     }
 
     /// Create an unsigned order from parameters
@@ -364,10 +331,7 @@ impl Clob {
             .resolve_maker_address(params.funder, signature_type, account)
             .await?;
 
-        let timestamp_ms = std::time::SystemTime::now()
-            .duration_since(std::time::UNIX_EPOCH)
-            .map(|d| d.as_millis())
-            .unwrap_or(0);
+        let timestamp_ms = polyoxide_venue::UnixMillis::now().0;
 
         // Build order
         Ok(Self::build_order_v2(
@@ -462,10 +426,7 @@ impl Clob {
             .resolve_maker_address(params.funder, signature_type, account)
             .await?;
 
-        let timestamp_ms = std::time::SystemTime::now()
-            .duration_since(std::time::UNIX_EPOCH)
-            .map(|d| d.as_millis())
-            .unwrap_or(0);
+        let timestamp_ms = polyoxide_venue::UnixMillis::now().0;
 
         // Build order with expiration set to 0 for market orders
         Ok(Self::build_order_v2(
@@ -599,9 +560,7 @@ impl Clob {
                     .get(account.address().to_string())
                     .send()
                     .await
-                    .map_err(|e| {
-                        ClobError::service(format!("Failed to fetch user profile: {}", e))
-                    })?;
+                    .map_err(ClobError::Gamma)?;
 
                 return profile
                     .proxy
@@ -654,7 +613,7 @@ impl Clob {
         expiration: Option<u64>,
         builder: B256,
         metadata: B256,
-        timestamp_ms: u128,
+        timestamp_ms: u64,
     ) -> Order {
         Order {
             salt: generate_salt(),
@@ -701,12 +660,6 @@ impl Clob {
             .as_ref()
             .ok_or_else(|| ClobError::validation("Account required to post orders"))?;
 
-        let auth = AuthMode::L2 {
-            address: account.address(),
-            credentials: account.credentials().clone(),
-            signer: account.signer().clone(),
-        };
-
         let payload: Vec<_> = orders
             .iter()
             .map(|o| {
@@ -719,21 +672,15 @@ impl Clob {
             })
             .collect();
 
-        Request::post(
-            self.http_client.clone(),
-            "/orders".to_string(),
-            auth,
-            self.chain_id,
-        )
-        .trading(
-            &self.signer_limiter,
-            TradingRequest::PostOrders {
+        Request::new(self.http_client.clone(), "/orders")
+            .method(Method::POST)
+            .authenticator(account.l2_auth())
+            .with_cost(polymarket::signer_cost(TradingRequest::PostOrders {
                 count: payload.len() as u32,
-            },
-        )
-        .body(&payload)?
-        .send()
-        .await
+            }))
+            .body(&payload)?
+            .send()
+            .await
     }
 
     /// Post a signed order
@@ -748,12 +695,6 @@ impl Clob {
             .as_ref()
             .ok_or_else(|| ClobError::validation("Account required to post order"))?;
 
-        let auth = AuthMode::L2 {
-            address: account.address(),
-            credentials: account.credentials().clone(),
-            signer: account.signer().clone(),
-        };
-
         // Create the payload wrapping the signed order
         let payload = Self::order_submit_payload(
             signed_order,
@@ -762,16 +703,13 @@ impl Clob {
             &account.credentials().key,
         );
 
-        Request::post(
-            self.http_client.clone(),
-            "/order".to_string(),
-            auth,
-            self.chain_id,
-        )
-        .trading(&self.signer_limiter, TradingRequest::PostOrder)
-        .body(&payload)?
-        .send()
-        .await
+        Request::new(self.http_client.clone(), "/order")
+            .method(Method::POST)
+            .authenticator(account.l2_auth())
+            .with_cost(polymarket::signer_cost(TradingRequest::PostOrder))
+            .body(&payload)?
+            .send()
+            .await
     }
 
     /// Create, sign, and post an order (convenience method)
@@ -868,35 +806,29 @@ pub struct SignedOrderPayload {
 }
 
 /// Builder for CLOB client
+///
+/// It allows 8 concurrent in-flight requests by default.
 pub struct ClobBuilder {
-    base_url: String,
-    timeout_ms: u64,
-    pool_size: usize,
+    config: ClientConfig,
     chain: Chain,
     signature_type: Option<SignatureType>,
     builder_code: B256,
     account: Option<Account>,
     #[cfg(feature = "gamma")]
     gamma: Option<Gamma>,
-    retry_config: Option<RetryConfig>,
-    max_concurrent: Option<usize>,
 }
 
 impl ClobBuilder {
     /// Create a new builder with default configuration
     pub fn new() -> Self {
         Self {
-            base_url: DEFAULT_BASE_URL.to_string(),
-            timeout_ms: DEFAULT_TIMEOUT_MS,
-            pool_size: DEFAULT_POOL_SIZE,
+            config: ClientConfig::new(DEFAULT_BASE_URL, 8),
             chain: Chain::PolygonMainnet,
             signature_type: None,
             builder_code: B256::ZERO,
             account: None,
             #[cfg(feature = "gamma")]
             gamma: None,
-            retry_config: None,
-            max_concurrent: None,
         }
     }
 
@@ -906,23 +838,7 @@ impl ClobBuilder {
         self
     }
 
-    /// Set base URL for the API
-    pub fn base_url(mut self, url: impl Into<String>) -> Self {
-        self.base_url = url.into();
-        self
-    }
-
-    /// Set request timeout in milliseconds
-    pub fn timeout_ms(mut self, timeout: u64) -> Self {
-        self.timeout_ms = timeout;
-        self
-    }
-
-    /// Set connection pool size
-    pub fn pool_size(mut self, size: usize) -> Self {
-        self.pool_size = size;
-        self
-    }
+    polyoxide_core::client_config_setters!(config);
 
     /// Set chain
     pub fn chain(mut self, chain: Chain) -> Self {
@@ -979,31 +895,19 @@ impl ClobBuilder {
         self
     }
 
-    /// Set retry configuration for 429 responses
-    pub fn with_retry_config(mut self, config: RetryConfig) -> Self {
-        self.retry_config = Some(config);
-        self
-    }
-
-    /// Set the maximum number of concurrent in-flight requests.
-    ///
-    /// Default: 8. Prevents Cloudflare 1015 errors from request bursts.
-    pub fn max_concurrent(mut self, max: usize) -> Self {
-        self.max_concurrent = Some(max);
-        self
-    }
-
     /// Build the CLOB client
     pub fn build(self) -> Result<Clob, ClobError> {
-        let mut builder = HttpClientBuilder::new(&self.base_url)
-            .timeout_ms(self.timeout_ms)
-            .pool_size(self.pool_size)
-            .with_rate_limiter(RateLimiter::clob_default())
-            .with_max_concurrent(self.max_concurrent.unwrap_or(8));
-        if let Some(config) = self.retry_config {
-            builder = builder.with_retry_config(config);
-        }
-        let http_client = builder.build()?;
+        // The IP table and the per-signer buckets over one hold, so a 429
+        // stops both; the client keeps a handle on the signer layer for the
+        // tier and telemetry it adopts.
+        let throttle = polymarket::clob_throttle();
+        let signer_limiter = throttle.signer().clone();
+        let http_client = self
+            .config
+            .http_builder()
+            .with_throttle(throttle)
+            .with_retry_policy(PolymarketRetryPolicy)
+            .build()?;
 
         let signature_type = self.signature_type.unwrap_or_else(|| {
             self.account
@@ -1017,12 +921,10 @@ impl ClobBuilder {
             gamma
         } else {
             polyoxide_gamma::Gamma::builder()
-                .timeout_ms(self.timeout_ms)
-                .pool_size(self.pool_size)
+                .timeout_ms(self.config.timeout_ms)
+                .pool_size(self.config.pool_size)
                 .build()
-                .map_err(|e| {
-                    ClobError::service(format!("Failed to build default Gamma client: {}", e))
-                })?
+                .map_err(ClobError::Gamma)?
         };
 
         Ok(Clob {
@@ -1031,7 +933,7 @@ impl ClobBuilder {
             signature_type,
             builder_code: self.builder_code,
             account: self.account,
-            signer_limiter: SignerLimiter::new(),
+            signer_limiter,
             #[cfg(feature = "gamma")]
             gamma,
         })
@@ -1047,6 +949,7 @@ impl Default for ClobBuilder {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use polyoxide_core::RetryConfig;
 
     #[test]
     fn build_order_v2_sets_builder_and_timestamp() {
@@ -1102,7 +1005,7 @@ mod tests {
     #[test]
     fn test_builder_custom_max_concurrent() {
         let builder = ClobBuilder::new().max_concurrent(16);
-        assert_eq!(builder.max_concurrent, Some(16));
+        assert_eq!(builder.config.max_concurrent, Some(16));
     }
 
     #[tokio::test]
@@ -1133,7 +1036,7 @@ mod tests {
             max_backoff_ms: 30_000,
         };
         let builder = ClobBuilder::new().with_retry_config(config);
-        let config = builder.retry_config.unwrap();
+        let config = builder.config.retry_config.unwrap();
         assert_eq!(config.max_retries, 5);
         assert_eq!(config.initial_backoff_ms, 1000);
     }

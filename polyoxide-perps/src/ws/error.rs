@@ -2,7 +2,9 @@
 
 use std::time::Duration;
 
+use polyoxide_venue::{class_for_handshake_status, Class, Classify};
 use thiserror::Error;
+use tokio_tungstenite::tungstenite;
 
 use crate::ws::channel::Channel;
 
@@ -146,6 +148,66 @@ impl PerpsWsError {
     }
 }
 
+/// The server's identifier for a subscription refused by its message rate
+/// limit.
+const MESSAGE_RATE_LIMITED: &str = "message_rate_limited";
+
+/// The reason the client records for a refusal that carried no `error` field.
+/// It is not the venue's, so it is never reported as a code.
+pub(crate) const NO_REASON: &str = "err";
+
+/// A transport failure, by the socket table: a refused upgrade by its status,
+/// misuse and a bad URL or TLS name an `InvalidRequest`, and everything else,
+/// an I/O or protocol error or a closed connection, `Network`.
+fn transport_class(err: &tungstenite::Error) -> Class {
+    use tungstenite::Error as Ws;
+    match err {
+        Ws::Http(response) => class_for_handshake_status(response.status().as_u16()),
+        Ws::Url(_)
+        | Ws::HttpFormat(_)
+        | Ws::Tls(_)
+        | Ws::AttackAttempt
+        | Ws::Capacity(_)
+        | Ws::AlreadyClosed => Class::InvalidRequest,
+        // Io (a TLS EOF included), Protocol, ConnectionClosed,
+        // WriteBufferFull, Utf8 and any later variant.
+        _ => Class::Network,
+    }
+}
+
+/// The transport by the socket table, a lost or silent connection `Network`,
+/// a reply or frame that did not parse a `Decode`, and the client's own
+/// refusals an `InvalidRequest`.
+///
+/// A refusal is `RateLimited` when every refused channel was refused for
+/// `message_rate_limited`, the case [`PerpsWsError::recovery`] retries.
+/// Otherwise it is a `VenueRefusal` whose code is the first identifier other
+/// than `message_rate_limited`, the one that makes retrying pointless, and
+/// `None` when every such refusal came without an identifier.
+impl Classify for PerpsWsError {
+    fn class(&self) -> Class {
+        match self {
+            Self::Connection(err) => transport_class(err),
+            Self::ConnectionClosed | Self::Stalled { .. } => Class::Network,
+            Self::Refused { refused } => {
+                if refused.iter().all(|r| r.reason == MESSAGE_RATE_LIMITED) {
+                    Class::RateLimited { retry_after: None }
+                } else {
+                    Class::VenueRefusal {
+                        code: refused
+                            .iter()
+                            .map(|r| r.reason.as_str())
+                            .find(|reason| ![MESSAGE_RATE_LIMITED, NO_REASON].contains(reason))
+                            .map(Into::into),
+                    }
+                }
+            }
+            Self::Response { .. } | Self::Frame { .. } | Self::Unrecognised { .. } => Class::Decode,
+            Self::EmptySubscription | Self::Stopped => Class::InvalidRequest,
+        }
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -257,5 +319,144 @@ mod tests {
             raw: r#"{"status":"err","error":"x"}"#.to_owned(),
         };
         assert_eq!(odd.recovery(), Recovery::Reconnect);
+    }
+
+    #[test]
+    fn the_transport_follows_the_socket_table() {
+        let bad_header = http::header::HeaderName::from_bytes(b"in valid").unwrap_err();
+        let rows = [
+            (tungstenite::Error::ConnectionClosed, Class::Network),
+            (
+                tungstenite::Error::Io(std::io::ErrorKind::ConnectionReset.into()),
+                Class::Network,
+            ),
+            (
+                tungstenite::Error::Protocol(
+                    tungstenite::error::ProtocolError::ResetWithoutClosingHandshake,
+                ),
+                Class::Network,
+            ),
+            (
+                tungstenite::Error::WriteBufferFull(tungstenite::Message::Close(None)),
+                Class::Network,
+            ),
+            (tungstenite::Error::Utf8, Class::Network),
+            (tungstenite::Error::AlreadyClosed, Class::InvalidRequest),
+            (
+                tungstenite::Error::Url(tungstenite::error::UrlError::NoHostName),
+                Class::InvalidRequest,
+            ),
+            (
+                tungstenite::Error::HttpFormat(bad_header.into()),
+                Class::InvalidRequest,
+            ),
+            (
+                tungstenite::Error::Tls(tungstenite::error::TlsError::InvalidDnsName),
+                Class::InvalidRequest,
+            ),
+            (tungstenite::Error::AttackAttempt, Class::InvalidRequest),
+            (
+                tungstenite::Error::Capacity(tungstenite::error::CapacityError::TooManyHeaders),
+                Class::InvalidRequest,
+            ),
+        ];
+        for (err, class) in rows {
+            let err = PerpsWsError::from(err);
+            assert_eq!(err.class(), class, "{err:?}");
+            assert!(err.is_fault(), "{err:?}");
+            assert_eq!(err.retry_after(), None, "{err:?}");
+        }
+        for (status, class) in [
+            (401, Class::Unauthorized),
+            (404, Class::VenueRefusal { code: None }),
+            (429, Class::RateLimited { retry_after: None }),
+            (503, Class::Unavailable { code: None }),
+            (200, Class::Decode),
+        ] {
+            assert_eq!(http_error(status).class(), class, "{status}");
+        }
+    }
+
+    #[test]
+    fn every_variant_classifies() {
+        let rate_limited = refusal(Channel::Bbo(InstrumentId(1)), "message_rate_limited");
+        let invalid = refusal(Channel::Bbo(InstrumentId(2)), "invalid channel");
+        let unexplained = refusal(Channel::Bbo(InstrumentId(3)), NO_REASON);
+        let rows = [
+            (http_error(503), Class::Unavailable { code: None }),
+            (PerpsWsError::ConnectionClosed, Class::Network),
+            (
+                PerpsWsError::Stalled {
+                    elapsed: Duration::from_secs(9),
+                },
+                Class::Network,
+            ),
+            (
+                PerpsWsError::Refused {
+                    refused: vec![rate_limited.clone(), rate_limited.clone()],
+                },
+                Class::RateLimited { retry_after: None },
+            ),
+            (
+                PerpsWsError::Refused {
+                    refused: vec![rate_limited, invalid.clone()],
+                },
+                Class::VenueRefusal {
+                    code: Some("invalid channel".into()),
+                },
+            ),
+            (
+                PerpsWsError::Refused {
+                    refused: vec![invalid.clone()],
+                },
+                Class::VenueRefusal {
+                    code: Some("invalid channel".into()),
+                },
+            ),
+            // A refusal without an `error` field has no code of the venue's.
+            (
+                PerpsWsError::Refused {
+                    refused: vec![unexplained.clone()],
+                },
+                Class::VenueRefusal { code: None },
+            ),
+            (
+                PerpsWsError::Refused {
+                    refused: vec![unexplained, invalid],
+                },
+                Class::VenueRefusal {
+                    code: Some("invalid channel".into()),
+                },
+            ),
+            (
+                PerpsWsError::Response {
+                    id: 2,
+                    raw: "{}".to_owned(),
+                },
+                Class::Decode,
+            ),
+            (
+                PerpsWsError::Frame {
+                    channel: "bbo::1".to_owned(),
+                    raw: "{}".to_owned(),
+                    source: serde_json::from_str::<u8>("x").unwrap_err(),
+                },
+                Class::Decode,
+            ),
+            (
+                PerpsWsError::Unrecognised {
+                    raw: "{}".to_owned(),
+                },
+                Class::Decode,
+            ),
+            (PerpsWsError::EmptySubscription, Class::InvalidRequest),
+            (PerpsWsError::Stopped, Class::InvalidRequest),
+        ];
+        for (err, class) in rows {
+            assert_eq!(err.class(), class, "{err:?}");
+            assert!(err.is_fault(), "{err:?}");
+            assert_eq!(err.retry_after(), None, "{err:?}");
+            assert_eq!(err.is_retriable(), class.is_retriable(), "{err:?}");
+        }
     }
 }

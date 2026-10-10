@@ -1,0 +1,53 @@
+[package]
+name = "polyoxide-test-support"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+authors.workspace = true
+repository.workspace = true
+rust-version.workspace = true
+description = "What polyoxide's tests share: the failure tags the nightly classifier reads, the credential loaders, and the agreement, fixture and soak helpers"
+# Never published. A crate takes it only as a path-only dev-dependency (no
+# `version`), which cargo strips when it publishes that crate.
+publish = false
+
+# Only `polyoxide-core` and `polyoxide-venue` from the workspace, never a venue
+# crate: a test builds its own client from the strings the loaders return.
+[dependencies]
+polyoxide-core = { workspace = true, features = ["keychain"] }
+polyoxide-venue = { workspace = true }
+dotenvy = "0.15"
+serde = { workspace = true }
+serde_json = { workspace = true }
+tokio = { workspace = true, features = ["time"] }
+tracing = { workspace = true }
+# `query`: the query keys a builder sends, read off a mock server.
+mockito = { workspace = true, optional = true }
+url = { workspace = true, optional = true }
+# `soak`: the observer that counts the retry loops' warnings.
+tracing-subscriber = { workspace = true, optional = true }
+
+[features]
+# What the agreement suites need to fire a builder at a mock server.
+query = ["dep:mockito", "dep:url"]
+# The rate-limit harnesses' pacer, observer and verdicts.
+soak = ["dep:tracing-subscriber"]
+
+# `tests/failure_tags.rs` builds core's network errors from real local sockets,
+# through the reqwest core re-exports, and a serde error from a real parse.
+# `tests/observe.rs` drives core's client into a 429 against a mock server.
+[dev-dependencies]
+mockito = { workspace = true }
+tokio = { workspace = true, features = ["macros", "rt-multi-thread", "net", "time"] }
+
+[[test]]
+name = "observe"
+required-features = ["soak"]
+
+# Registration, read by scripts/gen_registry.py: the README line, venue and
+# product ids, the docs/specs/ mirrors covered, and one entry per live test
+# target, which becomes a nightly job. Run `python3 scripts/gen_registry.py
+# --write` after an edit.
+[package.metadata.polyoxide]
+readme = "Test toolkit: the failure tags the nightly classifier reads, the credential loaders, and the agreement, fixture and soak helpers (`publish = false`)"
+notes = ["a path-only dev-dependency of the crates whose tests use it; it names no venue"]
