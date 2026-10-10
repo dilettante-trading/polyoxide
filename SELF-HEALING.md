@@ -44,12 +44,12 @@ and that is when North American leagues and weekend soccer are on.
 | polyoxide-binance | `live_api`, `live_ws` (built with `--features ws`) |
 | polyoxide-data | `live_api` |
 | polyoxide-gamma | `live_api` |
-| polyoxide-perps | `live_api`, `live_ws` (built with `--features ws`) |
 | polyoxide-relay | `live_api` |
 | polyoxide-clob | `live`: `live_api`, `live_ws` (built with `--features ws`); `session-keys`: `live_session_keys` (40-minute budget in its own job, since its registry and transaction waits can take ~25 minutes) |
 | polyoxide-rtds | `live_api` |
 | polyoxide-sports | `live_api` (20-minute budget for its 180 s wire-agreement window) |
 | polyoxide-cli | `live_api` |
+| polyoxide-perps | `live_api`, `live_ws` (built with `--features ws`) |
 <!-- generated:end selfheal-behavioral -->
 
 Failures are classified by `.github/scripts/classify_failures.py`. It reads one

@@ -3,10 +3,12 @@
 use std::time::Duration;
 
 use polyoxide_venue::{class_for_handshake_status, Class, Classify};
+use polyoxide_ws::{retrying_can_fix, Kind, WsError};
 use thiserror::Error;
-use tokio_tungstenite::tungstenite;
 
 use crate::ws::channel::Channel;
+
+polyoxide_venue::impl_ws_classification!();
 
 /// One channel the server refused, with the identifier it answered.
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -37,9 +39,10 @@ pub enum Recovery {
 #[derive(Error, Debug)]
 #[non_exhaustive]
 pub enum PerpsWsError {
-    /// The connection could not be opened, or failed mid-stream.
+    /// The connection could not be opened, or failed mid-stream: the kit's
+    /// one socket error, read through its [`Kind`](polyoxide_ws::Kind).
     #[error("WebSocket transport error: {0}")]
-    Connection(#[from] Box<tokio_tungstenite::tungstenite::Error>),
+    Connection(#[from] WsError),
 
     /// The server closed the connection, or the stream ended.
     #[error("WebSocket connection closed")]
@@ -99,36 +102,28 @@ pub enum PerpsWsError {
     Stopped,
 }
 
-impl From<tokio_tungstenite::tungstenite::Error> for PerpsWsError {
-    fn from(err: tokio_tungstenite::tungstenite::Error) -> Self {
-        Self::Connection(Box::new(err))
-    }
-}
-
 impl PerpsWsError {
     /// How the supervised tier treats this error.
     pub fn recovery(&self) -> Recovery {
-        use tokio_tungstenite::tungstenite::Error as Ws;
         match self {
-            Self::Connection(err) => match &**err {
-                // A handshake refused with 5xx or 429 is the host being
-                // unwell or throttling; anything else is our request.
-                Ws::Http(response) => {
-                    let status = response.status();
-                    if status.is_server_error() || status.as_u16() == 429 {
-                        Recovery::Reconnect
-                    } else {
-                        Recovery::Fatal
-                    }
+            Self::Connection(err) => match err.kind() {
+                // D19: a connection used after it closed stops perps.
+                Kind::AlreadyClosed => Recovery::Fatal,
+                // perps' own rule, kept: a frame or header past tungstenite's
+                // limits costs one retry cycle if it turns out permanent.
+                Kind::Capacity => Recovery::Reconnect,
+                // DRIFT R1: a handshake refused with 408, 425, 429 or 5xx is
+                // the host being unwell or throttling, by venue's status rule;
+                // any other status, a bad URL or TLS name, or an attack
+                // detection is our request. Everything else, a lost or timed
+                // out connection or a server close among them, is retried.
+                _ if retrying_can_fix(err, |status| {
+                    class_for_handshake_status(status).is_retriable()
+                }) =>
+                {
+                    Recovery::Reconnect
                 }
-                Ws::Url(_)
-                | Ws::Tls(_)
-                | Ws::HttpFormat(_)
-                | Ws::AlreadyClosed
-                | Ws::AttackAttempt => Recovery::Fatal,
-                // `tungstenite::Error` is non_exhaustive; an unknown transport
-                // error costs one retry cycle if it turns out permanent.
-                _ => Recovery::Reconnect,
+                _ => Recovery::Fatal,
             },
             Self::ConnectionClosed | Self::Stalled { .. } => Recovery::Reconnect,
             Self::Refused { refused } => {
@@ -156,26 +151,9 @@ const MESSAGE_RATE_LIMITED: &str = "message_rate_limited";
 /// It is not the venue's, so it is never reported as a code.
 pub(crate) const NO_REASON: &str = "err";
 
-/// A transport failure, by the socket table: a refused upgrade by its status,
-/// misuse and a bad URL or TLS name an `InvalidRequest`, and everything else,
-/// an I/O or protocol error or a closed connection, `Network`.
-fn transport_class(err: &tungstenite::Error) -> Class {
-    use tungstenite::Error as Ws;
-    match err {
-        Ws::Http(response) => class_for_handshake_status(response.status().as_u16()),
-        Ws::Url(_)
-        | Ws::HttpFormat(_)
-        | Ws::Tls(_)
-        | Ws::AttackAttempt
-        | Ws::Capacity(_)
-        | Ws::AlreadyClosed => Class::InvalidRequest,
-        // Io (a TLS EOF included), Protocol, ConnectionClosed,
-        // WriteBufferFull, Utf8 and any later variant.
-        _ => Class::Network,
-    }
-}
-
-/// The transport by the socket table, a lost or silent connection `Network`,
+/// The transport by the one socket table
+/// (`polyoxide_venue::impl_ws_classification!`), whose only non-fault is an
+/// upgrade refused with 451, a lost or silent connection `Network`,
 /// a reply or frame that did not parse a `Decode`, and the client's own
 /// refusals an `InvalidRequest`.
 ///
@@ -187,7 +165,7 @@ fn transport_class(err: &tungstenite::Error) -> Class {
 impl Classify for PerpsWsError {
     fn class(&self) -> Class {
         match self {
-            Self::Connection(err) => transport_class(err),
+            Self::Connection(err) => ws_class(err),
             Self::ConnectionClosed | Self::Stalled { .. } => Class::Network,
             Self::Refused { refused } => {
                 if refused.iter().all(|r| r.reason == MESSAGE_RATE_LIMITED) {
@@ -206,13 +184,17 @@ impl Classify for PerpsWsError {
             Self::EmptySubscription | Self::Stopped => Class::InvalidRequest,
         }
     }
+
+    fn is_fault(&self) -> bool {
+        !matches!(self, Self::Connection(err) if !ws_is_fault(err))
+    }
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
     use crate::types::InstrumentId;
-    use tokio_tungstenite::tungstenite::{self, http};
+    use polyoxide_ws::tungstenite::{self, http};
 
     fn refusal(channel: Channel, reason: &str) -> Refusal {
         Refusal {
@@ -271,9 +253,14 @@ mod tests {
     }
 
     fn http_error(status: u16) -> PerpsWsError {
-        PerpsWsError::from(tungstenite::Error::Http(
+        transport(tungstenite::Error::Http(
             http::Response::builder().status(status).body(None).unwrap(),
         ))
+    }
+
+    /// A transport failure as the connection reports it, through the kit.
+    fn transport(err: tungstenite::Error) -> PerpsWsError {
+        PerpsWsError::from(WsError::from(err))
     }
 
     #[test]
@@ -284,8 +271,57 @@ mod tests {
     }
 
     #[test]
+    fn a_handshake_refused_with_408_or_425_reconnects_drift_r1() {
+        // DRIFT R1: venue's status rule, through `retrying_can_fix`. Both
+        // were fatal before, though `Classify` called them retriable.
+        for status in [408, 425, 429, 500, 503] {
+            assert_eq!(
+                http_error(status).recovery(),
+                Recovery::Reconnect,
+                "{status}"
+            );
+            assert!(http_error(status).is_retriable(), "{status}");
+        }
+        for status in [400, 401, 403, 404, 418, 451] {
+            assert_eq!(http_error(status).recovery(), Recovery::Fatal, "{status}");
+        }
+    }
+
+    #[test]
+    fn the_kits_own_failures_reconnect_and_a_use_after_close_stops() {
+        // A connect timeout (DRIFT R2), an unanswered request and a server
+        // close, of any code, are retried; D19 stops on `AlreadyClosed`.
+        for err in [
+            WsError::connect_timeout(Duration::from_secs(10)),
+            WsError::no_answer(Duration::from_secs(1)),
+            WsError::closed(Some(1008), "policy"),
+            WsError::closed(None, ""),
+        ] {
+            assert_eq!(PerpsWsError::from(err).recovery(), Recovery::Reconnect);
+        }
+        assert_eq!(
+            transport(tungstenite::Error::AlreadyClosed).recovery(),
+            Recovery::Fatal
+        );
+        assert_eq!(
+            transport(tungstenite::Error::Capacity(
+                tungstenite::error::CapacityError::TooManyHeaders
+            ))
+            .recovery(),
+            Recovery::Reconnect
+        );
+    }
+
+    #[test]
+    fn only_a_451_refusal_is_not_a_fault() {
+        assert!(!http_error(451).is_fault());
+        assert_eq!(http_error(451).class(), Class::Restricted);
+        assert!(http_error(418).is_fault());
+    }
+
+    #[test]
     fn a_transport_close_reconnects() {
-        let err = PerpsWsError::from(tungstenite::Error::ConnectionClosed);
+        let err = transport(tungstenite::Error::ConnectionClosed);
         assert!(matches!(err, PerpsWsError::Connection(_)));
         assert_eq!(err.recovery(), Recovery::Reconnect);
     }
@@ -361,7 +397,7 @@ mod tests {
             ),
         ];
         for (err, class) in rows {
-            let err = PerpsWsError::from(err);
+            let err = transport(err);
             assert_eq!(err.class(), class, "{err:?}");
             assert!(err.is_fault(), "{err:?}");
             assert_eq!(err.retry_after(), None, "{err:?}");

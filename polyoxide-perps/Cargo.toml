@@ -13,13 +13,15 @@ categories = ["api-bindings", "web-programming::http-client"]
 [features]
 default = []
 # WebSocket streaming of the public channels.
-ws = ["dep:tokio", "dep:tokio-tungstenite", "dep:futures-util", "dep:rustls", "tokio/net", "tokio/sync", "tokio/rt", "tokio/time", "tokio/macros"]
+ws = ["dep:polyoxide-ws", "dep:tokio", "dep:tokio-tungstenite", "dep:futures-util", "dep:rustls", "tokio/net", "tokio/sync", "tokio/rt", "tokio/time", "tokio/macros"]
 # Exposes the scripted local server for integration tests. Not for consumers.
 test-server = ["ws"]
 
 [dependencies]
 polyoxide-core = { workspace = true }
 polyoxide-venue = { workspace = true, features = ["decimal"] }
+# The socket kit (`ws`): connect, the bare tier and the socket error.
+polyoxide-ws = { workspace = true, optional = true }
 rust_decimal = { workspace = true }
 serde = { workspace = true }
 serde_json = { workspace = true }
@@ -44,7 +46,7 @@ polyoxide-test-support = { path = "../polyoxide-test-support", features = ["quer
 polyoxide-ws = { path = "../polyoxide-ws", features = ["test-server"] }
 futures-util = "0.3"
 mockito = { workspace = true }
-tokio = { workspace = true, features = ["macros", "rt-multi-thread", "time"] }
+tokio = { workspace = true, features = ["macros", "rt-multi-thread", "time", "test-util"] }
 
 # `cargo test` builds examples but does not run their unit tests unless
 # asked; the harness's argument checks live here. The verdict rules that pin

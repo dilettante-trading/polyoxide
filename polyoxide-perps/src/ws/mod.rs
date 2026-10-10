@@ -31,22 +31,6 @@ pub use supervised::{MembershipHandle, PerpsWsBuilder, SupervisedPerpsWs};
 /// The production WebSocket endpoint.
 pub const WS_URL: &str = "wss://ws.perpetuals.polymarket.com/v1/ws";
 
-/// Make sure rustls has a default `CryptoProvider` before opening a connection.
-///
-/// A deliberate twin of the same function in `polyoxide-rtds` and
-/// `polyoxide-clob`: `tokio-tungstenite` builds its TLS config from the
-/// process-wide default provider, and rustls installs one automatically only
-/// when exactly one backend feature is enabled. With `ring` and `aws-lc-rs`
-/// both in the graph it installs neither and panics inside `connect_async`.
-/// `install_default` returns `Err` when a provider is already set, so crates
-/// racing is a no-op.
-pub(crate) fn ensure_crypto_provider() {
-    static INSTALL: std::sync::Once = std::sync::Once::new();
-    INSTALL.call_once(|| {
-        let _ = rustls::crypto::ring::default_provider().install_default();
-    });
-}
-
 /// Parse one text frame as the stream would. For the crate's own
 /// integration tests; not API.
 #[doc(hidden)]
