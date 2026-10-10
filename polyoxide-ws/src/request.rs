@@ -1,6 +1,6 @@
 //! Request/answer correlation on one connection (W12).
 
-use std::time::Duration;
+use std::{future::Future, time::Duration};
 
 use futures_util::StreamExt;
 use tokio::time::Instant;
@@ -48,10 +48,13 @@ impl Default for Requests {
 /// after the previous one, when one is set, and then reads until the caller's
 /// matcher recognises its answer. Every other frame read meanwhile is kept and
 /// yielded by the stream afterwards, in the order it arrived; an answer to
-/// another request is dropped. With an answer timeout set, a wait that
-/// outlasts it fails as [`Kind::NoAnswer`](crate::Kind::NoAnswer); without
-/// one, it waits as long as the connection stays open. A server close while
-/// waiting fails the request with the close, as does any request after it.
+/// another request is dropped. With an answer timeout set, a request whose
+/// send and wait together outlast it fails as
+/// [`Kind::NoAnswer`](crate::Kind::NoAnswer), so a peer that stops reading
+/// cannot hang it; without one, it waits as long as the connection stays
+/// open. A server close while waiting fails the request with the close, as
+/// does any request after it, and a request after a failed read fails as
+/// [`Kind::AlreadyClosed`](crate::Kind::AlreadyClosed) without sending.
 ///
 /// The envelope is the caller's: a builder writes the request for its id, and
 /// a matcher reads each frame. Neither request nor its wait is cancel-safe,
@@ -63,13 +66,17 @@ impl Default for Requests {
 /// `polyoxide-perps`' `take_id` and `await_response` (`ws/client.rs`), which
 /// set neither.
 impl Connection {
-    /// Send requests no sooner than `interval` apart.
+    /// Send requests no sooner than `interval` apart. Only
+    /// [`request`](Self::request) is paced: a frame sent with
+    /// [`send`](Self::send), under an id from [`take_id`](Self::take_id) or
+    /// not, neither waits nor counts.
     pub fn min_request_interval(mut self, interval: Duration) -> Self {
         self.requests.min_interval = Some(interval);
         self
     }
 
-    /// Give up on an answer after `timeout`.
+    /// Give up on a request after `timeout`, its send and its wait for the
+    /// answer together, and on [`await_answer`](Self::await_answer)'s wait.
     pub fn answer_timeout(mut self, timeout: Duration) -> Self {
         self.requests.answer_timeout = Some(timeout);
         self
@@ -80,7 +87,9 @@ impl Connection {
         self.requests.next_id
     }
 
-    /// Take the next id, for a request sent another way.
+    /// Take the next id, for a request sent another way. A request sent that
+    /// way is not paced by [`min_request_interval`](Self::min_request_interval),
+    /// and does not delay the next paced one.
     pub fn take_id(&mut self) -> u64 {
         let id = self.requests.next_id;
         self.requests.next_id += 1;
@@ -94,19 +103,31 @@ impl Connection {
         build: impl FnOnce(u64) -> Message,
         mut answer: impl FnMut(u64, &Message) -> Correlated<A>,
     ) -> Result<A, WsError> {
-        // A connection the server closed reports its close, not a send error.
+        // A connection the server closed reports its close, not a send error,
+        // and one whose read failed sends nothing.
         if let Some(closed) = self.closed() {
             return Err(closed);
+        }
+        if self.is_finished() {
+            return Err(already_closed());
         }
         if let (Some(last), Some(interval)) =
             (self.requests.last_request, self.requests.min_interval)
         {
-            tokio::time::sleep_until(last + interval).await;
+            // An interval too long to add is one never reached.
+            if let Some(at) = last.checked_add(interval) {
+                tokio::time::sleep_until(at).await;
+            }
         }
         let id = self.take_id();
-        self.send(build(id)).await?;
-        self.requests.last_request = Some(Instant::now());
-        self.await_answer(|message| answer(id, message)).await
+        let timeout = self.requests.answer_timeout;
+        within(timeout, async {
+            self.send(build(id)).await?;
+            self.requests.last_request = Some(Instant::now());
+            self.read_until(&mut |message: &Message| answer(id, message))
+                .await
+        })
+        .await
     }
 
     /// Read until `answer` recognises a frame as the answer awaited, keeping
@@ -118,12 +139,8 @@ impl Connection {
         &mut self,
         mut answer: impl FnMut(&Message) -> Correlated<A>,
     ) -> Result<A, WsError> {
-        match self.requests.answer_timeout {
-            Some(timeout) => tokio::time::timeout(timeout, self.read_until(&mut answer))
-                .await
-                .map_err(|_| WsError::no_answer(timeout))?,
-            None => self.read_until(&mut answer).await,
-        }
+        let timeout = self.requests.answer_timeout;
+        within(timeout, self.read_until(&mut answer)).await
     }
 
     async fn read_until<A>(
@@ -135,9 +152,7 @@ impl Connection {
                 return Err(closed);
             }
             if self.is_finished() {
-                return Err(WsError::from(
-                    tokio_tungstenite::tungstenite::Error::AlreadyClosed,
-                ));
+                return Err(already_closed());
             }
             let message = match self.socket().next().await {
                 Some(Ok(message)) => message,
@@ -168,6 +183,24 @@ impl Connection {
     }
 }
 
+/// Run `exchange` within `timeout`, if one is set, failing as `NoAnswer`.
+async fn within<A>(
+    timeout: Option<Duration>,
+    exchange: impl Future<Output = Result<A, WsError>>,
+) -> Result<A, WsError> {
+    match timeout {
+        Some(timeout) => tokio::time::timeout(timeout, exchange)
+            .await
+            .map_err(|_| WsError::no_answer(timeout))?,
+        None => exchange.await,
+    }
+}
+
+/// The error for a connection used after its read failed.
+fn already_closed() -> WsError {
+    WsError::from(tokio_tungstenite::tungstenite::Error::AlreadyClosed)
+}
+
 #[cfg(test)]
 mod tests {
     use serde_json::{json, Value};
@@ -176,7 +209,7 @@ mod tests {
     use super::*;
     use crate::{
         connect,
-        test_server::{Script, ScriptedServer},
+        test_server::{next_item, Script, ScriptedServer},
         Kind, Mode, DEFAULT_CONNECT_TIMEOUT,
     };
 
@@ -289,6 +322,86 @@ mod tests {
         assert_eq!(connection.take_id(), 1);
         assert_eq!(connection.take_id(), 2);
         assert_eq!(connection.next_id(), 3);
+    }
+
+    #[tokio::test]
+    async fn a_request_after_a_failed_read_sends_nothing() {
+        let server = ScriptedServer::start(vec![Script::hold().then_cut()]).await;
+        let mut connection = open(&server).await;
+        assert!(next_item(&mut connection).await.is_err());
+        let err = connection
+            .request(binance::subscribe("a@aggTrade"), binance::answer)
+            .await
+            .expect_err("the connection is gone");
+        assert_eq!(err.kind(), Kind::AlreadyClosed);
+        assert_eq!(connection.next_id(), 1, "no id was taken");
+    }
+
+    #[tokio::test]
+    async fn an_interval_too_long_to_add_is_never_waited() {
+        let server = answering(|request: &str| vec![binance::result(request)]).await;
+        let mut connection = open(&server)
+            .await
+            .min_request_interval(Duration::MAX)
+            .answer_timeout(Duration::from_secs(2));
+        for name in ["a@aggTrade", "b@aggTrade"] {
+            let result = connection
+                .request(binance::subscribe(name), binance::answer)
+                .await
+                .expect("an answer, not a panic or a wait");
+            assert_eq!(result, Ok(Value::Null));
+        }
+    }
+
+    #[tokio::test]
+    async fn a_request_refreshes_last_inbound() {
+        let server = answering(|request: &str| vec![binance::result(request)]).await;
+        let mut connection = open(&server).await;
+        let before = connection.last_inbound();
+        tokio::time::sleep(Duration::from_millis(10)).await;
+        let result = connection
+            .request(binance::subscribe("a@aggTrade"), binance::answer)
+            .await
+            .expect("an answer");
+        assert_eq!(result, Ok(Value::Null));
+        assert!(
+            connection.last_inbound() > before,
+            "the answer, read by the request, must count as inbound"
+        );
+    }
+
+    #[tokio::test]
+    async fn all_mode_yields_a_close_read_while_awaiting() {
+        let server = answering(|_: &str| {
+            vec![Message::Close(Some(CloseFrame {
+                code: CloseCode::Policy,
+                reason: "Too many requests".into(),
+            }))]
+        })
+        .await;
+        let socket = connect(server.url.as_str(), DEFAULT_CONNECT_TIMEOUT)
+            .await
+            .expect("connect");
+        let mut connection = Connection::new(socket, Mode::All);
+        let err = connection
+            .request(binance::subscribe("a@aggTrade"), binance::answer)
+            .await
+            .expect_err("closed");
+        assert!(
+            matches!(
+                err.kind(),
+                Kind::Closed {
+                    code: Some(1008),
+                    ..
+                }
+            ),
+            "{err:?}"
+        );
+        assert!(matches!(
+            next_item(&mut connection).await,
+            Ok(Message::Close(Some(_)))
+        ));
+        assert!(connection.next().await.is_none());
     }
 
     #[tokio::test]

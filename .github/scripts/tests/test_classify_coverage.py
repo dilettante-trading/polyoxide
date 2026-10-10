@@ -19,10 +19,11 @@ A type is an error when its name ends in `Error`, when it derives `Error`
 `std::error::Error` for it by hand, or when it is one of the auxiliary names
 below. `polyoxide-venue` is swept too, with one exemption: `ClassifiedError`
 must not implement `Classify`, or the blanket `From` would overlap
-`From<T> for T`. So is `polyoxide-ws`, whose `WsError` is exempt: the kit does
-not depend on `polyoxide-venue`, and the orphan rule keeps venue from
-implementing the trait for it, so it is classified through each venue's enum
-that wraps it.
+`From<T> for T`. So is `polyoxide-ws`, whose `WsError` is exempt: venue does
+not depend on ws (AD-2) and ws does not depend on venue, so neither can
+implement the trait for it, and in a venue crate both are foreign (the orphan
+rule). Each venue crate classifies it through its own enum that wraps it, with
+`polyoxide_venue::impl_ws_classification!`.
 
 A doc comment or a `pub(crate)` item is not swept. Gating is not checked here:
 an assertion gated differently from its type fails `cargo hack --each-feature`.
@@ -41,7 +42,9 @@ VOCABULARY = "polyoxide-venue"
 # The socket kit, which cannot see `Classify`.
 SOCKET_KIT = "polyoxide-ws"
 # (crate, type) pairs that do not implement `Classify`: `ClassifiedError` must
-# not, and `WsError` cannot, being classified through each venue's enum.
+# not, and no crate can implement it for `WsError` (neither venue nor ws depends
+# on the other, and in a venue crate both are foreign), so each venue's enum
+# that wraps it classifies it.
 EXEMPT = frozenset({(VOCABULARY, "ClassifiedError"), (SOCKET_KIT, "WsError")})
 # Public error types whose names do not end in `Error`.
 AUXILIARY = frozenset({"UnknownVariant", "InvalidSymbol", "InvalidStreamName", "BurstCapacityExceeded"})

@@ -51,9 +51,12 @@ pub enum Kind<'a> {
     Protocol,
     /// The connection is closed, after a completed closing handshake.
     ConnectionClosed,
-    /// The server sent a close frame.
+    /// The server closed the connection: with a close frame, whose code and
+    /// reason these are, or by ending the stream with none, which reads as no
+    /// code and an empty reason. A close frame that carries no code reads the
+    /// same as no frame.
     Closed {
-        /// The close code, when the frame carried one.
+        /// The close code, when a close frame carried one.
         code: Option<u16>,
         /// The close reason, empty when none was given.
         reason: &'a str,
@@ -102,7 +105,9 @@ impl WsError {
         Self(Box::new(Repr::ConnectTimeout { after }))
     }
 
-    /// The server closed the connection with this code and reason.
+    /// The server closed the connection with this code and reason; `None`
+    /// and an empty reason for a close frame without a code, or an end of the
+    /// stream with no close frame.
     pub fn closed(code: Option<u16>, reason: impl Into<String>) -> Self {
         Self(Box::new(Repr::Closed {
             code,

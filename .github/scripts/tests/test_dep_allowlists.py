@@ -11,7 +11,9 @@ credential-free feed that builds an HTTP or signing stack is a red build, not a
 heavier release.
 
 `-e normal` leaves dev-dependencies out of both the listing and the feature
-resolution, so the tree is the one a consumer builds. The target is fixed so a
+resolution, so the tree is the normal dependencies a consumer builds into its
+program. It also leaves out build-dependencies, which run only at build time:
+ring's `cc`, for one, is built but is not on the list. The target is fixed so a
 developer on another platform reads the same tree CI does.
 
 No allowlist may admit a crate on the socket-only deny-list, so a regenerated
@@ -81,7 +83,9 @@ def cargo_tree(crate: str, features: tuple[str, ...]) -> set[str]:
                "--target", TARGET, "--locked"]
     if features:
         command += ["--features", ",".join(features)]
-    result = subprocess.run(command, cwd=REPO, capture_output=True, text=True, check=True)
+    result = subprocess.run(command, cwd=REPO, capture_output=True, text=True, check=False)
+    if result.returncode != 0:
+        raise AssertionError(f"`{' '.join(command)}` failed:\n{result.stderr}")
     return parse_tree(result.stdout, crate)
 
 

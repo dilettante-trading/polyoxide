@@ -8,10 +8,11 @@ use crate::{Backoff, DEFAULT_CONNECT_TIMEOUT};
 /// The timings a supervised connection runs on.
 ///
 /// Every field is public, so a venue reads them directly and sets them through
-/// [`timing_setters!`](crate::timing_setters). The defaults are the ones the
-/// supervised tiers share: a ping every 20 s, stale after 30 s of silence,
-/// reconnect backoff from 500 ms doubling to 60 s, a 10 s connect timeout, and
-/// no rotation.
+/// [`timing_setters!`](crate::timing_setters). The defaults are the kit's: a
+/// ping every 20 s, stale after 30 s of silence, reconnect backoff from 500 ms
+/// doubling to 60 s, a 10 s connect timeout, and no rotation. Each venue sets
+/// its own: rtds pings after a 5 s quiet tick, sports sends no pings and goes
+/// stale after 45 s, and Binance rotates at 23 h 50 min.
 ///
 /// The basis is the setters of `polyoxide-rtds`' `RtdsBuilder`,
 /// `polyoxide-perps`' `PerpsWsBuilder`, `polyoxide-binance`'s `UsdmWsBuilder`

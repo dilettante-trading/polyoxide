@@ -623,6 +623,74 @@ mod actions_and_recorders {
     }
 
     #[tokio::test]
+    async fn a_silent_connection_is_still_dropped_on_schedule() {
+        let server = ScriptedServer::start(vec![Script::frames(&["push"])
+            .go_silent()
+            .drop_after(Duration::from_millis(100))
+            .close_with(1001, "bye")])
+        .await;
+        let socket = connect(server.url.as_str(), DEFAULT_CONNECT_TIMEOUT)
+            .await
+            .unwrap();
+        let mut connection = Connection::new(socket, Mode::All);
+        assert_eq!(next_event(&mut connection).await, Message::from("push"));
+        connection
+            .send(Message::Ping(Vec::new().into()))
+            .await
+            .unwrap();
+        assert_eq!(
+            next_event(&mut connection).await,
+            Message::Close(Some(CloseFrame {
+                code: CloseCode::Away,
+                reason: "bye".into()
+            })),
+            "silence answers no ping, but drop_after still closes"
+        );
+        server
+            .wait_for("the close reply", |s| s.close_reply_count() == 1)
+            .await;
+    }
+
+    #[tokio::test]
+    async fn a_frame_in_flight_does_not_hide_the_close_reply() {
+        // The server closes on the first frame; the second is already on its
+        // way, and arrives ahead of the client's reply.
+        let server =
+            ScriptedServer::start(vec![Script::hold().after_first_frame().then_close()]).await;
+        let socket = connect(server.url.as_str(), DEFAULT_CONNECT_TIMEOUT)
+            .await
+            .unwrap();
+        let mut connection = Connection::new(socket, Mode::Data);
+        connection.send(Message::from("one")).await.unwrap();
+        connection.send(Message::from("two")).await.unwrap();
+        assert!(next_item_or_end(&mut connection).await.is_none());
+        server
+            .wait_for("the close reply", |s| s.close_reply_count() == 1)
+            .await;
+        assert_eq!(server.client_frames(), ["one", "two"]);
+    }
+
+    #[tokio::test]
+    async fn a_client_close_is_answered() {
+        let server = ScriptedServer::start(vec![Script::hold()]).await;
+        let mut ws = connect_and_subscribe(&server.url, "sub-1").await;
+        ws.close(None).await.expect("close");
+        assert!(
+            matches!(next_message(&mut ws).await, Message::Close(_)),
+            "the server must reply to the client's close"
+        );
+    }
+
+    /// The next item, or the end, within the window.
+    async fn next_item_or_end(
+        connection: &mut Connection,
+    ) -> Option<Result<Message, crate::WsError>> {
+        timeout(WINDOW, connection.next())
+            .await
+            .expect("an item or the end within the window")
+    }
+
+    #[tokio::test]
     async fn every_connection_is_counted_and_timed_and_its_path_kept() {
         let server = ScriptedServer::start(vec![Script::reject(), Script::hold()]).await;
         let _ = connect(server.url.as_str(), DEFAULT_CONNECT_TIMEOUT).await;
@@ -707,6 +775,8 @@ mod helpers_as_the_suites_use_them {
 
     #[tokio::test]
     async fn drain_reads_to_the_end() {
-        drain(stream::iter([1, 2, 3])).await;
+        let mut drained = Vec::new();
+        drain(stream::iter([1, 2, 3]).inspect(|item| drained.push(*item))).await;
+        assert_eq!(drained, [1, 2, 3]);
     }
 }

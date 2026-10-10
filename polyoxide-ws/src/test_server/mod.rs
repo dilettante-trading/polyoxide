@@ -84,8 +84,9 @@ pub struct Script {
     pub close_code: Option<(u16, String)>,
     /// Close this long after the handshake, whatever else is happening.
     pub drop_after: Option<Duration>,
-    /// After sending `send`, stop reading and writing for good: a dead
-    /// socket that answers neither requests nor pings.
+    /// After sending `send`, stop reading and writing: a dead socket that
+    /// answers neither requests nor pings. Only [`drop_after`](Self::drop_after)
+    /// still closes it.
     pub go_silent: bool,
     /// After sending `send`, drop the TCP connection without a close frame:
     /// a connection reset.
@@ -320,7 +321,9 @@ impl ScriptedServer {
         self.recorder.received.lock().unwrap().clone()
     }
 
-    /// Every text frame received, in arrival order, across connections.
+    /// The text of every text frame received, in arrival order, across
+    /// connections: [`received`](Self::received) without the connection and
+    /// the time.
     pub fn client_frames(&self) -> Vec<String> {
         self.received().into_iter().map(|r| r.text).collect()
     }
@@ -413,15 +416,58 @@ async fn until(deadline: Option<Instant>) {
     }
 }
 
+/// What one connection records as the client's frames arrive.
+struct Tape<'a> {
+    recorder: &'a Recorder,
+    connection: usize,
+    first: bool,
+}
+
+impl Tape<'_> {
+    /// Record a frame the client sent: a text frame, a ping or a pong.
+    fn record(&mut self, message: &Message) {
+        match message {
+            Message::Text(text) => {
+                let text = text.to_string();
+                if self.first {
+                    self.recorder
+                        .first_frames
+                        .lock()
+                        .unwrap()
+                        .push(text.clone());
+                    self.first = false;
+                }
+                self.recorder.received.lock().unwrap().push(Received {
+                    connection: self.connection,
+                    at: Instant::now(),
+                    text,
+                });
+            }
+            Message::Ping(_) => {
+                self.recorder.pings.fetch_add(1, Ordering::SeqCst);
+            }
+            Message::Pong(payload) => {
+                self.recorder.pongs.lock().unwrap().push(payload.to_vec());
+            }
+            _ => {}
+        }
+    }
+}
+
 /// Close with `frame`, and count the client's reply if it comes within a
-/// second.
-async fn close(ws: &mut Socket, frame: Option<CloseFrame>, recorder: &Recorder) {
+/// second. Frames the client sent before it read the close arrive ahead of
+/// its reply, and are recorded as any other.
+async fn close(ws: &mut Socket, frame: Option<CloseFrame>, tape: &mut Tape<'_>) {
     if ws.close(frame).await.is_err() {
         return;
     }
-    if let Ok(Some(Ok(Message::Close(_)))) = tokio::time::timeout(CLOSE_REPLY_WAIT, ws.next()).await
-    {
-        recorder.close_replies.fetch_add(1, Ordering::SeqCst);
+    let deadline = Instant::now() + CLOSE_REPLY_WAIT;
+    while let Ok(Some(Ok(message))) = tokio::time::timeout_at(deadline, ws.next()).await {
+        if let Message::Close(_) = message {
+            tape.recorder.close_replies.fetch_add(1, Ordering::SeqCst);
+            return;
+        }
+        tape.record(&message);
     }
 }
 
@@ -431,7 +477,8 @@ async fn send_scripted(
     ws: &mut Socket,
     script: &Script,
     close_frame: Option<CloseFrame>,
-    recorder: &Recorder,
+    drop_at: Option<Instant>,
+    tape: &mut Tape<'_>,
 ) -> Result<bool, Failure> {
     for message in &script.send {
         ws.send(message.clone()).await?;
@@ -442,13 +489,15 @@ async fn send_scripted(
         return Ok(false);
     }
     if script.close_after {
-        close(ws, close_frame, recorder).await;
+        close(ws, close_frame, tape).await;
         return Ok(false);
     }
     if script.go_silent {
-        // Hold the socket without reading it: nothing is answered, pings
-        // included.
-        std::future::pending::<()>().await;
+        // Hold the socket without reading or writing it, so nothing is
+        // answered, pings included, until `drop_after`, if it is set.
+        until(drop_at).await;
+        close(ws, close_frame, tape).await;
+        return Ok(false);
     }
     Ok(true)
 }
@@ -517,10 +566,14 @@ where
         reason: reason.into(),
     });
     let drop_at = script.drop_after.map(|after| Instant::now() + after);
+    let mut tape = Tape {
+        recorder,
+        connection: index,
+        first: true,
+    };
     let mut sent = false;
-    let mut first = true;
     if !script.first_frame_first {
-        if !send_scripted(&mut ws, &script, close_frame.clone(), recorder).await? {
+        if !send_scripted(&mut ws, &script, close_frame.clone(), drop_at, &mut tape).await? {
             return Ok(());
         }
         sent = true;
@@ -536,7 +589,7 @@ where
     loop {
         tokio::select! {
             () = until(drop_at) => {
-                close(&mut ws, close_frame.clone(), recorder).await;
+                close(&mut ws, close_frame.clone(), &mut tape).await;
                 return Ok(());
             }
             () = tick(&mut pings) => {
@@ -549,43 +602,37 @@ where
                 }
             }
             message = ws.next() => match message {
-                Some(Ok(Message::Text(text))) => {
-                    let text = text.to_string();
+                Some(Ok(message)) => {
                     // Recorded before anything is answered or sent, so a test
                     // that has seen the server's reply knows the frame is
                     // recorded.
-                    if first {
-                        recorder.first_frames.lock().unwrap().push(text.clone());
-                        first = false;
-                    }
-                    recorder.received.lock().unwrap().push(Received {
-                        connection: index,
-                        at: Instant::now(),
-                        text: text.clone(),
-                    });
-                    for reply in answer(&text) {
-                        ws.send(reply).await?;
-                    }
-                    if !sent {
-                        sent = true;
-                        if !send_scripted(&mut ws, &script, close_frame.clone(), recorder).await? {
+                    tape.record(&message);
+                    match message {
+                        Message::Text(text) => {
+                            for reply in answer(text.as_str()) {
+                                ws.send(reply).await?;
+                            }
+                            if !sent {
+                                sent = true;
+                                if !send_scripted(&mut ws, &script, close_frame.clone(), drop_at, &mut tape)
+                                    .await?
+                                {
+                                    return Ok(());
+                                }
+                                pushes = script.push_every.map(tokio::time::interval);
+                            }
+                        }
+                        Message::Close(_) => {
+                            recorder.closes.fetch_add(1, Ordering::SeqCst);
+                            recorder.client_ended.fetch_add(1, Ordering::SeqCst);
+                            // tungstenite queued the reply as it read the
+                            // close; send it before the socket goes.
+                            let _ = ws.flush().await;
                             return Ok(());
                         }
-                        pushes = script.push_every.map(tokio::time::interval);
+                        _ => {}
                     }
                 }
-                Some(Ok(Message::Ping(_))) => {
-                    recorder.pings.fetch_add(1, Ordering::SeqCst);
-                }
-                Some(Ok(Message::Pong(payload))) => {
-                    recorder.pongs.lock().unwrap().push(payload.to_vec());
-                }
-                Some(Ok(Message::Close(_))) => {
-                    recorder.closes.fetch_add(1, Ordering::SeqCst);
-                    recorder.client_ended.fetch_add(1, Ordering::SeqCst);
-                    return Ok(());
-                }
-                Some(Ok(_)) => {}
                 Some(Err(_)) | None => {
                     recorder.client_ended.fetch_add(1, Ordering::SeqCst);
                     return Ok(());

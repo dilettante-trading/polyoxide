@@ -1,15 +1,19 @@
 //! DRIFT R3's wire probe: does the bare tier send the RFC 6455 close reply?
 //!
 //! Connects to a host, perps' public socket by default, sends nothing, and
-//! reads until the server closes; perps closes a connection after 60 s with no
-//! inbound message. The stream under TLS counts every byte written to the TCP
-//! socket after the server's Close frame is read.
+//! reads until the server closes. The stream under TLS counts every byte
+//! written to the TCP socket after the server's Close frame is read.
 //!
-//! perps pings every 10 s and counts the pong tungstenite sends back as an
-//! inbound message, so a client that reads never goes idle. The stream
-//! therefore withholds every byte the client writes after the handshake until
-//! the Close is read, the pongs included, and counts them apart: the host sees
-//! a silent client and closes it.
+//! On 2026-10-10 perps sent a protocol ping every 10 s and never closed a
+//! client that read, since tungstenite's automatic pongs answer them. The
+//! stream therefore withholds every byte the client writes after the
+//! handshake until the Close is read, the pongs included, and counts them
+//! apart. With its pongs withheld the client was closed with
+//! `1011 pong_timeout` after about 70 s.
+//!
+//! Withholding writes below TLS desynchronises the record stream, so the host
+//! cannot decrypt anything sent after the Close. The count after it proves
+//! only that the client wrote a reply, not that the host read one.
 //!
 //! Without `--flush` it follows the bare pattern the venues had before R3:
 //! return on the Close and never read or flush again, so any byte counted is

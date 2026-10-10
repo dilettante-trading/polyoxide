@@ -108,8 +108,9 @@ impl Connection {
     }
 
     /// The server's close, once the stream has ended on it: a
-    /// [`Kind::Closed`](crate::Kind::Closed) with the frame's code and
-    /// reason, or with neither when the stream ended without a close frame.
+    /// [`Kind::Closed`](crate::Kind::Closed) with the close frame's code and
+    /// reason, or with no code and an empty reason when the stream ended
+    /// without a close frame. A close frame without a code reads the same.
     /// `None` while the connection is open, and after a failed read, whose
     /// error the stream yielded.
     pub fn closed(&self) -> Option<WsError> {
@@ -126,10 +127,14 @@ impl Connection {
 
     /// Close the connection: send a close frame and flush it. On a
     /// connection the server already closed, flush the reply if it has not
-    /// gone out yet; there is nothing else to send.
+    /// gone out yet; there is nothing else to send. A connection whose read
+    /// failed is already gone, so closing it does nothing.
     pub async fn close(&mut self) -> Result<(), WsError> {
         if self.close.is_some() {
             self.flush_reply().await;
+            return Ok(());
+        }
+        if self.finished {
             return Ok(());
         }
         // Sends the close frame and flushes it.
@@ -434,6 +439,17 @@ mod tests {
         assert!(matches!(err.kind(), Kind::Protocol | Kind::Io), "{err:?}");
         assert!(next(&mut connection).await.is_none());
         assert!(connection.closed().is_none(), "an error is not a close");
+    }
+
+    #[tokio::test]
+    async fn close_after_a_failed_read_does_nothing() {
+        let server = ScriptedServer::start(vec![Script::hold().then_cut()]).await;
+        let mut connection = open(&server, Mode::Data).await;
+        assert!(next(&mut connection).await.unwrap().is_err());
+        connection
+            .close()
+            .await
+            .expect("closing a connection that is already gone succeeds");
     }
 
     #[tokio::test]

@@ -187,6 +187,7 @@ The copies have drifted:
 - **The bare tier is `Connection`, the request API is on it.** `Connection::new(socket, Mode)`; `request(build, answer)` takes the id it allocated in both closures, `await_answer(answer)` serves a protocol ping's pong without taking an id, and `take_id`/`next_id` cover perps' and Binance's id handling. A frame the matcher calls `Push` is kept only when the connection's `Mode` yields it. `last_inbound()` counts every frame, those read while awaiting an answer included, for Binance's liveness rule (D5).
 - **MSRV was not checked locally.** There is no rustup on this machine; nothing used is newer than 1.91 by inspection, and CI's msrv job is the check.
 - **Venue test counts are unchanged by construction:** `git diff cb476e2 -- polyoxide-binance polyoxide-perps polyoxide-rtds polyoxide-sports polyoxide-clob` is empty.
+- **Correction to the R3 note (review):** the three tests failed when `record_close` stopped marking the reply queued, which removes every flush. With only `close()`'s own `flush_reply` removed, `close_after_the_server_closed_succeeds` still passes, because `poll_next` has already flushed the reply before `close()` runs; that flush has no test of its own (deferred, review finding G3).
 
 ## Spec Change Log
 

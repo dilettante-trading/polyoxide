@@ -7,13 +7,15 @@
 /// - `fn ws_class(err: &::polyoxide_ws::WsError) -> Class`
 /// - `fn ws_is_fault(err: &::polyoxide_ws::WsError) -> bool`
 ///
-/// It is a macro, not an impl, because neither crate may implement the trait
-/// for the other's type: `polyoxide-ws` does not depend on this crate, and
-/// the orphan rule keeps this crate from implementing `Classify` for
-/// `WsError`. The expansion names only `::polyoxide_ws` and this crate, so
-/// the invoking crate needs `polyoxide-ws` and no tungstenite of its own. A
-/// venue that expands it and forgets either function fails `-D warnings` on
-/// the unused one.
+/// It is a macro, not an impl, because neither crate can write the impl:
+/// this crate's build does not depend on `polyoxide-ws` (AD-2), so it cannot
+/// name `WsError`, and `polyoxide-ws` does not depend on this crate, so it cannot
+/// see `Classify`. In a venue crate both the trait and the type are foreign,
+/// and the orphan rule forbids the impl there too, so the venue crate expands
+/// the table as functions its own enum's impl calls. The expansion names only
+/// `::polyoxide_ws` and this crate, so the invoking crate needs `polyoxide-ws`
+/// and no tungstenite of its own. A venue that expands it and forgets either
+/// function fails `-D warnings` on the unused one.
 ///
 /// | `Kind` | Class |
 /// | --- | --- |
