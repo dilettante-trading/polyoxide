@@ -255,17 +255,17 @@ J1 may be split further; J0 must come first.
 ## Tasks & Acceptance
 
 **Execution:**
-- [ ] `polyoxide-{gamma,data,perps,clob,relay,binance}/tests/error_classes.rs` -- J0 wire-level class pins -- the reshape's invariant, proven before any change.
-- [ ] `polyoxide-core/src/{error,send,request,health,client,macros,lib}.rs` -- J1 as decided. Tests: the class table rewritten row for row; `Fail` against `Done` on both statuses; `ErrorResponse` parsing of message and `Retry-After` (a 0 is `None`, no clamp); the `Response` Display -- AD-8, AD-15.
-- [ ] `polyoxide-test-support/tests/failure_tags.rs` -- rebuild the per-status twins from `ErrorResponse`, with the same tags -- the classifier contract.
-- [ ] `polyoxide-{gamma,data,perps,clob,relay}/src/**` and their tests, plus `polyoxide/src/lib.rs` -- J2 decode functions and removals as decided; clob's `Gamma` variant -- 3.11.
-- [ ] `docs/MUTANTS.md`, `.github/scripts/tests/test_mutants_ledger.py` -- re-cite and re-prove every moved row -- ledger rule.
-- [ ] `polyoxide-binance/src/error.rs` and its tests -- J3 -- 3.12.
-- [ ] `polyoxide-py/src/error.rs`, `Cargo.toml`, `python/polyoxide/__init__.py{,i}`, `README.md` and `tests/` -- J4. Add an offline test (`tests/test_errors_offline.py`, on the local-server helper of `test_data_v2_offline.py`) that raises each class through gamma or data v1 and asserts the exact type -- 3.12.
-- [ ] `polyoxide-core/Cargo.toml`, root `Cargo.toml`, the six venue manifests, `polyoxide-test-support/Cargo.toml`, and every `reqwest::` path outside core -- J5 -- 3.13.
-- [ ] `.github/scripts/tests/test_dependency_fences.py` -- the reqwest fence, with its live and fixture tests -- 3.13.
-- [ ] `polyoxide-test-support/src/query.rs`, the six `tests/headers.rs`, `.github/workflows/ci.yml` (the `features` job), `.github/scripts/tests/test_ci_workflow.py` -- J6 -- 3.13.
-- [ ] `CLAUDE.md`, `docs/s1-removals.md`, `_bmad-output/implementation-artifacts/deferred-work.md` -- in the commits that change each rule, as decided -- AD-21, AD-16.
+- [x] `polyoxide-{gamma,data,perps,clob,relay,binance}/tests/error_classes.rs` -- J0 wire-level class pins -- the reshape's invariant, proven before any change.
+- [x] `polyoxide-core/src/{error,send,request,health,client,macros,lib}.rs` -- J1 as decided. Tests: the class table rewritten row for row; `Fail` against `Done` on both statuses; `ErrorResponse` parsing of message and `Retry-After` (a 0 is `None`, no clamp); the `Response` Display -- AD-8, AD-15.
+- [x] `polyoxide-test-support/tests/failure_tags.rs` -- rebuild the per-status twins from `ErrorResponse`, with the same tags -- the classifier contract.
+- [x] `polyoxide-{gamma,data,perps,clob,relay}/src/**` and their tests, plus `polyoxide/src/lib.rs` -- J2 decode functions and removals as decided; clob's `Gamma` variant -- 3.11.
+- [x] `docs/MUTANTS.md`, `.github/scripts/tests/test_mutants_ledger.py` -- re-cite and re-prove every moved row -- ledger rule.
+- [x] `polyoxide-binance/src/error.rs` and its tests -- J3 -- 3.12.
+- [x] `polyoxide-py/src/error.rs`, `Cargo.toml`, `python/polyoxide/__init__.py{,i}`, `README.md` and `tests/` -- J4. Add an offline test (`tests/test_errors_offline.py`, on the local-server helper of `test_data_v2_offline.py`) that raises each class through gamma or data v1 and asserts the exact type -- 3.12.
+- [x] `polyoxide-core/Cargo.toml`, root `Cargo.toml`, the six venue manifests, `polyoxide-test-support/Cargo.toml`, and every `reqwest::` path outside core -- J5 -- 3.13.
+- [x] `.github/scripts/tests/test_dependency_fences.py` -- the reqwest fence, with its live and fixture tests -- 3.13.
+- [x] `polyoxide-test-support/src/query.rs`, the six `tests/headers.rs`, `.github/workflows/ci.yml` (the `features` job), `.github/scripts/tests/test_ci_workflow.py` -- J6 -- 3.13.
+- [x] `CLAUDE.md`, `docs/s1-removals.md`, `_bmad-output/implementation-artifacts/deferred-work.md` -- in the commits that change each rule, as decided -- AD-21, AD-16.
 
 **Acceptance Criteria:**
 - Given J0's tests, when they run at every later commit, then each passes with its assertions unchanged.
@@ -276,6 +276,15 @@ J1 may be split further; J0 must come first.
 - Given the removal gate, when it runs against `v0.38.1`, then every reported removal is listed in `docs/s1-removals.md`.
 
 ## Implementation Notes
+
+Commits: J0 `718a052`, J1 `8eee873`, J2 `e6df815`, J3 `fcf2c21`, J4 `d43c651`, J5 `4b002fd`, J6 `4debdb1`. J0's six files are unchanged from J0 to J6, and every commit was built, linted, documented and tested before it was made.
+
+- **Where the work landed against the commit plan.** Dropping `RequestError::from_response` (J1) leaves no other place to decode, so every module's `From<ApiError>` became its decode in J1, Binance's included, or J0's classes (Binance's 403 above all) would not have held there. J1 also brought clob's `Gamma` variant, since status `0` could no longer be built, and removed `ClobError::is_retriable` with clob's `From<reqwest | url | serde_json>`, so clob's `error.rs` moved once and the ledger was re-cited and proved once (rows (e), (e), case and (e), only a 400, on top of `718a052`; (e), only a 400 also names the new unit test `the_decode_splits_out_a_kill_only_on_a_400`). J2 is the Polymarket removals, J3 Binance's inherent methods.
+- **The loop.** `Outcome::Retry` with no retry left is treated as `Fail` and returns `ApiError::Response`; core's `DefaultRetryPolicy` returns `Retry` for a last-attempt 429, which would otherwise have been handed back as data. `send_raw` still logs `Request failed` at ERROR for a response failure, and only for one, as before. `impl From<ErrorResponse> for ApiError` was added for the call sites that build one.
+- **Binance's 418 WARN** under `polyoxide_binance` no longer names the path, since the decode sees the response and not the request: it reads `418: IP banned: <body>`. The send loop's hold WARN under `polyoxide_core` names the path, and `tests/ban_log.rs` now asserts the two together.
+- **Assertions that changed with a [RISK]**: relay's `each_relay_route_s_429_holds_the_next_request` (`polyoxide-relay/tests/mock_api.rs`) expects `RateLimited { retry_after: Some(4s) }` where it expected `None`; data's `the_servers_retryable_flag_overrides_the_status_heuristic` is renamed `..._is_surfaced_and_the_status_decides` and asserts the flag on `V2Error` and the class's answer; the v2 pagination test in Python expects `DecodeError`. Every other rewritten test keeps its assertion against the new variant.
+- **Header pins.** The minimal build of each module sends exactly `accept: */*`, `accept-encoding: gzip` and `host`, the same set as the workspace build, so the literal is the spec's. `cargo-hack` is not installed locally; the each-feature gate was approximated by checking the touched crates and features one at a time (clob without `gamma`, with `ws`, with `keychain`; perps and Binance with `ws`; relay and core with `keychain`; gamma and data with `specta`; the umbrella with no default features and with `gamma`, `data`, `perps`).
+- **The removal gate was not run** (the lead runs it once). The keys in `docs/s1-removals.md` are predicted from cargo-semver-checks 0.51.0's lint templates: `enum_variant_missing` for `ApiError`'s four variants and relay's three, `inherent_method_missing` for `ApiError::from_status_and_body`, the five `is_retriable` methods, `trait_method_missing: method from_response of trait RequestError`, and `declarative_macro_missing: macro impl_api_error_conversions`. The inherent `retry_after` of `DataApiError`, `PerpsError` and `BinanceError` is not listed: `inherent_method_missing` counts a trait impl's method of the same name, and each type's `Classify` impl defines `retry_after`. Correct any key the gate prints differently.
 
 ## Spec Change Log
 
