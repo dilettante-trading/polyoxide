@@ -96,11 +96,11 @@ development_status:
   3-13-transport-ownership-for-http-and-venue-isolation: review
   epic-3-retrospective: optional
 
-  epic-4: backlog
-  4-1-the-socket-kit-crate: backlog
-  4-2-connect-classify-and-close-once: backlog
-  4-3-one-socket-error-classification-table: backlog
-  4-4-one-scripted-test-server: backlog
+  epic-4: in-progress
+  4-1-the-socket-kit-crate: in-progress
+  4-2-connect-classify-and-close-once: in-progress
+  4-3-one-socket-error-classification-table: in-progress
+  4-4-one-scripted-test-server: in-progress
   4-5-the-generic-supervisor: backlog
   4-6-perps-on-the-supervisor: backlog
   4-7-binance-on-the-supervisor: backlog

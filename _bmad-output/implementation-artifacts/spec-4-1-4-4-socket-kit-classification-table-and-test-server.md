@@ -2,7 +2,7 @@
 title: 'Stories 4.1 to 4.4: the polyoxide-ws socket kit, one socket classification table, and one scripted test server'
 type: 'feature'
 created: '2026-10-10'
-status: 'ready-for-dev'
+status: 'in-progress'
 route: 'dispatch'
 review_loop_iteration: 0
 baseline_commit: 'cb476e2f52501e2fc94810626441428f33b5dcb9'
