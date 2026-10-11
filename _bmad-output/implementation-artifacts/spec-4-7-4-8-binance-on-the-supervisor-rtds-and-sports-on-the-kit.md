@@ -2,7 +2,7 @@
 title: 'Stories 4.7 and 4.8: Binance on the Supervisor, rtds and sports on the kit'
 type: 'feature'
 created: '2026-10-11'
-status: 'in-progress'
+status: 'done'
 route: 'dispatch'
 review_loop_iteration: 0
 baseline_commit: '96f96ec94d630293c11026b558d73bae8b680aa5'
@@ -308,6 +308,34 @@ Every name at 96f96ec is present after, in its crate or, for the 18 named above,
 ## Spec Change Log
 
 ## Review Triage Log
+
+Review 1, 2026-10-11: three layers (blind B, edge-case E, verification-gap V), 23 findings. Groups: G1–G12 patched, D1–D2 deferred, the rest rejected. The patches are 6c86ccd; afterwards the Verification commands all passed, the removals gate with 46 removals, 46 listed.
+
+| # | Verdict | Group | Evidence |
+|---|---|---|---|
+| B1 | medium | G1 patch | Every "died under" test scripts `ignore_later_requests`, so the kit's `stale_after` bound answers them; `UsdmProtocol::apply`'s `Err(err) => break` arm (`protocol.rs:192-195`) is never reached, and `return Err(err)` there would pass. The `_l2_d1` test tests a stall, not a death. |
+| B2 | low | rejected | `request` fails with a non-`Refused` error only when the connection closed, its read failed (`finished`), or a send failed, all of which end the connection at the next read; a send error that leaves the socket open is not shown reachable, and the fix adds a guard. |
+| B3 | low | rejected | Same as E1. The whole-replay bound is L2-D8 (6), documented on `stale_after` and pinned by `a_replay_is_bounded_as_a_whole_by_stale_after`; it bites only a `stale_after` under the pacing (about 1 s for 1024 streams) against the 30 s default, and a guard adds validation. |
+| B4 | low | G5 patch | `UsdmWs` now ends after its first transport error (`Connection::fail`), and later control calls fail `Connect(AlreadyClosed)`; rtds' twin change is documented (L2-D8 (13)) and Binance's `UsdmWs` doc and release note say nothing. |
+| B5 | low | rejected | L2-D4 sends the kit's `NoAnswer` to `Connect` and has the bare tier map its own with the id; `UsdmProtocol::stalled` builds `NoAnswer` directly, and no path reaches `From` with a `NoAnswer` today. |
+| B6 | low | G6 patch | Each wrapper prefixes the kit's `"WebSocket error: {0}"`, so every Binance and perps transport error reads "WebSocket transport error: WebSocket error: …", in every log and CLI message; making the kit's `Transport` display tungstenite's text alone restores each venue's pre-kit wording. |
+| B7 | low | G7 patch | `docs/s1-removals.md` points a caller "deciding for itself" at `Classify`, which differs from the removed `recovery()` on `Closed` (any code reconnected; 1008 is `VenueRefusal`), `Response`, `AlreadyClosed` and `Capacity`. |
+| B8 | low | rejected | The spec moves Binance's 2 server self-tests to the kit by name (Boundaries); `scripted.rs` is exercised by every suite that depends on its refusal, hold and ignore knobs (`a_refused_change_keeps_the_connection_delivering`, the edge tests, `client.rs`' `NoAnswer { id: 2 }`), as L1's B11 found for perps. |
+| B9 | low | G8 patch | `Script::pushes`' doc says "after answering the first request" but `after_first_frame()` sends after the first frame whether or not it was answered; `received()` drops a non-JSON client frame silently (`.ok()?`). |
+| B10 | low | G9 patch | deferred-work has no Story 4.11 entry for L2's kit changes, `Protocol::configure` and the owned `Outage<E>`, and L1's entry lists the kit's hooks without `configure`. |
+| B11 | false | rejected | The read-back is an empty `Subscribe`, which sends nothing and answers at once, live or offline; it fails only when the path's task stopped, whose `Ended { stopped: true }` stops the whole client, so no caller is left with the stale view. |
+| B12 | low | G10 patch | CLAUDE.md's "Tags decide" lists `UsdmWsError::from` as the wrap for a foreign error; it now takes a `WsError`, so a live test wraps in two steps. Patched under AD-21 rather than deferred: the commit that changed the rule should have edited it. |
+| B13 | low | G11 patch | CLAUDE.md's shared-server paragraph says sports' server "goes with its other copies", though L2-12 deleted it. Patched under AD-21, as B12. |
+| V1 | gap | G1 patch | Same as B1 (filed patch). |
+| V2 | gap | G2 patch | No test changes a path reopened after a close for want of streams, so dropping `Router::ended`'s generation guard passes (filed patch). |
+| V3 | gap | G3 patch | `DisconnectReason::Error` is asserted nowhere; `Outage::Error(_) => Stale` would pass (filed patch). |
+| V4 | gap | G4 patch | Nothing pins that `RtdsBuilder::connect` honours `connect_timeout` on the first connect; reverting to `connect_to` (10 s) passes (filed patch). |
+| V5 | gap | D2 defer | `UsdmWs::ping` keeping updates read meanwhile is unpinned; pre-existing, and the supervised tier does not use it (filed defer). |
+| E1 | low | rejected | Same as B3. |
+| E2 | low | rejected | A read that fails inside a change ends the outage as `Closed { None, "" }` rather than `Error`; L2-D1 accepts that the reason "may now read `Stale` or `Closed`", and the cause is logged at debug. |
+| E3 | false | rejected | A superseded generation is one whose streams left; its task ends on `NotWanted` and `close()` answers `Ok`, so `stopped` is true only after a panic in the kit's task, which is a bug that ought to stop the client. |
+| E4 | medium | D1 defer | A reconnect refused with 429 and a `Retry-After` longer than the backoff step retries inside the ban window: rtds newly (R1), Binance and perps as before the kit; honouring it is a cross-venue socket policy (D13), for Story 4.10's open `Retry-After` question. |
+| E5 | low | G12 patch | `forward` returns on `events.closed()` and on a failed `reserve` without awaiting `Supervised::close`, so `SupervisedUsdmWs::close` drops its receiver first and can return before the polite closes go out; the old `close()` awaited each path's. |
 
 ## Design Notes
 
