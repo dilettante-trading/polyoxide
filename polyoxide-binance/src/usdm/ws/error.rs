@@ -1,26 +1,14 @@
-//! Errors of the socket tiers and how each one recovers.
+//! Errors of the socket tiers, and their classes.
 
 use std::time::Duration;
 
-use polyoxide_venue::{class_for_close_code, class_for_handshake_status, Class, Classify};
-use polyoxide_ws::{retrying_can_fix, Kind, WsError};
+use polyoxide_venue::{class_for_close_code, Class, Classify};
+use polyoxide_ws::{Kind, WsError};
 use thiserror::Error;
 
 use crate::usdm::ws::{stream::StreamName, StreamPath};
 
 polyoxide_venue::impl_ws_classification!();
-
-/// What to do about an error.
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-#[non_exhaustive]
-pub enum Recovery {
-    /// Replace the connection and replay its streams.
-    Reconnect,
-    /// Skip this frame and keep reading.
-    SkipFrame,
-    /// Give up: retrying replays the same failure.
-    Fatal,
-}
 
 /// Error type for the socket tiers.
 #[derive(Error, Debug)]
@@ -127,41 +115,6 @@ impl From<WsError> for UsdmWsError {
     }
 }
 
-impl UsdmWsError {
-    /// How the supervised tier treats this error.
-    pub fn recovery(&self) -> Recovery {
-        match self {
-            Self::Connect(err) => match err.kind() {
-                // Binance's own rules: a connection used after it closed
-                // (D19) and a frame or header past tungstenite's limits
-                // reconnect.
-                Kind::AlreadyClosed | Kind::Capacity => Recovery::Reconnect,
-                // A handshake refused with 408, 425, 429 or 5xx is the host
-                // being unwell or throttling, by polyoxide-venue's status
-                // rule; any other status, a bad URL or TLS name, or an attack
-                // detection is our request. Everything else, a lost
-                // connection among them, is retried.
-                _ if retrying_can_fix(err, |status| {
-                    class_for_handshake_status(status).is_retriable()
-                }) =>
-                {
-                    Recovery::Reconnect
-                }
-                _ => Recovery::Fatal,
-            },
-            Self::ConnectTimeout(_)
-            | Self::Closed { .. }
-            | Self::NoAnswer { .. }
-            | Self::Response { .. } => Recovery::Reconnect,
-            Self::Frame { .. } => Recovery::SkipFrame,
-            Self::Refused { .. }
-            | Self::TooManyStreams { .. }
-            | Self::WrongPath { .. }
-            | Self::Stopped => Recovery::Fatal,
-        }
-    }
-}
-
 /// The transport by the one socket table
 /// (`polyoxide_venue::impl_ws_classification!`), a server close by its close
 /// code, a refused request a `VenueRefusal` with Binance's code in decimal,
@@ -214,77 +167,6 @@ mod tests {
     /// A transport failure as the connection reports it, through the kit.
     fn transport(err: tungstenite::Error) -> UsdmWsError {
         UsdmWsError::from(WsError::from(err))
-    }
-
-    #[test]
-    fn a_handshake_refused_by_the_host_reconnects_and_one_refused_for_us_is_fatal() {
-        assert_eq!(http_error(503).recovery(), Recovery::Reconnect);
-        assert_eq!(http_error(429).recovery(), Recovery::Reconnect);
-        assert_eq!(http_error(408).recovery(), Recovery::Reconnect);
-        assert_eq!(http_error(425).recovery(), Recovery::Reconnect);
-        assert_eq!(http_error(451).recovery(), Recovery::Fatal);
-        assert_eq!(http_error(404).recovery(), Recovery::Fatal);
-        assert_eq!(http_error(418).recovery(), Recovery::Fatal);
-    }
-
-    #[test]
-    fn losing_the_connection_reconnects_and_a_bad_frame_is_skipped() {
-        for err in [
-            transport(tungstenite::Error::ConnectionClosed),
-            UsdmWsError::ConnectTimeout(Duration::from_secs(10)),
-            UsdmWsError::Closed {
-                code: Some(1008),
-                reason: "Too many requests".into(),
-            },
-            UsdmWsError::NoAnswer {
-                id: 3,
-                timeout: Duration::from_secs(10),
-            },
-            UsdmWsError::Response {
-                id: 4,
-                raw: "{\"id\":4}".into(),
-            },
-        ] {
-            assert_eq!(err.recovery(), Recovery::Reconnect, "{err}");
-        }
-        let frame = UsdmWsError::Frame {
-            stream: "btcusdt@aggTrade".into(),
-            raw: "{}".into(),
-            reason: "missing field".into(),
-        };
-        assert_eq!(frame.recovery(), Recovery::SkipFrame);
-    }
-
-    #[test]
-    fn a_refusal_and_a_request_the_client_refused_to_send_are_fatal() {
-        let refused = UsdmWsError::Refused {
-            code: 2,
-            msg: "Invalid request".into(),
-        };
-        assert_eq!(refused.recovery(), Recovery::Fatal);
-        let full = UsdmWsError::TooManyStreams {
-            path: StreamPath::Market,
-            limit: 1024,
-        };
-        assert_eq!(full.recovery(), Recovery::Fatal);
-        assert_eq!(
-            full.to_string(),
-            "a market connection carries at most 1024 streams"
-        );
-        let wrong = UsdmWsError::WrongPath {
-            stream: StreamName::BookTicker(crate::usdm::types::Symbol::new("BTCUSDT").unwrap()),
-            path: StreamPath::Market,
-        };
-        assert_eq!(wrong.recovery(), Recovery::Fatal);
-        assert_eq!(
-            wrong.to_string(),
-            "btcusdt@bookTicker rides the public path, not market"
-        );
-        let url = transport(tungstenite::Error::Url(
-            tungstenite::error::UrlError::NoHostName,
-        ));
-        assert_eq!(url.recovery(), Recovery::Fatal);
-        assert_eq!(UsdmWsError::Stopped.recovery(), Recovery::Fatal);
     }
 
     #[test]

@@ -12,28 +12,23 @@ categories = ["api-bindings", "web-programming::http-client"]
 
 [features]
 default = []
-# The USDⓈ-M market streams.
-ws = ["dep:polyoxide-ws", "dep:tokio-tungstenite", "dep:futures-util", "dep:rustls", "tokio/net", "tokio/rt", "tokio/macros"]
-# Exposes the scripted local server and the captured frames for downstream
-# tests. Not for consumers.
+# The USDⓈ-M market streams, on the socket kit.
+ws = ["dep:polyoxide-ws", "dep:futures-util", "tokio/rt", "tokio/macros"]
+# Exposes the captured frames for downstream tests. Not for consumers.
 test-server = ["ws"]
 
 [dependencies]
 polyoxide-core = { workspace = true }
 polyoxide-venue = { workspace = true, features = ["decimal"] }
 # The socket kit (`ws`): connect, the bare tier, the socket error and the
-# supervisor. It owns the transport and installs the TLS provider.
+# supervisor. It owns the transport, tokio-tungstenite and rustls.
 polyoxide-ws = { workspace = true, optional = true }
 rust_decimal = { workspace = true }
 serde = { workspace = true }
 serde_json = { workspace = true }
 thiserror = { workspace = true }
 tokio = { workspace = true, features = ["time", "sync"] }
-tokio-tungstenite = { workspace = true, optional = true }
 futures-util = { version = "0.3", optional = true }
-# Needed only by the live suite's raw socket, which installs a process-default
-# rustls CryptoProvider itself.
-rustls = { workspace = true, optional = true }
 tracing = { workspace = true }
 url = { workspace = true }
 

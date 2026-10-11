@@ -29,9 +29,8 @@ use polyoxide_binance::usdm::{
     },
 };
 use polyoxide_test_support::{fail, transient, ResultExt};
-use polyoxide_ws::WsError;
+use polyoxide_ws::{tungstenite::Message, WsError};
 use serde_json::Value;
-use tokio_tungstenite::{connect_async, tungstenite::Message};
 
 fn btc() -> Symbol {
     Symbol::new("BTCUSDT").or_fail("BTCUSDT")
@@ -135,7 +134,6 @@ async fn live_every_stream_kind_delivers_on_its_path() {
 #[tokio::test]
 #[ignore]
 async fn live_frames_carry_no_unmodelled_keys() {
-    let _ = rustls::crypto::ring::default_provider().install_default();
     let mut unmodelled = Vec::new();
     for path in StreamPath::ALL {
         let names: Vec<String> = every_kind()
@@ -149,11 +147,11 @@ async fn live_frames_carry_no_unmodelled_keys() {
             names.join("/")
         );
         let connect = format!("{path}: connect");
-        let Ok(connected) = tokio::time::timeout(CONNECT_TIMEOUT, connect_async(url)).await else {
-            fail(&connect, &UsdmWsError::ConnectTimeout(CONNECT_TIMEOUT));
-        };
-        let (mut socket, _) = connected
-            .map_err(|err| UsdmWsError::from(WsError::from(err)))
+        // A raw socket through the kit's connect, which installs the TLS
+        // provider (DRIFT R9) and fails a timeout as `ConnectTimeout`.
+        let mut socket = polyoxide_ws::connect(url, CONNECT_TIMEOUT)
+            .await
+            .map_err(UsdmWsError::from)
             .or_fail(&connect);
         let mut checked = HashSet::new();
         let deadline = tokio::time::Instant::now() + Duration::from_secs(10);

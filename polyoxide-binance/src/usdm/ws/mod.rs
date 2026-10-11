@@ -22,14 +22,11 @@ mod protocol;
 mod scripted;
 pub mod stream;
 pub mod supervised;
-#[cfg(any(test, feature = "test-server"))]
-#[doc(hidden)]
-pub mod test_server;
 
 use std::{fmt, time::Duration};
 
 pub use client::UsdmWs;
-pub use error::{Recovery, UsdmWsError};
+pub use error::UsdmWsError;
 pub use event::{
     AggTradeEvent, BookTickerEvent, KlineBar, KlineEvent, MarkPriceEvent, PartialDepthEvent,
     Payload, SymbolType, TickerEvent, Update,
