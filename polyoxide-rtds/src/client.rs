@@ -238,11 +238,10 @@ mod tests {
     // the public API offers, and widening it just to test it would be the
     // wrong trade.
     mod against_a_local_server {
+        use polyoxide_ws::test_server::{Script, ScriptedServer};
+
         use super::*;
-        use crate::{
-            fixtures,
-            test_server::{Script, ScriptedServer},
-        };
+        use crate::fixtures;
 
         fn subs() -> Vec<Subscription> {
             Subscription::for_topic(Topic::ChainlinkTwap(TwapWindow::Thirty)).symbols(["btc/usd"])
@@ -256,16 +255,14 @@ mod tests {
 
         #[tokio::test]
         async fn connecting_sends_the_subscription_frame_and_records_it() {
-            let server = ScriptedServer::start(vec![Script::SendThenIdle(Vec::new())]).await;
+            let server = ScriptedServer::start(vec![Script::hold().after_first_frame()]).await;
             let stream = connected(&server).await;
 
             server
-                .wait_for("the subscription frame", |s| {
-                    s.received_subscriptions().len() == 1
-                })
+                .wait_for("the subscription frame", |s| s.first_frames().len() == 1)
                 .await;
 
-            let sent = &server.received_subscriptions()[0];
+            let sent = &server.first_frames()[0];
             assert!(sent.contains(r#"{\"symbol\":\"btc/usd\"}"#), "{sent}");
             assert_eq!(
                 stream.subscriptions(),
@@ -280,7 +277,7 @@ mod tests {
             // RTDS never answers a PING, so nothing about the client's own
             // stream can tell you the frame went out. The server is the only
             // observer.
-            let server = ScriptedServer::start(vec![Script::SendThenIdle(Vec::new())]).await;
+            let server = ScriptedServer::start(vec![Script::hold().after_first_frame()]).await;
             let mut stream = connected(&server).await;
 
             stream.ping().await.expect("ping");
@@ -294,7 +291,7 @@ mod tests {
 
         #[tokio::test]
         async fn subscribe_more_sends_a_second_frame_and_extends_the_set() {
-            let server = ScriptedServer::start(vec![Script::SendThenIdle(Vec::new())]).await;
+            let server = ScriptedServer::start(vec![Script::hold().after_first_frame()]).await;
             let mut stream = connected(&server).await;
 
             stream
@@ -322,7 +319,7 @@ mod tests {
             // An empty `subscriptions` array is answered with silence, which is
             // indistinguishable from an idle feed. The guard has to be at the
             // call site, not merely available.
-            let server = ScriptedServer::start(vec![Script::SendThenIdle(Vec::new())]).await;
+            let server = ScriptedServer::start(vec![Script::hold().after_first_frame()]).await;
             let mut stream = connected(&server).await;
             server
                 .wait_for("the subscription frame", |s| s.client_frames().len() == 1)
@@ -349,12 +346,13 @@ mod tests {
         async fn non_text_frames_are_skipped_rather_than_ending_the_stream() {
             // A server-initiated Ping or a Binary frame must not look like the
             // end of the feed. Nothing else in the suite drives these arms.
-            let server = ScriptedServer::start(vec![Script::SendRawThenIdle(vec![
+            let server = ScriptedServer::start(vec![Script::messages(vec![
                 Message::Ping(vec![7u8].into()),
                 Message::Pong(vec![].into()),
                 Message::Binary(vec![1u8, 2, 3].into()),
                 Message::Text(fixtures::TWAP_THIRTY_UPDATE.into()),
-            ])])
+            ])
+            .after_first_frame()])
             .await;
             let mut stream = connected(&server).await;
 
@@ -372,12 +370,13 @@ mod tests {
             // The unit tests prove `from_json` returns Ok(None) for these. This
             // proves the Stream impl loops on that rather than yielding a gap
             // the caller has to interpret.
-            let server = ScriptedServer::start(vec![Script::SendThenIdle(vec![
-                fixtures::EMPTY_GREETING.to_string(),
-                "PONG".to_string(),
-                "{}".to_string(),
-                fixtures::BINANCE_UPDATE.to_string(),
-            ])])
+            let server = ScriptedServer::start(vec![Script::frames(&[
+                fixtures::EMPTY_GREETING,
+                "PONG",
+                "{}",
+                fixtures::BINANCE_UPDATE,
+            ])
+            .after_first_frame()])
             .await;
             let mut stream = connected(&server).await;
 
@@ -395,10 +394,11 @@ mod tests {
 
         #[tokio::test]
         async fn a_server_close_ends_the_stream_after_delivering_its_frames() {
-            let server = ScriptedServer::start(vec![Script::SendThenClose(vec![
-                fixtures::TWAP_THIRTY_UPDATE.to_string(),
-            ])])
-            .await;
+            let server =
+                ScriptedServer::start(vec![Script::frames(&[fixtures::TWAP_THIRTY_UPDATE])
+                    .after_first_frame()
+                    .then_close()])
+                .await;
             let mut stream = connected(&server).await;
 
             assert!(matches!(
@@ -413,7 +413,7 @@ mod tests {
 
         #[tokio::test]
         async fn close_sends_a_close_frame_to_the_server() {
-            let server = ScriptedServer::start(vec![Script::SendThenIdle(Vec::new())]).await;
+            let server = ScriptedServer::start(vec![Script::hold().after_first_frame()]).await;
             let mut stream = connected(&server).await;
 
             stream.close().await.expect("close");

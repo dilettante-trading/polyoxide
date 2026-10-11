@@ -5,8 +5,8 @@ use std::{
     time::Duration,
 };
 
-use polyoxide_rtds::test_server::{Script, ScriptedServer};
 use polyoxide_rtds::{PriceEvent, RtdsBuilder, Subscription, Topic, TwapWindow};
+use polyoxide_ws::test_server::{Script, ScriptedServer};
 
 // The same golden vector the unit tests use, not a second copy. `fixtures`
 // is behind the `test-fixtures` feature precisely so integration tests can
@@ -20,14 +20,14 @@ fn subs() -> Vec<Subscription> {
 #[tokio::test]
 async fn reconnects_and_resubscribes_after_a_drop() {
     let server = ScriptedServer::start(vec![
-        Script::SendThenClose(vec![TWAP_UPDATE.into()]),
+        Script::frames(&[TWAP_UPDATE])
+            .after_first_frame()
+            .then_close(),
         // The rejection is Fatal, so `run` returns on its own rather than
         // being cut off by a timeout — which also means the assertions below
         // observe a supervisor that actually finished.
-        Script::SendThenIdle(vec![
-            TWAP_UPDATE.into(),
-            polyoxide_rtds::fixtures::REJECTED_SUBSCRIPTION.into(),
-        ]),
+        Script::frames(&[TWAP_UPDATE, polyoxide_rtds::fixtures::REJECTED_SUBSCRIPTION])
+            .after_first_frame(),
     ])
     .await;
 
@@ -74,7 +74,7 @@ async fn reconnects_and_resubscribes_after_a_drop() {
 
     // The resubscribe must send the same frame, or the new connection is
     // subscribed to nothing and goes quiet without erroring.
-    let frames = server.received_subscriptions();
+    let frames = server.first_frames();
     assert!(frames.len() >= 2, "expected 2 subscription frames");
     assert_eq!(
         frames[0], frames[1],
@@ -92,10 +92,10 @@ async fn a_silent_connection_is_treated_as_dead() {
     let server = ScriptedServer::start(vec![
         // Nothing sent, never closed: the only thing that can end this
         // connection is the staleness timer.
-        Script::SendThenIdle(Vec::new()),
+        Script::hold().after_first_frame(),
         // Once the watchdog has forced a reconnect, end the run naturally
         // rather than leaning on an outer timeout.
-        Script::SendThenIdle(vec![polyoxide_rtds::fixtures::REJECTED_SUBSCRIPTION.into()]),
+        Script::frames(&[polyoxide_rtds::fixtures::REJECTED_SUBSCRIPTION]).after_first_frame(),
     ])
     .await;
 
@@ -131,9 +131,10 @@ async fn a_rejected_subscription_stops_instead_of_looping() {
     // rejection forever, so the run loop must give up and return the error.
     // The captured envelope, not a hand-rolled lookalike — the other two
     // tests already use it, and a second copy would drift on the next capture.
-    let server = ScriptedServer::start(vec![Script::SendThenIdle(vec![
-        polyoxide_rtds::fixtures::REJECTED_SUBSCRIPTION.into(),
-    ])])
+    let server = ScriptedServer::start(vec![Script::frames(&[
+        polyoxide_rtds::fixtures::REJECTED_SUBSCRIPTION,
+    ])
+    .after_first_frame()])
     .await;
 
     let supervised = RtdsBuilder::new()
@@ -177,15 +178,16 @@ async fn a_frame_the_client_cannot_read_is_skipped_without_dropping_the_connecti
         "symbol":"btc/usd","timestamp":1788600388000,"value":79697.47,"window_s":30},
         "timestamp":1788600389537,"topic":"crypto_prices_twap_thirty","type":"update"}"#;
 
-    let server = ScriptedServer::start(vec![Script::SendThenIdle(vec![
-        TWAP_UPDATE.into(),
-        UNPARSEABLE.into(),
-        UNDECODABLE.into(),
-        TWAP_UPDATE.into(),
+    let server = ScriptedServer::start(vec![Script::frames(&[
+        TWAP_UPDATE,
+        UNPARSEABLE,
+        UNDECODABLE,
+        TWAP_UPDATE,
         // Ends the run deliberately, so the assertions below observe a
         // supervisor that finished rather than one cut off by a timeout.
-        polyoxide_rtds::fixtures::REJECTED_SUBSCRIPTION.into(),
-    ])])
+        polyoxide_rtds::fixtures::REJECTED_SUBSCRIPTION,
+    ])
+    .after_first_frame()])
     .await;
 
     let seen = Arc::new(Mutex::new(0usize));

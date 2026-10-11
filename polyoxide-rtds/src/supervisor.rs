@@ -466,11 +466,12 @@ mod tests {
     /// The parts of supervision that only exist because RTDS fails silently:
     /// the delay actually waited between attempts, and the keep-alive.
     mod against_a_local_server {
+        use polyoxide_ws::test_server::{Script, ScriptedServer};
+
         use super::*;
         use crate::{
             fixtures,
             test_log::capture_async,
-            test_server::{Script, ScriptedServer},
             topic::{Topic, TwapWindow},
         };
 
@@ -519,10 +520,10 @@ mod tests {
             // Accept-and-close, three times over. Nothing is ever delivered, so
             // the schedule must keep escalating rather than restarting.
             let (delays, connections) = delays_while_running(vec![
-                Script::SendThenClose(Vec::new()),
-                Script::SendThenClose(Vec::new()),
-                Script::SendThenClose(Vec::new()),
-                Script::SendThenIdle(vec![fixtures::REJECTED_SUBSCRIPTION.into()]),
+                Script::close_at_once().after_first_frame(),
+                Script::close_at_once().after_first_frame(),
+                Script::close_at_once().after_first_frame(),
+                Script::frames(&[fixtures::REJECTED_SUBSCRIPTION]).after_first_frame(),
             ])
             .await;
 
@@ -540,10 +541,16 @@ mod tests {
             // so each drop is a fresh incident and the delay must not creep up.
             let update = fixtures::TWAP_THIRTY_UPDATE.to_string();
             let (delays, connections) = delays_while_running(vec![
-                Script::SendThenClose(vec![update.clone()]),
-                Script::SendThenClose(vec![update.clone()]),
-                Script::SendThenClose(vec![update]),
-                Script::SendThenIdle(vec![fixtures::REJECTED_SUBSCRIPTION.into()]),
+                Script::frames(&[update.as_str()])
+                    .after_first_frame()
+                    .then_close(),
+                Script::frames(&[update.as_str()])
+                    .after_first_frame()
+                    .then_close(),
+                Script::frames(&[update.as_str()])
+                    .after_first_frame()
+                    .then_close(),
+                Script::frames(&[fixtures::REJECTED_SUBSCRIPTION]).after_first_frame(),
             ])
             .await;
 
@@ -562,10 +569,12 @@ mod tests {
             // refused before the WebSocket handshake completes and must be
             // retried, escalating, rather than ending the run.
             let (delays, connections) = delays_while_running(vec![
-                Script::SendThenClose(vec![fixtures::TWAP_THIRTY_UPDATE.into()]),
-                Script::RejectHandshake,
-                Script::RejectHandshake,
-                Script::SendThenIdle(vec![fixtures::REJECTED_SUBSCRIPTION.into()]),
+                Script::frames(&[fixtures::TWAP_THIRTY_UPDATE])
+                    .after_first_frame()
+                    .then_close(),
+                Script::reject(),
+                Script::reject(),
+                Script::frames(&[fixtures::REJECTED_SUBSCRIPTION]).after_first_frame(),
             ])
             .await;
 
@@ -585,7 +594,7 @@ mod tests {
             // Nothing else in the suite reaches `pump`'s ping branch: every
             // other test either has frames arriving or trips the staleness
             // timer first.
-            let server = ScriptedServer::start(vec![Script::SendThenIdle(Vec::new())]).await;
+            let server = ScriptedServer::start(vec![Script::hold().after_first_frame()]).await;
             let supervised = RtdsBuilder::new()
                 .url(&server.url)
                 .ping_interval(Duration::from_millis(20))
@@ -616,8 +625,8 @@ mod tests {
             // runs first on every idle tick, so a ping that is never due before
             // the connection is declared dead never goes out at all.
             let server = ScriptedServer::start(vec![
-                Script::SendThenIdle(Vec::new()),
-                Script::SendThenIdle(vec![fixtures::REJECTED_SUBSCRIPTION.into()]),
+                Script::hold().after_first_frame(),
+                Script::frames(&[fixtures::REJECTED_SUBSCRIPTION]).after_first_frame(),
             ])
             .await;
             let supervised = RtdsBuilder::new()
