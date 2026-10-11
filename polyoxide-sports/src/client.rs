@@ -7,11 +7,11 @@ use std::{
 };
 
 use futures_util::{SinkExt, Stream, StreamExt};
-use tokio::net::TcpStream;
+use polyoxide_ws::{ensure_crypto_provider, with_timeout};
+pub(crate) use polyoxide_ws::{Socket, DEFAULT_CONNECT_TIMEOUT};
 use tokio_tungstenite::{
     connect_async,
     tungstenite::{protocol::CloseFrame, Message},
-    MaybeTlsStream, WebSocketStream,
 };
 
 use crate::{error::SportsError, update::MatchUpdate};
@@ -19,34 +19,14 @@ use crate::{error::SportsError, update::MatchUpdate};
 /// The production endpoint.
 pub const SPORTS_WS_URL: &str = "wss://sports-api.polymarket.com/ws";
 
-/// How long one handshake may take before it is abandoned.
-pub(crate) const DEFAULT_CONNECT_TIMEOUT: Duration = Duration::from_secs(10);
-
-/// An open connection.
-pub(crate) type Socket = WebSocketStream<MaybeTlsStream<TcpStream>>;
-
-/// Make sure rustls has a default `CryptoProvider` before opening a connection.
-///
-/// A deliberate twin of the same function in `polyoxide-clob`,
-/// `polyoxide-rtds` and `polyoxide-perps`. `tokio-tungstenite` builds its TLS
-/// config from the process-wide default provider, and rustls installs one
-/// automatically only when exactly one backend feature is enabled. With
-/// `ring` and `aws-lc-rs` both in a consumer's graph it installs neither and
-/// panics inside `connect_async`. `install_default` returns `Err` when a
-/// provider is already set, so crates racing is a no-op.
-fn ensure_crypto_provider() {
-    static INSTALL: std::sync::Once = std::sync::Once::new();
-    INSTALL.call_once(|| {
-        let _ = rustls::crypto::ring::default_provider().install_default();
-    });
-}
-
-/// Open one connection, bounded by `connect_timeout`.
+/// Open one connection, bounded by `connect_timeout`, with the kit's TLS
+/// install and timeout around sports' own connect, whose errors stay
+/// `SportsError`'s until Story 4.10.
 ///
 /// Takes the URL by value so the supervised tier can box the future.
 pub(crate) async fn open(url: String, connect_timeout: Duration) -> Result<Socket, SportsError> {
     ensure_crypto_provider();
-    match tokio::time::timeout(connect_timeout, connect_async(url.as_str())).await {
+    match with_timeout(connect_timeout, connect_async(url.as_str())).await {
         Ok(Ok((socket, _response))) => Ok(socket),
         Ok(Err(source)) => Err(SportsError::Connect {
             source: Box::new(source),

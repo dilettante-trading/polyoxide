@@ -217,6 +217,19 @@ mod tests {
     }
 
     #[test]
+    fn a_capacity_failure_at_connect_is_retried() {
+        // sports' own rule, kept at its call site: the kit's
+        // `retrying_can_fix` gives up on a `Capacity` failure, and sports
+        // retries it, as it always has.
+        let capacity = SportsError::Connect {
+            source: Box::new(tungstenite::Error::Capacity(
+                tungstenite::error::CapacityError::TooManyHeaders,
+            )),
+        };
+        assert!(capacity.retrying_can_fix());
+    }
+
+    #[test]
     fn a_malformed_url_is_not_retried() {
         let url = SportsError::Connect {
             source: Box::new(tungstenite::Error::Url(

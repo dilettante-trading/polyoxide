@@ -126,18 +126,6 @@ jobs:
           suite: session-keys
           flags: "--test live_session_keys"
 
-  live-polyoxide-sports-live:
-    name: Live tests (polyoxide-sports, live)
-    runs-on: ubuntu-latest
-    timeout-minutes: 20
-    steps:
-      - uses: actions/checkout@v5
-      - uses: ./.github/actions/live-suite
-        with:
-          crate: polyoxide-sports
-          suite: live
-          flags: "--test live_api"
-
   live-polyoxide-binance-live:
     name: Live tests (polyoxide-binance, live)
     runs-on: ubuntu-latest
@@ -174,6 +162,18 @@ jobs:
           suite: live
           flags: "--test live_api"
 
+  live-polyoxide-sports-live:
+    name: Live tests (polyoxide-sports, live)
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v5
+      - uses: ./.github/actions/live-suite
+        with:
+          crate: polyoxide-sports
+          suite: live
+          flags: "--test live_api"
+
   live-polyoxide-cli-live:
     name: Live tests (polyoxide-cli, live)
     runs-on: ubuntu-latest
@@ -196,10 +196,10 @@ jobs:
       - live-polyoxide-relay-live
       - live-polyoxide-clob-live
       - live-polyoxide-clob-session-keys
-      - live-polyoxide-sports-live
       - live-polyoxide-binance-live
       - live-polyoxide-perps-live
       - live-polyoxide-rtds-live
+      - live-polyoxide-sports-live
       - live-polyoxide-cli-live
     # generated:end nightly-aggregate-needs
     if: always()

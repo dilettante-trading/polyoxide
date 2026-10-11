@@ -91,7 +91,7 @@ The items are the ones the CLI's tests and each crate's own tests import:
 - `polyoxide_rtds::fixtures::{REJECTED_SUBSCRIPTION, TWAP_THIRTY_UPDATE}` `test-fixtures`
 - `polyoxide_rtds::test_server::{Script, ScriptedServer}` `test-fixtures` **Removed** by Story 4.8: use the shared scripted server, `polyoxide_ws::test_server` (feature `test-server`): `Script::frames(..).after_first_frame()` for `SendThenIdle`, with `.then_close()` for `SendThenClose`, `Script::messages(..)` for `SendRawThenIdle`, `Script::reject()` for `RejectHandshake`, and `first_frames()` for `received_subscriptions()`; rtds' `test-fixtures` feature stays, for `fixtures`.
 - `polyoxide_sports::fixtures::{CRICKET, CRICKET_FINISHED, ESPORTS, LEAGUE_WITH_SPACE, SOCCER, TENNIS_EVENT_STATE}` `test-server`
-- `polyoxide_sports::test_server::{Script, ScriptedServer}` `test-server`
+- `polyoxide_sports::test_server::{Script, ScriptedServer}` `test-server` **Removed** by Story 4.8: use the shared scripted server, `polyoxide_ws::test_server` (feature `test-server`), whose `Script` has every field and constructor sports' had, `hold()` for `silent()`; sports' `test-server` feature stays, for `fixtures`.
 
 cargo-semver-checks 0.51.0 does not check type aliases either, so the public ones are imported
 the same way:

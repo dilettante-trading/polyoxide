@@ -10,6 +10,7 @@ use std::{
 };
 
 use futures_util::{SinkExt, Stream, StreamExt};
+use polyoxide_ws::Backoff;
 use tokio::time::{sleep, Instant, Sleep};
 
 use crate::{
@@ -46,47 +47,6 @@ pub enum Event {
     /// [`GameKey::Game`](crate::GameKey::Game). Cricket games cannot be
     /// reconciled.
     Reconnected,
-}
-
-/// The reconnect delay schedule: doubling to a ceiling, and back to the start
-/// after a connection that received anything.
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-struct Backoff {
-    initial: Duration,
-    max: Duration,
-    next: Duration,
-}
-
-/// The shortest delay. Zero would never grow, so a dead server would be
-/// retried on every timer tick.
-const MIN_BACKOFF: Duration = Duration::from_millis(1);
-
-impl Backoff {
-    fn new(initial: Duration, max: Duration) -> Self {
-        let max = max.max(MIN_BACKOFF);
-        let initial = initial.clamp(MIN_BACKOFF, max);
-        Self {
-            initial,
-            max,
-            next: initial,
-        }
-    }
-
-    /// The delay to wait now. The one after it doubles.
-    fn take(&mut self) -> Duration {
-        let delay = self.next;
-        self.next = self.next.saturating_mul(2).min(self.max);
-        delay
-    }
-
-    /// A connection ended. One that received anything resets the schedule.
-    /// One that received nothing, such as a server that accepts and closes at
-    /// once, keeps it growing.
-    fn after_connection_ended(&mut self, received: bool) {
-        if received {
-            self.next = self.initial;
-        }
-    }
 }
 
 /// Builder for a [`SupervisedSportsWs`].

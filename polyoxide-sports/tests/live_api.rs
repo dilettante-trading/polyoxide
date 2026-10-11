@@ -55,9 +55,9 @@ fn connect_failed<T>(error: SportsError) -> T {
 
 /// Open a raw socket, bounded like the crate's own connects. These tests call
 /// `connect_async` directly, so they install the TLS provider the crate
-/// would; see `ensure_crypto_provider` in src/client.rs.
+/// would, through the kit (DRIFT R9).
 async fn connect_raw() -> RawSocket {
-    let _ = rustls::crypto::ring::default_provider().install_default();
+    polyoxide_ws::ensure_crypto_provider();
     let connected = match timeout(CONNECT_TIMEOUT, connect_async(SPORTS_WS_URL)).await {
         Ok(connected) => connected,
         Err(_) => connect_failed(SportsError::ConnectTimeout {
