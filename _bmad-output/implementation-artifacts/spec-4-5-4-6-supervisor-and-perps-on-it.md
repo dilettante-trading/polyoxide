@@ -2,7 +2,7 @@
 title: 'Stories 4.5 and 4.6: the generic Supervisor, and perps on it'
 type: 'feature'
 created: '2026-10-10'
-status: 'in-progress'
+status: 'done'
 route: 'dispatch'
 review_loop_iteration: 0
 baseline_commit: '397867758d8923666a75a7e40bc6a1ee20198493'
@@ -206,6 +206,50 @@ All 45 protected names are present after L5 (checked by name against 3978677). L
 ## Spec Change Log
 
 ## Review Triage Log
+
+Review 1, 2026-10-11: three layers (blind B, edge-case E, verification-gap V and its other findings VO), 39 findings. Groups: G1–G16 patched, D1–D3 deferred, the rest rejected.
+
+| # | Verdict | Group | Evidence |
+|---|---|---|---|
+| B1 | low | G3 patch | `Task::apply` and the held applies are awaited outside the ping timer, so no ping goes out for up to `stale_after` while a change waits; the old perps loop did the same, and perps' host keep-alive is its protocol Ping, which the request's reads still answer. The harm is the rustdoc saying "whatever the traffic". |
+| B2 | medium | G2 patch | `pump` checks rotation and staleness at the top of its loop, before `connection.next()` drains the frames a request kept, so a long `apply` can end the connection as stale with pushes still buffered, and they are lost (the old loop drained them first). The remaining part, that the answer itself never counts as liveness, needs a server that takes most of a window to answer on a quiet connection; rejected as low. |
+| B3 | maybe-false | D2 defer | No protocol in this build sets an answer timeout, so no `NoAnswer` reaches `Task::apply`. Whether Binance's 10 s answer timeout fits W12 without a Supervisor change (close in `apply`, or use the `stale_after` bound) is Story 4.7's to settle; medium if it does not. |
+| B4 | low | G4 patch | `End::Rotation` sets `next_delay` without `backoff.after_connection_ended(delivered)`, so a failed attempt after a rotation waits from the last outage's schedule. |
+| B5 | medium | G5 patch | `Task::apply` awaits `protocol.apply` under `timeout(stale_after)` without racing `events.closed()`, so a drop or `close()` with a change pending waits up to `stale_after`, against L1-D2's "ends the task promptly". |
+| B6 | low | G6 patch | No test asserts the stream keeps delivering on the same connection after `apply` returns a refusal; routing apply errors through `recover` (Refused → Stop) would pass every test. |
+| B7 | medium | D1 defer | A replay refused with `message_rate_limited` stops the stream; the old loop's `reconnect` returned the same refusal as fatal, so the rule is pre-existing. The custody note: the test keeps its name and asserts D10's predicate. |
+| B8 | low | G7 patch | A4-4 says `apply` records "as much of it as took effect", but perps records a change only when every channel was accepted (as the old loop did), and `PerpsMembership::unsubscribe`'s doc does not say what a partly refused unsubscribe leaves. The re-sent accepted channels on a rate-limit retry are the old `subscribe_with_retry`'s too. |
+| B9 | low | G8 patch | `Recovery`, `Queue`, `Decoded` and `Offline` are public kit enums without `#[non_exhaustive]`; venues only construct them, so the attribute costs nothing now and keeps a later variant from being a break. |
+| B10 | low | G9 patch | `supervisor/mod.rs`'s basis note cites perps' `ws/supervised.rs` and `test_server/mod.rs`'s cites perps' `ws/test_server.rs`, both deleted here; `timing.rs`'s D5 still gives perps' old "frames and an ok pong". |
+| B11 | low | rejected | `as_perps_will_use_it` in `polyoxide-ws/src/test_server/tests.rs` tests the shared server's per-connection answering with an example answerer; it runs nothing of perps', so drift cannot hide a perps defect. Cosmetic. |
+| B12 | medium | G10 patch | `polyoxide::prelude` re-exports `PerpsWsBuilder` under `perps-ws` but not `PerpsMembership`, so a prelude user's `membership().subscribe(..)` stops compiling; the Code Map names `polyoxide/src/lib.rs:118-119` as a user to update. |
+| B13 | false | rejected | `epic-4-context.md` is the compiled context bundle L1 planned from (da05409); it describes the state at compile time, and the next build recompiles it, since `spine-amendments/epic-4.md` is now newer. |
+| B14 | low | G11 patch | `PerpsWsError::Stalled`'s doc says only "No frame arrived"; it also reports a change or a replay left unanswered for the window. |
+| B15 | false | rejected | `polyoxide-ws/src/bare.rs` frames D12 as the Binary-frame row ("clob decodes it as text, and the others skip it"), so citing D12 for perps' skip is consistent. |
+| B16 | low | rejected | The bare tier's `Kind::Closed` → `ConnectionClosed` mapping keeps the old `await_response` result on purpose ("as before the kit", L1-D3); a bare-tier connect-timeout knob would be new public API nobody asked for. |
+| B17 | low | G12 patch | The full-queue 1011 risk is in CLAUDE.md and deferred-work but not in `SupervisedPerpsWs`'s rustdoc, which users read. |
+| V1 | gap | G13 patch | `PerpsWsBuilder::connect([])`'s `EmptySubscription` has no test through the builder (filed patch). |
+| V2 | gap | G14 patch | The `stale_after` bound on `replay` in `attempt` has no test (filed patch). |
+| V3 | gap | G15 patch | Nothing tests that perps' `is_live` ignores protocol Pings under the Supervisor (filed patch). |
+| V4 | gap | G16 patch | Nothing tests that `reset` clears `last_sq` per connection (filed patch). |
+| V5 | gap | D3 defer | Backoff reset after a delivering connection is untested, as it was in the old loop; a timing test needs care (filed defer). |
+| VO1 | medium | G1 patch | Same as E1. |
+| VO2 | medium | G10 patch | Same as B12. |
+| E1 | medium | G1 patch | A read that fails inside a request (EOF without a close) marks the connection finished and is answered to the caller; if a ping falls due before the next read, `Connection::send` reaches tungstenite in `Terminated`, which returns `AlreadyClosed` (0.26.2 `check_not_terminated`), and perps' D19 rule stops the stream instead of reconnecting. |
+| E2 | low | G1 patch | A close frame read inside a request, then a due ping, gives `SendAfterClosing`, so the outage is `Outage::Error` rather than `Outage::Closed` and the close code is lost; same root cause as E1. |
+| E3 | medium | G2 patch | Same as B2's buffered-frames part, for rotation as well as staleness. |
+| E4 | low | G3 patch | Same as B1. |
+| E5 | low | G4 patch | Same as B4. |
+| E6 | low | rejected | A zero `ping_interval` pings on every pass; the old perps loop did too, `Duration::MAX` is the documented "never", and perps exposes no `max_connection_age`; a clamp adds a guard. |
+| E7 | false | rejected | `Queue::Bounded` is set by a venue's protocol (perps 1024), not by user input; a bound over tokio's permit limit panics loudly in development. |
+| E8 | low | rejected | perps' membership is always wanted, and no protocol in this build connects with an unwanted one; Story 4.7's builder refuses an empty start. |
+| E9 | low | rejected | A change whose caller cancelled after handing it over is still applied, with the server and the membership agreeing; the old loop did the same, and the cancellation is racy either way. |
+| E10 | low | rejected | A panicking hook ends the stream with `None` and `close()` returns `stopped`; the old loop ended the same way, and a hook that panics is a bug. |
+| E11 | medium | D1 defer | Same as B7. |
+| E12 | low | G7 patch | A partly refused unsubscribe leaves the channels the server dropped in the membership, so a reconnect re-subscribes them; pre-existing (the old loop updated `channels` only on full success), and L1-D3 keeps today's results, so only the docs change. |
+| E13 | medium | G10 patch | Same as B12. |
+| E14 | medium | G5 patch | Same as B5. |
+| E15 | false | rejected | A fatal end of an outage yields its error and ends the stream, as Binance's supervised tier documents ("yielded as `Err` and then the stream ends"); `Reconnected` follows `Disconnected` while the client runs. |
 
 ## Design Notes
 
