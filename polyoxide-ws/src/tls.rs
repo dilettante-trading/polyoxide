@@ -14,9 +14,11 @@
 /// `install_default` refuses to replace one, so the host application's own
 /// choice, or another crate's install racing this one, is left alone.
 ///
-/// The basis is `polyoxide-rtds`' copy (`src/client.rs`), byte-identical to
-/// those in `polyoxide-clob`, `polyoxide-perps`, `polyoxide-binance` and
-/// `polyoxide-sports`. No per-venue divergence row applies.
+/// The basis is `polyoxide-rtds`' former copy (`src/client.rs`),
+/// byte-identical to those `polyoxide-perps`, `polyoxide-binance` and
+/// `polyoxide-sports` carried, each deleted for this one (Stories 4.6 to
+/// 4.8), and to `polyoxide-clob`'s, which stays until Story 4.9. No
+/// per-venue divergence row applies.
 pub fn ensure_crypto_provider() {
     static INSTALL: std::sync::Once = std::sync::Once::new();
     INSTALL.call_once(|| {

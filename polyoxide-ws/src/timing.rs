@@ -16,7 +16,9 @@ use crate::{Backoff, DEFAULT_CONNECT_TIMEOUT};
 ///
 /// The basis is the setters of `polyoxide-rtds`' `RtdsBuilder`,
 /// `polyoxide-perps`' `PerpsWsBuilder`, `polyoxide-binance`'s `UsdmWsBuilder`
-/// and `polyoxide-sports`' `SportsWsBuilder`, which store the same five values.
+/// and `polyoxide-sports`' `SportsWsBuilder`, which stored the same five
+/// values. perps' and Binance's builders hold a `Timing` since Stories 4.6
+/// and 4.7; rtds' and sports' keep their own fields (D7).
 /// What the values mean stays with each venue:
 ///
 /// - **D4, the ping schedule.** rtds pings only after a quiet tick, perps and
@@ -85,10 +87,11 @@ impl Timing {
 /// treats as never. It is a wait, not an `Instant`, because adding a limit
 /// such as `Duration::MAX` to an `Instant` overflows.
 ///
-/// The basis is `polyoxide-binance`'s pump (`usdm/ws/supervised.rs`), the
-/// minimum of its ping, staleness and rotation waits; `polyoxide-perps`'
-/// former pump (deleted in Story 4.6) took the first two. Which deadlines a venue has follows D4: a venue that sends
-/// no pings passes no ping deadline.
+/// The basis is `polyoxide-binance`'s former pump (`usdm/ws/supervised.rs`,
+/// deleted in Story 4.7), the minimum of its ping, staleness and rotation
+/// waits; `polyoxide-perps`' former pump (deleted in Story 4.6) took the
+/// first two. Which deadlines a venue has follows D4: a venue that sends no
+/// pings passes no ping deadline.
 ///
 /// ```
 /// use std::time::Duration;

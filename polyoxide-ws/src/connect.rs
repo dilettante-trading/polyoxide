@@ -27,9 +27,10 @@ pub type Socket = WebSocketStream<MaybeTlsStream<TcpStream>>;
 /// [`Kind::Refused`] for an upgrade the server answered with an HTTP status.
 ///
 /// The basis is `polyoxide-sports`' `open` (`src/client.rs`) and
-/// `polyoxide-binance`'s `UsdmWs::open` (`usdm/ws/client.rs`). A venue
-/// whose connect is its own, as `polyoxide-clob`'s per-address connect is,
-/// bounds it with [`with_timeout`] instead.
+/// `polyoxide-binance`'s former connect in `UsdmWs::open`
+/// (`usdm/ws/client.rs`, on this function since Story 4.7). A venue whose
+/// connect is its own, as `polyoxide-clob`'s per-address connect is and
+/// sports' is until Story 4.10, bounds it with [`with_timeout`] instead.
 pub async fn connect<R>(request: R, timeout: Duration) -> Result<Socket, WsError>
 where
     R: IntoClientRequest + Unpin,
@@ -70,7 +71,8 @@ pub async fn with_timeout<F: Future>(timeout: Duration, connect: F) -> Result<F:
 ///
 /// The basis is `polyoxide-sports`' `SportsError::retrying_can_fix`
 /// (`src/error.rs`), with the status rule injected, since this crate cannot
-/// see `polyoxide-venue`.
+/// see `polyoxide-venue`. sports keeps its own until Story 4.10, as it
+/// retries a `Capacity` failure, which this gives up on.
 pub fn retrying_can_fix(err: &WsError, retriable_status: impl Fn(u16) -> bool) -> bool {
     match err.kind() {
         Kind::Refused { status, .. } => retriable_status(status),

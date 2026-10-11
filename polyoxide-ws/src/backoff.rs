@@ -15,8 +15,10 @@ pub const MIN_BACKOFF: Duration = Duration::from_millis(1);
 /// reconnect, so neither was, and a schedule pinned at its initial value would
 /// have hammered an unwell host without failing a test.
 ///
-/// The basis is `polyoxide-rtds`' copy (`src/supervisor.rs`), identical to
-/// those in `polyoxide-perps`, `polyoxide-binance` and `polyoxide-sports`.
+/// The basis is `polyoxide-rtds`' former copy (`src/supervisor.rs`),
+/// identical to those `polyoxide-perps`, `polyoxide-binance` and
+/// `polyoxide-sports` carried; each was deleted for this one (Stories 4.6 to
+/// 4.8).
 /// Two divergence rows stay with each venue:
 ///
 /// - **D6.** What counts as a connection that delivered something follows the

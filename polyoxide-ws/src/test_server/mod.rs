@@ -2,10 +2,11 @@
 //! helpers the offline suites share (W13, W15). Behind `test-server`; not for
 //! consumers.
 //!
-//! The basis is the four venue servers: `polyoxide-sports`'
-//! `src/test_server.rs`, `polyoxide-perps`' former `ws/test_server.rs`
-//! (deleted in Story 4.6), `polyoxide-binance`'s `usdm/ws/test_server.rs` and
-//! `polyoxide-rtds`' `src/test_server.rs`. Their shared skeleton is here:
+//! The basis is the four venue servers, each deleted once its suites ran
+//! here: `polyoxide-perps`' `ws/test_server.rs` (Story 4.6),
+//! `polyoxide-binance`'s `usdm/ws/test_server.rs` (Story 4.7), and
+//! `polyoxide-rtds`' and `polyoxide-sports`' `src/test_server.rs` (Story
+//! 4.8). Their shared skeleton is here:
 //! one script per connection with the last repeating, every action and
 //! recorder any of them has, and the interval idiom. What stays with each
 //! venue is its protocol's answer, passed to

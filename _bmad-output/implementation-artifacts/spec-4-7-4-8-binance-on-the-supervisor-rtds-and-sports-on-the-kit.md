@@ -209,31 +209,31 @@ context:
 ## Tasks & Acceptance
 
 **Execution.** One commit each, in order. Run fmt, clippy and the touched tests before each.
-- [ ] **L2-1 (4.7, the server switch).** Binance's `tests/supervision.rs`, `supervision_edges.rs` and `client.rs` inline tests run on `polyoxide_ws::test_server` through adapters, under the old loop. Record the counts before and after.
-- [ ] **L2-2 (kit, L2-D3).** Add `Protocol::configure` and the owned `Outage<E>`, with a kit test for `configure`. Adjust the kit's test protocol.
-- [ ] **L2-3 (4.7, the bare tier, DRIFT R3).**
+- [x] **L2-1 (4.7, the server switch).** Binance's `tests/supervision.rs`, `supervision_edges.rs` and `client.rs` inline tests run on `polyoxide_ws::test_server` through adapters, under the old loop. Record the counts before and after.
+- [x] **L2-2 (kit, L2-D3).** Add `Protocol::configure` and the owned `Outage<E>`, with a kit test for `configure`. Adjust the kit's test protocol.
+- [x] **L2-3 (4.7, the bare tier, DRIFT R3).**
   - `UsdmWs` runs on `connect` plus `Connection` (`Mode::Data`), with the 200 ms pacing, the 10 s answer timeout and the correlation.
   - Make the L2-D4 error changes, with the L2-D9 twins and their Python rows.
   - Add a test: `a_server_close_is_answered_with_the_close_reply_drift_r3`.
-- [ ] **L2-4 (4.7, the loop).** `usdm/ws/protocol.rs` (new, `UsdmProtocol`) and the router in `supervised.rs` run on `Supervisor`, under L2-D1, L2-D4 and L2-D5.
+- [x] **L2-4 (4.7, the loop).** `usdm/ws/protocol.rs` (new, `UsdmProtocol`) and the router in `supervised.rs` run on `Supervisor`, under L2-D1, L2-D4 and L2-D5.
   - The suites pass unchanged.
   - Each matrix row for Binance, and each L2-D8 change for Binance, has a test.
   - Update the builder docs (L2-D2).
-- [ ] **L2-5 (4.7, deletion).**
+- [x] **L2-5 (4.7, deletion).**
   - Delete the old loop, the `Backoff`, `ensure_crypto_provider`, `test_server.rs` and `Recovery`.
   - Fix the CLI arm and the README.
   - R9 in `live_ws.rs`, and drop the direct `tokio-tungstenite` and `rustls`.
   - Update `s1-removals`, run the gate, and update CLAUDE.md.
-- [ ] **L2-6 (4.8, rtds' server switch)**, under the old code.
-- [ ] **L2-7, L2-8 and L2-9 (rtds' DRIFT R2, R1 and R3, one commit each).**
+- [x] **L2-6 (4.8, rtds' server switch)**, under the old code.
+- [x] **L2-7, L2-8 and L2-9 (rtds' DRIFT R2, R1 and R3, one commit each).**
   - Make the L2-D6 changes.
   - Each row gets its named test: `..._drift_r2`, `a_503_or_429_refusal_on_reconnect_is_retried_drift_r1` and `..._drift_r3`.
-- [ ] **L2-10 (rtds, deletion).**
+- [x] **L2-10 (rtds, deletion).**
   - Delete the TLS, `Backoff` and `test_server.rs` copies.
   - Update Cargo, the allowlists and the metadata, then run `gen_registry`.
   - Update `s1-removals` and CLAUDE.md.
-- [ ] **L2-11 (4.8, sports' server switch)**, then **L2-12 (sports: the blocks, R9 and the deletion)**, as L2-D7 sets out, with the allowlists, metadata, `s1-removals` and CLAUDE.md.
-- [ ] **L2-13 (docs).**
+- [x] **L2-11 (4.8, sports' server switch)**, then **L2-12 (sports: the blocks, R9 and the deletion)**, as L2-D7 sets out, with the allowlists, metadata, `s1-removals` and CLAUDE.md.
+- [x] **L2-13 (docs).**
   - `deferred-work.md`: the 4.11 entries for L2-D4, L2-D6 and L2-D8; close the RISK and B3 entries (L2-D1, L2-D2); add the 4.10 entry for sports (L2-D7).
   - Kit basis notes that name deleted files.
 
@@ -245,6 +245,65 @@ context:
 - Given `git diff 96f96ec -- polyoxide-clob polyoxide-core`, when the bundle is done, then it is empty.
 
 ## Implementation Notes
+
+Commits, in order: L2-1 fdec80a, L2-2 02636f1, L2-3 8e4ded5, L2-4 9b0e314, L2-5 344a404, L2-6 62d69b4, L2-7 958d8fa, L2-8 4c7969c, L2-9 cd0cb74, L2-10 bb7d670, L2-11 da90545, L2-12 b37f7ba, then L2-13 (docs).
+
+**Binance's protocol and router (L2-4), the details left to the implementer:**
+- **`UsdmProtocol`** (`usdm/ws/protocol.rs`, crate-private) takes `type Ack = Vec<StreamName>`, the path's streams after the change, from both `apply` and `record`. The router keeps its view of each path's streams from that answer, and after a refusal reads it back with an empty `Subscribe`, which sends nothing. So its view is exact after every change, where the old router missed the batches answered before a refusal (`a_partly_refused_subscribe_keeps_the_batches_answered`).
+- **`apply`** checks the cap, records the change, sends batches of 200 paced by the connection (`configure` sets 200 ms), undoes a refused batch with those after it, keeping the ones answered, and answers `Ok` with the change recorded when the connection fails under a request. An unsubscribe of the path's last stream sends nothing; the kit then closes the connection as no longer wanted. `record` checks the cap too.
+- **`stalled`** is `UsdmWsError::NoAnswer { id: 0, timeout }`. The router maps it to `Ok`, only for an existing path's answer (`Supervisor::start` never returns it), and maps nothing else. A replay that outlives `stale_after` gets the same error, which `recover` reconnects.
+- **The router** holds `(generation, kit handle)` per path. A forwarder task per path moves its `Supervised` stream (`Queue::Bounded(1)`) into the shared 1024 queue and reports the path's end with `close()`'s result. A path whose streams leave is forgotten at once; its forwarder keeps draining (so a mid-outage `Reconnected` is not lost) and its later end report is ignored by generation. A `watch` channel closes every forwarder when the router ends.
+- **`disconnected`** maps `Outage::Stale` and any later kind to `DisconnectReason::Stale`, as `Outage` is `#[non_exhaustive]`.
+
+**Where the code departs from the plan, and why:**
+- **`ensure_crypto_provider` went with its last caller**: Binance's in L2-3, rtds' in L2-7, rather than in L2-5 and L2-10, as perps' did in L3. rtds' rustls dependency went with it in L2-7; Binance's stayed until L2-5 for the live suite's raw socket.
+- **rtds' `polyoxide-ws` dependency, its registry note and the regenerated regions came in L2-7**, not L2-10: R2's connect needs the kit, and `gen_registry.py --check` fails on any stale region. sports' note ("like `polyoxide-rtds`") became false there too, so it changed in L2-7 and again in L2-12.
+- **Binance's old loop sat unbuilt in `usdm/ws/legacy_supervised.rs` for one commit** (L2-4), since the router keeps `supervised.rs`; L2-5 deleted it, as perps' L4 and L5 did.
+- **CLAUDE.md**: L2-1 left two sentences stale (the shared server's "stay until" list and which server Binance's offline tests drive); L2-4 fixed them, and its message says so.
+- **One adapter file for Binance**, `src/usdm/ws/scripted.rs`, built under `cfg(test)` and included by the integration suites with `#[path]`, so it names nothing of the crate's own and carries `#![allow(dead_code)]` (each suite uses part).
+- **rtds and sports have no adapter.** rtds' scripts are written against the shared server directly, and sports' read `Script::hold()` for `Script::silent()`; no `Silent` trait was needed.
+- **Binance's new tests are in a new file, `tests/supervision_kit.rs`**, so the protected suites keep their counts.
+- **The log-target test registers a second `tracing::Dispatch`.** With one dispatcher registered, tracing-core 0.1.36 computes the interest of a callsite another test's thread hits first from that thread's default and caches `never` for every thread; the test failed in about half of its parallel runs before.
+- **`UsdmWs::close_frame` became `#[cfg(test)]`**, and its `last_inbound` and the crate-visible `send_ping` went, as only the old loop read them.
+- **rtds' and sports' own tokio features are `time` alone**; the kit enables what its blocks need.
+- **`the_bare_stream_ends_after_its_first_transport_error` passes on rtds' old reader too** for a cut connection; it pins the rule rather than proving the change.
+- **The CLI's `Recovery::SkipFrame` arm was deleted**: the arm above it already matched `UsdmWsError::Frame`, the one error the stream skips past.
+- **MSRV was not checked locally** (rustc 1.95.0, no rustup); CI's msrv job is the check.
+
+**Test custody (AD-12).** Counts at 96f96ec and after, by `cargo test -- --list`:
+
+| Suite | Before | After |
+|---|---|---|
+| Binance `tests/supervision.rs` | 21 | 21, same names, on the shared server and the Supervisor |
+| Binance `tests/supervision_edges.rs` | 7 | 7 |
+| Binance `usdm/ws/supervised.rs` | 3 | 3 (`timing.*`, the kit's `Backoff`) |
+| Binance `usdm/ws/client.rs` | 9 | 10 (+R3) |
+| Binance `usdm/ws/error.rs` | 6 | 5: 3 `recovery()` tests moved to `protocol.rs`, +2 (the `From<WsError>` mapping, the 429 `Retry-After`) |
+| Binance `usdm/ws/protocol.rs` | — | 6: the 3 moved, `Fatal` read as `Stop` and `SkipFrame` as `Skip`, +3 (D19 and `Capacity`, `record`, `decode`) |
+| Binance `usdm/ws/stream.rs`, `event.rs` | 6, 6 | 6, 6 |
+| Binance `usdm/ws/test_server.rs` | 2 | 0: both in the kit by name (`test_server::tests::as_binance_will_use_it`) |
+| Binance `tests/failure_tags.rs` | 17 | 17 (L2-D9 text only) |
+| Binance `tests/supervision_kit.rs` | — | 10 |
+| CLI `tests/ws_binance.rs`, `ws_sports.rs` | 13, 16 | 13, 16 |
+| rtds `tests/supervision.rs` | 4 | 7 (+R1, R2, R3) |
+| rtds `supervisor.rs` | 15 | 9: the 7 `backoff_schedule` tests are the kit's by name (`backoff::tests::backoff_schedule`), +1 (the connect timeout's default) |
+| rtds `client.rs` | 12 | 14: the TLS test is the kit's by name (`tls::tests`), +3 (R2, R3, the end after an error) |
+| rtds `error.rs` | 12 | 16 (+R1, R2, the 451 non-fault, D19 and `Capacity`) |
+| rtds `test_server.rs` | 8 | 0: all 8 in the kit by name (`test_server::tests::as_rtds_used_it`) |
+| rtds `tests/failure_tags.rs` | 1 | 1 (L2-D9 text only) |
+| sports `tests/supervision.rs`, `bare.rs` | 15, 6 | 15, 6 |
+| sports `supervised.rs`, `client.rs` | 6, 7 | 6, 7 (the four backoff tests on the kit's `Backoff`) |
+| sports `error.rs` | 9 | 10 (+`Capacity` at connect) |
+| sports `tests/failure_tags.rs` | 7 | 7 |
+
+Every name at 96f96ec is present after, in its crate or, for the 18 named above, in `polyoxide-ws` (checked by name). Each suite passed on its old loop or code after its server switch (L2-1, L2-6, L2-11), and the five behaviour-change tests of `tests/supervision_kit.rs` fail on Binance's old loop while its five matrix tests pass on both (checked by building the old loop against them).
+
+**Gates, at L2-12 with L2-13's doc changes:** `cargo fmt --check`, `cargo clippy --all-targets --all-features -D warnings`, `cargo test --all-features --workspace` (109 test binaries and doctests, all green), `RUSTDOCFLAGS=-D warnings cargo doc --workspace`, `cargo hack check --workspace --each-feature --no-dev-deps --ignore-private`, the six `--no-default-features --test headers` runs, `cargo publish --workspace --dry-run --no-verify` and `publish_order.py check-manifests`, `uv run pytest tests/` in `.github/scripts` (927, the allowlists included), `gen_registry.py --check` and `live_unwraps.py` all pass. `scripts/api_removals.py check --baseline v0.38.1` (cargo-semver-checks 0.51.0, rustc 1.95.0): 46 removals, 46 listed, every listed path compiles; `target/semver-checks` was deleted afterwards. `git diff 96f96ec -- polyoxide-clob polyoxide-core` is empty, and so is perps'.
+
+**The live suites, 2026-10-11:**
+- Binance `cargo test -p polyoxide-binance --features ws --test live_ws -- --ignored` (20:20 UTC): 4 of 4 passed, the supervised tier and the R9 raw socket included.
+- rtds `cargo test -p polyoxide-rtds --test live_api -- --ignored` (20:21 UTC): 3 of 3 passed.
+- sports `cargo test -p polyoxide-sports --test live_api -- --ignored` (20:22 UTC): 4 of 5 passed. `live_frames_round_trip_and_carry_no_unmodelled_keys`, the host's drift detector, failed untagged (real): NFL frames now carry `turn` and `turnProviderId`, which `MatchUpdate` does not model. A wire change, not the bundle's (only the suite's TLS install changed); filed in `deferred-work.md`.
 
 ## Spec Change Log
 

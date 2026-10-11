@@ -61,10 +61,10 @@ impl Default for Requests {
 /// and after a [`NoAnswer`](crate::Kind::NoAnswer) the server's state is
 /// unknown: replace the connection rather than reuse it.
 ///
-/// The basis is `polyoxide-binance`'s `request` and `await_answer`
-/// (`usdm/ws/client.rs`), with its 10 s answer timeout and 200 ms pacing, and
-/// `polyoxide-perps`' `take_id` and `await_response` (`ws/client.rs`), which
-/// set neither.
+/// The basis is `polyoxide-binance`'s former `request` and `await_answer`
+/// (`usdm/ws/client.rs`, on this correlation since Story 4.7), with its 10 s
+/// answer timeout and 200 ms pacing, and `polyoxide-perps`' former `take_id`
+/// and `await_response` (`ws/client.rs`, Story 4.6), which set neither.
 impl Connection {
     /// Send requests no sooner than `interval` apart. Only
     /// [`request`](Self::request) is paced: a frame sent with
