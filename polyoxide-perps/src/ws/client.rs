@@ -295,10 +295,11 @@ mod tests {
         ws::{
             event::Payload,
             scripted::{self, Script},
+            PerpsProtocol,
         },
     };
     use futures_util::StreamExt;
-    use polyoxide_ws::tungstenite::Message;
+    use polyoxide_ws::{tungstenite::Message, Protocol};
 
     const BBO: &str = r#"{"ch":"bbo::1","ts":1,"ets":1,"sq":10,"data":{"iid":1,"bp":"1","bq":"1","ap":"2","aq":"1"}}"#;
     const FILLS: &str = r#"{"ch":"fills","ts":1,"sq":11,"data":{}}"#;
@@ -447,7 +448,8 @@ mod tests {
             ),
             other => panic!("expected a connect timeout, got {other:?}"),
         }
-        assert_eq!(err.recovery(), crate::ws::Recovery::Reconnect);
+        let protocol = PerpsProtocol::new(WS_URL.to_owned(), polyoxide_ws::Timing::default());
+        assert_eq!(protocol.recover(&err), polyoxide_ws::Recovery::Reconnect);
     }
 
     #[tokio::test]

@@ -18,19 +18,14 @@ pub mod frame;
 mod protocol;
 #[cfg(test)]
 mod scripted;
-pub mod supervised;
-#[cfg(any(test, feature = "test-server"))]
-#[doc(hidden)]
-pub mod test_server;
 
 pub use builder::PerpsWsBuilder;
 pub use channel::{Channel, StreamDepth};
 pub use client::PerpsWs;
-pub use error::{PerpsWsError, Recovery, Refusal};
+pub use error::{PerpsWsError, Refusal};
 pub use event::{Event, Frame, Payload, Update};
 pub use frame::{BboData, BookData, StatisticsData, TickerData, TradeData};
 pub use protocol::{MembershipChange, PerpsMembership, PerpsProtocol};
-pub use supervised::MembershipHandle;
 
 /// A supervised connection: a `Stream` of [`Event`]s that survives drops and
 /// stalls by reconnecting and replaying its subscriptions, run by the kit's

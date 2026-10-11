@@ -148,3 +148,87 @@ pub(crate) fn answer(script: Script) -> impl FnMut(&str) -> Vec<Message> + Send 
         vec![Message::Text(reply.to_string().into())]
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    /// The answer a fresh connection's answerer gives `request`.
+    fn reply(script: &Script, request: &str) -> Option<Value> {
+        answer(script.clone())(request)
+            .first()
+            .map(|message| match message {
+                Message::Text(text) => serde_json::from_str(text).unwrap(),
+                other => panic!("expected a text answer, got {other:?}"),
+            })
+    }
+
+    #[test]
+    fn a_subscribe_gets_one_ok_per_channel_in_order() {
+        let got = reply(
+            &Script::default(),
+            r#"{"id":7,"req":"sub","chs":["bbo::1","book::1::50","trades::2"]}"#,
+        )
+        .unwrap();
+        assert_eq!(got["id"], 7);
+        assert_eq!(got["data"].as_array().unwrap().len(), 3);
+        assert!(got["data"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .all(|s| s == &serde_json::json!({"status": "ok"})));
+    }
+
+    #[test]
+    fn a_scripted_refusal_lands_at_its_channels_index() {
+        let script = Script {
+            refuse: vec![("nonsense::1".to_owned(), "invalid channel".to_owned())],
+            ..Script::default()
+        };
+        let got = reply(
+            &script,
+            r#"{"id":1,"req":"sub","chs":["bbo::1","nonsense::1","trades::1"]}"#,
+        )
+        .unwrap();
+        let data = got["data"].as_array().unwrap();
+        assert_eq!(data[0], serde_json::json!({"status": "ok"}));
+        assert_eq!(
+            data[1],
+            serde_json::json!({"status": "err", "error": "invalid channel"})
+        );
+        assert_eq!(data[2], serde_json::json!({"status": "ok"}));
+    }
+
+    #[test]
+    fn a_ping_gets_a_pong_with_a_sequence() {
+        let got = reply(
+            &Script::default(),
+            r#"{"id":2,"req":"post","op":{"type":"ping"}}"#,
+        )
+        .unwrap();
+        assert_eq!(got["id"], 2);
+        assert_eq!(got["data"]["status"], "ok");
+        assert!(got["data"]["sq"].is_u64());
+    }
+
+    #[test]
+    fn a_post_that_is_not_a_ping_gets_no_reply() {
+        assert!(reply(
+            &Script::default(),
+            r#"{"id":3,"req":"post","op":{"type":"order"}}"#
+        )
+        .is_none());
+        assert!(reply(&Script::default(), r#"{"id":4,"req":"post"}"#).is_none());
+    }
+
+    #[test]
+    fn a_dead_socket_does_not_answer_pings() {
+        let script = Script {
+            answer_pings: false,
+            ..Script::default()
+        };
+        assert!(reply(&script, r#"{"id":2,"req":"post","op":{"type":"ping"}}"#).is_none());
+        // Subscriptions are still answered; only the keep-alive is dead.
+        assert!(reply(&script, r#"{"id":1,"req":"sub","chs":["bbo::1"]}"#).is_some());
+    }
+}

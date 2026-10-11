@@ -6,17 +6,17 @@ use std::{
     future::Future,
 };
 
-use polyoxide_venue::Classify;
+use polyoxide_venue::{class_for_handshake_status, Classify};
 use polyoxide_ws::{
+    retrying_can_fix,
     tungstenite::{client::IntoClientRequest, handshake::client::Request as Handshake, Message},
-    Connection, Decoded, MembershipHandle, Protocol, Queue, Recovery as Supervision, Timing,
-    WsError,
+    Connection, Decoded, Kind, MembershipHandle, Protocol, Queue, Recovery, Timing, WsError,
 };
 
 use crate::ws::{
     channel::Channel,
     client::{control, Answered, Control},
-    error::{PerpsWsError, Recovery},
+    error::{PerpsWsError, MESSAGE_RATE_LIMITED},
     event::{Event, Frame},
     frame::{Incoming, Request, Response},
 };
@@ -131,6 +131,17 @@ impl PerpsProtocol {
     }
 }
 
+/// Whether `apply` resends a refused subscribe on the same connection (D10):
+/// every channel was refused for `message_rate_limited`. Anywhere else such a
+/// refusal is one like any other.
+fn retried_within_the_change(err: &PerpsWsError) -> bool {
+    matches!(
+        err,
+        PerpsWsError::Refused { refused }
+            if refused.iter().all(|r| r.reason == MESSAGE_RATE_LIMITED)
+    )
+}
+
 /// A control request's answer as one result: [`PerpsWsError::Refused`]
 /// naming every channel refused.
 fn settled(answered: Answered) -> Result<(), PerpsWsError> {
@@ -191,7 +202,7 @@ impl Protocol for PerpsProtocol {
                 loop {
                     match settled(control(connection, Control::Subscribe, &add).await?) {
                         Err(err)
-                            if err.recovery() == Recovery::Retry
+                            if retried_within_the_change(&err)
                                 && attempt < MAX_SUBSCRIBE_RETRIES =>
                         {
                             attempt += 1;
@@ -262,13 +273,41 @@ impl Protocol for PerpsProtocol {
         err.is_retriable()
     }
 
-    fn recover(&self, err: &PerpsWsError) -> Supervision {
-        match err.recovery() {
-            Recovery::Reconnect => Supervision::Reconnect,
-            Recovery::SkipFrame => Supervision::Skip,
-            // A rate-limited subscribe is retried inside `apply`; anywhere
-            // else it is a refusal like any other.
-            Recovery::Retry | Recovery::Fatal => Supervision::Stop,
+    /// perps' own recovery, not the class's: a server close of any code, a
+    /// `Capacity` failure and a pong that is not `ok` reconnect, a frame that
+    /// does not decode is skipped, and a use after close stops (D19).
+    fn recover(&self, err: &PerpsWsError) -> Recovery {
+        match err {
+            PerpsWsError::Connection(err) => match err.kind() {
+                // D19: a connection used after it closed stops perps.
+                Kind::AlreadyClosed => Recovery::Stop,
+                // perps' own rule, kept: a frame or header past tungstenite's
+                // limits costs one retry cycle if it turns out permanent.
+                Kind::Capacity => Recovery::Reconnect,
+                // DRIFT R1: a handshake refused with 408, 425, 429 or 5xx is
+                // the host being unwell or throttling, by venue's status rule;
+                // any other status, a bad URL or TLS name, or an attack
+                // detection is our request. Everything else, a lost or timed
+                // out connection or a server close among them, is retried.
+                _ if retrying_can_fix(err, |status| {
+                    class_for_handshake_status(status).is_retriable()
+                }) =>
+                {
+                    Recovery::Reconnect
+                }
+                _ => Recovery::Stop,
+            },
+            PerpsWsError::ConnectionClosed | PerpsWsError::Stalled { .. } => Recovery::Reconnect,
+            // A rate-limited subscribe is retried inside `apply` (D10); a
+            // refusal that reaches recovery comes from a replay, which a
+            // reconnect would only repeat.
+            PerpsWsError::Refused { .. } => Recovery::Stop,
+            PerpsWsError::Frame { .. } | PerpsWsError::Unrecognised { .. } => Recovery::Skip,
+            // A control reply that is malformed or not `ok` means this
+            // connection's control channel is unreliable; a fresh one is the
+            // fix. Stopping would end the stream on one odd pong.
+            PerpsWsError::Response { .. } => Recovery::Reconnect,
+            PerpsWsError::EmptySubscription | PerpsWsError::Stopped => Recovery::Stop,
         }
     }
 
@@ -345,5 +384,164 @@ impl PerpsMembership for MembershipHandle<PerpsProtocol> {
         self.apply(MembershipChange::Unsubscribe(
             channels.into_iter().collect(),
         ))
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use std::time::Duration;
+
+    use polyoxide_ws::tungstenite::{self, http};
+
+    use super::*;
+    use crate::{
+        types::InstrumentId,
+        ws::{error::Refusal, WS_URL},
+    };
+
+    /// What the supervisor does about `err`, by perps' recovery hook.
+    fn recovery(err: &PerpsWsError) -> Recovery {
+        PerpsProtocol::new(WS_URL.to_owned(), Timing::default()).recover(err)
+    }
+
+    fn refusal(channel: Channel, reason: &str) -> Refusal {
+        Refusal {
+            channel,
+            reason: reason.to_owned(),
+        }
+    }
+
+    fn http_error(status: u16) -> PerpsWsError {
+        transport(tungstenite::Error::Http(
+            http::Response::builder().status(status).body(None).unwrap(),
+        ))
+    }
+
+    /// A transport failure as the connection reports it, through the kit.
+    fn transport(err: tungstenite::Error) -> PerpsWsError {
+        PerpsWsError::from(WsError::from(err))
+    }
+
+    #[test]
+    fn a_refused_subscription_lists_every_refusal() {
+        let err = PerpsWsError::Refused {
+            refused: vec![refusal(Channel::Bbo(InstrumentId(1)), "invalid channel")],
+        };
+        assert_eq!(recovery(&err), Recovery::Stop);
+        assert!(!retried_within_the_change(&err));
+        assert!(
+            err.to_string().contains("bbo::1 (invalid channel)"),
+            "{err}"
+        );
+    }
+
+    #[test]
+    fn a_rate_limited_subscription_is_retriable_not_fatal() {
+        let err = PerpsWsError::Refused {
+            refused: vec![refusal(
+                Channel::Bbo(InstrumentId(1)),
+                "message_rate_limited",
+            )],
+        };
+        assert!(retried_within_the_change(&err));
+    }
+
+    #[test]
+    fn a_mixed_refusal_is_fatal() {
+        // Retrying would replay the invalid channel, so the rate limit does
+        // not rescue the batch.
+        let err = PerpsWsError::Refused {
+            refused: vec![
+                refusal(Channel::Bbo(InstrumentId(1)), "message_rate_limited"),
+                refusal(Channel::Bbo(InstrumentId(2)), "invalid channel"),
+            ],
+        };
+        assert_eq!(recovery(&err), Recovery::Stop);
+        assert!(!retried_within_the_change(&err));
+    }
+
+    #[test]
+    fn a_handshake_refused_by_the_host_reconnects_but_a_refused_request_is_fatal() {
+        assert_eq!(recovery(&http_error(503)), Recovery::Reconnect);
+        assert_eq!(recovery(&http_error(429)), Recovery::Reconnect);
+        assert_eq!(recovery(&http_error(401)), Recovery::Stop);
+    }
+
+    #[test]
+    fn a_handshake_refused_with_408_or_425_reconnects_drift_r1() {
+        // DRIFT R1: venue's status rule, through `retrying_can_fix`. Both
+        // were fatal before, though `Classify` called them retriable.
+        for status in [408, 425, 429, 500, 503] {
+            assert_eq!(
+                recovery(&http_error(status)),
+                Recovery::Reconnect,
+                "{status}"
+            );
+            assert!(http_error(status).is_retriable(), "{status}");
+        }
+        for status in [400, 401, 403, 404, 418, 451] {
+            assert_eq!(recovery(&http_error(status)), Recovery::Stop, "{status}");
+        }
+    }
+
+    #[test]
+    fn the_kits_own_failures_reconnect_and_a_use_after_close_stops() {
+        // A connect timeout (DRIFT R2), an unanswered request and a server
+        // close, of any code, are retried; D19 stops on `AlreadyClosed`.
+        for err in [
+            WsError::connect_timeout(Duration::from_secs(10)),
+            WsError::no_answer(Duration::from_secs(1)),
+            WsError::closed(Some(1008), "policy"),
+            WsError::closed(None, ""),
+        ] {
+            assert_eq!(recovery(&PerpsWsError::from(err)), Recovery::Reconnect);
+        }
+        assert_eq!(
+            recovery(&transport(tungstenite::Error::AlreadyClosed)),
+            Recovery::Stop
+        );
+        assert_eq!(
+            recovery(&transport(tungstenite::Error::Capacity(
+                tungstenite::error::CapacityError::TooManyHeaders
+            ))),
+            Recovery::Reconnect
+        );
+    }
+
+    #[test]
+    fn a_transport_close_reconnects() {
+        let err = transport(tungstenite::Error::ConnectionClosed);
+        assert!(matches!(err, PerpsWsError::Connection(_)));
+        assert_eq!(recovery(&err), Recovery::Reconnect);
+    }
+
+    #[test]
+    fn transport_loss_reconnects_and_bad_frames_are_skipped() {
+        assert_eq!(
+            recovery(&PerpsWsError::ConnectionClosed),
+            Recovery::Reconnect
+        );
+        assert_eq!(
+            recovery(&PerpsWsError::Stalled {
+                elapsed: Duration::from_secs(9)
+            }),
+            Recovery::Reconnect
+        );
+        let bad = PerpsWsError::Frame {
+            channel: "bbo::1".to_owned(),
+            raw: "{}".to_owned(),
+            source: serde_json::from_str::<u8>("x").unwrap_err(),
+        };
+        assert_eq!(recovery(&bad), Recovery::Skip);
+        assert_eq!(recovery(&PerpsWsError::EmptySubscription), Recovery::Stop);
+    }
+
+    #[test]
+    fn a_faulted_control_reply_reconnects_rather_than_ending_the_stream() {
+        let odd = PerpsWsError::Response {
+            id: 2,
+            raw: r#"{"status":"err","error":"x"}"#.to_owned(),
+        };
+        assert_eq!(recovery(&odd), Recovery::Reconnect);
     }
 }
