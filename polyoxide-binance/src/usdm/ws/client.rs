@@ -422,8 +422,8 @@ mod tests {
         ws::{
             event::Payload,
             fixtures,
+            scripted::{Script, ScriptedServer},
             stream::{DepthLevels, DepthSpeed},
-            test_server::{Script, ScriptedServer},
         },
     };
 

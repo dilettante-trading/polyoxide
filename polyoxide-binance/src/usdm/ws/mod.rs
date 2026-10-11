@@ -17,6 +17,8 @@ pub mod event;
 #[cfg(any(test, feature = "test-server"))]
 #[doc(hidden)]
 pub mod fixtures;
+#[cfg(test)]
+mod scripted;
 pub mod stream;
 pub mod supervised;
 #[cfg(any(test, feature = "test-server"))]

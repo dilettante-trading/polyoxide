@@ -4020,6 +4020,7 @@ dependencies = [
  "polyoxide-core",
  "polyoxide-test-support",
  "polyoxide-venue",
+ "polyoxide-ws",
  "rust_decimal",
  "rustls",
  "serde",
