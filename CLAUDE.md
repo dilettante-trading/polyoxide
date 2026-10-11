@@ -279,10 +279,15 @@ validation runs, all recorded in OBSERVED.md's `## Rate limits`.
 The `ws` feature adds the six public WebSocket channels: `PerpsWs` (bare) and
 `PerpsWsBuilder`, whose `connect` returns `SupervisedPerpsWs`, an alias for the kit's
 `polyoxide_ws::Supervised<PerpsProtocol>` (Story 4.6). The kit's `Supervisor` keeps the JSON
-`post/ping` on the wall clock regardless of traffic, since the host idle-closes after 60 s
-without an inbound message, and also while the 1024-event queue is full, without awaiting the
-pong; staleness counts any text frame, a pong included, and a pong that is not `ok`
-reconnects; reconnect with resubscribe; a 10 s connect timeout (DRIFT R2). Membership changes go
+`post/ping` on the wall clock regardless of traffic, and also while the 1024-event queue is
+full, without awaiting the pong; staleness counts any text frame, a pong included, and a pong
+that is not `ok` reconnects; reconnect with resubscribe; a 10 s connect timeout (DRIFT R2).
+The host's own keep-alive is a protocol Ping every 10 s: its pings and the client's automatic
+pongs count as traffic, so a client that reads was never closed in 180 s, and only with the
+pongs withheld did it close, with `1011 pong_timeout` after about 70 s (bundle K's probe,
+2026-10-10; the documented 60 s idle close was not seen). Whether it also counts `post/ping`
+was not measured. The pongs go out only while the connection is read, so a supervised stream
+whose queue stays full that long may be closed with a 1011 and reconnect. Membership changes go
 through `membership()`, a `MembershipHandle<PerpsProtocol>`, whose `PerpsMembership` trait gives
 `subscribe` and `unsubscribe` (or `apply` with a `MembershipChange`). `PerpsProtocol` keeps
 perps' rows: no `Disconnected` (D8), a `message_rate_limited` subscribe retried within the

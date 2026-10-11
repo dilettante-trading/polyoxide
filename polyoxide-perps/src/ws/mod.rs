@@ -2,10 +2,12 @@
 //!
 //! One multiplexed connection to [`WS_URL`]. Requests are
 //! `{ "id", "req": "sub" | "unsub" | "post", … }`; push frames are
-//! `{ "ch", "ts", "ets", "sq", "data" }`. The server closes a connection after
-//! 60 s without an inbound message, so a bare [`PerpsWs`] needs its caller to
-//! [`ping`](PerpsWs::ping); [`SupervisedPerpsWs`] does that itself and also
-//! reconnects.
+//! `{ "ch", "ts", "ets", "sq", "data" }`. The server sends a protocol Ping
+//! every 10 s and closes a connection that stops answering them
+//! (`1011 pong_timeout`, after about 70 s); the pongs go out while the
+//! connection is read, so a bare [`PerpsWs`] must be read steadily.
+//! [`SupervisedPerpsWs`] reads it, sends the application ping on the wall
+//! clock and also reconnects.
 //! Everything the published AsyncAPI gets wrong about the wire is in
 //! `docs/specs/perps/OBSERVED.md`.
 

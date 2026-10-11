@@ -2,7 +2,7 @@
 title: 'Stories 4.5 and 4.6: the generic Supervisor, and perps on it'
 type: 'feature'
 created: '2026-10-10'
-status: 'ready-for-dev'
+status: 'in-progress'
 route: 'dispatch'
 review_loop_iteration: 0
 baseline_commit: '397867758d8923666a75a7e40bc6a1ee20198493'
@@ -131,27 +131,27 @@ Binance follows in bundle L2.
 ## Tasks & Acceptance
 
 **Execution** (one commit each, in order; run fmt, clippy and the touched tests before each):
-- [ ] **L1 (4.5).** Covers `polyoxide-ws/src/supervisor/` (new), `lib.rs`, `Cargo.toml` (tokio `sync` and `rt`) and the allowlists.
+- [x] **L1 (4.5).** Covers `polyoxide-ws/src/supervisor/` (new), `lib.rs`, `Cargo.toml` (tokio `sync` and `rt`) and the allowlists.
   - Add `Protocol`, `Recovery`, `Queue`, `Supervised` and `MembershipHandle` (L1-D1).
   - Add a unit suite against `ScriptedServer` with a test `Protocol` (declaring and not), covering every L1-D2 rule and the matrix's Supervisor rows.
-- [ ] **L2 (4.6, the server switch).** Covers `polyoxide-perps` (`Cargo.toml` dev-dependency on `polyoxide-ws` with `test-server`; the tests in `ws/client.rs`, `ws/supervised.rs` and `ws/error.rs`).
+- [x] **L2 (4.6, the server switch).** Covers `polyoxide-perps` (`Cargo.toml` dev-dependency on `polyoxide-ws` with `test-server`; the tests in `ws/client.rs`, `ws/supervised.rs` and `ws/error.rs`).
   - Point every perps suite at `polyoxide_ws::test_server`, through a `#[cfg(test)]` adapter carrying perps' answer.
   - perps' old loop and old server are still in place.
   - Record the counts before and after.
-- [ ] **L3 (DRIFT R2, R1).** Covers perps' `client.rs` and `error.rs`.
+- [x] **L3 (DRIFT R2, R1).** Covers perps' `client.rs` and `error.rs`.
   - The bare tier connects through `polyoxide_ws::connect` with a timeout and runs on `Connection`.
   - `Connection` wraps `WsError` (L1-D3), and `Classify` uses the macro.
   - Its recovery retries 408 and 425 through `retrying_can_fix`.
   - Name R1 and R2 in the message, with a test for each.
-- [ ] **L4 (4.6, the loop).** Covers perps' `ws/protocol.rs` (new: `PerpsProtocol`, `PerpsMembership`), the builder's module and `mod.rs`.
+- [x] **L4 (4.6, the loop).** Covers perps' `ws/protocol.rs` (new: `PerpsProtocol`, `PerpsMembership`), the builder's module and `mod.rs`.
   - `connect(channels)` builds `Supervised<PerpsProtocol>`.
   - The suites pass unchanged.
   - The L1-D4 behaviour changes are each covered by a test.
-- [ ] **L5 (4.6, deletion).**
+- [x] **L5 (4.6, deletion).**
   - Delete perps' `supervised.rs` loop, its `Backoff`, `ensure_crypto_provider`, `test_server.rs`, `Recovery` and the `test-server` feature, plus perps' direct tokio-tungstenite and rustls dependencies if nothing still uses them.
   - Add the `docs/s1-removals.md` entries (run the gate; copy each key).
   - Update `polyoxide-perps/README.md` if it names a removed path.
-- [ ] **L6 (docs).**
+- [x] **L6 (docs).**
   - CLAUDE.md: the perps socket paragraph, the kit paragraph (perps on the Supervisor), and the `test_server` text.
   - CLAUDE.md's perps socket paragraph: say that the host's own 10 s pings and the client's automatic pongs count as traffic. K's probe found a `1011 pong_timeout` at about 70 s, but only with the pongs withheld.
   - `deferred-work.md`: Story 4.11 release-notes entries for L1-D3 and L1-D4.
@@ -164,6 +164,44 @@ Binance follows in bundle L2.
 - **No other venue.** Given the other socket crates, when the bundle is done, then `git diff 3978677 -- polyoxide-binance polyoxide-rtds polyoxide-sports polyoxide-clob` is empty.
 
 ## Implementation Notes
+
+**L1-D1, the details left to the implementer** (`polyoxide-ws/src/supervisor/`, re-exported at the crate root):
+- **Construction.** `Supervisor::new(protocol, timing)`, then `connect(membership)`, which returns any failure of the first attempt, or `start(membership)`, which starts the stream in an outage when `recover` would retry that failure (Binance's start, for L2).
+- **Hooks beyond the minimum.** `record(&mut Membership, Change) -> Offline<Change, Ack, Error>` decides a change made during an outage: `Recorded` answers at once and leaves it to the replay, `Held` (the default) waits for `apply` after the reconnect. `disconnected(Outage) -> Option<Event>` (default `None`) and `reconnected() -> Event` are the D8 markers; `Outage` is `#[non_exhaustive]` (`Closed`, `Error`, `Stale`, `Rotation`). `stalled(Duration)` and `stopped()` build the errors for a change left unanswered for `stale_after` and for a stopped task, by default `Kind::NoAnswer` and `Kind::AlreadyClosed`. `reset()` forgets per-connection state before a replay; `queue(&self) -> Queue`.
+- **`Decoded`** is `Nothing`, `Event`, `Events` (for perps' `SequenceRegressed` ahead of its update) or `Error`, and `decode`, `is_live` and `delivered` see every frame (`Mode::All`).
+- **`Error`** is bound by `std::error::Error` as well as `From<WsError> + Send`, so the task can log it.
+- **tokio** gains `macros` as well as `sync` and `rt`, for `tokio::select!`; the allowlist gained `tokio-macros`, and `test-server` needs no tokio feature of its own any more.
+- **The unit suite** (`src/supervisor/tests.rs`, 18 tests) drives a test protocol, declaring and not, against the shared server; three mutations were checked to fail it: counting the blocked time as silence, stopping the pings behind a full queue, and removing the consumer-gone branch.
+
+**perps' protocol (L4):**
+- **`PerpsProtocol` overrides `recover`.** perps' rule is not its class: a server close of any code, a `Capacity` failure and a pong that is not `ok` reconnect, a frame that does not decode is skipped, `AlreadyClosed` stops (D19), and a refused handshake follows venue's status rule through `retrying_can_fix` (DRIFT R1). The default (`Reconnect` iff `is_retriable`) would stop on a 1008 close, a `Capacity` failure and every decode failure. A4-4 records this against A4-3's follow-up.
+- **D10's retry** is `retried_within_the_change` (every channel refused for `message_rate_limited`), inside `apply`, spaced by the backoff schedule. A refusal that reaches `recover`, from a replay, stops the stream, as the old loop's `Retry` did at a reconnect.
+- **Pings.** `ping` takes an id from the connection and remembers up to 16 outstanding; `decode` matches a pong to one, and a pong that is not `ok` is `Response`, which reconnects. Any text frame is live (D5); delivered means a decoded push (D6).
+- **`MembershipChange`** (`Subscribe`, `Unsubscribe`, `#[non_exhaustive]`) is public, since `MembershipHandle::apply` takes it; `PerpsMembership` wraps it.
+
+**Where the code departs from the plan, and why:**
+- **`ensure_crypto_provider` went in L3, not L5,** with its last caller, when the bare tier moved onto the kit's `connect`, which installs the provider.
+- **The recovery tests moved to `ws/protocol.rs` as tests of `PerpsProtocol::recover`.** The kit's `Recovery` has no `Retry`, so the one test that asserted `Recovery::Retry` (`a_rate_limited_subscription_is_retriable_not_fatal`) asserts D10's predicate, `retried_within_the_change`, and the two that asserted `Fatal` for a refusal (`a_refused_subscription_lists_every_refusal`, `a_mixed_refusal_is_fatal`) assert `Stop` and that the change does not retry it, which `Fatal` implied. `SkipFrame` reads `Skip` and `Fatal` `Stop`.
+- **CLAUDE.md's `test_server` text and the perps transport sentence changed in L5, not L6** (AD-21: the commit that changes the rule edits it). L4 had already rewritten the perps socket and kit paragraphs for the Supervisor. L6 changes only the idle rule, which no code commit changed.
+- **perps' `ws` feature keeps only `tokio/time`.** The deleted loop used `sync`, `rt` and `macros`, and the deleted server `net`; perps' own code now calls only `tokio::time::sleep`, and `polyoxide-ws` enables what the kit needs.
+- **`polyoxide_perps::ws::SupervisedPerpsWs` joined the type-alias list** in `docs/s1-removals.md`, since cargo-semver-checks 0.51.0 does not see aliases and the struct it replaced is listed as removed.
+- **MSRV was not checked locally** (no rustup); CI's msrv job is the check.
+
+**Test custody (AD-12).** `cargo test -p polyoxide-perps --features ws --lib`, per suite:
+
+| Suite at 3978677 | Before | After |
+|---|---|---|
+| `ws/supervised.rs` | 21 (17 supervision, 3 backoff, 1 defaults) | 21 in `ws/builder.rs`, same names, plus 6 for L1-D4 |
+| `ws/client.rs` | 9 | 9, plus 2 (R2, R3) |
+| `ws/error.rs` | 10 | 3 stay, 7 (the `recovery()` tests) in `ws/protocol.rs`; plus 1 in `error.rs` (the 451 non-fault) and 2 in `protocol.rs` (R1, the kit's own failures) |
+| `ws/test_server.rs` | 5 | 5 in `ws/scripted.rs`, same names |
+| perps lib, all | 81 | 92 |
+
+All 45 protected names are present after L5 (checked by name against 3978677). L2 recorded 81 before and after the server switch; L4 reports each moved supervision test also passing on the old loop.
+
+**The removals gate (L5).** `scripts/api_removals.py check --baseline v0.38.1`, run locally on rustc 1.95.0 with cargo-semver-checks 0.51.0: the first run reported ten unlisted perps keys (`ws::supervised`, `ws::supervised::PerpsWsBuilder`, the `SupervisedPerpsWs` struct at both paths, `MembershipHandle` at both, `Recovery` at both, `PerpsWsError::recovery` and the `test-server` feature); with each listed, 43 removals, 43 listed, and every doc-hidden and alias path compiles, the new `SupervisedPerpsWs` alias among them.
+
+**The live suite**, `cargo test -p polyoxide-perps --features ws --test live_ws -- --ignored`, 2026-10-11 08:10 UTC: `live_all_tickers_fans_out_per_instrument_and_membership_changes_apply`, which drives the supervised tier and its membership calls, passed. `live_bare_stream_delivers_book_and_bbo_frames_and_answers_ping` failed tagged `environmental` in five of six runs and passed in one. Instrumented, the bare tier yielded 154 `book` frames on instrument 1 in 15 s and no `bbo` frame; an independent Python client on the same host saw `book::1` keep one best bid and ask for 20 s and `bbo::1` push nothing, while `bbo::6` to `bbo::10` pushed. The host pushes `bbo` only when the top moves, and the test picks the first two-sided book, so this is the market, not the bundle. Recorded in `docs/specs/perps/OBSERVED.md`, with the selection fix deferred.
 
 ## Spec Change Log
 

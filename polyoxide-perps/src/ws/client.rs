@@ -107,9 +107,11 @@ pub(crate) async fn control(
 
 /// A bare connection to the public channels.
 ///
-/// The server closes a connection after 60 s without an inbound message, so
-/// a caller must call [`ping`](Self::ping) periodically or use the
-/// supervised tier. Control methods (`subscribe`, `unsubscribe`, `ping`)
+/// The server sends a protocol Ping every 10 s and closes a connection that
+/// stops answering them (`1011 pong_timeout`, after about 70 s). The pongs go
+/// out while the stream is read, so read it steadily, or use the supervised
+/// tier, which also sends the application [`ping`](Self::ping) on the wall
+/// clock and reconnects. Control methods (`subscribe`, `unsubscribe`, `ping`)
 /// send a request and read until its correlated response arrives; any push
 /// frames read meanwhile are buffered and yielded by the stream afterwards.
 /// A connect gives up after 10 s (DRIFT R2), and the server's close is

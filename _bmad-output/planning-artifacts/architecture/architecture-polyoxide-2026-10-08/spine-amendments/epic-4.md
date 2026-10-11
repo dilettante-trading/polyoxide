@@ -38,3 +38,25 @@ Recorded per AD-21: an epic records each proposed amendment here, and one sessio
   - **Two questions, kept apart.** The class (venue's table) is what consumers and nightly runs read; whether a reconnect can help a failed connect is recovery's question. They differ on purpose for `AlreadyClosed` and close codes, and must agree on refused statuses.
   - **One status set.** With the rule injected from venue, the two cannot disagree on a status; `polyoxide-venue/tests/ws_classification.rs` asserts `retrying_can_fix(e, venue_rule) == ws_class(e).is_retriable()` for every status 100–599.
 - **Follow-up in the code:** Story 4.8 calls it from rtds and sports (DRIFT R1 for rtds), and Story 4.5's default recovery hook reads the class.
+
+## A4-4: a membership change is applied and answered, recovery may skip, and `is_retriable` is required (amends AD-11)
+
+- **Proposed by:** Claude, as the user's delegate, 2026-10-10, during Epic 4's bundle L1 (Story 4.5), as its decision L1-D1.
+- **Current rule (AD-11):** a venue implements a `Protocol` with "`P::Membership` with membership frames and paced `replay`", `wanted`, and "venue-specific recovery". The rule does not say how a caller changes the membership of a running connection or what the caller is told, what recovery may decide besides reconnecting, or what it decides when the venue says nothing.
+- **Proposed rule:**
+  - **Changes are applied and answered.** `Protocol::apply(&mut self, &mut Connection, &mut Membership, Change) -> Result<Ack, Error>` makes one change on the live connection, through its request correlation, and records in the membership as much of it as took effect.
+    - **The caller.** `Supervised::membership()` gives a `Clone` `MembershipHandle<P>`, whose `apply(Change)` waits for that `Ack` or `Error`.
+    - **Bounded.** The `Supervisor` bounds each `apply` and `replay` by `stale_after`, because a request is not cancel-safe. A change that outlives it is answered with `Protocol::stalled`, and its connection is replaced.
+    - **During an outage.** A change goes to `Protocol::record`. That either records it for the replay and answers at once (`Offline::Recorded`), or holds it (`Offline::Held`, the default) for `apply` once the reconnect has replayed the membership.
+    - **After the end.** Once the task has stopped, a change is answered with `Protocol::stopped`.
+  - **Recovery has three answers.** `Protocol::recover(&Error) -> Recovery` answers:
+    - `Reconnect`, to replace the connection;
+    - `Skip`, to yield the error and keep the connection, as for one frame that did not decode (a failed attempt has no connection to keep, so there it reads as `Reconnect`);
+    - `Stop`, to yield the error and end the stream.
+  - **`is_retriable` is required.** `Protocol::is_retriable(&Error) -> bool` is the one recovery hook a venue must write. `recover` defaults to `Reconnect` exactly when it is true, and `Stop` otherwise. A venue whose rule is not its class overrides `recover`.
+- **Why:**
+  - **A change needs an answer.** perps tells its callers when a subscribe is refused (`Refused`), unanswered (`Stalled`) or too late (`Stopped`), and its D10 retry of a rate-limited subscribe happens inside the change. A membership frame sent and forgotten could report none of that. A membership the caller mutated directly could not say how far a partly refused request took effect.
+  - **Skipping is not reconnecting.** perps yields a frame that does not decode and keeps reading. With only `Reconnect` and `Stop`, one odd frame would cost a connection or the whole stream.
+  - **No silent default.** The kit cannot read a venue's class, since it depends on neither venue nor core (AD-2), so the venue must say which of its errors a reconnect can fix. A default of "always reconnect" would loop on a refusal no retry fixes, and "never" would end a stream on every lost connection.
+  - **perps' rule is not its class.** A server close of any code, a `Capacity` failure and a pong that is not `ok` reconnect; a frame that does not decode is skipped; `AlreadyClosed` stops (D19). So perps overrides `recover` and calls `retrying_can_fix` with venue's status rule itself for a refused handshake (DRIFT R1). A4-3's follow-up, that the default recovery reads the class, holds for a venue whose rule is its class.
+- **Follow-up in the code:** Story 4.7 writes Binance's `Protocol` on these hooks, with `record` for the changes it records during the backoff and `Supervisor::start` to start in an outage. Epic 7's clob sockets and Epic 8's Kalshi socket follow.

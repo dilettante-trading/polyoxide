@@ -101,8 +101,8 @@ development_status:
   4-2-connect-classify-and-close-once: review
   4-3-one-socket-error-classification-table: review
   4-4-one-scripted-test-server: review
-  4-5-the-generic-supervisor: backlog
-  4-6-perps-on-the-supervisor: backlog
+  4-5-the-generic-supervisor: in-progress
+  4-6-perps-on-the-supervisor: in-progress
   4-7-binance-on-the-supervisor: backlog
   4-8-rtds-and-sports-on-the-kit: backlog
   4-9-clob-s-sockets-on-the-kit: backlog

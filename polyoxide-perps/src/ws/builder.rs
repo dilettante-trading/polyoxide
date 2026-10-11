@@ -59,7 +59,8 @@ impl PerpsWsBuilder {
         /// bound, so `initial × 7` (the three delays, `1×`, `2×` and `4×`) must
         /// stay under `stale_after` or a rate-limited subscribe is reported as
         /// a stall and becomes a reconnect. No pings are sent during those
-        /// retries, so keep `initial` well under the host's idle limit.
+        /// retries, so keep `initial` well under the host's keep-alive
+        /// (a 10 s protocol Ping, and a close after about 70 s unanswered).
         backoff;
         /// How long one connection attempt may take: the TCP connect, the TLS
         /// handshake and the WebSocket upgrade together (DRIFT R2). A timed
