@@ -26,11 +26,11 @@ required-features = ["test-fixtures"]
 
 [dependencies]
 polyoxide-venue = { workspace = true }
-# The socket kit: connect with a timeout, which installs the TLS provider, and
-# the one socket error.
+# The socket kit: connect with a timeout, which installs the TLS provider, the
+# bare tier `Connection`, the one socket error and `Backoff`. It owns the
+# transport, tokio-tungstenite and rustls.
 polyoxide-ws = { workspace = true }
-tokio = { workspace = true, features = ["macros", "net", "time", "rt"] }
-tokio-tungstenite = { workspace = true }
+tokio = { workspace = true, features = ["time"] }
 futures-util = "0.3"
 serde = { workspace = true }
 serde_json = { workspace = true }

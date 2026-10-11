@@ -89,7 +89,7 @@ The items are the ones the CLI's tests and each crate's own tests import:
 - `polyoxide_perps::ws::test_server` `test-server` **Removed** by Story 4.6: use the shared scripted server, `polyoxide_ws::test_server` (feature `test-server`), and answer perps' requests from the closure `ScriptedServer::start_answering` takes; perps' `test-server` feature is gone with it.
 - `polyoxide_perps::ws::{frame_from_text_for_tests, incoming_from_text_for_tests, IncomingForTests}` `ws`
 - `polyoxide_rtds::fixtures::{REJECTED_SUBSCRIPTION, TWAP_THIRTY_UPDATE}` `test-fixtures`
-- `polyoxide_rtds::test_server::{Script, ScriptedServer}` `test-fixtures`
+- `polyoxide_rtds::test_server::{Script, ScriptedServer}` `test-fixtures` **Removed** by Story 4.8: use the shared scripted server, `polyoxide_ws::test_server` (feature `test-server`): `Script::frames(..).after_first_frame()` for `SendThenIdle`, with `.then_close()` for `SendThenClose`, `Script::messages(..)` for `SendRawThenIdle`, `Script::reject()` for `RejectHandshake`, and `first_frames()` for `received_subscriptions()`; rtds' `test-fixtures` feature stays, for `fixtures`.
 - `polyoxide_sports::fixtures::{CRICKET, CRICKET_FINISHED, ESPORTS, LEAGUE_WITH_SPACE, SOCCER, TENNIS_EVENT_STATE}` `test-server`
 - `polyoxide_sports::test_server::{Script, ScriptedServer}` `test-server`
 
