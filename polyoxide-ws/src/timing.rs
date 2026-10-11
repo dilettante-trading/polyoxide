@@ -24,8 +24,8 @@ use crate::{Backoff, DEFAULT_CONNECT_TIMEOUT};
 ///   (`ping_interval: None`); clob pings every 10 s. Each venue sets its own
 ///   default, and never copies the rtds shape to a host that requires pings.
 /// - **D5, liveness.** What restarts the [`stale_after`](Self::stale_after)
-///   window: any frame (Binance), a decoded event (rtds), frames and an ok
-///   pong (perps), or pings included (sports).
+///   window: any frame (Binance), a decoded event (rtds), any text frame, a
+///   pong included (perps), or pings included (sports).
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 #[non_exhaustive]
 pub struct Timing {
@@ -86,8 +86,8 @@ impl Timing {
 /// such as `Duration::MAX` to an `Instant` overflows.
 ///
 /// The basis is `polyoxide-binance`'s pump (`usdm/ws/supervised.rs`), the
-/// minimum of its ping, staleness and rotation waits; `polyoxide-perps` takes
-/// the first two. Which deadlines a venue has follows D4: a venue that sends
+/// minimum of its ping, staleness and rotation waits; `polyoxide-perps`'
+/// former pump (deleted in Story 4.6) took the first two. Which deadlines a venue has follows D4: a venue that sends
 /// no pings passes no ping deadline.
 ///
 /// ```

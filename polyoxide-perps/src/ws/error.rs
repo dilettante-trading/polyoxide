@@ -34,10 +34,12 @@ pub enum PerpsWsError {
     #[error("WebSocket connection closed")]
     ConnectionClosed,
 
-    /// No frame arrived within the configured staleness window.
+    /// No frame arrived within the configured staleness window, or the
+    /// server left a membership change or a replay unanswered for it.
     #[error("no frame for {elapsed:?}")]
     Stalled {
-        /// Time since the last frame.
+        /// Time since the last frame: the silence, or how long the change or
+        /// replay waited.
         elapsed: Duration,
     },
 

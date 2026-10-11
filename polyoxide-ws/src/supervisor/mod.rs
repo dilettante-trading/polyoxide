@@ -26,6 +26,7 @@ const COMMANDS: usize = 16;
 
 /// What to do after a failure.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[non_exhaustive]
 pub enum Recovery {
     /// Replace the connection: back off, connect again and replay the
     /// membership.
@@ -40,6 +41,7 @@ pub enum Recovery {
 
 /// The queue between the task and the consumer.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[non_exhaustive]
 pub enum Queue {
     /// At most this many items unread (at least one). While it is full the
     /// task reads nothing more from the connection, and still pings.
@@ -50,6 +52,7 @@ pub enum Queue {
 
 /// What one frame decodes to.
 #[derive(Debug)]
+#[non_exhaustive]
 pub enum Decoded<E, Err> {
     /// Nothing for the consumer: a control frame, an answer the protocol
     /// reads itself, or a frame it skips.
@@ -65,6 +68,7 @@ pub enum Decoded<E, Err> {
 
 /// What becomes of a membership change made while no connection is up.
 #[derive(Debug)]
+#[non_exhaustive]
 pub enum Offline<C, A, E> {
     /// Recorded in the membership for the replay to apply; the caller gets
     /// this answer now.
@@ -253,7 +257,8 @@ pub trait Protocol: Send + Sized + 'static {
 ///   [`Timing::ping_interval`] whatever the traffic, and also while the
 ///   consumer's queue is full: the task then races the queue's space against
 ///   the ping timer and reads nothing more, and the time it waits does not
-///   count as silence.
+///   count as silence. None goes out while a membership change is in flight,
+///   which [`Timing::stale_after`] bounds.
 /// - **Staleness.** Silence for [`Timing::stale_after`], by the protocol's
 ///   liveness rule, replaces the connection.
 /// - **No drops.** No decoded event is dropped; a bounded queue holds the
@@ -274,8 +279,8 @@ pub trait Protocol: Send + Sized + 'static {
 /// attempts; each attempt is bounded by [`Timing::connect_timeout`]. The task
 /// logs under the `polyoxide_ws` target.
 ///
-/// The basis is `polyoxide-perps`' supervised tier (`ws/supervised.rs`),
-/// with `polyoxide-binance`'s (`usdm/ws/supervised.rs`) for rotation, outage
+/// The basis is `polyoxide-perps`' former supervised tier (`ws/supervised.rs`,
+/// deleted in Story 4.6), with `polyoxide-binance`'s (`usdm/ws/supervised.rs`) for rotation, outage
 /// markers, changes recorded during an outage, the start in an outage and the
 /// consumer's departure. Neither kept pinging behind a full queue.
 #[derive(Debug)]

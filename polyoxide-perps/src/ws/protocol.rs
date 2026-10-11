@@ -363,6 +363,11 @@ pub trait PerpsMembership {
     /// Unsubscribe from channels, failing as [`subscribe`](Self::subscribe)
     /// does, with no retry. Unsubscribing every channel keeps the connection,
     /// and a reconnect then replays nothing.
+    ///
+    /// When the server drops some channels and refuses others in one
+    /// request, the membership keeps them all, as the request failed as a
+    /// whole: the dropped ones stay off the current connection, but a
+    /// reconnect subscribes them again.
     fn unsubscribe(
         &self,
         channels: impl IntoIterator<Item = Channel>,

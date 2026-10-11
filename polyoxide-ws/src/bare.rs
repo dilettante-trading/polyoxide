@@ -193,6 +193,11 @@ impl Connection {
     pub(crate) fn is_finished(&self) -> bool {
         self.finished
     }
+
+    /// Whether frames a request kept are waiting to be yielded.
+    pub(crate) fn has_kept(&self) -> bool {
+        !self.buffered.is_empty()
+    }
 }
 
 impl Stream for Connection {

@@ -40,7 +40,8 @@ impl PerpsWsBuilder {
     polyoxide_ws::timing_setters! {
         /// How often to send the application ping, whatever the traffic. It
         /// is sent without awaiting its pong, and goes out while the
-        /// consumer's queue is full too.
+        /// consumer's queue is full too. None goes out while a membership
+        /// change is in flight, which `stale_after` bounds.
         ping_interval;
         /// Silence after which the connection is presumed dead and replaced.
         /// Any text frame counts, a pong included, so a connection that is
@@ -821,6 +822,140 @@ mod tests {
         assert!(replayed.is_empty(), "replayed {replayed:?}");
         let quiet = tokio::time::timeout(Duration::from_millis(150), ws.next()).await;
         assert!(quiet.is_err(), "the stream must not end: {quiet:?}");
+        ws.close().await.unwrap();
+    }
+
+    #[tokio::test]
+    async fn a_cut_during_a_change_with_a_ping_due_reconnects() {
+        // The first connection answers the replay but not the subscribe, and
+        // is cut with no close frame while the subscribe awaits its answer.
+        // A ping falls due meanwhile; sending it on the dead socket would
+        // read as a use after close, which stops perps (D19).
+        let server = ScriptedServer::start_answering(
+            vec![
+                Shared::hold().cut_after(Duration::from_millis(150)),
+                pushes_then(vec![bbo(2)]),
+            ],
+            |_| {
+                scripted::answer(Script {
+                    answer_subscribes_after_first: false,
+                    ..Default::default()
+                })
+            },
+        )
+        .await;
+        let mut ws = fast()
+            .url(&server.url)
+            .connect([Channel::Bbo(InstrumentId(1))])
+            .await
+            .unwrap();
+        let change = ws
+            .membership()
+            .subscribe([Channel::Trades(InstrumentId(2))])
+            .await;
+        assert!(
+            matches!(change, Err(PerpsWsError::Connection(_))),
+            "{change:?}"
+        );
+        assert!(matches!(next_event(&mut ws).await, Event::Reconnected));
+        assert!(matches!(next_event(&mut ws).await, Event::Update(u) if u.sq == 2));
+        ws.close().await.unwrap();
+    }
+
+    #[tokio::test]
+    async fn a_refused_subscribe_keeps_the_connection() {
+        let server = scripted::start(vec![Script {
+            pushes: vec![bbo(1)],
+            push_every: Some(Duration::from_millis(20)),
+            refuse: vec![("trades::2".into(), "invalid channel".into())],
+            ..Default::default()
+        }])
+        .await;
+        let mut ws = fast()
+            .url(&server.url)
+            .connect([Channel::Bbo(InstrumentId(1))])
+            .await
+            .unwrap();
+        assert!(matches!(next_event(&mut ws).await, Event::Update(_)));
+        let err = ws
+            .membership()
+            .subscribe([Channel::Trades(InstrumentId(2))])
+            .await
+            .unwrap_err();
+        assert!(matches!(err, PerpsWsError::Refused { .. }), "{err:?}");
+        for _ in 0..3 {
+            assert!(matches!(next_event(&mut ws).await, Event::Update(_)));
+        }
+        assert_eq!(server.connection_count(), 1);
+        ws.close().await.unwrap();
+    }
+
+    #[tokio::test]
+    async fn connecting_with_no_channels_is_refused_locally() {
+        let server = scripted::start(vec![Script::default()]).await;
+        let err = fast().url(&server.url).connect([]).await.unwrap_err();
+        assert!(matches!(err, PerpsWsError::EmptySubscription), "{err:?}");
+        assert_eq!(server.connection_count(), 0);
+    }
+
+    #[tokio::test]
+    async fn a_protocol_ping_is_not_liveness() {
+        // D5: the first connection sends protocol Pings, which the client
+        // answers, and answers no `post/ping`, so it goes stale.
+        let server = ScriptedServer::start_answering(
+            vec![
+                Shared::pings_only(Duration::from_millis(20)),
+                pushes_then(vec![bbo(2)]),
+            ],
+            |index| {
+                scripted::answer(Script {
+                    answer_pings: index != 0,
+                    ..Default::default()
+                })
+            },
+        )
+        .await;
+        let mut ws = fast()
+            .url(&server.url)
+            .connect([Channel::Bbo(InstrumentId(1))])
+            .await
+            .unwrap();
+        assert!(matches!(next_event(&mut ws).await, Event::Reconnected));
+        assert!(matches!(next_event(&mut ws).await, Event::Update(u) if u.sq == 2));
+        assert!(
+            server.pongs().len() >= 5,
+            "the protocol pings were answered: {}",
+            server.pongs().len()
+        );
+        ws.close().await.unwrap();
+    }
+
+    #[tokio::test]
+    async fn a_reconnect_does_not_report_a_regression_against_the_old_connection() {
+        let server = scripted::start(vec![
+            Script {
+                pushes: vec![bbo(5)],
+                close_after: true,
+                ..Default::default()
+            },
+            Script {
+                pushes: vec![bbo(3)],
+                ..Default::default()
+            },
+        ])
+        .await;
+        let mut ws = fast()
+            .url(&server.url)
+            .connect([Channel::Bbo(InstrumentId(1))])
+            .await
+            .unwrap();
+        assert!(matches!(next_event(&mut ws).await, Event::Update(u) if u.sq == 5));
+        assert!(matches!(next_event(&mut ws).await, Event::Reconnected));
+        let event = next_event(&mut ws).await;
+        assert!(
+            matches!(event, Event::Update(ref u) if u.sq == 3),
+            "{event:?}"
+        );
         ws.close().await.unwrap();
     }
 

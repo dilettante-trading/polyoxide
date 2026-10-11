@@ -623,6 +623,22 @@ mod actions_and_recorders {
     }
 
     #[tokio::test]
+    async fn a_connection_is_cut_on_schedule_without_a_close_frame() {
+        let server = ScriptedServer::start(vec![
+            Script::frames(&["push"]).cut_after(Duration::from_millis(100))
+        ])
+        .await;
+        let socket = connect(server.url.as_str(), DEFAULT_CONNECT_TIMEOUT)
+            .await
+            .unwrap();
+        let mut connection = Connection::new(socket, Mode::All);
+        assert_eq!(next_event(&mut connection).await, Message::from("push"));
+        let err = next_item(&mut connection).await.unwrap_err();
+        assert!(matches!(err.kind(), Kind::Protocol | Kind::Io), "{err:?}");
+        assert_eq!(server.close_count(), 0);
+    }
+
+    #[tokio::test]
     async fn a_silent_connection_is_still_dropped_on_schedule() {
         let server = ScriptedServer::start(vec![Script::frames(&["push"])
             .go_silent()

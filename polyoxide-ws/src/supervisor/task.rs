@@ -217,11 +217,18 @@ fn record<P: Protocol>(
 }
 
 /// Send the protocol's ping, if it has one, within the staleness window.
+///
+/// Nothing is sent on a connection that has already ended, as one does when a
+/// request read its close or its failed read: the next read ends it with the
+/// server's close, where a send would fail on the dead socket and hide it.
 async fn ping<P: Protocol>(
     protocol: &mut P,
     timing: &Timing,
     connection: &mut Connection,
 ) -> Result<(), P::Error> {
+    if connection.is_finished() {
+        return Ok(());
+    }
     let Some(ping) = protocol.ping(connection) else {
         return Ok(());
     };
@@ -325,6 +332,7 @@ impl<P: Protocol> Task<P> {
                 End::Rotation => {
                     close_politely(&mut connection).await;
                     tracing::debug!("rotating the WebSocket connection at its maximum age");
+                    self.backoff.after_connection_ended(delivered);
                     self.declare(Outage::Rotation);
                     next_delay = Some(Duration::ZERO);
                 }
@@ -457,8 +465,11 @@ impl<P: Protocol> Task<P> {
                     return end;
                 }
             }
+            // Frames a request kept are read first: ending the connection
+            // now would lose them, and they may be the liveness it lacks.
+            let kept = connection.has_kept();
             if let Some(age) = self.timing.max_connection_age {
-                if clock.opened.elapsed() >= age {
+                if !kept && clock.opened.elapsed() >= age {
                     return End::Rotation;
                 }
             }
@@ -471,7 +482,7 @@ impl<P: Protocol> Task<P> {
                 }
             }
             let silent = clock.last_live.elapsed();
-            if silent >= self.timing.stale_after {
+            if !kept && silent >= self.timing.stale_after {
                 return End::Stale(silent);
             }
             let wait =
@@ -527,7 +538,8 @@ impl<P: Protocol> Task<P> {
 
     /// Apply one change on the live connection, within the staleness window.
     /// `Some` ends the connection: the request outlived the window, so the
-    /// server's state is unknown, or the membership is no longer wanted.
+    /// server's state is unknown, the membership is no longer wanted, or the
+    /// consumer went while the change was in flight.
     async fn apply(
         &mut self,
         connection: &mut Connection,
@@ -535,12 +547,14 @@ impl<P: Protocol> Task<P> {
         clock: &Clock,
     ) -> Option<End<P::Error>> {
         let Command { change, reply } = command;
-        let applied = tokio::time::timeout(
-            self.timing.stale_after,
-            self.protocol
-                .apply(connection, &mut self.membership, change),
-        )
-        .await;
+        let applied = tokio::select! {
+            biased;
+            () = self.events.closed() => return Some(End::Gone),
+            applied = tokio::time::timeout(
+                self.timing.stale_after,
+                self.protocol.apply(connection, &mut self.membership, change),
+            ) => applied,
+        };
         match applied {
             Ok(answer) => {
                 let _ = reply.send(answer);

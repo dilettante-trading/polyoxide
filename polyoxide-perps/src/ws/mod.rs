@@ -36,7 +36,10 @@ pub use protocol::{MembershipChange, PerpsMembership, PerpsProtocol};
 /// It keeps the application ping going on the wall clock, even while the
 /// consumer is behind; the queue holds 1024 unread events, after which the
 /// task reads nothing more until the consumer catches up, and that wait does
-/// not count as silence. It ends after an error it cannot recover from,
+/// not count as silence. Reading nothing, it answers none of the host's
+/// protocol Pings either, so a queue left full for over about 70 s may be
+/// closed by the host with `1011`, and the stream reconnects, with no event
+/// lost. It ends after an error it cannot recover from,
 /// which it yields first; a frame that did not decode is yielded as an error
 /// and does not end it. Change its channels through
 /// [`membership`](polyoxide_ws::Supervised::membership) and

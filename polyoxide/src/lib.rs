@@ -116,7 +116,9 @@ pub mod prelude {
     #[cfg(feature = "gamma")]
     pub use polyoxide_gamma::{Gamma, GammaError};
     #[cfg(feature = "perps-ws")]
-    pub use polyoxide_perps::ws::{Channel as PerpsChannel, Event as PerpsEvent, PerpsWsBuilder};
+    pub use polyoxide_perps::ws::{
+        Channel as PerpsChannel, Event as PerpsEvent, PerpsMembership, PerpsWsBuilder,
+    };
     #[cfg(feature = "perps")]
     pub use polyoxide_perps::{Perps, PerpsError};
     #[cfg(feature = "rtds")]

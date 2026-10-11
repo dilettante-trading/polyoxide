@@ -52,6 +52,10 @@ enum Change {
     Remove(&'static str),
 }
 
+/// How long a change to the topic `slow` takes before its request, as perps'
+/// retries of a rate-limited subscribe do.
+const SLOW: Duration = Duration::from_millis(200);
+
 /// The test protocol.
 struct Feed {
     url: String,
@@ -129,6 +133,9 @@ impl Protocol for Feed {
     ) -> Result<usize, TestError> {
         match change {
             Change::Add(topic) => {
+                if topic == "slow" {
+                    tokio::time::sleep(SLOW).await;
+                }
                 ask(connection, "sub", vec![topic.to_owned()]).await?;
                 membership.topics.push(topic.to_owned());
             }
@@ -239,19 +246,27 @@ impl Protocol for Feed {
 }
 
 /// One connection's answer: every request accepted, or every one refused,
-/// except one naming the topic `hang`, which is never answered.
+/// except one naming the topic `hang`, which is never answered. One naming
+/// `slow` is answered after a push, `{"data": 7}`, which the request keeps.
 fn answer(refuse: bool) -> impl FnMut(&str) -> Vec<Message> + Send {
     move |request| {
         let Ok(request) = serde_json::from_str::<Value>(request) else {
             return Vec::new();
         };
-        let hang = request["topics"]
-            .as_array()
-            .is_some_and(|topics| topics.iter().any(|t| t == "hang"));
-        if hang {
+        let names = |name: &str| {
+            request["topics"]
+                .as_array()
+                .is_some_and(|topics| topics.iter().any(|t| t == name))
+        };
+        if names("hang") {
             return Vec::new();
         }
-        vec![text(json!({"id": request["id"], "ok": !refuse}))]
+        let mut reply = Vec::new();
+        if names("slow") {
+            reply.push(text(json!({"data": 7})));
+        }
+        reply.push(text(json!({"id": request["id"], "ok": !refuse})));
+        reply
     }
 }
 
@@ -709,6 +724,121 @@ async fn pings_go_out_on_the_wall_clock_under_steady_traffic() {
     );
     assert_eq!(server.connection_count(), 1);
     ws.close().await.expect("close");
+}
+
+#[tokio::test]
+async fn a_close_read_during_a_change_ends_the_connection_as_closed() {
+    // The close arrives while the `hang` change awaits its answer, and a ping
+    // falls due before the next read: the outage is the server's close, not
+    // a failed send on the closed socket.
+    let server = server(vec![
+        Script::hold().drop_after(Duration::from_millis(150)),
+        Script::hold(),
+    ])
+    .await;
+    let mut ws = connect(feed(&server), fast(), topics(&["a"])).await;
+    let change = tokio::time::timeout(WINDOW, ws.membership().apply(Change::Add("hang")))
+        .await
+        .expect("the change returns");
+    assert!(matches!(change, Err(TestError::Ws(_))), "{change:?}");
+    assert_eq!(next_event(&mut ws).await, Ev::Disconnected("closed"));
+    assert_eq!(next_event(&mut ws).await, Ev::Reconnected);
+    ws.close().await.expect("close");
+}
+
+#[tokio::test]
+async fn frames_a_change_kept_are_read_before_staleness_is_judged() {
+    // Nothing is read while the `slow` change takes most of the window, so
+    // the connection has been silent for longer than the window when it
+    // returns; the push its request kept is that silence's end.
+    let server = server(vec![Script::hold()]).await;
+    let timing = Timing {
+        ping_interval: None,
+        ..fast()
+    };
+    let mut ws = connect(feed(&server), timing, topics(&["a"])).await;
+    tokio::time::sleep(Duration::from_millis(150)).await;
+    let members = ws
+        .membership()
+        .apply(Change::Add("slow"))
+        .await
+        .expect("applied");
+    assert_eq!(members, 2);
+    assert_eq!(next_event(&mut ws).await, Ev::Data(7));
+    assert_eq!(server.connection_count(), 1);
+    ws.close().await.expect("close");
+}
+
+#[tokio::test]
+async fn dropping_the_stream_during_a_change_ends_the_task_promptly() {
+    let server = server(vec![Script::hold()]).await;
+    let timing = Timing {
+        ping_interval: Some(Duration::from_secs(10)),
+        stale_after: Duration::from_secs(30),
+        ..fast()
+    };
+    let ws = connect(feed(&server), timing, topics(&["a"])).await;
+    let change = tokio::spawn({
+        let handle = ws.membership();
+        async move { handle.apply(Change::Add("hang")).await }
+    });
+    server
+        .wait_for("the change's request", |s| {
+            s.client_frames().iter().any(|f| f.contains("hang"))
+        })
+        .await;
+    let dropped = Instant::now();
+    drop(ws);
+    server
+        .wait_for("the client to go", |s| s.client_ended_count() == 1)
+        .await;
+    assert!(
+        dropped.elapsed() < Duration::from_secs(1),
+        "the task outlived its consumer by {:?}",
+        dropped.elapsed()
+    );
+    let answer = change.await.expect("the change's task");
+    assert!(matches!(answer, Err(TestError::Stopped)), "{answer:?}");
+}
+
+#[tokio::test]
+async fn a_replay_the_server_never_answers_is_stalled_and_retried() {
+    // The second connection never answers the replay.
+    let server = ScriptedServer::start_answering(
+        vec![
+            after_replay(data([1])).then_close(),
+            Script::hold(),
+            after_replay(data([2])),
+        ],
+        |index| {
+            let mut answer = answer(false);
+            move |request: &str| {
+                if index == 1 {
+                    Vec::new()
+                } else {
+                    answer(request)
+                }
+            }
+        },
+    )
+    .await;
+    let mut ws = connect(feed(&server), fast(), topics(&["a"])).await;
+    assert_eq!(next_event(&mut ws).await, Ev::Data(1));
+    assert_eq!(next_event(&mut ws).await, Ev::Disconnected("closed"));
+    assert_eq!(next_event(&mut ws).await, Ev::Reconnected);
+    assert_eq!(next_event(&mut ws).await, Ev::Data(2));
+    assert_eq!(server.connection_count(), 3);
+    ws.close().await.expect("close");
+}
+
+#[tokio::test]
+async fn connect_returns_stalled_when_the_first_replay_goes_unanswered() {
+    let server = server(vec![Script::hold()]).await;
+    let err = Supervisor::new(feed(&server), fast())
+        .connect(topics(&["hang"]))
+        .await
+        .expect_err("the replay is never answered");
+    assert!(matches!(err, TestError::Stalled(_)), "{err:?}");
 }
 
 /// A protocol that keeps every default, for the default recovery.

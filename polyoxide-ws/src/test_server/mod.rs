@@ -3,13 +3,14 @@
 //! consumers.
 //!
 //! The basis is the four venue servers: `polyoxide-sports`'
-//! `src/test_server.rs`, `polyoxide-perps`' `ws/test_server.rs`,
-//! `polyoxide-binance`'s `usdm/ws/test_server.rs` and `polyoxide-rtds`'
-//! `src/test_server.rs`. Their shared skeleton is here: one script per
-//! connection with the last repeating, every action and recorder any of them
-//! has, and the interval idiom. What stays with each venue is its protocol's
-//! answer, passed to [`ScriptedServer::start_answering`] as a closure with
-//! per-connection state, and its fixtures.
+//! `src/test_server.rs`, `polyoxide-perps`' former `ws/test_server.rs`
+//! (deleted in Story 4.6), `polyoxide-binance`'s `usdm/ws/test_server.rs` and
+//! `polyoxide-rtds`' `src/test_server.rs`. Their shared skeleton is here:
+//! one script per connection with the last repeating, every action and
+//! recorder any of them has, and the interval idiom. What stays with each
+//! venue is its protocol's answer, passed to
+//! [`ScriptedServer::start_answering`] as a closure with per-connection
+//! state, and its fixtures.
 
 mod helpers;
 
@@ -91,6 +92,10 @@ pub struct Script {
     /// After sending `send`, drop the TCP connection without a close frame:
     /// a connection reset.
     pub cut: bool,
+    /// Drop the TCP connection without a close frame this long after the
+    /// handshake, whatever else is happening while it is held, such as a
+    /// request the client awaits.
+    pub cut_after: Option<Duration>,
 }
 
 impl Script {
@@ -205,6 +210,13 @@ impl Script {
     /// Drop the TCP connection without a close frame after sending.
     pub fn then_cut(mut self) -> Self {
         self.cut = true;
+        self
+    }
+
+    /// Drop the TCP connection without a close frame this long after the
+    /// handshake.
+    pub fn cut_after(mut self, after: Duration) -> Self {
+        self.cut_after = Some(after);
         self
     }
 }
@@ -566,6 +578,7 @@ where
         reason: reason.into(),
     });
     let drop_at = script.drop_after.map(|after| Instant::now() + after);
+    let cut_at = script.cut_after.map(|after| Instant::now() + after);
     let mut tape = Tape {
         recorder,
         connection: index,
@@ -592,6 +605,8 @@ where
                 close(&mut ws, close_frame.clone(), &mut tape).await;
                 return Ok(());
             }
+            // Dropping the socket ends it with no close frame.
+            () = until(cut_at) => return Ok(()),
             () = tick(&mut pings) => {
                 sequence += 1;
                 ws.send(Message::Ping(sequence.to_be_bytes().to_vec().into())).await?;
