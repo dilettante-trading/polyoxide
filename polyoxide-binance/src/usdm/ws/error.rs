@@ -3,10 +3,12 @@
 use std::time::Duration;
 
 use polyoxide_venue::{class_for_close_code, class_for_handshake_status, Class, Classify};
+use polyoxide_ws::{retrying_can_fix, Kind, WsError};
 use thiserror::Error;
-use tokio_tungstenite::tungstenite;
 
 use crate::usdm::ws::{stream::StreamName, StreamPath};
+
+polyoxide_venue::impl_ws_classification!();
 
 /// What to do about an error.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -24,9 +26,11 @@ pub enum Recovery {
 #[derive(Error, Debug)]
 #[non_exhaustive]
 pub enum UsdmWsError {
-    /// The connection could not be opened, or failed mid-stream.
+    /// The connection could not be opened, or failed mid-stream: the kit's
+    /// one socket error, read through its [`Kind`]. A
+    /// server close and a connect timeout have variants of their own.
     #[error("WebSocket transport error: {0}")]
-    Connect(#[from] Box<tokio_tungstenite::tungstenite::Error>),
+    Connect(#[source] WsError),
 
     /// The connection did not open within the connect timeout.
     #[error("no connection within {0:?}")]
@@ -107,34 +111,43 @@ pub enum UsdmWsError {
     Stopped,
 }
 
-impl From<tokio_tungstenite::tungstenite::Error> for UsdmWsError {
-    fn from(err: tokio_tungstenite::tungstenite::Error) -> Self {
-        Self::Connect(Box::new(err))
+/// A server close is [`UsdmWsError::Closed`], a connect timeout
+/// [`UsdmWsError::ConnectTimeout`], and every other socket failure
+/// [`UsdmWsError::Connect`].
+impl From<WsError> for UsdmWsError {
+    fn from(err: WsError) -> Self {
+        match err.kind() {
+            Kind::Closed { code, reason } => Self::Closed {
+                code,
+                reason: reason.to_owned(),
+            },
+            Kind::ConnectTimeout { after } => Self::ConnectTimeout(after),
+            _ => Self::Connect(err),
+        }
     }
 }
 
 impl UsdmWsError {
     /// How the supervised tier treats this error.
     pub fn recovery(&self) -> Recovery {
-        use tokio_tungstenite::tungstenite::Error as Ws;
         match self {
-            Self::Connect(err) => match &**err {
+            Self::Connect(err) => match err.kind() {
+                // Binance's own rules: a connection used after it closed
+                // (D19) and a frame or header past tungstenite's limits
+                // reconnect.
+                Kind::AlreadyClosed | Kind::Capacity => Recovery::Reconnect,
                 // A handshake refused with 408, 425, 429 or 5xx is the host
-                // being unwell or throttling, as polyoxide-venue's status rule
-                // (`class_for_status`) reads those statuses; any other status
-                // is our request.
-                Ws::Http(response) => {
-                    let status = response.status();
-                    if status.is_server_error() || matches!(status.as_u16(), 408 | 425 | 429) {
-                        Recovery::Reconnect
-                    } else {
-                        Recovery::Fatal
-                    }
+                // being unwell or throttling, by polyoxide-venue's status
+                // rule; any other status, a bad URL or TLS name, or an attack
+                // detection is our request. Everything else, a lost
+                // connection among them, is retried.
+                _ if retrying_can_fix(err, |status| {
+                    class_for_handshake_status(status).is_retriable()
+                }) =>
+                {
+                    Recovery::Reconnect
                 }
-                Ws::Url(_) | Ws::Tls(_) | Ws::HttpFormat(_) | Ws::AttackAttempt => Recovery::Fatal,
-                // `tungstenite::Error` is non_exhaustive; an unknown transport
-                // error costs one retry cycle if it turns out permanent.
-                _ => Recovery::Reconnect,
+                _ => Recovery::Fatal,
             },
             Self::ConnectTimeout(_)
             | Self::Closed { .. }
@@ -149,34 +162,15 @@ impl UsdmWsError {
     }
 }
 
-/// A transport failure, by the socket table: a refused upgrade by its status,
-/// misuse and a bad URL or TLS name an `InvalidRequest`, and everything else,
-/// an I/O or protocol error or a closed connection, `Network`.
+/// The transport by the one socket table
+/// (`polyoxide_venue::impl_ws_classification!`), a server close by its close
+/// code, a refused request a `VenueRefusal` with Binance's code in decimal,
+/// an answer or frame that did not parse a `Decode`, and the client's own
+/// refusals an `InvalidRequest`.
 ///
-/// A handshake refused with `403` is `Restricted`, as on REST: Binance's
-/// firewall answers it, and it is not a credential failure, since the
-/// streams need none.
-fn transport_class(err: &tungstenite::Error) -> Class {
-    use tungstenite::Error as Ws;
-    match err {
-        Ws::Http(response) if response.status().as_u16() == 403 => Class::Restricted,
-        Ws::Http(response) => class_for_handshake_status(response.status().as_u16()),
-        Ws::Url(_)
-        | Ws::HttpFormat(_)
-        | Ws::Tls(_)
-        | Ws::AttackAttempt
-        | Ws::Capacity(_)
-        | Ws::AlreadyClosed => Class::InvalidRequest,
-        // Io (a TLS EOF included), Protocol, ConnectionClosed,
-        // WriteBufferFull, Utf8 and any later variant.
-        _ => Class::Network,
-    }
-}
-
-/// The transport by the socket table, a server close by its close code, a
-/// refused request a `VenueRefusal` with Binance's code in decimal, an answer
-/// or frame that did not parse a `Decode`, and the client's own refusals an
-/// `InvalidRequest`.
+/// One row is Binance's own, ahead of the table (D14): a handshake refused
+/// with `403` is `Restricted`, as on REST. Binance's firewall answers it, and
+/// it is not a credential failure, since the streams need none.
 ///
 /// Every error is a fault except a handshake refused with `451`: Binance does
 /// not serve the caller's region, a defined outcome, as
@@ -185,7 +179,10 @@ fn transport_class(err: &tungstenite::Error) -> Class {
 impl Classify for UsdmWsError {
     fn class(&self) -> Class {
         match self {
-            Self::Connect(err) => transport_class(err),
+            Self::Connect(err) => match err.kind() {
+                Kind::Refused { status: 403, .. } => Class::Restricted,
+                _ => ws_class(err),
+            },
             Self::ConnectTimeout(_) | Self::NoAnswer { .. } => Class::Network,
             Self::Closed { code, .. } => class_for_close_code(*code),
             Self::Refused { code, .. } => Class::VenueRefusal {
@@ -199,25 +196,24 @@ impl Classify for UsdmWsError {
     }
 
     fn is_fault(&self) -> bool {
-        match self {
-            Self::Connect(err) => !matches!(
-                &**err,
-                tungstenite::Error::Http(response) if response.status().as_u16() == 451
-            ),
-            _ => true,
-        }
+        !matches!(self, Self::Connect(err) if !ws_is_fault(err))
     }
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
-    use tokio_tungstenite::tungstenite::{self, http};
+    use polyoxide_ws::tungstenite::{self, http};
 
     fn http_error(status: u16) -> UsdmWsError {
-        UsdmWsError::from(tungstenite::Error::Http(
+        transport(tungstenite::Error::Http(
             http::Response::builder().status(status).body(None).unwrap(),
         ))
+    }
+
+    /// A transport failure as the connection reports it, through the kit.
+    fn transport(err: tungstenite::Error) -> UsdmWsError {
+        UsdmWsError::from(WsError::from(err))
     }
 
     #[test]
@@ -234,7 +230,7 @@ mod tests {
     #[test]
     fn losing_the_connection_reconnects_and_a_bad_frame_is_skipped() {
         for err in [
-            UsdmWsError::from(tungstenite::Error::ConnectionClosed),
+            transport(tungstenite::Error::ConnectionClosed),
             UsdmWsError::ConnectTimeout(Duration::from_secs(10)),
             UsdmWsError::Closed {
                 code: Some(1008),
@@ -284,11 +280,57 @@ mod tests {
             wrong.to_string(),
             "btcusdt@bookTicker rides the public path, not market"
         );
-        let url = UsdmWsError::from(tungstenite::Error::Url(
+        let url = transport(tungstenite::Error::Url(
             tungstenite::error::UrlError::NoHostName,
         ));
         assert_eq!(url.recovery(), Recovery::Fatal);
         assert_eq!(UsdmWsError::Stopped.recovery(), Recovery::Fatal);
+    }
+
+    #[test]
+    fn a_server_close_and_a_connect_timeout_keep_their_own_variants() {
+        // L2-D4: the kit's socket error maps onto Binance's variants, so a
+        // close's code and a timeout read as they did before the kit.
+        let closed = UsdmWsError::from(WsError::closed(Some(1008), "Too many requests"));
+        assert!(
+            matches!(&closed, UsdmWsError::Closed { code: Some(1008), reason } if reason == "Too many requests"),
+            "{closed:?}"
+        );
+        let after = Duration::from_secs(10);
+        assert!(matches!(
+            UsdmWsError::from(WsError::connect_timeout(after)),
+            UsdmWsError::ConnectTimeout(timeout) if timeout == after
+        ));
+        // The bare tier maps an unanswered request itself, with its id.
+        assert!(matches!(
+            UsdmWsError::from(WsError::no_answer(after)),
+            UsdmWsError::Connect(_)
+        ));
+        assert!(matches!(
+            transport(tungstenite::Error::ConnectionClosed),
+            UsdmWsError::Connect(_)
+        ));
+    }
+
+    #[test]
+    fn a_refused_429_surfaces_its_retry_after() {
+        // L2-D8: the socket table reads a refusal's `Retry-After`, which the
+        // old transport class dropped.
+        let err = transport(tungstenite::Error::Http(
+            http::Response::builder()
+                .status(429)
+                .header("Retry-After", "7")
+                .body(None)
+                .unwrap(),
+        ));
+        assert_eq!(
+            err.class(),
+            Class::RateLimited {
+                retry_after: Some(Duration::from_secs(7))
+            }
+        );
+        assert_eq!(err.retry_after(), Some(Duration::from_secs(7)));
+        assert!(err.is_retriable());
     }
 
     #[test]
@@ -337,7 +379,7 @@ mod tests {
             ),
         ];
         for (err, class) in rows {
-            let err = UsdmWsError::from(err);
+            let err = transport(err);
             assert_eq!(err.class(), class, "{err:?}");
             assert!(err.is_fault(), "{err:?}");
             assert_eq!(err.retry_after(), None, "{err:?}");

@@ -158,14 +158,18 @@ mod streams {
 
     use polyoxide_binance::usdm::ws::UsdmWsError;
     use polyoxide_test_support::Tag;
-    use tokio_tungstenite::tungstenite::{self, http};
+    use polyoxide_ws::{
+        tungstenite::{self, http},
+        WsError,
+    };
 
     use super::tag;
 
+    /// A refused upgrade as the kit's connect reports it.
     fn handshake(status: u16) -> UsdmWsError {
-        UsdmWsError::from(tungstenite::Error::Http(
+        UsdmWsError::from(WsError::from(tungstenite::Error::Http(
             http::Response::builder().status(status).body(None).unwrap(),
-        ))
+        )))
     }
 
     fn closed(code: u16, reason: &str) -> UsdmWsError {
@@ -188,7 +192,7 @@ mod streams {
         let err = handshake(503);
         assert_eq!(
             err.to_string(),
-            "WebSocket transport error: HTTP error: 503 Service Unavailable"
+            "WebSocket transport error: WebSocket error: HTTP error: 503 Service Unavailable"
         );
         assert_eq!(tag(&err), Tag::Transient);
     }
@@ -198,7 +202,7 @@ mod streams {
         let err = handshake(404);
         assert_eq!(
             err.to_string(),
-            "WebSocket transport error: HTTP error: 404 Not Found"
+            "WebSocket transport error: WebSocket error: HTTP error: 404 Not Found"
         );
         assert_eq!(tag(&err), Tag::Real);
     }
@@ -208,11 +212,11 @@ mod streams {
         let err = handshake(451);
         assert_eq!(
             err.to_string(),
-            "WebSocket transport error: HTTP error: 451 Unavailable For Legal Reasons"
+            "WebSocket transport error: WebSocket error: HTTP error: 451 Unavailable For Legal Reasons"
         );
         assert!(
             format!("{err:?}")
-                .starts_with("Connect(Http(Response { status: 451, version: HTTP/1.1, headers: {}"),
+                .starts_with("Connect(WsError(Transport(Http(Response { status: 451, version: HTTP/1.1, headers: {}"),
             "{err:?}"
         );
         assert_eq!(tag(&err), Tag::Environmental);

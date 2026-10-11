@@ -46,18 +46,6 @@ jobs:
   # kill live_api/live_ws with it under a shared 15-minute budget.
   # `suite` keeps the two clob jobs' artifact names distinct.
   # generated:begin nightly-live-jobs
-  live-polyoxide-binance-live:
-    name: Live tests (polyoxide-binance, live)
-    runs-on: ubuntu-latest
-    timeout-minutes: 15
-    steps:
-      - uses: actions/checkout@v5
-      - uses: ./.github/actions/live-suite
-        with:
-          crate: polyoxide-binance
-          suite: live
-          flags: "--features ws --test live_api --test live_ws"
-
   live-polyoxide-data-live:
     name: Live tests (polyoxide-data, live)
     runs-on: ubuntu-latest
@@ -162,6 +150,18 @@ jobs:
           suite: live
           flags: "--test live_api"
 
+  live-polyoxide-binance-live:
+    name: Live tests (polyoxide-binance, live)
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v5
+      - uses: ./.github/actions/live-suite
+        with:
+          crate: polyoxide-binance
+          suite: live
+          flags: "--features ws --test live_api --test live_ws"
+
   live-polyoxide-cli-live:
     name: Live tests (polyoxide-cli, live)
     runs-on: ubuntu-latest
@@ -191,7 +191,6 @@ jobs:
     name: Aggregate and report
     # generated:begin nightly-aggregate-needs
     needs:
-      - live-polyoxide-binance-live
       - live-polyoxide-data-live
       - live-polyoxide-gamma-live
       - live-polyoxide-relay-live
@@ -199,6 +198,7 @@ jobs:
       - live-polyoxide-clob-session-keys
       - live-polyoxide-rtds-live
       - live-polyoxide-sports-live
+      - live-polyoxide-binance-live
       - live-polyoxide-cli-live
       - live-polyoxide-perps-live
     # generated:end nightly-aggregate-needs

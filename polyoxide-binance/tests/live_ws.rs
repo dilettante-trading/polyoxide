@@ -29,6 +29,7 @@ use polyoxide_binance::usdm::{
     },
 };
 use polyoxide_test_support::{fail, transient, ResultExt};
+use polyoxide_ws::WsError;
 use serde_json::Value;
 use tokio_tungstenite::{connect_async, tungstenite::Message};
 
@@ -151,7 +152,9 @@ async fn live_frames_carry_no_unmodelled_keys() {
         let Ok(connected) = tokio::time::timeout(CONNECT_TIMEOUT, connect_async(url)).await else {
             fail(&connect, &UsdmWsError::ConnectTimeout(CONNECT_TIMEOUT));
         };
-        let (mut socket, _) = connected.map_err(UsdmWsError::from).or_fail(&connect);
+        let (mut socket, _) = connected
+            .map_err(|err| UsdmWsError::from(WsError::from(err)))
+            .or_fail(&connect);
         let mut checked = HashSet::new();
         let deadline = tokio::time::Instant::now() + Duration::from_secs(10);
         while let Ok(next) = tokio::time::timeout_at(deadline, socket.next()).await {
@@ -159,7 +162,7 @@ async fn live_frames_carry_no_unmodelled_keys() {
                 transient(&format!("{path}: the server ended the connection"));
             };
             let message = message
-                .map_err(UsdmWsError::from)
+                .map_err(|err| UsdmWsError::from(WsError::from(err)))
                 .or_fail(&format!("{path}: read"));
             let Message::Text(text) = message else {
                 continue;
