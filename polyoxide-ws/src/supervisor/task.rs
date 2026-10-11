@@ -187,7 +187,7 @@ pub(super) async fn attempt<P: Protocol>(
 ) -> Result<Connection, P::Error> {
     let request = protocol.handshake()?;
     let socket = connect(request, timing.connect_timeout).await?;
-    let mut connection = Connection::new(socket, Mode::All);
+    let mut connection = protocol.configure(Connection::new(socket, Mode::All));
     protocol.reset();
     match tokio::time::timeout(
         timing.stale_after,
@@ -285,7 +285,7 @@ impl<P: Protocol> Task<P> {
             Start::Up(connection) => Some(connection),
             Start::Outage(cause) => {
                 tracing::warn!(%cause, "WebSocket connect failed, retrying");
-                self.declare(Outage::Error(&cause));
+                self.declare(Outage::Error(cause));
                 None
             }
         };
@@ -356,10 +356,7 @@ impl<P: Protocol> Task<P> {
                     }
                     tracing::warn!(%err, "WebSocket connection closed, reconnecting");
                     self.backoff.after_connection_ended(delivered);
-                    self.declare(Outage::Closed {
-                        code,
-                        reason: &reason,
-                    });
+                    self.declare(Outage::Closed { code, reason });
                 }
                 End::Failed(err) => {
                     if self.protocol.recover(&err) == Recovery::Stop {
@@ -369,14 +366,14 @@ impl<P: Protocol> Task<P> {
                     }
                     tracing::warn!(%err, "WebSocket connection lost, reconnecting");
                     self.backoff.after_connection_ended(delivered);
-                    self.declare(Outage::Error(&err));
+                    self.declare(Outage::Error(err));
                 }
             }
         }
     }
 
     /// Queue the protocol's outage marker, if it declares one.
-    fn declare(&mut self, outage: Outage<'_, P::Error>) {
+    fn declare(&mut self, outage: Outage<P::Error>) {
         if let Some(event) = self.protocol.disconnected(outage) {
             self.pending.push_back(Ok(event));
         }

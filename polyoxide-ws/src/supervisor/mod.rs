@@ -78,10 +78,11 @@ pub enum Offline<C, A, E> {
     Held(C),
 }
 
-/// Why a connection went down, for [`Protocol::disconnected`].
+/// Why a connection went down, for [`Protocol::disconnected`], which owns it,
+/// so a protocol's marker can carry the error.
 #[derive(Debug)]
 #[non_exhaustive]
-pub enum Outage<'a, E> {
+pub enum Outage<E> {
     /// The server closed the connection: with a close frame, whose code and
     /// reason these are, or by ending the stream with none (no code and an
     /// empty reason).
@@ -89,12 +90,12 @@ pub enum Outage<'a, E> {
         /// The close code, when a close frame carried one.
         code: Option<u16>,
         /// The close reason, empty when none was given.
-        reason: &'a str,
+        reason: String,
     },
     /// A failure: a read, a ping, a decoded frame [`Protocol::recover`] sent
     /// to a reconnect, or the first connection attempt of
     /// [`Supervisor::start`].
-    Error(&'a E),
+    Error(E),
     /// Nothing that counts as liveness arrived for the staleness window, or a
     /// membership change went unanswered for it.
     Stale {
@@ -143,6 +144,13 @@ pub trait Protocol: Send + Sized + 'static {
     /// The handshake request for one connection attempt, built afresh for
     /// each, so any authentication in it is recomputed.
     fn handshake(&mut self) -> Result<Request, Self::Error>;
+
+    /// Shape each fresh connection before anything is sent on it, such as
+    /// with [`Connection::min_request_interval`] for a venue that paces its
+    /// requests. By default the connection is left as it is.
+    fn configure(&self, connection: Connection) -> Connection {
+        connection
+    }
 
     /// Put the membership on a fresh connection, paced as the venue requires.
     /// A failure is [`recover`](Self::recover)ed as a failed attempt.
@@ -216,7 +224,7 @@ pub trait Protocol: Send + Sized + 'static {
 
     /// The event announcing an outage, or `None` for a protocol that
     /// declares none (the default). Called at most once per outage.
-    fn disconnected(&mut self, outage: Outage<'_, Self::Error>) -> Option<Self::Event> {
+    fn disconnected(&mut self, outage: Outage<Self::Error>) -> Option<Self::Event> {
         let _ = outage;
         None
     }

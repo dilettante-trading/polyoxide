@@ -64,6 +64,9 @@ struct Feed {
     /// than hold it, as perps does.
     record: bool,
     queue: Queue,
+    /// Requests on each connection no sooner than this apart, as Binance
+    /// paces its own, set through `configure`.
+    pacing: Option<Duration>,
 }
 
 fn text(value: Value) -> Message {
@@ -112,6 +115,13 @@ impl Protocol for Feed {
             .as_str()
             .into_client_request()
             .map_err(WsError::from)?)
+    }
+
+    fn configure(&self, connection: Connection) -> Connection {
+        match self.pacing {
+            Some(interval) => connection.min_request_interval(interval),
+            None => connection,
+        }
     }
 
     async fn replay(
@@ -218,7 +228,7 @@ impl Protocol for Feed {
         }
     }
 
-    fn disconnected(&mut self, outage: Outage<'_, TestError>) -> Option<Ev> {
+    fn disconnected(&mut self, outage: Outage<TestError>) -> Option<Ev> {
         let why = match outage {
             Outage::Closed { .. } => "closed",
             Outage::Error(_) => "error",
@@ -298,6 +308,7 @@ fn feed(server: &ScriptedServer) -> Feed {
         declaring: true,
         record: false,
         queue: Queue::Unbounded,
+        pacing: None,
     }
 }
 
@@ -841,6 +852,49 @@ async fn connect_returns_stalled_when_the_first_replay_goes_unanswered() {
     assert!(matches!(err, TestError::Stalled(_)), "{err:?}");
 }
 
+#[tokio::test]
+async fn configure_shapes_every_connection_before_its_replay() {
+    // Paced requests, on the first connection and on the one after a
+    // reconnect: each change waits out the pacing after the replay.
+    let pacing = Duration::from_millis(200);
+    let server = server(vec![
+        after_replay(data([1])).drop_after(Duration::from_millis(600)),
+        Script::hold(),
+    ])
+    .await;
+    let feed = Feed {
+        pacing: Some(pacing),
+        ..feed(&server)
+    };
+    let mut ws = connect(feed, fast(), topics(&["a"])).await;
+    ws.membership()
+        .apply(Change::Add("b"))
+        .await
+        .expect("applied");
+    assert_eq!(next_event(&mut ws).await, Ev::Data(1));
+    assert_eq!(next_event(&mut ws).await, Ev::Disconnected("closed"));
+    assert_eq!(next_event(&mut ws).await, Ev::Reconnected);
+    ws.membership()
+        .apply(Change::Add("c"))
+        .await
+        .expect("applied");
+    for connection in 0..2 {
+        let at: Vec<Instant> = server
+            .received()
+            .into_iter()
+            .filter(|r| r.connection == connection)
+            .map(|r| r.at)
+            .collect();
+        assert_eq!(at.len(), 2, "connection {connection}: {at:?}");
+        let gap = at[1] - at[0];
+        assert!(
+            gap >= pacing - Duration::from_millis(10),
+            "connection {connection}: requests {gap:?} apart"
+        );
+    }
+    ws.close().await.expect("close");
+}
+
 /// A protocol that keeps every default, for the default recovery.
 struct Plain;
 
@@ -924,6 +978,9 @@ fn the_default_recovery_reconnects_exactly_when_is_retriable() {
     assert!(matches!(Plain.record(&mut (), ()), Offline::Held(())));
     assert!(Plain::wanted(&()));
     assert!(Plain.disconnected(Outage::Rotation).is_none());
+    assert!(Plain
+        .disconnected(Outage::Error(TestError::Bad("x".into())))
+        .is_none());
     assert!(matches!(Plain::stopped(), TestError::Ws(ws) if ws.kind() == Kind::AlreadyClosed));
     assert!(matches!(
         Plain::stalled(Duration::from_secs(2)),
