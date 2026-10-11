@@ -6,8 +6,8 @@ use std::{
     time::Duration,
 };
 
-use futures_util::{SinkExt, Stream, StreamExt};
-use polyoxide_ws::{connect, tungstenite::Message, Socket, WsError, DEFAULT_CONNECT_TIMEOUT};
+use futures_util::{Stream, StreamExt};
+use polyoxide_ws::{connect, tungstenite::Message, Connection, Mode, DEFAULT_CONNECT_TIMEOUT};
 
 use crate::{
     error::RtdsError,
@@ -28,7 +28,9 @@ fn validate_subscriptions(subscriptions: &[Subscription]) -> Result<(), RtdsErro
 
 /// A connected RTDS stream.
 ///
-/// Ends when the connection drops. A connection not open within 10 s fails
+/// Ends when the connection drops, after the first transport error it
+/// yields, or when the server closes it, whose close it answers with the
+/// RFC 6455 close reply (DRIFT R3). A connection not open within 10 s fails
 /// with the kit's `ConnectTimeout` (DRIFT R2). For a feed that recovers on its own, use
 /// [`RtdsBuilder`](crate::supervisor::RtdsBuilder).
 ///
@@ -54,7 +56,7 @@ fn validate_subscriptions(subscriptions: &[Subscription]) -> Result<(), RtdsErro
 /// # }
 /// ```
 pub struct Rtds {
-    inner: Socket,
+    inner: Connection,
     subscriptions: Vec<Subscription>,
 }
 
@@ -90,13 +92,10 @@ impl Rtds {
         let request = SubscriptionRequest::new(subscriptions);
         validate_subscriptions(request.subscriptions())?;
 
-        let mut inner = connect(url, connect_timeout).await?;
+        let mut inner = Connection::new(connect(url, connect_timeout).await?, Mode::Data);
         let frame = serde_json::to_string(&request)
             .map_err(|e| RtdsError::json(format!("{request:?}"), e))?;
-        inner
-            .send(Message::Text(frame.into()))
-            .await
-            .map_err(WsError::from)?;
+        inner.send(Message::Text(frame.into())).await?;
 
         Ok(Self {
             inner,
@@ -116,10 +115,7 @@ impl Rtds {
         validate_subscriptions(request.subscriptions())?;
         let frame = serde_json::to_string(&request)
             .map_err(|e| RtdsError::json(format!("{request:?}"), e))?;
-        self.inner
-            .send(Message::Text(frame.into()))
-            .await
-            .map_err(WsError::from)?;
+        self.inner.send(Message::Text(frame.into())).await?;
         self.subscriptions
             .extend(request.subscriptions().iter().cloned());
         Ok(())
@@ -131,16 +127,13 @@ impl Rtds {
     /// longer without it, and the server never replies. Do not use this to
     /// detect liveness — nothing comes back.
     pub async fn ping(&mut self) -> Result<(), RtdsError> {
-        self.inner
-            .send(Message::Text("PING".into()))
-            .await
-            .map_err(WsError::from)?;
+        self.inner.send(Message::Text("PING".into())).await?;
         Ok(())
     }
 
     /// Close the connection.
     pub async fn close(&mut self) -> Result<(), RtdsError> {
-        self.inner.close(None).await.map_err(WsError::from)?;
+        self.inner.close().await?;
         Ok(())
     }
 
@@ -156,24 +149,17 @@ impl Stream for Rtds {
     fn poll_next(mut self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<Option<Self::Item>> {
         loop {
             return match self.inner.poll_next_unpin(cx) {
-                Poll::Ready(Some(Ok(message))) => match message {
-                    Message::Text(text) => match PriceEvent::from_json(&text) {
-                        Ok(Some(event)) => Poll::Ready(Some(Ok(event))),
-                        // Greetings, keep-alives and unmodelled topics.
-                        Ok(None) => continue,
-                        Err(err) => Poll::Ready(Some(Err(err))),
-                    },
-                    Message::Close(frame) => {
-                        // The only place this reason is ever visible. Tier 2
-                        // turns stream-end into `ConnectionClosed` and
-                        // reconnects, by which point it is gone.
-                        tracing::debug!(?frame, "RTDS closed the connection");
-                        Poll::Ready(None)
-                    }
-                    Message::Ping(_) | Message::Pong(_) | Message::Binary(_) => continue,
-                    Message::Frame(_) => continue,
+                Poll::Ready(Some(Ok(Message::Text(text)))) => match PriceEvent::from_json(&text) {
+                    Ok(Some(event)) => Poll::Ready(Some(Ok(event))),
+                    // Greetings, keep-alives and unmodelled topics.
+                    Ok(None) => continue,
+                    Err(err) => Poll::Ready(Some(Err(err))),
                 },
-                Poll::Ready(Some(Err(err))) => Poll::Ready(Some(Err(WsError::from(err).into()))),
+                // A Binary frame is not part of the protocol (D12); the
+                // connection skips pings and pongs itself, and answers the
+                // server's close before it ends the stream.
+                Poll::Ready(Some(Ok(_))) => continue,
+                Poll::Ready(Some(Err(err))) => Poll::Ready(Some(Err(err.into()))),
                 Poll::Ready(None) => Poll::Ready(None),
                 Poll::Pending => Poll::Pending,
             };
@@ -406,6 +392,50 @@ mod tests {
                 "{err:?}"
             );
             assert_eq!(err.recovery(), crate::error::Recovery::Reconnect);
+        }
+
+        #[tokio::test]
+        async fn a_server_close_is_answered_with_the_close_reply_drift_r3() {
+            // DRIFT R3: RFC 6455's close reply. tungstenite queues it as it
+            // reads the close and sends it only on a later read or flush,
+            // which a stream that has ended never makes.
+            let server =
+                ScriptedServer::start(vec![Script::frames(&[fixtures::TWAP_THIRTY_UPDATE])
+                    .after_first_frame()
+                    .then_close()
+                    .close_with(1001, "going away")])
+                .await;
+            let mut stream = connected(&server).await;
+
+            assert!(matches!(
+                stream.next().await,
+                Some(Ok(PriceEvent::Update(_)))
+            ));
+            assert!(stream.next().await.is_none());
+            // Held open and never read again, as a caller that saw the end
+            // would leave it.
+            server
+                .wait_for("the close reply", |s| s.close_reply_count() == 1)
+                .await;
+            drop(stream);
+        }
+
+        #[tokio::test]
+        async fn the_bare_stream_ends_after_its_first_transport_error() {
+            // The server drops the TCP connection without a closing
+            // handshake: one error, then the end, not an error per poll.
+            let server =
+                ScriptedServer::start(vec![Script::hold().after_first_frame().then_cut()]).await;
+            let mut stream = connected(&server).await;
+
+            let first = tokio::time::timeout(std::time::Duration::from_secs(2), stream.next())
+                .await
+                .expect("the failure within 2 s");
+            assert!(
+                matches!(first, Some(Err(RtdsError::Connection(_)))),
+                "{first:?}"
+            );
+            assert!(stream.next().await.is_none());
         }
 
         #[tokio::test]

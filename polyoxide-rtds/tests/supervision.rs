@@ -310,3 +310,41 @@ async fn a_503_or_429_refusal_on_reconnect_is_retried_drift_r1() {
     );
     assert_eq!(server.connection_count(), 4);
 }
+
+#[tokio::test]
+async fn a_server_close_is_answered_and_the_feed_reconnects_drift_r3() {
+    // DRIFT R3: the server's close is answered with the RFC 6455 close reply,
+    // which rtds never sent, and the run reconnects as before.
+    let server = ScriptedServer::start(vec![
+        Script::frames(&[TWAP_UPDATE])
+            .after_first_frame()
+            .then_close()
+            .close_with(1001, "going away"),
+        Script::frames(&[polyoxide_rtds::fixtures::REJECTED_SUBSCRIPTION]).after_first_frame(),
+    ])
+    .await;
+
+    let supervised = RtdsBuilder::new()
+        .url(&server.url)
+        .stale_after(Duration::from_secs(60))
+        .backoff(Duration::from_millis(10), Duration::from_millis(50))
+        .connect(subs())
+        .await
+        .expect("connect");
+
+    let outcome = tokio::time::timeout(
+        Duration::from_secs(5),
+        supervised.run(|_event| async move { Ok(()) }),
+    )
+    .await
+    .expect("run must return on the rejection rather than hang");
+
+    assert!(
+        matches!(outcome, Err(polyoxide_rtds::RtdsError::Server { .. })),
+        "{outcome:?}"
+    );
+    assert_eq!(server.connection_count(), 2);
+    server
+        .wait_for("the close reply", |s| s.close_reply_count() == 1)
+        .await;
+}
