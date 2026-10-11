@@ -26,7 +26,7 @@ fn tls_eof() {
     ))));
     assert_eq!(
         err.to_string(),
-        format!("RTDS connection error: WebSocket error: IO error: {UNEXPECTED_EOF}")
+        format!("RTDS connection error: IO error: {UNEXPECTED_EOF}")
     );
     assert_eq!(tag_for(&err.class(), err.is_fault()), Tag::Transient);
 }

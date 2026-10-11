@@ -332,7 +332,7 @@ WEBSOCKET_DROPS: list[Row] = [
         "the frame parses: Transport { source: Protocol(ResetWithoutClosingHandshake) }",
         Verdict.TRANSIENT, f"{SPORTS}::reset_without_closing_handshake"),
     Row("TLS EOF without close_notify", "transient",
-        "stream error: RTDS connection error: WebSocket error: IO error: peer closed connection "
+        "stream error: RTDS connection error: IO error: peer closed connection "
         "without sending TLS close_notify: "
         "https://docs.rs/rustls/latest/rustls/manual/_03_howto/index.html#unexpected-eof",
         Verdict.TRANSIENT, f"{RTDS}::tls_eof"),
@@ -359,7 +359,7 @@ WEBSOCKET_DROPS: list[Row] = [
         "connect: no connection within 10s (ConnectTimeout(10s))", Verdict.TRANSIENT,
         f"{BINANCE}::streams::connect_timeout"),
     Row("Binance handshake 503 / Display", "transient",
-        "connect: WebSocket transport error: WebSocket error: HTTP error: 503 Service Unavailable",
+        "connect: WebSocket transport error: HTTP error: 503 Service Unavailable",
         Verdict.TRANSIENT, f"{BINANCE}::streams::handshake_503"),
     Row("Binance close 1011 / Display", "transient",
         "the server closed the connection (Some(1011): Internal error)", Verdict.TRANSIENT,
@@ -406,8 +406,7 @@ WEBSOCKET_FAULTS_STAY_REAL: list[Row] = [
         "the server closed the connection (Some(1008): Invalid request)", Verdict.REAL,
         f"{BINANCE}::streams::close_1008"),
     Row("Binance handshake 404 / Display", "real",
-        "connect: WebSocket transport error: WebSocket error: HTTP error: 404 Not Found",
-        Verdict.REAL,
+        "connect: WebSocket transport error: HTTP error: 404 Not Found", Verdict.REAL,
         f"{BINANCE}::streams::handshake_404"),
     Row("Binance pong unanswered", None, "pong: NoAnswer { id: 1, timeout: 10s }", Verdict.REAL),
     Row("Binance close 1008 / CLI marker", "real",
@@ -486,8 +485,7 @@ BINANCE_REGION_BLOCKS: list[Row] = [
         "/fapi/v1/time: API error: 451 Unavailable For Legal Reasons", Verdict.ENVIRONMENTAL,
         f"{BINANCE}::raw_status_451"),
     Row("handshake / Display", "environmental",
-        "live_x: WebSocket transport error: WebSocket error: HTTP error: 451 Unavailable For "
-        "Legal Reasons",
+        "live_x: WebSocket transport error: HTTP error: 451 Unavailable For Legal Reasons",
         Verdict.ENVIRONMENTAL, f"{BINANCE}::streams::handshake_451"),
     Row("handshake / Debug", "environmental",
         "live_x: Connect(WsError(Transport(Http(Response { status: 451, version: HTTP/1.1, "

@@ -33,7 +33,11 @@ pub const ANSWER_TIMEOUT: Duration = Duration::from_secs(10);
 /// and after a `NoAnswer` the server's membership is unknown: replace the
 /// connection rather than reuse it, as the supervised tier does. The server's
 /// protocol pings are answered while the caller polls, and its close is
-/// answered with the close reply. Binance closes a connection after 24 hours;
+/// answered with the close reply. The stream ends after the server's close,
+/// or after the first transport error it yields; a control call after that
+/// fails, with the close as [`UsdmWsError::Closed`] or, after an error, as
+/// [`UsdmWsError::Connect`] whose kind is `AlreadyClosed`, and sends nothing.
+/// Binance closes a connection after 24 hours;
 /// the supervised tier ([`UsdmWsBuilder`](crate::usdm::ws::UsdmWsBuilder))
 /// replaces it before then, and this tier does not.
 ///

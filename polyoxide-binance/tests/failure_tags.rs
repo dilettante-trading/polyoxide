@@ -192,7 +192,7 @@ mod streams {
         let err = handshake(503);
         assert_eq!(
             err.to_string(),
-            "WebSocket transport error: WebSocket error: HTTP error: 503 Service Unavailable"
+            "WebSocket transport error: HTTP error: 503 Service Unavailable"
         );
         assert_eq!(tag(&err), Tag::Transient);
     }
@@ -202,7 +202,7 @@ mod streams {
         let err = handshake(404);
         assert_eq!(
             err.to_string(),
-            "WebSocket transport error: WebSocket error: HTTP error: 404 Not Found"
+            "WebSocket transport error: HTTP error: 404 Not Found"
         );
         assert_eq!(tag(&err), Tag::Real);
     }
@@ -212,7 +212,7 @@ mod streams {
         let err = handshake(451);
         assert_eq!(
             err.to_string(),
-            "WebSocket transport error: WebSocket error: HTTP error: 451 Unavailable For Legal Reasons"
+            "WebSocket transport error: HTTP error: 451 Unavailable For Legal Reasons"
         );
         assert!(
             format!("{err:?}")

@@ -669,8 +669,9 @@ async fn forward(
         let next = tokio::select! {
             biased;
             _ = closing.wait_for(|closing| *closing) => break,
-            // Dropping the stream ends the path's task.
-            () = events.closed() => return,
+            // The consumer is gone: close the path politely before going,
+            // so `SupervisedUsdmWs::close` returns after it has.
+            () = events.closed() => break,
             next = supervised.next() => next,
         };
         let Some(item) = next else {
@@ -689,7 +690,7 @@ async fn forward(
         };
         match slot {
             Ok(slot) => slot.send(item),
-            Err(_) => return,
+            Err(_) => break,
         }
     }
     let _ = supervised.close().await;

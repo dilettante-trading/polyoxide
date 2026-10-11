@@ -28,7 +28,9 @@ pub struct WsError(Box<Repr>);
 
 #[derive(Debug, thiserror::Error)]
 enum Repr {
-    #[error("WebSocket error: {0}")]
+    // tungstenite's own text, so a venue error that wraps this one reads as
+    // it did when it wrapped tungstenite's.
+    #[error("{0}")]
     Transport(#[source] tungstenite::Error),
     #[error("no WebSocket connection within {after:?}")]
     ConnectTimeout { after: Duration },
@@ -346,7 +348,7 @@ mod tests {
         );
         assert_eq!(
             refused(503, None).to_string(),
-            "WebSocket error: HTTP error: 503 Service Unavailable"
+            "HTTP error: 503 Service Unavailable"
         );
     }
 

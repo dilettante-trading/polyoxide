@@ -111,7 +111,7 @@ fn names_on(server: &ScriptedServer, connection: usize) -> Vec<String> {
 }
 
 #[tokio::test]
-async fn a_change_the_connection_dies_under_reads_as_a_stale_outage_l2_d1() {
+async fn a_change_the_server_leaves_unanswered_reads_as_a_stale_outage_l2_d1() {
     // The server never answers the subscribe, so the change outlives the
     // staleness window: the caller gets `Ok`, as the change is recorded, and
     // the outage is `Stale`, where the old loop's 10 s answer timeout made it
@@ -143,6 +143,147 @@ async fn a_change_the_connection_dies_under_reads_as_a_stale_outage_l2_d1() {
         names_on(&server, 1),
         ["btcusdt@markPrice@1s", "ethusdt@aggTrade"]
     );
+    ws.close().await.unwrap();
+}
+
+/// A connection that answers its replay, ignores every later request, and is
+/// closed 500 ms after its handshake: a change sent after the 200 ms pacing
+/// is in flight when the close arrives.
+fn closes_under_a_change() -> Script {
+    Script {
+        ignore_later_requests: true,
+        drop_after: Some(Duration::from_millis(500)),
+        ..Default::default()
+    }
+}
+
+#[tokio::test]
+async fn a_subscribe_the_connection_closes_under_is_answered_ok_and_replayed() {
+    // The connection fails while the request is in flight, well inside the
+    // staleness window: the change is recorded, its caller gets `Ok`, the
+    // outage is the server's close, and the replay carries the change.
+    let server = ScriptedServer::start(vec![closes_under_a_change(), Script::default()]).await;
+    let mut ws = fast(&server)
+        .stale_after(Duration::from_secs(2))
+        .streams([btc_mark()])
+        .connect()
+        .await
+        .unwrap();
+    ws.membership().subscribe([agg("ETHUSDT")]).await.unwrap();
+    assert!(matches!(
+        next_event(&mut ws).await,
+        Event::Disconnected {
+            path: StreamPath::Market,
+            reason: DisconnectReason::Closed { .. }
+        }
+    ));
+    assert!(matches!(
+        next_event(&mut ws).await,
+        Event::Reconnected {
+            path: StreamPath::Market
+        }
+    ));
+    assert_eq!(
+        names_on(&server, 1),
+        ["btcusdt@markPrice@1s", "ethusdt@aggTrade"]
+    );
+    ws.close().await.unwrap();
+}
+
+#[tokio::test]
+async fn an_unsubscribe_the_connection_closes_under_is_answered_ok_and_not_replayed() {
+    let server = ScriptedServer::start(vec![closes_under_a_change(), Script::default()]).await;
+    let mut ws = fast(&server)
+        .stale_after(Duration::from_secs(2))
+        .streams([btc_mark(), agg("ETHUSDT")])
+        .connect()
+        .await
+        .unwrap();
+    ws.membership().unsubscribe([agg("ETHUSDT")]).await.unwrap();
+    assert!(matches!(
+        next_event(&mut ws).await,
+        Event::Disconnected {
+            path: StreamPath::Market,
+            reason: DisconnectReason::Closed { .. }
+        }
+    ));
+    assert!(matches!(
+        next_event(&mut ws).await,
+        Event::Reconnected {
+            path: StreamPath::Market
+        }
+    ));
+    assert_eq!(names_on(&server, 1), ["btcusdt@markPrice@1s"]);
+    ws.close().await.unwrap();
+}
+
+#[tokio::test]
+async fn a_failed_first_connect_of_a_new_path_is_an_error_outage() {
+    // The reason carries the connect's error, which the old loop reported
+    // too: the outage of a path a membership change opened.
+    let server = ScriptedServer::start(vec![
+        Script::default(),
+        reject(),
+        Script {
+            pushes: vec![fixtures::BOOK_TICKER.into()],
+            ..Default::default()
+        },
+    ])
+    .await;
+    let mut ws = fast(&server).streams([btc_mark()]).connect().await.unwrap();
+    ws.membership().subscribe([book()]).await.unwrap();
+    let Event::Disconnected { path, reason } = next_event(&mut ws).await else {
+        panic!("expected Disconnected");
+    };
+    assert_eq!(path, StreamPath::Public);
+    assert!(
+        matches!(reason, DisconnectReason::Error(UsdmWsError::Connect(_))),
+        "{reason:?}"
+    );
+    assert!(matches!(
+        next_event(&mut ws).await,
+        Event::Reconnected {
+            path: StreamPath::Public
+        }
+    ));
+    ws.close().await.unwrap();
+}
+
+#[tokio::test]
+async fn a_path_reopened_while_its_old_connection_drains_takes_changes() {
+    // The public path's last stream leaves and returns at once, so a new
+    // supervisor opens it while the old one closes. The old one's end must
+    // not make the router forget the new one: a change to the reopened path
+    // is still sent to it. Both changes are queued together, so the router
+    // takes the subscribe before the old path's end reaches it, which it
+    // then reads only after it has opened the new path.
+    let server = ScriptedServer::start(vec![Script::default()]).await;
+    let ws = fast(&server)
+        .streams([btc_mark(), book()])
+        .connect()
+        .await
+        .unwrap();
+    let membership = ws.membership();
+    let (left, back) = tokio::join!(
+        membership.unsubscribe([book()]),
+        membership.subscribe([book()])
+    );
+    left.unwrap();
+    back.unwrap();
+    server
+        .wait_for("the old public connection's polite close", |s| {
+            s.close_count() == 1
+        })
+        .await;
+    // Room for the old path's end to reach the router.
+    tokio::time::sleep(Duration::from_millis(200)).await;
+    membership.unsubscribe([book()]).await.unwrap();
+    server
+        .wait_for("the reopened public connection's polite close", |s| {
+            s.close_count() == 2
+        })
+        .await;
+    assert_eq!(server.connection_count(), 3);
     ws.close().await.unwrap();
 }
 

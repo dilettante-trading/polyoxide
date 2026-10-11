@@ -348,3 +348,27 @@ async fn a_server_close_is_answered_and_the_feed_reconnects_drift_r3() {
         .wait_for("the close reply", |s| s.close_reply_count() == 1)
         .await;
 }
+
+#[tokio::test]
+async fn the_builders_connect_timeout_bounds_the_first_connect_drift_r2() {
+    // The first connect takes the builder's timeout, not the bare tier's
+    // 10 s default.
+    let server = ScriptedServer::start(vec![Script::stall()]).await;
+    let after = Duration::from_millis(200);
+    let outcome = tokio::time::timeout(
+        Duration::from_secs(5),
+        RtdsBuilder::new()
+            .url(&server.url)
+            .connect_timeout(after)
+            .connect(subs()),
+    )
+    .await
+    .expect("the connect must give up at its own timeout");
+    let Err(err) = outcome else {
+        panic!("a server that never upgrades must not connect");
+    };
+    assert!(
+        matches!(&err, polyoxide_rtds::RtdsError::Connection(ws) if ws.kind() == polyoxide_ws::Kind::ConnectTimeout { after }),
+        "{err:?}"
+    );
+}

@@ -25,7 +25,8 @@ use tokio::time::Instant;
 /// How the server behaves on one connection.
 #[derive(Debug, Clone, Default)]
 pub struct Script {
-    /// Frames to send, in order, after answering the first request.
+    /// Frames to send, in order, once the client's first frame has arrived
+    /// and been answered as the script answers it, which may be not at all.
     pub pushes: Vec<String>,
     /// While the connection is held open, resend the first push on this
     /// cadence: steady traffic.
@@ -56,8 +57,8 @@ pub struct Script {
 }
 
 impl Script {
-    /// What the shared server sends on the connection: the pushes once the
-    /// client's first request has been answered.
+    /// What the shared server sends on the connection: the pushes after the
+    /// client's first frame and the answer the script gives it, if any.
     fn shared(&self) -> Shared {
         if self.reject_handshake {
             return Shared::reject();
@@ -138,12 +139,11 @@ impl ScriptedServer {
         self.inner
             .received()
             .into_iter()
-            .filter_map(|r| {
-                Some(Received {
-                    connection: r.connection,
-                    at: r.at,
-                    request: serde_json::from_str(&r.text).ok()?,
-                })
+            .map(|r| Received {
+                connection: r.connection,
+                at: r.at,
+                request: serde_json::from_str(&r.text)
+                    .unwrap_or_else(|err| panic!("a request that is not JSON ({err}): {}", r.text)),
             })
             .collect()
     }
