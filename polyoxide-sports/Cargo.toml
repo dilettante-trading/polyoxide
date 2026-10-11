@@ -45,6 +45,9 @@ rustls = { workspace = true }
 # The live suites' failure tags and credential loaders. Path-only: it is never
 # published, and cargo strips a path-only dev-dependency on publish.
 polyoxide-test-support = { path = "../polyoxide-test-support" }
+# The shared scripted WebSocket server the offline suites run on. Path-only,
+# so cargo strips it on publish.
+polyoxide-ws = { path = "../polyoxide-ws", features = ["test-server"] }
 tokio = { workspace = true, features = ["macros", "rt-multi-thread", "time", "net"] }
 
 # Registration, read by scripts/gen_registry.py: the README line, venue and

@@ -4230,6 +4230,7 @@ dependencies = [
  "futures-util",
  "polyoxide-test-support",
  "polyoxide-venue",
+ "polyoxide-ws",
  "rustls",
  "serde",
  "serde_json",
