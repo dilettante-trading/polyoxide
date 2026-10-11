@@ -236,3 +236,40 @@ async fn a_frame_the_client_cannot_read_is_skipped_without_dropping_the_connecti
         "a bad frame is not a bad connection; there must be no reconnect"
     );
 }
+
+#[tokio::test]
+async fn a_hung_handshake_on_reconnect_times_out_and_is_retried_drift_r2() {
+    // DRIFT R2: the second attempt never upgrades. With no connect timeout
+    // the run hung there for good; it now times out, is retried, and the
+    // third connection's rejection ends the run.
+    let server = ScriptedServer::start(vec![
+        Script::frames(&[TWAP_UPDATE])
+            .after_first_frame()
+            .then_close(),
+        Script::stall(),
+        Script::frames(&[polyoxide_rtds::fixtures::REJECTED_SUBSCRIPTION]).after_first_frame(),
+    ])
+    .await;
+
+    let supervised = RtdsBuilder::new()
+        .url(&server.url)
+        .stale_after(Duration::from_secs(60))
+        .backoff(Duration::from_millis(10), Duration::from_millis(50))
+        .connect_timeout(Duration::from_millis(200))
+        .connect(subs())
+        .await
+        .expect("connect");
+
+    let outcome = tokio::time::timeout(
+        Duration::from_secs(5),
+        supervised.run(|_event| async move { Ok(()) }),
+    )
+    .await
+    .expect("the run must not hang on a handshake that never finishes");
+
+    assert!(
+        matches!(outcome, Err(polyoxide_rtds::RtdsError::Server { .. })),
+        "the run must get past the hung attempt and end on the rejection, got {outcome:?}"
+    );
+    assert_eq!(server.connection_count(), 3);
+}

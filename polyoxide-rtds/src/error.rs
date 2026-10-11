@@ -2,19 +2,23 @@
 
 use std::time::Duration;
 
-use polyoxide_venue::{class_for_handshake_status, class_for_status, Class, Classify};
+use polyoxide_venue::{class_for_status, Class, Classify};
+use polyoxide_ws::{Kind, WsError};
 use thiserror::Error;
-use tokio_tungstenite::tungstenite;
 
 use crate::topic::Topic;
+
+polyoxide_venue::impl_ws_classification!();
 
 /// An error from the RTDS stream.
 #[derive(Debug, Error)]
 #[non_exhaustive]
 pub enum RtdsError {
-    /// The underlying WebSocket transport failed.
+    /// The underlying WebSocket transport failed, or did not connect within
+    /// the connect timeout: the kit's one socket error, read through its
+    /// [`Kind`].
     #[error("RTDS connection error: {0}")]
-    Connection(#[source] Box<tokio_tungstenite::tungstenite::Error>),
+    Connection(#[from] WsError),
 
     /// A frame could not be parsed.
     ///
@@ -93,12 +97,6 @@ pub enum RtdsError {
     EmptySubscription,
 }
 
-impl From<tokio_tungstenite::tungstenite::Error> for RtdsError {
-    fn from(err: tokio_tungstenite::tungstenite::Error) -> Self {
-        Self::Connection(Box::new(err))
-    }
-}
-
 /// What a caller should do about an [`RtdsError`].
 ///
 /// A single boolean cannot express this. "Reconnect the transport" and "give
@@ -139,22 +137,24 @@ impl RtdsError {
             // TLS handshake, a rejected upgrade, a protocol-violation
             // detection and a use-after-close are all permanent, and
             // reconnecting into them spins at full backoff forever.
-            Self::Connection(err) => match &**err {
-                tokio_tungstenite::tungstenite::Error::Url(_)
-                | tokio_tungstenite::tungstenite::Error::Tls(_)
-                | tokio_tungstenite::tungstenite::Error::Http(_)
+            Self::Connection(err) => match err.kind() {
+                // D19: a connection used after it closed stops rtds.
+                Kind::AlreadyClosed => Recovery::Fatal,
+                Kind::Url
+                | Kind::Tls
+                | Kind::Refused { .. }
                 // Raised when building the handshake request from an invalid
                 // header name or value — deterministic given the same inputs,
-                // so it belongs with `Http` rather than in the retry bucket.
-                | tokio_tungstenite::tungstenite::Error::HttpFormat(_)
-                | tokio_tungstenite::tungstenite::Error::AlreadyClosed
-                | tokio_tungstenite::tungstenite::Error::AttackAttempt => Recovery::Fatal,
-                // `tungstenite::Error` is `#[non_exhaustive]`, so this match
-                // can never be exhaustive without a default. An unknown
-                // transport error is treated as transient rather than fatal:
-                // reconnecting is the recoverable guess, and a variant that
-                // turns out to be permanent just costs one extra retry cycle
-                // instead of wedging the feed shut.
+                // so it belongs with a refusal rather than in the retry bucket.
+                | Kind::HttpFormat
+                | Kind::AttackAttempt => Recovery::Fatal,
+                // `Kind` is `#[non_exhaustive]`, so this match can never be
+                // exhaustive without a default. An unknown transport error, a
+                // `Capacity` failure and a connect timeout (DRIFT R2) are
+                // treated as transient rather than fatal: reconnecting is the
+                // recoverable guess, and a kind that turns out to be
+                // permanent just costs one extra retry cycle instead of
+                // wedging the feed shut.
                 _ => Recovery::Reconnect,
             },
             Self::ConnectionClosed | Self::Stalled { .. } => Recovery::Reconnect,
@@ -170,26 +170,9 @@ impl RtdsError {
     }
 }
 
-/// A transport failure, by the socket table: a refused upgrade by its status,
-/// misuse and a bad URL or TLS name an `InvalidRequest`, and everything else,
-/// an I/O or protocol error or a closed connection, `Network`.
-fn transport_class(err: &tungstenite::Error) -> Class {
-    use tungstenite::Error as Ws;
-    match err {
-        Ws::Http(response) => class_for_handshake_status(response.status().as_u16()),
-        Ws::Url(_)
-        | Ws::HttpFormat(_)
-        | Ws::Tls(_)
-        | Ws::AttackAttempt
-        | Ws::Capacity(_)
-        | Ws::AlreadyClosed => Class::InvalidRequest,
-        // Io (a TLS EOF included), Protocol, ConnectionClosed,
-        // WriteBufferFull, Utf8 and any later variant.
-        _ => Class::Network,
-    }
-}
-
-/// The transport by the socket table, a lost or silent connection `Network`,
+/// The transport by the one socket table
+/// (`polyoxide_venue::impl_ws_classification!`), whose only non-fault is an
+/// upgrade refused with 451, a lost or silent connection `Network`,
 /// a frame or price that did not decode a `Decode`, and the client's own
 /// refusals an `InvalidRequest`.
 ///
@@ -200,7 +183,7 @@ fn transport_class(err: &tungstenite::Error) -> Class {
 impl Classify for RtdsError {
     fn class(&self) -> Class {
         match self {
-            Self::Connection(err) => transport_class(err),
+            Self::Connection(err) => ws_class(err),
             Self::Json { .. } | Self::Precision { .. } => Class::Decode,
             Self::ConnectionClosed | Self::Stalled { .. } => Class::Network,
             Self::Server { status_code, .. } => {
@@ -209,11 +192,22 @@ impl Classify for RtdsError {
             Self::Url(_) | Self::EmptySubscription => Class::InvalidRequest,
         }
     }
+
+    fn is_fault(&self) -> bool {
+        !matches!(self, Self::Connection(err) if !ws_is_fault(err))
+    }
 }
 
 #[cfg(test)]
 mod tests {
+    use polyoxide_ws::tungstenite;
+
     use super::*;
+
+    /// A transport failure as the connection reports it, through the kit.
+    fn transport(err: tungstenite::Error) -> RtdsError {
+        RtdsError::from(WsError::from(err))
+    }
 
     #[test]
     fn a_rejected_subscription_is_never_recoverable() {
@@ -241,7 +235,7 @@ mod tests {
     fn a_permanent_transport_failure_is_fatal_not_a_retry_loop() {
         // Reconnecting after a TLS or bad-URL failure spins forever at full
         // backoff. Retrying is not "safe by default" here.
-        let closed = RtdsError::from(tokio_tungstenite::tungstenite::Error::AlreadyClosed);
+        let closed = transport(tungstenite::Error::AlreadyClosed);
         assert_eq!(closed.recovery(), Recovery::Fatal);
     }
 
@@ -251,17 +245,14 @@ mod tests {
         // building the upgrade request. Same inputs produce the same failure,
         // so retrying it is a spin, not a recovery.
         let bad_header =
-            tokio_tungstenite::tungstenite::http::header::HeaderName::from_bytes(b"in valid")
-                .unwrap_err();
-        let err = RtdsError::from(tokio_tungstenite::tungstenite::Error::HttpFormat(
-            bad_header.into(),
-        ));
+            tungstenite::http::header::HeaderName::from_bytes(b"in valid").unwrap_err();
+        let err = transport(tungstenite::Error::HttpFormat(bad_header.into()));
         assert_eq!(err.recovery(), Recovery::Fatal);
     }
 
     #[test]
     fn a_transient_transport_failure_reconnects() {
-        let err = RtdsError::from(tokio_tungstenite::tungstenite::Error::ConnectionClosed);
+        let err = transport(tungstenite::Error::ConnectionClosed);
         assert_eq!(err.recovery(), Recovery::Reconnect);
     }
 
@@ -306,13 +297,53 @@ mod tests {
     fn connection_errors_keep_the_transport_cause_in_the_chain() {
         use std::error::Error as _;
 
-        let err = RtdsError::from(tokio_tungstenite::tungstenite::Error::AlreadyClosed);
+        let err = transport(tungstenite::Error::AlreadyClosed);
         assert!(err.source().is_some());
     }
 
     #[test]
+    fn a_use_after_close_is_fatal_and_a_capacity_failure_reconnects() {
+        // D19 is rtds': a connection used after it closed stops it, where
+        // Binance and sports reconnect. A frame or header past tungstenite's
+        // limits reconnects, as before the kit.
+        assert_eq!(
+            transport(tungstenite::Error::AlreadyClosed).recovery(),
+            Recovery::Fatal
+        );
+        assert_eq!(
+            transport(tungstenite::Error::Capacity(
+                tungstenite::error::CapacityError::TooManyHeaders
+            ))
+            .recovery(),
+            Recovery::Reconnect
+        );
+    }
+
+    #[test]
+    fn a_connect_timeout_reconnects_drift_r2() {
+        let err = RtdsError::from(WsError::connect_timeout(Duration::from_secs(10)));
+        assert_eq!(err.recovery(), Recovery::Reconnect);
+        assert_eq!(err.class(), Class::Network);
+    }
+
+    #[test]
+    fn a_451_refusal_is_not_a_fault() {
+        // The socket table's one transport non-fault: the venue does not serve
+        // the caller's region, a defined outcome. rtds' own table called it a
+        // fault.
+        let err = transport(tungstenite::Error::Http(
+            tungstenite::http::Response::builder()
+                .status(451)
+                .body(None)
+                .unwrap(),
+        ));
+        assert_eq!(err.class(), Class::Restricted);
+        assert!(!err.is_fault());
+    }
+
+    #[test]
     fn the_transport_follows_the_socket_table() {
-        use tokio_tungstenite::tungstenite::{error, http, Message};
+        use tungstenite::{error, http, Message};
 
         let bad_header = http::header::HeaderName::from_bytes(b"in valid").unwrap_err();
         let handshake = |status: u16| {
@@ -358,7 +389,7 @@ mod tests {
             (handshake(200), Class::Decode),
         ];
         for (err, class) in rows {
-            let err = RtdsError::from(err);
+            let err = transport(err);
             assert_eq!(err.class(), class, "{err:?}");
             assert!(err.is_fault(), "{err:?}");
             assert_eq!(err.retry_after(), None, "{err:?}");
@@ -374,7 +405,7 @@ mod tests {
         };
         let rows = [
             (
-                RtdsError::from(tokio_tungstenite::tungstenite::Error::ConnectionClosed),
+                transport(tungstenite::Error::ConnectionClosed),
                 Class::Network,
             ),
             (RtdsError::json("{not json", source), Class::Decode),

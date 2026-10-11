@@ -332,7 +332,7 @@ WEBSOCKET_DROPS: list[Row] = [
         "the frame parses: Transport { source: Protocol(ResetWithoutClosingHandshake) }",
         Verdict.TRANSIENT, f"{SPORTS}::reset_without_closing_handshake"),
     Row("TLS EOF without close_notify", "transient",
-        "stream error: RTDS connection error: IO error: peer closed connection "
+        "stream error: RTDS connection error: WebSocket error: IO error: peer closed connection "
         "without sending TLS close_notify: "
         "https://docs.rs/rustls/latest/rustls/manual/_03_howto/index.html#unexpected-eof",
         Verdict.TRANSIENT, f"{RTDS}::tls_eof"),

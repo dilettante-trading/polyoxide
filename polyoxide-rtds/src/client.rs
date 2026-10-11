@@ -3,11 +3,11 @@
 use std::{
     pin::Pin,
     task::{Context, Poll},
+    time::Duration,
 };
 
 use futures_util::{SinkExt, Stream, StreamExt};
-use tokio::net::TcpStream;
-use tokio_tungstenite::{connect_async, tungstenite::Message, MaybeTlsStream, WebSocketStream};
+use polyoxide_ws::{connect, tungstenite::Message, Socket, WsError, DEFAULT_CONNECT_TIMEOUT};
 
 use crate::{
     error::RtdsError,
@@ -17,24 +17,6 @@ use crate::{
 
 /// The RTDS endpoint.
 pub const RTDS_URL: &str = "wss://ws-live-data.polymarket.com";
-
-/// Make sure rustls has a default `CryptoProvider` before we open a connection.
-///
-/// This is a deliberate twin of `ensure_crypto_provider` in
-/// `polyoxide-clob/src/ws/client.rs`. `tokio-tungstenite` builds its TLS
-/// config from the process-wide default provider, and rustls picks one
-/// automatically only when exactly one backend feature is enabled. Faced with
-/// two candidates it installs neither and panics inside `connect_async`.
-///
-/// Duplicating rather than sharing is safe: `install_default` returns `Err`
-/// when a provider is already set, so two crates racing is a no-op rather than
-/// a conflict, and the host application's own choice is left alone.
-fn ensure_crypto_provider() {
-    static INSTALL: std::sync::Once = std::sync::Once::new();
-    INSTALL.call_once(|| {
-        let _ = rustls::crypto::ring::default_provider().install_default();
-    });
-}
 
 /// Reject a subscription set that would produce a silent connection.
 fn validate_subscriptions(subscriptions: &[Subscription]) -> Result<(), RtdsError> {
@@ -46,7 +28,8 @@ fn validate_subscriptions(subscriptions: &[Subscription]) -> Result<(), RtdsErro
 
 /// A connected RTDS stream.
 ///
-/// Ends when the connection drops. For a feed that recovers on its own, use
+/// Ends when the connection drops. A connection not open within 10 s fails
+/// with the kit's `ConnectTimeout` (DRIFT R2). For a feed that recovers on its own, use
 /// [`RtdsBuilder`](crate::supervisor::RtdsBuilder).
 ///
 /// # Example
@@ -71,7 +54,7 @@ fn validate_subscriptions(subscriptions: &[Subscription]) -> Result<(), RtdsErro
 /// # }
 /// ```
 pub struct Rtds {
-    inner: WebSocketStream<MaybeTlsStream<TcpStream>>,
+    inner: Socket,
     subscriptions: Vec<Subscription>,
 }
 
@@ -94,14 +77,26 @@ impl Rtds {
         url: &str,
         subscriptions: impl IntoIterator<Item = Subscription>,
     ) -> Result<Self, RtdsError> {
+        Self::open(url, subscriptions, DEFAULT_CONNECT_TIMEOUT).await
+    }
+
+    /// Connect to `url` within `connect_timeout`, through the kit's connect,
+    /// which installs the TLS provider, and subscribe.
+    pub(crate) async fn open(
+        url: &str,
+        subscriptions: impl IntoIterator<Item = Subscription>,
+        connect_timeout: Duration,
+    ) -> Result<Self, RtdsError> {
         let request = SubscriptionRequest::new(subscriptions);
         validate_subscriptions(request.subscriptions())?;
 
-        ensure_crypto_provider();
-        let (mut inner, _) = connect_async(url).await?;
+        let mut inner = connect(url, connect_timeout).await?;
         let frame = serde_json::to_string(&request)
             .map_err(|e| RtdsError::json(format!("{request:?}"), e))?;
-        inner.send(Message::Text(frame.into())).await?;
+        inner
+            .send(Message::Text(frame.into()))
+            .await
+            .map_err(WsError::from)?;
 
         Ok(Self {
             inner,
@@ -121,7 +116,10 @@ impl Rtds {
         validate_subscriptions(request.subscriptions())?;
         let frame = serde_json::to_string(&request)
             .map_err(|e| RtdsError::json(format!("{request:?}"), e))?;
-        self.inner.send(Message::Text(frame.into())).await?;
+        self.inner
+            .send(Message::Text(frame.into()))
+            .await
+            .map_err(WsError::from)?;
         self.subscriptions
             .extend(request.subscriptions().iter().cloned());
         Ok(())
@@ -133,13 +131,16 @@ impl Rtds {
     /// longer without it, and the server never replies. Do not use this to
     /// detect liveness — nothing comes back.
     pub async fn ping(&mut self) -> Result<(), RtdsError> {
-        self.inner.send(Message::Text("PING".into())).await?;
+        self.inner
+            .send(Message::Text("PING".into()))
+            .await
+            .map_err(WsError::from)?;
         Ok(())
     }
 
     /// Close the connection.
     pub async fn close(&mut self) -> Result<(), RtdsError> {
-        self.inner.close(None).await?;
+        self.inner.close(None).await.map_err(WsError::from)?;
         Ok(())
     }
 
@@ -172,7 +173,7 @@ impl Stream for Rtds {
                     Message::Ping(_) | Message::Pong(_) | Message::Binary(_) => continue,
                     Message::Frame(_) => continue,
                 },
-                Poll::Ready(Some(Err(err))) => Poll::Ready(Some(Err(err.into()))),
+                Poll::Ready(Some(Err(err))) => Poll::Ready(Some(Err(WsError::from(err).into()))),
                 Poll::Ready(None) => Poll::Ready(None),
                 Poll::Pending => Poll::Pending,
             };
@@ -210,26 +211,6 @@ mod tests {
             Subscription::for_topic(Topic::ChainlinkTwap(TwapWindow::Thirty)).symbols(["btc/usd"]);
         let request = SubscriptionRequest::new(subs);
         assert!(validate_subscriptions(request.subscriptions()).is_ok());
-    }
-
-    #[test]
-    fn a_crypto_provider_is_installed_before_any_connection_is_opened() {
-        // `connect_async` builds its TLS config from the process-wide default
-        // provider and panics if there is none. Two `rustls` backend features
-        // are enabled in this workspace, so rustls installs neither by itself
-        // — see the comment on `ensure_crypto_provider`.
-        //
-        // What this proves is narrow but real: that calling the installer
-        // leaves a provider in place. It cannot prove ordering, since any
-        // earlier `connect_to` in this binary already ran it. It fails if the
-        // `ring` feature is dropped or `install_default` stops working, which
-        // is the regression that would otherwise only surface as a panic in
-        // the nightly live run.
-        ensure_crypto_provider();
-        assert!(
-            rustls::crypto::CryptoProvider::get_default().is_some(),
-            "no default CryptoProvider; connect_async would panic"
-        );
     }
 
     // The tests below drive a real socket against the local scripted server.
@@ -409,6 +390,22 @@ mod tests {
                 stream.next().await.is_none(),
                 "a Close frame ends the stream rather than surfacing as an error"
             );
+        }
+
+        #[tokio::test]
+        async fn a_hung_handshake_times_out_drift_r2() {
+            // DRIFT R2: the connect had no timeout, so a host that accepted
+            // TCP and never upgraded hung it for good.
+            let server = ScriptedServer::start(vec![Script::stall()]).await;
+            let after = std::time::Duration::from_millis(100);
+            let Err(err) = Rtds::open(&server.url, subs(), after).await else {
+                panic!("a server that never upgrades must not connect");
+            };
+            assert!(
+                matches!(&err, RtdsError::Connection(ws) if ws.kind() == polyoxide_ws::Kind::ConnectTimeout { after }),
+                "{err:?}"
+            );
+            assert_eq!(err.recovery(), crate::error::Recovery::Reconnect);
         }
 
         #[tokio::test]

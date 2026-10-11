@@ -4214,7 +4214,6 @@ dependencies = [
  "polyoxide-venue",
  "polyoxide-ws",
  "rust_decimal",
- "rustls",
  "serde",
  "serde_json",
  "thiserror 2.0.18",

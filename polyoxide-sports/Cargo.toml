@@ -56,7 +56,7 @@ readme = "Client for Polymarket's live sports score feed"
 venue = "polymarket"
 products = ["sports"]
 mirrors = ["sports"]
-notes = ["no other workspace crate, like `polyoxide-rtds`"]
+notes = ["no other workspace crate, and, like `polyoxide-rtds`, no `polyoxide-core`, `reqwest` or `alloy`"]
 
 [package.metadata.polyoxide.live.live_api]
 suite = "live"

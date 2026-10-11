@@ -8,6 +8,7 @@
 use std::{future::Future, time::Duration};
 
 use futures_util::StreamExt;
+use polyoxide_ws::DEFAULT_CONNECT_TIMEOUT;
 use tokio::time::{timeout, Instant};
 
 use crate::{
@@ -90,6 +91,7 @@ pub struct RtdsBuilder {
     stale_after: Duration,
     initial_backoff: Duration,
     max_backoff: Duration,
+    connect_timeout: Duration,
 }
 
 impl Default for RtdsBuilder {
@@ -107,6 +109,7 @@ impl RtdsBuilder {
             stale_after: DEFAULT_STALE_AFTER,
             initial_backoff: DEFAULT_INITIAL_BACKOFF,
             max_backoff: DEFAULT_MAX_BACKOFF,
+            connect_timeout: DEFAULT_CONNECT_TIMEOUT,
         }
     }
 
@@ -149,13 +152,22 @@ impl RtdsBuilder {
         self
     }
 
+    /// How long one connection attempt may take: the TCP connect, the TLS
+    /// handshake and the WebSocket upgrade together. 10 s by default. A
+    /// reconnect that times out is retried like any other lost connection
+    /// (DRIFT R2).
+    pub fn connect_timeout(mut self, timeout: Duration) -> Self {
+        self.connect_timeout = timeout;
+        self
+    }
+
     /// Connect and subscribe.
     pub async fn connect(
         self,
         subscriptions: impl IntoIterator<Item = Subscription>,
     ) -> Result<SupervisedRtds, RtdsError> {
         let subscriptions: Vec<_> = subscriptions.into_iter().collect();
-        let stream = Rtds::connect_to(&self.url, subscriptions.clone()).await?;
+        let stream = Rtds::open(&self.url, subscriptions.clone(), self.connect_timeout).await?;
         Ok(SupervisedRtds {
             config: self,
             subscriptions,
@@ -254,7 +266,12 @@ impl SupervisedRtds {
                         tracing::debug!(?delay, "waiting before the next RTDS connection attempt");
                         tokio::time::sleep(delay).await;
 
-                        match Rtds::connect_to(&self.config.url, self.subscriptions.clone()).await {
+                        let attempt = Rtds::open(
+                            &self.config.url,
+                            self.subscriptions.clone(),
+                            self.config.connect_timeout,
+                        );
+                        match attempt.await {
                             Ok(stream) => {
                                 self.stream = stream;
                                 break;
@@ -338,6 +355,13 @@ mod tests {
     fn default_impl_matches_new() {
         let builder = RtdsBuilder::default();
         assert_eq!(builder.url, RtdsBuilder::new().url);
+    }
+
+    #[test]
+    fn the_connect_timeout_defaults_to_ten_seconds_and_can_be_set_drift_r2() {
+        assert_eq!(RtdsBuilder::new().connect_timeout, Duration::from_secs(10));
+        let builder = RtdsBuilder::new().connect_timeout(Duration::from_millis(250));
+        assert_eq!(builder.connect_timeout, Duration::from_millis(250));
     }
 
     #[test]

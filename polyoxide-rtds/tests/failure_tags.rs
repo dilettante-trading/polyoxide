@@ -12,7 +12,7 @@ use std::io;
 use polyoxide_rtds::RtdsError;
 use polyoxide_test_support::{tag_for, Tag};
 use polyoxide_venue::Classify;
-use tokio_tungstenite::tungstenite;
+use polyoxide_ws::{tungstenite, WsError};
 
 /// rustls's report of a peer that closed TCP without a TLS `close_notify`.
 const UNEXPECTED_EOF: &str = "peer closed connection without sending TLS close_notify: \
@@ -20,13 +20,13 @@ const UNEXPECTED_EOF: &str = "peer closed connection without sending TLS close_n
 
 #[test]
 fn tls_eof() {
-    let err = RtdsError::Connection(Box::new(tungstenite::Error::Io(io::Error::new(
+    let err = RtdsError::Connection(WsError::from(tungstenite::Error::Io(io::Error::new(
         io::ErrorKind::UnexpectedEof,
         UNEXPECTED_EOF,
     ))));
     assert_eq!(
         err.to_string(),
-        format!("RTDS connection error: IO error: {UNEXPECTED_EOF}")
+        format!("RTDS connection error: WebSocket error: IO error: {UNEXPECTED_EOF}")
     );
     assert_eq!(tag_for(&err.class(), err.is_fault()), Tag::Transient);
 }
