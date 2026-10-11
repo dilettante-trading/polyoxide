@@ -273,3 +273,40 @@ async fn a_hung_handshake_on_reconnect_times_out_and_is_retried_drift_r2() {
     );
     assert_eq!(server.connection_count(), 3);
 }
+
+#[tokio::test]
+async fn a_503_or_429_refusal_on_reconnect_is_retried_drift_r1() {
+    // DRIFT R1: a refused upgrade ended `run()` whatever its status. A 503
+    // or a 429 is the host being unwell or throttling, which passes, so the
+    // run retries both and ends on the fourth connection's rejection.
+    let server = ScriptedServer::start(vec![
+        Script::frames(&[TWAP_UPDATE])
+            .after_first_frame()
+            .then_close(),
+        Script::refuse_upgrade(503),
+        Script::refuse_upgrade(429),
+        Script::frames(&[polyoxide_rtds::fixtures::REJECTED_SUBSCRIPTION]).after_first_frame(),
+    ])
+    .await;
+
+    let supervised = RtdsBuilder::new()
+        .url(&server.url)
+        .stale_after(Duration::from_secs(60))
+        .backoff(Duration::from_millis(10), Duration::from_millis(50))
+        .connect(subs())
+        .await
+        .expect("connect");
+
+    let outcome = tokio::time::timeout(
+        Duration::from_secs(5),
+        supervised.run(|_event| async move { Ok(()) }),
+    )
+    .await
+    .expect("run must return on the rejection rather than hang");
+
+    assert!(
+        matches!(outcome, Err(polyoxide_rtds::RtdsError::Server { .. })),
+        "the run must get past both refusals and end on the rejection, got {outcome:?}"
+    );
+    assert_eq!(server.connection_count(), 4);
+}

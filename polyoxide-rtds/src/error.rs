@@ -2,8 +2,8 @@
 
 use std::time::Duration;
 
-use polyoxide_venue::{class_for_status, Class, Classify};
-use polyoxide_ws::{Kind, WsError};
+use polyoxide_venue::{class_for_handshake_status, class_for_status, Class, Classify};
+use polyoxide_ws::{retrying_can_fix, Kind, WsError};
 use thiserror::Error;
 
 use crate::topic::Topic;
@@ -140,22 +140,24 @@ impl RtdsError {
             Self::Connection(err) => match err.kind() {
                 // D19: a connection used after it closed stops rtds.
                 Kind::AlreadyClosed => Recovery::Fatal,
-                Kind::Url
-                | Kind::Tls
-                | Kind::Refused { .. }
-                // Raised when building the handshake request from an invalid
-                // header name or value — deterministic given the same inputs,
-                // so it belongs with a refusal rather than in the retry bucket.
-                | Kind::HttpFormat
-                | Kind::AttackAttempt => Recovery::Fatal,
-                // `Kind` is `#[non_exhaustive]`, so this match can never be
-                // exhaustive without a default. An unknown transport error, a
-                // `Capacity` failure and a connect timeout (DRIFT R2) are
-                // treated as transient rather than fatal: reconnecting is the
-                // recoverable guess, and a kind that turns out to be
-                // permanent just costs one extra retry cycle instead of
-                // wedging the feed shut.
-                _ => Recovery::Reconnect,
+                // rtds' own rule, kept: a frame or header past tungstenite's
+                // limits costs one retry cycle if it turns out permanent.
+                Kind::Capacity => Recovery::Reconnect,
+                // DRIFT R1: a handshake refused with 408, 425, 429 or 5xx is
+                // the host being unwell or throttling, by venue's status rule;
+                // any other status, a bad URL or TLS name, a malformed
+                // handshake request or an attack detection is permanent.
+                // Everything else, a lost or timed out connection among them
+                // (DRIFT R2), is retried: `Kind` is `#[non_exhaustive]`, and
+                // reconnecting is the recoverable guess for a kind added
+                // later.
+                _ if retrying_can_fix(err, |status| {
+                    class_for_handshake_status(status).is_retriable()
+                }) =>
+                {
+                    Recovery::Reconnect
+                }
+                _ => Recovery::Fatal,
             },
             Self::ConnectionClosed | Self::Stalled { .. } => Recovery::Reconnect,
             // One rejected topic zeroes every topic in the batch, so retrying
@@ -317,6 +319,27 @@ mod tests {
             .recovery(),
             Recovery::Reconnect
         );
+    }
+
+    #[test]
+    fn a_handshake_refused_by_the_host_is_retried_and_one_refused_for_us_is_fatal_drift_r1() {
+        // DRIFT R1: venue's status rule, through `retrying_can_fix`. Every
+        // refusal was fatal before, though `Classify` called these retriable.
+        let refused = |status: u16| {
+            transport(tungstenite::Error::Http(
+                tungstenite::http::Response::builder()
+                    .status(status)
+                    .body(None)
+                    .unwrap(),
+            ))
+        };
+        for status in [408, 425, 429, 500, 503] {
+            assert_eq!(refused(status).recovery(), Recovery::Reconnect, "{status}");
+            assert!(refused(status).is_retriable(), "{status}");
+        }
+        for status in [400, 401, 403, 404, 418, 451] {
+            assert_eq!(refused(status).recovery(), Recovery::Fatal, "{status}");
+        }
     }
 
     #[test]
