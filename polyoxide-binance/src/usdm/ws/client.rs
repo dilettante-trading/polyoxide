@@ -299,23 +299,18 @@ impl UsdmWs {
         self.path
     }
 
-    /// Send a protocol ping without waiting; the pong arrives as any inbound
-    /// frame does and refreshes [`last_inbound`](Self::last_inbound).
-    pub(crate) async fn send_ping(&mut self) -> Result<(), UsdmWsError> {
+    /// Send a protocol ping without waiting for its pong.
+    async fn send_ping(&mut self) -> Result<(), UsdmWsError> {
         self.connection
             .send(Message::Ping(Vec::new().into()))
             .await?;
         Ok(())
     }
 
-    /// When the last frame of any kind arrived, pings and pongs included.
-    pub(crate) fn last_inbound(&self) -> Instant {
-        self.connection.last_inbound()
-    }
-
     /// The server's close code and reason, once it has closed the connection
     /// or the stream has ended without a close frame.
-    pub(crate) fn close_frame(&self) -> Option<(Option<u16>, String)> {
+    #[cfg(test)]
+    fn close_frame(&self) -> Option<(Option<u16>, String)> {
         let closed = self.connection.closed()?;
         Some(match closed.kind() {
             Kind::Closed { code, reason } => (code, reason.to_owned()),
