@@ -228,6 +228,21 @@ impl Protocol for Feed {
         }
     }
 
+    /// A refused upgrade's `Retry-After`, in seconds, as a venue's class
+    /// reads it.
+    fn retry_after(&self, err: &TestError) -> Option<Duration> {
+        let TestError::Ws(err) = err else {
+            return None;
+        };
+        match err.kind() {
+            Kind::Refused {
+                retry_after: Some(value),
+                ..
+            } => value.parse().ok().map(Duration::from_secs_f64),
+            _ => None,
+        }
+    }
+
     fn disconnected(&mut self, outage: Outage<TestError>) -> Option<Ev> {
         let why = match outage {
             Outage::Closed { .. } => "closed",
@@ -714,6 +729,83 @@ async fn connect_returns_a_first_failure_and_start_begins_in_an_outage() {
     assert_eq!(missing.connection_count(), 1);
 }
 
+/// A refusal with a `Retry-After` of `seconds`.
+fn refused_for(seconds: &str) -> Script {
+    Script::refuse_upgrade(503).with_header("Retry-After", seconds)
+}
+
+/// The time between the `n`-th accepted connection and the one before it.
+fn gap(server: &ScriptedServer, n: usize) -> Duration {
+    let accepted = server.accepted_at();
+    accepted[n] - accepted[n - 1]
+}
+
+/// Steps of 20 ms under a ceiling of `ceiling`.
+fn ceiling(ceiling: Duration) -> Timing {
+    Timing {
+        initial_backoff: Duration::from_millis(20),
+        max_backoff: ceiling,
+        ..fast()
+    }
+}
+
+#[tokio::test]
+async fn a_reconnect_waits_out_a_refusals_retry_after_drift_r11() {
+    // A 20 ms step and a 400 ms wait: the attempt after the refusal waits
+    // the 400 ms, where it waited the step, inside the server's window.
+    let server = server(vec![
+        after_replay(data([1])).then_close(),
+        refused_for("0.4"),
+        after_replay(data([2])),
+    ])
+    .await;
+    let timing = ceiling(Duration::from_secs(5));
+    let mut ws = connect(feed(&server), timing, topics(&["a"])).await;
+    assert_eq!(next_event(&mut ws).await, Ev::Data(1));
+    assert_eq!(next_event(&mut ws).await, Ev::Disconnected("closed"));
+    assert_eq!(next_event(&mut ws).await, Ev::Reconnected);
+    assert_eq!(next_event(&mut ws).await, Ev::Data(2));
+    let waited = gap(&server, 2);
+    assert!(waited >= Duration::from_millis(400), "{waited:?}");
+    assert!(waited < Duration::from_secs(4), "{waited:?}");
+    ws.close().await.expect("close");
+}
+
+#[tokio::test]
+async fn a_retry_after_past_the_ceiling_waits_the_ceiling_drift_r11() {
+    let server = server(vec![
+        after_replay(data([1])).then_close(),
+        refused_for("600"),
+        after_replay(data([2])),
+    ])
+    .await;
+    let timing = ceiling(Duration::from_millis(300));
+    let mut ws = connect(feed(&server), timing, topics(&["a"])).await;
+    assert_eq!(next_event(&mut ws).await, Ev::Data(1));
+    assert_eq!(next_event(&mut ws).await, Ev::Disconnected("closed"));
+    assert_eq!(next_event(&mut ws).await, Ev::Reconnected);
+    assert_eq!(next_event(&mut ws).await, Ev::Data(2));
+    let waited = gap(&server, 2);
+    assert!(waited >= Duration::from_millis(300), "{waited:?}");
+    assert!(waited < Duration::from_secs(2), "{waited:?}");
+    ws.close().await.expect("close");
+}
+
+#[tokio::test]
+async fn a_start_in_an_outage_waits_out_the_first_refusals_retry_after_drift_r11() {
+    let server = server(vec![refused_for("0.4"), after_replay(data([1]))]).await;
+    let mut ws = Supervisor::new(feed(&server), ceiling(Duration::from_secs(5)))
+        .start(topics(&["a"]))
+        .await
+        .expect("a retriable first failure starts in an outage");
+    assert_eq!(next_event(&mut ws).await, Ev::Disconnected("error"));
+    assert_eq!(next_event(&mut ws).await, Ev::Reconnected);
+    assert_eq!(next_event(&mut ws).await, Ev::Data(1));
+    let waited = gap(&server, 1);
+    assert!(waited >= Duration::from_millis(400), "{waited:?}");
+    ws.close().await.expect("close");
+}
+
 #[tokio::test]
 async fn pings_go_out_on_the_wall_clock_under_steady_traffic() {
     let server = server(vec![
@@ -986,4 +1078,18 @@ fn the_default_recovery_reconnects_exactly_when_is_retriable() {
         Plain::stalled(Duration::from_secs(2)),
         TestError::Ws(ws) if ws.kind() == Kind::NoAnswer { after: Duration::from_secs(2) }
     ));
+}
+
+#[test]
+fn the_default_retry_after_is_none() {
+    // A protocol that does not read its errors' waits keeps the backoff's
+    // own schedule after a refusal.
+    let refused = TestError::Ws(WsError::from(crate::tungstenite::Error::Http(
+        crate::tungstenite::http::Response::builder()
+            .status(429)
+            .header("Retry-After", "30")
+            .body(None)
+            .unwrap(),
+    )));
+    assert_eq!(Plain.retry_after(&refused), None);
 }

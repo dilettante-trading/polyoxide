@@ -281,10 +281,14 @@ impl<P: Protocol> Task<P> {
     /// Supervise until the consumer goes, the membership is no longer wanted,
     /// or recovery stops. Whether it stopped on an error.
     pub(super) async fn run(mut self, start: Start<P>) -> bool {
+        // The wait the failure that began an outage asked for, which the
+        // first attempt waits out (DRIFT R11).
+        let mut asked = None;
         let mut up = match start {
             Start::Up(connection) => Some(connection),
             Start::Outage(cause) => {
                 tracing::warn!(%cause, "WebSocket connect failed, retrying");
+                asked = self.protocol.retry_after(&cause);
                 self.declare(Outage::Error(cause));
                 None
             }
@@ -295,7 +299,9 @@ impl<P: Protocol> Task<P> {
             let mut connection = match up.take() {
                 Some(connection) => connection,
                 None => {
-                    let delay = next_delay.take().unwrap_or_else(|| self.backoff.take());
+                    let delay = next_delay.take().unwrap_or_else(|| {
+                        self.backoff.take_at_least(asked.take().unwrap_or_default())
+                    });
                     match self.reconnect(delay).await {
                         Recovered::Up(connection) => {
                             let event = self.protocol.reconnected();
@@ -356,6 +362,7 @@ impl<P: Protocol> Task<P> {
                     }
                     tracing::warn!(%err, "WebSocket connection closed, reconnecting");
                     self.backoff.after_connection_ended(delivered);
+                    asked = self.protocol.retry_after(&err);
                     self.declare(Outage::Closed { code, reason });
                 }
                 End::Failed(err) => {
@@ -366,6 +373,7 @@ impl<P: Protocol> Task<P> {
                     }
                     tracing::warn!(%err, "WebSocket connection lost, reconnecting");
                     self.backoff.after_connection_ended(delivered);
+                    asked = self.protocol.retry_after(&err);
                     self.declare(Outage::Error(err));
                 }
             }
@@ -435,8 +443,11 @@ impl<P: Protocol> Task<P> {
                 Err(err) => match self.protocol.recover(&err) {
                     Recovery::Stop => return Recovered::Fatal(err),
                     Recovery::Reconnect | Recovery::Skip => {
-                        tracing::warn!(%err, "WebSocket reconnect failed, retrying");
-                        delay = self.backoff.take();
+                        // A refusal's `Retry-After` only extends the wait,
+                        // up to the ceiling (DRIFT R11).
+                        let asked = self.protocol.retry_after(&err).unwrap_or_default();
+                        delay = self.backoff.take_at_least(asked);
+                        tracing::warn!(%err, ?delay, "WebSocket reconnect failed, retrying");
                     }
                 },
             }

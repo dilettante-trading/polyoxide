@@ -156,7 +156,8 @@ impl UsdmWsBuilder {
         /// Reconnect delay schedule: `initial`, doubling to `max`, with no cap
         /// on attempts, and back to `initial` after a connection that
         /// delivered an update. Both are raised to at least 1 ms, and an
-        /// `initial` above `max` is lowered to `max`.
+        /// `initial` above `max` is lowered to `max`. A reconnect refused with
+        /// a `Retry-After` waits at least that long, up to `max` (DRIFT R11).
         backoff;
         /// How long one connection attempt may take to open.
         connect_timeout;

@@ -8,6 +8,7 @@
 use std::{future::Future, time::Duration};
 
 use futures_util::StreamExt;
+use polyoxide_venue::Classify;
 use polyoxide_ws::{Backoff, DEFAULT_CONNECT_TIMEOUT};
 use tokio::time::{timeout, Instant};
 
@@ -90,7 +91,8 @@ impl RtdsBuilder {
 
     /// Reconnect backoff bounds. The delay doubles from `initial` up to `max`.
     /// Both are raised to at least 1 ms, and an `initial` above `max` is
-    /// lowered to `max`.
+    /// lowered to `max`. A reconnect refused with a `Retry-After` waits at
+    /// least that long, up to `max` (DRIFT R11).
     pub fn backoff(mut self, initial: Duration, max: Duration) -> Self {
         self.initial_backoff = initial;
         self.max_backoff = max;
@@ -194,6 +196,10 @@ impl SupervisedRtds {
                     // in the first place.
                     backoff.after_connection_ended(self.delivered);
                     tracing::warn!(%err, "RTDS connection lost, reconnecting");
+                    // The wait the failure before an attempt asked for, such
+                    // as a refused upgrade's `Retry-After`, which only extends
+                    // the backoff, up to its ceiling (DRIFT R11).
+                    let mut asked = err.retry_after();
 
                     // Retry the *connection attempt*, not the outer loop:
                     // `self.stream` is exhausted here and only the success
@@ -207,7 +213,7 @@ impl SupervisedRtds {
                         // spelling reported the wrong number twice over — the
                         // value before the reset, then the already-doubled one
                         // on a retry.
-                        let delay = backoff.take();
+                        let delay = backoff.take_at_least(asked.take().unwrap_or_default());
                         tracing::debug!(?delay, "waiting before the next RTDS connection attempt");
                         tokio::time::sleep(delay).await;
 
@@ -223,6 +229,7 @@ impl SupervisedRtds {
                             }
                             Err(again) if again.recovery() == Recovery::Reconnect => {
                                 tracing::warn!(%again, "RTDS reconnect attempt failed, retrying");
+                                asked = again.retry_after();
                             }
                             Err(fatal) => return Err(fatal),
                         }

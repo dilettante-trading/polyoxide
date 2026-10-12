@@ -10,7 +10,7 @@ use std::{
 };
 
 use futures_util::{Stream, StreamExt};
-use polyoxide_venue::class_for_handshake_status;
+use polyoxide_venue::{class_for_handshake_status, Classify};
 use polyoxide_ws::{Backoff, Connection, Kind};
 use tokio::time::{sleep, Instant, Sleep};
 
@@ -111,7 +111,8 @@ impl SportsWsBuilder {
     /// Reconnect delay bounds. The delay doubles from `initial` up to `max`,
     /// and returns to `initial` after a connection that received anything.
     /// Both are raised to at least 1 ms, and an `initial` above `max` is
-    /// lowered to `max`.
+    /// lowered to `max`. A reconnect refused with a `Retry-After` waits at
+    /// least that long, up to `max` (DRIFT R11).
     ///
     /// A protocol ping counts as receiving something. So a server that
     /// accepts, sends anything at all, and drops the connection resets the
@@ -268,7 +269,10 @@ impl Stream for SupervisedSportsWs {
                     return Poll::Ready(Some(Err(error)));
                 }
                 Step::AttemptFailed(error) => {
-                    let delay = this.backoff.take();
+                    // A refusal's `Retry-After` only extends the wait, up to
+                    // the ceiling (DRIFT R11).
+                    let asked = error.retry_after().unwrap_or_default();
+                    let delay = this.backoff.take_at_least(asked);
                     tracing::warn!(%error, ?delay, "sports feed reconnect failed; retrying");
                     this.state = State::Waiting(Box::pin(sleep(delay)));
                 }
@@ -409,6 +413,44 @@ mod tests {
             tungstenite::error::UrlError::NoHostName,
         ));
         assert!(!retrying_can_fix(&url));
+    }
+
+    #[tokio::test]
+    async fn a_reconnect_waits_out_a_refusals_retry_after_drift_r11() {
+        // A 10 ms step and a 400 ms wait: the attempt after the refusal
+        // waits the 400 ms, where it retried inside the server's window.
+        use polyoxide_ws::test_server::{Script, ScriptedServer};
+
+        let server = ScriptedServer::start(vec![
+            Script::close_at_once(),
+            Script::refuse_upgrade(503).with_header("Retry-After", "0.4"),
+            Script::hold(),
+        ])
+        .await;
+        let mut feed = SportsWsBuilder::new()
+            .url(server.url.clone())
+            .backoff(MS * 10, Duration::from_secs(5))
+            .connect()
+            .await
+            .unwrap();
+        let mut events = Vec::new();
+        for _ in 0..2 {
+            let item = tokio::time::timeout(Duration::from_secs(3), feed.next())
+                .await
+                .expect("an event within the window")
+                .expect("the feed is open");
+            events.push(item.expect("not an error"));
+        }
+        assert!(
+            matches!(
+                events.as_slice(),
+                [Event::Disconnected { .. }, Event::Reconnected]
+            ),
+            "{events:?}"
+        );
+        let accepted = server.accepted_at();
+        let waited = accepted[2] - accepted[1];
+        assert!(waited >= MS * 400, "{waited:?}");
     }
 
     #[test]

@@ -287,6 +287,12 @@ impl Protocol for UsdmProtocol {
         }
     }
 
+    /// A refused handshake's `Retry-After`, as Binance's class reads it,
+    /// which the reconnect waits out up to the backoff's ceiling (DRIFT R11).
+    fn retry_after(&self, err: &UsdmWsError) -> Option<Duration> {
+        err.retry_after()
+    }
+
     fn disconnected(&mut self, outage: Outage<UsdmWsError>) -> Option<Event> {
         let reason = match outage {
             Outage::Closed { code, reason } => DisconnectReason::Closed { code, reason },

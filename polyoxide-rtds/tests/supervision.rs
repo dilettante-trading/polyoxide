@@ -312,6 +312,45 @@ async fn a_503_or_429_refusal_on_reconnect_is_retried_drift_r1() {
 }
 
 #[tokio::test]
+async fn a_refusal_on_reconnect_waits_out_its_retry_after_drift_r11() {
+    // DRIFT R11: a 10 ms step and a 400 ms wait. The attempt after the
+    // refusal waits the 400 ms, where it retried inside the server's window,
+    // and the run ends on the third connection's rejection.
+    let server = ScriptedServer::start(vec![
+        Script::frames(&[TWAP_UPDATE])
+            .after_first_frame()
+            .then_close(),
+        Script::refuse_upgrade(503).with_header("Retry-After", "0.4"),
+        Script::frames(&[polyoxide_rtds::fixtures::REJECTED_SUBSCRIPTION]).after_first_frame(),
+    ])
+    .await;
+
+    let supervised = RtdsBuilder::new()
+        .url(&server.url)
+        .stale_after(Duration::from_secs(60))
+        .backoff(Duration::from_millis(10), Duration::from_secs(5))
+        .connect(subs())
+        .await
+        .expect("connect");
+
+    let outcome = tokio::time::timeout(
+        Duration::from_secs(5),
+        supervised.run(|_event| async move { Ok(()) }),
+    )
+    .await
+    .expect("run must return on the rejection rather than hang");
+
+    assert!(
+        matches!(outcome, Err(polyoxide_rtds::RtdsError::Server { .. })),
+        "the run must get past the refusal and end on the rejection, got {outcome:?}"
+    );
+    let accepted = server.accepted_at();
+    assert_eq!(accepted.len(), 3);
+    let waited = accepted[2] - accepted[1];
+    assert!(waited >= Duration::from_millis(400), "{waited:?}");
+}
+
+#[tokio::test]
 async fn a_server_close_is_answered_and_the_feed_reconnects_drift_r3() {
     // DRIFT R3: the server's close is answered with the RFC 6455 close reply,
     // which rtds never sent, and the run reconnects as before.

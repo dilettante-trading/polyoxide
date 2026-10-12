@@ -53,7 +53,8 @@ impl PerpsWsBuilder {
         /// Reconnect delay schedule: `initial`, doubling to `max`. There is no
         /// cap on reconnect attempts; only the delay is capped, at `max`. Both
         /// are raised to at least 1 ms, and an `initial` above `max` is lowered
-        /// to `max`.
+        /// to `max`. A reconnect refused with a `Retry-After` waits at least
+        /// that long, up to `max` (DRIFT R11).
         ///
         /// The same schedule spaces the three retries of a rate-limited
         /// subscribe, and those retries share the change's `stale_after`
@@ -702,6 +703,31 @@ mod tests {
         assert!(matches!(next_event(&mut ws).await, Event::Reconnected));
         assert!(matches!(next_event(&mut ws).await, Event::Update(u) if u.sq == 2));
         assert_eq!(server.connection_count(), 5);
+        ws.close().await.unwrap();
+    }
+
+    #[tokio::test]
+    async fn a_refusal_on_reconnect_waits_out_its_retry_after_drift_r11() {
+        // A 10 ms step and a 400 ms wait: the attempt after the refusal
+        // waits the 400 ms, where it retried inside the server's window.
+        let server = shared(vec![
+            pushes_then(vec![bbo(1)]).then_close(),
+            Shared::refuse_upgrade(503).with_header("Retry-After", "0.4"),
+            pushes_then(vec![bbo(2)]),
+        ])
+        .await;
+        let mut ws = fast()
+            .backoff(Duration::from_millis(10), Duration::from_secs(5))
+            .url(&server.url)
+            .connect([Channel::Bbo(InstrumentId(1))])
+            .await
+            .unwrap();
+        assert!(matches!(next_event(&mut ws).await, Event::Update(u) if u.sq == 1));
+        assert!(matches!(next_event(&mut ws).await, Event::Reconnected));
+        assert!(matches!(next_event(&mut ws).await, Event::Update(u) if u.sq == 2));
+        let accepted = server.accepted_at();
+        let waited = accepted[2] - accepted[1];
+        assert!(waited >= Duration::from_millis(400), "{waited:?}");
         ws.close().await.unwrap();
     }
 

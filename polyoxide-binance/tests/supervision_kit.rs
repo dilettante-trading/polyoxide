@@ -79,6 +79,17 @@ fn reject() -> Script {
     }
 }
 
+/// An upgrade refused with `status`, and a `Retry-After` when one is given.
+fn refuse_upgrade(status: u16, retry_after: Option<&str>) -> Script {
+    let headers = retry_after
+        .map(|value| vec![("Retry-After".to_owned(), value.to_owned())])
+        .unwrap_or_default();
+    Script {
+        refuse_upgrade: Some((status, headers)),
+        ..Default::default()
+    }
+}
+
 async fn next(ws: &mut SupervisedUsdmWs) -> Result<Event, UsdmWsError> {
     tokio::time::timeout(Duration::from_secs(3), ws.next())
         .await
@@ -419,6 +430,42 @@ async fn a_stop_on_one_path_ends_the_whole_stream_and_the_handle() {
     server
         .wait_for("the market path's polite close", |s| s.close_count() == 1)
         .await;
+}
+
+#[tokio::test]
+async fn a_refusal_on_reconnect_waits_out_its_retry_after_drift_r11() {
+    // A 10 ms step and a 400 ms wait: the attempt after the refusal waits the
+    // 400 ms, where it retried inside the server's window.
+    let server = ScriptedServer::start(vec![
+        flap(fixtures::MARK_PRICE),
+        refuse_upgrade(503, Some("0.4")),
+        steady(fixtures::MARK_PRICE),
+    ])
+    .await;
+    let mut ws = fast(&server)
+        .backoff(Duration::from_millis(10), Duration::from_secs(5))
+        .streams([btc_mark()])
+        .connect()
+        .await
+        .unwrap();
+    assert!(matches!(next_event(&mut ws).await, Event::Update(_)));
+    assert!(matches!(
+        next_event(&mut ws).await,
+        Event::Disconnected {
+            path: StreamPath::Market,
+            ..
+        }
+    ));
+    assert!(matches!(
+        next_event(&mut ws).await,
+        Event::Reconnected {
+            path: StreamPath::Market
+        }
+    ));
+    let accepted = server.accepted_at();
+    let waited = accepted[2] - accepted[1];
+    assert!(waited >= Duration::from_millis(400), "{waited:?}");
+    ws.close().await.unwrap();
 }
 
 #[tokio::test]

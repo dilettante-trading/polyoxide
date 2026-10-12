@@ -222,6 +222,18 @@ pub trait Protocol: Send + Sized + 'static {
         }
     }
 
+    /// How long the server asked the client to wait after this error, such
+    /// as a refused upgrade's `Retry-After`; `None` by default.
+    ///
+    /// The reconnect that follows waits at least this, clamped to
+    /// [`Timing::max_backoff`], and never less than the backoff's own step:
+    /// a server's wait only extends the delay (DRIFT R11). A venue answers
+    /// it from its error's class, the one place that reads the header.
+    fn retry_after(&self, err: &Self::Error) -> Option<Duration> {
+        let _ = err;
+        None
+    }
+
     /// The event announcing an outage, or `None` for a protocol that
     /// declares none (the default). Called at most once per outage.
     fn disconnected(&mut self, outage: Outage<Self::Error>) -> Option<Self::Event> {
@@ -284,8 +296,10 @@ pub trait Protocol: Send + Sized + 'static {
 ///   and [`Supervised::close`] does not wait on a consumer that never read.
 ///
 /// Reconnects wait out [`Timing::backoff`]'s schedule, with no cap on
-/// attempts; each attempt is bounded by [`Timing::connect_timeout`]. The task
-/// logs under the `polyoxide_ws` target.
+/// attempts, or the [`Protocol::retry_after`] of the failure before them when
+/// that is longer, up to [`Timing::max_backoff`] (DRIFT R11); each attempt is
+/// bounded by [`Timing::connect_timeout`]. The task logs under the
+/// `polyoxide_ws` target.
 ///
 /// The basis is `polyoxide-perps`' former supervised tier (`ws/supervised.rs`,
 /// deleted in Story 4.6), with `polyoxide-binance`'s former loop

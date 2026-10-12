@@ -311,6 +311,12 @@ impl Protocol for PerpsProtocol {
         }
     }
 
+    /// A refused upgrade's `Retry-After`, as perps' class reads it, which
+    /// the reconnect waits out up to the backoff's ceiling (DRIFT R11).
+    fn retry_after(&self, err: &PerpsWsError) -> Option<std::time::Duration> {
+        err.retry_after()
+    }
+
     fn reconnected(&mut self) -> Event {
         Event::Reconnected
     }

@@ -54,6 +54,9 @@ pub struct Script {
     pub hold_answer: Option<(u64, String)>,
     /// Accept the TCP connection and drop it without a handshake.
     pub reject_handshake: bool,
+    /// Answer the WebSocket upgrade with this HTTP status and these headers,
+    /// such as `Retry-After`, instead of `101`.
+    pub refuse_upgrade: Option<(u16, Vec<(String, String)>)>,
 }
 
 impl Script {
@@ -62,6 +65,13 @@ impl Script {
     fn shared(&self) -> Shared {
         if self.reject_handshake {
             return Shared::reject();
+        }
+        if let Some((status, headers)) = &self.refuse_upgrade {
+            return headers
+                .iter()
+                .fold(Shared::refuse_upgrade(*status), |shared, (name, value)| {
+                    shared.with_header(name, value)
+                });
         }
         let pushes: Vec<&str> = self.pushes.iter().map(String::as_str).collect();
         let mut shared = Shared::frames(&pushes).after_first_frame();
@@ -127,6 +137,11 @@ impl ScriptedServer {
     /// Connections accepted so far, counted before the handshake.
     pub fn connection_count(&self) -> usize {
         self.inner.connection_count()
+    }
+
+    /// When each connection was accepted, in order.
+    pub fn accepted_at(&self) -> Vec<Instant> {
+        self.inner.accepted_at()
     }
 
     /// The request path of each connection that completed a handshake.

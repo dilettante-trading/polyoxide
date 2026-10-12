@@ -73,6 +73,17 @@ impl Backoff {
         delay
     }
 
+    /// As [`take`](Self::take), but at least `floor`, clamped to the
+    /// ceiling: the wait a refused attempt asked for, such as its
+    /// `Retry-After`, may only extend the delay, never shorten it, and never
+    /// past the ceiling (DRIFT R11). The schedule advances as `take`'s does.
+    ///
+    /// The rule is `polyoxide-core`'s for HTTP, where `Retry-After` only
+    /// extends the retry delay; the two schedules stay apart (D13).
+    pub fn take_at_least(&mut self, floor: Duration) -> Duration {
+        self.take().max(floor.min(self.max))
+    }
+
     /// Note that a connection ended, and whether it delivered anything.
     ///
     /// Resetting on `delivered` rather than on a successful connect is what
@@ -190,6 +201,44 @@ mod tests {
                 take_n(&mut backoff, 3),
                 vec![millis(1), millis(2), millis(4)]
             );
+        }
+
+        #[test]
+        fn a_floor_extends_the_delay_and_never_shortens_it_drift_r11() {
+            // A step of 1 s, a ceiling of 60 s: a 30 s wait is waited in
+            // full, and a floor under the step leaves the step alone.
+            let mut backoff = Backoff::new(Duration::from_secs(1), Duration::from_secs(60));
+            assert_eq!(
+                backoff.take_at_least(Duration::from_secs(30)),
+                Duration::from_secs(30)
+            );
+            assert_eq!(backoff.take_at_least(millis(500)), Duration::from_secs(2));
+            assert_eq!(
+                backoff.take_at_least(Duration::ZERO),
+                Duration::from_secs(4)
+            );
+        }
+
+        #[test]
+        fn a_floor_past_the_ceiling_waits_the_ceiling_drift_r11() {
+            let mut backoff = Backoff::new(Duration::from_secs(1), Duration::from_secs(60));
+            assert_eq!(
+                backoff.take_at_least(Duration::from_secs(600)),
+                Duration::from_secs(60)
+            );
+            assert_eq!(
+                backoff.take_at_least(Duration::MAX),
+                Duration::from_secs(60)
+            );
+        }
+
+        #[test]
+        fn a_floor_does_not_move_the_schedule() {
+            let mut floored = Backoff::new(millis(10), millis(80));
+            let mut plain = floored;
+            floored.take_at_least(millis(70));
+            plain.take();
+            assert_eq!(take_n(&mut floored, 3), take_n(&mut plain, 3));
         }
 
         #[test]
