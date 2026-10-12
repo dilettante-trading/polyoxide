@@ -105,8 +105,9 @@ impl SportsError {
 
 /// The transport by the one socket table
 /// (`polyoxide_venue::impl_ws_classification!`), whose only non-fault is an
-/// upgrade refused with 451, a server close by its close code, a timeout or a
-/// silent feed `Network`, and a frame that did not parse a `Decode`.
+/// upgrade refused with 451 and whose wait is a refusal's `Retry-After`, a
+/// server close by its close code, a timeout or a silent feed `Network`, and
+/// a frame that did not parse a `Decode`.
 impl Classify for SportsError {
     fn class(&self) -> Class {
         match self {
@@ -122,6 +123,13 @@ impl Classify for SportsError {
             self,
             Self::Connect { source } | Self::Transport { source } if !ws_is_fault(source)
         )
+    }
+
+    fn retry_after(&self) -> Option<Duration> {
+        match self {
+            Self::Connect { source } | Self::Transport { source } => ws_retry_after(source),
+            _ => self.class().retry_after(),
+        }
     }
 }
 
@@ -212,6 +220,15 @@ mod tests {
                 retry_after: Some(Duration::from_secs(30))
             }
         );
+        assert_eq!(err.retry_after(), Some(Duration::from_secs(30)));
+    }
+
+    #[test]
+    fn a_503_refusal_surfaces_its_retry_after() {
+        // As HTTP's errors do for every status; only a 429's class carries
+        // the wait.
+        let err = refused(503, &[("Retry-After", "30")]);
+        assert_eq!(err.class(), Class::Unavailable { code: None });
         assert_eq!(err.retry_after(), Some(Duration::from_secs(30)));
     }
 

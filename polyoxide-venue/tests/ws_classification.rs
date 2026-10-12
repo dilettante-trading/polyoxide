@@ -221,6 +221,49 @@ fn a_429_carries_its_retry_after_and_a_zero_carries_none() {
 }
 
 #[test]
+fn a_refusal_of_any_status_surfaces_its_retry_after() {
+    // As HTTP's `ErrorResponse::retry_after` does, for every status; only a
+    // 429's class has room for the wait.
+    for status in [404, 418, 429, 451, 503] {
+        assert_eq!(
+            ws_retry_after(&refused(status, Some("30"))),
+            Some(Duration::from_secs(30)),
+            "status {status}"
+        );
+    }
+    assert_eq!(
+        ws_class(&refused(503, Some("30"))),
+        Class::Unavailable { code: None }
+    );
+    assert_eq!(
+        ws_class(&refused(429, Some("30"))).retry_after(),
+        Some(Duration::from_secs(30))
+    );
+    let rows = [
+        (Some("7"), Some(Duration::from_secs(7))),
+        (Some(" 1.5 "), Some(Duration::from_millis(1500))),
+        // A zero is no wait (DRIFT R4).
+        (Some("0"), None),
+        (Some("-1"), None),
+        (Some("Wed, 21 Oct 2026 07:28:00 GMT"), None),
+        // No clamp: a socket error reports the wait the server asked for.
+        (Some("1e20"), Some(Duration::MAX)),
+        (None, None),
+    ];
+    for (header, wait) in rows {
+        assert_eq!(ws_retry_after(&refused(503, header)), wait, "{header:?}");
+    }
+}
+
+#[test]
+fn only_a_refusal_carries_a_retry_after() {
+    for (err, _, _) in every_other_kind() {
+        assert_eq!(ws_retry_after(&err), None, "{err:?}");
+    }
+    assert_eq!(ws_retry_after(&WsError::closed(Some(1013), "later")), None);
+}
+
+#[test]
 fn only_an_upgrade_refused_with_451_is_not_a_fault() {
     for status in 100..=599 {
         assert_eq!(

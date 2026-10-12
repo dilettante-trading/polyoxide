@@ -128,7 +128,8 @@ impl From<WsError> for UsdmWsError {
 /// Every error is a fault except a handshake refused with `451`: Binance does
 /// not serve the caller's region, a defined outcome, as
 /// [`BinanceError::RegionBlocked`](crate::BinanceError::RegionBlocked) is on
-/// REST. A `418` ban and a `403` from the firewall stay faults.
+/// REST. A `418` ban and a `403` from the firewall stay faults. A refused
+/// handshake's `Retry-After`, of any status, is the error's wait.
 impl Classify for UsdmWsError {
     fn class(&self) -> Class {
         match self {
@@ -150,6 +151,13 @@ impl Classify for UsdmWsError {
 
     fn is_fault(&self) -> bool {
         !matches!(self, Self::Connect(err) if !ws_is_fault(err))
+    }
+
+    fn retry_after(&self) -> Option<Duration> {
+        match self {
+            Self::Connect(err) => ws_retry_after(err),
+            _ => self.class().retry_after(),
+        }
     }
 }
 
@@ -213,6 +221,21 @@ mod tests {
         );
         assert_eq!(err.retry_after(), Some(Duration::from_secs(7)));
         assert!(err.is_retriable());
+    }
+
+    #[test]
+    fn a_refused_503_surfaces_its_retry_after() {
+        // As HTTP's errors do for every status; only a 429's class carries
+        // the wait.
+        let err = transport(tungstenite::Error::Http(
+            http::Response::builder()
+                .status(503)
+                .header("Retry-After", "30")
+                .body(None)
+                .unwrap(),
+        ));
+        assert_eq!(err.class(), Class::Unavailable { code: None });
+        assert_eq!(err.retry_after(), Some(Duration::from_secs(30)));
     }
 
     #[test]

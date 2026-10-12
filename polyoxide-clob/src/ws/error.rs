@@ -53,9 +53,9 @@ pub enum WebSocketError {
 
 /// The transport by the one socket table
 /// (`polyoxide_venue::impl_ws_classification!`), whose only non-fault is an
-/// upgrade refused with 451, a timeout `Network`, a frame that did not parse
-/// a `Decode`, a refused login `Unauthorized`, and the client's own refusals
-/// an `InvalidRequest`.
+/// upgrade refused with 451 and whose wait is a refusal's `Retry-After`, a
+/// timeout `Network`, a frame that did not parse a `Decode`, a refused login
+/// `Unauthorized`, and the client's own refusals an `InvalidRequest`.
 impl Classify for WebSocketError {
     fn class(&self) -> Class {
         match self {
@@ -71,6 +71,13 @@ impl Classify for WebSocketError {
 
     fn is_fault(&self) -> bool {
         !matches!(self, Self::Connection(err) if !ws_is_fault(err))
+    }
+
+    fn retry_after(&self) -> Option<std::time::Duration> {
+        match self {
+            Self::Connection(err) => ws_retry_after(err),
+            _ => self.class().retry_after(),
+        }
     }
 }
 
@@ -170,6 +177,15 @@ mod tests {
         );
         assert_eq!(err.retry_after(), Some(Duration::from_secs(30)));
         assert!(err.is_retriable());
+    }
+
+    #[test]
+    fn a_503_refusal_surfaces_its_retry_after() {
+        // As HTTP's errors do for every status; only a 429's class carries
+        // the wait.
+        let err = refused(503, &[("Retry-After", "30")]);
+        assert_eq!(err.class(), Class::Unavailable { code: None });
+        assert_eq!(err.retry_after(), Some(Duration::from_secs(30)));
     }
 
     #[test]

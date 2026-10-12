@@ -100,7 +100,8 @@ pub(crate) const NO_REASON: &str = "err";
 
 /// The transport by the one socket table
 /// (`polyoxide_venue::impl_ws_classification!`), whose only non-fault is an
-/// upgrade refused with 451, a lost or silent connection `Network`,
+/// upgrade refused with 451 and whose wait is a refusal's `Retry-After`, a
+/// lost or silent connection `Network`,
 /// a reply or frame that did not parse a `Decode`, and the client's own
 /// refusals an `InvalidRequest`.
 ///
@@ -134,6 +135,13 @@ impl Classify for PerpsWsError {
 
     fn is_fault(&self) -> bool {
         !matches!(self, Self::Connection(err) if !ws_is_fault(err))
+    }
+
+    fn retry_after(&self) -> Option<Duration> {
+        match self {
+            Self::Connection(err) => ws_retry_after(err),
+            _ => self.class().retry_after(),
+        }
     }
 }
 
@@ -172,6 +180,34 @@ mod tests {
     /// A transport failure as the connection reports it, through the kit.
     fn transport(err: tungstenite::Error) -> PerpsWsError {
         PerpsWsError::from(WsError::from(err))
+    }
+
+    /// An upgrade refused with `status` and a `Retry-After` of 30 s.
+    fn refused_for_30s(status: u16) -> PerpsWsError {
+        transport(tungstenite::Error::Http(
+            http::Response::builder()
+                .status(status)
+                .header("Retry-After", "30")
+                .body(None)
+                .unwrap(),
+        ))
+    }
+
+    #[test]
+    fn a_refusals_retry_after_is_surfaced() {
+        // As HTTP's errors do for every status; only a 429's class carries
+        // the wait.
+        let wait = Some(Duration::from_secs(30));
+        assert_eq!(
+            refused_for_30s(429).class(),
+            Class::RateLimited { retry_after: wait }
+        );
+        assert_eq!(refused_for_30s(429).retry_after(), wait);
+        assert_eq!(
+            refused_for_30s(503).class(),
+            Class::Unavailable { code: None }
+        );
+        assert_eq!(refused_for_30s(503).retry_after(), wait);
     }
 
     #[test]

@@ -1,11 +1,12 @@
 //! The one socket classification table, as a macro a venue crate expands.
 
 /// Expands, in the invoking module, to the one socket classification table
-/// (AD-15) for `polyoxide_ws::WsError`: two private functions a venue's
+/// (AD-15) for `polyoxide_ws::WsError`: three private functions a venue's
 /// [`Classify`](crate::Classify) impl calls on its `WsError`-carrying arm.
 ///
 /// - `fn ws_class(err: &::polyoxide_ws::WsError) -> Class`
 /// - `fn ws_is_fault(err: &::polyoxide_ws::WsError) -> bool`
+/// - `fn ws_retry_after(err: &::polyoxide_ws::WsError) -> Option<Duration>`
 ///
 /// It is a macro, not an impl, because neither crate can write the impl:
 /// this crate's build does not depend on `polyoxide-ws` (AD-2), so it cannot
@@ -14,8 +15,8 @@
 /// and the orphan rule forbids the impl there too, so the venue crate expands
 /// the table as functions its own enum's impl calls. The expansion names only
 /// `::polyoxide_ws` and this crate, so the invoking crate needs `polyoxide-ws`
-/// and no tungstenite of its own. A venue that expands it and forgets either
-/// function fails `-D warnings` on the unused one.
+/// and no tungstenite of its own. A venue that expands it and forgets any of
+/// the three fails `-D warnings` on the unused one.
 ///
 /// | `Kind` | Class |
 /// | --- | --- |
@@ -26,9 +27,13 @@
 ///
 /// Any kind a later `polyoxide-ws` adds is `Network`. `ws_is_fault` is
 /// `false` only for an upgrade refused with 451, a region the venue does not
-/// serve; a 418 ban is a fault the client earned. A venue's own override of a
-/// status, such as Binance's firewall `403` (D14), goes in its own arm ahead
-/// of the call.
+/// serve; a 418 ban is a fault the client earned. `ws_retry_after` is a
+/// refused upgrade's `Retry-After`, whatever its status, read by
+/// [`parse_retry_after`](crate::parse_retry_after) with no clamp, and `None`
+/// for a zero, for no header and for every other failure: a socket error
+/// surfaces the wait as HTTP's `ErrorResponse::retry_after` does, though only
+/// a 429's class carries it. A venue's own override of a status, such as
+/// Binance's firewall `403` (D14), goes in its own arm ahead of the call.
 ///
 /// Whether to reconnect is a separate decision, the venue's recovery:
 /// `polyoxide_ws::retrying_can_fix` takes this crate's status rule,
@@ -70,11 +75,19 @@
 ///     fn is_fault(&self) -> bool {
 ///         !matches!(self, Self::Connection(err) if !ws_is_fault(err))
 ///     }
+///
+///     fn retry_after(&self) -> Option<std::time::Duration> {
+///         match self {
+///             Self::Connection(err) => ws_retry_after(err),
+///             Self::Stalled => None,
+///         }
+///     }
 /// }
 ///
 /// let policy = FeedError::Connection(WsError::closed(Some(1008), "policy"));
 /// assert_eq!(policy.class(), Class::VenueRefusal { code: Some("1008".into()) });
 /// assert!(FeedError::Connection(WsError::closed(Some(1001), "")).is_retriable());
+/// assert_eq!(policy.retry_after(), None);
 /// ```
 #[macro_export]
 macro_rules! impl_ws_classification {
@@ -112,6 +125,21 @@ macro_rules! impl_ws_classification {
                 err.kind(),
                 ::polyoxide_ws::Kind::Refused { status: 451, .. }
             )
+        }
+
+        /// The wait a socket failure asked for: a refused upgrade's
+        /// `Retry-After`, whatever its status, unclamped, and `None` for a
+        /// zero (`polyoxide_venue::impl_ws_classification!`).
+        fn ws_retry_after(
+            err: &::polyoxide_ws::WsError,
+        ) -> ::core::option::Option<::core::time::Duration> {
+            match err.kind() {
+                ::polyoxide_ws::Kind::Refused {
+                    retry_after: ::core::option::Option::Some(value),
+                    ..
+                } => $crate::parse_retry_after(value, ::core::time::Duration::MAX),
+                _ => ::core::option::Option::None,
+            }
         }
     };
 }

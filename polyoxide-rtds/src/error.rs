@@ -174,7 +174,8 @@ impl RtdsError {
 
 /// The transport by the one socket table
 /// (`polyoxide_venue::impl_ws_classification!`), whose only non-fault is an
-/// upgrade refused with 451, a lost or silent connection `Network`,
+/// upgrade refused with 451 and whose wait is a refusal's `Retry-After`, a
+/// lost or silent connection `Network`,
 /// a frame or price that did not decode a `Decode`, and the client's own
 /// refusals an `InvalidRequest`.
 ///
@@ -197,6 +198,13 @@ impl Classify for RtdsError {
 
     fn is_fault(&self) -> bool {
         !matches!(self, Self::Connection(err) if !ws_is_fault(err))
+    }
+
+    fn retry_after(&self) -> Option<Duration> {
+        match self {
+            Self::Connection(err) => ws_retry_after(err),
+            _ => self.class().retry_after(),
+        }
     }
 }
 
@@ -362,6 +370,29 @@ mod tests {
         ));
         assert_eq!(err.class(), Class::Restricted);
         assert!(!err.is_fault());
+    }
+
+    #[test]
+    fn a_refusals_retry_after_is_surfaced() {
+        // As HTTP's errors do for every status; only a 429's class carries
+        // the wait.
+        let refused = |status: u16| {
+            transport(tungstenite::Error::Http(
+                tungstenite::http::Response::builder()
+                    .status(status)
+                    .header("Retry-After", "30")
+                    .body(None)
+                    .unwrap(),
+            ))
+        };
+        let wait = Some(Duration::from_secs(30));
+        assert_eq!(
+            refused(429).class(),
+            Class::RateLimited { retry_after: wait }
+        );
+        assert_eq!(refused(429).retry_after(), wait);
+        assert_eq!(refused(503).class(), Class::Unavailable { code: None });
+        assert_eq!(refused(503).retry_after(), wait);
     }
 
     #[test]
