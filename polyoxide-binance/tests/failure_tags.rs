@@ -156,7 +156,7 @@ fn raw_status_403() {
 mod streams {
     use std::time::Duration;
 
-    use polyoxide_binance::usdm::ws::UsdmWsError;
+    use polyoxide_binance::usdm::ws::{StopCause, UsdmWsError};
     use polyoxide_test_support::Tag;
     use polyoxide_ws::{
         tungstenite::{self, http},
@@ -220,6 +220,22 @@ mod streams {
             "{err:?}"
         );
         assert_eq!(tag(&err), Tag::Environmental);
+    }
+
+    /// A supervised stream stopped by a reconnect refused with 451 keeps the
+    /// refusal as its cause (M-D8), so its stop tags as the refusal does.
+    #[test]
+    fn stopped_by_handshake_451() {
+        let err = UsdmWsError::Stopped {
+            cause: Some(StopCause::of(&handshake(451))),
+        };
+        assert_eq!(
+            err.to_string(),
+            "the supervised connection has stopped: WebSocket transport error: HTTP error: 451 \
+             Unavailable For Legal Reasons"
+        );
+        assert_eq!(tag(&err), Tag::Environmental);
+        assert_eq!(tag(&UsdmWsError::Stopped { cause: None }), Tag::Real);
     }
 
     /// Also what `polyoxide-cli`'s live suite fails with when the CLI's

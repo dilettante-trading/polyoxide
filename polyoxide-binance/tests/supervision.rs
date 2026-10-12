@@ -671,6 +671,6 @@ async fn close_ends_the_stream_and_the_handle_promptly_even_mid_backoff() {
     );
     assert!(matches!(
         membership.subscribe([agg("ETHUSDT")]).await,
-        Err(UsdmWsError::Stopped)
+        Err(UsdmWsError::Stopped { .. })
     ));
 }

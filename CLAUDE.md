@@ -369,7 +369,10 @@ answered `Ok` and replayed). Binance acknowledges every
 250 ms partial depth is the bare `<s>@depth<N>`), and enforces its rules by closing the
 connection (on the 1025th stream, or after about 15 requests in a burst), so the client
 enforces them first: `StreamName` is the only way to name a stream, and a connection
-carries at most 1024 streams, 200 names per request, one request per 200 ms. Every
+carries at most 1024 streams, 200 names per request, one request per 200 ms. A path that stops on an error ends the whole stream after yielding it, and `close()` and
+every later membership call answer `UsdmWsError::Stopped { cause }`, the cause that error's
+`StopCause` (its class, fault, wait and text), so a stream stopped by a 451 refusal is
+`Restricted` and not a fault (Story 4.10). Every
 `Event::Disconnected { path }` is followed by `Event::Reconnected { path }` while the
 client runs, even when the path's last stream leaves mid-outage; prader-rs folds outages
 on that invariant, and `tests/supervision.rs`, `tests/supervision_edges.rs` and

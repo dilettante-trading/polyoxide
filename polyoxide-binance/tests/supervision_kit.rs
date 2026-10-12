@@ -16,6 +16,7 @@ use polyoxide_binance::usdm::{
         UsdmWsError,
     },
 };
+use polyoxide_venue::{Class, Classify};
 use tokio::time::Instant;
 
 // Binance's answer on the shared scripted server, as the unit tests use it.
@@ -425,7 +426,7 @@ async fn a_stop_on_one_path_ends_the_whole_stream_and_the_handle() {
     assert!(end.is_none(), "{end:?}");
     assert!(matches!(
         membership.subscribe([agg("ETHUSDT")]).await,
-        Err(UsdmWsError::Stopped)
+        Err(UsdmWsError::Stopped { .. })
     ));
     server
         .wait_for("the market path's polite close", |s| s.close_count() == 1)
@@ -466,6 +467,46 @@ async fn a_refusal_on_reconnect_waits_out_its_retry_after_drift_r11() {
     let waited = accepted[2] - accepted[1];
     assert!(waited >= Duration::from_millis(400), "{waited:?}");
     ws.close().await.unwrap();
+}
+
+#[tokio::test]
+async fn a_path_stopped_by_a_451_keeps_its_cause_m_d8() {
+    // A reconnect refused with 451 stops the client. `Stopped` carries the
+    // refusal's class and fault, so a stream stopped by a region block is
+    // `Restricted`, not a fault, and tags environmental rather than real.
+    let server =
+        ScriptedServer::start(vec![flap(fixtures::MARK_PRICE), refuse_upgrade(451, None)]).await;
+    let mut ws = fast(&server).streams([btc_mark()]).connect().await.unwrap();
+    let membership = ws.membership();
+    assert!(matches!(next_event(&mut ws).await, Event::Update(_)));
+    assert!(matches!(
+        next_event(&mut ws).await,
+        Event::Disconnected {
+            path: StreamPath::Market,
+            ..
+        }
+    ));
+    let refusal = next(&mut ws).await.expect_err("the refusal");
+    assert!(matches!(refusal, UsdmWsError::Connect(_)), "{refusal:?}");
+    let end = tokio::time::timeout(Duration::from_secs(2), ws.next())
+        .await
+        .expect("the end");
+    assert!(end.is_none(), "{end:?}");
+
+    let stopped = ws.close().await.expect_err("a stop on an error");
+    let UsdmWsError::Stopped { cause: Some(cause) } = &stopped else {
+        panic!("expected a stop with its cause, got {stopped:?}");
+    };
+    assert_eq!(cause.message, refusal.to_string());
+    assert_eq!(stopped.class(), Class::Restricted);
+    assert!(!stopped.is_fault(), "{stopped:?}");
+
+    let later = membership
+        .subscribe([agg("ETHUSDT")])
+        .await
+        .expect_err("the client has stopped");
+    assert_eq!(later.class(), Class::Restricted);
+    assert!(!later.is_fault(), "{later:?}");
 }
 
 #[tokio::test]

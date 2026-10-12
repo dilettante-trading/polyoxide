@@ -9,6 +9,7 @@ use std::{
     collections::HashMap,
     fmt,
     pin::Pin,
+    sync::{Arc, OnceLock},
     task::{Context, Poll},
     time::Duration,
 };
@@ -18,7 +19,7 @@ use polyoxide_ws::{MembershipHandle as PathHandle, Supervised, Supervisor, Timin
 use tokio::sync::{mpsc, oneshot, watch};
 
 use crate::usdm::ws::{
-    error::UsdmWsError,
+    error::{StopCause, UsdmWsError},
     event::Update,
     protocol::{Change, UsdmProtocol},
     stream::StreamName,
@@ -215,6 +216,7 @@ impl UsdmWsBuilder {
         let (commands, commands_rx) = mpsc::channel(16);
         let (ended, ended_rx) = mpsc::unbounded_channel();
         let (closing, _) = watch::channel(false);
+        let stop = Stop::default();
         let mut router = Router {
             config: self,
             paths: HashMap::new(),
@@ -224,6 +226,7 @@ impl UsdmWsBuilder {
             ended,
             forwarders: Vec::new(),
             generation: 0,
+            stop: stop.clone(),
         };
         for (path, supervised) in opened {
             router.adopt(path, supervised);
@@ -233,6 +236,7 @@ impl UsdmWsBuilder {
             events: events_rx,
             commands,
             task,
+            stop,
         })
     }
 
@@ -272,7 +276,8 @@ enum Command {
 /// would pass 1024 streams on a path ([`UsdmWsError::TooManyStreams`], nothing
 /// sent), when the first connect of a path it opens fails in a way retrying
 /// cannot fix ([`UsdmWsError::Connect`]), or when the client has stopped
-/// ([`UsdmWsError::Stopped`]). A subscription of more than 200 names is sent
+/// ([`UsdmWsError::Stopped`], with the error a path stopped on once the client
+/// has seen it). A subscription of more than 200 names is sent
 /// in batches, so one refused part-way leaves the earlier batches applied.
 ///
 /// A call waits for the path's task, which takes no change while the consumer
@@ -281,6 +286,7 @@ enum Command {
 #[derive(Debug, Clone)]
 pub struct MembershipHandle {
     commands: mpsc::Sender<Command>,
+    stop: Stop,
 }
 
 impl MembershipHandle {
@@ -307,8 +313,27 @@ impl MembershipHandle {
         self.commands
             .send(make(reply_tx))
             .await
-            .map_err(|_| UsdmWsError::Stopped)?;
-        reply_rx.await.map_err(|_| UsdmWsError::Stopped)?
+            .map_err(|_| self.stop.error())?;
+        reply_rx.await.map_err(|_| self.stop.error())?
+    }
+}
+
+/// The error a path stopped the client on, once the router has seen it:
+/// shared by the router, the stream and every handle, so `close` and every
+/// later membership call carry it (M-D8). A stop's cause is set once.
+#[derive(Debug, Clone, Default)]
+struct Stop(Arc<OnceLock<StopCause>>);
+
+impl Stop {
+    fn set(&self, cause: StopCause) {
+        let _ = self.0.set(cause);
+    }
+
+    /// [`UsdmWsError::Stopped`], with the cause when there is one.
+    fn error(&self) -> UsdmWsError {
+        UsdmWsError::Stopped {
+            cause: self.0.get().cloned(),
+        }
     }
 }
 
@@ -357,6 +382,7 @@ pub struct SupervisedUsdmWs {
     events: mpsc::Receiver<Item>,
     commands: mpsc::Sender<Command>,
     task: tokio::task::JoinHandle<Result<(), UsdmWsError>>,
+    stop: Stop,
 }
 
 impl fmt::Debug for SupervisedUsdmWs {
@@ -372,16 +398,23 @@ impl SupervisedUsdmWs {
     pub fn membership(&self) -> MembershipHandle {
         MembershipHandle {
             commands: self.commands.clone(),
+            stop: self.stop.clone(),
         }
     }
 
     /// Close every connection and stop. Every [`MembershipHandle`] answers
     /// [`UsdmWsError::Stopped`] afterwards.
+    ///
+    /// Fails with [`UsdmWsError::Stopped`] if a path had stopped the client
+    /// on an error, which the stream yielded: its `cause` is that error, as
+    /// [`Classify`](polyoxide_venue::Classify) read it, and so is the cause
+    /// every later membership call carries.
     pub async fn close(self) -> Result<(), UsdmWsError> {
         let Self {
             events,
             commands,
             task,
+            stop,
         } = self;
         // Dropping the receiver first unblocks a path parked behind a full
         // queue, which would otherwise never see the command.
@@ -390,7 +423,7 @@ impl SupervisedUsdmWs {
         drop(commands);
         match task.await {
             Ok(result) => result,
-            Err(_) => Err(UsdmWsError::Stopped),
+            Err(_) => Err(stop.error()),
         }
     }
 }
@@ -420,6 +453,9 @@ struct Ended {
     generation: u64,
     /// Whether it stopped on an error, rather than because its streams left.
     stopped: bool,
+    /// The error it stopped on: the last item it yielded, when that was an
+    /// error.
+    cause: Option<StopCause>,
 }
 
 /// The router: routes membership changes to the paths, opens a path for its
@@ -435,6 +471,8 @@ struct Router {
     ended: mpsc::UnboundedSender<Ended>,
     forwarders: Vec<tokio::task::JoinHandle<()>>,
     generation: u64,
+    /// The cause the client stopped on, shared with the stream and handles.
+    stop: Stop,
 }
 
 impl Router {
@@ -465,7 +503,10 @@ impl Router {
     /// one whose streams left is forgotten, unless a newer one holds its path.
     fn ended(&mut self, ended: Ended) -> Result<(), UsdmWsError> {
         if ended.stopped {
-            return Err(UsdmWsError::Stopped);
+            if let Some(cause) = ended.cause {
+                self.stop.set(cause);
+            }
+            return Err(self.stop.error());
         }
         if self
             .paths
@@ -657,7 +698,7 @@ async fn route(
 
 /// Move one path's events into the consumer's queue until the path ends, the
 /// consumer goes, or the router closes. A path that ends by itself says so,
-/// and whether it stopped on an error.
+/// and whether it stopped on an error, which is the last item it yielded.
 async fn forward(
     path: StreamPath,
     generation: u64,
@@ -666,6 +707,9 @@ async fn forward(
     mut closing: watch::Receiver<bool>,
     ended: mpsc::UnboundedSender<Ended>,
 ) {
+    // The last item, when it was an error: a path that stops yields the
+    // error it stopped on last, before its stream ends.
+    let mut last_error = None;
     loop {
         let next = tokio::select! {
             biased;
@@ -681,9 +725,11 @@ async fn forward(
                 path,
                 generation,
                 stopped,
+                cause: last_error.filter(|_| stopped),
             });
             return;
         };
+        last_error = item.as_ref().err().map(StopCause::of);
         let slot = tokio::select! {
             biased;
             _ = closing.wait_for(|closing| *closing) => break,

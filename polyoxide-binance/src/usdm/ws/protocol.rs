@@ -283,7 +283,7 @@ impl Protocol for UsdmProtocol {
             UsdmWsError::Refused { .. }
             | UsdmWsError::TooManyStreams { .. }
             | UsdmWsError::WrongPath { .. }
-            | UsdmWsError::Stopped => Recovery::Stop,
+            | UsdmWsError::Stopped { .. } => Recovery::Stop,
         }
     }
 
@@ -325,8 +325,9 @@ impl Protocol for UsdmProtocol {
         }
     }
 
+    /// The kit's task stopped; the router adds the cause it saw.
     fn stopped() -> UsdmWsError {
-        UsdmWsError::Stopped
+        UsdmWsError::Stopped { cause: None }
     }
 }
 
@@ -425,7 +426,10 @@ mod tests {
             tungstenite::error::UrlError::NoHostName,
         ));
         assert_eq!(recovery(&url), Recovery::Stop);
-        assert_eq!(recovery(&UsdmWsError::Stopped), Recovery::Stop);
+        assert_eq!(
+            recovery(&UsdmWsError::Stopped { cause: None }),
+            Recovery::Stop
+        );
     }
 
     #[test]

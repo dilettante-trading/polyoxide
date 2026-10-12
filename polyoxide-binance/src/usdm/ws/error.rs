@@ -95,8 +95,49 @@ pub enum UsdmWsError {
     },
 
     /// The supervised tier has stopped; its handles can no longer be used.
-    #[error("the supervised connection has stopped")]
-    Stopped,
+    ///
+    /// `cause` is the error a path stopped on, as [`Classify`] read it, so a
+    /// stream stopped by a reconnect refused with 451 is classed and tagged as
+    /// that refusal is. `None` when the client stopped for another reason,
+    /// such as a task that panicked, or before the stop's cause was known.
+    #[error("the supervised connection has stopped{}", describe_stop(cause.as_ref()))]
+    Stopped {
+        /// The error a path stopped on.
+        cause: Option<StopCause>,
+    },
+}
+
+/// The error a supervised path stopped on, kept for
+/// [`UsdmWsError::Stopped`] after the error itself was yielded: its class,
+/// whether it was a fault, the wait it asked for, and its text.
+#[derive(Debug, Clone, PartialEq, Eq)]
+#[non_exhaustive]
+pub struct StopCause {
+    /// The error's class.
+    pub class: Class,
+    /// Whether the error was a fault.
+    pub is_fault: bool,
+    /// The wait the error asked for.
+    pub retry_after: Option<Duration>,
+    /// The error's text.
+    pub message: String,
+}
+
+impl StopCause {
+    /// The cause of a stop on `err`.
+    pub fn of(err: &UsdmWsError) -> Self {
+        Self {
+            class: err.class(),
+            is_fault: err.is_fault(),
+            retry_after: err.retry_after(),
+            message: err.to_string(),
+        }
+    }
+}
+
+/// The tail of a stop's message: its cause's text, when it has one.
+fn describe_stop(cause: Option<&StopCause>) -> String {
+    cause.map_or_else(String::new, |cause| format!(": {}", cause.message))
 }
 
 /// A server close is [`UsdmWsError::Closed`], a connect timeout
@@ -130,6 +171,10 @@ impl From<WsError> for UsdmWsError {
 /// [`BinanceError::RegionBlocked`](crate::BinanceError::RegionBlocked) is on
 /// REST. A `418` ban and a `403` from the firewall stay faults. A refused
 /// handshake's `Retry-After`, of any status, is the error's wait.
+///
+/// [`Stopped`](UsdmWsError::Stopped) follows its cause, so a stop on a 451
+/// refusal is `Restricted` and not a fault; one with no cause is an
+/// `InvalidRequest` and a fault.
 impl Classify for UsdmWsError {
     fn class(&self) -> Class {
         match self {
@@ -143,19 +188,25 @@ impl Classify for UsdmWsError {
                 code: Some(code.to_string().into()),
             },
             Self::Response { .. } | Self::Frame { .. } => Class::Decode,
-            Self::TooManyStreams { .. } | Self::WrongPath { .. } | Self::Stopped => {
-                Class::InvalidRequest
-            }
+            Self::Stopped { cause: Some(cause) } => cause.class.clone(),
+            Self::TooManyStreams { .. }
+            | Self::WrongPath { .. }
+            | Self::Stopped { cause: None } => Class::InvalidRequest,
         }
     }
 
     fn is_fault(&self) -> bool {
-        !matches!(self, Self::Connect(err) if !ws_is_fault(err))
+        match self {
+            Self::Connect(err) => ws_is_fault(err),
+            Self::Stopped { cause: Some(cause) } => cause.is_fault,
+            _ => true,
+        }
     }
 
     fn retry_after(&self) -> Option<Duration> {
         match self {
             Self::Connect(err) => ws_retry_after(err),
+            Self::Stopped { cause: Some(cause) } => cause.retry_after,
             _ => self.class().retry_after(),
         }
     }
@@ -236,6 +287,37 @@ mod tests {
         ));
         assert_eq!(err.class(), Class::Unavailable { code: None });
         assert_eq!(err.retry_after(), Some(Duration::from_secs(30)));
+    }
+
+    #[test]
+    fn a_stop_follows_its_cause() {
+        // M-D8: a stop on a 451 refusal is that refusal's class, a non-fault,
+        // and a stop on a 429 keeps its wait; one with no cause is the
+        // client's own `InvalidRequest`.
+        let region = UsdmWsError::Stopped {
+            cause: Some(StopCause::of(&http_error(451))),
+        };
+        assert_eq!(region.class(), Class::Restricted);
+        assert!(!region.is_fault());
+        assert_eq!(
+            region.to_string(),
+            "the supervised connection has stopped: WebSocket transport error: HTTP error: 451 \
+             Unavailable For Legal Reasons"
+        );
+        let throttled = UsdmWsError::Stopped {
+            cause: Some(StopCause::of(&transport(tungstenite::Error::Http(
+                http::Response::builder()
+                    .status(429)
+                    .header("Retry-After", "30")
+                    .body(None)
+                    .unwrap(),
+            )))),
+        };
+        assert_eq!(throttled.retry_after(), Some(Duration::from_secs(30)));
+        let bare = UsdmWsError::Stopped { cause: None };
+        assert_eq!(bare.class(), Class::InvalidRequest);
+        assert!(bare.is_fault());
+        assert_eq!(bare.to_string(), "the supervised connection has stopped");
     }
 
     #[test]
@@ -385,7 +467,7 @@ mod tests {
                 },
                 Class::Decode,
             ),
-            (UsdmWsError::Stopped, Class::InvalidRequest),
+            (UsdmWsError::Stopped { cause: None }, Class::InvalidRequest),
         ];
         for (err, class) in rows {
             assert_eq!(err.class(), class, "{err:?}");

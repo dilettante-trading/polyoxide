@@ -26,7 +26,7 @@ pub mod supervised;
 use std::{fmt, time::Duration};
 
 pub use client::UsdmWs;
-pub use error::UsdmWsError;
+pub use error::{StopCause, UsdmWsError};
 pub use event::{
     AggTradeEvent, BookTickerEvent, KlineBar, KlineEvent, MarkPriceEvent, PartialDepthEvent,
     Payload, SymbolType, TickerEvent, Update,
