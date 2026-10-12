@@ -2,7 +2,7 @@
 title: 'Stories 4.9 and 4.10: clob on the kit, every socket error on one table, the kit owns the transport'
 type: 'feature'
 created: '2026-10-12'
-status: 'ready-for-dev'
+status: 'in-progress'
 route: 'dispatch'
 review_loop_iteration: 0
 baseline_commit: 'e1144543ec120d4597b4c9fff674120d554d3ae9'
@@ -125,6 +125,7 @@ context:
 
 ## Code Map
 
+- **Environment.** `/tb` runs near full and earlyoom SIGTERMs rustc: build with `CARGO_INCREMENTAL=0`; a rustc killed by signal 15 (exit 254) is environmental, so re-run it. Another loom session builds in a sibling worktree at the same time. Delete `target/semver-checks` after each removal-gate run. The `divergences.md` part of M-10 is the lead's, through `bmad-spec`; the implementer leaves that file alone.
 - **The kit (`polyoxide-ws/src/`)**
   - `connect.rs`: `connect` :34, `with_timeout` :49, `retrying_can_fix` :76. `connect_over` goes here.
   - `bare.rs`: `Connection::new(Socket, Mode)` :86, which accepts any pre-connected socket; `last_inbound` :107; `closed` :117; `send` :124; `close` :133; the R3 flush in `poll_next` :204-258.
