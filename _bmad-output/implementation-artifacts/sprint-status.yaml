@@ -111,8 +111,8 @@ development_status:
   4-6-perps-on-the-supervisor: review
   4-7-binance-on-the-supervisor: review
   4-8-rtds-and-sports-on-the-kit: review
-  4-9-clob-s-sockets-on-the-kit: backlog
-  4-10-socket-error-enums-reshaped-and-socket-transport-ownership: backlog
+  4-9-clob-s-sockets-on-the-kit: in-progress
+  4-10-socket-error-enums-reshaped-and-socket-transport-ownership: in-progress
   4-11-cut-the-s1-release: backlog
   epic-4-retrospective: optional
 
