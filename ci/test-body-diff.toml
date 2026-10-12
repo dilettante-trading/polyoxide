@@ -1,0 +1,82 @@
+# What scripts/test_body_diff.py may not hold against the S2 baseline, and why.
+#
+# The script pairs every test-context item at the baseline (CI's `S2_BASELINE`)
+# with its counterpart at HEAD and compares the two after normalising them through
+# docs/rename-manifest.md's path rows. Each section below covers what the manifest
+# cannot. Every entry must match something: one that pairs, replaces, acknowledges
+# or retires nothing fails the job, so the file never outlives what it explains.
+#
+# An item is named by its file at the baseline, its kind (`fn` unless given), and
+# `item`, its inline module path and name as the script prints them. The kinds are
+# `fn`, `const`, `static`, `struct`, `enum`, `union`, `type`, `extern`, `macro` for a
+# `macro_rules!`, `invocation` for an item-level macro call, `method`, `assoc_const`
+# and `assoc_type` for what an `impl` or `trait` holds, `target` for a manifest's
+# `[[test]]` or `[[example]]` stanza, named `[[test]]` and filed under its target's
+# file, and `fixture` for a file under a `tests/fixtures/`, named by its file name.
+# Examples: `tests::frame_decodes`, `_#1` for a module's first `const _`,
+# `agreement!#1` for its first `agreement! { ... }`, and
+# `<impl Throttle for Recorder>::acquire`.
+#
+# [files]
+#   "<baseline file>" = "<file at HEAD>"
+#   Pairs two files that `git diff -M30%` does not, or pairs differently. An item is
+#   first looked for in its file's pair, so a test file split or merged below 30%
+#   similarity needs one line here per baseline file, which must hold an item.
+#
+# [literals]
+#   "<content at the baseline>" = "<content at HEAD>"
+#   Replaces a baseline string literal whose content is exactly the key, before the
+#   comparison: a tracing target such as "polyoxide_clob", or a fixture directory.
+#   A key that names a table instead scopes its literals to the baseline files at or
+#   under that path, matched at a `/`, and the longest scope wins:
+#     [literals."polyoxide-clob"]
+#     "ws" = "clob-ws"
+#   An `include_str!` or `include_bytes!` target needs no line: it compares by the
+#   content of the file it names. Each literal must replace something.
+#
+# [paths]
+#   "<old path>" = "<new path>"
+#   Maps a path the rename manifest does not hold, because it was never public, such
+#   as `polyoxide_core::polymarket::limits` moving into `polyoxide_polymarket`'s
+#   private `src/shared/`. It applies on the baseline side as a manifest path row
+#   does, after the manifest's rows, and wins over one with the same old path. Each
+#   entry must rewrite or rename something.
+#
+# [gates]
+#   "<HEAD path prefix>" = "<feature>", or = ["<feature>", ...]
+#   Drops a module's feature gate at HEAD, for a crate root that became the module
+#   `src/<m>/mod.rs` under `#[cfg(feature = "<m>")] pub mod <m>;`, or a test directory
+#   whose targets require a module's features. For every HEAD item at or under the
+#   prefix, matched at a `/`, it drops exactly `cfg(feature = "<feature>")` from what
+#   gates it, from a `mod x;`, an enclosing module or the file's inner `cfg`, and that
+#   operand from a top-level `cfg(all(...))`; and it drops `<feature>` from the
+#   `required-features` of every stanza whose target is there. Any other gate stays.
+#   Each feature must drop something.
+#
+# [[drift]]
+#   file   = "<baseline file>"
+#   item   = "<module path and name>"
+#   kind   = "fn"                       (optional)
+#   row    = "R6"                       a DRIFT row of divergences.md
+#   sha256 = "<the diff's sha256>"      as the script prints it
+#   Acknowledges one diff, which the named DRIFT row decided. The sha256 pins that
+#   exact diff, so any further change to either side shows again.
+#
+# [[retired]]
+#   file = "<baseline file>"
+#   item = "<module path and name>"
+#   kind = "fn"                         (optional)
+#   row  = "<old path in docs/rename-manifest.md>"
+#   Lets a test go with its subject. The manifest row covering `row`, the longest
+#   old path that is a prefix of it at `::`, must give a reason, not a new path.
+#
+# There are no [[drift]] or [[retired]] entries yet. Add each one below as its own
+# `[[drift]]` or `[[retired]]` table.
+
+[files]
+
+[literals]
+
+[paths]
+
+[gates]

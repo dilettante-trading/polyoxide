@@ -2,8 +2,8 @@
 
 The package job checks manifests and can never publish. It runs on every pull
 request, so it must hold no registry token, never drop `--dry-run`, and never be
-skipped by a condition. The MSRV, per-feature and removal gates (AD-22) run the
-commands and pins their stories fixed.
+skipped by a condition. The MSRV, per-feature, removal and test-body gates (AD-22)
+run the commands and pins their stories fixed.
 """
 
 from __future__ import annotations
@@ -145,13 +145,42 @@ def test_http_modules_are_venue_crates_on_core() -> None:
     assert http_modules(metadata) == ["polyoxide-kalshi"]
 
 
-def test_the_removals_job_runs_the_gate_against_the_s1_baseline() -> None:
-    job = JOBS["removals"]
-    assert job["env"]["S1_BASELINE"] == "v0.38.1"
-    checkout = next(s for s in job["steps"] if s.get("uses", "").startswith("actions/checkout"))
-    assert checkout["with"]["fetch-depth"] == 0
+def test_the_s2_baseline_is_set_once_for_the_whole_workflow() -> None:
+    """The removal gate and the test-body diff compare with the same tag."""
+    assert CI["env"]["S2_BASELINE"] == "v0.39.0"
+    for name, job in JOBS.items():
+        assert "S2_BASELINE" not in (job.get("env") or {}), name
+        assert "S1_BASELINE" not in yaml.safe_dump(job), name
+
+
+def _checkout(job: str) -> dict:
+    return next(s for s in _steps(job) if s.get("uses", "").startswith("actions/checkout"))
+
+
+def test_the_removals_job_runs_the_s2_gate_against_the_s2_baseline() -> None:
+    """Report-only through S2; Story 5.12 adds `--strict`."""
+    assert _checkout("removals")["with"]["fetch-depth"] == 0
     assert _job_runs("removals") == [
-        'python3 scripts/api_removals.py check --baseline "$S1_BASELINE"']
+        'python3 scripts/api_removals.py manifest --baseline "$S2_BASELINE" '
+        '--expand target/rename-map.tsv']
+
+
+def test_the_removals_job_uploads_the_regenerated_manifest_and_the_map_even_on_failure() -> None:
+    steps = _steps("removals")
+    [upload] = [s for s in steps if s.get("uses", "").startswith("actions/upload-artifact")]
+    assert upload["if"] == "${{ always() }}"
+    assert upload["with"]["path"].split() == ["target/api-removals/rename-manifest.md",
+                                              "target/rename-map.tsv"]
+    assert steps.index(upload) > next(i for i, s in enumerate(steps) if "run" in s)
+
+
+def test_the_test_bodies_job_diffs_against_the_s2_baseline() -> None:
+    assert _checkout("test-bodies")["with"]["fetch-depth"] == 0
+    assert _job_runs("test-bodies") == [
+        'python3 scripts/test_body_diff.py --baseline "$S2_BASELINE"']
+    # Python only: nothing compiles, so no toolchain or wrapper is set up.
+    assert JOBS["test-bodies"]["env"]["RUSTC_WRAPPER"] == ""
+    assert not [u for u in _uses("test-bodies") if not u.startswith("actions/checkout")]
 
 
 def test_the_semver_tool_and_its_toolchain_are_pinned_alike_in_both_workflows() -> None:
@@ -169,7 +198,7 @@ def test_the_semver_tool_and_its_toolchain_are_pinned_alike_in_both_workflows() 
         ["dtolnay/rust-toolchain@1.99.0"], ["cargo-semver-checks@0.51.0"])
 
 
-@pytest.mark.parametrize("job", ["msrv", "features", "removals"])
+@pytest.mark.parametrize("job", ["msrv", "features", "removals", "test-bodies"])
 def test_each_new_gate_runs_on_every_pull_request(job: str) -> None:
     """A gate behind a condition or another job can be skipped, and a skipped job
     does not withhold the release."""
@@ -185,16 +214,35 @@ def test_each_compiling_gate_installs_the_sccache_it_is_wrapped_in(job: str) -> 
     assert any(u.startswith("mozilla-actions/sccache-action") for u in _uses(job))
 
 
+def _caches(job: str) -> dict[str, dict]:
+    return {s["with"]["path"]: s for s in _steps(job)
+            if s.get("uses", "").startswith("actions/cache")}
+
+
 def test_the_baseline_cache_is_keyed_on_the_baseline_and_both_pins() -> None:
     """A key that missed one of the three would restore a baseline build made by
     another toolchain, tool or tag."""
-    [cache] = [s for s in _steps("removals") if s.get("uses", "").startswith("actions/cache")]
+    cache = _caches("removals")["target/semver-checks/git-*"]
     toolchain = next(u for u in _uses("removals") if u.startswith("dtolnay/")).split("@")[1]
     tool = _installed("removals")[0].split("@")[1]
     key = cache["with"]["key"]
-    assert "${{ env.S1_BASELINE }}" in key
+    assert "${{ env.S2_BASELINE }}" in key
     assert f"rust-{toolchain}" in key and f"cargo-semver-checks-{tool}" in key
-    assert cache["with"]["path"] == "target/semver-checks/git-*"
     # Restored before the tool runs, or it rebuilds cold anyway.
+    steps = _steps("removals")
+    assert steps.index(cache) < next(i for i, s in enumerate(steps) if "run" in s)
+
+
+def test_the_path_diffs_baseline_cache_is_keyed_on_the_baseline_and_the_toolchain() -> None:
+    """The JSON's own stamp names the tree, `rustc -vV` and the rustdoc command, so a
+    wrong entry is rebuilt rather than read; the key, which also names the script
+    that builds and walks it, keeps one from being restored at all."""
+    caches = _caches("removals")
+    assert sorted(caches) == ["target/api-removals/baseline", "target/semver-checks/git-*"]
+    cache = caches["target/api-removals/baseline"]
+    toolchain = next(u for u in _uses("removals") if u.startswith("dtolnay/")).split("@")[1]
+    key = cache["with"]["key"]
+    assert "${{ env.S2_BASELINE }}" in key and f"rust-{toolchain}" in key
+    assert "${{ hashFiles('scripts/public_api.py') }}" in key
     steps = _steps("removals")
     assert steps.index(cache) < next(i for i, s in enumerate(steps) if "run" in s)
