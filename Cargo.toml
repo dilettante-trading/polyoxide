@@ -83,7 +83,7 @@ codegen-units = 16
 # additions. `scripts/gen_registry.py` writes it into docs/ARCHITECTURE.md, the
 # one line there that is not copied from the architecture spine's guide.
 [workspace.metadata.polyoxide]
-stage = "S1"
+stage = "S2"
 
 # The API mirrors under docs/specs/, one table per directory. Crates name the
 # directories they cover in their own `[package.metadata.polyoxide] mirrors`;
