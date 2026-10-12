@@ -45,6 +45,12 @@ development_status:
   # S3 = Epics 6-8, additive only. Epic 6 before Epics 7 and 8; Epic 4 before Epic 7.
   #   Epic 8 touches only AD-13's new-venue set, and its nightly needs Kalshi demo credentials or it is auth-gated.
   #   bmad-build-auto suits S2 and S3 once the patterns settle.
+  # Lane B (10-12-2026, user's call to finish faster): a second loom session, aidanb/restructure-2, builds S3's
+  #   venue-only groundwork while bundle M runs here: 6.1, 6.2's polyoxide-venue half (RawKey, MarketKey and the
+  #   newtypes), 6.3's trait definitions, 7.3 and 7.5. It touches only polyoxide-venue, docs and its own planning
+  #   files, adds no venue name to polyoxide-venue (S2's CAP-7 gate), and stays off main until 5.12 ships. AD-16
+  #   orders releases, not authoring, so this needs no spine change. The venue crates' halves (6.2's constructors,
+  #   6.3's Binance impl, 6.4, 6.5) and parse_key wait for S2. 6.2 and 6.3 stay in-progress until both halves land.
   # Keep notes in this block: sprint_plan.py drops every other comment in development_status when it reruns.
   #
   # Epic 1 gates:
