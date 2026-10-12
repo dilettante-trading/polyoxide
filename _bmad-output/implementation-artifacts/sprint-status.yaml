@@ -51,6 +51,9 @@ development_status:
   #   files, adds no venue name to polyoxide-venue (S2's CAP-7 gate), and stays off main until 5.12 ships. AD-16
   #   orders releases, not authoring, so this needs no spine change. The venue crates' halves (6.2's constructors,
   #   6.3's Binance impl, 6.4, 6.5) and parse_key wait for S2. 6.2 and 6.3 stay in-progress until both halves land.
+  # S1 shipped 2026-10-12 as v0.39.0 (release commit 3da0acb; Epics 1-4 merged to main as cb476e2 and 5aeda6e).
+  #   The first release CI failed only on the known flaky Python live test (zero-padded condition id); a re-run
+  #   of that job released. The workspace stage is S2. Next: Story 5.1 opens the S2 integration session from main.
   # Keep notes in this block: sprint_plan.py drops every other comment in development_status when it reruns.
   #
   # Epic 1 gates:
@@ -113,7 +116,7 @@ development_status:
   4-8-rtds-and-sports-on-the-kit: review
   4-9-clob-s-sockets-on-the-kit: review
   4-10-socket-error-enums-reshaped-and-socket-transport-ownership: review
-  4-11-cut-the-s1-release: backlog
+  4-11-cut-the-s1-release: done
   epic-4-retrospective: optional
 
   epic-5: backlog
