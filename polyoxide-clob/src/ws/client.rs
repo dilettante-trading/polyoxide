@@ -1057,93 +1057,58 @@ mod dispatch_tests {
 #[cfg(test)]
 mod membership_tests {
     use super::*;
-    use futures_util::StreamExt;
-    use std::sync::{
-        atomic::{AtomicUsize, Ordering},
-        Arc,
-    };
-    use tokio::net::TcpListener;
-    use tokio::sync::mpsc;
+    use polyoxide_ws::test_server::{Script, ScriptedServer};
 
-    /// A loopback WebSocket server that records every text frame it receives
-    /// (PINGs excluded) and closes after `expect` of them.
-    async fn recording_server(expect: usize) -> (u16, mpsc::Receiver<String>) {
-        let listener = TcpListener::bind("127.0.0.1:0").await.unwrap();
-        let port = listener.local_addr().unwrap().port();
-        let (tx, rx) = mpsc::channel(16);
-        tokio::spawn(async move {
-            let (stream, _) = listener.accept().await.unwrap();
-            let mut ws = tokio_tungstenite::accept_async(stream).await.unwrap();
-            let mut seen = 0;
-            while let Some(Ok(msg)) = ws.next().await {
-                if let Message::Text(t) = msg {
-                    if t.as_str() == "PING" {
-                        continue;
-                    }
-                    tx.send(t.to_string()).await.unwrap();
-                    seen += 1;
-                    if seen == expect {
-                        let _ = ws.close(None).await;
-                        return;
-                    }
-                }
-            }
-        });
-        (port, rx)
+    /// Long enough for a run to send what a test queued before the server
+    /// closes; the tests that end a run wait for the frames first.
+    const CLOSE_AFTER: Duration = Duration::from_millis(500);
+
+    /// The text frames the server received, keep-alive `PING`s excluded.
+    fn non_ping_frames(server: &ScriptedServer) -> Vec<String> {
+        server
+            .client_frames()
+            .into_iter()
+            .filter(|frame| frame != "PING")
+            .collect()
+    }
+
+    /// The keep-alive `PING`s the server received.
+    fn pings(server: &ScriptedServer) -> usize {
+        server.count_frames(|frame| frame == "PING")
     }
 
     /// Build a `WebSocketWithPing` of the given channel type over a plain
-    /// loopback TCP stream. `WebSocketBuilder::market_url` insists on
-    /// `wss://`, so the connection is assembled directly, exactly as
-    /// `connect_market` would.
-    async fn connect_plain(port: u16, channel_type: ChannelType) -> WebSocketWithPing {
-        connect_plain_with(port, channel_type, Duration::from_secs(10)).await
+    /// loopback connection. `WebSocketBuilder::market_url` insists on
+    /// `wss://`, so the connection goes through `connect_ws` directly,
+    /// exactly as `connect_market` would.
+    async fn connect_plain(
+        server: &ScriptedServer,
+        channel_type: ChannelType,
+    ) -> WebSocketWithPing {
+        connect_plain_with(server, channel_type, Duration::from_secs(10)).await
     }
 
     async fn connect_plain_with(
-        port: u16,
+        server: &ScriptedServer,
         channel_type: ChannelType,
         ping_interval: Duration,
     ) -> WebSocketWithPing {
-        let tcp = TcpStream::connect(("127.0.0.1", port)).await.unwrap();
-        let (inner, _) = tokio_tungstenite::client_async(
-            format!("ws://127.0.0.1:{port}/ws/market"),
-            MaybeTlsStream::Plain(tcp),
-        )
-        .await
-        .unwrap();
+        let inner = connect_ws(&server.url, Duration::from_secs(2))
+            .await
+            .expect("connect");
         WebSocketWithPing::new(inner, channel_type, ping_interval)
-    }
-
-    /// A loopback WebSocket server that counts the PINGs it receives and
-    /// holds the connection open.
-    async fn ping_counting_server() -> (u16, Arc<AtomicUsize>) {
-        let listener = TcpListener::bind("127.0.0.1:0").await.unwrap();
-        let port = listener.local_addr().unwrap().port();
-        let pings = Arc::new(AtomicUsize::new(0));
-        let counted = Arc::clone(&pings);
-        tokio::spawn(async move {
-            let (stream, _) = listener.accept().await.unwrap();
-            let mut ws = tokio_tungstenite::accept_async(stream).await.unwrap();
-            while let Some(Ok(msg)) = ws.next().await {
-                if matches!(&msg, Message::Text(t) if t.as_str() == "PING") {
-                    counted.fetch_add(1, Ordering::SeqCst);
-                }
-            }
-        });
-        (port, pings)
     }
 
     #[tokio::test]
     async fn a_zero_ping_interval_pings_without_panicking() {
         // tokio's `interval` asserts a non-zero period, so this panicked the
         // moment `run` was first polled.
-        let (port, pings) = ping_counting_server().await;
-        let ws = connect_plain_with(port, ChannelType::Market, Duration::ZERO).await;
+        let server = ScriptedServer::start(vec![Script::hold()]).await;
+        let ws = connect_plain_with(&server, ChannelType::Market, Duration::ZERO).await;
         let run = tokio::spawn(ws.run(|_| async { Ok(()) }));
         tokio::time::sleep(Duration::from_millis(100)).await;
         assert!(!run.is_finished(), "run ended: {:?}", run.await);
-        assert!(pings.load(Ordering::SeqCst) >= 2, "pings were not repeated");
+        assert!(pings(&server) >= 2, "pings were not repeated");
         run.abort();
     }
 
@@ -1151,40 +1116,35 @@ mod membership_tests {
     async fn a_duration_max_ping_interval_sends_only_the_opening_ping() {
         // `interval` added the period to a late tick unchecked, so
         // `Duration::MAX` could panic depending on scheduling.
-        let (port, pings) = ping_counting_server().await;
-        let ws = connect_plain_with(port, ChannelType::Market, Duration::MAX).await;
+        let server = ScriptedServer::start(vec![Script::hold()]).await;
+        let ws = connect_plain_with(&server, ChannelType::Market, Duration::MAX).await;
         let run = tokio::spawn(ws.run(|_| async { Ok(()) }));
         tokio::time::sleep(Duration::from_millis(100)).await;
         assert!(!run.is_finished(), "run ended: {:?}", run.await);
-        assert_eq!(pings.load(Ordering::SeqCst), 1);
+        assert_eq!(pings(&server), 1);
         run.abort();
     }
 
     #[tokio::test]
     async fn run_forwards_membership_frames_in_order() {
-        let (port, mut frames) = recording_server(2).await;
-        let ws = connect_plain(port, ChannelType::Market).await;
+        let server = ScriptedServer::start(vec![Script::hold().drop_after(CLOSE_AFTER)]).await;
+        let ws = connect_plain(&server, ChannelType::Market).await;
         let handle = ws.membership();
         let run = tokio::spawn(ws.run(|_| async { Ok(()) }));
 
         handle.subscribe_assets(vec!["b".into()]).await.unwrap();
         handle.unsubscribe_assets(vec!["a".into()]).await.unwrap();
 
+        server
+            .wait_for("both frames", |s| non_ping_frames(s).len() == 2)
+            .await;
+        let frames = non_ping_frames(&server);
+        assert_eq!(frames[0], r#"{"operation":"subscribe","assets_ids":["b"]}"#);
         assert_eq!(
-            tokio::time::timeout(Duration::from_secs(2), frames.recv())
-                .await
-                .expect("must not hang")
-                .unwrap(),
-            r#"{"operation":"subscribe","assets_ids":["b"]}"#
-        );
-        assert_eq!(
-            tokio::time::timeout(Duration::from_secs(2), frames.recv())
-                .await
-                .expect("must not hang")
-                .unwrap(),
+            frames[1],
             r#"{"operation":"unsubscribe","assets_ids":["a"]}"#
         );
-        // The server closed after the second frame: run returns cleanly.
+        // The server closes after the frames: run returns cleanly.
         tokio::time::timeout(Duration::from_secs(2), run)
             .await
             .expect("must not hang")
@@ -1194,8 +1154,8 @@ mod membership_tests {
 
     #[tokio::test]
     async fn membership_handle_errors_with_membership_closed_after_run_exits() {
-        let (port, _frames) = recording_server(1).await;
-        let ws = connect_plain(port, ChannelType::Market).await;
+        let server = ScriptedServer::start(vec![Script::hold().drop_after(CLOSE_AFTER)]).await;
+        let ws = connect_plain(&server, ChannelType::Market).await;
         let handle = ws.membership();
         let run = tokio::spawn(ws.run(|_| async { Ok(()) }));
         handle.subscribe_assets(vec!["b".into()]).await.unwrap();
@@ -1217,8 +1177,8 @@ mod membership_tests {
 
     #[tokio::test]
     async fn membership_handle_refuses_the_user_channel() {
-        let (port, _frames) = recording_server(1).await;
-        let ws = connect_plain(port, ChannelType::User).await;
+        let server = ScriptedServer::start(vec![Script::hold()]).await;
+        let ws = connect_plain(&server, ChannelType::User).await;
         let handle = ws.membership();
         drop(ws);
 

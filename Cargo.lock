@@ -4074,6 +4074,7 @@ dependencies = [
  "polyoxide-relay",
  "polyoxide-test-support",
  "polyoxide-venue",
+ "polyoxide-ws",
  "rand 0.9.4",
  "rust_decimal",
  "rust_decimal_macros",

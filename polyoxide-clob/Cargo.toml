@@ -62,6 +62,9 @@ tracing-subscriber = { version = "0.3", features = ["env-filter"] }
 futures-util = "0.3"
 dotenvy = "0.15"
 rust_decimal_macros = "1.37"
+# The shared scripted WebSocket server the offline ws suites run on. Path-only,
+# so cargo strips it on publish.
+polyoxide-ws = { path = "../polyoxide-ws", features = ["test-server"] }
 
 # `live_ws.rs` is `#![cfg(feature = "ws")]`. Without this stanza a build
 # without the feature compiles it to an empty binary that runs no tests.
