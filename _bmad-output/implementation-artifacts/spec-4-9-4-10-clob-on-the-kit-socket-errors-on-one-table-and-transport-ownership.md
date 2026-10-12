@@ -2,7 +2,7 @@
 title: 'Stories 4.9 and 4.10: clob on the kit, every socket error on one table, the kit owns the transport'
 type: 'feature'
 created: '2026-10-12'
-status: 'in-progress'
+status: 'done'
 route: 'dispatch'
 review_loop_iteration: 0
 baseline_commit: 'e1144543ec120d4597b4c9fff674120d554d3ae9'
@@ -211,24 +211,24 @@ context:
 ## Tasks & Acceptance
 
 **Execution.** One commit each, in order. Run fmt, clippy and the touched tests before each commit.
-- [ ] **M-1 (4.9, the server switch).** clob's five `membership_tests` run on `polyoxide_ws::test_server` under the old code. Add the dev-dependency, and record the counts before and after.
-- [ ] **M-2 (the kit).** Add `connect_over`, with a test against the scripted server, and move clob's crypto test into `tls.rs` by name.
-- [ ] **M-3 (4.9, the move, DRIFT R3).** clob makes the M-D1 to M-D3 changes, with tests:
+- [x] **M-1 (4.9, the server switch).** clob's five `membership_tests` run on `polyoxide_ws::test_server` under the old code. Add the dev-dependency, and record the counts before and after.
+- [x] **M-2 (the kit).** Add `connect_over`, with a test against the scripted server, and move clob's crypto test into `tls.rs` by name.
+- [x] **M-3 (4.9, the move, DRIFT R3).** clob makes the M-D1 to M-D3 changes, with tests:
   - `a_server_close_is_answered_with_the_close_reply_drift_r3`;
   - the DNS-miss row;
   - the 451 and 429 rows;
   - a per-step `ConnectTimeout` on `Script::stall()`.
-- [ ] **M-4 (4.9, deletion).**
+- [x] **M-4 (4.9, deletion).**
   - Delete the TLS copy and the old read path.
   - Move `live_ws` to R9.
   - Drop `tokio-tungstenite` and `rustls`.
   - Update Cargo, run `gen_registry --write`, and update the README, CLAUDE.md, the kit basis notes and `s1-removals`.
-- [ ] **M-5 (4.10, sports).** Make the M-D4 changes, with the M-D10 exceptions, plus the 451 and 429 rows and a D19 pin test. Drop `tokio-tungstenite`.
-- [ ] **M-6 (4.10, `Retry-After`).** Add the macro's `ws_retry_after` and the five `Classify` overrides (M-D6), with venue and per-crate rows.
-- [ ] **M-7 (DRIFT R11).** Add the kit hook and the `Backoff` floor, used by perps, Binance, rtds and sports. Each gets a test named `..._drift_r11`.
-- [ ] **M-8 (4.10, Binance's `Stopped` cause).** Make the M-D8 changes, with a `supervision_kit.rs` test and a failure-tag twin.
-- [ ] **M-9 (4.10, fences).** The M-D9 fences, each shown failing on a synthetic case, plus CLAUDE.md :50 and :342.
-- [ ] **M-10 (docs).**
+- [x] **M-5 (4.10, sports).** Make the M-D4 changes, with the M-D10 exceptions, plus the 451 and 429 rows and a D19 pin test. Drop `tokio-tungstenite`.
+- [x] **M-6 (4.10, `Retry-After`).** Add the macro's `ws_retry_after` and the five `Classify` overrides (M-D6), with venue and per-crate rows.
+- [x] **M-7 (DRIFT R11).** Add the kit hook and the `Backoff` floor, used by perps, Binance, rtds and sports. Each gets a test named `..._drift_r11`.
+- [x] **M-8 (4.10, Binance's `Stopped` cause).** Make the M-D8 changes, with a `supervision_kit.rs` test and a failure-tag twin.
+- [x] **M-9 (4.10, fences).** The M-D9 fences, each shown failing on a synthetic case, plus CLAUDE.md :50 and :342.
+- [x] **M-10 (docs).**
   - The `deferred-work.md` entries.
   - The lead's `bmad-spec` update of `divergences.md`.
   - The remaining CLAUDE.md lines.
@@ -322,6 +322,7 @@ Every test name at e114454 is present after, in its crate, except `a_default_cry
 - sports `cargo test -p polyoxide-sports --test live_api -- --ignored` (08:21:52–08:24:53): 5 of 5 passed, the drift detector included.
 - Binance `cargo test -p polyoxide-binance --features ws --test live_ws -- --ignored` (08:24:53–08:25:18): 4 of 4 passed.
 - rtds `cargo test -p polyoxide-rtds --test live_api -- --ignored` (08:25:18–08:26:11): 3 of 3 passed.
+- clob again, by the lead, `cargo test -p polyoxide-clob --features ws,keychain --test live_ws -- --ignored` (08:38:03–08:38:45 UTC), with the key from the OS keychain: 2 of 2 passed, so the R9 probe opened its socket through `polyoxide_ws::connect` against the live host. All four live suites now pass.
 
 **Incomplete or risky:**
 - clob's `live_ws` needs a run with credentials before the AC on live suites is met.
@@ -334,6 +335,46 @@ Every test name at e114454 is present after, in its crate, except `a_default_cry
 
 ## Review Triage Log
 
+Review 1, 2026-10-12: three layers (blind B, edge-case E, verification-gap V), 35 findings. Groups G1–G12 patched (G1–G10 and G12 in 1ac005d, G11 by the lead in fe0d417), D1–D3 deferred, and the rest rejected. Deferred-work has D1 to D3, plus a note to correct spine A4-2's `-D warnings` claim (E12). After the patches, every Verification command passed on 2026-10-12: fmt, clippy, the workspace tests, docs, `cargo hack`, clob's `headers`, the CI scripts, `gen_registry --check`, `live_unwraps`, and clob's `live_ws` with keychain credentials, 2 of 2 at 09:05–09:06 UTC. The removal gate against v0.38.1 had 46 removals, all 46 listed.
+
+| # | Verdict | Group | Evidence |
+|---|---|---|---|
+| B1 | low | G11 patch (lead) | `a_connection_used_after_it_closed_is_retried_d19` pins the recovery row for a connect, which `open` never fails with `AlreadyClosed`; a read failing so goes `Step::Lost`, which always reconnects. Behaviour holds; D19's "pinned by" overstates. Reword D19. |
+| B2 | medium | D1 defer | A change in flight when a path stops gets the kit handle's `Stopped { cause: None }` (`change` passes it through, `supervised.rs:623`) before the forwarder reports `Ended`. |
+| B3 | medium | G1 patch | `connect_ws`' `Ok(Err(e)) => last_err = e.into()` dials the next address after the host refused the upgrade, re-sending into a 429's window, and a later address's timeout or I/O error replaces a 451 or a `Retry-After`. |
+| B4 | low | D2 defer | No test shows the fallback to a second address; the loop predates the bundle, and a deterministic two-address loopback case is not obvious. |
+| B5 | low | G5 patch | `live_ws.rs`' new comment says a timed-out connect "fails as `ConnectTimeout`"; through the derived `From<WsError>` it is `Connection` with `Kind::ConnectTimeout`, classed `Network`. The derive itself stays: clob's `ConnectTimeout` needs a URL `From` lacks. |
+| B6 | false | rejected | A connect never yields `Kind::Closed`, and no `tungstenite::Error` maps to `ConnectTimeout` or `Closed`, so `connect_raw` and the twins lose nothing by skipping the mapping. |
+| B7 | low | D3 defer | clob's stream and `run` end without the server's close code, as before the bundle; `Connection::closed()` now holds it. |
+| B8 | low | G6 patch | `ws_wrappers` keys a dict by bare type name, so two same-named wrappers in one crate overwrite each other and one file goes unchecked. |
+| B9 | low | G7 patch | The coverage docstring says a wrapper in another file cannot reach the macro's functions; a child module can, through `super::`. The fence's file rule stays (it fails loudly, never silently); the reason is restated. |
+| B10 | low | rejected | A direct `tungstenite`, `tokio-rustls` or `webpki-roots` dependency is unlikely, and fencing one needs an owner exception. |
+| B11 | low | G9 patch | `docs/MUTANTS.md` has no row for R11's copy of "`Retry-After` only extends" (`Backoff::take_at_least`), though the implementer showed the five kit tests fail without the floor. |
+| B12 | low | rejected | The clamp to the ceiling is M-D7's decision; logging the asked-for wait as well is optional. |
+| B13 | low | rejected | The `End::Closed` and `End::Failed` hook calls answer `None` today; they keep the hook's contract for any error, at no cost. |
+| B14 | medium | G8 patch | deferred-work's 4.11 notes call the field-type change Debug-only; code matching `tungstenite::Error::Http` in `WebSocketError::Connection` or `SportsError::{Connect, Transport}` must move to `kind()`, and `Stopped` patterns to `Stopped { .. }`. prader reads these notes. |
+| B15 | low | rejected | clob's Python rows name no buildable error; a twin file is a new suite for no regex-era row. |
+| B16 | low | rejected | `UsdmWsError` is already `#[non_exhaustive]`; marking the variant too would stop the integration twins building it. |
+| B17 | low | rejected | Fractional `Retry-After` is the one parser's accepted form (R4); an HTTP-date reads as `None` for HTTP too. |
+| B18 | false | rejected | 4.9 and 4.10 move to `review` at the bundle's completion, as K's and L's did. |
+| B19 | low | G10 patch | The inserted CLAUDE.md Binance-streams line runs to about 150 characters in a paragraph wrapped near 95. |
+| E1 | medium | G1 patch | Same as B3. |
+| E2 | low | rejected | `SendAfterClosing` needs the close reply's flush to be pending when the ping or outbound arm fires; the guard is undemonstrated. |
+| E3 | low | G4 patch | Two membership tests end on a fixed `drop_after(500 ms)`; on a loaded runner the queued frames may go out after the server dropped. |
+| E4 | medium | D1 defer | Same race as B2, at `close()`: dropping the events receiver lets the forwarder break on `events.closed()` without reporting `Ended`, so `close()` can return `Ok` and the cause is never set. |
+| E5 | low | rejected | A wrong cause needs a panic in the kit's task after a skipped `Frame` error. |
+| E6 | medium | D1 defer | Same as B2. |
+| E7 | low | rejected | Evading the fence needs `use polyoxide_ws::WsError as X`; parsing aliases adds rules for a deliberate act. |
+| E8 | low | G6 patch | Same as B8. |
+| E9 | low | rejected | A macro in an ancestor module fails the fence loudly; no crate uses that layout. |
+| E10 | low | rejected | Same as B10. |
+| E11 | medium | G2 patch | Same as V1: the moved crypto test runs in the kit's ring-only graph, and clob's offline connects are plain `ws://`, so nothing offline builds a TLS config in clob's two-backend graph. |
+| E12 | medium | G7 patch | Verified by the reviewer on rustc 1.95: an unused function from another crate's `macro_rules!` builds clean under `-D warnings` and clippy, so "a venue that forgets `ws_retry_after` (or `ws_is_fault`) fails `-D warnings`" is false (M-D6, `ws_table.rs`, the coverage docstring, CLAUDE.md, spine A4-2). The fence must check the calls itself. |
+| E13 | medium | G12 patch | M-D8's "`close()` and every later membership call carry the cause" holds only once the router has the stop (B2, E4); the docs claim it outright. |
+| V1 | gap | G2 patch | Filed: with the install removed from `connect_over`, PR CI stays green and every clob connect panics; only the nightly live job would catch it. |
+| V2 | gap | G3 patch | Filed: the TCP-step timeout arm's mapping to `ConnectTimeout { url, timeout }` is unasserted; `a_dead_address_times_out_rather_than_hanging` checks only that an error comes within 5 s. |
+| V3 | medium | D1 defer | Same as B2. |
+
 ## Verification
 
 **Commands:**
@@ -343,5 +384,5 @@ Every test name at e114454 is present after, in its crate, except `a_default_cry
 - `cargo hack check --workspace --each-feature --no-dev-deps --ignore-private` -- expected: clean
 - `cargo test -p polyoxide-clob --no-default-features --test headers` -- expected: pass
 - `(cd .github/scripts && uv run pytest tests/ -q)`, `python3 scripts/gen_registry.py --check`, `python3 scripts/live_unwraps.py` -- expected: pass
-- `python3 scripts/api_removals.py check` -- expected: green (delete `target/semver-checks` afterwards)
+- `python3 scripts/api_removals.py check --baseline v0.38.1` -- expected: green (delete `target/semver-checks` afterwards)
 - the four live suites with `-- --ignored` -- expected: pass, or a tagged environmental or transient failure, recorded
