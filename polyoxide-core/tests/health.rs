@@ -5,8 +5,8 @@ use std::time::{Duration, Instant};
 
 use mockito::{Mock, Server, ServerGuard};
 use polyoxide_core::{
-    polymarket, ApiError, AttemptInfo, Charge, Cost, HttpClientBuilder, LayerId, Refused,
-    RequestMeta, ResponseMeta, RetryConfig, Throttle,
+    ApiError, AttemptInfo, Charge, Cost, HttpClientBuilder, LayerId, Refused, RequestMeta,
+    ResponseMeta, RetryConfig, Throttle,
 };
 
 /// A caller's error that says whether a response reached its decode.
@@ -119,38 +119,6 @@ async fn a_non_2xx_health_is_the_callers_error() {
         .await
         .expect_err("a 503 is not a pong");
     assert!(matches!(err, PingError::Response(503)), "{err:?}");
-    mock.assert_async().await;
-}
-
-#[tokio::test]
-async fn a_429_on_health_holds_the_next_request() {
-    let mut server = Server::new_async().await;
-    let mock = scripted(&mut server, "/status", &[429, 200]).await;
-    let http = HttpClientBuilder::new(server.url())
-        .with_rate_limiter(polymarket::gamma_limits())
-        .with_retry_config(a_300ms_floor(0))
-        .build()
-        .unwrap();
-
-    // No retry left: the 429 is the caller's, and it still holds the client.
-    let err = http
-        .health::<PingError>("/status", &[])
-        .await
-        .expect_err("a 429 and no retry");
-    assert!(matches!(err, PingError::Response(429)), "{err:?}");
-
-    let start = Instant::now();
-    let pong = http.health::<PingError>("/status", &[]).await.unwrap();
-    let elapsed = start.elapsed();
-    assert!(
-        elapsed >= Duration::from_millis(300),
-        "the next ping went after {elapsed:?}, inside the 429's hold"
-    );
-    assert!(
-        elapsed.saturating_sub(pong.round_trip) >= Duration::from_millis(300),
-        "the round trip leaves out the hold: {:?} of {elapsed:?}",
-        pong.round_trip
-    );
     mock.assert_async().await;
 }
 

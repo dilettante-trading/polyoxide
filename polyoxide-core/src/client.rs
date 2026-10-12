@@ -297,103 +297,6 @@ mod tests {
     use super::*;
     use reqwest::StatusCode;
 
-    // ── Polymarket's retry decision and the retry delay ──────────
-    //
-    // These tests drove `HttpClient::should_retry` until the hand-written
-    // loops that called it moved onto the send loop. They keep their names
-    // and their answers, read from the policy the loop asks and from
-    // `RetryConfig::retry_delay`, the loop's own floor.
-
-    /// Whether Polymarket's policy retries `status` on `attempt` under
-    /// `config`. `decide` itself fails a request with no retry left, so this
-    /// is the send loop's answer.
-    fn retries(config: &RetryConfig, status: StatusCode, attempt: u32) -> bool {
-        use crate::hooks::{Outcome, ResponseMeta};
-
-        let headers = reqwest::header::HeaderMap::new();
-        let response = ResponseMeta {
-            status,
-            headers: &headers,
-        };
-        matches!(
-            crate::polymarket::PolymarketRetryPolicy
-                .decide(&response, &config.attempt_info(attempt), config)
-                .outcome,
-            Outcome::Retry(_)
-        )
-    }
-
-    #[test]
-    fn test_should_retry_429_under_max() {
-        let config = RetryConfig::default();
-        // Default max_retries=3, so attempts 0 and 2 should retry
-        assert!(retries(&config, StatusCode::TOO_MANY_REQUESTS, 0));
-        assert!(retries(&config, StatusCode::TOO_MANY_REQUESTS, 2));
-    }
-
-    #[test]
-    fn test_should_retry_429_at_max() {
-        let config = RetryConfig::default();
-        // attempt == max_retries → no retry
-        assert!(!retries(&config, StatusCode::TOO_MANY_REQUESTS, 3));
-    }
-
-    #[test]
-    fn test_should_retry_425_under_max() {
-        let config = RetryConfig::default();
-        // 425 Too Early — Polymarket's matching engine restarting.
-        assert!(retries(&config, StatusCode::TOO_EARLY, 0));
-        assert!(retries(&config, StatusCode::TOO_EARLY, 2));
-    }
-
-    #[test]
-    fn test_should_retry_425_at_max() {
-        let config = RetryConfig::default();
-        assert!(!retries(&config, StatusCode::TOO_EARLY, 3));
-    }
-
-    #[test]
-    fn test_should_retry_ignores_other_statuses() {
-        let config = RetryConfig::default();
-        for status in [
-            StatusCode::OK,
-            StatusCode::INTERNAL_SERVER_ERROR,
-            StatusCode::BAD_GATEWAY,
-            StatusCode::BAD_REQUEST,
-            StatusCode::FORBIDDEN,
-            StatusCode::NOT_FOUND,
-            // 503 is deliberately excluded even though post-only mode sends it
-            // with a Retry-After: the documented wait is ~79s, far too long to
-            // block inside a request, and it rejects orders wholesale.
-            StatusCode::SERVICE_UNAVAILABLE,
-        ] {
-            assert!(!retries(&config, status, 0), "{status} was retried");
-        }
-    }
-
-    #[test]
-    fn test_should_retry_5xx_not_retried_despite_being_is_retriable() {
-        // The class describes the error; this loop resends writes, so it stays narrower.
-        let config = RetryConfig::default();
-        assert!(!retries(&config, StatusCode::INTERNAL_SERVER_ERROR, 0));
-        let err = ApiError::from(crate::error::ErrorResponse::new(
-            StatusCode::INTERNAL_SERVER_ERROR,
-            Default::default(),
-            "",
-        ));
-        assert!(polyoxide_venue::Classify::is_retriable(&err));
-    }
-
-    #[test]
-    fn test_should_retry_custom_config() {
-        let config = RetryConfig {
-            max_retries: 1,
-            ..RetryConfig::default()
-        };
-        assert!(retries(&config, StatusCode::TOO_MANY_REQUESTS, 0));
-        assert!(!retries(&config, StatusCode::TOO_MANY_REQUESTS, 1));
-    }
-
     #[test]
     fn test_should_retry_uses_retry_after_header() {
         let config = RetryConfig::default();
@@ -497,16 +400,6 @@ mod tests {
             .unwrap();
         let at = signed.0.lock().unwrap().expect("the request was signed");
         at - start
-    }
-
-    #[tokio::test]
-    async fn test_builder_with_rate_limiter() {
-        let mut server = mockito::Server::new_async().await;
-        let _order = server.mock("POST", "/order").create_async().await;
-        let builder = HttpClientBuilder::new("https://example.com")
-            .with_rate_limiter(crate::polymarket::clob_limits());
-        let elapsed = time_to_sign(builder, &server).await;
-        assert!(elapsed < Duration::from_millis(50));
     }
 
     #[tokio::test]

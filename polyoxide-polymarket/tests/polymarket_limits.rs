@@ -7,8 +7,9 @@
 
 use std::time::Duration;
 
-use polyoxide_core::{polymarket, EffectiveQuota, Matching, RateLimiter, WindowQuotaTable};
-use reqwest::Method;
+use polyoxide_core::reqwest::Method;
+use polyoxide_core::{EffectiveQuota, Matching, RateLimiter, WindowQuotaTable};
+use polyoxide_polymarket::shared;
 
 mod quota_arithmetic {
     //! The table sweep of core's `quota_arithmetic`: every bucket of every
@@ -19,10 +20,10 @@ mod quota_arithmetic {
     #[test]
     fn every_configured_bucket_satisfies_the_quota_it_publishes() {
         for (surface, rl) in [
-            ("clob", polymarket::clob_limits()),
-            ("gamma", polymarket::gamma_limits()),
-            ("data", polymarket::data_limits()),
-            ("relay", polymarket::relay_limits()),
+            ("clob", shared::clob_limits()),
+            ("gamma", shared::gamma_limits()),
+            ("data", shared::data_limits()),
+            ("relay", shared::relay_limits()),
         ] {
             for row in rl.rows() {
                 for bucket in &row.buckets {
@@ -204,7 +205,7 @@ mod documented_data_limits {
 
     #[test]
     fn every_documented_endpoint_resolves_to_its_published_quota() {
-        assert_matches_published(&polymarket::data_limits(), documented(), 1_000);
+        assert_matches_published(&shared::data_limits(), documented(), 1_000);
     }
 
     /// Data API v2 rows. Upstream publishes no v2 figures; each count is the
@@ -222,14 +223,14 @@ mod documented_data_limits {
 
     #[test]
     fn every_v2_route_resolves_to_its_measured_quota() {
-        assert_matches_published(&polymarket::data_limits(), measured_v2(), 1_000);
+        assert_matches_published(&shared::data_limits(), measured_v2(), 1_000);
     }
 
     #[test]
     fn the_health_cap_is_attached_to_the_route_the_host_answers_on() {
         // `/ok` is a 404 on data-api. An entry there caps nothing and leaves
         // the real health route — `/` — on the 10x-looser general bucket.
-        assert_unconfigured(&polymarket::data_limits(), "/ok");
+        assert_unconfigured(&shared::data_limits(), "/ok");
     }
 
     #[test]
@@ -237,7 +238,7 @@ mod documented_data_limits {
         // `/` under prefix matching could plausibly match everything. The
         // segment-boundary rule saves it: `strip_prefix("/")` on `/positions`
         // leaves `positions`, which starts with neither `/` nor `?`.
-        let rl = polymarket::data_limits();
+        let rl = shared::data_limits();
         for (path, expected) in [
             ("/positions", 150),
             ("/closed-positions", 150),
@@ -256,7 +257,7 @@ mod documented_data_limits {
     async fn the_closed_positions_cap_actually_throttles() {
         // 150/10s paces one request every ~67ms.
         assert_paced_by_its_own_quota(
-            &polymarket::data_limits(),
+            &shared::data_limits(),
             "/closed-positions",
             150,
             Duration::from_secs(10),
@@ -274,7 +275,7 @@ mod documented_data_limits {
         // that much because the request still passes the surface's general
         // 1,000/10s bucket). Both sides of that gap are load-bearing, so the
         // threshold sits between them rather than at zero.
-        let rl = polymarket::data_limits();
+        let rl = shared::data_limits();
         rl.acquire("/closed-positions", Some(&Method::GET)).await;
 
         let start = std::time::Instant::now();
@@ -311,12 +312,12 @@ mod documented_gamma_limits {
 
     #[test]
     fn every_documented_endpoint_resolves_to_its_published_quota() {
-        assert_matches_published(&polymarket::gamma_limits(), documented(), 4_000);
+        assert_matches_published(&shared::gamma_limits(), documented(), 4_000);
     }
 
     #[test]
     fn the_health_cap_is_attached_to_the_route_the_host_answers_on() {
-        assert_unconfigured(&polymarket::gamma_limits(), "/ok");
+        assert_unconfigured(&shared::gamma_limits(), "/ok");
     }
 
     #[test]
@@ -325,7 +326,7 @@ mod documented_gamma_limits {
         // It is deliberately not modelled because the per-endpoint caps sum to
         // less than it. If either cap is ever raised, this stops being true and
         // the group bucket has to be added — that is what this test watches.
-        let rl = polymarket::gamma_limits();
+        let rl = shared::gamma_limits();
         let markets = rl.resolve_specs("/markets", Some(&Method::GET))[0].count;
         let events = rl.resolve_specs("/events", Some(&Method::GET))[0].count;
         assert!(
@@ -338,7 +339,7 @@ mod documented_gamma_limits {
     #[tokio::test]
     async fn the_markets_cap_actually_throttles() {
         assert_paced_by_its_own_quota(
-            &polymarket::gamma_limits(),
+            &shared::gamma_limits(),
             "/markets",
             300,
             Duration::from_secs(10),
@@ -391,7 +392,7 @@ mod documented_perps_limits {
 
     #[test]
     fn every_soaked_route_has_its_own_row() {
-        assert_matches_published(&polymarket::perps_limits(), measured(), u32::MAX);
+        assert_matches_published(&shared::perps_limits(), measured(), u32::MAX);
     }
 
     #[test]
@@ -399,7 +400,7 @@ mod documented_perps_limits {
         // The general bucket is 30/10s, so without the catch-all an
         // unmeasured route would be driven three times harder than trades,
         // the tightest route measured.
-        let rl = polymarket::perps_limits();
+        let rl = shared::perps_limits();
         let specs = rl.resolve_specs("/v1/info/instruments", Some(&Method::GET));
         assert_eq!(
             specs.len(),
@@ -428,13 +429,13 @@ mod documented_perps_limits {
             GENERAL < BBO,
             "the general bucket must bind before bbo's row"
         );
-        let rl = polymarket::perps_limits();
+        let rl = shared::perps_limits();
         assert_paced_by_its_own_quota(&rl, "/v1/info/bbo", GENERAL, Duration::from_secs(10)).await;
     }
 
     #[tokio::test]
     async fn the_klines_row_actually_paces() {
-        let rl = polymarket::perps_limits();
+        let rl = shared::perps_limits();
         let count = rl.resolve_specs("/v1/info/klines", Some(&Method::GET))[0].count;
         assert_paced_by_its_own_quota(&rl, "/v1/info/klines", count, Duration::from_secs(10)).await;
     }
@@ -522,7 +523,7 @@ mod documented_limits {
 
     #[test]
     fn every_documented_endpoint_resolves_to_its_published_quota() {
-        let rl = polymarket::clob_limits();
+        let rl = shared::clob_limits();
 
         for (path, method, expected) in documented() {
             let resolved = rl.resolve_specs(path, method.as_ref());
@@ -548,7 +549,7 @@ mod documented_limits {
     fn batch_endpoints_do_not_inherit_their_singular_sibling() {
         // `/books` must not resolve through the `/book` rule: they are
         // different endpoints with a 3x difference in allowance.
-        let rl = polymarket::clob_limits();
+        let rl = shared::clob_limits();
         for (batch, singular) in [
             ("/books", "/book"),
             ("/prices", "/price"),
@@ -569,7 +570,7 @@ mod documented_limits {
         // Upstream caps `/trades`, `/orders`, `/notifications` and `/order`
         // at 900/10s *combined*. Modelling that as four independent 900/10s
         // buckets would permit 3,600/10s.
-        let rl = polymarket::clob_limits();
+        let rl = shared::clob_limits();
         let group: Vec<_> = ["/trades", "/orders", "/order", "/notifications"]
             .iter()
             .map(|p| {
@@ -593,7 +594,7 @@ mod documented_limits {
         // `/balance-allowance/update` starts with `/balance-allowance` at a
         // segment boundary, so ordering decides which rule wins. The update
         // route is four times tighter.
-        let rl = polymarket::clob_limits();
+        let rl = shared::clob_limits();
         let update = rl.resolve_specs("/balance-allowance/update", Some(&Method::GET));
         assert_eq!(
             update[0].count, 50,
@@ -606,7 +607,7 @@ mod documented_limits {
         // Matching specs is not the same as enforcing them. `/tick-size` is
         // 200/10s, which paces one request every ~50ms.
         assert_paced_by_its_own_quota(
-            &polymarket::clob_limits(),
+            &shared::clob_limits(),
             "/tick-size",
             200,
             Duration::from_secs(10),
@@ -620,7 +621,7 @@ mod documented_limits {
         // through one endpoint must leave a *different* group member throttled.
         // The shared 900/10s bucket paces at ~11ms; with four independent
         // buckets /orders would only meet the general 9,000/10s one at ~1.1ms.
-        let rl = polymarket::clob_limits();
+        let rl = shared::clob_limits();
         rl.acquire("/trades", Some(&Method::GET)).await;
 
         let start = std::time::Instant::now();
@@ -640,7 +641,7 @@ mod documented_limits {
         // /order 5,000/10s. Both can only hold if the group cap is the ledger
         // *read*. Applying it to POST would make the published burst
         // unreachable.
-        let rl = polymarket::clob_limits();
+        let rl = shared::clob_limits();
         let specs = rl.resolve_specs("/order", Some(&Method::POST));
         assert_eq!(specs[0].count, 5_000);
         assert!(
@@ -658,32 +659,32 @@ mod tests {
 
     #[test]
     fn test_clob_default_construction() {
-        let rl = polymarket::clob_limits();
+        let rl = shared::clob_limits();
         assert_eq!(rl.rows().len(), 27);
         assert!(format!("{:?}", rl).contains("endpoints"));
     }
 
     #[test]
     fn test_gamma_default_construction() {
-        let rl = polymarket::gamma_limits();
+        let rl = shared::gamma_limits();
         assert_eq!(rl.rows().len(), 6);
     }
 
     #[test]
     fn test_data_default_construction() {
-        let rl = polymarket::data_limits();
+        let rl = shared::data_limits();
         assert_eq!(rl.rows().len(), 11);
     }
 
     #[test]
     fn test_relay_default_construction() {
-        let rl = polymarket::relay_limits();
+        let rl = shared::relay_limits();
         assert_eq!(rl.rows().len(), 0);
     }
 
     #[test]
     fn test_rate_limiter_debug_format() {
-        let rl = polymarket::clob_limits();
+        let rl = shared::clob_limits();
         let dbg = format!("{:?}", rl);
         assert!(dbg.contains("RateLimiter"), "missing struct name: {dbg}");
         assert!(dbg.contains("endpoints: 27"), "missing count: {dbg}");
@@ -696,7 +697,7 @@ mod tests {
         // Ordering is only load-bearing where one pattern is a path-segment
         // prefix of another. Asserting on fixed indices made this test brittle
         // and told us nothing; assert the actual constraint instead.
-        let rl = polymarket::clob_limits();
+        let rl = shared::clob_limits();
         let rows = rl.rows();
         let index_of = |path: &str| {
             rows.iter()
@@ -720,7 +721,7 @@ mod tests {
 
     #[tokio::test]
     async fn test_acquire_single_completes_immediately() {
-        let rl = polymarket::clob_limits();
+        let rl = shared::clob_limits();
         let start = std::time::Instant::now();
         rl.acquire("/order", Some(&Method::POST)).await;
         assert!(start.elapsed() < Duration::from_millis(50));
@@ -728,7 +729,7 @@ mod tests {
 
     #[tokio::test]
     async fn test_acquire_matches_endpoint_by_prefix() {
-        let rl = polymarket::clob_limits();
+        let rl = shared::clob_limits();
         let start = std::time::Instant::now();
         // /order/123 should match the /order prefix
         rl.acquire("/order/123", Some(&Method::POST)).await;
@@ -737,7 +738,7 @@ mod tests {
 
     #[tokio::test]
     async fn test_acquire_prefix_respects_segment_boundary() {
-        let rl = polymarket::clob_limits();
+        let rl = shared::clob_limits();
         let limits = rl.rows();
 
         // Find the /price entry
@@ -761,7 +762,7 @@ mod tests {
 
     #[tokio::test]
     async fn test_acquire_method_filtering() {
-        let rl = polymarket::clob_limits();
+        let rl = shared::clob_limits();
         let start = std::time::Instant::now();
         // GET /order shouldn't match POST or DELETE /order endpoints — falls to default only
         rl.acquire("/order", Some(&Method::GET)).await;
@@ -770,7 +771,7 @@ mod tests {
 
     #[tokio::test]
     async fn test_acquire_no_endpoint_match_uses_default_only() {
-        let rl = polymarket::clob_limits();
+        let rl = shared::clob_limits();
         let start = std::time::Instant::now();
         rl.acquire("/unknown/path", None).await;
         assert!(start.elapsed() < Duration::from_millis(50));
@@ -778,7 +779,7 @@ mod tests {
 
     #[tokio::test]
     async fn test_acquire_method_none_matches_any_method() {
-        let rl = polymarket::gamma_limits();
+        let rl = shared::gamma_limits();
         let start = std::time::Instant::now();
         // /events has method: None — should match GET, POST, and None
         rl.acquire("/events", Some(&Method::GET)).await;
@@ -791,7 +792,7 @@ mod tests {
 
     #[test]
     fn test_clob_price_and_prices_history_are_distinct() {
-        let rl = polymarket::clob_limits();
+        let rl = shared::clob_limits();
         let limits = rl.rows();
 
         let price = limits.iter().find(|l| l.pattern == "/price").unwrap();
@@ -819,7 +820,7 @@ mod tests {
         // — a tautology about two string literals that never touched the
         // limiter, and so held even with `/closed-positions` set to 66x its
         // published cap. Ask the limiter instead.
-        let rl = polymarket::data_limits();
+        let rl = shared::data_limits();
 
         let closed = rl.resolve_specs("/closed-positions", Some(&Method::GET));
         let positions = rl.resolve_specs("/positions", Some(&Method::GET));
@@ -840,7 +841,7 @@ mod tests {
 
     #[test]
     fn test_all_clob_endpoints_have_match_mode() {
-        let rl = polymarket::clob_limits();
+        let rl = shared::clob_limits();
         for limit in &rl.rows() {
             // Every endpoint should have an explicit match mode
             assert!(
@@ -866,7 +867,7 @@ mod tests {
         const TASKS: u32 = 10;
         let interval = Duration::from_secs(10) / (1_500 - 1);
 
-        let rl = std::sync::Arc::new(polymarket::clob_limits());
+        let rl = std::sync::Arc::new(shared::clob_limits());
 
         let start = std::time::Instant::now();
         let mut handles = Vec::new();
@@ -895,7 +896,7 @@ mod tests {
     #[tokio::test]
     async fn test_acquire_concurrent_different_endpoints() {
         // Concurrent tasks hitting different endpoints should not block each other
-        let rl = std::sync::Arc::new(polymarket::clob_limits());
+        let rl = std::sync::Arc::new(shared::clob_limits());
 
         let rl1 = rl.clone();
         let rl2 = rl.clone();
@@ -922,7 +923,7 @@ mod tests {
 
     #[test]
     fn test_clob_post_order_has_dual_window() {
-        let rl = polymarket::clob_limits();
+        let rl = shared::clob_limits();
         let post_order = rl
             .rows()
             .into_iter()
@@ -941,7 +942,7 @@ mod tests {
         // This previously asserted the *opposite* — that DELETE /order had only
         // a burst window — and so pinned the omission in place. Upstream
         // publishes 5,000/10s burst plus 120,000/10min sustained.
-        let rl = polymarket::clob_limits();
+        let rl = shared::clob_limits();
         let delete_order = rl
             .rows()
             .into_iter()
@@ -959,7 +960,7 @@ mod tests {
     async fn test_dual_window_both_burst_and_sustained_are_awaited() {
         // POST /order should await both burst and sustained limiters.
         // With high limits, a single acquire should still complete fast.
-        let rl = polymarket::clob_limits();
+        let rl = shared::clob_limits();
         let start = std::time::Instant::now();
         rl.acquire("/order", Some(&Method::POST)).await;
         assert!(
@@ -984,7 +985,7 @@ mod cooldown_tests {
 
     #[tokio::test(start_paused = true)]
     async fn acquire_is_immediate_without_a_cooldown() {
-        let rl = polymarket::data_limits();
+        let rl = shared::data_limits();
         let t = tokio::time::Instant::now();
         rl.acquire("/closed-positions", None).await;
         assert!(
@@ -996,7 +997,7 @@ mod cooldown_tests {
 
     #[tokio::test(start_paused = true)]
     async fn a_cooldown_holds_back_a_path_that_never_saw_the_429() {
-        let rl = polymarket::data_limits();
+        let rl = shared::data_limits();
         rl.begin_cooldown(Duration::from_secs(5));
 
         // /trades has its own bucket, full and untouched. It must wait anyway:
@@ -1012,7 +1013,7 @@ mod cooldown_tests {
 
     #[tokio::test(start_paused = true)]
     async fn concurrent_requests_all_observe_one_cooldown() {
-        let rl = polymarket::data_limits();
+        let rl = shared::data_limits();
         rl.begin_cooldown(Duration::from_secs(3));
 
         // The shape from the report: several /closed-positions calls in flight
@@ -1033,7 +1034,7 @@ mod cooldown_tests {
 
     #[tokio::test(start_paused = true)]
     async fn a_shorter_cooldown_never_cuts_a_longer_one_short() {
-        let rl = polymarket::data_limits();
+        let rl = shared::data_limits();
         rl.begin_cooldown(Duration::from_secs(10));
         // A sibling's 429 lands next, carrying a smaller delay. Taking the
         // latest value would let the shortest response win the race and
@@ -1051,7 +1052,7 @@ mod cooldown_tests {
 
     #[tokio::test(start_paused = true)]
     async fn a_cooldown_extended_mid_wait_is_honoured_in_full() {
-        let rl = polymarket::data_limits();
+        let rl = shared::data_limits();
         rl.begin_cooldown(Duration::from_secs(2));
 
         let extender = {
@@ -1076,7 +1077,7 @@ mod cooldown_tests {
 
     #[tokio::test(start_paused = true)]
     async fn an_expired_cooldown_stops_delaying() {
-        let rl = polymarket::data_limits();
+        let rl = shared::data_limits();
         rl.begin_cooldown(Duration::from_secs(2));
         rl.acquire("/closed-positions", None).await;
 

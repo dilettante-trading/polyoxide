@@ -2,21 +2,23 @@
 //!
 //! Polymarket evaluates order and cancellation requests against token buckets
 //! keyed on the **signer address**, independently of the Cloudflare IP limits in
-//! [`crate::rate_limit`]. A request must satisfy both layers.
+//! [`polyoxide_core::rate_limit`]. A request must satisfy both layers.
 //!
 //! The two layers count different things: Cloudflare counts *requests*, this one
 //! counts *orders*. For batch endpoints they diverge by the batch size, which is
-//! why this module exists at all — a [`RateLimiter`](crate::RateLimiter) charges
+//! why this module exists at all — a [`RateLimiter`](polyoxide_core::RateLimiter) charges
 //! exactly one token per call and cannot express "this request costs 500", so
 //! each signer bucket is a [`CapacityBucket`], which charges a request's cost.
 //!
 //! Transcribed from <https://docs.polymarket.com/api-reference/trading-rate-limits>
 //! as fetched 2026-08-05; mirrored in `docs/specs/clob/trading-rate-limits.md`.
 
-use crate::capacity::CapacityBucket;
-use crate::hold::Hold;
-use crate::hooks::{LayerId, Refused};
-use crate::polymarket::{SIGNER_CANCEL, SIGNER_ORDER};
+use polyoxide_core::capacity::CapacityBucket;
+use polyoxide_core::hold::Hold;
+use polyoxide_core::hooks::{LayerId, Refused};
+use polyoxide_core::reqwest;
+
+use super::{SIGNER_CANCEL, SIGNER_ORDER};
 
 /// Which of a signer's two buckets a request draws from.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
@@ -432,7 +434,7 @@ impl SignerLimiter {
 
     /// Charge `bucket` `units` tokens, as [`acquire`](Self::acquire) does for
     /// a request: the per-signer layer of
-    /// [`ClobThrottle`](crate::polymarket::ClobThrottle), which is handed a
+    /// [`ClobThrottle`](super::ClobThrottle), which is handed a
     /// cost rather than a request.
     pub(crate) async fn charge(
         &self,

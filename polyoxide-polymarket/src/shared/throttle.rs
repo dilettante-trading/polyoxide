@@ -2,14 +2,14 @@
 
 use std::time::Duration;
 
-use crate::hold::Hold;
-use crate::hooks::{
+use polyoxide_core::hold::Hold;
+use polyoxide_core::hooks::{
     AttemptInfo, Charge, Cost, LayerCharge, LayerId, Refused, RequestMeta, ResponseMeta, Throttle,
 };
-use crate::rate_limit::RateLimiter;
-use crate::signer_limit::{SignerLimiter, TradingBucket, TradingRequest};
+use polyoxide_core::rate_limit::RateLimiter;
 
 use super::clob_limits;
+use super::signer_limit::{SignerLimiter, TradingBucket, TradingRequest};
 
 /// Cloudflare's IP layer, which counts requests.
 pub const CLOUDFLARE: LayerId = LayerId("cloudflare");
@@ -19,7 +19,7 @@ pub const SIGNER_ORDER: LayerId = LayerId("signer-order");
 pub const SIGNER_CANCEL: LayerId = LayerId("signer-cancel");
 
 /// What `request` costs the per-signer layer, as the [`Cost`] a request
-/// builder hands [`HttpClient::send`](crate::HttpClient::send).
+/// builder hands [`HttpClient::send`](polyoxide_core::HttpClient::send).
 ///
 /// Exact for the four request kinds whose cost is a function of the payload;
 /// `cancel-all` and `cancel-market-orders` report their floor of 1 as

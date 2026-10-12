@@ -4071,6 +4071,7 @@ dependencies = [
  "mockito",
  "polyoxide-core",
  "polyoxide-gamma",
+ "polyoxide-polymarket",
  "polyoxide-relay",
  "polyoxide-test-support",
  "polyoxide-venue",
@@ -4092,18 +4093,15 @@ dependencies = [
 name = "polyoxide-core"
 version = "0.39.0"
 dependencies = [
- "base64",
  "dynosaur",
  "fastrand",
  "governor",
- "hmac",
  "keyring",
  "mockito",
  "polyoxide-venue",
  "reqwest 0.12.28",
  "serde",
  "serde_json",
- "sha2",
  "thiserror 2.0.18",
  "tokio",
  "tracing",
@@ -4118,6 +4116,7 @@ dependencies = [
  "futures-util",
  "mockito",
  "polyoxide-core",
+ "polyoxide-polymarket",
  "polyoxide-test-support",
  "polyoxide-venue",
  "rust_decimal",
@@ -4136,6 +4135,7 @@ dependencies = [
  "chrono",
  "mockito",
  "polyoxide-core",
+ "polyoxide-polymarket",
  "polyoxide-test-support",
  "polyoxide-venue",
  "serde",
@@ -4155,6 +4155,7 @@ dependencies = [
  "futures-util",
  "mockito",
  "polyoxide-core",
+ "polyoxide-polymarket",
  "polyoxide-test-support",
  "polyoxide-venue",
  "polyoxide-ws",
@@ -4165,6 +4166,24 @@ dependencies = [
  "tokio",
  "tracing",
  "url",
+]
+
+[[package]]
+name = "polyoxide-polymarket"
+version = "0.39.0"
+dependencies = [
+ "base64",
+ "hmac",
+ "mockito",
+ "polyoxide-core",
+ "polyoxide-venue",
+ "serde",
+ "serde_json",
+ "sha2",
+ "thiserror 2.0.18",
+ "tokio",
+ "tracing",
+ "tracing-subscriber",
 ]
 
 [[package]]
@@ -4193,6 +4212,7 @@ dependencies = [
  "hex",
  "mockito",
  "polyoxide-core",
+ "polyoxide-polymarket",
  "polyoxide-test-support",
  "polyoxide-venue",
  "rand 0.9.4",

@@ -16,8 +16,6 @@ keychain = ["dep:keyring"]
 
 [dependencies]
 polyoxide-venue = { workspace = true }
-base64 = { workspace = true }
-hmac = { workspace = true }
 # The one HTTP client, and the only member that declares it (AD-18): every
 # venue crate names its types through `polyoxide_core::reqwest`, so no other
 # crate can change its features for the rest. `gzip` is on, so every client
@@ -25,7 +23,6 @@ hmac = { workspace = true }
 reqwest = { version = "0.12", features = ["json", "rustls-tls", "gzip"], default-features = false }
 serde = { workspace = true }
 serde_json = { workspace = true }
-sha2 = { workspace = true }
 thiserror = { workspace = true }
 tracing = { workspace = true }
 url = { workspace = true }

@@ -5,16 +5,17 @@ use std::sync::{Arc, Mutex};
 use std::time::{Duration, Instant};
 
 use mockito::{Matcher, Server, ServerGuard};
-use polyoxide_core::polymarket::{
-    clob_throttle, signer_cost, ClobThrottle, PolymarketRetryPolicy, CLOUDFLARE, SIGNER_ORDER,
-};
+use polyoxide_core::reqwest::header::{HeaderMap, HeaderValue};
+use polyoxide_core::reqwest::{Method, StatusCode};
 use polyoxide_core::{
     ApiError, AttemptInfo, Charge, HttpClient, HttpClientBuilder, LayerCharge, Refused,
-    RequestMeta, RequestParts, ResponseMeta, RetryConfig, Throttle, Tier, TradingRequest,
+    RequestMeta, RequestParts, ResponseMeta, RetryConfig, Throttle,
+};
+use polyoxide_polymarket::shared::{
+    clob_throttle, signer_cost, ClobThrottle, PolymarketRetryPolicy, Tier, TradingRequest,
+    CLOUDFLARE, SIGNER_ORDER,
 };
 use polyoxide_venue::Classify;
-use reqwest::header::{HeaderMap, HeaderValue};
-use reqwest::{Method, StatusCode};
 
 /// A client on `server` with Polymarket's policy, throttled by `throttle`.
 fn client(server: &ServerGuard, throttle: impl Throttle + 'static, max_retries: u32) -> HttpClient {

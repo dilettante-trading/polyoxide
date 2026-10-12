@@ -8,6 +8,7 @@ members = [
   "polyoxide-data",
   "polyoxide-gamma",
   "polyoxide-perps",
+  "polyoxide-polymarket",
   "polyoxide-py",
   "polyoxide-relay",
   "polyoxide-rtds",
@@ -33,6 +34,7 @@ polyoxide-binance = { path = "polyoxide-binance", version = "0.39.0" }
 polyoxide-clob = { path = "polyoxide-clob", version = "0.39.0" }
 polyoxide-gamma = { path = "polyoxide-gamma", version = "0.39.0" }
 polyoxide-perps = { path = "polyoxide-perps", version = "0.39.0" }
+polyoxide-polymarket = { path = "polyoxide-polymarket", version = "0.39.0" }
 polyoxide-data = { path = "polyoxide-data", version = "0.39.0" }
 polyoxide-relay = { path = "polyoxide-relay", version = "0.39.0" }
 polyoxide-rtds = { path = "polyoxide-rtds", version = "0.39.0" }

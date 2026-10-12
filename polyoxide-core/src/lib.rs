@@ -44,7 +44,6 @@ struct ReadmeDoctests;
 #[macro_use]
 pub mod macros;
 
-pub mod auth;
 pub mod capacity;
 pub mod client;
 pub mod config;
@@ -52,13 +51,10 @@ pub mod error;
 pub mod health;
 pub mod hold;
 pub mod hooks;
-pub mod polymarket;
 mod query;
 pub mod rate_limit;
 pub mod request;
 pub mod send;
-pub mod session_signer;
-pub mod signer_limit;
 
 #[cfg(feature = "keychain")]
 pub mod keychain;
@@ -90,7 +86,6 @@ pub fn truncate_for_log(s: &str) -> std::borrow::Cow<'_, str> {
 /// (AD-18). CI's dependency fence fails when any other member declares it.
 pub use reqwest;
 
-pub use auth::{current_timestamp, Base64Format, Signer};
 pub use capacity::CapacityBucket;
 pub use client::{
     retry_after_header, HttpClient, HttpClientBuilder, DEFAULT_POOL_SIZE, DEFAULT_TIMEOUT_MS,
@@ -110,10 +105,6 @@ pub use rate_limit::{
 };
 pub use request::{QueryBuilder, Request, RequestError};
 pub use send::decode_json;
-pub use session_signer::{DepositWalletRole, SessionSignerScope};
-pub use signer_limit::{
-    BurstCapacityExceeded, RateLimitStatus, SignerLimiter, Tier, TradingBucket, TradingRequest,
-};
 
 #[cfg(feature = "keychain")]
 pub use keychain::KeychainError;
@@ -124,7 +115,6 @@ pub use keychain::KeychainError;
 const _: fn() = || {
     fn is<T: polyoxide_venue::Classify>() {}
     is::<ApiError>();
-    is::<BurstCapacityExceeded>();
     is::<Refused>();
     #[cfg(feature = "keychain")]
     is::<KeychainError>();

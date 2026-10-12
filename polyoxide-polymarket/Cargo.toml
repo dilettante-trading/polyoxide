@@ -1,0 +1,75 @@
+[package]
+name = "polyoxide-polymarket"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+authors.workspace = true
+repository.workspace = true
+rust-version.workspace = true
+description = "Rust client library for Polymarket's APIs: CLOB, Gamma, Data, Relay and Perps, each behind its own feature"
+keywords = ["polymarket", "prediction-markets", "trading", "api"]
+categories = ["api-bindings", "web-programming::http-client"]
+
+# One feature per module, each off until its module arrives (Stories 5.3 to
+# 5.5). Today each turns on the parts of `shared` its module uses: the HTTP
+# modules share the retry policy and their window-quota table, and clob and
+# relay share the HMAC signer and the session-signer types.
+[features]
+default = []
+clob = ["dep:polyoxide-core", "dep:base64", "dep:hmac", "dep:sha2", "dep:serde", "dep:thiserror", "dep:tracing"]
+gamma = ["dep:polyoxide-core"]
+data = ["dep:polyoxide-core"]
+relay = ["dep:polyoxide-core", "dep:base64", "dep:hmac", "dep:sha2", "dep:serde"]
+perps = ["dep:polyoxide-core"]
+
+[dependencies]
+polyoxide-core = { workspace = true, optional = true }
+polyoxide-venue = { workspace = true }
+# The HMAC `Signer` (`clob`, `relay`).
+base64 = { workspace = true, optional = true }
+hmac = { workspace = true, optional = true }
+sha2 = { workspace = true, optional = true }
+# The session-signer types' wire form (`clob`, `relay`).
+serde = { workspace = true, optional = true }
+# The signer layer's refusal and its tier log line (`clob`).
+thiserror = { workspace = true, optional = true }
+tracing = { workspace = true, optional = true }
+
+[dev-dependencies]
+mockito = { workspace = true }
+serde_json = { workspace = true }
+# `test-util` gives the cooldown tests a paused clock, so they assert the full
+# backoff without actually sleeping for it.
+tokio = { workspace = true, features = ["macros", "rt-multi-thread", "test-util"] }
+# The send loop's tests read its warnings.
+tracing = { workspace = true }
+tracing-subscriber = { workspace = true }
+
+# Each suite drives the parts of `shared` its features build.
+[[test]]
+name = "polymarket_limits"
+required-features = ["clob", "gamma", "data", "relay", "perps"]
+
+[[test]]
+name = "polymarket_throttle"
+required-features = ["clob"]
+
+[[test]]
+name = "send_loop"
+required-features = ["gamma"]
+
+[[test]]
+name = "health"
+required-features = ["gamma"]
+
+[package.metadata.docs.rs]
+all-features = true
+
+# Registration, read by scripts/gen_registry.py: the README line, the venue
+# id, the identifiers the venue gate looks for in the foundation crates and
+# the exceptions it allows there. Run `python3 scripts/gen_registry.py
+# --write` after an edit.
+[package.metadata.polyoxide]
+readme = "Client library for Polymarket's APIs, one feature per module; today it holds the code the modules share (`shared`), and the modules arrive in Stories 5.3 to 5.5"
+venue = "polymarket"
+identifiers = ["Poly-RateLimit"]

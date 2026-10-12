@@ -5,15 +5,25 @@
 
 use std::time::Duration;
 
-use reqwest::Method;
+#[cfg(feature = "clob")]
+use polyoxide_core::rate_limit::Matching;
+use polyoxide_core::rate_limit::{RateLimiter, WindowQuotaTable};
+#[cfg(feature = "clob")]
+use polyoxide_core::reqwest::Method;
 
-use crate::rate_limit::{Matching, RateLimiter, WindowQuotaTable};
-
+#[cfg(any(
+    feature = "clob",
+    feature = "gamma",
+    feature = "data",
+    feature = "perps"
+))]
 const TEN_SECONDS: Duration = Duration::from_secs(10);
+#[cfg(feature = "clob")]
 const TEN_MINUTES: Duration = Duration::from_secs(600);
 
 /// A dual-window row: a burst window plus a sustained window, each a bucket
 /// of the row's own.
+#[cfg(feature = "clob")]
 fn dual(
     table: &mut WindowQuotaTable,
     pattern: &'static str,
@@ -47,6 +57,7 @@ fn dual(
 /// Ordering matters wherever one pattern is a path-segment prefix of
 /// another: `/balance-allowance/update` must precede `/balance-allowance`,
 /// and the specific `/data/*` routes must precede the `/data` catch-all.
+#[cfg(feature = "clob")]
 pub fn clob_limits() -> RateLimiter {
     let get = Some(Method::GET);
     let mut table = WindowQuotaTable::new(9_000, TEN_SECONDS);
@@ -139,6 +150,7 @@ pub fn clob_limits() -> RateLimiter {
 /// answers 200, and the one `Gamma::health().ping()` requests. `/ok` is
 /// boilerplate repeated into every surface's table; only the CLOB host
 /// serves it.
+#[cfg(feature = "gamma")]
 pub fn gamma_limits() -> RateLimiter {
     let mut table = WindowQuotaTable::new(4_000, TEN_SECONDS);
     table
@@ -178,6 +190,7 @@ pub fn gamma_limits() -> RateLimiter {
 ///   only route polyoxide calls there and matching has no host dimension.
 /// - `lb-api.polymarket.com` (`/volume`, `/profit`) has no published limit,
 ///   so those fall to the general bucket.
+#[cfg(feature = "data")]
 pub fn data_limits() -> RateLimiter {
     let mut table = WindowQuotaTable::new(1_000, TEN_SECONDS);
     table
@@ -202,6 +215,7 @@ pub fn data_limits() -> RateLimiter {
 /// Relay API rate limits.
 ///
 /// - 25 requests per 1 minute (single limiter, no endpoint-specific limits)
+#[cfg(feature = "relay")]
 pub fn relay_limits() -> RateLimiter {
     WindowQuotaTable::new(25, Duration::from_secs(60)).build()
 }
@@ -231,6 +245,7 @@ pub fn relay_limits() -> RateLimiter {
 ///
 /// Row order matters: prefix matching takes the first match, so the
 /// catch-all must come last.
+#[cfg(feature = "perps")]
 pub fn perps_limits() -> RateLimiter {
     const PIN_KLINES: u32 = 30;
     const PIN_TRADES: u32 = 10;
@@ -250,4 +265,52 @@ pub fn perps_limits() -> RateLimiter {
         .prefix("/v1/info/bbo", None, PIN_BBO, TEN_SECONDS)
         .prefix("/v1/info", None, lowest, TEN_SECONDS);
     table.build()
+}
+
+#[cfg(all(test, feature = "clob"))]
+mod tests {
+    use std::time::Duration;
+
+    use polyoxide_core::reqwest::Method;
+    use polyoxide_core::{ApiError, HttpClientBuilder, RequestParts};
+
+    /// Notes when it signs: just after the throttle let the attempt go.
+    #[derive(Default)]
+    struct SignedAt(std::sync::Mutex<Option<std::time::Instant>>);
+
+    impl polyoxide_core::hooks::Authenticator for SignedAt {
+        async fn sign(&self, _parts: &mut RequestParts, _attempt: u32) -> Result<(), ApiError> {
+            *self.0.lock().unwrap() = Some(std::time::Instant::now());
+            Ok(())
+        }
+    }
+
+    /// How long `client` takes to let a `POST /order` through to its signing,
+    /// against a mock server.
+    async fn time_to_sign(builder: HttpClientBuilder, server: &mockito::ServerGuard) -> Duration {
+        let client = builder.build().unwrap();
+        let client = client.with_base_url(&server.url()).unwrap();
+        let signed = SignedAt::default();
+        let start = std::time::Instant::now();
+        client
+            .send(
+                RequestParts::new(Method::POST, "/order"),
+                &[],
+                Some(polyoxide_core::hooks::DynAuthenticator::from_ref(&signed)),
+            )
+            .await
+            .unwrap();
+        let at = signed.0.lock().unwrap().expect("the request was signed");
+        at - start
+    }
+
+    #[tokio::test]
+    async fn test_builder_with_rate_limiter() {
+        let mut server = mockito::Server::new_async().await;
+        let _order = server.mock("POST", "/order").create_async().await;
+        let builder = HttpClientBuilder::new("https://example.com")
+            .with_rate_limiter(crate::shared::clob_limits());
+        let elapsed = time_to_sign(builder, &server).await;
+        assert!(elapsed < Duration::from_millis(50));
+    }
 }

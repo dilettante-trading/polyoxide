@@ -7,14 +7,14 @@ use std::sync::{Arc, Mutex};
 use std::time::{Duration, Instant};
 
 use mockito::{Matcher, Mock, Server, ServerGuard};
-use polyoxide_core::polymarket::PolymarketRetryPolicy;
+use polyoxide_core::reqwest::{self, Method, StatusCode};
 use polyoxide_core::{
     ApiError, AttemptInfo, Authenticator, Charge, Decision, DynAuthenticator, HttpClient,
     HttpClientBuilder, LayerId, Refused, RequestMeta, RequestParts, ResponseMeta, RetryConfig,
     RetryPolicy, Throttle,
 };
+use polyoxide_polymarket::shared::PolymarketRetryPolicy;
 use polyoxide_venue::{Class, Classify};
-use reqwest::{Method, StatusCode};
 use tracing::field::{Field, Visit};
 use tracing_subscriber::layer::{Context, SubscriberExt};
 
