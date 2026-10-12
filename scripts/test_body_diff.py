@@ -33,7 +33,7 @@ inline modules around it within its file, and is compared by its attributes othe
 than doc comments, its signature and its body, after what gates it: the attributes
 of each `mod x;` that declares its file but `#[path]`, its file's inner `cfg`s, and
 each enclosing inline module's attributes and inner `cfg`s, without the module
-feature gates `[gates]` drops at HEAD. A module's `const _`
+feature gates and cfg predicates `[gates]` drops at HEAD. A module's `const _`
 items are named `_#1`, `_#2` and on, in order, its invocations of `m!` are `m!#1` and
 on, and its `extern` blocks `block#1` and on.
 
@@ -1482,7 +1482,8 @@ class Config:
     retired: tuple[Entry, ...] = ()
     # Old paths to new ones the manifest does not hold, such as a private module's.
     paths: dict[str, str] = field(default_factory=dict)
-    # Each HEAD path prefix, to the module features whose gates it drops there.
+    # Each HEAD path prefix, to the module features, or the whole cfg predicates,
+    # whose gates it drops there.
     gates: dict[str, tuple[str, ...]] = field(default_factory=dict)
 
     def literal_scopes_for(self, path: str) -> dict[str, str]:
@@ -1558,14 +1559,38 @@ def parse_config(text: str) -> Config:
     for prefix, value in table.items():
         features = [value] if isinstance(value, str) else value
         if (not isinstance(features, list) or not features
-                or not all(isinstance(f, str) and f for f in features)):
+                or not all(isinstance(f, str) and f.strip() for f in features)):
             raise BodyDiffError(f"{CONFIG}: `[gates]` maps {prefix!r} to {value!r}; give a "
-                                f"feature, or an array of them")
+                                f"feature or a cfg predicate, or an array of them")
+        for gate in features:
+            if is_predicate(gate) and not _balanced(gate):
+                raise BodyDiffError(f"{CONFIG}: `[gates]` maps {prefix!r} to the predicate "
+                                    f"{gate!r}, which does not read as a cfg predicate: give "
+                                    f"what goes inside `cfg(...)`, such as "
+                                    f"'any(feature = \"a\", feature = \"b\")'")
         gates[prefix] = tuple(features)
     return Config(_strings("`[files]`", data.get("files", {})), literals,
                   _entries(data, "drift", ("file", "item", "row", "sha256")),
                   _entries(data, "retired", ("file", "item", "row")),
                   _strings("`[paths]`", data.get("paths", {})), gates)
+
+
+def _balanced(predicate: str) -> bool:
+    """Whether `predicate` is one cfg predicate: it starts with a word and its
+    brackets balance."""
+    try:
+        tokens = _predicate_tokens(predicate)
+    except BodyDiffError:
+        return False
+    depth = 0
+    for token in tokens:
+        if token.kind == "punct" and token.text in "([{":
+            depth += 1
+        elif token.kind == "punct" and token.text in ")]}":
+            depth -= 1
+            if depth < 0:
+                return False
+    return bool(tokens) and tokens[0].kind == "word" and depth == 0
 
 
 def read_config(root: Path) -> Config:
@@ -1640,10 +1665,25 @@ def pair_items(old: dict, new: dict, file_pairs: dict[str, str | None]) -> list[
     return pairs
 
 
+def is_predicate(gate: str) -> bool:
+    """Whether a `[gates]` value is a whole cfg predicate, such as
+    `any(feature = "a", feature = "b")`, rather than a feature's name."""
+    return "(" in gate or "=" in gate
+
+
+def _predicate_tokens(text: str) -> list[Token]:
+    return tokenize(view(text, lex(text), CODE + STRING))
+
+
 def drop_feature_gate(attribute: str, feature: str) -> str | None:
     """`attribute` without the gate on `feature`: None when it is exactly
     `cfg(feature = "<feature>")`, and without that operand when it is a `cfg(all(...))`
-    holding it, a lone operand left unwrapped. Any other attribute as it was."""
+    holding it, a lone operand left unwrapped. Any other attribute as it was.
+
+    `feature` may instead be a whole predicate (`is_predicate`), which is dropped the
+    same way: where it is the attribute's whole `cfg(...)`, or an operand of its
+    top-level `all(...)`, compared token by token."""
+    wanted = [t.text for t in _predicate_tokens(feature)] if is_predicate(feature) else None
     tokens = tokenize(view(attribute, lex(attribute), CODE + STRING))
     start = 2 if len(tokens) > 2 and _is(tokens[1], "!") else 1
     if not (len(tokens) > start + 3 and _is(tokens[0], "#") and _is(tokens[start], "[")
@@ -1653,6 +1693,8 @@ def drop_feature_gate(attribute: str, feature: str) -> str | None:
     predicate = tokens[start + 3:-2]
 
     def is_gate(operand: list[Token]) -> bool:
+        if wanted is not None:
+            return [t.text for t in operand] == wanted
         return (len(operand) == 3 and _is(operand[0], "feature") and _is(operand[1], "=")
                 and operand[2].kind == "str" and operand[2].content == feature)
 
@@ -1824,8 +1866,10 @@ def compare(root: Path, baseline: str, rows: tuple[RowLike, ...], config: Config
     for prefix, features in sorted(config.gates.items()):
         for feature in features:
             if ("gate", prefix, feature) not in used:
+                what = (f"`cfg({feature})`" if is_predicate(feature)
+                        else f"the `{feature}` gate")
                 result.problems.append(
-                    f"`[gates]` drops the `{feature}` gate under {prefix}, but no item or "
+                    f"`[gates]` drops {what} under {prefix}, but no item or "
                     f"stanza at HEAD there has it")
     for old_path in sorted(config.paths):
         if ("path", old_path) not in used:

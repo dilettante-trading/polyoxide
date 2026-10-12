@@ -51,7 +51,12 @@
 #   gates it, from a `mod x;`, an enclosing module or the file's inner `cfg`, and that
 #   operand from a top-level `cfg(all(...))`; and it drops `<feature>` from the
 #   `required-features` of every stanza whose target is there. Any other gate stays.
-#   Each feature must drop something.
+#   A value may instead be a whole cfg predicate, what goes inside `cfg(...)`, told
+#   from a feature by its `(` or `=`:
+#     "polyoxide-y/src/shared/auth.rs" = 'any(feature = "clob", feature = "relay")'
+#   It drops exactly that `cfg(...)`, compared token by token, and that operand from
+#   a top-level `cfg(all(...))`, but never a `required-features` entry, which names
+#   features only. Each feature and each predicate must drop something.
 #
 # [[drift]]
 #   file   = "<baseline file>"
@@ -79,4 +84,10 @@
 
 [paths]
 
+# Story 5.2: core's Polymarket files moved into `polyoxide-polymarket`'s
+# `shared`, each under the features of the modules that use it.
 [gates]
+"polyoxide-polymarket/src/shared/auth.rs" = 'any(feature = "clob", feature = "relay")'
+"polyoxide-polymarket/src/shared/limits.rs" = "clob"
+"polyoxide-polymarket/src/shared/session_signer.rs" = 'any(feature = "clob", feature = "relay")'
+"polyoxide-polymarket/src/shared/signer_limit.rs" = "clob"

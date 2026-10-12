@@ -55,6 +55,28 @@ commit. Feature rows work the same way under `## Features`, keyed `<crate>/<feat
 
 ## Paths
 
+Story 5.2 moved Polymarket's code out of `polyoxide-core` into `polyoxide-polymarket`'s
+`shared` module, which keeps core's names. Each item there is built by the features of the
+modules that use it: the retry policy by any of `clob`, `gamma`, `data`, `relay` and
+`perps`, each table by its own module's, the throttle and the signer layer by `clob`, and
+the HMAC signer and the session-signer types by `clob` or `relay`.
+
+- `polyoxide_core::polymarket` → `polyoxide_polymarket::shared` Story 5.2: the retry policy, the five tables, the CLOB's throttle, `signer_cost` and the layer ids.
+- `polyoxide_core::signer_limit` → `polyoxide_polymarket::shared::signer_limit` Story 5.2, feature `clob`.
+- `polyoxide_core::session_signer` → `polyoxide_polymarket::shared::session_signer` Story 5.2, feature `clob` or `relay`.
+- `polyoxide_core::auth` → `polyoxide_polymarket::shared::auth` Story 5.2, feature `clob` or `relay`.
+- `polyoxide_core::BurstCapacityExceeded` → `polyoxide_polymarket::shared::BurstCapacityExceeded` Story 5.2, feature `clob`.
+- `polyoxide_core::RateLimitStatus` → `polyoxide_polymarket::shared::RateLimitStatus` Story 5.2, feature `clob`.
+- `polyoxide_core::SignerLimiter` → `polyoxide_polymarket::shared::SignerLimiter` Story 5.2, feature `clob`.
+- `polyoxide_core::Tier` → `polyoxide_polymarket::shared::Tier` Story 5.2, feature `clob`.
+- `polyoxide_core::TradingBucket` → `polyoxide_polymarket::shared::TradingBucket` Story 5.2, feature `clob`.
+- `polyoxide_core::TradingRequest` → `polyoxide_polymarket::shared::TradingRequest` Story 5.2, feature `clob`.
+- `polyoxide_core::DepositWalletRole` → `polyoxide_polymarket::shared::DepositWalletRole` Story 5.2, feature `clob` or `relay`.
+- `polyoxide_core::SessionSignerScope` → `polyoxide_polymarket::shared::SessionSignerScope` Story 5.2, feature `clob` or `relay`.
+- `polyoxide_core::Signer` → `polyoxide_polymarket::shared::Signer` Story 5.2, feature `clob` or `relay`.
+- `polyoxide_core::Base64Format` → `polyoxide_polymarket::shared::Base64Format` Story 5.2, feature `clob` or `relay`.
+- `polyoxide_core::current_timestamp` → `polyoxide_polymarket::shared::current_timestamp` Story 5.2, feature `clob` or `relay`.
+
 ## Features
 
 ## Doc-hidden paths consumers import

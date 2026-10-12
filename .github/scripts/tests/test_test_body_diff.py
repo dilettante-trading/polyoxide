@@ -545,6 +545,7 @@ def test_the_config_reads_every_section() -> None:
 [gates]
 "b/src/clob/" = "clob"
 "b/tests/" = ["clob", "gamma"]
+"b/src/shared/" = 'any(feature = "clob", feature = "relay")'
 
 [[drift]]
 file = "a/tests/x.rs"
@@ -560,7 +561,8 @@ row = "polyoxide_x::Gone"
 """)
     assert config.files == {"a/tests/x.rs": "b/tests/y.rs"}
     assert config.paths == {"polyoxide_x::private::Thing": "polyoxide_y::x::shared::Thing"}
-    assert config.gates == {"b/src/clob/": ("clob",), "b/tests/": ("clob", "gamma")}
+    assert config.gates == {"b/src/clob/": ("clob",), "b/tests/": ("clob", "gamma"),
+                            "b/src/shared/": ('any(feature = "clob", feature = "relay")',)}
     assert config.literals == {"": {"polyoxide_x": "polyoxide_y::x"}, "a/": {"ws": "x-ws"}}
     assert config.drift[0].key == ("a/tests/x.rs", "fn", "tests::t")
     assert config.retired[0].key == ("a/tests/x.rs", "const", "u")
@@ -580,8 +582,12 @@ row = "polyoxide_x::Gone"
     ("paths = []\n", "must be a table"),
     ("[paths]\n\"a\" = 1\n", "must be a table"),
     ("gates = []\n", "`\\[gates\\]` must be a table"),
-    ("[gates]\n\"a/\" = 1\n", "give a feature, or an array"),
-    ("[gates]\n\"a/\" = []\n", "give a feature, or an array"),
+    ("[gates]\n\"a/\" = 1\n", "give a feature or a cfg predicate, or an array"),
+    ("[gates]\n\"a/\" = []\n", "give a feature or a cfg predicate, or an array"),
+    ("[gates]\n\"a/\" = \" \"\n", "give a feature or a cfg predicate, or an array"),
+    ("[gates]\n\"a/\" = 'any(feature = \"m\"'\n", "does not read as a cfg predicate"),
+    ("[gates]\n\"a/\" = ')any('\n", "does not read as a cfg predicate"),
+    ("[gates]\n\"a/\" = '= \"m\"'\n", "does not read as a cfg predicate"),
     (f"[[drift]]\nfile = \"a\"\nitem = \"t\"\nrow = \"R6\"\nsha256 = \"{SHA}\"\n" * 2,
      "an earlier `\\[\\[drift\\]\\]` entry names too"),
     ("[[retired]]\nfile = \"a\"\nitem = \"t\"\nrow = \"x::Y\"\n" * 2,
@@ -1027,6 +1033,35 @@ def test_a_gate_drops_exactly_its_features_cfg(attribute: str, kept: str | None)
     assert body_diff.drop_feature_gate(attribute, "m") == kept
 
 
+ANY_MN = 'any(feature = "m", feature = "n")'
+
+
+@pytest.mark.parametrize(("attribute", "kept"), [
+    ('#[cfg(any(feature = "m", feature = "n"))]', None),
+    ('#![cfg(any(feature="m",feature="n"))]', None),
+    ('#[cfg(all(test, any(feature = "m", feature = "n")))]', "# [ cfg ( test ) ]"),
+    ('#[cfg(all(any(feature = "m", feature = "n")))]', None),
+    # Another order, another operand or the feature alone is another predicate.
+    ('#[cfg(any(feature = "n", feature = "m"))]', '#[cfg(any(feature = "n", feature = "m"))]'),
+    ('#[cfg(any(feature = "m", feature = "n", test))]',
+     '#[cfg(any(feature = "m", feature = "n", test))]'),
+    ('#[cfg(feature = "m")]', '#[cfg(feature = "m")]'),
+    ('#[cfg(not(any(feature = "m", feature = "n")))]',
+     '#[cfg(not(any(feature = "m", feature = "n")))]'),
+    ('#[cfg_attr(any(feature = "m", feature = "n"), derive(Debug))]',
+     '#[cfg_attr(any(feature = "m", feature = "n"), derive(Debug))]'),
+])
+def test_a_predicate_gate_drops_exactly_that_cfg(attribute: str, kept: str | None) -> None:
+    assert body_diff.drop_feature_gate(attribute, ANY_MN) == kept
+
+
+def test_a_feature_and_a_predicate_are_told_apart() -> None:
+    assert not body_diff.is_predicate("clob-ws")
+    assert body_diff.is_predicate(ANY_MN)
+    assert body_diff.is_predicate('feature = "m"')
+    assert body_diff.drop_feature_gate('#[cfg(feature = "m")]', 'feature = "m"') is None
+
+
 ROOT_LIB = "pub fn f() {}\n#[cfg(test)]\nmod tests {\n    #[test]\n    fn t() {}\n}\n"
 LIVE = '[[test]]\nname = "live"\npath = "tests/live.rs"\n'
 
@@ -1053,6 +1088,36 @@ def test_a_crate_root_moved_under_a_module_feature_needs_a_gate_entry(repo: Path
         "HEAD there has it",
         "`[gates]` drops the `q` gate under polyoxide-y/src/z/, but no item or stanza at "
         "HEAD there has it"]
+
+
+SHARED_LIB = ('#[cfg(any(feature = "m", feature = "n"))]\npub mod a;\n'
+              '#[cfg(feature = "m")]\npub mod b;\n')
+
+
+def test_a_module_under_a_predicate_needs_a_predicate_gate_entry(repo: Path) -> None:
+    """A file moved under a `mod x;` gated by a predicate, which no feature entry can
+    drop; the entry must fire, and drops nothing it does not name."""
+    baseline(repo, {"polyoxide-x/Cargo.toml": package("polyoxide-x"),
+                    "polyoxide-x/src/lib.rs": "pub mod a;\npub mod b;\n",
+                    "polyoxide-x/src/a.rs": ROOT_LIB, "polyoxide-x/src/b.rs": ROOT_LIB})
+    edit(repo, {"polyoxide-x/Cargo.toml": None, "polyoxide-x/src/lib.rs": None,
+                "polyoxide-x/src/a.rs": None, "polyoxide-x/src/b.rs": None,
+                "polyoxide-y/Cargo.toml": package("polyoxide-y"),
+                "polyoxide-y/src/lib.rs": SHARED_LIB,
+                "polyoxide-y/src/a.rs": ROOT_LIB, "polyoxide-y/src/b.rs": ROOT_LIB})
+    rows = [Row("polyoxide_x", "polyoxide_y", None)]
+    assert sorted(d.old.where for d in compare(repo, rows).diffs) == [
+        "polyoxide-x/src/a.rs:5 fn tests::t", "polyoxide-x/src/b.rs:5 fn tests::t"]
+    # The predicate drops `a`'s gate and not `b`'s, which only a feature entry drops.
+    only = Config(gates={"polyoxide-y/src/": (ANY_MN,)})
+    assert [d.old.where for d in compare(repo, rows, only).diffs] == [
+        "polyoxide-x/src/b.rs:5 fn tests::t"]
+    both = Config(gates={"polyoxide-y/src/a.rs": (ANY_MN,), "polyoxide-y/src/b.rs": ("m",)})
+    assert compare(repo, rows, both).status == 0
+    stale = Config(gates={"polyoxide-y/src/b.rs": ("m", ANY_MN), "polyoxide-y/src/a.rs": (ANY_MN,)})
+    assert compare(repo, rows, stale).problems == [
+        f"`[gates]` drops `cfg({ANY_MN})` under polyoxide-y/src/b.rs, but no item or stanza "
+        f"at HEAD there has it"]
 
 
 def test_a_baseline_the_checkout_lacks_cannot_be_decided(repo: Path) -> None:
