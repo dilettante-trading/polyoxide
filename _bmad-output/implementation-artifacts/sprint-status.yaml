@@ -29,7 +29,7 @@
 # - Dev moves story to 'review', then runs code-review (fresh context, different LLM recommended)
 # - Retrospective appends its action items to action_items; the status view surfaces open ones
 generated: 10-08-2026 14:57
-last_updated: 12-10-2026 16:28
+last_updated: 12-10-2026 17:15
 project: polyoxide
 project_key: NOKEY
 tracking_system: file-system
@@ -133,7 +133,7 @@ development_status:
 
   epic-5: in-progress
   5-1-open-the-s2-integration-session: review
-  5-2-polyoxide-polymarket-and-a-venue-neutral-core: backlog
+  5-2-polyoxide-polymarket-and-a-venue-neutral-core: in-progress
   5-3-gamma-and-data-become-modules: backlog
   5-4-clob-and-relay-become-modules: backlog
   5-5-perps-rtds-and-sports-become-modules: backlog
