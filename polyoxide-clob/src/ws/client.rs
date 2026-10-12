@@ -77,7 +77,8 @@ fn no_addresses(url: &str) -> WebSocketError {
 /// family-interleaved order with `connect_timeout` covering its TCP connect
 /// and again its TLS + WebSocket handshake ([`with_timeout`] around each,
 /// the upgrade through [`connect_over`]), and falls back to the next address
-/// on any failure. This connect is clob's own (divergence row D20).
+/// on any failure but a refused upgrade, which it returns at once. This
+/// connect is clob's own (divergence row D20).
 async fn connect_ws(url: &str, connect_timeout: Duration) -> Result<Connection, WebSocketError> {
     let parsed = url::Url::parse(url)?;
     let host = parsed
@@ -115,6 +116,10 @@ async fn connect_ws(url: &str, connect_timeout: Duration) -> Result<Connection, 
         // TCP is up; bound the TLS + WebSocket handshake by the same budget.
         match with_timeout(connect_timeout, connect_over(url, stream)).await {
             Ok(Ok(socket)) => return Ok(Connection::new(socket, Mode::Data)),
+            // The host answered and refused the upgrade. Another of its
+            // addresses would repeat the refusal, inside a 429's window, and
+            // its own failure would hide this one's status and `Retry-After`.
+            Ok(Err(e)) if matches!(e.kind(), Kind::Refused { .. }) => return Err(e.into()),
             Ok(Err(e)) => last_err = e.into(),
             Err(err) => last_err = timed_out(err),
         }
@@ -894,13 +899,23 @@ mod connect_tests {
         // 192.0.2.0/24 (TEST-NET-1) is guaranteed unrouted, so the connect
         // either blackholes (timeout) or is refused (io error) — never Ok.
         // Either way connect_ws must return promptly instead of hanging.
+        let url = "wss://192.0.2.1/ws";
+        let step = Duration::from_millis(200);
         let started = std::time::Instant::now();
-        let err = connect_ws("wss://192.0.2.1/ws", Duration::from_millis(200))
+        let err = connect_ws(url, step)
             .await
             .expect_err("TEST-NET-1 must not accept connections");
         assert!(
             started.elapsed() < Duration::from_secs(5),
             "connect_ws did not honour the per-address timeout: {err}"
+        );
+        // A blackholed TCP connect is clob's own timeout, per address and
+        // per step; a refused one is an I/O failure.
+        assert!(
+            matches!(&err, WebSocketError::ConnectTimeout { url: u, timeout }
+                if u == url && *timeout == step)
+                || matches!(&err, WebSocketError::Connection(e) if e.kind() == Kind::Io),
+            "{err:?}"
         );
     }
 }
@@ -1194,6 +1209,27 @@ mod connection_tests {
         assert_eq!(err.retry_after(), Some(Duration::from_secs(30)));
     }
 
+    #[tokio::test]
+    async fn a_wss_connect_reaches_tls_without_panicking() {
+        // clob's graph enables both rustls backends (`ring` through reqwest,
+        // `aws-lc-rs` through alloy), so rustls installs no default provider
+        // by itself, and a TLS connect with none installed panics building
+        // its config. Every other offline connect here is plain `ws://`. The
+        // scripted server speaks no TLS, so the handshake fails, as a
+        // transport error.
+        let server = ScriptedServer::start(vec![Script::hold()]).await;
+        let url = server.url.replacen("ws://", "wss://", 1);
+        let err = connect_ws(&url, Duration::from_secs(2))
+            .await
+            .expect_err("a server that speaks no TLS must not connect");
+        assert!(matches!(err, WebSocketError::Connection(_)), "{err:?}");
+        // Failing to load the roots would stop short of the TLS config.
+        assert!(
+            !err.to_string().to_lowercase().contains("native root"),
+            "{err}"
+        );
+    }
+
     #[test]
     fn a_dns_miss_is_a_network_failure() {
         // A host that resolves to no address was an `InvalidMessage`, an
@@ -1216,8 +1252,12 @@ mod membership_tests {
     use polyoxide_ws::test_server::{Script, ScriptedServer};
 
     /// Long enough for a run to send what a test queued before the server
-    /// closes; the tests that end a run wait for the frames first.
-    const CLOSE_AFTER: Duration = Duration::from_millis(500);
+    /// closes, on a loaded runner too; the tests that end a run wait for the
+    /// frames first.
+    const CLOSE_AFTER: Duration = Duration::from_secs(2);
+
+    /// How long a run may take to end: past the server's close, with margin.
+    const RUN_ENDS: Duration = Duration::from_secs(5);
 
     /// The text frames the server received, keep-alive `PING`s excluded.
     fn non_ping_frames(server: &ScriptedServer) -> Vec<String> {
@@ -1301,7 +1341,7 @@ mod membership_tests {
             r#"{"operation":"unsubscribe","assets_ids":["a"]}"#
         );
         // The server closes after the frames: run returns cleanly.
-        tokio::time::timeout(Duration::from_secs(2), run)
+        tokio::time::timeout(RUN_ENDS, run)
             .await
             .expect("must not hang")
             .unwrap()
@@ -1315,7 +1355,7 @@ mod membership_tests {
         let handle = ws.membership();
         let run = tokio::spawn(ws.run(|_| async { Ok(()) }));
         handle.subscribe_assets(vec!["b".into()]).await.unwrap();
-        tokio::time::timeout(Duration::from_secs(2), run)
+        tokio::time::timeout(RUN_ENDS, run)
             .await
             .expect("must not hang")
             .unwrap()

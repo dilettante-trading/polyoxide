@@ -96,7 +96,8 @@ async fn probe_user_subscription(frame: String) -> Result<usize, String> {
     // A raw socket through the kit's connect, which installs the TLS
     // provider (DRIFT R9): this graph enables two rustls backends, so a
     // connect without it panics before it reaches the network. A connect
-    // that times out fails as `ConnectTimeout`, `Network`.
+    // that times out is `Connection` whose kind is `ConnectTimeout`, classed
+    // `Network`.
     let mut ws = polyoxide_ws::connect(
         "wss://ws-subscriptions-clob.polymarket.com/ws/user",
         CONNECT_TIMEOUT,

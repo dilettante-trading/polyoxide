@@ -276,8 +276,9 @@ enum Command {
 /// would pass 1024 streams on a path ([`UsdmWsError::TooManyStreams`], nothing
 /// sent), when the first connect of a path it opens fails in a way retrying
 /// cannot fix ([`UsdmWsError::Connect`]), or when the client has stopped
-/// ([`UsdmWsError::Stopped`], with the error a path stopped on once the client
-/// has seen it). A subscription of more than 200 names is sent
+/// ([`UsdmWsError::Stopped`]). Its `cause` is the error a path stopped on once
+/// the router has that path's stop; a call in flight when the path stops can
+/// get `Stopped { cause: None }`. A subscription of more than 200 names is sent
 /// in batches, so one refused part-way leaves the earlier batches applied.
 ///
 /// A call waits for the path's task, which takes no change while the consumer
@@ -408,7 +409,10 @@ impl SupervisedUsdmWs {
     /// Fails with [`UsdmWsError::Stopped`] if a path had stopped the client
     /// on an error, which the stream yielded: its `cause` is that error, as
     /// [`Classify`](polyoxide_venue::Classify) read it, and so is the cause
-    /// every later membership call carries.
+    /// every later membership call carries. That holds once the router has the
+    /// path's stop: a `close()` made right after the stream yielded the
+    /// stopping error can return `Ok` or `Stopped { cause: None }`. Read the
+    /// stream to its end first to be sure of the cause.
     pub async fn close(self) -> Result<(), UsdmWsError> {
         let Self {
             events,

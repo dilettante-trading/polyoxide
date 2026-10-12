@@ -26,11 +26,11 @@ rule). Each venue crate classifies it through its own enum that wraps it, with
 `polyoxide_venue::impl_ws_classification!`.
 
 That half has its own fence (Story 4.10): a type with a `WsError` field, of
-any visibility, must sit in a file that expands the macro, whose private
-`ws_class`, `ws_is_fault` and `ws_retry_after` its `Classify` impl calls. The
-macro's functions are private to the module that expands it, so a wrapper in
-another file cannot reach them; one that forgets a function fails
-`-D warnings`, and one whose file never expands the macro fails here.
+any visibility, must sit in a file that expands the macro, since the fence
+checks the file that expands it, and that file must call each of the macro's
+`ws_class`, `ws_is_fault` and `ws_retry_after` in code, not in a comment.
+Nothing else guards the calls: a function expanded from another crate's
+`macro_rules!` and never called builds clean under `-D warnings` and clippy.
 
 A doc comment or a `pub(crate)` item is not swept for the assertion. Gating is
 not checked here: an assertion gated differently from its type fails
@@ -63,6 +63,8 @@ ANY_ITEM = re.compile(r"^\s*(?:pub(?:\([^)]*\))?\s+)?(?:enum|struct) (\w+)")
 WS_ERROR = re.compile(r"\bWsError\b")
 # The macro expanded as an item, not named in a comment.
 EXPANDS = re.compile(r"\bimpl_ws_classification!\s*\(\s*\)\s*;")
+# The functions the expansion defines, each of which its file must call.
+TABLE = ("ws_class", "ws_is_fault", "ws_retry_after")
 COMMENT = re.compile(r"//.*$")
 DERIVES_ERROR = re.compile(r"#\[derive\([^)]*\bError\b[^)]*\)\]", re.S)
 IMPLS_ERROR = re.compile(r"\bimpl(?:<[^>]*>)?\s+(?:(?:std|core)::error::)?Error\s+for\s+(\w+)")
@@ -150,35 +152,66 @@ def _body(lines: list[str], index: int) -> str:
     return "\n".join(body)
 
 
-def ws_wrappers(src: Path) -> dict[str, Path]:
+def ws_wrappers(src: Path) -> list[tuple[str, Path]]:
     """Each type under `src` with a `WsError` field, of any visibility, with the
-    file that declares it."""
-    found = {}
+    file that declares it: every one, two of the same name in different files
+    included."""
+    found = []
     for path in sorted(src.rglob("*.rs")):
         lines = _read(path).splitlines()
         for index, line in enumerate(lines):
             item = ANY_ITEM.match(_code(line))
             if item and WS_ERROR.search(_body(lines, index)):
-                found[item[1]] = path
+                found.append((item[1], path))
     return found
+
+
+def _source(path: Path) -> str:
+    """The file's code, comments left out."""
+    return "\n".join(_code(line) for line in _read(path).splitlines())
 
 
 def expands_the_table(path: Path) -> bool:
     """Whether the file expands `impl_ws_classification!` as code."""
-    return EXPANDS.search("\n".join(_code(line) for line in _read(path).splitlines())) is not None
+    return EXPANDS.search(_source(path)) is not None
+
+
+def uncalled(path: Path) -> list[str]:
+    """The table's functions the file never calls in code. A definition of its
+    own, `fn ws_class(`, is not a call."""
+    code = _source(path)
+    return [name for name in TABLE
+            if not re.search(rf"(?<!fn )\b{name}\s*\(", code)]
+
+
+def _swept(root: Path):
+    """Each crate's name and `src`, the kit, which defines `WsError`, left out."""
+    for crate in sorted(root.glob("polyoxide*/")):
+        src = crate / "src"
+        if crate.name != SOCKET_KIT and src.is_dir():
+            yield crate.name, src
 
 
 def unexpanded(root: Path) -> list[str]:
     """`<crate>: <type> (<file>)` for each `WsError` wrapper whose file does not
-    expand the socket table. The kit, which defines `WsError`, is not swept."""
+    expand the socket table."""
     problems = []
-    for crate in sorted(root.glob("polyoxide*/")):
-        src = crate / "src"
-        if crate.name == SOCKET_KIT or not src.is_dir():
-            continue
-        for name, path in sorted(ws_wrappers(src).items()):
+    for crate, src in _swept(root):
+        for name, path in sorted(ws_wrappers(src)):
             if not expands_the_table(path):
-                problems.append(f"{crate.name}: {name} ({path.relative_to(root).as_posix()})")
+                problems.append(f"{crate}: {name} ({path.relative_to(root).as_posix()})")
+    return problems
+
+
+def tables_not_called(root: Path) -> list[str]:
+    """`<crate>: <file> does not call <function>` for each function of the socket
+    table that a file expanding it never calls."""
+    problems = []
+    for crate, src in _swept(root):
+        for path in sorted(src.rglob("*.rs")):
+            if expands_the_table(path):
+                problems.extend(f"{crate}: {path.relative_to(root).as_posix()} does not call {name}"
+                                for name in uncalled(path))
     return problems
 
 
@@ -225,6 +258,15 @@ def test_every_ws_error_wrapper_expands_the_socket_table() -> None:
     )
 
 
+def test_every_file_that_expands_the_socket_table_calls_all_of_it() -> None:
+    problems = tables_not_called(REPO)
+    assert not problems, (
+        "these files expand `polyoxide_venue::impl_ws_classification!();` and never call "
+        "one of its functions, which no lint reports; call it from the `Classify` impl:\n  "
+        + "\n  ".join(problems)
+    )
+
+
 @pytest.mark.parametrize(("crate", "name"), [
     ("polyoxide-clob", "WebSocketError"),
     ("polyoxide-perps", "PerpsWsError"),
@@ -233,10 +275,10 @@ def test_every_ws_error_wrapper_expands_the_socket_table() -> None:
     ("polyoxide-sports", "SportsError"),
 ])
 def test_the_ws_sweep_finds_every_socket_error(crate: str, name: str) -> None:
-    # A sweep that matched nothing would pass the fence above vacuously.
-    wrappers = ws_wrappers(REPO / crate / "src")
-    assert name in wrappers
-    assert expands_the_table(wrappers[name])
+    # A sweep that matched nothing would pass the fences above vacuously.
+    [path] = [path for found, path in ws_wrappers(REPO / crate / "src") if found == name]
+    assert expands_the_table(path)
+    assert uncalled(path) == []
 
 
 WS_WRAPPERS = """\
@@ -269,7 +311,7 @@ def test_a_ws_error_field_without_the_table_is_caught(tmp_path: Path) -> None:
     # Named in a comment, which expands nothing.
     (src / "other.rs").write_text("// polyoxide_venue::impl_ws_classification!();\n"
                                   "pub struct Other { inner: WsError }\n")
-    assert set(ws_wrappers(src)) == {"FeedError", "Tuple", "Named", "Other"}
+    assert {name for name, _ in ws_wrappers(src)} == {"FeedError", "Tuple", "Named", "Other"}
     assert unexpanded(tmp_path) == [
         "polyoxide-feed: FeedError (polyoxide-feed/src/error.rs)",
         "polyoxide-feed: Named (polyoxide-feed/src/error.rs)",
@@ -279,6 +321,60 @@ def test_a_ws_error_field_without_the_table_is_caught(tmp_path: Path) -> None:
 
     (src / "error.rs").write_text("polyoxide_venue::impl_ws_classification!();\n" + WS_WRAPPERS)
     assert unexpanded(tmp_path) == ["polyoxide-feed: Other (polyoxide-feed/src/other.rs)"]
+
+
+def test_two_wrappers_of_one_name_are_each_checked(tmp_path: Path) -> None:
+    src = tmp_path / "polyoxide-feed" / "src"
+    (src / "a").mkdir(parents=True)
+    (src / "b").mkdir()
+    (src / "a" / "error.rs").write_text(
+        "polyoxide_venue::impl_ws_classification!();\npub enum FeedError { C(WsError) }\n")
+    (src / "b" / "error.rs").write_text("pub enum FeedError { C(WsError) }\n")
+    assert len(ws_wrappers(src)) == 2
+    assert unexpanded(tmp_path) == ["polyoxide-feed: FeedError (polyoxide-feed/src/b/error.rs)"]
+
+
+CALLS_TWO = """\
+polyoxide_venue::impl_ws_classification!();
+
+pub enum FeedError {
+    Connection(WsError),
+}
+
+impl Classify for FeedError {
+    fn class(&self) -> Class {
+        match self {
+            Self::Connection(err) => ws_class(err),
+        }
+    }
+
+    fn is_fault(&self) -> bool {
+        !matches!(self, Self::Connection(err) if !ws_is_fault(err))
+    }
+
+    // ws_retry_after(err) in a comment is not a call.
+}
+
+/// So is `ws_retry_after(err)` in a doc comment, and a function of its own.
+fn ws_retry_after() {}
+"""
+
+
+def test_a_file_that_forgets_a_table_function_is_caught(tmp_path: Path) -> None:
+    src = tmp_path / "polyoxide-feed" / "src"
+    src.mkdir(parents=True)
+    (src / "error.rs").write_text(CALLS_TWO)
+    assert unexpanded(tmp_path) == []
+    assert tables_not_called(tmp_path) == [
+        "polyoxide-feed: polyoxide-feed/src/error.rs does not call ws_retry_after",
+    ]
+
+    (src / "error.rs").write_text(CALLS_TWO.replace(
+        "    // ws_retry_after(err) in a comment is not a call.\n",
+        "    fn retry_after(&self) -> Option<Duration> {\n"
+        "        match self { Self::Connection(err) => ws_retry_after(err) }\n"
+        "    }\n"))
+    assert tables_not_called(tmp_path) == []
 
 
 def test_the_socket_kit_is_not_swept_for_the_table(tmp_path: Path) -> None:

@@ -15,8 +15,15 @@
 /// and the orphan rule forbids the impl there too, so the venue crate expands
 /// the table as functions its own enum's impl calls. The expansion names only
 /// `::polyoxide_ws` and this crate, so the invoking crate needs `polyoxide-ws`
-/// and no tungstenite of its own. A venue that expands it and forgets any of
-/// the three fails `-D warnings` on the unused one.
+/// and no tungstenite of its own.
+///
+/// No lint reports a function the expansion defines and the venue never
+/// calls: rustc does not warn about dead code expanded from another crate's
+/// macro. `.github/scripts/tests/test_classify_coverage.py` is the guard
+/// instead. It fails when a type with a `WsError` field sits in a file that
+/// does not expand the macro, and when a file that expands it does not call
+/// each of the three in code, so expand it in the file that declares the
+/// wrapper, where the fence checks it.
 ///
 /// | `Kind` | Class |
 /// | --- | --- |
