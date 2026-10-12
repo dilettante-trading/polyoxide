@@ -108,7 +108,7 @@ written, and breaking changes are accepted.
 - Socket handshake auth is computed per connection attempt, because Kalshi's signature covers a millisecond timestamp.
 - The throttle interface takes a per-request cost. Binance weights, Kalshi token costs and Polymarket batch orders all charge more than one unit per request.
 - The divergences listed in `divergences.md` stay per-venue. DRY merges only identical or parametric copies, and the branch that carries behaviour stays at the venue's call site.
-- Each DRIFT row is applied as decided in `divergences.md` when its copies merge. R1, R2 and R4 change behaviour users can see, so the release notes name them.
+- Each DRIFT row is applied as decided in `divergences.md` when its copies merge. R1, R2, R4 and R11 change behaviour users can see, so the release notes name them.
 - Credential storage is split. Shared code owns the mechanism: keyring access, secret redaction, and the plumbing for CLI `credentials` store, show and delete. Each venue owns its credential type: fields, validation, service name.
 - Tests that carry behaviour move; they are not deleted or weakened. That covers mutation-tested rate-limit rules, supervision invariants, kill-outcome classification, effective-quota agreement tests, spec and wire agreement tests, and live drift detectors.
 - Normalization loses no venue information:
