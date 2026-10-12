@@ -52,9 +52,9 @@ impl Mode {
 /// The basis is `polyoxide-sports`' `SportsWs::poll_next` (`src/client.rs`)
 /// and its frame classifier, with the queue `polyoxide-perps`' and
 /// `polyoxide-binance`'s former bare tiers drained first and Binance's former
-/// close capture (`record_close` and `closed_error`); perps, Binance, rtds
-/// and clob read through this type since Stories 4.6 to 4.9. Two divergence
-/// rows stay with each venue: what counts as liveness (D5), which
+/// close capture (`record_close` and `closed_error`); perps, Binance, rtds,
+/// clob and sports read through this type since Stories 4.6 to 4.10. Two
+/// divergence rows stay with each venue: what counts as liveness (D5), which
 /// [`Mode::All`] and [`last_inbound`](Self::last_inbound) let a venue decide,
 /// and what a Binary frame means (D12): clob decodes it as text, and the
 /// others skip it.

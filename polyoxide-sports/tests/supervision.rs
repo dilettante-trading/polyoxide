@@ -8,9 +8,12 @@ use std::time::Duration;
 
 use futures_util::StreamExt;
 use polyoxide_sports::{fixtures, Event, SportsError, SportsWsBuilder, SupervisedSportsWs};
-use polyoxide_ws::test_server::{Script, ScriptedServer};
+use polyoxide_ws::{
+    test_server::{Script, ScriptedServer},
+    tungstenite::Message,
+    Kind,
+};
 use tokio::time::{timeout, Instant};
-use tokio_tungstenite::tungstenite::{self, Message};
 
 const STALE: Duration = Duration::from_millis(300);
 const WINDOW: Duration = Duration::from_secs(3);
@@ -280,9 +283,9 @@ async fn a_reconnect_refused_for_good_ends_the_stream() {
     assert_eq!(label(next_item(&mut feed).await), "kor");
     assert_eq!(label(next_item(&mut feed).await), "disconnected");
     match next_item(&mut feed).await {
-        Err(SportsError::Connect { source }) => match *source {
-            tungstenite::Error::Http(response) => assert_eq!(response.status(), 404),
-            other => panic!("expected an HTTP refusal, got {other}"),
+        Err(SportsError::Connect { source }) => match source.kind() {
+            Kind::Refused { status, .. } => assert_eq!(status, 404),
+            other => panic!("expected an HTTP refusal, got {other:?}"),
         },
         other => panic!("expected the refusal, got {}", label(other)),
     }

@@ -27,12 +27,12 @@ pub type Socket = WebSocketStream<MaybeTlsStream<TcpStream>>;
 /// [`Kind::ConnectTimeout`]; every other failure is the transport's, such as
 /// [`Kind::Refused`] for an upgrade the server answered with an HTTP status.
 ///
-/// The basis is `polyoxide-sports`' `open` (`src/client.rs`) and
+/// The basis is `polyoxide-sports`' former `open` (`src/client.rs`) and
 /// `polyoxide-binance`'s former connect in `UsdmWs::open`
-/// (`usdm/ws/client.rs`, on this function since Story 4.7). A venue whose
-/// connect is its own bounds it with [`with_timeout`] instead: sports' is
-/// until Story 4.10, and `polyoxide-clob`'s per-address connect is for good
-/// (D20), each step bounded and the upgrade through [`connect_over`].
+/// (`usdm/ws/client.rs`), each on this function since Stories 4.7 and 4.10.
+/// A venue whose connect is its own bounds it with [`with_timeout`] instead,
+/// as `polyoxide-clob`'s per-address connect does (D20), each step bounded
+/// and the upgrade through [`connect_over`].
 pub async fn connect<R>(request: R, timeout: Duration) -> Result<Socket, WsError>
 where
     R: IntoClientRequest + Unpin,
@@ -89,10 +89,11 @@ pub async fn with_timeout<F: Future>(timeout: Duration, connect: F) -> Result<F:
 /// [`Kind::AlreadyClosed`] (D19) and what a close code means stay with each
 /// venue's recovery, so both are `true` here.
 ///
-/// The basis is `polyoxide-sports`' `SportsError::retrying_can_fix`
+/// The basis is `polyoxide-sports`' former `SportsError::retrying_can_fix`
 /// (`src/error.rs`), with the status rule injected, since this crate cannot
-/// see `polyoxide-venue`. sports keeps its own until Story 4.10, as it
-/// retries a `Capacity` failure, which this gives up on.
+/// see `polyoxide-venue`. sports' recovery calls this since Story 4.10, with
+/// its own row ahead of it: it retries a `Capacity` failure, which this gives
+/// up on.
 pub fn retrying_can_fix(err: &WsError, retriable_status: impl Fn(u16) -> bool) -> bool {
     match err.kind() {
         Kind::Refused { status, .. } => retriable_status(status),

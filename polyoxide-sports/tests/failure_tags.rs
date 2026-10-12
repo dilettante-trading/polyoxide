@@ -12,7 +12,10 @@
 use polyoxide_sports::SportsError;
 use polyoxide_test_support::{tag_for, Tag};
 use polyoxide_venue::Classify;
-use tokio_tungstenite::tungstenite::{self, error::ProtocolError};
+use polyoxide_ws::{
+    tungstenite::{self, error::ProtocolError},
+    WsError,
+};
 
 /// The tag `err` fails a test with, through `or_fail` or `fail`.
 fn tag(err: &SportsError) -> Tag {
@@ -29,13 +32,13 @@ fn closed(code: u16, reason: &str) -> SportsError {
 #[test]
 fn reset_without_closing_handshake() {
     let err = SportsError::Transport {
-        source: Box::new(tungstenite::Error::Protocol(
+        source: WsError::from(tungstenite::Error::Protocol(
             ProtocolError::ResetWithoutClosingHandshake,
         )),
     };
     assert_eq!(
         format!("{err:?}"),
-        "Transport { source: Protocol(ResetWithoutClosingHandshake) }"
+        "Transport { source: WsError(Transport(Protocol(ResetWithoutClosingHandshake))) }"
     );
     assert_eq!(
         err.to_string(),

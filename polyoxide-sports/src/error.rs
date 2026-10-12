@@ -2,10 +2,10 @@
 
 use std::time::Duration;
 
-use polyoxide_venue::{
-    class_for_close_code, class_for_handshake_status, class_for_status, Class, Classify,
-};
-use tokio_tungstenite::tungstenite;
+use polyoxide_venue::{class_for_close_code, Class, Classify};
+use polyoxide_ws::{Kind, WsError};
+
+polyoxide_venue::impl_ws_classification!();
 
 /// Everything that can go wrong on the sports feed.
 ///
@@ -32,9 +32,10 @@ pub enum SportsError {
     /// WebSocket upgrade failed.
     #[error("could not connect to the sports feed: {source}")]
     Connect {
-        /// What the transport reported.
+        /// What the transport reported: the kit's one socket error, read
+        /// through its [`Kind`].
         #[source]
-        source: Box<tungstenite::Error>,
+        source: WsError,
     },
     /// Opening the connection took longer than the connect timeout.
     #[error("connecting to the sports feed took longer than {after:?}")]
@@ -53,9 +54,10 @@ pub enum SportsError {
     /// A read failed on an open connection.
     #[error("the sports feed connection failed: {source}")]
     Transport {
-        /// What the transport reported.
+        /// What the transport reported: the kit's one socket error, read
+        /// through its [`Kind`].
         #[source]
-        source: Box<tungstenite::Error>,
+        source: WsError,
     },
     /// Nothing arrived, protocol pings included, within the staleness limit.
     #[error("nothing received from the sports feed for {after:?}, pings included")]
@@ -75,63 +77,51 @@ pub enum SportsError {
 }
 
 impl SportsError {
-    /// Whether a reconnect attempt that failed this way is worth repeating.
-    ///
-    /// The statuses are the ones polyoxide-venue's one status rule
-    /// (`class_for_status`, which `Classify::is_retriable` reads) classes
-    /// retriable: a timeout, the matching engine restarting, a rate limit, a
-    /// server fault.
-    /// polyoxide-perps retries only 429 and 5xx.
-    pub(crate) fn retrying_can_fix(&self) -> bool {
-        let Self::Connect { source } = self else {
-            return true;
-        };
-        match &**source {
-            tungstenite::Error::Http(response) => {
-                let status = response.status().as_u16();
-                class_for_status(status).is_some_and(|c| c.is_retriable())
-            }
-            // `Tls` is only an invalid server name here: rustls reports a
-            // certificate it rejects as an IO error, which is retried.
-            tungstenite::Error::Url(_)
-            | tungstenite::Error::Tls(_)
-            | tungstenite::Error::HttpFormat(_)
-            | tungstenite::Error::AttackAttempt => false,
-            _ => true,
+    /// A connect that failed. A timeout and a close keep their own variants,
+    /// as they did before the kit, and anything else is
+    /// [`Connect`](Self::Connect).
+    pub(crate) fn connect(source: WsError) -> Self {
+        Self::from_kind(source, |source| Self::Connect { source })
+    }
+
+    /// A read on an open connection that failed, mapped as
+    /// [`connect`](Self::connect) maps a connect, and anything else
+    /// [`Transport`](Self::Transport).
+    pub(crate) fn transport(source: WsError) -> Self {
+        Self::from_kind(source, |source| Self::Transport { source })
+    }
+
+    fn from_kind(source: WsError, otherwise: impl FnOnce(WsError) -> Self) -> Self {
+        match source.kind() {
+            Kind::ConnectTimeout { after } => Self::ConnectTimeout { after },
+            Kind::Closed { code, reason } => Self::Closed {
+                code,
+                reason: reason.to_owned(),
+            },
+            _ => otherwise(source),
         }
     }
 }
 
-/// A transport failure, by the socket table: a refused upgrade by its status,
-/// misuse and a bad URL or TLS name an `InvalidRequest`, and everything else,
-/// an I/O or protocol error or a closed connection, `Network`.
-fn transport_class(err: &tungstenite::Error) -> Class {
-    use tungstenite::Error as Ws;
-    match err {
-        Ws::Http(response) => class_for_handshake_status(response.status().as_u16()),
-        Ws::Url(_)
-        | Ws::HttpFormat(_)
-        | Ws::Tls(_)
-        | Ws::AttackAttempt
-        | Ws::Capacity(_)
-        | Ws::AlreadyClosed => Class::InvalidRequest,
-        // Io (a TLS EOF included), Protocol, ConnectionClosed,
-        // WriteBufferFull, Utf8 and any later variant.
-        _ => Class::Network,
-    }
-}
-
-/// The transport by the socket table, a server close by its close code, a
-/// timeout or a silent feed `Network`, and a frame that did not parse a
-/// `Decode`.
+/// The transport by the one socket table
+/// (`polyoxide_venue::impl_ws_classification!`), whose only non-fault is an
+/// upgrade refused with 451, a server close by its close code, a timeout or a
+/// silent feed `Network`, and a frame that did not parse a `Decode`.
 impl Classify for SportsError {
     fn class(&self) -> Class {
         match self {
-            Self::Connect { source } | Self::Transport { source } => transport_class(source),
+            Self::Connect { source } | Self::Transport { source } => ws_class(source),
             Self::ConnectTimeout { .. } | Self::Stale { .. } => Class::Network,
             Self::Closed { code, .. } => class_for_close_code(*code),
             Self::Decode { .. } => Class::Decode,
         }
+    }
+
+    fn is_fault(&self) -> bool {
+        !matches!(
+            self,
+            Self::Connect { source } | Self::Transport { source } if !ws_is_fault(source)
+        )
     }
 }
 
@@ -147,6 +137,8 @@ fn describe_close(code: &Option<u16>, reason: &str) -> String {
 
 #[cfg(test)]
 mod tests {
+    use polyoxide_ws::tungstenite;
+
     use super::*;
 
     #[test]
@@ -181,62 +173,70 @@ mod tests {
         );
     }
 
-    fn http_error(status: u16) -> SportsError {
+    /// A transport failure as the connection reports it, through the kit.
+    fn ws(err: tungstenite::Error) -> WsError {
+        WsError::from(err)
+    }
+
+    /// An upgrade refused with `status` and these headers.
+    fn refused(status: u16, headers: &[(&str, &str)]) -> SportsError {
+        let mut response = tungstenite::http::Response::builder().status(status);
+        for (name, value) in headers {
+            response = response.header(*name, *value);
+        }
         SportsError::Connect {
-            source: Box::new(tungstenite::Error::Http(
-                tungstenite::http::Response::builder()
-                    .status(status)
-                    .body(None)
-                    .unwrap(),
-            )),
+            source: ws(tungstenite::Error::Http(response.body(None).unwrap())),
         }
     }
 
-    #[test]
-    fn a_refused_request_is_not_retried_but_an_unwell_host_is() {
-        for status in [301, 401, 403, 404, 600] {
-            assert!(!http_error(status).retrying_can_fix(), "{status}");
-        }
-        for status in [408, 425, 429, 500, 502, 503] {
-            assert!(http_error(status).retrying_can_fix(), "{status}");
-        }
+    fn http_error(status: u16) -> SportsError {
+        refused(status, &[])
     }
 
     #[test]
-    fn a_transport_failure_or_timeout_is_retried() {
-        let reset = SportsError::Connect {
-            source: Box::new(tungstenite::Error::Io(std::io::Error::from(
-                std::io::ErrorKind::ConnectionReset,
-            ))),
-        };
-        assert!(reset.retrying_can_fix());
-        let timeout = SportsError::ConnectTimeout {
-            after: Duration::from_secs(10),
-        };
-        assert!(timeout.retrying_can_fix());
+    fn a_451_refusal_is_restricted_and_not_a_fault() {
+        // A region the feed does not serve answers as designed, as a 451 is
+        // on every HTTP client in the workspace; a 418 ban stays a fault.
+        let err = http_error(451);
+        assert_eq!(err.class(), Class::Restricted);
+        assert!(!err.is_fault(), "{err:?}");
+        assert!(http_error(418).is_fault());
     }
 
     #[test]
-    fn a_capacity_failure_at_connect_is_retried() {
-        // sports' own rule, kept at its call site: the kit's
-        // `retrying_can_fix` gives up on a `Capacity` failure, and sports
-        // retries it, as it always has.
-        let capacity = SportsError::Connect {
-            source: Box::new(tungstenite::Error::Capacity(
-                tungstenite::error::CapacityError::TooManyHeaders,
-            )),
-        };
-        assert!(capacity.retrying_can_fix());
+    fn a_429_refusal_carries_its_retry_after() {
+        let err = refused(429, &[("Retry-After", "30")]);
+        assert_eq!(
+            err.class(),
+            Class::RateLimited {
+                retry_after: Some(Duration::from_secs(30))
+            }
+        );
+        assert_eq!(err.retry_after(), Some(Duration::from_secs(30)));
     }
 
     #[test]
-    fn a_malformed_url_is_not_retried() {
-        let url = SportsError::Connect {
-            source: Box::new(tungstenite::Error::Url(
-                tungstenite::error::UrlError::NoHostName,
-            )),
-        };
-        assert!(!url.retrying_can_fix());
+    fn a_timeout_and_a_close_keep_their_own_variants() {
+        // M-D4: the kit's socket error maps onto sports' variants, so a
+        // close's code and a timeout read as they did before the kit.
+        let after = Duration::from_secs(10);
+        assert!(matches!(
+            SportsError::connect(WsError::connect_timeout(after)),
+            SportsError::ConnectTimeout { after: timeout } if timeout == after
+        ));
+        let closed = SportsError::transport(WsError::closed(Some(1001), "going away"));
+        assert!(
+            matches!(&closed, SportsError::Closed { code: Some(1001), reason } if reason == "going away"),
+            "{closed:?}"
+        );
+        assert!(matches!(
+            SportsError::connect(ws(tungstenite::Error::ConnectionClosed)),
+            SportsError::Connect { .. }
+        ));
+        assert!(matches!(
+            SportsError::transport(ws(tungstenite::Error::ConnectionClosed)),
+            SportsError::Transport { .. }
+        ));
     }
 
     #[test]
@@ -293,9 +293,7 @@ mod tests {
             ),
         ];
         for (err, class) in rows {
-            let err = SportsError::Transport {
-                source: Box::new(err),
-            };
+            let err = SportsError::Transport { source: ws(err) };
             assert_eq!(err.class(), class, "{err:?}");
             assert!(err.is_fault(), "{err:?}");
             assert_eq!(err.retry_after(), None, "{err:?}");
@@ -347,7 +345,7 @@ mod tests {
             ),
             (
                 SportsError::Transport {
-                    source: Box::new(tungstenite::Error::ConnectionClosed),
+                    source: ws(tungstenite::Error::ConnectionClosed),
                 },
                 Class::Network,
             ),

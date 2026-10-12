@@ -5,8 +5,8 @@ use std::time::Duration;
 use futures_util::StreamExt;
 use polyoxide_sports::{fixtures, SportsError, SportsWs};
 use polyoxide_ws::test_server::{Script, ScriptedServer};
+use polyoxide_ws::tungstenite::Message;
 use tokio::time::timeout;
-use tokio_tungstenite::tungstenite::Message;
 
 const WINDOW: Duration = Duration::from_secs(3);
 

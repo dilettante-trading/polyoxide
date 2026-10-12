@@ -30,11 +30,11 @@ required-features = ["test-server"]
 
 [dependencies]
 polyoxide-venue = { workspace = true }
-# The socket kit: the TLS install, the connect timeout, the socket type and
-# `Backoff`. sports keeps its own connect and read loop until Story 4.10.
+# The socket kit: connect with a timeout and the TLS install, the bare tier
+# both tiers read through, `Backoff`, `WsError` and `retrying_can_fix`. It owns
+# the transport, so sports declares no tokio-tungstenite.
 polyoxide-ws = { workspace = true }
 tokio = { workspace = true, features = ["time"] }
-tokio-tungstenite = { workspace = true }
 futures-util = "0.3"
 serde = { workspace = true }
 serde_json = { workspace = true }

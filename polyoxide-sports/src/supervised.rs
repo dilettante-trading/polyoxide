@@ -9,12 +9,13 @@ use std::{
     time::Duration,
 };
 
-use futures_util::{SinkExt, Stream, StreamExt};
-use polyoxide_ws::Backoff;
+use futures_util::{Stream, StreamExt};
+use polyoxide_venue::class_for_handshake_status;
+use polyoxide_ws::{Backoff, Connection, Kind};
 use tokio::time::{sleep, Instant, Sleep};
 
 use crate::{
-    client::{classify, closed, open, Inbound, Socket, DEFAULT_CONNECT_TIMEOUT, SPORTS_WS_URL},
+    client::{classify, closed, open, Inbound, DEFAULT_CONNECT_TIMEOUT, SPORTS_WS_URL},
     error::SportsError,
     update::MatchUpdate,
 };
@@ -136,21 +137,21 @@ impl SportsWsBuilder {
     /// or 5xx, or a malformed URL. That one is yielded as
     /// [`SportsError::Connect`] and ends the stream.
     pub async fn connect(self) -> Result<SupervisedSportsWs, SportsError> {
-        let socket = open(self.url.clone(), self.connect_timeout).await?;
+        let connection = open(self.url.clone(), self.connect_timeout).await?;
         Ok(SupervisedSportsWs {
             backoff: Backoff::new(self.initial_backoff, self.max_backoff),
-            state: State::reading(Box::new(socket), self.stale_after),
+            state: State::reading(Box::new(connection), self.stale_after),
             config: self,
         })
     }
 }
 
-type Attempt = Pin<Box<dyn Future<Output = Result<Socket, SportsError>> + Send>>;
+type Attempt = Pin<Box<dyn Future<Output = Result<Connection, SportsError>> + Send>>;
 
 enum State {
     /// Reading an open connection.
     Reading {
-        socket: Box<Socket>,
+        connection: Box<Connection>,
         stale: Pin<Box<Sleep>>,
         received: bool,
     },
@@ -163,9 +164,9 @@ enum State {
 }
 
 impl State {
-    fn reading(socket: Box<Socket>, stale_after: Duration) -> Self {
+    fn reading(connection: Box<Connection>, stale_after: Duration) -> Self {
         State::Reading {
-            socket,
+            connection,
             stale: Box::pin(sleep(stale_after)),
             received: false,
         }
@@ -179,7 +180,7 @@ enum Step {
     Yield(Result<Event, SportsError>),
     Lost(SportsError),
     Attempt,
-    Connected(Box<Socket>),
+    Connected(Box<Connection>),
     AttemptFailed(SportsError),
 }
 
@@ -217,7 +218,7 @@ impl SupervisedSportsWs {
         self.backoff.after_connection_ended(received);
         let delay = self.backoff.take();
         tracing::warn!(%reason, ?delay, "lost the sports feed; reconnecting");
-        // Replacing the state drops the old socket.
+        // Replacing the state drops the old connection.
         self.state = State::Waiting(Box::pin(sleep(delay)));
         Event::Disconnected { reason }
     }
@@ -231,16 +232,16 @@ impl Stream for SupervisedSportsWs {
         loop {
             let step = match &mut this.state {
                 State::Reading {
-                    socket,
+                    connection,
                     stale,
                     received,
-                } => poll_reading(socket, stale, received, this.config.stale_after, cx),
+                } => poll_reading(connection, stale, received, this.config.stale_after, cx),
                 State::Waiting(delay) => match delay.as_mut().poll(cx) {
                     Poll::Ready(()) => Step::Attempt,
                     Poll::Pending => Step::Pending,
                 },
                 State::Connecting(attempt) => match attempt.as_mut().poll(cx) {
-                    Poll::Ready(Ok(socket)) => Step::Connected(Box::new(socket)),
+                    Poll::Ready(Ok(connection)) => Step::Connected(Box::new(connection)),
                     Poll::Ready(Err(error)) => Step::AttemptFailed(error),
                     Poll::Pending => Step::Pending,
                 },
@@ -256,12 +257,12 @@ impl Stream for SupervisedSportsWs {
                         this.config.connect_timeout,
                     )));
                 }
-                Step::Connected(socket) => {
+                Step::Connected(connection) => {
                     tracing::info!("reconnected to the sports feed");
-                    this.state = State::reading(socket, this.config.stale_after);
+                    this.state = State::reading(connection, this.config.stale_after);
                     return Poll::Ready(Some(Ok(Event::Reconnected)));
                 }
-                Step::AttemptFailed(error) if !error.retrying_can_fix() => {
+                Step::AttemptFailed(error) if !retrying_can_fix(&error) => {
                     tracing::warn!(%error, "sports feed refused the reconnect; giving up");
                     this.state = State::Ended;
                     return Poll::Ready(Some(Err(error)));
@@ -276,22 +277,44 @@ impl Stream for SupervisedSportsWs {
     }
 }
 
+/// Whether a reconnect attempt that failed this way is worth repeating:
+/// sports' recovery, at its call site, since D7 keeps sports off the kit's
+/// `Supervisor`.
+///
+/// A failed connect follows the kit's `retrying_can_fix` with
+/// polyoxide-venue's status rule (`class_for_handshake_status`, which
+/// `Classify::is_retriable` reads too): an upgrade refused with 408, 425, 429
+/// or 5xx is the host being unwell or throttling, any other status, a bad URL
+/// or TLS name, a malformed handshake request or an attack detection is our
+/// request, and everything else, a lost or timed out connection among them,
+/// passes. Two rows are sports' own, ahead of it: a `Capacity` failure is
+/// retried, which the kit gives up on, and so is a connection used after it
+/// closed (D19, as Binance; perps and rtds stop).
+fn retrying_can_fix(error: &SportsError) -> bool {
+    let SportsError::Connect { source } = error else {
+        return true;
+    };
+    match source.kind() {
+        Kind::Capacity | Kind::AlreadyClosed => true,
+        _ => polyoxide_ws::retrying_can_fix(source, |status| {
+            class_for_handshake_status(status).is_retriable()
+        }),
+    }
+}
+
 /// Read one open connection until it yields something, goes quiet, or is lost.
 fn poll_reading(
-    socket: &mut Socket,
+    connection: &mut Connection,
     stale: &mut Pin<Box<Sleep>>,
     received: &mut bool,
     stale_after: Duration,
     cx: &mut Context<'_>,
 ) -> Step {
     loop {
-        let message = match socket.poll_next_unpin(cx) {
+        let message = match connection.poll_next_unpin(cx) {
             Poll::Ready(Some(Ok(message))) => message,
-            Poll::Ready(Some(Err(source))) => {
-                return Step::Lost(SportsError::Transport {
-                    source: Box::new(source),
-                })
-            }
+            Poll::Ready(Some(Err(source))) => return Step::Lost(SportsError::transport(source)),
+            // The stream ended without a close frame.
             Poll::Ready(None) => return Step::Lost(closed(None)),
             Poll::Pending => {
                 return match stale.as_mut().poll(cx) {
@@ -314,23 +337,87 @@ fn poll_reading(
         match inbound {
             Inbound::Update(update) => return Step::Yield(Ok(Event::Update(update))),
             Inbound::Undecodable(error) => return Step::Yield(Err(error)),
-            // Reading again is what sends the pong for a ping just read.
+            // The connection has queued the pong for a ping and flushed it.
             Inbound::Alive => continue,
-            Inbound::Closed(reason) => {
-                // Send the close reply tungstenite queued; nothing reads this
-                // socket again.
-                let _ = socket.poll_flush_unpin(cx);
-                return Step::Lost(reason);
-            }
+            // The connection flushed the RFC 6455 close reply before it
+            // yielded the close.
+            Inbound::Closed(reason) => return Step::Lost(reason),
         }
     }
 }
 
 #[cfg(test)]
 mod tests {
+    use polyoxide_ws::{tungstenite, WsError};
+
     use super::*;
 
     const MS: Duration = Duration::from_millis(1);
+
+    /// A connect that failed with this transport error.
+    fn connect_error(err: tungstenite::Error) -> SportsError {
+        SportsError::Connect {
+            source: WsError::from(err),
+        }
+    }
+
+    fn http_error(status: u16) -> SportsError {
+        connect_error(tungstenite::Error::Http(
+            tungstenite::http::Response::builder()
+                .status(status)
+                .body(None)
+                .unwrap(),
+        ))
+    }
+
+    #[test]
+    fn a_refused_request_is_not_retried_but_an_unwell_host_is() {
+        for status in [301, 401, 403, 404, 600] {
+            assert!(!retrying_can_fix(&http_error(status)), "{status}");
+        }
+        for status in [408, 425, 429, 500, 502, 503] {
+            assert!(retrying_can_fix(&http_error(status)), "{status}");
+        }
+    }
+
+    #[test]
+    fn a_transport_failure_or_timeout_is_retried() {
+        let reset = connect_error(tungstenite::Error::Io(std::io::Error::from(
+            std::io::ErrorKind::ConnectionReset,
+        )));
+        assert!(retrying_can_fix(&reset));
+        let timeout = SportsError::ConnectTimeout {
+            after: Duration::from_secs(10),
+        };
+        assert!(retrying_can_fix(&timeout));
+    }
+
+    #[test]
+    fn a_capacity_failure_at_connect_is_retried() {
+        // sports' own rule, kept at its call site: the kit's
+        // `retrying_can_fix` gives up on a `Capacity` failure, and sports
+        // retries it, as it always has.
+        let capacity = connect_error(tungstenite::Error::Capacity(
+            tungstenite::error::CapacityError::TooManyHeaders,
+        ));
+        assert!(retrying_can_fix(&capacity));
+    }
+
+    #[test]
+    fn a_malformed_url_is_not_retried() {
+        let url = connect_error(tungstenite::Error::Url(
+            tungstenite::error::UrlError::NoHostName,
+        ));
+        assert!(!retrying_can_fix(&url));
+    }
+
+    #[test]
+    fn a_connection_used_after_it_closed_is_retried_d19() {
+        // D19: sports reconnects after `AlreadyClosed`, as Binance does;
+        // perps and rtds stop.
+        let used = connect_error(tungstenite::Error::AlreadyClosed);
+        assert!(retrying_can_fix(&used));
+    }
 
     #[test]
     fn backoff_doubles_up_to_its_ceiling() {

@@ -329,7 +329,8 @@ WEBSOCKET_DROPS: list[Row] = [
         "WebSocket protocol error: Connection reset without closing handshake",
         Verdict.TRANSIENT, f"{SPORTS}::reset_without_closing_handshake"),
     Row("reset without close / Debug", "transient",
-        "the frame parses: Transport { source: Protocol(ResetWithoutClosingHandshake) }",
+        "the frame parses: Transport { source: WsError(Transport(Protocol("
+        "ResetWithoutClosingHandshake))) }",
         Verdict.TRANSIENT, f"{SPORTS}::reset_without_closing_handshake"),
     Row("TLS EOF without close_notify", "transient",
         "stream error: RTDS connection error: IO error: peer closed connection "
