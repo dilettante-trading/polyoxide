@@ -225,7 +225,8 @@ def test_every_public_error_type_is_listed_in_its_crates_assertion() -> None:
 
 
 @pytest.mark.parametrize(("crate", "names"), [
-    ("polyoxide-core", {"ApiError", "BurstCapacityExceeded", "KeychainError"}),
+    ("polyoxide-core", {"ApiError", "KeychainError"}),
+    ("polyoxide-polymarket", {"BurstCapacityExceeded"}),
     ("polyoxide-data", {"DataApiError", "V2Error"}),
     ("polyoxide-clob", {"ClobError", "ParseTickSizeError", "WebSocketError"}),
     ("polyoxide-perps", {"PerpsError", "VenueError", "PerpsWsError"}),

@@ -67,19 +67,20 @@ cargo test -p polyoxide-clob --test live_api -- --ignored
 Text between `<!-- generated:begin <id> -->` and `<!-- generated:end <id> -->` markers, here and in README.md, docs/specs/INDEX.md, docs/ARCHITECTURE.md, SELF-HEALING.md and the two nightly workflows, is written by `scripts/gen_registry.py` from each crate's `[package.metadata.polyoxide]`, the root manifest's `[workspace.metadata.polyoxide]` (`stage` and `mirrors`) and `cargo metadata`, so never edit it by hand: change the metadata, run `python3 scripts/gen_registry.py --write`, and expect CI's scripts job to fail on any region that differs from what the generator produces.
 
 <!-- generated:begin claude-crate-count -->
-Fifteen crates, in publish order, each with the workspace crates its build needs. Crates that are not published come last:
+Sixteen crates, in publish order, each with the workspace crates its build needs. Crates that are not published come last:
 <!-- generated:end claude-crate-count -->
 
 <!-- generated:begin claude-graph -->
 - `polyoxide-venue` — Shared vocabulary: error classes, the status and close-code maps, the socket classification table (`impl_ws_classification!`), the `Retry-After` parser, the wire-enum macros and `UnknownVariant`, positional decimal serde (feature `decimal`) and `UnixMillis`; needs: nothing in the workspace; every public error type in the workspace implements its `Classify` trait but `polyoxide-ws`'s `WsError`, which `impl_ws_classification!` classifies in each venue crate that wraps it; by default it depends on nothing, and it has no HTTP, socket or signing dependency
-- `polyoxide-core` — Core utilities and shared types; needs: `polyoxide-venue`; shared auth, HTTP client, errors and macros
-- `polyoxide-data` — Client library for Polymarket Data API; needs: `polyoxide-core`, `polyoxide-venue`
-- `polyoxide-gamma` — Client library for Polymarket Gamma (market data) API; needs: `polyoxide-core`, `polyoxide-venue`
-- `polyoxide-relay` — Client library for Polymarket Relayer API (gasless transactions); needs: `polyoxide-core`, `polyoxide-venue`
+- `polyoxide-core` — Core utilities and shared types; needs: `polyoxide-venue`; the send loop and its hooks, the HTTP client, window quotas, capacity buckets, holds, errors, macros and the keychain; it names no venue, which `scripts/venue_gate.py` holds
+- `polyoxide-polymarket` — Client library for Polymarket's APIs, one feature per module; today it holds the code the modules share (`shared`), and the modules arrive in Stories 5.3 to 5.5; needs: `polyoxide-core` (under `clob`, `gamma`, `data`, `relay`, `perps`), `polyoxide-venue`
+- `polyoxide-data` — Client library for Polymarket Data API; needs: `polyoxide-core`, `polyoxide-polymarket` (with `data`), `polyoxide-venue`
+- `polyoxide-gamma` — Client library for Polymarket Gamma (market data) API; needs: `polyoxide-core`, `polyoxide-polymarket` (with `gamma`), `polyoxide-venue`
+- `polyoxide-relay` — Client library for Polymarket Relayer API (gasless transactions); needs: `polyoxide-core`, `polyoxide-polymarket` (with `relay`), `polyoxide-venue`
 - `polyoxide-ws` — The socket kit: the TLS install, `Backoff`, `Timing` and its setters, the deadline arithmetic, `WsError`, connect with a timeout, the bare tier, request/answer correlation, the generic `Supervisor` for a venue `Protocol`, and the scripted test server (feature `test-server`); needs: nothing in the workspace; depends on neither `polyoxide-core` nor `polyoxide-venue`, and builds only tokio, tokio-tungstenite, futures-util, thiserror, tracing and rustls
 - `polyoxide-binance` — Client library for Binance USDⓈ-M futures market data and streams (not part of the unified crate); needs: `polyoxide-core`, `polyoxide-venue` (with `decimal`), `polyoxide-ws` (under `ws`)
-- `polyoxide-clob` — Client library for Polymarket CLOB (order book) API; needs: `polyoxide-core`, `polyoxide-gamma` (under `gamma`, on by default), `polyoxide-venue`, `polyoxide-ws` (under `ws`); published after `polyoxide-relay`, a versioned dev-dependency
-- `polyoxide-perps` — Client library for Polymarket Perps (perpetual futures) public market data; needs: `polyoxide-core`, `polyoxide-venue` (with `decimal`), `polyoxide-ws` (under `ws`); auth and trading pending
+- `polyoxide-clob` — Client library for Polymarket CLOB (order book) API; needs: `polyoxide-core`, `polyoxide-gamma` (under `gamma`, on by default), `polyoxide-polymarket` (with `clob`), `polyoxide-venue`, `polyoxide-ws` (under `ws`); published after `polyoxide-relay`, a versioned dev-dependency
+- `polyoxide-perps` — Client library for Polymarket Perps (perpetual futures) public market data; needs: `polyoxide-core`, `polyoxide-polymarket` (with `perps`), `polyoxide-venue` (with `decimal`), `polyoxide-ws` (under `ws`); auth and trading pending
 - `polyoxide-rtds` — Client for Polymarket's RTDS crypto price streams; needs: `polyoxide-venue`, `polyoxide-ws`; no `polyoxide-core`, `reqwest` or `alloy`, so a credential-free price feed builds no HTTP or signing stack
 - `polyoxide-sports` — Client for Polymarket's live sports score feed; needs: `polyoxide-venue`, `polyoxide-ws`; no `polyoxide-core`, `reqwest` or `alloy`, like `polyoxide-rtds`
 - `polyoxide` — Unified client for Polymarket APIs (CLOB, Gamma, Data, WebSocket, RTDS, Perps, Sports); needs: `polyoxide-clob` (under `clob`, on by default), `polyoxide-data` (under `data`, on by default), `polyoxide-gamma` (under `gamma`, on by default), `polyoxide-perps` (under `perps`), `polyoxide-rtds` (under `rtds`), `polyoxide-sports` (under `sports`), `polyoxide-venue`
@@ -564,7 +565,7 @@ The WebSocket contracts are published as AsyncAPI, not OpenAPI — mirrored in `
 The order is computed, not written down. `scripts/publish_order.py` reads `cargo metadata` and puts each publishable member (`publish` unset, or naming `crates-io`) after every member it needs on crates.io first: its normal and build dependencies, and any dev-dependency that carries a version, since that one stays in the published manifest. A path-only dev-dependency is stripped at publish time and orders nothing. A cycle, or a normal or build dependency on a `publish = false` member, fails the release before anything is uploaded. Each `tombstones/*/Cargo.toml` comes after every workspace crate; the workspace excludes `tombstones`, or `cargo metadata` could not read them.
 
 <!-- generated:begin claude-publish-order -->
-Today's order: `polyoxide-venue` → `polyoxide-core` → `polyoxide-data` → `polyoxide-gamma` → `polyoxide-relay` → `polyoxide-ws` → `polyoxide-binance` → `polyoxide-clob` → `polyoxide-perps` → `polyoxide-rtds` → `polyoxide-sports` → `polyoxide` → `polyoxide-cli`.
+Today's order: `polyoxide-venue` → `polyoxide-core` → `polyoxide-polymarket` → `polyoxide-data` → `polyoxide-gamma` → `polyoxide-relay` → `polyoxide-ws` → `polyoxide-binance` → `polyoxide-clob` → `polyoxide-perps` → `polyoxide-rtds` → `polyoxide-sports` → `polyoxide` → `polyoxide-cli`.
 <!-- generated:end claude-publish-order -->
 
 What each crate waits for is in the crate list under Workspace Architecture. `polyoxide-cli` is published like every other member. `polyoxide-py` is `publish = false` (not on crates.io); its Python wheels are built and published to PyPI via a separate step in the release workflow.

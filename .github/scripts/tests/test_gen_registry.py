@@ -403,6 +403,86 @@ def test_a_venue_without_products_fails(tmp_path: Path) -> None:
         build(tmp_path, half)
 
 
+def _venue_crate(root: Path, name: str, **meta):
+    """An edit adding member `name`, on core, with `meta` as its registration."""
+    def add(metadata, workspace, manifests):
+        found = package(root, name, dep("polyoxide-core"))
+        metadata["packages"].append(found)
+        metadata["workspace_members"].append(found["id"])
+        manifests[name] = manifest(readme="A venue's own crate", **meta)
+    return add
+
+
+def test_the_venue_s_own_crate_may_declare_a_venue_without_products(tmp_path: Path) -> None:
+    exception = {"path": "polyoxide-ws/src/x.rs", "term": "va", "reason": "a test name"}
+    registry = build(tmp_path, _venue_crate(tmp_path, "polyoxide-va", venue="va",
+                                            identifiers=["Va-Header"],
+                                            gate_exceptions=[exception]))
+    crate = registry.crate("polyoxide-va")
+    assert (crate.venue, crate.products) == ("va", ())
+    # The two keys reach the registry, which scripts/venue_gate.py relies on.
+    assert crate.identifiers == ("Va-Header",)
+    assert crate.gate_exceptions == (
+        gen_registry.GateException("polyoxide-ws/src/x.rs", "va", "a test name"),)
+
+
+def test_another_crate_still_needs_products_with_its_venue(tmp_path: Path) -> None:
+    with pytest.raises(RegistryError, match="give both or neither, or name the crate "
+                                            "polyoxide-<venue>"):
+        build(tmp_path, _venue_crate(tmp_path, "polyoxide-vaa", venue="va"))
+
+
+@pytest.mark.parametrize("key", ["identifiers", "gate_exceptions"])
+def test_the_gate_keys_need_a_venue(tmp_path: Path, key: str) -> None:
+    value = (["X-Header"] if key == "identifiers"
+             else [{"path": "polyoxide-core/src/x.rs", "term": "va", "reason": "why"}])
+
+    def add(metadata, workspace, manifests):
+        manifests["polyoxide-core"]["package"]["metadata"]["polyoxide"][key] = value
+
+    with pytest.raises(RegistryError, match=f"declares {key} without a venue"):
+        build(tmp_path, add)
+
+
+@pytest.mark.parametrize(
+    ("value", "message"),
+    [
+        ({"path": "polyoxide-core/src/x.rs", "term": "va"}, "an array of tables"),
+        ([{"path": "polyoxide-core/src/x.rs", "term": "va"}], "lacks reason"),
+        ([{"path": "polyoxide-core/src/x.rs", "term": "va", "reason": " "}],
+         "reason must be a non-empty string"),
+        ([{"path": "polyoxide-core/src/x.rs", "term": "", "reason": "why"}],
+         "term must be a non-empty string"),
+        ([{"path": "polyoxide-core/src/x.rs", "term": "va", "reason": "why", "line": 3}],
+         "unknown key line"),
+        ([{"path": "polyoxide-alpha/src/x.rs", "term": "va", "reason": "why"}],
+         "is not in a foundation crate"),
+        ([{"path": "polyoxide-core/../polyoxide-alpha/x.rs", "term": "va", "reason": "why"}],
+         "is not in a foundation crate"),
+        ([{"path": "polyoxide-core-extra/x.rs", "term": "va", "reason": "why"}],
+         "is not in a foundation crate"),
+        ([{"path": "polyoxide-core/x.rs", "term": "va", "reason": "why"},
+          {"path": "polyoxide-core/x.rs", "term": "VA", "reason": "again"}],
+         "excepts 'VA' in polyoxide-core/x.rs a second time"),
+    ],
+)
+def test_a_bad_gate_exception_fails(tmp_path: Path, value, message: str) -> None:
+    def bad(metadata, workspace, manifests):
+        manifests["polyoxide-alpha"]["package"]["metadata"]["polyoxide"]["gate_exceptions"] = value
+
+    with pytest.raises(RegistryError, match=message):
+        build(tmp_path, bad)
+
+
+@pytest.mark.parametrize("value", [["X", "X"], ["X", ""], "X"])
+def test_bad_identifiers_fail(tmp_path: Path, value) -> None:
+    def bad(metadata, workspace, manifests):
+        manifests["polyoxide-alpha"]["package"]["metadata"]["polyoxide"]["identifiers"] = value
+
+    with pytest.raises(RegistryError, match="identifiers"):
+        build(tmp_path, bad)
+
+
 def test_an_unknown_mirror_fails(tmp_path: Path) -> None:
     def unknown(metadata, workspace, manifests):
         manifests["polyoxide-omega"]["package"]["metadata"]["polyoxide"]["mirrors"] = ["nope"]

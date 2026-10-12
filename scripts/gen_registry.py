@@ -21,11 +21,23 @@ The crate table:
 
     [package.metadata.polyoxide]
     readme = "..."            # README.md's line for the crate
-    venue = "polymarket"      # with `products`; both omitted for no venue
+    venue = "polymarket"      # with `products`; both omitted for no venue, and
+                              # `products` may be omitted on the venue's own
+                              # crate, `polyoxide-<venue>`
     products = ["clob"]       # each (venue, product) pair is the workspace's only one
     mirrors = ["clob"]        # docs/specs/ directories the crate covers
     notes = ["..."]           # annotations for CLAUDE.md's crate list that
                               # nothing else can derive
+    identifiers = ["Poly-RateLimit"]
+                              # with `venue`: the venue's own words, besides its id
+                              # and products, that the venue gate looks for
+
+    [[package.metadata.polyoxide.gate_exceptions]]
+    path = "polyoxide-ws/src/request.rs"   # a file or directory of a foundation crate
+    term = "binance"          # the venue's id, a product, an identifier or a prefix
+    reason = "..."            # why the foundation may name it there
+                              # (with `venue`; scripts/venue_gate.py fails on an
+                              # exception that matches nothing)
 
     [package.metadata.polyoxide.live.<test target>]
     suite = "live"            # one nightly job per (crate, suite)
@@ -99,7 +111,12 @@ NUMBERS = ("zero one two three four five six seven eight nine ten eleven twelve 
            "thirteen fourteen fifteen sixteen seventeen eighteen nineteen twenty").split()
 
 WORKSPACE_KEYS = {"stage", "mirrors"}
-CRATE_KEYS = {"readme", "venue", "products", "mirrors", "notes", "live"}
+CRATE_KEYS = {"readme", "venue", "products", "mirrors", "notes", "live", "identifiers",
+              "gate_exceptions"}
+EXCEPTION_KEYS = {"path", "term", "reason"}
+# The crates that may name no venue beyond the exceptions each venue declares
+# (CAP-7), which scripts/venue_gate.py reads.
+FOUNDATION = ("polyoxide-venue", "polyoxide-core", "polyoxide-ws", "polyoxide-test-support")
 LIVE_KEYS = {"suite", "timeout", "features", "secrets", "note"}
 MIRROR_KEYS = {"name", "section", "base_urls", "description", "crate_note", "exclude", "specs"}
 SPEC_KEYS = {"id", "kind", "url", "vendored", "covers", "note", "exclude"}
@@ -147,6 +164,15 @@ class Live:
 
 
 @dataclass(frozen=True)
+class GateException:
+    """A venue word a foundation crate may hold, in one file or directory."""
+
+    path: str
+    term: str
+    reason: str
+
+
+@dataclass(frozen=True)
 class Dependency:
     """A normal or build dependency on another workspace member."""
 
@@ -176,6 +202,8 @@ class Crate:
     published_after: tuple[str, ...] = ()
     # `[features]` as written, `default` included.
     features: tuple[tuple[str, tuple[str, ...]], ...] = ()
+    identifiers: tuple[str, ...] = ()
+    gate_exceptions: tuple[GateException, ...] = ()
 
 
 @dataclass(frozen=True)
@@ -333,13 +361,21 @@ def _crate(root: Path, package: dict, manifest: dict, workspace: set[str]) -> Cr
     _unknown(where, meta, CRATE_KEYS)
     venue = meta.get("venue")
     products = _strings(f"{where} products", meta.get("products"))
-    if (venue is None) != (not products):
+    own = venue is not None and name == f"polyoxide-{venue}"
+    if (venue is None) != (not products) and not own:
         raise RegistryError(f"{where} declares {'products' if products else 'a venue'} "
-                            f"without {'a venue' if products else 'products'}; give both or neither")
+                            f"without {'a venue' if products else 'products'}; give both or "
+                            f"neither, or name the crate polyoxide-<venue>")
     if venue is not None:
         _id(f"{where} venue", venue)
     for product in products:
         _id(f"{where} product", product)
+    identifiers = _strings(f"{where} identifiers", meta.get("identifiers"))
+    exceptions = _gate_exceptions(f"{where} gate_exceptions", meta.get("gate_exceptions"))
+    for key, value in (("identifiers", identifiers), ("gate_exceptions", exceptions)):
+        if value and venue is None:
+            raise RegistryError(f"{where} declares {key} without a venue; they are the "
+                                f"venue's own")
     mirrors = _strings(f"{where} mirrors", meta.get("mirrors"))
     live = tuple(_live(f"{name}: [package.metadata.polyoxide.live.{target}]", target, entry)
                  for target, entry in _live_table(where, meta).items())
@@ -358,7 +394,35 @@ def _crate(root: Path, package: dict, manifest: dict, workspace: set[str]) -> Cr
         needs=_needs(package, workspace, dict(features)),
         published_after=_published_after(package, workspace),
         features=features,
+        identifiers=identifiers,
+        gate_exceptions=exceptions,
     )
+
+
+def _gate_exceptions(where: str, value) -> tuple[GateException, ...]:
+    if value is None:
+        return ()
+    if not isinstance(value, list) or not all(isinstance(v, dict) for v in value):
+        raise RegistryError(f"{where} must be an array of tables, "
+                            f"`[[package.metadata.polyoxide.gate_exceptions]]`")
+    out = []
+    for n, entry in enumerate(value, 1):
+        here = f"{where} entry {n}"
+        _unknown(here, entry, EXCEPTION_KEYS)
+        missing = sorted(EXCEPTION_KEYS - set(entry))
+        if missing:
+            raise RegistryError(f"{here} lacks {', '.join(missing)}")
+        path, term = _string(f"{here} path", entry["path"]), _string(f"{here} term", entry["term"])
+        reason = _string(f"{here} reason", entry["reason"])
+        parts = path.split("/")
+        if parts[0] not in FOUNDATION or ".." in parts or "" in parts[:-1]:
+            raise RegistryError(f"{here} path {path!r} is not in a foundation crate: give a "
+                                f"file or directory under {', '.join(FOUNDATION)}")
+        found = GateException(path, term, reason)
+        if any((o.path, o.term.lower()) == (path, term.lower()) for o in out):
+            raise RegistryError(f"{here} excepts {term!r} in {path} a second time")
+        out.append(found)
+    return tuple(out)
 
 
 def _live_table(where: str, meta: dict) -> dict:
