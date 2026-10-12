@@ -78,7 +78,7 @@ be rebuilt. Enable it with `polyoxide-binance = { version = "0.37", features = [
 
 ```text
 use futures_util::StreamExt;
-use polyoxide_binance::usdm::{types::Symbol, ws::{Event, Recovery, StreamName, UsdmWsBuilder}};
+use polyoxide_binance::usdm::{types::Symbol, ws::{Event, StreamName, UsdmWsBuilder, UsdmWsError}};
 
 let btc = Symbol::new("BTCUSDT")?;
 let mut feed = UsdmWsBuilder::new()
@@ -89,7 +89,7 @@ while let Some(event) = feed.next().await {
     let event = match event {
         Ok(event) => event,
         // A frame that did not decode is skipped; anything else ends the stream.
-        Err(err) if err.recovery() == Recovery::SkipFrame => continue,
+        Err(UsdmWsError::Frame { .. }) => continue,
         Err(err) => return Err(err.into()),
     };
     match event {

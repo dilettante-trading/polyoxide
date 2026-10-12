@@ -1,14 +1,15 @@
 //! The socket half of the class table: close codes and handshake statuses.
 //!
-//! A transport error's own variants are matched in each socket crate, since
-//! this crate depends on no socket library. Those matches follow one table:
-//! an I/O error (a TLS EOF included), a protocol error and a closed connection
+//! This crate depends on no socket library, so the table for a transport
+//! error's own kinds is a macro, [`impl_ws_classification!`](crate::impl_ws_classification),
+//! which expands it against `polyoxide_ws::WsError` in the venue crate: an
+//! I/O error (a TLS EOF included), a protocol error and a closed connection
 //! are [`Network`](Class::Network); a bad URL, a malformed handshake request,
 //! a TLS configuration error, an attack-attempt detection, a capacity limit
 //! and a use after close are [`InvalidRequest`](Class::InvalidRequest); a
-//! handshake refused with an HTTP status goes through
-//! [`class_for_handshake_status`]; anything else is
-//! [`Network`](Class::Network).
+//! server close goes through [`class_for_close_code`]; a handshake refused
+//! with an HTTP status goes through [`class_for_handshake_status`]; anything
+//! else is [`Network`](Class::Network).
 
 use std::sync::Arc;
 

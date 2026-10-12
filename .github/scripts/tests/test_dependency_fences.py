@@ -8,15 +8,20 @@ throttle primitives core exports, never with a rate limiter of its own:
   on it; the CLI facade, which is not a venue crate, paces `clob prices
   download` with it.
 
-And core owns the HTTP client (AD-18, Story 3.13):
+And each transport has one owner, the one member that declares it, in any
+dependency kind, so its features are set in one manifest (`OWNERS`):
 
-- no member but `polyoxide-core` depends directly on `reqwest`, in any
-  dependency kind. Every other member names its types through
-  `polyoxide_core::reqwest`, so reqwest's features are set in one manifest,
-  core's. (0.37.0's gzip regression was a code default in core's builder, not
-  a feature; each HTTP module's `tests/headers.rs` is what catches a change of
-  that kind.) A copy that arrives through another crate, such as alloy's
-  reqwest 0.13, is not a direct dependency and passes.
+- `reqwest` is `polyoxide-core`'s (AD-18, Story 3.13). Every other member
+  names its types through `polyoxide_core::reqwest`. (0.37.0's gzip
+  regression was a code default in core's builder, not a feature; each HTTP
+  module's `tests/headers.rs` is what catches a change of that kind.)
+- `tokio-tungstenite` and `rustls` are `polyoxide-ws`'s (Story 4.10). Every
+  socket crate connects through the kit, which installs the TLS provider, and
+  names tungstenite's types through `polyoxide_ws::tungstenite`.
+
+A copy that arrives through another crate, such as alloy's reqwest 0.13, is
+not a direct dependency and passes. Each owner must declare its crate, so the
+fence can never pass because nothing declares it.
 """
 
 from __future__ import annotations
@@ -30,6 +35,17 @@ REPO = Path(__file__).resolve().parents[3]
 FENCED = frozenset({"governor"})
 # The one member that declares reqwest.
 HTTP_OWNER = "polyoxide-core"
+# The one member that declares the socket transport.
+SOCKET_OWNER = "polyoxide-ws"
+# Each owned crate: its owner, and how every other member reaches it.
+OWNERS = {
+    "reqwest": (HTTP_OWNER, "every other member names its types through "
+                            "`polyoxide_core::reqwest`"),
+    "rustls": (SOCKET_OWNER, "every other member connects through the kit, which installs "
+                             "the TLS provider"),
+    "tokio-tungstenite": (SOCKET_OWNER, "every other member names its types through "
+                                        "`polyoxide_ws::tungstenite`"),
+}
 
 
 def _load_publish_order():
@@ -64,19 +80,33 @@ def problems(metadata: dict) -> list[str]:
     return found
 
 
-def reqwest_problems(metadata: dict) -> list[str]:
-    """Each member but core that takes reqwest, in any dependency kind."""
+def owner_problems(metadata: dict, owners: dict[str, tuple[str, str]] = OWNERS) -> list[str]:
+    """Each member that takes a crate another member owns, in any dependency kind."""
     found = []
     for package in publish_order.members(metadata):
-        if package["name"] == HTTP_OWNER:
-            continue
         for dep in package["dependencies"]:
-            if dep["name"] == "reqwest":
-                kind = dep["kind"] or "normal"
-                found.append(f"{package['name']} takes reqwest as a {kind} dependency; only "
-                             f"{HTTP_OWNER} declares it, and every other member names its "
-                             f"types through `polyoxide_core::reqwest`")
+            owned = owners.get(dep["name"])
+            if owned is None or package["name"] == owned[0]:
+                continue
+            owner, reach = owned
+            kind = dep["kind"] or "normal"
+            found.append(f"{package['name']} takes {dep['name']} as a {kind} dependency; only "
+                         f"{owner} declares it, and {reach}")
     return found
+
+
+def reqwest_problems(metadata: dict) -> list[str]:
+    """Each member but core that takes reqwest, in any dependency kind."""
+    return owner_problems(metadata, {"reqwest": OWNERS["reqwest"]})
+
+
+def undeclared(metadata: dict) -> list[str]:
+    """Each owned crate its owner does not declare as a normal dependency, which
+    would let the fence pass with nothing to fence."""
+    members = {p["name"]: p for p in publish_order.members(metadata)}
+    return [f"{owner} does not declare {name}" for name, (owner, _) in sorted(OWNERS.items())
+            if not any(dep["name"] == name and dep["kind"] is None
+                       for dep in members.get(owner, {}).get("dependencies", []))]
 
 
 def test_no_venue_crate_depends_on_governor() -> None:
@@ -152,3 +182,48 @@ def test_the_fence_names_a_member_that_depends_on_reqwest() -> None:
     alone["packages"][2]["dependencies"].remove(
         {"name": "reqwest", "kind": None, "req": "^0.3"})
     assert reqwest_problems(alone) == []
+
+
+def test_only_each_owner_depends_on_its_transport() -> None:
+    metadata = publish_order.cargo_metadata(REPO / "Cargo.toml")
+    assert undeclared(metadata) == [], "the fence would check nothing"
+    assert owner_problems(metadata) == []
+
+
+def test_the_fence_names_a_member_that_depends_on_the_socket_transport() -> None:
+    packages = [
+        _package("polyoxide-core", None, ["reqwest"]),
+        _package("polyoxide-ws", None, ["rustls", "tokio-tungstenite"]),
+        _package("polyoxide-clob", "polymarket", ["polyoxide-ws", "rustls"]),
+        _package("polyoxide-sports", "polymarket", ["polyoxide-ws"]),
+    ]
+    metadata = {"packages": packages, "workspace_members": [p["id"] for p in packages]}
+    assert undeclared(metadata) == []
+    assert owner_problems(metadata) == [
+        "polyoxide-clob takes rustls as a normal dependency; only polyoxide-ws declares it, "
+        "and every other member connects through the kit, which installs the TLS provider"
+    ]
+
+    # Every kind, and the other owned crate too.
+    dev = copy.deepcopy(metadata)
+    dev["packages"][3]["dependencies"].append(
+        {"name": "tokio-tungstenite", "kind": "dev", "req": "^0.26"})
+    dev["packages"][0]["dependencies"].append({"name": "rustls", "kind": "build", "req": "^0.23"})
+    assert [p.split(";")[0] for p in owner_problems(dev)] == [
+        "polyoxide-core takes rustls as a build dependency",
+        "polyoxide-clob takes rustls as a normal dependency",
+        "polyoxide-sports takes tokio-tungstenite as a dev dependency",
+    ]
+
+
+def test_an_owner_that_does_not_declare_its_crate_fails_the_fence() -> None:
+    packages = [
+        _package("polyoxide-core", None, ["reqwest"]),
+        _package("polyoxide-ws", None, ["tokio-tungstenite"]),
+    ]
+    metadata = {"packages": packages, "workspace_members": [p["id"] for p in packages]}
+    assert undeclared(metadata) == ["polyoxide-ws does not declare rustls"]
+    # A dev dependency is not the owner's declaration.
+    dev = copy.deepcopy(metadata)
+    dev["packages"][1]["dependencies"].append({"name": "rustls", "kind": "dev", "req": "^0.23"})
+    assert undeclared(dev) == ["polyoxide-ws does not declare rustls"]

@@ -3,13 +3,10 @@
 use std::time::Duration;
 
 use futures_util::StreamExt;
-use polyoxide_sports::{
-    fixtures,
-    test_server::{Script, ScriptedServer},
-    SportsError, SportsWs,
-};
+use polyoxide_sports::{fixtures, SportsError, SportsWs};
+use polyoxide_ws::test_server::{Script, ScriptedServer};
+use polyoxide_ws::tungstenite::Message;
 use tokio::time::timeout;
-use tokio_tungstenite::tungstenite::Message;
 
 const WINDOW: Duration = Duration::from_secs(3);
 
@@ -21,7 +18,7 @@ fn text(frame: &str) -> Message {
 async fn yields_updates_and_skips_protocol_pings() {
     let server = ScriptedServer::start(vec![Script {
         send: vec![Message::Ping(b"p".to_vec().into()), text(fixtures::SOCCER)],
-        ..Script::silent()
+        ..Script::hold()
     }])
     .await;
     let mut feed = SportsWs::connect_to(&server.url).await.unwrap();
@@ -37,7 +34,7 @@ async fn yields_updates_and_skips_protocol_pings() {
 async fn answers_a_protocol_ping_with_a_matching_pong() {
     let server = ScriptedServer::start(vec![Script {
         send: vec![Message::Ping(b"p1".to_vec().into())],
-        ..Script::silent()
+        ..Script::hold()
     }])
     .await;
     let mut feed = SportsWs::connect_to(&server.url).await.unwrap();
@@ -52,7 +49,7 @@ async fn answers_a_protocol_ping_with_a_matching_pong() {
 async fn reports_a_bad_frame_and_keeps_reading() {
     let server = ScriptedServer::start(vec![Script {
         send: vec![text("not json"), text(fixtures::SOCCER)],
-        ..Script::silent()
+        ..Script::hold()
     }])
     .await;
     let mut feed = SportsWs::connect_to(&server.url).await.unwrap();
@@ -101,7 +98,7 @@ async fn replies_to_the_servers_close_frame() {
 
 #[tokio::test]
 async fn dropping_the_stream_closes_the_socket() {
-    let server = ScriptedServer::start(vec![Script::silent()]).await;
+    let server = ScriptedServer::start(vec![Script::hold()]).await;
     let feed = SportsWs::connect_to(&server.url).await.unwrap();
     server
         .wait_for("the handshake", |s| s.handshake_count() == 1)

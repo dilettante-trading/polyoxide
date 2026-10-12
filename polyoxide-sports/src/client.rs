@@ -6,12 +6,12 @@ use std::{
     time::Duration,
 };
 
-use futures_util::{SinkExt, Stream, StreamExt};
-use tokio::net::TcpStream;
-use tokio_tungstenite::{
-    connect_async,
+use futures_util::{Stream, StreamExt};
+pub(crate) use polyoxide_ws::DEFAULT_CONNECT_TIMEOUT;
+use polyoxide_ws::{
+    connect,
     tungstenite::{protocol::CloseFrame, Message},
-    MaybeTlsStream, WebSocketStream,
+    Connection, Mode,
 };
 
 use crate::{error::SportsError, update::MatchUpdate};
@@ -19,42 +19,21 @@ use crate::{error::SportsError, update::MatchUpdate};
 /// The production endpoint.
 pub const SPORTS_WS_URL: &str = "wss://sports-api.polymarket.com/ws";
 
-/// How long one handshake may take before it is abandoned.
-pub(crate) const DEFAULT_CONNECT_TIMEOUT: Duration = Duration::from_secs(10);
-
-/// An open connection.
-pub(crate) type Socket = WebSocketStream<MaybeTlsStream<TcpStream>>;
-
-/// Make sure rustls has a default `CryptoProvider` before opening a connection.
+/// Open one connection through the kit's connect, bounded by
+/// `connect_timeout`, and read it through the kit's [`Connection`].
 ///
-/// A deliberate twin of the same function in `polyoxide-clob`,
-/// `polyoxide-rtds` and `polyoxide-perps`. `tokio-tungstenite` builds its TLS
-/// config from the process-wide default provider, and rustls installs one
-/// automatically only when exactly one backend feature is enabled. With
-/// `ring` and `aws-lc-rs` both in a consumer's graph it installs neither and
-/// panics inside `connect_async`. `install_default` returns `Err` when a
-/// provider is already set, so crates racing is a no-op.
-fn ensure_crypto_provider() {
-    static INSTALL: std::sync::Once = std::sync::Once::new();
-    INSTALL.call_once(|| {
-        let _ = rustls::crypto::ring::default_provider().install_default();
-    });
-}
-
-/// Open one connection, bounded by `connect_timeout`.
-///
-/// Takes the URL by value so the supervised tier can box the future.
-pub(crate) async fn open(url: String, connect_timeout: Duration) -> Result<Socket, SportsError> {
-    ensure_crypto_provider();
-    match tokio::time::timeout(connect_timeout, connect_async(url.as_str())).await {
-        Ok(Ok((socket, _response))) => Ok(socket),
-        Ok(Err(source)) => Err(SportsError::Connect {
-            source: Box::new(source),
-        }),
-        Err(_) => Err(SportsError::ConnectTimeout {
-            after: connect_timeout,
-        }),
-    }
+/// Every frame is read, pings included, since they are the feed's liveness
+/// signal (D5), and the server's close is answered with the RFC 6455 reply
+/// before the stream yields it. Takes the URL by value so the supervised tier
+/// can box the future.
+pub(crate) async fn open(
+    url: String,
+    connect_timeout: Duration,
+) -> Result<Connection, SportsError> {
+    let socket = connect(url.as_str(), connect_timeout)
+        .await
+        .map_err(SportsError::connect)?;
+    Ok(Connection::new(socket, Mode::All))
 }
 
 /// What one inbound message means. Both tiers classify through this, so they
@@ -141,8 +120,7 @@ pub(crate) fn closed(frame: Option<CloseFrame>) -> SportsError {
 /// # }
 /// ```
 pub struct SportsWs {
-    socket: Socket,
-    finished: bool,
+    connection: Connection,
 }
 
 impl SportsWs {
@@ -153,11 +131,8 @@ impl SportsWs {
 
     /// Connect to another endpoint, such as a local test server.
     pub async fn connect_to(url: &str) -> Result<Self, SportsError> {
-        let socket = open(url.to_owned(), DEFAULT_CONNECT_TIMEOUT).await?;
-        Ok(Self {
-            socket,
-            finished: false,
-        })
+        let connection = open(url.to_owned(), DEFAULT_CONNECT_TIMEOUT).await?;
+        Ok(Self { connection })
     }
 }
 
@@ -165,36 +140,27 @@ impl Stream for SportsWs {
     type Item = Result<MatchUpdate, SportsError>;
 
     fn poll_next(mut self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<Option<Self::Item>> {
-        if self.finished {
-            return Poll::Ready(None);
-        }
+        // The connection ends after the server's close, the end of the
+        // stream, or the one error a failed read yields, so this stream
+        // does too.
         loop {
-            let message = match self.socket.poll_next_unpin(cx) {
+            let message = match self.connection.poll_next_unpin(cx) {
                 Poll::Ready(Some(Ok(message))) => message,
                 Poll::Ready(Some(Err(source))) => {
-                    self.finished = true;
-                    return Poll::Ready(Some(Err(SportsError::Transport {
-                        source: Box::new(source),
-                    })));
+                    return Poll::Ready(Some(Err(SportsError::transport(source))));
                 }
-                Poll::Ready(None) => {
-                    self.finished = true;
-                    return Poll::Ready(None);
-                }
+                Poll::Ready(None) => return Poll::Ready(None),
                 Poll::Pending => return Poll::Pending,
             };
             match classify(message) {
                 Inbound::Update(update) => return Poll::Ready(Some(Ok(*update))),
                 Inbound::Undecodable(error) => return Poll::Ready(Some(Err(error))),
-                // Reading again is what sends the pong for a ping just read.
+                // The connection has queued the pong for a ping and flushed it.
                 Inbound::Alive => continue,
                 Inbound::Closed(reason) => {
-                    // RFC 6455 requires a close reply. tungstenite has queued
-                    // it, but sends it only on the next read or flush, and
-                    // this stream never reads again.
-                    let _ = self.socket.poll_flush_unpin(cx);
+                    // The connection flushed the RFC 6455 close reply before
+                    // it yielded the close, and yields nothing more.
                     tracing::debug!(%reason, "the sports feed closed");
-                    self.finished = true;
                     return Poll::Ready(None);
                 }
             }
@@ -204,7 +170,7 @@ impl Stream for SportsWs {
 
 #[cfg(test)]
 mod tests {
-    use tokio_tungstenite::tungstenite::protocol::{frame::coding::CloseCode, CloseFrame};
+    use polyoxide_ws::tungstenite::protocol::{frame::coding::CloseCode, CloseFrame};
 
     use super::*;
     use crate::fixtures;

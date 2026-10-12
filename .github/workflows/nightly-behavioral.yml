@@ -46,18 +46,6 @@ jobs:
   # kill live_api/live_ws with it under a shared 15-minute budget.
   # `suite` keeps the two clob jobs' artifact names distinct.
   # generated:begin nightly-live-jobs
-  live-polyoxide-binance-live:
-    name: Live tests (polyoxide-binance, live)
-    runs-on: ubuntu-latest
-    timeout-minutes: 15
-    steps:
-      - uses: actions/checkout@v5
-      - uses: ./.github/actions/live-suite
-        with:
-          crate: polyoxide-binance
-          suite: live
-          flags: "--features ws --test live_api --test live_ws"
-
   live-polyoxide-data-live:
     name: Live tests (polyoxide-data, live)
     runs-on: ubuntu-latest
@@ -82,18 +70,6 @@ jobs:
           suite: live
           flags: "--test live_api"
 
-  live-polyoxide-perps-live:
-    name: Live tests (polyoxide-perps, live)
-    runs-on: ubuntu-latest
-    timeout-minutes: 15
-    steps:
-      - uses: actions/checkout@v5
-      - uses: ./.github/actions/live-suite
-        with:
-          crate: polyoxide-perps
-          suite: live
-          flags: "--features ws --test live_api --test live_ws"
-
   live-polyoxide-relay-live:
     name: Live tests (polyoxide-relay, live)
     runs-on: ubuntu-latest
@@ -112,6 +88,18 @@ jobs:
           crate: polyoxide-relay
           suite: live
           flags: "--test live_api"
+
+  live-polyoxide-binance-live:
+    name: Live tests (polyoxide-binance, live)
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v5
+      - uses: ./.github/actions/live-suite
+        with:
+          crate: polyoxide-binance
+          suite: live
+          flags: "--features ws --test live_api --test live_ws"
 
   live-polyoxide-clob-live:
     name: Live tests (polyoxide-clob, live)
@@ -149,6 +137,18 @@ jobs:
           crate: polyoxide-clob
           suite: session-keys
           flags: "--test live_session_keys"
+
+  live-polyoxide-perps-live:
+    name: Live tests (polyoxide-perps, live)
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v5
+      - uses: ./.github/actions/live-suite
+        with:
+          crate: polyoxide-perps
+          suite: live
+          flags: "--features ws --test live_api --test live_ws"
 
   live-polyoxide-rtds-live:
     name: Live tests (polyoxide-rtds, live)
@@ -191,13 +191,13 @@ jobs:
     name: Aggregate and report
     # generated:begin nightly-aggregate-needs
     needs:
-      - live-polyoxide-binance-live
       - live-polyoxide-data-live
       - live-polyoxide-gamma-live
-      - live-polyoxide-perps-live
       - live-polyoxide-relay-live
+      - live-polyoxide-binance-live
       - live-polyoxide-clob-live
       - live-polyoxide-clob-session-keys
+      - live-polyoxide-perps-live
       - live-polyoxide-rtds-live
       - live-polyoxide-sports-live
       - live-polyoxide-cli-live

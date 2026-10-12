@@ -29,7 +29,7 @@
 # - Dev moves story to 'review', then runs code-review (fresh context, different LLM recommended)
 # - Retrospective appends its action items to action_items; the status view surfaces open ones
 generated: 10-08-2026 14:57
-last_updated: 10-10-2026 10:52
+last_updated: 11-10-2026 23:05
 project: polyoxide
 project_key: NOKEY
 tracking_system: file-system
@@ -45,6 +45,12 @@ development_status:
   # S3 = Epics 6-8, additive only. Epic 6 before Epics 7 and 8; Epic 4 before Epic 7.
   #   Epic 8 touches only AD-13's new-venue set, and its nightly needs Kalshi demo credentials or it is auth-gated.
   #   bmad-build-auto suits S2 and S3 once the patterns settle.
+  # Lane B (10-12-2026, user's call to finish faster): a second loom session, aidanb/restructure-2, builds S3's
+  #   venue-only groundwork while bundle M runs here: 6.1, 6.2's polyoxide-venue half (RawKey, MarketKey and the
+  #   newtypes), 6.3's trait definitions, 7.3 and 7.5. It touches only polyoxide-venue, docs and its own planning
+  #   files, adds no venue name to polyoxide-venue (S2's CAP-7 gate), and stays off main until 5.12 ships. AD-16
+  #   orders releases, not authoring, so this needs no spine change. The venue crates' halves (6.2's constructors,
+  #   6.3's Binance impl, 6.4, 6.5) and parse_key wait for S2. 6.2 and 6.3 stay in-progress until both halves land.
   # Keep notes in this block: sprint_plan.py drops every other comment in development_status when it reruns.
   #
   # Epic 1 gates:
@@ -96,17 +102,17 @@ development_status:
   3-13-transport-ownership-for-http-and-venue-isolation: review
   epic-3-retrospective: optional
 
-  epic-4: backlog
-  4-1-the-socket-kit-crate: backlog
-  4-2-connect-classify-and-close-once: backlog
-  4-3-one-socket-error-classification-table: backlog
-  4-4-one-scripted-test-server: backlog
-  4-5-the-generic-supervisor: backlog
-  4-6-perps-on-the-supervisor: backlog
-  4-7-binance-on-the-supervisor: backlog
-  4-8-rtds-and-sports-on-the-kit: backlog
-  4-9-clob-s-sockets-on-the-kit: backlog
-  4-10-socket-error-enums-reshaped-and-socket-transport-ownership: backlog
+  epic-4: in-progress
+  4-1-the-socket-kit-crate: review
+  4-2-connect-classify-and-close-once: review
+  4-3-one-socket-error-classification-table: review
+  4-4-one-scripted-test-server: review
+  4-5-the-generic-supervisor: review
+  4-6-perps-on-the-supervisor: review
+  4-7-binance-on-the-supervisor: review
+  4-8-rtds-and-sports-on-the-kit: review
+  4-9-clob-s-sockets-on-the-kit: review
+  4-10-socket-error-enums-reshaped-and-socket-transport-ownership: review
   4-11-cut-the-s1-release: backlog
   epic-4-retrospective: optional
 

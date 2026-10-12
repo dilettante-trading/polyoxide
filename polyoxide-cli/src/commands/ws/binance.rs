@@ -12,8 +12,7 @@ use polyoxide_binance::usdm::{
     types::{Interval, Symbol},
     ws::{
         AggTradeEvent, BookTickerEvent, DepthLevels, DepthSpeed, Event, KlineEvent, MarkPriceEvent,
-        PartialDepthEvent, Payload, Recovery, StreamName, TickerEvent, Update, UsdmWsBuilder,
-        UsdmWsError,
+        PartialDepthEvent, Payload, StreamName, TickerEvent, Update, UsdmWsBuilder, UsdmWsError,
     },
 };
 
@@ -227,11 +226,6 @@ where
                 "# skipped a frame on {stream:?} that did not decode ({reason}): {}",
                 excerpt(&raw)
             )?,
-            // Any other error the library says to skip; `UsdmWsError` is
-            // #[non_exhaustive].
-            Some(Err(error)) if error.recovery() == Recovery::SkipFrame => {
-                writeln!(err, "# skipped a frame: {error}")?
-            }
             Some(Err(error)) => return Err(error.into()),
             None => {
                 writeln!(err, "The feed ended")?;

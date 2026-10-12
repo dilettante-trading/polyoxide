@@ -1,0 +1,45 @@
+[package]
+name = "polyoxide-ws"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+authors.workspace = true
+repository.workspace = true
+rust-version.workspace = true
+description = "The WebSocket kit the polyoxide socket clients share, one copy of each block they would otherwise each carry"
+keywords = ["polymarket", "websocket", "reconnect", "backoff"]
+categories = ["api-bindings", "web-programming::websocket"]
+
+# Only these (AD-2), so a credential-free feed built on this crate builds no
+# HTTP or signing stack. It depends on neither `polyoxide-core` nor
+# `polyoxide-venue`. `ci/dep-allowlists/polyoxide-ws*.txt` pins the whole
+# normal tree, and CI's scripts job fails on any crate outside it.
+[dependencies]
+futures-util = { workspace = true, features = ["sink"] }
+# Needed only to install a process-default CryptoProvider; see `tls.rs`.
+rustls = { workspace = true }
+thiserror = { workspace = true }
+# `macros`, `rt` and `sync` are the Supervisor's: its task runs on
+# `tokio::spawn` and waits with `tokio::select!`, with the consumer's queue and
+# the membership commands on `tokio::sync` channels.
+tokio = { workspace = true, features = ["macros", "net", "rt", "sync", "time"] }
+tokio-tungstenite = { workspace = true }
+tracing = { workspace = true }
+
+[features]
+# The scripted local server and the helpers the offline suites share, for the
+# tests here and in the socket crates. Not for consumers; the module is
+# `#[doc(hidden)]`. It builds only from the dependencies above, and needs no
+# tokio feature they do not already enable.
+test-server = []
+
+[dev-dependencies]
+serde_json = { workspace = true }
+tokio = { workspace = true, features = ["macros", "rt-multi-thread", "net", "sync", "time", "test-util"] }
+
+# Registration, read by scripts/gen_registry.py: the README line and the notes
+# CLAUDE.md's crate list carries. Run `python3 scripts/gen_registry.py --write`
+# after an edit.
+[package.metadata.polyoxide]
+readme = "The socket kit: the TLS install, `Backoff`, `Timing` and its setters, the deadline arithmetic, `WsError`, connect with a timeout, the bare tier, request/answer correlation, the generic `Supervisor` for a venue `Protocol`, and the scripted test server (feature `test-server`)"
+notes = ["depends on neither `polyoxide-core` nor `polyoxide-venue`, and builds only tokio, tokio-tungstenite, futures-util, thiserror, tracing and rustls"]

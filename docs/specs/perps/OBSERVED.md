@@ -204,8 +204,21 @@ that day and pushed a trade within 4 s.
 - **`book::1` and `book::1::20` are one channel**; frames are labelled
   `book::1`. `book::1::50` is a separate channel with its own frames.
 - **Ping** is `{"req":"post","op":{"type":"ping"}}` and the reply is
-  `{"id","ts","data":{"status":"ok","ts","sq"}}`. Without any inbound message
-  the server closes the socket after 60 s, as documented.
+  `{"id","ts","data":{"status":"ok","ts","sq"}}`.
+- **The host's keep-alive is a protocol Ping, not the documented 60 s idle
+  close.** On 2026-10-10 (bundle K's close-reply probe,
+  `polyoxide-ws/examples/close_reply_probe.rs`) the host sent a protocol
+  `Ping` every 10 s. A client that read, and so answered each with
+  tungstenite's automatic `Pong`, was never closed in 180 s while sending
+  nothing else. A client whose pongs were withheld was closed with
+  `1011 pong_timeout` after 70.0 s. Whether the host also counts the
+  application `post/ping` as liveness was not measured.
+- **`bbo` is pushed only when the top of the book changes.** On 2026-10-11
+  `book::1` pushed about 10 frames/s for 20 s with one best bid and ask
+  throughout, and `bbo::1` pushed nothing, while `bbo::6` to `bbo::10`, on
+  the same connection, pushed 7 to 67 frames each. A test that waits for a
+  `bbo` frame needs an instrument whose top is moving, not merely a
+  two-sided book.
 - **Rates observed:** bbo, book and tickers about 10 frames/s per channel;
   statistics and klines one frame per 4 s; a `klines` frame may carry an
   empty `data` array while a candle is open (the first two captures on

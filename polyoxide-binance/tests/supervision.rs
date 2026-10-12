@@ -7,12 +7,16 @@ use futures_util::StreamExt;
 use polyoxide_binance::usdm::{
     types::Symbol,
     ws::{
-        fixtures,
-        test_server::{Script, ScriptedServer},
-        DepthLevels, DepthSpeed, DisconnectReason, Event, StreamName, StreamPath, SupervisedUsdmWs,
-        UsdmWsBuilder, UsdmWsError, MIN_REQUEST_INTERVAL,
+        fixtures, DepthLevels, DepthSpeed, DisconnectReason, Event, StreamName, StreamPath,
+        SupervisedUsdmWs, UsdmWsBuilder, UsdmWsError, MIN_REQUEST_INTERVAL,
     },
 };
+
+// Binance's answer on the shared scripted server, as the unit tests use it.
+#[path = "../src/usdm/ws/scripted.rs"]
+mod scripted;
+
+use scripted::{Script, ScriptedServer};
 
 fn symbol(s: &str) -> Symbol {
     Symbol::new(s).unwrap()
@@ -667,6 +671,6 @@ async fn close_ends_the_stream_and_the_handle_promptly_even_mid_backoff() {
     );
     assert!(matches!(
         membership.subscribe([agg("ETHUSDT")]).await,
-        Err(UsdmWsError::Stopped)
+        Err(UsdmWsError::Stopped { .. })
     ));
 }

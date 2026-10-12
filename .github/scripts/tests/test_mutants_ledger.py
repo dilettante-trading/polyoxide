@@ -85,6 +85,23 @@ SNIPPETS = {
     ("polyoxide-clob/tests/mock_api.rs", 3366): "fn fak_unmatched_maps_to_typed_error_not_generic_validation(",
     ("polyoxide-clob/tests/mock_api.rs", 3400): "fn fok_unfilled_maps_to_typed_error_not_generic_validation(",
     ("polyoxide-clob/tests/mock_api.rs", 3464): "fn fak_prose_on_non_400_status_is_not_reclassified(",
+    ("polyoxide-ws/src/backoff.rs", 84): "self.take().max(floor.min(self.max))",
+    ("polyoxide-ws/src/backoff.rs", 207): "fn a_floor_extends_the_delay_and_never_shortens_it_drift_r11(",
+    ("polyoxide-ws/src/backoff.rs", 223): "fn a_floor_past_the_ceiling_waits_the_ceiling_drift_r11(",
+    ("polyoxide-ws/src/supervisor/tests.rs", 753):
+        "async fn a_reconnect_waits_out_a_refusals_retry_after_drift_r11(",
+    ("polyoxide-ws/src/supervisor/tests.rs", 775):
+        "async fn a_retry_after_past_the_ceiling_waits_the_ceiling_drift_r11(",
+    ("polyoxide-ws/src/supervisor/tests.rs", 795):
+        "async fn a_start_in_an_outage_waits_out_the_first_refusals_retry_after_drift_r11(",
+    ("polyoxide-perps/src/ws/builder.rs", 710):
+        "async fn a_refusal_on_reconnect_waits_out_its_retry_after_drift_r11(",
+    ("polyoxide-binance/tests/supervision_kit.rs", 437):
+        "async fn a_refusal_on_reconnect_waits_out_its_retry_after_drift_r11(",
+    ("polyoxide-rtds/tests/supervision.rs", 315):
+        "async fn a_refusal_on_reconnect_waits_out_its_retry_after_drift_r11(",
+    ("polyoxide-sports/src/supervised.rs", 419):
+        "async fn a_reconnect_waits_out_a_refusals_retry_after_drift_r11(",
 }
 
 

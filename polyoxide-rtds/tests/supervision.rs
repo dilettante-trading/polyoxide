@@ -5,8 +5,8 @@ use std::{
     time::Duration,
 };
 
-use polyoxide_rtds::test_server::{Script, ScriptedServer};
 use polyoxide_rtds::{PriceEvent, RtdsBuilder, Subscription, Topic, TwapWindow};
+use polyoxide_ws::test_server::{Script, ScriptedServer};
 
 // The same golden vector the unit tests use, not a second copy. `fixtures`
 // is behind the `test-fixtures` feature precisely so integration tests can
@@ -20,14 +20,14 @@ fn subs() -> Vec<Subscription> {
 #[tokio::test]
 async fn reconnects_and_resubscribes_after_a_drop() {
     let server = ScriptedServer::start(vec![
-        Script::SendThenClose(vec![TWAP_UPDATE.into()]),
+        Script::frames(&[TWAP_UPDATE])
+            .after_first_frame()
+            .then_close(),
         // The rejection is Fatal, so `run` returns on its own rather than
         // being cut off by a timeout — which also means the assertions below
         // observe a supervisor that actually finished.
-        Script::SendThenIdle(vec![
-            TWAP_UPDATE.into(),
-            polyoxide_rtds::fixtures::REJECTED_SUBSCRIPTION.into(),
-        ]),
+        Script::frames(&[TWAP_UPDATE, polyoxide_rtds::fixtures::REJECTED_SUBSCRIPTION])
+            .after_first_frame(),
     ])
     .await;
 
@@ -74,7 +74,7 @@ async fn reconnects_and_resubscribes_after_a_drop() {
 
     // The resubscribe must send the same frame, or the new connection is
     // subscribed to nothing and goes quiet without erroring.
-    let frames = server.received_subscriptions();
+    let frames = server.first_frames();
     assert!(frames.len() >= 2, "expected 2 subscription frames");
     assert_eq!(
         frames[0], frames[1],
@@ -92,10 +92,10 @@ async fn a_silent_connection_is_treated_as_dead() {
     let server = ScriptedServer::start(vec![
         // Nothing sent, never closed: the only thing that can end this
         // connection is the staleness timer.
-        Script::SendThenIdle(Vec::new()),
+        Script::hold().after_first_frame(),
         // Once the watchdog has forced a reconnect, end the run naturally
         // rather than leaning on an outer timeout.
-        Script::SendThenIdle(vec![polyoxide_rtds::fixtures::REJECTED_SUBSCRIPTION.into()]),
+        Script::frames(&[polyoxide_rtds::fixtures::REJECTED_SUBSCRIPTION]).after_first_frame(),
     ])
     .await;
 
@@ -131,9 +131,10 @@ async fn a_rejected_subscription_stops_instead_of_looping() {
     // rejection forever, so the run loop must give up and return the error.
     // The captured envelope, not a hand-rolled lookalike — the other two
     // tests already use it, and a second copy would drift on the next capture.
-    let server = ScriptedServer::start(vec![Script::SendThenIdle(vec![
-        polyoxide_rtds::fixtures::REJECTED_SUBSCRIPTION.into(),
-    ])])
+    let server = ScriptedServer::start(vec![Script::frames(&[
+        polyoxide_rtds::fixtures::REJECTED_SUBSCRIPTION,
+    ])
+    .after_first_frame()])
     .await;
 
     let supervised = RtdsBuilder::new()
@@ -177,15 +178,16 @@ async fn a_frame_the_client_cannot_read_is_skipped_without_dropping_the_connecti
         "symbol":"btc/usd","timestamp":1788600388000,"value":79697.47,"window_s":30},
         "timestamp":1788600389537,"topic":"crypto_prices_twap_thirty","type":"update"}"#;
 
-    let server = ScriptedServer::start(vec![Script::SendThenIdle(vec![
-        TWAP_UPDATE.into(),
-        UNPARSEABLE.into(),
-        UNDECODABLE.into(),
-        TWAP_UPDATE.into(),
+    let server = ScriptedServer::start(vec![Script::frames(&[
+        TWAP_UPDATE,
+        UNPARSEABLE,
+        UNDECODABLE,
+        TWAP_UPDATE,
         // Ends the run deliberately, so the assertions below observe a
         // supervisor that finished rather than one cut off by a timeout.
-        polyoxide_rtds::fixtures::REJECTED_SUBSCRIPTION.into(),
-    ])])
+        polyoxide_rtds::fixtures::REJECTED_SUBSCRIPTION,
+    ])
+    .after_first_frame()])
     .await;
 
     let seen = Arc::new(Mutex::new(0usize));
@@ -232,5 +234,180 @@ async fn a_frame_the_client_cannot_read_is_skipped_without_dropping_the_connecti
         server.connection_count(),
         1,
         "a bad frame is not a bad connection; there must be no reconnect"
+    );
+}
+
+#[tokio::test]
+async fn a_hung_handshake_on_reconnect_times_out_and_is_retried_drift_r2() {
+    // DRIFT R2: the second attempt never upgrades. With no connect timeout
+    // the run hung there for good; it now times out, is retried, and the
+    // third connection's rejection ends the run.
+    let server = ScriptedServer::start(vec![
+        Script::frames(&[TWAP_UPDATE])
+            .after_first_frame()
+            .then_close(),
+        Script::stall(),
+        Script::frames(&[polyoxide_rtds::fixtures::REJECTED_SUBSCRIPTION]).after_first_frame(),
+    ])
+    .await;
+
+    let supervised = RtdsBuilder::new()
+        .url(&server.url)
+        .stale_after(Duration::from_secs(60))
+        .backoff(Duration::from_millis(10), Duration::from_millis(50))
+        .connect_timeout(Duration::from_millis(200))
+        .connect(subs())
+        .await
+        .expect("connect");
+
+    let outcome = tokio::time::timeout(
+        Duration::from_secs(5),
+        supervised.run(|_event| async move { Ok(()) }),
+    )
+    .await
+    .expect("the run must not hang on a handshake that never finishes");
+
+    assert!(
+        matches!(outcome, Err(polyoxide_rtds::RtdsError::Server { .. })),
+        "the run must get past the hung attempt and end on the rejection, got {outcome:?}"
+    );
+    assert_eq!(server.connection_count(), 3);
+}
+
+#[tokio::test]
+async fn a_503_or_429_refusal_on_reconnect_is_retried_drift_r1() {
+    // DRIFT R1: a refused upgrade ended `run()` whatever its status. A 503
+    // or a 429 is the host being unwell or throttling, which passes, so the
+    // run retries both and ends on the fourth connection's rejection.
+    let server = ScriptedServer::start(vec![
+        Script::frames(&[TWAP_UPDATE])
+            .after_first_frame()
+            .then_close(),
+        Script::refuse_upgrade(503),
+        Script::refuse_upgrade(429),
+        Script::frames(&[polyoxide_rtds::fixtures::REJECTED_SUBSCRIPTION]).after_first_frame(),
+    ])
+    .await;
+
+    let supervised = RtdsBuilder::new()
+        .url(&server.url)
+        .stale_after(Duration::from_secs(60))
+        .backoff(Duration::from_millis(10), Duration::from_millis(50))
+        .connect(subs())
+        .await
+        .expect("connect");
+
+    let outcome = tokio::time::timeout(
+        Duration::from_secs(5),
+        supervised.run(|_event| async move { Ok(()) }),
+    )
+    .await
+    .expect("run must return on the rejection rather than hang");
+
+    assert!(
+        matches!(outcome, Err(polyoxide_rtds::RtdsError::Server { .. })),
+        "the run must get past both refusals and end on the rejection, got {outcome:?}"
+    );
+    assert_eq!(server.connection_count(), 4);
+}
+
+#[tokio::test]
+async fn a_refusal_on_reconnect_waits_out_its_retry_after_drift_r11() {
+    // DRIFT R11: a 10 ms step and a 400 ms wait. The attempt after the
+    // refusal waits the 400 ms, where it retried inside the server's window,
+    // and the run ends on the third connection's rejection.
+    let server = ScriptedServer::start(vec![
+        Script::frames(&[TWAP_UPDATE])
+            .after_first_frame()
+            .then_close(),
+        Script::refuse_upgrade(503).with_header("Retry-After", "0.4"),
+        Script::frames(&[polyoxide_rtds::fixtures::REJECTED_SUBSCRIPTION]).after_first_frame(),
+    ])
+    .await;
+
+    let supervised = RtdsBuilder::new()
+        .url(&server.url)
+        .stale_after(Duration::from_secs(60))
+        .backoff(Duration::from_millis(10), Duration::from_secs(5))
+        .connect(subs())
+        .await
+        .expect("connect");
+
+    let outcome = tokio::time::timeout(
+        Duration::from_secs(5),
+        supervised.run(|_event| async move { Ok(()) }),
+    )
+    .await
+    .expect("run must return on the rejection rather than hang");
+
+    assert!(
+        matches!(outcome, Err(polyoxide_rtds::RtdsError::Server { .. })),
+        "the run must get past the refusal and end on the rejection, got {outcome:?}"
+    );
+    let accepted = server.accepted_at();
+    assert_eq!(accepted.len(), 3);
+    let waited = accepted[2] - accepted[1];
+    assert!(waited >= Duration::from_millis(400), "{waited:?}");
+}
+
+#[tokio::test]
+async fn a_server_close_is_answered_and_the_feed_reconnects_drift_r3() {
+    // DRIFT R3: the server's close is answered with the RFC 6455 close reply,
+    // which rtds never sent, and the run reconnects as before.
+    let server = ScriptedServer::start(vec![
+        Script::frames(&[TWAP_UPDATE])
+            .after_first_frame()
+            .then_close()
+            .close_with(1001, "going away"),
+        Script::frames(&[polyoxide_rtds::fixtures::REJECTED_SUBSCRIPTION]).after_first_frame(),
+    ])
+    .await;
+
+    let supervised = RtdsBuilder::new()
+        .url(&server.url)
+        .stale_after(Duration::from_secs(60))
+        .backoff(Duration::from_millis(10), Duration::from_millis(50))
+        .connect(subs())
+        .await
+        .expect("connect");
+
+    let outcome = tokio::time::timeout(
+        Duration::from_secs(5),
+        supervised.run(|_event| async move { Ok(()) }),
+    )
+    .await
+    .expect("run must return on the rejection rather than hang");
+
+    assert!(
+        matches!(outcome, Err(polyoxide_rtds::RtdsError::Server { .. })),
+        "{outcome:?}"
+    );
+    assert_eq!(server.connection_count(), 2);
+    server
+        .wait_for("the close reply", |s| s.close_reply_count() == 1)
+        .await;
+}
+
+#[tokio::test]
+async fn the_builders_connect_timeout_bounds_the_first_connect_drift_r2() {
+    // The first connect takes the builder's timeout, not the bare tier's
+    // 10 s default.
+    let server = ScriptedServer::start(vec![Script::stall()]).await;
+    let after = Duration::from_millis(200);
+    let outcome = tokio::time::timeout(
+        Duration::from_secs(5),
+        RtdsBuilder::new()
+            .url(&server.url)
+            .connect_timeout(after)
+            .connect(subs()),
+    )
+    .await
+    .expect("the connect must give up at its own timeout");
+    let Err(err) = outcome else {
+        panic!("a server that never upgrades must not connect");
+    };
+    assert!(
+        matches!(&err, polyoxide_rtds::RtdsError::Connection(ws) if ws.kind() == polyoxide_ws::Kind::ConnectTimeout { after }),
+        "{err:?}"
     );
 }

@@ -26,16 +26,12 @@ use std::{collections::BTreeMap, time::Duration};
 use futures_util::StreamExt;
 use polyoxide_sports::{Event, MatchUpdate, SportsError, SportsWs, SportsWsBuilder, SPORTS_WS_URL};
 use polyoxide_test_support::{environmental, fail, transient, ResultExt};
-use serde_json::Value;
-use tokio::{
-    net::TcpStream,
-    time::{timeout, timeout_at, Instant},
-};
-use tokio_tungstenite::{
-    connect_async,
+use polyoxide_ws::{
     tungstenite::{protocol::CloseFrame, Message},
-    MaybeTlsStream, WebSocketStream,
+    Kind, Socket, WsError,
 };
+use serde_json::Value;
+use tokio::time::{timeout, timeout_at, Instant};
 
 const RECV_WINDOW: Duration = Duration::from_secs(45);
 /// How long the wire-agreement test reads: long enough for most live games to
@@ -45,31 +41,22 @@ const CONNECT_TIMEOUT: Duration = Duration::from_secs(10);
 const QUIET: &str = "if no matches are live anywhere this can legitimately time out, \
                      so re-run before concluding a defect";
 
-type RawSocket = WebSocketStream<MaybeTlsStream<TcpStream>>;
-
 /// Fail a connect with its error's tag: a timeout or a 5xx is transient, a
 /// refused upgrade real.
 fn connect_failed<T>(error: SportsError) -> T {
     fail("could not connect to the sports feed", &error)
 }
 
-/// Open a raw socket, bounded like the crate's own connects. These tests call
-/// `connect_async` directly, so they install the TLS provider the crate
-/// would; see `ensure_crypto_provider` in src/client.rs.
-async fn connect_raw() -> RawSocket {
-    let _ = rustls::crypto::ring::default_provider().install_default();
-    let connected = match timeout(CONNECT_TIMEOUT, connect_async(SPORTS_WS_URL)).await {
-        Ok(connected) => connected,
-        Err(_) => connect_failed(SportsError::ConnectTimeout {
-            after: CONNECT_TIMEOUT,
-        }),
-    };
-    let (socket, _) = connected.unwrap_or_else(|e| {
-        connect_failed(SportsError::Connect {
-            source: Box::new(e),
+/// Open a raw socket through the kit's connect, which installs the TLS
+/// provider (DRIFT R9) and is bounded like the crate's own connects. A
+/// timeout fails as the crate reports one.
+async fn connect_raw() -> Socket {
+    polyoxide_ws::connect(SPORTS_WS_URL, CONNECT_TIMEOUT)
+        .await
+        .unwrap_or_else(|source| match source.kind() {
+            Kind::ConnectTimeout { after } => connect_failed(SportsError::ConnectTimeout { after }),
+            _ => connect_failed(SportsError::Connect { source }),
         })
-    });
-    socket
 }
 
 /// A raw socket's close frame as the crate reports a server close, so the
@@ -84,9 +71,9 @@ fn closed(frame: Option<CloseFrame>) -> SportsError {
 }
 
 /// A raw socket's transport error as the crate reports one.
-fn transport(error: tokio_tungstenite::tungstenite::Error) -> SportsError {
+fn transport(error: polyoxide_ws::tungstenite::Error) -> SportsError {
     SportsError::Transport {
-        source: Box::new(error),
+        source: WsError::from(error),
     }
 }
 

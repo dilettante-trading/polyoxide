@@ -14,9 +14,8 @@ categories = ["api-bindings", "web-programming::http-client"]
 default = ["gamma"]
 gamma = ["dep:polyoxide-gamma"]
 ws = [
-    "dep:tokio-tungstenite",
+    "dep:polyoxide-ws",
     "dep:futures-util",
-    "dep:rustls",
     "tokio/net",
     "tokio/macros",
     "tokio/sync",
@@ -33,6 +32,10 @@ alloy = { version = "1.1.2", features = [
 polyoxide-core = { workspace = true }
 polyoxide-venue = { workspace = true }
 polyoxide-gamma = { workspace = true, optional = true }
+# The socket kit, under `ws`: the TLS install, the bare tier clob reads
+# through, the upgrade over its own per-address connect, and `WsError`. It
+# owns the transport, so clob declares neither tokio-tungstenite nor rustls.
+polyoxide-ws = { workspace = true, optional = true }
 serde = { workspace = true }
 serde_json = { workspace = true }
 thiserror = { workspace = true }
@@ -43,13 +46,7 @@ hex = { workspace = true }
 rand = { version = "0.9.2", features = ["std"] }
 rust_decimal = { workspace = true }
 urlencoding = "2.1"
-tokio-tungstenite = { workspace = true, optional = true }
 futures-util = { version = "0.3", optional = true }
-# Needed only to install a process-default rustls CryptoProvider — see
-# `ensure_crypto_provider` in src/ws/client.rs. default-features = false keeps
-# us from pulling aws-lc-rs (and its cmake/nasm build requirements) into the
-# graph on top of the ring backend already present.
-rustls = { workspace = true, optional = true }
 
 [dev-dependencies]
 # The live suites' failure tags and credential loaders. Path-only: it is never
@@ -62,6 +59,9 @@ tracing-subscriber = { version = "0.3", features = ["env-filter"] }
 futures-util = "0.3"
 dotenvy = "0.15"
 rust_decimal_macros = "1.37"
+# The shared scripted WebSocket server the offline ws suites run on. Path-only,
+# so cargo strips it on publish.
+polyoxide-ws = { path = "../polyoxide-ws", features = ["test-server"] }
 
 # `live_ws.rs` is `#![cfg(feature = "ws")]`. Without this stanza a build
 # without the feature compiles it to an empty binary that runs no tests.

@@ -26,8 +26,11 @@ required-features = ["test-fixtures"]
 
 [dependencies]
 polyoxide-venue = { workspace = true }
-tokio = { workspace = true, features = ["macros", "net", "time", "rt"] }
-tokio-tungstenite = { workspace = true }
+# The socket kit: connect with a timeout, which installs the TLS provider, the
+# bare tier `Connection`, the one socket error and `Backoff`. It owns the
+# transport, tokio-tungstenite and rustls.
+polyoxide-ws = { workspace = true }
+tokio = { workspace = true, features = ["time"] }
 futures-util = "0.3"
 serde = { workspace = true }
 serde_json = { workspace = true }
@@ -35,14 +38,14 @@ rust_decimal = { workspace = true }
 thiserror = { workspace = true }
 tracing = { workspace = true }
 url = { workspace = true }
-# Needed only to install a process-default rustls CryptoProvider. See the
-# comment on `ensure_crypto_provider` in src/client.rs.
-rustls = { workspace = true }
 
 [dev-dependencies]
 # The live suites' failure tags and credential loaders. Path-only: it is never
 # published, and cargo strips a path-only dev-dependency on publish.
 polyoxide-test-support = { path = "../polyoxide-test-support" }
+# The shared scripted WebSocket server the offline suites run on. Path-only,
+# so cargo strips it on publish.
+polyoxide-ws = { path = "../polyoxide-ws", features = ["test-server"] }
 tokio = { workspace = true, features = ["macros", "rt-multi-thread", "time", "net"] }
 tracing-subscriber = { version = "0.3", features = ["env-filter"] }
 
@@ -55,7 +58,7 @@ readme = "Client for Polymarket's RTDS crypto price streams"
 venue = "polymarket"
 products = ["rtds"]
 mirrors = ["rtds"]
-notes = ["no other workspace crate, `reqwest` or `alloy`, so a credential-free price feed builds no HTTP or signing stack"]
+notes = ["no `polyoxide-core`, `reqwest` or `alloy`, so a credential-free price feed builds no HTTP or signing stack"]
 
 [package.metadata.polyoxide.live.live_api]
 suite = "live"

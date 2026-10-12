@@ -329,7 +329,8 @@ WEBSOCKET_DROPS: list[Row] = [
         "WebSocket protocol error: Connection reset without closing handshake",
         Verdict.TRANSIENT, f"{SPORTS}::reset_without_closing_handshake"),
     Row("reset without close / Debug", "transient",
-        "the frame parses: Transport { source: Protocol(ResetWithoutClosingHandshake) }",
+        "the frame parses: Transport { source: WsError(Transport(Protocol("
+        "ResetWithoutClosingHandshake))) }",
         Verdict.TRANSIENT, f"{SPORTS}::reset_without_closing_handshake"),
     Row("TLS EOF without close_notify", "transient",
         "stream error: RTDS connection error: IO error: peer closed connection "
@@ -488,8 +489,15 @@ BINANCE_REGION_BLOCKS: list[Row] = [
         "live_x: WebSocket transport error: HTTP error: 451 Unavailable For Legal Reasons",
         Verdict.ENVIRONMENTAL, f"{BINANCE}::streams::handshake_451"),
     Row("handshake / Debug", "environmental",
-        "live_x: Connect(Http(Response { status: 451, version: HTTP/1.1, headers: {} }))",
+        "live_x: Connect(WsError(Transport(Http(Response { status: 451, version: HTTP/1.1, "
+        "headers: {} }))))",
         Verdict.ENVIRONMENTAL, f"{BINANCE}::streams::handshake_451"),
+    # A supervised stream a 451 reconnect stopped keeps the refusal as its
+    # cause, so its stop is environmental too (Story 4.10, M-D8).
+    Row("stopped by a handshake 451 / Display", "environmental",
+        "live_x: the supervised connection has stopped: WebSocket transport error: HTTP error: "
+        "451 Unavailable For Legal Reasons",
+        Verdict.ENVIRONMENTAL, f"{BINANCE}::streams::stopped_by_handshake_451"),
 ]
 
 

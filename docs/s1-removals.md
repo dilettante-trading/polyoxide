@@ -60,6 +60,19 @@ To remove a public item in a PR:
 - `polyoxide-relay enum_variant_missing: variant RelayError::UrlParse (src/error.rs)` Story 3.11: a URL that does not parse, `RelayClientBuilder::url` included, is `RelayError::Api(ApiError::Url(_))`.
 - `polyoxide-relay enum_variant_missing: variant RelayError::SerdeJson (src/error.rs)` Story 3.11: JSON that does not serialise or decode is `RelayError::Api(ApiError::Serialization(_))`.
 - `polyoxide-binance inherent_method_missing: BinanceError::is_retriable (src/error.rs)` Story 3.12: import `polyoxide_venue::Classify` and call its `is_retriable`, which answers as the inherent method did; `Classify::retry_after` gives a `429`'s or a ban's wait, as the inherent `retry_after` did.
+- `polyoxide-perps module_missing: mod polyoxide_perps::ws::supervised (src/ws/supervised.rs)` Story 4.6: perps' own supervision loop is gone; the supervised tier is the kit's `polyoxide_ws::Supervisor` on `polyoxide_perps::ws::PerpsProtocol`, and its items are at `polyoxide_perps::ws`, as the entries below list.
+- `polyoxide-perps struct_missing: struct polyoxide_perps::ws::supervised::PerpsWsBuilder (src/ws/supervised.rs)` Story 4.6: import `polyoxide_perps::ws::PerpsWsBuilder`, the same builder with the same setters, plus `connect_timeout`.
+- `polyoxide-perps struct_missing: struct polyoxide_perps::ws::supervised::SupervisedPerpsWs (src/ws/supervised.rs)` Story 4.6: use `polyoxide_perps::ws::SupervisedPerpsWs`, now an alias for `polyoxide_ws::Supervised<PerpsProtocol>`, as the next entry says.
+- `polyoxide-perps struct_missing: struct polyoxide_perps::ws::SupervisedPerpsWs (src/ws/supervised.rs)` Story 4.6: the name stays, as `pub type SupervisedPerpsWs = polyoxide_ws::Supervised<PerpsProtocol>`, built by `PerpsWsBuilder::connect` as before, with the same `Stream` item, `membership()` and `close()`; only the type behind it changed.
+- `polyoxide-perps struct_missing: struct polyoxide_perps::ws::supervised::MembershipHandle (src/ws/supervised.rs)` Story 4.6: `SupervisedPerpsWs::membership()` returns `polyoxide_ws::MembershipHandle<PerpsProtocol>`; import `polyoxide_perps::ws::PerpsMembership` for its `subscribe` and `unsubscribe`, which answer as before, or call its `apply` with a `polyoxide_perps::ws::MembershipChange`.
+- `polyoxide-perps struct_missing: struct polyoxide_perps::ws::MembershipHandle (src/ws/supervised.rs)` Story 4.6: the re-export of `ws::supervised::MembershipHandle`, gone with it; use `polyoxide_ws::MembershipHandle<PerpsProtocol>` with the `polyoxide_perps::ws::PerpsMembership` trait, as the entry above says.
+- `polyoxide-perps enum_missing: enum polyoxide_perps::ws::error::Recovery (src/ws/error.rs)` Story 4.6: what the supervised tier does about an error is `PerpsProtocol`'s `polyoxide_ws::Protocol::recover`, answered with `polyoxide_ws::Recovery` (`Reconnect`, `Skip` or `Stop`) inside the stream; `Retry`, a rate-limited subscribe, is retried within the membership change. A caller deciding for itself reads the class through `polyoxide_venue::Classify`.
+- `polyoxide-perps enum_missing: enum polyoxide_perps::ws::Recovery (src/ws/error.rs)` Story 4.6: the re-export of `ws::error::Recovery`, gone with it; see the entry above.
+- `polyoxide-perps inherent_method_missing: PerpsWsError::recovery (src/ws/error.rs)` Story 4.6: the stream's own decision moved into `PerpsProtocol`'s `Protocol::recover`; a caller reads the error's class, and `is_retriable`, through `polyoxide_venue::Classify`, which a refused handshake answers by the same status rule.
+- `polyoxide-perps feature_missing: feature test-server in the package's Cargo.toml` Story 4.6: perps' scripted server is gone; enable `polyoxide-ws`'s `test-server` feature and use `polyoxide_ws::test_server`, answering perps' requests from the closure `ScriptedServer::start_answering` takes.
+- `polyoxide-binance enum_missing: enum polyoxide_binance::usdm::ws::error::Recovery (src/usdm/ws/error.rs)` Story 4.7: what the supervised tier does about an error is the crate-private `UsdmProtocol`'s `polyoxide_ws::Protocol::recover`, inside the stream; a frame that did not decode is still yielded as `Err(UsdmWsError::Frame { .. })` and the stream goes on, so match that variant where `SkipFrame` was read. A caller deciding for itself reads the class through `polyoxide_venue::Classify`.
+- `polyoxide-binance enum_missing: enum polyoxide_binance::usdm::ws::Recovery (src/usdm/ws/error.rs)` Story 4.7: the re-export of `usdm::ws::error::Recovery`, gone with it; see the entry above.
+- `polyoxide-binance inherent_method_missing: UsdmWsError::recovery (src/usdm/ws/error.rs)` Story 4.7: the stream's own decision moved into `UsdmProtocol`'s `Protocol::recover`; match `UsdmWsError::Frame { .. }` for the one error the stream skips past. The removed rule was: `Reconnect` for a transport failure (`Connect`) except a handshake refused with a status other than 408, 425, 429 or 5xx, a bad URL or TLS name, a malformed handshake or an attack detection, and for `ConnectTimeout`, `Closed` of any code, `NoAnswer` and `Response`; `SkipFrame` for `Frame`; `Fatal` for `Refused`, `TooManyStreams`, `WrongPath`, `Stopped` and the handshake failures just excepted. A caller deciding for itself can read the class and `is_retriable` through `polyoxide_venue::Classify`, but it differs from that rule on `Closed` (a 1008 close is `VenueRefusal`, not retriable), on `Response` (`Decode`) and on a use after close or a capacity failure (`InvalidRequest`), which the rule reconnected.
 
 ## Doc-hidden paths consumers import
 
@@ -72,13 +85,13 @@ cannot compile through another's. `a::b::{C, D}` lists `a::b::C` and `a::b::D`.
 The items are the ones the CLI's tests and each crate's own tests import:
 
 - `polyoxide_binance::usdm::ws::fixtures::{AGG_TRADE, ALL, ALL_MARK_PRICES, ALL_TICKERS, BOOK_TICKER, KLINE, MARK_PRICE, PARTIAL_DEPTH, TICKER}` `test-server`
-- `polyoxide_binance::usdm::ws::test_server::{Script, ScriptedServer}` `test-server`
-- `polyoxide_perps::ws::test_server` `test-server`
+- `polyoxide_binance::usdm::ws::test_server::{Script, ScriptedServer}` `test-server` **Removed** by Story 4.7: use the shared scripted server, `polyoxide_ws::test_server` (feature `test-server`), and answer Binance's requests from the closure `ScriptedServer::start_answering` takes, as `polyoxide-binance`'s `src/usdm/ws/scripted.rs` does; Binance's `test-server` feature stays, for `usdm::ws::fixtures`.
+- `polyoxide_perps::ws::test_server` `test-server` **Removed** by Story 4.6: use the shared scripted server, `polyoxide_ws::test_server` (feature `test-server`), and answer perps' requests from the closure `ScriptedServer::start_answering` takes; perps' `test-server` feature is gone with it.
 - `polyoxide_perps::ws::{frame_from_text_for_tests, incoming_from_text_for_tests, IncomingForTests}` `ws`
 - `polyoxide_rtds::fixtures::{REJECTED_SUBSCRIPTION, TWAP_THIRTY_UPDATE}` `test-fixtures`
-- `polyoxide_rtds::test_server::{Script, ScriptedServer}` `test-fixtures`
+- `polyoxide_rtds::test_server::{Script, ScriptedServer}` `test-fixtures` **Removed** by Story 4.8: use the shared scripted server, `polyoxide_ws::test_server` (feature `test-server`): `Script::frames(..).after_first_frame()` for `SendThenIdle`, with `.then_close()` for `SendThenClose`, `Script::messages(..)` for `SendRawThenIdle`, `Script::reject()` for `RejectHandshake`, and `first_frames()` for `received_subscriptions()`; rtds' `test-fixtures` feature stays, for `fixtures`.
 - `polyoxide_sports::fixtures::{CRICKET, CRICKET_FINISHED, ESPORTS, LEAGUE_WITH_SPACE, SOCCER, TENNIS_EVENT_STATE}` `test-server`
-- `polyoxide_sports::test_server::{Script, ScriptedServer}` `test-server`
+- `polyoxide_sports::test_server::{Script, ScriptedServer}` `test-server` **Removed** by Story 4.8: use the shared scripted server, `polyoxide_ws::test_server` (feature `test-server`), whose `Script` has every field and constructor sports' had, `hold()` for `silent()`; sports' `test-server` feature stays, for `fixtures`.
 
 cargo-semver-checks 0.51.0 does not check type aliases either, so the public ones are imported
 the same way:
@@ -86,4 +99,5 @@ the same way:
 - `polyoxide_clob::DynSigner`
 - `polyoxide_clob::account::DynSigner`
 - `polyoxide_data::v2::PageStream`
+- `polyoxide_perps::ws::SupervisedPerpsWs` `ws`
 - `polyoxide_relay::DynSigner`

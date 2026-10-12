@@ -1,12 +1,14 @@
-//! Errors of the WebSocket tiers and how each one recovers.
+//! Errors of the WebSocket tiers, and their classes.
 
 use std::time::Duration;
 
-use polyoxide_venue::{class_for_handshake_status, Class, Classify};
+use polyoxide_venue::{Class, Classify};
+use polyoxide_ws::WsError;
 use thiserror::Error;
-use tokio_tungstenite::tungstenite;
 
 use crate::ws::channel::Channel;
+
+polyoxide_venue::impl_ws_classification!();
 
 /// One channel the server refused, with the identifier it answered.
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -19,36 +21,25 @@ pub struct Refusal {
     pub reason: String,
 }
 
-/// What to do about an error.
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-#[non_exhaustive]
-pub enum Recovery {
-    /// Reconnect and resubscribe.
-    Reconnect,
-    /// Resend the same request after a backoff; the socket is fine.
-    Retry,
-    /// Skip this frame and keep reading.
-    SkipFrame,
-    /// Give up: retrying replays the same failure.
-    Fatal,
-}
-
 /// Error type for the WebSocket tiers.
 #[derive(Error, Debug)]
 #[non_exhaustive]
 pub enum PerpsWsError {
-    /// The connection could not be opened, or failed mid-stream.
+    /// The connection could not be opened, or failed mid-stream: the kit's
+    /// one socket error, read through its [`Kind`](polyoxide_ws::Kind).
     #[error("WebSocket transport error: {0}")]
-    Connection(#[from] Box<tokio_tungstenite::tungstenite::Error>),
+    Connection(#[from] WsError),
 
     /// The server closed the connection, or the stream ended.
     #[error("WebSocket connection closed")]
     ConnectionClosed,
 
-    /// No frame arrived within the configured staleness window.
+    /// No frame arrived within the configured staleness window, or the
+    /// server left a membership change or a replay unanswered for it.
     #[error("no frame for {elapsed:?}")]
     Stalled {
-        /// Time since the last frame.
+        /// Time since the last frame: the silence, or how long the change or
+        /// replay waited.
         elapsed: Duration,
     },
 
@@ -99,95 +90,30 @@ pub enum PerpsWsError {
     Stopped,
 }
 
-impl From<tokio_tungstenite::tungstenite::Error> for PerpsWsError {
-    fn from(err: tokio_tungstenite::tungstenite::Error) -> Self {
-        Self::Connection(Box::new(err))
-    }
-}
-
-impl PerpsWsError {
-    /// How the supervised tier treats this error.
-    pub fn recovery(&self) -> Recovery {
-        use tokio_tungstenite::tungstenite::Error as Ws;
-        match self {
-            Self::Connection(err) => match &**err {
-                // A handshake refused with 5xx or 429 is the host being
-                // unwell or throttling; anything else is our request.
-                Ws::Http(response) => {
-                    let status = response.status();
-                    if status.is_server_error() || status.as_u16() == 429 {
-                        Recovery::Reconnect
-                    } else {
-                        Recovery::Fatal
-                    }
-                }
-                Ws::Url(_)
-                | Ws::Tls(_)
-                | Ws::HttpFormat(_)
-                | Ws::AlreadyClosed
-                | Ws::AttackAttempt => Recovery::Fatal,
-                // `tungstenite::Error` is non_exhaustive; an unknown transport
-                // error costs one retry cycle if it turns out permanent.
-                _ => Recovery::Reconnect,
-            },
-            Self::ConnectionClosed | Self::Stalled { .. } => Recovery::Reconnect,
-            Self::Refused { refused } => {
-                if refused.iter().all(|r| r.reason == "message_rate_limited") {
-                    Recovery::Retry
-                } else {
-                    Recovery::Fatal
-                }
-            }
-            Self::Frame { .. } | Self::Unrecognised { .. } => Recovery::SkipFrame,
-            // A control reply that is malformed or not `ok` means this
-            // connection's control channel is unreliable; a fresh one is the
-            // fix. Fatal would end the supervised stream on one odd pong.
-            Self::Response { .. } => Recovery::Reconnect,
-            Self::EmptySubscription | Self::Stopped => Recovery::Fatal,
-        }
-    }
-}
-
 /// The server's identifier for a subscription refused by its message rate
 /// limit.
-const MESSAGE_RATE_LIMITED: &str = "message_rate_limited";
+pub(crate) const MESSAGE_RATE_LIMITED: &str = "message_rate_limited";
 
 /// The reason the client records for a refusal that carried no `error` field.
 /// It is not the venue's, so it is never reported as a code.
 pub(crate) const NO_REASON: &str = "err";
 
-/// A transport failure, by the socket table: a refused upgrade by its status,
-/// misuse and a bad URL or TLS name an `InvalidRequest`, and everything else,
-/// an I/O or protocol error or a closed connection, `Network`.
-fn transport_class(err: &tungstenite::Error) -> Class {
-    use tungstenite::Error as Ws;
-    match err {
-        Ws::Http(response) => class_for_handshake_status(response.status().as_u16()),
-        Ws::Url(_)
-        | Ws::HttpFormat(_)
-        | Ws::Tls(_)
-        | Ws::AttackAttempt
-        | Ws::Capacity(_)
-        | Ws::AlreadyClosed => Class::InvalidRequest,
-        // Io (a TLS EOF included), Protocol, ConnectionClosed,
-        // WriteBufferFull, Utf8 and any later variant.
-        _ => Class::Network,
-    }
-}
-
-/// The transport by the socket table, a lost or silent connection `Network`,
+/// The transport by the one socket table
+/// (`polyoxide_venue::impl_ws_classification!`), whose only non-fault is an
+/// upgrade refused with 451 and whose wait is a refusal's `Retry-After`, a
+/// lost or silent connection `Network`,
 /// a reply or frame that did not parse a `Decode`, and the client's own
 /// refusals an `InvalidRequest`.
 ///
 /// A refusal is `RateLimited` when every refused channel was refused for
-/// `message_rate_limited`, the case [`PerpsWsError::recovery`] retries.
+/// `message_rate_limited`, the case a supervised subscribe retries (D10).
 /// Otherwise it is a `VenueRefusal` whose code is the first identifier other
 /// than `message_rate_limited`, the one that makes retrying pointless, and
 /// `None` when every such refusal came without an identifier.
 impl Classify for PerpsWsError {
     fn class(&self) -> Class {
         match self {
-            Self::Connection(err) => transport_class(err),
+            Self::Connection(err) => ws_class(err),
             Self::ConnectionClosed | Self::Stalled { .. } => Class::Network,
             Self::Refused { refused } => {
                 if refused.iter().all(|r| r.reason == MESSAGE_RATE_LIMITED) {
@@ -206,31 +132,30 @@ impl Classify for PerpsWsError {
             Self::EmptySubscription | Self::Stopped => Class::InvalidRequest,
         }
     }
+
+    fn is_fault(&self) -> bool {
+        !matches!(self, Self::Connection(err) if !ws_is_fault(err))
+    }
+
+    fn retry_after(&self) -> Option<Duration> {
+        match self {
+            Self::Connection(err) => ws_retry_after(err),
+            _ => self.class().retry_after(),
+        }
+    }
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
     use crate::types::InstrumentId;
-    use tokio_tungstenite::tungstenite::{self, http};
+    use polyoxide_ws::tungstenite::{self, http};
 
     fn refusal(channel: Channel, reason: &str) -> Refusal {
         Refusal {
             channel,
             reason: reason.to_owned(),
         }
-    }
-
-    #[test]
-    fn a_refused_subscription_lists_every_refusal() {
-        let err = PerpsWsError::Refused {
-            refused: vec![refusal(Channel::Bbo(InstrumentId(1)), "invalid channel")],
-        };
-        assert_eq!(err.recovery(), Recovery::Fatal);
-        assert!(
-            err.to_string().contains("bbo::1 (invalid channel)"),
-            "{err}"
-        );
     }
 
     #[test]
@@ -246,79 +171,50 @@ mod tests {
         assert!(text.contains("trades::2 (message_rate_limited)"), "{text}");
     }
 
-    #[test]
-    fn a_rate_limited_subscription_is_retriable_not_fatal() {
-        let err = PerpsWsError::Refused {
-            refused: vec![refusal(
-                Channel::Bbo(InstrumentId(1)),
-                "message_rate_limited",
-            )],
-        };
-        assert_eq!(err.recovery(), Recovery::Retry);
-    }
-
-    #[test]
-    fn a_mixed_refusal_is_fatal() {
-        // Retrying would replay the invalid channel, so the rate limit does
-        // not rescue the batch.
-        let err = PerpsWsError::Refused {
-            refused: vec![
-                refusal(Channel::Bbo(InstrumentId(1)), "message_rate_limited"),
-                refusal(Channel::Bbo(InstrumentId(2)), "invalid channel"),
-            ],
-        };
-        assert_eq!(err.recovery(), Recovery::Fatal);
-    }
-
     fn http_error(status: u16) -> PerpsWsError {
-        PerpsWsError::from(tungstenite::Error::Http(
+        transport(tungstenite::Error::Http(
             http::Response::builder().status(status).body(None).unwrap(),
         ))
     }
 
-    #[test]
-    fn a_handshake_refused_by_the_host_reconnects_but_a_refused_request_is_fatal() {
-        assert_eq!(http_error(503).recovery(), Recovery::Reconnect);
-        assert_eq!(http_error(429).recovery(), Recovery::Reconnect);
-        assert_eq!(http_error(401).recovery(), Recovery::Fatal);
+    /// A transport failure as the connection reports it, through the kit.
+    fn transport(err: tungstenite::Error) -> PerpsWsError {
+        PerpsWsError::from(WsError::from(err))
+    }
+
+    /// An upgrade refused with `status` and a `Retry-After` of 30 s.
+    fn refused_for_30s(status: u16) -> PerpsWsError {
+        transport(tungstenite::Error::Http(
+            http::Response::builder()
+                .status(status)
+                .header("Retry-After", "30")
+                .body(None)
+                .unwrap(),
+        ))
     }
 
     #[test]
-    fn a_transport_close_reconnects() {
-        let err = PerpsWsError::from(tungstenite::Error::ConnectionClosed);
-        assert!(matches!(err, PerpsWsError::Connection(_)));
-        assert_eq!(err.recovery(), Recovery::Reconnect);
-    }
-
-    #[test]
-    fn transport_loss_reconnects_and_bad_frames_are_skipped() {
+    fn a_refusals_retry_after_is_surfaced() {
+        // As HTTP's errors do for every status; only a 429's class carries
+        // the wait.
+        let wait = Some(Duration::from_secs(30));
         assert_eq!(
-            PerpsWsError::ConnectionClosed.recovery(),
-            Recovery::Reconnect
+            refused_for_30s(429).class(),
+            Class::RateLimited { retry_after: wait }
         );
+        assert_eq!(refused_for_30s(429).retry_after(), wait);
         assert_eq!(
-            PerpsWsError::Stalled {
-                elapsed: Duration::from_secs(9)
-            }
-            .recovery(),
-            Recovery::Reconnect
+            refused_for_30s(503).class(),
+            Class::Unavailable { code: None }
         );
-        let bad = PerpsWsError::Frame {
-            channel: "bbo::1".to_owned(),
-            raw: "{}".to_owned(),
-            source: serde_json::from_str::<u8>("x").unwrap_err(),
-        };
-        assert_eq!(bad.recovery(), Recovery::SkipFrame);
-        assert_eq!(PerpsWsError::EmptySubscription.recovery(), Recovery::Fatal);
+        assert_eq!(refused_for_30s(503).retry_after(), wait);
     }
 
     #[test]
-    fn a_faulted_control_reply_reconnects_rather_than_ending_the_stream() {
-        let odd = PerpsWsError::Response {
-            id: 2,
-            raw: r#"{"status":"err","error":"x"}"#.to_owned(),
-        };
-        assert_eq!(odd.recovery(), Recovery::Reconnect);
+    fn only_a_451_refusal_is_not_a_fault() {
+        assert!(!http_error(451).is_fault());
+        assert_eq!(http_error(451).class(), Class::Restricted);
+        assert!(http_error(418).is_fault());
     }
 
     #[test]
@@ -361,7 +257,7 @@ mod tests {
             ),
         ];
         for (err, class) in rows {
-            let err = PerpsWsError::from(err);
+            let err = transport(err);
             assert_eq!(err.class(), class, "{err:?}");
             assert!(err.is_fault(), "{err:?}");
             assert_eq!(err.retry_after(), None, "{err:?}");

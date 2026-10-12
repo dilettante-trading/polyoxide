@@ -35,10 +35,6 @@ pub mod update;
 #[doc(hidden)]
 pub mod fixtures;
 
-#[cfg(any(test, feature = "test-server"))]
-#[doc(hidden)]
-pub mod test_server;
-
 pub use client::{SportsWs, SPORTS_WS_URL};
 pub use error::SportsError;
 pub use supervised::{Event, SportsWsBuilder, SupervisedSportsWs};

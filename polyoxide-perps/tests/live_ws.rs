@@ -9,7 +9,9 @@ use std::time::Duration;
 use futures_util::StreamExt;
 use polyoxide_perps::{
     types::{BookDepth, InstrumentId},
-    ws::{Channel, Event, Frame, PerpsWs, PerpsWsBuilder, PerpsWsError, StreamDepth},
+    ws::{
+        Channel, Event, Frame, PerpsMembership, PerpsWs, PerpsWsBuilder, PerpsWsError, StreamDepth,
+    },
     Perps,
 };
 use polyoxide_test_support::{environmental, fail, transient, ResultExt};

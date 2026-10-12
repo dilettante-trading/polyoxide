@@ -2,24 +2,19 @@
 //! of updates.
 
 use std::{
-    collections::VecDeque,
     pin::Pin,
     task::{Context, Poll},
     time::Duration,
 };
 
-use futures_util::{SinkExt, Stream, StreamExt};
+use futures_util::{Stream, StreamExt};
+use polyoxide_ws::{connect, tungstenite::Message, Connection, Correlated, Kind, Mode, WsError};
 use serde_json::{json, Value};
-use tokio::{net::TcpStream, time::Instant};
-use tokio_tungstenite::{
-    connect_async,
-    tungstenite::{protocol::CloseFrame, Message},
-    MaybeTlsStream, WebSocketStream,
-};
+use tokio::time::Instant;
 
 use crate::usdm::ws::{
-    ensure_crypto_provider, error::UsdmWsError, event::Update, stream::StreamName, StreamPath,
-    MAX_NAMES_PER_REQUEST, MAX_STREAMS_PER_CONNECTION, MIN_REQUEST_INTERVAL, USDM_WS_BASE,
+    error::UsdmWsError, event::Update, stream::StreamName, StreamPath, MAX_NAMES_PER_REQUEST,
+    MAX_STREAMS_PER_CONNECTION, MIN_REQUEST_INTERVAL, USDM_WS_BASE,
 };
 
 /// How long the bare tier waits for a connection.
@@ -37,10 +32,14 @@ pub const ANSWER_TIMEOUT: Duration = Duration::from_secs(10);
 /// refused before anything is sent. The control methods are not cancel-safe,
 /// and after a `NoAnswer` the server's membership is unknown: replace the
 /// connection rather than reuse it, as the supervised tier does. The server's
-/// protocol pings are answered while the caller polls. Binance closes a
-/// connection after 24 hours; the supervised tier
-/// ([`UsdmWsBuilder`](crate::usdm::ws::UsdmWsBuilder)) replaces it before
-/// then, and this tier does not.
+/// protocol pings are answered while the caller polls, and its close is
+/// answered with the close reply. The stream ends after the server's close,
+/// or after the first transport error it yields; a control call after that
+/// fails, with the close as [`UsdmWsError::Closed`] or, after an error, as
+/// [`UsdmWsError::Connect`] whose kind is `AlreadyClosed`, and sends nothing.
+/// Binance closes a connection after 24 hours;
+/// the supervised tier ([`UsdmWsBuilder`](crate::usdm::ws::UsdmWsBuilder))
+/// replaces it before then, and this tier does not.
 ///
 /// ```no_run
 /// use futures_util::StreamExt;
@@ -56,15 +55,9 @@ pub const ANSWER_TIMEOUT: Duration = Duration::from_secs(10);
 /// # }
 /// ```
 pub struct UsdmWs {
-    inner: WebSocketStream<MaybeTlsStream<TcpStream>>,
+    connection: Connection,
     path: StreamPath,
     streams: Vec<StreamName>,
-    next_id: u64,
-    buffered: VecDeque<Result<Update, UsdmWsError>>,
-    last_request: Option<Instant>,
-    last_inbound: Instant,
-    answer_timeout: Duration,
-    close_frame: Option<(Option<u16>, String)>,
 }
 
 impl std::fmt::Debug for UsdmWs {
@@ -72,13 +65,13 @@ impl std::fmt::Debug for UsdmWs {
         f.debug_struct("UsdmWs")
             .field("path", &self.path)
             .field("streams", &self.streams.len())
-            .field("buffered", &self.buffered.len())
+            .field("connection", &self.connection)
             .finish_non_exhaustive()
     }
 }
 
 /// What a text frame that is not an update is.
-enum Answer {
+pub(crate) enum Answer {
     /// `{"result": .., "id": n}`.
     Result { id: Option<u64>, result: Value },
     /// `{"error": {"code", "msg"}, "id": n}`.
@@ -90,7 +83,7 @@ enum Answer {
 }
 
 impl Answer {
-    fn parse(text: &str) -> Option<Self> {
+    pub(crate) fn parse(text: &str) -> Option<Self> {
         let value: Value = serde_json::from_str(text).ok()?;
         let object = value.as_object()?;
         if object.contains_key("stream") {
@@ -127,6 +120,62 @@ impl Answer {
     }
 }
 
+/// The request `method` with `params`, for request `id`.
+fn request_frame(method: &str, params: Option<&[StreamName]>, id: u64) -> Message {
+    let mut body = json!({ "method": method, "id": id });
+    if let Some(params) = params {
+        let names: Vec<String> = params.iter().map(ToString::to_string).collect();
+        body["params"] = json!(names);
+    }
+    Message::Text(body.to_string().into())
+}
+
+/// What a frame read while request `id` awaits its answer is: the answer, an
+/// answer to another request, or anything else, which the stream yields
+/// afterwards.
+fn correlate(id: u64, message: &Message) -> Correlated<Answer> {
+    let Message::Text(text) = message else {
+        return Correlated::Push;
+    };
+    match Answer::parse(text) {
+        Some(answer) if answer.id() == Some(id) => Correlated::Answer(answer),
+        Some(other) => {
+            tracing::debug!(id = ?other.id(), "uncorrelated answer while awaiting {id}");
+            Correlated::Uncorrelated
+        }
+        None => Correlated::Push,
+    }
+}
+
+/// Send request `method` with `params` on `connection`, paced as the
+/// connection is, and wait for its answer's `result`. A request left
+/// unanswered for the connection's answer timeout is
+/// [`UsdmWsError::NoAnswer`] with its id.
+pub(crate) async fn request(
+    connection: &mut Connection,
+    method: &str,
+    params: Option<&[StreamName]>,
+) -> Result<Value, UsdmWsError> {
+    let id = connection.next_id();
+    let answer = connection
+        .request(|id| request_frame(method, params, id), correlate)
+        .await
+        .map_err(|err| no_answer(err, id))?;
+    match answer {
+        Answer::Result { result, .. } => Ok(result),
+        Answer::Error { code, msg, .. } => Err(UsdmWsError::Refused { code, msg }),
+    }
+}
+
+/// The kit's `NoAnswer` as Binance's, with the id of what went unanswered;
+/// every other failure as the socket error maps it.
+fn no_answer(err: WsError, id: u64) -> UsdmWsError {
+    match err.kind() {
+        Kind::NoAnswer { after } => UsdmWsError::NoAnswer { id, timeout: after },
+        _ => UsdmWsError::from(err),
+    }
+}
+
 impl UsdmWs {
     /// Connect to `path` on the production host and subscribe.
     pub async fn connect(
@@ -156,20 +205,14 @@ impl UsdmWs {
         connect_timeout: Duration,
         answer_timeout: Duration,
     ) -> Result<Self, UsdmWsError> {
-        ensure_crypto_provider();
-        let (inner, _) = tokio::time::timeout(connect_timeout, connect_async(path.url(base_url)))
-            .await
-            .map_err(|_| UsdmWsError::ConnectTimeout(connect_timeout))??;
+        let socket = connect(path.url(base_url), connect_timeout).await?;
+        let connection = Connection::new(socket, Mode::Data)
+            .min_request_interval(MIN_REQUEST_INTERVAL)
+            .answer_timeout(answer_timeout);
         Ok(Self {
-            inner,
+            connection,
             path,
             streams: Vec::new(),
-            next_id: 1,
-            buffered: VecDeque::new(),
-            last_request: None,
-            last_inbound: Instant::now(),
-            answer_timeout,
-            close_frame: None,
         })
     }
 
@@ -199,7 +242,7 @@ impl UsdmWs {
             });
         }
         for batch in new.chunks(MAX_NAMES_PER_REQUEST) {
-            self.request("SUBSCRIBE", Some(batch)).await?;
+            request(&mut self.connection, "SUBSCRIBE", Some(batch)).await?;
             self.streams.extend(batch.iter().cloned());
         }
         Ok(())
@@ -214,7 +257,7 @@ impl UsdmWs {
             }
         }
         for batch in gone.chunks(MAX_NAMES_PER_REQUEST) {
-            self.request("UNSUBSCRIBE", Some(batch)).await?;
+            request(&mut self.connection, "UNSUBSCRIBE", Some(batch)).await?;
             self.streams.retain(|s| !batch.contains(s));
         }
         Ok(())
@@ -222,8 +265,8 @@ impl UsdmWs {
 
     /// The stream names the server says this connection carries.
     pub async fn list_subscriptions(&mut self) -> Result<Vec<String>, UsdmWsError> {
-        let id = self.next_id;
-        let result = self.request("LIST_SUBSCRIPTIONS", None).await?;
+        let id = self.connection.next_id();
+        let result = request(&mut self.connection, "LIST_SUBSCRIPTIONS", None).await?;
         serde_json::from_value(result.clone()).map_err(|_| UsdmWsError::Response {
             id,
             raw: result.to_string(),
@@ -234,18 +277,19 @@ impl UsdmWs {
     pub async fn ping(&mut self) -> Result<Duration, UsdmWsError> {
         let start = Instant::now();
         self.send_ping().await?;
-        tokio::time::timeout(self.answer_timeout, self.await_pong())
+        self.connection
+            .await_answer(|message| match message {
+                Message::Pong(_) => Correlated::Answer(()),
+                _ => Correlated::Push,
+            })
             .await
-            .map_err(|_| UsdmWsError::NoAnswer {
-                id: 0,
-                timeout: self.answer_timeout,
-            })??;
+            .map_err(|err| no_answer(err, 0))?;
         Ok(start.elapsed())
     }
 
     /// Close the connection.
     pub async fn close(&mut self) -> Result<(), UsdmWsError> {
-        self.inner.close(None).await?;
+        self.connection.close().await?;
         Ok(())
     }
 
@@ -259,122 +303,23 @@ impl UsdmWs {
         self.path
     }
 
-    /// Send a protocol ping without waiting; the pong arrives as any inbound
-    /// frame does and refreshes [`last_inbound`](Self::last_inbound).
-    pub(crate) async fn send_ping(&mut self) -> Result<(), UsdmWsError> {
-        self.inner.send(Message::Ping(Vec::new().into())).await?;
+    /// Send a protocol ping without waiting for its pong.
+    async fn send_ping(&mut self) -> Result<(), UsdmWsError> {
+        self.connection
+            .send(Message::Ping(Vec::new().into()))
+            .await?;
         Ok(())
     }
 
-    /// When the last frame of any kind arrived, pings and pongs included.
-    pub(crate) fn last_inbound(&self) -> Instant {
-        self.last_inbound
-    }
-
-    /// The server's close code and reason, once it has closed the connection.
-    pub(crate) fn close_frame(&self) -> Option<(Option<u16>, String)> {
-        self.close_frame.clone()
-    }
-
-    fn record_close(&mut self, frame: Option<CloseFrame>) {
-        self.close_frame = Some(match frame {
-            Some(frame) => (Some(u16::from(frame.code)), frame.reason.to_string()),
-            None => (None, String::new()),
-        });
-    }
-
-    fn closed_error(&self) -> UsdmWsError {
-        let (code, reason) = self.close_frame.clone().unwrap_or((None, String::new()));
-        UsdmWsError::Closed { code, reason }
-    }
-
-    /// Send one request, paced, and wait for its answer's `result`.
-    async fn request(
-        &mut self,
-        method: &str,
-        params: Option<&[StreamName]>,
-    ) -> Result<Value, UsdmWsError> {
-        // A connection the server closed reports its close code, not a send
-        // error.
-        if self.close_frame.is_some() {
-            return Err(self.closed_error());
-        }
-        if let Some(last) = self.last_request {
-            tokio::time::sleep_until(last + MIN_REQUEST_INTERVAL).await;
-        }
-        let id = self.next_id;
-        self.next_id += 1;
-        let mut body = json!({ "method": method, "id": id });
-        if let Some(params) = params {
-            let names: Vec<String> = params.iter().map(ToString::to_string).collect();
-            body["params"] = json!(names);
-        }
-        self.inner
-            .send(Message::Text(body.to_string().into()))
-            .await?;
-        self.last_request = Some(Instant::now());
-        tokio::time::timeout(self.answer_timeout, self.await_answer(id))
-            .await
-            .map_err(|_| UsdmWsError::NoAnswer {
-                id,
-                timeout: self.answer_timeout,
-            })?
-    }
-
-    /// Read until the answer to `id`, keeping updates read meanwhile.
-    async fn await_answer(&mut self, id: u64) -> Result<Value, UsdmWsError> {
-        loop {
-            let message = match self.inner.next().await {
-                None => return Err(self.closed_error()),
-                Some(Err(err)) => return Err(err.into()),
-                Some(Ok(message)) => message,
-            };
-            self.last_inbound = Instant::now();
-            match message {
-                Message::Text(text) => match Answer::parse(&text) {
-                    Some(answer) if answer.id() == Some(id) => {
-                        return match answer {
-                            Answer::Result { result, .. } => Ok(result),
-                            Answer::Error { code, msg, .. } => {
-                                Err(UsdmWsError::Refused { code, msg })
-                            }
-                        };
-                    }
-                    Some(other) => {
-                        tracing::debug!(id = ?other.id(), "uncorrelated answer while awaiting {id}");
-                    }
-                    None => self.buffered.push_back(Update::from_json(&text)),
-                },
-                Message::Close(frame) => {
-                    self.record_close(frame);
-                    return Err(self.closed_error());
-                }
-                _ => {}
-            }
-        }
-    }
-
-    /// Read until a pong, keeping updates read meanwhile.
-    async fn await_pong(&mut self) -> Result<(), UsdmWsError> {
-        loop {
-            let message = match self.inner.next().await {
-                None => return Err(self.closed_error()),
-                Some(Err(err)) => return Err(err.into()),
-                Some(Ok(message)) => message,
-            };
-            self.last_inbound = Instant::now();
-            match message {
-                Message::Pong(_) => return Ok(()),
-                Message::Text(text) if Answer::parse(&text).is_none() => {
-                    self.buffered.push_back(Update::from_json(&text));
-                }
-                Message::Close(frame) => {
-                    self.record_close(frame);
-                    return Err(self.closed_error());
-                }
-                _ => {}
-            }
-        }
+    /// The server's close code and reason, once it has closed the connection
+    /// or the stream has ended without a close frame.
+    #[cfg(test)]
+    fn close_frame(&self) -> Option<(Option<u16>, String)> {
+        let closed = self.connection.closed()?;
+        Some(match closed.kind() {
+            Kind::Closed { code, reason } => (code, reason.to_owned()),
+            _ => (None, String::new()),
+        })
     }
 }
 
@@ -382,33 +327,24 @@ impl Stream for UsdmWs {
     type Item = Result<Update, UsdmWsError>;
 
     fn poll_next(mut self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<Option<Self::Item>> {
-        if let Some(kept) = self.buffered.pop_front() {
-            return Poll::Ready(Some(kept));
-        }
         loop {
-            let message = match self.inner.poll_next_unpin(cx) {
+            let message = match self.connection.poll_next_unpin(cx) {
                 Poll::Ready(Some(Ok(message))) => message,
                 Poll::Ready(Some(Err(err))) => return Poll::Ready(Some(Err(err.into()))),
                 Poll::Ready(None) => return Poll::Ready(None),
                 Poll::Pending => return Poll::Pending,
             };
-            self.last_inbound = Instant::now();
-            match message {
-                Message::Text(text) => match Update::from_json(&text) {
-                    Ok(update) => return Poll::Ready(Some(Ok(update))),
-                    // An answer nobody is waiting for, such as one to a
-                    // request whose caller gave up.
-                    Err(_) if Answer::parse(&text).is_some() => continue,
-                    Err(err) => return Poll::Ready(Some(Err(err))),
-                },
-                Message::Close(frame) => {
-                    tracing::debug!(?frame, "binance stream closed by the server");
-                    self.record_close(frame);
-                    return Poll::Ready(None);
-                }
-                // Pings are answered by tungstenite while it reads; pongs only
-                // refresh `last_inbound`.
-                _ => continue,
+            // The connection yields Text and Binary only; a Binary frame is
+            // not part of Binance's protocol (D12).
+            let Message::Text(text) = message else {
+                continue;
+            };
+            match Update::from_json(&text) {
+                Ok(update) => return Poll::Ready(Some(Ok(update))),
+                // An answer nobody is waiting for, such as one to a request
+                // whose caller gave up.
+                Err(_) if Answer::parse(&text).is_some() => continue,
+                Err(err) => return Poll::Ready(Some(Err(err))),
             }
         }
     }
@@ -422,8 +358,8 @@ mod tests {
         ws::{
             event::Payload,
             fixtures,
+            scripted::{Script, ScriptedServer},
             stream::{DepthLevels, DepthSpeed},
-            test_server::{Script, ScriptedServer},
         },
     };
 
@@ -569,6 +505,29 @@ mod tests {
             matches!(err, UsdmWsError::Connect(_) | UsdmWsError::Closed { .. }),
             "{err:?}"
         );
+    }
+
+    #[tokio::test]
+    async fn a_server_close_is_answered_with_the_close_reply_drift_r3() {
+        // DRIFT R3: RFC 6455's close reply. tungstenite queues it as it reads
+        // the close and sends it only on a later read or flush, which a
+        // stream that has ended never makes.
+        let server = ScriptedServer::start(vec![Script {
+            close_after: true,
+            close_code: Some((1011, "Internal error".into())),
+            ..Default::default()
+        }])
+        .await;
+        let mut ws = UsdmWs::connect_to(&server.url, StreamPath::Market, [agg("BTCUSDT")])
+            .await
+            .unwrap();
+        assert!(ws.next().await.is_none());
+        // Held open and never read again, as a caller that saw the end
+        // would leave it.
+        server
+            .wait_for("the close reply", |s| s.close_reply_count() == 1)
+            .await;
+        drop(ws);
     }
 
     #[tokio::test]

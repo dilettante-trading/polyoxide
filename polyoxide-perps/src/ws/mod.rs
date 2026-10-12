@@ -2,48 +2,71 @@
 //!
 //! One multiplexed connection to [`WS_URL`]. Requests are
 //! `{ "id", "req": "sub" | "unsub" | "post", … }`; push frames are
-//! `{ "ch", "ts", "ets", "sq", "data" }`. The server closes a connection after
-//! 60 s without an inbound message, so a bare [`PerpsWs`] needs its caller to
-//! [`ping`](PerpsWs::ping); [`SupervisedPerpsWs`] does that itself and also
-//! reconnects.
+//! `{ "ch", "ts", "ets", "sq", "data" }`. The server sends a protocol Ping
+//! every 10 s and closes a connection that stops answering them
+//! (`1011 pong_timeout`, after about 70 s); the pongs go out while the
+//! connection is read, so a bare [`PerpsWs`] must be read steadily.
+//! [`SupervisedPerpsWs`] reads it, sends the application ping on the wall
+//! clock and also reconnects.
 //! Everything the published AsyncAPI gets wrong about the wire is in
 //! `docs/specs/perps/OBSERVED.md`.
 
+mod builder;
 pub mod channel;
 pub mod client;
 pub mod error;
 pub mod event;
 pub mod frame;
-pub mod supervised;
-#[cfg(any(test, feature = "test-server"))]
-#[doc(hidden)]
-pub mod test_server;
+mod protocol;
+#[cfg(test)]
+mod scripted;
 
+pub use builder::PerpsWsBuilder;
 pub use channel::{Channel, StreamDepth};
 pub use client::PerpsWs;
-pub use error::{PerpsWsError, Recovery, Refusal};
+pub use error::{PerpsWsError, Refusal};
 pub use event::{Event, Frame, Payload, Update};
 pub use frame::{BboData, BookData, StatisticsData, TickerData, TradeData};
-pub use supervised::{MembershipHandle, PerpsWsBuilder, SupervisedPerpsWs};
+pub use protocol::{MembershipChange, PerpsMembership, PerpsProtocol};
+
+/// A supervised connection: a `Stream` of [`Event`]s that survives drops and
+/// stalls by reconnecting and replaying its subscriptions, run by the kit's
+/// `Supervisor` on [`PerpsProtocol`]. Build one with [`PerpsWsBuilder`].
+///
+/// It keeps the application ping going on the wall clock, even while the
+/// consumer is behind; the queue holds 1024 unread events, after which the
+/// task reads nothing more until the consumer catches up, and that wait does
+/// not count as silence. Reading nothing, it answers none of the host's
+/// protocol Pings either, so a queue left full for over about 70 s may be
+/// closed by the host with `1011`, and the stream reconnects, with no event
+/// lost. It ends after an error it cannot recover from,
+/// which it yields first; a frame that did not decode is yielded as an error
+/// and does not end it. Change its channels through
+/// [`membership`](polyoxide_ws::Supervised::membership) and
+/// [`PerpsMembership`], from a task other than the one reading the stream.
+///
+/// ```no_run
+/// use futures_util::StreamExt;
+/// use polyoxide_perps::{types::InstrumentId, ws::{Channel, Event, PerpsMembership, PerpsWsBuilder}};
+///
+/// # async fn example() -> Result<(), polyoxide_perps::ws::PerpsWsError> {
+/// let mut ws = PerpsWsBuilder::new().connect([Channel::Book(InstrumentId(1), Default::default())]).await?;
+/// let membership = ws.membership();
+/// while let Some(event) = ws.next().await {
+///     match event? {
+///         Event::Update(update) => println!("{} sq={}", update.channel, update.sq),
+///         Event::Reconnected | Event::SequenceRegressed { .. } => println!("resync the book"),
+///         _ => {}
+///     }
+/// }
+/// # membership.subscribe([Channel::Bbo(InstrumentId(2))]).await?;
+/// # Ok(())
+/// # }
+/// ```
+pub type SupervisedPerpsWs = polyoxide_ws::Supervised<PerpsProtocol>;
 
 /// The production WebSocket endpoint.
 pub const WS_URL: &str = "wss://ws.perpetuals.polymarket.com/v1/ws";
-
-/// Make sure rustls has a default `CryptoProvider` before opening a connection.
-///
-/// A deliberate twin of the same function in `polyoxide-rtds` and
-/// `polyoxide-clob`: `tokio-tungstenite` builds its TLS config from the
-/// process-wide default provider, and rustls installs one automatically only
-/// when exactly one backend feature is enabled. With `ring` and `aws-lc-rs`
-/// both in the graph it installs neither and panics inside `connect_async`.
-/// `install_default` returns `Err` when a provider is already set, so crates
-/// racing is a no-op.
-pub(crate) fn ensure_crypto_provider() {
-    static INSTALL: std::sync::Once = std::sync::Once::new();
-    INSTALL.call_once(|| {
-        let _ = rustls::crypto::ring::default_provider().install_default();
-    });
-}
 
 /// Parse one text frame as the stream would. For the crate's own
 /// integration tests; not API.

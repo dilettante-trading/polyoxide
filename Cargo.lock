@@ -4020,13 +4020,12 @@ dependencies = [
  "polyoxide-core",
  "polyoxide-test-support",
  "polyoxide-venue",
+ "polyoxide-ws",
  "rust_decimal",
- "rustls",
  "serde",
  "serde_json",
  "thiserror 2.0.18",
  "tokio",
- "tokio-tungstenite",
  "tracing",
  "tracing-subscriber",
  "url",
@@ -4075,15 +4074,14 @@ dependencies = [
  "polyoxide-relay",
  "polyoxide-test-support",
  "polyoxide-venue",
+ "polyoxide-ws",
  "rand 0.9.4",
  "rust_decimal",
  "rust_decimal_macros",
- "rustls",
  "serde",
  "serde_json",
  "thiserror 2.0.18",
  "tokio",
- "tokio-tungstenite",
  "tracing",
  "tracing-subscriber",
  "url",
@@ -4159,13 +4157,12 @@ dependencies = [
  "polyoxide-core",
  "polyoxide-test-support",
  "polyoxide-venue",
+ "polyoxide-ws",
  "rust_decimal",
- "rustls",
  "serde",
  "serde_json",
  "thiserror 2.0.18",
  "tokio",
- "tokio-tungstenite",
  "tracing",
  "url",
 ]
@@ -4214,13 +4211,12 @@ dependencies = [
  "futures-util",
  "polyoxide-test-support",
  "polyoxide-venue",
+ "polyoxide-ws",
  "rust_decimal",
- "rustls",
  "serde",
  "serde_json",
  "thiserror 2.0.18",
  "tokio",
- "tokio-tungstenite",
  "tracing",
  "tracing-subscriber",
  "url",
@@ -4233,12 +4229,11 @@ dependencies = [
  "futures-util",
  "polyoxide-test-support",
  "polyoxide-venue",
- "rustls",
+ "polyoxide-ws",
  "serde",
  "serde_json",
  "thiserror 2.0.18",
  "tokio",
- "tokio-tungstenite",
  "tracing",
 ]
 
@@ -4262,9 +4257,23 @@ dependencies = [
 name = "polyoxide-venue"
 version = "0.38.2"
 dependencies = [
+ "polyoxide-ws",
  "rust_decimal",
  "serde",
  "serde_json",
+]
+
+[[package]]
+name = "polyoxide-ws"
+version = "0.38.2"
+dependencies = [
+ "futures-util",
+ "rustls",
+ "serde_json",
+ "thiserror 2.0.18",
+ "tokio",
+ "tokio-tungstenite",
+ "tracing",
 ]
 
 [[package]]

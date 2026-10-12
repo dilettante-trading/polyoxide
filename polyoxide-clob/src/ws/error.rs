@@ -1,13 +1,18 @@
-use polyoxide_venue::{class_for_handshake_status, Class, Classify};
+use polyoxide_venue::{Class, Classify};
+use polyoxide_ws::WsError;
 use thiserror::Error;
-use tokio_tungstenite::tungstenite;
+
+polyoxide_venue::impl_ws_classification!();
 
 /// WebSocket-specific errors.
 #[derive(Debug, Error)]
+#[non_exhaustive]
 pub enum WebSocketError {
-    /// WebSocket connection error
+    /// The connection could not be opened, or failed mid-stream: the kit's
+    /// one socket error, read through its [`Kind`](polyoxide_ws::Kind). A
+    /// connect that timed out is [`ConnectTimeout`](Self::ConnectTimeout).
     #[error("WebSocket connection error: {0}")]
-    Connection(Box<tokio_tungstenite::tungstenite::Error>),
+    Connection(#[from] WsError),
 
     /// JSON serialization/deserialization error
     #[error("JSON error: {0}")]
@@ -46,44 +51,32 @@ pub enum WebSocketError {
     MembershipClosed,
 }
 
-impl From<tokio_tungstenite::tungstenite::Error> for WebSocketError {
-    fn from(err: tokio_tungstenite::tungstenite::Error) -> Self {
-        WebSocketError::Connection(Box::new(err))
-    }
-}
-
-/// A transport failure, by the socket table: a refused upgrade by its status,
-/// misuse and a bad URL or TLS name an `InvalidRequest`, and everything else,
-/// an I/O or protocol error or a closed connection, `Network`.
-fn transport_class(err: &tungstenite::Error) -> Class {
-    use tungstenite::Error as Ws;
-    match err {
-        Ws::Http(response) => class_for_handshake_status(response.status().as_u16()),
-        Ws::Url(_)
-        | Ws::HttpFormat(_)
-        | Ws::Tls(_)
-        | Ws::AttackAttempt
-        | Ws::Capacity(_)
-        | Ws::AlreadyClosed => Class::InvalidRequest,
-        // Io (a TLS EOF included), Protocol, ConnectionClosed,
-        // WriteBufferFull, Utf8 and any later variant.
-        _ => Class::Network,
-    }
-}
-
-/// The transport by the socket table, a frame that did not parse a `Decode`,
-/// a refused login `Unauthorized`, and the client's own refusals an
-/// `InvalidRequest`.
+/// The transport by the one socket table
+/// (`polyoxide_venue::impl_ws_classification!`), whose only non-fault is an
+/// upgrade refused with 451 and whose wait is a refusal's `Retry-After`, a
+/// timeout `Network`, a frame that did not parse a `Decode`, a refused login
+/// `Unauthorized`, and the client's own refusals an `InvalidRequest`.
 impl Classify for WebSocketError {
     fn class(&self) -> Class {
         match self {
-            Self::Connection(err) => transport_class(err),
+            Self::Connection(err) => ws_class(err),
             Self::Json(_) => Class::Decode,
             Self::ConnectionClosed | Self::ConnectTimeout { .. } => Class::Network,
             Self::Authentication(_) => Class::Unauthorized,
             Self::InvalidMessage(_) | Self::Url(_) | Self::MembershipClosed => {
                 Class::InvalidRequest
             }
+        }
+    }
+
+    fn is_fault(&self) -> bool {
+        !matches!(self, Self::Connection(err) if !ws_is_fault(err))
+    }
+
+    fn retry_after(&self) -> Option<std::time::Duration> {
+        match self {
+            Self::Connection(err) => ws_retry_after(err),
+            _ => self.class().retry_after(),
         }
     }
 }
@@ -93,10 +86,15 @@ mod tests {
     use std::time::Duration;
 
     use super::*;
-    use tungstenite::{error, http, Message};
+    use polyoxide_ws::tungstenite::{self, error, http, Message};
 
     fn handshake(status: u16) -> tungstenite::Error {
         tungstenite::Error::Http(http::Response::builder().status(status).body(None).unwrap())
+    }
+
+    /// A transport failure as the connection reports it, through the kit.
+    fn transport(err: tungstenite::Error) -> WebSocketError {
+        WebSocketError::from(WsError::from(err))
     }
 
     #[test]
@@ -142,21 +140,59 @@ mod tests {
             (handshake(200), Class::Decode),
         ];
         for (err, class) in rows {
-            let err = WebSocketError::from(err);
+            let err = transport(err);
             assert_eq!(err.class(), class, "{err:?}");
             assert!(err.is_fault(), "{err:?}");
             assert_eq!(err.retry_after(), None, "{err:?}");
         }
     }
 
+    /// A refused upgrade with these headers, as the connection reports it.
+    fn refused(status: u16, headers: &[(&str, &str)]) -> WebSocketError {
+        let mut response = http::Response::builder().status(status);
+        for (name, value) in headers {
+            response = response.header(*name, *value);
+        }
+        transport(tungstenite::Error::Http(response.body(None).unwrap()))
+    }
+
+    #[test]
+    fn a_451_refusal_is_restricted_and_not_a_fault() {
+        // A region the venue does not serve answers as designed, as a 451 is
+        // on every HTTP client in the workspace; a 418 ban stays a fault.
+        let err = refused(451, &[]);
+        assert_eq!(err.class(), Class::Restricted);
+        assert!(!err.is_fault(), "{err:?}");
+        assert!(refused(418, &[]).is_fault());
+    }
+
+    #[test]
+    fn a_429_refusal_carries_its_retry_after() {
+        let err = refused(429, &[("Retry-After", "30")]);
+        assert_eq!(
+            err.class(),
+            Class::RateLimited {
+                retry_after: Some(Duration::from_secs(30))
+            }
+        );
+        assert_eq!(err.retry_after(), Some(Duration::from_secs(30)));
+        assert!(err.is_retriable());
+    }
+
+    #[test]
+    fn a_503_refusal_surfaces_its_retry_after() {
+        // As HTTP's errors do for every status; only a 429's class carries
+        // the wait.
+        let err = refused(503, &[("Retry-After", "30")]);
+        assert_eq!(err.class(), Class::Unavailable { code: None });
+        assert_eq!(err.retry_after(), Some(Duration::from_secs(30)));
+    }
+
     #[test]
     fn every_variant_classifies() {
         let json = serde_json::from_str::<u8>("x").unwrap_err();
         let rows = [
-            (
-                WebSocketError::from(handshake(503)),
-                Class::Unavailable { code: None },
-            ),
+            (transport(handshake(503)), Class::Unavailable { code: None }),
             (WebSocketError::Json(json), Class::Decode),
             (WebSocketError::ConnectionClosed, Class::Network),
             (

@@ -8,13 +8,17 @@ use futures_util::StreamExt;
 use polyoxide_binance::usdm::{
     types::Symbol,
     ws::{
-        fixtures,
-        test_server::{Script, ScriptedServer},
-        DepthLevels, DepthSpeed, Event, StreamName, StreamPath, SupervisedUsdmWs, UsdmWsBuilder,
-        UsdmWsError,
+        fixtures, DepthLevels, DepthSpeed, Event, StreamName, StreamPath, SupervisedUsdmWs,
+        UsdmWsBuilder, UsdmWsError,
     },
 };
 use tokio::time::Instant;
+
+// Binance's answer on the shared scripted server, as the unit tests use it.
+#[path = "../src/usdm/ws/scripted.rs"]
+mod scripted;
+
+use scripted::{Script, ScriptedServer};
 
 fn symbol(s: &str) -> Symbol {
     Symbol::new(s).unwrap()

@@ -1,18 +1,17 @@
 //! The bare tier: one socket, control methods, a `Stream` of frames.
 
 use std::{
-    collections::VecDeque,
     pin::Pin,
     task::{Context, Poll},
 };
 
-use futures_util::{SinkExt, Stream, StreamExt};
-use tokio::net::TcpStream;
-use tokio_tungstenite::{connect_async, tungstenite::Message, MaybeTlsStream, WebSocketStream};
+use futures_util::{Stream, StreamExt};
+use polyoxide_ws::{
+    connect, tungstenite::Message, Connection, Correlated, Kind, Mode, DEFAULT_CONNECT_TIMEOUT,
+};
 
 use crate::ws::{
     channel::Channel,
-    ensure_crypto_provider,
     error::{PerpsWsError, Refusal, NO_REASON},
     event::Frame,
     frame::{Incoming, Request, Response},
@@ -21,18 +20,102 @@ use crate::ws::{
 
 /// Which way a control request changes membership.
 #[derive(Debug, Clone, Copy)]
-enum Membership {
-    Add,
-    Remove,
+pub(crate) enum Control {
+    Subscribe,
+    Unsubscribe,
+}
+
+/// What the server answered to a control request, channel by channel.
+#[derive(Debug)]
+pub(crate) struct Answered {
+    /// The channels it accepted, in request order.
+    pub accepted: Vec<Channel>,
+    /// The channels it refused, with its identifiers.
+    pub refused: Vec<Refusal>,
+}
+
+/// Send the request `build` writes for the connection's next id, and read
+/// until its response, keeping every other frame for the stream.
+///
+/// A server close while waiting is [`PerpsWsError::ConnectionClosed`], as
+/// before the kit; any other failure is the transport's.
+pub(crate) async fn request(
+    connection: &mut Connection,
+    build: impl FnOnce(u64) -> Request,
+) -> Result<(u64, Response), PerpsWsError> {
+    connection
+        .request(
+            |id| {
+                let request = serde_json::to_string(&build(id)).expect("request serialises");
+                Message::Text(request.into())
+            },
+            |id, frame| match frame {
+                Message::Text(text) => match Incoming::parse(text) {
+                    Ok(Incoming::Response(response)) if response.id == Some(id) => {
+                        Correlated::Answer((id, response))
+                    }
+                    // A push, a frame that does not parse, or an answer
+                    // nobody awaits: the stream decides what each is.
+                    _ => Correlated::Push,
+                },
+                _ => Correlated::Push,
+            },
+        )
+        .await
+        .map_err(|err| match err.kind() {
+            Kind::Closed { .. } => PerpsWsError::ConnectionClosed,
+            _ => PerpsWsError::Connection(err),
+        })
+}
+
+/// Subscribe or unsubscribe `channels`, and read the per-channel answer.
+pub(crate) async fn control(
+    connection: &mut Connection,
+    control: Control,
+    channels: &[Channel],
+) -> Result<Answered, PerpsWsError> {
+    let names: Vec<String> = channels.iter().map(ToString::to_string).collect();
+    let (id, response) = request(connection, |id| match control {
+        Control::Subscribe => Request::subscribe(id, &names),
+        Control::Unsubscribe => Request::unsubscribe(id, &names),
+    })
+    .await?;
+    let malformed = || PerpsWsError::Response {
+        id,
+        raw: response.data.to_string(),
+    };
+    let statuses = response.statuses().map_err(|_| malformed())?;
+    if statuses.len() != names.len() {
+        return Err(malformed());
+    }
+    let mut answered = Answered {
+        accepted: Vec::new(),
+        refused: Vec::new(),
+    };
+    for (channel, status) in channels.iter().zip(&statuses) {
+        if status.is_ok() {
+            answered.accepted.push(*channel);
+        } else {
+            answered.refused.push(Refusal {
+                channel: *channel,
+                reason: status.error.clone().unwrap_or_else(|| NO_REASON.to_owned()),
+            });
+        }
+    }
+    Ok(answered)
 }
 
 /// A bare connection to the public channels.
 ///
-/// The server closes a connection after 60 s without an inbound message, so
-/// a caller must call [`ping`](Self::ping) periodically or use the
-/// supervised tier. Control methods (`subscribe`, `unsubscribe`, `ping`)
+/// The server sends a protocol Ping every 10 s and closes a connection that
+/// stops answering them (`1011 pong_timeout`, after about 70 s). The pongs go
+/// out while the stream is read, so read it steadily, or use the supervised
+/// tier, which also sends the application [`ping`](Self::ping) on the wall
+/// clock and reconnects. Control methods (`subscribe`, `unsubscribe`, `ping`)
 /// send a request and read until its correlated response arrives; any push
 /// frames read meanwhile are buffered and yielded by the stream afterwards.
+/// A connect gives up after 10 s (DRIFT R2), and the server's close is
+/// answered with the RFC 6455 close reply (DRIFT R3).
 ///
 /// ```no_run
 /// use futures_util::StreamExt;
@@ -49,18 +132,16 @@ enum Membership {
 /// # }
 /// ```
 pub struct PerpsWs {
-    inner: WebSocketStream<MaybeTlsStream<TcpStream>>,
+    connection: Connection,
     channels: Vec<Channel>,
-    next_id: u64,
-    buffered: VecDeque<Result<Frame, PerpsWsError>>,
 }
 
 impl std::fmt::Debug for PerpsWs {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         f.debug_struct("PerpsWs")
             .field("channels", &self.channels)
-            .field("next_id", &self.next_id)
-            .field("buffered", &self.buffered.len())
+            .field("next_id", &self.connection.next_id())
+            .field("connection", &self.connection)
             .finish_non_exhaustive()
     }
 }
@@ -73,8 +154,8 @@ impl PerpsWs {
         Self::connect_to(WS_URL, channels).await
     }
 
-    /// Connect to a specific endpoint. Crate-internal: the supervised tier
-    /// reconnects through it and tests point it at a local server.
+    /// Connect to a specific endpoint, within the kit's default connect
+    /// timeout. Crate-internal: tests point it at a local server.
     pub(crate) async fn connect_to(
         url: &str,
         channels: impl IntoIterator<Item = Channel>,
@@ -83,13 +164,10 @@ impl PerpsWs {
         if channels.is_empty() {
             return Err(PerpsWsError::EmptySubscription);
         }
-        ensure_crypto_provider();
-        let (inner, _) = connect_async(url).await?;
+        let socket = connect(url, DEFAULT_CONNECT_TIMEOUT).await?;
         let mut ws = Self {
-            inner,
+            connection: Connection::new(socket, Mode::Data),
             channels: Vec::new(),
-            next_id: 1,
-            buffered: VecDeque::new(),
         };
         ws.subscribe(channels).await?;
         Ok(ws)
@@ -104,7 +182,7 @@ impl PerpsWs {
         &mut self,
         channels: impl IntoIterator<Item = Channel>,
     ) -> Result<(), PerpsWsError> {
-        self.control(Membership::Add, channels.into_iter().collect())
+        self.control(Control::Subscribe, channels.into_iter().collect())
             .await
     }
 
@@ -113,67 +191,42 @@ impl PerpsWs {
         &mut self,
         channels: impl IntoIterator<Item = Channel>,
     ) -> Result<(), PerpsWsError> {
-        self.control(Membership::Remove, channels.into_iter().collect())
+        self.control(Control::Unsubscribe, channels.into_iter().collect())
             .await
     }
 
     async fn control(
         &mut self,
-        change: Membership,
+        change: Control,
         channels: Vec<Channel>,
     ) -> Result<(), PerpsWsError> {
         if channels.is_empty() {
             return Ok(());
         }
-        let names: Vec<String> = channels.iter().map(ToString::to_string).collect();
-        let id = self.take_id();
-        let request = match change {
-            Membership::Add => Request::subscribe(id, &names),
-            Membership::Remove => Request::unsubscribe(id, &names),
-        };
-        self.send(&request).await?;
-        let response = self.await_response(id).await?;
-        let statuses = response.statuses().map_err(|_| PerpsWsError::Response {
-            id,
-            raw: response.data.to_string(),
-        })?;
-        if statuses.len() != names.len() {
-            return Err(PerpsWsError::Response {
-                id,
-                raw: response.data.to_string(),
-            });
-        }
-        let mut refused = Vec::new();
-        for (channel, status) in channels.iter().zip(&statuses) {
-            if status.is_ok() {
-                match change {
-                    Membership::Add => {
-                        if !self.channels.contains(channel) {
-                            self.channels.push(*channel);
-                        }
+        let answered = control(&mut self.connection, change, &channels).await?;
+        for channel in answered.accepted {
+            match change {
+                Control::Subscribe => {
+                    if !self.channels.contains(&channel) {
+                        self.channels.push(channel);
                     }
-                    Membership::Remove => self.channels.retain(|c| c != channel),
                 }
-            } else {
-                refused.push(Refusal {
-                    channel: *channel,
-                    reason: status.error.clone().unwrap_or_else(|| NO_REASON.to_owned()),
-                });
+                Control::Unsubscribe => self.channels.retain(|c| *c != channel),
             }
         }
-        if refused.is_empty() {
+        if answered.refused.is_empty() {
             Ok(())
         } else {
-            Err(PerpsWsError::Refused { refused })
+            Err(PerpsWsError::Refused {
+                refused: answered.refused,
+            })
         }
     }
 
     /// Send the application ping and wait for the pong, returning the
     /// server's sequence stamp from it when present.
     pub async fn ping(&mut self) -> Result<Option<u64>, PerpsWsError> {
-        let id = self.take_id();
-        self.send(&Request::ping(id)).await?;
-        let response = self.await_response(id).await?;
+        let (id, response) = request(&mut self.connection, Request::ping).await?;
         let pong = response.pong().map_err(|_| PerpsWsError::Response {
             id,
             raw: response.data.to_string(),
@@ -190,7 +243,7 @@ impl PerpsWs {
 
     /// Close the connection.
     pub async fn close(&mut self) -> Result<(), PerpsWsError> {
-        self.inner.close(None).await?;
+        self.connection.close().await?;
         Ok(())
     }
 
@@ -198,43 +251,18 @@ impl PerpsWs {
     pub fn channels(&self) -> &[Channel] {
         &self.channels
     }
+}
 
-    fn take_id(&mut self) -> u64 {
-        let id = self.next_id;
-        self.next_id += 1;
-        id
-    }
-
-    async fn send(&mut self, request: &Request) -> Result<(), PerpsWsError> {
-        let text = serde_json::to_string(request).expect("request serialises");
-        self.inner.send(Message::Text(text.into())).await?;
-        Ok(())
-    }
-
-    /// Read until the response with `id` arrives, parking pushes meanwhile.
-    async fn await_response(&mut self, id: u64) -> Result<Response, PerpsWsError> {
-        loop {
-            match self.inner.next().await {
-                None => return Err(PerpsWsError::ConnectionClosed),
-                Some(Err(err)) => return Err(err.into()),
-                Some(Ok(Message::Text(text))) => match Incoming::parse(&text) {
-                    Ok(Incoming::Response(response)) if response.id == Some(id) => {
-                        return Ok(response)
-                    }
-                    Ok(Incoming::Response(other)) => {
-                        tracing::debug!(?other.id, "uncorrelated response while awaiting {id}");
-                    }
-                    Ok(Incoming::Push(push)) => {
-                        self.buffered.push_back(Frame::from_push(push, &text))
-                    }
-                    Err(_) => self.buffered.push_back(Err(PerpsWsError::Unrecognised {
-                        raw: text.to_string(),
-                    })),
-                },
-                Some(Ok(Message::Close(_))) => return Err(PerpsWsError::ConnectionClosed),
-                Some(Ok(_)) => continue,
-            }
-        }
+/// Decode one text frame as the stream yields it: a push, `None` for a
+/// response nobody is waiting for (a late pong, or a reply to a request the
+/// caller abandoned), or an error for a frame that is neither.
+pub(crate) fn decode_text(text: &str) -> Option<Result<Frame, PerpsWsError>> {
+    match Incoming::parse(text) {
+        Ok(Incoming::Push(push)) => Some(Frame::from_push(push, text)),
+        Ok(Incoming::Response(_)) => None,
+        Err(_) => Some(Err(PerpsWsError::Unrecognised {
+            raw: text.to_owned(),
+        })),
     }
 }
 
@@ -242,27 +270,19 @@ impl Stream for PerpsWs {
     type Item = Result<Frame, PerpsWsError>;
 
     fn poll_next(mut self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<Option<Self::Item>> {
-        if let Some(parked) = self.buffered.pop_front() {
-            return Poll::Ready(Some(parked));
-        }
         loop {
-            return match self.inner.poll_next_unpin(cx) {
-                Poll::Ready(Some(Ok(Message::Text(text)))) => match Incoming::parse(&text) {
-                    Ok(Incoming::Push(push)) => Poll::Ready(Some(Frame::from_push(push, &text))),
-                    // A response nobody is waiting for: a late pong, or a
-                    // reply to a request the caller abandoned.
-                    Ok(Incoming::Response(_)) => continue,
-                    Err(_) => Poll::Ready(Some(Err(PerpsWsError::Unrecognised {
-                        raw: text.to_string(),
-                    }))),
+            return match self.connection.poll_next_unpin(cx) {
+                Poll::Ready(Some(Ok(Message::Text(text)))) => match decode_text(&text) {
+                    Some(item) => Poll::Ready(Some(item)),
+                    None => continue,
                 },
-                Poll::Ready(Some(Ok(Message::Close(frame)))) => {
-                    tracing::debug!(?frame, "perps WebSocket closed by the server");
+                // A Binary frame is not part of the protocol (D12).
+                Poll::Ready(Some(Ok(_))) => continue,
+                Poll::Ready(Some(Err(err))) => Poll::Ready(Some(Err(PerpsWsError::from(err)))),
+                Poll::Ready(None) => {
+                    tracing::debug!(closed = ?self.connection.closed(), "perps WebSocket ended");
                     Poll::Ready(None)
                 }
-                Poll::Ready(Some(Ok(_))) => continue,
-                Poll::Ready(Some(Err(err))) => Poll::Ready(Some(Err(err.into()))),
-                Poll::Ready(None) => Poll::Ready(None),
                 Poll::Pending => Poll::Pending,
             };
         }
@@ -276,18 +296,19 @@ mod tests {
         types::InstrumentId,
         ws::{
             event::Payload,
-            test_server::{Script, ScriptedServer},
+            scripted::{self, Script},
+            PerpsProtocol,
         },
     };
     use futures_util::StreamExt;
-    use tokio_tungstenite::tungstenite::Message;
+    use polyoxide_ws::{tungstenite::Message, Protocol};
 
     const BBO: &str = r#"{"ch":"bbo::1","ts":1,"ets":1,"sq":10,"data":{"iid":1,"bp":"1","bq":"1","ap":"2","aq":"1"}}"#;
     const FILLS: &str = r#"{"ch":"fills","ts":1,"sq":11,"data":{}}"#;
 
     #[tokio::test]
     async fn connect_subscribes_and_yields_pushes_in_order() {
-        let server = ScriptedServer::start(vec![Script {
+        let server = scripted::start(vec![Script {
             pushes: vec![BBO.into(), FILLS.into()],
             ..Default::default()
         }])
@@ -297,7 +318,7 @@ mod tests {
             .expect("connect");
         assert_eq!(ws.channels(), &[Channel::Bbo(InstrumentId(1))]);
         assert_eq!(
-            server.subscriptions(),
+            server.first_frames(),
             vec![r#"{"id":1,"req":"sub","chs":["bbo::1"]}"#.to_owned()]
         );
 
@@ -314,7 +335,7 @@ mod tests {
 
     #[tokio::test]
     async fn a_refused_channel_fails_connect_with_the_identifier() {
-        let server = ScriptedServer::start(vec![Script {
+        let server = scripted::start(vec![Script {
             refuse: vec![("bbo::1".into(), "invalid channel".into())],
             ..Default::default()
         }])
@@ -343,7 +364,7 @@ mod tests {
         // The server sends its pushes right after the subscribe response, so
         // by the time the ping goes out they are already in flight ahead of
         // the pong. `ping` must park them and the stream must yield them.
-        let server = ScriptedServer::start(vec![Script {
+        let server = scripted::start(vec![Script {
             pushes: vec![BBO.into(), BBO.into()],
             ..Default::default()
         }])
@@ -364,7 +385,7 @@ mod tests {
 
     #[tokio::test]
     async fn a_pong_carries_the_servers_sequence() {
-        let server = ScriptedServer::start(vec![Script::default()]).await;
+        let server = scripted::start(vec![Script::default()]).await;
         let mut ws = PerpsWs::connect_to(&server.url, [Channel::Bbo(InstrumentId(1))])
             .await
             .unwrap();
@@ -373,7 +394,7 @@ mod tests {
 
     #[tokio::test]
     async fn subscribe_and_unsubscribe_adjust_membership_and_reach_the_server() {
-        let server = ScriptedServer::start(vec![Script::default()]).await;
+        let server = scripted::start(vec![Script::default()]).await;
         let mut ws = PerpsWs::connect_to(&server.url, [Channel::Bbo(InstrumentId(1))])
             .await
             .unwrap();
@@ -396,7 +417,7 @@ mod tests {
 
     #[tokio::test]
     async fn a_server_close_ends_the_stream() {
-        let server = ScriptedServer::start(vec![Script {
+        let server = scripted::start(vec![Script {
             pushes: vec![BBO.into()],
             close_after: true,
             ..Default::default()
@@ -409,9 +430,49 @@ mod tests {
         assert!(ws.next().await.is_none());
     }
 
+    #[tokio::test(start_paused = true)]
+    async fn a_hung_handshake_times_out_at_ten_seconds_drift_r2() {
+        // DRIFT R2: the connect had no timeout, so a host that accepted TCP
+        // and never upgraded hung it for ever.
+        let server = polyoxide_ws::test_server::ScriptedServer::start(vec![
+            polyoxide_ws::test_server::Script::stall(),
+        ])
+        .await;
+        let err = PerpsWs::connect_to(&server.url, [Channel::Bbo(InstrumentId(1))])
+            .await
+            .unwrap_err();
+        match &err {
+            PerpsWsError::Connection(ws) => assert_eq!(
+                ws.kind(),
+                Kind::ConnectTimeout {
+                    after: std::time::Duration::from_secs(10)
+                }
+            ),
+            other => panic!("expected a connect timeout, got {other:?}"),
+        }
+        let protocol = PerpsProtocol::new(WS_URL.to_owned(), polyoxide_ws::Timing::default());
+        assert_eq!(protocol.recover(&err), polyoxide_ws::Recovery::Reconnect);
+    }
+
+    #[tokio::test]
+    async fn a_server_close_is_answered_with_the_close_reply_drift_r3() {
+        let server = scripted::start(vec![Script {
+            close_after: true,
+            ..Default::default()
+        }])
+        .await;
+        let mut ws = PerpsWs::connect_to(&server.url, [Channel::Bbo(InstrumentId(1))])
+            .await
+            .unwrap();
+        assert!(ws.next().await.is_none());
+        server
+            .wait_for("the close reply", |s| s.close_reply_count() == 1)
+            .await;
+    }
+
     #[tokio::test]
     async fn connecting_with_no_channels_is_refused_locally() {
-        let server = ScriptedServer::start(vec![Script::default()]).await;
+        let server = scripted::start(vec![Script::default()]).await;
         let err = PerpsWs::connect_to(&server.url, []).await.unwrap_err();
         assert!(matches!(err, PerpsWsError::EmptySubscription));
         assert_eq!(server.connection_count(), 0);
@@ -419,7 +480,7 @@ mod tests {
 
     #[tokio::test]
     async fn a_malformed_text_frame_is_an_error_the_stream_survives() {
-        let server = ScriptedServer::start(vec![Script {
+        let server = scripted::start(vec![Script {
             pushes: vec!["not json".into(), BBO.into()],
             ..Default::default()
         }])
@@ -438,7 +499,7 @@ mod tests {
     async fn non_text_frames_are_skipped_and_the_next_push_still_arrives() {
         // A server Ping and a Binary frame are not the end of the stream and
         // not frames either; the text push queued behind them must come out.
-        let server = ScriptedServer::start(vec![Script {
+        let server = scripted::start(vec![Script {
             raw_pushes: vec![
                 Message::Ping(vec![1, 2, 3].into()),
                 Message::Binary(vec![0xff].into()),

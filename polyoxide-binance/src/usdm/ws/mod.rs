@@ -17,16 +17,16 @@ pub mod event;
 #[cfg(any(test, feature = "test-server"))]
 #[doc(hidden)]
 pub mod fixtures;
+mod protocol;
+#[cfg(test)]
+mod scripted;
 pub mod stream;
 pub mod supervised;
-#[cfg(any(test, feature = "test-server"))]
-#[doc(hidden)]
-pub mod test_server;
 
 use std::{fmt, time::Duration};
 
 pub use client::UsdmWs;
-pub use error::{Recovery, UsdmWsError};
+pub use error::{StopCause, UsdmWsError};
 pub use event::{
     AggTradeEvent, BookTickerEvent, KlineBar, KlineEvent, MarkPriceEvent, PartialDepthEvent,
     Payload, SymbolType, TickerEvent, Update,
@@ -80,18 +80,4 @@ impl fmt::Display for StreamPath {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         f.write_str(self.as_str())
     }
-}
-
-/// Make sure rustls has a default `CryptoProvider` before opening a connection.
-///
-/// The fifth twin of the function in `polyoxide-clob`, `-rtds`, `-perps` and
-/// `-sports`: `tokio-tungstenite` builds its TLS config from the process-wide
-/// default provider, and rustls installs one automatically only when exactly
-/// one backend is enabled. With `ring` and `aws-lc-rs` both in the graph it
-/// installs neither and panics inside `connect_async`.
-pub(crate) fn ensure_crypto_provider() {
-    static INSTALL: std::sync::Once = std::sync::Once::new();
-    INSTALL.call_once(|| {
-        let _ = rustls::crypto::ring::default_provider().install_default();
-    });
 }

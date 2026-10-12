@@ -7,13 +7,13 @@
 use std::time::Duration;
 
 use futures_util::StreamExt;
-use polyoxide_sports::{
-    fixtures,
+use polyoxide_sports::{fixtures, Event, SportsError, SportsWsBuilder, SupervisedSportsWs};
+use polyoxide_ws::{
     test_server::{Script, ScriptedServer},
-    Event, SportsError, SportsWsBuilder, SupervisedSportsWs,
+    tungstenite::Message,
+    Kind,
 };
 use tokio::time::{timeout, Instant};
-use tokio_tungstenite::tungstenite::{self, Message};
 
 const STALE: Duration = Duration::from_millis(300);
 const WINDOW: Duration = Duration::from_secs(3);
@@ -87,7 +87,7 @@ async fn protocol_pings_alone_keep_a_quiet_connection_alive() {
 #[tokio::test]
 async fn silence_is_stale_and_the_feed_reconnects() {
     let server = ScriptedServer::start(vec![
-        Script::silent(),
+        Script::hold(),
         Script::pings_only(Duration::from_millis(100)),
     ])
     .await;
@@ -108,7 +108,7 @@ async fn silence_is_stale_and_the_feed_reconnects() {
 async fn the_supervised_feed_answers_pings() {
     let server = ScriptedServer::start(vec![Script {
         send: vec![Message::Ping(b"p1".to_vec().into())],
-        ..Script::silent()
+        ..Script::hold()
     }])
     .await;
     let feed = SportsWsBuilder::new()
@@ -221,7 +221,7 @@ async fn backoff_resets_after_a_connection_that_received_something() {
 async fn a_bad_frame_is_reported_and_the_connection_survives() {
     let server = ScriptedServer::start(vec![Script {
         send: vec![text("not json"), text(fixtures::SOCCER)],
-        ..Script::silent()
+        ..Script::hold()
     }])
     .await;
     let mut feed = builder(&server)
@@ -243,7 +243,7 @@ async fn a_bad_frame_is_reported_and_the_connection_survives() {
 
 #[tokio::test]
 async fn dropping_the_feed_closes_the_socket() {
-    let server = ScriptedServer::start(vec![Script::silent()]).await;
+    let server = ScriptedServer::start(vec![Script::hold()]).await;
     let feed = builder(&server)
         .stale_after(Duration::from_secs(10))
         .connect()
@@ -283,9 +283,9 @@ async fn a_reconnect_refused_for_good_ends_the_stream() {
     assert_eq!(label(next_item(&mut feed).await), "kor");
     assert_eq!(label(next_item(&mut feed).await), "disconnected");
     match next_item(&mut feed).await {
-        Err(SportsError::Connect { source }) => match *source {
-            tungstenite::Error::Http(response) => assert_eq!(response.status(), 404),
-            other => panic!("expected an HTTP refusal, got {other}"),
+        Err(SportsError::Connect { source }) => match source.kind() {
+            Kind::Refused { status, .. } => assert_eq!(status, 404),
+            other => panic!("expected an HTTP refusal, got {other:?}"),
         },
         other => panic!("expected the refusal, got {}", label(other)),
     }
@@ -363,7 +363,7 @@ async fn a_ping_alone_counts_as_having_received_something() {
     let server = ScriptedServer::start(vec![Script {
         send: vec![Message::Ping(b"p".to_vec().into())],
         close_after: true,
-        ..Script::silent()
+        ..Script::hold()
     }])
     .await;
     let feed = SportsWsBuilder::new()

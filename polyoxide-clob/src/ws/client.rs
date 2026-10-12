@@ -5,9 +5,13 @@ use std::{
     time::Duration,
 };
 
-use futures_util::{SinkExt, Stream, StreamExt};
+use futures_util::{Stream, StreamExt};
+use polyoxide_ws::{
+    connect_over,
+    tungstenite::{self, Message},
+    with_timeout, Connection, Kind, Mode, WsError,
+};
 use tokio::net::TcpStream;
-use tokio_tungstenite::{client_async_tls, tungstenite::Message, MaybeTlsStream, WebSocketStream};
 
 use super::{
     auth::ApiCredentials,
@@ -28,28 +32,6 @@ const MAX_SUBSCRIPTIONS_PER_CONNECTION: usize = 500;
 /// run loop. Small on purpose: a caller that outruns the socket should feel
 /// back-pressure rather than buffer membership changes unboundedly.
 const OUTBOUND_QUEUE_DEPTH: usize = 64;
-
-/// Make sure rustls has a default `CryptoProvider` before we open a connection.
-///
-/// `tokio-tungstenite` builds its TLS config from the process-wide default
-/// provider. rustls picks that default automatically only when exactly one
-/// backend feature is enabled — and this dependency graph enables two on a
-/// single shared `rustls`: `ring` arrives with `reqwest 0.12` (used by
-/// `polyoxide-core`) and `aws-lc-rs` with `reqwest 0.13` (pulled in by
-/// `alloy`, a mandatory dependency here). Faced with two candidates rustls
-/// installs neither and panics inside `connect_async`, which made *every*
-/// channel — market and user alike — abort at connect time for any
-/// consumer of this crate.
-///
-/// Installing the default is deliberately best-effort: `install_default`
-/// returns `Err` when one is already set, and in that case the host
-/// application has chosen and we leave its choice alone.
-fn ensure_crypto_provider() {
-    static INSTALL: std::sync::Once = std::sync::Once::new();
-    INSTALL.call_once(|| {
-        let _ = rustls::crypto::ring::default_provider().install_default();
-    });
-}
 
 /// Default per-address connect timeout, overridable via
 /// [`WebSocketBuilder::connect_timeout`].
@@ -72,60 +54,89 @@ fn interleave_address_families(addrs: Vec<SocketAddr>) -> Vec<SocketAddr> {
     }
 }
 
-/// Open a TLS WebSocket connection with a per-address timeout and fallback.
-///
-/// [`tokio_tungstenite::connect_async`] resolves DNS and connects to only the
-/// *first* address, with no timeout of its own — a blackholed route (the
-/// classic broken-IPv6 case) hangs the connect until the OS gives up, if it
-/// ever does. This resolves every address up front, tries each in
-/// family-interleaved order with `connect_timeout` covering its TCP connect
-/// and again its TLS + WebSocket handshake, and falls back to the next
-/// address on any failure.
-async fn connect_ws(
-    url: &str,
-    connect_timeout: Duration,
-) -> Result<WebSocketStream<MaybeTlsStream<TcpStream>>, WebSocketError> {
-    ensure_crypto_provider();
+/// An I/O failure while connecting, as the kit reports a transport's.
+fn io_error(err: std::io::Error) -> WebSocketError {
+    WsError::from(tungstenite::Error::Io(err)).into()
+}
 
+/// A host that resolved to no address: a DNS miss, so a `Network` failure
+/// like any other I/O error, not a refusal of the request.
+fn no_addresses(url: &str) -> WebSocketError {
+    io_error(std::io::Error::new(
+        std::io::ErrorKind::NotFound,
+        format!("no addresses resolved for {url}"),
+    ))
+}
+
+/// Open a TLS WebSocket connection with a per-address timeout and fallback,
+/// read through the kit's [`Connection`] in [`Mode::Data`].
+///
+/// [`polyoxide_ws::connect`] resolves DNS and connects to only the *first*
+/// address — a blackholed route (the classic broken-IPv6 case) burns the
+/// whole timeout there. This resolves every address up front, tries each in
+/// family-interleaved order with `connect_timeout` covering its TCP connect
+/// and again its TLS + WebSocket handshake ([`with_timeout`] around each,
+/// the upgrade through [`connect_over`]), and falls back to the next address
+/// on any failure but a refused upgrade, which it returns at once. This
+/// connect is clob's own (divergence row D20).
+async fn connect_ws(url: &str, connect_timeout: Duration) -> Result<Connection, WebSocketError> {
     let parsed = url::Url::parse(url)?;
     let host = parsed
         .host_str()
         .ok_or_else(|| WebSocketError::InvalidMessage(format!("URL has no host: {url}")))?;
     let port = parsed.port().unwrap_or(443);
 
-    let io_err = |e: std::io::Error| {
-        WebSocketError::Connection(Box::new(tokio_tungstenite::tungstenite::Error::Io(e)))
-    };
     let addrs: Vec<SocketAddr> = tokio::net::lookup_host((host, port))
         .await
-        .map_err(io_err)?
+        .map_err(io_error)?
         .collect();
 
-    let mut last_err = WebSocketError::InvalidMessage(format!("no addresses resolved for {url}"));
-    for addr in interleave_address_families(addrs) {
-        let timeout_err = || WebSocketError::ConnectTimeout {
+    // A step that outlived its bound is clob's own `ConnectTimeout`, which
+    // names the URL and says the timeout is per address and per step.
+    let timed_out = |err: WsError| match err.kind() {
+        Kind::ConnectTimeout { .. } => WebSocketError::ConnectTimeout {
             url: url.to_string(),
             timeout: connect_timeout,
-        };
-        let stream = match tokio::time::timeout(connect_timeout, TcpStream::connect(addr)).await {
+        },
+        _ => WebSocketError::Connection(err),
+    };
+    let mut last_err = no_addresses(url);
+    for addr in interleave_address_families(addrs) {
+        let stream = match with_timeout(connect_timeout, TcpStream::connect(addr)).await {
             Ok(Ok(stream)) => stream,
             Ok(Err(e)) => {
-                last_err = io_err(e);
+                last_err = io_error(e);
                 continue;
             }
-            Err(_) => {
-                last_err = timeout_err();
+            Err(err) => {
+                last_err = timed_out(err);
                 continue;
             }
         };
         // TCP is up; bound the TLS + WebSocket handshake by the same budget.
-        match tokio::time::timeout(connect_timeout, client_async_tls(url, stream)).await {
-            Ok(Ok((ws, _response))) => return Ok(ws),
+        match with_timeout(connect_timeout, connect_over(url, stream)).await {
+            Ok(Ok(socket)) => return Ok(Connection::new(socket, Mode::Data)),
+            // The host answered and refused the upgrade. Another of its
+            // addresses would repeat the refusal, inside a 429's window, and
+            // its own failure would hide this one's status and `Retry-After`.
+            Ok(Err(e)) if matches!(e.kind(), Kind::Refused { .. }) => return Err(e.into()),
             Ok(Err(e)) => last_err = e.into(),
-            Err(_) => last_err = timeout_err(),
+            Err(err) => last_err = timed_out(err),
         }
     }
     Err(last_err)
+}
+
+/// The text a data frame carries. A Binary frame is decoded as text (D12),
+/// since the venue has sent events that way; one that is not UTF-8 carries
+/// none, and is skipped.
+fn frame_text(frame: &Message) -> Option<&str> {
+    match frame {
+        Message::Text(text) => Some(text.as_str()),
+        Message::Binary(data) => std::str::from_utf8(data).ok(),
+        // `Mode::Data` yields only Text and Binary frames.
+        _ => None,
+    }
 }
 
 /// Parse one text frame into a [`Channel`], or `None` if it carries no event.
@@ -199,6 +210,9 @@ fn validate_subscription_count(count: usize) -> Result<(), WebSocketError> {
 /// Provides streaming access to market data (order book, prices) and user-specific
 /// updates (orders, trades).
 ///
+/// The stream ends when the server closes the connection, after answering its
+/// close (RFC 6455), and after the first transport error, which it yields.
+///
 /// # Example
 ///
 /// ```no_run
@@ -217,7 +231,7 @@ fn validate_subscription_count(count: usize) -> Result<(), WebSocketError> {
 /// }
 /// ```
 pub struct WebSocket {
-    inner: WebSocketStream<MaybeTlsStream<TcpStream>>,
+    inner: Connection,
     channel_type: ChannelType,
 }
 
@@ -460,9 +474,10 @@ impl WebSocket {
         Ok(())
     }
 
-    /// Close the WebSocket connection.
+    /// Close the WebSocket connection. After the server closed it, this only
+    /// makes sure the close reply went out, and succeeds.
     pub async fn close(&mut self) -> Result<(), WebSocketError> {
-        self.inner.close(None).await?;
+        self.inner.close().await?;
         Ok(())
     }
 
@@ -482,31 +497,22 @@ impl Stream for WebSocket {
 
     fn poll_next(mut self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<Option<Self::Item>> {
         loop {
-            match Pin::new(&mut self.inner).poll_next(cx) {
-                Poll::Ready(Some(Ok(msg))) => match msg {
-                    Message::Text(text) => match self.parse_message(&text) {
-                        Ok(Some(channel)) => return Poll::Ready(Some(Ok(channel))),
-                        Ok(None) => continue, // Skip PONG, poll again
-                        Err(e) => return Poll::Ready(Some(Err(e))),
-                    },
-                    Message::Binary(data) => {
-                        // Try to parse as text
-                        if let Ok(text) = String::from_utf8(data.to_vec()) {
-                            match self.parse_message(&text) {
-                                Ok(Some(channel)) => return Poll::Ready(Some(Ok(channel))),
-                                Ok(None) => continue,
-                                Err(e) => return Poll::Ready(Some(Err(e))),
-                            }
-                        }
-                        continue;
-                    }
-                    Message::Ping(_) | Message::Pong(_) => continue,
-                    Message::Close(_) => return Poll::Ready(None),
-                    Message::Frame(_) => continue,
-                },
+            // The connection yields only data frames, answers the server's
+            // pings as it reads, and ends after the server's close, whose
+            // reply it has sent (DRIFT R3), or after its first error.
+            let frame = match self.inner.poll_next_unpin(cx) {
+                Poll::Ready(Some(Ok(frame))) => frame,
                 Poll::Ready(Some(Err(e))) => return Poll::Ready(Some(Err(e.into()))),
                 Poll::Ready(None) => return Poll::Ready(None),
                 Poll::Pending => return Poll::Pending,
+            };
+            let Some(text) = frame_text(&frame) else {
+                continue;
+            };
+            match self.parse_message(text) {
+                Ok(Some(channel)) => return Poll::Ready(Some(Ok(channel))),
+                Ok(None) => continue, // Skip PONG, poll again
+                Err(e) => return Poll::Ready(Some(Err(e))),
             }
         }
     }
@@ -656,7 +662,7 @@ impl WebSocketBuilder {
 /// [`MembershipHandle`] via [`membership`](Self::membership) **before** calling
 /// it to change a market subscription while the loop is driving the stream.
 pub struct WebSocketWithPing {
-    inner: WebSocketStream<MaybeTlsStream<TcpStream>>,
+    inner: Connection,
     channel_type: ChannelType,
     ping_interval: Duration,
     outbound_tx: tokio::sync::mpsc::Sender<String>,
@@ -716,11 +722,7 @@ impl MembershipHandle {
 }
 
 impl WebSocketWithPing {
-    fn new(
-        inner: WebSocketStream<MaybeTlsStream<TcpStream>>,
-        channel_type: ChannelType,
-        ping_interval: Duration,
-    ) -> Self {
+    fn new(inner: Connection, channel_type: ChannelType, ping_interval: Duration) -> Self {
         let (outbound_tx, outbound_rx) = tokio::sync::mpsc::channel(OUTBOUND_QUEUE_DEPTH);
         Self {
             inner,
@@ -749,7 +751,8 @@ impl WebSocketWithPing {
     /// - Send ping messages at the configured interval
     /// - Send any subscription update queued through a [`MembershipHandle`]
     /// - Call the provided handler for each received message
-    /// - Return when the connection is closed or an error occurs
+    /// - Return `Ok` when the server closes the connection, after answering
+    ///   its close (RFC 6455), and the error when one occurs
     ///
     /// # Arguments
     ///
@@ -803,29 +806,21 @@ impl WebSocketWithPing {
                 }
                 msg = self.inner.next() => {
                     match msg {
-                        Some(Ok(Message::Text(text))) => {
-                            if text.as_str() == "PONG" {
+                        Some(Ok(frame)) => {
+                            let Some(text) = frame_text(&frame) else {
+                                continue;
+                            };
+                            if text == "PONG" {
                                 continue;
                             }
-                            let channel = self.parse_message(&text)?;
+                            let channel = self.parse_message(text)?;
                             if let Some(channel) = channel {
                                 handler(channel).await?;
                             }
                         }
-                        Some(Ok(Message::Binary(data))) => {
-                            if let Ok(text) = String::from_utf8(data.to_vec()) {
-                                if text == "PONG" {
-                                    continue;
-                                }
-                                let channel = self.parse_message(&text)?;
-                                if let Some(channel) = channel {
-                                    handler(channel).await?;
-                                }
-                            }
-                        }
-                        Some(Ok(Message::Ping(_))) | Some(Ok(Message::Pong(_))) | Some(Ok(Message::Frame(_))) => continue,
-                        Some(Ok(Message::Close(_))) => return Ok(()),
                         Some(Err(e)) => return Err(e.into()),
+                        // The server closed, and its close is answered
+                        // (DRIFT R3), or the stream ended.
                         None => return Ok(()),
                     }
                 }
@@ -904,33 +899,23 @@ mod connect_tests {
         // 192.0.2.0/24 (TEST-NET-1) is guaranteed unrouted, so the connect
         // either blackholes (timeout) or is refused (io error) — never Ok.
         // Either way connect_ws must return promptly instead of hanging.
+        let url = "wss://192.0.2.1/ws";
+        let step = Duration::from_millis(200);
         let started = std::time::Instant::now();
-        let err = connect_ws("wss://192.0.2.1/ws", Duration::from_millis(200))
+        let err = connect_ws(url, step)
             .await
             .expect_err("TEST-NET-1 must not accept connections");
         assert!(
             started.elapsed() < Duration::from_secs(5),
             "connect_ws did not honour the per-address timeout: {err}"
         );
-    }
-}
-
-#[cfg(test)]
-mod crypto_provider_tests {
-    use super::*;
-
-    #[test]
-    fn a_default_crypto_provider_is_available_to_connect() {
-        // Every `connect_*` panicked before this was installed. tokio-tungstenite
-        // builds its rustls `ClientConfig` from the process-wide default
-        // CryptoProvider, and this workspace enables *both* `ring` (via
-        // reqwest 0.12) and `aws-lc-rs` (via alloy's reqwest 0.13) on one
-        // shared rustls. Given two candidates rustls installs neither and
-        // panics — so the whole WebSocket surface aborted at connect time.
-        ensure_crypto_provider();
+        // A blackholed TCP connect is clob's own timeout, per address and
+        // per step; a refused one is an I/O failure.
         assert!(
-            rustls::crypto::CryptoProvider::get_default().is_some(),
-            "no process-default CryptoProvider: every WebSocket connect will panic"
+            matches!(&err, WebSocketError::ConnectTimeout { url: u, timeout }
+                if u == url && *timeout == step)
+                || matches!(&err, WebSocketError::Connection(e) if e.kind() == Kind::Io),
+            "{err:?}"
         );
     }
 }
@@ -1055,95 +1040,271 @@ mod dispatch_tests {
 }
 
 #[cfg(test)]
+mod connection_tests {
+    use std::sync::{Arc, Mutex};
+
+    use polyoxide_venue::{Class, Classify};
+    use polyoxide_ws::test_server::{Script, ScriptedServer};
+
+    use super::*;
+
+    const WINDOW: Duration = Duration::from_secs(3);
+    const BOOK: &str = r#"{"event_type":"book","asset_id":"a","market":"m","timestamp":"1",
+        "hash":"h","bids":[],"asks":[],"last_trade_price":null}"#;
+
+    /// A market-channel `WebSocket` over a plain loopback connection.
+    async fn bare(server: &ScriptedServer) -> WebSocket {
+        WebSocket {
+            inner: connect_ws(&server.url, Duration::from_secs(2))
+                .await
+                .expect("connect"),
+            channel_type: ChannelType::Market,
+        }
+    }
+
+    async fn with_ping(server: &ScriptedServer) -> WebSocketWithPing {
+        let inner = connect_ws(&server.url, Duration::from_secs(2))
+            .await
+            .expect("connect");
+        WebSocketWithPing::new(inner, ChannelType::Market, Duration::from_secs(10))
+    }
+
+    async fn next(ws: &mut WebSocket) -> Option<Result<Channel, WebSocketError>> {
+        tokio::time::timeout(WINDOW, ws.next())
+            .await
+            .expect("an item within the window")
+    }
+
+    /// Run `ws` until it returns, keeping every channel message it handled.
+    async fn run_to_end(ws: WebSocketWithPing) -> (Result<(), WebSocketError>, Vec<Channel>) {
+        let seen = Arc::new(Mutex::new(Vec::new()));
+        let kept = Arc::clone(&seen);
+        let ended = tokio::time::timeout(
+            WINDOW,
+            ws.run(move |channel| {
+                kept.lock().unwrap().push(channel);
+                async { Ok(()) }
+            }),
+        )
+        .await
+        .expect("run returns within the window");
+        let seen = seen.lock().unwrap().drain(..).collect();
+        (ended, seen)
+    }
+
+    #[tokio::test]
+    async fn a_server_close_is_answered_with_the_close_reply_drift_r3() {
+        // RFC 6455 requires the reply. clob's old read path ended on the
+        // close and never read or flushed again, so the reply tungstenite
+        // queued never went out.
+        let server =
+            ScriptedServer::start(vec![Script::close_at_once().close_with(1001, "bye")]).await;
+        let mut ws = bare(&server).await;
+        assert!(
+            next(&mut ws).await.is_none(),
+            "the stream ends on the close"
+        );
+        server
+            .wait_for("the stream's close reply", |s| s.close_reply_count() == 1)
+            .await;
+
+        // `run` returns `Ok` on the close, and has replied to it.
+        let (ended, _) = run_to_end(with_ping(&server).await).await;
+        ended.expect("a server close ends `run` cleanly");
+        server
+            .wait_for("run's close reply", |s| s.close_reply_count() == 2)
+            .await;
+    }
+
+    #[tokio::test]
+    async fn close_after_a_server_close_succeeds() {
+        let server = ScriptedServer::start(vec![Script::close_at_once()]).await;
+        let mut ws = bare(&server).await;
+        assert!(next(&mut ws).await.is_none());
+        ws.close()
+            .await
+            .expect("closing a closed connection succeeds");
+    }
+
+    #[tokio::test]
+    async fn the_stream_ends_after_its_first_error() {
+        // The server drops the TCP connection without a closing handshake.
+        let server = ScriptedServer::start(vec![Script::hold().then_cut()]).await;
+        let mut ws = bare(&server).await;
+        let err = next(&mut ws)
+            .await
+            .expect("the error")
+            .expect_err("a cut connection fails the read");
+        assert_eq!(err.class(), Class::Network, "{err:?}");
+        assert!(next(&mut ws).await.is_none(), "the stream ends after it");
+    }
+
+    #[tokio::test]
+    async fn a_binary_frame_is_decoded_as_text_d12() {
+        let book = || Message::Binary(BOOK.as_bytes().to_vec().into());
+        let server = ScriptedServer::start(vec![Script::messages(vec![book()]).then_close()]).await;
+
+        let mut ws = bare(&server).await;
+        let channel = next(&mut ws).await.expect("an event").expect("it parses");
+        assert!(
+            matches!(channel, Channel::Market(MarketMessage::Book(_))),
+            "{channel:?}"
+        );
+
+        let (ended, seen) = run_to_end(with_ping(&server).await).await;
+        ended.expect("run ends on the close");
+        assert!(
+            matches!(seen.as_slice(), [Channel::Market(MarketMessage::Book(_))]),
+            "{seen:?}"
+        );
+    }
+
+    #[tokio::test]
+    async fn a_hung_handshake_times_out_after_one_steps_timeout() {
+        // The TCP connect succeeds at once; the upgrade never finishes, and
+        // its own step's bound ends it.
+        let server = ScriptedServer::start(vec![Script::stall()]).await;
+        let step = Duration::from_millis(200);
+        let started = std::time::Instant::now();
+        let err = connect_ws(&server.url, step)
+            .await
+            .expect_err("a server that never upgrades must not connect");
+        let elapsed = started.elapsed();
+        assert!(
+            matches!(&err, WebSocketError::ConnectTimeout { url, timeout }
+                if url == &server.url && *timeout == step),
+            "{err:?}"
+        );
+        assert!(elapsed >= step, "timed out early: {elapsed:?}");
+        assert!(elapsed < step * 5, "not bounded by one step: {elapsed:?}");
+        assert_eq!(err.class(), Class::Network);
+    }
+
+    #[tokio::test]
+    async fn a_451_refused_upgrade_is_restricted_and_not_a_fault() {
+        let server = ScriptedServer::start(vec![Script::refuse_upgrade(451)]).await;
+        let err = connect_ws(&server.url, Duration::from_secs(2))
+            .await
+            .expect_err("a refused upgrade must not connect");
+        assert!(matches!(err, WebSocketError::Connection(_)), "{err:?}");
+        assert_eq!(err.class(), Class::Restricted);
+        assert!(!err.is_fault(), "{err:?}");
+    }
+
+    #[tokio::test]
+    async fn a_429_refused_upgrade_carries_its_retry_after() {
+        let server = ScriptedServer::start(vec![
+            Script::refuse_upgrade(429).with_header("Retry-After", "30")
+        ])
+        .await;
+        let err = connect_ws(&server.url, Duration::from_secs(2))
+            .await
+            .expect_err("a refused upgrade must not connect");
+        assert_eq!(
+            err.class(),
+            Class::RateLimited {
+                retry_after: Some(Duration::from_secs(30))
+            }
+        );
+        assert_eq!(err.retry_after(), Some(Duration::from_secs(30)));
+    }
+
+    #[tokio::test]
+    async fn a_wss_connect_reaches_tls_without_panicking() {
+        // clob's graph enables both rustls backends (`ring` through reqwest,
+        // `aws-lc-rs` through alloy), so rustls installs no default provider
+        // by itself, and a TLS connect with none installed panics building
+        // its config. Every other offline connect here is plain `ws://`. The
+        // scripted server speaks no TLS, so the handshake fails, as a
+        // transport error.
+        let server = ScriptedServer::start(vec![Script::hold()]).await;
+        let url = server.url.replacen("ws://", "wss://", 1);
+        let err = connect_ws(&url, Duration::from_secs(2))
+            .await
+            .expect_err("a server that speaks no TLS must not connect");
+        assert!(matches!(err, WebSocketError::Connection(_)), "{err:?}");
+        // Failing to load the roots would stop short of the TLS config.
+        assert!(
+            !err.to_string().to_lowercase().contains("native root"),
+            "{err}"
+        );
+    }
+
+    #[test]
+    fn a_dns_miss_is_a_network_failure() {
+        // A host that resolves to no address was an `InvalidMessage`, an
+        // `InvalidRequest` that nothing retried, though a DNS miss passes.
+        let err = no_addresses("wss://ws-subscriptions-clob.polymarket.com/ws/market");
+        assert!(matches!(err, WebSocketError::Connection(_)), "{err:?}");
+        assert_eq!(err.class(), Class::Network);
+        assert!(err.is_retriable());
+        assert_eq!(
+            err.to_string(),
+            "WebSocket connection error: IO error: no addresses resolved for \
+             wss://ws-subscriptions-clob.polymarket.com/ws/market"
+        );
+    }
+}
+
+#[cfg(test)]
 mod membership_tests {
     use super::*;
-    use futures_util::StreamExt;
-    use std::sync::{
-        atomic::{AtomicUsize, Ordering},
-        Arc,
-    };
-    use tokio::net::TcpListener;
-    use tokio::sync::mpsc;
+    use polyoxide_ws::test_server::{Script, ScriptedServer};
 
-    /// A loopback WebSocket server that records every text frame it receives
-    /// (PINGs excluded) and closes after `expect` of them.
-    async fn recording_server(expect: usize) -> (u16, mpsc::Receiver<String>) {
-        let listener = TcpListener::bind("127.0.0.1:0").await.unwrap();
-        let port = listener.local_addr().unwrap().port();
-        let (tx, rx) = mpsc::channel(16);
-        tokio::spawn(async move {
-            let (stream, _) = listener.accept().await.unwrap();
-            let mut ws = tokio_tungstenite::accept_async(stream).await.unwrap();
-            let mut seen = 0;
-            while let Some(Ok(msg)) = ws.next().await {
-                if let Message::Text(t) = msg {
-                    if t.as_str() == "PING" {
-                        continue;
-                    }
-                    tx.send(t.to_string()).await.unwrap();
-                    seen += 1;
-                    if seen == expect {
-                        let _ = ws.close(None).await;
-                        return;
-                    }
-                }
-            }
-        });
-        (port, rx)
+    /// Long enough for a run to send what a test queued before the server
+    /// closes, on a loaded runner too; the tests that end a run wait for the
+    /// frames first.
+    const CLOSE_AFTER: Duration = Duration::from_secs(2);
+
+    /// How long a run may take to end: past the server's close, with margin.
+    const RUN_ENDS: Duration = Duration::from_secs(5);
+
+    /// The text frames the server received, keep-alive `PING`s excluded.
+    fn non_ping_frames(server: &ScriptedServer) -> Vec<String> {
+        server
+            .client_frames()
+            .into_iter()
+            .filter(|frame| frame != "PING")
+            .collect()
+    }
+
+    /// The keep-alive `PING`s the server received.
+    fn pings(server: &ScriptedServer) -> usize {
+        server.count_frames(|frame| frame == "PING")
     }
 
     /// Build a `WebSocketWithPing` of the given channel type over a plain
-    /// loopback TCP stream. `WebSocketBuilder::market_url` insists on
-    /// `wss://`, so the connection is assembled directly, exactly as
-    /// `connect_market` would.
-    async fn connect_plain(port: u16, channel_type: ChannelType) -> WebSocketWithPing {
-        connect_plain_with(port, channel_type, Duration::from_secs(10)).await
+    /// loopback connection. `WebSocketBuilder::market_url` insists on
+    /// `wss://`, so the connection goes through `connect_ws` directly,
+    /// exactly as `connect_market` would.
+    async fn connect_plain(
+        server: &ScriptedServer,
+        channel_type: ChannelType,
+    ) -> WebSocketWithPing {
+        connect_plain_with(server, channel_type, Duration::from_secs(10)).await
     }
 
     async fn connect_plain_with(
-        port: u16,
+        server: &ScriptedServer,
         channel_type: ChannelType,
         ping_interval: Duration,
     ) -> WebSocketWithPing {
-        let tcp = TcpStream::connect(("127.0.0.1", port)).await.unwrap();
-        let (inner, _) = tokio_tungstenite::client_async(
-            format!("ws://127.0.0.1:{port}/ws/market"),
-            MaybeTlsStream::Plain(tcp),
-        )
-        .await
-        .unwrap();
+        let inner = connect_ws(&server.url, Duration::from_secs(2))
+            .await
+            .expect("connect");
         WebSocketWithPing::new(inner, channel_type, ping_interval)
-    }
-
-    /// A loopback WebSocket server that counts the PINGs it receives and
-    /// holds the connection open.
-    async fn ping_counting_server() -> (u16, Arc<AtomicUsize>) {
-        let listener = TcpListener::bind("127.0.0.1:0").await.unwrap();
-        let port = listener.local_addr().unwrap().port();
-        let pings = Arc::new(AtomicUsize::new(0));
-        let counted = Arc::clone(&pings);
-        tokio::spawn(async move {
-            let (stream, _) = listener.accept().await.unwrap();
-            let mut ws = tokio_tungstenite::accept_async(stream).await.unwrap();
-            while let Some(Ok(msg)) = ws.next().await {
-                if matches!(&msg, Message::Text(t) if t.as_str() == "PING") {
-                    counted.fetch_add(1, Ordering::SeqCst);
-                }
-            }
-        });
-        (port, pings)
     }
 
     #[tokio::test]
     async fn a_zero_ping_interval_pings_without_panicking() {
         // tokio's `interval` asserts a non-zero period, so this panicked the
         // moment `run` was first polled.
-        let (port, pings) = ping_counting_server().await;
-        let ws = connect_plain_with(port, ChannelType::Market, Duration::ZERO).await;
+        let server = ScriptedServer::start(vec![Script::hold()]).await;
+        let ws = connect_plain_with(&server, ChannelType::Market, Duration::ZERO).await;
         let run = tokio::spawn(ws.run(|_| async { Ok(()) }));
         tokio::time::sleep(Duration::from_millis(100)).await;
         assert!(!run.is_finished(), "run ended: {:?}", run.await);
-        assert!(pings.load(Ordering::SeqCst) >= 2, "pings were not repeated");
+        assert!(pings(&server) >= 2, "pings were not repeated");
         run.abort();
     }
 
@@ -1151,41 +1312,36 @@ mod membership_tests {
     async fn a_duration_max_ping_interval_sends_only_the_opening_ping() {
         // `interval` added the period to a late tick unchecked, so
         // `Duration::MAX` could panic depending on scheduling.
-        let (port, pings) = ping_counting_server().await;
-        let ws = connect_plain_with(port, ChannelType::Market, Duration::MAX).await;
+        let server = ScriptedServer::start(vec![Script::hold()]).await;
+        let ws = connect_plain_with(&server, ChannelType::Market, Duration::MAX).await;
         let run = tokio::spawn(ws.run(|_| async { Ok(()) }));
         tokio::time::sleep(Duration::from_millis(100)).await;
         assert!(!run.is_finished(), "run ended: {:?}", run.await);
-        assert_eq!(pings.load(Ordering::SeqCst), 1);
+        assert_eq!(pings(&server), 1);
         run.abort();
     }
 
     #[tokio::test]
     async fn run_forwards_membership_frames_in_order() {
-        let (port, mut frames) = recording_server(2).await;
-        let ws = connect_plain(port, ChannelType::Market).await;
+        let server = ScriptedServer::start(vec![Script::hold().drop_after(CLOSE_AFTER)]).await;
+        let ws = connect_plain(&server, ChannelType::Market).await;
         let handle = ws.membership();
         let run = tokio::spawn(ws.run(|_| async { Ok(()) }));
 
         handle.subscribe_assets(vec!["b".into()]).await.unwrap();
         handle.unsubscribe_assets(vec!["a".into()]).await.unwrap();
 
+        server
+            .wait_for("both frames", |s| non_ping_frames(s).len() == 2)
+            .await;
+        let frames = non_ping_frames(&server);
+        assert_eq!(frames[0], r#"{"operation":"subscribe","assets_ids":["b"]}"#);
         assert_eq!(
-            tokio::time::timeout(Duration::from_secs(2), frames.recv())
-                .await
-                .expect("must not hang")
-                .unwrap(),
-            r#"{"operation":"subscribe","assets_ids":["b"]}"#
-        );
-        assert_eq!(
-            tokio::time::timeout(Duration::from_secs(2), frames.recv())
-                .await
-                .expect("must not hang")
-                .unwrap(),
+            frames[1],
             r#"{"operation":"unsubscribe","assets_ids":["a"]}"#
         );
-        // The server closed after the second frame: run returns cleanly.
-        tokio::time::timeout(Duration::from_secs(2), run)
+        // The server closes after the frames: run returns cleanly.
+        tokio::time::timeout(RUN_ENDS, run)
             .await
             .expect("must not hang")
             .unwrap()
@@ -1194,12 +1350,12 @@ mod membership_tests {
 
     #[tokio::test]
     async fn membership_handle_errors_with_membership_closed_after_run_exits() {
-        let (port, _frames) = recording_server(1).await;
-        let ws = connect_plain(port, ChannelType::Market).await;
+        let server = ScriptedServer::start(vec![Script::hold().drop_after(CLOSE_AFTER)]).await;
+        let ws = connect_plain(&server, ChannelType::Market).await;
         let handle = ws.membership();
         let run = tokio::spawn(ws.run(|_| async { Ok(()) }));
         handle.subscribe_assets(vec!["b".into()]).await.unwrap();
-        tokio::time::timeout(Duration::from_secs(2), run)
+        tokio::time::timeout(RUN_ENDS, run)
             .await
             .expect("must not hang")
             .unwrap()
@@ -1217,8 +1373,8 @@ mod membership_tests {
 
     #[tokio::test]
     async fn membership_handle_refuses_the_user_channel() {
-        let (port, _frames) = recording_server(1).await;
-        let ws = connect_plain(port, ChannelType::User).await;
+        let server = ScriptedServer::start(vec![Script::hold()]).await;
+        let ws = connect_plain(&server, ChannelType::User).await;
         let handle = ws.membership();
         drop(ws);
 

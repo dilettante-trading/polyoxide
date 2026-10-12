@@ -7,7 +7,9 @@
 //!   error's class, whether it is a fault, and how long the server asked the
 //!   caller to wait. [`ClassifiedError`] carries any of them.
 //! - [`class_for_status`], [`class_for_close_code`] and
-//!   [`class_for_handshake_status`] are the one status and close-code table.
+//!   [`class_for_handshake_status`] are the one status and close-code table,
+//!   and [`impl_ws_classification!`] expands the one socket table for
+//!   `polyoxide_ws::WsError` in the venue crate that wraps it.
 //! - [`parse_retry_after`] is the one `Retry-After` parser, and
 //!   [`retry_delay`] lets it only lengthen the client's own backoff.
 //! - [`Secret`] holds a value its `Debug` never prints, and [`UnixMillis`] is
@@ -49,6 +51,7 @@ mod socket;
 mod status;
 mod time;
 mod wire;
+mod ws_table;
 
 pub use class::{Class, ClassifiedError, Classify};
 pub use retry_after::{parse_retry_after, retry_delay};
