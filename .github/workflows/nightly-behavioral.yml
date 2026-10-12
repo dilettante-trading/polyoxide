@@ -89,6 +89,18 @@ jobs:
           suite: live
           flags: "--test live_api"
 
+  live-polyoxide-binance-live:
+    name: Live tests (polyoxide-binance, live)
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v5
+      - uses: ./.github/actions/live-suite
+        with:
+          crate: polyoxide-binance
+          suite: live
+          flags: "--features ws --test live_api --test live_ws"
+
   live-polyoxide-clob-live:
     name: Live tests (polyoxide-clob, live)
     runs-on: ubuntu-latest
@@ -125,18 +137,6 @@ jobs:
           crate: polyoxide-clob
           suite: session-keys
           flags: "--test live_session_keys"
-
-  live-polyoxide-binance-live:
-    name: Live tests (polyoxide-binance, live)
-    runs-on: ubuntu-latest
-    timeout-minutes: 15
-    steps:
-      - uses: actions/checkout@v5
-      - uses: ./.github/actions/live-suite
-        with:
-          crate: polyoxide-binance
-          suite: live
-          flags: "--features ws --test live_api --test live_ws"
 
   live-polyoxide-perps-live:
     name: Live tests (polyoxide-perps, live)
@@ -194,9 +194,9 @@ jobs:
       - live-polyoxide-data-live
       - live-polyoxide-gamma-live
       - live-polyoxide-relay-live
+      - live-polyoxide-binance-live
       - live-polyoxide-clob-live
       - live-polyoxide-clob-session-keys
-      - live-polyoxide-binance-live
       - live-polyoxide-perps-live
       - live-polyoxide-rtds-live
       - live-polyoxide-sports-live

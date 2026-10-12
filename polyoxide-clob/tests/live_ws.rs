@@ -20,6 +20,7 @@ use polyoxide_clob::{Account, ClobBuilder, Credentials};
 use polyoxide_test_support::keychain;
 use polyoxide_test_support::{fail, load_env, transient, ResultExt};
 use polyoxide_venue::{class_for_close_code, Class};
+use polyoxide_ws::WsError;
 
 // ── User channel: is `markets` actually optional? ───────────────
 
@@ -98,12 +99,12 @@ async fn probe_user_subscription(frame: String) -> Result<usize, String> {
 
     let (mut ws, _) = connect_async("wss://ws-subscriptions-clob.polymarket.com/ws/user")
         .await
-        .map_err(WebSocketError::from)
+        .map_err(|err| WebSocketError::from(WsError::from(err)))
         .or_fail("connect failed");
 
     ws.send(Message::Text(frame.into()))
         .await
-        .map_err(WebSocketError::from)
+        .map_err(|err| WebSocketError::from(WsError::from(err)))
         .or_fail("send failed");
 
     // A rejected subscription shows up as a close frame or an error payload
@@ -137,7 +138,7 @@ async fn probe_user_subscription(frame: String) -> Result<usize, String> {
                 return Err(format!("server closed the connection: {c:?}"));
             }
             Ok(Some(Ok(_))) => continue,
-            Ok(Some(Err(e))) => fail("stream error", &WebSocketError::from(e)),
+            Ok(Some(Err(e))) => fail("stream error", &WebSocketError::from(WsError::from(e))),
             Ok(None) => transient("the server ended the stream without a close frame"),
             Err(_) => return Ok(frames),
         }

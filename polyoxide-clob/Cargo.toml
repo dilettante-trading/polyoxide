@@ -14,6 +14,7 @@ categories = ["api-bindings", "web-programming::http-client"]
 default = ["gamma"]
 gamma = ["dep:polyoxide-gamma"]
 ws = [
+    "dep:polyoxide-ws",
     "dep:tokio-tungstenite",
     "dep:futures-util",
     "dep:rustls",
@@ -33,6 +34,9 @@ alloy = { version = "1.1.2", features = [
 polyoxide-core = { workspace = true }
 polyoxide-venue = { workspace = true }
 polyoxide-gamma = { workspace = true, optional = true }
+# The socket kit, under `ws`: the bare tier clob reads through, the upgrade
+# over its own per-address connect, and `WsError`.
+polyoxide-ws = { workspace = true, optional = true }
 serde = { workspace = true }
 serde_json = { workspace = true }
 thiserror = { workspace = true }
