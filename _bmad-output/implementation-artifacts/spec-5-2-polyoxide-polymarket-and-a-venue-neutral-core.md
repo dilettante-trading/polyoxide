@@ -2,7 +2,7 @@
 title: 'Story 5.2: polyoxide-polymarket and a venue-neutral core'
 type: 'refactor'
 created: '2026-10-12'
-status: 'in-progress'
+status: 'done'
 route: 'dispatch'
 baseline_commit: '436ce762c6a4061dc6d5228c9d687fa8367c4b3d'
 review_loop_iteration: 0
@@ -152,7 +152,7 @@ Claude-Session: https://claude.ai/code/session_01BjnNeirn7DAPvQNrs5khCr
 Then a lost session loses nothing. Build with `CARGO_INCREMENTAL=0`. A rustc killed with signal 15 or exit 254 is earlyoom; re-run it. Run cargo-hack alone.
 
 **Execution:**
-- [ ] `polyoxide-polymarket/` (new)
+- [x] `polyoxide-polymarket/` (new)
   - **Manifest:**
     - Cargo.toml: description, licence, `[package.metadata.polyoxide]` with `venue = "polymarket"`, `readme`, `identifiers = ["Poly-RateLimit"]` and `gate_exceptions`;
     - docs.rs `all-features`;
@@ -161,24 +161,24 @@ Then a lost session loses nothing. Build with `CARGO_INCREMENTAL=0`. A rustc kil
     - `src/lib.rs`, which carries the gated `Classify` assertion;
     - `src/shared/{mod,limits,throttle,policy,signer_limit,session_signer,auth}.rs`, holding the moved code. `shared` re-exports what core's `polymarket` and root re-exports offered.
   - **Docs:** a README that is a doctest.
-- [ ] Root `Cargo.toml`, `Cargo.lock`: add the member and the `polyoxide-polymarket` entry in `[workspace.dependencies]`.
-- [ ] `polyoxide-core`: delete the moved files, the re-exports and the `polymarket` module. Drop `base64`, `hmac` and `sha2`. Scrub every venue word from src, README and Cargo.toml, rewriting the doc links it breaks and the keychain doc examples.
-- [ ] `polyoxide-{gamma,data,perps,relay,clob}`: depend on `polyoxide-polymarket` with their feature, repoint every import and doc path at `polyoxide_polymarket::shared`, and keep their public re-exports.
-- [ ] Moved tests (see Code Map): into `polyoxide-polymarket/tests/` (with `[[test]] required-features`) or into `shared` inline modules. Core's remaining tests stay unchanged.
-- [ ] `polyoxide-{venue,ws}`: scrub venue words from comments, READMEs and Cargo keywords.
-- [ ] `scripts/gen_registry.py` and `test_gen_registry.py`:
+- [x] Root `Cargo.toml`, `Cargo.lock`: add the member and the `polyoxide-polymarket` entry in `[workspace.dependencies]`.
+- [x] `polyoxide-core`: delete the moved files, the re-exports and the `polymarket` module. Drop `base64`, `hmac` and `sha2`. Scrub every venue word from src, README and Cargo.toml, rewriting the doc links it breaks and the keychain doc examples.
+- [x] `polyoxide-{gamma,data,perps,relay,clob}`: depend on `polyoxide-polymarket` with their feature, repoint every import and doc path at `polyoxide_polymarket::shared`, and keep their public re-exports.
+- [x] Moved tests (see Code Map): into `polyoxide-polymarket/tests/` (with `[[test]] required-features`) or into `shared` inline modules. Core's remaining tests stay unchanged.
+- [x] `polyoxide-{venue,ws}`: scrub venue words from comments, READMEs and Cargo keywords.
+- [x] `scripts/gen_registry.py` and `test_gen_registry.py`:
   - add `identifiers` (strings) and `gate_exceptions` (a list of `{path, term, reason}`, with the path in a foundation crate and a non-empty reason);
   - both keys require `venue`;
   - allow `venue` without `products` for a crate named `polyoxide-<venue>`;
   - update core's `notes`;
   - run `--write`.
-- [ ] `scripts/venue_gate.py` (new), `.github/scripts/tests/test_venue_gate.py` (new) and `ci/venue-gate-skip.txt` (new, holding `data` and `events`): implement the gate described in Boundaries, with unit tests on synthetic trees for every matrix row and a real-tree test. It reads terms from cargo metadata. The `gate_exceptions` for Binance's words go in `polyoxide-binance`'s metadata.
-- [ ] `scripts/test_body_diff.py` and `test_test_body_diff.py`: let a `[gates]` value also be a full cfg predicate string, such as `'any(feature = "clob", feature = "relay")'`, which drops exactly that `cfg(...)`. It must fire, like every other entry. Document it in `ci/test-body-diff.toml`.
-- [ ] `ci/test-body-diff.toml`: the `[files]`, `[literals]`, `[paths]` and `[gates]` entries the moves need, each one firing.
-- [ ] `docs/rename-manifest.md`: rows for every gone core path, then `api_removals.py manifest --write`.
-- [ ] `docs/MUTANTS.md`, `test_mutants_ledger.py`, `test_classify_coverage.py` and `test_ci_workflow.py`: re-cite the moved rows and re-prove each mutant. Move `BurstCapacityExceeded` to a polymarket row. Have `http_modules` require products.
-- [ ] `CLAUDE.md`: rewrite each rule that names a moved path, in its own section: the rate-limit table's modules, the signer layer, the retry policies, the error hierarchy, the "One send loop" paragraph and the crate list via `--write`. Add the CAP-7 gate to the scripts job description.
-- [ ] `deferred-work.md`: the `debug!` target moving from `polyoxide_core::signer_limit` to `polyoxide_polymarket::shared::signer_limit`, for 5.12's notes.
+- [x] `scripts/venue_gate.py` (new), `.github/scripts/tests/test_venue_gate.py` (new) and `ci/venue-gate-skip.txt` (new, holding `data` and `events`): implement the gate described in Boundaries, with unit tests on synthetic trees for every matrix row and a real-tree test. It reads terms from cargo metadata. The `gate_exceptions` for Binance's words go in `polyoxide-binance`'s metadata.
+- [x] `scripts/test_body_diff.py` and `test_test_body_diff.py`: let a `[gates]` value also be a full cfg predicate string, such as `'any(feature = "clob", feature = "relay")'`, which drops exactly that `cfg(...)`. It must fire, like every other entry. Document it in `ci/test-body-diff.toml`.
+- [x] `ci/test-body-diff.toml`: the `[files]`, `[literals]`, `[paths]` and `[gates]` entries the moves need, each one firing.
+- [x] `docs/rename-manifest.md`: rows for every gone core path, then `api_removals.py manifest --write`.
+- [x] `docs/MUTANTS.md`, `test_mutants_ledger.py`, `test_classify_coverage.py` and `test_ci_workflow.py`: re-cite the moved rows and re-prove each mutant. Move `BurstCapacityExceeded` to a polymarket row. Have `http_modules` require products.
+- [x] `CLAUDE.md`: rewrite each rule that names a moved path, in its own section: the rate-limit table's modules, the signer layer, the retry policies, the error hierarchy, the "One send loop" paragraph and the crate list via `--write`. Add the CAP-7 gate to the scripts job description.
+- [x] `deferred-work.md`: the `debug!` target moving from `polyoxide_core::signer_limit` to `polyoxide_polymarket::shared::signer_limit`, for 5.12's notes.
 
 **Acceptance Criteria:**
 - Given the moved tree, when `cargo clippy --all-targets --all-features -- -D warnings`, `cargo nextest run --all-features --workspace`, `cargo test --doc` and `RUSTDOCFLAGS=-D warnings cargo doc` run, then all pass. And the per-suite test count over the workspace equals the baseline's: the same number of tests, now partly in `polyoxide-polymarket`.
@@ -186,6 +186,48 @@ Then a lost session loses nothing. Build with `CARGO_INCREMENTAL=0`. A rustc kil
 - Given the same tree, when `api_removals.py manifest --baseline v0.39.0 --strict` runs, then it exits 0.
 - Given the same tree, when `cargo hack check --workspace --each-feature --no-dev-deps --ignore-private` runs, then it passes. And `cargo tree -p polyoxide-core -e normal` lists no `hmac`, `sha2` or `base64`.
 - Given the scripts job, when its pytest runs, then it is green, including the real-tree CAP-7 test, whose findings name `clob_default`, `PERPS_GENERAL` and `Poly-RateLimit` when run on `v0.39.0`'s core.
+
+## Implementation Notes
+
+The implementation is commits 020237b..0b21582, made by impl-52.
+
+**Deviations, accepted by the lead:**
+- **`cargo tree -p polyoxide-core -e normal`** still lists `base64`, which reqwest and hyper-util pull in. Core declares none of `base64`, `hmac` and `sha2`. `hmac` and `sha2` appear only under `keychain`, through keyring. The intent holds (core builds no HMAC code of its own, AD-2); the AC's wording claimed more than that.
+- **No `[gates]` entry for the moved targets' `required-features`.** v0.39.0 core had no `[[test]]` stanzas, so these stanzas are new at HEAD, and such an entry would be stale.
+- **Intermediate commits.** 020237b to 011c3bf do not each build and pass. The final tree does.
+- **data's v2_soak usage text** still says `polymarket::data_limits`, because it is a literal inside a test-context example.
+
+**Verification:** `cargo test --all-features --workspace` gave 2567 passed. Per-binary counts match the baseline; the total went from 2743 to 2744, the extra one being the new README doctest. The scripts suite gave 1222 passed. The body diff paired 3832 with 0 diffs. `manifest --strict` resolved all 153 entries.
+
+## Review Triage Log
+
+Review 1 covered the new logic only: `venue_gate.py`, its tests, the `gen_registry.py` changes and the `[gates]` predicate. The moved code was skipped because the body diff and `manifest --strict` already check it. Findings are tagged B (blind), E (edge case) and G (verification gap).
+
+| # | Finding | Verdict | Route | Evidence |
+|---|---|---|---|---|
+| B8/E1/G-o1 | `CASE` splits `CLOBs` into `clo`+`bs`, so a plural acronym is never a hit | low | patch | Confirmed by `_segments`. The regex now ends an acronym before a plural `s`; the `two CLOBs` case fails on the old regex. |
+| B8/E2 | A product with a digit (`data-v2`) never matches, because the text splits `v2` and the product does not | low | patch | `scan_text` split products on `-` only. Products are now segmented by `CASE`; `test_a_product_with_a_digit_is_caught` fails on the old code. |
+| E3 | `IGNORED_DIRS` skips any path segment, so `src/target/` goes unscanned | low | patch | It intersected every part. Now only the crate's top-level directory is checked; the build-output test fails on the old code. |
+| E8 | `extractall(filter=)` needs Python ≥ 3.11.4, but `requires-python` allowed 3.11.0 | low | patch | `requires-python` is now `>=3.11.4`, and `uv.lock` is relocked. |
+| G1 | Nothing tests the `/` boundary in `Excuse.covers` | gap | patch | Added `test_server_x.rs` beside the `test_server` exception, which must stay unexcused. |
+| G2 | Nothing tests the missing-foundation-crate `GateError` | gap | patch | Added `test_a_missing_foundation_crate_cannot_be_decided`. |
+| B11/G-o2 | Nothing tests `read_skip`'s missing-file and not-one-word errors | low | patch | Added `test_a_missing_or_malformed_skip_list_cannot_be_decided`. |
+| B1 | `test_body_diff` takes gates only from the declaring `mod x;`, so the moved `shared/policy.rs` tests are newly gated by lib.rs's `cfg(any(..))` unseen | medium | defer | Confirmed at `test_body_diff.py:983`. The limitation predates 5.2 (Story 5.1's tool); CI's `--all-features` still runs the tests. |
+| B2 | A new `[[test]]` stanza on a moved suite is not compared with an implied empty one, so a moved suite's `required-features` never shows | low | defer | This is the tool's design from 5.1. The Implementation Notes already state that the stanzas are new at HEAD. |
+| B3 | Core's `tests/health.rs` still holds Binance's `/fapi/v1/ping`, and Binance declares no `identifiers` | low | defer | The string is pre-existing (4 hits at v0.39.0). Fixing it changes a protected core test body, so it belongs with Story 5.6. |
+| B15 | CLAUDE.md's `[gates]` sentence omits cfg-predicate values | low | defer | The fix edits an agent-context file. |
+| B4 | A `<venue>.<product>:` prefix always also hits the venue id | low | reject | The spec mandates the prefix term; the cost is one more exception entry, which nobody needs today. |
+| B5/E6 | A nested or duplicate exception never goes stale | low | reject | Rarely met, and the fix adds a guard. |
+| B6 | An exception path may be a whole crate root | low | reject | It needs a deliberate entry that review sees, and the fix adds a guard. |
+| B7 | `venue` is not refused on a foundation member | low | reject | It needs deliberate metadata that review sees, and the fix adds a guard. |
+| B9 | The gate runs only in pytest, so its `::error::` lines never reach the log | false | reject | The real-tree test's assertion message prints every unexcused hit (`test_venue_gate.py:251`). |
+| B10 | The description lists modules that do not ship yet | false | reject | The crate first publishes in 5.12, after 5.3–5.5 fill those modules. |
+| B12/E5 | Non-string metadata exits 1 with a traceback, not 2 | low | reject | `gen_registry` check rejects that metadata first, and the fix adds guards. |
+| B13/E4 | `rglob` scans untracked local files | low | reject | The failure is loud, not silent, and a `git ls-files` fix would break the tarball and synthetic-tree runs. |
+| B14 | Whitespace-padded or case-duplicate `identifiers` are accepted | low | reject | Rarely met, and the fix adds a guard. |
+| B16 | `send_loop` and `health` require `gamma` arbitrarily | low | reject | Any HTTP feature builds the policy, and CI runs `--all-features`. |
+| E7 | A bare-word cfg predicate (`unix`) is read as a feature | low | reject | The entry then goes stale, and a stale entry fails loudly. |
+| E9 | The `cargo tree` AC lists `base64` | — | reject | The fix is a spec edit, and the Implementation Notes already concede it. |
 
 ## Spec Change Log
 

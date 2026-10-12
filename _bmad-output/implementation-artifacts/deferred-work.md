@@ -290,3 +290,15 @@
 - source_spec: `_bmad-output/implementation-artifacts/spec-5-2-polyoxide-polymarket-and-a-venue-neutral-core.md`
   summary: Before Story 5.12, decide whether `polyoxide_polymarket::shared::current_timestamp`, a venue-neutral Unix-seconds clock that clob, relay and three doc examples use, moves to `polyoxide-venue` beside `UnixMillis`. 5.2 moved it with the HMAC signer, keeping core's names one to one.
   evidence: `polyoxide-polymarket/src/shared/auth.rs`; its users are `polyoxide-clob/src/authenticator.rs`, `polyoxide-relay/src/config.rs` and `client.rs`, and the doc examples in `polyoxide-clob/src/lib.rs`, `polyoxide-relay/src/lib.rs` and `README.md`.
+- source_spec: `_bmad-output/implementation-artifacts/spec-5-2-polyoxide-polymarket-and-a-venue-neutral-core.md`
+  summary: `scripts/test_body_diff.py` takes a file's gates only from the `mod x;` that declares it, not from ancestor file modules. So moving tests under a gated parent (polyoxide-polymarket's `#[cfg(any(..))] pub mod shared;`) gates them without a diff. (medium, review 1 B1)
+  evidence: `test_body_diff.py` near line 983 fills `declared[target]` from the direct declaration only. The tests in `shared/policy.rs` were ungated in v0.39.0 core and are now behind lib.rs's cfg, and the diff shows 0.
+- source_spec: `_bmad-output/implementation-artifacts/spec-5-2-polyoxide-polymarket-and-a-venue-neutral-core.md`
+  summary: `scripts/test_body_diff.py` does not compare a new `[[test]]` stanza for a paired test file against an implied empty one, so `required-features` added on a move never shows. (low, review 1 B2)
+  evidence: polyoxide-polymarket's four `[[test]]` stanzas are new at HEAD. v0.39.0 core discovered those suites automatically.
+- source_spec: `_bmad-output/implementation-artifacts/spec-5-2-polyoxide-polymarket-and-a-venue-neutral-core.md`
+  summary: For Story 5.6: give polyoxide-binance `identifiers` (`fapi`, `fstream`, `X-MBX`), and take Binance's `/fapi/v1/ping` out of `polyoxide-core/tests/health.rs` through a DRIFT row, or excuse it. (low, review 1 B3)
+  evidence: `git grep -n fapi polyoxide-core` finds 4 lines, all present at v0.39.0. The gate passes because Binance declares no identifiers.
+- source_spec: `_bmad-output/implementation-artifacts/spec-5-2-polyoxide-polymarket-and-a-venue-neutral-core.md`
+  summary: CLAUDE.md's test-bodies paragraph describes `[gates]` as dropping only a module's own `cfg(feature = "<m>")`. Story 5.2 added full cfg-predicate values. (low, review 1 B15)
+  evidence: `ci/test-body-diff.toml` `[gates]` holds `'any(feature = "clob", feature = "relay")'` values, which the CLAUDE.md wording does not cover. The fix edits an agent-context file, so it was deferred.

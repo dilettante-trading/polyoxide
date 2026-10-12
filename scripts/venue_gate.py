@@ -49,7 +49,8 @@ SKIP = "ci/venue-gate-skip.txt"
 # What a crate's directory holds that is not its source.
 IGNORED_DIRS = frozenset({"target", ".git"})
 WORD = re.compile(r"[A-Za-z0-9]+")
-CASE = re.compile(r"[A-Z]+(?=[A-Z][a-z])|[A-Z]?[a-z]+|[A-Z]+|[0-9]+")
+# An acronym ends before a capitalised word, or before a plural `s` (`CLOBs`).
+CASE = re.compile(r"[A-Z]+(?=s(?![a-z]))|[A-Z]+(?=[A-Z][a-z])|[A-Z]?[a-z]+|[A-Z]+|[0-9]+")
 # The text a hit is reported in: the identifier, or hyphenated word, around it.
 AROUND = re.compile(r"[\w-]+")
 
@@ -202,7 +203,9 @@ def scan_text(path: str, text: str, gate: Gate) -> list[Hit]:
     """Every hit of `gate`'s terms in `text`, the file at `path`."""
     hits = []
     substrings = [t for t in gate.terms if t.kind != "product"]
-    products = [(t, t.text.split("-")) for t in gate.terms if t.kind == "product"]
+    # A product splits as the text does, so `data-v2` meets `data_v2` as data, v, 2.
+    products = [(t, [p.lower() for s in t.text.split("-") for p in CASE.findall(s)])
+                for t in gate.terms if t.kind == "product"]
     for number, line in enumerate(text.splitlines(), 1):
         lowered = line.lower()
         for term in substrings:
@@ -233,7 +236,7 @@ def files(root: Path, crates: Iterable[str] = FOUNDATION) -> list[str]:
             raise GateError(f"{crate}/ is not a directory under {root}")
         for path in sorted(base.rglob("*")):
             relative = path.relative_to(root)
-            if path.is_file() and not IGNORED_DIRS.intersection(relative.parts):
+            if path.is_file() and relative.parts[1] not in IGNORED_DIRS:
                 found.append(relative.as_posix())
     return found
 

@@ -113,6 +113,7 @@ def test_a_venue_id_is_found_as_a_substring_in_any_case(tmp_path: Path) -> None:
     ("see the clob-ws feature", "clob", "clob-ws"),
     ("a.clob.b", "clob", "clob"),
     ("the CLOB's book", "clob", "CLOB"),
+    ("two CLOBs", "clob", "CLOBs"),
     ("one CombosRfq quote", "combos-rfq", "CombosRfq"),
     ("the usdm2 path", "usdm", "usdm2"),
 ])
@@ -159,10 +160,12 @@ def test_every_file_of_every_foundation_crate_is_read_but_build_output(tmp_path:
         "polyoxide-test-support/tests/fixtures/x.json": '{"venue": "binance"}\n',
         "polyoxide-venue/examples/probe.rs": "// usdm\n",
         "polyoxide-ws/target/debug/x.rs": "// binance\n",
+        "polyoxide-ws/src/target/mod.rs": "// binance\n",
         "polyoxide-other/src/lib.rs": "// binance\n",
     })
     assert sorted(h.path for h in run(root).hits) == [
-        "polyoxide-test-support/tests/fixtures/x.json", "polyoxide-venue/examples/probe.rs"]
+        "polyoxide-test-support/tests/fixtures/x.json", "polyoxide-venue/examples/probe.rs",
+        "polyoxide-ws/src/target/mod.rs"]
 
 
 # --- exceptions --------------------------------------------------------------
@@ -181,13 +184,15 @@ def test_an_exception_covers_its_term_in_its_file_or_directory_only(tmp_path: Pa
     root = tree(tmp_path, {"polyoxide-ws/src/request.rs": "mod perps {}\nmod binance {}\n",
                            "polyoxide-ws/src/test_server/tests.rs": "mod as_perps {}\n",
                            "polyoxide-ws/src/test_server/mod.rs": "// perps\n",
-                           "polyoxide-ws/src/other.rs": "// perps\n"})
+                           "polyoxide-ws/src/other.rs": "// perps\n",
+                           "polyoxide-ws/src/test_server_x.rs": "// perps\n"})
     meta = with_exceptions("polyoxide-polymarket",
                            exception("polyoxide-ws/src/request.rs", "PERPS"),
                            exception("polyoxide-ws/src/test_server", "perps"))
     result = run(root, meta)
     assert findings(result) == [("polyoxide-ws/src/other.rs", 1, "perps", "perps"),
-                                ("polyoxide-ws/src/request.rs", 2, "binance", "binance")]
+                                ("polyoxide-ws/src/request.rs", 2, "binance", "binance"),
+                                ("polyoxide-ws/src/test_server_x.rs", 1, "perps", "perps")]
     assert result.stale == []
 
 
@@ -237,6 +242,31 @@ def test_the_terms_come_from_each_venue_s_metadata() -> None:
 def test_main_cannot_decide_without_the_skip_list_or_metadata(tmp_path: Path, capsys) -> None:
     assert gate.main([], root=tree(tmp_path, {})) == 2
     assert "::error::" in capsys.readouterr().err
+
+
+def test_a_missing_or_malformed_skip_list_cannot_be_decided(tmp_path: Path) -> None:
+    with pytest.raises(gate.GateError, match="could not read"):
+        gate.read_skip(tmp_path)
+    (tmp_path / gate.SKIP).parent.mkdir(parents=True)
+    (tmp_path / gate.SKIP).write_text("data\ntwo words\n")
+    with pytest.raises(gate.GateError, match="is not one word"):
+        gate.read_skip(tmp_path)
+
+
+def test_a_missing_foundation_crate_cannot_be_decided(tmp_path: Path) -> None:
+    root = tree(tmp_path, {})
+    (root / FOUNDATION[-1] / "src" / "lib.rs").unlink()
+    (root / FOUNDATION[-1] / "src").rmdir()
+    (root / FOUNDATION[-1]).rmdir()
+    with pytest.raises(gate.GateError, match="is not a directory"):
+        gate.files(root)
+
+
+def test_a_product_with_a_digit_is_caught(tmp_path: Path) -> None:
+    root = tree(tmp_path, {"polyoxide-core/src/x.rs": "fn data_v2_default() {}\n"})
+    meta = metadata(package("polyoxide-gamma", venue="polymarket", products=["data-v2"]))
+    assert findings(run(root, meta)) == [("polyoxide-core/src/x.rs", 1, "data-v2",
+                                          "data_v2_default")]
 
 
 # --- the real tree -----------------------------------------------------------
