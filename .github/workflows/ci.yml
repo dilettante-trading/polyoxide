@@ -170,6 +170,10 @@ jobs:
   scripts:
     name: CI Scripts
     runs-on: ubuntu-latest
+    env:
+      # `cargo tree --target` (test_dep_allowlists.py) asks rustc for its
+      # version through the wrapper, and this job installs no sccache.
+      RUSTC_WRAPPER: ""
     steps:
       - uses: actions/checkout@v5
       # scripts/publish_order.py, which the tests load, reads the workspace through cargo metadata.
