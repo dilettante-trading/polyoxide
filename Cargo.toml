@@ -20,7 +20,7 @@ exclude = ["tombstones"]
 resolver = "3"
 
 [workspace.package]
-version = "0.38.2"
+version = "0.39.0"
 edition = "2021"
 license = "MIT OR Apache-2.0"
 authors = ["Aidan Bailey"]
@@ -28,17 +28,17 @@ repository = "https://github.com/dilettante-trading/polyoxide"
 rust-version = "1.91"
 
 [workspace.dependencies]
-polyoxide-core = { path = "polyoxide-core", version = "0.38.2" }
-polyoxide-binance = { path = "polyoxide-binance", version = "0.38.2" }
-polyoxide-clob = { path = "polyoxide-clob", version = "0.38.2" }
-polyoxide-gamma = { path = "polyoxide-gamma", version = "0.38.2" }
-polyoxide-perps = { path = "polyoxide-perps", version = "0.38.2" }
-polyoxide-data = { path = "polyoxide-data", version = "0.38.2" }
-polyoxide-relay = { path = "polyoxide-relay", version = "0.38.2" }
-polyoxide-rtds = { path = "polyoxide-rtds", version = "0.38.2" }
-polyoxide-sports = { path = "polyoxide-sports", version = "0.38.2" }
-polyoxide-venue = { path = "polyoxide-venue", version = "0.38.2" }
-polyoxide-ws = { path = "polyoxide-ws", version = "0.38.2" }
+polyoxide-core = { path = "polyoxide-core", version = "0.39.0" }
+polyoxide-binance = { path = "polyoxide-binance", version = "0.39.0" }
+polyoxide-clob = { path = "polyoxide-clob", version = "0.39.0" }
+polyoxide-gamma = { path = "polyoxide-gamma", version = "0.39.0" }
+polyoxide-perps = { path = "polyoxide-perps", version = "0.39.0" }
+polyoxide-data = { path = "polyoxide-data", version = "0.39.0" }
+polyoxide-relay = { path = "polyoxide-relay", version = "0.39.0" }
+polyoxide-rtds = { path = "polyoxide-rtds", version = "0.39.0" }
+polyoxide-sports = { path = "polyoxide-sports", version = "0.39.0" }
+polyoxide-venue = { path = "polyoxide-venue", version = "0.39.0" }
+polyoxide-ws = { path = "polyoxide-ws", version = "0.39.0" }
 tokio = { version = "1.41" }
 serde = { version = "1.0", features = ["derive"] }
 serde_json = "1.0"

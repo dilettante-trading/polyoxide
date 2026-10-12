@@ -1,3 +1,194 @@
+## [0.39.0] - 2026-10-12
+
+Stage S1 of the multi-venue restructure: the internals every venue crate shares are
+consolidated, and the crate names stay. Every error implements `polyoxide_venue::Classify`
+(its class, whether it is a fault, and the wait the server asked for), which replaces each
+inherent `is_retriable` and `retry_after`. Every HTTP request goes through core's one send
+loop, and every WebSocket crate runs on the new socket kit, `polyoxide-ws`.
+`polyoxide-venue`, `polyoxide-ws` and `polyoxide-cli` are published for the first time. The
+renames and crate merges come in S2.
+
+**Breaking changes.** Each removed path and its replacement is in
+[`docs/s1-removals.md`](docs/s1-removals.md), and
+[`docs/s1-migration.md`](docs/s1-migration.md) explains the call-site changes. A caller of
+`is_retriable()` or `retry_after()` on an error needs `use polyoxide_venue::Classify` and a
+direct dependency on `polyoxide-venue` 0.39. Core's `ApiError::Response(Box<ErrorResponse>)`
+replaces `Api`, `Authentication`, `RateLimit` and `Timeout`. Socket errors wrap
+`polyoxide_ws::WsError`, which is read through `kind()`.
+
+**Behaviour that changes** (details in the migration guide):
+
+- DRIFT R1: a reconnect refused with 408, 425, 429 or 5xx is retried. perps adds 408 and 425,
+  and rtds no longer ends `run()` on a 503 or 429.
+- R2: every socket connect gives up after 10 s by default (perps, rtds).
+- R3: the server's close is answered with the RFC 6455 close reply (perps, Binance, rtds,
+  clob).
+- R4: one `Retry-After` parser. A zero is no wait (`None`), and fractional and padded values
+  parse.
+- R11: a reconnect after a refusal waits out its `Retry-After`, up to the backoff ceiling.
+- An upgrade refused with 451 is `Restricted` and not a fault, on every socket crate.
+- Python exceptions are chosen by class; `UnavailableError`, `RestrictedError` and
+  `DecodeError` are new.
+- Log targets: retries, holds and decode failures log under `polyoxide_core`. The supervised
+  sockets' reconnects (perps, Binance) and rtds' bare-tier close log under `polyoxide_ws`.
+
+### 🚀 Features
+
+- *(release)* Publish what crates.io lacks, from one resumable loop
+- *(registry)* One registration source, generated docs and nightly rows
+- *(venue)* One classification for every polyoxide error
+- *(test-support)* Failure tags at the source; the classifier reads them first
+- *(core)* One send loop with Throttle, RetryPolicy and Authenticator hooks (Story 3.1)
+- *(core)* Warn on a hold that is not a retry (DRIFT R10)
+- *(core)* WindowQuotaTable and Polymarket's tables in polymarket (Story 3.2)
+- *(core)* Hold, the cooldown as a shared handle, and AD-23's re-check (Story 3.3)
+- *(core)* CapacityBucket, and the signer layer rebuilt on it (Story 3.3)
+- *(core)* Polymarket::ClobThrottle composes the CLOB's two layers (Story 3.3)
+- *(core)* What clob, relay and Binance need from the loop (Story 3.4, G3)
+- *(clob)* Clob on the one send loop (Story 3.4)
+- *(binance)* Binance on the one send loop (Story 3.6)
+- *(py)* Exceptions by class, not by message (Story 3.12, J4)
+- *(ws)* The socket kit crate (Story 4.1, K1)
+- *(ws)* Connect, the bare tier and request correlation, once (Story 4.2, K2)
+- *(venue)* One socket classification table, impl_ws_classification! (Story 4.3, K4)
+- *(ws)* One scripted test server, behind test-server (Story 4.4, K5)
+- *(ws)* The generic Supervisor for a venue Protocol (Story 4.5, L1)
+- *(perps)* [**breaking**] The bare tier on the kit; DRIFT R1 and R2 (Story 4.6, L3)
+- *(perps)* [**breaking**] The supervised tier on the kit's Supervisor (Story 4.6, L4)
+- *(perps)* [**breaking**] Delete perps' supervision loop and scripted server (Story 4.6, L5)
+- *(ws)* Protocol::configure and an owned Outage (Story 4.7, L2-2)
+- *(binance)* [**breaking**] The bare tier on the kit; DRIFT R3 (Story 4.7, L2-3)
+- *(binance)* [**breaking**] The supervised tier on the kit's Supervisor (Story 4.7, L2-4)
+- *(binance)* [**breaking**] Delete Binance's supervision loop and scripted server (Story 4.7, L2-5)
+- *(rtds)* [**breaking**] Connect through the kit with a timeout; DRIFT R2 (Story 4.8, L2-7)
+- *(rtds)* [**breaking**] Retry a refusal the host can recover from; DRIFT R1 (Story 4.8, L2-8)
+- *(rtds)* [**breaking**] Read through the kit's Connection; DRIFT R3 (Story 4.8, L2-9)
+- *(rtds)* [**breaking**] Delete rtds' Backoff copy and scripted server (Story 4.8, L2-10)
+- *(sports)* [**breaking**] The kit's blocks; DRIFT R9; delete sports' copies (Story 4.8, L2-12)
+- *(ws)* Connect_over, the upgrade of a caller's own TCP connection (Story 4.9, M-2)
+- *(clob)* [**breaking**] Read through the kit's Connection; WebSocketError on the socket table; DRIFT R3 (Story 4.9, M-3)
+- *(clob)* [**breaking**] Delete clob's TLS copy and its direct transport; DRIFT R9 (Story 4.9, M-4)
+- *(sports)* [**breaking**] The kit's connect, Connection and retrying_can_fix; SportsError on the socket table (Story 4.10, M-5)
+- Every socket error surfaces a refusal's Retry-After (Story 4.10, M-6)
+- [**breaking**] A reconnect waits out a refusal's Retry-After; DRIFT R11 (Story 4.10, M-7)
+- *(binance)* [**breaking**] UsdmWsError::Stopped keeps the error a path stopped on (Story 4.10, M-8)
+
+### 🐛 Bug Fixes
+
+- *(deps)* Declare rustls once, with std, for every socket crate (DRIFT R5)
+- *(core)* Bundle F review patches
+- DRIFT R4, one Retry-After parser (Story 3.10)
+- DRIFT R8, the four unlooped sends go through the loop
+- *(relay)* DRIFT R7, relay on the one loop and RelayError wraps ApiError
+- Bundle G's review (Stories 3.4, 3.5, 3.6 and 3.10)
+- Bundle I's review (Stories 3.7, 3.8 and 3.9)
+- Bundle J's review (Stories 3.11, 3.12 and 3.13)
+- *(ws)* DRIFT R3, the bare tier sends the RFC 6455 close reply
+- Bundle K's review (Stories 4.1 to 4.4)
+- Bundle L1's review 1, G1 to G16 (Stories 4.5 and 4.6)
+- Bundle L2's review 1, G1 to G12 (Stories 4.7 and 4.8)
+- Bundle M's review 1, G1 to G10 and G12 (Stories 4.9 and 4.10)
+
+### 🚜 Refactor
+
+- *(live-tests)* Every live failure carries a tag; the regex classifier is gone
+- *(test-support)* One copy of each agreement, fixture, soak and capture helper
+- One decode_json for the four decode-and-log copies (H3)
+- One retriable-status rule (Story 3.10, H12)
+- *(relay)* Relay's credentials in Secret (Story 3.5)
+- *(core)* Remove should_retry, note_rate_limited and acquire_rate_limit
+- One client builder over core's ClientConfig (Story 3.7, I1)
+- One namespace pattern through core's namespaces! (Story 3.7, I2)
+- One health ping, HttpClient::health (Story 3.7, I3)
+- One query-setter macro, and perps on it (Story 3.8, I5)
+- *(gamma)* 196 query setters onto query_setters! (Story 3.8, I6)
+- *(data)* 153 query setters onto query_setters! (Story 3.8, I7)
+- *(clob, binance)* Query setters onto query_setters! (Story 3.8, I8)
+- One wire-enum vocabulary in polyoxide-venue (Story 3.9, I9)
+- Positional decimal serde in polyoxide-venue (Story 3.9, I10)
+- UnixMillis::now() in polyoxide-venue (Story 3.9, I11)
+- One ApiError::Response, and each module's From<ApiError> its decode (Story 3.11, J1)
+- The Polymarket modules' removals (Story 3.11, J2)
+- *(binance)* Binance's decode and its inherent methods gone (Story 3.12, J3)
+
+### 📚 Documentation
+
+- *(planning)* Sprint status for the venue-extensibility restructure
+- *(planning)* Story 1.1 spec and the Epic 1 context
+- *(planning)* Story 1.1, re-baseline on v0.38.1
+- *(planning)* Story 1.2 spec
+- *(planning)* Bundle spec for Stories 1.4 and 1.5
+- *(planning)* Bundle spec for Stories 1.6, 1.7 and 1.8
+- *(planning)* Epic 2 context and the bundle spec for Stories 2.1 and 2.2
+- *(planning)* Bundle spec for Stories 2.3 and 2.4
+- *(planning)* Defer the socket-side 451 fault rule to Story 4.3
+- *(planning)* Bundle spec for Stories 2.5, 2.6 and 2.7
+- *(planning)* Bundle spec for Stories 2.8, 2.9 and 2.10
+- *(planning)* Epic 3 context
+- *(planning)* Bundle spec for Stories 3.1, 3.2 and 3.3
+- *(planning)* Start bundle F (Stories 3.1–3.3)
+- *(planning)* Bundle F (Stories 3.1–3.3) done
+- *(planning)* Bundle spec for Stories 3.4, 3.5, 3.6 and 3.10
+- *(planning)* Start bundle G
+- *(planning)* Bundle spec for Stories 3.7, 3.8 and 3.9
+- *(planning)* Start bundle I
+- *(planning)* Bundle spec for Stories 3.11, 3.12 and 3.13
+- *(planning)* Start bundle J
+- *(planning)* Bundle J's implementation notes
+- *(planning)* Bundle J done; Stories 3.11, 3.12 and 3.13 to review
+- *(planning)* Bundle K's spec, Stories 4.1 to 4.4, and Epic 4's context
+- *(planning)* Start bundle K
+- The socket kit in CLAUDE.md, Epic 4's amendments and release notes (K6)
+- *(planning)* Bundle K done; Stories 4.1 to 4.4 to review
+- *(planning)* Bundle L1's spec, Stories 4.5 and 4.6; Epic 4's context recompiled
+- Perps' observed keep-alive, bundle L1's notes and A4-4 (Story 4.6, L6)
+- *(planning)* Bundle L1 done; Stories 4.5 and 4.6 to review
+- *(planning)* Bundle L2's spec, Stories 4.7 and 4.8; Epic 4's context recompiled
+- Bundle L2's notes, deferred work and the kit's basis notes (Stories 4.7 and 4.8, L2-13)
+- *(planning)* Bundle L2 done; Stories 4.7 and 4.8 to review
+- *(planning)* Record Lane B, S3's venue-only groundwork in a second session
+- *(planning)* Bundle M's spec, Stories 4.9 and 4.10
+- *(planning)* Bundle M in progress
+- Bundle M's deferred work (Stories 4.9 and 4.10, M-10)
+- *(planning)* Bundle M's implementation notes (Stories 4.9 and 4.10)
+- *(spec)* Divergence D20 and DRIFT R11; D10 and D19 restated (Stories 4.9 and 4.10, M-10)
+- *(spec)* D19 states sports' reconnect as any lost connection (bundle M review, B1)
+- *(planning)* Bundle M done; Stories 4.9 and 4.10 to review
+- The S1 migration guide; s1-removals made final (Story 4.11)
+
+### 🧪 Testing
+
+- *(core)* Pin the reserved tenth and record the signer layer's allow_burst
+- *(core)* The table tests assert through public API (Story 3.2)
+- *(core)* Move the table tests to tests/polymarket_limits.rs (Story 3.2)
+- *(test-support)* A token-cost throttle built outside core (CAP-2)
+- *(binance)* Row (k), a 418 holds every request on the budget (G0)
+- *(ci)* Fence governor out of every venue crate (Story 3.6)
+- *(core)* The transitional methods' tests on public API (AD-12)
+- Bundle G's matrix rows asserted end to end
+- Golden query-setter tests before any setter moves (Story 3.8, I4)
+- Bundle I's matrix rows asserted end to end
+- Wire-level class pins for every HTTP module (Story 3.11, J0)
+- One header set pinned per HTTP module, minimal and workspace builds (Story 3.13, J6)
+- Bundle J's matrix rows asserted end to end
+- *(perps)* The ws suites run on the shared scripted server (Story 4.6, L2)
+- *(binance)* The ws suites run on the shared scripted server (Story 4.7, L2-1)
+- *(rtds)* The suites run on the shared scripted server (Story 4.8, L2-6)
+- *(sports)* The suites run on the shared scripted server (Story 4.8, L2-11)
+- *(clob)* The ws membership tests run on the shared scripted server (Story 4.9, M-1)
+
+### 🔧 Build
+
+- Reqwest owned by core, and the fence (Story 3.13, J5)
+
+### ⚙️ Miscellaneous Tasks
+
+- *(bmad)* Commit the BMad config, ignore its runtime
+- Package every crate on every PR
+- MSRV, per-feature and removal gates; the agent guide and mutant ledger
+- The transport owner fence and the socket-table fence (Story 4.10, M-9)
+- The scripts job runs cargo tree without the sccache wrapper
+
 ## [0.38.2] - 2026-10-08
 
 `Event::game_id` reads a negative `gameId` as `None`. Gamma sends `-1` on at
