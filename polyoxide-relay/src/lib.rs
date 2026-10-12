@@ -43,7 +43,7 @@
 //! relayer to confirm it:
 //!
 //! ```no_run
-//! use polyoxide_core::SessionSignerScope;
+//! use polyoxide_polymarket::shared::SessionSignerScope;
 //! use polyoxide_relay::{BuilderAccount, BuilderConfig, RelayClient, WalletType};
 //!
 //! # async fn example() -> Result<(), Box<dyn std::error::Error>> {
@@ -75,7 +75,7 @@
 //! Builder credentials but no key:
 //!
 //! ```no_run
-//! use polyoxide_core::SessionSignerScope;
+//! use polyoxide_polymarket::shared::SessionSignerScope;
 //! use polyoxide_relay::{AuthConfig, BuilderConfig, RelayClient, WalletType};
 //!
 //! # async fn example() -> Result<(), Box<dyn std::error::Error>> {
@@ -86,7 +86,7 @@
 //! let session_key = "0x70997970C51812dc3A010C7d01b50e0d17dc79C8".parse()?;
 //!
 //! let nonce = client.get_execute_params(owner, WalletType::DepositWallet).await?;
-//! let deadline = polyoxide_core::current_timestamp() + polyoxide_relay::DEFAULT_BATCH_DEADLINE_SECS;
+//! let deadline = polyoxide_polymarket::shared::current_timestamp() + polyoxide_relay::DEFAULT_BATCH_DEADLINE_SECS;
 //! let (typed_data, request) = client.authorize_session_signer_typed_data(
 //!     wallet, session_key, vec![SessionSignerScope::Clob], nonce, deadline,
 //! )?;
@@ -130,7 +130,7 @@ pub use deposit_wallet::{
     DepositWalletCall, DEFAULT_BATCH_DEADLINE_SECS, SESSION_KEY_LIFETIME_SECS,
 };
 pub use error::RelayError;
-pub use polyoxide_core::{DepositWalletRole, SessionSignerScope};
+pub use polyoxide_polymarket::shared::{DepositWalletRole, SessionSignerScope};
 pub use session_signers::{
     validate_scopes, SessionSignerAuthorization, SessionSignerAuthorizationBody,
     SessionSignerAuthorizationResponse, SessionSignerAuthorizationStatus, SessionSignerRevocation,

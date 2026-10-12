@@ -3,7 +3,7 @@
 //! Drives the real `DataApi` client at the rate its own limiter permits and
 //! reports whether upstream throttled us. The pass condition is **zero
 //! observed 429s**: the client's bucket for this path is modelled at 150
-//! requests per 10s (`polymarket::data_limits`), and this run asks whether
+//! requests per 10s (`polyoxide_polymarket::shared::data_limits`), and this run asks whether
 //! that model survives contact with Cloudflare.
 //!
 //! ```sh

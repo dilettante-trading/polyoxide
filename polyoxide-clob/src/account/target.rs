@@ -11,7 +11,7 @@ use alloy::primitives::Address;
 
 use crate::types::SignatureType;
 
-pub use polyoxide_core::DepositWalletRole;
+pub use polyoxide_polymarket::shared::DepositWalletRole;
 
 /// The on-chain account an [`crate::Account`] signs orders for.
 ///

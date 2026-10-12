@@ -24,6 +24,9 @@ alloy = { version = "1.1.2", features = [
     "sol-types",
 ] }
 polyoxide-core = { workspace = true }
+# Polymarket's shared policy, tables and types, until this crate becomes the
+# `relay` module of `polyoxide-polymarket` (Story 5.4).
+polyoxide-polymarket = { workspace = true, features = ["relay"] }
 polyoxide-venue = { workspace = true }
 serde = { workspace = true }
 serde_json = { workspace = true }

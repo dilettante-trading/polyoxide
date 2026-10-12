@@ -19,9 +19,10 @@ use alloy::rpc::types::TransactionRequest;
 use alloy::sol_types::{Eip712Domain, SolCall, SolStruct, SolValue};
 use polyoxide_core::reqwest::Method;
 use polyoxide_core::{
-    polymarket::{self, PolymarketRetryPolicy},
-    ApiError, Authenticator, ClientConfig, DepositWalletRole, DynAuthenticator, HttpClient,
-    RequestParts, SessionSignerScope,
+    ApiError, Authenticator, ClientConfig, DynAuthenticator, HttpClient, RequestParts,
+};
+use polyoxide_polymarket::shared::{
+    self, DepositWalletRole, PolymarketRetryPolicy, SessionSignerScope,
 };
 use serde::Serialize;
 use std::time::Duration;
@@ -976,7 +977,7 @@ impl RelayClient {
 
     /// Unix seconds now plus [`crate::deposit_wallet::DEFAULT_BATCH_DEADLINE_SECS`].
     fn default_deadline() -> u64 {
-        polyoxide_core::current_timestamp() + crate::deposit_wallet::DEFAULT_BATCH_DEADLINE_SECS
+        shared::current_timestamp() + crate::deposit_wallet::DEFAULT_BATCH_DEADLINE_SECS
     }
 
     /// The batch as EIP-712 JSON for an external signer (`eth_signTypedData_v4`).
@@ -1163,7 +1164,7 @@ impl RelayClient {
         deadline: u64,
     ) -> Result<(serde_json::Value, SessionSignerAuthorization), RelayError> {
         let valid_until =
-            polyoxide_core::current_timestamp() + crate::deposit_wallet::SESSION_KEY_LIFETIME_SECS;
+            shared::current_timestamp() + crate::deposit_wallet::SESSION_KEY_LIFETIME_SECS;
         self.authorize_session_signer_typed_data_with_valid_until(
             wallet,
             session_signer,
@@ -2014,7 +2015,7 @@ impl RelayClientBuilder {
         let http_client = self
             .config
             .http_builder()
-            .with_rate_limiter(polymarket::relay_limits())
+            .with_rate_limiter(shared::relay_limits())
             .with_retry_policy(PolymarketRetryPolicy)
             .build()?;
 

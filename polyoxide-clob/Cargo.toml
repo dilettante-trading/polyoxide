@@ -30,6 +30,9 @@ alloy = { version = "1.1.2", features = [
     "sol-types",
 ] }
 polyoxide-core = { workspace = true }
+# Polymarket's shared policy, tables and types, until this crate becomes the
+# `clob` module of `polyoxide-polymarket` (Story 5.4).
+polyoxide-polymarket = { workspace = true, features = ["clob"] }
 polyoxide-venue = { workspace = true }
 polyoxide-gamma = { workspace = true, optional = true }
 # The socket kit, under `ws`: the TLS install, the bare tier clob reads

@@ -110,7 +110,7 @@
 //! use polyoxide_clob::ClobBuilder;
 //! let clob = ClobBuilder::new().build()?;
 //! let owner: alloy::primitives::Address = "0xf39Fd6e51aad88F6F4ce6aB8827279cffFb92266".parse()?;
-//! let timestamp = polyoxide_core::current_timestamp();
+//! let timestamp = polyoxide_polymarket::shared::current_timestamp();
 //! let typed_data = clob.clob_auth_typed_data(owner, timestamp, 0);
 //! // Hand `typed_data` to the wallet (`eth_signTypedData_v4`) and get its signature back.
 //! # let signature = String::new();
@@ -188,7 +188,7 @@ pub use api::{
 };
 pub use client::{Clob, ClobBuilder, CreateOrderParams, SignedOrderPayload};
 pub use error::ClobError;
-pub use polyoxide_core::SessionSignerScope;
+pub use polyoxide_polymarket::shared::SessionSignerScope;
 pub use types::{
     Order, OrderKind, OrderSide, ParseTickSizeError, PartialCreateOrderOptions, SignatureType,
     SignedOrder, TickSize,

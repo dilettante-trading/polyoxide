@@ -224,7 +224,7 @@ let client = RelayClient::builder()?
 // and 10 ERC-1155), as one batch and one relayer submit.
 let calls = client.deposit_wallet_trading_approvals()?;
 let nonce = client.get_execute_params(owner, WalletType::DepositWallet).await?;
-let deadline = polyoxide_core::current_timestamp() + polyoxide_relay::DEFAULT_BATCH_DEADLINE_SECS;
+let deadline = polyoxide_polymarket::shared::current_timestamp() + polyoxide_relay::DEFAULT_BATCH_DEADLINE_SECS;
 let typed_data = client.deposit_wallet_batch_typed_data(wallet, &calls, nonce, deadline);
 # let _ = typed_data;
 # Ok(())

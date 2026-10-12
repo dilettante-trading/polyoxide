@@ -8,7 +8,8 @@
 
 use alloy::primitives::Address;
 use polyoxide_core::reqwest::header::{HeaderMap, HeaderName, HeaderValue};
-use polyoxide_core::{current_timestamp, ApiError, Authenticator, RequestParts};
+use polyoxide_core::{ApiError, Authenticator, RequestParts};
+use polyoxide_polymarket::shared::current_timestamp;
 use polyoxide_venue::Secret;
 
 use crate::{

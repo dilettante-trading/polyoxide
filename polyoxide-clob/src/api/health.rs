@@ -101,7 +101,7 @@ mod tests {
             .await;
 
         let http_client = polyoxide_core::HttpClientBuilder::new(server.url())
-            .with_rate_limiter(polyoxide_core::polymarket::clob_limits())
+            .with_rate_limiter(polyoxide_polymarket::shared::clob_limits())
             .with_max_concurrent(1)
             .build()
             .unwrap();

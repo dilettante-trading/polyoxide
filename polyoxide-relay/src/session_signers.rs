@@ -12,7 +12,7 @@
 //! wait up to [`SESSION_SIGNER_REQUEST_TIMEOUT`] for the venue's answer.
 
 use alloy::primitives::Address;
-use polyoxide_core::SessionSignerScope;
+use polyoxide_polymarket::shared::SessionSignerScope;
 use serde::{Deserialize, Serialize};
 
 use crate::error::RelayError;
@@ -243,7 +243,7 @@ pub struct SessionSignerRevocationResponse {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use polyoxide_core::SessionSignerScope;
+    use polyoxide_polymarket::shared::SessionSignerScope;
 
     #[test]
     fn validate_scopes_accepts_the_documented_shapes() {

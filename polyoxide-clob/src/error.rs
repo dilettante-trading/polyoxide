@@ -1,6 +1,6 @@
-use polyoxide_core::{
-    polymarket::{SIGNER_CANCEL, SIGNER_ORDER},
-    ApiError, BurstCapacityExceeded, Refused, Tier, TradingBucket,
+use polyoxide_core::{ApiError, Refused};
+use polyoxide_polymarket::shared::{
+    BurstCapacityExceeded, Tier, TradingBucket, SIGNER_CANCEL, SIGNER_ORDER,
 };
 use thiserror::Error;
 

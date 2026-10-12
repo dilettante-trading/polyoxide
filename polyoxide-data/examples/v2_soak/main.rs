@@ -54,7 +54,8 @@ use std::{
 };
 
 use polyoxide_core::reqwest::Method;
-use polyoxide_core::{polymarket, RateLimiter};
+use polyoxide_core::RateLimiter;
+use polyoxide_polymarket::shared;
 use polyoxide_test_support::soak::{self, verdict::tolerant as verdict, Pacer};
 
 mod probes;
@@ -572,8 +573,7 @@ async fn main() -> ExitCode {
                 config.stage_secs,
                 config.concurrency
             );
-            let stage =
-                run_stage(&run, Pace::Client(polymarket::data_limits()), None, planned).await;
+            let stage = run_stage(&run, Pace::Client(shared::data_limits()), None, planned).await;
             let verdict = judge(&stage, None);
             println!("{TABLE_HEADER}\n{}", stage_row("client", &stage, &verdict));
             if let Some(advice) = cooldown_advice(&verdict) {

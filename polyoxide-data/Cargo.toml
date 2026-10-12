@@ -17,6 +17,9 @@ specta = ["dep:specta"]
 [dependencies]
 futures-util = "0.3"
 polyoxide-core = { workspace = true }
+# Polymarket's shared policy, tables and types, until this crate becomes the
+# `data` module of `polyoxide-polymarket` (Story 5.3).
+polyoxide-polymarket = { workspace = true, features = ["data"] }
 polyoxide-venue = { workspace = true }
 rust_decimal = { workspace = true }
 serde = { workspace = true }
@@ -39,7 +42,7 @@ tokio = { workspace = true, features = ["macros", "rt-multi-thread", "time"] }
 
 # `cargo test` and `cargo nextest` build examples but do not run their unit
 # tests unless asked, so the rate-limit harnesses' tests would otherwise never
-# run in CI. The verdict rules that pinned `polymarket::data_limits`'s v2
+# run in CI. The verdict rules that pinned `shared::data_limits`'s v2
 # rows are polyoxide-test-support's `soak::verdict::tolerant`, tested there.
 [[example]]
 name = "v2_soak"

@@ -3,13 +3,13 @@
 //! This module provides a thin wrapper around the unified Signer implementation
 //! to maintain backward compatibility with the CLOB API client.
 
-pub use polyoxide_core::{Base64Format, Signer as CoreSigner};
+pub use polyoxide_polymarket::shared::{Base64Format, Signer as CoreSigner};
 
 use crate::error::ClobError;
 
 /// HMAC signer for API authentication
 ///
-/// This is a thin wrapper around the shared `polyoxide_core::Signer` that provides
+/// This is a thin wrapper around the shared `polyoxide_polymarket::shared::Signer` that provides
 /// CLOB-specific error handling.
 #[derive(Clone, Debug)]
 pub struct Signer {

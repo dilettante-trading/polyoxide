@@ -1,8 +1,7 @@
 use polyoxide_core::reqwest::Method;
-use polyoxide_core::{
-    polymarket::{self, PolymarketRetryPolicy},
-    ClientConfig, DynAuthenticator, HttpClient, RateLimitStatus, Request, SignerLimiter, Tier,
-    TradingRequest,
+use polyoxide_core::{ClientConfig, DynAuthenticator, HttpClient, Request};
+use polyoxide_polymarket::shared::{
+    self, PolymarketRetryPolicy, RateLimitStatus, SignerLimiter, Tier, TradingRequest,
 };
 
 use crate::{
@@ -201,7 +200,7 @@ impl Clob {
     /// The L1 auth message for `address` as EIP-712 JSON, for an external wallet to sign.
     ///
     /// `timestamp` is Unix seconds at signing time — construct it from
-    /// [`polyoxide_core::current_timestamp`] or `std::time::SystemTime`. Unlike the
+    /// [`polyoxide_polymarket::shared::current_timestamp`] or `std::time::SystemTime`. Unlike the
     /// signer-based [`Clob::auth`] path, which stamps a fresh timestamp on every
     /// attempt, the client's internal 429 retry resends the same timestamp and
     /// signature.
@@ -675,7 +674,7 @@ impl Clob {
         Request::new(self.http_client.clone(), "/orders")
             .method(Method::POST)
             .authenticator(account.l2_auth())
-            .with_cost(polymarket::signer_cost(TradingRequest::PostOrders {
+            .with_cost(shared::signer_cost(TradingRequest::PostOrders {
                 count: payload.len() as u32,
             }))
             .body(&payload)?
@@ -706,7 +705,7 @@ impl Clob {
         Request::new(self.http_client.clone(), "/order")
             .method(Method::POST)
             .authenticator(account.l2_auth())
-            .with_cost(polymarket::signer_cost(TradingRequest::PostOrder))
+            .with_cost(shared::signer_cost(TradingRequest::PostOrder))
             .body(&payload)?
             .send()
             .await
@@ -900,7 +899,7 @@ impl ClobBuilder {
         // The IP table and the per-signer buckets over one hold, so a 429
         // stops both; the client keeps a handle on the signer layer for the
         // tier and telemetry it adopts.
-        let throttle = polymarket::clob_throttle();
+        let throttle = shared::clob_throttle();
         let signer_limiter = throttle.signer().clone();
         let http_client = self
             .config

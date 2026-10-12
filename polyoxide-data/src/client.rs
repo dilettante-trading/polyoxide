@@ -1,7 +1,5 @@
-use polyoxide_core::{
-    polymarket::{self, PolymarketRetryPolicy},
-    ClientConfig, HttpClient,
-};
+use polyoxide_core::{ClientConfig, HttpClient};
+use polyoxide_polymarket::shared::{self, PolymarketRetryPolicy};
 
 use crate::{
     api::{
@@ -172,7 +170,7 @@ impl DataApiBuilder {
         let http_client = self
             .config
             .http_builder()
-            .with_rate_limiter(polymarket::data_limits())
+            .with_rate_limiter(shared::data_limits())
             .with_retry_policy(PolymarketRetryPolicy)
             .build()?;
 

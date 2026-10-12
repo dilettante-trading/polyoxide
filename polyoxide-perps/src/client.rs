@@ -1,9 +1,7 @@
 //! The `Perps` client and its builder.
 
-use polyoxide_core::{
-    polymarket::{self, PolymarketRetryPolicy},
-    ClientConfig, HttpClient, RateLimiter,
-};
+use polyoxide_core::{ClientConfig, HttpClient, RateLimiter};
+use polyoxide_polymarket::shared::{self, PolymarketRetryPolicy};
 
 use crate::{
     api::{exchange::ExchangeApi, health::Health, market::MarketApi, public::PublicApi},
@@ -57,7 +55,7 @@ impl PerpsBuilder {
     fn new() -> Self {
         Self {
             config: ClientConfig::new(DEFAULT_BASE_URL, DEFAULT_MAX_CONCURRENT),
-            rate_limiter: Some(polymarket::perps_limits()),
+            rate_limiter: Some(shared::perps_limits()),
         }
     }
 

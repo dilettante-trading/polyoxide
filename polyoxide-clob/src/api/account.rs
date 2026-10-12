@@ -4,9 +4,8 @@ use alloy::primitives::Address;
 use std::sync::Arc;
 
 use polyoxide_core::reqwest::Method;
-use polyoxide_core::{
-    ApiError, DynAuthenticator, HttpClient, QueryBuilder, Request, SessionSignerScope,
-};
+use polyoxide_core::{ApiError, DynAuthenticator, HttpClient, QueryBuilder, Request};
+use polyoxide_polymarket::shared::SessionSignerScope;
 use serde::{Deserialize, Serialize};
 
 use crate::{

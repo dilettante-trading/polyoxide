@@ -40,7 +40,8 @@ impl Health {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use polyoxide_core::{polymarket, HttpClientBuilder};
+    use polyoxide_core::HttpClientBuilder;
+    use polyoxide_polymarket::shared;
 
     /// `ping` must go through the same gating as every other request.
     ///
@@ -60,7 +61,7 @@ mod tests {
             .await;
 
         let http_client = HttpClientBuilder::new(server.url())
-            .with_rate_limiter(polymarket::gamma_limits())
+            .with_rate_limiter(shared::gamma_limits())
             .with_max_concurrent(1)
             .build()
             .unwrap();

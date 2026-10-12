@@ -778,7 +778,7 @@ async fn execute_as_a_session_key_submits_from_the_key_with_the_session_envelope
         .with_account(account)
         .wallet_type(polyoxide_relay::WalletType::DepositWallet)
         .deposit_wallet(wallet)
-        .deposit_wallet_role(polyoxide_core::DepositWalletRole::SessionKey)
+        .deposit_wallet_role(polyoxide_polymarket::shared::DepositWalletRole::SessionKey)
         .build()
         .unwrap();
     let tx = polyoxide_relay::SafeTransaction {
@@ -871,7 +871,7 @@ async fn authorize_session_signer_typed_data_and_submit_reproduce_the_py_sdk_bod
         .authorize_session_signer_typed_data_with_valid_until(
             wallet,
             session,
-            vec![polyoxide_core::SessionSignerScope::Clob],
+            vec![polyoxide_polymarket::shared::SessionSignerScope::Clob],
             1815534000,
             4,
             1800000600,
@@ -904,17 +904,17 @@ async fn authorize_session_signer_typed_data_computes_valid_until_from_the_lifet
     let wallet: alloy::primitives::Address = v["wallet"].as_str().unwrap().parse().unwrap();
     let session: alloy::primitives::Address =
         v["session_signer"].as_str().unwrap().parse().unwrap();
-    let before = polyoxide_core::current_timestamp();
+    let before = polyoxide_polymarket::shared::current_timestamp();
     let (_, request) = client
         .authorize_session_signer_typed_data(
             wallet,
             session,
-            vec![polyoxide_core::SessionSignerScope::All],
+            vec![polyoxide_polymarket::shared::SessionSignerScope::All],
             4,
             1800000600,
         )
         .unwrap();
-    let after = polyoxide_core::current_timestamp();
+    let after = polyoxide_polymarket::shared::current_timestamp();
     assert!(request.valid_until >= before + polyoxide_relay::SESSION_KEY_LIFETIME_SECS);
     assert!(request.valid_until <= after + polyoxide_relay::SESSION_KEY_LIFETIME_SECS);
 }
@@ -936,7 +936,7 @@ async fn session_signer_authorization_refuses_relayer_api_key_auth_before_io() {
         .authorize_session_signer_typed_data_with_valid_until(
             wallet,
             session,
-            vec![polyoxide_core::SessionSignerScope::Clob],
+            vec![polyoxide_polymarket::shared::SessionSignerScope::Clob],
             1815534000,
             4,
             1800000600,
@@ -964,8 +964,8 @@ async fn authorize_session_signer_typed_data_rejects_bad_scopes_before_io() {
             wallet,
             session,
             vec![
-                polyoxide_core::SessionSignerScope::All,
-                polyoxide_core::SessionSignerScope::Clob,
+                polyoxide_polymarket::shared::SessionSignerScope::All,
+                polyoxide_polymarket::shared::SessionSignerScope::Clob,
             ],
             4,
             1800000600,
@@ -1060,7 +1060,10 @@ async fn authorize_session_signer_with_a_local_key_fetches_the_nonce_and_signs()
     let session: alloy::primitives::Address =
         v["session_signer"].as_str().unwrap().parse().unwrap();
     let resp = client
-        .authorize_session_signer(session, vec![polyoxide_core::SessionSignerScope::Clob])
+        .authorize_session_signer(
+            session,
+            vec![polyoxide_polymarket::shared::SessionSignerScope::Clob],
+        )
         .await
         .unwrap();
     assert_eq!(resp.transaction_id, "tx-11");
@@ -1153,7 +1156,7 @@ async fn session_signer_submits_refuse_a_blank_idempotency_key_before_io() {
         .authorize_session_signer_typed_data_with_valid_until(
             wallet,
             session,
-            vec![polyoxide_core::SessionSignerScope::Clob],
+            vec![polyoxide_polymarket::shared::SessionSignerScope::Clob],
             1815534000,
             4,
             1800000600,
@@ -1188,7 +1191,7 @@ fn session_key_deposit_wallet_client(server: &mockito::ServerGuard) -> RelayClie
         .with_account(account)
         .wallet_type(polyoxide_relay::WalletType::DepositWallet)
         .deposit_wallet(wallet)
-        .deposit_wallet_role(polyoxide_core::DepositWalletRole::SessionKey)
+        .deposit_wallet_role(polyoxide_polymarket::shared::DepositWalletRole::SessionKey)
         .build()
         .unwrap()
 }
@@ -1212,7 +1215,10 @@ async fn authorize_session_signer_refuses_a_session_key_role_before_io() {
     let session: alloy::primitives::Address =
         v["session_signer"].as_str().unwrap().parse().unwrap();
     let err = client
-        .authorize_session_signer(session, vec![polyoxide_core::SessionSignerScope::Clob])
+        .authorize_session_signer(
+            session,
+            vec![polyoxide_polymarket::shared::SessionSignerScope::Clob],
+        )
         .await
         .unwrap_err()
         .to_string();
@@ -1253,7 +1259,10 @@ async fn authorize_session_signer_refuses_relayer_api_key_auth_before_io() {
     let session: alloy::primitives::Address =
         v["session_signer"].as_str().unwrap().parse().unwrap();
     let err = client
-        .authorize_session_signer(session, vec![polyoxide_core::SessionSignerScope::Clob])
+        .authorize_session_signer(
+            session,
+            vec![polyoxide_polymarket::shared::SessionSignerScope::Clob],
+        )
         .await
         .unwrap_err()
         .to_string();
@@ -1826,7 +1835,7 @@ fn every_relay_route() -> Vec<Route> {
                     let (_, request) = c.authorize_session_signer_typed_data_with_valid_until(
                         wallet,
                         session,
-                        vec![polyoxide_core::SessionSignerScope::Clob],
+                        vec![polyoxide_polymarket::shared::SessionSignerScope::Clob],
                         1815534000,
                         4,
                         1800000600,
@@ -2111,7 +2120,7 @@ async fn throttled_once(
 /// `c2VjcmV0` over the attempt's own timestamp, the method, the path and the
 /// body.
 fn builder_signature(timestamp: u64, method: &str, path: &str, body: Option<&str>) -> String {
-    use polyoxide_core::{Base64Format, Signer};
+    use polyoxide_polymarket::shared::{Base64Format, Signer};
 
     Signer::new("c2VjcmV0")
         .sign(
@@ -2281,7 +2290,7 @@ async fn a_session_signer_post_outlasts_the_client_timeout() {
         .authorize_session_signer_typed_data_with_valid_until(
             wallet,
             session,
-            vec![polyoxide_core::SessionSignerScope::Clob],
+            vec![polyoxide_polymarket::shared::SessionSignerScope::Clob],
             1815534000,
             4,
             1800000600,

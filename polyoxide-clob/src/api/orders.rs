@@ -2,9 +2,8 @@ use std::collections::HashMap;
 use std::sync::Arc;
 
 use polyoxide_core::reqwest::Method;
-use polyoxide_core::{
-    polymarket::signer_cost, DynAuthenticator, HttpClient, QueryBuilder, Request, TradingRequest,
-};
+use polyoxide_core::{DynAuthenticator, HttpClient, QueryBuilder, Request};
+use polyoxide_polymarket::shared::{signer_cost, TradingRequest};
 use serde::{Deserialize, Serialize};
 
 use crate::error::ClobError;

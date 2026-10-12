@@ -3565,7 +3565,7 @@ async fn the_tier_is_adopted_from_the_response_header() {
         .await;
 
     let clob = test_authed_clob(&server);
-    assert_eq!(clob.tier(), polyoxide_core::Tier::Standard);
+    assert_eq!(clob.tier(), polyoxide_polymarket::shared::Tier::Standard);
     assert_eq!(clob.rate_limit_status().tier, None);
 
     clob.orders()
@@ -3575,7 +3575,7 @@ async fn the_tier_is_adopted_from_the_response_header() {
         .await
         .unwrap();
 
-    assert_eq!(clob.tier(), polyoxide_core::Tier::Gold);
+    assert_eq!(clob.tier(), polyoxide_polymarket::shared::Tier::Gold);
     assert_eq!(clob.rate_limit_status().remaining, Some(1_183));
 }
 
@@ -3861,14 +3861,16 @@ async fn list_session_signers_parses_scopes_and_expiry() {
     assert_eq!(
         listed.signers[0].scopes,
         vec![
-            polyoxide_core::SessionSignerScope::Clob,
-            polyoxide_core::SessionSignerScope::CombosRfq
+            polyoxide_polymarket::shared::SessionSignerScope::Clob,
+            polyoxide_polymarket::shared::SessionSignerScope::CombosRfq
         ]
     );
     assert_eq!(listed.signers[0].valid_until, 1800000000);
     assert_eq!(
         listed.signers[1].scopes,
-        vec![polyoxide_core::SessionSignerScope::Other("PERPS".into())]
+        vec![polyoxide_polymarket::shared::SessionSignerScope::Other(
+            "PERPS".into()
+        )]
     );
     mock.assert_async().await;
 }
@@ -4072,7 +4074,7 @@ async fn throttled_once(
 
 #[tokio::test]
 async fn a_retried_l2_request_is_signed_on_every_attempt() {
-    use polyoxide_core::{Base64Format, Signer};
+    use polyoxide_polymarket::shared::{Base64Format, Signer};
 
     let mut server = Server::new_async().await;
     let attempts = Attempts::default();
@@ -4384,8 +4386,8 @@ async fn over_capacity_batch_post_is_rejected_without_sending_a_request() {
         ClobError::BurstCapacityExceeded(e) => {
             assert_eq!(e.cost, 61, "one token per order");
             assert_eq!(e.capacity, 60, "Standard tier order burst");
-            assert_eq!(e.tier, polyoxide_core::Tier::Standard);
-            assert_eq!(e.bucket, polyoxide_core::TradingBucket::Order);
+            assert_eq!(e.tier, polyoxide_polymarket::shared::Tier::Standard);
+            assert_eq!(e.bucket, polyoxide_polymarket::shared::TradingBucket::Order);
         }
         other => panic!("expected BurstCapacityExceeded, got {other:?}"),
     }
