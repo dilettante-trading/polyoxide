@@ -15,9 +15,7 @@ default = ["gamma"]
 gamma = ["dep:polyoxide-gamma"]
 ws = [
     "dep:polyoxide-ws",
-    "dep:tokio-tungstenite",
     "dep:futures-util",
-    "dep:rustls",
     "tokio/net",
     "tokio/macros",
     "tokio/sync",
@@ -34,8 +32,9 @@ alloy = { version = "1.1.2", features = [
 polyoxide-core = { workspace = true }
 polyoxide-venue = { workspace = true }
 polyoxide-gamma = { workspace = true, optional = true }
-# The socket kit, under `ws`: the bare tier clob reads through, the upgrade
-# over its own per-address connect, and `WsError`.
+# The socket kit, under `ws`: the TLS install, the bare tier clob reads
+# through, the upgrade over its own per-address connect, and `WsError`. It
+# owns the transport, so clob declares neither tokio-tungstenite nor rustls.
 polyoxide-ws = { workspace = true, optional = true }
 serde = { workspace = true }
 serde_json = { workspace = true }
@@ -47,13 +46,7 @@ hex = { workspace = true }
 rand = { version = "0.9.2", features = ["std"] }
 rust_decimal = { workspace = true }
 urlencoding = "2.1"
-tokio-tungstenite = { workspace = true, optional = true }
 futures-util = { version = "0.3", optional = true }
-# Needed only to install a process-default rustls CryptoProvider — see
-# `ensure_crypto_provider` in src/ws/client.rs. default-features = false keeps
-# us from pulling aws-lc-rs (and its cmake/nasm build requirements) into the
-# graph on top of the ring backend already present.
-rustls = { workspace = true, optional = true }
 
 [dev-dependencies]
 # The live suites' failure tags and credential loaders. Path-only: it is never

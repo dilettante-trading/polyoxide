@@ -30,8 +30,9 @@ pub type Socket = WebSocketStream<MaybeTlsStream<TcpStream>>;
 /// The basis is `polyoxide-sports`' `open` (`src/client.rs`) and
 /// `polyoxide-binance`'s former connect in `UsdmWs::open`
 /// (`usdm/ws/client.rs`, on this function since Story 4.7). A venue whose
-/// connect is its own, as `polyoxide-clob`'s per-address connect is and
-/// sports' is until Story 4.10, bounds it with [`with_timeout`] instead.
+/// connect is its own bounds it with [`with_timeout`] instead: sports' is
+/// until Story 4.10, and `polyoxide-clob`'s per-address connect is for good
+/// (D20), each step bounded and the upgrade through [`connect_over`].
 pub async fn connect<R>(request: R, timeout: Duration) -> Result<Socket, WsError>
 where
     R: IntoClientRequest + Unpin,

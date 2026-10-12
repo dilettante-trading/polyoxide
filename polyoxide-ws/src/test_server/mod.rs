@@ -11,7 +11,9 @@
 //! recorder any of them has, and the interval idiom. What stays with each
 //! venue is its protocol's answer, passed to
 //! [`ScriptedServer::start_answering`] as a closure with per-connection
-//! state, and its fixtures.
+//! state, and its fixtures. `polyoxide-clob`'s two loopback servers in its
+//! membership tests (`recording_server` and `ping_counting_server`,
+//! `ws/client.rs`) went the same way in Story 4.9, needing nothing new.
 
 mod helpers;
 

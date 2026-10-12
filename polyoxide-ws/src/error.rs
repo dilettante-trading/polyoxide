@@ -18,11 +18,10 @@ use tokio_tungstenite::tungstenite::{self, http::header::RETRY_AFTER, protocol::
 /// [`no_answer`](Self::no_answer) for the failures the kit detects itself.
 ///
 /// The basis is the boxed `tungstenite::Error` each socket crate wrapped:
-/// `polyoxide-perps`', `polyoxide-binance`'s and `polyoxide-rtds`' errors
-/// wrap this type instead since Stories 4.6 to 4.8, and `polyoxide-clob`'s
-/// `ws/error.rs` and `polyoxide-sports`' call sites box tungstenite's until
-/// Story 4.10. One divergence row stays with
-/// each venue: **D19**, what to do after [`Kind::AlreadyClosed`] (perps and
+/// `polyoxide-perps`', `polyoxide-binance`'s, `polyoxide-rtds`' and
+/// `polyoxide-clob`'s errors wrap this type instead since Stories 4.6 to 4.9,
+/// and `polyoxide-sports`' call sites box tungstenite's until Story 4.10. One
+/// divergence row stays with each venue: **D19**, what to do after [`Kind::AlreadyClosed`] (perps and
 /// rtds stop, Binance and sports reconnect).
 pub struct WsError(Box<Repr>);
 

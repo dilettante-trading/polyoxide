@@ -20,9 +20,12 @@ use polyoxide_clob::{Account, ClobBuilder, Credentials};
 use polyoxide_test_support::keychain;
 use polyoxide_test_support::{fail, load_env, transient, ResultExt};
 use polyoxide_venue::{class_for_close_code, Class};
-use polyoxide_ws::WsError;
+use polyoxide_ws::{tungstenite::Message, WsError};
 
 // ── User channel: is `markets` actually optional? ───────────────
+
+/// How long the raw probe's connect may take, as the SDK's own.
+const CONNECT_TIMEOUT: Duration = Duration::from_secs(10);
 
 /// Derive real L2 credentials from `POLYMARKET_PRIVATE_KEY` alone.
 ///
@@ -90,17 +93,17 @@ async fn derive_credentials() -> (String, String, String) {
 /// its class, and a stream that ends, or closes with a code the socket table
 /// treats as a dropped connection, as `transient`.
 async fn probe_user_subscription(frame: String) -> Result<usize, String> {
-    use tokio_tungstenite::{connect_async, tungstenite::Message};
-
-    // Going around the SDK also goes around its `ensure_crypto_provider` call,
-    // and this graph enables two rustls backends — so without this the probe
-    // panics before it reaches the network. Exactly the bug the SDK now fixes.
-    let _ = rustls::crypto::ring::default_provider().install_default();
-
-    let (mut ws, _) = connect_async("wss://ws-subscriptions-clob.polymarket.com/ws/user")
-        .await
-        .map_err(|err| WebSocketError::from(WsError::from(err)))
-        .or_fail("connect failed");
+    // A raw socket through the kit's connect, which installs the TLS
+    // provider (DRIFT R9): this graph enables two rustls backends, so a
+    // connect without it panics before it reaches the network. A connect
+    // that times out fails as `ConnectTimeout`, `Network`.
+    let mut ws = polyoxide_ws::connect(
+        "wss://ws-subscriptions-clob.polymarket.com/ws/user",
+        CONNECT_TIMEOUT,
+    )
+    .await
+    .map_err(WebSocketError::from)
+    .or_fail("connect failed");
 
     ws.send(Message::Text(frame.into()))
         .await

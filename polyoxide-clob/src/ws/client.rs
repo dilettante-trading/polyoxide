@@ -33,28 +33,6 @@ const MAX_SUBSCRIPTIONS_PER_CONNECTION: usize = 500;
 /// back-pressure rather than buffer membership changes unboundedly.
 const OUTBOUND_QUEUE_DEPTH: usize = 64;
 
-/// Make sure rustls has a default `CryptoProvider` before we open a connection.
-///
-/// `tokio-tungstenite` builds its TLS config from the process-wide default
-/// provider. rustls picks that default automatically only when exactly one
-/// backend feature is enabled — and this dependency graph enables two on a
-/// single shared `rustls`: `ring` arrives with `reqwest 0.12` (used by
-/// `polyoxide-core`) and `aws-lc-rs` with `reqwest 0.13` (pulled in by
-/// `alloy`, a mandatory dependency here). Faced with two candidates rustls
-/// installs neither and panics inside `connect_async`, which made *every*
-/// channel — market and user alike — abort at connect time for any
-/// consumer of this crate.
-///
-/// Installing the default is deliberately best-effort: `install_default`
-/// returns `Err` when one is already set, and in that case the host
-/// application has chosen and we leave its choice alone.
-fn ensure_crypto_provider() {
-    static INSTALL: std::sync::Once = std::sync::Once::new();
-    INSTALL.call_once(|| {
-        let _ = rustls::crypto::ring::default_provider().install_default();
-    });
-}
-
 /// Default per-address connect timeout, overridable via
 /// [`WebSocketBuilder::connect_timeout`].
 const DEFAULT_CONNECT_TIMEOUT: Duration = Duration::from_secs(10);
@@ -101,8 +79,6 @@ fn no_addresses(url: &str) -> WebSocketError {
 /// the upgrade through [`connect_over`]), and falls back to the next address
 /// on any failure. This connect is clob's own (divergence row D20).
 async fn connect_ws(url: &str, connect_timeout: Duration) -> Result<Connection, WebSocketError> {
-    ensure_crypto_provider();
-
     let parsed = url::Url::parse(url)?;
     let host = parsed
         .host_str()
