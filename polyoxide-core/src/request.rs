@@ -202,7 +202,7 @@ impl<T: DeserializeOwned, E: RequestError> Request<T, E> {
                 return Ok(response);
             }
             // Only a policy that is `Done` with a failed response gets here:
-            // core's and Polymarket's fail it, and the loop returns the error.
+            // core's and the venues' fail it, and the loop returns the error.
             Ok(response) => ApiError::from_response(response).await,
             Err(err) => err,
         };

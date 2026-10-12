@@ -27,12 +27,11 @@ pub type Socket = WebSocketStream<MaybeTlsStream<TcpStream>>;
 /// [`Kind::ConnectTimeout`]; every other failure is the transport's, such as
 /// [`Kind::Refused`] for an upgrade the server answered with an HTTP status.
 ///
-/// The basis is `polyoxide-sports`' former `open` (`src/client.rs`) and
-/// `polyoxide-binance`'s former connect in `UsdmWs::open`
-/// (`usdm/ws/client.rs`), each on this function since Stories 4.7 and 4.10.
-/// A venue whose connect is its own bounds it with [`with_timeout`] instead,
-/// as `polyoxide-clob`'s per-address connect does (D20), each step bounded
-/// and the upgrade through [`connect_over`].
+/// The basis is two socket crates' former connects, one crate's `open`
+/// (`src/client.rs`) and the other's bare-tier `open`, each on this function
+/// since Stories 4.7 and 4.10. A venue whose connect is its own bounds it
+/// with [`with_timeout`] instead, as one venue's per-address connect does
+/// (D20), each step bounded and the upgrade through [`connect_over`].
 pub async fn connect<R>(request: R, timeout: Duration) -> Result<Socket, WsError>
 where
     R: IntoClientRequest + Unpin,
@@ -45,12 +44,12 @@ where
 /// Upgrade a TCP connection the caller opened itself: the TLS handshake when
 /// `request` is a `wss://` URL, then the WebSocket upgrade.
 ///
-/// For a venue whose connect is its own, as `polyoxide-clob`'s is: it
-/// resolves the host and dials each address itself, and hands the first TCP
-/// connection that opens to this (D20). The rustls provider is installed
-/// first ([`ensure_crypto_provider`]). It has no timeout of its own, so bound
-/// it with [`with_timeout`]. A refused upgrade fails as [`Kind::Refused`], as
-/// it does through [`connect`].
+/// For a venue whose connect is its own: one that resolves the host and
+/// dials each address itself, and hands the first TCP connection that opens
+/// to this (D20). The rustls provider is installed first
+/// ([`ensure_crypto_provider`]). It has no timeout of its own, so bound it
+/// with [`with_timeout`]. A refused upgrade fails as [`Kind::Refused`], as it
+/// does through [`connect`].
 pub async fn connect_over<R>(request: R, tcp: TcpStream) -> Result<Socket, WsError>
 where
     R: IntoClientRequest + Unpin,
@@ -89,11 +88,11 @@ pub async fn with_timeout<F: Future>(timeout: Duration, connect: F) -> Result<F:
 /// [`Kind::AlreadyClosed`] (D19) and what a close code means stay with each
 /// venue's recovery, so both are `true` here.
 ///
-/// The basis is `polyoxide-sports`' former `SportsError::retrying_can_fix`
+/// The basis is one socket crate's former `retrying_can_fix` on its error
 /// (`src/error.rs`), with the status rule injected, since this crate cannot
-/// see `polyoxide-venue`. sports' recovery calls this since Story 4.10, with
-/// its own row ahead of it: it retries a `Capacity` failure, which this gives
-/// up on.
+/// see `polyoxide-venue`. That crate's recovery calls this since Story 4.10,
+/// with its own row ahead of it: it retries a `Capacity` failure, which this
+/// gives up on.
 pub fn retrying_can_fix(err: &WsError, retriable_status: impl Fn(u16) -> bool) -> bool {
     match err.kind() {
         Kind::Refused { status, .. } => retriable_status(status),

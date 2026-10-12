@@ -82,6 +82,13 @@
 
 [literals]
 
+# Story 5.2: core names no venue, so its `with_base_url` tests use example hosts.
+[literals."polyoxide-core/src/client.rs"]
+"https://data-api.polymarket.com" = "https://api.example.com"
+"https://user-pnl-api.polymarket.com" = "https://sibling.example.com"
+"data-api.polymarket.com" = "api.example.com"
+"user-pnl-api.polymarket.com" = "sibling.example.com"
+
 [paths]
 
 # Story 5.2: core's Polymarket files moved into `polyoxide-polymarket`'s

@@ -73,3 +73,30 @@ all-features = true
 readme = "Client library for Polymarket's APIs, one feature per module; today it holds the code the modules share (`shared`), and the modules arrive in Stories 5.3 to 5.5"
 venue = "polymarket"
 identifiers = ["Poly-RateLimit"]
+
+# The foundation crates' protected test names and probe that still name a
+# Polymarket product or host (S2 may not rename a test, AD-12).
+[[package.metadata.polyoxide.gate_exceptions]]
+path = "polyoxide-ws/src/request.rs"
+term = "perps"
+reason = "the request-correlation tests of Story 4.2 model perps' answers in `mod perps`, and two of their protected names start `perps_`"
+
+[[package.metadata.polyoxide.gate_exceptions]]
+path = "polyoxide-ws/src/test_server/tests.rs"
+term = "perps"
+reason = "the scripted server's protected tests of Story 4.4 answer as perps does, in `mod as_perps_will_use_it` and its `Perps` answerer"
+
+[[package.metadata.polyoxide.gate_exceptions]]
+path = "polyoxide-ws/src/test_server/tests.rs"
+term = "rtds"
+reason = "the scripted server's protected tests of Story 4.4 replay rtds' old suite in `mod as_rtds_used_it`"
+
+[[package.metadata.polyoxide.gate_exceptions]]
+path = "polyoxide-ws/examples/close_reply_probe.rs"
+term = "perps"
+reason = "the probe of DRIFT R3 measured perps' public socket, its default host, `PERPS_WS_URL`"
+
+[[package.metadata.polyoxide.gate_exceptions]]
+path = "polyoxide-ws/examples/close_reply_probe.rs"
+term = "polymarket"
+reason = "the probe of DRIFT R3 defaults to perps' public socket on `ws.perpetuals.polymarket.com`"

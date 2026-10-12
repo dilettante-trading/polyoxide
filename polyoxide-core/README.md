@@ -1,6 +1,6 @@
 # polyoxide-core
 
-Core infrastructure crate for the [polyoxide](https://crates.io/crates/polyoxide) workspace. Provides the shared HTTP client, error types, authentication primitives, rate limiting, request building, and macros used by `polyoxide-clob`, `polyoxide-gamma`, `polyoxide-data`, and `polyoxide-relay`.
+Core infrastructure crate for the [polyoxide](https://crates.io/crates/polyoxide) workspace. Provides the HTTP client and its one send loop, the hooks a venue gives that loop, error types, rate limiting, request building, and macros that every venue crate builds on. It names no venue: each venue's own rules, such as its retry policy, its rate limit tables and its signing, live in that venue's crate.
 
 This is an **internal** crate. End users should depend on [`polyoxide`](https://crates.io/crates/polyoxide) instead.
 
@@ -21,7 +21,7 @@ This is an **internal** crate. End users should depend on [`polyoxide`](https://
 
 ## Error hierarchy
 
-Each downstream crate defines its own error enum (e.g. `ClobError`, `GammaError`) with an `Api(ApiError)` variant. An unsuccessful response reaches it as `ApiError::Response`, which carries the whole response (`ErrorResponse`: status, headers, body, message and `Retry-After`), and the crate's `From<ApiError>` is its one decode: a `?` on core's error anywhere reads the venue's own body shape there. Transport, URL and JSON failures enter the same way, as `ApiError::Network`, `Url` and `Serialization`:
+Each venue crate defines its own error enum, one per module, with an `Api(ApiError)` variant. An unsuccessful response reaches it as `ApiError::Response`, which carries the whole response (`ErrorResponse`: status, headers, body, message and `Retry-After`), and the crate's `From<ApiError>` is its one decode: a `?` on core's error anywhere reads the venue's own body shape there. Transport, URL and JSON failures enter the same way, as `ApiError::Network`, `Url` and `Serialization`:
 
 ```rust
 use polyoxide_core::ApiError;
@@ -73,7 +73,7 @@ use polyoxide_core::{Authenticator, DefaultRetryPolicy, RetryPolicy, Throttle};
 
 ```toml
 [dependencies]
-polyoxide-core = "0.37"
+polyoxide-core = "0.39"
 ```
 
 ## License

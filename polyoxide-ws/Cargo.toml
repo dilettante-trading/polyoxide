@@ -7,7 +7,7 @@ authors.workspace = true
 repository.workspace = true
 rust-version.workspace = true
 description = "The WebSocket kit the polyoxide socket clients share, one copy of each block they would otherwise each carry"
-keywords = ["polymarket", "websocket", "reconnect", "backoff"]
+keywords = ["trading", "websocket", "reconnect", "backoff"]
 categories = ["api-bindings", "web-programming::websocket"]
 
 # Only these (AD-2), so a credential-free feed built on this crate builds no

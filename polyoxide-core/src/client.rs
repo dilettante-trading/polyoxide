@@ -66,8 +66,8 @@ impl HttpClient {
     /// (and so its hold), retry policy, retry config, and concurrency limiter
     /// are all shared with the original. Use this to reach a sibling API host
     /// that should share the same transport configuration and request budget —
-    /// several Polymarket APIs live on their own subdomains but are consumed by
-    /// one client, and a 429 on one holds them all.
+    /// a venue whose APIs live on their own subdomains is consumed by one
+    /// client, and a 429 on one holds them all.
     ///
     /// Sharing the concurrency limiter is deliberate: the limit exists to keep
     /// Cloudflare from seeing a burst from this process, and that is a
@@ -627,20 +627,20 @@ mod tests {
 
     #[test]
     fn with_base_url_retargets_and_shares_transport() {
-        let client = HttpClientBuilder::new("https://data-api.polymarket.com")
+        let client = HttpClientBuilder::new("https://api.example.com")
             .with_max_concurrent(4)
             .build()
             .unwrap();
         let sibling = client
-            .with_base_url("https://user-pnl-api.polymarket.com")
+            .with_base_url("https://sibling.example.com")
             .unwrap();
 
         assert_eq!(
             sibling.base_url.host_str(),
-            Some("user-pnl-api.polymarket.com")
+            Some("sibling.example.com")
         );
         // The original is untouched — this returns a clone, not a mutation.
-        assert_eq!(client.base_url.host_str(), Some("data-api.polymarket.com"));
+        assert_eq!(client.base_url.host_str(), Some("api.example.com"));
         // Both must draw on the same concurrency budget, since the limit exists
         // to stop this process bursting rather than to pace any one host.
         assert!(sibling.concurrency_limiter.is_some());
@@ -648,7 +648,7 @@ mod tests {
 
     #[test]
     fn with_base_url_rejects_a_malformed_url() {
-        let client = HttpClientBuilder::new("https://data-api.polymarket.com")
+        let client = HttpClientBuilder::new("https://api.example.com")
             .build()
             .unwrap();
         assert!(client.with_base_url("not-a-url").is_err());

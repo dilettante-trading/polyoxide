@@ -1,0 +1,6 @@
+# Generic words scripts/venue_gate.py never looks for as product segments,
+# though a venue may name a product after one: in the foundation crates they
+# are ordinary words (`data` for a payload, `events` for a stream's items).
+# One word per line; `#` starts a comment.
+data
+events

@@ -1,7 +1,7 @@
 //! Window quotas: [`WindowQuotaTable`] builds a [`RateLimiter`], which counts
 //! requests against the buckets a request's method and path resolve to.
 //!
-//! Polymarket's tables are built in [`polymarket`](crate::polymarket).
+//! A venue builds its own tables, in its own crate.
 
 use std::sync::atomic::{AtomicU32, Ordering};
 use std::sync::Arc;
@@ -112,9 +112,9 @@ impl EndpointLimit {
 /// Window quotas for one API surface: a general bucket every request passes,
 /// then the buckets of the first row its method and path match.
 ///
-/// Built by [`WindowQuotaTable`]. Polymarket's tables are
-/// [`polymarket::clob_limits`](crate::polymarket::clob_limits) and its
-/// siblings. A clone shares the buckets and the [`Hold`].
+/// Built by [`WindowQuotaTable`]; a venue's crate builds one for each of its
+/// API surfaces. A clone shares the buckets and the
+/// [`Hold`].
 #[derive(Clone)]
 pub struct RateLimiter {
     inner: Arc<RateLimiterInner>,
@@ -164,7 +164,7 @@ struct RateLimiterInner {
 /// # Why it aims below the published count
 ///
 /// Because the published count turns out not to be reachable as a rate.
-/// Measured against `data-api.polymarket.com` on `/closed-positions`, which
+/// Measured against one venue's host on `/closed-positions`, which
 /// publishes 150/10s:
 ///
 /// | Sustained rate | Share of published | Result |
@@ -244,19 +244,19 @@ mod quota_arithmetic {
     /// walks the configured tables — cannot see them, and they are the largest
     /// allowance on every surface.
     const PUBLISHED_SHAPES: &[(u32, u64)] = &[
-        (9_000, 10),    // clob default
-        (4_000, 10),    // gamma default
-        (1_000, 10),    // data default / clob /prices-history
-        (25, 60),       // relay default
-        (150, 10),      // data /closed-positions, /positions
-        (200, 10),      // data /trades, clob /balance-allowance
-        (300, 10),      // gamma /markets
-        (350, 10),      // gamma /public-search
-        (500, 10),      // gamma /events
+        (9_000, 10),    // a general bucket
+        (4_000, 10),    // a general bucket
+        (1_000, 10),    // a general bucket, a price history route
+        (25, 60),       // a general bucket by the minute
+        (150, 10),      // /closed-positions, /positions
+        (200, 10),      // a trades route, a balance route
+        (300, 10),      // a markets route
+        (350, 10),      // a search route
+        (500, 10),      // an events route
         (100, 10),      // health routes
-        (50, 10),       // clob /balance-allowance/update
-        (5_000, 10),    // clob /order burst window
-        (120_000, 600), // clob /order sustained window
+        (50, 10),       // a balance update route
+        (5_000, 10),    // an order route's burst window
+        (120_000, 600), // an order route's sustained window
     ];
 
     #[test]
@@ -368,7 +368,7 @@ pub struct QuotaRow<'a> {
 ///
 /// Every request passes the general bucket, then the buckets of the first row
 /// whose pattern and method it matches, in the order the row lists them. Two
-/// rows naming one [`BucketId`] share one allowance: Polymarket caps four
+/// rows naming one [`BucketId`] share one allowance: one venue caps four
 /// ledger routes at 900 per 10 s combined, which four buckets of their own
 /// would turn into 3,600.
 ///
@@ -389,7 +389,7 @@ pub struct QuotaRow<'a> {
 ///   requests in flight when the hold began (on the send loop, the
 ///   concurrency permits).
 /// - A published count is reachable as a burst and not as a rate. On
-///   Polymarket's `/closed-positions` (150 per 10 s) a sustained 95% was
+///   one venue's `/closed-positions` (150 per 10 s) a sustained 95% was
 ///   refused and 90% ran clean for 180 s, so a bucket keeps a tenth back.
 ///
 /// A count below 2 paces as 2 per window, since a bucket holds at least one

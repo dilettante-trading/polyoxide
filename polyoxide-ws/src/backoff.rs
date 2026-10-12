@@ -15,10 +15,10 @@ pub const MIN_BACKOFF: Duration = Duration::from_millis(1);
 /// reconnect, so neither was, and a schedule pinned at its initial value would
 /// have hammered an unwell host without failing a test.
 ///
-/// The basis is `polyoxide-rtds`' former copy (`src/supervisor.rs`),
-/// identical to those `polyoxide-perps`, `polyoxide-binance` and
-/// `polyoxide-sports` carried; each was deleted for this one (Stories 4.6 to
-/// 4.8).
+/// The basis is one socket crate's former copy (`src/supervisor.rs`),
+/// identical to the copies three other socket crates carried. Each copy was
+/// deleted for this one in Stories 4.6 to 4.8, and each crate that carried
+/// one takes its schedule from here.
 /// Two divergence rows stay with each venue:
 ///
 /// - **D6.** What counts as a connection that delivered something follows the

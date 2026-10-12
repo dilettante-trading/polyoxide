@@ -14,10 +14,10 @@
 /// `install_default` refuses to replace one, so the host application's own
 /// choice, or another crate's install racing this one, is left alone.
 ///
-/// The basis is `polyoxide-rtds`' former copy (`src/client.rs`),
-/// byte-identical to those `polyoxide-perps`, `polyoxide-binance`,
-/// `polyoxide-sports` and `polyoxide-clob` carried, each deleted for this one
-/// (Stories 4.6 to 4.9). No per-venue divergence row applies.
+/// The basis is one socket crate's former copy (`src/client.rs`),
+/// byte-identical to the copies the four other socket crates carried, each
+/// deleted for this one (Stories 4.6 to 4.9). No per-venue divergence row
+/// applies.
 pub fn ensure_crypto_provider() {
     static INSTALL: std::sync::Once = std::sync::Once::new();
     INSTALL.call_once(|| {
@@ -51,11 +51,11 @@ mod tests {
 
     #[test]
     fn a_default_crypto_provider_is_available_to_connect() {
-        // Moved from `polyoxide-clob` (`ws/client.rs`), whose copy of the
-        // install it pinned, by name (Story 4.9). Every clob `connect_*`
-        // panicked before its install existed: tokio-tungstenite builds its
-        // rustls `ClientConfig` from the process-wide default
-        // CryptoProvider, and clob's graph enables *both* `ring` (via
+        // Moved from one socket crate (`ws/client.rs`), whose copy of the
+        // install it pinned, by name (Story 4.9). Every `connect_*` of that
+        // crate panicked before its install existed: tokio-tungstenite builds
+        // its rustls `ClientConfig` from the process-wide default
+        // CryptoProvider, and that crate's graph enables *both* `ring` (via
         // reqwest 0.12) and `aws-lc-rs` (via alloy's reqwest 0.13) on one
         // shared rustls. Given two candidates rustls installs neither and
         // panics, so the whole WebSocket surface aborted at connect time.

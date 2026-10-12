@@ -1,9 +1,8 @@
 //! # polyoxide-ws
 //!
 //! The WebSocket kit the polyoxide socket clients share. Each block here was
-//! carried as a copy by every socket crate (clob, perps, Binance, rtds and
-//! sports); this crate holds the one copy, and each venue keeps only what is
-//! its own.
+//! carried as a copy by every socket crate (five of them); this crate holds
+//! the one copy, and each venue keeps only what is its own.
 //!
 //! - [`ensure_crypto_provider`] installs the process-default rustls provider
 //!   a `tokio-tungstenite` connect needs.

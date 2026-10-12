@@ -1,7 +1,7 @@
 //! The Supervisor's rules (AD-11), each pinned against the shared scripted
 //! server with a test protocol: JSON `{"id", "op", "topics"}` requests
 //! answered `{"id", "ok"}`, `{"data": n}` and `{"burst": [..]}` pushes, and
-//! protocol pings. It counts any frame as liveness, as Binance does, and
+//! protocol pings. It counts any frame as liveness, as one venue does, and
 //! skips a frame that is not JSON.
 
 use std::time::Duration;
@@ -42,7 +42,7 @@ enum TestError {
 #[derive(Debug, Clone)]
 struct Topics {
     topics: Vec<String>,
-    /// Whether an empty membership stops being wanted, as Binance's paths do.
+    /// Whether an empty membership stops being wanted, as a venue's paths do.
     empty_unwanted: bool,
 }
 
@@ -52,19 +52,19 @@ enum Change {
     Remove(&'static str),
 }
 
-/// How long a change to the topic `slow` takes before its request, as perps'
-/// retries of a rate-limited subscribe do.
+/// How long a change to the topic `slow` takes before its request, as a
+/// venue's retries of a rate-limited subscribe do.
 const SLOW: Duration = Duration::from_millis(200);
 
 /// The test protocol.
 struct Feed {
     url: String,
     declaring: bool,
-    /// Record a change made during an outage at once, as Binance does, rather
-    /// than hold it, as perps does.
+    /// Record a change made during an outage at once, as one venue does,
+    /// rather than hold it, as another does.
     record: bool,
     queue: Queue,
-    /// Requests on each connection no sooner than this apart, as Binance
+    /// Requests on each connection no sooner than this apart, as one venue
     /// paces its own, set through `configure`.
     pacing: Option<Duration>,
 }

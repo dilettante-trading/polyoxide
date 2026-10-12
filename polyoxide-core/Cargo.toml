@@ -6,8 +6,8 @@ license.workspace = true
 authors.workspace = true
 repository.workspace = true
 rust-version.workspace = true
-description = "Core utilities and shared types for Polyoxide Polymarket API clients"
-keywords = ["polymarket", "api", "core"]
+description = "Core utilities and shared types for the polyoxide venue clients: the HTTP send loop and its hooks, window quotas, capacity buckets and holds, errors and macros"
+keywords = ["trading", "api", "core", "rate-limit"]
 categories = ["api-bindings"]
 
 [features]
@@ -47,4 +47,4 @@ tokio = { workspace = true, features = ["macros", "rt-multi-thread", "test-util"
 # --write` after an edit.
 [package.metadata.polyoxide]
 readme = "Core utilities and shared types"
-notes = ["shared auth, HTTP client, errors and macros"]
+notes = ["the send loop and its hooks, the HTTP client, window quotas, capacity buckets, holds, errors, macros and the keychain; it names no venue, which `scripts/venue_gate.py` holds"]

@@ -102,3 +102,15 @@ suite = "live"
 timeout = 15
 features = ["ws"]
 secrets = []
+
+# The foundation crates' protected test names that still name Binance (S2 may
+# not rename a test, AD-12).
+[[package.metadata.polyoxide.gate_exceptions]]
+path = "polyoxide-ws/src/request.rs"
+term = "binance"
+reason = "the request-correlation tests of Story 4.2 model Binance's answers in `mod binance`, and four of their protected names start `binance_`"
+
+[[package.metadata.polyoxide.gate_exceptions]]
+path = "polyoxide-ws/src/test_server/tests.rs"
+term = "binance"
+reason = "the scripted server's protected tests of Story 4.4 answer as Binance does, in `mod as_binance_will_use_it` and `subscribe_list_and_unsubscribe_answer_as_binance_does`"

@@ -40,7 +40,7 @@
 /// for a zero, for no header and for every other failure: a socket error
 /// surfaces the wait as HTTP's `ErrorResponse::retry_after` does, though only
 /// a 429's class carries it. A venue's own override of a status, such as
-/// Binance's firewall `403` (D14), goes in its own arm ahead of the call.
+/// a firewall's `403` (D14), goes in its own arm ahead of the call.
 ///
 /// Whether to reconnect is a separate decision, the venue's recovery:
 /// `polyoxide_ws::retrying_can_fix` takes this crate's status rule,

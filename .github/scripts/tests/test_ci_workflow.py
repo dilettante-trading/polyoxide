@@ -100,12 +100,18 @@ def _load_publish_order():
 
 
 def http_modules(metadata: dict) -> list[str]:
-    """The members that send on core's HTTP client: each declares a venue and
-    depends directly on polyoxide-core. Each must pin its header set."""
+    """The members that send on core's HTTP client: each declares a venue and its
+    products, and depends directly on polyoxide-core. Each must pin its header set.
+    A venue's own crate that declares no products yet, as `polyoxide-polymarket`
+    does until its modules arrive, holds no client to pin."""
     publish_order = _load_publish_order()
+
+    def registration(p: dict) -> dict:
+        return (p.get("metadata") or {}).get("polyoxide") or {}
+
     return sorted(
         p["name"] for p in publish_order.members(metadata)
-        if ((p.get("metadata") or {}).get("polyoxide") or {}).get("venue")
+        if registration(p).get("venue") and registration(p).get("products")
         and any(dep["name"] == "polyoxide-core" and dep["kind"] is None
                 for dep in p["dependencies"]))
 
@@ -130,9 +136,10 @@ def test_the_features_job_runs_each_header_pin_in_its_minimal_build() -> None:
 
 
 def test_http_modules_are_venue_crates_on_core() -> None:
-    def package(name: str, venue: str | None, deps: list[str]) -> dict:
+    def package(name: str, venue: str | None, deps: list[str], products=("x",)) -> dict:
         return {"id": name, "name": name,
-                "metadata": {"polyoxide": {"venue": venue}} if venue else None,
+                "metadata": ({"polyoxide": {"venue": venue, "products": list(products)}}
+                             if venue else None),
                 "dependencies": [{"name": d, "kind": None} for d in deps]}
 
     packages = [
@@ -140,9 +147,17 @@ def test_http_modules_are_venue_crates_on_core() -> None:
         package("polyoxide-kalshi", "kalshi", ["polyoxide-core"]),
         package("polyoxide-rtds", "polymarket", ["polyoxide-venue"]),
         package("polyoxide-cli", None, ["polyoxide-core"]),
+        package("polyoxide-polymarket", "polymarket", ["polyoxide-core"], products=()),
     ]
     metadata = {"packages": packages, "workspace_members": [p["id"] for p in packages]}
     assert http_modules(metadata) == ["polyoxide-kalshi"]
+
+
+def test_the_scripts_job_fetches_the_tag_the_venue_gate_reads() -> None:
+    """test_venue_gate.py runs the gate on v0.39.0's core, which a shallow checkout
+    lacks."""
+    assert _checkout("scripts")["with"]["fetch-depth"] == 0
+    assert "uv run pytest tests/ -v" in _job_runs("scripts")
 
 
 def test_the_s2_baseline_is_set_once_for_the_whole_workflow() -> None:

@@ -1,12 +1,12 @@
 //! # polyoxide-core
 //!
-//! Core utilities and shared types for Polyoxide Polymarket API clients.
+//! Core utilities and shared types for the polyoxide venue clients.
 //!
-//! This crate provides common functionality used across `polyoxide-clob`, `polyoxide-gamma`, `polyoxide-data`, and `polyoxide-relay`:
+//! This crate provides the venue-neutral machinery every venue crate builds
+//! its HTTP clients on, and names no venue:
 //! - Shared error types and error handling
 //! - HTTP client configuration
 //! - Request builder utilities
-//! - HMAC API-credential signing ([`Signer`])
 //! - One send loop, [`HttpClient::send`], with the hooks a venue supplies
 //!   ([`Throttle`], [`RetryPolicy`], [`Authenticator`]), and one health
 //!   ping on it, [`HttpClient::health`]

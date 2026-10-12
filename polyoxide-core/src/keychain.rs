@@ -40,7 +40,7 @@ impl Classify for KeychainError {
 ///
 /// # Arguments
 ///
-/// * `service` - The service name (e.g., `"polyoxide-clob"`)
+/// * `service` - The service name (e.g., `"polyoxide-example"`)
 /// * `key` - The key name (e.g., `"api_key"`)
 pub fn get(service: &str, key: &str) -> Result<String, KeychainError> {
     let entry = Entry::new(service, key)?;
@@ -59,7 +59,7 @@ pub fn get(service: &str, key: &str) -> Result<String, KeychainError> {
 ///
 /// # Arguments
 ///
-/// * `service` - The service name (e.g., `"polyoxide-clob"`)
+/// * `service` - The service name (e.g., `"polyoxide-example"`)
 /// * `key` - The key name (e.g., `"api_key"`)
 /// * `value` - The credential value to store
 pub fn set(service: &str, key: &str, value: &str) -> Result<(), KeychainError> {
@@ -74,7 +74,7 @@ pub fn set(service: &str, key: &str, value: &str) -> Result<(), KeychainError> {
 ///
 /// # Arguments
 ///
-/// * `service` - The service name (e.g., `"polyoxide-clob"`)
+/// * `service` - The service name (e.g., `"polyoxide-example"`)
 /// * `key` - The key name (e.g., `"api_key"`)
 pub fn delete(service: &str, key: &str) -> Result<(), KeychainError> {
     let entry = Entry::new(service, key)?;

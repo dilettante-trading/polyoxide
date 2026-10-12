@@ -57,7 +57,7 @@ pub struct LayerCharge {
     /// Tokens taken.
     pub units: u32,
     /// The window the tokens were taken from, for a layer that counts by
-    /// window (Binance's UTC minute).
+    /// window (such as a venue's UTC minute).
     pub window: Option<u64>,
 }
 

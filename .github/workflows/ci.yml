@@ -215,6 +215,9 @@ jobs:
       RUSTC_WRAPPER: ""
     steps:
       - uses: actions/checkout@v5
+        with:
+          # Every tag: the venue gate's test reads v0.39.0's core, which it must catch.
+          fetch-depth: 0
       # scripts/publish_order.py, which the tests load, reads the workspace through cargo metadata.
       - uses: dtolnay/rust-toolchain@stable
       - uses: astral-sh/setup-uv@v7

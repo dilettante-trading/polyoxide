@@ -3,16 +3,14 @@
 //! consumers.
 //!
 //! The basis is the four venue servers, each deleted once its suites ran
-//! here: `polyoxide-perps`' `ws/test_server.rs` (Story 4.6),
-//! `polyoxide-binance`'s `usdm/ws/test_server.rs` (Story 4.7), and
-//! `polyoxide-rtds`' and `polyoxide-sports`' `src/test_server.rs` (Story
-//! 4.8). Their shared skeleton is here:
-//! one script per connection with the last repeating, every action and
-//! recorder any of them has, and the interval idiom. What stays with each
-//! venue is its protocol's answer, passed to
+//! here: two socket crates' `test_server.rs` in their `ws` modules (Stories
+//! 4.6 and 4.7), and two others' `src/test_server.rs` (Story 4.8). Their
+//! shared skeleton is here: one script per connection with the last
+//! repeating, every action and recorder any of them has, and the interval
+//! idiom. What stays with each venue is its protocol's answer, passed to
 //! [`ScriptedServer::start_answering`] as a closure with per-connection
-//! state, and its fixtures. `polyoxide-clob`'s two loopback servers in its
-//! membership tests (`recording_server` and `ping_counting_server`,
+//! state, and its fixtures. The fifth socket crate's two loopback servers in
+//! its membership tests (`recording_server` and `ping_counting_server`,
 //! `ws/client.rs`) went the same way in Story 4.9, needing nothing new.
 
 mod helpers;

@@ -223,7 +223,7 @@ mod tests {
     use super::*;
 
     /// A stand-in for a venue error: a defined outcome with a wait that
-    /// outlives its class, like Binance's ban.
+    /// outlives its class, like a ban a venue's firewall sets.
     #[derive(Debug)]
     struct Banned;
 
