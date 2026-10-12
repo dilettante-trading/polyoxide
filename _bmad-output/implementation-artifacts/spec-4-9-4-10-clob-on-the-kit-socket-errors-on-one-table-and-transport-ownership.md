@@ -242,6 +242,94 @@ context:
 
 ## Implementation Notes
 
+Commits, in order: M-1 818dfc5, M-2 ff2d13c, M-3 86e81bd, M-4 ff36343, M-5 6d89684, M-6 06e4a40, M-7 513d01a, M-8 ae35629, M-9 f328582, M-10 bc68bc2. Each message names its behaviour changes and their tests. No review has run yet.
+
+**Where the code departs from the plan, and why:**
+- **M-1.** The scripted server cannot close after N received frames, so the two tests that ended on `recording_server`'s close use `Script::hold().drop_after(500 ms)`, and wait for the non-`PING` frames before asserting. Names and assertions are unchanged.
+- **M-2.** The crypto test moved to the kit in M-2, as the task says, so clob's copy of the install ran untested until M-4 deleted it.
+- **M-3.**
+  - clob's normal `polyoxide-ws` dependency and the regenerated regions (crate list, publish order, nightly rows) came in M-3, not M-4: the move needs the kit, and `gen_registry.py --check` fails on any stale region. clob now publishes after `polyoxide-ws` (and Binance).
+  - `live_ws`' three error builds changed in M-3, since `From<tungstenite::Error>` went there. Its R9 connect and the removal of its rustls install waited for M-4.
+  - clob's own `ensure_crypto_provider` call stayed in `connect_ws` until M-4, though `connect_over` installs the provider too, so that M-4 is the deletion.
+  - The new tests sit in a new module, `ws::client::connection_tests`, so the existing modules keep their counts. Besides the four the task names, it pins D12, `close()` after a server close, and the end after the first error.
+  - `with_timeout` only ever fails with `Kind::ConnectTimeout`, so the explicit mapping back to `ConnectTimeout { url, timeout }` has an unreachable `Connection(err)` arm.
+- **M-5.**
+  - Both sports tiers read in `Mode::All`, the bare tier too, so the shared `classify` sees the same frames from both. The bare tier keeps its own debug "the sports feed closed" log.
+  - The `Kind` mapping is two crate-private constructors, `SportsError::connect` and `::transport`, rather than a public `From<WsError>`, since two variants wrap `WsError`. The live suite maps `Kind::ConnectTimeout` itself.
+  - sports' R11 test is inline in `supervised.rs` and its D19 test there too, so the protected `tests/supervision.rs` keeps 15. rtds' R11 test went into `tests/supervision.rs`, as L2's R1 to R3 tests did.
+- **M-6.** Each override answers `ws_retry_after` on its `WsError` arm and falls back to `self.class().retry_after()` elsewhere, the trait's default.
+- **M-7.**
+  - The kit applies the hook after a failed attempt and before the first attempt of any outage begun by an error: a `start` in an outage, and a connection that ended on `End::Closed` or `End::Failed`. The latter two never carry a refusal today, so the hook answers `None` there.
+  - The kit's reconnect WARN gains `?delay`. Every reconnecting venue's `backoff` setter documents R11.
+  - The R11 tests use real time: a 0.4 s `Retry-After` (fractional seconds parse) over a 10 to 20 ms step, asserting the gap between accepted connections.
+- **M-8.**
+  - The router keeps the cause in one write-once `Arc<OnceLock<StopCause>>`, which the stream's `close()` and every `MembershipHandle` read.
+  - The cause is the last item the path's stream yielded, when that was an `Err`. The kit yields the stop error last, so this is exact, except after a panic in the kit's task that followed a skipped `Frame` error.
+  - A membership call that races the stop can still get `Stopped { cause: None }`.
+  - Binance's scripted adapter gains `refuse_upgrade` (with headers) and `accepted_at`, for the R11 and M-D8 tests.
+- **M-9.**
+  - The owner fence also fails when an owner does not declare its crate as a normal dependency, so it cannot pass vacuously.
+  - The `WsError` fence sweeps types of any visibility, strips comments (doc comments included) before matching, and requires the macro expanded as code. `polyoxide-ws` is not swept.
+- **M-10.**
+  - Of :34-39, the handshake half of the 451 row is done. Its `RtdsError::Server { status_code: 451 }` half is not, since no decision names it. It is re-filed as a narrowed entry.
+  - CLAUDE.md :471 changed in M-1, and each other line in the commit that changed its rule (AD-21), so M-10 itself touches only `deferred-work.md`.
+- **`docs/s1-removals.md` is unchanged.** The gate reports no new removal: the removed `From` impl and the changed field types report nothing, and `enum_marked_non_exhaustive` and `enum_unit_variant_changed_kind` (Binance's `Stopped`) are not removal lints.
+- **MSRV was not checked locally** (rustc 1.95.0); CI's msrv job is the check.
+
+**Test custody (AD-12).** Counts at e114454 and after, by `cargo test -p <crate> --all-features -- --list`:
+
+| Suite | Before | After |
+|---|---|---|
+| clob `ws/client.rs` | 20 (connect 4, crypto 1, tests 6, dispatch 4, membership 5) | 27: crypto 0, moved to the kit by name; `connection_tests` +8 (R3, `close()` after a server close, the end after an error, D12, the per-step timeout, 451, 429, the DNS miss) |
+| clob `ws/error.rs` | 2 | 5 (+451, +429, +503) |
+| clob `auth.rs`, `market.rs`, `subscription.rs`, `user.rs` | 8, 20, 21, 21 | 8, 20, 21, 21 |
+| clob `tests/live_ws.rs` | 2 | 2 |
+| sports `tests/supervision.rs`, `bare.rs`, `failure_tags.rs` | 15, 6, 7 | 15, 6, 7 (M-D10 text only) |
+| sports `supervised.rs` | 6 | 12 (+4 moved from `error.rs` by name, +D19, +R11) |
+| sports `client.rs` | 7 | 7 |
+| sports `error.rs` | 10 | 10 (−4 moved; +451, +429, +503, +the `Kind` mapping) |
+| Binance `tests/supervision.rs`, `supervision_edges.rs` | 21, 7 | 21, 7 (M-D10 patterns only) |
+| Binance `tests/supervision_kit.rs` | 14 (the spec's 10 predates L2's review) | 16 (+R11, +M-D8) |
+| Binance `usdm/ws/protocol.rs` | 6 | 6 |
+| Binance `usdm/ws/error.rs` | 5 | 7 (+503, +the stop's cause) |
+| Binance `tests/failure_tags.rs` | 17 | 18 (+`streams::stopped_by_handshake_451`) |
+| perps `ws/builder.rs`, `ws/error.rs` | 32, 4 | 33 (+R11), 5 (+`Retry-After`) |
+| rtds `error.rs`, `tests/supervision.rs` | 16, 8 (the spec's 7 predates L2's review) | 17 (+`Retry-After`), 9 (+R11) |
+| `polyoxide-venue/tests/ws_classification.rs` | 6 | 8 (+any status's `Retry-After`, +only a refusal carries one) |
+| `polyoxide-ws` `backoff`, `connect`, `supervisor`, `tls` | 7, 8, 24, 1 | 10, 11, 28, 2 (+R11 floor ×3; +`connect_over` ×3; +R11 ×3 and the default hook; +clob's moved test) |
+| CLI `tests/ws_binance.rs`, `ws_sports.rs` | 13, 16 | 13, 16 |
+| `.github/scripts` | 927 | 940 (+2 M-8's row and twin check, +3 owner fence, +8 macro fence) |
+
+Every test name at e114454 is present after, in its crate, except `a_default_crypto_provider_is_available_to_connect`, which is in `polyoxide-ws` (`tls::tests`), checked by name. Five tests were shown to fail without their fix: the clob R3 test with the kit's close-reply flush removed, the kit's five R11 tests with the floor removed, and the M-D8 test with the router's cause dropped.
+
+**Gates, at bc68bc2:**
+- Pass:
+  - `cargo fmt --check`;
+  - `cargo clippy --all-targets --all-features -D warnings`;
+  - `cargo test --all-features --workspace` (109 result lines, all ok);
+  - `RUSTDOCFLAGS=-D warnings cargo doc --workspace`;
+  - `cargo hack check --workspace --each-feature --no-dev-deps --ignore-private`;
+  - the six `--no-default-features --test headers` runs.
+- Also pass:
+  - `cargo publish --workspace --dry-run --no-verify` and `publish_order.py check-manifests`;
+  - `uv run pytest tests/` in `.github/scripts` (940, the allowlists unchanged);
+  - `gen_registry.py --check` and `live_unwraps.py`.
+- `scripts/api_removals.py check --baseline v0.38.1` (cargo-semver-checks 0.51.0, rustc 1.95.0) is green: 46 removals, 46 listed, and every listed path compiles. `target/semver-checks` was deleted afterwards.
+- `git diff e114454 -- polyoxide-core` is empty.
+
+**The live suites, 2026-10-12:**
+- clob `cargo test -p polyoxide-clob --features ws --test live_ws -- --ignored` (08:21:48–08:21:52 UTC): both tests failed tagged `auth-gated`, which is neither `environmental` nor `transient`. Both derive credentials from `POLYMARKET_PRIVATE_KEY`, which this machine does not set, and the keychain path needs `--features keychain` and a stored key, which was not tried. So the R9 probe has not run against the host; it opens its socket through the same `polyoxide_ws::connect` Binance's live suite passed with.
+- sports `cargo test -p polyoxide-sports --test live_api -- --ignored` (08:21:52–08:24:53): 5 of 5 passed, the drift detector included.
+- Binance `cargo test -p polyoxide-binance --features ws --test live_ws -- --ignored` (08:24:53–08:25:18): 4 of 4 passed.
+- rtds `cargo test -p polyoxide-rtds --test live_api -- --ignored` (08:25:18–08:26:11): 3 of 3 passed.
+
+**Incomplete or risky:**
+- clob's `live_ws` needs a run with credentials before the AC on live suites is met.
+- `RtdsError::Server { status_code: 451 }` stays a fault (re-filed); perps' `Stopped` has Binance's former gap (filed).
+- A membership call racing a Binance stop may read `Stopped { cause: None }`.
+- The R11 and M-1 tests depend on real time: R11's assert a lower bound of 0.4 s and a generous upper one, and M-1's assume a queued frame goes out within 500 ms.
+- `divergences.md` (D20, R11, D19's and D10's wording, the R1, R3 and R9 cites) is the lead's and is unchanged.
+
 ## Spec Change Log
 
 ## Review Triage Log
