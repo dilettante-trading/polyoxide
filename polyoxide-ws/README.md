@@ -10,7 +10,8 @@ they would otherwise each carry:
   `timing_setters!` for a builder and `next_wait` for the wait until the next
   deadline.
 - `connect` opens a connection within a timeout (`DEFAULT_CONNECT_TIMEOUT`,
-  10 s), `with_timeout` bounds a connect of the caller's own, and
+  10 s), `connect_over` upgrades a TCP connection the caller opened itself,
+  `with_timeout` bounds a connect of the caller's own, and
   `retrying_can_fix` says whether a reconnect can help after one failed, by a
   status rule the caller passes in.
 - `Connection` is the bare tier: one connection as a `Stream` of its frames,

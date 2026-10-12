@@ -14,7 +14,8 @@
 //! - [`WsError`] is the one socket error, read through its [`Kind`].
 //!   `polyoxide_venue::impl_ws_classification!` classifies it in the venue
 //!   crate that wraps it.
-//! - [`connect`] opens a connection within a timeout, [`with_timeout`] bounds
+//! - [`connect`] opens a connection within a timeout, [`connect_over`]
+//!   upgrades a TCP connection a venue opened itself, [`with_timeout`] bounds
 //!   a venue's own connect, and [`retrying_can_fix`] says whether a
 //!   reconnect can help after one failed.
 //! - [`Connection`] is the bare tier: one connection as a `Stream` of its
@@ -57,7 +58,9 @@ mod tls;
 
 pub use backoff::{Backoff, MIN_BACKOFF};
 pub use bare::{Connection, Mode};
-pub use connect::{connect, retrying_can_fix, with_timeout, Socket, DEFAULT_CONNECT_TIMEOUT};
+pub use connect::{
+    connect, connect_over, retrying_can_fix, with_timeout, Socket, DEFAULT_CONNECT_TIMEOUT,
+};
 pub use error::{Kind, WsError};
 pub use request::Correlated;
 pub use supervisor::{

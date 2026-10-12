@@ -5,7 +5,8 @@ use std::{future::Future, time::Duration};
 
 use tokio::net::TcpStream;
 use tokio_tungstenite::{
-    connect_async, tungstenite::client::IntoClientRequest, MaybeTlsStream, WebSocketStream,
+    client_async_tls, connect_async, tungstenite::client::IntoClientRequest, MaybeTlsStream,
+    WebSocketStream,
 };
 
 use crate::{ensure_crypto_provider, Kind, WsError};
@@ -37,6 +38,24 @@ where
 {
     ensure_crypto_provider();
     let (socket, _response) = with_timeout(timeout, connect_async(request)).await??;
+    Ok(socket)
+}
+
+/// Upgrade a TCP connection the caller opened itself: the TLS handshake when
+/// `request` is a `wss://` URL, then the WebSocket upgrade.
+///
+/// For a venue whose connect is its own, as `polyoxide-clob`'s is: it
+/// resolves the host and dials each address itself, and hands the first TCP
+/// connection that opens to this (D20). The rustls provider is installed
+/// first ([`ensure_crypto_provider`]). It has no timeout of its own, so bound
+/// it with [`with_timeout`]. A refused upgrade fails as [`Kind::Refused`], as
+/// it does through [`connect`].
+pub async fn connect_over<R>(request: R, tcp: TcpStream) -> Result<Socket, WsError>
+where
+    R: IntoClientRequest + Unpin,
+{
+    ensure_crypto_provider();
+    let (socket, _response) = client_async_tls(request, tcp).await?;
     Ok(socket)
 }
 
@@ -182,6 +201,56 @@ mod tests {
             .await
             .expect("a finished future is not a timeout");
         assert_eq!(output, Err("its own error"));
+    }
+
+    /// A TCP connection to `server`, opened as a venue's own connect would.
+    async fn dial(server: &ScriptedServer) -> TcpStream {
+        let addr = server.url.trim_start_matches("ws://");
+        TcpStream::connect(addr).await.expect("dial")
+    }
+
+    #[tokio::test]
+    async fn connect_over_upgrades_a_connection_the_caller_opened() {
+        let server = ScriptedServer::start(vec![Script::hold()]).await;
+        let tcp = dial(&server).await;
+        connect_over(server.url.as_str(), tcp)
+            .await
+            .expect("upgrade");
+        server
+            .wait_for("the handshake", |s| s.handshake_count() == 1)
+            .await;
+    }
+
+    #[tokio::test]
+    async fn connect_over_keeps_a_refusals_status_and_retry_after() {
+        let server = ScriptedServer::start(vec![
+            Script::refuse_upgrade(429).with_header("Retry-After", "7")
+        ])
+        .await;
+        let tcp = dial(&server).await;
+        let err = connect_over(server.url.as_str(), tcp)
+            .await
+            .expect_err("a refused upgrade must not connect");
+        assert_eq!(
+            err.kind(),
+            Kind::Refused {
+                status: 429,
+                retry_after: Some("7")
+            }
+        );
+    }
+
+    #[tokio::test]
+    async fn connect_over_is_bounded_by_with_timeout() {
+        // It has no timeout of its own; a server that never answers the
+        // upgrade holds it until the caller's bound.
+        let server = ScriptedServer::start(vec![Script::stall()]).await;
+        let tcp = dial(&server).await;
+        let after = Duration::from_millis(100);
+        let err = with_timeout(after, connect_over(server.url.as_str(), tcp))
+            .await
+            .expect_err("a stalled upgrade must time out");
+        assert_eq!(err.kind(), Kind::ConnectTimeout { after });
     }
 
     #[test]

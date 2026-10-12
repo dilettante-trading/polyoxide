@@ -916,26 +916,6 @@ mod connect_tests {
 }
 
 #[cfg(test)]
-mod crypto_provider_tests {
-    use super::*;
-
-    #[test]
-    fn a_default_crypto_provider_is_available_to_connect() {
-        // Every `connect_*` panicked before this was installed. tokio-tungstenite
-        // builds its rustls `ClientConfig` from the process-wide default
-        // CryptoProvider, and this workspace enables *both* `ring` (via
-        // reqwest 0.12) and `aws-lc-rs` (via alloy's reqwest 0.13) on one
-        // shared rustls. Given two candidates rustls installs neither and
-        // panics — so the whole WebSocket surface aborted at connect time.
-        ensure_crypto_provider();
-        assert!(
-            rustls::crypto::CryptoProvider::get_default().is_some(),
-            "no process-default CryptoProvider: every WebSocket connect will panic"
-        );
-    }
-}
-
-#[cfg(test)]
 mod tests {
     use super::*;
 
