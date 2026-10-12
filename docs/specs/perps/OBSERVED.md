@@ -161,7 +161,7 @@ the highest clean cap. A 429 body seen
 during the ramps was `{"status":"err","error":"ip_rate_limited"}` with
 `Retry-After: 1`.
 
-**How the table is modelled** (`polymarket::perps_limits`): one row per
+**How the table is modelled** (`polyoxide_polymarket::shared::perps_limits`): one row per
 soaked route at its pinned count, a `/v1/info` catch-all at the lowest
 pinned count (10 per 10 s) for the 17 routes that were not soaked, and a
 general bucket of 30 per 10 s that caps the whole client, set by the

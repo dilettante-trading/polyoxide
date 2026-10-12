@@ -631,14 +631,9 @@ mod tests {
             .with_max_concurrent(4)
             .build()
             .unwrap();
-        let sibling = client
-            .with_base_url("https://sibling.example.com")
-            .unwrap();
+        let sibling = client.with_base_url("https://sibling.example.com").unwrap();
 
-        assert_eq!(
-            sibling.base_url.host_str(),
-            Some("sibling.example.com")
-        );
+        assert_eq!(sibling.base_url.host_str(), Some("sibling.example.com"));
         // The original is untouched — this returns a clone, not a mutation.
         assert_eq!(client.base_url.host_str(), Some("api.example.com"));
         // Both must draw on the same concurrency budget, since the limit exists

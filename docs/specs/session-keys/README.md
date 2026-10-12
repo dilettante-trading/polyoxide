@@ -43,7 +43,7 @@ Read on 2026-09-25:
   orders and relayer batches for the wallet within its scopes; it cannot withdraw and
   cannot manage other session keys.
 - **Scopes.** `CLOB`, `COMBOSRFQ`, or `ALL` (alone). polyoxide models them as
-  `polyoxide_core::SessionSignerScope`, an open enum.
+  `polyoxide_polymarket::shared::SessionSignerScope`, an open enum.
 - **Role.** Owner or session key. The two are EOAs distinct from the wallet, so the
   role cannot be inferred from addresses; polyoxide takes it explicitly
   (`SigningTarget::DepositWallet { wallet, role }` in clob,

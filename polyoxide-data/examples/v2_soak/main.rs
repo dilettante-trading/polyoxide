@@ -1,6 +1,6 @@
 //! Measures, then validates, the rate limits for Data API v2 routes.
 //!
-//! Upstream publishes no v2 figures, so `polymarket::data_limits` started
+//! Upstream publishes no v2 figures, so `shared::data_limits` started
 //! with rows borrowed from v1. This harness replaces them with measured ones.
 //!
 //! ```sh
