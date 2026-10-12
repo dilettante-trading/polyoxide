@@ -25,8 +25,16 @@ implement the trait for it, and in a venue crate both are foreign (the orphan
 rule). Each venue crate classifies it through its own enum that wraps it, with
 `polyoxide_venue::impl_ws_classification!`.
 
-A doc comment or a `pub(crate)` item is not swept. Gating is not checked here:
-an assertion gated differently from its type fails `cargo hack --each-feature`.
+That half has its own fence (Story 4.10): a type with a `WsError` field, of
+any visibility, must sit in a file that expands the macro, whose private
+`ws_class`, `ws_is_fault` and `ws_retry_after` its `Classify` impl calls. The
+macro's functions are private to the module that expands it, so a wrapper in
+another file cannot reach them; one that forgets a function fails
+`-D warnings`, and one whose file never expands the macro fails here.
+
+A doc comment or a `pub(crate)` item is not swept for the assertion. Gating is
+not checked here: an assertion gated differently from its type fails
+`cargo hack --each-feature`.
 """
 
 from __future__ import annotations
@@ -50,6 +58,12 @@ EXEMPT = frozenset({(VOCABULARY, "ClassifiedError"), (SOCKET_KIT, "WsError")})
 AUXILIARY = frozenset({"UnknownVariant", "InvalidSymbol", "InvalidStreamName", "BurstCapacityExceeded"})
 
 ITEM = re.compile(r"^\s*pub (?:enum|struct) (\w+)")
+# Any type, of any visibility, for the `WsError` fence.
+ANY_ITEM = re.compile(r"^\s*(?:pub(?:\([^)]*\))?\s+)?(?:enum|struct) (\w+)")
+WS_ERROR = re.compile(r"\bWsError\b")
+# The macro expanded as an item, not named in a comment.
+EXPANDS = re.compile(r"\bimpl_ws_classification!\s*\(\s*\)\s*;")
+COMMENT = re.compile(r"//.*$")
 DERIVES_ERROR = re.compile(r"#\[derive\([^)]*\bError\b[^)]*\)\]", re.S)
 IMPLS_ERROR = re.compile(r"\bimpl(?:<[^>]*>)?\s+(?:(?:std|core)::error::)?Error\s+for\s+(\w+)")
 # The vocabulary crate names its own trait as `crate::Classify`.
@@ -118,6 +132,56 @@ def unlisted(root: Path) -> list[str]:
     return problems
 
 
+def _code(line: str) -> str:
+    """`line` without its comment, doc comments included."""
+    return COMMENT.sub("", line)
+
+
+def _body(lines: list[str], index: int) -> str:
+    """The code of the item declared on line `index`, comments left out: up to
+    its `;` for a unit or tuple struct, or to the brace that closes it."""
+    depth, body = 0, []
+    for line in lines[index:]:
+        code = _code(line)
+        body.append(code)
+        depth += code.count("{") - code.count("}")
+        if depth <= 0 and ("}" in code or code.rstrip().endswith(";")):
+            break
+    return "\n".join(body)
+
+
+def ws_wrappers(src: Path) -> dict[str, Path]:
+    """Each type under `src` with a `WsError` field, of any visibility, with the
+    file that declares it."""
+    found = {}
+    for path in sorted(src.rglob("*.rs")):
+        lines = _read(path).splitlines()
+        for index, line in enumerate(lines):
+            item = ANY_ITEM.match(_code(line))
+            if item and WS_ERROR.search(_body(lines, index)):
+                found[item[1]] = path
+    return found
+
+
+def expands_the_table(path: Path) -> bool:
+    """Whether the file expands `impl_ws_classification!` as code."""
+    return EXPANDS.search("\n".join(_code(line) for line in _read(path).splitlines())) is not None
+
+
+def unexpanded(root: Path) -> list[str]:
+    """`<crate>: <type> (<file>)` for each `WsError` wrapper whose file does not
+    expand the socket table. The kit, which defines `WsError`, is not swept."""
+    problems = []
+    for crate in sorted(root.glob("polyoxide*/")):
+        src = crate / "src"
+        if crate.name == SOCKET_KIT or not src.is_dir():
+            continue
+        for name, path in sorted(ws_wrappers(src).items()):
+            if not expands_the_table(path):
+                problems.append(f"{crate.name}: {name} ({path.relative_to(root).as_posix()})")
+    return problems
+
+
 def test_every_public_error_type_is_listed_in_its_crates_assertion() -> None:
     problems = unlisted(REPO)
     assert not problems, (
@@ -149,6 +213,79 @@ def test_the_vocabulary_crate_is_swept_but_classified_error_is_exempt() -> None:
 def test_the_socket_kit_is_swept_but_ws_error_is_exempt() -> None:
     assert "WsError" in error_types(REPO / SOCKET_KIT / "src")
     assert not any(p.startswith(f"{SOCKET_KIT}:") for p in unlisted(REPO))
+
+
+def test_every_ws_error_wrapper_expands_the_socket_table() -> None:
+    problems = unexpanded(REPO)
+    assert not problems, (
+        "these types wrap `polyoxide_ws::WsError` in a file that does not expand "
+        "`polyoxide_venue::impl_ws_classification!();`; expand it there and classify the "
+        "field through `ws_class`, `ws_is_fault` and `ws_retry_after`:\n  "
+        + "\n  ".join(problems)
+    )
+
+
+@pytest.mark.parametrize(("crate", "name"), [
+    ("polyoxide-clob", "WebSocketError"),
+    ("polyoxide-perps", "PerpsWsError"),
+    ("polyoxide-binance", "UsdmWsError"),
+    ("polyoxide-rtds", "RtdsError"),
+    ("polyoxide-sports", "SportsError"),
+])
+def test_the_ws_sweep_finds_every_socket_error(crate: str, name: str) -> None:
+    # A sweep that matched nothing would pass the fence above vacuously.
+    wrappers = ws_wrappers(REPO / crate / "src")
+    assert name in wrappers
+    assert expands_the_table(wrappers[name])
+
+
+WS_WRAPPERS = """\
+use polyoxide_ws::WsError;
+
+/// A doc comment naming `WsError` is not a field.
+pub enum Quiet {
+    Stalled,
+}
+
+#[derive(Debug, thiserror::Error)]
+pub enum FeedError {
+    #[error("{0}")]
+    Connection(#[from] WsError),
+}
+
+pub(crate) struct Tuple(polyoxide_ws::WsError);
+
+struct Named {
+    source: WsError,
+    // WsError in a comment
+}
+"""
+
+
+def test_a_ws_error_field_without_the_table_is_caught(tmp_path: Path) -> None:
+    src = tmp_path / "polyoxide-feed" / "src"
+    src.mkdir(parents=True)
+    (src / "error.rs").write_text(WS_WRAPPERS)
+    # Named in a comment, which expands nothing.
+    (src / "other.rs").write_text("// polyoxide_venue::impl_ws_classification!();\n"
+                                  "pub struct Other { inner: WsError }\n")
+    assert set(ws_wrappers(src)) == {"FeedError", "Tuple", "Named", "Other"}
+    assert unexpanded(tmp_path) == [
+        "polyoxide-feed: FeedError (polyoxide-feed/src/error.rs)",
+        "polyoxide-feed: Named (polyoxide-feed/src/error.rs)",
+        "polyoxide-feed: Other (polyoxide-feed/src/other.rs)",
+        "polyoxide-feed: Tuple (polyoxide-feed/src/error.rs)",
+    ]
+
+    (src / "error.rs").write_text("polyoxide_venue::impl_ws_classification!();\n" + WS_WRAPPERS)
+    assert unexpanded(tmp_path) == ["polyoxide-feed: Other (polyoxide-feed/src/other.rs)"]
+
+
+def test_the_socket_kit_is_not_swept_for_the_table(tmp_path: Path) -> None:
+    src = tmp_path / SOCKET_KIT / "src"
+    src.mkdir(parents=True)
+    (src / "error.rs").write_text("pub struct Wrapper(WsError);\n")
+    assert unexpanded(tmp_path) == []
 
 
 def test_the_socket_kit_exempts_only_ws_error(tmp_path: Path) -> None:
