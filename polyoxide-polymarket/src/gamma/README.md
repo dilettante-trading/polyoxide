@@ -8,7 +8,7 @@ More information about this module can be found in the [crate documentation](htt
 
 ```toml
 [dependencies]
-polyoxide-polymarket = { version = "0.39", features = ["gamma"] }
+polyoxide-polymarket = { version = "0.39", default-features = false, features = ["gamma"] }
 ```
 
 Or use the unified `polyoxide` crate (includes Gamma by default):

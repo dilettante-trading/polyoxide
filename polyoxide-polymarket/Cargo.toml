@@ -88,13 +88,16 @@ relay = [
     "tokio/time",
 ]
 perps = ["dep:polyoxide-core"]
-# OS keychain storage for the credentials of whichever of `clob` and `relay`
-# is enabled (`clob::save_private_key_to_keychain`,
-# `relay::save_builder_config_to_keychain` and their `from_keychain` loaders).
+# OS keychain storage for credentials. Its API is in `clob` and `relay`
+# (`clob::save_private_key_to_keychain`, `relay::save_builder_config_to_keychain`
+# and their `from_keychain` loaders), but cargo cannot say "only with clob or
+# relay": it builds core's `keyring` whenever any module that uses core is on,
+# `gamma` or `data` alone included.
 keychain = ["polyoxide-core?/keychain"]
-# Derives `specta::Type` on the enabled modules' response types. Each module
-# adds the specta extras its types need: `chrono` for gamma's dates, and
-# `rust_decimal` for data's decimals, which are strings on the wire.
+# Derives `specta::Type` on gamma's and data's response types; clob and relay
+# derive none. Each of the two adds the specta extras its types need: `chrono`
+# for gamma's dates, and `rust_decimal` for data's decimals, which are strings
+# on the wire.
 specta = ["dep:specta"]
 
 [dependencies]
@@ -303,9 +306,11 @@ required-features = ["gamma"]
 
 # The clob module's order placement and its two channels, and the relay's
 # nonce lookup and redemption.
+# `test_order` signs a proxy order with no funder, which only the Gamma lookup
+# resolves.
 [[example]]
 name = "test_order"
-required-features = ["clob"]
+required-features = ["clob", "gamma"]
 
 [[example]]
 name = "ws_market"

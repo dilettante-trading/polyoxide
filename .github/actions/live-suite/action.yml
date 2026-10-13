@@ -13,7 +13,7 @@ inputs:
     description: Names the artifact, so two jobs for one crate stay distinct.
     required: true
   flags:
-    description: The `--features` and `--test` flags selecting the live test binaries.
+    description: The `--no-default-features`, `--features` and `--test` flags selecting the live test binaries.
     required: true
 
 runs:

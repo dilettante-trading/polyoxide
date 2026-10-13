@@ -26,7 +26,7 @@ These are `polyoxide-polymarket`'s features.
 | Feature | Default | Description |
 |---------|---------|-------------|
 | `relay` | No | This module: the client, transaction signing (`alloy`) and the chain RPC its gas estimation calls |
-| `keychain` | No | OS keychain storage for credentials via `keyring` (macOS Keychain, Windows Credential Manager, Linux Secret Service) |
+| `keychain` | No | OS keychain storage for credentials via `keyring` (macOS Keychain, Windows Credential Manager, Linux Secret Service); it builds `keyring` with any module, since cargo cannot limit it to `clob` and `relay` |
 
 ## Authentication
 

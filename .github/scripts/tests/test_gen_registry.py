@@ -640,10 +640,11 @@ def test_a_spec_level_exclusion_is_listed_and_not_watched(tmp_path: Path) -> Non
 def test_one_job_per_crate_and_suite(fixture_registry) -> None:
     jobs = fixture_registry.jobs()
     assert [(j.id, j.timeout, j.flags, j.secrets) for j in jobs] == [
-        ("live-polyoxide-alpha-live", 15, "--features ws --test live_api --test live_ws",
+        ("live-polyoxide-alpha-live", 15,
+         "--no-default-features --features ws --test live_api --test live_ws",
          ("A_KEY", "B_KEY")),
-        ("live-polyoxide-alpha-slow", 30, "--test live_slow", ()),
-        ("live-polyoxide-omega-live", 15, "--test live_api", ()),
+        ("live-polyoxide-alpha-slow", 30, "--no-default-features --test live_slow", ()),
+        ("live-polyoxide-omega-live", 15, "--no-default-features --test live_api", ()),
     ]
 
 
@@ -760,7 +761,7 @@ EXPECTED = {
         "      with:",
         "        crate: polyoxide-alpha",
         "        suite: live",
-        '        flags: "--features ws --test live_api --test live_ws"',
+        '        flags: "--no-default-features --features ws --test live_api --test live_ws"',
         "",
         "live-polyoxide-alpha-slow:",
         "  name: Live tests (polyoxide-alpha, slow)",
@@ -772,7 +773,7 @@ EXPECTED = {
         "      with:",
         "        crate: polyoxide-alpha",
         "        suite: slow",
-        '        flags: "--test live_slow"',
+        '        flags: "--no-default-features --test live_slow"',
         "",
         "live-polyoxide-omega-live:",
         "  name: Live tests (polyoxide-omega, live)",
@@ -784,7 +785,7 @@ EXPECTED = {
         "      with:",
         "        crate: polyoxide-omega",
         "        suite: live",
-        '        flags: "--test live_api"',
+        '        flags: "--no-default-features --test live_api"',
     ],
     "nightly-aggregate-needs": [
         "needs:",

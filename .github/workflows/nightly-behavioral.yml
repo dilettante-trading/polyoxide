@@ -57,7 +57,7 @@ jobs:
         with:
           crate: polyoxide-binance
           suite: live
-          flags: "--features ws --test live_api --test live_ws"
+          flags: "--no-default-features --features ws --test live_api --test live_ws"
 
   live-polyoxide-polymarket-clob:
     name: Live tests (polyoxide-polymarket, clob)
@@ -75,7 +75,7 @@ jobs:
         with:
           crate: polyoxide-polymarket
           suite: clob
-          flags: "--features clob,clob-ws,gamma --test live_clob --test live_clob_ws"
+          flags: "--no-default-features --features clob,clob-ws,gamma --test live_clob --test live_clob_ws"
 
   live-polyoxide-polymarket-clob-session-keys:
     name: Live tests (polyoxide-polymarket, clob-session-keys)
@@ -94,7 +94,7 @@ jobs:
         with:
           crate: polyoxide-polymarket
           suite: clob-session-keys
-          flags: "--features clob,gamma,relay --test live_clob_session_keys"
+          flags: "--no-default-features --features clob,gamma,relay --test live_clob_session_keys"
 
   live-polyoxide-polymarket-gamma:
     name: Live tests (polyoxide-polymarket, gamma)
@@ -106,7 +106,7 @@ jobs:
         with:
           crate: polyoxide-polymarket
           suite: gamma
-          flags: "--features gamma --test live_gamma"
+          flags: "--no-default-features --features gamma --test live_gamma"
 
   live-polyoxide-polymarket-data:
     name: Live tests (polyoxide-polymarket, data)
@@ -118,7 +118,7 @@ jobs:
         with:
           crate: polyoxide-polymarket
           suite: data
-          flags: "--features data --test live_data"
+          flags: "--no-default-features --features data --test live_data"
 
   live-polyoxide-polymarket-relay:
     name: Live tests (polyoxide-polymarket, relay)
@@ -137,7 +137,7 @@ jobs:
         with:
           crate: polyoxide-polymarket
           suite: relay
-          flags: "--features relay --test live_relay"
+          flags: "--no-default-features --features relay --test live_relay"
 
   live-polyoxide-perps-live:
     name: Live tests (polyoxide-perps, live)
@@ -149,7 +149,7 @@ jobs:
         with:
           crate: polyoxide-perps
           suite: live
-          flags: "--features ws --test live_api --test live_ws"
+          flags: "--no-default-features --features ws --test live_api --test live_ws"
 
   live-polyoxide-rtds-live:
     name: Live tests (polyoxide-rtds, live)
@@ -161,7 +161,7 @@ jobs:
         with:
           crate: polyoxide-rtds
           suite: live
-          flags: "--test live_api"
+          flags: "--no-default-features --test live_api"
 
   live-polyoxide-sports-live:
     name: Live tests (polyoxide-sports, live)
@@ -173,7 +173,7 @@ jobs:
         with:
           crate: polyoxide-sports
           suite: live
-          flags: "--test live_api"
+          flags: "--no-default-features --test live_api"
 
   live-polyoxide-cli-live:
     name: Live tests (polyoxide-cli, live)
@@ -185,7 +185,7 @@ jobs:
         with:
           crate: polyoxide-cli
           suite: live
-          flags: "--test live_api"
+          flags: "--no-default-features --test live_api"
   # generated:end nightly-live-jobs
 
   aggregate:

@@ -147,6 +147,8 @@ def test_the_generated_jobs_equal_the_registered_entries() -> None:
         assert (inputs["crate"], inputs["suite"], inputs["flags"]) == (job.crate, job.suite, job.flags)
         features, tests = flagged_targets(inputs["flags"])
         assert sorted(features) == list(job.features)
+        # The crate's defaults never widen a job beyond its targets' declared features.
+        assert inputs["flags"].split()[0] == "--no-default-features", job.id
         selected |= {(job.crate, test) for test in tests}
     assert selected == set(registered(REGISTRY))
 

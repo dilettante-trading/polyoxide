@@ -42,7 +42,8 @@ The crate table:
     [package.metadata.polyoxide.live.<test target>]
     suite = "live"            # one nightly job per (crate, suite)
     timeout = 15              # minutes; a job takes its targets' maximum
-    features = ["ws"]         # the target's required-features
+    features = ["ws"]         # the target's required-features, its whole build: the
+                              # job adds `--no-default-features`
     secrets = ["NAME"]        # every env name the target reads, exactly
     note = "..."              # optional, for SELF-HEALING.md's table
 
@@ -232,8 +233,12 @@ class Job:
 
     @property
     def flags(self) -> str:
-        """`--features <union>` first, then `--test <target>` in name order."""
-        flags = [f"--features {','.join(self.features)}"] if self.features else []
+        """`--no-default-features`, then `--features <union>`, then `--test <target>` in
+        name order. A crate's defaults never widen a job, so a target's declared
+        features are its whole build: a venue crate whose defaults build a signing
+        stack does not build it into a job that does not declare it."""
+        flags = ["--no-default-features"]
+        flags += [f"--features {','.join(self.features)}"] if self.features else []
         flags += [f"--test {t.target}" for t in sorted(self.targets, key=lambda t: t.target)]
         return " ".join(flags)
 

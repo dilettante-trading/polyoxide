@@ -167,6 +167,17 @@ def test_the_features_job_checks_each_module_with_specta() -> None:
     assert sorted(step["run"].strip().splitlines()) == expected
 
 
+def test_the_features_job_runs_clobs_refusal_without_gamma() -> None:
+    """`clob` does not imply `gamma`, and the arm that refuses a proxy order with no
+    funder compiles only without it, which no other build runs."""
+    [step] = [s for s in _steps("features") if s.get("name") == "clob without gamma"]
+    assert step["run"].strip() == (
+        "cargo test -p polyoxide-polymarket --no-default-features --features clob "
+        "--test mock_clob -- a_proxy_order_with_no_funder_is_refused_without_gamma --exact")
+    test = REPO / "polyoxide-polymarket" / "tests" / "mock_clob.rs"
+    assert "async fn a_proxy_order_with_no_funder_is_refused_without_gamma(" in test.read_text()
+
+
 def test_http_modules_are_venue_crates_on_core() -> None:
     def package(name: str, venue: str | None, deps: list[str], products=("x",)) -> dict:
         return {"id": name, "name": name,

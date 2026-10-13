@@ -20,8 +20,10 @@ The defaults are `clob`, `gamma` and `data`. Only `clob` and `relay` build the s
 `alloy`, so a build with `gamma` or `data` alone carries none of it. `clob` does not turn on
 `gamma`: with both, the CLOB client looks a proxy wallet's address up through Gamma.
 
-`keychain` stores the credentials of whichever of `clob` and `relay` is enabled in the OS
-keychain, and `specta` derives `specta::Type` on the enabled modules' response types.
+`keychain` stores credentials in the OS keychain; its API is in `clob` and `relay`, but it builds
+core's `keyring` whenever any module is on, `gamma` or `data` alone included, since cargo cannot
+limit it to the two. `specta` derives `specta::Type` on the response types of `gamma` and `data`;
+`clob` and `relay` derive none.
 
 ## What `shared` holds
 

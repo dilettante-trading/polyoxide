@@ -17,7 +17,7 @@ More information about this module can be found in the [crate documentation](htt
 
 ```toml
 [dependencies]
-polyoxide-polymarket = { version = "0.39", features = ["data"] }
+polyoxide-polymarket = { version = "0.39", default-features = false, features = ["data"] }
 ```
 
 Or use the unified client:

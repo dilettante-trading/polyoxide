@@ -20,8 +20,11 @@ More information about this module can be found in the [crate documentation](htt
 
 ```toml
 [dependencies]
-polyoxide-polymarket = { version = "0.39", default-features = false, features = ["clob"] }
+polyoxide-polymarket = { version = "0.39", default-features = false, features = ["clob", "gamma"] }
 ```
+
+`gamma` lets a proxy signature type find its proxy wallet through Gamma when an order names no
+`funder`; with `clob` alone, such an order is refused before anything is sent.
 
 ### Feature Flags
 
@@ -32,7 +35,7 @@ These are `polyoxide-polymarket`'s features. Its defaults are `clob`, `gamma` an
 | `clob` | Yes | This module: the client, order signing (`alloy`) and L2 authentication |
 | `gamma` | Yes | With `clob`, auto-resolves proxy wallet addresses for proxy signature types through the `gamma` module |
 | `clob-ws` | No | WebSocket support, `clob::ws` (the `polyoxide-ws` socket kit, `futures-util`), for real-time streaming; turns on `clob` |
-| `keychain` | No | OS keychain storage for credentials via `keyring` (macOS Keychain, Windows Credential Manager, Linux Secret Service) |
+| `keychain` | No | OS keychain storage for credentials via `keyring` (macOS Keychain, Windows Credential Manager, Linux Secret Service); it builds `keyring` with any module, since cargo cannot limit it to `clob` and `relay` |
 
 ```bash
 # With WebSocket support

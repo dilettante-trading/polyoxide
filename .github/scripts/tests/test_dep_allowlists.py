@@ -2,11 +2,13 @@
 
 `ci/dep-allowlists/<crate>.txt` lists the crate names in
 
-    cargo tree -p <crate> -e normal --no-default-features --target x86_64-unknown-linux-gnu
+    cargo tree -p <crate> -e normal --target x86_64-unknown-linux-gnu
 
-sorted and unique, the crate itself left out, and `<crate>@<f1,f2>.txt` the
-same with `--features f1,f2`, so a file names every feature it builds and a
-crate's defaults never widen it. A crate that joins the tree fails here, named,
+sorted and unique, the crate itself left out: the tree a consumer builds by
+default. `<crate>@<f1,f2>.txt` is the same with `--features f1,f2`, and a venue
+crate held per feature (below) is built with `--no-default-features` too, so its
+file names every feature it builds and the crate's defaults never widen it. A
+crate that joins the tree fails here, named,
 and so does one that leaves it, so the file is always the tree (AD-2, NFR2): a
 credential-free feed that builds an HTTP or signing stack is a red build, not a
 heavier release.
@@ -24,7 +26,8 @@ deny-list, and `polyoxide-ws` may build neither `polyoxide-core` nor
 features each file names turn on the ones they imply: `polyoxide-polymarket`
 builds `alloy*` and `hmac`, the signing stack, only with `clob` or `relay`, and
 `keyring` only with `keychain`. Its `@clob` and `@relay` files must hold
-`alloy`, so the rule cannot pass because nothing it admits is ever built.
+`alloy`, and its `@clob,keychain` file `keyring`, so neither rule can pass
+because nothing it admits is ever built.
 
 Regenerate every file after a deliberate change, from `.github/scripts`:
 
@@ -82,11 +85,12 @@ PER_FEATURE = {
 MUST_BUILD = {
     "polyoxide-polymarket@clob.txt": "alloy",
     "polyoxide-polymarket@relay.txt": "alloy",
+    "polyoxide-polymarket@clob,keychain.txt": "keyring",
 }
 
 HEADER = """\
-# The crates `cargo tree -p {crate} -e normal --no-default-features --target {target}{features}`
-# builds, sorted and unique, the crate itself left out. CI's scripts job fails on any
+# The crates `cargo tree -p {crate} -e normal{defaults} --target {target}{features}` builds,
+# sorted and unique, the crate itself left out. CI's scripts job fails on any
 # difference (.github/scripts/tests/test_dep_allowlists.py). Regenerate with
 # `uv run python -m tests.test_dep_allowlists --write` in .github/scripts, and
 # say in the commit why the tree changed.
@@ -116,10 +120,16 @@ def read_allowlist(path: Path) -> list[str]:
     return [line for line in lines if line and not line.startswith("#")]
 
 
+def no_defaults(crate: str) -> list[str]:
+    """`--no-default-features` for a crate held per feature, whose files name every
+    feature they build; nothing for any other, whose bare file is its default build."""
+    return ["--no-default-features"] if crate in PER_FEATURE else []
+
+
 def cargo_tree(crate: str, features: tuple[str, ...]) -> set[str]:
     """The crate names `crate` builds with `features`."""
     command = ["cargo", "tree", "-p", crate, "-e", "normal", "--prefix", "none",
-               "--no-default-features", "--target", TARGET, "--locked"]
+               *no_defaults(crate), "--target", TARGET, "--locked"]
     if features:
         command += ["--features", ",".join(features)]
     result = subprocess.run(command, cwd=REPO, capture_output=True, text=True, check=False)
@@ -187,7 +197,8 @@ def write() -> None:
     for path in allowlists():
         crate, features = parse_name(path.stem)
         named = f" --features {','.join(features)}" if features else ""
-        header = HEADER.format(crate=crate, target=TARGET, features=named)
+        defaults = "".join(f" {flag}" for flag in no_defaults(crate))
+        header = HEADER.format(crate=crate, defaults=defaults, target=TARGET, features=named)
         path.write_text(header + "".join(f"{n}\n" for n in sorted(cargo_tree(crate, features))),
                         encoding="utf-8")
 
@@ -198,14 +209,15 @@ def test_the_allowlists_exist() -> None:
     names = [p.name for p in allowlists()]
     assert {"polyoxide-ws.txt", "polyoxide-ws@test-server.txt"} <= set(names), names
     assert "tokio-tungstenite" in read_allowlist(ALLOWLISTS / "polyoxide-ws.txt")
-    assert {f"polyoxide-polymarket@{m}.txt" for m in ("gamma", "data", "clob", "relay")} <= set(
-        names), names
+    modules = ("gamma", "data", "perps", "clob", "clob-ws", "relay", "clob,keychain")
+    assert {f"polyoxide-polymarket@{m}.txt" for m in modules} <= set(names), names
 
 
 @pytest.mark.parametrize("name", sorted(MUST_BUILD))
-def test_the_signing_modules_build_the_signing_stack(name: str) -> None:
-    # The per-feature rule admits alloy with clob or relay; if neither file held
-    # it, a rule that never refuses anything could not be told from one that holds.
+def test_each_per_feature_rule_admits_what_it_guards(name: str) -> None:
+    # The rules admit alloy with clob or relay and keyring with keychain; if no
+    # file held them, a rule that never refuses anything could not be told from
+    # one that holds.
     assert MUST_BUILD[name] in read_allowlist(ALLOWLISTS / name), name
 
 
@@ -312,6 +324,13 @@ def test_a_signing_module_admits_the_signing_stack_and_not_the_keychain() -> Non
     # `keychain` admits the keychain and nothing else.
     assert denied(VENUE, names, ("data", "keychain"), TABLE) == [
         f"alloy ({SIGNING})", f"alloy-primitives ({SIGNING})", f"hmac ({SIGNING})"]
+
+
+def test_only_a_crate_held_per_feature_is_built_without_its_defaults() -> None:
+    assert no_defaults("polyoxide-polymarket") == ["--no-default-features"]
+    # A socket crate's bare file is the tree a consumer builds by default.
+    assert no_defaults("polyoxide-rtds") == []
+    assert no_defaults("polyoxide-ws") == []
 
 
 def test_enabled_follows_features_and_not_dependencies() -> None:
