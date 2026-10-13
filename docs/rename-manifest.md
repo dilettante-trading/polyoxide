@@ -77,7 +77,26 @@ the HMAC signer and the session-signer types by `clob` or `relay`.
 - `polyoxide_core::Base64Format` → `polyoxide_polymarket::shared::Base64Format` Story 5.2, feature `clob` or `relay`.
 - `polyoxide_core::current_timestamp` → `polyoxide_polymarket::shared::current_timestamp` Story 5.2, feature `clob` or `relay`.
 
+Story 5.3 folded `polyoxide-gamma` and `polyoxide-data` into `polyoxide-polymarket` as the
+modules `gamma` and `data`, each under the feature of its name, keeping their own module
+paths. Data's error enum takes its module's name, `DataError` (AD-1's `<Module>Error`).
+Until Story 5.7 reshapes the umbrella, `polyoxide` re-exports `polyoxide_polymarket` in their
+place.
+
+- `polyoxide_gamma` → `polyoxide_polymarket::gamma` Story 5.3, feature `gamma`.
+- `polyoxide_data` → `polyoxide_polymarket::data` Story 5.3, feature `data`.
+- `polyoxide_data::DataApiError` → `polyoxide_polymarket::data::DataError` Story 5.3, renamed for its module.
+- `polyoxide_data::error::DataApiError` → `polyoxide_polymarket::data::error::DataError` Story 5.3, renamed for its module.
+- `polyoxide::polyoxide_gamma` → `polyoxide::polyoxide_polymarket::gamma` Story 5.3, feature `gamma`.
+- `polyoxide::polyoxide_data` → `polyoxide::polyoxide_polymarket::data` Story 5.3, feature `data`.
+- `polyoxide::polyoxide_data::DataApiError` → `polyoxide::polyoxide_polymarket::data::DataError` Story 5.3, renamed for its module.
+- `polyoxide::polyoxide_data::error::DataApiError` → `polyoxide::polyoxide_polymarket::data::error::DataError` Story 5.3, renamed for its module.
+- `polyoxide::prelude::DataApiError` → `polyoxide::prelude::DataError` Story 5.3, renamed for its module.
+
 ## Features
+
+- `polyoxide-gamma/specta` → `polyoxide-polymarket/specta` Story 5.3, with `gamma`.
+- `polyoxide-data/specta` → `polyoxide-polymarket/specta` Story 5.3, with `data`.
 
 ## Doc-hidden paths consumers import
 
@@ -100,7 +119,7 @@ line of its own first.
 - `polyoxide_sports::fixtures::{CRICKET, CRICKET_FINISHED, ESPORTS, LEAGUE_WITH_SPACE, SOCCER, TENNIS_EVENT_STATE}` `test-server`
 - `polyoxide_clob::DynSigner`
 - `polyoxide_clob::account::DynSigner`
-- `polyoxide_data::v2::PageStream`
+- `polyoxide_polymarket::data::v2::PageStream` `data`
 - `polyoxide_perps::ws::SupervisedPerpsWs` `ws`
 - `polyoxide_relay::DynSigner`
 

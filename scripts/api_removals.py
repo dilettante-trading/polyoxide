@@ -8,9 +8,9 @@ at a baseline git revision. This script runs it and keys each item it reports as
 
 where `<item>` is the tool's own "Failed in:" line without its location, and
 `<file>` is the item's source file relative to its crate, without a line number.
-The file tells same-named items apart (polyoxide-data has a `ListTrades` in v1 and
-in v2), and leaving out the line keeps a key stable across edits elsewhere in the
-file. A publishable crate that is in the baseline's workspace and not in this one
+The file tells same-named items apart (polyoxide-polymarket's `data` module has a
+`ListTrades` in v1 and in v2), and leaving out the line keeps a key stable across
+edits elsewhere in the file. A publishable crate that is in the baseline's workspace and not in this one
 is keyed `<crate> crate_missing`. Three subcommands:
 
     manifest CI's removals job through stage S2. Lists every public path at the

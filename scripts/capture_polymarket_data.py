@@ -7,7 +7,7 @@ winners board, and markets still settling from gamma's UMA status filter. Every
 request uses a small `limit`, and requests are spaced out.
 
 Usage:
-    python3 scripts/capture_v2_fixtures.py polyoxide-data/tests/fixtures/v2
+    python3 scripts/capture_polymarket_data.py polyoxide-polymarket/tests/fixtures/data/v2
 
 Writes `<name>.json` per capture plus `PROVENANCE.md` listing each URL and the
 capture time. Re-run to refresh; review the diff before committing.
@@ -114,7 +114,7 @@ def main():
     lines = [
         "# Data API v2 fixtures",
         "",
-        f"Captured {now} by `scripts/capture_v2_fixtures.py` from the live host.",
+        f"Captured {now} by `scripts/capture_polymarket_data.py` from the live host.",
         "Each file is the complete response body, pretty-printed. Inputs were chosen live",
         "(see the script), so the wallets and markets here are whatever was active then.",
         "",

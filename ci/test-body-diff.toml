@@ -89,6 +89,20 @@
 "data-api.polymarket.com" = "api.example.com"
 "user-pnl-api.polymarket.com" = "sibling.example.com"
 
+# Story 5.3: data's v2 fixtures moved to `polyoxide-polymarket`'s
+# `tests/fixtures/data/v2/`, beside gamma's `tests/fixtures/gamma/`.
+[literals."polyoxide-data/tests/v2_spec_agreement.rs"]
+"v2" = "data/v2"
+
+[literals."polyoxide-data/tests/v2_wire_agreement.rs"]
+"v2" = "data/v2"
+
+[literals."polyoxide-cli/tests/data_v2.rs"]
+"/../polyoxide-data/tests/fixtures/v2" = "/../polyoxide-polymarket/tests/fixtures/data/v2"
+
+[literals."polyoxide-py/src/types/data_v2.rs"]
+"{}/../polyoxide-data/tests/fixtures/v2/{fixture}.json" = "{}/../polyoxide-polymarket/tests/fixtures/data/v2/{fixture}.json"
+
 [paths]
 
 # Story 5.2: core's Polymarket files moved into `polyoxide-polymarket`'s
@@ -98,3 +112,11 @@
 "polyoxide-polymarket/src/shared/limits.rs" = "clob"
 "polyoxide-polymarket/src/shared/session_signer.rs" = 'any(feature = "clob", feature = "relay")'
 "polyoxide-polymarket/src/shared/signer_limit.rs" = "clob"
+
+# Story 5.3: data's harnesses moved into `polyoxide-polymarket`, whose examples
+# require the module they drive. No `src/gamma/` or `src/data/` entry: the
+# module gate sits on `mod gamma;` and `mod data;`, which declare only each
+# module's `mod.rs`, and neither holds a test item.
+"polyoxide-polymarket/examples/closed_positions_burst_probe.rs" = "data"
+"polyoxide-polymarket/examples/closed_positions_soak.rs" = "data"
+"polyoxide-polymarket/examples/v2_soak" = "data"
