@@ -2,7 +2,7 @@
 title: 'Story 5.5: perps, rtds and sports become modules'
 type: 'refactor'
 created: '2026-10-13'
-status: 'draft'
+status: 'in-progress'
 route: 'dispatch'
 baseline_commit: 'def70b785d6c87606d90842b449ccfd447dea5ed'
 review_loop_iteration: 0
@@ -21,7 +21,7 @@ context:
 
 **Approach:** Move `polyoxide-perps`, `polyoxide-rtds` and `polyoxide-sports` into `polyoxide-polymarket` as the modules `src/perps/`, `src/rtds/` and `src/sports/`, as 5.4 moved clob, then delete the old crates. Rename rtds' `test-fixtures` to `test-server` in its own commit first (DRIFT R6). Give the crate one `test-server`, and extend the per-feature fence to the socket-only modules. Every suite moves with an empty body diff.
 
-**Decisions** (decided without the user on the recommended option, 2026-10-13, under the run's advance approval):
+**Decisions** (each on the recommended option; the user approved the spec as written on 2026-10-13):
 - **Module paths.** `polyoxide_{perps,rtds,sports}::X` becomes `polyoxide_polymarket::{perps,rtds,sports}::X`. Internal files are kept, and each `lib.rs` becomes its `mod.rs`. Error names stay (`PerpsError`, `VenueError`, `PerpsWsError`, `RtdsError`, `SportsError`).
 - **Features:**
   - `perps` builds the HTTP module: core, `polyoxide-venue/decimal`, rust_decimal, serde, serde_json, thiserror, tracing and url.
@@ -52,7 +52,7 @@ context:
   - The umbrella keeps its feature names `rtds`, `perps`, `perps-ws` and `sports`, now passthroughs to polymarket. Its `pub use polyoxide_polymarket` covers them, and its prelude aliases and `PolymarketError::Perps` take the new paths. Story 5.7 reshapes it.
   - The CLI adds `rtds` and `sports` to its polymarket features, and its dev-dependency adds `sports` and `test-server`.
 - **Out of scope.** The `game_id` type alignment (deferred-work) is not in 5.5.
-- **Scope.** The spec stays whole, at about 3,300 tokens, because the three moves share the fence, manifest and body-diff changes. It was approved with no human review, under the run's advance approval, as 5.3 and 5.4 were.
+- **Scope.** The spec stays whole, at about 3,300 tokens, because the three moves share the fence, manifest and body-diff changes. The user approved it as written on 2026-10-13.
 
 ## Boundaries & Constraints
 
