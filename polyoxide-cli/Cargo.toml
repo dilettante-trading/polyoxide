@@ -61,6 +61,7 @@ polyoxide-binance = { workspace = true, features = ["test-server"] }
 # --write` after an edit.
 [package.metadata.polyoxide]
 readme = "CLI tool for querying Polymarket APIs and Binance USDⓈ-M market data"
+notes = ["its `keychain` also turns on `polyoxide-polymarket`'s `relay` and `keychain`, for the relay's keychain service"]
 
 [package.metadata.polyoxide.live.live_api]
 suite = "live"

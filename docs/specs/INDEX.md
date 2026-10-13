@@ -22,11 +22,11 @@ Covered by a polyoxide crate:
 <!-- generated:begin index-covered -->
 | API | Base URL | Description | Crate |
 |-----|----------|-------------|-------|
-| [CLOB](clob/INDEX.md) | `https://clob.polymarket.com` | Order book trading, market data, rewards, RFQ | `polyoxide-clob` |
+| [CLOB](clob/INDEX.md) | `https://clob.polymarket.com` | Order book trading, market data, rewards, RFQ | `polyoxide-polymarket` |
 | [Gamma](gamma/INDEX.md) | `https://gamma-api.polymarket.com` | Market/event metadata, search, comments | `polyoxide-polymarket` |
 | [Data](data/INDEX.md) | `https://data-api.polymarket.com` | User positions, trades, combos, leaderboard | `polyoxide-polymarket` |
 | [Data v2](data-v2/INDEX.md) | `https://data-api.polymarket.com/v2` | The Data API's second contract: `data` envelope, cursor pagination, snake_case | `polyoxide-polymarket` (`data.v2()`) |
-| [Relay](relay/INDEX.md) | `https://relayer-v2.polymarket.com` | Gasless relay transactions | `polyoxide-relay` |
+| [Relay](relay/INDEX.md) | `https://relayer-v2.polymarket.com` | Gasless relay transactions | `polyoxide-polymarket` |
 | [Sports](sports/INDEX.md) | `wss://sports-api.polymarket.com/ws` | Live match scores, server push only | `polyoxide-sports` |
 | [RTDS](rtds/OBSERVED.md) | `wss://ws-live-data.polymarket.com` | Crypto price streams, Binance and Chainlink; observed, not published upstream | `polyoxide-rtds` |
 | [Perps](perps/INDEX.md) | `https://api.perpetuals.polymarket.com` | Perpetual futures: market info implemented; accounts and orders pending | `polyoxide-perps` (public `/v1/info/*`) |
@@ -99,8 +99,8 @@ entirely.
 <!-- generated:begin index-asyncapi -->
 | Spec | Covers | Crate |
 |------|--------|-------|
-| [clob/asyncapi-market.json](clob/asyncapi-market.json) | Market channel (11 messages) | `polyoxide-clob` |
-| [clob/asyncapi-user.json](clob/asyncapi-user.json) | User channel (6 messages) | `polyoxide-clob` |
+| [clob/asyncapi-market.json](clob/asyncapi-market.json) | Market channel (11 messages) | `polyoxide-polymarket` |
+| [clob/asyncapi-user.json](clob/asyncapi-user.json) | User channel (6 messages) | `polyoxide-polymarket` |
 | [sports/asyncapi.json](sports/asyncapi.json) | Sports feed. **Does not match the wire**; implemented from captured frames, see [sports/OBSERVED.md](sports/OBSERVED.md) | `polyoxide-sports` |
 | [rtds/asyncapi-live-data.json](rtds/asyncapi-live-data.json) | RTDS crypto prices (4 topics) — **observed, not published upstream**; see [rtds/OBSERVED.md](rtds/OBSERVED.md) | `polyoxide-rtds` |
 | [perps/asyncapi.json](perps/asyncapi.json) | Perps WebSocket (27 channels) — six public channels implemented (`ws` feature); private channels and trading pending; see [perps/OBSERVED.md](perps/OBSERVED.md) | `polyoxide-perps` |

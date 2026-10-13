@@ -359,6 +359,7 @@ venue = "polymarket"
 products = ["clob", "gamma", "data", "relay"]
 mirrors = ["clob", "gamma", "data", "data-v2", "undocumented", "relay", "session-keys"]
 identifiers = ["Poly-RateLimit"]
+notes = ["only `clob` and `relay` build `alloy`, which `test_dep_allowlists.py` holds per feature; `clob` does not turn on `gamma`, and with both the CLOB client looks a proxy wallet up through Gamma"]
 
 [package.metadata.polyoxide.live.live_clob]
 suite = "clob"

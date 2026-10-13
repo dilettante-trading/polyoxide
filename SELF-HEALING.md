@@ -41,10 +41,8 @@ and that is when North American leagues and weekend soccer are on.
 <!-- generated:begin selfheal-behavioral -->
 | Crate | Test binaries |
 |-------|---------------|
-| polyoxide-polymarket | `gamma`: `live_gamma` (built with `--features gamma`); `data`: `live_data` (built with `--features data`) |
-| polyoxide-relay | `live_api` |
 | polyoxide-binance | `live_api`, `live_ws` (built with `--features ws`) |
-| polyoxide-clob | `live`: `live_api`, `live_ws` (built with `--features ws`); `session-keys`: `live_session_keys` (40-minute budget in its own job, since its registry and transaction waits can take ~25 minutes) |
+| polyoxide-polymarket | `clob`: `live_clob` (built with `--features clob,gamma`), `live_clob_ws` (built with `--features clob-ws`); `clob-session-keys`: `live_clob_session_keys` (built with `--features clob,relay,gamma`; 40-minute budget in its own job, since its registry and transaction waits can take ~25 minutes); `gamma`: `live_gamma` (built with `--features gamma`); `data`: `live_data` (built with `--features data`); `relay`: `live_relay` (built with `--features relay`) |
 | polyoxide-perps | `live_api`, `live_ws` (built with `--features ws`) |
 | polyoxide-rtds | `live_api` |
 | polyoxide-sports | `live_api` (20-minute budget for its 180 s wire-agreement window) |

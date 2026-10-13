@@ -37,15 +37,65 @@ jobs:
   # in .github/actions/live-suite.
   #
   # `flags` selects each crate's live test binaries (and any features
-  # they need). polyoxide-clob's, polyoxide-perps's and polyoxide-binance's
-  # WebSocket tests live in a separate `live_ws` binary behind the
-  # non-default `ws` feature.
+  # they need). polyoxide-polymarket's clob WebSocket tests live in a
+  # separate `live_clob_ws` binary behind the non-default `clob-ws`
+  # feature, and polyoxide-perps's and polyoxide-binance's in `live_ws`
+  # behind `ws`.
   #
-  # `live_session_keys` gets its own job because its registry and
+  # `live_clob_session_keys` gets its own job because its registry and
   # transaction waits can legitimately take ~25 minutes, which would
-  # kill live_api/live_ws with it under a shared 15-minute budget.
+  # kill live_clob/live_clob_ws with it under a shared 15-minute budget.
   # `suite` keeps the two clob jobs' artifact names distinct.
   # generated:begin nightly-live-jobs
+  live-polyoxide-binance-live:
+    name: Live tests (polyoxide-binance, live)
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v5
+      - uses: ./.github/actions/live-suite
+        with:
+          crate: polyoxide-binance
+          suite: live
+          flags: "--features ws --test live_api --test live_ws"
+
+  live-polyoxide-polymarket-clob:
+    name: Live tests (polyoxide-polymarket, clob)
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    env:
+      POLYMARKET_API_KEY: ${{ secrets.POLYMARKET_API_KEY }}
+      POLYMARKET_API_PASSPHRASE: ${{ secrets.POLYMARKET_API_PASSPHRASE }}
+      POLYMARKET_API_SECRET: ${{ secrets.POLYMARKET_API_SECRET }}
+      POLYMARKET_BUILDER_CODE: ${{ secrets.POLYMARKET_BUILDER_CODE }}
+      POLYMARKET_PRIVATE_KEY: ${{ secrets.POLYMARKET_PRIVATE_KEY }}
+    steps:
+      - uses: actions/checkout@v5
+      - uses: ./.github/actions/live-suite
+        with:
+          crate: polyoxide-polymarket
+          suite: clob
+          flags: "--features clob,clob-ws,gamma --test live_clob --test live_clob_ws"
+
+  live-polyoxide-polymarket-clob-session-keys:
+    name: Live tests (polyoxide-polymarket, clob-session-keys)
+    runs-on: ubuntu-latest
+    timeout-minutes: 40
+    env:
+      BUILDER_API_KEY: ${{ secrets.BUILDER_API_KEY }}
+      BUILDER_PASS_PHRASE: ${{ secrets.BUILDER_PASS_PHRASE }}
+      BUILDER_SECRET: ${{ secrets.BUILDER_SECRET }}
+      POLYMARKET_DW_OWNER_PRIVATE_KEY: ${{ secrets.POLYMARKET_DW_OWNER_PRIVATE_KEY }}
+      POLYMARKET_DW_SESSION_PRIVATE_KEY: ${{ secrets.POLYMARKET_DW_SESSION_PRIVATE_KEY }}
+      POLYMARKET_DW_WALLET: ${{ secrets.POLYMARKET_DW_WALLET }}
+    steps:
+      - uses: actions/checkout@v5
+      - uses: ./.github/actions/live-suite
+        with:
+          crate: polyoxide-polymarket
+          suite: clob-session-keys
+          flags: "--features clob,gamma,relay --test live_clob_session_keys"
+
   live-polyoxide-polymarket-gamma:
     name: Live tests (polyoxide-polymarket, gamma)
     runs-on: ubuntu-latest
@@ -70,8 +120,8 @@ jobs:
           suite: data
           flags: "--features data --test live_data"
 
-  live-polyoxide-relay-live:
-    name: Live tests (polyoxide-relay, live)
+  live-polyoxide-polymarket-relay:
+    name: Live tests (polyoxide-polymarket, relay)
     runs-on: ubuntu-latest
     timeout-minutes: 15
     env:
@@ -85,58 +135,9 @@ jobs:
       - uses: actions/checkout@v5
       - uses: ./.github/actions/live-suite
         with:
-          crate: polyoxide-relay
-          suite: live
-          flags: "--test live_api"
-
-  live-polyoxide-binance-live:
-    name: Live tests (polyoxide-binance, live)
-    runs-on: ubuntu-latest
-    timeout-minutes: 15
-    steps:
-      - uses: actions/checkout@v5
-      - uses: ./.github/actions/live-suite
-        with:
-          crate: polyoxide-binance
-          suite: live
-          flags: "--features ws --test live_api --test live_ws"
-
-  live-polyoxide-clob-live:
-    name: Live tests (polyoxide-clob, live)
-    runs-on: ubuntu-latest
-    timeout-minutes: 15
-    env:
-      POLYMARKET_API_KEY: ${{ secrets.POLYMARKET_API_KEY }}
-      POLYMARKET_API_PASSPHRASE: ${{ secrets.POLYMARKET_API_PASSPHRASE }}
-      POLYMARKET_API_SECRET: ${{ secrets.POLYMARKET_API_SECRET }}
-      POLYMARKET_BUILDER_CODE: ${{ secrets.POLYMARKET_BUILDER_CODE }}
-      POLYMARKET_PRIVATE_KEY: ${{ secrets.POLYMARKET_PRIVATE_KEY }}
-    steps:
-      - uses: actions/checkout@v5
-      - uses: ./.github/actions/live-suite
-        with:
-          crate: polyoxide-clob
-          suite: live
-          flags: "--features ws --test live_api --test live_ws"
-
-  live-polyoxide-clob-session-keys:
-    name: Live tests (polyoxide-clob, session-keys)
-    runs-on: ubuntu-latest
-    timeout-minutes: 40
-    env:
-      BUILDER_API_KEY: ${{ secrets.BUILDER_API_KEY }}
-      BUILDER_PASS_PHRASE: ${{ secrets.BUILDER_PASS_PHRASE }}
-      BUILDER_SECRET: ${{ secrets.BUILDER_SECRET }}
-      POLYMARKET_DW_OWNER_PRIVATE_KEY: ${{ secrets.POLYMARKET_DW_OWNER_PRIVATE_KEY }}
-      POLYMARKET_DW_SESSION_PRIVATE_KEY: ${{ secrets.POLYMARKET_DW_SESSION_PRIVATE_KEY }}
-      POLYMARKET_DW_WALLET: ${{ secrets.POLYMARKET_DW_WALLET }}
-    steps:
-      - uses: actions/checkout@v5
-      - uses: ./.github/actions/live-suite
-        with:
-          crate: polyoxide-clob
-          suite: session-keys
-          flags: "--test live_session_keys"
+          crate: polyoxide-polymarket
+          suite: relay
+          flags: "--features relay --test live_relay"
 
   live-polyoxide-perps-live:
     name: Live tests (polyoxide-perps, live)
@@ -191,12 +192,12 @@ jobs:
     name: Aggregate and report
     # generated:begin nightly-aggregate-needs
     needs:
+      - live-polyoxide-binance-live
+      - live-polyoxide-polymarket-clob
+      - live-polyoxide-polymarket-clob-session-keys
       - live-polyoxide-polymarket-gamma
       - live-polyoxide-polymarket-data
-      - live-polyoxide-relay-live
-      - live-polyoxide-binance-live
-      - live-polyoxide-clob-live
-      - live-polyoxide-clob-session-keys
+      - live-polyoxide-polymarket-relay
       - live-polyoxide-perps-live
       - live-polyoxide-rtds-live
       - live-polyoxide-sports-live

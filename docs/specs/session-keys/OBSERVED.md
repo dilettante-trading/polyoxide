@@ -7,7 +7,7 @@ SDKs, with a citation into `polymarket-client==0.11.0` (py-sdk) or
 (observed 2026-09-25 with unauthenticated GETs), nothing here has been observed against
 the live host: session-key management is gated per Builder API key and ours is not yet
 enabled (prader-rs #125). When the live round trip in
-`polyoxide-clob/tests/live_session_keys.rs` runs, move each confirmed row into
+`polyoxide-polymarket/tests/live_clob_session_keys.rs` runs, move each confirmed row into
 `README.md` and each contradicted one into a new "Contradicted live" section here.
 
 ## Pages versus SDKs

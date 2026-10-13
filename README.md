@@ -13,12 +13,10 @@ Rust SDK toolkit for Polymarket APIs. It includes library crates for use in your
 | [polyoxide](./polyoxide) | Unified client for Polymarket APIs (CLOB, Gamma, Data, WebSocket, RTDS, Perps, Sports) |
 | [polyoxide-binance](./polyoxide-binance) | Client library for Binance USDⓈ-M futures market data and streams (not part of the unified crate) |
 | [polyoxide-cli](./polyoxide-cli) | CLI tool for querying Polymarket APIs and Binance USDⓈ-M market data |
-| [polyoxide-clob](./polyoxide-clob) | Client library for Polymarket CLOB (order book) API |
 | [polyoxide-core](./polyoxide-core) | Core utilities and shared types |
 | [polyoxide-perps](./polyoxide-perps) | Client library for Polymarket Perps (perpetual futures) public market data |
-| [polyoxide-polymarket](./polyoxide-polymarket) | Client library for Polymarket's APIs, one feature per module: `gamma` (market data) and `data` (user data, v1 and v2), with the code the modules share in `shared`; clob, relay, perps, rtds and sports arrive in Stories 5.4 and 5.5 |
+| [polyoxide-polymarket](./polyoxide-polymarket) | Client library for Polymarket's APIs, one feature per module: `clob` (order book, with its sockets under `clob-ws`), `gamma` (market data), `data` (user data, v1 and v2) and `relay` (gasless transactions), with the code the modules share in `shared`; perps, rtds and sports arrive in Story 5.5 |
 | [polyoxide-py](./polyoxide-py) | Python bindings via PyO3 (`publish = false`, wheels on PyPI) |
-| [polyoxide-relay](./polyoxide-relay) | Client library for Polymarket Relayer API (gasless transactions) |
 | [polyoxide-rtds](./polyoxide-rtds) | Client for Polymarket's RTDS crypto price streams |
 | [polyoxide-sports](./polyoxide-sports) | Client for Polymarket's live sports score feed |
 | [polyoxide-test-support](./polyoxide-test-support) | Test toolkit: the failure tags the nightly classifier reads, the credential loaders, and the agreement, fixture and soak helpers (`publish = false`) |
@@ -48,6 +46,9 @@ cargo add polyoxide --no-default-features --features data
 
 # WebSocket only
 cargo add polyoxide --no-default-features --features ws
+
+# Gasless relay, which the unified crate leaves out
+cargo add polyoxide-polymarket --no-default-features --features relay
 ```
 
 ### CLI
@@ -135,7 +136,7 @@ while let Some(msg) = ws.next().await {
 ### Gasless Redemptions (Relay)
 
 ```rust,ignore
-use polyoxide_relay::{RelayClient, BuilderAccount, BuilderConfig, WalletType};
+use polyoxide_polymarket::relay::{RelayClient, BuilderAccount, BuilderConfig, WalletType};
 use alloy::primitives::U256;
 
 #[tokio::main]

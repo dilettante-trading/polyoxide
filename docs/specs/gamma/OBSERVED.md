@@ -137,7 +137,7 @@ position ids and trade on a new exchange, ExchangeV3, which signs under
 domain version `"3"` with `verifyingContract`
 `0xe3333700cA9d93003F00f0F71f8515005F6c00Aa`. CLOB balance reads for V2
 positions use `asset_type=CONDITIONAL-V2`. CTF (v1) orders keep domain
-version `"2"`, which is what `polyoxide-clob` signs.
+version `"2"`, which is what `polyoxide-polymarket`'s `clob` module signs.
 
 **The served `Market.json` says more than the published spec**, and outranks
 it:
