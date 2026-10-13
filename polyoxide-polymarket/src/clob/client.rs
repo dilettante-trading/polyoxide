@@ -200,7 +200,7 @@ impl Clob {
     /// The L1 auth message for `address` as EIP-712 JSON, for an external wallet to sign.
     ///
     /// `timestamp` is Unix seconds at signing time — construct it from
-    /// [`shared::current_timestamp`](crate::shared::current_timestamp) or `std::time::SystemTime`. Unlike the
+    /// [`shared::current_timestamp`] or `std::time::SystemTime`. Unlike the
     /// signer-based [`Clob::auth`] path, which stamps a fresh timestamp on every
     /// attempt, the client's internal 429 retry resends the same timestamp and
     /// signature.
