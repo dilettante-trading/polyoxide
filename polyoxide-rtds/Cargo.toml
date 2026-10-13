@@ -13,16 +13,17 @@ categories = ["api-bindings", "web-programming::websocket"]
 [features]
 # Exposes the captured wire frames in `fixtures` so integration tests under
 # `tests/` can use the same golden vectors as the unit tests. Not intended
-# for library consumers; the module is `#[doc(hidden)]`.
-test-fixtures = []
+# for library consumers; the module is `#[doc(hidden)]`. Named `test-server`
+# as every other crate's is (DRIFT R6); it was `test-fixtures`.
+test-server = []
 
 [[test]]
-# Imports `fixtures`, which only exists behind `test-fixtures` (see the
-# feature comment below). Without `required-features`, a plain
+# Imports `fixtures`, which only exists behind `test-server` (see the
+# feature comment above). Without `required-features`, a plain
 # `cargo test --all-targets` (no `--features`) would try to build this target
 # and fail with an unresolved import instead of just skipping it.
 name = "supervision"
-required-features = ["test-fixtures"]
+required-features = ["test-server"]
 
 [dependencies]
 polyoxide-venue = { workspace = true }

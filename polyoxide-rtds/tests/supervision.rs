@@ -9,7 +9,7 @@ use polyoxide_rtds::{PriceEvent, RtdsBuilder, Subscription, Topic, TwapWindow};
 use polyoxide_ws::test_server::{Script, ScriptedServer};
 
 // The same golden vector the unit tests use, not a second copy. `fixtures`
-// is behind the `test-fixtures` feature precisely so integration tests can
+// is behind the `test-server` feature precisely so integration tests can
 // reach it — a pasted duplicate would silently diverge on the next capture.
 use polyoxide_rtds::fixtures::TWAP_THIRTY_UPDATE as TWAP_UPDATE;
 

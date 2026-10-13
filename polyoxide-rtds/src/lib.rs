@@ -27,13 +27,13 @@ pub mod subscription;
 pub mod supervisor;
 pub mod topic;
 
-#[cfg(any(test, feature = "test-fixtures"))]
+#[cfg(any(test, feature = "test-server"))]
 #[doc(hidden)]
 pub mod fixtures;
 
 // Gated on `cfg(test)` alone, unlike `fixtures`: it is built
 // on `tracing-subscriber`, a dev-dependency, so putting it behind the public
-// `test-fixtures` feature would make that feature fail to build for anyone who
+// `test-server` feature would make that feature fail to build for anyone who
 // enabled it. Nothing under `tests/` needs it today; if that changes, the fix
 // is to make `tracing-subscriber` an optional dependency of the feature.
 #[cfg(test)]
