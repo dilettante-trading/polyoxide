@@ -78,7 +78,7 @@ carrying `parentEventId`; the game is the one without it. `game_id=1` returned
 28 closed cricket events from 2025. gamma's current cricket events carry no
 `gameId` at all: their id is the string `eventMetadata.gameId`, in a different
 form from this feed's `metadataGameId` (`1000170151LIVE2026` against
-`id2703438269077680`). In `polyoxide-gamma` these are `Event::game_id`,
+`id2703438269077680`). In `polyoxide-polymarket`'s `gamma` module these are `Event::game_id`,
 `Event::parent_event_id` and `Event::event_metadata`; see
 `docs/specs/gamma/OBSERVED.md`.
 

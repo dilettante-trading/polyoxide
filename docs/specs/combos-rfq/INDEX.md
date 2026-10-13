@@ -6,7 +6,7 @@ Request-for-quote flow for combinatorial (multi-leg) markets, from the market
 maker's side.
 
 > **Not implemented by polyoxide.** This spec is mirrored so parity audits can
-> see the surface. Note the distinction from `polyoxide-data`'s combos support:
+> see the surface. Note the distinction from `polyoxide-polymarket`'s `data` combos support:
 > that reads a user's existing combo *positions and activity*
 > (`/v1/positions/combos`, `/v1/activity/combos` on the Data API), whereas this
 > API is for *quoting and executing* combo trades as a maker.

@@ -56,7 +56,7 @@ enforces these anyway (2026-09-14):
 | `GET /v2/positions` | `400` `required query param 'user' or 'condition' not provided` |
 | `GET /v2/resolutions?event_id=1&condition=0x1` | `400` `provide exactly one of 'question_id', 'condition', or 'event_id'` |
 
-**Consequence:** these are method arguments in `polyoxide-data` (`user_pnl(user)`,
+**Consequence:** these are method arguments in `polyoxide-polymarket`'s `data` module (`user_pnl(user)`,
 `positions(PositionAnchor)`, `resolutions(ResolutionKey)`), not setters.
 
 ## Responses are cached at the CDN, per route
@@ -82,7 +82,7 @@ within the window.
 ## Validation messages enumerate valid values
 
 Most enum-like parameters are typed as a bare `string`. The server's `400`
-message lists the accepted values, which is where `polyoxide-data`'s enums come
+message lists the accepted values, which is where the `data` module's enums come
 from (2026-09-14):
 
 | Parameter | Message |
@@ -131,15 +131,15 @@ none was available to test.
 
 `GET /v2/resolutions?condition=0x789f0872f66cfffd21a33020e5c90e11f95f947e03be77ac2df7e86b0cb71527`
 (a market from the weekly winners board, resolved 2026-09-09; captured
-2026-09-14 as `polyoxide-data/tests/fixtures/v2/resolutions.json`) returned a
+2026-09-14 as `polyoxide-polymarket/tests/fixtures/data/v2/resolutions.json`) returned a
 row with `resolution_source: "reported"` but:
 
 - no `reporter`, which the spec documents without any condition;
 - no `market_type`, which the spec documents as present on condition-keyed rows;
 - `transaction_hash` and `log_index` as empty strings rather than absent.
 
-Both missing fields are `Option` in `polyoxide-data`, so nothing fails to
-decode; `tests/v2_wire_agreement.rs` excuses them for this fixture. An earlier
+Both missing fields are `Option` in the `data` module, so nothing fails to
+decode; `tests/wire_agreement_data_v2.rs` excuses them for this fixture. An earlier
 capture of a different market omitted `was_arbitrated` too, so which fields a
 row carries varies by market.
 
@@ -163,8 +163,8 @@ under `uma_resolution_status=proposed` (50) and `=disputed` (20) was looked up:
 - `liveness`, the third documented basis, did not appear.
 - A question-keyed lookup (`?question_id=`) of an estimated row carries both.
 
-`polyoxide-data/tests/fixtures/v2/resolutions_pending.json` holds one row of each
-basis seen; `scripts/capture_v2_fixtures.py` picks them the same way.
+`polyoxide-polymarket/tests/fixtures/data/v2/resolutions_pending.json` holds one row of each
+basis seen; `scripts/capture_polymarket_data.py` picks them the same way.
 
 **Consequence:** both are `Option<String>` on `Resolution`. `settlement_time_basis`
 stays a string, like the row's other closed sets (`status`, `reporter`,
@@ -201,7 +201,7 @@ both `/v2/user-stats` and `/v2/leaderboard?user=` (2026-09-14).
 ## Measured rate limits
 
 Upstream publishes no v2 figures. Each route below was ramped with
-`polyoxide-data/examples/v2_soak` (raw requests, every URL distinct so the CDN
+`polyoxide-polymarket/examples/v2_soak` (raw requests, every URL distinct so the CDN
 cannot answer, abort on the first 429) and then validated at the shipped
 limiter's pace. `shared::data_limits` pins the counts in the table at the
 end of this section.

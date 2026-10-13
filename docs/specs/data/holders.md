@@ -70,7 +70,7 @@ was sent and malformed. Three of these were present in a 2,500-trade sample.
 That is what broke the 2026-08-26 nightly (issue #32): `live_holders` took
 `trades[0].condition_id` unconditionally, drew one of the 62-hex ids, and the
 "not provided" message made an upstream shape mismatch read as an SDK defect.
-`polyoxide-data/tests/live_api.rs` now probes for a market `/holders` returns
+`polyoxide-polymarket/tests/live_data.rs` now probes for a market `/holders` returns
 rows for instead of assuming the newest trade names one.
 
 ## `null` bodies, and the SDK

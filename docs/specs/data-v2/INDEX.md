@@ -6,7 +6,7 @@ The second contract for the Data API: the same host and data as
 [../data/INDEX.md](../data/INDEX.md), behind one shared set of conventions
 instead of per-route ones.
 
-> **Implemented by `polyoxide-data`** as `data.v2()`, alongside the v1 routes,
+> **Implemented by `polyoxide-polymarket`'s `data` module** as `data.v2()`, alongside the v1 routes,
 > which upstream says keep working. Where the live host disagrees with or goes
 > beyond this spec, see [OBSERVED.md](OBSERVED.md).
 

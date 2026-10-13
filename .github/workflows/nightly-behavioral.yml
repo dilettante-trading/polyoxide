@@ -46,29 +46,29 @@ jobs:
   # kill live_api/live_ws with it under a shared 15-minute budget.
   # `suite` keeps the two clob jobs' artifact names distinct.
   # generated:begin nightly-live-jobs
-  live-polyoxide-data-live:
-    name: Live tests (polyoxide-data, live)
+  live-polyoxide-polymarket-gamma:
+    name: Live tests (polyoxide-polymarket, gamma)
     runs-on: ubuntu-latest
     timeout-minutes: 15
     steps:
       - uses: actions/checkout@v5
       - uses: ./.github/actions/live-suite
         with:
-          crate: polyoxide-data
-          suite: live
-          flags: "--test live_api"
+          crate: polyoxide-polymarket
+          suite: gamma
+          flags: "--features gamma --test live_gamma"
 
-  live-polyoxide-gamma-live:
-    name: Live tests (polyoxide-gamma, live)
+  live-polyoxide-polymarket-data:
+    name: Live tests (polyoxide-polymarket, data)
     runs-on: ubuntu-latest
     timeout-minutes: 15
     steps:
       - uses: actions/checkout@v5
       - uses: ./.github/actions/live-suite
         with:
-          crate: polyoxide-gamma
-          suite: live
-          flags: "--test live_api"
+          crate: polyoxide-polymarket
+          suite: data
+          flags: "--features data --test live_data"
 
   live-polyoxide-relay-live:
     name: Live tests (polyoxide-relay, live)
@@ -191,8 +191,8 @@ jobs:
     name: Aggregate and report
     # generated:begin nightly-aggregate-needs
     needs:
-      - live-polyoxide-data-live
-      - live-polyoxide-gamma-live
+      - live-polyoxide-polymarket-gamma
+      - live-polyoxide-polymarket-data
       - live-polyoxide-relay-live
       - live-polyoxide-binance-live
       - live-polyoxide-clob-live

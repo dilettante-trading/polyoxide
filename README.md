@@ -15,10 +15,8 @@ Rust SDK toolkit for Polymarket APIs. It includes library crates for use in your
 | [polyoxide-cli](./polyoxide-cli) | CLI tool for querying Polymarket APIs and Binance USDⓈ-M market data |
 | [polyoxide-clob](./polyoxide-clob) | Client library for Polymarket CLOB (order book) API |
 | [polyoxide-core](./polyoxide-core) | Core utilities and shared types |
-| [polyoxide-data](./polyoxide-data) | Client library for Polymarket Data API |
-| [polyoxide-gamma](./polyoxide-gamma) | Client library for Polymarket Gamma (market data) API |
 | [polyoxide-perps](./polyoxide-perps) | Client library for Polymarket Perps (perpetual futures) public market data |
-| [polyoxide-polymarket](./polyoxide-polymarket) | Client library for Polymarket's APIs, one feature per module; today it holds the code the modules share (`shared`), and the modules arrive in Stories 5.3 to 5.5 |
+| [polyoxide-polymarket](./polyoxide-polymarket) | Client library for Polymarket's APIs, one feature per module: `gamma` (market data) and `data` (user data, v1 and v2), with the code the modules share in `shared`; clob, relay, perps, rtds and sports arrive in Stories 5.4 and 5.5 |
 | [polyoxide-py](./polyoxide-py) | Python bindings via PyO3 (`publish = false`, wheels on PyPI) |
 | [polyoxide-relay](./polyoxide-relay) | Client library for Polymarket Relayer API (gasless transactions) |
 | [polyoxide-rtds](./polyoxide-rtds) | Client for Polymarket's RTDS crypto price streams |

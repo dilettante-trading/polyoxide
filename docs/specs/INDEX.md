@@ -23,9 +23,9 @@ Covered by a polyoxide crate:
 | API | Base URL | Description | Crate |
 |-----|----------|-------------|-------|
 | [CLOB](clob/INDEX.md) | `https://clob.polymarket.com` | Order book trading, market data, rewards, RFQ | `polyoxide-clob` |
-| [Gamma](gamma/INDEX.md) | `https://gamma-api.polymarket.com` | Market/event metadata, search, comments | `polyoxide-gamma` |
-| [Data](data/INDEX.md) | `https://data-api.polymarket.com` | User positions, trades, combos, leaderboard | `polyoxide-data` |
-| [Data v2](data-v2/INDEX.md) | `https://data-api.polymarket.com/v2` | The Data API's second contract: `data` envelope, cursor pagination, snake_case | `polyoxide-data` (`data.v2()`) |
+| [Gamma](gamma/INDEX.md) | `https://gamma-api.polymarket.com` | Market/event metadata, search, comments | `polyoxide-polymarket` |
+| [Data](data/INDEX.md) | `https://data-api.polymarket.com` | User positions, trades, combos, leaderboard | `polyoxide-polymarket` |
+| [Data v2](data-v2/INDEX.md) | `https://data-api.polymarket.com/v2` | The Data API's second contract: `data` envelope, cursor pagination, snake_case | `polyoxide-polymarket` (`data.v2()`) |
 | [Relay](relay/INDEX.md) | `https://relayer-v2.polymarket.com` | Gasless relay transactions | `polyoxide-relay` |
 | [Sports](sports/INDEX.md) | `wss://sports-api.polymarket.com/ws` | Live match scores, server push only | `polyoxide-sports` |
 | [RTDS](rtds/OBSERVED.md) | `wss://ws-live-data.polymarket.com` | Crypto price streams, Binance and Chainlink; observed, not published upstream | `polyoxide-rtds` |
@@ -55,7 +55,7 @@ Not Polymarket hosts. Read by a polyoxide crate for consumers that trade both ve
 
 Some Polymarket APIs are published in **no** OpenAPI or AsyncAPI document.
 [undocumented/INDEX.md](undocumented/INDEX.md) records what we know about them
-— `user-pnl-api` and `lb-api` are implemented by `polyoxide-data`; the shapes
+— `user-pnl-api` and `lb-api` are implemented by `polyoxide-polymarket`'s `data` module; the shapes
 there were derived from live responses rather than a vendor contract.
 
 ## Surfaces with no upstream spec

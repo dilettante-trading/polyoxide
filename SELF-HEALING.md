@@ -41,8 +41,7 @@ and that is when North American leagues and weekend soccer are on.
 <!-- generated:begin selfheal-behavioral -->
 | Crate | Test binaries |
 |-------|---------------|
-| polyoxide-data | `live_api` |
-| polyoxide-gamma | `live_api` |
+| polyoxide-polymarket | `gamma`: `live_gamma` (built with `--features gamma`); `data`: `live_data` (built with `--features data`) |
 | polyoxide-relay | `live_api` |
 | polyoxide-binance | `live_api`, `live_ws` (built with `--features ws`) |
 | polyoxide-clob | `live`: `live_api`, `live_ws` (built with `--features ws`); `session-keys`: `live_session_keys` (40-minute budget in its own job, since its registry and transaction waits can take ~25 minutes) |
@@ -131,7 +130,7 @@ workflow:
   forever.
 - **Undocumented hosts** (`docs/specs/undocumented/`) — `user-pnl-api` and
   `lb-api` publish no spec to diff against; their shapes were derived from live
-  responses, and `polyoxide-data`'s live suite is the drift check.
+  responses, and `polyoxide-polymarket`'s `live_data` suite is the drift check.
 - **RTDS** (`docs/specs/rtds/`) — Upstream publishes no AsyncAPI for
   `ws-live-data`; the mirror is modelled on captured wire frames, so there is
   nothing to diff it against.

@@ -41,8 +41,8 @@ jobs:
         #     diffing it would report drift forever.
         #   - Undocumented hosts (docs/specs/undocumented/): `user-pnl-api` and
         #     `lb-api` publish no spec to diff against; their shapes were
-        #     derived from live responses, and `polyoxide-data`'s live suite is
-        #     the drift check.
+        #     derived from live responses, and `polyoxide-polymarket`'s
+        #     `live_data` suite is the drift check.
         #   - RTDS (docs/specs/rtds/): Upstream publishes no AsyncAPI for
         #     `ws-live-data`; the mirror is modelled on captured wire frames, so
         #     there is nothing to diff it against.
