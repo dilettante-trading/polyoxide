@@ -32,8 +32,8 @@ move. A row with neither is refused.
 - `polyoxide_data::DataApiError` → `polyoxide_polymarket::data::DataError` overrides the
   crate's row for that type and its members, such as `DataApiError::V2`: the row with the
   longest old path wins.
-- `polyoxide_clob::ws::WebSocketError::ConnectionClosed` → removed: never constructed
-  (Story 5.4) says why a path went, and what a consumer uses instead if anything does.
+- `polyoxide_x::Gone` → removed: never constructed says why a path went, and what a
+  consumer uses instead if anything does.
 
 A row that maps to a new path must map each entry it covers to a path the commit has, of
 the same kind, or the entry stays unresolved: listed as pointing nowhere, or as existing at
@@ -93,12 +93,32 @@ place.
 - `polyoxide::polyoxide_data::error::DataApiError` → `polyoxide::polyoxide_polymarket::data::error::DataError` Story 5.3, renamed for its module.
 - `polyoxide::prelude::DataApiError` → `polyoxide::prelude::DataError` Story 5.3, renamed for its module.
 
+Story 5.4 folded `polyoxide-clob` and `polyoxide-relay` into `polyoxide-polymarket` as the
+modules `clob` and `relay`, each under the feature of its name, keeping their own module
+paths. The CLOB's sockets, `clob::ws`, are under `clob-ws`, and their error enum takes its
+module's name, `ClobWsError` (AD-15's `<Module>WsError`). `clob` no longer implies `gamma`:
+the proxy-wallet lookup through Gamma is built only with both. Until Story 5.7 reshapes the
+umbrella, `polyoxide` re-exports `polyoxide_polymarket` in place of `polyoxide_clob`.
+
+- `polyoxide_clob` → `polyoxide_polymarket::clob` Story 5.4, feature `clob`; `ws` under `clob-ws`.
+- `polyoxide_relay` → `polyoxide_polymarket::relay` Story 5.4, feature `relay`.
+- `polyoxide_clob::ws::WebSocketError` → `polyoxide_polymarket::clob::ws::ClobWsError` Story 5.4, renamed for its module.
+- `polyoxide::polyoxide_clob` → `polyoxide::polyoxide_polymarket::clob` Story 5.4, feature `clob`.
+- `polyoxide::polyoxide_clob::ws::WebSocketError` → `polyoxide::polyoxide_polymarket::clob::ws::ClobWsError` Story 5.4, renamed for its module.
+- `polyoxide::prelude::ws::WebSocketError` → `polyoxide::prelude::ws::ClobWsError` Story 5.4, renamed for its module.
+
 ## Features
 
 - `polyoxide-gamma/default` → `polyoxide-polymarket/gamma` Story 5.3: the module's own feature builds what the crate's defaults did.
 - `polyoxide-gamma/specta` → `polyoxide-polymarket/specta` Story 5.3, with `gamma`.
 - `polyoxide-data/default` → `polyoxide-polymarket/data` Story 5.3: the module's own feature builds what the crate's defaults did.
 - `polyoxide-data/specta` → `polyoxide-polymarket/specta` Story 5.3, with `data`.
+- `polyoxide-clob/default` → `polyoxide-polymarket/clob` Story 5.4, with `gamma`: the crate's defaults turned on its proxy-wallet lookup through Gamma, which `clob` no longer implies.
+- `polyoxide-clob/gamma` → `polyoxide-polymarket/gamma` Story 5.4, with `clob`: both build the proxy-wallet lookup.
+- `polyoxide-clob/ws` → `polyoxide-polymarket/clob-ws` Story 5.4, which turns on `clob`.
+- `polyoxide-clob/keychain` → `polyoxide-polymarket/keychain` Story 5.4, with `clob`.
+- `polyoxide-relay/default` → `polyoxide-polymarket/relay` Story 5.4: the module's own feature builds what the crate's defaults did.
+- `polyoxide-relay/keychain` → `polyoxide-polymarket/keychain` Story 5.4, with `relay`.
 
 ## Doc-hidden paths consumers import
 
@@ -119,11 +139,11 @@ line of its own first.
 - `polyoxide_perps::ws::{frame_from_text_for_tests, incoming_from_text_for_tests, IncomingForTests}` `ws`
 - `polyoxide_rtds::fixtures::{REJECTED_SUBSCRIPTION, TWAP_THIRTY_UPDATE}` `test-fixtures`
 - `polyoxide_sports::fixtures::{CRICKET, CRICKET_FINISHED, ESPORTS, LEAGUE_WITH_SPACE, SOCCER, TENNIS_EVENT_STATE}` `test-server`
-- `polyoxide_clob::DynSigner`
-- `polyoxide_clob::account::DynSigner`
+- `polyoxide_polymarket::clob::DynSigner` `clob`
+- `polyoxide_polymarket::clob::account::DynSigner` `clob`
 - `polyoxide_polymarket::data::v2::PageStream` `data`
 - `polyoxide_perps::ws::SupervisedPerpsWs` `ws`
-- `polyoxide_relay::DynSigner`
+- `polyoxide_polymarket::relay::DynSigner` `relay`
 
 ## Unresolved entries
 

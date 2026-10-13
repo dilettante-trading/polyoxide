@@ -100,8 +100,8 @@ def test_a_path_only_dev_dependency_is_allowed() -> None:
 
 
 @pytest.mark.parametrize("edges,fault", [
-    ({TEST_SUPPORT: [_edge("polyoxide-clob", kind=None, req="^0.38.1")]},
-     "polyoxide-test-support depends on polyoxide-clob"),
+    ({TEST_SUPPORT: [_edge("polyoxide-binance", kind=None, req="^0.38.1")]},
+     "polyoxide-test-support depends on polyoxide-binance"),
     ({TEST_SUPPORT: [_edge("polyoxide-polymarket")]},
      "polyoxide-test-support depends on polyoxide-polymarket"),
     ({"polyoxide-polymarket": [_edge(TEST_SUPPORT, kind=None)]},

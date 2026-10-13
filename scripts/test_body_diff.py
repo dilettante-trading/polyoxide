@@ -1310,7 +1310,8 @@ def replace_literals(tokens: list[Token], literals: dict[str, str], used: set | 
 
 def relayout(tokens: list[Token]) -> list[Token]:
     """Step 6: without the layout rustfmt adds when a line re-wraps: the braces around a
-    lone expression after `=>` or a closure's `|...|`, and a trailing comma."""
+    lone expression after `=>` or a closure's `|...|`, and a trailing comma before a
+    closing bracket or a generic list's `>`, which only a generic list's end follows."""
     drop: set[int] = set()
     comma_after: set[int] = set()
     stack: list[int] = []
@@ -1352,7 +1353,7 @@ def relayout(tokens: list[Token]) -> list[Token]:
             kept.append(Token("punct", ","))
     return [token for i, token in enumerate(kept)
             if not (_is(token, ",") and i + 1 < len(kept) and kept[i + 1].kind == "punct"
-                    and kept[i + 1].text in ")]}" and not _one_tuple(kept, i))]
+                    and kept[i + 1].text in ")]}>" and not _one_tuple(kept, i))]
 
 
 # Words a `(` can follow without being called: `return (x,)` builds a tuple.

@@ -64,6 +64,24 @@ def test_layout_does_not_count_and_a_rewrapped_call_is_the_same() -> None:
     assert same(old, new)
 
 
+def test_a_generic_list_rewrapped_with_trailing_commas_is_the_same() -> None:
+    # rustfmt re-wraps a type under a longer path with a comma before each `>`.
+    old = """type Sent = std::pin::Pin<
+        Box<dyn std::future::Future<Output = Result<(), polyoxide_x::E>> + Send>,
+    >;"""
+    new = """type Sent = std::pin::Pin<
+        Box<
+            dyn std::future::Future<Output = Result<(), polyoxide_y::x::E>>
+                + Send,
+        >,
+    >;"""
+    assert same(old, new, {"rows": (CRATE_ROW,)})
+    assert normal(new) == ["type Sent = std :: pin :: Pin < Box < dyn std :: future :: Future < "
+                           "Output = Result < ( ) , polyoxide_y :: x :: E > > + Send > > ;"]
+    # A comma between two arguments stays.
+    assert not same("type T = A<B, C>;", "type T = A<B C>;")
+
+
 def test_braces_rustfmt_adds_around_a_lone_arm_or_closure_body_do_not_count() -> None:
     old = "fn t() { match x { A => f(a, b), B => g() } v.map(|x| h(x)); }"
     new = """fn t() {

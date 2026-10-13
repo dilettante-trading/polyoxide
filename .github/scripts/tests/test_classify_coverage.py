@@ -228,8 +228,8 @@ def test_every_public_error_type_is_listed_in_its_crates_assertion() -> None:
 
 @pytest.mark.parametrize(("crate", "names"), [
     ("polyoxide-core", {"ApiError", "KeychainError"}),
-    ("polyoxide-polymarket", {"BurstCapacityExceeded", "GammaError", "DataError", "V2Error"}),
-    ("polyoxide-clob", {"ClobError", "ParseTickSizeError", "WebSocketError"}),
+    ("polyoxide-polymarket", {"BurstCapacityExceeded", "GammaError", "DataError", "V2Error",
+                              "ClobError", "ParseTickSizeError", "ClobWsError", "RelayError"}),
     ("polyoxide-perps", {"PerpsError", "VenueError", "PerpsWsError"}),
     ("polyoxide-binance", {"BinanceError", "InvalidSymbol", "UsdmWsError", "InvalidStreamName"}),
     (VOCABULARY, {"UnknownVariant"}),
@@ -270,7 +270,7 @@ def test_every_file_that_expands_the_socket_table_calls_all_of_it() -> None:
 
 
 @pytest.mark.parametrize(("crate", "name"), [
-    ("polyoxide-clob", "WebSocketError"),
+    ("polyoxide-polymarket", "ClobWsError"),
     ("polyoxide-perps", "PerpsWsError"),
     ("polyoxide-binance", "UsdmWsError"),
     ("polyoxide-rtds", "RtdsError"),

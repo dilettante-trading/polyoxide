@@ -1,5 +1,5 @@
-# The crates `cargo tree -p polyoxide-sports -e normal --target x86_64-unknown-linux-gnu` builds,
-# sorted and unique, the crate itself left out. CI's scripts job fails on any
+# The crates `cargo tree -p polyoxide-sports -e normal --no-default-features --target x86_64-unknown-linux-gnu`
+# builds, sorted and unique, the crate itself left out. CI's scripts job fails on any
 # difference (.github/scripts/tests/test_dep_allowlists.py). Regenerate with
 # `uv run python -m tests.test_dep_allowlists --write` in .github/scripts, and
 # say in the commit why the tree changed.

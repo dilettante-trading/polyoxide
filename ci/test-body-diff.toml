@@ -103,6 +103,11 @@
 [literals."polyoxide-py/src/types/data_v2.rs"]
 "{}/../polyoxide-data/tests/fixtures/v2/{fixture}.json" = "{}/../polyoxide-polymarket/tests/fixtures/data/v2/{fixture}.json"
 
+# Story 5.4: clob's `ws` feature is polyoxide-polymarket's `clob-ws`, which the
+# moved suites' gates name.
+[literals."polyoxide-clob"]
+"ws" = "clob-ws"
+
 [paths]
 
 # Story 5.2: core's Polymarket files moved into `polyoxide-polymarket`'s

@@ -812,7 +812,7 @@ def test_real_workspace_order() -> None:
     order = names(publish_order.publish_order(publish_order.workspace_metadata()))
     # polyoxide-venue depends on nothing, and core on venue alone.
     assert order[:2] == ["polyoxide-venue", "polyoxide-core"]
-    assert order.index("polyoxide") > order.index("polyoxide-clob")
+    assert order.index("polyoxide") > order.index("polyoxide-polymarket")
     assert "polyoxide-cli" in order
     assert "polyoxide-py" not in order
 
