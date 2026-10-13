@@ -88,6 +88,14 @@ and "(b), a zero" 6 lines down; and repointing clob at the `gamma` module re-wra
 "(a)", "(a), the policy", "(b), a zero", "(e)", "(e), case" and "(e), only a 400" were proved
 again on 2026-10-13 on top of `7d08b41`, by running each row's tests with its mutant in place,
 then without it.
+Story 5.4 folded `polyoxide-clob` into `polyoxide-polymarket`'s `clob` module, so its
+`src/error.rs` is `polyoxide-polymarket/src/clob/error.rs`, where rustfmt put an import and a
+test's match pattern each on one line under the shorter `crate::` paths, moving the rule lines of
+rows "(e)", "(e), case" and "(e), only a 400" 2 lines up and their tests 4 up; and its
+`tests/mock_api.rs` is `polyoxide-polymarket/tests/mock_clob.rs`, where rustfmt re-wrapped earlier
+calls under the longer `polyoxide_polymarket::clob` paths, moving those rows' tests 21 lines down.
+The three rows were proved again on 2026-10-13 on top of `a680a2e`, by running each row's tests
+with its mutant in place, then without it, through `cargo test -p polyoxide-polymarket`.
 
 ## The rules
 
@@ -103,9 +111,9 @@ then without it.
 | (c), a hold extended mid-wait | `polyoxide-core/src/hold.rs:78-93`, `Hold::wait` re-reads the deadline after each sleep | `return` after the `sleep_until` at `polyoxide-core/src/hold.rs:91`, so it sleeps once | `polyoxide-core/src/hold.rs:150` `a_hold_extended_mid_wait_is_honoured_in_full` |
 | (c), the re-check after a bucket wait (AD-23) | `polyoxide-core/src/rate_limit.rs:577-579`, `RateLimiter::acquire` waits out the hold again after its buckets | Delete that second `wait` | `polyoxide-core/src/rate_limit.rs:830` `a_hold_set_during_a_bucket_wait_is_honoured` |
 | (d) `quota()` leaves depth at one token, with no `allow_burst` | `polyoxide-core/src/rate_limit.rs:183-186` | Append `.allow_burst(NonZeroU32::new(count).unwrap())` | `polyoxide-core/src/rate_limit.rs:263` `no_quota_admits_more_than_its_published_count_in_one_window`; `polyoxide-core/src/rate_limit.rs:280` `every_quota_reserves_headroom_below_the_published_count`; `polyoxide-polymarket/tests/polymarket_limits.rs:21` `every_configured_bucket_satisfies_the_quota_it_publishes` |
-| (e) `classify_order_kill` needs both the order kind and the kill token | `polyoxide-clob/src/error.rs:102` | `&&` → `\|\|` after `m.contains("fak order")` | `polyoxide-clob/src/error.rs:423` `test_classify_requires_both_tokens` |
-| (e), case | `polyoxide-clob/src/error.rs:99`, the message is lowercased before matching | `let m = message.to_string();` | `polyoxide-clob/src/error.rs:348` `test_classify_recognizes_verbatim_venue_messages`; `polyoxide-clob/src/error.rs:360` `test_classify_preserves_message_verbatim`; `polyoxide-clob/src/error.rs:368` `test_classify_is_case_insensitive`; `polyoxide-clob/src/error.rs:381` `test_classify_tolerates_curly_apostrophe_in_fok_message`; `polyoxide-clob/tests/mock_api.rs:3366` `fak_unmatched_maps_to_typed_error_not_generic_validation`; `polyoxide-clob/tests/mock_api.rs:3400` `fok_unfilled_maps_to_typed_error_not_generic_validation` |
-| (e), only a 400 is classified | `polyoxide-clob/src/error.rs:129`, clob's decode, `From<ApiError>`, classifies an `ApiError::Response` only when its status is 400 | Drop the arm's `if response.status.as_u16() == 400` guard, so every response's message is classified | `polyoxide-clob/tests/mock_api.rs:3464` `fak_prose_on_non_400_status_is_not_reclassified`; `polyoxide-clob/src/error.rs:462` `the_decode_splits_out_a_kill_only_on_a_400` |
+| (e) `classify_order_kill` needs both the order kind and the kill token | `polyoxide-polymarket/src/clob/error.rs:100` | `&&` → `\|\|` after `m.contains("fak order")` | `polyoxide-polymarket/src/clob/error.rs:419` `test_classify_requires_both_tokens` |
+| (e), case | `polyoxide-polymarket/src/clob/error.rs:97`, the message is lowercased before matching | `let m = message.to_string();` | `polyoxide-polymarket/src/clob/error.rs:344` `test_classify_recognizes_verbatim_venue_messages`; `polyoxide-polymarket/src/clob/error.rs:356` `test_classify_preserves_message_verbatim`; `polyoxide-polymarket/src/clob/error.rs:364` `test_classify_is_case_insensitive`; `polyoxide-polymarket/src/clob/error.rs:377` `test_classify_tolerates_curly_apostrophe_in_fok_message`; `polyoxide-polymarket/tests/mock_clob.rs:3387` `fak_unmatched_maps_to_typed_error_not_generic_validation`; `polyoxide-polymarket/tests/mock_clob.rs:3421` `fok_unfilled_maps_to_typed_error_not_generic_validation` |
+| (e), only a 400 is classified | `polyoxide-polymarket/src/clob/error.rs:127`, clob's decode, `From<ApiError>`, classifies an `ApiError::Response` only when its status is 400 | Drop the arm's `if response.status.as_u16() == 400` guard, so every response's message is classified | `polyoxide-polymarket/tests/mock_clob.rs:3485` `fak_prose_on_non_400_status_is_not_reclassified`; `polyoxide-polymarket/src/clob/error.rs:458` `the_decode_splits_out_a_kill_only_on_a_400` |
 | (f) `observe` runs on every response, the last attempt included | `polyoxide-core/src/send.rs:84`, before the policy decides | Call `observe` only when `retries_left > 0` | `polyoxide-polymarket/tests/send_loop.rs:252` `observe_sees_the_last_attempt` |
 | (g) A retry sleeps at least the loop's floor, whatever wait the policy returns | `polyoxide-core/src/send.rs:97`, `floor.max(wait)` | Sleep `wait` | `polyoxide-polymarket/tests/send_loop.rs:278` `a_zero_wait_still_sleeps_the_floor`; `polyoxide-polymarket/tests/send_loop.rs:322` `the_429_hold_is_retry_delay_zero_not_the_attempts_wait` |
 | (i) The per-signer layer's buckets hold their published burst, as governor's `allow_burst` did before Story 3.3 | `polyoxide-polymarket/src/shared/signer_limit.rs:278`, where each signer `CapacityBucket` takes the tier's burst as its capacity | `let capacity = 1;`, a bucket of one token | `polyoxide-polymarket/src/shared/signer_limit.rs:525` `a_batch_within_capacity_is_admitted`; `polyoxide-polymarket/src/shared/signer_limit.rs:534` `adopting_a_higher_tier_admits_a_batch_that_was_impossible`; `polyoxide-polymarket/src/shared/signer_limit.rs:550` `the_order_and_cancel_buckets_are_independent`; `polyoxide-polymarket/src/shared/signer_limit.rs:572` `batch_cost_is_charged_in_full_not_as_one_request` |
@@ -117,7 +125,7 @@ held row (c), a hold extended mid-wait, until Story 3.3. It drives `RateLimiter:
 re-check after its buckets now also waits out an extended hold, so it passes under that row's
 mutant; `Hold`'s own test holds the row, and the re-check has a row of its own.
 
-`polyoxide-clob/src/error.rs:392` `test_classify_does_not_capture_neighbouring_400s` fails
+`polyoxide-polymarket/src/clob/error.rs:388` `test_classify_does_not_capture_neighbouring_400s` fails
 under none of the mutants above. It pins the 400s that neighbour the kill outcomes, so keep
 it, but do not count it as holding any of these rules.
 
