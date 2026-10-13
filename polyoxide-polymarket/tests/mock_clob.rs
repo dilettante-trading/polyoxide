@@ -1726,53 +1726,6 @@ async fn create_order_for_a_proxy_target_uses_the_configured_funder_without_gamm
     gamma_mock.assert_async().await;
 }
 
-/// Without `gamma`, which `clob` does not imply, a proxy order with no funder has
-/// no way to find its proxy wallet, so it is refused before anything is sent:
-/// neither the Gamma lookup nor the order goes out. CI's features job runs this
-/// in the `--no-default-features --features clob` build, the only one that has it.
-#[cfg(not(feature = "gamma"))]
-#[tokio::test]
-async fn a_proxy_order_with_no_funder_is_refused_without_gamma() {
-    let mut server = Server::new_async().await;
-    let (_neg_risk, _tick_size) = mock_market_metadata(&mut server, "123456").await;
-    let profile = server
-        .mock(
-            "GET",
-            Matcher::Regex(r"^/(public-profile|profiles/)".into()),
-        )
-        .match_query(Matcher::Any)
-        .expect(0)
-        .create_async()
-        .await;
-    let order = server.mock("POST", "/order").expect(0).create_async().await;
-    let clob = test_authed_clob(&server);
-    let params = polyoxide_polymarket::clob::CreateOrderParams {
-        token_id: "123456".into(),
-        price: 0.55,
-        size: 100.0,
-        side: polyoxide_polymarket::clob::OrderSide::Buy,
-        order_type: polyoxide_polymarket::clob::OrderKind::Gtc,
-        post_only: false,
-        expiration: None,
-        funder: None,
-        signature_type: Some(SignatureType::PolyProxy),
-    };
-
-    let err = clob.place_order(&params, None).await.unwrap_err();
-
-    match &err {
-        ClobError::Api(polyoxide_core::ApiError::Validation(message)) => {
-            assert!(
-                message.contains("requires the `gamma` feature"),
-                "{message}"
-            );
-        }
-        other => panic!("expected a validation error, got {other:?}"),
-    }
-    profile.assert_async().await;
-    order.assert_async().await;
-}
-
 #[tokio::test]
 async fn create_market_order_for_a_deposit_wallet_sets_maker_signer_and_type3() {
     let mut server = Server::new_async().await;
@@ -4611,4 +4564,51 @@ async fn a_fak_kill_on_the_wire_is_a_refusal_that_is_not_a_fault() {
     assert_eq!(err.class(), Class::VenueRefusal { code: None });
     assert!(!err.is_fault(), "a kill is the order's defined outcome");
     assert!(!err.is_retriable());
+}
+
+/// Without `gamma`, which `clob` does not imply, a proxy order with no funder has
+/// no way to find its proxy wallet, so it is refused before anything is sent:
+/// neither the Gamma lookup nor the order goes out. CI's features job runs this
+/// in the `--no-default-features --features clob` build, the only one that has it.
+#[cfg(not(feature = "gamma"))]
+#[tokio::test]
+async fn a_proxy_order_with_no_funder_is_refused_without_gamma() {
+    let mut server = Server::new_async().await;
+    let (_neg_risk, _tick_size) = mock_market_metadata(&mut server, "123456").await;
+    let profile = server
+        .mock(
+            "GET",
+            Matcher::Regex(r"^/(public-profile|profiles/)".into()),
+        )
+        .match_query(Matcher::Any)
+        .expect(0)
+        .create_async()
+        .await;
+    let order = server.mock("POST", "/order").expect(0).create_async().await;
+    let clob = test_authed_clob(&server);
+    let params = polyoxide_polymarket::clob::CreateOrderParams {
+        token_id: "123456".into(),
+        price: 0.55,
+        size: 100.0,
+        side: polyoxide_polymarket::clob::OrderSide::Buy,
+        order_type: polyoxide_polymarket::clob::OrderKind::Gtc,
+        post_only: false,
+        expiration: None,
+        funder: None,
+        signature_type: Some(SignatureType::PolyProxy),
+    };
+
+    let err = clob.place_order(&params, None).await.unwrap_err();
+
+    match &err {
+        ClobError::Api(polyoxide_core::ApiError::Validation(message)) => {
+            assert!(
+                message.contains("requires the `gamma` feature"),
+                "{message}"
+            );
+        }
+        other => panic!("expected a validation error, got {other:?}"),
+    }
+    profile.assert_async().await;
+    order.assert_async().await;
 }
