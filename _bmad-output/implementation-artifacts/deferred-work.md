@@ -308,3 +308,6 @@
 - source_spec: `_bmad-output/implementation-artifacts/spec-5-3-gamma-and-data-become-modules.md`
   summary: Six reason strings in `polyoxide-polymarket/tests/wire_agreement_gamma.rs`'s allow-lists still say "see tests/fixtures/README.md", which is now `tests/fixtures/gamma/PROVENANCE.md`; three test literals still name `DataApiError` (`src/data/error.rs`, `tests/spec_agreement_data_v2.rs`, `tests/mock_data.rs`). They are test bodies, so 5.3 left them; a `[literals]` entry per string would let them follow. (low)
   evidence: `git grep -n "tests/fixtures/README.md\|\"[^\"]*DataApiError" polyoxide-polymarket`.
+- source_spec: `_bmad-output/implementation-artifacts/spec-5-3-gamma-and-data-become-modules.md`
+  summary: `scripts/test_body_diff.py` still cannot see a gate on an ancestor file module. lib.rs's `#[cfg(feature = "gamma")] pub mod gamma;` and `data;` gate every moved inline test unseen, and CLAUDE.md:54's "every enclosing module's attributes" overclaims. (medium, review 1 B1; also 5.2's B1)
+  evidence: `test_body_diff.py:976-996` fills `declared[target]` from the direct declaration only; `ci/test-body-diff.toml` records why `src/gamma/` and `src/data/` have no `[gates]`.

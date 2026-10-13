@@ -2,7 +2,7 @@
 title: 'Story 5.3: Gamma and data become modules'
 type: 'refactor'
 created: '2026-10-13'
-status: 'in-progress'
+status: 'done'
 route: 'dispatch'
 baseline_commit: '8a26ce0491b166da01cf298fe4b072233d077dbc'
 review_loop_iteration: 0
@@ -152,23 +152,23 @@ Claude-Session: https://claude.ai/code/session_01BjnNeirn7DAPvQNrs5khCr
 Stage moved files before running the body diff (`git` pairs only tracked files). Build with `CARGO_INCREMENTAL=0`. A rustc killed with signal 15 or exit 254 is earlyoom; re-run it. Run cargo-hack alone. Record the per-binary test counts before you start.
 
 **Execution:**
-- [ ] `polyoxide-polymarket/`:
+- [x] `polyoxide-polymarket/`:
   - move `src/`, `tests/`, `examples/` and the fixtures per Decisions;
   - add features, deps and dev-deps (all gated), `[[test]]` and `[[example]]` stanzas with `required-features`, metadata, the module READMEs, the gated `const _` and the crate README links.
-- [ ] Delete `polyoxide-gamma/` and `polyoxide-data/`; update the root `Cargo.toml` and `Cargo.lock`.
-- [ ] Rename `DataApiError` → `DataError` everywhere.
-- [ ] Repoint clob, the umbrella (with its README doctest), cli and py: paths, features and fixture paths, including the py generator and the Python tests.
-- [ ] `ci.yml` header pins; `test_ci_workflow.py`, `test_classify_coverage.py`, `test_live_registry.py`, `test_api_removals.py` and `test_mutants_ledger.py`; `live_unwraps.baseline.json`.
-- [ ] `.github/scripts/tests/test_module_readmes.py` (new):
+- [x] Delete `polyoxide-gamma/` and `polyoxide-data/`; update the root `Cargo.toml` and `Cargo.lock`.
+- [x] Rename `DataApiError` → `DataError` everywhere.
+- [x] Repoint clob, the umbrella (with its README doctest), cli and py: paths, features and fixture paths, including the py generator and the Python tests.
+- [x] `ci.yml` header pins; `test_ci_workflow.py`, `test_classify_coverage.py`, `test_live_registry.py`, `test_api_removals.py` and `test_mutants_ledger.py`; `live_unwraps.baseline.json`.
+- [x] `.github/scripts/tests/test_module_readmes.py` (new):
   - for every member with `venue` and `products`, each `src/<product>/README.md` must have exactly one include gated `cfg(all(doctest, feature = "<product>"))`, and each such include a file;
   - fail naming the module;
   - assert at least two modules on the real tree;
   - cover it with synthetic trees.
-- [ ] `scripts/capture_polymarket_data.py` (renamed); `gen_data_v2_types.py`; the `api_removals.py` docstring.
-- [ ] `ci/test-body-diff.toml`: the `[files]`, `[literals]`, `[paths]` and `[gates]` the move needs, each one firing.
-- [ ] `docs/rename-manifest.md` rows, then `api_removals.py manifest --write`.
-- [ ] `docs/MUTANTS.md` re-cited and re-proved.
-- [ ] CLAUDE.md rules, other docs, then `gen_registry.py --write`.
+- [x] `scripts/capture_polymarket_data.py` (renamed); `gen_data_v2_types.py`; the `api_removals.py` docstring.
+- [x] `ci/test-body-diff.toml`: the `[files]`, `[literals]`, `[paths]` and `[gates]` the move needs, each one firing.
+- [x] `docs/rename-manifest.md` rows, then `api_removals.py manifest --write`.
+- [x] `docs/MUTANTS.md` re-cited and re-proved.
+- [x] CLAUDE.md rules, other docs, then `gen_registry.py --write`.
 
 **Acceptance Criteria:**
 - Given the moved tree, when clippy (`-D warnings`), `cargo nextest run --all-features --workspace`, `cargo test --doc --all-features --workspace` and `RUSTDOCFLAGS=-D warnings cargo doc` run, then all pass, and the per-binary counts sum to the baseline's: the same tests, now under `polyoxide-polymarket`.
@@ -179,9 +179,47 @@ Stage moved files before running the body diff (`git` pairs only tracked files).
 
 ## Implementation Notes
 
+The implementation is commits b938482..6c4883a, made by impl-53. The review fixes are 4438e55; the lead re-ran the whole Verification list on it, all green (2567 passed, scripts 1239).
+
+**Deviations, accepted by the lead:**
+- **No `[gates]` for `src/gamma/` or `src/data/`.** The tool reads gates only from the `mod x;` that declares a file (deferred in 5.2 as B1), so such an entry would be stale. The only gates added are the three data examples' `required-features`.
+- **Extra manifest rows:** `polyoxide-{gamma,data}/default` → `polyoxide-polymarket/{gamma,data}`, which `--strict` required, and the umbrella's `DataApiError` paths.
+- **Stale strings kept.** Three test string literals still say `DataApiError`, and six reason strings in `wire_agreement_gamma.rs` still name `tests/fixtures/README.md`. Changing them would edit a test body; deferred-work has them.
+- **`test_api_removals.py` needed no change.** Its crate lists are synthetic fixtures.
+- **`cargo test` was used, not nextest,** which is not installed.
+
+**Verification:**
+- `cargo test --all-features --workspace` gave 2567 passed and 177 ignored, both from impl-53 and in the lead's own run. That equals the baseline, and every binary's count matches.
+- `test_body_diff` paired 3832 items with 0 diffs, 0 lost and 0 stale.
+- `manifest --strict` resolved 4551 of 4551.
+- The scripts suite passed 1237; py passed 344.
+- `cargo hack --each-feature` and the six header pins pass.
+
 ## Spec Change Log
 
 ## Review Triage Log
+
+Review 1 used all three layers on the full diff (8a26ce0..6c4883a). Findings are tagged B (blind), E (edge case) and G (verification gap).
+
+| # | Finding | Verdict | Route | Evidence |
+|---|---|---|---|---|
+| G1 | No CI job builds `gamma`+`specta` or `data`+`specta` any more; the specta extras moved into weak features | medium | patch | `--each-feature` builds `specta` with no module, and `--all-features` sets both extras. Two `cargo check` lines are added to the features job and pinned. |
+| B5/E2 | The README check skips a product dir that has no README | medium | patch | `test_module_readmes.py:72` did `continue`, and only the `>= 2` floor caught a removed README. |
+| G-o1/G-o2/B9/B14/B8 | Stale prose after the move: fixture README and test-file names in src docs, the `common/mod.rs` and headers comments, "this crate", and data INDEX's "not implemented" | low | patch | Comments and docs only, which the body diff ignores, so each is a direct correction. |
+| B10 | `rename-manifest.md:82` credits `<Module>Error` naming to AD-1 | low | patch | A direct correction to the spine's own decision. |
+| B13 | The gamma module README lost its pointer to the API docs | low | patch | Data's README keeps one; one line restores it. |
+| B-snip | The crate README's install snippet enables only `gamma` | low | patch | With empty defaults, a data user gets no module. |
+| B15 | MUTANTS.md lists row names containing commas without delimiters | low | patch | The lists at :85 and :88-89 do not parse. |
+| B1 | `test_body_diff` cannot see lib.rs's `cfg(feature)` on `pub mod gamma;`/`data;` | medium | defer | This is 5.2's deferred B1 again; CLAUDE.md:54 overclaims ancestor gates. |
+| E4/B12 | Test literals still say `DataApiError`, one citing `DataApiError::from_response` | low | defer | Already in deferred-work from impl-53. Fixing them edits a test body. |
+| G-o3 | The generated clob line no longer shows that its `gamma` turns on polymarket's `gamma` | low | reject | Moot in 5.4, which moves clob in. |
+| B2/B3 | The spec records no deviations or counts | — | reject | The fix is a spec edit. The lead filled in Implementation Notes. |
+| B4 | The spec says `in-review` while sprint-status says `in-progress` | false | reject | Step 5 syncs sprint-status to `review`, by design. |
+| B6 | Nothing checks that the crate README links each module | low | reject | The README does link both; enforcing it adds a guard. |
+| B7/E1/E3 | README-check regex edge cases: the crate README's include, an extra include under another gate, attribute order | low | reject | Each fails loudly or is harmless, and the fixes add guards. |
+| B11 | The module and feature lists differ between files | false | reject | Each lists the features that exist today; the registry line names what arrives. |
+| E5 | `test_api_removals.py` is ticked but untouched | false | reject | It needs no change; its crate lists are synthetic. |
+| E6 | Inline test paths gain a `gamma::`/`data::` prefix | low | reject | No filter or ledger names the old paths, and MUTANTS was re-proved. |
 
 ## Design Notes
 
