@@ -9,7 +9,9 @@ use std::{
 use clap::Args;
 use color_eyre::eyre::Result;
 use futures_util::StreamExt;
-use polyoxide_clob::ws::{Channel, MarketMessage, MarketSubscriptionOptions, WebSocket};
+use polyoxide_polymarket::clob::ws::{
+    Channel, MarketMessage, MarketSubscriptionOptions, WebSocket,
+};
 
 use crate::commands::common::parsing::parse_duration;
 
@@ -468,46 +470,52 @@ mod tests {
 
     #[test]
     fn should_print_no_filters_passes_all() {
-        let channel = Channel::Market(MarketMessage::Book(polyoxide_clob::ws::BookMessage {
-            event_type: "book".to_string(),
-            asset_id: "test".to_string(),
-            market: "test".to_string(),
-            bids: vec![],
-            asks: vec![],
-            hash: "test".to_string(),
-            timestamp: "0".to_string(),
-            last_trade_price: None,
-        }));
+        let channel = Channel::Market(MarketMessage::Book(
+            polyoxide_polymarket::clob::ws::BookMessage {
+                event_type: "book".to_string(),
+                asset_id: "test".to_string(),
+                market: "test".to_string(),
+                bids: vec![],
+                asks: vec![],
+                hash: "test".to_string(),
+                timestamp: "0".to_string(),
+                last_trade_price: None,
+            },
+        ));
         assert!(should_print(&channel, &[]));
     }
 
     #[test]
     fn should_print_with_matching_filter() {
-        let channel = Channel::Market(MarketMessage::Book(polyoxide_clob::ws::BookMessage {
-            event_type: "book".to_string(),
-            asset_id: "test".to_string(),
-            market: "test".to_string(),
-            bids: vec![],
-            asks: vec![],
-            hash: "test".to_string(),
-            timestamp: "0".to_string(),
-            last_trade_price: None,
-        }));
+        let channel = Channel::Market(MarketMessage::Book(
+            polyoxide_polymarket::clob::ws::BookMessage {
+                event_type: "book".to_string(),
+                asset_id: "test".to_string(),
+                market: "test".to_string(),
+                bids: vec![],
+                asks: vec![],
+                hash: "test".to_string(),
+                timestamp: "0".to_string(),
+                last_trade_price: None,
+            },
+        ));
         assert!(should_print(&channel, &[MarketEventType::Book]));
     }
 
     #[test]
     fn should_print_with_non_matching_filter() {
-        let channel = Channel::Market(MarketMessage::Book(polyoxide_clob::ws::BookMessage {
-            event_type: "book".to_string(),
-            asset_id: "test".to_string(),
-            market: "test".to_string(),
-            bids: vec![],
-            asks: vec![],
-            hash: "test".to_string(),
-            timestamp: "0".to_string(),
-            last_trade_price: None,
-        }));
+        let channel = Channel::Market(MarketMessage::Book(
+            polyoxide_polymarket::clob::ws::BookMessage {
+                event_type: "book".to_string(),
+                asset_id: "test".to_string(),
+                market: "test".to_string(),
+                bids: vec![],
+                asks: vec![],
+                hash: "test".to_string(),
+                timestamp: "0".to_string(),
+                last_trade_price: None,
+            },
+        ));
         // Filter asks for Price but message is Book
         assert!(!should_print(&channel, &[MarketEventType::Price]));
     }
@@ -516,8 +524,8 @@ mod tests {
     fn should_print_user_channel_on_market_returns_false() {
         // User channel messages should be rejected by the market should_print
         // when a filter is active
-        let channel = Channel::User(polyoxide_clob::ws::UserMessage::Order(
-            polyoxide_clob::ws::OrderMessage {
+        let channel = Channel::User(polyoxide_polymarket::clob::ws::UserMessage::Order(
+            polyoxide_polymarket::clob::ws::OrderMessage {
                 event_type: "order".to_string(),
                 id: "test".to_string(),
                 asset_id: "test".to_string(),
@@ -527,7 +535,7 @@ mod tests {
                 side: "BUY".to_string(),
                 original_size: "10".to_string(),
                 size_matched: "0".to_string(),
-                order_type: polyoxide_clob::ws::OrderEventType::Placement,
+                order_type: polyoxide_polymarket::clob::ws::OrderEventType::Placement,
                 order_owner: Some("0x123".to_string()),
                 timestamp: "123".to_string(),
             },
@@ -537,7 +545,7 @@ mod tests {
 
     fn bbo_channel() -> Channel {
         Channel::Market(MarketMessage::BestBidAsk(
-            polyoxide_clob::ws::BestBidAskMessage {
+            polyoxide_polymarket::clob::ws::BestBidAskMessage {
                 event_type: "best_bid_ask".to_string(),
                 asset_id: "asset-1".to_string(),
                 market: "0xcond".to_string(),

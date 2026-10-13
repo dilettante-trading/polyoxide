@@ -3,7 +3,7 @@ use pyo3::types::PyModuleMethods;
 py_type!(
     PyClobMarket,
     "ClobMarket",
-    polyoxide_clob::api::markets::Market,
+    polyoxide_polymarket::clob::api::markets::Market,
     condition_id,
     question_id,
     tokens,
@@ -25,7 +25,7 @@ py_type!(
 py_type!(
     PyClobMarketToken,
     "ClobMarketToken",
-    polyoxide_clob::api::markets::MarketToken,
+    polyoxide_polymarket::clob::api::markets::MarketToken,
     token_id,
     outcome,
     price,
@@ -35,7 +35,7 @@ py_type!(
 py_type!(
     PyListMarketsResponse,
     "ListMarketsResponse",
-    polyoxide_clob::api::markets::ListMarketsResponse,
+    polyoxide_polymarket::clob::api::markets::ListMarketsResponse,
     data,
     next_cursor,
 );
@@ -43,7 +43,7 @@ py_type!(
 py_type!(
     PyOrderBook,
     "OrderBook",
-    polyoxide_clob::api::markets::OrderBook,
+    polyoxide_polymarket::clob::api::markets::OrderBook,
     market,
     asset_id,
     bids,
@@ -59,7 +59,7 @@ py_type!(
 py_type!(
     PyOrderLevel,
     "OrderLevel",
-    polyoxide_clob::api::markets::OrderLevel,
+    polyoxide_polymarket::clob::api::markets::OrderLevel,
     price,
     size,
 );
@@ -67,18 +67,18 @@ py_type!(
 py_type!(
     PyPriceResponse,
     "PriceResponse",
-    polyoxide_clob::api::markets::PriceResponse,
+    polyoxide_polymarket::clob::api::markets::PriceResponse,
     price,
 );
 
 py_type!(
     PyMidpointResponse,
     "MidpointResponse",
-    polyoxide_clob::api::markets::MidpointResponse,
+    polyoxide_polymarket::clob::api::markets::MidpointResponse,
     mid,
 );
 
-py_type!(PyPriceHistoryPoint, "PriceHistoryPoint", polyoxide_clob::api::markets::PriceHistoryPoint,
+py_type!(PyPriceHistoryPoint, "PriceHistoryPoint", polyoxide_polymarket::clob::api::markets::PriceHistoryPoint,
     timestamp => "t",
     price => "p",
 );
@@ -86,35 +86,35 @@ py_type!(PyPriceHistoryPoint, "PriceHistoryPoint", polyoxide_clob::api::markets:
 py_type!(
     PyPricesHistoryResponse,
     "PricesHistoryResponse",
-    polyoxide_clob::api::markets::PricesHistoryResponse,
+    polyoxide_polymarket::clob::api::markets::PricesHistoryResponse,
     history,
 );
 
 py_type!(
     PyNegRiskResponse,
     "NegRiskResponse",
-    polyoxide_clob::api::markets::NegRiskResponse,
+    polyoxide_polymarket::clob::api::markets::NegRiskResponse,
     neg_risk,
 );
 
 py_type!(
     PyFeeRateResponse,
     "FeeRateResponse",
-    polyoxide_clob::api::markets::FeeRateResponse,
+    polyoxide_polymarket::clob::api::markets::FeeRateResponse,
     base_fee,
 );
 
 py_type!(
     PyTickSizeResponse,
     "TickSizeResponse",
-    polyoxide_clob::api::markets::TickSizeResponse,
+    polyoxide_polymarket::clob::api::markets::TickSizeResponse,
     minimum_tick_size,
 );
 
 py_type!(
     PySpreadResponse,
     "SpreadResponse",
-    polyoxide_clob::api::markets::SpreadResponse,
+    polyoxide_polymarket::clob::api::markets::SpreadResponse,
     token_id,
     spread,
     bid,
@@ -124,7 +124,7 @@ py_type!(
 py_type!(
     PyLastTradePriceResponse,
     "LastTradePriceResponse",
-    polyoxide_clob::api::markets::LastTradePriceResponse,
+    polyoxide_polymarket::clob::api::markets::LastTradePriceResponse,
     token_id,
     last_trade_price,
     timestamp,
@@ -133,14 +133,14 @@ py_type!(
 py_type!(
     PyCalculatePriceResponse,
     "CalculatePriceResponse",
-    polyoxide_clob::api::markets::CalculatePriceResponse,
+    polyoxide_polymarket::clob::api::markets::CalculatePriceResponse,
     price,
 );
 
 py_type!(
     PyServerTimeResponse,
     "ServerTimeResponse",
-    polyoxide_clob::api::health::ServerTimeResponse,
+    polyoxide_polymarket::clob::api::health::ServerTimeResponse,
     time,
 );
 

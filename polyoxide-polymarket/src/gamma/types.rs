@@ -8,7 +8,7 @@ polyoxide_venue::open_enum! {
     /// The protocol a market trades on, from [`Market::version`].
     ///
     /// This is Polymarket Protocol V2, not the CLOB V2 exchange migration:
-    /// a `V1` market trades on the exchange `polyoxide-clob` signs for.
+    /// a `V1` market trades on the exchange the `clob` module signs for.
     pub enum ProtocolVersion {
         /// The CTF/CLOB protocol. Outcome ids are in [`Market::clob_token_ids`].
         V1 => "v1",
@@ -198,7 +198,7 @@ pub struct Market {
     /// other value, or a missing one, as unsupported. Unknown values arrive as
     /// [`ProtocolVersion::Other`].
     ///
-    /// `polyoxide-clob` signs orders for `v1` markets only. A `v2` market
+    /// The `clob` module signs orders for `v1` markets only. A `v2` market
     /// needs a different exchange and signing domain, which it does not
     /// implement yet. See `docs/specs/gamma/OBSERVED.md`.
     pub version: Option<ProtocolVersion>,

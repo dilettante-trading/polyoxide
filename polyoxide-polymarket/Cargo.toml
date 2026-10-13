@@ -10,15 +10,42 @@ description = "Rust client library for Polymarket's APIs: CLOB, Gamma, Data, Rel
 keywords = ["polymarket", "prediction-markets", "trading", "api"]
 categories = ["api-bindings", "web-programming::http-client"]
 
-# One feature per module. `gamma` and `data` build their modules (Story
-# 5.3); `clob`, `relay` and `perps` arrive in Stories 5.4 and 5.5, and today
-# turn on the parts of `shared` their crates use: the HTTP modules share the
-# retry policy and their window-quota table, and clob and relay share the HMAC
-# signer and the session-signer types. Every feature is off by default until
-# Story 5.4 sets `clob`, `gamma` and `data`.
+# One feature per module. `clob`, `gamma`, `data` and `relay` build their
+# modules (Stories 5.3 and 5.4); `perps` arrives in Story 5.5, and today turns
+# on the parts of `shared` its crate uses. The HTTP modules share the retry
+# policy and their window-quota table, and clob and relay share the HMAC signer
+# and the session-signer types. Only `clob` and `relay` build `alloy`, the
+# signing stack: `.github/scripts/tests/test_dep_allowlists.py` holds every
+# other feature to a tree without it.
 [features]
-default = []
-clob = ["dep:polyoxide-core", "dep:base64", "dep:hmac", "dep:sha2", "dep:serde", "dep:thiserror", "dep:tracing"]
+default = ["clob", "gamma", "data"]
+clob = [
+    "dep:polyoxide-core",
+    "dep:base64",
+    "dep:hmac",
+    "dep:sha2",
+    "dep:serde",
+    "dep:serde_json",
+    "dep:thiserror",
+    "dep:tracing",
+    "dep:url",
+    "dep:alloy",
+    "dep:hex",
+    "dep:rand",
+    "dep:rust_decimal",
+    "dep:tokio",
+    "tokio/time",
+    "dep:urlencoding",
+]
+# The CLOB's two WebSocket channels, `clob::ws`.
+clob-ws = [
+    "clob",
+    "dep:polyoxide-ws",
+    "dep:futures-util",
+    "tokio/net",
+    "tokio/macros",
+    "tokio/sync",
+]
 gamma = [
     "dep:polyoxide-core",
     "dep:serde",
@@ -27,6 +54,7 @@ gamma = [
     "dep:url",
     "dep:chrono",
     "dep:tokio",
+    "tokio/macros",
     "dep:urlencoding",
     "specta?/chrono",
 ]
@@ -40,8 +68,30 @@ data = [
     "dep:rust_decimal",
     "specta?/rust_decimal",
 ]
-relay = ["dep:polyoxide-core", "dep:base64", "dep:hmac", "dep:sha2", "dep:serde"]
+# The relay adds the chain RPC its gas estimation calls through alloy.
+relay = [
+    "dep:polyoxide-core",
+    "dep:base64",
+    "dep:hmac",
+    "dep:sha2",
+    "dep:serde",
+    "dep:serde_json",
+    "dep:thiserror",
+    "dep:tracing",
+    "dep:url",
+    "dep:alloy",
+    "alloy?/provider-http",
+    "alloy?/rpc-types",
+    "dep:hex",
+    "dep:rand",
+    "dep:tokio",
+    "tokio/time",
+]
 perps = ["dep:polyoxide-core"]
+# OS keychain storage for the credentials of whichever of `clob` and `relay`
+# is enabled (`clob::save_private_key_to_keychain`,
+# `relay::save_builder_config_to_keychain` and their `from_keychain` loaders).
+keychain = ["polyoxide-core?/keychain"]
 # Derives `specta::Type` on the enabled modules' response types. Each module
 # adds the specta extras its types need: `chrono` for gamma's dates, and
 # `rust_decimal` for data's decimals, which are strings on the wire.
@@ -50,26 +100,42 @@ specta = ["dep:specta"]
 [dependencies]
 polyoxide-core = { workspace = true, optional = true }
 polyoxide-venue = { workspace = true }
+# EIP-712 signing and the chain types (`clob`, `relay`); the relay adds the
+# chain RPC its gas estimation calls.
+alloy = { version = "1.1.2", features = [
+    "network",
+    "signer-local",
+    "signers",
+    "sol-types",
+], optional = true }
+# The CLOB's socket kit (`clob-ws`): the TLS install, the bare tier clob reads
+# through, the upgrade over its own per-address connect, and `WsError`. It owns
+# the transport, so this crate declares neither tokio-tungstenite nor rustls.
+polyoxide-ws = { workspace = true, optional = true }
 # The HMAC `Signer` (`clob`, `relay`).
 base64 = { workspace = true, optional = true }
 hmac = { workspace = true, optional = true }
 sha2 = { workspace = true, optional = true }
-# The session-signer types' wire form (`clob`, `relay`), and the modules'
-# types (`gamma`, `data`).
+# The session-signer types' wire form and the modules' types.
 serde = { workspace = true, optional = true }
 serde_json = { workspace = true, optional = true }
 # The signer layer's refusal and its tier log line (`clob`), and the modules'
-# errors (`gamma`, `data`).
+# errors and logs.
 thiserror = { workspace = true, optional = true }
 tracing = { workspace = true, optional = true }
 url = { workspace = true, optional = true }
-# Gamma's dates, its batch fan-out and its path segments (`gamma`).
+# Gamma's dates (`gamma`); its batch fan-out, and the timers of clob and
+# relay (`gamma`, `clob`, `relay`); path segments (`gamma`, `clob`).
 chrono = { workspace = true, features = ["serde"], optional = true }
-tokio = { workspace = true, features = ["macros"], optional = true }
+tokio = { workspace = true, optional = true }
 urlencoding = { version = "2.1", optional = true }
-# Data's v2 page streams and its decimals (`data`).
+# Data's v2 page streams and the CLOB's socket (`data`, `clob-ws`); the
+# decimals of data and clob (`data`, `clob`).
 futures-util = { workspace = true, optional = true }
 rust_decimal = { workspace = true, optional = true }
+# Addresses and salts of clob and relay (`clob`, `relay`).
+hex = { workspace = true, optional = true }
+rand = { version = "0.9.2", features = ["std"], optional = true }
 specta = { version = "=2.0.0-rc.20", features = ["derive", "serde"], optional = true }
 
 [dev-dependencies]
@@ -78,8 +144,14 @@ specta = { version = "=2.0.0-rc.20", features = ["derive", "serde"], optional = 
 # harnesses' pacer, observer and verdicts). Path-only: it is never published,
 # and cargo strips a path-only dev-dependency on publish.
 polyoxide-test-support = { path = "../polyoxide-test-support", features = ["query", "soak"] }
+# The shared scripted WebSocket server clob's offline socket suites run on.
+# Path-only, so cargo strips it on publish.
+polyoxide-ws = { path = "../polyoxide-ws", features = ["test-server"] }
 mockito = { workspace = true }
 serde_json = { workspace = true }
+dotenvy = "0.15"
+futures-util = { workspace = true }
+rust_decimal_macros = "1.37"
 # `test-util` gives the cooldown tests a paused clock, so they assert the full
 # backoff without actually sleeping for it.
 tokio = { workspace = true, features = ["macros", "rt-multi-thread", "test-util", "time"] }
@@ -171,6 +243,55 @@ required-features = ["data"]
 name = "wire_agreement_data_v2"
 required-features = ["data"]
 
+# The clob module's suites (Story 5.4). `live_clob` looks markets up through
+# gamma, and `live_clob_session_keys` also deploys through relay.
+[[test]]
+name = "error_classes_clob"
+required-features = ["clob"]
+
+[[test]]
+name = "headers_clob"
+required-features = ["clob"]
+
+[[test]]
+name = "live_clob"
+required-features = ["clob", "gamma"]
+
+[[test]]
+name = "live_clob_session_keys"
+required-features = ["clob", "relay", "gamma"]
+
+# `live_clob_ws.rs` is `#![cfg(feature = "clob-ws")]`. Without this stanza a
+# build without the feature compiles it to an empty binary that runs no tests.
+[[test]]
+name = "live_clob_ws"
+required-features = ["clob-ws"]
+
+[[test]]
+name = "mock_clob"
+required-features = ["clob"]
+
+[[test]]
+name = "query_setters_clob"
+required-features = ["clob"]
+
+# The relay module's suites (Story 5.4).
+[[test]]
+name = "error_classes_relay"
+required-features = ["relay"]
+
+[[test]]
+name = "headers_relay"
+required-features = ["relay"]
+
+[[test]]
+name = "live_relay"
+required-features = ["relay"]
+
+[[test]]
+name = "mock_relay"
+required-features = ["relay"]
+
 # Gamma's probes of Cloudflare's burst limit and its batch ceiling.
 [[example]]
 name = "cf_burst_probe"
@@ -179,6 +300,28 @@ required-features = ["gamma"]
 [[example]]
 name = "gamma_batch_ceiling"
 required-features = ["gamma"]
+
+# The clob module's order placement and its two channels, and the relay's
+# nonce lookup and redemption.
+[[example]]
+name = "test_order"
+required-features = ["clob"]
+
+[[example]]
+name = "ws_market"
+required-features = ["clob-ws"]
+
+[[example]]
+name = "ws_user"
+required-features = ["clob-ws"]
+
+[[example]]
+name = "get_nonce"
+required-features = ["relay"]
+
+[[example]]
+name = "redeem"
+required-features = ["relay"]
 
 # `cargo test` and `cargo nextest` build examples but do not run their unit
 # tests unless asked, so the rate-limit harnesses' tests would otherwise never
@@ -211,11 +354,43 @@ all-features = true
 # in the foundation crates and the exceptions it allows there. Run
 # `python3 scripts/gen_registry.py --write` after an edit.
 [package.metadata.polyoxide]
-readme = "Client library for Polymarket's APIs, one feature per module: `gamma` (market data) and `data` (user data, v1 and v2), with the code the modules share in `shared`; clob, relay, perps, rtds and sports arrive in Stories 5.4 and 5.5"
+readme = "Client library for Polymarket's APIs, one feature per module: `clob` (order book, with its sockets under `clob-ws`), `gamma` (market data), `data` (user data, v1 and v2) and `relay` (gasless transactions), with the code the modules share in `shared`; perps, rtds and sports arrive in Story 5.5"
 venue = "polymarket"
-products = ["gamma", "data"]
-mirrors = ["gamma", "data", "data-v2", "undocumented"]
+products = ["clob", "gamma", "data", "relay"]
+mirrors = ["clob", "gamma", "data", "data-v2", "undocumented", "relay", "session-keys"]
 identifiers = ["Poly-RateLimit"]
+
+[package.metadata.polyoxide.live.live_clob]
+suite = "clob"
+timeout = 15
+features = ["clob", "gamma"]
+secrets = [
+  "POLYMARKET_API_KEY",
+  "POLYMARKET_API_PASSPHRASE",
+  "POLYMARKET_API_SECRET",
+  "POLYMARKET_BUILDER_CODE",
+  "POLYMARKET_PRIVATE_KEY",
+]
+
+[package.metadata.polyoxide.live.live_clob_ws]
+suite = "clob"
+timeout = 15
+features = ["clob-ws"]
+secrets = ["POLYMARKET_PRIVATE_KEY"]
+
+[package.metadata.polyoxide.live.live_clob_session_keys]
+suite = "clob-session-keys"
+timeout = 40
+features = ["clob", "relay", "gamma"]
+secrets = [
+  "BUILDER_API_KEY",
+  "BUILDER_PASS_PHRASE",
+  "BUILDER_SECRET",
+  "POLYMARKET_DW_OWNER_PRIVATE_KEY",
+  "POLYMARKET_DW_SESSION_PRIVATE_KEY",
+  "POLYMARKET_DW_WALLET",
+]
+note = "40-minute budget in its own job, since its registry and transaction waits can take ~25 minutes"
 
 [package.metadata.polyoxide.live.live_gamma]
 suite = "gamma"
@@ -228,6 +403,19 @@ suite = "data"
 timeout = 15
 features = ["data"]
 secrets = []
+
+[package.metadata.polyoxide.live.live_relay]
+suite = "relay"
+timeout = 15
+features = ["relay"]
+secrets = [
+  "BUILDER_API_KEY",
+  "BUILDER_PASS_PHRASE",
+  "BUILDER_SECRET",
+  "POLYMARKET_PRIVATE_KEY",
+  "RELAYER_API_KEY",
+  "RELAYER_API_KEY_ADDRESS",
+]
 
 # The foundation crates' protected test names and probe that still name a
 # Polymarket product or host (S2 may not rename a test, AD-12).

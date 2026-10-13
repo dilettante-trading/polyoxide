@@ -2,7 +2,7 @@ use std::io::{self, BufWriter, Write};
 use std::path::Path;
 
 use color_eyre::eyre::{Context, Result};
-use polyoxide_clob::PriceHistoryPoint;
+use polyoxide_polymarket::clob::PriceHistoryPoint;
 use serde::Serialize;
 
 use crate::commands::clob::prices::types::OutputFormat;
@@ -165,7 +165,7 @@ pub fn atomic_write(
 #[cfg(test)]
 mod tests {
     use super::*;
-    use polyoxide_clob::PriceHistoryPoint;
+    use polyoxide_polymarket::clob::PriceHistoryPoint;
 
     fn points() -> Vec<PriceHistoryPoint> {
         vec![

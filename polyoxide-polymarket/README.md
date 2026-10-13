@@ -3,19 +3,25 @@
 Rust client library for Polymarket's APIs, one feature per module: `clob`, `gamma`, `data`,
 `relay` and `perps`. Part of the [polyoxide](https://crates.io/crates/polyoxide) workspace.
 
-The modules move in from their own crates during stage S2. Two are here, each with its own
+The modules move in from their own crates during stage S2. Four are here, each with its own
 README:
 
 | Module | Feature | API |
 |---|---|---|
+| [`clob`](src/clob/README.md) | `clob`; its WebSocket channels, `clob::ws`, under `clob-ws` | The CLOB: order signing and placement, order books, prices, account, rewards and API keys |
 | [`gamma`](src/gamma/README.md) | `gamma` | Gamma: markets, events, series, tags, comments, sports, search and profiles; read-only |
 | [`data`](src/data/README.md) | `data` | The Data API, v1 and v2 (`data.v2()`), and the undocumented `user-pnl-api` and `lb-api` hosts; read-only |
+| [`relay`](src/relay/README.md) | `relay` | The Relayer: gasless transactions for Safe, Proxy and Deposit Wallets, and session signers |
 
-`polyoxide-clob` and `polyoxide-relay` arrive in Story 5.4, and `polyoxide-perps`,
-`polyoxide-rtds` and `polyoxide-sports` in 5.5. What the modules share is in `shared`, and
-every feature is off by default.
+`polyoxide-perps`, `polyoxide-rtds` and `polyoxide-sports` arrive in Story 5.5. What the
+modules share is in `shared`.
 
-`specta` derives `specta::Type` on the enabled modules' response types.
+The defaults are `clob`, `gamma` and `data`. Only `clob` and `relay` build the signing stack,
+`alloy`, so a build with `gamma` or `data` alone carries none of it. `clob` does not turn on
+`gamma`: with both, the CLOB client looks a proxy wallet's address up through Gamma.
+
+`keychain` stores the credentials of whichever of `clob` and `relay` is enabled in the OS
+keychain, and `specta` derives `specta::Type` on the enabled modules' response types.
 
 ## What `shared` holds
 
@@ -47,11 +53,18 @@ let client = HttpClientBuilder::new("https://gamma-api.polymarket.com")
 
 ## Installation
 
-Every feature is off by default, so name the modules you use:
+The defaults build `clob`, `gamma` and `data`:
 
 ```toml
 [dependencies]
-polyoxide-polymarket = { version = "0.39", features = ["gamma", "data"] }
+polyoxide-polymarket = "0.39"
+```
+
+Or name the modules you use:
+
+```toml
+[dependencies]
+polyoxide-polymarket = { version = "0.39", default-features = false, features = ["gamma", "data"] }
 ```
 
 ## License

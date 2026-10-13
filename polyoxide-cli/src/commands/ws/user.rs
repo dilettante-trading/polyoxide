@@ -9,7 +9,7 @@ use std::{
 use clap::{Args, ValueEnum};
 use color_eyre::eyre::Result;
 use futures_util::StreamExt;
-use polyoxide_clob::ws::{ApiCredentials, Channel, UserMessage, WebSocket};
+use polyoxide_polymarket::clob::ws::{ApiCredentials, Channel, UserMessage, WebSocket};
 
 use crate::commands::common::parsing::parse_duration;
 
@@ -485,39 +485,43 @@ mod tests {
     }
 
     fn make_order_channel() -> Channel {
-        Channel::User(UserMessage::Order(polyoxide_clob::ws::OrderMessage {
-            event_type: "order".to_string(),
-            id: "test".to_string(),
-            asset_id: "test".to_string(),
-            market: "test".to_string(),
-            outcome: "Yes".to_string(),
-            price: "0.5".to_string(),
-            side: "BUY".to_string(),
-            original_size: "10".to_string(),
-            size_matched: "0".to_string(),
-            order_type: polyoxide_clob::ws::OrderEventType::Placement,
-            order_owner: Some("0x123".to_string()),
-            timestamp: "123".to_string(),
-        }))
+        Channel::User(UserMessage::Order(
+            polyoxide_polymarket::clob::ws::OrderMessage {
+                event_type: "order".to_string(),
+                id: "test".to_string(),
+                asset_id: "test".to_string(),
+                market: "test".to_string(),
+                outcome: "Yes".to_string(),
+                price: "0.5".to_string(),
+                side: "BUY".to_string(),
+                original_size: "10".to_string(),
+                size_matched: "0".to_string(),
+                order_type: polyoxide_polymarket::clob::ws::OrderEventType::Placement,
+                order_owner: Some("0x123".to_string()),
+                timestamp: "123".to_string(),
+            },
+        ))
     }
 
     fn make_trade_channel() -> Channel {
-        Channel::User(UserMessage::Trade(polyoxide_clob::ws::TradeMessage {
-            event_type: "trade".to_string(),
-            id: "trade-1".to_string(),
-            asset_id: "test".to_string(),
-            market: "test".to_string(),
-            outcome: "Yes".to_string(),
-            price: "0.6".to_string(),
-            size: "5".to_string(),
-            side: "BUY".to_string(),
-            status: polyoxide_clob::ws::TradeStatus::Confirmed,
-            taker_order_id: "order-1".to_string(),
-            maker_orders: vec![],
-            owner: Some("0x123".to_string()),
-            transaction_hash: None,
-            timestamp: "456".to_string(),
-        }))
+        Channel::User(UserMessage::Trade(
+            polyoxide_polymarket::clob::ws::TradeMessage {
+                event_type: "trade".to_string(),
+                id: "trade-1".to_string(),
+                asset_id: "test".to_string(),
+                market: "test".to_string(),
+                outcome: "Yes".to_string(),
+                price: "0.6".to_string(),
+                size: "5".to_string(),
+                side: "BUY".to_string(),
+                status: polyoxide_polymarket::clob::ws::TradeStatus::Confirmed,
+                taker_order_id: "order-1".to_string(),
+                maker_orders: vec![],
+                owner: Some("0x123".to_string()),
+                transaction_hash: None,
+                timestamp: "456".to_string(),
+            },
+        ))
     }
 
     #[test]
@@ -556,8 +560,8 @@ mod tests {
     fn should_print_market_channel_on_user_returns_false() {
         // Market channel messages should be rejected by the user should_print
         // when a filter is active
-        let channel = Channel::Market(polyoxide_clob::ws::MarketMessage::Book(
-            polyoxide_clob::ws::BookMessage {
+        let channel = Channel::Market(polyoxide_polymarket::clob::ws::MarketMessage::Book(
+            polyoxide_polymarket::clob::ws::BookMessage {
                 event_type: "book".to_string(),
                 asset_id: "test".to_string(),
                 market: "test".to_string(),

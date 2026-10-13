@@ -113,7 +113,7 @@ impl CredentialsCommand {
 
 fn store_clob(args: StoreClobArgs) -> Result<()> {
     use polyoxide_core::keychain;
-    let service = polyoxide_clob::KEYCHAIN_SERVICE;
+    let service = polyoxide_polymarket::clob::KEYCHAIN_SERVICE;
 
     let mut stored = Vec::new();
 
@@ -148,7 +148,7 @@ fn store_clob(args: StoreClobArgs) -> Result<()> {
 
 fn store_relay(args: StoreRelayArgs) -> Result<()> {
     use polyoxide_core::keychain;
-    let service = polyoxide_relay::KEYCHAIN_SERVICE;
+    let service = polyoxide_polymarket::relay::KEYCHAIN_SERVICE;
 
     let mut stored = Vec::new();
 
@@ -202,7 +202,7 @@ fn check_entry(service: &str, key: &str) -> &'static str {
 }
 
 fn show_clob() -> Result<()> {
-    let service = polyoxide_clob::KEYCHAIN_SERVICE;
+    let service = polyoxide_polymarket::clob::KEYCHAIN_SERVICE;
 
     println!("Keychain credentials for {service}:");
     println!("  private_key:     {}", check_entry(service, "private_key"));
@@ -216,7 +216,7 @@ fn show_clob() -> Result<()> {
 }
 
 fn show_relay() -> Result<()> {
-    let service = polyoxide_relay::KEYCHAIN_SERVICE;
+    let service = polyoxide_polymarket::relay::KEYCHAIN_SERVICE;
 
     println!("Keychain credentials for {service}:");
     println!(
@@ -248,7 +248,7 @@ fn show_relay() -> Result<()> {
 
 fn delete_clob() -> Result<()> {
     use polyoxide_core::keychain;
-    let service = polyoxide_clob::KEYCHAIN_SERVICE;
+    let service = polyoxide_polymarket::clob::KEYCHAIN_SERVICE;
 
     for key in ["private_key", "api_key", "api_secret", "api_passphrase"] {
         keychain::delete(service, key)?;
@@ -259,7 +259,7 @@ fn delete_clob() -> Result<()> {
 
 fn delete_relay() -> Result<()> {
     use polyoxide_core::keychain;
-    let service = polyoxide_relay::KEYCHAIN_SERVICE;
+    let service = polyoxide_polymarket::relay::KEYCHAIN_SERVICE;
 
     for key in [
         "private_key",

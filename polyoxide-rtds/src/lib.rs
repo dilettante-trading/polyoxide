@@ -5,7 +5,7 @@
 //!
 //! RTDS relays reference prices without credentials: Binance spot, Chainlink
 //! spot, and Chainlink-computed 30-second and 60-second TWAPs. It is a
-//! different protocol from the CLOB WebSocket channels in `polyoxide-clob` —
+//! different protocol from the CLOB WebSocket channels in `polyoxide-polymarket`'s `clob::ws` —
 //! many topics are multiplexed over one connection.
 //!
 //! # Precision

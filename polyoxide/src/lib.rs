@@ -82,13 +82,12 @@ struct ReadmeDoctests;
 /// Compiles the workspace root `README.md` code examples as doctests.
 struct RootReadmeDoctests;
 
-#[cfg(feature = "clob")]
-pub use polyoxide_clob;
 #[cfg(feature = "perps")]
 pub use polyoxide_perps;
-// Polymarket's venue crate, whose `gamma` and `data` modules the `gamma` and
-// `data` features build (Story 5.3; Story 5.7 reshapes the umbrella).
-#[cfg(any(feature = "gamma", feature = "data"))]
+// Polymarket's venue crate, whose `clob`, `gamma` and `data` modules the
+// features of those names build (Stories 5.3 and 5.4; Story 5.7 reshapes the
+// umbrella).
+#[cfg(any(feature = "clob", feature = "gamma", feature = "data"))]
 pub use polyoxide_polymarket;
 #[cfg(feature = "rtds")]
 pub use polyoxide_rtds;
@@ -96,7 +95,7 @@ pub use polyoxide_rtds;
 pub use polyoxide_sports;
 
 #[cfg(all(feature = "clob", feature = "gamma", feature = "data"))]
-use polyoxide_clob::{Account, Chain, Clob, ClobBuilder};
+use polyoxide_polymarket::clob::{Account, Chain, Clob, ClobBuilder};
 #[cfg(all(feature = "clob", feature = "gamma", feature = "data"))]
 use polyoxide_polymarket::data::{DataApi, DataApiBuilder};
 #[cfg(all(feature = "clob", feature = "gamma", feature = "data"))]
@@ -104,19 +103,19 @@ use polyoxide_polymarket::gamma::Gamma;
 
 /// Prelude module for convenient imports
 pub mod prelude {
-    #[cfg(feature = "ws")]
-    pub use polyoxide_clob::ws;
-    #[cfg(feature = "clob")]
-    pub use polyoxide_clob::{
-        Account, Chain, Clob, ClobBuilder, ClobError, CreateOrderParams, Credentials, OrderKind,
-        OrderSide, SignatureType,
-    };
     #[cfg(feature = "perps-ws")]
     pub use polyoxide_perps::ws::{
         Channel as PerpsChannel, Event as PerpsEvent, PerpsMembership, PerpsWsBuilder,
     };
     #[cfg(feature = "perps")]
     pub use polyoxide_perps::{Perps, PerpsError};
+    #[cfg(feature = "ws")]
+    pub use polyoxide_polymarket::clob::ws;
+    #[cfg(feature = "clob")]
+    pub use polyoxide_polymarket::clob::{
+        Account, Chain, Clob, ClobBuilder, ClobError, CreateOrderParams, Credentials, OrderKind,
+        OrderSide, SignatureType,
+    };
     #[cfg(feature = "data")]
     pub use polyoxide_polymarket::data::{DataApi, DataError};
     #[cfg(feature = "gamma")]
@@ -143,7 +142,7 @@ pub enum PolymarketError {
     /// CLOB API error
     #[cfg(feature = "clob")]
     #[error("CLOB error: {0}")]
-    Clob(#[from] polyoxide_clob::ClobError),
+    Clob(#[from] polyoxide_polymarket::clob::ClobError),
 
     /// Data API error
     #[cfg(feature = "data")]
@@ -359,7 +358,7 @@ mod tests {
         )];
         #[cfg(feature = "clob")]
         rows.push((
-            PolymarketError::Clob(polyoxide_clob::ClobError::FakUnmatched {
+            PolymarketError::Clob(polyoxide_polymarket::clob::ClobError::FakUnmatched {
                 message: "no orders found to match with FAK order".into(),
             }),
             Class::VenueRefusal { code: None },

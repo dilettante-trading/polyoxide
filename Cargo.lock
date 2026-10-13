@@ -4000,7 +4000,6 @@ name = "polyoxide"
 version = "0.39.0"
 dependencies = [
  "futures-util",
- "polyoxide-clob",
  "polyoxide-perps",
  "polyoxide-polymarket",
  "polyoxide-rtds",
@@ -4044,10 +4043,8 @@ dependencies = [
  "mockito",
  "parquet",
  "polyoxide-binance",
- "polyoxide-clob",
  "polyoxide-core",
  "polyoxide-polymarket",
- "polyoxide-relay",
  "polyoxide-rtds",
  "polyoxide-sports",
  "polyoxide-test-support",
@@ -4056,34 +4053,6 @@ dependencies = [
  "tempfile",
  "tokio",
  "tracing-subscriber",
-]
-
-[[package]]
-name = "polyoxide-clob"
-version = "0.39.0"
-dependencies = [
- "alloy",
- "dotenvy",
- "futures-util",
- "hex",
- "mockito",
- "polyoxide-core",
- "polyoxide-polymarket",
- "polyoxide-relay",
- "polyoxide-test-support",
- "polyoxide-venue",
- "polyoxide-ws",
- "rand 0.9.4",
- "rust_decimal",
- "rust_decimal_macros",
- "serde",
- "serde_json",
- "thiserror 2.0.18",
- "tokio",
- "tracing",
- "tracing-subscriber",
- "url",
- "urlencoding",
 ]
 
 [[package]]
@@ -4130,15 +4099,21 @@ dependencies = [
 name = "polyoxide-polymarket"
 version = "0.39.0"
 dependencies = [
+ "alloy",
  "base64",
  "chrono",
+ "dotenvy",
  "futures-util",
+ "hex",
  "hmac",
  "mockito",
  "polyoxide-core",
  "polyoxide-test-support",
  "polyoxide-venue",
+ "polyoxide-ws",
+ "rand 0.9.4",
  "rust_decimal",
+ "rust_decimal_macros",
  "serde",
  "serde_json",
  "sha2",
@@ -4156,7 +4131,6 @@ name = "polyoxide-py"
 version = "0.39.0"
 dependencies = [
  "futures-util",
- "polyoxide-clob",
  "polyoxide-polymarket",
  "polyoxide-venue",
  "pyo3",
@@ -4165,27 +4139,6 @@ dependencies = [
  "serde",
  "serde_json",
  "tokio",
-]
-
-[[package]]
-name = "polyoxide-relay"
-version = "0.39.0"
-dependencies = [
- "alloy",
- "dotenvy",
- "hex",
- "mockito",
- "polyoxide-core",
- "polyoxide-polymarket",
- "polyoxide-test-support",
- "polyoxide-venue",
- "rand 0.9.4",
- "serde",
- "serde_json",
- "thiserror 2.0.18",
- "tokio",
- "tracing",
- "url",
 ]
 
 [[package]]

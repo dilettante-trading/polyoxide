@@ -32,10 +32,10 @@ cargo add polyoxide --no-default-features --features full
 
 | Feature | Default | Description |
 |---------|---------|-------------|
-| `clob`  | yes | CLOB order-book trading via `polyoxide-clob` |
+| `clob`  | yes | CLOB order-book trading via `polyoxide-polymarket`'s `clob` module |
 | `gamma` | yes | Read-only market data via `polyoxide-polymarket`'s `gamma` module |
 | `data`  | yes | Read-only user positions/trades via `polyoxide-polymarket`'s `data` module |
-| `ws`    | no  | WebSocket streaming (implies `clob`) |
+| `ws`    | no  | CLOB WebSocket streaming via `polyoxide-polymarket`'s `clob-ws` feature (implies `clob`) |
 | `rtds`  | no  | RTDS crypto price streams via `polyoxide-rtds` |
 | `perps` | no  | Perps public market data via `polyoxide-perps` |
 | `perps-ws` | no | Perps WebSocket streaming (implies `perps`) |
@@ -123,7 +123,7 @@ let leaders = data.leaderboard().get().send().await?;
 
 ```rust
 // Public (unauthenticated) CLOB client for read-only market data
-use polyoxide::polyoxide_clob::Clob;
+use polyoxide::polyoxide_polymarket::clob::Clob;
 # async fn doctest() -> Result<(), Box<dyn std::error::Error>> {
 let clob = Clob::public();
 let book = clob.markets().order_book("token_id").send().await?;

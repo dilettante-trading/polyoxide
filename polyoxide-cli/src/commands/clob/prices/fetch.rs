@@ -1,7 +1,7 @@
 use std::time::Duration;
 
 use governor::DefaultDirectRateLimiter;
-use polyoxide_clob::{Clob, ClobError, PriceHistoryPoint, PricesHistoryQuery};
+use polyoxide_polymarket::clob::{Clob, ClobError, PriceHistoryPoint, PricesHistoryQuery};
 
 /// Fetch a single market's price history, waiting for a rate-limit permit
 /// before each attempt and retrying transient failures with exponential

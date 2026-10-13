@@ -5,7 +5,7 @@ use color_eyre::Report;
 use polyoxide_binance::usdm::ws::UsdmWsError;
 use polyoxide_cli::commands::clob::prices::download::DownloadArgs;
 use polyoxide_cli::commands::clob::prices::types::OutputFormat;
-use polyoxide_clob::{Clob, ClobError};
+use polyoxide_polymarket::clob::{Clob, ClobError};
 use polyoxide_polymarket::data::DataError;
 use polyoxide_polymarket::gamma::GammaError;
 use polyoxide_sports::SportsError;

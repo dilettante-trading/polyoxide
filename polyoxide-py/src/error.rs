@@ -40,7 +40,7 @@ pub fn data_err(e: polyoxide_polymarket::data::DataError) -> PyErr {
     }
 }
 
-pub fn clob_err(e: polyoxide_clob::ClobError) -> PyErr {
+pub fn clob_err(e: polyoxide_polymarket::clob::ClobError) -> PyErr {
     with_details(exception_for(&e), None)
 }
 

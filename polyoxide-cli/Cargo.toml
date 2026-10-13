@@ -12,7 +12,7 @@ categories = ["command-line-utilities"]
 
 [features]
 default = []
-keychain = ["polyoxide-clob/keychain", "dep:polyoxide-core", "dep:polyoxide-relay"]
+keychain = ["polyoxide-polymarket/keychain", "polyoxide-polymarket/relay", "dep:polyoxide-core"]
 parquet = ["dep:arrow", "dep:parquet"]
 
 [[bin]]
@@ -24,10 +24,9 @@ doc = false
 
 [dependencies]
 polyoxide-binance = { workspace = true, features = ["ws"] }
-polyoxide-clob = { workspace = true, features = ["ws"] }
 polyoxide-core = { workspace = true, optional = true, features = ["keychain"] }
-polyoxide-relay = { workspace = true, optional = true, features = ["keychain"] }
-polyoxide-polymarket = { workspace = true, features = ["gamma", "data"] }
+# `relay` and `keychain` only under `keychain`, for the relay's keychain service.
+polyoxide-polymarket = { workspace = true, features = ["clob-ws", "gamma", "data"] }
 polyoxide-rtds = { workspace = true }
 polyoxide-sports = { workspace = true }
 tokio = { workspace = true, features = ["macros", "rt-multi-thread", "time", "net"] }

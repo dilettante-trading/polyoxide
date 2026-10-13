@@ -5,8 +5,8 @@ use std::sync::Arc;
 use crate::error::clob_err;
 use crate::types::*;
 
-fn parse_order_side(s: &str) -> PyResult<polyoxide_clob::types::OrderSide> {
-    use polyoxide_clob::types::OrderSide;
+fn parse_order_side(s: &str) -> PyResult<polyoxide_polymarket::clob::types::OrderSide> {
+    use polyoxide_polymarket::clob::types::OrderSide;
     parse_enum!(s, OrderSide, Buy => "BUY", Sell => "SELL")
 }
 
@@ -19,7 +19,7 @@ client_ns!(
     sync_name = PyClobMarketsSync,
     py_async_name = "ClobMarkets",
     py_sync_name = "ClobMarketsSync",
-    client_type = polyoxide_clob::Clob,
+    client_type = polyoxide_polymarket::clob::Clob,
     client_var = client,
     #[pyo3(signature = (condition_id,))]
     fn get(condition_id: String) -> PyClobMarket {
@@ -199,7 +199,7 @@ client_ns!(
     sync_name = PyClobHealthSync,
     py_async_name = "ClobHealth",
     py_sync_name = "ClobHealthSync",
-    client_type = polyoxide_clob::Clob,
+    client_type = polyoxide_polymarket::clob::Clob,
     client_var = client,
     #[pyo3(signature = ())]
     fn ping() -> f64 {
@@ -225,7 +225,7 @@ client_ns!(
 
 #[pyclass(name = "ClobClient", skip_from_py_object)]
 pub struct PyClobClient {
-    client: Arc<polyoxide_clob::Clob>,
+    client: Arc<polyoxide_polymarket::clob::Clob>,
 }
 
 #[pymethods]
@@ -234,7 +234,7 @@ impl PyClobClient {
     #[pyo3(signature = ())]
     fn new() -> Self {
         Self {
-            client: Arc::new(polyoxide_clob::Clob::public()),
+            client: Arc::new(polyoxide_polymarket::clob::Clob::public()),
         }
     }
 
@@ -257,7 +257,7 @@ impl PyClobClient {
 
 #[pyclass(name = "ClobClientSync", skip_from_py_object)]
 pub struct PyClobClientSync {
-    client: Arc<polyoxide_clob::Clob>,
+    client: Arc<polyoxide_polymarket::clob::Clob>,
 }
 
 #[pymethods]
@@ -266,7 +266,7 @@ impl PyClobClientSync {
     #[pyo3(signature = ())]
     fn new() -> Self {
         Self {
-            client: Arc::new(polyoxide_clob::Clob::public()),
+            client: Arc::new(polyoxide_polymarket::clob::Clob::public()),
         }
     }
 

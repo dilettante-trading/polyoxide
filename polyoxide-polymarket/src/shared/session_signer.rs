@@ -1,6 +1,6 @@
 //! Venue scopes a Deposit Wallet session key can be authorized for.
 //!
-//! Shared by `polyoxide-clob` (which lists them) and `polyoxide-relay` (which
+//! Shared by the `clob` module (which lists them) and the `relay` module (which
 //! requests them). The venue adds venues over time, so an unknown string is
 //! kept as [`SessionSignerScope::Other`] rather than rejected.
 
