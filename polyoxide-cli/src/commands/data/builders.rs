@@ -2,7 +2,7 @@ use std::io::Write;
 
 use clap::{Args, Subcommand, ValueEnum};
 use color_eyre::eyre::Result;
-use polyoxide_data::{v2::types::TimePeriod, DataApi};
+use polyoxide_polymarket::data::{v2::types::TimePeriod, DataApi};
 
 use super::paging::{print_pretty, run_paged, PageArgs};
 

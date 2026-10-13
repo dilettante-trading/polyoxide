@@ -1,0 +1,2242 @@
+use std::collections::HashMap;
+use std::fmt;
+
+use chrono::{DateTime, Utc};
+use serde::{Deserialize, Serialize};
+
+polyoxide_venue::open_enum! {
+    /// The protocol a market trades on, from [`Market::version`].
+    ///
+    /// This is Polymarket Protocol V2, not the CLOB V2 exchange migration:
+    /// a `V1` market trades on the exchange `polyoxide-clob` signs for.
+    pub enum ProtocolVersion {
+        /// The CTF/CLOB protocol. Outcome ids are in [`Market::clob_token_ids`].
+        V1 => "v1",
+        /// Polymarket Protocol V2. Outcome ids are in [`Market::position_ids`].
+        V2 => "v2",
+    }
+}
+
+polyoxide_venue::open_enum! {
+    /// A Protocol V2 market's resolution state, from
+    /// [`Market::resolution_status`]. V1 markets use
+    /// [`Market::uma_resolution_status`] instead.
+    pub enum ResolutionStatus {
+        /// Drafted, not yet deployed on chain.
+        Inactive => "inactive",
+        /// Deployed, not resolved yet.
+        Active => "active",
+        /// Resolved.
+        Resolved => "resolved",
+    }
+}
+
+polyoxide_venue::open_enum! {
+    /// Which side of a game a team is on, from [`Team::ordering`].
+    pub enum HomeAway {
+        /// The home team.
+        Home => "home",
+        /// The away team.
+        Away => "away",
+    }
+}
+
+polyoxide_venue::specta_as_string!(ProtocolVersion, ResolutionStatus, HomeAway);
+
+/// Reads an array the served schema types `["array","null"]`, taking `null`
+/// as empty. `#[serde(default)]` alone covers only a missing key.
+fn null_as_empty<'de, D, T>(deserializer: D) -> Result<Vec<T>, D::Error>
+where
+    D: serde::Deserializer<'de>,
+    T: Deserialize<'de>,
+{
+    Ok(Option::<Vec<T>>::deserialize(deserializer)?.unwrap_or_default())
+}
+
+/// Reads an id that Gamma sometimes sends as a negative sentinel, taking any
+/// negative value as `None`. A plain `Option<u64>` would fail the whole
+/// response on it.
+fn negative_as_none<'de, D>(deserializer: D) -> Result<Option<u64>, D::Error>
+where
+    D: serde::Deserializer<'de>,
+{
+    #[derive(Deserialize)]
+    #[serde(untagged)]
+    enum Id {
+        Unsigned(u64),
+        Negative(i64),
+    }
+    Ok(match Option::<Id>::deserialize(deserializer)? {
+        Some(Id::Unsigned(id)) => Some(id),
+        Some(Id::Negative(id)) => u64::try_from(id).ok(),
+        None => None,
+    })
+}
+
+/// Market data from Gamma API
+#[cfg_attr(feature = "specta", derive(specta::Type))]
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
+#[serde(rename_all = "camelCase")]
+pub struct Market {
+    pub id: String,
+    pub condition_id: String,
+    #[serde(rename = "questionID")]
+    pub question_id: Option<String>,
+    pub slug: Option<String>,
+    #[serde(default)]
+    pub tokens: Vec<MarketToken>,
+    #[cfg_attr(feature = "specta", specta(type = Option<HashMap<String, String>>))]
+    pub rewards: Option<HashMap<String, serde_json::Value>>,
+    pub minimum_order_size: Option<String>,
+    pub minimum_tick_size: Option<String>,
+    /// Optional: the reduced `POST /markets/abridged` payload omits this field.
+    pub description: Option<String>,
+    pub category: Option<String>,
+    pub end_date_iso: Option<String>,
+    pub start_date_iso: Option<String>,
+    pub question: String,
+    pub min_incentive_size: Option<String>,
+    pub max_incentive_spread: Option<String>,
+    #[serde(rename = "submitted_by")]
+    pub submitted_by: Option<String>,
+    #[serde(rename = "volume24hr")] // lowercase 'hr' to match API
+    pub volume_24hr: Option<f64>,
+    #[serde(rename = "volume1wk")] // lowercase 'wk' to match API
+    pub volume_1wk: Option<f64>,
+    #[serde(rename = "volume1mo")] // lowercase 'mo' to match API
+    pub volume_1mo: Option<f64>,
+    #[serde(rename = "volume1yr")] // lowercase 'yr' to match API
+    pub volume_1yr: Option<f64>,
+    pub liquidity: Option<String>,
+    #[serde(default)]
+    pub tags: Vec<Tag>,
+    pub neg_risk: Option<bool>,
+    pub neg_risk_market_id: Option<String>,
+    pub neg_risk_request_id: Option<String>,
+    // Use i64 instead of u64 to prevent sentinel value
+    #[cfg_attr(feature = "specta", specta(type = Option<f64>))]
+    pub comment_count: Option<i64>,
+    pub twitter_card_image: Option<String>,
+    pub resolution_source: Option<String>,
+    pub amm_type: Option<String>,
+    pub sponsor_name: Option<String>,
+    pub sponsor_image: Option<String>,
+    pub x_axis_value: Option<String>,
+    pub y_axis_value: Option<String>,
+    #[serde(rename = "denomationToken")]
+    pub denomination_token: Option<String>,
+    pub fee: Option<String>,
+    pub image: Option<String>,
+    pub icon: Option<String>,
+    pub lower_bound: Option<String>,
+    pub upper_bound: Option<String>,
+    pub outcomes: Option<String>,
+    pub outcome_prices: Option<String>,
+    pub volume: Option<String>,
+    pub active: Option<bool>,
+    pub market_type: Option<String>,
+    pub format_type: Option<String>,
+    pub lower_bound_date: Option<String>,
+    pub upper_bound_date: Option<String>,
+    pub closed: Option<bool>,
+    /// The AMM contract address, or `""` for a market that never had one —
+    /// which is nearly every market listed today.
+    ///
+    /// Required because the server's own `Market.json` schema requires it,
+    /// even though upstream's published OpenAPI dropped the field in 2026-09
+    /// (see `docs/specs/gamma/OBSERVED.md`). If the server ever follows the
+    /// published spec, every `Market` fails to deserialize here.
+    pub market_maker_address: String,
+    #[cfg_attr(feature = "specta", specta(type = Option<f64>))]
+    pub created_by: Option<i64>,
+    #[cfg_attr(feature = "specta", specta(type = Option<f64>))]
+    pub updated_by: Option<i64>,
+    pub created_at: Option<String>,
+    pub updated_at: Option<String>,
+    pub closed_time: Option<String>,
+    pub wide_format: Option<bool>,
+    pub new: Option<bool>,
+    pub mailchimp_tag: Option<String>,
+    pub featured: Option<bool>,
+    pub archived: Option<bool>,
+    pub resolved_by: Option<String>,
+    pub restricted: Option<bool>,
+    #[cfg_attr(feature = "specta", specta(type = Option<f64>))]
+    pub market_group: Option<i64>,
+    pub group_item_title: Option<String>,
+    pub group_item_threshold: Option<String>,
+    pub uma_end_date: Option<String>,
+    pub uma_resolution_status: Option<String>,
+    pub uma_end_date_iso: Option<String>,
+    pub uma_resolution_statuses: Option<String>,
+    /// A `v2` market's resolution state. `v1` markets do not send it and use
+    /// [`uma_resolution_status`](Self::uma_resolution_status) instead.
+    ///
+    /// Absent from the published OpenAPI. The server's own `Market.json`
+    /// schema documents it. See `docs/specs/gamma/OBSERVED.md`.
+    pub resolution_status: Option<ResolutionStatus>,
+    pub enable_order_book: Option<bool>,
+    pub order_price_min_tick_size: Option<f64>,
+    pub order_min_size: Option<f64>,
+    #[cfg_attr(feature = "specta", specta(type = Option<f64>))]
+    pub curation_order: Option<i64>,
+    pub volume_num: Option<f64>,
+    pub liquidity_num: Option<f64>,
+    pub has_reviewed_dates: Option<bool>,
+    pub ready_for_cron: Option<bool>,
+    pub comments_enabled: Option<bool>,
+    pub game_start_time: Option<String>,
+    #[cfg_attr(feature = "specta", specta(type = Option<f64>))]
+    pub seconds_delay: Option<i64>,
+    /// The protocol the market trades on, which says where its outcome ids
+    /// are: [`clob_token_ids`](Self::clob_token_ids) for `v1`,
+    /// [`position_ids`](Self::position_ids) for `v2`.
+    ///
+    /// Choose by this field, never by which id field is present. `v1` markets
+    /// can carry `position_ids` too (35% of open markets on 2026-10-07), and
+    /// the CLOB has no order book for those ids. Upstream says to treat any
+    /// other value, or a missing one, as unsupported. Unknown values arrive as
+    /// [`ProtocolVersion::Other`].
+    ///
+    /// `polyoxide-clob` signs orders for `v1` markets only. A `v2` market
+    /// needs a different exchange and signing domain, which it does not
+    /// implement yet. See `docs/specs/gamma/OBSERVED.md`.
+    pub version: Option<ProtocolVersion>,
+    /// A `v1` market's outcome ids: a JSON-encoded array of decimal strings,
+    /// in the same order as [`outcomes`](Self::outcomes).
+    pub clob_token_ids: Option<String>,
+    /// A `v2` market's outcome ids, as decimal strings in the same order as
+    /// [`outcomes`](Self::outcomes). Unlike
+    /// [`clob_token_ids`](Self::clob_token_ids) this is a real array, not
+    /// JSON text.
+    ///
+    /// Present on some `v1` markets too, where it is not the trading id.
+    /// Read it only when [`version`](Self::version) is
+    /// [`ProtocolVersion::V2`].
+    pub position_ids: Option<Vec<String>>,
+    pub disqus_thread: Option<String>,
+    pub short_outcomes: Option<String>,
+    pub team_aid: Option<String>,
+    pub team_bid: Option<String>,
+    pub uma_bond: Option<String>,
+    pub uma_reward: Option<String>,
+    pub fpmm_live: Option<bool>,
+    #[serde(rename = "volume24hrAmm")] // Match API field names
+    pub volume_24hr_amm: Option<f64>,
+    #[serde(rename = "volume1wkAmm")]
+    pub volume_1wk_amm: Option<f64>,
+    #[serde(rename = "volume1moAmm")]
+    pub volume_1mo_amm: Option<f64>,
+    #[serde(rename = "volume1yrAmm")]
+    pub volume_1yr_amm: Option<f64>,
+    #[serde(rename = "volume24hrClob")]
+    pub volume_24hr_clob: Option<f64>,
+    #[serde(rename = "volume1wkClob")]
+    pub volume_1wk_clob: Option<f64>,
+    #[serde(rename = "volume1moClob")]
+    pub volume_1mo_clob: Option<f64>,
+    #[serde(rename = "volume1yrClob")]
+    pub volume_1yr_clob: Option<f64>,
+    pub volume_amm: Option<f64>,
+    pub volume_clob: Option<f64>,
+    pub liquidity_amm: Option<f64>,
+    pub liquidity_clob: Option<f64>,
+    #[cfg_attr(feature = "specta", specta(type = Option<f64>))]
+    pub maker_base_fee: Option<i64>,
+    #[cfg_attr(feature = "specta", specta(type = Option<f64>))]
+    pub taker_base_fee: Option<i64>,
+    #[cfg_attr(feature = "specta", specta(type = Option<f64>))]
+    pub custom_liveness: Option<i64>,
+    pub accepting_orders: Option<bool>,
+    pub notifications_enabled: Option<bool>,
+    #[cfg_attr(feature = "specta", specta(type = Option<f64>))]
+    pub score: Option<i64>,
+    pub creator: Option<String>,
+    pub ready: Option<bool>,
+    pub funded: Option<bool>,
+    pub past_slugs: Option<String>,
+    pub ready_timestamp: Option<String>,
+    pub funded_timestamp: Option<String>,
+    pub accepting_orders_timestamp: Option<String>,
+    pub competitive: Option<f64>,
+    pub rewards_min_size: Option<f64>,
+    pub rewards_max_spread: Option<f64>,
+    pub spread: Option<f64>,
+    pub automatically_resolved: Option<bool>,
+    pub automatically_active: Option<bool>,
+    pub one_day_price_change: Option<f64>,
+    pub one_hour_price_change: Option<f64>,
+    pub one_week_price_change: Option<f64>,
+    pub one_month_price_change: Option<f64>,
+    pub one_year_price_change: Option<f64>,
+    pub last_trade_price: Option<f64>,
+    pub best_bid: Option<f64>,
+    pub best_ask: Option<f64>,
+    pub clear_book_on_start: Option<bool>,
+    pub chart_color: Option<String>,
+    pub series_color: Option<String>,
+    pub show_gmp_series: Option<bool>,
+    pub show_gmp_outcome: Option<bool>,
+    pub manual_activation: Option<bool>,
+    pub neg_risk_other: Option<bool>,
+    pub game_id: Option<String>,
+    pub group_item_range: Option<String>,
+    pub sports_market_type: Option<String>,
+    pub line: Option<f64>,
+    pub pending_deployment: Option<bool>,
+    pub deploying: Option<bool>,
+    pub deploying_timestamp: Option<String>,
+    pub schedule_deployment_timestamp: Option<String>,
+    pub rfq_enabled: Option<bool>,
+    pub event_start_time: Option<String>,
+}
+
+/// Market token (outcome)
+#[cfg_attr(feature = "specta", derive(specta::Type))]
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
+#[serde(rename_all = "camelCase")]
+pub struct MarketToken {
+    pub token_id: String,
+    pub outcome: String,
+    pub price: Option<String>,
+    pub winner: Option<bool>,
+}
+
+/// Event data from the Gamma API (a group of related markets).
+#[cfg_attr(feature = "specta", derive(specta::Type))]
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct Event {
+    pub id: String,
+    pub ticker: Option<String>,
+    pub slug: Option<String>,
+    pub title: Option<String>,
+    pub subtitle: Option<String>,
+    pub description: Option<String>,
+    pub resolution_source: Option<String>,
+    pub start_date: Option<String>,
+    pub creation_date: Option<String>,
+    pub end_date: Option<String>,
+    pub image: Option<String>,
+    pub icon: Option<String>,
+    pub start_date_iso: Option<String>,
+    pub end_date_iso: Option<String>,
+    pub active: Option<bool>,
+    pub closed: Option<bool>,
+    pub archived: Option<bool>,
+    pub new: Option<bool>,
+    pub featured: Option<bool>,
+    pub restricted: Option<bool>,
+    pub liquidity: Option<f64>,
+    /// All-time volume.
+    pub volume: Option<f64>,
+    pub open_interest: Option<f64>,
+    pub sort_by: Option<String>,
+    pub category: Option<String>,
+    pub subcategory: Option<String>,
+    pub is_template: Option<bool>,
+    pub template_variables: Option<String>,
+    #[serde(rename = "published_at")]
+    pub published_at: Option<String>,
+    pub created_by: Option<String>,
+    pub updated_by: Option<String>,
+    pub created_at: Option<String>,
+    pub updated_at: Option<String>,
+    pub comments_enabled: Option<bool>,
+    #[cfg_attr(feature = "specta", specta(type = Option<f64>))]
+    pub comment_count: Option<i64>,
+    pub competitive: Option<f64>,
+    #[serde(rename = "volume24hr")]
+    pub volume_24hr: Option<f64>,
+    #[serde(rename = "volume1wk")]
+    pub volume_1wk: Option<f64>,
+    #[serde(rename = "volume1mo")]
+    pub volume_1mo: Option<f64>,
+    #[serde(rename = "volume1yr")]
+    pub volume_1yr: Option<f64>,
+    pub featured_image: Option<String>,
+    pub disqus_thread: Option<String>,
+    pub parent_event: Option<String>,
+    /// The game event this one hangs off, on a game's child events ("More
+    /// Markets", "Exact Score", …). A child usually carries its parent's
+    /// [`game_id`](Self::game_id): 204 of 227 sampled did, and the rest
+    /// carried none. Filter on `parent_event_id.is_none()` to keep one event
+    /// per game.
+    #[cfg_attr(feature = "specta", specta(type = Option<f64>))]
+    pub parent_event_id: Option<i64>,
+    pub enable_order_book: Option<bool>,
+    pub liquidity_amm: Option<f64>,
+    pub liquidity_clob: Option<f64>,
+    pub neg_risk: Option<bool>,
+    pub neg_risk_market_id: Option<String>,
+    #[cfg_attr(feature = "specta", specta(type = Option<f64>))]
+    pub neg_risk_fee_bips: Option<i64>,
+    pub neg_risk_augmented: Option<bool>,
+    #[serde(default)]
+    pub sub_events: Vec<String>,
+    #[serde(default)]
+    pub markets: Vec<Market>,
+    #[serde(default)]
+    pub tags: Vec<Tag>,
+    #[serde(default)]
+    pub series: Vec<SeriesInfo>,
+    pub cyom: Option<bool>,
+    pub closed_time: Option<String>,
+    pub show_all_outcomes: Option<bool>,
+    pub show_market_images: Option<bool>,
+    pub automatically_resolved: Option<bool>,
+    #[serde(rename = "enableNegRisk")]
+    pub enable_neg_risk: Option<bool>,
+    pub automatically_active: Option<bool>,
+    pub event_date: Option<String>,
+    pub start_time: Option<String>,
+    #[cfg_attr(feature = "specta", specta(type = Option<f64>))]
+    pub event_week: Option<i64>,
+    pub series_slug: Option<String>,
+    pub score: Option<String>,
+    pub elapsed: Option<String>,
+    pub period: Option<String>,
+    pub live: Option<bool>,
+    pub ended: Option<bool>,
+    pub finished_timestamp: Option<String>,
+    pub gmp_chart_mode: Option<String>,
+    #[cfg_attr(feature = "specta", specta(type = Option<f64>))]
+    pub tweet_count: Option<i64>,
+    #[cfg_attr(feature = "specta", specta(type = Option<f64>))]
+    pub featured_order: Option<i64>,
+    pub estimate_value: Option<bool>,
+    pub cant_estimate: Option<bool>,
+    pub spreads_main_line: Option<f64>,
+    pub totals_main_line: Option<f64>,
+    pub carousel_map: Option<String>,
+    pub pending_deployment: Option<bool>,
+    pub deploying: Option<bool>,
+    pub deploying_timestamp: Option<String>,
+    pub schedule_deployment_timestamp: Option<String>,
+    pub game_status: Option<String>,
+    /// The game's id, the same number `polyoxide-sports` keys a live score
+    /// by (`GameKey::Game`). Filter on it with [`ListEvents::game_id`].
+    ///
+    /// Not unique to one event. A game's child events carry it too (see
+    /// [`parent_event_id`](Self::parent_event_id)), and old events collide
+    /// with new ones: 28 closed 2025 cricket events all carry `1`. Pair it
+    /// with `closed` or the event's dates. Current cricket events have none;
+    /// their provider id is a string in [`event_metadata`](Self::event_metadata).
+    ///
+    /// A negative `gameId` reads as `None`. Gamma sent `-1` on a politics
+    /// event (`blue-wave-in-2026`) on 2026-10-08, apparently meaning "no
+    /// game", and it was the only negative in 54,528 events walked.
+    ///
+    /// [`ListEvents::game_id`]: crate::gamma::api::events::ListEvents::game_id
+    #[serde(default, deserialize_with = "negative_as_none")]
+    #[cfg_attr(feature = "specta", specta(type = Option<f64>))]
+    pub game_id: Option<u64>,
+    /// The teams playing, each with its [`ordering`](Team::ordering) (home or
+    /// away). Empty on events that are not a single game.
+    #[serde(default, deserialize_with = "null_as_empty")]
+    pub teams: Vec<Team>,
+    /// The league's row from `GET /sports`, on events that are a game.
+    pub sport: Option<SportMetadata>,
+    /// Free-form provider metadata. Keys seen on 2026-10-08:
+    /// `context_requires_regen`, `opticOddsFixtureId`, `opticOddsGameId`,
+    /// `opticOddsNumericalId`, `league`, `format`, `tournament`,
+    /// `leagueTier`, `pandascoreMatchId`, and cricket's string `gameId`.
+    /// Upstream documents none of them.
+    #[cfg_attr(feature = "specta", specta(type = Option<HashMap<String, String>>))]
+    pub event_metadata: Option<HashMap<String, serde_json::Value>>,
+    /// The protocol the event's markets trade on. Matching is exact, as for
+    /// [`Market::version`].
+    pub version: Option<ProtocolVersion>,
+}
+
+/// Series information within an event
+#[cfg_attr(feature = "specta", derive(specta::Type))]
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct SeriesInfo {
+    pub id: String,
+    pub slug: String,
+    pub title: String,
+    pub ticker: Option<String>,
+    pub series_type: Option<String>,
+    pub recurrence: Option<String>,
+    pub image: Option<String>,
+    pub icon: Option<String>,
+    pub layout: Option<String>,
+    pub active: Option<bool>,
+    pub closed: Option<bool>,
+    pub archived: Option<bool>,
+    pub new: Option<bool>,
+    pub featured: Option<bool>,
+    pub restricted: Option<bool>,
+    pub published_at: Option<String>,
+    pub created_by: Option<String>,
+    pub updated_by: Option<String>,
+    pub created_at: Option<String>,
+    pub updated_at: Option<String>,
+    pub comments_enabled: Option<bool>,
+    pub competitive: Option<String>,
+    #[serde(rename = "volume24hr")]
+    pub volume_24hr: Option<f64>,
+    pub start_date: Option<String>,
+    #[cfg_attr(feature = "specta", specta(type = Option<f64>))]
+    pub comment_count: Option<i64>,
+    pub requires_translation: Option<bool>,
+}
+
+/// Series data (tournament/season grouping)
+#[cfg_attr(feature = "specta", derive(specta::Type))]
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct SeriesData {
+    pub id: String,
+    pub slug: String,
+    pub title: String,
+    pub description: Option<String>,
+    pub image: Option<String>,
+    pub icon: Option<String>,
+    pub active: bool,
+    pub closed: bool,
+    pub archived: bool,
+    #[serde(default)]
+    pub tags: Vec<String>,
+    pub volume: Option<f64>,
+    pub liquidity: Option<f64>,
+    #[serde(default)]
+    pub events: Vec<Event>,
+    pub competitive: Option<String>,
+}
+
+/// Abridged series payload returned from `/series-summary/*`.
+///
+/// Note the mixed casing: `eventDates` / `eventWeeks` are camelCase while
+/// `earliest_open_week` / `earliest_open_date` are snake_case in the upstream
+/// response, so this struct does not use `#[serde(rename_all = "camelCase")]`
+/// and instead spells each field out explicitly.
+#[cfg_attr(feature = "specta", derive(specta::Type))]
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
+pub struct SeriesSummary {
+    pub id: String,
+    pub title: Option<String>,
+    pub slug: Option<String>,
+    #[serde(rename = "eventDates", default)]
+    pub event_dates: Vec<String>,
+    #[cfg_attr(feature = "specta", specta(type = Vec<f64>))]
+    #[serde(rename = "eventWeeks", default)]
+    pub event_weeks: Vec<i64>,
+    #[cfg_attr(feature = "specta", specta(type = Option<f64>))]
+    pub earliest_open_week: Option<i64>,
+    pub earliest_open_date: Option<String>,
+}
+
+/// Profile returned from `/profiles/user_address/{user_address}`.
+///
+/// Modelled against the endpoint's own published JSON Schema —
+/// `https://gamma-api.polymarket.com/schemas/PublicProfile.json`, linked from
+/// the response body's `$schema` key — rather than
+/// `docs/specs/gamma/openapi.yaml`, whose `Profile` schema describes a
+/// different, unrelated object. See `docs/specs/gamma/OBSERVED.md`.
+///
+/// `taker_tier`, `taker_tier_name` and `weighted_volume` are the schema's only
+/// `required` properties, and every capture behind
+/// `tests/fixtures/profile_{full,sparse}.json` carried all three. Every other
+/// field is optional; the server omits `name`, `pseudonym`, `proxy_wallet`,
+/// `profile_image`, `bio` and `created_at` for some subjects.
+#[cfg_attr(feature = "specta", derive(specta::Type))]
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
+#[serde(rename_all = "camelCase")]
+#[non_exhaustive]
+pub struct Profile {
+    pub name: Option<String>,
+    pub pseudonym: Option<String>,
+    pub proxy_wallet: Option<String>,
+    pub profile_image: Option<String>,
+    pub bio: Option<String>,
+    pub created_at: Option<String>,
+    #[cfg_attr(feature = "specta", specta(type = f64))]
+    pub taker_tier: i64,
+    pub taker_tier_name: String,
+    pub weighted_volume: f64,
+}
+
+/// Tag for categorizing markets/events
+#[cfg_attr(feature = "specta", derive(specta::Type))]
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
+#[serde(rename_all = "camelCase")]
+pub struct Tag {
+    pub id: String,
+    pub slug: String,
+    pub label: String,
+    pub force_show: Option<bool>,
+    pub published_at: Option<String>,
+    #[cfg_attr(feature = "specta", specta(type = Option<f64>))]
+    pub created_by: Option<u64>,
+    #[cfg_attr(feature = "specta", specta(type = Option<f64>))]
+    pub updated_by: Option<u64>,
+    pub created_at: Option<String>,
+    pub updated_at: Option<String>,
+    pub force_hide: Option<bool>,
+    pub is_carousel: Option<bool>,
+}
+
+/// A tag-to-tag relationship row returned by the `related-tags` endpoints.
+///
+/// This is *not* a [`Tag`]. `GET /tags/{id}/related-tags` and
+/// `GET /tags/slug/{slug}/related-tags` return the edges of the tag graph —
+/// each row names the two endpoints of the relationship and its ordering rank,
+/// and carries no `slug` or `label`. Resolve [`related_tag_id`](Self::related_tag_id)
+/// against [`Tags::get`](crate::gamma::api::tags::Tags::get) to obtain the tag itself,
+/// or call [`Tags::get_related_detailed`](crate::gamma::api::tags::Tags::get_related_detailed)
+/// (`/related-tags/tags`), which returns [`Tag`] values directly.
+///
+/// Note the wire names are `tagID` / `relatedTagID` — capital `ID`, so they are
+/// not what `rename_all = "camelCase"` would produce and are renamed explicitly.
+///
+/// The three numeric fields are optional because the upstream schema marks them
+/// `nullable`, even though every row observed live carried all three. Serde
+/// fails a whole `Vec<RelatedTag>` on one bad element, so requiring them would
+/// let a single null row cost the caller the entire response.
+#[cfg_attr(feature = "specta", derive(specta::Type))]
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
+pub struct RelatedTag {
+    /// Identifier of the relationship row itself (not of either tag).
+    pub id: String,
+    /// The tag the relationship is declared on — the one named in the request.
+    #[serde(rename = "tagID", default)]
+    #[cfg_attr(feature = "specta", specta(type = Option<f64>))]
+    pub tag_id: Option<u64>,
+    /// The tag being related to. Resolve this to get the actual tag.
+    #[serde(rename = "relatedTagID", default)]
+    #[cfg_attr(feature = "specta", specta(type = Option<f64>))]
+    pub related_tag_id: Option<u64>,
+    /// Ordering rank of this relationship, ascending from 1.
+    #[serde(default)]
+    #[cfg_attr(feature = "specta", specta(type = Option<f64>))]
+    pub rank: Option<i64>,
+}
+
+/// A league's metadata, from `GET /sports` and embedded in a game
+/// [`Event`] as [`Event::sport`].
+#[cfg_attr(feature = "specta", derive(specta::Type))]
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct SportMetadata {
+    #[cfg_attr(feature = "specta", specta(type = f64))]
+    pub id: u64,
+    /// The league's slug, e.g. `nba`. Usually the same string as
+    /// [`Team::league`], but not always: `cs2` games carry `csgo` teams.
+    pub sport: String,
+    /// Display name, e.g. `NBA`.
+    pub name: Option<String>,
+    pub image: Option<String>,
+    pub resolution: Option<String>,
+    /// Which side the league lists first, `home` or `away`; the spellings
+    /// of [`HomeAway`].
+    pub ordering: Option<String>,
+    /// Comma-separated tag ids, shared base tags included.
+    pub tags: Option<String>,
+    /// The league's own tag, as opposed to the shared base tags in
+    /// [`tags`](Self::tags).
+    ///
+    /// Filtering events on it can miss games: 94 of 444 game events sampled
+    /// on 2026-10-08 did not carry their league's tag (all of `col1`, `egy1`,
+    /// `ucl` and `itf`, and some tennis).
+    #[cfg_attr(feature = "specta", specta(type = Option<f64>))]
+    pub primary_tag_id: Option<i64>,
+    pub series: Option<String>,
+    pub created_at: Option<String>,
+}
+
+/// A team or player, from `GET /teams` and embedded in a game [`Event`] as
+/// [`Event::teams`].
+#[cfg_attr(feature = "specta", derive(specta::Type))]
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct Team {
+    #[cfg_attr(feature = "specta", specta(type = f64))]
+    pub id: i64,
+    pub name: Option<String>,
+    pub league: Option<String>,
+    pub record: Option<String>,
+    pub logo: Option<String>,
+    pub abbreviation: Option<String>,
+    pub alias: Option<String>,
+    pub created_at: Option<DateTime<Utc>>,
+    pub updated_at: Option<DateTime<Utc>>,
+    /// `providerId` on the wire. Upstream does not document what it
+    /// identifies.
+    #[cfg_attr(feature = "specta", specta(type = Option<f64>))]
+    pub provider_id: Option<i64>,
+    /// Hex colour, e.g. `#224C8F`.
+    pub color: Option<String>,
+    /// The team's side in the game. Sent only on a team embedded in an
+    /// [`Event`]; `GET /teams` omits it.
+    pub ordering: Option<HomeAway>,
+}
+
+/// What a comment is attached to.
+///
+/// Probed against the live host on 2026-08-19: the server accepts exactly
+/// `Event`, `Series` and `PerpsAsset`, and rejects anything else with
+/// `expected value to be one of "Event, Series, PerpsAsset"`.
+///
+/// The vendored spec disagrees — it lists `market`, which the server rejects,
+/// and omits `PerpsAsset`. See `docs/specs/gamma/OBSERVED.md`.
+///
+/// [`ParentEntityType::Unknown`] absorbs values added upstream after this
+/// release so that one new entity type cannot fail an entire response. It is
+/// never sent as a filter.
+#[cfg_attr(feature = "specta", derive(specta::Type))]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+pub enum ParentEntityType {
+    /// Comments on an event.
+    Event,
+    /// Comments on a series.
+    Series,
+    /// Comments on a perpetual futures asset.
+    PerpsAsset,
+    /// An entity type this client does not recognize (forward-compat).
+    #[serde(other)]
+    Unknown,
+}
+
+impl fmt::Display for ParentEntityType {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match self {
+            Self::Event => write!(f, "Event"),
+            Self::Series => write!(f, "Series"),
+            Self::PerpsAsset => write!(f, "PerpsAsset"),
+            Self::Unknown => write!(f, "Unknown"),
+        }
+    }
+}
+
+/// Comment on an event, series, or perps asset.
+///
+/// Modelled against payloads captured from the live host; see
+/// `tests/fixtures/README.md`. Three keys carry an explicit
+/// `#[serde(rename)]` because the wire capitalises the `ID` suffix and
+/// `rename_all = "camelCase"` would emit `parentEntityId` instead.
+#[cfg_attr(feature = "specta", derive(specta::Type))]
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+#[non_exhaustive]
+pub struct Comment {
+    pub id: String,
+    pub body: Option<String>,
+    pub parent_entity_type: Option<ParentEntityType>,
+    #[serde(rename = "parentEntityID")]
+    #[cfg_attr(feature = "specta", specta(type = Option<f64>))]
+    pub parent_entity_id: Option<i64>,
+    /// Set on replies; absent on thread roots.
+    #[serde(rename = "parentCommentID")]
+    pub parent_comment_id: Option<String>,
+    /// Author's base (EOA) address. This is what `/public-profile?address=`
+    /// wants — not any id field.
+    pub user_address: Option<String>,
+    /// Address being replied to. Set on replies only.
+    pub reply_address: Option<String>,
+    pub created_at: Option<DateTime<Utc>>,
+    pub updated_at: Option<DateTime<Utc>>,
+    pub profile: Option<CommentProfile>,
+    /// Absent from the payload entirely when a comment has no reactions.
+    #[serde(default)]
+    pub reactions: Vec<CommentReaction>,
+    #[cfg_attr(feature = "specta", specta(type = Option<f64>))]
+    pub report_count: Option<i64>,
+    #[cfg_attr(feature = "specta", specta(type = Option<f64>))]
+    pub reaction_count: Option<i64>,
+}
+
+/// Author profile embedded in a comment.
+///
+/// Upstream's schema calls this `CommentProfile`; it is not the same shape as
+/// [`Profile`], which comes from `/profiles/user_address/{address}`.
+#[cfg_attr(feature = "specta", derive(specta::Type))]
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+#[non_exhaustive]
+pub struct CommentProfile {
+    pub name: Option<String>,
+    pub pseudonym: Option<String>,
+    pub display_username_public: Option<bool>,
+    pub bio: Option<String>,
+    pub is_mod: Option<bool>,
+    pub is_creator: Option<bool>,
+    pub proxy_wallet: Option<String>,
+    pub base_address: Option<String>,
+    pub profile_image: Option<String>,
+    /// ImageOptimization payload; kept as raw JSON since the upstream shape
+    /// is not yet modelled in this crate.
+    #[cfg_attr(feature = "specta", specta(skip))]
+    pub profile_image_optimized: Option<serde_json::Value>,
+    /// Populated only when the request sets `get_positions(true)`.
+    #[serde(default)]
+    pub positions: Vec<CommentPosition>,
+}
+
+/// Reaction to a comment.
+#[cfg_attr(feature = "specta", derive(specta::Type))]
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+#[non_exhaustive]
+pub struct CommentReaction {
+    pub id: String,
+    #[serde(rename = "commentID")]
+    #[cfg_attr(feature = "specta", specta(type = Option<f64>))]
+    pub comment_id: Option<i64>,
+    pub reaction_type: Option<String>,
+    pub icon: Option<String>,
+    pub user_address: Option<String>,
+    pub created_at: Option<DateTime<Utc>>,
+    pub profile: Option<CommentProfile>,
+}
+
+/// Position held by a comment author, shown alongside their comment.
+#[cfg_attr(feature = "specta", derive(specta::Type))]
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+#[non_exhaustive]
+pub struct CommentPosition {
+    pub token_id: Option<String>,
+    /// Raw integer string in token base units, e.g. `"290001537"`.
+    pub position_size: Option<String>,
+}
+
+/// Generic count response (used for tweet count, comment count, etc.)
+#[cfg_attr(feature = "specta", derive(specta::Type))]
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct CountResponse {
+    #[cfg_attr(feature = "specta", specta(type = f64))]
+    pub count: u64,
+}
+
+/// Pagination cursor for list operations
+#[cfg_attr(feature = "specta", derive(specta::Type))]
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct Cursor {
+    pub next_cursor: Option<String>,
+}
+
+/// Paginated response wrapper
+#[cfg_attr(feature = "specta", derive(specta::Type))]
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct PaginatedResponse<T> {
+    pub data: Vec<T>,
+    pub next_cursor: Option<String>,
+}
+
+/// Event creator metadata returned from `/events/creators*` endpoints.
+#[cfg_attr(feature = "specta", derive(specta::Type))]
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
+#[serde(rename_all = "camelCase")]
+pub struct EventCreator {
+    pub id: String,
+    pub creator_name: Option<String>,
+    pub creator_handle: Option<String>,
+    pub creator_url: Option<String>,
+    pub creator_image: Option<String>,
+    pub created_at: Option<String>,
+    pub updated_at: Option<String>,
+}
+
+/// Offset-style pagination metadata accompanying `EventsPagination`.
+#[cfg_attr(feature = "specta", derive(specta::Type))]
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
+#[serde(rename_all = "camelCase")]
+pub struct Pagination {
+    pub has_more: Option<bool>,
+    #[cfg_attr(feature = "specta", specta(type = Option<f64>))]
+    pub total_results: Option<i64>,
+}
+
+/// Paginated response from `GET /events/pagination`.
+#[cfg_attr(feature = "specta", derive(specta::Type))]
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct EventsPagination {
+    #[serde(default)]
+    pub data: Vec<Event>,
+    pub pagination: Option<Pagination>,
+}
+
+/// Keyset-paginated events response from `GET /events/keyset`.
+///
+/// `next_cursor` is `None` on the last page. The upstream JSON key is
+/// `next_cursor` (snake_case), not `nextCursor`.
+#[cfg_attr(feature = "specta", derive(specta::Type))]
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct KeysetEventsResponse {
+    #[serde(default)]
+    pub events: Vec<Event>,
+    pub next_cursor: Option<String>,
+}
+
+/// Response body from `GET /markets/{id}/description`.
+///
+/// The endpoint returns `{ "description": "..." }`. The field is modelled as
+/// `Option<String>` so markets without a description still deserialize.
+#[cfg_attr(feature = "specta", derive(specta::Type))]
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
+#[serde(rename_all = "camelCase")]
+pub struct MarketDescription {
+    pub description: Option<String>,
+}
+
+/// JSON request body for `POST /markets/information` and `POST /markets/abridged`.
+///
+/// Fields are all optional; only set the filters you need. `Vec` fields are
+/// omitted from the serialized payload when empty, and `Option` fields when
+/// `None`, so a default-constructed body serializes to `{}`.
+#[cfg_attr(feature = "specta", derive(specta::Type))]
+#[derive(Debug, Clone, Default, Serialize, Deserialize, PartialEq)]
+#[serde(rename_all = "camelCase")]
+pub struct MarketsInformationBody {
+    /// Filter by market numeric IDs.
+    #[cfg_attr(feature = "specta", specta(type = Vec<f64>))]
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub id: Vec<i64>,
+    /// Filter by market slugs.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub slug: Vec<String>,
+    /// When set, restrict to markets with this closed flag.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub closed: Option<bool>,
+    /// Filter by CLOB token IDs.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub clob_token_ids: Vec<String>,
+    /// Filter by condition IDs.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub condition_ids: Vec<String>,
+    /// Filter by market-maker contract addresses.
+    ///
+    /// Undocumented upstream since 2026-09 but still applied by the server
+    /// (verified 2026-09-14) — see `docs/specs/gamma/OBSERVED.md`.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub market_maker_address: Vec<String>,
+    /// Minimum liquidity.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub liquidity_num_min: Option<f64>,
+    /// Maximum liquidity.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub liquidity_num_max: Option<f64>,
+    /// Minimum volume.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub volume_num_min: Option<f64>,
+    /// Maximum volume.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub volume_num_max: Option<f64>,
+    /// Minimum start date (ISO-8601).
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub start_date_min: Option<String>,
+    /// Maximum start date (ISO-8601).
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub start_date_max: Option<String>,
+    /// Minimum end date (ISO-8601).
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub end_date_min: Option<String>,
+    /// Maximum end date (ISO-8601).
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub end_date_max: Option<String>,
+    /// Include related-tag matches when filtering by `tag_id`.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub related_tags: Option<bool>,
+    /// Tag numeric id to filter by.
+    #[cfg_attr(feature = "specta", specta(type = Option<f64>))]
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub tag_id: Option<i64>,
+    /// Filter to "create your own market" markets.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub cyom: Option<bool>,
+    /// UMA resolution status filter.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub uma_resolution_status: Option<String>,
+    /// Game ID filter.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub game_id: Option<String>,
+    /// Restrict to these sports market types.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub sports_market_types: Vec<String>,
+    /// Minimum reward size.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub rewards_min_size: Option<f64>,
+    /// Filter by question IDs.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub question_ids: Vec<String>,
+    /// Include tags in response.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub include_tags: Option<bool>,
+}
+
+/// Keyset-paginated markets response from `GET /markets/keyset`.
+///
+/// `next_cursor` is `None` on the last page. Like `KeysetEventsResponse`, the
+/// upstream JSON key is `next_cursor` (snake_case), not `nextCursor`.
+#[cfg_attr(feature = "specta", derive(specta::Type))]
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct KeysetMarketsResponse {
+    #[serde(default)]
+    pub markets: Vec<Market>,
+    pub next_cursor: Option<String>,
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    // ── MarketToken ─────────────────────────────────────────────
+
+    #[test]
+    fn test_market_token_deserialization() {
+        let json = r#"{
+            "tokenId": "71321045679252212594626385532706912750332728571942532289631379312455583992563",
+            "outcome": "Yes",
+            "price": "0.55",
+            "winner": false
+        }"#;
+        let token: MarketToken = serde_json::from_str(json).unwrap();
+        assert_eq!(token.outcome, "Yes");
+        assert_eq!(token.price.as_deref(), Some("0.55"));
+        assert_eq!(token.winner, Some(false));
+    }
+
+    #[test]
+    fn test_market_token_optional_fields() {
+        let json = r#"{"tokenId": "123", "outcome": "No"}"#;
+        let token: MarketToken = serde_json::from_str(json).unwrap();
+        assert!(token.price.is_none());
+        assert!(token.winner.is_none());
+    }
+
+    // ── Tag ─────────────────────────────────────────────────────
+
+    #[test]
+    fn test_tag_deserialization() {
+        let json = r#"{
+            "id": "42",
+            "slug": "politics",
+            "label": "Politics",
+            "forceShow": true,
+            "publishedAt": "2024-01-01T00:00:00Z",
+            "createdBy": 1,
+            "updatedBy": 2,
+            "createdAt": "2024-01-01T00:00:00Z",
+            "updatedAt": "2024-06-01T00:00:00Z",
+            "forceHide": false,
+            "isCarousel": true
+        }"#;
+        let tag: Tag = serde_json::from_str(json).unwrap();
+        assert_eq!(tag.slug, "politics");
+        assert_eq!(tag.force_show, Some(true));
+        assert_eq!(tag.is_carousel, Some(true));
+    }
+
+    #[test]
+    fn test_tag_minimal() {
+        let json = r#"{"id": "1", "slug": "test", "label": "Test"}"#;
+        let tag: Tag = serde_json::from_str(json).unwrap();
+        assert_eq!(tag.label, "Test");
+        assert!(tag.force_show.is_none());
+        assert!(tag.created_by.is_none());
+    }
+
+    // ── Market ──────────────────────────────────────────────────
+
+    #[test]
+    fn test_market_minimal_deserialization() {
+        let json = r#"{
+            "id": "12345",
+            "conditionId": "0xabc",
+            "description": "Will X happen?",
+            "question": "Will X happen by end of 2025?",
+            "marketMakerAddress": "0x1234567890abcdef"
+        }"#;
+        let market: Market = serde_json::from_str(json).unwrap();
+        assert_eq!(market.id, "12345");
+        assert_eq!(market.condition_id, "0xabc");
+        assert!(market.tokens.is_empty()); // #[serde(default)]
+        assert!(market.tags.is_empty()); // #[serde(default)]
+        assert!(market.slug.is_none());
+        assert!(market.volume_24hr.is_none());
+    }
+
+    #[test]
+    fn test_market_abridged_without_description_deserializes() {
+        // POST /markets/abridged returns a reduced payload that omits
+        // `description`. Regression test for that schema: `description` must be
+        // optional so the abridged market list still deserializes into `Market`.
+        let json = r#"{
+            "id": "12345",
+            "conditionId": "0xabc",
+            "question": "Will X happen by end of 2025?",
+            "marketMakerAddress": "0x1234567890abcdef",
+            "slug": "will-x-happen",
+            "closed": false
+        }"#;
+        let market: Market = serde_json::from_str(json)
+            .expect("abridged market without description should deserialize");
+        assert_eq!(market.id, "12345");
+        assert_eq!(market.question, "Will X happen by end of 2025?");
+        assert!(market.description.is_none());
+    }
+
+    #[test]
+    fn test_market_with_tokens() {
+        let json = r#"{
+            "id": "1",
+            "conditionId": "0xcond",
+            "description": "Test",
+            "question": "Test?",
+            "marketMakerAddress": "0xaddr",
+            "tokens": [
+                {"tokenId": "t1", "outcome": "Yes", "price": "0.7", "winner": true},
+                {"tokenId": "t2", "outcome": "No", "price": "0.3", "winner": false}
+            ]
+        }"#;
+        let market: Market = serde_json::from_str(json).unwrap();
+        assert_eq!(market.tokens.len(), 2);
+        assert_eq!(market.tokens[0].outcome, "Yes");
+        assert_eq!(market.tokens[1].price.as_deref(), Some("0.3"));
+    }
+
+    #[test]
+    fn test_market_volume_fields() {
+        let json = r#"{
+            "id": "1",
+            "conditionId": "0xcond",
+            "description": "Test",
+            "question": "Test?",
+            "marketMakerAddress": "0xaddr",
+            "volume24hr": 1500.5,
+            "volume1wk": 10000.0,
+            "volume1mo": 50000.0,
+            "volume1yr": 200000.0,
+            "volume24hrAmm": 100.0,
+            "volume1wkClob": 9900.0
+        }"#;
+        let market: Market = serde_json::from_str(json).unwrap();
+        assert_eq!(market.volume_24hr, Some(1500.5));
+        assert_eq!(market.volume_1wk, Some(10000.0));
+        assert_eq!(market.volume_24hr_amm, Some(100.0));
+        assert_eq!(market.volume_1wk_clob, Some(9900.0));
+    }
+
+    #[test]
+    fn test_market_denomination_token_rename() {
+        // API field is "denomationToken" (typo in Polymarket API)
+        let json = r#"{
+            "id": "1",
+            "conditionId": "0xcond",
+            "description": "Test",
+            "question": "Test?",
+            "marketMakerAddress": "0xaddr",
+            "denomationToken": "USDC"
+        }"#;
+        let market: Market = serde_json::from_str(json).unwrap();
+        assert_eq!(market.denomination_token.as_deref(), Some("USDC"));
+    }
+
+    #[test]
+    fn test_market_rewards_as_map() {
+        let json = r#"{
+            "id": "1",
+            "conditionId": "0xcond",
+            "description": "Test",
+            "question": "Test?",
+            "marketMakerAddress": "0xaddr",
+            "rewards": {"min_size": "100", "max_spread": "0.05"}
+        }"#;
+        let market: Market = serde_json::from_str(json).unwrap();
+        assert!(market.rewards.is_some());
+        let rewards = market.rewards.unwrap();
+        assert_eq!(rewards["min_size"], "100");
+    }
+
+    #[test]
+    fn test_market_null_rewards() {
+        let json = r#"{
+            "id": "1",
+            "conditionId": "0xcond",
+            "description": "Test",
+            "question": "Test?",
+            "marketMakerAddress": "0xaddr",
+            "rewards": null
+        }"#;
+        let market: Market = serde_json::from_str(json).unwrap();
+        assert!(market.rewards.is_none());
+    }
+
+    // ── Event ───────────────────────────────────────────────────
+
+    #[test]
+    fn test_event_minimal() {
+        let json = r#"{"id": "evt-1"}"#;
+        let event: Event = serde_json::from_str(json).unwrap();
+        assert_eq!(event.id, "evt-1");
+        assert!(event.markets.is_empty()); // #[serde(default)]
+        assert!(event.tags.is_empty());
+        assert!(event.series.is_empty());
+        assert!(event.sub_events.is_empty());
+    }
+
+    #[test]
+    fn test_event_with_nested_markets() {
+        let json = r#"{
+            "id": "evt-1",
+            "title": "2025 Election",
+            "markets": [
+                {
+                    "id": "mkt-1",
+                    "conditionId": "0xabc",
+                    "description": "Who wins?",
+                    "question": "Who wins the election?",
+                    "marketMakerAddress": "0xaddr"
+                }
+            ]
+        }"#;
+        let event: Event = serde_json::from_str(json).unwrap();
+        assert_eq!(event.markets.len(), 1);
+        assert_eq!(event.markets[0].id, "mkt-1");
+    }
+
+    #[test]
+    fn test_event_volume_24h_rename() {
+        let json = r#"{
+            "id": "evt-1",
+            "volume24hr": 5000.0
+        }"#;
+        let event: Event = serde_json::from_str(json).unwrap();
+        assert_eq!(event.volume_24hr, Some(5000.0));
+    }
+
+    #[test]
+    fn test_event_volume_24h_old_key_ignored() {
+        // The old key "volume24h" should NOT deserialize into volume_24hr
+        let json = r#"{
+            "id": "evt-1",
+            "volume24h": 5000.0
+        }"#;
+        let event: Event = serde_json::from_str(json).unwrap();
+        assert_eq!(event.volume_24hr, None);
+    }
+
+    #[test]
+    fn test_event_enable_neg_risk_rename() {
+        let json = r#"{
+            "id": "evt-1",
+            "enableNegRisk": true
+        }"#;
+        let event: Event = serde_json::from_str(json).unwrap();
+        assert_eq!(event.enable_neg_risk, Some(true));
+    }
+
+    #[test]
+    fn test_event_published_at_snake_case() {
+        let json = r#"{
+            "id": "evt-1",
+            "published_at": "2024-01-01T00:00:00Z"
+        }"#;
+        let event: Event = serde_json::from_str(json).unwrap();
+        assert_eq!(event.published_at.as_deref(), Some("2024-01-01T00:00:00Z"));
+    }
+
+    #[test]
+    fn test_market_question_id_capital() {
+        let json = r#"{
+            "id": "1",
+            "conditionId": "0xcond",
+            "description": "Test",
+            "question": "Test?",
+            "marketMakerAddress": "0xaddr",
+            "questionID": "0xabc123"
+        }"#;
+        let market: Market = serde_json::from_str(json).unwrap();
+        assert_eq!(market.question_id.as_deref(), Some("0xabc123"));
+    }
+
+    #[test]
+    fn test_market_has_reviewed_dates() {
+        let json = r#"{
+            "id": "1",
+            "conditionId": "0xcond",
+            "description": "Test",
+            "question": "Test?",
+            "marketMakerAddress": "0xaddr",
+            "hasReviewedDates": true
+        }"#;
+        let market: Market = serde_json::from_str(json).unwrap();
+        assert_eq!(market.has_reviewed_dates, Some(true));
+    }
+
+    #[test]
+    fn test_market_rewards_max_spread_singular() {
+        let json = r#"{
+            "id": "1",
+            "conditionId": "0xcond",
+            "description": "Test",
+            "question": "Test?",
+            "marketMakerAddress": "0xaddr",
+            "rewardsMaxSpread": 0.05
+        }"#;
+        let market: Market = serde_json::from_str(json).unwrap();
+        assert_eq!(market.rewards_max_spread, Some(0.05));
+    }
+
+    #[test]
+    fn test_market_submitted_by_snake_case() {
+        let json = r#"{
+            "id": "1",
+            "conditionId": "0xcond",
+            "description": "Test",
+            "question": "Test?",
+            "marketMakerAddress": "0xaddr",
+            "submitted_by": "0xdeadbeef"
+        }"#;
+        let market: Market = serde_json::from_str(json).unwrap();
+        assert_eq!(market.submitted_by.as_deref(), Some("0xdeadbeef"));
+    }
+
+    // ── Protocol V2 fields ──────────────────────────────────────
+
+    /// Market 5395209 as served on 2026-10-07: a `v1` market that also
+    /// carries `positionIds`. The `version` and both id fields are verbatim;
+    /// the rest are placeholders. Upstream's migration guide says to choose
+    /// the trading id by `version` "even when both fields are present", so
+    /// this is the shape a caller must not misread.
+    const V1_MARKET_WITH_POSITION_IDS: &str = r#"{
+        "id": "5395209",
+        "conditionId": "0xcond",
+        "question": "Test?",
+        "marketMakerAddress": "",
+        "version": "v1",
+        "clobTokenIds": "[\"112925816673745545179613936565005661033628405733343475050160157543472056345245\", \"2770004481423765289749508640972127321682185045612542406085122731663919882192\"]",
+        "positionIds": [
+            "494655540530335556258342732391076141689377678617461664777021297651588530176",
+            "494655540530335556258342732391076141689377678617461664777021297651588530177"
+        ],
+        "umaResolutionStatus": "resolved"
+    }"#;
+
+    #[test]
+    fn market_version_and_position_ids_deserialize() {
+        let market: Market = serde_json::from_str(V1_MARKET_WITH_POSITION_IDS).unwrap();
+        assert_eq!(market.version, Some(ProtocolVersion::V1));
+        assert_eq!(
+            market.position_ids.as_deref(),
+            Some(
+                &[
+                    "494655540530335556258342732391076141689377678617461664777021297651588530176"
+                        .to_string(),
+                    "494655540530335556258342732391076141689377678617461664777021297651588530177"
+                        .to_string(),
+                ][..]
+            )
+        );
+        // A v1 market's trading ids are still the clob token ids.
+        assert!(market.clob_token_ids.is_some());
+        assert!(market.resolution_status.is_none());
+    }
+
+    #[test]
+    fn v2_fields_serialize_under_their_wire_names() {
+        let market: Market = serde_json::from_str(V1_MARKET_WITH_POSITION_IDS).unwrap();
+        let value = serde_json::to_value(&market).unwrap();
+        assert_eq!(value["version"], "v1");
+        assert_eq!(value["positionIds"].as_array().map(Vec::len), Some(2));
+    }
+
+    #[test]
+    fn market_without_v2_fields_deserializes() {
+        let json = r#"{
+            "id": "1",
+            "conditionId": "0xcond",
+            "question": "Test?",
+            "marketMakerAddress": ""
+        }"#;
+        let market: Market = serde_json::from_str(json).unwrap();
+        assert!(market.version.is_none());
+        assert!(market.position_ids.is_none());
+        assert!(market.resolution_status.is_none());
+    }
+
+    #[test]
+    fn null_position_ids_is_none() {
+        let json = r#"{
+            "id": "1",
+            "conditionId": "0xcond",
+            "question": "Test?",
+            "marketMakerAddress": "",
+            "positionIds": null
+        }"#;
+        let market: Market = serde_json::from_str(json).unwrap();
+        assert!(market.position_ids.is_none());
+    }
+
+    #[test]
+    fn v2_market_resolution_status_deserializes() {
+        let json = r#"{
+            "id": "1",
+            "conditionId": "0xcond",
+            "question": "Test?",
+            "marketMakerAddress": "",
+            "version": "v2",
+            "resolutionStatus": "resolved"
+        }"#;
+        let market: Market = serde_json::from_str(json).unwrap();
+        assert_eq!(market.version, Some(ProtocolVersion::V2));
+        assert_eq!(market.resolution_status, Some(ResolutionStatus::Resolved));
+    }
+
+    #[test]
+    fn protocol_version_round_trips_every_wire_spelling() {
+        for (version, wire) in [(ProtocolVersion::V1, "v1"), (ProtocolVersion::V2, "v2")] {
+            assert_eq!(serde_json::to_value(&version).unwrap(), wire);
+            assert_eq!(
+                serde_json::from_value::<ProtocolVersion>(wire.into()).unwrap(),
+                version
+            );
+            assert_eq!(version.to_string(), wire);
+        }
+        assert_eq!(
+            ProtocolVersion::ALL,
+            &[ProtocolVersion::V1, ProtocolVersion::V2]
+        );
+    }
+
+    #[test]
+    fn resolution_status_round_trips_every_wire_spelling() {
+        for (status, wire) in [
+            (ResolutionStatus::Inactive, "inactive"),
+            (ResolutionStatus::Active, "active"),
+            (ResolutionStatus::Resolved, "resolved"),
+        ] {
+            assert_eq!(serde_json::to_value(&status).unwrap(), wire);
+            assert_eq!(
+                serde_json::from_value::<ResolutionStatus>(wire.into()).unwrap(),
+                status
+            );
+        }
+        assert_eq!(ResolutionStatus::ALL.len(), 3);
+    }
+
+    /// The served schema tells clients to "treat unknown values as
+    /// unsupported". That is the caller's decision to make, so an unknown
+    /// version must reach them intact rather than fail the whole page.
+    #[test]
+    fn unrecognised_protocol_version_is_kept_verbatim() {
+        let json = r#"{
+            "id": "1",
+            "conditionId": "0xcond",
+            "question": "Test?",
+            "marketMakerAddress": "",
+            "version": "v3",
+            "resolutionStatus": "disputed"
+        }"#;
+        let market: Market = serde_json::from_str(json).unwrap();
+        assert_eq!(market.version, Some(ProtocolVersion::Other("v3".into())));
+        assert_eq!(
+            market.resolution_status,
+            Some(ResolutionStatus::Other("disputed".into()))
+        );
+        let value = serde_json::to_value(&market).unwrap();
+        assert_eq!(value["version"], "v3");
+        assert_eq!(value["resolutionStatus"], "disputed");
+    }
+
+    /// Exact matching, as the served schema requires: a near miss is not a
+    /// known version.
+    #[test]
+    fn protocol_version_matches_exactly() {
+        for near_miss in ["V1", " v1", "v1 ", "1"] {
+            assert_eq!(
+                near_miss.parse::<ProtocolVersion>().unwrap(),
+                ProtocolVersion::Other(near_miss.into()),
+                "{near_miss:?} must not parse as a known version"
+            );
+        }
+    }
+
+    // ── Teams ───────────────────────────────────────────────────
+
+    #[test]
+    fn home_away_round_trips_every_wire_spelling() {
+        for (side, wire) in [(HomeAway::Home, "home"), (HomeAway::Away, "away")] {
+            assert_eq!(serde_json::to_value(&side).unwrap(), wire);
+            assert_eq!(
+                serde_json::from_value::<HomeAway>(wire.into()).unwrap(),
+                side
+            );
+        }
+        assert_eq!(HomeAway::ALL, &[HomeAway::Home, HomeAway::Away]);
+    }
+
+    /// A side this SDK does not know (a neutral venue, say) must reach the
+    /// caller rather than fail the whole event list.
+    #[test]
+    fn unrecognised_team_ordering_is_kept_verbatim() {
+        let team: Team = serde_json::from_str(r#"{"id": 1, "ordering": "neutral"}"#).unwrap();
+        assert_eq!(team.ordering, Some(HomeAway::Other("neutral".into())));
+        assert_eq!(serde_json::to_value(&team).unwrap()["ordering"], "neutral");
+    }
+
+    /// `teams` is typed `["array","null"]` by the served `Event.json`.
+    #[test]
+    fn event_tolerates_null_teams() {
+        let event: Event = serde_json::from_str(r#"{"id": "1", "teams": null}"#).unwrap();
+        assert!(event.teams.is_empty());
+    }
+
+    /// The captured `-1` is pinned in `tests/wire_agreement.rs`; these are
+    /// the shapes no capture shows.
+    #[test]
+    fn event_game_id_reads_negatives_as_none_and_keeps_the_full_u64_range() {
+        let game_id = |json: &str| serde_json::from_str::<Event>(json).unwrap().game_id;
+        assert_eq!(game_id(r#"{"id": "1"}"#), None);
+        assert_eq!(game_id(r#"{"id": "1", "gameId": null}"#), None);
+        assert_eq!(game_id(r#"{"id": "1", "gameId": -2}"#), None);
+        assert_eq!(game_id(r#"{"id": "1", "gameId": 0}"#), Some(0));
+        assert_eq!(
+            game_id(r#"{"id": "1", "gameId": 10079774}"#),
+            Some(10079774)
+        );
+        assert_eq!(
+            game_id(r#"{"id": "1", "gameId": 18446744073709551615}"#),
+            Some(u64::MAX)
+        );
+        assert!(serde_json::from_str::<Event>(r#"{"id": "1", "gameId": "7"}"#).is_err());
+    }
+
+    // ── SeriesInfo ──────────────────────────────────────────────
+
+    #[test]
+    fn test_series_info_minimal() {
+        let json = r#"{"id": "s1", "slug": "nfl-2025", "title": "NFL 2025"}"#;
+        let si: SeriesInfo = serde_json::from_str(json).unwrap();
+        assert_eq!(si.slug, "nfl-2025");
+        assert_eq!(si.title, "NFL 2025");
+        assert!(si.ticker.is_none());
+        assert!(si.active.is_none());
+    }
+
+    #[test]
+    fn test_series_info_full() {
+        let json = r#"{
+            "id": "2",
+            "ticker": "nba",
+            "slug": "nba",
+            "title": "NBA",
+            "seriesType": "single",
+            "recurrence": "daily",
+            "image": "https://example.com/nba.png",
+            "icon": "https://example.com/nba-icon.png",
+            "layout": "default",
+            "active": true,
+            "closed": false,
+            "archived": false,
+            "new": false,
+            "featured": false,
+            "restricted": true,
+            "publishedAt": "2023-01-30T17:13:39Z",
+            "createdBy": "15",
+            "updatedBy": "15",
+            "createdAt": "2022-10-13T00:36:01Z",
+            "updatedAt": "2026-03-04T12:03:42Z",
+            "commentsEnabled": false,
+            "competitive": "0",
+            "volume24hr": 11.07,
+            "startDate": "2021-01-01T17:00:00Z",
+            "commentCount": 6274,
+            "requiresTranslation": false
+        }"#;
+        let si: SeriesInfo = serde_json::from_str(json).unwrap();
+        assert_eq!(si.ticker.as_deref(), Some("nba"));
+        assert_eq!(si.series_type.as_deref(), Some("single"));
+        assert_eq!(si.active, Some(true));
+        assert_eq!(si.closed, Some(false));
+        assert_eq!(si.volume_24hr, Some(11.07));
+        assert_eq!(si.comment_count, Some(6274));
+        assert_eq!(si.requires_translation, Some(false));
+    }
+
+    // ── Negative tests: old/wrong field names are rejected ─────
+
+    #[test]
+    fn test_market_old_question_id_ignored() {
+        // camelCase "questionId" should NOT match — API uses "questionID"
+        let json = r#"{
+            "id": "1",
+            "conditionId": "0xcond",
+            "description": "Test",
+            "question": "Test?",
+            "marketMakerAddress": "0xaddr",
+            "questionId": "0xwrong"
+        }"#;
+        let market: Market = serde_json::from_str(json).unwrap();
+        assert!(market.question_id.is_none());
+    }
+
+    #[test]
+    fn test_market_old_has_review_dates_ignored() {
+        // "hasReviewDates" should NOT match — API uses "hasReviewedDates"
+        let json = r#"{
+            "id": "1",
+            "conditionId": "0xcond",
+            "description": "Test",
+            "question": "Test?",
+            "marketMakerAddress": "0xaddr",
+            "hasReviewDates": true
+        }"#;
+        let market: Market = serde_json::from_str(json).unwrap();
+        assert!(market.has_reviewed_dates.is_none());
+    }
+
+    #[test]
+    fn test_market_old_rewards_max_spreads_ignored() {
+        // "rewardsMaxSpreads" (plural) should NOT match — API uses "rewardsMaxSpread"
+        let json = r#"{
+            "id": "1",
+            "conditionId": "0xcond",
+            "description": "Test",
+            "question": "Test?",
+            "marketMakerAddress": "0xaddr",
+            "rewardsMaxSpreads": 0.05
+        }"#;
+        let market: Market = serde_json::from_str(json).unwrap();
+        assert!(market.rewards_max_spread.is_none());
+    }
+
+    #[test]
+    fn test_event_old_enalbe_neg_risk_ignored() {
+        // Old typo "enalbeNegRisk" should NOT match after fix
+        let json = r#"{
+            "id": "evt-1",
+            "enalbeNegRisk": true
+        }"#;
+        let event: Event = serde_json::from_str(json).unwrap();
+        assert!(event.enable_neg_risk.is_none());
+    }
+
+    #[test]
+    fn test_event_camel_published_at_ignored() {
+        // camelCase "publishedAt" should NOT match — Event API uses "published_at"
+        let json = r#"{
+            "id": "evt-1",
+            "publishedAt": "2024-01-01T00:00:00Z"
+        }"#;
+        let event: Event = serde_json::from_str(json).unwrap();
+        assert!(event.published_at.is_none());
+    }
+
+    #[test]
+    fn test_market_camel_submitted_by_ignored() {
+        // camelCase "submittedBy" should NOT match — API uses "submitted_by"
+        let json = r#"{
+            "id": "1",
+            "conditionId": "0xcond",
+            "description": "Test",
+            "question": "Test?",
+            "marketMakerAddress": "0xaddr",
+            "submittedBy": "0xwrong"
+        }"#;
+        let market: Market = serde_json::from_str(json).unwrap();
+        assert!(market.submitted_by.is_none());
+    }
+
+    // ── SeriesData ──────────────────────────────────────────────
+
+    #[test]
+    fn test_series_data_minimal() {
+        let json = r#"{
+            "id": "s1",
+            "slug": "nfl",
+            "title": "NFL",
+            "active": true,
+            "closed": false,
+            "archived": false
+        }"#;
+        let sd: SeriesData = serde_json::from_str(json).unwrap();
+        assert!(sd.active);
+        assert!(!sd.closed);
+        assert!(sd.events.is_empty()); // #[serde(default)]
+        assert!(sd.tags.is_empty());
+    }
+
+    // ── SportMetadata ───────────────────────────────────────────
+
+    #[test]
+    fn test_sport_metadata() {
+        let json = r#"{
+            "id": 1,
+            "sport": "Basketball",
+            "image": "https://example.com/nba.png",
+            "createdAt": "2024-01-01T00:00:00Z"
+        }"#;
+        let sm: SportMetadata = serde_json::from_str(json).unwrap();
+        assert_eq!(sm.id, 1);
+        assert_eq!(sm.sport, "Basketball");
+    }
+
+    // ── Team ────────────────────────────────────────────────────
+
+    #[test]
+    fn test_team() {
+        let json = r#"{
+            "id": 42,
+            "name": "Lakers",
+            "league": "NBA",
+            "abbreviation": "LAL",
+            "createdAt": "2024-01-01T00:00:00Z",
+            "updatedAt": "2024-06-15T12:00:00Z"
+        }"#;
+        let team: Team = serde_json::from_str(json).unwrap();
+        assert_eq!(team.id, 42);
+        assert_eq!(team.name.as_deref(), Some("Lakers"));
+        assert!(team.created_at.is_some());
+    }
+
+    // ── ParentEntityType ────────────────────────────────────────
+
+    #[test]
+    fn parent_entity_type_matches_server_accepted_values() {
+        // Probed live 2026-08-19: the server rejects anything else with
+        // `expected value to be one of "Event, Series, PerpsAsset"`.
+        assert_eq!(ParentEntityType::Event.to_string(), "Event");
+        assert_eq!(ParentEntityType::Series.to_string(), "Series");
+        assert_eq!(ParentEntityType::PerpsAsset.to_string(), "PerpsAsset");
+    }
+
+    #[test]
+    fn parent_entity_type_deserializes_known_values() {
+        let v: ParentEntityType = serde_json::from_str("\"PerpsAsset\"").unwrap();
+        assert_eq!(v, ParentEntityType::PerpsAsset);
+    }
+
+    #[test]
+    fn parent_entity_type_tolerates_unknown_values() {
+        // Upstream added PerpsAsset without warning; assume it will add more.
+        let v: ParentEntityType = serde_json::from_str("\"SomethingNew\"").unwrap();
+        assert_eq!(v, ParentEntityType::Unknown);
+    }
+
+    // ── UserResponse ────────────────────────────────────────────
+    //
+    // `address` and `id` are not tested here because they do not exist: the
+    // wire never sends either — see `UserResponse`'s doc comment and
+    // `docs/plans/2026-08-19-gamma-type-parity-worklist.md` finding #10.
+    // `tests/wire_agreement.rs` is the guard against them (or anything else
+    // invented) reappearing.
+
+    #[test]
+    fn test_user_response() {
+        let json = r#"{
+            "proxyWallet": "0xproxy",
+            "name": "polytrader",
+            "takerTier": 0,
+            "takerTierName": "Tier 0",
+            "weightedVolume": 0.0
+        }"#;
+        let user: crate::gamma::api::user::UserResponse = serde_json::from_str(json).unwrap();
+        assert_eq!(user.proxy.as_deref(), Some("0xproxy"));
+        assert_eq!(user.name.as_deref(), Some("polytrader"));
+        assert_eq!(user.taker_tier, 0);
+        assert_eq!(user.taker_tier_name, "Tier 0");
+        assert_eq!(user.weighted_volume, 0.0);
+    }
+
+    #[test]
+    fn test_user_response_only_required_fields() {
+        // taker_tier, taker_tier_name and weighted_volume are the schema's
+        // only required properties; everything else may be absent.
+        let json = r#"{
+            "takerTier": 0,
+            "takerTierName": "Tier 0",
+            "weightedVolume": 0.0
+        }"#;
+        let user: crate::gamma::api::user::UserResponse = serde_json::from_str(json).unwrap();
+        assert!(user.proxy.is_none());
+        assert!(user.name.is_none());
+        assert!(user.created_at.is_none());
+        assert!(user.profile_image.is_none());
+        assert!(user.display_username_public.is_none());
+        assert!(user.bio.is_none());
+        assert!(user.pseudonym.is_none());
+        assert!(user.x_username.is_none());
+        assert!(user.discord_username.is_none());
+        assert!(user.verified_badge.is_none());
+        assert!(user.users.is_empty());
+    }
+
+    #[test]
+    fn test_user_response_full_profile() {
+        let json = r#"{
+            "proxyWallet": "0xproxy",
+            "name": "polytrader",
+            "createdAt": "2024-01-15T10:00:00Z",
+            "profileImage": "https://example.com/avatar.png",
+            "displayUsernamePublic": true,
+            "bio": "DeFi enthusiast",
+            "pseudonym": "poly_anon",
+            "xUsername": "polytrader_x",
+            "discordUsername": "polytrader#0001",
+            "verifiedBadge": true,
+            "takerTier": 2,
+            "takerTierName": "Silver",
+            "weightedVolume": 89074.462449,
+            "users": [
+                {"id": "uid-1", "creator": true, "mod": false, "communityMod": false},
+                {"id": "uid-2", "creator": false, "mod": true, "communityMod": true}
+            ]
+        }"#;
+        let user: crate::gamma::api::user::UserResponse = serde_json::from_str(json).unwrap();
+        assert_eq!(user.proxy.as_deref(), Some("0xproxy"));
+        assert_eq!(user.name.as_deref(), Some("polytrader"));
+        assert_eq!(user.created_at.as_deref(), Some("2024-01-15T10:00:00Z"));
+        assert_eq!(
+            user.profile_image.as_deref(),
+            Some("https://example.com/avatar.png")
+        );
+        assert_eq!(user.display_username_public, Some(true));
+        assert_eq!(user.bio.as_deref(), Some("DeFi enthusiast"));
+        assert_eq!(user.pseudonym.as_deref(), Some("poly_anon"));
+        assert_eq!(user.x_username.as_deref(), Some("polytrader_x"));
+        assert_eq!(user.discord_username.as_deref(), Some("polytrader#0001"));
+        assert_eq!(user.verified_badge, Some(true));
+        assert_eq!(user.taker_tier, 2);
+        assert_eq!(user.taker_tier_name, "Silver");
+        assert_eq!(user.weighted_volume, 89074.462449);
+        assert_eq!(user.users.len(), 2);
+        assert_eq!(user.users[0].id, "uid-1");
+        assert!(user.users[0].creator);
+        assert!(!user.users[0].moderator);
+        assert!(!user.users[0].community_mod);
+        assert_eq!(user.users[1].id, "uid-2");
+        assert!(!user.users[1].creator);
+        assert!(user.users[1].moderator);
+        assert!(user.users[1].community_mod);
+    }
+
+    #[test]
+    fn test_user_info_deserialization() {
+        let json = r#"{"id": "uid-1", "creator": true, "mod": false, "communityMod": true}"#;
+        let info: crate::gamma::api::user::UserInfo = serde_json::from_str(json).unwrap();
+        assert_eq!(info.id, "uid-1");
+        assert!(info.creator);
+        assert!(!info.moderator);
+        assert!(info.community_mod);
+    }
+
+    #[test]
+    fn test_user_info_defaults() {
+        // `id` is the schema's only required property on this object;
+        // `creator`, `mod` and `communityMod` may all be absent — observed
+        // live for `communityMod` (1 of 39 sampled nested `users[]` entries).
+        let json = r#"{"id": "uid-1"}"#;
+        let info: crate::gamma::api::user::UserInfo = serde_json::from_str(json).unwrap();
+        assert_eq!(info.id, "uid-1");
+        assert!(!info.creator);
+        assert!(!info.moderator);
+        assert!(!info.community_mod);
+    }
+
+    // ── CountResponse ────────────────────────────────────────────
+
+    #[test]
+    fn test_count_response() {
+        let json = r#"{"count": 42}"#;
+        let resp: CountResponse = serde_json::from_str(json).unwrap();
+        assert_eq!(resp.count, 42);
+    }
+
+    // ── Cursor / PaginatedResponse ──────────────────────────────
+
+    #[test]
+    fn test_cursor_with_next() {
+        let json = r#"{"nextCursor": "abc123"}"#;
+        let cursor: Cursor = serde_json::from_str(json).unwrap();
+        assert_eq!(cursor.next_cursor.as_deref(), Some("abc123"));
+    }
+
+    #[test]
+    fn test_cursor_without_next() {
+        let json = r#"{"nextCursor": null}"#;
+        let cursor: Cursor = serde_json::from_str(json).unwrap();
+        assert!(cursor.next_cursor.is_none());
+    }
+
+    #[test]
+    fn test_paginated_response() {
+        let json = r#"{
+            "data": [{"tokenId": "t1", "outcome": "Yes"}],
+            "nextCursor": "page2"
+        }"#;
+        let resp: PaginatedResponse<MarketToken> = serde_json::from_str(json).unwrap();
+        assert_eq!(resp.data.len(), 1);
+        assert_eq!(resp.next_cursor.as_deref(), Some("page2"));
+    }
+
+    #[test]
+    fn test_paginated_response_empty() {
+        let json = r#"{"data": [], "nextCursor": null}"#;
+        let resp: PaginatedResponse<MarketToken> = serde_json::from_str(json).unwrap();
+        assert!(resp.data.is_empty());
+        assert!(resp.next_cursor.is_none());
+    }
+
+    // ── Serialization round-trip ────────────────────────────────
+
+    #[test]
+    fn test_market_token_roundtrip() {
+        let token = MarketToken {
+            token_id: "123".into(),
+            outcome: "Yes".into(),
+            price: Some("0.75".into()),
+            winner: Some(true),
+        };
+        let json = serde_json::to_string(&token).unwrap();
+        let back: MarketToken = serde_json::from_str(&json).unwrap();
+        assert_eq!(token, back);
+    }
+
+    // ── EventCreator ────────────────────────────────────────────
+
+    #[test]
+    fn test_event_creator_full() {
+        let json = r#"{
+            "id": "7",
+            "creatorName": "Polymarket Sports",
+            "creatorHandle": "poly_sports",
+            "creatorUrl": "https://example.com",
+            "creatorImage": "https://example.com/a.png",
+            "createdAt": "2024-01-01T00:00:00Z",
+            "updatedAt": "2024-06-01T00:00:00Z"
+        }"#;
+        let c: EventCreator = serde_json::from_str(json).unwrap();
+        assert_eq!(c.id, "7");
+        assert_eq!(c.creator_name.as_deref(), Some("Polymarket Sports"));
+        assert_eq!(c.creator_handle.as_deref(), Some("poly_sports"));
+        assert_eq!(c.creator_url.as_deref(), Some("https://example.com"));
+    }
+
+    #[test]
+    fn test_event_creator_minimal() {
+        let json = r#"{"id": "1"}"#;
+        let c: EventCreator = serde_json::from_str(json).unwrap();
+        assert_eq!(c.id, "1");
+        assert!(c.creator_name.is_none());
+        assert!(c.creator_handle.is_none());
+        assert!(c.created_at.is_none());
+    }
+
+    #[test]
+    fn test_event_creator_roundtrip() {
+        let c = EventCreator {
+            id: "9".into(),
+            creator_name: Some("Poly".into()),
+            creator_handle: Some("poly".into()),
+            creator_url: None,
+            creator_image: None,
+            created_at: None,
+            updated_at: None,
+        };
+        let json = serde_json::to_string(&c).unwrap();
+        let back: EventCreator = serde_json::from_str(&json).unwrap();
+        assert_eq!(c, back);
+    }
+
+    // ── Pagination / EventsPagination ───────────────────────────
+
+    #[test]
+    fn test_pagination_deserialization() {
+        let json = r#"{"hasMore": true, "totalResults": 124}"#;
+        let p: Pagination = serde_json::from_str(json).unwrap();
+        assert_eq!(p.has_more, Some(true));
+        assert_eq!(p.total_results, Some(124));
+    }
+
+    #[test]
+    fn test_events_pagination_deserialization() {
+        let json = r#"{
+            "data": [{"id": "e1"}, {"id": "e2"}],
+            "pagination": {"hasMore": false, "totalResults": 2}
+        }"#;
+        let ep: EventsPagination = serde_json::from_str(json).unwrap();
+        assert_eq!(ep.data.len(), 2);
+        assert_eq!(ep.data[0].id, "e1");
+        let p = ep.pagination.unwrap();
+        assert_eq!(p.has_more, Some(false));
+        assert_eq!(p.total_results, Some(2));
+    }
+
+    #[test]
+    fn test_events_pagination_empty_data() {
+        let json = r#"{"pagination": {"hasMore": false, "totalResults": 0}}"#;
+        let ep: EventsPagination = serde_json::from_str(json).unwrap();
+        assert!(ep.data.is_empty());
+    }
+
+    // ── KeysetEventsResponse ────────────────────────────────────
+
+    #[test]
+    fn test_keyset_events_response_with_cursor() {
+        // Upstream uses snake_case next_cursor (not nextCursor).
+        let json = r#"{
+            "events": [{"id": "e1", "title": "Test"}],
+            "next_cursor": "cursor-123"
+        }"#;
+        let resp: KeysetEventsResponse = serde_json::from_str(json).unwrap();
+        assert_eq!(resp.events.len(), 1);
+        assert_eq!(resp.next_cursor.as_deref(), Some("cursor-123"));
+    }
+
+    #[test]
+    fn test_keyset_events_response_last_page() {
+        let json = r#"{"events": []}"#;
+        let resp: KeysetEventsResponse = serde_json::from_str(json).unwrap();
+        assert!(resp.events.is_empty());
+        assert!(resp.next_cursor.is_none());
+    }
+
+    #[test]
+    fn test_tag_roundtrip() {
+        let tag = Tag {
+            id: "1".into(),
+            slug: "test".into(),
+            label: "Test".into(),
+            force_show: None,
+            published_at: None,
+            created_by: None,
+            updated_by: None,
+            created_at: None,
+            updated_at: None,
+            force_hide: None,
+            is_carousel: None,
+        };
+        let json = serde_json::to_string(&tag).unwrap();
+        let back: Tag = serde_json::from_str(&json).unwrap();
+        assert_eq!(tag, back);
+    }
+
+    // ── MarketDescription ───────────────────────────────────────
+
+    #[test]
+    fn test_market_description_deserialization() {
+        let json = r#"{"description": "Will X happen?"}"#;
+        let md: MarketDescription = serde_json::from_str(json).unwrap();
+        assert_eq!(md.description.as_deref(), Some("Will X happen?"));
+    }
+
+    #[test]
+    fn test_market_description_null() {
+        let json = r#"{"description": null}"#;
+        let md: MarketDescription = serde_json::from_str(json).unwrap();
+        assert!(md.description.is_none());
+    }
+
+    // ── MarketsInformationBody ──────────────────────────────────
+
+    #[test]
+    fn test_markets_information_body_default_serializes_empty() {
+        let body = MarketsInformationBody::default();
+        let json = serde_json::to_string(&body).unwrap();
+        assert_eq!(json, "{}");
+    }
+
+    #[test]
+    fn test_markets_information_body_populated_roundtrip() {
+        let body = MarketsInformationBody {
+            id: vec![1, 2, 3],
+            slug: vec!["will-x".into(), "will-y".into()],
+            closed: Some(true),
+            clob_token_ids: vec!["tok-a".into()],
+            condition_ids: vec!["0xcond".into()],
+            market_maker_address: vec!["0xmm".into()],
+            liquidity_num_min: Some(100.0),
+            liquidity_num_max: Some(10_000.0),
+            volume_num_min: Some(50.0),
+            volume_num_max: None,
+            start_date_min: Some("2025-01-01T00:00:00Z".into()),
+            start_date_max: None,
+            end_date_min: None,
+            end_date_max: Some("2026-01-01T00:00:00Z".into()),
+            related_tags: Some(true),
+            tag_id: Some(42),
+            cyom: Some(false),
+            uma_resolution_status: Some("resolved".into()),
+            game_id: Some("game-7".into()),
+            sports_market_types: vec!["moneyline".into(), "spread".into()],
+            rewards_min_size: Some(10.0),
+            question_ids: vec!["q1".into()],
+            include_tags: Some(true),
+        };
+        let json = serde_json::to_string(&body).unwrap();
+        // Field names are camelCase (from openapi)
+        assert!(json.contains("\"clobTokenIds\""));
+        assert!(json.contains("\"marketMakerAddress\""));
+        assert!(json.contains("\"rewardsMinSize\""));
+        let back: MarketsInformationBody = serde_json::from_str(&json).unwrap();
+        assert_eq!(body, back);
+    }
+
+    #[test]
+    fn test_markets_information_body_partial_omits_empty() {
+        let body = MarketsInformationBody {
+            closed: Some(true),
+            ..Default::default()
+        };
+        let json = serde_json::to_string(&body).unwrap();
+        assert_eq!(json, r#"{"closed":true}"#);
+    }
+
+    // ── KeysetMarketsResponse ───────────────────────────────────
+
+    #[test]
+    fn test_keyset_markets_response_full() {
+        let json = r#"{
+            "markets": [{
+                "id": "1",
+                "conditionId": "0xcond",
+                "description": "desc",
+                "question": "q?",
+                "marketMakerAddress": "0xmm"
+            }],
+            "next_cursor": "abc"
+        }"#;
+        let resp: KeysetMarketsResponse = serde_json::from_str(json).unwrap();
+        assert_eq!(resp.markets.len(), 1);
+        assert_eq!(resp.markets[0].id, "1");
+        assert_eq!(resp.next_cursor.as_deref(), Some("abc"));
+    }
+
+    #[test]
+    fn test_keyset_markets_response_last_page() {
+        let json = r#"{"markets": []}"#;
+        let resp: KeysetMarketsResponse = serde_json::from_str(json).unwrap();
+        assert!(resp.markets.is_empty());
+        assert!(resp.next_cursor.is_none());
+    }
+
+    // ── SeriesSummary ───────────────────────────────────────────
+
+    #[test]
+    fn test_series_summary_full() {
+        let json = r#"{
+            "id": "s-1",
+            "title": "NFL 2025",
+            "slug": "nfl-2025",
+            "eventDates": ["2025-09-01", "2025-09-08"],
+            "eventWeeks": [1, 2],
+            "earliest_open_week": 1,
+            "earliest_open_date": "2025-09-01"
+        }"#;
+        let s: SeriesSummary = serde_json::from_str(json).unwrap();
+        assert_eq!(s.id, "s-1");
+        assert_eq!(s.title.as_deref(), Some("NFL 2025"));
+        assert_eq!(s.event_dates.len(), 2);
+        assert_eq!(s.event_weeks, vec![1, 2]);
+        assert_eq!(s.earliest_open_week, Some(1));
+    }
+
+    #[test]
+    fn test_series_summary_minimal() {
+        let json = r#"{"id": "s-1"}"#;
+        let s: SeriesSummary = serde_json::from_str(json).unwrap();
+        assert_eq!(s.id, "s-1");
+        assert!(s.title.is_none());
+        assert!(s.event_dates.is_empty());
+        assert!(s.event_weeks.is_empty());
+    }
+
+    #[test]
+    fn test_series_summary_roundtrip_preserves_mixed_casing() {
+        let s = SeriesSummary {
+            id: "s-1".into(),
+            title: Some("T".into()),
+            slug: Some("slug".into()),
+            event_dates: vec!["2025-09-01".into()],
+            event_weeks: vec![1],
+            earliest_open_week: Some(1),
+            earliest_open_date: Some("2025-09-01".into()),
+        };
+        let json = serde_json::to_string(&s).unwrap();
+        // eventDates camelCase, earliest_open_* snake_case
+        assert!(json.contains("\"eventDates\""));
+        assert!(json.contains("\"eventWeeks\""));
+        assert!(json.contains("\"earliest_open_week\""));
+        assert!(json.contains("\"earliest_open_date\""));
+        let back: SeriesSummary = serde_json::from_str(&json).unwrap();
+        assert_eq!(s, back);
+    }
+
+    // ── Profile ─────────────────────────────────────────────────
+    //
+    // Field-level agreement with the live server is covered by
+    // `tests/wire_agreement.rs` against captured payloads. These tests only
+    // pin the required/optional split and the wire casing.
+
+    #[test]
+    fn test_profile_minimal_only_required_fields() {
+        let json = r#"{"takerTier": 0, "takerTierName": "Tier 0", "weightedVolume": 0.0}"#;
+        let p: Profile = serde_json::from_str(json).unwrap();
+        assert_eq!(p.taker_tier, 0);
+        assert_eq!(p.taker_tier_name, "Tier 0");
+        assert_eq!(p.weighted_volume, 0.0);
+        assert!(p.name.is_none());
+        assert!(p.proxy_wallet.is_none());
+    }
+
+    #[test]
+    fn test_profile_missing_required_field_fails() {
+        // taker_tier, taker_tier_name and weighted_volume are the schema's
+        // only `required` properties, and every capture carried all three.
+        let json = r#"{"name": "Alice", "proxyWallet": "0xdead"}"#;
+        assert!(serde_json::from_str::<Profile>(json).is_err());
+    }
+
+    #[test]
+    fn test_profile_full() {
+        let json = r#"{
+            "name": "Alice",
+            "pseudonym": "Gracious-Fame",
+            "proxyWallet": "0xdead",
+            "profileImage": "https://cdn/p/m.png",
+            "bio": "hi",
+            "createdAt": "2025-10-13T19:31:36.489292Z",
+            "takerTier": 2,
+            "takerTierName": "Silver",
+            "weightedVolume": 89074.462449
+        }"#;
+        let p: Profile = serde_json::from_str(json).unwrap();
+        assert_eq!(p.name.as_deref(), Some("Alice"));
+        assert_eq!(p.pseudonym.as_deref(), Some("Gracious-Fame"));
+        assert_eq!(p.proxy_wallet.as_deref(), Some("0xdead"));
+        assert_eq!(p.profile_image.as_deref(), Some("https://cdn/p/m.png"));
+        assert_eq!(p.bio.as_deref(), Some("hi"));
+        assert_eq!(p.created_at.as_deref(), Some("2025-10-13T19:31:36.489292Z"));
+        assert_eq!(p.taker_tier, 2);
+        assert_eq!(p.taker_tier_name, "Silver");
+        assert_eq!(p.weighted_volume, 89074.462449);
+    }
+
+    #[test]
+    fn test_profile_roundtrip() {
+        let p = Profile {
+            name: Some("A".into()),
+            pseudonym: None,
+            proxy_wallet: Some("0xpw".into()),
+            profile_image: None,
+            bio: None,
+            created_at: None,
+            taker_tier: 0,
+            taker_tier_name: "Tier 0".into(),
+            weighted_volume: 0.0,
+        };
+        let json = serde_json::to_string(&p).unwrap();
+        assert!(json.contains("\"proxyWallet\""));
+        assert!(json.contains("\"takerTierName\""));
+        let back: Profile = serde_json::from_str(&json).unwrap();
+        assert_eq!(p, back);
+    }
+}

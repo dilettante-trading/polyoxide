@@ -3,12 +3,21 @@
 Rust client library for Polymarket's APIs, one feature per module: `clob`, `gamma`, `data`,
 `relay` and `perps`. Part of the [polyoxide](https://crates.io/crates/polyoxide) workspace.
 
-The modules move in from their own crates during stage S2 (`polyoxide-gamma` and
-`polyoxide-data` in Story 5.3, `polyoxide-clob` and `polyoxide-relay` in 5.4, and
-`polyoxide-perps`, `polyoxide-rtds` and `polyoxide-sports` in 5.5). Until then the crate holds
-what those modules share, in `shared`, and every feature is off by default.
+The modules move in from their own crates during stage S2. Two are here, each with its own
+README:
 
-## What's inside
+| Module | Feature | API |
+|---|---|---|
+| [`gamma`](src/gamma/README.md) | `gamma` | Gamma: markets, events, series, tags, comments, sports, search and profiles; read-only |
+| [`data`](src/data/README.md) | `data` | The Data API, v1 and v2 (`data.v2()`), and the undocumented `user-pnl-api` and `lb-api` hosts; read-only |
+
+`polyoxide-clob` and `polyoxide-relay` arrive in Story 5.4, and `polyoxide-perps`,
+`polyoxide-rtds` and `polyoxide-sports` in 5.5. What the modules share is in `shared`, and
+every feature is off by default.
+
+`specta` derives `specta::Type` on the enabled modules' response types.
+
+## What `shared` holds
 
 | Item | Purpose | Feature |
 |---|---|---|

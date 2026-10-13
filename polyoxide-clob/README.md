@@ -26,7 +26,7 @@ cargo add polyoxide-clob
 
 | Feature | Default | Description |
 |---------|---------|-------------|
-| `gamma` | Yes | Enables the `polyoxide-gamma` dependency, used to auto-resolve proxy wallet addresses for proxy signature types |
+| `gamma` | Yes | Enables `polyoxide-polymarket`'s `gamma` module, used to auto-resolve proxy wallet addresses for proxy signature types |
 | `ws` | No | Enables WebSocket support (the `polyoxide-ws` socket kit, `futures-util`) for real-time streaming |
 | `keychain` | No | Enables OS keychain storage for credentials via `keyring` (macOS Keychain, Windows Credential Manager, Linux Secret Service) |
 

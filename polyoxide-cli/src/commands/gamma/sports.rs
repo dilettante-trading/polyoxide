@@ -1,6 +1,6 @@
 use clap::Subcommand;
 use color_eyre::eyre::Result;
-use polyoxide_gamma::Gamma;
+use polyoxide_polymarket::gamma::Gamma;
 
 use crate::commands::gamma::SortOrder;
 

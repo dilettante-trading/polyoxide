@@ -3,7 +3,7 @@
 Each route is called with every argument it accepts, and the request that
 reaches the server is compared with the query the route should send. Values
 are distinct per argument, so a kwarg wired to the wrong setter fails. The
-responses are the captured payloads in `polyoxide-data/tests/fixtures/v2/`.
+responses are the captured payloads in `polyoxide-polymarket/tests/fixtures/data/v2/`.
 """
 
 from __future__ import annotations
@@ -20,7 +20,7 @@ import pytest
 import polyoxide
 from polyoxide import v2
 
-FIXTURES = pathlib.Path(__file__).resolve().parents[2] / "polyoxide-data" / "tests" / "fixtures" / "v2"
+FIXTURES = pathlib.Path(__file__).resolve().parents[2] / "polyoxide-polymarket" / "tests" / "fixtures" / "data" / "v2"
 
 
 def fixture(name: str) -> dict:

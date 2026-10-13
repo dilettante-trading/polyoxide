@@ -33,7 +33,7 @@ use polyoxide_clob::{
     Account, Clob, ClobBuilder, CreateOrderParams, Credentials, DepositWalletRole, OrderKind,
     OrderSide, SessionSignerScope, SigningTarget,
 };
-use polyoxide_gamma::Gamma;
+use polyoxide_polymarket::gamma::Gamma;
 use polyoxide_relay::{BuilderAccount, BuilderConfig, RelayClient, WalletType};
 use polyoxide_test_support::{environmental, fail, load_env, optional_env, ResultExt};
 use rust_decimal::Decimal;

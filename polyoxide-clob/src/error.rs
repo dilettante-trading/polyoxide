@@ -23,7 +23,7 @@ pub enum ClobError {
     /// built. Its class is the Gamma error's.
     #[cfg(feature = "gamma")]
     #[error("Gamma error: {0}")]
-    Gamma(polyoxide_gamma::GammaError),
+    Gamma(polyoxide_polymarket::gamma::GammaError),
 
     /// Cryptographic operation failed
     #[error("Crypto error: {0}")]
@@ -261,7 +261,9 @@ mod tests {
     fn test_gamma_error_is_gamma_not_validation() {
         let err = gamma(404, "Gamma client failed");
         match &err {
-            ClobError::Gamma(polyoxide_gamma::GammaError::Api(ApiError::Response(r))) => {
+            ClobError::Gamma(polyoxide_polymarket::gamma::GammaError::Api(ApiError::Response(
+                r,
+            ))) => {
                 assert_eq!(r.status.as_u16(), 404);
                 assert_eq!(r.message, "Gamma client failed");
             }

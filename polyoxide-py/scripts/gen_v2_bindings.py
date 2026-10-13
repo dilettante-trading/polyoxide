@@ -16,7 +16,7 @@ Usage (from the repository root):
 Rules:
 - one class per schema a route returns, plus `Pagination`; nested objects stay dicts
 - a getter per property, named after the Rust field; the two `type` properties
-  are `activity_type` / `combo_activity_type`, as in polyoxide-data
+  are `activity_type` / `combo_activity_type`, as in polyoxide-polymarket's data module
 - stub types: required and non-nullable -> `T`; anything else -> `T | None`
 """
 import json
@@ -35,7 +35,7 @@ ROWS = [
     "BuilderVolumePoint", "LeaderboardEntry", "LeaderboardUserEntry", "ServiceStatus",
     "Pagination",
 ]
-# (schema, property) -> Rust field, where polyoxide-data renames a keyword.
+# (schema, property) -> Rust field, where polyoxide-polymarket's data module renames a keyword.
 RENAMED = {("Activity", "type"): "activity_type", ("ComboActivity", "type"): "combo_activity_type"}
 
 
@@ -152,7 +152,7 @@ ROUTES = [
 
 
 def rust_path(schema):
-    return f"polyoxide_data::v2::{'Pagination' if schema == 'Pagination' else 'types::' + schema}"
+    return f"polyoxide_polymarket::data::v2::{'Pagination' if schema == 'Pagination' else 'types::' + schema}"
 
 
 def gen_rows():

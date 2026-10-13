@@ -12,7 +12,7 @@ categories = ["api-bindings", "web-programming::http-client"]
 
 [features]
 default = ["gamma"]
-gamma = ["dep:polyoxide-gamma"]
+gamma = ["polyoxide-polymarket/gamma"]
 ws = [
     "dep:polyoxide-ws",
     "dep:futures-util",
@@ -30,11 +30,11 @@ alloy = { version = "1.1.2", features = [
     "sol-types",
 ] }
 polyoxide-core = { workspace = true }
-# Polymarket's shared policy, tables and types, until this crate becomes the
-# `clob` module of `polyoxide-polymarket` (Story 5.4).
+# Polymarket's shared policy, tables and types, and its `gamma` module under
+# this crate's `gamma` feature, until this crate becomes the `clob` module of
+# `polyoxide-polymarket` (Story 5.4).
 polyoxide-polymarket = { workspace = true, features = ["clob"] }
 polyoxide-venue = { workspace = true }
-polyoxide-gamma = { workspace = true, optional = true }
 # The socket kit, under `ws`: the TLS install, the bare tier clob reads
 # through, the upgrade over its own per-address connect, and `WsError`. It
 # owns the transport, so clob declares neither tokio-tungstenite nor rustls.

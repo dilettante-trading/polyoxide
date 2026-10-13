@@ -25,7 +25,7 @@ use crate::{
 };
 use alloy::primitives::{hex, Address, Signature, B256};
 #[cfg(feature = "gamma")]
-use polyoxide_gamma::Gamma;
+use polyoxide_polymarket::gamma::Gamma;
 use std::str::FromStr;
 
 const DEFAULT_BASE_URL: &str = "https://clob.polymarket.com";
@@ -919,7 +919,7 @@ impl ClobBuilder {
         let gamma = if let Some(gamma) = self.gamma {
             gamma
         } else {
-            polyoxide_gamma::Gamma::builder()
+            polyoxide_polymarket::gamma::Gamma::builder()
                 .timeout_ms(self.config.timeout_ms)
                 .pool_size(self.config.pool_size)
                 .build()

@@ -30,7 +30,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     let clob = Clob::from_account(account.clone())?;
 
     // Example token ID - using an active market (Trump deportation market)
-    // You can get token IDs from polyoxide-gamma or the Polymarket website
+    // You can get token IDs from polyoxide-polymarket's gamma module or the Polymarket website
     let token_id = "102559817034631022221500208641784929295731053857601013029449249654006364919935"
         .to_string();
 

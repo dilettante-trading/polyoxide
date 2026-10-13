@@ -1,7 +1,7 @@
 use std::time::Duration;
 
 use color_eyre::eyre::{bail, Result};
-use polyoxide_data::v2::types::ActivityType;
+use polyoxide_polymarket::data::v2::types::ActivityType;
 
 /// One entry of a comma-separated list flag, trimmed.
 ///

@@ -1,12 +1,12 @@
 use clap::{Subcommand, ValueEnum};
 use color_eyre::eyre::Result;
-use polyoxide_gamma::Gamma;
+use polyoxide_polymarket::gamma::Gamma;
 
 use crate::commands::gamma::SortOrder;
 
 /// Parent entity type for comments.
 ///
-/// Mirrors [`polyoxide_gamma::types::ParentEntityType`] minus its `Unknown`
+/// Mirrors [`polyoxide_polymarket::gamma::types::ParentEntityType`] minus its `Unknown`
 /// forward-compat variant, which is not a filter a user can meaningfully ask
 /// for. `market` is deliberately absent: the server rejects it.
 #[derive(Debug, Clone, Copy, ValueEnum)]
@@ -19,7 +19,7 @@ pub enum ParentEntityType {
     PerpsAsset,
 }
 
-impl From<ParentEntityType> for polyoxide_gamma::types::ParentEntityType {
+impl From<ParentEntityType> for polyoxide_polymarket::gamma::types::ParentEntityType {
     fn from(value: ParentEntityType) -> Self {
         match value {
             ParentEntityType::Event => Self::Event,
@@ -161,7 +161,7 @@ mod tests {
                 let pet = parent_entity_type.unwrap();
                 assert!(matches!(pet, ParentEntityType::Event));
                 assert_eq!(
-                    polyoxide_gamma::types::ParentEntityType::from(pet).to_string(),
+                    polyoxide_polymarket::gamma::types::ParentEntityType::from(pet).to_string(),
                     "Event"
                 );
             }
@@ -178,7 +178,7 @@ mod tests {
                 let pet = parent_entity_type.unwrap();
                 assert!(matches!(pet, ParentEntityType::Series));
                 assert_eq!(
-                    polyoxide_gamma::types::ParentEntityType::from(pet).to_string(),
+                    polyoxide_polymarket::gamma::types::ParentEntityType::from(pet).to_string(),
                     "Series"
                 );
             }
@@ -195,7 +195,7 @@ mod tests {
                 let pet = parent_entity_type.unwrap();
                 assert!(matches!(pet, ParentEntityType::PerpsAsset));
                 assert_eq!(
-                    polyoxide_gamma::types::ParentEntityType::from(pet).to_string(),
+                    polyoxide_polymarket::gamma::types::ParentEntityType::from(pet).to_string(),
                     "PerpsAsset"
                 );
             }

@@ -16,7 +16,7 @@ use polyoxide_clob::{
     Account, Clob, ClobBuilder, CreateOrderParams, Credentials, OrderKind, OrderSide, SignatureType,
 };
 use polyoxide_core::QueryBuilder;
-use polyoxide_gamma::Gamma;
+use polyoxide_polymarket::gamma::Gamma;
 use polyoxide_venue::Classify;
 use rust_decimal::Decimal;
 use std::time::Duration;

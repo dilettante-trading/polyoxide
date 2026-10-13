@@ -27,8 +27,7 @@ polyoxide-binance = { workspace = true, features = ["ws"] }
 polyoxide-clob = { workspace = true, features = ["ws"] }
 polyoxide-core = { workspace = true, optional = true, features = ["keychain"] }
 polyoxide-relay = { workspace = true, optional = true, features = ["keychain"] }
-polyoxide-data = { workspace = true }
-polyoxide-gamma = { workspace = true }
+polyoxide-polymarket = { workspace = true, features = ["gamma", "data"] }
 polyoxide-rtds = { workspace = true }
 polyoxide-sports = { workspace = true }
 tokio = { workspace = true, features = ["macros", "rt-multi-thread", "time", "net"] }

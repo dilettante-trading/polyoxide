@@ -4,7 +4,7 @@
 /// custom serde renames.
 ///
 /// Usage:
-///   py_type!(PyMarket, "Market", polyoxide_gamma::types::Market,
+///   py_type!(PyMarket, "Market", polyoxide_polymarket::gamma::types::Market,
 ///       id, condition_id, question,
 ///       question_id => "questionID",
 ///   );

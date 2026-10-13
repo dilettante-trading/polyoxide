@@ -13,7 +13,7 @@ use std::{future::Future, io::Write};
 use clap::Args;
 use color_eyre::eyre::Result;
 use futures_util::{Stream, StreamExt};
-use polyoxide_data::{
+use polyoxide_polymarket::data::{
     v2::{
         api::{
             boards::ListBuildersLeaderboard,
@@ -24,7 +24,7 @@ use polyoxide_data::{
         types::{Activity, BuilderStanding, MetaHolder, Position, Trade},
         Page, PageStream,
     },
-    DataApiError,
+    DataError,
 };
 use serde::Serialize;
 
@@ -58,7 +58,7 @@ pub trait PagedRequest: Sized {
     type Row: Serialize + Send + 'static;
 
     fn with_cursor(self, cursor: String) -> Self;
-    fn send_page(self) -> impl Future<Output = Result<Page<Self::Row>, DataApiError>> + Send;
+    fn send_page(self) -> impl Future<Output = Result<Page<Self::Row>, DataError>> + Send;
     fn into_pages(self) -> PageStream<Self::Row>;
 }
 
@@ -71,7 +71,7 @@ macro_rules! paged_request {
                 self.cursor(cursor)
             }
 
-            fn send_page(self) -> impl Future<Output = Result<Page<$row>, DataApiError>> + Send {
+            fn send_page(self) -> impl Future<Output = Result<Page<$row>, DataError>> + Send {
                 self.send()
             }
 
@@ -136,7 +136,7 @@ pub async fn walk_rows<T, S>(
 ) -> Result<()>
 where
     T: Serialize,
-    S: Stream<Item = Result<Page<T>, DataApiError>> + Unpin,
+    S: Stream<Item = Result<Page<T>, DataError>> + Unpin,
 {
     let mut resume = start;
     let mut walked = 0u64;
@@ -174,7 +174,7 @@ mod tests {
 
     use super::*;
 
-    fn page(rows: &[i64], next: Option<&str>) -> Result<Page<Value>, DataApiError> {
+    fn page(rows: &[i64], next: Option<&str>) -> Result<Page<Value>, DataError> {
         Ok(serde_json::from_value(json!({
             "data": rows.iter().map(|n| json!({ "n": n })).collect::<Vec<_>>(),
             "pagination": { "limit": 2, "offset": 0, "has_more": next.is_some(), "next_cursor": next },
@@ -182,12 +182,12 @@ mod tests {
         .unwrap())
     }
 
-    fn failure() -> Result<Page<Value>, DataApiError> {
-        Err(DataApiError::Pagination("boom".into()))
+    fn failure() -> Result<Page<Value>, DataError> {
+        Err(DataError::Pagination("boom".into()))
     }
 
     async fn walk(
-        pages: Vec<Result<Page<Value>, DataApiError>>,
+        pages: Vec<Result<Page<Value>, DataError>>,
         max_pages: Option<u64>,
         start: Option<&str>,
     ) -> (Result<()>, String, String) {

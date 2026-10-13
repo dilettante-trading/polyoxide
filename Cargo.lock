@@ -4001,9 +4001,8 @@ version = "0.39.0"
 dependencies = [
  "futures-util",
  "polyoxide-clob",
- "polyoxide-data",
- "polyoxide-gamma",
  "polyoxide-perps",
+ "polyoxide-polymarket",
  "polyoxide-rtds",
  "polyoxide-sports",
  "polyoxide-venue",
@@ -4047,8 +4046,7 @@ dependencies = [
  "polyoxide-binance",
  "polyoxide-clob",
  "polyoxide-core",
- "polyoxide-data",
- "polyoxide-gamma",
+ "polyoxide-polymarket",
  "polyoxide-relay",
  "polyoxide-rtds",
  "polyoxide-sports",
@@ -4070,7 +4068,6 @@ dependencies = [
  "hex",
  "mockito",
  "polyoxide-core",
- "polyoxide-gamma",
  "polyoxide-polymarket",
  "polyoxide-relay",
  "polyoxide-test-support",
@@ -4110,45 +4107,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "polyoxide-data"
-version = "0.39.0"
-dependencies = [
- "futures-util",
- "mockito",
- "polyoxide-core",
- "polyoxide-polymarket",
- "polyoxide-test-support",
- "polyoxide-venue",
- "rust_decimal",
- "serde",
- "serde_json",
- "specta",
- "thiserror 2.0.18",
- "tokio",
- "url",
-]
-
-[[package]]
-name = "polyoxide-gamma"
-version = "0.39.0"
-dependencies = [
- "chrono",
- "mockito",
- "polyoxide-core",
- "polyoxide-polymarket",
- "polyoxide-test-support",
- "polyoxide-venue",
- "serde",
- "serde_json",
- "specta",
- "thiserror 2.0.18",
- "tokio",
- "tracing-subscriber",
- "url",
- "urlencoding",
-]
-
-[[package]]
 name = "polyoxide-perps"
 version = "0.39.0"
 dependencies = [
@@ -4173,17 +4131,24 @@ name = "polyoxide-polymarket"
 version = "0.39.0"
 dependencies = [
  "base64",
+ "chrono",
+ "futures-util",
  "hmac",
  "mockito",
  "polyoxide-core",
+ "polyoxide-test-support",
  "polyoxide-venue",
+ "rust_decimal",
  "serde",
  "serde_json",
  "sha2",
+ "specta",
  "thiserror 2.0.18",
  "tokio",
  "tracing",
  "tracing-subscriber",
+ "url",
+ "urlencoding",
 ]
 
 [[package]]
@@ -4192,8 +4157,7 @@ version = "0.39.0"
 dependencies = [
  "futures-util",
  "polyoxide-clob",
- "polyoxide-data",
- "polyoxide-gamma",
+ "polyoxide-polymarket",
  "polyoxide-venue",
  "pyo3",
  "pyo3-async-runtimes",

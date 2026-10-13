@@ -2,7 +2,7 @@ use std::io::Write;
 
 use clap::Args;
 use color_eyre::eyre::Result;
-use polyoxide_data::DataApi;
+use polyoxide_polymarket::data::DataApi;
 
 use super::paging::{run_paged, PageArgs};
 use super::SortOrder;

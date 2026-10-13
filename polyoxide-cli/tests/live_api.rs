@@ -6,8 +6,8 @@ use polyoxide_binance::usdm::ws::UsdmWsError;
 use polyoxide_cli::commands::clob::prices::download::DownloadArgs;
 use polyoxide_cli::commands::clob::prices::types::OutputFormat;
 use polyoxide_clob::{Clob, ClobError};
-use polyoxide_data::DataApiError;
-use polyoxide_gamma::GammaError;
+use polyoxide_polymarket::data::DataError;
+use polyoxide_polymarket::gamma::GammaError;
 use polyoxide_sports::SportsError;
 use polyoxide_test_support::fail;
 
@@ -22,7 +22,7 @@ fn fail_report(ctx: &str, report: &Report) -> ! {
     if let Some(err) = report.downcast_ref::<GammaError>() {
         fail(ctx, err);
     }
-    if let Some(err) = report.downcast_ref::<DataApiError>() {
+    if let Some(err) = report.downcast_ref::<DataError>() {
         fail(ctx, err);
     }
     if let Some(err) = report.downcast_ref::<SportsError>() {
@@ -80,7 +80,7 @@ async fn live_download_one_market() {
 mod data_v2 {
     use clap::Parser;
     use polyoxide_cli::commands::DataCommand;
-    use polyoxide_data::DataApi;
+    use polyoxide_polymarket::data::DataApi;
     use polyoxide_test_support::ResultExt;
     use serde_json::Value;
 

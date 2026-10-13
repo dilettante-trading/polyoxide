@@ -6,7 +6,7 @@ use color_eyre::eyre::Result;
 use futures_util::{stream, StreamExt};
 use governor::{Quota, RateLimiter};
 use polyoxide_clob::{Clob, PricesHistoryQuery};
-use polyoxide_gamma::Gamma;
+use polyoxide_polymarket::gamma::Gamma;
 
 use crate::commands::clob::prices::fetch::fetch_one;
 use crate::commands::clob::prices::manifest::write_manifest;

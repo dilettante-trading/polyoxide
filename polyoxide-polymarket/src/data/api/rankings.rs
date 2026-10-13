@@ -1,0 +1,70 @@
+use polyoxide_core::{HttpClient, Request};
+
+use crate::data::{
+    error::DataError,
+    types::{RankingEntry, RankingWindow},
+};
+
+/// Rankings namespace — `GET /volume` and `GET /profit` on
+/// `lb-api.polymarket.com`.
+///
+/// This is a **different service** from
+/// [`DataApi::leaderboard`](crate::data::DataApi::leaderboard), which calls
+/// `/v1/leaderboard` on the main Data API host and returns a different shape.
+/// This one ranks traders by all-time or windowed volume and profit.
+///
+/// # Stability
+///
+/// This host is **not covered by any published Polymarket OpenAPI spec**. It
+/// was verified live, but carries no documented compatibility guarantee —
+/// treat it as more likely to change without notice than the rest of this
+/// crate. The base URL is configurable via
+/// [`DataApiBuilder::rankings_base_url`](crate::data::DataApiBuilder::rankings_base_url).
+///
+/// # Documented alternative
+///
+/// [`DataV2::leaderboard`](crate::data::v2::DataV2::leaderboard) serves a documented
+/// trader board, but it does not rank the same quantity. Its `volume` is in
+/// shares where this host's `amount` is USDC (4.5x to 5.8x apart for the top of
+/// the weekly board on 2026-09-14), and its windows are `day`/`week`/`month`/`all`
+/// rather than trailing `1d`/`7d`/`30d`. See `docs/specs/data-v2/OBSERVED.md`.
+#[derive(Clone)]
+pub struct RankingsApi {
+    pub(crate) http_client: HttpClient,
+}
+
+impl RankingsApi {
+    /// Rank traders by traded volume (`GET /volume`).
+    pub fn volume(&self) -> RankingRequest {
+        RankingRequest {
+            request: Request::new(self.http_client.clone(), "/volume"),
+        }
+    }
+
+    /// Rank traders by realized profit (`GET /profit`).
+    pub fn profit(&self) -> RankingRequest {
+        RankingRequest {
+            request: Request::new(self.http_client.clone(), "/profit"),
+        }
+    }
+}
+
+/// Request builder for a rankings query.
+pub struct RankingRequest {
+    request: Request<Vec<RankingEntry>, DataError>,
+}
+
+impl RankingRequest {
+    polyoxide_core::query_setters! {
+        /// Set the ranking window. An unrecognized value is rejected upstream with
+        /// `{"error": "invalid request"}`, which is why this is an enum.
+        window: RankingWindow => "window",
+        /// Limit the number of ranked entries returned.
+        limit: u32 => "limit",
+    }
+
+    /// Execute the request.
+    pub async fn send(self) -> Result<Vec<RankingEntry>, DataError> {
+        self.request.send().await
+    }
+}

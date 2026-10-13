@@ -16,17 +16,17 @@ create_exception!(polyoxide, DecodeError, PolyoxideError);
 // unavailable for the moment, so it is an `UnavailableError`.
 create_exception!(polyoxide, TimeoutError, UnavailableError);
 
-pub fn gamma_err(e: polyoxide_gamma::GammaError) -> PyErr {
+pub fn gamma_err(e: polyoxide_polymarket::gamma::GammaError) -> PyErr {
     with_details(exception_for(&e), None)
 }
 
 /// A Data API v2 error body maps by its stable `code`; anything else by its
 /// class, as every other error does.
-pub fn data_err(e: polyoxide_data::DataApiError) -> PyErr {
-    use polyoxide_data::{v2::ErrorCode, DataApiError};
+pub fn data_err(e: polyoxide_polymarket::data::DataError) -> PyErr {
+    use polyoxide_polymarket::data::{v2::ErrorCode, DataError};
 
     match &e {
-        DataApiError::V2(v2) => {
+        DataError::V2(v2) => {
             let msg = e.to_string();
             let err = match v2.code {
                 ErrorCode::InvalidRequest => ValidationError::new_err(msg),
@@ -79,7 +79,7 @@ fn exception_for(e: &impl Classify) -> PyErr {
 /// Sets the Data API v2 error fields on the exception: the server's values for
 /// a v2 error body and `None` for any other error, so every exception this SDK
 /// raises has all six attributes.
-fn with_details(err: PyErr, v2: Option<&polyoxide_data::v2::V2Error>) -> PyErr {
+fn with_details(err: PyErr, v2: Option<&polyoxide_polymarket::data::v2::V2Error>) -> PyErr {
     Python::attach(|py| -> PyResult<()> {
         let value = err.value(py);
         value.setattr("status", v2.map(|v| v.status))?;

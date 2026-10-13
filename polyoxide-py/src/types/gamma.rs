@@ -1,6 +1,6 @@
 use pyo3::types::PyModuleMethods;
 
-py_type!(PyMarket, "Market", polyoxide_gamma::types::Market,
+py_type!(PyMarket, "Market", polyoxide_polymarket::gamma::types::Market,
     id, condition_id, slug, question, description, category, active, closed, archived,
     question_id => "questionID",
     tokens, tags, neg_risk, volume, liquidity,
@@ -23,14 +23,14 @@ py_type!(PyMarket, "Market", polyoxide_gamma::types::Market,
 py_type!(
     PyMarketToken,
     "MarketToken",
-    polyoxide_gamma::types::MarketToken,
+    polyoxide_polymarket::gamma::types::MarketToken,
     token_id,
     outcome,
     price,
     winner,
 );
 
-py_type!(PyEvent, "Event", polyoxide_gamma::types::Event,
+py_type!(PyEvent, "Event", polyoxide_polymarket::gamma::types::Event,
     id, ticker, slug, title, subtitle, description,
     start_date, end_date, image, icon,
     active, closed, archived, featured, restricted,
@@ -44,7 +44,7 @@ py_type!(PyEvent, "Event", polyoxide_gamma::types::Event,
     comments_enabled, competitive,
 );
 
-py_type!(PySeriesInfo, "SeriesInfo", polyoxide_gamma::types::SeriesInfo,
+py_type!(PySeriesInfo, "SeriesInfo", polyoxide_polymarket::gamma::types::SeriesInfo,
     id, slug, title, ticker, series_type, recurrence,
     image, icon, active, closed, archived,
     volume_24hr => "volume24hr",
@@ -54,7 +54,7 @@ py_type!(PySeriesInfo, "SeriesInfo", polyoxide_gamma::types::SeriesInfo,
 py_type!(
     PySeriesData,
     "SeriesData",
-    polyoxide_gamma::types::SeriesData,
+    polyoxide_polymarket::gamma::types::SeriesData,
     id,
     slug,
     title,
@@ -74,7 +74,7 @@ py_type!(
 py_type!(
     PyTag,
     "Tag",
-    polyoxide_gamma::types::Tag,
+    polyoxide_polymarket::gamma::types::Tag,
     id,
     slug,
     label,
@@ -88,7 +88,7 @@ py_type!(
 py_type!(
     PyRelatedTag,
     "RelatedTag",
-    polyoxide_gamma::types::RelatedTag,
+    polyoxide_polymarket::gamma::types::RelatedTag,
     id,
     tag_id,
     related_tag_id,
@@ -98,7 +98,7 @@ py_type!(
 py_type!(
     PySportMetadata,
     "SportMetadata",
-    polyoxide_gamma::types::SportMetadata,
+    polyoxide_polymarket::gamma::types::SportMetadata,
     id,
     sport,
     image,
@@ -111,7 +111,7 @@ py_type!(
 py_type!(
     PyTeam,
     "Team",
-    polyoxide_gamma::types::Team,
+    polyoxide_polymarket::gamma::types::Team,
     id,
     name,
     league,
@@ -126,7 +126,7 @@ py_type!(
 py_type!(
     PyComment,
     "Comment",
-    polyoxide_gamma::types::Comment,
+    polyoxide_polymarket::gamma::types::Comment,
     id,
     body,
     parent_entity_type,
@@ -145,7 +145,7 @@ py_type!(
 py_type!(
     PyCommentProfile,
     "CommentProfile",
-    polyoxide_gamma::types::CommentProfile,
+    polyoxide_polymarket::gamma::types::CommentProfile,
     name,
     pseudonym,
     display_username_public,
@@ -162,7 +162,7 @@ py_type!(
 py_type!(
     PyCommentReaction,
     "CommentReaction",
-    polyoxide_gamma::types::CommentReaction,
+    polyoxide_polymarket::gamma::types::CommentReaction,
     id,
     comment_id => "commentID",
     reaction_type,
@@ -175,7 +175,7 @@ py_type!(
 py_type!(
     PyCommentPosition,
     "CommentPosition",
-    polyoxide_gamma::types::CommentPosition,
+    polyoxide_polymarket::gamma::types::CommentPosition,
     token_id,
     position_size,
 );
@@ -183,21 +183,21 @@ py_type!(
 py_type!(
     PyCountResponse,
     "CountResponse",
-    polyoxide_gamma::types::CountResponse,
+    polyoxide_polymarket::gamma::types::CountResponse,
     count,
 );
 
 py_type!(
     PyCursor,
     "Cursor",
-    polyoxide_gamma::types::Cursor,
+    polyoxide_polymarket::gamma::types::Cursor,
     next_cursor,
 );
 
 py_type!(
     PySearchResponse,
     "SearchResponse",
-    polyoxide_gamma::api::search::SearchResponse,
+    polyoxide_polymarket::gamma::api::search::SearchResponse,
     profiles,
     events,
     tags,
@@ -206,7 +206,7 @@ py_type!(
 py_type!(
     PySearchProfile,
     "SearchProfile",
-    polyoxide_gamma::api::search::SearchProfile,
+    polyoxide_polymarket::gamma::api::search::SearchProfile,
     name,
     display_username_public,
     profile_image,
@@ -215,14 +215,14 @@ py_type!(
     proxy_wallet,
 );
 
-py_type!(PyUserResponse, "UserResponse", polyoxide_gamma::api::user::UserResponse,
+py_type!(PyUserResponse, "UserResponse", polyoxide_polymarket::gamma::api::user::UserResponse,
     proxy => "proxyWallet",
     name, created_at, profile_image,
     display_username_public, bio, pseudonym, x_username, discord_username,
     verified_badge, taker_tier, taker_tier_name, weighted_volume, users,
 );
 
-py_type!(PyUserInfo, "UserInfo", polyoxide_gamma::api::user::UserInfo,
+py_type!(PyUserInfo, "UserInfo", polyoxide_polymarket::gamma::api::user::UserInfo,
     id, creator,
     moderator => "mod",
     community_mod,
@@ -260,7 +260,7 @@ mod tests {
     /// The shared fixture `test_comment_types.py` also reads, so both guards
     /// stay pinned to the same captured payload.
     const COMMENT_FULL: &str =
-        include_str!("../../../polyoxide-gamma/tests/fixtures/comment_full.json");
+        include_str!("../../../polyoxide-polymarket/tests/fixtures/gamma/comment_full.json");
 
     fn assert_present(py: Python<'_>, name: &str, value: PyResult<Py<PyAny>>) {
         let value = value.unwrap_or_else(|e| panic!("Comment.{name}() errored: {e}"));
@@ -287,7 +287,7 @@ mod tests {
     /// instance-level check like this one notices.
     #[test]
     fn comment_getters_resolve_against_the_shared_fixture() {
-        let comment: polyoxide_gamma::types::Comment =
+        let comment: polyoxide_polymarket::gamma::types::Comment =
             serde_json::from_str(COMMENT_FULL).expect("shared fixture deserializes into Comment");
         let py_comment = PyComment::from(comment);
 

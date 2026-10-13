@@ -22,7 +22,7 @@ async fn discover_extracts_token_ids_from_markets() {
         .create_async()
         .await;
 
-    let gamma = polyoxide_gamma::Gamma::builder()
+    let gamma = polyoxide_polymarket::gamma::Gamma::builder()
         .base_url(server.url())
         .build()
         .unwrap();

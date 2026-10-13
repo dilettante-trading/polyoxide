@@ -1,0 +1,1302 @@
+//! Live integration tests against the Polymarket Gamma API.
+//!
+//! These tests hit the real API and require network access.
+//! They are gated behind `#[ignore]` so they don't run in CI.
+//!
+//! Run manually with:
+//! ```sh
+//! cargo test -p polyoxide-polymarket --features gamma --test live_gamma -- --ignored
+//! ```
+
+use polyoxide_core::ApiError;
+use polyoxide_polymarket::gamma::types::ParentEntityType;
+use polyoxide_polymarket::gamma::{Gamma, GammaError};
+use polyoxide_test_support::{environmental, fail, ResultExt};
+use std::time::Duration;
+
+fn client() -> Gamma {
+    Gamma::builder().build().or_fail("gamma client")
+}
+
+// ── Health ───────────────────────────────────────────────────────
+
+#[tokio::test]
+#[ignore]
+async fn live_ping() {
+    let gamma = client();
+    let latency = gamma.health().ping().await.or_fail("ping should succeed");
+    assert!(
+        latency < Duration::from_secs(10),
+        "latency too high: {latency:?}"
+    );
+}
+
+// ── Markets ──────────────────────────────────────────────────────
+
+#[tokio::test]
+#[ignore]
+async fn live_list_markets() {
+    let gamma = client();
+    let markets = gamma
+        .markets()
+        .list()
+        .limit(5)
+        .send()
+        .await
+        .or_fail("list markets");
+    assert!(!markets.is_empty(), "should return at least one market");
+}
+
+#[tokio::test]
+#[ignore]
+async fn live_get_market_by_id() {
+    let gamma = client();
+    let markets = gamma
+        .markets()
+        .list()
+        .limit(1)
+        .send()
+        .await
+        .or_fail("list markets to discover id");
+    let first = markets.first().expect("need at least one market"); // live-unwraps: an assertion on the response
+    let id = first.id.clone();
+
+    let market = gamma
+        .markets()
+        .get(&id)
+        .send()
+        .await
+        .or_fail("get market by id");
+    assert_eq!(market.id, id);
+}
+
+#[tokio::test]
+#[ignore]
+async fn live_get_market_by_slug() {
+    let gamma = client();
+    let markets = gamma
+        .markets()
+        .list()
+        .limit(10)
+        .send()
+        .await
+        .or_fail("list markets to discover slug");
+    let market_with_slug = markets
+        .iter()
+        .find(|m| m.slug.is_some())
+        .expect("need at least one market with a slug"); // live-unwraps: an assertion on the response
+    let slug = market_with_slug.slug.as_ref().unwrap().clone(); // live-unwraps: selected on slug.is_some()
+
+    let market = gamma
+        .markets()
+        .get_by_slug(&slug)
+        .send()
+        .await
+        .or_fail("get market by slug");
+    assert_eq!(market.slug.as_deref(), Some(slug.as_str()));
+}
+
+#[tokio::test]
+#[ignore]
+async fn live_list_markets_closed_true() {
+    let gamma = client();
+    let markets = gamma
+        .markets()
+        .list()
+        .closed(true)
+        .limit(5)
+        .send()
+        .await
+        .or_fail("list closed markets");
+    assert!(
+        !markets.is_empty(),
+        "should return at least one closed market"
+    );
+    for m in &markets {
+        assert_eq!(m.closed, Some(true), "market {} should be closed", m.id);
+    }
+}
+
+#[tokio::test]
+#[ignore]
+async fn live_list_markets_closed_false() {
+    let gamma = client();
+    let markets = gamma
+        .markets()
+        .list()
+        .closed(false)
+        .limit(5)
+        .send()
+        .await
+        .or_fail("list open markets");
+    assert!(
+        !markets.is_empty(),
+        "should return at least one open market"
+    );
+    for m in &markets {
+        assert_ne!(m.closed, Some(true), "market {} should not be closed", m.id);
+    }
+}
+
+#[tokio::test]
+#[ignore]
+async fn live_get_many_returns_both_open_and_closed() {
+    let gamma = client();
+
+    // Discover one open and one closed market ID.
+    let open = gamma
+        .markets()
+        .list()
+        .closed(false)
+        .limit(1)
+        .send()
+        .await
+        .or_fail("list open markets");
+    let closed = gamma
+        .markets()
+        .list()
+        .closed(true)
+        .limit(1)
+        .send()
+        .await
+        .or_fail("list closed markets");
+
+    let open_id: i64 = open
+        .first()
+        .expect("need an open market") // live-unwraps: an assertion on the response
+        .id
+        .parse()
+        .expect("open market id should be numeric"); // live-unwraps: an assertion on the response's id
+    let closed_id: i64 = closed
+        .first()
+        .expect("need a closed market") // live-unwraps: an assertion on the response
+        .id
+        .parse()
+        .expect("closed market id should be numeric"); // live-unwraps: an assertion on the response's id
+
+    let markets = gamma
+        .markets()
+        .get_many([open_id, closed_id])
+        .send()
+        .await
+        .or_fail("get_many should succeed");
+
+    let open_str = open_id.to_string();
+    let closed_str = closed_id.to_string();
+    let returned: Vec<&str> = markets.iter().map(|m| m.id.as_str()).collect();
+    assert!(
+        returned.contains(&open_str.as_str()),
+        "open market {open_id} missing from get_many result: {returned:?}"
+    );
+    assert!(
+        returned.contains(&closed_str.as_str()),
+        "closed market {closed_id} missing from get_many result: {returned:?}"
+    );
+    assert!(
+        markets.iter().any(|m| m.closed == Some(true)),
+        "get_many result should include the closed market with closed=true"
+    );
+}
+
+#[tokio::test]
+#[ignore]
+async fn live_get_market_description() {
+    let gamma = client();
+
+    // Discover a market id.
+    let markets = gamma
+        .markets()
+        .list()
+        .limit(1)
+        .send()
+        .await
+        .or_fail("list markets to discover id");
+    let first = markets.first().expect("need at least one market"); // live-unwraps: an assertion on the response
+
+    let desc = gamma
+        .markets()
+        .get_description(&first.id)
+        .send()
+        .await
+        .or_fail("get market description");
+    // Deserialization succeeded; description may be None/empty on some markets.
+    let _ = desc;
+}
+
+#[tokio::test]
+#[ignore]
+async fn live_query_markets_by_information() {
+    use polyoxide_polymarket::gamma::types::MarketsInformationBody;
+
+    let gamma = client();
+
+    // Discover a market id so we have something concrete to query.
+    let markets = gamma
+        .markets()
+        .list()
+        .limit(1)
+        .send()
+        .await
+        .or_fail("list markets");
+    let first = markets.first().expect("need at least one market"); // live-unwraps: an assertion on the response
+    let id: i64 = first.id.parse().expect("market id should be numeric"); // live-unwraps: an assertion on the response's id
+
+    let body = MarketsInformationBody {
+        id: vec![id],
+        ..Default::default()
+    };
+    let found = gamma
+        .markets()
+        .query_by_information(body)
+        .send()
+        .await
+        .or_fail("POST /markets/information");
+    assert!(
+        found.iter().any(|m| m.id == first.id),
+        "expected market {} in response",
+        first.id
+    );
+}
+
+#[tokio::test]
+#[ignore]
+async fn live_query_abridged_markets() {
+    use polyoxide_polymarket::gamma::types::MarketsInformationBody;
+
+    let gamma = client();
+    let body = MarketsInformationBody {
+        closed: Some(false),
+        ..Default::default()
+    };
+    let found = gamma
+        .markets()
+        .query_abridged(body)
+        .send()
+        .await
+        .or_fail("POST /markets/abridged");
+    // Deserialization is the primary assertion; the array may be empty.
+    let _ = found;
+}
+
+#[tokio::test]
+#[ignore]
+async fn live_list_markets_keyset() {
+    let gamma = client();
+    let resp = gamma
+        .markets()
+        .list_keyset()
+        .limit(5)
+        .send()
+        .await
+        .or_fail("list markets (keyset)");
+    // Deserialization is the assertion; upstream may page differently.
+    let _ = resp;
+}
+
+/// `market_maker_address` is still applied on all three routes that take it.
+///
+/// Upstream's published spec dropped the filter (and `marketMakerAddress`
+/// itself) in 2026-09 while the server kept honouring both, so nothing
+/// outside this test would notice if the server followed the spec. The
+/// failure that matters is silent: an unknown filter is *ignored*, not
+/// rejected — `POST /markets/information` with `{"bogusField": ["x"]}`
+/// returns an unfiltered page. So filter on an address no market has and
+/// require an empty result, against an unfiltered baseline that is not empty.
+/// No market selection is needed, which keeps this independent of which AMM
+/// markets happen to be listed.
+#[tokio::test]
+#[ignore]
+async fn live_market_maker_address_filter_is_still_applied() {
+    use polyoxide_polymarket::gamma::types::MarketsInformationBody;
+
+    const NO_SUCH_MAKER: &str = "0x0000000000000000000000000000000000000001";
+    let gamma = client();
+
+    let baseline = gamma
+        .markets()
+        .list()
+        .limit(5)
+        .send()
+        .await
+        .or_fail("unfiltered list");
+    assert!(!baseline.is_empty(), "the control needs an unfiltered page");
+
+    let listed = gamma
+        .markets()
+        .list()
+        .market_maker_address([NO_SUCH_MAKER])
+        .limit(5)
+        .send()
+        .await
+        .or_fail("GET /markets with market_maker_address");
+    assert!(
+        listed.is_empty(),
+        "GET /markets ignored market_maker_address: {} markets came back",
+        listed.len()
+    );
+
+    let keyset = gamma
+        .markets()
+        .list_keyset()
+        .market_maker_address([NO_SUCH_MAKER])
+        .limit(5)
+        .send()
+        .await
+        .or_fail("GET /markets/keyset with market_maker_address");
+    assert!(
+        keyset.markets.is_empty(),
+        "GET /markets/keyset ignored market_maker_address: {} markets came back",
+        keyset.markets.len()
+    );
+
+    let body = MarketsInformationBody {
+        market_maker_address: vec![NO_SUCH_MAKER.to_string()],
+        ..Default::default()
+    };
+    let posted = gamma
+        .markets()
+        .query_by_information(body)
+        .limit(5)
+        .send()
+        .await
+        .or_fail("POST /markets/information with marketMakerAddress");
+    assert!(
+        posted.is_empty(),
+        "POST /markets/information ignored marketMakerAddress: {} markets came back",
+        posted.len()
+    );
+}
+
+/// Every market says which protocol it trades on, in a spelling this SDK
+/// knows. Upstream's migration guide tells callers to choose a market's
+/// trading ids by `version` and to reject a missing or unrecognised one, so
+/// either failure stops a caller from trading that market. An `Other` here
+/// means the server has a protocol `ProtocolVersion` does not name yet.
+/// Samples the newest markets because Protocol V2 markets are new.
+#[tokio::test]
+#[ignore]
+async fn live_markets_carry_a_known_protocol_version() {
+    use polyoxide_polymarket::gamma::types::ProtocolVersion;
+
+    let gamma = client();
+    for closed in [false, true] {
+        let markets = gamma
+            .markets()
+            .list()
+            .closed(closed)
+            .order("id")
+            .ascending(false)
+            .limit(100)
+            .send()
+            .await
+            .or_fail("list newest markets");
+        assert!(!markets.is_empty(), "closed={closed}: no markets came back");
+        for m in &markets {
+            match &m.version {
+                Some(v) => assert!(
+                    ProtocolVersion::ALL.contains(v),
+                    "market {} (closed={closed}) has unrecognised version {v:?}",
+                    m.id
+                ),
+                None => panic!("market {} (closed={closed}) has no version", m.id), // live-unwraps: an assertion on the response
+            }
+        }
+    }
+}
+
+// ── Events ──────────────────────────────────────────────────────
+
+#[tokio::test]
+#[ignore]
+async fn live_list_events() {
+    let gamma = client();
+    let events = gamma
+        .events()
+        .list()
+        .limit(5)
+        .send()
+        .await
+        .or_fail("list events");
+    assert!(!events.is_empty(), "should return at least one event");
+}
+
+/// A game event carries what joins it to a `polyoxide-sports` score: its
+/// `gameId`, its two sides and its league. `/events` must apply `game_id`
+/// rather than ignore it; `openapi.yaml` does not list it for this route.
+#[tokio::test]
+#[ignore]
+async fn live_game_events_carry_their_sports_fields() {
+    use polyoxide_polymarket::gamma::types::HomeAway;
+
+    let gamma = client();
+    let events = gamma
+        .events()
+        .list()
+        .tag_id(1)
+        .closed(false)
+        .include_markets(false)
+        .order("startTime")
+        .ascending(false)
+        .limit(100)
+        .send()
+        .await
+        .or_fail("list open sports events");
+    // Selected on the precondition: tag 1 also holds futures and child
+    // events, which are not one game with two sides.
+    let game = events
+        .iter()
+        .find(|e| e.game_id.is_some() && e.parent_event_id.is_none() && e.teams.len() == 2)
+        .unwrap_or_else(|| {
+            let listed = events.len();
+            let message = format!("none of {listed} open sports events is a game with two teams");
+            panic!("{message}"); // live-unwraps: an assertion on the response
+        });
+
+    let mut sides: Vec<_> = game.teams.iter().map(|t| t.ordering.clone()).collect();
+    sides.sort_by_key(|s| s.as_ref().map(|s| s.as_str().to_owned()));
+    assert_eq!(
+        sides,
+        [Some(HomeAway::Away), Some(HomeAway::Home)],
+        "event {}: a game's teams are one home and one away",
+        game.id
+    );
+    let sport = game
+        .sport
+        .as_ref()
+        .unwrap_or_else(|| panic!("event {}: a game carries its league", game.id)); // live-unwraps: an assertion on the response
+    assert!(
+        sport.primary_tag_id.is_some(),
+        "event {}: league {} has no primaryTagId",
+        game.id,
+        sport.sport
+    );
+
+    let game_id = game.game_id.expect("selected on game_id"); // live-unwraps: selected on game_id.is_some()
+    let by_game = gamma
+        .events()
+        .list()
+        .game_id([i64::try_from(game_id).expect("game ids fit in i64")]) // live-unwraps: an assertion on the response's game id
+        .include_markets(false)
+        .send()
+        .await
+        .or_fail("list events by game_id");
+    assert!(
+        by_game.iter().any(|e| e.id == game.id),
+        "game_id={game_id} did not return event {}",
+        game.id
+    );
+    assert!(
+        by_game.iter().all(|e| e.game_id == Some(game_id)),
+        "game_id={game_id} returned other games, so the filter was ignored"
+    );
+}
+
+#[tokio::test]
+#[ignore]
+async fn live_get_event_by_id() {
+    let gamma = client();
+    let events = gamma
+        .events()
+        .list()
+        .limit(1)
+        .send()
+        .await
+        .or_fail("list events to discover id");
+    let first = events.first().expect("need at least one event"); // live-unwraps: an assertion on the response
+    let id = first.id.clone();
+
+    let event = gamma
+        .events()
+        .get(&id)
+        .send()
+        .await
+        .or_fail("get event by id");
+    assert_eq!(event.id, id);
+}
+
+#[tokio::test]
+#[ignore]
+async fn live_get_event_by_slug() {
+    let gamma = client();
+    let events = gamma
+        .events()
+        .list()
+        .limit(10)
+        .send()
+        .await
+        .or_fail("list events to discover slug");
+    let event_with_slug = events
+        .iter()
+        .find(|e| e.slug.is_some())
+        .expect("need at least one event with a slug"); // live-unwraps: an assertion on the response
+    let slug = event_with_slug.slug.as_ref().unwrap().clone(); // live-unwraps: selected on slug.is_some()
+
+    let event = gamma
+        .events()
+        .get_by_slug(&slug)
+        .send()
+        .await
+        .or_fail("get event by slug");
+    assert_eq!(event.slug.as_deref(), Some(slug.as_str()));
+}
+
+#[tokio::test]
+#[ignore]
+async fn live_list_event_creators() {
+    let gamma = client();
+    let creators = gamma
+        .events()
+        .list_creators()
+        .limit(5)
+        .send()
+        .await
+        .or_fail("list event creators");
+    let _ = creators; // may be empty; deserialization is the assertion
+}
+
+#[tokio::test]
+#[ignore]
+async fn live_list_events_pagination() {
+    let gamma = client();
+    let resp = gamma
+        .events()
+        .list_paginated()
+        .limit(3)
+        .send()
+        .await
+        .or_fail("list paginated events");
+    // Data may be empty when no matching events; struct must deserialize.
+    let _ = resp;
+}
+
+#[tokio::test]
+#[ignore]
+async fn live_list_events_results() {
+    let gamma = client();
+    let _events = gamma
+        .events()
+        .list_results()
+        .limit(3)
+        .send()
+        .await
+        .or_fail("list event results");
+}
+
+#[tokio::test]
+#[ignore]
+async fn live_list_events_keyset() {
+    let gamma = client();
+    let resp = gamma
+        .events()
+        .list_keyset()
+        .limit(5)
+        .send()
+        .await
+        .or_fail("list events (keyset)");
+    let _ = resp; // events may be empty on some configurations; deserialization is the assertion
+}
+
+/// `include_markets=false` drops `markets` from `/events/keyset`, which
+/// `openapi.yaml` does not list for this route. An ignored parameter is
+/// silent, so the control selects events that do carry markets and the
+/// same ids must then come back without them.
+#[tokio::test]
+#[ignore]
+async fn live_keyset_events_apply_include_markets() {
+    let gamma = client();
+    let with = gamma
+        .events()
+        .list_keyset()
+        .closed(false)
+        .limit(10)
+        .send()
+        .await
+        .or_fail("list events (keyset) with markets");
+    let ids: Vec<i64> = with
+        .events
+        .iter()
+        .filter(|e| !e.markets.is_empty())
+        .map(|e| e.id.parse().expect("event ids are integers")) // live-unwraps: an assertion on the response's id
+        .collect();
+    assert!(
+        !ids.is_empty(),
+        "none of {} open events carries markets, so there is no control",
+        with.events.len()
+    );
+
+    let without = gamma
+        .events()
+        .list_keyset()
+        .id(ids.clone())
+        .include_markets(false)
+        .send()
+        .await
+        .or_fail("list events (keyset) without markets");
+    assert_eq!(without.events.len(), ids.len(), "id={ids:?}");
+    assert!(
+        without.events.iter().all(|e| e.markets.is_empty()),
+        "include_markets=false was ignored on /events/keyset"
+    );
+}
+
+// ── Tags ────────────────────────────────────────────────────────
+
+#[tokio::test]
+#[ignore]
+async fn live_list_tags() {
+    let gamma = client();
+    let tags = gamma
+        .tags()
+        .list()
+        .limit(5)
+        .send()
+        .await
+        .or_fail("list tags");
+    assert!(!tags.is_empty(), "should return at least one tag");
+}
+
+#[tokio::test]
+#[ignore]
+async fn live_get_tag_by_id() {
+    let gamma = client();
+    let tags = gamma
+        .tags()
+        .list()
+        .limit(1)
+        .send()
+        .await
+        .or_fail("list tags to discover id");
+    let first = tags.first().expect("need at least one tag"); // live-unwraps: an assertion on the response
+    let id = first.id.clone();
+
+    let tag = gamma.tags().get(&id).send().await.or_fail("get tag by id");
+    assert_eq!(tag.id, id);
+}
+
+#[tokio::test]
+#[ignore]
+async fn live_get_tag_by_slug() {
+    let gamma = client();
+    let tags = gamma
+        .tags()
+        .list()
+        .limit(10)
+        .send()
+        .await
+        .or_fail("list tags to discover slug");
+    let first = tags.first().expect("need at least one tag"); // live-unwraps: an assertion on the response
+    let slug = first.slug.clone();
+
+    let tag = gamma
+        .tags()
+        .get_by_slug(&slug)
+        .send()
+        .await
+        .or_fail("get tag by slug");
+    assert_eq!(tag.slug, slug);
+}
+
+#[tokio::test]
+#[ignore]
+async fn live_get_related_tags() {
+    let gamma = client();
+
+    // Use a tag known to have relations. The previous version of this test took
+    // whatever `list()` returned first, which is almost always a long-tail tag
+    // with zero relations — an empty array parses as *any* element type, so the
+    // test passed for years while the response was typed as `Vec<Tag>` instead
+    // of `Vec<RelatedTag>`. Asserting on a populated response is the point.
+    let related = gamma
+        .tags()
+        .get_related_by_slug("politics")
+        .send()
+        .await
+        .or_fail("get related tags");
+
+    assert!(
+        !related.is_empty(),
+        "expected the 'politics' tag to have relations; if upstream changed, \
+         pick another well-connected tag rather than relaxing this assertion"
+    );
+
+    for row in &related {
+        assert!(!row.id.is_empty(), "relationship row needs its own id");
+        // The type allows these to be null because the upstream schema says
+        // nullable, but nothing observed live has been. Asserting they are
+        // populated makes this test a canary: if it starts failing, the venue
+        // really does emit nulls and the Option typing is earning its keep.
+        assert!(
+            row.related_tag_id.is_some_and(|id| id > 0),
+            "row must name the tag it relates to, got {:?}",
+            row.related_tag_id
+        );
+    }
+
+    // The by-ID route must return the same rows as the by-slug route.
+    let tag_id = related[0]
+        .tag_id
+        .expect("the queried tag's own id should be populated"); // live-unwraps: an assertion on the response
+    let by_id = gamma
+        .tags()
+        .get_related(tag_id.to_string())
+        .send()
+        .await
+        .or_fail("get related tags by id");
+    assert_eq!(
+        by_id.len(),
+        related.len(),
+        "by-id and by-slug routes disagree"
+    );
+
+    // `/related-tags/tags` is the sibling that really does return tags; the two
+    // shapes must not be conflated again.
+    let detailed = gamma
+        .tags()
+        .get_related_detailed_by_slug("politics")
+        .send()
+        .await
+        .or_fail("get detailed related tags");
+    assert!(
+        detailed.iter().all(|t| !t.slug.is_empty()),
+        "/related-tags/tags must return Tag objects with slugs"
+    );
+}
+
+// ── Series ──────────────────────────────────────────────────────
+
+#[tokio::test]
+#[ignore]
+async fn live_list_series() {
+    let gamma = client();
+    let series = gamma
+        .series()
+        .list()
+        .limit(5)
+        .send()
+        .await
+        .or_fail("list series");
+    assert!(!series.is_empty(), "should return at least one series");
+}
+
+#[tokio::test]
+#[ignore]
+async fn live_get_series_by_id() {
+    let gamma = client();
+    let series = gamma
+        .series()
+        .list()
+        .limit(1)
+        .send()
+        .await
+        .or_fail("list series to discover id");
+    let first = series.first().expect("need at least one series"); // live-unwraps: an assertion on the response
+    let id = first.id.clone();
+
+    let s = gamma
+        .series()
+        .get(&id)
+        .send()
+        .await
+        .or_fail("get series by id");
+    assert_eq!(s.id, id);
+}
+
+#[tokio::test]
+#[ignore]
+async fn live_get_series_summary() {
+    let gamma = client();
+    let series = gamma
+        .series()
+        .list()
+        .limit(1)
+        .send()
+        .await
+        .or_fail("list series to discover id");
+    let first = series.first().expect("need at least one series"); // live-unwraps: an assertion on the response
+
+    let summary = gamma
+        .series()
+        .get_summary(&first.id)
+        .send()
+        .await
+        .or_fail("get series summary by id");
+    assert_eq!(summary.id, first.id);
+}
+
+#[tokio::test]
+#[ignore]
+async fn live_get_series_summary_by_slug() {
+    let gamma = client();
+    let series = gamma
+        .series()
+        .list()
+        .limit(1)
+        .send()
+        .await
+        .or_fail("list series to discover slug");
+    let first = series.first().expect("need at least one series"); // live-unwraps: an assertion on the response
+    let slug = first.slug.clone();
+
+    let summary = gamma
+        .series()
+        .get_summary_by_slug(&slug)
+        .send()
+        .await
+        .or_fail("get series summary by slug");
+    // The upstream may map slug to a different summary id, but deserialization
+    // is the primary assertion here.
+    let _ = summary;
+}
+
+#[tokio::test]
+#[ignore]
+async fn live_series_comment_count() {
+    let gamma = client();
+    let series = gamma
+        .series()
+        .list()
+        .limit(1)
+        .send()
+        .await
+        .or_fail("list series to discover id");
+    let first = series.first().expect("need at least one series"); // live-unwraps: an assertion on the response
+    let count = gamma
+        .series()
+        .comment_count(&first.id)
+        .send()
+        .await
+        .or_fail("get series comment count");
+    // Deserialization is the primary assertion; count is u64 so any value is
+    // valid.
+    let _ = count;
+}
+
+// ── Sports ──────────────────────────────────────────────────────
+
+#[tokio::test]
+#[ignore]
+async fn live_list_sports() {
+    let gamma = client();
+    let sports = gamma.sports().list().send().await.or_fail("list sports");
+    assert!(
+        !sports.is_empty(),
+        "should return at least one sport metadata entry"
+    );
+}
+
+#[tokio::test]
+#[ignore]
+async fn live_list_teams() {
+    let gamma = client();
+    let teams = gamma
+        .sports()
+        .list_teams()
+        .limit(5)
+        .send()
+        .await
+        .or_fail("list teams");
+    assert!(!teams.is_empty(), "should return at least one team");
+}
+
+#[tokio::test]
+#[ignore]
+async fn live_get_team_by_id() {
+    let gamma = client();
+    let teams = gamma
+        .sports()
+        .list_teams()
+        .limit(1)
+        .send()
+        .await
+        .or_fail("list teams to discover id");
+    let first = teams.first().expect("need at least one team"); // live-unwraps: an assertion on the response
+    let id = first.id.to_string();
+
+    let team = gamma
+        .sports()
+        .get_team(&id)
+        .send()
+        .await
+        .or_fail("get team by id");
+    assert_eq!(team.id, first.id);
+}
+
+// ── Comments ────────────────────────────────────────────────────
+
+#[tokio::test]
+#[ignore]
+async fn live_list_comments() {
+    let gamma = client();
+
+    // The comments endpoint requires parent_entity_type and parent_entity_id.
+    // Discover an event ID first.
+    let events = gamma
+        .events()
+        .list()
+        .limit(5)
+        .send()
+        .await
+        .or_fail("list events to discover id for comments");
+    let first = events.first().expect("need at least one event"); // live-unwraps: an assertion on the response
+    let event_id: i64 = first.id.parse().expect("event id should be numeric"); // live-unwraps: an assertion on the response's id
+
+    let comments = gamma
+        .comments()
+        .list()
+        .parent_entity_type(ParentEntityType::Event)
+        .parent_entity_id(event_id)
+        .limit(5)
+        .send()
+        .await
+        .or_fail("list comments");
+    // An empty result is not signal: the discovered event may simply have no
+    // comments, which is exactly the luck that let issue #28 hide for months.
+    // Say so out loud rather than passing silently.
+    if comments.is_empty() {
+        environmental(&format!(
+            "no comments on event {event_id}; this run did not exercise \
+             comment deserialization"
+        ));
+    }
+    assert!(
+        comments.iter().all(|c| !c.id.is_empty()),
+        "every comment must carry an id"
+    );
+}
+
+// ── Comments: get and by_user ───────────────────────────────────
+
+#[tokio::test]
+#[ignore]
+async fn live_get_comment_by_id() {
+    let gamma = client();
+
+    // Discover a comment ID from listing
+    let events = gamma
+        .events()
+        .list()
+        .active(true)
+        .limit(5)
+        .send()
+        .await
+        .or_fail("list events");
+    let first = events.first().expect("need at least one event"); // live-unwraps: an assertion on the response
+    let event_id: i64 = first.id.parse().expect("event id should be numeric"); // live-unwraps: an assertion on the response's id
+
+    let comments = gamma
+        .comments()
+        .list()
+        .parent_entity_type(ParentEntityType::Event)
+        .parent_entity_id(event_id)
+        .limit(1)
+        .send()
+        .await
+        .or_fail("list comments");
+
+    let Some(comment) = comments.first() else {
+        environmental(&format!(
+            "no comments on event {event_id}; nothing to fetch by id"
+        ));
+    };
+    let thread = gamma
+        .comments()
+        .get(&comment.id)
+        .send()
+        .await
+        .or_fail("get comment thread by id");
+    // Upstream returns the whole thread, with the requested id somewhere
+    // inside it — not necessarily first.
+    assert!(
+        thread.iter().any(|c| c.id == comment.id),
+        "the requested comment must appear in the returned thread"
+    );
+}
+
+// ── Events: related by ID, tags, counts ────────────────────────
+
+#[tokio::test]
+#[ignore]
+async fn live_event_tags() {
+    let gamma = client();
+    let events = gamma
+        .events()
+        .list()
+        .limit(1)
+        .send()
+        .await
+        .or_fail("list events");
+    let first = events.first().expect("need at least one event"); // live-unwraps: an assertion on the response
+
+    let _tags = gamma
+        .events()
+        .tags(&first.id)
+        .send()
+        .await
+        .or_fail("get event tags");
+}
+
+// ── Markets: tags ──────────────────────────────────────────────
+
+#[tokio::test]
+#[ignore]
+async fn live_market_tags() {
+    let gamma = client();
+    let markets = gamma
+        .markets()
+        .list()
+        .limit(1)
+        .send()
+        .await
+        .or_fail("list markets");
+    let first = markets.first().expect("need at least one market"); // live-unwraps: an assertion on the response
+
+    let _tags = gamma
+        .markets()
+        .tags(&first.id)
+        .send()
+        .await
+        .or_fail("get market tags");
+}
+
+// ── Sports: market types ───────────────────────────────────────
+
+#[tokio::test]
+#[ignore]
+async fn live_sports_market_types() {
+    let gamma = client();
+    let _types = gamma
+        .sports()
+        .market_types()
+        .send()
+        .await
+        .or_fail("sports market types should deserialize");
+}
+
+// ── Search ──────────────────────────────────────────────────────
+
+#[tokio::test]
+#[ignore]
+async fn live_public_search() {
+    let gamma = client();
+    let results = gamma
+        .search()
+        .public_search("bitcoin")
+        .search_profiles(true)
+        .limit_per_type(5)
+        .send()
+        .await
+        .or_fail("public search");
+    // Search may return empty results for some queries,
+    // but deserialization must succeed.
+    let _ = results;
+}
+
+/// Regression test for the `SearchResponse::profiles` null-element failure
+/// (see `docs/specs/gamma/OBSERVED.md` and `docs/plans/2026-08-19-gamma-type-parity-worklist.md`,
+/// follow-up 17). `q=sports` at this `limit_per_type` reliably returns a JSON
+/// `null` entry in `profiles`; the old `Vec<SearchProfile>` errored the whole
+/// call on it instead of tolerating it.
+#[tokio::test]
+#[ignore]
+async fn live_public_search_sports_profiles() {
+    let gamma = client();
+    let results = gamma
+        .search()
+        .public_search("sports")
+        .search_profiles(true)
+        .limit_per_type(20)
+        .send()
+        .await
+        .or_fail("public search must deserialize even when profiles contains a null entry");
+    let _ = results;
+}
+
+// ── User ────────────────────────────────────────────────────────
+
+#[tokio::test]
+#[ignore]
+async fn live_get_user() {
+    let gamma = client();
+
+    // Discover a real user address from comments.
+    let events = gamma
+        .events()
+        .list()
+        .active(true)
+        .limit(5)
+        .send()
+        .await
+        .or_fail("list events");
+    let first = events.first().expect("need at least one event"); // live-unwraps: an assertion on the response
+    let event_id: i64 = first.id.parse().expect("event id should be numeric"); // live-unwraps: an assertion on the response's id
+
+    let comments = gamma
+        .comments()
+        .list()
+        .parent_entity_type(ParentEntityType::Event)
+        .parent_entity_id(event_id)
+        .limit(20)
+        .send()
+        .await
+        .or_fail("list comments to find a user");
+
+    if comments.is_empty() {
+        environmental(&format!(
+            "no comments on event {event_id}; no address to resolve"
+        ));
+    }
+    // `/public-profile` wants an address. The old code passed `comment.user.id`,
+    // which was an id-shaped field that never existed on the wire. Comments
+    // that all lack one is how a `userAddress` decode regression looks.
+    let address = comments
+        .iter()
+        .find_map(|comment| comment.user_address.as_deref())
+        .unwrap_or_else(|| {
+            panic!("none of {} comments carries a userAddress", comments.len()) // live-unwraps: an assertion on the response
+        });
+    let user = gamma
+        .user()
+        .get(address)
+        .send()
+        .await
+        .or_fail("get user profile");
+    let _ = user;
+}
+
+#[tokio::test]
+#[ignore]
+async fn live_get_profile_by_address() {
+    let gamma = client();
+
+    // Discover a real user proxy-wallet address via the public-profile
+    // endpoint; fall back to exercising the endpoint with a burner address if
+    // no real user is found.
+    let events = gamma
+        .events()
+        .list()
+        .active(true)
+        .limit(5)
+        .send()
+        .await
+        .or_fail("list events");
+    let Some(first) = events.first() else {
+        environmental("no active events listed; no address to resolve");
+    };
+    let event_id: i64 = first.id.parse().expect("event id should be numeric"); // live-unwraps: an assertion on the response's id
+
+    let comments = gamma
+        .comments()
+        .list()
+        .parent_entity_type(ParentEntityType::Event)
+        .parent_entity_id(event_id)
+        .limit(20)
+        .send()
+        .await
+        .or_fail("list comments to find an address");
+
+    if comments.is_empty() {
+        environmental(&format!(
+            "no comments on event {event_id}; no address to resolve"
+        ));
+    }
+    let user_address = comments
+        .iter()
+        .find_map(|comment| comment.user_address.as_deref())
+        .unwrap_or_else(|| {
+            panic!("none of {} comments carries a userAddress", comments.len()) // live-unwraps: an assertion on the response
+        });
+    let user = gamma
+        .user()
+        .get(user_address)
+        .send()
+        .await
+        .or_fail("resolve user to proxy wallet");
+    let Some(address) = user.proxy.clone() else {
+        environmental(&format!(
+            "user {user_address} has no proxy wallet; no address to look up"
+        ));
+    };
+
+    // The endpoint returns 200 for almost any address that has ever touched
+    // the platform; a 404 here means `address` genuinely has no profile,
+    // which is a legitimate skip. Anything else — in particular a
+    // deserialization error — is a real failure and must not be swallowed.
+    // See `docs/plans/2026-08-19-gamma-type-parity-worklist.md` finding #1,
+    // fixed by modelling `Profile` against the endpoint's published schema.
+    match gamma.user().get_by_address(&address).send().await {
+        Ok(profile) => {
+            // Every capture behind tests/wire_agreement.rs carried all three;
+            // taker_tier_name in particular must never be empty.
+            assert!(
+                !profile.taker_tier_name.is_empty(),
+                "takerTierName must not be empty"
+            );
+        }
+        Err(GammaError::Api(ApiError::Response(r))) if r.status.as_u16() == 404 => {
+            environmental(&format!("{address} has no profile (404)"));
+        }
+        Err(e) => fail(&format!("get_by_address({address}) failed"), &e),
+    }
+}
+
+#[tokio::test]
+#[ignore]
+async fn live_get_event_creator_by_id() {
+    let gamma = client();
+    let creators = gamma
+        .events()
+        .list_creators()
+        .limit(1)
+        .send()
+        .await
+        .or_fail("list event creators to discover id");
+    let Some(first) = creators.first() else {
+        environmental("no event creators listed; nothing to fetch by id");
+    };
+    let _ = gamma
+        .events()
+        .get_creator(&first.id)
+        .send()
+        .await
+        .or_fail("get event creator by id");
+}
+
+#[tokio::test]
+#[ignore]
+async fn live_get_related_detailed_by_id() {
+    let gamma = client();
+    let tags = gamma
+        .tags()
+        .list()
+        .limit(1)
+        .send()
+        .await
+        .or_fail("list tags to discover id");
+    let first = tags.first().expect("need at least one tag"); // live-unwraps: an assertion on the response
+    let _ = gamma
+        .tags()
+        .get_related_detailed(&first.id)
+        .send()
+        .await
+        .or_fail("get related detailed by id");
+}
+
+#[tokio::test]
+#[ignore]
+async fn live_get_related_detailed_by_slug() {
+    let gamma = client();
+    let tags = gamma
+        .tags()
+        .list()
+        .limit(1)
+        .send()
+        .await
+        .or_fail("list tags to discover slug");
+    let first = tags.first().expect("need at least one tag"); // live-unwraps: an assertion on the response
+    let _ = gamma
+        .tags()
+        .get_related_detailed_by_slug(&first.slug)
+        .send()
+        .await
+        .or_fail("get related detailed by slug");
+}

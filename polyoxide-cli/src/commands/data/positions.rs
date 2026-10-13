@@ -2,7 +2,7 @@ use std::io::Write;
 
 use clap::{Args, Subcommand, ValueEnum};
 use color_eyre::eyre::{bail, Result};
-use polyoxide_data::{
+use polyoxide_polymarket::data::{
     v2::types::{PositionAnchor, PositionSortBy, PositionStatus},
     DataApi,
 };

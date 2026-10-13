@@ -2,7 +2,7 @@ use std::io::Write;
 
 use clap::{ArgAction, Subcommand, ValueEnum};
 use color_eyre::eyre::Result;
-use polyoxide_data::{
+use polyoxide_polymarket::data::{
     v2::types::{FilterType, TradeSide},
     DataApi,
 };

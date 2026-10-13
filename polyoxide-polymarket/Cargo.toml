@@ -10,17 +10,42 @@ description = "Rust client library for Polymarket's APIs: CLOB, Gamma, Data, Rel
 keywords = ["polymarket", "prediction-markets", "trading", "api"]
 categories = ["api-bindings", "web-programming::http-client"]
 
-# One feature per module, each off until its module arrives (Stories 5.3 to
-# 5.5). Today each turns on the parts of `shared` its module uses: the HTTP
-# modules share the retry policy and their window-quota table, and clob and
-# relay share the HMAC signer and the session-signer types.
+# One feature per module. `gamma` and `data` build their modules (Story
+# 5.3); `clob`, `relay` and `perps` arrive in Stories 5.4 and 5.5, and today
+# turn on the parts of `shared` their crates use: the HTTP modules share the
+# retry policy and their window-quota table, and clob and relay share the HMAC
+# signer and the session-signer types. Every feature is off by default until
+# Story 5.4 sets `clob`, `gamma` and `data`.
 [features]
 default = []
 clob = ["dep:polyoxide-core", "dep:base64", "dep:hmac", "dep:sha2", "dep:serde", "dep:thiserror", "dep:tracing"]
-gamma = ["dep:polyoxide-core"]
-data = ["dep:polyoxide-core"]
+gamma = [
+    "dep:polyoxide-core",
+    "dep:serde",
+    "dep:serde_json",
+    "dep:thiserror",
+    "dep:url",
+    "dep:chrono",
+    "dep:tokio",
+    "dep:urlencoding",
+    "specta?/chrono",
+]
+data = [
+    "dep:polyoxide-core",
+    "dep:serde",
+    "dep:serde_json",
+    "dep:thiserror",
+    "dep:url",
+    "dep:futures-util",
+    "dep:rust_decimal",
+    "specta?/rust_decimal",
+]
 relay = ["dep:polyoxide-core", "dep:base64", "dep:hmac", "dep:sha2", "dep:serde"]
 perps = ["dep:polyoxide-core"]
+# Derives `specta::Type` on the enabled modules' response types. Each module
+# adds the specta extras its types need: `chrono` for gamma's dates, and
+# `rust_decimal` for data's decimals, which are strings on the wire.
+specta = ["dep:specta"]
 
 [dependencies]
 polyoxide-core = { workspace = true, optional = true }
@@ -29,21 +54,38 @@ polyoxide-venue = { workspace = true }
 base64 = { workspace = true, optional = true }
 hmac = { workspace = true, optional = true }
 sha2 = { workspace = true, optional = true }
-# The session-signer types' wire form (`clob`, `relay`).
+# The session-signer types' wire form (`clob`, `relay`), and the modules'
+# types (`gamma`, `data`).
 serde = { workspace = true, optional = true }
-# The signer layer's refusal and its tier log line (`clob`).
+serde_json = { workspace = true, optional = true }
+# The signer layer's refusal and its tier log line (`clob`), and the modules'
+# errors (`gamma`, `data`).
 thiserror = { workspace = true, optional = true }
 tracing = { workspace = true, optional = true }
+url = { workspace = true, optional = true }
+# Gamma's dates, its batch fan-out and its path segments (`gamma`).
+chrono = { workspace = true, features = ["serde"], optional = true }
+tokio = { workspace = true, features = ["macros"], optional = true }
+urlencoding = { version = "2.1", optional = true }
+# Data's v2 page streams and its decimals (`data`).
+futures-util = { workspace = true, optional = true }
+rust_decimal = { workspace = true, optional = true }
+specta = { version = "=2.0.0-rc.20", features = ["derive", "serde"], optional = true }
 
 [dev-dependencies]
+# The live suites' failure tags and credential loaders, and the agreement and
+# soak helpers (`query` fires a builder at a mock server; `soak` is the
+# harnesses' pacer, observer and verdicts). Path-only: it is never published,
+# and cargo strips a path-only dev-dependency on publish.
+polyoxide-test-support = { path = "../polyoxide-test-support", features = ["query", "soak"] }
 mockito = { workspace = true }
 serde_json = { workspace = true }
 # `test-util` gives the cooldown tests a paused clock, so they assert the full
 # backoff without actually sleeping for it.
-tokio = { workspace = true, features = ["macros", "rt-multi-thread", "test-util"] }
+tokio = { workspace = true, features = ["macros", "rt-multi-thread", "test-util", "time"] }
 # The send loop's tests read its warnings.
 tracing = { workspace = true }
-tracing-subscriber = { workspace = true }
+tracing-subscriber = { workspace = true, features = ["env-filter"] }
 
 # Each suite drives the parts of `shared` its features build.
 [[test]]
@@ -62,17 +104,130 @@ required-features = ["gamma"]
 name = "health"
 required-features = ["gamma"]
 
+# The gamma module's suites (Story 5.3).
+[[test]]
+name = "error_classes_gamma"
+required-features = ["gamma"]
+
+[[test]]
+name = "headers_gamma"
+required-features = ["gamma"]
+
+[[test]]
+name = "live_gamma"
+required-features = ["gamma"]
+
+[[test]]
+name = "mock_gamma"
+required-features = ["gamma"]
+
+[[test]]
+name = "query_setters_gamma"
+required-features = ["gamma"]
+
+[[test]]
+name = "wire_agreement_gamma"
+required-features = ["gamma"]
+
+# The data module's suites (Story 5.3); `tests/common/` is their shared mock
+# server helper.
+[[test]]
+name = "enum_wire_data_v2"
+required-features = ["data"]
+
+[[test]]
+name = "error_classes_data"
+required-features = ["data"]
+
+[[test]]
+name = "headers_data"
+required-features = ["data"]
+
+[[test]]
+name = "holders_shape_data"
+required-features = ["data"]
+
+[[test]]
+name = "live_data"
+required-features = ["data"]
+
+[[test]]
+name = "mock_data"
+required-features = ["data"]
+
+[[test]]
+name = "mock_data_v2"
+required-features = ["data"]
+
+[[test]]
+name = "query_setters_data"
+required-features = ["data"]
+
+[[test]]
+name = "spec_agreement_data_v2"
+required-features = ["data"]
+
+[[test]]
+name = "wire_agreement_data_v2"
+required-features = ["data"]
+
+# Gamma's probes of Cloudflare's burst limit and its batch ceiling.
+[[example]]
+name = "cf_burst_probe"
+required-features = ["gamma"]
+
+[[example]]
+name = "gamma_batch_ceiling"
+required-features = ["gamma"]
+
+# `cargo test` and `cargo nextest` build examples but do not run their unit
+# tests unless asked, so the rate-limit harnesses' tests would otherwise never
+# run in CI. The verdict rules that pinned `shared::data_limits`'s v2
+# rows are polyoxide-test-support's `soak::verdict::tolerant`, tested there.
+[[example]]
+name = "v2_soak"
+path = "examples/v2_soak/main.rs"
+test = true
+required-features = ["data"]
+
+[[example]]
+name = "closed_positions_soak"
+path = "examples/closed_positions_soak.rs"
+test = true
+required-features = ["data"]
+
+[[example]]
+name = "closed_positions_burst_probe"
+path = "examples/closed_positions_burst_probe.rs"
+test = true
+required-features = ["data"]
+
 [package.metadata.docs.rs]
 all-features = true
 
 # Registration, read by scripts/gen_registry.py: the README line, the venue
-# id, the identifiers the venue gate looks for in the foundation crates and
-# the exceptions it allows there. Run `python3 scripts/gen_registry.py
-# --write` after an edit.
+# and product ids, the docs/specs/ mirrors covered, one entry per live test
+# target, which becomes a nightly job, the identifiers the venue gate looks for
+# in the foundation crates and the exceptions it allows there. Run
+# `python3 scripts/gen_registry.py --write` after an edit.
 [package.metadata.polyoxide]
-readme = "Client library for Polymarket's APIs, one feature per module; today it holds the code the modules share (`shared`), and the modules arrive in Stories 5.3 to 5.5"
+readme = "Client library for Polymarket's APIs, one feature per module: `gamma` (market data) and `data` (user data, v1 and v2), with the code the modules share in `shared`; clob, relay, perps, rtds and sports arrive in Stories 5.4 and 5.5"
 venue = "polymarket"
+products = ["gamma", "data"]
+mirrors = ["gamma", "data", "data-v2", "undocumented"]
 identifiers = ["Poly-RateLimit"]
+
+[package.metadata.polyoxide.live.live_gamma]
+suite = "gamma"
+timeout = 15
+features = ["gamma"]
+secrets = []
+
+[package.metadata.polyoxide.live.live_data]
+suite = "data"
+timeout = 15
+features = ["data"]
+secrets = []
 
 # The foundation crates' protected test names and probe that still name a
 # Polymarket product or host (S2 may not rename a test, AD-12).

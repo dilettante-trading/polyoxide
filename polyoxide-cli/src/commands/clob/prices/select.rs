@@ -1,7 +1,7 @@
 use std::path::Path;
 
 use color_eyre::eyre::{Context, Result};
-use polyoxide_gamma::Gamma;
+use polyoxide_polymarket::gamma::Gamma;
 
 use crate::commands::clob::prices::types::Target;
 

@@ -1677,7 +1677,7 @@ async fn create_order_for_a_proxy_target_uses_the_configured_funder_without_gamm
     let clob = ClobBuilder::new()
         .base_url(server.url())
         .gamma(
-            polyoxide_gamma::Gamma::builder()
+            polyoxide_polymarket::gamma::Gamma::builder()
                 .base_url(server.url())
                 .build()
                 .unwrap(),
@@ -4477,7 +4477,7 @@ async fn a_gamma_404_during_the_profile_lookup_is_clob_s_gamma_error() {
     let clob = ClobBuilder::new()
         .base_url(server.url())
         .gamma(
-            polyoxide_gamma::Gamma::builder()
+            polyoxide_polymarket::gamma::Gamma::builder()
                 .base_url(server.url())
                 .build()
                 .unwrap(),
@@ -4498,7 +4498,7 @@ async fn a_gamma_404_during_the_profile_lookup_is_clob_s_gamma_error() {
     assert!(
         matches!(
             &err,
-            ClobError::Gamma(polyoxide_gamma::GammaError::Api(
+            ClobError::Gamma(polyoxide_polymarket::gamma::GammaError::Api(
                 polyoxide_core::ApiError::Response(r)
             )) if r.status == 404
         ),

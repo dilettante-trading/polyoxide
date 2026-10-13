@@ -441,7 +441,7 @@ class TestDataAsync:
 # Data API v2
 # ══════════════════════════════════════════════════════════════════
 #
-# Mirrors the `live_v2_*` tests in polyoxide-data/tests/live_api.rs. Inputs
+# Mirrors the `live_v2_*` tests in polyoxide-polymarket/tests/live_data.rs. Inputs
 # come from the live feed, never hardcoded: a fixed wallet goes quiet.
 
 

@@ -12,7 +12,7 @@ use std::io::Write;
 
 use clap::{Subcommand, ValueEnum};
 use color_eyre::eyre::Result;
-use polyoxide_data::DataApi;
+use polyoxide_polymarket::data::DataApi;
 
 use crate::commands::data::{
     activity::UserActivityCommand, holders::HoldersCommand, live_volume::LiveVolumeCommand,
@@ -92,7 +92,7 @@ pub enum SortOrder {
     Desc,
 }
 
-impl From<SortOrder> for polyoxide_data::types::SortDirection {
+impl From<SortOrder> for polyoxide_polymarket::data::types::SortDirection {
     fn from(order: SortOrder) -> Self {
         match order {
             SortOrder::Asc => Self::Asc,
@@ -104,7 +104,7 @@ impl From<SortOrder> for polyoxide_data::types::SortDirection {
 #[cfg(test)]
 mod tests {
     use clap::Parser;
-    use polyoxide_data::types::SortDirection;
+    use polyoxide_polymarket::data::types::SortDirection;
 
     use super::*;
 

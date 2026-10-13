@@ -33,8 +33,8 @@ cargo add polyoxide --no-default-features --features full
 | Feature | Default | Description |
 |---------|---------|-------------|
 | `clob`  | yes | CLOB order-book trading via `polyoxide-clob` |
-| `gamma` | yes | Read-only market data via `polyoxide-gamma` |
-| `data`  | yes | Read-only user positions/trades via `polyoxide-data` |
+| `gamma` | yes | Read-only market data via `polyoxide-polymarket`'s `gamma` module |
+| `data`  | yes | Read-only user positions/trades via `polyoxide-polymarket`'s `data` module |
 | `ws`    | no  | WebSocket streaming (implies `clob`) |
 | `rtds`  | no  | RTDS crypto price streams via `polyoxide-rtds` |
 | `perps` | no  | Perps public market data via `polyoxide-perps` |
@@ -103,7 +103,7 @@ Each sub-client can be used standalone without the unified `Polymarket` wrapper.
 
 ```rust
 // Read-only Gamma client (no auth required)
-use polyoxide::polyoxide_gamma::Gamma;
+use polyoxide::polyoxide_polymarket::gamma::Gamma;
 # async fn doctest() -> Result<(), Box<dyn std::error::Error>> {
 let gamma = Gamma::builder().build()?;
 let events = gamma.events().list().limit(5).send().await?;
@@ -113,7 +113,7 @@ let events = gamma.events().list().limit(5).send().await?;
 
 ```rust
 // Read-only Data API client (no auth required)
-use polyoxide::polyoxide_data::DataApi;
+use polyoxide::polyoxide_polymarket::data::DataApi;
 # async fn doctest() -> Result<(), Box<dyn std::error::Error>> {
 let data = DataApi::builder().build()?;
 let leaders = data.leaderboard().get().send().await?;

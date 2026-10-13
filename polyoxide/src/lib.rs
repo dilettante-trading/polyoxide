@@ -84,12 +84,12 @@ struct RootReadmeDoctests;
 
 #[cfg(feature = "clob")]
 pub use polyoxide_clob;
-#[cfg(feature = "data")]
-pub use polyoxide_data;
-#[cfg(feature = "gamma")]
-pub use polyoxide_gamma;
 #[cfg(feature = "perps")]
 pub use polyoxide_perps;
+// Polymarket's venue crate, whose `gamma` and `data` modules the `gamma` and
+// `data` features build (Story 5.3; Story 5.7 reshapes the umbrella).
+#[cfg(any(feature = "gamma", feature = "data"))]
+pub use polyoxide_polymarket;
 #[cfg(feature = "rtds")]
 pub use polyoxide_rtds;
 #[cfg(feature = "sports")]
@@ -98,9 +98,9 @@ pub use polyoxide_sports;
 #[cfg(all(feature = "clob", feature = "gamma", feature = "data"))]
 use polyoxide_clob::{Account, Chain, Clob, ClobBuilder};
 #[cfg(all(feature = "clob", feature = "gamma", feature = "data"))]
-use polyoxide_data::{DataApi, DataApiBuilder};
+use polyoxide_polymarket::data::{DataApi, DataApiBuilder};
 #[cfg(all(feature = "clob", feature = "gamma", feature = "data"))]
-use polyoxide_gamma::Gamma;
+use polyoxide_polymarket::gamma::Gamma;
 
 /// Prelude module for convenient imports
 pub mod prelude {
@@ -111,16 +111,16 @@ pub mod prelude {
         Account, Chain, Clob, ClobBuilder, ClobError, CreateOrderParams, Credentials, OrderKind,
         OrderSide, SignatureType,
     };
-    #[cfg(feature = "data")]
-    pub use polyoxide_data::{DataApi, DataApiError};
-    #[cfg(feature = "gamma")]
-    pub use polyoxide_gamma::{Gamma, GammaError};
     #[cfg(feature = "perps-ws")]
     pub use polyoxide_perps::ws::{
         Channel as PerpsChannel, Event as PerpsEvent, PerpsMembership, PerpsWsBuilder,
     };
     #[cfg(feature = "perps")]
     pub use polyoxide_perps::{Perps, PerpsError};
+    #[cfg(feature = "data")]
+    pub use polyoxide_polymarket::data::{DataApi, DataError};
+    #[cfg(feature = "gamma")]
+    pub use polyoxide_polymarket::gamma::{Gamma, GammaError};
     #[cfg(feature = "rtds")]
     pub use polyoxide_rtds::{
         PriceEvent, PriceUpdate, Rtds, RtdsBuilder, Subscription, Topic, TwapWindow,
@@ -148,12 +148,12 @@ pub enum PolymarketError {
     /// Data API error
     #[cfg(feature = "data")]
     #[error("Data error: {0}")]
-    Data(#[from] polyoxide_data::DataApiError),
+    Data(#[from] polyoxide_polymarket::data::DataError),
 
     /// Gamma API error
     #[cfg(feature = "gamma")]
     #[error("Gamma error: {0}")]
-    Gamma(#[from] polyoxide_gamma::GammaError),
+    Gamma(#[from] polyoxide_polymarket::gamma::GammaError),
 
     /// Perps API error
     #[cfg(feature = "perps")]
@@ -367,7 +367,9 @@ mod tests {
         ));
         #[cfg(feature = "data")]
         rows.push((
-            PolymarketError::Data(polyoxide_data::DataApiError::Pagination("stuck".into())),
+            PolymarketError::Data(polyoxide_polymarket::data::DataError::Pagination(
+                "stuck".into(),
+            )),
             Class::Decode,
             true,
         ));
@@ -376,7 +378,7 @@ mod tests {
         #[cfg(feature = "gamma")]
         rows.push((
             PolymarketError::Gamma(
-                polyoxide_gamma::Gamma::builder()
+                polyoxide_polymarket::gamma::Gamma::builder()
                     .base_url("not a url")
                     .build()
                     .err()
