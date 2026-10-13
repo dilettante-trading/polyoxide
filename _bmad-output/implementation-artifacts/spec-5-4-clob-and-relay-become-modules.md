@@ -2,7 +2,7 @@
 title: 'Story 5.4: clob and relay become modules'
 type: 'refactor'
 created: '2026-10-13'
-status: 'in-progress'
+status: 'done'
 route: 'dispatch'
 baseline_commit: '5117be372bdead89bac48ee067f0d34b9521e834'
 review_loop_iteration: 0
@@ -179,20 +179,20 @@ Claude-Session: https://claude.ai/code/session_01BjnNeirn7DAPvQNrs5khCr
 Record the per-binary test counts first, and stage moved files before running the body diff. Build with `CARGO_INCREMENTAL=0`. A rustc killed with signal 15 or exit 254 is earlyoom; re-run it. Run cargo-hack alone, and never alongside `test_dep_allowlists`.
 
 **Execution:**
-- [ ] `polyoxide-polymarket/`:
+- [x] `polyoxide-polymarket/`:
   - move src, tests, examples and fixtures per Decisions;
   - add features, deps and dev-deps (gated) with the new defaults;
   - add the stanzas, metadata, module READMEs and the gated `const _`;
   - update the crate README and lib docs.
-- [ ] Rename `WebSocketError` → `ClobWsError` everywhere.
-- [ ] Delete `polyoxide-clob/` and `polyoxide-relay/`; update the root `Cargo.toml` and `Cargo.lock`.
-- [ ] Repoint the umbrella (and its README doctest), cli and py; update the rtds doc line.
-- [ ] `test_dep_allowlists.py` and `ci/dep-allowlists/`: the per-feature rules, the new files and the positive alloy check, with synthetic tests for the conditional rule.
-- [ ] `ci.yml` pins; nightly-behavioral's comment; the other CI-script tests; `live_unwraps.baseline.json`.
-- [ ] `scripts/capture_polymarket_session_keys.py` (renamed) and the PROVENANCE text.
-- [ ] `ci/test-body-diff.toml` entries, each firing; `docs/rename-manifest.md` rows, then `api_removals.py manifest --write`.
-- [ ] `docs/MUTANTS.md`, re-cited and re-proved.
-- [ ] CLAUDE.md rules, other docs, then `gen_registry.py --write`.
+- [x] Rename `WebSocketError` → `ClobWsError` everywhere.
+- [x] Delete `polyoxide-clob/` and `polyoxide-relay/`; update the root `Cargo.toml` and `Cargo.lock`.
+- [x] Repoint the umbrella (and its README doctest), cli and py; update the rtds doc line.
+- [x] `test_dep_allowlists.py` and `ci/dep-allowlists/`: the per-feature rules, the new files and the positive alloy check, with synthetic tests for the conditional rule.
+- [x] `ci.yml` pins; nightly-behavioral's comment; the other CI-script tests; `live_unwraps.baseline.json`.
+- [x] `scripts/capture_polymarket_session_keys.py` (renamed) and the PROVENANCE text.
+- [x] `ci/test-body-diff.toml` entries, each firing; `docs/rename-manifest.md` rows, then `api_removals.py manifest --write`.
+- [x] `docs/MUTANTS.md`, re-cited and re-proved.
+- [x] CLAUDE.md rules, other docs, then `gen_registry.py --write`.
 
 **Acceptance Criteria:**
 - Given the moved tree, when clippy (`-D warnings`), `cargo test --all-features --workspace`, the doctests and `RUSTDOCFLAGS=-D warnings cargo doc` run, then all pass, and the per-binary counts sum to the baseline's.
@@ -202,9 +202,48 @@ Record the per-binary test counts first, and stage moved files before running th
 
 ## Implementation Notes
 
+The implementation is commits a680a2e..64e3535, made by impl-54. The review fixes are 207e0b3 and 3f1e701 (the new refusal test moved below the MUTANTS-cited tests). On 3f1e701 the lead re-ran the whole list: 2567 passed, the scripts suite 1261, py 344, the body diff 0, `--strict` 0, and hack, the pins, clippy, doc and fmt clean.
+
+**Deviations, accepted by the lead:**
+- **The workspace dependency on `polyoxide-polymarket` sets `default-features = false`.** Otherwise perps, the CLI, py and the umbrella would build clob and alloy through the new defaults.
+- **`test_body_diff.py` drops a trailing comma before `>`,** as it already did before `)`, `]` and `}`. rustfmt re-wrapped a generic alias in mock_relay.rs, and the only alternative was a DRIFT row, which S2 forbids. The change has a unit test and is in CLAUDE.md.
+- **`polyoxide-clob/default` maps to `polyoxide-polymarket/clob`,** with a note to add `gamma`.
+- **`keychain`** is `polyoxide-core?/keychain`, so it builds keyring whenever a module that uses core is on. Cargo cannot express "only with clob or relay", which is what Decisions said; the docs now say this.
+- **relay's `.env.example` is dropped;** the root one covers it.
+- **The manifest's format example** no longer names `ConnectionClosed`, since the variant stays.
+
+**Verification:** both impl-54 and the lead's own run of the Verification list, before the review fixes, gave:
+- `cargo test`: 2567 passed and 177 ignored, the same per binary as the baseline;
+- clippy, doc, fmt, hack, the four header pins and `-F clob` alone all clean;
+- the body diff: 3832 paired, 0 differ;
+- `manifest --strict`: exit 0, with 8151 entries;
+- the scripts suite: 1252 passed;
+- py: 344 passed.
+
 ## Spec Change Log
 
 ## Review Triage Log
+
+Review 1 used all three layers on the full diff (5117be3..64e3535). Findings are tagged B (blind), E (edge case) and G (verification gap).
+
+| # | Finding | Verdict | Route | Evidence |
+|---|---|---|---|---|
+| G1 | No CI build runs the `not(gamma)` refusal that plain `clob` now builds | medium | patch | The only tests of the path are `cfg(feature = "gamma")`, and CI's test runs are `--all-features`. |
+| G2 | `--no-default-features` for every crate unpins the socket crates' default trees | medium | patch | The `test_dep_allowlists.py` change applies it globally; it now applies only to polymarket's per-feature files. |
+| E5/B6/B7 | No allowlist for `perps`, `clob-ws` or `keychain`, so the keyring rule is vacuous | medium | patch | Only @gamma, @data, @clob and @relay existed, with a positive check for alloy only. |
+| G-o1/E4/B8 | `keychain` builds keyring with gamma or data alone, contrary to the docs and Decisions | low | patch | `polyoxide-core?/keychain` fires whenever core is on. Cargo cannot express the decision, so the text is corrected and the umbrella effect is noted for 5.12. |
+| E2/B4 | `test_order` builds under `clob` alone and then fails at runtime | low | patch | It signs PolyProxy with no funder; it now requires `clob` and `gamma`. |
+| B2/B5 | The module install snippets don't match the new defaults | low | patch | The gamma and data snippets lacked `default-features = false`; clob's dropped the proxy lookup. |
+| B1 | The nightly live flags build polymarket's defaults, so declared `features` go untested | low | patch | `gen_registry.py:234-236` emitted no `--no-default-features`. |
+| B9 | The `specta` docs claim types in clob and relay | low | patch | Only gamma and data derive `specta::Type`. |
+| E1/B3 | The clob README doctest is gated on `clob` but imports `clob::ws` | low | defer | Pre-existing: the old crate's `#[cfg(doctest)]` include failed the same way without `ws`, and CI uses `--all-features`. |
+| B10 | The ERC-6492 envelope and `DynSigner` now exist twice in one crate | low | defer | Pre-existing duplication across the two old crates. Merging it into `shared` is a refactor beyond a move. |
+| B11 | Nothing tracks pruning `ClobWsError::{ConnectionClosed, Authentication}` in S3 | low | defer | Added to deferred-work. |
+| B12 | The release-notes entry omits polymarket's own `default` changing from `[]` to `clob,gamma,data` | low | defer | Added to deferred-work for 5.12. |
+| B13 | The body-diff ancestor-gate limitation now also hides `clob`, `relay` and `clob-ws` gates | medium | defer | Extends 5.2's and 5.3's B1. |
+| E3 | The comma-before-`>` rule could hide a comma change inside a macro token tree | low | reject | Such a change is meaningless in nearly every case, and the fix (tracking `<` depth) adds a guard. |
+| E6 | No tombstones for clob and relay | false | reject | Tombstones are Story 5.12's, by the spec's Never list. |
+| B14 | The spec says `in-review` while sprint-status disagrees, and no counts are recorded | — | reject | Step 5 syncs the status. The counts are now in Implementation Notes. |
 
 ## Verification
 
