@@ -95,7 +95,9 @@ place.
 
 ## Features
 
+- `polyoxide-gamma/default` → `polyoxide-polymarket/gamma` Story 5.3: the module's own feature builds what the crate's defaults did.
 - `polyoxide-gamma/specta` → `polyoxide-polymarket/specta` Story 5.3, with `gamma`.
+- `polyoxide-data/default` → `polyoxide-polymarket/data` Story 5.3: the module's own feature builds what the crate's defaults did.
 - `polyoxide-data/specta` → `polyoxide-polymarket/specta` Story 5.3, with `data`.
 
 ## Doc-hidden paths consumers import

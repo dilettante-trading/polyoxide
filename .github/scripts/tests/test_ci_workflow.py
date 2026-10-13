@@ -99,40 +99,57 @@ def _load_publish_order():
     return module
 
 
-def http_modules(metadata: dict) -> list[str]:
-    """The members that send on core's HTTP client: each declares a venue and its
-    products, and depends directly on polyoxide-core. Each must pin its header set.
-    A venue's own crate that declares no products yet, as `polyoxide-polymarket`
-    does until its modules arrive, holds no client to pin."""
+def http_modules(metadata: dict) -> list[tuple[str, str]]:
+    """The modules that send on core's HTTP client, as `(crate, product)` pairs: each
+    member that declares a venue and depends directly on polyoxide-core holds one per
+    product it declares, so `polyoxide-polymarket`'s `gamma` and `data` are two. Each
+    must pin its header set. A venue's own crate that declares no products holds no
+    client to pin."""
     publish_order = _load_publish_order()
 
     def registration(p: dict) -> dict:
         return (p.get("metadata") or {}).get("polyoxide") or {}
 
     return sorted(
-        p["name"] for p in publish_order.members(metadata)
-        if registration(p).get("venue") and registration(p).get("products")
+        (p["name"], product) for p in publish_order.members(metadata)
+        if registration(p).get("venue")
         and any(dep["name"] == "polyoxide-core" and dep["kind"] is None
-                for dep in p["dependencies"]))
+                for dep in p["dependencies"])
+        for product in registration(p).get("products") or ())
+
+
+def header_pin(package: dict, product: str) -> tuple[str, str]:
+    """A module's header pin in its minimal build, and the test file it runs. A crate
+    with a feature named for the product holds it as a module behind that feature,
+    whose suites carry its name (`headers_<product>`); any other is the module."""
+    crate = package["name"]
+    if product in (package.get("features") or {}):
+        return (f"cargo test -p {crate} --no-default-features --features {product} "
+                f"--test headers_{product}", f"tests/headers_{product}.rs")
+    return f"cargo test -p {crate} --no-default-features --test headers", "tests/headers.rs"
 
 
 def test_the_features_job_runs_each_header_pin_in_its_minimal_build() -> None:
     """One `-p` per command, so no module's features are unified with another's;
     the workspace build runs the same files, against the same literal (AD-18).
-    The modules come from `cargo metadata`, so a new venue crate on core's client
+    The modules come from `cargo metadata`, so a new venue module on core's client
     fails here until it pins its headers and the step names it."""
     metadata = _load_publish_order().cargo_metadata(REPO / "Cargo.toml")
     modules = http_modules(metadata)
     assert len(modules) >= 6, f"too few HTTP modules found, so the check is vacuous: {modules}"
+    assert len({crate for crate, _ in modules}) < len(modules), (
+        f"no crate holds two modules, so the module form is untested: {modules}")
+    packages = {p["name"]: p for p in metadata["packages"]}
     [step] = [s for s in _steps("features") if "--test headers" in s.get("run", "")]
-    named = []
-    for command in step["run"].strip().splitlines():
-        match = re.fullmatch(r"cargo test -p (\S+) --no-default-features --test headers", command)
-        assert match, f"not one module's header pin with one `-p`: {command!r}"
-        named.append(match[1])
-    assert sorted(named) == modules
-    for module in modules:
-        assert (REPO / module / "tests" / "headers.rs").is_file(), module
+    commands = step["run"].strip().splitlines()
+    for command in commands:
+        assert re.fullmatch(r"cargo test -p \S+ --no-default-features"
+                            r"(?: --features \S+)? --test headers\S*", command), (
+            f"not one module's header pin with one `-p`: {command!r}")
+    pins = [header_pin(packages[crate], product) for crate, product in modules]
+    assert sorted(commands) == sorted(command for command, _ in pins)
+    for (crate, _), (_, path) in zip(modules, pins):
+        assert (REPO / crate / path).is_file(), f"{crate}/{path}"
 
 
 def test_http_modules_are_venue_crates_on_core() -> None:
@@ -147,10 +164,25 @@ def test_http_modules_are_venue_crates_on_core() -> None:
         package("polyoxide-kalshi", "kalshi", ["polyoxide-core"]),
         package("polyoxide-rtds", "polymarket", ["polyoxide-venue"]),
         package("polyoxide-cli", None, ["polyoxide-core"]),
-        package("polyoxide-polymarket", "polymarket", ["polyoxide-core"], products=()),
+        package("polyoxide-polymarket", "polymarket", ["polyoxide-core"],
+                products=("gamma", "data")),
+        package("polyoxide-hyperliquid", "hyperliquid", ["polyoxide-core"], products=()),
     ]
     metadata = {"packages": packages, "workspace_members": [p["id"] for p in packages]}
-    assert http_modules(metadata) == ["polyoxide-kalshi"]
+    assert http_modules(metadata) == [("polyoxide-kalshi", "x"),
+                                      ("polyoxide-polymarket", "data"),
+                                      ("polyoxide-polymarket", "gamma")]
+
+
+def test_a_module_behind_its_feature_pins_its_own_suite() -> None:
+    venue = {"name": "polyoxide-polymarket", "features": {"gamma": [], "data": []}}
+    assert header_pin(venue, "gamma") == (
+        "cargo test -p polyoxide-polymarket --no-default-features --features gamma "
+        "--test headers_gamma", "tests/headers_gamma.rs")
+    crate = {"name": "polyoxide-perps", "features": {"ws": []}}
+    assert header_pin(crate, "perps") == (
+        "cargo test -p polyoxide-perps --no-default-features --test headers",
+        "tests/headers.rs")
 
 
 def test_the_scripts_job_fetches_the_tag_the_venue_gate_reads() -> None:

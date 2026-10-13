@@ -125,10 +125,11 @@ def test_every_live_file_is_a_target() -> None:
 
 def test_an_unregistered_live_target_is_caught() -> None:
     metadata = {**METADATA, "packages": [dict(p) for p in METADATA["packages"]]}
-    gamma = next(p for p in metadata["packages"] if p["name"] == "polyoxide-gamma")
-    gamma["targets"] = gamma["targets"] + [{"name": "live_x", "kind": ["test"],
-                                            "src_path": "/ws/polyoxide-gamma/tests/live_x.rs"}]
-    assert set(live_targets(metadata)) - set(registered(REGISTRY)) == {("polyoxide-gamma", "live_x")}
+    venue = next(p for p in metadata["packages"] if p["name"] == "polyoxide-polymarket")
+    venue["targets"] = venue["targets"] + [{"name": "live_x", "kind": ["test"],
+                                            "src_path": "/ws/polyoxide-polymarket/tests/live_x.rs"}]
+    assert (set(live_targets(metadata)) - set(registered(REGISTRY))
+            == {("polyoxide-polymarket", "live_x")})
 
 
 # --- the generated jobs ------------------------------------------------------
@@ -483,6 +484,6 @@ def test_an_unignored_test_in_a_shared_module_is_caught(tmp_path: Path) -> None:
 def test_the_real_shared_modules_are_scanned() -> None:
     """data's live suite declares `mod common;`. binance's did until its wire
     helpers moved to polyoxide-test-support."""
-    for key in [("polyoxide-data", "live_api")]:
+    for key in [("polyoxide-polymarket", "live_data")]:
         files = gen_registry.module_files(_path(*key))
         assert [f.relative_to(_path(*key).parent).as_posix() for f in files[1:]] == ["common/mod.rs"]

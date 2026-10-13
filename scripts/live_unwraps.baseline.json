@@ -8,9 +8,9 @@
     "polyoxide-clob/tests/live_api.rs": 16,
     "polyoxide-clob/tests/live_session_keys.rs": 4,
     "polyoxide-clob/tests/live_ws.rs": 1,
-    "polyoxide-data/tests/live_api.rs": 6,
-    "polyoxide-gamma/tests/live_api.rs": 40,
     "polyoxide-perps/tests/live_ws.rs": 8,
+    "polyoxide-polymarket/tests/live_data.rs": 6,
+    "polyoxide-polymarket/tests/live_gamma.rs": 40,
     "polyoxide-relay/tests/live_api.rs": 1,
     "polyoxide-sports/tests/live_api.rs": 5
   },

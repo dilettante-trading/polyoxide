@@ -112,11 +112,13 @@ def error_types(src: Path) -> dict[str, Path]:
 
 
 def asserted(lib: Path) -> set[str] | None:
-    """The type names lib.rs's assertion lists, or `None` when it has none."""
-    match = ASSERTION.search(_read(lib)) if lib.exists() else None
-    if match is None:
+    """The type names lib.rs's assertions list, or `None` when it has none. A venue
+    crate holds one assertion per module, each gated by the module's feature, so
+    every one counts."""
+    matches = list(ASSERTION.finditer(_read(lib))) if lib.exists() else []
+    if not matches:
         return None
-    return {path.rsplit("::", 1)[-1] for path in LISTED.findall(match[1])}
+    return {path.rsplit("::", 1)[-1] for match in matches for path in LISTED.findall(match[1])}
 
 
 def unlisted(root: Path) -> list[str]:
@@ -226,8 +228,7 @@ def test_every_public_error_type_is_listed_in_its_crates_assertion() -> None:
 
 @pytest.mark.parametrize(("crate", "names"), [
     ("polyoxide-core", {"ApiError", "KeychainError"}),
-    ("polyoxide-polymarket", {"BurstCapacityExceeded"}),
-    ("polyoxide-data", {"DataApiError", "V2Error"}),
+    ("polyoxide-polymarket", {"BurstCapacityExceeded", "GammaError", "DataError", "V2Error"}),
     ("polyoxide-clob", {"ClobError", "ParseTickSizeError", "WebSocketError"}),
     ("polyoxide-perps", {"PerpsError", "VenueError", "PerpsWsError"}),
     ("polyoxide-binance", {"BinanceError", "InvalidSymbol", "UsdmWsError", "InvalidStreamName"}),
@@ -447,6 +448,30 @@ def test_a_new_error_type_is_caught(tmp_path: Path) -> None:
         "polyoxide-fake: Overdraft (polyoxide-fake/src/error.rs)",
         "polyoxide-fake: UnknownVariant (polyoxide-fake/src/error.rs)",
     ]
+
+
+def test_every_gated_assertion_of_a_venue_crate_counts(tmp_path: Path) -> None:
+    lib = """\
+#[cfg(feature = "gamma")]
+const _: fn() = || {
+    fn is<T: polyoxide_venue::Classify>() {}
+    is::<gamma::GammaError>();
+};
+
+#[cfg(feature = "data")]
+const _: fn() = || {
+    fn is<T: polyoxide_venue::Classify>() {}
+    is::<data::DataError>();
+    is::<data::v2::V2Error>();
+};
+"""
+    _crate(tmp_path, "polyoxide-venue-crate", lib,
+           "pub enum GammaError {}\npub enum DataError {}\npub enum V2Error {}\n"
+           "pub enum NewError {}\n")
+    assert asserted(tmp_path / "polyoxide-venue-crate" / "src" / "lib.rs") == {
+        "GammaError", "DataError", "V2Error"}
+    assert unlisted(tmp_path) == [
+        "polyoxide-venue-crate: NewError (polyoxide-venue-crate/src/error.rs)"]
 
 
 def test_a_crate_without_an_assertion_reports_every_type(tmp_path: Path) -> None:
