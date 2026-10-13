@@ -142,7 +142,7 @@ impl ListClosedPositions {
         title: impl Into<String> => "title",
         /// Set maximum number of results (0-50, default: 10).
         ///
-        /// Unlike most other `limit()` builders in this crate, this cap is
+        /// Unlike most other `limit()` builders in this module, this cap is
         /// strictly enforced server-side: passing a value above 50 fails the
         /// request with a 400 ("max closed positions limit of 50 exceeded")
         /// rather than being clamped or paginated by the API.

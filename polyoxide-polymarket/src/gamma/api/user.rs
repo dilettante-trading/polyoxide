@@ -52,7 +52,7 @@ impl User {
 /// other field is optional; the server omits `name`, `pseudonym`,
 /// `profile_image`, `bio`, `x_username` and `discord_username` for some
 /// subjects — `discord_username` was not observed at all in a 39-address
-/// sample (see `tests/fixtures/README.md`). There is no top-level `address`
+/// sample (see `tests/fixtures/gamma/PROVENANCE.md`). There is no top-level `address`
 /// or `id`: the wire never sends either, and the account id lives nested in
 /// [`users`](Self::users).
 #[cfg_attr(feature = "specta", derive(specta::Type))]

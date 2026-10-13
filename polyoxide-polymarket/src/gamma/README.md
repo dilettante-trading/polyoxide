@@ -2,6 +2,8 @@
 
 Read-only Rust client for the [Polymarket Gamma](https://gamma-api.polymarket.com) market data API, the `gamma` module of `polyoxide-polymarket`. No authentication required.
 
+More information about this module can be found in the [crate documentation](https://docs.rs/polyoxide-polymarket/latest/polyoxide_polymarket/gamma/).
+
 ## Installation
 
 ```toml

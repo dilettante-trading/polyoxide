@@ -1,5 +1,5 @@
-//! Shared by `live_api.rs`, whose holders probe selects on it, and
-//! `holders_shape.rs`, which pins it offline.
+//! Shared by `live_data.rs`, whose holders probe selects on it, and
+//! `holders_shape_data.rs`, which pins it offline.
 
 /// Whether `condition_id` has the shape `GET /holders` validates `market`
 /// against: `0x` followed by exactly 64 hex digits.

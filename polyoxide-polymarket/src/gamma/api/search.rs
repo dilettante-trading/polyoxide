@@ -80,7 +80,7 @@ pub struct SearchResponse {
     /// key (already handled by `#[serde(default)]`) — reproducible with
     /// `q=sports&search_profiles=true&limit_per_type=20`, stable across 5/5
     /// attempts on 2026-08-19 (see `docs/specs/gamma/OBSERVED.md` and
-    /// `tests/fixtures/README.md`). Each element is therefore
+    /// `tests/fixtures/gamma/PROVENANCE.md`). Each element is therefore
     /// `Option<SearchProfile>`, not `SearchProfile` — `Option<T>`'s own
     /// `Deserialize` impl decodes a `null` element as `None`, so no custom
     /// deserializer is needed, but a caller that assumes every entry is
@@ -100,7 +100,7 @@ pub struct SearchResponse {
 /// Unlike `/public-profile` and `/profiles/user_address/{address}`,
 /// `/public-search` serves no `$schema` key — there is no published contract
 /// to model this type against. Modelled instead from a 228-profile,
-/// 12-query live sample (2026-08-19; see `tests/fixtures/README.md`):
+/// 12-query live sample (2026-08-19; see `tests/fixtures/gamma/PROVENANCE.md`):
 /// `name`, `display_username_public` and `proxy_wallet` were present on
 /// every sampled profile and `pseudonym` on all but 5, but that is a strong
 /// sample, not a guarantee the way a schema's `required` list would be, so
@@ -157,7 +157,7 @@ mod tests {
     #[test]
     fn test_search_response_deserialization() {
         // Shape captured live from `/public-search` — no `address` key; the
-        // server has never sent one (see tests/wire_agreement.rs).
+        // server has never sent one (see tests/wire_agreement_gamma.rs).
         let json = r#"{
             "profiles": [
                 {
@@ -184,7 +184,7 @@ mod tests {
     #[test]
     fn test_search_response_tolerates_null_profile_entry() {
         // `/public-search` sends a JSON `null` for some entries in `profiles`
-        // — see tests/wire_agreement.rs's
+        // — see tests/wire_agreement_gamma.rs's
         // `search_response_tolerates_null_profile_entries`, which pins this
         // against a captured payload. This is the hand-written analogue.
         let json = r#"{

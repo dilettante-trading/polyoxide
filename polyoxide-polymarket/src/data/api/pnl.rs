@@ -12,7 +12,7 @@ use crate::data::{
 /// This host is **not covered by any published Polymarket OpenAPI spec**. It
 /// backs the PnL chart on the Polymarket web app and was verified live, but it
 /// carries no documented compatibility guarantee — treat it as more likely to
-/// change without notice than the rest of this crate. The base URL is
+/// change without notice than the rest of this module. The base URL is
 /// configurable via
 /// [`DataApiBuilder::pnl_base_url`](crate::data::DataApiBuilder::pnl_base_url).
 ///

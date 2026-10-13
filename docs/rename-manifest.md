@@ -79,7 +79,7 @@ the HMAC signer and the session-signer types by `clob` or `relay`.
 
 Story 5.3 folded `polyoxide-gamma` and `polyoxide-data` into `polyoxide-polymarket` as the
 modules `gamma` and `data`, each under the feature of its name, keeping their own module
-paths. Data's error enum takes its module's name, `DataError` (AD-1's `<Module>Error`).
+paths. Data's error enum takes its module's name, `DataError` (AD-15's `<Module>Error`).
 Until Story 5.7 reshapes the umbrella, `polyoxide` re-exports `polyoxide_polymarket` in their
 place.
 

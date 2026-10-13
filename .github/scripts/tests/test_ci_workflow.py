@@ -152,6 +152,21 @@ def test_the_features_job_runs_each_header_pin_in_its_minimal_build() -> None:
         assert (REPO / crate / path).is_file(), f"{crate}/{path}"
 
 
+def test_the_features_job_checks_each_module_with_specta() -> None:
+    """A module's `specta` extras are weak features (`specta?/chrono`), which neither
+    `--each-feature` (`specta` alone) nor `--all-features` (every extra at once)
+    builds apart, so each module of a crate with `specta` is checked with it."""
+    metadata = _load_publish_order().cargo_metadata(REPO / "Cargo.toml")
+    packages = {p["name"]: p for p in metadata["packages"]}
+    expected = sorted(
+        f"cargo check -p {crate} --no-default-features --features {product},specta"
+        for crate, product in http_modules(metadata)
+        if {product, "specta"} <= set(packages[crate].get("features") or {}))
+    assert len(expected) >= 2, f"too few modules with specta, so the check is vacuous: {expected}"
+    [step] = [s for s in _steps("features") if ",specta" in s.get("run", "")]
+    assert sorted(step["run"].strip().splitlines()) == expected
+
+
 def test_http_modules_are_venue_crates_on_core() -> None:
     def package(name: str, venue: str | None, deps: list[str], products=("x",)) -> dict:
         return {"id": name, "name": name,

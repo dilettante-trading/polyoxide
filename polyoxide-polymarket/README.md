@@ -47,9 +47,11 @@ let client = HttpClientBuilder::new("https://gamma-api.polymarket.com")
 
 ## Installation
 
+Every feature is off by default, so name the modules you use:
+
 ```toml
 [dependencies]
-polyoxide-polymarket = { version = "0.39", features = ["gamma"] }
+polyoxide-polymarket = { version = "0.39", features = ["gamma", "data"] }
 ```
 
 ## License

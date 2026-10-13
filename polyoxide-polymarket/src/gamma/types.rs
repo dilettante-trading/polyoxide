@@ -714,7 +714,7 @@ impl fmt::Display for ParentEntityType {
 /// Comment on an event, series, or perps asset.
 ///
 /// Modelled against payloads captured from the live host; see
-/// `tests/fixtures/README.md`. Three keys carry an explicit
+/// `tests/fixtures/gamma/PROVENANCE.md`. Three keys carry an explicit
 /// `#[serde(rename)]` because the wire capitalises the `ID` suffix and
 /// `rename_all = "camelCase"` would emit `parentEntityId` instead.
 #[cfg_attr(feature = "specta", derive(specta::Type))]
@@ -767,7 +767,7 @@ pub struct CommentProfile {
     pub base_address: Option<String>,
     pub profile_image: Option<String>,
     /// ImageOptimization payload; kept as raw JSON since the upstream shape
-    /// is not yet modelled in this crate.
+    /// is not yet modelled in this module.
     #[cfg_attr(feature = "specta", specta(skip))]
     pub profile_image_optimized: Option<serde_json::Value>,
     /// Populated only when the request sets `get_positions(true)`.
@@ -1489,7 +1489,7 @@ mod tests {
         assert!(event.teams.is_empty());
     }
 
-    /// The captured `-1` is pinned in `tests/wire_agreement.rs`; these are
+    /// The captured `-1` is pinned in `tests/wire_agreement_gamma.rs`; these are
     /// the shapes no capture shows.
     #[test]
     fn event_game_id_reads_negatives_as_none_and_keeps_the_full_u64_range() {
@@ -1726,7 +1726,7 @@ mod tests {
     // `address` and `id` are not tested here because they do not exist: the
     // wire never sends either — see `UserResponse`'s doc comment and
     // `docs/plans/2026-08-19-gamma-type-parity-worklist.md` finding #10.
-    // `tests/wire_agreement.rs` is the guard against them (or anything else
+    // `tests/wire_agreement_gamma.rs` is the guard against them (or anything else
     // invented) reappearing.
 
     #[test]
@@ -2173,7 +2173,7 @@ mod tests {
     // ── Profile ─────────────────────────────────────────────────
     //
     // Field-level agreement with the live server is covered by
-    // `tests/wire_agreement.rs` against captured payloads. These tests only
+    // `tests/wire_agreement_gamma.rs` against captured payloads. These tests only
     // pin the required/optional split and the wire casing.
 
     #[test]

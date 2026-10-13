@@ -82,12 +82,12 @@ running each row's tests with its mutant in place, then without it, the moved on
 `cargo test -p polyoxide-polymarket --all-features`.
 Story 5.3 folded `polyoxide-data` into `polyoxide-polymarket`'s `data` module, so its
 `tests/mock_api.rs` is `polyoxide-polymarket/tests/mock_data.rs`, where rustfmt re-wrapped two
-earlier assertions under their longer paths, moving rows (a), (a), the policy and (b), a zero's
-tests 6 lines down; and repointing clob at the `gamma`
-module re-wrapped one of its `error.rs` tests, moving row (e)'s tests 2 lines down. The rule
-lines did not move. Rows (a), (a), the policy, (b), a zero, (e), (e), case and (e), only a
-400 were proved again on 2026-10-13 on top of `7d08b41`, by running each row's tests with its
-mutant in place, then without it.
+earlier assertions under their longer paths, moving the tests of rows "(a)", "(a), the policy"
+and "(b), a zero" 6 lines down; and repointing clob at the `gamma` module re-wrapped one of its
+`error.rs` tests, moving the tests of row "(e)" 2 lines down. The rule lines did not move. Rows
+"(a)", "(a), the policy", "(b), a zero", "(e)", "(e), case" and "(e), only a 400" were proved
+again on 2026-10-13 on top of `7d08b41`, by running each row's tests with its mutant in place,
+then without it.
 
 ## The rules
 

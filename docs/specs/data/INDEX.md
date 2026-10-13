@@ -8,7 +8,7 @@ Machine-readable schema: [openapi.yaml](openapi.yaml) (mirror of `https://docs.p
 
 These are the **v1** routes, which `polyoxide-polymarket`'s `data` module implements. The same host also
 serves Data API v2 under `/v2`, with a different contract; see
-[../data-v2/INDEX.md](../data-v2/INDEX.md). It is not implemented.
+[../data-v2/INDEX.md](../data-v2/INDEX.md).
 
 ## Auth
 

@@ -1,8 +1,8 @@
 //! The full header set one request goes out with (AD-18, Story 3.13).
 //!
 //! The expected set is a literal, never read from the client under test. CI
-//! runs this file in this crate alone with `--no-default-features`, and again
-//! in the workspace build, so a change to what a client sends fails here in
+//! runs this file in this crate alone with `--no-default-features --features
+//! gamma`, and again in the workspace build, so a change to what a client sends fails here in
 //! one build or the other, whether a code default (0.37.0's gzip regression
 //! was core's builder turning gzip off) or a reqwest feature another member
 //! switches on.

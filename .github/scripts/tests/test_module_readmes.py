@@ -12,8 +12,10 @@ lib.rs does:
 A README no include names is never compiled, so its examples rot unseen; an include
 whose README is not there fails only `cargo test --doc` with that feature on. These
 tests fail on both, naming the module, so the module READMEs and their gated includes
-are counted one for one. A product with no README of its own, such as a crate that is
-still its module (perps, clob), is not checked.
+are counted one for one. A module directory without its README fails too. Only a product
+its crate builds behind a feature of the product's name is a module: a crate that is still
+its one module (perps, clob), or one whose module has no feature yet (Binance's `usdm`
+until Story 5.6), is not checked.
 """
 
 from __future__ import annotations
@@ -61,15 +63,19 @@ def includes(src: Path) -> list[Include]:
 
 
 def problems(crate: Path, products: list[str]) -> list[str]:
-    """`<crate>: module `<m>` ...` for each module README that is not included exactly
-    once under its own feature, and each include of a product's feature whose README
-    is not a file."""
+    """`<crate>: module `<m>` ...` for each module directory without its README, each
+    module README that is not included exactly once under its own feature, and each
+    include of a product's feature whose README is not a file."""
     src = crate / "src"
     found = includes(src)
     out = []
     for product in products:
         readme = (src / product / "README.md").resolve()
+        if not (src / product).is_dir():
+            continue
         if not readme.is_file():
+            out.append(f"{crate.name}: module `{product}` has no README.md in "
+                       f"src/{product}/")
             continue
         gated = [i for i in found if i.target == readme and i.feature == product]
         if len(gated) != 1:
@@ -85,12 +91,15 @@ def problems(crate: Path, products: list[str]) -> list[str]:
 
 
 def venue_modules(metadata: dict) -> list[tuple[Path, list[str]]]:
-    """Each member that declares a venue and products, with its products."""
+    """Each member that declares a venue and products, with the products it builds
+    behind a feature of the product's name: its modules."""
     out = []
     for package in _load_publish_order().members(metadata):
         meta = (package.get("metadata") or {}).get("polyoxide") or {}
-        if meta.get("venue") and meta.get("products"):
-            out.append((Path(package["manifest_path"]).parent, list(meta["products"])))
+        features = package.get("features") or {}
+        modules = [p for p in meta.get("products") or () if p in features]
+        if meta.get("venue") and modules:
+            out.append((Path(package["manifest_path"]).parent, modules))
     return out
 
 
@@ -181,7 +190,17 @@ def test_an_ungated_include_does_not_count(tmp_path: Path) -> None:
         "`cfg(all(doctest, feature = \"gamma\"))`, not once"]
 
 
-def test_a_product_without_a_readme_is_not_checked(tmp_path: Path) -> None:
+def test_a_module_directory_without_its_readme_is_caught(tmp_path: Path) -> None:
+    """Deleting a module's README with its include leaves nothing to count, so the
+    directory is what demands one."""
+    crate = _crate(tmp_path, GAMMA, ["gamma"])
+    (crate / "src" / "data").mkdir()
+    (crate / "src" / "data" / "mod.rs").write_text("pub mod api;\n")
+    assert problems(crate, ["gamma", "data"]) == [
+        "polyoxide-venue-crate: module `data` has no README.md in src/data/"]
+
+
+def test_a_product_without_a_module_directory_is_not_checked(tmp_path: Path) -> None:
     """A crate that is still its one module, as perps and clob are, keeps its README
     at the crate root."""
     crate = _crate(tmp_path, "", [])
@@ -189,14 +208,17 @@ def test_a_product_without_a_readme_is_not_checked(tmp_path: Path) -> None:
 
 
 def test_only_members_with_a_venue_and_products_are_read() -> None:
-    def package(name: str, **meta) -> dict:
+    def package(name: str, features=(), **meta) -> dict:
         return {"id": name, "name": name, "manifest_path": f"/ws/{name}/Cargo.toml",
+                "features": {f: [] for f in features},
                 "metadata": {"polyoxide": meta} if meta else None}
 
     packages = [
         package("polyoxide-core"),
-        package("polyoxide-polymarket", venue="polymarket", products=["gamma", "data"]),
+        package("polyoxide-polymarket", ["gamma", "data", "clob", "specta"],
+                venue="polymarket", products=["gamma", "data"]),
         package("polyoxide-kalshi", venue="kalshi"),
+        package("polyoxide-binance", ["ws"], venue="binance", products=["usdm"]),
     ]
     metadata = {"packages": packages, "workspace_members": [p["id"] for p in packages]}
     assert venue_modules(metadata) == [(Path("/ws/polyoxide-polymarket"), ["gamma", "data"])]
