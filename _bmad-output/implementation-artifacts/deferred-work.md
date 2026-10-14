@@ -101,6 +101,7 @@
 - source_spec: `_bmad-output/implementation-artifacts/spec-3-4-3-6-3-10-venues-on-the-loop-and-one-retry-after.md`
   summary: Make `WindowQuotaTable`'s clock injectable, then move Binance's funding bucket onto a `WindowQuotaTable`-built limiter, when Binance's tables move into its venue crate in S2. Today the bucket keeps its own paced slot, taking only its interval from `WindowQuotaTable::paced_interval(500, 5 min)` and its hold from core's `Hold`, a deviation from AC 3.6 ("the funding bucket uses core's `WindowQuotaTable`") that the lead accepted.
   evidence: A `WindowQuotaTable` builds governor's limiter on `QuantaClock` with `futures_timer` waits, a real clock tokio's paused clock does not drive, and six protected `polyoxide-binance/src/weight.rs` tests run on the paused clock, five minutes of it in `the_funding_bucket_admits_450_per_five_minutes`; on governor's clock they hang.
+  status: Re-deferred to S3 by Story 5.6 (2026-10-14). Moving the bucket would mean replacing governor's `until_ready`, and that changes how every Polymarket limiter waits, which AD-12 forbids in S2. SPINE:234 and D3 keep the bucket in Binance. The file is now `polyoxide-binance/src/usdm/weight.rs`.
 - source_spec: `_bmad-output/implementation-artifacts/spec-3-4-3-6-3-10-venues-on-the-loop-and-one-retry-after.md`
   summary: Remove `HttpClient::acquire_concurrency` from the public API once the eleven tests that observe the permit through it can observe it another way, and list it in `docs/s1-removals.md` with `HttpClient::send` as its replacement. Bundle G removed the other three transitional methods (`should_retry`, `note_rate_limited`, `acquire_rate_limit`); this one stays, a deviation from bundle F's note that G removes all four, which the lead accepted.
   evidence: The callers are core `tests/mock_request.rs` `retry_releases_permit_during_backoff`, five tests in `polyoxide-core/src/client.rs`, the default-concurrency tests of gamma, data, clob and relay, gamma's `api::health` `ping_waits_on_the_shared_request_gate` and, since G5, clob's. No crate's own code calls it. Holding a permit bypasses no throttle.
@@ -299,6 +300,7 @@
 - source_spec: `_bmad-output/implementation-artifacts/spec-5-2-polyoxide-polymarket-and-a-venue-neutral-core.md`
   summary: For Story 5.6: give polyoxide-binance `identifiers` (`fapi`, `fstream`, `X-MBX`), and take Binance's `/fapi/v1/ping` out of `polyoxide-core/tests/health.rs` through a DRIFT row, or excuse it. (low, review 1 B3)
   evidence: `git grep -n fapi polyoxide-core` finds 4 lines, all present at v0.39.0. The gate passes because Binance declares no identifiers.
+  status: Done in Story 5.6. `identifiers = ["fapi", "fstream", "X-MBX"]`, and core's `tests/health.rs` pings `/v1/ping` through a `[literals]` entry, as 5.2 did for its example hosts, not through a DRIFT row.
 - source_spec: `_bmad-output/implementation-artifacts/spec-5-2-polyoxide-polymarket-and-a-venue-neutral-core.md`
   summary: CLAUDE.md's test-bodies paragraph describes `[gates]` as dropping only a module's own `cfg(feature = "<m>")`. Story 5.2 added full cfg-predicate values. (low, review 1 B15)
   evidence: `ci/test-body-diff.toml` `[gates]` holds `'any(feature = "clob", feature = "relay")'` values, which the CLAUDE.md wording does not cover. The fix edits an agent-context file, so it was deferred.
@@ -338,3 +340,12 @@
 - source_spec: `_bmad-output/implementation-artifacts/spec-5-5-perps-rtds-and-sports-become-modules.md`
   summary: `sha2` belongs in `test_dep_allowlists.py`'s signing rule beside `hmac` (only `clob` or `relay`), not only in the HTTP rule 5.5's spec put it in.
   evidence: Only `@clob`, `@clob-ws`, `@clob,keychain` and `@relay` build `sha2`, which is the HMAC signer's hash. A `gamma`, `data` or `perps` build that started pulling it in would pass the per-feature rules, as it already could before 5.5 (5.5 review, B2).
+- source_spec: `_bmad-output/implementation-artifacts/spec-5-6-binance-follows-the-conventions.md`
+  summary: For Story 5.12: bump every README's version pin to the S2 release. `polyoxide-binance`'s two READMEs and polymarket's module READMEs (clob, data, sports, relay and others) pin `"0.39"`, which resolves to the pre-S2 layout, without `usdm-ws` or the `polyoxide_polymarket` modules. (medium, review 1 B4)
+  evidence: `"0.39"` matches `>=0.39.0, <0.40.0`, and 0.39.0 has `polyoxide_binance::Usdm` and the `ws` feature, so a reader of the 0.40 docs who copies the snippet gets the old crate and every `usdm::` import fails.
+- source_spec: `_bmad-output/implementation-artifacts/spec-5-6-binance-follows-the-conventions.md`
+  summary: Hold `polyoxide-binance`'s `@usdm` and `@usdm-ws` allowlists to NFR2's credential-free rule, with no `alloy*`, `hmac` or `keyring`, as polymarket's credential-free modules are held. (low, review 1 B8)
+  evidence: `test_dep_allowlists.py`'s `PER_FEATURE["polyoxide-binance"]` refuses only the socket stack. None of those crates is built today, so a rule costs nothing now, and a `--write` would quietly admit them once a signed Binance module arrives.
+- source_spec: `_bmad-output/implementation-artifacts/spec-5-6-binance-follows-the-conventions.md`
+  summary: For Story 5.12: regenerate `docs/rename-manifest.md`'s changed-in-place region with cargo-semver-checks. It was last written in Story 5.1, and 5.2–5.6 changed signatures in place, such as every Binance `send`, `new` and `build` returning `UsdmError`. (low, review 1 B10)
+  evidence: `git log -L` on the region shows only 159b074. Every story's local run used `--no-semver-checks`, which keeps the region as it was (`scripts/api_removals.py:1187`), and the region feeds 5.12's consumer-impact notes.

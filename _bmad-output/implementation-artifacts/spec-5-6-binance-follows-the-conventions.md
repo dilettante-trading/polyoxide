@@ -2,7 +2,7 @@
 title: 'Story 5.6: Binance follows the conventions'
 type: 'refactor'
 created: '2026-10-14'
-status: 'in-progress'
+status: 'in-review'
 route: 'dispatch'
 baseline_commit: '1850608eba3dd6b12dc9c70af467b120e5f7337a'
 review_loop_iteration: 0
@@ -197,6 +197,27 @@ All paths are relative to `polyoxide-binance/` unless shown.
 ## Spec Change Log
 
 ## Review Triage Log
+
+Review 1 used all three layers on the full diff (1850608..c9e9503), not the one layer planned and named at the checkpoint. This diff changes CI gates: the dep-allowlist rule, the venue gate's identifiers, and the readme, docs.rs and header-pin tests. That is the same reason 5.3 to 5.5 ran three. Findings are tagged B (blind), E (edge case) and G (verification gap).
+
+| # | Finding | Verdict | Route | Evidence |
+|---|---|---|---|---|
+| B1/E1 | The crate-level doctest in `lib.rs:12-22` imports `polyoxide_binance::usdm`, which is now gated on `usdm` | medium | patch | Reproduced: `cargo test -p polyoxide-binance --no-default-features --doc` fails with E0433/E0432. No CI job runs doctests without `usdm`. |
+| G1/B7 | `BINANCE_TABLE` is a hand-copied feature table, and nothing ties it to the real one | medium | patch | It differs from cargo metadata in 6 `dep:` entries and in `tokio/macros`. The real-tree check reads the closure, so a `usdm` that implied `usdm-ws` would pass with `@usdm` listing polyoxide-ws. Matrix row 1 would then go unheld. |
+| B2 | `usdm/mod.rs`'s docs are one line, and the module README links readers there | low | patch | docs.rs's `usdm` page names neither feature and has no example. The fix is B1's example plus a gating sentence, with no new surface. |
+| B6 | `[literals."polyoxide-binance"] "ws" = "usdm-ws"` covers every Binance test item, not only the gated ones | low | patch | `[literals]` accepts path keys (`polyoxide-core/tests/health.rs`). Scoping it is a direct correction, so a later `"ws"` change in an unrelated body is not masked. |
+| B5 | CLAUDE.md:481 says Binance's `mock_usdm.rs` shares `tests/common/mod.rs`, and no longer lists polymarket's `mock_<module>` files | low | patch | `polyoxide-binance/tests/` has no `common/`. The baseline text named only polymarket's modules as sharing it. Fixing it completes this story's AD-21 rewrite, as in 5.5's B9. |
+| E3 | A `default-features = false` consumer loses the whole client, and the manifest does not say so | low | patch | Before, the REST client built with no features. The 5.6 note implies `usdm` is needed but never says it. One added sentence is a direct correction. |
+| B4 | The READMEs pin `"0.39"`, which resolves to the old layout and has no `usdm-ws` | medium | defer | Every S2 module README pins 0.39 (clob, data, sports, relay), so this is the release bump's job (5.12), not this story's. |
+| B8 | Binance's fence holds no signing or keychain rule (alloy\*, hmac, keyring), though `usdm` is credential-free (NFR2) | low | defer | Pre-existing: Binance had no fence before this story. None of those crates is in `@usdm` or `@usdm-ws` today. |
+| B10 | The manifest's changed-in-place region was never regenerated, because the run used `--no-semver-checks` | low | defer | `git log -L` shows the region last written in 5.1 (159b074), so 5.2 to 5.5 never refreshed it either. 5.12 runs the gate strict and feeds consumer-impact notes from it. |
+| B3 | The README's streaming example is a `text` fence, never compiled | low | reject | Pre-existing: the crate README had it as `text` at v0.39.0. A compiled copy needs a doc example under `usdm-ws`, more than a direct correction. |
+| B9 | No test pins the exact log target `polyoxide_binance::usdm::error` | low | reject | The target is tracing's default module path. The documented filter, `polyoxide_binance`, is what `ban_log_usdm` tests. Pinning it needs a new subscriber test. |
+| B11 | The spec, sprint status and Implementation Notes disagree on state and commits | low | reject | Step 5 syncs the sprint status, and the rest is an edit to this build's spec. |
+| B12/E4 | The moved PROVENANCE names `capture_binance_fixtures.py` | low | reject | The frozen Never forbids editing a historical PROVENANCE (5.5's E5). `docs/specs/binance/INDEX.md` names the current script. |
+| B13 | The gate test plants only an uppercase `X-MBX`, and only in core and ws | low | reject | The term is lowercased (`x-mbx`) and the planted line is uppercase, so the test already shows case-folding. Crate coverage is the scanner's, and its own tests hold it. |
+| B14 | `test-server` alone does nothing, and the manifest has no row for it | false | reject | `Cargo.toml`'s comment on the feature says it needs `usdm-ws`. A `## Features` row for a feature that still exists covers no entry, so it would be stale. |
+| E2 | The docs.rs test raises a bare `KeyError` for a venue crate with no docs.rs table | low | reject | A loud failure on a crate that breaks the convention is correct, and the traceback points at the line. |
 
 ## Verification
 
