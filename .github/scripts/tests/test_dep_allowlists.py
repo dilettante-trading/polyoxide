@@ -28,9 +28,13 @@ builds `reqwest`, `polyoxide-core`, `governor` and `sha2`, the HTTP stack, only
 with an HTTP module (`clob`, `gamma`, `data`, `relay` or `perps`), so its socket
 modules `rtds` and `sports` build the socket-only tree; `alloy*` and `hmac`, the
 signing stack, only with `clob` or `relay`; and `keyring` only with `keychain`.
-Its `@perps` file must hold `reqwest`, its `@clob` and `@relay` files `alloy`,
-and its `@clob,keychain` file `keyring`, so no rule can pass because nothing it
-admits is ever built.
+`polyoxide-binance` builds `polyoxide-ws`, `tokio-tungstenite` and
+`tungstenite`, the socket stack, only with `usdm-ws`, so its `@usdm` file is the
+REST client alone. `rustls` is not on that rule: core's HTTP client builds it
+for TLS. Polymarket's `@perps` file must hold `reqwest`, its `@clob` and
+`@relay` files `alloy`, and its `@clob,keychain` file `keyring`, and Binance's
+`@usdm-ws` file `polyoxide-ws`, so no rule can pass because nothing it admits is
+ever built.
 
 Regenerate every file after a deliberate change, from `.github/scripts`:
 
@@ -87,6 +91,11 @@ PER_FEATURE = {
         Rule(frozenset({"keyring"}), (), frozenset({"keychain"}),
              "keyring only with keychain"),
     ),
+    "polyoxide-binance": (
+        Rule(frozenset({"polyoxide-ws", "tokio-tungstenite", "tungstenite"}), (),
+             frozenset({"usdm-ws"}),
+             "polyoxide-ws, tokio-tungstenite and tungstenite only with usdm-ws"),
+    ),
 }
 # The files that must build a crate a rule above admits, with that crate.
 MUST_BUILD = {
@@ -94,6 +103,7 @@ MUST_BUILD = {
     "polyoxide-polymarket@clob.txt": "alloy",
     "polyoxide-polymarket@relay.txt": "alloy",
     "polyoxide-polymarket@clob,keychain.txt": "keyring",
+    "polyoxide-binance@usdm-ws.txt": "polyoxide-ws",
 }
 
 HEADER = """\
@@ -220,13 +230,15 @@ def test_the_allowlists_exist() -> None:
     modules = ("gamma", "data", "perps", "perps-ws", "clob", "clob-ws", "relay",
                "clob,keychain", "rtds", "rtds,test-server", "sports", "sports,test-server")
     assert {f"polyoxide-polymarket@{m}.txt" for m in modules} <= set(names), names
+    assert {f"polyoxide-binance@{m}.txt" for m in ("usdm", "usdm-ws")} <= set(names), names
 
 
 @pytest.mark.parametrize("name", sorted(MUST_BUILD))
 def test_each_per_feature_rule_admits_what_it_guards(name: str) -> None:
     # The rules admit the HTTP stack with an HTTP module, alloy with clob or
-    # relay and keyring with keychain; if no file held them, a rule that never
-    # refuses anything could not be told from one that holds.
+    # relay, keyring with keychain and Binance's socket stack with usdm-ws; if
+    # no file held them, a rule that never refuses anything could not be told
+    # from one that holds.
     assert MUST_BUILD[name] in read_allowlist(ALLOWLISTS / name), name
 
 
@@ -366,8 +378,32 @@ def test_a_signing_module_admits_the_signing_stack_and_not_the_keychain() -> Non
         f"alloy ({SIGNING})", f"alloy-primitives ({SIGNING})", f"hmac ({SIGNING})"]
 
 
+# Binance's `[features]`, as cargo metadata gives it.
+BINANCE_TABLE = {
+    "default": ("usdm",),
+    "usdm": ("dep:polyoxide-core", "polyoxide-venue/decimal", "dep:tokio"),
+    "usdm-ws": ("usdm", "dep:polyoxide-ws", "dep:futures-util", "tokio/rt"),
+    "test-server": (),
+}
+BINANCE = "polyoxide-binance"
+SOCKETS = "polyoxide-ws, tokio-tungstenite and tungstenite only with usdm-ws"
+SOCKET_STACK = ["polyoxide-ws", "tokio-tungstenite", "tungstenite"]
+
+
+def test_binances_rest_module_may_not_build_the_socket_stack() -> None:
+    names = [*SOCKET_STACK, "polyoxide-core", "reqwest", "rustls", "tokio"]
+    refused = [f"{n} ({SOCKETS})" for n in SOCKET_STACK]
+    # `test-server` turns no module on, and a crate's defaults admit nothing.
+    for features in (("usdm",), ("usdm", "test-server"), ("test-server",), ()):
+        assert denied(BINANCE, names, features, BINANCE_TABLE) == refused, features
+    # The streams admit it, and the HTTP stack and its TLS are the REST client's.
+    for features in (("usdm-ws",), ("usdm-ws", "test-server"), ("usdm", "usdm-ws")):
+        assert denied(BINANCE, names, features, BINANCE_TABLE) == [], features
+
+
 def test_only_a_crate_held_per_feature_is_built_without_its_defaults() -> None:
     assert no_defaults("polyoxide-polymarket") == ["--no-default-features"]
+    assert no_defaults("polyoxide-binance") == ["--no-default-features"]
     # The socket kit's bare file is the tree a consumer builds by default.
     assert no_defaults("polyoxide-ws") == []
 

@@ -192,6 +192,7 @@ All paths are relative to `polyoxide-binance/` unless shown.
   - **`polyoxide-venue` stays a non-optional dependency**, as in polymarket; `usdm` turns on its `decimal`. The generated "needs" now reads `polyoxide-venue` without `(with decimal)`.
   - **Two anti-vacuity additions.** `test_venue_gate.py` gains a test that Binance's three identifiers in a foundation crate are caught with the real metadata (the matrix's Gate row), and `test_module_readmes.py` asserts module READMEs are found in at least two crates.
   - **MUTANTS.md:19 is left as written.** It is a dated note of what an earlier story moved, and no citation; the ledger's test reads only `file:line` citations.
+  - **The minimal build is fenced (matrix row 1).** `test_dep_allowlists.py` holds `polyoxide-binance` per feature, built with `--no-default-features`: `polyoxide-ws`, `tokio-tungstenite` and `tungstenite` only with `usdm-ws`, in new `@usdm` and `@usdm-ws` files, with `@usdm-ws` required to hold `polyoxide-ws` and a synthetic test of the rule. `rustls`, which the request named, is left off the rule: `@usdm` builds it through core's `reqwest` (`rustls-tls`), so the rule would refuse the REST build itself; `tungstenite` takes its place.
 
 ## Spec Change Log
 
