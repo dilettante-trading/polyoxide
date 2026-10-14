@@ -162,19 +162,19 @@ All paths are relative to `polyoxide-binance/` unless shown.
 - Run cargo-hack alone.
 
 **Execution:**
-- [ ] `polyoxide-binance/`:
+- [x] `polyoxide-binance/`:
   - move error.rs and weight.rs;
   - rename `BinanceError`;
   - add the features, optional deps, stanzas and live metadata, plus `identifiers`;
   - rename the tests and the fixtures;
   - add the module README and rewrite the crate README;
   - update the docs.
-- [ ] `polyoxide-core/tests/health.rs`, the CLI's Cargo.toml and the root Cargo.toml note.
-- [ ] `ci/test-body-diff.toml` entries, then the body diff.
-- [ ] ci.yml, the nightly comment, the CI-script tests, `live_unwraps.baseline.json` and the capture script.
-- [ ] `docs/rename-manifest.md` rows, then `api_removals.py manifest --write`.
-- [ ] MUTANTS.md, re-cited and re-proved.
-- [ ] CLAUDE.md and the specs INDEX, then `gen_registry.py --write`.
+- [x] `polyoxide-core/tests/health.rs`, the CLI's Cargo.toml and the root Cargo.toml note.
+- [x] `ci/test-body-diff.toml` entries, then the body diff.
+- [x] ci.yml, the nightly comment, the CI-script tests, `live_unwraps.baseline.json` and the capture script.
+- [x] `docs/rename-manifest.md` rows, then `api_removals.py manifest --write`.
+- [x] MUTANTS.md, re-cited and re-proved.
+- [x] CLAUDE.md and the specs INDEX, then `gen_registry.py --write`.
 
 **Acceptance Criteria:**
 - Given the tree, when clippy (`-D warnings`), `cargo test --all-features --workspace`, the doctests and `RUSTDOCFLAGS=-D warnings cargo doc` run, then all pass and the per-binary counts sum to the baseline's.
@@ -183,6 +183,15 @@ All paths are relative to `polyoxide-binance/` unless shown.
 - Given the scripts job, when its pytest, `venue_gate.py` and `gen_registry.py --check` run, then all pass.
 
 ## Implementation Notes
+
+- Commits: da5703c (the crate, core's health tests, the CLI's features, the root note), 9a00091 (body diff, manifest, ci.yml, CI-script tests, live-unwraps baseline, capture script), 50a8ea5 (CLAUDE.md, specs INDEX, regenerated regions), a6e25c6 (MUTANTS.md, re-proved on top of 50a8ea5).
+- Deviations, each kept:
+  - **`manifest --write` changed nothing.** With the rows in place the run reported 0 unresolved, 0 stale rows and 0 stale regions, so the regions were already current.
+  - **The crate README is still a doctest include**, now under `cfg(all(doctest, feature = "usdm"))`. It holds no Rust fence, so it adds no test; the include keeps a future example compiled.
+  - **The `readme` registration line** names the module and its features, as polymarket's does, so the generated crate list says `usdm` and `usdm-ws`.
+  - **`polyoxide-venue` stays a non-optional dependency**, as in polymarket; `usdm` turns on its `decimal`. The generated "needs" now reads `polyoxide-venue` without `(with decimal)`.
+  - **Two anti-vacuity additions.** `test_venue_gate.py` gains a test that Binance's three identifiers in a foundation crate are caught with the real metadata (the matrix's Gate row), and `test_module_readmes.py` asserts module READMEs are found in at least two crates.
+  - **MUTANTS.md:19 is left as written.** It is a dated note of what an earlier story moved, and no citation; the ledger's test reads only `file:line` citations.
 
 ## Spec Change Log
 
