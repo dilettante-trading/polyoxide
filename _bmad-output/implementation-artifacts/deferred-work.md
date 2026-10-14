@@ -329,3 +329,12 @@
 - source_spec: `_bmad-output/implementation-artifacts/spec-5-4-clob-and-relay-become-modules.md`
   summary: `test_body_diff.py`'s blindness to ancestor module gates (5.2 and 5.3's B1) now also covers every inline test under `#[cfg(feature = "clob")] pub mod clob;`, `relay`, and `clob-ws`'s `pub mod ws`. (medium, review 1 B13)
   evidence: `ci/test-body-diff.toml`'s comment explains the missing `[gates]` for gamma and data only.
+- source_spec: `_bmad-output/implementation-artifacts/spec-5-5-perps-rtds-and-sports-become-modules.md`
+  summary: Story 5.7 should prove that `polyoxide::polyoxide_polymarket::{rtds,perps,sports}` resolves in a build with only that umbrella feature on, for example with a per-feature `const _` that cargo-hack compiles.
+  evidence: Every CI job that resolves paths builds with `--all-features`, and the prelude resolves through the extern crate. Dropping `rtds`, `perps` or `sports` from the re-export's `cfg(any(...))` at `polyoxide/src/lib.rs:88-97` fails no job, though the manifest maps consumers to those paths (verification-gap review of 5.5, G1).
+- source_spec: `_bmad-output/implementation-artifacts/spec-5-5-perps-rtds-and-sports-become-modules.md`
+  summary: Story 5.7 should fence the umbrella's `rtds` and `sports` builds, which lost the transitive allowlists `polyoxide-rtds.txt` and `polyoxide-sports.txt` gave them when 5.5 moved the crates into `polyoxide-polymarket`.
+  evidence: `test_dep_allowlists.py` checks only `-p polyoxide-polymarket --no-default-features --features rtds|sports`. Adding `polyoxide-polymarket/data` to the umbrella's `rtds` line builds `polyoxide-core` and `reqwest`, and every test still passes (5.5 review, G2). The fix is umbrella allowlist files, a `no_defaults` entry and a rule; today's tree is clean.
+- source_spec: `_bmad-output/implementation-artifacts/spec-5-5-perps-rtds-and-sports-become-modules.md`
+  summary: `sha2` belongs in `test_dep_allowlists.py`'s signing rule beside `hmac` (only `clob` or `relay`), not only in the HTTP rule 5.5's spec put it in.
+  evidence: Only `@clob`, `@clob-ws`, `@clob,keychain` and `@relay` build `sha2`, which is the HMAC signer's hash. A `gamma`, `data` or `perps` build that started pulling it in would pass the per-feature rules, as it already could before 5.5 (5.5 review, B2).

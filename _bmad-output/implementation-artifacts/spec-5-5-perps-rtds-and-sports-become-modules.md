@@ -2,7 +2,7 @@
 title: 'Story 5.5: perps, rtds and sports become modules'
 type: 'refactor'
 created: '2026-10-13'
-status: 'in-progress'
+status: 'done'
 route: 'dispatch'
 baseline_commit: 'def70b785d6c87606d90842b449ccfd447dea5ed'
 review_loop_iteration: 0
@@ -180,18 +180,18 @@ context:
 
 **Execution:**
 - [x] `polyoxide-rtds/` and `ci/dep-allowlists/`: the DRIFT R6 commit (`refactor(rtds)!: test-fixtures becomes test-server (DRIFT R6)`).
-- [ ] `polyoxide-polymarket/`:
+- [x] `polyoxide-polymarket/`:
   - move src, tests, examples and fixtures per Decisions;
   - add features, deps and gated dev-deps;
   - add the stanzas, metadata, the README includes and the `const _` blocks;
   - update its docs.
-- [ ] Delete the three crates. Update the root Cargo.toml and Cargo.lock, the umbrella, and the CLI.
-- [ ] `scripts/test_body_diff.py`: the `[fixtures]` table and its tests. Then the `ci/test-body-diff.toml` entries, including R6's `[[drift]]` entries.
-- [ ] `test_dep_allowlists.py` and `ci/dep-allowlists/`: the new rule, the new files and synthetic tests.
-- [ ] ci.yml, the nightly comment, the other CI-script tests, `live_unwraps.baseline.json` and the capture scripts.
-- [ ] `docs/rename-manifest.md` rows, then `api_removals.py manifest --write`.
-- [ ] `docs/MUTANTS.md`, re-cited and re-proved.
-- [ ] CLAUDE.md, the other docs, then `gen_registry.py --write`.
+- [x] Delete the three crates. Update the root Cargo.toml and Cargo.lock, the umbrella, and the CLI.
+- [x] `scripts/test_body_diff.py`: the `[fixtures]` table and its tests. Then the `ci/test-body-diff.toml` entries, including R6's `[[drift]]` entries.
+- [x] `test_dep_allowlists.py` and `ci/dep-allowlists/`: the new rule, the new files and synthetic tests.
+- [x] ci.yml, the nightly comment, the other CI-script tests, `live_unwraps.baseline.json` and the capture scripts.
+- [x] `docs/rename-manifest.md` rows, then `api_removals.py manifest --write`.
+- [x] `docs/MUTANTS.md`, re-cited and re-proved.
+- [x] CLAUDE.md, the other docs, then `gen_registry.py --write`.
 
 **Acceptance Criteria:**
 - Given the moved tree, when clippy (`-D warnings`), `cargo test --all-features --workspace`, the doctests and `RUSTDOCFLAGS=-D warnings cargo doc` run, then all pass and the per-binary counts sum to the baseline's.
@@ -202,10 +202,38 @@ context:
 ## Implementation Notes
 
 - The first implementer stopped after the DRIFT R6 commit, 8a94f49, with a clean tree. A fresh one resumes from the next task; 8a94f49 stays as it is.
+- Deviations the second implementer made, each kept:
+  - **No perps `"ws"` literal.** The Code Map's `[literals."polyoxide-perps"] "ws" = "perps-ws"` replaces nothing, so the every-entry-fires rule fails it. No test item sits directly under `mod ws;`, and the stanzas follow the manifest's `polyoxide-perps/ws` row.
+  - **rtds' README exemption.** `test_module_readmes.py` requires a README in every module directory, so `WITHOUT_README` names rtds with its reason. It fails as stale once rtds has a README or stops being a module.
+  - **Header pins and specta.** `http_modules()` counts only products whose feature builds `polyoxide-core`, so rtds and sports get no header pin. ci.yml gains `perps,specta`, which the specta step's test requires.
+  - **docs.rs.** It lists its features rather than `all-features`, so `test-server` stays out.
+  - **`@perps` grew.** It gains `arrayvec`, `num-traits` and `rust_decimal`: the old `perps` feature built only `shared`, and the module's types need decimals. `MUST_BUILD` holds `@perps` to `reqwest`.
 
 ## Spec Change Log
 
 ## Review Triage Log
+
+Review 1 used all three layers on the full diff (def70b7..5c8e004), not the one layer planned. 5.3 and 5.4 both ran three, and this diff changes CI gates: the body diff's `[fixtures]`, the README exemption and the header-pin derivation. Findings are tagged B (blind), E (edge case) and G (verification gap).
+
+| # | Finding | Verdict | Route | Evidence |
+|---|---|---|---|---|
+| B4/E1 | `on_core` treats a product as off core when core is a non-optional dependency | medium | patch | Binance depends on core non-optionally (`polyoxide-binance/Cargo.toml:21`). Once 5.6 gives `usdm` a feature, `http_modules()` drops Binance and its header pin goes unrequired. |
+| B5 | Nothing holds docs.rs' hand-written feature list to the crate's features | low | patch | The next module feature of `polyoxide-polymarket` would be missing from docs.rs, and nothing would fail. |
+| B9 | CLAUDE.md's Module Organization still lists `clob`, `gamma`, `data` and `relay` only, and speaks of "the five socket crates" | low | patch | AD-21 asks the story to rewrite these rules, so this completes the CLAUDE.md task rather than deferring an agent-context edit. |
+| G3 | Moving the code renames the three modules' `tracing` targets | low | patch | Targets default to the module path, so `RUST_LOG=polyoxide_sports=info` stops matching. The manifest's Story 5.5 note now says so. |
+| B6/E3 | The sports drift detector's failure message names the renamed `capture_sports_fixtures.py` | low | patch | `tests/live_sports.rs:264`. A scoped `[literals]` entry keeps the body diff empty, as 5.3's fixture-directory literals did. |
+| B10/E4 | The sports README's migration table points at `polyoxide_sports` | low | patch | The table is historical and stays. A one-line note before it gives the current path. |
+| B1 | `ListEvents::game_id`'s doc reads "a live score from from the `sports` module" | low | patch | `gamma/api/events.rs:334-335`. |
+| B7 | Two perps suites' module docs cite `tests/fixtures/PROVENANCE.md` and `tests/fixtures/ws/PROVENANCE.md` | low | patch | Both files are now under `tests/fixtures/perps/`. |
+| B8 | "This crate" in the moved modules' docs now means `polyoxide-polymarket`, and `rtds/decode.rs:7` is false | low | patch | Other modules' scale decisions live in the same crate now. |
+| B11 | "; The `rtds` module" in the rtds AsyncAPI notes | low | patch | It is a lowercase continuation after a semicolon. |
+| B12 | The crate's categories and keywords omit the sockets it now holds | low | patch | The deleted crates filed under `web-programming::websocket`. |
+| G1 | No build checks `polyoxide::polyoxide_polymarket::{rtds,perps,sports}` with only that umbrella feature on | medium | defer | Pre-verified. Story 5.7 rewrites the umbrella's re-exports and should add a per-feature `const _`. |
+| G2 | The umbrella's `rtds` and `sports` builds lost their transitive dependency fence | medium | defer | Pre-verified, and caused by this change. The fix needs umbrella allowlists and a rule, and Story 5.7 rewrites the umbrella these would pin, so it is deferred there by name. |
+| B2 | `sha2` sits in the HTTP rule, though only the HMAC signer builds it | low | defer | Pre-existing: before this story no per-feature rule held `sha2` for `gamma` or `data` either. Moving it means editing the frozen rule. |
+| B3 | Excluding `rtds` and `sports` from `http_modules()` also drops them from the specta step | low | reject | Neither module derives `specta::Type`, and a module list of its own adds complexity for a case no one meets today. |
+| E2 | A `[fixtures]` entry with an empty scope or a blank subdirectory passes validation | false | reject | Such an entry rewrites unrelated calls, and the body diff then fails loudly on the diffs. It cannot pass silently. |
+| E5 | perps' PROVENANCE files cite the old capture script names | low | reject | They record what ran on the capture date, which the frozen intent keeps. The renamed scripts write the new names on the next refresh. |
 
 ## Verification
 
