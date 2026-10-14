@@ -261,5 +261,5 @@ name = "Binance USDⓈ-M"
 section = "other-venue"
 base_urls = ["https://fapi.binance.com", "wss://fstream.binance.com"]
 description = "Futures public market data and market streams. No published spec, so not a mirror"
-crate_note = "streams behind `ws`"
+crate_note = "streams behind `usdm-ws`"
 exclude = "Not a Polymarket host, and Binance publishes no OpenAPI or AsyncAPI for USDⓈ-M futures; the live suites in `polyoxide-binance` are the drift check."

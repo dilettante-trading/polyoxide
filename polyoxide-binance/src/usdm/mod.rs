@@ -1,21 +1,22 @@
 //! Binance USDⓈ-M futures on `fapi.binance.com`.
 
 pub mod api;
+pub mod error;
 mod policy;
 pub mod request;
 pub mod types;
-#[cfg(feature = "ws")]
+pub mod weight;
+#[cfg(feature = "usdm-ws")]
 pub mod ws;
 
 use polyoxide_core::{ClientConfig, HttpClient};
 
-use crate::{
-    error::BinanceError,
-    usdm::{
-        api::{exchange::ExchangeApi, health::Health, market::MarketApi},
-        policy::UsdmRetryPolicy,
-    },
-    weight::WeightBudget,
+pub use error::UsdmError;
+pub use weight::WeightBudget;
+
+use crate::usdm::{
+    api::{exchange::ExchangeApi, health::Health, market::MarketApi},
+    policy::UsdmRetryPolicy,
 };
 
 /// Production USDⓈ-M futures REST host.
@@ -33,7 +34,7 @@ pub struct Usdm {
 
 impl Usdm {
     /// A client with default settings and its own [`WeightBudget`].
-    pub fn new() -> Result<Self, BinanceError> {
+    pub fn new() -> Result<Self, UsdmError> {
         Self::builder().build()
     }
 
@@ -93,7 +94,7 @@ impl UsdmBuilder {
     /// It has no core `RateLimiter`: the [`WeightBudget`] is its throttle, and
     /// paces every request instead. Its retry policy holds that budget on a
     /// `429` or a `418`, so every client sharing it waits.
-    pub fn build(self) -> Result<Usdm, BinanceError> {
+    pub fn build(self) -> Result<Usdm, UsdmError> {
         let budget = self.budget.unwrap_or_default();
         let http = self
             .config
@@ -122,7 +123,7 @@ mod tests {
         let err = Usdm::builder().base_url("not a url").build().unwrap_err();
         assert!(matches!(
             err,
-            BinanceError::Api(polyoxide_core::ApiError::Url(_))
+            UsdmError::Api(polyoxide_core::ApiError::Url(_))
         ));
     }
 

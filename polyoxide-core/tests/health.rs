@@ -140,7 +140,7 @@ impl Throttle for CostRecorder {
 #[tokio::test]
 async fn health_charges_its_costs() {
     let mut server = Server::new_async().await;
-    let mock = scripted(&mut server, "/fapi/v1/ping", &[429, 200]).await;
+    let mock = scripted(&mut server, "/v1/ping", &[429, 200]).await;
     let throttle = CostRecorder::default();
     let http = HttpClientBuilder::new(server.url())
         .with_throttle(throttle.clone())
@@ -157,7 +157,7 @@ async fn health_charges_its_costs() {
         exact: true,
     };
 
-    http.health::<PingError>("/fapi/v1/ping", &[weight])
+    http.health::<PingError>("/v1/ping", &[weight])
         .await
         .unwrap();
     mock.assert_async().await;
@@ -189,7 +189,7 @@ impl Throttle for RefusingThrottle {
 async fn a_refused_health_cost_is_the_callers_error() {
     let mut server = Server::new_async().await;
     let mock = server
-        .mock("GET", "/fapi/v1/ping")
+        .mock("GET", "/v1/ping")
         .expect(0)
         .create_async()
         .await;
@@ -204,7 +204,7 @@ async fn a_refused_health_cost_is_the_callers_error() {
     };
 
     let err = http
-        .health::<PingError>("/fapi/v1/ping", &[weight])
+        .health::<PingError>("/v1/ping", &[weight])
         .await
         .expect_err("the throttle refused the ping's cost");
     assert!(

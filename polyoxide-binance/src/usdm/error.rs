@@ -1,4 +1,4 @@
-//! Error types for the Binance API.
+//! Error types for the USDⓈ-M futures API.
 
 use std::time::Duration;
 
@@ -7,12 +7,12 @@ use polyoxide_venue::{class_for_status, Class, Classify};
 use serde::Deserialize;
 use thiserror::Error;
 
-use crate::weight::MAX_COOLDOWN;
+use crate::usdm::weight::MAX_COOLDOWN;
 
-/// Error type for Binance API operations.
+/// Error type for USDⓈ-M futures API operations.
 #[derive(Error, Debug)]
 #[non_exhaustive]
-pub enum BinanceError {
+pub enum UsdmError {
     /// Transport, decoding, or an error body in a shape Binance does not use.
     #[error(transparent)]
     Api(ApiError),
@@ -37,8 +37,8 @@ pub enum BinanceError {
     },
 
     /// `418`: Binance has banned this IP for continuing after a `429`. Every
-    /// request on the same [`WeightBudget`](crate::WeightBudget) waits until the
-    /// ban lifts.
+    /// request on the same [`WeightBudget`](crate::usdm::WeightBudget) waits
+    /// until the ban lifts.
     #[error("binance has banned this IP (418), retry after {retry_after:?}")]
     IpBanned {
         /// The response's `Retry-After`. The docs give bans of 2 minutes to 3 days.
@@ -66,7 +66,7 @@ struct VenueBody {
     msg: String,
 }
 
-impl BinanceError {
+impl UsdmError {
     /// Binance's error code, for a [`Venue`](Self::Venue) error.
     pub fn code(&self) -> Option<i64> {
         match self {
@@ -81,16 +81,16 @@ impl BinanceError {
 /// `418`, `429`, `451` and `403` go by status alone: their bodies were not
 /// observed from a test IP, and the status is what decides what a caller
 /// should do. Anything else with Binance's `{code, msg}` body is
-/// [`Venue`](BinanceError::Venue); any other body stays core's
+/// [`Venue`](UsdmError::Venue); any other body stays core's
 /// [`ApiError::Response`], its message and body clipped and its `Retry-After`
 /// clamped to 3 days, as every arm reads it. Every other [`ApiError`] stays
 /// core's.
 ///
 /// A `418`'s body is Binance's `-1003` text, which names when the ban ends.
 /// The error's fields have no room for it, so it is logged at WARN under
-/// `polyoxide_binance`; the send loop warns of the hold itself, naming the
-/// path.
-impl From<ApiError> for BinanceError {
+/// `polyoxide_binance::usdm::error`; the send loop warns of the hold itself,
+/// naming the path.
+impl From<ApiError> for UsdmError {
     fn from(err: ApiError) -> Self {
         match err {
             ApiError::Response(response) => Self::from_response(*response),
@@ -99,7 +99,7 @@ impl From<ApiError> for BinanceError {
     }
 }
 
-impl BinanceError {
+impl UsdmError {
     fn from_response(mut response: ErrorResponse) -> Self {
         let status = response.status.as_u16();
         let retry_after = retry_after_secs(
@@ -162,7 +162,7 @@ fn clip(text: &str) -> String {
 /// A region block is the venue answering as designed, so it is not a fault. A
 /// `429`'s or a ban's [`Classify::retry_after`] is its `Retry-After`, clamped
 /// to 3 days: for a ban, the time it lifts.
-impl Classify for BinanceError {
+impl Classify for UsdmError {
     fn class(&self) -> Class {
         match self {
             Self::Api(err) => err.class(),
@@ -222,8 +222,8 @@ mod tests {
     }
 
     /// That response, through Binance's decode.
-    fn parts(status: u16, retry_after: Option<&str>, body: &str) -> BinanceError {
-        BinanceError::from(response(status, retry_after, body))
+    fn parts(status: u16, retry_after: Option<&str>, body: &str) -> UsdmError {
+        UsdmError::from(response(status, retry_after, body))
     }
 
     #[test]
@@ -231,7 +231,7 @@ mod tests {
         // Captured 2026-10-07 from `GET /fapi/v1/ticker/24hr?symbol=NOTASYMBOLUSDT`.
         let err = parts(400, None, r#"{"code":-1121,"msg":"Invalid symbol."}"#);
         assert!(
-            matches!(&err, BinanceError::Venue { status: 400, code: -1121, msg } if msg == "Invalid symbol.")
+            matches!(&err, UsdmError::Venue { status: 400, code: -1121, msg } if msg == "Invalid symbol.")
         );
         assert_eq!(err.code(), Some(-1121));
         assert!(!err.is_retriable());
@@ -243,27 +243,25 @@ mod tests {
         // not a venue error a retry policy would treat as permanent.
         let body = r#"{"code":-1003,"msg":"Too many requests."}"#;
         let limited = parts(429, Some("7"), body);
-        assert!(matches!(limited, BinanceError::RateLimited { .. }));
+        assert!(matches!(limited, UsdmError::RateLimited { .. }));
         assert_eq!(limited.retry_after(), Some(Duration::from_secs(7)));
         assert!(limited.is_retriable());
 
         let banned = parts(418, Some("120"), body);
-        assert!(matches!(banned, BinanceError::IpBanned { .. }));
+        assert!(matches!(banned, UsdmError::IpBanned { .. }));
         assert_eq!(banned.retry_after(), Some(Duration::from_secs(120)));
         assert!(!banned.is_retriable());
 
         let region = parts(451, None, body);
-        assert!(matches!(&region, BinanceError::RegionBlocked { msg } if msg.contains("-1003")));
+        assert!(matches!(&region, UsdmError::RegionBlocked { msg } if msg.contains("-1003")));
         assert!(!region.is_retriable());
 
         let firewall = parts(403, None, "<html>denied</html>");
-        assert!(
-            matches!(&firewall, BinanceError::Forbidden { msg } if msg == "<html>denied</html>")
-        );
+        assert!(matches!(&firewall, UsdmError::Forbidden { msg } if msg == "<html>denied</html>"));
         assert!(!firewall.is_retriable());
 
         let firewall_json = parts(403, None, body);
-        assert!(matches!(firewall_json, BinanceError::Forbidden { .. }));
+        assert!(matches!(firewall_json, UsdmError::Forbidden { .. }));
     }
 
     #[test]
@@ -280,7 +278,7 @@ mod tests {
         let err = parts(502, None, "<html>bad gateway</html>");
         assert!(matches!(
             &err,
-            BinanceError::Api(ApiError::Response(r)) if r.status.as_u16() == 502
+            UsdmError::Api(ApiError::Response(r)) if r.status.as_u16() == 502
         ));
         assert!(err.is_retriable());
         assert_eq!(err.code(), None);
@@ -291,11 +289,11 @@ mod tests {
         let long = "x".repeat(10_000);
         let venue = format!(r#"{{"code":-1121,"msg":"{long}"}}"#);
         // Every text the error keeps: a core response keeps its body too.
-        let kept = |err: BinanceError| match err {
-            BinanceError::Venue { msg, .. }
-            | BinanceError::RegionBlocked { msg }
-            | BinanceError::Forbidden { msg } => vec![msg],
-            BinanceError::Api(ApiError::Response(r)) => vec![r.message, r.body],
+        let kept = |err: UsdmError| match err {
+            UsdmError::Venue { msg, .. }
+            | UsdmError::RegionBlocked { msg }
+            | UsdmError::Forbidden { msg } => vec![msg],
+            UsdmError::Api(ApiError::Response(r)) => vec![r.message, r.body],
             other => panic!("unexpected {other:?}"),
         };
         for err in [
@@ -319,7 +317,7 @@ mod tests {
         let body = format!(r#"{{"message":"short","pad":"{}"}}"#, "p".repeat(600));
         let err = parts(502, None, &body);
         assert!(
-            matches!(&err, BinanceError::Api(ApiError::Response(r)) if r.status.as_u16() == 502 && r.message == "short"),
+            matches!(&err, UsdmError::Api(ApiError::Response(r)) if r.status.as_u16() == 502 && r.message == "short"),
             "{err:?}"
         );
     }
@@ -346,7 +344,7 @@ mod tests {
         // days, where core's own reading is unclamped.
         let err = parts(503, Some("604800"), "<html>down</html>");
         match &err {
-            BinanceError::Api(ApiError::Response(r)) => {
+            UsdmError::Api(ApiError::Response(r)) => {
                 assert_eq!(r.retry_after, Some(MAX_COOLDOWN));
             }
             other => panic!("unexpected {other:?}"),
@@ -427,7 +425,7 @@ mod tests {
             // Built by hand: a 451 always becomes `RegionBlocked`, but a region
             // block is not a fault whichever variant carries it.
             (
-                BinanceError::Venue {
+                UsdmError::Venue {
                     status: 451,
                     code: -1,
                     msg: "restricted".into(),
@@ -453,6 +451,6 @@ mod tests {
     #[test]
     fn binance_error_is_send_sync() {
         fn assert_send_sync<T: Send + Sync>() {}
-        assert_send_sync::<BinanceError>();
+        assert_send_sync::<UsdmError>();
     }
 }

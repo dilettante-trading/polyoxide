@@ -10,34 +10,50 @@ description = "Rust client library for Binance USDⓈ-M futures market data and 
 keywords = ["binance", "futures", "perpetuals", "market-data"]
 categories = ["api-bindings", "web-programming::http-client"]
 
+# One feature per module (Story 5.6), as polyoxide-polymarket has: `usdm`, the
+# USDⓈ-M futures REST client and its weight budget, and `usdm-ws`, its market
+# streams, which turns `usdm` on.
 [features]
-default = []
-# The USDⓈ-M market streams, on the socket kit.
-ws = ["dep:polyoxide-ws", "dep:futures-util", "tokio/rt", "tokio/macros"]
-# Exposes the captured frames for downstream tests. Not for consumers.
-test-server = ["ws"]
+default = ["usdm"]
+usdm = [
+    "dep:polyoxide-core",
+    "polyoxide-venue/decimal",
+    "dep:rust_decimal",
+    "dep:serde",
+    "dep:serde_json",
+    "dep:thiserror",
+    "dep:tokio",
+    "dep:tracing",
+    "dep:url",
+]
+# The USDⓈ-M market streams, `usdm::ws`, on the socket kit.
+usdm-ws = ["usdm", "dep:polyoxide-ws", "dep:futures-util", "tokio/rt", "tokio/macros"]
+# Exposes the captured frames, `usdm::ws::fixtures`, for downstream tests, with
+# `usdm-ws`; it turns no module on. Not for consumers.
+test-server = []
 
 [dependencies]
-polyoxide-core = { workspace = true }
-polyoxide-venue = { workspace = true, features = ["decimal"] }
-# The socket kit (`ws`): connect, the bare tier, the socket error and the
+polyoxide-core = { workspace = true, optional = true }
+polyoxide-venue = { workspace = true }
+# The socket kit (`usdm-ws`): connect, the bare tier, the socket error and the
 # supervisor. It owns the transport, tokio-tungstenite and rustls.
 polyoxide-ws = { workspace = true, optional = true }
-rust_decimal = { workspace = true }
-serde = { workspace = true }
-serde_json = { workspace = true }
-thiserror = { workspace = true }
-tokio = { workspace = true, features = ["time", "sync"] }
+rust_decimal = { workspace = true, optional = true }
+serde = { workspace = true, optional = true }
+serde_json = { workspace = true, optional = true }
+thiserror = { workspace = true, optional = true }
+tokio = { workspace = true, features = ["time", "sync"], optional = true }
 futures-util = { version = "0.3", optional = true }
-tracing = { workspace = true }
-url = { workspace = true }
+tracing = { workspace = true, optional = true }
+url = { workspace = true, optional = true }
 
 [dev-dependencies]
 # The live suites' failure tags and credential loaders. Path-only: it is never
 # published, and cargo strips a path-only dev-dependency on publish.
 polyoxide-test-support = { path = "../polyoxide-test-support", features = ["query"] }
-# The shared scripted WebSocket server the `ws` suites run on, with Binance's
-# answer (`src/usdm/ws/scripted.rs`). Path-only, so cargo strips it on publish.
+# The shared scripted WebSocket server the `usdm-ws` suites run on, with
+# Binance's answer (`src/usdm/ws/scripted.rs`). Path-only, so cargo strips it on
+# publish.
 polyoxide-ws = { path = "../polyoxide-ws", features = ["test-server"] }
 futures-util = "0.3"
 mockito = { workspace = true }
@@ -53,54 +69,91 @@ tracing-subscriber = { workspace = true }
 name = "weight_probe"
 path = "examples/weight_probe.rs"
 test = true
+required-features = ["usdm"]
 
-# The socket tests import items that exist only behind their feature;
+# The usdm module's suites (Story 5.6). The socket suites import the captured
+# frames, which only `test-server` exposes outside the unit tests;
 # `required-features` keeps a plain `cargo test --all-targets` from building
 # them without it.
 [[test]]
-name = "ws_wire_agreement"
-required-features = ["test-server"]
+name = "ban_log_usdm"
+required-features = ["usdm"]
 
 [[test]]
-name = "supervision"
-required-features = ["test-server"]
+name = "error_classes_usdm"
+required-features = ["usdm"]
 
 [[test]]
-name = "supervision_edges"
-required-features = ["test-server"]
+name = "failure_tags_usdm"
+required-features = ["usdm"]
 
 [[test]]
-name = "supervision_kit"
-required-features = ["test-server"]
+name = "headers_usdm"
+required-features = ["usdm"]
 
 [[test]]
-name = "live_ws"
-required-features = ["ws"]
+name = "live_usdm"
+required-features = ["usdm"]
 
-# docs.rs documents the streams too; `test-server` stays out of the docs.
+[[test]]
+name = "live_usdm_ws"
+required-features = ["usdm-ws"]
+
+[[test]]
+name = "mock_usdm"
+required-features = ["usdm"]
+
+[[test]]
+name = "query_setters_usdm"
+required-features = ["usdm"]
+
+[[test]]
+name = "supervision_usdm"
+required-features = ["usdm-ws", "test-server"]
+
+[[test]]
+name = "supervision_usdm_edges"
+required-features = ["usdm-ws", "test-server"]
+
+[[test]]
+name = "supervision_usdm_kit"
+required-features = ["usdm-ws", "test-server"]
+
+[[test]]
+name = "wire_agreement_usdm"
+required-features = ["usdm"]
+
+[[test]]
+name = "wire_agreement_usdm_ws"
+required-features = ["usdm-ws", "test-server"]
+
+# docs.rs documents the module and its streams; `test-server` stays out of the
+# docs.
 [package.metadata.docs.rs]
-features = ["ws"]
+features = ["usdm", "usdm-ws"]
 
 # Registration, read by scripts/gen_registry.py: the README line, venue and
-# product ids, the docs/specs/ mirrors covered, and one entry per live test
-# target, which becomes a nightly job. Run `python3 scripts/gen_registry.py
-# --write` after an edit.
+# product ids, the docs/specs/ mirrors covered, one entry per live test target,
+# which becomes a nightly job, and the identifiers the venue gate looks for in
+# the foundation crates and the exceptions it allows there. Run
+# `python3 scripts/gen_registry.py --write` after an edit.
 [package.metadata.polyoxide]
-readme = "Client library for Binance USDⓈ-M futures market data and streams (not part of the unified crate)"
+readme = "Client library for Binance's APIs, one feature per module: `usdm` (USDⓈ-M futures market data, with its streams under `usdm-ws`); not part of the unified crate"
 venue = "binance"
 products = ["usdm"]
 mirrors = ["binance"]
+identifiers = ["fapi", "fstream", "X-MBX"]
 
-[package.metadata.polyoxide.live.live_api]
-suite = "live"
+[package.metadata.polyoxide.live.live_usdm]
+suite = "usdm"
 timeout = 15
-features = []
+features = ["usdm"]
 secrets = []
 
-[package.metadata.polyoxide.live.live_ws]
-suite = "live"
+[package.metadata.polyoxide.live.live_usdm_ws]
+suite = "usdm"
 timeout = 15
-features = ["ws"]
+features = ["usdm-ws"]
 secrets = []
 
 # The foundation crates' protected test names that still name Binance (S2 may

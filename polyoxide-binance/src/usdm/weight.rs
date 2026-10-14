@@ -172,8 +172,8 @@ impl Route {
 /// The request-weight budget of one IP, shared by every client that clones it.
 ///
 /// Binance limits weight per IP, not per client, so every
-/// [`Usdm`](crate::Usdm) in a process should be built with one budget
-/// ([`UsdmBuilder::weight_budget`](crate::UsdmBuilder::weight_budget)).
+/// [`Usdm`](crate::usdm::Usdm) in a process should be built with one budget
+/// ([`UsdmBuilder::weight_budget`](crate::usdm::UsdmBuilder::weight_budget)).
 ///
 /// - **Window.** The UTC clock minute: the server's count fell to 1 just after
 ///   each minute boundary on 2026-10-07, where a sliding window would have
@@ -191,7 +191,7 @@ impl Route {
 /// - **Cooldown.** A `429` or `418` holds every request, on both limits, for
 ///   the delay the server asked for. A cooldown is core's [`Hold`], with a
 ///   ceiling of [`MAX_COOLDOWN`], so it is only ever extended.
-/// - **Throttle.** The budget is the [`Throttle`] every [`Usdm`](crate::Usdm)
+/// - **Throttle.** The budget is the [`Throttle`] every [`Usdm`](crate::usdm::Usdm)
 ///   built with it sends through: a request's weight or funding cost is
 ///   charged before it is sent, and each response's `X-MBX-USED-WEIGHT-1M` is
 ///   applied to the minute it was charged in.

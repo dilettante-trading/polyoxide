@@ -7,7 +7,7 @@
 //! was core's builder turning gzip off) or a reqwest feature another member
 //! switches on.
 
-use polyoxide_binance::Usdm;
+use polyoxide_binance::usdm::Usdm;
 use polyoxide_test_support::query::headers_sent;
 
 /// One unauthenticated `GET /fapi/v1/time`, and the headers it carried.

@@ -1,5 +1,5 @@
 //! Agreement between the stream payload types and the captured frames in
-//! `tests/fixtures/ws/`, by the rules of `wire_agreement.rs`: nothing
+//! `tests/fixtures/usdm/ws/`, by the rules of `wire_agreement_usdm.rs`: nothing
 //! unmodelled, nothing invented, nothing altered.
 
 use polyoxide_test_support::agreement as common;

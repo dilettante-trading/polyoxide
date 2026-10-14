@@ -23,7 +23,7 @@ path = "src/main.rs"
 doc = false
 
 [dependencies]
-polyoxide-binance = { workspace = true, features = ["ws"] }
+polyoxide-binance = { workspace = true, features = ["usdm-ws"] }
 polyoxide-core = { workspace = true, optional = true, features = ["keychain"] }
 # `relay` and `keychain` only under `keychain`, for the relay's keychain service.
 polyoxide-polymarket = { workspace = true, features = ["clob-ws", "gamma", "data", "rtds", "sports"] }
@@ -51,7 +51,7 @@ tokio = { workspace = true, features = ["macros", "rt-multi-thread", "time"] }
 # The captured frames, for the `ws sports` tests.
 polyoxide-polymarket = { workspace = true, features = ["sports", "test-server"] }
 # The captured frames, for the `ws binance` tests.
-polyoxide-binance = { workspace = true, features = ["test-server"] }
+polyoxide-binance = { workspace = true, features = ["usdm-ws", "test-server"] }
 
 # Registration, read by scripts/gen_registry.py: the README line, venue and
 # product ids, the docs/specs/ mirrors covered, and one entry per live test

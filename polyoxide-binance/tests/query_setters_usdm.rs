@@ -4,8 +4,8 @@
 //! changed name or argument type fails to compile; a changed key, value or
 //! order fails the test.
 
-use polyoxide_binance::{
-    usdm::types::{DepthLimit, Interval, Symbol},
+use polyoxide_binance::usdm::{
+    types::{DepthLimit, Interval, Symbol},
     Usdm,
 };
 use polyoxide_test_support::query::{assert_cases, Case};

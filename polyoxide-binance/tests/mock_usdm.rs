@@ -4,10 +4,10 @@
 use std::time::{Duration, Instant};
 
 use mockito::{Matcher, Mock, Server, ServerGuard};
-use polyoxide_binance::{
-    usdm::types::{DepthLimit, Interval, Symbol},
+use polyoxide_binance::usdm::{
+    types::{DepthLimit, Interval, Symbol},
     weight::Cost,
-    BinanceError, Usdm,
+    Usdm, UsdmError,
 };
 use polyoxide_core::RetryConfig;
 use polyoxide_test_support::{fixtures, minute};
@@ -25,7 +25,7 @@ fn usdm_with_retries(server: &ServerGuard, config: RetryConfig) -> Usdm {
 }
 
 fn fixture(name: &str) -> String {
-    fixtures!("rest").text(name)
+    fixtures!("usdm/rest").text(name)
 }
 
 fn btc() -> Symbol {
@@ -366,7 +366,7 @@ async fn a_code_and_msg_body_is_a_venue_error() {
     assert!(
         matches!(
             err,
-            BinanceError::Venue {
+            UsdmError::Venue {
                 status: 400,
                 code: -1121,
                 ..
@@ -392,7 +392,7 @@ async fn a_451_is_region_blocked_and_a_403_forbidden() {
         .send()
         .await
         .unwrap_err();
-    assert!(matches!(err, BinanceError::RegionBlocked { .. }), "{err:?}");
+    assert!(matches!(err, UsdmError::RegionBlocked { .. }), "{err:?}");
 
     let mut server = Server::new_async().await;
     let _mock = failing(&mut server, 403, &[], "<html>Request blocked</html>").await;
@@ -402,7 +402,7 @@ async fn a_451_is_region_blocked_and_a_403_forbidden() {
         .send()
         .await
         .unwrap_err();
-    assert!(matches!(err, BinanceError::Forbidden { .. }), "{err:?}");
+    assert!(matches!(err, UsdmError::Forbidden { .. }), "{err:?}");
 }
 
 #[tokio::test]
@@ -424,7 +424,7 @@ async fn a_418_is_not_retried_and_holds_the_next_request() {
         .await
         .unwrap_err();
     assert!(
-        matches!(err, BinanceError::IpBanned { retry_after: Some(d) } if d == Duration::from_secs(1))
+        matches!(err, UsdmError::IpBanned { retry_after: Some(d) } if d == Duration::from_secs(1))
     );
     banned.assert_async().await;
 
@@ -636,7 +636,7 @@ async fn a_429_out_of_retries_is_rate_limited_and_still_holds_the_next_request()
         .await
         .unwrap_err();
     assert!(
-        matches!(err, BinanceError::RateLimited { retry_after: Some(d) } if d == Duration::from_secs(1)),
+        matches!(err, UsdmError::RateLimited { retry_after: Some(d) } if d == Duration::from_secs(1)),
         "{err:?}"
     );
     let start = Instant::now();
@@ -673,7 +673,7 @@ async fn a_429_with_no_retry_after_and_no_retry_left_holds_until_the_next_minute
         .await
         .unwrap_err();
     assert!(
-        matches!(err, BinanceError::RateLimited { retry_after: None }),
+        matches!(err, UsdmError::RateLimited { retry_after: None }),
         "{err:?}"
     );
     let held = tokio::time::timeout(
@@ -716,8 +716,8 @@ async fn every_usdm_on_one_budget_is_held_by_one_ban() {
     )
     .await
     .expect(1);
-    let budget = polyoxide_binance::WeightBudget::new();
-    let client = |budget: &polyoxide_binance::WeightBudget| {
+    let budget = polyoxide_binance::usdm::WeightBudget::new();
+    let client = |budget: &polyoxide_binance::usdm::WeightBudget| {
         Usdm::builder()
             .base_url(server.url())
             .weight_budget(budget.clone())
@@ -732,7 +732,7 @@ async fn every_usdm_on_one_budget_is_held_by_one_ban() {
         .send()
         .await
         .unwrap_err();
-    assert!(matches!(err, BinanceError::IpBanned { .. }), "{err:?}");
+    assert!(matches!(err, UsdmError::IpBanned { .. }), "{err:?}");
     banned.assert_async().await;
 
     let start = Instant::now();
@@ -765,7 +765,7 @@ async fn a_425_and_a_5xx_are_not_retried() {
             .await
             .unwrap_err();
         assert!(
-            matches!(err, BinanceError::Venue { status: s, .. } if usize::from(s) == status),
+            matches!(err, UsdmError::Venue { status: s, .. } if usize::from(s) == status),
             "{status}: {err:?}"
         );
         mock.assert_async().await;

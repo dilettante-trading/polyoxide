@@ -10,7 +10,7 @@
 
 use std::time::Duration;
 
-use polyoxide_binance::BinanceError;
+use polyoxide_binance::usdm::UsdmError;
 use polyoxide_core::{ApiError, ErrorResponse};
 use polyoxide_test_support::{tag_for, Tag};
 use polyoxide_venue::Classify;
@@ -20,8 +20,8 @@ fn tag(err: &impl Classify) -> Tag {
     tag_for(&err.class(), err.is_fault())
 }
 
-fn venue(status: u16, code: i64, msg: &str) -> BinanceError {
-    BinanceError::Venue {
+fn venue(status: u16, code: i64, msg: &str) -> UsdmError {
+    UsdmError::Venue {
         status,
         code,
         msg: msg.to_owned(),
@@ -30,7 +30,7 @@ fn venue(status: u16, code: i64, msg: &str) -> BinanceError {
 
 #[test]
 fn rate_limited() {
-    let err = BinanceError::RateLimited {
+    let err = UsdmError::RateLimited {
         retry_after: Some(Duration::from_secs(1)),
     };
     assert_eq!(format!("{err:?}"), "RateLimited { retry_after: Some(1s) }");
@@ -83,7 +83,7 @@ fn venue_4xx() {
 /// A ban is the client's own doing, so it files (amendment A2-1).
 #[test]
 fn ip_banned() {
-    let err = BinanceError::IpBanned { retry_after: None };
+    let err = UsdmError::IpBanned { retry_after: None };
     assert_eq!(format!("{err:?}"), "IpBanned { retry_after: None }");
     assert_eq!(
         err.to_string(),
@@ -96,7 +96,7 @@ fn ip_banned() {
 /// (amendment A2-1).
 #[test]
 fn forbidden() {
-    let err = BinanceError::Forbidden {
+    let err = UsdmError::Forbidden {
         msg: "<html>".into(),
     };
     assert_eq!(
@@ -109,7 +109,7 @@ fn forbidden() {
 #[test]
 fn region_blocked() {
     let msg = "Service unavailable from a restricted location";
-    let err = BinanceError::RegionBlocked { msg: msg.into() };
+    let err = UsdmError::RegionBlocked { msg: msg.into() };
     assert_eq!(
         format!("{err:?}"),
         format!("RegionBlocked {{ msg: {msg:?} }}")
@@ -121,7 +121,7 @@ fn region_blocked() {
     assert_eq!(tag(&err), Tag::Environmental);
 }
 
-/// `live_api`'s `raw()` fails a refused fetch with core's reading of its
+/// `live_usdm`'s `raw()` fails a refused fetch with core's reading of its
 /// status.
 fn raw(status: u16, body: &str) -> ApiError {
     ErrorResponse::new(
@@ -152,7 +152,7 @@ fn raw_status_403() {
     assert_eq!(tag(&raw(403, "Forbidden")), Tag::Real);
 }
 
-#[cfg(feature = "ws")]
+#[cfg(feature = "usdm-ws")]
 mod streams {
     use std::time::Duration;
 
@@ -262,7 +262,7 @@ mod streams {
         assert_eq!(tag(&err), Tag::Real);
     }
 
-    /// Wherever it is tagged. `live_ws`'s ping test keeps it untagged, since
+    /// Wherever it is tagged. `live_usdm_ws`'s ping test keeps it untagged, since
     /// an unanswered ping is the fault that test is for.
     #[test]
     fn no_answer() {

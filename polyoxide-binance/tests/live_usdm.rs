@@ -3,7 +3,7 @@
 //! These hit the real host and need network access, so they are `#[ignore]`d.
 //! No credentials are needed. Run with:
 //! ```sh
-//! cargo test -p polyoxide-binance --test live_api -- --ignored
+//! cargo test -p polyoxide-binance --test live_usdm -- --ignored
 //! ```
 //!
 //! `live_responses_carry_no_unmodelled_keys` is the host's drift detector:
@@ -15,12 +15,12 @@ use polyoxide_test_support::agreement as common;
 
 use std::time::Duration;
 
-use polyoxide_binance::{
-    usdm::types::{
+use polyoxide_binance::usdm::{
+    types::{
         AggTrade, ContractType, Depth, DepthLimit, ExchangeInfo, FundingInfo, FundingRate,
         Interval, Kline, OpenInterest, PremiumIndex, ServerTime, Symbol, SymbolStatus, Ticker24h,
     },
-    BinanceError, Usdm,
+    Usdm, UsdmError,
 };
 use polyoxide_core::ApiError;
 use polyoxide_test_support::{environmental, fail, transient, ResultExt};
@@ -171,7 +171,7 @@ async fn live_an_unknown_symbol_is_venue_error_1121() {
     // retried rather than filed.
     if !matches!(
         err,
-        BinanceError::Venue {
+        UsdmError::Venue {
             status: 400,
             code: -1121,
             ..

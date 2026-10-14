@@ -1,13 +1,13 @@
 //! A `418`'s body names when the ban ends, and the error has no field for it,
 //! so the client logs it at WARN. A binary of its own, because it installs the
-//! process's global subscriber, which `mock_api`'s other `418` tests would
+//! process's global subscriber, which `mock_usdm`'s other `418` tests would
 //! otherwise race to reach first.
 
 use std::fmt::Debug;
 use std::sync::Mutex;
 
 use mockito::{Matcher, Server};
-use polyoxide_binance::{BinanceError, Usdm};
+use polyoxide_binance::usdm::{Usdm, UsdmError};
 use tracing::field::{Field, Visit};
 use tracing_subscriber::layer::{Context, SubscriberExt};
 
@@ -69,7 +69,7 @@ async fn a_418_logs_its_body_at_warn() {
     let client = Usdm::builder().base_url(server.url()).build().unwrap();
 
     let err = client.health().time().send().await.unwrap_err();
-    assert!(matches!(err, BinanceError::IpBanned { .. }), "{err:?}");
+    assert!(matches!(err, UsdmError::IpBanned { .. }), "{err:?}");
     banned.assert_async().await;
 
     // The send loop warns of the hold under `polyoxide_core`, naming the

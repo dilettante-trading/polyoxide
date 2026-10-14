@@ -1,4 +1,4 @@
-//! Contract behaviours of the supervised tier that `supervision.rs` does not
+//! Contract behaviours of the supervised tier that `supervision_usdm.rs` does not
 //! pin. Each test here was written by Task 4's review to catch one change to
 //! `supervised.rs` that passed every other test.
 

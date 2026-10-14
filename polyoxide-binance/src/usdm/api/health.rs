@@ -5,12 +5,10 @@ use std::time::Duration;
 use polyoxide_core::{decode_json, ApiError, HttpClient};
 use serde::Deserialize;
 
-use crate::{
-    error::BinanceError,
-    usdm::{
-        request::{route_builder, Routed},
-        types::ServerTime,
-    },
+use crate::usdm::{
+    error::UsdmError,
+    request::{route_builder, Routed},
+    types::ServerTime,
     weight::Route,
 };
 
@@ -29,11 +27,11 @@ impl Health {
     ///
     /// The latency is that of the attempt that answered, as
     /// [`HttpClient::health`] times it.
-    pub async fn ping(&self) -> Result<Duration, BinanceError> {
+    pub async fn ping(&self) -> Result<Duration, UsdmError> {
         let route = Route::Ping;
         let pong = self
             .http
-            .health::<BinanceError>(route.path(), &[route.cost().into()])
+            .health::<UsdmError>(route.path(), &[route.cost().into()])
             .await?;
         let text = pong.response.text().await.map_err(ApiError::from)?;
         let _: Empty = decode_json(route.path(), &text).map_err(ApiError::from)?;

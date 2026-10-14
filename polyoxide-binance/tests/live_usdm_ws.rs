@@ -1,6 +1,6 @@
 //! Live tests against `fstream.binance.com`, `#[ignore]`d. Run with:
 //! ```sh
-//! cargo test -p polyoxide-binance --features ws --test live_ws -- --ignored
+//! cargo test -p polyoxide-binance --features usdm-ws --test live_usdm_ws -- --ignored
 //! ```
 //!
 //! `live_frames_carry_no_unmodelled_keys` is the streams' drift detector. It

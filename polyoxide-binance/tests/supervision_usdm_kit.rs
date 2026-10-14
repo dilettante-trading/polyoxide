@@ -1,6 +1,6 @@
 //! The supervised tier on the kit's `Supervisor` (Story 4.7): the behaviour
 //! changes it brought (L2-D1, L2-D2, L2-D8) and the bundle's matrix rows
-//! `supervision.rs` and `supervision_edges.rs` do not pin. Each test names
+//! `supervision_usdm.rs` and `supervision_usdm_edges.rs` do not pin. Each test names
 //! the rule it holds.
 
 use std::{

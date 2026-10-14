@@ -5,13 +5,13 @@
 //! reshape (Stories 3.11 and 3.12) keeps, so their assertions never change.
 
 use mockito::{Matcher, Server};
-use polyoxide_binance::{BinanceError, Usdm};
+use polyoxide_binance::usdm::{Usdm, UsdmError};
 use polyoxide_core::RetryConfig;
 use polyoxide_venue::{Class, Classify};
 
 /// `GET /fapi/v1/time`, answered with `status` and `body`, on a client that
 /// does not retry.
-async fn fail(status: usize, body: &str) -> BinanceError {
+async fn fail(status: usize, body: &str) -> UsdmError {
     let mut server = Server::new_async().await;
     let _mock = server
         .mock("GET", "/fapi/v1/time")

@@ -1,5 +1,5 @@
 //! Agreement between the types and payloads captured from the live host.
-//! Provenance is in `tests/fixtures/PROVENANCE.md`.
+//! Provenance is in `tests/fixtures/usdm/PROVENANCE.md`.
 //!
 //! Each fixture is decoded into its type and encoded back, and:
 //!
@@ -25,7 +25,7 @@ use polyoxide_test_support::fixtures;
 use serde::{de::DeserializeOwned, Serialize};
 
 fn check<T: DeserializeOwned + Serialize>(fixture: &str) {
-    let text = fixtures!("rest").text(fixture);
+    let text = fixtures!("usdm/rest").text(fixture);
     let diff = common::compare::<T>(fixture, &text);
     assert!(
         diff.unmodelled.is_empty(),
@@ -56,7 +56,7 @@ fn every_rest_fixture_agrees_with_its_type() {
 
 #[test]
 fn the_fixtures_cover_the_cases_the_types_exist_for() {
-    let read = |name: &str| fixtures!("rest").text(name);
+    let read = |name: &str| fixtures!("usdm/rest").text(name);
 
     let info: ExchangeInfo = serde_json::from_str(&read("exchange_info")).unwrap();
     use polyoxide_binance::usdm::types::{ContractType, Filter, SymbolStatus, UnderlyingType};

@@ -13,8 +13,8 @@
 
 use std::time::Duration;
 
-use polyoxide_binance::{
-    usdm::types::DepthLimit,
+use polyoxide_binance::usdm::{
+    types::DepthLimit,
     weight::{Cost, Route},
 };
 use polyoxide_test_support::minute;
