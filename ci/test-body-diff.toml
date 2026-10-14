@@ -128,9 +128,22 @@
 [literals."polyoxide-sports/tests/live_api.rs"]
 "the feed sends keys MatchUpdate does not model. Capture fixtures with \\\n         scripts/capture_sports_fixtures.py, model the keys in MatchUpdate, and record them \\\n         in docs/specs/sports/OBSERVED.md. The first frame carrying each: {unmodelled:#?}" = "the feed sends keys MatchUpdate does not model. Capture fixtures with \\\n         scripts/capture_polymarket_sports.py, model the keys in MatchUpdate, and record them \\\n         in docs/specs/sports/OBSERVED.md. The first frame carrying each: {unmodelled:#?}"
 
+# Story 5.6: Binance's `ws` feature is the `usdm` module's `usdm-ws`, which the
+# moved suites' gates name.
+[literals."polyoxide-binance"]
+"ws" = "usdm-ws"
+
+# Story 5.6: core names no venue, so its health tests ping a neutral path
+# where they pinged Binance's.
+[literals."polyoxide-core/tests/health.rs"]
+"/fapi/v1/ping" = "/v1/ping"
+
 # Story 5.5: perps' fixtures moved to `tests/fixtures/perps/`, and its agreement
-# suites name them through `fixtures!()` and `fixtures!("ws")`.
+# suites name them through `fixtures!()` and `fixtures!("ws")`. Story 5.6:
+# Binance's moved to `tests/fixtures/usdm/`, which its suites name through
+# `fixtures!("rest")`.
 [fixtures]
+"polyoxide-binance" = "usdm"
 "polyoxide-perps" = "perps"
 
 [paths]
@@ -158,6 +171,17 @@
 "polyoxide-polymarket/tests/supervision_rtds.rs" = "rtds"
 "polyoxide-polymarket/tests/bare_sports.rs" = "sports"
 "polyoxide-polymarket/tests/supervision_sports.rs" = "sports"
+
+# Story 5.6: Binance's `usdm` module is behind its feature, which the gate on
+# `mod usdm;` names for `usdm/mod.rs`'s tests and the probe requires. The suites
+# that import the captured frames require `usdm-ws` beside `test-server`, which
+# no longer turns the streams on.
+"polyoxide-binance/src/usdm/mod.rs" = "usdm"
+"polyoxide-binance/examples/weight_probe.rs" = "usdm"
+"polyoxide-binance/tests/supervision_usdm.rs" = "usdm-ws"
+"polyoxide-binance/tests/supervision_usdm_edges.rs" = "usdm-ws"
+"polyoxide-binance/tests/supervision_usdm_kit.rs" = "usdm-ws"
+"polyoxide-binance/tests/wire_agreement_usdm_ws.rs" = "usdm-ws"
 
 # DRIFT R6 (Story 5.5): rtds' `test-fixtures` feature became `test-server`, the
 # name every other crate's has, so the gate on `mod fixtures;` changed for each

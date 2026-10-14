@@ -4,9 +4,9 @@
 # dependencies = ["websockets>=13", "certifi"]
 # ///
 """Capture Binance USDⓈ-M REST responses and stream frames as test fixtures for
-polyoxide-binance.
+polyoxide-binance's `usdm` module.
 
-Usage: uv run scripts/capture_binance_fixtures.py polyoxide-binance/tests/fixtures
+Usage: uv run scripts/capture_binance_usdm.py polyoxide-binance/tests/fixtures/usdm
 
 Writes one JSON file per route under OUT_DIR/rest/, one combined-stream envelope per
 stream kind under OUT_DIR/ws/, and rewrites OUT_DIR/PROVENANCE.md. Nothing is written
@@ -179,7 +179,7 @@ def main():
     capture_common.write_provenance(out, f"""# Provenance
 
 REST fixtures (`rest/`) captured {today} from `https://fapi.binance.com` by
-`scripts/capture_binance_fixtures.py`. No credentials. Every top-level key is kept; only
+`scripts/capture_binance_usdm.py`. No credentials. Every top-level key is kept; only
 list lengths are trimmed.
 
 | File | Request | Trimmed to |

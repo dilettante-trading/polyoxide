@@ -232,7 +232,7 @@ def test_every_public_error_type_is_listed_in_its_crates_assertion() -> None:
                               "ClobError", "ParseTickSizeError", "ClobWsError", "RelayError",
                               "PerpsError", "VenueError", "PerpsWsError", "RtdsError",
                               "SportsError"}),
-    ("polyoxide-binance", {"BinanceError", "InvalidSymbol", "UsdmWsError", "InvalidStreamName"}),
+    ("polyoxide-binance", {"UsdmError", "InvalidSymbol", "UsdmWsError", "InvalidStreamName"}),
     (VOCABULARY, {"UnknownVariant"}),
     ("polyoxide", {"PolymarketError"}),
 ])

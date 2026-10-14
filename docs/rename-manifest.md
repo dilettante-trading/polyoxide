@@ -124,6 +124,23 @@ under its `perps`, `rtds` and `sports` features. Their `tracing` targets moved w
 - `polyoxide::polyoxide_rtds` → `polyoxide::polyoxide_polymarket::rtds` Story 5.5, feature `rtds`.
 - `polyoxide::polyoxide_sports` → `polyoxide::polyoxide_polymarket::sports` Story 5.5, feature `sports`.
 
+Story 5.6 laid `polyoxide-binance` out as `polyoxide-polymarket` is: its error and weight
+budget moved under its one module, `usdm`, which is behind the feature of its name, and the
+crate root re-exports nothing. The error enum takes its module's name, `UsdmError` (AD-15's
+`<Module>Error`). The streams, `usdm::ws`, are under `usdm-ws`, and `test-server` no longer
+turns them on: a build that wants the captured frames, `usdm::ws::fixtures`, names
+`usdm-ws` and `test-server` both. The decode's `418` warning moved with its file: what logged
+under `polyoxide_binance::error` now logs under `polyoxide_binance::usdm::error`, which a
+`RUST_LOG` filter on `polyoxide_binance` still matches.
+
+- `polyoxide_binance::error` → `polyoxide_binance::usdm::error` Story 5.6, feature `usdm`.
+- `polyoxide_binance::error::BinanceError` → `polyoxide_binance::usdm::error::UsdmError` Story 5.6, renamed for its module.
+- `polyoxide_binance::weight` → `polyoxide_binance::usdm::weight` Story 5.6, feature `usdm`.
+- `polyoxide_binance::BinanceError` → `polyoxide_binance::usdm::UsdmError` Story 5.6, renamed for its module.
+- `polyoxide_binance::Usdm` → `polyoxide_binance::usdm::Usdm` Story 5.6: the crate root re-exports nothing.
+- `polyoxide_binance::UsdmBuilder` → `polyoxide_binance::usdm::UsdmBuilder` Story 5.6: the crate root re-exports nothing.
+- `polyoxide_binance::WeightBudget` → `polyoxide_binance::usdm::WeightBudget` Story 5.6: the crate root re-exports nothing.
+
 ## Features
 
 - `polyoxide-gamma/default` → `polyoxide-polymarket/gamma` Story 5.3: the module's own feature builds what the crate's defaults did.
@@ -140,6 +157,7 @@ under its `perps`, `rtds` and `sports` features. Their `tracing` targets moved w
 - `polyoxide-perps/ws` → `polyoxide-polymarket/perps-ws` Story 5.5, which turns on `perps`.
 - `polyoxide-rtds/test-fixtures` → `polyoxide-polymarket/test-server` Story 5.5, with `rtds`; DRIFT R6 renamed it to the name every other crate's had.
 - `polyoxide-sports/test-server` → `polyoxide-polymarket/test-server` Story 5.5, with `sports`.
+- `polyoxide-binance/ws` → `polyoxide-binance/usdm-ws` Story 5.6, which turns on `usdm`.
 
 ## Doc-hidden paths consumers import
 
@@ -156,7 +174,7 @@ and gives the old path a row above. To remove one, append `**Removed**` to its e
 the story and what a consumer uses instead. To remove one item of a `{...}` group, give it a
 line of its own first.
 
-- `polyoxide_binance::usdm::ws::fixtures::{AGG_TRADE, ALL, ALL_MARK_PRICES, ALL_TICKERS, BOOK_TICKER, KLINE, MARK_PRICE, PARTIAL_DEPTH, TICKER}` `test-server`
+- `polyoxide_binance::usdm::ws::fixtures::{AGG_TRADE, ALL, ALL_MARK_PRICES, ALL_TICKERS, BOOK_TICKER, KLINE, MARK_PRICE, PARTIAL_DEPTH, TICKER}` `usdm-ws` `test-server`
 - `polyoxide_polymarket::perps::ws::{frame_from_text_for_tests, incoming_from_text_for_tests, IncomingForTests}` `perps-ws`
 - `polyoxide_polymarket::rtds::fixtures::{REJECTED_SUBSCRIPTION, TWAP_THIRTY_UPDATE}` `rtds` `test-server`
 - `polyoxide_polymarket::sports::fixtures::{CRICKET, CRICKET_FINISHED, ESPORTS, LEAGUE_WITH_SPACE, SOCCER, TENNIS_EVENT_STATE}` `sports` `test-server`

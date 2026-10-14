@@ -16,8 +16,7 @@ are counted one for one. A module directory without its README fails too, unless
 `WITHOUT_README` names it with the reason its documentation lives elsewhere; an entry
 there whose module has a README, or is not a module, fails as stale. Only a product its
 crate builds behind a feature of the product's name is a module: a crate that is still
-its one module, or one whose module has no feature yet (Binance's `usdm` until Story
-5.6), is not checked.
+its one module, or one whose module has no feature yet, is not checked.
 """
 
 from __future__ import annotations
@@ -141,6 +140,8 @@ def test_every_module_readme_is_a_doctest_under_its_feature() -> None:
     readmes = [(crate.name, product) for crate, products in crates for product in products
                if (crate / "src" / product / "README.md").is_file()]
     assert len(readmes) >= 2, f"too few module READMEs found, so the check is vacuous: {readmes}"
+    assert len({name for name, _ in readmes}) >= 2, (
+        f"module READMEs found in one crate only, so another venue's go unread: {readmes}")
 
 
 # --- synthetic crates --------------------------------------------------------
@@ -264,7 +265,8 @@ def test_only_members_with_a_venue_and_products_are_read() -> None:
         package("polyoxide-polymarket", ["gamma", "data", "clob", "specta"],
                 venue="polymarket", products=["gamma", "data"]),
         package("polyoxide-kalshi", venue="kalshi"),
-        package("polyoxide-binance", ["ws"], venue="binance", products=["usdm"]),
+        # A product the crate builds behind no feature of its name is not a module.
+        package("polyoxide-bybit", ["ws"], venue="bybit", products=["linear"]),
     ]
     metadata = {"packages": packages, "workspace_members": [p["id"] for p in packages]}
     assert venue_modules(metadata) == [(Path("/ws/polyoxide-polymarket"), ["gamma", "data"])]

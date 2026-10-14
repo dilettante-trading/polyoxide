@@ -2,8 +2,8 @@
   "unwraps": {},
   "bare": {},
   "opted_out": {
-    "polyoxide-binance/tests/live_api.rs": 5,
-    "polyoxide-binance/tests/live_ws.rs": 6,
+    "polyoxide-binance/tests/live_usdm.rs": 5,
+    "polyoxide-binance/tests/live_usdm_ws.rs": 6,
     "polyoxide-cli/tests/live_api.rs": 17,
     "polyoxide-polymarket/tests/live_clob.rs": 16,
     "polyoxide-polymarket/tests/live_clob_session_keys.rs": 4,

@@ -285,9 +285,29 @@ def test_the_real_tree_passes_and_every_exception_matches() -> None:
                            gate.read_skip(REPO))
     kinds = {(t.kind, t.text) for t in found.terms}
     assert {("venue", "polymarket"), ("venue", "binance"), ("product", "clob"),
-            ("product", "perps"), ("identifier", "poly-ratelimit")} <= kinds
+            ("product", "perps"), ("product", "usdm"), ("identifier", "poly-ratelimit"),
+            ("identifier", "fapi"), ("identifier", "fstream"), ("identifier", "x-mbx")} <= kinds
     assert result.hits and {e.crate for e in found.excuses} == {"polyoxide-polymarket",
                                                                "polyoxide-binance"}
+
+
+def test_binances_host_words_in_a_foundation_crate_are_caught(tmp_path: Path) -> None:
+    """Binance's identifiers name its hosts and its weight header, which say Binance
+    without its id: a core test that pings `/fapi/v1/ping` fails, naming Binance."""
+    root = tree(tmp_path, {
+        "polyoxide-core/tests/health.rs": 'const PATH: &str = "/fapi/v1/ping";\n',
+        "polyoxide-ws/src/x.rs": "// wss://fstream.example\n// X-MBX-USED-WEIGHT-1M\n",
+    })
+    found = gate.read_gate(gate.publish_order.cargo_metadata(REPO / "Cargo.toml"),
+                           gate.read_skip(REPO))
+    result = gate.check(gate.scan(root, found), found.excuses)
+    assert result.status == 1
+    assert sorted((h.path, h.line, h.term.kind, h.term.text, h.term.venues)
+                  for h in result.unexcused) == [
+        ("polyoxide-core/tests/health.rs", 1, "identifier", "fapi", frozenset({"binance"})),
+        ("polyoxide-ws/src/x.rs", 1, "identifier", "fstream", frozenset({"binance"})),
+        ("polyoxide-ws/src/x.rs", 2, "identifier", "x-mbx", frozenset({"binance"})),
+    ]
 
 
 def _baseline_core(into: Path) -> Path:

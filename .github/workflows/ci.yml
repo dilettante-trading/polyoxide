@@ -116,7 +116,7 @@ jobs:
           cargo test -p polyoxide-polymarket --no-default-features --features data --test headers_data
           cargo test -p polyoxide-polymarket --no-default-features --features relay --test headers_relay
           cargo test -p polyoxide-polymarket --no-default-features --features perps --test headers_perps
-          cargo test -p polyoxide-binance --no-default-features --test headers
+          cargo test -p polyoxide-binance --no-default-features --features usdm --test headers_usdm
       # Each module of a venue crate with `specta`, whose extras for that module
       # (`specta?/chrono`, `specta?/rust_decimal`) are weak features: neither
       # `--each-feature`, which builds `specta` alone, nor `--all-features`,

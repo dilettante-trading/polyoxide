@@ -225,27 +225,32 @@ def test_http_modules_are_venue_crates_on_core() -> None:
                 optional=("polyoxide-core",)),
         # A crate that always builds core holds every product on it, a product behind
         # a feature of its name included.
-        package("polyoxide-binance", "binance", ["polyoxide-core"], products=("usdm",),
-                features={"usdm": ["dep:polyoxide-ws"]}),
+        package("polyoxide-bybit", "bybit", ["polyoxide-core"], products=("linear",),
+                features={"linear": ["dep:polyoxide-ws"]}),
         package("polyoxide-hyperliquid", "hyperliquid", ["polyoxide-core"], products=()),
     ]
     metadata = {"packages": packages, "workspace_members": [p["id"] for p in packages]}
-    assert http_modules(metadata) == [("polyoxide-binance", "usdm"),
+    assert http_modules(metadata) == [("polyoxide-bybit", "linear"),
                                       ("polyoxide-kalshi", "x"),
                                       ("polyoxide-polymarket", "data"),
                                       ("polyoxide-polymarket", "gamma"),
                                       ("polyoxide-polymarket", "perps")]
 
 
-def test_docs_rs_builds_every_polymarket_feature_but_test_server() -> None:
-    """docs.rs documents every module, `-ws` feature and extra, and leaves out
-    `test-server`, which exposes captured frames for tests alone; a feature added to
-    the crate and not to the list would go undocumented."""
-    metadata = _load_publish_order().cargo_metadata(REPO / "Cargo.toml")
-    [package] = [p for p in metadata["packages"] if p["name"] == "polyoxide-polymarket"]
-    listed = package["metadata"]["docs"]["rs"]["features"]
-    assert sorted(listed) == sorted(set(package["features"]) - {"default", "test-server"})
-    assert len(listed) == len(set(listed)), listed
+def test_docs_rs_builds_every_venue_feature_but_test_server() -> None:
+    """docs.rs documents every module, `-ws` feature and extra of each venue crate, and
+    leaves out `test-server`, which exposes captured frames for tests alone; a feature
+    added to a crate and not to its list would go undocumented."""
+    publish_order = _load_publish_order()
+    metadata = publish_order.cargo_metadata(REPO / "Cargo.toml")
+    venues = [p for p in publish_order.members(metadata)
+              if ((p.get("metadata") or {}).get("polyoxide") or {}).get("venue")]
+    assert len(venues) >= 2, f"too few venue crates found, so the check is vacuous: {venues}"
+    for package in venues:
+        listed = package["metadata"]["docs"]["rs"]["features"]
+        assert sorted(listed) == sorted(set(package["features"]) - {"default", "test-server"}), (
+            package["name"])
+        assert len(listed) == len(set(listed)), (package["name"], listed)
 
 
 def test_a_module_behind_its_feature_pins_its_own_suite() -> None:
@@ -253,9 +258,9 @@ def test_a_module_behind_its_feature_pins_its_own_suite() -> None:
     assert header_pin(venue, "gamma") == (
         "cargo test -p polyoxide-polymarket --no-default-features --features gamma "
         "--test headers_gamma", "tests/headers_gamma.rs")
-    crate = {"name": "polyoxide-binance", "features": {"ws": []}}
-    assert header_pin(crate, "usdm") == (
-        "cargo test -p polyoxide-binance --no-default-features --test headers",
+    crate = {"name": "polyoxide-bybit", "features": {"ws": []}}
+    assert header_pin(crate, "linear") == (
+        "cargo test -p polyoxide-bybit --no-default-features --test headers",
         "tests/headers.rs")
 
 
