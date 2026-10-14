@@ -33,9 +33,9 @@ SNIPPETS = {
     ("polyoxide-binance/src/usdm/policy.rs", 53): "hold: Some(asked.unwrap_or_else(|| self.budget.until_next_minute())),",
     ("polyoxide-binance/src/usdm/policy.rs", 57): "hold: Some(asked.unwrap_or(DEFAULT_BAN)),",
     ("polyoxide-binance/src/usdm/policy.rs", 185): "fn a_418_without_retry_after_holds_two_minutes(",
-    ("polyoxide-binance/tests/mock_api.rs", 707): "async fn every_usdm_on_one_budget_is_held_by_one_ban(",
-    ("polyoxide-binance/tests/mock_api.rs", 616): "fn a_429_out_of_retries_is_rate_limited_and_still_holds_the_next_request(",
-    ("polyoxide-binance/tests/mock_api.rs", 652): "fn a_429_with_no_retry_after_and_no_retry_left_holds_until_the_next_minute(",
+    ("polyoxide-binance/tests/mock_usdm.rs", 707): "async fn every_usdm_on_one_budget_is_held_by_one_ban(",
+    ("polyoxide-binance/tests/mock_usdm.rs", 616): "fn a_429_out_of_retries_is_rate_limited_and_still_holds_the_next_request(",
+    ("polyoxide-binance/tests/mock_usdm.rs", 652): "fn a_429_with_no_retry_after_and_no_retry_left_holds_until_the_next_minute(",
     ("polyoxide-venue/src/retry_after.rs", 29): "if !secs.is_finite() || secs <= 0.0 {",
     ("polyoxide-venue/src/retry_after.rs", 35): "Some(wait).filter(|wait| !wait.is_zero())",
     ("polyoxide-venue/src/retry_after.rs", 45): "requested.map_or(computed, |requested| requested.max(computed))",
@@ -71,7 +71,7 @@ SNIPPETS = {
     ("polyoxide-core/src/rate_limit.rs", 208): "let target = count.saturating_sub(count.div_ceil(RESERVED_FRACTION));",
     ("polyoxide-core/src/rate_limit.rs", 216): "const RESERVED_FRACTION: u32 = 10;",
     ("polyoxide-core/src/rate_limit.rs", 303): "fn a_published_150_per_10s_admits_135_per_window(",
-    ("polyoxide-binance/tests/mock_api.rs", 409): "async fn a_418_is_not_retried_and_holds_the_next_request(",
+    ("polyoxide-binance/tests/mock_usdm.rs", 409): "async fn a_418_is_not_retried_and_holds_the_next_request(",
     ("polyoxide-polymarket/src/clob/error.rs", 97): "let m = message.to_ascii_lowercase();",
     ("polyoxide-polymarket/src/clob/error.rs", 100): 'if m.contains("fak order") && (m.contains("no match")',
     ("polyoxide-polymarket/src/clob/error.rs", 127): "ApiError::Response(response) if response.status.as_u16() == 400 => {",
@@ -96,7 +96,7 @@ SNIPPETS = {
         "async fn a_start_in_an_outage_waits_out_the_first_refusals_retry_after_drift_r11(",
     ("polyoxide-polymarket/src/perps/ws/builder.rs", 710):
         "async fn a_refusal_on_reconnect_waits_out_its_retry_after_drift_r11(",
-    ("polyoxide-binance/tests/supervision_kit.rs", 437):
+    ("polyoxide-binance/tests/supervision_usdm_kit.rs", 437):
         "async fn a_refusal_on_reconnect_waits_out_its_retry_after_drift_r11(",
     ("polyoxide-polymarket/tests/supervision_rtds.rs", 327):
         "async fn a_refusal_on_reconnect_waits_out_its_retry_after_drift_r11(",
