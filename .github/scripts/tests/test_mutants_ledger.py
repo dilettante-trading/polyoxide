@@ -46,7 +46,7 @@ SNIPPETS = {
     ("polyoxide-polymarket/tests/mock_data.rs", 1515): "fn retry_after_zero_does_not_turn_the_retry_loop_into_a_hot_loop(",
     ("polyoxide-polymarket/tests/mock_data.rs", 1538): "fn a_429_makes_the_next_request_wait_even_though_it_never_saw_one(",
     ("polyoxide-polymarket/tests/mock_data.rs", 1562): "fn a_429_on_the_pnl_host_holds_the_data_host(",
-    ("polyoxide-perps/tests/mock_api.rs", 544): "fn a_429_is_retried_and_retry_after_zero_does_not_shorten_the_backoff(",
+    ("polyoxide-polymarket/tests/mock_perps.rs", 544): "fn a_429_is_retried_and_retry_after_zero_does_not_shorten_the_backoff(",
     ("polyoxide-core/src/rate_limit.rs", 183): "fn quota(count: u32, period: Duration) -> Quota {",
     ("polyoxide-core/src/rate_limit.rs", 186): "}",
     ("polyoxide-core/src/rate_limit.rs", 263): "fn no_quota_admits_more_than_its_published_count_in_one_window(",
@@ -94,13 +94,13 @@ SNIPPETS = {
         "async fn a_retry_after_past_the_ceiling_waits_the_ceiling_drift_r11(",
     ("polyoxide-ws/src/supervisor/tests.rs", 795):
         "async fn a_start_in_an_outage_waits_out_the_first_refusals_retry_after_drift_r11(",
-    ("polyoxide-perps/src/ws/builder.rs", 710):
+    ("polyoxide-polymarket/src/perps/ws/builder.rs", 710):
         "async fn a_refusal_on_reconnect_waits_out_its_retry_after_drift_r11(",
     ("polyoxide-binance/tests/supervision_kit.rs", 437):
         "async fn a_refusal_on_reconnect_waits_out_its_retry_after_drift_r11(",
-    ("polyoxide-rtds/tests/supervision.rs", 315):
+    ("polyoxide-polymarket/tests/supervision_rtds.rs", 327):
         "async fn a_refusal_on_reconnect_waits_out_its_retry_after_drift_r11(",
-    ("polyoxide-sports/src/supervised.rs", 419):
+    ("polyoxide-polymarket/src/sports/supervised.rs", 419):
         "async fn a_reconnect_waits_out_a_refusals_retry_after_drift_r11(",
 }
 
