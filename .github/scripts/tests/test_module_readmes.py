@@ -12,10 +12,12 @@ lib.rs does:
 A README no include names is never compiled, so its examples rot unseen; an include
 whose README is not there fails only `cargo test --doc` with that feature on. These
 tests fail on both, naming the module, so the module READMEs and their gated includes
-are counted one for one. A module directory without its README fails too. Only a product
-its crate builds behind a feature of the product's name is a module: a crate that is still
-its one module (perps, clob), or one whose module has no feature yet (Binance's `usdm`
-until Story 5.6), is not checked.
+are counted one for one. A module directory without its README fails too, unless
+`WITHOUT_README` names it with the reason its documentation lives elsewhere; an entry
+there whose module has a README, or is not a module, fails as stale. Only a product its
+crate builds behind a feature of the product's name is a module: a crate that is still
+its one module, or one whose module has no feature yet (Binance's `usdm` until Story
+5.6), is not checked.
 """
 
 from __future__ import annotations
@@ -31,6 +33,12 @@ REPO = Path(__file__).resolve().parents[3]
 INCLUDE = re.compile(
     r'#\[cfg\(all\(doctest,\s*feature\s*=\s*"(?P<feature>[^"]+)"\)\)\]\s*'
     r'#\[doc\s*=\s*include_str!\("(?P<path>[^"]+)"\)\]')
+# Modules whose documentation is their `mod.rs` docs alone, by crate directory, each
+# with why.
+WITHOUT_README = {
+    ("polyoxide-polymarket", "rtds"): "the crate had no README before Story 5.5 folded it "
+                                      "in; its guide is `src/rtds/mod.rs`'s module docs",
+}
 
 
 def _load_publish_order():
@@ -62,20 +70,30 @@ def includes(src: Path) -> list[Include]:
     return found
 
 
-def problems(crate: Path, products: list[str]) -> list[str]:
-    """`<crate>: module `<m>` ...` for each module directory without its README, each
-    module README that is not included exactly once under its own feature, and each
-    include of a product's feature whose README is not a file."""
+def problems(crate: Path, products: list[str],
+             exempt: frozenset[str] = frozenset()) -> list[str]:
+    """`<crate>: module `<m>` ...` for each module directory without its README but
+    the `exempt` ones, each module README that is not included exactly once under its
+    own feature, each include of a product's feature whose README is not a file, and
+    each `exempt` module that has a README or is not a module directory."""
     src = crate / "src"
     found = includes(src)
     out = []
+    for product in sorted(exempt):
+        if product not in products or not (src / product).is_dir():
+            out.append(f"{crate.name}: `{product}` is exempt from a README but is not a "
+                       f"module directory in src/")
+        elif (src / product / "README.md").is_file():
+            out.append(f"{crate.name}: module `{product}` is exempt from a README but has "
+                       f"one; drop the exemption")
     for product in products:
         readme = (src / product / "README.md").resolve()
         if not (src / product).is_dir():
             continue
         if not readme.is_file():
-            out.append(f"{crate.name}: module `{product}` has no README.md in "
-                       f"src/{product}/")
+            if product not in exempt:
+                out.append(f"{crate.name}: module `{product}` has no README.md in "
+                           f"src/{product}/")
             continue
         gated = [i for i in found if i.target == readme and i.feature == product]
         if len(gated) != 1:
@@ -103,14 +121,23 @@ def venue_modules(metadata: dict) -> list[tuple[Path, list[str]]]:
     return out
 
 
+def exemptions(crate: str) -> frozenset[str]:
+    """The modules of `crate` that `WITHOUT_README` lets go without a README."""
+    return frozenset(module for name, module in WITHOUT_README if name == crate)
+
+
 # --- the real tree -----------------------------------------------------------
 
 
 def test_every_module_readme_is_a_doctest_under_its_feature() -> None:
     metadata = _load_publish_order().workspace_metadata()
     crates = venue_modules(metadata)
-    found = [p for crate, products in crates for p in problems(crate, products)]
+    found = [p for crate, products in crates
+             for p in problems(crate, products, exemptions(crate.name))]
     assert not found, "\n".join(found)
+    # An exemption naming a crate the sweep never reads is stale too.
+    names = {crate.name for crate, _ in crates}
+    assert {crate for crate, _ in WITHOUT_README} <= names, WITHOUT_README
     readmes = [(crate.name, product) for crate, products in crates for product in products
                if (crate / "src" / product / "README.md").is_file()]
     assert len(readmes) >= 2, f"too few module READMEs found, so the check is vacuous: {readmes}"
@@ -201,10 +228,29 @@ def test_a_module_directory_without_its_readme_is_caught(tmp_path: Path) -> None
 
 
 def test_a_product_without_a_module_directory_is_not_checked(tmp_path: Path) -> None:
-    """A crate that is still its one module, as perps and clob are, keeps its README
-    at the crate root."""
+    """A crate that is still its one module keeps its README at the crate root."""
     crate = _crate(tmp_path, "", [])
-    assert problems(crate, ["perps"]) == []
+    assert problems(crate, ["usdm"]) == []
+
+
+def test_an_exempt_module_needs_no_readme_and_a_stale_exemption_is_caught(
+        tmp_path: Path) -> None:
+    crate = _crate(tmp_path, GAMMA, ["gamma"])
+    (crate / "src" / "rtds").mkdir()
+    (crate / "src" / "rtds" / "mod.rs").write_text("//! The module's guide.\n")
+    assert problems(crate, ["gamma", "rtds"]) == [
+        "polyoxide-venue-crate: module `rtds` has no README.md in src/rtds/"]
+    assert problems(crate, ["gamma", "rtds"], frozenset({"rtds"})) == []
+    # An exemption outlives its reason once the module has a README, or is gone.
+    (crate / "src" / "rtds" / "README.md").write_text("# rtds\n")
+    assert problems(crate, ["gamma", "rtds"], frozenset({"rtds"})) == [
+        "polyoxide-venue-crate: module `rtds` is exempt from a README but has one; drop "
+        "the exemption",
+        "polyoxide-venue-crate: module `rtds`'s README.md is included 0 times under "
+        "`cfg(all(doctest, feature = \"rtds\"))`, not once"]
+    assert problems(crate, ["gamma"], frozenset({"sports"})) == [
+        "polyoxide-venue-crate: `sports` is exempt from a README but is not a module "
+        "directory in src/"]
 
 
 def test_only_members_with_a_venue_and_products_are_read() -> None:

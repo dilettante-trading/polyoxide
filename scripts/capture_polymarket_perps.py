@@ -6,7 +6,7 @@ address from the weekly leaderboard, and the first base asset whose index has
 constituents. Requests are spaced out.
 
 Usage:
-    python3 scripts/capture_perps_fixtures.py polyoxide-perps/tests/fixtures
+    python3 scripts/capture_polymarket_perps.py polyoxide-polymarket/tests/fixtures/perps
 
 Writes `<name>.json` per capture plus `PROVENANCE.md` listing each URL and the
 capture time. Re-run to refresh; review the diff before committing.
@@ -80,7 +80,7 @@ def main():
     lines = [
         "# Perps fixtures",
         "",
-        f"Captured {stamp} by `scripts/capture_perps_fixtures.py` from the live host.",
+        f"Captured {stamp} by `scripts/capture_polymarket_perps.py` from the live host.",
         "Each file is the complete response body, pretty-printed. Inputs were chosen live",
         "(see the script), so the instrument and address here are whatever was active then.",
         "",

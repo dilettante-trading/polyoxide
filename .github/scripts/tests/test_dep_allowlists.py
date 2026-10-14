@@ -20,14 +20,17 @@ ring's `cc`, for one, is built but is not on the list. The target is fixed so a
 developer on another platform reads the same tree CI does.
 
 No allowlist may admit a crate its deny-list refuses, so a regenerated file
-cannot quietly accept one. A socket crate's files are held to the socket-only
+cannot quietly accept one. The socket kit's files are held to the socket-only
 deny-list, and `polyoxide-ws` may build neither `polyoxide-core` nor
 `polyoxide-venue`. A venue crate's files are held per feature, after the
 features each file names turn on the ones they imply: `polyoxide-polymarket`
-builds `alloy*` and `hmac`, the signing stack, only with `clob` or `relay`, and
-`keyring` only with `keychain`. Its `@clob` and `@relay` files must hold
-`alloy`, and its `@clob,keychain` file `keyring`, so neither rule can pass
-because nothing it admits is ever built.
+builds `reqwest`, `polyoxide-core`, `governor` and `sha2`, the HTTP stack, only
+with an HTTP module (`clob`, `gamma`, `data`, `relay` or `perps`), so its socket
+modules `rtds` and `sports` build the socket-only tree; `alloy*` and `hmac`, the
+signing stack, only with `clob` or `relay`; and `keyring` only with `keychain`.
+Its `@perps` file must hold `reqwest`, its `@clob` and `@relay` files `alloy`,
+and its `@clob,keychain` file `keyring`, so no rule can pass because nothing it
+admits is ever built.
 
 Regenerate every file after a deliberate change, from `.github/scripts`:
 
@@ -71,10 +74,14 @@ class Rule:
         return name in self.names or name.startswith(self.prefixes)
 
 
-# A venue crate's per-feature fence (NFR2), in place of the socket-only one: no
-# credential-free module builds the signing stack or the keychain.
+# A venue crate's per-feature fence (NFR2), in place of the socket-only one: a
+# socket module builds no HTTP stack, and no credential-free module builds the
+# signing stack or the keychain.
 PER_FEATURE = {
     "polyoxide-polymarket": (
+        Rule(frozenset({"reqwest", "polyoxide-core", "governor", "sha2"}), (),
+             frozenset({"clob", "gamma", "data", "relay", "perps"}),
+             "reqwest, polyoxide-core, governor and sha2 only with an HTTP module"),
         Rule(frozenset({"hmac"}), ("alloy",), frozenset({"clob", "relay"}),
              "alloy* and hmac only with clob or relay"),
         Rule(frozenset({"keyring"}), (), frozenset({"keychain"}),
@@ -83,6 +90,7 @@ PER_FEATURE = {
 }
 # The files that must build a crate a rule above admits, with that crate.
 MUST_BUILD = {
+    "polyoxide-polymarket@perps.txt": "reqwest",
     "polyoxide-polymarket@clob.txt": "alloy",
     "polyoxide-polymarket@relay.txt": "alloy",
     "polyoxide-polymarket@clob,keychain.txt": "keyring",
@@ -209,15 +217,16 @@ def test_the_allowlists_exist() -> None:
     names = [p.name for p in allowlists()]
     assert {"polyoxide-ws.txt", "polyoxide-ws@test-server.txt"} <= set(names), names
     assert "tokio-tungstenite" in read_allowlist(ALLOWLISTS / "polyoxide-ws.txt")
-    modules = ("gamma", "data", "perps", "clob", "clob-ws", "relay", "clob,keychain")
+    modules = ("gamma", "data", "perps", "perps-ws", "clob", "clob-ws", "relay",
+               "clob,keychain", "rtds", "rtds,test-server", "sports", "sports,test-server")
     assert {f"polyoxide-polymarket@{m}.txt" for m in modules} <= set(names), names
 
 
 @pytest.mark.parametrize("name", sorted(MUST_BUILD))
 def test_each_per_feature_rule_admits_what_it_guards(name: str) -> None:
-    # The rules admit alloy with clob or relay and keyring with keychain; if no
-    # file held them, a rule that never refuses anything could not be told from
-    # one that holds.
+    # The rules admit the HTTP stack with an HTTP module, alloy with clob or
+    # relay and keyring with keychain; if no file held them, a rule that never
+    # refuses anything could not be told from one that holds.
     assert MUST_BUILD[name] in read_allowlist(ALLOWLISTS / name), name
 
 
@@ -258,7 +267,8 @@ def test_the_parser_reads_cargo_tree_output() -> None:
 def test_the_file_name_names_the_crate_and_its_features() -> None:
     assert parse_name("polyoxide-ws") == ("polyoxide-ws", ())
     assert parse_name("polyoxide-ws@test-server") == ("polyoxide-ws", ("test-server",))
-    assert parse_name("polyoxide-rtds@a,b") == ("polyoxide-rtds", ("a", "b"))
+    assert parse_name("polyoxide-polymarket@rtds,test-server") == (
+        "polyoxide-polymarket", ("rtds", "test-server"))
 
 
 def test_a_crate_that_joins_or_leaves_the_tree_is_named() -> None:
@@ -278,8 +288,8 @@ def test_the_deny_lists_refuse_their_crates(tmp_path: Path) -> None:
     assert denied("polyoxide-ws", names) == [
         f"alloy-primitives ({SOCKET_ONLY})", f"hmac ({SOCKET_ONLY})",
         f"polyoxide-venue ({SOCKET_ONLY})", f"reqwest ({SOCKET_ONLY})"]
-    # Only `polyoxide-ws` is fenced from venue; a socket crate builds on it.
-    assert denied("polyoxide-rtds", names) == [
+    # Only `polyoxide-ws` is fenced from venue; any other socket crate builds on it.
+    assert denied("polyoxide-socket", names) == [
         f"alloy-primitives ({SOCKET_ONLY})", f"hmac ({SOCKET_ONLY})", f"reqwest ({SOCKET_ONLY})"]
 
     path = tmp_path / "polyoxide-ws.txt"
@@ -295,9 +305,15 @@ TABLE = {
     "gamma": ("dep:polyoxide-core",),
     "data": ("dep:polyoxide-core",),
     "relay": ("dep:alloy", "alloy?/provider-http", "dep:hmac"),
+    "perps": ("dep:polyoxide-core", "polyoxide-venue/decimal"),
+    "perps-ws": ("perps", "dep:polyoxide-ws", "tokio/time"),
+    "rtds": ("dep:polyoxide-ws", "dep:tokio", "tokio/time"),
+    "sports": ("dep:polyoxide-ws", "dep:tokio", "tokio/time"),
+    "test-server": (),
     "keychain": ("polyoxide-core?/keychain",),
 }
 VENUE = "polyoxide-polymarket"
+HTTP = "reqwest, polyoxide-core, governor and sha2 only with an HTTP module"
 SIGNING = "alloy* and hmac only with clob or relay"
 KEYCHAIN = "keyring only with keychain"
 
@@ -307,11 +323,35 @@ def test_a_credential_free_module_may_not_build_the_signing_stack() -> None:
     assert denied(VENUE, names, ("data",), TABLE) == [
         f"alloy ({SIGNING})", f"alloy-primitives ({SIGNING})", f"hmac ({SIGNING})",
         f"keyring ({KEYCHAIN})"]
-    # The HTTP stack is a credential-free module's own; only sockets refuse it.
+    # The HTTP stack is an HTTP module's own, credential-free or not.
     assert denied(VENUE, ["reqwest", "polyoxide-core", "governor", "sha2"], ("gamma",),
                   TABLE) == []
     # A crate's defaults admit nothing: a file names every feature it builds.
-    assert denied(VENUE, ["alloy"], (), TABLE) == [f"alloy ({SIGNING})"]
+    assert denied(VENUE, ["alloy", "reqwest"], (), TABLE) == [
+        f"alloy ({SIGNING})", f"reqwest ({HTTP})"]
+
+
+HTTP_STACK = ["governor", "polyoxide-core", "reqwest", "sha2"]
+
+
+def test_a_socket_module_may_not_build_the_http_stack() -> None:
+    names = [*HTTP_STACK, "alloy-primitives", "hmac", "keyring", "polyoxide-ws", "tokio"]
+    socket_only = [f"alloy-primitives ({SIGNING})", f"governor ({HTTP})", f"hmac ({SIGNING})",
+                   f"keyring ({KEYCHAIN})", f"polyoxide-core ({HTTP})", f"reqwest ({HTTP})",
+                   f"sha2 ({HTTP})"]
+    for features in (("rtds",), ("sports",), ("rtds", "test-server"),
+                     ("sports", "test-server"), ("rtds", "sports")):
+        assert denied(VENUE, names, features, TABLE) == socket_only, features
+    # `keychain` turns core's keychain on only where core is built, so it admits
+    # no HTTP stack.
+    assert denied(VENUE, HTTP_STACK, ("rtds", "keychain"), TABLE) == [
+        f"{n} ({HTTP})" for n in HTTP_STACK]
+
+
+def test_each_http_module_admits_the_http_stack() -> None:
+    for features in (("clob",), ("gamma",), ("data",), ("relay",), ("perps",), ("perps-ws",),
+                     ("clob-ws",), ("rtds", "perps"), ("sports", "gamma")):
+        assert denied(VENUE, HTTP_STACK, features, TABLE) == [], features
 
 
 def test_a_signing_module_admits_the_signing_stack_and_not_the_keychain() -> None:
@@ -328,13 +368,13 @@ def test_a_signing_module_admits_the_signing_stack_and_not_the_keychain() -> Non
 
 def test_only_a_crate_held_per_feature_is_built_without_its_defaults() -> None:
     assert no_defaults("polyoxide-polymarket") == ["--no-default-features"]
-    # A socket crate's bare file is the tree a consumer builds by default.
-    assert no_defaults("polyoxide-rtds") == []
+    # The socket kit's bare file is the tree a consumer builds by default.
     assert no_defaults("polyoxide-ws") == []
 
 
 def test_enabled_follows_features_and_not_dependencies() -> None:
     assert enabled(("clob-ws",), TABLE) == {"clob-ws", "clob"}
+    assert enabled(("perps-ws",), TABLE) == {"perps-ws", "perps"}
     assert enabled(("keychain",), TABLE) == {"keychain"}
     assert enabled((), TABLE) == set()
 

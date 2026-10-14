@@ -3,7 +3,7 @@
 subscribe, refusal and ping responses, as test fixtures.
 
 Usage:
-    uv run --with websockets --with certifi python3 scripts/capture_perps_ws_fixtures.py polyoxide-perps/tests/fixtures/ws [INSTRUMENT]
+    uv run --with websockets --with certifi python3 scripts/capture_polymarket_perps_ws.py polyoxide-polymarket/tests/fixtures/perps/ws [INSTRUMENT]
 
 Subscribes to every channel kind for one instrument (default 1; pass the
 busiest instrument from `GET /v1/info/statistics` when `trades` is quiet),
@@ -72,7 +72,7 @@ async def main():
     for name, text in captured.items():
         capture_common.write_json(out / f"{name}.json", json.loads(text), ensure_ascii=True)
     lines = ["# Perps WebSocket fixtures", "",
-             f"Captured {started} by `scripts/capture_perps_ws_fixtures.py` from `{URL}`:",
+             f"Captured {started} by `scripts/capture_polymarket_perps_ws.py` from `{URL}`:",
              f"one `sub` for {CHANNELS}, a ping, a malformed `sub`, {SECONDS} s of frames, then an `unsub`.",
              f"Instrument {iid}. Each file is the first frame seen for its label, pretty-printed",
              "(for `klines`, the first frame with a non-empty `data` when one arrived).", "",

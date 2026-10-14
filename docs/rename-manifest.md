@@ -107,6 +107,20 @@ umbrella, `polyoxide` re-exports `polyoxide_polymarket` in place of `polyoxide_c
 - `polyoxide::polyoxide_clob::ws::WebSocketError` → `polyoxide::polyoxide_polymarket::clob::ws::ClobWsError` Story 5.4, renamed for its module.
 - `polyoxide::prelude::ws::WebSocketError` → `polyoxide::prelude::ws::ClobWsError` Story 5.4, renamed for its module.
 
+Story 5.5 folded `polyoxide-perps`, `polyoxide-rtds` and `polyoxide-sports` into
+`polyoxide-polymarket` as the modules `perps`, `rtds` and `sports`, each under the feature of
+its name, keeping their own module paths and error names. Perps' sockets, `perps::ws`, are
+under `perps-ws`. `rtds` and `sports` are sockets alone and build no `polyoxide-core`. Until
+Story 5.7 reshapes the umbrella, `polyoxide` re-exports `polyoxide_polymarket` in their place,
+under its `perps`, `rtds` and `sports` features.
+
+- `polyoxide_perps` → `polyoxide_polymarket::perps` Story 5.5, feature `perps`; `ws` under `perps-ws`.
+- `polyoxide_rtds` → `polyoxide_polymarket::rtds` Story 5.5, feature `rtds`.
+- `polyoxide_sports` → `polyoxide_polymarket::sports` Story 5.5, feature `sports`.
+- `polyoxide::polyoxide_perps` → `polyoxide::polyoxide_polymarket::perps` Story 5.5, feature `perps`.
+- `polyoxide::polyoxide_rtds` → `polyoxide::polyoxide_polymarket::rtds` Story 5.5, feature `rtds`.
+- `polyoxide::polyoxide_sports` → `polyoxide::polyoxide_polymarket::sports` Story 5.5, feature `sports`.
+
 ## Features
 
 - `polyoxide-gamma/default` → `polyoxide-polymarket/gamma` Story 5.3: the module's own feature builds what the crate's defaults did.
@@ -119,6 +133,10 @@ umbrella, `polyoxide` re-exports `polyoxide_polymarket` in place of `polyoxide_c
 - `polyoxide-clob/keychain` → `polyoxide-polymarket/keychain` Story 5.4, with `clob`.
 - `polyoxide-relay/default` → `polyoxide-polymarket/relay` Story 5.4: the module's own feature builds what the crate's defaults did.
 - `polyoxide-relay/keychain` → `polyoxide-polymarket/keychain` Story 5.4, with `relay`.
+- `polyoxide-perps/default` → `polyoxide-polymarket/perps` Story 5.5: the module's own feature builds what the crate's defaults did.
+- `polyoxide-perps/ws` → `polyoxide-polymarket/perps-ws` Story 5.5, which turns on `perps`.
+- `polyoxide-rtds/test-fixtures` → `polyoxide-polymarket/test-server` Story 5.5, with `rtds`; DRIFT R6 renamed it to the name every other crate's had.
+- `polyoxide-sports/test-server` → `polyoxide-polymarket/test-server` Story 5.5, with `sports`.
 
 ## Doc-hidden paths consumers import
 
@@ -136,13 +154,13 @@ the story and what a consumer uses instead. To remove one item of a `{...}` grou
 line of its own first.
 
 - `polyoxide_binance::usdm::ws::fixtures::{AGG_TRADE, ALL, ALL_MARK_PRICES, ALL_TICKERS, BOOK_TICKER, KLINE, MARK_PRICE, PARTIAL_DEPTH, TICKER}` `test-server`
-- `polyoxide_perps::ws::{frame_from_text_for_tests, incoming_from_text_for_tests, IncomingForTests}` `ws`
-- `polyoxide_rtds::fixtures::{REJECTED_SUBSCRIPTION, TWAP_THIRTY_UPDATE}` `test-fixtures`
-- `polyoxide_sports::fixtures::{CRICKET, CRICKET_FINISHED, ESPORTS, LEAGUE_WITH_SPACE, SOCCER, TENNIS_EVENT_STATE}` `test-server`
+- `polyoxide_polymarket::perps::ws::{frame_from_text_for_tests, incoming_from_text_for_tests, IncomingForTests}` `perps-ws`
+- `polyoxide_polymarket::rtds::fixtures::{REJECTED_SUBSCRIPTION, TWAP_THIRTY_UPDATE}` `rtds` `test-server`
+- `polyoxide_polymarket::sports::fixtures::{CRICKET, CRICKET_FINISHED, ESPORTS, LEAGUE_WITH_SPACE, SOCCER, TENNIS_EVENT_STATE}` `sports` `test-server`
 - `polyoxide_polymarket::clob::DynSigner` `clob`
 - `polyoxide_polymarket::clob::account::DynSigner` `clob`
 - `polyoxide_polymarket::data::v2::PageStream` `data`
-- `polyoxide_perps::ws::SupervisedPerpsWs` `ws`
+- `polyoxide_polymarket::perps::ws::SupervisedPerpsWs` `perps-ws`
 - `polyoxide_polymarket::relay::DynSigner` `relay`
 
 ## Unresolved entries

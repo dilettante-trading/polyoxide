@@ -34,6 +34,16 @@
 #   An `include_str!` or `include_bytes!` target needs no line: it compares by the
 #   content of the file it names. Each literal must replace something.
 #
+# [fixtures]
+#   "<baseline path prefix>" = "<subdirectory>"
+#   Reads each baseline `fixtures!()` call at or under the prefix, matched at a `/`,
+#   as `fixtures!("<subdirectory>")`, and each `fixtures!("x")` as
+#   `fixtures!("<subdirectory>/x")`, for a crate whose `tests/fixtures/` moved
+#   under a module's `tests/fixtures/<module>/`. A no-argument call has no literal
+#   for `[literals]` to replace. It applies before `[literals]`, so a literal key
+#   never matches a call's rewritten argument. The longest prefix wins, and each
+#   entry must rewrite a call.
+#
 # [paths]
 #   "<old path>" = "<new path>"
 #   Maps a path the rename manifest does not hold, because it was never public, such
@@ -75,8 +85,8 @@
 #   Lets a test go with its subject. The manifest row covering `row`, the longest
 #   old path that is a prefix of it at `::`, must give a reason, not a new path.
 #
-# There are no [[drift]] or [[retired]] entries yet. Add each one below as its own
-# `[[drift]]` or `[[retired]]` table.
+# Add each [[drift]] or [[retired]] entry below as its own table. The only DRIFT
+# row S2 allows is R6.
 
 [files]
 
@@ -108,6 +118,17 @@
 [literals."polyoxide-clob"]
 "ws" = "clob-ws"
 
+# Story 5.5: sports' fixtures moved to `tests/fixtures/sports/`. perps' `ws`
+# feature, now `perps-ws`, needs no literal: no test item sits under `mod ws;`
+# itself, and a stanza's features follow the manifest's `## Features` rows.
+[literals."polyoxide-sports/src/fixtures.rs"]
+"/tests/fixtures" = "/tests/fixtures/sports"
+
+# Story 5.5: perps' fixtures moved to `tests/fixtures/perps/`, and its agreement
+# suites name them through `fixtures!()` and `fixtures!("ws")`.
+[fixtures]
+"polyoxide-perps" = "perps"
+
 [paths]
 
 # Story 5.2: core's Polymarket files moved into `polyoxide-polymarket`'s
@@ -125,3 +146,115 @@
 "polyoxide-polymarket/examples/closed_positions_burst_probe.rs" = "data"
 "polyoxide-polymarket/examples/closed_positions_soak.rs" = "data"
 "polyoxide-polymarket/examples/v2_soak" = "data"
+
+# Story 5.5: perps' harness and the rtds and sports suites that import the
+# captured frames require their module now. perps' two `ws` stanzas need no
+# entry: the manifest's `polyoxide-perps/ws` row maps them to `perps-ws`.
+"polyoxide-polymarket/examples/info_soak.rs" = "perps"
+"polyoxide-polymarket/tests/supervision_rtds.rs" = "rtds"
+"polyoxide-polymarket/tests/bare_sports.rs" = "sports"
+"polyoxide-polymarket/tests/supervision_sports.rs" = "sports"
+
+# DRIFT R6 (Story 5.5): rtds' `test-fixtures` feature became `test-server`, the
+# name every other crate's has, so the gate on `mod fixtures;` changed for each
+# item the module holds. Nothing else in them did.
+
+[[drift]]
+file = "polyoxide-rtds/src/fixtures.rs"
+item = "BINANCE_SNAPSHOT"
+kind = "const"
+row = "R6"
+sha256 = "c7e80a3226f83fcba37d9b7740fd75f1373a53bd6b4ac5cfc1088827dd76bd70"
+
+[[drift]]
+file = "polyoxide-rtds/src/fixtures.rs"
+item = "BINANCE_UPDATE"
+kind = "const"
+row = "R6"
+sha256 = "769acd2985034bd4400872ea1d675ec9ec892b6195e56ddbac9288805f0eb064"
+
+[[drift]]
+file = "polyoxide-rtds/src/fixtures.rs"
+item = "CHAINLINK_SPOT_SNAPSHOT"
+kind = "const"
+row = "R6"
+sha256 = "2980a3110f723f369ccfd9e79990119f21f0d36052af3800b1a78a44f0ccb42a"
+
+[[drift]]
+file = "polyoxide-rtds/src/fixtures.rs"
+item = "CHAINLINK_SPOT_UPDATE"
+kind = "const"
+row = "R6"
+sha256 = "80b68e46910c9f248d85a095f95ac107942350313fd2bdbb7b3ea2a5d369ebf6"
+
+[[drift]]
+file = "polyoxide-rtds/src/fixtures.rs"
+item = "EMPTY_GREETING"
+kind = "const"
+row = "R6"
+sha256 = "6a9d265f0acf40a12acc469ca22f14fc690b82700d0090c7282ab6d2ded2214b"
+
+[[drift]]
+file = "polyoxide-rtds/src/fixtures.rs"
+item = "REJECTED_SUBSCRIPTION"
+kind = "const"
+row = "R6"
+sha256 = "546d487c1efa73c326b36c00581cdfe07e91fc8d085d9a23a50a4d25264157ec"
+
+[[drift]]
+file = "polyoxide-rtds/src/fixtures.rs"
+item = "TWAP_SIXTY_SNAPSHOT"
+kind = "const"
+row = "R6"
+sha256 = "25721a9107b4f037fcec18ec3b30e6580a85d8b0e627d2694c1cf0759e83fad3"
+
+[[drift]]
+file = "polyoxide-rtds/src/fixtures.rs"
+item = "TWAP_SIXTY_UPDATE"
+kind = "const"
+row = "R6"
+sha256 = "a4d77e27e70b7e29845f96f8722f2740e1a44411899289bb17cb52301ea24dd2"
+
+[[drift]]
+file = "polyoxide-rtds/src/fixtures.rs"
+item = "TWAP_THIRTY_SNAPSHOT"
+kind = "const"
+row = "R6"
+sha256 = "397e5f1a950eb951a4d3b0b7692f8a40c78a49f4a24643a3b86961faa4bde662"
+
+[[drift]]
+file = "polyoxide-rtds/src/fixtures.rs"
+item = "TWAP_THIRTY_UPDATE"
+kind = "const"
+row = "R6"
+sha256 = "1e11b187c358c4260a01305f1331ab9fd2a08a7bdb0ef13f8e20eff1b5659e3b"
+
+[[drift]]
+file = "polyoxide-rtds/src/fixtures.rs"
+item = "tests::a_chainlink_spot_snapshot_is_mislabelled_as_the_binance_topic"
+row = "R6"
+sha256 = "88475dccc68b745e68cac475829e11a5ea599f687c316e6ecb31529a0c9ee596"
+
+[[drift]]
+file = "polyoxide-rtds/src/fixtures.rs"
+item = "tests::every_fixture_decodes_to_the_float_it_shipped_with"
+row = "R6"
+sha256 = "238bf9e7fa4fc6d60fbd6fa5483ab039bcd5af08afc98a0ba31ea37c2f0eae6f"
+
+[[drift]]
+file = "polyoxide-rtds/src/fixtures.rs"
+item = "tests::every_fixture_is_valid_json"
+row = "R6"
+sha256 = "6cec1179952cba4b8437890fd6f2ba39e6a49c57b7c5b115acc35229aa5d08ac"
+
+[[drift]]
+file = "polyoxide-rtds/src/fixtures.rs"
+item = "tests::snapshot_fixtures_differ_in_exactly_the_way_the_design_depends_on"
+row = "R6"
+sha256 = "a4666f52b53a7a0888aca19a40fa54aaab3816a53379df090bb677cb379dfd39"
+
+[[drift]]
+file = "polyoxide-rtds/src/fixtures.rs"
+item = "tests::the_two_spot_fixtures_are_field_identical_and_differently_scaled"
+row = "R6"
+sha256 = "0f0c5c74b2874cc7029dba27223ac88a1c277d9ac312597d4980c80eba48730f"

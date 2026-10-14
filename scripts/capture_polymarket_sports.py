@@ -2,7 +2,7 @@
 """Capture live frames from Polymarket's sports feed as test fixtures.
 
 Usage:
-    uv run --with websockets --with certifi python3 scripts/capture_sports_fixtures.py OUT_DIR [SECONDS]
+    uv run --with websockets --with certifi python3 scripts/capture_polymarket_sports.py OUT_DIR [SECONDS]
 
 Records wss://sports-api.polymarket.com/ws for SECONDS (default 300) and
 keeps, byte for byte as `<league>-<n>.json`, the first frame of each shape
@@ -16,8 +16,8 @@ A dropped connection or Ctrl-C ends the capture early, and everything
 received until then is still written.
 
 Write to a scratch directory, not the fixtures directory. Copy the frames
-worth keeping into polyoxide-sports/tests/fixtures/ and list each one in
-polyoxide-sports/src/fixtures.rs; `every_fixture_file_is_listed` fails
+worth keeping into polyoxide-polymarket/tests/fixtures/sports/ and list each one in
+polyoxide-polymarket/src/sports/fixtures.rs; `every_fixture_file_is_listed` fails
 otherwise. Run it in a busy window, such as a weekend afternoon UTC, to
 see the most sports.
 """

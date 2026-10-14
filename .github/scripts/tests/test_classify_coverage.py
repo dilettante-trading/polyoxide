@@ -229,8 +229,9 @@ def test_every_public_error_type_is_listed_in_its_crates_assertion() -> None:
 @pytest.mark.parametrize(("crate", "names"), [
     ("polyoxide-core", {"ApiError", "KeychainError"}),
     ("polyoxide-polymarket", {"BurstCapacityExceeded", "GammaError", "DataError", "V2Error",
-                              "ClobError", "ParseTickSizeError", "ClobWsError", "RelayError"}),
-    ("polyoxide-perps", {"PerpsError", "VenueError", "PerpsWsError"}),
+                              "ClobError", "ParseTickSizeError", "ClobWsError", "RelayError",
+                              "PerpsError", "VenueError", "PerpsWsError", "RtdsError",
+                              "SportsError"}),
     ("polyoxide-binance", {"BinanceError", "InvalidSymbol", "UsdmWsError", "InvalidStreamName"}),
     (VOCABULARY, {"UnknownVariant"}),
     ("polyoxide", {"PolymarketError"}),
@@ -271,10 +272,10 @@ def test_every_file_that_expands_the_socket_table_calls_all_of_it() -> None:
 
 @pytest.mark.parametrize(("crate", "name"), [
     ("polyoxide-polymarket", "ClobWsError"),
-    ("polyoxide-perps", "PerpsWsError"),
+    ("polyoxide-polymarket", "PerpsWsError"),
     ("polyoxide-binance", "UsdmWsError"),
-    ("polyoxide-rtds", "RtdsError"),
-    ("polyoxide-sports", "SportsError"),
+    ("polyoxide-polymarket", "RtdsError"),
+    ("polyoxide-polymarket", "SportsError"),
 ])
 def test_the_ws_sweep_finds_every_socket_error(crate: str, name: str) -> None:
     # A sweep that matched nothing would pass the fences above vacuously.

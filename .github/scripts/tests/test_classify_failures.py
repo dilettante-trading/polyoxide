@@ -38,8 +38,8 @@ REPO = Path(__file__).resolve().parents[3]
 # The Rust twins, by the file that holds them.
 CORE = "polyoxide-test-support/tests/failure_tags.rs"
 BINANCE = "polyoxide-binance/tests/failure_tags.rs"
-SPORTS = "polyoxide-sports/tests/failure_tags.rs"
-RTDS = "polyoxide-rtds/tests/failure_tags.rs"
+SPORTS = "polyoxide-polymarket/tests/failure_tags_sports.rs"
+RTDS = "polyoxide-polymarket/tests/failure_tags_rtds.rs"
 
 # What Rust's default panic hook prints after the test-support hook's tag line.
 REPORT = (

@@ -102,20 +102,40 @@ def _load_publish_order():
 def http_modules(metadata: dict) -> list[tuple[str, str]]:
     """The modules that send on core's HTTP client, as `(crate, product)` pairs: each
     member that declares a venue and depends directly on polyoxide-core holds one per
-    product it declares, so `polyoxide-polymarket`'s `gamma` and `data` are two. Each
-    must pin its header set. A venue's own crate that declares no products holds no
-    client to pin."""
+    product it declares, so `polyoxide-polymarket`'s `gamma` and `data` are two, but
+    for a product behind a feature of its name that does not turn polyoxide-core on,
+    such as `rtds`, a socket alone. Each must pin its header set. A venue's own crate
+    that declares no products holds no client to pin."""
     publish_order = _load_publish_order()
 
     def registration(p: dict) -> dict:
         return (p.get("metadata") or {}).get("polyoxide") or {}
+
+    def on_core(p: dict, product: str) -> bool:
+        features = p.get("features") or {}
+        if product not in features:
+            return True
+        seen, todo = set(), [product]
+        while todo:
+            feature = todo.pop()
+            if feature in seen:
+                continue
+            seen.add(feature)
+            for item in features.get(feature, ()):
+                if item in ("dep:polyoxide-core", "polyoxide-core") or item.startswith(
+                        "polyoxide-core/"):
+                    return True
+                if ":" not in item and "/" not in item:
+                    todo.append(item)
+        return False
 
     return sorted(
         (p["name"], product) for p in publish_order.members(metadata)
         if registration(p).get("venue")
         and any(dep["name"] == "polyoxide-core" and dep["kind"] is None
                 for dep in p["dependencies"])
-        for product in registration(p).get("products") or ())
+        for product in registration(p).get("products") or ()
+        if on_core(p, product))
 
 
 def header_pin(package: dict, product: str) -> tuple[str, str]:
@@ -179,8 +199,9 @@ def test_the_features_job_runs_clobs_refusal_without_gamma() -> None:
 
 
 def test_http_modules_are_venue_crates_on_core() -> None:
-    def package(name: str, venue: str | None, deps: list[str], products=("x",)) -> dict:
-        return {"id": name, "name": name,
+    def package(name: str, venue: str | None, deps: list[str], products=("x",),
+                features=None) -> dict:
+        return {"id": name, "name": name, "features": features or {},
                 "metadata": ({"polyoxide": {"venue": venue, "products": list(products)}}
                              if venue else None),
                 "dependencies": [{"name": d, "kind": None} for d in deps]}
@@ -188,16 +209,23 @@ def test_http_modules_are_venue_crates_on_core() -> None:
     packages = [
         package("polyoxide-core", None, ["reqwest"]),
         package("polyoxide-kalshi", "kalshi", ["polyoxide-core"]),
-        package("polyoxide-rtds", "polymarket", ["polyoxide-venue"]),
+        package("polyoxide-socket", "polymarket", ["polyoxide-venue"]),
         package("polyoxide-cli", None, ["polyoxide-core"]),
+        # A module is on core when its feature turns core on, directly or through
+        # another feature; `rtds` and `sports` are sockets alone.
         package("polyoxide-polymarket", "polymarket", ["polyoxide-core"],
-                products=("gamma", "data")),
+                products=("gamma", "data", "perps", "rtds", "sports"),
+                features={"gamma": ["dep:polyoxide-core"], "shared": ["dep:polyoxide-core"],
+                          "data": ["shared"], "perps": ["polyoxide-core/x"],
+                          "rtds": ["dep:polyoxide-ws", "tokio/time"],
+                          "sports": ["dep:polyoxide-ws", "polyoxide-core?/keychain"]}),
         package("polyoxide-hyperliquid", "hyperliquid", ["polyoxide-core"], products=()),
     ]
     metadata = {"packages": packages, "workspace_members": [p["id"] for p in packages]}
     assert http_modules(metadata) == [("polyoxide-kalshi", "x"),
                                       ("polyoxide-polymarket", "data"),
-                                      ("polyoxide-polymarket", "gamma")]
+                                      ("polyoxide-polymarket", "gamma"),
+                                      ("polyoxide-polymarket", "perps")]
 
 
 def test_a_module_behind_its_feature_pins_its_own_suite() -> None:
@@ -205,9 +233,9 @@ def test_a_module_behind_its_feature_pins_its_own_suite() -> None:
     assert header_pin(venue, "gamma") == (
         "cargo test -p polyoxide-polymarket --no-default-features --features gamma "
         "--test headers_gamma", "tests/headers_gamma.rs")
-    crate = {"name": "polyoxide-perps", "features": {"ws": []}}
-    assert header_pin(crate, "perps") == (
-        "cargo test -p polyoxide-perps --no-default-features --test headers",
+    crate = {"name": "polyoxide-binance", "features": {"ws": []}}
+    assert header_pin(crate, "usdm") == (
+        "cargo test -p polyoxide-binance --no-default-features --test headers",
         "tests/headers.rs")
 
 

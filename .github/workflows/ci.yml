@@ -115,7 +115,7 @@ jobs:
           cargo test -p polyoxide-polymarket --no-default-features --features gamma --test headers_gamma
           cargo test -p polyoxide-polymarket --no-default-features --features data --test headers_data
           cargo test -p polyoxide-polymarket --no-default-features --features relay --test headers_relay
-          cargo test -p polyoxide-perps --no-default-features --test headers
+          cargo test -p polyoxide-polymarket --no-default-features --features perps --test headers_perps
           cargo test -p polyoxide-binance --no-default-features --test headers
       # Each module of a venue crate with `specta`, whose extras for that module
       # (`specta?/chrono`, `specta?/rust_decimal`) are weak features: neither
@@ -131,6 +131,7 @@ jobs:
           cargo check -p polyoxide-polymarket --no-default-features --features gamma,specta
           cargo check -p polyoxide-polymarket --no-default-features --features data,specta
           cargo check -p polyoxide-polymarket --no-default-features --features relay,specta
+          cargo check -p polyoxide-polymarket --no-default-features --features perps,specta
 
   # Through stage S2 the gate reports and fails nothing on a path that moved or
   # went (AD-22): it lists every public path at the S2 start tag and at this
