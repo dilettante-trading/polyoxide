@@ -1,13 +1,13 @@
 # Binance USDⓈ-M futures
 
-Binance is not a Polymarket host. `polyoxide-binance` reads its USDⓈ-M futures public
-market data for consumers that trade both venues; it is not part of the `polyoxide`
-umbrella crate.
+Binance is not a Polymarket host. `polyoxide-binance`'s `usdm` module reads its USDⓈ-M
+futures public market data for consumers that trade both venues; it is not part of the
+`polyoxide` umbrella crate.
 
 | Surface | Host | Crate |
 |---|---|---|
-| REST, public market data | `https://fapi.binance.com` | `polyoxide-binance` (`Usdm`) |
-| Market streams | `wss://fstream.binance.com/{market,public}/stream` | `polyoxide-binance` with the `ws` feature (`UsdmWs`, `UsdmWsBuilder`) |
+| REST, public market data | `https://fapi.binance.com` | `polyoxide-binance` with the `usdm` feature (`usdm::Usdm`) |
+| Market streams | `wss://fstream.binance.com/{market,public}/stream` | `polyoxide-binance` with the `usdm-ws` feature (`usdm::ws::UsdmWs`, `usdm::ws::UsdmWsBuilder`) |
 
 **This directory is not a mirror.** Binance publishes no OpenAPI or AsyncAPI document for
 USDⓈ-M futures (`github.com/binance/binance-api-swagger` holds `spot_api.yaml` only), so
@@ -21,8 +21,8 @@ the prose pages and the wire:
 
 Where the pages and the wire disagree, the wire wins and [OBSERVED.md](OBSERVED.md)
 records it. The drift detectors are the live suites:
-`polyoxide-binance/tests/live_api.rs::live_responses_carry_no_unmodelled_keys` and
-`live_ws.rs::live_frames_carry_no_unmodelled_keys` fail on any key the types do not model.
+`polyoxide-binance/tests/live_usdm.rs::live_responses_carry_no_unmodelled_keys` and
+`live_usdm_ws.rs::live_frames_carry_no_unmodelled_keys` fail on any key the types do not model.
 A new enum value or filter type decodes as `Other` and is not seen, and a changed weight
 goes unseen until `weight_probe` is run by hand.
 
@@ -42,7 +42,7 @@ goes unseen until `weight_probe` is run by hand.
 | `/fapi/v1/aggTrades` | `usdm.market().agg_trades(&s)` | 20 |
 | `/fapi/v1/depth` | `usdm.market().depth(&s)` | 1 without `limit`, 2 to 20 with |
 
-The weight table is `Route::cost` in `polyoxide-binance/src/weight.rs`, pinned by its
+The weight table is `Route::cost` in `polyoxide-binance/src/usdm/weight.rs`, pinned by its
 `documented_weights` test and re-measured live by
 `cargo run -p polyoxide-binance --example weight_probe`.
 
@@ -61,9 +61,9 @@ The weight table is `Route::cost` in `polyoxide-binance/src/weight.rs`, pinned b
 
 ## Fixtures and probes
 
-- `polyoxide-binance/tests/fixtures/rest/`: refreshed by
-  `uv run scripts/capture_binance_fixtures.py polyoxide-binance/tests/fixtures`.
-- `polyoxide-binance/tests/fixtures/ws/`: stream envelopes, refreshed by the same script and
-  compiled into `polyoxide_binance::usdm::ws::fixtures` under `test-server`.
+- `polyoxide-binance/tests/fixtures/usdm/rest/`: refreshed by
+  `uv run scripts/capture_binance_usdm.py polyoxide-binance/tests/fixtures/usdm`.
+- `polyoxide-binance/tests/fixtures/usdm/ws/`: stream envelopes, refreshed by the same script
+  and compiled into `polyoxide_binance::usdm::ws::fixtures` under `usdm-ws` and `test-server`.
 - `probes/`: the stdlib scripts behind most of the design spec's measurements. Its
-  `capture.py` and `capture_ws.py` are superseded by `scripts/capture_binance_fixtures.py`.
+  `capture.py` and `capture_ws.py` are superseded by `scripts/capture_binance_usdm.py`.

@@ -40,15 +40,15 @@ jobs:
   # they need). polyoxide-polymarket's clob and perps WebSocket tests live
   # in separate `live_clob_ws` and `live_perps_ws` binaries behind the
   # non-default `clob-ws` and `perps-ws` features, and polyoxide-binance's
-  # in `live_ws` behind `ws`.
+  # in `live_usdm_ws` behind `usdm-ws`.
   #
   # `live_clob_session_keys` gets its own job because its registry and
   # transaction waits can legitimately take ~25 minutes, which would
   # kill live_clob/live_clob_ws with it under a shared 15-minute budget.
   # `suite` keeps the two clob jobs' artifact names distinct.
   # generated:begin nightly-live-jobs
-  live-polyoxide-binance-live:
-    name: Live tests (polyoxide-binance, live)
+  live-polyoxide-binance-usdm:
+    name: Live tests (polyoxide-binance, usdm)
     runs-on: ubuntu-latest
     timeout-minutes: 15
     steps:
@@ -56,8 +56,8 @@ jobs:
       - uses: ./.github/actions/live-suite
         with:
           crate: polyoxide-binance
-          suite: live
-          flags: "--no-default-features --features ws --test live_api --test live_ws"
+          suite: usdm
+          flags: "--no-default-features --features usdm,usdm-ws --test live_usdm --test live_usdm_ws"
 
   live-polyoxide-polymarket-clob:
     name: Live tests (polyoxide-polymarket, clob)
@@ -192,7 +192,7 @@ jobs:
     name: Aggregate and report
     # generated:begin nightly-aggregate-needs
     needs:
-      - live-polyoxide-binance-live
+      - live-polyoxide-binance-usdm
       - live-polyoxide-polymarket-clob
       - live-polyoxide-polymarket-clob-session-keys
       - live-polyoxide-polymarket-gamma
