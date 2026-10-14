@@ -126,7 +126,9 @@ under its `perps`, `rtds` and `sports` features. Their `tracing` targets moved w
 
 Story 5.6 laid `polyoxide-binance` out as `polyoxide-polymarket` is: its error and weight
 budget moved under its one module, `usdm`, which is behind the feature of its name, and the
-crate root re-exports nothing. The error enum takes its module's name, `UsdmError` (AD-15's
+crate root re-exports nothing. `usdm` is on by default, so a consumer with
+`default-features = false`, which built the REST client before, now builds nothing and names
+`features = ["usdm"]`. The error enum takes its module's name, `UsdmError` (AD-15's
 `<Module>Error`). The streams, `usdm::ws`, are under `usdm-ws`, and `test-server` no longer
 turns them on: a build that wants the captured frames, `usdm::ws::fixtures`, names
 `usdm-ws` and `test-server` both. The decode's `418` warning moved with its file: what logged

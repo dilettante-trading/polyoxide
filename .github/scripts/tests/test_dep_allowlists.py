@@ -378,7 +378,9 @@ def test_a_signing_module_admits_the_signing_stack_and_not_the_keychain() -> Non
         f"alloy ({SIGNING})", f"alloy-primitives ({SIGNING})", f"hmac ({SIGNING})"]
 
 
-# Binance's `[features]`, as cargo metadata gives it.
+# A trimmed stand-in for Binance's `[features]`, in cargo metadata's form: the
+# feature walk reads only the features each one turns on. What the real table's
+# features turn on is checked against it below.
 BINANCE_TABLE = {
     "default": ("usdm",),
     "usdm": ("dep:polyoxide-core", "polyoxide-venue/decimal", "dep:tokio"),
@@ -399,6 +401,15 @@ def test_binances_rest_module_may_not_build_the_socket_stack() -> None:
     # The streams admit it, and the HTTP stack and its TLS are the REST client's.
     for features in (("usdm-ws",), ("usdm-ws", "test-server"), ("usdm", "usdm-ws")):
         assert denied(BINANCE, names, features, BINANCE_TABLE) == [], features
+
+
+def test_binances_rest_and_test_server_features_do_not_turn_on_the_streams() -> None:
+    # The real table: a `usdm` or `test-server` that came to imply `usdm-ws`
+    # would admit the socket stack, and `@usdm` would pass listing it.
+    table = feature_table(BINANCE)
+    for feature in ("usdm", "test-server"):
+        assert "usdm-ws" not in enabled((feature,), table), feature
+    assert "usdm" in enabled(("usdm-ws",), table)
 
 
 def test_only_a_crate_held_per_feature_is_built_without_its_defaults() -> None:

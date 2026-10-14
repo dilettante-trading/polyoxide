@@ -1,4 +1,25 @@
-//! Binance USDⓈ-M futures on `fapi.binance.com`.
+//! # USDⓈ-M
+//!
+//! Client for Binance USDⓈ-M futures public market data (`fapi.binance.com`),
+//! behind the `usdm` feature, which is on by default. Its market streams on
+//! `fstream.binance.com`, the `ws` module, are behind the `usdm-ws` feature.
+//! No credentials are needed.
+//!
+//! Every request is charged against a [`WeightBudget`], because Binance limits
+//! each IP by request *weight*, which varies by route and parameters, rather
+//! than by request count.
+//!
+//! ```no_run
+//! use polyoxide_binance::usdm::{types::Symbol, Usdm};
+//!
+//! # async fn example() -> Result<(), Box<dyn std::error::Error>> {
+//! let usdm = Usdm::new()?;
+//! let btc = Symbol::new("BTCUSDT")?;
+//! let index = usdm.market().premium_index(&btc).send().await?;
+//! println!("BTCUSDT mark {} funding {}", index.mark_price, index.last_funding_rate);
+//! # Ok(())
+//! # }
+//! ```
 
 pub mod api;
 pub mod error;

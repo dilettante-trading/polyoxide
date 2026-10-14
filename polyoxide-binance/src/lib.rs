@@ -4,22 +4,8 @@
 //!
 //! `usdm` (feature `usdm`, on by default) reads USDⓈ-M futures public market
 //! data (`fapi.binance.com`), and with `usdm-ws` its market streams
-//! (`fstream.binance.com`). No credentials are needed. Every request is
-//! charged against a weight budget, `usdm::WeightBudget`, because Binance
-//! limits each IP by request *weight*, which varies by route and parameters,
-//! rather than by request count.
-//!
-//! ```no_run
-//! use polyoxide_binance::usdm::{types::Symbol, Usdm};
-//!
-//! # async fn example() -> Result<(), Box<dyn std::error::Error>> {
-//! let usdm = Usdm::new()?;
-//! let btc = Symbol::new("BTCUSDT")?;
-//! let index = usdm.market().premium_index(&btc).send().await?;
-//! println!("BTCUSDT mark {} funding {}", index.mark_price, index.last_funding_rate);
-//! # Ok(())
-//! # }
-//! ```
+//! (`fstream.binance.com`). No credentials are needed. The module's own docs
+//! carry its example.
 
 // Compile the crate README's `rust` code fences as doctests so broken examples
 // fail CI. `doctest` keeps this out of normal builds and `cargo doc`.

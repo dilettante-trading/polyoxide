@@ -129,8 +129,9 @@
 "the feed sends keys MatchUpdate does not model. Capture fixtures with \\\n         scripts/capture_sports_fixtures.py, model the keys in MatchUpdate, and record them \\\n         in docs/specs/sports/OBSERVED.md. The first frame carrying each: {unmodelled:#?}" = "the feed sends keys MatchUpdate does not model. Capture fixtures with \\\n         scripts/capture_polymarket_sports.py, model the keys in MatchUpdate, and record them \\\n         in docs/specs/sports/OBSERVED.md. The first frame carrying each: {unmodelled:#?}"
 
 # Story 5.6: Binance's `ws` feature is the `usdm` module's `usdm-ws`, which the
-# moved suites' gates name.
-[literals."polyoxide-binance"]
+# gate on failure_tags' `mod streams` names. No other baseline test item sits
+# under a `ws` gate.
+[literals."polyoxide-binance/tests/failure_tags.rs"]
 "ws" = "usdm-ws"
 
 # Story 5.6: core names no venue, so its health tests ping a neutral path
