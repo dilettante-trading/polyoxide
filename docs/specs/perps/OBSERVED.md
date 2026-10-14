@@ -47,9 +47,9 @@ callers must filter the response themselves until the host does.
 On 2026-09-30 `GET /v1/info/index?asset=…` answered 200 with
 `"constituents": []` for all 88 listed base assets (the capture script probes
 each in turn, preferring one with constituents, and fell through to `SP500`).
-`IndexConstituent` is therefore held to the schema by `spec_agreement.rs` but
+`IndexConstituent` is therefore held to the schema by `spec_agreement_perps.rs` but
 has never been seen on the wire; the first capture that carries one should be
-checked by hand before `wire_agreement.rs` is trusted on it.
+checked by hand before `wire_agreement_perps.rs` is trusted on it.
 
 ## Error bodies carry more than `{status, error}`
 
@@ -92,8 +92,8 @@ The longest values in the 2026-09-30 capture have 28 fractional places:
 mantissa, so each fits because its mantissa is below 2^96, and both round-trip
 byte for byte. `/v1/info/portfolio` also sends `unrealized_pnl` with 25
 fractional places and `/v1/info/exchange-stats` sends `open_interest` with 18.
-A longer fraction would be rounded on decode, since the crate's string serde
-uses `Decimal::from_str`, not `from_str_exact`. `wire_agreement.rs` compares
+A longer fraction would be rounded on decode, since the module's string serde
+uses `Decimal::from_str`, not `from_str_exact`. `wire_agreement_perps.rs` compares
 values as well as key paths, so a rounded or overflowed value fails it.
 
 ## Leaderboard `account` is request-dependent
