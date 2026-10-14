@@ -53,7 +53,7 @@ pub struct Update {
 pub enum Frame {
     /// A decoded push frame.
     Update(Update),
-    /// A push frame on a channel this crate does not model (a private
+    /// A push frame on a channel this module does not model (a private
     /// channel, or one added upstream). The stream continues.
     Unknown {
         /// The `ch` label.

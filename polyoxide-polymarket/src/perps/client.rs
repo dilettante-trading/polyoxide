@@ -12,7 +12,7 @@ use crate::perps::{
 pub const DEFAULT_BASE_URL: &str = "https://api.perpetuals.polymarket.com";
 
 /// In-flight requests the client allows by default, matching the sibling
-/// read-only crates.
+/// read-only modules.
 pub const DEFAULT_MAX_CONCURRENT: usize = 4;
 
 /// Client for the public Perps HTTP API. No credentials are needed.

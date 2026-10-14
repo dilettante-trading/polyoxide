@@ -7,8 +7,8 @@ authors.workspace = true
 repository.workspace = true
 rust-version.workspace = true
 description = "Rust client library for Polymarket's APIs: CLOB, Gamma, Data, Relay, Perps, RTDS and Sports, each behind its own feature"
-keywords = ["polymarket", "prediction-markets", "trading", "api"]
-categories = ["api-bindings", "web-programming::http-client"]
+keywords = ["polymarket", "prediction-markets", "trading", "api", "websocket"]
+categories = ["api-bindings", "web-programming::http-client", "web-programming::websocket"]
 
 # One feature per module (Stories 5.3 to 5.5). The HTTP modules, `clob`,
 # `gamma`, `data`, `relay` and `perps`, share the retry policy and their

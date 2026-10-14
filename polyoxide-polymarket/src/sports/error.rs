@@ -1,4 +1,4 @@
-//! The crate's error type.
+//! The module's error type.
 
 use std::time::Duration;
 

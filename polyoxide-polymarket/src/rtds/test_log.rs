@@ -1,6 +1,6 @@
 //! Capturing `tracing` events in tests.
 //!
-//! Some of this crate's behaviour is *only* observable as a log line. A
+//! Some of this module's behaviour is *only* observable as a log line. A
 //! `window_s` that contradicts its topic changes nothing about the decoded
 //! price, and the reconnect delay is consumed by a `sleep` that returns
 //! nothing — so asserting on the parsed value or the return type proves

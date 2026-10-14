@@ -1,5 +1,5 @@
 //! Agreement between the types and payloads captured from the live host.
-//! Provenance is in `tests/fixtures/PROVENANCE.md`.
+//! Provenance is in `tests/fixtures/perps/PROVENANCE.md`.
 //!
 //! Each fixture is deserialized into its type and serialized back, and the two
 //! key-path sets are compared:

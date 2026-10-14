@@ -1,5 +1,5 @@
 //! Agreement between the WebSocket types and frames captured from the live
-//! host. Provenance is in `tests/fixtures/ws/PROVENANCE.md`.
+//! host. Provenance is in `tests/fixtures/perps/ws/PROVENANCE.md`.
 //!
 //! The AsyncAPI mirror is not the oracle here: it types `tickers` and
 //! `statistics` data as arrays and `trades` as an object, and the wire does

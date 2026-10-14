@@ -177,7 +177,7 @@ impl PriceEvent {
     /// Parse one text frame.
     ///
     /// Returns `Ok(None)` for frames that carry no event: the empty greeting
-    /// sent at connect, keep-alive replies, and frames from topics this crate
+    /// sent at connect, keep-alive replies, and frames from topics this module
     /// does not model. Returns `Err` for a rejected subscription, which must
     /// never be mistaken for an idle feed.
     pub fn from_json(text: &str) -> Result<Option<Self>, RtdsError> {
@@ -726,7 +726,7 @@ mod tests {
             "symbol":"btc/usd","timestamp":1788600388000,"value":79697.47456561505,"window_s":60},
             "timestamp":1788600389537,"topic":"crypto_prices_twap_thirty","type":"update"}"#;
 
-        /// The same frame carrying a window this crate does not model at all.
+        /// The same frame carrying a window this module does not model at all.
         const UNMODELLED_WINDOW: &str = r#"{"payload":{"full_accuracy_value":"79697474565615044788224",
             "symbol":"btc/usd","timestamp":1788600388000,"value":79697.47456561505,"window_s":45},
             "timestamp":1788600389537,"topic":"crypto_prices_twap_thirty","type":"update"}"#;

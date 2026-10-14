@@ -23,7 +23,7 @@ pub enum TwapWindow {
 }
 
 impl TwapWindow {
-    /// Every window this crate models.
+    /// Every window this module models.
     ///
     /// [`from_seconds`](Self::from_seconds) walks this list, so it agrees with
     /// [`seconds`](Self::seconds) by construction for whatever is listed here.
@@ -55,7 +55,7 @@ impl TwapWindow {
 
 /// An RTDS topic.
 ///
-/// Marked `#[non_exhaustive]` because upstream carries topics this crate does
+/// Marked `#[non_exhaustive]` because upstream carries topics this module does
 /// not yet model (`equity_prices`, `comments`), and adding one later must not
 /// be a breaking change.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
@@ -75,7 +75,7 @@ pub enum Topic {
 }
 
 impl Topic {
-    /// Every topic this crate models.
+    /// Every topic this module models.
     ///
     /// [`from_wire`](Self::from_wire) is derived from this and
     /// [`as_wire`](Self::as_wire), which makes the two directions agree by
@@ -99,7 +99,7 @@ impl Topic {
 
     /// Parse a topic from an incoming frame's `topic` field.
     ///
-    /// Returns `None` for topics this crate does not model, so a frame from an
+    /// Returns `None` for topics this module does not model, so a frame from an
     /// unmodelled topic is skipped rather than misparsed.
     ///
     /// Derived from [`ALL`](Self::ALL) and [`as_wire`](Self::as_wire), so the

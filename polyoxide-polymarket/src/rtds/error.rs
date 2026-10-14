@@ -64,7 +64,7 @@ pub enum RtdsError {
     /// valid E18 integer, one whose magnitude exceeds what a
     /// [`Decimal`](rust_decimal::Decimal) can hold, and a plain-decimal string
     /// that will not parse. The first is the interesting one — it usually
-    /// means a payload arrived on a topic whose scale this crate got wrong.
+    /// means a payload arrived on a topic whose scale this module got wrong.
     #[error("RTDS could not decode value {raw} on topic {topic:?}")]
     Precision {
         /// The undecoded wire value.

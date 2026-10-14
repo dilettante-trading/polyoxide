@@ -112,7 +112,10 @@ Story 5.5 folded `polyoxide-perps`, `polyoxide-rtds` and `polyoxide-sports` into
 its name, keeping their own module paths and error names. Perps' sockets, `perps::ws`, are
 under `perps-ws`. `rtds` and `sports` are sockets alone and build no `polyoxide-core`. Until
 Story 5.7 reshapes the umbrella, `polyoxide` re-exports `polyoxide_polymarket` in their place,
-under its `perps`, `rtds` and `sports` features.
+under its `perps`, `rtds` and `sports` features. Their `tracing` targets moved with them: what logged under
+`polyoxide_perps::…`, `polyoxide_rtds::…` and `polyoxide_sports::…` now logs under
+`polyoxide_polymarket::perps::…`, `polyoxide_polymarket::rtds::…` and
+`polyoxide_polymarket::sports::…`, so a `RUST_LOG` filter naming an old crate matches nothing.
 
 - `polyoxide_perps` → `polyoxide_polymarket::perps` Story 5.5, feature `perps`; `ws` under `perps-ws`.
 - `polyoxide_rtds` → `polyoxide_polymarket::rtds` Story 5.5, feature `rtds`.

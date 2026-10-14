@@ -4,7 +4,7 @@
 //! Chainlink topics and a plain decimal on Binance. Both parse cleanly as
 //! decimal strings, so applying the wrong one is silent — a $79,697 Binance
 //! price decoded as E18 becomes $0.00000000000008. Every scale decision in
-//! this crate happens in this file.
+//! this module happens in this file.
 
 use std::str::FromStr;
 

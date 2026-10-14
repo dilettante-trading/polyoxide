@@ -103,9 +103,9 @@ def http_modules(metadata: dict) -> list[tuple[str, str]]:
     """The modules that send on core's HTTP client, as `(crate, product)` pairs: each
     member that declares a venue and depends directly on polyoxide-core holds one per
     product it declares, so `polyoxide-polymarket`'s `gamma` and `data` are two, but
-    for a product behind a feature of its name that does not turn polyoxide-core on,
-    such as `rtds`, a socket alone. Each must pin its header set. A venue's own crate
-    that declares no products holds no client to pin."""
+    for a product behind a feature of its name that does not turn an optional
+    polyoxide-core on, such as `rtds`, a socket alone. Each must pin its header set. A
+    venue's own crate that declares no products holds no client to pin."""
     publish_order = _load_publish_order()
 
     def registration(p: dict) -> dict:
@@ -113,7 +113,9 @@ def http_modules(metadata: dict) -> list[tuple[str, str]]:
 
     def on_core(p: dict, product: str) -> bool:
         features = p.get("features") or {}
-        if product not in features:
+        if product not in features or any(
+                dep["name"] == "polyoxide-core" and dep["kind"] is None
+                and not dep.get("optional") for dep in p["dependencies"]):
             return True
         seen, todo = set(), [product]
         while todo:
@@ -200,11 +202,12 @@ def test_the_features_job_runs_clobs_refusal_without_gamma() -> None:
 
 def test_http_modules_are_venue_crates_on_core() -> None:
     def package(name: str, venue: str | None, deps: list[str], products=("x",),
-                features=None) -> dict:
+                features=None, optional=()) -> dict:
         return {"id": name, "name": name, "features": features or {},
                 "metadata": ({"polyoxide": {"venue": venue, "products": list(products)}}
                              if venue else None),
-                "dependencies": [{"name": d, "kind": None} for d in deps]}
+                "dependencies": [{"name": d, "kind": None, "optional": d in optional}
+                                 for d in deps]}
 
     packages = [
         package("polyoxide-core", None, ["reqwest"]),
@@ -218,14 +221,31 @@ def test_http_modules_are_venue_crates_on_core() -> None:
                 features={"gamma": ["dep:polyoxide-core"], "shared": ["dep:polyoxide-core"],
                           "data": ["shared"], "perps": ["polyoxide-core/x"],
                           "rtds": ["dep:polyoxide-ws", "tokio/time"],
-                          "sports": ["dep:polyoxide-ws", "polyoxide-core?/keychain"]}),
+                          "sports": ["dep:polyoxide-ws", "polyoxide-core?/keychain"]},
+                optional=("polyoxide-core",)),
+        # A crate that always builds core holds every product on it, a product behind
+        # a feature of its name included.
+        package("polyoxide-binance", "binance", ["polyoxide-core"], products=("usdm",),
+                features={"usdm": ["dep:polyoxide-ws"]}),
         package("polyoxide-hyperliquid", "hyperliquid", ["polyoxide-core"], products=()),
     ]
     metadata = {"packages": packages, "workspace_members": [p["id"] for p in packages]}
-    assert http_modules(metadata) == [("polyoxide-kalshi", "x"),
+    assert http_modules(metadata) == [("polyoxide-binance", "usdm"),
+                                      ("polyoxide-kalshi", "x"),
                                       ("polyoxide-polymarket", "data"),
                                       ("polyoxide-polymarket", "gamma"),
                                       ("polyoxide-polymarket", "perps")]
+
+
+def test_docs_rs_builds_every_polymarket_feature_but_test_server() -> None:
+    """docs.rs documents every module, `-ws` feature and extra, and leaves out
+    `test-server`, which exposes captured frames for tests alone; a feature added to
+    the crate and not to the list would go undocumented."""
+    metadata = _load_publish_order().cargo_metadata(REPO / "Cargo.toml")
+    [package] = [p for p in metadata["packages"] if p["name"] == "polyoxide-polymarket"]
+    listed = package["metadata"]["docs"]["rs"]["features"]
+    assert sorted(listed) == sorted(set(package["features"]) - {"default", "test-server"})
+    assert len(listed) == len(set(listed)), listed
 
 
 def test_a_module_behind_its_feature_pins_its_own_suite() -> None:

@@ -124,6 +124,10 @@
 [literals."polyoxide-sports/src/fixtures.rs"]
 "/tests/fixtures" = "/tests/fixtures/sports"
 
+# Story 5.5: the drift detector names the capture script by its new name.
+[literals."polyoxide-sports/tests/live_api.rs"]
+"the feed sends keys MatchUpdate does not model. Capture fixtures with \\\n         scripts/capture_sports_fixtures.py, model the keys in MatchUpdate, and record them \\\n         in docs/specs/sports/OBSERVED.md. The first frame carrying each: {unmodelled:#?}" = "the feed sends keys MatchUpdate does not model. Capture fixtures with \\\n         scripts/capture_polymarket_sports.py, model the keys in MatchUpdate, and record them \\\n         in docs/specs/sports/OBSERVED.md. The first frame carrying each: {unmodelled:#?}"
+
 # Story 5.5: perps' fixtures moved to `tests/fixtures/perps/`, and its agreement
 # suites name them through `fixtures!()` and `fixtures!("ws")`.
 [fixtures]

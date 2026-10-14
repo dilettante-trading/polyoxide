@@ -261,7 +261,7 @@ async fn live_frames_round_trip_and_carry_no_unmodelled_keys() {
     assert!(
         unmodelled.is_empty(),
         "the feed sends keys MatchUpdate does not model. Capture fixtures with \
-         scripts/capture_sports_fixtures.py, model the keys in MatchUpdate, and record them \
+         scripts/capture_polymarket_sports.py, model the keys in MatchUpdate, and record them \
          in docs/specs/sports/OBSERVED.md. The first frame carrying each: {unmodelled:#?}"
     );
     println!("checked {checked} frames over {WIRE_WINDOW:?}, by league: {leagues:?}");

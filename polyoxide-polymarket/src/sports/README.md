@@ -33,7 +33,7 @@ while let Some(event) = feed.next().await {
         Ok(Event::Disconnected { reason }) => eprintln!("scores are stale: {reason}"),
         Ok(Event::Reconnected) => eprintln!("reconnected"),
         Ok(_) => {}
-        // A frame this crate could not read; the feed carries on.
+        // A frame this module could not read; the feed carries on.
         Err(SportsError::Decode { source, .. }) => eprintln!("skipped a frame: {source}"),
         // A reconnect refused for good, such as a 404. The feed ends.
         Err(error) => return Err(error),
@@ -50,6 +50,9 @@ yields `MatchUpdate`s and ends when its connection does.
 
 Until 0.36.0 the sports feed was a channel of `polyoxide-clob`'s `ws` module.
 It now lives here, and clob no longer has it.
+
+Since Story 5.5 the `polyoxide_sports` paths below are `polyoxide_polymarket::sports::…`,
+behind the `sports` feature.
 
 | Before, in `polyoxide_clob::ws` | Now, in `polyoxide_sports` |
 |---|---|
@@ -95,5 +98,5 @@ Details that can affect existing code:
   disconnect.
 
 Polymarket's published AsyncAPI document for this host describes a payload
-and a text keep-alive that the server does not use. This crate is modelled
+and a text keep-alive that the server does not use. This module is modelled
 on captured frames instead.

@@ -357,7 +357,7 @@
             "type": "subscribe"
           }
         },
-        "x-observed-notes": "MISLABELLED: this frame's own `topic` field reads \"crypto_prices\" \u2014 the Binance topic \u2014 even though it was captured on a connection subscribed only to crypto_prices_chainlink, and this channel's update frames are correctly labelled crypto_prices_chainlink (see cryptoPricesChainlinkUpdate above). Both spot topics' backfills come back under the crypto_prices label; the symbol format (\"btc/usd\" vs \"btcusdt\") is the only discriminator. See docs/specs/rtds/OBSERVED.md for the full finding; The `rtds` module corrects this in `correct_mislabelled_spot_snapshot`."
+        "x-observed-notes": "MISLABELLED: this frame's own `topic` field reads \"crypto_prices\" \u2014 the Binance topic \u2014 even though it was captured on a connection subscribed only to crypto_prices_chainlink, and this channel's update frames are correctly labelled crypto_prices_chainlink (see cryptoPricesChainlinkUpdate above). Both spot topics' backfills come back under the crypto_prices label; the symbol format (\"btc/usd\" vs \"btcusdt\") is the only discriminator. See docs/specs/rtds/OBSERVED.md for the full finding; the `rtds` module corrects this in `correct_mislabelled_spot_snapshot`."
       },
       "cryptoPricesTwapThirtyUpdate": {
         "name": "CryptoPricesTwapThirtyUpdate",

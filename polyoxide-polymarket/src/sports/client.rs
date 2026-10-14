@@ -90,7 +90,7 @@ pub(crate) fn closed(frame: Option<CloseFrame>) -> SportsError {
 ///
 /// For a feed that reconnects on its own, use [`SportsWsBuilder`](crate::sports::SportsWsBuilder).
 ///
-/// An `Err(SportsError::Decode { .. })` reports one frame this crate could
+/// An `Err(SportsError::Decode { .. })` reports one frame this module could
 /// not read, and the stream carries on after it. Any other `Err` is the
 /// last item: the stream yields `None` after it.
 ///
@@ -111,7 +111,7 @@ pub(crate) fn closed(frame: Option<CloseFrame>) -> SportsError {
 ///         Ok(update) => {
 ///             println!("{} {} {}", update.league_abbreviation, update.score, update.period)
 ///         }
-///         // One frame this crate could not read; the stream carries on.
+///         // One frame this module could not read; the stream carries on.
 ///         Err(SportsError::Decode { raw, .. }) => eprintln!("skipped a frame: {raw}"),
 ///         Err(other) => return Err(other),
 ///     }
