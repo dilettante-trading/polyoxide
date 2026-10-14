@@ -179,7 +179,7 @@ context:
 - Run cargo-hack alone.
 
 **Execution:**
-- [ ] `polyoxide-rtds/` and `ci/dep-allowlists/`: the DRIFT R6 commit (`refactor(rtds)!: test-fixtures becomes test-server (DRIFT R6)`).
+- [x] `polyoxide-rtds/` and `ci/dep-allowlists/`: the DRIFT R6 commit (`refactor(rtds)!: test-fixtures becomes test-server (DRIFT R6)`).
 - [ ] `polyoxide-polymarket/`:
   - move src, tests, examples and fixtures per Decisions;
   - add features, deps and gated dev-deps;
@@ -200,6 +200,8 @@ context:
 - Given the scripts job, when its pytest and `gen_registry.py --check` run, then both pass, the rtds and sports allowlists included.
 
 ## Implementation Notes
+
+- The first implementer stopped after the DRIFT R6 commit, 8a94f49, with a clean tree. A fresh one resumes from the next task; 8a94f49 stays as it is.
 
 ## Spec Change Log
 
