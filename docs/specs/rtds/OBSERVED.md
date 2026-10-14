@@ -24,7 +24,7 @@ not on any upstream document, so it must never be added to `nightly-schema.yml`
 
 **The whitespace trap.** `{"symbol": "btc/usd"}` — one space — still delivers
 the subscribe backfill and then never sends another update, with no error. The
-failure is indistinguishable from an idle feed. `polyoxide-rtds` never accepts a
+failure is indistinguishable from an idle feed. The `rtds` module never accepts a
 caller-supplied filter string for this reason.
 
 **Batch poisoning.** One unrecognised topic in a subscription array returns zero
@@ -43,7 +43,7 @@ on a connection subscribed to `crypto_prices_chainlink` and nothing else: its
 update frames are labelled `crypto_prices_chainlink`, but its snapshot frame
 is labelled `crypto_prices`. Both spot topics' backfills come back under that
 one label, and the symbol format is the only discriminator — `btc/usd` versus
-`btcusdt`. TWAP snapshots are unaffected. `polyoxide-rtds` corrects this in
+`btcusdt`. TWAP snapshots are unaffected. The `rtds` module corrects this in
 `correct_mislabelled_spot_snapshot`; taking the label at face value files
 every Chainlink-spot backfill under Binance, silently, since both spot
 snapshots are display-only and the points parse either way.

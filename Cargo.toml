@@ -216,7 +216,7 @@ id = "perps-ws"
 kind = "asyncapi"
 url = "https://docs.polymarket.com/asyncapi-perps.json"
 vendored = "docs/specs/perps/asyncapi.json"
-covers = "Perps WebSocket (27 channels) — six public channels implemented (`ws` feature); private channels and trading pending; see [perps/OBSERVED.md](perps/OBSERVED.md)"
+covers = "Perps WebSocket (27 channels) — six public channels implemented (`perps-ws` feature); private channels and trading pending; see [perps/OBSERVED.md](perps/OBSERVED.md)"
 
 [workspace.metadata.polyoxide.mirrors.bridge]
 name = "Bridge"

@@ -8,9 +8,9 @@ Each entry names its evidence. Re-check before relying on an old one.
 
 ## Fields on the wire that the schema omits
 
-Captured 2026-09-30 (`polyoxide-perps/tests/fixtures/`, see `PROVENANCE.md`
+Captured 2026-09-30 (`polyoxide-polymarket/tests/fixtures/perps/`, see `PROVENANCE.md`
 there). Each is modelled as an `Option` and allowed through `OBSERVED_EXTRA`
-in `polyoxide-perps/tests/spec_agreement.rs`.
+in `polyoxide-polymarket/tests/spec_agreement_perps.rs`.
 
 | Schema | Field | Seen as | Note |
 |--------|-------|---------|------|
@@ -111,7 +111,7 @@ absent for an unranked account.
 ## Rate limits
 
 Nothing numeric is published for the public routes. Measured with
-`polyoxide-perps/examples/info_soak.rs` on 2026-09-30, one route per run, 60 s
+`polyoxide-polymarket/examples/info_soak.rs` on 2026-09-30, one route per run, 60 s
 stages, 120 s cooldowns, 8 in-flight, distinct URLs throughout. The default
 ramp (5, 10, 15, 20, 30 req/s) was throttled at its first stage on three
 routes, so those were re-run at 1, 2, 3, 4 req/s as the harness prescribes;
@@ -173,9 +173,9 @@ must not be used to size a bucket.
 
 ## WebSocket: where the AsyncAPI and the wire part ways
 
-Captured 2026-09-30 (`polyoxide-perps/tests/fixtures/ws/`, instrument 6, and a
+Captured 2026-09-30 (`polyoxide-polymarket/tests/fixtures/perps/ws/`, instrument 6, and a
 20 s run of 18,326 frames on instrument 1 during design). Every entry is what
-`polyoxide-perps`'s `ws` module implements. The fixtures are instrument 6
+`polyoxide-polymarket`'s `perps::ws` module implements. The fixtures are instrument 6
 rather than 1 because `trades::1` stayed quiet for two 20 s windows;
 instrument 6 had the largest 24-hour `volume` on `GET /v1/info/statistics`
 that day and pushed a trade within 4 s.
@@ -226,7 +226,7 @@ that day and pushed a trade within 4 s.
   non-empty `klines` frame when one arrives).
 - **`trades` entries carry `settlement`**, as the REST route does.
 - **Unsubscribe takes effect at the acknowledgement.** In
-  `tests/live_ws.rs` on 2026-09-30, `tickers::all` was unsubscribed while
+  `tests/live_perps_ws.rs` on 2026-09-30, `tickers::all` was unsubscribed while
   nothing consumed the stream; 1,055 fan-out frames were then yielded, every
   one of them received before the acknowledgement, the last of them 1.4 ms
   after it, and no ticker arrived in the following 5 s. A test that counts

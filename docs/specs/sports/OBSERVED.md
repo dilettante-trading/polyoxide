@@ -5,7 +5,7 @@
 sends. Upstream's document does not match the wire, so the mirror is excluded
 from `nightly-schema.yml`. This host's drift detector is the live test
 `live_frames_round_trip_and_carry_no_unmodelled_keys` in
-`polyoxide-sports/tests/live_api.rs`, which fails and names any key
+`polyoxide-polymarket/tests/live_sports.rs`, which fails and names any key
 `MatchUpdate` does not model.
 
 ## Contradictions with the published document

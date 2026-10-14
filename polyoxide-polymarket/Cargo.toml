@@ -507,7 +507,7 @@ products = ["clob", "gamma", "data", "relay", "perps", "rtds", "sports"]
 mirrors = ["clob", "gamma", "data", "data-v2", "undocumented", "relay", "session-keys", "perps", "rtds", "sports"]
 identifiers = ["Poly-RateLimit"]
 notes = [
-  "only `clob` and `relay` build `alloy`, and only the HTTP modules core, which `test_dep_allowlists.py` holds per feature; `clob` does not turn on `gamma`, and with both the CLOB client looks a proxy wallet up through Gamma",
+  "only `clob` and `relay` build `alloy`, and only the HTTP modules build core, which `test_dep_allowlists.py` holds per feature; `clob` does not turn on `gamma`, and with both the CLOB client looks a proxy wallet up through Gamma",
   "`rtds` and `sports` build no `polyoxide-core`, `reqwest` or `alloy`, so a credential-free feed builds no HTTP or signing stack",
   "perps' auth and trading pending",
 ]

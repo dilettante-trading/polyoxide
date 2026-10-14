@@ -4,8 +4,8 @@ Base URL: `https://api.perpetuals.polymarket.com`
 
 Perpetual futures trading: account state, order placement, and market info.
 
-> **Partially implemented.** `polyoxide-perps` covers the 21 public
-> `/v1/info/*` routes and, under its `ws` feature, the six public WebSocket
+> **Partially implemented.** `polyoxide-polymarket`'s `perps` module covers the 21 public
+> `/v1/info/*` routes and, under its `perps-ws` feature, the six public WebSocket
 > channels (`bbo`, `book`, `trades`, `klines`, `tickers`, `statistics`; see
 > [asyncapi.json](asyncapi.json)). Credentials (`POST /v1/account/proxy`), the
 > header-authenticated `/v1/account/*` reads, the signed `/v1/trade/*` routes,

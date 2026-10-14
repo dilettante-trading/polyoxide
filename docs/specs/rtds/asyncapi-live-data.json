@@ -3,7 +3,7 @@
   "info": {
     "title": "Polymarket RTDS (ws-live-data)",
     "version": "1.0.0",
-    "description": "Public, credential-free WebSocket feed of reference crypto prices: Binance spot, Chainlink spot, and Chainlink-computed 30-second and 60-second TWAPs. Polymarket publishes prose documentation for this feed at https://docs.polymarket.com/market-data/realtime-data and https://docs.polymarket.com/market-data/chainlink-twap, but **no AsyncAPI or other machine-readable contract exists for this host** \u2014 unlike clob/gamma/data/relay/perps/bridge/combos-rfq, there is nothing upstream to mirror.\n\nThis document is instead modelled entirely on frames captured 2026-09-05 from `wss://ws-live-data.polymarket.com`, copied verbatim from `polyoxide-rtds/src/fixtures.rs` into each message's `x-observed-payload`. It records what the server does, not what a vendor promised, and it **must never be diffed against a published document** in `nightly-schema.yml` or anywhere else \u2014 there is nothing to diff it against. See `docs/specs/rtds/OBSERVED.md` for the ways the prose documentation that does exist disagrees with the server, and for behaviour the prose documentation says nothing about at all.",
+    "description": "Public, credential-free WebSocket feed of reference crypto prices: Binance spot, Chainlink spot, and Chainlink-computed 30-second and 60-second TWAPs. Polymarket publishes prose documentation for this feed at https://docs.polymarket.com/market-data/realtime-data and https://docs.polymarket.com/market-data/chainlink-twap, but **no AsyncAPI or other machine-readable contract exists for this host** \u2014 unlike clob/gamma/data/relay/perps/bridge/combos-rfq, there is nothing upstream to mirror.\n\nThis document is instead modelled entirely on frames captured 2026-09-05 from `wss://ws-live-data.polymarket.com`, copied verbatim from `polyoxide-polymarket/src/rtds/fixtures.rs` into each message's `x-observed-payload`. It records what the server does, not what a vendor promised, and it **must never be diffed against a published document** in `nightly-schema.yml` or anywhere else \u2014 there is nothing to diff it against. See `docs/specs/rtds/OBSERVED.md` for the ways the prose documentation that does exist disagrees with the server, and for behaviour the prose documentation says nothing about at all.",
     "x-observed-connection": {
       "captured": "2026-09-05",
       "finding": "One connection multiplexes every subscribed topic, tagged by the envelope's `topic` and `type` fields rather than by separate WebSocket paths \u2014 a different shape from the one-connection-per-channel CLOB WebSocket in docs/specs/clob/. `update` frames carry an undocumented `connection_id`; `subscribe` (backfill) frames never do. The only non-JSON text frame ever observed is a single empty string sent immediately after connecting, before any subscribe frame is sent by the client.",
@@ -209,7 +209,7 @@
         },
         "x-observed-payload": {
           "captured": "2026-09-05",
-          "source": "polyoxide-rtds/src/fixtures.rs::BINANCE_UPDATE",
+          "source": "polyoxide-polymarket/src/rtds/fixtures.rs::BINANCE_UPDATE",
           "frame": {
             "connection_id": "gZexFa6cUWeIKEiTDA==",
             "payload": {
@@ -227,7 +227,7 @@
       "cryptoPricesSubscribe": {
         "name": "CryptoPricesSubscribe",
         "title": "Binance Spot Backfill",
-        "summary": "The one-shot backfill RTDS sends immediately after subscribing to `crypto_prices`. Upstream documents \"no snapshot, history, or replay\" for TWAP; this topic sends one regardless, ~120 points (~2 minutes at 1s cadence). Truncated to 3 points below; see `polyoxide-rtds/src/fixtures.rs` for the note on the original length.",
+        "summary": "The one-shot backfill RTDS sends immediately after subscribing to `crypto_prices`. Upstream documents \"no snapshot, history, or replay\" for TWAP; this topic sends one regardless, ~120 points (~2 minutes at 1s cadence). Truncated to 3 points below; see `polyoxide-polymarket/src/rtds/fixtures.rs` for the note on the original length.",
         "contentType": "application/json",
         "payload": {
           "allOf": [
@@ -246,7 +246,7 @@
         },
         "x-observed-payload": {
           "captured": "2026-09-05",
-          "source": "polyoxide-rtds/src/fixtures.rs::BINANCE_SNAPSHOT",
+          "source": "polyoxide-polymarket/src/rtds/fixtures.rs::BINANCE_SNAPSHOT",
           "note": "Truncated from 120 points to 3 for this document, matching the fixture.",
           "frame": {
             "payload": {
@@ -294,7 +294,7 @@
         },
         "x-observed-payload": {
           "captured": "2026-09-05",
-          "source": "polyoxide-rtds/src/fixtures.rs::CHAINLINK_SPOT_UPDATE",
+          "source": "polyoxide-polymarket/src/rtds/fixtures.rs::CHAINLINK_SPOT_UPDATE",
           "note": "Captured roughly one second after crypto_prices's update, reporting the same asset at the same price, with byte-identical payload keys.",
           "frame": {
             "connection_id": "gZexFa6cUWeIKEiTDA==",
@@ -332,7 +332,7 @@
         },
         "x-observed-payload": {
           "captured": "2026-09-05",
-          "source": "polyoxide-rtds/src/fixtures.rs::CHAINLINK_SPOT_SNAPSHOT",
+          "source": "polyoxide-polymarket/src/rtds/fixtures.rs::CHAINLINK_SPOT_SNAPSHOT",
           "note": "Truncated from 59 points to 3 for this document, matching the fixture. Captured on a connection subscribed to crypto_prices_chainlink and nothing else.",
           "frame": {
             "payload": {
@@ -357,7 +357,7 @@
             "type": "subscribe"
           }
         },
-        "x-observed-notes": "MISLABELLED: this frame's own `topic` field reads \"crypto_prices\" \u2014 the Binance topic \u2014 even though it was captured on a connection subscribed only to crypto_prices_chainlink, and this channel's update frames are correctly labelled crypto_prices_chainlink (see cryptoPricesChainlinkUpdate above). Both spot topics' backfills come back under the crypto_prices label; the symbol format (\"btc/usd\" vs \"btcusdt\") is the only discriminator. See docs/specs/rtds/OBSERVED.md for the full finding; polyoxide-rtds corrects this in `correct_mislabelled_spot_snapshot`."
+        "x-observed-notes": "MISLABELLED: this frame's own `topic` field reads \"crypto_prices\" \u2014 the Binance topic \u2014 even though it was captured on a connection subscribed only to crypto_prices_chainlink, and this channel's update frames are correctly labelled crypto_prices_chainlink (see cryptoPricesChainlinkUpdate above). Both spot topics' backfills come back under the crypto_prices label; the symbol format (\"btc/usd\" vs \"btcusdt\") is the only discriminator. See docs/specs/rtds/OBSERVED.md for the full finding; The `rtds` module corrects this in `correct_mislabelled_spot_snapshot`."
       },
       "cryptoPricesTwapThirtyUpdate": {
         "name": "CryptoPricesTwapThirtyUpdate",
@@ -381,7 +381,7 @@
         },
         "x-observed-payload": {
           "captured": "2026-09-05",
-          "source": "polyoxide-rtds/src/fixtures.rs::TWAP_THIRTY_UPDATE",
+          "source": "polyoxide-polymarket/src/rtds/fixtures.rs::TWAP_THIRTY_UPDATE",
           "frame": {
             "connection_id": "gZexFa6cUWeIKEiTDA==",
             "payload": {
@@ -419,7 +419,7 @@
         },
         "x-observed-payload": {
           "captured": "2026-09-05",
-          "source": "polyoxide-rtds/src/fixtures.rs::TWAP_THIRTY_SNAPSHOT",
+          "source": "polyoxide-polymarket/src/rtds/fixtures.rs::TWAP_THIRTY_SNAPSHOT",
           "note": "Truncated to 3 points for this document, matching the fixture. This topic's snapshot is labelled correctly, unlike crypto_prices_chainlink's.",
           "frame": {
             "payload": {
@@ -471,7 +471,7 @@
         },
         "x-observed-payload": {
           "captured": "2026-09-05",
-          "source": "polyoxide-rtds/src/fixtures.rs::TWAP_SIXTY_UPDATE",
+          "source": "polyoxide-polymarket/src/rtds/fixtures.rs::TWAP_SIXTY_UPDATE",
           "frame": {
             "connection_id": "gZexFa6cUWeIKEiTDA==",
             "payload": {
@@ -509,7 +509,7 @@
         },
         "x-observed-payload": {
           "captured": "2026-09-05",
-          "source": "polyoxide-rtds/src/fixtures.rs::TWAP_SIXTY_SNAPSHOT",
+          "source": "polyoxide-polymarket/src/rtds/fixtures.rs::TWAP_SIXTY_SNAPSHOT",
           "note": "Truncated to 3 points for this document, matching the fixture. This topic's snapshot is labelled correctly, unlike crypto_prices_chainlink's.",
           "frame": {
             "payload": {

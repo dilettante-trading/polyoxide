@@ -37,10 +37,10 @@ jobs:
   # in .github/actions/live-suite.
   #
   # `flags` selects each crate's live test binaries (and any features
-  # they need). polyoxide-polymarket's clob WebSocket tests live in a
-  # separate `live_clob_ws` binary behind the non-default `clob-ws`
-  # feature, and polyoxide-perps's and polyoxide-binance's in `live_ws`
-  # behind `ws`.
+  # they need). polyoxide-polymarket's clob and perps WebSocket tests live
+  # in separate `live_clob_ws` and `live_perps_ws` binaries behind the
+  # non-default `clob-ws` and `perps-ws` features, and polyoxide-binance's
+  # in `live_ws` behind `ws`.
   #
   # `live_clob_session_keys` gets its own job because its registry and
   # transaction waits can legitimately take ~25 minutes, which would
@@ -139,41 +139,41 @@ jobs:
           suite: relay
           flags: "--no-default-features --features relay --test live_relay"
 
-  live-polyoxide-perps-live:
-    name: Live tests (polyoxide-perps, live)
+  live-polyoxide-polymarket-perps:
+    name: Live tests (polyoxide-polymarket, perps)
     runs-on: ubuntu-latest
     timeout-minutes: 15
     steps:
       - uses: actions/checkout@v5
       - uses: ./.github/actions/live-suite
         with:
-          crate: polyoxide-perps
-          suite: live
-          flags: "--no-default-features --features ws --test live_api --test live_ws"
+          crate: polyoxide-polymarket
+          suite: perps
+          flags: "--no-default-features --features perps,perps-ws --test live_perps --test live_perps_ws"
 
-  live-polyoxide-rtds-live:
-    name: Live tests (polyoxide-rtds, live)
+  live-polyoxide-polymarket-rtds:
+    name: Live tests (polyoxide-polymarket, rtds)
     runs-on: ubuntu-latest
     timeout-minutes: 15
     steps:
       - uses: actions/checkout@v5
       - uses: ./.github/actions/live-suite
         with:
-          crate: polyoxide-rtds
-          suite: live
-          flags: "--no-default-features --test live_api"
+          crate: polyoxide-polymarket
+          suite: rtds
+          flags: "--no-default-features --features rtds --test live_rtds"
 
-  live-polyoxide-sports-live:
-    name: Live tests (polyoxide-sports, live)
+  live-polyoxide-polymarket-sports:
+    name: Live tests (polyoxide-polymarket, sports)
     runs-on: ubuntu-latest
     timeout-minutes: 20
     steps:
       - uses: actions/checkout@v5
       - uses: ./.github/actions/live-suite
         with:
-          crate: polyoxide-sports
-          suite: live
-          flags: "--no-default-features --test live_api"
+          crate: polyoxide-polymarket
+          suite: sports
+          flags: "--no-default-features --features sports --test live_sports"
 
   live-polyoxide-cli-live:
     name: Live tests (polyoxide-cli, live)
@@ -198,9 +198,9 @@ jobs:
       - live-polyoxide-polymarket-gamma
       - live-polyoxide-polymarket-data
       - live-polyoxide-polymarket-relay
-      - live-polyoxide-perps-live
-      - live-polyoxide-rtds-live
-      - live-polyoxide-sports-live
+      - live-polyoxide-polymarket-perps
+      - live-polyoxide-polymarket-rtds
+      - live-polyoxide-polymarket-sports
       - live-polyoxide-cli-live
     # generated:end nightly-aggregate-needs
     if: always()

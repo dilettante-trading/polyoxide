@@ -4,7 +4,7 @@ Host: `sports-api.polymarket.com`
 
 | Route | Kind | Auth | Implemented by |
 |---|---|---|---|
-| `wss://…/ws` | WebSocket, server push only, no subscription | None | `polyoxide-sports` (`SportsWs`, `SportsWsBuilder`) |
+| `wss://…/ws` | WebSocket, server push only, no subscription | None | `polyoxide-polymarket`'s `sports` module (`SportsWs`, `SportsWsBuilder`) |
 | `https://…/health` | `GET`, empty `200` | None | Not implemented |
 
 Every other path probed answers `404 page not found`; the list is in
