@@ -247,6 +247,42 @@ def test_literals_are_scoped_by_the_longest_prefix() -> None:
     assert config.literals_for("polyoxide-clob/tests/t.rs")["ws"] == "tests-ws"
 
 
+def test_fixtures_reads_a_call_as_naming_its_scopes_subdirectory() -> None:
+    old = {"fixtures": "perps"}
+    assert same('fn t() { let f = fixtures!().text("time"); }',
+                'fn t() { let f = fixtures!("perps").text("time"); }', old)
+    assert same('fn t() { let f = fixtures!("ws").text("bbo"); }',
+                'fn t() { let f = fixtures!("perps/ws").text("bbo"); }', old)
+    assert same('fn t() { polyoxide_test_support::fixtures![] }',
+                'fn t() { polyoxide_test_support::fixtures!["perps"] }', old)
+    # A call left naming the old directory differs.
+    assert not same('fn t() { fixtures!("ws"); }', 'fn t() { fixtures!("ws"); }', old)
+
+
+def test_fixtures_leaves_what_is_not_a_fixtures_call() -> None:
+    old = {"fixtures": "perps"}
+    for text in ('fn t() { fixtures::SOCCER; }', 'fn t() { fixtures(); }',
+                 'fn t() { fixtures!(DIR); }', 'fn t() { fixtures!("a", "b"); }',
+                 'fn t() { other!("ws"); }'):
+        assert same(text, text, old), text
+
+
+def test_fixtures_applies_before_literals() -> None:
+    # perps' `"ws"` gate literal must not rewrite `fixtures!("ws")`, whose
+    # argument `[fixtures]` has already moved under the scope's subdirectory.
+    old = {"fixtures": "perps", "literals": {"ws": "perps-ws"}}
+    assert same('#[cfg(feature = "ws")] fn t() { fixtures!("ws"); }',
+                '#[cfg(feature = "perps-ws")] fn t() { fixtures!("perps/ws"); }', old)
+
+
+def test_fixtures_scopes_by_the_longest_prefix_at_a_slash() -> None:
+    config = Config(fixtures={"polyoxide-perps": "perps", "polyoxide-perps/tests/ws": "ws"})
+    assert config.fixtures_for("polyoxide-perps/tests/t.rs") == ("polyoxide-perps", "perps")
+    assert config.fixtures_for("polyoxide-perps/tests/ws/t.rs") == (
+        "polyoxide-perps/tests/ws", "ws")
+    assert config.fixtures_for("polyoxide-perps-extra/tests/t.rs") is None
+
+
 # --- reading items -----------------------------------------------------------
 
 
@@ -557,6 +593,9 @@ def test_the_config_reads_every_section() -> None:
 [literals."a/"]
 "ws" = "x-ws"
 
+[fixtures]
+"a" = "x"
+
 [paths]
 "polyoxide_x::private::Thing" = "polyoxide_y::x::shared::Thing"
 
@@ -582,6 +621,7 @@ row = "polyoxide_x::Gone"
     assert config.gates == {"b/src/clob/": ("clob",), "b/tests/": ("clob", "gamma"),
                             "b/src/shared/": ('any(feature = "clob", feature = "relay")',)}
     assert config.literals == {"": {"polyoxide_x": "polyoxide_y::x"}, "a/": {"ws": "x-ws"}}
+    assert config.fixtures == {"a": "x"}
     assert config.drift[0].key == ("a/tests/x.rs", "fn", "tests::t")
     assert config.retired[0].key == ("a/tests/x.rs", "const", "u")
 
@@ -600,6 +640,11 @@ row = "polyoxide_x::Gone"
     ("paths = []\n", "must be a table"),
     ("[paths]\n\"a\" = 1\n", "must be a table"),
     ("gates = []\n", "`\\[gates\\]` must be a table"),
+    ("fixtures = []\n", "`\\[fixtures\\]` must be a table"),
+    ("[fixtures]\n\"a\" = 1\n", "`\\[fixtures\\]` must be a table"),
+    ("[fixtures]\n\"a\" = \"\"\n", "no leading or trailing"),
+    ("[fixtures]\n\"a\" = \"/x\"\n", "no leading or trailing"),
+    ("[fixtures]\n\"a\" = \"x/\"\n", "no leading or trailing"),
     ("[gates]\n\"a/\" = 1\n", "give a feature or a cfg predicate, or an array"),
     ("[gates]\n\"a/\" = []\n", "give a feature or a cfg predicate, or an array"),
     ("[gates]\n\"a/\" = \" \"\n", "give a feature or a cfg predicate, or an array"),
@@ -942,6 +987,32 @@ def test_moves_prints_each_moved_item_for_the_ledger(repo: Path) -> None:
             in out.splitlines())
 
 
+A_AGREEMENT = """\
+#[test]
+fn every_fixture_decodes() {
+    let text = polyoxide_test_support::fixtures!().text("time");
+    let ws = polyoxide_test_support::fixtures!("ws").text("bbo");
+    assert_eq!(text.len() + ws.len(), 2);
+}
+"""
+
+
+def test_a_fixtures_call_moved_under_a_module_subdirectory_compares_equal(repo: Path) -> None:
+    baseline(repo, {**TREE, "polyoxide-x/tests/agreement.rs": A_AGREEMENT})
+    edit(repo, {**moved(), "polyoxide-x/tests/agreement.rs": None,
+                "polyoxide-y/tests/agreement_x.rs": A_AGREEMENT.replace(
+                    "fixtures!()", 'fixtures!("x")').replace('fixtures!("ws")',
+                                                            'fixtures!("x/ws")')})
+    assert compare(repo, [CRATE_ROW]).diffs != []
+    result = compare(repo, [CRATE_ROW], Config(fixtures={"polyoxide-x": "x"}))
+    assert (result.status, result.problems) == (0, [])
+    # An entry whose scope holds no call is stale.
+    stale = compare(repo, [CRATE_ROW], Config(fixtures={"polyoxide-x": "x",
+                                                        "polyoxide-z": "z"}))
+    assert stale.problems == ["`[fixtures]` reads the `fixtures!` calls under polyoxide-z "
+                              "as naming 'z', but no baseline call there was rewritten"]
+
+
 def test_a_fixture_that_moves_with_its_content_compares_equal(repo: Path) -> None:
     files = dict(TREE)
     files["polyoxide-x/src/types.rs"] = (
@@ -1193,3 +1264,5 @@ def test_the_checked_in_config_reads_and_cites_only_drift_rows() -> None:
     rows = body_diff.drift_rows((REPO / body_diff.DIVERGENCES).read_text())
     assert rows == {f"R{n}" for n in range(1, 12)}
     assert all(entry.row in rows for entry in config.drift)
+    # S2's one DRIFT row is R6, rtds' `test-fixtures` becoming `test-server`.
+    assert {entry.row for entry in config.drift} <= {"R6"}

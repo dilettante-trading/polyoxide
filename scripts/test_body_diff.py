@@ -62,9 +62,12 @@ Normalising, in order, before the two texts of a pair are compared:
      in a baseline file that is in the row's crate or names it.
   4. An `include_str!` or `include_bytes!` target becomes its blob's id, so a fixture
      that moved compares by its content.
-  5. On the baseline side only, `[literals]` replaces string literals whose content it
+  5. On the baseline side only, `[fixtures]` reads a `fixtures!()` call as naming its
+     scope's fixture subdirectory, `fixtures!("<subdir>")`, and `fixtures!("x")` as
+     `fixtures!("<subdir>/x")`, for a crate whose fixtures moved under a module's.
+  6. On the baseline side only, `[literals]` replaces string literals whose content it
      names exactly, a scope matching its own path and those under it at a `/`.
-  6. The layout goes: the texts compare token by token, so whitespace is collapsed,
+  7. The layout goes: the texts compare token by token, so whitespace is collapsed,
      and so is what rustfmt adds when a line re-wraps under a longer path: a trailing
      comma before a closing bracket, but in a one-element tuple, and the braces
      around a lone expression after `=>` or a closure's `|...|`.
@@ -74,8 +77,8 @@ divergences.md and the diff's sha256. A lost item, one with no counterpart, fail
 unless a `[[retired]]` entry names it and a manifest row giving a reason, not a new
 path, covers the entry's `row`. Every entry that matches nothing fails: a `[[drift]]`
 or `[[retired]]` naming no such diff or lost item, a `[files]` pair naming a file
-either tree lacks or a baseline file holding no item, and a `[literals]`, `[paths]` or
-`[gates]` entry that replaces or drops nothing. Items new at HEAD are listed.
+either tree lacks or a baseline file holding no item, and a `[literals]`, `[fixtures]`,
+`[paths]` or `[gates]` entry that replaces, rewrites or drops nothing. Items new at HEAD are listed.
 
 `--moves` prints, for every paired item whose place changed, `old file:line name ->
 new file:line`, the form docs/MUTANTS.md cites tests in.
@@ -1290,9 +1293,44 @@ def hash_includes(tokens: list[Token], directory: str,
     return out
 
 
+def rebase_fixtures(tokens: list[Token], subdir: str | None, used: set | None = None,
+                    scope: str = "") -> list[Token]:
+    """Step 5: each `fixtures!()` call as `fixtures!("<subdir>")`, and each
+    `fixtures!("x")` as `fixtures!("<subdir>/x")`. `used` collects `("fixtures", scope)`
+    when one is rewritten."""
+    if not subdir:
+        return tokens
+    out: list[Token] = []
+    i = 0
+    while i < len(tokens):
+        token = tokens[i]
+        if not (token.kind == "word" and token.text == "fixtures" and i + 2 < len(tokens)
+                and _is(tokens[i + 1], "!") and tokens[i + 2].kind == "punct"
+                and tokens[i + 2].text in "([{"):
+            out.append(token)
+            i += 1
+            continue
+        close = _closer(tokens, i + 2)
+        inner = tokens[i + 3:close]
+        if not inner:
+            content = subdir
+        elif len(inner) == 1 and inner[0].kind == "str":
+            content = f"{subdir}/{inner[0].content}"
+        else:
+            out.append(token)
+            i += 1
+            continue
+        if used is not None:
+            used.add(("fixtures", scope))
+        out += [token, tokens[i + 1], tokens[i + 2],
+                Token("str", f'"{content}"', '"', content, '"'), tokens[close]]
+        i = close + 1
+    return out
+
+
 def replace_literals(tokens: list[Token], literals: dict[str, str], used: set | None = None,
                      scopes: dict[str, str] | None = None) -> list[Token]:
-    """Step 5: each string literal whose content `literals` names, as its value.
+    """Step 6: each string literal whose content `literals` names, as its value.
     `used` collects `("literal", scope, key)` for each one replaced."""
     if not literals:
         return tokens
@@ -1309,7 +1347,7 @@ def replace_literals(tokens: list[Token], literals: dict[str, str], used: set | 
 
 
 def relayout(tokens: list[Token]) -> list[Token]:
-    """Step 6: without the layout rustfmt adds when a line re-wraps: the braces around a
+    """Step 7: without the layout rustfmt adds when a line re-wraps: the braces around a
     lone expression after `=>` or a closure's `|...|`, and a trailing comma before a
     closing bracket or a generic list's `>`, which only a generic list's end follows."""
     drop: set[int] = set()
@@ -1392,6 +1430,10 @@ class Normaliser:
     rows: tuple[RowLike, ...] = ()  # the baseline side's only
     renames: dict[str, str] = field(default_factory=dict)  # the baseline side's only
     literals: dict[str, str] = field(default_factory=dict)  # the baseline side's only
+    # The fixture subdirectory a `fixtures!` call names, and the `[fixtures]` scope it
+    # comes from; the baseline side's only.
+    fixtures: str | None = None
+    fixtures_scope: str = ""
     directory: str = ""  # the file's directory, which an include path starts from
     blob: Callable[[str], str | None] = lambda path: None
     # The old path of the row each rename comes from, and the scope each literal is
@@ -1407,6 +1449,7 @@ class Normaliser:
         if self.rows or self.renames:
             tokens = apply_rows(tokens, self.rows, self.renames, self.used, self.sources)
         tokens = hash_includes(tokens, self.directory, self.blob)
+        tokens = rebase_fixtures(tokens, self.fixtures, self.used, self.fixtures_scope)
         tokens = replace_literals(tokens, self.literals, self.used, self.scopes)
         return relayout(tokens)
 
@@ -1486,6 +1529,17 @@ class Config:
     # Each HEAD path prefix, to the module features, or the whole cfg predicates,
     # whose gates it drops there.
     gates: dict[str, tuple[str, ...]] = field(default_factory=dict)
+    # Each baseline path prefix, to the fixture subdirectory its `fixtures!` calls
+    # moved under.
+    fixtures: dict[str, str] = field(default_factory=dict)
+
+    def fixtures_for(self, path: str) -> tuple[str, str] | None:
+        """The `[fixtures]` scope that holds `path`, the longest, and its subdirectory."""
+        scopes = [scope for scope in self.fixtures if in_scope(path, scope)]
+        if not scopes:
+            return None
+        scope = max(scopes, key=len)
+        return scope, self.fixtures[scope]
 
     def literal_scopes_for(self, path: str) -> dict[str, str]:
         """Each literal key that applies in `path`, to the scope it comes from: the
@@ -1541,7 +1595,8 @@ def parse_config(text: str) -> Config:
         data = tomllib.loads(text)
     except tomllib.TOMLDecodeError as err:
         raise BodyDiffError(f"{CONFIG} is not valid TOML: {err}") from err
-    unknown = sorted(set(data) - {"files", "literals", "paths", "gates", "drift", "retired"})
+    unknown = sorted(set(data) - {"files", "literals", "fixtures", "paths", "gates", "drift",
+                                  "retired"})
     if unknown:
         raise BodyDiffError(f"{CONFIG} has unknown keys {unknown}")
     table = data.get("literals", {})
@@ -1570,10 +1625,16 @@ def parse_config(text: str) -> Config:
                                     f"what goes inside `cfg(...)`, such as "
                                     f"'any(feature = \"a\", feature = \"b\")'")
         gates[prefix] = tuple(features)
+    fixtures = _strings("`[fixtures]`", data.get("fixtures", {}))
+    for scope, subdir in fixtures.items():
+        if not subdir.strip("/") or subdir != subdir.strip("/"):
+            raise BodyDiffError(f"{CONFIG}: `[fixtures]` maps {scope!r} to {subdir!r}; give the "
+                                f"subdirectory of `tests/fixtures/` its calls now name, such as "
+                                f"\"perps\", with no leading or trailing `/`")
     return Config(_strings("`[files]`", data.get("files", {})), literals,
                   _entries(data, "drift", ("file", "item", "row", "sha256")),
                   _entries(data, "retired", ("file", "item", "row")),
-                  _strings("`[paths]`", data.get("paths", {})), gates)
+                  _strings("`[paths]`", data.get("paths", {})), gates, fixtures)
 
 
 def _balanced(predicate: str) -> bool:
@@ -1777,9 +1838,11 @@ def compare(root: Path, baseline: str, rows: tuple[RowLike, ...], config: Config
     def baseline_normaliser(path: str, package: Package | None,
                             names: frozenset[str]) -> Normaliser:
         renames = _renames(path_rows, package.library if package else None, names)
+        scope, subdir = config.fixtures_for(path) or ("", None)
         return Normaliser(library=library_of(path, package), rows=path_rows,
                           renames={old: new for old, (new, _) in renames.items()},
                           literals=config.literals_for(path),
+                          fixtures=subdir, fixtures_scope=scope,
                           directory=posixpath.dirname(path), blob=old_tree.blob,
                           sources={old: source for old, (_, source) in renames.items()},
                           scopes=config.literal_scopes_for(path), used=used)
@@ -1864,6 +1927,11 @@ def compare(root: Path, baseline: str, rows: tuple[RowLike, ...], config: Config
                 where = f"`[literals.{scope!r}]`" if scope else "`[literals]`"
                 result.problems.append(f"{where} replaces {key!r}, but no baseline literal "
                                        f"it applies to holds it")
+    for scope, subdir in sorted(config.fixtures.items()):
+        if ("fixtures", scope) not in used:
+            result.problems.append(f"`[fixtures]` reads the `fixtures!` calls under {scope} as "
+                                   f"naming {subdir!r}, but no baseline call there was "
+                                   f"rewritten")
     for prefix, features in sorted(config.gates.items()):
         for feature in features:
             if ("gate", prefix, feature) not in used:
