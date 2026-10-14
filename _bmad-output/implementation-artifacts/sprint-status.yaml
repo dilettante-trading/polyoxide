@@ -29,7 +29,7 @@
 # - Dev moves story to 'review', then runs code-review (fresh context, different LLM recommended)
 # - Retrospective appends its action items to action_items; the status view surfaces open ones
 generated: 10-08-2026 14:57
-last_updated: 14-10-2026 20:43
+last_updated: 14-10-2026 21:40
 project: polyoxide
 project_key: NOKEY
 tracking_system: file-system
@@ -137,7 +137,7 @@ development_status:
   5-3-gamma-and-data-become-modules: review
   5-4-clob-and-relay-become-modules: review
   5-5-perps-rtds-and-sports-become-modules: review
-  5-6-binance-follows-the-conventions: in-progress
+  5-6-binance-follows-the-conventions: review
   5-7-the-multi-venue-umbrella: backlog
   5-8-the-cli-on-the-venue-axis: backlog
   5-9-cli-credentials-over-a-shared-trait: backlog

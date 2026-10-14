@@ -2,7 +2,7 @@
 title: 'Story 5.6: Binance follows the conventions'
 type: 'refactor'
 created: '2026-10-14'
-status: 'in-review'
+status: 'done'
 route: 'dispatch'
 baseline_commit: '1850608eba3dd6b12dc9c70af467b120e5f7337a'
 review_loop_iteration: 0
