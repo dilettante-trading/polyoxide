@@ -82,17 +82,18 @@ struct ReadmeDoctests;
 /// Compiles the workspace root `README.md` code examples as doctests.
 struct RootReadmeDoctests;
 
-#[cfg(feature = "perps")]
-pub use polyoxide_perps;
-// Polymarket's venue crate, whose `clob`, `gamma` and `data` modules the
-// features of those names build (Stories 5.3 and 5.4; Story 5.7 reshapes the
-// umbrella).
-#[cfg(any(feature = "clob", feature = "gamma", feature = "data"))]
+// Polymarket's venue crate, whose `clob`, `gamma`, `data`, `rtds`, `perps` and
+// `sports` modules the features of those names build (Stories 5.3 to 5.5;
+// Story 5.7 reshapes the umbrella).
+#[cfg(any(
+    feature = "clob",
+    feature = "gamma",
+    feature = "data",
+    feature = "rtds",
+    feature = "perps",
+    feature = "sports"
+))]
 pub use polyoxide_polymarket;
-#[cfg(feature = "rtds")]
-pub use polyoxide_rtds;
-#[cfg(feature = "sports")]
-pub use polyoxide_sports;
 
 #[cfg(all(feature = "clob", feature = "gamma", feature = "data"))]
 use polyoxide_polymarket::clob::{Account, Chain, Clob, ClobBuilder};
@@ -103,12 +104,6 @@ use polyoxide_polymarket::gamma::Gamma;
 
 /// Prelude module for convenient imports
 pub mod prelude {
-    #[cfg(feature = "perps-ws")]
-    pub use polyoxide_perps::ws::{
-        Channel as PerpsChannel, Event as PerpsEvent, PerpsMembership, PerpsWsBuilder,
-    };
-    #[cfg(feature = "perps")]
-    pub use polyoxide_perps::{Perps, PerpsError};
     #[cfg(feature = "ws")]
     pub use polyoxide_polymarket::clob::ws;
     #[cfg(feature = "clob")]
@@ -120,14 +115,20 @@ pub mod prelude {
     pub use polyoxide_polymarket::data::{DataApi, DataError};
     #[cfg(feature = "gamma")]
     pub use polyoxide_polymarket::gamma::{Gamma, GammaError};
+    #[cfg(feature = "perps-ws")]
+    pub use polyoxide_polymarket::perps::ws::{
+        Channel as PerpsChannel, Event as PerpsEvent, PerpsMembership, PerpsWsBuilder,
+    };
+    #[cfg(feature = "perps")]
+    pub use polyoxide_polymarket::perps::{Perps, PerpsError};
     #[cfg(feature = "rtds")]
-    pub use polyoxide_rtds::{
+    pub use polyoxide_polymarket::rtds::{
         PriceEvent, PriceUpdate, Rtds, RtdsBuilder, Subscription, Topic, TwapWindow,
     };
     // Aliased: a bare `MatchUpdate` beside the CLOB types reads like an
     // order-match update.
     #[cfg(feature = "sports")]
-    pub use polyoxide_sports::{
+    pub use polyoxide_polymarket::sports::{
         Event as SportsEvent, GameKey as SportsGameKey, MatchUpdate as SportsMatchUpdate,
         SportsError, SportsWs, SportsWsBuilder, SupervisedSportsWs,
     };
@@ -157,7 +158,7 @@ pub enum PolymarketError {
     /// Perps API error
     #[cfg(feature = "perps")]
     #[error("Perps error: {0}")]
-    Perps(#[from] polyoxide_perps::PerpsError),
+    Perps(#[from] polyoxide_polymarket::perps::PerpsError),
 
     /// Configuration error
     #[error("Configuration error: {0}")]
@@ -389,7 +390,7 @@ mod tests {
         #[cfg(feature = "perps")]
         rows.push((
             PolymarketError::Perps(
-                polyoxide_perps::Perps::builder()
+                polyoxide_polymarket::perps::Perps::builder()
                     .base_url("not a url")
                     .build()
                     .err()

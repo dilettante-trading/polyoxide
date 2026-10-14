@@ -4,11 +4,8 @@ members = [
   "polyoxide-binance",
   "polyoxide-cli",
   "polyoxide-core",
-  "polyoxide-perps",
   "polyoxide-polymarket",
   "polyoxide-py",
-  "polyoxide-rtds",
-  "polyoxide-sports",
   "polyoxide-test-support",
   "polyoxide-venue",
   "polyoxide-ws",
@@ -27,12 +24,9 @@ rust-version = "1.91"
 [workspace.dependencies]
 polyoxide-core = { path = "polyoxide-core", version = "0.39.0" }
 polyoxide-binance = { path = "polyoxide-binance", version = "0.39.0" }
-polyoxide-perps = { path = "polyoxide-perps", version = "0.39.0" }
 # Its defaults are `clob`, `gamma` and `data`; each member names the modules
 # it builds, so none builds the signing stack by accident.
 polyoxide-polymarket = { path = "polyoxide-polymarket", version = "0.39.0", default-features = false }
-polyoxide-rtds = { path = "polyoxide-rtds", version = "0.39.0" }
-polyoxide-sports = { path = "polyoxide-sports", version = "0.39.0" }
 polyoxide-venue = { path = "polyoxide-venue", version = "0.39.0" }
 polyoxide-ws = { path = "polyoxide-ws", version = "0.39.0" }
 tokio = { version = "1.41" }

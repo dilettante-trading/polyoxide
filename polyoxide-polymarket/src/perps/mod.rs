@@ -1,0 +1,30 @@
+//! # Perps
+//!
+//! Client for the Polymarket Perps HTTP API (`api.perpetuals.polymarket.com`),
+//! behind the `perps` feature.
+//!
+//! This module covers the public `/v1/info/*` routes, which need no credentials,
+//! and, with the `perps-ws` feature, the six public WebSocket channels (`bbo`,
+//! `book`, `trades`, `klines`, `tickers`, `statistics`) through the `ws`
+//! module.
+//!
+//! ```no_run
+//! use polyoxide_polymarket::perps::Perps;
+//!
+//! # async fn example() -> Result<(), polyoxide_polymarket::perps::PerpsError> {
+//! let perps = Perps::new()?;
+//! let latency = perps.health().ping().await?;
+//! println!("perps host answered in {latency:?}");
+//! # Ok(())
+//! # }
+//! ```
+
+pub mod api;
+pub mod client;
+pub mod error;
+pub mod types;
+#[cfg(feature = "perps-ws")]
+pub mod ws;
+
+pub use client::{Perps, PerpsBuilder, DEFAULT_BASE_URL, DEFAULT_MAX_CONCURRENT};
+pub use error::{PerpsError, VenueError};

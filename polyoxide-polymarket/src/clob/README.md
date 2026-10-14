@@ -14,7 +14,7 @@ More information about this module can be found in the [crate documentation](htt
 - **API Key Management**: Create, list, and delete standard, read-only, and builder API keys
 - **Liquidity Rewards**: Query earnings, percentages, and reward markets
 - **Notifications**: List and dismiss user notifications
-- **WebSocket**: Real-time market and user channels (feature `clob-ws`). Live sports scores are in [polyoxide-sports](https://docs.rs/polyoxide-sports/).
+- **WebSocket**: Real-time market and user channels (feature `clob-ws`). Live sports scores are in the [`sports`](../sports/README.md) module, feature `sports`.
 
 ## Installation
 

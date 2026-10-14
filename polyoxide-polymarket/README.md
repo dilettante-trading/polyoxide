@@ -1,10 +1,11 @@
 # polyoxide-polymarket
 
 Rust client library for Polymarket's APIs, one feature per module: `clob`, `gamma`, `data`,
-`relay` and `perps`. Part of the [polyoxide](https://crates.io/crates/polyoxide) workspace.
+`relay`, `perps`, `rtds` and `sports`. Part of the [polyoxide](https://crates.io/crates/polyoxide)
+workspace.
 
-The modules move in from their own crates during stage S2. Four are here, each with its own
-README:
+The modules moved in from their own crates during stage S2. Each has its own README but `rtds`,
+whose guide is its module documentation:
 
 | Module | Feature | API |
 |---|---|---|
@@ -12,24 +13,29 @@ README:
 | [`gamma`](src/gamma/README.md) | `gamma` | Gamma: markets, events, series, tags, comments, sports, search and profiles; read-only |
 | [`data`](src/data/README.md) | `data` | The Data API, v1 and v2 (`data.v2()`), and the undocumented `user-pnl-api` and `lb-api` hosts; read-only |
 | [`relay`](src/relay/README.md) | `relay` | The Relayer: gasless transactions for Safe, Proxy and Deposit Wallets, and session signers |
+| [`perps`](src/perps/README.md) | `perps`; its WebSocket channels, `perps::ws`, under `perps-ws` | Perps: perpetual futures market data on the public `/v1/info/*` routes; read-only |
+| `rtds` | `rtds` | RTDS: Binance and Chainlink crypto price streams over one socket |
+| [`sports`](src/sports/README.md) | `sports` | The live sports score feed, server push only |
 
-`polyoxide-perps`, `polyoxide-rtds` and `polyoxide-sports` arrive in Story 5.5. What the
-modules share is in `shared`.
+What the HTTP modules share is in `shared`.
 
 The defaults are `clob`, `gamma` and `data`. Only `clob` and `relay` build the signing stack,
-`alloy`, so a build with `gamma` or `data` alone carries none of it. `clob` does not turn on
-`gamma`: with both, the CLOB client looks a proxy wallet's address up through Gamma.
+`alloy`, so a build with `gamma`, `data` or `perps` alone carries none of it. `rtds` and `sports`
+are sockets alone: they build neither `polyoxide-core` nor `shared`, so a credential-free feed
+carries no HTTP stack either. `clob` does not turn on `gamma`: with both, the CLOB client looks a
+proxy wallet's address up through Gamma.
 
 `keychain` stores credentials in the OS keychain; its API is in `clob` and `relay`, but it builds
-core's `keyring` whenever any module is on, `gamma` or `data` alone included, since cargo cannot
+core's `keyring` whenever any HTTP module is on, `gamma` or `data` alone included, since cargo cannot
 limit it to the two. `specta` derives `specta::Type` on the response types of `gamma` and `data`;
-`clob` and `relay` derive none.
+`clob` and `relay` derive none. `test-server` exposes the captured frames of `rtds` and `sports`
+to integration tests; it is not for consumers.
 
 ## What `shared` holds
 
 | Item | Purpose | Feature |
 |---|---|---|
-| `shared::PolymarketRetryPolicy` | The one retry policy every HTTP module installs on core's send loop: core's `DefaultRetryPolicy` plus `425 Too Early` | any module |
+| `shared::PolymarketRetryPolicy` | The one retry policy every HTTP module installs on core's send loop: core's `DefaultRetryPolicy` plus `425 Too Early` | any HTTP module |
 | `shared::{clob,gamma,data,relay,perps}_limits` | The five window-quota tables, one per API surface, each pinned by its `documented_*_limits` test | the table's module |
 | `shared::ClobThrottle`, `clob_throttle`, `signer_cost` | The CLOB's throttle: its IP table and the per-signer layer over one `Hold`, and the cost a trading request charges | `clob` |
 | `shared::signer_limit` | The per-signer layer: `SignerLimiter`, `Tier`, `TradingBucket`, `TradingRequest`, the `Poly-RateLimit-*` telemetry (`RateLimitStatus`) and the refusal of a batch no bucket can hold (`BurstCapacityExceeded`) | `clob` |

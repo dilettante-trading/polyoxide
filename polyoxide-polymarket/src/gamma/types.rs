@@ -414,7 +414,7 @@ pub struct Event {
     pub deploying_timestamp: Option<String>,
     pub schedule_deployment_timestamp: Option<String>,
     pub game_status: Option<String>,
-    /// The game's id, the same number `polyoxide-sports` keys a live score
+    /// The game's id, the same number the `sports` module keys a live score
     /// by (`GameKey::Game`). Filter on it with [`ListEvents::game_id`].
     ///
     /// Not unique to one event. A game's child events carry it too (see

@@ -224,7 +224,7 @@ pub fn relay_limits() -> RateLimiter {
 ///
 /// Upstream publishes no figure for the public `/v1/info/*` routes, only
 /// that a per-IP token bucket exists. Each count is the highest clean
-/// ramp stage measured by `polyoxide-perps/examples/info_soak.rs` on
+/// ramp stage measured by `polyoxide-polymarket/examples/info_soak.rs` on
 /// 2026-09-30 and recorded in `docs/specs/perps/OBSERVED.md`; the table
 /// reserves a tenth. The four routes throttle at different rates (a 429
 /// on one arrived while the others kept being served), so each has its

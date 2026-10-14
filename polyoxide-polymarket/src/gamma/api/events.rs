@@ -332,7 +332,7 @@ impl ListEvents {
         /// upstream with `414 URI Too Long`.
         id: many impl IntoIterator<Item = i64> => "id",
         /// Filter by game IDs, the [`Event::game_id`] a live score from
-        /// `polyoxide-sports` carries.
+        /// from the `sports` module carries.
         ///
         /// Not in upstream's `openapi.yaml` for this route, but the server applies
         /// it (verified 2026-10-08): an id with no game returns `[]`, and a

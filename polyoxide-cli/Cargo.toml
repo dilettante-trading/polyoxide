@@ -26,9 +26,7 @@ doc = false
 polyoxide-binance = { workspace = true, features = ["ws"] }
 polyoxide-core = { workspace = true, optional = true, features = ["keychain"] }
 # `relay` and `keychain` only under `keychain`, for the relay's keychain service.
-polyoxide-polymarket = { workspace = true, features = ["clob-ws", "gamma", "data"] }
-polyoxide-rtds = { workspace = true }
-polyoxide-sports = { workspace = true }
+polyoxide-polymarket = { workspace = true, features = ["clob-ws", "gamma", "data", "rtds", "sports"] }
 tokio = { workspace = true, features = ["macros", "rt-multi-thread", "time", "net"] }
 clap = { version = "4.5", features = ["derive", "env"] }
 clap_complete = "4.5"
@@ -51,7 +49,7 @@ mockito = { workspace = true }
 tempfile = "3"
 tokio = { workspace = true, features = ["macros", "rt-multi-thread", "time"] }
 # The captured frames, for the `ws sports` tests.
-polyoxide-sports = { workspace = true, features = ["test-server"] }
+polyoxide-polymarket = { workspace = true, features = ["sports", "test-server"] }
 # The captured frames, for the `ws binance` tests.
 polyoxide-binance = { workspace = true, features = ["test-server"] }
 

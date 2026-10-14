@@ -4000,10 +4000,7 @@ name = "polyoxide"
 version = "0.39.0"
 dependencies = [
  "futures-util",
- "polyoxide-perps",
  "polyoxide-polymarket",
- "polyoxide-rtds",
- "polyoxide-sports",
  "polyoxide-venue",
  "thiserror 2.0.18",
  "tokio",
@@ -4045,8 +4042,6 @@ dependencies = [
  "polyoxide-binance",
  "polyoxide-core",
  "polyoxide-polymarket",
- "polyoxide-rtds",
- "polyoxide-sports",
  "polyoxide-test-support",
  "serde",
  "serde_json",
@@ -4072,26 +4067,6 @@ dependencies = [
  "tokio",
  "tracing",
  "tracing-subscriber",
- "url",
-]
-
-[[package]]
-name = "polyoxide-perps"
-version = "0.39.0"
-dependencies = [
- "futures-util",
- "mockito",
- "polyoxide-core",
- "polyoxide-polymarket",
- "polyoxide-test-support",
- "polyoxide-venue",
- "polyoxide-ws",
- "rust_decimal",
- "serde",
- "serde_json",
- "thiserror 2.0.18",
- "tokio",
- "tracing",
  "url",
 ]
 
@@ -4139,39 +4114,6 @@ dependencies = [
  "serde",
  "serde_json",
  "tokio",
-]
-
-[[package]]
-name = "polyoxide-rtds"
-version = "0.39.0"
-dependencies = [
- "futures-util",
- "polyoxide-test-support",
- "polyoxide-venue",
- "polyoxide-ws",
- "rust_decimal",
- "serde",
- "serde_json",
- "thiserror 2.0.18",
- "tokio",
- "tracing",
- "tracing-subscriber",
- "url",
-]
-
-[[package]]
-name = "polyoxide-sports"
-version = "0.39.0"
-dependencies = [
- "futures-util",
- "polyoxide-test-support",
- "polyoxide-venue",
- "polyoxide-ws",
- "serde",
- "serde_json",
- "thiserror 2.0.18",
- "tokio",
- "tracing",
 ]
 
 [[package]]

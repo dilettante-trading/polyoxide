@@ -6,17 +6,17 @@ license.workspace = true
 authors.workspace = true
 repository.workspace = true
 rust-version.workspace = true
-description = "Rust client library for Polymarket's APIs: CLOB, Gamma, Data, Relay and Perps, each behind its own feature"
+description = "Rust client library for Polymarket's APIs: CLOB, Gamma, Data, Relay, Perps, RTDS and Sports, each behind its own feature"
 keywords = ["polymarket", "prediction-markets", "trading", "api"]
 categories = ["api-bindings", "web-programming::http-client"]
 
-# One feature per module. `clob`, `gamma`, `data` and `relay` build their
-# modules (Stories 5.3 and 5.4); `perps` arrives in Story 5.5, and today turns
-# on the parts of `shared` its crate uses. The HTTP modules share the retry
-# policy and their window-quota table, and clob and relay share the HMAC signer
-# and the session-signer types. Only `clob` and `relay` build `alloy`, the
-# signing stack: `.github/scripts/tests/test_dep_allowlists.py` holds every
-# other feature to a tree without it.
+# One feature per module (Stories 5.3 to 5.5). The HTTP modules, `clob`,
+# `gamma`, `data`, `relay` and `perps`, share the retry policy and their
+# window-quota table, and clob and relay share the HMAC signer and the
+# session-signer types. `rtds` and `sports` are sockets alone and build neither
+# core nor `shared`. Only `clob` and `relay` build `alloy`, the signing stack:
+# `.github/scripts/tests/test_dep_allowlists.py` holds every other feature to a
+# tree without it, and `rtds` and `sports` to one without core's HTTP stack.
 [features]
 default = ["clob", "gamma", "data"]
 clob = [
@@ -87,7 +87,54 @@ relay = [
     "dep:tokio",
     "tokio/time",
 ]
-perps = ["dep:polyoxide-core"]
+perps = [
+    "dep:polyoxide-core",
+    "polyoxide-venue/decimal",
+    "dep:rust_decimal",
+    "dep:serde",
+    "dep:serde_json",
+    "dep:thiserror",
+    "dep:tracing",
+    "dep:url",
+]
+# Perps' six public WebSocket channels, `perps::ws`, on the socket kit's
+# supervisor.
+perps-ws = [
+    "perps",
+    "dep:polyoxide-ws",
+    "dep:tokio",
+    "tokio/time",
+    "dep:futures-util",
+]
+# RTDS's crypto price streams. A socket alone: the kit, no core.
+rtds = [
+    "dep:polyoxide-ws",
+    "dep:tokio",
+    "tokio/time",
+    "dep:futures-util",
+    "dep:serde",
+    "dep:serde_json",
+    "dep:rust_decimal",
+    "dep:thiserror",
+    "dep:tracing",
+    "dep:url",
+]
+# The live sports feed. A socket alone, like `rtds`.
+sports = [
+    "dep:polyoxide-ws",
+    "dep:tokio",
+    "tokio/time",
+    "dep:futures-util",
+    "dep:serde",
+    "dep:serde_json",
+    "dep:thiserror",
+    "dep:tracing",
+]
+# Exposes each enabled socket module's captured frames, `rtds::fixtures` and
+# `sports::fixtures`, so integration tests here and in polyoxide-cli use the
+# unit tests' golden vectors. Not for consumers; the modules are
+# `#[doc(hidden)]`, and docs.rs leaves the feature out.
+test-server = []
 # OS keychain storage for credentials. Its API is in `clob` and `relay`
 # (`clob::save_private_key_to_keychain`, `relay::save_builder_config_to_keychain`
 # and their `from_keychain` loaders), but cargo cannot say "only with clob or
@@ -111,9 +158,10 @@ alloy = { version = "1.1.2", features = [
     "signers",
     "sol-types",
 ], optional = true }
-# The CLOB's socket kit (`clob-ws`): the TLS install, the bare tier clob reads
-# through, the upgrade over its own per-address connect, and `WsError`. It owns
-# the transport, so this crate declares neither tokio-tungstenite nor rustls.
+# The socket kit (`clob-ws`, `perps-ws`, `rtds`, `sports`): the TLS install,
+# the bare tier, clob's upgrade over its own per-address connect, `WsError`,
+# `Backoff` and perps' supervisor. It owns the transport, so this crate
+# declares neither tokio-tungstenite nor rustls.
 polyoxide-ws = { workspace = true, optional = true }
 # The HMAC `Signer` (`clob`, `relay`).
 base64 = { workspace = true, optional = true }
@@ -123,17 +171,18 @@ sha2 = { workspace = true, optional = true }
 serde = { workspace = true, optional = true }
 serde_json = { workspace = true, optional = true }
 # The signer layer's refusal and its tier log line (`clob`), and the modules'
-# errors and logs.
+# errors and logs (every module but `gamma` and `data` logs).
 thiserror = { workspace = true, optional = true }
 tracing = { workspace = true, optional = true }
 url = { workspace = true, optional = true }
-# Gamma's dates (`gamma`); its batch fan-out, and the timers of clob and
-# relay (`gamma`, `clob`, `relay`); path segments (`gamma`, `clob`).
+# Gamma's dates (`gamma`); its batch fan-out, and the timers of clob, relay
+# and the sockets (`gamma`, `clob`, `relay`, `perps-ws`, `rtds`, `sports`);
+# path segments (`gamma`, `clob`).
 chrono = { workspace = true, features = ["serde"], optional = true }
 tokio = { workspace = true, optional = true }
 urlencoding = { version = "2.1", optional = true }
-# Data's v2 page streams and the CLOB's socket (`data`, `clob-ws`); the
-# decimals of data and clob (`data`, `clob`).
+# Data's v2 page streams and the sockets (`data`, `clob-ws`, `perps-ws`,
+# `rtds`, `sports`); the decimals of data, clob, perps and rtds.
 futures-util = { workspace = true, optional = true }
 rust_decimal = { workspace = true, optional = true }
 # Addresses and salts of clob and relay (`clob`, `relay`).
@@ -147,8 +196,8 @@ specta = { version = "=2.0.0-rc.20", features = ["derive", "serde"], optional = 
 # harnesses' pacer, observer and verdicts). Path-only: it is never published,
 # and cargo strips a path-only dev-dependency on publish.
 polyoxide-test-support = { path = "../polyoxide-test-support", features = ["query", "soak"] }
-# The shared scripted WebSocket server clob's offline socket suites run on.
-# Path-only, so cargo strips it on publish.
+# The shared scripted WebSocket server the offline socket suites of clob,
+# perps, rtds and sports run on. Path-only, so cargo strips it on publish.
 polyoxide-ws = { path = "../polyoxide-ws", features = ["test-server"] }
 mockito = { workspace = true }
 serde_json = { workspace = true }
@@ -157,7 +206,7 @@ futures-util = { workspace = true }
 rust_decimal_macros = "1.37"
 # `test-util` gives the cooldown tests a paused clock, so they assert the full
 # backoff without actually sleeping for it.
-tokio = { workspace = true, features = ["macros", "rt-multi-thread", "test-util", "time"] }
+tokio = { workspace = true, features = ["macros", "net", "rt-multi-thread", "test-util", "time"] }
 # The send loop's tests read its warnings.
 tracing = { workspace = true }
 tracing-subscriber = { workspace = true, features = ["env-filter"] }
@@ -295,6 +344,72 @@ required-features = ["relay"]
 name = "mock_relay"
 required-features = ["relay"]
 
+# The perps module's suites (Story 5.5). The `perps-ws` ones import items
+# only the feature builds.
+[[test]]
+name = "error_classes_perps"
+required-features = ["perps"]
+
+[[test]]
+name = "headers_perps"
+required-features = ["perps"]
+
+[[test]]
+name = "live_perps"
+required-features = ["perps"]
+
+[[test]]
+name = "live_perps_ws"
+required-features = ["perps-ws"]
+
+[[test]]
+name = "mock_perps"
+required-features = ["perps"]
+
+[[test]]
+name = "spec_agreement_perps"
+required-features = ["perps"]
+
+[[test]]
+name = "wire_agreement_perps"
+required-features = ["perps"]
+
+[[test]]
+name = "wire_agreement_perps_ws"
+required-features = ["perps-ws"]
+
+# The rtds module's suites (Story 5.5). `supervision_rtds` imports
+# `rtds::fixtures`, which only `test-server` exposes outside the unit tests.
+[[test]]
+name = "failure_tags_rtds"
+required-features = ["rtds"]
+
+[[test]]
+name = "live_rtds"
+required-features = ["rtds"]
+
+[[test]]
+name = "supervision_rtds"
+required-features = ["rtds", "test-server"]
+
+# The sports module's suites (Story 5.5). `bare_sports` and
+# `supervision_sports` import `sports::fixtures`, as `supervision_rtds` does.
+[[test]]
+name = "bare_sports"
+required-features = ["sports", "test-server"]
+
+[[test]]
+name = "failure_tags_sports"
+required-features = ["sports"]
+
+[[test]]
+name = "live_sports"
+required-features = ["sports"]
+
+[[test]]
+name = "supervision_sports"
+required-features = ["sports", "test-server"]
+
 # Gamma's probes of Cloudflare's burst limit and its batch ceiling.
 [[example]]
 name = "cf_burst_probe"
@@ -328,6 +443,11 @@ required-features = ["relay"]
 name = "redeem"
 required-features = ["relay"]
 
+# RTDS's two TWAP topics, printed as they arrive.
+[[example]]
+name = "twap_stream"
+required-features = ["rtds"]
+
 # `cargo test` and `cargo nextest` build examples but do not run their unit
 # tests unless asked, so the rate-limit harnesses' tests would otherwise never
 # run in CI. The verdict rules that pinned `shared::data_limits`'s v2
@@ -350,8 +470,30 @@ path = "examples/closed_positions_burst_probe.rs"
 test = true
 required-features = ["data"]
 
+# The soak that measured `shared::perps_limits`; its verdict rules are
+# polyoxide-test-support's `soak::verdict::strict`, tested there.
+[[example]]
+name = "info_soak"
+path = "examples/info_soak.rs"
+test = true
+required-features = ["perps"]
+
+# Every module and `-ws` feature, `keychain` and `specta`; not `test-server`,
+# which exposes captured frames for tests alone.
 [package.metadata.docs.rs]
-all-features = true
+features = [
+    "clob",
+    "clob-ws",
+    "gamma",
+    "data",
+    "relay",
+    "perps",
+    "perps-ws",
+    "rtds",
+    "sports",
+    "keychain",
+    "specta",
+]
 
 # Registration, read by scripts/gen_registry.py: the README line, the venue
 # and product ids, the docs/specs/ mirrors covered, one entry per live test
@@ -359,12 +501,16 @@ all-features = true
 # in the foundation crates and the exceptions it allows there. Run
 # `python3 scripts/gen_registry.py --write` after an edit.
 [package.metadata.polyoxide]
-readme = "Client library for Polymarket's APIs, one feature per module: `clob` (order book, with its sockets under `clob-ws`), `gamma` (market data), `data` (user data, v1 and v2) and `relay` (gasless transactions), with the code the modules share in `shared`; perps, rtds and sports arrive in Story 5.5"
+readme = "Client library for Polymarket's APIs, one feature per module: `clob` (order book, with its sockets under `clob-ws`), `gamma` (market data), `data` (user data, v1 and v2), `relay` (gasless transactions), `perps` (perpetual futures market data, with its sockets under `perps-ws`), `rtds` (crypto price streams) and `sports` (live sports scores), with the code the HTTP modules share in `shared`"
 venue = "polymarket"
-products = ["clob", "gamma", "data", "relay"]
-mirrors = ["clob", "gamma", "data", "data-v2", "undocumented", "relay", "session-keys"]
+products = ["clob", "gamma", "data", "relay", "perps", "rtds", "sports"]
+mirrors = ["clob", "gamma", "data", "data-v2", "undocumented", "relay", "session-keys", "perps", "rtds", "sports"]
 identifiers = ["Poly-RateLimit"]
-notes = ["only `clob` and `relay` build `alloy`, which `test_dep_allowlists.py` holds per feature; `clob` does not turn on `gamma`, and with both the CLOB client looks a proxy wallet up through Gamma"]
+notes = [
+  "only `clob` and `relay` build `alloy`, and only the HTTP modules core, which `test_dep_allowlists.py` holds per feature; `clob` does not turn on `gamma`, and with both the CLOB client looks a proxy wallet up through Gamma",
+  "`rtds` and `sports` build no `polyoxide-core`, `reqwest` or `alloy`, so a credential-free feed builds no HTTP or signing stack",
+  "perps' auth and trading pending",
+]
 
 [package.metadata.polyoxide.live.live_clob]
 suite = "clob"
@@ -422,6 +568,31 @@ secrets = [
   "RELAYER_API_KEY",
   "RELAYER_API_KEY_ADDRESS",
 ]
+
+[package.metadata.polyoxide.live.live_perps]
+suite = "perps"
+timeout = 15
+features = ["perps"]
+secrets = []
+
+[package.metadata.polyoxide.live.live_perps_ws]
+suite = "perps"
+timeout = 15
+features = ["perps-ws"]
+secrets = []
+
+[package.metadata.polyoxide.live.live_rtds]
+suite = "rtds"
+timeout = 15
+features = ["rtds"]
+secrets = []
+
+[package.metadata.polyoxide.live.live_sports]
+suite = "sports"
+timeout = 20
+features = ["sports"]
+secrets = []
+note = "20-minute budget for its 180 s wire-agreement window"
 
 # The foundation crates' protected test names and probe that still name a
 # Polymarket product or host (S2 may not rename a test, AD-12).

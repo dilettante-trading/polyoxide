@@ -1,6 +1,6 @@
 # polyoxide
 
-Unified Rust client for [Polymarket](https://polymarket.com) APIs, re-exporting the CLOB (trading), Gamma (market data), Data (user positions/trades), RTDS (price streams), Perps (perpetual futures market data) and Sports (live scores) crates behind feature flags.
+Unified Rust client for [Polymarket](https://polymarket.com) APIs, re-exporting `polyoxide-polymarket`'s CLOB (trading), Gamma (market data), Data (user positions/trades), RTDS (price streams), Perps (perpetual futures market data) and Sports (live scores) modules behind feature flags.
 
 More information about this crate can be found in the [crate documentation](https://docs.rs/polyoxide/).
 
@@ -36,10 +36,10 @@ cargo add polyoxide --no-default-features --features full
 | `gamma` | yes | Read-only market data via `polyoxide-polymarket`'s `gamma` module |
 | `data`  | yes | Read-only user positions/trades via `polyoxide-polymarket`'s `data` module |
 | `ws`    | no  | CLOB WebSocket streaming via `polyoxide-polymarket`'s `clob-ws` feature (implies `clob`) |
-| `rtds`  | no  | RTDS crypto price streams via `polyoxide-rtds` |
-| `perps` | no  | Perps public market data via `polyoxide-perps` |
-| `perps-ws` | no | Perps WebSocket streaming (implies `perps`) |
-| `sports` | no | Live sports scores via `polyoxide-sports` |
+| `rtds`  | no  | RTDS crypto price streams via `polyoxide-polymarket`'s `rtds` module |
+| `perps` | no  | Perps public market data via `polyoxide-polymarket`'s `perps` module |
+| `perps-ws` | no | Perps WebSocket streaming via `polyoxide-polymarket`'s `perps-ws` feature (implies `perps`) |
+| `sports` | no | Live sports scores via `polyoxide-polymarket`'s `sports` module |
 | `full`  | no  | Enables `clob` + `gamma` + `data` + `ws` + `rtds` + `perps` + `perps-ws` + `sports` |
 | `keychain` | no | OS keychain credential storage; off by default |
 

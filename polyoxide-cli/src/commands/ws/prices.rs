@@ -9,7 +9,7 @@ use std::{
 use clap::Args;
 use color_eyre::eyre::Result;
 use futures_util::StreamExt;
-use polyoxide_rtds::{PriceEvent, Rtds, Subscription, Topic, TwapWindow};
+use polyoxide_polymarket::rtds::{PriceEvent, Rtds, Subscription, Topic, TwapWindow};
 
 use crate::commands::common::parsing::parse_duration;
 
@@ -177,7 +177,10 @@ pub async fn run(args: PricesArgs) -> Result<()> {
     Ok(())
 }
 
-fn print_update(update: &polyoxide_rtds::PriceUpdate, format: OutputFormat) -> Result<()> {
+fn print_update(
+    update: &polyoxide_polymarket::rtds::PriceUpdate,
+    format: OutputFormat,
+) -> Result<()> {
     match format {
         OutputFormat::Pretty => println!(
             "{:>10} {:>20} {}",

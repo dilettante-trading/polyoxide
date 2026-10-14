@@ -25,7 +25,7 @@
 //!   use [`WebSocket::subscribe_markets`] to adjust the filter on a live connection.
 //!
 //! The live sports feed is not a CLOB channel. It is served by another host and
-//! lives in the `polyoxide-sports` crate.
+//! lives in this crate's `sports` module.
 //!
 //! # Basic Example
 //!

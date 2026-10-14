@@ -6,7 +6,7 @@
 //!
 //! Only a real connection catches a parser that silently discards every frame:
 //! unit tests fed a fabricated frame pass regardless. The sports channel shipped
-//! that way before it moved to `polyoxide-sports`, whose live suite now carries
+//! that way before it moved to the `sports` module, whose live suite now carries
 //! its tests.
 
 #![cfg(feature = "clob-ws")]

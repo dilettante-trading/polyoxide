@@ -9,7 +9,7 @@ use std::{
 use clap::Args;
 use color_eyre::eyre::Result;
 use futures_util::{Stream, StreamExt};
-use polyoxide_sports::{Event, GameKey, MatchUpdate, SportsError, SportsWsBuilder};
+use polyoxide_polymarket::sports::{Event, GameKey, MatchUpdate, SportsError, SportsWsBuilder};
 
 use crate::commands::common::parsing::{parse_duration, parse_list_entry};
 

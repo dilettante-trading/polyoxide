@@ -16,20 +16,18 @@ clob = ["dep:polyoxide-polymarket", "polyoxide-polymarket/clob"]
 gamma = ["dep:polyoxide-polymarket", "polyoxide-polymarket/gamma"]
 data = ["dep:polyoxide-polymarket", "polyoxide-polymarket/data"]
 ws = ["clob", "polyoxide-polymarket/clob-ws"]
-rtds = ["dep:polyoxide-rtds"]
-perps = ["dep:polyoxide-perps"]
-perps-ws = ["perps", "polyoxide-perps/ws"]
-sports = ["dep:polyoxide-sports"]
+rtds = ["dep:polyoxide-polymarket", "polyoxide-polymarket/rtds"]
+perps = ["dep:polyoxide-polymarket", "polyoxide-polymarket/perps"]
+perps-ws = ["perps", "polyoxide-polymarket/perps-ws"]
+sports = ["dep:polyoxide-polymarket", "polyoxide-polymarket/sports"]
 full = ["clob", "gamma", "data", "ws", "rtds", "perps", "perps-ws", "sports"]
 keychain = ["polyoxide-polymarket?/keychain"]
 
 [dependencies]
 polyoxide-venue = { workspace = true }
-# The `clob`, `gamma` and `data` modules, under the features of those names.
+# The `clob`, `gamma`, `data`, `rtds`, `perps` and `sports` modules, under the
+# features of those names.
 polyoxide-polymarket = { workspace = true, optional = true }
-polyoxide-rtds = { workspace = true, optional = true }
-polyoxide-perps = { workspace = true, optional = true }
-polyoxide-sports = { workspace = true, optional = true }
 thiserror = { workspace = true }
 
 [dev-dependencies]

@@ -9,7 +9,7 @@ use std::{io, io::Write, time::Duration};
 use clap::Parser;
 use futures_util::{stream, StreamExt};
 use polyoxide_cli::commands::ws::sports::{run_with, SportsArgs};
-use polyoxide_sports::{fixtures, Event, MatchUpdate, SportsError};
+use polyoxide_polymarket::sports::{fixtures, Event, MatchUpdate, SportsError};
 use serde_json::Value;
 
 #[derive(Parser)]

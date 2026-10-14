@@ -420,7 +420,7 @@ async fn live_list_events() {
     assert!(!events.is_empty(), "should return at least one event");
 }
 
-/// A game event carries what joins it to a `polyoxide-sports` score: its
+/// A game event carries what joins it to a `sports` module score: its
 /// `gameId`, its two sides and its league. `/events` must apply `game_id`
 /// rather than ignore it; `openapi.yaml` does not list it for this route.
 #[tokio::test]
