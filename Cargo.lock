@@ -3983,6 +3983,7 @@ dependencies = [
  "polyoxide-core",
  "polyoxide-polymarket",
  "polyoxide-test-support",
+ "polyoxide-venue",
  "serde",
  "serde_json",
  "tempfile",

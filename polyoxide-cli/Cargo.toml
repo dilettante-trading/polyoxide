@@ -12,7 +12,12 @@ categories = ["command-line-utilities"]
 
 [features]
 default = []
-keychain = ["polyoxide-polymarket/keychain", "polyoxide-polymarket/relay", "dep:polyoxide-core"]
+keychain = [
+    "polyoxide-polymarket/keychain",
+    "polyoxide-polymarket/relay",
+    "dep:polyoxide-core",
+    "dep:polyoxide-venue",
+]
 parquet = ["dep:arrow", "dep:parquet"]
 
 [[bin]]
@@ -25,10 +30,13 @@ doc = false
 [dependencies]
 polyoxide-binance = { workspace = true, features = ["usdm-ws"] }
 polyoxide-core = { workspace = true, optional = true, features = ["keychain"] }
+# `Secret`, which carries a credential's values to the keychain, under `keychain`.
+polyoxide-venue = { workspace = true, optional = true }
 # `relay` and `keychain` only under `keychain`, for the relay's keychain service.
 polyoxide-polymarket = { workspace = true, features = ["clob-ws", "gamma", "data", "rtds", "sports"] }
 tokio = { workspace = true, features = ["macros", "rt-multi-thread", "time", "net"] }
-clap = { version = "4.5", features = ["derive", "env"] }
+# `string`: the credentials command names each flag after its field at run time.
+clap = { version = "4.5", features = ["derive", "env", "string"] }
 clap_complete = "4.5"
 serde = { workspace = true }
 serde_json = { workspace = true }

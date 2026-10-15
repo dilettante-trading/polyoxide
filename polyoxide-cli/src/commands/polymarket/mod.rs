@@ -6,6 +6,9 @@ pub mod gamma;
 pub mod rtds;
 pub mod sports;
 
+#[cfg(feature = "keychain")]
+pub mod credentials;
+
 use clap::Subcommand;
 use color_eyre::eyre::Result;
 
@@ -36,9 +39,12 @@ pub enum PolymarketCommand {
         #[command(subcommand)]
         command: sports::SportsCommand,
     },
-    /// Manage OS keychain credentials
+    /// Store, show or delete Polymarket credentials in the OS keychain
     #[cfg(feature = "keychain")]
-    Credentials(crate::commands::credentials::CredentialsCommand),
+    Credentials {
+        #[command(subcommand)]
+        command: crate::commands::credentials::Credentials<credentials::Polymarket>,
+    },
 }
 
 impl PolymarketCommand {
@@ -50,7 +56,7 @@ impl PolymarketCommand {
             Self::Rtds { command } => command.run().await,
             Self::Sports { command } => command.run().await,
             #[cfg(feature = "keychain")]
-            Self::Credentials(cmd) => cmd.run(),
+            Self::Credentials { command } => command.run(),
         }
     }
 }
