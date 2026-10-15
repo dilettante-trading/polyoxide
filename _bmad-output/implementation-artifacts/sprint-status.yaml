@@ -29,7 +29,7 @@
 # - Dev moves story to 'review', then runs code-review (fresh context, different LLM recommended)
 # - Retrospective appends its action items to action_items; the status view surfaces open ones
 generated: 10-08-2026 14:57
-last_updated: 10-15-2026 13:30
+last_updated: 10-15-2026 20:53
 project: polyoxide
 project_key: NOKEY
 tracking_system: file-system
@@ -143,8 +143,8 @@ development_status:
   5-7-the-multi-venue-umbrella: review
   5-8-the-cli-on-the-venue-axis: review
   5-9-cli-credentials-over-a-shared-trait: review
-  5-11-docs-and-standing-rules-for-a-multi-venue-toolkit: backlog
-  5-12-the-s2-release: backlog
+  5-11-docs-and-standing-rules-for-a-multi-venue-toolkit: review
+  5-12-the-s2-release: review
   epic-5-retrospective: optional
 
   epic-6: backlog

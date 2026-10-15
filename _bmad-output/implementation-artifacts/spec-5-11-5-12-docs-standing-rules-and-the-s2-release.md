@@ -2,7 +2,7 @@
 title: 'Stories 5.11 and 5.12: docs for a multi-venue toolkit, and the S2 release'
 type: 'chore'
 created: '2026-10-15'
-status: 'ready-for-dev'
+status: 'done'
 route: 'dispatch'
 baseline_commit: '85c660d727b8df262f308113f7fbb4f1d613677e'
 review_loop_iteration: 0
@@ -138,14 +138,14 @@ context:
 ## Tasks & Acceptance
 
 **Execution:**
-- [ ] The docs above, then `gen_registry.py --write` -- 5.11.
-- [ ] `tombstones/*` plus the `check-manifests` extension, its pytest and the generator-skip test, and the package-job dry run -- the release's pointers.
-- [ ] Regenerate `changed-in-place`, then `--strict` with its pin test and CLAUDE.md -- the strict gate.
-- [ ] `docs/s3-removals.md`, `api_removals.py` keyed by stage, and pytest -- the S3 gate.
-- [ ] The nightly ref guard, with its test -- a safe hub dispatch.
-- [ ] `docs/s2-migration.md`, the pins, the deferred-work status lines and the unmerged-amendments entry -- the notes.
-- [ ] `docs/rename-map.tsv` from `manifest --expand` on the final tree -- the frozen map.
-- [ ] Re-prove the 20 mutants last, then update `docs/MUTANTS.md` -- the AC.
+- [x] The docs above, then `gen_registry.py --write` -- 5.11.
+- [x] `tombstones/*` plus the `check-manifests` extension, its pytest and the generator-skip test, and the package-job dry run -- the release's pointers.
+- [x] Regenerate `changed-in-place`, then `--strict` with its pin test and CLAUDE.md -- the strict gate.
+- [x] `docs/s3-removals.md`, `api_removals.py` keyed by stage, and pytest -- the S3 gate.
+- [x] The nightly ref guard, with its test -- a safe hub dispatch.
+- [x] `docs/s2-migration.md`, the pins, the deferred-work status lines and the unmerged-amendments entry -- the notes.
+- [x] `docs/rename-map.tsv` from `manifest --expand` on the final tree -- the frozen map.
+- [x] Re-prove the 20 mutants last, then update `docs/MUTANTS.md` -- the AC.
 
 **Acceptance Criteria:**
 - Given the tree, when clippy, the workspace tests, rustdoc and cargo-hack run, then they pass with the per-binary test counts unchanged.
@@ -158,6 +158,29 @@ context:
 ## Spec Change Log
 
 ## Review Triage Log
+
+| # | Finding | Verdict | Evidence | Route |
+|---|---|---|---|---|
+| 1 | VG/BH: `docs/rename-map.tsv` is never compared with the removals job's own `--expand` output | medium | Its test checks lines against rows only; a later hub commit that changes the entry set passes `--strict` and the test | patch |
+| 2 | BH: the tombstones declare none of the 0.39 features, so `features = ["ws"]` at 0.40 fails resolution without the pointer | medium | Reviewer reproduced cargo's "does not have that feature" with a copy of `tombstones/clob` | patch |
+| 3 | BH: the tombstone docs say where `ws` went but not `keychain`, `specta`, `test-fixtures` or `test-server` | low | READMEs and crate docs name only the module feature and `WS_FEATURES` | patch (with 2) |
+| 4 | EC/BH: no test builds a tombstone, or renders it with `--cfg docsrs` | low | The matrix rows rest on a regex over the source; I confirmed both by hand | patch |
+| 5 | EC: a hub dispatch with real failures shows a green run | medium | Live jobs swallow nextest's exit (`|| true`) and the only red path was the issue step, now main-only | patch |
+| 6 | EC: `check-manifests` with mixed member versions exits 4 before printing the missing-metadata list | low | `tombstone_faults` calls `workspace_version` before `missing` prints | patch |
+| 7 | BH: `test_the_real_s3_listing_starts_at_the_s2_release_and_removes_nothing` fails on S3's first removal | low | It asserts `removed == frozenset()` unconditionally; its sibling skips outside S2 | patch |
+| 8 | BH: the upgrade checklist omits `polyoxide::Polymarket`/`PolymarketBuilder` → `polyoxide::polymarket::…` | low | Only "The umbrella" prose has it | patch |
+| 9 | BH: the `BuildError`/`StreamName` glob sentence does not say what collides | low | s2-migration.md, The umbrella | patch |
+| 10 | BH: the TSV drops a feature row's note ("with `gamma`") | low | `polyoxide-clob/default` maps to `polyoxide-polymarket/clob` alone; the manifest row adds `gamma` | patch |
+| 11 | BH: s3-removals.md says S3 "plans to remove nothing"; s2-migration.md says S3 removes `ClobWsError`'s two unused variants | low | Both new in this diff | patch |
+| 12 | EC/BH: the switch commit must also edit `test_the_real_workspace_is_in_stage_s2`, the `S2_BASELINE` cache-key pins and decide the test-bodies job | medium | Pre-existing S2 pins; the frozen Decisions list omits them | defer |
+| 13 | EC: CLAUDE.md's local tombstone loop fails on an empty glob and carries on past a failure | low | CLAUDE.md:53; agent-context file | defer |
+| 14 | BH: CLAUDE.md's Mock HTTP paragraph now puts "Each has helper functions" after the socket sentence | low | Agent-context file | defer |
+| 15 | BH: `nightly-schema.yml` has no main-only guard on its issue steps | low | Pre-existing; the runbook does not dispatch it on the hub | defer |
+| 16 | BH: the crates.io token may lack publish-new for `polyoxide-polymarket` | maybe-false | `polyoxide-cli` is on crates.io (200), so publish-new worked at 0.39.0; the token's current scopes are not visible here | defer (medium, unverified) |
+| 17 | EC: an unset stage prints "stage None retires no …" | low | gen_registry requires the stage; the fix adds a branch | reject |
+| 18 | EC: `release` with an unset stage raises where it fell back to S1 | low | Same; the error still stops the job | reject |
+| 19 | EC: an empty `[dependencies]` table passes the tombstone check | false | An empty table resolves nothing, so no harm follows | reject |
+| 20 | BH: deferred-work's `game_id` entry got no status line | low | The spec asks for status lines on L153, L281 and L295 only; the guide lists the gap | reject |
 
 ## Design Notes
 
