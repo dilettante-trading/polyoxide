@@ -351,3 +351,12 @@
 - source_spec: `_bmad-output/implementation-artifacts/spec-5-6-binance-follows-the-conventions.md`
   summary: For Story 5.12: regenerate `docs/rename-manifest.md`'s changed-in-place region with cargo-semver-checks. It was last written in Story 5.1, and 5.2–5.6 changed signatures in place, such as every Binance `send`, `new` and `build` returning `UsdmError`. (low, review 1 B10)
   evidence: `git log -L` on the region shows only 159b074. Every story's local run used `--no-semver-checks`, which keeps the region as it was (`scripts/api_removals.py:1187`), and the region feeds 5.12's consumer-impact notes.
+- source_spec: `_bmad-output/implementation-artifacts/spec-5-7-the-multi-venue-umbrella.md`
+  summary: Hand the unified client's Gamma to the CLOB with `ClobBuilder::gamma(gamma.clone())` in `PolymarketBuilder::build`, so CLOB's proxy-wallet lookup uses `gamma_base_url` and shares one Gamma pool and limiter. (medium, review 1 E1)
+  evidence: `polyoxide-polymarket/src/client.rs` builds a Gamma from `gamma_base_url` and then a `ClobBuilder` with no `.gamma(...)`, and `clob/client.rs:919-927` builds a second, default Gamma when none is set. A custom `gamma_base_url` (a mock or a proxy) is ignored for proxy lookups. Pre-existing: the umbrella's builder did the same at v0.39.0, and 5.7 moved it verbatim.
+- source_spec: `_bmad-output/implementation-artifacts/spec-5-7-the-multi-venue-umbrella.md`
+  summary: When `sha2` moves into the signing rule (the 5.5 B2 entry above), move it in `PER_FEATURE["polyoxide"]` too, since the umbrella's table copies Polymarket's placement. (low, review 1 B3)
+  evidence: `test_dep_allowlists.py`'s umbrella HTTP rule lists `sha2` beside `reqwest`, `polyoxide-core` and `governor`, so a `polymarket-gamma`, `-data`, `-perps` or `binance-usdm` umbrella build that started pulling in `sha2` would pass.
+- source_spec: `_bmad-output/implementation-artifacts/spec-5-7-the-multi-venue-umbrella.md`
+  summary: Reword the root README's opening line and CLAUDE.md's Project Overview, which still call polyoxide a "Rust SDK toolkit for Polymarket APIs", to name Binance too. (low, review 1 B15)
+  evidence: `polyoxide-binance` has been a workspace crate since 0.37, and the umbrella's own description now reads "Multi-venue Rust toolkit". Pre-existing, and the fix touches an agent-context file.
