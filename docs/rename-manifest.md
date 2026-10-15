@@ -230,9 +230,9 @@ unless each new command below parses, and each old one is gone.
 - `polyoxide clob` → `polyoxide polymarket clob` Story 5.8.
 - `polyoxide clob prices download` → `polyoxide polymarket clob prices download` Story 5.8.
 - `polyoxide ws` → removed in Story 5.8: each socket streams under its venue and module, with the verb `stream`, as the rows below say.
-- `polyoxide ws market` → `polyoxide polymarket clob stream market` Story 5.8.
-- `polyoxide ws user` → `polyoxide polymarket clob stream user` Story 5.8.
-- `polyoxide ws prices` → `polyoxide polymarket rtds stream` Story 5.8.
+- `polyoxide ws market` → `polyoxide polymarket clob stream market` Story 5.8: the default `--format pretty` prints one summary line per event, where it printed indented JSON; a stream error it cannot skip exits non-zero, where it printed `Error:` and exited 0; and Ctrl+C is no longer caught, so the process ends with the signal.
+- `polyoxide ws user` → `polyoxide polymarket clob stream user` Story 5.8: the default `--format pretty` prints one summary line per event, where it printed indented JSON; a stream error it cannot skip exits non-zero, where it printed `Error:` and exited 0; and Ctrl+C is no longer caught, so the process ends with the signal.
+- `polyoxide ws prices` → `polyoxide polymarket rtds stream` Story 5.8: a stream error it cannot skip exits non-zero, where it printed `Error:` and exited 0; and Ctrl+C is no longer caught, so the process ends with the signal.
 - `polyoxide ws sports` → `polyoxide polymarket sports stream` Story 5.8.
 - `polyoxide ws binance` → `polyoxide binance usdm stream` Story 5.8.
 - `polyoxide ws market --format summary` → removed in Story 5.8: `pretty`, the default, prints what `summary` did, one line per event; `json` prints each event as one compact object per line, and indented JSON is gone.

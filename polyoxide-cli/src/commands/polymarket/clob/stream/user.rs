@@ -72,6 +72,18 @@ pub struct UserArgs {
     credential_source: Option<CredentialSource>,
 }
 
+impl UserArgs {
+    /// The market IDs to subscribe to. An empty entry, as in `a,`, is no
+    /// market.
+    fn markets(&self) -> Vec<String> {
+        self.market_ids
+            .iter()
+            .filter(|id| !id.is_empty())
+            .cloned()
+            .collect()
+    }
+}
+
 /// Connect to the user channel and stream until `-n`, `-t` or Ctrl+C.
 pub async fn run(mut args: UserArgs) -> Result<()> {
     let credentials = get_credentials(
@@ -81,13 +93,7 @@ pub async fn run(mut args: UserArgs) -> Result<()> {
         #[cfg(feature = "keychain")]
         args.credential_source,
     )?;
-    // An empty entry, as in `a,`, is no market to subscribe to.
-    let market_ids: Vec<String> = args
-        .market_ids
-        .iter()
-        .filter(|id| !id.is_empty())
-        .cloned()
-        .collect();
+    let market_ids = args.markets();
     eprintln!(
         "Connecting to user channel for {} market(s)...",
         market_ids.len()
@@ -327,6 +333,14 @@ mod tests {
             w.args.filter,
             vec![UserEventType::Order, UserEventType::Trade]
         );
+    }
+
+    #[test]
+    fn an_empty_market_entry_is_dropped() {
+        for (list, expected) in [("a,", vec!["a"]), ("a,,b", vec!["a", "b"]), (",", vec![])] {
+            let w = try_parse(&["test", list]).unwrap();
+            assert_eq!(w.args.markets(), expected, "{list:?}");
+        }
     }
 
     #[test]

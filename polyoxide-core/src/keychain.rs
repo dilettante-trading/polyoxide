@@ -401,6 +401,45 @@ mod tests {
         assert!(given(&values, "other").is_none());
     }
 
+    /// A credential on a service of its own, which only the round trip
+    /// below writes to.
+    struct RoundTrip;
+
+    impl StoredCredential for RoundTrip {
+        const SERVICE: &'static str = "polyoxide-core-test-stored-credential-roundtrip";
+        const FIELDS: &'static [Field] = &[Field::secret("key"), Field::plain("label")];
+
+        fn validate(_: &[(&str, Secret<String>)]) -> Result<(), KeychainError> {
+            Ok(())
+        }
+    }
+
+    #[test]
+    #[ignore] // Requires OS keychain daemon
+    fn a_stored_credential_round_trips_and_delete_all_removes_every_field() {
+        let written = store::<RoundTrip>(&values(&[("label", "l"), ("key", "k")])).unwrap();
+        assert_eq!(
+            written,
+            RoundTrip::FIELDS,
+            "written in the credential's order"
+        );
+
+        let shown: Vec<(&str, String)> = show::<RoundTrip>()
+            .into_iter()
+            .map(|(field, value)| (field.name, value.unwrap().expose().clone()))
+            .collect();
+        assert_eq!(shown, [("key", "k".to_owned()), ("label", "l".to_owned())]);
+
+        delete_all::<RoundTrip>().unwrap();
+        for (field, value) in show::<RoundTrip>() {
+            assert!(
+                matches!(value, Err(KeychainError::NotFound { .. })),
+                "{} survived delete_all: {value:?}",
+                field.name
+            );
+        }
+    }
+
     #[test]
     fn field_constructors_mark_secrets() {
         assert_eq!(

@@ -81,6 +81,30 @@ fn warn_if_window_ignored(window: Option<&str>, topic_name: &str) {
     }
 }
 
+impl PricesArgs {
+    /// What to subscribe to on `topic`: one subscription per symbol, or one
+    /// unfiltered subscription for every symbol.
+    fn subscriptions(&self, topic: Topic) -> Vec<Subscription> {
+        // An empty --symbol list means "every symbol", which is a single
+        // unfiltered subscription — not an empty fan-out. `Subscription::symbols`
+        // returns an empty vec for an empty input, and `Rtds::connect` refuses an
+        // empty subscription set outright, so this has to be special-cased here.
+        // An empty entry, as in `--symbol btc/usd,`, is dropped: a filter that
+        // matches nothing would deliver nothing, and say nothing about it.
+        let symbols: Vec<String> = self
+            .symbol
+            .iter()
+            .filter(|s| !s.is_empty())
+            .cloned()
+            .collect();
+        if symbols.is_empty() {
+            vec![Subscription::for_topic(topic)]
+        } else {
+            Subscription::for_topic(topic).symbols(symbols)
+        }
+    }
+}
+
 /// Connect to RTDS and stream until `-n`, `-t` or Ctrl+C.
 pub async fn run(args: PricesArgs) -> Result<()> {
     let topic = match args.topic {
@@ -100,23 +124,7 @@ pub async fn run(args: PricesArgs) -> Result<()> {
         }
     };
 
-    // An empty --symbol list means "every symbol", which is a single
-    // unfiltered subscription — not an empty fan-out. `Subscription::symbols`
-    // returns an empty vec for an empty input, and `Rtds::connect` refuses an
-    // empty subscription set outright, so this has to be special-cased here.
-    // An empty entry, as in `--symbol btc/usd,`, is dropped: a filter that
-    // matches nothing would deliver nothing, and say nothing about it.
-    let symbols: Vec<String> = args
-        .symbol
-        .iter()
-        .filter(|s| !s.is_empty())
-        .cloned()
-        .collect();
-    let subscriptions = if symbols.is_empty() {
-        vec![Subscription::for_topic(topic)]
-    } else {
-        Subscription::for_topic(topic).symbols(symbols)
-    };
+    let subscriptions = args.subscriptions(topic);
 
     eprintln!("Connecting to RTDS...");
     let mut feed = Rtds::connect(subscriptions).await?;
@@ -316,6 +324,31 @@ mod tests {
     fn symbols_split_on_commas_and_are_trimmed() {
         let w = try_parse(&["test", "--symbol", "btc/usd, eth/usd"]).unwrap();
         assert_eq!(w.args.symbol, vec!["btc/usd", "eth/usd"]);
+    }
+
+    #[test]
+    fn an_empty_symbol_entry_is_dropped() {
+        let topic = Topic::ChainlinkSpot;
+        let filters = |argv: &[&str]| -> Vec<Option<String>> {
+            try_parse(argv)
+                .unwrap()
+                .args
+                .subscriptions(topic)
+                .iter()
+                .map(|s| s.symbol_filter().map(str::to_owned))
+                .collect()
+        };
+        assert_eq!(
+            filters(&["test", "--symbol", "btc/usd,"]),
+            [Some("btc/usd".to_owned())]
+        );
+        assert_eq!(
+            filters(&["test", "--symbol", "btc/usd,,eth/usd"]),
+            [Some("btc/usd".to_owned()), Some("eth/usd".to_owned())]
+        );
+        // Nothing left, or nothing given, is the one unfiltered subscription.
+        assert_eq!(filters(&["test", "--symbol", ","]), [None]);
+        assert_eq!(filters(&["test"]), [None]);
     }
 
     #[test]

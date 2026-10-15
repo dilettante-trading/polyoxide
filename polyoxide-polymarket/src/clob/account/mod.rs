@@ -825,10 +825,49 @@ mod tests {
 
         #[test]
         fn a_bad_store_is_refused_before_the_keyring() {
-            let err =
-                keychain::store::<Account>(&[("private_key", Secret::new("not a key".to_owned()))])
-                    .unwrap_err();
-            assert!(matches!(err, KeychainError::Invalid { .. }), "{err:?}");
+            let err = keychain::store::<Isolated>(&[(
+                "private_key",
+                Secret::new("not a key".to_owned()),
+            )])
+            .unwrap_err();
+            assert!(
+                matches!(&err, KeychainError::Invalid { service, field, .. }
+                    if service == "polyoxide-clob" && field == "private_key"),
+                "{err:?}"
+            );
+        }
+
+        /// `Account`'s fields and validation on a service no developer
+        /// stores to, so a store that got past validation could not reach
+        /// the real `polyoxide-clob` entries.
+        struct Isolated;
+
+        impl StoredCredential for Isolated {
+            const SERVICE: &'static str = "polyoxide-clob-test-isolated-store";
+            const FIELDS: &'static [keychain::Field] = Account::FIELDS;
+
+            fn validate(values: &[(&str, Secret<String>)]) -> Result<(), KeychainError> {
+                Account::validate(values)
+            }
+        }
+
+        #[test]
+        #[ignore] // Requires OS keychain daemon — run locally with `-- --ignored`
+        fn keychain_delete_leaves_no_field_behind() {
+            const SERVICE: &str = "polyoxide-clob-test-account-delete-every-field";
+
+            for field in Account::FIELDS {
+                keychain::set(SERVICE, field.name, "value").unwrap();
+            }
+            Account::delete_from_keychain_in_service(SERVICE).unwrap();
+            for field in Account::FIELDS {
+                let result = keychain::get(SERVICE, field.name);
+                assert!(
+                    matches!(result, Err(KeychainError::NotFound { .. })),
+                    "{} survived the delete: {result:?}",
+                    field.name
+                );
+            }
         }
     }
 }

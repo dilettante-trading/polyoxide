@@ -16,7 +16,7 @@ use polyoxide_polymarket::{
         BookMessage, Channel, ClobWsError, MarketMessage, OrderEventType, OrderMessage,
         PriceChange, PriceChangeMessage, TradeMessage, TradeStatus, UserMessage,
     },
-    rtds::{fixtures, PriceEvent, RtdsError},
+    rtds::{fixtures, PriceEvent, RtdsError, Topic},
 };
 use serde_json::Value;
 
@@ -223,6 +223,14 @@ async fn market_warns_of_a_gated_filter_without_custom_features() {
     assert!(!run.err.contains("warning"), "{}", run.err);
 }
 
+#[tokio::test]
+async fn market_timeout_ends_a_quiet_feed() {
+    let run = run_market(&["-t", "100ms"], stream::pending()).await;
+    run.result.as_ref().unwrap();
+    assert!(run.out.is_empty(), "{}", run.out);
+    assert!(run.err.contains("Timeout reached"), "{}", run.err);
+}
+
 // ── user ─────────────────────────────────────────────────────────────
 
 #[derive(Parser)]
@@ -329,6 +337,15 @@ async fn user_ends_with_an_error_it_cannot_skip() {
     assert!(run.out.is_empty(), "{}", run.out);
 }
 
+#[tokio::test]
+async fn user_timeout_ends_a_quiet_feed() {
+    // `run_user` keeps the feed open after the events it is given.
+    let run = run_user(&["-t", "100ms"], vec![]).await;
+    run.result.as_ref().unwrap();
+    assert!(run.out.is_empty(), "{}", run.out);
+    assert!(run.err.contains("Timeout reached"), "{}", run.err);
+}
+
 // ── rtds ─────────────────────────────────────────────────────────────
 
 #[derive(Parser)]
@@ -423,4 +440,32 @@ async fn prices_skip_a_bad_frame_and_end_with_a_rejected_subscription() {
     let error = run.result.unwrap_err();
     assert!(error.to_string().contains("topic not found"), "{error}");
     assert!(run.out.is_empty(), "{}", run.out);
+}
+
+#[tokio::test]
+async fn prices_skip_a_value_that_did_not_decode() {
+    let events = vec![
+        Err(RtdsError::Precision {
+            raw: "not-a-number".into(),
+            topic: Topic::BinanceSpot,
+        }),
+        frame(fixtures::BINANCE_UPDATE),
+    ];
+    let run = run_prices(&["-n", "1"], events).await;
+    run.result.as_ref().unwrap();
+    assert_eq!(run.out.lines().count(), 1, "{}", run.out);
+    assert!(
+        run.err.contains("# skipped a value") && run.err.contains("not-a-number"),
+        "{}",
+        run.err
+    );
+}
+
+#[tokio::test]
+async fn prices_timeout_ends_a_quiet_feed() {
+    // `run_prices` keeps the feed open after the events it is given.
+    let run = run_prices(&["-t", "100ms"], vec![]).await;
+    run.result.as_ref().unwrap();
+    assert!(run.out.is_empty(), "{}", run.out);
+    assert!(run.err.contains("Timeout reached"), "{}", run.err);
 }

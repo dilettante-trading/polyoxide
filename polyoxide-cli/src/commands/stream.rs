@@ -98,6 +98,13 @@ where
                 break;
             }
         }
+        // Checked before waiting too: `timeout_at` polls the stream first, so
+        // a stream that is always ready, such as a backlog, would never let
+        // the timer fire.
+        if deadline.is_some_and(|deadline| tokio::time::Instant::now() >= deadline) {
+            writeln!(err, "Timeout reached")?;
+            break;
+        }
         let next = match deadline {
             Some(deadline) => match tokio::time::timeout_at(deadline, events.next()).await {
                 Ok(next) => next,
@@ -283,6 +290,54 @@ mod tests {
         run.result.unwrap();
         assert_eq!(run.out, "2\n");
         assert!(run.err.ends_with("The feed ended\n"), "{}", run.err);
+    }
+
+    /// A feed that skips every event without a word.
+    struct Silent;
+
+    impl Feed for Silent {
+        type Event = u32;
+        type Error = u32;
+
+        fn event(&mut self, _: u32, _: &mut dyn Write, _: &mut dyn Write) -> Result<Handled> {
+            Ok(Handled::Skipped)
+        }
+
+        fn error(&mut self, _: u32, _: &mut dyn Write) -> Result<()> {
+            Ok(())
+        }
+    }
+
+    #[test]
+    fn the_deadline_ends_a_feed_that_is_always_ready() {
+        // A backlog never leaves the stream pending, so only a deadline checked
+        // before each wait can end this run. The run has a thread and runtime
+        // of its own, so a regression fails here instead of hanging the suite.
+        let (done, ended) = std::sync::mpsc::channel();
+        std::thread::spawn(move || {
+            let runtime = tokio::runtime::Builder::new_current_thread()
+                .enable_time()
+                .build()
+                .unwrap();
+            let limits = Limits {
+                count: None,
+                timeout: Some(Duration::from_millis(100)),
+            };
+            let (mut out, mut err) = (Vec::new(), Vec::new());
+            let result = runtime.block_on(run(
+                limits,
+                stream::repeat(Ok(1)),
+                &mut Silent,
+                &mut out,
+                &mut err,
+            ));
+            let _ = done.send((result.is_ok(), String::from_utf8(err).unwrap()));
+        });
+        let (ok, err) = ended
+            .recv_timeout(Duration::from_secs(5))
+            .expect("the deadline did not end a feed that is always ready");
+        assert!(ok);
+        assert_eq!(err, "Timeout reached\n");
     }
 
     /// A writer whose reader has gone away, as stdout is under `| head -1`.

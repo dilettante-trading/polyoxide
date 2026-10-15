@@ -20,7 +20,10 @@ impl Kinds for Polymarket {
 #[cfg(test)]
 mod tests {
     use clap::Parser;
-    use polyoxide_core::KeychainError;
+    use polyoxide_core::{
+        keychain::{Field, StoredCredential},
+        KeychainError,
+    };
     use polyoxide_venue::Secret;
 
     use super::*;
@@ -158,9 +161,41 @@ mod tests {
         assert!(Wrapper::try_parse_from(["test", "store", "clob", "--passphrase", "p"]).is_err());
     }
 
+    /// `BuilderAccount`'s fields and validation on a service no developer
+    /// stores to, so a store that got past validation could not reach the real
+    /// `polyoxide-relay` entries.
+    struct IsolatedBuilder;
+
+    impl StoredCredential for IsolatedBuilder {
+        const SERVICE: &'static str = "polyoxide-cli-test-isolated-builder";
+        const FIELDS: &'static [Field] = BuilderAccount::FIELDS;
+
+        fn validate(values: &[(&str, Secret<String>)]) -> Result<(), KeychainError> {
+            BuilderAccount::validate(values)
+        }
+    }
+
+    /// Polymarket's `builder` kind, on [`IsolatedBuilder`]'s service.
+    struct Isolated;
+
+    impl Kinds for Isolated {
+        const KINDS: &'static [Kind] = &[Kind::of::<IsolatedBuilder>("builder", "isolated")];
+    }
+
+    #[derive(Parser)]
+    struct IsolatedWrapper {
+        #[command(subcommand)]
+        cmd: Credentials<Isolated>,
+    }
+
     #[test]
     fn a_relayer_key_without_its_address_is_refused_before_anything_is_written() {
-        let cmd = parse(&["test", "store", "builder", "--relayer-api-key", "k"]);
+        let argv = ["test", "store", "builder", "--relayer-api-key", "k"];
+        // The real command takes this argv; the isolated twin, with the same
+        // fields, runs it.
+        assert_eq!(given(&parse(&argv)), [("relayer_api_key", "k")]);
+        let cmd = IsolatedWrapper::try_parse_from(argv).unwrap().cmd;
+        assert_eq!(cmd.kind().service, IsolatedBuilder::SERVICE);
         let err = cmd.run().unwrap_err();
         match err.downcast_ref::<KeychainError>() {
             Some(KeychainError::Invalid { service, field, .. }) => {

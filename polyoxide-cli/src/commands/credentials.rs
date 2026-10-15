@@ -148,7 +148,8 @@ impl<K: Kinds> Credentials<K> {
 
 /// `show`'s output: one line per field, `present`, `not found` or
 /// `error: …`. A field that is not secret, such as an address, prints its
-/// value when present; a secret one never does.
+/// value when present, escaped, since v0.39.0 stored values unchecked and one
+/// may carry a newline or a terminal escape; a secret one never prints.
 pub fn render(service: &str, shown: &[(Field, Result<Secret<String>, KeychainError>)]) -> String {
     let width = shown
         .iter()
@@ -158,7 +159,7 @@ pub fn render(service: &str, shown: &[(Field, Result<Secret<String>, KeychainErr
     let mut text = format!("Keychain credentials for {service}:\n");
     for (field, value) in shown {
         let status = match value {
-            Ok(value) if !field.secret => value.expose().clone(),
+            Ok(value) if !field.secret => value.expose().escape_debug().to_string(),
             Ok(_) => "present".to_owned(),
             Err(KeychainError::NotFound { .. }) => "not found".to_owned(),
             Err(error) => format!("error: {error}"),
@@ -318,6 +319,24 @@ mod tests {
         );
         assert!(lines[3].ends_with(" not found"), "{text}");
         assert!(lines[4].contains(" error: "), "{text}");
+    }
+
+    #[test]
+    fn show_escapes_a_plain_value_so_it_stays_one_line() {
+        let shown = vec![(
+            Field::plain("relayer_api_key_address"),
+            Ok(Secret::new("0xabc\n\u{1b}[31mforged: present".to_owned())),
+        )];
+        let text = render("polyoxide-test", &shown);
+        assert_eq!(text.lines().count(), 2, "{text}");
+        assert!(!text.contains('\u{1b}'), "{text:?}");
+        assert!(
+            text.lines()
+                .nth(1)
+                .unwrap()
+                .ends_with(" 0xabc\\n\\u{1b}[31mforged: present"),
+            "{text}"
+        );
     }
 
     #[test]

@@ -55,7 +55,8 @@ impl polyoxide_core::keychain::StoredCredential for BuilderAccount {
                 "relayer_api_key",
                 "required with relayer_api_key_address; store the two together",
             ),
-            (_, Some(address)) if address.expose().trim().parse::<Address>().is_err() => {
+            // Checked as it would be stored, so padding is refused, not kept.
+            (_, Some(address)) if address.expose().parse::<Address>().is_err() => {
                 invalid("relayer_api_key_address", "not an address")
             }
             _ => Ok(()),
@@ -661,16 +662,62 @@ mod tests {
         }
 
         #[test]
+        fn a_padded_address_is_refused_rather_than_stored_unparseable() {
+            for padded in [format!(" {ADDRESS}"), format!("{ADDRESS}\n")] {
+                assert_eq!(
+                    refused(&[
+                        ("relayer_api_key", "rk"),
+                        ("relayer_api_key_address", padded.as_str())
+                    ]),
+                    "relayer_api_key_address",
+                    "{padded:?}"
+                );
+            }
+        }
+
+        #[test]
         fn a_bad_store_is_refused_before_the_keyring() {
-            let err = keychain::store::<BuilderAccount>(&[(
-                "relayer_api_key",
-                Secret::new("rk".to_owned()),
-            )])
-            .unwrap_err();
+            let err =
+                keychain::store::<Isolated>(&[("relayer_api_key", Secret::new("rk".to_owned()))])
+                    .unwrap_err();
             assert!(
-                matches!(&err, KeychainError::Invalid { field, .. } if field == "relayer_api_key_address"),
+                matches!(&err, KeychainError::Invalid { service, field, .. }
+                    if service == "polyoxide-relay" && field == "relayer_api_key_address"),
                 "{err:?}"
             );
+        }
+
+        /// `BuilderAccount`'s fields and validation on a service no developer
+        /// stores to, so a store that got past validation could not reach
+        /// the real `polyoxide-relay` entries.
+        struct Isolated;
+
+        impl StoredCredential for Isolated {
+            const SERVICE: &'static str = "polyoxide-relay-test-isolated-store";
+            const FIELDS: &'static [keychain::Field] = BuilderAccount::FIELDS;
+
+            fn validate(values: &[(&str, Secret<String>)]) -> Result<(), KeychainError> {
+                BuilderAccount::validate(values)
+            }
+        }
+
+        #[test]
+        #[ignore] // Requires OS keychain daemon
+        fn keychain_delete_leaves_no_field_behind() {
+            const SERVICE: &str = "polyoxide-relay-test-account-delete-every-field";
+
+            for field in BuilderAccount::FIELDS {
+                keychain::set(SERVICE, field.name, "value").unwrap();
+            }
+            BuilderAccount::delete_from_keychain_in_service(SERVICE).unwrap();
+            for field in BuilderAccount::FIELDS {
+                let result = keychain::get(SERVICE, field.name);
+                assert!(
+                    matches!(result, Err(KeychainError::NotFound { .. })),
+                    "{} survived the delete: {result:?}",
+                    field.name
+                );
+            }
         }
     }
 }

@@ -60,15 +60,20 @@ pub struct MarketArgs {
     timeout: Option<Duration>,
 }
 
+impl MarketArgs {
+    /// The asset IDs to subscribe to. An empty entry, as in `a,`, is no asset.
+    fn assets(&self) -> Vec<String> {
+        self.asset_ids
+            .iter()
+            .filter(|id| !id.is_empty())
+            .cloned()
+            .collect()
+    }
+}
+
 /// Connect to the market channel and stream until `-n`, `-t` or Ctrl+C.
 pub async fn run(args: MarketArgs) -> Result<()> {
-    // An empty entry, as in `a,`, is no asset to subscribe to.
-    let asset_ids: Vec<String> = args
-        .asset_ids
-        .iter()
-        .filter(|id| !id.is_empty())
-        .cloned()
-        .collect();
+    let asset_ids = args.assets();
     eprintln!(
         "Connecting to market channel for {} asset(s)...",
         asset_ids.len()
@@ -316,6 +321,14 @@ mod tests {
             w.args.filter,
             vec![MarketEventType::Book, MarketEventType::Price]
         );
+    }
+
+    #[test]
+    fn an_empty_asset_entry_is_dropped() {
+        for (list, expected) in [("a,", vec!["a"]), ("a,,b", vec!["a", "b"]), (",", vec![])] {
+            let w = try_parse(&["test", list]).unwrap();
+            assert_eq!(w.args.assets(), expected, "{list:?}");
+        }
     }
 
     #[test]
