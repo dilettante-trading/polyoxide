@@ -115,6 +115,14 @@ again on 2026-10-14 on top of `50a8ea5`, by running each row's tests with its mu
 then without it, through `cargo test -p polyoxide-binance --all-features`, and for row
 "(b), a socket reconnect" `cargo test -p <crate> --all-features -j 4 --no-fail-fast -- drift_r11`
 for `polyoxide-ws`, Binance and `polyoxide-polymarket`.
+Stories 5.11 and 5.12 moved no cited line or test. All twenty mutants, one per row and two
+each for rows (j) and (k), were proved again on 2026-10-15 on top of `e699e69`, the S2 hub's
+final tree, on Rust 1.95 with `-j 4`: each row's tests passed, then failed with its mutant in
+place, then passed again once the file was restored, with `git diff --exit-code` clean. They
+ran through `cargo test -p <crate> --all-features`, with `--lib` for a crate's inline tests,
+and for row "(b), a socket reconnect" `cargo test -p <crate> --all-features -- drift_r11` for
+`polyoxide-ws`, Binance and `polyoxide-polymarket`, where perps' and rtds' tests of one name
+both failed.
 
 ## The rules
 
