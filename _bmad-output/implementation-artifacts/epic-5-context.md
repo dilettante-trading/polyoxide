@@ -4,7 +4,7 @@
 
 ## Goal
 
-Consumers find each venue under one name. `polyoxide-polymarket` holds clob, gamma, data, relay, perps, rtds and sports as feature-gated modules, and `polyoxide-binance` holds usdm. On top sit a multi-venue `polyoxide` umbrella, a `polyoxide <venue> <module> <verb…>` CLI and `polyoxide.polymarket.*` in Python. The foundation crates carry no venue code, and the seven retired crates point to their new home. This is stage S2, the renames stage. Every public rename or move ships in this one release, so prader-rs rewrites its imports once.
+Consumers find each venue under one name. `polyoxide-polymarket` holds clob, gamma, data, relay, perps, rtds and sports as feature-gated modules, and `polyoxide-binance` holds usdm. On top sit a multi-venue `polyoxide` umbrella and a `polyoxide <venue> <module> <verb…>` CLI. The Python bindings keep v0.39.0's module names. The foundation crates carry no venue code, and the seven retired crates point to their new home. This is stage S2, the renames stage. Every public rename or move ships in this one release, so prader-rs rewrites its imports once.
 
 **Where things stand.**
 - S1 shipped on 2026-10-12 as v0.39.0 (release commit 3da0acb). `polyoxide-venue`, `polyoxide-ws` and `polyoxide-cli` were published for the first time, and the workspace stage is S2.
@@ -23,14 +23,14 @@ Consumers find each venue under one name. `polyoxide-polymarket` holds clob, gam
 - Story 5.7: The multi-venue umbrella
 - Story 5.8: The CLI on the venue axis
 - Story 5.9: CLI credentials over a shared trait
-- Story 5.10: Python on the venue axis
+- Story 5.10: Python on the venue axis (dropped on 2026-10-15)
 - Story 5.11: Docs and standing rules for a multi-venue toolkit
 - Story 5.12: The S2 release
 
 ## Requirements & Constraints
 
 - **No shims.** A move breaks the old path, with no re-export, alias or compatibility module.
-  - This covers crates, modules, features, the CLI command tree and the Python package.
+  - This covers crates, modules, features and the CLI command tree.
   - Only crate, module and command names change. The `polyoxide` brand stays.
 - **The rename manifest is S2's definition of done.**
   - `docs/rename-manifest.md` gives every removed or moved public item one row: old path → new path, or old path → reason.
@@ -187,11 +187,10 @@ Consumers find each venue under one name. `polyoxide-polymarket` holds clob, gam
     - `show` never prints a secret field in clear.
     - The existing service names, `polyoxide-clob` and `polyoxide-relay`, keep working.
     - Parse tests cover every kind and verb.
-- **Python (5.10).**
-  - The modules are `polyoxide.polymarket.{clob, gamma, data}`, with v2 at `polyoxide.polymarket.data.v2`, and no `Clob*` collision prefixes.
-  - Errors keep mapping by class; data v2 keeps mapping by code.
-  - `pyproject.toml` describes a multi-venue package.
-  - Three guards must pass on the new paths: `test_stub_consistency.py`, `every_v2_getter_reads_its_own_key` and the offline suites.
+- **Python (5.10): dropped.**
+  - The user dropped it on 2026-10-15, and spine amendment A5-1 records it. No Python consumer has asked for per-venue modules.
+  - The bindings keep v0.39.0's module names: `polyoxide`, `polyoxide.v2` and the `Clob*` classes. They already build on `polyoxide-polymarket`.
+  - Their guards keep running in CI unchanged: `test_stub_consistency.py`, `every_v2_getter_reads_its_own_key` and the offline suites.
 
 ## Cross-Story Dependencies
 
@@ -201,7 +200,7 @@ Consumers find each venue under one name. `polyoxide-polymarket` holds clob, gam
   - 5.2 creates `polyoxide-polymarket` and turns the gate on. 5.3, 5.4 and 5.5 move crates into it.
   - 5.4's `all(clob, gamma)` gating needs gamma's module from 5.3.
   - 5.6 is independent of the Polymarket moves.
-  - 5.7 and 5.8 follow the venue moves. 5.9 builds on 5.8's command tree, and 5.10 on 5.3 and 5.4. 5.11 follows everything, and 5.12 is last.
+  - 5.7 and 5.8 follow the venue moves. 5.9 builds on 5.8's command tree. 5.11 follows everything, and 5.12 is last.
   - Every move updates the CI-script tests that name crates or error types: classify coverage, dependency fences, the allowlists and `live_unwraps.baseline.json`'s per-file keys. Update the names, and never weaken their anti-vacuity assertions.
 - **Nightly (5.11, 5.12).**
   - Renamed live targets change the derived nightly job names, so issues whose test identity changed are closed or renamed.
