@@ -16,6 +16,53 @@ pub type DynSigner = dyn AlloySigner + Send + Sync;
 #[cfg(feature = "keychain")]
 pub const KEYCHAIN_SERVICE: &str = "polyoxide-relay";
 
+/// The `polyoxide-relay` service's six fields, which
+/// [`BuilderAccount::from_keychain`] and
+/// [`BuilderAccount::from_keychain_relayer_api_key`] read: every one secret but
+/// the relayer API key's address. A private key and an address must parse,
+/// and the relayer API key and its address are stored together.
+#[cfg(feature = "keychain")]
+impl polyoxide_core::keychain::StoredCredential for BuilderAccount {
+    const SERVICE: &'static str = KEYCHAIN_SERVICE;
+    const FIELDS: &'static [polyoxide_core::keychain::Field] = &[
+        polyoxide_core::keychain::Field::secret("private_key"),
+        polyoxide_core::keychain::Field::secret("api_key"),
+        polyoxide_core::keychain::Field::secret("api_secret"),
+        polyoxide_core::keychain::Field::secret("passphrase"),
+        polyoxide_core::keychain::Field::secret("relayer_api_key"),
+        polyoxide_core::keychain::Field::plain("relayer_api_key_address"),
+    ];
+
+    fn validate(values: &[(&str, Secret<String>)]) -> Result<(), polyoxide_core::KeychainError> {
+        use polyoxide_core::{keychain::given, KeychainError};
+
+        let invalid = |field, reason| Err(KeychainError::invalid(Self::SERVICE, field, reason));
+        if let Some(key) = given(values, "private_key") {
+            // The parser's own message can quote the key, so it is not kept.
+            if parse_signer(key.expose().as_str()).is_err() {
+                return invalid("private_key", "not a hex private key");
+            }
+        }
+        match (
+            given(values, "relayer_api_key"),
+            given(values, "relayer_api_key_address"),
+        ) {
+            (Some(_), None) => invalid(
+                "relayer_api_key_address",
+                "required with relayer_api_key; store the two together",
+            ),
+            (None, Some(_)) => invalid(
+                "relayer_api_key",
+                "required with relayer_api_key_address; store the two together",
+            ),
+            (_, Some(address)) if address.expose().trim().parse::<Address>().is_err() => {
+                invalid("relayer_api_key_address", "not an address")
+            }
+            _ => Ok(()),
+        }
+    }
+}
+
 /// Account credentials for authenticated relay operations.
 ///
 /// Combines a signer (for EIP-712 transaction signing) with an optional
@@ -188,20 +235,10 @@ impl BuilderAccount {
     /// real `polyoxide-relay` entries.
     #[cfg(feature = "keychain")]
     fn delete_from_keychain_in_service(service: &str) -> Result<(), RelayError> {
-        use polyoxide_core::keychain;
+        use polyoxide_core::keychain::{self, StoredCredential};
 
-        for key in [
-            "private_key",
-            "api_key",
-            "api_secret",
-            "passphrase",
-            "relayer_api_key",
-            "relayer_api_key_address",
-        ] {
-            keychain::delete(service, key)
-                .map_err(|e| RelayError::validation(format!("Keychain error: {e}")))?;
-        }
-        Ok(())
+        keychain::delete_fields(service, Self::FIELDS)
+            .map_err(|e| RelayError::validation(format!("Keychain error: {e}")))
     }
 }
 
@@ -532,6 +569,108 @@ mod tests {
                 );
             }
             other => panic!("Expected Signer error, got: {other:?}"),
+        }
+    }
+
+    #[cfg(feature = "keychain")]
+    mod stored_credential {
+        use polyoxide_core::keychain::{self, StoredCredential};
+        use polyoxide_core::KeychainError;
+
+        use super::*;
+
+        const ADDRESS: &str = "0xf39Fd6e51aad88F6F4ce6aB8827279cffFb92266";
+
+        fn validate(pairs: &[(&'static str, &str)]) -> Result<(), KeychainError> {
+            let values: Vec<_> = pairs
+                .iter()
+                .map(|(name, value)| (*name, Secret::new((*value).to_owned())))
+                .collect();
+            BuilderAccount::validate(&values)
+        }
+
+        /// The field a refusal names.
+        fn refused(pairs: &[(&'static str, &str)]) -> String {
+            match validate(pairs) {
+                Err(KeychainError::Invalid { field, .. }) => field,
+                other => panic!("expected a refusal, got {other:?}"),
+            }
+        }
+
+        #[test]
+        fn the_service_and_its_fields_are_what_v0_39_stored() {
+            assert_eq!(BuilderAccount::SERVICE, "polyoxide-relay");
+            let shown: Vec<(&str, bool)> = BuilderAccount::FIELDS
+                .iter()
+                .map(|f| (f.name, f.secret))
+                .collect();
+            assert_eq!(
+                shown,
+                [
+                    ("private_key", true),
+                    ("api_key", true),
+                    ("api_secret", true),
+                    ("passphrase", true),
+                    ("relayer_api_key", true),
+                    ("relayer_api_key_address", false),
+                ]
+            );
+        }
+
+        #[test]
+        fn builder_credentials_and_a_relayer_key_pair_are_accepted() {
+            validate(&[
+                ("private_key", TEST_PRIVATE_KEY),
+                ("api_key", "k"),
+                ("api_secret", "s"),
+                ("passphrase", "p"),
+            ])
+            .unwrap();
+            validate(&[
+                ("relayer_api_key", "rk"),
+                ("relayer_api_key_address", ADDRESS),
+            ])
+            .unwrap();
+        }
+
+        #[test]
+        fn a_relayer_key_and_its_address_go_together() {
+            assert_eq!(
+                refused(&[("relayer_api_key", "rk")]),
+                "relayer_api_key_address"
+            );
+            assert_eq!(
+                refused(&[("relayer_api_key_address", ADDRESS)]),
+                "relayer_api_key"
+            );
+        }
+
+        #[test]
+        fn a_private_key_and_an_address_must_parse() {
+            assert_eq!(
+                refused(&[("private_key", "not_a_valid_key")]),
+                "private_key"
+            );
+            assert_eq!(
+                refused(&[
+                    ("relayer_api_key", "rk"),
+                    ("relayer_api_key_address", "0xaddr")
+                ]),
+                "relayer_api_key_address"
+            );
+        }
+
+        #[test]
+        fn a_bad_store_is_refused_before_the_keyring() {
+            let err = keychain::store::<BuilderAccount>(&[(
+                "relayer_api_key",
+                Secret::new("rk".to_owned()),
+            )])
+            .unwrap_err();
+            assert!(
+                matches!(&err, KeychainError::Invalid { field, .. } if field == "relayer_api_key_address"),
+                "{err:?}"
+            );
         }
     }
 }

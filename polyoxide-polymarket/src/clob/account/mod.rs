@@ -43,6 +43,32 @@ pub mod env {
 #[cfg(feature = "keychain")]
 pub const KEYCHAIN_SERVICE: &str = "polyoxide-clob";
 
+/// The `polyoxide-clob` service's four fields, all secret, which
+/// [`Account::from_keychain`] reads. A private key must parse before it is
+/// stored.
+#[cfg(feature = "keychain")]
+impl polyoxide_core::keychain::StoredCredential for Account {
+    const SERVICE: &'static str = KEYCHAIN_SERVICE;
+    const FIELDS: &'static [polyoxide_core::keychain::Field] = &[
+        polyoxide_core::keychain::Field::secret("private_key"),
+        polyoxide_core::keychain::Field::secret("api_key"),
+        polyoxide_core::keychain::Field::secret("api_secret"),
+        polyoxide_core::keychain::Field::secret("api_passphrase"),
+    ];
+
+    fn validate(values: &[(&str, Secret<String>)]) -> Result<(), polyoxide_core::KeychainError> {
+        use polyoxide_core::{keychain::given, KeychainError};
+
+        match given(values, "private_key") {
+            // The parser's own message can quote the key, so it is not kept.
+            Some(key) if Wallet::from_private_key(key.expose()).is_err() => Err(
+                KeychainError::invalid(Self::SERVICE, "private_key", "not a hex private key"),
+            ),
+            _ => Ok(()),
+        }
+    }
+}
+
 /// Account configuration for file-based loading
 #[derive(Clone, Serialize, Deserialize)]
 pub struct AccountConfig {
@@ -380,13 +406,10 @@ impl Account {
     /// real `polyoxide-clob` entries.
     #[cfg(feature = "keychain")]
     fn delete_from_keychain_in_service(service: &str) -> Result<(), ClobError> {
-        use polyoxide_core::keychain;
+        use polyoxide_core::keychain::{self, StoredCredential};
 
-        for key in ["private_key", "api_key", "api_secret", "api_passphrase"] {
-            keychain::delete(service, key)
-                .map_err(|e| ClobError::validation(format!("Keychain error: {e}")))?;
-        }
-        Ok(())
+        keychain::delete_fields(service, Self::FIELDS)
+            .map_err(|e| ClobError::validation(format!("Keychain error: {e}")))
     }
 
     /// The signing key's EOA address. The order maker comes from
@@ -758,5 +781,54 @@ mod tests {
             assert!(!printed.contains(secret), "{secret} in {printed}");
         }
         assert!(printed.contains("Secret([REDACTED])"), "{printed}");
+    }
+
+    #[cfg(feature = "keychain")]
+    mod stored_credential {
+        use polyoxide_core::keychain::{self, StoredCredential};
+        use polyoxide_core::KeychainError;
+
+        use super::*;
+
+        const KEY: &str = "0xac0974bec39a17e36ba4a6b4d238ff944bacb478cbed5efcae784d7bf4f2ff80";
+
+        fn validate(pairs: &[(&'static str, &str)]) -> Result<(), KeychainError> {
+            let values: Vec<_> = pairs
+                .iter()
+                .map(|(name, value)| (*name, Secret::new((*value).to_owned())))
+                .collect();
+            Account::validate(&values)
+        }
+
+        #[test]
+        fn the_service_and_its_fields_are_what_v0_39_stored() {
+            assert_eq!(Account::SERVICE, "polyoxide-clob");
+            let names: Vec<&str> = Account::FIELDS.iter().map(|f| f.name).collect();
+            assert_eq!(
+                names,
+                ["private_key", "api_key", "api_secret", "api_passphrase"]
+            );
+            assert!(Account::FIELDS.iter().all(|f| f.secret));
+        }
+
+        #[test]
+        fn a_private_key_must_parse_and_its_refusal_does_not_quote_it() {
+            validate(&[("private_key", KEY), ("api_key", "k")]).unwrap();
+            validate(&[("api_key", "k")]).unwrap();
+            let err = validate(&[("private_key", "0xnot-a-key-hunter2")]).unwrap_err();
+            assert!(
+                matches!(&err, KeychainError::Invalid { field, .. } if field == "private_key"),
+                "{err:?}"
+            );
+            assert!(!format!("{err} {err:?}").contains("hunter2"), "{err}");
+        }
+
+        #[test]
+        fn a_bad_store_is_refused_before_the_keyring() {
+            let err =
+                keychain::store::<Account>(&[("private_key", Secret::new("not a key".to_owned()))])
+                    .unwrap_err();
+            assert!(matches!(err, KeychainError::Invalid { .. }), "{err:?}");
+        }
     }
 }
