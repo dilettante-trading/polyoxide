@@ -77,39 +77,65 @@ Nine crates, in publish order, each with the workspace crates its build needs. C
 - `polyoxide-binance` — Client library for Binance's APIs, one feature per module: `usdm` (USDⓈ-M futures market data, with its streams under `usdm-ws`); re-exported by the umbrella as `polyoxide::binance`; needs: `polyoxide-core` (under `usdm`, on by default), `polyoxide-venue`, `polyoxide-ws` (under `usdm-ws`)
 - `polyoxide-polymarket` — Client library for Polymarket's APIs, one feature per module: `clob` (order book, with its sockets under `clob-ws`), `gamma` (market data), `data` (user data, v1 and v2), `relay` (gasless transactions), `perps` (perpetual futures market data, with its sockets under `perps-ws`), `rtds` (crypto price streams) and `sports` (live sports scores), with the code the HTTP modules share in `shared` and, with `clob`, `gamma` and `data`, the unified `Polymarket` client; re-exported by the umbrella as `polyoxide::polymarket`; needs: `polyoxide-core` (under `clob`, `gamma`, `data`, `relay`, `perps`, on by default), `polyoxide-venue`, `polyoxide-ws` (under `clob-ws`, `perps-ws`, `rtds`, `sports`); only `clob` and `relay` build `alloy`, and only the HTTP modules build core, which `test_dep_allowlists.py` holds per feature; `clob` does not turn on `gamma`, and with both the CLOB client looks a proxy wallet up through Gamma; `rtds` and `sports` build no `polyoxide-core`, `reqwest` or `alloy`, so a credential-free feed builds no HTTP or signing stack; perps' auth and trading pending
 - `polyoxide` — The multi-venue umbrella: `polyoxide::polymarket` and `polyoxide::binance` behind features named for each venue and module, `polyoxide::venue` and a `prelude`; needs: `polyoxide-binance` (without default features, under `binance-usdm`), `polyoxide-polymarket` (without default features, under `polymarket-clob`, `polymarket-gamma`, `polymarket-data`, `polymarket-relay`, `polymarket-perps`, `polymarket-rtds`, `polymarket-sports`, on by default), `polyoxide-venue`
-- `polyoxide-cli` — CLI tool for querying Polymarket APIs and Binance USDⓈ-M market data; needs: `polyoxide-binance` (with `usdm-ws`, without default features), `polyoxide-core` (with `keychain`, under `keychain`), `polyoxide-polymarket` (with `clob-ws`, `gamma`, `data`, `rtds`, `sports`, without default features); its `keychain` also turns on `polyoxide-polymarket`'s `relay` and `keychain`, for the relay's keychain service
+- `polyoxide-cli` — CLI tool for querying Polymarket APIs and Binance USDⓈ-M market data; needs: `polyoxide-binance` (with `usdm-ws`, without default features), `polyoxide-core` (with `keychain`, under `keychain`), `polyoxide-polymarket` (with `clob-ws`, `gamma`, `data`, `rtds`, `sports`, without default features), `polyoxide-venue` (under `keychain`); its `keychain` also turns on `polyoxide-polymarket`'s `relay` and `keychain`, for the relay's keychain service
 - `polyoxide-py` — Python bindings via PyO3 (`publish = false`, wheels on PyPI); needs: `polyoxide-polymarket` (with `clob`, `gamma`, `data`, without default features), `polyoxide-venue`
 - `polyoxide-test-support` — Test toolkit: the failure tags the nightly classifier reads, the credential loaders, and the agreement, fixture and soak helpers (`publish = false`); needs: `polyoxide-core` (with `keychain`), `polyoxide-venue`; a path-only dev-dependency of the crates whose tests use it; it names no venue
 <!-- generated:end claude-graph -->
 
 <!-- generated:begin claude-cli-deps -->
-Note: `polyoxide-cli` does **not** depend on the `polyoxide` umbrella. It depends directly on the component crates — `polyoxide-binance` (with `usdm-ws`, without default features) and `polyoxide-polymarket` (with `clob-ws`, `gamma`, `data`, `rtds`, `sports`, without default features) — plus `polyoxide-core` (with `keychain`) only under the optional `keychain` feature.
+Note: `polyoxide-cli` does **not** depend on the `polyoxide` umbrella. It depends directly on the component crates — `polyoxide-binance` (with `usdm-ws`, without default features) and `polyoxide-polymarket` (with `clob-ws`, `gamma`, `data`, `rtds`, `sports`, without default features) — plus `polyoxide-core` (with `keychain`) and `polyoxide-venue` only under the optional `keychain` feature.
 <!-- generated:end claude-cli-deps -->
 
-The CLI's `ws` group streams `market` and `user` (clob), `prices` (rtds), `sports`
-(sports) and `binance` (`polyoxide-binance`), the first four through `polyoxide-polymarket`'s modules. `ws sports` takes comma-separated `--league` and `--game` filters and
-`--changes-only`. Its `run_with` takes any event stream, so `polyoxide-cli/tests/ws_sports.rs`
-drives every flag with captured frames.
+The CLI's commands are `polyoxide <venue> <module> <verb…>` (Story 5.8): `polyoxide
+polymarket` holds `gamma`, `data`, `clob`, `rtds`, `sports` and, with `keychain`,
+`credentials`, and `polyoxide binance` holds `usdm`; `completions` stays at the top. The
+library follows the tree, `polyoxide_cli::commands::{polymarket, binance, completions}`, beside
+the shared `stream` and `credentials` modules, and the root of `commands` re-exports nothing.
+v0.39.0's transport-first groups (`ws`, and `gamma`, `data`, `clob` and `credentials` at the
+top) are gone with no aliases. `docs/rename-manifest.md`'s hand-written `## Commands` maps each
+old command to its new one, and `src/main.rs`'s `every_new_command_in_the_manifest_parses`
+fails unless each new command there parses as a subcommand path and each old one is gone.
 
-`ws binance` streams Binance USDⓈ-M market data through the supervised tier of
+**Every socket is its module's `stream` verb, on one runner.** `polymarket clob stream market`
+and `… user`, `polymarket rtds stream`, `polymarket sports stream` and `binance usdm stream`
+each describe their socket as a `commands::stream::Feed` (what each event and each error
+means), and `stream::run` owns the rest: `-n`, counted in printed events and checked before
+each wait, so a feed that goes quiet after the last wanted event still ends; `-t`, where a
+timeout too large to add means none; "The feed ended"; a `BrokenPipe` on stdout ending the run
+quietly; and `excerpt()`, a frame cut to one escaped stderr line. Every stream's `--format` is
+the one `stream::OutputFormat`: `pretty`, one human-readable line per event (market's and
+user's old `summary`), or `json`, one compact object per line. Events go to stdout, and markers,
+filters and skipped frames to stderr. A frame a feed cannot read is skipped with a marker;
+any other stream error ends the run with that error (market, user and prices printed `Error:`
+and exited 0 before). No stream installs a Ctrl+C handler, and the CLI does not depend on
+`ctrlc`. Each command's `run_with(args, events, out, err)` takes any event stream, so
+`tests/ws_sports.rs`, `tests/ws_binance.rs` and `tests/stream_polymarket.rs` (market, user and
+prices) drive every flag with scripted events, and `stream`'s own tests pin the runner's four
+behaviours. The dataset writer's `--format csv|jsonl|parquet` is a different `OutputFormat`,
+in `polymarket::clob::prices::types`.
+
+`polymarket sports stream` takes comma-separated `--league` and `--game` filters and
+`--changes-only`, and is driven with the sports module's captured frames.
+
+`binance usdm stream` streams Binance USDⓈ-M market data through the supervised tier of
 `polyoxide-binance`'s `usdm` module. `--symbol` and `--kind` are comma-separated, and each kind is streamed for each
 symbol; `--all-tickers` and `--all-mark-prices` add the two array streams. Outage markers
-go to stderr, and `--format json` prints each frame's envelope. Its `run_with` takes any
-event stream, and `polyoxide-cli/tests/ws_binance.rs` drives it with the crate's captured
-frames (`polyoxide_binance::usdm::ws::fixtures`, features `usdm-ws` and `test-server`).
+go to stderr, and `--format json` prints each frame's envelope. `polyoxide-cli/tests/ws_binance.rs`
+drives it with the crate's captured frames (`polyoxide_binance::usdm::ws::fixtures`, features
+`usdm-ws` and `test-server`).
 
 The CLI installs a `tracing` subscriber that writes to stderr at `warn`, and `RUST_LOG`
 overrides the level. That is how the libraries' recoveries become visible: a reconnect being
 retried, or a 429 being waited out. Before it, they were discarded, and a feed retrying a dead
 host looked like a quiet one.
 
-The CLI's `clob` command group currently exposes `clob prices download` — a bulk,
-resumable, rate-limited downloader for CLOB historical price data
+The CLI's `polymarket clob` group holds the market and user streams and `prices download`,
+a bulk, resumable, rate-limited downloader for CLOB historical price data
 (`GET /prices-history`) that writes per-market CSV/JSONL/Parquet dataset files
 plus a `manifest.jsonl`. Parquet output requires building the CLI with the
 `parquet` feature.
 
-The CLI's `data` command group reads Data API v2, except `data health`, which stays on
+The CLI's `polymarket data` command group reads Data API v2, except `data health`, which stays on
 v1's `/` because `/v2/status` reports data freshness, not liveness. Listing commands print
 the v2 `{data, pagination}` envelope and page with `--cursor`, `--all` (JSONL, flushed per
 page) and `--max-pages`; the cursor to resume from goes to stderr when a walk stops early.
@@ -119,10 +145,32 @@ client and the output writers, and `polyoxide-cli/tests/data_v2.rs` uses it to r
 arguments against mock servers serving the `data` module's v2 fixtures
 (`polyoxide-polymarket/tests/fixtures/data/v2/`).
 
-**A clap `Vec<String>` field needs `value_delimiter`, not a value parser that returns a
-`Vec`.** The latter compiles and parses, then panics when the field is read. Every v1
-`data` list flag shipped that way, and no test caught it because the parse tests never
-passed those flags.
+**Every list argument splits on commas.** A clap `Vec` field needs `value_delimiter`, not a
+value parser that returns a `Vec`: the latter compiles and parses, then panics when the field
+is read. Every v1 `data` list flag shipped that way, and no test caught it because the parse
+tests never passed those flags. `src/main.rs`'s `every_list_argument_splits_on_commas` walks
+the clap tree and fails on any `Vec` argument without `value_delimiter = ','`, positionals and
+`--filter`s included; its one exception is the hidden `_ignored` of `data positions closed`,
+which swallows what follows the removed command. Each list argument also has a parse test
+that passes a comma list.
+
+**`polyoxide polymarket credentials <store|show|delete> <kind>`** (feature `keychain`, Story
+5.9) is `commands::credentials::Credentials` over Polymarket's kinds, `clob` and `builder`
+(v0.39.0's `relay`), which `commands::polymarket::credentials` lists and nothing more. A kind is
+a `polyoxide_core::keychain::StoredCredential` its library defines: `clob::Account` for the
+`polyoxide-clob` service and `relay::BuilderAccount` for `polyoxide-relay`, with v0.39.0's field
+names, so stored values load as before. The trait gives the service, the `FIELDS`, each a
+`Field { name, secret }`, and a `validate`; core's generic `store`, `show` and `delete_all` carry
+values as `polyoxide_venue::Secret` (`delete` was taken by the per-key function). The CLI's
+shared module generates a flag per field (`api_passphrase` is `--api-passphrase`), redacts, and
+calls the keychain. `store` writes only the fields given, and only after every check passes:
+core's (a name that is not a field, one given twice, an empty or blank value) and the kind's
+(a private key that parses; the relayer API key and its address given together, the address
+parsing). A refusal is `KeychainError::Invalid { service, field, reason }`, classed
+`InvalidRequest`, whose reason never quotes the value. `show` prints each field as `present`,
+`not found` or `error: …`, and the one plain field, the relayer API key's address, as its value
+when present; it never prints a secret. The public credential types (`Credentials`,
+`BuilderConfig`, `ApiCredentials`) keep their `String` fields; `Secret` on them is S3's.
 
 <!-- generated:begin claude-umbrella-features -->
 **polyoxide** (the umbrella) uses feature flags: `polymarket`, `polymarket-clob`, `polymarket-clob-ws` (`polyoxide-polymarket/clob-ws`), `polymarket-gamma`, `polymarket-data`, `polymarket-relay`, `polymarket-perps`, `polymarket-perps-ws` (`polyoxide-polymarket/perps-ws`), `polymarket-rtds`, `polymarket-sports`, `binance`, `binance-usdm`, `binance-usdm-ws` (`polyoxide-binance/usdm-ws`), `full` (all), `keychain` (`polyoxide-polymarket?/keychain`). Default = polymarket.
@@ -247,7 +295,7 @@ POLYMARKET_API_PASSPHRASE     # L2 API passphrase
 
 Relay operations need either `BUILDER_API_KEY`, `BUILDER_SECRET`, `BUILDER_PASS_PHRASE` (HMAC auth) **or** `RELAYER_API_KEY`, `RELAYER_API_KEY_ADDRESS` (static key auth). Relay also reads `RELAYER_URL` and `CHAIN_ID` optionally.
 
-**Keychain alternative** — With the `keychain` feature enabled, credentials can be stored in and loaded from the OS keychain instead of environment variables. Use `Account::from_keychain()` (CLOB), `BuilderAccount::from_keychain()` (Relay), or the CLI `polyoxide credentials store/show/delete` subcommands. The `keychain` feature is optional and not enabled by default.
+**Keychain alternative** — With the `keychain` feature enabled, credentials can be stored in and loaded from the OS keychain instead of environment variables. Use `Account::from_keychain()` (CLOB, the `polyoxide-clob` service), `BuilderAccount::from_keychain()` (Relay, `polyoxide-relay`), or the CLI's `polyoxide polymarket credentials <store|show|delete> <clob|builder>`. Each account's fields are listed once, in its `polyoxide_core::keychain::StoredCredential` impl, which its `delete_from_keychain` and the CLI both use. The `keychain` feature is optional and not enabled by default.
 
 ## API Specs
 

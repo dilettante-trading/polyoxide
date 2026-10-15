@@ -66,6 +66,14 @@ Or download binaries directly from Github releases
 curl -fsSL https://raw.githubusercontent.com/dilettante-trading/polyoxide/main/scripts/install.sh | sh
 ```
 
+Commands are `polyoxide <venue> <module> <command>`:
+
+```bash
+polyoxide polymarket gamma markets list --preset trending
+polyoxide polymarket clob stream market <ASSET_ID> --format json
+polyoxide binance usdm stream --all-mark-prices -n 10
+```
+
 See more information [here](./polyoxide-cli/README.md).
 
 ## Usage

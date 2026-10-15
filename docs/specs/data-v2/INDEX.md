@@ -95,5 +95,5 @@ drop-in replacement for the undocumented host.
 |----------|-----------------|
 | `/v2/user-pnl` | `data.pnl()` on the undocumented `user-pnl-api` host ([../undocumented/INDEX.md](../undocumented/INDEX.md)) |
 | `/v2/leaderboard` | `data.leaderboard()` (v1), and `data.rankings()` on the undocumented `lb-api` host |
-| `/v2/prices-history` | CLOB `GET /prices-history`, used by `polyoxide clob prices download` |
+| `/v2/prices-history` | CLOB `GET /prices-history`, used by `polyoxide polymarket clob prices download` |
 | `/v2/holders` | `data.holders()`, whose v1 `null` miss the SDK reads as `[]` ([../data/holders.md](../data/holders.md)) |

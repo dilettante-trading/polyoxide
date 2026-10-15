@@ -180,7 +180,7 @@ mod data_v2 {
     }
 }
 
-// ── ws sports ────────────────────────────────────────────────────────
+// ── polymarket sports stream ─────────────────────────────────────────
 
 mod ws_sports {
     use clap::Parser;
@@ -225,7 +225,7 @@ mod ws_sports {
     }
 }
 
-// ── ws binance ───────────────────────────────────────────────────────
+// ── binance usdm stream ──────────────────────────────────────────────
 
 mod ws_binance {
     use clap::Parser;
