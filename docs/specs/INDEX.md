@@ -1,9 +1,11 @@
-# Polymarket API Specs
+# API Specs
 
-Upstream API documentation for Claude. Source of truth for endpoint contracts,
-rate limits, auth schemes, and response schemas as documented by Polymarket.
+Upstream API documentation for Claude, one directory per host of each venue polyoxide
+reads. Source of truth for endpoint contracts, rate limits, auth schemes, and response
+schemas: Polymarket's as Polymarket documents them, and Binance's, which publishes no spec
+for USDⓈ-M, as its hosts were observed to behave ([Other venues](#other-venues)).
 
-These specs are sourced from https://docs.polymarket.com and the OpenAPI specs at:
+Polymarket's specs are sourced from https://docs.polymarket.com and the OpenAPI specs at:
 <!-- generated:begin index-upstream -->
 - CLOB: https://docs.polymarket.com/api-spec/clob-openapi.yaml
 - Gamma: https://docs.polymarket.com/api-spec/gamma-openapi.yaml
@@ -70,7 +72,7 @@ dialect with `/v1/session-signers/*` and `/v1/account/transactions/*` — which
 the prose pages and the official `py-sdk` / `ts-sdk` (0.11.0);
 [session-keys/OBSERVED.md](session-keys/OBSERVED.md) lists where the SDKs and the
 pages part ways. There is no mirror, so `nightly-schema.yml` excludes it; the offline
-fixtures under `polyoxide-{clob,relay}/tests/fixtures/session_keys/` are the drift
+fixtures under `polyoxide-polymarket/tests/fixtures/{clob,relay}/session_keys/` are the drift
 detector until the live round trip can run.
 
 ## Rate limits are not in the OpenAPI either

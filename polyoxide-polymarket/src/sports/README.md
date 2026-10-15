@@ -49,12 +49,10 @@ yields `MatchUpdate`s and ends when its connection does.
 ## Migrating from `polyoxide-clob`
 
 Until 0.36.0 the sports feed was a channel of `polyoxide-clob`'s `ws` module.
-It now lives here, and clob no longer has it.
+From 0.36.0 to 0.39 it was the `polyoxide-sports` crate, and since 0.40 it is this
+module, `polyoxide_polymarket::sports`, behind the `sports` feature. clob no longer has it.
 
-Since Story 5.5 the `polyoxide_sports` paths below are `polyoxide_polymarket::sports::…`,
-behind the `sports` feature.
-
-| Before, in `polyoxide_clob::ws` | Now, in `polyoxide_sports` |
+| Before, in `polyoxide_clob::ws` | Now, in `polyoxide_polymarket::sports` |
 |---|---|
 | `WebSocket::connect_sports()` | `SportsWs::connect()`, or `SportsWsBuilder::new().connect()` to reconnect on its own |
 | `Channel::Sports(SportsMessage::Update(update))` | `MatchUpdate` from `SportsWs`; `Event::Update(Box<MatchUpdate>)` from the supervised stream |

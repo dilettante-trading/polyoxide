@@ -1,6 +1,8 @@
 # Polyoxide
 
-Rust SDK toolkit for Polymarket APIs. It includes library crates for use in your projects and a standalone CLI.
+Multi-venue Rust SDK toolkit: Polymarket's APIs and Binance's USDⓈ-M futures market data, one
+crate per venue. It includes library crates for use in your projects, the `polyoxide` umbrella
+over them, and a standalone CLI.
 
 > [!WARNING]
 > This is currently work-in-progress so the API may change and some features may be missing
@@ -118,6 +120,12 @@ let balance = client.clob
 
 ### WebSocket
 
+The CLOB's sockets are behind the `polymarket-clob-ws` feature, which `prelude::ws` needs:
+
+```bash
+cargo add polyoxide --features polymarket-clob-ws
+```
+
 ```rust,ignore
 use polyoxide::prelude::*;
 use futures_util::StreamExt;
@@ -144,8 +152,14 @@ while let Some(msg) = ws.next().await {
 
 ### Gasless Redemptions (Relay)
 
+The relay is behind the `polymarket-relay` feature, which the default does not turn on:
+
+```bash
+cargo add polyoxide --features polymarket-relay
+```
+
 ```rust,ignore
-use polyoxide_polymarket::relay::{RelayClient, BuilderAccount, BuilderConfig, WalletType};
+use polyoxide::polymarket::relay::{RelayClient, BuilderAccount, BuilderConfig, WalletType};
 use alloy::primitives::U256;
 
 #[tokio::main]

@@ -2,7 +2,7 @@
 
 Rust client for the Polymarket CLOB (Central Limit Order Book) API, the `clob` module of `polyoxide-polymarket`.
 
-Provides authenticated order creation, EIP-712 signing, and submission, plus read-only market data and order book access. Part of the [polyoxide](https://github.com/DilettanteTrading/polyoxide) workspace.
+Provides authenticated order creation, EIP-712 signing, and submission, plus read-only market data and order book access. Part of the [polyoxide](https://github.com/dilettante-trading/polyoxide) workspace.
 
 More information about this module can be found in the [crate documentation](https://docs.rs/polyoxide-polymarket/latest/polyoxide_polymarket/clob/).
 
@@ -35,7 +35,7 @@ These are `polyoxide-polymarket`'s features. Its defaults are `clob`, `gamma` an
 | `clob` | Yes | This module: the client, order signing (`alloy`) and L2 authentication |
 | `gamma` | Yes | With `clob`, auto-resolves proxy wallet addresses for proxy signature types through the `gamma` module |
 | `clob-ws` | No | WebSocket support, `clob::ws` (the `polyoxide-ws` socket kit, `futures-util`), for real-time streaming; turns on `clob` |
-| `keychain` | No | OS keychain storage for credentials via `keyring` (macOS Keychain, Windows Credential Manager, Linux Secret Service); it builds `keyring` with any module, since cargo cannot limit it to `clob` and `relay` |
+| `keychain` | No | OS keychain storage for credentials via `keyring` (macOS Keychain, Windows Credential Manager, Linux Secret Service); it builds `keyring` with any HTTP module, since cargo cannot limit it to `clob` and `relay` |
 
 ```bash
 # With WebSocket support
@@ -425,4 +425,4 @@ verified venue behaviour.
 
 ## License
 
-Licensed under either of [MIT](../LICENSE-MIT) or [Apache-2.0](../LICENSE-APACHE) at your option.
+Licensed under either of [MIT](../../../LICENSE-MIT) or [Apache-2.0](../../../LICENSE-APACHE) at your option.

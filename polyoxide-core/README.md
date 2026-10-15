@@ -17,7 +17,7 @@ This is an **internal** crate. End users should depend on [`polyoxide`](https://
 | `request` | `Request<T, E>`, `QueryBuilder` trait, `RequestError` marker trait (any `From<ApiError> + Debug` type, whose `From` is its decode) -- the one request builder: method, query, JSON body, authenticator and throttle costs, sent on the send loop with automatic deserialization |
 | `rate_limit` | `WindowQuotaTable`, which builds a `RateLimiter` from a general bucket and per-endpoint rows (shared buckets, prefix or exact matching, scoped by method), with `effective_quota()` and `rows()` for inspection; `RetryConfig` for exponential backoff with jitter |
 | `macros` | `client_config_setters!`, `namespaces!` and `query_setters!` -- a builder's transport setters, a client's namespace accessors, and a request builder's query setters |
-| `keychain` | OS credential storage via `keyring` -- `get`, `set`, `delete` helpers and `KeychainError` (feature-gated behind `keychain`) |
+| `keychain` | OS credential storage via `keyring` (feature-gated behind `keychain`) -- the `StoredCredential` trait a venue implements for each kind of credential it stores (its service, its `Field`s, which are secret, and its checks), with the generic `store`, `show` and `delete_all` over it, the per-key `get`, `set` and `delete`, and `KeychainError` |
 
 ## Error hierarchy
 
