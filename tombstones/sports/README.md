@@ -4,7 +4,8 @@ This crate is retired. It was the client for Polymarket's live sports feed. Sinc
 code is the `sports` module of
 [`polyoxide-polymarket`](https://crates.io/crates/polyoxide-polymarket), behind that crate's
 `sports` feature, and every path that was `polyoxide_sports::…` is
-`polyoxide_polymarket::sports::…`.
+`polyoxide_polymarket::sports::…`. Its `test-server` feature is `polyoxide-polymarket`'s
+`test-server`, beside `sports`.
 
 ```toml
 [dependencies]

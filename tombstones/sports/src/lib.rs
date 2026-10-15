@@ -4,7 +4,8 @@
 //! 0.40 its code is the `sports` module of
 //! [`polyoxide-polymarket`](https://crates.io/crates/polyoxide-polymarket), behind that
 //! crate's `sports` feature, and every path that was `polyoxide_sports::…` is
-//! `polyoxide_polymarket::sports::…`.
+//! `polyoxide_polymarket::sports::…`. Its `test-server` feature is
+//! `polyoxide-polymarket`'s `test-server`, beside `sports`.
 //!
 //! ```toml
 //! [dependencies]

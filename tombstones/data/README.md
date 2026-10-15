@@ -3,7 +3,8 @@
 This crate is retired. It was the Polymarket Data API client. Since 0.40 its code is the
 `data` module of [`polyoxide-polymarket`](https://crates.io/crates/polyoxide-polymarket),
 behind that crate's `data` feature, and every path that was `polyoxide_data::…` is
-`polyoxide_polymarket::data::…`.
+`polyoxide_polymarket::data::…`. Its `specta` feature is `polyoxide-polymarket`'s `specta`,
+beside `data`.
 
 ```toml
 [dependencies]

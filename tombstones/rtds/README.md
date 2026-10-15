@@ -4,7 +4,8 @@ This crate is retired. It was the client for Polymarket's RTDS crypto price stre
 0.40 its code is the `rtds` module of
 [`polyoxide-polymarket`](https://crates.io/crates/polyoxide-polymarket), behind that crate's
 `rtds` feature, and every path that was `polyoxide_rtds::…` is
-`polyoxide_polymarket::rtds::…`.
+`polyoxide_polymarket::rtds::…`. Its `test-fixtures` feature is `polyoxide-polymarket`'s
+`test-server`, beside `rtds`.
 
 ```toml
 [dependencies]

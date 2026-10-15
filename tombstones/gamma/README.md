@@ -4,7 +4,8 @@ This crate is retired. It was the Polymarket Gamma market-data client. Since 0.4
 is the `gamma` module of
 [`polyoxide-polymarket`](https://crates.io/crates/polyoxide-polymarket), behind that crate's
 `gamma` feature, and every path that was `polyoxide_gamma::…` is
-`polyoxide_polymarket::gamma::…`.
+`polyoxide_polymarket::gamma::…`. Its `specta` feature is `polyoxide-polymarket`'s `specta`,
+beside `gamma`.
 
 ```toml
 [dependencies]

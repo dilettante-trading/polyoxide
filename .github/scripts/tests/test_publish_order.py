@@ -12,7 +12,9 @@ from __future__ import annotations
 import http.server
 import importlib.util
 import json
+import os
 import re
+import shutil
 import subprocess
 import sys
 import threading
@@ -1077,6 +1079,40 @@ MANIFEST_URL = "https://github.com/dilettante-trading/polyoxide/blob/main/docs/r
 WS_FEATURES = {"clob": "clob-ws", "perps": "perps-ws"}
 
 
+def _old_features(directory: str) -> dict[str, str]:
+    """`polyoxide-<directory>`'s 0.39 features but `default`, each with the
+    polyoxide-polymarket feature it became: the rename manifest's `## Features` rows."""
+    api_removals = sys.modules.get("api_removals")
+    if api_removals is None:
+        spec = importlib.util.spec_from_file_location("api_removals",
+                                                      REPO / "scripts" / "api_removals.py")
+        api_removals = importlib.util.module_from_spec(spec)
+        sys.modules[spec.name] = api_removals
+        spec.loader.exec_module(api_removals)
+    features = {}
+    for row in api_removals.read_manifest(REPO).features:
+        crate, _, feature = row.old.partition("/")
+        if crate == f"polyoxide-{directory}" and feature and feature != "default":
+            features[feature] = row.new.partition("/")[2]
+    return features
+
+
+def test_each_real_tombstone_declares_the_features_its_crate_had() -> None:
+    """A dependency that names an old feature, `features = ["ws"]`, must still
+    resolve, so that it reaches the `compile_error!` rather than stopping at "does
+    not have that feature"."""
+    _, found = _real_tombstones()
+    rows = 0
+    for directory in found:
+        manifest = tomllib.loads((REPO / "tombstones" / directory / "Cargo.toml").read_text())
+        declared = manifest.get("features", {})
+        old = _old_features(directory)
+        rows += len(old)
+        assert set(old) <= set(declared), (directory, sorted(old), sorted(declared))
+        assert all(enables == [] for enables in declared.values()), (directory, declared)
+    assert rows or not found, "no feature row names a tombstone, so the check is vacuous"
+
+
 def test_each_real_tombstone_points_to_its_module_and_stops_the_build() -> None:
     """The crate doc and the README name the new crate, the feature, the module path,
     the manifest and the pin that stays put; the `compile_error!`, off only for
@@ -1101,3 +1137,37 @@ def test_each_real_tombstone_points_to_its_module_and_stops_the_build() -> None:
             if ws:
                 assert f"`{ws}`" in text, (directory, text)
         assert MANIFEST_URL in message
+        # Each old feature is named, with the feature it became.
+        for old, new in _old_features(directory).items():
+            for text in (doc, readme):
+                assert f"`{old}`" in text and f"`{new}`" in text, (directory, old, new)
+
+
+def _cargo(tmp_path: Path, *args: str, rustdocflags: str | None = None
+           ) -> subprocess.CompletedProcess:
+    env = {**os.environ, "CARGO_TARGET_DIR": str(tmp_path / "target")}
+    if rustdocflags is not None:
+        env["RUSTDOCFLAGS"] = rustdocflags
+    return subprocess.run(["cargo", *args], cwd=tmp_path, env=env, capture_output=True,
+                          text=True, timeout=600)
+
+
+@pytest.mark.parametrize("directory", sorted(
+    m.parent.name for m in (REPO / "tombstones").glob("*/Cargo.toml")))
+def test_each_real_tombstone_stops_a_build_and_renders_for_docs_rs(
+        tmp_path: Path, directory: str) -> None:
+    """Built a copy at a time, so no lockfile lands in the checkout: a build with
+    every old feature on stops at the `compile_error!`, and docs.rs, which passes
+    `--cfg docsrs`, renders the crate doc without a warning."""
+    crate = tmp_path / directory
+    shutil.copytree(REPO / "tombstones" / directory, crate)
+    manifest = str(crate / "Cargo.toml")
+    lib = (crate / "src" / "lib.rs").read_text()
+    message = re.search(r'compile_error!\(\n    "([^\n]*)"\n\);', lib)[1].replace('\\"', '"')
+    check = _cargo(tmp_path, "check", "--all-features", "--manifest-path", manifest)
+    assert check.returncode != 0
+    assert f"error: {message}" in check.stderr, check.stderr
+    doc = _cargo(tmp_path, "doc", "--no-deps", "--manifest-path", manifest,
+                 rustdocflags="--cfg docsrs -D warnings")
+    assert doc.returncode == 0, doc.stderr
+    assert (tmp_path / "target" / "doc" / f"polyoxide_{directory}" / "index.html").is_file()

@@ -4,7 +4,9 @@ This crate is retired. It was the Polymarket CLOB client. Since 0.40 its code is
 module of [`polyoxide-polymarket`](https://crates.io/crates/polyoxide-polymarket), behind
 that crate's `clob` feature, and every path that was `polyoxide_clob::…` is
 `polyoxide_polymarket::clob::…`. Its `ws` feature is `clob-ws`, which turns `clob` on, so
-`polyoxide_clob::ws` is `polyoxide_polymarket::clob::ws` under `clob-ws`.
+`polyoxide_clob::ws` is `polyoxide_polymarket::clob::ws` under `clob-ws`. Its `gamma`
+feature is `polyoxide-polymarket`'s `gamma`, beside `clob`. Its `keychain` feature is
+`polyoxide-polymarket`'s `keychain`, beside `clob`.
 
 ```toml
 [dependencies]

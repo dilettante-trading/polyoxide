@@ -4,7 +4,8 @@ This crate is retired. It was the client for Polymarket's gasless relayer. Since
 code is the `relay` module of
 [`polyoxide-polymarket`](https://crates.io/crates/polyoxide-polymarket), behind that crate's
 `relay` feature, and every path that was `polyoxide_relay::…` is
-`polyoxide_polymarket::relay::…`.
+`polyoxide_polymarket::relay::…`. Its `keychain` feature is `polyoxide-polymarket`'s
+`keychain`, beside `relay`.
 
 ```toml
 [dependencies]

@@ -15,6 +15,11 @@ rust-version = "1.91"
 description = "Retired: the `rtds` module of polyoxide-polymarket, behind its `rtds` feature, since 0.40"
 readme = "README.md"
 
+# The features polyoxide-rtds 0.39 had, each empty, so a dependency that names one
+# still resolves, and stops at the `compile_error!` that says where it went.
+[features]
+test-fixtures = []
+
 # A workspace of its own, so cargo stops here instead of looking further up for
 # one, which finds the parent checkout's workspace when this tree is a worktree
 # nested inside it.
