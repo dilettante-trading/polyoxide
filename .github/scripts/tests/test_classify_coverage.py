@@ -231,10 +231,9 @@ def test_every_public_error_type_is_listed_in_its_crates_assertion() -> None:
     ("polyoxide-polymarket", {"BurstCapacityExceeded", "GammaError", "DataError", "V2Error",
                               "ClobError", "ParseTickSizeError", "ClobWsError", "RelayError",
                               "PerpsError", "VenueError", "PerpsWsError", "RtdsError",
-                              "SportsError"}),
+                              "SportsError", "BuildError"}),
     ("polyoxide-binance", {"UsdmError", "InvalidSymbol", "UsdmWsError", "InvalidStreamName"}),
     (VOCABULARY, {"UnknownVariant"}),
-    ("polyoxide", {"PolymarketError"}),
 ])
 def test_the_sweep_finds_the_known_types(crate: str, names: set[str]) -> None:
     # A sweep that matched nothing would pass the test above vacuously.

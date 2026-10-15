@@ -151,6 +151,37 @@ def header_pin(package: dict, product: str) -> tuple[str, str]:
     return f"cargo test -p {crate} --no-default-features --test headers", "tests/headers.rs"
 
 
+# The umbrella crate, whose `full` turns on every module of every venue.
+UMBRELLA = "polyoxide"
+MINIMAL_PINS = "Header pins, minimal builds"
+FULL_PINS = "Header pins, umbrella full build"
+
+
+def full_pin(package: dict, product: str) -> str:
+    """A module's header pin with the umbrella's `full` turned on beside its crate, so
+    every feature the umbrella's modules switch on is unified into the module's build."""
+    crate = package["name"]
+    test = f"headers_{product}" if product in (package.get("features") or {}) else "headers"
+    return f"cargo test -p {UMBRELLA} -p {crate} --features {UMBRELLA}/full --test {test}"
+
+
+def umbrella_enables(features: dict, feature: str) -> set[str]:
+    """The `<crate>/<feature>` items the umbrella's `feature` turns on, through the
+    umbrella features it turns on, `?` dropped."""
+    found, seen, todo = set(), set(), [feature]
+    while todo:
+        name = todo.pop()
+        if name in seen:
+            continue
+        seen.add(name)
+        for item in features.get(name, ()):
+            if "/" in item:
+                found.add(item.replace("?/", "/"))
+            elif ":" not in item:
+                todo.append(item)
+    return found
+
+
 def test_the_features_job_runs_each_header_pin_in_its_minimal_build() -> None:
     """One `-p` per command, so no module's features are unified with another's;
     the workspace build runs the same files, against the same literal (AD-18).
@@ -162,7 +193,7 @@ def test_the_features_job_runs_each_header_pin_in_its_minimal_build() -> None:
     assert len({crate for crate, _ in modules}) < len(modules), (
         f"no crate holds two modules, so the module form is untested: {modules}")
     packages = {p["name"]: p for p in metadata["packages"]}
-    [step] = [s for s in _steps("features") if "--test headers" in s.get("run", "")]
+    [step] = [s for s in _steps("features") if s.get("name") == MINIMAL_PINS]
     commands = step["run"].strip().splitlines()
     for command in commands:
         assert re.fullmatch(r"cargo test -p \S+ --no-default-features"
@@ -172,6 +203,52 @@ def test_the_features_job_runs_each_header_pin_in_its_minimal_build() -> None:
     assert sorted(commands) == sorted(command for command, _ in pins)
     for (crate, _), (_, path) in zip(modules, pins):
         assert (REPO / crate / path).is_file(), f"{crate}/{path}"
+
+
+def test_the_features_job_runs_each_header_pin_under_the_umbrellas_full() -> None:
+    """The third build of each pin (AD-18): the umbrella's `full` with the module's
+    crate, so a header one venue's module adds through the umbrella fails another's
+    literal. The modules are the minimal step's, and `full` must turn each one on, or
+    its pin would run without the module the build is meant to unify."""
+    metadata = _load_publish_order().cargo_metadata(REPO / "Cargo.toml")
+    modules = http_modules(metadata)
+    assert len(modules) >= 6, f"too few HTTP modules found, so the check is vacuous: {modules}"
+    assert len({crate for crate, _ in modules}) >= 2, (
+        f"one venue crate alone, so the cross-venue build is untested: {modules}")
+    packages = {p["name"]: p for p in metadata["packages"]}
+    [step] = [s for s in _steps("features") if s.get("name") == FULL_PINS]
+    commands = step["run"].strip().splitlines()
+    for command in commands:
+        assert re.fullmatch(rf"cargo test -p {UMBRELLA} -p \S+ --features {UMBRELLA}/full "
+                            r"--test headers\S*", command), (
+            f"not one module's header pin under the umbrella's full: {command!r}")
+    assert sorted(commands) == sorted(full_pin(packages[crate], product)
+                                      for crate, product in modules)
+    enabled = umbrella_enables(packages[UMBRELLA]["features"], "full")
+    for crate, product in modules:
+        assert f"{crate}/{product}" in enabled, (
+            f"the umbrella's full does not turn on {crate}/{product}")
+    steps = [s.get("name") for s in _steps("features")]
+    assert steps.index(FULL_PINS) == steps.index(MINIMAL_PINS) + 1, steps
+
+
+def test_a_full_pin_names_the_umbrella_beside_the_module_crate() -> None:
+    venue = {"name": "polyoxide-polymarket", "features": {"gamma": [], "data": []}}
+    assert full_pin(venue, "gamma") == (
+        "cargo test -p polyoxide -p polyoxide-polymarket --features polyoxide/full "
+        "--test headers_gamma")
+    crate = {"name": "polyoxide-bybit", "features": {"ws": []}}
+    assert full_pin(crate, "linear") == (
+        "cargo test -p polyoxide -p polyoxide-bybit --features polyoxide/full --test headers")
+
+
+def test_umbrella_enables_follows_its_own_features() -> None:
+    features = {"full": ["a-ws", "keychain"], "a-ws": ["a", "polyoxide-a/ws"],
+                "a": ["dep:polyoxide-a", "polyoxide-a/a"], "keychain": ["polyoxide-a?/keychain"],
+                "b": ["polyoxide-b/b"]}
+    assert umbrella_enables(features, "full") == {
+        "polyoxide-a/ws", "polyoxide-a/a", "polyoxide-a/keychain"}
+    assert umbrella_enables(features, "b") == {"polyoxide-b/b"}
 
 
 def test_the_features_job_checks_each_module_with_specta() -> None:

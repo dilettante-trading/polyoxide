@@ -117,6 +117,18 @@ jobs:
           cargo test -p polyoxide-polymarket --no-default-features --features relay --test headers_relay
           cargo test -p polyoxide-polymarket --no-default-features --features perps --test headers_perps
           cargo test -p polyoxide-binance --no-default-features --features usdm --test headers_usdm
+      # The same pins with the umbrella's `full` beside each venue crate, so
+      # every feature any venue's module turns on is unified into the pinned
+      # build, and a header one venue adds through the umbrella fails another's
+      # literal (AD-18's third build).
+      - name: Header pins, umbrella full build
+        run: |
+          cargo test -p polyoxide -p polyoxide-polymarket --features polyoxide/full --test headers_clob
+          cargo test -p polyoxide -p polyoxide-polymarket --features polyoxide/full --test headers_gamma
+          cargo test -p polyoxide -p polyoxide-polymarket --features polyoxide/full --test headers_data
+          cargo test -p polyoxide -p polyoxide-polymarket --features polyoxide/full --test headers_relay
+          cargo test -p polyoxide -p polyoxide-polymarket --features polyoxide/full --test headers_perps
+          cargo test -p polyoxide -p polyoxide-binance --features polyoxide/full --test headers_usdm
       # Each module of a venue crate with `specta`, whose extras for that module
       # (`specta?/chrono`, `specta?/rust_decimal`) are weak features: neither
       # `--each-feature`, which builds `specta` alone, nor `--all-features`,

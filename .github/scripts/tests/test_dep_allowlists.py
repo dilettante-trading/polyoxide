@@ -31,10 +31,16 @@ signing stack, only with `clob` or `relay`; and `keyring` only with `keychain`.
 `polyoxide-binance` builds `polyoxide-ws`, `tokio-tungstenite` and
 `tungstenite`, the socket stack, only with `usdm-ws`, so its `@usdm` file is the
 REST client alone. `rustls` is not on that rule: core's HTTP client builds it
-for TLS. Polymarket's `@perps` file must hold `reqwest`, its `@clob` and
-`@relay` files `alloy`, and its `@clob,keychain` file `keyring`, and Binance's
-`@usdm-ws` file `polyoxide-ws`, so no rule can pass because nothing it admits is
-ever built.
+for TLS. The `polyoxide` umbrella is held as Polymarket is, on its own feature
+names: the HTTP stack only with an HTTP module of either venue
+(`polymarket-clob`, `-gamma`, `-data`, `-relay` or `-perps`, or
+`binance-usdm`), so its `@polymarket-rtds` and `@polymarket-sports` files are
+the socket-only tree; the signing stack only with `polymarket-clob` or
+`polymarket-relay`; and `keyring` only with `keychain`. Polymarket's `@perps`
+file must hold `reqwest`, its `@clob` and `@relay` files `alloy`, and its
+`@clob,keychain` file `keyring`, Binance's `@usdm-ws` file `polyoxide-ws`, and
+the umbrella's `@polymarket-perps` file `reqwest`, so no rule can pass because
+nothing it admits is ever built.
 
 Regenerate every file after a deliberate change, from `.github/scripts`:
 
@@ -96,6 +102,19 @@ PER_FEATURE = {
              frozenset({"usdm-ws"}),
              "polyoxide-ws, tokio-tungstenite and tungstenite only with usdm-ws"),
     ),
+    # The umbrella's socket-only deny-list, each part admitted by the features
+    # that pass Polymarket's admitting modules through, and by Binance's HTTP
+    # module: its socket passthroughs stay credential-free feeds (G2).
+    "polyoxide": (
+        Rule(frozenset({"reqwest", "polyoxide-core", "governor", "sha2"}), (),
+             frozenset({"polymarket-clob", "polymarket-gamma", "polymarket-data",
+                        "polymarket-relay", "polymarket-perps", "binance-usdm"}),
+             "reqwest, polyoxide-core, governor and sha2 only with an HTTP module"),
+        Rule(frozenset({"hmac"}), ("alloy",), frozenset({"polymarket-clob", "polymarket-relay"}),
+             "alloy* and hmac only with polymarket-clob or polymarket-relay"),
+        Rule(frozenset({"keyring"}), (), frozenset({"keychain"}),
+             "keyring only with keychain"),
+    ),
 }
 # The files that must build a crate a rule above admits, with that crate.
 MUST_BUILD = {
@@ -104,6 +123,7 @@ MUST_BUILD = {
     "polyoxide-polymarket@relay.txt": "alloy",
     "polyoxide-polymarket@clob,keychain.txt": "keyring",
     "polyoxide-binance@usdm-ws.txt": "polyoxide-ws",
+    "polyoxide@polymarket-perps.txt": "reqwest",
 }
 
 HEADER = """\
@@ -231,6 +251,8 @@ def test_the_allowlists_exist() -> None:
                "clob,keychain", "rtds", "rtds,test-server", "sports", "sports,test-server")
     assert {f"polyoxide-polymarket@{m}.txt" for m in modules} <= set(names), names
     assert {f"polyoxide-binance@{m}.txt" for m in ("usdm", "usdm-ws")} <= set(names), names
+    umbrella = ("polymarket-rtds", "polymarket-sports", "polymarket-perps")
+    assert {f"polyoxide@{m}.txt" for m in umbrella} <= set(names), names
 
 
 @pytest.mark.parametrize("name", sorted(MUST_BUILD))
@@ -412,9 +434,45 @@ def test_binances_rest_and_test_server_features_do_not_turn_on_the_streams() -> 
     assert "usdm" in enabled(("usdm-ws",), table)
 
 
+UMBRELLA = "polyoxide"
+UMBRELLA_HTTP = "reqwest, polyoxide-core, governor and sha2 only with an HTTP module"
+UMBRELLA_SIGNING = "alloy* and hmac only with polymarket-clob or polymarket-relay"
+
+
+def test_the_umbrellas_socket_passthroughs_may_not_build_the_http_stack() -> None:
+    # The real table: a socket passthrough that came to turn on an HTTP module
+    # of either venue would admit the HTTP stack, and its file would pass
+    # listing it (5.5's G2).
+    table = feature_table(UMBRELLA)
+    names = [*HTTP_STACK, "alloy-primitives", "hmac", "keyring", "polyoxide-ws"]
+    socket_only = [f"alloy-primitives ({UMBRELLA_SIGNING})", f"governor ({UMBRELLA_HTTP})",
+                   f"hmac ({UMBRELLA_SIGNING})", f"keyring ({KEYCHAIN})",
+                   f"polyoxide-core ({UMBRELLA_HTTP})", f"reqwest ({UMBRELLA_HTTP})",
+                   f"sha2 ({UMBRELLA_HTTP})"]
+    for features in (("polymarket-rtds",), ("polymarket-sports",),
+                     ("polymarket-rtds", "polymarket-sports"), ()):
+        assert denied(UMBRELLA, names, features, table) == socket_only, features
+    # `keychain` admits the keychain and no HTTP stack.
+    assert denied(UMBRELLA, HTTP_STACK, ("polymarket-rtds", "keychain"), table) == [
+        f"{n} ({UMBRELLA_HTTP})" for n in HTTP_STACK]
+    # Each HTTP module of either venue admits the HTTP stack, and only
+    # Polymarket's clob and relay the signing stack.
+    for features in (("polymarket-gamma",), ("polymarket-data",), ("polymarket-perps",),
+                     ("polymarket-perps-ws",), ("binance-usdm",), ("binance-usdm-ws",),
+                     ("binance",), ("polymarket-rtds", "binance-usdm")):
+        assert denied(UMBRELLA, HTTP_STACK, features, table) == [], features
+        assert denied(UMBRELLA, ["alloy", "hmac"], features, table) == [
+            f"alloy ({UMBRELLA_SIGNING})", f"hmac ({UMBRELLA_SIGNING})"], features
+    for features in (("polymarket",), ("polymarket-clob-ws",), ("polymarket-relay",)):
+        assert denied(UMBRELLA, [*HTTP_STACK, "alloy", "hmac"], features, table) == [], features
+    assert denied(UMBRELLA, ["keyring"], ("full",), table) == []
+
+
 def test_only_a_crate_held_per_feature_is_built_without_its_defaults() -> None:
     assert no_defaults("polyoxide-polymarket") == ["--no-default-features"]
     assert no_defaults("polyoxide-binance") == ["--no-default-features"]
+    # The umbrella's files name the passthroughs they build, not its defaults.
+    assert no_defaults("polyoxide") == ["--no-default-features"]
     # The socket kit's bare file is the tree a consumer builds by default.
     assert no_defaults("polyoxide-ws") == []
 
