@@ -238,6 +238,10 @@ jobs:
           echo "report_file=$REPORT_FILE" >> "$GITHUB_OUTPUT"
 
       - name: File or update tracking issue
+        # The one tracking issue is main's. A dispatch on another branch, such as
+        # an integration branch before it merges, still runs, classifies and
+        # uploads every job's report, but files, comments on and closes nothing.
+        if: github.ref == 'refs/heads/main'
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           # Every needed job succeeded. `needs` is generated with the jobs, so a

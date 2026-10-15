@@ -181,6 +181,21 @@ def test_the_close_guard_reads_every_needed_job() -> None:
     assert "needs.test" not in yaml.safe_dump(WORKFLOW)
 
 
+def test_only_a_run_on_main_touches_the_tracking_issue() -> None:
+    """A dispatch on another branch, such as the S2 integration branch before it
+    merges, must not comment on main's issue or close it: the one step that runs
+    `gh issue` is guarded by the ref, and no other step of any job runs it."""
+    steps = [(job_id, step) for job_id, job in WORKFLOW["jobs"].items()
+             for step in job.get("steps", [])]
+    touching = [(job_id, step) for job_id, step in steps if "gh issue" in step.get("run", "")]
+    assert len(touching) == 1, touching
+    [(job_id, step)] = touching
+    assert job_id == "aggregate"
+    assert step["if"] == "github.ref == 'refs/heads/main'"
+    for verb in ("create", "comment", "close"):
+        assert f"gh issue {verb}" in step["run"]
+
+
 # --- ignored -----------------------------------------------------------------
 
 # `#[test]`, any `#[<path>::test]` (`tokio::test`, `test_log::test`), and `#[rstest]`.
