@@ -339,13 +339,13 @@ def write_stage(root: Path, stage: str) -> None:
 
 
 def write_listing(root: Path, removed: list[str] = (), hidden: list[str] = (),
-                  baseline: str = "v0.38.1") -> None:
+                  baseline: str = "v0.38.1", listing: str = "docs/s1-removals.md") -> None:
     lines = ["---", f"baseline: {baseline}", "---", "", "## Removed", ""]
     lines += [f"- `{key}` Story 9.9: use something else." for key in removed]
     lines += ["", "## Doc-hidden paths consumers import", ""]
     lines += [f"- {entry}" for entry in hidden]
-    (root / "docs").mkdir(parents=True, exist_ok=True)
-    (root / "docs" / "s1-removals.md").write_text("\n".join(lines) + "\n")
+    (root / listing).parent.mkdir(parents=True, exist_ok=True)
+    (root / listing).write_text("\n".join(lines) + "\n")
     if not (root / "Cargo.toml").exists():
         write_stage(root, "S1")
 
@@ -1390,11 +1390,106 @@ def test_release_imports_the_manifests_paths_while_the_stage_is_s2(
     assert Path(build[build.index("--manifest-path") + 1]).parent.name == group
 
 
+# --- the listing for the stage -------------------------------------------------
+
+
+def built_groups(stream: Stub) -> list[str]:
+    """The scratch crates the compile test checked, by their directories."""
+    return [Path(c[c.index("--manifest-path") + 1]).parent.name
+            for c in stream.called("cargo", "check")]
+
+
+@pytest.mark.parametrize(("stage", "other", "baseline"), [
+    ("S1", "S3", "v0.38.1"),
+    ("S3", "S1", "v0.40.0"),
+])
+def test_check_and_release_read_the_listing_for_the_stage(
+        tmp_path: Path, stage: str, other: str, baseline: str) -> None:
+    """The commit after the S2 release sets the stage to S3, and from it `check` and
+    `release` read docs/s3-removals.md: its baseline, its removals and its doc-hidden
+    paths. The other stage's listing is there and differs in each, and neither
+    command reads it."""
+    write_stage(tmp_path, stage)
+    write_listing(tmp_path, removed=REMOVAL_KEYS, hidden=["`polyoxide_relay::DynSigner`"],
+                  baseline=baseline, listing=api_removals.LISTINGS[stage])
+    write_listing(tmp_path, hidden=["`polyoxide_clob::DynSigner`"], baseline="v0.0.1",
+                  listing=api_removals.LISTINGS[other])
+    run, stream = runners(tmp_path, (100, mixed_and_clean()), rev=baseline)
+    assert api_removals.main(["check", "--baseline", baseline], tmp_path, run, stream) == 0
+    assert built_groups(stream) == ["polyoxide-relay"]
+    run, stream = runners(tmp_path, (0, CLEAN), rev=baseline)
+    assert release(tmp_path, run, stream, baseline) == 0
+    assert built_groups(stream) == ["polyoxide-relay"]
+
+
+def test_check_against_the_s3_listing_names_it_on_an_unlisted_removal(
+        tmp_path: Path, capsys: pytest.CaptureFixture[str]) -> None:
+    write_stage(tmp_path, "S3")
+    write_listing(tmp_path, baseline="v0.40.0", listing=api_removals.LISTINGS["S3"])
+    run, stream = runners(tmp_path, (100, mixed_and_clean()), rev="v0.40.0")
+    assert api_removals.main(["check", "--baseline", "v0.40.0"], tmp_path, run, stream) == 1
+    assert "that docs/s3-removals.md does not list" in capsys.readouterr().err
+
+
+def test_check_refuses_stage_s2_whose_gate_is_the_manifest(
+        tmp_path: Path, capsys: pytest.CaptureFixture[str]) -> None:
+    """S2 has no removal listing. Reading S1's against the S2 tree would gate on
+    nothing that matters, so `check` refuses before running anything."""
+    write_stage(tmp_path, "S2")
+    write_listing(tmp_path)
+    run, stream = runners(tmp_path, (0, CLEAN))
+    assert check(tmp_path, run, stream) == 2
+    err = capsys.readouterr().err
+    assert "stage S2 has no removal listing: its gate is `manifest`" in err
+    assert "docs/s3-removals.md" in err
+    assert stream.calls == []
+
+
+@pytest.mark.parametrize("command", ["check", "release"])
+def test_a_stage_without_a_listing_cannot_decide(
+        tmp_path: Path, capsys: pytest.CaptureFixture[str], command: str) -> None:
+    write_stage(tmp_path, "S4")
+    write_listing(tmp_path)
+    run, stream = runners(tmp_path, (0, CLEAN))
+    assert api_removals.main([command, "--baseline", "v0.38.1"], tmp_path, run, stream) == 2
+    assert "stage S4 has no removal listing" in capsys.readouterr().err
+
+
 # --- the real tree -----------------------------------------------------------
 
 
+def test_the_real_s3_listing_starts_at_the_s2_release_and_removes_nothing() -> None:
+    listing = api_removals.read_listing(REPO, api_removals.LISTINGS["S3"])
+    assert listing.baseline == "v0.40.0"
+    assert listing.removed == frozenset()
+    assert listing.hidden, "the compile test would import nothing"
+
+
+def test_every_path_the_s3_listing_imports_names_a_workspace_crate() -> None:
+    publish_order = _load("publish_order")
+    metadata = publish_order.workspace_metadata()
+    libraries = {p["name"].replace("-", "_") for p in publish_order.members(metadata)}
+    for hidden in api_removals.read_listing(REPO, api_removals.LISTINGS["S3"]).hidden:
+        assert hidden.crate in libraries, hidden.path
+
+
+def test_the_s3_listing_imports_the_manifests_live_paths_while_the_stage_is_s2() -> None:
+    """The S3 gate starts from the paths consumers import at the S2 release, so
+    neither the removals job nor the release loses one at the switch. Once the stage
+    moves on, S3's stories edit the listing and the frozen manifest stays as it is."""
+    if api_removals.workspace_stage(REPO) != "S2":
+        pytest.skip("the S3 listing follows its own stories once the stage is S3")
+    manifest = {(h.path, h.features) for h in api_removals.read_manifest(REPO).hidden
+                if not h.removed}
+    listing = api_removals.read_listing(REPO, api_removals.LISTINGS["S3"])
+    assert {(h.path, h.features) for h in listing.hidden if not h.removed} == manifest
+
+
+
+
 def test_the_real_s1_listing_is_final_and_still_reads() -> None:
-    """`check` returns in S3 and reads it; through S2 nothing gates on it."""
+    """Nothing gates on it after S1, but `check` and `release` read it again should
+    the stage ever be S1."""
     listing = api_removals.read_listing(REPO)
     assert listing.baseline == "v0.38.1"
     assert listing.removed and listing.hidden

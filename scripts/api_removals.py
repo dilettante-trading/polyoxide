@@ -30,12 +30,15 @@ is keyed `<crate> crate_missing`. Three subcommands:
              Story 5.12, fails on an unresolved entry, a stale row or a stale
              region. `--expand FILE`
              writes every entry as `old<TAB>new or reason<TAB>kind<TAB>status`.
-    check    The S1 removals job, which returns in S3. Runs cargo-semver-checks
-             with `--release-type patch`, which makes every lint required, so
-             removals are reported even across a 0.x minor bump. Exits 1 naming
-             each removal that docs/s1-removals.md does not list under "Removed".
-             Other lints are printed and allowed: S1 changes error and builder
-             shapes on purpose.
+    check    CI's removals job in stage S1, and again from S3, against the
+             listing for the workspace's stage (`LISTINGS`: docs/s1-removals.md
+             in S1, docs/s3-removals.md in S3), whose baseline must be
+             `--baseline`. Runs cargo-semver-checks with `--release-type patch`,
+             which makes every lint required, so removals are reported even
+             across a 0.x minor bump. Exits 1 naming each removal the listing
+             does not list under "Removed". Other lints are printed and allowed:
+             a stage changes error and builder shapes on purpose. S2 has no
+             listing, since `manifest` is its gate, so `check` refuses it.
     release  release.yml's semver job. Runs cargo-semver-checks against the
              previous release's tag and lets it infer the release type from the
              two versions, so a 0.x patch bump may break nothing. Exits 1 on any
@@ -45,8 +48,8 @@ is keyed `<crate> crate_missing`. Three subcommands:
 All three then run the compile test. cargo-semver-checks sees neither
 `#[doc(hidden)]` items nor, in 0.51.0, type aliases, so a listing names the ones
 consumers import under "Doc-hidden paths consumers import": docs/rename-manifest.md
-for `manifest`, and for `release` while the workspace's stage is S2, and
-docs/s1-removals.md otherwise. For each crate and set of features named there, a
+for `manifest`, and for `release` while the workspace's stage is S2, and the
+listing for the workspace's stage otherwise. For each crate and set of features named there, a
 scratch crate under target/api-removals/ imports every listed path not marked
 **Removed**, with only those features, and is checked on its own, so one entry
 cannot compile through another's features.
@@ -77,8 +80,8 @@ Stdlib only.
 Usage:
     python3 scripts/api_removals.py manifest --baseline v0.39.0 [--write] [--strict]
         [--expand FILE] [--no-semver-checks]
-    python3 scripts/api_removals.py check --baseline v0.38.1 [--release-type patch]
-    python3 scripts/api_removals.py release --baseline v0.38.1
+    python3 scripts/api_removals.py check --baseline v0.40.0 [--release-type patch]
+    python3 scripts/api_removals.py release --baseline v0.40.0
 """
 from __future__ import annotations
 
@@ -100,7 +103,11 @@ import public_api  # noqa: E402
 import publish_order  # noqa: E402
 
 REPO = publish_order.REPO
-LISTING = "docs/s1-removals.md"
+# The removal listing `check` and `release` read in each stage. S2 lists its moves
+# in the rename manifest instead: its gate is `manifest`, and `release` reads the
+# manifest's doc-hidden paths while the stage is S2.
+LISTINGS = {"S1": "docs/s1-removals.md", "S3": "docs/s3-removals.md"}
+LISTING = LISTINGS["S1"]
 REMOVED_SECTION = "Removed"
 HIDDEN_SECTION = "Doc-hidden paths consumers import"
 MANIFEST = "docs/rename-manifest.md"
@@ -434,13 +441,27 @@ def _hidden_paths(entries: list[str], label: str) -> tuple[HiddenPath, ...]:
     return tuple(hidden)
 
 
-def read_listing(root: Path) -> Listing:
-    path = root / LISTING
+def read_listing(root: Path, listing: str = LISTING) -> Listing:
+    path = root / listing
     try:
         text = path.read_text(encoding="utf-8")
     except OSError as err:
-        raise RemovalsError(f"could not read {LISTING}: {err}") from err
-    return parse_listing(text)
+        raise RemovalsError(f"could not read {listing}: {err}") from err
+    return parse_listing(text, listing)
+
+
+def stage_listing(root: Path) -> str:
+    """The removal listing for the workspace's stage, from `LISTINGS`."""
+    stage = workspace_stage(root)
+    listing = LISTINGS.get(stage)
+    if listing is None:
+        if stage == "S2":
+            raise RemovalsError(
+                f"stage S2 has no removal listing: its gate is `manifest`, against "
+                f"{MANIFEST}. `check` returns in S3, against {LISTINGS['S3']}")
+        raise RemovalsError(f"stage {stage} has no removal listing; give it one in "
+                            f"`LISTINGS`, as S1 and S3 have")
+    return listing
 
 
 # --- docs/rename-manifest.md -------------------------------------------------
@@ -860,9 +881,10 @@ def raises_minor(baseline: str, current: str) -> bool:
 
 def check(baseline: str, release_type: str, root: Path = REPO, run: Runner = run_command,
           stream: Runner = stream_command) -> int:
-    listing = read_listing(root)
+    label = stage_listing(root)
+    listing = read_listing(root, label)
     if listing.baseline != baseline:
-        raise RemovalsError(f"{LISTING} lists removals against {listing.baseline}, not "
+        raise RemovalsError(f"{label} lists removals against {listing.baseline}, not "
                             f"{baseline}; the two must name the same baseline")
     metadata = publish_order.cargo_metadata(root / "Cargo.toml", run)
     report = semver_checks(baseline, release_type, publish_order.members(metadata), root,
@@ -872,7 +894,7 @@ def check(baseline: str, release_type: str, root: Path = REPO, run: Runner = run
     status = 0
     unlisted = sorted(removals - listing.removed)
     if unlisted:
-        print(f"::error::Public items removed since {baseline} that {LISTING} does not list. "
+        print(f"::error::Public items removed since {baseline} that {label} does not list. "
               f"Restore each one, or add its key to the list's `## {REMOVED_SECTION}` "
               f"section:", file=sys.stderr)
         for key in unlisted:
@@ -880,22 +902,24 @@ def check(baseline: str, release_type: str, root: Path = REPO, run: Runner = run
         status = 1
     stale = sorted(listing.removed - removals)
     if stale:
-        print(f"::warning::Listed in {LISTING} but not reported by cargo-semver-checks, "
+        print(f"::warning::Listed in {label} but not reported by cargo-semver-checks, "
               f"so either restored or keyed differently now:", file=sys.stderr)
         for key in stale:
             print(f"  {key}", file=sys.stderr)
     print(f"{len(removals)} removals ({len(removals) - len(unlisted)} listed), and "
-          f"{len(others)} other changes, which S1 allows.", file=sys.stderr)
-    return max(status, compile_hidden(listing.hidden, metadata, root, stream))
+          f"{len(others)} other changes, which the stage allows.", file=sys.stderr)
+    return max(status, compile_hidden(listing.hidden, metadata, root, stream, label))
 
 
 def release(baseline: str, root: Path = REPO, run: Runner = run_command,
             stream: Runner = stream_command) -> int:
-    # Through S2 the paths S1 listed move, and the manifest lists them where they go.
+    # Through S2 the paths S1 listed move, and the manifest lists them where they go;
+    # every other stage reads its own listing.
     if workspace_stage(root) == "S2":
         hidden, listing = read_manifest(root).hidden, MANIFEST
     else:
-        hidden, listing = read_listing(root).hidden, LISTING
+        listing = stage_listing(root)
+        hidden = read_listing(root, listing).hidden
     metadata = publish_order.cargo_metadata(root / "Cargo.toml", run)
     report = semver_checks(baseline, None, publish_order.members(metadata), root, run, stream)
     current = publish_order.workspace_version(metadata)
@@ -1198,12 +1222,12 @@ def manifest_gate(baseline: str, *, write: bool = False, strict: bool = False,
 def _parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(
         description="Check the public paths and items removed since a baseline against "
-                    "docs/rename-manifest.md or docs/s1-removals.md.")
+                    "docs/rename-manifest.md or the stage's removal listing.")
     commands = parser.add_subparsers(dest="command", required=True)
     checking = commands.add_parser(
-        "check", help="fail on a removal docs/s1-removals.md does not list")
+        "check", help="fail on a removal the stage's listing does not list")
     checking.add_argument("--baseline", required=True, metavar="REV",
-                          help="the git revision to compare with, such as v0.38.1")
+                          help="the git revision to compare with, such as v0.40.0")
     checking.add_argument("--release-type", default="patch",
                           choices=("patch", "minor", "major"),
                           help="passed to cargo-semver-checks; patch, the default, makes "
@@ -1211,7 +1235,7 @@ def _parser() -> argparse.ArgumentParser:
     releasing = commands.add_parser(
         "release", help="fail on any lint failure against the previous release")
     releasing.add_argument("--baseline", required=True, metavar="REV",
-                           help="the previous release's tag, such as v0.38.1")
+                           help="the previous release's tag, such as v0.40.0")
     mapping = commands.add_parser(
         "manifest", help="report the public paths gone since the S2 baseline, against "
                          "docs/rename-manifest.md")
