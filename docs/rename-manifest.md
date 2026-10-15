@@ -80,39 +80,39 @@ the HMAC signer and the session-signer types by `clob` or `relay`.
 Story 5.3 folded `polyoxide-gamma` and `polyoxide-data` into `polyoxide-polymarket` as the
 modules `gamma` and `data`, each under the feature of its name, keeping their own module
 paths. Data's error enum takes its module's name, `DataError` (AD-15's `<Module>Error`).
-Until Story 5.7 reshapes the umbrella, `polyoxide` re-exports `polyoxide_polymarket` in their
-place.
+The umbrella re-exports `polyoxide_polymarket` in their place, as `polyoxide::polymarket`
+since Story 5.7.
 
 - `polyoxide_gamma` → `polyoxide_polymarket::gamma` Story 5.3, feature `gamma`.
 - `polyoxide_data` → `polyoxide_polymarket::data` Story 5.3, feature `data`.
 - `polyoxide_data::DataApiError` → `polyoxide_polymarket::data::DataError` Story 5.3, renamed for its module.
 - `polyoxide_data::error::DataApiError` → `polyoxide_polymarket::data::error::DataError` Story 5.3, renamed for its module.
-- `polyoxide::polyoxide_gamma` → `polyoxide::polyoxide_polymarket::gamma` Story 5.3, feature `gamma`.
-- `polyoxide::polyoxide_data` → `polyoxide::polyoxide_polymarket::data` Story 5.3, feature `data`.
-- `polyoxide::polyoxide_data::DataApiError` → `polyoxide::polyoxide_polymarket::data::DataError` Story 5.3, renamed for its module.
-- `polyoxide::polyoxide_data::error::DataApiError` → `polyoxide::polyoxide_polymarket::data::error::DataError` Story 5.3, renamed for its module.
+- `polyoxide::polyoxide_gamma` → `polyoxide::polymarket::gamma` Story 5.3, feature `polymarket-gamma`.
+- `polyoxide::polyoxide_data` → `polyoxide::polymarket::data` Story 5.3, feature `polymarket-data`.
+- `polyoxide::polyoxide_data::DataApiError` → `polyoxide::polymarket::data::DataError` Story 5.3, renamed for its module.
+- `polyoxide::polyoxide_data::error::DataApiError` → `polyoxide::polymarket::data::error::DataError` Story 5.3, renamed for its module.
 - `polyoxide::prelude::DataApiError` → `polyoxide::prelude::DataError` Story 5.3, renamed for its module.
 
 Story 5.4 folded `polyoxide-clob` and `polyoxide-relay` into `polyoxide-polymarket` as the
 modules `clob` and `relay`, each under the feature of its name, keeping their own module
 paths. The CLOB's sockets, `clob::ws`, are under `clob-ws`, and their error enum takes its
 module's name, `ClobWsError` (AD-15's `<Module>WsError`). `clob` no longer implies `gamma`:
-the proxy-wallet lookup through Gamma is built only with both. Until Story 5.7 reshapes the
-umbrella, `polyoxide` re-exports `polyoxide_polymarket` in place of `polyoxide_clob`.
+the proxy-wallet lookup through Gamma is built only with both. The umbrella re-exports
+`polyoxide_polymarket` in place of `polyoxide_clob`, as `polyoxide::polymarket` since Story 5.7.
 
 - `polyoxide_clob` → `polyoxide_polymarket::clob` Story 5.4, feature `clob`; `ws` under `clob-ws`.
 - `polyoxide_relay` → `polyoxide_polymarket::relay` Story 5.4, feature `relay`.
 - `polyoxide_clob::ws::WebSocketError` → `polyoxide_polymarket::clob::ws::ClobWsError` Story 5.4, renamed for its module.
-- `polyoxide::polyoxide_clob` → `polyoxide::polyoxide_polymarket::clob` Story 5.4, feature `clob`.
-- `polyoxide::polyoxide_clob::ws::WebSocketError` → `polyoxide::polyoxide_polymarket::clob::ws::ClobWsError` Story 5.4, renamed for its module.
+- `polyoxide::polyoxide_clob` → `polyoxide::polymarket::clob` Story 5.4, feature `polymarket-clob`; `ws` under `polymarket-clob-ws`.
+- `polyoxide::polyoxide_clob::ws::WebSocketError` → `polyoxide::polymarket::clob::ws::ClobWsError` Story 5.4, renamed for its module.
 - `polyoxide::prelude::ws::WebSocketError` → `polyoxide::prelude::ws::ClobWsError` Story 5.4, renamed for its module.
 
 Story 5.5 folded `polyoxide-perps`, `polyoxide-rtds` and `polyoxide-sports` into
 `polyoxide-polymarket` as the modules `perps`, `rtds` and `sports`, each under the feature of
 its name, keeping their own module paths and error names. Perps' sockets, `perps::ws`, are
-under `perps-ws`. `rtds` and `sports` are sockets alone and build no `polyoxide-core`. Until
-Story 5.7 reshapes the umbrella, `polyoxide` re-exports `polyoxide_polymarket` in their place,
-under its `perps`, `rtds` and `sports` features. Their `tracing` targets moved with them: what logged under
+under `perps-ws`. `rtds` and `sports` are sockets alone and build no `polyoxide-core`. The
+umbrella re-exports `polyoxide_polymarket` in their place, as `polyoxide::polymarket` since
+Story 5.7, under its `polymarket-perps`, `polymarket-rtds` and `polymarket-sports` features. Their `tracing` targets moved with them: what logged under
 `polyoxide_perps::…`, `polyoxide_rtds::…` and `polyoxide_sports::…` now logs under
 `polyoxide_polymarket::perps::…`, `polyoxide_polymarket::rtds::…` and
 `polyoxide_polymarket::sports::…`, so a `RUST_LOG` filter naming an old crate matches nothing.
@@ -120,9 +120,9 @@ under its `perps`, `rtds` and `sports` features. Their `tracing` targets moved w
 - `polyoxide_perps` → `polyoxide_polymarket::perps` Story 5.5, feature `perps`; `ws` under `perps-ws`.
 - `polyoxide_rtds` → `polyoxide_polymarket::rtds` Story 5.5, feature `rtds`.
 - `polyoxide_sports` → `polyoxide_polymarket::sports` Story 5.5, feature `sports`.
-- `polyoxide::polyoxide_perps` → `polyoxide::polyoxide_polymarket::perps` Story 5.5, feature `perps`.
-- `polyoxide::polyoxide_rtds` → `polyoxide::polyoxide_polymarket::rtds` Story 5.5, feature `rtds`.
-- `polyoxide::polyoxide_sports` → `polyoxide::polyoxide_polymarket::sports` Story 5.5, feature `sports`.
+- `polyoxide::polyoxide_perps` → `polyoxide::polymarket::perps` Story 5.5, feature `polymarket-perps`; `ws` under `polymarket-perps-ws`.
+- `polyoxide::polyoxide_rtds` → `polyoxide::polymarket::rtds` Story 5.5, feature `polymarket-rtds`.
+- `polyoxide::polyoxide_sports` → `polyoxide::polymarket::sports` Story 5.5, feature `polymarket-sports`.
 
 Story 5.6 laid `polyoxide-binance` out as `polyoxide-polymarket` is: its error and weight
 budget moved under its one module, `usdm`, which is behind the feature of its name, and the
@@ -143,6 +143,26 @@ under `polyoxide_binance::error` now logs under `polyoxide_binance::usdm::error`
 - `polyoxide_binance::UsdmBuilder` → `polyoxide_binance::usdm::UsdmBuilder` Story 5.6: the crate root re-exports nothing.
 - `polyoxide_binance::WeightBudget` → `polyoxide_binance::usdm::WeightBudget` Story 5.6: the crate root re-exports nothing.
 
+Story 5.7 made the `polyoxide` umbrella multi-venue. It holds `polyoxide::venue` (always on),
+`polyoxide::polymarket` and `polyoxide::binance`, behind features named for each venue and
+module, and a `prelude`; its crate root holds nothing else. Polymarket's features are
+`polymarket`, the default, which turns on `polymarket-clob`, `polymarket-gamma` and
+`polymarket-data`, and one `polymarket-<module>` per module, relay's included; Binance's are
+`binance`, `binance-usdm` and `binance-usdm-ws`. `full` now covers every module of both
+venues and `keychain`, which keeps its name. The unified client moved into
+`polyoxide-polymarket`, built with `clob`, `gamma` and `data`, and `Polymarket::new` and
+`PolymarketBuilder::build` now return its `BuildError`, whose `Clob`, `Gamma` and `Data`
+variants wrap the error of the client that could not be built and classify as it does. The
+builder's setters are unchanged. `PolymarketError` is removed: its `Perps` variant was never
+returned by anything, and its `Config` variant was never built. The prelude keeps its names,
+re-exporting `Polymarket`, `PolymarketBuilder` and `BuildError` from their new home, and adds
+Binance's clients, errors and streams.
+
+- `polyoxide::Polymarket` → `polyoxide::polymarket::Polymarket` Story 5.7, features `polymarket-clob`, `polymarket-gamma` and `polymarket-data`; `new` returns `BuildError`.
+- `polyoxide::PolymarketBuilder` → `polyoxide::polymarket::PolymarketBuilder` Story 5.7, features `polymarket-clob`, `polymarket-gamma` and `polymarket-data`; `build` returns `BuildError`.
+- `polyoxide::PolymarketError` → removed in Story 5.7: the unified client's builder returns `polyoxide::polymarket::BuildError`, and nothing else returned it.
+- `polyoxide::prelude::PolymarketError` → removed in Story 5.7: the prelude re-exports `BuildError`, which the unified client's builder returns.
+
 ## Features
 
 - `polyoxide-gamma/default` → `polyoxide-polymarket/gamma` Story 5.3: the module's own feature builds what the crate's defaults did.
@@ -160,6 +180,14 @@ under `polyoxide_binance::error` now logs under `polyoxide_binance::usdm::error`
 - `polyoxide-rtds/test-fixtures` → `polyoxide-polymarket/test-server` Story 5.5, with `rtds`; DRIFT R6 renamed it to the name every other crate's had.
 - `polyoxide-sports/test-server` → `polyoxide-polymarket/test-server` Story 5.5, with `sports`.
 - `polyoxide-binance/ws` → `polyoxide-binance/usdm-ws` Story 5.6, which turns on `usdm`.
+- `polyoxide/clob` → `polyoxide/polymarket-clob` Story 5.7.
+- `polyoxide/gamma` → `polyoxide/polymarket-gamma` Story 5.7.
+- `polyoxide/data` → `polyoxide/polymarket-data` Story 5.7.
+- `polyoxide/ws` → `polyoxide/polymarket-clob-ws` Story 5.7, which turns on `polymarket-clob`.
+- `polyoxide/rtds` → `polyoxide/polymarket-rtds` Story 5.7.
+- `polyoxide/perps` → `polyoxide/polymarket-perps` Story 5.7.
+- `polyoxide/perps-ws` → `polyoxide/polymarket-perps-ws` Story 5.7, which turns on `polymarket-perps`.
+- `polyoxide/sports` → `polyoxide/polymarket-sports` Story 5.7.
 
 ## Doc-hidden paths consumers import
 

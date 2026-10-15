@@ -287,3 +287,12 @@ file = "polyoxide-rtds/src/fixtures.rs"
 item = "tests::the_two_spot_fixtures_are_field_identical_and_differently_scaled"
 row = "R6"
 sha256 = "0f0c5c74b2874cc7029dba27223ac88a1c277d9ac312597d4980c80eba48730f"
+
+# Story 5.7: `PolymarketError` is removed, and the unified client's builder
+# returns polyoxide-polymarket's `BuildError`, which has a test of its own
+# there, so the umbrella's test of the old enum goes with it.
+
+[[retired]]
+file = "polyoxide/src/lib.rs"
+item = "tests::every_variant_classifies_as_the_error_it_wraps"
+row = "polyoxide::PolymarketError"
