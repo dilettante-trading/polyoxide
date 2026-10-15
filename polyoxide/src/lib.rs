@@ -15,8 +15,8 @@
 //!   `data` all on it holds the unified client, `polymarket::Polymarket`.
 //! - `polyoxide::binance` is `polyoxide-binance`, under `binance` (its
 //!   defaults: `usdm`), `binance-usdm` or `binance-usdm-ws`.
-//! - `polyoxide::prelude` re-exports the clients, errors and stream types of
-//!   the modules that are on.
+//! - `polyoxide::prelude` re-exports a selection of the enabled modules'
+//!   clients, errors and stream types.
 //!
 //! A `-ws` feature turns its module's own on. `full` turns on every module of
 //! every venue, and `keychain`, which stores credentials in the OS keychain.
@@ -90,6 +90,7 @@ struct ReadmeDoctests;
 /// Compiles the workspace root `README.md` code examples as doctests.
 struct RootReadmeDoctests;
 
+/// The vocabulary every venue shares, `polyoxide-venue`: always on.
 pub use polyoxide_venue as venue;
 
 /// Polymarket's venue crate, `polyoxide-polymarket`: one module per
@@ -189,3 +190,31 @@ const _: fn(crate::polymarket::sports::SportsWs) = drop;
 const _: fn(crate::binance::usdm::Usdm) = drop;
 #[cfg(feature = "binance-usdm-ws")]
 const _: fn(crate::binance::usdm::ws::UsdmWs) = drop;
+
+// The same for each of the prelude's `cfg` blocks, gated on the feature it is
+// meant for, so a block whose `cfg` narrows fails here instead of emptying.
+#[cfg(feature = "polymarket-clob")]
+const _: fn(crate::prelude::Clob) = drop;
+#[cfg(feature = "polymarket-clob-ws")]
+const _: fn(crate::prelude::ws::WebSocket) = drop;
+#[cfg(feature = "polymarket-data")]
+const _: fn(crate::prelude::DataApi) = drop;
+#[cfg(feature = "polymarket-gamma")]
+const _: fn(crate::prelude::Gamma) = drop;
+#[cfg(feature = "polymarket-perps")]
+const _: fn(crate::prelude::Perps) = drop;
+#[cfg(feature = "polymarket-perps-ws")]
+const _: fn(crate::prelude::PerpsWsBuilder) = drop;
+#[cfg(feature = "polymarket-rtds")]
+const _: fn(crate::prelude::Rtds) = drop;
+#[cfg(feature = "polymarket-sports")]
+const _: fn(crate::prelude::SportsWs) = drop;
+#[cfg(feature = "binance-usdm")]
+const _: fn(crate::prelude::Usdm) = drop;
+#[cfg(feature = "binance-usdm-ws")]
+const _: fn(crate::prelude::UsdmWs) = drop;
+
+// The default, `polymarket`, builds the unified client, so it must keep
+// turning on clob, gamma and data.
+#[cfg(feature = "polymarket")]
+const _: fn(crate::prelude::Polymarket) = drop;

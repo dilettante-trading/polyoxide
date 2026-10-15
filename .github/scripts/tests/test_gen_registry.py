@@ -318,7 +318,7 @@ def fixture(root: Path) -> tuple[dict, dict, dict]:
         "polyoxide": manifest(
             {"default": ["alpha"], "alpha": ["dep:polyoxide-alpha"],
              "alpha-ws": ["alpha", "polyoxide-alpha/ws"], "full": ["alpha", "alpha-ws"],
-             "extra": ["polyoxide-alpha?/extra"], "va": ["alpha"]},
+             "extra": ["polyoxide-alpha?/extra"]},
             readme="The umbrella"),
         "polyoxide-core": manifest(readme="Shared things", notes=["the base"]),
         "polyoxide-alpha": manifest(
@@ -702,7 +702,7 @@ EXPECTED = {
     "claude-umbrella-features": [
         "**polyoxide** (the umbrella) uses feature flags: `alpha`, "
         "`alpha-ws` (`polyoxide-alpha/ws`), `full` (all but `extra`), "
-        "`extra` (`polyoxide-alpha?/extra`), `va`. Default = alpha.",
+        "`extra` (`polyoxide-alpha?/extra`). Default = alpha.",
     ],
     "claude-cli-deps": [
         "Note: `polyoxide-cli` does **not** depend on the `polyoxide` umbrella. It "

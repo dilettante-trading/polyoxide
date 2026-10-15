@@ -1001,17 +1001,6 @@ def claude_graph(r: Registry) -> list[str]:
     return lines
 
 
-def _turns_on(features: dict[str, tuple[str, ...]], name: str) -> set[str]:
-    """`name` and every feature of the same crate it turns on."""
-    on, todo = set(), [name]
-    while todo:
-        feature = todo.pop()
-        if feature not in on:
-            on.add(feature)
-            todo += [i for i in features.get(feature, ()) if ":" not in i and "/" not in i]
-    return on
-
-
 def claude_umbrella_features(r: Registry) -> list[str]:
     features = dict(r.crate(UMBRELLA).features)
     named = [f for f in features if f != "default"]
@@ -1019,11 +1008,7 @@ def claude_umbrella_features(r: Registry) -> list[str]:
     for name in named:
         items = features[name]
         if name == "full":
-            # A feature `full` does not name, but whose every item it turns
-            # on, such as a venue's defaults, is not left out.
-            on = _turns_on(features, "full")
-            rest = [f for f in named if f not in on
-                    and not (features[f] and set(features[f]) <= on)]
+            rest = [f for f in named if f != "full" and f not in items]
             note = f"all but {_code_list(rest)}" if rest else "all"
         elif any(i.startswith("dep:") for i in items):
             note = None

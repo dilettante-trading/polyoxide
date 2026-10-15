@@ -39,8 +39,9 @@ the socket-only tree; the signing stack only with `polymarket-clob` or
 `polymarket-relay`; and `keyring` only with `keychain`. Polymarket's `@perps`
 file must hold `reqwest`, its `@clob` and `@relay` files `alloy`, and its
 `@clob,keychain` file `keyring`, Binance's `@usdm-ws` file `polyoxide-ws`, and
-the umbrella's `@polymarket-perps` file `reqwest`, so no rule can pass because
-nothing it admits is ever built.
+the umbrella's `@polymarket-perps` file `reqwest`, its `@polymarket-clob` file
+`alloy` and its `@polymarket-clob,keychain` file `keyring`, so no rule can pass
+because nothing it admits is ever built.
 
 Regenerate every file after a deliberate change, from `.github/scripts`:
 
@@ -124,6 +125,8 @@ MUST_BUILD = {
     "polyoxide-polymarket@clob,keychain.txt": "keyring",
     "polyoxide-binance@usdm-ws.txt": "polyoxide-ws",
     "polyoxide@polymarket-perps.txt": "reqwest",
+    "polyoxide@polymarket-clob.txt": "alloy",
+    "polyoxide@polymarket-clob,keychain.txt": "keyring",
 }
 
 HEADER = """\
@@ -251,7 +254,8 @@ def test_the_allowlists_exist() -> None:
                "clob,keychain", "rtds", "rtds,test-server", "sports", "sports,test-server")
     assert {f"polyoxide-polymarket@{m}.txt" for m in modules} <= set(names), names
     assert {f"polyoxide-binance@{m}.txt" for m in ("usdm", "usdm-ws")} <= set(names), names
-    umbrella = ("polymarket-rtds", "polymarket-sports", "polymarket-perps")
+    umbrella = ("polymarket-rtds", "polymarket-sports", "polymarket-perps", "polymarket-clob",
+                "polymarket-clob,keychain")
     assert {f"polyoxide@{m}.txt" for m in umbrella} <= set(names), names
 
 

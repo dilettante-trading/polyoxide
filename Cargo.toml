@@ -23,7 +23,7 @@ rust-version = "1.91"
 
 [workspace.dependencies]
 polyoxide-core = { path = "polyoxide-core", version = "0.39.0" }
-polyoxide-binance = { path = "polyoxide-binance", version = "0.39.0" }
+polyoxide-binance = { path = "polyoxide-binance", version = "0.39.0", default-features = false }
 # Its defaults are `clob`, `gamma` and `data`; each member names the modules
 # it builds, so none builds the signing stack by accident.
 polyoxide-polymarket = { path = "polyoxide-polymarket", version = "0.39.0", default-features = false }

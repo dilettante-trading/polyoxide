@@ -31,6 +31,7 @@ binance = ["binance-usdm"]
 binance-usdm = ["dep:polyoxide-binance", "polyoxide-binance/usdm"]
 binance-usdm-ws = ["binance-usdm", "polyoxide-binance/usdm-ws"]
 full = [
+    "polymarket",
     "polymarket-clob",
     "polymarket-clob-ws",
     "polymarket-gamma",
@@ -40,6 +41,7 @@ full = [
     "polymarket-perps-ws",
     "polymarket-rtds",
     "polymarket-sports",
+    "binance",
     "binance-usdm",
     "binance-usdm-ws",
     "keychain",

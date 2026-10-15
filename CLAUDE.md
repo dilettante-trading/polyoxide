@@ -76,14 +76,14 @@ Nine crates, in publish order, each with the workspace crates its build needs. C
 - `polyoxide-ws` — The socket kit: the TLS install, `Backoff`, `Timing` and its setters, the deadline arithmetic, `WsError`, connect with a timeout, the bare tier, request/answer correlation, the generic `Supervisor` for a venue `Protocol`, and the scripted test server (feature `test-server`); needs: nothing in the workspace; depends on neither `polyoxide-core` nor `polyoxide-venue`, and builds only tokio, tokio-tungstenite, futures-util, thiserror, tracing and rustls
 - `polyoxide-binance` — Client library for Binance's APIs, one feature per module: `usdm` (USDⓈ-M futures market data, with its streams under `usdm-ws`); re-exported by the umbrella as `polyoxide::binance`; needs: `polyoxide-core` (under `usdm`, on by default), `polyoxide-venue`, `polyoxide-ws` (under `usdm-ws`)
 - `polyoxide-polymarket` — Client library for Polymarket's APIs, one feature per module: `clob` (order book, with its sockets under `clob-ws`), `gamma` (market data), `data` (user data, v1 and v2), `relay` (gasless transactions), `perps` (perpetual futures market data, with its sockets under `perps-ws`), `rtds` (crypto price streams) and `sports` (live sports scores), with the code the HTTP modules share in `shared` and, with `clob`, `gamma` and `data`, the unified `Polymarket` client; re-exported by the umbrella as `polyoxide::polymarket`; needs: `polyoxide-core` (under `clob`, `gamma`, `data`, `relay`, `perps`, on by default), `polyoxide-venue`, `polyoxide-ws` (under `clob-ws`, `perps-ws`, `rtds`, `sports`); only `clob` and `relay` build `alloy`, and only the HTTP modules build core, which `test_dep_allowlists.py` holds per feature; `clob` does not turn on `gamma`, and with both the CLOB client looks a proxy wallet up through Gamma; `rtds` and `sports` build no `polyoxide-core`, `reqwest` or `alloy`, so a credential-free feed builds no HTTP or signing stack; perps' auth and trading pending
-- `polyoxide` — The multi-venue umbrella: `polyoxide::polymarket` and `polyoxide::binance` behind features named for each venue and module, `polyoxide::venue` and a `prelude`; needs: `polyoxide-binance` (under `binance-usdm`), `polyoxide-polymarket` (without default features, under `polymarket-clob`, `polymarket-gamma`, `polymarket-data`, `polymarket-relay`, `polymarket-perps`, `polymarket-rtds`, `polymarket-sports`, on by default), `polyoxide-venue`
-- `polyoxide-cli` — CLI tool for querying Polymarket APIs and Binance USDⓈ-M market data; needs: `polyoxide-binance` (with `usdm-ws`), `polyoxide-core` (with `keychain`, under `keychain`), `polyoxide-polymarket` (with `clob-ws`, `gamma`, `data`, `rtds`, `sports`, without default features); its `keychain` also turns on `polyoxide-polymarket`'s `relay` and `keychain`, for the relay's keychain service
+- `polyoxide` — The multi-venue umbrella: `polyoxide::polymarket` and `polyoxide::binance` behind features named for each venue and module, `polyoxide::venue` and a `prelude`; needs: `polyoxide-binance` (without default features, under `binance-usdm`), `polyoxide-polymarket` (without default features, under `polymarket-clob`, `polymarket-gamma`, `polymarket-data`, `polymarket-relay`, `polymarket-perps`, `polymarket-rtds`, `polymarket-sports`, on by default), `polyoxide-venue`
+- `polyoxide-cli` — CLI tool for querying Polymarket APIs and Binance USDⓈ-M market data; needs: `polyoxide-binance` (with `usdm-ws`, without default features), `polyoxide-core` (with `keychain`, under `keychain`), `polyoxide-polymarket` (with `clob-ws`, `gamma`, `data`, `rtds`, `sports`, without default features); its `keychain` also turns on `polyoxide-polymarket`'s `relay` and `keychain`, for the relay's keychain service
 - `polyoxide-py` — Python bindings via PyO3 (`publish = false`, wheels on PyPI); needs: `polyoxide-polymarket` (with `clob`, `gamma`, `data`, without default features), `polyoxide-venue`
 - `polyoxide-test-support` — Test toolkit: the failure tags the nightly classifier reads, the credential loaders, and the agreement, fixture and soak helpers (`publish = false`); needs: `polyoxide-core` (with `keychain`), `polyoxide-venue`; a path-only dev-dependency of the crates whose tests use it; it names no venue
 <!-- generated:end claude-graph -->
 
 <!-- generated:begin claude-cli-deps -->
-Note: `polyoxide-cli` does **not** depend on the `polyoxide` umbrella. It depends directly on the component crates — `polyoxide-binance` (with `usdm-ws`) and `polyoxide-polymarket` (with `clob-ws`, `gamma`, `data`, `rtds`, `sports`, without default features) — plus `polyoxide-core` (with `keychain`) only under the optional `keychain` feature.
+Note: `polyoxide-cli` does **not** depend on the `polyoxide` umbrella. It depends directly on the component crates — `polyoxide-binance` (with `usdm-ws`, without default features) and `polyoxide-polymarket` (with `clob-ws`, `gamma`, `data`, `rtds`, `sports`, without default features) — plus `polyoxide-core` (with `keychain`) only under the optional `keychain` feature.
 <!-- generated:end claude-cli-deps -->
 
 The CLI's `ws` group streams `market` and `user` (clob), `prices` (rtds), `sports`
@@ -134,9 +134,10 @@ turn on their venue crate's defaults; each `<venue>-<module>` passes its module'
 a `-ws` one turning its module's on, relay's included; `keychain` stays a cross-venue extra, each venue adding its own
 `?/keychain`; there is no umbrella `specta`. Each passthrough names one type of its module through
 the path it opens in a `const _` outside `cfg(test)`, so `cargo hack --each-feature` fails a
-re-export whose `cfg` leaves a feature out. The prelude re-exports each enabled module's clients
-and errors under the umbrella's feature names, aliasing a stream's `Event` by its venue
-(`PerpsEvent`, `SportsEvent`, `UsdmEvent`).
+re-export whose `cfg` leaves a feature out. The prelude re-exports a selection of the enabled
+modules' clients, errors and stream types under the umbrella's feature names, aliasing a stream's
+`Event` by its venue (`PerpsEvent`, `SportsEvent`, `UsdmEvent`). One `const _` per prelude block
+pins it to its feature, and one more pins the unified client to `polymarket`.
 
 ## Key Patterns
 

@@ -179,6 +179,9 @@ impl PolymarketBuilder {
 mod tests {
     use super::*;
     use crate::clob::Credentials;
+    use polyoxide_core::reqwest::header::{HeaderMap, HeaderValue, RETRY_AFTER};
+    use polyoxide_core::reqwest::StatusCode;
+    use polyoxide_core::{ApiError, ErrorResponse};
 
     // Anvil's first well-known key: any valid key builds the client.
     const TEST_KEY: &str = "0xac0974bec39a17e36ba4a6b4d238ff944bacb478cbed5efcae784d7bf4f2ff80";
@@ -190,6 +193,15 @@ mod tests {
             passphrase: "passphrase".into(),
         };
         Polymarket::builder(Account::new(TEST_KEY, credentials).expect("a valid test key"))
+    }
+
+    /// A response with `status`, an empty body and, when given, `Retry-After`.
+    fn response(status: u16, retry_after: Option<&'static str>) -> ApiError {
+        let mut headers = HeaderMap::new();
+        if let Some(seconds) = retry_after {
+            headers.insert(RETRY_AFTER, HeaderValue::from_static(seconds));
+        }
+        ErrorResponse::new(StatusCode::from_u16(status).unwrap(), headers, "").into()
     }
 
     #[test]
@@ -207,28 +219,43 @@ mod tests {
         assert!(matches!(data, BuildError::Data(_)), "{data:?}");
 
         // Each variant delegates, so an error that is not an `InvalidRequest`
-        // keeps its own class and fault.
+        // keeps its own class, fault and wait.
+        let wait = Some(Duration::from_secs(7));
         let rows = [
-            (clob, Class::InvalidRequest, true),
-            (gamma, Class::InvalidRequest, true),
-            (data, Class::InvalidRequest, true),
+            (clob, Class::InvalidRequest, true, None),
+            (gamma, Class::InvalidRequest, true, None),
+            (data, Class::InvalidRequest, true, None),
             (
                 BuildError::from(ClobError::FakUnmatched {
                     message: "no orders found to match with FAK order".into(),
                 }),
                 Class::VenueRefusal { code: None },
                 false,
+                None,
+            ),
+            (
+                BuildError::from(ClobError::from(response(429, Some("7")))),
+                Class::RateLimited { retry_after: wait },
+                true,
+                wait,
+            ),
+            (
+                BuildError::from(GammaError::from(response(503, None))),
+                Class::Unavailable { code: None },
+                true,
+                None,
             ),
             (
                 BuildError::from(DataError::Pagination("stuck".into())),
                 Class::Decode,
                 true,
+                None,
             ),
         ];
-        for (err, class, fault) in rows {
+        for (err, class, fault, retry_after) in rows {
             assert_eq!(err.class(), class, "{err:?}");
             assert_eq!(err.is_fault(), fault, "{err:?}");
-            assert_eq!(Classify::retry_after(&err), None, "{err:?}");
+            assert_eq!(Classify::retry_after(&err), retry_after, "{err:?}");
             assert_eq!(err.is_retriable(), class.is_retriable(), "{err:?}");
         }
     }

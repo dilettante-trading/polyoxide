@@ -87,10 +87,10 @@ since Story 5.7.
 - `polyoxide_data` → `polyoxide_polymarket::data` Story 5.3, feature `data`.
 - `polyoxide_data::DataApiError` → `polyoxide_polymarket::data::DataError` Story 5.3, renamed for its module.
 - `polyoxide_data::error::DataApiError` → `polyoxide_polymarket::data::error::DataError` Story 5.3, renamed for its module.
-- `polyoxide::polyoxide_gamma` → `polyoxide::polymarket::gamma` Story 5.3, feature `polymarket-gamma`.
-- `polyoxide::polyoxide_data` → `polyoxide::polymarket::data` Story 5.3, feature `polymarket-data`.
-- `polyoxide::polyoxide_data::DataApiError` → `polyoxide::polymarket::data::DataError` Story 5.3, renamed for its module.
-- `polyoxide::polyoxide_data::error::DataApiError` → `polyoxide::polymarket::data::error::DataError` Story 5.3, renamed for its module.
+- `polyoxide::polyoxide_gamma` → `polyoxide::polymarket::gamma` Story 5.3 moved the module; the `polyoxide::polymarket` path and its `polymarket-gamma` feature date from Story 5.7.
+- `polyoxide::polyoxide_data` → `polyoxide::polymarket::data` Story 5.3 moved the module; the `polyoxide::polymarket` path and its `polymarket-data` feature date from Story 5.7.
+- `polyoxide::polyoxide_data::DataApiError` → `polyoxide::polymarket::data::DataError` Story 5.3 renamed it for its module; the `polyoxide::polymarket` path dates from Story 5.7.
+- `polyoxide::polyoxide_data::error::DataApiError` → `polyoxide::polymarket::data::error::DataError` Story 5.3 renamed it for its module; the `polyoxide::polymarket` path dates from Story 5.7.
 - `polyoxide::prelude::DataApiError` → `polyoxide::prelude::DataError` Story 5.3, renamed for its module.
 
 Story 5.4 folded `polyoxide-clob` and `polyoxide-relay` into `polyoxide-polymarket` as the
@@ -103,8 +103,8 @@ the proxy-wallet lookup through Gamma is built only with both. The umbrella re-e
 - `polyoxide_clob` → `polyoxide_polymarket::clob` Story 5.4, feature `clob`; `ws` under `clob-ws`.
 - `polyoxide_relay` → `polyoxide_polymarket::relay` Story 5.4, feature `relay`.
 - `polyoxide_clob::ws::WebSocketError` → `polyoxide_polymarket::clob::ws::ClobWsError` Story 5.4, renamed for its module.
-- `polyoxide::polyoxide_clob` → `polyoxide::polymarket::clob` Story 5.4, feature `polymarket-clob`; `ws` under `polymarket-clob-ws`.
-- `polyoxide::polyoxide_clob::ws::WebSocketError` → `polyoxide::polymarket::clob::ws::ClobWsError` Story 5.4, renamed for its module.
+- `polyoxide::polyoxide_clob` → `polyoxide::polymarket::clob` Story 5.4 moved the module; the `polyoxide::polymarket` path, its `polymarket-clob` feature and `ws` under `polymarket-clob-ws` date from Story 5.7.
+- `polyoxide::polyoxide_clob::ws::WebSocketError` → `polyoxide::polymarket::clob::ws::ClobWsError` Story 5.4 renamed it for its module; the `polyoxide::polymarket` path dates from Story 5.7.
 - `polyoxide::prelude::ws::WebSocketError` → `polyoxide::prelude::ws::ClobWsError` Story 5.4, renamed for its module.
 
 Story 5.5 folded `polyoxide-perps`, `polyoxide-rtds` and `polyoxide-sports` into
@@ -120,9 +120,9 @@ Story 5.7, under its `polymarket-perps`, `polymarket-rtds` and `polymarket-sport
 - `polyoxide_perps` → `polyoxide_polymarket::perps` Story 5.5, feature `perps`; `ws` under `perps-ws`.
 - `polyoxide_rtds` → `polyoxide_polymarket::rtds` Story 5.5, feature `rtds`.
 - `polyoxide_sports` → `polyoxide_polymarket::sports` Story 5.5, feature `sports`.
-- `polyoxide::polyoxide_perps` → `polyoxide::polymarket::perps` Story 5.5, feature `polymarket-perps`; `ws` under `polymarket-perps-ws`.
-- `polyoxide::polyoxide_rtds` → `polyoxide::polymarket::rtds` Story 5.5, feature `polymarket-rtds`.
-- `polyoxide::polyoxide_sports` → `polyoxide::polymarket::sports` Story 5.5, feature `polymarket-sports`.
+- `polyoxide::polyoxide_perps` → `polyoxide::polymarket::perps` Story 5.5 moved the module; the `polyoxide::polymarket` path, its `polymarket-perps` feature and `ws` under `polymarket-perps-ws` date from Story 5.7.
+- `polyoxide::polyoxide_rtds` → `polyoxide::polymarket::rtds` Story 5.5 moved the module; the `polyoxide::polymarket` path and its `polymarket-rtds` feature date from Story 5.7.
+- `polyoxide::polyoxide_sports` → `polyoxide::polymarket::sports` Story 5.5 moved the module; the `polyoxide::polymarket` path and its `polymarket-sports` feature date from Story 5.7.
 
 Story 5.6 laid `polyoxide-binance` out as `polyoxide-polymarket` is: its error and weight
 budget moved under its one module, `usdm`, which is behind the feature of its name, and the

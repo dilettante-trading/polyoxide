@@ -8,7 +8,7 @@ behind features named for the venue and its modules.
 | `polyoxide::venue` | `polyoxide-venue`: the vocabulary every venue shares, such as the error classes and `Classify` | always on |
 | `polyoxide::polymarket` | `polyoxide-polymarket`: [Polymarket](https://polymarket.com)'s CLOB, Gamma, Data, Relay, Perps, RTDS and Sports modules, and the unified `Polymarket` client | `polymarket` and `polymarket-<module>` |
 | `polyoxide::binance` | `polyoxide-binance`: Binance's USDⓈ-M futures market data and streams | `binance` and `binance-<module>` |
-| `polyoxide::prelude` | The clients, errors and stream types of the modules that are on | |
+| `polyoxide::prelude` | A selection of the enabled modules' clients, errors and stream types | |
 
 More information about this crate can be found in the [crate documentation](https://docs.rs/polyoxide/).
 
