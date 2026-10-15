@@ -72,6 +72,17 @@ jobs:
       # Runs even when the check above failed, so a PR sees both kinds of fault at once.
       - if: ${{ !cancelled() }}
         run: cargo publish --workspace --dry-run --no-verify --locked
+      # The tombstones sit outside the workspace, so the dry run above never sees
+      # them; each is packaged by its own manifest, as the release publishes it.
+      # Without `--no-verify` cargo would also build each one, and a tombstone's
+      # `compile_error!` fails every build but docs.rs's. Once the commit after
+      # the release deletes tombstones/, the loop finds nothing to package.
+      - if: ${{ !cancelled() }}
+        run: |
+          for manifest in tombstones/*/Cargo.toml; do
+            [ -e "$manifest" ] || continue
+            cargo package --no-verify --manifest-path "$manifest" || exit 1
+          done
 
   # The MSRV the manifests declare. Warnings are allowed here, since lints
   # change between releases; the deny-warnings doc gate stays on stable (AD-22).

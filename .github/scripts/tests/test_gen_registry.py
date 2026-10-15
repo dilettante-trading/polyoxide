@@ -48,6 +48,29 @@ def test_the_real_tree_passes_check(capsys: pytest.CaptureFixture[str]) -> None:
     assert gen_registry.main(["--check"]) == 0, capsys.readouterr().out
 
 
+def test_the_generator_never_reads_the_tombstones(registry) -> None:
+    """The root manifest excludes tombstones/, so `cargo metadata`, which the
+    registry is built from, never lists one: no tombstone needs registration
+    metadata, and no region the generator builds from the crates names one. The
+    architecture guide's region is the spine's text, copied, so it may. Every
+    tombstone the stage holds is read first, so the check is not vacuous while
+    they exist."""
+    publish_order = gen_registry.publish_order
+    names = {p["name"] for doc in publish_order.tombstone_metadata(REPO)
+             for p in publish_order.members(doc)}
+    stage = publish_order.workspace_stage(publish_order.workspace_metadata())
+    assert len(names) == len(publish_order.TOMBSTONES.get(stage, ()))
+    assert not names & {crate.name for crate in registry.crates}
+    for path, regions in gen_registry.render(registry).items():
+        for region, lines in regions.items():
+            if region == "architecture-guide":
+                continue
+            text = "\n".join(lines)
+            for name in names:
+                assert not re.search(rf"(?<![\w-]){re.escape(name)}(?![\w-])", text), (
+                    path, region, name)
+
+
 def _copy_generated_files(root: Path) -> None:
     for path in gen_registry.FILES:
         (root / path).parent.mkdir(parents=True, exist_ok=True)

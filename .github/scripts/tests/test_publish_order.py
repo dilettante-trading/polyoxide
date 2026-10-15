@@ -12,6 +12,7 @@ from __future__ import annotations
 import http.server
 import importlib.util
 import json
+import re
 import subprocess
 import sys
 import threading
@@ -902,6 +903,7 @@ def test_unpublishable_crates_need_no_metadata() -> None:
     assert publish_order.missing_metadata(meta) == []
 
 
+@pytest.mark.usefixtures("no_tombstones")
 def test_check_manifests_fails_naming_the_crates(capsys: pytest.CaptureFixture[str]) -> None:
     meta = metadata(described(package("b"), description=None),
                     described(package("a"), license=None))
@@ -918,3 +920,184 @@ def test_check_manifests_fails_when_cargo_metadata_fails() -> None:
 
 def test_the_real_workspace_has_complete_manifests() -> None:
     assert publish_order.main(["check-manifests"]) == 0
+
+
+# --- the tombstones' rules ---------------------------------------------------
+
+RETIRED = publish_order.TOMBSTONES["S2"]
+
+
+def staged(*packages: dict, stage: str | None = "S2") -> dict:
+    """Workspace metadata in `stage`, which cargo reports from `[workspace.metadata]`."""
+    doc = metadata(*packages)
+    doc["metadata"] = {"polyoxide": {"stage": stage}} if stage else None
+    return doc
+
+
+WORKSPACE = staged(described(package("polyoxide-core")))
+
+
+def tombstone(directory: str, *deps: dict, name: str | None = None, version: str = "1.0.0",
+              publish: list | None = None, **fields) -> dict:
+    """One tombstone's metadata document: each is a workspace of its own."""
+    p = described(package(name or f"polyoxide-{directory}", *deps, version=version,
+                          publish=publish, root="/ws/tombstones"), **fields)
+    p["manifest_path"] = f"/ws/tombstones/{directory}/Cargo.toml"
+    return metadata(p)
+
+
+def every_tombstone(changed: str | None = None, *deps: dict, **fields) -> list[dict]:
+    """The stage's tombstones, `changed` built with `deps` and `fields`."""
+    return [tombstone(d, *deps, **fields) if d == changed else tombstone(d) for d in RETIRED]
+
+
+def test_the_stages_tombstones_at_the_workspaces_version_pass() -> None:
+    assert publish_order.tombstone_faults(WORKSPACE, every_tombstone()) == []
+
+
+@pytest.mark.parametrize(("deps", "fields", "fault"), [
+    ((registry_dep("serde"),), {}, "polyoxide-gamma: depends on serde"),
+    ((registry_dep("tokio", kind="dev"),), {}, "polyoxide-gamma: depends on tokio"),
+    ((registry_dep("cc", kind="build"),), {}, "polyoxide-gamma: depends on cc"),
+    ((dep("polyoxide-core"),), {}, "polyoxide-gamma: depends on polyoxide-core"),
+    ((), {"version": "0.38.0"}, "polyoxide-gamma: version 0.38.0, not the workspace's 1.0.0"),
+    ((), {"description": None}, "polyoxide-gamma: no description"),
+    ((), {"license": ""}, "polyoxide-gamma: no licence"),
+    ((), {"name": "polyoxide-gama"}, "tombstones/gamma: named polyoxide-gama, not polyoxide-gamma"),
+    ((), {"publish": []}, "polyoxide-gamma: `publish` keeps it off crates.io"),
+], ids=["dependency", "dev-dependency", "build-dependency", "path-dependency", "version",
+        "description", "licence", "name", "unpublishable"])
+def test_a_tombstone_breaking_a_rule_is_named_with_its_fault(
+        deps: tuple, fields: dict, fault: str) -> None:
+    [found] = publish_order.tombstone_faults(WORKSPACE, every_tombstone("gamma", *deps, **fields))
+    assert found.startswith(fault), found
+
+
+def test_a_tombstone_the_stage_retires_but_the_tree_lacks_is_named() -> None:
+    tombstones = [doc for doc in every_tombstone() if doc["packages"][0]["name"] != "polyoxide-rtds"]
+    assert publish_order.tombstone_faults(WORKSPACE, tombstones) == [
+        "tombstones/rtds: missing, though stage S2 retires polyoxide-rtds"]
+
+
+def test_a_tombstone_the_stage_does_not_retire_is_named() -> None:
+    tombstones = every_tombstone() + [tombstone("bybit")]
+    assert publish_order.tombstone_faults(WORKSPACE, tombstones) == [
+        "tombstones/bybit: stage S2 retires no polyoxide-bybit"]
+
+
+def test_a_stage_that_retires_nothing_holds_no_tombstone() -> None:
+    """The commit after the release deletes tombstones/ and moves the stage on, and
+    the check passes with no edit of its own."""
+    later = staged(described(package("polyoxide-core")), stage="S3")
+    assert publish_order.tombstone_faults(later, []) == []
+    assert publish_order.tombstone_faults(later, every_tombstone()) == [
+        f"tombstones/{d}: stage S3 retires no polyoxide-{d}" for d in RETIRED]
+
+
+def _write_tombstoned_workspace(root: Path) -> None:
+    """A workspace in stage S2 at 1.0.0, with the stage's tombstones as the
+    repository holds them: excluded, each its own `[workspace]`."""
+    (root / "core" / "src").mkdir(parents=True)
+    (root / "core" / "src" / "lib.rs").write_text("")
+    (root / "core" / "Cargo.toml").write_text(
+        '[package]\nname = "polyoxide-core"\nversion = "1.0.0"\nedition = "2021"\n'
+        'description = "core"\nlicense = "MIT"\n')
+    (root / "Cargo.toml").write_text(
+        '[workspace]\nmembers = ["core"]\nexclude = ["tombstones"]\nresolver = "2"\n\n'
+        '[workspace.metadata.polyoxide]\nstage = "S2"\n')
+    for directory in RETIRED:
+        crate = root / "tombstones" / directory
+        (crate / "src").mkdir(parents=True)
+        (crate / "src" / "lib.rs").write_text('compile_error!("moved");\n')
+        (crate / "Cargo.toml").write_text(
+            f'[package]\nname = "polyoxide-{directory}"\nversion = "1.0.0"\n'
+            f'edition = "2021"\ndescription = "moved"\nlicense = "MIT"\n\n[workspace]\n')
+
+
+@pytest.mark.parametrize(("edit", "fault"), [
+    (None, None),
+    ('\n[dependencies]\nserde = "1"\n', "polyoxide-gamma: depends on serde"),
+    ("\n[target.'cfg(unix)'.dev-dependencies]\nlibc = \"0.2\"\n",
+     "polyoxide-gamma: depends on libc"),
+], ids=["clean", "dependency", "target-dev-dependency"])
+def test_check_manifests_reads_the_tombstones_from_the_tree(
+        tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str],
+        edit: str | None, fault: str | None) -> None:
+    """The I/O matrix's bad tombstone, through `cargo metadata`: the check names the
+    crate and the fault, and exits 1."""
+    _write_tombstoned_workspace(tmp_path)
+    manifest = tmp_path / "tombstones" / "gamma" / "Cargo.toml"
+    if edit:
+        manifest.write_text(manifest.read_text() + edit)
+    monkeypatch.setattr(publish_order, "REPO", tmp_path)
+    assert publish_order.main(["check-manifests"]) == (1 if fault else 0)
+    err = capsys.readouterr().err
+    if fault:
+        assert f"\n  {fault}," in err
+    else:
+        assert err == ""
+
+
+def test_check_manifests_names_a_tombstone_at_another_version(
+        tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]) -> None:
+    _write_tombstoned_workspace(tmp_path)
+    manifest = tmp_path / "tombstones" / "gamma" / "Cargo.toml"
+    manifest.write_text(manifest.read_text().replace('version = "1.0.0"', 'version = "0.38.0"'))
+    monkeypatch.setattr(publish_order, "REPO", tmp_path)
+    assert publish_order.main(["check-manifests"]) == 1
+    assert "  polyoxide-gamma: version 0.38.0, not the workspace's 1.0.0\n" in (
+        capsys.readouterr().err)
+
+
+def _real_tombstones() -> tuple[str, list[str]]:
+    """The real workspace's stage, and the directories under tombstones/."""
+    stage = publish_order.workspace_stage(publish_order.workspace_metadata())
+    found = sorted(m.parent.name for m in (REPO / "tombstones").glob("*/Cargo.toml"))
+    return stage, found
+
+
+def test_the_real_tombstones_are_the_stages() -> None:
+    stage, found = _real_tombstones()
+    assert found == sorted(publish_order.TOMBSTONES.get(stage, ()))
+
+
+def test_the_real_tombstones_are_planned_after_every_workspace_crate() -> None:
+    workspace = publish_order.workspace_metadata()
+    pairs = publish_order.planned(workspace, publish_order.tombstone_metadata())
+    _, found = _real_tombstones()
+    crates = len(publish_order.publish_order(workspace))
+    assert [p.name for p in pairs[crates:]] == [f"polyoxide-{d}" for d in found]
+    assert all(Path(p.manifest).parent.parent.name == "tombstones" for p in pairs[crates:])
+    version = publish_order.workspace_version(workspace)
+    assert {p.version for p in pairs} == {version}
+
+
+MANIFEST_URL = "https://github.com/dilettante-trading/polyoxide/blob/main/docs/rename-manifest.md"
+# The features a retired crate's own `ws` became.
+WS_FEATURES = {"clob": "clob-ws", "perps": "perps-ws"}
+
+
+def test_each_real_tombstone_points_to_its_module_and_stops_the_build() -> None:
+    """The crate doc and the README name the new crate, the feature, the module path,
+    the manifest and the pin that stays put; the `compile_error!`, off only for
+    docs.rs, says the same in one line."""
+    _, found = _real_tombstones()
+    error = re.compile(r'^#\[cfg\(not\(docsrs\)\)\]\ncompile_error!\(\n    "([^\n]*)"\n\);$',
+                       re.MULTILINE)
+    for directory in found:
+        crate = REPO / "tombstones" / directory
+        lib = (crate / "src" / "lib.rs").read_text()
+        doc = "\n".join(line[4:] for line in lib.splitlines() if line.startswith("//! "))
+        readme = (crate / "README.md").read_text()
+        [message] = error.findall(lib)
+        message = message.replace('\\"', '"')
+        ws = WS_FEATURES.get(directory)
+        for text in (doc, readme, message):
+            assert "polyoxide-polymarket" in text, (directory, text)
+            assert f"`{directory}` feature" in text, (directory, text)
+            assert f"polyoxide_polymarket::{directory}" in text, (directory, text)
+            assert f'polyoxide-{directory} = "0.39"' in text, (directory, text)
+            assert MANIFEST_URL in text or f"]: {MANIFEST_URL}" in lib + readme, directory
+            if ws:
+                assert f"`{ws}`" in text, (directory, text)
+        assert MANIFEST_URL in message

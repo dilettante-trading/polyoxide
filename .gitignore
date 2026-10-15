@@ -1,4 +1,6 @@
 target
+# Each tombstone is a workspace of its own, so building one writes its lockfile there.
+/tombstones/*/Cargo.lock
 
 # Python
 .venv

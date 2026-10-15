@@ -34,6 +34,59 @@ def test_the_package_job_checks_manifest_metadata() -> None:
     assert "python3 scripts/publish_order.py check-manifests" in _runs()
 
 
+TOMBSTONE_STEP = "cargo package --no-verify --manifest-path"
+
+
+def _tombstone_step() -> dict:
+    [step] = [s for s in PACKAGE["steps"] if TOMBSTONE_STEP in s.get("run", "")]
+    return step
+
+
+def test_the_package_job_packages_each_tombstone_after_the_workspace() -> None:
+    """The tombstones sit outside the workspace, so the workspace dry run never sees
+    them (DW L22). Each is packaged by its own manifest, with `--no-verify`, since a
+    tombstone's `compile_error!` fails any build, and whether or not the steps
+    before it failed."""
+    steps = PACKAGE["steps"]
+    step = _tombstone_step()
+    assert step["if"] == "${{ !cancelled() }}"
+    workspace = next(i for i, s in enumerate(steps) if "cargo publish" in s.get("run", ""))
+    assert steps.index(step) > workspace
+
+
+def _run_tombstone_step(root: Path, tmp_path: Path) -> list[str]:
+    """The step's script, run in `root` with a `cargo` that records its arguments."""
+    import os
+    import shutil
+    import subprocess
+
+    bin_dir = tmp_path / "bin"
+    bin_dir.mkdir()
+    calls = tmp_path / "calls"
+    cargo = bin_dir / "cargo"
+    cargo.write_text(f'#!/bin/sh\necho "$*" >> "{calls}"\n')
+    cargo.chmod(0o755)
+    env = {**os.environ, "PATH": f"{bin_dir}{os.pathsep}{os.environ['PATH']}"}
+    # GitHub runs a `run:` script with `bash -e`.
+    subprocess.run([shutil.which("bash"), "-e", "-c", _tombstone_step()["run"]], cwd=root,
+                   env=env, check=True)
+    return calls.read_text().splitlines() if calls.exists() else []
+
+
+def test_the_tombstone_step_packages_every_real_tombstone(tmp_path: Path) -> None:
+    found = sorted(str(m.relative_to(REPO)) for m in REPO.glob("tombstones/*/Cargo.toml"))
+    assert _run_tombstone_step(REPO, tmp_path) == [
+        f"package --no-verify --manifest-path {manifest}" for manifest in found]
+
+
+def test_the_tombstone_step_packages_nothing_once_they_are_gone(tmp_path: Path) -> None:
+    """The commit after the release deletes tombstones/, and the step must pass on
+    the empty glob without an edit of its own."""
+    tree = tmp_path / "tree"
+    tree.mkdir()
+    assert _run_tombstone_step(tree, tmp_path) == []
+
+
 def test_the_package_job_holds_no_secret() -> None:
     text = yaml.safe_dump(PACKAGE)
     assert "secrets." not in text
