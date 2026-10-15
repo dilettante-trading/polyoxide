@@ -25,8 +25,10 @@ the reason it went. A row covers its path and every path below it, so
 the 23 features among them, one per line and tab-separated: the old path, its new path or
 the reason it went, its kind (`struct`, `function`, `feature` and so on), and `resolved`, or
 `resolved, doc-hidden` for the 62 doc-hidden ones. It was generated from the manifest by
-`api_removals.py manifest --expand` and is frozen with this release. The CLI's commands are
-in the manifest only.
+`api_removals.py manifest --expand` and is frozen with this release. Two things are in the
+manifest only: the CLI's commands, and the note after a feature row, such as
+`polyoxide-clob/default` → `polyoxide-polymarket/clob` "with `gamma`", which the map's line
+for that feature leaves out.
 
 `polyoxide-polymarket` is on crates.io for the first time. The seven retired crates are
 published once more at 0.40.0 as tombstones: each has no dependencies, and its build stops
@@ -40,7 +42,9 @@ does. No old version is yanked, so a pin to 0.39 keeps building.
    and the features of the modules you used ([Crates and features](#crates-and-features)).
    Keep every other `polyoxide*` dependency on `0.40` together.
 2. Rewrite the imports: `polyoxide_<crate>::…` is `polyoxide_polymarket::<crate>::…`, and
-   `polyoxide::polyoxide_<crate>::…` is `polyoxide::polymarket::<crate>::…`.
+   `polyoxide::polyoxide_<crate>::…` is `polyoxide::polymarket::<crate>::…`. The unified
+   client moved too: `polyoxide::Polymarket` and `polyoxide::PolymarketBuilder` are
+   `polyoxide::polymarket::Polymarket` and `polyoxide::polymarket::PolymarketBuilder`.
 3. Rename the errors that take their module's name: `DataApiError` → `DataError`, clob's
    `ws::WebSocketError` → `ws::ClobWsError`, Binance's `BinanceError` → `usdm::UsdmError`.
    The unified client's `PolymarketError` is gone; `Polymarket::new` and
@@ -150,8 +154,12 @@ The prelude keeps its 0.39 names, but for the three renamed errors: `DataError` 
 `DataApiError`, `ws::ClobWsError` for `ws::WebSocketError`, and `BuildError` for
 `PolymarketError`. It adds Binance's `Usdm`, `UsdmBuilder`, `UsdmError` and `WeightBudget`
 under `binance-usdm`, and `UsdmWs`, `UsdmWsBuilder`, `UsdmWsError`, `StreamName` and
-`Event as UsdmEvent` under `binance-usdm-ws`. `BuildError` and `StreamName` name no venue, so
-a second glob import exporting either is ambiguous where both are used.
+`Event as UsdmEvent` under `binance-usdm-ws`. Unlike the stream events, which the prelude
+aliases by venue (`PerpsEvent`, `SportsEvent`, `UsdmEvent`), `BuildError` and `StreamName`
+keep their own names, which name no venue. A second glob import that brings in an item of the
+same name, such as another crate's `prelude::*`, makes that name ambiguous wherever you use
+it; import that one by its path there, as `polyoxide::polymarket::BuildError` or
+`polyoxide::binance::usdm::ws::StreamName`.
 
 ## Consumer impact
 
@@ -264,6 +272,7 @@ validates. `Credentials`, `BuilderConfig` and `ApiCredentials` keep their `Strin
 - Gamma's and sports' `game_id` still use three types (`i64` on `ListEvents::game_id`,
   `Option<u64>` on `Event` and `MatchUpdate`, `Option<String>` on `Market`), so a caller
   casts.
-- `ClobWsError::{ConnectionClosed, Authentication}` are never constructed; S3 removes them.
+- `ClobWsError::{ConnectionClosed, Authentication}` are never constructed. S3 is to remove
+  them, and [`s3-removals.md`](s3-removals.md) will list them when it does.
 - `polyoxide_polymarket::shared::current_timestamp`, a venue-neutral clock, stays in `shared`;
   S3 may add one to `polyoxide-venue` beside `UnixMillis`.

@@ -5,10 +5,12 @@ baseline: v0.40.0
 # S3 removals
 
 Every public item that stage S3 removes, against the S3 start tag above, the S2 release.
-S3 is for additions (the venue traits, a supervised clob socket, the Kalshi skeleton) and
-plans to remove nothing; anything it does remove goes with no shim or re-export (AD-16)
-and is listed here, so prader-rs and every other consumer migrates from this list. [`s1-removals.md`](s1-removals.md) is S1's, and S2's moves are in
-[`rename-manifest.md`](rename-manifest.md).
+S3 is for additions (the venue traits, a supervised clob socket, the Kalshi skeleton), and
+its removals are few, such as clob's never-constructed `ClobWsError::{ConnectionClosed,
+Authentication}`. The list holds nothing yet: the story that removes an item adds its entry
+here when it lands. Each removal goes with no shim or re-export (AD-16), so prader-rs and
+every other consumer migrates from this list. [`s1-removals.md`](s1-removals.md) is S1's, and
+S2's moves are in [`rename-manifest.md`](rename-manifest.md).
 
 The commit after the S2 release moves the workspace to stage S3, and from it CI's removals
 job runs `python3 scripts/api_removals.py check --baseline v0.40.0`, which reads this list
