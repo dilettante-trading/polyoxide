@@ -1,4 +1,5 @@
-//! `polyoxide ws sports`: stream live match updates from the sports feed.
+//! `polyoxide polymarket sports stream`: stream live match updates from the
+//! sports feed.
 
 use std::{
     collections::HashMap,
@@ -6,21 +7,29 @@ use std::{
     time::Duration,
 };
 
-use clap::Args;
+use clap::{Args, Subcommand};
 use color_eyre::eyre::Result;
-use futures_util::{Stream, StreamExt};
+use futures_util::Stream;
 use polyoxide_polymarket::sports::{Event, GameKey, MatchUpdate, SportsError, SportsWsBuilder};
 
 use crate::commands::common::parsing::{parse_duration, parse_list_entry};
+use crate::commands::stream::{self, excerpt, Feed, Handled, Limits, OutputFormat};
 
-/// How each update is printed.
-#[derive(Debug, Clone, Copy, clap::ValueEnum, Default, PartialEq, Eq)]
-pub enum OutputFormat {
-    /// Human-readable, one line per update.
-    #[default]
-    Pretty,
-    /// The update as compact JSON, one object per line.
-    Json,
+#[derive(Subcommand)]
+pub enum SportsCommand {
+    /// Stream live match scores
+    Stream {
+        #[command(flatten)]
+        args: SportsArgs,
+    },
+}
+
+impl SportsCommand {
+    pub async fn run(self) -> Result<()> {
+        match self {
+            Self::Stream { args } => run(args).await,
+        }
+    }
 }
 
 #[derive(Args, Debug)]
@@ -56,9 +65,9 @@ pub struct SportsArgs {
 
 /// Connect to the production feed and stream until `-n`, `-t` or Ctrl+C.
 ///
-/// Unlike `ws prices`, no Ctrl+C handler is installed. Every printed line is
-/// already flushed, and the socket closes when the process exits, so the
-/// default signal exit loses nothing.
+/// No Ctrl+C handler is installed. Every printed line is already flushed,
+/// and the socket closes when the process exits, so the default signal exit
+/// loses nothing.
 pub async fn run(args: SportsArgs) -> Result<()> {
     eprintln!("Connecting to the sports feed...");
     let feed = SportsWsBuilder::new().connect().await?;
@@ -74,82 +83,80 @@ pub async fn run(args: SportsArgs) -> Result<()> {
 /// and skipped frames go to `err`, so JSON output stays clean JSONL.
 pub async fn run_with<S>(
     args: SportsArgs,
-    mut events: S,
+    events: S,
     out: &mut dyn Write,
     err: &mut dyn Write,
 ) -> Result<()>
 where
     S: Stream<Item = Result<Event, SportsError>> + Unpin,
 {
-    // A timeout too large to add, such as `-t 18446744073709551615s`, means
-    // no deadline rather than a panic.
-    let deadline = args
-        .timeout
-        .and_then(|t| tokio::time::Instant::now().checked_add(t));
-    let mut filter = Filter::new(&args);
-    if let Some(summary) = filter.describe() {
+    let mut feed = Sports {
+        filter: Filter::new(&args),
+        format: args.format,
+    };
+    if let Some(summary) = feed.filter.describe() {
         writeln!(err, "# keeping {summary}")?;
     }
-    let mut printed: u64 = 0;
-    loop {
-        if let Some(n) = args.count {
-            if printed >= n {
-                writeln!(err, "Reached {n} update(s)")?;
-                break;
-            }
-        }
-        let next = match deadline {
-            Some(deadline) => match tokio::time::timeout_at(deadline, events.next()).await {
-                Ok(next) => next,
-                Err(_) => {
-                    writeln!(err, "Timeout reached")?;
-                    break;
+    let limits = Limits {
+        count: args.count,
+        timeout: args.timeout,
+    };
+    stream::run(limits, events, &mut feed, out, err).await
+}
+
+/// The sports feed's half of a run: the filter, and what each event means.
+struct Sports {
+    filter: Filter,
+    format: OutputFormat,
+}
+
+impl Feed for Sports {
+    type Event = Event;
+    type Error = SportsError;
+
+    fn event(&mut self, event: Event, out: &mut dyn Write, err: &mut dyn Write) -> Result<Handled> {
+        match event {
+            Event::Update(update) => {
+                if !self.filter.admits(&update) {
+                    return Ok(Handled::Skipped);
                 }
-            },
-            None => events.next().await,
-        };
-        match next {
-            Some(Ok(Event::Update(update))) => {
-                if filter.admits(&update) {
-                    match print_update(&update, args.format, out) {
-                        Ok(()) => printed += 1,
-                        // The reader went away, as with `| head -1`. That
-                        // ends the run; it is not an error.
-                        Err(error) if error.kind() == io::ErrorKind::BrokenPipe => break,
-                        Err(error) => return Err(error.into()),
-                    }
-                }
+                print_update(&update, self.format, out)?;
+                return Ok(Handled::Printed);
             }
-            Some(Ok(Event::Disconnected { reason })) => writeln!(
+            Event::Disconnected { reason } => writeln!(
                 err,
                 "# disconnected: {reason}. Scores are stale until reconnected."
             )?,
-            Some(Ok(Event::Reconnected)) => {
+            Event::Reconnected => {
                 // Print each game's next frame even if unchanged: it is what
                 // confirms the game is current again.
-                filter.forget_printed();
+                self.filter.forget_printed();
                 writeln!(
                     err,
                     "# reconnected. Games that ended during the gap were not re-sent."
                 )?
             }
             // `Event` is #[non_exhaustive]; a future variant is not a fault.
-            Some(Ok(_)) => {}
+            _ => {}
+        }
+        Ok(Handled::Skipped)
+    }
+
+    fn error(&mut self, error: SportsError, err: &mut dyn Write) -> Result<()> {
+        match error {
             // One frame the feed could not read; it carries on.
-            Some(Err(SportsError::Decode { raw, source })) => writeln!(
-                err,
-                "# skipped a frame that did not parse ({source}): {}",
-                excerpt(&raw)
-            )?,
-            // A reconnect refused for good, such as a 404; the feed has ended.
-            Some(Err(error)) => return Err(error.into()),
-            None => {
-                writeln!(err, "The feed ended")?;
-                break;
+            SportsError::Decode { raw, source } => {
+                writeln!(
+                    err,
+                    "# skipped a frame that did not parse ({source}): {}",
+                    excerpt(&raw)
+                )?;
+                Ok(())
             }
+            // A reconnect refused for good, such as a 404; the feed has ended.
+            error => Err(error.into()),
         }
     }
-    Ok(())
 }
 
 /// `--league`, `--game` and `--changes-only` as one decision per update.
@@ -264,23 +271,6 @@ fn print_update(update: &MatchUpdate, format: OutputFormat, out: &mut dyn Write)
     out.flush()
 }
 
-/// The first 200 characters of a frame from the server, escaped, so an
-/// oversized frame or one carrying newlines or terminal escapes stays one
-/// readable stderr line.
-fn excerpt(raw: &str) -> String {
-    const LIMIT: usize = 200;
-    let escaped: String = raw
-        .chars()
-        .take(LIMIT)
-        .flat_map(char::escape_debug)
-        .collect();
-    if raw.chars().count() > LIMIT {
-        escaped + "…"
-    } else {
-        escaped
-    }
-}
-
 /// Width of the teams column in pretty output.
 const TEAMS_WIDTH: usize = 44;
 
@@ -360,14 +350,5 @@ mod tests {
         );
         // Multibyte characters are counted and cut whole.
         assert_eq!(fit("Ñandú v Ñandú", 6), "Ñandú…");
-    }
-
-    #[test]
-    fn an_excerpt_is_one_escaped_line_of_bounded_length() {
-        assert_eq!(excerpt("a\nb\u{1b}[31m"), "a\\nb\\u{1b}[31m");
-        let long = "y".repeat(300);
-        let cut = excerpt(&long);
-        assert_eq!(cut.chars().count(), 201);
-        assert!(cut.ends_with('…'));
     }
 }

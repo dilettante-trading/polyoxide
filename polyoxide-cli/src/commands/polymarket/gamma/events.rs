@@ -2,7 +2,7 @@ use clap::{ArgAction, Subcommand, ValueEnum};
 use color_eyre::eyre::Result;
 use polyoxide_polymarket::gamma::Gamma;
 
-use crate::commands::gamma::SortOrder;
+use crate::commands::polymarket::gamma::SortOrder;
 
 /// Event status filter
 #[derive(Debug, Clone, Copy, ValueEnum, Default)]

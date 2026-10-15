@@ -3,7 +3,7 @@ use std::path::Path;
 use color_eyre::eyre::{Context, Result};
 use polyoxide_polymarket::gamma::Gamma;
 
-use crate::commands::clob::prices::types::Target;
+use crate::commands::polymarket::clob::prices::types::Target;
 
 /// Deduplicate token ids into `Target`s, preserving first-seen order.
 pub fn dedupe_targets(ids: impl IntoIterator<Item = String>) -> Vec<Target> {

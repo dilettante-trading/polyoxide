@@ -3,8 +3,8 @@
 
 use color_eyre::Report;
 use polyoxide_binance::usdm::ws::UsdmWsError;
-use polyoxide_cli::commands::clob::prices::download::DownloadArgs;
-use polyoxide_cli::commands::clob::prices::types::OutputFormat;
+use polyoxide_cli::commands::polymarket::clob::prices::download::DownloadArgs;
+use polyoxide_cli::commands::polymarket::clob::prices::types::OutputFormat;
 use polyoxide_polymarket::clob::{Clob, ClobError};
 use polyoxide_polymarket::data::DataError;
 use polyoxide_polymarket::gamma::GammaError;
@@ -79,7 +79,7 @@ async fn live_download_one_market() {
 
 mod data_v2 {
     use clap::Parser;
-    use polyoxide_cli::commands::DataCommand;
+    use polyoxide_cli::commands::polymarket::data::DataCommand;
     use polyoxide_polymarket::data::DataApi;
     use polyoxide_test_support::ResultExt;
     use serde_json::Value;
@@ -184,7 +184,7 @@ mod data_v2 {
 
 mod ws_sports {
     use clap::Parser;
-    use polyoxide_cli::commands::ws::sports::{run_with, SportsArgs};
+    use polyoxide_cli::commands::polymarket::sports::{run_with, SportsArgs};
     use polyoxide_polymarket::sports::SportsWsBuilder;
     use polyoxide_test_support::{environmental, fail};
     use serde_json::Value;
@@ -230,7 +230,7 @@ mod ws_sports {
 mod ws_binance {
     use clap::Parser;
     use polyoxide_binance::usdm::ws::{UsdmWsBuilder, UsdmWsError};
-    use polyoxide_cli::commands::ws::binance::{run_with, BinanceArgs};
+    use polyoxide_cli::commands::binance::usdm::{run_with, BinanceArgs};
     use polyoxide_test_support::fail;
     use serde_json::Value;
 

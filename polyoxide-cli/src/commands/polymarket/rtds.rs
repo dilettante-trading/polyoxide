@@ -1,17 +1,33 @@
-use std::{
-    sync::{
-        atomic::{AtomicBool, Ordering},
-        Arc,
-    },
-    time::Duration,
+//! `polyoxide polymarket rtds stream`: stream RTDS reference prices.
+
+use std::{io::Write, time::Duration};
+
+use clap::{Args, Subcommand};
+use color_eyre::eyre::Result;
+use futures_util::Stream;
+use polyoxide_polymarket::rtds::{
+    PriceEvent, PriceUpdate, Rtds, RtdsError, Subscription, Topic, TwapWindow,
 };
 
-use clap::Args;
-use color_eyre::eyre::Result;
-use futures_util::StreamExt;
-use polyoxide_polymarket::rtds::{PriceEvent, Rtds, Subscription, Topic, TwapWindow};
+use crate::commands::common::parsing::{parse_duration, parse_list_entry};
+use crate::commands::stream::{self, excerpt, Feed, Handled, Limits, OutputFormat};
 
-use crate::commands::common::parsing::parse_duration;
+#[derive(Subcommand)]
+pub enum RtdsCommand {
+    /// Stream reference prices (Binance, Chainlink spot, Chainlink TWAP)
+    Stream {
+        #[command(flatten)]
+        args: PricesArgs,
+    },
+}
+
+impl RtdsCommand {
+    pub async fn run(self) -> Result<()> {
+        match self {
+            Self::Stream { args } => run(args).await,
+        }
+    }
+}
 
 /// Which RTDS price topic to stream.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, clap::ValueEnum)]
@@ -22,15 +38,6 @@ pub enum PriceTopic {
     Chainlink,
     /// Chainlink time-weighted average prices. Needs `--window`.
     Twap,
-}
-
-#[derive(Debug, Clone, Copy, clap::ValueEnum, Default)]
-pub enum OutputFormat {
-    /// Human-readable one line per update.
-    #[default]
-    Pretty,
-    /// Compact JSON, one object per line.
-    Json,
 }
 
 #[derive(Args)]
@@ -44,8 +51,9 @@ pub struct PricesArgs {
     #[arg(long, value_parser = ["30", "60"])]
     window: Option<String>,
 
-    /// Symbols to filter to. Omit to receive every symbol on the topic.
-    #[arg(long)]
+    /// Symbols to filter to, comma-separated. Omit to receive every symbol on
+    /// the topic.
+    #[arg(long, value_delimiter = ',', value_parser = parse_list_entry)]
     symbol: Vec<String>,
 
     /// Output format
@@ -62,9 +70,9 @@ pub struct PricesArgs {
 }
 
 /// `--window` only affects the TWAP topic. Warn rather than error on a
-/// non-TWAP topic, matching `ws market`'s handling of a gated-event filter
-/// without `--custom-features`: the flag is harmless noise here, not a
-/// contradiction worth refusing to run over.
+/// non-TWAP topic, matching `polymarket clob stream market`'s handling of a
+/// gated-event filter without `--custom-features`: the flag is harmless noise
+/// here, not a contradiction worth refusing to run over.
 fn warn_if_window_ignored(window: Option<&str>, topic_name: &str) {
     if window.is_some() {
         eprintln!(
@@ -73,6 +81,7 @@ fn warn_if_window_ignored(window: Option<&str>, topic_name: &str) {
     }
 }
 
+/// Connect to RTDS and stream until `-n`, `-t` or Ctrl+C.
 pub async fn run(args: PricesArgs) -> Result<()> {
     let topic = match args.topic {
         PriceTopic::Binance => {
@@ -95,99 +104,125 @@ pub async fn run(args: PricesArgs) -> Result<()> {
     // unfiltered subscription — not an empty fan-out. `Subscription::symbols`
     // returns an empty vec for an empty input, and `Rtds::connect` refuses an
     // empty subscription set outright, so this has to be special-cased here.
-    let subscriptions = if args.symbol.is_empty() {
+    // An empty entry, as in `--symbol btc/usd,`, is dropped: a filter that
+    // matches nothing would deliver nothing, and say nothing about it.
+    let symbols: Vec<String> = args
+        .symbol
+        .iter()
+        .filter(|s| !s.is_empty())
+        .cloned()
+        .collect();
+    let subscriptions = if symbols.is_empty() {
         vec![Subscription::for_topic(topic)]
     } else {
-        Subscription::for_topic(topic).symbols(args.symbol)
+        Subscription::for_topic(topic).symbols(symbols)
     };
 
-    let running = Arc::new(AtomicBool::new(true));
-    let r = running.clone();
-
-    ctrlc::set_handler(move || {
-        r.store(false, Ordering::SeqCst);
-    })?;
-
     eprintln!("Connecting to RTDS...");
-    if let Some(count) = args.count {
-        eprintln!("Will exit after {count} update(s)");
-    }
-    if let Some(timeout) = args.timeout {
-        eprintln!("Will exit after {timeout:?}");
-    }
-    eprintln!("Press Ctrl+C to exit\n");
-
-    let mut stream = Rtds::connect(subscriptions).await?;
-    let mut update_count: u64 = 0;
-    let start_time = std::time::Instant::now();
-
-    while running.load(Ordering::SeqCst) {
-        if let Some(timeout) = args.timeout {
-            if start_time.elapsed() >= timeout {
-                eprintln!("\nTimeout reached");
-                break;
-            }
-        }
-
-        tokio::select! {
-            event = stream.next() => {
-                match event {
-                    Some(Ok(PriceEvent::Snapshot(snapshot))) => {
-                        eprintln!(
-                            "# backfill: {} point(s) for {}",
-                            snapshot.points.len(),
-                            snapshot.symbol
-                        );
-                    }
-                    Some(Ok(PriceEvent::Update(update))) => {
-                        print_update(&update, args.format)?;
-                        update_count += 1;
-
-                        if let Some(count) = args.count {
-                            if update_count >= count {
-                                eprintln!("\nReached {count} update(s)");
-                                break;
-                            }
-                        }
-                    }
-                    // `PriceEvent` is #[non_exhaustive]; a future variant is
-                    // skipped rather than treated as a fault.
-                    Some(Ok(_)) => {}
-                    Some(Err(e)) => {
-                        eprintln!("Error: {e}");
-                        break;
-                    }
-                    None => {
-                        eprintln!("Connection closed");
-                        break;
-                    }
-                }
-            }
-            _ = tokio::time::sleep(Duration::from_millis(100)) => {
-                if !running.load(Ordering::SeqCst) {
-                    break;
-                }
-            }
-        }
-    }
-
-    eprintln!("\nDisconnecting... ({update_count} update(s) received)");
-    stream.close().await?;
-
-    Ok(())
+    let mut feed = Rtds::connect(subscriptions).await?;
+    eprintln!("Connected. Press Ctrl+C to exit.");
+    let result = run_with(
+        args,
+        &mut feed,
+        &mut std::io::stdout(),
+        &mut std::io::stderr(),
+    )
+    .await;
+    let _ = feed.close().await;
+    result
 }
 
-fn print_update(
-    update: &polyoxide_polymarket::rtds::PriceUpdate,
-    format: OutputFormat,
-) -> Result<()> {
+/// Print events from any stream until `-n` or `-t` is reached or the stream
+/// ends.
+///
+/// Takes the stream rather than connecting, so tests can drive every flag with
+/// a scripted list of events. Updates go to `out`; backfill markers and
+/// skipped frames go to `err`, so JSON output stays clean JSONL.
+pub async fn run_with<S>(
+    args: PricesArgs,
+    events: S,
+    out: &mut dyn Write,
+    err: &mut dyn Write,
+) -> Result<()>
+where
+    S: Stream<Item = Result<PriceEvent, RtdsError>> + Unpin,
+{
+    let limits = Limits {
+        count: args.count,
+        timeout: args.timeout,
+    };
+    stream::run(limits, events, &mut Prices(args.format), out, err).await
+}
+
+/// RTDS's half of a run: what each event means, printed in a format.
+struct Prices(OutputFormat);
+
+impl Feed for Prices {
+    type Event = PriceEvent;
+    type Error = RtdsError;
+
+    fn event(
+        &mut self,
+        event: PriceEvent,
+        out: &mut dyn Write,
+        err: &mut dyn Write,
+    ) -> Result<Handled> {
+        match event {
+            PriceEvent::Snapshot(snapshot) => {
+                writeln!(
+                    err,
+                    "# backfill: {} point(s) for {}",
+                    snapshot.points.len(),
+                    snapshot.symbol
+                )?;
+                Ok(Handled::Skipped)
+            }
+            PriceEvent::Update(update) => {
+                print_update(&update, self.0, out)?;
+                Ok(Handled::Printed)
+            }
+            // `PriceEvent` is #[non_exhaustive]; a future variant is skipped
+            // rather than treated as a fault.
+            _ => Ok(Handled::Skipped),
+        }
+    }
+
+    fn error(&mut self, error: RtdsError, err: &mut dyn Write) -> Result<()> {
+        match error {
+            // One frame, or one value, the connection could not read; it
+            // carries on.
+            RtdsError::Json { raw, source } => {
+                writeln!(
+                    err,
+                    "# skipped a frame that did not parse ({source}): {}",
+                    excerpt(&raw)
+                )?;
+                Ok(())
+            }
+            RtdsError::Precision { raw, topic } => {
+                writeln!(
+                    err,
+                    "# skipped a value on {topic:?} that did not decode: {}",
+                    excerpt(&raw)
+                )?;
+                Ok(())
+            }
+            error => Err(error.into()),
+        }
+    }
+}
+
+/// Print one update and flush it, so a reader sees it at once whatever kind of
+/// writer `out` is.
+fn print_update(update: &PriceUpdate, format: OutputFormat, out: &mut dyn Write) -> Result<()> {
     match format {
-        OutputFormat::Pretty => println!(
+        OutputFormat::Pretty => writeln!(
+            out,
             "{:>10} {:>20} {}",
             update.symbol(),
             update.value(),
             update.observed_at()
-        ),
+        )?,
         // `value` is serialized as a string so the exact decimal survives —
         // a JSON number would round-trip through a float and degrade it.
         OutputFormat::Json => {
@@ -197,9 +232,10 @@ fn print_update(
                 "observed_at": update.observed_at(),
                 "window_s": update.window().map(TwapWindow::seconds),
             });
-            println!("{}", serde_json::to_string(&line)?);
+            writeln!(out, "{}", serde_json::to_string(&line)?)?;
         }
     }
+    out.flush()?;
     Ok(())
 }
 
@@ -273,6 +309,12 @@ mod tests {
     #[test]
     fn parses_multiple_symbols() {
         let w = try_parse(&["test", "--symbol", "btc/usd", "--symbol", "eth/usd"]).unwrap();
+        assert_eq!(w.args.symbol, vec!["btc/usd", "eth/usd"]);
+    }
+
+    #[test]
+    fn symbols_split_on_commas_and_are_trimmed() {
+        let w = try_parse(&["test", "--symbol", "btc/usd, eth/usd"]).unwrap();
         assert_eq!(w.args.symbol, vec!["btc/usd", "eth/usd"]);
     }
 

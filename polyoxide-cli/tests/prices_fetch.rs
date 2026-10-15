@@ -3,7 +3,7 @@ use std::sync::Arc;
 
 use governor::{Quota, RateLimiter};
 use mockito::{Matcher, Server};
-use polyoxide_cli::commands::clob::prices::fetch::fetch_one;
+use polyoxide_cli::commands::polymarket::clob::prices::fetch::fetch_one;
 use polyoxide_polymarket::clob::{ClobBuilder, PricesHistoryQuery};
 
 fn limiter() -> Arc<governor::DefaultDirectRateLimiter> {

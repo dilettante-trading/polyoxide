@@ -7,7 +7,7 @@ use polyoxide_polymarket::data::DataApi;
 use super::paging::{run_paged, PageArgs};
 use super::SortOrder;
 use crate::commands::common::parsing::{parse_activity_types, parse_list_entry};
-use crate::commands::data::trades::TradeSideFilter;
+use crate::commands::polymarket::data::trades::TradeSideFilter;
 
 /// Query a user's activity (`/v2/activity`)
 #[derive(Args)]

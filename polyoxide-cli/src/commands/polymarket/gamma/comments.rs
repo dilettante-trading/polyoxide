@@ -2,7 +2,7 @@ use clap::{Subcommand, ValueEnum};
 use color_eyre::eyre::Result;
 use polyoxide_polymarket::gamma::Gamma;
 
-use crate::commands::gamma::SortOrder;
+use crate::commands::polymarket::gamma::SortOrder;
 
 /// Parent entity type for comments.
 ///

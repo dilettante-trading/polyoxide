@@ -5,7 +5,7 @@ use color_eyre::eyre::{Context, Result};
 use polyoxide_polymarket::clob::PriceHistoryPoint;
 use serde::Serialize;
 
-use crate::commands::clob::prices::types::OutputFormat;
+use crate::commands::polymarket::clob::prices::types::OutputFormat;
 
 /// Serializes a market's price points into a byte sink. Separating
 /// serialization from the filesystem keeps the format logic unit-testable.

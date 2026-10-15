@@ -11,7 +11,7 @@ use super::activity::ActivityFilters;
 use super::paging::{print_pretty, run_paged, PageArgs};
 use super::SortOrder;
 use crate::commands::common::parsing::parse_list_entry;
-use crate::commands::data::trades::TradeFilterField;
+use crate::commands::polymarket::data::trades::TradeFilterField;
 
 #[derive(Args)]
 pub struct PositionsCommand {
@@ -234,7 +234,7 @@ mod tests {
     use clap::Parser;
 
     use super::*;
-    use crate::commands::data::trades::TradeSideFilter;
+    use crate::commands::polymarket::data::trades::TradeSideFilter;
 
     #[derive(Parser)]
     struct TestWrapper {
@@ -407,6 +407,59 @@ mod tests {
         match w.cmd.command {
             PositionsSubcommand::Activity(filters) => {
                 assert!(matches!(filters.side, Some(TradeSideFilter::Buy)));
+            }
+            _ => panic!("expected Activity"),
+        }
+    }
+
+    #[test]
+    fn list_value_and_activity_lists_split_on_commas() {
+        let w = try_parse(&[
+            "test",
+            "--user",
+            "0xabc",
+            "list",
+            "--condition",
+            "0xa,0xb",
+            "--event-id",
+            "7, 8",
+        ])
+        .unwrap();
+        match w.cmd.command {
+            PositionsSubcommand::List {
+                condition,
+                event_id,
+                ..
+            } => {
+                assert_eq!(condition.unwrap(), ["0xa", "0xb"]);
+                assert_eq!(event_id.unwrap(), ["7", "8"]);
+            }
+            _ => panic!("expected List"),
+        }
+
+        let w = try_parse(&["test", "--user", "0xabc", "value", "--market", "0xa,0xb"]).unwrap();
+        match w.cmd.command {
+            PositionsSubcommand::Value { condition } => {
+                assert_eq!(condition.unwrap(), ["0xa", "0xb"])
+            }
+            _ => panic!("expected Value"),
+        }
+
+        let w = try_parse(&[
+            "test",
+            "--user",
+            "0xabc",
+            "activity",
+            "--condition",
+            "0xa,0xb",
+            "--event-id",
+            "7,8",
+        ])
+        .unwrap();
+        match w.cmd.command {
+            PositionsSubcommand::Activity(filters) => {
+                assert_eq!(filters.condition.unwrap(), ["0xa", "0xb"]);
+                assert_eq!(filters.event_id.unwrap(), ["7", "8"]);
             }
             _ => panic!("expected Activity"),
         }

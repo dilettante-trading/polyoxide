@@ -3,7 +3,7 @@ use std::path::Path;
 
 use color_eyre::eyre::{Context, Result};
 
-use crate::commands::clob::prices::types::ManifestRecord;
+use crate::commands::polymarket::clob::prices::types::ManifestRecord;
 
 /// Write the run manifest as JSONL (one record per line) to `path`.
 ///
@@ -28,7 +28,7 @@ pub fn write_manifest(path: &Path, records: &[ManifestRecord]) -> Result<()> {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::commands::clob::prices::types::ManifestRecord;
+    use crate::commands::polymarket::clob::prices::types::ManifestRecord;
 
     #[test]
     fn write_manifest_emits_one_json_object_per_line() {

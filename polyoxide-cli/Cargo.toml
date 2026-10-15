@@ -35,7 +35,6 @@ serde_json = { workspace = true }
 color-eyre = "0.6"
 tracing-subscriber = { workspace = true, features = ["env-filter"] }
 futures-util = "0.3"
-ctrlc = "3.4"
 governor = { workspace = true }
 tempfile = "3"
 arrow = { version = "54", optional = true }
@@ -48,9 +47,10 @@ polyoxide-test-support = { path = "../polyoxide-test-support" }
 mockito = { workspace = true }
 tempfile = "3"
 tokio = { workspace = true, features = ["macros", "rt-multi-thread", "time"] }
-# The captured frames, for the `ws sports` tests.
-polyoxide-polymarket = { workspace = true, features = ["sports", "test-server"] }
-# The captured frames, for the `ws binance` tests.
+# The captured frames, for the `polymarket sports stream` and `polymarket rtds
+# stream` tests.
+polyoxide-polymarket = { workspace = true, features = ["sports", "rtds", "test-server"] }
+# The captured frames, for the `binance usdm stream` tests.
 polyoxide-binance = { workspace = true, features = ["usdm-ws", "test-server"] }
 
 # Registration, read by scripts/gen_registry.py: the README line, venue and

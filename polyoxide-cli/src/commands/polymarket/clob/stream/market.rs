@@ -1,19 +1,16 @@
-use std::{
-    sync::{
-        atomic::{AtomicBool, Ordering},
-        Arc,
-    },
-    time::Duration,
-};
+//! `polyoxide polymarket clob stream market`: stream the CLOB's market channel.
+
+use std::{io::Write, time::Duration};
 
 use clap::Args;
 use color_eyre::eyre::Result;
-use futures_util::StreamExt;
+use futures_util::Stream;
 use polyoxide_polymarket::clob::ws::{
-    Channel, MarketMessage, MarketSubscriptionOptions, WebSocket,
+    Channel, ClobWsError, MarketMessage, MarketSubscriptionOptions, WebSocket,
 };
 
-use crate::commands::common::parsing::parse_duration;
+use crate::commands::common::parsing::{parse_duration, parse_list_entry};
+use crate::commands::stream::{self, Feed, Handled, Limits, OutputFormat};
 
 /// Market event types to filter
 #[derive(Debug, Clone, Copy, PartialEq, Eq, clap::ValueEnum)]
@@ -36,16 +33,17 @@ pub enum MarketEventType {
 
 #[derive(Args)]
 pub struct MarketArgs {
-    /// Asset IDs (token IDs) to subscribe to
-    #[arg(required = true)]
+    /// Asset IDs (token IDs) to subscribe to, comma-separated or repeated
+    #[arg(required = true, value_delimiter = ',', value_parser = parse_list_entry)]
     asset_ids: Vec<String>,
 
-    /// Output format
+    /// Output format: `pretty` prints one summary line per event, `json` the
+    /// event as compact JSON
     #[arg(short, long, value_enum, default_value = "pretty")]
     format: OutputFormat,
 
-    /// Filter by event type (can be specified multiple times)
-    #[arg(long, value_enum)]
+    /// Filter by event type, comma-separated or repeated
+    #[arg(long, value_enum, value_delimiter = ',')]
     filter: Vec<MarketEventType>,
 
     /// Subscribe with custom_feature_enabled, which is required for the
@@ -53,7 +51,7 @@ pub struct MarketArgs {
     #[arg(long)]
     custom_features: bool,
 
-    /// Exit after receiving N messages
+    /// Exit after printing N messages
     #[arg(short = 'n', long)]
     count: Option<u64>,
 
@@ -62,37 +60,54 @@ pub struct MarketArgs {
     timeout: Option<Duration>,
 }
 
-#[derive(Debug, Clone, Copy, clap::ValueEnum, Default)]
-pub enum OutputFormat {
-    /// Pretty-printed JSON
-    #[default]
-    Pretty,
-    /// Compact JSON (one message per line)
-    Json,
-    /// Human-readable summary
-    Summary,
-}
-
+/// Connect to the market channel and stream until `-n`, `-t` or Ctrl+C.
 pub async fn run(args: MarketArgs) -> Result<()> {
-    let running = Arc::new(AtomicBool::new(true));
-    let r = running.clone();
-
-    ctrlc::set_handler(move || {
-        r.store(false, Ordering::SeqCst);
-    })?;
-
+    // An empty entry, as in `a,`, is no asset to subscribe to.
+    let asset_ids: Vec<String> = args
+        .asset_ids
+        .iter()
+        .filter(|id| !id.is_empty())
+        .cloned()
+        .collect();
     eprintln!(
         "Connecting to market channel for {} asset(s)...",
-        args.asset_ids.len()
+        asset_ids.len()
     );
+    let options = if args.custom_features {
+        MarketSubscriptionOptions::default().with_custom_features()
+    } else {
+        MarketSubscriptionOptions::default()
+    };
+    let mut ws = WebSocket::connect_market_with(asset_ids, options).await?;
+    eprintln!("Connected. Press Ctrl+C to exit.");
+    let result = run_with(
+        args,
+        &mut ws,
+        &mut std::io::stdout(),
+        &mut std::io::stderr(),
+    )
+    .await;
+    let _ = ws.close().await;
+    result
+}
+
+/// Filter and print events from any stream until `-n` or `-t` is reached or
+/// the stream ends.
+///
+/// Takes the stream rather than connecting, so tests can drive every flag with
+/// a scripted list of events. Events go to `out`; the filter, warnings and
+/// skipped frames go to `err`, so JSON output stays clean JSONL.
+pub async fn run_with<S>(
+    args: MarketArgs,
+    events: S,
+    out: &mut dyn Write,
+    err: &mut dyn Write,
+) -> Result<()>
+where
+    S: Stream<Item = Result<Channel, ClobWsError>> + Unpin,
+{
     if !args.filter.is_empty() {
-        eprintln!("Filtering: {:?}", args.filter);
-    }
-    if let Some(count) = args.count {
-        eprintln!("Will exit after {} message(s)", count);
-    }
-    if let Some(timeout) = args.timeout {
-        eprintln!("Will exit after {:?}", timeout);
+        writeln!(err, "# keeping {:?}", args.filter)?;
     }
     // Warn rather than silently returning nothing: filtering for a gated event
     // without the opt-in flag produces an empty stream, which reads as "no
@@ -103,70 +118,70 @@ pub async fn run(args: MarketArgs) -> Result<()> {
         MarketEventType::MarketResolved,
     ];
     if !args.custom_features && args.filter.iter().any(|f| gated.contains(f)) {
-        eprintln!(
+        writeln!(
+            err,
             "warning: --filter selects a gated event but --custom-features was not passed; \
              the server will never send those events"
-        );
+        )?;
     }
-    eprintln!("Press Ctrl+C to exit\n");
-
-    let options = if args.custom_features {
-        MarketSubscriptionOptions::default().with_custom_features()
-    } else {
-        MarketSubscriptionOptions::default()
+    let limits = Limits {
+        count: args.count,
+        timeout: args.timeout,
     };
-    let mut ws = WebSocket::connect_market_with(args.asset_ids, options).await?;
-    let mut message_count: u64 = 0;
-    let start_time = std::time::Instant::now();
+    let mut feed = Market {
+        filter: args.filter,
+        format: args.format,
+    };
+    stream::run(limits, events, &mut feed, out, err).await
+}
 
-    while running.load(Ordering::SeqCst) {
-        // Check timeout
-        if let Some(timeout) = args.timeout {
-            if start_time.elapsed() >= timeout {
-                eprintln!("\nTimeout reached");
-                break;
-            }
+/// The market channel's half of a run: the filter, and how each event prints.
+struct Market {
+    filter: Vec<MarketEventType>,
+    format: OutputFormat,
+}
+
+impl Feed for Market {
+    type Event = Channel;
+    type Error = ClobWsError;
+
+    fn event(
+        &mut self,
+        channel: Channel,
+        out: &mut dyn Write,
+        _: &mut dyn Write,
+    ) -> Result<Handled> {
+        // Other channels don't appear on a market connection.
+        let Channel::Market(msg) = &channel else {
+            return Ok(Handled::Skipped);
+        };
+        if !should_print(&channel, &self.filter) {
+            return Ok(Handled::Skipped);
         }
-
-        tokio::select! {
-            msg = ws.next() => {
-                match msg {
-                    Some(Ok(channel)) => {
-                        if should_print(&channel, &args.filter) {
-                            print_message(&channel, args.format)?;
-                            message_count += 1;
-
-                            // Check count limit
-                            if let Some(count) = args.count {
-                                if message_count >= count {
-                                    eprintln!("\nReached {} message(s)", count);
-                                    break;
-                                }
-                            }
-                        }
-                    }
-                    Some(Err(e)) => {
-                        eprintln!("Error: {}", e);
-                        break;
-                    }
-                    None => {
-                        eprintln!("Connection closed");
-                        break;
-                    }
+        match self.format {
+            OutputFormat::Pretty => {
+                let summary = print_market_summary(msg);
+                if summary.is_empty() {
+                    return Ok(Handled::Skipped);
                 }
+                writeln!(out, "{summary}")?;
             }
-            _ = tokio::time::sleep(std::time::Duration::from_millis(100)) => {
-                if !running.load(Ordering::SeqCst) {
-                    break;
-                }
-            }
+            OutputFormat::Json => writeln!(out, "{}", serde_json::to_string(msg)?)?,
         }
+        out.flush()?;
+        Ok(Handled::Printed)
     }
 
-    eprintln!("\nDisconnecting... ({} messages received)", message_count);
-    ws.close().await?;
-
-    Ok(())
+    fn error(&mut self, error: ClobWsError, err: &mut dyn Write) -> Result<()> {
+        match error {
+            // One frame the connection could not read; it carries on.
+            ClobWsError::Json(source) => {
+                writeln!(err, "# skipped a frame that did not parse: {source}")?;
+                Ok(())
+            }
+            error => Err(error.into()),
+        }
+    }
 }
 
 fn should_print(channel: &Channel, filters: &[MarketEventType]) -> bool {
@@ -194,95 +209,68 @@ fn should_print(channel: &Channel, filters: &[MarketEventType]) -> bool {
     }
 }
 
-fn print_message(channel: &Channel, format: OutputFormat) -> Result<()> {
-    match channel {
-        Channel::Market(msg) => match format {
-            OutputFormat::Pretty => {
-                println!("{}", serde_json::to_string_pretty(&msg)?);
-            }
-            OutputFormat::Json => {
-                println!("{}", serde_json::to_string(&msg)?);
-            }
-            OutputFormat::Summary => {
-                print_market_summary(msg);
-            }
-        },
-        _ => {
-            // Other channels don't appear on a market connection.
-        }
-    }
-    Ok(())
-}
-
 fn truncate(s: &str, max_len: usize) -> &str {
     &s[..s.floor_char_boundary(max_len)]
 }
 
-fn print_market_summary(msg: &MarketMessage) {
+/// The `pretty` lines for one event: one line, or one per change of a price
+/// change, joined by newlines.
+fn print_market_summary(msg: &MarketMessage) -> String {
     match msg {
-        MarketMessage::Book(book) => {
-            println!(
-                "[BOOK] asset={}.. bids={} asks={}",
-                truncate(&book.asset_id, 10),
-                book.bids.len(),
-                book.asks.len(),
-            );
-        }
-        MarketMessage::PriceChange(pc) => {
-            for change in &pc.price_changes {
-                println!(
+        MarketMessage::Book(book) => format!(
+            "[BOOK] asset={}.. bids={} asks={}",
+            truncate(&book.asset_id, 10),
+            book.bids.len(),
+            book.asks.len(),
+        ),
+        MarketMessage::PriceChange(pc) => pc
+            .price_changes
+            .iter()
+            .map(|change| {
+                format!(
                     "[PRICE] asset={}.. price={} side={}",
                     truncate(&change.asset_id, 10),
                     change.price,
                     change.side
-                );
-            }
-        }
-        MarketMessage::TickSizeChange(tc) => {
-            println!(
-                "[TICK] asset={}.. old={} new={} side={}",
-                truncate(&tc.asset_id, 10),
-                tc.old_tick_size,
-                tc.new_tick_size,
-                tc.side
-            );
-        }
-        MarketMessage::LastTradePrice(ltp) => {
-            println!(
-                "[TRADE] asset={}.. price={} side={} size={}",
-                truncate(&ltp.asset_id, 10),
-                ltp.price,
-                ltp.side,
-                ltp.size
-            );
-        }
-        MarketMessage::BestBidAsk(bba) => {
-            println!(
-                "[BBO] asset={}.. bid={} ask={} spread={}",
-                truncate(&bba.asset_id, 10),
-                bba.best_bid,
-                bba.best_ask,
-                bba.spread
-            );
-        }
-        MarketMessage::NewMarket(nm) => {
-            println!(
-                "[NEW] market={}.. slug={} outcomes={}",
-                truncate(&nm.market, 10),
-                nm.slug,
-                nm.outcomes.join("/")
-            );
-        }
-        MarketMessage::MarketResolved(mr) => {
-            println!(
-                "[RESOLVED] market={}.. winner={}",
-                truncate(&mr.market, 10),
-                mr.winning_outcome
-            );
-        }
+                )
+            })
+            .collect::<Vec<_>>()
+            .join("\n"),
+        MarketMessage::TickSizeChange(tc) => format!(
+            "[TICK] asset={}.. old={} new={} side={}",
+            truncate(&tc.asset_id, 10),
+            tc.old_tick_size,
+            tc.new_tick_size,
+            tc.side
+        ),
+        MarketMessage::LastTradePrice(ltp) => format!(
+            "[TRADE] asset={}.. price={} side={} size={}",
+            truncate(&ltp.asset_id, 10),
+            ltp.price,
+            ltp.side,
+            ltp.size
+        ),
+        MarketMessage::BestBidAsk(bba) => format!(
+            "[BBO] asset={}.. bid={} ask={} spread={}",
+            truncate(&bba.asset_id, 10),
+            bba.best_bid,
+            bba.best_ask,
+            bba.spread
+        ),
+        MarketMessage::NewMarket(nm) => format!(
+            "[NEW] market={}.. slug={} outcomes={}",
+            truncate(&nm.market, 10),
+            nm.slug,
+            nm.outcomes.join("/")
+        ),
+        MarketMessage::MarketResolved(mr) => format!(
+            "[RESOLVED] market={}.. winner={}",
+            truncate(&mr.market, 10),
+            mr.winning_outcome
+        ),
         // `MarketMessage` is #[non_exhaustive]; print something rather than
         // dropping an event this build doesn't know about.
-        other => println!("[?] unhandled event: {other:?}"),
+        other => format!("[?] unhandled event: {other:?}"),
     }
 }
 
@@ -321,6 +309,16 @@ mod tests {
     }
 
     #[test]
+    fn asset_ids_and_filters_split_on_commas() {
+        let w = try_parse(&["test", "asset-1, asset-2", "--filter", "book,price"]).unwrap();
+        assert_eq!(w.args.asset_ids, vec!["asset-1", "asset-2"]);
+        assert_eq!(
+            w.args.filter,
+            vec![MarketEventType::Book, MarketEventType::Price]
+        );
+    }
+
+    #[test]
     fn custom_features_defaults_off_and_parses() {
         let w = try_parse(&["test", "id"]).unwrap();
         assert!(!w.args.custom_features, "must stay opt-in");
@@ -355,12 +353,6 @@ mod tests {
     fn format_json() {
         let w = try_parse(&["test", "id", "--format", "json"]).unwrap();
         assert!(matches!(w.args.format, OutputFormat::Json));
-    }
-
-    #[test]
-    fn format_summary() {
-        let w = try_parse(&["test", "id", "--format", "summary"]).unwrap();
-        assert!(matches!(w.args.format, OutputFormat::Summary));
     }
 
     #[test]

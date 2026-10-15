@@ -8,13 +8,14 @@ use governor::{Quota, RateLimiter};
 use polyoxide_polymarket::clob::{Clob, PricesHistoryQuery};
 use polyoxide_polymarket::gamma::Gamma;
 
-use crate::commands::clob::prices::fetch::fetch_one;
-use crate::commands::clob::prices::manifest::write_manifest;
-use crate::commands::clob::prices::select::{
+use crate::commands::common::parsing::parse_list_entry;
+use crate::commands::polymarket::clob::prices::fetch::fetch_one;
+use crate::commands::polymarket::clob::prices::manifest::write_manifest;
+use crate::commands::polymarket::clob::prices::select::{
     dedupe_targets, discover_targets, read_ids_file, validate_token_id, DiscoverFilters,
 };
-use crate::commands::clob::prices::types::{ManifestRecord, OutputFormat, Target};
-use crate::commands::clob::prices::writer::{atomic_write, writer_for};
+use crate::commands::polymarket::clob::prices::types::{ManifestRecord, OutputFormat, Target};
+use crate::commands::polymarket::clob::prices::writer::{atomic_write, writer_for};
 
 /// Stay under the documented `1000 requests / 10s` limit for `/prices-history`
 /// (`docs/specs/clob/rate-limits.md`) with a safety margin.
@@ -48,8 +49,8 @@ pub struct Summary {
 /// Bulk-download CLOB historical price data to per-market dataset files.
 #[derive(Args, Debug)]
 pub struct DownloadArgs {
-    /// Explicit token IDs to download (repeatable).
-    #[arg(long = "token-id")]
+    /// Explicit token IDs to download, comma-separated or repeated.
+    #[arg(long = "token-id", value_delimiter = ',', value_parser = parse_list_entry)]
     pub token_ids: Vec<String>,
 
     /// File of newline-delimited token IDs (`#` comments and blank lines ignored).

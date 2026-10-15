@@ -1,13 +1,14 @@
-//! `polyoxide ws binance`: stream Binance USDⓈ-M futures market data.
+//! `polyoxide binance usdm stream`: stream Binance USDⓈ-M futures market
+//! data.
 
 use std::{
     io::{self, Write},
     time::Duration,
 };
 
-use clap::Args;
+use clap::{Args, Subcommand};
 use color_eyre::eyre::{bail, Result};
-use futures_util::{Stream, StreamExt};
+use futures_util::Stream;
 use polyoxide_binance::usdm::{
     types::{Interval, Symbol},
     ws::{
@@ -17,15 +18,24 @@ use polyoxide_binance::usdm::{
 };
 
 use crate::commands::common::parsing::{parse_duration, parse_list_entry};
+use crate::commands::stream::{self, excerpt, Feed, Handled, Limits, OutputFormat};
 
-/// How each update is printed.
-#[derive(Debug, Clone, Copy, clap::ValueEnum, Default, PartialEq, Eq)]
-pub enum OutputFormat {
-    /// Human-readable: one line per update, and one per row of an array stream.
-    #[default]
-    Pretty,
-    /// The frame's `{"stream", "data"}` envelope as compact JSON, one per line.
-    Json,
+#[derive(Subcommand)]
+pub enum UsdmCommand {
+    /// Stream USDⓈ-M futures market data: trades, klines, mark prices,
+    /// tickers, depth and book tickers
+    Stream {
+        #[command(flatten)]
+        args: BinanceArgs,
+    },
+}
+
+impl UsdmCommand {
+    pub async fn run(self) -> Result<()> {
+        match self {
+            Self::Stream { args } => run(args).await,
+        }
+    }
 }
 
 /// The kinds a symbol can be streamed as.
@@ -55,7 +65,9 @@ pub struct BinanceArgs {
     #[arg(long)]
     pub all_mark_prices: bool,
 
-    /// Output format
+    /// Output format: `pretty` prints one line per update, and one per row of
+    /// an array stream; `json` prints each frame's `{"stream", "data"}`
+    /// envelope
     #[arg(short, long, value_enum, default_value = "pretty")]
     pub format: OutputFormat,
 
@@ -150,9 +162,9 @@ pub async fn run(args: BinanceArgs) -> Result<()> {
     eprintln!("Connecting to Binance USDⓈ-M streams: {listed}");
     let mut feed = UsdmWsBuilder::new().streams(streams).connect().await?;
     eprintln!("Connected. Press Ctrl+C to exit.");
-    // As in `ws sports`, there is no Ctrl+C handler: the process ends with the
-    // signal. On `-n`, `-t` or the end of the feed the connections are closed
-    // with a handshake.
+    // As in `polymarket sports stream`, there is no Ctrl+C handler: the
+    // process ends with the signal. On `-n`, `-t` or the end of the feed the
+    // connections are closed with a handshake.
     let result = run_with(
         args,
         &mut feed,
@@ -172,68 +184,64 @@ pub async fn run(args: BinanceArgs) -> Result<()> {
 /// frames go to `err`, so JSON output stays clean JSONL.
 pub async fn run_with<S>(
     args: BinanceArgs,
-    mut events: S,
+    events: S,
     out: &mut dyn Write,
     err: &mut dyn Write,
 ) -> Result<()>
 where
     S: Stream<Item = Result<Event, UsdmWsError>> + Unpin,
 {
-    let deadline = args
-        .timeout
-        .and_then(|t| tokio::time::Instant::now().checked_add(t));
-    let mut printed: u64 = 0;
-    loop {
-        if let Some(n) = args.count {
-            if printed >= n {
-                writeln!(err, "Reached {n} update(s)")?;
-                break;
+    let limits = Limits {
+        count: args.count,
+        timeout: args.timeout,
+    };
+    stream::run(limits, events, &mut Usdm(args.format), out, err).await
+}
+
+/// The streams' half of a run: what each event means, printed in a format.
+struct Usdm(OutputFormat);
+
+impl Feed for Usdm {
+    type Event = Event;
+    type Error = UsdmWsError;
+
+    fn event(&mut self, event: Event, out: &mut dyn Write, err: &mut dyn Write) -> Result<Handled> {
+        match event {
+            Event::Update(update) => {
+                print_update(&update, self.0, out)?;
+                return Ok(Handled::Printed);
             }
-        }
-        let next = match deadline {
-            Some(deadline) => match tokio::time::timeout_at(deadline, events.next()).await {
-                Ok(next) => next,
-                Err(_) => {
-                    writeln!(err, "Timeout reached")?;
-                    break;
-                }
-            },
-            None => events.next().await,
-        };
-        match next {
-            Some(Ok(Event::Update(update))) => match print_update(&update, args.format, out) {
-                Ok(()) => printed += 1,
-                // The reader went away, as with `| head -1`; not an error.
-                Err(error) if error.kind() == io::ErrorKind::BrokenPipe => break,
-                Err(error) => return Err(error.into()),
-            },
-            Some(Ok(Event::Disconnected { path, reason })) => writeln!(
+            Event::Disconnected { path, reason } => writeln!(
                 err,
                 "# {path} disconnected: {reason}. Its streams are stale until it reconnects."
             )?,
-            Some(Ok(Event::Reconnected { path })) => writeln!(
+            Event::Reconnected { path } => writeln!(
                 err,
                 "# {path} reconnected. Rebuild anything built from its streams."
             )?,
             // `Event` is #[non_exhaustive]; a future variant is not a fault.
-            Some(Ok(_)) => {}
-            Some(Err(UsdmWsError::Frame {
+            _ => {}
+        }
+        Ok(Handled::Skipped)
+    }
+
+    fn error(&mut self, error: UsdmWsError, err: &mut dyn Write) -> Result<()> {
+        match error {
+            UsdmWsError::Frame {
                 stream,
                 raw,
                 reason,
-            })) => writeln!(
-                err,
-                "# skipped a frame on {stream:?} that did not decode ({reason}): {}",
-                excerpt(&raw)
-            )?,
-            Some(Err(error)) => return Err(error.into()),
-            None => {
-                writeln!(err, "The feed ended")?;
-                break;
+            } => {
+                writeln!(
+                    err,
+                    "# skipped a frame on {stream:?} that did not decode ({reason}): {}",
+                    excerpt(&raw)
+                )?;
+                Ok(())
             }
+            error => Err(error.into()),
         }
     }
-    Ok(())
 }
 
 /// Print one update and flush it.
@@ -318,21 +326,6 @@ fn book_ticker(b: &BookTickerEvent) -> String {
         "{:<16} book    {} x {} / {} x {}",
         b.symbol, b.bid_price, b.bid_quantity, b.ask_price, b.ask_quantity
     )
-}
-
-/// The first 200 characters of a frame, escaped, so it stays one stderr line.
-fn excerpt(raw: &str) -> String {
-    const LIMIT: usize = 200;
-    let escaped: String = raw
-        .chars()
-        .take(LIMIT)
-        .flat_map(char::escape_debug)
-        .collect();
-    if raw.chars().count() > LIMIT {
-        escaped + "…"
-    } else {
-        escaped
-    }
 }
 
 #[cfg(test)]

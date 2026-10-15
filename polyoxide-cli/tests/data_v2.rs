@@ -10,7 +10,7 @@ use std::sync::{Arc, Mutex};
 
 use clap::Parser;
 use mockito::{Matcher, Server, ServerGuard};
-use polyoxide_cli::commands::DataCommand;
+use polyoxide_cli::commands::polymarket::data::DataCommand;
 use polyoxide_polymarket::data::DataApi;
 use polyoxide_test_support::Fixtures;
 use serde_json::Value;

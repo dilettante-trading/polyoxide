@@ -1,17 +1,16 @@
-use std::{
-    sync::{
-        atomic::{AtomicBool, Ordering},
-        Arc,
-    },
-    time::Duration,
-};
+//! `polyoxide polymarket clob stream user`: stream the CLOB's user channel.
+
+use std::{io::Write, time::Duration};
 
 use clap::{Args, ValueEnum};
 use color_eyre::eyre::Result;
-use futures_util::StreamExt;
-use polyoxide_polymarket::clob::ws::{ApiCredentials, Channel, UserMessage, WebSocket};
+use futures_util::Stream;
+use polyoxide_polymarket::clob::ws::{
+    ApiCredentials, Channel, ClobWsError, UserMessage, WebSocket,
+};
 
-use crate::commands::common::parsing::parse_duration;
+use crate::commands::common::parsing::{parse_duration, parse_list_entry};
+use crate::commands::stream::{self, Feed, Handled, Limits, OutputFormat};
 
 /// Credential source for authenticated commands
 #[cfg(feature = "keychain")]
@@ -34,8 +33,8 @@ pub enum UserEventType {
 
 #[derive(Args)]
 pub struct UserArgs {
-    /// Market IDs (condition IDs) to subscribe to
-    #[arg(required = true)]
+    /// Market IDs (condition IDs) to subscribe to, comma-separated or repeated
+    #[arg(required = true, value_delimiter = ',', value_parser = parse_list_entry)]
     market_ids: Vec<String>,
 
     /// API key
@@ -50,15 +49,16 @@ pub struct UserArgs {
     #[arg(long, env = "POLYMARKET_API_PASSPHRASE")]
     api_passphrase: Option<String>,
 
-    /// Output format
+    /// Output format: `pretty` prints one summary line per event, `json` the
+    /// event as compact JSON
     #[arg(short, long, value_enum, default_value = "pretty")]
     format: OutputFormat,
 
-    /// Filter by event type (can be specified multiple times)
-    #[arg(long, value_enum)]
+    /// Filter by event type, comma-separated or repeated
+    #[arg(long, value_enum, value_delimiter = ',')]
     filter: Vec<UserEventType>,
 
-    /// Exit after receiving N messages
+    /// Exit after printing N messages
     #[arg(short = 'n', long)]
     count: Option<u64>,
 
@@ -72,100 +72,109 @@ pub struct UserArgs {
     credential_source: Option<CredentialSource>,
 }
 
-#[derive(Debug, Clone, Copy, ValueEnum, Default)]
-pub enum OutputFormat {
-    /// Pretty-printed JSON
-    #[default]
-    Pretty,
-    /// Compact JSON (one message per line)
-    Json,
-    /// Human-readable summary
-    Summary,
-}
-
-pub async fn run(args: UserArgs) -> Result<()> {
+/// Connect to the user channel and stream until `-n`, `-t` or Ctrl+C.
+pub async fn run(mut args: UserArgs) -> Result<()> {
     let credentials = get_credentials(
-        args.api_key,
-        args.api_secret,
-        args.api_passphrase,
+        args.api_key.take(),
+        args.api_secret.take(),
+        args.api_passphrase.take(),
         #[cfg(feature = "keychain")]
         args.credential_source,
     )?;
-
-    let running = Arc::new(AtomicBool::new(true));
-    let r = running.clone();
-
-    ctrlc::set_handler(move || {
-        r.store(false, Ordering::SeqCst);
-    })?;
-
+    // An empty entry, as in `a,`, is no market to subscribe to.
+    let market_ids: Vec<String> = args
+        .market_ids
+        .iter()
+        .filter(|id| !id.is_empty())
+        .cloned()
+        .collect();
     eprintln!(
         "Connecting to user channel for {} market(s)...",
-        args.market_ids.len()
+        market_ids.len()
     );
+    let mut ws = WebSocket::connect_user(market_ids, credentials).await?;
+    eprintln!("Connected. Press Ctrl+C to exit.");
+    let result = run_with(
+        args,
+        &mut ws,
+        &mut std::io::stdout(),
+        &mut std::io::stderr(),
+    )
+    .await;
+    let _ = ws.close().await;
+    result
+}
+
+/// Filter and print events from any stream until `-n` or `-t` is reached or
+/// the stream ends.
+///
+/// Takes the stream rather than connecting, so tests can drive every flag with
+/// a scripted list of events. Events go to `out`; the filter and skipped
+/// frames go to `err`, so JSON output stays clean JSONL.
+pub async fn run_with<S>(
+    args: UserArgs,
+    events: S,
+    out: &mut dyn Write,
+    err: &mut dyn Write,
+) -> Result<()>
+where
+    S: Stream<Item = Result<Channel, ClobWsError>> + Unpin,
+{
     if !args.filter.is_empty() {
-        eprintln!("Filtering: {:?}", args.filter);
+        writeln!(err, "# keeping {:?}", args.filter)?;
     }
-    if let Some(count) = args.count {
-        eprintln!("Will exit after {} message(s)", count);
-    }
-    if let Some(timeout) = args.timeout {
-        eprintln!("Will exit after {:?}", timeout);
-    }
-    eprintln!("Press Ctrl+C to exit\n");
+    let limits = Limits {
+        count: args.count,
+        timeout: args.timeout,
+    };
+    let mut feed = User {
+        filter: args.filter,
+        format: args.format,
+    };
+    stream::run(limits, events, &mut feed, out, err).await
+}
 
-    let mut ws = WebSocket::connect_user(args.market_ids, credentials).await?;
-    let mut message_count: u64 = 0;
-    let start_time = std::time::Instant::now();
+/// The user channel's half of a run: the filter, and how each event prints.
+struct User {
+    filter: Vec<UserEventType>,
+    format: OutputFormat,
+}
 
-    while running.load(Ordering::SeqCst) {
-        // Check timeout
-        if let Some(timeout) = args.timeout {
-            if start_time.elapsed() >= timeout {
-                eprintln!("\nTimeout reached");
-                break;
-            }
+impl Feed for User {
+    type Event = Channel;
+    type Error = ClobWsError;
+
+    fn event(
+        &mut self,
+        channel: Channel,
+        out: &mut dyn Write,
+        _: &mut dyn Write,
+    ) -> Result<Handled> {
+        // Other channels don't appear on a user connection.
+        let Channel::User(msg) = &channel else {
+            return Ok(Handled::Skipped);
+        };
+        if !should_print(&channel, &self.filter) {
+            return Ok(Handled::Skipped);
         }
+        match self.format {
+            OutputFormat::Pretty => writeln!(out, "{}", print_user_summary(msg))?,
+            OutputFormat::Json => writeln!(out, "{}", serde_json::to_string(msg)?)?,
+        }
+        out.flush()?;
+        Ok(Handled::Printed)
+    }
 
-        tokio::select! {
-            msg = ws.next() => {
-                match msg {
-                    Some(Ok(channel)) => {
-                        if should_print(&channel, &args.filter) {
-                            print_message(&channel, args.format)?;
-                            message_count += 1;
-
-                            // Check count limit
-                            if let Some(count) = args.count {
-                                if message_count >= count {
-                                    eprintln!("\nReached {} message(s)", count);
-                                    break;
-                                }
-                            }
-                        }
-                    }
-                    Some(Err(e)) => {
-                        eprintln!("Error: {}", e);
-                        break;
-                    }
-                    None => {
-                        eprintln!("Connection closed");
-                        break;
-                    }
-                }
+    fn error(&mut self, error: ClobWsError, err: &mut dyn Write) -> Result<()> {
+        match error {
+            // One frame the connection could not read; it carries on.
+            ClobWsError::Json(source) => {
+                writeln!(err, "# skipped a frame that did not parse: {source}")?;
+                Ok(())
             }
-            _ = tokio::time::sleep(std::time::Duration::from_millis(100)) => {
-                if !running.load(Ordering::SeqCst) {
-                    break;
-                }
-            }
+            error => Err(error.into()),
         }
     }
-
-    eprintln!("\nDisconnecting... ({} messages received)", message_count);
-    ws.close().await?;
-
-    Ok(())
 }
 
 fn get_credentials(
@@ -224,49 +233,26 @@ fn should_print(channel: &Channel, filters: &[UserEventType]) -> bool {
     }
 }
 
-fn print_message(channel: &Channel, format: OutputFormat) -> Result<()> {
-    match channel {
-        Channel::User(msg) => match format {
-            OutputFormat::Pretty => {
-                println!("{}", serde_json::to_string_pretty(&msg)?);
-            }
-            OutputFormat::Json => {
-                println!("{}", serde_json::to_string(&msg)?);
-            }
-            OutputFormat::Summary => {
-                print_user_summary(msg);
-            }
-        },
-        _ => {
-            // Shouldn't happen on user channel
-        }
-    }
-    Ok(())
-}
-
-fn print_user_summary(msg: &UserMessage) {
+/// The `pretty` line for one event.
+fn print_user_summary(msg: &UserMessage) -> String {
     match msg {
-        UserMessage::Order(order) => {
-            println!(
-                "[ORDER] id={} type={:?} side={} price={} size={} matched={}",
-                &order.id[..order.id.floor_char_boundary(8)],
-                order.order_type,
-                order.side,
-                order.price,
-                order.original_size,
-                order.size_matched
-            );
-        }
-        UserMessage::Trade(trade) => {
-            println!(
-                "[TRADE] id={} side={} price={} size={} status={:?}",
-                &trade.id[..trade.id.floor_char_boundary(8)],
-                trade.side,
-                trade.price,
-                trade.size,
-                trade.status
-            );
-        }
+        UserMessage::Order(order) => format!(
+            "[ORDER] id={} type={:?} side={} price={} size={} matched={}",
+            &order.id[..order.id.floor_char_boundary(8)],
+            order.order_type,
+            order.side,
+            order.price,
+            order.original_size,
+            order.size_matched
+        ),
+        UserMessage::Trade(trade) => format!(
+            "[TRADE] id={} side={} price={} size={} status={:?}",
+            &trade.id[..trade.id.floor_char_boundary(8)],
+            trade.side,
+            trade.price,
+            trade.size,
+            trade.status
+        ),
     }
 }
 
@@ -331,6 +317,16 @@ mod tests {
     fn parses_multiple_market_ids() {
         let w = try_parse(&["test", "m1", "m2"]).unwrap();
         assert_eq!(w.args.market_ids, vec!["m1", "m2"]);
+    }
+
+    #[test]
+    fn market_ids_and_filters_split_on_commas() {
+        let w = try_parse(&["test", "m1, m2", "--filter", "order,trade"]).unwrap();
+        assert_eq!(w.args.market_ids, vec!["m1", "m2"]);
+        assert_eq!(
+            w.args.filter,
+            vec![UserEventType::Order, UserEventType::Trade]
+        );
     }
 
     #[test]

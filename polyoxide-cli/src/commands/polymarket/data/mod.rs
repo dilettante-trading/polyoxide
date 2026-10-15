@@ -14,7 +14,7 @@ use clap::{Subcommand, ValueEnum};
 use color_eyre::eyre::Result;
 use polyoxide_polymarket::data::DataApi;
 
-use crate::commands::data::{
+use crate::commands::polymarket::data::{
     activity::UserActivityCommand, holders::HoldersCommand, live_volume::LiveVolumeCommand,
     open_interest::OpenInterestCommand, positions::PositionsCommand, traded::TradedCommand,
 };
@@ -203,6 +203,37 @@ mod tests {
     fn holders_parses_with_market_alias() {
         let cmd = try_parse(&["test", "holders", "--market", "0xc"]).unwrap();
         assert!(matches!(cmd, DataCommand::Holders(_)));
+    }
+
+    #[test]
+    fn activity_lists_split_on_commas() {
+        let cmd = try_parse(&[
+            "test",
+            "activity",
+            "--user",
+            "0xu",
+            "--condition",
+            "0xa,0xb",
+            "--event-id",
+            "7, 8",
+        ])
+        .unwrap();
+        match cmd {
+            DataCommand::Activity(cmd) => {
+                assert_eq!(cmd.filters.condition.unwrap(), ["0xa", "0xb"]);
+                assert_eq!(cmd.filters.event_id.unwrap(), ["7", "8"]);
+            }
+            _ => panic!("expected Activity"),
+        }
+    }
+
+    #[test]
+    fn open_interest_conditions_split_on_commas() {
+        let cmd = try_parse(&["test", "open-interest", "--market", "0xa,0xb"]).unwrap();
+        match cmd {
+            DataCommand::OpenInterest(cmd) => assert_eq!(cmd.condition.unwrap(), ["0xa", "0xb"]),
+            _ => panic!("expected OpenInterest"),
+        }
     }
 
     #[test]

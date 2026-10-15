@@ -45,3 +45,22 @@ impl HoldersCommand {
         run_paged(request, &self.page, out, err).await
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use clap::Parser;
+
+    use super::*;
+
+    #[derive(Parser)]
+    struct Wrapper {
+        #[command(flatten)]
+        cmd: HoldersCommand,
+    }
+
+    #[test]
+    fn conditions_split_on_commas_and_are_trimmed() {
+        let w = Wrapper::try_parse_from(["test", "--condition", "0xa, 0xb"]).unwrap();
+        assert_eq!(w.cmd.condition, ["0xa", "0xb"]);
+    }
+}
