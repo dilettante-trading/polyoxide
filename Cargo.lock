@@ -4000,9 +4000,9 @@ name = "polyoxide"
 version = "0.39.0"
 dependencies = [
  "futures-util",
+ "polyoxide-binance",
  "polyoxide-polymarket",
  "polyoxide-venue",
- "thiserror 2.0.18",
  "tokio",
 ]
 

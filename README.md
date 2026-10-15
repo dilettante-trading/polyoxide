@@ -29,23 +29,27 @@ Rust SDK toolkit for Polymarket APIs. It includes library crates for use in your
 cargo add polyoxide
 ```
 
-Or install individual APIs:
+Its features are named for each venue and module, `polymarket-<module>` and `binance-<module>`,
+and its paths too: `polyoxide::polymarket` and `polyoxide::binance`. Or install individual APIs:
 
 ```bash
 # Market data only
-cargo add polyoxide --no-default-features --features gamma
+cargo add polyoxide --no-default-features --features polymarket-gamma
 
 # Trading only
-cargo add polyoxide --no-default-features --features clob
+cargo add polyoxide --no-default-features --features polymarket-clob
 
 # Data API only
-cargo add polyoxide --no-default-features --features data
+cargo add polyoxide --no-default-features --features polymarket-data
 
-# WebSocket only
-cargo add polyoxide --no-default-features --features ws
+# CLOB WebSocket only
+cargo add polyoxide --no-default-features --features polymarket-clob-ws
 
-# Gasless relay, which the unified crate leaves out
-cargo add polyoxide-polymarket --no-default-features --features relay
+# Gasless relay
+cargo add polyoxide --no-default-features --features polymarket-relay
+
+# Binance USDⓈ-M futures market data and its streams
+cargo add polyoxide --no-default-features --features binance-usdm-ws
 ```
 
 ### CLI

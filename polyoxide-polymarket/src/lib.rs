@@ -15,6 +15,10 @@
 //! modules share is in `shared` (built by any of their features):
 //! Polymarket's retry policy, its window-quota tables, the CLOB's composed
 //! throttle and per-signer layer, the HMAC signer and the session-signer types.
+//!
+//! With `clob`, `gamma` and `data` all on, as by default, `Polymarket` holds
+//! one client of each, built from one account by `Polymarket::builder`, whose
+//! `build` fails with a `BuildError` naming the client that could not be built.
 
 // Compile the crate README's `rust` code fences as doctests so broken examples
 // fail CI. `doctest` keeps this out of normal builds and `cargo doc`, and its
@@ -74,6 +78,11 @@ pub mod rtds;
 #[cfg(feature = "sports")]
 pub mod sports;
 
+#[cfg(all(feature = "clob", feature = "gamma", feature = "data"))]
+mod client;
+#[cfg(all(feature = "clob", feature = "gamma", feature = "data"))]
+pub use client::{BuildError, Polymarket, PolymarketBuilder};
+
 // Every public error type implements `Classify`; one without it fails the
 // build here. `.github/scripts/tests/test_classify_coverage.py` fails when a
 // public error type is missing from this list.
@@ -91,6 +100,12 @@ const _: fn() = || {
 const _: fn() = || {
     fn is<T: polyoxide_venue::Classify>() {}
     is::<gamma::GammaError>();
+};
+
+#[cfg(all(feature = "clob", feature = "gamma", feature = "data"))]
+const _: fn() = || {
+    fn is<T: polyoxide_venue::Classify>() {}
+    is::<BuildError>();
 };
 
 #[cfg(feature = "data")]
