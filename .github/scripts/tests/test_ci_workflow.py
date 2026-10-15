@@ -419,7 +419,17 @@ def test_the_removals_job_runs_the_s2_gate_against_the_s2_baseline() -> None:
     assert _checkout("removals")["with"]["fetch-depth"] == 0
     assert _job_runs("removals") == [
         'python3 scripts/api_removals.py manifest --baseline "$S2_BASELINE" --strict '
-        '--expand target/rename-map.tsv']
+        '--expand target/rename-map.tsv',
+        "diff -u docs/rename-map.tsv target/rename-map.tsv"]
+
+
+def test_the_removals_job_holds_the_frozen_rename_map_to_the_one_it_writes() -> None:
+    """docs/rename-map.tsv is frozen; the strict run writes the map afresh to
+    target/, and a commit that changes the entry set fails the job."""
+    runs = _job_runs("removals")
+    assert runs.index("diff -u docs/rename-map.tsv target/rename-map.tsv") == (
+        next(i for i, run in enumerate(runs) if "--expand target/rename-map.tsv" in run) + 1)
+    assert (REPO / "docs" / "rename-map.tsv").is_file()
 
 
 def test_the_removals_job_uploads_the_regenerated_manifest_and_the_map_even_on_failure() -> None:

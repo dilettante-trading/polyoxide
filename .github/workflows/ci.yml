@@ -201,6 +201,9 @@ jobs:
         with:
           version: "v0.14.0"
       - run: python3 scripts/api_removals.py manifest --baseline "$S2_BASELINE" --strict --expand target/rename-map.tsv
+      # docs/rename-map.tsv is the frozen map: the run above writes it afresh, and
+      # a commit that changes the entry set fails here.
+      - run: diff -u docs/rename-map.tsv target/rename-map.tsv
       # The manifest with its regions regenerated, which the hub copies in, and
       # every entry with where it went.
       - if: ${{ always() }}
