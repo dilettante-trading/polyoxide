@@ -2,7 +2,7 @@
 title: 'Stories 5.8 and 5.9: the CLI on the venue axis, and credentials over a shared trait'
 type: 'refactor'
 created: '2026-10-15'
-status: 'ready-for-dev'
+status: 'done'
 route: 'dispatch'
 baseline_commit: '73a47f602e7e5baf76bf19e4a6a66287ab8d24f0'
 review_loop_iteration: 0
@@ -152,16 +152,16 @@ Also:
 - Stage moved files before running the body diff.
 
 **Execution:**
-- [ ] `polyoxide-cli/src/commands/stream.rs`: `OutputFormat`, the loop and `excerpt`, plus the four C3 tests over a scripted feed.
-- [ ] `polyoxide-cli/src/commands/{polymarket,binance}/`: move the files and rebuild the tree. Port sports and Binance to `stream`. Give market, user and prices a `run_with` on `stream`. Add the list delimiters. Rewrite `main.rs`, with replacement tests and the clap-walk delimiter test. Add `tests/stream_polymarket.rs`, which drives market, user and prices through `run_with`, and drop `ctrlc`.
-- [ ] `polyoxide-core/src/keychain.rs`: `Field`, `StoredCredential`, `store`/`show`/`delete` and `Invalid`, with unit tests (validation and unknown fields) that need no keyring.
-- [ ] polyoxide-polymarket: the `StoredCredential` impls on `Account` and `BuilderAccount`, and `delete_from_keychain` through `keychain::delete`.
-- [ ] `polyoxide-cli/src/commands/credentials.rs` and `polymarket/credentials.rs`: the generic command and Polymarket's kinds. Add parse tests for every kind and verb, and the `show` redaction test.
-- [ ] `ci/test-body-diff.toml` and `docs/rename-manifest.md`:
+- [x] `polyoxide-cli/src/commands/stream.rs`: `OutputFormat`, the loop and `excerpt`, plus the four C3 tests over a scripted feed.
+- [x] `polyoxide-cli/src/commands/{polymarket,binance}/`: move the files and rebuild the tree. Port sports and Binance to `stream`. Give market, user and prices a `run_with` on `stream`. Add the list delimiters. Rewrite `main.rs`, with replacement tests and the clap-walk delimiter test. Add `tests/stream_polymarket.rs`, which drives market, user and prices through `run_with`, and drop `ctrlc`.
+- [x] `polyoxide-core/src/keychain.rs`: `Field`, `StoredCredential`, `store`/`show`/`delete` and `Invalid`, with unit tests (validation and unknown fields) that need no keyring.
+- [x] polyoxide-polymarket: the `StoredCredential` impls on `Account` and `BuilderAccount`, and `delete_from_keychain` through `keychain::delete`.
+- [x] `polyoxide-cli/src/commands/credentials.rs` and `polymarket/credentials.rs`: the generic command and Polymarket's kinds. Add parse tests for every kind and verb, and the `show` redaction test.
+- [x] `ci/test-body-diff.toml` and `docs/rename-manifest.md`:
   - the retirements and the path rows;
   - the hand-written `## Commands` section, with the `main.rs` test that each new command in it parses;
   - then `api_removals.py manifest --write`.
-- [ ] Docs:
+- [x] Docs:
   - the CLI README, CLAUDE.md, the root README and the data-v2 INDEX;
   - deferred-work: G04's CLI half done, and DW:93 re-filed for S3;
   - then `gen_registry.py --write`.
@@ -175,9 +175,63 @@ Also:
 
 ## Implementation Notes
 
+- Commits: ec799b8 (`commands::stream`: `OutputFormat`, `Feed`, `Limits`, `run`, `excerpt` and the four runner tests), d934596 (the tree; sports and Binance on the runner; market, user and prices with `run_with`; delimiters and comma tests; main.rs's replacement tests and the clap walk; `tests/stream_polymarket.rs`; `ctrlc` dropped), cff033e (core's `Field`, `StoredCredential`, `store`/`show`/`delete_all`/`delete_fields`, `given` and `KeychainError::Invalid`), 3342dbf (the `Account` and `BuilderAccount` impls), 5903b75 (`commands::credentials::Credentials<K>` and Polymarket's kinds), 4b5f694 (manifest rows, `## Commands` and its main.rs test, `[[retired]]`, `--write`), 97d9d8b (READMEs, CLAUDE.md, data-v2 INDEX, deferred-work, `gen_registry --write`).
+- Counts against the baseline (every other binary unchanged): polyoxide-cli lib 226 → 238 (−1 `format_summary`, −8 old credentials tests; +4 runner tests, the excerpt test moved from sports; +10 credentials tests; +7 comma tests for market, user, rtds, holders, activity, open interest and positions); the CLI bin 20 → 26 (−13 retired, +19 on the new paths); `stream_polymarket` new, 11; core lib 111 → 118 and its doctests 9 → 10; polyoxide-polymarket lib 978 → 986 (the two impls' validation tests). `cargo test -p polyoxide-cli --no-default-features` passes.
+- Verification: clippy `-D warnings`, the workspace tests, rustdoc `-D warnings`, cargo-hack `--each-feature` (polyoxide-cli with and without `keychain`), `test_body_diff.py` (15 acknowledged, 25 retired, 0 lost, 0 stale), `manifest --strict --no-semver-checks` (exit 0), `venue_gate.py`, `gen_registry.py --check`, `publish_order.py check-manifests` and the scripts' pytest (1301) all pass. MSRV was not checked locally (no rustup); nothing used is newer than the baseline's.
+- Deviations, each kept:
+  - **The generic delete is `keychain::delete_all`**, since `keychain::delete(service, key)` exists and renaming it would break its callers. `delete_fields(service, fields)` beside it lets each library's `delete_from_keychain_in_service` (its test seam) delete `Self::FIELDS` from an isolated service.
+  - **`KeychainError` is `#[non_exhaustive]`**, alongside the new variant that already breaks an exhaustive match.
+  - **The shared command is `commands::credentials::Credentials<K: Kinds>`**, not `CredentialsCommand`, so the old path goes and its reason row (the 8 retired tests cite it) is not stale. Its verbs and kinds are subcommands throughout (`show clob` was a positional value), so every new command in `## Commands` is a subcommand path. Flag help is generated from the field (`Field` is `{ name, secret }`), so v0.39.0's per-flag descriptions are gone.
+  - **The CLI depends on `polyoxide-venue` under `keychain`**, for `Secret`, and turns on clap's `string` feature for the generated flags. Nothing new is compiled; the generated regions now list it.
+  - **A frame a stream cannot read is skipped**: clob's `ClobWsError::Json` and RTDS's `Json` and `Precision`, as sports' and Binance's were. Any other error ends the run with it.
+  - **main.rs's replacements live in `tests::polymarket` and `tests::binance`**, so a test that keeps its old name does not pair with the retired one and show as a diff.
+  - **The retired credentials helpers** `tests::TestCli` and `tests::try_parse` need entries too (10 for that file, not 8).
+- Not done: the live labels `fail_report("ws sports", ..)` and `("ws binance", ..)` in `tests/live_api.rs` keep their old text (a `[literals]` entry could rename them); only the section comments changed.
+
 ## Spec Change Log
 
 ## Review Triage Log
+
+Review 1 used all three layers on the full diff (73a47f6..97d9d8b, the spec excluded), not the one layer the S2 plan names for 5.3–5.10. As in 5.6 and 5.7, this diff adds gates (the clap delimiter walk, the `## Commands` parse test), retires 25 protected tests, and handles secret values. Findings are tagged B (blind), E (edge case) and G (verification gap); G-O is the gap layer's "other" finding.
+
+| # | Finding | Verdict | Route | Evidence |
+|---|---|---|---|---|
+| B1 | Three refusal tests call `store` on the real `polyoxide-clob`/`polyoxide-relay` services, so a validation regression overwrites a developer's stored key | medium | patch (P1) | `clob/account/mod.rs` and `relay/account.rs` `a_bad_store_is_refused_before_the_keyring`, and the CLI's `a_relayer_key_without_its_address_is_refused_before_anything_is_written`, reach `keychain::set` on the real service once the refusal fails. The account modules' own keychain tests forbid touching the real services. |
+| G-O | Same as B1, and the tests cannot show "before anything is written" | medium | patch (P1) | Same root cause as B1. |
+| E1 | The runner's `-t` never fires while the stream is always ready | medium | patch (P2) | tokio's `Timeout` polls the inner future first and checks the delay only on `Pending`, so a backlog keeps `timeout_at` returning items. v0.39.0's market, user and prices checked elapsed time at the loop top, so this is a regression for them; sports and Binance had the same loop already. |
+| B6 | `## Commands` says commands keep their flags, but market's and user's default `pretty` changed from indented JSON to summary lines | medium | patch (P3) | Only the two `--format summary` rows mention it, so a script piping the default to `jq` breaks with no row to find. |
+| B7 | `## Commands` omits that market, user and prices now exit non-zero on a stream error, and that Ctrl+C has no handler | low | patch (P3) | Same root cause as B6: the stream rows omit behaviour changes. Dropping the Ctrl+C handler is the intent's decision, and the discarded `close()` error matches Binance's existing `let _ = feed.close().await`. |
+| B2 | The relayer address is validated trimmed but stored raw | low | patch (P4) | `relay/account.rs:58` parses `trim()`; core's `store` writes `expose()` untrimmed; `RelayerApiKeyConfig` holds it as a header value. |
+| E10 | Claim: "the address parses" is not true of the stored value | low | patch (P4) | Same root cause as B2. |
+| B11a | `show` prints a plain field's stored value raw | low | patch (P5) | `render` prints `relayer_api_key_address` verbatim. v0.39.0 stored it unvalidated, so an old entry can hold control characters. The fix is a direct correction (`escape_debug`). |
+| E9 | Same as B11a | low | patch (P5) | Same root cause. |
+| G1 | `-t` reaches the runner in no test of market, user or rtds | low | patch (P6) | Pre-verified: no `-t` in `tests/stream_polymarket.rs`, and the `timeout_flag` tests never call `run_with`. |
+| G2 | Empty list entries are dropped only in each command's network `run`, untested | low | patch (P7) | Pre-verified: `market.rs:69`, `user.rs:88` and `rtds.rs:112` filter inline; no test passes `a,` or `a,,b`. |
+| G3 | rtds' `Precision` skip arm has no test | low | patch (P8) | Pre-verified: no test constructs `RtdsError::Precision`. |
+| G4 | No test that CI runs exercises `store`'s write loop, `show` or `delete_all`/`delete_fields`, and the ignored delete test checks only `private_key` | medium | patch (P9) and defer | Pre-verified. Patch: the ignored tests check every field. Defer: running keychain tests in CI needs a Secret Service daemon. |
+| B3 | A backend failure partway through `store` leaves a partial write, unreported | low | reject | It needs the keyring to fail between two `set`s. v0.39.0 wrote field by field with `?` in the same way, and the fix adds rollback. |
+| E3 | Same as B3 | low | reject | Same evidence. |
+| B4 | Only the relayer pair is checked for "goes together"; a lone `--api-key` is accepted | reject | reject | The intent excludes it: "`store` writes only the fields given, as today", and Validation names only the relayer pair. |
+| E4 | Same as B4, for the builder triple | reject | reject | Same evidence. |
+| B5 | `--help` lost v0.39.0's per-field descriptions | low | reject | Each flag still names its field, and the `builder` kind's about names the relayer alternative. The fix needs a third field on core's `Field`, which the spec fixes as `{ name, secret }`. Recorded as deviation 4 in Implementation Notes. |
+| B8 | Nothing checks that `## Commands` is complete, and "parses" only walks names | false | reject | The test does what the intent asks: it "fails unless every new command it names parses as a subcommand path". deferred-work's status calls the section hand-written. |
+| B9 | An argument of only empty entries is not refused (`market ","`, `--symbol ,`) | low | reject | Typing only commas is unlikely, and the fix adds a guard. v0.39.0 subscribed to `","` itself, also silently. |
+| E5 | Same as B9, rtds | low | reject | Same evidence. |
+| E6 | Same as B9, market | low | reject | Same evidence. |
+| E7 | Same as B9, user | low | reject | Same evidence. |
+| B10 | `KeychainError`'s `#[non_exhaustive]` and new variant have no consumer note | false | reject | The path stays, so the removals job's cargo-semver-checks lists both lints in the manifest's `changed-in-place` region, which feeds 5.12's consumer-impact notes. |
+| B11b | `show` panics on a closed stdout | low | reject | `show` is one small `print!` that fits a pipe's buffer, and v0.39.0's `println!` was the same. |
+| E8 | Same as B11b | low | reject | Same evidence. |
+| B11c | The verbs' run-time messages have no test | low | reject | It names no bad outcome beyond untested message text; the keychain I/O itself is G4's. |
+| B12 | Market's `-n` counts an empty `price_change` under `json` but not under `pretty` | low | reject | It needs a frame with no changes, and `-n` counts printed events in both formats, as the README says. |
+| B13 | The delimiter walk does not test a `Vec`-returning parser, and skips `Set` with `num_args` | false | reject | Every list argument has a comma parse test that reads the field, which is where such a parser panics, and no CLI argument uses `num_args`. |
+| B14 | `ws_sports.rs`, `ws_binance.rs` and `live_api.rs`'s modules keep the `ws` names | reject | reject | The intent keeps them (C3: they "keep their names and assertions"). |
+| B15 | A `[[retired]]` row cites a path that was never public | false | reject | The body diff resolves `row` through its covering manifest row by prefix, which is its documented mechanism, and it reports 0 stale. |
+| B16 | The registry's CLI description differs from the README's | false | reject | The generated line is still accurate: the CLI queries both venues. |
+| E2 | A value with surrounding whitespace is stored as given | low | reject | v0.39.0 stored every value as given, and the fix adds a rule the spec does not name. |
+| E11 | Claim: loaders still read field-name literals, so the list is not in one place | false | reject | Renaming a `FIELDS` entry fails `the_service_and_its_fields_are_what_v0_39_stored` in both account modules, so a loader cannot silently diverge. |
+
+Patches P1–P9 landed in 8c194d3. For P9, the strengthened delete check is a new test in each account module, `keychain_delete_leaves_no_field_behind`: `keychain_delete_removes_all_entries` existed at v0.39.0, so AD-12 protects its body. After the patches, the Verification list passes again: clippy, the workspace tests, the CLI without `keychain`, rustdoc, cargo-hack `--each-feature`, the body diff (25 retired, 0 lost, 0 stale), `manifest --strict` (0 unresolved), the venue gate, `gen_registry.py --check` and the scripts' pytest (1301).
 
 ## Design Notes
 

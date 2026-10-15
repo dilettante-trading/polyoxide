@@ -362,3 +362,6 @@
 - source_spec: `_bmad-output/implementation-artifacts/spec-5-7-the-multi-venue-umbrella.md`
   summary: Reword the root README's opening line and CLAUDE.md's Project Overview, which still call polyoxide a "Rust SDK toolkit for Polymarket APIs", to name Binance too. (low, review 1 B15)
   evidence: `polyoxide-binance` has been a workspace crate since 0.37, and the umbrella's own description now reads "Multi-venue Rust toolkit". Pre-existing, and the fix touches an agent-context file.
+- source_spec: `_bmad-output/implementation-artifacts/spec-5-8-5-9-the-cli-on-the-venue-axis-and-shared-credentials.md`
+  summary: Run the keychain tests that need an OS keychain daemon in CI, so that core's `store`/`show`/`delete_all` round trip and the account modules' delete-every-field tests run on every PR, not only in a local `--ignored` run. (medium, review 1 G4)
+  evidence: Every test that reaches `keyring` is `#[ignore] // Requires OS keychain daemon`, and `ci.yml`'s `cargo nextest run --all-features --workspace` skips them, so a `delete_fields` that stops after one field, or a `store` that writes under the wrong name, passes CI. It needs a Secret Service daemon (e.g. `gnome-keyring` under `dbus-run-session`) on the runner, a workflow change outside Stories 5.8 and 5.9.
