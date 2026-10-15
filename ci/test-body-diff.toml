@@ -296,3 +296,139 @@ sha256 = "0f0c5c74b2874cc7029dba27223ac88a1c277d9ac312597d4980c80eba48730f"
 file = "polyoxide/src/lib.rs"
 item = "tests::every_variant_classifies_as_the_error_it_wraps"
 row = "polyoxide::PolymarketError"
+
+# Stories 5.8 and 5.9: the CLI's commands are `polyoxide <venue> <module>
+# <verb…>`. main.rs's tests of the old tree parse `gamma`, `data`, `clob` and
+# `ws` at the top, or match `Commands::Ws`, so they test the old paths, and
+# `[literals]` cannot turn one argument into two; each retires, and a test of
+# the new path in main.rs's `tests::polymarket` or `tests::binance` replaces
+# it, under the old name where it still reads true.
+
+[[retired]]
+file = "polyoxide-cli/src/main.rs"
+item = "tests::gamma_subcommand_requires_nested_subcommand"
+row = "polyoxide_cli::commands::GammaCommand"
+
+[[retired]]
+file = "polyoxide-cli/src/main.rs"
+item = "tests::gamma_markets_list_parses_defaults"
+row = "polyoxide_cli::commands::GammaCommand"
+
+[[retired]]
+file = "polyoxide-cli/src/main.rs"
+item = "tests::data_subcommand_requires_nested_subcommand"
+row = "polyoxide_cli::commands::DataCommand"
+
+[[retired]]
+file = "polyoxide-cli/src/main.rs"
+item = "tests::data_health_parses"
+row = "polyoxide_cli::commands::DataCommand"
+
+[[retired]]
+file = "polyoxide-cli/src/main.rs"
+item = "tests::clob_subcommand_requires_nested_subcommand"
+row = "polyoxide_cli::commands::ClobCommand"
+
+[[retired]]
+file = "polyoxide-cli/src/main.rs"
+item = "tests::clob_prices_download_parses_with_token_id"
+row = "polyoxide_cli::commands::ClobCommand"
+
+[[retired]]
+file = "polyoxide-cli/src/main.rs"
+item = "tests::clob_prices_download_defaults_interval_max"
+row = "polyoxide_cli::commands::ClobCommand"
+
+[[retired]]
+file = "polyoxide-cli/src/main.rs"
+item = "tests::ws_subcommand_requires_nested_subcommand"
+row = "polyoxide_cli::commands::ws::WsCommand"
+
+[[retired]]
+file = "polyoxide-cli/src/main.rs"
+item = "tests::ws_market_requires_asset_ids"
+row = "polyoxide_cli::commands::ws::WsCommand::Market"
+
+[[retired]]
+file = "polyoxide-cli/src/main.rs"
+item = "tests::ws_market_parses_with_asset_id"
+row = "polyoxide_cli::commands::ws::WsCommand::Market"
+
+[[retired]]
+file = "polyoxide-cli/src/main.rs"
+item = "tests::ws_user_requires_market_ids"
+row = "polyoxide_cli::commands::ws::WsCommand::User"
+
+[[retired]]
+file = "polyoxide-cli/src/main.rs"
+item = "tests::ws_sports_parses_with_no_arguments"
+row = "polyoxide_cli::commands::ws::WsCommand::Sports"
+
+[[retired]]
+file = "polyoxide-cli/src/main.rs"
+item = "tests::ws_binance_parses_with_a_symbol_and_kind"
+row = "polyoxide_cli::commands::ws::WsCommand::Binance"
+
+# Story 5.8: market's and user's `--format` is the streams' one `pretty|json`,
+# and `pretty` prints what `summary` did, so `--format summary` is refused.
+
+[[retired]]
+file = "polyoxide-cli/src/commands/ws/market.rs"
+item = "tests::format_summary"
+row = "polyoxide_cli::commands::ws::market::OutputFormat::Summary"
+
+# Story 5.9: the credentials command is each venue's, over its library's
+# `StoredCredential` kinds, and Polymarket's `relay` kind is `builder`. The old
+# command's parse tests and their two helpers go with it; the generic command
+# and Polymarket's kinds have tests of every kind and verb.
+
+[[retired]]
+file = "polyoxide-cli/src/commands/credentials/mod.rs"
+item = "tests::TestCli"
+kind = "struct"
+row = "polyoxide_cli::commands::credentials::CredentialsCommand"
+
+[[retired]]
+file = "polyoxide-cli/src/commands/credentials/mod.rs"
+item = "tests::try_parse"
+row = "polyoxide_cli::commands::credentials::CredentialsCommand"
+
+[[retired]]
+file = "polyoxide-cli/src/commands/credentials/mod.rs"
+item = "tests::store_clob_parses_all_flags"
+row = "polyoxide_cli::commands::credentials::CredentialsCommand"
+
+[[retired]]
+file = "polyoxide-cli/src/commands/credentials/mod.rs"
+item = "tests::store_relay_parses_builder_flags"
+row = "polyoxide_cli::commands::credentials::CredentialsCommand"
+
+[[retired]]
+file = "polyoxide-cli/src/commands/credentials/mod.rs"
+item = "tests::store_relay_parses_relayer_api_key_flags"
+row = "polyoxide_cli::commands::credentials::CredentialsCommand"
+
+[[retired]]
+file = "polyoxide-cli/src/commands/credentials/mod.rs"
+item = "tests::show_clob_parses"
+row = "polyoxide_cli::commands::credentials::CredentialsCommand"
+
+[[retired]]
+file = "polyoxide-cli/src/commands/credentials/mod.rs"
+item = "tests::show_relay_parses"
+row = "polyoxide_cli::commands::credentials::CredentialsCommand"
+
+[[retired]]
+file = "polyoxide-cli/src/commands/credentials/mod.rs"
+item = "tests::store_clob_no_flags_parses"
+row = "polyoxide_cli::commands::credentials::CredentialsCommand"
+
+[[retired]]
+file = "polyoxide-cli/src/commands/credentials/mod.rs"
+item = "tests::delete_clob_parses"
+row = "polyoxide_cli::commands::credentials::CredentialsCommand"
+
+[[retired]]
+file = "polyoxide-cli/src/commands/credentials/mod.rs"
+item = "tests::delete_relay_parses"
+row = "polyoxide_cli::commands::credentials::CredentialsCommand"

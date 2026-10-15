@@ -193,6 +193,59 @@ mod tests {
         }
     }
 
+    /// The `## Commands` rows of the rename manifest, as `(old, new)`, with
+    /// `new` empty for a row that gives a reason instead.
+    fn manifest_commands() -> Vec<(String, Option<String>)> {
+        let path = concat!(env!("CARGO_MANIFEST_DIR"), "/../docs/rename-manifest.md");
+        let text = std::fs::read_to_string(path).expect("the rename manifest is readable");
+        let section = text
+            .split("\n## ")
+            .find(|section| section.starts_with("Commands\n"))
+            .expect("the manifest has a `## Commands` section");
+        let mut rows = Vec::new();
+        for line in section.lines().filter(|line| line.starts_with("- `")) {
+            let mut quoted = line.split('`').skip(1).step_by(2);
+            let old = quoted.next().unwrap().to_owned();
+            let rest = line.split_once(" → ").map(|(_, rest)| rest).unwrap_or("");
+            let new = rest
+                .strip_prefix('`')
+                .and_then(|rest| rest.split_once('`'))
+                .map(|(new, _)| new.to_owned());
+            rows.push((old, new));
+        }
+        rows
+    }
+
+    #[test]
+    fn every_new_command_in_the_manifest_parses() {
+        let rows = manifest_commands();
+        assert!(rows.len() >= 10, "{rows:?}");
+        let root = <Cli as clap::CommandFactory>::command();
+        let mut checked = 0;
+        for (old, new) in &rows {
+            assert!(old.starts_with("polyoxide "), "{old}");
+            // An old command is gone: no shims.
+            let words: Vec<&str> = old.split_whitespace().skip(1).collect();
+            let old_group = root.find_subcommand(words[0]);
+            assert!(old_group.is_none(), "`{old}` still has its group");
+            let Some(new) = new else { continue };
+            // The credentials commands are built with `keychain` alone.
+            if new.split_whitespace().any(|word| word == "credentials")
+                && !cfg!(feature = "keychain")
+            {
+                continue;
+            }
+            let mut command = &root;
+            for word in new.split_whitespace().skip(1) {
+                command = command
+                    .find_subcommand(word)
+                    .unwrap_or_else(|| panic!("`{new}`: `{word}` is not a subcommand"));
+            }
+            checked += 1;
+        }
+        assert!(checked >= 8, "only {checked} new commands were checked");
+    }
+
     mod polymarket {
         use super::try_parse;
         use crate::commands::polymarket::{

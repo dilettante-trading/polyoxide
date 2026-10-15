@@ -163,6 +163,33 @@ Binance's clients, errors and streams.
 - `polyoxide::PolymarketError` → removed in Story 5.7: the unified client's builder returns `polyoxide::polymarket::BuildError`, and nothing else returned it.
 - `polyoxide::prelude::PolymarketError` → removed in Story 5.7: the prelude re-exports `BuildError`, which the unified client's builder returns.
 
+Stories 5.8 and 5.9 put the CLI on the venue axis: its commands are
+`polyoxide <venue> <module> <verb…>`, listed under `## Commands` below, and its library
+follows them. `polyoxide_cli::commands` holds `polymarket`, `binance`, `completions`, the
+shared `stream` runner and, with `keychain`, the shared `credentials` command, and its root
+re-exports nothing. Gamma, Data and the CLOB's commands moved under `polymarket` unchanged,
+and the CLOB's gained `Stream`. Each socket is its module's `stream` verb: sports' and
+Binance's modules keep their `SportsArgs`, `BinanceArgs`, `run` and `run_with`, and every
+stream prints in the one `stream::OutputFormat`, `pretty` or `json`. The credentials command
+is each venue's, generic over the kinds its library describes with core's
+`keychain::StoredCredential`.
+
+- `polyoxide_cli::commands::gamma` → `polyoxide_cli::commands::polymarket::gamma` Story 5.8: `polyoxide polymarket gamma`.
+- `polyoxide_cli::commands::data` → `polyoxide_cli::commands::polymarket::data` Story 5.8: `polyoxide polymarket data`.
+- `polyoxide_cli::commands::clob` → `polyoxide_cli::commands::polymarket::clob` Story 5.8: `polyoxide polymarket clob`, whose `ClobCommand` gains `Stream`.
+- `polyoxide_cli::commands::ws::sports` → `polyoxide_cli::commands::polymarket::sports` Story 5.8: `polyoxide polymarket sports stream`.
+- `polyoxide_cli::commands::ws::sports::OutputFormat` → `polyoxide_cli::commands::stream::OutputFormat` Story 5.8: one format for every stream.
+- `polyoxide_cli::commands::ws::binance` → `polyoxide_cli::commands::binance::usdm` Story 5.8: `polyoxide binance usdm stream`.
+- `polyoxide_cli::commands::ws::binance::OutputFormat` → `polyoxide_cli::commands::stream::OutputFormat` Story 5.8: one format for every stream.
+- `polyoxide_cli::commands::ws` → removed in Story 5.8: each socket is its module's `stream` command, `polymarket::clob::stream` for the market and user channels, `polymarket::rtds` for prices, `polymarket::sports` and `binance::usdm`; market's and user's `--format summary` is the default `pretty`.
+- `polyoxide_cli::commands::WsCommand` → removed in Story 5.8 with the `ws` group: each socket is its module's `stream` command.
+- `polyoxide_cli::commands::ClobCommand` → removed in Story 5.8: the root of `commands` re-exports nothing; the command is `polyoxide_cli::commands::polymarket::clob::ClobCommand`.
+- `polyoxide_cli::commands::DataCommand` → removed in Story 5.8: the root of `commands` re-exports nothing; the command is `polyoxide_cli::commands::polymarket::data::DataCommand`.
+- `polyoxide_cli::commands::GammaCommand` → removed in Story 5.8: the root of `commands` re-exports nothing; the command is `polyoxide_cli::commands::polymarket::gamma::GammaCommand`.
+- `polyoxide_cli::commands::CompletionsCommand` → removed in Story 5.8: the root of `commands` re-exports nothing; the command is `polyoxide_cli::commands::completions::CompletionsCommand`.
+- `polyoxide_cli::commands::CredentialsCommand` → removed in Story 5.9: the root of `commands` re-exports nothing, and the credentials command is each venue's.
+- `polyoxide_cli::commands::credentials::CredentialsCommand` → removed in Story 5.9: each venue's `credentials` command is `polyoxide_cli::commands::credentials::Credentials` over that venue's kinds, Polymarket's `clob` and `builder` (v0.39.0's `relay`).
+
 ## Features
 
 - `polyoxide-gamma/default` → `polyoxide-polymarket/gamma` Story 5.3: the module's own feature builds what the crate's defaults did.
@@ -188,6 +215,35 @@ Binance's clients, errors and streams.
 - `polyoxide/perps` → `polyoxide/polymarket-perps` Story 5.7.
 - `polyoxide/perps-ws` → `polyoxide/polymarket-perps-ws` Story 5.7, which turns on `polymarket-perps`.
 - `polyoxide/sports` → `polyoxide/polymarket-sports` Story 5.7.
+
+## Commands
+
+The CLI's command tree, which no public-API diff can see, in the same form as the rows
+above. Stories 5.8 and 5.9 put it on the venue axis, `polyoxide <venue> <module> <verb…>`,
+with `stream` as the verb of every socket; `completions` stays at the top. A command keeps
+its flags unless its row says otherwise, and every list flag also takes a comma-separated
+list. No old command is kept as an alias. `polyoxide-cli`'s tests read this section and fail
+unless each new command below parses, and each old one is gone.
+
+- `polyoxide gamma` → `polyoxide polymarket gamma` Story 5.8.
+- `polyoxide data` → `polyoxide polymarket data` Story 5.8.
+- `polyoxide clob` → `polyoxide polymarket clob` Story 5.8.
+- `polyoxide clob prices download` → `polyoxide polymarket clob prices download` Story 5.8.
+- `polyoxide ws` → removed in Story 5.8: each socket streams under its venue and module, with the verb `stream`, as the rows below say.
+- `polyoxide ws market` → `polyoxide polymarket clob stream market` Story 5.8.
+- `polyoxide ws user` → `polyoxide polymarket clob stream user` Story 5.8.
+- `polyoxide ws prices` → `polyoxide polymarket rtds stream` Story 5.8.
+- `polyoxide ws sports` → `polyoxide polymarket sports stream` Story 5.8.
+- `polyoxide ws binance` → `polyoxide binance usdm stream` Story 5.8.
+- `polyoxide ws market --format summary` → removed in Story 5.8: `pretty`, the default, prints what `summary` did, one line per event; `json` prints each event as one compact object per line, and indented JSON is gone.
+- `polyoxide ws user --format summary` → removed in Story 5.8: `pretty`, the default, prints what `summary` did, one line per event; `json` prints each event as one compact object per line, and indented JSON is gone.
+- `polyoxide credentials` → `polyoxide polymarket credentials` Story 5.9, with the `keychain` feature.
+- `polyoxide credentials store clob` → `polyoxide polymarket credentials store clob` Story 5.9, with the `keychain` feature.
+- `polyoxide credentials show clob` → `polyoxide polymarket credentials show clob` Story 5.9, with the `keychain` feature.
+- `polyoxide credentials delete clob` → `polyoxide polymarket credentials delete clob` Story 5.9, with the `keychain` feature.
+- `polyoxide credentials store relay` → `polyoxide polymarket credentials store builder` Story 5.9, with the `keychain` feature: the kind is named for what it holds; its service, `polyoxide-relay`, and its flags are unchanged.
+- `polyoxide credentials show relay` → `polyoxide polymarket credentials show builder` Story 5.9, with the `keychain` feature.
+- `polyoxide credentials delete relay` → `polyoxide polymarket credentials delete builder` Story 5.9, with the `keychain` feature.
 
 ## Doc-hidden paths consumers import
 
