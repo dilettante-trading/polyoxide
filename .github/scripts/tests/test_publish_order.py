@@ -1159,7 +1159,9 @@ def test_each_real_tombstone_points_to_its_module_and_stops_the_build() -> None:
 
 def _cargo(tmp_path: Path, *args: str, rustdocflags: str | None = None
            ) -> subprocess.CompletedProcess:
-    env = {**os.environ, "CARGO_TARGET_DIR": str(tmp_path / "target")}
+    # CI sets CARGO_TERM_COLOR=always, which would put escape codes in the messages.
+    env = {**os.environ, "CARGO_TARGET_DIR": str(tmp_path / "target"),
+           "CARGO_TERM_COLOR": "never"}
     if rustdocflags is not None:
         env["RUSTDOCFLAGS"] = rustdocflags
     return subprocess.run(["cargo", *args], cwd=tmp_path, env=env, capture_output=True,

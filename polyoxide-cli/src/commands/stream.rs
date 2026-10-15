@@ -214,7 +214,7 @@ mod tests {
                 writeln!(err, "# skipped error {error}")?;
                 return Ok(());
             }
-            color_eyre::eyre::bail!("fatal error {error}")
+            color_eyre::eyre::bail!("fatal error {error}");
         }
     }
 
