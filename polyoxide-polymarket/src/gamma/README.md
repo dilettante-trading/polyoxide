@@ -11,7 +11,8 @@ More information about this module can be found in the [crate documentation](htt
 polyoxide-polymarket = { version = "0.39", default-features = false, features = ["gamma"] }
 ```
 
-Or use the unified `polyoxide` crate (includes Gamma by default):
+Or use the `polyoxide` umbrella, whose default `polymarket` feature includes Gamma, at
+`polyoxide::polymarket::gamma`:
 
 ```toml
 [dependencies]

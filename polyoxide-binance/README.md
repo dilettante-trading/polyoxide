@@ -1,7 +1,9 @@
 # polyoxide-binance
 
 Rust client library for Binance's APIs, one feature per module: `usdm`. Part of the
-[polyoxide](https://crates.io/crates/polyoxide) workspace, and not part of its unified crate.
+[polyoxide](https://crates.io/crates/polyoxide) workspace, whose umbrella crate, `polyoxide`,
+re-exports it as `polyoxide::binance` under its `binance`, `binance-usdm` and `binance-usdm-ws`
+features.
 
 Each module has its own README:
 

@@ -318,7 +318,7 @@ def fixture(root: Path) -> tuple[dict, dict, dict]:
         "polyoxide": manifest(
             {"default": ["alpha"], "alpha": ["dep:polyoxide-alpha"],
              "alpha-ws": ["alpha", "polyoxide-alpha/ws"], "full": ["alpha", "alpha-ws"],
-             "extra": ["polyoxide-alpha?/extra"]},
+             "extra": ["polyoxide-alpha?/extra"], "va": ["alpha"]},
             readme="The umbrella"),
         "polyoxide-core": manifest(readme="Shared things", notes=["the base"]),
         "polyoxide-alpha": manifest(
@@ -700,12 +700,12 @@ EXPECTED = {
         "- `polyoxide-py` — Bindings; needs: `polyoxide-alpha` (without default features)",
     ],
     "claude-umbrella-features": [
-        "**polyoxide** (the unified crate) uses feature flags: `alpha`, "
+        "**polyoxide** (the umbrella) uses feature flags: `alpha`, "
         "`alpha-ws` (`polyoxide-alpha/ws`), `full` (all but `extra`), "
-        "`extra` (`polyoxide-alpha?/extra`). Default = alpha.",
+        "`extra` (`polyoxide-alpha?/extra`), `va`. Default = alpha.",
     ],
     "claude-cli-deps": [
-        "Note: `polyoxide-cli` does **not** depend on the unified `polyoxide` crate. It "
+        "Note: `polyoxide-cli` does **not** depend on the `polyoxide` umbrella. It "
         "depends directly on the component crates — `polyoxide-alpha` (with `ws`) and "
         "`polyoxide-omega` — plus `polyoxide-core` (with `keychain`) only under the "
         "optional `keychain` feature.",
@@ -846,5 +846,5 @@ def test_a_cli_that_needs_the_umbrella_says_so(tmp_path: Path) -> None:
         cli["dependencies"].append(dep("polyoxide"))
 
     line = gen_registry.claude_cli_deps(build(tmp_path, umbrella))[0]
-    assert line.startswith("Note: `polyoxide-cli` depends on the unified `polyoxide` crate.")
+    assert line.startswith("Note: `polyoxide-cli` depends on the `polyoxide` umbrella.")
     assert "`polyoxide`," not in line

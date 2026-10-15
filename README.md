@@ -10,11 +10,11 @@ Rust SDK toolkit for Polymarket APIs. It includes library crates for use in your
 <!-- generated:begin readme-crates -->
 | Crate | Description |
 |-------|-------------|
-| [polyoxide](./polyoxide) | Unified client for Polymarket APIs (CLOB, Gamma, Data, WebSocket, RTDS, Perps, Sports) |
-| [polyoxide-binance](./polyoxide-binance) | Client library for Binance's APIs, one feature per module: `usdm` (USDⓈ-M futures market data, with its streams under `usdm-ws`); not part of the unified crate |
+| [polyoxide](./polyoxide) | The multi-venue umbrella: `polyoxide::polymarket` and `polyoxide::binance` behind features named for each venue and module, `polyoxide::venue` and a `prelude` |
+| [polyoxide-binance](./polyoxide-binance) | Client library for Binance's APIs, one feature per module: `usdm` (USDⓈ-M futures market data, with its streams under `usdm-ws`); re-exported by the umbrella as `polyoxide::binance` |
 | [polyoxide-cli](./polyoxide-cli) | CLI tool for querying Polymarket APIs and Binance USDⓈ-M market data |
 | [polyoxide-core](./polyoxide-core) | Core utilities and shared types |
-| [polyoxide-polymarket](./polyoxide-polymarket) | Client library for Polymarket's APIs, one feature per module: `clob` (order book, with its sockets under `clob-ws`), `gamma` (market data), `data` (user data, v1 and v2), `relay` (gasless transactions), `perps` (perpetual futures market data, with its sockets under `perps-ws`), `rtds` (crypto price streams) and `sports` (live sports scores), with the code the HTTP modules share in `shared` |
+| [polyoxide-polymarket](./polyoxide-polymarket) | Client library for Polymarket's APIs, one feature per module: `clob` (order book, with its sockets under `clob-ws`), `gamma` (market data), `data` (user data, v1 and v2), `relay` (gasless transactions), `perps` (perpetual futures market data, with its sockets under `perps-ws`), `rtds` (crypto price streams) and `sports` (live sports scores), with the code the HTTP modules share in `shared` and, with `clob`, `gamma` and `data`, the unified `Polymarket` client; re-exported by the umbrella as `polyoxide::polymarket` |
 | [polyoxide-py](./polyoxide-py) | Python bindings via PyO3 (`publish = false`, wheels on PyPI) |
 | [polyoxide-test-support](./polyoxide-test-support) | Test toolkit: the failure tags the nightly classifier reads, the credential loaders, and the agreement, fixture and soak helpers (`publish = false`) |
 | [polyoxide-venue](./polyoxide-venue) | Shared vocabulary: error classes, the status and close-code maps, the socket classification table (`impl_ws_classification!`), the `Retry-After` parser, the wire-enum macros and `UnknownVariant`, positional decimal serde (feature `decimal`) and `UnixMillis` |

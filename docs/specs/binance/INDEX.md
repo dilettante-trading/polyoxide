@@ -1,8 +1,9 @@
 # Binance USDⓈ-M futures
 
 Binance is not a Polymarket host. `polyoxide-binance`'s `usdm` module reads its USDⓈ-M
-futures public market data for consumers that trade both venues; it is not part of the
-`polyoxide` umbrella crate.
+futures public market data for consumers that trade both venues. The `polyoxide` umbrella
+re-exports it as `polyoxide::binance`, under its `binance-usdm` and `binance-usdm-ws` features
+and `full`.
 
 | Surface | Host | Crate |
 |---|---|---|

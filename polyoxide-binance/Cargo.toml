@@ -138,7 +138,7 @@ features = ["usdm", "usdm-ws"]
 # the foundation crates and the exceptions it allows there. Run
 # `python3 scripts/gen_registry.py --write` after an edit.
 [package.metadata.polyoxide]
-readme = "Client library for Binance's APIs, one feature per module: `usdm` (USDⓈ-M futures market data, with its streams under `usdm-ws`); not part of the unified crate"
+readme = "Client library for Binance's APIs, one feature per module: `usdm` (USDⓈ-M futures market data, with its streams under `usdm-ws`); re-exported by the umbrella as `polyoxide::binance`"
 venue = "binance"
 products = ["usdm"]
 mirrors = ["binance"]

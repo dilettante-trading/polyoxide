@@ -17,7 +17,7 @@ More information about this module can be found in the [crate documentation](htt
 polyoxide-polymarket = { version = "0.39", default-features = false, features = ["relay"] }
 ```
 
-The unified `polyoxide` crate (which covers CLOB, Gamma, and Data) does not turn the relay on. Depend on `polyoxide-polymarket` with `relay` to use it.
+Or use the `polyoxide` umbrella with its `polymarket-relay` feature, which is off by default, at `polyoxide::polymarket::relay`.
 
 ### Feature Flags
 

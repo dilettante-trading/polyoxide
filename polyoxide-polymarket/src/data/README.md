@@ -20,7 +20,8 @@ More information about this module can be found in the [crate documentation](htt
 polyoxide-polymarket = { version = "0.39", default-features = false, features = ["data"] }
 ```
 
-Or use the unified client:
+Or use the `polyoxide` umbrella, whose default `polymarket` feature includes the Data API, at
+`polyoxide::polymarket::data`:
 
 ```toml
 [dependencies]

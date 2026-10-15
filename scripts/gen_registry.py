@@ -1001,6 +1001,17 @@ def claude_graph(r: Registry) -> list[str]:
     return lines
 
 
+def _turns_on(features: dict[str, tuple[str, ...]], name: str) -> set[str]:
+    """`name` and every feature of the same crate it turns on."""
+    on, todo = set(), [name]
+    while todo:
+        feature = todo.pop()
+        if feature not in on:
+            on.add(feature)
+            todo += [i for i in features.get(feature, ()) if ":" not in i and "/" not in i]
+    return on
+
+
 def claude_umbrella_features(r: Registry) -> list[str]:
     features = dict(r.crate(UMBRELLA).features)
     named = [f for f in features if f != "default"]
@@ -1008,7 +1019,11 @@ def claude_umbrella_features(r: Registry) -> list[str]:
     for name in named:
         items = features[name]
         if name == "full":
-            rest = [f for f in named if f != "full" and f not in items]
+            # A feature `full` does not name, but whose every item it turns
+            # on, such as a venue's defaults, is not left out.
+            on = _turns_on(features, "full")
+            rest = [f for f in named if f not in on
+                    and not (features[f] and set(features[f]) <= on)]
             note = f"all but {_code_list(rest)}" if rest else "all"
         elif any(i.startswith("dep:") for i in items):
             note = None
@@ -1016,7 +1031,7 @@ def claude_umbrella_features(r: Registry) -> list[str]:
             note = _code_list(i for i in items if "/" in i) or None
         shown.append(f"`{name}`" + (f" ({note})" if note else ""))
     default = " + ".join(features.get("default", ())) or "none"
-    return [f"**{UMBRELLA}** (the unified crate) uses feature flags: {', '.join(shown)}. "
+    return [f"**{UMBRELLA}** (the umbrella) uses feature flags: {', '.join(shown)}. "
             f"Default = {default}."]
 
 
@@ -1024,9 +1039,9 @@ def claude_cli_deps(r: Registry) -> list[str]:
     cli = r.crate(CLI)
     names = {d.name for d in cli.needs}
     if UMBRELLA in names:
-        opening = f"Note: `{CLI}` depends on the unified `{UMBRELLA}` crate."
+        opening = f"Note: `{CLI}` depends on the `{UMBRELLA}` umbrella."
     else:
-        opening = f"Note: `{CLI}` does **not** depend on the unified `{UMBRELLA}` crate."
+        opening = f"Note: `{CLI}` does **not** depend on the `{UMBRELLA}` umbrella."
     direct = [_dependency(d) for d in cli.needs if not d.enabled_by and d.name != UMBRELLA]
     sentence = f"{opening} It depends directly on the component crates — {_and(direct)} —"
     groups: dict[tuple[str, ...], list[str]] = {}

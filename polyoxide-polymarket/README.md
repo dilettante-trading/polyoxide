@@ -31,6 +31,12 @@ limit it to the two. `specta` derives `specta::Type` on the response types of `g
 `clob` and `relay` derive none. `test-server` exposes the captured frames of `rtds` and `sports`
 to integration tests; it is not for consumers.
 
+With `clob`, `gamma` and `data` on, as by default, the crate root holds the unified client,
+`Polymarket`: one CLOB, Gamma and Data API client, built from one `Account` by
+`Polymarket::builder(account)`. Its `build` fails with a `BuildError` (`Clob`, `Gamma` or `Data`)
+naming the client that could not be built, and classed as that client's error. The `polyoxide`
+umbrella re-exports this crate as `polyoxide::polymarket`, and its prelude re-exports the client.
+
 ## What `shared` holds
 
 | Item | Purpose | Feature |

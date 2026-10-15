@@ -70,7 +70,7 @@ Details that can affect existing code:
 - `extra` is a `serde_json::Map`, not a `serde_json::Value`.
 - Serialising a `MatchUpdate` omits absent optional fields rather than
   writing `null`.
-- In the unified `polyoxide` crate, enable the `sports` feature. The prelude
+- In the `polyoxide` umbrella, enable the `polymarket-sports` feature. The prelude
   exports `SportsWs`, `SportsWsBuilder`, `SupervisedSportsWs`, `SportsError`,
   and the aliases `SportsEvent`, `SportsMatchUpdate` and `SportsGameKey`.
 
