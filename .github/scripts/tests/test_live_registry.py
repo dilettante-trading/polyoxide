@@ -196,6 +196,44 @@ def test_only_a_run_on_main_touches_the_tracking_issue() -> None:
         assert f"gh issue {verb}" in step["run"]
 
 
+def _off_main_step() -> dict:
+    steps = WORKFLOW["jobs"]["aggregate"]["steps"]
+    [step] = [s for s in steps if s.get("name") == "Report real failures off main"]
+    return step
+
+
+def test_a_run_off_main_reports_its_real_failures_and_goes_red() -> None:
+    """The live jobs pass whatever their tests did, and off main no issue is filed,
+    so without this step a dispatch on another branch with real failures is green."""
+    step = _off_main_step()
+    assert step["if"] == "github.ref != 'refs/heads/main'"
+    assert step["env"] == {
+        "ANY_REAL_FAILURE": "${{ steps.report.outputs.any_real_failure }}",
+        "REPORT_FILE": "${{ steps.report.outputs.report_file }}",
+    }
+    steps = WORKFLOW["jobs"]["aggregate"]["steps"]
+    report = next(i for i, s in enumerate(steps) if s.get("id") == "report")
+    assert steps.index(step) > report
+
+
+@pytest.mark.parametrize(("failure", "status"), [("true", 1), ("false", 0)])
+def test_the_off_main_step_puts_the_report_in_the_summary(
+        tmp_path: Path, failure: str, status: int) -> None:
+    import os
+    import shutil
+    import subprocess
+
+    report = tmp_path / "report.md"
+    report.write_text("# Nightly behavioral check\n\n## polyoxide-polymarket-gamma\n")
+    summary = tmp_path / "summary.md"
+    env = {**os.environ, "ANY_REAL_FAILURE": failure, "REPORT_FILE": str(report),
+           "GITHUB_STEP_SUMMARY": str(summary)}
+    result = subprocess.run([shutil.which("bash"), "-e", "-c", _off_main_step()["run"]],
+                            env=env, capture_output=True, text=True)
+    assert result.returncode == status, result
+    assert summary.read_text() == report.read_text()
+
+
 # --- ignored -----------------------------------------------------------------
 
 # `#[test]`, any `#[<path>::test]` (`tokio::test`, `test_log::test`), and `#[rstest]`.

@@ -237,6 +237,21 @@ jobs:
           echo "any_real_failure=$ANY_REAL_FAILURE" >> "$GITHUB_OUTPUT"
           echo "report_file=$REPORT_FILE" >> "$GITHUB_OUTPUT"
 
+      # Off main no issue is filed, and the live jobs pass whatever their tests
+      # did, so this step is where a dispatch elsewhere shows its real failures:
+      # the report in the run's summary, and a red run.
+      - name: Report real failures off main
+        if: github.ref != 'refs/heads/main'
+        env:
+          ANY_REAL_FAILURE: ${{ steps.report.outputs.any_real_failure }}
+          REPORT_FILE: ${{ steps.report.outputs.report_file }}
+        run: |
+          cat "$REPORT_FILE" >> "$GITHUB_STEP_SUMMARY"
+          if [ "$ANY_REAL_FAILURE" = "true" ]; then
+            echo "::error::Real failures; the summary has the report."
+            exit 1
+          fi
+
       - name: File or update tracking issue
         # The one tracking issue is main's. A dispatch on another branch, such as
         # an integration branch before it merges, still runs, classifies and

@@ -74,7 +74,8 @@ predicate can never match.
 - **Only main's runs touch it** — the issue step runs only on
   `refs/heads/main`. A dispatch on another branch, such as an integration
   branch tried before it merges, still classifies and uploads every job's
-  report, but cannot comment on main's issue or close it.
+  report, but cannot comment on main's issue or close it. Instead the run's
+  summary holds the combined report, and a real failure turns the run red.
 - **Auto-recovery** — a clean night closes the issue with "Recovered". The
   close only happens when every live job actually succeeded; if one
   died on infrastructure (build failure, classifier crash, timeout), the
