@@ -73,8 +73,8 @@ Consumers find each venue under one name. `polyoxide-polymarket` holds clob, gam
     - the `tests/live_api.rs` and `mock_api.rs` names;
     - Module Organization;
     - Binance outside the umbrella;
-    - clob's `ws` feature;
-    - the `polyoxide.v2` namespace.
+    - clob's `ws` feature.
+    - (The `polyoxide.v2` namespace stays: Story 5.10 was dropped, A5-1.)
   - `docs/ARCHITECTURE.md` is only ever regenerated from the spine.
 - **Gates (NFR9, AD-22).** CI runs on every push to the draft PR. A red job on `main` withholds the release. The gates:
   - clippy and rustdoc with `-D warnings`, so a `pub` doc must not link a `pub(crate)` item, and `src/shared/` makes many;
@@ -218,6 +218,6 @@ Consumers find each venue under one name. `polyoxide-polymarket` holds clob, gam
   - Lane B (S3) stays off `main` until 5.12 ships, and its `polyoxide-venue` work must pass the CAP-7 gate. Its venue-crate halves wait for S2's crates: 6.2's constructors, 6.3's Binance impl, 6.4, 6.5 and `parse_key`.
   - Epic 7's supervised clob sockets build on `clob-ws` and `ClobWsError`.
 - **Unmerged amendments.**
-  - A2-1, A3-1 to A3-5 and A4-1 to A4-4 are accepted but not merged into the spine, and no story is assigned to merge them.
+  - A2-1, A3-1 to A3-5, A4-1 to A4-4 and A5-1 (Python stays off the venue axis) are accepted but not merged into the spine, and no story is assigned to merge them.
   - A4-2 claims that an unused classification function fails `-D warnings`. That claim is false. The guard is `test_classify_coverage.py`, and the amendment must be corrected when it is merged.
   - 5.11 regenerates the guide from whatever the spine then says.
