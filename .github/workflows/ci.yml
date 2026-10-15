@@ -156,12 +156,14 @@ jobs:
           cargo check -p polyoxide-polymarket --no-default-features --features relay,specta
           cargo check -p polyoxide-polymarket --no-default-features --features perps,specta
 
-  # Through stage S2 the gate reports and fails nothing on a path that moved or
-  # went (AD-22): it lists every public path at the S2 start tag and at this
+  # Through stage S2 the gate holds every path that moved or went to the rename
+  # manifest (AD-22): it lists every public path at the S2 start tag and at this
   # commit from rustdoc JSON, resolves each one gone through
-  # docs/rename-manifest.md's rows, and warns of what is left. Story 5.12 runs it
-  # with `--strict`. The doc-hidden paths the manifest lists must still compile.
-  # cargo-semver-checks runs too, for the changes made in place.
+  # docs/rename-manifest.md's rows, and warns of what is left. Since Story 5.12
+  # it runs `--strict`, which fails on an unresolved entry, a stale row or a
+  # stale generated region. The doc-hidden paths the manifest lists must still
+  # compile. cargo-semver-checks runs too, for the changes made in place, which
+  # the `changed-in-place` region lists.
   removals:
     name: Removal gate
     runs-on: ubuntu-latest
@@ -198,7 +200,7 @@ jobs:
       - uses: mozilla-actions/sccache-action@v0.0.9
         with:
           version: "v0.14.0"
-      - run: python3 scripts/api_removals.py manifest --baseline "$S2_BASELINE" --expand target/rename-map.tsv
+      - run: python3 scripts/api_removals.py manifest --baseline "$S2_BASELINE" --strict --expand target/rename-map.tsv
       # The manifest with its regions regenerated, which the hub copies in, and
       # every entry with where it went.
       - if: ${{ always() }}

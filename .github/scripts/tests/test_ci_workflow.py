@@ -414,10 +414,11 @@ def _checkout(job: str) -> dict:
 
 
 def test_the_removals_job_runs_the_s2_gate_against_the_s2_baseline() -> None:
-    """Report-only through S2; Story 5.12 adds `--strict`."""
+    """Strict since Story 5.12: an unresolved entry, a stale row or a stale region
+    fails the job."""
     assert _checkout("removals")["with"]["fetch-depth"] == 0
     assert _job_runs("removals") == [
-        'python3 scripts/api_removals.py manifest --baseline "$S2_BASELINE" '
+        'python3 scripts/api_removals.py manifest --baseline "$S2_BASELINE" --strict '
         '--expand target/rename-map.tsv']
 
 

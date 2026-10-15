@@ -9,17 +9,17 @@ breaks the old path, with no shim, alias or re-export (AD-16), so prader-rs and 
 consumer migrates from this file: each old path has a row saying where it went, or why it
 went. The S2 release does not merge until every entry has one.
 
-CI's removals job runs `python3 scripts/api_removals.py manifest --baseline v0.39.0`. It
-builds rustdoc JSON for every publishable crate with a library, at the baseline and at the
-commit, with all features and with `#[doc(hidden)]` items, and lists every public path of
-each: modules, types, traits, functions, constants, statics, type aliases and exported
-macros, and their variants, fields, inherent methods and associated constants, the members
-of a type reached through a type alias among them, along every public re-export, a sibling
-crate's included. A path the baseline has and the commit does not is an **entry**, and so is
-a baseline feature, `<crate>/<feature>`, that the commit does not have. The job resolves
-each entry through the rows below and reports what is left. Through S2 it fails on none of
-it: it prints each finding as a warning, and Story 5.12 runs it with `--strict`, which
-fails on any unresolved entry, stale row or stale region.
+CI's removals job runs
+`python3 scripts/api_removals.py manifest --baseline v0.39.0 --strict`. It builds rustdoc
+JSON for every publishable crate with a library, at the baseline and at the commit, with all
+features and with `#[doc(hidden)]` items, and lists every public path of each: modules,
+types, traits, functions, constants, statics, type aliases and exported macros, and their
+variants, fields, inherent methods and associated constants, the members of a type reached
+through a type alias among them, along every public re-export, a sibling crate's included. A
+path the baseline has and the commit does not is an **entry**, and so is a baseline feature,
+`<crate>/<feature>`, that the commit does not have. The job resolves each entry through the
+rows below and prints each finding as a warning, and `--strict`, which the job passes since
+Story 5.12, fails it on any unresolved entry, stale row or stale region.
 
 ## How to read a row
 
@@ -295,5 +295,5 @@ cannot see them, and no row resolves them; they are listed for the S2 release no
 consumer-impact section. Generated; do not edit.
 
 <!-- manifest:begin changed-in-place -->
-None.
+- `polyoxide-core enum_marked_non_exhaustive: enum KeychainError (src/keychain.rs)`
 <!-- manifest:end changed-in-place -->

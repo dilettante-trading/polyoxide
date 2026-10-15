@@ -25,9 +25,10 @@ is keyed `<crate> crate_missing`. Three subcommands:
              three generated regions (`unresolved`, `stale`, and
              `changed-in-place`, cargo-semver-checks' lints on paths that stay)
              into target/api-removals/rename-manifest.md, and over the manifest
-             with `--write`, and prints each region's diff. Report-only: each
-             finding is a warning, and only `--strict` (Story 5.12) fails on an
-             unresolved entry, a stale row or a stale region. `--expand FILE`
+             with `--write`, and prints each region's diff. Each finding is a
+             warning, and `--strict`, which CI's removals job passes since
+             Story 5.12, fails on an unresolved entry, a stale row or a stale
+             region. `--expand FILE`
              writes every entry as `old<TAB>new or reason<TAB>kind<TAB>status`.
     check    The S1 removals job, which returns in S3. Runs cargo-semver-checks
              with `--release-type patch`, which makes every lint required, so
