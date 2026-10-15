@@ -18,7 +18,7 @@ More information about this module can be found in the [crate documentation](htt
 
 ```toml
 [dependencies]
-polyoxide-binance = "0.39"
+polyoxide-binance = "0.40"
 ```
 
 `usdm` is on by default. Add `usdm-ws` for the market streams; it turns on `usdm`.
@@ -76,7 +76,7 @@ tickers). `UsdmWsBuilder` keeps each connection alive, replaces a dead one, rota
 before Binance's 24-hour cutoff, replays its streams at Binance's pace, and reports each
 outage: while the client runs, every `Event::Disconnected { path }` is followed by
 `Event::Reconnected { path }`, after which anything built from that path's streams should
-be rebuilt. Enable it with `polyoxide-binance = { version = "0.39", features = ["usdm-ws"] }`.
+be rebuilt. Enable it with `polyoxide-binance = { version = "0.40", features = ["usdm-ws"] }`.
 
 ```text
 use futures_util::StreamExt;

@@ -45,7 +45,7 @@ More information about this crate can be found in the [crate documentation](http
 
 ```toml
 [dependencies]
-polyoxide-ws = "0.38"
+polyoxide-ws = "0.40"
 ```
 
 ## Usage

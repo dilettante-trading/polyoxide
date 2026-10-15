@@ -73,7 +73,7 @@ use polyoxide_core::{Authenticator, DefaultRetryPolicy, RetryPolicy, Throttle};
 
 ```toml
 [dependencies]
-polyoxide-core = "0.39"
+polyoxide-core = "0.40"
 ```
 
 ## License

@@ -8,6 +8,9 @@ Every public path that stage S2 moves or removes, against the S2 start tag above
 breaks the old path, with no shim, alias or re-export (AD-16), so prader-rs and every other
 consumer migrates from this file: each old path has a row saying where it went, or why it
 went. The S2 release does not merge until every entry has one.
+[`s2-migration.md`](s2-migration.md) explains the moves and what changed beyond them, and
+[`rename-map.tsv`](rename-map.tsv) expands the rows into every entry they resolve. Both, and
+this file, are final as of the S2 release, 0.40.0.
 
 CI's removals job runs
 `python3 scripts/api_removals.py manifest --baseline v0.39.0 --strict`. It builds rustdoc
