@@ -6,6 +6,7 @@ pub mod clob;
 pub mod completions;
 pub mod data;
 pub mod gamma;
+pub mod stream;
 pub mod ws;
 
 pub use clob::ClobCommand;
