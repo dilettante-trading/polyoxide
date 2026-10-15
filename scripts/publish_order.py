@@ -614,10 +614,12 @@ def main(argv: list[str] | None = None, get: Getter = http_status,
         elif args.command == "check-manifests":
             workspace = workspace_metadata(run)
             missing = missing_metadata(workspace)
-            faults = tombstone_faults(workspace, tombstone_metadata(REPO, run))
+            # Printed before the tombstones are read, which can stop the check on a
+            # workspace whose members disagree on their version.
             if missing:
                 print("::error::Publishable crates missing a description or a licence, "
                       f"which crates.io refuses: {', '.join(missing)}", file=sys.stderr)
+            faults = tombstone_faults(workspace, tombstone_metadata(REPO, run))
             if faults:
                 print("::error::The tombstones break their rules:", file=sys.stderr)
                 for fault in faults:

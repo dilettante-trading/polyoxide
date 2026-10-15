@@ -914,6 +914,20 @@ def test_check_manifests_fails_naming_the_crates(capsys: pytest.CaptureFixture[s
     assert "a, b" in capsys.readouterr().err
 
 
+@pytest.mark.usefixtures("no_tombstones")
+def test_check_manifests_names_missing_metadata_even_when_the_versions_disagree(
+        capsys: pytest.CaptureFixture[str]) -> None:
+    """The tombstones' check needs one workspace version and stops without it; the
+    members missing metadata are named first."""
+    meta = metadata(described(package("b", version="1.0.0"), description=None),
+                    described(package("a", version="2.0.0")))
+    result = subprocess.CompletedProcess([], 0, stdout=json.dumps(meta), stderr="")
+    assert publish_order.main(["check-manifests"], run=lambda *a, **k: result) == 4
+    err = capsys.readouterr().err
+    assert "missing a description or a licence, which crates.io refuses: b" in err
+    assert "expected one version across the publishable members" in err
+
+
 def test_check_manifests_fails_when_cargo_metadata_fails() -> None:
     """A failed `cargo metadata` must not read as "nothing missing"."""
     failed = subprocess.CompletedProcess([], 101, stdout="", stderr="error: bad manifest")
