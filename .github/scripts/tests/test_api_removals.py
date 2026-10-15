@@ -1531,6 +1531,27 @@ def test_the_manifest_imports_every_live_s1_path_until_a_row_moves_it() -> None:
             assert hidden.path in removed, (hidden.path, row)
 
 
+def test_the_frozen_rename_map_follows_the_manifests_rows() -> None:
+    """docs/rename-map.tsv was written once by `manifest --expand` from the S2
+    release's tree. Each line is an entry its manifest row resolves, to the path the
+    row maps it to or to the row's reason, and every row resolves at least one."""
+    manifest = api_removals.read_manifest(REPO)
+    lines = (REPO / "docs" / "rename-map.tsv").read_text(encoding="utf-8").splitlines()
+    assert len(lines) > 10_000, "the map holds too few entries to be the S2 map"
+    used = set()
+    for line in lines:
+        old, target, kind, status = line.split("\t")
+        assert status in ("resolved", "resolved, doc-hidden"), line
+        rows, separator = ((manifest.features, "/") if kind == "feature"
+                           else (manifest.rows, "::"))
+        row = api_removals.longest_row(rows, old, separator)
+        assert row is not None, line
+        used.add(row)
+        expected = row.maps(old) if row.new is not None else row.reason
+        assert target == api_removals._tsv_field(expected), line
+    assert used == set(manifest.rows) | set(manifest.features)
+
+
 def test_the_real_workspace_is_in_stage_s2() -> None:
     """While it is, the release's compile test reads the manifest."""
     assert api_removals.workspace_stage(REPO) == "S2"
