@@ -1459,6 +1459,9 @@ def test_a_stage_without_a_listing_cannot_decide(
 
 
 def test_the_real_s3_listing_starts_at_the_s2_release_and_removes_nothing() -> None:
+    """Before S3 begins; its stories add removals."""
+    if api_removals.workspace_stage(REPO) != "S2":
+        pytest.skip("the S3 listing follows its own stories once the stage is S3")
     listing = api_removals.read_listing(REPO, api_removals.LISTINGS["S3"])
     assert listing.baseline == "v0.40.0"
     assert listing.removed == frozenset()
