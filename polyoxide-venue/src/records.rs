@@ -158,6 +158,9 @@ mod tests {
         let key = Spot::key(&"ABC".to_owned());
         let instrument = Instrument::new(key.clone(), "ABC", SizeUnit::Shares);
         assert_eq!(instrument.key, key);
+        assert_eq!(instrument.name, "ABC");
+        assert_eq!(instrument.base_asset, None);
+        assert_eq!(instrument.quote_asset, None);
         assert_eq!(instrument.size_unit, SizeUnit::Shares);
         assert_eq!(instrument.tick_size, None);
         assert_eq!(instrument.min_size, None);

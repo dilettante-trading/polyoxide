@@ -89,6 +89,19 @@ where
 /// let mut ext = Extensions::new();
 /// ext.insert(Uncomparable).unwrap();
 /// ```
+///
+/// Nor does it serialize, since a value's type is known only to the crate that
+/// defines it:
+///
+/// ```compile_fail
+/// fn serializes<T: serde::Serialize>() {}
+/// serializes::<polyoxide_venue::Extensions>();
+/// ```
+///
+/// ```compile_fail
+/// fn deserializes<T: serde::de::DeserializeOwned>() {}
+/// deserializes::<polyoxide_venue::Extensions>();
+/// ```
 #[derive(Default)]
 pub struct Extensions {
     values: BTreeMap<TypeId, Box<dyn Extension>>,
