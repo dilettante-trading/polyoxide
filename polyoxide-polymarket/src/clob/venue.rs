@@ -369,7 +369,8 @@ pub use trades::TradeExt;
 mod events {
     use polyoxide_core::{QueryBuilder, Request};
     use polyoxide_venue::{
-        ClassifiedError, EventGroup, EventGroups, EventOutcome, Extensions, MarketKey, NotListed,
+        Class, ClassifiedError, EventGroup, EventGroups, EventOutcome, Extensions, MarketKey,
+        NotListed,
     };
     use serde::Deserialize;
 
@@ -471,7 +472,10 @@ mod events {
                     ));
                 }
                 for (token, label) in tokens.into_iter().zip(labels) {
-                    let token = TokenId::new(token)?;
+                    // A token id no key can carry is a response this client
+                    // cannot read, not a value the caller sent.
+                    let token = TokenId::new(token)
+                        .map_err(|err| ClassifiedError::new(Class::Decode, err))?;
                     let mut outcome =
                         EventOutcome::new(keys::clob(&token), market.condition_id.clone(), label);
                     // An empty title is none, as a missing one is.

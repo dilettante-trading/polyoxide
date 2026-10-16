@@ -560,6 +560,37 @@ async fn a_market_whose_tokens_and_outcomes_differ_in_number_is_a_decode_failure
 }
 
 #[tokio::test]
+async fn a_token_id_gamma_sends_that_no_key_can_carry_is_a_decode_failure() {
+    let mut server = Server::new_async().await;
+    let markets = route(
+        &mut server,
+        "/markets",
+        &format!("clob_token_ids={}", token()),
+        &fixture("gamma_markets"),
+        1,
+    )
+    .await;
+    let body = event_body(|markets| {
+        markets[0]["clobTokenIds"] = r#"["not-a-token-id", "2"]"#.into();
+    });
+    let event = route(
+        &mut server,
+        &format!("/events/{}", event_id()),
+        "",
+        &body,
+        1,
+    )
+    .await;
+
+    let venue: Arc<DynEventGroups<'static>> = DynEventGroups::new_arc(client(&server));
+    let err = venue.event_group(&key()).await.unwrap_err();
+    markets.assert_async().await;
+    event.assert_async().await;
+    // The venue sent a value it cannot key, which is not the caller's fault.
+    assert_eq!(err.class, Class::Decode, "{err}");
+}
+
+#[tokio::test]
 async fn a_token_gamma_lists_under_neither_request_is_not_listed() {
     let mut server = Server::new_async().await;
     let open = route(
