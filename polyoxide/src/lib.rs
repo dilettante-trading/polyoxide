@@ -5,7 +5,11 @@
 //!
 //! - `polyoxide::venue` is `polyoxide-venue`, the vocabulary every venue
 //!   shares, such as the error classes and the `Classify` trait. It is always
-//!   on.
+//!   on. With any module that implements them (`polymarket-clob`,
+//!   `polymarket-perps`, `binance-usdm`) it also holds the market-data traits,
+//!   `MarketData` and its capabilities, which read every venue the same way:
+//!   `examples/venue_neutral.rs` reads the best bid and ask of the CLOB, perps
+//!   and USDⓈ-M with one function.
 //! - `polyoxide::polymarket` is `polyoxide-polymarket`, under `polymarket`
 //!   (its defaults: `clob`, `gamma` and `data`), on by default, or one
 //!   `polymarket-<module>` feature per module: `polymarket-clob`,
@@ -265,6 +269,24 @@ const _: fn(crate::prelude::SportsWs) = drop;
 const _: fn(crate::prelude::Usdm) = drop;
 #[cfg(feature = "binance-usdm-ws")]
 const _: fn(crate::prelude::UsdmWs) = drop;
+
+// The market-data traits are on `polyoxide::venue` with every module that
+// implements them, and `parse_key` with every module that names keys.
+#[cfg(any(
+    feature = "polymarket-clob",
+    feature = "polymarket-perps",
+    feature = "binance-usdm"
+))]
+const _: fn(&crate::venue::DynMarketData<'static>) = |_| {};
+#[cfg(any(
+    feature = "polymarket-clob",
+    feature = "polymarket-gamma",
+    feature = "polymarket-data",
+    feature = "polymarket-perps",
+    feature = "binance-usdm"
+))]
+const _: fn(&crate::venue::RawKey) -> Result<crate::venue::MarketKey, crate::venue::KeyError> =
+    crate::parse_key;
 
 // The default, `polymarket`, builds the unified client, so it must keep
 // turning on clob, gamma and data.

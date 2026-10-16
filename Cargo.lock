@@ -3941,9 +3941,13 @@ name = "polyoxide"
 version = "0.39.0"
 dependencies = [
  "futures-util",
+ "mockito",
  "polyoxide-binance",
+ "polyoxide-core",
  "polyoxide-polymarket",
+ "polyoxide-test-support",
  "polyoxide-venue",
+ "rust_decimal",
  "tokio",
 ]
 

@@ -5,10 +5,16 @@ behind features named for the venue and its modules.
 
 | Path | Crate | Features |
 |------|-------|----------|
-| `polyoxide::venue` | `polyoxide-venue`: the vocabulary every venue shares, such as the error classes and `Classify` | always on |
+| `polyoxide::venue` | `polyoxide-venue`: the vocabulary every venue shares, such as the error classes and `Classify`, and, with any module that implements them, the market-data traits (`MarketData` and its capabilities) | always on |
+| `polyoxide::parse_key` | Reads a market key, `venue.product:id`, through the constructors of the enabled product it names | any module with keys |
 | `polyoxide::polymarket` | `polyoxide-polymarket`: [Polymarket](https://polymarket.com)'s CLOB, Gamma, Data, Relay, Perps, RTDS and Sports modules, and the unified `Polymarket` client | `polymarket` and `polymarket-<module>` |
 | `polyoxide::binance` | `polyoxide-binance`: Binance's USDⓈ-M futures market data and streams | `binance` and `binance-<module>` |
 | `polyoxide::prelude` | A selection of the enabled modules' clients, errors and stream types | |
+
+Code written against `polyoxide::venue`'s traits reads every venue the same way:
+[`examples/venue_neutral.rs`](examples/venue_neutral.rs) reads the best bid and ask of the
+Polymarket CLOB, Polymarket perps and Binance USDⓈ-M with one function, and their errors with one
+classifier.
 
 More information about this crate can be found in the [crate documentation](https://docs.rs/polyoxide/).
 
