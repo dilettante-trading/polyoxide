@@ -165,8 +165,8 @@ fn instrument(info: &SymbolInfo) -> Result<Instrument, ClassifiedError> {
 }
 
 /// The kline width a candle interval is.
-fn interval(interval: CandleInterval) -> Result<Interval, ClassifiedError> {
-    Ok(match interval {
+fn interval(interval: CandleInterval) -> Interval {
+    match interval {
         CandleInterval::Minute1 => Interval::M1,
         CandleInterval::Minute5 => Interval::M5,
         CandleInterval::Minute15 => Interval::M15,
@@ -174,13 +174,7 @@ fn interval(interval: CandleInterval) -> Result<Interval, ClassifiedError> {
         CandleInterval::Hour4 => Interval::H4,
         CandleInterval::Day1 => Interval::D1,
         CandleInterval::Week1 => Interval::W1,
-        other => {
-            return Err(ClassifiedError::new(
-                Class::InvalidRequest,
-                format!("USDⓈ-M serves no {other:?} klines"),
-            ))
-        }
-    })
+    }
 }
 
 impl MarketData for Usdm {
@@ -274,7 +268,7 @@ impl Candles for Usdm {
         let symbol = key::symbol(key)?;
         let mut request = self
             .market()
-            .klines(&symbol, interval(query.interval)?)
+            .klines(&symbol, interval(query.interval))
             .start_time(query.start.0);
         if let Some(end) = query.end {
             request = request.end_time(end.0);
@@ -393,7 +387,7 @@ mod tests {
     fn every_candle_interval_is_a_kline_width() {
         let widths: Vec<&str> = CandleInterval::ALL
             .iter()
-            .map(|each| interval(*each).unwrap().as_str())
+            .map(|each| interval(*each).as_str())
             .collect();
         assert_eq!(widths, ["1m", "5m", "15m", "1h", "4h", "1d", "1w"]);
     }

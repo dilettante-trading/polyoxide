@@ -225,9 +225,10 @@ impl Trade {
 }
 
 /// How long a candle spans. Each venue that serves candles serves every
-/// width here.
+/// width here, so a venue maps every variant and the enum is exhaustive: a
+/// new width is a breaking change that fails to compile at a venue that does
+/// not map it.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, PartialOrd, Ord)]
-#[non_exhaustive]
 pub enum CandleInterval {
     /// One minute.
     Minute1,
