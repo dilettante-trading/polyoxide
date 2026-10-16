@@ -338,13 +338,13 @@ answers "unsupported". Each has `Send + Sync` supertraits, methods returning
 (`DynMarketData` and so on), held as `Arc<Dyn…<'static>>`; an implementation writes `async fn`
 and converts its module's error with `?`, so the native clients keep their typed errors. A key of
 another product is a `KeyError` (`InvalidRequest`), sent nowhere, and a key the venue does not
-list is a `VenueRefusal` by its class: `NotListed` where the venue's answer identifies the
-instrument as unlisted, otherwise the venue's own refusal, and an empty quote or book where the
-venue cannot tell (perps), so callers match on `class()` and confirm a listing with `instrument`.
-The records they return are `Quote`, `Book` (bids
-highest first, asks lowest first), `Trade` (its `TradeId` an opaque `Arc<str>`), `Candle` (a
-venue that samples one price per interval gives only `close`), `FundingRate` (the rate accruing
-has a `next_funding` unless none is scheduled, a settled one none) and `EventGroup` with its `EventOutcome`s; every list a
+list is a `VenueRefusal` by its class (`NotListed` where the venue's answer identifies the
+instrument as unlisted, otherwise the venue's own refusal), except where the venue cannot tell
+(perps), whose quote and book are then empty; callers match on `class()` and confirm a listing with
+`instrument`. The records they return are `Quote`, `Book` (bids highest first, asks lowest first),
+`Trade` (its `TradeId` an opaque `Arc<str>`), `Candle` (a venue that samples one price per interval
+gives only `close`), `FundingRate` (the rate accruing has a `next_funding` unless none is scheduled,
+a settled one none) and `EventGroup` with its `EventOutcome`s; every list a
 trait returns is oldest first, one request's worth. `CandleQuery` names a `CandleInterval` (one
 minute to one week, each width every candle venue serves) and a span. Binance's `usdm::venue`
 implements `MarketData`, `Instruments`, `Trades`, `Candles` and `Funding` on `Usdm`, with

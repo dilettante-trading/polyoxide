@@ -70,7 +70,9 @@ pub trait MarketData: Send + Sync {
     /// [`VenueRefusal`](crate::Class::VenueRefusal) by its class. A venue that
     /// cannot tell an unlisted instrument from one with nothing quoted returns
     /// an empty quote instead; use [`instrument`](MarketData::instrument) to
-    /// confirm a listing.
+    /// confirm a listing. A refusal can also be a listed instrument with no
+    /// book, as the CLOB's `404` is; [`instrument`](MarketData::instrument)
+    /// confirms a listing.
     fn quote(&self, key: &MarketKey)
         -> impl Future<Output = Result<Quote, ClassifiedError>> + Send;
 
@@ -80,7 +82,9 @@ pub trait MarketData: Send + Sync {
     /// [`VenueRefusal`](crate::Class::VenueRefusal) by its class. A venue that
     /// cannot tell an unlisted instrument from one with nothing quoted returns
     /// an empty book instead; use [`instrument`](MarketData::instrument) to
-    /// confirm a listing.
+    /// confirm a listing. A refusal can also be a listed instrument with no
+    /// book, as the CLOB's `404` is; [`instrument`](MarketData::instrument)
+    /// confirms a listing.
     fn book(&self, key: &MarketKey) -> impl Future<Output = Result<Book, ClassifiedError>> + Send;
 }
 
@@ -112,7 +116,7 @@ pub trait Candles: Send + Sync {
     /// A venue may also bound the span one request covers: the CLOB's is 14
     /// days from `query.start`. An empty answer before `query.end` then means
     /// no candles in that span, not none later, so read on from the end of the
-    /// span asked for.
+    /// span the venue covered (`query.start` + 14 days on the CLOB).
     fn candles(
         &self,
         key: &MarketKey,
@@ -135,7 +139,7 @@ pub trait Funding: Send + Sync {
     /// A venue may also bound the span one request covers: perps' is 100 hours
     /// less a minute from `start`. An empty answer before now then means no
     /// settlements in that span, not none later, so read on from the end of the
-    /// span asked for.
+    /// span the venue covered (`start` + 100 hours less a minute on perps).
     fn funding_history(
         &self,
         key: &MarketKey,

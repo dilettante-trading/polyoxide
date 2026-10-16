@@ -80,7 +80,7 @@ pub struct Instrument {
     pub size_increment: Option<Decimal>,
     /// The smallest order value, in the quote currency.
     pub min_notional: Option<Decimal>,
-    /// Whether the venue takes orders on it now that open or add to a
+    /// Whether the venue now takes orders on it that open or add to a
     /// position. A close-only instrument is not tradable.
     pub tradable: Option<bool>,
     /// The venue's own facts.
