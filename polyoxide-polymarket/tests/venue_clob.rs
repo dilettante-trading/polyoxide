@@ -18,8 +18,8 @@ use polyoxide_polymarket::shared::keys::{self, TokenId};
 use polyoxide_test_support::fixtures;
 use polyoxide_venue::{
     CandleInterval, CandleQuery, Candles, Class, Classify, DynCandles, DynEventGroups,
-    DynMarketData, DynTrades, EventGroups, KeySpace, Level, MarketData, MarketKey, ProductId, Side,
-    SizeUnit, Trades, UnixMillis, VenueId,
+    DynMarketData, DynTrades, EventGroups, KeySpace, Level, MarketData, MarketKey, NotListed,
+    ProductId, Side, SizeUnit, Trades, UnixMillis, VenueId,
 };
 use rust_decimal::Decimal;
 use serde_json::Value;
@@ -225,10 +225,11 @@ async fn instrument_is_the_outcome_of_its_market() {
 async fn a_token_the_clob_does_not_know_is_its_404() {
     let mut server = Server::new_async().await;
     let unknown = "1";
-    let _mock = server
+    let mock = server
         .mock("GET", format!("/markets-by-token/{unknown}").as_str())
         .with_status(404)
         .with_body(r#"{"error":"market not found"}"#)
+        .expect(1)
         .create_async()
         .await;
     let venue: Arc<DynMarketData<'static>> = DynMarketData::new_arc(client(&server));
@@ -236,17 +237,19 @@ async fn a_token_the_clob_does_not_know_is_its_404() {
         .instrument(&keys::clob(&TokenId::new(unknown).unwrap()))
         .await
         .unwrap_err();
+    mock.assert_async().await;
     assert!(
         matches!(err.class, Class::VenueRefusal { .. }),
         "{:?}",
         err.class
     );
+    assert!(err.source.downcast_ref::<ClobError>().is_some());
 }
 
 #[tokio::test]
 async fn candles_are_the_native_price_history_one_price_an_interval() {
     let mut server = Server::new_async().await;
-    let (start, end) = (1_791_902_391_u64, 1_792_161_591_u64);
+    let (start, end) = (1_791_914_757_u64, 1_792_173_957_u64);
     let query = format!("market={}&fidelity=60&startTs={start}&endTs={end}", token());
     let mock = route(
         &mut server,
@@ -434,6 +437,238 @@ async fn event_group_holds_every_v1_outcome_of_the_tokens_event() {
     let ext = group.extensions.get::<EventGroupExt>().unwrap();
     assert_eq!(ext.slug, event.slug);
     assert_eq!(ext.neg_risk, event.neg_risk);
+}
+
+/// The captured event with its markets edited by `edit`, as the body of
+/// `/events/{id}`.
+fn event_body(edit: impl FnOnce(&mut Vec<Value>)) -> String {
+    let mut event = json("gamma_event");
+    edit(event["markets"].as_array_mut().unwrap());
+    event.to_string()
+}
+
+/// The id of the event the captured token's market is in.
+fn event_id() -> String {
+    json("gamma_markets")[0]["events"][0]["id"]
+        .as_str()
+        .unwrap()
+        .to_owned()
+}
+
+#[tokio::test]
+async fn event_group_finds_a_resolved_markets_token_under_closed_true() {
+    let mut server = Server::new_async().await;
+    // Gamma omits a closed market unless asked for it.
+    let open = route(
+        &mut server,
+        "/markets",
+        &format!("clob_token_ids={}", token()),
+        "[]",
+        1,
+    )
+    .await;
+    let closed = route(
+        &mut server,
+        "/markets",
+        &format!("clob_token_ids={}&closed=true", token()),
+        &fixture("gamma_markets"),
+        1,
+    )
+    .await;
+    let event = route(
+        &mut server,
+        &format!("/events/{}", event_id()),
+        "",
+        &fixture("gamma_event"),
+        1,
+    )
+    .await;
+
+    let venue: Arc<DynEventGroups<'static>> = DynEventGroups::new_arc(client(&server));
+    let group = venue.event_group(&key()).await.unwrap();
+    open.assert_async().await;
+    closed.assert_async().await;
+    event.assert_async().await;
+    assert_eq!(group.id, event_id());
+    assert!(group.outcomes.iter().any(|o| o.key == key()));
+}
+
+#[tokio::test]
+async fn event_group_leaves_out_the_outcomes_of_a_v2_market() {
+    let mut server = Server::new_async().await;
+    let markets = route(
+        &mut server,
+        "/markets",
+        &format!("clob_token_ids={}", token()),
+        &fixture("gamma_markets"),
+        1,
+    )
+    .await;
+    let body = event_body(|markets| markets[1]["version"] = "v2".into());
+    let event = route(
+        &mut server,
+        &format!("/events/{}", event_id()),
+        "",
+        &body,
+        1,
+    )
+    .await;
+    let v2_condition = json("gamma_event")["markets"][1]["conditionId"]
+        .as_str()
+        .unwrap()
+        .to_owned();
+
+    let venue: Arc<DynEventGroups<'static>> = DynEventGroups::new_arc(client(&server));
+    let group = venue.event_group(&key()).await.unwrap();
+    markets.assert_async().await;
+    event.assert_async().await;
+
+    let conditions: Vec<&str> = group.outcomes.iter().map(|o| o.market.as_str()).collect();
+    assert!(
+        !conditions.contains(&v2_condition.as_str()),
+        "{conditions:?}"
+    );
+    assert_eq!(group.outcomes.len(), 4, "the two v1 markets' Yes and No");
+}
+
+#[tokio::test]
+async fn a_market_whose_tokens_and_outcomes_differ_in_number_is_a_decode_failure() {
+    let mut server = Server::new_async().await;
+    let markets = route(
+        &mut server,
+        "/markets",
+        &format!("clob_token_ids={}", token()),
+        &fixture("gamma_markets"),
+        1,
+    )
+    .await;
+    let body = event_body(|markets| markets[0]["outcomes"] = r#"["Yes"]"#.into());
+    let event = route(
+        &mut server,
+        &format!("/events/{}", event_id()),
+        "",
+        &body,
+        1,
+    )
+    .await;
+
+    let venue: Arc<DynEventGroups<'static>> = DynEventGroups::new_arc(client(&server));
+    let err = venue.event_group(&key()).await.unwrap_err();
+    markets.assert_async().await;
+    event.assert_async().await;
+    assert_eq!(err.class, Class::Decode, "{err}");
+}
+
+#[tokio::test]
+async fn a_token_gamma_lists_under_neither_request_is_not_listed() {
+    let mut server = Server::new_async().await;
+    let open = route(
+        &mut server,
+        "/markets",
+        &format!("clob_token_ids={}", token()),
+        "[]",
+        1,
+    )
+    .await;
+    let closed = route(
+        &mut server,
+        "/markets",
+        &format!("clob_token_ids={}&closed=true", token()),
+        "[]",
+        1,
+    )
+    .await;
+
+    let venue: Arc<DynEventGroups<'static>> = DynEventGroups::new_arc(client(&server));
+    let err = venue.event_group(&key()).await.unwrap_err();
+    open.assert_async().await;
+    closed.assert_async().await;
+    assert!(
+        matches!(err.class, Class::VenueRefusal { .. }),
+        "{:?}",
+        err.class
+    );
+    assert!(err.source.downcast_ref::<NotListed>().is_some());
+}
+
+#[tokio::test]
+async fn an_empty_group_item_title_falls_back_to_the_question() {
+    let mut server = Server::new_async().await;
+    let markets = route(
+        &mut server,
+        "/markets",
+        &format!("clob_token_ids={}", token()),
+        &fixture("gamma_markets"),
+        1,
+    )
+    .await;
+    let body = event_body(|markets| markets[0]["groupItemTitle"] = "".into());
+    let event = route(
+        &mut server,
+        &format!("/events/{}", event_id()),
+        "",
+        &body,
+        1,
+    )
+    .await;
+    let question = json("gamma_event")["markets"][0]["question"]
+        .as_str()
+        .unwrap()
+        .to_owned();
+
+    let venue: Arc<DynEventGroups<'static>> = DynEventGroups::new_arc(client(&server));
+    let group = venue.event_group(&key()).await.unwrap();
+    markets.assert_async().await;
+    event.assert_async().await;
+    assert_eq!(
+        group.outcomes[0].market_title.as_deref(),
+        Some(question.as_str())
+    );
+}
+
+/// The 14 days `/prices-history` serves at most, in seconds.
+const WINDOW: u64 = 1_209_600;
+
+/// Candles asked for `query`, against a history route that must see `window`.
+async fn candles_sent_as(query: CandleQuery, window: &str) {
+    let mut server = Server::new_async().await;
+    let route = route(
+        &mut server,
+        "/prices-history",
+        &format!("market={}&fidelity=60&{window}", token()),
+        r#"{"history":[]}"#,
+        1,
+    )
+    .await;
+    let venue: Arc<DynCandles<'static>> = DynCandles::new_arc(client(&server));
+    venue.candles(&key(), &query).await.unwrap();
+    route.assert_async().await;
+}
+
+#[tokio::test]
+async fn candles_ask_for_at_most_the_14_days_the_host_serves() {
+    let start = 1_700_000_000_u64;
+    let window = format!("startTs={start}&endTs={}", start + WINDOW);
+    // No end, which is now.
+    let open_ended = CandleQuery::new(CandleInterval::Hour1, UnixMillis(start * 1_000));
+    candles_sent_as(open_ended, &window).await;
+    // An end beyond the window.
+    let far = CandleQuery::new(CandleInterval::Hour1, UnixMillis(start * 1_000))
+        .end(UnixMillis((start + 3 * WINDOW) * 1_000));
+    candles_sent_as(far, &window).await;
+    // An end inside it is kept, rounded down.
+    let near = CandleQuery::new(CandleInterval::Hour1, UnixMillis(start * 1_000))
+        .end(UnixMillis((start + 3_600) * 1_000 + 999));
+    candles_sent_as(near, &format!("startTs={start}&endTs={}", start + 3_600)).await;
+}
+
+#[tokio::test]
+async fn candles_start_at_the_next_whole_second() {
+    // A point in the sub-second before `start` must not come back.
+    let start = 1_791_914_757_001_u64;
+    let query = CandleQuery::new(CandleInterval::Hour1, UnixMillis(start))
+        .end(UnixMillis(1_792_173_957_000));
+    candles_sent_as(query, "startTs=1791914758&endTs=1792173957").await;
 }
 
 /// A product of another venue, to hand the CLOB a key it does not own.

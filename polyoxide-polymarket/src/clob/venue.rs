@@ -14,7 +14,7 @@
 //! | --- | --- |
 //! | `instrument` | `/markets-by-token/{token}`, then `/markets/{condition}` |
 //! | `quote`, `book` | `/book` |
-//! | `candles` | `/prices-history`, one price per interval |
+//! | `candles` | `/prices-history`, one price per interval, at most 14 days from `start` |
 //! | `trades` (`data`) | `/markets-by-token/{token}`, then the Data API's `/trades` |
 //! | `event_group` (`gamma`) | Gamma's `/markets?clob_token_ids=`, then `/events/{id}` |
 //!
@@ -174,9 +174,21 @@ fn fidelity(interval: CandleInterval) -> Result<i32, ClassifiedError> {
     })
 }
 
+/// The longest window `/prices-history` serves, in seconds. A longer one is a
+/// 400 (`'startTs' and 'endTs' interval is too long`), observed at 30, 90 and
+/// 365 days; 3, 7 and 14 days are served. The limit between 14 and 30 days was
+/// not bisected.
+const PRICES_HISTORY_WINDOW_SECONDS: i64 = 14 * 24 * 3_600;
+
 /// Unix seconds, from milliseconds, rounded down.
 fn seconds(time: UnixMillis) -> i64 {
     i64::try_from(time.0 / 1_000).unwrap_or(i64::MAX)
+}
+
+/// Unix seconds, from milliseconds, rounded up, so a point in the sub-second
+/// before the time is not read as at or after it.
+fn seconds_up(time: UnixMillis) -> i64 {
+    i64::try_from(time.0.div_ceil(1_000)).unwrap_or(i64::MAX)
 }
 
 impl MarketData for Clob {
@@ -239,11 +251,16 @@ impl Candles for Clob {
         query: &CandleQuery,
     ) -> Result<Vec<Candle>, ClassifiedError> {
         let token = keys::token_id(key)?;
+        let start = seconds_up(query.start);
+        // The window is cut to what one request serves; the caller reads on
+        // from the last candle's open time.
+        let end = seconds(query.end.unwrap_or_else(UnixMillis::now))
+            .min(start.saturating_add(PRICES_HISTORY_WINDOW_SECONDS));
         let params = PricesHistoryQuery {
             interval: None,
             fidelity: Some(fidelity(query.interval)?),
-            start_ts: Some(seconds(query.start)),
-            end_ts: Some(seconds(query.end.unwrap_or_else(UnixMillis::now))),
+            start_ts: Some(start),
+            end_ts: Some(end),
         };
         let history = self
             .markets()
@@ -395,22 +412,41 @@ mod events {
         })
     }
 
-    impl EventGroups for Clob {
-        async fn event_group(&self, key: &MarketKey) -> Result<EventGroup, ClassifiedError> {
-            let token = keys::token_id(key)?;
-            let markets = Request::<Vec<MarketEvents>, GammaError>::new(
+    impl Clob {
+        /// The id of the first event Gamma lists for a token's market, among
+        /// the open markets or, with `closed`, the closed ones.
+        async fn event_id_of(
+            &self,
+            token: &TokenId,
+            closed: bool,
+        ) -> Result<Option<String>, ClassifiedError> {
+            let mut request = Request::<Vec<MarketEvents>, GammaError>::new(
                 self.gamma.http_client.clone(),
                 "/markets",
             )
-            .query("clob_token_ids", token.as_str())
-            .send()
-            .await?;
-            let Some(event_id) = markets
+            .query("clob_token_ids", token.as_str());
+            if closed {
+                request = request.query("closed", "true");
+            }
+            let markets = request.send().await?;
+            Ok(markets
                 .iter()
                 .flat_map(|market| &market.events)
                 .map(|event| event.id.clone())
-                .next()
-            else {
+                .next())
+        }
+    }
+
+    impl EventGroups for Clob {
+        async fn event_group(&self, key: &MarketKey) -> Result<EventGroup, ClassifiedError> {
+            let token = keys::token_id(key)?;
+            // Gamma leaves a closed market out unless asked for it, so a
+            // resolved market's token is found by the second request.
+            let mut event_id = self.event_id_of(&token, false).await?;
+            if event_id.is_none() {
+                event_id = self.event_id_of(&token, true).await?;
+            }
+            let Some(event_id) = event_id else {
                 return Err(NotListed { key: key.clone() }.into());
             };
             let event = self.gamma.events().get(event_id).send().await?;
@@ -438,9 +474,11 @@ mod events {
                     let token = TokenId::new(token)?;
                     let mut outcome =
                         EventOutcome::new(keys::clob(&token), market.condition_id.clone(), label);
+                    // An empty title is none, as a missing one is.
                     outcome.market_title = market
                         .group_item_title
                         .clone()
+                        .filter(|title| !title.is_empty())
                         .or_else(|| Some(market.question.clone()));
                     group.outcomes.push(outcome);
                 }

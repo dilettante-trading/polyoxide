@@ -253,6 +253,28 @@ modelled. `GET /sports/{id}` answers too, though `openapi.yaml` lists only
 `GET /sports`; its body links `SportsMetadata.json`. The SDK has no method
 for it.
 
+## `GET /markets` leaves out closed markets unless asked for them
+
+Probed 2026-10-16 (GET only). A resolved market's token (market `5168102`,
+event `1085449`, token
+`85798388165704430479460277510251812083122151035719487903706712981164784825885`)
+on `clob_token_ids=<token>`:
+
+| Query | Markets |
+| --- | --- |
+| no `closed` | 0 |
+| `closed=true` | 1 (carrying `events: [{id: "1085449"}]`) |
+| `closed=false` | 0 |
+| `closed=true&closed=false` | 0: a repeated key is last-wins, not a union |
+
+An open token (market `5710779`) returned 1 with no `closed` or with
+`closed=false`, and 0 with `closed=true`. So a lookup by token needs the
+unfiltered request and, when that is empty, one with `closed=true`; one
+request cannot ask for both. `GET /events/1085449` returned the event with
+all 39 of its markets, closed ones included, with no filter. The CLOB's
+`event_group` (`polyoxide-polymarket/src/clob/venue.rs`) makes the two
+requests in that order.
+
 ## More instances
 
 The 2026-08-19 type parity sweep found nine further places where the spec and

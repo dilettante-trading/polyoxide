@@ -352,10 +352,13 @@ token (AD-7). `instrument` resolves the token's market with `/markets-by-token/{
 `/markets/{condition}` (a token the CLOB does not know is its `404`, a `VenueRefusal`); `quote`
 and `book` read `/book`, whose sides the CLOB sends worst first, so both are sorted best first;
 `candles` read `/prices-history`, one price per interval as `close`, the `CandleInterval` sent as
-`fidelity` minutes; `trades` read the Data API's taker-only `/trades` for the token's market and
+`fidelity` minutes, from `start` rounded up to the second and no further than 14 days on, since a
+longer window is a `400` (`docs/specs/clob/OBSERVED.md`); `trades` read the Data API's taker-only `/trades` for the token's market and
 keep the token's rows, oldest first, with no trade id (the Data API gives none); and `event_group`
 reads the event id from Gamma's `/markets?clob_token_ids=` (a private decode, since Gamma's
-`Market` does not model its `events`), then `/events/{id}`, keeping only `v1` markets' outcomes.
+`Market` does not model its `events`), asked again with `closed=true` when that is empty, since
+Gamma leaves closed markets out unless asked (`docs/specs/gamma/OBSERVED.md`), then `/events/{id}`,
+keeping only `v1` markets' outcomes.
 The CLOB does not implement `Instruments` (amendment A6-1). A number the CLOB or Data API sends as
 a float is read through its shortest decimal spelling. `tests/venue_clob.rs` holds each method to
 the native clients' values on `tests/fixtures/clob/venue/`, captured for one live neg-risk outcome
