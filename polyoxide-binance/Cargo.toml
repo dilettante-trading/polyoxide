@@ -18,6 +18,7 @@ default = ["usdm"]
 usdm = [
     "dep:polyoxide-core",
     "polyoxide-venue/decimal",
+    "polyoxide-venue/keys",
     "dep:rust_decimal",
     "dep:serde",
     "dep:serde_json",

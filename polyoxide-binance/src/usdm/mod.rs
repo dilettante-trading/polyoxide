@@ -23,6 +23,7 @@
 
 pub mod api;
 pub mod error;
+pub mod key;
 mod policy;
 pub mod request;
 pub mod types;
@@ -33,6 +34,7 @@ pub mod ws;
 use polyoxide_core::{ClientConfig, HttpClient};
 
 pub use error::UsdmError;
+pub use key::key;
 pub use weight::WeightBudget;
 
 use crate::usdm::{
