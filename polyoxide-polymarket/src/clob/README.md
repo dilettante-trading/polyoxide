@@ -423,6 +423,17 @@ An asset already on the socket gets no snapshot on a repeated subscribe;
 unsubscribe it first to force one. See `MarketSubscriptionUpdate` for the
 verified venue behaviour.
 
+## Through the venue-neutral traits
+
+`Clob` implements `polyoxide-venue`'s `MarketData` and `Candles` (from
+`/prices-history`, one price per interval), and with the `data` feature
+`Trades`, since the CLOB serves no public trades and the Data API does, and with
+`gamma` `EventGroups`. A key names one outcome token,
+`polymarket.clob:<token id>` (`shared::keys::clob`), and its book is bids and
+asks in that outcome's own price terms, best first. Neg risk, the book's tick
+size and the CLOB's other facts ride in `clob::venue`'s `<Record>Ext` types.
+The `clob::venue` module's documentation has an example.
+
 ## License
 
 Licensed under either of [MIT](../../../LICENSE-MIT) or [Apache-2.0](../../../LICENSE-APACHE) at your option.

@@ -136,6 +136,7 @@ pub mod core;
 pub mod error;
 pub mod types;
 pub mod utils;
+pub mod venue;
 
 #[cfg(feature = "clob-ws")]
 pub mod ws;

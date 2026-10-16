@@ -144,8 +144,22 @@ impl PolymarketBuilder {
 
         let gamma = gamma_builder.build()?;
 
-        // Build CLOB client
-        let mut clob_builder = ClobBuilder::new().with_account(self.account);
+        // Build Data API client
+        let mut data_builder = DataApiBuilder::default();
+
+        if let Some(url) = self.data_base_url {
+            data_builder = data_builder.base_url(url);
+        }
+        if let Some(timeout) = self.timeout_ms {
+            data_builder = data_builder.timeout_ms(timeout);
+        }
+
+        let data = data_builder.build()?;
+
+        // Build CLOB client, which reads public trades through the Data client
+        let mut clob_builder = ClobBuilder::new()
+            .with_account(self.account)
+            .data(data.clone());
 
         if let Some(url) = self.clob_base_url {
             clob_builder = clob_builder.base_url(url);
@@ -158,18 +172,6 @@ impl PolymarketBuilder {
         }
 
         let clob = clob_builder.build()?;
-
-        // Build Data API client
-        let mut data_builder = DataApiBuilder::default();
-
-        if let Some(url) = self.data_base_url {
-            data_builder = data_builder.base_url(url);
-        }
-        if let Some(timeout) = self.timeout_ms {
-            data_builder = data_builder.timeout_ms(timeout);
-        }
-
-        let data = data_builder.build()?;
 
         Ok(Polymarket { clob, gamma, data })
     }

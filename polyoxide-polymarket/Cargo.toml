@@ -21,7 +21,7 @@ categories = ["api-bindings", "web-programming::http-client", "web-programming::
 default = ["clob", "gamma", "data"]
 clob = [
     "dep:polyoxide-core",
-    "polyoxide-venue/keys",
+    "polyoxide-venue/market",
     "dep:base64",
     "dep:hmac",
     "dep:sha2",
@@ -330,6 +330,11 @@ required-features = ["clob"]
 [[test]]
 name = "query_setters_clob"
 required-features = ["clob"]
+
+# The clob's traits read Data's public trades and Gamma's events too.
+[[test]]
+name = "venue_clob"
+required-features = ["clob", "gamma", "data"]
 
 # The relay module's suites (Story 5.4).
 [[test]]
