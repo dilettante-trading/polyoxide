@@ -21,6 +21,7 @@ categories = ["api-bindings", "web-programming::http-client", "web-programming::
 default = ["clob", "gamma", "data"]
 clob = [
     "dep:polyoxide-core",
+    "polyoxide-venue/keys",
     "dep:base64",
     "dep:hmac",
     "dep:sha2",
@@ -48,6 +49,7 @@ clob-ws = [
 ]
 gamma = [
     "dep:polyoxide-core",
+    "polyoxide-venue/keys",
     "dep:serde",
     "dep:serde_json",
     "dep:thiserror",
@@ -60,6 +62,7 @@ gamma = [
 ]
 data = [
     "dep:polyoxide-core",
+    "polyoxide-venue/keys",
     "dep:serde",
     "dep:serde_json",
     "dep:thiserror",
@@ -89,6 +92,7 @@ relay = [
 ]
 perps = [
     "dep:polyoxide-core",
+    "polyoxide-venue/keys",
     "polyoxide-venue/decimal",
     "dep:rust_decimal",
     "dep:serde",
