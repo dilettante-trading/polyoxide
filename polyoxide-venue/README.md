@@ -6,6 +6,13 @@ maps, the one `Retry-After` parser, `Secret`, the `wire_enum!` and `open_enum!`
 macros with their `UnknownVariant`, `UnixMillis`, and, behind the `decimal`
 feature, the positional decimal serde of rows sent as bare arrays.
 
+Behind the `keys` feature, `MarketKey` names one instrument as
+`venue.product:id`, canonical because only a product's `KeySpace` makes one.
+Behind the `market` feature, the market-data traits (`MarketData`, which every
+venue product implements, and the capability traits `Instruments`, `Trades`,
+`Candles`, `Funding` and `EventGroups`, each with a `Dyn` wrapper) return the
+shared records, each carrying a venue's own facts in its `Extensions`.
+
 By default it depends on nothing, so a credential-free socket client can use it
 without building an HTTP or signing stack.
 

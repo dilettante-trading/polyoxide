@@ -4078,6 +4078,7 @@ dependencies = [
 name = "polyoxide-venue"
 version = "0.39.0"
 dependencies = [
+ "dynosaur",
  "polyoxide-ws",
  "rust_decimal",
  "serde",
