@@ -60,6 +60,11 @@ tokio = { workspace = true, features = ["macros", "rt-multi-thread"] }
 # Needed only so the WebSocket README doctests can bring `StreamExt` into scope.
 futures-util = "0.3"
 
+# `parse_key` across both venues' products.
+[[test]]
+name = "parse_key"
+required-features = ["polymarket-clob", "polymarket-perps", "binance-usdm"]
+
 # docs.rs documents every module of every venue.
 [package.metadata.docs.rs]
 features = ["full"]
