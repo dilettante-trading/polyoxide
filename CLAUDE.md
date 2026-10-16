@@ -306,6 +306,18 @@ product it names. Every `KeyError` is an `InvalidRequest`. Each venue crate's
 `the_ids_are_the_ones_the_crate_registers` test holds its `VENUE` and product constants to its
 `[package.metadata.polyoxide]`, read with `polyoxide_test_support::registration!()`.
 
+**Market-data records** — `polyoxide-venue`'s `market` feature holds the records market data is
+read into: `Instrument`, the one record that carries tick size, minimum size and `SizeUnit`
+(`Base`, `Contracts` or `Shares`); `Level`, a price and a size, which is a value inside a record
+rather than a record; and `Side { Buy, Sell }`. A size is the instrument's native quantity, a
+quote-currency amount is a separate `notional`, and a field a venue does not publish is an
+`Option`. Records derive `Clone`, `Debug` and `PartialEq`, are `#[non_exhaustive]` with a `new`
+that takes their required fields, and carry `Extensions`: at most one value per type, each
+`Clone + Debug + PartialEq + Send + Sync + 'static`, compared by value, with no serde, and
+`type_ids()` to list them. Inserting a type already held is a `DuplicateExtension`
+(`InvalidRequest`), and `Extensions::of(value)` starts one with a single value. A product's own
+facts go in its one `<Record>Ext` per record type, never in a new field on the shared record.
+
 **Wire enums** — Story 3.9 declared the wire enums of gamma (`polyoxide-polymarket/src/gamma/types.rs`), data v2 (`src/data/v2/types/common.rs` there), perps (`src/perps/types.rs` in `polyoxide-polymarket`), Binance (`usdm/types.rs`) and relay (`src/relay/types.rs` and `session_signers.rs` in `polyoxide-polymarket`) with `polyoxide-venue`'s macros: `wire_enum!` for a closed set the client sends (serde renames, `ALL`, `as_str(self) -> &'static str`, `Display`, and a `FromStr` whose error is `polyoxide_venue::UnknownVariant`, `"v" is not a valid X`, classed `InvalidRequest`), and `open_enum!` for a set the venue extends (`#[non_exhaustive]`, an `Other(String)` that keeps an unknown spelling verbatim, `ALL`, `as_str`, `from_wire`, an infallible `FromStr`, and string serde). Both take `$vis enum Name { Variant => "wire", .. }` with attributes on the enum and each variant; neither adds `#[non_exhaustive]` to a closed set, so data's pass it themselves. The expansions name `::serde`, so the calling crate depends on serde, and `wire_enum!`, which derives `::serde::Serialize` and `::serde::Deserialize`, also needs serde's `derive` feature; `open_enum!` implements both by hand and does not. They emit no specta code, since a `cfg(feature = "specta")` in an exported macro is evaluated in every calling crate: data's closed enums pass `#[cfg_attr(feature = "specta", derive(specta::Type))]`, and gamma and data give their open enums a `String` shape with one `polyoxide_venue::specta_as_string!(..)`. Perps and Binance keep separate `Interval` enums (D16). Other one-spelling-per-variant enums are still written by hand: clob's `OrderSide` (`src/clob/types.rs`) and `SortPosition`, `MultiMarketOrderBy` and `UserRewardMarketOrderBy` (`src/clob/api/rewards.rs`), relay's `WalletType`, Binance's `StreamPath` (`usdm/ws/mod.rs`), gamma's `ParentEntityType`, and data's v1 enums in `data/types.rs`, among them the `#[serde(other)] Unknown` ones (`TradeSide`, `ActivityType`, `ApprovalFeature`, `ApprovalStandard`, `ComboStatus`, `ComboLegStatus`).
 
 ## Environment Variables
