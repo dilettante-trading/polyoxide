@@ -156,8 +156,26 @@ fn instrument(key: &MarketKey, market: &Market, outcome: &MarketToken) -> Instru
 }
 
 /// The `/prices-history` fidelity, in minutes, of a candle interval.
-fn fidelity(interval: CandleInterval) -> i32 {
-    i32::try_from(interval.duration().as_secs() / 60).unwrap_or(i32::MAX)
+fn fidelity(interval: CandleInterval) -> Result<i32, ClassifiedError> {
+    fidelity_of(interval, interval.duration())
+}
+
+/// The CLOB's `fidelity` for a width: whole minutes, refused otherwise.
+fn fidelity_of(
+    interval: impl std::fmt::Debug,
+    width: std::time::Duration,
+) -> Result<i32, ClassifiedError> {
+    let secs = width.as_secs();
+    let refuse = || {
+        ClassifiedError::new(
+            Class::InvalidRequest,
+            format!("the CLOB serves no {interval:?} price history"),
+        )
+    };
+    if secs == 0 || !secs.is_multiple_of(60) || width.subsec_nanos() != 0 {
+        return Err(refuse());
+    }
+    i32::try_from(secs / 60).map_err(|_| refuse())
 }
 
 /// The longest window `/prices-history` serves, in seconds. A longer one is a
@@ -244,7 +262,7 @@ impl Candles for Clob {
             .min(start.saturating_add(PRICES_HISTORY_WINDOW_SECONDS));
         let params = PricesHistoryQuery {
             interval: None,
-            fidelity: Some(fidelity(query.interval)),
+            fidelity: Some(fidelity(query.interval)?),
             start_ts: Some(start),
             end_ts: Some(end),
         };
@@ -495,9 +513,27 @@ mod tests {
     fn every_candle_interval_is_a_fidelity_in_minutes() {
         let minutes: Vec<i32> = CandleInterval::ALL
             .iter()
-            .map(|each| fidelity(*each))
+            .map(|each| fidelity(*each).unwrap())
             .collect();
         assert_eq!(minutes, [1, 5, 15, 60, 240, 1_440, 10_080]);
+    }
+
+    #[test]
+    fn fidelity_refuses_a_width_that_is_not_whole_minutes() {
+        use std::time::Duration;
+        for width in [
+            Duration::ZERO,
+            Duration::from_secs(30),
+            Duration::from_secs(90),
+            Duration::from_millis(60_500),
+        ] {
+            let err = fidelity_of("test width", width).unwrap_err();
+            assert_eq!(err.class, Class::InvalidRequest, "width {width:?}");
+        }
+        assert_eq!(
+            fidelity_of("test width", Duration::from_secs(60)).unwrap(),
+            1
+        );
     }
 
     #[test]
