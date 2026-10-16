@@ -135,6 +135,8 @@ kline's close price reproduces it: SP500-USD `812002.2` against `811787.0`, NAS1
 against `1416512.3`, SILVER-USD `301091.4` against `301263.2` (checked 2026-10-16). A kline
 quantity that counted a fixed amount of the underlying other than one unit would be off by that
 factor.
+Instruments that move more within an hour differ more (ENA-USD by 21%, BTC-USD by 4%),
+since this prices each hour at its close; none is off by a constant factor.
 
 ## Rate limits
 

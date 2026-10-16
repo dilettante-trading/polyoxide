@@ -318,12 +318,16 @@ impl Usdm {
     /// `fundingRate`.
     async fn funding_interval(&self, symbol: &Symbol) -> Result<Duration, ClassifiedError> {
         let rows = self.exchange().funding_info().send().await?;
-        Ok(rows
-            .iter()
-            .find(|row| row.symbol == symbol.as_ref())
-            .map_or(DEFAULT_FUNDING_INTERVAL, |row| {
-                Duration::from_secs(u64::from(row.funding_interval_hours) * 60 * 60)
-            }))
+        match rows.iter().find(|row| row.symbol == symbol.as_ref()) {
+            None => Ok(DEFAULT_FUNDING_INTERVAL),
+            Some(row) if row.funding_interval_hours == 0 => Err(ClassifiedError::new(
+                Class::Decode,
+                format!("fundingInfo gives {symbol} a funding interval of 0 hours"),
+            )),
+            Some(row) => Ok(Duration::from_secs(
+                u64::from(row.funding_interval_hours) * 60 * 60,
+            )),
+        }
     }
 }
 

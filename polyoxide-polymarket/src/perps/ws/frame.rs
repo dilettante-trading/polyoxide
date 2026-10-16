@@ -217,7 +217,7 @@ pub struct StatisticsData {
     /// Instrument id. Wire key `iid`.
     #[serde(rename = "iid")]
     pub instrument_id: InstrumentId,
-    /// 24-hour volume in the base asset (one contract is one unit). Wire key `vol`.
+    /// 24-hour volume in the quote asset (USD): the hourly klines' quantities times their prices. Wire key `vol`.
     #[serde(rename = "vol", with = "rust_decimal::serde::str")]
     pub volume: Decimal,
     /// Price 24 hours ago. Wire key `open`.

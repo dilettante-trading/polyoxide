@@ -149,8 +149,9 @@ const FUNDING_WINDOW_MS: u64 = 100 * 3_600_000 - 60_000;
 
 /// A funding interval as the host spells it, a whole number and a unit (`1h`).
 ///
-/// Only the instruments carry it. `m`, `h` and `d` are read, the units the
-/// host's kline widths use too. Anything else, or a zero, is a response this
+/// Only the instruments carry it. `m`, `h` and `d` are read, three of the units
+/// the host's kline widths use (not `1s` or `1w`, which no funding period would
+/// be). Anything else, or a zero, is a response this
 /// client cannot read.
 fn parse_funding_interval(text: &str) -> Result<Duration, ClassifiedError> {
     let unreadable = || {

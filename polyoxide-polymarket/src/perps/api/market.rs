@@ -308,7 +308,7 @@ pub struct Statistic {
     pub instrument_id: InstrumentId,
     /// Symbol.
     pub symbol: String,
-    /// 24-hour volume in the base asset (one contract is one unit).
+    /// 24-hour volume in the quote asset (USD): the hourly klines' quantities times their prices.
     #[serde(with = "rust_decimal::serde::str")]
     pub volume: Decimal,
     /// Price 24 hours ago.

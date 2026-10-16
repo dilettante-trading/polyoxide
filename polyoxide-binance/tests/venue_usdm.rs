@@ -740,6 +740,32 @@ async fn a_listed_symbol_funds_on_its_own_interval_and_not_the_default() {
 }
 
 #[tokio::test]
+async fn a_zero_hour_funding_interval_is_a_decode_failure() {
+    let mut server = Server::new_async().await;
+    let all: Vec<Value> = serde_json::from_str(&fixture("premium_index")).unwrap();
+    let body = all
+        .iter()
+        .find(|row| row["symbol"] == "BTCUSDT")
+        .unwrap()
+        .to_string();
+    let index = route(
+        &mut server,
+        "/fapi/v1/premiumIndex",
+        "symbol=BTCUSDT",
+        &body,
+        1,
+    )
+    .await;
+    let info = funding_info(&mut server, Some(0), 1).await;
+    let venue: Arc<DynFunding<'static>> = DynFunding::new_arc(client(&server));
+
+    let err = venue.funding_rate(&btc()).await.unwrap_err();
+    index.assert_async().await;
+    info.assert_async().await;
+    assert_eq!(err.class, Class::Decode, "{err}");
+}
+
+#[tokio::test]
 async fn the_interval_lookup_is_charged_on_the_funding_layer() {
     // `fundingInfo` has no weight: it shares the funding bucket (a depth of
     // one, 300s / 449 or about 668ms between requests). `funding_history` sends

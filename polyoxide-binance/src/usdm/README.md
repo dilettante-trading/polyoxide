@@ -75,7 +75,11 @@ only the funding routes carries no weight and can keep the default.
 written against those traits reads USDⓈ-M as it reads any other venue. What
 only Binance publishes rides in `usdm::venue`'s `<Record>Ext` types.
 A `FundingRate` carries its `interval` from `fundingInfo`, 8 hours for a symbol the list
-does not carry, so each funding call sends that request too, on the funding bucket.
+does not carry, so each funding call sends that request too, on the funding bucket. That bucket
+admits 450 requests per 5 minutes, one at a time about 0.67 s apart: `funding_rate` spends one
+slot (its `premiumIndex` is weighted, not funding, so only `fundingInfo` counts), and
+`funding_history` two (`fundingRate` and `fundingInfo`). Funding calls across N symbols
+therefore take about N x 0.67 s (`funding_rate`) or N x 1.3 s (`funding_history`) per IP.
 The `usdm::venue` module's documentation has an example.
 
 ## Streaming

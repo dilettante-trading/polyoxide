@@ -636,6 +636,38 @@ async fn an_unreadable_interval_is_a_decode_failure_for_a_rate_and_for_its_histo
 }
 
 #[tokio::test]
+async fn a_ticker_without_an_instrument_row_is_not_listed() {
+    let mut server = Server::new_async().await;
+    let tickers = route(
+        &mut server,
+        "/v1/info/tickers",
+        "instrument_id=1",
+        &fixture("tickers"),
+        1,
+    )
+    .await;
+    // The host answers with another instrument's row only.
+    let instruments = route(
+        &mut server,
+        "/v1/info/instruments",
+        "instrument_id=1",
+        &instruments_with(2),
+        1,
+    )
+    .await;
+    let venue: Arc<DynFunding<'static>> = DynFunding::new_arc(client(&server));
+
+    let err = venue.funding_rate(&key(1)).await.unwrap_err();
+    tickers.assert_async().await;
+    instruments.assert_async().await;
+    assert_eq!(err.class, Class::VenueRefusal { code: None });
+    assert_eq!(
+        err.source.downcast_ref::<NotListed>(),
+        Some(&NotListed { key: key(1) })
+    );
+}
+
+#[tokio::test]
 async fn an_empty_history_asks_for_no_interval() {
     let mut server = Server::new_async().await;
     let funding = route(
