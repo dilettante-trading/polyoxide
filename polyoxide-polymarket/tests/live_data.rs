@@ -8,12 +8,17 @@
 //! cargo test -p polyoxide-polymarket --features data --test live_data -- --ignored
 //! ```
 
+// `data.pnl()` and `data.rankings()` are deprecated: their hosts were retired
+// upstream. The tests below still call them, to hold the retirement.
+#![allow(deprecated)]
+
 mod common;
 
 use common::is_hash64;
+use polyoxide_core::ApiError;
 use polyoxide_polymarket::data::api::holders::MarketHolders;
-use polyoxide_polymarket::data::DataApi;
-use polyoxide_test_support::{environmental, ResultExt};
+use polyoxide_polymarket::data::{DataApi, DataError};
+use polyoxide_test_support::{environmental, fail, ResultExt};
 use std::time::Duration;
 
 fn client() -> DataApi {
@@ -477,30 +482,41 @@ async fn live_accounting_snapshot() {
 
 // --- Undocumented sibling hosts -------------------------------------------
 //
-// user-pnl-api and lb-api have no published OpenAPI spec, so these live tests
-// are the only contract check we have. If the shapes drift, these fail here
-// rather than silently in a user's deserialize.
+// user-pnl-api and lb-api had no published OpenAPI spec, so these live tests
+// were the only contract check. Polymarket retired both hosts on 2026-10-16
+// (DRIFT R12): each now answers `410 Gone` and names its v2 counterpart, so
+// the tests hold that, and fail if a host moves again.
+
+/// A retired host's answer: `410 Gone`. Data is a failure, and so is any other
+/// error, tagged by its class.
+fn assert_retired<T>(result: Result<T, DataError>, ctx: &str) {
+    assert!(
+        result.is_err(),
+        "{ctx}: the retired host answered with data"
+    );
+    if let Err(err) = result {
+        let gone = matches!(
+            &err,
+            DataError::Api(ApiError::Response(response)) if response.status.as_u16() == 410
+        );
+        if !gone {
+            fail(ctx, &err);
+        }
+    }
+}
 
 #[tokio::test]
 #[ignore = "hits live API"]
 async fn live_user_pnl_series() {
     let client = client();
-    // A high-volume trader, so the series is non-empty.
     let points = client
         .pnl()
         .history("0xcd30f4698c6f5f3829893e68e183a8e5ea18f316")
         .interval("1d")
         .fidelity(polyoxide_polymarket::data::types::PnlFidelity::OneHour)
         .send()
-        .await
-        .or_fail("user-pnl should succeed");
-
-    assert!(!points.is_empty(), "expected a non-empty PnL series");
-    assert!(
-        points[0].timestamp > 1_000_000_000,
-        "timestamp should be Unix seconds, got {}",
-        points[0].timestamp
-    );
+        .await;
+    assert_retired(points, "user-pnl should be retired");
 }
 
 #[tokio::test]
@@ -514,17 +530,8 @@ async fn live_rankings_volume_and_profit() {
         .window(polyoxide_polymarket::data::types::RankingWindow::All)
         .limit(3)
         .send()
-        .await
-        .or_fail("rankings volume should succeed");
-    assert!(!volume.is_empty(), "expected ranked entries");
-    assert!(
-        volume[0]
-            .proxy_wallet
-            .as_deref()
-            .is_some_and(|w| w.starts_with("0x")),
-        "expected a 0x proxy wallet, got {:?}",
-        volume[0].proxy_wallet
-    );
+        .await;
+    assert_retired(volume, "rankings volume should be retired");
 
     let profit = client
         .rankings()
@@ -532,9 +539,8 @@ async fn live_rankings_volume_and_profit() {
         .window(polyoxide_polymarket::data::types::RankingWindow::SevenDays)
         .limit(3)
         .send()
-        .await
-        .or_fail("rankings profit should succeed");
-    assert!(!profit.is_empty(), "expected ranked entries");
+        .await;
+    assert_retired(profit, "rankings profit should be retired");
 }
 
 // ── Data API v2 ──────────────────────────────────────────────────

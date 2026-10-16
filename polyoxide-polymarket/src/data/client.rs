@@ -89,13 +89,21 @@ impl DataApi {
         /// Get PnL namespace (`/user-pnl` on `user-pnl-api.polymarket.com`)
         ///
         /// This host has no published OpenAPI spec — see [`PnlApi`] for the
-        /// stability caveat.
+        /// stability caveat. Polymarket retired the host on 2026-10-16, and it now
+        /// answers `410 Gone`.
+        #[deprecated(
+            note = "`user-pnl-api.polymarket.com` was retired upstream and now returns 410; use `data.v2().user_pnl(user)`, which is not the same series"
+        )]
         pnl: PnlApi { http_client: pnl_http_client },
         /// Get rankings namespace (`/volume`, `/profit` on `lb-api.polymarket.com`)
         ///
         /// Distinct from [`Self::leaderboard`], which calls `/v1/leaderboard` on
         /// the main Data API host. This host has no published OpenAPI spec — see
-        /// [`RankingsApi`] for the stability caveat.
+        /// [`RankingsApi`] for the stability caveat. Polymarket retired the host
+        /// on 2026-10-16, and it now answers `410 Gone`.
+        #[deprecated(
+            note = "`lb-api.polymarket.com` was retired upstream and now returns 410; use `data.v2().leaderboard()`, which ranks volume in shares, not USDC"
+        )]
         rankings: RankingsApi { http_client: rankings_http_client },
     }
 

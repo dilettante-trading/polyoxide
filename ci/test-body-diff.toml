@@ -432,3 +432,17 @@ row = "polyoxide_cli::commands::credentials::CredentialsCommand"
 file = "polyoxide-cli/src/commands/credentials/mod.rs"
 item = "tests::delete_relay_parses"
 row = "polyoxide_cli::commands::credentials::CredentialsCommand"
+
+[[drift]]
+file = "polyoxide-data/tests/live_api.rs"
+item = "live_user_pnl_series"
+kind = "fn"
+row = "R12"
+sha256 = "4bd7d85f0bdc93204cec2c899b1b09e43e7c4298530f685d0e960bbd21d3ae98"
+
+[[drift]]
+file = "polyoxide-data/tests/live_api.rs"
+item = "live_rankings_volume_and_profit"
+kind = "fn"
+row = "R12"
+sha256 = "31214ff301d4d2bdcdf8aaf753c19b340046c3a5ae919fb30fc277a8af0f71d2"

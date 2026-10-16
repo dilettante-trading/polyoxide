@@ -401,3 +401,7 @@
 - source_spec: `_bmad-output/implementation-artifacts/spec-5-11-5-12-docs-standing-rules-and-the-s2-release.md`
   summary: Before the 0.40.0 bump commit, confirm the crates.io token can publish the new name `polyoxide-polymarket` (publish-new scope, and any crate-scope list naming it). A token that cannot publishes venue, core, ws and binance at 0.40.0, then fails, leaving the release untagged until a re-run with a fixed token. (medium, unverified)
   evidence: `polyoxide-cli` answers 200 on crates.io, so publish-new worked at 0.39.0; the token's current scopes are not visible from the repository. Settle it on crates.io's API-token page before pushing the bump.
+
+- source_spec: `_bmad-output/implementation-artifacts/spec-5-11-5-12-docs-standing-rules-and-the-s2-release.md`
+  summary: S3 removes `data.pnl()` and `data.rankings()`, `PnlApi`, `RankingsApi`, their types and the `pnl_base_url`/`rankings_base_url` setters, listing each in `docs/s3-removals.md`; 0.40.0 only deprecates them (DRIFT R12).
+  evidence: Polymarket retired `user-pnl-api` and `lb-api` on 2026-10-16; both answer `410 Gone` (nightly-behavioral run 38851911857 on the hub). The live tests now hold the 410, and fail once the hosts stop answering it.

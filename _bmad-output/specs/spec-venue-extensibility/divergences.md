@@ -35,10 +35,10 @@ was a deferral, not a prohibition. The DFR table is what makes the merge safe no
 | D19 | After a use-after-close (`AlreadyClosed`), perps and rtds stop while Binance and sports reconnect | The class is `InvalidRequest` everywhere (spine AD-15). Each venue keeps its behaviour in its recovery hook: perps' and Binance's `Protocol::recover`, rtds' public `RtdsError::recovery`, and sports' private `retrying_can_fix` in `supervised.rs`, since D7 keeps rtds and sports off the Supervisor. Each is pinned by its suites (rtds `error.rs`). sports reconnects after any lost connection, a read failing with `AlreadyClosed` included; its recovery row also retries a connect that fails so (`supervised.rs`, since Story 4.10). |
 | D20 | Clob's per-address connect: it resolves every address, interleaves the families (RFC 8305) and dials each in turn | `polyoxide_ws::connect` dials only the first address, so a blackholed route (broken IPv6) would spend the whole timeout there. Each step, the TCP connect and then the TLS and upgrade, is bounded by `polyoxide_ws::with_timeout`, so `connect_timeout` keeps meaning per address and per step; the upgrade goes through `polyoxide_ws::connect_over` (Story 4.9). |
 
-## DRIFT: decided 2026-10-08 (R11 2026-10-12)
+## DRIFT: decided 2026-10-08 (R11 2026-10-12, R12 2026-10-16)
 
 These rows had no recorded reason. Each now has a decision, applied when its copies merge.
-R1, R2, R4 and R11 change behaviour users can see; record them in the release notes.
+R1, R2, R4, R11 and R12 change behaviour users can see; record them in the release notes.
 
 | # | Drift | Copies | Decision |
 |---|---|---|---|
@@ -53,3 +53,4 @@ R1, R2, R4 and R11 change behaviour users can see; record them in the release no
 | R9 | `ensure_crypto_provider` is bypassed by three live tests that call `install_default` themselves | sports `tests/live_api.rs:63`; binance `tests/live_ws.rs:133`; clob `tests/live_ws.rs:88` (fixed by Story 4.9) | Live tests call the shared function. |
 | R10 | Retry log text and target differ by crate, so soak harnesses see only core's loop | inventory H1 | Settled by the SPEC constraint on the retry log line. |
 | R11 | A reconnect refused with a `Retry-After` retries on the backoff step, inside the server's window: perps, Binance, sports, and rtds once R1 made it retry | the kit's `Supervisor` (perps, Binance); rtds `supervisor.rs`; sports `supervised.rs` | Wait the longer of the step and the `Retry-After`, clamped to the venue's backoff ceiling (`Backoff::take_at_least`), as core's HTTP loop lets `Retry-After` only extend its wait. perps and Binance answer `Protocol::retry_after` from their class; rtds and sports apply it at their reconnect waits. clob does not reconnect. |
+| R12 | Polymarket retired `user-pnl-api` and `lb-api` on 2026-10-16: each answers `410 Gone` and names `/v2/user-pnl` or `/v2/leaderboard` | data's `pnl()` and `rankings()`; `live_data`'s `live_user_pnl_series` and `live_rankings_volume_and_profit` | Deprecate both accessors in 0.40.0, pointing at their v2 counterparts, which are not the same series (`docs/specs/data-v2/OBSERVED.md`); the two live tests hold the `410`. Removal is S3's. |

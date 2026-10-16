@@ -4,6 +4,10 @@
 //! changed name or argument type fails to compile; a changed key, value or
 //! order fails the test.
 
+// `data.pnl()` and `data.rankings()` are deprecated: their hosts were retired
+// upstream. These tests still pin what the methods send.
+#![allow(deprecated)]
+
 use polyoxide_polymarket::data::{
     api::leaderboard::{LeaderboardCategory, LeaderboardOrderBy},
     types as v1,

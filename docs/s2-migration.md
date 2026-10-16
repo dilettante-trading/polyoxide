@@ -257,6 +257,14 @@ Stored credentials load as before: the services are still `polyoxide-clob` and
 The library's `save_*_to_keychain` functions still write without checks; only `store`
 validates. `Credentials`, `BuilderConfig` and `ApiCredentials` keep their `String` fields.
 
+### Data's retired hosts
+
+Polymarket retired `user-pnl-api` and `lb-api` on 2026-10-16, and each now answers
+`410 Gone`. `data.pnl()` and `data.rankings()` still build and send, but are deprecated
+(DRIFT R12): use `data.v2().user_pnl(user)` and `data.v2().leaderboard()`, which are not the
+same series (`/v2/leaderboard` ranks volume in shares, not USDC; see
+`docs/specs/data-v2/OBSERVED.md`). They go in S3.
+
 ## What did not change
 
 - Request and socket behaviour: every moved test kept its body, and every request sends the

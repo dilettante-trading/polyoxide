@@ -14,6 +14,14 @@ usefully enumerate accepted values.
 > --test live_data -- --ignored`) are the drift detector — if a shape changes, they fail there
 > rather than silently in a user's deserialize.
 
+## Retired 2026-10-16
+
+`user-pnl-api` and `lb-api` answer every request with `410 Gone` and a body naming
+their v2 counterparts, `/v2/user-pnl?user=<address>` and `/v2/leaderboard`. `data.pnl()`
+and `data.rankings()` are deprecated (DRIFT R12), and `live_data`'s
+`live_user_pnl_series` and `live_rankings_volume_and_profit` hold the `410`. The
+sections below record the hosts as they were.
+
 ## User PnL
 
 Base URL: `https://user-pnl-api.polymarket.com`

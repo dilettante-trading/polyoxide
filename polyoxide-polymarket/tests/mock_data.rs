@@ -1,9 +1,9 @@
+#![allow(deprecated)] // pnl() and rankings() are deprecated (DRIFT R12); still pinned here
 use mockito::{Matcher, Server};
 use polyoxide_polymarket::data::types::{
     ActivityType, ComboLegStatus, ComboSort, ComboStatus, PnlFidelity, RankingWindow,
 };
 use polyoxide_polymarket::data::{DataApi, DataError};
-
 fn test_data(server: &mockito::ServerGuard) -> DataApi {
     DataApi::builder().base_url(server.url()).build().unwrap()
 }

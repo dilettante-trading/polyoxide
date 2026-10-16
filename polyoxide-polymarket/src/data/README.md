@@ -399,11 +399,16 @@ println!("API latency: {}ms", latency.as_millis());
 | `data.accounting()` | `.snapshot(addr)` | Accounting snapshot (ZIP bytes) |
 | `data.combos()` | `.positions(addr)`, `.activity(addr)` | Combinatorial (multi-market) positions and lifecycle events |
 | `data.misc()` | `.other_size(event_id, addr)`, `.revisions(question_id)` | Neg-risk "Other" size and moderated question revisions |
-| `data.pnl()` | `.history(addr)` | PnL time series (`user-pnl-api` host) |
-| `data.rankings()` | `.volume()`, `.profit()` | Trader rankings by volume or profit (`lb-api` host) |
+| `data.pnl()` | `.history(addr)` | PnL time series (`user-pnl-api` host; retired, deprecated) |
+| `data.rankings()` | `.volume()`, `.profit()` | Trader rankings by volume or profit (`lb-api` host; retired, deprecated) |
 | `data.health()` | `.check()`, `.ping()` | API health and latency |
 
 ### Undocumented hosts
+
+Polymarket retired both hosts below on 2026-10-16, and each now answers
+`410 Gone`. `data.pnl()` and `data.rankings()` are deprecated: use
+`data.v2().user_pnl(user)` and `data.v2().leaderboard()`, which are not the same
+series.
 
 `data.pnl()` and `data.rankings()` call sibling hosts that Polymarket publishes
 no OpenAPI spec for. They are verified live and covered by `#[ignore]`d
