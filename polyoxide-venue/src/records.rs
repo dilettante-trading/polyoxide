@@ -454,6 +454,18 @@ impl EventOutcome {
 /// as unlisted, the venue's own refusal comes through with the same class, and
 /// some venues return an empty quote or book. The guarantee is the class, so
 /// match on `class()`, not on this type.
+///
+/// A crate that depends on this one builds it with [`NotListed::new`], since a
+/// field may be added later, and a struct literal is refused when the program
+/// is built:
+///
+/// ```compile_fail
+/// use polyoxide_venue::{MarketKey, NotListed};
+///
+/// fn refuse(key: MarketKey) -> NotListed {
+///     NotListed { key }
+/// }
+/// ```
 #[derive(Debug, Clone, PartialEq, Eq)]
 #[non_exhaustive]
 pub struct NotListed {
