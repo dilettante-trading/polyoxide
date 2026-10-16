@@ -12,8 +12,8 @@ use polyoxide::binance::usdm::{self, types::Symbol, Usdm};
 use polyoxide::polymarket::clob::Clob;
 use polyoxide::polymarket::perps::Perps;
 use polyoxide::polymarket::shared::keys::{self, TokenId};
-use polyoxide::venue::{DynInstruments, DynMarketData, Instruments, Level, MarketKey};
-use polyoxide_test_support::{environmental, ClassifiedResultExt, ResultExt};
+use polyoxide::venue::{Class, Classify, DynMarketData, Level, MarketKey};
+use polyoxide_test_support::{environmental, fail, ClassifiedResultExt, ResultExt};
 
 /// Reads `key`'s best bid and ask through `venue`, and checks the two do not
 /// cross.
@@ -49,16 +49,34 @@ async fn best_bid_ask_reads_binance_usdm() {
 #[ignore = "hits the live hosts"]
 async fn best_bid_ask_reads_polymarket_perps() {
     let perps = Perps::new().or_fail("build the perps client");
-    let listing: Arc<DynInstruments<'static>> = DynInstruments::new_arc(perps.clone());
-    let instruments = listing.instruments().await.or_fail("list the instruments");
-    let Some(instrument) = instruments
+    // The instrument is picked on the route the trait's quote reads, so it has
+    // both sides there.
+    let rows = perps
+        .market()
+        .bbo()
+        .send()
+        .await
+        .or_fail("list the best bids and asks");
+    let Some(row) = rows
         .iter()
-        .find(|instrument| instrument.tradable != Some(false))
+        .find(|row| !row.bid_quantity.is_zero() && !row.ask_quantity.is_zero())
     else {
-        environmental("perps lists no instrument that takes orders");
+        environmental("perps lists no instrument with both a bid and an ask");
     };
-    read(DynMarketData::new_arc(perps), &instrument.key).await;
+    let (bid, ask) = read(
+        DynMarketData::new_arc(perps),
+        &keys::perps(row.instrument_id),
+    )
+    .await;
+    assert!(
+        bid.is_some() && ask.is_some(),
+        "the bbo row had both sides: {row:?}"
+    );
 }
+
+/// Tokens of the first sampling page to try; a token with no book is the
+/// CLOB's `404`, so the walk moves on.
+const CLOB_TOKENS_TRIED: usize = 40;
 
 #[tokio::test]
 #[ignore = "hits the live hosts"]
@@ -70,15 +88,35 @@ async fn best_bid_ask_reads_the_polymarket_clob() {
         .send()
         .await
         .or_fail("list the sampling markets");
-    let Some(token) = open
+    let tokens = open
         .data
         .iter()
         .filter(|market| market.accepting_orders == Some(true))
         .flat_map(|market| &market.tokens)
-        .find_map(|token| token.token_id.clone())
-    else {
-        environmental("no market on the first sampling page takes orders");
+        .filter_map(|token| token.token_id.clone())
+        .take(CLOB_TOKENS_TRIED);
+    // The token is picked on the route the trait's quote reads, so it has a
+    // book with both sides there.
+    let mut found = None;
+    for token in tokens {
+        match clob.markets().order_book(token.clone()).send().await {
+            Ok(book) if !book.bids.is_empty() && !book.asks.is_empty() => {
+                found = Some(token);
+                break;
+            }
+            Ok(_) => {}
+            // "No orderbook exists": the market has none, not a fault of the read.
+            Err(err) if matches!(err.class(), Class::VenueRefusal { .. }) => {}
+            Err(err) => fail("read a sampling token's order book", &err),
+        }
+    }
+    let Some(token) = found else {
+        environmental("no token on the first sampling page has both sides of a book");
     };
     let key = keys::clob(&TokenId::new(token).or_fail("read the token id"));
-    read(DynMarketData::new_arc(clob), &key).await;
+    let (bid, ask) = read(DynMarketData::new_arc(clob), &key).await;
+    assert!(
+        bid.is_some() && ask.is_some(),
+        "the order book had both sides"
+    );
 }

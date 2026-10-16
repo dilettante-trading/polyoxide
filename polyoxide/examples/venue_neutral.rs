@@ -69,6 +69,10 @@ fn handling(class: &Class, fault: bool, retry_after: Option<Duration>) -> Handli
         Class::Network | Class::Unavailable { .. } => Handling::Retry,
         Class::Unauthorized => Handling::Reauthenticate,
         Class::Restricted => Handling::Restricted { alert: fault },
+        // `Class` is non-exhaustive; a class added later is also a rejection.
+        Class::InvalidRequest | Class::VenueRefusal { .. } | Class::Decode => {
+            Handling::Rejected { alert: fault }
+        }
         _ => Handling::Rejected { alert: fault },
     }
 }
