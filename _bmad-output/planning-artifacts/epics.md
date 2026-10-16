@@ -1399,6 +1399,8 @@ The epic is built before the S2 release, on `aidanb/init` at stage S2 (owner, 20
 
 Two owner decisions from the final review (2026-10-16). `FundingRate` carries `interval: Option<Duration>`, the length of the funding period its `rate` is for: perps fills it from its funding interval, and usdm from `fundingInfo`, or 8 h for a symbol `fundingInfo` does not list, at one extra request per call from the funding bucket (500 per 5 minutes, no weight). Perps sizes are `SizeUnit::Base`, one contract being one unit of the base asset (the fixtures' 24 h volume is the kline quantities times the price), which reverses plan decision D13.
 
+The owner settled the run's deferred calls the same day. usdm's trait methods send explicit limits: `klines` 500 (weight 2), `aggTrades` 1000 and `fundingRate` 1000. `CandleInterval` is exhaustive, so a venue that does not map a new width fails to compile. `NotListed` is `#[non_exhaustive]` and built with `NotListed::new`. usdm's `instruments()` skips an `exchangeInfo` row that does not convert, with a WARN, and the live suite fails when it skips one. The unified `Polymarket` client hands clob its Gamma client as well as its Data client.
+
 ### Story 6.1: Shared records and typed extensions
 
 As a consumer reading several venues,
