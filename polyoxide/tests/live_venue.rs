@@ -9,10 +9,10 @@ use std::sync::Arc;
 
 use example::best_bid_ask;
 use polyoxide::binance::usdm::{self, types::Symbol, Usdm};
-use polyoxide::polymarket::clob::Clob;
+use polyoxide::polymarket::clob::{Clob, ClobError};
 use polyoxide::polymarket::perps::Perps;
 use polyoxide::polymarket::shared::keys::{self, TokenId};
-use polyoxide::venue::{Class, Classify, DynMarketData, Level, MarketKey};
+use polyoxide::venue::{DynMarketData, Level, MarketKey};
 use polyoxide_test_support::{environmental, fail, ClassifiedResultExt, ResultExt};
 
 /// Reads `key`'s best bid and ask through `venue`, and checks the two do not
@@ -106,12 +106,14 @@ async fn best_bid_ask_reads_the_polymarket_clob() {
             }
             Ok(_) => {}
             // "No orderbook exists": the market has none, not a fault of the read.
-            Err(err) if matches!(err.class(), Class::VenueRefusal { .. }) => {}
+            Err(ClobError::Api(polyoxide_core::ApiError::Response(r))) if r.status == 404 => {}
             Err(err) => fail("read a sampling token's order book", &err),
         }
     }
     let Some(token) = found else {
-        environmental("no token on the first sampling page has both sides of a book");
+        environmental(&format!(
+            "none of the first {CLOB_TOKENS_TRIED} accepting-orders tokens on the first sampling page has a book with both sides"
+        ));
     };
     let key = keys::clob(&TokenId::new(token).or_fail("read the token id"));
     let (bid, ask) = read(DynMarketData::new_arc(clob), &key).await;
