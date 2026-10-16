@@ -49,8 +49,8 @@ pub const CLOB: ProductId = ProductId::from_static("clob");
 #[cfg(feature = "perps")]
 pub const PERPS: ProductId = ProductId::from_static("perps");
 
-/// An outcome token's id: a 256-bit integer in decimal, as the clob and gamma
-/// send it, with no sign and no leading zero.
+/// An outcome token's id: 1 to 78 decimal digits with no leading zero, as the
+/// clob and gamma send it. The check enforces that shape and no numeric range.
 #[cfg(any(feature = "clob", feature = "gamma", feature = "data"))]
 #[derive(Debug, Clone, PartialEq, Eq, Hash, PartialOrd, Ord)]
 pub struct TokenId(String);

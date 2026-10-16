@@ -107,25 +107,28 @@ id_type! {
 /// impl KeySpace for Spot {
 ///     const VENUE: VenueId = VenueId::from_static("acme");
 ///     const PRODUCT: ProductId = ProductId::from_static("spot");
-///     type Id = String;
+///     type Id = SpotId;
 ///
-///     fn parse_id(text: &str) -> Result<String, String> {
+///     fn parse_id(text: &str) -> Result<SpotId, String> {
 ///         if text.is_ascii() {
-///             Ok(text.to_ascii_uppercase())
+///             Ok(SpotId(text.to_ascii_uppercase()))
 ///         } else {
 ///             Err("an id is ASCII".into())
 ///         }
 ///     }
 ///
-///     fn id_text(id: &String) -> Cow<'_, str> {
-///         Cow::Borrowed(id)
+///     fn id_text(id: &SpotId) -> Cow<'_, str> {
+///         Cow::Borrowed(&id.0)
 ///     }
 /// }
 ///
+/// /// An id in canonical form: only `Spot::parse_id` makes one.
+/// struct SpotId(String);
+///
 /// let key = Spot::parse(&RawKey::parse("acme.spot:abcusd")?)?;
-/// assert_eq!(key, Spot::key(&"ABCUSD".to_owned()));
+/// assert_eq!(key, Spot::key(&Spot::parse_id("ABCUSD")?));
 /// assert_eq!(key.to_string(), "acme.spot:ABCUSD");
-/// # Ok::<(), polyoxide_venue::KeyError>(())
+/// # Ok::<(), Box<dyn std::error::Error>>(())
 /// ```
 #[derive(Clone, PartialEq, Eq, Hash, PartialOrd, Ord)]
 pub struct MarketKey {
@@ -330,7 +333,7 @@ pub trait KeySpace {
     /// [`KeyError::WrongProduct`] when `raw` names another product, and
     /// [`KeyError::InvalidId`] when its id is not one of this product's.
     fn parse(raw: &RawKey) -> Result<MarketKey, KeyError> {
-        Self::id_of(raw.venue(), raw.product(), raw.id()).map(|id| Self::key(&id))
+        id_of::<Self>(raw.venue(), raw.product(), raw.id()).map(|id| Self::key(&id))
     }
 
     /// The product's id that `key` names.
@@ -339,23 +342,28 @@ pub trait KeySpace {
     ///
     /// [`KeyError::WrongProduct`] when `key` names another product.
     fn id(key: &MarketKey) -> Result<Self::Id, KeyError> {
-        Self::id_of(key.venue(), key.product(), key.id())
+        id_of::<Self>(key.venue(), key.product(), key.id())
     }
+}
 
-    #[doc(hidden)]
-    fn id_of(venue: &VenueId, product: &ProductId, id: &str) -> Result<Self::Id, KeyError> {
-        if venue != &Self::VENUE || product != &Self::PRODUCT {
-            return Err(KeyError::WrongProduct {
-                expected: format!("{}.{}", Self::VENUE, Self::PRODUCT),
-                found: format!("{venue}.{product}"),
-            });
-        }
-        Self::parse_id(id).map_err(|reason| KeyError::InvalidId {
-            product: format!("{}.{}", Self::VENUE, Self::PRODUCT),
-            id: id.to_owned(),
-            reason,
-        })
+/// `K`'s id for a key's parts, after checking they name `K`'s product. A free
+/// function, so no implementor can override the check behind `parse` and `id`.
+fn id_of<K: KeySpace + ?Sized>(
+    venue: &VenueId,
+    product: &ProductId,
+    id: &str,
+) -> Result<K::Id, KeyError> {
+    if venue != &K::VENUE || product != &K::PRODUCT {
+        return Err(KeyError::WrongProduct {
+            expected: format!("{}.{}", K::VENUE, K::PRODUCT),
+            found: format!("{venue}.{product}"),
+        });
     }
+    K::parse_id(id).map_err(|reason| KeyError::InvalidId {
+        product: format!("{}.{}", K::VENUE, K::PRODUCT),
+        id: id.to_owned(),
+        reason,
+    })
 }
 
 /// Why text or a key named no instrument a product could read. Every one is
@@ -446,21 +454,33 @@ mod tests {
     /// Ids are ASCII; letters are uppercased.
     struct Upper;
 
+    /// An id in canonical form: only `Upper::parse_id` makes one.
+    struct UpperId(String);
+
     impl KeySpace for Upper {
         const VENUE: VenueId = VenueId::from_static("acme");
         const PRODUCT: ProductId = ProductId::from_static("spot");
-        type Id = String;
+        type Id = UpperId;
 
-        fn parse_id(text: &str) -> Result<String, String> {
+        fn parse_id(text: &str) -> Result<UpperId, String> {
             if text.is_ascii() {
-                Ok(text.to_ascii_uppercase())
+                Ok(UpperId(text.to_ascii_uppercase()))
             } else {
                 Err("an id is ASCII".to_owned())
             }
         }
 
-        fn id_text(id: &String) -> Cow<'_, str> {
-            Cow::Borrowed(id)
+        fn id_text(id: &UpperId) -> Cow<'_, str> {
+            Cow::Borrowed(&id.0)
+        }
+    }
+
+    impl Upper {
+        /// The key of an ASCII id, canonicalized first. Shadows
+        /// `KeySpace::key` for the tests, which pass the id as an owned string.
+        #[allow(clippy::ptr_arg)]
+        fn key(id: &String) -> MarketKey {
+            <Self as KeySpace>::key(&Self::parse_id(id).unwrap())
         }
     }
 
@@ -525,6 +545,14 @@ mod tests {
                 "{text:?}: {err}"
             );
         }
+    }
+
+    #[test]
+    fn a_venue_and_a_product_may_hold_digits_and_hyphens() {
+        let key = raw("acme-2.spot-x:a");
+        assert_eq!(key.venue().as_str(), "acme-2");
+        assert_eq!(key.product().as_str(), "spot-x");
+        assert_eq!(key.id(), "a");
     }
 
     #[test]
