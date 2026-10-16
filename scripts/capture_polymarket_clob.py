@@ -58,7 +58,13 @@ def main():
         if token is None:
             continue
         book = get(f"{CLOB}/book", token_id=token)
-        if book.status != 200 or len(book.body.get("bids", [])) < 2 or len(book.body.get("asks", [])) < 2:
+        if (
+            book.status != 200
+            or not book.is_json
+            or not isinstance(book.body, dict)
+            or len(book.body.get("bids", [])) < 2
+            or len(book.body.get("asks", [])) < 2
+        ):
             continue
         trades = get(f"{DATA}/trades", market=market["condition_id"], takerOnly="true")
         rows = trades.body if trades.status == 200 and isinstance(trades.body, list) else []
