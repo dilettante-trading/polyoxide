@@ -20,6 +20,10 @@
 //!   [`specta_as_string!`] gives open enums their `specta` shape.
 //! - With the `decimal` feature, `positional` reads and writes rows sent as
 //!   bare arrays of decimal strings.
+//! - With the `keys` feature, `MarketKey` names one instrument as
+//!   `venue.product:id`. Only a product's `KeySpace` makes one, so two keys
+//!   are equal exactly when they name the same instrument; `RawKey` is text
+//!   split into its parts and checked by no product yet.
 //!
 //! By default the crate depends on nothing, so a credential-free socket crate
 //! can use it without building an HTTP or signing stack. The enum macros name
@@ -43,6 +47,8 @@
 struct ReadmeDoctests;
 
 mod class;
+#[cfg(feature = "keys")]
+mod key;
 #[cfg(feature = "decimal")]
 pub mod positional;
 mod retry_after;
@@ -54,6 +60,8 @@ mod wire;
 mod ws_table;
 
 pub use class::{Class, ClassifiedError, Classify};
+#[cfg(feature = "keys")]
+pub use key::{KeyError, KeySpace, MarketKey, ProductId, RawKey, VenueId};
 pub use retry_after::{parse_retry_after, retry_delay};
 pub use secret::Secret;
 pub use socket::{class_for_close_code, class_for_handshake_status};
@@ -67,4 +75,6 @@ pub use wire::UnknownVariant;
 const _: fn() = || {
     fn is<T: crate::Classify>() {}
     is::<UnknownVariant>();
+    #[cfg(feature = "keys")]
+    is::<KeyError>();
 };
