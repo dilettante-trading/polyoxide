@@ -287,8 +287,52 @@ async fn instruments_lists_every_contract_with_its_status() {
     );
 }
 
+/// Records the target, level and fields of every event, for the skipped row's
+/// WARN.
+#[derive(Clone, Default)]
+struct Events(Arc<std::sync::Mutex<Vec<(String, tracing::Level, String)>>>);
+
+struct Fields(String);
+
+impl tracing::field::Visit for Fields {
+    fn record_debug(&mut self, field: &tracing::field::Field, value: &dyn std::fmt::Debug) {
+        self.0.push_str(&format!("{}={value:?} ", field.name()));
+    }
+}
+
+impl tracing::Subscriber for Events {
+    fn enabled(&self, _: &tracing::Metadata<'_>) -> bool {
+        true
+    }
+    fn new_span(&self, _: &tracing::span::Attributes<'_>) -> tracing::span::Id {
+        tracing::span::Id::from_u64(1)
+    }
+    fn record(&self, _: &tracing::span::Id, _: &tracing::span::Record<'_>) {}
+    fn record_follows_from(&self, _: &tracing::span::Id, _: &tracing::span::Id) {}
+    fn event(&self, event: &tracing::Event<'_>) {
+        let metadata = event.metadata();
+        let mut fields = Fields(String::new());
+        event.record(&mut fields);
+        self.0
+            .lock()
+            .unwrap()
+            .push((metadata.target().to_owned(), *metadata.level(), fields.0));
+    }
+    fn enter(&self, _: &tracing::span::Id) {}
+    fn exit(&self, _: &tracing::span::Id) {}
+}
+
 #[tokio::test]
 async fn instruments_skips_a_row_that_does_not_convert_and_returns_the_rest() {
+    // The current-thread runtime runs the call on this thread, so the scoped
+    // subscriber sees its events.
+    let events = Events::default();
+    let _scope = tracing::subscriber::set_default(events.clone());
+    // With one dispatcher registered, tracing-core works out the interest of
+    // a callsite another test's thread hits first from that thread's
+    // default, which has none, and caches it as never for every thread. With
+    // a second one registered it asks each registered dispatcher instead.
+    let _second = tracing::Dispatch::new(Events::default());
     let mut server = Server::new_async().await;
     let mut info: Value = serde_json::from_str(&fixture("exchange_info")).unwrap();
     let rows = info["symbols"].as_array_mut().unwrap();
@@ -321,6 +365,25 @@ async fn instruments_skips_a_row_that_does_not_convert_and_returns_the_rest() {
         .map(|row| format!("binance.usdm:{}", row.symbol))
         .collect();
     assert_eq!(keys, expected);
+
+    // One WARN, under the venue module's own target, naming the symbol.
+    let warnings: Vec<(String, String)> = events
+        .0
+        .lock()
+        .unwrap()
+        .iter()
+        .filter(|(_, level, _)| *level == tracing::Level::WARN)
+        .map(|(target, _, fields)| (target.clone(), fields.clone()))
+        .collect();
+    assert_eq!(
+        warnings.len(),
+        1,
+        "the skipped row's warnings: {warnings:?}"
+    );
+    let (target, fields) = &warnings[0];
+    assert_eq!(target, "polyoxide_binance::usdm::venue");
+    assert!(fields.contains("symbol=BAD-SYMBOL"), "{fields}");
+    assert!(fields.contains("error="), "{fields}");
 }
 
 #[tokio::test]
