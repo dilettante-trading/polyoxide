@@ -156,22 +156,8 @@ fn instrument(key: &MarketKey, market: &Market, outcome: &MarketToken) -> Instru
 }
 
 /// The `/prices-history` fidelity, in minutes, of a candle interval.
-fn fidelity(interval: CandleInterval) -> Result<i32, ClassifiedError> {
-    Ok(match interval {
-        CandleInterval::Minute1 => 1,
-        CandleInterval::Minute5 => 5,
-        CandleInterval::Minute15 => 15,
-        CandleInterval::Hour1 => 60,
-        CandleInterval::Hour4 => 240,
-        CandleInterval::Day1 => 1_440,
-        CandleInterval::Week1 => 10_080,
-        other => {
-            return Err(ClassifiedError::new(
-                Class::InvalidRequest,
-                format!("the CLOB serves no {other:?} price history"),
-            ))
-        }
-    })
+fn fidelity(interval: CandleInterval) -> i32 {
+    i32::try_from(interval.duration().as_secs() / 60).unwrap_or(i32::MAX)
 }
 
 /// The longest window `/prices-history` serves, in seconds. A longer one is a
@@ -258,7 +244,7 @@ impl Candles for Clob {
             .min(start.saturating_add(PRICES_HISTORY_WINDOW_SECONDS));
         let params = PricesHistoryQuery {
             interval: None,
-            fidelity: Some(fidelity(query.interval)?),
+            fidelity: Some(fidelity(query.interval)),
             start_ts: Some(start),
             end_ts: Some(end),
         };
@@ -509,7 +495,7 @@ mod tests {
     fn every_candle_interval_is_a_fidelity_in_minutes() {
         let minutes: Vec<i32> = CandleInterval::ALL
             .iter()
-            .map(|each| fidelity(*each).unwrap())
+            .map(|each| fidelity(*each))
             .collect();
         assert_eq!(minutes, [1, 5, 15, 60, 240, 1_440, 10_080]);
     }
