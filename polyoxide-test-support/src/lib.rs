@@ -81,6 +81,9 @@
 //! - `query` (feature `query`) reads the query keys a builder sends off a mock
 //!   server, for comparison with the documented parameters.
 //! - [`minute`] keeps a test or a probe clear of a UTC minute boundary.
+//! - [`registration!`] and [`Registration`] read the ids a crate declares in
+//!   its `[package.metadata.polyoxide]`, for the test that holds the crate's
+//!   id constants to them.
 //! - `soak` (feature `soak`) is the rate-limit harnesses' pacer, arguments,
 //!   throttle observer and verdict rulebooks.
 //!
@@ -96,10 +99,12 @@ pub mod minute;
 pub mod openapi;
 #[cfg(feature = "query")]
 pub mod query;
+mod registration;
 #[cfg(feature = "soak")]
 pub mod soak;
 mod tag;
 
 pub use creds::{keychain, load_env, optional_env, Creds, Missing};
 pub use fixtures::Fixtures;
+pub use registration::Registration;
 pub use tag::{environmental, fail, tag_for, transient, ResultExt, Tag};

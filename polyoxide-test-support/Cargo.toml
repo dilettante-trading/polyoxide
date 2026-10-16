@@ -21,6 +21,8 @@ serde = { workspace = true }
 serde_json = { workspace = true }
 tokio = { workspace = true, features = ["time"] }
 tracing = { workspace = true }
+# `registration!`: the ids a crate declares in its own `Cargo.toml`.
+toml = "0.8"
 # `query`: the query keys a builder sends, read off a mock server.
 mockito = { workspace = true, optional = true }
 url = { workspace = true, optional = true }
