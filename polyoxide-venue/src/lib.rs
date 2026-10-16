@@ -24,6 +24,10 @@
 //!   `venue.product:id`. Only a product's `KeySpace` makes one, so two keys
 //!   are equal exactly when they name the same instrument; `RawKey` is text
 //!   split into its parts and checked by no product yet.
+//! - With the `market` feature, the records market data is read into
+//!   (`Instrument`, with its `Level`s, `Side` and `SizeUnit`), and
+//!   `Extensions`, which carries a venue's own facts on a shared record, one
+//!   value per type.
 //!
 //! By default the crate depends on nothing, so a credential-free socket crate
 //! can use it without building an HTTP or signing stack. The enum macros name
@@ -47,10 +51,14 @@
 struct ReadmeDoctests;
 
 mod class;
+#[cfg(feature = "market")]
+mod extensions;
 #[cfg(feature = "keys")]
 mod key;
 #[cfg(feature = "decimal")]
 pub mod positional;
+#[cfg(feature = "market")]
+mod records;
 mod retry_after;
 mod secret;
 mod socket;
@@ -60,8 +68,12 @@ mod wire;
 mod ws_table;
 
 pub use class::{Class, ClassifiedError, Classify};
+#[cfg(feature = "market")]
+pub use extensions::{DuplicateExtension, Extensions};
 #[cfg(feature = "keys")]
 pub use key::{KeyError, KeySpace, MarketKey, ProductId, RawKey, VenueId};
+#[cfg(feature = "market")]
+pub use records::{Instrument, Level, Side, SizeUnit};
 pub use retry_after::{parse_retry_after, retry_delay};
 pub use secret::Secret;
 pub use socket::{class_for_close_code, class_for_handshake_status};
@@ -77,4 +89,6 @@ const _: fn() = || {
     is::<UnknownVariant>();
     #[cfg(feature = "keys")]
     is::<KeyError>();
+    #[cfg(feature = "market")]
+    is::<DuplicateExtension>();
 };
