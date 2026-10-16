@@ -1,0 +1,62 @@
+{
+  "enable_order_book": true,
+  "active": true,
+  "closed": false,
+  "archived": false,
+  "accepting_orders": true,
+  "accepting_order_timestamp": "2025-07-11T18:35:34Z",
+  "minimum_order_size": 5,
+  "minimum_tick_size": 0.001,
+  "condition_id": "0x0f49db97f71c68b1e42a6d16e3de93d85dbf7d4148e3f018eb79e88554be9f75",
+  "question_id": "0x2c3d7e0eee6f058be3006baabf0d54a07da254ba47fe6e3e095e7990c7814700",
+  "question": "Will Gavin Newsom win the 2028 Democratic presidential nomination?",
+  "description": "This market will resolve to “Yes” if the named individual wins and accepts the 2028 nomination of the Democratic Party for U.S. president. Otherwise, this market will resolve to “No”.\n\nThe resolution source for this market will be a consensus of official Democratic Party sources.\n\nAny replacement of the democratic nominee before election day will not change the resolution of the market.",
+  "market_slug": "will-gavin-newsom-win-the-2028-democratic-presidential-nomination-568",
+  "end_date_iso": "2028-11-08T00:00:00Z",
+  "game_start_time": null,
+  "seconds_delay": 0,
+  "fpmm": "",
+  "maker_base_fee": 1000,
+  "taker_base_fee": 1000,
+  "notifications_enabled": true,
+  "neg_risk": true,
+  "neg_risk_market_id": "0x2c3d7e0eee6f058be3006baabf0d54a07da254ba47fe6e3e095e7990c7814700",
+  "neg_risk_request_id": "0x3763120bc45adb952c842119daf7978d5010523bd5a7f1fa42331964b815efec",
+  "icon": "https://polymarket-upload.s3.us-east-2.amazonaws.com/will-gavin-newsom-win-the-2028-us-presidential-election-x9lPL7_gXn--.png",
+  "image": "https://polymarket-upload.s3.us-east-2.amazonaws.com/will-gavin-newsom-win-the-2028-us-presidential-election-x9lPL7_gXn--.png",
+  "rewards": {
+    "rates": [
+      {
+        "asset_address": "0x2791Bca1f2de4661ED88A30C99A7a9449Aa84174",
+        "rewards_daily_rate": 29
+      }
+    ],
+    "min_size": 50,
+    "max_spread": 5.5
+  },
+  "is_50_50_outcome": false,
+  "tokens": [
+    {
+      "token_id": "54533043819946592547517511176940999955633860128497669742211153063842200957669",
+      "outcome": "Yes",
+      "price": 0.1545,
+      "winner": false
+    },
+    {
+      "token_id": "87854174148074652060467921081181402357467303721471806610111179101805869578687",
+      "outcome": "No",
+      "price": 0.8455,
+      "winner": false
+    }
+  ],
+  "tags": [
+    "Politics",
+    "Elections",
+    "United States",
+    "Primaries",
+    "US Election",
+    "World Elections",
+    "Earn 3.25%"
+  ],
+  "version": "v1"
+}
