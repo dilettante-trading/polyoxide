@@ -352,7 +352,7 @@ minute to one week, each width every candle venue serves) and a span. Binance's 
 implements `MarketData`, `Instruments`, `Trades`, `Candles` and `Funding` on `Usdm`, with
 `InstrumentExt`, `QuoteExt`, `BookExt`, `TradeExt`, `CandleExt` and `FundingExt`; its quote is a
 5-level `depth` (weight 2) and its book an unlimited one (500 levels, weight 1), its `trades` ask for 1000 rows (weight 20), its
-`candles` for 500 (weight 2, where no limit costs 5) and its `funding_history` for 1000, and its funding
+`candles` for 500 (weight 2, where no limit costs 5) and its `funding_history` for 1000, its `instruments` skips an `exchangeInfo` row that does not convert (a WARN naming the symbol and the error) and the live suite fails when it skips one, and its funding
 methods send `fundingInfo` as well (one extra request on the funding layer, `fundingRate`'s
 bucket and not a weight) for the `interval`, `fundingIntervalHours` or 8 h for a symbol it does
 not list, and `tests/venue_usdm.rs` holds each method to the native client's values on the captured fixtures.

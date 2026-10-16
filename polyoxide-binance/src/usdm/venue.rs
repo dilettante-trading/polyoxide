@@ -6,6 +6,10 @@
 //! What Binance alone publishes rides in this module's `<Record>Ext` types,
 //! one per record, in each record's [`Extensions`](polyoxide_venue::Extensions).
 //!
+//! `instruments` skips a contract whose `exchangeInfo` row does not convert,
+//! with a WARN naming the symbol and the error, rather than failing the whole
+//! listing.
+//!
 //! | Method | Route | Weight |
 //! | --- | --- | --- |
 //! | `instrument`, `instruments` | `exchangeInfo` | 1 |
@@ -226,9 +230,22 @@ impl MarketData for Usdm {
 }
 
 impl Instruments for Usdm {
+    /// Every contract `exchangeInfo` lists. A row that does not convert (a
+    /// symbol no key can carry) is logged at WARN with its symbol and the
+    /// error, and skipped: the rest are returned.
     async fn instruments(&self) -> Result<Vec<Instrument>, ClassifiedError> {
         let info = self.exchange().exchange_info().send().await?;
-        info.symbols.iter().map(instrument).collect()
+        Ok(info
+            .symbols
+            .iter()
+            .filter_map(|row| match instrument(row) {
+                Ok(instrument) => Some(instrument),
+                Err(err) => {
+                    tracing::warn!(symbol = %row.symbol, error = %err, "skipping an exchangeInfo row that does not convert");
+                    None
+                }
+            })
+            .collect())
     }
 }
 

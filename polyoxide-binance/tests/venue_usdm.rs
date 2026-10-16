@@ -288,6 +288,42 @@ async fn instruments_lists_every_contract_with_its_status() {
 }
 
 #[tokio::test]
+async fn instruments_skips_a_row_that_does_not_convert_and_returns_the_rest() {
+    let mut server = Server::new_async().await;
+    let mut info: Value = serde_json::from_str(&fixture("exchange_info")).unwrap();
+    let rows = info["symbols"].as_array_mut().unwrap();
+    let valid = rows.len();
+    let mut bad = rows[0].clone();
+    bad["symbol"] = Value::from("BAD-SYMBOL");
+    rows.insert(1, bad);
+    let mock = route(
+        &mut server,
+        "/fapi/v1/exchangeInfo",
+        "",
+        &info.to_string(),
+        2,
+    )
+    .await;
+    let client = client(&server);
+    let native = client.exchange().exchange_info().send().await.unwrap();
+    assert_eq!(native.symbols.len(), valid + 1);
+
+    let venue: Arc<DynInstruments<'static>> = DynInstruments::new_arc(client);
+    let instruments = venue.instruments().await.unwrap();
+    mock.assert_async().await;
+
+    assert_eq!(instruments.len(), valid);
+    let keys: Vec<String> = instruments.iter().map(|i| i.key.to_string()).collect();
+    let expected: Vec<String> = native
+        .symbols
+        .iter()
+        .filter(|row| row.symbol != "BAD-SYMBOL")
+        .map(|row| format!("binance.usdm:{}", row.symbol))
+        .collect();
+    assert_eq!(keys, expected);
+}
+
+#[tokio::test]
 async fn trades_are_the_native_aggregate_trades_with_the_takers_side() {
     let mut server = Server::new_async().await;
     let mock = route(

@@ -23,7 +23,8 @@ use polyoxide_binance::usdm::{
     Usdm, UsdmError,
 };
 use polyoxide_core::ApiError;
-use polyoxide_test_support::{environmental, fail, transient, ResultExt};
+use polyoxide_test_support::{environmental, fail, transient, ClassifiedResultExt, ResultExt};
+use polyoxide_venue::Instruments;
 use serde::{de::DeserializeOwned, Serialize};
 
 fn client() -> Usdm {
@@ -278,4 +279,32 @@ async fn live_responses_carry_no_unmodelled_keys() {
         "the host sent what the types do not model; model it and record it in \
          docs/specs/binance/OBSERVED.md: {unmodelled:#?}"
     );
+}
+
+/// The trait's `instruments()` skips a row that does not convert, with a WARN;
+/// here a skipped row fails the nightly.
+#[tokio::test]
+#[ignore]
+async fn live_instruments_returns_one_instrument_per_exchange_info_symbol() {
+    let usdm = client();
+    let listed = usdm
+        .exchange()
+        .exchange_info()
+        .send()
+        .await
+        .or_fail("exchangeInfo");
+    let instruments = ClassifiedResultExt::or_fail(usdm.instruments().await, "instruments");
+
+    let keys: Vec<String> = instruments.iter().map(|i| i.key.to_string()).collect();
+    let skipped: Vec<&str> = listed
+        .symbols
+        .iter()
+        .map(|row| row.symbol.as_str())
+        .filter(|symbol| !keys.iter().any(|key| key.ends_with(&format!(":{symbol}"))))
+        .collect();
+    assert!(
+        skipped.is_empty(),
+        "instruments() skipped these exchangeInfo symbols: {skipped:?}"
+    );
+    assert_eq!(instruments.len(), listed.symbols.len());
 }
