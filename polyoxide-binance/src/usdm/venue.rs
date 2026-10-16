@@ -11,10 +11,10 @@
 //! | `instrument`, `instruments` | `exchangeInfo` | 1 |
 //! | `quote` | `depth`, 5 levels | 2 |
 //! | `book` | `depth`, no limit (500 levels) | 1 |
-//! | `trades` | `aggTrades` (the last 500) | 20 |
-//! | `candles` | `klines`, from `start` (up to 500) | 5 |
+//! | `trades` | `aggTrades` (the last 1000) | 20 |
+//! | `candles` | `klines`, from `start` (up to 500) | 2 |
 //! | `funding_rate` | `premiumIndex`, and `fundingInfo` for the interval | 1, and the funding bucket |
-//! | `funding_history` | `fundingRate`, from `start` (up to 100), and `fundingInfo` for the interval | funding bucket, twice |
+//! | `funding_history` | `fundingRate`, from `start` (up to 1000), and `fundingInfo` for the interval | funding bucket, twice |
 //!
 //! ```no_run
 //! use std::sync::Arc;
@@ -241,7 +241,7 @@ impl Instruments for Usdm {
 impl Trades for Usdm {
     async fn trades(&self, key: &MarketKey) -> Result<Vec<Trade>, ClassifiedError> {
         let symbol = key::symbol(key)?;
-        let rows = self.market().agg_trades(&symbol).send().await?;
+        let rows = self.market().agg_trades(&symbol).limit(1000).send().await?;
         Ok(rows
             .iter()
             .map(|row| {
@@ -279,7 +279,8 @@ impl Candles for Usdm {
         if let Some(end) = query.end {
             request = request.end_time(end.0);
         }
-        let rows = request.send().await?;
+        // 500 candles cost weight 2; no limit would cost 5.
+        let rows = request.limit(500).send().await?;
         Ok(rows
             .iter()
             .map(|row| {
@@ -362,6 +363,7 @@ impl Funding for Usdm {
             .funding_rate()
             .symbol(&symbol)
             .start_time(start.0)
+            .limit(1000)
             .send()
             .await?;
         // The symbol's current interval, for every row: `fundingInfo` keeps no

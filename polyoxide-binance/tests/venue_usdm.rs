@@ -293,7 +293,7 @@ async fn trades_are_the_native_aggregate_trades_with_the_takers_side() {
     let mock = route(
         &mut server,
         "/fapi/v1/aggTrades",
-        "symbol=BTCUSDT",
+        "symbol=BTCUSDT&limit=1000",
         &fixture("agg_trades"),
         2,
     )
@@ -302,6 +302,7 @@ async fn trades_are_the_native_aggregate_trades_with_the_takers_side() {
     let native = client
         .market()
         .agg_trades(&btc_symbol())
+        .limit(1000)
         .send()
         .await
         .unwrap();
@@ -340,7 +341,8 @@ async fn trades_are_the_native_aggregate_trades_with_the_takers_side() {
 #[tokio::test]
 async fn candles_are_the_native_klines_from_start() {
     let mut server = Server::new_async().await;
-    let query = "symbol=BTCUSDT&interval=1h&startTime=1791380000000&endTime=1791390000000";
+    let query =
+        "symbol=BTCUSDT&interval=1h&startTime=1791380000000&endTime=1791390000000&limit=500";
     let mock = route(&mut server, "/fapi/v1/klines", query, &fixture("klines"), 2).await;
     let client = client(&server);
     let native = client
@@ -348,6 +350,7 @@ async fn candles_are_the_native_klines_from_start() {
         .klines(&btc_symbol(), Interval::H1)
         .start_time(1_791_380_000_000)
         .end_time(1_791_390_000_000)
+        .limit(500)
         .send()
         .await
         .unwrap();
@@ -427,7 +430,7 @@ async fn funding_rate_is_the_premium_index_now_accruing() {
 #[tokio::test]
 async fn funding_history_is_the_native_funding_rates_from_start() {
     let mut server = Server::new_async().await;
-    let query = "symbol=BTCUSDT&startTime=1791200000000";
+    let query = "symbol=BTCUSDT&startTime=1791200000000&limit=1000";
     let mock = route(
         &mut server,
         "/fapi/v1/fundingRate",
@@ -443,6 +446,7 @@ async fn funding_history_is_the_native_funding_rates_from_start() {
         .funding_rate()
         .symbol(&btc_symbol())
         .start_time(1_791_200_000_000)
+        .limit(1000)
         .send()
         .await
         .unwrap();
@@ -560,13 +564,14 @@ async fn a_key_of_another_product_is_refused_by_every_trait_before_anything_is_s
 #[tokio::test]
 async fn candles_with_no_end_send_no_end_time() {
     let mut server = Server::new_async().await;
-    let query = "symbol=BTCUSDT&interval=1h&startTime=1791380000000";
+    let query = "symbol=BTCUSDT&interval=1h&startTime=1791380000000&limit=500";
     let mock = route(&mut server, "/fapi/v1/klines", query, &fixture("klines"), 2).await;
     let client = client(&server);
     let native = client
         .market()
         .klines(&btc_symbol(), Interval::H1)
         .start_time(1_791_380_000_000)
+        .limit(500)
         .send()
         .await
         .unwrap();
@@ -589,7 +594,7 @@ async fn candles_with_no_end_send_no_end_time() {
 #[tokio::test]
 async fn funding_history_without_a_mark_price_has_none() {
     let mut server = Server::new_async().await;
-    let query = "symbol=BTCUSDT&startTime=1568000000000";
+    let query = "symbol=BTCUSDT&startTime=1568000000000&limit=1000";
     let mock = route(
         &mut server,
         "/fapi/v1/fundingRate",
@@ -604,6 +609,7 @@ async fn funding_history_without_a_mark_price_has_none() {
         .funding_rate()
         .symbol(&btc_symbol())
         .start_time(1_568_000_000_000)
+        .limit(1000)
         .send()
         .await
         .unwrap();
@@ -689,7 +695,7 @@ async fn an_unlisted_symbol_funds_every_eight_hours() {
     let history = route(
         &mut server,
         "/fapi/v1/fundingRate",
-        "symbol=BTCUSDT&startTime=1791200000000",
+        "symbol=BTCUSDT&startTime=1791200000000&limit=1000",
         &fixture("funding_rate"),
         1,
     )
@@ -776,7 +782,7 @@ async fn the_interval_lookup_is_charged_on_the_funding_layer() {
     let history = route(
         &mut server,
         "/fapi/v1/fundingRate",
-        "symbol=BTCUSDT&startTime=1791200000000",
+        "symbol=BTCUSDT&startTime=1791200000000&limit=1000",
         &fixture("funding_rate"),
         1,
     )
