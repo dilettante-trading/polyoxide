@@ -413,8 +413,9 @@ async fn funding_rate_is_the_instruments_ticker() {
 async fn funding_history_is_the_native_history_oldest_first() {
     let mut server = Server::new_async().await;
     // The host answers a start alone with the newest 100 rows since it, so the
-    // trait asks for the window of 100 hourly settlements from `start`.
-    let query = "instrument_id=1&start_timestamp=1790675505663&end_timestamp=1791035505663";
+    // trait asks for the window of 100 hours less a minute from `start`, which
+    // holds at most 100 settlements: `end` is start + 359_940_000 ms.
+    let query = "instrument_id=1&start_timestamp=1790675505663&end_timestamp=1791035445663";
     let mock = route(
         &mut server,
         "/v1/info/funding",
@@ -428,7 +429,7 @@ async fn funding_history_is_the_native_history_oldest_first() {
         .market()
         .funding(InstrumentId(1))
         .start(1_790_675_505_663)
-        .end(1_791_035_505_663)
+        .end(1_791_035_445_663)
         .send()
         .await
         .unwrap();

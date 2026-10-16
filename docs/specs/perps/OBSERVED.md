@@ -120,7 +120,11 @@ of that window (1791666000018 down to 1791309600070), `more: false`, still newes
 first. Settlements are hourly (gaps of 3599937 to 3600063 ms) on both instruments, each
 13 to 70 ms after the hour. `GET /v1/info/klines` with only `start_timestamp` is
 anchored at it: ascending, cap 1000, `more: true` when the cap bites. The venue
-traits' `funding_history` therefore sends a 100-hour window from `start`.
+traits' `funding_history` therefore sends a window of 100 hours less a minute from `start`
+(`end_timestamp` = `start` + 359940000). A full 100 hours with an inclusive end could hold 101
+settlements when `start` falls just after an hour mark, since each lands up to about 70 ms
+after it; the minute holds at most 100, as 101 settlements span at least 100 of the gaps above
+(359993700 ms) and the window is 359940000 ms.
 
 ## Rate limits
 

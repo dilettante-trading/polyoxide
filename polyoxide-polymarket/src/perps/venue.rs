@@ -15,7 +15,7 @@
 //! | `trades` | `/v1/info/trades` |
 //! | `candles` | `/v1/info/klines`, from `start` (up to 1000) |
 //! | `funding_rate` | `/v1/info/tickers`, every instrument, filtered here |
-//! | `funding_history` | `/v1/info/funding`, the 100 hourly settlements from `start` (`end_timestamp` is `start` + 100 h); an empty answer means none in that span |
+//! | `funding_history` | `/v1/info/funding`, the hourly settlements from `start` (at most 100, `end_timestamp` is `start` + 100 h less a minute); an empty answer means none in that span |
 //!
 //! Perps prices have no fixed tick: a non-integer price keeps at most five
 //! significant figures, so [`Instrument::tick_size`] is `None` and the
@@ -130,13 +130,18 @@ pub struct FundingExt {
     pub open_interest: Option<Decimal>,
 }
 
-/// The width of a funding-history window, in milliseconds: the host's cap of
-/// 100 rows at its hourly settlement interval.
+/// The width of a funding-history window, in milliseconds: 100 hours less a
+/// minute, the host's cap of 100 rows at its hourly settlement interval.
 ///
 /// With only `start_timestamp` the host keeps the newest 100 rows of everything
 /// since `start`, so for an old `start` the rates right after it are skipped.
 /// A window of at most 100 settlements has no newer rows to push them out.
-const FUNDING_WINDOW_MS: u64 = 100 * 3_600_000;
+///
+/// Settlements land up to about 70 ms after each hour, so a full 100 hours with
+/// an inclusive end could hold 101 of them when `start` falls just after an
+/// hour mark. A minute short cannot: 101 settlements span at least 100 of the
+/// measured gaps, 359,993,700 ms, and this window is 359,940,000 ms.
+const FUNDING_WINDOW_MS: u64 = 100 * 3_600_000 - 60_000;
 
 /// The instrument a row describes, with its type and category's fees.
 fn instrument(row: &PerpsInstrument, fees: &FeesInfo) -> Instrument {

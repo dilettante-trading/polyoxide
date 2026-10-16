@@ -133,9 +133,9 @@ pub trait Funding: Send + Sync {
     /// in one request.
     ///
     /// A venue may also bound the span one request covers: perps' is 100 hours
-    /// from `start`. An empty answer before now then means no settlements in
-    /// that span, not none later, so read on from the end of the span asked
-    /// for.
+    /// less a minute from `start`. An empty answer before now then means no
+    /// settlements in that span, not none later, so read on from the end of the
+    /// span asked for.
     fn funding_history(
         &self,
         key: &MarketKey,
