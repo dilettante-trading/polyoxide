@@ -195,7 +195,7 @@ async fn instrument_carries_the_rows_rules_and_its_categorys_fee_tiers() {
 
     assert_eq!(instrument.key, key(9));
     assert_eq!(instrument.name, row.symbol);
-    assert_eq!(instrument.size_unit, SizeUnit::Contracts);
+    assert_eq!(instrument.size_unit, SizeUnit::Base);
     assert_eq!(
         instrument.base_asset.as_deref(),
         Some(row.base_asset.as_str())

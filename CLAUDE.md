@@ -415,7 +415,8 @@ adding client support for the rest is a separate piece of work.
 `perps::venue` implements `polyoxide-venue`'s `MarketData`, `Instruments`, `Trades`, `Candles` and
 `Funding` on `Perps` (Story 6.4), keyed by `shared::keys::perps`: an instrument is its
 `/v1/info/instruments` row plus its type and category's `/v1/info/fees` entry (two requests),
-with no `tick_size`, since a non-integer price keeps five significant figures, and its fee
+with sizes in `SizeUnit::Base` (one contract is one unit of the base asset, which
+`docs/specs/perps/OBSERVED.md` shows from the fixtures) and no `tick_size`, since a non-integer price keeps five significant figures, and its fee
 tiers, risk tiers, price bounds and decimals in `InstrumentExt`; a quote is the `bbo` row, a side
 of zero quantity none and an instrument with no row an empty quote; the funding rate is the
 instrument's row of `tickers`, which the host sends for every instrument, and its `interval` is

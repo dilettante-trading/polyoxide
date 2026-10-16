@@ -126,6 +126,16 @@ settlements when `start` falls just after an hour mark, since each lands up to a
 after it; the shorter window holds at most 100, as 101 settlements span at least 100 of the gaps
 above (359993700 ms) and the window is 359940000 ms.
 
+## Sizes are in the base asset
+
+The schema and the wire keys say "contracts", and one contract is one unit of the instrument's
+base asset: the venue traits report perps sizes as `SizeUnit::Base`. In `statistics.json`, an
+instrument's 24 h `volume` is a USD amount, and the quantity of its 24 hourly klines times each
+kline's close price reproduces it: SP500-USD `812002.2` against `811787.0`, NAS100-USD `1416517.2`
+against `1416512.3`, SILVER-USD `301091.4` against `301263.2` (checked 2026-10-16). A kline
+quantity that counted a fixed amount of the underlying other than one unit would be off by that
+factor.
+
 ## Rate limits
 
 Nothing numeric is published for the public routes. Measured with

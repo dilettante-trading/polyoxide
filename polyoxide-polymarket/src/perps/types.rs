@@ -119,7 +119,7 @@ pub struct Kline {
     pub low: Decimal,
     /// Close price.
     pub close: Decimal,
-    /// Volume in contracts.
+    /// Volume in the base asset (one contract is one unit).
     pub volume: Decimal,
     /// Number of trades in the bucket.
     pub trades: u64,
@@ -198,7 +198,7 @@ impl Serialize for MarkPoint {
 pub struct Level {
     /// Price.
     pub price: Decimal,
-    /// Quantity in contracts.
+    /// Quantity in the base asset (one contract is one unit).
     pub quantity: Decimal,
 }
 

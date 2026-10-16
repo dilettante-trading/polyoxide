@@ -19,7 +19,9 @@
 //!
 //! Perps prices have no fixed tick: a non-integer price keeps at most five
 //! significant figures, so [`Instrument::tick_size`] is `None` and the
-//! decimal places are in [`InstrumentExt`]. Sizes are contracts.
+//! decimal places are in [`InstrumentExt`]. Sizes are in the base asset: one
+//! contract is one unit of it (`docs/specs/perps/OBSERVED.md`, "Sizes are in the
+//! base asset").
 //!
 //! ```no_run
 //! use std::sync::Arc;
@@ -128,7 +130,7 @@ pub struct FundingExt {
     pub last_price: Option<Decimal>,
     /// Mid price.
     pub mid_price: Option<Decimal>,
-    /// Open interest, in contracts.
+    /// Open interest, in the base asset.
     pub open_interest: Option<Decimal>,
 }
 
@@ -179,7 +181,7 @@ fn instrument(row: &PerpsInstrument, fees: &FeesInfo) -> Instrument {
     let mut instrument = Instrument::new(
         keys::perps(row.instrument_id),
         row.symbol.clone(),
-        SizeUnit::Contracts,
+        SizeUnit::Base,
     );
     instrument.base_asset = Some(row.base_asset.clone());
     instrument.quote_asset = Some(row.quote_asset.clone());

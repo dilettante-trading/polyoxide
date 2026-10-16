@@ -138,7 +138,7 @@ pub struct PublicPortfolioPosition {
     pub instrument_id: InstrumentId,
     /// Symbol.
     pub symbol: String,
-    /// Signed size in contracts; negative is short.
+    /// Signed size in the base asset (one contract is one unit); negative is short.
     #[serde(with = "rust_decimal::serde::str")]
     pub size: Decimal,
     /// Average entry price.
@@ -183,7 +183,7 @@ pub struct PositionFill {
     /// Price.
     #[serde(with = "rust_decimal::serde::str")]
     pub price: Decimal,
-    /// Quantity in contracts.
+    /// Quantity in the base asset (one contract is one unit).
     #[serde(with = "rust_decimal::serde::str")]
     pub quantity: Decimal,
     /// Whether the account was the taker.
