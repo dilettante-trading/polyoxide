@@ -248,7 +248,7 @@ impl MarketData for Perps {
             .send()
             .await?;
         let Some(row) = rows.iter().find(|row| row.instrument_id == id) else {
-            return Err(NotListed { key: key.clone() }.into());
+            return Err(NotListed::new(key.clone()).into());
         };
         let fees = self.exchange().fees().send().await?;
         Ok(instrument(row, &fees))
@@ -370,7 +370,7 @@ impl Perps {
             .send()
             .await?;
         let Some(row) = rows.iter().find(|row| row.instrument_id == id) else {
-            return Err(NotListed { key: key.clone() }.into());
+            return Err(NotListed::new(key.clone()).into());
         };
         parse_funding_interval(&row.funding_interval)
     }
@@ -382,7 +382,7 @@ impl Funding for Perps {
         // The host ignores the filter and sends every instrument.
         let rows = self.market().tickers().instrument_id(id).send().await?;
         let Some(row) = rows.iter().find(|row| row.instrument_id == id) else {
-            return Err(NotListed { key: key.clone() }.into());
+            return Err(NotListed::new(key.clone()).into());
         };
         let interval = self.funding_interval(id, key).await?;
         let mut rate = FundingRate::new(key.clone(), row.funding_rate, UnixMillis(row.timestamp));

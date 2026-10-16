@@ -187,7 +187,7 @@ impl MarketData for Usdm {
             .find(|row| row.symbol == symbol.as_str())
         {
             Some(row) => instrument(row),
-            None => Err(NotListed { key: key.clone() }.into()),
+            None => Err(NotListed::new(key.clone()).into()),
         }
     }
 

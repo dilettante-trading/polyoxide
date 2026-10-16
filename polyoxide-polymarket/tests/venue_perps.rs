@@ -268,7 +268,7 @@ async fn an_instrument_the_host_does_not_list_is_a_venue_refusal() {
     assert_eq!(err.class, Class::VenueRefusal { code: None });
     assert_eq!(
         err.source.downcast_ref::<NotListed>(),
-        Some(&NotListed { key: key(999) })
+        Some(&NotListed::new(key(999)))
     );
 }
 
@@ -663,7 +663,7 @@ async fn a_ticker_without_an_instrument_row_is_not_listed() {
     assert_eq!(err.class, Class::VenueRefusal { code: None });
     assert_eq!(
         err.source.downcast_ref::<NotListed>(),
-        Some(&NotListed { key: key(1) })
+        Some(&NotListed::new(key(1)))
     );
 }
 

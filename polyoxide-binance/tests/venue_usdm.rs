@@ -244,7 +244,7 @@ async fn a_contract_exchange_info_does_not_list_is_a_venue_refusal() {
     assert_eq!(err.class, Class::VenueRefusal { code: None });
     assert_eq!(
         err.source.downcast_ref::<NotListed>(),
-        Some(&NotListed { key: missing })
+        Some(&NotListed::new(missing))
     );
 }
 

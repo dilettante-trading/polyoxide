@@ -209,7 +209,7 @@ impl MarketData for Clob {
             .iter()
             .find(|outcome| outcome.token_id.as_deref() == Some(token.as_str()))
         else {
-            return Err(NotListed { key: key.clone() }.into());
+            return Err(NotListed::new(key.clone()).into());
         };
         Ok(instrument(key, &market, outcome))
     }
@@ -452,7 +452,7 @@ mod events {
                 event_id = self.event_id_of(&token, true).await?;
             }
             let Some(event_id) = event_id else {
-                return Err(NotListed { key: key.clone() }.into());
+                return Err(NotListed::new(key.clone()).into());
             };
             let event = self.gamma.events().get(event_id).send().await?;
             let mut group = EventGroup::new(event.id.clone());

@@ -455,9 +455,17 @@ impl EventOutcome {
 /// some venues return an empty quote or book. The guarantee is the class, so
 /// match on `class()`, not on this type.
 #[derive(Debug, Clone, PartialEq, Eq)]
+#[non_exhaustive]
 pub struct NotListed {
     /// The key asked for.
     pub key: MarketKey,
+}
+
+impl NotListed {
+    /// The refusal for `key`, an instrument the venue does not list.
+    pub fn new(key: MarketKey) -> Self {
+        Self { key }
+    }
 }
 
 impl fmt::Display for NotListed {
@@ -593,9 +601,7 @@ mod tests {
 
     #[test]
     fn an_unlisted_key_is_a_venue_refusal_that_names_it() {
-        let err = NotListed {
-            key: Spot::key(&"ABC".to_owned()),
-        };
+        let err = NotListed::new(Spot::key(&"ABC".to_owned()));
         assert_eq!(err.to_string(), "acme.spot:ABC is not listed");
         assert_eq!(err.class(), Class::VenueRefusal { code: None });
         assert!(!err.is_retriable());

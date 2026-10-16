@@ -26,7 +26,7 @@
 //!
 //! impl MarketData for Closed {
 //!     async fn instrument(&self, key: &MarketKey) -> Result<Instrument, ClassifiedError> {
-//!         Err(polyoxide_venue::NotListed { key: key.clone() }.into())
+//!         Err(polyoxide_venue::NotListed::new(key.clone()).into())
 //!     }
 //!
 //!     async fn quote(&self, key: &MarketKey) -> Result<Quote, ClassifiedError> {
@@ -192,7 +192,7 @@ mod tests {
         fn check(key: &MarketKey) -> Result<String, ClassifiedError> {
             let id = Spot::id(key)?;
             if id != "ABC" {
-                return Err(NotListed { key: key.clone() }.into());
+                return Err(NotListed::new(key.clone()).into());
             }
             Ok(id)
         }
