@@ -123,8 +123,8 @@ anchored at it: ascending, cap 1000, `more: true` when the cap bites. The venue
 traits' `funding_history` therefore sends a window of 100 hours less a minute from `start`
 (`end_timestamp` = `start` + 359940000). A full 100 hours with an inclusive end could hold 101
 settlements when `start` falls just after an hour mark, since each lands up to about 70 ms
-after it; the minute holds at most 100, as 101 settlements span at least 100 of the gaps above
-(359993700 ms) and the window is 359940000 ms.
+after it; the shorter window holds at most 100, as 101 settlements span at least 100 of the gaps
+above (359993700 ms) and the window is 359940000 ms.
 
 ## Rate limits
 

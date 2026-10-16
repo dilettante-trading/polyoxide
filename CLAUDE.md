@@ -415,11 +415,10 @@ with no `tick_size`, since a non-integer price keeps five significant figures, a
 tiers, risk tiers, price bounds and decimals in `InstrumentExt`; a quote is the `bbo` row, a side
 of zero quantity none and an instrument with no row an empty quote; the funding rate is the
 instrument's row of `tickers`, which the host sends for every instrument; `trades` and
-`funding_history` reverse the host's newest-first pages, and `funding_history` asks for the 100
-hourly settlements from `start` (`end_timestamp` is `start` + 100 h less a minute, so the window
-holds at most 100 settlements), since the host answers a start alone with the newest 100 rows
-since it. `tests/venue_perps.rs` holds each method
-to the native client's values on the captured fixtures.
+`funding_history` reverse the host's newest-first pages, and `funding_history` asks for the hourly
+settlements from `start`, at most 100 (`end_timestamp` is `start` + 100 h less a minute), since the
+host answers a start alone with the newest 100 rows since it. `tests/venue_perps.rs` holds each
+method to the native client's values on the captured fixtures.
 Three test files of `polyoxide-polymarket` hold it in place on the pattern of Data v2:
 `tests/spec_agreement_perps.rs` (types, enums and query keys against
 `docs/specs/perps/openapi.json`, restricted to schemas reachable from `/v1/info/*`),
