@@ -23,6 +23,7 @@ pub mod api;
 pub mod client;
 pub mod error;
 pub mod types;
+pub mod venue;
 #[cfg(feature = "perps-ws")]
 pub mod ws;
 

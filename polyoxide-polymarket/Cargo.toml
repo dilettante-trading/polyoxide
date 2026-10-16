@@ -92,7 +92,7 @@ relay = [
 ]
 perps = [
     "dep:polyoxide-core",
-    "polyoxide-venue/keys",
+    "polyoxide-venue/market",
     "polyoxide-venue/decimal",
     "dep:rust_decimal",
     "dep:serde",
@@ -372,6 +372,10 @@ required-features = ["perps"]
 
 [[test]]
 name = "spec_agreement_perps"
+required-features = ["perps"]
+
+[[test]]
+name = "venue_perps"
 required-features = ["perps"]
 
 [[test]]

@@ -32,6 +32,15 @@ for instrument in &instruments {
 # }
 ```
 
+## Through the venue-neutral traits
+
+`Perps` implements `polyoxide-venue`'s `MarketData`, `Instruments`, `Trades`,
+`Candles` and `Funding`, keyed `polymarket.perps:<instrument id>`
+(`shared::keys::perps`), so code written against those traits reads perps as it
+reads Binance. Fee tiers, risk tiers, price bounds and perps' other facts ride
+in `perps::venue`'s `<Record>Ext` types.
+The `perps::venue` module's documentation has an example.
+
 ## Streaming
 
 With the `perps-ws` feature, the public channels stream over one connection.
