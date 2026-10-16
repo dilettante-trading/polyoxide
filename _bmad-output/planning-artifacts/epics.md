@@ -1395,6 +1395,8 @@ So that I migrate my imports once.
 
 One generic function reads quotes and books from three venues: the Polymarket CLOB, Polymarket perps and Binance USDⓈ-M. It works through canonical keys and typed extensions. This is stage S3, so every story adds public API and none removes any.
 
+The epic is built before the S2 release, on `aidanb/init` at stage S2 (owner, 2026-10-16). Its stories pass S2's gates (the rename manifest and the test bodies, both against v0.39.0), no story changes the stage, and its commits stay off `main` until v0.40.0 and the S3 switch have landed, so the work ships in an S3 release.
+
 ### Story 6.1: Shared records and typed extensions
 
 As a consumer reading several venues,
