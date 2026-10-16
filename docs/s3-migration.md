@@ -18,16 +18,19 @@ that builds on 0.40 builds unchanged.
   `CandleInterval`, `CandleQuery`, `EventOutcome`), `Extensions` for each venue's own facts and its
   `DuplicateExtension` error, `NotListed`, and the traits `MarketData` (`instrument`, `quote`,
   `book`) and `Instruments`, `Trades`, `Candles`, `Funding` and `EventGroups`, each with a `Dyn`
-  wrapper. Every trait method returns `ClassifiedError`.
+  wrapper. Every trait method returns `ClassifiedError`. A `FundingRate` carries its `interval`,
+  the length of the funding period its `rate` is for.
 - `polyoxide-binance`: the module `usdm::key` (`UsdmKeys`, `parse`, `symbol`, `VENUE`, `PRODUCT`)
   and the function `usdm::key(&symbol)` it re-exports, and `usdm::venue`, whose `Usdm` implements
   `MarketData`, `Instruments`, `Trades`, `Candles` and `Funding`, with its `InstrumentExt`,
-  `QuoteExt`, `BookExt`, `TradeExt`, `CandleExt` and `FundingExt`.
+  `QuoteExt`, `BookExt`, `TradeExt`, `CandleExt` and `FundingExt`. Its funding methods send
+  `fundingInfo` as well, one extra request on the funding bucket, for the `interval`.
 - `polyoxide-polymarket`: `shared::keys` (the functions `clob`, `perps`, `token_id`,
   `instrument_id` and `parse`; the consts `VENUE`, `CLOB` and `PERPS`; and `TokenId`, `ClobKeys`
   and `PerpsKeys`); `perps::venue`, whose `Perps` implements `MarketData`, `Instruments`,
   `Trades`, `Candles` and `Funding`, with its `InstrumentExt`, `BookExt`, `TradeExt` and
-  `FundingExt`; `clob::venue`, whose `Clob` implements `MarketData` and `Candles`, `Trades` with
+  `FundingExt` (its funding methods send one extra `/v1/info/instruments` request for the
+  `interval`); `clob::venue`, whose `Clob` implements `MarketData` and `Candles`, `Trades` with
   `data`, and `EventGroups` with `gamma`, with its `InstrumentExt`, `QuoteExt`, `BookExt`,
   `TradeExt` and `EventGroupExt`.
 - `ClobBuilder::data` and `ClobError::Data` are new (`ClobError` is `#[non_exhaustive]`). With

@@ -14,8 +14,8 @@
 //! | `book` | `/v1/info/book` (100 levels, the host's default) |
 //! | `trades` | `/v1/info/trades` |
 //! | `candles` | `/v1/info/klines`, from `start` (up to 1000) |
-//! | `funding_rate` | `/v1/info/tickers`, every instrument, filtered here |
-//! | `funding_history` | `/v1/info/funding`, the hourly settlements from `start` (at most 100, `end_timestamp` is `start` + 100 h less a minute); an empty answer means none in that span |
+//! | `funding_rate` | `/v1/info/tickers`, every instrument, filtered here, then `/v1/info/instruments` for the funding interval |
+//! | `funding_history` | `/v1/info/funding`, the hourly settlements from `start` (at most 100, `end_timestamp` is `start` + 100 h less a minute); an empty answer means none in that span, and otherwise `/v1/info/instruments` follows for the funding interval |
 //!
 //! Perps prices have no fixed tick: a non-integer price keeps at most five
 //! significant figures, so [`Instrument::tick_size`] is `None` and the
@@ -36,6 +36,8 @@
 //! # }
 //! ```
 
+use std::time::Duration;
+
 use polyoxide_venue::{
     Book, Candle, CandleInterval, CandleQuery, Candles, Class, ClassifiedError, Extensions,
     Funding, FundingRate, Instrument, Instruments, Level, MarketData, MarketKey, NotListed, Quote,
@@ -45,7 +47,7 @@ use rust_decimal::Decimal;
 
 use crate::perps::{
     api::exchange::{FeeTier, FeesInfo, Instrument as PerpsInstrument, RiskTier},
-    types::{self, InstrumentCategory, InstrumentType, Interval},
+    types::{self, InstrumentCategory, InstrumentId, InstrumentType, Interval},
     Perps,
 };
 use crate::shared::keys;
@@ -142,6 +144,35 @@ pub struct FundingExt {
 /// hour mark. A minute short cannot: 101 settlements span at least 100 of the
 /// measured gaps, 359,993,700 ms, and this window is 359,940,000 ms.
 const FUNDING_WINDOW_MS: u64 = 100 * 3_600_000 - 60_000;
+
+/// A funding interval as the host spells it, a whole number and a unit (`1h`).
+///
+/// Only the instruments carry it. `m`, `h` and `d` are read, the units the
+/// host's kline widths use too. Anything else, or a zero, is a response this
+/// client cannot read.
+fn parse_funding_interval(text: &str) -> Result<Duration, ClassifiedError> {
+    let unreadable = || {
+        ClassifiedError::new(
+            Class::Decode,
+            format!("unreadable funding interval {text:?}"),
+        )
+    };
+    let (number, seconds) = [("m", 60), ("h", 3_600), ("d", 86_400)]
+        .into_iter()
+        .find_map(|(unit, seconds)| text.strip_suffix(unit).map(|number| (number, seconds)))
+        .ok_or_else(unreadable)?;
+    let count: u64 = number
+        .bytes()
+        .all(|byte| byte.is_ascii_digit())
+        .then(|| number.parse().ok())
+        .flatten()
+        .filter(|count| *count > 0)
+        .ok_or_else(unreadable)?;
+    count
+        .checked_mul(seconds)
+        .map(Duration::from_secs)
+        .ok_or_else(unreadable)
+}
 
 /// The instrument a row describes, with its type and category's fees.
 fn instrument(row: &PerpsInstrument, fees: &FeesInfo) -> Instrument {
@@ -327,6 +358,27 @@ impl Candles for Perps {
     }
 }
 
+impl Perps {
+    /// The length of the funding period `id` settles on, from its instrument
+    /// row. One extra request: neither the tickers nor the settlements carry it.
+    async fn funding_interval(
+        &self,
+        id: InstrumentId,
+        key: &MarketKey,
+    ) -> Result<Duration, ClassifiedError> {
+        let rows = self
+            .exchange()
+            .instruments()
+            .instrument_id(id)
+            .send()
+            .await?;
+        let Some(row) = rows.iter().find(|row| row.instrument_id == id) else {
+            return Err(NotListed { key: key.clone() }.into());
+        };
+        parse_funding_interval(&row.funding_interval)
+    }
+}
+
 impl Funding for Perps {
     async fn funding_rate(&self, key: &MarketKey) -> Result<FundingRate, ClassifiedError> {
         let id = keys::instrument_id(key)?;
@@ -335,7 +387,9 @@ impl Funding for Perps {
         let Some(row) = rows.iter().find(|row| row.instrument_id == id) else {
             return Err(NotListed { key: key.clone() }.into());
         };
+        let interval = self.funding_interval(id, key).await?;
         let mut rate = FundingRate::new(key.clone(), row.funding_rate, UnixMillis(row.timestamp));
+        rate.interval = Some(interval);
         rate.next_funding = Some(UnixMillis(row.next_funding));
         rate.extensions = Extensions::of(FundingExt {
             mark_price: Some(row.mark_price),
@@ -360,12 +414,22 @@ impl Funding for Perps {
             .end(start.0.saturating_add(FUNDING_WINDOW_MS))
             .send()
             .await?;
+        if page.data.is_empty() {
+            return Ok(Vec::new());
+        }
+        // The instrument's current interval, for every row.
+        let interval = self.funding_interval(id, key).await?;
         // The host sends the newest first.
         Ok(page
             .data
             .iter()
             .rev()
-            .map(|row| FundingRate::new(key.clone(), row.funding_rate, UnixMillis(row.timestamp)))
+            .map(|row| {
+                let mut rate =
+                    FundingRate::new(key.clone(), row.funding_rate, UnixMillis(row.timestamp));
+                rate.interval = Some(interval);
+                rate
+            })
             .collect())
     }
 }
@@ -373,6 +437,48 @@ impl Funding for Perps {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn a_funding_interval_is_a_whole_count_of_minutes_hours_or_days() {
+        assert_eq!(
+            parse_funding_interval("1h").unwrap(),
+            Duration::from_secs(3_600)
+        );
+        assert_eq!(
+            parse_funding_interval("8h").unwrap(),
+            Duration::from_secs(28_800)
+        );
+        assert_eq!(
+            parse_funding_interval("30m").unwrap(),
+            Duration::from_secs(1_800)
+        );
+        assert_eq!(
+            parse_funding_interval("1d").unwrap(),
+            Duration::from_secs(86_400)
+        );
+        for text in [
+            "",
+            "h",
+            "1",
+            "weekly",
+            "1.5h",
+            "0h",
+            "-1h",
+            "+1h",
+            "1H",
+            "1 h",
+            " 1h",
+            "1hé",
+            "é",
+            "1s",
+            "1h ",
+            "99999999999999999999h",
+            "18446744073709551615d",
+        ] {
+            let err = parse_funding_interval(text).unwrap_err();
+            assert_eq!(err.class, Class::Decode, "{text:?}");
+        }
+    }
 
     #[test]
     fn every_candle_interval_is_a_kline_width() {

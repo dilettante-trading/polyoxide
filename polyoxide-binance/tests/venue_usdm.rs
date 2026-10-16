@@ -4,6 +4,7 @@
 
 use std::borrow::Cow;
 use std::sync::Arc;
+use std::time::{Duration, Instant};
 
 use mockito::{Matcher, Mock, Server, ServerGuard};
 use polyoxide_binance::usdm::{
@@ -52,6 +53,36 @@ async fn route(server: &mut ServerGuard, path: &str, query: &str, body: &str, hi
         .expect(hits)
         .create_async()
         .await
+}
+
+const HOUR: Duration = Duration::from_secs(60 * 60);
+
+/// `fundingInfo` with `BTCUSDT` listed at `hours`, or not listed at all.
+fn funding_info_body(btc_hours: Option<u32>) -> String {
+    let mut rows: Vec<Value> = serde_json::from_str(&fixture("funding_info")).unwrap();
+    let btc = rows
+        .iter()
+        .position(|row| row["symbol"] == "BTCUSDT")
+        .unwrap();
+    match btc_hours {
+        Some(hours) => rows[btc]["fundingIntervalHours"] = Value::from(hours),
+        None => {
+            rows.remove(btc);
+        }
+    }
+    Value::Array(rows).to_string()
+}
+
+/// The `fundingInfo` the funding methods read, answering once per call.
+async fn funding_info(server: &mut ServerGuard, btc_hours: Option<u32>, hits: usize) -> Mock {
+    route(
+        server,
+        "/fapi/v1/fundingInfo",
+        "",
+        &funding_info_body(btc_hours),
+        hits,
+    )
+    .await
 }
 
 #[tokio::test]
@@ -362,6 +393,7 @@ async fn funding_rate_is_the_premium_index_now_accruing() {
         2,
     )
     .await;
+    let info = funding_info(&mut server, Some(4), 1).await;
     let client = client(&server);
     let native = client
         .market()
@@ -373,8 +405,10 @@ async fn funding_rate_is_the_premium_index_now_accruing() {
     let venue: Arc<DynFunding<'static>> = DynFunding::new_arc(client);
     let rate = venue.funding_rate(&btc()).await.unwrap();
     mock.assert_async().await;
+    info.assert_async().await;
 
     assert_eq!(rate.rate, native.last_funding_rate);
+    assert_eq!(rate.interval, Some(4 * HOUR), "BTCUSDT's listed interval");
     assert_eq!(rate.time, UnixMillis(native.time));
     assert_eq!(
         rate.next_funding,
@@ -402,6 +436,7 @@ async fn funding_history_is_the_native_funding_rates_from_start() {
         2,
     )
     .await;
+    let info = funding_info(&mut server, Some(4), 1).await;
     let client = client(&server);
     let native = client
         .market()
@@ -418,12 +453,18 @@ async fn funding_history_is_the_native_funding_rates_from_start() {
         .await
         .unwrap();
     mock.assert_async().await;
+    info.assert_async().await;
 
     assert_eq!(history.len(), native.len());
     for (rate, row) in history.iter().zip(&native) {
         assert_eq!(rate.rate, row.funding_rate);
         assert_eq!(rate.time, UnixMillis(row.funding_time));
         assert_eq!(rate.next_funding, None, "a settled rate");
+        assert_eq!(
+            rate.interval,
+            Some(4 * HOUR),
+            "the symbol's current interval"
+        );
         assert_eq!(
             rate.extensions.get::<FundingExt>().unwrap().mark_price,
             row.mark_price
@@ -568,6 +609,7 @@ async fn funding_history_without_a_mark_price_has_none() {
         .unwrap();
     assert!(!native.is_empty());
     assert!(native.iter().all(|row| row.mark_price.is_none()));
+    let info = funding_info(&mut server, Some(8), 1).await;
 
     let venue: Arc<DynFunding<'static>> = DynFunding::new_arc(client);
     let history = venue
@@ -575,6 +617,7 @@ async fn funding_history_without_a_mark_price_has_none() {
         .await
         .unwrap();
     mock.assert_async().await;
+    info.assert_async().await;
 
     assert_eq!(history.len(), native.len());
     for (rate, row) in history.iter().zip(&native) {
@@ -614,14 +657,119 @@ async fn a_contract_with_no_funding_scheduled_has_no_next_funding() {
         .await
         .unwrap();
     assert_eq!(native.next_funding_time, 0);
+    let info = funding_info(&mut server, Some(8), 1).await;
 
     let venue: Arc<DynFunding<'static>> = DynFunding::new_arc(client);
     let rate = venue.funding_rate(&btc()).await.unwrap();
     mock.assert_async().await;
+    info.assert_async().await;
 
     assert_eq!(rate.next_funding, None);
     assert_eq!(rate.rate, native.last_funding_rate);
     assert_eq!(rate.time, UnixMillis(native.time));
+}
+
+#[tokio::test]
+async fn an_unlisted_symbol_funds_every_eight_hours() {
+    let mut server = Server::new_async().await;
+    let all: Vec<Value> = serde_json::from_str(&fixture("premium_index")).unwrap();
+    let body = all
+        .iter()
+        .find(|row| row["symbol"] == "BTCUSDT")
+        .unwrap()
+        .to_string();
+    let index = route(
+        &mut server,
+        "/fapi/v1/premiumIndex",
+        "symbol=BTCUSDT",
+        &body,
+        1,
+    )
+    .await;
+    let history = route(
+        &mut server,
+        "/fapi/v1/fundingRate",
+        "symbol=BTCUSDT&startTime=1791200000000",
+        &fixture("funding_rate"),
+        1,
+    )
+    .await;
+    let info = funding_info(&mut server, None, 2).await;
+    let venue: Arc<DynFunding<'static>> = DynFunding::new_arc(client(&server));
+
+    let rate = venue.funding_rate(&btc()).await.unwrap();
+    let rows = venue
+        .funding_history(&btc(), UnixMillis(1_791_200_000_000))
+        .await
+        .unwrap();
+    index.assert_async().await;
+    history.assert_async().await;
+    info.assert_async().await;
+
+    assert_eq!(rate.interval, Some(8 * HOUR));
+    assert!(!rows.is_empty());
+    assert!(rows.iter().all(|row| row.interval == Some(8 * HOUR)));
+}
+
+#[tokio::test]
+async fn a_listed_symbol_funds_on_its_own_interval_and_not_the_default() {
+    let mut server = Server::new_async().await;
+    let all: Vec<Value> = serde_json::from_str(&fixture("premium_index")).unwrap();
+    let body = all
+        .iter()
+        .find(|row| row["symbol"] == "BTCUSDT")
+        .unwrap()
+        .to_string();
+    let index = route(
+        &mut server,
+        "/fapi/v1/premiumIndex",
+        "symbol=BTCUSDT",
+        &body,
+        1,
+    )
+    .await;
+    let info = funding_info(&mut server, Some(4), 1).await;
+    let venue: Arc<DynFunding<'static>> = DynFunding::new_arc(client(&server));
+
+    let rate = venue.funding_rate(&btc()).await.unwrap();
+    index.assert_async().await;
+    info.assert_async().await;
+
+    assert_eq!(rate.interval, Some(Duration::from_secs(4 * 60 * 60)));
+    assert_ne!(rate.interval, Some(8 * HOUR));
+}
+
+#[tokio::test]
+async fn the_interval_lookup_is_charged_on_the_funding_layer() {
+    // `fundingInfo` has no weight: it shares the funding bucket (a depth of
+    // one, 300s / 449 or about 668ms between requests). `funding_history` sends
+    // `fundingRate` and `fundingInfo`, both funding, so the second goes about
+    // 668ms after the first was charged. Charged as weight instead, both would
+    // go at once.
+    let mut server = Server::new_async().await;
+    let history = route(
+        &mut server,
+        "/fapi/v1/fundingRate",
+        "symbol=BTCUSDT&startTime=1791200000000",
+        &fixture("funding_rate"),
+        1,
+    )
+    .await;
+    let info = funding_info(&mut server, Some(4), 1).await;
+    let venue: Arc<DynFunding<'static>> = DynFunding::new_arc(client(&server));
+
+    let start = Instant::now();
+    venue
+        .funding_history(&btc(), UnixMillis(1_791_200_000_000))
+        .await
+        .unwrap();
+    let paced = start.elapsed();
+    history.assert_async().await;
+    info.assert_async().await;
+    assert!(
+        paced >= Duration::from_millis(600) && paced < Duration::from_secs(5),
+        "the interval lookup went {paced:?} after the funding rows were charged"
+    );
 }
 
 #[tokio::test]

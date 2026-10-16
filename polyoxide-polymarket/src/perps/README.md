@@ -39,6 +39,8 @@ for instrument in &instruments {
 (`shared::keys::perps`), so code written against those traits reads perps as it
 reads Binance. Fee tiers, risk tiers, price bounds and perps' other facts ride
 in `perps::venue`'s `<Record>Ext` types.
+A `FundingRate` carries its `interval` from the instrument's `funding_interval`, which
+costs one `/v1/info/instruments` request beside the rate or the settlements.
 The `perps::venue` module's documentation has an example.
 
 ## Streaming

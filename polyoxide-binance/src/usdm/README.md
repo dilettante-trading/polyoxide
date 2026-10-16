@@ -74,6 +74,8 @@ only the funding routes carries no weight and can keep the default.
 `Candles` and `Funding`, keyed `binance.usdm:<SYMBOL>` (`usdm::key`), so code
 written against those traits reads USDⓈ-M as it reads any other venue. What
 only Binance publishes rides in `usdm::venue`'s `<Record>Ext` types.
+A `FundingRate` carries its `interval` from `fundingInfo`, 8 hours for a symbol the list
+does not carry, so each funding call sends that request too, on the funding bucket.
 The `usdm::venue` module's documentation has an example.
 
 ## Streaming

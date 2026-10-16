@@ -125,14 +125,16 @@ pub trait Candles: Send + Sync {
 /// A perpetual's funding.
 #[dynosaur::dynosaur(pub DynFunding = dyn(box) Funding)]
 pub trait Funding: Send + Sync {
-    /// The rate now accruing, and when it next settles.
+    /// The rate now accruing, when it next settles, and the length of the
+    /// funding period it is for.
     fn funding_rate(
         &self,
         key: &MarketKey,
     ) -> impl Future<Output = Result<FundingRate, ClassifiedError>> + Send;
 
     /// Settled rates from `start`, oldest first: as many as the venue returns
-    /// in one request.
+    /// in one request. Each carries the instrument's current funding interval,
+    /// as a venue keeps no history of it.
     ///
     /// A venue may also bound the span one request covers: perps' is 100 hours
     /// less a minute from `start`. An empty answer before now then means no

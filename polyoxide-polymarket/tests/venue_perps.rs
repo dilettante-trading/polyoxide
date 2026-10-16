@@ -4,6 +4,7 @@
 
 use std::borrow::Cow;
 use std::sync::Arc;
+use std::time::Duration;
 
 use mockito::{Matcher, Mock, Server, ServerGuard};
 use polyoxide_polymarket::perps::{
@@ -43,6 +44,15 @@ fn instruments_with(id: u64) -> String {
             .collect(),
     )
     .to_string()
+}
+
+/// The instrument rows of `id` with every `funding_interval` set to `interval`.
+fn instruments_funding_every(id: u64, interval: &str) -> String {
+    let mut rows: Vec<Value> = serde_json::from_str(&instruments_with(id)).unwrap();
+    for row in &mut rows {
+        row["funding_interval"] = Value::from(interval);
+    }
+    Value::Array(rows).to_string()
 }
 
 /// A route answering `body` `hits` times, matched on its whole query string.
@@ -396,10 +406,23 @@ async fn funding_rate_is_the_instruments_ticker() {
         .unwrap();
     assert!(native.len() > 1, "the host sends every instrument");
 
+    let fixture_rows: Vec<Value> = serde_json::from_str(&instruments_with(1)).unwrap();
+    assert_eq!(fixture_rows[0]["funding_interval"], "1h");
+    let instruments = route(
+        &mut server,
+        "/v1/info/instruments",
+        "instrument_id=1",
+        &instruments_with(1),
+        1,
+    )
+    .await;
+
     let venue: Arc<DynFunding<'static>> = DynFunding::new_arc(client);
     let rate = venue.funding_rate(&key(1)).await.unwrap();
     mock.assert_async().await;
+    instruments.assert_async().await;
 
+    assert_eq!(rate.interval, Some(Duration::from_secs(3_600)));
     assert_eq!(rate.rate, row.funding_rate);
     assert_eq!(rate.time, UnixMillis(row.timestamp));
     assert_eq!(rate.next_funding, Some(UnixMillis(row.next_funding)));
@@ -434,18 +457,29 @@ async fn funding_history_is_the_native_history_oldest_first() {
         .await
         .unwrap();
 
+    let instruments = route(
+        &mut server,
+        "/v1/info/instruments",
+        "instrument_id=1",
+        &instruments_with(1),
+        1,
+    )
+    .await;
+
     let venue: Arc<DynFunding<'static>> = DynFunding::new_arc(client);
     let history = venue
         .funding_history(&key(1), UnixMillis(1_790_675_505_663))
         .await
         .unwrap();
     mock.assert_async().await;
+    instruments.assert_async().await;
 
     assert_eq!(history.len(), native.data.len());
     for (rate, row) in history.iter().zip(native.data.iter().rev()) {
         assert_eq!(rate.rate, row.funding_rate);
         assert_eq!(rate.time, UnixMillis(row.timestamp));
         assert_eq!(rate.next_funding, None);
+        assert_eq!(rate.interval, Some(Duration::from_secs(3_600)));
     }
     assert!(
         history.windows(2).all(|w| w[0].time <= w[1].time),
@@ -482,9 +516,19 @@ async fn funding_rate_is_the_requested_instruments_row_not_the_first() {
         .find(|row| row.instrument_id == InstrumentId(2))
         .unwrap();
 
+    let instruments = route(
+        &mut server,
+        "/v1/info/instruments",
+        "instrument_id=2",
+        &instruments_with(2),
+        1,
+    )
+    .await;
+
     let venue: Arc<DynFunding<'static>> = DynFunding::new_arc(client);
     let rate = venue.funding_rate(&key(2)).await.unwrap();
     mock.assert_async().await;
+    instruments.assert_async().await;
 
     assert_eq!(rate.key, key(2));
     assert_eq!(rate.rate, row.funding_rate);
@@ -513,6 +557,112 @@ impl KeySpace for Elsewhere {
     fn id_text(id: &String) -> Cow<'_, str> {
         Cow::Borrowed(id)
     }
+}
+
+#[tokio::test]
+async fn the_interval_is_the_instruments_own_spelling_read_exactly() {
+    for (spelling, expected) in [
+        ("8h", Duration::from_secs(8 * 3_600)),
+        ("30m", Duration::from_secs(30 * 60)),
+        ("1d", Duration::from_secs(86_400)),
+    ] {
+        let mut server = Server::new_async().await;
+        let tickers = route(
+            &mut server,
+            "/v1/info/tickers",
+            "instrument_id=1",
+            &fixture("tickers"),
+            1,
+        )
+        .await;
+        let instruments = route(
+            &mut server,
+            "/v1/info/instruments",
+            "instrument_id=1",
+            &instruments_funding_every(1, spelling),
+            1,
+        )
+        .await;
+        let venue: Arc<DynFunding<'static>> = DynFunding::new_arc(client(&server));
+
+        let rate = venue.funding_rate(&key(1)).await.unwrap();
+        tickers.assert_async().await;
+        instruments.assert_async().await;
+        assert_eq!(rate.interval, Some(expected), "{spelling}");
+    }
+}
+
+#[tokio::test]
+async fn an_unreadable_interval_is_a_decode_failure_for_a_rate_and_for_its_history() {
+    for spelling in ["weekly", "0h"] {
+        let mut server = Server::new_async().await;
+        let tickers = route(
+            &mut server,
+            "/v1/info/tickers",
+            "instrument_id=1",
+            &fixture("tickers"),
+            1,
+        )
+        .await;
+        let funding = route(
+            &mut server,
+            "/v1/info/funding",
+            "instrument_id=1&start_timestamp=1790675505663&end_timestamp=1791035445663",
+            &fixture("funding"),
+            1,
+        )
+        .await;
+        let instruments = route(
+            &mut server,
+            "/v1/info/instruments",
+            "instrument_id=1",
+            &instruments_funding_every(1, spelling),
+            2,
+        )
+        .await;
+        let venue: Arc<DynFunding<'static>> = DynFunding::new_arc(client(&server));
+
+        let rate = venue.funding_rate(&key(1)).await.unwrap_err();
+        let history = venue
+            .funding_history(&key(1), UnixMillis(1_790_675_505_663))
+            .await
+            .unwrap_err();
+        tickers.assert_async().await;
+        funding.assert_async().await;
+        instruments.assert_async().await;
+        assert_eq!(rate.class, Class::Decode, "{spelling:?}: {rate}");
+        assert_eq!(history.class, Class::Decode, "{spelling:?}: {history}");
+    }
+}
+
+#[tokio::test]
+async fn an_empty_history_asks_for_no_interval() {
+    let mut server = Server::new_async().await;
+    let funding = route(
+        &mut server,
+        "/v1/info/funding",
+        "instrument_id=1&start_timestamp=1790675505663&end_timestamp=1791035445663",
+        r#"{"data":[],"more":false}"#,
+        1,
+    )
+    .await;
+    let instruments = route(
+        &mut server,
+        "/v1/info/instruments",
+        "instrument_id=1",
+        "[]",
+        0,
+    )
+    .await;
+    let venue: Arc<DynFunding<'static>> = DynFunding::new_arc(client(&server));
+
+    let history = venue
+        .funding_history(&key(1), UnixMillis(1_790_675_505_663))
+        .await
+        .unwrap();
+    funding.assert_async().await;
+    instruments.assert_async().await;
+    assert!(history.is_empty());
 }
 
 #[tokio::test]

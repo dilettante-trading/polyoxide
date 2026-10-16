@@ -344,13 +344,17 @@ instrument as unlisted, otherwise the venue's own refusal), except where the ven
 `instrument`. The records they return are `Quote`, `Book` (bids highest first, asks lowest first),
 `Trade` (its `TradeId` an opaque `Arc<str>`), `Candle` (a venue that samples one price per interval
 gives only `close`), `FundingRate` (the rate accruing has a `next_funding` unless none is scheduled,
-a settled one none) and `EventGroup` with its `EventOutcome`s; every list a
+a settled one none; its `interval`, an `Option<Duration>`, is the length of the funding period
+its `rate` is for, and settled rows carry the instrument's current interval, since no venue keeps
+a history of it) and `EventGroup` with its `EventOutcome`s; every list a
 trait returns is oldest first, one request's worth. `CandleQuery` names a `CandleInterval` (one
 minute to one week, each width every candle venue serves) and a span. Binance's `usdm::venue`
 implements `MarketData`, `Instruments`, `Trades`, `Candles` and `Funding` on `Usdm`, with
 `InstrumentExt`, `QuoteExt`, `BookExt`, `TradeExt`, `CandleExt` and `FundingExt`; its quote is a
-5-level `depth` (weight 2) and its book an unlimited one (500 levels, weight 1), and
-`tests/venue_usdm.rs` holds each method to the native client's values on the captured fixtures.
+5-level `depth` (weight 2) and its book an unlimited one (500 levels, weight 1), and its funding
+methods send `fundingInfo` as well (one extra request on the funding layer, `fundingRate`'s
+bucket and not a weight) for the `interval`, `fundingIntervalHours` or 8 h for a symbol it does
+not list, and `tests/venue_usdm.rs` holds each method to the native client's values on the captured fixtures.
 Polymarket's `perps::venue` implements the same five traits on `Perps` (see Perps public routes).
 A live test unwraps a trait's `Result<_, ClassifiedError>` with test-support's
 `ClassifiedResultExt::or_fail` (or `fail_classified`), since `ClassifiedError` does not implement
@@ -414,7 +418,10 @@ adding client support for the rest is a separate piece of work.
 with no `tick_size`, since a non-integer price keeps five significant figures, and its fee
 tiers, risk tiers, price bounds and decimals in `InstrumentExt`; a quote is the `bbo` row, a side
 of zero quantity none and an instrument with no row an empty quote; the funding rate is the
-instrument's row of `tickers`, which the host sends for every instrument; `trades` and
+instrument's row of `tickers`, which the host sends for every instrument, and its `interval` is
+the instrument's `funding_interval` (`1h`, read as a whole number of minutes, hours or days; an
+unreadable one is a `Decode`), one more `/v1/info/instruments` request, which a `funding_history`
+with no rows skips; `trades` and
 `funding_history` reverse the host's newest-first pages, and `funding_history` asks for the hourly
 settlements from `start`, at most 100 (`end_timestamp` is `start` + 100 h less a minute), since the
 host answers a start alone with the newest 100 rows since it. `tests/venue_perps.rs` holds each

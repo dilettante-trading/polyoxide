@@ -360,8 +360,12 @@ impl Candle {
 pub struct FundingRate {
     /// The instrument's key.
     pub key: MarketKey,
-    /// The rate, a fraction of position value per funding period.
+    /// The rate, a fraction of position value per funding period, `interval`
+    /// long.
     pub rate: Decimal,
+    /// The length of the funding period `rate` is for; `None` when the venue
+    /// does not say.
+    pub interval: Option<Duration>,
     /// When the venue sampled the rate now accruing, or when a settled one
     /// settled.
     pub time: UnixMillis,
@@ -378,6 +382,7 @@ impl FundingRate {
         Self {
             key,
             rate,
+            interval: None,
             time,
             next_funding: None,
             extensions: Extensions::new(),

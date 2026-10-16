@@ -13,8 +13,8 @@
 //! | `book` | `depth`, no limit (500 levels) | 1 |
 //! | `trades` | `aggTrades` (the last 500) | 20 |
 //! | `candles` | `klines`, from `start` (up to 500) | 5 |
-//! | `funding_rate` | `premiumIndex` | 1 |
-//! | `funding_history` | `fundingRate`, from `start` (up to 100) | funding bucket |
+//! | `funding_rate` | `premiumIndex`, and `fundingInfo` for the interval | 1, and the funding bucket |
+//! | `funding_history` | `fundingRate`, from `start` (up to 100), and `fundingInfo` for the interval | funding bucket, twice |
 //!
 //! ```no_run
 //! use std::sync::Arc;
@@ -29,6 +29,8 @@
 //! # Ok(())
 //! # }
 //! ```
+
+use std::time::Duration;
 
 use polyoxide_venue::{
     Book, Candle, CandleInterval, CandleQuery, Candles, Class, ClassifiedError, Funding,
@@ -304,12 +306,35 @@ impl Candles for Usdm {
     }
 }
 
+/// Binance's funding interval for a contract `fundingInfo` does not list.
+const DEFAULT_FUNDING_INTERVAL: Duration = Duration::from_secs(8 * 60 * 60);
+
+impl Usdm {
+    /// The length of the funding period `symbol` settles on now: its
+    /// `fundingIntervalHours` in `fundingInfo`, or Binance's default of 8
+    /// hours for a contract the list does not carry.
+    ///
+    /// One request on the funding bucket, which `fundingInfo` shares with
+    /// `fundingRate`.
+    async fn funding_interval(&self, symbol: &Symbol) -> Result<Duration, ClassifiedError> {
+        let rows = self.exchange().funding_info().send().await?;
+        Ok(rows
+            .iter()
+            .find(|row| row.symbol == symbol.as_ref())
+            .map_or(DEFAULT_FUNDING_INTERVAL, |row| {
+                Duration::from_secs(u64::from(row.funding_interval_hours) * 60 * 60)
+            }))
+    }
+}
+
 impl Funding for Usdm {
     async fn funding_rate(&self, key: &MarketKey) -> Result<FundingRate, ClassifiedError> {
         let symbol = key::symbol(key)?;
         let index = self.market().premium_index(&symbol).send().await?;
+        let interval = self.funding_interval(&symbol).await?;
         let mut rate =
             FundingRate::new(key.clone(), index.last_funding_rate, UnixMillis(index.time));
+        rate.interval = Some(interval);
         // `0` is a contract with no funding scheduled.
         rate.next_funding =
             (index.next_funding_time > 0).then_some(UnixMillis(index.next_funding_time));
@@ -335,11 +360,15 @@ impl Funding for Usdm {
             .start_time(start.0)
             .send()
             .await?;
+        // The symbol's current interval, for every row: `fundingInfo` keeps no
+        // history of it.
+        let interval = self.funding_interval(&symbol).await?;
         Ok(rows
             .iter()
             .map(|row| {
                 let mut rate =
                     FundingRate::new(key.clone(), row.funding_rate, UnixMillis(row.funding_time));
+                rate.interval = Some(interval);
                 rate.extensions = polyoxide_venue::Extensions::of(FundingExt {
                     mark_price: row.mark_price,
                     ..FundingExt::default()
