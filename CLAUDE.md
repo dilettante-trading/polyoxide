@@ -377,6 +377,15 @@ adding client support for the rest is a separate piece of work.
 
 **Perps public routes** are implemented by `polyoxide-polymarket`'s `perps` module, feature
 `perps` (`perps::Perps::new()`, namespaces `health()`, `exchange()`, `market()`, `public()`).
+`perps::venue` implements `polyoxide-venue`'s `MarketData`, `Instruments`, `Trades`, `Candles` and
+`Funding` on `Perps` (Story 6.4), keyed by `shared::keys::perps`: an instrument is its
+`/v1/info/instruments` row plus its type and category's `/v1/info/fees` entry (two requests),
+with no `tick_size`, since a non-integer price keeps five significant figures, and its fee
+tiers, risk tiers, price bounds and decimals in `InstrumentExt`; a quote is the `bbo` row, a side
+of zero quantity none and an instrument with no row an empty quote; the funding rate is the
+instrument's row of `tickers`, which the host sends for every instrument; `trades` and
+`funding_history` reverse the host's newest-first pages. `tests/venue_perps.rs` holds each method
+to the native client's values on the captured fixtures.
 Three test files of `polyoxide-polymarket` hold it in place on the pattern of Data v2:
 `tests/spec_agreement_perps.rs` (types, enums and query keys against
 `docs/specs/perps/openapi.json`, restricted to schemas reachable from `/v1/info/*`),
