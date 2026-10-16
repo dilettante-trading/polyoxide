@@ -14,15 +14,22 @@ that builds on 0.40 builds unchanged.
   a product's `KeySpace` makes, so two keys are equal exactly when they name the same instrument;
   `RawKey`, text split into its parts; `VenueId`, `ProductId` and `KeyError`. `market`: the
   records (`Instrument`, `Quote`, `Book`, `Level`, `Trade`, `Candle`, `FundingRate`,
-  `EventGroup`), `Extensions` for each venue's own facts, `NotListed`, and the traits
-  `MarketData` (`instrument`, `quote`, `book`) and `Instruments`, `Trades`, `Candles`,
-  `Funding` and `EventGroups`, each with a `Dyn` wrapper. Every trait method returns
-  `ClassifiedError`.
-- `polyoxide-binance`: `usdm::key` (and `usdm::key(&symbol)`), and `usdm::venue`, whose
-  `Usdm` implements `MarketData`, `Instruments`, `Trades`, `Candles` and `Funding`.
-- `polyoxide-polymarket`: `shared::keys` (`TokenId`, `ClobKeys`, `PerpsKeys`); `perps::venue`,
-  whose `Perps` implements the same five; `clob::venue`, whose `Clob` implements `MarketData` and
-  `Candles`, `Trades` with `data`, and `EventGroups` with `gamma`.
+  `EventGroup`) and the types they and the traits use (`Side`, `SizeUnit`, `TradeId`,
+  `CandleInterval`, `CandleQuery`, `EventOutcome`), `Extensions` for each venue's own facts and its
+  `DuplicateExtension` error, `NotListed`, and the traits `MarketData` (`instrument`, `quote`,
+  `book`) and `Instruments`, `Trades`, `Candles`, `Funding` and `EventGroups`, each with a `Dyn`
+  wrapper. Every trait method returns `ClassifiedError`.
+- `polyoxide-binance`: the module `usdm::key` (`UsdmKeys`, `parse`, `symbol`, `VENUE`, `PRODUCT`)
+  and the function `usdm::key(&symbol)` it re-exports, and `usdm::venue`, whose `Usdm` implements
+  `MarketData`, `Instruments`, `Trades`, `Candles` and `Funding`, with its `InstrumentExt`,
+  `QuoteExt`, `BookExt`, `TradeExt`, `CandleExt` and `FundingExt`.
+- `polyoxide-polymarket`: `shared::keys` (the functions `clob`, `perps`, `token_id`,
+  `instrument_id` and `parse`; the consts `VENUE`, `CLOB` and `PERPS`; and `TokenId`, `ClobKeys`
+  and `PerpsKeys`); `perps::venue`, whose `Perps` implements `MarketData`, `Instruments`,
+  `Trades`, `Candles` and `Funding`, with its `InstrumentExt`, `BookExt`, `TradeExt` and
+  `FundingExt`; `clob::venue`, whose `Clob` implements `MarketData` and `Candles`, `Trades` with
+  `data`, and `EventGroups` with `gamma`, with its `InstrumentExt`, `QuoteExt`, `BookExt`,
+  `TradeExt` and `EventGroupExt`.
 - `ClobBuilder::data` and `ClobError::Data` are new (`ClobError` is `#[non_exhaustive]`). With
   the `data` feature, which `polyoxide-polymarket`'s defaults include, `ClobBuilder::build` also
   builds a Data client for `Trades`, with the builder's timeout and pool size; it sends nothing
