@@ -475,15 +475,6 @@ mod tests {
         }
     }
 
-    impl Upper {
-        /// The key of an ASCII id, canonicalized first. Shadows
-        /// `KeySpace::key` for the tests, which pass the id as an owned string.
-        #[allow(clippy::ptr_arg)]
-        fn key(id: &String) -> MarketKey {
-            <Self as KeySpace>::key(&Self::parse_id(id).unwrap())
-        }
-    }
-
     /// Ids are unsigned integers, written without leading zeros.
     struct Numbered;
 
@@ -499,6 +490,11 @@ mod tests {
         fn id_text(id: &u64) -> Cow<'_, str> {
             Cow::Owned(id.to_string())
         }
+    }
+
+    /// The key of an ASCII id, canonicalized by `Upper::parse_id` first.
+    fn upper(id: &str) -> MarketKey {
+        Upper::key(&Upper::parse_id(id).unwrap())
     }
 
     fn raw(text: &str) -> RawKey {
@@ -576,7 +572,7 @@ mod tests {
 
     #[test]
     fn a_product_refuses_another_products_key_and_an_id_it_cannot_read() {
-        let spot = Upper::key(&"ABC".to_owned());
+        let spot = upper("ABC");
         assert_eq!(
             Numbered::id(&spot),
             Err(KeyError::WrongProduct {
@@ -598,7 +594,7 @@ mod tests {
 
     #[test]
     fn a_key_and_a_raw_key_serialize_as_their_text() {
-        let key = Upper::key(&"ABC".to_owned());
+        let key = upper("ABC");
         assert_eq!(serde_json::to_string(&key).unwrap(), r#""acme.spot:ABC""#);
         let raw: RawKey = serde_json::from_str(r#""acme.spot:abc""#).unwrap();
         assert_eq!(raw, RawKey::parse("acme.spot:abc").unwrap());
@@ -609,7 +605,7 @@ mod tests {
 
     #[test]
     fn debug_shows_the_text_form() {
-        let key = Upper::key(&"ABC".to_owned());
+        let key = upper("ABC");
         assert_eq!(format!("{key:?}"), "MarketKey(acme.spot:ABC)");
         assert_eq!(
             format!("{:?}", raw("acme.spot:abc")),
@@ -623,7 +619,7 @@ mod tests {
         let errors = [
             RawKey::parse("x").unwrap_err(),
             KeyError::unknown(&raw("acme.spot:abc")),
-            Numbered::id(&Upper::key(&"A".to_owned())).unwrap_err(),
+            Numbered::id(&upper("A")).unwrap_err(),
             Numbered::parse(&raw("acme.perpetual:x")).unwrap_err(),
         ];
         for err in errors {
