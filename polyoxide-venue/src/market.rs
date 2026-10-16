@@ -53,16 +53,34 @@ use crate::{
 #[dynosaur::dynosaur(pub DynMarketData = dyn(box) MarketData)]
 pub trait MarketData: Send + Sync {
     /// The instrument `key` names.
+    ///
+    /// For a key the venue does not list, the error's class is
+    /// [`VenueRefusal`](crate::Class::VenueRefusal): a [`NotListed`](crate::NotListed)
+    /// when the venue's answer identifies the instrument as unlisted, and
+    /// otherwise the venue's own refusal. This is how to confirm a listing.
+    /// Match on `class()`, not on the type.
     fn instrument(
         &self,
         key: &MarketKey,
     ) -> impl Future<Output = Result<Instrument, ClassifiedError>> + Send;
 
     /// The best bid and ask now.
+    ///
+    /// A key the venue does not list is a
+    /// [`VenueRefusal`](crate::Class::VenueRefusal) by its class. A venue that
+    /// cannot tell an unlisted instrument from one with nothing quoted returns
+    /// an empty quote instead; use [`instrument`](MarketData::instrument) to
+    /// confirm a listing.
     fn quote(&self, key: &MarketKey)
         -> impl Future<Output = Result<Quote, ClassifiedError>> + Send;
 
     /// The order book now, as deep as the venue serves it by default.
+    ///
+    /// A key the venue does not list is a
+    /// [`VenueRefusal`](crate::Class::VenueRefusal) by its class. A venue that
+    /// cannot tell an unlisted instrument from one with nothing quoted returns
+    /// an empty book instead; use [`instrument`](MarketData::instrument) to
+    /// confirm a listing.
     fn book(&self, key: &MarketKey) -> impl Future<Output = Result<Book, ClassifiedError>> + Send;
 }
 
@@ -90,6 +108,11 @@ pub trait Candles: Send + Sync {
     /// Candles opening between `query.start` and `query.end`, oldest first:
     /// as many as the venue returns in one request. Read on from the last
     /// candle's open time for more.
+    ///
+    /// A venue may also bound the span one request covers: the CLOB's is 14
+    /// days from `query.start`. An empty answer before `query.end` then means
+    /// no candles in that span, not none later, so read on from the end of the
+    /// span asked for.
     fn candles(
         &self,
         key: &MarketKey,
@@ -108,6 +131,11 @@ pub trait Funding: Send + Sync {
 
     /// Settled rates from `start`, oldest first: as many as the venue returns
     /// in one request.
+    ///
+    /// A venue may also bound the span one request covers: perps' is 100 hours
+    /// from `start`. An empty answer before now then means no settlements in
+    /// that span, not none later, so read on from the end of the span asked
+    /// for.
     fn funding_history(
         &self,
         key: &MarketKey,

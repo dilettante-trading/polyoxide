@@ -14,7 +14,7 @@
 //! | --- | --- |
 //! | `instrument` | `/markets-by-token/{token}`, then `/markets/{condition}` |
 //! | `quote`, `book` | `/book` |
-//! | `candles` | `/prices-history`, one price per interval, at most 14 days from `start` |
+//! | `candles` | `/prices-history`, one price per interval, at most 14 days from `start`; an empty answer means none in that span |
 //! | `trades` (`data`) | `/markets-by-token/{token}`, then the Data API's `/trades` |
 //! | `event_group` (`gamma`) | Gamma's `/markets?clob_token_ids=`, then `/events/{id}` |
 //!

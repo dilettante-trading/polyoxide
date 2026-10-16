@@ -80,7 +80,8 @@ pub struct Instrument {
     pub size_increment: Option<Decimal>,
     /// The smallest order value, in the quote currency.
     pub min_notional: Option<Decimal>,
-    /// Whether the venue takes orders on it now.
+    /// Whether the venue takes orders on it now that open or add to a
+    /// position. A close-only instrument is not tradable.
     pub tradable: Option<bool>,
     /// The venue's own facts.
     pub extensions: Extensions,
@@ -364,7 +365,8 @@ pub struct FundingRate {
     /// When the venue sampled the rate now accruing, or when a settled one
     /// settled.
     pub time: UnixMillis,
-    /// When the rate now accruing next settles; `None` for a settled rate.
+    /// When the rate now accruing next settles; `None` for a settled rate, or
+    /// when none is scheduled.
     pub next_funding: Option<UnixMillis>,
     /// The venue's own facts.
     pub extensions: Extensions,
@@ -438,9 +440,14 @@ impl EventOutcome {
     }
 }
 
-/// The venue lists no instrument by the key. A
-/// [`VenueRefusal`](Class::VenueRefusal), as the venue's own answer for an
+/// The venue's answer identifies the key as an instrument it does not list.
+/// A [`VenueRefusal`](Class::VenueRefusal), as the venue's own answer for an
 /// unknown instrument is.
+///
+/// Not every venue says so: where its answer does not identify the instrument
+/// as unlisted, the venue's own refusal comes through with the same class, and
+/// some venues return an empty quote or book. The guarantee is the class, so
+/// match on `class()`, not on this type.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct NotListed {
     /// The key asked for.

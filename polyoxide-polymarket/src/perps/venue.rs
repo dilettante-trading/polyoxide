@@ -15,7 +15,7 @@
 //! | `trades` | `/v1/info/trades` |
 //! | `candles` | `/v1/info/klines`, from `start` (up to 1000) |
 //! | `funding_rate` | `/v1/info/tickers`, every instrument, filtered here |
-//! | `funding_history` | `/v1/info/funding`, the 100 hourly settlements from `start` (`end_timestamp` is `start` + 100 h) |
+//! | `funding_history` | `/v1/info/funding`, the 100 hourly settlements from `start` (`end_timestamp` is `start` + 100 h); an empty answer means none in that span |
 //!
 //! Perps prices have no fixed tick: a non-integer price keeps at most five
 //! significant figures, so [`Instrument::tick_size`] is `None` and the

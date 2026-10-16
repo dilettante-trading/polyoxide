@@ -337,11 +337,14 @@ answers "unsupported". Each has `Send + Sync` supertraits, methods returning
 `impl Future<Output = Result<_, ClassifiedError>> + Send`, and a dynosaur wrapper
 (`DynMarketData` and so on), held as `Arc<Dyn…<'static>>`; an implementation writes `async fn`
 and converts its module's error with `?`, so the native clients keep their typed errors. A key of
-another product is a `KeyError` (`InvalidRequest`), sent nowhere, and an instrument the venue
-does not list is `NotListed` (`VenueRefusal`). The records they return are `Quote`, `Book` (bids
+another product is a `KeyError` (`InvalidRequest`), sent nowhere, and a key the venue does not
+list is a `VenueRefusal` by its class: `NotListed` where the venue's answer identifies the
+instrument as unlisted, otherwise the venue's own refusal, and an empty quote or book where the
+venue cannot tell (perps), so callers match on `class()` and confirm a listing with `instrument`.
+The records they return are `Quote`, `Book` (bids
 highest first, asks lowest first), `Trade` (its `TradeId` an opaque `Arc<str>`), `Candle` (a
 venue that samples one price per interval gives only `close`), `FundingRate` (the rate accruing
-has a `next_funding`, a settled one none) and `EventGroup` with its `EventOutcome`s; every list a
+has a `next_funding` unless none is scheduled, a settled one none) and `EventGroup` with its `EventOutcome`s; every list a
 trait returns is oldest first, one request's worth. `CandleQuery` names a `CandleInterval` (one
 minute to one week, each width every candle venue serves) and a span. Binance's `usdm::venue`
 implements `MarketData`, `Instruments`, `Trades`, `Candles` and `Funding` on `Usdm`, with
@@ -358,7 +361,7 @@ on `Clob` with `clob` alone, `Trades` with `data` as well and `EventGroups` with
 (`all(clob, data)` and `all(clob, gamma)`), keyed by `shared::keys::clob`: a key names one outcome
 token (AD-7). `instrument` resolves the token's market with `/markets-by-token/{token}`, then reads
 `/markets/{condition}` (a token the CLOB does not know is its `404`, a `VenueRefusal`); `quote`
-and `book` read `/book`, whose sides the CLOB sends worst first, so both are sorted best first;
+and `book` read `/book` (a listed token with no book is also its `404`), whose sides the CLOB sends worst first, so both are sorted best first;
 `candles` read `/prices-history`, one price per interval as `close`, the `CandleInterval` sent as
 `fidelity` minutes, from `start` rounded up to the second and no further than 14 days on, since a
 longer window is a `400` (`docs/specs/clob/OBSERVED.md`); `trades` read the Data API's taker-only `/trades` for the token's market and
