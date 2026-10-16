@@ -36,7 +36,10 @@ that builds on 0.40 builds unchanged.
 - `ClobBuilder::data` and `ClobError::Data` are new (`ClobError` is `#[non_exhaustive]`). With
   the `data` feature, which `polyoxide-polymarket`'s defaults include, `ClobBuilder::build` also
   builds a Data client for `Trades`, with the builder's timeout and pool size; it sends nothing
-  until a trait method asks. The unified `Polymarket` client hands clob its own Data client.
+  until a trait method asks. The unified `Polymarket` client hands clob its own Gamma and Data
+  clients. With `gamma_base_url` set on `PolymarketBuilder`, clob's proxy-wallet lookup and
+  `event_group` now go to that URL, with the builder's timeout and through Gamma's pool and
+  throttle; clob used to build its own Gamma client for them, on the default Gamma host.
 - The umbrella: `polyoxide::parse_key`, the traits on `polyoxide::venue` with any module that
   implements them, and `examples/venue_neutral.rs`, one `best_bid_ask` and one error classifier
   that run unchanged on the CLOB, perps and USDⓈ-M.
