@@ -18,7 +18,7 @@ default = ["usdm"]
 usdm = [
     "dep:polyoxide-core",
     "polyoxide-venue/decimal",
-    "polyoxide-venue/keys",
+    "polyoxide-venue/market",
     "dep:rust_decimal",
     "dep:serde",
     "dep:serde_json",
@@ -119,6 +119,10 @@ required-features = ["usdm-ws", "test-server"]
 [[test]]
 name = "supervision_usdm_kit"
 required-features = ["usdm-ws", "test-server"]
+
+[[test]]
+name = "venue_usdm"
+required-features = ["usdm"]
 
 [[test]]
 name = "wire_agreement_usdm"

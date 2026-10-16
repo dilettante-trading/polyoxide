@@ -68,6 +68,14 @@ reserve absorbs in-flight weight only while it stays under 240, so two clients t
 weighted routes should each set `max_concurrent(2)` (2 × 2 × 40 = 160). A client that sends
 only the funding routes carries no weight and can keep the default.
 
+## Through the venue-neutral traits
+
+`Usdm` implements `polyoxide-venue`'s `MarketData`, `Instruments`, `Trades`,
+`Candles` and `Funding`, keyed `binance.usdm:<SYMBOL>` (`usdm::key`), so code
+written against those traits reads USDⓈ-M as it reads any other venue. What
+only Binance publishes rides in `usdm::venue`'s `<Record>Ext` types.
+The `usdm::venue` module's documentation has an example.
+
 ## Streaming
 
 With the `usdm-ws` feature, the market streams arrive over one connection per routed path

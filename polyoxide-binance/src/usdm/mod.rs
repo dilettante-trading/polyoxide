@@ -27,6 +27,7 @@ pub mod key;
 mod policy;
 pub mod request;
 pub mod types;
+pub mod venue;
 pub mod weight;
 #[cfg(feature = "usdm-ws")]
 pub mod ws;
