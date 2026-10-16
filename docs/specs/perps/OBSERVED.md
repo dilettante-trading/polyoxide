@@ -108,6 +108,20 @@ absent for an unranked account.
 `GET /v1/info/position-fills` with 39 fills and `"more": false` carried no
 `cursor` key at all (2026-09-30). Modelled as `Option<String>`.
 
+## `funding` and `klines` bounds
+
+Probed 2026-10-16 on instruments 1 and 9. `GET /v1/info/funding` with only
+`start_timestamp` answers the newest 100 rows (cap 100, newest first, `more: true`)
+since it, not the first 100: `instrument_id=1&start_timestamp=1791309371521`
+(now 1792173371521) returned 100 rows from 1792170000013 down to 1791813600017, so
+the settlements right after `start` were skipped. Adding
+`end_timestamp=1791669371521` (`start` + 100 h) returned exactly the 100 hourly rows
+of that window (1791666000018 down to 1791309600070), `more: false`, still newest
+first. Settlements are hourly (gaps of 3599937 to 3600063 ms) on both instruments, each
+13 to 70 ms after the hour. `GET /v1/info/klines` with only `start_timestamp` is
+anchored at it: ascending, cap 1000, `more: true` when the cap bites. The venue
+traits' `funding_history` therefore sends a 100-hour window from `start`.
+
 ## Rate limits
 
 Nothing numeric is published for the public routes. Measured with

@@ -340,6 +340,7 @@ implements `MarketData`, `Instruments`, `Trades`, `Candles` and `Funding` on `Us
 `InstrumentExt`, `QuoteExt`, `BookExt`, `TradeExt`, `CandleExt` and `FundingExt`; its quote is a
 5-level `depth` (weight 2) and its book an unlimited one (500 levels, weight 1), and
 `tests/venue_usdm.rs` holds each method to the native client's values on the captured fixtures.
+Polymarket's `perps::venue` implements the same five traits on `Perps` (see Perps public routes).
 A live test unwraps a trait's `Result<_, ClassifiedError>` with test-support's
 `ClassifiedResultExt::or_fail` (or `fail_classified`), since `ClassifiedError` does not implement
 `Classify`; `ResultExt::or_fail` and it may be in scope together.
@@ -384,7 +385,9 @@ with no `tick_size`, since a non-integer price keeps five significant figures, a
 tiers, risk tiers, price bounds and decimals in `InstrumentExt`; a quote is the `bbo` row, a side
 of zero quantity none and an instrument with no row an empty quote; the funding rate is the
 instrument's row of `tickers`, which the host sends for every instrument; `trades` and
-`funding_history` reverse the host's newest-first pages. `tests/venue_perps.rs` holds each method
+`funding_history` reverse the host's newest-first pages, and `funding_history` asks for the 100
+hourly settlements from `start` (`end_timestamp` is `start` + 100 h), since the host answers a
+start alone with the newest 100 rows since it. `tests/venue_perps.rs` holds each method
 to the native client's values on the captured fixtures.
 Three test files of `polyoxide-polymarket` hold it in place on the pattern of Data v2:
 `tests/spec_agreement_perps.rs` (types, enums and query keys against
