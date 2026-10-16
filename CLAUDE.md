@@ -317,6 +317,8 @@ that takes their required fields, and carry `Extensions`: at most one value per 
 `type_ids()` to list them. Inserting a type already held is a `DuplicateExtension`
 (`InvalidRequest`), and `Extensions::of(value)` starts one with a single value. A product's own
 facts go in its one `<Record>Ext` per record type, never in a new field on the shared record.
+`EventOutcome`, an `EventGroup`'s outcome, is a value inside a record like `Level`, and carries
+no `Extensions`.
 
 **Market-data traits** — the `market` feature also holds the traits a venue's products implement
 so market data reads the same on every venue (AD-5, AD-6, amendment A6-1): `MarketData`

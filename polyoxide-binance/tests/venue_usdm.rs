@@ -14,7 +14,7 @@ use polyoxide_binance::usdm::{
 };
 use polyoxide_test_support::fixtures;
 use polyoxide_venue::{
-    CandleInterval, CandleQuery, Candles, Class, DynCandles, DynFunding, DynInstruments,
+    CandleInterval, CandleQuery, Candles, Class, Classify, DynCandles, DynFunding, DynInstruments,
     DynMarketData, DynTrades, Funding, Instruments, KeySpace, Level, MarketData, MarketKey,
     NotListed, ProductId, Side, SizeUnit, TradeId, Trades, UnixMillis, VenueId,
 };
@@ -484,5 +484,178 @@ async fn a_key_of_another_product_is_refused_before_anything_is_sent() {
         venue.instrument(&foreign).await.unwrap_err(),
     ] {
         assert_eq!(err.class, Class::InvalidRequest, "{err}");
+    }
+}
+
+#[tokio::test]
+async fn a_key_of_another_product_is_refused_by_every_trait_before_anything_is_sent() {
+    let mut server = Server::new_async().await;
+    let untouched = server
+        .mock("GET", Matcher::Any)
+        .match_query(Matcher::Any)
+        .expect(0)
+        .create_async()
+        .await;
+    let client = client(&server);
+    let foreign = Elsewhere::key(&"BTCUSDT".to_owned());
+    let trades: Arc<DynTrades<'static>> = DynTrades::new_arc(client.clone());
+    let candles: Arc<DynCandles<'static>> = DynCandles::new_arc(client.clone());
+    let funding: Arc<DynFunding<'static>> = DynFunding::new_arc(client);
+    let request = CandleQuery::new(CandleInterval::Hour1, UnixMillis(1_791_380_000_000));
+    for err in [
+        trades.trades(&foreign).await.unwrap_err(),
+        candles.candles(&foreign, &request).await.unwrap_err(),
+        funding.funding_rate(&foreign).await.unwrap_err(),
+        funding
+            .funding_history(&foreign, UnixMillis(1_791_200_000_000))
+            .await
+            .unwrap_err(),
+    ] {
+        assert_eq!(err.class, Class::InvalidRequest, "{err}");
+    }
+    untouched.assert_async().await;
+}
+
+#[tokio::test]
+async fn candles_with_no_end_send_no_end_time() {
+    let mut server = Server::new_async().await;
+    let query = "symbol=BTCUSDT&interval=1h&startTime=1791380000000";
+    let mock = route(&mut server, "/fapi/v1/klines", query, &fixture("klines"), 2).await;
+    let client = client(&server);
+    let native = client
+        .market()
+        .klines(&btc_symbol(), Interval::H1)
+        .start_time(1_791_380_000_000)
+        .send()
+        .await
+        .unwrap();
+
+    let venue: Arc<DynCandles<'static>> = DynCandles::new_arc(client);
+    let request = CandleQuery::new(CandleInterval::Hour1, UnixMillis(1_791_380_000_000));
+    assert_eq!(request.end, None);
+    let candles = venue.candles(&btc(), &request).await.unwrap();
+    mock.assert_async().await;
+
+    assert_eq!(candles.len(), native.len());
+    assert!(!candles.is_empty());
+    for (candle, row) in candles.iter().zip(&native) {
+        assert_eq!(candle.open_time, UnixMillis(row.open_time));
+        assert_eq!(candle.close, row.close);
+        assert_eq!(candle.volume, Some(row.volume));
+    }
+}
+
+#[tokio::test]
+async fn funding_history_without_a_mark_price_has_none() {
+    let mut server = Server::new_async().await;
+    let query = "symbol=BTCUSDT&startTime=1568000000000";
+    let mock = route(
+        &mut server,
+        "/fapi/v1/fundingRate",
+        query,
+        &fixture("funding_rate_2019"),
+        2,
+    )
+    .await;
+    let client = client(&server);
+    let native = client
+        .market()
+        .funding_rate()
+        .symbol(&btc_symbol())
+        .start_time(1_568_000_000_000)
+        .send()
+        .await
+        .unwrap();
+    assert!(!native.is_empty());
+    assert!(native.iter().all(|row| row.mark_price.is_none()));
+
+    let venue: Arc<DynFunding<'static>> = DynFunding::new_arc(client);
+    let history = venue
+        .funding_history(&btc(), UnixMillis(1_568_000_000_000))
+        .await
+        .unwrap();
+    mock.assert_async().await;
+
+    assert_eq!(history.len(), native.len());
+    for (rate, row) in history.iter().zip(&native) {
+        assert_eq!(rate.rate, row.funding_rate);
+        assert_eq!(rate.time, UnixMillis(row.funding_time));
+        assert_eq!(rate.next_funding, None);
+        assert_eq!(
+            rate.extensions.get::<FundingExt>().unwrap().mark_price,
+            None
+        );
+    }
+}
+
+#[tokio::test]
+async fn a_contract_with_no_funding_scheduled_has_no_next_funding() {
+    let mut server = Server::new_async().await;
+    let all: Vec<Value> = serde_json::from_str(&fixture("premium_index")).unwrap();
+    let mut row = all
+        .iter()
+        .find(|row| row["symbol"] == "BTCUSDT")
+        .unwrap()
+        .clone();
+    row["nextFundingTime"] = Value::from(0);
+    let mock = route(
+        &mut server,
+        "/fapi/v1/premiumIndex",
+        "symbol=BTCUSDT",
+        &row.to_string(),
+        2,
+    )
+    .await;
+    let client = client(&server);
+    let native = client
+        .market()
+        .premium_index(&btc_symbol())
+        .send()
+        .await
+        .unwrap();
+    assert_eq!(native.next_funding_time, 0);
+
+    let venue: Arc<DynFunding<'static>> = DynFunding::new_arc(client);
+    let rate = venue.funding_rate(&btc()).await.unwrap();
+    mock.assert_async().await;
+
+    assert_eq!(rate.next_funding, None);
+    assert_eq!(rate.rate, native.last_funding_rate);
+    assert_eq!(rate.time, UnixMillis(native.time));
+}
+
+#[tokio::test]
+async fn a_trait_error_carries_the_native_errors_class_fault_and_wait() {
+    let cases: [(usize, &str, Option<&str>); 3] = [
+        (400, r#"{"code":-1121,"msg":"Invalid symbol."}"#, None),
+        (418, r#"{"code":-1003,"msg":"Banned."}"#, Some("5")),
+        (451, r#"{"code":0,"msg":"Restricted location."}"#, Some("3")),
+    ];
+    for (status, body, retry_after) in cases {
+        let mut server = Server::new_async().await;
+        let mut mock = server
+            .mock("GET", "/fapi/v1/depth")
+            .match_query(Matcher::Any)
+            .with_status(status)
+            .with_body(body);
+        if let Some(wait) = retry_after {
+            mock = mock.with_header("retry-after", wait);
+        }
+        let _mock = mock.create_async().await;
+
+        // One client apiece, so the native call's hold is not the trait call's.
+        let native = client(&server)
+            .market()
+            .depth(&btc_symbol())
+            .send()
+            .await
+            .unwrap_err();
+        let venue: Arc<DynMarketData<'static>> = DynMarketData::new_arc(client(&server));
+        let err = venue.book(&btc()).await.unwrap_err();
+
+        assert_eq!(err.class, native.class(), "{status}");
+        assert_eq!(err.is_fault(), native.is_fault(), "{status}");
+        assert_eq!(err.retry_after(), native.retry_after(), "{status}");
+        assert!(err.source.downcast_ref::<UsdmError>().is_some(), "{status}");
     }
 }

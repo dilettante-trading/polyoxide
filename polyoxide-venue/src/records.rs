@@ -410,6 +410,9 @@ impl EventGroup {
 }
 
 /// One outcome of an event: a key of its own, in one of the event's markets.
+///
+/// Like [`Level`], it is a value inside a record, an [`EventGroup`], and not a
+/// record of its own, so it carries no [`Extensions`].
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]
 #[non_exhaustive]
 pub struct EventOutcome {
