@@ -68,10 +68,10 @@ pub trait MarketData: Send + Sync {
     ///
     /// A key the venue does not list is a
     /// [`VenueRefusal`](crate::Class::VenueRefusal) by its class, and so is a
-    /// listed instrument with no book, as the CLOB's `404` is. A venue that
-    /// cannot tell an unlisted instrument from one with nothing quoted returns
-    /// an empty quote instead. Use [`instrument`](MarketData::instrument) to
-    /// confirm a listing.
+    /// listed instrument with nothing on its book, at a venue that answers that
+    /// with a refusal. A venue that cannot tell an unlisted instrument from one
+    /// with nothing quoted returns an empty quote instead. Use
+    /// [`instrument`](MarketData::instrument) to confirm a listing.
     fn quote(&self, key: &MarketKey)
         -> impl Future<Output = Result<Quote, ClassifiedError>> + Send;
 
@@ -79,9 +79,9 @@ pub trait MarketData: Send + Sync {
     ///
     /// A key the venue does not list is a
     /// [`VenueRefusal`](crate::Class::VenueRefusal) by its class, and so is a
-    /// listed instrument with no book, as the CLOB's `404` is. A venue that
-    /// cannot tell an unlisted instrument from one with nothing on its book
-    /// returns an empty book instead. Use
+    /// listed instrument with nothing on its book, at a venue that answers that
+    /// with a refusal. A venue that cannot tell an unlisted instrument from one
+    /// with nothing on its book returns an empty book instead. Use
     /// [`instrument`](MarketData::instrument) to confirm a listing.
     fn book(&self, key: &MarketKey) -> impl Future<Output = Result<Book, ClassifiedError>> + Send;
 }
@@ -111,10 +111,10 @@ pub trait Candles: Send + Sync {
     /// as many as the venue returns in one request. Read on from the last
     /// candle's open time for more.
     ///
-    /// A venue may also bound the span one request covers: the CLOB's is 14
-    /// days from `query.start`. An empty answer before `query.end` then means
-    /// no candles in that span, not none later, so read on from the end of the
-    /// span the venue covered (`query.start` + 14 days on the CLOB).
+    /// A venue may also bound the span one request covers (its module's docs
+    /// give the bound), so an empty answer before `query.end` does not mean
+    /// there are none later: read on from the end of the span the venue
+    /// covered.
     fn candles(
         &self,
         key: &MarketKey,
@@ -136,10 +136,9 @@ pub trait Funding: Send + Sync {
     /// in one request. Each carries the instrument's current funding interval,
     /// as a venue keeps no history of it.
     ///
-    /// A venue may also bound the span one request covers: perps' is 100 hours
-    /// less a minute from `start`. An empty answer before now then means no
-    /// settlements in that span, not none later, so read on from the end of the
-    /// span the venue covered (`start` + 100 hours less a minute on perps).
+    /// A venue may also bound the span one request covers (its module's docs
+    /// give the bound), so an empty answer before now does not mean there are
+    /// none later: read on from the end of the span the venue covered.
     fn funding_history(
         &self,
         key: &MarketKey,
