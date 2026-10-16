@@ -17,6 +17,9 @@
 //!   [`tag_for`] gives the error's class and fault flag, then panics as
 //!   `expect` does. [`fail`] does the same for an error already in hand, such
 //!   as one in a match arm or a source chain.
+//! - [`ClassifiedResultExt::or_fail`] and [`fail_classified`] do the same for
+//!   the [`ClassifiedError`](polyoxide_venue::ClassifiedError) a venue trait
+//!   returns, which does not implement `Classify`.
 //! - [`environmental`] and [`transient`] fail a test for a reason no error value
 //!   carries: the world has nothing to test today, or a stream ended without
 //!   saying why.
@@ -107,4 +110,6 @@ mod tag;
 pub use creds::{keychain, load_env, optional_env, Creds, Missing};
 pub use fixtures::Fixtures;
 pub use registration::Registration;
-pub use tag::{environmental, fail, tag_for, transient, ResultExt, Tag};
+pub use tag::{
+    environmental, fail, fail_classified, tag_for, transient, ClassifiedResultExt, ResultExt, Tag,
+};

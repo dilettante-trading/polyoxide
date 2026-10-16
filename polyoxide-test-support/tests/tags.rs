@@ -7,8 +7,10 @@ use std::fmt;
 use std::panic;
 
 use common::{is_child, run_child};
-use polyoxide_test_support::{environmental, fail, tag_for, transient, ResultExt, Tag};
-use polyoxide_venue::{Class, Classify};
+use polyoxide_test_support::{
+    environmental, fail, fail_classified, tag_for, transient, ClassifiedResultExt, ResultExt, Tag,
+};
+use polyoxide_venue::{Class, ClassifiedError, Classify};
 
 /// The class a child's error reports, set on the child's command.
 const CLASS: &str = "POLYOXIDE_TEST_SUPPORT_CLASS";
@@ -172,6 +174,24 @@ fn child_caught_then_untagged() {
         });
         assert!(caught.is_err());
         panic!("an untagged panic");
+    }
+}
+
+#[test]
+#[ignore = "a child process of the tests below"]
+fn child_or_fail_classified() {
+    if is_child() {
+        let classified: Result<(), ClassifiedError> = failed().map_err(ClassifiedError::from);
+        classified.or_fail("read the book");
+    }
+}
+
+#[test]
+#[ignore = "a child process of the tests below"]
+fn child_fail_classified() {
+    if is_child() {
+        let err = ClassifiedError::from(failed().unwrap_err());
+        fail_classified("read the book", &err);
     }
 }
 
@@ -349,4 +369,47 @@ fn a_child_does_nothing_unless_its_parent_started_it() {
     let stderr = String::from_utf8_lossy(&output.stderr);
     assert!(output.status.success(), "{stderr}");
     assert!(!stderr.contains("polyoxide-class="), "{stderr}");
+}
+
+#[test]
+fn a_classified_error_prints_every_class_as_its_tag() {
+    for child_name in ["child_or_fail_classified", "child_fail_classified"] {
+        for (name, fault, tag) in CLASSES {
+            let child = run_child(child_name, &described(name, fault), &[]);
+            assert!(
+                !child.passed,
+                "{child_name}, {name}, fault {fault}: the child did not fail"
+            );
+            assert_eq!(
+                child.tags(),
+                [format!("polyoxide-class={tag}")],
+                "{child_name}, {name}, fault {fault}:\n{}",
+                child.stderr
+            );
+        }
+    }
+}
+
+#[test]
+fn a_classified_error_panics_with_its_context_at_the_callers_line() {
+    let child = run_child("child_or_fail_classified", &described("decode", true), &[]);
+    assert!(
+        child
+            .first_message()
+            .starts_with("read the book: ClassifiedError"),
+        "{}",
+        child.stderr
+    );
+    let report = child.lines()[child.line_of("panicked at")];
+    assert!(report.contains("tests/tags.rs:"), "{report}");
+}
+
+#[test]
+fn both_or_fails_are_in_scope_at_once() {
+    let native: Result<u8, Failed> = Ok(1);
+    let classified: Result<u8, ClassifiedError> = Ok(2);
+    assert_eq!(
+        native.or_fail("native") + classified.or_fail("classified"),
+        3
+    );
 }
