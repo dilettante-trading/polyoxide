@@ -84,7 +84,7 @@ Nine crates, in publish order, each with the workspace crates its build needs. C
 - `polyoxide-ws` — The socket kit: the TLS install, `Backoff`, `Timing` and its setters, the deadline arithmetic, `WsError`, connect with a timeout, the bare tier, request/answer correlation, the generic `Supervisor` for a venue `Protocol`, and the scripted test server (feature `test-server`); needs: nothing in the workspace; depends on neither `polyoxide-core` nor `polyoxide-venue`, and builds only tokio, tokio-tungstenite, futures-util, thiserror, tracing and rustls
 - `polyoxide-binance` — Client library for Binance's APIs, one feature per module: `usdm` (USDⓈ-M futures market data, with its streams under `usdm-ws`); re-exported by the umbrella as `polyoxide::binance`; needs: `polyoxide-core` (under `usdm`, on by default), `polyoxide-venue`, `polyoxide-ws` (under `usdm-ws`)
 - `polyoxide-polymarket` — Client library for Polymarket's APIs, one feature per module: `clob` (order book, with its sockets under `clob-ws`), `gamma` (market data), `data` (user data, v1 and v2), `relay` (gasless transactions), `perps` (perpetual futures market data, with its sockets under `perps-ws`), `rtds` (crypto price streams) and `sports` (live sports scores), with the code the HTTP modules share in `shared` and, with `clob`, `gamma` and `data`, the unified `Polymarket` client; re-exported by the umbrella as `polyoxide::polymarket`; needs: `polyoxide-core` (under `clob`, `gamma`, `data`, `relay`, `perps`, on by default), `polyoxide-venue`, `polyoxide-ws` (under `clob-ws`, `perps-ws`, `rtds`, `sports`); only `clob` and `relay` build `alloy`, and only the HTTP modules build core, which `test_dep_allowlists.py` holds per feature; `clob` does not turn on `gamma`, and with both the CLOB client looks a proxy wallet up through Gamma; `rtds` and `sports` build no `polyoxide-core`, `reqwest` or `alloy`, so a credential-free feed builds no HTTP or signing stack; perps' auth and trading pending
-- `polyoxide` — The multi-venue umbrella: `polyoxide::polymarket` and `polyoxide::binance` behind features named for each venue and module, `polyoxide::venue` and a `prelude`; needs: `polyoxide-binance` (without default features, under `binance-usdm`), `polyoxide-polymarket` (without default features, under `polymarket-clob`, `polymarket-gamma`, `polymarket-data`, `polymarket-relay`, `polymarket-perps`, `polymarket-rtds`, `polymarket-sports`, on by default), `polyoxide-venue`
+- `polyoxide` — The multi-venue umbrella: `polyoxide::polymarket` and `polyoxide::binance` behind features named for each venue and module, `polyoxide::venue` with the market-data traits, `polyoxide::parse_key` and a `prelude`; needs: `polyoxide-binance` (without default features, under `binance-usdm`), `polyoxide-polymarket` (without default features, under `polymarket-clob`, `polymarket-gamma`, `polymarket-data`, `polymarket-relay`, `polymarket-perps`, `polymarket-rtds`, `polymarket-sports`, on by default), `polyoxide-venue`
 - `polyoxide-cli` — CLI tool for querying Polymarket APIs and Binance USDⓈ-M market data; needs: `polyoxide-binance` (with `usdm-ws`, without default features), `polyoxide-core` (with `keychain`, under `keychain`), `polyoxide-polymarket` (with `clob-ws`, `gamma`, `data`, `rtds`, `sports`, without default features), `polyoxide-venue` (under `keychain`); its `keychain` also turns on `polyoxide-polymarket`'s `relay` and `keychain`, for the relay's keychain service
 - `polyoxide-py` — Python bindings via PyO3 (`publish = false`, wheels on PyPI); needs: `polyoxide-polymarket` (with `clob`, `gamma`, `data`, without default features), `polyoxide-venue`
 - `polyoxide-test-support` — Test toolkit: the failure tags the nightly classifier reads, the credential loaders, and the agreement, fixture and soak helpers (`publish = false`); needs: `polyoxide-core` (with `keychain`), `polyoxide-venue`; a path-only dev-dependency of the crates whose tests use it; it names no venue
@@ -189,7 +189,15 @@ any `binance*` feature), `parse_key` (under the features that build a product's 
 `prelude`, and nothing else. The features `polymarket` and `binance`
 turn on their venue crate's defaults; each `<venue>-<module>` passes its module's feature through,
 a `-ws` one turning its module's on, relay's included; `keychain` stays a cross-venue extra, each venue adding its own
-`?/keychain`; there is no umbrella `specta`. Each passthrough names one type of its module through
+`?/keychain`; there is no umbrella `specta`. A module that implements the market-data traits
+(`polymarket-clob`, `polymarket-perps`, `binance-usdm`) also turns on `polyoxide-venue/market`, and
+one that only names keys (`polymarket-gamma`, `polymarket-data`) `polyoxide-venue/keys`, so
+`polyoxide::venue` carries the traits with every module that implements them, which a `const _`
+pins. `examples/venue_neutral.rs` reads the best bid and ask of the CLOB, perps and USDⓈ-M with one
+`best_bid_ask(&DynMarketData, &MarketKey)` and their errors with one classifier generic over
+`Classify` (CAP-5 and CAP-4); `tests/venue_neutral.rs` includes it by `#[path]` and runs both against
+mock servers for each module, and `tests/live_venue.rs` runs `best_bid_ask` against the live hosts.
+Each passthrough names one type of its module through
 the path it opens in a `const _` outside `cfg(test)`, so `cargo hack --each-feature` fails a
 re-export whose `cfg` leaves a feature out. The prelude re-exports a selection of the enabled
 modules' clients, errors and stream types under the umbrella's feature names, aliasing a stream's
@@ -629,7 +637,7 @@ account that does not exist until prader-rs #125 is resolved.
 
 ## Testing Conventions
 
-The CLI has live integration tests in `tests/live_api.rs`, and each module of a venue crate in `tests/live_<module>[_<suite>].rs` (`polyoxide-polymarket`'s `live_clob`, `live_clob_ws`, `live_clob_session_keys`, `live_gamma`, `live_data`, `live_relay`, `live_perps`, `live_perps_ws`, `live_rtds` and `live_sports`, and `polyoxide-binance`'s `live_usdm` and `live_usdm_ws`), gated with `#[ignore]` so CI skips them. They hit the real upstream APIs. Run with `-- --ignored` flag.
+The CLI has live integration tests in `tests/live_api.rs`, the umbrella in `tests/live_venue.rs` (the venue-neutral example against each venue), and each module of a venue crate in `tests/live_<module>[_<suite>].rs` (`polyoxide-polymarket`'s `live_clob`, `live_clob_ws`, `live_clob_session_keys`, `live_gamma`, `live_data`, `live_relay`, `live_perps`, `live_perps_ws`, `live_rtds` and `live_sports`, and `polyoxide-binance`'s `live_usdm` and `live_usdm_ws`), gated with `#[ignore]` so CI skips them. They hit the real upstream APIs. Run with `-- --ignored` flag.
 
 The read-only modules (gamma, data) use `Gamma::builder().build()` / `DataApi::builder().build()` directly. CLOB tests use `Clob::public()` for unauthenticated endpoints.
 
@@ -654,6 +662,7 @@ Two GitHub Actions workflows run at `0 6 * * *` UTC and on `workflow_dispatch`. 
   - `live-polyoxide-polymarket-perps` (15 min): `live_perps` with `--features perps`, `live_perps_ws` with `--features perps-ws`
   - `live-polyoxide-polymarket-rtds` (15 min): `live_rtds` with `--features rtds`
   - `live-polyoxide-polymarket-sports` (20 min): `live_sports` with `--features sports`
+  - `live-polyoxide-venue` (15 min): `live_venue` with `--features polymarket-clob,polymarket-perps,binance-usdm`
   - `live-polyoxide-cli-live` (15 min): `live_api`
   <!-- generated:end claude-nightly -->
   Failures are classified by `.github/scripts/classify_failures.py` from the tag line each failing test prints (below). A failure with no tag is `real`; nothing reads the panic text.

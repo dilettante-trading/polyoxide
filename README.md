@@ -12,7 +12,7 @@ over them, and a standalone CLI.
 <!-- generated:begin readme-crates -->
 | Crate | Description |
 |-------|-------------|
-| [polyoxide](./polyoxide) | The multi-venue umbrella: `polyoxide::polymarket` and `polyoxide::binance` behind features named for each venue and module, `polyoxide::venue` and a `prelude` |
+| [polyoxide](./polyoxide) | The multi-venue umbrella: `polyoxide::polymarket` and `polyoxide::binance` behind features named for each venue and module, `polyoxide::venue` with the market-data traits, `polyoxide::parse_key` and a `prelude` |
 | [polyoxide-binance](./polyoxide-binance) | Client library for Binance's APIs, one feature per module: `usdm` (USDⓈ-M futures market data, with its streams under `usdm-ws`); re-exported by the umbrella as `polyoxide::binance` |
 | [polyoxide-cli](./polyoxide-cli) | CLI tool for querying Polymarket APIs and Binance USDⓈ-M market data |
 | [polyoxide-core](./polyoxide-core) | Core utilities and shared types |

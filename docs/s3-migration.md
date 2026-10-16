@@ -1,0 +1,35 @@
+# polyoxide in stage S3: what each release adds
+
+Stage S3 of the multi-venue restructure is for additions (AD-16): the venue-neutral traits, a
+supervised clob socket, and the Kalshi skeleton. Its removals, which are few, are listed in
+[`s3-removals.md`](s3-removals.md). This page holds the consumer-impact note of each S3 piece of
+work, for the CHANGELOG section of the first release that ships it.
+
+## Epic 6: venue-neutral market data
+
+**Consumer impact: additive.** Nothing is removed or renamed, and no signature changes; code
+that builds on 0.40 builds unchanged.
+
+- `polyoxide-venue` gains two features. `keys`: `MarketKey`, written `venue.product:id`, which only
+  a product's `KeySpace` makes, so two keys are equal exactly when they name the same instrument;
+  `RawKey`, text split into its parts; `VenueId`, `ProductId` and `KeyError`. `market`: the
+  records (`Instrument`, `Quote`, `Book`, `Level`, `Trade`, `Candle`, `FundingRate`,
+  `EventGroup`), `Extensions` for each venue's own facts, `NotListed`, and the traits
+  `MarketData` (`instrument`, `quote`, `book`) and `Instruments`, `Trades`, `Candles`,
+  `Funding` and `EventGroups`, each with a `Dyn` wrapper. Every trait method returns
+  `ClassifiedError`.
+- `polyoxide-binance`: `usdm::key` (and `usdm::key(&symbol)`), and `usdm::venue`, whose
+  `Usdm` implements `MarketData`, `Instruments`, `Trades`, `Candles` and `Funding`.
+- `polyoxide-polymarket`: `shared::keys` (`TokenId`, `ClobKeys`, `PerpsKeys`); `perps::venue`,
+  whose `Perps` implements the same five; `clob::venue`, whose `Clob` implements `MarketData` and
+  `Candles`, `Trades` with `data`, and `EventGroups` with `gamma`.
+- `ClobBuilder::data` and `ClobError::Data` are new (`ClobError` is `#[non_exhaustive]`). With
+  the `data` feature, which `polyoxide-polymarket`'s defaults include, `ClobBuilder::build` also
+  builds a Data client for `Trades`, with the builder's timeout and pool size; it sends nothing
+  until a trait method asks. The unified `Polymarket` client hands clob its own Data client.
+- The umbrella: `polyoxide::parse_key`, the traits on `polyoxide::venue` with any module that
+  implements them, and `examples/venue_neutral.rs`, one `best_bid_ask` and one error classifier
+  that run unchanged on the CLOB, perps and USDⓈ-M.
+
+No dependency tree changes: `market` builds only rust_decimal, serde and dynosaur, which every
+module that turns it on already builds, and the socket-only modules turn on neither feature.
