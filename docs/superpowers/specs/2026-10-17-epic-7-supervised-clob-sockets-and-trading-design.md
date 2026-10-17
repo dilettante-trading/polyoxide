@@ -707,10 +707,12 @@ address is its own. The cases:
   - a Deposit Wallet account's order (type 3): the posted body carries signature type 3, the
     wallet as maker and signer and the signature `sign_order_as` gives, and the returned id is
     `order_hash`'s.
-- **`order_hash`**, in `eip712.rs`'s tests (appended): for `order_vectors.json`'s `v1_exchange`
+- **`order_hash`**, in `eip712.rs`'s tests (appended): for `order_vectors.json`'s `v2_exchange`
   order (`tests/fixtures/clob/session_keys/`) it equals
   `keccak256(0x1901 ‖ app_domain_separator ‖ contents_hash)`, the two py-sdk values that file
-  records, and for a plain order it equals `compute_order_digest`'s digest.
+  records, after asserting that `exchange_address(137, false)` is that vector's `exchange` (the
+  chain table resolves to the V2 exchange, so `v1_exchange`'s separator cannot compose with it);
+  and for a plain order it equals `compute_order_digest`'s digest.
 - **Refusals that send nothing:** reduce-only, an undeclared extension, post-only with IOC, an
   off-tick price, a size with three decimals, a key of another product, and a duplicate client id.
   These use mocks that `expect(0)` with `match_query(Any)` on query routes.
