@@ -449,8 +449,9 @@ mod tests {
     use futures_util::StreamExt;
     use polyoxide_venue::Class;
     use polyoxide_ws::{
-        test_server::{next_event, next_item, Script, ScriptedServer},
+        test_server::{next_event, next_item, Script, ScriptedServer, WINDOW},
         tungstenite::protocol::{frame::coding::CloseCode, CloseFrame},
+        Mode,
     };
     use serde_json::{json, Value};
 
@@ -1184,8 +1185,42 @@ mod tests {
         assert_eq!(protocol().recover(&err), Recovery::Stop);
     }
 
+    #[tokio::test]
+    async fn a_change_on_a_connection_the_server_closed_is_recorded_and_answered_ok() {
+        // The server closes after the first frame. The connection is read to
+        // its end, so the send below fails; the change must still be recorded
+        // (the replay carries it) and answered `Ok`.
+        let server =
+            ScriptedServer::start(vec![Script::hold().after_first_frame().then_close()]).await;
+        let socket = dial(&server.url, Duration::from_secs(2))
+            .await
+            .expect("dials");
+        let mut connection = Connection::new(socket, Mode::All);
+        connection
+            .send(Message::Text("first".into()))
+            .await
+            .expect("the first frame is sent");
+        while tokio::time::timeout(WINDOW, connection.next())
+            .await
+            .expect("the connection ends")
+            .is_some()
+        {}
+
+        let mut protocol = ClobUserProtocol::new(server.url.clone(), credentials());
+        let mut membership = Some(ids(&["a"]));
+        let result = protocol
+            .apply(
+                &mut connection,
+                &mut membership,
+                UserChange::Subscribe(ids(&["b"])),
+            )
+            .await;
+        assert!(result.is_ok(), "{result:?}");
+        assert_eq!(membership, Some(ids(&["a", "b"])));
+    }
+
     #[test]
-    fn any_other_close_decodes_to_nothing_and_ends_through_the_kit() {
+    fn any_other_close_decodes_to_nothing() {
         let mut protocol = protocol();
         let closes = [
             close(CloseCode::Away, "going away"),
