@@ -18,10 +18,14 @@ use super::{
 };
 
 mod market;
+mod user;
 
 pub use market::{
     ClobMarketProtocol, MarketChange, MarketEvent, MarketMembership, MarketWsBuilder,
     SupervisedMarketWs,
+};
+pub use user::{
+    ClobUserProtocol, SupervisedUserWs, UserChange, UserEvent, UserMembership, UserWsBuilder,
 };
 
 /// Why a supervised connection went down, in a `Disconnected` event.

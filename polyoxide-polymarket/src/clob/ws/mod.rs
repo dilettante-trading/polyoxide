@@ -178,6 +178,9 @@ pub use supervised::{
     ClobMarketProtocol, DisconnectReason, MarketChange, MarketEvent, MarketMembership,
     MarketWsBuilder, SupervisedMarketWs,
 };
+pub use supervised::{
+    ClobUserProtocol, SupervisedUserWs, UserChange, UserEvent, UserMembership, UserWsBuilder,
+};
 pub use user::{MakerOrder, OrderEventType, OrderMessage, TradeMessage, TradeStatus, UserMessage};
 
 /// All possible WebSocket channel messages
