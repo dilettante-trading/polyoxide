@@ -1478,6 +1478,25 @@ async fn a_killed_order_frees_its_client_order_id() {
 }
 
 #[tokio::test]
+async fn a_post_whose_body_does_not_decode_keeps_its_client_order_id_held() {
+    let mut server = Server::new_async().await;
+    // The venue may have taken the order: a 2xx whose body is not an answer.
+    let post = post_ok(&mut server, r#"{"unexpected": true}"#, 1).await;
+    let clob = client(&server);
+    let mut request = with_options(buy("0.52", "10"), declared(TickSize::Hundredth));
+    request.client_order_id = Some(ClientOrderId::new("mine-1"));
+
+    let err = clob.place(request.clone()).await.unwrap_err();
+    let again = clob.place(request).await.unwrap_err();
+
+    assert_eq!(err.class, Class::Decode, "{err}");
+    assert_eq!(again.class, Class::InvalidRequest, "{again}");
+    assert!(again.to_string().contains("already in use"), "{again}");
+    // The second place sent nothing.
+    post.assert_async().await;
+}
+
+#[tokio::test]
 async fn a_client_without_an_account_refuses_to_place() {
     let err = Clob::public().place(buy("0.52", "10")).await.unwrap_err();
 

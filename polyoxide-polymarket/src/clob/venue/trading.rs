@@ -328,11 +328,15 @@ fn settled(time_in_force: TimeInForce, matched: Decimal, size: Decimal) -> Order
 }
 
 /// Drops the ledger entry of an order that ended at once or never existed.
-/// After a `Network` or `Unavailable` failure the post may have reached the
-/// venue, so the entry stays until the bound evicts it.
+/// After a `Network`, `Unavailable` or `Decode` failure (D18), the last a 2xx
+/// whose body did not decode, the post may have reached the venue, so the
+/// entry stays until the bound evicts it.
 fn tidy(ids: &Mutex<ClientIds>, id: &OrderId, result: &Result<Order, ClassifiedError>) {
     let drop_entry = match result {
-        Err(err) => !matches!(err.class, Class::Network | Class::Unavailable { .. }),
+        Err(err) => !matches!(
+            err.class,
+            Class::Network | Class::Unavailable { .. } | Class::Decode
+        ),
         Ok(order) => matches!(
             order.status,
             OrderStatus::Killed { .. } | OrderStatus::Filled
@@ -1080,6 +1084,20 @@ mod place_tests {
 
             assert_eq!(lock(&ids).holder(&client(1)).is_some(), kept, "{label}");
         }
+    }
+
+    #[test]
+    fn the_ledger_keeps_an_order_whose_answer_did_not_decode() {
+        let ids = Mutex::new(ClientIds::default());
+        lock(&ids).claim(order(1), client(1)).unwrap();
+
+        tidy(
+            &ids,
+            &order(1),
+            &Err(ClassifiedError::new(Class::Decode, "boom")),
+        );
+
+        assert!(lock(&ids).holder(&client(1)).is_some());
     }
 
     #[test]
