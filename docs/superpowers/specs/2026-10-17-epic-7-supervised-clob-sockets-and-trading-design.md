@@ -731,7 +731,10 @@ address is its own. The cases:
 **9.2 Trading.** A new target, `polyoxide-polymarket/tests/live_clob_trading.rs`, with
 `[[test]] required-features = ["clob-ws", "data", "gamma"]` and
 `[package.metadata.polyoxide.live.live_clob_trading]`: suite `clob`, timeout 15, features
-`["clob-ws", "data", "gamma"]`, and the secrets `live_clob` uses. `python3 scripts/gen_registry.py --write`
+`["clob-ws", "data", "gamma"]`, and as its secrets exactly the names its tests pass to the credential
+loaders, since `.github/scripts/tests/test_live_registry.py` (`test_scanned_env_names_equal_declared_secrets`)
+fails a target whose declared secrets differ from the names it reads; the `clob` job's union still
+carries every secret `live_clob` reads. `python3 scripts/gen_registry.py --write`
 regenerates the nightly regions. Its tests, all `#[ignore]`d and auth-gated without credentials:
 
 - **Reads:** `open_orders(None)`, `positions()` and `balances()` through `Arc<DynTrading<'static>>`
