@@ -51,7 +51,7 @@ FR7 (CAP-7):
 - Each venue is one crate with feature-gated modules: `polyoxide-polymarket` holds clob, gamma, data, relay, perps, rtds and sports; `polyoxide-binance` holds usdm.
 - The `polyoxide` umbrella is multi-venue.
 - The CLI is `polyoxide <venue> <module> <verb…>`, with one streaming runner and one `OutputFormat`.
-- Python exposes per-venue submodules.
+- ~~Python exposes per-venue submodules.~~ Dropped on 2026-10-15 (the user's call, spine amendment A5-1): the Python bindings keep v0.39.0's module names.
 - README, CLAUDE.md and `docs/specs/INDEX.md` describe a multi-venue toolkit.
 - A grep gate finds no venue identifiers in the foundation crates.
 
@@ -192,7 +192,7 @@ FR3: Epic 4 - socket kit and Supervisor in polyoxide-ws; credential-free builds;
 FR4: Epic 2 - classification interface over existing enums; Epic 3 - HTTP enums reshaped; Epic 4 - socket enums reshaped
 FR5: Epic 6 - MarketData and capability traits, keys, extensions, three implementations
 FR6: Epic 7 - Trading trait, lossless events, Killed status, Kalshi mapping table
-FR7: Epic 5 - one crate per venue, multi-venue umbrella, CLI and Python on the venue axis, grep gate
+FR7: Epic 5 - one crate per venue, multi-venue umbrella, CLI on the venue axis, grep gate (Python dropped, A5-1)
 FR8: Epic 1 - Cargo-metadata registration, generator, publish-order script; Epic 2 - classifier reads tags; Epic 4 - S1 release puts the CLI on crates.io; Epic 5 - metadata entries move with consolidation
 FR9: Epic 2 - polyoxide-test-support helpers and capture_common.py
 FR10: Epic 3 - reqwest ownership and per-module header pins in two builds; Epic 4 - tungstenite/rustls ownership; Epic 5 - header pins under polyoxide --features full
@@ -221,7 +221,7 @@ Stage S1, after Story 2.6; runs in parallel with Epic 3, and its last story cuts
 **FRs covered:** FR3, FR4 (socket enums), FR8 (S1 release), FR10 (socket transport), FR14 (W rows), FR15 (R1, R2, R3, R9)
 
 ### Epic 5: One crate per venue, multi-venue facades
-Stage S2, one loom integration session with a draft PR to `main`. Consumers find each venue under one name: `polyoxide-polymarket` and `polyoxide-binance`, a multi-venue `polyoxide`, `polyoxide <venue> <module> <verb>`, and `polyoxide.polymarket.*`. The epic also produces the rename manifest, the tombstone releases and the venue-identifier grep gate.
+Stage S2, one loom integration session with a draft PR to `main`. Consumers find each venue under one name: `polyoxide-polymarket` and `polyoxide-binance`, a multi-venue `polyoxide` and `polyoxide <venue> <module> <verb>`. The epic also produces the rename manifest, the tombstone releases and the venue-identifier grep gate.
 **FRs covered:** FR7, FR8 (metadata moves), FR14 (C rows), FR15 (R6)
 
 ### Epic 6: Venue-neutral market data
@@ -1176,7 +1176,7 @@ So that I adapt my error handling and removed imports once, before the S2 rename
 
 ## Epic 5: One crate per venue, multi-venue facades
 
-Consumers find each venue under one name: `polyoxide-polymarket` and `polyoxide-binance`, a multi-venue `polyoxide`, `polyoxide <venue> <module> <verb>`, and `polyoxide.polymarket.*`. Retired crates point to their new home. This is stage S2. Every story merges into one loom integration session, and nothing reaches `main` until Story 5.12. Every moved test shows an empty normalized body diff, and every rename gets a row in the rename manifest.
+Consumers find each venue under one name: `polyoxide-polymarket` and `polyoxide-binance`, a multi-venue `polyoxide` and `polyoxide <venue> <module> <verb>`. Retired crates point to their new home. This is stage S2. Every story merges into one loom integration session, and nothing reaches `main` until Story 5.12. Every moved test shows an empty normalized body diff, and every rename gets a row in the rename manifest.
 
 ### Story 5.1: Open the S2 integration session
 
@@ -1341,21 +1341,7 @@ So that a new venue's credentials need no new CLI plumbing.
 **And** the existing keychain service names keep working
 **And** parse tests cover every kind and verb
 
-### Story 5.10: Python on the venue axis
-
-As a Python user,
-I want Polymarket's clients under `polyoxide.polymarket`,
-So that the package can grow to more venues without name collisions.
-
-**Implements:** FR7
-
-**Acceptance Criteria:**
-
-**Given** the Python package
-**When** it is rebuilt
-**Then** it exposes `polyoxide.polymarket.{clob, gamma, data}` and `polyoxide.polymarket.data.v2`, with no `Clob*` collision prefixes
-**And** `test_stub_consistency.py`, `every_v2_getter_reads_its_own_key` and the offline suites pass on the new paths
-**And** `pyproject.toml` describes a multi-venue package
+**Story 5.10, Python on the venue axis, is dropped.** The user dropped it on 2026-10-15, and spine amendment A5-1 records it. No Python consumer has asked for per-venue modules, and the bindings already build on `polyoxide-polymarket`, so the S2 wheels keep v0.39.0's module names (`polyoxide`, `polyoxide.v2`, and the `Clob*` classes). The number 5.10 is not reused.
 
 ### Story 5.11: Docs and standing rules for a multi-venue toolkit
 
@@ -1370,7 +1356,7 @@ So that no standing rule sends me to code that no longer exists.
 **Given** README, CLAUDE.md, `docs/specs/INDEX.md` and SELF-HEALING.md
 **When** the generator runs and the prose is updated
 **Then** they describe a multi-venue toolkit
-**And** CLAUDE.md's rules superseded in S2 are rewritten in their own sections: Binance outside the umbrella, clob's `ws` feature, `polyoxide.v2`, the `live_api`/`mock_api` naming, and Module Organization
+**And** CLAUDE.md's rules superseded in S2 are rewritten in their own sections: Binance outside the umbrella, clob's `ws` feature, the `live_api`/`mock_api` naming, and Module Organization
 **And** `docs/ARCHITECTURE.md` is regenerated and states that the workspace is in stage S2
 **And** nightly issues whose test identity changed are closed or renamed
 

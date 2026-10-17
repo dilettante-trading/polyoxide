@@ -37,60 +37,18 @@ jobs:
   # in .github/actions/live-suite.
   #
   # `flags` selects each crate's live test binaries (and any features
-  # they need). polyoxide-clob's, polyoxide-perps's and polyoxide-binance's
-  # WebSocket tests live in a separate `live_ws` binary behind the
-  # non-default `ws` feature.
+  # they need). polyoxide-polymarket's clob and perps WebSocket tests live
+  # in separate `live_clob_ws` and `live_perps_ws` binaries behind the
+  # non-default `clob-ws` and `perps-ws` features, and polyoxide-binance's
+  # in `live_usdm_ws` behind `usdm-ws`.
   #
-  # `live_session_keys` gets its own job because its registry and
+  # `live_clob_session_keys` gets its own job because its registry and
   # transaction waits can legitimately take ~25 minutes, which would
-  # kill live_api/live_ws with it under a shared 15-minute budget.
+  # kill live_clob/live_clob_ws with it under a shared 15-minute budget.
   # `suite` keeps the two clob jobs' artifact names distinct.
   # generated:begin nightly-live-jobs
-  live-polyoxide-data-live:
-    name: Live tests (polyoxide-data, live)
-    runs-on: ubuntu-latest
-    timeout-minutes: 15
-    steps:
-      - uses: actions/checkout@v5
-      - uses: ./.github/actions/live-suite
-        with:
-          crate: polyoxide-data
-          suite: live
-          flags: "--test live_api"
-
-  live-polyoxide-gamma-live:
-    name: Live tests (polyoxide-gamma, live)
-    runs-on: ubuntu-latest
-    timeout-minutes: 15
-    steps:
-      - uses: actions/checkout@v5
-      - uses: ./.github/actions/live-suite
-        with:
-          crate: polyoxide-gamma
-          suite: live
-          flags: "--test live_api"
-
-  live-polyoxide-relay-live:
-    name: Live tests (polyoxide-relay, live)
-    runs-on: ubuntu-latest
-    timeout-minutes: 15
-    env:
-      BUILDER_API_KEY: ${{ secrets.BUILDER_API_KEY }}
-      BUILDER_PASS_PHRASE: ${{ secrets.BUILDER_PASS_PHRASE }}
-      BUILDER_SECRET: ${{ secrets.BUILDER_SECRET }}
-      POLYMARKET_PRIVATE_KEY: ${{ secrets.POLYMARKET_PRIVATE_KEY }}
-      RELAYER_API_KEY: ${{ secrets.RELAYER_API_KEY }}
-      RELAYER_API_KEY_ADDRESS: ${{ secrets.RELAYER_API_KEY_ADDRESS }}
-    steps:
-      - uses: actions/checkout@v5
-      - uses: ./.github/actions/live-suite
-        with:
-          crate: polyoxide-relay
-          suite: live
-          flags: "--test live_api"
-
-  live-polyoxide-binance-live:
-    name: Live tests (polyoxide-binance, live)
+  live-polyoxide-binance-usdm:
+    name: Live tests (polyoxide-binance, usdm)
     runs-on: ubuntu-latest
     timeout-minutes: 15
     steps:
@@ -98,11 +56,11 @@ jobs:
       - uses: ./.github/actions/live-suite
         with:
           crate: polyoxide-binance
-          suite: live
-          flags: "--features ws --test live_api --test live_ws"
+          suite: usdm
+          flags: "--no-default-features --features usdm,usdm-ws --test live_usdm --test live_usdm_ws"
 
-  live-polyoxide-clob-live:
-    name: Live tests (polyoxide-clob, live)
+  live-polyoxide-polymarket-clob:
+    name: Live tests (polyoxide-polymarket, clob)
     runs-on: ubuntu-latest
     timeout-minutes: 15
     env:
@@ -115,12 +73,12 @@ jobs:
       - uses: actions/checkout@v5
       - uses: ./.github/actions/live-suite
         with:
-          crate: polyoxide-clob
-          suite: live
-          flags: "--features ws --test live_api --test live_ws"
+          crate: polyoxide-polymarket
+          suite: clob
+          flags: "--no-default-features --features clob,clob-ws,gamma --test live_clob --test live_clob_ws"
 
-  live-polyoxide-clob-session-keys:
-    name: Live tests (polyoxide-clob, session-keys)
+  live-polyoxide-polymarket-clob-session-keys:
+    name: Live tests (polyoxide-polymarket, clob-session-keys)
     runs-on: ubuntu-latest
     timeout-minutes: 40
     env:
@@ -134,45 +92,88 @@ jobs:
       - uses: actions/checkout@v5
       - uses: ./.github/actions/live-suite
         with:
-          crate: polyoxide-clob
-          suite: session-keys
-          flags: "--test live_session_keys"
+          crate: polyoxide-polymarket
+          suite: clob-session-keys
+          flags: "--no-default-features --features clob,gamma,relay --test live_clob_session_keys"
 
-  live-polyoxide-perps-live:
-    name: Live tests (polyoxide-perps, live)
+  live-polyoxide-polymarket-gamma:
+    name: Live tests (polyoxide-polymarket, gamma)
     runs-on: ubuntu-latest
     timeout-minutes: 15
     steps:
       - uses: actions/checkout@v5
       - uses: ./.github/actions/live-suite
         with:
-          crate: polyoxide-perps
-          suite: live
-          flags: "--features ws --test live_api --test live_ws"
+          crate: polyoxide-polymarket
+          suite: gamma
+          flags: "--no-default-features --features gamma --test live_gamma"
 
-  live-polyoxide-rtds-live:
-    name: Live tests (polyoxide-rtds, live)
+  live-polyoxide-polymarket-data:
+    name: Live tests (polyoxide-polymarket, data)
     runs-on: ubuntu-latest
     timeout-minutes: 15
     steps:
       - uses: actions/checkout@v5
       - uses: ./.github/actions/live-suite
         with:
-          crate: polyoxide-rtds
-          suite: live
-          flags: "--test live_api"
+          crate: polyoxide-polymarket
+          suite: data
+          flags: "--no-default-features --features data --test live_data"
 
-  live-polyoxide-sports-live:
-    name: Live tests (polyoxide-sports, live)
+  live-polyoxide-polymarket-relay:
+    name: Live tests (polyoxide-polymarket, relay)
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    env:
+      BUILDER_API_KEY: ${{ secrets.BUILDER_API_KEY }}
+      BUILDER_PASS_PHRASE: ${{ secrets.BUILDER_PASS_PHRASE }}
+      BUILDER_SECRET: ${{ secrets.BUILDER_SECRET }}
+      POLYMARKET_PRIVATE_KEY: ${{ secrets.POLYMARKET_PRIVATE_KEY }}
+      RELAYER_API_KEY: ${{ secrets.RELAYER_API_KEY }}
+      RELAYER_API_KEY_ADDRESS: ${{ secrets.RELAYER_API_KEY_ADDRESS }}
+    steps:
+      - uses: actions/checkout@v5
+      - uses: ./.github/actions/live-suite
+        with:
+          crate: polyoxide-polymarket
+          suite: relay
+          flags: "--no-default-features --features relay --test live_relay"
+
+  live-polyoxide-polymarket-perps:
+    name: Live tests (polyoxide-polymarket, perps)
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v5
+      - uses: ./.github/actions/live-suite
+        with:
+          crate: polyoxide-polymarket
+          suite: perps
+          flags: "--no-default-features --features perps,perps-ws --test live_perps --test live_perps_ws"
+
+  live-polyoxide-polymarket-rtds:
+    name: Live tests (polyoxide-polymarket, rtds)
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v5
+      - uses: ./.github/actions/live-suite
+        with:
+          crate: polyoxide-polymarket
+          suite: rtds
+          flags: "--no-default-features --features rtds --test live_rtds"
+
+  live-polyoxide-polymarket-sports:
+    name: Live tests (polyoxide-polymarket, sports)
     runs-on: ubuntu-latest
     timeout-minutes: 20
     steps:
       - uses: actions/checkout@v5
       - uses: ./.github/actions/live-suite
         with:
-          crate: polyoxide-sports
-          suite: live
-          flags: "--test live_api"
+          crate: polyoxide-polymarket
+          suite: sports
+          flags: "--no-default-features --features sports --test live_sports"
 
   live-polyoxide-cli-live:
     name: Live tests (polyoxide-cli, live)
@@ -184,22 +185,22 @@ jobs:
         with:
           crate: polyoxide-cli
           suite: live
-          flags: "--test live_api"
+          flags: "--no-default-features --test live_api"
   # generated:end nightly-live-jobs
 
   aggregate:
     name: Aggregate and report
     # generated:begin nightly-aggregate-needs
     needs:
-      - live-polyoxide-data-live
-      - live-polyoxide-gamma-live
-      - live-polyoxide-relay-live
-      - live-polyoxide-binance-live
-      - live-polyoxide-clob-live
-      - live-polyoxide-clob-session-keys
-      - live-polyoxide-perps-live
-      - live-polyoxide-rtds-live
-      - live-polyoxide-sports-live
+      - live-polyoxide-binance-usdm
+      - live-polyoxide-polymarket-clob
+      - live-polyoxide-polymarket-clob-session-keys
+      - live-polyoxide-polymarket-gamma
+      - live-polyoxide-polymarket-data
+      - live-polyoxide-polymarket-relay
+      - live-polyoxide-polymarket-perps
+      - live-polyoxide-polymarket-rtds
+      - live-polyoxide-polymarket-sports
       - live-polyoxide-cli-live
     # generated:end nightly-aggregate-needs
     if: always()
@@ -236,7 +237,26 @@ jobs:
           echo "any_real_failure=$ANY_REAL_FAILURE" >> "$GITHUB_OUTPUT"
           echo "report_file=$REPORT_FILE" >> "$GITHUB_OUTPUT"
 
+      # Off main no issue is filed, and the live jobs pass whatever their tests
+      # did, so this step is where a dispatch elsewhere shows its real failures:
+      # the report in the run's summary, and a red run.
+      - name: Report real failures off main
+        if: github.ref != 'refs/heads/main'
+        env:
+          ANY_REAL_FAILURE: ${{ steps.report.outputs.any_real_failure }}
+          REPORT_FILE: ${{ steps.report.outputs.report_file }}
+        run: |
+          cat "$REPORT_FILE" >> "$GITHUB_STEP_SUMMARY"
+          if [ "$ANY_REAL_FAILURE" = "true" ]; then
+            echo "::error::Real failures; the summary has the report."
+            exit 1
+          fi
+
       - name: File or update tracking issue
+        # The one tracking issue is main's. A dispatch on another branch, such as
+        # an integration branch before it merges, still runs, classifies and
+        # uploads every job's report, but files, comments on and closes nothing.
+        if: github.ref == 'refs/heads/main'
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           # Every needed job succeeded. `needs` is generated with the jobs, so a

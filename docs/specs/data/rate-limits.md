@@ -37,7 +37,7 @@ GET https://data-api.polymarket.com/ok    -> 404  404 page not found
 
 The `/ok` spelling is boilerplate repeated into every surface's table on that
 page. Only `clob.polymarket.com` actually serves `/ok`. The cap belongs to `/`,
-which is the route this host answers on and the one `polyoxide-data` requests.
+which is the route this host answers on and the one the `data` module requests.
 
 Attaching the cap to `/ok` instead is not a harmless spelling difference: it
 leaves the real health route governed only by the 1,000/10s general bucket, a
@@ -45,7 +45,7 @@ leaves the real health route governed only by the 1,000/10s general bucket, a
 
 ## Sibling hosts
 
-Two namespaces target sibling hosts that share one `RateLimiter` (`polymarket::data_limits()`) with the main
+Two namespaces target sibling hosts that share one `RateLimiter` (`polyoxide_polymarket::shared::data_limits()`) with the main
 Data API client (see `HttpClient::with_base_url`).
 
 | Host | Namespace | Limit | Window |
@@ -115,7 +115,7 @@ arithmetic alone still failed. `quota()` therefore also reserves a tenth of
 every published count, pacing this route at 13.4 req/s.
 
 Measured against the live host with
-`polyoxide-data/examples/closed_positions_soak.rs`, whose `--rate` flag drives a
+`polyoxide-polymarket/examples/closed_positions_soak.rs`, whose `--rate` flag drives a
 chosen rate (omit it to exercise the shipped limiter):
 
 | Shape | Rate | Share of published | Result |

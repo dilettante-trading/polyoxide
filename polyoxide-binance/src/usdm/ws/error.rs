@@ -168,7 +168,7 @@ impl From<WsError> for UsdmWsError {
 ///
 /// Every error is a fault except a handshake refused with `451`: Binance does
 /// not serve the caller's region, a defined outcome, as
-/// [`BinanceError::RegionBlocked`](crate::BinanceError::RegionBlocked) is on
+/// [`UsdmError::RegionBlocked`](crate::usdm::UsdmError::RegionBlocked) is on
 /// REST. A `418` ban and a `403` from the firewall stay faults. A refused
 /// handshake's `Retry-After`, of any status, is the error's wait.
 ///
@@ -380,7 +380,7 @@ mod tests {
             // A ban the client earned by overspending its weight.
             (418, Class::Restricted, true),
             (429, Class::RateLimited { retry_after: None }, true),
-            // A region block, as `BinanceError::RegionBlocked` is on REST.
+            // A region block, as `UsdmError::RegionBlocked` is on REST.
             (451, Class::Restricted, false),
             (503, Class::Unavailable { code: None }, true),
             (200, Class::Decode, true),

@@ -9,6 +9,9 @@ break at their old paths, with no shim or re-export (AD-16), so prader-rs and ev
 consumer migrates from this list. [`s1-migration.md`](s1-migration.md) explains the patterns
 behind it, the shapes that changed, and the behaviour that changed without a removal.
 
+This list is final: S1 shipped as v0.39.0, the removals job below ran until then, and stage
+S2 lists its moves and removals in [`rename-manifest.md`](rename-manifest.md) instead.
+
 CI's removals job runs `python3 scripts/api_removals.py check --baseline v0.38.1`. It fails
 on any removal that cargo-semver-checks reports and this list does not hold, and on any path
 under "Doc-hidden paths consumers import" that no longer compiles. The list is cumulative

@@ -591,7 +591,7 @@ async fn a_request_parts_timeout_bounds_its_attempt() {
 
 #[tokio::test]
 async fn a_request_parts_timeout_outlasts_the_client_s() {
-    // Relay's session-signer posts wait 300s on a client whose own timeout is
+    // A venue's session-signer posts wait 300s on a client whose own timeout is
     // 30s: the request's timeout replaces the client's, longer as well as
     // shorter. A server that answers after 400ms, a client that gives up
     // after 100ms, and a request allowed 5s.

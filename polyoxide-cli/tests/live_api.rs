@@ -3,12 +3,12 @@
 
 use color_eyre::Report;
 use polyoxide_binance::usdm::ws::UsdmWsError;
-use polyoxide_cli::commands::clob::prices::download::DownloadArgs;
-use polyoxide_cli::commands::clob::prices::types::OutputFormat;
-use polyoxide_clob::{Clob, ClobError};
-use polyoxide_data::DataApiError;
-use polyoxide_gamma::GammaError;
-use polyoxide_sports::SportsError;
+use polyoxide_cli::commands::polymarket::clob::prices::download::DownloadArgs;
+use polyoxide_cli::commands::polymarket::clob::prices::types::OutputFormat;
+use polyoxide_polymarket::clob::{Clob, ClobError};
+use polyoxide_polymarket::data::DataError;
+use polyoxide_polymarket::gamma::GammaError;
+use polyoxide_polymarket::sports::SportsError;
 use polyoxide_test_support::fail;
 
 /// Fails the test with an error a CLI command returned. A command wraps a
@@ -22,7 +22,7 @@ fn fail_report(ctx: &str, report: &Report) -> ! {
     if let Some(err) = report.downcast_ref::<GammaError>() {
         fail(ctx, err);
     }
-    if let Some(err) = report.downcast_ref::<DataApiError>() {
+    if let Some(err) = report.downcast_ref::<DataError>() {
         fail(ctx, err);
     }
     if let Some(err) = report.downcast_ref::<SportsError>() {
@@ -79,8 +79,8 @@ async fn live_download_one_market() {
 
 mod data_v2 {
     use clap::Parser;
-    use polyoxide_cli::commands::DataCommand;
-    use polyoxide_data::DataApi;
+    use polyoxide_cli::commands::polymarket::data::DataCommand;
+    use polyoxide_polymarket::data::DataApi;
     use polyoxide_test_support::ResultExt;
     use serde_json::Value;
 
@@ -180,12 +180,12 @@ mod data_v2 {
     }
 }
 
-// ── ws sports ────────────────────────────────────────────────────────
+// ── polymarket sports stream ─────────────────────────────────────────
 
 mod ws_sports {
     use clap::Parser;
-    use polyoxide_cli::commands::ws::sports::{run_with, SportsArgs};
-    use polyoxide_sports::SportsWsBuilder;
+    use polyoxide_cli::commands::polymarket::sports::{run_with, SportsArgs};
+    use polyoxide_polymarket::sports::SportsWsBuilder;
     use polyoxide_test_support::{environmental, fail};
     use serde_json::Value;
 
@@ -225,12 +225,12 @@ mod ws_sports {
     }
 }
 
-// ── ws binance ───────────────────────────────────────────────────────
+// ── binance usdm stream ──────────────────────────────────────────────
 
 mod ws_binance {
     use clap::Parser;
     use polyoxide_binance::usdm::ws::{UsdmWsBuilder, UsdmWsError};
-    use polyoxide_cli::commands::ws::binance::{run_with, BinanceArgs};
+    use polyoxide_cli::commands::binance::usdm::{run_with, BinanceArgs};
     use polyoxide_test_support::fail;
     use serde_json::Value;
 

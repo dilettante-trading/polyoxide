@@ -1,6 +1,6 @@
 use mockito::{Matcher, Server};
-use polyoxide_cli::commands::clob::prices::download::DownloadArgs;
-use polyoxide_clob::ClobBuilder;
+use polyoxide_cli::commands::polymarket::clob::prices::download::DownloadArgs;
+use polyoxide_polymarket::clob::ClobBuilder;
 
 fn base_args(out: &std::path::Path) -> DownloadArgs {
     DownloadArgs {
@@ -18,7 +18,7 @@ fn base_args(out: &std::path::Path) -> DownloadArgs {
         start_ts: None,
         end_ts: None,
         out: out.to_path_buf(),
-        format: polyoxide_cli::commands::clob::prices::types::OutputFormat::Csv,
+        format: polyoxide_cli::commands::polymarket::clob::prices::types::OutputFormat::Csv,
         concurrency: 2,
         overwrite: false,
         fail_fast: false,

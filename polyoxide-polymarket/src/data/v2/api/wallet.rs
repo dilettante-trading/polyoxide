@@ -1,0 +1,248 @@
+//! `wallet` routes: approvals, positions, combo positions, PnL, stats, volume
+//! and portfolio value.
+
+use polyoxide_core::{csv, QueryBuilder, Request};
+
+use crate::data::{
+    types::SortDirection,
+    v2::{
+        envelope::{Envelope, Paged},
+        types::{
+            Approvals, ComboPosition, ComboPositionSortBy, ComboPositionStatus, FilterType,
+            PnlFidelity, PnlInterval, PortfolioValue, Position, PositionAnchor, PositionSortBy,
+            PositionStatus, UserPnlSeries, UserStats, UserVolume,
+        },
+        DataV2,
+    },
+    DataError,
+};
+
+impl DataV2 {
+    /// `GET /v2/approvals`: a wallet's Polygon token and operator approvals.
+    pub fn approvals(&self, user: impl Into<String>) -> GetApprovals {
+        GetApprovals {
+            request: Request::new(self.http_client.clone(), "/v2/approvals")
+                .query("user", user.into()),
+        }
+    }
+
+    /// `GET /v2/positions`: positions across their whole lifecycle.
+    ///
+    /// Pass a wallet (`"0x…"` converts into [`PositionAnchor::User`]), a market,
+    /// or both. [`ListPositions::status`] selects open, redeemable or closed.
+    pub fn positions(&self, anchor: impl Into<PositionAnchor>) -> ListPositions {
+        let request = Paged::new(Request::new(self.http_client.clone(), "/v2/positions"));
+        let inner = match anchor.into() {
+            PositionAnchor::User(user) => request.query("user", user),
+            PositionAnchor::Condition(condition) => request.query("condition", condition),
+            PositionAnchor::UserInConditions { user, conditions } => {
+                let request = request.query("user", user);
+                match csv(conditions) {
+                    Some(value) => request.query("condition", value),
+                    None => request,
+                }
+            }
+        };
+        ListPositions { inner }
+    }
+
+    /// `GET /v2/positions/combos`: a wallet's combo positions.
+    pub fn combo_positions(&self, user: impl Into<String>) -> ListComboPositions {
+        ListComboPositions {
+            inner: Paged::new(Request::new(
+                self.http_client.clone(),
+                "/v2/positions/combos",
+            ))
+            .query("user", user.into()),
+        }
+    }
+
+    /// `GET /v2/user-pnl`: a wallet's cumulative PnL series.
+    ///
+    /// Upstream describes `trade_pnl` as the series behind
+    /// [`DataApi::pnl`](crate::data::DataApi::pnl), but the two were measured apart;
+    /// see that method before swapping one for the other.
+    pub fn user_pnl(&self, user: impl Into<String>) -> GetUserPnl {
+        GetUserPnl {
+            request: Request::new(self.http_client.clone(), "/v2/user-pnl")
+                .query("user", user.into()),
+        }
+    }
+
+    /// `GET /v2/user-stats`: one wallet's profile card.
+    ///
+    /// Resolves to `None` when the wallet is not a known user. A known user who
+    /// has never traded is `Some` with zeros, which is a different answer.
+    pub fn user_stats(&self, user: impl Into<String>) -> GetUserStats {
+        GetUserStats {
+            request: Request::new(self.http_client.clone(), "/v2/user-stats")
+                .query("user", user.into()),
+        }
+    }
+
+    /// `GET /v2/user-volume`: a wallet's traded volume over a window, in shares
+    /// and USDC.
+    pub fn user_volume(&self, user: impl Into<String>) -> GetUserVolume {
+        GetUserVolume {
+            request: Request::new(self.http_client.clone(), "/v2/user-volume")
+                .query("user", user.into()),
+        }
+    }
+
+    /// `GET /v2/value`: a wallet's portfolio value in USDC.
+    pub fn value(&self, user: impl Into<String>) -> GetValue {
+        GetValue {
+            request: Request::new(self.http_client.clone(), "/v2/value").query("user", user.into()),
+        }
+    }
+}
+
+/// Builder for `GET /v2/approvals`.
+pub struct GetApprovals {
+    request: Request<Envelope<Approvals>, DataError>,
+}
+
+impl GetApprovals {
+    /// Fetch the approvals.
+    pub async fn send(self) -> Result<Approvals, DataError> {
+        Ok(self.request.send().await?.data)
+    }
+}
+
+/// Builder for `GET /v2/positions`.
+pub struct ListPositions {
+    inner: Paged<Position>,
+}
+
+impl ListPositions {
+    polyoxide_core::query_setters! { self.inner;
+        /// Lifecycle filter. Upstream default: `OPEN`, which also includes
+        /// redeemable rows.
+        status: PositionStatus => "status",
+        /// Only positions in these Gamma events (at most 20 distinct ids).
+        /// Wallet-anchored requests only. An empty list is omitted.
+        event_ids: csv<I, S> => "event_id",
+        /// Case-insensitive market-title substring (at most 200 characters). SQL
+        /// `LIKE` wildcards keep their meaning. The cursor does not carry this
+        /// filter, so it must be re-sent on every page; `.pages()` does.
+        title: impl Into<String> => "title",
+        /// Unit of [`filter_amount`](Self::filter_amount). Upstream default: `TOKENS`.
+        filter_type: FilterType => "filter_type",
+        /// Floor on the current holding: shares for `TOKENS` (upstream default
+        /// 0.1), mark-to-market USDC for `CASH`.
+        filter_amount: f64 => "filter_amount",
+        /// Include positions on archived markets. Not valid with `CLOSED`, which
+        /// upstream rejects; every other status accepts it.
+        include_archived: bool => "include_archived",
+        /// Sort key. Upstream default depends on [`status`](Self::status), and on
+        /// a user's `CLOSED` positions four of the keys sort by realized PnL; see
+        /// [`PositionSortBy`].
+        sort_by: PositionSortBy => "sort_by",
+        /// Sort direction. Upstream default: `DESC`.
+        sort_direction: SortDirection => "sort_direction",
+        /// Inclusive lower bound on `last_event_at`, epoch seconds. Any bound
+        /// excludes positions that have no `last_event_at`.
+        start: i64 => "start",
+        /// Inclusive upper bound on `last_event_at`, epoch seconds.
+        end: i64 => "end",
+        /// First-page size (at most 1000).
+        limit: u32 => "limit",
+    }
+
+    paged_builder_methods!(Position);
+}
+
+/// Builder for `GET /v2/positions/combos`.
+pub struct ListComboPositions {
+    inner: Paged<ComboPosition>,
+}
+
+impl ListComboPositions {
+    polyoxide_core::query_setters! { self.inner;
+        /// Only these combo condition ids (at most 20). An empty list is omitted.
+        conditions: csv<I, S> => "condition",
+        /// Status filter. Several values may be combined, except `REDEEMABLE`,
+        /// which upstream requires alone. An empty list is omitted.
+        statuses: csv impl IntoIterator<Item = ComboPositionStatus> => "status",
+        /// Sort key. Upstream default: `FIRST_ENTRY` (`ENTRY_COST` under `REDEEMABLE`).
+        sort_by: ComboPositionSortBy => "sort_by",
+        /// Sort direction. Upstream default: `DESC`.
+        sort_direction: SortDirection => "sort_direction",
+        /// Incremental-sync watermark: inclusive lower bound on `updated_at`, epoch seconds.
+        updated_after: i64 => "updated_after",
+        /// Incremental-sync watermark: inclusive upper bound on `updated_at`, epoch seconds.
+        updated_before: i64 => "updated_before",
+        /// First-page size (at most 1000).
+        limit: u32 => "limit",
+    }
+
+    paged_builder_methods!(ComboPosition);
+}
+
+/// Builder for `GET /v2/user-pnl`.
+pub struct GetUserPnl {
+    request: Request<Envelope<UserPnlSeries>, DataError>,
+}
+
+impl GetUserPnl {
+    polyoxide_core::query_setters! {
+        /// Window. Upstream default: `1d`.
+        interval: PnlInterval => "interval",
+        /// Output grid. Upstream default: `1h`.
+        fidelity: PnlFidelity => "fidelity",
+    }
+
+    /// Fetch the series.
+    pub async fn send(self) -> Result<UserPnlSeries, DataError> {
+        Ok(self.request.send().await?.data)
+    }
+}
+
+/// Builder for `GET /v2/user-stats`.
+pub struct GetUserStats {
+    request: Request<Envelope<Option<UserStats>>, DataError>,
+}
+
+impl GetUserStats {
+    /// Fetch the stats; `None` for an unknown wallet.
+    pub async fn send(self) -> Result<Option<UserStats>, DataError> {
+        Ok(self.request.send().await?.data)
+    }
+}
+
+/// Builder for `GET /v2/user-volume`.
+pub struct GetUserVolume {
+    request: Request<Envelope<UserVolume>, DataError>,
+}
+
+impl GetUserVolume {
+    polyoxide_core::query_setters! {
+        /// Window start, epoch seconds, floored to its UTC day. Omitted or `0` is unbounded.
+        start: i64 => "start",
+        /// Window end, epoch seconds, floored to its UTC day. Omitted or `0` is unbounded.
+        end: i64 => "end",
+    }
+
+    /// Fetch the volume.
+    pub async fn send(self) -> Result<UserVolume, DataError> {
+        Ok(self.request.send().await?.data)
+    }
+}
+
+/// Builder for `GET /v2/value`.
+pub struct GetValue {
+    request: Request<Envelope<PortfolioValue>, DataError>,
+}
+
+impl GetValue {
+    polyoxide_core::query_setters! {
+        /// Value only these markets (at most 20). Any condition filter also drops
+        /// the portfolio-level combo term. An empty list is omitted.
+        conditions: csv<I, S> => "condition",
+    }
+
+    /// Fetch the value.
+    pub async fn send(self) -> Result<PortfolioValue, DataError> {
+        Ok(self.request.send().await?.data)
+    }
+}

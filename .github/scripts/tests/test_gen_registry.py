@@ -48,6 +48,29 @@ def test_the_real_tree_passes_check(capsys: pytest.CaptureFixture[str]) -> None:
     assert gen_registry.main(["--check"]) == 0, capsys.readouterr().out
 
 
+def test_the_generator_never_reads_the_tombstones(registry) -> None:
+    """The root manifest excludes tombstones/, so `cargo metadata`, which the
+    registry is built from, never lists one: no tombstone needs registration
+    metadata, and no region the generator builds from the crates names one. The
+    architecture guide's region is the spine's text, copied, so it may. Every
+    tombstone the stage holds is read first, so the check is not vacuous while
+    they exist."""
+    publish_order = gen_registry.publish_order
+    names = {p["name"] for doc in publish_order.tombstone_metadata(REPO)
+             for p in publish_order.members(doc)}
+    stage = publish_order.workspace_stage(publish_order.workspace_metadata())
+    assert len(names) == len(publish_order.TOMBSTONES.get(stage, ()))
+    assert not names & {crate.name for crate in registry.crates}
+    for path, regions in gen_registry.render(registry).items():
+        for region, lines in regions.items():
+            if region == "architecture-guide":
+                continue
+            text = "\n".join(lines)
+            for name in names:
+                assert not re.search(rf"(?<![\w-]){re.escape(name)}(?![\w-])", text), (
+                    path, region, name)
+
+
 def _copy_generated_files(root: Path) -> None:
     for path in gen_registry.FILES:
         (root / path).parent.mkdir(parents=True, exist_ok=True)
@@ -403,6 +426,86 @@ def test_a_venue_without_products_fails(tmp_path: Path) -> None:
         build(tmp_path, half)
 
 
+def _venue_crate(root: Path, name: str, **meta):
+    """An edit adding member `name`, on core, with `meta` as its registration."""
+    def add(metadata, workspace, manifests):
+        found = package(root, name, dep("polyoxide-core"))
+        metadata["packages"].append(found)
+        metadata["workspace_members"].append(found["id"])
+        manifests[name] = manifest(readme="A venue's own crate", **meta)
+    return add
+
+
+def test_the_venue_s_own_crate_may_declare_a_venue_without_products(tmp_path: Path) -> None:
+    exception = {"path": "polyoxide-ws/src/x.rs", "term": "va", "reason": "a test name"}
+    registry = build(tmp_path, _venue_crate(tmp_path, "polyoxide-va", venue="va",
+                                            identifiers=["Va-Header"],
+                                            gate_exceptions=[exception]))
+    crate = registry.crate("polyoxide-va")
+    assert (crate.venue, crate.products) == ("va", ())
+    # The two keys reach the registry, which scripts/venue_gate.py relies on.
+    assert crate.identifiers == ("Va-Header",)
+    assert crate.gate_exceptions == (
+        gen_registry.GateException("polyoxide-ws/src/x.rs", "va", "a test name"),)
+
+
+def test_another_crate_still_needs_products_with_its_venue(tmp_path: Path) -> None:
+    with pytest.raises(RegistryError, match="give both or neither, or name the crate "
+                                            "polyoxide-<venue>"):
+        build(tmp_path, _venue_crate(tmp_path, "polyoxide-vaa", venue="va"))
+
+
+@pytest.mark.parametrize("key", ["identifiers", "gate_exceptions"])
+def test_the_gate_keys_need_a_venue(tmp_path: Path, key: str) -> None:
+    value = (["X-Header"] if key == "identifiers"
+             else [{"path": "polyoxide-core/src/x.rs", "term": "va", "reason": "why"}])
+
+    def add(metadata, workspace, manifests):
+        manifests["polyoxide-core"]["package"]["metadata"]["polyoxide"][key] = value
+
+    with pytest.raises(RegistryError, match=f"declares {key} without a venue"):
+        build(tmp_path, add)
+
+
+@pytest.mark.parametrize(
+    ("value", "message"),
+    [
+        ({"path": "polyoxide-core/src/x.rs", "term": "va"}, "an array of tables"),
+        ([{"path": "polyoxide-core/src/x.rs", "term": "va"}], "lacks reason"),
+        ([{"path": "polyoxide-core/src/x.rs", "term": "va", "reason": " "}],
+         "reason must be a non-empty string"),
+        ([{"path": "polyoxide-core/src/x.rs", "term": "", "reason": "why"}],
+         "term must be a non-empty string"),
+        ([{"path": "polyoxide-core/src/x.rs", "term": "va", "reason": "why", "line": 3}],
+         "unknown key line"),
+        ([{"path": "polyoxide-alpha/src/x.rs", "term": "va", "reason": "why"}],
+         "is not in a foundation crate"),
+        ([{"path": "polyoxide-core/../polyoxide-alpha/x.rs", "term": "va", "reason": "why"}],
+         "is not in a foundation crate"),
+        ([{"path": "polyoxide-core-extra/x.rs", "term": "va", "reason": "why"}],
+         "is not in a foundation crate"),
+        ([{"path": "polyoxide-core/x.rs", "term": "va", "reason": "why"},
+          {"path": "polyoxide-core/x.rs", "term": "VA", "reason": "again"}],
+         "excepts 'VA' in polyoxide-core/x.rs a second time"),
+    ],
+)
+def test_a_bad_gate_exception_fails(tmp_path: Path, value, message: str) -> None:
+    def bad(metadata, workspace, manifests):
+        manifests["polyoxide-alpha"]["package"]["metadata"]["polyoxide"]["gate_exceptions"] = value
+
+    with pytest.raises(RegistryError, match=message):
+        build(tmp_path, bad)
+
+
+@pytest.mark.parametrize("value", [["X", "X"], ["X", ""], "X"])
+def test_bad_identifiers_fail(tmp_path: Path, value) -> None:
+    def bad(metadata, workspace, manifests):
+        manifests["polyoxide-alpha"]["package"]["metadata"]["polyoxide"]["identifiers"] = value
+
+    with pytest.raises(RegistryError, match="identifiers"):
+        build(tmp_path, bad)
+
+
 def test_an_unknown_mirror_fails(tmp_path: Path) -> None:
     def unknown(metadata, workspace, manifests):
         manifests["polyoxide-omega"]["package"]["metadata"]["polyoxide"]["mirrors"] = ["nope"]
@@ -560,10 +663,11 @@ def test_a_spec_level_exclusion_is_listed_and_not_watched(tmp_path: Path) -> Non
 def test_one_job_per_crate_and_suite(fixture_registry) -> None:
     jobs = fixture_registry.jobs()
     assert [(j.id, j.timeout, j.flags, j.secrets) for j in jobs] == [
-        ("live-polyoxide-alpha-live", 15, "--features ws --test live_api --test live_ws",
+        ("live-polyoxide-alpha-live", 15,
+         "--no-default-features --features ws --test live_api --test live_ws",
          ("A_KEY", "B_KEY")),
-        ("live-polyoxide-alpha-slow", 30, "--test live_slow", ()),
-        ("live-polyoxide-omega-live", 15, "--test live_api", ()),
+        ("live-polyoxide-alpha-slow", 30, "--no-default-features --test live_slow", ()),
+        ("live-polyoxide-omega-live", 15, "--no-default-features --test live_api", ()),
     ]
 
 
@@ -619,12 +723,12 @@ EXPECTED = {
         "- `polyoxide-py` — Bindings; needs: `polyoxide-alpha` (without default features)",
     ],
     "claude-umbrella-features": [
-        "**polyoxide** (the unified crate) uses feature flags: `alpha`, "
+        "**polyoxide** (the umbrella) uses feature flags: `alpha`, "
         "`alpha-ws` (`polyoxide-alpha/ws`), `full` (all but `extra`), "
         "`extra` (`polyoxide-alpha?/extra`). Default = alpha.",
     ],
     "claude-cli-deps": [
-        "Note: `polyoxide-cli` does **not** depend on the unified `polyoxide` crate. It "
+        "Note: `polyoxide-cli` does **not** depend on the `polyoxide` umbrella. It "
         "depends directly on the component crates — `polyoxide-alpha` (with `ws`) and "
         "`polyoxide-omega` — plus `polyoxide-core` (with `keychain`) only under the "
         "optional `keychain` feature.",
@@ -680,7 +784,7 @@ EXPECTED = {
         "      with:",
         "        crate: polyoxide-alpha",
         "        suite: live",
-        '        flags: "--features ws --test live_api --test live_ws"',
+        '        flags: "--no-default-features --features ws --test live_api --test live_ws"',
         "",
         "live-polyoxide-alpha-slow:",
         "  name: Live tests (polyoxide-alpha, slow)",
@@ -692,7 +796,7 @@ EXPECTED = {
         "      with:",
         "        crate: polyoxide-alpha",
         "        suite: slow",
-        '        flags: "--test live_slow"',
+        '        flags: "--no-default-features --test live_slow"',
         "",
         "live-polyoxide-omega-live:",
         "  name: Live tests (polyoxide-omega, live)",
@@ -704,7 +808,7 @@ EXPECTED = {
         "      with:",
         "        crate: polyoxide-omega",
         "        suite: live",
-        '        flags: "--test live_api"',
+        '        flags: "--no-default-features --test live_api"',
     ],
     "nightly-aggregate-needs": [
         "needs:",
@@ -765,5 +869,5 @@ def test_a_cli_that_needs_the_umbrella_says_so(tmp_path: Path) -> None:
         cli["dependencies"].append(dep("polyoxide"))
 
     line = gen_registry.claude_cli_deps(build(tmp_path, umbrella))[0]
-    assert line.startswith("Note: `polyoxide-cli` depends on the unified `polyoxide` crate.")
+    assert line.startswith("Note: `polyoxide-cli` depends on the `polyoxide` umbrella.")
     assert "`polyoxide`," not in line

@@ -1,21 +1,12 @@
-//! CLI subcommand definitions for the `polyoxide` binary.
+//! CLI subcommand definitions for the `polyoxide` binary, one module per
+//! venue: `polyoxide <venue> <module> <verb…>`.
 
 mod common;
 
-pub mod clob;
+pub mod binance;
 pub mod completions;
-pub mod data;
-pub mod gamma;
-pub mod ws;
-
-pub use clob::ClobCommand;
-pub use completions::CompletionsCommand;
-pub use data::DataCommand;
-pub use gamma::GammaCommand;
-pub use ws::WsCommand;
+pub mod polymarket;
+pub mod stream;
 
 #[cfg(feature = "keychain")]
 pub mod credentials;
-
-#[cfg(feature = "keychain")]
-pub use credentials::CredentialsCommand;

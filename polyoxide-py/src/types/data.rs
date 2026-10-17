@@ -3,7 +3,7 @@ use pyo3::types::PyModuleMethods;
 py_type!(
     PyPosition,
     "Position",
-    polyoxide_data::types::Position,
+    polyoxide_polymarket::data::types::Position,
     proxy_wallet,
     asset,
     condition_id,
@@ -36,7 +36,7 @@ py_type!(
 py_type!(
     PyClosedPosition,
     "ClosedPosition",
-    polyoxide_data::types::ClosedPosition,
+    polyoxide_polymarket::data::types::ClosedPosition,
     proxy_wallet,
     asset,
     condition_id,
@@ -59,7 +59,7 @@ py_type!(
 py_type!(
     PyTrade,
     "Trade",
-    polyoxide_data::types::Trade,
+    polyoxide_polymarket::data::types::Trade,
     proxy_wallet,
     side,
     asset,
@@ -78,7 +78,7 @@ py_type!(
     transaction_hash,
 );
 
-py_type!(PyActivity, "Activity", polyoxide_data::types::Activity,
+py_type!(PyActivity, "Activity", polyoxide_polymarket::data::types::Activity,
     proxy_wallet, timestamp, condition_id,
     activity_type => "type",
     size, usdc_size, transaction_hash, price, asset, side,
@@ -88,7 +88,7 @@ py_type!(PyActivity, "Activity", polyoxide_data::types::Activity,
 py_type!(
     PyUserValue,
     "UserValue",
-    polyoxide_data::types::UserValue,
+    polyoxide_polymarket::data::types::UserValue,
     user,
     value,
 );
@@ -96,7 +96,7 @@ py_type!(
 py_type!(
     PyOpenInterest,
     "OpenInterest",
-    polyoxide_data::types::OpenInterest,
+    polyoxide_polymarket::data::types::OpenInterest,
     market,
     value,
 );
@@ -104,7 +104,7 @@ py_type!(
 py_type!(
     PyUserTraded,
     "UserTraded",
-    polyoxide_data::api::users::UserTraded,
+    polyoxide_polymarket::data::api::users::UserTraded,
     user,
     traded,
 );
@@ -112,7 +112,7 @@ py_type!(
 py_type!(
     PyMarketHolders,
     "MarketHolders",
-    polyoxide_data::api::holders::MarketHolders,
+    polyoxide_polymarket::data::api::holders::MarketHolders,
     token,
     holders,
 );
@@ -120,7 +120,7 @@ py_type!(
 py_type!(
     PyHolder,
     "Holder",
-    polyoxide_data::api::holders::Holder,
+    polyoxide_polymarket::data::api::holders::Holder,
     proxy_wallet,
     bio,
     asset,
@@ -136,7 +136,7 @@ py_type!(
 py_type!(
     PyTraderRanking,
     "TraderRanking",
-    polyoxide_data::api::leaderboard::TraderRanking,
+    polyoxide_polymarket::data::api::leaderboard::TraderRanking,
     rank,
     proxy_wallet,
     user_name,
@@ -150,7 +150,7 @@ py_type!(
 py_type!(
     PyBuilderRanking,
     "BuilderRanking",
-    polyoxide_data::api::builders::BuilderRanking,
+    polyoxide_polymarket::data::api::builders::BuilderRanking,
     rank,
     builder,
     volume,
@@ -162,7 +162,7 @@ py_type!(
 py_type!(
     PyBuilderVolume,
     "BuilderVolume",
-    polyoxide_data::api::builders::BuilderVolume,
+    polyoxide_polymarket::data::api::builders::BuilderVolume,
     dt,
     builder,
     builder_logo,
@@ -175,7 +175,7 @@ py_type!(
 py_type!(
     PyLiveVolume,
     "LiveVolume",
-    polyoxide_data::api::live_volume::LiveVolume,
+    polyoxide_polymarket::data::api::live_volume::LiveVolume,
     total,
     markets,
 );
@@ -183,7 +183,7 @@ py_type!(
 py_type!(
     PyMarketVolume,
     "MarketVolume",
-    polyoxide_data::api::live_volume::MarketVolume,
+    polyoxide_polymarket::data::api::live_volume::MarketVolume,
     market,
     value,
 );
@@ -191,7 +191,7 @@ py_type!(
 py_type!(
     PyHealthResponse,
     "HealthResponse",
-    polyoxide_data::api::health::HealthResponse,
+    polyoxide_polymarket::data::api::health::HealthResponse,
     data,
 );
 

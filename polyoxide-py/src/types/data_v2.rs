@@ -11,7 +11,7 @@ use pyo3::types::PyModuleMethods;
 py_type!(
     PyV2Approvals,
     "Approvals",
-    polyoxide_data::v2::types::Approvals,
+    polyoxide_polymarket::data::v2::types::Approvals,
     address,
     chain_id,
     checked_at,
@@ -21,7 +21,7 @@ py_type!(
 py_type!(
     PyV2Position,
     "Position",
-    polyoxide_data::v2::types::Position,
+    polyoxide_polymarket::data::v2::types::Position,
     archived,
     avg_price,
     condition_id,
@@ -63,7 +63,7 @@ py_type!(
 py_type!(
     PyV2ComboPosition,
     "ComboPosition",
-    polyoxide_data::v2::types::ComboPosition,
+    polyoxide_polymarket::data::v2::types::ComboPosition,
     combo_condition_id,
     combo_position_id,
     current_size,
@@ -91,7 +91,7 @@ py_type!(
 py_type!(
     PyV2UserPnlSeries,
     "UserPnlSeries",
-    polyoxide_data::v2::types::UserPnlSeries,
+    polyoxide_polymarket::data::v2::types::UserPnlSeries,
     fidelity,
     interval,
     points,
@@ -102,7 +102,7 @@ py_type!(
 py_type!(
     PyV2UserStats,
     "UserStats",
-    polyoxide_data::v2::types::UserStats,
+    polyoxide_polymarket::data::v2::types::UserStats,
     all_time_pnl,
     biggest_win,
     join_date,
@@ -114,7 +114,7 @@ py_type!(
 py_type!(
     PyV2UserVolume,
     "UserVolume",
-    polyoxide_data::v2::types::UserVolume,
+    polyoxide_polymarket::data::v2::types::UserVolume,
     trade_count,
     volume,
     volume_usdc,
@@ -123,7 +123,7 @@ py_type!(
 py_type!(
     PyV2PortfolioValue,
     "PortfolioValue",
-    polyoxide_data::v2::types::PortfolioValue,
+    polyoxide_polymarket::data::v2::types::PortfolioValue,
     proxy_wallet,
     value,
 );
@@ -131,7 +131,7 @@ py_type!(
 py_type!(
     PyV2Activity,
     "Activity",
-    polyoxide_data::v2::types::Activity,
+    polyoxide_polymarket::data::v2::types::Activity,
     bio,
     condition_id,
     event_slug,
@@ -159,7 +159,7 @@ py_type!(
 py_type!(
     PyV2ComboActivity,
     "ComboActivity",
-    polyoxide_data::v2::types::ComboActivity,
+    polyoxide_polymarket::data::v2::types::ComboActivity,
     amount_usdc,
     block_number,
     combo_condition_id,
@@ -176,7 +176,7 @@ py_type!(
 py_type!(
     PyV2Trade,
     "Trade",
-    polyoxide_data::v2::types::Trade,
+    polyoxide_polymarket::data::v2::types::Trade,
     bio,
     condition_id,
     event_slug,
@@ -201,7 +201,7 @@ py_type!(
 py_type!(
     PyV2MetaHolder,
     "MetaHolder",
-    polyoxide_data::v2::types::MetaHolder,
+    polyoxide_polymarket::data::v2::types::MetaHolder,
     holders,
     token_id,
 );
@@ -209,7 +209,7 @@ py_type!(
 py_type!(
     PyV2LiveVolume,
     "LiveVolume",
-    polyoxide_data::v2::types::LiveVolume,
+    polyoxide_polymarket::data::v2::types::LiveVolume,
     conditions,
     taker_volume_total,
 );
@@ -217,7 +217,7 @@ py_type!(
 py_type!(
     PyV2OpenInterest,
     "OpenInterest",
-    polyoxide_data::v2::types::OpenInterest,
+    polyoxide_polymarket::data::v2::types::OpenInterest,
     condition_id,
     value,
 );
@@ -225,7 +225,7 @@ py_type!(
 py_type!(
     PyV2PricePoint,
     "PricePoint",
-    polyoxide_data::v2::types::PricePoint,
+    polyoxide_polymarket::data::v2::types::PricePoint,
     price,
     resolution_seconds,
     timestamp,
@@ -234,7 +234,7 @@ py_type!(
 py_type!(
     PyV2Resolution,
     "Resolution",
-    polyoxide_data::v2::types::Resolution,
+    polyoxide_polymarket::data::v2::types::Resolution,
     condition_id,
     expected_settlement_time,
     extended_review,
@@ -261,7 +261,7 @@ py_type!(
 py_type!(
     PyV2BiggestWinner,
     "BiggestWinner",
-    polyoxide_data::v2::types::BiggestWinner,
+    polyoxide_polymarket::data::v2::types::BiggestWinner,
     condition_id,
     event_id,
     event_slug,
@@ -281,7 +281,7 @@ py_type!(
 py_type!(
     PyV2BuilderStanding,
     "BuilderStanding",
-    polyoxide_data::v2::types::BuilderStanding,
+    polyoxide_polymarket::data::v2::types::BuilderStanding,
     active_users,
     builder_code,
     builder_name,
@@ -294,7 +294,7 @@ py_type!(
 py_type!(
     PyV2BuilderVolumePoint,
     "BuilderVolumePoint",
-    polyoxide_data::v2::types::BuilderVolumePoint,
+    polyoxide_polymarket::data::v2::types::BuilderVolumePoint,
     active_users,
     builder_code,
     builder_name,
@@ -308,7 +308,7 @@ py_type!(
 py_type!(
     PyV2LeaderboardEntry,
     "LeaderboardEntry",
-    polyoxide_data::v2::types::LeaderboardEntry,
+    polyoxide_polymarket::data::v2::types::LeaderboardEntry,
     pnl,
     profile_image,
     rank,
@@ -322,7 +322,7 @@ py_type!(
 py_type!(
     PyV2LeaderboardUserEntry,
     "LeaderboardUserEntry",
-    polyoxide_data::v2::types::LeaderboardUserEntry,
+    polyoxide_polymarket::data::v2::types::LeaderboardUserEntry,
     pnl,
     profile_image,
     rank_pnl,
@@ -337,7 +337,7 @@ py_type!(
 py_type!(
     PyV2ServiceStatus,
     "ServiceStatus",
-    polyoxide_data::v2::types::ServiceStatus,
+    polyoxide_polymarket::data::v2::types::ServiceStatus,
     age_seconds,
     computed_at,
     ingestion,
@@ -347,7 +347,7 @@ py_type!(
 py_type!(
     PyV2Pagination,
     "Pagination",
-    polyoxide_data::v2::Pagination,
+    polyoxide_polymarket::data::v2::Pagination,
     has_more,
     limit,
     next_cursor,
@@ -386,7 +386,7 @@ mod tests {
     //! a getter that looks up the wrong key still has the right name: `get_field`
     //! returns `None` for a key that is not there. So for every class this checks
     //! two things against the captured payloads in
-    //! `polyoxide-data/tests/fixtures/v2/`:
+    //! `polyoxide-polymarket/tests/fixtures/data/v2/`:
     //!
     //! 1. its getters are exactly the keys of each captured row, decoded into the
     //!    Rust type and serialized back, so no field is missing or invented;
@@ -396,7 +396,7 @@ mod tests {
 
     use std::collections::BTreeSet;
 
-    use polyoxide_data::v2::{self, types::*};
+    use polyoxide_polymarket::data::v2::{self, types::*};
     use pyo3::{prelude::*, types::PyDict, PyClass, PyClassInitializer};
     use serde::{de::DeserializeOwned, Serialize};
     use serde_json::{Map, Value};
@@ -407,7 +407,7 @@ mod tests {
     /// element of a list.
     fn captured(fixture: &str, pointer: &str) -> Vec<Value> {
         let path = format!(
-            "{}/../polyoxide-data/tests/fixtures/v2/{fixture}.json",
+            "{}/../polyoxide-polymarket/tests/fixtures/data/v2/{fixture}.json",
             env!("CARGO_MANIFEST_DIR")
         );
         let text = std::fs::read_to_string(&path).unwrap_or_else(|e| panic!("{path}: {e}"));

@@ -5,7 +5,7 @@ use std::time::Duration;
 use polyoxide_core::reqwest::StatusCode;
 use polyoxide_core::{AttemptInfo, Decision, Outcome, ResponseMeta, RetryConfig, RetryPolicy};
 
-use crate::{
+use crate::usdm::{
     error::retry_after_secs,
     weight::{WeightBudget, DEFAULT_BAN},
 };
@@ -22,7 +22,7 @@ use crate::{
 /// - A 2xx is done. Everything else fails with no hold, a `425` included:
 ///   Binance does not document it as retriable.
 ///
-/// A `Retry-After` is clamped to [`MAX_COOLDOWN`](crate::weight::MAX_COOLDOWN),
+/// A `Retry-After` is clamped to [`MAX_COOLDOWN`](crate::usdm::weight::MAX_COOLDOWN),
 /// the longest ban Binance documents.
 #[derive(Debug, Clone)]
 pub(crate) struct UsdmRetryPolicy {
@@ -137,7 +137,7 @@ mod tests {
         // A Retry-After of 10 days is past the schedule's clamp and is held
         // for the longest documented ban.
         let banned = decide(429, Some("864000"), 0);
-        assert_eq!(banned.hold, Some(crate::weight::MAX_COOLDOWN));
+        assert_eq!(banned.hold, Some(crate::usdm::weight::MAX_COOLDOWN));
     }
 
     #[test]
@@ -177,7 +177,7 @@ mod tests {
         // Ten days is held for the longest documented ban, three days.
         assert_eq!(
             decide(418, Some("864000"), 0).hold,
-            Some(crate::weight::MAX_COOLDOWN)
+            Some(crate::usdm::weight::MAX_COOLDOWN)
         );
     }
 

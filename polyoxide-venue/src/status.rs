@@ -19,7 +19,7 @@ use crate::Class;
 /// [`Class::with_code`] and [`Class::with_retry_after`].
 ///
 /// A venue overrides a status only where it documents a different meaning,
-/// as Binance's firewall does with a `403` that is a [`Restricted`](Class::Restricted).
+/// as one venue's firewall does with a `403` that is a [`Restricted`](Class::Restricted).
 pub fn class_for_status(status: u16) -> Option<Class> {
     let class = match status {
         401 | 403 => Class::Unauthorized,

@@ -10,14 +10,22 @@ usefully enumerate accepted values.
 
 > **Stability.** These carry no documented compatibility guarantee. Treat them
 > as more likely to change without notice than spec-backed endpoints. The
-> `polyoxide-data` live tests (`cargo test -p polyoxide-data --test live_api --
-> --ignored`) are the drift detector — if a shape changes, they fail there
+> `data` module's live tests (`cargo test -p polyoxide-polymarket --features data
+> --test live_data -- --ignored`) are the drift detector — if a shape changes, they fail there
 > rather than silently in a user's deserialize.
+
+## Retired 2026-10-16
+
+`user-pnl-api` and `lb-api` answer every request with `410 Gone` and a body naming
+their v2 counterparts, `/v2/user-pnl?user=<address>` and `/v2/leaderboard`. `data.pnl()`
+and `data.rankings()` are deprecated (DRIFT R12), and `live_data`'s
+`live_user_pnl_series` and `live_rankings_volume_and_profit` hold the `410`. The
+sections below record the hosts as they were.
 
 ## User PnL
 
 Base URL: `https://user-pnl-api.polymarket.com`
-Implemented by: `data.pnl()` (`polyoxide-data`)
+Implemented by: `data.pnl()` (`polyoxide-polymarket`'s `data` module)
 Documented counterpart: `GET /v2/user-pnl`, which is **not** the same series.
 See [../data-v2/OBSERVED.md](../data-v2/OBSERVED.md).
 
@@ -41,7 +49,7 @@ values are losses.
 ## Rankings
 
 Base URL: `https://lb-api.polymarket.com`
-Implemented by: `data.rankings()` (`polyoxide-data`)
+Implemented by: `data.rankings()` (`polyoxide-polymarket`'s `data` module)
 Documented counterpart: `GET /v2/leaderboard`, which ranks volume in shares, not
 USDC. See [../data-v2/OBSERVED.md](../data-v2/OBSERVED.md).
 

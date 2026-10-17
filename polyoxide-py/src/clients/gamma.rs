@@ -14,7 +14,7 @@ client_ns!(
     sync_name = PyGammaMarketsSync,
     py_async_name = "GammaMarkets",
     py_sync_name = "GammaMarketsSync",
-    client_type = polyoxide_gamma::Gamma,
+    client_type = polyoxide_polymarket::gamma::Gamma,
     client_var = client,
     #[pyo3(signature = (id, *, include_tag=None))]
     fn get(id: String, include_tag: Option<bool>) -> PyMarket {
@@ -124,7 +124,7 @@ client_ns!(
     sync_name = PyGammaEventsSync,
     py_async_name = "GammaEvents",
     py_sync_name = "GammaEventsSync",
-    client_type = polyoxide_gamma::Gamma,
+    client_type = polyoxide_polymarket::gamma::Gamma,
     client_var = client,
     #[pyo3(signature = (*, limit=None, offset=None, order=None, ascending=None, id=None, slug=None, tag_id=None, tag_slug=None, active=None, archived=None, featured=None, closed=None, liquidity_min=None, liquidity_max=None, volume_min=None, volume_max=None))]
     #[allow(clippy::too_many_arguments)]
@@ -262,7 +262,7 @@ client_ns!(
     sync_name = PyGammaSeriesSync,
     py_async_name = "GammaSeries",
     py_sync_name = "GammaSeriesSync",
-    client_type = polyoxide_gamma::Gamma,
+    client_type = polyoxide_polymarket::gamma::Gamma,
     client_var = client,
     #[pyo3(signature = (*, limit=None, offset=None, ascending=None, closed=None, slug=None, include_chat=None, recurrence=None))]
     fn list(
@@ -321,7 +321,7 @@ client_ns!(
     sync_name = PyGammaTagsSync,
     py_async_name = "GammaTags",
     py_sync_name = "GammaTagsSync",
-    client_type = polyoxide_gamma::Gamma,
+    client_type = polyoxide_polymarket::gamma::Gamma,
     client_var = client,
     #[pyo3(signature = (*, limit=None, offset=None, order=None, ascending=None, include_template=None, is_carousel=None))]
     fn list(
@@ -415,8 +415,10 @@ client_ns!(
 // Namespace: Comments
 // ═══════════════════════════════════════════════════════════════════════════════
 
-fn parse_parent_entity_type(s: &str) -> PyResult<polyoxide_gamma::types::ParentEntityType> {
-    use polyoxide_gamma::types::ParentEntityType;
+fn parse_parent_entity_type(
+    s: &str,
+) -> PyResult<polyoxide_polymarket::gamma::types::ParentEntityType> {
+    use polyoxide_polymarket::gamma::types::ParentEntityType;
     parse_enum!(s, ParentEntityType,
         Event => "EVENT", Series => "SERIES", PerpsAsset => "PERPSASSET",
     )
@@ -427,7 +429,7 @@ client_ns!(
     sync_name = PyGammaCommentsSync,
     py_async_name = "GammaComments",
     py_sync_name = "GammaCommentsSync",
-    client_type = polyoxide_gamma::Gamma,
+    client_type = polyoxide_polymarket::gamma::Gamma,
     client_var = client,
     #[pyo3(signature = (*, limit=None, offset=None, order=None, ascending=None, parent_entity_type=None, parent_entity_id=None, get_positions=None, holders_only=None))]
     #[allow(clippy::too_many_arguments)]
@@ -471,7 +473,7 @@ client_ns!(
     },
     // Despite the name, upstream returns the whole thread containing `id` -
     // the root comment and every reply - not just the comment identified by
-    // `id`. See `polyoxide_gamma::api::comments::Comments::get`.
+    // `id`. See `polyoxide_polymarket::gamma::api::comments::Comments::get`.
     #[pyo3(signature = (id,))]
     fn get(id: String) -> Vec<PyComment> {
         let result = client.comments().get(id).send().await.map_err(gamma_err)?;
@@ -498,7 +500,7 @@ client_ns!(
     sync_name = PyGammaSportsSync,
     py_async_name = "GammaSports",
     py_sync_name = "GammaSportsSync",
-    client_type = polyoxide_gamma::Gamma,
+    client_type = polyoxide_polymarket::gamma::Gamma,
     client_var = client,
     #[pyo3(signature = ())]
     fn list() -> Vec<PySportMetadata> {
@@ -564,7 +566,7 @@ client_ns!(
     sync_name = PyGammaSearchSync,
     py_async_name = "GammaSearch",
     py_sync_name = "GammaSearchSync",
-    client_type = polyoxide_gamma::Gamma,
+    client_type = polyoxide_polymarket::gamma::Gamma,
     client_var = client,
     #[pyo3(signature = (query, *, limit_per_type=None, page=None, cache=None, events_status=None, events_tag=None, keep_closed_markets=None, sort=None, search_tags=None, search_profiles=None))]
     #[allow(clippy::too_many_arguments)]
@@ -621,7 +623,7 @@ client_ns!(
     sync_name = PyGammaUserSync,
     py_async_name = "GammaUser",
     py_sync_name = "GammaUserSync",
-    client_type = polyoxide_gamma::Gamma,
+    client_type = polyoxide_polymarket::gamma::Gamma,
     client_var = client,
     #[pyo3(signature = (address,))]
     fn get(address: String) -> PyUserResponse {
@@ -640,7 +642,7 @@ client_ns!(
     sync_name = PyGammaHealthSync,
     py_async_name = "GammaHealth",
     py_sync_name = "GammaHealthSync",
-    client_type = polyoxide_gamma::Gamma,
+    client_type = polyoxide_polymarket::gamma::Gamma,
     client_var = client,
     #[pyo3(signature = ())]
     fn ping() -> f64 {
@@ -655,7 +657,7 @@ client_ns!(
 
 #[pyclass(name = "Gamma", skip_from_py_object)]
 pub struct PyGamma {
-    client: Arc<polyoxide_gamma::Gamma>,
+    client: Arc<polyoxide_polymarket::gamma::Gamma>,
 }
 
 #[pymethods]
@@ -667,7 +669,7 @@ impl PyGamma {
         timeout_ms: Option<u64>,
         pool_size: Option<usize>,
     ) -> PyResult<Self> {
-        let mut builder = polyoxide_gamma::Gamma::builder();
+        let mut builder = polyoxide_polymarket::gamma::Gamma::builder();
         if let Some(v) = base_url {
             builder = builder.base_url(v);
         }
@@ -744,7 +746,7 @@ impl PyGamma {
 
 #[pyclass(name = "GammaSync", skip_from_py_object)]
 pub struct PyGammaSync {
-    client: Arc<polyoxide_gamma::Gamma>,
+    client: Arc<polyoxide_polymarket::gamma::Gamma>,
 }
 
 #[pymethods]
@@ -756,7 +758,7 @@ impl PyGammaSync {
         timeout_ms: Option<u64>,
         pool_size: Option<usize>,
     ) -> PyResult<Self> {
-        let mut builder = polyoxide_gamma::Gamma::builder();
+        let mut builder = polyoxide_polymarket::gamma::Gamma::builder();
         if let Some(v) = base_url {
             builder = builder.base_url(v);
         }

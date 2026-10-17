@@ -5,8 +5,8 @@ use std::time::{Duration, Instant};
 
 use mockito::{Mock, Server, ServerGuard};
 use polyoxide_core::{
-    polymarket, ApiError, AttemptInfo, Charge, Cost, HttpClientBuilder, LayerId, Refused,
-    RequestMeta, ResponseMeta, RetryConfig, Throttle,
+    ApiError, AttemptInfo, Charge, Cost, HttpClientBuilder, LayerId, Refused, RequestMeta,
+    ResponseMeta, RetryConfig, Throttle,
 };
 
 /// A caller's error that says whether a response reached its decode.
@@ -122,38 +122,6 @@ async fn a_non_2xx_health_is_the_callers_error() {
     mock.assert_async().await;
 }
 
-#[tokio::test]
-async fn a_429_on_health_holds_the_next_request() {
-    let mut server = Server::new_async().await;
-    let mock = scripted(&mut server, "/status", &[429, 200]).await;
-    let http = HttpClientBuilder::new(server.url())
-        .with_rate_limiter(polymarket::gamma_limits())
-        .with_retry_config(a_300ms_floor(0))
-        .build()
-        .unwrap();
-
-    // No retry left: the 429 is the caller's, and it still holds the client.
-    let err = http
-        .health::<PingError>("/status", &[])
-        .await
-        .expect_err("a 429 and no retry");
-    assert!(matches!(err, PingError::Response(429)), "{err:?}");
-
-    let start = Instant::now();
-    let pong = http.health::<PingError>("/status", &[]).await.unwrap();
-    let elapsed = start.elapsed();
-    assert!(
-        elapsed >= Duration::from_millis(300),
-        "the next ping went after {elapsed:?}, inside the 429's hold"
-    );
-    assert!(
-        elapsed.saturating_sub(pong.round_trip) >= Duration::from_millis(300),
-        "the round trip leaves out the hold: {:?} of {elapsed:?}",
-        pong.round_trip
-    );
-    mock.assert_async().await;
-}
-
 /// A throttle that records the costs each attempt is charged.
 #[derive(Clone, Default)]
 struct CostRecorder(Arc<Mutex<Vec<Vec<Cost>>>>);
@@ -172,7 +140,7 @@ impl Throttle for CostRecorder {
 #[tokio::test]
 async fn health_charges_its_costs() {
     let mut server = Server::new_async().await;
-    let mock = scripted(&mut server, "/fapi/v1/ping", &[429, 200]).await;
+    let mock = scripted(&mut server, "/v1/ping", &[429, 200]).await;
     let throttle = CostRecorder::default();
     let http = HttpClientBuilder::new(server.url())
         .with_throttle(throttle.clone())
@@ -189,7 +157,7 @@ async fn health_charges_its_costs() {
         exact: true,
     };
 
-    http.health::<PingError>("/fapi/v1/ping", &[weight])
+    http.health::<PingError>("/v1/ping", &[weight])
         .await
         .unwrap();
     mock.assert_async().await;
@@ -221,7 +189,7 @@ impl Throttle for RefusingThrottle {
 async fn a_refused_health_cost_is_the_callers_error() {
     let mut server = Server::new_async().await;
     let mock = server
-        .mock("GET", "/fapi/v1/ping")
+        .mock("GET", "/v1/ping")
         .expect(0)
         .create_async()
         .await;
@@ -236,7 +204,7 @@ async fn a_refused_health_cost_is_the_callers_error() {
     };
 
     let err = http
-        .health::<PingError>("/fapi/v1/ping", &[weight])
+        .health::<PingError>("/v1/ping", &[weight])
         .await
         .expect_err("the throttle refused the ping's cost");
     assert!(

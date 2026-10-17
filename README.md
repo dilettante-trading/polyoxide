@@ -1,6 +1,8 @@
 # Polyoxide
 
-Rust SDK toolkit for Polymarket APIs. It includes library crates for use in your projects and a standalone CLI.
+Multi-venue Rust SDK toolkit: Polymarket's APIs and Binance's USDⓈ-M futures market data, one
+crate per venue. It includes library crates for use in your projects, the `polyoxide` umbrella
+over them, and a standalone CLI.
 
 > [!WARNING]
 > This is currently work-in-progress so the API may change and some features may be missing
@@ -10,18 +12,12 @@ Rust SDK toolkit for Polymarket APIs. It includes library crates for use in your
 <!-- generated:begin readme-crates -->
 | Crate | Description |
 |-------|-------------|
-| [polyoxide](./polyoxide) | Unified client for Polymarket APIs (CLOB, Gamma, Data, WebSocket, RTDS, Perps, Sports) |
-| [polyoxide-binance](./polyoxide-binance) | Client library for Binance USDⓈ-M futures market data and streams (not part of the unified crate) |
+| [polyoxide](./polyoxide) | The multi-venue umbrella: `polyoxide::polymarket` and `polyoxide::binance` behind features named for each venue and module, `polyoxide::venue` and a `prelude` |
+| [polyoxide-binance](./polyoxide-binance) | Client library for Binance's APIs, one feature per module: `usdm` (USDⓈ-M futures market data, with its streams under `usdm-ws`); re-exported by the umbrella as `polyoxide::binance` |
 | [polyoxide-cli](./polyoxide-cli) | CLI tool for querying Polymarket APIs and Binance USDⓈ-M market data |
-| [polyoxide-clob](./polyoxide-clob) | Client library for Polymarket CLOB (order book) API |
 | [polyoxide-core](./polyoxide-core) | Core utilities and shared types |
-| [polyoxide-data](./polyoxide-data) | Client library for Polymarket Data API |
-| [polyoxide-gamma](./polyoxide-gamma) | Client library for Polymarket Gamma (market data) API |
-| [polyoxide-perps](./polyoxide-perps) | Client library for Polymarket Perps (perpetual futures) public market data |
+| [polyoxide-polymarket](./polyoxide-polymarket) | Client library for Polymarket's APIs, one feature per module: `clob` (order book, with its sockets under `clob-ws`), `gamma` (market data), `data` (user data, v1 and v2), `relay` (gasless transactions), `perps` (perpetual futures market data, with its sockets under `perps-ws`), `rtds` (crypto price streams) and `sports` (live sports scores), with the code the HTTP modules share in `shared` and, with `clob`, `gamma` and `data`, the unified `Polymarket` client; re-exported by the umbrella as `polyoxide::polymarket` |
 | [polyoxide-py](./polyoxide-py) | Python bindings via PyO3 (`publish = false`, wheels on PyPI) |
-| [polyoxide-relay](./polyoxide-relay) | Client library for Polymarket Relayer API (gasless transactions) |
-| [polyoxide-rtds](./polyoxide-rtds) | Client for Polymarket's RTDS crypto price streams |
-| [polyoxide-sports](./polyoxide-sports) | Client for Polymarket's live sports score feed |
 | [polyoxide-test-support](./polyoxide-test-support) | Test toolkit: the failure tags the nightly classifier reads, the credential loaders, and the agreement, fixture and soak helpers (`publish = false`) |
 | [polyoxide-venue](./polyoxide-venue) | Shared vocabulary: error classes, the status and close-code maps, the socket classification table (`impl_ws_classification!`), the `Retry-After` parser, the wire-enum macros and `UnknownVariant`, positional decimal serde (feature `decimal`) and `UnixMillis` |
 | [polyoxide-ws](./polyoxide-ws) | The socket kit: the TLS install, `Backoff`, `Timing` and its setters, the deadline arithmetic, `WsError`, connect with a timeout, the bare tier, request/answer correlation, the generic `Supervisor` for a venue `Protocol`, and the scripted test server (feature `test-server`) |
@@ -35,20 +31,27 @@ Rust SDK toolkit for Polymarket APIs. It includes library crates for use in your
 cargo add polyoxide
 ```
 
-Or install individual APIs:
+Its features are named for each venue and module, `polymarket-<module>` and `binance-<module>`,
+and its paths too: `polyoxide::polymarket` and `polyoxide::binance`. Or install individual APIs:
 
 ```bash
 # Market data only
-cargo add polyoxide --no-default-features --features gamma
+cargo add polyoxide --no-default-features --features polymarket-gamma
 
 # Trading only
-cargo add polyoxide --no-default-features --features clob
+cargo add polyoxide --no-default-features --features polymarket-clob
 
 # Data API only
-cargo add polyoxide --no-default-features --features data
+cargo add polyoxide --no-default-features --features polymarket-data
 
-# WebSocket only
-cargo add polyoxide --no-default-features --features ws
+# CLOB WebSocket only
+cargo add polyoxide --no-default-features --features polymarket-clob-ws
+
+# Gasless relay
+cargo add polyoxide --no-default-features --features polymarket-relay
+
+# Binance USDⓈ-M futures market data and its streams
+cargo add polyoxide --no-default-features --features binance-usdm-ws
 ```
 
 ### CLI
@@ -63,6 +66,14 @@ Or download binaries directly from Github releases
 
 ```bash
 curl -fsSL https://raw.githubusercontent.com/dilettante-trading/polyoxide/main/scripts/install.sh | sh
+```
+
+Commands are `polyoxide <venue> <module> <command>`:
+
+```bash
+polyoxide polymarket gamma markets list --preset trending
+polyoxide polymarket clob stream market <ASSET_ID> --format json
+polyoxide binance usdm stream --all-mark-prices -n 10
 ```
 
 See more information [here](./polyoxide-cli/README.md).
@@ -109,6 +120,12 @@ let balance = client.clob
 
 ### WebSocket
 
+The CLOB's sockets are behind the `polymarket-clob-ws` feature, which `prelude::ws` needs:
+
+```bash
+cargo add polyoxide --features polymarket-clob-ws
+```
+
 ```rust,ignore
 use polyoxide::prelude::*;
 use futures_util::StreamExt;
@@ -135,8 +152,14 @@ while let Some(msg) = ws.next().await {
 
 ### Gasless Redemptions (Relay)
 
+The relay is behind the `polymarket-relay` feature, which the default does not turn on:
+
+```bash
+cargo add polyoxide --features polymarket-relay
+```
+
 ```rust,ignore
-use polyoxide_relay::{RelayClient, BuilderAccount, BuilderConfig, WalletType};
+use polyoxide::polymarket::relay::{RelayClient, BuilderAccount, BuilderConfig, WalletType};
 use alloy::primitives::U256;
 
 #[tokio::main]

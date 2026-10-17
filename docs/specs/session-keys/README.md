@@ -26,10 +26,10 @@ Read on 2026-09-25:
   SDK disagree, polyoxide follows the SDK unless `OBSERVED.md`'s polyoxide column
   says otherwise; every such case is listed there.
 - polyoxide's fixtures are generated from py-sdk by
-  `scripts/capture_session_key_vectors.py` into
-  `polyoxide-clob/tests/fixtures/session_keys/` and
-  `polyoxide-relay/tests/fixtures/session_keys/`; each directory's `PROVENANCE.md`
-  says exactly what was run.
+  `scripts/capture_polymarket_session_keys.py` into
+  `polyoxide-polymarket/tests/fixtures/clob/session_keys/` and
+  `polyoxide-polymarket/tests/fixtures/relay/session_keys/`; each directory's
+  `PROVENANCE.md` says exactly what was run.
 
 ## Vocabulary
 
@@ -43,7 +43,7 @@ Read on 2026-09-25:
   orders and relayer batches for the wallet within its scopes; it cannot withdraw and
   cannot manage other session keys.
 - **Scopes.** `CLOB`, `COMBOSRFQ`, or `ALL` (alone). polyoxide models them as
-  `polyoxide_core::SessionSignerScope`, an open enum.
+  `polyoxide_polymarket::shared::SessionSignerScope`, an open enum.
 - **Role.** Owner or session key. The two are EOAs distinct from the wallet, so the
   role cannot be inferred from addresses; polyoxide takes it explicitly
   (`SigningTarget::DepositWallet { wallet, role }` in clob,
@@ -73,9 +73,9 @@ an ERC-7739 `TypedDataSign` envelope:
 The owner signs steps 1–4. py-sdk pins the step-2 digest for a fixed fixture
 (`0x1b9566eedd9589a73275df23a3a9d9e2e9897e76d31cd46d436f1b824d161b33`); polyoxide
 pins the same digest as `v1_exchange.envelope_digest` in
-`polyoxide-clob/tests/fixtures/session_keys/order_vectors.json`, alongside the
+`polyoxide-polymarket/tests/fixtures/clob/session_keys/order_vectors.json`, alongside the
 full wrapped bytes. `envelope_digest_matches_py_sdk_for_both_exchanges` in
-`polyoxide-clob/src/core/eip712.rs` checks it, and the capture script refuses to
+`polyoxide-polymarket/src/clob/core/eip712.rs` checks it, and the capture script refuses to
 write a fixture whose digest differs.
 
 ## L1 auth (creating and deriving API credentials)
@@ -168,13 +168,13 @@ asking `GET /deployed` for each; `resolve_wallet` does so (four requests on Poly
 
 | Contract item | polyoxide | Pinned by |
 |---|---|---|
-| Type-3 order signing, owner or session key | `polyoxide_clob::Account::with_target(SigningTarget::DepositWallet { wallet, role })`, then `Clob::create_order` / `sign_order` / `post_order` | `tests/fixtures/session_keys/order_vectors.json` (py-sdk golden digest and wrapped bytes), checked in `polyoxide-clob/src/core/eip712.rs` |
+| Type-3 order signing, owner or session key | `polyoxide_polymarket::clob::Account::with_target(SigningTarget::DepositWallet { wallet, role })`, then `Clob::create_order` / `sign_order` / `post_order` | `tests/fixtures/clob/session_keys/order_vectors.json` (py-sdk golden digest and wrapped bytes), checked in `polyoxide-polymarket/src/clob/core/eip712.rs` |
 | Any alloy signer, or no key at all | `Account::with_signer`, `Account::l2_only` | unit and mock tests |
-| L1 auth with an external signer | `clob_auth_typed_data`, `Clob::create_api_key_with_signature`, `Clob::derive_api_key_with_signature` (signer recovered locally before any request) | `tests/fixtures/session_keys/clob_auth.json` |
+| L1 auth with an external signer | `clob_auth_typed_data`, `Clob::create_api_key_with_signature`, `Clob::derive_api_key_with_signature` (signer recovered locally before any request) | `tests/fixtures/clob/session_keys/clob_auth.json` |
 | Session-signers list | `AccountApi::list_session_signers` | mock tests |
-| Wallet derivation and resolution | `polyoxide_relay::wallet::{derive_safe, derive_proxy, derive_deposit_wallet_uups, derive_deposit_wallet_beacon}`, `RelayClient::resolve_wallet -> Option<WalletKind>` over beacon, UUPS, Safe and Proxy | `polyoxide-relay/tests/fixtures/session_keys/relay_vectors.json` (`derivations`) |
+| Wallet derivation and resolution | `polyoxide_polymarket::relay::wallet::{derive_safe, derive_proxy, derive_deposit_wallet_uups, derive_deposit_wallet_beacon}`, `RelayClient::resolve_wallet -> Option<WalletKind>` over beacon, UUPS, Safe and Proxy | `polyoxide-polymarket/tests/fixtures/relay/session_keys/relay_vectors.json` (`derivations`) |
 | Nonce and transaction poll | `RelayClient::get_execute_params`, `RelayClient::get_gasless_transaction`, `TransactionState` | mock tests |
-| Batch typed data, digest, session envelope, calldata | `polyoxide_relay::deposit_wallet::{batch_typed_data, batch_digest, wrap_session_signer, …_calldata}` | `relay_vectors.json` (seven signed batches) |
+| Batch typed data, digest, session envelope, calldata | `polyoxide_polymarket::relay::deposit_wallet::{batch_typed_data, batch_digest, wrap_session_signer, …_calldata}` | `relay_vectors.json` (seven signed batches) |
 | Execute as owner or session key | `RelayClient::execute` with `WalletType::DepositWallet` and `RelayClientBuilder::{deposit_wallet, deposit_wallet_role}` | `relay_vectors.json` (`submit_body`, `session_submit_body`) |
 | Typed-data-out / signature-in | `RelayClient::deposit_wallet_batch_typed_data`, `submit_deposit_wallet_batch_from`, `redeem_typed_data(…, neg_risk, …)`, `submit_redemption_with_signature`; `RelayClientBuilder::with_auth` for a client with no key | `relay_vectors.json` (`redeem_adapter_batch`, `redeem_neg_risk_batch`) |
 | Redemption as the client's own account | `RelayClient::submit_deposit_wallet_redemption(condition_id, neg_risk, estimate_gas)`; `submit_gasless_redemption` refuses a Deposit Wallet client before I/O | `relay_vectors.json` (`redeem_adapter_submit_body`) |
@@ -186,7 +186,7 @@ Not covered: creating a Deposit Wallet (`WALLET_CREATE`), Combos with a session 
 
 ## Live verification
 
-`polyoxide-clob/tests/live_session_keys.rs` holds the round trip (authorize → derive
+`polyoxide-polymarket/tests/live_clob_session_keys.rs` holds the round trip (authorize → derive
 session credentials → place → list from both keys → cancel → revoke) as an `#[ignore]`d
 test gated on a Deposit Wallet fixture account. It has not been run: session-key
 management is gated per Builder API key by the venue, and DilettanteTrading's key is

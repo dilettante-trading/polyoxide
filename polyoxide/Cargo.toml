@@ -6,41 +6,67 @@ license.workspace = true
 authors.workspace = true
 repository.workspace = true
 rust-version.workspace = true
-description = "Unified Rust client for Polymarket APIs (CLOB, Gamma, Data, RTDS, Perps and Sports)"
-keywords = ["polymarket", "prediction-markets", "api", "trading"]
+description = "Multi-venue Rust toolkit: Polymarket (CLOB, Gamma, Data, Relay, Perps, RTDS, Sports) and Binance USDⓈ-M futures, each venue behind features named for it"
+keywords = ["polymarket", "binance", "prediction-markets", "trading", "api"]
 categories = ["api-bindings", "web-programming::http-client"]
 
+# Features named `<venue>` and `<venue>-<module>` (Story 5.7). `<venue>` is
+# that venue crate's defaults; each `<venue>-<module>` passes its feature
+# through, and a `-ws` one turns its module's on as well. `keychain` is an
+# extra across venues: each venue that stores credentials adds its own
+# `?/keychain`.
 [features]
-default = ["clob", "gamma", "data"]
-clob = ["dep:polyoxide-clob"]
-gamma = ["dep:polyoxide-gamma", "polyoxide-clob?/gamma"]
-data = ["dep:polyoxide-data"]
-ws = ["clob", "polyoxide-clob/ws"]
-rtds = ["dep:polyoxide-rtds"]
-perps = ["dep:polyoxide-perps"]
-perps-ws = ["perps", "polyoxide-perps/ws"]
-sports = ["dep:polyoxide-sports"]
-full = ["clob", "gamma", "data", "ws", "rtds", "perps", "perps-ws", "sports"]
-keychain = ["polyoxide-clob?/keychain"]
+default = ["polymarket"]
+polymarket = ["polymarket-clob", "polymarket-gamma", "polymarket-data"]
+polymarket-clob = ["dep:polyoxide-polymarket", "polyoxide-polymarket/clob"]
+polymarket-clob-ws = ["polymarket-clob", "polyoxide-polymarket/clob-ws"]
+polymarket-gamma = ["dep:polyoxide-polymarket", "polyoxide-polymarket/gamma"]
+polymarket-data = ["dep:polyoxide-polymarket", "polyoxide-polymarket/data"]
+polymarket-relay = ["dep:polyoxide-polymarket", "polyoxide-polymarket/relay"]
+polymarket-perps = ["dep:polyoxide-polymarket", "polyoxide-polymarket/perps"]
+polymarket-perps-ws = ["polymarket-perps", "polyoxide-polymarket/perps-ws"]
+polymarket-rtds = ["dep:polyoxide-polymarket", "polyoxide-polymarket/rtds"]
+polymarket-sports = ["dep:polyoxide-polymarket", "polyoxide-polymarket/sports"]
+binance = ["binance-usdm"]
+binance-usdm = ["dep:polyoxide-binance", "polyoxide-binance/usdm"]
+binance-usdm-ws = ["binance-usdm", "polyoxide-binance/usdm-ws"]
+full = [
+    "polymarket",
+    "polymarket-clob",
+    "polymarket-clob-ws",
+    "polymarket-gamma",
+    "polymarket-data",
+    "polymarket-relay",
+    "polymarket-perps",
+    "polymarket-perps-ws",
+    "polymarket-rtds",
+    "polymarket-sports",
+    "binance",
+    "binance-usdm",
+    "binance-usdm-ws",
+    "keychain",
+]
+keychain = ["polyoxide-polymarket?/keychain"]
 
 [dependencies]
 polyoxide-venue = { workspace = true }
-polyoxide-gamma = { workspace = true, optional = true }
-polyoxide-clob = { workspace = true, optional = true }
-polyoxide-data = { workspace = true, optional = true }
-polyoxide-rtds = { workspace = true, optional = true }
-polyoxide-perps = { workspace = true, optional = true }
-polyoxide-sports = { workspace = true, optional = true }
-thiserror = { workspace = true }
+# Polymarket's modules, under the `polymarket-<module>` features.
+polyoxide-polymarket = { workspace = true, optional = true }
+# Binance's modules, under the `binance-<module>` features.
+polyoxide-binance = { workspace = true, optional = true }
 
 [dev-dependencies]
 tokio = { workspace = true, features = ["macros", "rt-multi-thread"] }
 # Needed only so the WebSocket README doctests can bring `StreamExt` into scope.
 futures-util = "0.3"
 
+# docs.rs documents every module of every venue.
+[package.metadata.docs.rs]
+features = ["full"]
+
 # Registration, read by scripts/gen_registry.py: the README line, venue and
 # product ids, the docs/specs/ mirrors covered, and one entry per live test
 # target, which becomes a nightly job. Run `python3 scripts/gen_registry.py
 # --write` after an edit.
 [package.metadata.polyoxide]
-readme = "Unified client for Polymarket APIs (CLOB, Gamma, Data, WebSocket, RTDS, Perps, Sports)"
+readme = "The multi-venue umbrella: `polyoxide::polymarket` and `polyoxide::binance` behind features named for each venue and module, `polyoxide::venue` and a `prelude`"

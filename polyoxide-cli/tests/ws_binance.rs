@@ -1,5 +1,6 @@
-//! `polyoxide ws binance` over scripted event streams built from the captured
-//! frames, so a flag that parses but never reaches the output fails here.
+//! `polyoxide binance usdm stream` over scripted event streams built from the
+//! captured frames, so a flag that parses but never reaches the output fails
+//! here.
 
 use std::{io, time::Duration};
 
@@ -8,7 +9,7 @@ use futures_util::{stream, Stream, StreamExt};
 use polyoxide_binance::usdm::ws::{
     fixtures, DisconnectReason, Event, StreamPath, Update, UsdmWsError,
 };
-use polyoxide_cli::commands::ws::binance::{run_with, BinanceArgs};
+use polyoxide_cli::commands::binance::usdm::{run_with, BinanceArgs};
 use serde_json::Value;
 
 #[derive(Parser)]

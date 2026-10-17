@@ -12,7 +12,12 @@ categories = ["command-line-utilities"]
 
 [features]
 default = []
-keychain = ["polyoxide-clob/keychain", "dep:polyoxide-core", "dep:polyoxide-relay"]
+keychain = [
+    "polyoxide-polymarket/keychain",
+    "polyoxide-polymarket/relay",
+    "dep:polyoxide-core",
+    "dep:polyoxide-venue",
+]
 parquet = ["dep:arrow", "dep:parquet"]
 
 [[bin]]
@@ -23,23 +28,21 @@ path = "src/main.rs"
 doc = false
 
 [dependencies]
-polyoxide-binance = { workspace = true, features = ["ws"] }
-polyoxide-clob = { workspace = true, features = ["ws"] }
+polyoxide-binance = { workspace = true, features = ["usdm-ws"] }
 polyoxide-core = { workspace = true, optional = true, features = ["keychain"] }
-polyoxide-relay = { workspace = true, optional = true, features = ["keychain"] }
-polyoxide-data = { workspace = true }
-polyoxide-gamma = { workspace = true }
-polyoxide-rtds = { workspace = true }
-polyoxide-sports = { workspace = true }
+# `Secret`, which carries a credential's values to the keychain, under `keychain`.
+polyoxide-venue = { workspace = true, optional = true }
+# `relay` and `keychain` only under `keychain`, for the relay's keychain service.
+polyoxide-polymarket = { workspace = true, features = ["clob-ws", "gamma", "data", "rtds", "sports"] }
 tokio = { workspace = true, features = ["macros", "rt-multi-thread", "time", "net"] }
-clap = { version = "4.5", features = ["derive", "env"] }
+# `string`: the credentials command names each flag after its field at run time.
+clap = { version = "4.5", features = ["derive", "env", "string"] }
 clap_complete = "4.5"
 serde = { workspace = true }
 serde_json = { workspace = true }
 color-eyre = "0.6"
 tracing-subscriber = { workspace = true, features = ["env-filter"] }
 futures-util = "0.3"
-ctrlc = "3.4"
 governor = { workspace = true }
 tempfile = "3"
 arrow = { version = "54", optional = true }
@@ -52,10 +55,11 @@ polyoxide-test-support = { path = "../polyoxide-test-support" }
 mockito = { workspace = true }
 tempfile = "3"
 tokio = { workspace = true, features = ["macros", "rt-multi-thread", "time"] }
-# The captured frames, for the `ws sports` tests.
-polyoxide-sports = { workspace = true, features = ["test-server"] }
-# The captured frames, for the `ws binance` tests.
-polyoxide-binance = { workspace = true, features = ["test-server"] }
+# The captured frames, for the `polymarket sports stream` and `polymarket rtds
+# stream` tests.
+polyoxide-polymarket = { workspace = true, features = ["sports", "rtds", "test-server"] }
+# The captured frames, for the `binance usdm stream` tests.
+polyoxide-binance = { workspace = true, features = ["usdm-ws", "test-server"] }
 
 # Registration, read by scripts/gen_registry.py: the README line, venue and
 # product ids, the docs/specs/ mirrors covered, and one entry per live test
@@ -63,6 +67,7 @@ polyoxide-binance = { workspace = true, features = ["test-server"] }
 # --write` after an edit.
 [package.metadata.polyoxide]
 readme = "CLI tool for querying Polymarket APIs and Binance USDⓈ-M market data"
+notes = ["its `keychain` also turns on `polyoxide-polymarket`'s `relay` and `keychain`, for the relay's keychain service"]
 
 [package.metadata.polyoxide.live.live_api]
 suite = "live"

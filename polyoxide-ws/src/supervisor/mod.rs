@@ -301,12 +301,11 @@ pub trait Protocol: Send + Sized + 'static {
 /// bounded by [`Timing::connect_timeout`]. The task logs under the
 /// `polyoxide_ws` target.
 ///
-/// The basis is `polyoxide-perps`' former supervised tier (`ws/supervised.rs`,
-/// deleted in Story 4.6), with `polyoxide-binance`'s former loop
-/// (`usdm/ws/supervised.rs`, replaced in Story 4.7 by a router over one
-/// supervisor per path) for rotation, outage markers, changes recorded during
-/// an outage, the start in an outage and the consumer's departure. Neither
-/// kept pinging behind a full queue.
+/// The basis is one socket crate's former supervised tier (`ws/supervised.rs`,
+/// deleted in Story 4.6), with another socket crate's former loop (replaced
+/// in Story 4.7 by a router over one supervisor per path) for rotation,
+/// outage markers, changes recorded during an outage, the start in an outage
+/// and the consumer's departure. Neither kept pinging behind a full queue.
 #[derive(Debug)]
 pub struct Supervisor<P: Protocol> {
     protocol: P,

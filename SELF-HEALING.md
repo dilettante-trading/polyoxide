@@ -1,9 +1,11 @@
 # Self-Healing API Maintenance
 
-Polyoxide tracks a venue it does not control. Polymarket ships schema changes,
-new endpoints, and behavioral tweaks without notice; this document describes
-the machinery that detects that drift every night and — where it safely can —
-repairs or reports it without a human in the loop.
+Polyoxide tracks venues it does not control. Polymarket and Binance ship schema
+changes, new endpoints, and behavioral tweaks without notice; this document
+describes the machinery that detects that drift every night and reports it
+without a human in the loop. Polymarket publishes specs, so its drift shows two
+ways, in the live tests and against the vendored mirrors; Binance publishes none
+for USDⓈ-M, so its live suites are its only drift check.
 
 ## The loop at a glance
 
@@ -15,18 +17,19 @@ repairs or reports it without a human in the loop.
                  nightly-behavioral.yml      nightly-schema.yml
                  (does the SDK still         (did the published
                   work against the            contracts change?)
-                  live venue?)                       │
+                  live venues?)                      │
                                  │                  │
-              real failure ──► GitHub issue     drift ──► auto-PR with the new
-              (deduped, one     (label:                   spec + tracking issue
-               open at a time)  nightly-behavioral)       (label: schema-drift)
+              real failure ──► GitHub issue     drift ──► tracking issue per spec
+              (deduped, one     (label:                   (labels: schema-drift,
+               open at a time)  nightly-behavioral)        spec:<id>), with the curl
+                                 │                         that adopts it
                                  │                  │
-              clean night ──► issue auto-closed  drift gone ──► PR + issue
-                              "Recovered"                       auto-closed
+              clean night ──► issue auto-closed  drift gone or ──► issue
+                              "Recovered"        acknowledged      auto-closed
 ```
 
-Both workflows are idempotent across nights: re-runs update the same issue/PR
-rather than creating duplicates, and recovery closes them.
+Both workflows are idempotent across nights: re-runs update the same issue
+rather than creating duplicates, and recovery closes it.
 
 ## Behavioral drift — `.github/workflows/nightly-behavioral.yml`
 
@@ -41,14 +44,8 @@ and that is when North American leagues and weekend soccer are on.
 <!-- generated:begin selfheal-behavioral -->
 | Crate | Test binaries |
 |-------|---------------|
-| polyoxide-data | `live_api` |
-| polyoxide-gamma | `live_api` |
-| polyoxide-relay | `live_api` |
-| polyoxide-binance | `live_api`, `live_ws` (built with `--features ws`) |
-| polyoxide-clob | `live`: `live_api`, `live_ws` (built with `--features ws`); `session-keys`: `live_session_keys` (40-minute budget in its own job, since its registry and transaction waits can take ~25 minutes) |
-| polyoxide-perps | `live_api`, `live_ws` (built with `--features ws`) |
-| polyoxide-rtds | `live_api` |
-| polyoxide-sports | `live_api` (20-minute budget for its 180 s wire-agreement window) |
+| polyoxide-binance | `live_usdm` (built with `--features usdm`), `live_usdm_ws` (built with `--features usdm-ws`) |
+| polyoxide-polymarket | `clob`: `live_clob` (built with `--features clob,gamma`), `live_clob_ws` (built with `--features clob-ws`); `clob-session-keys`: `live_clob_session_keys` (built with `--features clob,relay,gamma`; 40-minute budget in its own job, since its registry and transaction waits can take ~25 minutes); `gamma`: `live_gamma` (built with `--features gamma`); `data`: `live_data` (built with `--features data`); `relay`: `live_relay` (built with `--features relay`); `perps`: `live_perps` (built with `--features perps`), `live_perps_ws` (built with `--features perps-ws`); `rtds`: `live_rtds` (built with `--features rtds`); `sports`: `live_sports` (built with `--features sports`; 20-minute budget for its 180 s wire-agreement window) |
 | polyoxide-cli | `live_api` |
 <!-- generated:end selfheal-behavioral -->
 
@@ -74,6 +71,11 @@ predicate can never match.
 
 - **One issue, not an avalanche** — a failing night comments on the existing
   open `nightly-behavioral` issue instead of opening a new one.
+- **Only main's runs touch it** — the issue step runs only on
+  `refs/heads/main`. A dispatch on another branch, such as an integration
+  branch tried before it merges, still classifies and uploads every job's
+  report, but cannot comment on main's issue or close it. Instead the run's
+  summary holds the combined report, and a real failure turns the run red.
 - **Auto-recovery** — a clean night closes the issue with "Recovered". The
   close only happens when every live job actually succeeded; if one
   died on infrastructure (build failure, classifier crash, timeout), the
@@ -111,16 +113,25 @@ On drift, `.github/scripts/diff_openapi.py` summarizes endpoints (OpenAPI
 `paths`) and channels (AsyncAPI `channels`) added/removed/modified, and the
 workflow:
 
-1. Commits the **raw upstream bytes** to the deterministic branch
-   `nightly-schema-drift/<id>` (canonicalization is diff-only — committing a
-   re-serialized form would erase upstream's comments and create perpetual
-   self-noise).
-2. Opens (or updates) a PR with the summary and a truncation-capped canonical
-   diff, plus a `Schema drift: <id>` tracking issue the PR closes on merge.
-3. Pushes with `--force-with-lease`, so a maintainer's manual work on the
-   drift branch is never clobbered — the nightly loses that race on purpose.
-4. When drift disappears (upstream reverted, or the mirror was updated by
-   hand), auto-closes the stale PR and issue.
+1. Renders an issue body: a key-path summary (each changed JSON pointer, with
+   before → after, so drift inside `components.schemas` is named rather than
+   counted), the canonical diff, capped under GitHub's 65,536-character limit,
+   and the one `curl` that adopts the **raw upstream bytes** into the mirror
+   (canonicalization is diff-only — a re-serialized mirror would erase
+   upstream's comments and create perpetual self-noise).
+2. Files, or updates, a `Schema drift: <id>` tracking issue labelled
+   `schema-drift` and `spec:<id>`. It finds the issue by that label
+   intersection, never by title: a title search is tokenized, so `perps` also
+   matched `perps-ws`.
+3. When drift disappears (upstream reverted, or a maintainer adopted it),
+   closes the issue. A drift we deliberately will not sync is recorded in
+   `docs/specs/.drift-acknowledged.json`, keyed by the SHA-256 of the canonical
+   diff, which closes the issue too; the acknowledgement expires the moment
+   either side moves, so it is never permanent blindness.
+
+It commits nothing, pushes no branch and opens no PR: the workflow holds
+`contents: read` and `issues: write`, and the organization does not let
+Actions open pull requests anyway.
 
 ### Deliberate exclusions
 
@@ -131,7 +142,7 @@ workflow:
   forever.
 - **Undocumented hosts** (`docs/specs/undocumented/`) — `user-pnl-api` and
   `lb-api` publish no spec to diff against; their shapes were derived from live
-  responses, and `polyoxide-data`'s live suite is the drift check.
+  responses, and `polyoxide-polymarket`'s `live_data` suite is the drift check.
 - **RTDS** (`docs/specs/rtds/`) — Upstream publishes no AsyncAPI for
   `ws-live-data`; the mirror is modelled on captured wire frames, so there is
   nothing to diff it against.
@@ -149,42 +160,27 @@ workflow:
 | Category | Surface | Label |
 |----------|---------|-------|
 | API behavioral drift | Tracking issue | `nightly-behavioral` |
-| Schema drift | Auto-PR + tracking issue | `schema-drift` |
-| Our own tooling broke | Red workflow run only — **never** an issue or PR | (none) |
+| Schema drift | Tracking issue, one per spec | `schema-drift` and `spec:<id>` |
+| Our own tooling broke | Red workflow run only — **never** an issue | (none) |
 
 The third row is load-bearing: infrastructure failures (upstream unreachable,
 script crash, runner death) must not pollute the drift channels. An
 unreachable upstream is skipped with a warning — better to miss a night than
-file a false-positive PR.
+file a false-positive issue.
 
 ## Operations
 
 - **Manual run**: `gh workflow run nightly-behavioral.yml` /
   `gh workflow run nightly-schema.yml` (both take `workflow_dispatch`).
 - **Labels** are auto-created idempotently on first use; no repo setup needed.
-- **Permissions**: `GITHUB_TOKEN` only — behavioral needs `issues: write`;
-  schema needs `contents: write`, `pull-requests: write`, `issues: write`.
-  No external secrets.
-- **Auto-PRs need a setting the workflow cannot grant itself.** "Allow GitHub
-  Actions to create and approve pull requests"
-  (`can_approve_pull_request_reviews`) must be on. With it off, `gh pr create`
-  is refused with `GitHub Actions is not permitted to create or approve pull
-  requests` regardless of how the `GITHUB_TOKEN` is scoped — a `permissions:`
-  block cannot substitute for it.
-
-  It exists at **two levels, and the org wins**. Setting it per-repo
-  (*Settings → Actions → General → Workflow permissions*) returns `409
-  Conflict — The organization does not allow GitHub Actions to create or
-  approve pull requests` while the org policy forbids it, so an org owner must
-  enable it first at
-  `https://github.com/organizations/<org>/settings/actions`. That is an
-  org-wide change affecting every repository, which is why it is not something
-  this repo can fix on its own.
-
-  Until then the schema workflow degrades deliberately: it treats that one
-  refusal as a warning, not a failure. The drift branch is still pushed and the
-  tracking issue still filed, so no signal is lost — a maintainer just opens
-  the PR by hand. Any other `gh pr create` failure still fails the job.
+- **Permissions**: `GITHUB_TOKEN` only — behavioral needs `contents: read`
+  and `issues: write`; schema needs `contents: read` and `issues: write`. No
+  external secrets beyond the live suites' own.
+- **Adopting a schema drift** is a maintainer's commit: run the `curl` the
+  issue spells out, review the diff, and commit the mirror. The workflow opens
+  no PR because the organization forbids Actions from opening pull requests
+  (the repository-level setting answers `409 Conflict` while the org policy
+  stands), and because one `curl` is all an adoption needs.
 - **Enabling authenticated coverage** (CLOB's authenticated tests, the
   session-key round trip and relay's credentialed tests): set the
   `POLYMARKET_*`, `BUILDER_*` and `RELAYER_*` repo secrets each target declares.

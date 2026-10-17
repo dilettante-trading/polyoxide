@@ -1,0 +1,26 @@
+# A tombstone: polyoxide-sports moved into polyoxide-polymarket's `sports` module in
+# stage S2, and this release only points there. It sits outside the workspace
+# (the root Cargo.toml excludes tombstones/), so it states the workspace's
+# metadata itself, and its version moves with the workspace's.
+# `scripts/publish_order.py check-manifests` holds it to that version and to
+# no dependencies.
+[package]
+name = "polyoxide-sports"
+version = "0.39.0"
+edition = "2021"
+license = "MIT OR Apache-2.0"
+authors = ["Aidan Bailey"]
+repository = "https://github.com/dilettante-trading/polyoxide"
+rust-version = "1.91"
+description = "Retired: the `sports` module of polyoxide-polymarket, behind its `sports` feature, since 0.40"
+readme = "README.md"
+
+# The features polyoxide-sports 0.39 had, each empty, so a dependency that names one
+# still resolves, and stops at the `compile_error!` that says where it went.
+[features]
+test-server = []
+
+# A workspace of its own, so cargo stops here instead of looking further up for
+# one, which finds the parent checkout's workspace when this tree is a worktree
+# nested inside it.
+[workspace]

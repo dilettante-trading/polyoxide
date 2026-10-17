@@ -1,12 +1,21 @@
 # polyoxide
 
-Unified Rust client for [Polymarket](https://polymarket.com) APIs, re-exporting the CLOB (trading), Gamma (market data), Data (user positions/trades), RTDS (price streams), Perps (perpetual futures market data) and Sports (live scores) crates behind feature flags.
+The multi-venue umbrella for the polyoxide toolkit: each venue crate under its venue's name,
+behind features named for the venue and its modules.
+
+| Path | Crate | Features |
+|------|-------|----------|
+| `polyoxide::venue` | `polyoxide-venue`: the vocabulary every venue shares, such as the error classes and `Classify` | always on |
+| `polyoxide::polymarket` | `polyoxide-polymarket`: [Polymarket](https://polymarket.com)'s CLOB, Gamma, Data, Relay, Perps, RTDS and Sports modules, and the unified `Polymarket` client | `polymarket` and `polymarket-<module>` |
+| `polyoxide::binance` | `polyoxide-binance`: Binance's USDⓈ-M futures market data and streams | `binance` and `binance-<module>` |
+| `polyoxide::prelude` | A selection of the enabled modules' clients, errors and stream types | |
 
 More information about this crate can be found in the [crate documentation](https://docs.rs/polyoxide/).
 
 ## Installation
 
-By default, the three REST API modules (CLOB, Gamma, Data) are enabled; `rtds`, `perps`, `perps-ws` and `sports` are opt-in:
+By default, Polymarket's three REST modules (CLOB, Gamma, Data) are enabled; every other module
+is opt-in:
 
 ```bash
 cargo add polyoxide
@@ -15,39 +24,49 @@ cargo add polyoxide
 Select only what you need:
 
 ```bash
-# Market data only
-cargo add polyoxide --no-default-features --features gamma
+# Polymarket market data only
+cargo add polyoxide --no-default-features --features polymarket-gamma
 
-# Trading only
-cargo add polyoxide --no-default-features --features clob
+# Polymarket trading only
+cargo add polyoxide --no-default-features --features polymarket-clob
 
-# User data only
-cargo add polyoxide --no-default-features --features data
+# Polymarket user data only
+cargo add polyoxide --no-default-features --features polymarket-data
 
-# Everything including WebSocket
+# Binance USDⓈ-M futures market data and its streams
+cargo add polyoxide --no-default-features --features binance-usdm-ws
+
+# Every module of every venue, and the keychain
 cargo add polyoxide --no-default-features --features full
 ```
 
 ## Feature flags
 
+A `-ws` feature turns its module's own feature on.
+
 | Feature | Default | Description |
 |---------|---------|-------------|
-| `clob`  | yes | CLOB order-book trading via `polyoxide-clob` |
-| `gamma` | yes | Read-only market data via `polyoxide-gamma` |
-| `data`  | yes | Read-only user positions/trades via `polyoxide-data` |
-| `ws`    | no  | WebSocket streaming (implies `clob`) |
-| `rtds`  | no  | RTDS crypto price streams via `polyoxide-rtds` |
-| `perps` | no  | Perps public market data via `polyoxide-perps` |
-| `perps-ws` | no | Perps WebSocket streaming (implies `perps`) |
-| `sports` | no | Live sports scores via `polyoxide-sports` |
-| `full`  | no  | Enables `clob` + `gamma` + `data` + `ws` + `rtds` + `perps` + `perps-ws` + `sports` |
-| `keychain` | no | OS keychain credential storage; off by default |
+| `polymarket` | yes | `polymarket-clob` + `polymarket-gamma` + `polymarket-data`, `polyoxide-polymarket`'s defaults |
+| `polymarket-clob` | yes | CLOB order-book trading via `polyoxide-polymarket`'s `clob` module |
+| `polymarket-clob-ws` | no | CLOB WebSocket streaming via `polyoxide-polymarket`'s `clob-ws` feature |
+| `polymarket-gamma` | yes | Read-only market data via `polyoxide-polymarket`'s `gamma` module |
+| `polymarket-data` | yes | Read-only user positions/trades via `polyoxide-polymarket`'s `data` module |
+| `polymarket-relay` | no | Gasless transactions via `polyoxide-polymarket`'s `relay` module |
+| `polymarket-perps` | no | Perps public market data via `polyoxide-polymarket`'s `perps` module |
+| `polymarket-perps-ws` | no | Perps WebSocket streaming via `polyoxide-polymarket`'s `perps-ws` feature |
+| `polymarket-rtds` | no | RTDS crypto price streams via `polyoxide-polymarket`'s `rtds` module |
+| `polymarket-sports` | no | Live sports scores via `polyoxide-polymarket`'s `sports` module |
+| `binance` | no | `binance-usdm`, `polyoxide-binance`'s defaults |
+| `binance-usdm` | no | Binance USDⓈ-M futures market data via `polyoxide-binance`'s `usdm` module |
+| `binance-usdm-ws` | no | Binance USDⓈ-M market streams via `polyoxide-binance`'s `usdm-ws` feature |
+| `full` | no | Every module of every venue above, and `keychain` |
+| `keychain` | no | OS keychain credential storage, for the venues that store credentials |
 
 ## Usage
 
-### Unified client (all three features enabled)
+### Unified client (all three REST modules enabled)
 
-When `clob`, `gamma`, and `data` are all enabled, the `Polymarket` struct provides a single entry point. It requires an `Account` for authenticated CLOB operations.
+When `polymarket-clob`, `polymarket-gamma` and `polymarket-data` are all enabled, as by default, `polyoxide::polymarket::Polymarket` provides a single entry point, which the prelude re-exports. It requires an `Account` for authenticated CLOB operations, and its `build` fails with a `BuildError` naming the client that could not be built.
 
 ```rust
 use polyoxide::prelude::*;
@@ -97,13 +116,13 @@ println!("Order placed: {:?}", response);
 # }
 ```
 
-### Using individual crates directly
+### Using each module directly
 
-Each sub-client can be used standalone without the unified `Polymarket` wrapper.
+Each module's client can be used standalone without the unified `Polymarket` wrapper.
 
 ```rust
 // Read-only Gamma client (no auth required)
-use polyoxide::polyoxide_gamma::Gamma;
+use polyoxide::polymarket::gamma::Gamma;
 # async fn doctest() -> Result<(), Box<dyn std::error::Error>> {
 let gamma = Gamma::builder().build()?;
 let events = gamma.events().list().limit(5).send().await?;
@@ -113,7 +132,7 @@ let events = gamma.events().list().limit(5).send().await?;
 
 ```rust
 // Read-only Data API client (no auth required)
-use polyoxide::polyoxide_data::DataApi;
+use polyoxide::polymarket::data::DataApi;
 # async fn doctest() -> Result<(), Box<dyn std::error::Error>> {
 let data = DataApi::builder().build()?;
 let leaders = data.leaderboard().get().send().await?;
@@ -123,7 +142,7 @@ let leaders = data.leaderboard().get().send().await?;
 
 ```rust
 // Public (unauthenticated) CLOB client for read-only market data
-use polyoxide::polyoxide_clob::Clob;
+use polyoxide::polymarket::clob::Clob;
 # async fn doctest() -> Result<(), Box<dyn std::error::Error>> {
 let clob = Clob::public();
 let book = clob.markets().order_book("token_id").send().await?;
@@ -131,7 +150,7 @@ let book = clob.markets().order_book("token_id").send().await?;
 # }
 ```
 
-### WebSocket (requires `ws` feature)
+### WebSocket (requires `polymarket-clob-ws`)
 
 ```rust,ignore
 use polyoxide::prelude::*;
@@ -177,7 +196,7 @@ stream.run(|msg| async move {
 
 ## Environment variables
 
-Authenticated operations (CLOB trading) require:
+Authenticated Polymarket operations (CLOB trading) require:
 
 | Variable | Description |
 |----------|-------------|

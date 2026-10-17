@@ -1,8 +1,8 @@
 //! The helpers the offline suites share (W15).
 //!
-//! The basis is `polyoxide-perps`' former `fast` and `next_event`
-//! (`ws/supervised.rs`, deleted in Story 4.6), `polyoxide-binance`'s
-//! (`tests/supervision.rs`) and `polyoxide-sports`' `next_item` and `drain`
+//! The basis is one socket crate's former `fast` and `next_event`
+//! (`ws/supervised.rs`, deleted in Story 4.6), another socket crate's
+//! (`tests/supervision.rs`) and a third's `next_item` and `drain`
 //! (`tests/supervision.rs`).
 //! Counting pings is [`ScriptedServer::ping_count`](super::ScriptedServer::ping_count)
 //! for protocol pings and

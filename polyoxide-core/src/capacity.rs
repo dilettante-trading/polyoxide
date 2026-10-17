@@ -30,9 +30,9 @@ use crate::hooks::{LayerId, Refused};
 ///
 /// A request costing more than `capacity` can never be satisfied, however
 /// long it waits. An exact cost is refused at once with [`Refused`], and
-/// nothing is sent. An inexact cost (a floor, such as Polymarket's
-/// `cancel-all`) is charged at capacity and never refused: the server
-/// decides.
+/// nothing is sent. An inexact cost (a floor, such as a cancel-all whose
+/// cost the server counts) is charged at capacity and never refused: the
+/// server decides.
 ///
 /// A bucket made [`provisional`](Self::provisional) is sized from a guess,
 /// before the venue has said what the account's capacity is. It never

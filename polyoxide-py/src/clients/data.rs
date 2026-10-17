@@ -9,8 +9,8 @@ use crate::types::*;
 // Enum parsing helpers
 // ═══════════════════════════════════════════════════════════════════════════════
 
-fn parse_position_sort_by(s: &str) -> PyResult<polyoxide_data::types::PositionSortBy> {
-    use polyoxide_data::types::PositionSortBy;
+fn parse_position_sort_by(s: &str) -> PyResult<polyoxide_polymarket::data::types::PositionSortBy> {
+    use polyoxide_polymarket::data::types::PositionSortBy;
     parse_enum!(s, PositionSortBy,
         Current => "CURRENT", Initial => "INITIAL", Tokens => "TOKENS",
         CashPnl => "CASH_PNL", PercentPnl => "PERCENT_PNL", Title => "TITLE",
@@ -18,31 +18,35 @@ fn parse_position_sort_by(s: &str) -> PyResult<polyoxide_data::types::PositionSo
     )
 }
 
-fn parse_sort_direction(s: &str) -> PyResult<polyoxide_data::types::SortDirection> {
-    use polyoxide_data::types::SortDirection;
+fn parse_sort_direction(s: &str) -> PyResult<polyoxide_polymarket::data::types::SortDirection> {
+    use polyoxide_polymarket::data::types::SortDirection;
     parse_enum!(s, SortDirection, Asc => "ASC", Desc => "DESC")
 }
 
-fn parse_closed_position_sort_by(s: &str) -> PyResult<polyoxide_data::types::ClosedPositionSortBy> {
-    use polyoxide_data::types::ClosedPositionSortBy;
+fn parse_closed_position_sort_by(
+    s: &str,
+) -> PyResult<polyoxide_polymarket::data::types::ClosedPositionSortBy> {
+    use polyoxide_polymarket::data::types::ClosedPositionSortBy;
     parse_enum!(s, ClosedPositionSortBy,
         RealizedPnl => "REALIZED_PNL", Title => "TITLE", Price => "PRICE",
         AvgPrice => "AVG_PRICE", Timestamp => "TIMESTAMP",
     )
 }
 
-fn parse_trade_side(s: &str) -> PyResult<polyoxide_data::types::TradeSide> {
-    use polyoxide_data::types::TradeSide;
+fn parse_trade_side(s: &str) -> PyResult<polyoxide_polymarket::data::types::TradeSide> {
+    use polyoxide_polymarket::data::types::TradeSide;
     parse_enum!(s, TradeSide, Buy => "BUY", Sell => "SELL")
 }
 
-fn parse_trade_filter_type(s: &str) -> PyResult<polyoxide_data::types::TradeFilterType> {
-    use polyoxide_data::types::TradeFilterType;
+fn parse_trade_filter_type(
+    s: &str,
+) -> PyResult<polyoxide_polymarket::data::types::TradeFilterType> {
+    use polyoxide_polymarket::data::types::TradeFilterType;
     parse_enum!(s, TradeFilterType, Cash => "CASH", Tokens => "TOKENS")
 }
 
-fn parse_activity_type(s: &str) -> PyResult<polyoxide_data::types::ActivityType> {
-    use polyoxide_data::types::ActivityType;
+fn parse_activity_type(s: &str) -> PyResult<polyoxide_polymarket::data::types::ActivityType> {
+    use polyoxide_polymarket::data::types::ActivityType;
     parse_enum!(s, ActivityType,
         Trade => "TRADE", Split => "SPLIT", Merge => "MERGE",
         Redeem => "REDEEM", Reward => "REWARD", Conversion => "CONVERSION",
@@ -51,20 +55,20 @@ fn parse_activity_type(s: &str) -> PyResult<polyoxide_data::types::ActivityType>
     )
 }
 
-fn parse_activity_sort_by(s: &str) -> PyResult<polyoxide_data::types::ActivitySortBy> {
-    use polyoxide_data::types::ActivitySortBy;
+fn parse_activity_sort_by(s: &str) -> PyResult<polyoxide_polymarket::data::types::ActivitySortBy> {
+    use polyoxide_polymarket::data::types::ActivitySortBy;
     parse_enum!(s, ActivitySortBy, Timestamp => "TIMESTAMP", Tokens => "TOKENS", Cash => "CASH")
 }
 
-fn parse_time_period(s: &str) -> PyResult<polyoxide_data::types::TimePeriod> {
-    use polyoxide_data::types::TimePeriod;
+fn parse_time_period(s: &str) -> PyResult<polyoxide_polymarket::data::types::TimePeriod> {
+    use polyoxide_polymarket::data::types::TimePeriod;
     parse_enum!(s, TimePeriod, Day => "DAY", Week => "WEEK", Month => "MONTH", All => "ALL")
 }
 
 fn parse_leaderboard_category(
     s: &str,
-) -> PyResult<polyoxide_data::api::leaderboard::LeaderboardCategory> {
-    use polyoxide_data::api::leaderboard::LeaderboardCategory;
+) -> PyResult<polyoxide_polymarket::data::api::leaderboard::LeaderboardCategory> {
+    use polyoxide_polymarket::data::api::leaderboard::LeaderboardCategory;
     // Keep in step with `LeaderboardCategory::ALL`.
     parse_enum!(s, LeaderboardCategory,
         Overall => "OVERALL", Politics => "POLITICS", Sports => "SPORTS",
@@ -76,8 +80,8 @@ fn parse_leaderboard_category(
 
 fn parse_leaderboard_order_by(
     s: &str,
-) -> PyResult<polyoxide_data::api::leaderboard::LeaderboardOrderBy> {
-    use polyoxide_data::api::leaderboard::LeaderboardOrderBy;
+) -> PyResult<polyoxide_polymarket::data::api::leaderboard::LeaderboardOrderBy> {
+    use polyoxide_polymarket::data::api::leaderboard::LeaderboardOrderBy;
     parse_enum!(s, LeaderboardOrderBy, Pnl => "PNL", Vol => "VOL")
 }
 
@@ -87,7 +91,7 @@ fn parse_leaderboard_order_by(
 
 #[pyclass(name = "DataApiUser", skip_from_py_object)]
 pub struct PyDataApiUser {
-    client: Arc<polyoxide_data::DataApi>,
+    client: Arc<polyoxide_polymarket::data::DataApi>,
     address: String,
 }
 
@@ -358,7 +362,7 @@ impl PyDataApiUser {
 // Sync variant
 #[pyclass(name = "DataApiUserSync", skip_from_py_object)]
 pub struct PyDataApiUserSync {
-    client: Arc<polyoxide_data::DataApi>,
+    client: Arc<polyoxide_polymarket::data::DataApi>,
     address: String,
 }
 
@@ -647,7 +651,7 @@ client_ns!(
     sync_name = PyDataApiTradesSync,
     py_async_name = "DataApiTrades",
     py_sync_name = "DataApiTradesSync",
-    client_type = polyoxide_data::DataApi,
+    client_type = polyoxide_polymarket::data::DataApi,
     client_var = client,
     #[pyo3(signature = (*, user=None, market=None, event_id=None, side=None, taker_only=None, filter_type=None, filter_amount=None, limit=None, offset=None))]
     #[allow(clippy::too_many_arguments)]
@@ -704,7 +708,7 @@ client_ns!(
     sync_name = PyDataApiHoldersSync,
     py_async_name = "DataApiHolders",
     py_sync_name = "DataApiHoldersSync",
-    client_type = polyoxide_data::DataApi,
+    client_type = polyoxide_polymarket::data::DataApi,
     client_var = client,
     #[pyo3(signature = (markets, *, limit=None, min_balance=None))]
     fn list(
@@ -736,7 +740,7 @@ client_ns!(
     sync_name = PyDataApiOpenInterestSync,
     py_async_name = "DataApiOpenInterest",
     py_sync_name = "DataApiOpenInterestSync",
-    client_type = polyoxide_data::DataApi,
+    client_type = polyoxide_polymarket::data::DataApi,
     client_var = client,
     #[pyo3(signature = (*, market=None))]
     fn get(market: Option<Vec<String>>) -> Vec<PyOpenInterest> {
@@ -761,7 +765,7 @@ client_ns!(
     sync_name = PyDataApiLiveVolumeSync,
     py_async_name = "DataApiLiveVolume",
     py_sync_name = "DataApiLiveVolumeSync",
-    client_type = polyoxide_data::DataApi,
+    client_type = polyoxide_polymarket::data::DataApi,
     client_var = client,
     #[pyo3(signature = (event_id,))]
     fn get(event_id: u64) -> Vec<PyLiveVolume> {
@@ -782,7 +786,7 @@ client_ns!(
     sync_name = PyDataApiLeaderboardSync,
     py_async_name = "DataApiLeaderboard",
     py_sync_name = "DataApiLeaderboardSync",
-    client_type = polyoxide_data::DataApi,
+    client_type = polyoxide_polymarket::data::DataApi,
     client_var = client,
     #[pyo3(signature = (*, category=None, time_period=None, order_by=None, limit=None, offset=None, user=None, user_name=None))]
     fn get(
@@ -833,7 +837,7 @@ client_ns!(
     sync_name = PyDataApiBuildersSync,
     py_async_name = "DataApiBuilders",
     py_sync_name = "DataApiBuildersSync",
-    client_type = polyoxide_data::DataApi,
+    client_type = polyoxide_polymarket::data::DataApi,
     client_var = client,
     #[pyo3(signature = (*, time_period=None, limit=None, offset=None))]
     fn leaderboard(
@@ -880,7 +884,7 @@ client_ns!(
     sync_name = PyDataApiHealthSync,
     py_async_name = "DataApiHealth",
     py_sync_name = "DataApiHealthSync",
-    client_type = polyoxide_data::DataApi,
+    client_type = polyoxide_polymarket::data::DataApi,
     client_var = client,
     #[pyo3(signature = ())]
     fn ping() -> f64 {
@@ -895,7 +899,7 @@ client_ns!(
 
 #[pyclass(name = "DataApi", skip_from_py_object)]
 pub struct PyDataApi {
-    client: Arc<polyoxide_data::DataApi>,
+    client: Arc<polyoxide_polymarket::data::DataApi>,
 }
 
 #[pymethods]
@@ -907,7 +911,7 @@ impl PyDataApi {
         timeout_ms: Option<u64>,
         pool_size: Option<usize>,
     ) -> PyResult<Self> {
-        let mut builder = polyoxide_data::DataApi::builder();
+        let mut builder = polyoxide_polymarket::data::DataApi::builder();
         if let Some(v) = base_url {
             builder = builder.base_url(v);
         }
@@ -986,7 +990,7 @@ impl PyDataApi {
 
 #[pyclass(name = "DataApiSync", skip_from_py_object)]
 pub struct PyDataApiSync {
-    client: Arc<polyoxide_data::DataApi>,
+    client: Arc<polyoxide_polymarket::data::DataApi>,
 }
 
 #[pymethods]
@@ -998,7 +1002,7 @@ impl PyDataApiSync {
         timeout_ms: Option<u64>,
         pool_size: Option<usize>,
     ) -> PyResult<Self> {
-        let mut builder = polyoxide_data::DataApi::builder();
+        let mut builder = polyoxide_polymarket::data::DataApi::builder();
         if let Some(v) = base_url {
             builder = builder.base_url(v);
         }

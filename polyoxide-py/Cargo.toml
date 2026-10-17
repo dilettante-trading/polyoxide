@@ -10,9 +10,7 @@ name = "_polyoxide"
 crate-type = ["cdylib"]
 
 [dependencies]
-polyoxide-gamma = { workspace = true }
-polyoxide-data = { workspace = true }
-polyoxide-clob = { path = "../polyoxide-clob", default-features = false }
+polyoxide-polymarket = { workspace = true, features = ["clob", "gamma", "data"] }
 # Each exception is picked from the error's class.
 polyoxide-venue = { workspace = true }
 pyo3 = { workspace = true }

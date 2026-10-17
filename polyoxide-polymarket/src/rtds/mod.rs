@@ -1,0 +1,53 @@
+//! # RTDS
+//!
+//! Rust client for Polymarket's Real-Time Data Service (RTDS), served at
+//! `wss://ws-live-data.polymarket.com`, behind the `rtds` feature. It builds
+//! only the socket kit, so a credential-free price feed carries no HTTP or
+//! signing stack.
+//!
+//! RTDS relays reference prices without credentials: Binance spot, Chainlink
+//! spot, and Chainlink-computed 30-second and 60-second TWAPs. It is a
+//! different protocol from the CLOB WebSocket channels in `clob::ws`: many
+//! topics are multiplexed over one connection.
+//!
+//! # Precision
+//!
+//! Each update carries both a lossy `display_value: f64` and an exact
+//! [`Decimal`](rust_decimal::Decimal) `value`. **Always use `value` for
+//! arithmetic.** The wire field it is decoded from, `full_accuracy_value`, is
+//! E18 fixed-point on the Chainlink topics and a plain decimal on Binance, so
+//! each topic has its own type and the scale is never a runtime decision.
+
+#![warn(missing_docs)]
+
+pub mod client;
+pub mod decode;
+pub mod error;
+pub mod event;
+pub mod payload;
+pub mod subscription;
+pub mod supervisor;
+pub mod topic;
+
+#[cfg(any(test, feature = "test-server"))]
+#[doc(hidden)]
+pub mod fixtures;
+
+// Gated on `cfg(test)` alone, unlike `fixtures`: it is built
+// on `tracing-subscriber`, a dev-dependency, so putting it behind the public
+// `test-server` feature would make that feature fail to build for anyone who
+// enabled it. Nothing under `tests/` needs it today; if that changes, the fix
+// is to make `tracing-subscriber` an optional dependency of the feature.
+#[cfg(test)]
+mod test_log;
+
+pub use client::{Rtds, RTDS_URL};
+pub use error::{Recovery, RtdsError};
+pub use event::{PriceEvent, PriceUpdate};
+pub use payload::{
+    BinanceUpdate, ChainlinkSpotUpdate, DisplayPoint, ExactPoint, Snapshot, SnapshotPoints,
+    TwapUpdate,
+};
+pub use subscription::{Subscription, SubscriptionRequest};
+pub use supervisor::{RtdsBuilder, SupervisedRtds};
+pub use topic::{Topic, TwapWindow};

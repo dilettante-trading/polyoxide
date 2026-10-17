@@ -6,9 +6,8 @@ maps, the one `Retry-After` parser, `Secret`, the `wire_enum!` and `open_enum!`
 macros with their `UnknownVariant`, `UnixMillis`, and, behind the `decimal`
 feature, the positional decimal serde of rows sent as bare arrays.
 
-By default it depends on nothing, so the credential-free socket crates
-(`polyoxide-rtds`, `polyoxide-sports`) can use it without building an HTTP or
-signing stack.
+By default it depends on nothing, so a credential-free socket client can use it
+without building an HTTP or signing stack.
 
 More information about this crate can be found in the [crate documentation](https://docs.rs/polyoxide-venue/).
 
@@ -16,7 +15,7 @@ More information about this crate can be found in the [crate documentation](http
 
 ```toml
 [dependencies]
-polyoxide-venue = "0.38"
+polyoxide-venue = "0.40"
 ```
 
 ## Usage

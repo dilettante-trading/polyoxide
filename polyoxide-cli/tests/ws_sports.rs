@@ -1,4 +1,4 @@
-//! `polyoxide ws sports` over scripted event streams.
+//! `polyoxide polymarket sports stream` over scripted event streams.
 //!
 //! Each test parses real arguments and runs the command over events built
 //! from captured frames, so a flag that parses but never reaches the filter
@@ -8,8 +8,8 @@ use std::{io, io::Write, time::Duration};
 
 use clap::Parser;
 use futures_util::{stream, StreamExt};
-use polyoxide_cli::commands::ws::sports::{run_with, SportsArgs};
-use polyoxide_sports::{fixtures, Event, MatchUpdate, SportsError};
+use polyoxide_cli::commands::polymarket::sports::{run_with, SportsArgs};
+use polyoxide_polymarket::sports::{fixtures, Event, MatchUpdate, SportsError};
 use serde_json::Value;
 
 #[derive(Parser)]

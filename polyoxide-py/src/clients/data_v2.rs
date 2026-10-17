@@ -9,14 +9,14 @@
 use std::{convert::Infallible, fmt::Display, pin::Pin, str::FromStr, sync::Arc};
 
 use futures_util::{lock::Mutex, Stream, StreamExt};
-use polyoxide_data::{
+use polyoxide_polymarket::data::{
     types::SortDirection,
     v2::{
         self,
         types::{PositionAnchor, ResolutionKey},
         DataV2,
     },
-    DataApiError,
+    DataError,
 };
 use pyo3::{
     exceptions::{PyStopAsyncIteration, PyValueError},
@@ -153,7 +153,7 @@ impl PyPage {
 /// Builds a `Page` once the GIL is held. Boxing it erases the row type, so one
 /// iterator class serves every paged route.
 type PageBuilder = Box<dyn for<'py> FnOnce(Python<'py>) -> PyResult<PyPage> + Send>;
-type Pages = Arc<Mutex<Pin<Box<dyn Stream<Item = Result<PageBuilder, DataApiError>> + Send>>>>;
+type Pages = Arc<Mutex<Pin<Box<dyn Stream<Item = Result<PageBuilder, DataError>> + Send>>>>;
 
 fn erase<T, W>(pages: v2::PageStream<T>) -> Pages
 where

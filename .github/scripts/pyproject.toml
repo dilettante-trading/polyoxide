@@ -2,7 +2,7 @@
 name = "polyoxide-ci-scripts"
 version = "0.1.0"
 description = "CI helper scripts for polyoxide nightly smoketest workflows"
-requires-python = ">=3.11"
+requires-python = ">=3.11.4"
 dependencies = [
     "pyyaml>=6.0",
 ]

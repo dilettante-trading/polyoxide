@@ -3,14 +3,12 @@
 
 use polyoxide_core::HttpClient;
 
-use crate::{
-    error::BinanceError,
-    usdm::{
-        request::{route_builder, Routed},
-        types::{
-            AggTrade, Depth, DepthLimit, FundingRate, Interval, Kline, OpenInterest, PremiumIndex,
-            Symbol, Ticker24h,
-        },
+use crate::usdm::{
+    error::UsdmError,
+    request::{route_builder, Routed},
+    types::{
+        AggTrade, Depth, DepthLimit, FundingRate, Interval, Kline, OpenInterest, PremiumIndex,
+        Symbol, Ticker24h,
     },
     weight::{Cost, Route},
 };
@@ -162,7 +160,7 @@ impl GetKlines {
     }
 
     /// Execute the request.
-    pub async fn send(self) -> Result<Vec<Kline>, BinanceError> {
+    pub async fn send(self) -> Result<Vec<Kline>, UsdmError> {
         self.request.send().await
     }
 }
@@ -192,7 +190,7 @@ impl GetFundingRate {
     }
 
     /// Execute the request.
-    pub async fn send(self) -> Result<Vec<FundingRate>, BinanceError> {
+    pub async fn send(self) -> Result<Vec<FundingRate>, UsdmError> {
         self.request.send().await
     }
 }
@@ -221,7 +219,7 @@ impl GetAggTrades {
     }
 
     /// Execute the request.
-    pub async fn send(self) -> Result<Vec<AggTrade>, BinanceError> {
+    pub async fn send(self) -> Result<Vec<AggTrade>, UsdmError> {
         self.request.send().await
     }
 }
@@ -249,7 +247,7 @@ impl GetDepth {
     }
 
     /// Execute the request.
-    pub async fn send(self) -> Result<Depth, BinanceError> {
+    pub async fn send(self) -> Result<Depth, UsdmError> {
         self.request.send().await
     }
 }

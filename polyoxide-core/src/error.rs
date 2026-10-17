@@ -24,7 +24,7 @@ pub struct ErrorResponse {
     /// The response's body, verbatim, or `""` when it could not be read.
     pub body: String,
     /// The body's `error` field, else its `message` field, else the body
-    /// verbatim: the shape Polymarket's hosts answer with.
+    /// verbatim: the shape most venue hosts answer with.
     pub message: String,
     /// The response's `Retry-After`, read by
     /// [`polyoxide_venue::parse_retry_after`] with no clamp, since it is
@@ -345,7 +345,7 @@ mod tests {
 
     #[test]
     fn test_retriable_425_too_early() {
-        // Polymarket returns 425 while the matching engine restarts and documents
+        // A venue returns 425 while its matching engine restarts and documents
         // it as "retry with exponential backoff".
         assert!(Classify::is_retriable(&api(425)));
     }

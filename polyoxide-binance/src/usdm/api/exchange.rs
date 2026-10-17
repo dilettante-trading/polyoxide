@@ -2,11 +2,9 @@
 
 use polyoxide_core::HttpClient;
 
-use crate::{
-    usdm::{
-        request::{route_builder, Routed},
-        types::{ExchangeInfo, FundingInfo},
-    },
+use crate::usdm::{
+    request::{route_builder, Routed},
+    types::{ExchangeInfo, FundingInfo},
     weight::Route,
 };
 

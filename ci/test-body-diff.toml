@@ -1,0 +1,448 @@
+# What scripts/test_body_diff.py may not hold against the S2 baseline, and why.
+#
+# The script pairs every test-context item at the baseline (CI's `S2_BASELINE`)
+# with its counterpart at HEAD and compares the two after normalising them through
+# docs/rename-manifest.md's path rows. Each section below covers what the manifest
+# cannot. Every entry must match something: one that pairs, replaces, acknowledges
+# or retires nothing fails the job, so the file never outlives what it explains.
+#
+# An item is named by its file at the baseline, its kind (`fn` unless given), and
+# `item`, its inline module path and name as the script prints them. The kinds are
+# `fn`, `const`, `static`, `struct`, `enum`, `union`, `type`, `extern`, `macro` for a
+# `macro_rules!`, `invocation` for an item-level macro call, `method`, `assoc_const`
+# and `assoc_type` for what an `impl` or `trait` holds, `target` for a manifest's
+# `[[test]]` or `[[example]]` stanza, named `[[test]]` and filed under its target's
+# file, and `fixture` for a file under a `tests/fixtures/`, named by its file name.
+# Examples: `tests::frame_decodes`, `_#1` for a module's first `const _`,
+# `agreement!#1` for its first `agreement! { ... }`, and
+# `<impl Throttle for Recorder>::acquire`.
+#
+# [files]
+#   "<baseline file>" = "<file at HEAD>"
+#   Pairs two files that `git diff -M30%` does not, or pairs differently. An item is
+#   first looked for in its file's pair, so a test file split or merged below 30%
+#   similarity needs one line here per baseline file, which must hold an item.
+#
+# [literals]
+#   "<content at the baseline>" = "<content at HEAD>"
+#   Replaces a baseline string literal whose content is exactly the key, before the
+#   comparison: a tracing target such as "polyoxide_clob", or a fixture directory.
+#   A key that names a table instead scopes its literals to the baseline files at or
+#   under that path, matched at a `/`, and the longest scope wins:
+#     [literals."polyoxide-clob"]
+#     "ws" = "clob-ws"
+#   An `include_str!` or `include_bytes!` target needs no line: it compares by the
+#   content of the file it names. Each literal must replace something.
+#
+# [fixtures]
+#   "<baseline path prefix>" = "<subdirectory>"
+#   Reads each baseline `fixtures!()` call at or under the prefix, matched at a `/`,
+#   as `fixtures!("<subdirectory>")`, and each `fixtures!("x")` as
+#   `fixtures!("<subdirectory>/x")`, for a crate whose `tests/fixtures/` moved
+#   under a module's `tests/fixtures/<module>/`. A no-argument call has no literal
+#   for `[literals]` to replace. It applies before `[literals]`, so a literal key
+#   never matches a call's rewritten argument. The longest prefix wins, and each
+#   entry must rewrite a call.
+#
+# [paths]
+#   "<old path>" = "<new path>"
+#   Maps a path the rename manifest does not hold, because it was never public, such
+#   as `polyoxide_core::polymarket::limits` moving into `polyoxide_polymarket`'s
+#   private `src/shared/`. It applies on the baseline side as a manifest path row
+#   does, after the manifest's rows, and wins over one with the same old path. Each
+#   entry must rewrite or rename something.
+#
+# [gates]
+#   "<HEAD path prefix>" = "<feature>", or = ["<feature>", ...]
+#   Drops a module's feature gate at HEAD, for a crate root that became the module
+#   `src/<m>/mod.rs` under `#[cfg(feature = "<m>")] pub mod <m>;`, or a test directory
+#   whose targets require a module's features. For every HEAD item at or under the
+#   prefix, matched at a `/`, it drops exactly `cfg(feature = "<feature>")` from what
+#   gates it, from a `mod x;`, an enclosing module or the file's inner `cfg`, and that
+#   operand from a top-level `cfg(all(...))`; and it drops `<feature>` from the
+#   `required-features` of every stanza whose target is there. Any other gate stays.
+#   A value may instead be a whole cfg predicate, what goes inside `cfg(...)`, told
+#   from a feature by its `(` or `=`:
+#     "polyoxide-y/src/shared/auth.rs" = 'any(feature = "clob", feature = "relay")'
+#   It drops exactly that `cfg(...)`, compared token by token, and that operand from
+#   a top-level `cfg(all(...))`, but never a `required-features` entry, which names
+#   features only. Each feature and each predicate must drop something.
+#
+# [[drift]]
+#   file   = "<baseline file>"
+#   item   = "<module path and name>"
+#   kind   = "fn"                       (optional)
+#   row    = "R6"                       a DRIFT row of divergences.md
+#   sha256 = "<the diff's sha256>"      as the script prints it
+#   Acknowledges one diff, which the named DRIFT row decided. The sha256 pins that
+#   exact diff, so any further change to either side shows again.
+#
+# [[retired]]
+#   file = "<baseline file>"
+#   item = "<module path and name>"
+#   kind = "fn"                         (optional)
+#   row  = "<old path in docs/rename-manifest.md>"
+#   Lets a test go with its subject. The manifest row covering `row`, the longest
+#   old path that is a prefix of it at `::`, must give a reason, not a new path.
+#
+# Add each [[drift]] or [[retired]] entry below as its own table. The only DRIFT
+# row S2 allows is R6.
+
+[files]
+
+[literals]
+
+# Story 5.2: core names no venue, so its `with_base_url` tests use example hosts.
+[literals."polyoxide-core/src/client.rs"]
+"https://data-api.polymarket.com" = "https://api.example.com"
+"https://user-pnl-api.polymarket.com" = "https://sibling.example.com"
+"data-api.polymarket.com" = "api.example.com"
+"user-pnl-api.polymarket.com" = "sibling.example.com"
+
+# Story 5.3: data's v2 fixtures moved to `polyoxide-polymarket`'s
+# `tests/fixtures/data/v2/`, beside gamma's `tests/fixtures/gamma/`.
+[literals."polyoxide-data/tests/v2_spec_agreement.rs"]
+"v2" = "data/v2"
+
+[literals."polyoxide-data/tests/v2_wire_agreement.rs"]
+"v2" = "data/v2"
+
+[literals."polyoxide-cli/tests/data_v2.rs"]
+"/../polyoxide-data/tests/fixtures/v2" = "/../polyoxide-polymarket/tests/fixtures/data/v2"
+
+[literals."polyoxide-py/src/types/data_v2.rs"]
+"{}/../polyoxide-data/tests/fixtures/v2/{fixture}.json" = "{}/../polyoxide-polymarket/tests/fixtures/data/v2/{fixture}.json"
+
+# Story 5.4: clob's `ws` feature is polyoxide-polymarket's `clob-ws`, which the
+# moved suites' gates name.
+[literals."polyoxide-clob"]
+"ws" = "clob-ws"
+
+# Story 5.5: sports' fixtures moved to `tests/fixtures/sports/`. perps' `ws`
+# feature, now `perps-ws`, needs no literal: no test item sits under `mod ws;`
+# itself, and a stanza's features follow the manifest's `## Features` rows.
+[literals."polyoxide-sports/src/fixtures.rs"]
+"/tests/fixtures" = "/tests/fixtures/sports"
+
+# Story 5.5: the drift detector names the capture script by its new name.
+[literals."polyoxide-sports/tests/live_api.rs"]
+"the feed sends keys MatchUpdate does not model. Capture fixtures with \\\n         scripts/capture_sports_fixtures.py, model the keys in MatchUpdate, and record them \\\n         in docs/specs/sports/OBSERVED.md. The first frame carrying each: {unmodelled:#?}" = "the feed sends keys MatchUpdate does not model. Capture fixtures with \\\n         scripts/capture_polymarket_sports.py, model the keys in MatchUpdate, and record them \\\n         in docs/specs/sports/OBSERVED.md. The first frame carrying each: {unmodelled:#?}"
+
+# Story 5.6: Binance's `ws` feature is the `usdm` module's `usdm-ws`, which the
+# gate on failure_tags' `mod streams` names. No other baseline test item sits
+# under a `ws` gate.
+[literals."polyoxide-binance/tests/failure_tags.rs"]
+"ws" = "usdm-ws"
+
+# Story 5.6: core names no venue, so its health tests ping a neutral path
+# where they pinged Binance's.
+[literals."polyoxide-core/tests/health.rs"]
+"/fapi/v1/ping" = "/v1/ping"
+
+# Story 5.5: perps' fixtures moved to `tests/fixtures/perps/`, and its agreement
+# suites name them through `fixtures!()` and `fixtures!("ws")`. Story 5.6:
+# Binance's moved to `tests/fixtures/usdm/`, which its suites name through
+# `fixtures!("rest")`.
+[fixtures]
+"polyoxide-binance" = "usdm"
+"polyoxide-perps" = "perps"
+
+[paths]
+
+# Story 5.2: core's Polymarket files moved into `polyoxide-polymarket`'s
+# `shared`, each under the features of the modules that use it.
+[gates]
+"polyoxide-polymarket/src/shared/auth.rs" = 'any(feature = "clob", feature = "relay")'
+"polyoxide-polymarket/src/shared/limits.rs" = "clob"
+"polyoxide-polymarket/src/shared/session_signer.rs" = 'any(feature = "clob", feature = "relay")'
+"polyoxide-polymarket/src/shared/signer_limit.rs" = "clob"
+
+# Story 5.3: data's harnesses moved into `polyoxide-polymarket`, whose examples
+# require the module they drive. No `src/gamma/` or `src/data/` entry: the
+# module gate sits on `mod gamma;` and `mod data;`, which declare only each
+# module's `mod.rs`, and neither holds a test item.
+"polyoxide-polymarket/examples/closed_positions_burst_probe.rs" = "data"
+"polyoxide-polymarket/examples/closed_positions_soak.rs" = "data"
+"polyoxide-polymarket/examples/v2_soak" = "data"
+
+# Story 5.5: perps' harness and the rtds and sports suites that import the
+# captured frames require their module now. perps' two `ws` stanzas need no
+# entry: the manifest's `polyoxide-perps/ws` row maps them to `perps-ws`.
+"polyoxide-polymarket/examples/info_soak.rs" = "perps"
+"polyoxide-polymarket/tests/supervision_rtds.rs" = "rtds"
+"polyoxide-polymarket/tests/bare_sports.rs" = "sports"
+"polyoxide-polymarket/tests/supervision_sports.rs" = "sports"
+
+# Story 5.6: Binance's `usdm` module is behind its feature, which the gate on
+# `mod usdm;` names for `usdm/mod.rs`'s tests and the probe requires. The suites
+# that import the captured frames require `usdm-ws` beside `test-server`, which
+# no longer turns the streams on.
+"polyoxide-binance/src/usdm/mod.rs" = "usdm"
+"polyoxide-binance/examples/weight_probe.rs" = "usdm"
+"polyoxide-binance/tests/supervision_usdm.rs" = "usdm-ws"
+"polyoxide-binance/tests/supervision_usdm_edges.rs" = "usdm-ws"
+"polyoxide-binance/tests/supervision_usdm_kit.rs" = "usdm-ws"
+"polyoxide-binance/tests/wire_agreement_usdm_ws.rs" = "usdm-ws"
+
+# DRIFT R6 (Story 5.5): rtds' `test-fixtures` feature became `test-server`, the
+# name every other crate's has, so the gate on `mod fixtures;` changed for each
+# item the module holds. Nothing else in them did.
+
+[[drift]]
+file = "polyoxide-rtds/src/fixtures.rs"
+item = "BINANCE_SNAPSHOT"
+kind = "const"
+row = "R6"
+sha256 = "c7e80a3226f83fcba37d9b7740fd75f1373a53bd6b4ac5cfc1088827dd76bd70"
+
+[[drift]]
+file = "polyoxide-rtds/src/fixtures.rs"
+item = "BINANCE_UPDATE"
+kind = "const"
+row = "R6"
+sha256 = "769acd2985034bd4400872ea1d675ec9ec892b6195e56ddbac9288805f0eb064"
+
+[[drift]]
+file = "polyoxide-rtds/src/fixtures.rs"
+item = "CHAINLINK_SPOT_SNAPSHOT"
+kind = "const"
+row = "R6"
+sha256 = "2980a3110f723f369ccfd9e79990119f21f0d36052af3800b1a78a44f0ccb42a"
+
+[[drift]]
+file = "polyoxide-rtds/src/fixtures.rs"
+item = "CHAINLINK_SPOT_UPDATE"
+kind = "const"
+row = "R6"
+sha256 = "80b68e46910c9f248d85a095f95ac107942350313fd2bdbb7b3ea2a5d369ebf6"
+
+[[drift]]
+file = "polyoxide-rtds/src/fixtures.rs"
+item = "EMPTY_GREETING"
+kind = "const"
+row = "R6"
+sha256 = "6a9d265f0acf40a12acc469ca22f14fc690b82700d0090c7282ab6d2ded2214b"
+
+[[drift]]
+file = "polyoxide-rtds/src/fixtures.rs"
+item = "REJECTED_SUBSCRIPTION"
+kind = "const"
+row = "R6"
+sha256 = "546d487c1efa73c326b36c00581cdfe07e91fc8d085d9a23a50a4d25264157ec"
+
+[[drift]]
+file = "polyoxide-rtds/src/fixtures.rs"
+item = "TWAP_SIXTY_SNAPSHOT"
+kind = "const"
+row = "R6"
+sha256 = "25721a9107b4f037fcec18ec3b30e6580a85d8b0e627d2694c1cf0759e83fad3"
+
+[[drift]]
+file = "polyoxide-rtds/src/fixtures.rs"
+item = "TWAP_SIXTY_UPDATE"
+kind = "const"
+row = "R6"
+sha256 = "a4d77e27e70b7e29845f96f8722f2740e1a44411899289bb17cb52301ea24dd2"
+
+[[drift]]
+file = "polyoxide-rtds/src/fixtures.rs"
+item = "TWAP_THIRTY_SNAPSHOT"
+kind = "const"
+row = "R6"
+sha256 = "397e5f1a950eb951a4d3b0b7692f8a40c78a49f4a24643a3b86961faa4bde662"
+
+[[drift]]
+file = "polyoxide-rtds/src/fixtures.rs"
+item = "TWAP_THIRTY_UPDATE"
+kind = "const"
+row = "R6"
+sha256 = "1e11b187c358c4260a01305f1331ab9fd2a08a7bdb0ef13f8e20eff1b5659e3b"
+
+[[drift]]
+file = "polyoxide-rtds/src/fixtures.rs"
+item = "tests::a_chainlink_spot_snapshot_is_mislabelled_as_the_binance_topic"
+row = "R6"
+sha256 = "88475dccc68b745e68cac475829e11a5ea599f687c316e6ecb31529a0c9ee596"
+
+[[drift]]
+file = "polyoxide-rtds/src/fixtures.rs"
+item = "tests::every_fixture_decodes_to_the_float_it_shipped_with"
+row = "R6"
+sha256 = "238bf9e7fa4fc6d60fbd6fa5483ab039bcd5af08afc98a0ba31ea37c2f0eae6f"
+
+[[drift]]
+file = "polyoxide-rtds/src/fixtures.rs"
+item = "tests::every_fixture_is_valid_json"
+row = "R6"
+sha256 = "6cec1179952cba4b8437890fd6f2ba39e6a49c57b7c5b115acc35229aa5d08ac"
+
+[[drift]]
+file = "polyoxide-rtds/src/fixtures.rs"
+item = "tests::snapshot_fixtures_differ_in_exactly_the_way_the_design_depends_on"
+row = "R6"
+sha256 = "a4666f52b53a7a0888aca19a40fa54aaab3816a53379df090bb677cb379dfd39"
+
+[[drift]]
+file = "polyoxide-rtds/src/fixtures.rs"
+item = "tests::the_two_spot_fixtures_are_field_identical_and_differently_scaled"
+row = "R6"
+sha256 = "0f0c5c74b2874cc7029dba27223ac88a1c277d9ac312597d4980c80eba48730f"
+
+# Story 5.7: `PolymarketError` is removed, and the unified client's builder
+# returns polyoxide-polymarket's `BuildError`, which has a test of its own
+# there, so the umbrella's test of the old enum goes with it.
+
+[[retired]]
+file = "polyoxide/src/lib.rs"
+item = "tests::every_variant_classifies_as_the_error_it_wraps"
+row = "polyoxide::PolymarketError"
+
+# Stories 5.8 and 5.9: the CLI's commands are `polyoxide <venue> <module>
+# <verb…>`. main.rs's tests of the old tree parse `gamma`, `data`, `clob` and
+# `ws` at the top, or match `Commands::Ws`, so they test the old paths, and
+# `[literals]` cannot turn one argument into two; each retires, and a test of
+# the new path in main.rs's `tests::polymarket` or `tests::binance` replaces
+# it, under the old name where it still reads true.
+
+[[retired]]
+file = "polyoxide-cli/src/main.rs"
+item = "tests::gamma_subcommand_requires_nested_subcommand"
+row = "polyoxide_cli::commands::GammaCommand"
+
+[[retired]]
+file = "polyoxide-cli/src/main.rs"
+item = "tests::gamma_markets_list_parses_defaults"
+row = "polyoxide_cli::commands::GammaCommand"
+
+[[retired]]
+file = "polyoxide-cli/src/main.rs"
+item = "tests::data_subcommand_requires_nested_subcommand"
+row = "polyoxide_cli::commands::DataCommand"
+
+[[retired]]
+file = "polyoxide-cli/src/main.rs"
+item = "tests::data_health_parses"
+row = "polyoxide_cli::commands::DataCommand"
+
+[[retired]]
+file = "polyoxide-cli/src/main.rs"
+item = "tests::clob_subcommand_requires_nested_subcommand"
+row = "polyoxide_cli::commands::ClobCommand"
+
+[[retired]]
+file = "polyoxide-cli/src/main.rs"
+item = "tests::clob_prices_download_parses_with_token_id"
+row = "polyoxide_cli::commands::ClobCommand"
+
+[[retired]]
+file = "polyoxide-cli/src/main.rs"
+item = "tests::clob_prices_download_defaults_interval_max"
+row = "polyoxide_cli::commands::ClobCommand"
+
+[[retired]]
+file = "polyoxide-cli/src/main.rs"
+item = "tests::ws_subcommand_requires_nested_subcommand"
+row = "polyoxide_cli::commands::ws::WsCommand"
+
+[[retired]]
+file = "polyoxide-cli/src/main.rs"
+item = "tests::ws_market_requires_asset_ids"
+row = "polyoxide_cli::commands::ws::WsCommand::Market"
+
+[[retired]]
+file = "polyoxide-cli/src/main.rs"
+item = "tests::ws_market_parses_with_asset_id"
+row = "polyoxide_cli::commands::ws::WsCommand::Market"
+
+[[retired]]
+file = "polyoxide-cli/src/main.rs"
+item = "tests::ws_user_requires_market_ids"
+row = "polyoxide_cli::commands::ws::WsCommand::User"
+
+[[retired]]
+file = "polyoxide-cli/src/main.rs"
+item = "tests::ws_sports_parses_with_no_arguments"
+row = "polyoxide_cli::commands::ws::WsCommand::Sports"
+
+[[retired]]
+file = "polyoxide-cli/src/main.rs"
+item = "tests::ws_binance_parses_with_a_symbol_and_kind"
+row = "polyoxide_cli::commands::ws::WsCommand::Binance"
+
+# Story 5.8: market's and user's `--format` is the streams' one `pretty|json`,
+# and `pretty` prints what `summary` did, so `--format summary` is refused.
+
+[[retired]]
+file = "polyoxide-cli/src/commands/ws/market.rs"
+item = "tests::format_summary"
+row = "polyoxide_cli::commands::ws::market::OutputFormat::Summary"
+
+# Story 5.9: the credentials command is each venue's, over its library's
+# `StoredCredential` kinds, and Polymarket's `relay` kind is `builder`. The old
+# command's parse tests and their two helpers go with it; the generic command
+# and Polymarket's kinds have tests of every kind and verb.
+
+[[retired]]
+file = "polyoxide-cli/src/commands/credentials/mod.rs"
+item = "tests::TestCli"
+kind = "struct"
+row = "polyoxide_cli::commands::credentials::CredentialsCommand"
+
+[[retired]]
+file = "polyoxide-cli/src/commands/credentials/mod.rs"
+item = "tests::try_parse"
+row = "polyoxide_cli::commands::credentials::CredentialsCommand"
+
+[[retired]]
+file = "polyoxide-cli/src/commands/credentials/mod.rs"
+item = "tests::store_clob_parses_all_flags"
+row = "polyoxide_cli::commands::credentials::CredentialsCommand"
+
+[[retired]]
+file = "polyoxide-cli/src/commands/credentials/mod.rs"
+item = "tests::store_relay_parses_builder_flags"
+row = "polyoxide_cli::commands::credentials::CredentialsCommand"
+
+[[retired]]
+file = "polyoxide-cli/src/commands/credentials/mod.rs"
+item = "tests::store_relay_parses_relayer_api_key_flags"
+row = "polyoxide_cli::commands::credentials::CredentialsCommand"
+
+[[retired]]
+file = "polyoxide-cli/src/commands/credentials/mod.rs"
+item = "tests::show_clob_parses"
+row = "polyoxide_cli::commands::credentials::CredentialsCommand"
+
+[[retired]]
+file = "polyoxide-cli/src/commands/credentials/mod.rs"
+item = "tests::show_relay_parses"
+row = "polyoxide_cli::commands::credentials::CredentialsCommand"
+
+[[retired]]
+file = "polyoxide-cli/src/commands/credentials/mod.rs"
+item = "tests::store_clob_no_flags_parses"
+row = "polyoxide_cli::commands::credentials::CredentialsCommand"
+
+[[retired]]
+file = "polyoxide-cli/src/commands/credentials/mod.rs"
+item = "tests::delete_clob_parses"
+row = "polyoxide_cli::commands::credentials::CredentialsCommand"
+
+[[retired]]
+file = "polyoxide-cli/src/commands/credentials/mod.rs"
+item = "tests::delete_relay_parses"
+row = "polyoxide_cli::commands::credentials::CredentialsCommand"
+
+[[drift]]
+file = "polyoxide-data/tests/live_api.rs"
+item = "live_user_pnl_series"
+kind = "fn"
+row = "R12"
+sha256 = "4bd7d85f0bdc93204cec2c899b1b09e43e7c4298530f685d0e960bbd21d3ae98"
+
+[[drift]]
+file = "polyoxide-data/tests/live_api.rs"
+item = "live_rankings_volume_and_profit"
+kind = "fn"
+row = "R12"
+sha256 = "31214ff301d4d2bdcdf8aaf753c19b340046c3a5ae919fb30fc277a8af0f71d2"

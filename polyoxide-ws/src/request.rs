@@ -61,10 +61,11 @@ impl Default for Requests {
 /// and after a [`NoAnswer`](crate::Kind::NoAnswer) the server's state is
 /// unknown: replace the connection rather than reuse it.
 ///
-/// The basis is `polyoxide-binance`'s former `request` and `await_answer`
-/// (`usdm/ws/client.rs`, on this correlation since Story 4.7), with its 10 s
-/// answer timeout and 200 ms pacing, and `polyoxide-perps`' former `take_id`
-/// and `await_response` (`ws/client.rs`, Story 4.6), which set neither.
+/// The basis is one socket crate's former `request` and `await_answer`
+/// (its bare tier's, on this correlation since Story 4.7), with its 10 s
+/// answer timeout and 200 ms pacing, and another socket crate's former
+/// `take_id` and `await_response` (`ws/client.rs`, Story 4.6), which set
+/// neither.
 impl Connection {
     /// Send requests no sooner than `interval` apart. Only
     /// [`request`](Self::request) is paced: a frame sent with
@@ -249,8 +250,8 @@ mod tests {
         parse(&message).expect("a JSON text frame")
     }
 
-    /// perps' envelope: `{"id", "req", "chs"}` answered by `{"id", "data"}`,
-    /// with pushes `{"ch", "sq", "data"}`.
+    /// One venue's envelope: `{"id", "req", "chs"}` answered by
+    /// `{"id", "data"}`, with pushes `{"ch", "sq", "data"}`.
     mod perps {
         use super::*;
 
@@ -283,7 +284,7 @@ mod tests {
         }
     }
 
-    /// Binance's envelope: `{"method", "params", "id"}` answered by
+    /// Another venue's envelope: `{"method", "params", "id"}` answered by
     /// `{"result", "id"}` or `{"error", "id"}`, with pushes `{"stream", "data"}`.
     mod binance {
         use super::*;

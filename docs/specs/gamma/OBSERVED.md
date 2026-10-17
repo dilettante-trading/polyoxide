@@ -26,7 +26,7 @@ $ curl -s "https://gamma-api.polymarket.com/comments?parent_entity_type=market&p
 ```
 
 So `market` is rejected in either casing and `PerpsAsset` is undocumented.
-`polyoxide_gamma::types::ParentEntityType` follows the server.
+`polyoxide_polymarket::gamma::types::ParentEntityType` follows the server.
 
 ## `limit` on `GET /comments`
 
@@ -90,7 +90,7 @@ AMM fields stay `Option`, and `ListMarkets::market_maker_address`,
 `MarketsInformationBody::market_maker_address` stay. The removal is a docs change
 until the server says otherwise, and the nightly checks for that:
 `live_market_maker_address_filter_is_still_applied` in
-`polyoxide-gamma/tests/live_api.rs` fails if any of the three routes stops
+`polyoxide-polymarket/tests/live_gamma.rs` fails if any of the three routes stops
 applying the filter. Deserialization of every live-market test fails if
 `marketMakerAddress` disappears from the wire.
 
@@ -137,7 +137,7 @@ position ids and trade on a new exchange, ExchangeV3, which signs under
 domain version `"3"` with `verifyingContract`
 `0xe3333700cA9d93003F00f0F71f8515005F6c00Aa`. CLOB balance reads for V2
 positions use `asset_type=CONDITIONAL-V2`. CTF (v1) orders keep domain
-version `"2"`, which is what `polyoxide-clob` signs.
+version `"2"`, which is what `polyoxide-polymarket`'s `clob` module signs.
 
 **The served `Market.json` says more than the published spec**, and outranks
 it:
@@ -177,7 +177,7 @@ way. `version` stays `Option` although every market sampled sends it,
 because neither schema lists it in `required`. Trading a V2 market
 (ExchangeV3 signing, `CONDITIONAL-V2`, the new approvals) is not implemented.
 `live_markets_carry_a_known_protocol_version` in
-`polyoxide-gamma/tests/live_api.rs` fails if the newest markets stop sending
+`polyoxide-polymarket/tests/live_gamma.rs` fails if the newest markets stop sending
 `version` or send one `ProtocolVersion` does not name.
 
 ## Sports games on `GET /events`: `game_id`, `gameId`, `teams` and `sport`
@@ -205,11 +205,11 @@ The fields that describe a game are missing from `openapi.yaml`'s `Event`:
 and `eventMetadata` an object with arbitrary values. `openapi.yaml`'s `Team`
 lacks `providerId`, `color` and `ordering`, and its `SportsMetadata` lacks
 `id`, `name`, `primaryTagId` and `createdAt`. All of these are modelled from
-the served schemas and checked against `polyoxide-gamma/tests/fixtures/`
+the served schemas and checked against `polyoxide-polymarket/tests/fixtures/gamma/`
 (`event_*`, `team_*`, `sport_metadata.json`).
 
 Across 600 sports events sampled on 2026-10-08 (provenance in
-`polyoxide-gamma/tests/fixtures/README.md`):
+`polyoxide-polymarket/tests/fixtures/gamma/PROVENANCE.md`):
 
 - **`gameId` is not one event's id.** A game's child events ("More Markets",
   "Exact Score", "Halftime Result", …) carry `parentEventId`, and 204 of 227
@@ -293,9 +293,9 @@ describes a completely different object from what this endpoint actually
 returns (`PublicProfile.json`: 10 properties including `$schema` itself,
 `takerTier`/`takerTierName`/`weightedVolume` required, no `id` at all). See
 `docs/plans/2026-08-19-gamma-type-parity-worklist.md` finding #1 — fixed by
-modelling `polyoxide_gamma::types::Profile` against `PublicProfile.json`
-directly, verified against `tests/fixtures/profile_{full,sparse}.json` and
-enforced by `tests/wire_agreement.rs`.
+modelling `polyoxide_polymarket::gamma::types::Profile` against `PublicProfile.json`
+directly, verified against `tests/fixtures/gamma/profile_{full,sparse}.json` and
+enforced by `tests/wire_agreement_gamma.rs`.
 
 **Practical upshot for future parity work:** before trusting `openapi.yaml`
 for an endpoint, check whether a live response from it carries `$schema`. If
@@ -304,16 +304,16 @@ the server than the vendored mirror can ever be, since the mirror is a
 point-in-time copy and the served schema is generated from whatever the server
 is actually running.
 
-`GET /public-profile` (`polyoxide-gamma/src/api/user.rs`) is the second
+`GET /public-profile` (`polyoxide-polymarket/src/gamma/api/user.rs`) is the second
 confirmation of the same pattern: it serves `PublicProfileResponse.json`, a
 sibling schema to `PublicProfile.json` (10 properties there, 12 here, plus the
 nested `PublicProfileUser.json` for each entry of `users[]`). Neither schema
 has ever described a top-level `address` or `id` — the fork invented both,
 exactly as it invented `Profile::id` (#1) and `SearchProfile::address` (part
-of the same finding, #10). Fixed by modelling `polyoxide_gamma::api::user::UserResponse`
+of the same finding, #10). Fixed by modelling `polyoxide_polymarket::gamma::api::user::UserResponse`
 and `UserInfo` against `PublicProfileResponse.json` / `PublicProfileUser.json`
-directly, verified against `tests/fixtures/user_response_{full,sparse}.json`
-(39-address live sample) and enforced by `tests/wire_agreement.rs`. Key
+directly, verified against `tests/fixtures/gamma/user_response_{full,sparse}.json`
+(39-address live sample) and enforced by `tests/wire_agreement_gamma.rs`. Key
 findings: the account id lives nested at `users[].id` (required on that
 object), not at any top level; `discordUsername` is a documented optional
 property never observed on the wire across the sample; and `users[].communityMod`,
@@ -325,7 +325,7 @@ confirming it is genuinely optional rather than always-sent-as-false. Finding
 ## `GET /public-search` serves no `$schema` — and its `profiles` array can contain `null`
 
 Unlike `/public-profile` and `/profiles/user_address/{address}`,
-`/public-search` (`polyoxide-gamma/src/api/search.rs`) serves **no** `$schema`
+`/public-search` (`polyoxide-polymarket/src/gamma/api/search.rs`) serves **no** `$schema`
 key at any level (verified 2026-08-19 — a response body is
 `{"events": [...], "profiles": [...], "pagination": {...}}` with no schema
 link anywhere). There is no published, machine-readable contract for this
@@ -341,8 +341,8 @@ invented by the fork, exactly like `Profile::id` and `UserResponse::address`/
 where a served schema's `required` list justified non-`Option` fields. Fixed
 by removing `SearchProfile::address` and adding
 `SearchProfile::display_username_public`; verified against
-`tests/fixtures/search_profile_{full,sparse}.json` and enforced by
-`tests/wire_agreement.rs`. This closes finding #10.
+`tests/fixtures/gamma/search_profile_{full,sparse}.json` and enforced by
+`tests/wire_agreement_gamma.rs`. This closes finding #10.
 
 Separately — found while fixing #10, not part of the original sweep —
 **`SearchResponse::profiles` can contain a JSON `null` element**, and the old
@@ -360,8 +360,8 @@ returned `Err(Serialization error: invalid type: null, expected struct
 SearchProfile)` before the fix. Fixed by typing the field
 `Vec<Option<SearchProfile>>` — `Option<T>`'s own `Deserialize` impl already
 decodes a `null` array element as `None`, so no custom deserializer was
-needed. Verified against `tests/fixtures/search_response_profiles.json` and
-enforced by `tests/wire_agreement.rs`'s
+needed. Verified against `tests/fixtures/gamma/search_response_profiles.json` and
+enforced by `tests/wire_agreement_gamma.rs`'s
 `search_response_tolerates_null_profile_entries`. `events` and `tags` were
 probed across the same 12 queries (240 event slots, 68 tag slots) and never
 observed to contain `null`, so they are left as `Vec<Event>` / `Vec<Tag>`.

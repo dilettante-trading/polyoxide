@@ -125,10 +125,11 @@ def test_every_live_file_is_a_target() -> None:
 
 def test_an_unregistered_live_target_is_caught() -> None:
     metadata = {**METADATA, "packages": [dict(p) for p in METADATA["packages"]]}
-    gamma = next(p for p in metadata["packages"] if p["name"] == "polyoxide-gamma")
-    gamma["targets"] = gamma["targets"] + [{"name": "live_x", "kind": ["test"],
-                                            "src_path": "/ws/polyoxide-gamma/tests/live_x.rs"}]
-    assert set(live_targets(metadata)) - set(registered(REGISTRY)) == {("polyoxide-gamma", "live_x")}
+    venue = next(p for p in metadata["packages"] if p["name"] == "polyoxide-polymarket")
+    venue["targets"] = venue["targets"] + [{"name": "live_x", "kind": ["test"],
+                                            "src_path": "/ws/polyoxide-polymarket/tests/live_x.rs"}]
+    assert (set(live_targets(metadata)) - set(registered(REGISTRY))
+            == {("polyoxide-polymarket", "live_x")})
 
 
 # --- the generated jobs ------------------------------------------------------
@@ -146,6 +147,8 @@ def test_the_generated_jobs_equal_the_registered_entries() -> None:
         assert (inputs["crate"], inputs["suite"], inputs["flags"]) == (job.crate, job.suite, job.flags)
         features, tests = flagged_targets(inputs["flags"])
         assert sorted(features) == list(job.features)
+        # The crate's defaults never widen a job beyond its targets' declared features.
+        assert inputs["flags"].split()[0] == "--no-default-features", job.id
         selected |= {(job.crate, test) for test in tests}
     assert selected == set(registered(REGISTRY))
 
@@ -176,6 +179,59 @@ def test_the_close_guard_reads_every_needed_job() -> None:
         assert f"!contains(needs.*.result, '{result}')" in guard
     assert '[ "$ALL_SUCCEEDED" = "true" ]' in close["run"]
     assert "needs.test" not in yaml.safe_dump(WORKFLOW)
+
+
+def test_only_a_run_on_main_touches_the_tracking_issue() -> None:
+    """A dispatch on another branch, such as the S2 integration branch before it
+    merges, must not comment on main's issue or close it: the one step that runs
+    `gh issue` is guarded by the ref, and no other step of any job runs it."""
+    steps = [(job_id, step) for job_id, job in WORKFLOW["jobs"].items()
+             for step in job.get("steps", [])]
+    touching = [(job_id, step) for job_id, step in steps if "gh issue" in step.get("run", "")]
+    assert len(touching) == 1, touching
+    [(job_id, step)] = touching
+    assert job_id == "aggregate"
+    assert step["if"] == "github.ref == 'refs/heads/main'"
+    for verb in ("create", "comment", "close"):
+        assert f"gh issue {verb}" in step["run"]
+
+
+def _off_main_step() -> dict:
+    steps = WORKFLOW["jobs"]["aggregate"]["steps"]
+    [step] = [s for s in steps if s.get("name") == "Report real failures off main"]
+    return step
+
+
+def test_a_run_off_main_reports_its_real_failures_and_goes_red() -> None:
+    """The live jobs pass whatever their tests did, and off main no issue is filed,
+    so without this step a dispatch on another branch with real failures is green."""
+    step = _off_main_step()
+    assert step["if"] == "github.ref != 'refs/heads/main'"
+    assert step["env"] == {
+        "ANY_REAL_FAILURE": "${{ steps.report.outputs.any_real_failure }}",
+        "REPORT_FILE": "${{ steps.report.outputs.report_file }}",
+    }
+    steps = WORKFLOW["jobs"]["aggregate"]["steps"]
+    report = next(i for i, s in enumerate(steps) if s.get("id") == "report")
+    assert steps.index(step) > report
+
+
+@pytest.mark.parametrize(("failure", "status"), [("true", 1), ("false", 0)])
+def test_the_off_main_step_puts_the_report_in_the_summary(
+        tmp_path: Path, failure: str, status: int) -> None:
+    import os
+    import shutil
+    import subprocess
+
+    report = tmp_path / "report.md"
+    report.write_text("# Nightly behavioral check\n\n## polyoxide-polymarket-gamma\n")
+    summary = tmp_path / "summary.md"
+    env = {**os.environ, "ANY_REAL_FAILURE": failure, "REPORT_FILE": str(report),
+           "GITHUB_STEP_SUMMARY": str(summary)}
+    result = subprocess.run([shutil.which("bash"), "-e", "-c", _off_main_step()["run"]],
+                            env=env, capture_output=True, text=True)
+    assert result.returncode == status, result
+    assert summary.read_text() == report.read_text()
 
 
 # --- ignored -----------------------------------------------------------------
@@ -483,6 +539,6 @@ def test_an_unignored_test_in_a_shared_module_is_caught(tmp_path: Path) -> None:
 def test_the_real_shared_modules_are_scanned() -> None:
     """data's live suite declares `mod common;`. binance's did until its wire
     helpers moved to polyoxide-test-support."""
-    for key in [("polyoxide-data", "live_api")]:
+    for key in [("polyoxide-polymarket", "live_data")]:
         files = gen_registry.module_files(_path(*key))
         assert [f.relative_to(_path(*key).parent).as_posix() for f in files[1:]] == ["common/mod.rs"]

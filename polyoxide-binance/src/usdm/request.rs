@@ -6,8 +6,8 @@ use std::marker::PhantomData;
 use polyoxide_core::{HttpClient, QueryBuilder, Request};
 use serde::de::DeserializeOwned;
 
-use crate::{
-    error::BinanceError,
+use crate::usdm::{
+    error::UsdmError,
     weight::{Cost, Route},
 };
 
@@ -60,8 +60,8 @@ impl<T> Routed<T> {
 impl<T: DeserializeOwned> Routed<T> {
     /// Sends on the client's send loop, which waits for the budget, and
     /// decodes the response.
-    pub(crate) async fn send(self) -> Result<T, BinanceError> {
-        let mut request = Request::<T, BinanceError>::new(self.http, self.route.path())
+    pub(crate) async fn send(self) -> Result<T, UsdmError> {
+        let mut request = Request::<T, UsdmError>::new(self.http, self.route.path())
             .with_cost(self.route.cost().into());
         for (key, value) in self.query {
             request = request.query(key, value);
@@ -82,7 +82,7 @@ macro_rules! route_builder {
 
         impl $name {
             /// What sending this request will cost.
-            pub fn cost(&self) -> $crate::weight::Cost {
+            pub fn cost(&self) -> $crate::usdm::weight::Cost {
                 self.request.cost()
             }
 
@@ -98,7 +98,7 @@ macro_rules! route_builder {
             /// minute's spent budget or a ban, which Binance documents at up
             /// to 3 days. Wrap the call in `tokio::time::timeout` where a
             /// caller needs a deadline.
-            pub async fn send(self) -> Result<$output, $crate::BinanceError> {
+            pub async fn send(self) -> Result<$output, $crate::usdm::UsdmError> {
                 self.request.send().await
             }
         }

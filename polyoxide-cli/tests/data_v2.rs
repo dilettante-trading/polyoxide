@@ -10,8 +10,8 @@ use std::sync::{Arc, Mutex};
 
 use clap::Parser;
 use mockito::{Matcher, Server, ServerGuard};
-use polyoxide_cli::commands::DataCommand;
-use polyoxide_data::DataApi;
+use polyoxide_cli::commands::polymarket::data::DataCommand;
+use polyoxide_polymarket::data::DataApi;
 use polyoxide_test_support::Fixtures;
 use serde_json::Value;
 
@@ -23,11 +23,11 @@ struct Cli {
 
 type Pairs = Vec<(String, String)>;
 
-/// A response captured from the live API by `polyoxide-data`.
+/// A response captured from the live API by `polyoxide-polymarket`'s `data` module.
 fn fixture(name: &str) -> String {
     Fixtures::at(concat!(
         env!("CARGO_MANIFEST_DIR"),
-        "/../polyoxide-data/tests/fixtures/v2"
+        "/../polyoxide-polymarket/tests/fixtures/data/v2"
     ))
     .text(name)
 }

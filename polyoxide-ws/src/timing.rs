@@ -11,23 +11,22 @@ use crate::{Backoff, DEFAULT_CONNECT_TIMEOUT};
 /// [`timing_setters!`](crate::timing_setters). The defaults are the kit's: a
 /// ping every 20 s, stale after 30 s of silence, reconnect backoff from 500 ms
 /// doubling to 60 s, a 10 s connect timeout, and no rotation. Each venue sets
-/// its own: rtds pings after a 5 s quiet tick, sports sends no pings and goes
-/// stale after 45 s, and Binance rotates at 23 h 50 min.
+/// its own: one pings after a 5 s quiet tick, one sends no pings and goes
+/// stale after 45 s, and one rotates at 23 h 50 min.
 ///
-/// The basis is the setters of `polyoxide-rtds`' `RtdsBuilder`,
-/// `polyoxide-perps`' `PerpsWsBuilder`, `polyoxide-binance`'s `UsdmWsBuilder`
-/// and `polyoxide-sports`' `SportsWsBuilder`, which stored the same five
-/// values. perps' and Binance's builders hold a `Timing` since Stories 4.6
-/// and 4.7; rtds' and sports' keep their own fields (D7).
+/// The basis is the setters of four socket crates' supervised builders,
+/// which stored the same five values. Two of those builders hold a `Timing`
+/// since Stories 4.6 and 4.7; the other two keep their own fields (D7).
 /// What the values mean stays with each venue:
 ///
-/// - **D4, the ping schedule.** rtds pings only after a quiet tick, perps and
-///   Binance on the wall clock whatever the traffic, and sports never
-///   (`ping_interval: None`); clob pings every 10 s. Each venue sets its own
-///   default, and never copies the rtds shape to a host that requires pings.
+/// - **D4, the ping schedule.** One venue pings only after a quiet tick, two
+///   on the wall clock whatever the traffic, and one never
+///   (`ping_interval: None`); a fifth pings every 10 s. Each venue sets its
+///   own default, and never copies the quiet-tick shape to a host that
+///   requires pings.
 /// - **D5, liveness.** What restarts the [`stale_after`](Self::stale_after)
-///   window: any frame (Binance), a decoded event (rtds), any text frame, a
-///   pong included (perps), or pings included (sports).
+///   window, each the rule of one venue: any frame, a decoded event, any text
+///   frame (a pong included), or pings included.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 #[non_exhaustive]
 pub struct Timing {
@@ -87,11 +86,10 @@ impl Timing {
 /// treats as never. It is a wait, not an `Instant`, because adding a limit
 /// such as `Duration::MAX` to an `Instant` overflows.
 ///
-/// The basis is `polyoxide-binance`'s former pump (`usdm/ws/supervised.rs`,
-/// deleted in Story 4.7), the minimum of its ping, staleness and rotation
-/// waits; `polyoxide-perps`' former pump (deleted in Story 4.6) took the
-/// first two. Which deadlines a venue has follows D4: a venue that sends no
-/// pings passes no ping deadline.
+/// The basis is one socket crate's former pump (deleted in Story 4.7), the
+/// minimum of its ping, staleness and rotation waits; another socket crate's
+/// former pump (deleted in Story 4.6) took the first two. Which deadlines a
+/// venue has follows D4: a venue that sends no pings passes no ping deadline.
 ///
 /// ```
 /// use std::time::Duration;
@@ -295,7 +293,7 @@ mod tests {
 
     #[test]
     fn a_limit_of_duration_max_saturates_rather_than_overflowing() {
-        // The limit perps' and Binance's suites pass to mean never.
+        // The limit two venues' suites pass to mean never.
         assert_eq!(
             next_wait([(Some(Duration::MAX), secs(1))]),
             Duration::MAX - secs(1)

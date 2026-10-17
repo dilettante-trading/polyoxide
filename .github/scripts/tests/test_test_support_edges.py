@@ -96,22 +96,22 @@ def _with(edges: dict[str, list[dict]]) -> dict:
 
 
 def test_a_path_only_dev_dependency_is_allowed() -> None:
-    assert problems(_with({"polyoxide-gamma": [_edge(TEST_SUPPORT)]})) == []
+    assert problems(_with({"polyoxide-polymarket": [_edge(TEST_SUPPORT)]})) == []
 
 
 @pytest.mark.parametrize("edges,fault", [
-    ({TEST_SUPPORT: [_edge("polyoxide-clob", kind=None, req="^0.38.1")]},
-     "polyoxide-test-support depends on polyoxide-clob"),
-    ({TEST_SUPPORT: [_edge("polyoxide-gamma")]},
-     "polyoxide-test-support depends on polyoxide-gamma"),
-    ({"polyoxide-gamma": [_edge(TEST_SUPPORT, kind=None)]},
-     "polyoxide-gamma takes polyoxide-test-support as a normal dependency"),
-    ({"polyoxide-gamma": [_edge(TEST_SUPPORT, kind="build")]},
-     "polyoxide-gamma takes polyoxide-test-support as a build dependency"),
-    ({"polyoxide-gamma": [_edge(TEST_SUPPORT, req="^0.38.1")]},
-     "polyoxide-gamma's dev-dependency on polyoxide-test-support carries a version"),
-    ({"polyoxide-gamma": [_edge(TEST_SUPPORT, path=False)]},
-     "polyoxide-gamma's dev-dependency on polyoxide-test-support carries a version or no path"),
+    ({TEST_SUPPORT: [_edge("polyoxide-binance", kind=None, req="^0.38.1")]},
+     "polyoxide-test-support depends on polyoxide-binance"),
+    ({TEST_SUPPORT: [_edge("polyoxide-polymarket")]},
+     "polyoxide-test-support depends on polyoxide-polymarket"),
+    ({"polyoxide-polymarket": [_edge(TEST_SUPPORT, kind=None)]},
+     "polyoxide-polymarket takes polyoxide-test-support as a normal dependency"),
+    ({"polyoxide-polymarket": [_edge(TEST_SUPPORT, kind="build")]},
+     "polyoxide-polymarket takes polyoxide-test-support as a build dependency"),
+    ({"polyoxide-polymarket": [_edge(TEST_SUPPORT, req="^0.38.1")]},
+     "polyoxide-polymarket's dev-dependency on polyoxide-test-support carries a version"),
+    ({"polyoxide-polymarket": [_edge(TEST_SUPPORT, path=False)]},
+     "polyoxide-polymarket's dev-dependency on polyoxide-test-support carries a version or no path"),
     ({"polyoxide-core": [_edge(TEST_SUPPORT)]},
      "polyoxide-core depends on polyoxide-test-support"),
     ({"polyoxide-venue": [_edge(TEST_SUPPORT)]},

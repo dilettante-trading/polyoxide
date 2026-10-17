@@ -21,6 +21,12 @@ crate list is kept by hand. Subcommands:
              `release` or `skip` on stdout and a log line on stderr, or exits 1
              with `::error::`.
     ci-passed  Exits 0 when a CI run on SHA completed with success, else 1.
+    check-manifests  Exits 1 when a publishable member lacks a description or a
+             licence, which cargo only warns about and crates.io refuses, or when
+             the tombstones break their rules: each `tombstones/<dir>/` is named
+             `polyoxide-<dir>`, carries the workspace's version, a description and
+             a licence, and has no dependency of any kind, and the directories are
+             exactly the crates the workspace's stage retires (`TOMBSTONES`).
 
 Exit codes: 0 on success, 1 on any other error, such as an unreachable
 crates.io, 2 for bad arguments (argparse's own), 3 for too many new crate names,
@@ -39,6 +45,7 @@ Usage:
     python3 scripts/publish_order.py previous-tag SHA
     python3 scripts/publish_order.py decide --head-sha SHA [--dispatch]
     python3 scripts/publish_order.py ci-passed SHA
+    python3 scripts/publish_order.py check-manifests
 """
 from __future__ import annotations
 
@@ -58,6 +65,11 @@ from typing import NamedTuple
 REPO = Path(__file__).resolve().parents[1]
 CRATES_IO = "https://crates.io/api/v1/crates"
 USER_AGENT = "polyoxide-release (https://github.com/dilettante-trading/polyoxide)"
+# The crates each release stage retires (AD-16), by their directory under
+# `tombstones/`: each is published once more as `polyoxide-<dir>`, a crate that
+# only points to its new home. The commit after the stage's release deletes the
+# directory and moves the stage on, so a stage with no entry holds no tombstone.
+TOMBSTONES = {"S2": ("clob", "data", "gamma", "perps", "relay", "rtds", "sports")}
 REQUEST_INTERVAL = 1.0
 COMMAND_TIMEOUT = 120
 
@@ -139,7 +151,9 @@ def tombstone_metadata(root: Path = REPO, run: Runner = run_command) -> list[dic
     """One metadata document per `tombstones/*/Cargo.toml`, in directory order.
 
     Each is its own workspace, which cargo allows only because the root
-    `Cargo.toml` excludes `tombstones`.
+    `Cargo.toml` excludes `tombstones`. The repository's own tombstones also
+    declare an empty `[workspace]`, so a checkout nested inside another
+    workspace, such as a worktree under the main checkout, reads them too.
     """
     manifests = sorted(root.glob("tombstones/*/Cargo.toml"))
     return [cargo_metadata(manifest, run) for manifest in manifests]
@@ -168,6 +182,55 @@ def missing_metadata(metadata: dict) -> list[str]:
     return sorted(
         p["name"] for p in publishable(metadata)
         if not p.get("description") or not (p.get("license") or p.get("license_file")))
+
+
+def workspace_stage(metadata: dict) -> str | None:
+    """`[workspace.metadata.polyoxide] stage`, as `cargo metadata` reports it."""
+    return ((metadata.get("metadata") or {}).get("polyoxide") or {}).get("stage")
+
+
+def tombstone_faults(workspace: dict, tombstones: list[dict]) -> list[str]:
+    """Each way the tombstones break their rules, as `<where>: <fault>`.
+
+    A tombstone is published at the workspace's version, after every workspace
+    crate, with no dependency: it only points to where its crate went, so it
+    needs nothing on crates.io, and a dependency of any kind, dev and build and
+    target-specific ones included, would be one more thing to resolve. The set
+    must be exactly the crates the workspace's stage retires, so the release
+    neither forgets one nor publishes a stray.
+    """
+    version = workspace_version(workspace)
+    stage = workspace_stage(workspace)
+    expected = set(TOMBSTONES.get(stage, ()))
+    faults, found = [], set()
+    for doc in tombstones:
+        for package in members(doc):
+            directory = Path(package["manifest_path"]).parent.name
+            found.add(directory)
+            name = package["name"]
+            if name != f"polyoxide-{directory}":
+                faults.append(f"tombstones/{directory}: named {name}, not "
+                              f"polyoxide-{directory}")
+            if package["dependencies"]:
+                listed = ", ".join(sorted({dep["name"] for dep in package["dependencies"]}))
+                faults.append(f"{name}: depends on {listed}, where a tombstone has no "
+                              f"dependency of any kind")
+            if package["version"] != version:
+                faults.append(f"{name}: version {package['version']}, not the workspace's "
+                              f"{version}")
+            if not package.get("description"):
+                faults.append(f"{name}: no description, which crates.io refuses")
+            if not (package.get("license") or package.get("license_file")):
+                faults.append(f"{name}: no licence, which crates.io refuses")
+            if not is_publishable(package):
+                faults.append(f"{name}: `publish` keeps it off crates.io")
+    for directory in sorted(expected - found):
+        faults.append(f"tombstones/{directory}: missing, though stage {stage} retires "
+                      f"polyoxide-{directory}")
+    for directory in sorted(found - expected):
+        faults.append(f"tombstones/{directory}: stage {stage} retires no "
+                      f"polyoxide-{directory}")
+    return faults
 
 
 def is_path_only(dependency: dict) -> bool:
@@ -517,7 +580,8 @@ def _parser() -> argparse.ArgumentParser:
     checking.add_argument("sha", metavar="SHA")
     commands.add_parser(
         "check-manifests",
-        help="exit 1 if a publishable member lacks a description or a licence")
+        help="exit 1 if a publishable member lacks a description or a licence, or a "
+             "tombstone breaks its rules")
     return parser
 
 
@@ -548,10 +612,19 @@ def main(argv: list[str] | None = None, get: Getter = http_status,
                 return 1
             print(tag)
         elif args.command == "check-manifests":
-            missing = missing_metadata(workspace_metadata(run))
+            workspace = workspace_metadata(run)
+            missing = missing_metadata(workspace)
+            # Printed before the tombstones are read, which can stop the check on a
+            # workspace whose members disagree on their version.
             if missing:
                 print("::error::Publishable crates missing a description or a licence, "
                       f"which crates.io refuses: {', '.join(missing)}", file=sys.stderr)
+            faults = tombstone_faults(workspace, tombstone_metadata(REPO, run))
+            if faults:
+                print("::error::The tombstones break their rules:", file=sys.stderr)
+                for fault in faults:
+                    print(f"  {fault}", file=sys.stderr)
+            if missing or faults:
                 return 1
         elif args.command == "ci-passed":
             if not ci_passed(args.sha, run):

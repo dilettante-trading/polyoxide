@@ -29,7 +29,7 @@
 # - Dev moves story to 'review', then runs code-review (fresh context, different LLM recommended)
 # - Retrospective appends its action items to action_items; the status view surfaces open ones
 generated: 10-08-2026 14:57
-last_updated: 11-10-2026 23:05
+last_updated: 10-15-2026 20:53
 project: polyoxide
 project_key: NOKEY
 tracking_system: file-system
@@ -54,6 +54,20 @@ development_status:
   # S1 shipped 2026-10-12 as v0.39.0 (release commit 3da0acb; Epics 1-4 merged to main as cb476e2 and 5aeda6e).
   #   The first release CI failed only on the known flaky Python live test (zero-padded condition id); a re-run
   #   of that job released. The workspace stage is S2. Next: Story 5.1 opens the S2 integration session from main.
+  # S2 plan (user, 10-12-2026, relayed by restructure-run; replaces one story per child session). Hub = aidanb/restructure-3.
+  #   Seven bundles, each with its own spec and review round. Sprint keys stay per story.
+  #   1. 5.1 alone: three review layers (gates).
+  #   2. 5.2 alone: three layers.
+  #   3. Two parallel child sessions, opened by the user from the hub once 5.2 lands, one review layer each:
+  #      5.3+5.4 and 5.5+5.6.
+  #   4. Two parallel child sessions, one layer each: 5.7+5.8+5.9 and 5.10.
+  #      The user dropped 5.10 (Python) on 10-15-2026, so its key is gone: the bindings keep v0.39.0's module
+  #      names (spine amendment A5-1). Next after 5.9 is bundle 5.
+  #   5. 5.11+5.12 as one bundle: three layers, since it publishes.
+  #   Why one layer for 5.3-5.10: they are moves, and 5.1's body diff and rename manifest catch what a review of a
+  #   move would. The user chose this although those bundles remove API.
+  #   The hub briefs each child by message and merges it in, then regenerates the generated regions and the
+  #   manifest after each merge. A DRIFT row keeps its own commit.
   # Keep notes in this block: sprint_plan.py drops every other comment in development_status when it reruns.
   #
   # Epic 1 gates:
@@ -119,19 +133,18 @@ development_status:
   4-11-cut-the-s1-release: done
   epic-4-retrospective: optional
 
-  epic-5: backlog
-  5-1-open-the-s2-integration-session: backlog
-  5-2-polyoxide-polymarket-and-a-venue-neutral-core: backlog
-  5-3-gamma-and-data-become-modules: backlog
-  5-4-clob-and-relay-become-modules: backlog
-  5-5-perps-rtds-and-sports-become-modules: backlog
-  5-6-binance-follows-the-conventions: backlog
-  5-7-the-multi-venue-umbrella: backlog
-  5-8-the-cli-on-the-venue-axis: backlog
-  5-9-cli-credentials-over-a-shared-trait: backlog
-  5-10-python-on-the-venue-axis: backlog
-  5-11-docs-and-standing-rules-for-a-multi-venue-toolkit: backlog
-  5-12-the-s2-release: backlog
+  epic-5: in-progress
+  5-1-open-the-s2-integration-session: review
+  5-2-polyoxide-polymarket-and-a-venue-neutral-core: review
+  5-3-gamma-and-data-become-modules: review
+  5-4-clob-and-relay-become-modules: review
+  5-5-perps-rtds-and-sports-become-modules: review
+  5-6-binance-follows-the-conventions: review
+  5-7-the-multi-venue-umbrella: review
+  5-8-the-cli-on-the-venue-axis: review
+  5-9-cli-credentials-over-a-shared-trait: review
+  5-11-docs-and-standing-rules-for-a-multi-venue-toolkit: review
+  5-12-the-s2-release: review
   epic-5-retrospective: optional
 
   epic-6: backlog

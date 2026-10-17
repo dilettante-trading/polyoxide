@@ -1,0 +1,271 @@
+use crate::shared::{self, PolymarketRetryPolicy};
+use polyoxide_core::{ClientConfig, HttpClient};
+
+use crate::data::{
+    api::{
+        accounting::AccountingApi,
+        builders::BuildersApi,
+        combos::CombosApi,
+        health::Health,
+        holders::Holders,
+        leaderboard::LeaderboardApi,
+        live_volume::LiveVolumeApi,
+        market_positions::MarketPositionsApi,
+        misc::MiscApi,
+        open_interest::OpenInterestApi,
+        pnl::PnlApi,
+        rankings::RankingsApi,
+        trades::Trades,
+        users::{UserApi, UserTraded},
+    },
+    error::DataError,
+    v2::DataV2,
+};
+
+const DEFAULT_BASE_URL: &str = "https://data-api.polymarket.com";
+const DEFAULT_PNL_BASE_URL: &str = "https://user-pnl-api.polymarket.com";
+const DEFAULT_RANKINGS_BASE_URL: &str = "https://lb-api.polymarket.com";
+
+/// Main Data API client
+///
+/// Most namespaces target `data-api.polymarket.com`. Two of them —
+/// [`pnl`](Self::pnl) and [`rankings`](Self::rankings) — target sibling hosts
+/// that Polymarket does not publish an OpenAPI spec for; see those methods for
+/// the stability caveat. All three share one connection pool, rate limiter,
+/// and concurrency budget.
+#[derive(Clone)]
+pub struct DataApi {
+    pub(crate) http_client: HttpClient,
+    pub(crate) pnl_http_client: HttpClient,
+    pub(crate) rankings_http_client: HttpClient,
+}
+
+impl DataApi {
+    /// Create a new Data API client with default configuration
+    pub fn new() -> Result<Self, DataError> {
+        Self::builder().build()
+    }
+
+    /// Create a builder for configuring the client
+    pub fn builder() -> DataApiBuilder {
+        DataApiBuilder::new()
+    }
+
+    polyoxide_core::namespaces! { http_client;
+        /// Data API v2 routes (`/v2/*`).
+        ///
+        /// Shares this client's connection pool, rate limiter, 429 cooldown and
+        /// concurrency budget: v1 and v2 are served by the same host.
+        v2: DataV2,
+        /// Get health namespace
+        health: Health,
+        /// Get trades namespace
+        trades: Trades,
+        /// Get holders namespace
+        holders: Holders,
+        /// Get open interest namespace
+        open_interest: OpenInterestApi,
+        /// Get live volume namespace
+        live_volume: LiveVolumeApi,
+        /// Get builders namespace
+        builders: BuildersApi,
+        /// Get leaderboard namespace
+        leaderboard: LeaderboardApi,
+        /// Get market-positions namespace (`/v1/market-positions`)
+        market_positions: MarketPositionsApi,
+        /// Get accounting namespace (`/v1/accounting/snapshot`, returns ZIP bytes)
+        accounting: AccountingApi,
+        /// Get combos namespace (`/v1/positions/combos`, `/v1/activity/combos`)
+        combos: CombosApi,
+        /// Get approvals namespace (`/v1/approvals`). The route now returns `404`;
+        /// use [`v2().approvals()`](crate::data::v2::DataV2::approvals) instead.
+        #[deprecated(
+            note = "`/v1/approvals` was removed upstream and now returns 404; use `data.v2().approvals(user)`"
+        )]
+        #[allow(deprecated)]
+        approvals: crate::data::api::approvals::ApprovalsApi,
+        /// Get misc namespace (`/other`, `/revisions`)
+        misc: MiscApi,
+        /// Get PnL namespace (`/user-pnl` on `user-pnl-api.polymarket.com`)
+        ///
+        /// This host has no published OpenAPI spec — see [`PnlApi`] for the
+        /// stability caveat. Polymarket retired the host on 2026-10-16, and it now
+        /// answers `410 Gone`.
+        #[deprecated(
+            note = "`user-pnl-api.polymarket.com` was retired upstream and now returns 410; use `data.v2().user_pnl(user)`, which is not the same series"
+        )]
+        pnl: PnlApi { http_client: pnl_http_client },
+        /// Get rankings namespace (`/volume`, `/profit` on `lb-api.polymarket.com`)
+        ///
+        /// Distinct from [`Self::leaderboard`], which calls `/v1/leaderboard` on
+        /// the main Data API host. This host has no published OpenAPI spec — see
+        /// [`RankingsApi`] for the stability caveat. Polymarket retired the host
+        /// on 2026-10-16, and it now answers `410 Gone`.
+        #[deprecated(
+            note = "`lb-api.polymarket.com` was retired upstream and now returns 410; use `data.v2().leaderboard()`, which ranks volume in shares, not USDC"
+        )]
+        rankings: RankingsApi { http_client: rankings_http_client },
+    }
+
+    /// Get user namespace for user-specific operations
+    pub fn user(&self, user_address: impl Into<String>) -> UserApi {
+        UserApi {
+            http_client: self.http_client.clone(),
+            user_address: user_address.into(),
+        }
+    }
+
+    /// Alias for `user()` - for backwards compatibility
+    pub fn positions(&self, user_address: impl Into<String>) -> UserApi {
+        self.user(user_address)
+    }
+
+    /// Get traded namespace for backwards compatibility
+    pub fn traded(&self, user_address: impl Into<String>) -> Traded {
+        Traded {
+            user_api: self.user(user_address),
+        }
+    }
+}
+
+/// Builder for configuring Data API client
+///
+/// Its `base_url` covers every namespace except [`DataApi::pnl`] and
+/// [`DataApi::rankings`], which live on their own hosts and have their own
+/// setters. It allows 4 concurrent in-flight requests by default, shared by
+/// all three hosts.
+pub struct DataApiBuilder {
+    config: ClientConfig,
+    pnl_base_url: String,
+    rankings_base_url: String,
+}
+
+impl DataApiBuilder {
+    fn new() -> Self {
+        Self {
+            config: ClientConfig::new(DEFAULT_BASE_URL, 4),
+            pnl_base_url: DEFAULT_PNL_BASE_URL.to_string(),
+            rankings_base_url: DEFAULT_RANKINGS_BASE_URL.to_string(),
+        }
+    }
+
+    polyoxide_core::client_config_setters!(config);
+
+    /// Set base URL for the PnL host (default:
+    /// `https://user-pnl-api.polymarket.com`)
+    ///
+    /// Give a scheme, host, and port only — a path prefix is silently dropped,
+    /// because request paths are absolute. See
+    /// [`HttpClient::with_base_url`](polyoxide_core::HttpClient::with_base_url).
+    pub fn pnl_base_url(mut self, url: impl Into<String>) -> Self {
+        self.pnl_base_url = url.into();
+        self
+    }
+
+    /// Set base URL for the rankings host (default:
+    /// `https://lb-api.polymarket.com`)
+    ///
+    /// Give a scheme, host, and port only — a path prefix is silently dropped,
+    /// because request paths are absolute. See
+    /// [`HttpClient::with_base_url`](polyoxide_core::HttpClient::with_base_url).
+    pub fn rankings_base_url(mut self, url: impl Into<String>) -> Self {
+        self.rankings_base_url = url.into();
+        self
+    }
+
+    /// Build the Data API client
+    pub fn build(self) -> Result<DataApi, DataError> {
+        let http_client = self
+            .config
+            .http_builder()
+            .with_rate_limiter(shared::data_limits())
+            .with_retry_policy(PolymarketRetryPolicy)
+            .build()?;
+
+        // Sibling hosts reuse the same reqwest client, throttle (and so its
+        // hold), and concurrency permit pool — only the base URL differs.
+        let pnl_http_client = http_client.with_base_url(&self.pnl_base_url)?;
+        let rankings_http_client = http_client.with_base_url(&self.rankings_base_url)?;
+
+        Ok(DataApi {
+            http_client,
+            pnl_http_client,
+            rankings_http_client,
+        })
+    }
+}
+
+impl Default for DataApiBuilder {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
+/// Wrapper for backwards compatibility with traded() API
+pub struct Traded {
+    user_api: UserApi,
+}
+
+impl Traded {
+    /// Get total markets traded by the user
+    pub async fn get(self) -> std::result::Result<UserTraded, DataError> {
+        self.user_api.traded().await
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use polyoxide_core::RetryConfig;
+
+    #[test]
+    fn test_builder_default() {
+        let builder = DataApiBuilder::default();
+        assert_eq!(builder.config.base_url, DEFAULT_BASE_URL);
+    }
+
+    #[test]
+    fn test_builder_custom_retry_config() {
+        let config = RetryConfig {
+            max_retries: 5,
+            initial_backoff_ms: 1000,
+            max_backoff_ms: 30_000,
+        };
+        let builder = DataApiBuilder::new().with_retry_config(config);
+        let config = builder.config.retry_config.unwrap();
+        assert_eq!(config.max_retries, 5);
+        assert_eq!(config.initial_backoff_ms, 1000);
+    }
+
+    #[test]
+    fn test_builder_custom_max_concurrent() {
+        let builder = DataApiBuilder::new().max_concurrent(10);
+        assert_eq!(builder.config.max_concurrent, Some(10));
+    }
+
+    #[tokio::test]
+    async fn test_default_concurrency_limit_is_4() {
+        let data = DataApi::new().unwrap();
+        let mut permits = Vec::new();
+        for _ in 0..4 {
+            permits.push(data.http_client.acquire_concurrency().await);
+        }
+        assert!(permits.iter().all(|p| p.is_some()));
+
+        let result = tokio::time::timeout(
+            std::time::Duration::from_millis(50),
+            data.http_client.acquire_concurrency(),
+        )
+        .await;
+        assert!(
+            result.is_err(),
+            "5th permit should block with default limit of 4"
+        );
+    }
+
+    #[test]
+    fn test_builder_build_success() {
+        let data = DataApi::builder().build();
+        assert!(data.is_ok());
+    }
+}

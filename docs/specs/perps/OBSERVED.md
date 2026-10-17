@@ -8,9 +8,9 @@ Each entry names its evidence. Re-check before relying on an old one.
 
 ## Fields on the wire that the schema omits
 
-Captured 2026-09-30 (`polyoxide-perps/tests/fixtures/`, see `PROVENANCE.md`
+Captured 2026-09-30 (`polyoxide-polymarket/tests/fixtures/perps/`, see `PROVENANCE.md`
 there). Each is modelled as an `Option` and allowed through `OBSERVED_EXTRA`
-in `polyoxide-perps/tests/spec_agreement.rs`.
+in `polyoxide-polymarket/tests/spec_agreement_perps.rs`.
 
 | Schema | Field | Seen as | Note |
 |--------|-------|---------|------|
@@ -47,9 +47,9 @@ callers must filter the response themselves until the host does.
 On 2026-09-30 `GET /v1/info/index?asset=…` answered 200 with
 `"constituents": []` for all 88 listed base assets (the capture script probes
 each in turn, preferring one with constituents, and fell through to `SP500`).
-`IndexConstituent` is therefore held to the schema by `spec_agreement.rs` but
+`IndexConstituent` is therefore held to the schema by `spec_agreement_perps.rs` but
 has never been seen on the wire; the first capture that carries one should be
-checked by hand before `wire_agreement.rs` is trusted on it.
+checked by hand before `wire_agreement_perps.rs` is trusted on it.
 
 ## Error bodies carry more than `{status, error}`
 
@@ -92,8 +92,8 @@ The longest values in the 2026-09-30 capture have 28 fractional places:
 mantissa, so each fits because its mantissa is below 2^96, and both round-trip
 byte for byte. `/v1/info/portfolio` also sends `unrealized_pnl` with 25
 fractional places and `/v1/info/exchange-stats` sends `open_interest` with 18.
-A longer fraction would be rounded on decode, since the crate's string serde
-uses `Decimal::from_str`, not `from_str_exact`. `wire_agreement.rs` compares
+A longer fraction would be rounded on decode, since the module's string serde
+uses `Decimal::from_str`, not `from_str_exact`. `wire_agreement_perps.rs` compares
 values as well as key paths, so a rounded or overflowed value fails it.
 
 ## Leaderboard `account` is request-dependent
@@ -111,7 +111,7 @@ absent for an unranked account.
 ## Rate limits
 
 Nothing numeric is published for the public routes. Measured with
-`polyoxide-perps/examples/info_soak.rs` on 2026-09-30, one route per run, 60 s
+`polyoxide-polymarket/examples/info_soak.rs` on 2026-09-30, one route per run, 60 s
 stages, 120 s cooldowns, 8 in-flight, distinct URLs throughout. The default
 ramp (5, 10, 15, 20, 30 req/s) was throttled at its first stage on three
 routes, so those were re-run at 1, 2, 3, 4 req/s as the harness prescribes;
@@ -161,7 +161,7 @@ the highest clean cap. A 429 body seen
 during the ramps was `{"status":"err","error":"ip_rate_limited"}` with
 `Retry-After: 1`.
 
-**How the table is modelled** (`polymarket::perps_limits`): one row per
+**How the table is modelled** (`polyoxide_polymarket::shared::perps_limits`): one row per
 soaked route at its pinned count, a `/v1/info` catch-all at the lowest
 pinned count (10 per 10 s) for the 17 routes that were not soaked, and a
 general bucket of 30 per 10 s that caps the whole client, set by the
@@ -173,9 +173,9 @@ must not be used to size a bucket.
 
 ## WebSocket: where the AsyncAPI and the wire part ways
 
-Captured 2026-09-30 (`polyoxide-perps/tests/fixtures/ws/`, instrument 6, and a
+Captured 2026-09-30 (`polyoxide-polymarket/tests/fixtures/perps/ws/`, instrument 6, and a
 20 s run of 18,326 frames on instrument 1 during design). Every entry is what
-`polyoxide-perps`'s `ws` module implements. The fixtures are instrument 6
+`polyoxide-polymarket`'s `perps::ws` module implements. The fixtures are instrument 6
 rather than 1 because `trades::1` stayed quiet for two 20 s windows;
 instrument 6 had the largest 24-hour `volume` on `GET /v1/info/statistics`
 that day and pushed a trade within 4 s.
@@ -226,7 +226,7 @@ that day and pushed a trade within 4 s.
   non-empty `klines` frame when one arrives).
 - **`trades` entries carry `settlement`**, as the REST route does.
 - **Unsubscribe takes effect at the acknowledgement.** In
-  `tests/live_ws.rs` on 2026-09-30, `tickers::all` was unsubscribed while
+  `tests/live_perps_ws.rs` on 2026-09-30, `tickers::all` was unsubscribed while
   nothing consumed the stream; 1,055 fan-out frames were then yielded, every
   one of them received before the acknowledgement, the last of them 1.4 ms
   after it, and no ticker arrived in the following 5 s. A test that counts

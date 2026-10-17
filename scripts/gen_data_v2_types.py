@@ -3,8 +3,9 @@
 
 One-shot scaffolding for the v2 implementation: the output is committed and
 then owned by hand. It is NOT a build step and is never re-run to overwrite
-edited files. The durable guard is `polyoxide-data/tests/v2_spec_agreement.rs`,
-which fails if a struct disagrees with the spec.
+edited files. The durable guard is
+`polyoxide-polymarket/tests/spec_agreement_data_v2.rs`, which fails if a struct
+disagrees with the spec.
 
 Usage:
     python3 scripts/gen_data_v2_types.py Trade UserStats UserPnlPoint > out.rs

@@ -1,0 +1,267 @@
+use std::sync::Arc;
+
+use polyoxide_core::reqwest::Method;
+use polyoxide_core::{DynAuthenticator, HttpClient, QueryBuilder, Request};
+use serde::{Deserialize, Serialize};
+
+use crate::clob::{account::Wallet, authenticator::L1Auth, error::ClobError};
+
+/// Auth namespace for API key management operations
+#[derive(Clone)]
+pub struct Auth {
+    pub(crate) http_client: HttpClient,
+    pub(crate) wallet: Wallet,
+    pub(crate) l2: Arc<DynAuthenticator<'static>>,
+    pub(crate) chain_id: u64,
+}
+
+impl Auth {
+    /// L1 auth for `nonce`: signed afresh, with a new timestamp, on every
+    /// attempt.
+    fn l1_auth(&self, nonce: u32) -> Arc<DynAuthenticator<'static>> {
+        DynAuthenticator::new_arc(L1Auth {
+            wallet: self.wallet.clone(),
+            nonce,
+            chain_id: self.chain_id,
+        })
+    }
+
+    // --- Standard API keys ---
+
+    /// Create a new API key (L1 auth)
+    pub fn create_api_key(&self, nonce: u32) -> Request<ApiKeyResponse, ClobError> {
+        Request::new(self.http_client.clone(), "/auth/api-key".to_string())
+            .method(Method::POST)
+            .authenticator(self.l1_auth(nonce))
+    }
+
+    /// Derive an existing API key (L1 auth)
+    pub fn derive_api_key(&self, nonce: u32) -> Request<ApiKeyResponse, ClobError> {
+        Request::new(self.http_client.clone(), "/auth/derive-api-key")
+            .authenticator(self.l1_auth(nonce))
+    }
+
+    /// List all API keys (L2 auth)
+    pub fn list_api_keys(&self) -> Request<Vec<ApiKeyInfo>, ClobError> {
+        Request::new(self.http_client.clone(), "/auth/api-keys").authenticator(self.l2.clone())
+    }
+
+    /// Delete the current API key (L2 auth)
+    pub fn delete_api_key(&self) -> Request<serde_json::Value, ClobError> {
+        Request::new(self.http_client.clone(), "/auth/api-key")
+            .method(Method::DELETE)
+            .authenticator(self.l2.clone())
+    }
+
+    // --- Read-only API keys ---
+
+    /// Create a new read-only API key (L1 auth)
+    pub fn create_readonly_key(&self, nonce: u32) -> Request<ReadonlyApiKeyResponse, ClobError> {
+        Request::new(
+            self.http_client.clone(),
+            "/auth/readonly-api-key".to_string(),
+        )
+        .method(Method::POST)
+        .authenticator(self.l1_auth(nonce))
+    }
+
+    /// List all read-only API keys (L2 auth)
+    pub fn list_readonly_keys(&self) -> Request<Vec<ReadonlyApiKeyResponse>, ClobError> {
+        Request::new(self.http_client.clone(), "/auth/readonly-api-keys")
+            .authenticator(self.l2.clone())
+    }
+
+    /// Delete a read-only API key (L2 auth)
+    pub async fn delete_readonly_key(
+        &self,
+        key: impl Into<String>,
+    ) -> Result<serde_json::Value, ClobError> {
+        #[derive(Serialize)]
+        #[serde(rename_all = "camelCase")]
+        struct Body {
+            api_key: String,
+        }
+
+        Request::<serde_json::Value, ClobError>::new(
+            self.http_client.clone(),
+            "/auth/readonly-api-key",
+        )
+        .method(Method::DELETE)
+        .authenticator(self.l2.clone())
+        .body(&Body {
+            api_key: key.into(),
+        })?
+        .send()
+        .await
+    }
+
+    /// Validate a read-only API key (no auth)
+    pub fn validate_readonly_key(
+        &self,
+        address: impl Into<String>,
+        key: impl Into<String>,
+    ) -> Request<ValidateKeyResponse, ClobError> {
+        Request::new(self.http_client.clone(), "/auth/validate-readonly-api-key")
+            .query("address", address.into())
+            .query("api_key", key.into())
+    }
+
+    // --- Builder API keys ---
+
+    /// Create a new builder API key (L2 auth)
+    pub fn create_builder_key(&self) -> Request<BuilderApiKeyResponse, ClobError> {
+        Request::new(
+            self.http_client.clone(),
+            "/auth/builder-api-key".to_string(),
+        )
+        .method(Method::POST)
+        .authenticator(self.l2.clone())
+    }
+
+    /// List all builder API keys (L2 auth)
+    pub fn list_builder_keys(&self) -> Request<Vec<ApiKeyInfo>, ClobError> {
+        Request::new(self.http_client.clone(), "/auth/builder-api-key")
+            .authenticator(self.l2.clone())
+    }
+
+    /// Delete the current builder API key (L2 auth)
+    pub fn delete_builder_key(&self) -> Request<serde_json::Value, ClobError> {
+        Request::new(self.http_client.clone(), "/auth/builder-api-key")
+            .method(Method::DELETE)
+            .authenticator(self.l2.clone())
+    }
+
+    // --- Ban status ---
+
+    /// Check if the account is in closed-only mode
+    pub fn closed_only_status(&self) -> Request<ClosedOnlyResponse, ClobError> {
+        Request::new(self.http_client.clone(), "/auth/ban-status/closed-only")
+            .authenticator(self.l2.clone())
+    }
+}
+
+/// Response from creating or deriving an API key
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all(deserialize = "camelCase"))]
+pub struct ApiKeyResponse {
+    pub api_key: String,
+    pub secret: String,
+    pub passphrase: String,
+}
+
+/// API key listing entry
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all(deserialize = "camelCase"))]
+pub struct ApiKeyInfo {
+    pub api_key: String,
+}
+
+/// Response from `POST /auth/builder-api-key` (note: `key`, not `apiKey`).
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct BuilderApiKeyResponse {
+    pub key: String,
+    pub secret: String,
+    pub passphrase: String,
+}
+
+/// Response from creating a read-only API key
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all(deserialize = "camelCase"))]
+pub struct ReadonlyApiKeyResponse {
+    pub api_key: String,
+}
+
+/// Response from validating a read-only API key
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct ValidateKeyResponse {
+    pub valid: bool,
+}
+
+/// Response from the closed-only ban status check
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct ClosedOnlyResponse {
+    pub closed_only: bool,
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn api_key_response_deserializes() {
+        let json = r#"{
+            "apiKey": "key-123",
+            "secret": "secret-456",
+            "passphrase": "pass-789"
+        }"#;
+        let resp: ApiKeyResponse = serde_json::from_str(json).unwrap();
+        assert_eq!(resp.api_key, "key-123");
+        assert_eq!(resp.secret, "secret-456");
+        assert_eq!(resp.passphrase, "pass-789");
+    }
+
+    #[test]
+    fn builder_api_key_response_deserializes_key_field() {
+        let json = r#"{"key":"019894b9-cb40-79c4-b2bd-6aecb6f8c6c5","secret":"c2VjcmV0","passphrase":"pass"}"#;
+        let resp: BuilderApiKeyResponse = serde_json::from_str(json).unwrap();
+        assert_eq!(resp.key, "019894b9-cb40-79c4-b2bd-6aecb6f8c6c5");
+        assert_eq!(resp.secret, "c2VjcmV0");
+        assert_eq!(resp.passphrase, "pass");
+    }
+
+    #[test]
+    fn readonly_api_key_response_deserializes() {
+        let json = r#"{"apiKey": "readonly-key"}"#;
+        let resp: ReadonlyApiKeyResponse = serde_json::from_str(json).unwrap();
+        assert_eq!(resp.api_key, "readonly-key");
+    }
+
+    #[test]
+    fn validate_key_response_deserializes() {
+        let json = r#"{"valid": true}"#;
+        let resp: ValidateKeyResponse = serde_json::from_str(json).unwrap();
+        assert!(resp.valid);
+
+        let json = r#"{"valid": false}"#;
+        let resp: ValidateKeyResponse = serde_json::from_str(json).unwrap();
+        assert!(!resp.valid);
+    }
+
+    #[test]
+    fn api_key_info_deserializes() {
+        let json = r#"{"apiKey": "key-abc"}"#;
+        let info: ApiKeyInfo = serde_json::from_str(json).unwrap();
+        assert_eq!(info.api_key, "key-abc");
+    }
+
+    #[test]
+    fn api_key_response_rejects_missing_fields() {
+        // Missing secret and passphrase
+        let json = r#"{"apiKey": "key-123"}"#;
+        assert!(serde_json::from_str::<ApiKeyResponse>(json).is_err());
+
+        // Missing passphrase
+        let json = r#"{"apiKey": "k", "secret": "s"}"#;
+        assert!(serde_json::from_str::<ApiKeyResponse>(json).is_err());
+    }
+
+    #[test]
+    fn api_key_response_list_deserializes() {
+        let json = r#"[{"apiKey": "k1"}, {"apiKey": "k2"}]"#;
+        let list: Vec<ApiKeyInfo> = serde_json::from_str(json).unwrap();
+        assert_eq!(list.len(), 2);
+        assert_eq!(list[0].api_key, "k1");
+        assert_eq!(list[1].api_key, "k2");
+    }
+
+    #[test]
+    fn closed_only_response_deserializes() {
+        let json = r#"{"closed_only": true}"#;
+        let resp: ClosedOnlyResponse = serde_json::from_str(json).unwrap();
+        assert!(resp.closed_only);
+
+        let json = r#"{"closed_only": false}"#;
+        let resp: ClosedOnlyResponse = serde_json::from_str(json).unwrap();
+        assert!(!resp.closed_only);
+    }
+}

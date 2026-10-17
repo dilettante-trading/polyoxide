@@ -24,9 +24,10 @@ import polyoxide
 
 FIXTURE = (
     pathlib.Path(__file__).parents[2]
-    / "polyoxide-gamma"
+    / "polyoxide-polymarket"
     / "tests"
     / "fixtures"
+    / "gamma"
     / "comment_full.json"
 )
 

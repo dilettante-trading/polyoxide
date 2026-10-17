@@ -2,17 +2,17 @@
   "unwraps": {},
   "bare": {},
   "opted_out": {
-    "polyoxide-binance/tests/live_api.rs": 5,
-    "polyoxide-binance/tests/live_ws.rs": 6,
+    "polyoxide-binance/tests/live_usdm.rs": 5,
+    "polyoxide-binance/tests/live_usdm_ws.rs": 6,
     "polyoxide-cli/tests/live_api.rs": 17,
-    "polyoxide-clob/tests/live_api.rs": 16,
-    "polyoxide-clob/tests/live_session_keys.rs": 4,
-    "polyoxide-clob/tests/live_ws.rs": 1,
-    "polyoxide-data/tests/live_api.rs": 6,
-    "polyoxide-gamma/tests/live_api.rs": 40,
-    "polyoxide-perps/tests/live_ws.rs": 8,
-    "polyoxide-relay/tests/live_api.rs": 1,
-    "polyoxide-sports/tests/live_api.rs": 5
+    "polyoxide-polymarket/tests/live_clob.rs": 16,
+    "polyoxide-polymarket/tests/live_clob_session_keys.rs": 4,
+    "polyoxide-polymarket/tests/live_clob_ws.rs": 1,
+    "polyoxide-polymarket/tests/live_data.rs": 6,
+    "polyoxide-polymarket/tests/live_gamma.rs": 40,
+    "polyoxide-polymarket/tests/live_perps_ws.rs": 8,
+    "polyoxide-polymarket/tests/live_relay.rs": 1,
+    "polyoxide-polymarket/tests/live_sports.rs": 5
   },
   "classifier": {
     "TAG_LINE": [

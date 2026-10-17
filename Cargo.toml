@@ -3,15 +3,9 @@ members = [
   "polyoxide",
   "polyoxide-binance",
   "polyoxide-cli",
-  "polyoxide-clob",
   "polyoxide-core",
-  "polyoxide-data",
-  "polyoxide-gamma",
-  "polyoxide-perps",
+  "polyoxide-polymarket",
   "polyoxide-py",
-  "polyoxide-relay",
-  "polyoxide-rtds",
-  "polyoxide-sports",
   "polyoxide-test-support",
   "polyoxide-venue",
   "polyoxide-ws",
@@ -29,14 +23,10 @@ rust-version = "1.91"
 
 [workspace.dependencies]
 polyoxide-core = { path = "polyoxide-core", version = "0.39.0" }
-polyoxide-binance = { path = "polyoxide-binance", version = "0.39.0" }
-polyoxide-clob = { path = "polyoxide-clob", version = "0.39.0" }
-polyoxide-gamma = { path = "polyoxide-gamma", version = "0.39.0" }
-polyoxide-perps = { path = "polyoxide-perps", version = "0.39.0" }
-polyoxide-data = { path = "polyoxide-data", version = "0.39.0" }
-polyoxide-relay = { path = "polyoxide-relay", version = "0.39.0" }
-polyoxide-rtds = { path = "polyoxide-rtds", version = "0.39.0" }
-polyoxide-sports = { path = "polyoxide-sports", version = "0.39.0" }
+polyoxide-binance = { path = "polyoxide-binance", version = "0.39.0", default-features = false }
+# Its defaults are `clob`, `gamma` and `data`; each member names the modules
+# it builds, so none builds the signing stack by accident.
+polyoxide-polymarket = { path = "polyoxide-polymarket", version = "0.39.0", default-features = false }
 polyoxide-venue = { path = "polyoxide-venue", version = "0.39.0" }
 polyoxide-ws = { path = "polyoxide-ws", version = "0.39.0" }
 tokio = { version = "1.41" }
@@ -193,7 +183,7 @@ name = "Undocumented hosts"
 section = "excluded"
 base_urls = ["https://user-pnl-api.polymarket.com", "https://lb-api.polymarket.com"]
 description = "Profit and loss series and leaderboard rankings, derived from live responses"
-exclude = "`user-pnl-api` and `lb-api` publish no spec to diff against; their shapes were derived from live responses, and `polyoxide-data`'s live suite is the drift check."
+exclude = "`user-pnl-api` and `lb-api` publish no spec to diff against; their shapes were derived from live responses, and `polyoxide-polymarket`'s `live_data` suite is the drift check."
 
 [workspace.metadata.polyoxide.mirrors.rtds]
 name = "RTDS"
@@ -226,7 +216,7 @@ id = "perps-ws"
 kind = "asyncapi"
 url = "https://docs.polymarket.com/asyncapi-perps.json"
 vendored = "docs/specs/perps/asyncapi.json"
-covers = "Perps WebSocket (27 channels) — six public channels implemented (`ws` feature); private channels and trading pending; see [perps/OBSERVED.md](perps/OBSERVED.md)"
+covers = "Perps WebSocket (27 channels) — six public channels implemented (`perps-ws` feature); private channels and trading pending; see [perps/OBSERVED.md](perps/OBSERVED.md)"
 
 [workspace.metadata.polyoxide.mirrors.bridge]
 name = "Bridge"
@@ -271,5 +261,5 @@ name = "Binance USDⓈ-M"
 section = "other-venue"
 base_urls = ["https://fapi.binance.com", "wss://fstream.binance.com"]
 description = "Futures public market data and market streams. No published spec, so not a mirror"
-crate_note = "streams behind `ws`"
+crate_note = "streams behind `usdm-ws`"
 exclude = "Not a Polymarket host, and Binance publishes no OpenAPI or AsyncAPI for USDⓈ-M futures; the live suites in `polyoxide-binance` are the drift check."

@@ -4,9 +4,9 @@
 //! stops accepting connections, mis-scripts a connection or drops a frame it
 //! claims to record makes the suites built on it fail in a way that looks
 //! like a library bug. These pin its behaviour against real sockets. The
-//! first eight are `polyoxide-rtds`' server's, and perps' five and Binance's
-//! two answers are written here as the closures their suites will pass, to
-//! show the answer hook fits them.
+//! first eight are one socket crate's former server's, and one venue's five
+//! and another venue's two answers are written here as the closures their
+//! suites will pass, to show the answer hook fits them.
 
 use std::time::Duration;
 
@@ -232,7 +232,7 @@ mod as_rtds_used_it {
     }
 }
 
-/// perps' answers, as its suites will pass them: a `sub`/`unsub` gets one
+/// One venue's answers, as its suites will pass them: a `sub`/`unsub` gets one
 /// status per channel in request order, a `post` ping gets a pong unless the
 /// socket is dead, and anything else gets no reply.
 mod as_perps_will_use_it {
@@ -385,8 +385,8 @@ mod as_perps_will_use_it {
     }
 }
 
-/// Binance's answers, as its suites will pass them, with the streams each
-/// connection carries as the answerer's own state.
+/// Another venue's answers, as its suites will pass them, with the streams
+/// each connection carries as the answerer's own state.
 mod as_binance_will_use_it {
     use super::*;
 
