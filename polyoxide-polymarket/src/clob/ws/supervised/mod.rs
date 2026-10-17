@@ -7,9 +7,6 @@
 //! the filter their decode applies to a frame's text. Each channel's protocol,
 //! builder, events and membership calls are in its own file.
 
-// Temporary, until Task 2.2: nothing outside the tests calls what follows yet.
-#![allow(dead_code)]
-
 use std::time::Duration;
 
 use polyoxide_venue::Classify;
@@ -18,6 +15,13 @@ use polyoxide_ws::{tungstenite::Message, Kind, Outage, Recovery, Timing};
 use super::{
     client::{frame_text, DEFAULT_CONNECT_TIMEOUT},
     ClobWsError,
+};
+
+mod market;
+
+pub use market::{
+    ClobMarketProtocol, MarketChange, MarketEvent, MarketMembership, MarketWsBuilder,
+    SupervisedMarketWs,
 };
 
 /// Why a supervised connection went down, in a `Disconnected` event.

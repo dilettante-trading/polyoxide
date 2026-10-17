@@ -113,6 +113,44 @@
 //!     Ok(())
 //! }
 //! ```
+//!
+//! # Supervised Market Socket
+//!
+//! [`MarketWsBuilder`] opens the market channel on the socket kit's `Supervisor`,
+//! which keeps it alive where the types above end on their first failure. It
+//! sends the keep-alive `PING` itself, reconnects after a server close or a
+//! stall, replays the whole subscription (membership changes included) on every
+//! new connection, and marks each outage with a [`MarketEvent::Disconnected`]
+//! and a [`MarketEvent::Reconnected`], so a consumer knows when its books are
+//! stale and when to rebuild them. A frame that carries several books yields
+//! one event for each. Membership changes on a live socket go through
+//! [`MarketMembership`], on the handle that `Supervised::membership` returns.
+//!
+//! ```no_run
+//! use futures_util::StreamExt;
+//! use polyoxide_polymarket::clob::ws::{MarketEvent, MarketMessage, MarketWsBuilder};
+//!
+//! #[tokio::main]
+//! async fn main() -> Result<(), Box<dyn std::error::Error>> {
+//!     let mut ws = MarketWsBuilder::new()
+//!         .connect(vec!["asset_id".to_string()])
+//!         .await?;
+//!
+//!     while let Some(item) = ws.next().await {
+//!         match item {
+//!             Ok(MarketEvent::Message(MarketMessage::Book(book))) => {
+//!                 println!("{}: {} bids, {} asks", book.asset_id, book.bids.len(), book.asks.len());
+//!             }
+//!             Ok(MarketEvent::Disconnected { reason }) => eprintln!("down: {reason:?}"),
+//!             Ok(MarketEvent::Reconnected) => eprintln!("up again: the books that follow replace yours"),
+//!             Ok(_) => {}
+//!             // A frame that did not decode, or the error that ended the stream.
+//!             Err(err) => eprintln!("{err}"),
+//!         }
+//!     }
+//!     Ok(())
+//! }
+//! ```
 
 mod auth;
 mod client;
@@ -135,6 +173,10 @@ pub use subscription::{
     ChannelType, MarketSubscription, MarketSubscriptionOptions, MarketSubscriptionUpdate,
     SubscriptionLevel, SubscriptionOperation, UserSubscription, UserSubscriptionUpdate,
     WS_MARKET_URL, WS_USER_URL,
+};
+pub use supervised::{
+    ClobMarketProtocol, DisconnectReason, MarketChange, MarketEvent, MarketMembership,
+    MarketWsBuilder, SupervisedMarketWs,
 };
 pub use user::{MakerOrder, OrderEventType, OrderMessage, TradeMessage, TradeStatus, UserMessage};
 
