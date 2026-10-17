@@ -290,10 +290,12 @@ fn fills(
             outcome: Some(trade.outcome.clone()),
             taker_order_id: Some(trade.taker_order_id.clone()),
             transaction_hash: trade.transaction_hash.clone(),
+            // Absent stays `None`; text that is not a number is a `Decode`.
             fee_rate_bps: entry
                 .fee_rate_bps
                 .as_deref()
-                .and_then(|bps| bps.parse::<Decimal>().ok()),
+                .map(|bps| decimal_text(bps, "a fee rate"))
+                .transpose()?,
         });
         out.push(fill);
     }
@@ -492,6 +494,31 @@ mod tests {
 
         assert_eq!(out.len(), 1);
         assert_eq!(out[0].as_ref().unwrap_err().class, Class::Decode);
+    }
+
+    #[test]
+    fn a_maker_fee_rate_that_is_not_a_number_is_one_decode_error_and_no_fill() {
+        let mut unreadable = maker("m2", MAKER, "100", "0.52");
+        unreadable["fee_rate_bps"] = json!("thirty");
+        let bad = trade("MATCHED", "someone-else", vec![unreadable]);
+
+        let out = run(&bad, &ids());
+
+        assert_eq!(out.len(), 1);
+        assert_eq!(out[0].as_ref().unwrap_err().class, Class::Decode);
+    }
+
+    #[test]
+    fn a_maker_entry_with_no_fee_rate_is_a_fill_with_none() {
+        let mut bare = maker("m2", MAKER, "100", "0.52");
+        bare.as_object_mut().unwrap().remove("fee_rate_bps");
+        let good = trade("MATCHED", "someone-else", vec![bare]);
+
+        let out = run(&good, &ids());
+
+        assert_eq!(out.len(), 1);
+        let ext = fill_of(&out[0]).extensions.get::<FillExt>().unwrap();
+        assert_eq!(ext.fee_rate_bps, None);
     }
 
     #[test]
