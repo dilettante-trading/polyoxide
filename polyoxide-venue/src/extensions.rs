@@ -13,6 +13,7 @@ trait Extension: Any + Send + Sync {
     fn clone_box(&self) -> Box<dyn Extension>;
     fn eq_dyn(&self, other: &dyn Extension) -> bool;
     fn fmt_dyn(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result;
+    fn type_name_dyn(&self) -> &'static str;
     fn as_any(&self) -> &dyn Any;
     fn as_any_mut(&mut self) -> &mut dyn Any;
     fn into_any(self: Box<Self>) -> Box<dyn Any>;
@@ -35,6 +36,10 @@ where
 
     fn fmt_dyn(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         fmt::Debug::fmt(self, f)
+    }
+
+    fn type_name_dyn(&self) -> &'static str {
+        std::any::type_name::<T>()
     }
 
     fn as_any(&self) -> &dyn Any {
@@ -184,6 +189,43 @@ impl Extensions {
     pub fn is_empty(&self) -> bool {
         self.values.is_empty()
     }
+
+    /// Checks that every value held is of a type in `declared`, the option
+    /// types a venue reads.
+    ///
+    /// A request carries the venue's own options as extensions, and a venue
+    /// that reads only some option types refuses the rest rather than ignoring
+    /// them. An empty set always passes.
+    ///
+    /// # Errors
+    ///
+    /// [`UndeclaredExtension`] naming the first value held, in `TypeId` order,
+    /// whose type is not in `declared`.
+    ///
+    /// ```
+    /// use std::any::TypeId;
+    ///
+    /// use polyoxide_venue::Extensions;
+    ///
+    /// #[derive(Debug, Clone, PartialEq)]
+    /// struct Options;
+    ///
+    /// #[derive(Debug, Clone, PartialEq)]
+    /// struct Other;
+    ///
+    /// let ext = Extensions::of(Options);
+    /// assert!(ext.ensure_declared(&[TypeId::of::<Options>()]).is_ok());
+    /// assert!(ext.ensure_declared(&[TypeId::of::<Other>()]).is_err());
+    /// assert!(Extensions::new().ensure_declared(&[]).is_ok());
+    /// ```
+    pub fn ensure_declared(&self, declared: &[TypeId]) -> Result<(), UndeclaredExtension> {
+        match self.values.iter().find(|(id, _)| !declared.contains(id)) {
+            Some((_, value)) => Err(UndeclaredExtension {
+                type_name: value.as_ref().type_name_dyn(),
+            }),
+            None => Ok(()),
+        }
+    }
 }
 
 impl Clone for Extensions {
@@ -247,6 +289,35 @@ impl fmt::Display for DuplicateExtension {
 impl Error for DuplicateExtension {}
 
 impl Classify for DuplicateExtension {
+    fn class(&self) -> Class {
+        Class::InvalidRequest
+    }
+}
+
+/// A request carried an extension of a type its venue does not declare
+/// ([`Extensions::ensure_declared`]). An
+/// [`InvalidRequest`](Class::InvalidRequest): the caller's misuse, refused
+/// before anything is sent.
+#[derive(Debug, Clone, PartialEq, Eq)]
+#[non_exhaustive]
+pub struct UndeclaredExtension {
+    /// The type the venue does not declare.
+    pub type_name: &'static str,
+}
+
+impl fmt::Display for UndeclaredExtension {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        write!(
+            f,
+            "the request carries `{}`, an extension this venue does not declare",
+            self.type_name
+        )
+    }
+}
+
+impl Error for UndeclaredExtension {}
+
+impl Classify for UndeclaredExtension {
     fn class(&self) -> Class {
         Class::InvalidRequest
     }
@@ -347,5 +418,63 @@ mod tests {
         let ext = Extensions::of(QuoteExt { update_id: 7 });
         assert_eq!(format!("{ext:?}"), "{QuoteExt { update_id: 7 }}");
         assert_eq!(format!("{:?}", Extensions::new()), "{}");
+    }
+
+    #[test]
+    fn declared_extensions_and_an_empty_set_pass() {
+        let ext = Extensions::of(QuoteExt { update_id: 7 });
+        assert_eq!(ext.ensure_declared(&[TypeId::of::<QuoteExt>()]), Ok(()));
+        assert_eq!(
+            ext.ensure_declared(&[TypeId::of::<BookExt>(), TypeId::of::<QuoteExt>()]),
+            Ok(())
+        );
+        assert_eq!(Extensions::new().ensure_declared(&[]), Ok(()));
+        assert_eq!(
+            Extensions::new().ensure_declared(&[TypeId::of::<QuoteExt>()]),
+            Ok(())
+        );
+    }
+
+    #[test]
+    fn an_undeclared_value_is_refused_by_its_type_name_as_invalid_request() {
+        let mut ext = Extensions::of(QuoteExt { update_id: 7 });
+        ext.insert(BookExt { sequence: 9 }).unwrap();
+
+        let err = ext
+            .ensure_declared(&[TypeId::of::<QuoteExt>()])
+            .unwrap_err();
+        assert!(err.type_name.ends_with("BookExt"), "{err}");
+        assert_eq!(err.class(), Class::InvalidRequest);
+        assert_eq!(
+            err.to_string(),
+            format!(
+                "the request carries `{}`, an extension this venue does not declare",
+                err.type_name
+            )
+        );
+
+        let err = ext.ensure_declared(&[]).unwrap_err();
+        assert_eq!(err.class(), Class::InvalidRequest);
+    }
+
+    #[test]
+    fn the_first_undeclared_value_in_type_id_order_is_the_one_named() {
+        let mut ext = Extensions::of(QuoteExt { update_id: 7 });
+        ext.insert(BookExt { sequence: 9 }).unwrap();
+
+        let first = if TypeId::of::<QuoteExt>() < TypeId::of::<BookExt>() {
+            "QuoteExt"
+        } else {
+            "BookExt"
+        };
+        let err = ext.ensure_declared(&[]).unwrap_err();
+        assert!(err.type_name.ends_with(first), "{err}");
+    }
+
+    #[test]
+    fn declaring_a_type_the_request_lacks_does_not_excuse_one_it_has() {
+        let ext = Extensions::of(QuoteExt { update_id: 7 });
+        let err = ext.ensure_declared(&[TypeId::of::<BookExt>()]).unwrap_err();
+        assert!(err.type_name.ends_with("QuoteExt"), "{err}");
     }
 }

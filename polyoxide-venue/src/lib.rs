@@ -76,7 +76,7 @@ mod ws_table;
 
 pub use class::{Class, ClassifiedError, Classify};
 #[cfg(feature = "market")]
-pub use extensions::{DuplicateExtension, Extensions};
+pub use extensions::{DuplicateExtension, Extensions, UndeclaredExtension};
 #[cfg(feature = "trading")]
 pub use ids::{ClientOrderId, FillId, OrderId};
 #[cfg(feature = "keys")]
@@ -110,4 +110,6 @@ const _: fn() = || {
     is::<DuplicateExtension>();
     #[cfg(feature = "market")]
     is::<NotListed>();
+    #[cfg(feature = "market")]
+    is::<UndeclaredExtension>();
 };
