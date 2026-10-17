@@ -1527,6 +1527,14 @@ So that adding a venue means adding no code.
 
 Consumers trade Polymarket through a lossless `Trading` interface built on supervised CLOB sockets. Fills arrive on an unbounded stream, a reconnect emits `Resync`, and a killed order ends in a `Killed` status. This is stage S3, so the work adds a new supervised socket type and leaves `WebSocketWithPing` in place. The epic depends on Epics 4 and 6.
 
+The epic's design is `docs/superpowers/specs/2026-10-17-epic-7-supervised-clob-sockets-and-trading-design.md` (owner, 2026-10-17). It binds where it and the criteria below differ:
+
+- The clob `Trading` impl is gated `all(clob-ws, data)`, since `events()` reads the user socket.
+- `ClobOrderOptions` carries no fee terms, since a V2 order signs none.
+- Story 7.5's mapping stays at `_bmad-output/specs/spec-venue-extensibility/kalshi-trading-mapping.md` until Story 8.1 moves it (N-D2).
+- Every events stream begins with `Resync`, and a `FAILED` trade yields one.
+- The CLOB honours client order ids in-process.
+
 ### Story 7.1: A supervised CLOB market socket
 
 As a consumer streaming CLOB books,
