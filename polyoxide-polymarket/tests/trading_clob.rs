@@ -5,12 +5,14 @@
 use std::borrow::Cow;
 
 use mockito::{Matcher, Mock, Server, ServerGuard};
+use polyoxide_polymarket::clob::venue::{BalanceExt, PositionExt};
 use polyoxide_polymarket::clob::venue::{ClobOrderOptions, OrderExt};
 use polyoxide_polymarket::clob::{
     Account, Clob, ClobBuilder, Credentials, SignatureType, TickSize,
 };
 use polyoxide_polymarket::data::DataApi;
 use polyoxide_polymarket::shared::keys::{self, TokenId};
+use polyoxide_venue::OrderId;
 use polyoxide_venue::{
     Class, ClientOrderId, KeySpace, KillReason, MarketKey, OrderRequest, OrderStatus, ProductId,
     Side, TimeInForce, Trading, UnixMillis, VenueId,
@@ -248,6 +250,465 @@ impl KeySpace for Elsewhere {
 /// An option type the CLOB does not declare.
 #[derive(Debug, Clone, PartialEq)]
 struct Stray;
+
+// --- cancel, orders, positions and balances ---
+
+/// A `DELETE` answering with a `BatchCancelResponse` body.
+async fn delete_answering(server: &mut ServerGuard, path: &str, body: Value, answer: &str) -> Mock {
+    server
+        .mock("DELETE", path)
+        .match_body(Matcher::Json(body))
+        .with_status(200)
+        .with_header("content-type", "application/json")
+        .with_body(answer)
+        .expect(1)
+        .create_async()
+        .await
+}
+
+#[tokio::test]
+async fn cancel_is_ok_when_the_order_is_among_the_canceled() {
+    let mut server = Server::new_async().await;
+    let delete = delete_answering(
+        &mut server,
+        "/order",
+        json!({"orderID": "0xa"}),
+        r#"{"canceled":["0xa"],"notCanceled":{}}"#,
+    )
+    .await;
+
+    client(&server).cancel(&OrderId::new("0xa")).await.unwrap();
+
+    delete.assert_async().await;
+}
+
+#[tokio::test]
+async fn cancel_is_a_venue_refusal_carrying_the_venues_reason() {
+    let mut server = Server::new_async().await;
+    let delete = delete_answering(
+        &mut server,
+        "/order",
+        json!({"orderID": "0xa"}),
+        r#"{"canceled":[],"notCanceled":{"0xa":"order can't be found - already canceled or matched"}}"#,
+    )
+    .await;
+
+    let err = client(&server)
+        .cancel(&OrderId::new("0xa"))
+        .await
+        .unwrap_err();
+
+    assert!(matches!(err.class, Class::VenueRefusal { .. }), "{err}");
+    assert!(
+        err.to_string().contains("already canceled or matched"),
+        "{err}"
+    );
+    delete.assert_async().await;
+}
+
+#[tokio::test]
+async fn cancel_of_an_order_the_clob_does_not_answer_for_is_a_venue_refusal() {
+    let mut server = Server::new_async().await;
+    let delete = delete_answering(
+        &mut server,
+        "/order",
+        json!({"orderID": "0xa"}),
+        r#"{"canceled":[],"notCanceled":{}}"#,
+    )
+    .await;
+
+    let err = client(&server)
+        .cancel(&OrderId::new("0xa"))
+        .await
+        .unwrap_err();
+
+    assert!(matches!(err.class, Class::VenueRefusal { .. }), "{err}");
+    assert!(
+        err.to_string()
+            .contains("the CLOB did not answer for order 0xa"),
+        "{err}"
+    );
+    delete.assert_async().await;
+}
+
+#[tokio::test]
+async fn cancel_all_returns_only_the_ids_the_clob_cancelled() {
+    let mut server = Server::new_async().await;
+    let delete = server
+        .mock("DELETE", "/cancel-all")
+        .with_status(200)
+        .with_header("content-type", "application/json")
+        .with_body(r#"{"canceled":["0xa","0xb"],"notCanceled":{"0xc":"order can't be found"}}"#)
+        .expect(1)
+        .create_async()
+        .await;
+
+    let ids = client(&server).cancel_all(None).await.unwrap();
+
+    // `0xc` stays open: it is in `notCanceled`.
+    assert_eq!(ids, [OrderId::new("0xa"), OrderId::new("0xb")]);
+    delete.assert_async().await;
+}
+
+#[tokio::test]
+async fn cancel_all_for_a_key_resolves_the_market_and_names_both_it_and_the_token() {
+    let mut server = Server::new_async().await;
+    let lookup = server
+        .mock("GET", "/markets-by-token/100")
+        .with_status(200)
+        .with_header("content-type", "application/json")
+        .with_body(
+            r#"{"condition_id":"0xcond","primary_token_id":"100","secondary_token_id":"101"}"#,
+        )
+        .expect(1)
+        .create_async()
+        .await;
+    let delete = delete_answering(
+        &mut server,
+        "/cancel-market-orders",
+        json!({"market": "0xcond", "asset_id": "100"}),
+        r#"{"canceled":["0xa"],"notCanceled":{}}"#,
+    )
+    .await;
+
+    let ids = client(&server).cancel_all(Some(&key())).await.unwrap();
+
+    assert_eq!(ids, [OrderId::new("0xa")]);
+    lookup.assert_async().await;
+    delete.assert_async().await;
+}
+
+#[tokio::test]
+async fn cancelling_an_order_frees_the_client_order_id_the_ledger_held() {
+    let mut server = Server::new_async().await;
+    let post = post_ok(&mut server, LIVE, 2).await;
+    let delete = server
+        .mock("DELETE", "/cancel-all")
+        .with_status(200)
+        .with_header("content-type", "application/json")
+        .with_body(r#"{"canceled":["0xorder1"],"notCanceled":{}}"#)
+        .expect(1)
+        .create_async()
+        .await;
+    let clob = client(&server);
+    let mut request = with_options(buy("0.52", "10"), declared(TickSize::Hundredth));
+    request.client_order_id = Some(ClientOrderId::new("mine-1"));
+
+    clob.place(request.clone()).await.unwrap();
+    let refused = clob.place(request.clone()).await.unwrap_err();
+    clob.cancel_all(None).await.unwrap();
+    let again = clob.place(request).await.unwrap();
+
+    assert!(refused.to_string().contains("already in use"), "{refused}");
+    assert_eq!(again.client_order_id, Some(ClientOrderId::new("mine-1")));
+    post.assert_async().await;
+    delete.assert_async().await;
+}
+
+/// A `/data/orders` body: `rows` and the cursor to the next page.
+fn orders_page(rows: Vec<Value>, next_cursor: &str) -> String {
+    json!({"data": rows, "next_cursor": next_cursor}).to_string()
+}
+
+#[tokio::test]
+async fn open_orders_pages_to_the_end_sentinel() {
+    let mut server = Server::new_async().await;
+    let first = server
+        .mock("GET", "/data/orders")
+        .match_query(Matcher::Missing)
+        .with_status(200)
+        .with_header("content-type", "application/json")
+        .with_body(orders_page(vec![open_order("0xa", "LIVE", "0")], "MQ=="))
+        .expect(1)
+        .create_async()
+        .await;
+    let second = server
+        .mock("GET", "/data/orders")
+        .match_query(Matcher::UrlEncoded("next_cursor".into(), "MQ==".into()))
+        .with_status(200)
+        .with_header("content-type", "application/json")
+        .with_body(orders_page(
+            vec![open_order("0xb", "MATCHED", "10")],
+            "LTE=",
+        ))
+        .expect(1)
+        .create_async()
+        .await;
+
+    let orders = client(&server).open_orders(None).await.unwrap();
+
+    let ids: Vec<&str> = orders.iter().map(|order| order.id.as_str()).collect();
+    assert_eq!(ids, ["0xa", "0xb"]);
+    assert_eq!(orders[0].status, OrderStatus::Open);
+    assert_eq!(orders[1].status, OrderStatus::Filled);
+    assert_eq!(orders[1].filled, d("10"));
+    assert_eq!(orders[0].key, key());
+    assert_eq!(orders[0].price, d("0.52"));
+    assert_eq!(orders[0].time_in_force, Some(TimeInForce::GoodTilCancelled));
+    assert_eq!(orders[0].created, Some(UnixMillis(1_792_000_000_000)));
+    let ext = orders[0].extensions.get::<OrderExt>().unwrap();
+    assert_eq!(ext.status.as_deref(), Some("LIVE"));
+    assert_eq!(ext.condition_id.as_deref(), Some(MARKET));
+    assert_eq!(ext.trade_ids, ["trade-1"]);
+    first.assert_async().await;
+    second.assert_async().await;
+}
+
+#[tokio::test]
+async fn open_orders_of_a_key_filters_by_its_token() {
+    let mut server = Server::new_async().await;
+    let list = server
+        .mock("GET", "/data/orders")
+        .match_query(Matcher::UrlEncoded("asset_id".into(), TOKEN.into()))
+        .with_status(200)
+        .with_header("content-type", "application/json")
+        .with_body(orders_page(vec![open_order("0xa", "LIVE", "0")], "LTE="))
+        .expect(1)
+        .create_async()
+        .await;
+
+    let orders = client(&server).open_orders(Some(&key())).await.unwrap();
+
+    assert_eq!(orders.len(), 1);
+    list.assert_async().await;
+}
+
+#[tokio::test]
+async fn open_orders_stops_on_a_cursor_it_has_already_followed() {
+    let mut server = Server::new_async().await;
+    // Every page names the same next cursor.
+    let list = server
+        .mock("GET", "/data/orders")
+        .match_query(Matcher::Any)
+        .with_status(200)
+        .with_header("content-type", "application/json")
+        .with_body(orders_page(vec![open_order("0xa", "LIVE", "0")], "MQ=="))
+        .expect(2)
+        .create_async()
+        .await;
+
+    let err = client(&server).open_orders(None).await.unwrap_err();
+
+    assert_eq!(err.class, Class::Decode, "{err}");
+    list.assert_async().await;
+}
+
+/// A `/positions` row with the asset `asset`.
+fn position_row(asset: String) -> Value {
+    json!({
+        "proxyWallet": "0xf39Fd6e51aad88F6F4ce6aB8827279cffFb92266",
+        "asset": asset,
+        "conditionId": MARKET,
+        "size": 12.5,
+        "avgPrice": 0.4,
+        "initialValue": 5.0,
+        "currentValue": 6.25,
+        "cashPnl": 1.25,
+        "percentPnl": 25.0,
+        "totalBought": 12.5,
+        "realizedPnl": 0.0,
+        "percentRealizedPnl": 0.0,
+        "curPrice": 0.5,
+        "redeemable": false,
+        "mergeable": false,
+        "title": "A market",
+        "slug": "a-market",
+        "icon": null,
+        "eventSlug": null,
+        "outcome": "Yes",
+        "outcomeIndex": 0,
+        "oppositeOutcome": "No",
+        "oppositeAsset": "101",
+        "endDate": null,
+        "negativeRisk": false
+    })
+}
+
+/// The query of one `/positions` page: the maker, no dust filter, 500 rows.
+fn positions_query(user: &str, offset: &str) -> Matcher {
+    Matcher::AllOf(vec![
+        Matcher::UrlEncoded("user".into(), user.into()),
+        Matcher::UrlEncoded("sizeThreshold".into(), "0".into()),
+        Matcher::UrlEncoded("limit".into(), "500".into()),
+        Matcher::UrlEncoded("offset".into(), offset.into()),
+    ])
+}
+
+fn position_rows(count: usize) -> String {
+    let rows: Vec<Value> = (0..count)
+        .map(|n| position_row((1_000 + n).to_string()))
+        .collect();
+    Value::Array(rows).to_string()
+}
+
+#[tokio::test]
+async fn positions_pages_by_offset_with_no_dust_filter_for_the_maker_address() {
+    let mut server = Server::new_async().await;
+    let clob = client(&server);
+    let user = clob.account().unwrap().address().to_string();
+    let first = server
+        .mock("GET", "/positions")
+        .match_query(positions_query(&user, "0"))
+        .with_status(200)
+        .with_header("content-type", "application/json")
+        .with_body(position_rows(500))
+        .expect(1)
+        .create_async()
+        .await;
+    let second = server
+        .mock("GET", "/positions")
+        .match_query(positions_query(&user, "500"))
+        .with_status(200)
+        .with_header("content-type", "application/json")
+        .with_body(position_rows(3))
+        .expect(1)
+        .create_async()
+        .await;
+
+    let positions = clob.positions().await.unwrap();
+
+    assert_eq!(positions.len(), 503);
+    assert_eq!(positions[0].key, keys::clob(&TokenId::new("1000").unwrap()));
+    assert_eq!(positions[0].size, d("12.5"));
+    assert_eq!(positions[0].average_price, Some(d("0.4")));
+    let ext = positions[0].extensions.get::<PositionExt>().unwrap();
+    assert_eq!(ext.condition_id.as_deref(), Some(MARKET));
+    assert_eq!(ext.current_price, Some(d("0.5")));
+    assert_eq!(ext.outcome_index, Some(0));
+    assert_eq!(ext.negative_risk, Some(false));
+    first.assert_async().await;
+    second.assert_async().await;
+}
+
+/// `positions` reads the address `place` trades from, the client's signature
+/// type's. Without `gamma` a proxy client cannot find its proxy wallet, so the
+/// native refusal comes back and nothing is sent; a `positions` that resolved
+/// from the account target's EOA would list the EOA's rows instead.
+#[cfg(not(feature = "gamma"))]
+#[tokio::test]
+async fn a_proxy_client_without_gamma_refuses_to_list_positions_and_sends_nothing() {
+    let mut server = Server::new_async().await;
+    let untouched = nothing_sent(&mut server).await;
+
+    let err = proxy_client(&server).positions().await.unwrap_err();
+
+    assert_eq!(err.class, Class::InvalidRequest, "{err}");
+    assert!(
+        err.to_string().contains("requires the `gamma` feature"),
+        "{err}"
+    );
+    for mock in untouched {
+        mock.assert_async().await;
+    }
+}
+
+/// With `gamma`, the proxy client lists the positions of its proxy wallet.
+#[cfg(feature = "gamma")]
+#[tokio::test]
+async fn a_proxy_client_lists_the_positions_of_its_proxy_wallet() {
+    let mut server = Server::new_async().await;
+    let profile = proxy_profile(&mut server).await;
+    let list = server
+        .mock("GET", "/positions")
+        .match_query(positions_query(PROXY, "0"))
+        .with_status(200)
+        .with_header("content-type", "application/json")
+        .with_body(position_rows(2))
+        .expect(1)
+        .create_async()
+        .await;
+
+    let positions = proxy_client(&server).positions().await.unwrap();
+
+    assert_eq!(positions.len(), 2);
+    profile.assert_async().await;
+    list.assert_async().await;
+}
+
+#[tokio::test]
+async fn positions_refuse_a_wallet_with_more_rows_than_the_offset_reaches() {
+    let mut server = Server::new_async().await;
+    // Every page is full: offsets 0 to 10000 are 21 pages, and a 22nd would
+    // need offset 10500.
+    let pages = server
+        .mock("GET", "/positions")
+        .match_query(Matcher::Any)
+        .with_status(200)
+        .with_header("content-type", "application/json")
+        .with_body(position_rows(500))
+        .expect(21)
+        .create_async()
+        .await;
+
+    let err = client(&server).positions().await.unwrap_err();
+
+    assert!(matches!(err.class, Class::VenueRefusal { .. }), "{err}");
+    assert!(err.to_string().contains("more positions"), "{err}");
+    pages.assert_async().await;
+}
+
+#[tokio::test]
+async fn balances_are_scaled_from_six_decimals_and_name_every_allowance() {
+    let mut server = Server::new_async().await;
+    let balance = server
+        .mock("GET", "/balance-allowance")
+        .match_query(Matcher::AllOf(vec![
+            Matcher::UrlEncoded("asset_type".into(), "COLLATERAL".into()),
+            Matcher::UrlEncoded("signature_type".into(), "0".into()),
+        ]))
+        .with_status(200)
+        .with_header("content-type", "application/json")
+        .with_body(
+            json!({
+                "balance": "141171137",
+                "allowances": {
+                    "0x4bFb41d5B3570DeFd03C39a9A4D8dE6Bd8B8982E": "999999",
+                    "0xC5d563A36AE78145C45a50134d48A1215220f80a":
+                        "115792089237316195423570985008687907853269984665640564039457584007913129639935"
+                }
+            })
+            .to_string(),
+        )
+        .expect(1)
+        .create_async()
+        .await;
+
+    let balances = client(&server).balances().await.unwrap();
+
+    assert_eq!(balances.len(), 1);
+    assert_eq!(balances[0].asset, "pUSD");
+    assert_eq!(balances[0].total, Some(d("141.171137")));
+    assert_eq!(balances[0].available, None);
+    let ext = balances[0].extensions.get::<BalanceExt>().unwrap();
+    assert_eq!(
+        ext.allowances["0x4bFb41d5B3570DeFd03C39a9A4D8dE6Bd8B8982E"],
+        d("0.999999")
+    );
+    // An unlimited approval is larger than a decimal holds.
+    assert_eq!(
+        ext.allowances["0xC5d563A36AE78145C45a50134d48A1215220f80a"],
+        Decimal::MAX
+    );
+    balance.assert_async().await;
+}
+
+#[tokio::test]
+async fn every_read_needs_an_account() {
+    let clob = Clob::public();
+
+    let errs = [
+        clob.cancel(&OrderId::new("0xa")).await.unwrap_err(),
+        clob.cancel_all(None).await.unwrap_err(),
+        clob.open_orders(None).await.unwrap_err(),
+        clob.positions().await.unwrap_err(),
+        clob.balances().await.unwrap_err(),
+    ];
+
+    for err in errs {
+        assert_eq!(err.class, Class::InvalidRequest, "{err}");
+        assert!(err.to_string().contains("Account required"), "{err}");
+    }
+}
 
 // --- place ---
 

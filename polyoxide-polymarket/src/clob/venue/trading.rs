@@ -12,6 +12,12 @@ use polyoxide_venue::UnixMillis;
 use rust_decimal::Decimal;
 
 use crate::clob::types::TickSize;
+use std::collections::HashSet;
+
+use super::{decimal, decode};
+use crate::clob::OpenOrder;
+use crate::data::types::Position as DataPosition;
+use crate::shared::keys::TokenId;
 use std::any::TypeId;
 use std::collections::HashMap;
 use std::sync::{Mutex, MutexGuard, PoisonError};
@@ -160,6 +166,12 @@ impl ClientIds {
     /// The order holding `client`, when one does.
     pub(crate) fn holder(&self, client: &ClientOrderId) -> Option<OrderId> {
         self.by_client.get(client).cloned()
+    }
+
+    /// The client order id `order` was placed with, when this client placed it
+    /// with one.
+    pub(crate) fn client_of(&self, order: &OrderId) -> Option<ClientOrderId> {
+        self.by_order.get(order).map(|(client, _)| client.clone())
     }
 
     /// Records that `order` carries `client`, dropping the oldest entry once
@@ -562,29 +574,137 @@ impl Trading for Clob {
         result
     }
 
-    // Temporary stub; Task 5.3 replaces it.
-    async fn cancel(&self, _id: &OrderId) -> Result<(), ClassifiedError> {
-        Err(refusal("cancel is not implemented yet"))
+    async fn cancel(&self, id: &OrderId) -> Result<(), ClassifiedError> {
+        let response = self.orders()?.cancel(id.as_str()).send().await?;
+        if response
+            .canceled
+            .iter()
+            .any(|canceled| canceled == id.as_str())
+        {
+            lock(&self.ids).remove(id);
+            return Ok(());
+        }
+        match response.not_canceled.get(id.as_str()) {
+            Some(reason) => Err(refusal(format!(
+                "the CLOB did not cancel order {id}: {reason}"
+            ))),
+            None => Err(refusal(format!("the CLOB did not answer for order {id}"))),
+        }
     }
 
-    // Temporary stub; Task 5.3 replaces it.
-    async fn cancel_all(&self, _key: Option<&MarketKey>) -> Result<Vec<OrderId>, ClassifiedError> {
-        Err(refusal("cancel_all is not implemented yet"))
+    async fn cancel_all(&self, key: Option<&MarketKey>) -> Result<Vec<OrderId>, ClassifiedError> {
+        let orders = self.orders()?;
+        let response = match key {
+            None => orders.cancel_all().await?,
+            Some(key) => {
+                // The CLOB cancels by market and token together.
+                let token = keys::token_id(key)?;
+                let market = self
+                    .markets()
+                    .market_by_token(token.as_str())
+                    .send()
+                    .await?;
+                orders
+                    .cancel_market(market.condition_id, token.as_str())
+                    .await?
+            }
+        };
+        let cancelled: Vec<OrderId> = response
+            .canceled
+            .iter()
+            .map(|id| OrderId::new(id.as_str()))
+            .collect();
+        {
+            let mut ids = lock(&self.ids);
+            for id in &cancelled {
+                ids.remove(id);
+            }
+        }
+        Ok(cancelled)
     }
 
-    // Temporary stub; Task 5.3 replaces it.
-    async fn open_orders(&self, _key: Option<&MarketKey>) -> Result<Vec<Order>, ClassifiedError> {
-        Err(refusal("open_orders is not implemented yet"))
+    async fn open_orders(&self, key: Option<&MarketKey>) -> Result<Vec<Order>, ClassifiedError> {
+        let orders = self.orders()?;
+        let token = key.map(keys::token_id).transpose()?;
+        let mut cursor: Option<String> = None;
+        let mut followed = HashSet::new();
+        let mut open = Vec::new();
+        loop {
+            let mut list = orders.list();
+            if let Some(token) = &token {
+                list = list.asset_id(token.as_str());
+            }
+            if let Some(cursor) = &cursor {
+                list = list.next_cursor(cursor.as_str());
+            }
+            let page = list.send().await?;
+            for row in &page.data {
+                open.push(open_order(row, &self.ids)?);
+            }
+            match page.next_cursor {
+                Some(next) if !next.is_empty() && next != PAGES_END => {
+                    if !followed.insert(next.clone()) {
+                        return Err(decode("a page cursor it had already followed"));
+                    }
+                    cursor = Some(next);
+                }
+                _ => return Ok(open),
+            }
+        }
     }
 
-    // Temporary stub; Task 5.3 replaces it.
     async fn positions(&self) -> Result<Vec<Position>, ClassifiedError> {
-        Err(refusal("positions is not implemented yet"))
+        let account = self
+            .account
+            .as_ref()
+            .ok_or_else(|| ClobError::validation("Account required to read positions"))?;
+        // The address orders are placed from: the maker of the client's own
+        // signature type (the builder's override, else the account target's),
+        // with no per-order funder, as `place` resolves it.
+        let maker = self
+            .resolve_maker_address(None, self.signature_type, account)
+            .await?;
+        let user = self.data.user(maker.to_string());
+        let mut positions = Vec::new();
+        let mut offset = 0;
+        loop {
+            // No dust filter: the default threshold of one share hides small
+            // positions.
+            let rows = user
+                .list_positions()
+                .size_threshold(0.0)
+                .limit(POSITIONS_PAGE)
+                .offset(offset)
+                .send()
+                .await?;
+            for row in &rows {
+                positions.push(position(row)?);
+            }
+            if rows.len() < POSITIONS_PAGE as usize {
+                return Ok(positions);
+            }
+            if offset >= POSITIONS_LAST_OFFSET {
+                return Err(refusal(
+                    "the wallet holds more positions than /positions can list",
+                ));
+            }
+            offset += POSITIONS_PAGE;
+        }
     }
 
-    // Temporary stub; Task 5.3 replaces it.
     async fn balances(&self) -> Result<Vec<Balance>, ClassifiedError> {
-        Err(refusal("balances is not implemented yet"))
+        let response = self.account_api()?.usdc_balance().send().await?;
+        let mut allowances = BTreeMap::new();
+        for (spender, amount) in &response.allowances {
+            allowances.insert(spender.clone(), allowance(amount)?);
+        }
+        // Outcome tokens are positions, not balances: the collateral is the
+        // account's one balance. The CLOB reports no reservation by open
+        // orders, so nothing is `available`.
+        let mut collateral = Balance::new(COLLATERAL_ASSET);
+        collateral.total = Some(scaled(&response.balance, "a balance")?);
+        collateral.extensions = Extensions::of(BalanceExt { allowances });
+        Ok(vec![collateral])
     }
 
     // Temporary stub; Task 5.4 replaces it.
@@ -592,6 +712,263 @@ impl Trading for Clob {
         TradingEvents::new(futures_util::stream::empty::<
             Result<polyoxide_venue::TradingEvent, ClassifiedError>,
         >())
+    }
+}
+
+/// The rows of a `/positions` page, the most it serves.
+const POSITIONS_PAGE: u32 = 500;
+
+/// The last offset `/positions` accepts.
+const POSITIONS_LAST_OFFSET: u32 = 10_000;
+
+/// The cursor `/data/orders` ends on.
+const PAGES_END: &str = "LTE=";
+
+/// What the account's collateral is called.
+const COLLATERAL_ASSET: &str = "pUSD";
+
+/// The collateral's fixed point: balances and allowances carry six decimals.
+const COLLATERAL_SCALE: u32 = 1_000_000;
+
+/// A decimal the CLOB sent as text, or a `Decode` error naming `what`.
+pub(super) fn decimal_text(text: &str, what: &str) -> Result<Decimal, ClassifiedError> {
+    text.parse()
+        .map_err(|_| decode(&format!("{what} that is not a decimal")))
+}
+
+/// A side the CLOB sent as `BUY` or `SELL`.
+pub(super) fn side_text(text: &str) -> Result<Side, ClassifiedError> {
+    if text.eq_ignore_ascii_case("BUY") {
+        Ok(Side::Buy)
+    } else if text.eq_ignore_ascii_case("SELL") {
+        Ok(Side::Sell)
+    } else {
+        Err(decode("a side that is neither BUY nor SELL"))
+    }
+}
+
+/// The key of the outcome token `asset`, or a `Decode` error when the CLOB
+/// sent an id no key can carry.
+pub(super) fn key_of(asset: &str) -> Result<MarketKey, ClassifiedError> {
+    let token = TokenId::new(asset).map_err(|err| ClassifiedError::new(Class::Decode, err))?;
+    Ok(keys::clob(&token))
+}
+
+/// A collateral amount in the CLOB's six-decimal fixed point, as a decimal.
+fn scaled(text: &str, what: &str) -> Result<Decimal, ClassifiedError> {
+    decimal_text(text, what).map(|amount| amount / Decimal::from(COLLATERAL_SCALE))
+}
+
+/// An allowance. An unlimited approval is a 78-digit integer, larger than a
+/// `Decimal` holds, and reads as `Decimal::MAX`.
+fn allowance(text: &str) -> Result<Decimal, ClassifiedError> {
+    scaled(text, "an allowance").or_else(|err| {
+        if !text.is_empty() && text.bytes().all(|byte| byte.is_ascii_digit()) {
+            Ok(Decimal::MAX)
+        } else {
+            Err(err)
+        }
+    })
+}
+
+/// An order the CLOB lists, as the trait's [`Order`].
+fn open_order(row: &OpenOrder, ids: &Mutex<ClientIds>) -> Result<Order, ClassifiedError> {
+    let status = match row.status.as_str() {
+        "MATCHED" => OrderStatus::Filled,
+        "CANCELED" | "CANCELED_MARKET_RESOLVED" => OrderStatus::Cancelled,
+        // `LIVE`, and any word the CLOB adds, which the extension keeps.
+        _ => OrderStatus::Open,
+    };
+    let id = OrderId::new(row.id.as_str());
+    let mut order = Order::new(
+        id.clone(),
+        key_of(&row.asset_id)?,
+        side_text(&row.side)?,
+        decimal_text(&row.price, "a price")?,
+        decimal_text(&row.original_size, "an original size")?,
+        status,
+    );
+    order.filled = decimal_text(&row.size_matched, "a matched size")?;
+    order.time_in_force = match row.order_type.as_str() {
+        "GTC" | "GTD" => Some(TimeInForce::GoodTilCancelled),
+        "FAK" => Some(TimeInForce::ImmediateOrCancel),
+        "FOK" => Some(TimeInForce::FillOrKill),
+        _ => None,
+    };
+    order.created = u64::try_from(row.created_at)
+        .ok()
+        .map(|seconds| UnixMillis(seconds.saturating_mul(1_000)));
+    order.client_order_id = lock(ids).client_of(&id);
+    order.extensions = Extensions::of(OrderExt {
+        status: Some(row.status.clone()),
+        condition_id: Some(row.market.clone()),
+        outcome: Some(row.outcome.clone()),
+        maker_address: Some(row.maker_address.clone()),
+        // `0` is no expiry.
+        expiration: row
+            .expiration
+            .parse::<u64>()
+            .ok()
+            .filter(|seconds| *seconds > 0)
+            .map(|seconds| UnixMillis(seconds.saturating_mul(1_000))),
+        neg_risk: None,
+        trade_ids: row.associate_trades.clone(),
+        transaction_hashes: Vec::new(),
+    });
+    Ok(order)
+}
+
+/// A Data API position, as the trait's [`Position`].
+fn position(row: &DataPosition) -> Result<Position, ClassifiedError> {
+    let size = decimal(row.size).ok_or_else(|| decode("a position size that is not a decimal"))?;
+    let mut position = Position::new(key_of(&row.asset)?, size);
+    position.average_price = decimal(row.avg_price);
+    position.extensions = Extensions::of(PositionExt {
+        condition_id: Some(row.condition_id.clone()),
+        outcome: Some(row.outcome.clone()),
+        outcome_index: Some(row.outcome_index),
+        current_price: decimal(row.cur_price),
+        current_value: decimal(row.current_value),
+        initial_value: decimal(row.initial_value),
+        cash_pnl: decimal(row.cash_pnl),
+        realized_pnl: decimal(row.realized_pnl),
+        redeemable: Some(row.redeemable),
+        mergeable: Some(row.mergeable),
+        negative_risk: Some(row.negative_risk),
+        title: Some(row.title.clone()),
+        end_date: row.end_date.clone(),
+    });
+    Ok(position)
+}
+
+#[cfg(test)]
+mod read_tests {
+    use serde_json::json;
+
+    use super::*;
+
+    fn d(text: &str) -> Decimal {
+        text.parse().unwrap()
+    }
+
+    fn row(status: &str, order_type: &str, expiration: &str) -> OpenOrder {
+        serde_json::from_value(json!({
+            "id": "0xa",
+            "status": status,
+            "owner": "key",
+            "maker_address": "0xMaker",
+            "market": "0xcondition",
+            "asset_id": "100",
+            "side": "SELL",
+            "original_size": "10",
+            "size_matched": "4",
+            "price": "0.52",
+            "outcome": "Yes",
+            "expiration": expiration,
+            "order_type": order_type,
+            "associate_trades": ["t1", "t2"],
+            "created_at": 1_792_000_000_i64
+        }))
+        .unwrap()
+    }
+
+    #[test]
+    fn a_balance_is_divided_by_a_million() {
+        assert_eq!(scaled("141171137", "a balance").unwrap(), d("141.171137"));
+        assert_eq!(scaled("0", "a balance").unwrap(), Decimal::ZERO);
+        assert_eq!(scaled("1000000", "a balance").unwrap(), Decimal::ONE);
+        let err = scaled("12abc", "a balance").unwrap_err();
+        assert_eq!(err.class, Class::Decode);
+    }
+
+    #[test]
+    fn an_unlimited_allowance_reads_as_the_largest_decimal() {
+        let unlimited =
+            "115792089237316195423570985008687907853269984665640564039457584007913129639935";
+
+        assert_eq!(allowance(unlimited).unwrap(), Decimal::MAX);
+        assert_eq!(allowance("999999").unwrap(), d("0.999999"));
+        assert_eq!(allowance("12abc").unwrap_err().class, Class::Decode);
+        assert_eq!(allowance("").unwrap_err().class, Class::Decode);
+    }
+
+    #[test]
+    fn a_side_is_buy_or_sell_in_any_case() {
+        assert_eq!(side_text("BUY").unwrap(), Side::Buy);
+        assert_eq!(side_text("sell").unwrap(), Side::Sell);
+        assert_eq!(side_text("HOLD").unwrap_err().class, Class::Decode);
+    }
+
+    #[test]
+    fn an_asset_that_is_no_token_id_is_a_decode_error() {
+        assert!(key_of("100").is_ok());
+        assert_eq!(key_of("0x10").unwrap_err().class, Class::Decode);
+        assert_eq!(key_of("").unwrap_err().class, Class::Decode);
+    }
+
+    #[test]
+    fn a_listed_order_maps_its_status_and_keeps_the_raw_word() {
+        let ids = Mutex::new(ClientIds::default());
+        for (word, status) in [
+            ("LIVE", OrderStatus::Open),
+            ("MATCHED", OrderStatus::Filled),
+            ("CANCELED", OrderStatus::Cancelled),
+            ("CANCELED_MARKET_RESOLVED", OrderStatus::Cancelled),
+            ("INVALID", OrderStatus::Open),
+        ] {
+            let order = open_order(&row(word, "GTC", "0"), &ids).unwrap();
+
+            assert_eq!(order.status, status, "{word}");
+            let ext = order.extensions.get::<OrderExt>().unwrap();
+            assert_eq!(ext.status.as_deref(), Some(word));
+        }
+    }
+
+    #[test]
+    fn a_listed_order_carries_its_size_side_time_and_expiry() {
+        let ids = Mutex::new(ClientIds::default());
+        lock(&ids)
+            .claim(OrderId::new("0xa"), ClientOrderId::new("mine"))
+            .unwrap();
+
+        let order = open_order(&row("LIVE", "GTD", "1900000000"), &ids).unwrap();
+
+        assert_eq!(order.side, Side::Sell);
+        assert_eq!(order.size, d("10"));
+        assert_eq!(order.filled, d("4"));
+        assert_eq!(order.price, d("0.52"));
+        assert_eq!(order.created, Some(UnixMillis(1_792_000_000_000)));
+        assert_eq!(order.time_in_force, Some(TimeInForce::GoodTilCancelled));
+        assert_eq!(order.client_order_id, Some(ClientOrderId::new("mine")));
+        let ext = order.extensions.get::<OrderExt>().unwrap();
+        assert_eq!(ext.expiration, Some(UnixMillis(1_900_000_000_000)));
+        assert_eq!(ext.maker_address.as_deref(), Some("0xMaker"));
+        assert_eq!(ext.trade_ids, ["t1", "t2"]);
+    }
+
+    #[test]
+    fn the_order_type_is_the_time_in_force() {
+        let ids = Mutex::new(ClientIds::default());
+        for (word, expected) in [
+            ("GTC", Some(TimeInForce::GoodTilCancelled)),
+            ("GTD", Some(TimeInForce::GoodTilCancelled)),
+            ("FAK", Some(TimeInForce::ImmediateOrCancel)),
+            ("FOK", Some(TimeInForce::FillOrKill)),
+            ("SOMETHING", None),
+        ] {
+            let order = open_order(&row("LIVE", word, "0"), &ids).unwrap();
+
+            assert_eq!(order.time_in_force, expected, "{word}");
+        }
+    }
+
+    #[test]
+    fn a_listed_order_with_unreadable_text_is_a_decode_error() {
+        let ids = Mutex::new(ClientIds::default());
+        let mut bad = row("LIVE", "GTC", "0");
+        bad.price = "cheap".to_owned();
+
+        assert_eq!(open_order(&bad, &ids).unwrap_err().class, Class::Decode);
     }
 }
 
