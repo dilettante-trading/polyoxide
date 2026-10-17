@@ -46,3 +46,63 @@ that builds on 0.40 builds unchanged.
 
 No dependency tree changes: `market` builds only rust_decimal, serde and dynosaur, which every
 module that turns it on already builds, and the socket-only modules turn on neither feature.
+
+## Epic 7: supervised CLOB sockets and normalized trading
+
+**Consumer impact: additive.** Nothing is removed or renamed, and no signature changes; code
+that builds on 0.40 builds unchanged.
+
+- `polyoxide-ws`: `Protocol` gains a provided method, `Protocol::connect`, which the
+  `Supervisor` calls for every attempt. Its default builds `handshake()`'s request and dials it
+  with the kit's `connect`, so a `Protocol` written before it keeps its behaviour, and perps and
+  Binance are untouched. The CLOB's two protocols override it with the CLOB's per-address dial.
+- `polyoxide-polymarket`, with `clob-ws`: two supervised sockets beside the bare tier.
+  `MarketWsBuilder` connects a `SupervisedMarketWs` (`ClobMarketProtocol`, `MarketEvent`,
+  `MarketChange` and the `MarketMembership` trait), and `UserWsBuilder` a `SupervisedUserWs`
+  (`ClobUserProtocol`, `UserEvent`, `UserChange` and the `UserMembership` trait). Both yield a
+  `DisconnectReason` (the server's close code and reason, an error, a stall or a rotation) with
+  each `Disconnected`. They reconnect after a close or a stall, replay their membership on every
+  connection (the user socket its credentials too), and yield one `Disconnected` and one
+  `Reconnected` per outage. They send a text `PING` every 10 s, count any frame as liveness and
+  are stale after 30 s, back off from 500 ms to 60 s, and bound each address and step of a
+  connect by 10 s. They take `wss://` URLs, or `ws://` to a loopback host, and at most 500 ids
+  or markets per connection. The market queue holds 1024 events and the user queue is
+  unbounded. The market socket yields every book of an array frame. `WebSocket`,
+  `WebSocketBuilder` and `WebSocketWithPing` are unchanged, and `MarketMessage::from_json` still
+  keeps only the first book of an array.
+- `ClobWsError::Authentication` has its first use: the user socket decodes the server's 1008
+  close as `ClobWsError::Authentication(<the close reason>)`, classed `Unauthorized`, and stops
+  on it instead of reconnecting. The enum's variants are unchanged.
+- `polyoxide-venue` gains a feature, `trading`, which turns on `market` and builds futures-core.
+  It holds the trait `Trading` (`place`, `cancel`, `cancel_all`, `open_orders`, `positions`,
+  `balances` and `events`) with its `DynTrading` wrapper; `TradingEvents`, the named stream
+  `events()` returns, since dynosaur drops `'static` from a returned `impl Stream`;
+  `TradingEvent` (`Ack`, `Fill` and `Resync`); the records `OrderRequest`, `Order`, `Fill`,
+  `Position` and `Balance`; `OrderStatus`, `KillReason`, `TimeInForce` and `Liquidity`; and the
+  opaque `OrderId`, `FillId` and `ClientOrderId`. A kill is `Ok` with `Killed { reason }`, never
+  an error. Under `market`, `Extensions::ensure_declared` and `UndeclaredExtension` (an
+  `InvalidRequest`) give a venue the refusal it runs on an option it does not declare.
+- `polyoxide-polymarket`: `ClobBuilder::user_socket`, and, with `clob-ws` and `data`, `impl
+  Trading for Clob` with `ClobOrderOptions` (`neg_risk`, `tick_size`, `expiration`) and the
+  venue's own facts in `OrderExt`, `FillExt`, `PositionExt` and `BalanceExt`, all in
+  `polyoxide_polymarket::clob::venue`.
+  `clob-ws` now turns on `polyoxide-venue/trading`, and so does the umbrella's
+  `polymarket-clob-ws`, whose crate root pins `DynTrading` and, with `polymarket-data`,
+  `Clob: Trading`. The CLOB stores no client
+  order id, so a `Clob` remembers the ones it placed in-process (at most 10,000, lost with the
+  process). `positions` reads Data v1 with no dust filter, `balances` holds the pUSD collateral,
+  and `events()` opens its own user socket for each call.
+- No dependency tree gains a crate: `trading` builds futures-core, which every build that turns
+  it on already has through futures-util.
+
+Where this epic departs from its acceptance criteria:
+
+- The CLOB's `Trading` is gated `all(clob-ws, data)`, not `all(clob, data)`, because `events()`
+  needs the user socket, which is `clob-ws`'s.
+- `ClobOrderOptions` carries no fee terms: a V2 order signs no fee rate, and a fill's `fee` is
+  `None`, with the maker's `fee_rate_bps` in `FillExt`.
+- The Kalshi trading mapping stays a planning document,
+  `_bmad-output/specs/spec-venue-extensibility/kalshi-trading-mapping.md`, until Story 8.1
+  registers Kalshi's mirror.
+- Every events stream begins with `Resync`, and a fill the venue voids yields `Resync`, where the
+  architecture asked for one only after a reconnect (amendment A7-2).
