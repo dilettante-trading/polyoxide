@@ -318,6 +318,12 @@ required-features = ["clob", "gamma"]
 name = "live_clob_session_keys"
 required-features = ["clob", "relay", "gamma"]
 
+# `live_clob_trading` reaches the CLOB through `Trading`, which `clob-ws` and
+# `data` build, and looks a proxy wallet up through gamma.
+[[test]]
+name = "live_clob_trading"
+required-features = ["clob-ws", "data", "gamma"]
+
 # `live_clob_ws.rs` is `#![cfg(feature = "clob-ws")]`. Without this stanza a
 # build without the feature compiles it to an empty binary that runs no tests.
 [[test]]
@@ -549,6 +555,17 @@ suite = "clob"
 timeout = 15
 features = ["clob-ws"]
 secrets = ["POLYMARKET_PRIVATE_KEY"]
+
+[package.metadata.polyoxide.live.live_clob_trading]
+suite = "clob"
+timeout = 15
+features = ["clob-ws", "data", "gamma"]
+secrets = [
+  "POLYMARKET_API_KEY",
+  "POLYMARKET_API_PASSPHRASE",
+  "POLYMARKET_API_SECRET",
+  "POLYMARKET_PRIVATE_KEY",
+]
 
 [package.metadata.polyoxide.live.live_clob_session_keys]
 suite = "clob-session-keys"

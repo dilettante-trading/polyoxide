@@ -75,7 +75,7 @@ jobs:
         with:
           crate: polyoxide-polymarket
           suite: clob
-          flags: "--no-default-features --features clob,clob-ws,gamma --test live_clob --test live_clob_ws"
+          flags: "--no-default-features --features clob,clob-ws,data,gamma --test live_clob --test live_clob_trading --test live_clob_ws"
 
   live-polyoxide-polymarket-clob-session-keys:
     name: Live tests (polyoxide-polymarket, clob-session-keys)

@@ -683,7 +683,7 @@ account that does not exist until prader-rs #125 is resolved.
 
 ## Testing Conventions
 
-The CLI has live integration tests in `tests/live_api.rs`, the umbrella in `tests/live_venue.rs` (the venue-neutral example against each venue), and each module of a venue crate in `tests/live_<module>[_<suite>].rs` (`polyoxide-polymarket`'s `live_clob`, `live_clob_ws`, `live_clob_session_keys`, `live_gamma`, `live_data`, `live_relay`, `live_perps`, `live_perps_ws`, `live_rtds` and `live_sports`, and `polyoxide-binance`'s `live_usdm` and `live_usdm_ws`), gated with `#[ignore]` so CI skips them. They hit the real upstream APIs. Run with `-- --ignored` flag.
+The CLI has live integration tests in `tests/live_api.rs`, the umbrella in `tests/live_venue.rs` (the venue-neutral example against each venue), and each module of a venue crate in `tests/live_<module>[_<suite>].rs` (`polyoxide-polymarket`'s `live_clob`, `live_clob_ws`, `live_clob_trading`, `live_clob_session_keys`, `live_gamma`, `live_data`, `live_relay`, `live_perps`, `live_perps_ws`, `live_rtds` and `live_sports`, and `polyoxide-binance`'s `live_usdm` and `live_usdm_ws`), gated with `#[ignore]` so CI skips them. They hit the real upstream APIs. Run with `-- --ignored` flag.
 
 The read-only modules (gamma, data) use `Gamma::builder().build()` / `DataApi::builder().build()` directly. CLOB tests use `Clob::public()` for unauthenticated endpoints.
 
@@ -700,7 +700,7 @@ Two GitHub Actions workflows run at `0 6 * * *` UTC and on `workflow_dispatch`. 
 - `.github/workflows/nightly-behavioral.yml` — runs `--ignored` live tests, one job per crate and suite, built with `--no-default-features` and its targets' declared features alone, each job's `env:` holding only the secrets its tests read. An unset repository secret arrives as `""`, which the live loaders treat as unset:
   <!-- generated:begin claude-nightly -->
   - `live-polyoxide-binance-usdm` (15 min): `live_usdm` with `--features usdm`, `live_usdm_ws` with `--features usdm-ws`
-  - `live-polyoxide-polymarket-clob` (15 min): `live_clob` with `--features clob,gamma`, `live_clob_ws` with `--features clob-ws`; secrets `POLYMARKET_API_KEY`, `POLYMARKET_API_PASSPHRASE`, `POLYMARKET_API_SECRET`, `POLYMARKET_BUILDER_CODE`, `POLYMARKET_PRIVATE_KEY`
+  - `live-polyoxide-polymarket-clob` (15 min): `live_clob` with `--features clob,gamma`, `live_clob_trading` with `--features clob-ws,data,gamma`, `live_clob_ws` with `--features clob-ws`; secrets `POLYMARKET_API_KEY`, `POLYMARKET_API_PASSPHRASE`, `POLYMARKET_API_SECRET`, `POLYMARKET_BUILDER_CODE`, `POLYMARKET_PRIVATE_KEY`
   - `live-polyoxide-polymarket-clob-session-keys` (40 min): `live_clob_session_keys` with `--features clob,relay,gamma`; secrets `BUILDER_API_KEY`, `BUILDER_PASS_PHRASE`, `BUILDER_SECRET`, `POLYMARKET_DW_OWNER_PRIVATE_KEY`, `POLYMARKET_DW_SESSION_PRIVATE_KEY`, `POLYMARKET_DW_WALLET`
   - `live-polyoxide-polymarket-gamma` (15 min): `live_gamma` with `--features gamma`
   - `live-polyoxide-polymarket-data` (15 min): `live_data` with `--features data`
