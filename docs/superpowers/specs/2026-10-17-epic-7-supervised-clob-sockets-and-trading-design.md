@@ -117,7 +117,10 @@ plan disagreeing with one of them stops and asks.
   client id, so a `Clob` remembers the client id of each order it placed with one, keyed by the
   order's id. The order's id is its EIP-712 hash, which the client computes before sending, so an
   ack or fill that arrives before `place` returns still carries the client id. §7.6 gives the
-  ledger's rules.
+  ledger's rules. The id is computed the same way for every signature type, a Deposit Wallet's
+  (type 3) included (the owner, 2026-10-17): the exchange identifies an order by the EIP-712 hash
+  of its `Order` struct under the exchange's domain, whatever signs it, so `place` supports every
+  account the native order routes sign for (§7.2, §7.4).
 - **D6. The clob `Trading` impl is gated `all(feature = "clob-ws", feature = "data")`.**
   `positions` reads the Data API (AD-3) and `events()` reads the supervised user socket, which is
   `clob-ws`'s; `clob-ws` implies `clob`. `clob-ws` turns on `polyoxide-venue/trading`, and so does
@@ -504,8 +507,11 @@ lines.
 - `ClobBuilder` gains `user_socket(self, socket: crate::clob::ws::UserWsBuilder) -> Self`
   (`clob-ws`), and `Clob` keeps it, defaulting to `UserWsBuilder::new()`.
 - `Clob` also gains the client-id ledger (§7.6) under D6's gate.
-- `eip712::compute_order_digest` becomes `pub(crate)`, changing no line number. So does
-  `Clob::resolve_maker_address`.
+- `eip712.rs` gains `pub(crate) fn order_hash(order: &ClobOrder, chain_id: u64) -> Result<B256, ClobError>`:
+  the order's EIP-712 hash under its exchange's domain, for every signature type.
+  `compute_order_digest` keeps its type-3 refusal (a Deposit Wallet signs an ERC-7739 envelope, not
+  this digest), then calls `order_hash`, and stays private. `docs/MUTANTS.md` cites no line of
+  `eip712.rs`. `Clob::resolve_maker_address` becomes `pub(crate)`.
 - The umbrella pins `DynTrading` under `polymarket-clob-ws` and `Clob: Trading` under
   `all(polymarket-clob-ws, polymarket-data)`, on the shape of the existing `DynMarketData` pin
   (`polyoxide/src/lib.rs:273-281`).
@@ -533,8 +539,12 @@ The order is then built, signed and posted:
 - **Build:** the native `create_order` with `PartialCreateOrderOptions { tick_size, neg_risk }`
   filled from the options or the lookups, so nothing is fetched twice. Prices and sizes convert
   from `Decimal` to the native `f64` only after the checks above.
-- **Id:** `compute_order_digest` gives the order's id before it is signed (D5).
-- **Sign and post:** `sign_order`, then `post_order(signed, kind, post_only)`.
+- **Id:** `eip712::order_hash` gives the order's id before it is signed, for every signature type
+  (D5).
+- **Sign and post:** `Clob::sign_order`, which signs through the account's `sign_order_as` (a
+  Deposit Wallet's order as its ERC-7739 envelope, for the account's
+  `SigningTarget::DepositWallet`), then `post_order(signed, kind, post_only)`. So `place` works
+  for every account the native order routes sign for, a Deposit Wallet (type 3) included.
 
 The outcomes:
 
@@ -693,7 +703,14 @@ address is its own. The cases:
     mock_clob's verbatim venue messages;
   - `matched` read back as `Filled`;
   - an IOC partial match as `Killed { Unmatched }` with its `filled`;
-  - `success: false` as a `VenueRefusal`.
+  - `success: false` as a `VenueRefusal`;
+  - a Deposit Wallet account's order (type 3): the posted body carries signature type 3, the
+    wallet as maker and signer and the signature `sign_order_as` gives, and the returned id is
+    `order_hash`'s.
+- **`order_hash`**, in `eip712.rs`'s tests (appended): for `order_vectors.json`'s `v1_exchange`
+  order (`tests/fixtures/clob/session_keys/`) it equals
+  `keccak256(0x1901 ‖ app_domain_separator ‖ contents_hash)`, the two py-sdk values that file
+  records, and for a plain order it equals `compute_order_digest`'s digest.
 - **Refusals that send nothing:** reduce-only, an undeclared extension, post-only with IOC, an
   off-tick price, a size with three decimals, a key of another product, and a duplicate client id.
   These use mocks that `expect(0)` with `match_query(Any)` on query routes.
@@ -848,7 +865,8 @@ script requires an entry.
   - So the fills mapping (§8.2) reads only the fields those types have.
 - **`docs/MUTANTS.md`'s cited lines do not move.**
   - Story 1 appends its tests to `supervisor/tests.rs`.
-  - Story 5 leaves `clob/error.rs` alone and changes `eip712.rs` only in place.
+  - Story 5 leaves `clob/error.rs` alone. `eip712.rs`, which `docs/MUTANTS.md` does not cite,
+    gains `order_hash` (§7.2).
   - A story that moves a cited line moves its row and re-proves its mutant.
 - **The foundation crates name no venue.** `polyoxide-venue`, `polyoxide-ws` and
   `polyoxide-test-support` docs and tests use made-up venues, and never "clob", "Polymarket",
