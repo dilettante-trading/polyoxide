@@ -9,7 +9,7 @@ use futures_util::{Stream, StreamExt};
 use polyoxide_ws::{
     connect_over,
     tungstenite::{self, Message},
-    with_timeout, Connection, Kind, Mode, WsError,
+    with_timeout, Connection, Kind, Mode, Socket, WsError,
 };
 use tokio::net::TcpStream;
 
@@ -26,7 +26,7 @@ use super::{
 };
 
 /// Maximum number of subscriptions per WebSocket connection.
-const MAX_SUBSCRIPTIONS_PER_CONNECTION: usize = 500;
+pub(super) const MAX_SUBSCRIPTIONS_PER_CONNECTION: usize = 500;
 
 /// Outbound subscription-update frames queued for a [`WebSocketWithPing`]'s
 /// run loop. Small on purpose: a caller that outruns the socket should feel
@@ -35,7 +35,7 @@ const OUTBOUND_QUEUE_DEPTH: usize = 64;
 
 /// Default per-address connect timeout, overridable via
 /// [`WebSocketBuilder::connect_timeout`].
-const DEFAULT_CONNECT_TIMEOUT: Duration = Duration::from_secs(10);
+pub(super) const DEFAULT_CONNECT_TIMEOUT: Duration = Duration::from_secs(10);
 
 /// Interleave IPv6 and IPv4 addresses, Happy-Eyeballs style (RFC 8305 §4).
 ///
@@ -69,7 +69,7 @@ fn no_addresses(url: &str) -> ClobWsError {
 }
 
 /// Open a TLS WebSocket connection with a per-address timeout and fallback,
-/// read through the kit's [`Connection`] in [`Mode::Data`].
+/// and return the upgraded socket unread.
 ///
 /// [`polyoxide_ws::connect`] resolves DNS and connects to only the *first*
 /// address — a blackholed route (the classic broken-IPv6 case) burns the
@@ -78,8 +78,10 @@ fn no_addresses(url: &str) -> ClobWsError {
 /// and again its TLS + WebSocket handshake ([`with_timeout`] around each,
 /// the upgrade through [`connect_over`]), and falls back to the next address
 /// on any failure but a refused upgrade, which it returns at once. This
-/// connect is clob's own (divergence row D20).
-async fn connect_ws(url: &str, connect_timeout: Duration) -> Result<Connection, ClobWsError> {
+/// connect is clob's own (divergence row D20). The bare tier reads the socket
+/// through [`connect_ws`]; the supervised sockets return it from
+/// [`polyoxide_ws::Protocol::connect`].
+pub(super) async fn dial(url: &str, connect_timeout: Duration) -> Result<Socket, ClobWsError> {
     let parsed = url::Url::parse(url)?;
     let host = parsed
         .host_str()
@@ -115,7 +117,7 @@ async fn connect_ws(url: &str, connect_timeout: Duration) -> Result<Connection, 
         };
         // TCP is up; bound the TLS + WebSocket handshake by the same budget.
         match with_timeout(connect_timeout, connect_over(url, stream)).await {
-            Ok(Ok(socket)) => return Ok(Connection::new(socket, Mode::Data)),
+            Ok(Ok(socket)) => return Ok(socket),
             // The host answered and refused the upgrade. Another of its
             // addresses would repeat the refusal, inside a 429's window, and
             // its own failure would hide this one's status and `Retry-After`.
@@ -127,10 +129,18 @@ async fn connect_ws(url: &str, connect_timeout: Duration) -> Result<Connection, 
     Err(last_err)
 }
 
+/// Open a TLS WebSocket connection through [`dial`], read through the kit's
+/// [`Connection`] in [`Mode::Data`].
+async fn connect_ws(url: &str, connect_timeout: Duration) -> Result<Connection, ClobWsError> {
+    dial(url, connect_timeout)
+        .await
+        .map(|socket| Connection::new(socket, Mode::Data))
+}
+
 /// The text a data frame carries. A Binary frame is decoded as text (D12),
 /// since the venue has sent events that way; one that is not UTF-8 carries
 /// none, and is skipped.
-fn frame_text(frame: &Message) -> Option<&str> {
+pub(super) fn frame_text(frame: &Message) -> Option<&str> {
     match frame {
         Message::Text(text) => Some(text.as_str()),
         Message::Binary(data) => std::str::from_utf8(data).ok(),
@@ -195,7 +205,7 @@ fn market_update_frame(
 }
 
 /// Validate that the subscription count does not exceed the per-connection limit.
-fn validate_subscription_count(count: usize) -> Result<(), ClobWsError> {
+pub(super) fn validate_subscription_count(count: usize) -> Result<(), ClobWsError> {
     if count > MAX_SUBSCRIPTIONS_PER_CONNECTION {
         return Err(ClobWsError::InvalidMessage(format!(
             "Too many subscriptions ({}), max {}",
@@ -1377,5 +1387,37 @@ mod membership_tests {
 
         let err = handle.subscribe_assets(vec!["b".into()]).await.unwrap_err();
         assert!(matches!(err, ClobWsError::InvalidMessage(_)), "{err}");
+    }
+}
+
+#[cfg(test)]
+mod dial_tests {
+    use polyoxide_venue::Classify;
+    use polyoxide_ws::test_server::{Script, ScriptedServer};
+
+    use super::*;
+
+    #[tokio::test]
+    async fn dial_returns_the_upgraded_socket_with_nothing_read() {
+        let server = ScriptedServer::start(vec![Script::frames(&["hello"])]).await;
+        let mut socket = dial(&server.url, Duration::from_secs(2))
+            .await
+            .expect("dial");
+        let first = tokio::time::timeout(Duration::from_secs(3), socket.next())
+            .await
+            .expect("a frame within the window")
+            .expect("the stream has not ended")
+            .expect("a frame, not an error");
+        assert_eq!(first, Message::Text("hello".into()));
+    }
+
+    #[tokio::test]
+    async fn dial_returns_a_refused_upgrade_as_the_connection_error() {
+        let server = ScriptedServer::start(vec![Script::refuse_upgrade(503)]).await;
+        let err = dial(&server.url, Duration::from_secs(2))
+            .await
+            .expect_err("a refused upgrade must not connect");
+        assert!(matches!(err, ClobWsError::Connection(_)), "{err:?}");
+        assert!(err.is_retriable(), "{err:?}");
     }
 }
