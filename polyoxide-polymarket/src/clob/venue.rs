@@ -517,6 +517,9 @@ mod trading;
 #[cfg(all(feature = "clob-ws", feature = "data"))]
 pub use trading::{BalanceExt, ClobOrderOptions, FillExt, OrderExt, PositionExt};
 
+#[cfg(all(feature = "clob-ws", feature = "data"))]
+pub(crate) use trading::ClientIds;
+
 #[cfg(test)]
 mod tests {
     use super::*;

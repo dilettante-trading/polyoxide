@@ -67,6 +67,10 @@ pub struct Clob {
     /// through, since the CLOB serves none.
     #[cfg(feature = "data")]
     pub(crate) data: DataApi,
+    /// The client order ids of the orders this client placed, which the CLOB
+    /// stores nowhere. Every clone shares it, and so does every events stream.
+    #[cfg(all(feature = "clob-ws", feature = "data"))]
+    pub(crate) ids: std::sync::Arc<std::sync::Mutex<crate::clob::venue::ClientIds>>,
 }
 
 impl Clob {
@@ -967,6 +971,8 @@ impl ClobBuilder {
             gamma,
             #[cfg(feature = "data")]
             data,
+            #[cfg(all(feature = "clob-ws", feature = "data"))]
+            ids: Default::default(),
         })
     }
 }
