@@ -538,7 +538,12 @@ The order is then built, signed and posted:
   set; `ImmediateOrCancel` to `Fak`; `FillOrKill` to `Fok`.
 - **Build:** the native `create_order` with `PartialCreateOrderOptions { tick_size, neg_risk }`
   filled from the options or the lookups, so nothing is fetched twice. Prices and sizes convert
-  from `Decimal` to the native `f64` only after the checks above.
+  from `Decimal` to the native `f64` only after the checks above. The order's signature type is
+  the client's (`Clob`'s `signature_type`: `ClobBuilder::signature_type`, by default the account
+  target's), passed as the order's own with no funder. So `place` signs and funds from the address
+  `balances` reads and `positions` lists: with a proxy signature type, the proxy wallet, which the
+  native routes look up through Gamma; without `gamma` such an order is refused, as the native
+  routes refuse it.
 - **Id:** `eip712::order_hash` gives the order's id before it is signed, for every signature type
   (D5).
 - **Sign and post:** `Clob::sign_order`, which signs through the account's `sign_order_as` (a
@@ -596,7 +601,7 @@ The returned `Order` is filled as follows:
 - **`positions()`:** the Data API's v1 `/positions` for the account's maker address, with
   `sizeThreshold=0`, so no dust is left out (§1.4), and `limit=500`.
   - **Maker address:** the address the client's orders are placed from (`resolve_maker_address`
-    with no per-order funder).
+    with no per-order funder and the client's signature type, as `place` uses, §7.4).
   - **Paging:** pages by `offset` until a page holds fewer than 500 rows. Data's offset stops at
     10,000, so a 21st full page is a `VenueRefusal` "the wallet holds more positions than
     `/positions` can list" rather than a silent truncation.
@@ -644,7 +649,8 @@ the venue's facts that the shared record lacks (NFR8):
 **8.1 The stream.** `events()` returns `TradingEvents::new(..)` over a stream that does the
 following, in order, when first polled:
 
-1. **Resolve the maker address** (`resolve_maker_address`). A failure is the stream's only item.
+1. **Resolve the maker address** (`resolve_maker_address`, as `positions` does, §7.5). A failure is
+   the stream's only item.
 2. **Build the credentials.** `ApiCredentials` come from the account's `Credentials` (key, secret,
    passphrase).
 3. **Start the socket.** `self.user_socket.clone().start(None, credentials)`: every market of the
@@ -668,7 +674,7 @@ Each call to `events()` opens its own socket and sees every event from its first
   order of the account's in the trade**, the taker's first and then the makers' in their order:
   - **Taker:** `t.owner` equals the account's API key. Its fill takes `taker_order_id`, `t.side`,
     `t.price`, `t.size` and `t.asset_id`, with `Liquidity::Taker`.
-  - **Makers:** each `maker_orders` entry whose `maker_address` equals the account's maker address,
+  - **Makers:** each `maker_orders` entry whose `maker_address` equals that maker address (§8.1),
     ignoring ASCII case. Its fill takes the entry's `order_id`, `price`, `matched_amount` and
     `asset_id`, with `Liquidity::Maker`. Its side is the opposite of `t.side` when its `asset_id`
     is the trade's, and the same as `t.side` when it is the complementary token (a mint or merge
