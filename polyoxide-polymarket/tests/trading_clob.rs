@@ -423,11 +423,26 @@ async fn the_stream_leads_with_a_resync_and_acks_with_the_client_order_id() {
 #[tokio::test]
 async fn a_taker_fill_and_two_maker_fills_name_the_orders_of_the_account() {
     let server = Server::new_async().await;
+    // The account took, and no maker entry is its own.
     let one = trade_frame(
         "t1",
         "MATCHED",
         "test-key",
         "0xtaker",
+        vec![maker_entry(
+            "0xm1",
+            "0xdead000000000000000000000000000000000002",
+            TOKEN,
+            "0.52",
+        )],
+    );
+    // Someone else took; the account rests on the complementary token, its
+    // address in upper case.
+    let mint = trade_frame(
+        "t1b",
+        "MATCHED",
+        "other-key",
+        "0xother",
         vec![
             maker_entry(
                 "0xm1",
@@ -451,9 +466,12 @@ async fn a_taker_fill_and_two_maker_fills_name_the_orders_of_the_account() {
         "0xother",
         vec![maker_entry("0xm3", &ours().to_lowercase(), TOKEN, "0.52")],
     );
-    let ws = user_socket(vec![
-        Script::frames(&[one.as_str(), two.as_str()]).after_first_frame()
+    let ws = user_socket(vec![Script::frames(&[
+        one.as_str(),
+        mint.as_str(),
+        two.as_str(),
     ])
+    .after_first_frame()])
     .await;
     let mut events = client_on(&server, &ws).events();
 
@@ -470,7 +488,7 @@ async fn a_taker_fill_and_two_maker_fills_name_the_orders_of_the_account() {
     assert_eq!(taker.size, d("4"));
     assert_eq!(taker.time, UnixMillis(1_792_000_000_123));
     assert_eq!(taker.trade_id.as_ref().map(|id| id.as_str()), Some("t1"));
-    assert_eq!(complement.id.as_str(), "t1:0xm2");
+    assert_eq!(complement.id.as_str(), "t1b:0xm2");
     assert_eq!(complement.liquidity, Some(Liquidity::Maker));
     assert_eq!(
         complement.key,
@@ -481,6 +499,37 @@ async fn a_taker_fill_and_two_maker_fills_name_the_orders_of_the_account() {
     assert_eq!(resting.id.as_str(), "t2:0xm3");
     assert_eq!(resting.liquidity, Some(Liquidity::Maker));
     assert_eq!(resting.side, Side::Sell);
+}
+
+#[tokio::test]
+async fn a_self_trade_yields_only_its_maker_fill_and_the_stream_goes_on() {
+    let server = Server::new_async().await;
+    // The account's key is the trade's `owner`, and one maker entry is the
+    // account's own: D17 reads that as no taker fill.
+    let own = trade_frame(
+        "t1",
+        "MATCHED",
+        "test-key",
+        "0xtaker",
+        vec![maker_entry("0xm1", &ours(), TOKEN, "0.52")],
+    );
+    let ack = order_frame("0xorder1", "PLACEMENT", "0", "1792000000123");
+    let ws = user_socket(vec![
+        Script::frames(&[own.as_str(), ack.as_str()]).after_first_frame()
+    ])
+    .await;
+    let mut events = client_on(&server, &ws).events();
+
+    assert_eq!(next_item(&mut events).await.unwrap(), TradingEvent::Resync);
+    let only = fill_of(next_item(&mut events).await.unwrap());
+
+    assert_eq!(only.id.as_str(), "t1:0xm1");
+    assert_eq!(only.liquidity, Some(Liquidity::Maker));
+    // The next event is the ack, so no taker fill sat between them.
+    assert!(matches!(
+        next_item(&mut events).await.unwrap(),
+        TradingEvent::Ack(_)
+    ));
 }
 
 #[tokio::test]

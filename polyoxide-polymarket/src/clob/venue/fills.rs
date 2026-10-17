@@ -12,8 +12,10 @@
 //!
 //! - an order message is an ack, with the client order id the ledger holds;
 //! - a `MATCHED` trade is one fill per order of the account's in it, the
-//!   taker's first (the trade's `owner` is the taker's API key) and then each
-//!   maker entry at the account's maker address, ignoring ASCII case;
+//!   taker's first (the trade's `owner` is the account's API key and no maker
+//!   entry is the account's, so a self-trade yields only its maker fills) and
+//!   then each maker entry at the account's maker address, ignoring ASCII
+//!   case;
 //! - a `FAILED` trade voids a fill already reported, and the trait has no
 //!   event that takes a fill back, so it is a `Resync` and the consumer
 //!   reconciles; `MINED`,
@@ -72,7 +74,8 @@ enum Phase {
 
 struct Live {
     socket: Pin<Box<SupervisedUserWs>>,
-    /// The account's API key, which a trade's `owner` is when it took.
+    /// The account's API key, which a trade's `owner` is when it took (D17: a
+    /// trade with a maker entry of the account's has no taker fill).
     api_key: String,
     /// The account's maker address, which a maker entry names when it rested.
     maker: String,
@@ -231,7 +234,10 @@ fn ack(message: &OrderMessage, ids: &Mutex<ClientIds>) -> Result<Order, Classifi
 }
 
 /// The fills of a matched trade: the taker's, when the account took, then
-/// each maker entry of the account's.
+/// each maker entry of the account's. The account took only when the trade's
+/// `owner` is its API key and no maker entry is its own (D17), since no
+/// maker-side frame has been captured to say what `owner` means there; a
+/// self-trade yields only its maker fills.
 fn fills(
     trade: &TradeMessage,
     api_key: &str,
@@ -241,7 +247,11 @@ fn fills(
     let side = side_text(&trade.side)?;
     let time = millis(&trade.timestamp)?;
     let mut out = Vec::new();
-    if trade.owner.as_deref() == Some(api_key) {
+    let a_maker = trade
+        .maker_orders
+        .iter()
+        .any(|entry| entry.maker_address.eq_ignore_ascii_case(maker));
+    if trade.owner.as_deref() == Some(api_key) && !a_maker {
         let order = OrderId::new(trade.taker_order_id.as_str());
         let mut fill = Fill::new(
             fill_id(&trade.id, &order),
@@ -418,13 +428,15 @@ mod tests {
 
     #[test]
     fn a_taker_and_a_maker_of_the_account_each_get_a_fill() {
-        let trade = trade(
+        // The account took, and no maker entry is its own.
+        let took = trade("MATCHED", KEY, vec![maker("m1", OTHER, "100", "0.52")]);
+        // Someone else took, and the account's address, in another case, rests
+        // on the complementary token: a mint or merge match.
+        let rested = trade(
             "MATCHED",
-            KEY,
+            "someone-else",
             vec![
                 maker("m1", OTHER, "100", "0.52"),
-                // The account's address in another case, on the complementary
-                // token: a mint or merge match.
                 maker(
                     "m2",
                     "0xABC0000000000000000000000000000000000001",
@@ -434,7 +446,8 @@ mod tests {
             ],
         );
 
-        let out = run(&trade, &ids());
+        let mut out = run(&took, &ids());
+        out.extend(run(&rested, &ids()));
 
         assert_eq!(out.len(), 2);
         let taker = fill_of(&out[0]);
@@ -464,6 +477,18 @@ mod tests {
         let ext = maker.extensions.get::<FillExt>().unwrap();
         assert_eq!(ext.fee_rate_bps, Some(d("30")));
         assert_eq!(ext.taker_order_id.as_deref(), Some("taker-1"));
+    }
+
+    #[test]
+    fn a_self_trade_yields_only_its_maker_fills() {
+        let own = trade("MATCHED", KEY, vec![maker("m1", MAKER, "100", "0.52")]);
+
+        let out = run(&own, &ids());
+
+        assert_eq!(out.len(), 1);
+        let fill = fill_of(&out[0]);
+        assert_eq!(fill.order_id.as_str(), "m1");
+        assert_eq!(fill.liquidity, Some(Liquidity::Maker));
     }
 
     #[test]
