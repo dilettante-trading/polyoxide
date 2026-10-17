@@ -148,6 +148,9 @@ impl Protocol for ClobMarketProtocol {
     type Change = MarketChange;
     type Ack = ();
 
+    /// The upgrade request for the URL. The supervisor does not send it:
+    /// `connect` is overridden, and the per-address dial upgrades each
+    /// address's connection from the URL itself. The trait requires it.
     fn handshake(&mut self) -> Result<Handshake, ClobWsError> {
         Ok(self
             .url
@@ -344,19 +347,15 @@ impl MarketWsBuilder {
 
     /// Open the connection, subscribe to `asset_ids`, and start supervising.
     ///
-    /// Fails with [`ClobWsError::InvalidMessage`] for more than 500 ids,
-    /// before connecting, and returns the first connection attempt's failure
+    /// Fails with [`ClobWsError::InvalidMessage`] for more than 500 distinct
+    /// ids, before connecting, and returns the first connection attempt's failure
     /// as it is: a setup that is wrong is reported rather than retried. Later
     /// failures reconnect. An empty list is valid and stays open under the
     /// keep-alive, and a duplicate id is subscribed once.
     pub async fn connect(self, asset_ids: Vec<String>) -> Result<SupervisedMarketWs, ClobWsError> {
-        validate_subscription_count(asset_ids.len())?;
-        let mut membership: Vec<String> = Vec::with_capacity(asset_ids.len());
-        for id in asset_ids {
-            if !membership.contains(&id) {
-                membership.push(id);
-            }
-        }
+        // The same rule as `subscribe`: duplicates go before the count.
+        let mut membership: Vec<String> = Vec::new();
+        change_membership(&mut membership, MarketChange::Subscribe(asset_ids))?;
         Supervisor::new(ClobMarketProtocol::new(self.url, self.options), self.timing)
             .connect(membership)
             .await
@@ -412,7 +411,10 @@ impl MarketMembership for MembershipHandle<ClobMarketProtocol> {
 mod tests {
     use futures_util::StreamExt;
     use polyoxide_venue::Class;
-    use polyoxide_ws::test_server::{fast, next_event, next_item, Script, ScriptedServer, WINDOW};
+    use polyoxide_ws::{
+        test_server::{fast, next_event, next_item, Script, ScriptedServer, WINDOW},
+        Mode,
+    };
 
     use super::*;
     use crate::clob::ws::{client::MAX_SUBSCRIPTIONS_PER_CONNECTION, scripted, SubscriptionLevel};
@@ -712,6 +714,80 @@ mod tests {
         assert!(
             operations(&server).is_empty(),
             "the replay is the only frame"
+        );
+    }
+
+    #[tokio::test]
+    async fn a_change_on_a_connection_the_server_closed_is_recorded_and_answered_ok() {
+        // The server closes after the first frame. The connection is read to
+        // its end, so the send below fails; the change must still be recorded
+        // (the replay carries it) and answered `Ok`.
+        let server =
+            ScriptedServer::start(vec![Script::hold().after_first_frame().then_close()]).await;
+        let socket = dial(&server.url, Duration::from_secs(2))
+            .await
+            .expect("dials");
+        let mut connection = Connection::new(socket, Mode::All);
+        connection
+            .send(Message::Text("first".into()))
+            .await
+            .expect("the first frame is sent");
+        while tokio::time::timeout(WINDOW, connection.next())
+            .await
+            .expect("the connection ends")
+            .is_some()
+        {}
+
+        let mut protocol =
+            ClobMarketProtocol::new(server.url.clone(), MarketSubscriptionOptions::default());
+        let mut membership = ids(&["a"]);
+        let result = protocol
+            .apply(
+                &mut connection,
+                &mut membership,
+                MarketChange::Subscribe(ids(&["b"])),
+            )
+            .await;
+        assert!(result.is_ok(), "{result:?}");
+        assert_eq!(membership, ids(&["a", "b"]));
+    }
+
+    #[test]
+    fn a_change_during_an_outage_past_the_cap_is_refused_and_changes_nothing() {
+        let mut protocol = ClobMarketProtocol::new(
+            WS_MARKET_URL.to_owned(),
+            MarketSubscriptionOptions::default(),
+        );
+        let mut membership: Vec<String> = (0..MAX_SUBSCRIPTIONS_PER_CONNECTION)
+            .map(|n| n.to_string())
+            .collect();
+        let before = membership.clone();
+        match protocol.record(&mut membership, MarketChange::Subscribe(ids(&["extra"]))) {
+            Offline::Recorded(Err(ClobWsError::InvalidMessage(text))) => {
+                assert!(
+                    text.contains("Too many subscriptions (501), max 500"),
+                    "{text}"
+                );
+            }
+            _ => panic!("expected a refusal recorded as the answer"),
+        }
+        assert_eq!(membership, before);
+    }
+
+    #[tokio::test]
+    async fn connecting_with_501_copies_of_one_id_subscribes_it_once() {
+        let server = serve(vec![Script::hold()]).await;
+        let copies = vec!["a".to_owned(); MAX_SUBSCRIPTIONS_PER_CONNECTION + 1];
+        let _ws = builder(&server)
+            .connect(copies)
+            .await
+            .expect("501 copies are one id");
+        server
+            .wait_for("the subscription", |s| s.first_frames().len() == 1)
+            .await;
+        assert_eq!(
+            server.first_frames(),
+            [r#"{"assets_ids":["a"],"type":"market"}"#]
         );
     }
 

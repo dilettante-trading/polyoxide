@@ -68,6 +68,13 @@ fn no_addresses(url: &str) -> ClobWsError {
     ))
 }
 
+/// The host a URL names and the port to dial: the URL's own, or its scheme's
+/// default (443 for `wss://`, 80 for `ws://`). `None` when it has no host.
+fn dial_target(parsed: &url::Url) -> Option<(url::Host<&str>, u16)> {
+    let host = parsed.host()?;
+    Some((host, parsed.port_or_known_default().unwrap_or(443)))
+}
+
 /// Open a TLS WebSocket connection with a per-address timeout and fallback,
 /// and return the upgraded socket unread.
 ///
@@ -83,15 +90,18 @@ fn no_addresses(url: &str) -> ClobWsError {
 /// [`polyoxide_ws::Protocol::connect`].
 pub(super) async fn dial(url: &str, connect_timeout: Duration) -> Result<Socket, ClobWsError> {
     let parsed = url::Url::parse(url)?;
-    let host = parsed
-        .host_str()
+    let (host, port) = dial_target(&parsed)
         .ok_or_else(|| ClobWsError::InvalidMessage(format!("URL has no host: {url}")))?;
-    let port = parsed.port().unwrap_or(443);
 
-    let addrs: Vec<SocketAddr> = tokio::net::lookup_host((host, port))
-        .await
-        .map_err(io_error)?
-        .collect();
+    // An IP literal needs no lookup; only a name is resolved.
+    let addrs: Vec<SocketAddr> = match host {
+        url::Host::Ipv4(ip) => vec![SocketAddr::new(ip.into(), port)],
+        url::Host::Ipv6(ip) => vec![SocketAddr::new(ip.into(), port)],
+        url::Host::Domain(domain) => tokio::net::lookup_host((domain, port))
+            .await
+            .map_err(io_error)?
+            .collect(),
+    };
 
     // A step that outlived its bound is clob's own `ConnectTimeout`, which
     // names the URL and says the timeout is per address and per step.
@@ -144,7 +154,8 @@ pub(super) fn frame_text(frame: &Message) -> Option<&str> {
     match frame {
         Message::Text(text) => Some(text.as_str()),
         Message::Binary(data) => std::str::from_utf8(data).ok(),
-        // `Mode::Data` yields only Text and Binary frames.
+        // Control frames (Close, Ping, Pong), which a `Mode::All` connection
+        // yields, carry no text.
         _ => None,
     }
 }
@@ -1409,6 +1420,52 @@ mod dial_tests {
             .expect("the stream has not ended")
             .expect("a frame, not an error");
         assert_eq!(first, Message::Text("hello".into()));
+    }
+
+    #[test]
+    fn a_url_without_a_port_dials_its_schemes_default() {
+        for (url, port) in [
+            ("ws://127.0.0.1/", 80),
+            ("wss://127.0.0.1/", 443),
+            ("ws://127.0.0.1:9/", 9),
+            ("wss://example.com/ws/market", 443),
+        ] {
+            let parsed = url::Url::parse(url).unwrap();
+            let (_, dialled) = dial_target(&parsed).expect(url);
+            assert_eq!(dialled, port, "{url}");
+        }
+        assert_eq!(
+            dial_target(&url::Url::parse("ws://[::1]/").unwrap()),
+            Some((url::Host::Ipv6(std::net::Ipv6Addr::LOCALHOST), 80))
+        );
+    }
+
+    #[tokio::test]
+    async fn an_ipv6_loopback_literal_is_dialled_not_dropped() {
+        // A port that was bound and released on `[::1]` is closed.
+        let Ok(listener) = std::net::TcpListener::bind("[::1]:0") else {
+            return; // no IPv6 loopback on this host: nothing to test
+        };
+        let port = listener.local_addr().unwrap().port();
+        drop(listener);
+
+        let err = dial(&format!("ws://[::1]:{port}/"), Duration::from_secs(2))
+            .await
+            .expect_err("nothing listens there");
+        // Refused by the host, so a connection failure, not a name lookup's.
+        assert!(
+            matches!(&err, ClobWsError::Connection(e) if e.kind() == Kind::Io),
+            "{err:?}"
+        );
+        assert!(
+            !matches!(&err, ClobWsError::Connection(e)
+                if e.to_string().contains("no addresses resolved")),
+            "{err:?}"
+        );
+        assert!(
+            err.to_string().to_lowercase().contains("refused"),
+            "{err:?}"
+        );
     }
 
     #[tokio::test]
