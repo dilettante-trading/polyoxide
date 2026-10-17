@@ -401,50 +401,33 @@ def test_the_scripts_job_fetches_the_tag_the_venue_gate_reads() -> None:
     assert "uv run pytest tests/ -v" in _job_runs("scripts")
 
 
-def test_the_s2_baseline_is_set_once_for_the_whole_workflow() -> None:
+def test_the_s3_baseline_is_set_once_for_the_whole_workflow() -> None:
     """The removal gate and the test-body diff compare with the same tag."""
-    assert CI["env"]["S2_BASELINE"] == "v0.39.0"
+    assert CI["env"]["S3_BASELINE"] == "v0.40.0"
+    assert "S2_BASELINE" not in CI["env"]
     for name, job in JOBS.items():
-        assert "S2_BASELINE" not in (job.get("env") or {}), name
-        assert "S1_BASELINE" not in yaml.safe_dump(job), name
+        assert "S3_BASELINE" not in (job.get("env") or {}), name
+        dumped = yaml.safe_dump(job)
+        assert "S1_BASELINE" not in dumped and "S2_BASELINE" not in dumped, name
 
 
 def _checkout(job: str) -> dict:
     return next(s for s in _steps(job) if s.get("uses", "").startswith("actions/checkout"))
 
 
-def test_the_removals_job_runs_the_s2_gate_against_the_s2_baseline() -> None:
-    """Strict since Story 5.12: an unresolved entry, a stale row or a stale region
-    fails the job."""
+def test_the_removals_job_runs_the_s3_gate_against_the_s3_baseline() -> None:
+    """From stage S3 the gate is `check`, which reads docs/s3-removals.md; the
+    manifest run, the frozen map's diff and the manifest artifact went with S2."""
     assert _checkout("removals")["with"]["fetch-depth"] == 0
     assert _job_runs("removals") == [
-        'python3 scripts/api_removals.py manifest --baseline "$S2_BASELINE" --strict '
-        '--expand target/rename-map.tsv',
-        "diff -u docs/rename-map.tsv target/rename-map.tsv"]
+        'python3 scripts/api_removals.py check --baseline "$S3_BASELINE"']
+    assert not [u for u in _uses("removals") if u.startswith("actions/upload-artifact")]
 
 
-def test_the_removals_job_holds_the_frozen_rename_map_to_the_one_it_writes() -> None:
-    """docs/rename-map.tsv is frozen; the strict run writes the map afresh to
-    target/, and a commit that changes the entry set fails the job."""
-    runs = _job_runs("removals")
-    assert runs.index("diff -u docs/rename-map.tsv target/rename-map.tsv") == (
-        next(i for i, run in enumerate(runs) if "--expand target/rename-map.tsv" in run) + 1)
-    assert (REPO / "docs" / "rename-map.tsv").is_file()
-
-
-def test_the_removals_job_uploads_the_regenerated_manifest_and_the_map_even_on_failure() -> None:
-    steps = _steps("removals")
-    [upload] = [s for s in steps if s.get("uses", "").startswith("actions/upload-artifact")]
-    assert upload["if"] == "${{ always() }}"
-    assert upload["with"]["path"].split() == ["target/api-removals/rename-manifest.md",
-                                              "target/rename-map.tsv"]
-    assert steps.index(upload) > next(i for i, s in enumerate(steps) if "run" in s)
-
-
-def test_the_test_bodies_job_diffs_against_the_s2_baseline() -> None:
+def test_the_test_bodies_job_diffs_against_the_s3_baseline() -> None:
     assert _checkout("test-bodies")["with"]["fetch-depth"] == 0
     assert _job_runs("test-bodies") == [
-        'python3 scripts/test_body_diff.py --baseline "$S2_BASELINE"']
+        'python3 scripts/test_body_diff.py --baseline "$S3_BASELINE"']
     # Python only: nothing compiles, so no toolchain or wrapper is set up.
     assert JOBS["test-bodies"]["env"]["RUSTC_WRAPPER"] == ""
     assert not [u for u in _uses("test-bodies") if not u.startswith("actions/checkout")]
@@ -493,23 +476,14 @@ def test_the_baseline_cache_is_keyed_on_the_baseline_and_both_pins() -> None:
     toolchain = next(u for u in _uses("removals") if u.startswith("dtolnay/")).split("@")[1]
     tool = _installed("removals")[0].split("@")[1]
     key = cache["with"]["key"]
-    assert "${{ env.S2_BASELINE }}" in key
+    assert "${{ env.S3_BASELINE }}" in key
     assert f"rust-{toolchain}" in key and f"cargo-semver-checks-{tool}" in key
     # Restored before the tool runs, or it rebuilds cold anyway.
     steps = _steps("removals")
     assert steps.index(cache) < next(i for i, s in enumerate(steps) if "run" in s)
 
 
-def test_the_path_diffs_baseline_cache_is_keyed_on_the_baseline_and_the_toolchain() -> None:
-    """The JSON's own stamp names the tree, `rustc -vV` and the rustdoc command, so a
-    wrong entry is rebuilt rather than read; the key, which also names the script
-    that builds and walks it, keeps one from being restored at all."""
-    caches = _caches("removals")
-    assert sorted(caches) == ["target/api-removals/baseline", "target/semver-checks/git-*"]
-    cache = caches["target/api-removals/baseline"]
-    toolchain = next(u for u in _uses("removals") if u.startswith("dtolnay/")).split("@")[1]
-    key = cache["with"]["key"]
-    assert "${{ env.S2_BASELINE }}" in key and f"rust-{toolchain}" in key
-    assert "${{ hashFiles('scripts/public_api.py') }}" in key
-    steps = _steps("removals")
-    assert steps.index(cache) < next(i for i, s in enumerate(steps) if "run" in s)
+def test_the_removals_job_caches_only_the_semver_baseline() -> None:
+    """`check` builds no path diff, so S2's rustdoc JSON cache went with the manifest
+    run."""
+    assert sorted(_caches("removals")) == ["target/semver-checks/git-*"]

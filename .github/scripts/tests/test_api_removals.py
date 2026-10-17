@@ -1498,10 +1498,15 @@ def test_the_real_s1_listing_is_final_and_still_reads() -> None:
     assert listing.removed and listing.hidden
 
 
-def test_the_real_manifest_matches_the_removals_job() -> None:
-    manifest = api_removals.read_manifest(REPO)
+def test_the_real_s3_listing_matches_the_removals_job() -> None:
+    listing = api_removals.read_listing(REPO, api_removals.LISTINGS["S3"])
     ci = yaml.safe_load((REPO / ".github/workflows/ci.yml").read_text())
-    assert ci["env"]["S2_BASELINE"] == manifest.baseline == "v0.39.0"
+    assert ci["env"]["S3_BASELINE"] == listing.baseline == "v0.40.0"
+
+
+def test_the_real_manifest_is_frozen_at_the_s2_baseline() -> None:
+    manifest = api_removals.read_manifest(REPO)
+    assert manifest.baseline == "v0.39.0"
     assert manifest.hidden, "the compile test would import nothing"
     assert set(manifest.regions) == set(api_removals.REGIONS)
 
@@ -1555,9 +1560,9 @@ def test_the_frozen_rename_map_follows_the_manifests_rows() -> None:
     assert used == set(manifest.rows) | set(manifest.features)
 
 
-def test_the_real_workspace_is_in_stage_s2() -> None:
-    """While it is, the release's compile test reads the manifest."""
-    assert api_removals.workspace_stage(REPO) == "S2"
+def test_the_real_workspace_is_in_stage_s3() -> None:
+    """While it is, `check` and the release's compile test read docs/s3-removals.md."""
+    assert api_removals.workspace_stage(REPO) == "S3"
 
 
 def _pins(workflow: str, job: str) -> tuple[str, str]:

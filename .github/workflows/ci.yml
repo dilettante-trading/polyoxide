@@ -7,8 +7,9 @@ on:
     branches: [main]
 
 env:
-  # The S2 start tag: the removal gate and the test-body diff both compare with it.
-  S2_BASELINE: v0.39.0
+  # The S3 start tag, the S2 release: the removal gate and the test-body diff both
+  # compare with it.
+  S3_BASELINE: v0.40.0
   CARGO_INCREMENTAL: 0
   CARGO_TERM_COLOR: always
   CARGO_PROFILE_TEST_DEBUG: 0
@@ -156,14 +157,9 @@ jobs:
           cargo check -p polyoxide-polymarket --no-default-features --features relay,specta
           cargo check -p polyoxide-polymarket --no-default-features --features perps,specta
 
-  # Through stage S2 the gate holds every path that moved or went to the rename
-  # manifest (AD-22): it lists every public path at the S2 start tag and at this
-  # commit from rustdoc JSON, resolves each one gone through
-  # docs/rename-manifest.md's rows, and warns of what is left. Since Story 5.12
-  # it runs `--strict`, which fails on an unresolved entry, a stale row or a
-  # stale generated region. The doc-hidden paths the manifest lists must still
-  # compile. cargo-semver-checks runs too, for the changes made in place, which
-  # the `changed-in-place` region lists.
+  # From stage S3 the gate is cargo-semver-checks against the S3 start tag: it
+  # fails on any removal docs/s3-removals.md does not list, and the doc-hidden
+  # paths that file lists must still compile (AD-22).
   removals:
     name: Removal gate
     runs-on: ubuntu-latest
@@ -171,13 +167,12 @@ jobs:
     steps:
       - uses: actions/checkout@v5
         with:
-          # Every tag, so the baseline is in the checkout for git archive and
-          # cargo-semver-checks to extract.
+          # Every tag, so the baseline is in the checkout for cargo-semver-checks
+          # to extract.
           fetch-depth: 0
       # cargo-semver-checks 0.51.0 reads rustdoc JSON v57, v60 and v61, which only
       # Rust 1.93 to 1.99 emit. The tool and the toolchain are pinned together and
-      # upgraded together, here and in release.yml. scripts/public_api.py reads
-      # the same three formats.
+      # upgraded together, here and in release.yml.
       - uses: dtolnay/rust-toolchain@1.99.0
       - uses: taiki-e/install-action@v2
         with:
@@ -189,33 +184,13 @@ jobs:
       - uses: actions/cache@v4
         with:
           path: target/semver-checks/git-*
-          key: semver-checks-${{ env.S2_BASELINE }}-rust-1.99.0-cargo-semver-checks-0.51.0
-      # The baseline's extracted tree and its rustdoc JSON for the path diff. The
-      # JSON's stamp names the tree, the toolchain and the rustdoc command, so a
-      # stale entry is rebuilt; the key names the script that builds and reads it.
-      - uses: actions/cache@v4
-        with:
-          path: target/api-removals/baseline
-          key: api-removals-baseline-${{ env.S2_BASELINE }}-rust-1.99.0-${{ hashFiles('scripts/public_api.py') }}
+          key: semver-checks-${{ env.S3_BASELINE }}-rust-1.99.0-cargo-semver-checks-0.51.0
       - uses: mozilla-actions/sccache-action@v0.0.9
         with:
           version: "v0.14.0"
-      - run: python3 scripts/api_removals.py manifest --baseline "$S2_BASELINE" --strict --expand target/rename-map.tsv
-      # docs/rename-map.tsv is the frozen map: the run above writes it afresh, and
-      # a commit that changes the entry set fails here.
-      - run: diff -u docs/rename-map.tsv target/rename-map.tsv
-      # The manifest with its regions regenerated, which the hub copies in, and
-      # every entry with where it went.
-      - if: ${{ always() }}
-        uses: actions/upload-artifact@v4
-        with:
-          name: rename-manifest
-          path: |
-            target/api-removals/rename-manifest.md
-            target/rename-map.tsv
-          if-no-files-found: warn
+      - run: python3 scripts/api_removals.py check --baseline "$S3_BASELINE"
 
-  # Every test at the S2 start tag keeps its body at this commit (AD-12, NFR7):
+  # Every test at the S3 start tag keeps its body at this commit (AD-12, NFR7):
   # each test-context item, with the gates over it, each test target's stanza
   # and each fixture file is paired with its counterpart and normalised through
   # the manifest's rows and ci/test-body-diff.toml, and a diff or a lost item
@@ -232,7 +207,7 @@ jobs:
         with:
           # Every tag, for the baseline.
           fetch-depth: 0
-      - run: python3 scripts/test_body_diff.py --baseline "$S2_BASELINE"
+      - run: python3 scripts/test_body_diff.py --baseline "$S3_BASELINE"
 
   python:
     name: Python Bindings

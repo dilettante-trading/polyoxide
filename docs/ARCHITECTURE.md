@@ -6,7 +6,7 @@
 > line from `[workspace.metadata.polyoxide] stage` in the root `Cargo.toml`.
 
 <!-- generated:begin architecture-stage -->
-**The workspace is in stage S2.** [Which stage the workspace is in](#which-stage-the-workspace-is-in-ad-16) says what each stage changes.
+**The workspace is in stage S3.** [Which stage the workspace is in](#which-stage-the-workspace-is-in-ad-16) says what each stage changes.
 <!-- generated:end architecture-stage -->
 
 <!-- generated:begin architecture-guide -->
