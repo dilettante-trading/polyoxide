@@ -31,7 +31,6 @@ use polyoxide_venue::{
     ClassifiedError, Extensions, Fill, FillId, Liquidity, Order, OrderId, OrderStatus, Side,
     TradeId, TradingEvent, TradingEvents, UnixMillis,
 };
-use rust_decimal::Decimal;
 
 use super::decode;
 use super::trading::{decimal_text, key_of, lock, side_text, ClientIds, FillExt, OrderExt};
@@ -332,6 +331,7 @@ fn millis(text: &str) -> Result<UnixMillis, ClassifiedError> {
 #[cfg(test)]
 mod tests {
     use polyoxide_venue::{Class, ClientOrderId};
+    use rust_decimal::Decimal;
     use serde_json::{json, Value};
 
     use super::*;

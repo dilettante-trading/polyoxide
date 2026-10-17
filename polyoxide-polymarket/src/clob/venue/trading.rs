@@ -266,22 +266,25 @@ fn order_kind(
     }
 }
 
-/// The price and size checks: the price lies strictly between 0 and 1 on the
-/// tick, and the size has at most two decimals and is at least a hundredth.
+/// Both halves of the price and size checks in one call, for the tests that
+/// pin their rows; `place` runs them either side of the tick lookup.
+#[cfg(test)]
 fn check_price_and_size(
     price: Decimal,
     size: Decimal,
     tick: TickSize,
 ) -> Result<(), ClassifiedError> {
-    let step = Decimal::new(1, tick.decimals());
+    check_price_range_and_size(price, size)?;
+    check_price_on_tick(price, tick)
+}
+
+/// The checks that need no tick size, so they run before it is looked up: the
+/// price lies strictly between 0 and 1, and the size has at most two decimals
+/// and is at least 0.01.
+fn check_price_range_and_size(price: Decimal, size: Decimal) -> Result<(), ClassifiedError> {
     if price <= Decimal::ZERO || price >= Decimal::ONE {
         return Err(refuse(format!(
             "the price {price} must lie strictly between 0 and 1"
-        )));
-    }
-    if !(price % step).is_zero() {
-        return Err(refuse(format!(
-            "the price {price} is not a whole multiple of the tick size {step}"
         )));
     }
     if size.normalize().scale() > 2 {
@@ -292,6 +295,17 @@ fn check_price_and_size(
     if size < Decimal::new(1, 2) {
         return Err(refuse(format!(
             "the size {size} is below the smallest order, 0.01 shares"
+        )));
+    }
+    Ok(())
+}
+
+/// The price is a whole multiple of the market's tick size.
+fn check_price_on_tick(price: Decimal, tick: TickSize) -> Result<(), ClassifiedError> {
+    let step = Decimal::new(1, tick.decimals());
+    if !(price % step).is_zero() {
+        return Err(refuse(format!(
+            "the price {price} is not a whole multiple of the tick size {step}"
         )));
     }
     Ok(())
@@ -392,7 +406,11 @@ impl Clob {
             .minimum_tick_size
             .parse()
             .map_err(|_| super::decode("a tick size that is not a number"))?;
-        Ok(TickSize::try_from(value)?)
+        // A tick size outside the known four is the CLOB's answer, not the
+        // caller's mistake, so it is a `Decode` and not the parse error's
+        // `InvalidRequest`.
+        TickSize::try_from(value)
+            .map_err(|err| super::decode(&format!("a tick size it cannot use ({err})")))
     }
 
     /// Signs and posts one order, and reads the answer into an [`Order`].
@@ -510,8 +528,9 @@ impl Trading for Clob {
                 return Err(duplicate(client, &holder));
             }
         }
+        check_price_range_and_size(request.price, request.size)?;
         let tick = self.trading_tick_size(&token, &options).await?;
-        check_price_and_size(request.price, request.size, tick)?;
+        check_price_on_tick(request.price, tick)?;
 
         let price = request
             .price

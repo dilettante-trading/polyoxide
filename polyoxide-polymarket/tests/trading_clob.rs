@@ -1486,3 +1486,216 @@ async fn a_proxy_client_places_from_its_proxy_wallet() {
     profile.assert_async().await;
     post.assert_async().await;
 }
+
+#[tokio::test]
+async fn cancelling_one_order_frees_the_client_order_id_the_ledger_held() {
+    let mut server = Server::new_async().await;
+    let post = post_ok(&mut server, LIVE, 2).await;
+    let delete = delete_answering(
+        &mut server,
+        "/order",
+        json!({"orderID": "0xorder1"}),
+        r#"{"canceled":["0xorder1"],"notCanceled":{}}"#,
+    )
+    .await;
+    let clob = client(&server);
+    let mut request = with_options(buy("0.52", "10"), declared(TickSize::Hundredth));
+    request.client_order_id = Some(ClientOrderId::new("mine-1"));
+
+    clob.place(request.clone()).await.unwrap();
+    let refused = clob.place(request.clone()).await.unwrap_err();
+    clob.cancel(&OrderId::new("0xorder1")).await.unwrap();
+    let again = clob.place(request).await.unwrap();
+
+    assert!(refused.to_string().contains("already in use"), "{refused}");
+    assert_eq!(again.client_order_id, Some(ClientOrderId::new("mine-1")));
+    post.assert_async().await;
+    delete.assert_async().await;
+}
+
+#[tokio::test]
+async fn a_price_or_size_that_needs_no_tick_is_refused_before_the_tick_is_looked_up() {
+    let mut server = Server::new_async().await;
+    let tick = server
+        .mock("GET", "/tick-size")
+        .match_query(Matcher::Any)
+        .expect(0)
+        .create_async()
+        .await;
+    let untouched = nothing_sent(&mut server).await;
+    let clob = client(&server);
+    let mut options = ClobOrderOptions::default();
+    options.neg_risk = Some(false);
+
+    let price = clob
+        .place(with_options(buy("1.5", "10"), options))
+        .await
+        .unwrap_err();
+    let size = clob
+        .place(with_options(buy("0.52", "5.001"), options))
+        .await
+        .unwrap_err();
+
+    assert_eq!(price.class, Class::InvalidRequest, "{price}");
+    assert!(price.to_string().contains("strictly between"), "{price}");
+    assert_eq!(size.class, Class::InvalidRequest, "{size}");
+    assert!(size.to_string().contains("decimal places"), "{size}");
+    tick.assert_async().await;
+    for mock in untouched {
+        mock.assert_async().await;
+    }
+}
+
+#[tokio::test]
+async fn a_tick_size_the_clob_answers_that_is_unknown_is_a_decode_error() {
+    let mut server = Server::new_async().await;
+    let tick = server
+        .mock("GET", "/tick-size")
+        .match_query(Matcher::UrlEncoded("token_id".into(), TOKEN.into()))
+        .with_status(200)
+        .with_header("content-type", "application/json")
+        .with_body(r#"{"minimum_tick_size": "0.05"}"#)
+        .expect(1)
+        .create_async()
+        .await;
+    let post = server.mock("POST", "/order").expect(0).create_async().await;
+    let mut options = ClobOrderOptions::default();
+    options.neg_risk = Some(false);
+
+    let err = client(&server)
+        .place(with_options(buy("0.55", "10"), options))
+        .await
+        .unwrap_err();
+
+    assert_eq!(err.class, Class::Decode, "{err}");
+    tick.assert_async().await;
+    post.assert_async().await;
+}
+
+/// One event of the log capture: its level, target, and message and fields as
+/// `name=value` text.
+type Logged = (tracing::Level, String, String);
+
+/// Records every event, for the tests that read the client's WARNs.
+#[derive(Clone, Default)]
+struct Captured(Arc<std::sync::Mutex<Vec<Logged>>>);
+
+struct Fields(String);
+
+impl tracing::field::Visit for Fields {
+    fn record_debug(&mut self, field: &tracing::field::Field, value: &dyn std::fmt::Debug) {
+        if !self.0.is_empty() {
+            self.0.push(' ');
+        }
+        if field.name() == "message" {
+            self.0.push_str(&format!("{value:?}"));
+        } else {
+            self.0.push_str(&format!("{}={value:?}", field.name()));
+        }
+    }
+}
+
+impl tracing::Subscriber for Captured {
+    fn enabled(&self, _: &tracing::Metadata<'_>) -> bool {
+        true
+    }
+    fn new_span(&self, _: &tracing::span::Attributes<'_>) -> tracing::span::Id {
+        tracing::span::Id::from_u64(1)
+    }
+    fn record(&self, _: &tracing::span::Id, _: &tracing::span::Record<'_>) {}
+    fn record_follows_from(&self, _: &tracing::span::Id, _: &tracing::span::Id) {}
+    fn event(&self, event: &tracing::Event<'_>) {
+        let mut fields = Fields(String::new());
+        event.record(&mut fields);
+        let metadata = event.metadata();
+        self.0
+            .lock()
+            .unwrap()
+            .push((*metadata.level(), metadata.target().to_owned(), fields.0));
+    }
+    fn enter(&self, _: &tracing::span::Id) {}
+    fn exit(&self, _: &tracing::span::Id) {}
+}
+
+impl Captured {
+    /// The WARNs whose text contains `needle`.
+    fn warnings(&self, needle: &str) -> Vec<Logged> {
+        self.0
+            .lock()
+            .unwrap()
+            .iter()
+            .filter(|(level, _, text)| *level == tracing::Level::WARN && text.contains(needle))
+            .cloned()
+            .collect()
+    }
+}
+
+/// Starts capturing on this thread. Hold both returned values for the whole
+/// test: with one dispatcher registered, tracing-core works out the interest
+/// of a callsite another test's thread hits first from that thread's default,
+/// which has none, and caches it as never for every thread; with a second one
+/// registered it asks each registered dispatcher instead. The tests here run
+/// on a current-thread runtime, so the scoped subscriber sees their events.
+fn capture() -> (
+    Captured,
+    tracing::subscriber::DefaultGuard,
+    tracing::Dispatch,
+) {
+    let captured = Captured::default();
+    let scope = tracing::subscriber::set_default(captured.clone());
+    let second = tracing::Dispatch::new(Captured::default());
+    (captured, scope, second)
+}
+
+#[tokio::test]
+async fn a_failed_read_back_of_a_matched_order_is_logged_as_a_warning() {
+    let (logs, _scope, _second) = capture();
+    let mut server = Server::new_async().await;
+    let _lookups = lookups(&mut server).await;
+    let _post = post_ok(&mut server, MATCHED, 1).await;
+    let _read = server
+        .mock("GET", "/data/order/0xorder1")
+        .with_status(500)
+        .with_body("upstream down")
+        .expect(1)
+        .create_async()
+        .await;
+
+    let order = client(&server).place(buy("0.52", "10")).await.unwrap();
+
+    assert_eq!(order.status, OrderStatus::Open);
+    let warned = logs.warnings("could not read back a matched order");
+    assert_eq!(warned.len(), 1, "{warned:?}");
+    assert!(
+        warned[0].1.starts_with("polyoxide_polymarket"),
+        "{:?}",
+        warned[0]
+    );
+    assert!(warned[0].2.contains("order=0xorder1"), "{:?}", warned[0]);
+}
+
+#[tokio::test]
+async fn an_order_id_the_clob_names_differently_is_rekeyed_and_logged_as_a_warning() {
+    let (logs, _scope, _second) = capture();
+    let mut server = Server::new_async().await;
+    let _post = post_ok(&mut server, LIVE, 1).await;
+    let clob = client(&server);
+    let mut request = with_options(buy("0.52", "10"), declared(TickSize::Hundredth));
+    request.client_order_id = Some(ClientOrderId::new("mine-1"));
+
+    let order = clob.place(request.clone()).await.unwrap();
+    let refused = clob.place(request).await.unwrap_err();
+
+    // The venue's `0xorder1` is not the order's computed hash.
+    assert_eq!(order.id.as_str(), "0xorder1");
+    assert!(refused.to_string().contains("`0xorder1`"), "{refused}");
+    let warned = logs.warnings("the CLOB named an order other than the one computed");
+    assert_eq!(warned.len(), 1, "{warned:?}");
+    assert!(
+        warned[0].1.starts_with("polyoxide_polymarket"),
+        "{:?}",
+        warned[0]
+    );
+    assert!(warned[0].2.contains("venue=0xorder1"), "{:?}", warned[0]);
+    assert!(warned[0].2.contains("computed=0x"), "{:?}", warned[0]);
+}
