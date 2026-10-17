@@ -25,8 +25,8 @@ use polyoxide_test_support::{
     environmental, fail, fail_classified, load_env, transient, ClassifiedResultExt, ResultExt,
 };
 use polyoxide_venue::{
-    Class, DynTrading, MarketKey, Order, OrderId, OrderRequest, OrderStatus, Side, Trading,
-    TradingEvent, TradingEvents,
+    Class, DynTrading, MarketKey, Order, OrderId, OrderRequest, OrderStatus, Side, TimeInForce,
+    Trading, TradingEvent, TradingEvents,
 };
 use rust_decimal::Decimal;
 
@@ -202,21 +202,24 @@ async fn first_event(events: &mut TradingEvents) -> TradingEvent {
 }
 
 /// The next ack of order `id` whose status satisfies `wanted`, skipping every
-/// other event, or `None` when [`ACK_WITHIN`] passes first.
+/// other event. Fails as `transient` when [`ACK_WITHIN`] passes first, when the
+/// stream ends, or when it resyncs (a reconnect between the placement and the
+/// ack can lose the placement's ack); the caller's guard still cancels the bid.
 async fn next_ack(
     events: &mut TradingEvents,
     id: &OrderId,
     wanted: fn(&OrderStatus) -> bool,
-) -> Option<Order> {
+) -> Order {
     let deadline = tokio::time::Instant::now() + ACK_WITHIN;
     loop {
         match tokio::time::timeout_at(deadline, events.next()).await {
-            Err(_) => return None,
+            Err(_) => transient("no ack of the order within 30 s"),
             Ok(None) => transient("the events stream ended before the ack"),
             Ok(Some(item)) => match item.or_fail("the events stream yields an item") {
                 TradingEvent::Ack(order) if order.id == *id && wanted(&order.status) => {
-                    return Some(order);
+                    return order;
                 }
+                TradingEvent::Resync => transient("the events stream resynced before the ack"),
                 _ => {}
             },
         }
@@ -286,6 +289,11 @@ async fn live_trading_reads_open_orders_positions_and_the_collateral_balance() {
     }
 
     let balances = trading.balances().await.or_fail("read the balances");
+    assert_eq!(
+        balances.len(),
+        1,
+        "the account holds one pUSD balance record: {balances:?}"
+    );
     let collateral = balances.iter().find(|balance| balance.asset == "pUSD");
     assert!(collateral.is_some(), "no pUSD balance among {balances:?}");
     assert!(
@@ -317,6 +325,7 @@ async fn live_trading_places_acks_and_cancels_a_resting_post_only_bid() {
     // The venue refuses a post-only order that would take, so a mispriced bid
     // fails loudly instead of spending money.
     request.post_only = true;
+    request.time_in_force = TimeInForce::GoodTilCancelled;
     let order = match trading.place(request).await {
         Ok(order) => order,
         Err(placement_error) => {
@@ -353,15 +362,10 @@ async fn live_trading_places_acks_and_cancels_a_resting_post_only_bid() {
             "order {} is not among the open orders {resting:?}",
             order.id
         );
-        let acked = next_ack(&mut events, &order.id, |status| {
+        next_ack(&mut events, &order.id, |status| {
             matches!(status, OrderStatus::Open)
         })
         .await;
-        assert!(
-            acked.is_some(),
-            "no Open ack of order {} within {ACK_WITHIN:?}",
-            order.id
-        );
     })
     .catch_unwind()
     .await;
@@ -383,13 +387,8 @@ async fn live_trading_places_acks_and_cancels_a_resting_post_only_bid() {
     }
     cancelled.or_fail("cancel the resting bid");
 
-    let acked = next_ack(&mut events, &order.id, |status| {
+    next_ack(&mut events, &order.id, |status| {
         matches!(status, OrderStatus::Cancelled)
     })
     .await;
-    assert!(
-        acked.is_some(),
-        "no Cancelled ack of order {} within {ACK_WITHIN:?}",
-        order.id
-    );
 }

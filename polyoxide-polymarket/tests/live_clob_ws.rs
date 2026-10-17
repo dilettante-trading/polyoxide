@@ -290,7 +290,7 @@ async fn live_supervised_market_socket_receives_a_book() {
     let mut seen_book = false;
     while !seen_book {
         let item = match tokio::time::timeout_at(deadline, ws.next()).await {
-            Err(_) => break,
+            Err(_) => transient("no book arrived within 30 s"),
             Ok(None) => transient("the supervised market socket ended before a book arrived"),
             Ok(Some(item)) => item,
         };
@@ -304,10 +304,6 @@ async fn live_supervised_market_socket_receives_a_book() {
             seen_book = true;
         }
     }
-    assert!(
-        seen_book,
-        "no book for token {token} within {BOOK_WITHIN:?}"
-    );
     ws.close()
         .await
         .or_fail("close the supervised market socket");
