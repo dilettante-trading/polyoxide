@@ -492,6 +492,30 @@ mod tests {
     }
 
     #[test]
+    fn a_self_trade_is_recognised_whatever_the_case_of_its_maker_address() {
+        // The account holds its maker address in lower case, and the maker
+        // entry names it in upper case: only the ASCII-insensitive check finds
+        // the account's own entry, so the trade's taker fill must not be yielded.
+        let own = trade(
+            "MATCHED",
+            KEY,
+            vec![maker(
+                "m1",
+                "0xABC0000000000000000000000000000000000001",
+                "100",
+                "0.52",
+            )],
+        );
+
+        let out = run(&own, &ids());
+
+        assert_eq!(out.len(), 1);
+        let fill = fill_of(&out[0]);
+        assert_eq!(fill.order_id.as_str(), "m1");
+        assert_eq!(fill.liquidity, Some(Liquidity::Maker));
+    }
+
+    #[test]
     fn a_maker_on_the_trades_own_token_takes_the_opposite_side() {
         let trade = trade(
             "MATCHED",
