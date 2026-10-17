@@ -45,7 +45,7 @@ Recorded per AD-21: an epic records each proposed amendment here, and one sessio
 - **Why:**
   - **`events()` needs the user socket.** The supervised user socket is `clob-ws`'s, so an impl gated on `clob` alone would have to omit `events()` or build without the socket it reads.
   - **`positions` needs the Data API.** That half of AD-3's reasoning stands, so `data` stays in the gate.
-- **Follow-up in the code:** Story 5 adds the impl under that gate, the feature wiring in `polyoxide-polymarket/Cargo.toml` and `polyoxide/Cargo.toml`, and the `notes` entry that the generated crate lists in CLAUDE.md and README.md show.
+- **Follow-up in the code:** Story 5 adds the impl under that gate, the feature wiring in `polyoxide-polymarket/Cargo.toml` and `polyoxide/Cargo.toml`, and the `notes` entry that the generated crate list in CLAUDE.md shows.
 
 ## A7-4: a `Protocol` may dial its own connection (amends AD-11's "What a venue implements")
 

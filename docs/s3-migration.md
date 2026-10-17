@@ -68,8 +68,9 @@ that builds on 0.40 builds unchanged.
   connect by 10 s. They take `wss://` URLs, or `ws://` to a loopback host, and at most 500 ids
   or markets per connection. The market queue holds 1024 events and the user queue is
   unbounded. The market socket yields every book of an array frame. `WebSocket`,
-  `WebSocketBuilder` and `WebSocketWithPing` are unchanged, and `MarketMessage::from_json` still
-  keeps only the first book of an array.
+  `WebSocketBuilder` and `WebSocketWithPing` are unchanged, except that their connect now dials a
+  URL whose host is an IPv6 literal, which failed its lookup before, and
+  `MarketMessage::from_json` still keeps only the first book of an array.
 - `ClobWsError::Authentication` has its first use: the user socket decodes the server's 1008
   close as `ClobWsError::Authentication(<the close reason>)`, classed `Unauthorized`, and stops
   on it instead of reconnecting. The enum's variants are unchanged.
@@ -82,9 +83,9 @@ that builds on 0.40 builds unchanged.
   opaque `OrderId`, `FillId` and `ClientOrderId`. A kill is `Ok` with `Killed { reason }`, never
   an error. Under `market`, `Extensions::ensure_declared` and `UndeclaredExtension` (an
   `InvalidRequest`) give a venue the refusal it runs on an option it does not declare.
-- `polyoxide-polymarket`: `ClobBuilder::user_socket`, and, with `clob-ws` and `data`, `impl
-  Trading for Clob` with `ClobOrderOptions` (`neg_risk`, `tick_size`, `expiration`) and the
-  venue's own facts in `OrderExt`, `FillExt`, `PositionExt` and `BalanceExt`, all in
+- `polyoxide-polymarket`: with `clob-ws`, `ClobBuilder::user_socket`, and, with `clob-ws` and
+  `data`, `impl Trading for Clob` with `ClobOrderOptions` (`neg_risk`, `tick_size`, `expiration`)
+  and the venue's own facts in `OrderExt`, `FillExt`, `PositionExt` and `BalanceExt`, all in
   `polyoxide_polymarket::clob::venue`.
   `clob-ws` now turns on `polyoxide-venue/trading`, and so does the umbrella's
   `polymarket-clob-ws`, whose crate root pins `DynTrading` and, with `polymarket-data`,
