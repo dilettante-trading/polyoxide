@@ -164,13 +164,17 @@ plan disagreeing with one of them stops and asks.
   - a frame that does not decode (`ClobWsError::Json`, or `InvalidMessage` from decode) is
     skipped: the stream yields the error and keeps the connection (`Recovery::Skip`);
   - `ClobWsError::Authentication` stops the stream (`Recovery::Stop`);
+  - a connection used after it closed (`ClobWsError::Connection` whose kit error's kind is
+    `polyoxide_ws::Kind::AlreadyClosed`) reconnects (`Recovery::Reconnect`);
   - any other error reconnects exactly when `Classify::is_retriable` says so, and stops otherwise.
 
   A refused upgrade is classed through the socket table, whose agreement with
   `polyoxide_ws::retrying_can_fix` and venue's status rule `polyoxide-venue/tests/ws_classification.rs`
-  pins (DRIFT R1). A connection used after it closed reads as `Network` there and reconnects, as
-  Binance's and sports' do (D19 of `divergences.md`). No code matches over `tungstenite::Error`'s
-  variants.
+  pins (DRIFT R1). The socket table classes a use after close `InvalidRequest` (spine AD-15), so
+  the class rule alone would stop on it, and a ping that races a server close would end the
+  stream. The `AlreadyClosed` row keeps the reconnect, as Binance's and sports' recovery rows do
+  (D19 of `divergences.md`). It reads the kit's `Kind`, and no code matches over
+  `tungstenite::Error`'s variants.
 - **D16. Membership changes are recorded before their frame is sent** (Binance's rule). A change
   whose connection dies under it is answered `Ok` and replayed after the reconnect. A change made
   during an outage is applied to the membership and answered at once (`Offline::Recorded`), so the
