@@ -71,6 +71,12 @@ pub struct Clob {
     /// stores nowhere. Every clone shares it, and so does every events stream.
     #[cfg(all(feature = "clob-ws", feature = "data"))]
     pub(crate) ids: std::sync::Arc<std::sync::Mutex<crate::clob::venue::ClientIds>>,
+    /// The user socket each `Trading::events` stream opens: the CLOB's own
+    /// host and the default timing, unless `ClobBuilder::user_socket` set one.
+    // Only `Trading::events` reads it, which `data` also builds.
+    #[cfg(feature = "clob-ws")]
+    #[cfg_attr(not(feature = "data"), allow(dead_code))]
+    pub(crate) user_socket: crate::clob::ws::UserWsBuilder,
 }
 
 impl Clob {
@@ -827,6 +833,8 @@ pub struct ClobBuilder {
     gamma: Option<Gamma>,
     #[cfg(feature = "data")]
     data: Option<DataApi>,
+    #[cfg(feature = "clob-ws")]
+    user_socket: crate::clob::ws::UserWsBuilder,
 }
 
 impl ClobBuilder {
@@ -842,6 +850,8 @@ impl ClobBuilder {
             gamma: None,
             #[cfg(feature = "data")]
             data: None,
+            #[cfg(feature = "clob-ws")]
+            user_socket: crate::clob::ws::UserWsBuilder::new(),
         }
     }
 
@@ -917,6 +927,17 @@ impl ClobBuilder {
         self
     }
 
+    /// Set the user socket each `Trading::events` stream opens: its URL and
+    /// its timing. The default is `UserWsBuilder::new()`, the CLOB's own host.
+    ///
+    /// The builder holds no credential: a stream builds them from the account
+    /// when it opens its socket.
+    #[cfg(feature = "clob-ws")]
+    pub fn user_socket(mut self, socket: crate::clob::ws::UserWsBuilder) -> Self {
+        self.user_socket = socket;
+        self
+    }
+
     /// Build the CLOB client
     pub fn build(self) -> Result<Clob, ClobError> {
         // The IP table and the per-signer buckets over one hold, so a 429
@@ -973,6 +994,8 @@ impl ClobBuilder {
             data,
             #[cfg(all(feature = "clob-ws", feature = "data"))]
             ids: Default::default(),
+            #[cfg(feature = "clob-ws")]
+            user_socket: self.user_socket,
         })
     }
 }

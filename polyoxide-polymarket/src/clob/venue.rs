@@ -512,6 +512,9 @@ mod events {
 pub use events::EventGroupExt;
 
 #[cfg(all(feature = "clob-ws", feature = "data"))]
+mod fills;
+
+#[cfg(all(feature = "clob-ws", feature = "data"))]
 mod trading;
 
 #[cfg(all(feature = "clob-ws", feature = "data"))]

@@ -4,9 +4,11 @@
 
 use std::borrow::Cow;
 
+use futures_util::StreamExt;
 use mockito::{Matcher, Mock, Server, ServerGuard};
 use polyoxide_polymarket::clob::venue::{BalanceExt, PositionExt};
 use polyoxide_polymarket::clob::venue::{ClobOrderOptions, OrderExt};
+use polyoxide_polymarket::clob::ws::UserWsBuilder;
 use polyoxide_polymarket::clob::{
     Account, Clob, ClobBuilder, Credentials, SignatureType, TickSize,
 };
@@ -17,8 +19,13 @@ use polyoxide_venue::{
     Class, ClientOrderId, KeySpace, KillReason, MarketKey, OrderRequest, OrderStatus, ProductId,
     Side, TimeInForce, Trading, UnixMillis, VenueId,
 };
+use polyoxide_venue::{DynTrading, Fill, Liquidity, TradingEvent};
+use polyoxide_ws::test_server::{next_item, Script, ScriptedServer};
+use polyoxide_ws::tungstenite::Message;
 use rust_decimal::Decimal;
 use serde_json::{json, Value};
+use std::sync::Arc;
+use std::time::Duration;
 
 const TOKEN: &str = "100";
 const MARKET: &str = "0xcondition";
@@ -250,6 +257,394 @@ impl KeySpace for Elsewhere {
 /// An option type the CLOB does not declare.
 #[derive(Debug, Clone, PartialEq)]
 struct Stray;
+
+// --- events ---
+
+const COMPLEMENT: &str = "101";
+
+/// The account's maker address: Hardhat account 0 is an EOA.
+fn ours() -> String {
+    account().address().to_string()
+}
+
+/// A client whose user socket is `ws`, quick to ping and to reconnect.
+fn client_on(server: &ServerGuard, ws: &ScriptedServer) -> Clob {
+    let socket = UserWsBuilder::new()
+        .url(ws.url.clone())
+        .unwrap()
+        .ping_interval(Duration::from_millis(50))
+        .stale_after(Duration::from_secs(2))
+        .backoff(Duration::from_millis(10), Duration::from_millis(20));
+    ClobBuilder::new()
+        .base_url(server.url())
+        .with_account(account())
+        .data(DataApi::builder().base_url(server.url()).build().unwrap())
+        .user_socket(socket)
+        .build()
+        .unwrap()
+}
+
+/// Answers the client's text `PING` with a `PONG`, as the CLOB does. An
+/// integration test cannot see the crate's `#[cfg(test)]` answerer.
+fn pong(_connection: usize) -> impl FnMut(&str) -> Vec<Message> + Send + 'static {
+    |text: &str| {
+        if text == "PING" {
+            vec![Message::Text("PONG".into())]
+        } else {
+            Vec::new()
+        }
+    }
+}
+
+async fn user_socket(scripts: Vec<Script>) -> ScriptedServer {
+    ScriptedServer::start_answering(scripts, pong).await
+}
+
+fn order_frame(id: &str, kind: &str, matched: &str, timestamp: &str) -> String {
+    json!({
+        "event_type": "order",
+        "id": id,
+        "asset_id": TOKEN,
+        "market": MARKET,
+        "outcome": "Yes",
+        "price": "0.52",
+        "side": "BUY",
+        "original_size": "10",
+        "size_matched": matched,
+        "type": kind,
+        "order_owner": "test-key",
+        "timestamp": timestamp
+    })
+    .to_string()
+}
+
+fn maker_entry(order: &str, address: &str, asset: &str, price: &str) -> Value {
+    json!({
+        "order_id": order,
+        "maker_address": address,
+        "matched_amount": "4",
+        "fee_rate_bps": "0",
+        "asset_id": asset,
+        "price": price
+    })
+}
+
+fn trade_frame(
+    id: &str,
+    status: &str,
+    owner: &str,
+    taker_order: &str,
+    makers: Vec<Value>,
+) -> String {
+    json!({
+        "event_type": "trade",
+        "id": id,
+        "asset_id": TOKEN,
+        "market": MARKET,
+        "outcome": "Yes",
+        "price": "0.52",
+        "size": "4",
+        "side": "BUY",
+        "status": status,
+        "taker_order_id": taker_order,
+        "maker_orders": makers,
+        "owner": owner,
+        "transaction_hash": "0xhash",
+        "timestamp": "1792000000123"
+    })
+    .to_string()
+}
+
+/// A trade the account took, alone on the book.
+fn taker_trade(id: &str) -> String {
+    trade_frame(id, "MATCHED", "test-key", "0xtaker", vec![])
+}
+
+fn fill_of(event: TradingEvent) -> Fill {
+    match event {
+        TradingEvent::Fill(fill) => fill,
+        other => panic!("expected a fill, got {other:?}"),
+    }
+}
+
+#[tokio::test]
+async fn the_stream_leads_with_a_resync_and_acks_with_the_client_order_id() {
+    let mut server = Server::new_async().await;
+    let post = post_ok(&mut server, LIVE, 2).await;
+    let placement = order_frame("0xorder1", "PLACEMENT", "0", "1792000000123");
+    let cancellation = order_frame("0xorder1", "CANCELLATION", "0", "1792000009999");
+    let ws = user_socket(vec![Script::frames(&[
+        placement.as_str(),
+        cancellation.as_str(),
+    ])
+    .after_first_frame()])
+    .await;
+    let clob = client_on(&server, &ws);
+    let mut request = with_options(buy("0.52", "10"), declared(TickSize::Hundredth));
+    request.client_order_id = Some(ClientOrderId::new("mine-1"));
+    // The order is placed before the stream is polled, so the ledger holds
+    // its client id when the acks arrive.
+    clob.place(request.clone()).await.unwrap();
+
+    let mut events = clob.events();
+    assert_eq!(next_item(&mut events).await.unwrap(), TradingEvent::Resync);
+    let TradingEvent::Ack(placed) = next_item(&mut events).await.unwrap() else {
+        panic!("expected the placement's ack");
+    };
+    let TradingEvent::Ack(cancelled) = next_item(&mut events).await.unwrap() else {
+        panic!("expected the cancellation's ack");
+    };
+
+    assert_eq!(placed.id.as_str(), "0xorder1");
+    assert_eq!(placed.status, OrderStatus::Open);
+    assert_eq!(placed.key, key());
+    assert_eq!(placed.side, Side::Buy);
+    assert_eq!(placed.price, d("0.52"));
+    assert_eq!(placed.size, d("10"));
+    assert_eq!(placed.created, Some(UnixMillis(1_792_000_000_123)));
+    assert_eq!(placed.client_order_id, Some(ClientOrderId::new("mine-1")));
+    assert_eq!(cancelled.status, OrderStatus::Cancelled);
+    assert_eq!(
+        cancelled.client_order_id,
+        Some(ClientOrderId::new("mine-1"))
+    );
+    // The socket was started with the account's credentials and on every
+    // market: the subscribe frame carries the key and no market filter.
+    ws.wait_for("the subscription", |ws| !ws.first_frames().is_empty())
+        .await;
+    let subscription = ws.first_frames()[0].clone();
+    assert!(subscription.contains("test-key"), "{subscription}");
+    assert!(!subscription.contains("\"markets\""), "{subscription}");
+    // The cancelled ack dropped the ledger entry, so the id is free again.
+    clob.place(request).await.unwrap();
+    post.assert_async().await;
+}
+
+#[tokio::test]
+async fn a_taker_fill_and_two_maker_fills_name_the_orders_of_the_account() {
+    let server = Server::new_async().await;
+    let one = trade_frame(
+        "t1",
+        "MATCHED",
+        "test-key",
+        "0xtaker",
+        vec![
+            maker_entry(
+                "0xm1",
+                "0xdead000000000000000000000000000000000002",
+                TOKEN,
+                "0.52",
+            ),
+            maker_entry(
+                "0xm2",
+                &ours().to_uppercase().replacen("0X", "0x", 1),
+                COMPLEMENT,
+                "0.48",
+            ),
+        ],
+    );
+    // Someone else took; the account's order rests on the trade's own token.
+    let two = trade_frame(
+        "t2",
+        "MATCHED",
+        "other-key",
+        "0xother",
+        vec![maker_entry("0xm3", &ours().to_lowercase(), TOKEN, "0.52")],
+    );
+    let ws = user_socket(vec![
+        Script::frames(&[one.as_str(), two.as_str()]).after_first_frame()
+    ])
+    .await;
+    let mut events = client_on(&server, &ws).events();
+
+    assert_eq!(next_item(&mut events).await.unwrap(), TradingEvent::Resync);
+    let taker = fill_of(next_item(&mut events).await.unwrap());
+    let complement = fill_of(next_item(&mut events).await.unwrap());
+    let resting = fill_of(next_item(&mut events).await.unwrap());
+
+    assert_eq!(taker.id.as_str(), "t1:0xtaker");
+    assert_eq!(taker.liquidity, Some(Liquidity::Taker));
+    assert_eq!(taker.side, Side::Buy);
+    assert_eq!(taker.key, key());
+    assert_eq!(taker.price, d("0.52"));
+    assert_eq!(taker.size, d("4"));
+    assert_eq!(taker.time, UnixMillis(1_792_000_000_123));
+    assert_eq!(taker.trade_id.as_ref().map(|id| id.as_str()), Some("t1"));
+    assert_eq!(complement.id.as_str(), "t1:0xm2");
+    assert_eq!(complement.liquidity, Some(Liquidity::Maker));
+    assert_eq!(
+        complement.key,
+        keys::clob(&TokenId::new(COMPLEMENT).unwrap())
+    );
+    assert_eq!(complement.side, Side::Buy);
+    assert_eq!(complement.price, d("0.48"));
+    assert_eq!(resting.id.as_str(), "t2:0xm3");
+    assert_eq!(resting.liquidity, Some(Liquidity::Maker));
+    assert_eq!(resting.side, Side::Sell);
+}
+
+#[tokio::test]
+async fn a_failed_trade_is_a_resync_and_a_mined_one_is_silent() {
+    let server = Server::new_async().await;
+    let mined = trade_frame("t1", "MINED", "test-key", "0xtaker", vec![]);
+    let failed = trade_frame("t1", "FAILED", "test-key", "0xtaker", vec![]);
+    let ack = order_frame("0xorder1", "PLACEMENT", "0", "1792000000123");
+    let ws = user_socket(vec![Script::frames(&[
+        mined.as_str(),
+        failed.as_str(),
+        ack.as_str(),
+    ])
+    .after_first_frame()])
+    .await;
+    let mut events = client_on(&server, &ws).events();
+
+    // The leading one, then the failed trade's; the mined trade yields nothing.
+    assert_eq!(next_item(&mut events).await.unwrap(), TradingEvent::Resync);
+    assert_eq!(next_item(&mut events).await.unwrap(), TradingEvent::Resync);
+    assert!(matches!(
+        next_item(&mut events).await.unwrap(),
+        TradingEvent::Ack(_)
+    ));
+}
+
+#[tokio::test]
+async fn a_trade_naming_none_of_the_accounts_orders_is_an_error_item_and_the_stream_goes_on() {
+    let server = Server::new_async().await;
+    let stranger = trade_frame(
+        "t1",
+        "MATCHED",
+        "other-key",
+        "0xother",
+        vec![maker_entry(
+            "0xm1",
+            "0xdead000000000000000000000000000000000002",
+            TOKEN,
+            "0.52",
+        )],
+    );
+    let ack = order_frame("0xorder1", "PLACEMENT", "0", "1792000000123");
+    let ws = user_socket(vec![
+        Script::frames(&[stranger.as_str(), ack.as_str()]).after_first_frame()
+    ])
+    .await;
+    let mut events = client_on(&server, &ws).events();
+
+    assert_eq!(next_item(&mut events).await.unwrap(), TradingEvent::Resync);
+    let err = next_item(&mut events).await.unwrap_err();
+    assert_eq!(err.class, Class::Decode, "{err}");
+    assert!(matches!(
+        next_item(&mut events).await.unwrap(),
+        TradingEvent::Ack(_)
+    ));
+}
+
+#[tokio::test]
+async fn every_fill_arrives_in_order_across_a_slow_consumer_and_a_server_cut() {
+    let server = Server::new_async().await;
+    let before: Vec<String> = (1..=3).map(|n| taker_trade(&format!("t{n}"))).collect();
+    let before: Vec<&str> = before.iter().map(String::as_str).collect();
+    let after = taker_trade("t4");
+    let ws = user_socket(vec![
+        // The first connection pushes three fills and is cut with no close
+        // frame; the next one pushes the fourth.
+        Script::frames(&before).after_first_frame().then_cut(),
+        Script::frames(&[after.as_str()]).after_first_frame(),
+    ])
+    .await;
+    let mut events = client_on(&server, &ws).events();
+
+    let mut seen = Vec::new();
+    let mut fills = 0;
+    while fills < 4 {
+        // The consumer is slower than the server; the socket's queue is
+        // unbounded, so nothing is lost.
+        tokio::time::sleep(Duration::from_millis(40)).await;
+        match next_item(&mut events).await {
+            Ok(TradingEvent::Fill(fill)) => {
+                fills += 1;
+                seen.push(fill.id.to_string());
+            }
+            Ok(TradingEvent::Resync) => seen.push("resync".to_owned()),
+            Ok(other) => panic!("unexpected {other:?}"),
+            // The cut is reported as an error item first.
+            Err(_) => {}
+        }
+    }
+
+    assert_eq!(
+        seen,
+        [
+            "resync",
+            "t1:0xtaker",
+            "t2:0xtaker",
+            "t3:0xtaker",
+            "resync",
+            "t4:0xtaker"
+        ]
+    );
+}
+
+#[tokio::test]
+async fn events_without_an_account_yield_its_error_and_end() {
+    let mut events = Clob::public().events();
+
+    let err = events.next().await.unwrap().unwrap_err();
+
+    assert_eq!(err.class, Class::InvalidRequest, "{err}");
+    assert!(err.to_string().contains("Account required"), "{err}");
+    assert!(events.next().await.is_none());
+}
+
+/// The stream follows the maker address `place` trades from. A proxy client
+/// without `gamma` cannot find its proxy wallet, so the stream's only item is
+/// the native refusal and it opens no socket (the default socket is the CLOB's
+/// live host, which a test must never reach); a stream that resolved the
+/// account target's EOA would go on to connect.
+#[cfg(not(feature = "gamma"))]
+#[tokio::test]
+async fn a_proxy_client_without_gamma_yields_the_refusal_and_ends() {
+    let server = Server::new_async().await;
+    let mut events = proxy_client(&server).events();
+
+    let err = events.next().await.unwrap().unwrap_err();
+
+    assert_eq!(err.class, Class::InvalidRequest, "{err}");
+    assert!(
+        err.to_string().contains("requires the `gamma` feature"),
+        "{err}"
+    );
+    assert!(events.next().await.is_none());
+}
+
+#[tokio::test]
+async fn a_clob_runs_behind_an_arc_of_dyn_trading_and_its_stream_outlives_the_arc() {
+    let mut server = Server::new_async().await;
+    let post = post_ok(&mut server, LIVE, 1).await;
+    let placement = order_frame("0xorder1", "PLACEMENT", "0", "1792000000123");
+    let ws = user_socket(vec![
+        Script::frames(&[placement.as_str()]).after_first_frame()
+    ])
+    .await;
+    let venue: Arc<DynTrading<'static>> = DynTrading::new_arc(client_on(&server, &ws));
+
+    let order = venue
+        .place(with_options(
+            buy("0.52", "10"),
+            declared(TickSize::Hundredth),
+        ))
+        .await
+        .unwrap();
+    let mut events = venue.events();
+    drop(venue);
+
+    assert_eq!(order.id.as_str(), "0xorder1");
+    assert_eq!(next_item(&mut events).await.unwrap(), TradingEvent::Resync);
+    let TradingEvent::Ack(acked) = next_item(&mut events).await.unwrap() else {
+        panic!("expected the placement's ack");
+    };
+    assert_eq!(acked.id, order.id);
+    post.assert_async().await;
+}
 
 // --- cancel, orders, positions and balances ---
 

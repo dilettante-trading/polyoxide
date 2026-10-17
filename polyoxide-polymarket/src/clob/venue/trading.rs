@@ -707,11 +707,8 @@ impl Trading for Clob {
         Ok(vec![collateral])
     }
 
-    // Temporary stub; Task 5.4 replaces it.
     fn events(&self) -> TradingEvents {
-        TradingEvents::new(futures_util::stream::empty::<
-            Result<polyoxide_venue::TradingEvent, ClassifiedError>,
-        >())
+        super::fills::events(self)
     }
 }
 
