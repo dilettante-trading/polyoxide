@@ -18,6 +18,13 @@
 //! | `trades` (`data`) | `/markets-by-token/{token}`, then the Data API's `/trades` |
 //! | `event_group` (`gamma`) | Gamma's `/markets?clob_token_ids=`, then `/events/{id}` |
 //!
+//! With `clob-ws` and `data` as well, [`Clob`] implements the `Trading` trait
+//! of `polyoxide-venue`: orders placed and cancelled, open orders, positions
+//! and the pUSD balance, and an events stream on the supervised user socket.
+//! The options a request carries and the CLOB's facts beside each trading
+//! record are `ClobOrderOptions`, `OrderExt`, `FillExt`, `PositionExt` and
+//! `BalanceExt`.
+//!
 //! ```no_run
 //! use std::sync::Arc;
 //!
@@ -503,6 +510,12 @@ mod events {
 
 #[cfg(feature = "gamma")]
 pub use events::EventGroupExt;
+
+#[cfg(all(feature = "clob-ws", feature = "data"))]
+mod trading;
+
+#[cfg(all(feature = "clob-ws", feature = "data"))]
+pub use trading::{BalanceExt, ClobOrderOptions, FillExt, OrderExt, PositionExt};
 
 #[cfg(test)]
 mod tests {

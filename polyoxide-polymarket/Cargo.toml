@@ -43,6 +43,7 @@ clob-ws = [
     "clob",
     "dep:polyoxide-ws",
     "dep:futures-util",
+    "polyoxide-venue/trading",
     "tokio/net",
     "tokio/macros",
     "tokio/sync",

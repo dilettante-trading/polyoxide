@@ -207,6 +207,18 @@ fn compute_order_digest(order: &ClobOrder, chain_id: u64) -> Result<B256, ClobEr
                 .into(),
         ));
     }
+    order_hash(order, chain_id)
+}
+
+/// The EIP-712 hash of an order under its exchange's domain, for every
+/// signature type: the id the exchange gives the order, known before it is
+/// signed.
+///
+/// For a plain order (type 0–2) this is the digest [`sign_order`] signs. A
+/// Deposit Wallet's order (type 3) signs an ERC-7739 envelope instead, but the
+/// exchange names it by this same hash. A type-3 order whose maker is not its
+/// signer is refused, as the order conversion refuses it.
+pub(crate) fn order_hash(order: &ClobOrder, chain_id: u64) -> Result<B256, ClobError> {
     let exchange = exchange_address(chain_id, order.neg_risk)?;
     let domain = exchange_domain(chain_id, exchange);
     let struct_hash = order_to_protocol(order)?.eip712_hash_struct();
@@ -1386,5 +1398,111 @@ mod clob_auth_reference {
             signature,
             super::clob_auth_reference_tests::REFERENCE_SIGNATURE
         );
+    }
+}
+
+/// `order_hash` is the id `Trading::place` gives an order before it signs it:
+/// the order's EIP-712 hash under its exchange's domain, for every signature
+/// type. A Deposit Wallet's order has no plain digest to sign
+/// (`compute_order_digest` refuses it), but the exchange names it by this
+/// hash all the same.
+#[cfg(test)]
+mod order_hash_vectors {
+    use super::*;
+    use crate::clob::types::OrderSide;
+    use alloy::primitives::address;
+
+    const VECTORS: &str =
+        include_str!("../../../tests/fixtures/clob/session_keys/order_vectors.json");
+    const WALLET: Address = address!("57ffbc34de23124faeb8387fcd689d314e57accd");
+    const MAKER: Address = address!("f39Fd6e51aad88F6F4ce6aB8827279cffFb92266");
+
+    #[derive(serde::Deserialize)]
+    struct Vector {
+        exchange: Address,
+        app_domain_separator: B256,
+        contents_hash: B256,
+    }
+
+    fn vector(name: &str) -> Vector {
+        let mut all: std::collections::HashMap<String, Vector> =
+            serde_json::from_str(VECTORS).unwrap();
+        all.remove(name)
+            .unwrap_or_else(|| panic!("no vector {name}"))
+    }
+
+    /// py-sdk's golden order: maker = signer = the wallet, salt 1, token 1,
+    /// 1_000_000 / 500_000, BUY, timestamp 0, zero metadata and builder.
+    fn golden_order() -> ClobOrder {
+        ClobOrder {
+            salt: "1".to_string(),
+            maker: WALLET,
+            signer: WALLET,
+            token_id: "1".to_string(),
+            maker_amount: "1000000".to_string(),
+            taker_amount: "500000".to_string(),
+            side: OrderSide::Buy,
+            expiration: "0".to_string(),
+            signature_type: SignatureType::Poly1271,
+            timestamp: "0".to_string(),
+            metadata: B256::ZERO,
+            builder: B256::ZERO,
+            neg_risk: false,
+        }
+    }
+
+    fn plain_order() -> ClobOrder {
+        ClobOrder {
+            maker: MAKER,
+            signer: MAKER,
+            signature_type: SignatureType::Eoa,
+            ..golden_order()
+        }
+    }
+
+    #[test]
+    fn a_deposit_wallet_orders_hash_composes_py_sdks_domain_and_contents_hashes() {
+        // The chain table's exchange for chain 137 is the one py-sdk's
+        // `v2_exchange` vector names, so `order_hash` reaches its separator.
+        // (`v1_exchange` names the previous contract, which the table no
+        // longer holds.) Both vectors share one contents hash.
+        let v = vector("v2_exchange");
+        assert_eq!(exchange_address(137, false).unwrap(), v.exchange);
+        let mut message = Vec::with_capacity(66);
+        message.extend_from_slice(b"\x19\x01");
+        message.extend_from_slice(v.app_domain_separator.as_slice());
+        message.extend_from_slice(v.contents_hash.as_slice());
+
+        let hash = order_hash(&golden_order(), 137).unwrap();
+
+        assert_eq!(hash, keccak256(&message));
+        // The plain digest still refuses the same order.
+        assert!(compute_order_digest(&golden_order(), 137).is_err());
+    }
+
+    #[test]
+    fn a_plain_orders_hash_is_the_digest_a_plain_signature_covers() {
+        let order = plain_order();
+        let exchange = exchange_address(137, false).unwrap();
+        let independent = eip712_digest(
+            exchange_domain(137, exchange).eip712_hash_struct(),
+            order_to_protocol(&order).unwrap().eip712_hash_struct(),
+        );
+
+        assert_eq!(order_hash(&order, 137).unwrap(), independent);
+        assert_eq!(
+            order_hash(&order, 137).unwrap(),
+            compute_order_digest(&order, 137).unwrap()
+        );
+    }
+
+    #[test]
+    fn the_hash_follows_the_orders_exchange_and_refuses_an_unsupported_chain() {
+        let mut order = plain_order();
+        let plain = order_hash(&order, 137).unwrap();
+        order.neg_risk = true;
+
+        assert_ne!(order_hash(&order, 137).unwrap(), plain);
+        assert!(order_hash(&order, 1).is_err());
     }
 }

@@ -543,7 +543,7 @@ impl Clob {
     /// The per-call funder if given; else the target's maker when the order's
     /// signature type is the target's; else the Gamma proxy lookup for proxy types;
     /// else the EOA.
-    async fn resolve_maker_address(
+    pub(crate) async fn resolve_maker_address(
         &self,
         funder: Option<Address>,
         signature_type: SignatureType,
