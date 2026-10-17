@@ -15,6 +15,7 @@ More information about this module can be found in the [crate documentation](htt
 - **Liquidity Rewards**: Query earnings, percentages, and reward markets
 - **Notifications**: List and dismiss user notifications
 - **WebSocket**: Real-time market and user channels (feature `clob-ws`). Live sports scores are in the [`sports`](../sports/README.md) module, feature `sports`.
+- **Trading**: With `clob-ws` and `data` together, `Clob` implements the venue-neutral `Trading` trait of `polyoxide-venue`: place and cancel orders, read open orders, positions and the pUSD balance, and follow acknowledgements and fills on an events stream that says when to reconcile.
 
 ## Installation
 

@@ -278,6 +278,15 @@ const _: fn(crate::prelude::UsdmWs) = drop;
     feature = "binance-usdm"
 ))]
 const _: fn(&crate::venue::DynMarketData<'static>) = |_| {};
+// `Trading` and its dyn wrapper come with the CLOB's sockets, and the CLOB
+// implements the trait with Data as well.
+#[cfg(feature = "polymarket-clob-ws")]
+const _: fn(&crate::venue::DynTrading<'static>) = |_| {};
+#[cfg(all(feature = "polymarket-clob-ws", feature = "polymarket-data"))]
+const _: fn() = || {
+    fn implements<T: crate::venue::Trading>() {}
+    implements::<crate::polymarket::clob::Clob>();
+};
 #[cfg(any(
     feature = "polymarket-clob",
     feature = "polymarket-gamma",

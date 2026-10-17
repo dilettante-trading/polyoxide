@@ -528,6 +528,7 @@ identifiers = ["Poly-RateLimit"]
 notes = [
   "only `clob` and `relay` build `alloy`, and only the HTTP modules build core, which `test_dep_allowlists.py` holds per feature; `clob` does not turn on `gamma`, and with both the CLOB client looks a proxy wallet up through Gamma",
   "`rtds` and `sports` build no `polyoxide-core`, `reqwest` or `alloy`, so a credential-free feed builds no HTTP or signing stack",
+  "`Trading` for the CLOB (`clob::venue`) is built with `clob-ws` and `data` together: its events stream runs on the supervised user socket, which is `clob-ws`'s, and its positions read the Data API",
   "perps' auth and trading pending",
 ]
 
