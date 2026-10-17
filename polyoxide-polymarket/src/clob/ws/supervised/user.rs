@@ -61,8 +61,9 @@ pub enum UserEvent {
     },
     /// A fresh connection has replayed the credentials and the filter. Exactly
     /// one per outage, unless the stream ends on an error recovery stops on
-    /// (a refused login) first; anything the socket carried during the outage
-    /// is lost, so a consumer reconciles here.
+    /// (a reconnect the server refuses, such as with 401 or 403) first;
+    /// anything the socket carried during the outage is lost, so a consumer
+    /// reconciles here.
     Reconnected,
 }
 
