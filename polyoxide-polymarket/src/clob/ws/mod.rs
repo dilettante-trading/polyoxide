@@ -118,7 +118,10 @@ mod auth;
 mod client;
 mod error;
 mod market;
+#[cfg(test)]
+mod scripted;
 mod subscription;
+mod supervised;
 mod user;
 
 pub use auth::ApiCredentials;
