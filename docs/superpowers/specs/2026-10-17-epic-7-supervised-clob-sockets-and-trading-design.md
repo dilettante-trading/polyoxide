@@ -182,6 +182,19 @@ plan disagreeing with one of them stops and asks.
   whose connection dies under it is answered `Ok` and replayed after the reconnect. A change made
   during an outage is applied to the membership and answered at once (`Offline::Recorded`), so the
   replay carries it.
+- **D17. The account is a trade's taker only when `owner` is its API key and no `maker_orders`
+  entry is its own** (the owner, 2026-10-18). The docs call a trade's `owner` "API key of the
+  taker". But their example puts one key in `owner`, `trade_owner` and a maker order's `owner`,
+  and no maker-side frame has been captured. If `owner` is really the key of the user receiving the
+  event, the bare `owner` rule would yield a phantom taker fill for every trade in which the account
+  is only a maker. Under this rule, neither reading yields one. Its one loss is a self-trade (the
+  account both taker and maker), which yields only its maker fills. `TradeMessage` gains no
+  `trader_side` field (§12), and the adapter does not decode one. Story 7 records a deferred-work
+  entry to capture a maker-side frame and settle what `owner` means.
+- **D18. The client-id ledger keeps an order's entry after any failure that may have left the
+  order on the venue** (the owner, 2026-10-18). Those failures are `Network`, `Unavailable` and
+  `Decode`, the last including a 2xx `POST /order` whose body does not decode. The entry is dropped
+  only when the venue refused the order or the order ended at once.
 
 ## 3. Story 1: the kit dials through the protocol
 
@@ -621,8 +634,8 @@ and by every events stream it opened. It is never held across an `.await`.
 - **When entries are added:** `place` inserts its order's entry before posting.
 - **When entries are dropped:**
   - `place` drops the entry when the order ends at once (`Killed`, `Filled`) or the post is
-    refused. After a `Network` or `Unavailable` failure, which may have reached the venue, the
-    entry stays until the bound evicts it;
+    refused. After a `Network`, `Unavailable` or `Decode` failure (D18), which may have reached
+    the venue, the entry stays until the bound evicts it;
   - `cancel` and `cancel_all` drop the entries of the orders they cancelled;
   - the events adapter drops the entry of an order acked `Cancelled` or `Filled`.
 - **Bound:** at most 10,000 entries; the oldest is dropped first.
@@ -672,8 +685,9 @@ Each call to `events()` opens its own socket and sees every event from its first
   - the client id from the ledger, whose entry an acked `Cancelled` or `Filled` drops.
 - **`Message(UserMessage::Trade(t))` with status `MATCHED` yields one `TradingEvent::Fill` per
   order of the account's in the trade**, the taker's first and then the makers' in their order:
-  - **Taker:** `t.owner` equals the account's API key. Its fill takes `taker_order_id`, `t.side`,
-    `t.price`, `t.size` and `t.asset_id`, with `Liquidity::Taker`.
+  - **Taker** (D17): `t.owner` equals the account's API key, and no `maker_orders` entry is the
+    account's by the maker rule below. Its fill takes `taker_order_id`, `t.side`, `t.price`,
+    `t.size` and `t.asset_id`, with `Liquidity::Taker`.
   - **Makers:** each `maker_orders` entry whose `maker_address` equals that maker address (§8.1),
     ignoring ASCII case. Its fill takes the entry's `order_id`, `price`, `matched_amount` and
     `asset_id`, with `Liquidity::Maker`. Its side is the opposite of `t.side` when its `asset_id`
@@ -710,6 +724,8 @@ address is its own. The cases:
   - `matched` read back as `Filled`;
   - an IOC partial match as `Killed { Unmatched }` with its `filled`;
   - `success: false` as a `VenueRefusal`;
+  - a 2xx post whose body does not decode is a `Decode` error, and the order's client id stays
+    held (D18);
   - a Deposit Wallet account's order (type 3): the posted body carries signature type 3, the
     wallet as maker and signer and the signature `sign_order_as` gives, and the returned id is
     `order_hash`'s.
@@ -730,6 +746,8 @@ address is its own. The cases:
 - **`events()`:**
   - the leading `Resync`;
   - a taker fill and a maker fill (one of two maker entries the account's);
+  - a trade whose `owner` is the account's key and one of whose maker entries is the account's
+    yields only that maker fill (D17);
   - a `FAILED` trade as `Resync`;
   - acks of a placement and a cancellation;
   - client ids carried on the acks and fills of an order placed with one;
@@ -815,7 +833,9 @@ script requires an entry.
     - close the entry "surface the server's close code in the supervised clob sockets"
       (`DisconnectReason::Closed`);
     - narrow "prune `ClobWsError::{ConnectionClosed, Authentication}`" to `ConnectionClosed`;
-    - add the mapping's move for 8.1 (D9) and the eight Kalshi demo-host probes.
+    - add the mapping's move for 8.1 (D9) and the eight Kalshi demo-host probes;
+    - add capturing a user-channel trade frame in which the account is only a maker, to settle
+      what a trade's `owner` means and whether D17's rule can drop its maker check.
   - In `_bmad-output/specs/spec-venue-extensibility/divergences.md`, the clob rows D4, D12, D19,
     D20 and R11 say what the supervised sockets do (R11's "clob does not reconnect" no longer
     holds).
