@@ -144,8 +144,25 @@ impl PolymarketBuilder {
 
         let gamma = gamma_builder.build()?;
 
-        // Build CLOB client
-        let mut clob_builder = ClobBuilder::new().with_account(self.account);
+        // Build Data API client
+        let mut data_builder = DataApiBuilder::default();
+
+        if let Some(url) = self.data_base_url {
+            data_builder = data_builder.base_url(url);
+        }
+        if let Some(timeout) = self.timeout_ms {
+            data_builder = data_builder.timeout_ms(timeout);
+        }
+
+        let data = data_builder.build()?;
+
+        // Build CLOB client, which reads public trades through the Data client
+        // and Gamma through the Gamma client, so its calls to either follow
+        // this builder's base URLs and timeout
+        let mut clob_builder = ClobBuilder::new()
+            .with_account(self.account)
+            .gamma(gamma.clone())
+            .data(data.clone());
 
         if let Some(url) = self.clob_base_url {
             clob_builder = clob_builder.base_url(url);
@@ -158,18 +175,6 @@ impl PolymarketBuilder {
         }
 
         let clob = clob_builder.build()?;
-
-        // Build Data API client
-        let mut data_builder = DataApiBuilder::default();
-
-        if let Some(url) = self.data_base_url {
-            data_builder = data_builder.base_url(url);
-        }
-        if let Some(timeout) = self.timeout_ms {
-            data_builder = data_builder.timeout_ms(timeout);
-        }
-
-        let data = data_builder.build()?;
 
         Ok(Polymarket { clob, gamma, data })
     }
@@ -202,6 +207,39 @@ mod tests {
             headers.insert(RETRY_AFTER, HeaderValue::from_static(seconds));
         }
         ErrorResponse::new(StatusCode::from_u16(status).unwrap(), headers, "").into()
+    }
+
+    #[tokio::test]
+    async fn clobs_gamma_calls_reach_the_unified_builders_gamma_base_url() {
+        use crate::shared::keys::{self, TokenId};
+        use polyoxide_venue::EventGroups;
+
+        // The default Gamma host is the live one, so a clob that built its own
+        // Gamma client would miss this mock and reach the network.
+        let mut gamma = mockito::Server::new_async().await;
+        let markets = gamma
+            .mock("GET", "/markets")
+            .match_query(mockito::Matcher::Any)
+            .with_status(200)
+            .with_body("[]")
+            .expect(2)
+            .create_async()
+            .await;
+        let polymarket = builder()
+            .gamma_base_url(gamma.url())
+            .build()
+            .expect("a unified client");
+
+        let key = keys::clob(&TokenId::new("123456789").expect("a token id"));
+        let err = polymarket
+            .clob
+            .event_group(&key)
+            .await
+            .expect_err("Gamma lists no market for the token");
+
+        // Open markets, then closed ones, both on the unified Gamma client.
+        markets.assert_async().await;
+        assert_eq!(err.class, Class::VenueRefusal { code: None }, "{err:?}");
     }
 
     #[test]

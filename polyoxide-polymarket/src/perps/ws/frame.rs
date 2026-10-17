@@ -169,7 +169,7 @@ pub struct TradeData {
     /// Price. Wire key `p`.
     #[serde(rename = "p", with = "rust_decimal::serde::str")]
     pub price: Decimal,
-    /// Quantity in contracts. Wire key `qty`.
+    /// Quantity in the base asset (one contract is one unit). Wire key `qty`.
     #[serde(rename = "qty", with = "rust_decimal::serde::str")]
     pub quantity: Decimal,
     /// Settlement trade. On the wire, not in the schema.
@@ -200,7 +200,7 @@ pub struct TickerData {
     /// Mid price. Wire key `mid`.
     #[serde(rename = "mid", with = "rust_decimal::serde::str")]
     pub mid_price: Decimal,
-    /// Open interest in contracts. Wire key `oi`.
+    /// Open interest in the base asset (one contract is one unit). Wire key `oi`.
     #[serde(rename = "oi", with = "rust_decimal::serde::str")]
     pub open_interest: Decimal,
     /// Funding rate. Wire key `fr`.
@@ -217,7 +217,7 @@ pub struct StatisticsData {
     /// Instrument id. Wire key `iid`.
     #[serde(rename = "iid")]
     pub instrument_id: InstrumentId,
-    /// 24-hour volume in contracts. Wire key `vol`.
+    /// 24-hour volume in the quote asset (USD): the hourly klines' quantities times their prices. Wire key `vol`.
     #[serde(rename = "vol", with = "rust_decimal::serde::str")]
     pub volume: Decimal,
     /// Price 24 hours ago. Wire key `open`.

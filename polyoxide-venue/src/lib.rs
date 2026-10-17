@@ -20,6 +20,17 @@
 //!   [`specta_as_string!`] gives open enums their `specta` shape.
 //! - With the `decimal` feature, `positional` reads and writes rows sent as
 //!   bare arrays of decimal strings.
+//! - With the `keys` feature, `MarketKey` names one instrument as
+//!   `venue.product:id`. Only a product's `KeySpace` makes one, so two keys
+//!   are equal exactly when they name the same instrument; `RawKey` is text
+//!   split into its parts and checked by no product yet.
+//! - With the `market` feature, the traits a venue's products implement so
+//!   market data reads the same on every venue: `MarketData`, which every
+//!   product implements, and the capability traits `Instruments`, `Trades`,
+//!   `Candles`, `Funding` and `EventGroups`, each with a `Dyn` wrapper. They
+//!   return the records market data is read into (`Instrument`, `Quote`,
+//!   `Book`, `Trade`, `Candle`, `FundingRate` and `EventGroup`), each carrying
+//!   `Extensions`, a venue's own facts on a shared record, one value per type.
 //!
 //! By default the crate depends on nothing, so a credential-free socket crate
 //! can use it without building an HTTP or signing stack. The enum macros name
@@ -43,8 +54,16 @@
 struct ReadmeDoctests;
 
 mod class;
+#[cfg(feature = "market")]
+mod extensions;
+#[cfg(feature = "keys")]
+mod key;
+#[cfg(feature = "market")]
+mod market;
 #[cfg(feature = "decimal")]
 pub mod positional;
+#[cfg(feature = "market")]
+mod records;
 mod retry_after;
 mod secret;
 mod socket;
@@ -54,6 +73,20 @@ mod wire;
 mod ws_table;
 
 pub use class::{Class, ClassifiedError, Classify};
+#[cfg(feature = "market")]
+pub use extensions::{DuplicateExtension, Extensions};
+#[cfg(feature = "keys")]
+pub use key::{KeyError, KeySpace, MarketKey, ProductId, RawKey, VenueId};
+#[cfg(feature = "market")]
+pub use market::{
+    Candles, DynCandles, DynEventGroups, DynFunding, DynInstruments, DynMarketData, DynTrades,
+    EventGroups, Funding, Instruments, MarketData, Trades,
+};
+#[cfg(feature = "market")]
+pub use records::{
+    Book, Candle, CandleInterval, CandleQuery, EventGroup, EventOutcome, FundingRate, Instrument,
+    Level, NotListed, Quote, Side, SizeUnit, Trade, TradeId,
+};
 pub use retry_after::{parse_retry_after, retry_delay};
 pub use secret::Secret;
 pub use socket::{class_for_close_code, class_for_handshake_status};
@@ -67,4 +100,10 @@ pub use wire::UnknownVariant;
 const _: fn() = || {
     fn is<T: crate::Classify>() {}
     is::<UnknownVariant>();
+    #[cfg(feature = "keys")]
+    is::<KeyError>();
+    #[cfg(feature = "market")]
+    is::<DuplicateExtension>();
+    #[cfg(feature = "market")]
+    is::<NotListed>();
 };

@@ -68,6 +68,20 @@ reserve absorbs in-flight weight only while it stays under 240, so two clients t
 weighted routes should each set `max_concurrent(2)` (2 × 2 × 40 = 160). A client that sends
 only the funding routes carries no weight and can keep the default.
 
+## Through the venue-neutral traits
+
+`Usdm` implements `polyoxide-venue`'s `MarketData`, `Instruments`, `Trades`,
+`Candles` and `Funding`, keyed `binance.usdm:<SYMBOL>` (`usdm::key`), so code
+written against those traits reads USDⓈ-M as it reads any other venue. What
+only Binance publishes rides in `usdm::venue`'s `<Record>Ext` types.
+A `FundingRate` carries its `interval` from `fundingInfo`, 8 hours for a symbol the list
+does not carry, so each funding call sends that request too, on the funding bucket. That bucket
+admits 450 requests per 5 minutes, one at a time about 0.67 s apart: `funding_rate` spends one
+slot (its `premiumIndex` is weighted, not funding, so only `fundingInfo` counts), and
+`funding_history` two (`fundingRate` and `fundingInfo`). Funding calls across N symbols
+therefore take about N x 0.67 s (`funding_rate`) or N x 1.3 s (`funding_history`) per IP.
+The `usdm::venue` module's documentation has an example.
+
 ## Streaming
 
 With the `usdm-ws` feature, the market streams arrive over one connection per routed path

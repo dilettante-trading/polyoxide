@@ -13,6 +13,7 @@
 
 use polyoxide_test_support::agreement as common;
 
+use std::collections::BTreeSet;
 use std::time::Duration;
 
 use polyoxide_binance::usdm::{
@@ -23,7 +24,8 @@ use polyoxide_binance::usdm::{
     Usdm, UsdmError,
 };
 use polyoxide_core::ApiError;
-use polyoxide_test_support::{environmental, fail, transient, ResultExt};
+use polyoxide_test_support::{environmental, fail, transient, ClassifiedResultExt, ResultExt};
+use polyoxide_venue::Instruments;
 use serde::{de::DeserializeOwned, Serialize};
 
 fn client() -> Usdm {
@@ -277,5 +279,48 @@ async fn live_responses_carry_no_unmodelled_keys() {
         unmodelled.is_empty(),
         "the host sent what the types do not model; model it and record it in \
          docs/specs/binance/OBSERVED.md: {unmodelled:#?}"
+    );
+}
+
+/// The trait's `instruments()` skips a row that does not convert, with a WARN;
+/// here a skipped row fails the nightly. `instruments()` reads `exchangeInfo`
+/// by itself, so a contract listed or delisted between the test's read and
+/// its own makes the two disagree: the test reads the listing once more, and
+/// if that one is what `instruments()` returned, the listing moved.
+#[tokio::test]
+#[ignore]
+async fn live_instruments_returns_one_instrument_per_exchange_info_symbol() {
+    let usdm = client();
+    let listed = usdm
+        .exchange()
+        .exchange_info()
+        .send()
+        .await
+        .or_fail("exchangeInfo");
+    let instruments = ClassifiedResultExt::or_fail(usdm.instruments().await, "instruments");
+
+    let have: BTreeSet<&str> = instruments.iter().map(|i| i.name.as_str()).collect();
+    let first: BTreeSet<&str> = listed.symbols.iter().map(|r| r.symbol.as_str()).collect();
+    if have == first {
+        return;
+    }
+    let again = usdm
+        .exchange()
+        .exchange_info()
+        .send()
+        .await
+        .or_fail("exchangeInfo, again");
+    let second: BTreeSet<&str> = again.symbols.iter().map(|r| r.symbol.as_str()).collect();
+    if have == second {
+        environmental(
+            "exchangeInfo changed while the test ran: instruments() read the second listing",
+        );
+    }
+    let missing: Vec<&&str> = second.difference(&have).collect();
+    let unlisted: Vec<&&str> = have.difference(&second).collect();
+    assert!(
+        missing.is_empty() && unlisted.is_empty(),
+        "instruments() skipped these exchangeInfo symbols: {missing:?}; \
+         it returned these that exchangeInfo does not list: {unlisted:?}"
     );
 }

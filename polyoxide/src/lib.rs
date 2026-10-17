@@ -5,7 +5,11 @@
 //!
 //! - `polyoxide::venue` is `polyoxide-venue`, the vocabulary every venue
 //!   shares, such as the error classes and the `Classify` trait. It is always
-//!   on.
+//!   on. With any module that implements them (`polymarket-clob`,
+//!   `polymarket-perps`, `binance-usdm`) it also holds the market-data traits,
+//!   `MarketData` and its capabilities, which read every venue the same way:
+//!   `examples/venue_neutral.rs` reads the best bid and ask of the CLOB, perps
+//!   and USDⓈ-M with one function.
 //! - `polyoxide::polymarket` is `polyoxide-polymarket`, under `polymarket`
 //!   (its defaults: `clob`, `gamma` and `data`), on by default, or one
 //!   `polymarket-<module>` feature per module: `polymarket-clob`,
@@ -15,6 +19,8 @@
 //!   `data` all on it holds the unified client, `polymarket::Polymarket`.
 //! - `polyoxide::binance` is `polyoxide-binance`, under `binance` (its
 //!   defaults: `usdm`), `binance-usdm` or `binance-usdm-ws`.
+//! - `polyoxide::parse_key` reads a market key, `venue.product:id`, through
+//!   the constructors of whichever enabled product it names.
 //! - `polyoxide::prelude` re-exports a selection of the enabled modules'
 //!   clients, errors and stream types.
 //!
@@ -118,6 +124,56 @@ pub use polyoxide_polymarket as polymarket;
 ))]
 pub use polyoxide_binance as binance;
 
+/// The key `raw` names, made by the constructors of its product, among the
+/// venues and modules this build enables: Polymarket's `clob` (with
+/// `polymarket-clob`, `-gamma` or `-data`) and `perps` (`polymarket-perps`),
+/// and Binance's `usdm` (`binance-usdm`).
+///
+/// Each product canonicalizes the id, so text read from configuration or a
+/// command line gives the key the product's own constructors give.
+///
+/// ```
+/// # #[cfg(feature = "binance-usdm")]
+/// # fn main() -> Result<(), polyoxide::venue::KeyError> {
+/// use polyoxide::venue::RawKey;
+///
+/// let btc = polyoxide::parse_key(&RawKey::parse("binance.usdm:btcusdt")?)?;
+/// assert_eq!(btc.to_string(), "binance.usdm:BTCUSDT");
+/// # Ok(())
+/// # }
+/// # #[cfg(not(feature = "binance-usdm"))]
+/// # fn main() {}
+/// ```
+///
+/// # Errors
+///
+/// [`KeyError::UnknownProduct`](venue::KeyError::UnknownProduct) when no
+/// enabled product has the key's venue and product, and the product's own
+/// error when it does not read the id.
+#[cfg(any(
+    feature = "polymarket-clob",
+    feature = "polymarket-gamma",
+    feature = "polymarket-data",
+    feature = "polymarket-perps",
+    feature = "binance-usdm"
+))]
+pub fn parse_key(raw: &venue::RawKey) -> Result<venue::MarketKey, venue::KeyError> {
+    #[cfg(any(
+        feature = "polymarket-clob",
+        feature = "polymarket-gamma",
+        feature = "polymarket-data",
+        feature = "polymarket-perps"
+    ))]
+    if raw.venue() == &polymarket::shared::keys::VENUE {
+        return polymarket::shared::keys::parse(raw);
+    }
+    #[cfg(feature = "binance-usdm")]
+    if raw.venue() == &binance::usdm::key::VENUE && raw.product() == &binance::usdm::key::PRODUCT {
+        return binance::usdm::key::parse(raw);
+    }
+    Err(venue::KeyError::unknown(raw))
+}
+
 /// Prelude module for convenient imports
 pub mod prelude {
     #[cfg(feature = "polymarket-clob-ws")]
@@ -213,6 +269,24 @@ const _: fn(crate::prelude::SportsWs) = drop;
 const _: fn(crate::prelude::Usdm) = drop;
 #[cfg(feature = "binance-usdm-ws")]
 const _: fn(crate::prelude::UsdmWs) = drop;
+
+// The market-data traits are on `polyoxide::venue` with every module that
+// implements them, and `parse_key` with every module that names keys.
+#[cfg(any(
+    feature = "polymarket-clob",
+    feature = "polymarket-perps",
+    feature = "binance-usdm"
+))]
+const _: fn(&crate::venue::DynMarketData<'static>) = |_| {};
+#[cfg(any(
+    feature = "polymarket-clob",
+    feature = "polymarket-gamma",
+    feature = "polymarket-data",
+    feature = "polymarket-perps",
+    feature = "binance-usdm"
+))]
+const _: fn(&crate::venue::RawKey) -> Result<crate::venue::MarketKey, crate::venue::KeyError> =
+    crate::parse_key;
 
 // The default, `polymarket`, builds the unified client, so it must keep
 // turning on clob, gamma and data.

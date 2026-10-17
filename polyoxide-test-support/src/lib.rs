@@ -17,6 +17,9 @@
 //!   [`tag_for`] gives the error's class and fault flag, then panics as
 //!   `expect` does. [`fail`] does the same for an error already in hand, such
 //!   as one in a match arm or a source chain.
+//! - [`ClassifiedResultExt::or_fail`] and [`fail_classified`] do the same for
+//!   the [`ClassifiedError`](polyoxide_venue::ClassifiedError) a venue trait
+//!   returns, which does not implement `Classify`.
 //! - [`environmental`] and [`transient`] fail a test for a reason no error value
 //!   carries: the world has nothing to test today, or a stream ended without
 //!   saying why.
@@ -81,6 +84,9 @@
 //! - `query` (feature `query`) reads the query keys a builder sends off a mock
 //!   server, for comparison with the documented parameters.
 //! - [`minute`] keeps a test or a probe clear of a UTC minute boundary.
+//! - [`registration!`] and [`Registration`] read the ids a crate declares in
+//!   its `[package.metadata.polyoxide]`, for the test that holds the crate's
+//!   id constants to them.
 //! - `soak` (feature `soak`) is the rate-limit harnesses' pacer, arguments,
 //!   throttle observer and verdict rulebooks.
 //!
@@ -96,10 +102,14 @@ pub mod minute;
 pub mod openapi;
 #[cfg(feature = "query")]
 pub mod query;
+mod registration;
 #[cfg(feature = "soak")]
 pub mod soak;
 mod tag;
 
 pub use creds::{keychain, load_env, optional_env, Creds, Missing};
 pub use fixtures::Fixtures;
-pub use tag::{environmental, fail, tag_for, transient, ResultExt, Tag};
+pub use registration::Registration;
+pub use tag::{
+    environmental, fail, fail_classified, tag_for, transient, ClassifiedResultExt, ResultExt, Tag,
+};

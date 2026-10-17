@@ -175,6 +175,18 @@ jobs:
           suite: sports
           flags: "--no-default-features --features sports --test live_sports"
 
+  live-polyoxide-venue:
+    name: Live tests (polyoxide, venue)
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v5
+      - uses: ./.github/actions/live-suite
+        with:
+          crate: polyoxide
+          suite: venue
+          flags: "--no-default-features --features binance-usdm,polymarket-clob,polymarket-perps --test live_venue"
+
   live-polyoxide-cli-live:
     name: Live tests (polyoxide-cli, live)
     runs-on: ubuntu-latest
@@ -201,6 +213,7 @@ jobs:
       - live-polyoxide-polymarket-perps
       - live-polyoxide-polymarket-rtds
       - live-polyoxide-polymarket-sports
+      - live-polyoxide-venue
       - live-polyoxide-cli-live
     # generated:end nightly-aggregate-needs
     if: always()

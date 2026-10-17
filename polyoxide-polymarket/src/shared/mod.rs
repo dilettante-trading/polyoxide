@@ -12,6 +12,8 @@
 //!   [`SIGNER_ORDER`] and [`SIGNER_CANCEL`].
 //! - The HMAC [`Signer`] ([`auth`]) and the session-signer types
 //!   ([`session_signer`]), which clob and relay share (`clob` or `relay`).
+//! - [`keys`], the constructors of Polymarket's market keys: the clob's
+//!   (`clob`, `gamma` or `data`) and perps' (`perps`).
 //!
 //! Each item is built by the features of the modules that use it.
 
@@ -22,6 +24,13 @@ mod throttle;
 
 #[cfg(any(feature = "clob", feature = "relay"))]
 pub mod auth;
+#[cfg(any(
+    feature = "clob",
+    feature = "gamma",
+    feature = "data",
+    feature = "perps"
+))]
+pub mod keys;
 #[cfg(any(feature = "clob", feature = "relay"))]
 pub mod session_signer;
 #[cfg(feature = "clob")]

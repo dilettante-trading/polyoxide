@@ -12,23 +12,25 @@ categories = ["api-bindings", "web-programming::http-client"]
 
 # Features named `<venue>` and `<venue>-<module>` (Story 5.7). `<venue>` is
 # that venue crate's defaults; each `<venue>-<module>` passes its feature
-# through, and a `-ws` one turns its module's on as well. `keychain` is an
-# extra across venues: each venue that stores credentials adds its own
-# `?/keychain`.
+# through, and a `-ws` one turns its module's on as well. A module that
+# implements the market-data traits turns on `polyoxide-venue/market`, and one
+# that only names keys `polyoxide-venue/keys`, so `polyoxide::venue` carries
+# what its modules use (Story 6.6). `keychain` is an extra across venues: each
+# venue that stores credentials adds its own `?/keychain`.
 [features]
 default = ["polymarket"]
 polymarket = ["polymarket-clob", "polymarket-gamma", "polymarket-data"]
-polymarket-clob = ["dep:polyoxide-polymarket", "polyoxide-polymarket/clob"]
+polymarket-clob = ["dep:polyoxide-polymarket", "polyoxide-polymarket/clob", "polyoxide-venue/market"]
 polymarket-clob-ws = ["polymarket-clob", "polyoxide-polymarket/clob-ws"]
-polymarket-gamma = ["dep:polyoxide-polymarket", "polyoxide-polymarket/gamma"]
-polymarket-data = ["dep:polyoxide-polymarket", "polyoxide-polymarket/data"]
+polymarket-gamma = ["dep:polyoxide-polymarket", "polyoxide-polymarket/gamma", "polyoxide-venue/keys"]
+polymarket-data = ["dep:polyoxide-polymarket", "polyoxide-polymarket/data", "polyoxide-venue/keys"]
 polymarket-relay = ["dep:polyoxide-polymarket", "polyoxide-polymarket/relay"]
-polymarket-perps = ["dep:polyoxide-polymarket", "polyoxide-polymarket/perps"]
+polymarket-perps = ["dep:polyoxide-polymarket", "polyoxide-polymarket/perps", "polyoxide-venue/market"]
 polymarket-perps-ws = ["polymarket-perps", "polyoxide-polymarket/perps-ws"]
 polymarket-rtds = ["dep:polyoxide-polymarket", "polyoxide-polymarket/rtds"]
 polymarket-sports = ["dep:polyoxide-polymarket", "polyoxide-polymarket/sports"]
 binance = ["binance-usdm"]
-binance-usdm = ["dep:polyoxide-binance", "polyoxide-binance/usdm"]
+binance-usdm = ["dep:polyoxide-binance", "polyoxide-binance/usdm", "polyoxide-venue/market"]
 binance-usdm-ws = ["binance-usdm", "polyoxide-binance/usdm-ws"]
 full = [
     "polymarket",
@@ -59,6 +61,32 @@ polyoxide-binance = { workspace = true, optional = true }
 tokio = { workspace = true, features = ["macros", "rt-multi-thread"] }
 # Needed only so the WebSocket README doctests can bring `StreamExt` into scope.
 futures-util = "0.3"
+# `tests/venue_neutral.rs`: mock servers, prices, and a retry schedule of none.
+mockito = { workspace = true }
+rust_decimal = { workspace = true }
+# Path-only, so cargo strips them on publish: the retry schedule's type, and the
+# live suite's failure tags.
+polyoxide-core = { path = "../polyoxide-core" }
+polyoxide-test-support = { path = "../polyoxide-test-support" }
+
+# The example's generic code and its two suites use one module of each kind:
+# the CLOB, perps and USDⓈ-M.
+[[example]]
+name = "venue_neutral"
+required-features = ["polymarket-clob", "polymarket-perps", "binance-usdm"]
+
+[[test]]
+name = "live_venue"
+required-features = ["polymarket-clob", "polymarket-perps", "binance-usdm"]
+
+# `parse_key` across both venues' products.
+[[test]]
+name = "parse_key"
+required-features = ["polymarket-clob", "polymarket-perps", "binance-usdm"]
+
+[[test]]
+name = "venue_neutral"
+required-features = ["polymarket-clob", "polymarket-perps", "binance-usdm"]
 
 # docs.rs documents every module of every venue.
 [package.metadata.docs.rs]
@@ -69,4 +97,10 @@ features = ["full"]
 # target, which becomes a nightly job. Run `python3 scripts/gen_registry.py
 # --write` after an edit.
 [package.metadata.polyoxide]
-readme = "The multi-venue umbrella: `polyoxide::polymarket` and `polyoxide::binance` behind features named for each venue and module, `polyoxide::venue` and a `prelude`"
+readme = "The multi-venue umbrella: `polyoxide::polymarket` and `polyoxide::binance` behind features named for each venue and module, `polyoxide::venue` with the market-data traits, `polyoxide::parse_key` and a `prelude`"
+
+[package.metadata.polyoxide.live.live_venue]
+suite = "venue"
+timeout = 15
+features = ["polymarket-clob", "polymarket-perps", "binance-usdm"]
+secrets = []

@@ -288,7 +288,7 @@ pub struct Ticker {
     /// Mid price.
     #[serde(with = "rust_decimal::serde::str")]
     pub mid_price: Decimal,
-    /// Open interest in contracts.
+    /// Open interest in the base asset (one contract is one unit).
     #[serde(with = "rust_decimal::serde::str")]
     pub open_interest: Decimal,
     /// Current funding rate.
@@ -308,7 +308,7 @@ pub struct Statistic {
     pub instrument_id: InstrumentId,
     /// Symbol.
     pub symbol: String,
-    /// 24-hour volume in contracts.
+    /// 24-hour volume in the quote asset (USD): the hourly klines' quantities times their prices.
     #[serde(with = "rust_decimal::serde::str")]
     pub volume: Decimal,
     /// Price 24 hours ago.
@@ -456,7 +456,7 @@ pub struct Trade {
     /// Price.
     #[serde(with = "rust_decimal::serde::str")]
     pub price: Decimal,
-    /// Quantity in contracts.
+    /// Quantity in the base asset (one contract is one unit).
     #[serde(with = "rust_decimal::serde::str")]
     pub quantity: Decimal,
     /// Whether this was a settlement trade. Undocumented.

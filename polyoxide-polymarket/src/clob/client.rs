@@ -23,6 +23,8 @@ use crate::clob::{
         generate_salt,
     },
 };
+#[cfg(feature = "data")]
+use crate::data::DataApi;
 #[cfg(feature = "gamma")]
 use crate::gamma::Gamma;
 use alloy::primitives::{hex, Address, Signature, B256};
@@ -61,6 +63,10 @@ pub struct Clob {
     pub(crate) signer_limiter: SignerLimiter,
     #[cfg(feature = "gamma")]
     pub(crate) gamma: Gamma,
+    /// The Data client the `Trades` implementation reads public trades
+    /// through, since the CLOB serves none.
+    #[cfg(feature = "data")]
+    pub(crate) data: DataApi,
 }
 
 impl Clob {
@@ -815,6 +821,8 @@ pub struct ClobBuilder {
     account: Option<Account>,
     #[cfg(feature = "gamma")]
     gamma: Option<Gamma>,
+    #[cfg(feature = "data")]
+    data: Option<DataApi>,
 }
 
 impl ClobBuilder {
@@ -828,6 +836,8 @@ impl ClobBuilder {
             account: None,
             #[cfg(feature = "gamma")]
             gamma: None,
+            #[cfg(feature = "data")]
+            data: None,
         }
     }
 
@@ -894,6 +904,15 @@ impl ClobBuilder {
         self
     }
 
+    /// Set the Data client the `Trades` implementation reads public trades
+    /// through. Without one, `build` makes one with this builder's timeout
+    /// and pool size.
+    #[cfg(feature = "data")]
+    pub fn data(mut self, data: DataApi) -> Self {
+        self.data = Some(data);
+        self
+    }
+
     /// Build the CLOB client
     pub fn build(self) -> Result<Clob, ClobError> {
         // The IP table and the per-signer buckets over one hold, so a 429
@@ -926,6 +945,17 @@ impl ClobBuilder {
                 .map_err(ClobError::Gamma)?
         };
 
+        #[cfg(feature = "data")]
+        let data = if let Some(data) = self.data {
+            data
+        } else {
+            crate::data::DataApi::builder()
+                .timeout_ms(self.config.timeout_ms)
+                .pool_size(self.config.pool_size)
+                .build()
+                .map_err(ClobError::Data)?
+        };
+
         Ok(Clob {
             http_client,
             chain_id: self.chain.chain_id(),
@@ -935,6 +965,8 @@ impl ClobBuilder {
             signer_limiter,
             #[cfg(feature = "gamma")]
             gamma,
+            #[cfg(feature = "data")]
+            data,
         })
     }
 }

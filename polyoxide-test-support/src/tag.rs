@@ -20,7 +20,7 @@ use std::fmt;
 use std::panic;
 use std::sync::Once;
 
-use polyoxide_venue::{Class, Classify};
+use polyoxide_venue::{Class, ClassifiedError, Classify};
 
 /// The prefix of the tag line, which is this followed by the tag and nothing
 /// else.
@@ -120,6 +120,42 @@ impl<T, E: Classify> ResultExt<T> for Result<T, E> {
 pub fn fail<E: Classify + fmt::Debug + ?Sized>(ctx: &str, err: &E) -> ! {
     raise(
         tag_for(&err.class(), err.is_fault()),
+        format_args!("{ctx}: {err:?}"),
+    )
+}
+
+/// Unwraps a venue trait's `Result` in a live test, tagging the failure by its
+/// error's class.
+///
+/// A venue trait returns [`ClassifiedError`], which does not implement
+/// [`Classify`] (its own docs say why), so [`ResultExt`] cannot reach it. This
+/// trait's `or_fail` does for it what `ResultExt::or_fail` does for a module's
+/// error, and both may be in scope at once: each covers only its own `Result`.
+pub trait ClassifiedResultExt<T> {
+    /// The `Ok` value. On an `Err`, fails the test as [`fail_classified`]
+    /// does. The panic is reported at the caller's line.
+    fn or_fail(self, ctx: &str) -> T;
+}
+
+impl<T> ClassifiedResultExt<T> for Result<T, ClassifiedError> {
+    #[track_caller]
+    fn or_fail(self, ctx: &str) -> T {
+        match self {
+            Ok(value) => value,
+            Err(err) => fail_classified(ctx, &err),
+        }
+    }
+}
+
+/// Fails the test with a [`ClassifiedError`] a test holds. Prints
+/// `polyoxide-class=<tag>` to stderr, with the tag [`tag_for`] gives the
+/// error's class and fault flag as the error recorded them, then panics with
+/// `"{ctx}: {err:?}"`, as [`fail`] does. The panic is reported at the caller's
+/// line.
+#[track_caller]
+pub fn fail_classified(ctx: &str, err: &ClassifiedError) -> ! {
+    raise(
+        tag_for(&err.class, err.is_fault()),
         format_args!("{ctx}: {err:?}"),
     )
 }

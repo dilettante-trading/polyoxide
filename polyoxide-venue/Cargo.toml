@@ -15,12 +15,22 @@ categories = ["api-bindings"]
 # feature where a crate that depends on this one may not want it, so the
 # socket-only crates build nothing they do not use.
 [dependencies]
+# The `Dyn` wrappers of the market-data traits (`market`), as core's hooks
+# have theirs.
+dynosaur = { workspace = true, optional = true }
 rust_decimal = { workspace = true, optional = true }
 serde = { workspace = true, optional = true }
 
 [features]
 # `positional`: the decimal-string helpers for rows sent as bare arrays.
 decimal = ["dep:rust_decimal", "dep:serde"]
+# `MarketKey`, `RawKey`, `KeySpace` and `KeyError`: one canonical name per
+# instrument, which serializes as its text form.
+keys = ["dep:serde"]
+# The market-data traits (`MarketData` and the capability traits, each with
+# its `Dyn` wrapper), the records they return, and `Extensions`, the venue's
+# own facts on a record.
+market = ["keys", "decimal", "dep:dynosaur"]
 
 # The enum macros' own tests: the expansion names `::serde`, which a calling
 # crate provides.
@@ -32,14 +42,15 @@ serde_json = { workspace = true }
 # it on publish and the normal build stays free of any socket dependency.
 polyoxide-ws = { path = "../polyoxide-ws" }
 
-# docs.rs documents `positional`, which only the `decimal` feature builds.
+# docs.rs documents `positional`, the keys and the records, which only their
+# features build.
 [package.metadata.docs.rs]
-features = ["decimal"]
+features = ["decimal", "keys", "market"]
 
 # Registration, read by scripts/gen_registry.py: the README line, venue and
 # product ids, the docs/specs/ mirrors covered, and one entry per live test
 # target, which becomes a nightly job. Run `python3 scripts/gen_registry.py
 # --write` after an edit.
 [package.metadata.polyoxide]
-readme = "Shared vocabulary: error classes, the status and close-code maps, the socket classification table (`impl_ws_classification!`), the `Retry-After` parser, the wire-enum macros and `UnknownVariant`, positional decimal serde (feature `decimal`) and `UnixMillis`"
+readme = "Shared vocabulary: error classes, the status and close-code maps, the socket classification table (`impl_ws_classification!`), the `Retry-After` parser, the wire-enum macros and `UnknownVariant`, positional decimal serde (feature `decimal`), `UnixMillis`, market keys (feature `keys`: `MarketKey`, `RawKey` and the `KeySpace` a venue implements per product), and the market-data traits with the records they return and their typed `Extensions` (feature `market`)"
 notes = ["every public error type in the workspace implements its `Classify` trait but `polyoxide-ws`'s `WsError`, which `impl_ws_classification!` classifies in each venue crate that wraps it; by default it depends on nothing, and it has no HTTP, socket or signing dependency"]

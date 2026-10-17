@@ -23,6 +23,12 @@ pub enum ClobError {
     #[error("Gamma error: {0}")]
     Gamma(crate::gamma::GammaError),
 
+    /// The Data client clob reads public trades through could not be built.
+    /// Its class is the Data error's.
+    #[cfg(feature = "data")]
+    #[error("Data error: {0}")]
+    Data(crate::data::DataError),
+
     /// Cryptographic operation failed
     #[error("Crypto error: {0}")]
     Crypto(String),
@@ -186,7 +192,7 @@ impl From<alloy::hex::FromHexError> for ClobError {
 
 /// The FAK and FOK kills are a [`VenueRefusal`](polyoxide_venue::Class::VenueRefusal)
 /// that is not a fault: the venue killed the order as its time-in-force
-/// says. `Api`, `Gamma` and `BurstCapacityExceeded` delegate, local signing
+/// says. `Api`, `Gamma`, `Data` and `BurstCapacityExceeded` delegate, local signing
 /// failures are an `InvalidRequest`, and a tick size that did not parse is a
 /// `Decode`.
 impl polyoxide_venue::Classify for ClobError {
@@ -196,6 +202,8 @@ impl polyoxide_venue::Classify for ClobError {
             Self::Api(err) => err.class(),
             #[cfg(feature = "gamma")]
             Self::Gamma(err) => err.class(),
+            #[cfg(feature = "data")]
+            Self::Data(err) => err.class(),
             Self::Crypto(_) | Self::Alloy(_) => Class::InvalidRequest,
             Self::InvalidTickSize(_) => Class::Decode,
             Self::FakUnmatched { .. } | Self::FokUnfilled { .. } => {
@@ -210,6 +218,8 @@ impl polyoxide_venue::Classify for ClobError {
             Self::Api(err) => err.is_fault(),
             #[cfg(feature = "gamma")]
             Self::Gamma(err) => err.is_fault(),
+            #[cfg(feature = "data")]
+            Self::Data(err) => err.is_fault(),
             Self::FakUnmatched { .. } | Self::FokUnfilled { .. } => false,
             Self::BurstCapacityExceeded(err) => err.is_fault(),
             Self::Crypto(_) | Self::Alloy(_) | Self::InvalidTickSize(_) => true,
@@ -222,6 +232,8 @@ impl polyoxide_venue::Classify for ClobError {
             Self::Api(err) => Classify::retry_after(err),
             #[cfg(feature = "gamma")]
             Self::Gamma(err) => Classify::retry_after(err),
+            #[cfg(feature = "data")]
+            Self::Data(err) => Classify::retry_after(err),
             Self::BurstCapacityExceeded(err) => Classify::retry_after(err),
             Self::Crypto(_)
             | Self::Alloy(_)

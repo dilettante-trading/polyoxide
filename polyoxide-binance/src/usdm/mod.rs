@@ -23,9 +23,11 @@
 
 pub mod api;
 pub mod error;
+pub mod key;
 mod policy;
 pub mod request;
 pub mod types;
+pub mod venue;
 pub mod weight;
 #[cfg(feature = "usdm-ws")]
 pub mod ws;
@@ -33,6 +35,7 @@ pub mod ws;
 use polyoxide_core::{ClientConfig, HttpClient};
 
 pub use error::UsdmError;
+pub use key::key;
 pub use weight::WeightBudget;
 
 use crate::usdm::{
