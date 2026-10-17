@@ -22,11 +22,11 @@ use polyoxide_polymarket::shared::keys::{self, TokenId};
 #[cfg(feature = "keychain")]
 use polyoxide_test_support::keychain;
 use polyoxide_test_support::{
-    environmental, fail, load_env, transient, ClassifiedResultExt, ResultExt,
+    environmental, fail, fail_classified, load_env, transient, ClassifiedResultExt, ResultExt,
 };
 use polyoxide_venue::{
-    DynTrading, Order, OrderId, OrderRequest, OrderStatus, Side, Trading, TradingEvent,
-    TradingEvents,
+    Class, DynTrading, MarketKey, Order, OrderId, OrderRequest, OrderStatus, Side, Trading,
+    TradingEvent, TradingEvents,
 };
 use rust_decimal::Decimal;
 
@@ -223,6 +223,46 @@ async fn next_ack(
     }
 }
 
+/// Best-effort removal of the test's bid from the venue, for a path on which
+/// the test fails with the bid possibly still resting: a `place` that failed
+/// with a class under which the order may have been accepted (D18), and a
+/// `cancel` that errored.
+///
+/// It reads the token's open orders and cancels each one that is a buy at the
+/// test's price and size, or, when `known` names the order, only that id. When
+/// it cannot read the open orders and the id is known, it cancels the id
+/// directly. Its own errors are printed and otherwise ignored, so the caller
+/// goes on to fail with the original error.
+async fn cancel_what_may_rest(
+    trading: &Arc<DynTrading<'static>>,
+    key: &MarketKey,
+    known: Option<&OrderId>,
+) {
+    let ids: Vec<OrderId> = match trading.open_orders(Some(key)).await {
+        Ok(open) => open
+            .into_iter()
+            .filter(|order| match known {
+                Some(id) => order.id == *id,
+                None => {
+                    matches!(order.side, Side::Buy)
+                        && order.price == resting_price()
+                        && order.size == bid_size()
+                }
+            })
+            .map(|order| order.id)
+            .collect(),
+        Err(read_error) => {
+            eprintln!("cleanup could not read the open orders: {read_error:?}");
+            known.cloned().into_iter().collect()
+        }
+    };
+    for id in ids {
+        if let Err(cancel_error) = trading.cancel(&id).await {
+            eprintln!("cleanup could not cancel order {id}: {cancel_error:?}");
+        }
+    }
+}
+
 /// The account's open orders, positions and collateral balance read through
 /// the trait object. The collateral is pUSD, and a balance is never negative.
 #[tokio::test]
@@ -277,10 +317,20 @@ async fn live_trading_places_acks_and_cancels_a_resting_post_only_bid() {
     // The venue refuses a post-only order that would take, so a mispriced bid
     // fails loudly instead of spending money.
     request.post_only = true;
-    let order = trading
-        .place(request)
-        .await
-        .or_fail("place the resting bid");
+    let order = match trading.place(request).await {
+        Ok(order) => order,
+        Err(placement_error) => {
+            // A network, availability or decode failure may leave the order
+            // on the venue (D18), so look for it before failing.
+            if matches!(
+                placement_error.class,
+                Class::Network | Class::Unavailable { .. } | Class::Decode
+            ) {
+                cancel_what_may_rest(&trading, &key, None).await;
+            }
+            fail_classified("place the resting bid", &placement_error)
+        }
+    };
 
     // From here the bid rests on the venue. Whatever fails below, it is
     // cancelled, and the original failure is raised afterwards.
@@ -317,6 +367,11 @@ async fn live_trading_places_acks_and_cancels_a_resting_post_only_bid() {
     .await;
 
     let cancelled = trading.cancel(&order.id).await;
+    if cancelled.is_err() {
+        // The order may still rest: look it up and cancel it again before
+        // failing with whatever failed first.
+        cancel_what_may_rest(&trading, &key, Some(&order.id)).await;
+    }
     if let Err(failure) = rested {
         if let Err(cancel_error) = &cancelled {
             eprintln!(
