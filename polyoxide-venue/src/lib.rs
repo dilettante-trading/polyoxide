@@ -31,6 +31,14 @@
 //!   return the records market data is read into (`Instrument`, `Quote`,
 //!   `Book`, `Trade`, `Candle`, `FundingRate` and `EventGroup`), each carrying
 //!   `Extensions`, a venue's own facts on a shared record, one value per type.
+//! - With the `trading` feature, `Trading` places and cancels orders, reads
+//!   open orders, positions and balances, and streams a venue's
+//!   acknowledgements and fills as `TradingEvents`, which begins with a
+//!   `Resync` and carries another after every reconnect. It works in
+//!   `OrderRequest`, `Order`, `Fill`, `Position` and `Balance`, with the opaque
+//!   `OrderId`, `FillId` and `ClientOrderId`, each record carrying
+//!   `Extensions`; `Extensions::ensure_declared` is how a venue refuses an
+//!   option it does not declare.
 //!
 //! By default the crate depends on nothing, so a credential-free socket crate
 //! can use it without building an HTTP or signing stack. The enum macros name
@@ -71,6 +79,8 @@ mod secret;
 mod socket;
 mod status;
 mod time;
+#[cfg(feature = "trading")]
+mod trading;
 mod wire;
 mod ws_table;
 
@@ -96,6 +106,11 @@ pub use secret::Secret;
 pub use socket::{class_for_close_code, class_for_handshake_status};
 pub use status::class_for_status;
 pub use time::UnixMillis;
+#[cfg(feature = "trading")]
+pub use trading::{
+    Balance, DynTrading, Fill, KillReason, Liquidity, Order, OrderRequest, OrderStatus, Position,
+    TimeInForce, Trading, TradingEvent, TradingEvents,
+};
 pub use wire::UnknownVariant;
 
 // Every public error type implements `Classify`; one without it fails the
