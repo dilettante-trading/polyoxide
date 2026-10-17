@@ -1093,3 +1093,247 @@ fn the_default_retry_after_is_none() {
     )));
     assert_eq!(Plain.retry_after(&refused), None);
 }
+
+use std::{
+    ops::Range,
+    sync::{
+        atomic::{AtomicUsize, Ordering},
+        Arc,
+    },
+};
+
+/// A protocol that dials for itself, as a venue that tries each address of
+/// its host in turn does. Its `handshake` fails if anything calls it, so only
+/// a supervisor that dials through `connect` gets a connection. Its `connect`
+/// opens the scripted server, counts every dial, and fails the dials numbered
+/// in `failing` (the first is 0) with `failure`. The rest is the file's
+/// `Feed`.
+struct Dialer {
+    feed: Feed,
+    dials: Arc<AtomicUsize>,
+    failing: Range<usize>,
+    failure: fn() -> TestError,
+}
+
+fn dialer(
+    server: &ScriptedServer,
+    dials: &Arc<AtomicUsize>,
+    failing: Range<usize>,
+    failure: fn() -> TestError,
+) -> Dialer {
+    Dialer {
+        feed: feed(server),
+        dials: Arc::clone(dials),
+        failing,
+        failure,
+    }
+}
+
+impl Protocol for Dialer {
+    type Event = Ev;
+    type Error = TestError;
+    type Membership = Topics;
+    type Change = Change;
+    type Ack = usize;
+
+    fn handshake(&mut self) -> Result<Request, TestError> {
+        Err(TestError::Refused(
+            "the supervisor called handshake itself".into(),
+        ))
+    }
+
+    fn connect(
+        &mut self,
+        timeout: Duration,
+    ) -> impl Future<Output = Result<crate::Socket, TestError>> + Send {
+        let dial = self.dials.fetch_add(1, Ordering::SeqCst);
+        let failure = self.failing.contains(&dial).then_some(self.failure);
+        let url = self.feed.url.clone();
+        async move {
+            if let Some(failure) = failure {
+                return Err(failure());
+            }
+            let request = url.as_str().into_client_request().map_err(WsError::from)?;
+            let socket = crate::connect(request, timeout).await?;
+            Ok::<_, TestError>(socket)
+        }
+    }
+
+    async fn replay(
+        &mut self,
+        connection: &mut Connection,
+        membership: &Topics,
+    ) -> Result<(), TestError> {
+        self.feed.replay(connection, membership).await
+    }
+
+    async fn apply(
+        &mut self,
+        connection: &mut Connection,
+        membership: &mut Topics,
+        change: Change,
+    ) -> Result<usize, TestError> {
+        self.feed.apply(connection, membership, change).await
+    }
+
+    fn decode(&mut self, frame: &Message) -> Decoded<Ev, TestError> {
+        self.feed.decode(frame)
+    }
+
+    fn is_live(&self, frame: &Message, decoded: &Decoded<Ev, TestError>) -> bool {
+        self.feed.is_live(frame, decoded)
+    }
+
+    fn delivered(&self, frame: &Message, decoded: &Decoded<Ev, TestError>) -> bool {
+        self.feed.delivered(frame, decoded)
+    }
+
+    fn ping(&mut self, connection: &mut Connection) -> Option<Message> {
+        self.feed.ping(connection)
+    }
+
+    fn is_retriable(err: &TestError) -> bool {
+        <Feed as Protocol>::is_retriable(err)
+    }
+
+    fn disconnected(&mut self, outage: Outage<TestError>) -> Option<Ev> {
+        self.feed.disconnected(outage)
+    }
+
+    fn reconnected(&mut self) -> Ev {
+        self.feed.reconnected()
+    }
+
+    fn queue(&self) -> Queue {
+        self.feed.queue()
+    }
+}
+
+#[tokio::test]
+async fn connect_dials_every_attempt_and_the_stream_reads_its_socket() {
+    // Two connections: the first closes after one event, the second serves
+    // another. `Dialer::handshake` fails if called, so every frame read here
+    // came over a socket `connect` returned, for the first attempt and for
+    // the reconnect.
+    let server = server(vec![
+        after_replay(data([1])).then_close(),
+        after_replay(data([2])),
+    ])
+    .await;
+    let dials = Arc::new(AtomicUsize::new(0));
+    let mut ws = Supervisor::new(dialer(&server, &dials, 0..0, || TestError::Stopped), fast())
+        .connect(topics(&["a"]))
+        .await
+        .expect("the first attempt dials through connect");
+    assert_eq!(dials.load(Ordering::SeqCst), 1);
+    assert_eq!(next_event(&mut ws).await, Ev::Data(1));
+    assert_eq!(next_event(&mut ws).await, Ev::Disconnected("closed"));
+    assert_eq!(next_event(&mut ws).await, Ev::Reconnected);
+    assert_eq!(next_event(&mut ws).await, Ev::Data(2));
+    assert_eq!(dials.load(Ordering::SeqCst), 2);
+    assert_eq!(server.connection_count(), 2);
+    ws.close().await.expect("close");
+}
+
+#[tokio::test]
+async fn an_error_from_connect_is_a_failed_attempt() {
+    let server = server(vec![after_replay(data([1]))]).await;
+
+    // `Supervisor::connect` returns the first attempt's failure and dials
+    // nothing more.
+    let dials = Arc::new(AtomicUsize::new(0));
+    let err = Supervisor::new(
+        dialer(&server, &dials, 0..1, || {
+            TestError::Refused("no route".into())
+        }),
+        fast(),
+    )
+    .connect(topics(&["a"]))
+    .await
+    .expect_err("connect returns the dial's failure");
+    assert!(
+        matches!(&err, TestError::Refused(why) if why == "no route"),
+        "{err:?}"
+    );
+    assert_eq!(dials.load(Ordering::SeqCst), 1);
+    assert_eq!(server.connection_count(), 0);
+
+    // `start` retries a retriable one, the second dial failing too: an
+    // outage with its marker, then the attempt that connects.
+    let dials = Arc::new(AtomicUsize::new(0));
+    let mut ws = Supervisor::new(
+        dialer(&server, &dials, 0..2, || {
+            TestError::Stalled(Duration::from_millis(1))
+        }),
+        fast(),
+    )
+    .start(topics(&["a"]))
+    .await
+    .expect("a retriable dial failure starts in an outage");
+    assert_eq!(next_event(&mut ws).await, Ev::Disconnected("error"));
+    assert_eq!(next_event(&mut ws).await, Ev::Reconnected);
+    assert_eq!(next_event(&mut ws).await, Ev::Data(1));
+    assert_eq!(dials.load(Ordering::SeqCst), 3);
+    assert_eq!(server.connection_count(), 1);
+    ws.close().await.expect("close");
+
+    // and `start` returns one recovery stops on.
+    let dials = Arc::new(AtomicUsize::new(0));
+    let err = Supervisor::new(
+        dialer(&server, &dials, 0..1, || {
+            TestError::Refused("no route".into())
+        }),
+        fast(),
+    )
+    .start(topics(&["a"]))
+    .await
+    .expect_err("a dial failure recovery stops on is returned");
+    assert!(matches!(err, TestError::Refused(_)), "{err:?}");
+    assert_eq!(dials.load(Ordering::SeqCst), 1);
+}
+
+#[tokio::test]
+async fn a_dial_failure_recovery_stops_on_ends_a_running_stream_after_it_is_yielded() {
+    // The first dial connects; the reconnect's dial fails in a way recovery
+    // stops on, so the stream yields it and ends.
+    let server = server(vec![after_replay(data([1])).then_close()]).await;
+    let dials = Arc::new(AtomicUsize::new(0));
+    let mut ws = Supervisor::new(
+        dialer(&server, &dials, 1..2, || {
+            TestError::Refused("no route".into())
+        }),
+        fast(),
+    )
+    .connect(topics(&["a"]))
+    .await
+    .expect("the first dial connects");
+    assert_eq!(next_event(&mut ws).await, Ev::Data(1));
+    assert_eq!(next_event(&mut ws).await, Ev::Disconnected("closed"));
+    let failed = next_item(&mut ws).await;
+    assert!(
+        matches!(&failed, Err(TestError::Refused(why)) if why == "no route"),
+        "{failed:?}"
+    );
+    let end = tokio::time::timeout(WINDOW, ws.next())
+        .await
+        .expect("the stream ends");
+    assert!(end.is_none(), "{end:?}");
+    assert_eq!(dials.load(Ordering::SeqCst), 2);
+}
+
+#[tokio::test]
+async fn the_default_connect_reports_a_handshake_that_cannot_be_built() {
+    // `Feed` keeps the default `connect`: the handshake's failure is the
+    // attempt's, and nothing is dialled.
+    let server = server(vec![Script::hold()]).await;
+    let unbuildable = Feed {
+        url: "not a url".into(),
+        ..feed(&server)
+    };
+    let err = Supervisor::new(unbuildable, fast())
+        .connect(topics(&["a"]))
+        .await
+        .expect_err("the request cannot be built");
+    assert!(matches!(err, TestError::Ws(_)), "{err:?}");
+    assert_eq!(server.connection_count(), 0);
+}

@@ -14,7 +14,7 @@ use tokio::{
 };
 
 use super::{Decoded, Offline, Outage, Protocol, Queue, Recovery};
-use crate::{connect, Backoff, Connection, Kind, Mode, Timing, WsError};
+use crate::{Backoff, Connection, Kind, Mode, Timing, WsError};
 
 /// How long a polite close may take before the connection is dropped: a peer
 /// that has stopped reading would otherwise hold it.
@@ -185,8 +185,7 @@ pub(super) async fn attempt<P: Protocol>(
     timing: &Timing,
     membership: &mut P::Membership,
 ) -> Result<Connection, P::Error> {
-    let request = protocol.handshake()?;
-    let socket = connect(request, timing.connect_timeout).await?;
+    let socket = protocol.connect(timing.connect_timeout).await?;
     let mut connection = protocol.configure(Connection::new(socket, Mode::All));
     protocol.reset();
     match tokio::time::timeout(

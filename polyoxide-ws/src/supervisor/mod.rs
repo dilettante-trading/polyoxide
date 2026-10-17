@@ -16,7 +16,7 @@ use tokio::sync::{mpsc, oneshot};
 
 use crate::{
     tungstenite::{self, handshake::client::Request, Message},
-    Connection, Timing, WsError,
+    Connection, Socket, Timing, WsError,
 };
 use task::{Command, Receiver, Start, Task};
 
@@ -144,6 +144,28 @@ pub trait Protocol: Send + Sized + 'static {
     /// The handshake request for one connection attempt, built afresh for
     /// each, so any authentication in it is recomputed.
     fn handshake(&mut self) -> Result<Request, Self::Error>;
+
+    /// Open the connection for one attempt, within `timeout`.
+    ///
+    /// The [`Supervisor`] calls it for every attempt, the first and each
+    /// reconnect, with [`Timing::connect_timeout`]. By default it builds
+    /// [`handshake`](Self::handshake)'s request first, so a failure there is
+    /// the attempt's, and dials it with the kit's [`connect`](crate::connect).
+    /// A protocol that dials its venue a step at a time, such as a venue that
+    /// tries each resolved address in turn, overrides it: it bounds each step
+    /// by `timeout` itself, upgrades with [`connect_over`](crate::connect_over),
+    /// and keeps `handshake` for the request it upgrades with. An error is a
+    /// failed attempt, which [`recover`](Self::recover) decides on.
+    fn connect(
+        &mut self,
+        timeout: Duration,
+    ) -> impl Future<Output = Result<Socket, Self::Error>> + Send {
+        let request = self.handshake();
+        async move {
+            let socket = crate::connect(request?, timeout).await?;
+            Ok::<_, Self::Error>(socket)
+        }
+    }
 
     /// Shape each fresh connection before anything is sent on it, such as
     /// with [`Connection::min_request_interval`] for a venue that paces its
