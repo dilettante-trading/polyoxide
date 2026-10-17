@@ -149,6 +149,11 @@ jobs:
       # instead of looked up; only a build without `gamma` compiles that arm.
       - name: clob without gamma
         run: cargo test -p polyoxide-polymarket --no-default-features --features clob --test mock_clob -- a_proxy_order_with_no_funder_is_refused_without_gamma --exact
+      # The same holds for the trading tests: three of `trading_clob`'s refuse a
+      # proxy client's order, positions and stream when `gamma` is off, and they
+      # are compiled only without it.
+      - name: clob trading without gamma
+        run: cargo test -p polyoxide-polymarket --no-default-features --features clob-ws,data --test trading_clob
       - name: Each module with specta
         run: |
           cargo check -p polyoxide-polymarket --no-default-features --features clob,specta
