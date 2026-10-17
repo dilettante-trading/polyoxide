@@ -1,3 +1,141 @@
+## [0.40.0] - 2026-10-17
+
+Stage S2 of the multi-venue restructure, the renames stage: every crate merge, module move
+and rename the restructure needs ships in this one release. `polyoxide-clob`, `-gamma`,
+`-data`, `-relay`, `-perps`, `-rtds` and `-sports` are the modules of one new crate,
+`polyoxide-polymarket`, each behind the feature of its name. `polyoxide-core` names no venue
+(Polymarket's tables, retry policy, throttle and signers are `polyoxide_polymarket::shared`),
+`polyoxide-binance` puts everything under `usdm`, the `polyoxide` umbrella is multi-venue
+(`polyoxide::polymarket` and `polyoxide::binance`), and the CLI's commands are
+`polyoxide <venue> <module> <verb…>`. `polyoxide-polymarket` is published for the first time,
+and the seven retired crates publish one last version, 0.40.0, as a tombstone whose build
+stops with a `compile_error!` naming its replacement. No old version is yanked.
+
+**Breaking changes.** A move breaks the old path, with no shim, alias or re-export (AD-16).
+[`docs/s2-migration.md`](docs/s2-migration.md) is the upgrade checklist,
+[`docs/rename-manifest.md`](docs/rename-manifest.md) gives every public path, feature and CLI
+command that moved or went, and [`docs/rename-map.tsv`](docs/rename-map.tsv) expands it to
+every path, one per line. Errors named for their crate take their module's name
+(`DataApiError` → `DataError`, `WebSocketError` → `ClobWsError`, `BinanceError` →
+`UsdmError`), keeping their text and classes, and the unified client's `PolymarketError` is
+`BuildError`.
+
+**Behaviour that changes** (details in the migration guide):
+
+- Library behaviour does not change: every moved test kept its body (AD-12). Log lines take
+  their module's new path as target, so a `RUST_LOG` filter naming an old crate matches
+  nothing.
+- CLI: `--format pretty`, the default, prints one line per event on market and user; a stream
+  error that cannot be skipped exits non-zero; a closed stdout ends a stream quietly; every
+  list argument splits on commas; `credentials store` checks every value before writing any.
+- `data.pnl()` and `data.rankings()` are deprecated, since Polymarket retired their hosts
+  (DRIFT R12).
+
+### 🚀 Features
+
+- *(polymarket)* Polyoxide-polymarket takes core's Polymarket code (Story 5.2)
+- *(cli)* One stream runner, OutputFormat and excerpt for every socket command (Stories 5.8 and 5.9)
+- *(cli)* [**breaking**] The command tree on the venue axis, every socket a stream on one runner (Stories 5.8 and 5.9)
+- *(core)* StoredCredential, with generic store, show and delete_all over the keychain (Stories 5.8 and 5.9)
+- *(polymarket)* StoredCredential for the clob and relay accounts (Stories 5.8 and 5.9)
+- *(cli)* [**breaking**] Polymarket credentials over StoredCredential, its kinds clob and builder (Stories 5.8 and 5.9)
+- *(release)* Tombstones for the seven retired crates, and their check (Stories 5.11 and 5.12)
+- *(release)* The S3 removal gate, keyed by stage (Stories 5.11 and 5.12)
+
+### 🐛 Bug Fixes
+
+- *(ci)* The venue gate catches plural acronyms, digit products and src/target (Story 5.2 review)
+- Review findings on gamma and data's move (Story 5.3 review)
+- *(docs)* Clob's timestamp link resolves in the module, not through the crate name (Story 5.4)
+- Review findings on clob and relay's move (Story 5.4 review)
+- *(tests)* Clob's refusal test goes last, so the cited kill tests keep their lines (Story 5.4 review)
+- Review findings on perps, rtds and sports's move (Story 5.5 review)
+- Review findings on Binance's conventions (Story 5.6 review)
+- Review findings on the multi-venue umbrella (Story 5.7 review)
+- Review findings on the venue-axis CLI and shared credentials (Stories 5.8 and 5.9 review)
+- *(release)* The tombstones keep their old features and say where each went (Stories 5.11 and 5.12)
+- *(release)* Check-manifests names missing metadata before the tombstones' check (Stories 5.11 and 5.12)
+- *(ci)* The tombstone build test reads cargo's messages uncoloured, and a stream test's bail! ends in a semicolon (Stories 5.11 and 5.12)
+- *(data)* Pnl() and rankings() are deprecated, since Polymarket retired their hosts (DRIFT R12)
+
+### 🚜 Refactor
+
+- Gamma, data, perps, relay and clob take Polymarket's shared code from polyoxide-polymarket (Story 5.2)
+- Gamma and data become polyoxide-polymarket's modules (Story 5.3)
+- Clob and relay become polyoxide-polymarket's modules (Story 5.4)
+- *(rtds)* [**breaking**] Test-fixtures becomes test-server (DRIFT R6)
+- Perps, rtds and sports become polyoxide-polymarket's modules (Story 5.5)
+- *(binance)* [**breaking**] Usdm holds the error and weight budget, behind its own features (Story 5.6)
+- The umbrella goes multi-venue, and the unified client moves into polyoxide-polymarket (Story 5.7)
+
+### 📚 Documentation
+
+- S1 shipped as v0.39.0; the workspace is in stage S2 (Story 4.11)
+- *(planning)* Story 5.1 done and to review; Epic 5 context and the S2 bundle plan
+- *(planning)* PR [#55](https://github.com/dilettante-trading/polyoxide/pull/55)'s first CI run settles review 1's G19 (Story 5.1)
+- *(planning)* Story 5.2's spec, polyoxide-polymarket and a venue-neutral core
+- The rules and ledger that named core's Polymarket paths follow them (Story 5.2)
+- *(planning)* Story 5.3's spec, gamma and data become modules
+- The rules, specs and registry follow gamma and data (Story 5.3)
+- *(mutants)* Re-cite and re-prove the rows gamma and data moved (Story 5.3)
+- *(planning)* Story 5.3 done and to review, with its triage log (Story 5.3)
+- *(planning)* Story 5.4's spec, clob and relay become modules
+- The rules, specs and registry follow clob and relay (Story 5.4)
+- *(mutants)* Re-cite and re-prove the rows clob moved (Story 5.4)
+- *(planning)* Story 5.4 done and to review, with its triage log (Story 5.4)
+- *(planning)* Story 5.5's draft spec, perps, rtds and sports become modules
+- *(planning)* Story 5.5's spec approved, in progress
+- *(planning)* Story 5.5's R6 task is done; a fresh implementer resumes
+- The rules, specs and registry follow perps, rtds and sports (Story 5.5)
+- *(mutants)* Re-cite and re-prove the row perps, rtds and sports moved (Story 5.5)
+- *(perps)* OBSERVED names the agreement suites by their new names (Story 5.5)
+- *(planning)* Story 5.5 done and to review, with its triage log (Story 5.5)
+- *(planning)* Story 5.6's spec approved, in progress
+- The rules, specs and registry follow Binance's usdm module (Story 5.6)
+- *(mutants)* Re-cite and re-prove the rows Binance's suites moved (Story 5.6)
+- *(planning)* Story 5.6's tasks done, with its implementation notes (Story 5.6)
+- *(planning)* Story 5.6's review 1 triage log and deferred items (Story 5.6 review)
+- *(planning)* Story 5.6 done and to review (Story 5.6)
+- *(manifest)* The umbrella's paths and features, and the retired PolymarketError test (Story 5.7)
+- The multi-venue umbrella in the READMEs, the specs INDEX and CLAUDE.md (Story 5.7)
+- *(planning)* Story 5.7 done and to review, with its triage log and deferred items (Story 5.7)
+- *(planning)* Stories 5.8 and 5.9's spec approved, ready for dev
+- *(manifest)* The CLI's paths and command tree, and its retired tests (Stories 5.8 and 5.9)
+- The CLI on the venue axis and its credentials command in the READMEs and CLAUDE.md (Stories 5.8 and 5.9)
+- *(planning)* Stories 5.8 and 5.9 done and to review, with their triage log and deferred item (Stories 5.8 and 5.9)
+- *(planning)* Drop Story 5.10, Python on the venue axis (spine amendment A5-1)
+- *(planning)* Epic 5 context keeps polyoxide.v2 and lists A5-1 among unmerged amendments
+- *(planning)* Spec for Stories 5.11 and 5.12, approved and ready for development
+- The four guides describe a multi-venue toolkit (Stories 5.11 and 5.12)
+- The S2 migration guide, README pins at 0.40, and the deferred items settled (Stories 5.11 and 5.12)
+- The frozen S2 rename map (Stories 5.11 and 5.12)
+- The twenty mutants proved again on the S2 hub's final tree (Stories 5.11 and 5.12)
+- The migration guide's checklist, prelude and map notes, and S3's removals agree (Stories 5.11 and 5.12)
+- *(planning)* Stories 5.11 and 5.12 done and to review, with their triage log and deferred items (Stories 5.11 and 5.12)
+
+### 🧪 Testing
+
+- The S3 listing's starting state is checked only in stage S2 (Stories 5.11 and 5.12)
+
+### ⚙️ Miscellaneous Tasks
+
+- The S2 gate reports into a rename manifest, and moved tests keep their bodies (Story 5.1)
+- The moved tests pair with 0 diffs, and `[gates]` takes a cfg predicate (Story 5.2)
+- The venue gate, and the foundation crates name no venue (Story 5.2, CAP-7)
+- *(registry)* `identifiers` and `gate_exceptions`, and a venue's own crate (Story 5.2)
+- The body diff and the rename manifest follow gamma and data (Story 5.3)
+- The scripts job follows gamma and data into polyoxide-polymarket (Story 5.3)
+- The scripts job follows clob and relay into polyoxide-polymarket (Story 5.4)
+- *(body-diff)* `[fixtures]` reads a moved crate's `fixtures!` calls under its module (Story 5.5)
+- The scripts job follows perps, rtds and sports into polyoxide-polymarket (Story 5.5)
+- The body diff and the scripts job follow Binance's usdm module (Story 5.6)
+- *(deps)* Fence Binance's usdm build from the socket stack (Story 5.6)
+- Pin the venue headers under the umbrella's full, and fence its socket passthroughs (Story 5.7)
+- The removals job runs the S2 gate with --strict (Stories 5.11 and 5.12)
+- *(nightly)* Only a run on main files, comments on or closes the behavioral issue (Stories 5.11 and 5.12)
+- *(nightly)* A run off main shows its real failures in the summary and goes red (Stories 5.11 and 5.12)
+- The removals job holds the frozen rename map to the one it writes (Stories 5.11 and 5.12)
+
 ## [0.39.0] - 2026-10-12
 
 Stage S1 of the multi-venue restructure: the internals every venue crate shares are
