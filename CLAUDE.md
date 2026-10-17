@@ -79,7 +79,7 @@ Nine crates, in publish order, each with the workspace crates its build needs. C
 <!-- generated:end claude-crate-count -->
 
 <!-- generated:begin claude-graph -->
-- `polyoxide-venue` — Shared vocabulary: error classes, the status and close-code maps, the socket classification table (`impl_ws_classification!`), the `Retry-After` parser, the wire-enum macros and `UnknownVariant`, positional decimal serde (feature `decimal`), `UnixMillis`, market keys (feature `keys`: `MarketKey`, `RawKey` and the `KeySpace` a venue implements per product), and the market-data traits with the records they return and their typed `Extensions` (feature `market`); needs: nothing in the workspace; every public error type in the workspace implements its `Classify` trait but `polyoxide-ws`'s `WsError`, which `impl_ws_classification!` classifies in each venue crate that wraps it; by default it depends on nothing, and it has no HTTP, socket or signing dependency
+- `polyoxide-venue` — Shared vocabulary: error classes, the status and close-code maps, the socket classification table (`impl_ws_classification!`), the `Retry-After` parser, the wire-enum macros and `UnknownVariant`, positional decimal serde (feature `decimal`), `UnixMillis`, market keys (feature `keys`: `MarketKey`, `RawKey` and the `KeySpace` a venue implements per product), the market-data traits with the records they return and their typed `Extensions` (feature `market`), and the `Trading` trait with its order, fill, position and balance records and its `TradingEvents` stream (feature `trading`); needs: nothing in the workspace; every public error type in the workspace implements its `Classify` trait but `polyoxide-ws`'s `WsError`, which `impl_ws_classification!` classifies in each venue crate that wraps it; by default it depends on nothing, and it has no HTTP, socket or signing dependency
 - `polyoxide-core` — Core utilities and shared types; needs: `polyoxide-venue`; the send loop and its hooks, the HTTP client, window quotas, capacity buckets, holds, errors, macros and the keychain; it names no venue, which `scripts/venue_gate.py` holds
 - `polyoxide-ws` — The socket kit: the TLS install, `Backoff`, `Timing` and its setters, the deadline arithmetic, `WsError`, connect with a timeout, the bare tier, request/answer correlation, the generic `Supervisor` for a venue `Protocol`, and the scripted test server (feature `test-server`); needs: nothing in the workspace; depends on neither `polyoxide-core` nor `polyoxide-venue`, and builds only tokio, tokio-tungstenite, futures-util, thiserror, tracing and rustls
 - `polyoxide-binance` — Client library for Binance's APIs, one feature per module: `usdm` (USDⓈ-M futures market data, with its streams under `usdm-ws`); re-exported by the umbrella as `polyoxide::binance`; needs: `polyoxide-core` (under `usdm`, on by default), `polyoxide-venue`, `polyoxide-ws` (under `usdm-ws`)
@@ -362,6 +362,36 @@ Polymarket's `perps::venue` implements the same five traits on `Perps` (see Perp
 A live test unwraps a trait's `Result<_, ClassifiedError>` with test-support's
 `ClassifiedResultExt::or_fail` (or `fail_classified`), since `ClassifiedError` does not implement
 `Classify`; `ResultExt::or_fail` and it may be in scope together.
+
+**The trading trait** — `polyoxide-venue`'s `trading` feature (Story 7.3, which turns on `market`)
+holds `Trading`, the one interface a venue with signed order routes implements so a consumer
+trades the same way on each (AD-3, AD-5, amendment A7-1), and its `DynTrading` wrapper, held as
+`Arc<DynTrading<'static>>`. Its methods return `Result<_, ClassifiedError>`: `place(OrderRequest)`
+gives the `Order` as the venue accepted it, `cancel(&OrderId)`, `cancel_all(Option<&MarketKey>)`
+the ids cancelled, `open_orders(Option<&MarketKey>)`, `positions()` and `balances()`, and
+`events()` is not async and returns a `TradingEvents`. The records are `#[non_exhaustive]` with a
+`new` that takes their required fields and a `pub extensions: Extensions`: `OrderRequest` (a
+`TimeInForce` defaulting to `GoodTilCancelled`, an optional `ClientOrderId`, `post_only` and
+`reduce_only`), `Order` (an `OrderStatus` of `Open`, `Filled`, `Cancelled` or
+`Killed { reason: KillReason }`), `Fill` (its `trade_id` is `market`'s `TradeId`, its `liquidity`
+a `Liquidity`), `Position` and `Balance`; `OrderId`, `FillId` and `ClientOrderId` are opaque
+`Arc<str>` ids. A request is refused, never ignored, as `InvalidRequest` with nothing sent when it
+carries an extension its venue does not declare, a key of another product, or a `post_only`,
+`reduce_only` or time in force the venue cannot honour: `Extensions::ensure_declared(&[TypeId])`
+(feature `market`) refuses the first undeclared value in `TypeId` order with an
+`UndeclaredExtension` (`InvalidRequest`, in the `Classify` assertion). An immediate-or-cancel order
+that matched nothing and a fill-or-kill order that could not fill are `Ok` with `Killed`, not
+errors. `TradingEvents` is a newtype over a pinned boxed stream, `Send + Unpin + 'static`, because
+dynosaur 0.3.1 drops `'static` from a returned `impl Stream` and the stream would borrow the
+`Arc` (E0597, A7-1). The queue behind it is unbounded, so a slow consumer loses no ack or fill, and
+the venue replays nothing: the stream's first item is `TradingEvent::Resync` (A7-2, once the fills
+connection's first attempt has ended, whether it went live or began in an outage), and it yields
+`Resync` after every reconnect of that connection and when the venue voids a fill it reported (a
+trade that failed after it matched), which means "reconcile through `open_orders()` and the
+trade history: the stream cannot vouch for what it reported or missed". An order may be reported
+before the `place` that created it returns. `polyoxide-venue/tests/trading.rs` proves the trait on
+a made-up venue, statically and through `Arc<DynTrading<'static>>`, including a stream that
+outlives every `Arc` on another thread.
 
 **The CLOB through the traits** — `clob::venue` (Story 6.5) implements `MarketData` and `Candles`
 on `Clob` with `clob` alone, `Trades` with `data` as well and `EventGroups` with `gamma` as well

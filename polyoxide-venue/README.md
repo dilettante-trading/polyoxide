@@ -12,6 +12,10 @@ Behind the `market` feature, the market-data traits (`MarketData`, which every
 venue product implements, and the capability traits `Instruments`, `Trades`,
 `Candles`, `Funding` and `EventGroups`, each with a `Dyn` wrapper) return the
 shared records, each carrying a venue's own facts in its `Extensions`.
+Behind the `trading` feature, `Trading` places and cancels orders, reads open
+orders, positions and balances, and streams acknowledgements and fills as
+`TradingEvents`, which begins with a `Resync`; `Extensions::ensure_declared` is
+how a venue refuses an option it does not declare.
 
 By default it depends on nothing, so a credential-free socket client can use it
 without building an HTTP or signing stack.
