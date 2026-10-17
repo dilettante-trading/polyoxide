@@ -86,7 +86,11 @@ pub enum UserChange {
 ///   decoded an event resets the backoff when it ends.
 /// - **Queue:** unbounded.
 /// - **Recovery:** a frame that does not decode is skipped; any other error
-///   reconnects exactly when its class is retriable.
+///   reconnects exactly when its class is retriable, except a close with code
+///   1008, the server's answer to credentials it refuses (it sends no error
+///   frame): that is [`ClobWsError::Authentication`], carrying the close
+///   reason, and the stream yields it and ends, since retrying cannot fix a
+///   bad credential and would reconnect for ever at the backoff ceiling.
 #[derive(Debug)]
 pub struct ClobUserProtocol {
     url: String,
@@ -253,6 +257,13 @@ impl Protocol for ClobUserProtocol {
     }
 
     fn decode(&mut self, frame: &Message) -> Decoded<UserEvent, ClobWsError> {
+        // What the server closes a refused login with (policy violation).
+        const AUTHENTICATION_CLOSE: u16 = 1008;
+        if let Message::Close(Some(close)) = frame {
+            if u16::from(close.code) == AUTHENTICATION_CLOSE {
+                return Decoded::Error(ClobWsError::Authentication(close.reason.to_string()));
+            }
+        }
         match data_text(frame) {
             Some(text) => decode_text(text),
             None => Decoded::Nothing,
@@ -436,7 +447,11 @@ impl UserWsBuilder {
 #[cfg(test)]
 mod tests {
     use futures_util::StreamExt;
-    use polyoxide_ws::test_server::{next_event, Script, ScriptedServer};
+    use polyoxide_venue::Class;
+    use polyoxide_ws::{
+        test_server::{next_event, next_item, Script, ScriptedServer},
+        tungstenite::protocol::{frame::coding::CloseCode, CloseFrame},
+    };
     use serde_json::{json, Value};
 
     use super::*;
@@ -1138,5 +1153,85 @@ mod tests {
         for secret in ["key-1", "secret-1", "pass-1"] {
             assert!(!shown.contains(secret), "{shown}");
         }
+    }
+
+    // The server closes a refused login with code 1008, and sends no
+    // error frame (observed live, 2026-10-17).
+
+    fn close(code: CloseCode, reason: &str) -> Message {
+        Message::Close(Some(CloseFrame {
+            code,
+            reason: reason.into(),
+        }))
+    }
+
+    #[test]
+    fn a_1008_close_decodes_as_an_authentication_failure() {
+        let decoded = protocol().decode(&close(CloseCode::Policy, "authentication failed"));
+        match decoded {
+            Decoded::Error(ClobWsError::Authentication(reason)) => {
+                assert_eq!(reason, "authentication failed");
+            }
+            other => panic!("expected an authentication failure, got {other:?}"),
+        }
+    }
+
+    #[test]
+    fn an_authentication_failure_is_unauthorized_and_recovery_stops_on_it() {
+        let err = ClobWsError::Authentication("authentication failed".into());
+        assert_eq!(err.class(), Class::Unauthorized);
+        assert!(!<ClobUserProtocol as Protocol>::is_retriable(&err));
+        assert_eq!(protocol().recover(&err), Recovery::Stop);
+    }
+
+    #[test]
+    fn any_other_close_decodes_to_nothing_and_ends_through_the_kit() {
+        let mut protocol = protocol();
+        let closes = [
+            close(CloseCode::Away, "going away"),
+            close(CloseCode::Error, "internal error"),
+            close(CloseCode::Normal, ""),
+            Message::Close(None),
+        ];
+        for frame in closes {
+            assert!(
+                matches!(protocol.decode(&frame), Decoded::Nothing),
+                "{frame:?}"
+            );
+        }
+    }
+
+    #[tokio::test]
+    async fn a_refused_login_ends_the_stream_without_a_reconnect() {
+        let server = serve(vec![
+            Script::hold()
+                .after_first_frame()
+                .then_close()
+                .close_with(1008, "authentication failed"),
+            Script::hold(),
+        ])
+        .await;
+        let mut ws = builder(&server)
+            .connect(None, credentials())
+            .await
+            .expect("the first attempt connects");
+        // The refusal is the first item: no `Disconnected` precedes it.
+        match next_item(&mut ws).await {
+            Err(err) => {
+                assert!(
+                    matches!(&err, ClobWsError::Authentication(reason) if reason == "authentication failed"),
+                    "{err:?}"
+                );
+                assert_eq!(err.class(), Class::Unauthorized);
+            }
+            Ok(event) => panic!("expected the refusal, got {event:?}"),
+        }
+        let end = tokio::time::timeout(Duration::from_secs(2), ws.next())
+            .await
+            .expect("the stream ends");
+        assert!(end.is_none(), "{end:?}");
+        // A reconnect would follow within the 10 to 20 ms backoff.
+        tokio::time::sleep(Duration::from_millis(150)).await;
+        assert_eq!(server.connection_count(), 1, "no reconnect");
     }
 }
