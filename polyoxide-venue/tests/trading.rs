@@ -659,3 +659,23 @@ fn the_ids_are_their_text() {
         "mine-1"
     );
 }
+
+#[test]
+fn the_events_stream_debug_prints_without_its_contents() {
+    let events = TradingEvents::new(futures_util::stream::empty());
+    assert_eq!(format!("{events:?}"), "TradingEvents(..)");
+}
+
+#[test]
+fn the_events_stream_reports_the_size_hint_of_the_stream_it_wraps() {
+    let items = || {
+        futures_util::stream::iter(vec![
+            Ok(TradingEvent::Resync),
+            Ok(TradingEvent::Resync),
+            Ok(TradingEvent::Resync),
+        ])
+    };
+    let wrapped = TradingEvents::new(items());
+    assert_eq!(items().size_hint(), (3, Some(3)));
+    assert_eq!(wrapped.size_hint(), items().size_hint());
+}

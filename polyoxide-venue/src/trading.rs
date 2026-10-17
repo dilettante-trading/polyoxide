@@ -1,5 +1,6 @@
 //! The trading trait, its records, and the stream it reports on.
 
+use std::fmt;
 use std::future::Future;
 use std::pin::Pin;
 use std::task::{Context, Poll};
@@ -91,8 +92,9 @@ pub trait Trading: Send + Sync {
     /// The account's acknowledgements and fills from now on, beginning with a
     /// [`TradingEvent::Resync`] and carrying one after every reconnect.
     ///
-    /// Each call returns a stream of its own, which sees every event from that
-    /// call on. An order may be reported (acked or filled) before the
+    /// Each call returns a stream of its own, which sees every event from its
+    /// first subscription on; its leading `Resync` covers what came earlier
+    /// (D3). An order may be reported (acked or filled) before the
     /// [`place`](Self::place) that created it returns. See [`TradingEvents`]
     /// for when the stream ends.
     fn events(&self) -> TradingEvents;
@@ -128,6 +130,12 @@ impl TradingEvents {
         stream: impl Stream<Item = Result<TradingEvent, ClassifiedError>> + Send + 'static,
     ) -> Self {
         Self(Box::pin(stream))
+    }
+}
+
+impl fmt::Debug for TradingEvents {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        f.write_str("TradingEvents(..)")
     }
 }
 

@@ -363,7 +363,7 @@ A live test unwraps a trait's `Result<_, ClassifiedError>` with test-support's
 `ClassifiedResultExt::or_fail` (or `fail_classified`), since `ClassifiedError` does not implement
 `Classify`; `ResultExt::or_fail` and it may be in scope together.
 
-**The trading trait** — `polyoxide-venue`'s `trading` feature (Story 7.3, which turns on `market`)
+**The trading trait** — `polyoxide-venue`'s `trading` feature (which turns on `market`; Story 7.3)
 holds `Trading`, the one interface a venue with signed order routes implements so a consumer
 trades the same way on each (AD-3, AD-5, amendment A7-1), and its `DynTrading` wrapper, held as
 `Arc<DynTrading<'static>>`. Its methods return `Result<_, ClassifiedError>`: `place(OrderRequest)`
