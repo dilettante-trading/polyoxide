@@ -330,6 +330,17 @@ def test_the_features_job_runs_clobs_refusal_without_gamma() -> None:
     assert "async fn a_proxy_order_with_no_funder_is_refused_without_gamma(" in test.read_text()
 
 
+def test_the_features_job_runs_trading_clob_without_gamma() -> None:
+    """`trading_clob` compiles three refusals of a proxy client only without `gamma`,
+    which no other build runs, so the step must exist and the file must still hold one."""
+    [step] = [s for s in _steps("features") if s.get("name") == "clob trading without gamma"]
+    assert step["run"].strip() == (
+        "cargo test -p polyoxide-polymarket --no-default-features --features clob-ws,data "
+        "--test trading_clob")
+    test = REPO / "polyoxide-polymarket" / "tests" / "trading_clob.rs"
+    assert '#[cfg(not(feature = "gamma"))]' in test.read_text()
+
+
 def test_http_modules_are_venue_crates_on_core() -> None:
     def package(name: str, venue: str | None, deps: list[str], products=("x",),
                 features=None, optional=()) -> dict:
