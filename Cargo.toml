@@ -14,7 +14,7 @@ exclude = ["tombstones"]
 resolver = "3"
 
 [workspace.package]
-version = "0.39.0"
+version = "0.40.0"
 edition = "2021"
 license = "MIT OR Apache-2.0"
 authors = ["Aidan Bailey"]
@@ -22,13 +22,13 @@ repository = "https://github.com/dilettante-trading/polyoxide"
 rust-version = "1.91"
 
 [workspace.dependencies]
-polyoxide-core = { path = "polyoxide-core", version = "0.39.0" }
-polyoxide-binance = { path = "polyoxide-binance", version = "0.39.0", default-features = false }
+polyoxide-core = { path = "polyoxide-core", version = "0.40.0" }
+polyoxide-binance = { path = "polyoxide-binance", version = "0.40.0", default-features = false }
 # Its defaults are `clob`, `gamma` and `data`; each member names the modules
 # it builds, so none builds the signing stack by accident.
-polyoxide-polymarket = { path = "polyoxide-polymarket", version = "0.39.0", default-features = false }
-polyoxide-venue = { path = "polyoxide-venue", version = "0.39.0" }
-polyoxide-ws = { path = "polyoxide-ws", version = "0.39.0" }
+polyoxide-polymarket = { path = "polyoxide-polymarket", version = "0.40.0", default-features = false }
+polyoxide-venue = { path = "polyoxide-venue", version = "0.40.0" }
+polyoxide-ws = { path = "polyoxide-ws", version = "0.40.0" }
 tokio = { version = "1.41" }
 serde = { version = "1.0", features = ["derive"] }
 serde_json = "1.0"
@@ -73,7 +73,7 @@ codegen-units = 16
 # additions. `scripts/gen_registry.py` writes it into docs/ARCHITECTURE.md, the
 # one line there that is not copied from the architecture spine's guide.
 [workspace.metadata.polyoxide]
-stage = "S2"
+stage = "S3"
 
 # The API mirrors under docs/specs/, one table per directory. Crates name the
 # directories they cover in their own `[package.metadata.polyoxide] mirrors`;
