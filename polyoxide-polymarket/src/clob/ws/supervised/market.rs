@@ -432,6 +432,7 @@ mod tests {
     /// A builder for `server`, on the kit's test timing: a `PING` every 50 ms,
     /// stale after 300 ms, and a 10 to 20 ms backoff.
     fn builder(server: &ScriptedServer) -> MarketWsBuilder {
+        scripted::hold_a_second_dispatcher();
         let mut builder = MarketWsBuilder::new()
             .url(server.url.clone())
             .expect("a loopback URL is accepted");

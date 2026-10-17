@@ -791,6 +791,7 @@ mod tests {
 
     /// A builder for `server`, on test-sized timing with the `PING` schedule on.
     fn builder(server: &ScriptedServer) -> UserWsBuilder {
+        scripted::hold_a_second_dispatcher();
         UserWsBuilder::new()
             .url(server.url.clone())
             .expect("a loopback URL")
