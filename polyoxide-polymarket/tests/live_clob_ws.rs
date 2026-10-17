@@ -234,3 +234,118 @@ async fn live_connect_user_all_markets_is_accepted() {
         Ok(None) => transient("the server ended the connection on the unfiltered subscription"),
     }
 }
+
+// ── The supervised sockets ───────────────────────────────────────
+
+use polyoxide_polymarket::clob::ws::{
+    ApiCredentials, DisconnectReason, MarketEvent, MarketMessage, MarketWsBuilder, UserEvent,
+    UserWsBuilder,
+};
+use polyoxide_polymarket::clob::Clob;
+use polyoxide_test_support::environmental;
+
+/// How long a subscribed token may take to deliver its first book. The server
+/// answers a subscribe with the book at once, so 30 s is a stalled host.
+const BOOK_WITHIN: Duration = Duration::from_secs(30);
+
+/// How long the user socket must stay open without yielding an error item.
+const STAY_CONNECTED: Duration = Duration::from_secs(15);
+
+/// A token the CLOB lists as accepting orders, read from its own sampling
+/// markets with the public client, so the token is one the market channel
+/// serves. Fails as `environmental` when the CLOB lists none.
+async fn a_listed_token() -> String {
+    let listing = Clob::public()
+        .markets()
+        .sampling()
+        .send()
+        .await
+        .or_fail("list the sampling markets");
+    listing
+        .data
+        .iter()
+        .filter(|market| market.accepting_orders == Some(true))
+        .flat_map(|market| &market.tokens)
+        .find_map(|token| token.token_id.clone())
+        .unwrap_or_else(|| {
+            environmental(
+                "the CLOB lists no sampling market accepting orders; market conditions \
+                 rather than a defect",
+            )
+        })
+}
+
+/// The supervised market socket delivers the `book` of a token it subscribed
+/// to, within [`BOOK_WITHIN`], with no error item on the way.
+#[tokio::test]
+#[ignore]
+async fn live_supervised_market_socket_receives_a_book() {
+    let token = a_listed_token().await;
+    let mut ws = MarketWsBuilder::new()
+        .connect(vec![token.clone()])
+        .await
+        .or_fail("connect the supervised market socket");
+
+    let deadline = tokio::time::Instant::now() + BOOK_WITHIN;
+    let mut seen_book = false;
+    while !seen_book {
+        let item = match tokio::time::timeout_at(deadline, ws.next()).await {
+            Err(_) => break,
+            Ok(None) => transient("the supervised market socket ended before a book arrived"),
+            Ok(Some(item)) => item,
+        };
+        if let MarketEvent::Message(MarketMessage::Book(book)) =
+            item.or_fail("the supervised market socket yields an event")
+        {
+            assert_eq!(
+                book.asset_id, token,
+                "a book arrived for a token that was not subscribed"
+            );
+            seen_book = true;
+        }
+    }
+    assert!(
+        seen_book,
+        "no book for token {token} within {BOOK_WITHIN:?}"
+    );
+    ws.close()
+        .await
+        .or_fail("close the supervised market socket");
+}
+
+/// The supervised user socket opens with the account's credentials and stays
+/// connected for [`STAY_CONNECTED`]: the server refuses bad credentials about
+/// a second after the subscribe with a 1008 close, which arrives as an error
+/// item (`ClobWsError::Authentication`) and ends the stream, and any drop
+/// inside the window fails the test.
+#[tokio::test]
+#[ignore]
+async fn live_supervised_user_socket_stays_connected_with_the_accounts_credentials() {
+    let (api_key, secret, passphrase) = derive_credentials().await;
+    let mut ws = UserWsBuilder::new()
+        .connect(None, ApiCredentials::new(api_key, secret, passphrase))
+        .await
+        .or_fail("connect the supervised user socket");
+
+    let deadline = tokio::time::Instant::now() + STAY_CONNECTED;
+    loop {
+        match tokio::time::timeout_at(deadline, ws.next()).await {
+            Err(_) => break,
+            Ok(None) => transient("the supervised user socket ended inside the window"),
+            Ok(Some(item)) => match item.or_fail("the supervised user socket yields an event") {
+                UserEvent::Disconnected {
+                    reason: DisconnectReason::Error(cause),
+                } => fail("the supervised user socket lost its connection", &cause),
+                UserEvent::Disconnected { reason } => transient(&format!(
+                    "the supervised user socket lost its connection: {reason:?}"
+                )),
+                UserEvent::Reconnected => {
+                    transient("the supervised user socket reconnected inside the window")
+                }
+                // An account event is not what this test asserts on.
+                _ => {}
+            },
+        }
+    }
+    ws.close().await.or_fail("close the supervised user socket");
+}
