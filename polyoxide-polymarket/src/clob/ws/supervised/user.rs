@@ -4,7 +4,8 @@
 //! [`UserWsBuilder`] hands a [`ClobUserProtocol`] to the supervisor, which
 //! reconnects after a close or a stall, replays the credentials and the market
 //! filter on every connection, and marks each outage with one
-//! [`UserEvent::Disconnected`] and one [`UserEvent::Reconnected`]. The queue is
+//! [`UserEvent::Disconnected`] and one [`UserEvent::Reconnected`], unless the
+//! stream ends on an error recovery stops on. The queue is
 //! unbounded, so the kit never waits on the consumer, and a consumer that has
 //! stopped reading loses no frame; its cost is memory that grows with the
 //! backlog.
@@ -59,8 +60,9 @@ pub enum UserEvent {
         reason: DisconnectReason,
     },
     /// A fresh connection has replayed the credentials and the filter. Exactly
-    /// one per outage; anything the socket carried during the outage is lost,
-    /// so a consumer reconciles here.
+    /// one per outage, unless the stream ends on an error recovery stops on
+    /// (a refused login) first; anything the socket carried during the outage
+    /// is lost, so a consumer reconciles here.
     Reconnected,
 }
 
