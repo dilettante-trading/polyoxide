@@ -18,6 +18,8 @@ categories = ["api-bindings"]
 # The `Dyn` wrappers of the market-data traits (`market`), as core's hooks
 # have theirs.
 dynosaur = { workspace = true, optional = true }
+# The `Stream` of `TradingEvents` (`trading`).
+futures-core = { workspace = true, optional = true }
 rust_decimal = { workspace = true, optional = true }
 serde = { workspace = true, optional = true }
 
@@ -31,6 +33,10 @@ keys = ["dep:serde"]
 # its `Dyn` wrapper), the records they return, and `Extensions`, the venue's
 # own facts on a record.
 market = ["keys", "decimal", "dep:dynosaur"]
+# The `Trading` trait (with its `Dyn` wrapper), the order, fill, position and
+# balance records, the opaque order, fill and client-order ids, and the
+# `TradingEvents` stream.
+trading = ["market", "dep:futures-core"]
 
 # The enum macros' own tests: the expansion names `::serde`, which a calling
 # crate provides.
@@ -41,11 +47,15 @@ serde_json = { workspace = true }
 # `polyoxide_ws::WsError`, as a venue crate does. Path-only, so cargo strips
 # it on publish and the normal build stays free of any socket dependency.
 polyoxide-ws = { path = "../polyoxide-ws" }
+# `tests/trading.rs` drives the event stream from a spawned task and from
+# polled-once futures.
+futures-util = { workspace = true }
+tokio = { workspace = true, features = ["macros", "rt-multi-thread", "time"] }
 
-# docs.rs documents `positional`, the keys and the records, which only their
-# features build.
+# docs.rs documents `positional`, the keys, the records and the trading
+# vocabulary, which only their features build.
 [package.metadata.docs.rs]
-features = ["decimal", "keys", "market"]
+features = ["decimal", "keys", "market", "trading"]
 
 # Registration, read by scripts/gen_registry.py: the README line, venue and
 # product ids, the docs/specs/ mirrors covered, and one entry per live test

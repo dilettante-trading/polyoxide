@@ -56,6 +56,8 @@ struct ReadmeDoctests;
 mod class;
 #[cfg(feature = "market")]
 mod extensions;
+#[cfg(feature = "trading")]
+mod ids;
 #[cfg(feature = "keys")]
 mod key;
 #[cfg(feature = "market")]
@@ -75,6 +77,8 @@ mod ws_table;
 pub use class::{Class, ClassifiedError, Classify};
 #[cfg(feature = "market")]
 pub use extensions::{DuplicateExtension, Extensions};
+#[cfg(feature = "trading")]
+pub use ids::{ClientOrderId, FillId, OrderId};
 #[cfg(feature = "keys")]
 pub use key::{KeyError, KeySpace, MarketKey, ProductId, RawKey, VenueId};
 #[cfg(feature = "market")]

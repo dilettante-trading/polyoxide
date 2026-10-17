@@ -4083,10 +4083,13 @@ name = "polyoxide-venue"
 version = "0.40.0"
 dependencies = [
  "dynosaur",
+ "futures-core",
+ "futures-util",
  "polyoxide-ws",
  "rust_decimal",
  "serde",
  "serde_json",
+ "tokio",
 ]
 
 [[package]]
