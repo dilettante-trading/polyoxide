@@ -235,3 +235,26 @@ fn an_unknown_filter_type_names_the_type_and_the_value() {
     assert_eq!(err.to_string(), r#""NOPE" is not a valid FilterType"#);
     assert_eq!(err.class(), Class::InvalidRequest);
 }
+
+#[test]
+fn token_module_spells_what_the_schema_enumerates() {
+    // Mirror, the `TokenModule` schema's enum. `spec_agreement_data_v2.rs` holds this
+    // list to the schema itself; the variant is open, so a later module still decodes.
+    assert_eq!(
+        wire(TokenModule::ALL),
+        set(&["v1_ctf", "binary", "neg_risk", "combo"]),
+        "TokenModule"
+    );
+    round_trips(TokenModule::ALL);
+}
+
+#[test]
+fn a_module_upstream_adds_later_is_kept_verbatim() {
+    let future =
+        serde_json::from_value::<TokenModule>(Value::String("polymarket_v3".into())).unwrap();
+    assert_eq!(future, TokenModule::Other("polymarket_v3".into()));
+    assert_eq!(
+        serde_json::to_value(&future).unwrap(),
+        Value::String("polymarket_v3".into())
+    );
+}

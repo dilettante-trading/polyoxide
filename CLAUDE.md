@@ -600,7 +600,7 @@ frames as `usdm::ws::fixtures`, which the CLI's tests import, and nothing else (
 server is gone, Story 4.7). Since Story 5.6 it turns no module on, so a build that wants the
 frames names both features.
 
-**Data API v2** (`data-v2/`, 20 endpoints under `/v2` on `data-api.polymarket.com`)
+**Data API v2** (`data-v2/`, 21 endpoints under `/v2` on `data-api.polymarket.com`)
 is implemented by `polyoxide-polymarket`'s `data` module as `data.v2()`, alongside the v1 routes, which
 upstream says keep working. v2 uses a different contract: a `data` envelope,
 cursor-only pagination and snake_case fields. Paged builders return `Page<T>` from
@@ -611,6 +611,10 @@ cursor at all. An error with the v2 body becomes `DataError::V2` (stable `code`,
 server's `retryable` flag, `trace_id`), recognised by body shape rather than path. Its
 spec is the one mirror served by the API host (`/v2/openapi.json`) rather than
 `docs.polymarket.com`, so a parity audit that only walks `/api-spec/` misses it.
+`/v2/tokens` (drift issue #52) is `v2().tokens(TokenKey)`: like `resolutions` it takes exactly
+one selector family per request, `TokenKey::TokenIds` (at most 50) or `TokenKey::Conditions`
+(at most 10), and an unknown id is absent from the list rather than a `404`. Its `module` is the
+open `TokenModule`, since only `v1_ctf` and `neg_risk` rows have been seen on the wire.
 
 Three test files of `polyoxide-polymarket` hold v2 in place. `tests/spec_agreement_data_v2.rs`
 checks every type's optionality and field names and every builder's query keys against that

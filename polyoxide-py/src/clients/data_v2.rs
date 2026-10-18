@@ -13,7 +13,7 @@ use polyoxide_polymarket::data::{
     types::SortDirection,
     v2::{
         self,
-        types::{PositionAnchor, ResolutionKey},
+        types::{PositionAnchor, ResolutionKey, TokenKey},
         DataV2,
     },
     DataError,
@@ -93,6 +93,20 @@ fn resolution_key(
         (None, None, Some(ids)) => Ok(ResolutionKey::Events(ids)),
         _ => Err(PyValueError::new_err(
             "resolutions takes exactly one of question_id, conditions or event_ids",
+        )),
+    }
+}
+
+/// `tokens` takes exactly one selector family.
+fn token_key(
+    token_ids: Option<Vec<String>>,
+    conditions: Option<Vec<String>>,
+) -> PyResult<TokenKey> {
+    match (token_ids, conditions) {
+        (Some(ids), None) => Ok(TokenKey::TokenIds(ids)),
+        (None, Some(ids)) => Ok(TokenKey::Conditions(ids)),
+        _ => Err(PyValueError::new_err(
+            "tokens takes exactly one of token_ids or conditions",
         )),
     }
 }
@@ -495,6 +509,13 @@ v2_namespaces! {
             conditions: Option<Vec<String>>,
             event_ids: Option<Vec<String>>,
         ) -> PyV2Resolution => |client| client.resolutions(resolution_key(question_id, conditions, event_ids)?);
+
+        /// `GET /v2/tokens`: token ids, or the tokens of conditions, resolved to their condition, module, outcome, market and event; by exactly one of `token_ids` or `conditions`.
+        #[pyo3(signature = (*, token_ids=None, conditions=None))]
+        fn tokens(
+            token_ids: Option<Vec<String>>,
+            conditions: Option<Vec<String>>,
+        ) -> PyV2TokenRef => |client| client.tokens(token_key(token_ids, conditions)?);
 
         /// `GET /v2/builders/volume`: builder volume per time bucket.
         #[pyo3(signature = (*, interval=None, limit=None))]

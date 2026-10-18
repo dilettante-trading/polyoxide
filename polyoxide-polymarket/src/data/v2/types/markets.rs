@@ -1,9 +1,9 @@
 //! Types for the `markets` routes: holders, live volume, open interest,
-//! price history and resolutions.
+//! price history, resolutions and token lookups.
 
 use serde::{Deserialize, Serialize};
 
-use super::OutcomeIndex;
+use super::{OutcomeIndex, TokenModule};
 
 /// One `/v2/live-volume` row: `taker_volume` is the market's cumulative
 /// one-side (taker) volume, truncated to 6 decimal places; qualified because
@@ -213,4 +213,66 @@ pub struct Resolution {
     pub was_arbitrated: Option<bool>,
     /// Whether the resolution was disputed at any point.
     pub was_disputed: bool,
+}
+
+/// One `/v2/tokens` row: the reference facts for one ERC-1155 token id.
+///
+/// The reference fields never change. `closed`, `resolved`, `final_price` and
+/// `outcome` may lag by up to a minute, and every market field is `None` when
+/// the market is not mirrored.
+#[cfg_attr(feature = "specta", derive(specta::Type))]
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[non_exhaustive]
+pub struct TokenRef {
+    /// Position of the token in the market's CLOB token list; `None` until the
+    /// settlement writer has placed the token, and always `None` outside
+    /// `v1_ctf`.
+    pub clob_index: Option<i32>,
+    /// Whether the market is closed; `None` when the market is not mirrored.
+    pub closed: Option<bool>,
+    /// The market's condition id in its 66-character form, the value the other
+    /// routes carry on their rows.
+    pub condition_id: String,
+    /// Lowest event id the market belongs to; `None` when none is mirrored.
+    pub event_id: Option<i32>,
+    /// Slug of that event; `None` when none is mirrored.
+    pub event_slug: Option<String>,
+    /// Payout rate of the token once resolved (0 lost, 1 won, fractions for
+    /// split payouts); `None` while unresolved.
+    pub final_price: Option<f64>,
+    /// Market slug; `None` when the market is not mirrored.
+    pub market_slug: Option<String>,
+    /// The contract family that issued the token: `v1_ctf` is the
+    /// ConditionalTokens market (module 0), every other value is a
+    /// polymarket-v2 module.
+    pub module: TokenModule,
+    /// Whether the market belongs to a neg-risk structure; `None` when the
+    /// market is not mirrored.
+    pub neg_risk: Option<bool>,
+    /// The neg-risk structure's market id; `None` outside neg-risk markets.
+    pub neg_risk_market_id: Option<String>,
+    /// The other token of a two-outcome condition; `None` otherwise.
+    pub opposite_token_id: Option<String>,
+    /// Outcome label from the market's outcome list; `None` when no label slot
+    /// applies or the market is not mirrored.
+    pub outcome: Option<String>,
+    /// On-chain outcome slot of the token within its condition.
+    pub outcome_index: i32,
+    /// Index of the market inside its neg-risk structure: for `v1_ctf` the last
+    /// byte of the question id, for `neg_risk` the last byte of the
+    /// polymarket-v2 condition id; `None` outside neg-risk markets.
+    pub question_index: Option<i32>,
+    /// `true` once the token has an on-chain payout.
+    pub resolved: bool,
+    /// The on-chain polymarket-v2 condition id of the token in its
+    /// 66-character form (the id a combo leg carries as `leg_condition_id`, plus
+    /// the `00` byte); `None` for `v1_ctf`, whose only id is `condition_id`. On a
+    /// native polymarket-v2 market it equals `condition_id`; on a market carried
+    /// over to polymarket-v2 it is a different value. Accepted as a `condition`
+    /// selector ([`TokenKey::Conditions`](super::TokenKey::Conditions)).
+    pub structural_condition_id: Option<String>,
+    /// Market question; `None` when the market is not mirrored.
+    pub title: Option<String>,
+    /// Decimal ERC-1155 token id.
+    pub token_id: String,
 }

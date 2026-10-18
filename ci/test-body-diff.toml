@@ -93,3 +93,31 @@ file = "polyoxide-polymarket/tests/mock_gamma.rs"
 item = "get_many_fans_out_closed_true_and_false"
 row = "R13"
 sha256 = "60fa921989528d5be88930a47204e62d7f8dfaf5b97bfa24dfe67b58465899dc"
+
+[[drift]]
+file = "polyoxide-polymarket/tests/spec_agreement_data_v2.rs"
+item = "NOT_MODELLED"
+kind = "const"
+row = "R14"
+sha256 = "eeda600f385129c1a18baa02d1c8598054938fdfe52c60ad3e6c91547c83fa17"
+
+[[drift]]
+file = "polyoxide-polymarket/tests/spec_agreement_data_v2.rs"
+item = "ROUTES"
+kind = "const"
+row = "R14"
+sha256 = "230b6640abc87dd04c3f6fcca11a76bcd17b54850e73686b73ec2d4d9ca06ce3"
+
+[[drift]]
+file = "polyoxide-polymarket/tests/spec_agreement_data_v2.rs"
+item = "SPEC"
+kind = "const"
+row = "R14"
+sha256 = "641f5e0b8e1342d04673716935ad4ce64da7741687bb814e85c9002f6ca94b81"
+
+[[drift]]
+file = "polyoxide-polymarket/tests/spec_agreement_data_v2.rs"
+item = "agreement!#1"
+kind = "invocation"
+row = "R14"
+sha256 = "f90989b3b0ccd904c0a896469118e31464a17f40b500b9b7520823a616aadbb2"

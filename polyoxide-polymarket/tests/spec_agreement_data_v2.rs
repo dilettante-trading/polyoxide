@@ -97,6 +97,7 @@ agreement! {
     "ServiceStatus" => ServiceStatus,
     "ServingFreshness" => ServingFreshness,
     "ServingMechanism" => ServingMechanism,
+    "TokenRef" => TokenRef,
     "Trade" => Trade,
     "UserPnlPoint" => UserPnlPoint,
     "UserPnlSeries" => UserPnlSeries,
@@ -128,7 +129,27 @@ const NOT_MODELLED: &[(&str, &str)] = &[
         "LeaderboardResponse",
         "oneOf split into leaderboard() and leaderboard_user()",
     ),
+    (
+        "TokenModule",
+        "open string enum; token_module_spells_what_the_spec_enumerates holds its values",
+    ),
 ];
+
+/// `TokenModule` is open (`Other` keeps a module upstream adds later), so the
+/// schema check above cannot see a misspelled or missing variant. This holds
+/// `ALL` to the schema's enum.
+#[test]
+fn token_module_spells_what_the_spec_enumerates() {
+    let schemas = schemas();
+    let documented: BTreeSet<String> = schemas["TokenModule"]["enum"]
+        .as_array()
+        .expect("TokenModule is an enum")
+        .iter()
+        .map(|v| v.as_str().expect("string value").to_owned())
+        .collect();
+    let modelled: BTreeSet<String> = TokenModule::ALL.iter().map(ToString::to_string).collect();
+    assert_eq!(modelled, documented);
+}
 
 #[test]
 fn every_spec_schema_is_modelled_or_excused() {
@@ -422,6 +443,26 @@ const ROUTES: &[(&str, &str, Fire)] = &[
         Box::pin(async move {
             data.v2()
                 .resolutions(ResolutionKey::Events(vec!["1".into()]))
+                .send()
+                .await
+                .map(|_| ())
+        })
+    }),
+    // `/v2/tokens` takes one selector family per request, so its two entries
+    // together cover the documented parameters.
+    ("/v2/tokens", "tokens", |data| {
+        Box::pin(async move {
+            data.v2()
+                .tokens(TokenKey::TokenIds(vec!["123".into()]))
+                .send()
+                .await
+                .map(|_| ())
+        })
+    }),
+    ("/v2/tokens", "tokens", |data| {
+        Box::pin(async move {
+            data.v2()
+                .tokens(TokenKey::Conditions(vec!["0xcond".into()]))
                 .send()
                 .await
                 .map(|_| ())

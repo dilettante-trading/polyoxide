@@ -1,5 +1,5 @@
-//! `markets` routes: holders, live volume, open interest, price history and
-//! resolutions.
+//! `markets` routes: holders, live volume, open interest, price history,
+//! resolutions and token lookups.
 
 use polyoxide_core::{csv, QueryBuilder, Request};
 
@@ -8,7 +8,7 @@ use crate::data::{
         envelope::{Envelope, Paged},
         types::{
             LiveVolume, MetaHolder, OpenInterest, PricePoint, PricesInterval, Resolution,
-            ResolutionKey,
+            ResolutionKey, TokenKey, TokenRef,
         },
         DataV2,
     },
@@ -70,6 +70,18 @@ impl DataV2 {
             ResolutionKey::Events(ids) => request.query_opt("event_id", csv(ids)),
         };
         GetResolutions { request }
+    }
+
+    /// `GET /v2/tokens`: resolve token ids, or the tokens of conditions, to
+    /// their condition, module, outcome, market, event and neg-risk question
+    /// index in one call, by exactly one selector family.
+    pub fn tokens(&self, key: TokenKey) -> GetTokens {
+        let request = Request::new(self.http_client.clone(), "/v2/tokens");
+        let request = match key {
+            TokenKey::TokenIds(ids) => request.query_opt("token_id", csv(ids)),
+            TokenKey::Conditions(ids) => request.query_opt("condition", csv(ids)),
+        };
+        GetTokens { request }
     }
 }
 
@@ -158,6 +170,23 @@ pub struct GetResolutions {
 impl GetResolutions {
     /// Fetch the rows; a miss is an empty list.
     pub async fn send(self) -> Result<Vec<Resolution>, DataError> {
+        Ok(self.request.send().await?.data)
+    }
+}
+
+/// Builder for `GET /v2/tokens`.
+pub struct GetTokens {
+    request: Request<Envelope<Vec<TokenRef>>, DataError>,
+}
+
+impl GetTokens {
+    /// Fetch the rows. Not paginated. By token id, the rows come in request
+    /// order and an unknown id is simply absent, never a `404`; by condition,
+    /// they are grouped by selector in request order, then by question index,
+    /// market, module and outcome slot, and an unknown value contributes
+    /// nothing. An empty selector list sends no parameter, which upstream
+    /// refuses with a `400`.
+    pub async fn send(self) -> Result<Vec<TokenRef>, DataError> {
         Ok(self.request.send().await?.data)
     }
 }
