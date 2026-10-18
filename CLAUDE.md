@@ -385,7 +385,8 @@ errors. `TradingEvents` is a newtype over a pinned boxed stream, `Send + Unpin +
 dynosaur 0.3.1 drops `'static` from a returned `impl Stream` and the stream would borrow the
 `Arc` (E0597, A7-1). The queue behind it is unbounded, so a slow consumer loses no ack or fill, and
 the venue replays nothing: the stream's first item is `TradingEvent::Resync` (A7-2, once the fills
-connection's first attempt has ended, whether it went live or began in an outage), and it yields
+connection's first attempt has ended, whether it went live or began in an outage), unless the stream
+cannot open, when its only item is that error, and it yields
 `Resync` after every reconnect of that connection and when the venue voids a fill it reported (a
 trade that failed after it matched), which means "reconcile through `open_orders()` and the
 trade history: the stream cannot vouch for what it reported or missed". An order may be reported

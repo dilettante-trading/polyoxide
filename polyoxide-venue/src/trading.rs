@@ -45,7 +45,7 @@ use crate::{
 /// while the connection that carries fills was down is not sent again.
 ///
 /// The stream's first item is [`TradingEvent::Resync`], unless the stream
-/// cannot open, when its only item is that error. It is yielded once the
+/// cannot open, when its only item is that error. `Resync` is yielded once the
 /// connection's first attempt to connect has ended, whether it went live or
 /// began in an outage, so a fill between `events()` returning and the first
 /// subscription is covered by a reconciliation. `Resync` comes again after
@@ -437,8 +437,9 @@ pub enum TradingEvent {
     /// history: the stream cannot vouch for what it reported or missed before
     /// this point.
     ///
-    /// It is the stream's first item, comes again after every reconnect of
-    /// the connection that carries fills, and comes when the venue voids a fill
-    /// it already reported.
+    /// It is the stream's first item, unless the stream cannot open, when its
+    /// only item is that error; it comes again after every reconnect of the
+    /// connection that carries fills, and comes when the venue voids a fill it
+    /// already reported.
     Resync,
 }
