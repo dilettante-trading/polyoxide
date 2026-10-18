@@ -523,8 +523,9 @@ plan disagreeing with one of them stops and asks.
   - two `specs`: `{ id = "kalshi", kind = "openapi", url = "https://docs.kalshi.com/openapi.yaml",
     vendored = "docs/specs/kalshi/openapi.yaml" }` and `{ id = "kalshi-ws", kind = "asyncapi",
     url = "https://docs.kalshi.com/asyncapi.yaml", vendored = "docs/specs/kalshi/asyncapi.yaml",
-    covers = "Trade API WebSocket (13 channels); `orderbook_delta` is implemented" }`, since an
-    asyncapi spec requires `covers`;
+    covers = "Trade API WebSocket (15 channels); `orderbook_delta` is implemented" }`, since an
+    asyncapi spec requires `covers`; 15 is the count of the served document's `channels` keys,
+    `root` and `control_frames` included, as `test_spec_docs.count_channels` counts perps' 27;
   - no `exclude`, so nightly-schema watches both. Its diff reads YAML for both kinds
     (`.github/scripts/diff_openapi.py:175-188`) and creates its own labels.
 
