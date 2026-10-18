@@ -10,7 +10,6 @@ use std::{
 use polyoxide_venue::Classify;
 use polyoxide_ws::{
     tungstenite::{
-        self,
         client::IntoClientRequest,
         handshake::client::Request as Handshake,
         http::{HeaderName, HeaderValue},
@@ -28,7 +27,7 @@ use crate::predictions::{
         event::{frames, DisconnectReason, Event},
         PredictionsWsError,
     },
-    Credentials,
+    Credentials, CredentialsError,
 };
 
 /// Events the consumer may leave unread before the task stops reading.
@@ -359,17 +358,19 @@ pub fn signed_request(
     let mut request = url.into_client_request().map_err(WsError::from)?;
     let signed = credentials.sign_request("GET", request.uri().path())?;
     for (name, value) in signed.pairs() {
-        let name = HeaderName::from_bytes(name.as_bytes()).map_err(header_error)?;
-        let value = HeaderValue::from_str(value).map_err(header_error)?;
-        request.headers_mut().insert(name, value);
+        let header = HeaderName::from_bytes(name.as_bytes()).map_err(|_| unfit(name))?;
+        let value = HeaderValue::from_str(value).map_err(|_| unfit(name))?;
+        request.headers_mut().insert(header, value);
     }
     Ok(request)
 }
 
-/// A header that could not be built is a request that could not be built: the kit's
-/// `HttpFormat`, which the socket table classes `InvalidRequest`.
-fn header_error(err: impl Into<tungstenite::http::Error>) -> PredictionsWsError {
-    PredictionsWsError::from(WsError::from(tungstenite::Error::HttpFormat(err.into())))
+/// A header value that cannot be sent, as the signing error it is, as REST's is: nothing
+/// reached the host, so it is not a transport error.
+fn unfit(name: &str) -> PredictionsWsError {
+    PredictionsWsError::Credentials(CredentialsError::Sign {
+        reason: format!("the {name} value is not a valid header value"),
+    })
 }
 
 impl Protocol for PredictionsProtocol {
@@ -673,7 +674,7 @@ mod tests {
     use base64::{engine::general_purpose::STANDARD, Engine as _};
     use polyoxide_test_support::fixtures;
     use polyoxide_venue::{Level, UnixMillis};
-    use polyoxide_ws::tungstenite::http;
+    use polyoxide_ws::tungstenite::{self, http};
     use ring::signature::{UnparsedPublicKey, ED25519};
     use rust_decimal::Decimal;
     use serde_json::{json, Value};
@@ -682,7 +683,6 @@ mod tests {
     use crate::predictions::{
         auth::{ACCESS_KEY, ACCESS_SIGNATURE, ACCESS_TIMESTAMP},
         types::BookSide,
-        CredentialsError,
     };
 
     // The mirror's own examples (`docs/specs/kalshi/asyncapi.yaml`, version 2.0.0).
@@ -694,17 +694,25 @@ mod tests {
     const ERROR: &str = r#"{"id":123,"type":"error","sending_ts_ms":1669149841234,"msg":{"code":7,"msg":"Unknown subscription ID"}}"#;
 
     fn credentials() -> Credentials {
+        credentials_with_id("test-key-id")
+    }
+
+    fn credentials_with_id(key_id: &str) -> Credentials {
         let vectors = fixtures!("predictions/signing").json("vectors");
         let body = vectors["ed25519"]["pkcs8_body"]
             .as_str()
             .expect("the vectors hold an Ed25519 key");
         // The fixture stores the key body without its armour lines (spec §6.4).
         let pem = format!("-----BEGIN PRIVATE KEY-----\n{body}\n-----END PRIVATE KEY-----\n");
-        Credentials::from_pem("test-key-id", &pem).expect("the vector key parses")
+        Credentials::from_pem(key_id, &pem).expect("the vector key parses")
     }
 
     fn protocol() -> PredictionsProtocol {
-        PredictionsProtocol::new("ws://127.0.0.1:9/trade-api/ws/v2".to_owned(), credentials())
+        protocol_for(credentials())
+    }
+
+    fn protocol_for(credentials: Credentials) -> PredictionsProtocol {
+        PredictionsProtocol::new("ws://127.0.0.1:9/trade-api/ws/v2".to_owned(), credentials)
     }
 
     fn text(frame: &str) -> Message {
@@ -1302,6 +1310,26 @@ mod tests {
                 .verify(message.as_bytes(), &signature)
                 .unwrap_or_else(|_| panic!("the signature over {message} does not verify"));
         }
+    }
+
+    #[test]
+    fn a_key_id_that_cannot_be_a_header_is_a_signing_error_and_not_a_transport_one() {
+        // Bug: the kit's `HttpFormat`, `Connection(..)`, which reads as a transport error
+        // although nothing was sent. REST's `unfit` says it as the signing error it is.
+        let credentials = credentials_with_id("bad\nid");
+        let err = signed_request(&credentials, "ws://127.0.0.1:9/trade-api/ws/v2").unwrap_err();
+        match &err {
+            PredictionsWsError::Credentials(CredentialsError::Sign { reason }) => {
+                assert_eq!(
+                    reason,
+                    &format!("the {ACCESS_KEY} value is not a valid header value")
+                );
+            }
+            other => panic!("expected the signing error, got {other:?}"),
+        }
+        assert_eq!(err.class(), polyoxide_venue::Class::InvalidRequest);
+        assert!(!err.is_retriable());
+        assert_eq!(protocol_for(credentials).recover(&err), Recovery::Stop);
     }
 
     #[test]
