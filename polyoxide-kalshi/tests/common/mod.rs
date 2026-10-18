@@ -50,6 +50,16 @@ async fn has_both_sides(client: &Predictions, market: &Market) -> bool {
 /// listing's first page held 579 quoted rows. A row with a YES bid above 0 and a YES ask below 1
 /// is confirmed on the order book route. With none, the test is an `environmental` skip.
 pub async fn two_sided_market(client: &Predictions) -> Market {
+    two_sided_market_where(client, "", |_| true).await
+}
+
+/// As [`two_sided_market`], among the quoted rows `wanted` accepts. `needing` completes the
+/// `environmental` skip's reason when none qualifies, such as `" and a YES bid of at least 0.60"`.
+pub async fn two_sided_market_where(
+    client: &Predictions,
+    needing: &str,
+    wanted: impl Fn(&Market) -> bool,
+) -> Market {
     let mut tried = 0;
     let mut cursor = String::new();
     for _ in 0..LISTING_PAGES {
@@ -65,11 +75,15 @@ pub async fn two_sided_market(client: &Predictions) -> Market {
             list.cursor(cursor.clone())
         };
         let page = list.send().await.or_fail("markets");
-        for row in page.markets.iter().filter(|m| quotes_both_sides(m)) {
+        for row in page
+            .markets
+            .iter()
+            .filter(|m| quotes_both_sides(m) && wanted(m))
+        {
             if tried >= CANDIDATES {
-                environmental(
-                    "no suitable market: no quoted open market with a book on both sides",
-                );
+                environmental(&format!(
+                    "no suitable market: no quoted open market with a book on both sides{needing}"
+                ));
             }
             tried += 1;
             if has_both_sides(client, row).await {
@@ -81,7 +95,9 @@ pub async fn two_sided_market(client: &Predictions) -> Market {
         }
         cursor = page.cursor;
     }
-    environmental("no suitable market: no open market with a quote and a book on both sides")
+    environmental(&format!(
+        "no suitable market: no open market with a quote and a book on both sides{needing}"
+    ))
 }
 
 /// The market with the most trades in the host's latest 1000. A quoted market, such as

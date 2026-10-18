@@ -6,9 +6,15 @@
 //!
 //! The demo key signs the handshake; keys do not cross environments, so a production
 //! key does not work. The market comes from the demo host's own listing over unsigned
-//! REST, through `common::two_sided_market`: open, multivariate combinations excluded
-//! (`mve_filter=exclude`), with a book on both sides confirmed on the orderbook route. With
-//! none, the tests are an environmental skip.
+//! REST, through `common::two_sided_market` or `common::two_sided_market_where`: open,
+//! multivariate combinations excluded (`mve_filter=exclude`), with a book on both sides
+//! confirmed on the orderbook route. With none, the tests are an environmental skip.
+//!
+//! `live_a_demo_market_delivers_an_uncrossed_snapshot` takes a market whose REST YES bid is
+//! at least 0.60, since only then can its uncrossed check fail: were `use_yes_price` ignored,
+//! the asks would be raw NO prices, which lie below 0.40 against such a bid, and the book
+//! would read crossed. Against a YES bid under 0.50 a raw NO price can sit above it, and the
+//! check would pass either way. With no such market the test is an environmental skip.
 //!
 //! `live_frames_carry_no_unmodelled_keys` is the socket's drift detector. It reads raw
 //! frames through the kit, decodes each into its frame type, encodes it back, and fails on
@@ -35,6 +41,7 @@ use polyoxide_kalshi::predictions::{
 };
 use polyoxide_test_support::{agreement, load_env, transient, ResultExt};
 use polyoxide_ws::{tungstenite::Message, Connection, Mode, DEFAULT_CONNECT_TIMEOUT};
+use rust_decimal::Decimal;
 use serde_json::{json, Value};
 use tokio::time::Instant;
 
@@ -51,15 +58,34 @@ fn credentials() -> Credentials {
     .or_fail("the demo key")
 }
 
+/// The demo host's unsigned REST client.
+fn demo_client() -> Predictions {
+    Predictions::builder()
+        .base_url(DEMO)
+        .build()
+        .or_fail("the demo REST client")
+}
+
 /// An open market of the demo host, over unsigned REST. `two_sided_market` pages
 /// `status=open&mve_filter=exclude` and confirms both sides of the book on the orderbook
 /// route, and is an `environmental` skip when none qualifies.
 async fn open_demo_ticker() -> Ticker {
-    let client = Predictions::builder()
-        .base_url(DEMO)
-        .build()
-        .or_fail("the demo REST client");
-    let market = common::two_sided_market(&client).await;
+    let market = common::two_sided_market(&demo_client()).await;
+    Ticker::new(&market.ticker).or_fail("the demo market's ticker")
+}
+
+/// An open market of the demo host as `open_demo_ticker` finds one, whose REST YES bid is at
+/// least 0.60. Against a bid that high every raw NO price lies below it (an uncrossed book
+/// has NO bids under 1 minus the YES bid, so under 0.40), which is what lets the uncrossed
+/// check fail. An `environmental` skip when none qualifies.
+async fn high_bid_demo_ticker() -> Ticker {
+    let floor = Decimal::new(60, 2);
+    let market = common::two_sided_market_where(
+        &demo_client(),
+        ", with a YES bid of at least 0.60",
+        |market| market.yes_bid_dollars >= floor,
+    )
+    .await;
     Ticker::new(&market.ticker).or_fail("the demo market's ticker")
 }
 
@@ -93,7 +119,7 @@ fn unmodelled_keys(text: &str) -> Option<Vec<String>> {
 #[ignore]
 async fn live_a_demo_market_delivers_an_uncrossed_snapshot() {
     let credentials = credentials();
-    let ticker = open_demo_ticker().await;
+    let ticker = high_bid_demo_ticker().await;
     let mut feed = PredictionsWsBuilder::new()
         .url(DEMO_WS)
         .or_fail("the demo socket URL")
@@ -115,7 +141,9 @@ async fn live_a_demo_market_delivers_an_uncrossed_snapshot() {
     }
     let book = snapshot.unwrap_or_else(|| transient("no orderbook_snapshot arrived within 30 s"));
     // `use_yes_price` puts both sides on one scale; a crossed book would mean it was not
-    // honoured. A one-sided book has nothing to cross.
+    // honoured. The market was chosen for a YES bid of at least 0.60 so that this can fail:
+    // raw NO prices would then lie below the bid (under 0.40), and the lowest ask would sit
+    // under the best bid. A one-sided book has nothing to cross.
     if let (Some(bid), Some(ask)) = (book.bids.first(), book.asks.first()) {
         assert!(
             bid.price < ask.price,
