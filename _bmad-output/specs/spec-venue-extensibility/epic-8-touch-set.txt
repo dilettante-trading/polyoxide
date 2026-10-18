@@ -19,3 +19,5 @@
 ^_bmad-output/specs/
 ^_bmad-output/planning-artifacts/architecture/architecture-polyoxide-2026-10-08/spine-amendments/epic-8\.md$
 ^_bmad-output/implementation-artifacts/deferred-work\.md$
+^ci/test-body-diff\.toml$
+^\.github/scripts/tests/test_test_body_diff\.py$

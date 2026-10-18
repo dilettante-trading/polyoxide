@@ -121,3 +121,22 @@ item = "agreement!#1"
 kind = "invocation"
 row = "R14"
 sha256 = "f90989b3b0ccd904c0a896469118e31464a17f40b500b9b7520823a616aadbb2"
+
+[[drift]]
+file = "polyoxide-ws/src/test_server/mod.rs"
+item = "handshake"
+row = "R15"
+sha256 = "65c5b15f1ebfc7a182875a259618ecc24e897f35d837da81684c1bc6aba56bc7"
+
+[[drift]]
+file = "polyoxide-ws/src/test_server/mod.rs"
+item = "serve"
+row = "R15"
+sha256 = "43f6bee614247047772e947427f8832738fcccf65c07e1c392a3182cec77bf8e"
+
+[[drift]]
+file = "polyoxide-ws/src/test_server/mod.rs"
+item = "Recorder"
+kind = "struct"
+row = "R15"
+sha256 = "4c0eddc1e9fd818e74b209379b6928ba1bf8d4b4f2be05d899418ef828168e76"

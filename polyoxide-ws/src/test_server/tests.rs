@@ -796,3 +796,81 @@ mod helpers_as_the_suites_use_them {
         assert_eq!(drained, [1, 2, 3]);
     }
 }
+
+mod handshake_headers_are_recorded {
+    use tokio_tungstenite::tungstenite::client::IntoClientRequest;
+
+    use super::*;
+
+    /// Connects to `url` with one extra request header, `x-sample-stamp: value`.
+    // The error type is tungstenite's; a test helper does not box it.
+    #[allow(clippy::result_large_err)]
+    async fn connect_stamped(
+        url: &str,
+        value: &'static str,
+    ) -> Result<Client, tokio_tungstenite::tungstenite::Error> {
+        let mut request = url.into_client_request().expect("a client request");
+        request
+            .headers_mut()
+            .insert("x-sample-stamp", HeaderValue::from_static(value));
+        connect_async(request).await.map(|(ws, _)| ws)
+    }
+
+    /// The value of the `x-sample-stamp` header among a handshake's headers.
+    fn stamp(headers: &[(String, String)]) -> Option<&str> {
+        headers
+            .iter()
+            .find(|(name, _)| name.as_str() == "x-sample-stamp")
+            .map(|(_, value)| value.as_str())
+    }
+
+    #[tokio::test]
+    async fn each_handshake_is_recorded_with_its_headers_in_accept_order() {
+        let server = ScriptedServer::start(vec![Script::hold()]).await;
+        assert!(server.handshake_headers().is_empty());
+
+        let _first = connect_stamped(&server.url, "alpha").await.unwrap();
+        server
+            .wait_for("one handshake", |s| s.handshake_headers().len() == 1)
+            .await;
+        let _second = connect_stamped(&server.url, "beta").await.unwrap();
+        server
+            .wait_for("two handshakes", |s| s.handshake_headers().len() == 2)
+            .await;
+
+        let recorded = server.handshake_headers();
+        assert_eq!(recorded.len(), 2);
+        assert_eq!(stamp(&recorded[0]), Some("alpha"));
+        assert_eq!(stamp(&recorded[1]), Some("beta"));
+        // Every name is lowercase, and the client's own upgrade headers are
+        // among them, so the record is the request and not only what a test
+        // added to it.
+        assert!(recorded
+            .iter()
+            .flatten()
+            .all(|(name, _)| *name == name.to_lowercase()));
+        for headers in &recorded {
+            assert!(headers
+                .iter()
+                .any(|(name, _)| name.as_str() == "sec-websocket-key"));
+        }
+    }
+
+    #[tokio::test]
+    async fn a_refused_upgrade_records_nothing() {
+        let server = ScriptedServer::start(vec![Script::refuse_upgrade(429), Script::hold()]).await;
+        // The first connection is refused; the second is accepted.
+        assert!(connect_stamped(&server.url, "refused").await.is_err());
+        let _accepted = connect_stamped(&server.url, "accepted").await.unwrap();
+        server
+            .wait_for("the accepted handshake", |s| {
+                !s.handshake_headers().is_empty()
+            })
+            .await;
+
+        let recorded = server.handshake_headers();
+        assert_eq!(recorded.len(), 1);
+        assert_eq!(stamp(&recorded[0]), Some("accepted"));
+        assert_eq!(server.paths().len(), 1);
+    }
+}
