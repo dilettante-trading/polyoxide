@@ -60,7 +60,7 @@ that builds on 0.40 builds unchanged.
   `MarketWsBuilder` connects a `SupervisedMarketWs` (`ClobMarketProtocol`, `MarketEvent`,
   `MarketChange` and the `MarketMembership` trait), and `UserWsBuilder` a `SupervisedUserWs`
   (`ClobUserProtocol`, `UserEvent`, `UserChange` and the `UserMembership` trait). Both yield a
-  `DisconnectReason` (the server's close code and reason, an error, a stall or a rotation) with
+  `DisconnectReason` (the server's close code and reason, an error or a stall) with
   each `Disconnected`. They reconnect after a close or a stall, replay their membership on every
   connection (the user socket its credentials too), and yield one `Disconnected` and one
   `Reconnected` per outage. They send a text `PING` every 10 s, count any frame as liveness and
@@ -69,8 +69,8 @@ that builds on 0.40 builds unchanged.
   or markets per connection. The market queue holds 1024 events and the user queue is
   unbounded. The market socket yields every book of an array frame. `WebSocket`,
   `WebSocketBuilder` and `WebSocketWithPing` are unchanged, except that their connect now dials a
-  URL whose host is an IPv6 literal, which failed its lookup before, and
-  `MarketMessage::from_json` still keeps only the first book of an array.
+  URL whose host is an IPv6 literal, which failed its lookup before. `MarketMessage::from_json`
+  still keeps only the first book of an array.
 - `ClobWsError::Authentication` has its first use: the user socket decodes the server's 1008
   close as `ClobWsError::Authentication(<the close reason>)`, classed `Unauthorized`, and stops
   on it instead of reconnecting. The enum's variants are unchanged.
