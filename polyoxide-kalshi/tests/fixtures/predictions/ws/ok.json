@@ -1,0 +1,13 @@
+{
+  "type": "ok",
+  "id": 2,
+  "sid": 1,
+  "seq": 46,
+  "msg": {
+    "market_tickers": [
+      "KXBTCD-26OCT2317-T81999.99",
+      "KXTRUMPAPPROVE-26OCT19-E39.1"
+    ]
+  },
+  "sending_ts_ms": 1792336618405
+}

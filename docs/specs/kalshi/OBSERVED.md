@@ -88,4 +88,19 @@ Captured from the demo host (`https://external-api.demo.kalshi.co`) with the own
 - **What the client does with it.** The first send of a client reads `/account/endpoint_costs` and, with a key, `/account/limits`, and resizes the Read bucket in place to the answer's `read`. It keeps Basic's sizing, with one WARN, when a read fails or the answer reports a zero capacity or refill. A client without a key keeps Basic's sizing, since no anonymous limit is published.
 - **Recorded, not built.** The Write bucket, the per-shard Write buckets and the separate bucket of `GET /portfolio/balance` (2026-10-15) are published and not modelled by the throttle. They come with Kalshi's `Trading`.
 
+<!-- kalshi-ws-capture:begin -->
+## The order-book socket, as the demo host answers it
+
+Captured 2026-10-18T15:15:57Z by `scripts/capture_kalshi_predictions_ws.py` from `wss://external-api-ws.demo.kalshi.co/trade-api/ws/v2` on `KXBTCD-26OCT2317-T81999.99`, with `KXTRUMPAPPROVE-26OCT19-E39.1` added to the subscription. Fixtures: `polyoxide-kalshi/tests/fixtures/predictions/ws/`.
+
+| Question | Observed |
+|----------|----------|
+| First `seq` of a subscription | 1, on its `orderbook_snapshot` frame |
+| `ok` to `update_subscription` advances `seq` | yes: `seq` 45 before it, 46 on it |
+| `unsubscribed` advances `seq` | yes: `seq` 55 before it, 56 on it |
+| `add_markets` is followed by a snapshot of the added market | yes |
+| Snapshot book not crossed, so `use_yes_price` is honoured | yes: best bid 0.4500, best ask 0.4600 |
+| Bound on markets per subscription | none met: the capture subscribed one market, then added a second |
+<!-- kalshi-ws-capture:end -->
+
 <!-- capture findings go above this line -->
