@@ -339,6 +339,9 @@ plan disagreeing with one of them stops and asks.
     in `_bmad-output/specs/spec-venue-extensibility/divergences.md`. Every item there is
     `cfg(any(test, feature = "test-server"))`, so `test_body_diff.py` reads them as test context,
     and D17's recorder cannot be added without changing them (the owner, 2026-10-18; A8-4).
+  - `.github/scripts/tests/test_test_body_diff.py`: its checked-in-config test counts the DRIFT
+    rows through R15 and admits `R15` among the cited rows, as it did when R14 landed (R15's
+    consequence; A8-4).
 
   The planning records the run writes are in the set too: this spec, the plan,
   `_bmad-output/specs/**`, `spine-amendments/epic-8.md` and
@@ -1128,6 +1131,7 @@ The entry for the eight trading probes stays as it is.
     `.github/scripts/tests/test_dep_allowlists.py`;
   - `polyoxide-ws/src/test_server/mod.rs` and `polyoxide-ws/src/test_server/tests.rs`;
   - `ci/test-body-diff.toml` (D20, R15);
+  - `.github/scripts/tests/test_test_body_diff.py` (D20, R15);
   - this spec, the plan, `_bmad-output/specs/`, `spine-amendments/epic-8.md` and
     `_bmad-output/implementation-artifacts/deferred-work.md`.
 - **The final gates** are the profile's, with D24's Kalshi pins. They add the removals check
