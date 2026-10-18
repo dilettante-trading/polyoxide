@@ -233,7 +233,9 @@ plan disagreeing with one of them stops and asks.
   id of a ticker and an outcome:
   - `parse_id` splits the id at its last `:`. The part before is the ticker, uppercased (ASCII),
     then checked against `[A-Z0-9.-]`, 1 to 200 characters (200 is the OpenAPI's `maxLength` for
-    `GET /markets/orderbooks`' tickers). The part after is the outcome, lowercased, `yes` or `no`.
+    `GET /markets/orderbooks`' tickers), at least one of them a letter or digit, so `.` and `..`,
+    which a URL resolves as dot segments, are refused (the owner, 2026-10-18). The part after is
+    the outcome, lowercased, `yes` or `no`.
   - `id_text` writes `<TICKER>:<outcome>`.
   - Uppercasing is safe because every ticker the venue serves is uppercase and tickers are
     case-sensitive (§1.3, probe 4): a lowercase key would otherwise name nothing at the venue.
@@ -291,7 +293,9 @@ plan disagreeing with one of them stops and asks.
   - An error frame that answers a command fails that command, and the connection stays.
   - A subscription-scoped error frame is `PredictionsWsError::Server { code, message }`:
     - code 9 (authentication required) stops the stream;
-    - code 25 (subscription buffer overflow) reconnects;
+    - code 10 (channel error) and code 25 (subscription buffer overflow) are `Unavailable` and
+      reconnect, since Kalshi's AsyncAPI calls both terminal ("the user must resubscribe"; the
+      owner, 2026-10-18), and the replay resubscribes;
     - code 27 (command rate limit) is `RateLimited` and reconnects;
     - every other code is `InvalidRequest` and is skipped.
   - `SequenceGap` reconnects (D14).
@@ -431,7 +435,8 @@ plan disagreeing with one of them stops and asks.
 - `pub const VENUE: VenueId = VenueId::from_static("kalshi")` and
   `pub const PRODUCT: ProductId = ProductId::from_static("predictions")`.
 - `Ticker`, a newtype over `String`. `Ticker::new(&str) -> Result<Ticker, InvalidTicker>`
-  uppercases ASCII and checks `[A-Z0-9.-]`, 1 to 200 characters; `as_str` reads it. Response rows
+  uppercases ASCII and checks `[A-Z0-9.-]`, 1 to 200 characters, at least one of them a letter or
+  digit (D8); `as_str` reads it. Response rows
   keep tickers as `String`, as Binance's rows keep symbols: `Ticker` is what a caller sends.
 - `Outcome { Yes, No }`, `Copy` and `Eq` and `Hash`, with `as_str` (`yes`, `no`) and `other()`.
 - `OutcomeId { pub ticker: Ticker, pub outcome: Outcome }`.
@@ -443,7 +448,8 @@ plan disagreeing with one of them stops and asks.
   - `the_ids_are_the_ones_the_crate_registers`, through `polyoxide_test_support::registration!()`,
     as Binance's `key.rs:81-92`;
   - a lowercase ticker and outcome canonicalize, and a dotted ticker parses;
-  - a ticker with another character, an empty one and one of 201 characters are refused;
+  - a ticker with another character, an empty one, one of 201 characters, and `.` and `..` are
+    refused;
   - `kalshi.predictions:KXBTCD-26OCT1806-T82099.99:yes` round-trips through `RawKey::parse`,
     `parse` and `Display`;
   - a key of another venue or product is a `KeyError`.
@@ -554,8 +560,10 @@ plan disagreeing with one of them stops and asks.
   - Module Organization's first paragraph.
 
   Story 5 edits the scripted-server paragraph. Story 6 edits the live-suites paragraph, naming all
-  three Kalshi live targets at once, and Module Organization's WebSocket paragraph. No two stories
-  edit one paragraph.
+  four Kalshi live targets at once, and Module Organization's WebSocket paragraph. No two stories
+  edit one paragraph, with one exception: in the CI paragraph, Story 6 replaces the text that ends
+  Story 1's Kalshi allowlist clause, which the plan's names contract gives, to name the
+  `@predictions-ws` file and its `MUST_BUILD` row.
 
   The paragraphs that describe the umbrella and the CLI stay as they are, since Kalshi is in
   neither. `README.md`'s hand-written intro also stays: it describes what is published.
@@ -972,8 +980,8 @@ order. Its names are made-up words, with no venue.
 **8.9 `PredictionsWsError`** is `#[non_exhaustive]`:
 
 - `Connection(WsError)`, classed through the macro's table;
-- `Server { code, message }`: 9 is `Unauthorized`, 27 `RateLimited`, 25 `Unavailable`, and every
-  other code `InvalidRequest`;
+- `Server { code, message }`: 9 is `Unauthorized`, 27 `RateLimited`, 10 and 25 `Unavailable`, and
+  every other code `InvalidRequest`;
 - `SequenceGap { sid, expected, received }`, classed `Network` and a fault;
 - `Json { text, source }`, built explicitly, since no `From<serde_json::Error>` is allowed;
 - `InvalidUrl { url, reason }`.
@@ -984,7 +992,7 @@ order. Its names are made-up words, with no venue.
   with `seq` counting from 1.
 - `update_subscription` is answered with `ok`, carrying `seq`, and `unsubscribe` with
   `unsubscribed`.
-- Options inject a `seq` gap and an error frame (code 9, 25). The kit's own scripts supply refusals
+- Options inject a `seq` gap and an error frame (code 9, 10, 25). The kit's own scripts supply refusals
   (`refuse_upgrade(401)`, `refuse_upgrade(503)`), silence and cuts.
 - Its frames follow the captured ones.
 
@@ -1002,7 +1010,7 @@ order. Its names are made-up words, with no venue.
 4. **A gap.** A `seq` gap yields `Disconnected(Error(SequenceGap))`, then `Reconnected`, then a
    fresh snapshot.
 5. **Liveness.** The server's Pings alone keep a quiet connection live past `stale_after`.
-6. **Error frames.** Code 9 ends the stream with its error, and code 25 reconnects.
+6. **Error frames.** Code 9 ends the stream with its error, and codes 10 and 25 reconnect.
 7. **Refusals.** A 401 refusal ends the stream, and a 503 is retried.
 8. **Markers.** Each outage yields one `Disconnected` and one `Reconnected`.
 
@@ -1157,7 +1165,7 @@ The entry for the eight trading probes stays as it is.
   - No client cap on tickers per subscription: code 26 is the venue's bound, and the capture
     records any it meets.
 - **Bounds on what a caller supplies.**
-  - A ticker is 1 to 200 characters of `[A-Z0-9.-]`.
+  - A ticker is 1 to 200 characters of `[A-Z0-9.-]`, at least one a letter or digit.
   - The native `trades().limit` sends what it is given, and Kalshi refuses more than 1000 as a
     `VenueRefusal` (probe 6).
 
