@@ -612,8 +612,10 @@ its cost.
 
 Query setters come from `polyoxide_core::query_setters!`:
 
-- `list`: `status` (a `wire_enum!` of the filter's values: `unopened`, `open`, `closed` and
-  `settled`), `event_ticker`, `series_ticker`, `limit` and `cursor`;
+- `list`: `status` (a `wire_enum!` of the filter's values: `unopened`, `open`, `paused`, `closed`
+  and `settled`, the parameter's enum in the OpenAPI, whose prose leaves out `paused`),
+  `event_ticker`, `series_ticker`, `mve_filter` (a `wire_enum!` `MveFilter` of `only` and
+  `exclude`; the owner, 2026-10-18), `limit` and `cursor`;
 - `orderbook`: `depth`;
 - `trades`: `ticker`, `limit`, `cursor`, `min_ts` and `max_ts`;
 - `events().get`: `with_nested_markets`.
@@ -649,9 +651,13 @@ whole, so no story edits another's code.
 a file and never with `python3 -I`, on `scripts/capture_common.py`.
 
 - **Production, unsigned.** It picks an `active` market with a two-sided book. It pages
-  `markets?status=open&limit=1000`, at most 10 pages, to a row with a YES bid above 0 and a YES ask
-  below 1, then confirms both sides on that market's orderbook. With none, it fails. It then
-  writes `tests/fixtures/predictions/`:
+  `markets?status=open&mve_filter=exclude&limit=1000`, at most 10 pages, to a row with a YES bid
+  above 0 and a YES ask below 1, then confirms both sides on that market's orderbook. With none, it
+  fails. The filter is needed: on 2026-10-18 the unfiltered open listing's first ten pages held
+  9,996 multivariate combinations of 10,000 rows and no quoted single market, while the filtered
+  listing's first page held 579 quoted rows (the owner, 2026-10-18). Story 2 records this in
+  `OBSERVED.md`, in a section of its own above the anchor. It then writes
+  `tests/fixtures/predictions/`:
   - `exchange_status.json` and `endpoint_costs.json`;
   - `market.json`, `markets_page.json` (5 rows), `orderbook.json` and `orderbook_depth1.json`;
   - `trades.json` (100 rows) and `event.json` (nested);
@@ -683,8 +689,9 @@ Every test is `#[ignore]`d.
 
 - `exchange().status()` and `health().ping()` succeed.
 - A market is chosen by precondition: open, with a two-sided book. Candidates come from at most 5
-  pages of `markets().list()`, and the book is confirmed on the orderbook route its assertions read,
-  since a CDN caches per URL. With none it is an `environmental(..)` skip.
+  pages of `markets().list()` with `status(Open)` and `mve_filter(Exclude)` (§4.4 says why), and the
+  book is confirmed on the orderbook route its assertions read, since a CDN caches per URL. With
+  none it is an `environmental(..)` skip.
 - Each REST type of the chosen market carries no unmodelled keys. This is the drift detector,
   through the agreement helpers.
 - The route table, read through Story 1's doc-hidden accessors, agrees with
