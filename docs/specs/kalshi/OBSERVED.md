@@ -50,4 +50,31 @@ What the client builds, and what is provisional:
 
 Recorded, not built: the Write bucket, the balance bucket and the per-shard Write buckets come with Kalshi's `Trading`.
 
+## Public REST (Story 2, captured 2026-10-18)
+
+Read from `https://external-api.kalshi.com/trade-api/v2` with no credentials by
+`scripts/capture_kalshi_predictions.py`; the fixtures are in
+`polyoxide-kalshi/tests/fixtures/predictions/` and their `PROVENANCE.md` says how each was trimmed.
+
+### The open listing serves multivariate combinations first
+
+`GET /markets?status=open&limit=1000`, paged by cursor, returned 9,996 multivariate combinations
+(`mve_collection_ticker` set) in its first ten pages of 10,000 rows, and no single market with a
+quote on both sides. With `mve_filter=exclude` the first page held 579 rows with a YES bid above 0
+and a YES ask below 1. So a walk for a quoted single market filters: the capture script and the live
+suites' `two_sided_market` page `markets?status=open&mve_filter=exclude&limit=1000` (at most 10 pages
+for the capture, 5 for the live helper) and confirm both sides on that market's orderbook route, since
+a CDN caches per URL. `mve_filter` takes `only` and `exclude`, and the client's `MveFilter` carries
+both.
+
+### The `status` filter takes five values
+
+The OpenAPI's parameter enum for `GET /markets`'s `status` lists `unopened`, `open`, `paused`,
+`closed` and `settled`; its prose leaves out `paused`. `MarketStatusFilter` carries all five, and
+`spec_agreement_predictions` checks them against the mirror's parameter enum.
+
+### Keys the wire carries and the schema lacks
+
+Each is modelled as an optional field of its type and excused in `OBSERVED_EXTRA` in
+`spec_agreement_predictions.rs`, as perps' are. The capture found no key the schema lacks.
 <!-- capture findings go above this line -->
