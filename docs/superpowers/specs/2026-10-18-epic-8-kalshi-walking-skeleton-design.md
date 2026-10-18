@@ -326,7 +326,7 @@ plan disagreeing with one of them stops and asks.
   2026-10-18). `PredictionsProtocol::handshake` signs `timestamp_ms + "GET" + <the URL's path>`
   (`/trade-api/ws/v2` on Kalshi's hosts) afresh for each attempt, with the same signer as REST.
   `polyoxide-ws`'s scripted server gains `handshake_headers()`, which returns each accepted
-  handshake's request headers in accept order (§7). It names no venue. It is a foundation edit
+  handshake's request headers in the order handshakes completed (a refused upgrade takes no slot) (§7). It names no venue. It is a foundation edit
   outside AD-13's set, approved by the owner and recorded as A8-4.
 - **D18. Live hosts split by authentication** (the owner, 2026-10-18).
   - `live_predictions` runs against production, unsigned and with no secrets, so every nightly run
@@ -914,7 +914,7 @@ timeout 15, features `["predictions"]` and secrets `["KALSHI_DEMO_API_KEY_ID",
   Names are lowercase and values lossy UTF-8.
 - `serve()` pushes them just after `paths.push(path)`.
 - `ScriptedServer::handshake_headers(&self) -> Vec<Vec<(String, String)>>` sits beside `paths()`.
-  Its documentation says it returns each accepted handshake's request headers, in accept order. A
+  Its documentation says it returns each accepted handshake's request headers, in the order handshakes completed (a refused upgrade takes no slot). A
   refused upgrade records nothing, as for `paths`.
 
 **7.2 The test.** It is appended after the last test in `test_server/tests.rs`, so no cited line
@@ -930,7 +930,8 @@ order. Its names are made-up words, with no venue.
 
 **8.1 Feature and wiring.**
 
-- `predictions-ws = ["predictions", "dep:polyoxide-ws", "dep:futures-util", "tokio/rt", "tokio/macros"]`.
+- `predictions-ws = ["predictions", "dep:polyoxide-ws"]`, with `futures-util` a dev-dependency: the
+  module's own code needs nothing more (the final review, 2026-10-18).
 - A path-only dev-dependency on `polyoxide-ws` with `features = ["test-server"]`.
 - docs.rs's list gains `predictions-ws`.
 - `ci/dep-allowlists/polyoxide-kalshi@predictions-ws.txt`, and its `MUST_BUILD` row (D23).
@@ -1110,6 +1111,7 @@ recipe or the spine left:
 | A8-8 | The umbrella's generic example cannot be included without every venue's features; proposal: move its generic half into its own file (D22) |
 | A8-9 | test-support's agreement and OpenAPI helpers read JSON only, so a venue that publishes YAML needs a parser (D19) |
 | A8-10 | cargo-hack's `--ignore-private` leaves a `publish = false` venue's features unchecked |
+| A8-11 | A venue whose replay can be refused, or answered with a frame that does not decode, must stop on it itself, since the kit reads a `Skip` during a failed attempt as a reconnect (D16; appended by the run) |
 
 The run appends any gap it meets, each one numbered. Merging them into the spine and regenerating
 `docs/ARCHITECTURE.md` is an owner session after the run.
@@ -1138,8 +1140,9 @@ The entry for the eight trading probes stays as it is.
   - `gen_registry.py --check`, `venue_gate.py` and `live_unwraps.py`;
   - `test_body_diff.py --baseline v0.40.0`.
 - **The touch-set gate** follows them:
-  `bash -c '{ git diff --name-only "$(git merge-base main HEAD)"; git ls-files --others --exclude-standard; } | sort -u | grep -v -E -f _bmad-output/specs/spec-venue-extensibility/epic-8-touch-set.txt; test $? -eq 1'`.
-  It covers committed, uncommitted and untracked paths, and it passes when every one matches the
+  `bash -c '{ git diff --no-renames --name-only "$(git merge-base main HEAD)"; git ls-files --others --exclude-standard; } | sort -u | grep -v -E -f _bmad-output/specs/spec-venue-extensibility/epic-8-touch-set.txt; test $? -eq 1'`.
+  `--no-renames` lists both sides of a rename, so a file moved out of a disallowed path shows (Story
+  1's review). It covers committed, uncommitted and untracked paths, and it passes when every one matches the
   allowlist. It prints any path that does not match. A missing allowlist makes `grep` exit 2, so
   the gate fails closed. Every story's **Verify** line ends with it, since the profile's story
   gates do not run it. Story 1 writes the allowlist, one extended regex per line, matching
