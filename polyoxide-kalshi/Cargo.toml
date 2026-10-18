@@ -111,6 +111,10 @@ required-features = ["predictions"]
 name = "signing_predictions"
 required-features = ["predictions"]
 
+[[test]]
+name = "live_predictions_account"
+required-features = ["predictions"]
+
 # Registration, read by scripts/gen_registry.py; run it with --write after an edit.
 [package.metadata.polyoxide]
 readme = "Client library for Kalshi's APIs, one feature per module: `predictions` (event-contract market data, with its order-book stream under `predictions-ws`); a walking skeleton, not published"
@@ -129,6 +133,12 @@ suite = "predictions"
 timeout = 15
 features = ["predictions"]
 secrets = []
+
+[package.metadata.polyoxide.live.live_predictions_account]
+suite = "predictions"
+timeout = 15
+features = ["predictions"]
+secrets = ["KALSHI_DEMO_API_KEY_ID", "KALSHI_DEMO_PRIVATE_KEY"]
 
 [package.metadata.docs.rs]
 features = ["predictions"]

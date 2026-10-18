@@ -203,13 +203,16 @@ jobs:
     name: Live tests (polyoxide-kalshi, predictions)
     runs-on: ubuntu-latest
     timeout-minutes: 15
+    env:
+      KALSHI_DEMO_API_KEY_ID: ${{ secrets.KALSHI_DEMO_API_KEY_ID }}
+      KALSHI_DEMO_PRIVATE_KEY: ${{ secrets.KALSHI_DEMO_PRIVATE_KEY }}
     steps:
       - uses: actions/checkout@v5
       - uses: ./.github/actions/live-suite
         with:
           crate: polyoxide-kalshi
           suite: predictions
-          flags: "--no-default-features --features predictions --test live_predictions --test live_predictions_venue"
+          flags: "--no-default-features --features predictions --test live_predictions --test live_predictions_account --test live_predictions_venue"
   # generated:end nightly-live-jobs
 
   aggregate:

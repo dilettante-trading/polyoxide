@@ -682,3 +682,36 @@ async fn a_limits_answer_with_a_zero_refill_or_capacity_keeps_basic_and_warns() 
         assert!(warnings[0].1.contains("account/limits"), "{warnings:?}");
     }
 }
+
+/// `value` with every `null` removed, so an absent key and a null one compare equal.
+fn without_nulls(value: Value) -> Value {
+    match value {
+        Value::Object(map) => Value::Object(
+            map.into_iter()
+                .filter(|(_, value)| !value.is_null())
+                .map(|(key, value)| (key, without_nulls(value)))
+                .collect(),
+        ),
+        Value::Array(items) => Value::Array(items.into_iter().map(without_nulls).collect()),
+        other => other,
+    }
+}
+
+#[test]
+fn the_captured_limits_fit_the_type_in_both_directions() {
+    let wire = fixtures!("predictions/account").json("limits");
+
+    let limits: polyoxide_kalshi::predictions::types::AccountLimits =
+        serde_json::from_value(wire.clone()).unwrap();
+
+    // A key the wire carries and the type lacks is lost on the way back, and a key the type adds
+    // is not on the wire; either makes the two differ.
+    assert_eq!(
+        without_nulls(serde_json::to_value(&limits).unwrap()),
+        without_nulls(wire)
+    );
+    // Basic is the floor of every tier (Kalshi's rate_limits page): Read holds at least 600
+    // tokens and refills at least 200 a second.
+    assert!(limits.read.bucket_capacity >= 600);
+    assert!(limits.read.refill_rate >= 200);
+}
