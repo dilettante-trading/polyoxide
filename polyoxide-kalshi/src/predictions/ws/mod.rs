@@ -18,8 +18,12 @@
 //! Errors are `PredictionsWsError`, classified through the one socket table.
 
 mod error;
+mod event;
 
 pub use error::PredictionsWsError;
+#[doc(hidden)]
+pub use event::frames;
+pub use event::{DisconnectReason, Event, OrderbookDelta, OrderbookSnapshot};
 
 /// The production WebSocket endpoint.
 pub const PRODUCTION_WS: &str = "wss://external-api-ws.kalshi.com/trade-api/ws/v2";
