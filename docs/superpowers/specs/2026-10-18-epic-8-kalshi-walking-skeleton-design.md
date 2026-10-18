@@ -20,17 +20,18 @@ release ships the crate. The run makes no version bump and does not change the s
 `aidanb/init`. Local `main` has moved on since this spec was written: it holds Epic 7,
 `chore(release): v0.41.0` (`d1fa06a`) and a CLOB drift adoption (`9096489`), none of it pushed when
 this was written. So the branch merges `main` before the run starts. The touch-set gate's base
-(D20, §10) is the branch's commit when the run starts, after that merge, and the plan's skeleton
-names it. Later edits to this spec and to the plan are in the set.
+(D20, §10) is `git merge-base main HEAD`, worked out each time the gate runs, so `main`'s own
+commits never count, whether they are merged in or not. Edits to this spec and to the plan are in
+the set.
 
 **1.2 The plan's stories.**
 
 | Plan story | Epic story | What |
 |---|---|---|
 | 1 | 8.1, and 8.2's exchange status | Register `polyoxide-kalshi`: the crate, its metadata, the mirror, the keys, a minimal client with `health().ping()` and `exchange().status()`, and the CI wiring |
-| 2 | 8.2 | The public REST surface: routes, types, the error decode, the throttle and its costs confirmation, fixtures, and the mock, agreement and live suites |
+| 2 | 8.2 | The public REST surface: routes, types, fixtures, and the mock, agreement and live suites, at the compiled costs |
 | 3 | 8.3 | `MarketData`, `Trades` and `EventGroups` on `Predictions` |
-| 4 | 8.2 | Signing: credentials, the authenticator, and the limits confirmation |
+| 4 | 8.2 | Signing: credentials, the authenticator, and the first-use confirmation of costs and limits |
 | 5 | 8.4 (prerequisite) | The kit's scripted server records each handshake's headers |
 | 6 | 8.4 | The supervised socket |
 | 7 | 8.5 | Validation, amendments and records |
@@ -419,8 +420,9 @@ plan disagreeing with one of them stops and asks.
     `#[doc = include_str!("predictions/README.md")]`, `struct PredictionsReadmeDoctests;`;
   - the `Classify` assertion (§3.8).
 - `src/predictions/` holds `mod.rs`, `README.md`, `api/{mod,health,exchange}.rs`, `error.rs`,
-  `key.rs`, `request.rs`, `throttle.rs` and `types.rs`. Later stories add
-  `api/{markets,events,account}.rs`, `auth.rs`, `venue.rs` and `ws/`.
+  `key.rs`, `request.rs`, `throttle.rs` and `types/{mod,exchange}.rs`. Later stories add
+  `api/{markets,events,account}.rs` and `types/{markets,events,account}.rs` (Story 2), `venue.rs`
+  (Story 3), `auth.rs`, `api/limits.rs` and `types/limits.rs` (Story 4), and `ws/` (Story 6).
 - The crate `README.md` and `src/predictions/README.md` are prose with no code fence, since both
   are doctests. They say the crate is a walking skeleton and not published.
 
@@ -456,18 +458,24 @@ plan disagreeing with one of them stops and asks.
   - builds the throttle, then the client with
     `config.http_builder().with_throttle(throttle.clone()).build()?`. That leaves core's
     `DefaultRetryPolicy` installed (D6).
-- `Predictions`, `Clone`, holds the client, the throttle and the shared confirmation cell (Story
-  2). It has `Predictions::new()`, `Predictions::builder()` and its accessors from
+- `Predictions`, `Clone`, holds one `Arc` of its shared state: the HTTP client, the throttle, the
+  route costs, the confirmation cell, and the authenticator (`None` until Story 4's `credentials`
+  sets it). It has `Predictions::new()`, `Predictions::builder()` and its accessors from
   `polyoxide_core::namespaces!`.
-- `Route` (private) gives each route's `path`, its `template` in `endpoint_costs`' spelling
-  (`:param`) and its compiled `cost` (10). Story 1 has `ExchangeStatus`,
-  `GET /trade-api/v2/exchange/status`.
+- **The route table is whole from Story 1**, so no later story edits it. Each route is a method and
+  a template in `endpoint_costs`' spelling (`:param`), and costs the default 10. The table holds
+  `exchange/status` and §4.1's routes, among them `account/endpoint_costs` and
+  `account/limits`.
+  - A doc-hidden public accessor lists every route's method and template, and two doc-hidden
+    items give the default cost and the segment-by-segment match (§4.1).
+  - The drift test (§4.6), an integration suite, reads the table through them.
 - `Routed<T>` (private) is the route builder, after Binance's `usdm/request.rs:21-71`. It holds the
-  client, its route and its query, and its inherent `query` replaces a key. Its `send`:
-  1. waits on the confirmation (Story 2);
+  shared state, its route and its query, and its inherent `query` replaces a key. Its `send`:
+  1. awaits the state's `before_send`, which Story 1 writes as a method that returns at once
+     and Story 4 replaces with the confirmation (D5);
   2. builds `Request::<T, PredictionsError>::new(http, path)` with
      `Cost { layer: READ, units, exact: true }`, `units` read at this point (D5);
-  3. adds the authenticator when the client has credentials (Story 4) and the query pairs;
+  3. adds the authenticator when the state holds one (Story 4) and the query pairs;
   4. sends.
 - `PredictionsThrottle` (private) implements `Throttle` after
   `polyoxide-test-support/tests/token_cost_throttle.rs`:
@@ -476,13 +484,17 @@ plan disagreeing with one of them stops and asks.
   - `observe` does nothing, and `hold` extends the hold;
   - the hold is `Hold::unbounded()`: every hold Kalshi's policy sets is a `retry_delay(0)`, which
     `RetryConfig::max_backoff_ms` bounds;
-  - Story 1 makes the provisional bucket, and Story 2 adds the confirmation.
-- `health().ping()` is `HttpClient::health::<PredictionsError>("/trade-api/v2/exchange/status", &[cost])`.
+  - Story 1 makes the provisional bucket, and Story 4 adds the confirmation.
+- `health().ping()` awaits `before_send`, then calls
+  `HttpClient::health::<PredictionsError>("/trade-api/v2/exchange/status", &[cost])`.
 - `exchange().status()` is `GetExchangeStatus`, which returns `ExchangeStatus { exchange_active,
   trading_active, intra_exchange_transfers_active, exchange_estimated_resume_time,
   exchange_index_statuses }`, with `ExchangeIndexStatus { description, exchange_active,
   exchange_index, intra_exchange_transfers_active, trading_active }`. Fields the schema makes
   optional are `Option`, and the list defaults to empty.
+- `types` is a directory module, `types/mod.rs` with one file per group (Story 1's `exchange.rs`,
+  then Story 2's `markets.rs`, `events.rs` and `account.rs`, and Story 4's `limits.rs`), so each
+  story adds files rather than editing another's.
 
 **3.6 The mirror.**
 
@@ -496,7 +508,9 @@ plan disagreeing with one of them stops and asks.
   - the per-shard Write and balance buckets, recorded but not built, and that a 429 carries no
     `Retry-After`.
 
-  Later stories append their findings.
+  The file ends with the line `<!-- capture findings go above this line -->`, and each later
+  story inserts its findings as a section directly above it, so stories that run in any order
+  never edit each other's text.
 - The root manifest's `[workspace.metadata.polyoxide.mirrors.kalshi]`:
   - `name = "Kalshi"`, `section = "other-venue"`;
   - `base_urls`: the production and demo REST hosts and socket URLs, with a `description`;
@@ -532,12 +546,16 @@ plan disagreeing with one of them stops and asks.
   `ci/dep-allowlists/polyoxide-kalshi@predictions.txt` is written by
   `uv run python -m tests.test_dep_allowlists --write`, run in `.github/scripts`.
 - `CLAUDE.md`: these hand-written paragraphs name `polyoxide-kalshi`, its `predictions` module and
-  that the crate is `publish = false`:
+  that the crate is `publish = false`. Story 1 edits:
   - the overview;
   - the CI paragraph, for its header pins and allowlist rules;
   - "Each of those six HTTP modules has a `tests/headers_<module>.rs` …";
-  - the lists of live and mock suites;
-  - Module Organization.
+  - the mock-suites paragraph;
+  - Module Organization's first paragraph.
+
+  Story 5 edits the scripted-server paragraph. Story 6 edits the live-suites paragraph, naming all
+  three Kalshi live targets at once, and Module Organization's WebSocket paragraph. No two stories
+  edit one paragraph.
 
   The paragraphs that describe the umbrella and the CLI stay as they are, since Kalshi is in
   neither. `README.md`'s hand-written intro also stays: it describes what is published.
@@ -623,17 +641,9 @@ fixtures:
   `inactive`, `active`, `closed`, `determined`, `disputed`, `amended` and `finalized`), and so are
   the trade's `taker_outcome_side` (`yes`, `no`) and `taker_book_side` (`bid`, `ask`).
 
-**4.3 The confirmation's costs half** (D5). The confirmation cell, the compiled costs (a
-`std::sync::RwLock` over the route table), and the read of `/account/endpoint_costs` (anonymous) on
-the first send.
-
-Inline tests on a mock server:
-
-- one read across clones and concurrent first sends (mockito `expect(1)`, asserted);
-- a listed route's cost replaces the compiled one;
-- a failed read logs the WARN and keeps the compiled costs;
-- an anonymous client's bucket ends confirmed at Basic, so an exact cost above 600 is refused
-  rather than left waiting.
+**4.3 Costs.** Story 2 sends every route at the compiled cost. Reading `/account/endpoint_costs`
+at first use belongs to Story 4's confirmation (§6.3), which replaces Story 1's `before_send` as a
+whole, so no story edits another's code.
 
 **4.4 The capture**, `scripts/capture_kalshi_predictions.py`: a PEP 723 script run with `uv run`, as
 a file and never with `python3 -I`, on `scripts/capture_common.py`.
@@ -648,11 +658,12 @@ a file and never with `python3 -I`, on `scripts/capture_common.py`.
   - `error_not_found.json`, `error_validation.json` and `error_unauthenticated.json`.
 - `error_rate_limited.json` is written from Kalshi's docs, and `PROVENANCE.md` (through
   `capture_common`'s `stamp`, `provenance_table` and `write_provenance`) says so.
-- Story 4 adds the signing vectors and the demo `/account/limits` capture.
+- Story 4's own script, `scripts/capture_kalshi_account.py`, captures the signing vectors and the
+  demo `/account/limits` (§6.4, §6.7).
 
 **4.5 Story 2's suites.**
 
-- `mock_predictions` gains:
+- `mock_predictions_routes` (a new file, so Story 1's `mock_predictions` is not edited):
   - every route's path and query;
   - each type decoding its fixture;
   - a 429 retried, then holding every request under core's policy.
@@ -676,9 +687,11 @@ Every test is `#[ignore]`d.
   since a CDN caches per URL. With none it is an `environmental(..)` skip.
 - Each REST type of the chosen market carries no unmodelled keys. This is the drift detector,
   through the agreement helpers.
-- The route table agrees with `/account/endpoint_costs`, matched segment by segment (D5's drift
-  test).
-- Story 3 adds the trait checks.
+- The route table, read through Story 1's doc-hidden accessors, agrees with
+  `/account/endpoint_costs`: `default_cost` is the crate's default, and every route the table
+  holds is either unlisted or listed at the cost the crate charges, matched segment by segment
+  (D5's drift test).
+- Story 3's trait checks are a target of their own (§5.7), so this file is not edited.
 
 **4.7 The YAML dev-dependency.** One maintained crate that reads YAML into `serde_json::Value`,
 pinned in `[workspace.dependencies]` and used only as a dev-dependency. `serde-saphyr` is the first
@@ -740,7 +753,9 @@ each `#[derive(Debug, Clone, PartialEq, Default)]`, `#[non_exhaustive]`, every f
 The umbrella dev-dependency is
 `polyoxide = { path = "../polyoxide", default-features = false, features = ["polymarket-clob", "polymarket-perps", "binance-usdm"] }`.
 
-**5.7 Live trait checks.** For the chosen market, `live_predictions` checks that:
+**5.7 Live trait checks.** `live_predictions_venue`, a target of its own (production, unsigned,
+suite `predictions`, timeout 15, features `["predictions"]`, no secrets), chooses its market as
+§4.6 does and checks that:
 
 - `instrument` lists it as `tradable`;
 - the `quote` and `book` of both outcomes are each not crossed, and mirror each other;
@@ -777,9 +792,21 @@ A failure is `ApiError::Sign(Box::new(..))`.
 - Every route builder attaches the authenticator when the client holds one (D3), and
   `account().limits()` refuses without one.
 - `AccountLimits { usage_tier, read: BucketLimit { refill_rate, bucket_capacity }, write, grants }`.
-- The confirmation's limits half (D5).
+- **The confirmation (D5)** replaces Story 1's `before_send` as a whole:
+  - `GET /trade-api/v2/account/endpoint_costs` (unsigned is enough, signed when the client holds
+    a key) replaces the cost of every route it lists;
+  - with a key, `GET /trade-api/v2/account/limits` then resizes the bucket;
+  - the bucket always ends confirmed, as D5 says.
 
-**6.4 Signing vectors.** The capture script gains a `signing` step:
+  Its inline tests, on a mock server:
+  - one read of each across clones and concurrent first sends (mockito `expect(1)`, asserted);
+  - a listed route's cost replaces the compiled one;
+  - a failed read logs the WARN and keeps the compiled costs or Basic's sizing;
+  - an anonymous client's bucket ends confirmed at Basic, so an exact cost above 600 is refused
+    rather than left waiting.
+
+**6.4 Signing vectors.** `scripts/capture_kalshi_account.py`, a PEP 723 script with
+`cryptography`, on `capture_common.py`, has a `signing` step that needs no key of the owner's:
 
 - it generates throwaway Ed25519 (PKCS#8 v1) and RSA-2048 (PKCS#1 and PKCS#8) keys with Python's
   `cryptography`;
@@ -804,7 +831,7 @@ lines and the test re-armours it.
   or reason and holds no base64 from the key.
 - `Debug` of `Credentials` prints no key material.
 
-**6.6 `mock_predictions` gains** (with credentials unless said otherwise):
+**6.6 `mock_predictions_signed`**, a new file (with credentials unless said otherwise):
 
 - every route sends the three headers;
 - the timestamp is milliseconds within a second of the clock;
@@ -816,8 +843,10 @@ lines and the test re-armours it.
   clones;
 - a zero refill keeps Basic, with the WARN.
 
-**6.7 The demo capture.** `/account/limits` from the demo host, signed, written to
-`account_limits.json`. It needs the owner's demo key in `KALSHI_DEMO_API_KEY_ID` and
+**6.7 The demo capture.** `capture_kalshi_account.py`'s `demo` step reads `/account/limits` from
+the demo host, signed through its `signed_headers(method, path)`, which reads
+`KALSHI_DEMO_API_KEY_ID` and `KALSHI_DEMO_PRIVATE_KEY` and returns the three headers, and writes it to
+`tests/fixtures/predictions/account/limits.json`, with a `PROVENANCE.md` of its own. It needs the owner's demo key in `KALSHI_DEMO_API_KEY_ID` and
 `KALSHI_DEMO_PRIVATE_KEY`. Without them, the story stops at the capture and asks the owner.
 
 **6.8 `live_predictions_account`** runs against the demo host. Its entry has suite `predictions`,
@@ -973,7 +1002,8 @@ Inline tests in `protocol.rs` cover the recovery map, the frames, the correlatio
 counted from answers), and decoding each fixture.
 
 **8.12 The demo capture**, `scripts/capture_kalshi_predictions_ws.py`: a PEP 723 script with
-`cryptography` and `websockets`, through `capture_common.ws_session` with signed headers.
+`cryptography` and `websockets`, through `capture_common.ws_session`, with its handshake headers
+from `capture_kalshi_account.py`'s `signed_headers` (§6.7).
 
 - It subscribes one open demo market with `use_yes_price: true`.
 - It records into `tests/fixtures/predictions/ws/`, with `PROVENANCE.md`:
@@ -1058,11 +1088,11 @@ The entry for the eight trading probes stays as it is.
   - `gen_registry.py --check`, `venue_gate.py` and `live_unwraps.py`;
   - `test_body_diff.py --baseline v0.40.0`.
 - **The touch-set gate** follows them:
-  `bash -c '{ git diff --name-only <base>; git ls-files --others --exclude-standard; } | sort -u | grep -v -E -f _bmad-output/specs/spec-venue-extensibility/epic-8-touch-set.txt; test $? -eq 1'`.
+  `bash -c '{ git diff --name-only "$(git merge-base main HEAD)"; git ls-files --others --exclude-standard; } | sort -u | grep -v -E -f _bmad-output/specs/spec-venue-extensibility/epic-8-touch-set.txt; test $? -eq 1'`.
   It covers committed, uncommitted and untracked paths, and it passes when every one matches the
-  allowlist. A missing allowlist makes `grep` exit 2, so the gate fails closed. `<base>` is the
-  branch's commit when the run starts, after it merges `main` (§1.1), and the plan's skeleton
-  names it. Story 1 writes the allowlist, one extended regex per line, matching
+  allowlist. It prints any path that does not match. A missing allowlist makes `grep` exit 2, so
+  the gate fails closed. Every story's **Verify** line ends with it, since the profile's story
+  gates do not run it. Story 1 writes the allowlist, one extended regex per line, matching
   only D20's paths:
   - the root `Cargo.toml` and `Cargo.lock`;
   - `polyoxide-kalshi/`, `docs/specs/kalshi/`, `scripts/capture_kalshi_*.py` and
