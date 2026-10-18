@@ -93,6 +93,7 @@ def main():
     # guaranteed to have a resolution row.
     resolved = next(w["condition_id"] for w in winners["data"] if w["kind"] == "market")
     resolutions = save("resolutions", "/v2/resolutions", condition=resolved)
+    save("tokens", "/v2/tokens", condition=resolved)
     question_ids = [r["question_id"] for r in resolutions["data"] if r.get("question_id")]
     if question_ids:
         save("resolutions_question", "/v2/resolutions", question_id=question_ids[0])

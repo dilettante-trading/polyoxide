@@ -552,11 +552,11 @@ mod v2 {
     use futures_util::StreamExt;
     use polyoxide_polymarket::data::v2::types::{
         PnlFidelity, PnlInterval, PositionAnchor, PositionStatus, PricesInterval, ResolutionKey,
-        TimePeriod,
+        TimePeriod, TokenKey, TokenModule,
     };
     use polyoxide_polymarket::data::v2::ErrorCode;
     use polyoxide_polymarket::data::{DataApi, DataError};
-    use polyoxide_test_support::{fail, ResultExt};
+    use polyoxide_test_support::{environmental, fail, ResultExt};
     use polyoxide_venue::Classify;
 
     use super::client;
@@ -748,6 +748,57 @@ mod v2 {
             .send()
             .await
             .or_fail("live volume");
+    }
+
+    #[tokio::test]
+    #[ignore]
+    async fn live_v2_tokens() {
+        let data = client();
+        let v2 = data.v2();
+
+        let winners = v2
+            .biggest_winners()
+            .time_period(TimePeriod::Week)
+            .limit(5)
+            .send()
+            .await
+            .or_fail("winners");
+        let Some(resolved) = winners.data.iter().find(|w| w.kind == "market") else {
+            environmental("no market win on the weekly board to look tokens up for");
+        };
+        let family = v2
+            .tokens(TokenKey::Conditions(vec![resolved.condition_id.clone()]))
+            .send()
+            .await
+            .or_fail("tokens by condition");
+        assert!(
+            !family.is_empty(),
+            "a market on the winners board has tokens"
+        );
+        assert!(
+            family
+                .iter()
+                .any(|t| t.resolved && !matches!(t.module, TokenModule::Other(_))),
+            "a resolved market has a resolved token of a module this SDK names"
+        );
+
+        let first = &family[0];
+        let by_id = v2
+            .tokens(TokenKey::TokenIds(vec![first.token_id.clone()]))
+            .send()
+            .await
+            .or_fail("tokens by id");
+        assert_eq!(by_id.len(), 1);
+        assert_eq!(by_id[0].token_id, first.token_id);
+        assert_eq!(by_id[0].condition_id, first.condition_id);
+
+        // An id upstream does not know is absent, not an error.
+        let unknown = v2
+            .tokens(TokenKey::TokenIds(vec!["1".into()]))
+            .send()
+            .await
+            .or_fail("unknown token");
+        assert!(unknown.is_empty());
     }
 
     #[tokio::test]

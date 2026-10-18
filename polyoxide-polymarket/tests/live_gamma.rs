@@ -9,7 +9,7 @@
 //! ```
 
 use polyoxide_core::ApiError;
-use polyoxide_polymarket::gamma::types::ParentEntityType;
+use polyoxide_polymarket::gamma::types::{ClosedFilter, ParentEntityType};
 use polyoxide_polymarket::gamma::{Gamma, GammaError};
 use polyoxide_test_support::{environmental, fail, ResultExt};
 use std::time::Duration;
@@ -195,6 +195,229 @@ async fn live_get_many_returns_both_open_and_closed() {
     assert!(
         markets.iter().any(|m| m.closed == Some(true)),
         "get_many result should include the closed market with closed=true"
+    );
+}
+
+/// The numeric id of a listed row, for a test that looks the row up again.
+/// A state with no row listed, or one whose id is not a number, leaves the test
+/// nothing to look up: the world's doing, not the client's.
+fn listed_id(id: Option<&str>, what: &str) -> i64 {
+    let Some(id) = id else {
+        environmental(&format!("the host lists no {what} to look up"));
+    };
+    id.parse()
+        .unwrap_or_else(|_| environmental(&format!("the host listed a {what} with id {id:?}")))
+}
+
+/// `closed=any` is the one request that returns both states (#59). The ids
+/// are picked from a live open list and a live closed list, and the control is
+/// the same lookup under the default `closed=false`, which must drop the
+/// closed one, or the assertion would also hold if the host ignored `any`.
+#[tokio::test]
+#[ignore]
+async fn live_markets_closed_any_returns_both_states_in_one_request() {
+    let gamma = client();
+    let open = gamma
+        .markets()
+        .list()
+        .closed_filter(ClosedFilter::Open)
+        .limit(1)
+        .send()
+        .await
+        .or_fail("list open markets");
+    let closed = gamma
+        .markets()
+        .list()
+        .closed_filter(ClosedFilter::Closed)
+        .limit(1)
+        .send()
+        .await
+        .or_fail("list closed markets");
+    let open_id = listed_id(open.first().map(|m| m.id.as_str()), "open market");
+    let closed_id = listed_id(closed.first().map(|m| m.id.as_str()), "closed market");
+    let ids = [open_id, closed_id];
+
+    let control = gamma
+        .markets()
+        .list()
+        .id(ids)
+        .send()
+        .await
+        .or_fail("control lookup under the default closed filter");
+    assert!(
+        control.iter().all(|m| m.id != closed_id.to_string()),
+        "the control must drop the closed market, or `any` proves nothing: {:?}",
+        control.iter().map(|m| m.id.as_str()).collect::<Vec<_>>()
+    );
+
+    let listed = gamma
+        .markets()
+        .list()
+        .id(ids)
+        .closed_filter(ClosedFilter::Any)
+        .send()
+        .await
+        .or_fail("GET /markets with closed=any");
+    let keyset = gamma
+        .markets()
+        .list_keyset()
+        .id(ids)
+        .closed_filter(ClosedFilter::Any)
+        .send()
+        .await
+        .or_fail("GET /markets/keyset with closed=any");
+    for (route, markets) in [("/markets", &listed), ("/markets/keyset", &keyset.markets)] {
+        let mut returned: Vec<&str> = markets.iter().map(|m| m.id.as_str()).collect();
+        returned.sort_unstable();
+        let mut wanted = [open_id.to_string(), closed_id.to_string()];
+        wanted.sort_unstable();
+        assert_eq!(
+            returned, wanted,
+            "{route} with closed=any should return both states"
+        );
+    }
+}
+
+/// `closed=any` on a markets route without an identifier filter is a `422`,
+/// where the events routes take it bare. A refusal that stopped happening
+/// would mean `any` lists every market of both states.
+#[tokio::test]
+#[ignore]
+async fn live_markets_closed_any_needs_an_identifier() {
+    let gamma = client();
+    let outcome = gamma
+        .markets()
+        .list()
+        .closed_filter(ClosedFilter::Any)
+        .limit(1)
+        .send()
+        .await;
+    assert!(
+        outcome.is_err(),
+        "GET /markets?closed=any with no identifier should be refused, got {} markets",
+        outcome.as_ref().map_or(0, Vec::len)
+    );
+    match outcome {
+        Err(GammaError::Api(ApiError::Response(r))) if r.status.as_u16() == 422 => {}
+        Err(e) => fail("GET /markets?closed=any with no identifier", &e),
+        Ok(_) => {} // refused by the assertion above
+    }
+
+    let events = gamma
+        .events()
+        .list()
+        .closed_filter(ClosedFilter::Any)
+        .limit(1)
+        .send()
+        .await
+        .or_fail("GET /events?closed=any needs no identifier");
+    assert!(
+        !events.is_empty(),
+        "events with closed=any should list some"
+    );
+}
+
+/// The events routes take `closed=any` the same way, by id.
+#[tokio::test]
+#[ignore]
+async fn live_events_closed_any_returns_both_states_in_one_request() {
+    let gamma = client();
+    let open = gamma
+        .events()
+        .list()
+        .closed_filter(ClosedFilter::Open)
+        .limit(1)
+        .send()
+        .await
+        .or_fail("list open events");
+    let closed = gamma
+        .events()
+        .list()
+        .closed_filter(ClosedFilter::Closed)
+        .limit(1)
+        .send()
+        .await
+        .or_fail("list closed events");
+    let open_id = listed_id(open.first().map(|e| e.id.as_str()), "open event");
+    let closed_id = listed_id(closed.first().map(|e| e.id.as_str()), "closed event");
+    let ids = [open_id, closed_id];
+
+    let listed = gamma
+        .events()
+        .list()
+        .id(ids)
+        .closed_filter(ClosedFilter::Any)
+        .send()
+        .await
+        .or_fail("GET /events with closed=any");
+    let keyset = gamma
+        .events()
+        .list_keyset()
+        .id(ids)
+        .closed_filter(ClosedFilter::Any)
+        .send()
+        .await
+        .or_fail("GET /events/keyset with closed=any");
+    for (route, events) in [("/events", &listed), ("/events/keyset", &keyset.events)] {
+        let mut returned: Vec<&str> = events.iter().map(|e| e.id.as_str()).collect();
+        returned.sort_unstable();
+        let mut wanted = [open_id.to_string(), closed_id.to_string()];
+        wanted.sort_unstable();
+        assert_eq!(
+            returned, wanted,
+            "{route} with closed=any should return both states"
+        );
+    }
+}
+
+/// A list past the host's 100-value cap on an identifier filter is sent a
+/// hundred at a time and comes back whole. The ids are two pages of listed
+/// markets, so the lookup is two requests, and an unchunked one would be a
+/// `422`.
+#[tokio::test]
+#[ignore]
+async fn live_get_many_chunks_past_one_hundred_ids() {
+    let gamma = client();
+    // Both listing routes cap a page at 100, so the ids take two keyset pages.
+    let mut listed = Vec::new();
+    let mut cursor: Option<String> = None;
+    while listed.len() <= 100 {
+        let mut request = gamma.markets().list_keyset().limit(100u32);
+        if let Some(after) = cursor.take() {
+            request = request.after_cursor(after);
+        }
+        let page = request.send().await.or_fail("list markets (keyset)");
+        listed.extend(page.markets);
+        cursor = page.next_cursor;
+        if cursor.is_none() {
+            break;
+        }
+    }
+    if listed.len() <= 100 {
+        environmental(&format!(
+            "the host listed {} markets, too few to need a second request",
+            listed.len()
+        ));
+    }
+    let ids: Vec<i64> = listed
+        .iter()
+        .map(|m| listed_id(Some(m.id.as_str()), "market"))
+        .collect();
+
+    let fetched = gamma
+        .markets()
+        .get_many(ids.iter().copied())
+        .send()
+        .await
+        .or_fail("get_many of more than 100 ids");
+
+    let mut wanted: Vec<&str> = listed.iter().map(|m| m.id.as_str()).collect();
+    let mut returned: Vec<&str> = fetched.iter().map(|m| m.id.as_str()).collect();
+    wanted.sort_unstable();
+    returned.sort_unstable();
+    assert_eq!(
+        returned, wanted,
+        "get_many should return every market asked for"
     );
 }
 

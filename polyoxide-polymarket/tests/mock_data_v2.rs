@@ -1,4 +1,4 @@
-//! Mock-server tests for Data API v2 envelopes, paging and errors.
+//! Mock-server tests for Data API v2 envelopes, paging, errors and the token lookup.
 //!
 //! Error bodies are the ones the live host returned on 2026-09-14, not
 //! invented shapes.
@@ -13,7 +13,7 @@ use mockito::{Matcher, Server, ServerGuard};
 use polyoxide_core::{ApiError, RetryConfig};
 use polyoxide_polymarket::data::{
     v2::{
-        types::{PositionAnchor, ResolutionKey, TradeSide},
+        types::{PositionAnchor, ResolutionKey, TokenKey, TokenModule, TradeSide},
         ErrorCode,
     },
     DataApi, DataError,
@@ -512,4 +512,144 @@ async fn an_empty_list_omits_its_parameter_instead_of_sending_it_blank() {
 
     assert_eq!(optional, pairs(&[("user", "0xuser")]));
     assert_eq!(required, pairs(&[]));
+}
+
+#[tokio::test]
+async fn each_token_key_sends_exactly_one_selector() {
+    let tokens = pairs_sent("/v2/tokens", |data| async move {
+        let _ = data
+            .v2()
+            .tokens(TokenKey::TokenIds(vec!["11".into(), "22".into()]))
+            .send()
+            .await;
+    })
+    .await;
+    let conditions = pairs_sent("/v2/tokens", |data| async move {
+        let _ = data
+            .v2()
+            .tokens(TokenKey::Conditions(vec!["0xa".into(), "0xb".into()]))
+            .send()
+            .await;
+    })
+    .await;
+    // An empty list sends nothing, so the server's own "provide exactly one"
+    // 400 names the mistake instead of a blank selector slipping by.
+    let none = pairs_sent("/v2/tokens", |data| async move {
+        let _ = data
+            .v2()
+            .tokens(TokenKey::TokenIds(Vec::new()))
+            .send()
+            .await;
+    })
+    .await;
+
+    assert_eq!(tokens, pairs(&[("token_id", "11,22")]));
+    assert_eq!(conditions, pairs(&[("condition", "0xa,0xb")]));
+    assert_eq!(none, pairs(&[]));
+}
+
+/// A token row with only what `/v2/tokens` always sends: the five required
+/// properties, and every nullable one as `null`, as the live host spells a token
+/// whose market it does not mirror.
+fn unmirrored_token(module: &str) -> String {
+    format!(
+        r#"{{"token_id":"7","condition_id":"0xc","structural_condition_id":null,"module":"{module}","outcome_index":1,"clob_index":null,"outcome":null,"opposite_token_id":null,"resolved":false,"final_price":null,"title":null,"market_slug":null,"closed":null,"neg_risk":null,"neg_risk_market_id":null,"question_index":null,"event_id":null,"event_slug":null}}"#
+    )
+}
+
+#[tokio::test]
+async fn tokens_decode_each_module_and_keep_one_they_do_not_know() {
+    let mut server = Server::new_async().await;
+    let body = format!(
+        r#"{{"data":[{},{},{},{},{}]}}"#,
+        unmirrored_token("v1_ctf"),
+        unmirrored_token("binary"),
+        unmirrored_token("neg_risk"),
+        unmirrored_token("combo"),
+        unmirrored_token("future_module"),
+    );
+    server
+        .mock("GET", "/v2/tokens")
+        .match_query(Matcher::Any)
+        .with_status(200)
+        .with_body(body)
+        .create_async()
+        .await;
+
+    let rows = client(&server)
+        .v2()
+        .tokens(TokenKey::TokenIds(vec!["7".into()]))
+        .send()
+        .await
+        .unwrap();
+
+    let modules: Vec<TokenModule> = rows.iter().map(|r| r.module.clone()).collect();
+    assert_eq!(
+        modules,
+        [
+            TokenModule::V1Ctf,
+            TokenModule::Binary,
+            TokenModule::NegRisk,
+            TokenModule::Combo,
+            TokenModule::Other("future_module".into()),
+        ]
+    );
+    // A token whose market is not mirrored still decodes: only the five
+    // required properties are plain fields.
+    assert_eq!(rows[0].token_id, "7");
+    assert_eq!(rows[0].outcome_index, 1);
+    assert!(!rows[0].resolved);
+    assert_eq!(rows[0].title, None);
+    assert_eq!(rows[0].closed, None);
+}
+
+#[tokio::test]
+async fn an_unknown_token_id_is_an_empty_list_not_an_error() {
+    let mut server = Server::new_async().await;
+    server
+        .mock("GET", "/v2/tokens")
+        .match_query(Matcher::Any)
+        .with_status(200)
+        .with_body(r#"{"data":[]}"#)
+        .create_async()
+        .await;
+
+    let rows = client(&server)
+        .v2()
+        .tokens(TokenKey::TokenIds(vec!["1".into()]))
+        .send()
+        .await
+        .unwrap();
+
+    assert!(rows.is_empty());
+}
+
+#[tokio::test]
+async fn a_malformed_token_id_is_a_v2_error_naming_its_parameter() {
+    let mut server = Server::new_async().await;
+    // The live host's answer to `?token_id=abc` on 2026-10-18.
+    server
+        .mock("GET", "/v2/tokens")
+        .match_query(Matcher::Any)
+        .with_status(400)
+        .with_body(
+            r#"{"error":"invalid token id: abc","code":"invalid_request","parameter":"token_id","retryable":false,"trace_id":"957ccd6ec694434cbb7cf687abcd458e"}"#,
+        )
+        .create_async()
+        .await;
+
+    let err = client_without_retries(&server)
+        .v2()
+        .tokens(TokenKey::TokenIds(vec!["abc".into()]))
+        .send()
+        .await
+        .unwrap_err();
+
+    assert!(matches!(
+        &err,
+        DataError::V2(e) if e.status == 400
+            && e.code == ErrorCode::InvalidRequest
+            && e.parameter.as_deref() == Some("token_id")
+    ));
+    assert!(!err.is_retriable());
 }

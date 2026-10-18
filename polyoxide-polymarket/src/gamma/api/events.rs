@@ -2,7 +2,10 @@ use polyoxide_core::{HttpClient, Request};
 
 use crate::gamma::{
     error::GammaError,
-    types::{CountResponse, Event, EventCreator, EventsPagination, KeysetEventsResponse, Tag},
+    types::{
+        ClosedFilter, CountResponse, Event, EventCreator, EventsPagination, KeysetEventsResponse,
+        Tag,
+    },
 };
 
 /// Events namespace for event-related operations
@@ -211,6 +214,13 @@ impl ListKeysetEvents {
         slug: many impl IntoIterator<Item = impl ToString> => "slug",
         /// Filter by closed status.
         closed: bool => "closed",
+        /// Filter by closed state, which can ask for both at once.
+        ///
+        /// Unlike `closed`, which takes a `bool`, this can send `any`. See
+        /// [`ClosedFilter`] for what each value returns. Set one of the
+        /// two: sent together, the host does not take the last (`any` beats a
+        /// `bool`, and `false` beats `true`, in either order).
+        closed_filter(filter: ClosedFilter) => "closed" = filter,
         /// Filter live events only.
         live: bool => "live",
         /// Filter featured events only.
@@ -328,8 +338,9 @@ impl ListEvents {
         ascending: bool => "ascending",
         /// Filter by specific event IDs
         ///
-        /// Safe batch size: ≤ 400 per request. URLs over ~8 KB are rejected
-        /// upstream with `414 URI Too Long`.
+        /// At most 100 per request: the host answers a longer list with a
+        /// `422` (`expected array length <= 100`), well before a URL is too
+        /// long.
         id: many impl IntoIterator<Item = i64> => "id",
         /// Filter by game IDs, the [`Event::game_id`] a live score from
         /// the `sports` module carries.
@@ -377,6 +388,13 @@ impl ListEvents {
         recurrence: impl Into<String> => "recurrence",
         /// Filter closed events
         closed: bool => "closed",
+        /// Filter by closed state, which can ask for both at once.
+        ///
+        /// Unlike `closed`, which takes a `bool`, this can send `any`. See
+        /// [`ClosedFilter`] for what each value returns. Set one of the
+        /// two: sent together, the host does not take the last (`any` beats a
+        /// `bool`, and `false` beats `true`, in either order).
+        closed_filter(filter: ClosedFilter) => "closed" = filter,
         /// Set minimum liquidity threshold
         liquidity_min: f64 => "liquidity_min",
         /// Set maximum liquidity threshold

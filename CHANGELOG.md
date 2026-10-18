@@ -1,3 +1,251 @@
+## [0.41.0] - 2026-10-18
+
+The first release of stage S3 of the multi-venue restructure, the additions stage: venue-neutral
+market data (Epic 6) and supervised CLOB sockets with normalized trading (Epic 7). Both are
+additive. Nothing is removed or renamed, and no signature changes; code that builds on 0.40
+builds unchanged, and [`docs/s3-removals.md`](docs/s3-removals.md) lists nothing. What follows
+is each epic's consumer-impact note from [`docs/s3-migration.md`](docs/s3-migration.md).
+
+**Epic 6: venue-neutral market data.**
+
+- `polyoxide-venue` gains two features. `keys`: `MarketKey`, written `venue.product:id`, which only
+  a product's `KeySpace` makes, so two keys are equal exactly when they name the same instrument;
+  `RawKey`, text split into its parts; `VenueId`, `ProductId` and `KeyError`. `market`: the
+  records (`Instrument`, `Quote`, `Book`, `Level`, `Trade`, `Candle`, `FundingRate`,
+  `EventGroup`) and the types they and the traits use (`Side`, `SizeUnit`, `TradeId`,
+  `CandleInterval`, `CandleQuery`, `EventOutcome`), `Extensions` for each venue's own facts and its
+  `DuplicateExtension` error, `NotListed`, and the traits `MarketData` (`instrument`, `quote`,
+  `book`) and `Instruments`, `Trades`, `Candles`, `Funding` and `EventGroups`, each with a `Dyn`
+  wrapper. Every trait method returns `ClassifiedError`. A `FundingRate` carries its `interval`,
+  the length of the funding period its `rate` is for.
+- `polyoxide-binance`: the module `usdm::key` (`UsdmKeys`, `parse`, `symbol`, `VENUE`, `PRODUCT`)
+  and the function `usdm::key(&symbol)` it re-exports, and `usdm::venue`, whose `Usdm` implements
+  `MarketData`, `Instruments`, `Trades`, `Candles` and `Funding`, with its `InstrumentExt`,
+  `QuoteExt`, `BookExt`, `TradeExt`, `CandleExt` and `FundingExt`. Its funding methods send
+  `fundingInfo` as well, one extra request on the funding bucket, for the `interval`.
+- `polyoxide-polymarket`: `shared::keys` (the functions `clob`, `perps`, `token_id`,
+  `instrument_id` and `parse`; the consts `VENUE`, `CLOB` and `PERPS`; and `TokenId`, `ClobKeys`
+  and `PerpsKeys`); `perps::venue`, whose `Perps` implements `MarketData`, `Instruments`,
+  `Trades`, `Candles` and `Funding`, with its `InstrumentExt`, `BookExt`, `TradeExt` and
+  `FundingExt` (its funding methods send one extra `/v1/info/instruments` request for the
+  `interval`); `clob::venue`, whose `Clob` implements `MarketData` and `Candles`, `Trades` with
+  `data`, and `EventGroups` with `gamma`, with its `InstrumentExt`, `QuoteExt`, `BookExt`,
+  `TradeExt` and `EventGroupExt`.
+- `ClobBuilder::data` and `ClobError::Data` are new (`ClobError` is `#[non_exhaustive]`). With
+  the `data` feature, which `polyoxide-polymarket`'s defaults include, `ClobBuilder::build` also
+  builds a Data client for `Trades`, with the builder's timeout and pool size; it sends nothing
+  until a trait method asks. The unified `Polymarket` client hands clob its own Gamma and Data
+  clients. With `gamma_base_url` set on `PolymarketBuilder`, clob's proxy-wallet lookup and
+  `event_group` now go to that URL, with the builder's timeout and through Gamma's pool and
+  throttle; clob used to build its own Gamma client for them, on the default Gamma host.
+- The umbrella: `polyoxide::parse_key`, the traits on `polyoxide::venue` with any module that
+  implements them, and `examples/venue_neutral.rs`, one `best_bid_ask` and one error classifier
+  that run unchanged on the CLOB, perps and USDⓈ-M.
+
+No dependency tree changes: `market` builds only rust_decimal, serde and dynosaur, which every
+module that turns it on already builds, and the socket-only modules turn on neither feature.
+
+**Epic 7: supervised CLOB sockets and normalized trading.**
+
+- `polyoxide-ws`: `Protocol` gains a provided method, `Protocol::connect`, which the
+  `Supervisor` calls for every attempt. Its default builds `handshake()`'s request and dials it
+  with the kit's `connect`, so a `Protocol` written before it keeps its behaviour, and perps and
+  Binance are untouched. The CLOB's two protocols override it with the CLOB's per-address dial.
+- `polyoxide-polymarket`, with `clob-ws`: two supervised sockets beside the bare tier.
+  `MarketWsBuilder` connects a `SupervisedMarketWs` (`ClobMarketProtocol`, `MarketEvent`,
+  `MarketChange` and the `MarketMembership` trait), and `UserWsBuilder` a `SupervisedUserWs`
+  (`ClobUserProtocol`, `UserEvent`, `UserChange` and the `UserMembership` trait). Both yield a
+  `DisconnectReason` (the server's close code and reason, an error or a stall) with
+  each `Disconnected`. They reconnect after a close or a stall, replay their membership on every
+  connection (the user socket its credentials too), and yield one `Disconnected` and one
+  `Reconnected` per outage. They send a text `PING` every 10 s, count any frame as liveness and
+  are stale after 30 s, back off from 500 ms to 60 s, and bound each address and step of a
+  connect by 10 s. They take `wss://` URLs, or `ws://` to a loopback host, and at most 500 ids
+  or markets per connection. The market queue holds 1024 events and the user queue is
+  unbounded. The market socket yields every book of an array frame. `WebSocket`,
+  `WebSocketBuilder` and `WebSocketWithPing` are unchanged, except that their connect now dials a
+  URL whose host is an IPv6 literal, which failed its lookup before. `MarketMessage::from_json`
+  still keeps only the first book of an array.
+- `ClobWsError::Authentication` has its first use: the user socket decodes the server's 1008
+  close as `ClobWsError::Authentication(<the close reason>)`, classed `Unauthorized`, and stops
+  on it instead of reconnecting. The enum's variants are unchanged.
+- `polyoxide-venue` gains a feature, `trading`, which turns on `market` and builds futures-core.
+  It holds the trait `Trading` (`place`, `cancel`, `cancel_all`, `open_orders`, `positions`,
+  `balances` and `events`) with its `DynTrading` wrapper; `TradingEvents`, the named stream
+  `events()` returns, since dynosaur drops `'static` from a returned `impl Stream`;
+  `TradingEvent` (`Ack`, `Fill` and `Resync`); the records `OrderRequest`, `Order`, `Fill`,
+  `Position` and `Balance`; `OrderStatus`, `KillReason`, `TimeInForce` and `Liquidity`; and the
+  opaque `OrderId`, `FillId` and `ClientOrderId`. A kill is `Ok` with `Killed { reason }`, never
+  an error. Under `market`, `Extensions::ensure_declared` and `UndeclaredExtension` (an
+  `InvalidRequest`) give a venue the refusal it runs on an option it does not declare.
+- `polyoxide-polymarket`: with `clob-ws`, `ClobBuilder::user_socket`, and, with `clob-ws` and
+  `data`, `impl Trading for Clob` with `ClobOrderOptions` (`neg_risk`, `tick_size`, `expiration`)
+  and the venue's own facts in `OrderExt`, `FillExt`, `PositionExt` and `BalanceExt`, all in
+  `polyoxide_polymarket::clob::venue`.
+  `clob-ws` now turns on `polyoxide-venue/trading`, and so does the umbrella's
+  `polymarket-clob-ws`, whose crate root pins `DynTrading` and, with `polymarket-data`,
+  `Clob: Trading`. The CLOB stores no client
+  order id, so a `Clob` remembers the ones it placed in-process (at most 10,000, lost with the
+  process). `positions` reads Data v1 with no dust filter, `balances` holds the pUSD collateral,
+  and `events()` opens its own user socket for each call.
+- No dependency tree gains a crate: `trading` builds futures-core, which every build that turns
+  it on already has through futures-util.
+
+Where Epic 7 departs from its acceptance criteria:
+
+- The CLOB's `Trading` is gated `all(clob-ws, data)`, not `all(clob, data)`, because `events()`
+  needs the user socket, which is `clob-ws`'s.
+- `ClobOrderOptions` carries no fee terms: a V2 order signs no fee rate, and a fill's `fee` is
+  `None`, with the maker's `fee_rate_bps` in `FillExt`.
+- The Kalshi trading mapping stays a planning document,
+  `_bmad-output/specs/spec-venue-extensibility/kalshi-trading-mapping.md`, until Story 8.1
+  registers Kalshi's mirror.
+- Every events stream begins with `Resync`, unless the stream cannot open, when its only item is
+  that error, and a fill the venue voids yields `Resync`, where the architecture asked for one
+  only after a reconnect (amendment A7-2).
+
+### 🚀 Features
+
+- *(venue)* Canonical market keys that only a product's KeySpace makes (Story 6.2)
+- *(binance)* Usdm::key, USDⓈ-M's market keys over Symbol (Story 6.2)
+- *(polymarket)* Shared::keys, the clob's and perps' market keys (Story 6.2)
+- *(umbrella)* Parse_key reads a key through its product's constructors (Story 6.2)
+- *(venue)* The shared records and their typed Extensions (Story 6.1)
+- *(venue)* The market-data traits, with the records they return (Story 6.3)
+- *(binance)* USDⓈ-M through the market-data traits (Story 6.3)
+- *(perps)* Perps through the market-data traits (Story 6.4)
+- *(clob)* The CLOB through the market-data traits, its trades through Data (Story 6.5)
+- *(umbrella)* One best_bid_ask and one classifier across the CLOB, perps and USDⓈ-M (Story 6.6)
+- *(venue)* Epic 6 final review, a funding rate carries its interval
+- *(ws)* Protocol::connect, the dial the Supervisor calls for every attempt (Epic 7, Story 1)
+- *(polymarket)* The supervised sockets' shared items and the scripted PONG answerer (Epic 7, Story 2)
+- *(polymarket)* The supervised CLOB market socket (Epic 7, Story 2)
+- *(polymarket)* Supervised CLOB user socket (Epic 7, Story 3)
+- *(polymarket)* The user socket stops on a refused login (Epic 7, Story 3)
+- *(venue)* The trading feature and the opaque order, fill and client-order ids (Epic 7, Story 4)
+- *(venue)* Extensions::ensure_declared and UndeclaredExtension (Epic 7, Story 4)
+- *(venue)* The Trading trait, TradingEvents and the trading records (Epic 7, Story 4)
+- *(clob)* ClobOrderOptions, the trading Ext types and order_hash (Epic 7, Story 5)
+- *(clob)* Trading::place with the client-id ledger and its checks (Epic 7, Story 5)
+- *(clob)* Trading cancel, open orders, positions and balances (Epic 7, Story 5)
+- *(clob)* Trading::events on the supervised user socket (Epic 7, Story 5)
+- *(clob)* Trading through the umbrella, its docs and the registry (Epic 7, Story 5)
+
+### 🐛 Bug Fixes
+
+- *(venue)* Story 6.2 review fixes, id_of private, sound test ids, token id doc, id charset test
+- *(perps)* Story 6.4 review fixes, funding_history asks for a 100-hour window, tests for the funding filter, foreign keys, error carry-over, zero quantity, close-only, open-ended candles
+- *(clob)* Story 6.5 review fixes, event_group finds a resolved market's token, candles stay inside the 14-day window, tests for the v1 filter, length mismatch and NotListed
+- *(scripts)* Story 6.5 review fixes, the CLOB capture checks a book is a JSON object before reading it
+- *(umbrella)* Story 6.6 review fixes, the live reads pick an instrument with both sides on the quote's own route, the mock suite matches a module enum, the classifier names its rejections
+- *(clob)* Epic 6 final review, a token id Gamma sends that no key can carry is a Decode failure
+- *(clob)* Epic 6 final review, fidelity still refuses a width that is not whole minutes
+- *(perps)* Epic 6 final review, the funding window holds at most 100 settlements whatever their offset
+- *(perps)* Epic 6 final review, perps sizes are Base
+- *(perps,usdm)* Epic 6 final review, statistics volume is USD and a zero funding interval is refused
+- *(binance)* Usdm instruments skips an exchangeInfo row that does not convert
+- *(polymarket)* The unified client hands clob its Gamma client
+- *(polymarket)* Epic 7, Story 2 review fixes: dial IP literals and scheme-default ports, one subscription-count rule, untested paths pinned
+- *(venue)* Trading::events doc, a Debug and a size_hint test for TradingEvents (Epic 7, Story 4 review fixes)
+- *(clob)* A maker fee rate that is not a number is a Decode (Epic 7, Story 5 review fixes)
+- *(clob)* Trading checks before the tick lookup, decodes an unknown tick, tests the ledger and WARNs (Epic 7, Story 5 review fixes)
+- *(clob)* The account is a trade's taker only when no maker entry is its own (Epic 7, Story 5 review fixes, D17)
+- *(clob)* The client-id ledger keeps an order's entry after a Decode failure (Epic 7, Story 5 review fixes, D18)
+- *(polymarket)* The live trading round trip cancels a bid that place or cancel may have left resting (Epic 7, Story 6 review fixes)
+- *(polymarket)* Live trading and market socket tests end a missing ack or book as transient (Epic 7, Story 6 review fixes)
+- *(polymarket)* The client-id ledger keeps an order's id until evicted and drops only its reuse guard (Epic 7, final review, D21)
+- *(polymarket)* A matched FillOrKill read back short of its size is Cancelled with what matched (Epic 7, final review, D22)
+- *(polymarket)* The user channel's timestamp is read in seconds below 10^11 and milliseconds otherwise (Epic 7, final review, D23)
+- *(polymarket)* The ledger's rekey replaces an entry held under its new id, guard-aware (Epic 7, final review, D21 follow-up)
+
+### 🚜 Refactor
+
+- *(clob)* Epic 6 final review, fidelity is the interval's duration in minutes
+- *(venue)* CandleInterval is exhaustive
+- *(venue)* NotListed is non_exhaustive and built with NotListed::new
+- *(clob)* Split dial out of connect_ws and raise four helpers to pub(super) (Epic 7, Story 1)
+- *(polymarket)* The market and user decoders share one array-frame rule, leading whitespace allowed (Epic 7, final review minors)
+
+### 📚 Documentation
+
+- CLAUDE.md names the dev shell, and flake.nix as the pinned pair's third home
+- *(plans)* Supervised flow plan for Epic 6, venue-neutral market data
+- *(epics)* Epic 6 is built at stage S2, ahead of the S2 release
+- CLAUDE.md states the market-key rules (Story 6.2)
+- CLAUDE.md states the record and Extensions rules (Story 6.1)
+- Amendment A6-1 and CLAUDE.md's market-data trait rules (Story 6.3)
+- CLAUDE.md says what perps::venue implements (Story 6.4)
+- Story 6.4 review fixes, perps funding window in OBSERVED.md and CLAUDE.md, pointer to perps' traits
+- *(mutants)* Move rows (e) after ClobError::Data and prove them again (Story 6.5)
+- CLAUDE.md says what clob::venue implements and where its trades come from (Story 6.5)
+- Amendment A6-2, Epic 6's consumer-impact note and the nightly venue suite (Story 6.6)
+- Story 6.6 review fixes, s3-migration.md lists everything Epic 6 added and CLAUDE.md points at it
+- Epic 6 final review, an unlisted key is a VenueRefusal by class and a bounded span is read on
+- Epic 6 final review, a bounded span reads on from where the venue stopped
+- Epic 6 final review, the last wording of the trait and funding-window docs
+- *(epics)* Epic 6 funding records carry their interval, and perps sizes are Base
+- *(venue)* Epic 6 final review, the trait docs name no venue
+- *(epics)* The owner settles Epic 6's deferred calls
+- The S3 note covers clob's Gamma client, and CLAUDE.md's usdm paragraph is rewrapped
+- *(plans)* Epic 7's design and plan skeleton, supervised CLOB sockets and trading
+- *(specs)* Epic 7's live trading target declares the secrets it reads
+- *(specs)* Epic 7's D15 keeps the reconnect after a use after close
+- *(specs)* Epic 7's Trading::place supports Deposit Wallet accounts
+- *(specs)* Epic 7's order_hash test pins the v2_exchange vector
+- *(specs)* Epic 7's Trading signs and reads with the client's signature type
+- *(plans)* Epic 7's plan, drafted story by story
+- *(claude)* The supervised CLOB user socket (Epic 7, Story 3)
+- *(polymarket)* A user outage may end on a stop error without Reconnected (Epic 7, Story 3 review fixes)
+- *(polymarket)* Name only refused reconnects as ending an outage (Epic 7, Story 3 review fixes)
+- *(venue)* The trading trait in CLAUDE.md, the venue README and the registry lists (Epic 7, Story 4)
+- *(specs)* Epic 7's taker rule needs no maker leg, and the ledger keeps an entry after a Decode failure
+- *(epic-7)* The Kalshi trading mapping, ported onto the Trading trait (Story 7)
+- *(epic-7)* Spine amendments A7-1 to A7-4, and 7.5's no amendment (Story 7)
+- *(s3)* Epic 7's consumer-impact note (Story 7)
+- *(epic-7)* Deferred-work closes the close-code entry, narrows the prune entry and adds the Kalshi moves and the maker-frame capture (Story 7)
+- *(epic-7)* Divergences.md's clob rows say what the supervised sockets do (Story 7)
+- *(epic-7)* Wording fixes to the release note, the amendments and the records (Epic 7, Story 7 review fixes)
+- *(specs)* Epic 7's final-review calls: the ledger keeps ids until evicted, a short FOK is Cancelled, timestamps in either unit
+- *(deferred-work)* The maker-frame capture also settles the user channel's timestamp unit (Epic 7, final review, D23)
+- *(venue,ws,polymarket)* The events stream may open with its error, and a per-address connect needs no handshake (Epic 7, final review minors)
+- *(s3-migration)* The outage marker has no rotation, and the IPv6 note ends its sentence (Epic 7, final review minors)
+- *(venue)* The events stream's first item is Resync unless the stream cannot open, everywhere it is stated (Epic 7, final review minors)
+- *(specs)* Epic 7's live round trip does not check the computed order id
+- *(s3-migration)* The events stream's first item is Resync unless the stream cannot open (Epic 7, final review minors)
+
+### ⚡ Performance
+
+- *(binance)* Usdm trades, candles and funding history send explicit limits
+
+### 🧪 Testing
+
+- *(support)* Registration!() reads the ids a crate registers (Story 6.2)
+- *(venue)* Story 6.2 review fixes, Upper tests build keys through an upper helper, no shim
+- *(venue)* Story 6.1 review fixes, Extensions has no serde doctests, instrument constructor checks name and assets
+- *(support)* Or_fail and fail_classified tag a ClassifiedError (Story 6.3)
+- *(binance)* Story 6.3 review fixes, zero next funding, foreign keys on every trait, open-ended candles, no mark price, error carry-over; docs: EventOutcome carries no Extensions
+- *(clob)* Capture the CLOB, Data and Gamma bodies the venue tests serve (Story 6.5)
+- *(umbrella)* Story 6.6 review fixes, the live CLOB walk skips only a token with no book (404)
+- *(binance)* Usdm instruments' skipped-row WARN is asserted
+- *(binance)* The live instruments test compares symbols exactly and tolerates a listing change
+- *(venue)* A doctest pins NotListed's non_exhaustive
+- *(polymarket)* A user change on a closed connection is answered Ok (Epic 7, Story 3 review fixes)
+- *(polymarket)* Epic 7: hold a second tracing dispatcher in the clob supervised tests
+- *(ci)* Pin the features job's clob trading without gamma step (Epic 7, Story 5 review fixes)
+- *(clob)* D17's maker check ignores the case of the maker address (Epic 7, Story 5 review fixes)
+- *(polymarket)* Live tests for the supervised market and user sockets (Epic 7, Story 6)
+- *(polymarket)* Live suite for Trading on the CLOB, and its nightly registration (Epic 7, Story 6)
+- *(polymarket)* The live round trip's comment says what its client-id check proves (Epic 7, final review, D21 follow-up)
+
+### 🔧 Build
+
+- A nix dev shell holds the toolchains and cargo tools CI installs
+
+### ⚙️ Miscellaneous Tasks
+
+- *(stage)* Switch to S3 after the v0.40.0 release
+- *(clob)* Run trading_clob without gamma (Epic 7, Story 5 review fixes)
+
 ## [0.40.0] - 2026-10-17
 
 Stage S2 of the multi-venue restructure, the renames stage: every crate merge, module move

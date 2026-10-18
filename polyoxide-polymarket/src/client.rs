@@ -222,7 +222,7 @@ mod tests {
             .match_query(mockito::Matcher::Any)
             .with_status(200)
             .with_body("[]")
-            .expect(2)
+            .expect(1)
             .create_async()
             .await;
         let polymarket = builder()
@@ -237,7 +237,7 @@ mod tests {
             .await
             .expect_err("Gamma lists no market for the token");
 
-        // Open markets, then closed ones, both on the unified Gamma client.
+        // Open and closed markets in one request, on the unified Gamma client.
         markets.assert_async().await;
         assert_eq!(err.class, Class::VenueRefusal { code: None }, "{err:?}");
     }

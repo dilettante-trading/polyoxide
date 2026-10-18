@@ -31,7 +31,7 @@ SCHEMAS = json.loads(SPEC.read_text())["components"]["schemas"]
 ROWS = [
     "Approvals", "Position", "ComboPosition", "UserPnlSeries", "UserStats", "UserVolume",
     "PortfolioValue", "Activity", "ComboActivity", "Trade", "MetaHolder", "LiveVolume",
-    "OpenInterest", "PricePoint", "Resolution", "BiggestWinner", "BuilderStanding",
+    "OpenInterest", "PricePoint", "Resolution", "TokenRef", "BiggestWinner", "BuilderStanding",
     "BuilderVolumePoint", "LeaderboardEntry", "LeaderboardUserEntry", "ServiceStatus",
     "Pagination",
 ]
@@ -123,6 +123,11 @@ ROUTES = [
          params=[opt("question_id"), opt("conditions", "list"), opt("event_ids", "list")],
          anchors=["question_id", "conditions", "event_ids"],
          build="client.resolutions(resolution_key(question_id, conditions, event_ids)?)"),
+    dict(name="tokens", shape="list", row="TokenRef", path="/v2/tokens",
+         doc="Token ids, or the tokens of conditions, resolved to their condition, module, outcome, market and event; by exactly one of `token_ids` or `conditions`.",
+         params=[opt("token_ids", "list"), opt("conditions", "list")],
+         anchors=["token_ids", "conditions"],
+         build="client.tokens(token_key(token_ids, conditions)?)"),
     dict(name="biggest_winners", shape="paged", row="BiggestWinner", path="/v2/biggest-winners",
          doc="The largest single winning positions in a window.",
          params=[opt("time_period", "choice:TimePeriod"), opt("category"), LIMIT, CURSOR],
@@ -240,7 +245,9 @@ def nullable(prop):
 
 def py_type(prop):
     if "$ref" in prop:
-        return "dict[str, Any]"
+        # A string enum (`TokenRef.module`) serializes as its text, not as an object.
+        target = SCHEMAS[prop["$ref"].rsplit("/", 1)[-1]]
+        return "str" if target.get("type") == "string" else "dict[str, Any]"
     if "oneOf" in prop:
         return py_type(next(o for o in prop["oneOf"] if o.get("type") != "null"))
     t = prop["type"]

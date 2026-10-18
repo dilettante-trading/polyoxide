@@ -105,5 +105,25 @@ Where this epic departs from its acceptance criteria:
 - The Kalshi trading mapping stays a planning document,
   `_bmad-output/specs/spec-venue-extensibility/kalshi-trading-mapping.md`, until Story 8.1
   registers Kalshi's mirror.
-- Every events stream begins with `Resync`, and a fill the venue voids yields `Resync`, where the
-  architecture asked for one only after a reconnect (amendment A7-2).
+- Every events stream begins with `Resync`, unless the stream cannot open, when its only item is
+  that error, and a fill the venue voids yields `Resync`, where the architecture asked for one
+  only after a reconnect (amendment A7-2).
+
+## Gamma: `closed=any` (#59)
+
+**Consumer impact: additive, with one behaviour change to `get_many`.** Nothing is removed or
+renamed, and no signature changes.
+
+- `polyoxide-polymarket`: `gamma::types::ClosedFilter` (`Open`, `Closed`, `Any`) and a
+  `closed_filter` setter on `ListEvents`, `ListKeysetEvents`, `ListMarkets` and
+  `ListKeysetMarkets`. `closed(bool)` is unchanged. `Any` returns both states in one request; on
+  the two markets routes it needs an identifier filter, or the host answers `422`.
+- `Markets::get_many` (DRIFT R13) sends `closed=any` for each 100 distinct ids, each with a
+  `limit` of its ids' number, one request after the other, where it sent `closed=true` and
+  `closed=false` and merged them. A call for up to 100 ids is one request where it was two. A
+  longer list works where it was a `422`, and 21 to 100 open ids come back whole where they lost
+  every row past the 20th. A result is in the host's order for each chunk, not closed markets
+  first, and a repeated id is sent once.
+- The CLOB's `event_group` makes one `closed=any` request where it made one or two.
+- The `id` setters of `ListMarkets` and `ListEvents` documented a batch of 400 ids, and the
+  host takes 100.

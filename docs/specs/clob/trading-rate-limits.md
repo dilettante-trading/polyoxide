@@ -29,7 +29,8 @@ Each signer has two buckets — one for orders, one for cancellations.
 ## Volume tiers
 
 Tier is determined by 30-day volume. Rates are per second; burst is the bucket's
-capacity.
+capacity. `GET /v1/user/rate-limit-tier` ([account.md](account.md)) reports the tier
+currently assigned to a signer.
 
 | Tier | 30-day volume | Order rate | Order burst | Cancel rate | Cancel burst | Negative balance |
 |------|---------------|-----------|------------|------------|-------------|-----------------|
