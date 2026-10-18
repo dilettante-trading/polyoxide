@@ -76,10 +76,11 @@ pub enum PredictionsWsError {
 /// whose only non-fault is an upgrade refused with 451 and whose wait is a refusal's
 /// `Retry-After`. Kalshi's error frames are classed by code: 9 (authentication
 /// required) is `Unauthorized`, 27 (the command rate limit) `RateLimited`, 10 (a channel
-/// error) and 25 (the subscription's buffer overflowed) `Unavailable`, and every other
-/// code `InvalidRequest`. Kalshi's AsyncAPI calls codes 10 and 25 terminal ("the user
-/// must resubscribe"), so both are retriable: the socket reconnects and its replay
-/// resubscribes. A gap in the sequence is a lost message, `Network` and a fault; a
+/// error), 17 (an internal error), 18 (a command timeout) and 25 (the subscription's
+/// buffer overflowed) `Unavailable`, and every other code `InvalidRequest`. Kalshi's
+/// AsyncAPI calls codes 10 and 25 terminal ("the user must resubscribe"), and 17 and 18
+/// are the venue's own failures, so all four are retriable: the socket reconnects and its
+/// replay resubscribes. A gap in the sequence is a lost message, `Network` and a fault; a
 /// frame that did not decode is `Decode`; a URL or a key that cannot be used is
 /// `InvalidRequest`.
 impl Classify for PredictionsWsError {
@@ -88,7 +89,7 @@ impl Classify for PredictionsWsError {
             Self::Connection(err) => ws_class(err),
             Self::Server { code, .. } => match code {
                 9 => Class::Unauthorized,
-                10 | 25 => Class::Unavailable {
+                10 | 17 | 18 | 25 => Class::Unavailable {
                     code: Some(code.to_string().into()),
                 },
                 27 => Class::RateLimited { retry_after: None },
@@ -147,11 +148,26 @@ mod tests {
         let rows = [
             (9, Class::Unauthorized, false),
             // Kalshi's AsyncAPI calls codes 10 and 25 terminal ("the user must
-            // resubscribe"): both are the socket's to retry.
+            // resubscribe"), and 17 and 18 are the venue's own failures: all four are the
+            // socket's to retry.
             (
                 10,
                 Class::Unavailable {
                     code: Some("10".into()),
+                },
+                true,
+            ),
+            (
+                17,
+                Class::Unavailable {
+                    code: Some("17".into()),
+                },
+                true,
+            ),
+            (
+                18,
+                Class::Unavailable {
+                    code: Some("18".into()),
                 },
                 true,
             ),

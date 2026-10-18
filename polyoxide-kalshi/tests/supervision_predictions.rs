@@ -357,6 +357,110 @@ async fn a_change_whose_connection_dies_under_it_is_answered_ok_and_replayed() {
     ws.close().await.expect("close");
 }
 
+/// Asserts the next item is Kalshi's error `code`, and that the stream then ends.
+async fn assert_ends_with_error(ws: &mut SupervisedPredictionsWs, code: u32) {
+    match next_item(ws).await {
+        Err(PredictionsWsError::Server { code: seen, .. }) => assert_eq!(seen, code),
+        other => panic!("expected the server's error {code}, got {other:?}"),
+    }
+    let ended = tokio::time::timeout(WINDOW, ws.next())
+        .await
+        .expect("the stream ends");
+    assert!(ended.is_none());
+}
+
+#[tokio::test]
+async fn a_replay_kalshi_refuses_ends_the_stream_when_the_change_was_made_in_an_outage() {
+    // Bug: the change was answered Ok during the outage, so its caller never sees a
+    // refusal, and the replay, refused on every connection, was retried at the backoff
+    // ceiling for ever with only a WARN to show for it.
+    let server = KalshiServer::start(vec![
+        Script {
+            then_cut: true,
+            ..Default::default()
+        },
+        Script {
+            refuse_ticker: Some((B.to_owned(), 11)),
+            ..Default::default()
+        },
+    ])
+    .await;
+    // A long backoff keeps the outage open while the change is made.
+    let mut ws = builder_for(&server)
+        .backoff(Duration::from_millis(200), Duration::from_millis(200))
+        .connect(credentials(), [t(A)])
+        .await
+        .expect("connect");
+    let membership = ws.membership();
+    assert_eq!(kinds(&mut ws, 2).await, ["snapshot", "disconnected"]);
+    membership
+        .subscribe([t(B)])
+        .await
+        .expect("recorded during the outage");
+    assert_ends_with_error(&mut ws, 11).await;
+    // The replay was tried once and not again.
+    assert_eq!(server.connection_count(), 2);
+    assert_subscribe(&server.first_frames()[1], &[A, B]);
+}
+
+#[tokio::test]
+async fn a_replay_kalshi_refuses_ends_the_stream_when_the_connection_died_under_the_change() {
+    // Bug: as above, for a change whose connection died under it: it was answered Ok and
+    // recorded, and the replay that carried it was refused for ever.
+    let server = KalshiServer::start(vec![
+        Script {
+            ignore_updates: true,
+            cut_after: Some(Duration::from_millis(200)),
+            ..Default::default()
+        },
+        Script {
+            refuse_ticker: Some((B.to_owned(), 11)),
+            ..Default::default()
+        },
+    ])
+    .await;
+    let mut ws = builder_for(&server)
+        .connect(credentials(), [t(A)])
+        .await
+        .expect("connect");
+    let membership = ws.membership();
+    assert!(matches!(next_event(&mut ws).await, Event::Snapshot(_)));
+    // Kalshi never answers the update; the server cuts the connection at 200 ms.
+    membership.subscribe([t(B)]).await.expect("answered Ok");
+    assert_eq!(kinds(&mut ws, 1).await, ["disconnected"]);
+    assert_ends_with_error(&mut ws, 11).await;
+    assert_eq!(server.connection_count(), 2);
+    assert_subscribe(&server.first_frames()[1], &[A, B]);
+}
+
+#[tokio::test]
+async fn a_replay_refused_with_a_code_that_reconnects_is_retried() {
+    // Bug: ending the stream on every refused replay, a rate limit (27) included, which
+    // the next connection's replay would have cleared.
+    let server = KalshiServer::start(vec![
+        Script {
+            then_cut: true,
+            ..Default::default()
+        },
+        Script {
+            refuse_ticker: Some((A.to_owned(), 27)),
+            ..Default::default()
+        },
+        Script::default(),
+    ])
+    .await;
+    let mut ws = builder_for(&server)
+        .connect(credentials(), [t(A)])
+        .await
+        .expect("connect");
+    assert_eq!(
+        kinds(&mut ws, 4).await,
+        ["snapshot", "disconnected", "reconnected", "snapshot"]
+    );
+    assert_eq!(server.connection_count(), 3);
+    ws.close().await.expect("close");
+}
+
 #[tokio::test]
 async fn a_sequence_gap_reconnects_and_resnapshots() {
     // Bug: carrying on past a lost delta, so a book built on it is silently wrong.
@@ -560,6 +664,19 @@ async fn error_code_10_reconnects() {
 async fn error_code_25_reconnects() {
     // Bug: yielding the overflow and carrying on with a subscription Kalshi has ended.
     assert_error_code_reconnects(25, "Subscription buffer overflow").await;
+}
+
+#[tokio::test]
+async fn error_code_17_reconnects() {
+    // Bug: yielding the venue's own internal error and carrying on with a subscription it
+    // may have lost, so the book goes stale with no outage marker.
+    assert_error_code_reconnects(17, "Internal error").await;
+}
+
+#[tokio::test]
+async fn error_code_18_reconnects() {
+    // Bug: yielding the venue's own command timeout and carrying on, as above.
+    assert_error_code_reconnects(18, "Command timeout").await;
 }
 
 #[tokio::test]

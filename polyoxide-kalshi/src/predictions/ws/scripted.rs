@@ -52,8 +52,9 @@ pub struct Script {
     /// `Retry-After`, instead of `101`.
     pub refuse_upgrade: Option<(u16, Vec<(String, String)>)>,
     /// After a `subscribe`'s snapshots, send a subscription-scoped error frame with this
-    /// code and message (the suites use 9, authentication required, and 10 and 25, which
-    /// Kalshi calls terminal). It carries `sid` and `seq`, and no `id`.
+    /// code and message (the suites use 9, authentication required, 10 and 25, which
+    /// Kalshi calls terminal, and 17 and 18, its own failures). It carries `sid` and
+    /// `seq`, and no `id`.
     pub error_after_subscribe: Option<(u32, String)>,
     /// A command naming this ticker is answered with an `error` of this code.
     pub refuse_ticker: Option<(String, u32)>,
