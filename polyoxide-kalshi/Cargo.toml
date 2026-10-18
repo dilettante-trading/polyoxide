@@ -132,6 +132,10 @@ name = "supervision_predictions"
 required-features = ["predictions-ws"]
 
 [[test]]
+name = "live_predictions_ws"
+required-features = ["predictions-ws"]
+
+[[test]]
 name = "wire_agreement_predictions_ws"
 required-features = ["predictions-ws"]
 
@@ -158,6 +162,12 @@ secrets = []
 suite = "predictions"
 timeout = 15
 features = ["predictions"]
+secrets = ["KALSHI_DEMO_API_KEY_ID", "KALSHI_DEMO_PRIVATE_KEY"]
+
+[package.metadata.polyoxide.live.live_predictions_ws]
+suite = "predictions"
+timeout = 15
+features = ["predictions-ws"]
 secrets = ["KALSHI_DEMO_API_KEY_ID", "KALSHI_DEMO_PRIVATE_KEY"]
 
 [package.metadata.docs.rs]
