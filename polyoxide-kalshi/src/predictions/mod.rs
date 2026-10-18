@@ -11,6 +11,11 @@
 
 pub mod error;
 pub mod key;
+// Task 1.7 uses what these two modules define, and removes both allows.
+#[allow(dead_code)]
+pub mod request;
+#[allow(dead_code)]
+mod throttle;
 pub mod types;
 
 pub use error::{PredictionsError, VenueError};
