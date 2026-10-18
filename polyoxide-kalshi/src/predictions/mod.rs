@@ -9,6 +9,10 @@
 //! when it first sends. The hosts are [`PRODUCTION`] and [`DEMO`], and keys do not cross between
 //! them.
 
+pub mod key;
+
+pub use key::key;
+
 /// Production REST host: a scheme and host, with no path.
 pub const PRODUCTION: &str = "https://external-api.kalshi.com";
 
