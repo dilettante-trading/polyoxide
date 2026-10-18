@@ -21,7 +21,12 @@ use ring::signature::{UnparsedPublicKey, ED25519, RSA_PSS_2048_8192_SHA256};
 use serde_json::Value;
 
 const STATUS: &str = "/trade-api/v2/exchange/status";
+const LIMITS: &str = "/trade-api/v2/account/limits";
 const KEY_ID: &str = "test-key-id";
+
+/// An answer of `/account/limits` for a Premier account, with one grant that expires and one that
+/// does not.
+const LIMITS_BODY: &str = r#"{"usage_tier":"Premier","read":{"refill_rate":1200,"bucket_capacity":1200},"write":{"refill_rate":600,"bucket_capacity":600},"grants":[{"exchange_instance":"main","level":"premier","expires_ts":1790000000,"source":"volume"},{"exchange_instance":"main","level":"basic","source":"default"}]}"#;
 
 /// One request as the server saw it.
 #[derive(Debug, Clone)]
@@ -412,5 +417,57 @@ async fn an_anonymous_client_sends_no_kalshi_header() {
     assert!(
         all.iter().all(|sent| sent.kalshi_headers == 0),
         "an anonymous client sent a KALSHI- header"
+    );
+}
+
+#[tokio::test]
+async fn limits_decodes_the_accounts_buckets_and_is_signed() {
+    let mut server = Server::new_async().await;
+    let seen = Seen::default();
+    let _mock = recording(&mut server, &[404], &[(LIMITS, LIMITS_BODY)], &seen).await;
+    let client = client(&server, Some(ed25519()));
+
+    let limits = client.account().limits().send().await.unwrap();
+
+    assert_eq!(limits.usage_tier, "Premier");
+    assert_eq!(
+        (limits.read.bucket_capacity, limits.read.refill_rate),
+        (1200, 1200)
+    );
+    assert_eq!(
+        (limits.write.bucket_capacity, limits.write.refill_rate),
+        (600, 600)
+    );
+    assert_eq!(limits.grants.len(), 2);
+    assert_eq!(limits.grants[0].level, "premier");
+    assert_eq!(limits.grants[0].expires_ts, Some(1_790_000_000));
+    assert_eq!(limits.grants[1].expires_ts, None);
+    let verify = ed25519_verifier();
+    let sent = seen.to(LIMITS);
+    assert!(!sent.is_empty(), "the route was never read");
+    for request in &sent {
+        assert!(verifies(request, &verify), "{request:?}");
+    }
+}
+
+#[tokio::test]
+async fn limits_without_credentials_sends_nothing() {
+    let mut server = Server::new_async().await;
+    let seen = Seen::default();
+    let _mock = recording(&mut server, &[404], &[(LIMITS, LIMITS_BODY)], &seen).await;
+    let client = client(&server, None);
+
+    let error = client.account().limits().send().await.unwrap_err();
+
+    match error {
+        PredictionsError::Api(ApiError::Validation(message)) => assert_eq!(
+            message,
+            "account().limits() needs credentials: build the client with PredictionsBuilder::credentials"
+        ),
+        other => panic!("expected a validation refusal, got {other:?}"),
+    }
+    assert!(
+        seen.to(LIMITS).is_empty(),
+        "the refused call reached the server"
     );
 }
