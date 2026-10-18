@@ -10,7 +10,9 @@
 //! live or began in an outage, so a consumer reconciles before it trusts the
 //! stream. It then maps each socket event in order:
 //!
-//! - an order message is an ack, with the client order id the ledger holds;
+//! - an order message is an ack, with the client order id the ledger holds
+//!   (an ack of an order that ended frees the id for reuse but leaves the ledger
+//!   holding it, so later acks and fills still carry it);
 //! - a `MATCHED` trade is one fill per order of the account's in it, the
 //!   taker's first (the trade's `owner` is the account's API key and no maker
 //!   entry is the account's, so a self-trade yields only its maker fills) and
@@ -219,9 +221,10 @@ fn ack(message: &OrderMessage, ids: &Mutex<ClientIds>) -> Result<Order, Classifi
     order.client_order_id = {
         let mut ids = lock(ids);
         let client = ids.client_of(&id);
-        // An order that ended has no more acks to carry its client id.
+        // An order that ended frees its client id for reuse, but keeps it
+        // for the acks and fills still to be read (D21).
         if matches!(status, OrderStatus::Filled | OrderStatus::Cancelled) {
-            ids.remove(&id);
+            ids.release(&id);
         }
         client
     };
@@ -627,7 +630,7 @@ mod tests {
     }
 
     #[test]
-    fn an_update_that_reaches_the_size_is_filled_and_drops_the_ledger_entry() {
+    fn an_update_that_reaches_the_size_is_filled_and_drops_only_the_guard() {
         let ids = ids();
         lock(&ids)
             .claim(OrderId::new("0xo1"), ClientOrderId::new("mine"))
@@ -640,10 +643,14 @@ mod tests {
         assert_eq!(order.created, None);
         assert_eq!(order.client_order_id, Some(ClientOrderId::new("mine")));
         assert_eq!(lock(&ids).holder(&ClientOrderId::new("mine")), None);
+        assert_eq!(
+            lock(&ids).client_of(&OrderId::new("0xo1")),
+            Some(ClientOrderId::new("mine"))
+        );
     }
 
     #[test]
-    fn a_cancellation_is_cancelled_and_drops_the_ledger_entry() {
+    fn a_cancellation_is_cancelled_and_drops_only_the_guard() {
         let ids = ids();
         lock(&ids)
             .claim(OrderId::new("0xo1"), ClientOrderId::new("mine"))
@@ -654,6 +661,10 @@ mod tests {
         assert_eq!(order.status, OrderStatus::Cancelled);
         assert_eq!(order.client_order_id, Some(ClientOrderId::new("mine")));
         assert_eq!(lock(&ids).holder(&ClientOrderId::new("mine")), None);
+        assert_eq!(
+            lock(&ids).client_of(&OrderId::new("0xo1")),
+            Some(ClientOrderId::new("mine"))
+        );
     }
 
     #[test]

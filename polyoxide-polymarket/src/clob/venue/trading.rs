@@ -154,6 +154,13 @@ const LEDGER_BOUND: usize = 10_000;
 /// by the order's id. Every clone of a `Clob` shares one ledger, and so does
 /// every events stream it opens. It is lost when the process ends, and an
 /// order placed elsewhere has no entry.
+///
+/// An entry has two parts. The order's client id (`by_order`) stays until the
+/// bound evicts it, so an ack or fill read after the order ended still carries
+/// its client id. The reuse guard (`by_client`) is what refuses a second order
+/// with the same client id; it goes as soon as the order ends, so the client
+/// id may be used again at once. A guard goes only while it still names the
+/// order dropping it, since a newer order may have taken the freed client id.
 #[derive(Debug, Default)]
 pub(crate) struct ClientIds {
     by_order: HashMap<OrderId, (ClientOrderId, u64)>,
@@ -185,8 +192,8 @@ impl ClientIds {
             let Some((_, oldest)) = self.by_age.pop_first() else {
                 break;
             };
-            if let Some((evicted, _)) = self.by_order.remove(&oldest) {
-                self.by_client.remove(&evicted);
+            if let Some((client, _)) = self.by_order.remove(&oldest) {
+                self.drop_guard(&client, &oldest);
             }
         }
         self.next_age += 1;
@@ -196,20 +203,39 @@ impl ClientIds {
         Ok(())
     }
 
-    /// Moves an entry to the id the CLOB gave the order, keeping its age.
+    /// Moves an entry to the id the CLOB gave the order, keeping its age. The
+    /// guard moves with it while it names the order.
     pub(crate) fn rekey(&mut self, from: &OrderId, to: OrderId) {
         if let Some((client, age)) = self.by_order.remove(from) {
             self.by_age.insert(age, to.clone());
-            self.by_client.insert(client.clone(), to.clone());
+            if self.by_client.get(&client) == Some(from) {
+                self.by_client.insert(client.clone(), to.clone());
+            }
             self.by_order.insert(to, (client, age));
         }
     }
 
-    /// Drops the entry of `order`.
+    /// Drops the reuse guard of `order`, so its client id may be used again,
+    /// and keeps the order's client id, which later acks and fills carry. The
+    /// guard goes only while it still names `order`.
+    pub(crate) fn release(&mut self, order: &OrderId) {
+        if let Some((client, _)) = self.by_order.get(order).cloned() {
+            self.drop_guard(&client, order);
+        }
+    }
+
+    /// Drops the whole entry of `order`: its client id and its guard.
     pub(crate) fn remove(&mut self, order: &OrderId) {
         if let Some((client, age)) = self.by_order.remove(order) {
-            self.by_client.remove(&client);
+            self.drop_guard(&client, order);
             self.by_age.remove(&age);
+        }
+    }
+
+    /// Drops the guard on `client` while it names `order`.
+    fn drop_guard(&mut self, client: &ClientOrderId, order: &OrderId) {
+        if self.by_client.get(client) == Some(order) {
+            self.by_client.remove(client);
         }
     }
 }
@@ -327,26 +353,32 @@ fn settled(time_in_force: TimeInForce, matched: Decimal, size: Decimal) -> Order
     }
 }
 
-/// Drops the ledger entry of an order that ended at once or never existed.
-/// After a `Network`, `Unavailable` or `Decode` failure (D18), the last a 2xx
-/// whose body did not decode, the post may have reached the venue, so the
-/// entry stays until the bound evicts it.
+/// Settles the ledger after a post (D21). A refused post drops the whole entry,
+/// since no order exists. An order that ended at once (`Killed`, `Filled` or
+/// `Cancelled`) drops only its reuse guard, so the client id may be used again
+/// while the order's acks and fills still carry it. After a `Network`,
+/// `Unavailable` or `Decode` failure (D18), the last a 2xx whose body did not
+/// decode, the post may have reached the venue, so both parts stay until the
+/// bound evicts them.
 fn tidy(ids: &Mutex<ClientIds>, id: &OrderId, result: &Result<Order, ClassifiedError>) {
-    let drop_entry = match result {
-        Err(err) => !matches!(
-            err.class,
-            Class::Network | Class::Unavailable { .. } | Class::Decode
-        ),
-        Ok(order) => matches!(
-            order.status,
-            OrderStatus::Killed { .. } | OrderStatus::Filled
-        ),
-    };
-    if drop_entry {
-        let mut ids = lock(ids);
-        ids.remove(id);
-        if let Ok(order) = result {
-            ids.remove(&order.id);
+    let mut ids = lock(ids);
+    match result {
+        Err(err) => {
+            if !matches!(
+                err.class,
+                Class::Network | Class::Unavailable { .. } | Class::Decode
+            ) {
+                ids.remove(id);
+            }
+        }
+        Ok(order) => {
+            if matches!(
+                order.status,
+                OrderStatus::Killed { .. } | OrderStatus::Filled | OrderStatus::Cancelled
+            ) {
+                ids.release(id);
+                ids.release(&order.id);
+            }
         }
     }
 }
@@ -510,7 +542,11 @@ impl Clob {
 /// `Clob` remembers the ones it placed orders with, in memory: the ledger is
 /// shared by its clones and by the streams `events` opens, holds at most
 /// 10,000 entries, is lost when the process ends, and knows nothing of an
-/// order placed elsewhere, which carries no client id on any record.
+/// order placed elsewhere, which carries no client id on any record. An
+/// order's client id stays in the ledger until the bound evicts it, so an ack
+/// or fill read after the order was cancelled or ended still carries it; only
+/// the guard against reusing the id is dropped then, and the id may be placed
+/// again at once.
 impl Trading for Clob {
     async fn place(&self, request: OrderRequest) -> Result<Order, ClassifiedError> {
         self.account
@@ -604,7 +640,7 @@ impl Trading for Clob {
             .iter()
             .any(|canceled| canceled == id.as_str())
         {
-            lock(&self.ids).remove(id);
+            lock(&self.ids).release(id);
             return Ok(());
         }
         match response.not_canceled.get(id.as_str()) {
@@ -640,7 +676,7 @@ impl Trading for Clob {
         {
             let mut ids = lock(&self.ids);
             for id in &cancelled {
-                ids.remove(id);
+                ids.release(id);
             }
         }
         Ok(cancelled)
@@ -1054,6 +1090,49 @@ mod place_tests {
     }
 
     #[test]
+    fn releasing_an_order_drops_its_guard_and_keeps_its_client_id() {
+        let mut ids = ClientIds::default();
+        ids.claim(order(1), client(1)).unwrap();
+        ids.release(&order(1));
+
+        assert_eq!(ids.holder(&client(1)), None);
+        assert_eq!(ids.client_of(&order(1)), Some(client(1)));
+        // The id may be claimed again at once, by the same order or another.
+        ids.claim(order(2), client(1)).unwrap();
+        assert_eq!(ids.holder(&client(1)), Some(order(2)));
+        assert_eq!(ids.client_of(&order(1)), Some(client(1)));
+        assert_eq!(ids.client_of(&order(2)), Some(client(1)));
+    }
+
+    #[test]
+    fn evicting_an_order_leaves_a_guard_that_names_a_newer_order() {
+        let mut ids = ClientIds::default();
+        ids.claim(order(0), client(0)).unwrap();
+        ids.release(&order(0));
+        // A newer order takes the freed client id, so the guard now names it.
+        ids.claim(order(1), client(0)).unwrap();
+        for n in 2..=LEDGER_BOUND {
+            ids.claim(order(n), client(n)).unwrap();
+        }
+
+        // The oldest order, 0, has been evicted.
+        assert_eq!(ids.client_of(&order(0)), None);
+        assert_eq!(ids.holder(&client(0)), Some(order(1)));
+        assert_eq!(ids.client_of(&order(1)), Some(client(0)));
+    }
+
+    #[test]
+    fn an_evicted_order_takes_its_own_guard_with_it() {
+        let mut ids = ClientIds::default();
+        for n in 0..=LEDGER_BOUND {
+            ids.claim(order(n), client(n)).unwrap();
+        }
+
+        assert_eq!(ids.client_of(&order(0)), None);
+        assert_eq!(ids.holder(&client(0)), None);
+    }
+
+    #[test]
     fn rekeying_moves_the_entry_and_keeps_its_client_id() {
         let mut ids = ClientIds::default();
         ids.claim(order(1), client(1)).unwrap();
@@ -1083,6 +1162,9 @@ mod place_tests {
             tidy(&ids, &order(1), &Err(ClassifiedError::new(class, "boom")));
 
             assert_eq!(lock(&ids).holder(&client(1)).is_some(), kept, "{label}");
+            // A refused post drops both parts; a failure that may have
+            // reached the venue keeps both.
+            assert_eq!(lock(&ids).client_of(&order(1)).is_some(), kept, "{label}");
         }
     }
 
@@ -1101,9 +1183,10 @@ mod place_tests {
     }
 
     #[test]
-    fn the_ledger_drops_an_order_that_ended_at_once_and_keeps_one_that_rests() {
+    fn an_order_that_ended_at_once_loses_only_its_guard_and_one_that_rests_keeps_both() {
         let ended = [
             (OrderStatus::Filled, false),
+            (OrderStatus::Cancelled, false),
             (
                 OrderStatus::Killed {
                     reason: KillReason::Unmatched,
@@ -1127,6 +1210,8 @@ mod place_tests {
             tidy(&ids, &order(1), &Ok(placed));
 
             assert_eq!(lock(&ids).holder(&client(1)).is_some(), kept);
+            // The order's client id stays, whatever became of it.
+            assert_eq!(lock(&ids).client_of(&order(1)), Some(client(1)));
         }
     }
 

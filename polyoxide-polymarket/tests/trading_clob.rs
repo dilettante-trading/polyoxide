@@ -415,9 +415,56 @@ async fn the_stream_leads_with_a_resync_and_acks_with_the_client_order_id() {
     let subscription = ws.first_frames()[0].clone();
     assert!(subscription.contains("test-key"), "{subscription}");
     assert!(!subscription.contains("\"markets\""), "{subscription}");
-    // The cancelled ack dropped the ledger entry, so the id is free again.
+    // The cancelled ack dropped the reuse guard, so the id is free again.
     clob.place(request).await.unwrap();
     post.assert_async().await;
+}
+
+#[tokio::test]
+async fn an_order_cancelled_before_the_stream_is_polled_still_acks_with_its_client_order_id() {
+    let mut server = Server::new_async().await;
+    let post = post_ok(&mut server, LIVE, 2).await;
+    let delete = delete_answering(
+        &mut server,
+        "/order",
+        json!({"orderID": "0xorder1"}),
+        r#"{"canceled":["0xorder1"],"notCanceled":{}}"#,
+    )
+    .await;
+    let placement = order_frame("0xorder1", "PLACEMENT", "0", "1792000000123");
+    let cancellation = order_frame("0xorder1", "CANCELLATION", "0", "1792000009999");
+    let ws = user_socket(vec![Script::frames(&[
+        placement.as_str(),
+        cancellation.as_str(),
+    ])
+    .after_first_frame()])
+    .await;
+    let clob = client_on(&server, &ws);
+    let mut request = with_options(buy("0.52", "10"), declared(TickSize::Hundredth));
+    request.client_order_id = Some(ClientOrderId::new("mine-1"));
+
+    clob.place(request.clone()).await.unwrap();
+    clob.cancel(&OrderId::new("0xorder1")).await.unwrap();
+    let mut events = clob.events();
+    assert_eq!(next_item(&mut events).await.unwrap(), TradingEvent::Resync);
+    let TradingEvent::Ack(placed) = next_item(&mut events).await.unwrap() else {
+        panic!("expected the placement's ack");
+    };
+    let TradingEvent::Ack(cancelled) = next_item(&mut events).await.unwrap() else {
+        panic!("expected the cancellation's ack");
+    };
+
+    assert_eq!(placed.client_order_id, Some(ClientOrderId::new("mine-1")));
+    assert_eq!(cancelled.status, OrderStatus::Cancelled);
+    assert_eq!(
+        cancelled.client_order_id,
+        Some(ClientOrderId::new("mine-1"))
+    );
+    // Both acks carried the id, and it is free to place again.
+    let again = clob.place(request).await.unwrap();
+    assert_eq!(again.client_order_id, Some(ClientOrderId::new("mine-1")));
+    post.assert_async().await;
+    delete.assert_async().await;
 }
 
 #[tokio::test]
