@@ -716,7 +716,7 @@ Two GitHub Actions workflows run at `0 6 * * *` UTC and on `workflow_dispatch`. 
   - `live-polyoxide-polymarket-sports` (20 min): `live_sports` with `--features sports`
   - `live-polyoxide-venue` (15 min): `live_venue` with `--features polymarket-clob,polymarket-perps,binance-usdm`
   - `live-polyoxide-cli-live` (15 min): `live_api`
-  - `live-polyoxide-kalshi-predictions` (15 min): `live_predictions` with `--features predictions`
+  - `live-polyoxide-kalshi-predictions` (15 min): `live_predictions` with `--features predictions`, `live_predictions_venue` with `--features predictions`
   <!-- generated:end claude-nightly -->
   Failures are classified by `.github/scripts/classify_failures.py` from the tag line each failing test prints (below). A failure with no tag is `real`; nothing reads the panic text.
   - **auth-gated** (a credential loader found a secret absent or empty) — silently skipped

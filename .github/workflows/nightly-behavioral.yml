@@ -209,7 +209,7 @@ jobs:
         with:
           crate: polyoxide-kalshi
           suite: predictions
-          flags: "--no-default-features --features predictions --test live_predictions"
+          flags: "--no-default-features --features predictions --test live_predictions --test live_predictions_venue"
   # generated:end nightly-live-jobs
 
   aggregate:
