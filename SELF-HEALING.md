@@ -48,6 +48,7 @@ and that is when North American leagues and weekend soccer are on.
 | polyoxide-polymarket | `clob`: `live_clob` (built with `--features clob,gamma`), `live_clob_trading` (built with `--features clob-ws,data,gamma`), `live_clob_ws` (built with `--features clob-ws`); `clob-session-keys`: `live_clob_session_keys` (built with `--features clob,relay,gamma`; 40-minute budget in its own job, since its registry and transaction waits can take ~25 minutes); `gamma`: `live_gamma` (built with `--features gamma`); `data`: `live_data` (built with `--features data`); `relay`: `live_relay` (built with `--features relay`); `perps`: `live_perps` (built with `--features perps`), `live_perps_ws` (built with `--features perps-ws`); `rtds`: `live_rtds` (built with `--features rtds`); `sports`: `live_sports` (built with `--features sports`; 20-minute budget for its 180 s wire-agreement window) |
 | polyoxide | `live_venue` (built with `--features polymarket-clob,polymarket-perps,binance-usdm`) |
 | polyoxide-cli | `live_api` |
+| polyoxide-kalshi | `live_predictions` (built with `--features predictions`), `live_predictions_account` (built with `--features predictions`), `live_predictions_venue` (built with `--features predictions`), `live_predictions_ws` (built with `--features predictions-ws`) |
 <!-- generated:end selfheal-behavioral -->
 
 Failures are classified by `.github/scripts/classify_failures.py`. It reads one
@@ -104,10 +105,12 @@ mirror in `docs/specs/`:
 | perps | `docs.polymarket.com/api-spec/perps-openapi.json` | `docs/specs/perps/openapi.json` |
 | bridge | `docs.polymarket.com/api-spec/bridge-openapi.yaml` | `docs/specs/bridge/openapi.yaml` |
 | combos-rfq | `docs.polymarket.com/api-spec/combos-rfq-openapi.yaml` | `docs/specs/combos-rfq/openapi.yaml` |
+| kalshi | `docs.kalshi.com/openapi.yaml` | `docs/specs/kalshi/openapi.yaml` |
 | clob-ws-market | `docs.polymarket.com/asyncapi.json` | `docs/specs/clob/asyncapi-market.json` |
 | clob-ws-user | `docs.polymarket.com/asyncapi-user.json` | `docs/specs/clob/asyncapi-user.json` |
 | perps-ws | `docs.polymarket.com/asyncapi-perps.json` | `docs/specs/perps/asyncapi.json` |
 | combos-rfq-ws | `docs.polymarket.com/asyncapi-rfq.json` | `docs/specs/combos-rfq/asyncapi.json` |
+| kalshi-ws | `docs.kalshi.com/asyncapi.yaml` | `docs/specs/kalshi/asyncapi.yaml` |
 <!-- generated:end selfheal-watch -->
 
 On drift, `.github/scripts/diff_openapi.py` summarizes endpoints (OpenAPI

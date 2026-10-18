@@ -65,10 +65,12 @@ jobs:
           - { id: perps,          url: "https://docs.polymarket.com/api-spec/perps-openapi.json",      vendored: docs/specs/perps/openapi.json }
           - { id: bridge,         url: "https://docs.polymarket.com/api-spec/bridge-openapi.yaml",     vendored: docs/specs/bridge/openapi.yaml }
           - { id: combos-rfq,     url: "https://docs.polymarket.com/api-spec/combos-rfq-openapi.yaml", vendored: docs/specs/combos-rfq/openapi.yaml }
+          - { id: kalshi,         url: "https://docs.kalshi.com/openapi.yaml",                         vendored: docs/specs/kalshi/openapi.yaml }
           - { id: clob-ws-market, url: "https://docs.polymarket.com/asyncapi.json",                    vendored: docs/specs/clob/asyncapi-market.json }
           - { id: clob-ws-user,   url: "https://docs.polymarket.com/asyncapi-user.json",               vendored: docs/specs/clob/asyncapi-user.json }
           - { id: perps-ws,       url: "https://docs.polymarket.com/asyncapi-perps.json",              vendored: docs/specs/perps/asyncapi.json }
           - { id: combos-rfq-ws,  url: "https://docs.polymarket.com/asyncapi-rfq.json",                vendored: docs/specs/combos-rfq/asyncapi.json }
+          - { id: kalshi-ws,      url: "https://docs.kalshi.com/asyncapi.yaml",                        vendored: docs/specs/kalshi/asyncapi.yaml }
           # generated:end schema-watch
     steps:
       - uses: actions/checkout@v5

@@ -1,0 +1,9 @@
+{
+  "type": "error",
+  "id": 4,
+  "msg": {
+    "code": 2,
+    "msg": "Params required"
+  },
+  "sending_ts_ms": 1792336621992
+}

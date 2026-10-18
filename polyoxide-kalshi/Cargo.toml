@@ -1,0 +1,178 @@
+[package]
+name = "polyoxide-kalshi"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+authors.workspace = true
+repository.workspace = true
+rust-version.workspace = true
+description = "Rust client library for Kalshi's event-contract market data and its order-book stream (a walking skeleton, not published)"
+publish = false
+
+# One feature per module, as polyoxide-binance has: `predictions`, the REST client
+# for Kalshi's Predictions exchange and its Read throttle, with its order-book stream
+# under `predictions-ws`, whose handshake needs credentials even for public data.
+[features]
+default = ["predictions"]
+predictions = [
+    "dep:polyoxide-core",
+    "polyoxide-venue/decimal",
+    "polyoxide-venue/market",
+    "dep:base64",
+    "dep:chrono",
+    "dep:ring",
+    "dep:rust_decimal",
+    "dep:serde",
+    "dep:serde_json",
+    "dep:thiserror",
+    "dep:tokio",
+    "dep:tracing",
+    "dep:url",
+]
+
+# The order-book socket, `predictions::ws`, on the socket kit. It turns on `predictions` and
+# the kit, whose own manifest declares the tokio features the supervisor needs. This crate's
+# sources use no runtime or macro feature and no `futures-util`; the suites do, from
+# `[dev-dependencies]`.
+predictions-ws = ["predictions", "dep:polyoxide-ws"]
+
+[dependencies]
+polyoxide-core = { workspace = true, optional = true }
+polyoxide-venue = { workspace = true }
+base64 = { workspace = true, optional = true }
+chrono = { workspace = true, optional = true }
+ring = { workspace = true, optional = true }
+rust_decimal = { workspace = true, optional = true }
+serde = { workspace = true, optional = true }
+serde_json = { workspace = true, optional = true }
+thiserror = { workspace = true, optional = true }
+tokio = { workspace = true, features = ["time", "sync"], optional = true }
+tracing = { workspace = true, optional = true }
+url = { workspace = true, optional = true }
+
+# The socket kit (`predictions-ws`): connect, the supervisor and the socket error. It owns
+# the transport, tokio-tungstenite and rustls, so this crate declares none of them.
+polyoxide-ws = { workspace = true, optional = true }
+
+[dev-dependencies]
+# The tests' query and header helpers, the failure tags and the credential
+# loaders. Path-only: it is never published, and cargo strips a path-only
+# dev-dependency on publish.
+polyoxide-test-support = { path = "../polyoxide-test-support", features = ["query"] }
+mockito = { workspace = true }
+# The shared scripted WebSocket server the `predictions-ws` suites run on, with Kalshi's
+# answer (`src/predictions/ws/scripted.rs`). Path-only, so cargo strips it on publish.
+polyoxide-ws = { path = "../polyoxide-ws", features = ["test-server"] }
+# `tests/venue_predictions.rs` includes the umbrella's `examples/venue_neutral.rs`
+# by `#[path]`. The three features are that example's `required-features`; they
+# build the CLOB, perps and USDⓈ-M stacks into Kalshi's test builds only.
+# Path-only, so cargo strips it on publish.
+polyoxide = { path = "../polyoxide", default-features = false, features = ["polymarket-clob", "polymarket-perps", "binance-usdm"] }
+# Reads the OpenAPI mirror, which Kalshi publishes as YAML only; dev-only, so it is in no
+# normal build and no dependency allowlist.
+serde-saphyr = { workspace = true }
+# `test-util` gives the throttle's tests a paused clock. `macros` and `rt-multi-thread` are what
+# `#[tokio::test]` needs, here and in the `predictions-ws` suites.
+tokio = { workspace = true, features = ["macros", "rt-multi-thread", "time", "test-util"] }
+# `StreamExt` over the supervised socket's stream, in the `predictions-ws` suites.
+futures-util = { workspace = true }
+
+# The predictions module's suites. `required-features` keeps a plain
+# `cargo test --all-targets` from building them without the module.
+[[test]]
+name = "error_classes_predictions"
+required-features = ["predictions"]
+
+[[test]]
+name = "headers_predictions"
+required-features = ["predictions"]
+
+[[test]]
+name = "mock_predictions"
+required-features = ["predictions"]
+
+[[test]]
+name = "wire_agreement_predictions"
+required-features = ["predictions"]
+
+[[test]]
+name = "mock_predictions_routes"
+required-features = ["predictions"]
+
+[[test]]
+name = "query_setters_predictions"
+required-features = ["predictions"]
+
+[[test]]
+name = "spec_agreement_predictions"
+required-features = ["predictions"]
+
+[[test]]
+name = "live_predictions"
+required-features = ["predictions"]
+
+[[test]]
+name = "venue_predictions"
+required-features = ["predictions"]
+
+[[test]]
+name = "live_predictions_venue"
+required-features = ["predictions"]
+
+[[test]]
+name = "mock_predictions_signed"
+required-features = ["predictions"]
+
+[[test]]
+name = "signing_predictions"
+required-features = ["predictions"]
+
+[[test]]
+name = "live_predictions_account"
+required-features = ["predictions"]
+
+[[test]]
+name = "supervision_predictions"
+required-features = ["predictions-ws"]
+
+[[test]]
+name = "live_predictions_ws"
+required-features = ["predictions-ws"]
+
+[[test]]
+name = "wire_agreement_predictions_ws"
+required-features = ["predictions-ws"]
+
+# Registration, read by scripts/gen_registry.py; run it with --write after an edit.
+[package.metadata.polyoxide]
+readme = "Client library for Kalshi's APIs, one feature per module: `predictions` (event-contract market data, with its order-book stream under `predictions-ws`); a walking skeleton, not published"
+venue = "kalshi"
+products = ["predictions"]
+mirrors = ["kalshi"]
+
+[package.metadata.polyoxide.live.live_predictions]
+suite = "predictions"
+timeout = 15
+features = ["predictions"]
+secrets = []
+
+[package.metadata.polyoxide.live.live_predictions_venue]
+suite = "predictions"
+timeout = 15
+features = ["predictions"]
+secrets = []
+
+[package.metadata.polyoxide.live.live_predictions_account]
+suite = "predictions"
+timeout = 15
+features = ["predictions"]
+secrets = ["KALSHI_DEMO_API_KEY_ID", "KALSHI_DEMO_PRIVATE_KEY"]
+
+[package.metadata.polyoxide.live.live_predictions_ws]
+suite = "predictions"
+timeout = 15
+features = ["predictions-ws"]
+secrets = ["KALSHI_DEMO_API_KEY_ID", "KALSHI_DEMO_PRIVATE_KEY"]
+
+[package.metadata.docs.rs]
+features = ["predictions", "predictions-ws"]

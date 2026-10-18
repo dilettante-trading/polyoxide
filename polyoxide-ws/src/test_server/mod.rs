@@ -238,6 +238,7 @@ struct Recorder {
     accepted_at: Mutex<Vec<Instant>>,
     handshakes: AtomicUsize,
     paths: Mutex<Vec<String>>,
+    handshake_headers: Mutex<Vec<Vec<(String, String)>>>,
     received: Mutex<Vec<Received>>,
     first_frames: Mutex<Vec<String>>,
     pongs: Mutex<Vec<Vec<u8>>>,
@@ -327,6 +328,15 @@ impl ScriptedServer {
     /// The request path of each connection that completed a handshake.
     pub fn paths(&self) -> Vec<String> {
         self.recorder.paths.lock().unwrap().clone()
+    }
+
+    /// The request headers of each connection that completed a handshake, in
+    /// the order handshakes completed: a name and a value for each header,
+    /// names lowercase and values read as lossy UTF-8. A refused upgrade
+    /// records nothing, as for [`paths`](Self::paths), and takes no slot, so
+    /// an index is not a connection's index.
+    pub fn handshake_headers(&self) -> Vec<Vec<(String, String)>> {
+        self.recorder.handshake_headers.lock().unwrap().clone()
     }
 
     /// Every text frame received, in arrival order, across connections.
@@ -515,10 +525,16 @@ async fn send_scripted(
     Ok(true)
 }
 
-/// Complete the handshake, recording the request's path, or refuse it.
-async fn handshake(stream: TcpStream, script: &Script) -> Option<(Socket, String)> {
+/// Complete the handshake, recording the request's path and headers, or
+/// refuse it.
+async fn handshake(
+    stream: TcpStream,
+    script: &Script,
+) -> Option<(Socket, String, Vec<(String, String)>)> {
     let path = Arc::new(Mutex::new(String::new()));
     let seen = Arc::clone(&path);
+    let request_headers: Arc<Mutex<Vec<(String, String)>>> = Arc::default();
+    let seen_headers = Arc::clone(&request_headers);
     let refusal = script.refuse_upgrade.map(|status| {
         let headers = script.refuse_headers.clone();
         (status, headers)
@@ -529,6 +545,16 @@ async fn handshake(stream: TcpStream, script: &Script) -> Option<(Socket, String
     let callback =
         move |request: &Request, response: Response| -> Result<Response, ErrorResponse> {
             *seen.lock().unwrap() = request.uri().path().to_owned();
+            *seen_headers.lock().unwrap() = request
+                .headers()
+                .iter()
+                .map(|(name, value)| {
+                    (
+                        name.as_str().to_owned(),
+                        String::from_utf8_lossy(value.as_bytes()).into_owned(),
+                    )
+                })
+                .collect();
             let Some((status, headers)) = refusal else {
                 return Ok(response);
             };
@@ -545,7 +571,8 @@ async fn handshake(stream: TcpStream, script: &Script) -> Option<(Socket, String
     // A refusal writes its response, then reports the handshake as failed.
     let ws = accept_hdr_async(stream, callback).await.ok()?;
     let path = path.lock().unwrap().clone();
-    Some((ws, path))
+    let request_headers = request_headers.lock().unwrap().clone();
+    Some((ws, path, request_headers))
 }
 
 async fn serve<A>(
@@ -568,11 +595,12 @@ where
         std::future::pending::<()>().await;
         return Ok(());
     }
-    let Some((mut ws, path)) = handshake(stream, &script).await else {
+    let Some((mut ws, path, headers)) = handshake(stream, &script).await else {
         return Ok(());
     };
     recorder.handshakes.fetch_add(1, Ordering::SeqCst);
     recorder.paths.lock().unwrap().push(path);
+    recorder.handshake_headers.lock().unwrap().push(headers);
 
     let close_frame = script.close_code.clone().map(|(code, reason)| CloseFrame {
         code: CloseCode::from(code),

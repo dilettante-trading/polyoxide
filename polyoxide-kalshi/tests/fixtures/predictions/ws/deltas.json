@@ -1,0 +1,662 @@
+[
+  {
+    "type": "orderbook_delta",
+    "sid": 1,
+    "seq": 2,
+    "msg": {
+      "market_ticker": "KXBTCD-26OCT2317-T81999.99",
+      "market_id": "01a1442d-424d-781a-8c77-27dad19de1d7",
+      "price_dollars": "0.4600",
+      "delta_fp": "-310.25",
+      "side": "no",
+      "ts": "2026-10-18T15:15:58.15Z",
+      "ts_ms": 1792336558150
+    },
+    "sending_ts_ms": 1792336558152
+  },
+  {
+    "type": "orderbook_delta",
+    "sid": 1,
+    "seq": 3,
+    "msg": {
+      "market_ticker": "KXBTCD-26OCT2317-T81999.99",
+      "market_id": "01a1442d-424d-781a-8c77-27dad19de1d7",
+      "price_dollars": "0.4600",
+      "delta_fp": "-44.35",
+      "side": "no",
+      "ts": "2026-10-18T15:15:58.15Z",
+      "ts_ms": 1792336558150
+    },
+    "sending_ts_ms": 1792336558152
+  },
+  {
+    "type": "orderbook_delta",
+    "sid": 1,
+    "seq": 4,
+    "msg": {
+      "market_ticker": "KXBTCD-26OCT2317-T81999.99",
+      "market_id": "01a1442d-424d-781a-8c77-27dad19de1d7",
+      "price_dollars": "0.4600",
+      "delta_fp": "-317.96",
+      "side": "no",
+      "ts": "2026-10-18T15:15:58.151Z",
+      "ts_ms": 1792336558151
+    },
+    "sending_ts_ms": 1792336558152
+  },
+  {
+    "type": "orderbook_delta",
+    "sid": 1,
+    "seq": 5,
+    "msg": {
+      "market_ticker": "KXBTCD-26OCT2317-T81999.99",
+      "market_id": "01a1442d-424d-781a-8c77-27dad19de1d7",
+      "price_dollars": "0.4600",
+      "delta_fp": "-44.35",
+      "side": "no",
+      "ts": "2026-10-18T15:15:58.151Z",
+      "ts_ms": 1792336558151
+    },
+    "sending_ts_ms": 1792336558152
+  },
+  {
+    "type": "orderbook_delta",
+    "sid": 1,
+    "seq": 6,
+    "msg": {
+      "market_ticker": "KXBTCD-26OCT2317-T81999.99",
+      "market_id": "01a1442d-424d-781a-8c77-27dad19de1d7",
+      "price_dollars": "0.4500",
+      "delta_fp": "370.37",
+      "side": "yes",
+      "ts": "2026-10-18T15:15:58.151Z",
+      "ts_ms": 1792336558151
+    },
+    "sending_ts_ms": 1792336558153
+  },
+  {
+    "type": "orderbook_delta",
+    "sid": 1,
+    "seq": 7,
+    "msg": {
+      "market_ticker": "KXBTCD-26OCT2317-T81999.99",
+      "market_id": "01a1442d-424d-781a-8c77-27dad19de1d7",
+      "price_dollars": "0.4800",
+      "delta_fp": "347.22",
+      "side": "no",
+      "ts": "2026-10-18T15:15:58.151Z",
+      "ts_ms": 1792336558151
+    },
+    "sending_ts_ms": 1792336558153
+  },
+  {
+    "type": "orderbook_delta",
+    "sid": 1,
+    "seq": 8,
+    "msg": {
+      "market_ticker": "KXBTCD-26OCT2317-T81999.99",
+      "market_id": "01a1442d-424d-781a-8c77-27dad19de1d7",
+      "price_dollars": "0.4900",
+      "delta_fp": "340.13",
+      "side": "no",
+      "ts": "2026-10-18T15:15:58.151Z",
+      "ts_ms": 1792336558151
+    },
+    "sending_ts_ms": 1792336558153
+  },
+  {
+    "type": "orderbook_delta",
+    "sid": 1,
+    "seq": 9,
+    "msg": {
+      "market_ticker": "KXBTCD-26OCT2317-T81999.99",
+      "market_id": "01a1442d-424d-781a-8c77-27dad19de1d7",
+      "price_dollars": "0.5000",
+      "delta_fp": "333.33",
+      "side": "no",
+      "ts": "2026-10-18T15:15:58.152Z",
+      "ts_ms": 1792336558152
+    },
+    "sending_ts_ms": 1792336558153
+  },
+  {
+    "type": "orderbook_delta",
+    "sid": 1,
+    "seq": 10,
+    "msg": {
+      "market_ticker": "KXBTCD-26OCT2317-T81999.99",
+      "market_id": "01a1442d-424d-781a-8c77-27dad19de1d7",
+      "price_dollars": "0.4600",
+      "delta_fp": "-317.96",
+      "side": "no",
+      "ts": "2026-10-18T15:16:18.783Z",
+      "ts_ms": 1792336578783
+    },
+    "sending_ts_ms": 1792336578785
+  },
+  {
+    "type": "orderbook_delta",
+    "sid": 1,
+    "seq": 11,
+    "msg": {
+      "market_ticker": "KXBTCD-26OCT2317-T81999.99",
+      "market_id": "01a1442d-424d-781a-8c77-27dad19de1d7",
+      "price_dollars": "0.4600",
+      "delta_fp": "-36.64",
+      "side": "no",
+      "ts": "2026-10-18T15:16:18.783Z",
+      "ts_ms": 1792336578783
+    },
+    "sending_ts_ms": 1792336578785
+  },
+  {
+    "type": "orderbook_delta",
+    "sid": 1,
+    "seq": 12,
+    "msg": {
+      "market_ticker": "KXBTCD-26OCT2317-T81999.99",
+      "market_id": "01a1442d-424d-781a-8c77-27dad19de1d7",
+      "price_dollars": "0.4600",
+      "delta_fp": "-325.67",
+      "side": "no",
+      "ts": "2026-10-18T15:16:18.784Z",
+      "ts_ms": 1792336578784
+    },
+    "sending_ts_ms": 1792336578785
+  },
+  {
+    "type": "orderbook_delta",
+    "sid": 1,
+    "seq": 13,
+    "msg": {
+      "market_ticker": "KXBTCD-26OCT2317-T81999.99",
+      "market_id": "01a1442d-424d-781a-8c77-27dad19de1d7",
+      "price_dollars": "0.4600",
+      "delta_fp": "-36.64",
+      "side": "no",
+      "ts": "2026-10-18T15:16:18.784Z",
+      "ts_ms": 1792336578784
+    },
+    "sending_ts_ms": 1792336578785
+  },
+  {
+    "type": "orderbook_delta",
+    "sid": 1,
+    "seq": 14,
+    "msg": {
+      "market_ticker": "KXBTCD-26OCT2317-T81999.99",
+      "market_id": "01a1442d-424d-781a-8c77-27dad19de1d7",
+      "price_dollars": "0.4500",
+      "delta_fp": "370.37",
+      "side": "yes",
+      "ts": "2026-10-18T15:16:18.784Z",
+      "ts_ms": 1792336578784
+    },
+    "sending_ts_ms": 1792336578786
+  },
+  {
+    "type": "orderbook_delta",
+    "sid": 1,
+    "seq": 15,
+    "msg": {
+      "market_ticker": "KXBTCD-26OCT2317-T81999.99",
+      "market_id": "01a1442d-424d-781a-8c77-27dad19de1d7",
+      "price_dollars": "0.4800",
+      "delta_fp": "347.22",
+      "side": "no",
+      "ts": "2026-10-18T15:16:18.784Z",
+      "ts_ms": 1792336578784
+    },
+    "sending_ts_ms": 1792336578786
+  },
+  {
+    "type": "orderbook_delta",
+    "sid": 1,
+    "seq": 16,
+    "msg": {
+      "market_ticker": "KXBTCD-26OCT2317-T81999.99",
+      "market_id": "01a1442d-424d-781a-8c77-27dad19de1d7",
+      "price_dollars": "0.4900",
+      "delta_fp": "340.13",
+      "side": "no",
+      "ts": "2026-10-18T15:16:18.785Z",
+      "ts_ms": 1792336578785
+    },
+    "sending_ts_ms": 1792336578786
+  },
+  {
+    "type": "orderbook_delta",
+    "sid": 1,
+    "seq": 17,
+    "msg": {
+      "market_ticker": "KXBTCD-26OCT2317-T81999.99",
+      "market_id": "01a1442d-424d-781a-8c77-27dad19de1d7",
+      "price_dollars": "0.5000",
+      "delta_fp": "333.33",
+      "side": "no",
+      "ts": "2026-10-18T15:16:18.785Z",
+      "ts_ms": 1792336578785
+    },
+    "sending_ts_ms": 1792336578787
+  },
+  {
+    "type": "orderbook_delta",
+    "sid": 1,
+    "seq": 18,
+    "msg": {
+      "market_ticker": "KXBTCD-26OCT2317-T81999.99",
+      "market_id": "01a1442d-424d-781a-8c77-27dad19de1d7",
+      "price_dollars": "0.0100",
+      "delta_fp": "-1.00",
+      "side": "yes",
+      "ts": "2026-10-18T15:16:30.068Z",
+      "ts_ms": 1792336590068
+    },
+    "sending_ts_ms": 1792336590070
+  },
+  {
+    "type": "orderbook_delta",
+    "sid": 1,
+    "seq": 19,
+    "msg": {
+      "market_ticker": "KXBTCD-26OCT2317-T81999.99",
+      "market_id": "01a1442d-424d-781a-8c77-27dad19de1d7",
+      "price_dollars": "0.0100",
+      "delta_fp": "-1.00",
+      "side": "yes",
+      "ts": "2026-10-18T15:16:30.068Z",
+      "ts_ms": 1792336590068
+    },
+    "sending_ts_ms": 1792336590070
+  },
+  {
+    "type": "orderbook_delta",
+    "sid": 1,
+    "seq": 20,
+    "msg": {
+      "market_ticker": "KXBTCD-26OCT2317-T81999.99",
+      "market_id": "01a1442d-424d-781a-8c77-27dad19de1d7",
+      "price_dollars": "0.0100",
+      "delta_fp": "-1.00",
+      "side": "yes",
+      "ts": "2026-10-18T15:16:30.068Z",
+      "ts_ms": 1792336590068
+    },
+    "sending_ts_ms": 1792336590070
+  },
+  {
+    "type": "orderbook_delta",
+    "sid": 1,
+    "seq": 21,
+    "msg": {
+      "market_ticker": "KXBTCD-26OCT2317-T81999.99",
+      "market_id": "01a1442d-424d-781a-8c77-27dad19de1d7",
+      "price_dollars": "0.0100",
+      "delta_fp": "-1.00",
+      "side": "yes",
+      "ts": "2026-10-18T15:16:30.068Z",
+      "ts_ms": 1792336590068
+    },
+    "sending_ts_ms": 1792336590070
+  },
+  {
+    "type": "orderbook_delta",
+    "sid": 1,
+    "seq": 22,
+    "msg": {
+      "market_ticker": "KXBTCD-26OCT2317-T81999.99",
+      "market_id": "01a1442d-424d-781a-8c77-27dad19de1d7",
+      "price_dollars": "0.0100",
+      "delta_fp": "-1.00",
+      "side": "yes",
+      "ts": "2026-10-18T15:16:30.068Z",
+      "ts_ms": 1792336590068
+    },
+    "sending_ts_ms": 1792336590070
+  },
+  {
+    "type": "orderbook_delta",
+    "sid": 1,
+    "seq": 23,
+    "msg": {
+      "market_ticker": "KXBTCD-26OCT2317-T81999.99",
+      "market_id": "01a1442d-424d-781a-8c77-27dad19de1d7",
+      "price_dollars": "0.0100",
+      "delta_fp": "-1.00",
+      "side": "yes",
+      "ts": "2026-10-18T15:16:30.068Z",
+      "ts_ms": 1792336590068
+    },
+    "sending_ts_ms": 1792336590070
+  },
+  {
+    "type": "orderbook_delta",
+    "sid": 1,
+    "seq": 24,
+    "msg": {
+      "market_ticker": "KXBTCD-26OCT2317-T81999.99",
+      "market_id": "01a1442d-424d-781a-8c77-27dad19de1d7",
+      "price_dollars": "0.0100",
+      "delta_fp": "-1.00",
+      "side": "yes",
+      "ts": "2026-10-18T15:16:30.068Z",
+      "ts_ms": 1792336590068
+    },
+    "sending_ts_ms": 1792336590070
+  },
+  {
+    "type": "orderbook_delta",
+    "sid": 1,
+    "seq": 25,
+    "msg": {
+      "market_ticker": "KXBTCD-26OCT2317-T81999.99",
+      "market_id": "01a1442d-424d-781a-8c77-27dad19de1d7",
+      "price_dollars": "0.0100",
+      "delta_fp": "-1.00",
+      "side": "yes",
+      "ts": "2026-10-18T15:16:30.068Z",
+      "ts_ms": 1792336590068
+    },
+    "sending_ts_ms": 1792336590070
+  },
+  {
+    "type": "orderbook_delta",
+    "sid": 1,
+    "seq": 26,
+    "msg": {
+      "market_ticker": "KXBTCD-26OCT2317-T81999.99",
+      "market_id": "01a1442d-424d-781a-8c77-27dad19de1d7",
+      "price_dollars": "0.0100",
+      "delta_fp": "-1.00",
+      "side": "yes",
+      "ts": "2026-10-18T15:16:30.068Z",
+      "ts_ms": 1792336590068
+    },
+    "sending_ts_ms": 1792336590070
+  },
+  {
+    "type": "orderbook_delta",
+    "sid": 1,
+    "seq": 27,
+    "msg": {
+      "market_ticker": "KXBTCD-26OCT2317-T81999.99",
+      "market_id": "01a1442d-424d-781a-8c77-27dad19de1d7",
+      "price_dollars": "0.0100",
+      "delta_fp": "-1.00",
+      "side": "yes",
+      "ts": "2026-10-18T15:16:30.068Z",
+      "ts_ms": 1792336590068
+    },
+    "sending_ts_ms": 1792336590070
+  },
+  {
+    "type": "orderbook_delta",
+    "sid": 1,
+    "seq": 28,
+    "msg": {
+      "market_ticker": "KXBTCD-26OCT2317-T81999.99",
+      "market_id": "01a1442d-424d-781a-8c77-27dad19de1d7",
+      "price_dollars": "0.0100",
+      "delta_fp": "-1.00",
+      "side": "yes",
+      "ts": "2026-10-18T15:16:30.068Z",
+      "ts_ms": 1792336590068
+    },
+    "sending_ts_ms": 1792336590070
+  },
+  {
+    "type": "orderbook_delta",
+    "sid": 1,
+    "seq": 29,
+    "msg": {
+      "market_ticker": "KXBTCD-26OCT2317-T81999.99",
+      "market_id": "01a1442d-424d-781a-8c77-27dad19de1d7",
+      "price_dollars": "0.0100",
+      "delta_fp": "-1.00",
+      "side": "yes",
+      "ts": "2026-10-18T15:16:30.068Z",
+      "ts_ms": 1792336590068
+    },
+    "sending_ts_ms": 1792336590070
+  },
+  {
+    "type": "orderbook_delta",
+    "sid": 1,
+    "seq": 30,
+    "msg": {
+      "market_ticker": "KXBTCD-26OCT2317-T81999.99",
+      "market_id": "01a1442d-424d-781a-8c77-27dad19de1d7",
+      "price_dollars": "0.0100",
+      "delta_fp": "-1.00",
+      "side": "yes",
+      "ts": "2026-10-18T15:16:30.068Z",
+      "ts_ms": 1792336590068
+    },
+    "sending_ts_ms": 1792336590070
+  },
+  {
+    "type": "orderbook_delta",
+    "sid": 1,
+    "seq": 31,
+    "msg": {
+      "market_ticker": "KXBTCD-26OCT2317-T81999.99",
+      "market_id": "01a1442d-424d-781a-8c77-27dad19de1d7",
+      "price_dollars": "0.0100",
+      "delta_fp": "-1.00",
+      "side": "yes",
+      "ts": "2026-10-18T15:16:30.068Z",
+      "ts_ms": 1792336590068
+    },
+    "sending_ts_ms": 1792336590070
+  },
+  {
+    "type": "orderbook_delta",
+    "sid": 1,
+    "seq": 32,
+    "msg": {
+      "market_ticker": "KXBTCD-26OCT2317-T81999.99",
+      "market_id": "01a1442d-424d-781a-8c77-27dad19de1d7",
+      "price_dollars": "0.0100",
+      "delta_fp": "-1.00",
+      "side": "yes",
+      "ts": "2026-10-18T15:16:30.068Z",
+      "ts_ms": 1792336590068
+    },
+    "sending_ts_ms": 1792336590070
+  },
+  {
+    "type": "orderbook_delta",
+    "sid": 1,
+    "seq": 33,
+    "msg": {
+      "market_ticker": "KXBTCD-26OCT2317-T81999.99",
+      "market_id": "01a1442d-424d-781a-8c77-27dad19de1d7",
+      "price_dollars": "0.0100",
+      "delta_fp": "-1.00",
+      "side": "yes",
+      "ts": "2026-10-18T15:16:30.068Z",
+      "ts_ms": 1792336590068
+    },
+    "sending_ts_ms": 1792336590070
+  },
+  {
+    "type": "orderbook_delta",
+    "sid": 1,
+    "seq": 34,
+    "msg": {
+      "market_ticker": "KXBTCD-26OCT2317-T81999.99",
+      "market_id": "01a1442d-424d-781a-8c77-27dad19de1d7",
+      "price_dollars": "0.0100",
+      "delta_fp": "-1.00",
+      "side": "yes",
+      "ts": "2026-10-18T15:16:30.068Z",
+      "ts_ms": 1792336590068
+    },
+    "sending_ts_ms": 1792336590070
+  },
+  {
+    "type": "orderbook_delta",
+    "sid": 1,
+    "seq": 35,
+    "msg": {
+      "market_ticker": "KXBTCD-26OCT2317-T81999.99",
+      "market_id": "01a1442d-424d-781a-8c77-27dad19de1d7",
+      "price_dollars": "0.0100",
+      "delta_fp": "-1.00",
+      "side": "yes",
+      "ts": "2026-10-18T15:16:30.068Z",
+      "ts_ms": 1792336590068
+    },
+    "sending_ts_ms": 1792336590070
+  },
+  {
+    "type": "orderbook_delta",
+    "sid": 1,
+    "seq": 36,
+    "msg": {
+      "market_ticker": "KXBTCD-26OCT2317-T81999.99",
+      "market_id": "01a1442d-424d-781a-8c77-27dad19de1d7",
+      "price_dollars": "0.0100",
+      "delta_fp": "-1.00",
+      "side": "yes",
+      "ts": "2026-10-18T15:16:30.068Z",
+      "ts_ms": 1792336590068
+    },
+    "sending_ts_ms": 1792336590070
+  },
+  {
+    "type": "orderbook_delta",
+    "sid": 1,
+    "seq": 37,
+    "msg": {
+      "market_ticker": "KXBTCD-26OCT2317-T81999.99",
+      "market_id": "01a1442d-424d-781a-8c77-27dad19de1d7",
+      "price_dollars": "0.0100",
+      "delta_fp": "-1.00",
+      "side": "yes",
+      "ts": "2026-10-18T15:16:30.068Z",
+      "ts_ms": 1792336590068
+    },
+    "sending_ts_ms": 1792336590070
+  },
+  {
+    "type": "orderbook_delta",
+    "sid": 1,
+    "seq": 38,
+    "msg": {
+      "market_ticker": "KXBTCD-26OCT2317-T81999.99",
+      "market_id": "01a1442d-424d-781a-8c77-27dad19de1d7",
+      "price_dollars": "0.4600",
+      "delta_fp": "-325.67",
+      "side": "no",
+      "ts": "2026-10-18T15:16:39.548Z",
+      "ts_ms": 1792336599548
+    },
+    "sending_ts_ms": 1792336599549
+  },
+  {
+    "type": "orderbook_delta",
+    "sid": 1,
+    "seq": 39,
+    "msg": {
+      "market_ticker": "KXBTCD-26OCT2317-T81999.99",
+      "market_id": "01a1442d-424d-781a-8c77-27dad19de1d7",
+      "price_dollars": "0.4600",
+      "delta_fp": "-28.93",
+      "side": "no",
+      "ts": "2026-10-18T15:16:39.548Z",
+      "ts_ms": 1792336599548
+    },
+    "sending_ts_ms": 1792336599549
+  },
+  {
+    "type": "orderbook_delta",
+    "sid": 1,
+    "seq": 40,
+    "msg": {
+      "market_ticker": "KXBTCD-26OCT2317-T81999.99",
+      "market_id": "01a1442d-424d-781a-8c77-27dad19de1d7",
+      "price_dollars": "0.4600",
+      "delta_fp": "-333.38",
+      "side": "no",
+      "ts": "2026-10-18T15:16:39.549Z",
+      "ts_ms": 1792336599549
+    },
+    "sending_ts_ms": 1792336599550
+  },
+  {
+    "type": "orderbook_delta",
+    "sid": 1,
+    "seq": 41,
+    "msg": {
+      "market_ticker": "KXBTCD-26OCT2317-T81999.99",
+      "market_id": "01a1442d-424d-781a-8c77-27dad19de1d7",
+      "price_dollars": "0.4600",
+      "delta_fp": "-28.93",
+      "side": "no",
+      "ts": "2026-10-18T15:16:39.549Z",
+      "ts_ms": 1792336599549
+    },
+    "sending_ts_ms": 1792336599550
+  },
+  {
+    "type": "orderbook_delta",
+    "sid": 1,
+    "seq": 42,
+    "msg": {
+      "market_ticker": "KXBTCD-26OCT2317-T81999.99",
+      "market_id": "01a1442d-424d-781a-8c77-27dad19de1d7",
+      "price_dollars": "0.4500",
+      "delta_fp": "370.37",
+      "side": "yes",
+      "ts": "2026-10-18T15:16:39.549Z",
+      "ts_ms": 1792336599549
+    },
+    "sending_ts_ms": 1792336599550
+  },
+  {
+    "type": "orderbook_delta",
+    "sid": 1,
+    "seq": 43,
+    "msg": {
+      "market_ticker": "KXBTCD-26OCT2317-T81999.99",
+      "market_id": "01a1442d-424d-781a-8c77-27dad19de1d7",
+      "price_dollars": "0.4800",
+      "delta_fp": "347.22",
+      "side": "no",
+      "ts": "2026-10-18T15:16:39.549Z",
+      "ts_ms": 1792336599549
+    },
+    "sending_ts_ms": 1792336599550
+  },
+  {
+    "type": "orderbook_delta",
+    "sid": 1,
+    "seq": 44,
+    "msg": {
+      "market_ticker": "KXBTCD-26OCT2317-T81999.99",
+      "market_id": "01a1442d-424d-781a-8c77-27dad19de1d7",
+      "price_dollars": "0.4900",
+      "delta_fp": "340.13",
+      "side": "no",
+      "ts": "2026-10-18T15:16:39.549Z",
+      "ts_ms": 1792336599549
+    },
+    "sending_ts_ms": 1792336599551
+  },
+  {
+    "type": "orderbook_delta",
+    "sid": 1,
+    "seq": 45,
+    "msg": {
+      "market_ticker": "KXBTCD-26OCT2317-T81999.99",
+      "market_id": "01a1442d-424d-781a-8c77-27dad19de1d7",
+      "price_dollars": "0.5000",
+      "delta_fp": "333.33",
+      "side": "no",
+      "ts": "2026-10-18T15:16:39.549Z",
+      "ts_ms": 1792336599549
+    },
+    "sending_ts_ms": 1792336599551
+  }
+]

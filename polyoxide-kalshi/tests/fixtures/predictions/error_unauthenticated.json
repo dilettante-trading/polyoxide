@@ -1,0 +1,6 @@
+{
+  "error": {
+    "code": "token_authentication_failure",
+    "message": "token authentication failure"
+  }
+}

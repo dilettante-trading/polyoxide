@@ -1,0 +1,9 @@
+{
+  "type": "subscribed",
+  "id": 1,
+  "msg": {
+    "channel": "orderbook_delta",
+    "sid": 1
+  },
+  "sending_ts_ms": 1792336558110
+}

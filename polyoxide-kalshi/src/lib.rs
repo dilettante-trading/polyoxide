@@ -1,0 +1,48 @@
+//! # polyoxide-kalshi
+//!
+//! Rust client library for Kalshi's APIs, one feature per module: `predictions` (event-contract
+//! market data, with its order-book stream under `predictions-ws`).
+//!
+//! The crate is a walking skeleton and it is not published. It is the workspace's third venue,
+//! built by the architecture guide's recipe to show that a venue lands by editing its own files
+//! and the few places the recipe names.
+//!
+//! `predictions` (feature `predictions`, on by default) reads Kalshi's Predictions exchange
+//! (`external-api.kalshi.com`, and the demo host `external-api.demo.kalshi.co`). Public REST reads
+//! need no credentials. The module's own docs carry its example.
+//!
+//! `predictions-ws` (feature `predictions-ws`, off by default, and it turns on `predictions`) adds
+//! the module's order-book socket, `predictions::ws`, on the socket kit: a snapshot of each
+//! subscribed market's book and then its changes, in YES pricing, reconnecting after a drop, a
+//! stall or a gap. Kalshi refuses a socket handshake that carries no API-key headers, public data
+//! included, so the socket needs `Credentials` where the REST reads of public data need none.
+
+// The crate README is compiled as a doctest, so a code fence that is ever added
+// to it cannot rot. `doctest` keeps this out of normal builds and `cargo doc`.
+#[cfg(all(doctest, feature = "predictions"))]
+#[doc = include_str!("../README.md")]
+struct ReadmeDoctests;
+
+// Each module's README is a doctest under its own feature, as the crate's is.
+// `.github/scripts/tests/test_module_readmes.py` fails when a module README
+// has no include here, or an include names no README.
+#[cfg(all(doctest, feature = "predictions"))]
+#[doc = include_str!("predictions/README.md")]
+struct PredictionsReadmeDoctests;
+
+#[cfg(feature = "predictions")]
+pub mod predictions;
+
+// Every public error type implements `Classify`; one without it fails the
+// build here. `.github/scripts/tests/test_classify_coverage.py` fails when a
+// public error type is missing from this list.
+#[cfg(feature = "predictions")]
+const _: fn() = || {
+    fn is<T: polyoxide_venue::Classify>() {}
+    is::<predictions::PredictionsError>();
+    is::<predictions::VenueError>();
+    is::<predictions::key::InvalidTicker>();
+    is::<predictions::CredentialsError>();
+    #[cfg(feature = "predictions-ws")]
+    is::<predictions::ws::PredictionsWsError>();
+};
