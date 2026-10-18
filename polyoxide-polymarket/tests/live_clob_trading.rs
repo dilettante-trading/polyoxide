@@ -347,8 +347,8 @@ async fn live_trading_places_acks_and_cancels_a_resting_post_only_bid() {
     request.post_only = true;
     request.time_in_force = TimeInForce::GoodTilCancelled;
     // Unique per run, so a bid left by an earlier run cannot be mistaken for
-    // this one's. The ledger gives the acks this id, so the Open ack checks the
-    // order id the client computed against the venue's.
+    // this one's. The ledger gives the acks this id, so the Open ack carries the
+    // client id the ledger holds for the order.
     let client_id = ClientOrderId::new(format!("polyoxide-live-{}", now().0));
     request.client_order_id = Some(client_id.clone());
     let order = match trading.place(request).await {
