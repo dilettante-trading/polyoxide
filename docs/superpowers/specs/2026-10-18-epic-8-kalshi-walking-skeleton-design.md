@@ -334,6 +334,11 @@ plan disagreeing with one of them stops and asks.
   - `CLAUDE.md`: the hand-written paragraphs that list the venue crates, the header pins or the
     allowlist rules, and the scripted server's list of recorders (AD-21, A8-4, A8-6);
   - `polyoxide-ws/src/test_server/`: `handshake_headers()` and its test (D17, A8-4).
+  - `ci/test-body-diff.toml`: three `[[drift]]` entries, row `R15`, for `struct Recorder`,
+    `fn handshake` and `fn serve` in `polyoxide-ws/src/test_server/mod.rs`, with the DRIFT row R15
+    in `_bmad-output/specs/spec-venue-extensibility/divergences.md`. Every item there is
+    `cfg(any(test, feature = "test-server"))`, so `test_body_diff.py` reads them as test context,
+    and D17's recorder cannot be added without changing them (the owner, 2026-10-18; A8-4).
 
   The planning records the run writes are in the set too: this spec, the plan,
   `_bmad-output/specs/**`, `spine-amendments/epic-8.md` and
@@ -727,7 +732,11 @@ Apache-compatible, `yaml-rust2` with a small conversion to `Value` replaces it.
 - `instrument`:
   - reads `markets().get(&ticker)`, and its 404 is `NotListed::new(key.clone())` (D11);
   - otherwise it is `Instrument::new(key, name, SizeUnit::Shares)` with D12's fields;
-  - `name` is `yes_sub_title` or `no_sub_title`, or `"<TICKER> yes"` or `"<TICKER> no"` when empty;
+  - `name` is `"<yes_sub_title> — Yes"` or `"<yes_sub_title> — No"`, by the key's outcome, or
+    `"<TICKER> yes"` or `"<TICKER> no"` when the subtitle is empty or whitespace. Kalshi sends
+    `yes_sub_title == no_sub_title` on every captured market, so the outcome is appended, as the
+    CLOB writes `"{question} — {outcome}"`, and `Instrument::name` names its market and outcome
+    (the owner, 2026-10-18);
   - its `InstrumentExt` holds `event_ticker`, `status`, `price_ranges`, `price_level_structure`,
     `close_time` and the expiry times, `notional_value`, `settlement_bounds_type` and
     `exchange_index`.
@@ -1118,6 +1127,7 @@ The entry for the eight trading probes stays as it is.
   - `.github/workflows/ci.yml`, `.github/scripts/tests/test_ci_workflow.py` and
     `.github/scripts/tests/test_dep_allowlists.py`;
   - `polyoxide-ws/src/test_server/mod.rs` and `polyoxide-ws/src/test_server/tests.rs`;
+  - `ci/test-body-diff.toml` (D20, R15);
   - this spec, the plan, `_bmad-output/specs/`, `spine-amendments/epic-8.md` and
     `_bmad-output/implementation-artifacts/deferred-work.md`.
 - **The final gates** are the profile's, with D24's Kalshi pins. They add the removals check
