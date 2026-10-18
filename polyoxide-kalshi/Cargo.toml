@@ -128,6 +128,10 @@ name = "live_predictions_account"
 required-features = ["predictions"]
 
 [[test]]
+name = "supervision_predictions"
+required-features = ["predictions-ws"]
+
+[[test]]
 name = "wire_agreement_predictions_ws"
 required-features = ["predictions-ws"]
 

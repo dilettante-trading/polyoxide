@@ -21,6 +21,8 @@ mod builder;
 mod error;
 mod event;
 mod protocol;
+#[cfg(test)]
+mod scripted;
 
 pub use builder::PredictionsWsBuilder;
 pub use error::PredictionsWsError;
