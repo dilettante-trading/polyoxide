@@ -72,6 +72,12 @@ impl Predictions {
         health: api::Health,
         /// The exchange's status.
         exchange: api::ExchangeApi,
+        /// Markets, their order books and their public trades.
+        markets: api::MarketsApi,
+        /// Events and their markets.
+        events: api::EventsApi,
+        /// The account's limits and the routes' token costs.
+        account: api::AccountApi,
     }
 }
 

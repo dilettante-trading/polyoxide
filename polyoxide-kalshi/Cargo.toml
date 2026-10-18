@@ -71,6 +71,14 @@ required-features = ["predictions"]
 name = "wire_agreement_predictions"
 required-features = ["predictions"]
 
+[[test]]
+name = "mock_predictions_routes"
+required-features = ["predictions"]
+
+[[test]]
+name = "query_setters_predictions"
+required-features = ["predictions"]
+
 # Registration, read by scripts/gen_registry.py; run it with --write after an edit.
 [package.metadata.polyoxide]
 readme = "Client library for Kalshi's APIs, one feature per module: `predictions` (event-contract market data, with its order-book stream under `predictions-ws`); a walking skeleton, not published"
