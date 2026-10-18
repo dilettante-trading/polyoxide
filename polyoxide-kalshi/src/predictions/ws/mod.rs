@@ -17,13 +17,32 @@
 //!
 //! Errors are `PredictionsWsError`, classified through the one socket table.
 
+mod builder;
 mod error;
 mod event;
+mod protocol;
 
+pub use builder::PredictionsWsBuilder;
 pub use error::PredictionsWsError;
 #[doc(hidden)]
 pub use event::frames;
 pub use event::{DisconnectReason, Event, OrderbookDelta, OrderbookSnapshot};
+#[doc(hidden)]
+pub use protocol::signed_request;
+pub use protocol::{Change, PredictionsMembership, PredictionsProtocol};
+
+/// A supervised connection: a `Stream` of [`Event`]s that survives drops, stalls and gaps
+/// by reconnecting and replaying its subscription, run by the kit's `Supervisor` on
+/// [`PredictionsProtocol`]. Build one with [`PredictionsWsBuilder`].
+///
+/// It pings every 10 s on the wall clock, even while the consumer is behind; the queue
+/// holds 1024 unread events, after which the task reads nothing more until the consumer
+/// catches up, and that wait does not count as silence. It ends after an error it cannot
+/// recover from (a handshake Kalshi refuses with a 401 or 403, or an error frame with code
+/// 9), which it yields first; a frame that did not decode is yielded as an error and does
+/// not end it. Change its markets through `membership()` and [`PredictionsMembership`],
+/// from a task other than the one reading the stream.
+pub type SupervisedPredictionsWs = polyoxide_ws::Supervised<PredictionsProtocol>;
 
 /// The production WebSocket endpoint.
 pub const PRODUCTION_WS: &str = "wss://external-api-ws.kalshi.com/trade-api/ws/v2";
