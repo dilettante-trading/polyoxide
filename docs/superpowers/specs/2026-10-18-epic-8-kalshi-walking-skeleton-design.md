@@ -177,6 +177,13 @@ plan disagreeing with one of them stops and asks.
   sending when the client has none: `InvalidRequest`, nothing sent, no token spent. The one request
   a key never signs is `health().ping()`: core's `HttpClient::health` takes no venue authenticator
   (it signs with a private stopwatch alone), and `/exchange/status` is public.
+
+  Which bucket a signed public read draws from is unverified. On 2026-10-18 the demo host answered
+  a signed `GET /trade-api/v2/markets` with 200 for a key it did not know, while `/account/limits`
+  refused the same key (401, `NOT_FOUND`), so public routes may not check the key at all, and a
+  signed public read may fall under the anonymous limit instead. D5's sizing stands; a probe that
+  drains a registered key's Read bucket on a public route is deferred beside the anonymous-limit
+  soak (§9.5; the owner, 2026-10-18).
 - **D4. The base URL is a scheme and host; route paths are written from the API root.** The consts
   are `PRODUCTION` (`https://external-api.kalshi.com`) and `DEMO`
   (`https://external-api.demo.kalshi.co`). `build` refuses a base URL with a path other than `/`
@@ -1103,6 +1110,8 @@ The run appends any gap it meets, each one numbered. Merging them into the spine
 **9.5 `deferred-work.md`** gains entries for:
 
 - a soak of the anonymous limits;
+- a probe of which bucket a signed public read draws from (D3), by draining a registered key's
+  Read bucket past its capacity on a public route;
 - a local book and `get_snapshot`, and the `ticker` and `trade` channels;
 - cargo-hack's coverage of Kalshi's features (A8-10) and `Candles` (A8-3);
 - the mapping's move with Kalshi's `Trading`;
