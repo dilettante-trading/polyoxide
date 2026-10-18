@@ -32,5 +32,7 @@ pub mod predictions;
 #[cfg(feature = "predictions")]
 const _: fn() = || {
     fn is<T: polyoxide_venue::Classify>() {}
+    is::<predictions::PredictionsError>();
+    is::<predictions::VenueError>();
     is::<predictions::key::InvalidTicker>();
 };

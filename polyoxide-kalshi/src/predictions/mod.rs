@@ -9,8 +9,10 @@
 //! when it first sends. The hosts are [`PRODUCTION`] and [`DEMO`], and keys do not cross between
 //! them.
 
+pub mod error;
 pub mod key;
 
+pub use error::{PredictionsError, VenueError};
 pub use key::key;
 
 /// Production REST host: a scheme and host, with no path.
