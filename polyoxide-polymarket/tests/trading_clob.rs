@@ -1359,6 +1359,30 @@ async fn an_ioc_partial_match_is_killed_unmatched_with_what_matched() {
 }
 
 #[tokio::test]
+async fn a_matched_fok_read_back_short_of_its_size_is_cancelled_with_what_matched() {
+    let mut server = Server::new_async().await;
+    let _lookups = lookups(&mut server).await;
+    let post = server
+        .mock("POST", "/order")
+        .match_body(Matcher::PartialJson(json!({"orderType": "FOK"})))
+        .with_status(200)
+        .with_header("content-type", "application/json")
+        .with_body(MATCHED)
+        .expect(1)
+        .create_async()
+        .await;
+    let _read = read_back(&mut server, "4").await;
+    let mut request = buy("0.52", "10");
+    request.time_in_force = TimeInForce::FillOrKill;
+
+    let order = client(&server).place(request).await.unwrap();
+
+    assert_eq!(order.status, OrderStatus::Cancelled);
+    assert_eq!(order.filled, d("4"));
+    post.assert_async().await;
+}
+
+#[tokio::test]
 async fn a_matched_order_whose_read_back_fails_is_reported_open() {
     let mut server = Server::new_async().await;
     let _lookups = lookups(&mut server).await;

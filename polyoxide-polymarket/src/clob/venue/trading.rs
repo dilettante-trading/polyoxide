@@ -337,7 +337,9 @@ fn check_price_on_tick(price: Decimal, tick: TickSize) -> Result<(), ClassifiedE
     Ok(())
 }
 
-/// What a `matched` placement became, once the order was read back.
+/// What a `matched` placement became, once the order was read back. A
+/// good-til-cancelled order short of its size rests, an immediate-or-cancel
+/// one is killed `Unmatched`, and a fill-or-kill one is `Cancelled`.
 fn settled(time_in_force: TimeInForce, matched: Decimal, size: Decimal) -> OrderStatus {
     if matched >= size {
         return OrderStatus::Filled;
@@ -346,9 +348,9 @@ fn settled(time_in_force: TimeInForce, matched: Decimal, size: Decimal) -> Order
         TimeInForce::ImmediateOrCancel => OrderStatus::Killed {
             reason: KillReason::Unmatched,
         },
-        TimeInForce::FillOrKill => OrderStatus::Killed {
-            reason: KillReason::Unfillable,
-        },
+        // A FOK the venue cancelled partway is `Cancelled`, with what matched
+        // in `filled` (D22); the 400 kill is `Killed`, from `trading_submit`.
+        TimeInForce::FillOrKill => OrderStatus::Cancelled,
         _ => OrderStatus::Open,
     }
 }
@@ -546,7 +548,9 @@ impl Clob {
 /// order's client id stays in the ledger until the bound evicts it, so an ack
 /// or fill read after the order was cancelled or ended still carries it; only
 /// the guard against reusing the id is dropped then, and the id may be placed
-/// again at once.
+/// again at once. A `matched` fill-or-kill order that reads back short of its
+/// size is `Cancelled`, with what matched in `filled`; the CLOB's own 400 kill
+/// is `Killed { Unfillable }` with nothing filled.
 impl Trading for Clob {
     async fn place(&self, request: OrderRequest) -> Result<Order, ClassifiedError> {
         self.account
@@ -1329,12 +1333,8 @@ mod place_tests {
                 reason: KillReason::Unmatched
             }
         );
-        assert_eq!(
-            settled(fok, d("4"), d("10")),
-            OrderStatus::Killed {
-                reason: KillReason::Unfillable
-            }
-        );
+        // A FOK read back short of its size was cancelled partway (D22).
+        assert_eq!(settled(fok, d("4"), d("10")), OrderStatus::Cancelled);
         assert_eq!(settled(gtc, d("4"), d("10")), OrderStatus::Open);
     }
 
