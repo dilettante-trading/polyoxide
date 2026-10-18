@@ -824,10 +824,11 @@ regenerates the nightly regions. Its tests, all `#[ignore]`d and auth-gated with
 - **Round trip:** with `events()` open, a post-only GTC buy of 5 shares at 0.01 on a token whose
   best ask is above 0.01 rests (`Open`). The stream yields its `Resync` and then an ack for the
   order. `cancel` then succeeds and the stream acks it `Cancelled`.
-  - The order carries a client order id. The `Open` ack carries it, which checks D5's computed
-    id against the venue's. The ack's `created` lies within a few minutes of the test's clock and
-    of the `open_orders` row's `created` (D23). The `Cancelled` ack carries the client id too
-    (D21).
+  - The order carries a client order id, and the `Open` ack carries it. This does not check D5's
+    computed id against the venue's: `place` re-keys the ledger to the venue's id when the two
+    differ, with a WARN, so only that WARN would show a mismatch. The ack's `created` lies within
+    a few minutes of the test's clock and of the `open_orders` row's `created` (D23). The
+    `Cancelled` ack carries the client id too (D21).
   - The token is chosen the way `live_v2_place_and_cancel` chooses one (`tests/live_clob.rs:138`,
     `find_token_id_with_min_ask`), copied into the new file, since a test target cannot import
     another's helpers; with no such token the test is an `environmental(..)` skip.
