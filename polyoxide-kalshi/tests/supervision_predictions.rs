@@ -434,6 +434,42 @@ async fn a_replay_kalshi_refuses_ends_the_stream_when_the_connection_died_under_
 }
 
 #[tokio::test]
+async fn a_replay_answered_with_a_frame_that_does_not_decode_ends_the_stream() {
+    // Bug: skipping the undecodable answer, which the kit reads on a failed attempt as a
+    // reconnect, so a host that always answers so is retried at the backoff ceiling for
+    // ever with only a WARN to show for it.
+    let server = KalshiServer::start(vec![
+        Script {
+            then_cut: true,
+            ..Default::default()
+        },
+        Script {
+            undecodable_subscribed: true,
+            ..Default::default()
+        },
+    ])
+    .await;
+    let mut ws = builder_for(&server)
+        .connect(credentials(), [t(A)])
+        .await
+        .expect("connect");
+    assert_eq!(kinds(&mut ws, 2).await, ["snapshot", "disconnected"]);
+    match next_item(&mut ws).await {
+        Err(PredictionsWsError::Json { text, .. }) => {
+            assert!(text.contains(r#""type":"subscribed""#), "{text}");
+        }
+        other => panic!("expected the decode error, got {other:?}"),
+    }
+    let ended = tokio::time::timeout(WINDOW, ws.next())
+        .await
+        .expect("the stream ends");
+    assert!(ended.is_none());
+    // The replay was tried once and not again.
+    assert_eq!(server.connection_count(), 2);
+    assert_subscribe(&server.first_frames()[1], &[A]);
+}
+
+#[tokio::test]
 async fn a_replay_refused_with_a_code_that_reconnects_is_retried() {
     // Bug: ending the stream on every refused replay, a rate limit (27) included, which
     // the next connection's replay would have cleared.

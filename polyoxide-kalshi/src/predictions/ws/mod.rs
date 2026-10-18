@@ -14,9 +14,9 @@
 //! `Event::Disconnected` and one `Event::Reconnected`, and what the socket carried in
 //! between is lost, so a consumer rebuilds its books from the fresh snapshots that
 //! follow. If Kalshi refuses that `subscribe` with a code that does not reconnect (a
-//! market it will not serve, say), the stream yields the error and ends, for every market:
-//! a change made during an outage was answered `Ok`, so this is where its caller learns of
-//! the refusal.
+//! market it will not serve, say), or answers it with a frame that does not decode, the
+//! stream yields the error and ends, for every market: a change made during an outage was
+//! answered `Ok`, so this is where its caller learns of the refusal.
 //!
 //! Errors are `PredictionsWsError`, classified through the one socket table.
 
@@ -44,8 +44,9 @@ pub use protocol::{Change, PredictionsMembership, PredictionsProtocol};
 /// holds 1024 unread events, after which the task reads nothing more until the consumer
 /// catches up, and that wait does not count as silence. It ends after an error it cannot
 /// recover from (a handshake Kalshi refuses with a 401 or 403, an error frame with code 9,
-/// or a replayed `subscribe` Kalshi refuses with a code that does not reconnect), which it
-/// yields first; a frame that did not decode is yielded as an error and does not end it.
+/// or a replayed `subscribe` Kalshi refuses with a code that does not reconnect or answers
+/// with a frame that does not decode), which it yields first; a frame that did not decode
+/// anywhere else is yielded as an error and does not end it.
 /// Change its markets through `membership()` and [`PredictionsMembership`], from a task
 /// other than the one reading the stream.
 pub type SupervisedPredictionsWs = polyoxide_ws::Supervised<PredictionsProtocol>;

@@ -58,6 +58,9 @@ pub struct Script {
     pub error_after_subscribe: Option<(u32, String)>,
     /// A command naming this ticker is answered with an `error` of this code.
     pub refuse_ticker: Option<(String, u32)>,
+    /// Answer every `subscribe` with a `subscribed` frame that carries no `sid`: an answer
+    /// to the command that does not decode, and nothing else (no snapshot follows).
+    pub undecodable_subscribed: bool,
     /// Leave every `update_subscription` unanswered.
     pub ignore_updates: bool,
     /// Skip one sequence number before the `ok` answering an `update_subscription`: an
@@ -330,6 +333,14 @@ fn reply(state: &mut State, script: &Script, request: &Value) -> Vec<Value> {
 }
 
 fn subscribe(state: &mut State, script: &Script, id: &Value, tickers: &[String]) -> Vec<Value> {
+    if script.undecodable_subscribed {
+        return vec![json!({
+            "id": id,
+            "type": "subscribed",
+            "sending_ts_ms": SENDING_TS_MS,
+            "msg": {"channel": "orderbook_delta"},
+        })];
+    }
     state.issued += 1;
     let sid = state.issued;
     state.subscriptions.insert(
@@ -562,6 +573,22 @@ mod tests {
         assert_eq!(frames[0]["type"], "error");
         assert_eq!(frames[0]["id"], 3);
         assert_eq!(frames[0]["msg"]["code"], 11);
+    }
+
+    #[test]
+    fn an_undecodable_subscribed_answers_the_command_with_no_sid_and_nothing_else() {
+        let mut state = State::default();
+        let script = Script {
+            undecodable_subscribed: true,
+            ..Script::default()
+        };
+        let frames = ask(&mut state, &script, subscribe_request(&["A-1"]));
+        assert_eq!(frames.len(), 1);
+        assert_eq!(frames[0]["type"], "subscribed");
+        assert_eq!(frames[0]["id"], 1);
+        assert!(frames[0]["msg"].get("sid").is_none());
+        // No subscription was issued.
+        assert_eq!(state.issued, 0);
     }
 
     #[test]

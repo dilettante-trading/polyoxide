@@ -65,8 +65,9 @@ pub enum Change {
 /// - **D8:** `Event::Disconnected`, then `Event::Reconnected`, once each per outage.
 /// - **D19:** a connection used after it closed reconnects.
 /// - **A refused replay stops the stream:** Kalshi refusing the replay's `subscribe` with a
-///   code that does not reconnect ends the stream with that error, where the same error
-///   frame elsewhere is yielded and skipped. A change made during an outage, or whose
+///   code that does not reconnect, or answering it with a frame that does not decode, ends
+///   the stream with that error, where the same error frame, or a frame that does not
+///   decode, elsewhere is yielded and skipped. A change made during an outage, or whose
 ///   connection died under it, was answered `Ok`, so this is the only place its caller
 ///   learns of the refusal.
 /// - **The handshake** is signed afresh for every attempt, over the URL's path.
@@ -82,10 +83,11 @@ pub struct PredictionsProtocol {
     sid: Option<u64>,
     /// What this connection's sequenced frames have said.
     sequences: Sequences,
-    /// Whether Kalshi has just answered the replay's `subscribe` with an error frame. Set
-    /// by `replay` before it returns the error, so that `recover`, which the supervisor
-    /// calls with that error straight after, can tell it from the same frame met on a
-    /// live connection; `reset` clears it for the next attempt.
+    /// Whether Kalshi has just answered the replay's `subscribe` with an error frame, or
+    /// with a frame that does not decode. Set by `replay` before it returns the error, so
+    /// that `recover`, which the supervisor calls with that error straight after, can tell
+    /// it from the same frame met on a live connection; `reset` clears it for the next
+    /// attempt.
     replay_refused: bool,
 }
 
@@ -384,8 +386,9 @@ impl Protocol for PredictionsProtocol {
     }
 
     /// One `subscribe` for every ticker; nothing for none. A refusal on a fresh connection
-    /// fails the attempt, which recovery decides on: Kalshi's error frame is noted first,
-    /// so that `recover` stops on a code that would not reconnect.
+    /// fails the attempt, which recovery decides on: Kalshi's error frame, or an answer
+    /// that does not decode, is noted first, so that `recover` stops on a code that would
+    /// not reconnect and on an answer that would never decode.
     async fn replay(
         &mut self,
         connection: &mut Connection,
@@ -400,7 +403,10 @@ impl Protocol for PredictionsProtocol {
         let answered = match send(&mut self.sequences, connection, &command).await {
             Ok(answered) => answered,
             Err(err) => {
-                self.replay_refused = matches!(err, PredictionsWsError::Server { .. });
+                self.replay_refused = matches!(
+                    err,
+                    PredictionsWsError::Server { .. } | PredictionsWsError::Json { .. }
+                );
                 return Err(err);
             }
         };
@@ -554,19 +560,21 @@ impl Protocol for PredictionsProtocol {
         err.is_retriable()
     }
 
-    /// Kalshi's recovery: a frame that does not decode is skipped; an error frame's code
-    /// decides (9 stops the stream, 10, 17, 18, 25 and 27 reconnect, any other is skipped
-    /// on a live connection and stops the stream when it refused the replay's `subscribe`);
-    /// a gap reconnects; a connection used after it closed reconnects (D19); and anything
-    /// else reconnects exactly when its class is retriable, so a refused handshake's 401 or
-    /// 403 stops, and a 429 or 5xx retries. No code here matches over `tungstenite::Error`:
-    /// the socket table decides the class.
+    /// Kalshi's recovery: a frame that does not decode is skipped on a live connection and
+    /// stops the stream when it was the answer to the replay's `subscribe`; an error frame's
+    /// code decides (9 stops the stream, 10, 17, 18, 25 and 27 reconnect, any other is
+    /// skipped on a live connection and stops the stream when it refused the replay's
+    /// `subscribe`); a gap reconnects; a connection used after it closed reconnects (D19);
+    /// and anything else reconnects exactly when its class is retriable, so a refused
+    /// handshake's 401 or 403 stops, and a 429 or 5xx retries. No code here matches over
+    /// `tungstenite::Error`: the socket table decides the class.
     ///
     /// A skipped error during an attempt reads as a reconnect, the kit's rule for a failed
     /// attempt, which is why a refused replay has its own row: it would otherwise
-    /// reconnect for ever, refused each time.
+    /// reconnect for ever, refused each time, and so would an answer that never decodes.
     fn recover(&self, err: &PredictionsWsError) -> Recovery {
         match err {
+            PredictionsWsError::Json { .. } if self.replay_refused => Recovery::Stop,
             PredictionsWsError::Json { .. } => Recovery::Skip,
             PredictionsWsError::Server { code, .. } => match code {
                 9 => Recovery::Stop,
@@ -614,11 +622,11 @@ impl Protocol for PredictionsProtocol {
 ///
 /// Each waits for the task to take the change and for Kalshi's answer. During an outage
 /// the change is recorded and answered at once, and replayed on the next connection; if
-/// Kalshi refuses that replay with a code that does not reconnect, the stream yields the
-/// error and ends, since the caller was told `Ok`. The
-/// task takes no change while the consumer's queue is full (1024 unread events), so a call
-/// made from the task that reads the stream can wait for ever then: make changes from
-/// another task, or keep reading while one is pending.
+/// Kalshi refuses that replay with a code that does not reconnect, or answers it with a
+/// frame that does not decode, the stream yields the error and ends, since the caller was
+/// told `Ok`. The task takes no change while the consumer's queue is full (1024 unread
+/// events), so a call made from the task that reads the stream can wait for ever then:
+/// make changes from another task, or keep reading while one is pending.
 pub trait PredictionsMembership {
     /// Subscribe to more markets. The first add with nothing subscribed sends a
     /// `subscribe`; later ones go as `update_subscription` on the live subscription. A
@@ -830,6 +838,24 @@ mod tests {
         // The next connection starts clean.
         protocol.reset();
         assert_eq!(protocol.recover(&server(11)), Recovery::Skip);
+    }
+
+    #[test]
+    fn an_undecodable_replay_answer_stops_where_the_same_frame_on_a_live_connection_is_skipped() {
+        let mut protocol = protocol();
+        let json = || PredictionsWsError::Json {
+            text: "x".to_owned(),
+            source: serde_json::from_str::<u8>("x").unwrap_err(),
+        };
+        // On a live connection a frame that does not decode is yielded and skipped.
+        assert_eq!(protocol.recover(&json()), Recovery::Skip);
+        // As the answer to the replay's `subscribe` it ends the stream, since a skip
+        // during an attempt is a reconnect and the answer would never decode.
+        protocol.replay_refused = true;
+        assert_eq!(protocol.recover(&json()), Recovery::Stop);
+        // The next connection starts clean.
+        protocol.reset();
+        assert_eq!(protocol.recover(&json()), Recovery::Skip);
     }
 
     #[test]
