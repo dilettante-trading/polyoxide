@@ -23,7 +23,7 @@ Recorded per AD-21: an epic records each proposed amendment here, and one sessio
 - **Current rule:** step 3 of "Adding a venue" reads "Implement the venue's `Throttle` (compose core primitives), `RetryPolicy` and `Authenticator`". AD-17 says the loop retries only the venue policy's set.
 - **Proposed rule:** a venue implements a `Throttle` and an `Authenticator`, and a `RetryPolicy` only when the statuses it retries or the hold it applies differ from core's `DefaultRetryPolicy`, which retries a 429 and holds every request for `RetryConfig::retry_delay(0)` and fails every other status, so it retries no 5xx, 408 or 425.
 - **Why:**
-  - **Kalshi's set is core's.** It sends no `Retry-After` and promises no cooldown, and its 429 body is `{"error":"too many requests"}`, so the default's floor is the whole policy.
+  - **Kalshi's set is core's.** Kalshi's documentation says it sends no `Retry-After` and promises no cooldown, and gives a 429 the body `{"error":"too many requests"}`; a 429 was not provoked (`docs/specs/kalshi/OBSERVED.md`), so the default's floor is the whole policy.
   - **A copy would be a second definition.** A venue policy that restated the default would be a duplicate of it, which the duplication inventory exists to prevent.
 - **Follow-up in the code:** Story 1 runs `Predictions` on core's `DefaultRetryPolicy`.
 
@@ -66,10 +66,10 @@ Recorded per AD-21: an epic records each proposed amendment here, and one sessio
 - **Proposed by:** the owner, 2026-10-18 (spec D20 and D23).
 - **Current rule:** AD-13 says registration is Cargo metadata, and lists what a new venue touches: its `members` line, its pins, its crate, its specs, its capture scripts, its allowlist files, its amendments file, `_bmad-output/specs/**` and regenerated regions.
 - **Proposed rule:** the list also names the places a venue is registered by hand, or each one is derived from metadata:
-  - `test_dep_allowlists.py`'s `PER_FEATURE` rule for the crate and its `MUST_BUILD` row for a socket file, since a crate with no `PER_FEATURE` entry is checked with its default features against the socket-only deny-list, which refuses `reqwest` and `polyoxide-core`, so any venue with an HTTP module fails it;
+  - `test_dep_allowlists.py`'s `PER_FEATURE` rule for the crate and its `MUST_BUILD` rows for the REST file and the socket file, since a crate with no `PER_FEATURE` entry is checked with its default features against the socket-only deny-list, which refuses `reqwest` and `polyoxide-core`, so any venue with an HTTP module fails it;
   - CLAUDE.md's hand-written paragraphs that list the venue crates, the header pins, the mock and live suites and the allowlist rules.
-- **Why:** Kalshi's `PER_FEATURE` rule is `alloy*`, `hmac` and `keyring` never admitted, `polyoxide-ws`, `tokio-tungstenite` and `tungstenite` only with `predictions-ws`, and `reqwest`, `polyoxide-core`, `governor` and `sha2` with `predictions`, which every file names. The `MUST_BUILD` row requires `polyoxide-ws` in the socket file, so the socket rule cannot pass vacuously.
-- **Follow-up in the code:** Story 1 adds the `PER_FEATURE` rule and edits the CLAUDE.md paragraphs it names. Story 6 adds the `MUST_BUILD` row and edits the paragraphs on live suites and sockets.
+- **Why:** Kalshi's `PER_FEATURE` rule is `alloy*`, `hmac` and `keyring` never admitted, `polyoxide-ws`, `tokio-tungstenite` and `tungstenite` only with `predictions-ws`, and `reqwest`, `polyoxide-core`, `governor` and `sha2` with `predictions`, which every file names. Two `MUST_BUILD` rows keep the rules from passing vacuously: `"polyoxide-kalshi@predictions.txt": "reqwest"` (added in Story 1's review) requires the HTTP stack in the REST file, and `"polyoxide-kalshi@predictions-ws.txt": "polyoxide-ws"` requires `polyoxide-ws` in the socket file.
+- **Follow-up in the code:** Story 1 adds the `PER_FEATURE` rule and edits the CLAUDE.md paragraphs it names. Story 6 adds the `@predictions-ws` `MUST_BUILD` row and edits the paragraphs on live suites and sockets.
 
 ## A8-7: where "on first use" happens (amends the guide's step 3 and AD-10)
 
@@ -106,15 +106,16 @@ Recorded per AD-21: an epic records each proposed amendment here, and one sessio
 - **Why:** `--ignore-private` skips every `publish = false` member, so `polyoxide-kalshi`'s features, `predictions` and `predictions-ws`, are not checked one at a time on a pull request. A feature that compiles only beside another would pass unseen. Epic 8 covers the common case with Kalshi's header pin, which builds `predictions` alone, and the nightly live jobs, which build each live target with its declared features alone; neither is `--each-feature`.
 - **Follow-up in the code:** none in Epic 8: the cargo-hack step is outside its touch set (spec D20). `deferred-work.md` holds it.
 
-## A8-11: a venue whose replay can be refused must stop on the refusal itself (amends the guide's socket step)
+## A8-11: a venue whose replay can be refused must stop on the refusal itself (amends the guide's step 4 and AD-15)
 
-- **Proposed by:** the owner, 2026-10-18, during Epic 8's Story 6 review (spec D16, amended).
-- **Current rule:** the guide's socket step has a venue map each error to a `Recovery` and leaves the kit's attempt rules unsaid. The kit reads a `Recovery::Skip` returned for an error during a failed attempt (the connect or the replay) as a reconnect.
-- **Proposed rule:** the socket step says so, and says that a venue whose server can refuse the replay's subscription (Kalshi refuses a command naming a ticker it does not list) must stop on that refusal, or the stream reconnects for ever with only a WARN to show for it.
+- **Proposed by:** the run, 2026-10-18 (Story 6 review); fix chosen by the owner (spec D16, amended).
+- **Current rule:** the guide's step 4 says only "For sockets, implement a `Protocol`. Use `impl_ws_classification!` for socket errors." AD-15 says whether to reconnect or stop "is decided by the `Protocol`'s recovery hook, which by default reconnects if and only if `is_retriable()`", and AD-11 lists "venue-specific recovery" among what a venue describes. Neither says what the kit does with a `Recovery::Skip` returned for an error during an attempt (the connect or the replay): `polyoxide-ws/src/supervisor/mod.rs` and `task.rs` treat it as a reconnect, the same arm as `Recovery::Reconnect`.
+- **Proposed rule:** the guide's step 4 and AD-15 say so, and say that a venue whose server can refuse the replay's subscription (Kalshi refuses a command naming a ticker it does not list) must stop on that refusal, or on an answer to the replay that does not decode, since either one, skipped, reconnects for ever.
 - **Why:**
   - **Kalshi refuses a subscription that names a bad ticker.** A change made during an outage is answered at once and replayed (D13), so a bad ticker reaches the venue only on the replay.
+  - **An answer to the replay that does not decode was skipped the same way.** The replay's subscribe got an answer the client could not read, D16 skipped it, and the stream looped as the refusal did.
   - **Skip during an attempt is a reconnect.** D16 skipped every error code it did not name, so the refused replay reconnected, was refused again, and the stream yielded nothing after its `Disconnected`.
-- **Follow-up in the code:** Story 6's review made a replay refused with a code that does not reconnect end the stream with that error (a private flag that `recover` reads), and made codes 17 and 18 reconnect. The supervision suite pins both paths, a change made during an outage and one whose connection died under it. The kit is unchanged.
+- **Follow-up in the code:** Story 6's review made a replay refused with a code that does not reconnect end the stream with that error (a private flag that `recover` reads), and made codes 17 and 18 reconnect. The supervision suite pins both paths, a change made during an outage and one whose connection died under it. The final review round makes a replay answer that does not decode stop the stream too (spec D16, amended), pinned by a supervision test. The kit is unchanged.
 
 ## Audit of the epic's diff (spec §9.1)
 
@@ -124,7 +125,7 @@ Run over the range from `git merge-base main HEAD` to `HEAD`, by Story 7.
 - **Generated regions.** Every changed hunk of `README.md`, `docs/specs/INDEX.md`, `SELF-HEALING.md`, `.github/workflows/nightly-behavioral.yml` and `.github/workflows/nightly-schema.yml` lies inside a `generated:begin` and `generated:end` region.
 - **The foundation.** The only files changed in `polyoxide-venue`, `polyoxide-core`, `polyoxide-ws` and `polyoxide-test-support` are `polyoxide-ws/src/test_server/mod.rs` and `polyoxide-ws/src/test_server/tests.rs` (Story 5, A8-4). Their `git diff --stat` is below.
 - **No copies.** `polyoxide-kalshi` and its capture scripts define none of the helpers named in `_bmad-output/specs/spec-venue-extensibility/duplication-inventory.md`: a grep for each name defined locally (`fn <name>`, `struct <name>` and the other item keywords) found none.
-- **`OBSERVED.md`.** Every probe and capture finding of spec §3.6, §6.7 and §8.12 is recorded in `docs/specs/kalshi/OBSERVED.md`.
+- **`OBSERVED.md`.** Every probe and capture finding of spec §3.6, §4.4, §6.7 and §8.12 is recorded in `docs/specs/kalshi/OBSERVED.md`.
 
 ```
  polyoxide-ws/src/test_server/mod.rs   | 36 ++++++++++++++--
