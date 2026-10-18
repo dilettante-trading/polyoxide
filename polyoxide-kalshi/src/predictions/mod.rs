@@ -15,6 +15,7 @@ pub mod key;
 pub mod request;
 mod throttle;
 pub mod types;
+pub mod venue;
 
 pub use error::{PredictionsError, VenueError};
 pub use key::key;

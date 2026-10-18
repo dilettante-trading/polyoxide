@@ -1,0 +1,262 @@
+//! Kalshi's predictions exchange through the venue-neutral market-data traits.
+//!
+//! [`Predictions`] implements `MarketData` over its own routes, keyed
+//! `kalshi.predictions:<TICKER>:yes` and `kalshi.predictions:<TICKER>:no` by the
+//! constructors in `predictions::key`: a key names one outcome of one market,
+//! never the market. What Kalshi alone publishes rides in this module's
+//! `<Record>Ext` types, one per record, in each record's
+//! [`Extensions`].
+//!
+//! Kalshi lists each market's resting bids twice, once for YES and once for NO,
+//! each side in ascending price. A NO bid at price *q* is a YES ask at *1 - q*,
+//! and a YES bid at *p* is a NO ask at *1 - p*. So a key's book is its own
+//! outcome's bids, best first, and the other outcome's bids turned into asks,
+//! best first, on every path: `quote` and `book` alike, and the two outcomes of
+//! one market are one book read from its two sides.
+//!
+//! An unknown ticker is a `404` on the market route but a `200` with two empty
+//! lists on the orderbook route, so `instrument` is `NotListed` for it while
+//! `quote` and `book` return empty ones: use `instrument` to confirm a listing.
+//! A time Kalshi sends is RFC 3339 and is read into `UnixMillis`; one that does
+//! not parse is a `Decode` error naming the field, never a zero.
+//!
+//! | Method | Route | Requests |
+//! | --- | --- | --- |
+//! | `instrument` | `GET /trade-api/v2/markets/{ticker}` | 1 |
+//! | `quote` | `GET /trade-api/v2/markets/{ticker}/orderbook`, `depth=1` | 1 |
+//! | `book` | `GET /trade-api/v2/markets/{ticker}/orderbook`, every level | 1 |
+//!
+//! Each request costs its route's tokens on the client's Read layer, 10 today.
+
+use polyoxide_core::ApiError;
+use polyoxide_venue::{
+    Book, Class, ClassifiedError, Extensions, Instrument, Level, MarketData, MarketKey, NotListed,
+    Quote, SizeUnit, UnixMillis,
+};
+use rust_decimal::Decimal;
+
+use super::key::{self, Outcome, OutcomeId};
+use super::types::{self, MarketStatus, OrderbookFp, PriceRange};
+use super::{Predictions, PredictionsError};
+
+/// The smallest size step and the smallest order, in contracts: the
+/// granularity of the `FixedPointCount` the OpenAPI gives for orders.
+/// Provisional until Kalshi's `Trading` probes them (`OBSERVED.md`).
+const GRANULARITY: Decimal = Decimal::from_parts(1, 0, 0, false, 2);
+
+/// Kalshi's facts about a market, beside [`Instrument`]'s fields.
+#[derive(Debug, Clone, PartialEq, Default)]
+#[non_exhaustive]
+pub struct InstrumentExt {
+    /// The event the market belongs to.
+    pub event_ticker: Option<String>,
+    /// Where the market is in its life: active, closed, finalized and so on.
+    pub status: Option<MarketStatus>,
+    /// The price ranges the market trades in, each with its own step.
+    pub price_ranges: Option<Vec<PriceRange>>,
+    /// The name of the structure those ranges follow.
+    pub price_level_structure: Option<String>,
+    /// When trading closes.
+    pub close_time: Option<UnixMillis>,
+    /// When the market is expected to be determined, when Kalshi says.
+    pub expected_expiration_time: Option<UnixMillis>,
+    /// The latest time the market can be determined.
+    pub latest_expiration_time: Option<UnixMillis>,
+    /// What one contract pays on its outcome, in dollars.
+    pub notional_value: Option<Decimal>,
+    /// How the settlement value is bounded.
+    pub settlement_bounds_type: Option<String>,
+    /// The index the market settles against, when it has one.
+    pub exchange_index: Option<u32>,
+}
+
+/// A time Kalshi sent as RFC 3339, in milliseconds since the Unix epoch.
+///
+/// A time that does not parse, or is before 1970, is a `Decode` error naming
+/// `field`.
+fn millis(field: &str, text: &str) -> Result<UnixMillis, ClassifiedError> {
+    let parsed = chrono::DateTime::parse_from_rfc3339(text).map_err(|err| {
+        ClassifiedError::new(
+            Class::Decode,
+            format!("{field} {text:?} is not an RFC 3339 time: {err}"),
+        )
+    })?;
+    u64::try_from(parsed.timestamp_millis())
+        .map(UnixMillis)
+        .map_err(|_| {
+            ClassifiedError::new(Class::Decode, format!("{field} {text:?} is before 1970"))
+        })
+}
+
+/// Whether the venue answered `404`, in either of the error's two shapes.
+fn is_not_found(err: &PredictionsError) -> bool {
+    match err {
+        PredictionsError::Venue(venue) => venue.status == 404,
+        PredictionsError::Api(ApiError::Response(response)) => response.status.as_u16() == 404,
+        _ => false,
+    }
+}
+
+/// An outcome's bids and asks, each best first (D9): its own bids from the
+/// highest, and the other outcome's bids at `1 - price` from the lowest.
+fn sides(book: &OrderbookFp, outcome: Outcome) -> (Vec<Level>, Vec<Level>) {
+    let (own, other) = match outcome {
+        Outcome::Yes => (&book.yes_dollars, &book.no_dollars),
+        Outcome::No => (&book.no_dollars, &book.yes_dollars),
+    };
+    let mut bids: Vec<Level> = own
+        .iter()
+        .map(|level| Level::new(level.price, level.count))
+        .collect();
+    let mut asks: Vec<Level> = other
+        .iter()
+        .map(|level| Level::new(Decimal::ONE - level.price, level.count))
+        .collect();
+    bids.sort_by_key(|level| std::cmp::Reverse(level.price));
+    asks.sort_by_key(|level| level.price);
+    (bids, asks)
+}
+
+/// The instrument a market's row describes, for one of its two outcomes.
+fn instrument(
+    key: &MarketKey,
+    id: &OutcomeId,
+    market: &types::Market,
+) -> Result<Instrument, ClassifiedError> {
+    let subtitle = match id.outcome {
+        Outcome::Yes => &market.yes_sub_title,
+        Outcome::No => &market.no_sub_title,
+    };
+    let name = if subtitle.trim().is_empty() {
+        format!("{} {}", id.ticker, id.outcome.as_str())
+    } else {
+        subtitle.clone()
+    };
+    let mut instrument = Instrument::new(key.clone(), name, SizeUnit::Shares);
+    instrument.quote_asset = Some("USD".to_owned());
+    // A fixed step exists only when the market has one price range.
+    instrument.tick_size = match market.price_ranges.as_slice() {
+        [only] => Some(only.step),
+        _ => None,
+    };
+    instrument.min_size = Some(GRANULARITY);
+    instrument.size_increment = Some(GRANULARITY);
+    instrument.tradable = Some(market.status == MarketStatus::Active);
+    instrument.extensions = Extensions::of(InstrumentExt {
+        event_ticker: Some(market.event_ticker.clone()),
+        status: Some(market.status.clone()),
+        price_ranges: Some(market.price_ranges.clone()),
+        price_level_structure: Some(market.price_level_structure.clone()),
+        close_time: Some(millis("close_time", &market.close_time)?),
+        expected_expiration_time: market
+            .expected_expiration_time
+            .as_deref()
+            .map(|text| millis("expected_expiration_time", text))
+            .transpose()?,
+        latest_expiration_time: Some(millis(
+            "latest_expiration_time",
+            &market.latest_expiration_time,
+        )?),
+        notional_value: Some(market.notional_value_dollars),
+        settlement_bounds_type: Some(market.settlement_bounds_type.clone()),
+        exchange_index: market.exchange_index,
+    });
+    Ok(instrument)
+}
+
+impl Predictions {
+    /// The outcome a key names and its market's row; `NotListed` when Kalshi
+    /// answers `404` for the ticker (D11).
+    async fn listed(&self, key: &MarketKey) -> Result<(OutcomeId, types::Market), ClassifiedError> {
+        let id = key::outcome(key)?;
+        match self.markets().get(&id.ticker).send().await {
+            Ok(response) => Ok((id, response.market)),
+            Err(err) if is_not_found(&err) => Err(NotListed::new(key.clone()).into()),
+            Err(err) => Err(err.into()),
+        }
+    }
+}
+
+impl MarketData for Predictions {
+    async fn instrument(&self, key: &MarketKey) -> Result<Instrument, ClassifiedError> {
+        let (id, market) = self.listed(key).await?;
+        instrument(key, &id, &market)
+    }
+
+    async fn quote(&self, key: &MarketKey) -> Result<Quote, ClassifiedError> {
+        let id = key::outcome(key)?;
+        let response = self.markets().orderbook(&id.ticker).depth(1).send().await?;
+        let (bids, asks) = sides(&response.orderbook_fp, id.outcome);
+        let mut quote = Quote::new(key.clone());
+        quote.bid = bids.first().copied();
+        quote.ask = asks.first().copied();
+        Ok(quote)
+    }
+
+    async fn book(&self, key: &MarketKey) -> Result<Book, ClassifiedError> {
+        let id = key::outcome(key)?;
+        let response = self.markets().orderbook(&id.ticker).send().await?;
+        let (bids, asks) = sides(&response.orderbook_fp, id.outcome);
+        let mut book = Book::new(key.clone());
+        book.bids = bids;
+        book.asks = asks;
+        Ok(book)
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn book(json: &str) -> OrderbookFp {
+        serde_json::from_str(json).unwrap()
+    }
+
+    fn lv(price: &str, size: &str) -> Level {
+        Level::new(
+            price.parse::<Decimal>().unwrap(),
+            size.parse::<Decimal>().unwrap(),
+        )
+    }
+
+    #[test]
+    fn the_other_outcomes_bids_are_asks_at_one_minus_their_price() {
+        let book = book(
+            r#"{"yes_dollars":[["0.4000","10.00"],["0.4500","5.00"]],"no_dollars":[["0.5000","7.00"],["0.5200","3.00"]]}"#,
+        );
+        let (bids, asks) = sides(&book, Outcome::Yes);
+        assert_eq!(bids, [lv("0.45", "5"), lv("0.40", "10")]);
+        assert_eq!(asks, [lv("0.48", "3"), lv("0.50", "7")]);
+        let (bids, asks) = sides(&book, Outcome::No);
+        assert_eq!(bids, [lv("0.52", "3"), lv("0.50", "7")]);
+        assert_eq!(asks, [lv("0.55", "5"), lv("0.60", "10")]);
+    }
+
+    #[test]
+    fn a_missing_side_is_an_empty_list_and_the_complement_is_exact() {
+        let book = book(r#"{"yes_dollars":[["0.0001","1.00"]]}"#);
+        let (bids, asks) = sides(&book, Outcome::Yes);
+        assert_eq!(bids, [lv("0.0001", "1")]);
+        assert!(asks.is_empty());
+        let (bids, asks) = sides(&book, Outcome::No);
+        assert!(bids.is_empty());
+        assert_eq!(asks, [lv("0.9999", "1")]);
+    }
+
+    #[test]
+    fn a_time_is_read_with_any_offset_and_before_1970_is_refused() {
+        assert_eq!(
+            millis("t", "2026-10-18T09:10:11.250Z").unwrap(),
+            UnixMillis(1_792_314_611_250)
+        );
+        assert_eq!(
+            millis("t", "2026-10-18T11:10:11.250+02:00").unwrap(),
+            UnixMillis(1_792_314_611_250)
+        );
+        let err = millis("created_time", "yesterday").unwrap_err();
+        assert_eq!(err.class, Class::Decode);
+        assert!(err.to_string().contains("created_time"), "{err}");
+        let err = millis("created_time", "1960-01-01T00:00:00Z").unwrap_err();
+        assert_eq!(err.class, Class::Decode);
+    }
+}

@@ -4090,6 +4090,7 @@ dependencies = [
  "base64",
  "chrono",
  "mockito",
+ "polyoxide",
  "polyoxide-core",
  "polyoxide-test-support",
  "polyoxide-venue",
