@@ -818,12 +818,13 @@ A failure is `ApiError::Sign(Box::new(..))`.
 - it generates throwaway Ed25519 (PKCS#8 v1) and RSA-2048 (PKCS#1 and PKCS#8) keys with Python's
   `cryptography`;
 - it signs `1700000000000GET/trade-api/v2/portfolio/balance`;
-- it writes `tests/fixtures/predictions/signing/vectors.json`: each key's PEM, the public keys, the
-  message, the Ed25519 signature and an RSA-PSS signature;
+- it writes `tests/fixtures/predictions/signing/vectors.json`: each key's PEM body, the public
+  keys, the message, the Ed25519 signature and an RSA-PSS signature;
 - `PROVENANCE.md` says the keys exist only for this fixture.
 
-If GitHub's push protection refuses a PEM, the fixture stores each key's body without its armour
-lines and the test re-armours it.
+The fixture always stores each key's body without its armour lines (its base64 lines, joined by
+`\n`), and every test that needs the PEM armours it, so no push protection setting can refuse the
+file (the owner, 2026-10-18; no PEM private key had been pushed to the repository before).
 
 **6.5 `signing_predictions`.**
 
