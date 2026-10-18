@@ -303,8 +303,17 @@ plan disagreeing with one of them stops and asks.
     - code 10 (channel error) and code 25 (subscription buffer overflow) are `Unavailable` and
       reconnect, since Kalshi's AsyncAPI calls both terminal ("the user must resubscribe"; the
       owner, 2026-10-18), and the replay resubscribes;
+    - code 17 (internal error) and code 18 (command timeout) are `Unavailable` and reconnect, since
+      both are the venue's own failures (the owner, 2026-10-18);
     - code 27 (command rate limit) is `RateLimited` and reconnects;
     - every other code is `InvalidRequest` and is skipped.
+  - **A refused replay stops the stream** (the owner, 2026-10-18). A change made during an outage,
+    or whose connection died under it, was answered `Ok` (D13), so its caller never sees a refusal.
+    When the replay's `subscribe` is refused with a code that does not reconnect, the stream yields
+    that error and ends, as the sports feed and the CLOB user socket end on a refusal retrying
+    cannot fix, instead of reconnecting for ever with only a WARN. One refused ticker ends the
+    stream for every ticker. A supervision test pins it: a ticker the venue refuses, subscribed
+    during an outage, ends the stream with the error.
   - `SequenceGap` reconnects (D14).
   - A connection used after it closed reconnects (D19 of `divergences.md`).
   - Any other error reconnects exactly when `Classify::is_retriable` says so and stops otherwise,
@@ -1000,8 +1009,8 @@ order. Its names are made-up words, with no venue.
 **8.9 `PredictionsWsError`** is `#[non_exhaustive]`:
 
 - `Connection(WsError)`, classed through the macro's table;
-- `Server { code, message }`: 9 is `Unauthorized`, 27 `RateLimited`, 10 and 25 `Unavailable`, and
-  every other code `InvalidRequest`;
+- `Server { code, message }`: 9 is `Unauthorized`, 27 `RateLimited`, 10, 17, 18 and 25
+  `Unavailable`, and every other code `InvalidRequest`;
 - `SequenceGap { sid, expected, received }`, classed `Network` and a fault;
 - `Json { text, source }`, built explicitly, since no `From<serde_json::Error>` is allowed;
 - `InvalidUrl { url, reason }`.
