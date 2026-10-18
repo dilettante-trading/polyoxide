@@ -205,7 +205,11 @@ fn foreign_key() -> polyoxide_venue::MarketKey {
 
 #[tokio::test]
 async fn a_dyn_market_data_returns_the_native_instrument_of_both_outcomes() {
-    let body = fixture_json("market");
+    // Kalshi sends one subtitle for both outcomes; these differ, so a name
+    // taken from the wrong one, or without its outcome, cannot pass.
+    let mut body = fixture_json("market");
+    body["market"]["yes_sub_title"] = json!("Alpha wins");
+    body["market"]["no_sub_title"] = json!("Beta wins");
     let ticker = ticker_of(&body);
     let mut server = start().await;
     let mock = route(
@@ -224,14 +228,9 @@ async fn a_dyn_market_data_returns_the_native_instrument_of_both_outcomes() {
         let k = key::key(&ticker, outcome);
         let instrument = venue.instrument(&k).await.unwrap();
         assert_eq!(instrument.key, k);
-        let subtitle = match outcome {
-            Outcome::Yes => &native.yes_sub_title,
-            Outcome::No => &native.no_sub_title,
-        };
-        let name = if subtitle.is_empty() {
-            format!("{ticker} {}", outcome.as_str())
-        } else {
-            subtitle.clone()
+        let name = match outcome {
+            Outcome::Yes => "Alpha wins — Yes",
+            Outcome::No => "Alpha wins — No",
         };
         assert_eq!(instrument.name, name);
         assert_eq!(instrument.size_unit, SizeUnit::Shares);
@@ -300,10 +299,24 @@ async fn a_markets_status_and_price_ranges_decide_tradable_and_tick_size() {
     assert_eq!(two.tick_size, None);
     assert_eq!(two.tradable, Some(false));
 
-    // An empty subtitle falls back to the ticker and the outcome.
-    body["market"]["no_sub_title"] = json!("");
-    let named = instrument_of(&body, Outcome::No).await.unwrap();
-    assert_eq!(named.name, format!("{} no", ticker_of(&body)));
+    // The name carries the outcome and takes the YES subtitle for both.
+    body["market"]["yes_sub_title"] = json!("Alpha wins");
+    body["market"]["no_sub_title"] = json!("Beta wins");
+    let yes = instrument_of(&body, Outcome::Yes).await.unwrap();
+    assert_eq!(yes.name, "Alpha wins — Yes");
+    let no = instrument_of(&body, Outcome::No).await.unwrap();
+    assert_eq!(no.name, "Alpha wins — No");
+
+    // An empty or whitespace-only YES subtitle falls back to the ticker and
+    // the outcome, whatever the NO subtitle says.
+    let ticker = ticker_of(&body).to_string();
+    for blank in ["", "   "] {
+        body["market"]["yes_sub_title"] = json!(blank);
+        let yes = instrument_of(&body, Outcome::Yes).await.unwrap();
+        assert_eq!(yes.name, format!("{ticker} yes"));
+        let no = instrument_of(&body, Outcome::No).await.unwrap();
+        assert_eq!(no.name, format!("{ticker} no"));
+    }
 }
 
 #[tokio::test]
@@ -961,7 +974,21 @@ async fn a_dyn_event_groups_returns_both_outcomes_of_each_nested_market() {
         2,
     )
     .await;
-    let event = route(&mut server, &event_path, nested, &fixture("event"), 3).await;
+    // Each nested market gets different YES and NO subtitles, so a title taken
+    // from the wrong one cannot pass.
+    let mut event_body = fixture_json("event");
+    for (i, (yes, no)) in [
+        ("Alpha wins", "Beta wins"),
+        ("Gamma wins", "Delta wins"),
+        ("Epsilon wins", "Zeta wins"),
+    ]
+    .into_iter()
+    .enumerate()
+    {
+        event_body["event"]["markets"][i]["yes_sub_title"] = json!(yes);
+        event_body["event"]["markets"][i]["no_sub_title"] = json!(no);
+    }
+    let event = route(&mut server, &event_path, nested, &event_body.to_string(), 3).await;
     let client = client(&server);
     let native = client
         .events()
@@ -985,7 +1012,9 @@ async fn a_dyn_event_groups_returns_both_outcomes_of_each_nested_market() {
         assert_eq!(group.id, native.event_ticker);
         assert_eq!(group.title.as_deref(), Some(native.title.as_str()));
         assert_eq!(group.outcomes.len(), 2 * native.markets.len());
-        for (pair, nested) in group.outcomes.chunks(2).zip(&native.markets) {
+        assert_eq!(native.markets.len(), 3);
+        let titles = ["Alpha wins", "Gamma wins", "Epsilon wins"];
+        for ((pair, nested), title) in group.outcomes.chunks(2).zip(&native.markets).zip(titles) {
             let nested_ticker = Ticker::new(&nested.ticker).unwrap();
             assert_eq!(pair[0].key, key::key(&nested_ticker, Outcome::Yes));
             assert_eq!(pair[0].label, "Yes");
@@ -993,10 +1022,7 @@ async fn a_dyn_event_groups_returns_both_outcomes_of_each_nested_market() {
             assert_eq!(pair[1].label, "No");
             for each in pair {
                 assert_eq!(each.market, nested.ticker);
-                assert_eq!(
-                    each.market_title.as_deref(),
-                    Some(nested.yes_sub_title.as_str())
-                );
+                assert_eq!(each.market_title.as_deref(), Some(title));
             }
         }
         let ext = group.extensions.get::<EventGroupExt>().unwrap();

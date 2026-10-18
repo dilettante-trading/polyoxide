@@ -123,19 +123,24 @@ fn sides(book: &OrderbookFp, outcome: Outcome) -> (Vec<Level>, Vec<Level>) {
 }
 
 /// The instrument a market's row describes, for one of its two outcomes.
+///
+/// Its name is `"<yes_sub_title> — Yes"` or `"<yes_sub_title> — No"`, by the
+/// key's outcome, since Kalshi sends the same subtitle for both and a name
+/// says its market and its outcome; a subtitle that is empty or only
+/// whitespace gives `"<TICKER> yes"` or `"<TICKER> no"` instead.
 fn instrument(
     key: &MarketKey,
     id: &OutcomeId,
     market: &types::Market,
 ) -> Result<Instrument, ClassifiedError> {
-    let subtitle = match id.outcome {
-        Outcome::Yes => &market.yes_sub_title,
-        Outcome::No => &market.no_sub_title,
-    };
-    let name = if subtitle.trim().is_empty() {
+    let name = if market.yes_sub_title.trim().is_empty() {
         format!("{} {}", id.ticker, id.outcome.as_str())
     } else {
-        subtitle.clone()
+        let label = match id.outcome {
+            Outcome::Yes => "Yes",
+            Outcome::No => "No",
+        };
+        format!("{} — {label}", market.yes_sub_title)
     };
     let mut instrument = Instrument::new(key.clone(), name, SizeUnit::Shares);
     instrument.quote_asset = Some("USD".to_owned());
