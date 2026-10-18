@@ -25,6 +25,7 @@
 //! | `instrument` | `GET /trade-api/v2/markets/{ticker}` | 1 |
 //! | `quote` | `GET /trade-api/v2/markets/{ticker}/orderbook`, `depth=1` | 1 |
 //! | `book` | `GET /trade-api/v2/markets/{ticker}/orderbook`, every level | 1 |
+//! | `trades` | `GET /trade-api/v2/markets/trades` for the ticker, 1000 rows | 1 |
 //!
 //! Each request costs its route's tokens on the client's Read layer, 10 today.
 
@@ -33,10 +34,11 @@ use polyoxide_venue::{
     Book, Class, ClassifiedError, Extensions, Instrument, Level, MarketData, MarketKey, NotListed,
     Quote, SizeUnit, UnixMillis,
 };
+use polyoxide_venue::{Side, Trade, TradeId, Trades};
 use rust_decimal::Decimal;
 
 use super::key::{self, Outcome, OutcomeId};
-use super::types::{self, MarketStatus, OrderbookFp, PriceRange};
+use super::types::{self, MarketStatus, OrderbookFp, OutcomeSide, PriceRange};
 use super::{Predictions, PredictionsError};
 
 /// The smallest size step and the smallest order, in contracts: the
@@ -201,6 +203,62 @@ impl MarketData for Predictions {
         book.bids = bids;
         book.asks = asks;
         Ok(book)
+    }
+}
+
+/// Kalshi's facts about a trade, beside [`Trade`]'s fields.
+#[derive(Debug, Clone, PartialEq, Default)]
+#[non_exhaustive]
+pub struct TradeExt {
+    /// Whether it was a block trade.
+    pub is_block_trade: Option<bool>,
+}
+
+/// Whether the taker bought `own`, the outcome a key names: when its outcome
+/// side is `own` it took that outcome, and when it is the other it sold it. A
+/// side this client does not know is none.
+fn taker_side(taker: &OutcomeSide, own: Outcome) -> Option<Side> {
+    let taker = match taker {
+        OutcomeSide::Yes => Outcome::Yes,
+        OutcomeSide::No => Outcome::No,
+        _ => return None,
+    };
+    Some(if taker == own { Side::Buy } else { Side::Sell })
+}
+
+/// The trade a row describes, priced for the key's outcome.
+fn trade(key: &MarketKey, outcome: Outcome, row: &types::Trade) -> Result<Trade, ClassifiedError> {
+    let price = match outcome {
+        Outcome::Yes => row.yes_price_dollars,
+        Outcome::No => row.no_price_dollars,
+    };
+    let time = millis("created_time", &row.created_time)?;
+    let mut trade = Trade::new(key.clone(), price, row.count_fp, time);
+    trade.id = Some(TradeId::new(row.trade_id.clone()));
+    trade.taker_side = taker_side(&row.taker_outcome_side, outcome);
+    trade.extensions = Extensions::of(TradeExt {
+        is_block_trade: Some(row.is_block_trade),
+    });
+    Ok(trade)
+}
+
+impl Trades for Predictions {
+    /// The last 1000 trades of the market, oldest first. Kalshi serves them
+    /// newest first, with a cursor this method does not follow.
+    async fn trades(&self, key: &MarketKey) -> Result<Vec<Trade>, ClassifiedError> {
+        let id = key::outcome(key)?;
+        let page = self
+            .markets()
+            .trades()
+            .ticker(&id.ticker)
+            .limit(1000)
+            .send()
+            .await?;
+        page.trades
+            .iter()
+            .rev()
+            .map(|row| trade(key, id.outcome, row))
+            .collect()
     }
 }
 

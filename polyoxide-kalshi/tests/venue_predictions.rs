@@ -17,14 +17,15 @@ use polyoxide_core::RetryConfig;
 use polyoxide_kalshi::predictions::{
     key::{self, Outcome, Ticker},
     types::{MarketStatus, PriceLevel},
-    venue::InstrumentExt,
+    venue::{InstrumentExt, TradeExt},
     Predictions,
 };
 use polyoxide_test_support::fixtures;
 use polyoxide_venue::{
-    Book, Class, ClassifiedError, DynMarketData, Instrument, KeySpace, Level, MarketData,
-    NotListed, ProductId, SizeUnit, UnixMillis, VenueId,
+    Book, Class, ClassifiedError, DynMarketData, DynTrades, Instrument, KeySpace, Level,
+    MarketData, NotListed, ProductId, SizeUnit, UnixMillis, VenueId,
 };
+use polyoxide_venue::{Side, TradeId, Trades};
 use rust_decimal::Decimal;
 use serde_json::{json, Value};
 
@@ -683,4 +684,240 @@ async fn one_classifier_reads_the_errors_the_traits_return_as_it_reads_the_nativ
             "{status}, through the traits"
         );
     }
+}
+
+/// A trades route: the ticker and the 1000-row limit, in either order.
+fn trades_query(ticker: &Ticker) -> Matcher {
+    Matcher::AllOf(vec![
+        Matcher::UrlEncoded("ticker".to_owned(), ticker.to_string()),
+        Matcher::UrlEncoded("limit".to_owned(), "1000".to_owned()),
+    ])
+}
+
+/// A copy of the fixture's first trade with the fields a test sets.
+fn trade_row(
+    template: &Value,
+    id: &str,
+    time: &str,
+    yes: &str,
+    no: &str,
+    taker: &str,
+    block: bool,
+) -> Value {
+    let mut row = template.clone();
+    row["trade_id"] = json!(id);
+    row["created_time"] = json!(time);
+    row["yes_price_dollars"] = json!(yes);
+    row["no_price_dollars"] = json!(no);
+    row["count_fp"] = json!("5.00");
+    row["taker_outcome_side"] = json!(taker);
+    row["is_block_trade"] = json!(block);
+    row
+}
+
+/// `trades` on a mock server serving `body`, for the test ticker.
+async fn trades_of(
+    body: &Value,
+    outcome: Outcome,
+) -> Result<Vec<polyoxide_venue::Trade>, ClassifiedError> {
+    let ticker = test_ticker();
+    let mut server = start().await;
+    let _trades = route(
+        &mut server,
+        "/trade-api/v2/markets/trades",
+        trades_query(&ticker),
+        &body.to_string(),
+        1,
+    )
+    .await;
+    let venue = DynTrades::new_arc(client(&server));
+    venue.trades(&key::key(&ticker, outcome)).await
+}
+
+#[tokio::test]
+async fn a_dyn_trades_returns_the_native_trades_oldest_first() {
+    let body = fixture("trades");
+    let ticker = ticker_of(&fixture_json("market"));
+    let mut server = start().await;
+    let mock = route(
+        &mut server,
+        "/trade-api/v2/markets/trades",
+        trades_query(&ticker),
+        &body,
+        3,
+    )
+    .await;
+    let client = client(&server);
+    let native = client
+        .markets()
+        .trades()
+        .ticker(&ticker)
+        .limit(1000)
+        .send()
+        .await
+        .unwrap();
+    assert!(
+        native.trades.len() > 1,
+        "the captured page holds several trades"
+    );
+    let venue: Arc<DynTrades<'static>> = DynTrades::new_arc(client);
+
+    for outcome in [Outcome::Yes, Outcome::No] {
+        let k = key::key(&ticker, outcome);
+        let trades = venue.trades(&k).await.unwrap();
+        assert_eq!(trades.len(), native.trades.len());
+        // Kalshi serves newest first; the trait is oldest first.
+        for (trade, row) in trades.iter().zip(native.trades.iter().rev()) {
+            assert_eq!(trade.key, k);
+            assert_eq!(
+                trade.price,
+                match outcome {
+                    Outcome::Yes => row.yes_price_dollars,
+                    Outcome::No => row.no_price_dollars,
+                }
+            );
+            assert_eq!(trade.size, row.count_fp);
+            assert_eq!(trade.id, Some(TradeId::new(row.trade_id.clone())));
+            assert!(trade.taker_side.is_some(), "{row:?}");
+            let ext = trade.extensions.get::<TradeExt>().unwrap();
+            assert_eq!(ext.is_block_trade, Some(row.is_block_trade));
+        }
+        assert!(
+            trades.windows(2).all(|pair| pair[0].time <= pair[1].time),
+            "the trades are not oldest first"
+        );
+        // 2023-11-14 in milliseconds: a time read as seconds would be far below.
+        assert!(
+            trades[0].time > UnixMillis(1_700_000_000_000),
+            "{:?}",
+            trades[0].time
+        );
+    }
+    mock.assert_async().await;
+}
+
+#[tokio::test]
+async fn a_trades_price_time_and_taker_side_follow_the_keys_outcome() {
+    let template = fixture_json("trades")["trades"][0].clone();
+    // Newest first, as Kalshi serves them.
+    let mut body = fixture_json("trades");
+    body["trades"] = json!([
+        trade_row(
+            &template,
+            "t4",
+            "2026-10-18T09:10:12Z",
+            "0.6200",
+            "0.3800",
+            "maybe",
+            false
+        ),
+        trade_row(
+            &template,
+            "t3",
+            "2026-10-18T09:10:11.250Z",
+            "0.6000",
+            "0.4000",
+            "no",
+            false
+        ),
+        trade_row(
+            &template,
+            "t2",
+            "2026-10-18T09:10:11Z",
+            "0.5900",
+            "0.4100",
+            "yes",
+            false
+        ),
+        trade_row(
+            &template,
+            "t1",
+            "2026-10-18T09:10:10Z",
+            "0.5800",
+            "0.4200",
+            "yes",
+            true
+        ),
+    ]);
+
+    let yes = trades_of(&body, Outcome::Yes).await.unwrap();
+    assert_eq!(
+        yes.iter()
+            .map(|t| t.id.clone().unwrap())
+            .collect::<Vec<_>>(),
+        ["t1", "t2", "t3", "t4"].map(TradeId::new)
+    );
+    assert_eq!(
+        yes.iter().map(|t| t.time).collect::<Vec<_>>(),
+        [
+            UnixMillis(1_792_314_610_000),
+            UnixMillis(1_792_314_611_000),
+            UnixMillis(1_792_314_611_250),
+            UnixMillis(1_792_314_612_000),
+        ]
+    );
+    assert_eq!(
+        yes.iter().map(|t| t.price).collect::<Vec<_>>(),
+        ["0.58", "0.59", "0.60", "0.62"].map(|p| p.parse::<Decimal>().unwrap())
+    );
+    // The taker bought the outcome when its outcome side is the key's.
+    assert_eq!(
+        yes.iter().map(|t| t.taker_side).collect::<Vec<_>>(),
+        [Some(Side::Buy), Some(Side::Buy), Some(Side::Sell), None]
+    );
+    assert!(yes.iter().all(|t| t.size == Decimal::new(5, 0)));
+    assert_eq!(
+        yes.iter()
+            .map(|t| t.extensions.get::<TradeExt>().unwrap().is_block_trade)
+            .collect::<Vec<_>>(),
+        [Some(true), Some(false), Some(false), Some(false)]
+    );
+
+    let no = trades_of(&body, Outcome::No).await.unwrap();
+    assert_eq!(
+        no.iter().map(|t| t.price).collect::<Vec<_>>(),
+        ["0.42", "0.41", "0.40", "0.38"].map(|p| p.parse::<Decimal>().unwrap())
+    );
+    assert_eq!(
+        no.iter().map(|t| t.taker_side).collect::<Vec<_>>(),
+        [Some(Side::Sell), Some(Side::Sell), Some(Side::Buy), None]
+    );
+}
+
+#[tokio::test]
+async fn a_trade_time_that_does_not_parse_is_a_decode_failure() {
+    let template = fixture_json("trades")["trades"][0].clone();
+    let mut body = fixture_json("trades");
+    body["trades"] = json!([
+        trade_row(
+            &template,
+            "t2",
+            "2026-10-18T09:10:11Z",
+            "0.5900",
+            "0.4100",
+            "yes",
+            false
+        ),
+        trade_row(
+            &template,
+            "t1",
+            "last Tuesday",
+            "0.5800",
+            "0.4200",
+            "yes",
+            false
+        ),
+    ]);
+    let err = trades_of(&body, Outcome::Yes).await.unwrap_err();
+    assert_eq!(err.class, Class::Decode);
+    assert!(err.to_string().contains("created_time"), "{err}");
+}
+
+#[tokio::test]
+async fn a_key_of_another_venue_is_refused_by_trades_with_nothing_sent() {
+    let (server, nothing) = silent().await;
+    let venue: Arc<DynTrades<'static>> = DynTrades::new_arc(client(&server));
+    let err = venue.trades(&foreign_key()).await.unwrap_err();
+    assert_eq!(err.class, Class::InvalidRequest);
+    nothing.assert_async().await;
 }
