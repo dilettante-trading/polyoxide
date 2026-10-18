@@ -85,6 +85,40 @@ Newer variant that tracks session with a heartbeat ID. The first request sends a
 {"closed_only": false}
 ```
 
+## Get Rate Limit Tier
+
+`GET /v1/user/rate-limit-tier`
+
+**Auth:** L2
+
+Returns the [trading rate limit tier](trading-rate-limits.md) currently assigned to the
+signer address of the API credentials used. The response reflects the most recent tier
+refresh, so a change in volume can take up to three hours to appear. `503` with
+`{"error": "rate limit tiers unavailable"}` when the tiers could not be loaded.
+
+**Response:** `RateLimitTierResponse` (`tier`, `period` and `tier_details` are required)
+
+```json
+{
+  "tier": "gold",
+  "usdc_volume": "612345.67",
+  "next_tier_threshold": 2500000,
+  "period": 30,
+  "tier_details": {
+    "name": "gold",
+    "volume_threshold": 500000,
+    "cancel_rate_per_sec": 800,
+    "order_rate_per_sec": 400,
+    "order_burst": 600,
+    "cancel_burst": 1200,
+    "allow_negative": true
+  }
+}
+```
+
+`usdc_volume` is omitted below the lowest paid tier, `next_tier_threshold` at the top tier
+and for manually assigned tiers.
+
 ## Verification
 
 ```bash

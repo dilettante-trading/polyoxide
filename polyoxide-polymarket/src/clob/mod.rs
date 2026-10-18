@@ -155,7 +155,8 @@ pub use account::{save_private_key_to_keychain, KEYCHAIN_SERVICE};
 pub use api::{
     account::{
         BalanceAllowanceResponse, BuilderTrade, ListBuilderTrades, ListBuilderTradesResponse,
-        ListClobTrades, ListTradesResponse, MakerOrder, SessionSigner, SessionSigners, Trade,
+        ListClobTrades, ListTradesResponse, MakerOrder, RateLimitTierDetails,
+        RateLimitTierResponse, SessionSigner, SessionSigners, Trade,
     },
     auth::{
         ApiKeyInfo, ApiKeyResponse, BuilderApiKeyResponse, ClosedOnlyResponse,

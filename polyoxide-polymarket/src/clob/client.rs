@@ -131,6 +131,8 @@ impl Clob {
     /// Starts at [`Tier::Standard`] and is adopted from the
     /// `Poly-RateLimit-Tier` header the first time a trading request answers,
     /// since tier derives from 30-day volume the client cannot compute.
+    /// `account_api()?.rate_limit_tier()` asks the venue for the tier directly,
+    /// and does not change this one.
     pub fn tier(&self) -> Tier {
         self.signer_limiter.tier()
     }
