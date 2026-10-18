@@ -43,6 +43,13 @@ the umbrella's `@polymarket-perps` file `reqwest`, its `@polymarket-clob` file
 `alloy` and its `@polymarket-clob,keychain` file `keyring`, so no rule can pass
 because nothing it admits is ever built.
 
+`polyoxide-kalshi` is held per feature as well (D23): `reqwest`, `polyoxide-core`,
+`governor` and `sha2` only with `predictions`, which every file names;
+`polyoxide-ws`, `tokio-tungstenite` and `tungstenite` only with `predictions-ws`;
+and `alloy*`, `hmac` and `keyring` never, since Kalshi signs with `ring`. Its
+`@predictions` file must exist, and its `@predictions-ws` file, once written, must
+hold `polyoxide-ws`.
+
 Regenerate every file after a deliberate change, from `.github/scripts`:
 
     uv run python -m tests.test_dep_allowlists --write
@@ -140,6 +147,7 @@ MUST_BUILD = {
     "polyoxide@polymarket-perps.txt": "reqwest",
     "polyoxide@polymarket-clob.txt": "alloy",
     "polyoxide@polymarket-clob,keychain.txt": "keyring",
+    "polyoxide-kalshi@predictions.txt": "reqwest",
 }
 
 HEADER = """\
@@ -267,6 +275,7 @@ def test_the_allowlists_exist() -> None:
                "clob,keychain", "rtds", "rtds,test-server", "sports", "sports,test-server")
     assert {f"polyoxide-polymarket@{m}.txt" for m in modules} <= set(names), names
     assert {f"polyoxide-binance@{m}.txt" for m in ("usdm", "usdm-ws")} <= set(names), names
+    assert "polyoxide-kalshi@predictions.txt" in names, names
     umbrella = ("polymarket-rtds", "polymarket-sports", "polymarket-perps", "polymarket-clob",
                 "polymarket-clob,keychain")
     assert {f"polyoxide@{m}.txt" for m in umbrella} <= set(names), names
