@@ -75,7 +75,8 @@ And from the mirrors under `docs/specs/`:
 - The collateral token is pUSD (`docs/specs/polymarket-llms.txt:193`).
 - The user channel's `owner` on a trade is "API key of the taker", `trader_side` says whether the
   receiving user was TAKER or MAKER, and `timestamp` is in milliseconds
-  (`docs/specs/clob/asyncapi-user.json`).
+  (`docs/specs/clob/asyncapi-user.json`), though each example there is a 10-digit seconds value
+  (D23).
 - v1 `/positions`' `sizeThreshold` defaults to 1, with minimum 0 (`docs/specs/data/openapi.yaml:850-854`).
 
 **1.5 Departures from the acceptance criteria.**
@@ -125,8 +126,8 @@ plan disagreeing with one of them stops and asks.
   `positions` reads the Data API (AD-3) and `events()` reads the supervised user socket, which is
   `clob-ws`'s; `clob-ws` implies `clob`. `clob-ws` turns on `polyoxide-venue/trading`, and so does
   the umbrella's `polymarket-clob-ws`. The gate is declared in `polyoxide-polymarket`'s
-  `[package.metadata.polyoxide] notes`, which the generated crate list in CLAUDE.md and README.md
-  shows. Amends AD-3's last bullet (A7-3).
+  `[package.metadata.polyoxide] notes`, which the generated crate list in CLAUDE.md shows
+  (README.md's list carries no notes). Amends AD-3's last bullet (A7-3).
 - **D7. The kit dials through the protocol.** `polyoxide_ws::Protocol` gains a provided method,
   `connect`, which the `Supervisor` calls for every attempt; its default builds `handshake()`'s
   request and dials it with the kit's single-address `connect`. The clob protocols override it with
@@ -193,8 +194,32 @@ plan disagreeing with one of them stops and asks.
   entry to capture a maker-side frame and settle what `owner` means.
 - **D18. The client-id ledger keeps an order's entry after any failure that may have left the
   order on the venue** (the owner, 2026-10-18). Those failures are `Network`, `Unavailable` and
-  `Decode`, the last including a 2xx `POST /order` whose body does not decode. The entry is dropped
-  only when the venue refused the order or the order ended at once.
+  `Decode`, the last including a 2xx `POST /order` whose body does not decode. Only the venue's
+  refusal of the order drops the whole entry. An order that ended at once loses only its reuse
+  guard (D21).
+
+D19 and D20 are not used, since this spec cites `divergences.md`'s D19 and D20 by those names.
+
+- **D21. The ledger keeps an order's client id until its bound evicts it** (the owner,
+  2026-10-18; final review I-1). An entry has two parts: the order's client id, and the reuse
+  guard (the reverse index). When `cancel` or `cancel_all` cancels an order, or `place` or an
+  events ack sees it end, only the guard is dropped, so the client id may be used again at once.
+  The order's client id stays until the 10,000-entry bound evicts it, so an ack or fill read after
+  the order ended still carries its client id, on every events stream. Without this, a consumer
+  that places with a client id, cancels, and then polls would get both acks without it. Eviction
+  drops a guard only while the guard still names the evicted order.
+- **D22. A `matched` FillOrKill that the read-back shows short of its size is `Cancelled`, with
+  what matched in `filled`** (the owner, 2026-10-18; final review I-2). This is what the trait's
+  `TimeInForce::FillOrKill` doc says of a FOK the venue cancels partway, and what the Kalshi
+  mapping follows. The CLOB's 400 FOK kill (`ClobError::FokUnfilled`) stays `Ok` with
+  `Killed { reason: Unfillable }` and `filled` zero.
+- **D23. The user channel's `timestamp` is read in either unit** (the owner, 2026-10-18; final
+  review I-3). The mirror's schema calls it milliseconds. But each of its examples is a 10-digit
+  seconds value equal to the message's `created_at`, and no user frame has been captured. So a
+  value below 10^11 is read as seconds, and any other as milliseconds. This misreads no instant
+  after March 1973 given in milliseconds, and none before the year 5138 given in seconds. The live
+  round trip (§9.2) checks the ack this reads, and the maker-frame deferred-work entry (§10) asks
+  to settle the unit.
 
 ## 3. Story 1: the kit dials through the protocol
 
@@ -576,7 +601,7 @@ The outcomes:
   - a full fill is `Filled`;
   - an `ImmediateOrCancel` order short of its size is `Killed { reason: Unmatched }`, with what
     matched in `filled`;
-  - a `FillOrKill` short of its size is `Killed { reason: Unfillable }`;
+  - a `FillOrKill` short of its size is `Cancelled`, with what matched in `filled` (D22);
   - a resting order short of its size is `Open`.
 
   If that read fails, the order is returned `Open` with `filled` zero and a WARN under
@@ -632,14 +657,18 @@ and by every events stream it opened. It is never held across an `.await`.
 
 - **Entries:** it maps `OrderId` to `ClientOrderId`, with a reverse index for the duplicate check.
 - **When entries are added:** `place` inserts its order's entry before posting.
-- **When entries are dropped:**
-  - `place` drops the entry when the order ends at once (`Killed`, `Filled`) or the post is
-    refused. After a `Network`, `Unavailable` or `Decode` failure (D18), which may have reached
-    the venue, the entry stays until the bound evicts it;
-  - `cancel` and `cancel_all` drop the entries of the orders they cancelled;
-  - the events adapter drops the entry of an order acked `Cancelled` or `Filled`.
-- **Bound:** at most 10,000 entries; the oldest is dropped first.
-- **Duplicates:** a client id held by an entry is refused on a new `place` with
+- **When entries are dropped** (D21). An entry has two parts, the order's client id and the
+  reuse guard (the reverse index):
+  - `place` drops both parts when the post is refused. When the order ends at once (`Killed`,
+    `Filled`), it drops only the guard. After a `Network`, `Unavailable` or `Decode` failure
+    (D18), which may have reached the venue, both parts stay until the bound evicts them;
+  - `cancel` and `cancel_all` drop the guards of the orders they cancelled;
+  - the events adapter drops the guard of an order acked `Cancelled` or `Filled`;
+  - so an ack or fill read after its order ended, on any events stream, still carries its client
+    id.
+- **Bound:** at most 10,000 entries; the oldest is dropped first, and its guard with it only while
+  the guard still names that order.
+- **Duplicates:** a client id held by a guard is refused on a new `place` with
   "client order id `<id>` is already in use by order `<order id>`".
 - **Scope:** the ledger is lost when the process ends, and orders placed elsewhere carry no client
   id. The rustdoc of `impl Trading for Clob` says so.
@@ -679,10 +708,12 @@ Each call to `events()` opens its own socket and sees every event from its first
   - side, price, `size` (`original_size`) and `filled` (`size_matched`), parsed from their text;
   - status: `PLACEMENT` is `Open`; `UPDATE` is `Filled` when `size_matched` reaches
     `original_size`, and `Open` otherwise; `CANCELLATION` is `Cancelled`;
-  - `created`: the message's `timestamp` (milliseconds) for a `PLACEMENT`, `None` otherwise;
+  - `created`: the message's `timestamp`, in seconds or milliseconds by its magnitude (D23), for
+    a `PLACEMENT`, and `None` otherwise;
   - `time_in_force`: `None`, since the message does not carry it. So a FAK remainder cancelled on
     the venue is acked `Cancelled`, though `place` returned it `Killed`;
-  - the client id from the ledger, whose entry an acked `Cancelled` or `Filled` drops.
+  - the client id from the ledger. An acked `Cancelled` or `Filled` drops the order's reuse guard
+    (D21).
 - **`Message(UserMessage::Trade(t))` with status `MATCHED` yields one `TradingEvent::Fill` per
   order of the account's in the trade**, the taker's first and then the makers' in their order:
   - **Taker** (D17): `t.owner` equals the account's API key, and no `maker_orders` entry is the
@@ -696,7 +727,7 @@ Each call to `events()` opens its own socket and sees every event from its first
   - **Every fill:**
     - `id`: `FillId` `"<trade id>:<order id>"`;
     - `trade_id`: `Some(TradeId(t.id))`;
-    - `time`: `t.timestamp` (milliseconds);
+    - `time`: `t.timestamp`, read as `created` is (D23);
     - `fee` and `notional`: `None`;
     - `client_order_id`: from the ledger.
   - **A trade naming none of the account's orders** is an `Err` item (`Decode`), and the stream
@@ -723,6 +754,7 @@ address is its own. The cases:
     mock_clob's verbatim venue messages;
   - `matched` read back as `Filled`;
   - an IOC partial match as `Killed { Unmatched }` with its `filled`;
+  - a `matched` FOK read back short of its size as `Cancelled` with its `filled` (D22);
   - `success: false` as a `VenueRefusal`;
   - a 2xx post whose body does not decode is a `Decode` error, and the order's client id stays
     held (D18);
@@ -751,6 +783,9 @@ address is its own. The cases:
   - a `FAILED` trade as `Resync`;
   - acks of a placement and a cancellation;
   - client ids carried on the acks and fills of an order placed with one;
+  - an order placed with a client id and cancelled before the stream is polled: both its acks
+    carry the client id, and the id may be placed again at once (D21);
+  - a `timestamp` in seconds and the same instant in milliseconds read alike (D23);
   - with a slow consumer and a server cut mid-stream: every fill pushed is delivered, in order, and
     a `Resync` sits between the fills before the cut and those after it.
 - **`Arc<DynTrading<'static>>` over a `Clob`:** `place` and `events` through it.
@@ -789,6 +824,10 @@ regenerates the nightly regions. Its tests, all `#[ignore]`d and auth-gated with
 - **Round trip:** with `events()` open, a post-only GTC buy of 5 shares at 0.01 on a token whose
   best ask is above 0.01 rests (`Open`). The stream yields its `Resync` and then an ack for the
   order. `cancel` then succeeds and the stream acks it `Cancelled`.
+  - The order carries a client order id. The `Open` ack carries it, which checks D5's computed
+    id against the venue's. The ack's `created` lies within a few minutes of the test's clock and
+    of the `open_orders` row's `created` (D23). The `Cancelled` ack carries the client id too
+    (D21).
   - The token is chosen the way `live_v2_place_and_cancel` chooses one (`tests/live_clob.rs:138`,
     `find_token_id_with_min_ask`), copied into the new file, since a test target cannot import
     another's helpers; with no such token the test is an `environmental(..)` skip.
@@ -835,7 +874,8 @@ script requires an entry.
     - narrow "prune `ClobWsError::{ConnectionClosed, Authentication}`" to `ConnectionClosed`;
     - add the mapping's move for 8.1 (D9) and the eight Kalshi demo-host probes;
     - add capturing a user-channel trade frame in which the account is only a maker, to settle
-      what a trade's `owner` means and whether D17's rule can drop its maker check.
+      what a trade's `owner` means and whether D17's rule can drop its maker check, and the unit
+      of the user channel's `timestamp` (D23).
   - In `_bmad-output/specs/spec-venue-extensibility/divergences.md`, the clob rows D4, D12, D19,
     D20 and R11 say what the supervised sockets do (R11's "clob does not reconnect" no longer
     holds).
