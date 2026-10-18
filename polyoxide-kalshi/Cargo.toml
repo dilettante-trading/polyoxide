@@ -53,6 +53,20 @@ mockito = { workspace = true }
 # `test-util` gives the throttle's tests a paused clock.
 tokio = { workspace = true, features = ["macros", "rt-multi-thread", "time", "test-util"] }
 
+# The predictions module's suites. `required-features` keeps a plain
+# `cargo test --all-targets` from building them without the module.
+[[test]]
+name = "error_classes_predictions"
+required-features = ["predictions"]
+
+[[test]]
+name = "headers_predictions"
+required-features = ["predictions"]
+
+[[test]]
+name = "mock_predictions"
+required-features = ["predictions"]
+
 # Registration, read by scripts/gen_registry.py; run it with --write after an edit.
 [package.metadata.polyoxide]
 readme = "Client library for Kalshi's APIs, one feature per module: `predictions` (event-contract market data, with its order-book stream under `predictions-ws`); a walking skeleton, not published"

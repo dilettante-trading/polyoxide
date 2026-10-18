@@ -18,6 +18,7 @@ use polyoxide_core::{
 };
 
 use crate::predictions::request::{Route, DEFAULT_COST, READ};
+use crate::predictions::Inner;
 
 /// Tokens the Basic tier's Read bucket holds: 3 seconds of its refill.
 pub(crate) const BASIC_READ_CAPACITY: u32 = 600;
@@ -112,12 +113,21 @@ impl RouteCosts {
     }
 
     /// Makes `route` cost `cost` from now on.
+    #[allow(
+        dead_code,
+        reason = "Story 4's first-use confirmation replaces the compiled costs with it"
+    )]
     pub(crate) fn set(&self, route: &Route, cost: u32) {
         self.overrides
             .write()
             .unwrap_or_else(|poisoned| poisoned.into_inner())
             .insert((route.method, route.template), cost);
     }
+}
+
+impl Inner {
+    /// Runs before every send.
+    pub(crate) async fn before_send(&self) {}
 }
 
 #[cfg(test)]
