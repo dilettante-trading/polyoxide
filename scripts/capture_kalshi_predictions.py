@@ -9,8 +9,9 @@
 Usage: uv run scripts/capture_kalshi_predictions.py polyoxide-kalshi/tests/fixtures/predictions
 
 Reads production (https://external-api.kalshi.com) with no credentials, at the anonymous
-default of 10 tokens a request, about a hundred requests in all. It picks an active market with
-a quote on both sides, a two-sided book and a trade by paging `markets?status=open&mve_filter=exclude`:
+default of 10 tokens a request, at most a few hundred requests in all. It picks an active market with
+a quote on both sides, a two-sided book with more than one level on some side and a full page of
+100 trades by paging `markets?status=open&mve_filter=exclude`:
 the filter is needed, since on 2026-10-18 the unfiltered open listing's first ten pages held
 9,996 multivariate combinations of 10,000 rows and no quoted single market, while the filtered
 listing's first page held 579 quoted rows. It then writes the fixtures and PROVENANCE.md
@@ -29,7 +30,9 @@ PAUSE = 0.25
 PAGES = 10
 PAGE_SIZE = 1000
 # How many quoted candidates to confirm on the orderbook route before giving up.
-CANDIDATES = 40
+CANDIDATES = 150
+# Trades a candidate's first page must hold: the fixture is a full page of the route's limit.
+TRADES_PAGE = 100
 # Levels kept on each side of orderbook.json, the best ones.
 BOOK_LEVELS = 5
 # Markets kept in event.json's nested list, the picked one first.
@@ -89,7 +92,8 @@ def listing_rows():
 def pick_market():
     """The first listed market that quotes both sides and whose order book, read on the route the
     tests assert on, has levels on both and more than one on some side, so that `depth=1` differs
-    from the full book, and which has traded. Returns the ticker, the market response, the book and
+    from the full book, and whose `/markets/trades?limit=100` page holds a full 100 rows, so that the
+    trades fixture has many trades to order. Returns the ticker, the market response, the book and
     the trades response."""
     tried = 0
     for row in listing_rows():
@@ -103,9 +107,12 @@ def pick_market():
         sides = book["orderbook_fp"]
         if sides["yes_dollars"] and sides["no_dollars"] and max(len(v) for v in sides.values()) >= 2:
             trades = fetch_ok("/markets/trades", ticker=ticker, limit=100)
-            if trades["trades"]:
+            if len(trades["trades"]) == TRADES_PAGE:
                 return ticker, fetch_ok(f"/markets/{ticker}"), book, trades
-    sys.exit(f"none of the first {CANDIDATES} quoted open markets has a two-sided book and a trade; run again")
+    sys.exit(
+        f"none of the first {CANDIDATES} quoted open markets has a two-sided book with a deeper side "
+        f"and a full page of {TRADES_PAGE} trades; run again"
+    )
 
 
 def best_levels(book, count):
@@ -154,7 +161,8 @@ def provenance(ticker, event_ticker):
         "lengths are trimmed.",
         "",
         f"The market is `{ticker}`, picked from `markets?status=open&mve_filter=exclude` because it was",
-        "active, quoted both sides and had an order book with levels on both. The filter is needed: the",
+        "active, quoted both sides, had an order book with levels on both and more than one level on some",
+        "side, and had a full page of 100 trades. The filter is needed: the",
         "unfiltered open listing serves multivariate combinations first (see `docs/specs/kalshi/OBSERVED.md`).",
         "",
         *table,

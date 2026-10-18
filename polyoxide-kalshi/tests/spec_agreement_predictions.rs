@@ -239,11 +239,16 @@ fn reachable_from_the_routes() -> BTreeSet<String> {
     let schemas = mirror_schemas();
     let mut seen = BTreeSet::new();
     for path in SPEC_ROUTES {
-        follow(
-            &schemas,
-            &spec["paths"][*path]["get"]["responses"]["200"],
-            &mut seen,
+        let item = &spec["paths"][*path];
+        assert!(item.is_object(), "the mirror has no path {path}");
+        let get = &item["get"];
+        assert!(get.is_object(), "the mirror's {path} has no get");
+        let ok = &get["responses"]["200"];
+        assert!(
+            ok.is_object(),
+            "the mirror's GET {path} has no 200 response"
         );
+        follow(&schemas, ok, &mut seen);
     }
     seen
 }
@@ -345,6 +350,12 @@ fn every_enum_matches_the_spec() {
         "MarketStatusQuery",
     );
     assert_eq!(wire(MarketStatusFilter::ALL), filter);
+
+    let mve = documented(
+        &spec["components"]["parameters"]["MveFilterQuery"]["schema"]["enum"],
+        "MveFilterQuery",
+    );
+    assert_eq!(wire(MveFilter::ALL), mve);
 }
 
 // ── Query parameters ────────────────────────────────────────────────

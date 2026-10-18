@@ -16,19 +16,30 @@ use polyoxide_kalshi::predictions::{
         MarketsPage, OrderbookResponse, OutcomeSide, TradesPage,
     },
 };
-use polyoxide_test_support::{agreement, fixtures};
+use polyoxide_test_support::{
+    agreement::{self, Ledger},
+    fixtures,
+};
 use rust_decimal::Decimal;
 use serde::{de::DeserializeOwned, Serialize};
 
-/// `(fixture, path)` pairs the host sends in some responses and not others, which a type that
-/// models them may emit as `null` where a capture lacks them.
-const SOMETIMES_ABSENT: &[(&str, &str)] = &[("exchange_status", "/exchange_estimated_resume_time")];
+/// `(fixture, path, reason)` rows for what the host sends in some responses and not others, which a
+/// type that models them may emit as `null` where a capture lacks them. A row no fixture needs
+/// fails `every_rest_fixture_agrees_with_its_type`.
+const SOMETIMES_ABSENT: &[(&str, &str, &str)] = &[(
+    "exchange_status",
+    "/exchange_estimated_resume_time",
+    "the host sends it only while the exchange is down",
+)];
 
 fn read<T: DeserializeOwned>(fixture: &str) -> T {
     serde_json::from_str(&fixtures!("predictions").text(fixture)).unwrap()
 }
 
-fn hold_to_fixture<T: DeserializeOwned + Serialize>(fixture: &str) {
+fn hold_to_fixture<T: DeserializeOwned + Serialize>(
+    fixture: &str,
+    used: &mut Ledger<'static, (&'static str, &'static str, &'static str)>,
+) {
     let text = fixtures!("predictions").text(fixture);
     let diff = agreement::compare::<T>(fixture, &text);
     assert!(
@@ -39,7 +50,7 @@ fn hold_to_fixture<T: DeserializeOwned + Serialize>(fixture: &str) {
     let invented: Vec<&String> = diff
         .invented
         .iter()
-        .filter(|path| !SOMETIMES_ABSENT.contains(&(fixture, path.as_str())))
+        .filter(|path| used.excuse(SOMETIMES_ABSENT, fixture, path).is_none())
         .collect();
     assert!(
         invented.is_empty(),
@@ -49,14 +60,20 @@ fn hold_to_fixture<T: DeserializeOwned + Serialize>(fixture: &str) {
 
 #[test]
 fn every_rest_fixture_agrees_with_its_type() {
-    hold_to_fixture::<ExchangeStatus>("exchange_status");
-    hold_to_fixture::<EndpointCosts>("endpoint_costs");
-    hold_to_fixture::<MarketResponse>("market");
-    hold_to_fixture::<MarketsPage>("markets_page");
-    hold_to_fixture::<OrderbookResponse>("orderbook");
-    hold_to_fixture::<OrderbookResponse>("orderbook_depth1");
-    hold_to_fixture::<TradesPage>("trades");
-    hold_to_fixture::<EventResponse>("event");
+    let mut used = Ledger::new(&[SOMETIMES_ABSENT]);
+    hold_to_fixture::<ExchangeStatus>("exchange_status", &mut used);
+    hold_to_fixture::<EndpointCosts>("endpoint_costs", &mut used);
+    hold_to_fixture::<MarketResponse>("market", &mut used);
+    hold_to_fixture::<MarketsPage>("markets_page", &mut used);
+    hold_to_fixture::<OrderbookResponse>("orderbook", &mut used);
+    hold_to_fixture::<OrderbookResponse>("orderbook_depth1", &mut used);
+    hold_to_fixture::<TradesPage>("trades", &mut used);
+    hold_to_fixture::<EventResponse>("event", &mut used);
+    let stale: Vec<_> = used.stale().into_iter().map(|(f, p, _)| (f, p)).collect();
+    assert!(
+        stale.is_empty(),
+        "SOMETIMES_ABSENT rows no fixture needs: {stale:?}"
+    );
 }
 
 #[test]
@@ -78,7 +95,7 @@ fn the_fixtures_cover_the_cases_the_types_exist_for() {
     assert!(shallow.yes_dollars.len() <= 1 && shallow.no_dollars.len() <= 1);
 
     let trades: TradesPage = read("trades");
-    assert!(!trades.trades.is_empty());
+    assert!(trades.trades.len() > 1, "trades.json holds several trades");
     assert!(
         trades.trades.iter().all(|t| t.ticker == market.ticker),
         "trades.json is the market's"
