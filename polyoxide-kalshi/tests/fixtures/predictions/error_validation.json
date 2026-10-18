@@ -1,0 +1,3 @@
+{
+  "msg": "Parameter validation failed for GetTrades: Key: 'GetTradesParams.Limit' Error:Field validation for 'Limit' failed on the 'lte' tag"
+}

@@ -1,0 +1,17 @@
+{
+  "cursor": "",
+  "trades": [
+    {
+      "count_fp": "1.00",
+      "created_time": "2026-10-18T13:33:37.114151Z",
+      "is_block_trade": false,
+      "no_price_dollars": "0.9400",
+      "taker_book_side": "bid",
+      "taker_outcome_side": "yes",
+      "taker_side": "yes",
+      "ticker": "KXLALIGAGOAL-26OCT18RCCALA-ALAAREBBA21-1",
+      "trade_id": "072473e8-cec9-9428-df76-577de102f61a",
+      "yes_price_dollars": "0.0600"
+    }
+  ]
+}
