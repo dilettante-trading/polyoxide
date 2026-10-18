@@ -8,6 +8,9 @@
 //! starts at the size Kalshi gives its Basic tier, and a client confirms the account's own size
 //! when it first sends. The hosts are [`PRODUCTION`] and [`DEMO`], and keys do not cross between
 //! them.
+//!
+//! With the `predictions-ws` feature the module also has `ws`, the order-book socket. Its
+//! handshake needs `Credentials` even for public data, which the REST reads do not.
 
 pub mod api;
 pub mod auth;

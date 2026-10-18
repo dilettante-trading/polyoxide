@@ -6,12 +6,12 @@ license.workspace = true
 authors.workspace = true
 repository.workspace = true
 rust-version.workspace = true
-description = "Rust client library for Kalshi's event-contract market data (a walking skeleton, not published)"
+description = "Rust client library for Kalshi's event-contract market data and its order-book stream (a walking skeleton, not published)"
 publish = false
 
 # One feature per module, as polyoxide-binance has: `predictions`, the REST client
-# for Kalshi's Predictions exchange and its Read throttle. The order-book stream
-# arrives as `predictions-ws`.
+# for Kalshi's Predictions exchange and its Read throttle, with its order-book stream
+# under `predictions-ws`, whose handshake needs credentials even for public data.
 [features]
 default = ["predictions"]
 predictions = [

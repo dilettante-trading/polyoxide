@@ -1,14 +1,21 @@
 //! # polyoxide-kalshi
 //!
-//! Rust client library for Kalshi's APIs, one feature per module: `predictions`.
+//! Rust client library for Kalshi's APIs, one feature per module: `predictions` (event-contract
+//! market data, with its order-book stream under `predictions-ws`).
 //!
 //! The crate is a walking skeleton and it is not published. It is the workspace's third venue,
 //! built by the architecture guide's recipe to show that a venue lands by editing its own files
 //! and the few places the recipe names.
 //!
 //! `predictions` (feature `predictions`, on by default) reads Kalshi's Predictions exchange
-//! (`external-api.kalshi.com`, and the demo host `external-api.demo.kalshi.co`). Public reads need
-//! no credentials. The module's own docs carry its example.
+//! (`external-api.kalshi.com`, and the demo host `external-api.demo.kalshi.co`). Public REST reads
+//! need no credentials. The module's own docs carry its example.
+//!
+//! `predictions-ws` (feature `predictions-ws`, off by default, and it turns on `predictions`) adds
+//! the module's order-book socket, `predictions::ws`, on the socket kit: a snapshot of each
+//! subscribed market's book and then its changes, in YES pricing, reconnecting after a drop, a
+//! stall or a gap. Kalshi refuses a socket handshake that carries no API-key headers, public data
+//! included, so the socket needs `Credentials` where the REST reads of public data need none.
 
 // The crate README is compiled as a doctest, so a code fence that is ever added
 // to it cannot rot. `doctest` keeps this out of normal builds and `cargo doc`.
