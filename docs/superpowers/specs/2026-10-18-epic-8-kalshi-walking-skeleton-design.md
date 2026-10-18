@@ -314,6 +314,9 @@ plan disagreeing with one of them stops and asks.
     cannot fix, instead of reconnecting for ever with only a WARN. One refused ticker ends the
     stream for every ticker. A supervision test pins it: a ticker the venue refuses, subscribed
     during an outage, ends the stream with the error.
+    A replay's `subscribe` answered with a frame that does not decode (`Json`) stops the stream the
+    same way, since a `Skip` during a failed attempt is a reconnect and an answer that never
+    decodes would loop the same (the owner, 2026-10-18).
   - `SequenceGap` reconnects (D14).
   - A connection used after it closed reconnects (D19 of `divergences.md`).
   - Any other error reconnects exactly when `Classify::is_retriable` says so and stops otherwise,
