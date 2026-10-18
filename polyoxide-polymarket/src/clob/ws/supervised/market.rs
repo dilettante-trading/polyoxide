@@ -11,7 +11,10 @@ use polyoxide_ws::{
     Supervised, Supervisor, Timing, WsError,
 };
 
-use super::{checked_url, data_text, default_timing, disconnect_reason, recover, DisconnectReason};
+use super::{
+    checked_url, data_text, default_timing, disconnect_reason, is_array_frame, recover,
+    DisconnectReason,
+};
 use crate::clob::ws::{
     client::{dial, validate_subscription_count},
     BookMessage, ClobWsError, MarketMessage, MarketSubscription, MarketSubscriptionOptions,
@@ -213,7 +216,7 @@ impl Protocol for ClobMarketProtocol {
         let Some(text) = data_text(frame) else {
             return Decoded::Nothing;
         };
-        if text.starts_with('[') {
+        if is_array_frame(text) {
             // The initial dump and each subscribe answer carry one book per
             // asset; every one is yielded, where the bare tier keeps the first.
             return match serde_json::from_str::<Vec<BookMessage>>(text) {
@@ -945,6 +948,23 @@ mod tests {
         assert_eq!(next_book(&mut ws).await, "a");
         assert_eq!(next_book(&mut ws).await, "b");
         assert_eq!(next_book(&mut ws).await, "c");
+        assert_quiet(&mut ws).await;
+    }
+
+    #[tokio::test]
+    async fn an_array_frame_with_leading_whitespace_yields_every_book() {
+        let array = format!("  \n[{},{}]", book_json("a"), book_json("b"));
+        let server = serve(vec![
+            Script::messages(vec![Message::Text(array.into())]).after_first_frame()
+        ])
+        .await;
+        let mut ws = builder(&server)
+            .connect(ids(&["a", "b"]))
+            .await
+            .expect("connects");
+
+        assert_eq!(next_book(&mut ws).await, "a");
+        assert_eq!(next_book(&mut ws).await, "b");
         assert_quiet(&mut ws).await;
     }
 

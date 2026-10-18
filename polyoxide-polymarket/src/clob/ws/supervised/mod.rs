@@ -154,6 +154,12 @@ pub(super) fn data_text(frame: &Message) -> Option<&str> {
     Some(text)
 }
 
+/// Whether a data frame is a JSON array of events, read past leading whitespace;
+/// the market and user decoders share the rule.
+pub(super) fn is_array_frame(text: &str) -> bool {
+    text.trim_start().starts_with('[')
+}
+
 #[cfg(test)]
 mod tests {
     use polyoxide_venue::Class;

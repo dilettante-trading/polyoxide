@@ -32,7 +32,7 @@ use polyoxide_ws::{
 };
 
 use super::{
-    checked_url, data_text, default_timing, disconnect_reason, recover as recovery,
+    checked_url, data_text, default_timing, disconnect_reason, is_array_frame, recover as recovery,
     DisconnectReason,
 };
 use crate::clob::ws::{
@@ -169,7 +169,7 @@ fn amend(
 
 /// One text frame, or the array of them the host may send, as events.
 fn decode_text(text: &str) -> Decoded<UserEvent, ClobWsError> {
-    if !text.trim_start().starts_with('[') {
+    if !is_array_frame(text) {
         return match UserMessage::from_json(text) {
             Ok(message) => Decoded::Event(UserEvent::Message(message)),
             Err(err) => Decoded::Error(ClobWsError::Json(err)),
