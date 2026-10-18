@@ -30,9 +30,11 @@ predictions = [
     "dep:url",
 ]
 
-# The order-book socket, `predictions::ws`, on the socket kit. It turns on `predictions`,
-# and the runtime and macros the supervisor and the suites' `#[tokio::test]` need.
-predictions-ws = ["predictions", "dep:polyoxide-ws", "dep:futures-util", "tokio/rt", "tokio/macros"]
+# The order-book socket, `predictions::ws`, on the socket kit. It turns on `predictions` and
+# the kit, whose own manifest declares the tokio features the supervisor needs. This crate's
+# sources use no runtime or macro feature and no `futures-util`; the suites do, from
+# `[dev-dependencies]`.
+predictions-ws = ["predictions", "dep:polyoxide-ws"]
 
 [dependencies]
 polyoxide-core = { workspace = true, optional = true }
@@ -51,7 +53,6 @@ url = { workspace = true, optional = true }
 # The socket kit (`predictions-ws`): connect, the supervisor and the socket error. It owns
 # the transport, tokio-tungstenite and rustls, so this crate declares none of them.
 polyoxide-ws = { workspace = true, optional = true }
-futures-util = { workspace = true, optional = true }
 
 [dev-dependencies]
 # The tests' query and header helpers, the failure tags and the credential
@@ -70,8 +71,11 @@ polyoxide = { path = "../polyoxide", default-features = false, features = ["poly
 # Reads the OpenAPI mirror, which Kalshi publishes as YAML only; dev-only, so it is in no
 # normal build and no dependency allowlist.
 serde-saphyr = { workspace = true }
-# `test-util` gives the throttle's tests a paused clock.
+# `test-util` gives the throttle's tests a paused clock. `macros` and `rt-multi-thread` are what
+# `#[tokio::test]` needs, here and in the `predictions-ws` suites.
 tokio = { workspace = true, features = ["macros", "rt-multi-thread", "time", "test-util"] }
+# `StreamExt` over the supervised socket's stream, in the `predictions-ws` suites.
+futures-util = { workspace = true }
 
 # The predictions module's suites. `required-features` keeps a plain
 # `cargo test --all-targets` from building them without the module.
