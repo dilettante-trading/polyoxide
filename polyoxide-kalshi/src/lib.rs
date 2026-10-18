@@ -36,4 +36,6 @@ const _: fn() = || {
     is::<predictions::VenueError>();
     is::<predictions::key::InvalidTicker>();
     is::<predictions::CredentialsError>();
+    #[cfg(feature = "predictions-ws")]
+    is::<predictions::ws::PredictionsWsError>();
 };

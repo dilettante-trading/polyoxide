@@ -17,6 +17,8 @@ pub mod request;
 mod throttle;
 pub mod types;
 pub mod venue;
+#[cfg(feature = "predictions-ws")]
+pub mod ws;
 
 pub use auth::{Credentials, CredentialsError};
 pub use error::{PredictionsError, VenueError};

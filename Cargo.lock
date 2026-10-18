@@ -4089,11 +4089,13 @@ version = "0.41.0"
 dependencies = [
  "base64",
  "chrono",
+ "futures-util",
  "mockito",
  "polyoxide",
  "polyoxide-core",
  "polyoxide-test-support",
  "polyoxide-venue",
+ "polyoxide-ws",
  "ring",
  "rust_decimal",
  "serde",

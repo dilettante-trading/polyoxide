@@ -144,6 +144,7 @@ MUST_BUILD = {
     "polyoxide-polymarket@relay.txt": "alloy",
     "polyoxide-polymarket@clob,keychain.txt": "keyring",
     "polyoxide-binance@usdm-ws.txt": "polyoxide-ws",
+    "polyoxide-kalshi@predictions-ws.txt": "polyoxide-ws",
     "polyoxide@polymarket-perps.txt": "reqwest",
     "polyoxide@polymarket-clob.txt": "alloy",
     "polyoxide@polymarket-clob,keychain.txt": "keyring",
@@ -284,9 +285,10 @@ def test_the_allowlists_exist() -> None:
 @pytest.mark.parametrize("name", sorted(MUST_BUILD))
 def test_each_per_feature_rule_admits_what_it_guards(name: str) -> None:
     # The rules admit the HTTP stack with an HTTP module, alloy with clob or
-    # relay, keyring with keychain, Binance's socket stack with usdm-ws and
-    # Kalshi's HTTP stack with predictions; if no file held them, a rule that
-    # never refuses anything could not be told from one that holds.
+    # relay, keyring with keychain, Binance's socket stack with usdm-ws,
+    # Kalshi's HTTP stack with predictions and its socket stack with
+    # predictions-ws; if no file held them, a rule that never refuses
+    # anything could not be told from one that holds.
     assert MUST_BUILD[name] in read_allowlist(ALLOWLISTS / name), name
 
 
