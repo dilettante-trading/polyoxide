@@ -11,6 +11,7 @@
 
 pub mod error;
 pub mod key;
+pub mod types;
 
 pub use error::{PredictionsError, VenueError};
 pub use key::key;
