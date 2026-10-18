@@ -25,7 +25,7 @@ use polyoxide_kalshi::predictions::{
     },
     Predictions, PredictionsError, PRODUCTION,
 };
-use polyoxide_test_support::{agreement, fail, ResultExt};
+use polyoxide_test_support::{agreement, environmental, fail, ResultExt};
 use serde::{de::DeserializeOwned, Serialize};
 use serde_json::Value;
 
@@ -99,15 +99,22 @@ async fn live_a_two_sided_market_reads_through_every_route() {
         "{ticker}"
     );
 
+    // The quoted market can have traded never, so the trades route is read for the busiest one.
+    let busiest = common::busiest_market(&client).await;
     let trades = client
         .markets()
         .trades()
-        .ticker(&ticker)
+        .ticker(&busiest)
         .limit(10)
         .send()
         .await
         .or_fail("trades");
-    assert!(trades.trades.iter().all(|t| t.ticker == market.ticker));
+    if trades.trades.is_empty() {
+        environmental(&format!(
+            "{busiest} listed no trades, so the route is unchecked"
+        ));
+    }
+    assert!(trades.trades.iter().all(|t| t.ticker == busiest.as_str()));
 
     let event = client
         .events()
@@ -311,8 +318,19 @@ async fn live_responses_carry_no_unmodelled_keys() {
         &book["orderbook_fp"]["no_dollars"],
         2,
     ));
-    let path = format!("/trade-api/v2/markets/trades?ticker={ticker}&limit=10");
-    check(compare_live::<TradesPage>(&path, &raw(&http, &path).await));
+    // The quoted market can have traded never, so trades are read for the busiest one.
+    let busiest = common::busiest_market(&client).await;
+    let path = format!("/trade-api/v2/markets/trades?ticker={busiest}&limit=10");
+    let text = raw(&http, &path).await;
+    if json(&path, &text)["trades"]
+        .as_array()
+        .is_none_or(Vec::is_empty)
+    {
+        environmental(&format!(
+            "{busiest} listed no trades, so the rows are unchecked"
+        ));
+    }
+    check(compare_live::<TradesPage>(&path, &text));
     let path = format!("/trade-api/v2/events/{event_ticker}?with_nested_markets=true");
     check(compare_live::<EventResponse>(
         &path,

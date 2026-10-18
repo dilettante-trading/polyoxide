@@ -1,6 +1,7 @@
 //! Kalshi's predictions exchange through the venue-neutral market-data traits.
 //!
-//! [`Predictions`] implements `MarketData` over its own routes, keyed
+//! [`Predictions`] implements `MarketData`, `Trades` and `EventGroups` over its
+//! own routes, keyed
 //! `kalshi.predictions:<TICKER>:yes` and `kalshi.predictions:<TICKER>:no` by the
 //! constructors in `predictions::key`: a key names one outcome of one market,
 //! never the market. What Kalshi alone publishes rides in this module's
@@ -223,7 +224,7 @@ fn taker_side(taker: &OutcomeSide, own: Outcome) -> Option<Side> {
     let taker = match taker {
         OutcomeSide::Yes => Outcome::Yes,
         OutcomeSide::No => Outcome::No,
-        _ => return None,
+        OutcomeSide::Other(_) => return None,
     };
     Some(if taker == own { Side::Buy } else { Side::Sell })
 }

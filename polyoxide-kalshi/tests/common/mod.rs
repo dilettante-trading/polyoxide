@@ -1,5 +1,8 @@
 //! The market the live suites read, chosen by the precondition they assert on. Shared by
-//! `live_predictions.rs` and, by `mod common;`, the live suites of later stories.
+//! `live_predictions.rs` and `live_predictions_venue.rs`, by `mod common;`, and the live suites of
+//! later stories.
+
+use std::collections::HashMap;
 
 use polyoxide_kalshi::predictions::{
     key::Ticker,
@@ -79,4 +82,28 @@ pub async fn two_sided_market(client: &Predictions) -> Market {
         cursor = page.cursor;
     }
     environmental("no suitable market: no open market with a quote and a book on both sides")
+}
+
+/// The market with the most trades in the host's latest 1000. A quoted market, such as
+/// `two_sided_market`'s, can have traded never, so its trades say nothing about their order or
+/// their ticker. With no recent trades at all, the test is an `environmental` skip.
+pub async fn busiest_market(client: &Predictions) -> Ticker {
+    let page = client
+        .markets()
+        .trades()
+        .limit(1000)
+        .send()
+        .await
+        .or_fail("recent trades");
+    let mut counts: HashMap<&str, usize> = HashMap::new();
+    for trade in &page.trades {
+        *counts.entry(trade.ticker.as_str()).or_default() += 1;
+    }
+    let Some((ticker, _)) = counts
+        .into_iter()
+        .max_by_key(|(ticker, count)| (*count, *ticker))
+    else {
+        environmental("the host served no recent trades");
+    };
+    Ticker::new(ticker).or_fail("name the busiest market")
 }

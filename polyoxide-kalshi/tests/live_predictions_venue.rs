@@ -7,15 +7,15 @@
 //!
 //! The market is chosen by precondition (open, with a two-sided book on the
 //! orderbook route the assertions read) by `common::two_sided_market`, so a
-//! quiet night is an environmental skip. The conversion's rule is asserted on
+//! quiet night is an environmental skip; the trades test reads the market with
+//! the most recent trades, `common::busiest_market`, since a quoted market can
+//! have traded never. The conversion's rule is asserted on
 //! the live host: no converted book or quote is crossed, and the two outcomes
 //! of one market are one book read from both sides. A book that moved between
 //! reads is read again, up to five times.
 
 #[allow(dead_code)]
 mod common;
-
-use std::collections::HashMap;
 
 use polyoxide_kalshi::predictions::{
     key::{self, Outcome, Ticker},
@@ -133,36 +133,11 @@ async fn live_both_outcomes_quotes_are_uncrossed_and_mirror_each_other() {
     transient("the YES quote moved in each of five reads");
 }
 
-/// The YES key of the market with the most trades in the host's latest 1000. The
-/// chosen two-sided market is the first quoted row of the listing, and a quoted
-/// market can have traded never, so its trades say nothing about their order.
-async fn busiest_market(client: &Predictions) -> MarketKey {
-    let page = client
-        .markets()
-        .trades()
-        .limit(1000)
-        .send()
-        .await
-        .or_fail("recent trades");
-    let mut counts: HashMap<&str, usize> = HashMap::new();
-    for trade in &page.trades {
-        *counts.entry(trade.ticker.as_str()).or_default() += 1;
-    }
-    let Some((ticker, _)) = counts
-        .into_iter()
-        .max_by_key(|(ticker, count)| (*count, *ticker))
-    else {
-        environmental("the host served no recent trades");
-    };
-    let ticker = Ticker::new(ticker).or_fail("name the busiest market");
-    key::key(&ticker, Outcome::Yes)
-}
-
 #[tokio::test]
 #[ignore = "hits the live host"]
 async fn live_trades_are_oldest_first() {
     let client = client();
-    let yes = busiest_market(&client).await;
+    let yes = key::key(&common::busiest_market(&client).await, Outcome::Yes);
     let trades = client.trades(&yes).await.or_fail("trades");
     if trades.len() < 2 {
         environmental(&format!(

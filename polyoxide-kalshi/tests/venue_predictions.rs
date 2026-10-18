@@ -338,6 +338,17 @@ async fn the_instruments_times_are_rfc_3339_and_one_that_is_not_is_a_decode_fail
 }
 
 #[tokio::test]
+async fn an_expiration_time_that_does_not_parse_is_a_decode_failure_naming_its_field() {
+    for field in ["latest_expiration_time", "expected_expiration_time"] {
+        let mut body = fixture_json("market");
+        body["market"][field] = json!("tomorrow");
+        let err = instrument_of(&body, Outcome::Yes).await.unwrap_err();
+        assert_eq!(err.class, Class::Decode, "{field}");
+        assert!(err.to_string().contains(field), "{field}: {err}");
+    }
+}
+
+#[tokio::test]
 async fn a_dyn_market_data_returns_the_native_quote_of_both_outcomes() {
     let body = fixture("orderbook_depth1");
     let ticker = ticker_of(&fixture_json("market"));
@@ -655,7 +666,7 @@ async fn one_classifier_reads_the_errors_the_traits_return_as_it_reads_the_nativ
         ),
     ];
     for (status, body, retry_after, expected) in cases {
-        let mut server = Server::new_async().await;
+        let mut server = start().await;
         let mut mock = server
             .mock("GET", book_path(&ticker).as_str())
             .match_query(Matcher::Any)
