@@ -52,6 +52,7 @@ tokio-tungstenite = { version = "0.26", features = ["rustls-tls-native-roots"] }
 # alloy, so a crate without them still builds.
 rustls = { version = "0.23", default-features = false, features = ["ring", "std"] }
 ring = "0.17"
+serde-saphyr = "2.0"
 rust_decimal = { version = "1.37", features = ["serde-with-str"] }
 governor = { version = "0.8", features = ["std"] }
 # The hook traits of core's send loop are dyn-compatible through it (AD-8).

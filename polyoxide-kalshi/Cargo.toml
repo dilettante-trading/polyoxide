@@ -50,6 +50,9 @@ url = { workspace = true, optional = true }
 # dev-dependency on publish.
 polyoxide-test-support = { path = "../polyoxide-test-support", features = ["query"] }
 mockito = { workspace = true }
+# Reads the OpenAPI mirror, which Kalshi publishes as YAML only; dev-only, so it is in no
+# normal build and no dependency allowlist.
+serde-saphyr = { workspace = true }
 # `test-util` gives the throttle's tests a paused clock.
 tokio = { workspace = true, features = ["macros", "rt-multi-thread", "time", "test-util"] }
 
@@ -77,6 +80,10 @@ required-features = ["predictions"]
 
 [[test]]
 name = "query_setters_predictions"
+required-features = ["predictions"]
+
+[[test]]
+name = "spec_agreement_predictions"
 required-features = ["predictions"]
 
 # Registration, read by scripts/gen_registry.py; run it with --write after an edit.
