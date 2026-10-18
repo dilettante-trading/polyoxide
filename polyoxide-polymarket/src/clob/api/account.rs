@@ -3,9 +3,10 @@ use std::collections::HashMap;
 use alloy::primitives::Address;
 use std::sync::Arc;
 
-use crate::shared::SessionSignerScope;
+use crate::shared::{SessionSignerScope, Tier};
 use polyoxide_core::reqwest::Method;
 use polyoxide_core::{ApiError, DynAuthenticator, HttpClient, QueryBuilder, Request};
+use rust_decimal::Decimal;
 use serde::{Deserialize, Serialize};
 
 use crate::clob::{
@@ -165,6 +166,19 @@ impl AccountApi {
             }
         }
         Ok(listed)
+    }
+
+    /// `GET /v1/user/rate-limit-tier`: the trading rate limit tier currently
+    /// assigned to the caller's signer.
+    ///
+    /// The tier is the one for the signer address of the API credentials used,
+    /// as of the venue's most recent tier refresh, so a change in volume can
+    /// take up to three hours to appear. Unlike the `Poly-RateLimit-Tier`
+    /// header, it needs no trading request first; it does not change the tier
+    /// [`Clob::tier`](crate::clob::Clob::tier) reports.
+    pub fn rate_limit_tier(&self) -> Request<RateLimitTierResponse, ClobError> {
+        Request::new(self.http_client.clone(), "/v1/user/rate-limit-tier")
+            .authenticator(self.l2.clone())
     }
 }
 
@@ -347,6 +361,62 @@ pub struct SessionSigners {
     pub wallet: Address,
     /// Its active session keys.
     pub signers: Vec<SessionSigner>,
+}
+
+/// `GET /v1/user/rate-limit-tier`.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct RateLimitTierResponse {
+    /// The tier applied to the signer, as the venue names it. See
+    /// [`Self::known_tier`].
+    pub tier: String,
+    /// Trailing-window volume, in USDC, of the maker wallet that set the tier.
+    /// Omitted below the lowest paid tier.
+    #[serde(default, with = "rust_decimal::serde::str_option")]
+    pub usdc_volume: Option<Decimal>,
+    /// The volume needed for the next tier. Omitted at the top tier and for
+    /// manually assigned tiers.
+    #[serde(default)]
+    pub next_tier_threshold: Option<u64>,
+    /// Length of the volume window, in days.
+    pub period: u32,
+    /// The tier's rates, bursts and negative-balance setting.
+    pub tier_details: RateLimitTierDetails,
+}
+
+impl RateLimitTierResponse {
+    /// The tier as one of the ones this client models, or `None` for a name it
+    /// does not know (a manually assigned tier, or one upstream added), rather
+    /// than guessing its buckets.
+    pub fn known_tier(&self) -> Option<Tier> {
+        Tier::from_header(&self.tier)
+    }
+}
+
+/// The settings of a rate limit tier. The schema marks none of them required,
+/// so each is optional here.
+#[derive(Debug, Clone, PartialEq, Eq, Default, Serialize, Deserialize)]
+pub struct RateLimitTierDetails {
+    /// Tier name.
+    #[serde(default)]
+    pub name: Option<String>,
+    /// 30-day volume required for the tier.
+    #[serde(default)]
+    pub volume_threshold: Option<u64>,
+    /// Order bucket refill rate, in tokens per second.
+    #[serde(default)]
+    pub order_rate_per_sec: Option<u32>,
+    /// Order bucket burst capacity, in tokens.
+    #[serde(default)]
+    pub order_burst: Option<u32>,
+    /// Cancel bucket refill rate, in tokens per second.
+    #[serde(default)]
+    pub cancel_rate_per_sec: Option<u32>,
+    /// Cancel bucket burst capacity, in tokens.
+    #[serde(default)]
+    pub cancel_burst: Option<u32>,
+    /// Whether the cancel bucket can carry a negative balance.
+    #[serde(default)]
+    pub allow_negative: Option<bool>,
 }
 
 #[cfg(test)]

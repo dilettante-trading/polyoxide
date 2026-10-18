@@ -683,6 +683,31 @@ async fn live_usdc_balance() {
     assert!(balance >= 0.0, "balance {balance} should be non-negative");
 }
 
+/// `GET /v1/user/rate-limit-tier` decodes, and names a tier the client models.
+///
+/// The route is unprobed (it joined the published spec on 2026-10-18, after the last
+/// credentialed run), so this is also its first check that the host's body matches
+/// the schema's.
+#[tokio::test]
+#[ignore]
+async fn live_rate_limit_tier() {
+    let client = authenticated_client();
+    let resp = client
+        .account_api()
+        .or_fail("account_api")
+        .rate_limit_tier()
+        .send()
+        .await
+        .or_fail("rate_limit_tier should deserialize");
+
+    assert!(
+        resp.known_tier().is_some(),
+        "tier {:?} is not one the client models",
+        resp.tier
+    );
+    assert!(resp.period > 0, "period {} should be positive", resp.period);
+}
+
 #[tokio::test]
 #[ignore]
 async fn live_balance_allowance() {

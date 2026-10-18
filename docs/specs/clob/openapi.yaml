@@ -4709,6 +4709,60 @@ paths:
                 $ref: '#/components/schemas/ErrorResponse'
               example:
                 error: could not fetch builder trades
+  /v1/user/rate-limit-tier:
+    get:
+      summary: Get rate limit tier
+      description: |
+        Returns the [trading rate limit tier](/api-reference/trading-rate-limits) currently assigned to your signer.
+        The tier returned is the one for the signer address of the API credentials used.
+
+        The response reflects the most recent tier refresh, so a change in volume can
+        take up to three hours to appear.
+      operationId: getRateLimitTier
+      tags:
+        - Account
+      security:
+        - polyApiKey: []
+          polyAddress: []
+          polySignature: []
+          polyPassphrase: []
+          polyTimestamp: []
+      responses:
+        '200':
+          description: Successfully retrieved rate limit tier
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/RateLimitTierResponse'
+              example:
+                tier: gold
+                usdc_volume: '612345.67'
+                next_tier_threshold: 2500000
+                period: 30
+                tier_details:
+                  name: gold
+                  volume_threshold: 500000
+                  cancel_rate_per_sec: 800
+                  order_rate_per_sec: 400
+                  order_burst: 600
+                  cancel_burst: 1200
+                  allow_negative: true
+        '401':
+          description: Unauthorized - Missing or invalid L2 credentials
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+              example:
+                error: Unauthorized/Invalid api key
+        '503':
+          description: Service unavailable - Rate limit tiers could not be loaded
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+              example:
+                error: rate limit tiers unavailable
 components:
   securitySchemes:
     polyApiKey:
@@ -6563,3 +6617,61 @@ components:
           type: string
           description: Rebated fee amount in USDC
           example: '0.237519'
+    RateLimitTierResponse:
+      type: object
+      description: Trading rate limit tier currently applied to the signer
+      required:
+        - tier
+        - period
+        - tier_details
+      properties:
+        tier:
+          type: string
+          description: Tier currently applied to your signer
+          example: gold
+        usdc_volume:
+          type: string
+          description: Trailing-window volume, in USDC, of the maker wallet that set your tier. Omitted below the lowest paid tier
+          example: '612345.67'
+        next_tier_threshold:
+          type: integer
+          description: 30-day volume needed for the next tier. Omitted at the top tier and for manually assigned tiers
+          example: 2500000
+        period:
+          type: integer
+          description: Length of the volume window, in days
+          example: 30
+        tier_details:
+          $ref: '#/components/schemas/RateLimitTierDetails'
+    RateLimitTierDetails:
+      type: object
+      description: Rate, burst and negative-balance settings for the tier
+      properties:
+        name:
+          type: string
+          description: Tier name
+          example: gold
+        volume_threshold:
+          type: integer
+          description: 30-day volume required for the tier
+          example: 500000
+        cancel_rate_per_sec:
+          type: integer
+          description: Cancel bucket refill rate, in tokens per second
+          example: 800
+        order_rate_per_sec:
+          type: integer
+          description: Order bucket refill rate, in tokens per second
+          example: 400
+        order_burst:
+          type: integer
+          description: Order bucket burst capacity, in tokens
+          example: 600
+        cancel_burst:
+          type: integer
+          description: Cancel bucket burst capacity, in tokens
+          example: 1200
+        allow_negative:
+          type: boolean
+          description: Whether the cancel bucket can carry a negative balance
+          example: true

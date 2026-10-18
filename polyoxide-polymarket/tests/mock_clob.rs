@@ -3969,6 +3969,134 @@ async fn list_session_signers_rejects_a_wallet_that_is_not_the_target() {
     assert!(err.contains(&DEPOSIT_WALLET.to_string()), "{err}");
 }
 
+/// The example `GET /v1/user/rate-limit-tier` documents in `docs/specs/clob/openapi.yaml`.
+const RATE_LIMIT_TIER_BODY: &str = r#"{
+  "tier": "gold",
+  "usdc_volume": "612345.67",
+  "next_tier_threshold": 2500000,
+  "period": 30,
+  "tier_details": {
+    "name": "gold",
+    "volume_threshold": 500000,
+    "cancel_rate_per_sec": 800,
+    "order_rate_per_sec": 400,
+    "order_burst": 600,
+    "cancel_burst": 1200,
+    "allow_negative": true
+  }
+}"#;
+
+#[tokio::test]
+async fn rate_limit_tier_reads_the_documented_example_with_l2_headers() {
+    let mut server = Server::new_async().await;
+    let mock = server
+        .mock("GET", "/v1/user/rate-limit-tier")
+        .match_header("POLY_API_KEY", "test-key")
+        .match_header("POLY_PASSPHRASE", "test-pass")
+        .match_header("POLY_SIGNATURE", Matcher::Any)
+        .match_header("POLY_TIMESTAMP", Matcher::Any)
+        .with_status(200)
+        .with_header("content-type", "application/json")
+        .with_body(RATE_LIMIT_TIER_BODY)
+        .create_async()
+        .await;
+
+    let clob = test_authed_clob(&server);
+    let resp = clob
+        .account_api()
+        .unwrap()
+        .rate_limit_tier()
+        .send()
+        .await
+        .unwrap();
+
+    assert_eq!(resp.tier, "gold");
+    assert_eq!(
+        resp.usdc_volume,
+        Some(rust_decimal::Decimal::new(61_234_567, 2))
+    );
+    assert_eq!(resp.next_tier_threshold, Some(2_500_000));
+    assert_eq!(resp.period, 30);
+    let details = &resp.tier_details;
+    assert_eq!(details.name.as_deref(), Some("gold"));
+    assert_eq!(details.volume_threshold, Some(500_000));
+    assert_eq!(details.order_rate_per_sec, Some(400));
+    assert_eq!(details.order_burst, Some(600));
+    assert_eq!(details.cancel_rate_per_sec, Some(800));
+    assert_eq!(details.cancel_burst, Some(1_200));
+    assert_eq!(details.allow_negative, Some(true));
+    // The documented figures are the ones the client's own table holds for Gold.
+    assert_eq!(
+        resp.known_tier(),
+        Some(polyoxide_polymarket::shared::Tier::Gold)
+    );
+    mock.assert_async().await;
+}
+
+#[tokio::test]
+async fn rate_limit_tier_decodes_what_the_schema_lets_the_venue_omit() {
+    // The top tier omits `next_tier_threshold`, one below the lowest paid tier omits
+    // `usdc_volume`, and the schema requires only `tier`, `period` and `tier_details`.
+    let mut server = Server::new_async().await;
+    let _mock = server
+        .mock("GET", "/v1/user/rate-limit-tier")
+        .with_status(200)
+        .with_header("content-type", "application/json")
+        .with_body(r#"{"tier": "negotiated", "period": 30, "tier_details": {}}"#)
+        .create_async()
+        .await;
+
+    let clob = test_authed_clob(&server);
+    let resp = clob
+        .account_api()
+        .unwrap()
+        .rate_limit_tier()
+        .send()
+        .await
+        .unwrap();
+
+    assert_eq!(resp.usdc_volume, None);
+    assert_eq!(resp.next_tier_threshold, None);
+    assert_eq!(resp.tier_details, Default::default());
+    // A name the client does not model is not guessed at.
+    assert_eq!(resp.known_tier(), None);
+}
+
+#[tokio::test]
+async fn rate_limit_tier_503_is_unavailable_and_not_retried() {
+    let mut server = Server::new_async().await;
+    let mock = server
+        .mock("GET", "/v1/user/rate-limit-tier")
+        .with_status(503)
+        .with_header("content-type", "application/json")
+        .with_body(r#"{"error": "rate limit tiers unavailable"}"#)
+        .expect(1)
+        .create_async()
+        .await;
+
+    let clob = test_authed_clob(&server);
+    let err = clob
+        .account_api()
+        .unwrap()
+        .rate_limit_tier()
+        .send()
+        .await
+        .unwrap_err();
+
+    assert!(
+        matches!(err.class(), polyoxide_venue::Class::Unavailable { .. }),
+        "{:?}",
+        err.class()
+    );
+    match err {
+        ClobError::Api(polyoxide_core::ApiError::Response(r)) if r.status.as_u16() == 503 => {
+            assert_eq!(r.message, "rate limit tiers unavailable");
+        }
+        other => panic!("Expected a 503, got: {:?}", other),
+    }
+    mock.assert_async().await;
+}
+
 #[tokio::test]
 async fn balance_allowance_defaults_to_the_targets_signature_type() {
     let mut server = Server::new_async().await;
