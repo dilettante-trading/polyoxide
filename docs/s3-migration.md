@@ -105,5 +105,6 @@ Where this epic departs from its acceptance criteria:
 - The Kalshi trading mapping stays a planning document,
   `_bmad-output/specs/spec-venue-extensibility/kalshi-trading-mapping.md`, until Story 8.1
   registers Kalshi's mirror.
-- Every events stream begins with `Resync`, and a fill the venue voids yields `Resync`, where the
-  architecture asked for one only after a reconnect (amendment A7-2).
+- Every events stream begins with `Resync`, unless the stream cannot open, when its only item is
+  that error, and a fill the venue voids yields `Resync`, where the architecture asked for one
+  only after a reconnect (amendment A7-2).
