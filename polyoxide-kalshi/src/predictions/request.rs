@@ -5,7 +5,7 @@ use std::fmt::Write as _;
 use std::marker::PhantomData;
 use std::sync::Arc;
 
-use polyoxide_core::{Cost, LayerId, QueryBuilder, Request};
+use polyoxide_core::{ApiError, Cost, LayerId, QueryBuilder, Request};
 use serde::de::DeserializeOwned;
 
 use crate::predictions::{error::PredictionsError, Inner};
@@ -41,8 +41,11 @@ impl Route {
     /// The route's path with each `:name` segment replaced by the next of `params`, in order.
     ///
     /// A parameter is percent-encoded, every byte but an ASCII letter, a digit and `-._~`, so a
-    /// caller's text can never add a segment or start a query. A `:name` segment with no parameter
-    /// is left as it is, and a parameter with no segment is ignored.
+    /// caller's text can never add a segment or start a query. It can still change the route when
+    /// it is empty, `.` or `..`: the `url` crate resolves a dot segment, and a percent-encoded one
+    /// too, so such a parameter is refused by [`Routed::new`] before anything is sent, and this
+    /// function does not check it. A `:name` segment with no parameter is left as it is, and a
+    /// parameter with no segment is ignored.
     pub(crate) fn path(&self, params: &[&str]) -> String {
         let mut params = params.iter();
         let segments: Vec<String> = self
@@ -143,17 +146,32 @@ pub(crate) struct Routed<T> {
     route: Route,
     path: String,
     query: Vec<(&'static str, String)>,
+    /// Why the request is refused before it is sent, when a route parameter would change the
+    /// route.
+    refused: Option<String>,
     _marker: PhantomData<fn() -> T>,
 }
 
 impl<T> Routed<T> {
     /// A request for `route`, its `:name` segments filled from `params` in order.
+    ///
+    /// A parameter that is empty, `.` or `..` would change the route, since the `url` crate
+    /// resolves dot segments and the signed path would then differ from the sent one. The request
+    /// records the refusal, and [`Routed::send`] returns it as an `ApiError::Validation` before it
+    /// charges or sends anything.
     pub(crate) fn new(inner: &Arc<Inner>, route: Route, params: &[&str]) -> Self {
+        let refused = params
+            .iter()
+            .find(|param| matches!(**param, "" | "." | ".."))
+            .map(|param| {
+                format!("a route parameter of {param:?} would change the route and is not sent")
+            });
         Self {
             inner: Arc::clone(inner),
             route,
             path: route.path(params),
             query: Vec::new(),
+            refused,
             _marker: PhantomData,
         }
     }
@@ -186,10 +204,15 @@ impl<T> Routed<T> {
 impl<T: DeserializeOwned> Routed<T> {
     /// Sends on the client's send loop, which waits for the Read bucket, and decodes the response.
     ///
-    /// The steps, in order: wait for the client's `before_send`; build core's request with the
+    /// A route parameter that `new` refused is returned first, as `ApiError::Validation`, before
+    /// `before_send`, any token and any request. The steps after it, in order: wait for the
+    /// client's `before_send`; build core's request with the
     /// route's cost, read now, after any confirmation has replaced it; add the client's
     /// authenticator when it has one, and the query pairs; send.
     pub(crate) async fn send(self) -> Result<T, PredictionsError> {
+        if let Some(reason) = self.refused {
+            return Err(PredictionsError::Api(ApiError::Validation(reason)));
+        }
         self.inner.before_send().await;
         let cost = self.inner.read_cost(&self.route);
         let mut request =
@@ -337,6 +360,7 @@ mod routed_tests {
     use polyoxide_core::reqwest::header::{HeaderName, HeaderValue};
     use polyoxide_core::{ApiError, Authenticator, DynAuthenticator, RequestParts};
     use polyoxide_test_support::query::{headers_sent, pairs_sent};
+    use polyoxide_venue::{Class, Classify};
     use serde_json::Value;
 
     use super::*;
@@ -481,5 +505,36 @@ mod routed_tests {
             "{err:?}"
         );
         mock.assert_async().await;
+    }
+
+    #[tokio::test]
+    async fn a_parameter_that_would_change_the_route_is_refused_before_anything_is_sent() {
+        for param in ["", ".", ".."] {
+            let mut server = Server::new_async().await;
+            let mock = server
+                .mock("GET", Matcher::Any)
+                .match_query(Matcher::Any)
+                .expect(0)
+                .create_async()
+                .await;
+            let kalshi = Predictions::builder()
+                .base_url(server.url())
+                .build()
+                .unwrap();
+            // A bucket that cannot hold the read would refuse it with `Refused`, so a
+            // `Validation` error shows the parameter was refused first.
+            kalshi.inner.throttle.bucket().resize(5, 1);
+
+            let err = Routed::<Value>::new(&kalshi.inner, routes::EVENT, &[param])
+                .send()
+                .await
+                .unwrap_err();
+            assert!(
+                matches!(&err, PredictionsError::Api(ApiError::Validation(_))),
+                "{param:?}: {err:?}"
+            );
+            assert_eq!(err.class(), Class::InvalidRequest, "{param:?}");
+            mock.assert_async().await;
+        }
     }
 }
