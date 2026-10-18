@@ -14,7 +14,7 @@ More information about this module can be found in the [crate documentation](htt
 
 ```toml
 [dependencies]
-polyoxide-polymarket = { version = "0.40", default-features = false, features = ["relay"] }
+polyoxide-polymarket = { version = "0.41", default-features = false, features = ["relay"] }
 ```
 
 Or use the `polyoxide` umbrella with its `polymarket-relay` feature, which is off by default, at `polyoxide::polymarket::relay`.
