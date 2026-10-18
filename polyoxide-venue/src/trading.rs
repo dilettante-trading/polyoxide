@@ -44,7 +44,8 @@ use crate::{
 /// loses no acknowledgement or fill. The venue replays nothing: what happened
 /// while the connection that carries fills was down is not sent again.
 ///
-/// The stream's first item is [`TradingEvent::Resync`], yielded once the
+/// The stream's first item is [`TradingEvent::Resync`], unless the stream
+/// cannot open, when its only item is that error. It is yielded once the
 /// connection's first attempt to connect has ended, whether it went live or
 /// began in an outage, so a fill between `events()` returning and the first
 /// subscription is covered by a reconciliation. `Resync` comes again after
@@ -109,7 +110,8 @@ pub trait Trading: Send + Sync {
 /// would lose the `'static` through the dyn wrapper, so the stream is this
 /// named type.)
 ///
-/// Its first item is [`TradingEvent::Resync`]. The venue replays nothing: after
+/// Its first item is [`TradingEvent::Resync`], unless the stream cannot open,
+/// when its only item is that error. The venue replays nothing: after
 /// every reconnect of the connection that carries fills, and when the venue
 /// voids a fill it reported (a trade that failed after it matched, which the
 /// stream has no event to take back), the stream yields `Resync` before any

@@ -154,7 +154,7 @@ pub trait Protocol: Send + Sized + 'static {
     /// A protocol that dials its venue a step at a time, such as a venue that
     /// tries each resolved address in turn, overrides it: it bounds each step
     /// by `timeout` itself, upgrades with [`connect_over`](crate::connect_over),
-    /// and keeps `handshake` for the request it upgrades with. An error is a
+    /// and may keep `handshake` for the request it upgrades with. An error is a
     /// failed attempt, which [`recover`](Self::recover) decides on.
     fn connect(
         &mut self,

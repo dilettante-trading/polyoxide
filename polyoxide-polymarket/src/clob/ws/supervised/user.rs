@@ -202,6 +202,9 @@ impl Protocol for ClobUserProtocol {
     type Change = UserChange;
     type Ack = ();
 
+    /// The upgrade request for the URL. The supervisor does not send it:
+    /// `connect` is overridden, and the per-address dial upgrades each
+    /// address's connection from the URL itself. The trait requires it.
     fn handshake(&mut self) -> Result<Request, ClobWsError> {
         self.url
             .as_str()
