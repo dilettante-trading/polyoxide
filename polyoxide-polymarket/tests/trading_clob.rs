@@ -468,6 +468,29 @@ async fn an_order_cancelled_before_the_stream_is_polled_still_acks_with_its_clie
 }
 
 #[tokio::test]
+async fn a_timestamp_in_seconds_and_the_same_instant_in_milliseconds_read_alike() {
+    let server = Server::new_async().await;
+    let seconds = order_frame("0xo1", "PLACEMENT", "0", "1792000000");
+    let millis = order_frame("0xo2", "PLACEMENT", "0", "1792000000000");
+    let ws = user_socket(vec![
+        Script::frames(&[seconds.as_str(), millis.as_str()]).after_first_frame()
+    ])
+    .await;
+    let mut events = client_on(&server, &ws).events();
+
+    assert_eq!(next_item(&mut events).await.unwrap(), TradingEvent::Resync);
+    let TradingEvent::Ack(in_seconds) = next_item(&mut events).await.unwrap() else {
+        panic!("expected the first ack");
+    };
+    let TradingEvent::Ack(in_millis) = next_item(&mut events).await.unwrap() else {
+        panic!("expected the second ack");
+    };
+
+    assert_eq!(in_seconds.created, Some(UnixMillis(1_792_000_000_000)));
+    assert_eq!(in_millis.created, in_seconds.created);
+}
+
+#[tokio::test]
 async fn a_taker_fill_and_two_maker_fills_name_the_orders_of_the_account() {
     let server = Server::new_async().await;
     // The account took, and no maker entry is its own.

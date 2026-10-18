@@ -12,7 +12,9 @@
 //!
 //! - an order message is an ack, with the client order id the ledger holds
 //!   (an ack of an order that ended frees the id for reuse but leaves the ledger
-//!   holding it, so later acks and fills still carry it);
+//!   holding it, so later acks and fills still carry it); its `created`, like a
+//!   fill's `time`, is the message's `timestamp`, read as seconds below 10^11
+//!   and as milliseconds otherwise;
 //! - a `MATCHED` trade is one fill per order of the account's in it, the
 //!   taker's first (the trade's `owner` is the account's API key and no maker
 //!   entry is the account's, so a self-trade yields only its maker fills) and
@@ -204,7 +206,7 @@ fn ack(message: &OrderMessage, ids: &Mutex<ClientIds>) -> Result<Order, Classifi
     };
     // Only a placement's time is the order's creation.
     let created = match message.order_type {
-        OrderEventType::Placement => Some(millis(&message.timestamp)?),
+        OrderEventType::Placement => Some(timestamp(&message.timestamp)?),
         OrderEventType::Update | OrderEventType::Cancellation => None,
     };
     let id = OrderId::new(message.id.as_str());
@@ -248,7 +250,7 @@ fn fills(
     ids: &Mutex<ClientIds>,
 ) -> Result<Vec<Fill>, ClassifiedError> {
     let side = side_text(&trade.side)?;
-    let time = millis(&trade.timestamp)?;
+    let time = timestamp(&trade.timestamp)?;
     let mut out = Vec::new();
     let a_maker = trade
         .maker_orders
@@ -334,11 +336,23 @@ fn opposite(side: Side) -> Side {
     }
 }
 
-/// A time the CLOB sent as text, in milliseconds.
-fn millis(text: &str) -> Result<UnixMillis, ClassifiedError> {
-    text.parse()
-        .map(UnixMillis)
-        .map_err(|_| decode("a timestamp that is not a number of milliseconds"))
+/// The first value read as milliseconds, not seconds: 10^11 seconds is the
+/// year 5138, and 10^11 milliseconds is March 1973.
+const MILLIS_FROM: u64 = 100_000_000_000;
+
+/// A time the user channel sent as text (D23). The mirror's schema calls it
+/// milliseconds, but each of its examples is a 10-digit seconds value, and no
+/// frame has been captured to settle it. So a value below 10^11 is read as
+/// seconds and any other as milliseconds.
+fn timestamp(text: &str) -> Result<UnixMillis, ClassifiedError> {
+    let value: u64 = text
+        .parse()
+        .map_err(|_| decode("a timestamp that is not a number of seconds or milliseconds"))?;
+    Ok(UnixMillis(if value < MILLIS_FROM {
+        value * 1_000
+    } else {
+        value
+    }))
 }
 
 #[cfg(test)]
@@ -613,6 +627,38 @@ mod tests {
             fill_of(&out[0]).client_order_id,
             Some(ClientOrderId::new("mine"))
         );
+    }
+
+    #[test]
+    fn a_timestamp_is_read_in_seconds_below_1e11_and_in_milliseconds_otherwise() {
+        let instant = UnixMillis(1_792_000_000_000);
+
+        assert_eq!(timestamp("1792000000").unwrap(), instant);
+        assert_eq!(timestamp("1792000000000").unwrap(), instant);
+        assert_eq!(
+            timestamp("99999999999").unwrap(),
+            UnixMillis(99_999_999_999_000)
+        );
+        assert_eq!(
+            timestamp("100000000000").unwrap(),
+            UnixMillis(100_000_000_000)
+        );
+        assert_eq!(timestamp("0").unwrap(), UnixMillis(0));
+        assert_eq!(timestamp("soon").unwrap_err().class, Class::Decode);
+        assert_eq!(timestamp("-1").unwrap_err().class, Class::Decode);
+    }
+
+    #[test]
+    fn a_fill_is_timed_by_the_trades_timestamp_in_either_unit() {
+        let mut in_seconds = trade("MATCHED", KEY, vec![]);
+        in_seconds.timestamp = "1792000000".to_owned();
+        let in_millis = trade("MATCHED", KEY, vec![]);
+
+        let seconds = run(&in_seconds, &ids());
+        let millis = run(&in_millis, &ids());
+
+        assert_eq!(fill_of(&seconds[0]).time, UnixMillis(1_792_000_000_000));
+        assert_eq!(fill_of(&millis[0]).time, UnixMillis(1_792_000_000_123));
     }
 
     #[test]

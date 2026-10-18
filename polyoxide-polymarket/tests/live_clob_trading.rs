@@ -11,7 +11,7 @@
 
 use std::panic::AssertUnwindSafe;
 use std::sync::Arc;
-use std::time::Duration;
+use std::time::{Duration, SystemTime, UNIX_EPOCH};
 
 use futures_util::{FutureExt, StreamExt};
 use polyoxide_polymarket::clob::{
@@ -25,8 +25,8 @@ use polyoxide_test_support::{
     environmental, fail, fail_classified, load_env, transient, ClassifiedResultExt, ResultExt,
 };
 use polyoxide_venue::{
-    Class, DynTrading, MarketKey, Order, OrderId, OrderRequest, OrderStatus, Side, TimeInForce,
-    Trading, TradingEvent, TradingEvents,
+    Class, ClientOrderId, DynTrading, MarketKey, Order, OrderId, OrderRequest, OrderStatus, Side,
+    TimeInForce, Trading, TradingEvent, TradingEvents, UnixMillis,
 };
 use rust_decimal::Decimal;
 
@@ -40,6 +40,26 @@ const ACK_WITHIN: Duration = Duration::from_secs(30);
 /// How many gamma-listed candidates are confirmed against the CLOB book
 /// before giving up. Each confirmation is one `/book` request.
 const MAX_BOOK_PROBES: usize = 10;
+
+/// How far an order's `created`, from the user channel or from the open
+/// orders, may lie from the test's clock: the user channel's `timestamp` is read
+/// in either unit by magnitude (D23), and this bound catches a misread unit by
+/// orders of magnitude.
+const CREATED_WITHIN: Duration = Duration::from_secs(5 * 60);
+
+/// The test's clock.
+fn now() -> UnixMillis {
+    let elapsed = SystemTime::now().duration_since(UNIX_EPOCH);
+    UnixMillis(elapsed.map_or(0, |since| {
+        u64::try_from(since.as_millis()).unwrap_or(u64::MAX)
+    }))
+}
+
+/// Whether `created` is a time within [`CREATED_WITHIN`] of `reference`.
+fn within_of(created: Option<UnixMillis>, reference: UnixMillis) -> bool {
+    created
+        .is_some_and(|time| u128::from(time.0.abs_diff(reference.0)) <= CREATED_WITHIN.as_millis())
+}
 
 /// The price the test's bid rests at: a valid multiple on every tick the CLOB
 /// lists, and at the bottom of any book whose best ask is above it.
@@ -326,6 +346,11 @@ async fn live_trading_places_acks_and_cancels_a_resting_post_only_bid() {
     // fails loudly instead of spending money.
     request.post_only = true;
     request.time_in_force = TimeInForce::GoodTilCancelled;
+    // Unique per run, so a bid left by an earlier run cannot be mistaken for
+    // this one's. The ledger gives the acks this id, so the Open ack checks the
+    // order id the client computed against the venue's.
+    let client_id = ClientOrderId::new(format!("polyoxide-live-{}", now().0));
+    request.client_order_id = Some(client_id.clone());
     let order = match trading.place(request).await {
         Ok(order) => order,
         Err(placement_error) => {
@@ -357,15 +382,32 @@ async fn live_trading_places_acks_and_cancels_a_resting_post_only_bid() {
             .open_orders(Some(&key))
             .await
             .or_fail("read the open orders of the token");
+        let listed = resting.iter().find(|open| open.id == order.id);
         assert!(
-            resting.iter().any(|open| open.id == order.id),
+            listed.is_some(),
             "order {} is not among the open orders {resting:?}",
             order.id
         );
-        next_ack(&mut events, &order.id, |status| {
+        let opened = next_ack(&mut events, &order.id, |status| {
             matches!(status, OrderStatus::Open)
         })
         .await;
+        assert_eq!(
+            opened.client_order_id,
+            Some(client_id.clone()),
+            "the Open ack lost the client order id: {opened:?}"
+        );
+        // The ack's `created` is the user channel's `timestamp` (D23).
+        assert!(
+            within_of(opened.created, now()),
+            "the Open ack's created is not within 5 minutes of now: {opened:?}"
+        );
+        assert!(
+            listed
+                .is_some_and(|row| within_of(opened.created, row.created.unwrap_or(UnixMillis(0)))),
+            "the Open ack's created is not within 5 minutes of the open order's: \
+             {opened:?} against {listed:?}"
+        );
     })
     .catch_unwind()
     .await;
@@ -387,8 +429,14 @@ async fn live_trading_places_acks_and_cancels_a_resting_post_only_bid() {
     }
     cancelled.or_fail("cancel the resting bid");
 
-    next_ack(&mut events, &order.id, |status| {
+    let closed = next_ack(&mut events, &order.id, |status| {
         matches!(status, OrderStatus::Cancelled)
     })
     .await;
+    // The ledger keeps the client id after the cancellation (D21).
+    assert_eq!(
+        closed.client_order_id,
+        Some(client_id),
+        "the Cancelled ack lost the client order id: {closed:?}"
+    );
 }
