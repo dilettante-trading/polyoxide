@@ -235,6 +235,17 @@ def umbrella_enables(features: dict, feature: str) -> set[str]:
     return found
 
 
+def umbrella_missing(umbrella: dict, modules: list[tuple[str, str]],
+                     enabled: set[str]) -> list[str]:
+    """The `<crate>/<product>` of each module whose crate the umbrella depends on and whose
+    feature its `full` (`enabled`) does not turn on. A venue crate the umbrella does not depend
+    on is outside it: an unpublished crate, which a published umbrella cannot name, is pinned
+    under `full` too, but has no umbrella feature to turn on."""
+    built = {dep["name"] for dep in umbrella["dependencies"] if dep["kind"] is None}
+    return [f"{crate}/{product}" for crate, product in modules
+            if crate in built and f"{crate}/{product}" not in enabled]
+
+
 def test_the_features_job_runs_each_header_pin_in_its_minimal_build() -> None:
     """One `-p` per command, so no module's features are unified with another's;
     the workspace build runs the same files, against the same literal (AD-18).
@@ -261,8 +272,9 @@ def test_the_features_job_runs_each_header_pin_in_its_minimal_build() -> None:
 def test_the_features_job_runs_each_header_pin_under_the_umbrellas_full() -> None:
     """The third build of each pin (AD-18): the umbrella's `full` with the module's
     crate, so a header one venue's module adds through the umbrella fails another's
-    literal. The modules are the minimal step's, and `full` must turn each one on, or
-    its pin would run without the module the build is meant to unify."""
+    literal. The modules are the minimal step's, and `full` must turn on each one of a crate
+    the umbrella depends on, or its pin would run without the module the build is meant to
+    unify. A venue crate outside the umbrella (`publish = false`) is pinned under `full` too."""
     metadata = _load_publish_order().cargo_metadata(REPO / "Cargo.toml")
     modules = http_modules(metadata)
     assert len(modules) >= 6, f"too few HTTP modules found, so the check is vacuous: {modules}"
@@ -278,9 +290,8 @@ def test_the_features_job_runs_each_header_pin_under_the_umbrellas_full() -> Non
     assert sorted(commands) == sorted(full_pin(packages[crate], product)
                                       for crate, product in modules)
     enabled = umbrella_enables(packages[UMBRELLA]["features"], "full")
-    for crate, product in modules:
-        assert f"{crate}/{product}" in enabled, (
-            f"the umbrella's full does not turn on {crate}/{product}")
+    missing = umbrella_missing(packages[UMBRELLA], modules, enabled)
+    assert not missing, f"the umbrella's full does not turn on {missing}"
     steps = [s.get("name") for s in _steps("features")]
     assert steps.index(FULL_PINS) == steps.index(MINIMAL_PINS) + 1, steps
 
@@ -302,6 +313,23 @@ def test_umbrella_enables_follows_its_own_features() -> None:
     assert umbrella_enables(features, "full") == {
         "polyoxide-a/ws", "polyoxide-a/a", "polyoxide-a/keychain"}
     assert umbrella_enables(features, "b") == {"polyoxide-b/b"}
+
+
+def test_a_venue_crate_outside_the_umbrella_needs_no_umbrella_feature() -> None:
+    """The umbrella is published, so it cannot depend on an unpublished venue crate. Such a
+    crate's pin still runs under `full`, but `full` has no feature of the crate's to turn on."""
+    umbrella = {"dependencies": [
+        {"name": "polyoxide-polymarket", "kind": None},
+        # A dev-dependency is not built into `full`.
+        {"name": "polyoxide-kalshi", "kind": "dev"}]}
+    modules = [("polyoxide-kalshi", "predictions"), ("polyoxide-polymarket", "gamma")]
+    # Outside the umbrella: nothing to turn on.
+    assert umbrella_missing(umbrella, modules, {"polyoxide-polymarket/gamma"}) == []
+    # Inside it, the module's feature is still required.
+    assert umbrella_missing(umbrella, modules, set()) == ["polyoxide-polymarket/gamma"]
+    # A crate the umbrella builds is checked whatever its name.
+    built = {"dependencies": [{"name": "polyoxide-kalshi", "kind": None}]}
+    assert umbrella_missing(built, modules, set()) == ["polyoxide-kalshi/predictions"]
 
 
 def test_the_features_job_checks_each_module_with_specta() -> None:
