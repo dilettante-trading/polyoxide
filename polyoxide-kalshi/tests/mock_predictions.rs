@@ -264,3 +264,42 @@ async fn a_503_is_not_retried() {
     assert!(matches!(err, PredictionsError::Venue(_)), "{err:?}");
     mock.assert_async().await;
 }
+
+#[tokio::test]
+async fn a_429_is_retried_and_the_next_answer_is_returned() {
+    // Core's default policy retries a 429 (D6), which Kalshi's client installs unchanged.
+    let mut server = Server::new_async().await;
+    let limited = server
+        .mock("GET", STATUS)
+        .with_status(429)
+        .with_body(TOO_MANY)
+        .expect(1)
+        .create_async()
+        .await;
+    let answered = server
+        .mock("GET", STATUS)
+        .with_status(200)
+        .with_body(STATUS_BODY)
+        .expect(1)
+        .create_async()
+        .await;
+
+    // A short backoff, so the retry does not wait out the default half second.
+    let status = Predictions::builder()
+        .base_url(server.url())
+        .with_retry_config(RetryConfig {
+            max_retries: 1,
+            initial_backoff_ms: 1,
+            max_backoff_ms: 5,
+        })
+        .build()
+        .unwrap()
+        .exchange()
+        .status()
+        .send()
+        .await
+        .unwrap();
+    assert!(status.exchange_active);
+    limited.assert_async().await;
+    answered.assert_async().await;
+}
