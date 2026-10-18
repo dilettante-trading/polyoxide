@@ -211,7 +211,7 @@ impl<T: DeserializeOwned> Routed<T> {
     /// authenticator when it has one, and the query pairs; send.
     pub(crate) async fn send(self) -> Result<T, PredictionsError> {
         if let Some(reason) = self.refused {
-            return Err(PredictionsError::Api(ApiError::Validation(reason)));
+            return Err(ApiError::Validation(reason).into());
         }
         self.inner.before_send().await;
         let cost = self.inner.read_cost(&self.route);
