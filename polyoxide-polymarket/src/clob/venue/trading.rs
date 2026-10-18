@@ -204,9 +204,11 @@ impl ClientIds {
     }
 
     /// Moves an entry to the id the CLOB gave the order, keeping its age. The
-    /// guard moves with it while it names the order.
+    /// guard moves with it while it names the order. An entry already held
+    /// under `to` is dropped first, with its age and its guard.
     pub(crate) fn rekey(&mut self, from: &OrderId, to: OrderId) {
         if let Some((client, age)) = self.by_order.remove(from) {
+            self.remove(&to);
             self.by_age.insert(age, to.clone());
             if self.by_client.get(&client) == Some(from) {
                 self.by_client.insert(client.clone(), to.clone());
@@ -1148,6 +1150,65 @@ mod place_tests {
         ids.remove(&order(9));
         assert_eq!(ids.holder(&client(1)), None);
         assert!(ids.by_age.is_empty());
+    }
+
+    #[test]
+    fn rekeying_an_order_leaves_a_guard_that_names_a_newer_order() {
+        let mut ids = ClientIds::default();
+        ids.claim(order(1), client(1)).unwrap();
+        ids.release(&order(1));
+        // A newer order takes the freed client id.
+        ids.claim(order(2), client(1)).unwrap();
+        ids.rekey(&order(1), order(9));
+
+        assert_eq!(ids.holder(&client(1)), Some(order(2)));
+        assert_eq!(ids.client_of(&order(9)), Some(client(1)));
+    }
+
+    #[test]
+    fn removing_a_rekeyed_order_leaves_a_guard_that_names_a_newer_order() {
+        let mut ids = ClientIds::default();
+        ids.claim(order(1), client(1)).unwrap();
+        ids.release(&order(1));
+        ids.claim(order(2), client(1)).unwrap();
+        ids.rekey(&order(1), order(9));
+        ids.remove(&order(9));
+
+        assert_eq!(ids.client_of(&order(9)), None);
+        assert_eq!(ids.holder(&client(1)), Some(order(2)));
+    }
+
+    #[test]
+    fn rekeying_onto_a_held_id_replaces_that_entry_and_its_guard() {
+        let mut ids = ClientIds::default();
+        ids.claim(order(0), client(0)).unwrap();
+        ids.claim(order(2), client(2)).unwrap();
+        ids.claim(order(5), client(5)).unwrap();
+        ids.claim(order(1), client(1)).unwrap();
+        ids.rekey(&order(1), order(2));
+
+        // The entry `order(2)` held is gone with its guard; the moved one holds
+        // the id, with the age of the entry that moved.
+        assert_eq!(ids.client_of(&order(2)), Some(client(1)));
+        assert_eq!(ids.holder(&client(1)), Some(order(2)));
+        assert_eq!(ids.holder(&client(2)), None);
+        assert_eq!(ids.by_order.len(), 3);
+        assert_eq!(ids.by_age.len(), 3);
+
+        // Eviction runs oldest first by the moved entry's age: 0, then 5, then 2.
+        for n in 100..(100 + LEDGER_BOUND - 3) {
+            ids.claim(order(n), client(n)).unwrap();
+        }
+        assert_eq!(ids.by_order.len(), LEDGER_BOUND);
+        ids.claim(order(90_000), client(90_000)).unwrap();
+        assert_eq!(ids.client_of(&order(0)), None);
+        ids.claim(order(90_001), client(90_001)).unwrap();
+        assert_eq!(ids.client_of(&order(5)), None);
+        assert_eq!(ids.client_of(&order(2)), Some(client(1)));
+        assert_eq!(ids.holder(&client(1)), Some(order(2)));
+        ids.claim(order(90_002), client(90_002)).unwrap();
+        assert_eq!(ids.client_of(&order(2)), None);
+        assert_eq!(ids.holder(&client(1)), None);
     }
 
     #[test]
