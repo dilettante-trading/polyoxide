@@ -106,7 +106,7 @@ def pick_market():
         book = fetch_ok(f"/markets/{ticker}/orderbook")
         sides = book["orderbook_fp"]
         if sides["yes_dollars"] and sides["no_dollars"] and max(len(v) for v in sides.values()) >= 2:
-            trades = fetch_ok("/markets/trades", ticker=ticker, limit=100)
+            trades = fetch_ok("/markets/trades", ticker=ticker, limit=TRADES_PAGE)
             if len(trades["trades"]) == TRADES_PAGE:
                 return ticker, fetch_ok(f"/markets/{ticker}"), book, trades
     sys.exit(
@@ -134,7 +134,7 @@ def provenance(ticker, event_ticker):
             f"the {BOOK_LEVELS} best levels of each side (the host lists a side worst first, so the last {BOOK_LEVELS})",
         ),
         ("orderbook_depth1.json", f"GET /markets/{ticker}/orderbook?depth=1", "as fetched"),
-        ("trades.json", f"GET /markets/trades?ticker={ticker}&limit=100", "as fetched"),
+        ("trades.json", f"GET /markets/trades?ticker={ticker}&limit={TRADES_PAGE}", "as fetched"),
         (
             "event.json",
             f"GET /events/{event_ticker}?with_nested_markets=true",
@@ -162,7 +162,7 @@ def provenance(ticker, event_ticker):
         "",
         f"The market is `{ticker}`, picked from `markets?status=open&mve_filter=exclude` because it was",
         "active, quoted both sides, had an order book with levels on both and more than one level on some",
-        "side, and had a full page of 100 trades. The filter is needed: the",
+        f"side, and had a full page of {TRADES_PAGE} trades. The filter is needed: the",
         "unfiltered open listing serves multivariate combinations first (see `docs/specs/kalshi/OBSERVED.md`).",
         "",
         *table,

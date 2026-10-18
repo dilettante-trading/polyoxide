@@ -285,8 +285,8 @@ def test_the_allowlists_exist() -> None:
 def test_each_per_feature_rule_admits_what_it_guards(name: str) -> None:
     # The rules admit the HTTP stack with an HTTP module, alloy with clob or
     # relay, keyring with keychain, Binance's socket stack with usdm-ws and
-    # Kalshi's HTTP stack with predictions; if no file held them, a rule that never refuses anything could not be told
-    # from one that holds.
+    # Kalshi's HTTP stack with predictions; if no file held them, a rule that
+    # never refuses anything could not be told from one that holds.
     assert MUST_BUILD[name] in read_allowlist(ALLOWLISTS / name), name
 
 
