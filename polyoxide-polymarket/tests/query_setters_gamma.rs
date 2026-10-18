@@ -4,7 +4,10 @@
 //! changed name or argument type fails to compile; a changed key, value or
 //! order fails the test.
 
-use polyoxide_polymarket::gamma::{types::ParentEntityType, Gamma};
+use polyoxide_polymarket::gamma::{
+    types::{ClosedFilter, ParentEntityType},
+    Gamma,
+};
 use polyoxide_test_support::query::{assert_cases, Case};
 
 fn client(base: &str) -> Gamma {
@@ -701,4 +704,94 @@ const CASES: &[Case] = &[
 #[tokio::test]
 async fn every_setter_sends_its_key_and_value() {
     assert_cases(CASES).await;
+}
+
+/// `closed_filter` is the one setter that can ask for both states: upstream's
+/// `closed` is `true`, `false` or `any` (#59), and `closed(bool)` cannot spell
+/// the last. One case per builder that takes it.
+const CLOSED_FILTER_CASES: &[Case] = &[
+    Case {
+        builder: "ListEvents",
+        path: "/events",
+        fire: |base| {
+            Box::pin(async move {
+                let _ = client(&base)
+                    .events()
+                    .list()
+                    .closed_filter(ClosedFilter::Any)
+                    .send()
+                    .await;
+            })
+        },
+        sends: &[("closed", "any")],
+    },
+    Case {
+        builder: "ListKeysetEvents",
+        path: "/events/keyset",
+        fire: |base| {
+            Box::pin(async move {
+                let _ = client(&base)
+                    .events()
+                    .list_keyset()
+                    .closed_filter(ClosedFilter::Any)
+                    .send()
+                    .await;
+            })
+        },
+        sends: &[("closed", "any")],
+    },
+    Case {
+        builder: "ListMarkets",
+        path: "/markets",
+        fire: |base| {
+            Box::pin(async move {
+                let _ = client(&base)
+                    .markets()
+                    .list()
+                    .id([11i64])
+                    .closed_filter(ClosedFilter::Any)
+                    .send()
+                    .await;
+            })
+        },
+        sends: &[("id", "11"), ("closed", "any")],
+    },
+    Case {
+        builder: "ListKeysetMarkets",
+        path: "/markets/keyset",
+        fire: |base| {
+            Box::pin(async move {
+                let _ = client(&base)
+                    .markets()
+                    .list_keyset()
+                    .id([11i64])
+                    .closed_filter(ClosedFilter::Any)
+                    .send()
+                    .await;
+            })
+        },
+        sends: &[("id", "11"), ("closed", "any")],
+    },
+    // The other two filters send what `closed(bool)` sends.
+    Case {
+        builder: "ListMarkets",
+        path: "/markets",
+        fire: |base| {
+            Box::pin(async move {
+                let _ = client(&base)
+                    .markets()
+                    .list()
+                    .closed_filter(ClosedFilter::Closed)
+                    .closed_filter(ClosedFilter::Open)
+                    .send()
+                    .await;
+            })
+        },
+        sends: &[("closed", "true"), ("closed", "false")],
+    },
+];
+
+#[tokio::test]
+async fn closed_filter_sends_its_wire_spelling() {
+    assert_cases(CLOSED_FILTER_CASES).await;
 }

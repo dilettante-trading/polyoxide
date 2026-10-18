@@ -353,8 +353,16 @@ paths:
           type: string
       - name: closed
         in: query
+        description: >
+          Filter by closed state. Omitted includes open and closed events. Use true
+          for closed events, false for open events, or any (case-insensitive) for
+          both states. Unlike markets, any does not require an identifier filter.
+          Invalid closed values return 422.
         schema:
-          type: boolean
+          oneOf:
+          - type: boolean
+          - type: string
+            enum: [any]
       - name: liquidity_min
         in: query
         schema:
@@ -720,8 +728,18 @@ paths:
           type: boolean
       - name: closed
         in: query
+        description: >
+          Filter by closed state. Omitted or false returns open markets; true returns
+          closed markets. Use any (case-insensitive) to include both states in an
+          identifier lookup. Requires at least one of id, slug, clob_token_ids,
+          position_ids, condition_ids, request_ids, onchain_event_ids, or question_ids
+          when any is used. Each identifier filter accepts at most 100 values.
+          Missing an identifier with any, or an invalid closed value, returns 422.
         schema:
-          type: boolean
+          oneOf:
+          - type: boolean
+          - type: string
+            enum: [any]
           default: false
       responses:
         '200':
@@ -732,6 +750,8 @@ paths:
                 type: array
                 items:
                   $ref: '#/components/schemas/Market'
+        '422':
+          description: Invalid closed value, closed=any without an identifier filter, or other filter validation failure.
   /markets/{id}:
     get:
       tags:
@@ -914,8 +934,18 @@ paths:
             type: string
       - name: closed
         in: query
+        description: >
+          Filter by closed state. Omitted or false returns open markets; true returns
+          closed markets. Use any (case-insensitive) to include both states in an
+          identifier lookup. Requires at least one of id, slug, clob_token_ids,
+          position_ids, condition_ids, request_ids, onchain_event_ids, or question_ids
+          when any is used. Each identifier filter accepts at most 100 values.
+          Missing an identifier with any, or an invalid closed value, returns 422.
         schema:
-          type: boolean
+          oneOf:
+          - type: boolean
+          - type: string
+            enum: [any]
           default: false
       - name: decimalized
         in: query
@@ -1033,7 +1063,8 @@ paths:
         '422':
           description: >
             Validation error. Returned when offset is provided, cursor is invalid,
-            order fields are not valid, or other filter validation fails.
+            order fields are not valid, closed is invalid, closed=any has no
+            identifier filter, or other filter validation fails.
           content:
             application/json:
               schema:
@@ -1104,8 +1135,16 @@ paths:
             type: string
       - name: closed
         in: query
+        description: >
+          Filter by closed state. Omitted includes open and closed events. Use true
+          for closed events, false for open events, or any (case-insensitive) for
+          both states. Unlike markets, any does not require an identifier filter.
+          Invalid closed values return 422.
         schema:
-          type: boolean
+          oneOf:
+          - type: boolean
+          - type: string
+            enum: [any]
       - name: live
         in: query
         schema:

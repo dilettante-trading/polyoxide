@@ -265,15 +265,57 @@ on `clob_token_ids=<token>`:
 | no `closed` | 0 |
 | `closed=true` | 1 (carrying `events: [{id: "1085449"}]`) |
 | `closed=false` | 0 |
-| `closed=true&closed=false` | 0: a repeated key is last-wins, not a union |
+| `closed=true&closed=false` | 0: a repeated key is not a union (and not last-wins: see `closed=any` below) |
 
 An open token (market `5710779`) returned 1 with no `closed` or with
 `closed=false`, and 0 with `closed=true`. So a lookup by token needs the
-unfiltered request and, when that is empty, one with `closed=true`; one
-request cannot ask for both. `GET /events/1085449` returned the event with
-all 39 of its markets, closed ones included, with no filter. The CLOB's
-`event_group` (`polyoxide-polymarket/src/clob/venue.rs`) makes the two
-requests in that order.
+unfiltered request and, when that is empty, one with `closed=true`. Until
+`closed=any` (next section) one request could not ask for both. `GET
+/events/1085449` returned the event with all 39 of its markets, closed ones
+included, with no filter. The CLOB's `event_group`
+(`polyoxide-polymarket/src/clob/venue.rs`) still makes the two requests in
+that order.
+
+## `closed=any`: both states in one request
+
+Upstream's spec made `closed` `bool | "any"` on `GET /events`,
+`/events/keyset`, `/markets` and `/markets/keyset` (#59), and the host does
+what it says. Probed 2026-10-18 (GET only):
+
+| Query | Result |
+| --- | --- |
+| `/markets?closed=any&limit=1` | `422` `closed=any requires at least one of id, slug, clob_token_ids, position_ids, condition_ids, request_ids, onchain_event_ids, or question_ids` |
+| `/markets/keyset?closed=any&limit=1` | the same `422` |
+| `/markets?closed=any&id=12&id=559651` (12 closed, 559651 open) | both, in id order; `/markets/keyset` the same |
+| `/markets?closed=any&clob_token_ids=<token>` for the resolved token above | `1` (`5168102`), where no `closed` gave `0` |
+| the same for the open token (market `5710779`) | `1`, the same as no `closed` |
+| `/events?closed=any&limit=1`, `/events/keyset?closed=any&limit=1` | `200`, no identifier needed |
+| `/events?closed=any&id=2890` | the (closed) event |
+| `closed=ANY`, `closed=Any` | accepted: the value is matched without regard to case, as `TRUE` is |
+| `closed=bogus` on any of the four | `422` `"closed" has a wrong value` |
+
+Repeating the key is not last-wins, which this file said until 2026-10-18: on
+both tokens above, in both orders, `any` beat `true` and `false`, and `false`
+beat `true` (`true&false` and `false&true` each returned the open market and
+not the closed one). So a caller sets `closed` once.
+
+An identifier filter holds at most **100** values on every one of these routes
+and with any `closed`, `422` `expected array length <= 100` from 101: 100 ids
+returned `200` and 101, 150 and 400 did not, on `/markets`, `/markets/keyset`,
+`/events` and `/events/keyset`. The "≤ 400" the `id` setters and
+`Markets::get_many` documented was wrong, and `get_many` fails on both legs
+past 100.
+
+**What polyoxide does.** `gamma::types::ClosedFilter` (`Open`, `Closed`,
+`Any`, spelled `false`, `true`, `any`) and a `closed_filter` setter on
+`ListEvents`, `ListKeysetEvents`, `ListMarkets` and `ListKeysetMarkets` send
+it. `closed(bool)` is unchanged, and so is `get_many`'s fan-out of
+`closed=true` and `closed=false`, which `closed=any` could replace for up to
+100 ids. `live_markets_closed_any_returns_both_states_in_one_request`,
+`live_markets_closed_any_needs_an_identifier` and
+`live_events_closed_any_returns_both_states_in_one_request` in
+`polyoxide-polymarket/tests/live_gamma.rs` hold it; the first has the default
+lookup as its control, which must drop the closed market.
 
 ## More instances
 

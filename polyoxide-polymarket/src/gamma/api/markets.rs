@@ -4,7 +4,9 @@ use polyoxide_core::{ApiError, HttpClient, QueryBuilder, Request, RequestParts};
 
 use crate::gamma::{
     error::GammaError,
-    types::{KeysetMarketsResponse, Market, MarketDescription, MarketsInformationBody, Tag},
+    types::{
+        ClosedFilter, KeysetMarketsResponse, Market, MarketDescription, MarketsInformationBody, Tag,
+    },
 };
 
 /// Markets namespace for market-related operations
@@ -50,9 +52,9 @@ impl Markets {
     /// status. This matches the semantics of the single-market [`Self::get`]
     /// endpoint, batched.
     ///
-    /// Safe batch size: ≤ 400 IDs per call (same URL-length ceiling as
-    /// [`ListMarkets::id`]). The two fan-out requests are issued concurrently,
-    /// so wall-clock latency is one round-trip, not two.
+    /// At most 100 IDs per call, the cap [`ListMarkets::id`] has: a longer
+    /// list is a `422` on both requests. The two fan-out requests are issued
+    /// concurrently, so wall-clock latency is one round-trip, not two.
     pub fn get_many(&self, ids: impl IntoIterator<Item = i64>) -> GetManyMarkets {
         GetManyMarkets {
             http_client: self.http_client.clone(),
@@ -334,8 +336,9 @@ impl ListMarkets {
         ascending: bool => "ascending",
         /// Filter by specific market IDs
         ///
-        /// Safe batch size: ≤ 400 per request. URLs over ~8 KB are rejected
-        /// upstream with `414 URI Too Long`; empirically the ceiling is ~583.
+        /// At most 100 per request: the host answers a longer list with a
+        /// `422` (`expected array length <= 100`), well before a URL is too
+        /// long.
         ///
         /// # Note on closed markets
         ///
@@ -423,6 +426,13 @@ impl ListMarkets {
         include_tag: bool => "include_tag",
         /// Filter for closed or active markets
         closed: bool => "closed",
+        /// Filter by closed state, which can ask for both at once.
+        ///
+        /// Unlike `closed`, which takes a `bool`, this can send `any`. See
+        /// [`ClosedFilter`] for what each value returns; `ClosedFilter::Any` needs an identifier filter on this route. Set one of the
+        /// two: sent together, the host does not take the last (`any` beats a
+        /// `bool`, and `false` beats `true`, in either order).
+        closed_filter(filter: ClosedFilter) => "closed" = filter,
         /// Filter by open status (convenience method, opposite of closed)
         open(open: bool) => "closed" = !open,
         /// Filter by archived status
@@ -456,6 +466,13 @@ impl ListKeysetMarkets {
         slug: many impl IntoIterator<Item = impl ToString> => "slug",
         /// Filter by closed status (defaults to `false` upstream).
         closed: bool => "closed",
+        /// Filter by closed state, which can ask for both at once.
+        ///
+        /// Unlike `closed`, which takes a `bool`, this can send `any`. See
+        /// [`ClosedFilter`] for what each value returns; `ClosedFilter::Any` needs an identifier filter on this route. Set one of the
+        /// two: sent together, the host does not take the last (`any` beats a
+        /// `bool`, and `false` beats `true`, in either order).
+        closed_filter(filter: ClosedFilter) => "closed" = filter,
         /// Filter by CLOB token IDs.
         clob_token_ids: many impl IntoIterator<Item = impl ToString> => "clob_token_ids",
         /// Filter by condition IDs.
