@@ -1,0 +1,82 @@
+//! The market the live suites read, chosen by the precondition they assert on. Shared by
+//! `live_predictions.rs` and, by `mod common;`, the live suites of later stories.
+
+use polyoxide_kalshi::predictions::{
+    key::Ticker,
+    types::{Market, MarketStatus, MarketStatusFilter, MveFilter},
+    Predictions,
+};
+use polyoxide_test_support::{environmental, ResultExt};
+use rust_decimal::Decimal;
+
+/// Pages of the filtered open listing to walk.
+const LISTING_PAGES: usize = 5;
+/// Quoted markets to confirm on the order book route.
+const CANDIDATES: usize = 20;
+
+/// Whether the market trades with a YES bid above 0 and a YES ask below 1.
+fn quotes_both_sides(market: &Market) -> bool {
+    market.status == MarketStatus::Active
+        && market.yes_bid_dollars > Decimal::ZERO
+        && market.yes_ask_dollars < Decimal::ONE
+}
+
+/// Whether the market's order book, read on the route the suites assert on (a CDN caches per
+/// URL), has levels on both sides.
+async fn has_both_sides(client: &Predictions, market: &Market) -> bool {
+    // A ticker this client would refuse to send is skipped here and caught by
+    // `live_every_ticker_the_host_lists_is_one_the_client_accepts`.
+    let Ok(ticker) = Ticker::new(&market.ticker) else {
+        return false;
+    };
+    let book = client
+        .markets()
+        .orderbook(&ticker)
+        .send()
+        .await
+        .or_fail("orderbook")
+        .orderbook_fp;
+    !book.yes_dollars.is_empty() && !book.no_dollars.is_empty()
+}
+
+/// An open market with a quote and an order book on both sides.
+///
+/// Candidates come from `markets?status=open&mve_filter=exclude&limit=1000`, at most
+/// `LISTING_PAGES` pages: the unfiltered open listing serves multivariate combinations first
+/// (9,996 of its first 10,000 rows on 2026-10-18), none of them quoted, while the filtered
+/// listing's first page held 579 quoted rows. A row with a YES bid above 0 and a YES ask below 1
+/// is confirmed on the order book route. With none, the test is an `environmental` skip.
+pub async fn two_sided_market(client: &Predictions) -> Market {
+    let mut tried = 0;
+    let mut cursor = String::new();
+    for _ in 0..LISTING_PAGES {
+        let list = client
+            .markets()
+            .list()
+            .status(MarketStatusFilter::Open)
+            .mve_filter(MveFilter::Exclude)
+            .limit(1000);
+        let list = if cursor.is_empty() {
+            list
+        } else {
+            list.cursor(cursor.clone())
+        };
+        let page = list.send().await.or_fail("markets");
+        for row in page.markets.iter().filter(|m| quotes_both_sides(m)) {
+            if tried >= CANDIDATES {
+                environmental(
+                    "no suitable market: no quoted open market with a book on both sides",
+                );
+            }
+            tried += 1;
+            if has_both_sides(client, row).await {
+                return row.clone();
+            }
+        }
+        if page.cursor.is_empty() {
+            break;
+        }
+        cursor = page.cursor;
+    }
+    environmental("no suitable market: no open market with a quote and a book on both sides")
+}
