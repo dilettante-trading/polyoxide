@@ -235,15 +235,17 @@ def umbrella_enables(features: dict, feature: str) -> set[str]:
     return found
 
 
-def umbrella_missing(umbrella: dict, modules: list[tuple[str, str]],
-                     enabled: set[str]) -> list[str]:
-    """The `<crate>/<product>` of each module whose crate the umbrella depends on and whose
-    feature its `full` (`enabled`) does not turn on. A venue crate the umbrella does not depend
-    on is outside it: an unpublished crate, which a published umbrella cannot name, is pinned
-    under `full` too, but has no umbrella feature to turn on."""
+def umbrella_missing(umbrella: dict, modules: list[tuple[str, str]], enabled: set[str],
+                     unpublished: frozenset[str] = frozenset()) -> list[str]:
+    """The `<crate>/<product>` of each module whose feature the umbrella's `full` (`enabled`)
+    does not turn on. Only a crate that is `unpublished` (`publish = []` in cargo metadata) and
+    not built by the umbrella is exempt: a published umbrella cannot name an unpublished crate,
+    so such a crate's pin runs under `full` with no umbrella feature to turn on. A published
+    venue crate the umbrella does not depend on is reported, since the umbrella forgot it."""
     built = {dep["name"] for dep in umbrella["dependencies"] if dep["kind"] is None}
     return [f"{crate}/{product}" for crate, product in modules
-            if crate in built and f"{crate}/{product}" not in enabled]
+            if (crate in built or crate not in unpublished)
+            and f"{crate}/{product}" not in enabled]
 
 
 def test_the_features_job_runs_each_header_pin_in_its_minimal_build() -> None:
@@ -290,7 +292,8 @@ def test_the_features_job_runs_each_header_pin_under_the_umbrellas_full() -> Non
     assert sorted(commands) == sorted(full_pin(packages[crate], product)
                                       for crate, product in modules)
     enabled = umbrella_enables(packages[UMBRELLA]["features"], "full")
-    missing = umbrella_missing(packages[UMBRELLA], modules, enabled)
+    unpublished = frozenset(name for name, p in packages.items() if p.get("publish") == [])
+    missing = umbrella_missing(packages[UMBRELLA], modules, enabled, unpublished)
     assert not missing, f"the umbrella's full does not turn on {missing}"
     steps = [s.get("name") for s in _steps("features")]
     assert steps.index(FULL_PINS) == steps.index(MINIMAL_PINS) + 1, steps
@@ -323,13 +326,21 @@ def test_a_venue_crate_outside_the_umbrella_needs_no_umbrella_feature() -> None:
         # A dev-dependency is not built into `full`.
         {"name": "polyoxide-kalshi", "kind": "dev"}]}
     modules = [("polyoxide-kalshi", "predictions"), ("polyoxide-polymarket", "gamma")]
-    # Outside the umbrella: nothing to turn on.
-    assert umbrella_missing(umbrella, modules, {"polyoxide-polymarket/gamma"}) == []
+    unpublished = frozenset({"polyoxide-kalshi"})
+    # Outside the umbrella and unpublished: nothing to turn on.
+    on = {"polyoxide-polymarket/gamma"}
+    assert umbrella_missing(umbrella, modules, on, unpublished) == []
     # Inside it, the module's feature is still required.
-    assert umbrella_missing(umbrella, modules, set()) == ["polyoxide-polymarket/gamma"]
-    # A crate the umbrella builds is checked whatever its name.
+    assert umbrella_missing(umbrella, modules, set(), unpublished) == [
+        "polyoxide-polymarket/gamma"]
+    # A crate the umbrella builds is checked whatever its name (the published one, which this
+    # umbrella does not build, is reported too).
     built = {"dependencies": [{"name": "polyoxide-kalshi", "kind": None}]}
-    assert umbrella_missing(built, modules, set()) == ["polyoxide-kalshi/predictions"]
+    assert umbrella_missing(built, modules, set(), unpublished) == [
+        "polyoxide-kalshi/predictions", "polyoxide-polymarket/gamma"]
+    # A published crate outside the umbrella is still reported: the umbrella forgot it.
+    assert umbrella_missing(umbrella, modules, {"polyoxide-polymarket/gamma"}) == [
+        "polyoxide-kalshi/predictions"]
 
 
 def test_the_features_job_checks_each_module_with_specta() -> None:
