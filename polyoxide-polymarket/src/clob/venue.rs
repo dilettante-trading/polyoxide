@@ -16,7 +16,7 @@
 //! | `quote`, `book` | `/book` |
 //! | `candles` | `/prices-history`, one price per interval, at most 14 days from `start`; an empty answer means none in that span |
 //! | `trades` (`data`) | `/markets-by-token/{token}`, then the Data API's `/trades` |
-//! | `event_group` (`gamma`) | Gamma's `/markets?clob_token_ids=`, then `/events/{id}` |
+//! | `event_group` (`gamma`) | Gamma's `/markets?clob_token_ids=&closed=any`, then `/events/{id}` |
 //!
 //! With `clob-ws` and `data` as well, [`Clob`] implements the `Trading` trait
 //! of `polyoxide-venue`: orders placed and cancelled, open orders, positions
@@ -387,7 +387,10 @@ mod events {
 
     use super::decode;
     use crate::clob::Clob;
-    use crate::gamma::{types::ProtocolVersion, GammaError};
+    use crate::gamma::{
+        types::{ClosedFilter, ProtocolVersion},
+        GammaError,
+    };
     use crate::shared::keys::{self, TokenId};
 
     /// The CLOB's facts about an event, beside [`EventGroup`]'s fields.
@@ -425,22 +428,19 @@ mod events {
     }
 
     impl Clob {
-        /// The id of the first event Gamma lists for a token's market, among
-        /// the open markets or, with `closed`, the closed ones.
-        async fn event_id_of(
-            &self,
-            token: &TokenId,
-            closed: bool,
-        ) -> Result<Option<String>, ClassifiedError> {
-            let mut request = Request::<Vec<MarketEvents>, GammaError>::new(
+        /// The id of the first event Gamma lists for a token's market, open
+        /// or closed: Gamma leaves a closed market out unless asked for it,
+        /// and `closed=any` asks for both states, which it takes with the
+        /// token as the identifier filter it requires.
+        async fn event_id_of(&self, token: &TokenId) -> Result<Option<String>, ClassifiedError> {
+            let markets = Request::<Vec<MarketEvents>, GammaError>::new(
                 self.gamma.http_client.clone(),
                 "/markets",
             )
-            .query("clob_token_ids", token.as_str());
-            if closed {
-                request = request.query("closed", "true");
-            }
-            let markets = request.send().await?;
+            .query("clob_token_ids", token.as_str())
+            .query("closed", ClosedFilter::Any)
+            .send()
+            .await?;
             Ok(markets
                 .iter()
                 .flat_map(|market| &market.events)
@@ -452,13 +452,7 @@ mod events {
     impl EventGroups for Clob {
         async fn event_group(&self, key: &MarketKey) -> Result<EventGroup, ClassifiedError> {
             let token = keys::token_id(key)?;
-            // Gamma leaves a closed market out unless asked for it, so a
-            // resolved market's token is found by the second request.
-            let mut event_id = self.event_id_of(&token, false).await?;
-            if event_id.is_none() {
-                event_id = self.event_id_of(&token, true).await?;
-            }
-            let Some(event_id) = event_id else {
+            let Some(event_id) = self.event_id_of(&token).await? else {
                 return Err(NotListed::new(key.clone()).into());
             };
             let event = self.gamma.events().get(event_id).send().await?;

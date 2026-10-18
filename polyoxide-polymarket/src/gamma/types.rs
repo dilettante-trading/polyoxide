@@ -41,6 +41,32 @@ polyoxide_venue::open_enum! {
     }
 }
 
+polyoxide_venue::wire_enum! {
+    /// Which closed states a list request returns, for the `closed_filter`
+    /// setter of the events and markets list builders.
+    ///
+    /// Upstream's `closed` is `true`, `false` or `any`, and `any`, matched
+    /// without regard to case, is the only way to ask for both states in one
+    /// request. `closed(bool)` cannot spell it. What an omitted `closed` means
+    /// differs by route: `/markets` and `/markets/keyset` return open markets,
+    /// `/events` and `/events/keyset` return both.
+    ///
+    /// Any other value is a `422`.
+    #[cfg_attr(feature = "specta", derive(specta::Type))]
+    pub enum ClosedFilter {
+        /// Open ones only: `closed=false`.
+        Open => "false",
+        /// Closed ones only: `closed=true`.
+        Closed => "true",
+        /// Both. On `/markets` and `/markets/keyset` this needs at least one
+        /// identifier filter (`id`, `slug`, `clob_token_ids`, `position_ids`,
+        /// `condition_ids`, `request_ids`, `onchain_event_ids` or
+        /// `question_ids`) or the host answers `422`; the events routes need
+        /// none.
+        Any => "any",
+    }
+}
+
 polyoxide_venue::specta_as_string!(ProtocolVersion, ResolutionStatus, HomeAway);
 
 /// Reads an array the served schema types `["array","null"]`, taking `null`

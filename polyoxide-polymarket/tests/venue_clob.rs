@@ -358,7 +358,7 @@ async fn trades_are_the_data_apis_public_trades_of_the_token_oldest_first() {
 #[tokio::test]
 async fn event_group_holds_every_v1_outcome_of_the_tokens_event() {
     let mut server = Server::new_async().await;
-    let markets_query = format!("clob_token_ids={}", token());
+    let markets_query = format!("clob_token_ids={}&closed=any", token());
     let markets = route(
         &mut server,
         "/markets",
@@ -456,23 +456,32 @@ fn event_id() -> String {
 }
 
 #[tokio::test]
-async fn event_group_finds_a_resolved_markets_token_under_closed_true() {
+async fn event_group_finds_a_resolved_markets_token_in_one_closed_any_request() {
     let mut server = Server::new_async().await;
-    // Gamma omits a closed market unless asked for it.
-    let open = route(
+    // Gamma omits a closed market unless asked for it, and `closed=any` asks
+    // for both states at once. The two requests this took before send nothing.
+    let any = route(
+        &mut server,
+        "/markets",
+        &format!("clob_token_ids={}&closed=any", token()),
+        &fixture("gamma_markets"),
+        1,
+    )
+    .await;
+    let open_only = route(
         &mut server,
         "/markets",
         &format!("clob_token_ids={}", token()),
         "[]",
-        1,
+        0,
     )
     .await;
-    let closed = route(
+    let closed_only = route(
         &mut server,
         "/markets",
         &format!("clob_token_ids={}&closed=true", token()),
-        &fixture("gamma_markets"),
-        1,
+        "[]",
+        0,
     )
     .await;
     let event = route(
@@ -486,8 +495,9 @@ async fn event_group_finds_a_resolved_markets_token_under_closed_true() {
 
     let venue: Arc<DynEventGroups<'static>> = DynEventGroups::new_arc(client(&server));
     let group = venue.event_group(&key()).await.unwrap();
-    open.assert_async().await;
-    closed.assert_async().await;
+    any.assert_async().await;
+    open_only.assert_async().await;
+    closed_only.assert_async().await;
     event.assert_async().await;
     assert_eq!(group.id, event_id());
     assert!(group.outcomes.iter().any(|o| o.key == key()));
@@ -499,7 +509,7 @@ async fn event_group_leaves_out_the_outcomes_of_a_v2_market() {
     let markets = route(
         &mut server,
         "/markets",
-        &format!("clob_token_ids={}", token()),
+        &format!("clob_token_ids={}&closed=any", token()),
         &fixture("gamma_markets"),
         1,
     )
@@ -537,7 +547,7 @@ async fn a_market_whose_tokens_and_outcomes_differ_in_number_is_a_decode_failure
     let markets = route(
         &mut server,
         "/markets",
-        &format!("clob_token_ids={}", token()),
+        &format!("clob_token_ids={}&closed=any", token()),
         &fixture("gamma_markets"),
         1,
     )
@@ -565,7 +575,7 @@ async fn a_token_id_gamma_sends_that_no_key_can_carry_is_a_decode_failure() {
     let markets = route(
         &mut server,
         "/markets",
-        &format!("clob_token_ids={}", token()),
+        &format!("clob_token_ids={}&closed=any", token()),
         &fixture("gamma_markets"),
         1,
     )
@@ -591,20 +601,12 @@ async fn a_token_id_gamma_sends_that_no_key_can_carry_is_a_decode_failure() {
 }
 
 #[tokio::test]
-async fn a_token_gamma_lists_under_neither_request_is_not_listed() {
+async fn a_token_gamma_lists_in_neither_state_is_not_listed() {
     let mut server = Server::new_async().await;
-    let open = route(
+    let any = route(
         &mut server,
         "/markets",
-        &format!("clob_token_ids={}", token()),
-        "[]",
-        1,
-    )
-    .await;
-    let closed = route(
-        &mut server,
-        "/markets",
-        &format!("clob_token_ids={}&closed=true", token()),
+        &format!("clob_token_ids={}&closed=any", token()),
         "[]",
         1,
     )
@@ -612,8 +614,7 @@ async fn a_token_gamma_lists_under_neither_request_is_not_listed() {
 
     let venue: Arc<DynEventGroups<'static>> = DynEventGroups::new_arc(client(&server));
     let err = venue.event_group(&key()).await.unwrap_err();
-    open.assert_async().await;
-    closed.assert_async().await;
+    any.assert_async().await;
     assert!(
         matches!(err.class, Class::VenueRefusal { .. }),
         "{:?}",
@@ -628,7 +629,7 @@ async fn an_empty_group_item_title_falls_back_to_the_question() {
     let markets = route(
         &mut server,
         "/markets",
-        &format!("clob_token_ids={}", token()),
+        &format!("clob_token_ids={}&closed=any", token()),
         &fixture("gamma_markets"),
         1,
     )

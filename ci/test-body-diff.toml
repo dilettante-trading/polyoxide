@@ -87,3 +87,9 @@
 #
 # Add each [[drift]] or [[retired]] entry below as its own table. S2's entries
 # went with the switch to S3, whose baseline is the S2 release.
+
+[[drift]]
+file = "polyoxide-polymarket/tests/mock_gamma.rs"
+item = "get_many_fans_out_closed_true_and_false"
+row = "R13"
+sha256 = "60fa921989528d5be88930a47204e62d7f8dfaf5b97bfa24dfe67b58465899dc"
