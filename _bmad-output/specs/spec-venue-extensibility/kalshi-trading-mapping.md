@@ -2,7 +2,7 @@
 
 Epic 7, Story 7.5. This maps every common Kalshi order field and fill field onto `polyoxide_venue::Trading` and its records (`polyoxide-venue/src/trading.rs`, feature `trading`). It shows the trait fits a second event-contract venue before Kalshi ships. Each field lands in one of three places: a trait field, a named field of a future Kalshi option or extension type, or a deferral to Kalshi integration.
 
-This is a planning companion (spec D9 of Epic 7's design, `docs/superpowers/specs/2026-10-17-epic-7-supervised-clob-sockets-and-trading-design.md`: the owner's choice of 2026-10-12). Story 8.1 moves it to `docs/specs/kalshi/trading-mapping.md` when it adds Kalshi's mirror entry, and `deferred-work.md` holds that move.
+This is a planning companion (spec D9 of Epic 7's design, `docs/superpowers/specs/2026-10-17-epic-7-supervised-clob-sockets-and-trading-design.md`: the owner's choice of 2026-10-12). Epic 8 leaves it here (spec D21 of `docs/superpowers/specs/2026-10-18-epic-8-kalshi-walking-skeleton-design.md`), since moving it would edit `docs/s3-migration.md`'s citation, and `deferred-work.md` holds its move to `docs/specs/kalshi/trading-mapping.md` with Kalshi's `Trading`.
 
 **Sources, read on 2026-10-12:**
 
@@ -14,7 +14,7 @@ The legacy order-write routes under `/portfolio/orders` have been retired: a cal
 
 ## Keys and the YES-side conversion
 
-A Kalshi key names one outcome: `kalshi.events:<TICKER>:yes` or `kalshi.events:<TICKER>:no` (AD-7). The ticker matches `^[A-Z0-9-]+$` (AsyncAPI `#/components/schemas/marketTicker`). Story 8.3 writes the product's `KeySpace`: its `parse_id` checks the ticker and the `:yes` or `:no` suffix and canonicalizes them, and its `id_text` renders them. A key is made only through it, since `MarketKey` has no other constructor.
+A Kalshi key names one outcome: `kalshi.predictions:<TICKER>:yes` or `kalshi.predictions:<TICKER>:no` (AD-7, with the product `predictions` of Epic 8's spec D1). The AsyncAPI gives the ticker the pattern `^[A-Z0-9-]+$` (`#/components/schemas/marketTicker`), but Kalshi's tickers and the AsyncAPI's own examples carry dots (`FED-23DEC-T3.00`). Epic 8's Story 1 wrote the product's `KeySpace`, `PredictionsKeys` (`polyoxide-kalshi/src/predictions/key.rs`, spec D8): its `parse_id` splits the id at its last `:`, uppercases the ticker and checks it against `[A-Z0-9.-]` (1 to 200 characters), and reads `yes` or `no` after it, and its `id_text` writes `<TICKER>:<outcome>`. A key is made only through it, since `MarketKey` has no other constructor.
 
 A V2 order addresses the YES leg only. `side` is a `BookSide`, `bid` (buy YES) or `ask` (sell YES), and `price` is the YES price. Kalshi's own description of `BookSide` (`#/components/schemas/BookSide`) says: "Selling YES is economically equivalent to buying NO at `1 - price`". An `OrderRequest` therefore converts as follows, with `p` its price:
 
@@ -34,7 +34,7 @@ Kalshi's reports keep only the net direction. On `Order` and `Fill`, `outcome_si
 
 So an order placed as "sell YES at 0.60" reads back as "buy NO at 0.40". It is the same order, converted deterministically as AD-7 requires. Every path reports this canonical form, so one order reads the same on `place`, `open_orders` and `events()`: `place` of `Sell` on `:yes` at 0.60 returns `Buy` on `:no` at 0.40.
 
-**A NO position is a positive position in `kalshi.events:<TICKER>:no`.** `MarketPosition.position_fp` is signed: "Negative means NO contracts and positive means YES contracts" (`#/components/schemas/MarketPosition`). It maps to one `Position`:
+**A NO position is a positive position in `kalshi.predictions:<TICKER>:no`.** `MarketPosition.position_fp` is signed: "Negative means NO contracts and positive means YES contracts" (`#/components/schemas/MarketPosition`). It maps to one `Position`:
 
 - A positive value is a `Position` on `:yes` with `size = position_fp`.
 - A negative value is a `Position` on `:no` with `size = −position_fp`.
@@ -50,7 +50,7 @@ YES and NO in one market are netted, so the two keys never both hold a position.
 |---|---|---|---|
 | `ticker` | yes | `OrderRequest.key` | The key's ticker part. A key of another venue or product is refused as `InvalidRequest` before anything is sent. |
 | `side` | yes | `OrderRequest.side`, with the key's outcome | The conversion table above. |
-| `count` | yes | `OrderRequest.size` | A `FixedPointCount` string of contracts (`SizeUnit::Contracts`). Requests accept 0–2 decimal places, and the minimum granularity is 0.01 (`#/components/schemas/FixedPointCount`). The size is normalized (trailing zeros dropped) before its scale is checked, so `10.000` passes. One with more than 2 decimals after that is refused as `InvalidRequest`, not rounded. It is sent with at least 2 decimals (`10.00`, `2.50`). |
+| `count` | yes | `OrderRequest.size` | A `FixedPointCount` string of contracts (`SizeUnit::Shares`: each contract pays one dollar on its outcome, as the CLOB's shares do, spec D12 of Epic 8). Requests accept 0–2 decimal places, and the minimum granularity is 0.01 (`#/components/schemas/FixedPointCount`). The size is normalized (trailing zeros dropped) before its scale is checked, so `10.000` passes. One with more than 2 decimals after that is refused as `InvalidRequest`, not rounded. It is sent with at least 2 decimals (`10.00`, `2.50`). |
 | `price` | yes | `OrderRequest.price` | A `FixedPointDollars` YES price, with 2–4 decimals on requests (`#/components/schemas/FixedPointDollars`). It is `1 − price` for a `:no` key. The price is normalized before its scale is checked, so `0.5` and `0.5000` both pass. One with more than 4 decimals after that is refused as `InvalidRequest`. It is sent with at least 2 decimals (`0.50`). A price off the market's `price_ranges` step is Kalshi's to refuse, as a `VenueRefusal`. |
 | `time_in_force` | yes | `OrderRequest.time_in_force` | `GoodTilCancelled` becomes `good_till_canceled`, `ImmediateOrCancel` becomes `immediate_or_cancel`, and `FillOrKill` becomes `fill_or_kill`. The three are the same set. |
 | `client_order_id` | no | `OrderRequest.client_order_id` | Sent as is. A duplicate is a `409` (quick-start page), so a `VenueRefusal`. |
