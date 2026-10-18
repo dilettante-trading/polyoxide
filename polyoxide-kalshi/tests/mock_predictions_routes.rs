@@ -360,7 +360,8 @@ async fn the_endpoint_costs_decode_the_captured_body() {
 
 #[tokio::test]
 async fn each_captured_error_body_decodes_into_its_class() {
-    let cases: [(&str, usize, fn(&Class) -> bool); 4] = [
+    type IsClass = fn(&Class) -> bool;
+    let cases: [(&str, usize, IsClass); 4] = [
         ("error_not_found", 404, |c| {
             matches!(c, Class::VenueRefusal { .. })
         }),
