@@ -4,6 +4,7 @@ members = [
   "polyoxide-binance",
   "polyoxide-cli",
   "polyoxide-core",
+  "polyoxide-kalshi",
   "polyoxide-polymarket",
   "polyoxide-py",
   "polyoxide-test-support",
@@ -23,6 +24,7 @@ rust-version = "1.91"
 
 [workspace.dependencies]
 polyoxide-core = { path = "polyoxide-core", version = "0.41.0" }
+polyoxide-kalshi = { path = "polyoxide-kalshi" }
 polyoxide-binance = { path = "polyoxide-binance", version = "0.41.0", default-features = false }
 # Its defaults are `clob`, `gamma` and `data`; each member names the modules
 # it builds, so none builds the signing stack by accident.
@@ -49,6 +51,7 @@ tokio-tungstenite = { version = "0.26", features = ["rustls-tls-native-roots"] }
 # keeps aws-lc-rs out; `std` is declared here rather than left to reqwest or
 # alloy, so a crate without them still builds.
 rustls = { version = "0.23", default-features = false, features = ["ring", "std"] }
+ring = "0.17"
 rust_decimal = { version = "1.37", features = ["serde-with-str"] }
 governor = { version = "0.8", features = ["std"] }
 # The hook traits of core's send loop are dyn-compatible through it (AD-8).
@@ -265,3 +268,22 @@ base_urls = ["https://fapi.binance.com", "wss://fstream.binance.com"]
 description = "Futures public market data and market streams. No published spec, so not a mirror"
 crate_note = "streams behind `usdm-ws`"
 exclude = "Not a Polymarket host, and Binance publishes no OpenAPI or AsyncAPI for USDⓈ-M futures; the live suites in `polyoxide-binance` are the drift check."
+
+[workspace.metadata.polyoxide.mirrors.kalshi]
+name = "Kalshi"
+section = "other-venue"
+base_urls = ["https://external-api.kalshi.com", "https://external-api.demo.kalshi.co", "wss://external-api-ws.kalshi.com/trade-api/ws/v2", "wss://external-api-ws.demo.kalshi.co/trade-api/ws/v2"]
+description = "Event-contract market data and its order-book stream. A walking skeleton, in a crate that is not published"
+
+[[workspace.metadata.polyoxide.mirrors.kalshi.specs]]
+id = "kalshi"
+kind = "openapi"
+url = "https://docs.kalshi.com/openapi.yaml"
+vendored = "docs/specs/kalshi/openapi.yaml"
+
+[[workspace.metadata.polyoxide.mirrors.kalshi.specs]]
+id = "kalshi-ws"
+kind = "asyncapi"
+url = "https://docs.kalshi.com/asyncapi.yaml"
+vendored = "docs/specs/kalshi/asyncapi.yaml"
+covers = "Trade API WebSocket (15 channels); `orderbook_delta` is implemented"

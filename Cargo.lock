@@ -4016,6 +4016,26 @@ dependencies = [
 ]
 
 [[package]]
+name = "polyoxide-kalshi"
+version = "0.41.0"
+dependencies = [
+ "base64",
+ "chrono",
+ "mockito",
+ "polyoxide-core",
+ "polyoxide-test-support",
+ "polyoxide-venue",
+ "ring",
+ "rust_decimal",
+ "serde",
+ "serde_json",
+ "thiserror 2.0.18",
+ "tokio",
+ "tracing",
+ "url",
+]
+
+[[package]]
 name = "polyoxide-polymarket"
 version = "0.41.0"
 dependencies = [

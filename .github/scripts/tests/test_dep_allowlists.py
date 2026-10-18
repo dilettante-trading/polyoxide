@@ -103,6 +103,19 @@ PER_FEATURE = {
              frozenset({"usdm-ws"}),
              "polyoxide-ws, tokio-tungstenite and tungstenite only with usdm-ws"),
     ),
+    # Kalshi's REST module builds the HTTP stack and signs with ring, so no file of it admits
+    # the Polymarket signing stack or the keychain; the socket stack is its order-book
+    # stream's alone.
+    "polyoxide-kalshi": (
+        Rule(frozenset({"reqwest", "polyoxide-core", "governor", "sha2"}), (),
+             frozenset({"predictions"}),
+             "reqwest, polyoxide-core, governor and sha2 only with predictions"),
+        Rule(frozenset({"hmac", "keyring"}), ("alloy",), frozenset(),
+             "alloy*, hmac and keyring are never built"),
+        Rule(frozenset({"polyoxide-ws", "tokio-tungstenite", "tungstenite"}), (),
+             frozenset({"predictions-ws"}),
+             "polyoxide-ws, tokio-tungstenite and tungstenite only with predictions-ws"),
+    ),
     # The umbrella's socket-only deny-list, each part admitted by the features
     # that pass Polymarket's admitting modules through, and by Binance's HTTP
     # module: its socket passthroughs stay credential-free feeds (G2).
@@ -436,6 +449,40 @@ def test_binances_rest_and_test_server_features_do_not_turn_on_the_streams() -> 
     for feature in ("usdm", "test-server"):
         assert "usdm-ws" not in enabled((feature,), table), feature
     assert "usdm" in enabled(("usdm-ws",), table)
+
+
+# A trimmed stand-in for Kalshi's `[features]`: `predictions` is the REST module, and
+# `predictions-ws`, which a later story adds, its order-book stream on the socket kit.
+KALSHI_TABLE = {
+    "default": ("predictions",),
+    "predictions": ("dep:polyoxide-core", "polyoxide-venue/market", "dep:ring"),
+    "predictions-ws": ("predictions", "dep:polyoxide-ws"),
+}
+KALSHI = "polyoxide-kalshi"
+KALSHI_HTTP = "reqwest, polyoxide-core, governor and sha2 only with predictions"
+KALSHI_NEVER = "alloy*, hmac and keyring are never built"
+KALSHI_SOCKETS = "polyoxide-ws, tokio-tungstenite and tungstenite only with predictions-ws"
+
+
+def test_kalshis_http_stack_comes_with_predictions_and_its_sockets_with_predictions_ws() -> None:
+    names = [*HTTP_STACK, *SOCKET_STACK]
+    # A crate's defaults admit nothing: a file names every feature it builds.
+    assert denied(KALSHI, names, (), KALSHI_TABLE) == sorted(
+        [f"{n} ({KALSHI_HTTP})" for n in HTTP_STACK]
+        + [f"{n} ({KALSHI_SOCKETS})" for n in SOCKET_STACK])
+    # The REST module builds the HTTP stack and no socket.
+    assert denied(KALSHI, names, ("predictions",), KALSHI_TABLE) == [
+        f"{n} ({KALSHI_SOCKETS})" for n in SOCKET_STACK]
+    # The stream builds the socket kit on top of it.
+    assert denied(KALSHI, names, ("predictions-ws",), KALSHI_TABLE) == []
+
+
+def test_no_kalshi_file_may_build_the_signing_stack_or_the_keychain() -> None:
+    names = ["alloy", "alloy-primitives", "hmac", "keyring", "ring"]
+    never = [f"{n} ({KALSHI_NEVER})" for n in names[:4]]
+    # Kalshi signs with `ring`, which no rule refuses.
+    for features in ((), ("predictions",), ("predictions-ws",)):
+        assert denied(KALSHI, names, features, KALSHI_TABLE) == never, features
 
 
 UMBRELLA = "polyoxide"

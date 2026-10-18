@@ -104,10 +104,12 @@ mirror in `docs/specs/`:
 | perps | `docs.polymarket.com/api-spec/perps-openapi.json` | `docs/specs/perps/openapi.json` |
 | bridge | `docs.polymarket.com/api-spec/bridge-openapi.yaml` | `docs/specs/bridge/openapi.yaml` |
 | combos-rfq | `docs.polymarket.com/api-spec/combos-rfq-openapi.yaml` | `docs/specs/combos-rfq/openapi.yaml` |
+| kalshi | `docs.kalshi.com/openapi.yaml` | `docs/specs/kalshi/openapi.yaml` |
 | clob-ws-market | `docs.polymarket.com/asyncapi.json` | `docs/specs/clob/asyncapi-market.json` |
 | clob-ws-user | `docs.polymarket.com/asyncapi-user.json` | `docs/specs/clob/asyncapi-user.json` |
 | perps-ws | `docs.polymarket.com/asyncapi-perps.json` | `docs/specs/perps/asyncapi.json` |
 | combos-rfq-ws | `docs.polymarket.com/asyncapi-rfq.json` | `docs/specs/combos-rfq/asyncapi.json` |
+| kalshi-ws | `docs.kalshi.com/asyncapi.yaml` | `docs/specs/kalshi/asyncapi.yaml` |
 <!-- generated:end selfheal-watch -->
 
 On drift, `.github/scripts/diff_openapi.py` summarizes endpoints (OpenAPI
