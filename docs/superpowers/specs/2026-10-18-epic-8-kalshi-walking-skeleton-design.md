@@ -17,8 +17,11 @@ removals job `api_removals.py check --baseline v0.40.0`). The epic adds one crat
 `polyoxide-kalshi`, which is `publish = false`, and one doc-hidden recorder on `polyoxide-ws`'s
 scripted test server (D17). It removes nothing, so `docs/s3-removals.md` gains nothing, and no
 release ships the crate. The run makes no version bump and does not change the stage. It runs on
-`aidanb/init`, on top of Epic 7 (`0efd830`, not yet on `main`). The touch-set gate's base (D20) is
-the commit that adds this spec.
+`aidanb/init`. Local `main` has moved on since this spec was written: it holds Epic 7,
+`chore(release): v0.41.0` (`d1fa06a`) and a CLOB drift adoption (`9096489`), none of it pushed when
+this was written. So the branch merges `main` before the run starts. The touch-set gate's base
+(D20, §10) is the branch's commit when the run starts, after that merge, and the plan's skeleton
+names it. Later edits to this spec and to the plan are in the set.
 
 **1.2 The plan's stories.**
 
@@ -1000,7 +1003,7 @@ timeout 15, features `["predictions-ws"]` and the secrets of §6.8.
 
 ## 9. Story 7: validation, amendments and records
 
-**9.1 The audit** (8.5), run against the range from this spec's commit to `HEAD`:
+**9.1 The audit** (8.5), run against the range from the run's base (§1.1) to `HEAD`:
 
 - **The touch set.** The touch-set gate (§10) prints nothing.
 - **Generated regions.** Every changed hunk of `README.md`, `docs/specs/INDEX.md`,
@@ -1057,8 +1060,9 @@ The entry for the eight trading probes stays as it is.
 - **The touch-set gate** follows them:
   `bash -c '{ git diff --name-only <base>; git ls-files --others --exclude-standard; } | sort -u | grep -v -E -f _bmad-output/specs/spec-venue-extensibility/epic-8-touch-set.txt; test $? -eq 1'`.
   It covers committed, uncommitted and untracked paths, and it passes when every one matches the
-  allowlist. A missing allowlist makes `grep` exit 2, so the gate fails closed. `<base>` is this
-  spec's commit, which the plan's skeleton names. Story 1 writes the allowlist, one extended regex per line, matching
+  allowlist. A missing allowlist makes `grep` exit 2, so the gate fails closed. `<base>` is the
+  branch's commit when the run starts, after it merges `main` (§1.1), and the plan's skeleton
+  names it. Story 1 writes the allowlist, one extended regex per line, matching
   only D20's paths:
   - the root `Cargo.toml` and `Cargo.lock`;
   - `polyoxide-kalshi/`, `docs/specs/kalshi/`, `scripts/capture_kalshi_*.py` and
