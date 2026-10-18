@@ -279,6 +279,46 @@ def advance(seen: Seen) -> str:
     return f"{verdict}: `seq` {seen.previous} before it, {seq} on it"
 
 
+def direction(prices: list[Decimal]) -> str:
+    """Whether the prices, in wire order, ascend, descend or neither."""
+    if prices == sorted(prices):
+        return "ascending"
+    if prices == sorted(prices, reverse=True):
+        return "descending"
+    return "unordered"
+
+
+def reading(bids: list[Decimal], asks: list[Decimal]) -> str:
+    """What the snapshot shows about its pricing. A book that is not crossed proves little
+    for a market near 0.5, where the NO side read as raw NO prices is not crossed either,
+    so the order of the levels is read as well."""
+    raw_ask = 1 - max(asks)
+    if max(bids) >= raw_ask:
+        return (
+            f"**The crossing settles it.** Read as raw NO prices the book would be crossed "
+            f"(best bid {max(bids)}, best ask {raw_ask}), so the NO side is in YES pricing, "
+            "as `use_yes_price` asks."
+        )
+    text = (
+        "**An uncrossed book proves little for this market.** Read as raw NO prices it is "
+        f"uncrossed too (best bid {max(bids)}, best ask {raw_ask}), so the crossing cannot "
+        "tell the two pricings apart here. "
+    )
+    if direction(bids) == "ascending" and direction(asks) == "descending":
+        return text + (
+            "The order of the levels points to YES pricing. The mirror's own example "
+            "(`docs/specs/kalshi/asyncapi.yaml`) lists both sides ascending, each ending at "
+            "its best level in its own pricing. Here the YES side ascends to its best bid "
+            "and the NO side descends to its lowest price, the best ask in YES pricing, so "
+            "both sides run outside in to the touch; in raw NO pricing the best NO bid is "
+            "the highest price and the side would ascend. That is an inference from the "
+            "listing order, not a measurement, and a market priced well away from 0.5 would "
+            "settle it by arithmetic. The client does not read the order: `event.rs` sorts "
+            "both sides."
+        )
+    return text + "The order of the levels does not settle it either."
+
+
 def section(capture: Capture, stamp: str) -> str:
     bids, asks = book(capture.snapshot)
     best_bid, best_ask = max(bids), min(asks)
@@ -297,8 +337,13 @@ def section(capture: Capture, stamp: str) -> str:
             "yes" if capture.snapshot_after_add else "no",
         ),
         (
-            "Snapshot book not crossed, so `use_yes_price` is honoured",
+            "Snapshot book not crossed",
             f"{uncrossed}: best bid {best_bid}, best ask {best_ask}",
+        ),
+        (
+            "Order of each side's levels on the wire",
+            f"YES side {direction(bids)} ({bids[0]} to {bids[-1]}); "
+            f"NO side {direction(asks)} ({asks[0]} to {asks[-1]})",
         ),
         ("Bound on markets per subscription", bound),
     ]
@@ -310,6 +355,8 @@ def section(capture: Capture, stamp: str) -> str:
         "Fixtures: `polyoxide-kalshi/tests/fixtures/predictions/ws/`.",
         "",
         *capture_common.provenance_table(("Question", "Observed"), rows),
+        "",
+        reading(bids, asks),
     ]
     return "\n".join(lines)
 
