@@ -26,6 +26,7 @@
 //! | `quote` | `GET /trade-api/v2/markets/{ticker}/orderbook`, `depth=1` | 1 |
 //! | `book` | `GET /trade-api/v2/markets/{ticker}/orderbook`, every level | 1 |
 //! | `trades` | `GET /trade-api/v2/markets/trades` for the ticker, 1000 rows | 1 |
+//! | `event_group` | `GET /trade-api/v2/markets/{ticker}`, then `GET /trade-api/v2/events/{event}` with `with_nested_markets=true` | 2 |
 //!
 //! Each request costs its route's tokens on the client's Read layer, 10 today.
 
@@ -34,10 +35,11 @@ use polyoxide_venue::{
     Book, Class, ClassifiedError, Extensions, Instrument, Level, MarketData, MarketKey, NotListed,
     Quote, SizeUnit, UnixMillis,
 };
+use polyoxide_venue::{EventGroup, EventGroups, EventOutcome};
 use polyoxide_venue::{Side, Trade, TradeId, Trades};
 use rust_decimal::Decimal;
 
-use super::key::{self, Outcome, OutcomeId};
+use super::key::{self, Outcome, OutcomeId, Ticker};
 use super::types::{self, MarketStatus, OrderbookFp, OutcomeSide, PriceRange};
 use super::{Predictions, PredictionsError};
 
@@ -259,6 +261,56 @@ impl Trades for Predictions {
             .rev()
             .map(|row| trade(key, id.outcome, row))
             .collect()
+    }
+}
+
+/// Kalshi's facts about an event, beside [`EventGroup`]'s fields.
+#[derive(Debug, Clone, PartialEq, Default)]
+#[non_exhaustive]
+pub struct EventGroupExt {
+    /// The series the event belongs to.
+    pub series_ticker: Option<String>,
+    /// The event's subtitle.
+    pub sub_title: Option<String>,
+    /// Whether exactly one of the event's markets can resolve YES.
+    pub mutually_exclusive: Option<bool>,
+    /// What a contract returns as collateral when the market is settled.
+    pub collateral_return_type: Option<String>,
+}
+
+impl EventGroups for Predictions {
+    /// The event of the key's market, with both outcomes of each of its
+    /// markets. The event is read with its markets nested, so a settled market
+    /// Kalshi leaves out of an event is left out here.
+    async fn event_group(&self, key: &MarketKey) -> Result<EventGroup, ClassifiedError> {
+        let (_, market) = self.listed(key).await?;
+        let response = self
+            .events()
+            .get(&market.event_ticker)
+            .with_nested_markets(true)
+            .send()
+            .await?;
+        let event = response.event;
+        let mut group = EventGroup::new(event.event_ticker.clone());
+        group.title = Some(event.title.clone());
+        for nested in &event.markets {
+            // A ticker no key can carry is a response this client cannot read.
+            let ticker = Ticker::new(&nested.ticker)
+                .map_err(|err| ClassifiedError::new(Class::Decode, err))?;
+            for (outcome, label) in [(Outcome::Yes, "Yes"), (Outcome::No, "No")] {
+                let mut each =
+                    EventOutcome::new(key::key(&ticker, outcome), nested.ticker.clone(), label);
+                each.market_title = Some(nested.yes_sub_title.clone());
+                group.outcomes.push(each);
+            }
+        }
+        group.extensions = Extensions::of(EventGroupExt {
+            series_ticker: Some(event.series_ticker.clone()),
+            sub_title: Some(event.sub_title.clone()),
+            mutually_exclusive: Some(event.mutually_exclusive),
+            collateral_return_type: Some(event.collateral_return_type.clone()),
+        });
+        Ok(group)
     }
 }
 

@@ -17,7 +17,7 @@ use polyoxide_core::RetryConfig;
 use polyoxide_kalshi::predictions::{
     key::{self, Outcome, Ticker},
     types::{MarketStatus, PriceLevel},
-    venue::{InstrumentExt, TradeExt},
+    venue::{EventGroupExt, InstrumentExt, TradeExt},
     Predictions,
 };
 use polyoxide_test_support::fixtures;
@@ -25,6 +25,7 @@ use polyoxide_venue::{
     Book, Class, ClassifiedError, DynMarketData, DynTrades, Instrument, KeySpace, Level,
     MarketData, NotListed, ProductId, SizeUnit, UnixMillis, VenueId,
 };
+use polyoxide_venue::{DynEventGroups, EventGroups};
 use polyoxide_venue::{Side, TradeId, Trades};
 use rust_decimal::Decimal;
 use serde_json::{json, Value};
@@ -918,6 +919,155 @@ async fn a_key_of_another_venue_is_refused_by_trades_with_nothing_sent() {
     let (server, nothing) = silent().await;
     let venue: Arc<DynTrades<'static>> = DynTrades::new_arc(client(&server));
     let err = venue.trades(&foreign_key()).await.unwrap_err();
+    assert_eq!(err.class, Class::InvalidRequest);
+    nothing.assert_async().await;
+}
+
+/// A `{"event": ..}` body with one nested market's ticker replaced.
+fn event_with_ticker(ticker: &str) -> Value {
+    let mut body = fixture_json("event");
+    body["event"]["markets"][0]["ticker"] = json!(ticker);
+    body
+}
+
+#[tokio::test]
+async fn a_dyn_event_groups_returns_both_outcomes_of_each_nested_market() {
+    let market_body = fixture_json("market");
+    let ticker = ticker_of(&market_body);
+    let event_ticker = market_body["market"]["event_ticker"]
+        .as_str()
+        .unwrap()
+        .to_owned();
+    let event_path = format!("/trade-api/v2/events/{event_ticker}");
+    let nested = Matcher::UrlEncoded("with_nested_markets".to_owned(), "true".to_owned());
+
+    let mut server = start().await;
+    let market = route(
+        &mut server,
+        &market_path(&ticker),
+        Matcher::Missing,
+        &market_body.to_string(),
+        2,
+    )
+    .await;
+    let event = route(&mut server, &event_path, nested, &fixture("event"), 3).await;
+    let client = client(&server);
+    let native = client
+        .events()
+        .get(&event_ticker)
+        .with_nested_markets(true)
+        .send()
+        .await
+        .unwrap()
+        .event;
+    assert!(
+        !native.markets.is_empty(),
+        "the captured event nests markets"
+    );
+    let venue: Arc<DynEventGroups<'static>> = DynEventGroups::new_arc(client);
+
+    for outcome in [Outcome::Yes, Outcome::No] {
+        let group = venue
+            .event_group(&key::key(&ticker, outcome))
+            .await
+            .unwrap();
+        assert_eq!(group.id, native.event_ticker);
+        assert_eq!(group.title.as_deref(), Some(native.title.as_str()));
+        assert_eq!(group.outcomes.len(), 2 * native.markets.len());
+        for (pair, nested) in group.outcomes.chunks(2).zip(&native.markets) {
+            let nested_ticker = Ticker::new(&nested.ticker).unwrap();
+            assert_eq!(pair[0].key, key::key(&nested_ticker, Outcome::Yes));
+            assert_eq!(pair[0].label, "Yes");
+            assert_eq!(pair[1].key, key::key(&nested_ticker, Outcome::No));
+            assert_eq!(pair[1].label, "No");
+            for each in pair {
+                assert_eq!(each.market, nested.ticker);
+                assert_eq!(
+                    each.market_title.as_deref(),
+                    Some(nested.yes_sub_title.as_str())
+                );
+            }
+        }
+        let ext = group.extensions.get::<EventGroupExt>().unwrap();
+        assert_eq!(
+            ext.series_ticker.as_deref(),
+            Some(native.series_ticker.as_str())
+        );
+        assert_eq!(ext.sub_title.as_deref(), Some(native.sub_title.as_str()));
+        assert_eq!(ext.mutually_exclusive, Some(native.mutually_exclusive));
+        assert_eq!(
+            ext.collateral_return_type.as_deref(),
+            Some(native.collateral_return_type.as_str())
+        );
+    }
+    market.assert_async().await;
+    event.assert_async().await;
+}
+
+#[tokio::test]
+async fn an_unlisted_key_has_no_event_group_and_asks_for_no_event() {
+    let ticker = test_ticker();
+    let mut server = start().await;
+    let _market = server
+        .mock("GET", market_path(&ticker).as_str())
+        .with_status(404)
+        .with_body(fixture("error_not_found"))
+        .create_async()
+        .await;
+    let events = server
+        .mock("GET", Matcher::Regex("^/trade-api/v2/events/".to_owned()))
+        .match_query(Matcher::Any)
+        .expect(0)
+        .create_async()
+        .await;
+    let venue: Arc<DynEventGroups<'static>> = DynEventGroups::new_arc(client(&server));
+
+    let k = key::key(&ticker, Outcome::No);
+    let err = venue.event_group(&k).await.unwrap_err();
+    assert_eq!(err.class, Class::VenueRefusal { code: None });
+    assert_eq!(err.source.downcast_ref::<NotListed>().unwrap().key, k);
+    events.assert_async().await;
+}
+
+#[tokio::test]
+async fn a_nested_market_ticker_no_key_can_carry_is_a_decode_failure() {
+    let market_body = fixture_json("market");
+    let ticker = ticker_of(&market_body);
+    let event_ticker = market_body["market"]["event_ticker"]
+        .as_str()
+        .unwrap()
+        .to_owned();
+    let mut server = start().await;
+    let _market = route(
+        &mut server,
+        &market_path(&ticker),
+        Matcher::Missing,
+        &market_body.to_string(),
+        1,
+    )
+    .await;
+    let _event = route(
+        &mut server,
+        &format!("/trade-api/v2/events/{event_ticker}"),
+        Matcher::Any,
+        &event_with_ticker("not a ticker!").to_string(),
+        1,
+    )
+    .await;
+    let venue: Arc<DynEventGroups<'static>> = DynEventGroups::new_arc(client(&server));
+
+    let err = venue
+        .event_group(&key::key(&ticker, Outcome::Yes))
+        .await
+        .unwrap_err();
+    assert_eq!(err.class, Class::Decode);
+}
+
+#[tokio::test]
+async fn a_key_of_another_venue_is_refused_by_event_group_with_nothing_sent() {
+    let (server, nothing) = silent().await;
+    let venue: Arc<DynEventGroups<'static>> = DynEventGroups::new_arc(client(&server));
+    let err = venue.event_group(&foreign_key()).await.unwrap_err();
     assert_eq!(err.class, Class::InvalidRequest);
     nothing.assert_async().await;
 }
