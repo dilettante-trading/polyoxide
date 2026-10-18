@@ -331,9 +331,10 @@ impl ScriptedServer {
     }
 
     /// The request headers of each connection that completed a handshake, in
-    /// accept order: a name and a value for each header, names lowercase and
-    /// values read as lossy UTF-8. A refused upgrade records nothing, as for
-    /// [`paths`](Self::paths).
+    /// the order handshakes completed: a name and a value for each header,
+    /// names lowercase and values read as lossy UTF-8. A refused upgrade
+    /// records nothing, as for [`paths`](Self::paths), and takes no slot, so
+    /// an index is not a connection's index.
     pub fn handshake_headers(&self) -> Vec<Vec<(String, String)>> {
         self.recorder.handshake_headers.lock().unwrap().clone()
     }

@@ -842,7 +842,8 @@ mod handshake_headers_are_recorded {
         assert_eq!(recorded.len(), 2);
         assert_eq!(stamp(&recorded[0]), Some("alpha"));
         assert_eq!(stamp(&recorded[1]), Some("beta"));
-        // Every name is lowercase, and the client's own upgrade headers are
+        // Every name is lowercase (this pins the http crate's guarantee, which
+        // the recorder relies on), and the client's own upgrade headers are
         // among them, so the record is the request and not only what a test
         // added to it.
         assert!(recorded

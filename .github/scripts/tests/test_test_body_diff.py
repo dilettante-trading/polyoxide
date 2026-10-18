@@ -1266,7 +1266,7 @@ def test_the_checked_in_config_reads_and_cites_only_drift_rows() -> None:
     assert all(entry.row in rows for entry in config.drift)
     # S2's DRIFT rows are R6, rtds' `test-fixtures` becoming `test-server`, and
     # R12, the live tests of the two data hosts Polymarket retired. S3 adds R13,
-    # `Markets::get_many` sending `closed=any` where it fanned out two requests,
-    # and R14, the spec-agreement tables that adopting `GET /v2/tokens` moves,
-    # and R15, the scripted test server's recorder, spec D17.
+    # `Markets::get_many` sending `closed=any` where it fanned out two requests;
+    # R14, the spec-agreement tables that adopting `GET /v2/tokens` moves; and
+    # R15, the scripted test server's recorder, spec D17.
     assert {entry.row for entry in config.drift} <= {"R6", "R12", "R13", "R14", "R15"}
