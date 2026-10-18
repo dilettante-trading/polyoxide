@@ -192,10 +192,6 @@ impl<T> Routed<T> {
 
     /// Whether the client holds an authenticator, so a route that needs a key can refuse before it
     /// sends.
-    #[allow(
-        dead_code,
-        reason = "Story 4's account().limits() refuses without a key through it"
-    )]
     pub(crate) fn has_key(&self) -> bool {
         self.inner.auth.is_some()
     }

@@ -7,12 +7,12 @@
 
 use std::sync::atomic::{AtomicUsize, Ordering};
 use std::sync::{Arc, Mutex};
-use std::time::{SystemTime, UNIX_EPOCH};
+use std::time::{Duration, SystemTime, UNIX_EPOCH};
 
 use base64::engine::general_purpose::STANDARD;
 use base64::Engine as _;
 use mockito::{Matcher, Mock, Server, ServerGuard};
-use polyoxide_core::{ApiError, RetryConfig};
+use polyoxide_core::{ApiError, Refused, RetryConfig};
 use polyoxide_kalshi::predictions::key::Ticker;
 use polyoxide_kalshi::predictions::{Credentials, Predictions, PredictionsError};
 use polyoxide_test_support::fixtures;
@@ -22,7 +22,18 @@ use serde_json::Value;
 
 const STATUS: &str = "/trade-api/v2/exchange/status";
 const LIMITS: &str = "/trade-api/v2/account/limits";
+const COSTS: &str = "/trade-api/v2/account/endpoint_costs";
 const KEY_ID: &str = "test-key-id";
+
+/// `/account/endpoint_costs` listing none of our routes.
+const NO_COSTS: &str = r#"{"default_cost":10,"endpoint_costs":[]}"#;
+
+/// `/account/endpoint_costs` listing the status route at 700 tokens, more than Basic's Read
+/// bucket holds.
+const COSTLY_STATUS: &str = r#"{"default_cost":10,"endpoint_costs":[{"method":"GET","path":"/trade-api/v2/exchange/status","cost":700}]}"#;
+
+/// What `/exchange/status` answers.
+const STATUS_BODY: &str = r#"{"exchange_active":true,"trading_active":true}"#;
 
 /// An answer of `/account/limits` for a Premier account, with one grant that expires and one that
 /// does not.
@@ -470,4 +481,204 @@ async fn limits_without_credentials_sends_nothing() {
         seen.to(LIMITS).is_empty(),
         "the refused call reached the server"
     );
+}
+
+/// An answer of `/account/limits` whose Read bucket is `capacity` tokens refilling `refill` a
+/// second.
+fn limits_body(capacity: u32, refill: u32) -> String {
+    serde_json::json!({
+        "usage_tier": "Premier",
+        "read": {"refill_rate": refill, "bucket_capacity": capacity},
+        "write": {"refill_rate": 100, "bucket_capacity": 100},
+        "grants": [],
+    })
+    .to_string()
+}
+
+/// A send that never settles fails the test and does not hang it.
+async fn within<T>(send: impl std::future::Future<Output = T>) -> T {
+    tokio::time::timeout(Duration::from_secs(10), send)
+        .await
+        .expect("the send did not settle in 10 s")
+}
+
+/// The refusal a send ended in; any other outcome fails the test.
+fn refusal<T>(outcome: Result<T, PredictionsError>) -> Refused {
+    match outcome {
+        Err(PredictionsError::Api(ApiError::Refused(refused))) => refused,
+        Err(other) => panic!("expected a refusal, got {other:?}"),
+        Ok(_) => panic!("expected a refusal, got a success"),
+    }
+}
+
+/// Records the target, level and fields of every event.
+#[derive(Clone, Default)]
+struct Events(Arc<Mutex<Vec<(String, tracing::Level, String)>>>);
+
+struct Fields(String);
+
+impl tracing::field::Visit for Fields {
+    fn record_debug(&mut self, field: &tracing::field::Field, value: &dyn std::fmt::Debug) {
+        self.0.push_str(&format!("{}={value:?} ", field.name()));
+    }
+}
+
+impl tracing::Subscriber for Events {
+    fn enabled(&self, _: &tracing::Metadata<'_>) -> bool {
+        true
+    }
+    fn new_span(&self, _: &tracing::span::Attributes<'_>) -> tracing::span::Id {
+        tracing::span::Id::from_u64(1)
+    }
+    fn record(&self, _: &tracing::span::Id, _: &tracing::span::Record<'_>) {}
+    fn record_follows_from(&self, _: &tracing::span::Id, _: &tracing::span::Id) {}
+    fn event(&self, event: &tracing::Event<'_>) {
+        let metadata = event.metadata();
+        let mut fields = Fields(String::new());
+        event.record(&mut fields);
+        self.0
+            .lock()
+            .unwrap()
+            .push((metadata.target().to_owned(), *metadata.level(), fields.0));
+    }
+    fn enter(&self, _: &tracing::span::Id) {}
+    fn exit(&self, _: &tracing::span::Id) {}
+}
+
+impl Events {
+    /// The target and fields of every WARN seen so far.
+    fn warnings(&self) -> Vec<(String, String)> {
+        let events = self.0.lock().unwrap();
+        events
+            .iter()
+            .filter(|(_, level, _)| *level == tracing::Level::WARN)
+            .map(|(target, _, fields)| (target.clone(), fields.clone()))
+            .collect()
+    }
+}
+
+#[tokio::test]
+async fn the_confirmation_reads_the_costs_then_the_limits_and_signs_both_when_keyed() {
+    let mut server = Server::new_async().await;
+    let seen = Seen::default();
+    let limits = limits_body(600, 200);
+    let bodies = [
+        (COSTS, NO_COSTS),
+        (LIMITS, limits.as_str()),
+        (STATUS, STATUS_BODY),
+    ];
+    let _mock = recording(&mut server, &[200], &bodies, &seen).await;
+    let verify = ed25519_verifier();
+
+    client(&server, Some(ed25519()))
+        .exchange()
+        .status()
+        .send()
+        .await
+        .unwrap();
+
+    let all = seen.all();
+    let paths: Vec<&str> = all.iter().map(|request| request.path.as_str()).collect();
+    assert_eq!(paths, [COSTS, LIMITS, STATUS]);
+    for request in &all {
+        assert!(verifies(request, &verify), "{request:?}");
+    }
+}
+
+#[tokio::test]
+async fn an_anonymous_confirmation_reads_only_the_costs_and_signs_nothing() {
+    let mut server = Server::new_async().await;
+    let seen = Seen::default();
+    let bodies = [(COSTS, NO_COSTS), (STATUS, STATUS_BODY)];
+    let _mock = recording(&mut server, &[200], &bodies, &seen).await;
+
+    client(&server, None)
+        .exchange()
+        .status()
+        .send()
+        .await
+        .unwrap();
+
+    let all = seen.all();
+    let paths: Vec<&str> = all.iter().map(|request| request.path.as_str()).collect();
+    assert_eq!(paths, [COSTS, STATUS]);
+    assert!(all.iter().all(|request| request.kalshi_headers == 0));
+}
+
+#[tokio::test]
+async fn a_premier_account_is_admitted_a_cost_the_basic_bucket_would_refuse() {
+    let mut server = Server::new_async().await;
+    let seen = Seen::default();
+    let limits = limits_body(1200, 1200);
+    let bodies = [
+        (COSTS, COSTLY_STATUS),
+        (LIMITS, limits.as_str()),
+        (STATUS, STATUS_BODY),
+    ];
+    let _mock = recording(&mut server, &[200], &bodies, &seen).await;
+    let client = client(&server, Some(ed25519()));
+
+    within(client.exchange().status().send()).await.unwrap();
+
+    assert_eq!(seen.to(STATUS).len(), 1, "the 700-token send went out");
+}
+
+#[tokio::test]
+async fn the_bucket_takes_the_capacity_the_account_reports() {
+    let mut server = Server::new_async().await;
+    let seen = Seen::default();
+    let limits = limits_body(650, 100);
+    let bodies = [
+        (COSTS, COSTLY_STATUS),
+        (LIMITS, limits.as_str()),
+        (STATUS, STATUS_BODY),
+    ];
+    let _mock = recording(&mut server, &[200], &bodies, &seen).await;
+    let client = client(&server, Some(ed25519()));
+
+    let refused = refusal(within(client.exchange().status().send()).await);
+
+    assert_eq!((refused.units, refused.capacity), (700, 650));
+    assert!(seen.to(STATUS).is_empty(), "a refused cost was sent");
+}
+
+#[tokio::test]
+async fn a_limits_answer_with_a_zero_refill_or_capacity_keeps_basic_and_warns() {
+    for (capacity, refill) in [(1200, 0), (0, 1200)] {
+        let events = Events::default();
+        let _scope = tracing::subscriber::set_default(events.clone());
+        // With one dispatcher registered, tracing-core works out the interest of a callsite
+        // another test's thread hits first from that thread's default, which has none, and
+        // caches it as never for every thread. A second one makes it ask each dispatcher.
+        let _second = tracing::Dispatch::new(Events::default());
+        let mut server = Server::new_async().await;
+        let seen = Seen::default();
+        let limits = limits_body(capacity, refill);
+        let bodies = [
+            (COSTS, COSTLY_STATUS),
+            (LIMITS, limits.as_str()),
+            (STATUS, STATUS_BODY),
+        ];
+        let _mock = recording(&mut server, &[200], &bodies, &seen).await;
+        let client = client(&server, Some(ed25519()));
+
+        let refused = refusal(within(client.exchange().status().send()).await);
+
+        assert_eq!(
+            (refused.units, refused.capacity),
+            (700, 600),
+            "capacity {capacity}, refill {refill}: Basic's sizing was not kept"
+        );
+        let warnings = events.warnings();
+        assert_eq!(
+            warnings.len(),
+            1,
+            "capacity {capacity}, refill {refill}: {warnings:?}"
+        );
+        assert!(
+            warnings[0].0.starts_with("polyoxide_kalshi"),
+            "{warnings:?}"
+        );
+        assert!(warnings[0].1.contains("account/limits"), "{warnings:?}");
+    }
 }
