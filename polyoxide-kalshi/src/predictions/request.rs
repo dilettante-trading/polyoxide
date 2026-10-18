@@ -177,10 +177,6 @@ impl<T> Routed<T> {
     }
 
     /// Sets a query parameter, replacing an earlier value for the same key.
-    #[allow(
-        dead_code,
-        reason = "Story 2's query setters write through it, and the tests below use it"
-    )]
     pub(crate) fn query(mut self, key: &'static str, value: impl ToString) -> Self {
         let value = value.to_string();
         match self.query.iter_mut().find(|(k, _)| *k == key) {
