@@ -178,6 +178,41 @@ as `proposed` or `disputed` were looked up again. 247 rows carried
 `proposal_expiration` nor `liveness` appeared, and the two keys still came
 together or not at all.
 
+## `/v2/tokens` (added after 2026-09-14)
+
+The nightly drift check first saw this route on 2026-10-08 (issue #52). Probed on
+the live host 2026-10-18; its fixture is `tests/fixtures/data/v2/tokens.json`.
+
+- **Only pagination parameters are refused.** The schema's `400` reads "an unsupported
+  query param", but `?token_id=<known>&limit=5` and `&bogus=1` both answer `200` with the
+  rows, and `&cursor=x` is ignored the same way. `offset` alone is refused:
+  `'offset' is not a query param on this API, and this endpoint is not paginated; it
+  accepts 'token_id', 'token_ids', 'condition', 'conditionId', 'condition_id'`. The
+  client sends none of them.
+- **Aliases.** `token_ids`, `condition_id` and `conditionId` work. `tokenId` does not:
+  it is ignored, so the request has no selector and the host answers `400`
+  `provide exactly one of 'token_id' or 'condition'` (no `parameter`, which is the same
+  answer for both selectors or neither).
+- **A miss is an empty list.** An unknown id is `200 {"data":[]}`, as documented, and
+  so is a `combo_position_id` from `/v2/positions/combos`. A combo *leg's*
+  `leg_position_id` resolves, as a `neg_risk` token.
+- **A malformed selector names its parameter.** `?token_id=abc` is `400`
+  `invalid token id: abc` with `parameter: "token_id"`; a condition that is not
+  `0x` plus 62 or 64 hex digits is `400` `invalid condition id: …` with
+  `parameter: "condition"`.
+- **A condition returns its family.** The condition `resolutions.json` uses carries over
+  to polymarket-v2, so `?condition=<it>` returns four rows: the `v1_ctf` pair
+  (`clob_index` 0 and 1, `structural_condition_id` `null`), then the `neg_risk` pair
+  (`clob_index` `null`, `structural_condition_id` set). Asking for that
+  `structural_condition_id` returns the `neg_risk` pair alone. Repeated and
+  zero-padded ids collapse (`?token_ids=T,T,00T` is one row).
+- **Rows always carry every key.** The five required properties were present on every
+  row seen, and each nullable one was present as `null`, never omitted. Only `v1_ctf`
+  and `neg_risk` rows were seen: no `binary` or `combo` token turned up, so those two
+  spellings come from the schema's enum alone, and `module` stays open.
+- **No cache header.** The response carries no `cache-control`. The route was not
+  soaked, so it takes the client's general bucket and no row of its own.
+
 ## Combo trades carry 62-digit condition ids
 
 `/v2/trades` includes combo trades. Their `condition_id` is a combo condition id of

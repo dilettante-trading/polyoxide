@@ -261,3 +261,12 @@ fn every_fixture_agrees_with_its_type_in_both_directions() {
 
     assert!(problems.is_empty(), "\n{}\n", problems.join("\n"));
 }
+
+/// `/v2/tokens` keeps its own test, with no excuse listed for it, so a key the
+/// type drops or invents shows at once.
+#[test]
+fn the_tokens_fixture_agrees_with_its_type_in_both_directions() {
+    let mut used = Ledger::new(&[IGNORED, EXPECTED_ABSENT]);
+    let problems = diff::<Data<Vec<TokenRef>>>("tokens", &mut used);
+    assert!(problems.is_empty(), "\n{}\n", problems.join("\n"));
+}

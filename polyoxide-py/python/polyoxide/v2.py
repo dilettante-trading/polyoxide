@@ -30,6 +30,7 @@ Position = _v2.Position
 PricePoint = _v2.PricePoint
 Resolution = _v2.Resolution
 ServiceStatus = _v2.ServiceStatus
+TokenRef = _v2.TokenRef
 Trade = _v2.Trade
 UserPnlSeries = _v2.UserPnlSeries
 UserStats = _v2.UserStats
@@ -59,6 +60,7 @@ __all__ = [
     "PricePoint",
     "Resolution",
     "ServiceStatus",
+    "TokenRef",
     "Trade",
     "UserPnlSeries",
     "UserStats",

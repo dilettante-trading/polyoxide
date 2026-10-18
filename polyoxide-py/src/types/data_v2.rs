@@ -259,6 +259,30 @@ py_type!(
 );
 
 py_type!(
+    PyV2TokenRef,
+    "TokenRef",
+    polyoxide_polymarket::data::v2::types::TokenRef,
+    clob_index,
+    closed,
+    condition_id,
+    event_id,
+    event_slug,
+    final_price,
+    market_slug,
+    module,
+    neg_risk,
+    neg_risk_market_id,
+    opposite_token_id,
+    outcome,
+    outcome_index,
+    question_index,
+    resolved,
+    structural_condition_id,
+    title,
+    token_id,
+);
+
+py_type!(
     PyV2BiggestWinner,
     "BiggestWinner",
     polyoxide_polymarket::data::v2::types::BiggestWinner,
@@ -370,6 +394,7 @@ pub fn register(m: &pyo3::Bound<'_, pyo3::types::PyModule>) -> pyo3::PyResult<()
     m.add_class::<PyV2OpenInterest>()?;
     m.add_class::<PyV2PricePoint>()?;
     m.add_class::<PyV2Resolution>()?;
+    m.add_class::<PyV2TokenRef>()?;
     m.add_class::<PyV2BiggestWinner>()?;
     m.add_class::<PyV2BuilderStanding>()?;
     m.add_class::<PyV2BuilderVolumePoint>()?;
@@ -560,6 +585,20 @@ mod tests {
                 py,
                 pagination,
                 |inner| PyV2Pagination { inner },
+                &[],
+            );
+        });
+    }
+
+    /// `/v2/tokens` rows get their own test: the one above lists the classes of the
+    /// routes that existed when the test bodies were frozen.
+    #[test]
+    fn every_token_ref_getter_reads_its_own_key() {
+        Python::attach(|py| {
+            check::<TokenRef, PyV2TokenRef>(
+                py,
+                captured("tokens", "/data"),
+                |inner| PyV2TokenRef { inner },
                 &[],
             );
         });

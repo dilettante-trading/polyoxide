@@ -7,8 +7,10 @@ Each file is the complete response body, pretty-printed. Inputs were chosen live
 `resolutions_pending.json` alone was captured 2026-09-29T18:17:22Z, when upstream
 added settlement estimates to `/v2/resolutions`. `positions.json` and
 `positions_closed.json` were re-captured 2026-10-07T04:40:07Z from the URLs below,
-when upstream added `first_entry_at` to `/v2/positions` rows. A full re-run
-captures all at once.
+when upstream added `first_entry_at` to `/v2/positions` rows. `tokens.json` was
+captured 2026-10-18T09:11:06Z, when upstream added `/v2/tokens`; it asks for the
+condition `resolutions.json` does, so its four rows are that market's `v1_ctf` pair
+and its `neg_risk` pair. A full re-run captures all at once.
 
 | Fixture | Request |
 |---------|---------|
@@ -31,6 +33,7 @@ captures all at once.
 | `prices_history.json` | `https://data-api.polymarket.com/v2/prices-history?token_id=107562952936555819668737826428754978979556920505990557747611348541829551199040&interval=1d&limit=2` |
 | `biggest_winners.json` | `https://data-api.polymarket.com/v2/biggest-winners?time_period=week&limit=2` |
 | `resolutions.json` | `https://data-api.polymarket.com/v2/resolutions?condition=0x789f0872f66cfffd21a33020e5c90e11f95f947e03be77ac2df7e86b0cb71527` |
+| `tokens.json` | `https://data-api.polymarket.com/v2/tokens?condition=0x789f0872f66cfffd21a33020e5c90e11f95f947e03be77ac2df7e86b0cb71527` |
 | `resolutions_pending.json` | `https://data-api.polymarket.com/v2/resolutions?condition=0x2458f124d8c37c68c7b0119078c5a8ba70beb840dcd90ee1aeca63c88abebbfd%2C0x01579d0b4d0648c373ccf83cf1619ede0483f1e8919b4b76fe79a13e2ac2dddd` |
 | `biggest_winners_combos.json` | `https://data-api.polymarket.com/v2/biggest-winners?category=combos&time_period=all&limit=2` |
 | `combo_positions.json` | `https://data-api.polymarket.com/v2/positions/combos?user=0x87746b484db725beb8e79d7ce188261b7c75baf4&limit=2` |

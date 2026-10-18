@@ -114,7 +114,30 @@ polyoxide_venue::open_enum! {
     }
 }
 
-polyoxide_venue::specta_as_string!(TradeSide, ActivitySide, ActivityType, PositionStatus);
+polyoxide_venue::open_enum! {
+    /// The contract family that issued a token (`TokenRef::module`).
+    ///
+    /// `v1_ctf` is the ConditionalTokens market (module 0); every other value is
+    /// a polymarket-v2 module, and upstream adds modules over time.
+    pub enum TokenModule {
+        /// `v1_ctf`: the ConditionalTokens market (module 0).
+        V1Ctf => "v1_ctf",
+        /// `binary`: a polymarket-v2 binary market.
+        Binary => "binary",
+        /// `neg_risk`: a polymarket-v2 neg-risk market.
+        NegRisk => "neg_risk",
+        /// `combo`: a polymarket-v2 combo.
+        Combo => "combo",
+    }
+}
+
+polyoxide_venue::specta_as_string!(
+    TradeSide,
+    ActivitySide,
+    ActivityType,
+    PositionStatus,
+    TokenModule
+);
 
 polyoxide_venue::wire_enum! {
     /// Ranking window for boards (`day` / `week` / `month` / `all`).
@@ -341,4 +364,25 @@ pub enum ResolutionKey {
     Conditions(Vec<String>),
     /// Gamma event ids (at most 20).
     Events(Vec<String>),
+}
+
+/// Which tokens `/v2/tokens` returns. Upstream takes exactly one selector family
+/// per request.
+///
+/// There is deliberately no `From<&str>`: a token id and a condition selector
+/// are different identifiers, and a bare string does not say which.
+#[derive(Debug, Clone, PartialEq, Eq)]
+#[non_exhaustive]
+pub enum TokenKey {
+    /// Decimal ERC-1155 token ids (at most 50 distinct). Upstream trims each,
+    /// strips leading zeros and collapses duplicates to their first position.
+    TokenIds(Vec<String>),
+    /// Condition selectors (at most 10 distinct), each `0x` plus 62 or 64 hex
+    /// digits: a ConditionalTokens condition id (for a market carried over to
+    /// polymarket-v2, its whole family), a neg-risk market id (every market of
+    /// the structure), a polymarket-v2 condition id (that condition only), the
+    /// 66-character condition id of a native polymarket-v2 market, or the
+    /// on-chain event id of a polymarket-v2 neg-risk structure (every question
+    /// of it). Upstream lower-cases them and collapses duplicates.
+    Conditions(Vec<String>),
 }

@@ -54,7 +54,7 @@ once for every route:
 
 ## Endpoints
 
-20 endpoints across five tags.
+21 endpoints across five tags.
 
 | Tag | Endpoint | Summary |
 |-----|----------|---------|
@@ -73,6 +73,7 @@ once for every route:
 | markets | `GET /v2/oi` | Get open interest |
 | markets | `GET /v2/prices-history` | Get a token's price history |
 | markets | `GET /v2/resolutions` | Get resolution state |
+| markets | `GET /v2/tokens` | Look up tokens |
 | boards | `GET /v2/biggest-winners` | List the biggest wins |
 | boards | `GET /v2/builders/leaderboard` | Get the builders leaderboard |
 | boards | `GET /v2/builders/volume` | Get builder volume over time |
@@ -84,7 +85,8 @@ and `/v1/market-positions` fold into `/v2/positions?status=`, and `/traded` into
 `/v2/user-stats`. It names `/v1/accounting/snapshot` as staying on v1. It says
 nothing about `/other`, `/revisions` or the `/` health route, which are in the v1
 spec and have no `/v2` path; `/v2/status` reports data freshness, not liveness. The new routes are `user-pnl`, `user-stats`,
-`user-volume`, `biggest-winners`, `prices-history`, `resolutions` and `status`.
+`user-volume`, `biggest-winners`, `prices-history`, `resolutions` and `status`. `tokens`
+came later, first seen by the drift check on 2026-10-08.
 
 ## Overlap with what polyoxide already calls
 

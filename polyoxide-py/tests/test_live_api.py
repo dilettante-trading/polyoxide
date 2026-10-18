@@ -507,6 +507,11 @@ class TestDataV2Sync:
         assert v2.resolutions(conditions=[resolved.condition_id]), "a market on the winners board has resolved"
         assert isinstance(v2.live_volume([str(resolved.event_id)]), polyoxide.v2.LiveVolume)
 
+        family = v2.tokens(conditions=[resolved.condition_id])
+        assert {row.condition_id for row in family} == {resolved.condition_id}, "a resolved market has tokens"
+        looked_up = v2.tokens(token_ids=[family[0].token_id])
+        assert [row.token_id for row in looked_up] == [family[0].token_id]
+
     def test_board_routes(self):
         v2 = polyoxide.DataApiSync().v2()
 
