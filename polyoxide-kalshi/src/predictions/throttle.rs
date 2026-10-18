@@ -9,16 +9,16 @@
 //! no capacity term and must not be given a depth.
 
 use std::collections::HashMap;
-use std::sync::RwLock;
+use std::sync::{Arc, RwLock};
 use std::time::Duration;
 
 use polyoxide_core::{
-    AttemptInfo, CapacityBucket, Charge, Hold, LayerCharge, Refused, RequestMeta, ResponseMeta,
-    Throttle,
+    AttemptInfo, CapacityBucket, Charge, Hold, LayerCharge, Refused, Request, RequestMeta,
+    ResponseMeta, Throttle,
 };
 
 use crate::predictions::request::{Route, DEFAULT_COST, READ};
-use crate::predictions::Inner;
+use crate::predictions::{Inner, PredictionsError};
 
 /// Tokens the Basic tier's Read bucket holds: 3 seconds of its refill.
 pub(crate) const BASIC_READ_CAPACITY: u32 = 600;
@@ -150,20 +150,19 @@ impl Inner {
     }
 
     /// One of the confirmation's reads: signed when the client holds a key, and charged to the
-    /// Read layer at the route's cost as it stands.
-    fn confirmation_request<T>(
-        &self,
-        route: &crate::predictions::request::Route,
-    ) -> polyoxide_core::Request<T, crate::predictions::PredictionsError> {
-        let request = polyoxide_core::Request::new(self.http.clone(), route.path(&[])).with_cost(
-            polyoxide_core::Cost {
-                layer: crate::predictions::request::READ,
-                units: self.costs.cost(route),
-                exact: true,
-            },
-        );
+    /// Read layer at the route's cost as it stands, capped at the bucket's capacity.
+    ///
+    /// The cap is what keeps the confirmation from waiting on itself. The bucket is provisional
+    /// until the confirmation ends, so a read costing more than its capacity (the costs answer
+    /// listing `/account/limits` above Basic's 600, say) would wait for a resize only this read
+    /// can bring, and every send would wait with it. The venue is told the real route, and
+    /// charges what it charges; the cap only bounds what this client waits for.
+    fn confirmation_request<T>(&self, route: &Route) -> Request<T, PredictionsError> {
+        let mut cost = self.read_cost(route);
+        cost.units = cost.units.min(self.throttle.bucket().capacity());
+        let request = Request::new(self.http.clone(), route.path(&[])).with_cost(cost);
         match &self.auth {
-            Some(auth) => request.authenticator(std::sync::Arc::clone(auth)),
+            Some(auth) => request.authenticator(Arc::clone(auth)),
             None => request,
         }
     }
@@ -415,6 +414,66 @@ mod confirmation_tests {
         assert_eq!(costs.cost(&routes::MARKETS), DEFAULT_COST);
         assert_eq!(costs.cost(&routes::MARKET), DEFAULT_COST);
         assert_eq!(costs.cost(&routes::TRADES), DEFAULT_COST);
+    }
+
+    #[tokio::test]
+    async fn a_limits_route_listed_above_basics_capacity_does_not_hang_the_confirmation() {
+        let mut server = Server::new_async().await;
+        // The venue lists the limits read itself at 700, above the provisional bucket's 600.
+        let listed = costs_body(&[(LIMITS, 700)]);
+        let costs = answer(&mut server, COSTS, 200, &listed, 1).await;
+        let limits = answer(&mut server, LIMITS, 200, &limits_body(1200, 1000), 1).await;
+        let status = answer(&mut server, STATUS, 200, STATUS_BODY, 1).await;
+        let client = client(&server, Some(keyed()));
+
+        tokio::time::timeout(Duration::from_secs(5), client.exchange().status().send())
+            .await
+            .expect("the confirmation waited for a resize only it could bring")
+            .unwrap();
+
+        costs.assert_async().await;
+        limits.assert_async().await;
+        status.assert_async().await;
+        assert_eq!(client.inner.throttle.bucket().capacity(), 1200);
+        // The listing still applies to the route as the client charges it later.
+        assert_eq!(client.inner.costs.cost(&routes::ACCOUNT_LIMITS), 700);
+    }
+
+    #[tokio::test]
+    async fn the_read_bucket_takes_the_limits_answers_refill_rate() {
+        let mut server = Server::new_async().await;
+        let _costs = answer(&mut server, COSTS, 200, &costs_body(&[]), 1).await;
+        // Distinct numbers, and neither is Basic's 200.
+        let _limits = answer(&mut server, LIMITS, 200, &limits_body(1200, 1000), 1).await;
+        let _status = answer(&mut server, STATUS, 200, STATUS_BODY, 1).await;
+        let client = client(&server, Some(keyed()));
+
+        client.exchange().status().send().await.unwrap();
+
+        let bucket = format!("{:?}", client.inner.throttle.bucket());
+        assert!(bucket.contains("capacity: 1200"), "{bucket}");
+        assert!(bucket.contains("refill_per_sec: 1000"), "{bucket}");
+        assert!(bucket.contains("provisional: false"), "{bucket}");
+    }
+
+    #[tokio::test]
+    async fn a_failed_costs_read_still_reads_limits_and_resizes_the_bucket() {
+        let mut server = Server::new_async().await;
+        let costs = answer(&mut server, COSTS, 500, "{}", 1).await;
+        let limits = answer(&mut server, LIMITS, 200, &limits_body(1200, 1200), 1).await;
+        let status = answer(&mut server, STATUS, 200, STATUS_BODY, 1).await;
+        let client = client(&server, Some(keyed()));
+
+        client.exchange().status().send().await.unwrap();
+
+        costs.assert_async().await;
+        limits.assert_async().await;
+        status.assert_async().await;
+        assert_eq!(client.inner.throttle.bucket().capacity(), 1200);
+        assert_eq!(
+            client.inner.costs.cost(&routes::EXCHANGE_STATUS),
+            DEFAULT_COST
+        );
     }
 
     #[tokio::test]

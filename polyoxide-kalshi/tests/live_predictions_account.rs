@@ -43,6 +43,9 @@ async fn live_account_limits_are_at_least_basics() {
     assert!(!limits.usage_tier.is_empty());
 }
 
+/// A signed public read is accepted. It does not show the signature verifies: the demo host
+/// answered a public read signed with an unknown key id with a `200` (docs/specs/kalshi/OBSERVED.md),
+/// so `live_account_limits_are_at_least_basics` is the test that exercises the signature.
 #[tokio::test]
 #[ignore]
 async fn live_a_signed_public_read_succeeds() {

@@ -194,9 +194,12 @@ fn an_encrypted_key_is_refused_by_its_label() {
 
 #[test]
 fn a_legacy_encrypted_pem_is_refused_before_its_body_is_read() {
-    let pem = "-----BEGIN RSA PRIVATE KEY-----\nProc-Type: 4,ENCRYPTED\nDEK-Info: AES-128-CBC,00\n\nc2VjcmV0\n-----END RSA PRIVATE KEY-----\n";
+    let pem = armour(
+        "RSA PRIVATE KEY",
+        "Proc-Type: 4,ENCRYPTED\nDEK-Info: AES-128-CBC,00\n\nc2VjcmV0",
+    );
 
-    let error = Credentials::from_pem("key", pem).unwrap_err();
+    let error = Credentials::from_pem("key", &pem).unwrap_err();
 
     assert!(matches!(error, CredentialsError::Pem { .. }), "{error:?}");
     assert!(error.to_string().contains("encrypted"), "{error}");
@@ -237,14 +240,16 @@ fn a_body_that_is_base64_but_no_key_is_a_key_error_that_does_not_quote_it() {
 
 #[test]
 fn text_that_is_not_one_armoured_block_is_a_pem_error() {
+    let unclosed = armour("PRIVATE KEY", "AAAA");
+    let unclosed = unclosed.split("-----END").next().unwrap().to_owned();
     let texts = [
-        "",
-        "not a key",
-        "-----BEGIN PRIVATE KEY-----\nAAAA\n",
-        "-----BEGIN PRIVATE KEY-----\nAAAA\n-----END PRIVATE KEY-----\nextra",
+        String::new(),
+        "not a key".to_owned(),
+        unclosed,
+        armour("PRIVATE KEY", "AAAA") + "extra",
     ];
 
-    for text in texts {
+    for text in &texts {
         let error = Credentials::from_pem("key", text).unwrap_err();
 
         assert!(
