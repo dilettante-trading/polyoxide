@@ -35,4 +35,5 @@ const _: fn() = || {
     is::<predictions::PredictionsError>();
     is::<predictions::VenueError>();
     is::<predictions::key::InvalidTicker>();
+    is::<predictions::CredentialsError>();
 };

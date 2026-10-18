@@ -10,6 +10,7 @@
 //! them.
 
 pub mod api;
+pub mod auth;
 pub mod error;
 pub mod key;
 pub mod request;
@@ -17,6 +18,7 @@ mod throttle;
 pub mod types;
 pub mod venue;
 
+pub use auth::{Credentials, CredentialsError};
 pub use error::{PredictionsError, VenueError};
 pub use key::key;
 
