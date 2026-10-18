@@ -1,3 +1,5 @@
+use std::collections::HashSet;
+
 use polyoxide_core::reqwest::header::{HeaderValue, CONTENT_TYPE};
 use polyoxide_core::reqwest::Method;
 use polyoxide_core::{ApiError, HttpClient, QueryBuilder, Request, RequestParts};
@@ -8,6 +10,10 @@ use crate::gamma::{
         ClosedFilter, KeysetMarketsResponse, Market, MarketDescription, MarketsInformationBody, Tag,
     },
 };
+
+/// The most values the host takes in one identifier filter: a longer list is a
+/// `422` (`expected array length <= 100`).
+const MAX_IDS_PER_REQUEST: usize = 100;
 
 /// Markets namespace for market-related operations
 #[derive(Clone)]
@@ -47,14 +53,13 @@ impl Markets {
     ///
     /// Unlike [`Self::list`] with `.id(…)`, which inherits the upstream
     /// `closed=false` default and silently drops closed markets, `get_many`
-    /// issues two parallel requests (`closed=true` and `closed=false`) and
-    /// merges the results, so callers get every matching market regardless of
+    /// sends `closed=any`, so callers get every matching market regardless of
     /// status. This matches the semantics of the single-market [`Self::get`]
     /// endpoint, batched.
     ///
-    /// At most 100 IDs per call, the cap [`ListMarkets::id`] has: a longer
-    /// list is a `422` on both requests. The two fan-out requests are issued
-    /// concurrently, so wall-clock latency is one round-trip, not two.
+    /// The host takes at most 100 IDs in a request, so a longer list is sent
+    /// 100 at a time, in turn, and the results are joined in the order sent.
+    /// A repeated ID is sent once. Up to 100 IDs is one request.
     pub fn get_many(&self, ids: impl IntoIterator<Item = i64>) -> GetManyMarkets {
         GetManyMarkets {
             http_client: self.http_client.clone(),
@@ -271,10 +276,11 @@ impl GetMarket {
 
 /// Request builder for batch lookup of markets by ID.
 ///
-/// On [`Self::send`] this issues two parallel `/markets` requests — one with
-/// `closed=true`, one with `closed=false` — and concatenates the results. The
-/// two upstream responses are disjoint (a market is either closed or not), so
-/// merging by concatenation is exact.
+/// On [`Self::send`] this issues one `/markets` request with `closed=any` for
+/// each 100 IDs, since that is the most the host takes in a request, and
+/// concatenates the results. Each asks for a `limit` of its IDs' number, as
+/// the host returns 20 rows otherwise. Chunks hold distinct IDs, so the
+/// results cannot repeat a market.
 pub struct GetManyMarkets {
     http_client: HttpClient,
     ids: Vec<i64>,
@@ -291,31 +297,27 @@ impl GetManyMarkets {
     /// Execute the request.
     ///
     /// Returns an empty vec without hitting the network when called with no
-    /// IDs. Otherwise fans out `closed=true` and `closed=false` concurrently
-    /// and fails fast if either leg errors.
+    /// IDs. Otherwise sends one request per 100 distinct IDs, one after the
+    /// other, and stops at the first that fails.
     pub async fn send(self) -> Result<Vec<Market>, GammaError> {
-        if self.ids.is_empty() {
-            return Ok(Vec::new());
+        let mut seen = HashSet::new();
+        let ids: Vec<i64> = self.ids.into_iter().filter(|id| seen.insert(*id)).collect();
+
+        let mut markets = Vec::new();
+        for chunk in ids.chunks(MAX_IDS_PER_REQUEST) {
+            let mut request: Request<Vec<Market>, GammaError> =
+                Request::new(self.http_client.clone(), "/markets")
+                    .query_many("id", chunk.iter().copied())
+                    .query("closed", ClosedFilter::Any)
+                    // `/markets` pages at 20 rows by default, a lookup by id
+                    // included, so each chunk asks for as many as it holds.
+                    .query("limit", chunk.len());
+            if let Some(include) = self.include_tag {
+                request = request.query("include_tag", include);
+            }
+            markets.extend(request.send().await?);
         }
-
-        let mut req_closed: Request<Vec<Market>, GammaError> =
-            Request::new(self.http_client.clone(), "/markets")
-                .query_many("id", self.ids.iter().copied())
-                .query("closed", true);
-        let mut req_open: Request<Vec<Market>, GammaError> =
-            Request::new(self.http_client, "/markets")
-                .query_many("id", self.ids.iter().copied())
-                .query("closed", false);
-
-        if let Some(include) = self.include_tag {
-            req_closed = req_closed.query("include_tag", include);
-            req_open = req_open.query("include_tag", include);
-        }
-
-        let (mut closed_markets, open_markets) =
-            tokio::try_join!(req_closed.send(), req_open.send())?;
-        closed_markets.extend(open_markets);
-        Ok(closed_markets)
+        Ok(markets)
     }
 }
 
@@ -344,8 +346,9 @@ impl ListMarkets {
         ///
         /// The upstream `/markets` endpoint applies an implicit `closed=false`
         /// default when no `closed` param is sent, so this filter silently drops
-        /// closed markets unless `.closed(true)` is also set. For pinpoint lookup
-        /// by ID regardless of status, use [`Markets::get_many`].
+        /// closed markets unless `.closed(true)` is also set. To look up by ID
+        /// regardless of status, use [`Markets::get_many`], or
+        /// `.closed_filter(ClosedFilter::Any)` here.
         id: many impl IntoIterator<Item = i64> => "id",
         /// Filter by market slugs
         ///

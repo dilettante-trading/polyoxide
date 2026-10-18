@@ -370,6 +370,57 @@ async fn live_events_closed_any_returns_both_states_in_one_request() {
     }
 }
 
+/// A list past the host's 100-value cap on an identifier filter is sent a
+/// hundred at a time and comes back whole. The ids are two pages of listed
+/// markets, so the lookup is two requests, and an unchunked one would be a
+/// `422`.
+#[tokio::test]
+#[ignore]
+async fn live_get_many_chunks_past_one_hundred_ids() {
+    let gamma = client();
+    // Both listing routes cap a page at 100, so the ids take two keyset pages.
+    let mut listed = Vec::new();
+    let mut cursor: Option<String> = None;
+    while listed.len() <= 100 {
+        let mut request = gamma.markets().list_keyset().limit(100u32);
+        if let Some(after) = cursor.take() {
+            request = request.after_cursor(after);
+        }
+        let page = request.send().await.or_fail("list markets (keyset)");
+        listed.extend(page.markets);
+        cursor = page.next_cursor;
+        if cursor.is_none() {
+            break;
+        }
+    }
+    if listed.len() <= 100 {
+        environmental(&format!(
+            "the host listed {} markets, too few to need a second request",
+            listed.len()
+        ));
+    }
+    let ids: Vec<i64> = listed
+        .iter()
+        .map(|m| listed_id(Some(m.id.as_str()), "market"))
+        .collect();
+
+    let fetched = gamma
+        .markets()
+        .get_many(ids.iter().copied())
+        .send()
+        .await
+        .or_fail("get_many of more than 100 ids");
+
+    let mut wanted: Vec<&str> = listed.iter().map(|m| m.id.as_str()).collect();
+    let mut returned: Vec<&str> = fetched.iter().map(|m| m.id.as_str()).collect();
+    wanted.sort_unstable();
+    returned.sort_unstable();
+    assert_eq!(
+        returned, wanted,
+        "get_many should return every market asked for"
+    );
+}
+
 #[tokio::test]
 #[ignore]
 async fn live_get_market_description() {

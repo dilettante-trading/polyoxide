@@ -291,6 +291,9 @@ async fn error_400_returns_validation_error() {
     mock.assert_async().await;
 }
 
+/// Kept under its v0.40.0 name, which AD-12 holds. `get_many` fanned out
+/// `closed=true` and `closed=false` and merged the two until DRIFT R13; it now
+/// sends one `closed=any` request, and neither of the old two.
 #[tokio::test]
 async fn get_many_fans_out_closed_true_and_false() {
     let mut server = Server::new_async().await;
@@ -298,66 +301,197 @@ async fn get_many_fans_out_closed_true_and_false() {
     // Regex (not Matcher::UrlEncoded) because mockito 1.7's UrlEncoded matcher
     // cannot assert multiple values for the same key (`id=1&id=2`) — anchored
     // regex is the reliable way to pin a specific repeated-key query pair.
-    let mock_closed = server
+    let mock_any = server
         .mock("GET", "/markets")
-        .match_query(Matcher::AllOf(vec![
-            Matcher::Regex(r"(^|&)id=1(&|$)".into()),
-            Matcher::Regex(r"(^|&)id=2(&|$)".into()),
-            Matcher::Regex(r"(^|&)closed=true(&|$)".into()),
-        ]))
+        .match_query(get_many_query([1, 2], ""))
         .with_status(200)
         .with_header("content-type", "application/json")
-        .with_body(
-            r#"[{
-                "id": "1",
-                "conditionId": "0xcond1",
-                "question": "Closed market?",
-                "description": "A closed market",
-                "marketMakerAddress": "0xaddr1",
-                "closed": true
-            }]"#,
-        )
+        .with_body(format!(
+            "[{},{}]",
+            market_json(1, true),
+            market_json(2, false)
+        ))
         .expect(1)
         .create_async()
         .await;
-
+    let mock_closed = server
+        .mock("GET", "/markets")
+        .match_query(Matcher::Regex(r"(^|&)closed=true(&|$)".into()))
+        .with_status(200)
+        .with_body("[]")
+        .expect(0)
+        .create_async()
+        .await;
     let mock_open = server
         .mock("GET", "/markets")
-        .match_query(Matcher::AllOf(vec![
-            Matcher::Regex(r"(^|&)id=1(&|$)".into()),
-            Matcher::Regex(r"(^|&)id=2(&|$)".into()),
-            Matcher::Regex(r"(^|&)closed=false(&|$)".into()),
-        ]))
+        .match_query(Matcher::Regex(r"(^|&)closed=false(&|$)".into()))
         .with_status(200)
-        .with_header("content-type", "application/json")
-        .with_body(
-            r#"[{
-                "id": "2",
-                "conditionId": "0xcond2",
-                "question": "Open market?",
-                "description": "An open market",
-                "marketMakerAddress": "0xaddr2",
-                "closed": false
-            }]"#,
-        )
-        .expect(1)
+        .with_body("[]")
+        .expect(0)
         .create_async()
         .await;
 
     let gamma = test_gamma(&server);
     let markets = gamma.markets().get_many([1i64, 2]).send().await.unwrap();
 
-    assert_eq!(markets.len(), 2);
     let ids: Vec<&str> = markets.iter().map(|m| m.id.as_str()).collect();
-    assert!(ids.contains(&"1"), "missing closed market in merged result");
-    assert!(ids.contains(&"2"), "missing open market in merged result");
-    assert!(
-        markets.iter().any(|m| m.closed == Some(true)),
-        "merged result should include the closed market"
-    );
+    assert_eq!(ids, ["1", "2"]);
+    assert_eq!(markets[0].closed, Some(true), "the closed market is there");
+    assert_eq!(markets[1].closed, Some(false), "so is the open one");
 
+    mock_any.assert_async().await;
     mock_closed.assert_async().await;
     mock_open.assert_async().await;
+}
+
+/// A market body the way `get_many`'s tests need it: an id and whether it is closed.
+fn market_json(id: i64, closed: bool) -> String {
+    format!(
+        r#"{{"id":"{id}","conditionId":"0xcond{id}","question":"Q{id}?","description":"D{id}","marketMakerAddress":"0xaddr{id}","closed":{closed}}}"#
+    )
+}
+
+/// The query `get_many` sends for `ids`: each id, `closed=any`, a `limit` of
+/// the ids' number, since the host pages `/markets` at 20 rows when none is
+/// sent, even for a lookup by id, then `tail`. Anchored, so a longer or shorter
+/// list does not match.
+fn get_many_query(ids: impl IntoIterator<Item = i64>, tail: &str) -> Matcher {
+    let ids: Vec<String> = ids.into_iter().map(|id| format!("id={id}")).collect();
+    Matcher::Regex(format!(
+        "^{}&closed=any&limit={}{tail}$",
+        ids.join("&"),
+        ids.len()
+    ))
+}
+
+#[tokio::test]
+async fn get_many_sends_include_tag_after_closed() {
+    let mut server = Server::new_async().await;
+    let mock = server
+        .mock("GET", "/markets")
+        .match_query(get_many_query([1], "&include_tag=true"))
+        .with_status(200)
+        .with_header("content-type", "application/json")
+        .with_body(format!("[{}]", market_json(1, false)))
+        .expect(1)
+        .create_async()
+        .await;
+
+    let markets = test_gamma(&server)
+        .markets()
+        .get_many([1i64])
+        .include_tag(true)
+        .send()
+        .await
+        .unwrap();
+
+    assert_eq!(markets.len(), 1);
+    mock.assert_async().await;
+}
+
+#[tokio::test]
+async fn get_many_sends_one_hundred_ids_a_request_in_order() {
+    let mut server = Server::new_async().await;
+    // The host refuses an identifier filter of more than 100 values with a 422,
+    // so 250 ids are three requests, and each answers with its first market.
+    let mut mocks = Vec::new();
+    for range in [1..=100, 101..=200, 201..=250] {
+        let first = *range.start();
+        mocks.push(
+            server
+                .mock("GET", "/markets")
+                .match_query(get_many_query(range, ""))
+                .with_status(200)
+                .with_header("content-type", "application/json")
+                .with_body(format!("[{}]", market_json(first, false)))
+                .expect(1)
+                .create_async()
+                .await,
+        );
+    }
+
+    let markets = test_gamma(&server)
+        .markets()
+        .get_many(1i64..=250)
+        .send()
+        .await
+        .unwrap();
+
+    let ids: Vec<&str> = markets.iter().map(|m| m.id.as_str()).collect();
+    assert_eq!(
+        ids,
+        ["1", "101", "201"],
+        "the chunks join in the order sent"
+    );
+    for mock in mocks {
+        mock.assert_async().await;
+    }
+}
+
+#[tokio::test]
+async fn get_many_sends_a_repeated_id_once() {
+    let mut server = Server::new_async().await;
+    let mock = server
+        .mock("GET", "/markets")
+        .match_query(get_many_query([7, 8], ""))
+        .with_status(200)
+        .with_header("content-type", "application/json")
+        .with_body(format!(
+            "[{},{}]",
+            market_json(7, false),
+            market_json(8, false)
+        ))
+        .expect(1)
+        .create_async()
+        .await;
+
+    let markets = test_gamma(&server)
+        .markets()
+        .get_many([7i64, 7, 8, 7])
+        .send()
+        .await
+        .unwrap();
+
+    assert_eq!(markets.len(), 2);
+    mock.assert_async().await;
+}
+
+#[tokio::test]
+async fn get_many_stops_at_the_first_chunk_that_fails() {
+    let mut server = Server::new_async().await;
+    let first = server
+        .mock("GET", "/markets")
+        .match_query(get_many_query(1..=100, ""))
+        .with_status(422)
+        .with_header("content-type", "application/json")
+        .with_body(r#"{"type":"validation error","error":"closed has a wrong value"}"#)
+        .expect(1)
+        .create_async()
+        .await;
+    let second = server
+        .mock("GET", "/markets")
+        .match_query(get_many_query(101..=150, ""))
+        .with_status(200)
+        .with_body("[]")
+        .expect(0)
+        .create_async()
+        .await;
+
+    let err = test_gamma(&server)
+        .markets()
+        .get_many(1i64..=150)
+        .send()
+        .await
+        .unwrap_err();
+
+    match err {
+        GammaError::Api(polyoxide_core::ApiError::Response(r)) => {
+            assert_eq!(r.status.as_u16(), 422)
+        }
+        other => panic!("Expected a 422, got: {other:?}"),
+    }
+    first.assert_async().await;
+    second.assert_async().await;
 }
 
 #[tokio::test]

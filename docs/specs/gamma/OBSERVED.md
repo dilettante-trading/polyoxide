@@ -273,8 +273,8 @@ unfiltered request and, when that is empty, one with `closed=true`. Until
 `closed=any` (next section) one request could not ask for both. `GET
 /events/1085449` returned the event with all 39 of its markets, closed ones
 included, with no filter. The CLOB's `event_group`
-(`polyoxide-polymarket/src/clob/venue.rs`) still makes the two requests in
-that order.
+(`polyoxide-polymarket/src/clob/venue.rs`) made those two requests in that
+order until DRIFT R13, and now makes one with `closed=any`.
 
 ## `closed=any`: both states in one request
 
@@ -303,17 +303,31 @@ An identifier filter holds at most **100** values on every one of these routes
 and with any `closed`, `422` `expected array length <= 100` from 101: 100 ids
 returned `200` and 101, 150 and 400 did not, on `/markets`, `/markets/keyset`,
 `/events` and `/events/keyset`. The "≤ 400" the `id` setters and
-`Markets::get_many` documented was wrong, and `get_many` fails on both legs
+`Markets::get_many` documented was wrong, and `get_many` failed on both legs
 past 100.
+
+`/markets` and `/markets/keyset` also page at **20** rows when no `limit` is
+sent, a lookup by id included (`openapi.yaml`: `default: 20`, `maximum: 100`;
+`limit=500` returned 100). Probed 2026-10-18, a lookup of 100 listed ids returned
+20 rows under `closed=any` and under `closed=false`, and 100 with `limit=100`.
+So `get_many` returned at most 20 rows from each of its two legs, and a call for
+21 open markets lost one without an error. It sends `limit` now.
 
 **What polyoxide does.** `gamma::types::ClosedFilter` (`Open`, `Closed`,
 `Any`, spelled `false`, `true`, `any`) and a `closed_filter` setter on
 `ListEvents`, `ListKeysetEvents`, `ListMarkets` and `ListKeysetMarkets` send
-it. `closed(bool)` is unchanged, and so is `get_many`'s fan-out of
-`closed=true` and `closed=false`, which `closed=any` could replace for up to
-100 ids. `live_markets_closed_any_returns_both_states_in_one_request`,
-`live_markets_closed_any_needs_an_identifier` and
-`live_events_closed_any_returns_both_states_in_one_request` in
+it. `closed(bool)` is unchanged.
+
+Two callers sent `closed=true` and `closed=false` and merged the answers, and
+DRIFT R13 moved both onto `closed=any`. `Markets::get_many` sends one request
+for each 100 distinct ids, each with a `limit` of its ids' number, one after the
+other, joined in the order sent, and stops at the first that fails. The CLOB's `event_group` sends one request, with
+the token as the identifier filter `any` requires.
+
+`live_markets_closed_any_returns_both_states_in_one_request`,
+`live_markets_closed_any_needs_an_identifier`,
+`live_events_closed_any_returns_both_states_in_one_request` and
+`live_get_many_chunks_past_one_hundred_ids` in
 `polyoxide-polymarket/tests/live_gamma.rs` hold it; the first has the default
 lookup as its control, which must drop the closed market.
 
