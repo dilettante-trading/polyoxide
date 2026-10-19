@@ -17,8 +17,8 @@ may be reshaped freely before the release commit.
 
 **1.2 Stage.** The workspace stays in S3. The epic adds API and removes none from any published
 crate, so `docs/s3-removals.md` gains nothing. `polyoxide-kalshi` is absent from the removals
-baseline (`v0.40.0`), which `api_removals.py` skips with a warning. The release is `0.42.0`
-(Story 10), one new crate name on crates.io.
+baseline (`v0.40.0`), which `api_removals.py` skips with a warning. The release is `0.42.0`,
+one new crate name on crates.io, made after the run as its own commit on `main` (D16, §12).
 
 **1.3 The owner's choices (2026-10-19).**
 
@@ -42,15 +42,25 @@ and a mirror disagree, the probe wins and `OBSERVED.md` records it; the mirrors 
 | 2 | `polyoxide-venue`: `Candles::intervals()` and `UnservedInterval` | — |
 | 3 | Kalshi's `Candles` | 1, 2 |
 | 4 | `polyoxide-ws`: `Protocol::follow_up` | — |
-| 5 | The socket's `ticker` and `trade` channels | 1, 4 |
-| 6 | The local book, `get_snapshot`, and the gap re-snapshot | 5 |
+| 5 | The socket protocol: the `ticker` and `trade` channels, `get_snapshot`, the gap re-snapshot | 1, 4 |
+| 6 | The local book (`ws/book.rs`, pure) | 5 |
 | 7 | Limits: the unsigned soak and the signed-bucket probe | 1 |
-| 8 | Publish wiring: manifest, umbrella, CI | 3, 6, 7 |
+| 8 | Publish wiring: manifest, umbrella, CI | 3, 5, 6, 7 |
 | 9 | Docs, records and amendments | 8 |
-| 10 | The release commit, `0.42.0` | 9 |
 
 Stories 2 and 4 may run at any time and in parallel with Story 1. Story 7 may run in parallel with
-Stories 2 to 6.
+Stories 2 to 6. No story quotes code another story writes: every edit to `ws/protocol.rs`,
+`ws/event.rs`, `ws/error.rs` and `ws/builder.rs` is Story 5's, and Story 6 adds `ws/book.rs` and
+uses Story 5's public names only (the plan's names contract).
+
+**1.6 The design session's probe** (production, unsigned, 2026-10-19). `GET /markets/candlesticks`
+for `KXMLBGAME-26OCT192008CLETB-TB` at 1, 60 and 1440 answered `200` with
+`{markets: [{market_ticker, candlesticks}]}`. A traded period's `price` held `open`, `high`, `low`,
+`close`, `mean` and `previous` (`_dollars`), the first traded period no `previous`; an untraded
+period after a trade held only `previous_dollars`; a period before any trade held `price: {}`.
+`min_dollars` and `max_dollars` never appeared. `period_interval=5` answered `200` with no rows on
+the batch route and `400` (a validation `msg`) on the series route. Hourly candles end on the hour;
+the daily candle ended at 04:00 UTC. Story 1 writes these to `OBSERVED.md` with its captures.
 
 ## 2. Decisions (binding)
 
@@ -71,14 +81,14 @@ Stories 2 to 6.
   `period_interval` 1, 60 and 1440.
 - **D5. Kalshi's candle route.** `candles` uses `GET /trade-api/v2/markets/candlesticks` with one
   ticker in `market_tickers`, which needs no series lookup and returns up to 10,000 candlesticks.
-  If Story 1 finds that route refuses an unsigned request, or answers differently from the mirror,
-  `candles` uses `GET /series/{series_ticker}/markets/{ticker}/candlesticks` instead, finding the
-  series through the market's `event_ticker` and `GET /events/{event_ticker}`, and Story 3 records
-  which in `OBSERVED.md`. Both routes are added to the route table with their costs, and the native
+  The design session probed it on production, unsigned, on 2026-10-19 (§1.6): it answers `200`.
+  `GET /series/{series_ticker}/markets/{ticker}/candlesticks` answers the same rows under
+  `{candlesticks, ticker}`. Both routes are added to the route table with their costs, and the native
   client exposes both (`markets().candlesticks(..)` for the batch route,
   `markets().series_candlesticks(..)` for the series route), with query setters through
   `query_setters!`.
-- **D6. Kalshi's candle mapping.** For key `kalshi.predictions:<T>:<outcome>` and width *w*:
+- **D6. Kalshi's candle mapping.** A field the venue has no value for is omitted from the JSON,
+  never `null` (§1.6), so every `price` field and `previous_dollars` deserialize as `Option`. For key `kalshi.predictions:<T>:<outcome>` and width *w*:
   - The request sends `start_ts` = `query.start` rounded up to the second plus *w*, and `end_ts` =
     (`query.end`, or now) rounded down to the second plus *w*, since Kalshi selects candlesticks by
     their end and the trait by their open. `include_latest_before_start` is not sent.
@@ -97,7 +107,11 @@ Stories 2 to 6.
     `/historical/markets/{ticker}/candlesticks`, which this epic does not implement: its answer from
     the live route passes through as the venue gave it (an empty list or a `VenueRefusal`), and the
     module docs say so.
-  - A width outside D4 is refused by `ensure_served` before any request.
+  - A width outside D4 is refused by `ensure_served` before any request. The batch route itself
+    does not check `period_interval` (it answers `5` with `200` and no rows, §1.6), so the refusal
+    is the only guard; the native `markets().candlesticks(..)` takes a `PeriodInterval`
+    (`wire_enum!`-style closed set `Minute1` → `1`, `Hour1` → `60`, `Day1` → `1440`, sent as its
+    number), so it cannot send another width either.
 - **D7. `Protocol::follow_up`.** `polyoxide-ws`'s `Protocol` gains a provided method
   `fn follow_up(&mut self) -> Option<Message> { None }`. The supervisor task calls it after each
   `decode` and sends what it returns on the same connection, bounded by `stale_after` as a ping is,
@@ -112,9 +126,11 @@ Stories 2 to 6.
   - One ticker set serves every channel. The replay sends one `subscribe` naming every channel and
     the tickers; each channel's `subscribed` answer gives it its own `sid`, which the protocol keeps
     per channel.
-  - A membership change sends one `update_subscription` naming every `sid` if Story 1 shows
-    Kalshi accepts several `sids` in one command, and otherwise one command per `sid`, in channel
-    order; the change is answered once every command is.
+  - A membership change sends one `update_subscription` per `sid`, in channel order
+    (`OrderbookDelta`, `Ticker`, `Trade`), whatever Kalshi does with several `sids` in one command;
+    the change is answered once every command is, and the first refusal fails the change and
+    undoes it, as Epic 8's does. Story 1 records what a several-`sids` command does, for a later
+    epic.
   - **An empty ticker set never subscribes.** Kalshi reads a `ticker` or `trade` subscribe with no
     markets as "every market", so the protocol sends no `subscribe` while the set is empty, emptying
     the set sends `unsubscribe` for every `sid`, and the first ticker added afterwards sends a fresh
@@ -135,9 +151,10 @@ Stories 2 to 6.
   - queues, through `follow_up`, one `update_subscription` with `action: "get_snapshot"` on that
     `sid` for every ticker in the membership, with a command id the protocol records as a
     follow-up;
-  - re-anchors the `sid`'s sequence on the first frame that answers it, whatever its `seq`, if
-    Story 1 shows the snapshot answer continues the `sid`'s numbering, and otherwise on the rule
-    Story 1 records;
+  - re-anchors the `sid`'s sequence on each snapshot that answers the follow-up: its `seq` becomes
+    the last seen, so the next frame on the `sid` must be `seq + 1`. Frames on the `sid` before
+    the first such snapshot are not checked. If Story 1's capture shows the answers are not on the
+    `sid`'s numbering, Story 6 stops and asks;
   - drops `orderbook_delta` frames on that `sid` until each requested ticker's snapshot arrives,
     then resumes them per ticker;
   - reconnects (`PredictionsWsError::SnapshotTimeout`, class `Unavailable`) when the snapshots are
@@ -150,7 +167,9 @@ Stories 2 to 6.
   snapshots of tickers already in the membership (a ticker outside it is refused as
   `InvalidRequest`, nothing sent), answered `Ok` once the command is accepted; the snapshots arrive
   on the stream. It needs the `OrderbookDelta` channel and is refused as `InvalidRequest` without
-  it.
+  it. It goes through the membership handle as `Change::Snapshot(Vec<Ticker>)`; one made during an
+  outage is answered `Ok` at once and not recorded, since the replay brings a fresh snapshot of
+  every ticker. It never changes the membership.
 - **D10. The local book.** `predictions::ws::book::Books` is a value the consumer feeds events
   into: `Books::apply(&mut self, event: &Event) -> Option<&OrderBook>` returns the book an event
   changed.
@@ -182,7 +201,7 @@ Stories 2 to 6.
 - **D12. Publishing the crate.** `polyoxide-kalshi`'s manifest drops `publish = false`, its
   description and READMEs drop "walking skeleton" and "not published", and its
   `[workspace.dependencies]` entry gains `version = "0.41.1", default-features = false`, as
-  `polyoxide-binance`'s has (Story 10 raises every pin to `0.42.0`). Its `polyoxide-test-support` dev-dependency stays path-only.
+  `polyoxide-binance`'s has (the release commit raises every pin to `0.42.0`, §12). Its `polyoxide-test-support` dev-dependency stays path-only.
   `[package.metadata.polyoxide] readme` loses "a walking skeleton, not published". It must pass
   `publish_order.py check-manifests` and the publish dry run.
 - **D13. The umbrella.**
@@ -201,8 +220,14 @@ Stories 2 to 6.
     follow the crate's public items; a name the crate lacks is a question for the owner.
   - One `const _` per passthrough and per prelude block, as the others have, and the
     `DynMarketData` and `parse_key` pins gain `kalshi-predictions`.
-  - `examples/venue_neutral.rs` gains a Kalshi arm under `cfg(feature = "kalshi-predictions")`:
-    the first open market of one `status=open&mve_filter=exclude` page, keyed `yes`. The example's,
+  - `examples/venue_neutral.rs` gains a Kalshi arm in `main`, with no `cfg`: the first open market
+    of one `status=open&mve_filter=exclude` page, keyed `yes`, named by fully qualified
+    `polyoxide::kalshi::predictions::…` paths inside `main`. No `cfg(feature = "kalshi-…")` goes in
+    the example, because `polyoxide-kalshi/tests/venue_predictions.rs` includes the file by
+    `#[path]`, where a feature `polyoxide-kalshi` does not declare fails `unexpected_cfgs` under
+    `-D warnings`. So `polyoxide-kalshi`'s `polyoxide` dev-dependency gains `kalshi-predictions`,
+    a path-only dev-dependency cycle cargo allows and publishing strips; if cargo refuses it, the
+    story stops and asks. The example's,
     `venue_neutral`'s, `live_venue`'s and `parse_key`'s `required-features` gain
     `kalshi-predictions`, and `tests/venue_neutral.rs` gains a Kalshi mock case, `tests/parse_key.rs`
     a Kalshi case, `tests/live_venue.rs` a Kalshi case. Kalshi's own `tests/venue_predictions.rs`
@@ -248,10 +273,10 @@ Stories 2 to 6.
   - `deferred-work.md`: close the entries this epic settles (the anonymous soak, the signed-bucket
     probe, the local book and channels, A8-10, A8-3, and the doc debt), each with the commit that
     settled it. The 2026-10-22 schema corrections, the trading probes and the mapping's move stay.
-- **D16. The release** (Story 10). One commit, `chore(release): v0.42.0`: the workspace version, the
-  inter-crate pins, `Cargo.lock`, and CHANGELOG.md's `0.42.0` section quoting `docs/s3-migration.md`'s
-  notes for this release. The session does not push; the owner pushes `main` after landing the
-  branch (see §12).
+- **D16. The release** is not a plan story: a version bump is its own commit on `main` (the
+  profile's landmine rule), made after the branch lands. One commit, `chore(release): v0.42.0`:
+  the workspace version, the inter-crate pins, `Cargo.lock`, and CHANGELOG.md's `0.42.0` section
+  quoting `docs/s3-migration.md`'s notes for this release (§12).
 
 ## 3. Story 1: probes and captures
 
@@ -262,6 +287,7 @@ No Rust. Each finding goes in `OBSERVED.md` under a `## Epic 9` section, with th
   which fields are null in a period with no trade, whether `price.previous_dollars` is set there),
   and the same for `/series/{s}/markets/{t}/candlesticks`. Then a width outside the enum (5) on
   each, and a span over 10,000 rows on the batch route (truncated, refused, or `adjusted_end_ts`).
+  §1.6 settled the route and the field shapes; the captures make the fixtures.
   Fixtures under `polyoxide-kalshi/tests/fixtures/predictions/` with `PROVENANCE.md` rows, written
   by `scripts/capture_kalshi_predictions.py`.
 - **Socket**, demo, signed (`KALSHI_DEMO_*`), with `scripts/capture_kalshi_predictions_ws.py`:
@@ -276,8 +302,9 @@ No Rust. Each finding goes in `OBSERVED.md` under a `## Epic 9` section, with th
     after a few frames).
   Fixtures under `tests/fixtures/predictions/ws/`.
 - Without `KALSHI_DEMO_*` in the environment the socket half stops and asks the owner.
-- Commit the scripts, fixtures and `OBSERVED.md`. D5, D8 and D9 name the rules that read these
-  findings; the story records the findings and changes no decision.
+- Commit the scripts, fixtures and `OBSERVED.md`. The story records findings and changes no
+  decision. A finding that contradicts D6 or D9 (a field shape, the snapshot answer's `seq`) goes
+  to the owner before Story 3 or 6 runs.
 
 ## 4. Story 2: `Candles::intervals()` (D2, D3)
 
@@ -314,38 +341,38 @@ No Rust. Each finding goes in `OBSERVED.md` under a `## Epic 9` section, with th
 - `src/supervisor/tests.rs`: D7's three pins, appended. No venue changes, and the venue gate passes
   (the docs use no venue's words).
 
-## 7. Story 5: channels (D8)
+## 7. Story 5: the socket protocol (D8, D9)
 
 - `ws/builder.rs`: `channels(..)`; `ws/protocol.rs`: per-channel `sid`s, the replay, the
-  membership commands, the empty-set rule for every channel; `ws/event.rs`: the two events and their
-  payloads; `ws/mod.rs` re-exports.
+  membership commands, the empty-set rule for every channel, the gap path through `follow_up`, the
+  follow-up id table, re-anchoring, delta suppression per ticker, `SnapshotTimeout`,
+  `Change::Snapshot` and `PredictionsMembership::snapshot`; `ws/event.rs`: the two events, their
+  payloads and `Event::Resyncing`; `ws/error.rs`: `SnapshotTimeout` (the socket table is
+  untouched); `ws/mod.rs` re-exports.
 - Offline tests on the scripted server (`supervision_predictions.rs`, appended): the replay names
-  every chosen channel; each `subscribed` maps to its channel; a change updates every `sid` (in one
-  command or one per `sid`, per Story 1); emptying the set unsubscribes every `sid` and sends no
+  every chosen channel; each `subscribed` maps to its channel; a change updates every `sid` with one
+  command per `sid`; emptying the set unsubscribes every `sid` and sends no
   `subscribe` on reconnect; the first add after empty subscribes afresh; a `trade` gap reconnects;
   ticker frames carry no `seq` and pass.
 - `wire_agreement_predictions_ws.rs`: the two payloads against Story 1's frames;
   `spec_agreement` coverage of `tickerPayload` and `tradePayload`.
-- `tests/live_predictions_ws.rs`: a demo case that subscribes all three channels and waits for a
-  ticker frame (`environmental` if the market is quiet).
-
-## 8. Story 6: the book and the gap re-snapshot (D9, D10)
-
-- `ws/book.rs` with `Books` and `OrderBook`, and unit tests: a snapshot builds both sides; a delta
-  adds and a zero removes; a delta before a snapshot is ignored; `Resyncing` and `Reconnected` drop
-  books; `levels(No)` mirrors; replaying the captured frames gives the captured snapshot's
-  successor.
-- `ws/protocol.rs`: the gap path through `follow_up`, the follow-up id table, re-anchoring, delta
-  suppression per ticker, `SnapshotTimeout`, and `PredictionsMembership::snapshot`.
-- `ws/error.rs`: `SnapshotTimeout` (in the `Classify` assertion through the socket's error type; the
-  socket table is untouched).
-- Offline tests on the scripted server: a gap yields `Resyncing`, sends one `get_snapshot` naming
+- Offline tests on the scripted server, for the gap: a gap yields `Resyncing`, sends one `get_snapshot` naming
   the membership, and the stream continues from the snapshots with no `Disconnected`; deltas between
   the gap and a ticker's snapshot are dropped; a missing snapshot reconnects after `stale_after`; an
   error frame answering the follow-up reconnects; a second gap during a resync reconnects;
   `snapshot()` outside the membership and without the order-book channel is refused with nothing
-  sent.
-- `tests/live_predictions_ws.rs`: `snapshot()` on a subscribed ticker yields a snapshot.
+  sent; a `snapshot()` during an outage is answered `Ok` and sends nothing.
+- `tests/live_predictions_ws.rs`: a demo case that subscribes all three channels and waits for a
+  ticker frame (`environmental` if the market is quiet), and one where `snapshot()` on a subscribed
+  ticker yields a snapshot.
+
+## 8. Story 6: the local book (D10)
+
+- `ws/book.rs` with `Books` and `OrderBook`, and `ws/mod.rs`'s module block and re-exports (the
+  block the names contract gives, replaced whole), with unit tests: a snapshot builds both sides; a
+  delta adds and a zero removes; a delta before a snapshot is ignored; `Resyncing` and
+  `Reconnected` drop books; `levels(No)` mirrors; replaying the captured snapshot and deltas gives
+  the ladder the frames imply, asserted by literal prices and sizes.
 
 ## 9. Story 7: limits (D11)
 
@@ -371,7 +398,9 @@ No Rust. Each finding goes in `OBSERVED.md` under a `## Epic 9` section, with th
 As D15 lists. Generated regions only by `gen_registry.py --write`. `docs/ARCHITECTURE.md` is not
 edited.
 
-## 12. Story 10: the release (D16)
+## 12. After the run: the release (D16)
+
+An owner session, after the run, not a story.
 
 - Before picking the version, check origin's `main` and tags (`git fetch`, `git ls-remote --tags`):
   if `v0.42.0` exists or `main` has moved past `0.41.1`, stop and ask.
@@ -392,7 +421,7 @@ edited.
   `ci/dep-allowlists/polyoxide@kalshi*.txt`; `.github/scripts/tests/test_dep_allowlists.py`,
   `test_ci_workflow.py` and `test_classify_coverage.py`; the files `gen_registry.py` writes;
   `CLAUDE.md`, `README.md`, `SELF-HEALING.md`, `.env.example`, `docs/specs/INDEX.md`,
-  `docs/s3-migration.md`, `CHANGELOG.md`; every crate's `Cargo.toml` (Story 10's version pins);
+  `docs/s3-migration.md`;
   this spec, the plan, `_bmad-output/specs/`, `spine-amendments/epic-9.md` and
   `_bmad-output/implementation-artifacts/deferred-work.md`.
 - The final gates add `api_removals.py check --baseline v0.40.0`, the package job's three steps,
@@ -419,5 +448,5 @@ edited.
 
 - Put `KALSHI_DEMO_API_KEY_ID` and `KALSHI_DEMO_PRIVATE_KEY` in the environment of the sessions
   that run Stories 1, 5, 6 and 7. Rotate the two demo keys exposed in Epic 8's transcripts first.
-- Confirm the crates.io token can publish a new crate name before pushing the release.
-- Push `main` after the branch lands.
+- Land the branch on `main` (main-first merge), make the release commit (§12), confirm the
+  crates.io token can publish a new crate name, and push `main`.
