@@ -430,7 +430,10 @@ An owner session, after the run, not a story.
 - Every new error type is `#[non_exhaustive]` where it is an enum, implements `Classify`, and is in
   its crate's assertion.
 - Add tests; never change an existing Rust test's body (AD-12). A test that must change goes back to
-  the owner.
+  the owner. The owner's one exception (2026-10-19, drafting): Story 3 edits the four tests that pin
+  Epic 8's eight routes (`request.rs`'s `the_route_table_is_the_epics_eight_routes`,
+  `mock_predictions_routes.rs`, `spec_agreement_predictions.rs` and `live_predictions.rs`) to the ten
+  routes D5 makes, renaming their "eight", with the `routes` doc comment, in a task of its own.
 - Mirrors stay byte for byte; live tests follow test-support's loaders and tags, with no
   `.unwrap()`; no `connect_async` outside the kit, no `.gzip(`, no `allow_burst(`.
 - Commits by pathspec, conventional, naming the story, never `--no-verify`.
