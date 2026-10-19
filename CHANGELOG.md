@@ -1,3 +1,133 @@
+## [Unreleased]
+
+## [0.41.1] - 2026-10-19
+
+Three upstream drifts adopted, each additive: nothing is removed or renamed, no signature
+changes, and [`docs/s3-removals.md`](docs/s3-removals.md) still lists nothing. One behaviour
+changes, in `gamma`'s `Markets::get_many`.
+
+- **Gamma `closed=any` (#59).** `gamma::types::ClosedFilter` (`Open`, `Closed`, `Any`) and a
+  `closed_filter` setter on `ListEvents`, `ListKeysetEvents`, `ListMarkets` and
+  `ListKeysetMarkets`; `closed(bool)` is unchanged. `Any` returns both states in one request; on
+  the two markets routes it needs an identifier filter, or the host answers `422`.
+  `Markets::get_many` (DRIFT R13) now sends `closed=any` for each 100 distinct ids, each with a
+  `limit` of its ids' number, one request after the other, where it sent `closed=true` and
+  `closed=false` and merged them. A call for up to 100 ids is one request where it was two, a
+  longer list works where it was a `422`, and 21 to 100 open ids come back whole where they lost
+  every row past the 20th. A result is in the host's order for each chunk, not closed markets
+  first, and a repeated id is sent once. The CLOB's `event_group` makes one `closed=any` request
+  where it made one or two. The `id` setters of `ListMarkets` and `ListEvents` documented a batch
+  of 400 ids; the host takes 100.
+- **CLOB `GET /v1/user/rate-limit-tier` (#60).** `AccountApi::rate_limit_tier()` returns a
+  `RateLimitTierResponse` (with `RateLimitTierDetails`), whose `known_tier()` maps the venue's
+  name onto the client's `Tier` when it models it. It reads the tier and does not change the one
+  `Clob::tier` reports.
+- **Data API `GET /v2/tokens` (#52).** `data.v2().tokens(TokenKey)` takes one selector family,
+  `TokenKey::TokenIds` (at most 50) or `TokenKey::Conditions` (at most 10), and returns
+  `Vec<TokenRef>`; `TokenModule` is an open enum. An unknown id is absent from the list rather
+  than a `404`. The Python bindings gain `DataV2.tokens(token_ids=, conditions=)` and
+  `polyoxide.v2.TokenRef`.
+- `polyoxide-ws`'s doc-hidden scripted test server (feature `test-server`) records each
+  handshake's request headers (`handshake_headers`).
+
+The rest is Epic 8, `polyoxide-kalshi`, a walking skeleton for Kalshi's event-contract market data
+and its order-book socket. It is `publish = false` and the umbrella does not include it, so
+nothing of it reaches crates.io.
+
+### 🚀 Features
+
+- *(clob)* Adopt upstream's GET /v1/user/rate-limit-tier (schema drift [#60](https://github.com/dilettante-trading/polyoxide/pull/60))
+- *(gamma)* Closed=any, through ClosedFilter and closed_filter
+- *(data,py)* GET /v2/tokens, adopting drift issue [#52](https://github.com/dilettante-trading/polyoxide/pull/52)
+- *(kalshi)* Register polyoxide-kalshi, its mirrors and its dependency rule (Story 1)
+- *(kalshi)* The predictions key space (Story 1)
+- *(kalshi)* PredictionsError and its one decode of Kalshi's error bodies (Story 1)
+- *(kalshi)* The exchange-status types (Story 1)
+- *(kalshi)* The route table and the provisional Read throttle (Story 1)
+- *(kalshi)* The client, health().ping() and exchange().status() (Story 1)
+- *(kalshi)* Capture the public REST fixtures (Story 8.2)
+- *(kalshi)* The market, event and endpoint-cost types (Story 8.2)
+- *(kalshi)* The markets, events and account namespaces (Story 8.2)
+- *(kalshi)* MarketData on Predictions, one YES/NO conversion (Story 8.3)
+- *(kalshi)* Trades on Predictions (Story 8.3)
+- *(kalshi)* EventGroups on Predictions (Story 8.3)
+- *(ws)* The scripted server records each handshake's request headers (Epic 8, Story 5)
+- *(kalshi)* Throwaway signing vectors and the account capture script (Epic 8, Story 4)
+- *(kalshi)* Credentials over ring and a signing authenticator (Epic 8, Story 4)
+- *(kalshi)* Account().limits() and the limits types (Epic 8, Story 4)
+- *(kalshi)* The first-use confirmation of costs and the Read bucket (Epic 8, Story 4)
+- *(kalshi)* The demo account's limits, captured, and the signed live suite (Epic 8, Story 4)
+- *(kalshi)* Capture the order-book socket's frames from the demo host (Story 6)
+- *(kalshi)* The predictions-ws feature and PredictionsWsError (Story 6)
+- *(kalshi)* The order-book socket's frames and events, held to the capture (Story 6)
+- *(kalshi)* PredictionsProtocol and its builder, a handshake signed on every attempt (Story 6)
+
+### 🐛 Bug Fixes
+
+- *(gamma)* Get_many and event_group send closed=any (DRIFT R13)
+- *(ci)* Report a published venue crate the umbrella forgot (Story 1 review)
+- *(kalshi)* Refuse an empty, . or .. route parameter before sending (Story 1 review)
+- *(ci)* List a rename's source in the touch-set gate (Story 1 review)
+- *(kalshi)* Capture a full page of trades; ledger, mirror enum and route checks (Story 2 review)
+- *(kalshi)* Story 3 review, one busiest_market, expiration-time decode tests, explicit taker side
+- *(kalshi)* Story 2 review, rewrap an allowlist comment, TRADES_PAGE in the capture script
+- *(kalshi)* Story 3 review, an instrument's name appends its outcome and the name tests can fail
+- *(kalshi)* Story 4 review, the confirmation cannot wait on itself
+- *(kalshi)* Story 6 review, a refused replay ends the stream and codes 17 and 18 reconnect
+- *(kalshi)* Final review, a replay answered with a frame that does not decode ends the stream
+- *(kalshi)* Final review, a handshake header that cannot be built is a signing error
+- *(kalshi)* Final review, drop the stale dead_code allow on Routed::query
+- *(kalshi)* Final review, predictions-ws turns on only what the sources use
+- *(kalshi)* Final review, the uncrossed live check picks a market where it can fail
+
+### 🚜 Refactor
+
+- *(kalshi)* Refuse through the module's one decode; list Kalshi's row (Story 1 review)
+
+### 📚 Documentation
+
+- *(specs)* Epic 8, the Kalshi walking skeleton — design
+- *(specs)* Epic 8's touch-set base is the run's start, after the branch merges main
+- *(plans)* Epic 8's skeleton, and its spec split so stories draft apart
+- *(specs)* Epic 8's market listing is filtered with mve_filter=exclude, and its status filter has paused
+- *(specs)* Epic 8's signing vectors always store key bodies without armour lines
+- *(specs)* Epic 8's socket reconnects on code 10, and a ticker needs a letter or digit
+- *(specs)* Epic 8's AsyncAPI mirror covers 15 channels, counted as the repo counts them
+- *(plans)* Epic 8's seven stories, drafted from the skeleton
+- *(specs)* Kalshi's public REST findings, the filtered listing and the five status values (Story 8.2)
+- *(claude)* The full-pin clause covers every published venue crate (Story 1 review)
+- *(specs)* Epic 8's instrument name appends its outcome, and Story 5's recorder takes DRIFT R15
+- *(specs)* Epic 8's DRIFT R15 also moves the test-body-diff config test
+- *(claude)* The scripted server records handshake headers (Epic 8, Story 5)
+- *(ws)* Story 5 review, the header recorder's order and two wordings
+- *(specs)* Epic 8's signed public reads may not draw from the account's bucket; a probe is deferred
+- *(claude)* Kalshi's order-book socket, its live targets and its allowlist file (Story 6)
+- *(specs)* Epic 8's socket ends on a refused replay, and codes 17 and 18 reconnect
+- *(kalshi)* Story 6 review, the order of the book's sides is the evidence for YES pricing
+- *(specs)* Epic 8's socket also ends on a replay answer that does not decode
+- *(specs)* The Kalshi trading mapping's keys are kalshi.predictions and its size unit is shares (Epic 8, Story 7)
+- *(deferred-work)* Re-file the Kalshi mapping's move and add Epic 8's deferred work (Epic 8, Story 7)
+- *(spine)* Epic 8's amendments A8-1 to A8-11 and the audit of its diff (Epic 8, Story 7)
+- *(spine)* Epic 8 final review, A8-11 states the guide's step and the kit's Skip, and a replay answer that does not decode stops the stream
+- *(kalshi)* Final review, the crate docs name the order-book socket and its credentials
+- *(specs)* Epic 8's spec matches the run: the socket feature, A8-11, the recorder's order and the touch-set command
+
+### 🧪 Testing
+
+- *(ci)* Require Kalshi's allowlist and its reqwest row (Story 1 review)
+- *(kalshi)* Pin that a 429 is retried (Story 1 review)
+- *(kalshi)* Hold the types and query keys to the OpenAPI mirror (Story 8.2)
+- *(kalshi)* The public REST live suite against production (Story 8.2)
+- *(kalshi)* Name the error-class check's type for clippy (Story 8.2)
+- *(kalshi)* Live_predictions_venue, the traits against production (Story 8.3)
+- *(kalshi)* The supervised order-book socket on the kit's scripted server (Story 6)
+- *(kalshi)* Live_predictions_ws, the order-book socket against the demo host (Story 6)
+
+### ⚙️ Miscellaneous Tasks
+
+- *(epic-8)* The touch-set gate every story ends with (Story 1)
+- *(kalshi)* Pin the header set of Kalshi's requests in the features job (Story 1)
+
 ## [0.41.0] - 2026-10-18
 
 The first release of stage S3 of the multi-venue restructure, the additions stage: venue-neutral

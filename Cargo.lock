@@ -4006,7 +4006,7 @@ dependencies = [
 
 [[package]]
 name = "polyoxide"
-version = "0.41.0"
+version = "0.41.1"
 dependencies = [
  "futures-util",
  "mockito",
@@ -4021,7 +4021,7 @@ dependencies = [
 
 [[package]]
 name = "polyoxide-binance"
-version = "0.41.0"
+version = "0.41.1"
 dependencies = [
  "futures-util",
  "mockito",
@@ -4041,7 +4041,7 @@ dependencies = [
 
 [[package]]
 name = "polyoxide-cli"
-version = "0.41.0"
+version = "0.41.1"
 dependencies = [
  "arrow",
  "clap",
@@ -4065,7 +4065,7 @@ dependencies = [
 
 [[package]]
 name = "polyoxide-core"
-version = "0.41.0"
+version = "0.41.1"
 dependencies = [
  "dynosaur",
  "fastrand",
@@ -4085,7 +4085,7 @@ dependencies = [
 
 [[package]]
 name = "polyoxide-kalshi"
-version = "0.41.0"
+version = "0.41.1"
 dependencies = [
  "base64",
  "chrono",
@@ -4109,7 +4109,7 @@ dependencies = [
 
 [[package]]
 name = "polyoxide-polymarket"
-version = "0.41.0"
+version = "0.41.1"
 dependencies = [
  "alloy",
  "base64",
@@ -4140,7 +4140,7 @@ dependencies = [
 
 [[package]]
 name = "polyoxide-py"
-version = "0.41.0"
+version = "0.41.1"
 dependencies = [
  "futures-util",
  "polyoxide-polymarket",
@@ -4155,7 +4155,7 @@ dependencies = [
 
 [[package]]
 name = "polyoxide-test-support"
-version = "0.41.0"
+version = "0.41.1"
 dependencies = [
  "dotenvy",
  "mockito",
@@ -4172,7 +4172,7 @@ dependencies = [
 
 [[package]]
 name = "polyoxide-venue"
-version = "0.41.0"
+version = "0.41.1"
 dependencies = [
  "dynosaur",
  "futures-core",
@@ -4186,7 +4186,7 @@ dependencies = [
 
 [[package]]
 name = "polyoxide-ws"
-version = "0.41.0"
+version = "0.41.1"
 dependencies = [
  "futures-util",
  "rustls",
