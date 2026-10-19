@@ -434,6 +434,11 @@ An owner session, after the run, not a story.
   Epic 8's eight routes (`request.rs`'s `the_route_table_is_the_epics_eight_routes`,
   `mock_predictions_routes.rs`, `spec_agreement_predictions.rs` and `live_predictions.rs`) to the ten
   routes D5 makes, renaming their "eight", with the `routes` doc comment, in a task of its own.
+  A second (2026-10-19, drafting): Story 5 rewrites `supervision_predictions.rs`'s
+  `a_sequence_gap_reconnects_and_resnapshots` and `a_gap_in_an_answer_reconnects` to D9's
+  re-snapshot on one connection (their reconnects move to new tests: a gap on the `trade` `sid`, a
+  second gap during a resync), and may edit `ws/protocol.rs`'s unit tests to the multi-channel
+  shapes (one `sid` per channel, one `subscribe` naming the channels, an answer with several `sid`s).
 - Mirrors stay byte for byte; live tests follow test-support's loaders and tags, with no
   `.unwrap()`; no `connect_async` outside the kit, no `.gzip(`, no `allow_burst(`.
 - Commits by pathspec, conventional, naming the story, never `--no-verify`.
