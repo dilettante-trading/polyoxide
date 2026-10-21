@@ -9,6 +9,9 @@
 //! 3. **Nothing altered.** Every scalar present on both sides is equal, so a price keeps every
 //!    digit it was sent with.
 
+use polyoxide_kalshi::predictions::types::{
+    BatchCandlesticksResponse, MarketCandlestick, SeriesCandlesticksResponse,
+};
 use polyoxide_kalshi::predictions::{
     request::DEFAULT_COST,
     types::{
@@ -146,4 +149,96 @@ fn the_endpoint_costs_default_is_the_compiled_default() {
     let costs: EndpointCosts = read("endpoint_costs");
     assert_eq!(costs.default_cost, DEFAULT_COST);
     assert!(!costs.endpoint_costs.is_empty());
+}
+
+// ── candlesticks ────────────────────────────────────────────────
+
+/// The batch captures by width: the file, and the number of seconds every candle's end is a
+/// multiple of (a minute for 1-minute candles, an hour for the hourly ones, and for the daily
+/// ones too, since the daily candle ends at 04:00 UTC).
+const BATCH_FIXTURES: &[(&str, i64)] =
+    &[("batch_1", 60), ("batch_60", 3_600), ("batch_1440", 3_600)];
+
+fn hold_candles_to_fixture<T: DeserializeOwned + Serialize>(fixture: &str) {
+    let name = format!("candlesticks/{fixture}");
+    let text = fixtures!("predictions").text(&name);
+    let diff = agreement::compare::<T>(&name, &text);
+    assert!(
+        diff.unmodelled.is_empty(),
+        "{name}: the host sent {:?}, which the type does not model",
+        diff.unmodelled
+    );
+    assert!(
+        diff.invented.is_empty(),
+        "{name}: the type emits {:?}, which the host did not send",
+        diff.invented
+    );
+}
+
+#[test]
+fn every_candlestick_fixture_agrees_with_its_type() {
+    for (fixture, _) in BATCH_FIXTURES {
+        hold_candles_to_fixture::<BatchCandlesticksResponse>(fixture);
+    }
+    hold_candles_to_fixture::<SeriesCandlesticksResponse>("series_60");
+}
+
+/// A traded period and an untraded one that carries `previous_dollars`: the two cases the
+/// mapping to candles is built on.
+fn candles_cover(what: &str, rows: &[MarketCandlestick]) {
+    assert!(
+        rows.iter().any(|row| row.price.close_dollars.is_some()),
+        "{what}: no traded period"
+    );
+    assert!(
+        rows.iter()
+            .any(|row| row.price.close_dollars.is_none() && row.price.previous_dollars.is_some()),
+        "{what}: no untraded period that carries previous_dollars"
+    );
+}
+
+#[test]
+fn the_candlestick_fixtures_cover_the_cases_the_types_exist_for() {
+    for (fixture, multiple) in BATCH_FIXTURES {
+        let batch: BatchCandlesticksResponse = read(&format!("candlesticks/{fixture}"));
+        assert_eq!(
+            batch.markets.len(),
+            1,
+            "{fixture}: one market was asked for"
+        );
+        let rows = &batch.markets[0].candlesticks;
+        candles_cover(fixture, rows);
+        for row in rows {
+            assert_eq!(
+                row.end_period_ts % multiple,
+                0,
+                "{fixture}: a candle ends off its boundary"
+            );
+        }
+    }
+
+    // The series route answers the same rows as the batch route for the same market. The latest
+    // shared period may still have been open at one capture and not at the other, so it is the
+    // one left out of the comparison.
+    let series: SeriesCandlesticksResponse = read("candlesticks/series_60");
+    candles_cover("series_60", &series.candlesticks);
+    let hourly: BatchCandlesticksResponse = read("candlesticks/batch_60");
+    assert_eq!(series.ticker, hourly.markets[0].market_ticker);
+    let mut shared: Vec<(&MarketCandlestick, &MarketCandlestick)> = series
+        .candlesticks
+        .iter()
+        .filter_map(|row| {
+            hourly.markets[0]
+                .candlesticks
+                .iter()
+                .find(|other| other.end_period_ts == row.end_period_ts)
+                .map(|other| (row, other))
+        })
+        .collect();
+    assert!(!shared.is_empty(), "series_60 and batch_60 share no period");
+    shared.sort_by_key(|(row, _)| row.end_period_ts);
+    shared.pop();
+    for (from_series, from_batch) in shared {
+        assert_eq!(from_series, from_batch);
+    }
 }

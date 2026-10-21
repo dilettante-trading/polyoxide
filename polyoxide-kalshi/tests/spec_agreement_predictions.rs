@@ -12,6 +12,10 @@ use std::{
     pin::Pin,
 };
 
+use polyoxide_kalshi::predictions::types::{
+    BatchCandlesticksResponse, BidAskDistribution, MarketCandlestick, MarketCandlesticks,
+    PeriodInterval, PriceDistribution, SeriesCandlesticksResponse,
+};
 use polyoxide_kalshi::predictions::{
     request::route_templates,
     types::{
@@ -578,4 +582,43 @@ fn every_route_the_crate_holds_is_a_documented_operation() {
         );
     }
     assert_eq!(count, 10, "the route table holds ten routes");
+}
+
+// ── Candlesticks ────────────────────────────────────────────────────
+
+#[test]
+fn every_candlestick_schema_agrees_with_the_spec() {
+    let schemas = mirror_schemas();
+    check_schema::<BidAskDistribution>(&schemas, "BidAskDistribution");
+    check_schema::<PriceDistribution>(&schemas, "PriceDistribution");
+    check_schema::<MarketCandlestick>(&schemas, "MarketCandlestick");
+    check_schema::<MarketCandlesticks>(&schemas, "MarketCandlesticksResponse");
+    check_schema::<BatchCandlesticksResponse>(&schemas, "BatchGetMarketCandlesticksResponse");
+    check_schema::<SeriesCandlesticksResponse>(&schemas, "GetMarketCandlesticksResponse");
+}
+
+#[test]
+fn the_period_intervals_are_the_widths_the_mirror_documents() {
+    let spec = mirror();
+    let parameters = spec["paths"]["/series/{series_ticker}/markets/{ticker}/candlesticks"]["get"]
+        ["parameters"]
+        .as_array()
+        .expect("the series route documents query parameters");
+    let period = parameters
+        .iter()
+        .find(|parameter| parameter["name"] == "period_interval")
+        .expect("the series route documents period_interval");
+    let documented: Vec<String> = period["schema"]["enum"]
+        .as_array()
+        .expect("period_interval is an enum")
+        .iter()
+        .map(|width| width.to_string())
+        .collect();
+    let ours: Vec<String> = PeriodInterval::ALL
+        .iter()
+        .map(|width| width.as_str().to_owned())
+        .collect();
+    assert_eq!(ours, documented);
+    // A width outside the set does not parse, so the native client cannot send it.
+    assert!("5".parse::<PeriodInterval>().is_err());
 }
