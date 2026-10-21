@@ -96,7 +96,10 @@ pub struct ListActivity {
 impl ListActivity {
     polyoxide_core::query_setters! { self.inner;
         /// Only these row types. `TIP` is never in the default set; name it here
-        /// to receive tips. An empty list is omitted.
+        /// to receive tips. `DEPOSIT` and `WITHDRAWAL` come back only with
+        /// [`exclude_deposits_withdrawals(false)`](Self::exclude_deposits_withdrawals),
+        /// so either alone otherwise returns an empty page. An
+        /// [`ActivityType::Other`] is refused with a `400`. An empty list is omitted.
         types: csv impl IntoIterator<Item = ActivityType> => "type",
         /// Only activity in these markets, by condition id (at most 20). Mutually
         /// exclusive with [`event_ids`](Self::event_ids). An empty list is omitted.

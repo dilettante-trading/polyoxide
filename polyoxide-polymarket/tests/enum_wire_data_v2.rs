@@ -152,7 +152,9 @@ fn enums_that_also_appear_in_responses_spell_what_the_server_sends() {
         ]),
         "PositionStatus"
     );
-    // Live probe: every one of these was accepted by /v2/activity?type=
+    // Live probe: every one of these was accepted by /v2/activity?type=, and
+    // the mirror's `type` description lists exactly these (MIGRATION since
+    // #67); any other value is a 400
     assert_eq!(
         wire(ActivityType::ALL),
         set(&[
@@ -162,6 +164,7 @@ fn enums_that_also_appear_in_responses_spell_what_the_server_sends() {
             "REDEEM",
             "REWARD",
             "CONVERSION",
+            "MIGRATION",
             "DEPOSIT",
             "WITHDRAWAL",
             "YIELD",

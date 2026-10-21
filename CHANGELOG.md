@@ -7,6 +7,13 @@
   number, as the spec types it. A token with no order book is absent. `OrderSide` derives
   `Hash`. The return types change, so the release that carries this raises the 0.x minor.
   `last_trade_prices` is unchanged: `POST /last-trades-prices` does answer an array.
+- **Data v2 activity type `MIGRATION` (#67).** Upstream's spec now lists the values
+  `/v2/activity`'s `type` accepts, one of them `MIGRATION`, which `data::v2::types::ActivityType`
+  gains as `Migration` (DRIFT R16). The enum is `#[non_exhaustive]`, so this is additive, but a
+  `MIGRATION` row that decoded as `Other("MIGRATION")` now decodes as `Migration`. The host
+  refuses any value it does not list with a `400`, so an `Other` sent as a filter fails, and
+  `DEPOSIT` or `WITHDRAWAL` alone returns an empty page unless
+  `exclude_deposits_withdrawals(false)` is sent; `ListActivity::types` now says both.
 
 ## [0.41.1] - 2026-10-19
 

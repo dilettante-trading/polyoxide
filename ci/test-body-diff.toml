@@ -113,7 +113,7 @@ file = "polyoxide-polymarket/tests/spec_agreement_data_v2.rs"
 item = "SPEC"
 kind = "const"
 row = "R14"
-sha256 = "641f5e0b8e1342d04673716935ad4ce64da7741687bb814e85c9002f6ca94b81"
+sha256 = "cefc50db48cb95cd49e68c4ec804919a1b1e9c9948fa82cd148954e0a27b19f5"
 
 [[drift]]
 file = "polyoxide-polymarket/tests/spec_agreement_data_v2.rs"
@@ -140,3 +140,10 @@ item = "Recorder"
 kind = "struct"
 row = "R15"
 sha256 = "4c0eddc1e9fd818e74b209379b6928ba1bf8d4b4f2be05d899418ef828168e76"
+
+[[drift]]
+file = "polyoxide-polymarket/tests/enum_wire_data_v2.rs"
+item = "enums_that_also_appear_in_responses_spell_what_the_server_sends"
+kind = "fn"
+row = "R16"
+sha256 = "1697d129e16a63e9ebd5ab51f5ac66533ff99682e70e64057a02654bce5b687a"
