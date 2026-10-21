@@ -93,6 +93,54 @@ struct Resync {
     queued_at: Instant,
 }
 
+/// Kalshi's refusal of a command that came after another of the same change had been
+/// accepted, kept so that the next frame read can end the connection with it.
+#[derive(Debug, Clone, PartialEq, Eq)]
+enum Refusal {
+    /// An error frame, with its code and message.
+    Server { code: u32, message: String },
+    /// An error frame that did not decode: the frame's text, and why.
+    Unread { text: String, cause: String },
+}
+
+impl Refusal {
+    /// What the error that was given to the change's caller says, for the connection to end
+    /// with. Only Kalshi's answers are refusals; the connection failing under a command is
+    /// handled before one is asked for, and the rest never come out of a command.
+    fn of(err: &PredictionsWsError) -> Option<Self> {
+        match err {
+            PredictionsWsError::Server { code, message } => Some(Self::Server {
+                code: *code,
+                message: message.clone(),
+            }),
+            PredictionsWsError::Json { text, source } => Some(Self::Unread {
+                text: text.clone(),
+                cause: source.to_string(),
+            }),
+            PredictionsWsError::Connection(_)
+            | PredictionsWsError::SequenceGap { .. }
+            | PredictionsWsError::InvalidUrl { .. }
+            | PredictionsWsError::SnapshotTimeout { .. }
+            | PredictionsWsError::InvalidRequest { .. }
+            | PredictionsWsError::Credentials(_) => None,
+        }
+    }
+
+    /// A copy of the error the change's caller was given.
+    fn error(&self) -> PredictionsWsError {
+        match self {
+            Self::Server { code, message } => PredictionsWsError::Server {
+                code: *code,
+                message: message.clone(),
+            },
+            Self::Unread { text, cause } => PredictionsWsError::Json {
+                text: text.clone(),
+                source: serde::de::Error::custom(cause),
+            },
+        }
+    }
+}
+
 /// Kalshi's socket, which [`PredictionsWsBuilder`](crate::predictions::ws::PredictionsWsBuilder)
 /// hands to the kit's `Supervisor`.
 ///
@@ -107,6 +155,11 @@ struct Resync {
 /// every channel, on the first connection or after a reconnect. A change is recorded before
 /// its frames are sent: one whose connection dies under it is answered `Ok` and replayed, one
 /// Kalshi refuses is undone, and one made during an outage is answered at once and replayed.
+/// A refusal that follows a command of the same change that Kalshi accepted leaves its
+/// subscriptions out of step with the undone membership, so the change fails with Kalshi's
+/// error and the connection is replaced: the next frame read ends it, with that error as the
+/// reason, and the replay brings the subscriptions back to the membership. A refusal of the
+/// first command accepted nothing, so the connection stays.
 /// Its divergence rows:
 ///
 /// - **D4, the ping:** an empty protocol Ping on the wall clock.
@@ -163,6 +216,11 @@ pub struct PredictionsProtocol {
     /// it from the same frame met on a live connection; `reset` clears it for the next
     /// attempt.
     replay_refused: bool,
+    /// Kalshi's refusal of a command that followed an accepted command of the same change.
+    /// While it is set the connection is spent: `decode` ends it with this error on the next
+    /// frame, and `recover`, which the supervisor calls with that error straight after,
+    /// reconnects on it where it would skip the same frame elsewhere; `reset` clears it.
+    change_refused: Option<Refusal>,
 }
 
 impl std::fmt::Debug for PredictionsProtocol {
@@ -191,6 +249,7 @@ impl PredictionsProtocol {
             lead: None,
             snapshot_refused: false,
             replay_refused: false,
+            change_refused: None,
         }
     }
 
@@ -529,15 +588,25 @@ impl PredictionsProtocol {
                     .await;
             }
         };
+        let mut taken = 0_usize;
         for command in &commands {
             match send(&mut self.sequences, connection, command).await {
-                Ok(_) => self.accepted(command),
+                Ok(_) => {
+                    self.accepted(command);
+                    taken += 1;
+                }
                 Err(PredictionsWsError::Connection(err)) => {
                     tracing::debug!(%err, "the connection failed under a change; it is recorded for the replay");
                     return Ok(());
                 }
                 Err(err) => {
                     *membership = before;
+                    if taken > 0 {
+                        // Kalshi has acted on part of the change: its subscriptions no longer
+                        // match the membership just restored. The next frame ends the
+                        // connection, and the replay puts the two back in step.
+                        self.change_refused = Refusal::of(&err);
+                    }
                     return Err(err);
                 }
             }
@@ -957,9 +1026,13 @@ impl Protocol for PredictionsProtocol {
 
     /// A change on the live connection, recorded before it is sent, one command for each
     /// subscription. Kalshi refusing one, or answering with a frame that does not read,
-    /// undoes the change and is the caller's error; the connection failing under it leaves it
-    /// recorded and answers `Ok`, since the next read ends the connection and the replay
-    /// applies it.
+    /// undoes the change and is the caller's error. When the refusal follows a command of the
+    /// same change that Kalshi accepted, its subscriptions have changed and the membership
+    /// has not, so the connection is replaced as well: the next frame read ends it, and the
+    /// replay brings the subscriptions back to the membership. A refusal of the first command
+    /// leaves Kalshi's subscriptions as they were, so the connection stays. The connection
+    /// failing under a change leaves it recorded and answers `Ok`, since the next read ends
+    /// the connection and the replay applies it.
     async fn apply(
         &mut self,
         connection: &mut Connection,
@@ -995,6 +1068,11 @@ impl Protocol for PredictionsProtocol {
     }
 
     fn decode(&mut self, frame: &Message) -> Decoded<Event, PredictionsWsError> {
+        // A connection whose subscriptions a refused change left out of step reads nothing
+        // more: this frame, and any it kept, belong to subscriptions the replay replaces.
+        if let Some(refusal) = &self.change_refused {
+            return Decoded::Error(refusal.error());
+        }
         if let Some(late) = self.snapshot_overdue() {
             return Decoded::Error(late);
         }
@@ -1053,15 +1131,17 @@ impl Protocol for PredictionsProtocol {
         err.is_retriable()
     }
 
-    /// Kalshi's recovery: a frame that does not decode is skipped on a live connection and
-    /// stops the stream when it was the answer to the replay's `subscribe`; an error frame's
-    /// code decides (9 stops the stream, 10, 17, 18, 25 and 27 reconnect, any other is
-    /// skipped on a live connection, stops the stream when it refused the replay's
-    /// `subscribe`, and reconnects when it answers the re-snapshot's command); a gap
-    /// reconnects, and so does a snapshot that never came; a connection used after it closed
-    /// reconnects (D19); and anything else reconnects exactly when its class is retriable, so
-    /// a refused handshake's 401 or 403 stops, and a 429 or 5xx retries. No code here matches
-    /// over `tungstenite::Error`: the socket table decides the class.
+    /// Kalshi's recovery: a frame that does not decode is skipped on a live connection, stops
+    /// the stream when it was the answer to the replay's `subscribe`, and reconnects when it
+    /// is the refusal of a command that came after another command of its change was
+    /// accepted; an error frame's code decides (9 stops the stream, 10, 17, 18, 25 and 27
+    /// reconnect, any other is skipped on a live connection, stops the stream when it refused
+    /// the replay's `subscribe`, and reconnects when it answers the re-snapshot's command or
+    /// is such a refusal of a change); a gap reconnects, and so does a snapshot that never
+    /// came; a connection used after it closed reconnects (D19); and anything else reconnects
+    /// exactly when its class is retriable, so a refused handshake's 401 or 403 stops, and a
+    /// 429 or 5xx retries. No code here matches over `tungstenite::Error`: the socket table
+    /// decides the class.
     ///
     /// A skipped error during an attempt reads as a reconnect, the kit's rule for a failed
     /// attempt, which is why a refused replay has its own row: it would otherwise
@@ -1069,12 +1149,13 @@ impl Protocol for PredictionsProtocol {
     fn recover(&self, err: &PredictionsWsError) -> Recovery {
         match err {
             PredictionsWsError::Json { .. } if self.replay_refused => Recovery::Stop,
+            PredictionsWsError::Json { .. } if self.change_refused.is_some() => Recovery::Reconnect,
             PredictionsWsError::Json { .. } => Recovery::Skip,
             PredictionsWsError::Server { code, .. } => match code {
                 9 => Recovery::Stop,
                 10 | 17 | 18 | 25 | 27 => Recovery::Reconnect,
                 _ if self.replay_refused => Recovery::Stop,
-                _ if self.snapshot_refused => Recovery::Reconnect,
+                _ if self.snapshot_refused || self.change_refused.is_some() => Recovery::Reconnect,
                 _ => Recovery::Skip,
             },
             PredictionsWsError::SequenceGap { .. } | PredictionsWsError::SnapshotTimeout { .. } => {
@@ -1115,6 +1196,7 @@ impl Protocol for PredictionsProtocol {
         self.lead = None;
         self.snapshot_refused = false;
         self.replay_refused = false;
+        self.change_refused = None;
     }
 
     fn queue(&self) -> Queue {
@@ -1140,7 +1222,12 @@ pub trait PredictionsMembership {
     /// Fails with [`PredictionsWsError::Server`] when Kalshi refuses the change, which
     /// leaves the membership as it was; with a stall when Kalshi left it unanswered for
     /// the staleness window (the connection is then replaced); or once the stream has
-    /// stopped.
+    /// stopped. A change sends one command for each channel, so Kalshi can refuse one after
+    /// accepting another: the change fails with Kalshi's error all the same, and the
+    /// connection is replaced, since its subscriptions no longer match the membership. The
+    /// stream yields `Event::Disconnected` with that error as the reason, then
+    /// `Event::Reconnected`, and the replay brings the subscriptions back to the membership.
+    /// A refusal of the first command keeps the connection.
     fn subscribe(
         &self,
         tickers: impl IntoIterator<Item = Ticker>,
@@ -2646,5 +2733,65 @@ mod tests {
             assert!(protocol.sequences.gap.is_none());
             assert_eq!(protocol.sequences.ahead, 0);
         }
+    }
+
+    #[test]
+    fn a_refusal_partway_ends_the_connection_with_its_error_on_the_next_frame() {
+        // Bug: a refusal after an accepted command is skipped like any error frame, so the
+        // connection stays with subscriptions the membership no longer matches.
+        let mut protocol = on_the_book();
+        assert_eq!(protocol.recover(&server(11)), Recovery::Skip);
+        protocol.change_refused = Refusal::of(&server(11));
+        assert!(protocol.change_refused.is_some());
+        // Any frame is replaced by the refusal, a snapshot of a market nobody holds included,
+        // and nothing is queued or counted for it.
+        match decoded(&mut protocol, &snapshot_frame(1, 1)) {
+            Decoded::Error(PredictionsWsError::Server { code: 11, message }) => {
+                assert_eq!(message, "a message");
+            }
+            other => panic!("expected the refusal, got {other:?}"),
+        }
+        assert!(protocol.sequences.last.is_empty());
+        // The refusal reconnects where the same code is otherwise skipped; the codes that
+        // stop the stream or reconnect do so as before.
+        assert_eq!(protocol.recover(&server(11)), Recovery::Reconnect);
+        assert_eq!(protocol.recover(&server(9)), Recovery::Stop);
+        assert_eq!(protocol.recover(&server(17)), Recovery::Reconnect);
+        // The next connection starts clean.
+        protocol.reset();
+        assert!(protocol.change_refused.is_none());
+        assert_eq!(protocol.recover(&server(11)), Recovery::Skip);
+        assert!(matches!(
+            decoded(&mut protocol, &snapshot_frame(1, 1)),
+            Decoded::Event(Event::Snapshot(_))
+        ));
+    }
+
+    #[test]
+    fn an_error_frame_that_did_not_read_is_a_refusal_partway_all_the_same() {
+        // Bug: keeping only the refusals that read, so a change answered by an error frame
+        // that does not decode fails and leaves the connection out of step.
+        let text = r#"{"type":"error"}"#;
+        let source = serde_json::from_str::<frames::Rejected>(text).unwrap_err();
+        let cause = source.to_string();
+        let unread = PredictionsWsError::Json {
+            text: text.to_owned(),
+            source,
+        };
+        let refusal = Refusal::of(&unread).expect("an answer of Kalshi's");
+        match refusal.error() {
+            PredictionsWsError::Json { text: held, source } => {
+                assert_eq!(held, text);
+                assert_eq!(source.to_string(), cause);
+            }
+            other => panic!("expected the frame's decode error, got {other:?}"),
+        }
+        let mut protocol = on_the_book();
+        assert_eq!(protocol.recover(&unread), Recovery::Skip);
+        protocol.change_refused = Some(refusal);
+        assert_eq!(protocol.recover(&unread), Recovery::Reconnect);
+        // The connection failing under a command is not a refusal: the replay repairs it.
+        let lost = PredictionsWsError::from(WsError::closed(None, ""));
+        assert_eq!(Refusal::of(&lost), None);
     }
 }

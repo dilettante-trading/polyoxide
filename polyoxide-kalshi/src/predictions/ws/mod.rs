@@ -26,6 +26,14 @@
 //! channel: emptying the set unsubscribes every channel, and the first market added afterwards
 //! subscribes afresh.
 //!
+//! A membership change goes to Kalshi as one command for each channel's subscription, in
+//! channel order. Kalshi refusing a command fails the change with Kalshi's error and undoes it
+//! in the membership. When the refusal follows a command of the same change that Kalshi
+//! accepted, its subscriptions no longer match the membership, so the connection is replaced as
+//! well: the stream yields `Event::Disconnected` with that error as the reason, and
+//! `Event::Reconnected` once the replay has brought the subscriptions back to the membership.
+//! A refusal of the first command leaves them as they were, and the connection stays.
+//!
 //! A gap in the order book's `seq` is repaired on the same connection. The stream yields
 //! `Event::Resyncing` for the whole membership, the socket asks Kalshi for a snapshot of every
 //! market with `get_snapshot`, withholds each market's deltas until its snapshot has arrived,

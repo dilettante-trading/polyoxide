@@ -1497,3 +1497,86 @@ async fn a_connect_with_no_channel_is_refused_before_any_connection() {
     assert_eq!(err.class(), Class::InvalidRequest);
     assert_eq!(server.connection_count(), 0);
 }
+
+#[tokio::test]
+async fn a_refusal_after_an_accepted_command_fails_the_change_and_replaces_the_connection() {
+    // Bug: undoing only the membership when the ticker subscription's update is refused after
+    // the order book's was accepted, so Kalshi keeps the added market on the order book while
+    // the membership has lost it: its books arrive for a market nobody holds, and every
+    // later change is made against subscriptions that no longer agree with the membership.
+    // The subscriptions are issued in channel order, so 1 is the order book and 2 the ticker.
+    let server = KalshiServer::start(vec![
+        Script {
+            refuse_update_on: Some((2, 11)),
+            ..Default::default()
+        },
+        Script::default(),
+    ])
+    .await;
+    let mut ws = builder_for(&server)
+        .channels([Channel::OrderbookDelta, Channel::Ticker])
+        .connect(credentials(), [t(A)])
+        .await
+        .expect("connect");
+    let membership = ws.membership();
+    assert!(matches!(next_event(&mut ws).await, Event::Snapshot(_)));
+    let err = membership
+        .subscribe([t(B)])
+        .await
+        .expect_err("Kalshi refuses the ticker subscription's update");
+    assert!(
+        matches!(err, PredictionsWsError::Server { code: 11, .. }),
+        "{err:?}"
+    );
+    // The order book's update was accepted, and Kalshi sent the added market's snapshot
+    // behind its answer: the connection ends before that frame reaches the stream.
+    match next_event(&mut ws).await {
+        Event::Disconnected {
+            reason: DisconnectReason::Error(PredictionsWsError::Server { code: 11, .. }),
+        } => {}
+        other => panic!("expected the refusal to end the connection, got {other:?}"),
+    }
+    assert_eq!(labels(&mut ws, 2).await, ["reconnected", "snapshot"]);
+    assert_eq!(server.connection_count(), 2);
+    // The replay names the membership as it stands: the refused market is not in it.
+    let firsts = server.first_frames();
+    assert_subscribe_to(&firsts[1], &["orderbook_delta", "ticker"], &[A]);
+    let requests = server.requests();
+    assert_eq!(requests.len(), 4, "{requests:?}");
+    assert_eq!(requests[1]["params"]["sid"], 1, "{requests:?}");
+    assert_eq!(requests[2]["params"]["sid"], 2, "{requests:?}");
+    ws.close().await.expect("close");
+}
+
+#[tokio::test]
+async fn a_refusal_of_the_first_command_keeps_the_connection() {
+    // Bug: replacing the connection on every refusal, where one that came before anything
+    // was accepted left Kalshi's subscriptions as they were and the undone membership agrees
+    // with them.
+    let server = KalshiServer::start(vec![Script {
+        refuse_update_on: Some((1, 11)),
+        ..Default::default()
+    }])
+    .await;
+    let mut ws = builder_for(&server)
+        .channels([Channel::OrderbookDelta, Channel::Ticker])
+        .connect(credentials(), [t(A)])
+        .await
+        .expect("connect");
+    let membership = ws.membership();
+    assert!(matches!(next_event(&mut ws).await, Event::Snapshot(_)));
+    let err = membership
+        .subscribe([t(B)])
+        .await
+        .expect_err("Kalshi refuses the order book's update");
+    assert!(
+        matches!(err, PredictionsWsError::Server { code: 11, .. }),
+        "{err:?}"
+    );
+    assert_quiet(&mut ws, Duration::from_millis(400)).await;
+    assert_eq!(server.connection_count(), 1);
+    // Only the order book's update was sent: the change stopped at the first refusal.
+    let requests = server.requests();
+    assert_eq!(requests.len(), 2, "{requests:?}");
+    ws.close().await.expect("close");
+}

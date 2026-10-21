@@ -58,6 +58,9 @@ pub struct Script {
     pub error_after_subscribe: Option<(u32, String)>,
     /// A command naming this ticker is answered with an `error` of this code.
     pub refuse_ticker: Option<(String, u32)>,
+    /// An `update_subscription` on this `sid` is answered with an `error` of this code,
+    /// whatever markets it names: the refusal of one command of a change that sends several.
+    pub refuse_update_on: Option<(u64, u32)>,
     /// Answer every `subscribe` with a `subscribed` frame that carries no `sid`: an answer
     /// to the command that does not decode, and nothing else (no snapshot follows).
     pub undecodable_subscribed: bool,
@@ -400,6 +403,13 @@ fn reply(state: &mut State, script: &Script, request: &Value) -> Vec<Value> {
         .unwrap_or_default();
     if let Some((refused, code)) = &script.refuse_ticker {
         if tickers.contains(refused) {
+            return vec![error(&id, *code, "Invalid parameter")];
+        }
+    }
+    if let (Some((refused, code)), Some("update_subscription")) =
+        (&script.refuse_update_on, request["cmd"].as_str())
+    {
+        if params["sid"].as_u64() == Some(*refused) {
             return vec![error(&id, *code, "Invalid parameter")];
         }
     }
