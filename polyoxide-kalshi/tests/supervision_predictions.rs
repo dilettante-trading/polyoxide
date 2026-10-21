@@ -497,17 +497,41 @@ async fn a_replay_refused_with_a_code_that_reconnects_is_retried() {
     ws.close().await.expect("close");
 }
 
+fn label(event: &Event) -> &'static str {
+    match event {
+        Event::Snapshot(_) => "snapshot",
+        Event::Delta(_) => "delta",
+        Event::Ticker(_) => "ticker",
+        Event::Trade(_) => "trade",
+        Event::Resyncing { .. } => "resyncing",
+        Event::Disconnected { .. } => "disconnected",
+        Event::Reconnected => "reconnected",
+        _ => "other",
+    }
+}
+
+/// The labels of the next `count` events, naming every kind the socket yields.
+async fn labels(ws: &mut SupervisedPredictionsWs, count: usize) -> Vec<&'static str> {
+    let mut seen = Vec::new();
+    for _ in 0..count {
+        seen.push(label(&next_event(ws).await));
+    }
+    seen
+}
+
 #[tokio::test]
-async fn a_sequence_gap_reconnects_and_resnapshots() {
-    // Bug: carrying on past a lost delta, so a book built on it is silently wrong.
-    let server = KalshiServer::start(vec![
-        Script {
-            // The snapshot is seq 1; a delta at 3 skips 2.
-            pushes: vec![delta(1, 3, A).to_string()],
-            ..Default::default()
-        },
-        Script::default(),
-    ])
+async fn a_sequence_gap_resnapshots_in_place() {
+    // Bug: carrying on past a lost delta, so a book built on it is silently wrong; and
+    // reconnecting for it, which loses every other market's book and the connection too.
+    let server = KalshiServer::start(vec![Script {
+        // The snapshot is seq 1; a delta at 3 skips 2.
+        pushes: vec![delta(1, 3, A).to_string()],
+        // The snapshot that answers the request is number 10, and the delta after it 11:
+        // had the subscription not re-anchored on 10, that delta would be a gap.
+        snapshot_seq: Some(10),
+        after_snapshot: vec![delta(1, 11, A).to_string()],
+        ..Default::default()
+    }])
     .await;
     let mut ws = builder_for(&server)
         .connect(credentials(), [t(A)])
@@ -515,32 +539,37 @@ async fn a_sequence_gap_reconnects_and_resnapshots() {
         .expect("connect");
     assert!(matches!(next_event(&mut ws).await, Event::Snapshot(_)));
     match next_event(&mut ws).await {
-        Event::Disconnected {
-            reason:
-                DisconnectReason::Error(PredictionsWsError::SequenceGap {
-                    sid,
-                    expected,
-                    received,
-                }),
-        } => assert_eq!((sid, expected, received), (1, 2, 3)),
-        other => panic!("expected the gap to end the connection, got {other:?}"),
+        Event::Resyncing { tickers } => assert_eq!(tickers, [A]),
+        other => panic!("expected the gap to start a re-snapshot, got {other:?}"),
     }
-    assert_eq!(kinds(&mut ws, 2).await, ["reconnected", "snapshot"]);
-    assert_eq!(server.connection_count(), 2);
+    match next_event(&mut ws).await {
+        Event::Snapshot(book) => assert_eq!(book.market_ticker, A),
+        other => panic!("expected the snapshot that answers it, got {other:?}"),
+    }
+    assert!(matches!(next_event(&mut ws).await, Event::Delta(_)));
+    assert_quiet(&mut ws, Duration::from_millis(400)).await;
+    // One connection throughout, and one request for the snapshot.
+    assert_eq!(server.connection_count(), 1);
+    let requests = server.requests();
+    assert_eq!(requests.len(), 2, "{requests:?}");
+    assert_eq!(requests[1]["cmd"], "update_subscription");
+    assert_eq!(
+        requests[1]["params"],
+        json!({"sid": 1, "action": "get_snapshot", "market_tickers": [A]})
+    );
+    assert_ne!(requests[1]["id"], requests[0]["id"]);
     ws.close().await.expect("close");
 }
 
 #[tokio::test]
-async fn a_gap_in_an_answer_reconnects() {
+async fn a_gap_in_an_answer_resnapshots_in_place() {
     // Bug: checking only the pushes, so an `ok` that skipped a number goes unnoticed and
-    // the delta lost behind it is never found.
-    let server = KalshiServer::start(vec![
-        Script {
-            ok_skips_seq: true,
-            ..Default::default()
-        },
-        Script::default(),
-    ])
+    // the delta lost behind it is never found; and, once found, repairing it by a
+    // reconnect, where a snapshot of the whole membership on the same connection is enough.
+    let server = KalshiServer::start(vec![Script {
+        ok_skips_seq: true,
+        ..Default::default()
+    }])
     .await;
     let mut ws = builder_for(&server)
         .connect(credentials(), [t(A)])
@@ -548,24 +577,26 @@ async fn a_gap_in_an_answer_reconnects() {
         .expect("connect");
     let membership = ws.membership();
     assert!(matches!(next_event(&mut ws).await, Event::Snapshot(_)));
-    // The change itself succeeded; the gap behind it ends the connection.
+    // The change itself succeeded; the gap behind its `ok` starts the re-snapshot, ahead of
+    // the added market's own snapshot, which was the frame that raised it and is not lost.
     membership.subscribe([t(B)]).await.expect("the change");
     match next_event(&mut ws).await {
-        Event::Disconnected {
-            reason:
-                DisconnectReason::Error(PredictionsWsError::SequenceGap {
-                    sid,
-                    expected,
-                    received,
-                }),
-        } => assert_eq!((sid, expected, received), (1, 2, 3)),
-        other => panic!("expected the gap in the answer, got {other:?}"),
+        Event::Resyncing { tickers } => assert_eq!(tickers, [A, B]),
+        other => panic!("expected the gap in the answer to start a re-snapshot, got {other:?}"),
     }
+    // B's snapshot from the change, then the two that answer the request.
     assert_eq!(
-        kinds(&mut ws, 3).await,
-        ["reconnected", "snapshot", "snapshot"]
+        labels(&mut ws, 3).await,
+        ["snapshot", "snapshot", "snapshot"]
     );
-    assert_subscribe(&server.first_frames()[1], &[A, B]);
+    assert_quiet(&mut ws, Duration::from_millis(400)).await;
+    assert_eq!(server.connection_count(), 1);
+    let requests = server.requests();
+    assert_eq!(requests.len(), 3, "{requests:?}");
+    assert_eq!(
+        requests[2]["params"],
+        json!({"sid": 1, "action": "get_snapshot", "market_tickers": [A, B]})
+    );
     ws.close().await.expect("close");
 }
 

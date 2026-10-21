@@ -8,16 +8,18 @@ use polyoxide_ws::{Supervisor, Timing};
 use crate::predictions::{
     key::Ticker,
     ws::{
-        protocol::PredictionsProtocol, PredictionsWsError, SupervisedPredictionsWs, PRODUCTION_WS,
+        protocol::PredictionsProtocol, Channel, PredictionsWsError, SupervisedPredictionsWs,
+        PRODUCTION_WS,
     },
     Credentials,
 };
 
-/// Builder for a supervised order-book socket.
+/// Builder for a supervised socket of Kalshi's channels.
 #[derive(Debug, Clone)]
 pub struct PredictionsWsBuilder {
     url: String,
     timing: Timing,
+    channels: BTreeSet<Channel>,
 }
 
 impl Default for PredictionsWsBuilder {
@@ -41,7 +43,21 @@ impl PredictionsWsBuilder {
         Self {
             url: PRODUCTION_WS.to_owned(),
             timing,
+            channels: BTreeSet::from([Channel::OrderbookDelta]),
         }
+    }
+
+    /// The channels to carry, replacing the default, the order book alone. Duplicates are
+    /// dropped, and the order given does not matter: the channels go out, and a membership
+    /// change reaches them, in [`Channel`]'s order. At least one is needed, and an empty set
+    /// is refused at [`connect`](Self::connect) as [`PredictionsWsError::InvalidRequest`].
+    ///
+    /// One set of tickers serves every channel. Kalshi refuses a `ticker` or `trade`
+    /// subscribe with no markets (code 14 on the demo host, 2026-10-21) and the protocol
+    /// never sends one, so an empty ticker set is no subscription on any channel.
+    pub fn channels(mut self, channels: impl IntoIterator<Item = Channel>) -> Self {
+        self.channels = channels.into_iter().collect();
+        self
     }
 
     /// Connect to a different endpoint, such as the demo's
@@ -74,8 +90,9 @@ impl PredictionsWsBuilder {
         connect_timeout;
     }
 
-    /// Connect, sign the handshake, subscribe to `tickers` and start supervising. With no
-    /// tickers the connection opens and subscribes nothing; the first
+    /// Connect, sign the handshake, subscribe to `tickers` on every channel chosen and start
+    /// supervising. With no tickers the connection opens and subscribes nothing, on any
+    /// channel; the first
     /// [`subscribe`](crate::predictions::ws::PredictionsMembership::subscribe) does.
     ///
     /// The first attempt's failure is returned, not retried, so a key Kalshi refuses or a
@@ -86,8 +103,15 @@ impl PredictionsWsBuilder {
         credentials: Credentials,
         tickers: impl IntoIterator<Item = Ticker>,
     ) -> Result<SupervisedPredictionsWs, PredictionsWsError> {
+        if self.channels.is_empty() {
+            return Err(PredictionsWsError::InvalidRequest {
+                reason: "the socket needs at least one channel".to_owned(),
+            });
+        }
         let membership: BTreeSet<Ticker> = tickers.into_iter().collect();
-        Supervisor::new(PredictionsProtocol::new(self.url, credentials), self.timing)
+        let protocol = PredictionsProtocol::new(self.url, credentials)
+            .configured(self.channels, self.timing.stale_after);
+        Supervisor::new(protocol, self.timing)
             .connect(membership)
             .await
     }
@@ -175,5 +199,26 @@ mod tests {
             );
             assert_eq!(err.class(), Class::InvalidRequest);
         }
+    }
+    #[test]
+    fn the_default_channel_is_the_order_book_and_channels_are_deduplicated_in_order() {
+        assert_eq!(
+            PredictionsWsBuilder::new().channels,
+            BTreeSet::from([Channel::OrderbookDelta])
+        );
+        let builder = PredictionsWsBuilder::new().channels([
+            Channel::Trade,
+            Channel::OrderbookDelta,
+            Channel::Trade,
+        ]);
+        assert_eq!(
+            builder.channels.iter().copied().collect::<Vec<_>>(),
+            [Channel::OrderbookDelta, Channel::Trade]
+        );
+        // An empty set is the builder's to hold and `connect`'s to refuse.
+        assert!(PredictionsWsBuilder::new()
+            .channels(Vec::new())
+            .channels
+            .is_empty());
     }
 }
