@@ -56,9 +56,9 @@ polyoxide-ws = { workspace = true, optional = true }
 
 [dev-dependencies]
 # The tests' query and header helpers, the failure tags and the credential
-# loaders. Path-only: it is never published, and cargo strips a path-only
-# dev-dependency on publish.
-polyoxide-test-support = { path = "../polyoxide-test-support", features = ["query"] }
+# loaders, and `examples/read_soak.rs`'s pacer, throttle observer and verdicts (`soak`).
+# Path-only: it is never published, and cargo strips a path-only dev-dependency on publish.
+polyoxide-test-support = { path = "../polyoxide-test-support", features = ["query", "soak"] }
 mockito = { workspace = true }
 # The shared scripted WebSocket server the `predictions-ws` suites run on, with Kalshi's
 # answer (`src/predictions/ws/scripted.rs`). Path-only, so cargo strips it on publish.
@@ -142,6 +142,15 @@ required-features = ["predictions-ws"]
 [[test]]
 name = "wire_agreement_predictions_ws"
 required-features = ["predictions-ws"]
+
+# The unsigned soak and the signed-bucket probe that sized `src/predictions/throttle.rs` (Epic 9,
+# Story 7). `cargo test` builds examples but does not run their unit tests unless asked, so the
+# harness's own checks run only because `test = true` is set here.
+[[example]]
+name = "read_soak"
+path = "examples/read_soak.rs"
+test = true
+required-features = ["predictions"]
 
 # Registration, read by scripts/gen_registry.py; run it with --write after an edit.
 [package.metadata.polyoxide]
