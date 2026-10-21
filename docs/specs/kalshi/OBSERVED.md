@@ -107,3 +107,13 @@ Captured 2026-10-18T15:15:57Z by `scripts/capture_kalshi_predictions_ws.py` from
 <!-- kalshi-ws-capture:end -->
 
 <!-- capture findings go above this line -->
+
+## Epic 9
+
+Findings of Epic 9's Story 1 and of the stories after it. Each is dated and names its host. A block between `kalshi-…-capture:begin` and `…:end` markers is written by the capture script that names it, and the script's next run replaces it. A later story inserts its findings directly above the last line of this section.
+
+### The design session's probe of the candlestick routes (production, unsigned, 2026-10-19)
+
+`GET /trade-api/v2/markets/candlesticks` for `KXMLBGAME-26OCT192008CLETB-TB` at `period_interval` 1, 60 and 1440 answered `200` with `{markets: [{market_ticker, candlesticks}]}`. In a traded period `price` held `open_dollars`, `high_dollars`, `low_dollars`, `close_dollars`, `mean_dollars` and `previous_dollars`; the first traded period had no `previous_dollars`. An untraded period after a trade held only `previous_dollars`, and a period before any trade held `price: {}`. `min_dollars` and `max_dollars` never appeared. `period_interval=5` answered `200` with no rows on the batch route and `400` (a validation `msg`) on `GET /series/{series_ticker}/markets/{ticker}/candlesticks`. Hourly candles end on the hour; the daily candle ended at 04:00 UTC. The captures below re-measure each of these.
+
+<!-- epic 9 findings go above this line -->
