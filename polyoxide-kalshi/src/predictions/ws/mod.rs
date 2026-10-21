@@ -37,6 +37,7 @@
 //!
 //! Errors are `PredictionsWsError`, classified through the one socket table.
 
+pub mod book;
 mod builder;
 mod error;
 mod event;
@@ -44,6 +45,7 @@ mod protocol;
 #[cfg(test)]
 mod scripted;
 
+pub use book::{Books, OrderBook};
 pub use builder::PredictionsWsBuilder;
 pub use error::PredictionsWsError;
 #[doc(hidden)]
