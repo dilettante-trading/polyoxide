@@ -75,8 +75,9 @@ pub enum Change {
 enum FollowUp {
     /// The re-snapshot after a gap on the order-book `sid`.
     Resync,
-    /// A `snapshot` call's request.
-    Requested,
+    /// A `snapshot` call's request, with the number of markets whose snapshot is still to
+    /// come: Kalshi answers every market asked for, an unknown one with an empty snapshot.
+    Requested(usize),
 }
 
 /// A re-snapshot in flight after a gap on the order-book `sid`.
@@ -103,9 +104,10 @@ struct Resync {
 /// and emptying the membership sends an `unsubscribe` for each `sid` and keeps the connection.
 /// Kalshi refuses a `ticker` or `trade` subscribe with no markets (code 14 on the demo host,
 /// 2026-10-21); the protocol never sends one, so an empty membership is no subscription on
-/// every channel, on the first connection or after a reconnect. A change is recorded before its frames are sent: one whose connection dies under
-/// it is answered `Ok` and replayed, one Kalshi refuses is undone, and one made during an
-/// outage is answered at once and replayed. Its divergence rows:
+/// every channel, on the first connection or after a reconnect. A change is recorded before
+/// its frames are sent: one whose connection dies under it is answered `Ok` and replayed, one
+/// Kalshi refuses is undone, and one made during an outage is answered at once and replayed.
+/// Its divergence rows:
 ///
 /// - **D4, the ping:** an empty protocol Ping on the wall clock.
 /// - **D5, liveness:** every frame, the server's Pings and the Pongs to the client's own
@@ -233,7 +235,16 @@ impl PredictionsProtocol {
                 .as_ref()
                 .is_some_and(|resync| resync.sid == *sid)
             {
-                self.resync = None;
+                if let Some(resync) = self.resync.take() {
+                    self.sequences.follow_ups.remove(&resync.id);
+                }
+            }
+            // Every requested snapshot is of the order book's subscription, which is gone
+            // when it is the one unsubscribed.
+            if !self.sequences.sids.contains_key(&Channel::OrderbookDelta) {
+                self.sequences
+                    .follow_ups
+                    .retain(|_, kind| !matches!(kind, FollowUp::Requested(_)));
             }
         }
     }
@@ -245,14 +256,27 @@ impl PredictionsProtocol {
         };
         resync.pending.retain(|market| !gone.contains(market));
         if resync.pending.is_empty() {
-            let id = resync.id;
+            let (id, sid) = (resync.id, resync.sid);
             self.sequences.follow_ups.remove(&id);
             self.resync = None;
+            // Nothing is awaited any more, so nothing will re-anchor the numbering: the next
+            // frame of the subscription starts the count afresh.
+            self.sequences.unanchored.remove(&sid);
+            self.sequences.last.remove(&sid);
         }
     }
 
-    /// A snapshot of `market` arrived, answering command `id` when it is the re-snapshot's.
+    /// A snapshot of `market` arrived, answering command `id` when it is the re-snapshot's
+    /// or a `snapshot` call's.
     fn snapshot_arrived(&mut self, id: Option<u64>, market: &str) {
+        if let Some(id) = id {
+            if let Some(FollowUp::Requested(left)) = self.sequences.follow_ups.get_mut(&id) {
+                *left = left.saturating_sub(1);
+                if *left == 0 {
+                    self.sequences.follow_ups.remove(&id);
+                }
+            }
+        }
         let Some(resync) = &mut self.resync else {
             return;
         };
@@ -415,6 +439,15 @@ impl PredictionsProtocol {
                         }) {
                             self.snapshot_refused = true;
                         }
+                        // A refused request is answered: nothing more comes of it.
+                        if let Some(id) = peek.id {
+                            if matches!(
+                                self.sequences.follow_ups.get(&id),
+                                Some(FollowUp::Requested(_))
+                            ) {
+                                self.sequences.follow_ups.remove(&id);
+                            }
+                        }
                         Decoded::Error(PredictionsWsError::Server {
                             code: frame.msg.code,
                             message: frame.msg.msg,
@@ -531,7 +564,9 @@ impl PredictionsProtocol {
             return Ok(());
         }
         let id = connection.take_id();
-        self.sequences.follow_ups.insert(id, FollowUp::Requested);
+        self.sequences
+            .follow_ups
+            .insert(id, FollowUp::Requested(wanted.len()));
         let frame = Command::Update {
             sid,
             action: "get_snapshot",
@@ -2417,11 +2452,114 @@ mod tests {
     fn unsubscribing_a_subscription_forgets_its_numbering_and_any_resnapshot_on_it() {
         let mut protocol = on_the_book();
         gap_on_the_book(&mut protocol);
+        // A `snapshot` call's request is of the same subscription.
+        protocol
+            .sequences
+            .follow_ups
+            .insert(7, FollowUp::Requested(1));
         protocol.accepted(&Command::Unsubscribe { sid: 1 });
         assert!(protocol.sequences.sids.is_empty());
         assert!(protocol.sequences.last.is_empty());
         assert!(protocol.sequences.unanchored.is_empty());
         assert!(protocol.resync.is_none());
+        // Bug: leaving the re-snapshot's and the request's entries, which nothing removes.
+        assert!(protocol.sequences.follow_ups.is_empty());
+    }
+
+    #[test]
+    fn the_numbering_starts_afresh_when_no_snapshot_is_awaited_any_more() {
+        // Bug: a gap leaves the order book's `sid` unanchored; when the markets awaited are
+        // all removed, no snapshot will re-anchor it, and the `sid` stayed unchecked for the
+        // rest of the connection.
+        let mut protocol = on_the_book();
+        gap_on_the_book(&mut protocol);
+        // C is added, and A and B go before either snapshot arrives.
+        protocol.tickers.insert(Ticker::new("C-3").unwrap());
+        protocol.tickers.remove(&Ticker::new("A-1").unwrap());
+        protocol.tickers.remove(&Ticker::new("B-2").unwrap());
+        protocol.forget_markets(&["A-1".to_owned(), "B-2".to_owned()]);
+        assert!(protocol.resync.is_none());
+        assert!(protocol.sequences.unanchored.is_empty());
+        // The next frame starts the count, and the one after it is checked against it.
+        assert!(matches!(
+            decoded(&mut protocol, &delta_of("C-3", 1, 40)),
+            Decoded::Event(Event::Delta(_))
+        ));
+        assert!(matches!(
+            decoded(&mut protocol, &delta_of("C-3", 1, 41)),
+            Decoded::Event(Event::Delta(_))
+        ));
+        // A skipped number is a gap again: with no re-snapshot in flight, it starts one.
+        match decoded(&mut protocol, &delta_of("C-3", 1, 43)) {
+            Decoded::Event(Event::Resyncing { tickers }) => assert_eq!(tickers, ["C-3"]),
+            other => panic!("expected the gap to start a re-snapshot, got {other:?}"),
+        }
+    }
+
+    #[test]
+    fn frames_before_the_first_answering_snapshot_are_not_checked() {
+        // Bug: checking them, so that a delta numbered past the gap, which belongs to a
+        // book about to be replaced, is a second gap and reconnects over the re-snapshot.
+        let mut protocol = on_the_book();
+        let id = gap_on_the_book(&mut protocol);
+        // The gap was at 3: a delta at 7 is dropped, and no error.
+        assert!(matches!(
+            decoded(&mut protocol, &delta_of("A-1", 1, 7)),
+            Decoded::Nothing
+        ));
+        assert!(protocol.resync.is_some());
+        // The answering snapshot re-anchors, and what follows it is checked again.
+        assert!(matches!(
+            decoded(&mut protocol, &snapshot_answer(id, "A-1", 1, 10)),
+            Decoded::Event(Event::Snapshot(_))
+        ));
+        assert!(matches!(
+            decoded(&mut protocol, &delta_of("A-1", 1, 11)),
+            Decoded::Event(Event::Delta(_))
+        ));
+        assert!(matches!(
+            decoded(&mut protocol, &delta_of("A-1", 1, 13)),
+            Decoded::Error(PredictionsWsError::SequenceGap {
+                sid: 1,
+                expected: 12,
+                received: 13
+            })
+        ));
+    }
+
+    #[test]
+    fn a_snapshot_request_is_forgotten_once_it_is_answered_or_refused() {
+        // Bug: an entry for every `snapshot` call, kept until the connection ends.
+        let mut protocol = on_the_book();
+        decoded(&mut protocol, &snapshot_frame(1, 1));
+        protocol
+            .sequences
+            .follow_ups
+            .insert(7, FollowUp::Requested(2));
+        // One snapshot of two is not the end of it.
+        decoded(&mut protocol, &snapshot_answer(7, "A-1", 1, 2));
+        assert_eq!(
+            protocol.sequences.follow_ups.get(&7),
+            Some(&FollowUp::Requested(1))
+        );
+        decoded(&mut protocol, &snapshot_answer(7, "B-2", 1, 3));
+        assert!(protocol.sequences.follow_ups.is_empty());
+        // An error answering it ends it too, and is the stream's.
+        protocol
+            .sequences
+            .follow_ups
+            .insert(8, FollowUp::Requested(2));
+        decoded(&mut protocol, &snapshot_answer(8, "A-1", 1, 4));
+        let refusal =
+            json!({"id": 8, "type": "error", "msg": {"code": 11, "msg": "Invalid parameter"}})
+                .to_string();
+        assert!(matches!(
+            decoded(&mut protocol, &refusal),
+            Decoded::Error(PredictionsWsError::Server { code: 11, .. })
+        ));
+        assert!(protocol.sequences.follow_ups.is_empty());
+        // A refusal is not the re-snapshot's: it is skipped, not a reason to reconnect.
+        assert!(!protocol.snapshot_refused);
     }
 
     #[test]
