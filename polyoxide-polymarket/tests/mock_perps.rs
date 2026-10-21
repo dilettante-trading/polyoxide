@@ -117,7 +117,7 @@ async fn instruments_sends_every_filter_and_decodes_undocumented_fields() {
     assert_eq!(rows.len(), 1);
     assert_eq!(rows[0].symbol, "SP500-USD");
     assert_eq!(rows[0].display_symbol.as_deref(), Some("USA500-USD"));
-    assert_eq!(rows[0].close_only, Some(false));
+    assert!(!rows[0].close_only);
     assert_eq!(rows[0].risk_tiers[0].max_leverage, 50);
     assert_eq!(rows[0].ui_live_time, Some(1790000000000));
     assert_eq!(
@@ -373,7 +373,7 @@ async fn exchange_stats_mark_history_trades_and_funding_decode() {
         .await
         .expect("trades");
     assert_eq!(t.data[0].side, Side::Long);
-    assert_eq!(t.data[0].settlement, Some(false));
+    assert!(!t.data[0].settlement);
     assert!(t.more);
     let f = perps
         .market()
@@ -405,7 +405,7 @@ async fn leaderboard_sends_every_setter_and_decodes_the_optional_account() {
             Matcher::UrlEncoded("offset".into(), "6".into()),
             Matcher::UrlEncoded("address".into(), "0xabc".into()),
         ]))
-        .with_body(r#"{"window":"week","sort_by":"account_value","timestamp":1790758440134,"total":7751,"entries":[{"rank":1,"account":"0x65c8","pnl":"1","notional":"2","account_value":"3"}],"account":{"account":"0xabc","pnl":"0","notional":"0","account_value":"0"}}"#)
+        .with_body(r#"{"window":"week","sort_by":"account_value","timestamp":1790758440134,"total":7751,"entries":[{"rank":1,"account":"0x65c8","pnl":"1","notional":"2","account_value":"3","roi":"0.01"}],"account":{"account":"0xabc","pnl":"0","notional":"0","account_value":"0","roi":"0"}}"#)
         .create_async()
         .await;
 
@@ -444,7 +444,7 @@ async fn portfolio_position_fills_and_invite_decode() {
             Matcher::UrlEncoded("cursor".into(), "c1".into()),
             Matcher::UrlEncoded("sort".into(), "asc".into()),
         ]))
-        .with_body(r#"{"data":[{"trade_id":1,"order_id":2,"instrument_id":1,"side":"short","price":"1","quantity":"2","taker":true,"fee":"0.1","fee_asset":"pUSD","previous_size":"0","previous_entry_price":"0","pnl":"0","liquidation":false,"adl":false,"timestamp":1,"hash":"0x"}],"more":true,"cursor":"c2"}"#)
+        .with_body(r#"{"data":[{"trade_id":1,"order_id":2,"instrument_id":1,"side":"short","price":"1","quantity":"2","taker":true,"fee":"0.1","fee_asset":"pUSD","settlement":false,"previous_size":"0","previous_entry_price":"0","pnl":"0","liquidation":false,"adl":false,"timestamp":1,"hash":"0x"}],"more":true,"cursor":"c2"}"#)
         .create_async()
         .await;
     let invite = server
@@ -752,4 +752,379 @@ async fn a_400_venue_body_is_a_venue_error_with_its_reference() {
             code: Some("invalid query parameters".into())
         }
     );
+}
+
+// ── registration, position snapshots and competitions ───────────
+
+use polyoxide_polymarket::perps::{
+    api::public::{
+        PositionSnapshotFill, MAX_SNAPSHOT_ACTIVE, MAX_SNAPSHOT_HISTORY, MAX_SNAPSHOT_TIMESTAMP,
+    },
+    types::{
+        CompetitionId, CompetitionRowState, CompetitionStatus, PositionSnapshotStatus,
+        SnapshotMarkerKind,
+    },
+};
+use polyoxide_test_support::fixtures;
+
+#[tokio::test]
+async fn registered_sends_the_address_and_decodes() {
+    let mut server = Server::new_async().await;
+    let mock = server
+        .mock("GET", "/v1/info/registered")
+        .match_query(Matcher::UrlEncoded("address".into(), "0xabc".into()))
+        .with_body(r#"{"registered":false}"#)
+        .create_async()
+        .await;
+
+    let answer = test_perps(&server)
+        .public()
+        .registered("0xabc")
+        .send()
+        .await
+        .expect("registered");
+    mock.assert_async().await;
+    assert!(!answer.registered);
+}
+
+#[tokio::test]
+async fn position_snapshots_posts_the_selection_as_json_and_decodes() {
+    let mut server = Server::new_async().await;
+    let mock = server
+        .mock("POST", "/v1/info/position-snapshots")
+        .match_header("content-type", "application/json")
+        .match_body(Matcher::Json(serde_json::json!({
+            "address": "0xabc",
+            "active_instrument_ids": [2],
+            "history_fills": [{"instrument_id": 2, "trade_id": "322977361449535", "timestamp": 1792316100035u64}],
+        })))
+        .with_body(fixtures!("perps").text("position_snapshots"))
+        .create_async()
+        .await;
+
+    let snapshots = test_perps(&server)
+        .public()
+        .position_snapshots("0xabc")
+        .active([InstrumentId(2)])
+        .history([PositionSnapshotFill::new(
+            InstrumentId(2),
+            322977361449535,
+            1792316100035,
+        )])
+        .send()
+        .await
+        .expect("position snapshots");
+    mock.assert_async().await;
+    let active = &snapshots.active[0];
+    assert_eq!(active.status, PositionSnapshotStatus::Ok);
+    assert_eq!(active.instrument_id, Some(InstrumentId(2)));
+    let card = active
+        .snapshot
+        .as_ref()
+        .expect("an ok result has a snapshot");
+    assert_eq!(card.side, Side::Short);
+    assert!(!card.is_closed);
+    assert_eq!(card.leverage, None, "only the owner sees leverage");
+    assert_eq!(card.pnl_percent, None, "only the owner sees pnl_percent");
+    assert!(!card.chart.candles.is_empty() && card.chart.candles.len() <= 22);
+    assert!(card.chart.markers.iter().all(|m| [
+        SnapshotMarkerKind::Increase,
+        SnapshotMarkerKind::Decrease
+    ]
+    .contains(&m.kind)));
+    assert_eq!(snapshots.history.len(), 4);
+    assert!(snapshots.history.iter().all(|r| r.trade_id.is_some()));
+}
+
+#[tokio::test]
+async fn an_active_only_selection_leaves_history_fills_out_of_the_body() {
+    let mut server = Server::new_async().await;
+    let mock = server
+        .mock("POST", "/v1/info/position-snapshots")
+        .match_body(Matcher::Json(serde_json::json!({
+            "address": "0xabc",
+            "active_instrument_ids": [1],
+        })))
+        .with_body(r#"{"active":[{"instrument_id":1,"status":"not_found"}],"history":[],"history_as_of_at":1}"#)
+        .create_async()
+        .await;
+
+    let snapshots = test_perps(&server)
+        .public()
+        .position_snapshots("0xabc")
+        .active([InstrumentId(1)])
+        .send()
+        .await
+        .expect("position snapshots");
+    mock.assert_async().await;
+    assert_eq!(snapshots.active[0].status, PositionSnapshotStatus::NotFound);
+    assert_eq!(snapshots.active[0].snapshot, None);
+}
+
+#[tokio::test]
+async fn a_selection_the_host_would_refuse_is_refused_before_sending() {
+    use polyoxide_venue::{Class, Classify};
+
+    let mut server = Server::new_async().await;
+    let mock = server
+        .mock("POST", "/v1/info/position-snapshots")
+        .match_query(Matcher::Any)
+        .expect(0)
+        .create_async()
+        .await;
+    let perps = test_perps(&server);
+    let fill = |trade_id| PositionSnapshotFill::new(InstrumentId(1), trade_id, 1);
+
+    let refusals = [
+        perps.public().position_snapshots("0xabc"),
+        perps
+            .public()
+            .position_snapshots("0xabc")
+            .active((0..=MAX_SNAPSHOT_ACTIVE as u64).map(InstrumentId)),
+        perps
+            .public()
+            .position_snapshots("0xabc")
+            .history((0..=MAX_SNAPSHOT_HISTORY as u64).map(fill)),
+        perps
+            .public()
+            .position_snapshots("0xabc")
+            .active([InstrumentId(1), InstrumentId(1)]),
+        perps.public().position_snapshots("0xabc").history([
+            PositionSnapshotFill::new(InstrumentId(1), 7, 1),
+            PositionSnapshotFill::new(InstrumentId(1), 7, 2),
+        ]),
+        perps
+            .public()
+            .position_snapshots("0xabc")
+            .active([InstrumentId(u64::from(u32::MAX) + 1)]),
+        perps
+            .public()
+            .position_snapshots("0xabc")
+            .history([PositionSnapshotFill::new(
+                InstrumentId(1),
+                7,
+                MAX_SNAPSHOT_TIMESTAMP + 1,
+            )]),
+    ];
+    for request in refusals {
+        let err = request.send().await.unwrap_err();
+        assert!(
+            matches!(
+                &err,
+                PerpsError::Api(polyoxide_core::ApiError::Validation(_))
+            ),
+            "{err:?}"
+        );
+        assert_eq!(err.class(), Class::InvalidRequest);
+    }
+    mock.assert_async().await;
+}
+
+#[tokio::test]
+async fn the_competition_routes_send_their_parameters_and_decode() {
+    let mut server = Server::new_async().await;
+    let text = |name| fixtures!("perps").text(name);
+    let list = server
+        .mock("GET", "/v1/info/competitions")
+        .match_query(Matcher::UrlEncoded("address".into(), "0xabc".into()))
+        .with_body(text("competitions"))
+        .create_async()
+        .await;
+    let detail = server
+        .mock("GET", "/v1/info/competition")
+        .match_query(Matcher::UrlEncoded("competition_id".into(), "3".into()))
+        .with_body(text("competition"))
+        .create_async()
+        .await;
+    let board = server
+        .mock("GET", "/v1/info/competition/leaderboard")
+        .match_query(Matcher::AllOf(vec![
+            Matcher::UrlEncoded("competition_id".into(), "2".into()),
+            Matcher::UrlEncoded("limit".into(), "2".into()),
+            Matcher::UrlEncoded("offset".into(), "4".into()),
+        ]))
+        .with_body(text("competition_leaderboard"))
+        .create_async()
+        .await;
+    let account = server
+        .mock("GET", "/v1/info/competition/account")
+        .match_query(Matcher::AllOf(vec![
+            Matcher::UrlEncoded("competition_id".into(), "2".into()),
+            Matcher::UrlEncoded("address".into(), "0xabc".into()),
+        ]))
+        .with_body(text("competition_account"))
+        .create_async()
+        .await;
+    let widget = server
+        .mock("GET", "/v1/info/competition/widget")
+        .match_query(Matcher::UrlEncoded("address".into(), "0xabc".into()))
+        .with_body(text("competition_widget"))
+        .create_async()
+        .await;
+
+    let competitions = test_perps(&server).competitions();
+    let listed = competitions
+        .list()
+        .address("0xabc")
+        .send()
+        .await
+        .expect("competitions");
+    assert!(listed.competitions.is_empty());
+    assert_eq!(listed.live_competition_ids, Some(vec![]));
+
+    let one = competitions
+        .get(CompetitionId(3))
+        .send()
+        .await
+        .expect("competition");
+    assert_eq!(one.status, CompetitionStatus::Live);
+    assert_eq!(one.markets[0].boost, Decimal::from(3));
+    assert_eq!(one.prize_tiers[1].from_rank, 2);
+    assert_eq!(one.start_trading_instrument_id, Some(InstrumentId(51)));
+
+    let page = competitions
+        .leaderboard(CompetitionId(2))
+        .limit(2)
+        .offset(4)
+        .send()
+        .await
+        .expect("competition leaderboard");
+    assert_eq!(page.status, CompetitionStatus::Ended);
+    assert_eq!(page.entries[0].row_state, CompetitionRowState::Paid);
+    assert_eq!(page.entries[0].score, Decimal::from(40_000_000));
+    assert_eq!(page.entries[1].rank, None);
+    assert!(page.entries[1].score.is_sign_negative());
+    assert_eq!(page.entries[1].row_state, CompetitionRowState::Disqualified);
+
+    let standing = competitions
+        .account(CompetitionId(2), "0xabc")
+        .send()
+        .await
+        .expect("competition account");
+    assert!(standing.qualified);
+    assert_eq!(standing.locked_positions[1].released_at, None);
+
+    let glance = competitions
+        .widget()
+        .address("0xabc")
+        .send()
+        .await
+        .expect("competition widget");
+    assert_eq!(glance.competition_id, Some(CompetitionId(3)));
+    for m in [list, detail, board, account, widget] {
+        m.assert_async().await;
+    }
+}
+
+#[tokio::test]
+async fn a_widget_without_a_live_competition_holds_only_its_timestamp() {
+    let mut server = Server::new_async().await;
+    let _mock = server
+        .mock("GET", "/v1/info/competition/widget")
+        .match_query(Matcher::Missing)
+        .with_body(r#"{"timestamp":1792598576372}"#)
+        .create_async()
+        .await;
+
+    let widget = test_perps(&server)
+        .competitions()
+        .widget()
+        .send()
+        .await
+        .expect("widget");
+    assert_eq!(widget.timestamp, 1792598576372);
+    assert_eq!(widget.competition_id, None);
+    assert_eq!(widget.rank, None);
+}
+
+#[tokio::test]
+async fn an_unknown_competition_is_the_venues_not_found() {
+    let mut server = Server::new_async().await;
+    let _mock = server
+        .mock("GET", "/v1/info/competition")
+        .match_query(Matcher::Any)
+        .with_status(404)
+        .with_body(r#"{"status":"err","error":"not_found"}"#)
+        .create_async()
+        .await;
+
+    let err = test_perps(&server)
+        .competitions()
+        .get(CompetitionId(1))
+        .send()
+        .await
+        .unwrap_err();
+    assert!(matches!(&err, PerpsError::Venue(v) if v.code == "not_found" && v.status == 404));
+}
+
+#[tokio::test]
+async fn the_leaderboard_ranks_by_roi_and_decodes_its_undocumented_fields() {
+    let mut server = Server::new_async().await;
+    let mock = server
+        .mock("GET", "/v1/info/leaderboard")
+        .match_query(Matcher::UrlEncoded("sort_by".into(), "roi".into()))
+        .with_body(r#"{"window":"day","sort_by":"roi","timestamp":1,"total":1,"entries":[{"rank":1,"account":"0x79c5","pnl":"494.07","notional":"64358.57","account_value":"871.19","roi":"0.848545","instruments_traded":1,"top_instrument_ids":[6]}]}"#)
+        .create_async()
+        .await;
+
+    let board = test_perps(&server)
+        .public()
+        .leaderboard()
+        .sort_by(LeaderboardSort::Roi)
+        .send()
+        .await
+        .expect("leaderboard");
+    mock.assert_async().await;
+    assert_eq!(board.sort_by, LeaderboardSort::Roi);
+    let entry = &board.entries[0];
+    assert_eq!(entry.roi, Decimal::new(848545, 6));
+    assert_eq!(entry.instruments_traded, Some(1));
+    assert_eq!(entry.top_instrument_ids, Some(vec![InstrumentId(6)]));
+}
+
+#[tokio::test]
+async fn a_settled_instrument_carries_its_settlement() {
+    let mut server = Server::new_async().await;
+    let _mock = server
+        .mock("GET", "/v1/info/instruments")
+        .match_query(Matcher::UrlEncoded("instrument_id".into(), "51".into()))
+        .with_body(fixtures!("perps").text("instrument_settled"))
+        .create_async()
+        .await;
+
+    let rows = test_perps(&server)
+        .exchange()
+        .instruments()
+        .instrument_id(InstrumentId(51))
+        .send()
+        .await
+        .expect("instruments");
+    assert!(rows[0].close_only);
+    let settlement = rows[0].settlement.as_ref().expect("settled");
+    assert_eq!(settlement.price, Decimal::new(35387, 2));
+    assert_eq!(settlement.insurance_debit, Decimal::ZERO);
+}
+
+#[tokio::test]
+async fn a_selection_at_each_limit_is_sent() {
+    let mut server = Server::new_async().await;
+    let mock = server
+        .mock("POST", "/v1/info/position-snapshots")
+        .with_body(r#"{"active":[],"history":[],"history_as_of_at":1}"#)
+        .expect(1)
+        .create_async()
+        .await;
+
+    test_perps(&server)
+        .public()
+        .position_snapshots("0xabc")
+        .active((1..=MAX_SNAPSHOT_ACTIVE as u64).map(InstrumentId))
+        .history(
+            (1..=MAX_SNAPSHOT_HISTORY as u64)
+                .map(|trade_id| PositionSnapshotFill::new(InstrumentId(1), trade_id, 1)),
+        )
+        .send()
+        .await
+        .expect("twenty instruments and four fills are within the limits");
+    mock.assert_async().await;
 }

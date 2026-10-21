@@ -1,0 +1,51 @@
+{
+  "competition_id": 3,
+  "number": 3,
+  "name": "Semis Showdown",
+  "sector_label": "Semis",
+  "boost_description": "3x volume on semiconductor markets",
+  "status": "live",
+  "start_time": 1792022400000,
+  "end_time": 1792627200000,
+  "all_markets": true,
+  "markets": [
+    {
+      "instrument_id": 51,
+      "boost": "3"
+    },
+    {
+      "instrument_id": 6,
+      "boost": "2"
+    }
+  ],
+  "min_volume": "100000",
+  "count_unrealized": true,
+  "prize_pool": "50000",
+  "prize_asset_id": 1,
+  "prize_tiers": [
+    {
+      "from_rank": 1,
+      "to_rank": 1,
+      "amount": "10000"
+    },
+    {
+      "from_rank": 2,
+      "to_rank": 5,
+      "amount": "5000"
+    },
+    {
+      "from_rank": 6,
+      "to_rank": 25,
+      "amount": "1000"
+    }
+  ],
+  "paid_places": 25,
+  "internal": false,
+  "ranked": 412,
+  "participants": 1893,
+  "final_results": false,
+  "scoring_version": 1,
+  "prize_cutoff_score": "18234.127001",
+  "start_trading_instrument_id": 51,
+  "updated_at": 1792598400000
+}

@@ -4,7 +4,10 @@ use crate::shared::{self, PolymarketRetryPolicy};
 use polyoxide_core::{ClientConfig, HttpClient, RateLimiter};
 
 use crate::perps::{
-    api::{exchange::ExchangeApi, health::Health, market::MarketApi, public::PublicApi},
+    api::{
+        competition::CompetitionApi, exchange::ExchangeApi, health::Health, market::MarketApi,
+        public::PublicApi,
+    },
     error::PerpsError,
 };
 
@@ -39,8 +42,12 @@ impl Perps {
         exchange: ExchangeApi,
         /// Market data keyed by instrument.
         market: MarketApi,
-        /// Public-by-address lookups: portfolio, position fills, leaderboard, invite.
+        /// Public-by-address lookups: portfolio, position fills, leaderboard,
+        /// invite, registration and position snapshots.
         public: PublicApi,
+        /// Trading competitions: the list, one competition, its leaderboard,
+        /// an account's standing and the live widget.
+        competitions: CompetitionApi,
     }
 }
 

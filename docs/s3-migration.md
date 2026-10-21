@@ -128,6 +128,32 @@ renamed, and no signature changes.
 - The `id` setters of `ListMarkets` and `ListEvents` documented a batch of 400 ids, and the
   host takes 100.
 
+## Perps: the spec's competition, snapshot and settlement drift (#56)
+
+**Consumer impact: breaking for perps.** Three field types change and an enum gains a variant
+(DRIFT R17); nothing is removed, and the rest is additive.
+
+- `Instrument::close_only` (`perps::api::exchange`), `Trade::settlement` (`perps::api::market`)
+  and `PositionFill::settlement` (`perps::api::public`) are `bool` where they were
+  `Option<bool>`: the spec now requires all three, and the host sent them on every row. Replace
+  `Some(x)` with `x`. `perps::venue`'s `InstrumentExt::close_only` and `TradeExt::settlement`
+  stay `Option<bool>` and are now always `Some`.
+- `LeaderboardEntry` and `LeaderboardAccount` gain a required `roi`, return over the window as a
+  fraction, and the undocumented `instruments_traded` and `top_instrument_ids`, both `Option`.
+  `LeaderboardSort` gains `Roi`, which breaks an exhaustive `match` on it.
+- `Instrument` gains `settlement: Option<InstrumentSettlement>`. `GET /v1/info/instruments` lists
+  enabled instruments only, but filtered by `instrument_id` it also returns a settled one, with
+  `close_only` set and its settlement record; `perps::venue`'s `instrument` now reports such an
+  instrument with `tradable: Some(false)` and the record in `InstrumentExt::settlement`.
+- New routes: `perps.public().registered(address)`; `perps.public().position_snapshots(address)`, a
+  `POST` with `.active(instrument_ids)` (at most 20) and `.history(fills)` (at most 4,
+  `PositionSnapshotFill`, which converts from a `PositionFill`), refused before sending when it
+  names neither, too many or one twice, or an instrument id or fill time past the host's bounds; and
+  the namespace `perps.competitions()`: `list()`, `get(id)`, `leaderboard(id)`, `account(id,
+  address)` and `widget()`, with `CompetitionId`, `CompetitionStatus` and `CompetitionRowState` in
+  `perps::types`. No competition has existed yet, so the competition types are modelled from the
+  spec alone.
+
 ## Epic 9: Kalshi published
 
 **Consumer impact: additive.** Nothing is removed or renamed, and no signature changes; code

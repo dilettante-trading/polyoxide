@@ -48,7 +48,9 @@ use polyoxide_venue::{
 use rust_decimal::Decimal;
 
 use crate::perps::{
-    api::exchange::{FeeTier, FeesInfo, Instrument as PerpsInstrument, RiskTier},
+    api::exchange::{
+        FeeTier, FeesInfo, Instrument as PerpsInstrument, InstrumentSettlement, RiskTier,
+    },
     types::{self, InstrumentCategory, InstrumentId, InstrumentType, Interval},
     Perps,
 };
@@ -62,10 +64,13 @@ pub struct InstrumentExt {
     pub instrument_type: Option<InstrumentType>,
     /// Category.
     pub category: Option<InstrumentCategory>,
-    /// The symbol first-party interfaces show, when it differs.
+    /// A label to show in place of the symbol, when it differs.
     pub display_symbol: Option<String>,
-    /// Whether new positions are refused.
+    /// Whether user orders must be reduce-only.
     pub close_only: Option<bool>,
+    /// The settlement record of a settled instrument, which is delisted and
+    /// cannot resume trading.
+    pub settlement: Option<InstrumentSettlement>,
     /// Whether only isolated margin is supported.
     pub isolated_only: Option<bool>,
     /// Decimal places of a price. A non-integer price also keeps at most five
@@ -113,7 +118,8 @@ pub struct BookExt {
 pub struct TradeExt {
     /// The transaction hash.
     pub hash: Option<String>,
-    /// Whether it was a settlement trade. Undocumented.
+    /// Whether it closed a position at the instrument's permanent
+    /// settlement, rather than trading on the market.
     pub settlement: Option<bool>,
 }
 
@@ -189,7 +195,7 @@ fn instrument(row: &PerpsInstrument, fees: &FeesInfo) -> Instrument {
     // `None` past the 28 places a decimal holds, which no instrument uses.
     instrument.size_increment = Decimal::try_new(1, row.quantity_decimals).ok();
     instrument.min_notional = Some(row.min_notional);
-    instrument.tradable = row.close_only.map(|close_only| !close_only);
+    instrument.tradable = Some(!row.close_only && row.settlement.is_none());
     let schedule = fees.fee_schedule.iter().find(|entry| {
         entry.instrument_type == row.instrument_type && entry.category == row.category
     });
@@ -197,7 +203,8 @@ fn instrument(row: &PerpsInstrument, fees: &FeesInfo) -> Instrument {
         instrument_type: Some(row.instrument_type),
         category: Some(row.category),
         display_symbol: row.display_symbol.clone(),
-        close_only: row.close_only,
+        close_only: Some(row.close_only),
+        settlement: row.settlement.clone(),
         isolated_only: Some(row.isolated_only),
         price_decimals: Some(row.price_decimals),
         quantity_decimals: Some(row.quantity_decimals),
@@ -312,7 +319,7 @@ impl Trades for Perps {
                 });
                 trade.extensions = Extensions::of(TradeExt {
                     hash: Some(row.hash.clone()),
-                    settlement: row.settlement,
+                    settlement: Some(row.settlement),
                 });
                 trade
             })

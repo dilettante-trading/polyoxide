@@ -1,0 +1,55 @@
+[
+  {
+    "instrument_id": 51,
+    "instrument_type": "perpetual",
+    "category": "equity",
+    "isolated_only": false,
+    "symbol": "KIOXIA-USD",
+    "close_only": true,
+    "settlement": {
+      "sequence": 55959926771,
+      "timestamp": 1790555581797,
+      "price": "353.87",
+      "insurance_debit": "0"
+    },
+    "base_asset": "KIOXIA",
+    "quote_asset": "pUSD",
+    "funding_interval": "1h",
+    "quantity_decimals": 4,
+    "price_decimals": 2,
+    "price_bounds": "0.10",
+    "liquidation_fee": "0.005",
+    "max_order_count": 200,
+    "min_notional": "10",
+    "max_market_notional": "500000",
+    "max_limit_notional": "2500000",
+    "max_leverage": 10,
+    "risk_tiers": [
+      {
+        "lower_bound": "0",
+        "max_leverage": 10
+      },
+      {
+        "lower_bound": "500000",
+        "max_leverage": 5
+      },
+      {
+        "lower_bound": "1000000",
+        "max_leverage": 3
+      },
+      {
+        "lower_bound": "3000000",
+        "max_leverage": 2
+      },
+      {
+        "lower_bound": "5000000",
+        "max_leverage": 1
+      }
+    ],
+    "ui_live_time": 1786982400000,
+    "logo": {
+      "light": "https://assets.perpetuals.polymarket.com/logos/kioxia/bf3febac94b2a13f-light.svg",
+      "dark": "https://assets.perpetuals.polymarket.com/logos/kioxia/bf3febac94b2a13f-dark.svg"
+    }
+  }
+]

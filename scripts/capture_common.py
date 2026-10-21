@@ -1,4 +1,4 @@
-"""What the fixture capture scripts share: one HTTP GET, the fixture and
+"""What the fixture capture scripts share: an HTTP GET and POST, the fixture and
 PROVENANCE.md writers, and a WebSocket session.
 
 Each `scripts/capture_*.py` imports this module from its own directory, so run
@@ -6,7 +6,7 @@ them as files: `python3 scripts/capture_x.py …`, or `uv run scripts/capture_x.
 for one that declares its dependencies inline. Never `python3 -I`, which leaves
 the script's own directory off `sys.path`, so this import fails.
 
-Signing stays in each script. `get` and `ws_session` take a `headers(method, url)`
+Signing stays in each script. `get`, `post` and `ws_session` take a `headers(method, url)`
 function and call it for every request or connection, so a signature computed
 from the time or the URL is never reused.
 
@@ -88,12 +88,42 @@ def get(
     query = urllib.parse.urlencode({k: v for k, v in (params or {}).items() if v is not None})
     if query:
         url = f"{url}?{query}"
+    return _send("GET", url, None, headers, pause, ua, timeout)
+
+
+def post(
+    url: str,
+    body: Any,
+    *,
+    headers: Headers | None = None,
+    pause: float = 0.0,
+    ua: str = USER_AGENT,
+    timeout: float = 30,
+) -> Reply:
+    """POST `body` to `url` as JSON, after sleeping `pause` seconds, as `get`
+    does: `headers("POST", url)` is called for this request, and an error status
+    or a body that is not JSON is returned, not raised."""
+    data = json.dumps(body).encode()
+    return _send("POST", url, data, headers, pause, ua, timeout)
+
+
+def _send(
+    method: str,
+    url: str,
+    data: bytes | None,
+    headers: Headers | None,
+    pause: float,
+    ua: str,
+    timeout: float,
+) -> Reply:
     if pause:
         time.sleep(pause)
     sent = {"user-agent": ua}
+    if data is not None:
+        sent["content-type"] = "application/json"
     if headers is not None:
-        sent.update(headers("GET", url))
-    request = urllib.request.Request(url, headers=sent)
+        sent.update(headers(method, url))
+    request = urllib.request.Request(url, data=data, headers=sent, method=method)
     try:
         with urllib.request.urlopen(request, timeout=timeout, context=_tls()) as response:
             body, is_json = _decode(response.read())

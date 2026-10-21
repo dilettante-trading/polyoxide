@@ -62,6 +62,17 @@ class _Handler(BaseHTTPRequestHandler):
         else:
             self._send(404, "application/json", b'{"error": "not found"}')
 
+    def do_POST(self) -> None:  # noqa: N802 (the stdlib's name)
+        length = int(self.headers.get("content-length", 0))
+        body = json.dumps({
+            "method": "POST",
+            "path": self.path,
+            "body": json.loads(self.rfile.read(length)),
+            "headers": {k.lower(): v for k, v in self.headers.items()},
+        }).encode()
+        status = 200 if urlsplit(self.path).path == "/echo" else 404
+        self._send(status, "application/json", body)
+
     def _send(self, status: int, content_type: str, body: bytes) -> None:
         self.send_response(status)
         self.send_header("content-type", content_type)
@@ -81,6 +92,35 @@ def base() -> str:
     yield f"http://127.0.0.1:{server.server_address[1]}"
     server.shutdown()
     server.server_close()
+
+
+# --- post -------------------------------------------------------------------------
+
+
+def test_post_sends_the_body_as_json(base: str) -> None:
+    reply = capture_common.post(f"{base}/echo", {"address": "0xa", "ids": [1, 2]})
+    assert reply.status == 200 and reply.url == f"{base}/echo"
+    assert reply.body["method"] == "POST"
+    assert reply.body["body"] == {"address": "0xa", "ids": [1, 2]}
+    assert reply.body["headers"]["content-type"] == "application/json"
+    assert reply.body["headers"]["user-agent"] == capture_common.USER_AGENT
+
+
+def test_post_asks_for_headers_with_its_method(base: str) -> None:
+    asked = []
+
+    def headers(method: str, url: str) -> dict[str, str]:
+        asked.append((method, url))
+        return {"x-sig": "s"}
+
+    reply = capture_common.post(f"{base}/echo", {}, headers=headers)
+    assert asked == [("POST", f"{base}/echo")]
+    assert reply.body["headers"]["x-sig"] == "s"
+
+
+def test_a_post_error_status_is_returned_not_raised(base: str) -> None:
+    reply = capture_common.post(f"{base}/missing", {"a": 1})
+    assert reply.status == 404 and reply.is_json
 
 
 # --- get --------------------------------------------------------------------------

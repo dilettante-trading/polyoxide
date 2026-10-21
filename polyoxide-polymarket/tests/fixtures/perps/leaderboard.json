@@ -1,29 +1,48 @@
 {
   "window": "week",
   "sort_by": "pnl",
-  "timestamp": 1790761993746,
-  "total": 7806,
+  "timestamp": 1792598509495,
+  "total": 9055,
   "entries": [
     {
       "rank": 1,
-      "account": "0x65c874d474532F4f5Db9eE02F1290f3034E78d73",
-      "pnl": "82904.76691070512",
-      "notional": "747121.263223",
-      "account_value": "396479.08260064033163200000002"
+      "account": "0xE0Ebcff994a0f3A644634927aE1B68913ad58A39",
+      "pnl": "23459.585351417256",
+      "notional": "230025.80625",
+      "account_value": "473812.00915453525034399999982",
+      "roi": "0.052065",
+      "instruments_traded": 1,
+      "top_instrument_ids": [
+        5
+      ]
     },
     {
       "rank": 2,
-      "account": "0x79818CD96A941a7CAeabAa3dB3038585af723a77",
-      "pnl": "44712.29516515693",
-      "notional": "8477587.594201",
-      "account_value": "1059957.6677008918886049002507"
+      "account": "0x5Eee21F22ac3Bb72c979D801270d7f322D6B2d6f",
+      "pnl": "23264.988701513674",
+      "notional": "13653406.547856",
+      "account_value": "2311156.1636411234465464151845",
+      "roi": "0.009994",
+      "instruments_traded": 26,
+      "top_instrument_ids": [
+        30,
+        28,
+        13
+      ]
     },
     {
       "rank": 3,
-      "account": "0xB6287efe7A7702402dd8342963DBEfE51e44F2EB",
-      "pnl": "16864.925234333772",
-      "notional": "4396999.107892",
-      "account_value": "728835.36353794405052432067950"
+      "account": "0xfc1B24B1749F71b797029C34F5fa30D528539107",
+      "pnl": "18875.82625694684",
+      "notional": "11301158.176242",
+      "account_value": "1276772.6588228741267416078569",
+      "roi": "0.014856",
+      "instruments_traded": 12,
+      "top_instrument_ids": [
+        3,
+        46,
+        1
+      ]
     }
   ]
 }

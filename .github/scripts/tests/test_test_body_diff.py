@@ -1262,12 +1262,13 @@ def test_main_cannot_decide_without_its_inputs(repo: Path, capsys) -> None:
 def test_the_checked_in_config_reads_and_cites_only_drift_rows() -> None:
     config = body_diff.read_config(REPO)
     rows = body_diff.drift_rows((REPO / body_diff.DIVERGENCES).read_text())
-    assert rows == {f"R{n}" for n in range(1, 17)}
+    assert rows == {f"R{n}" for n in range(1, 18)}
     assert all(entry.row in rows for entry in config.drift)
     # S2's DRIFT rows are R6, rtds' `test-fixtures` becoming `test-server`, and
     # R12, the live tests of the two data hosts Polymarket retired. S3 adds R13,
     # `Markets::get_many` sending `closed=any` where it fanned out two requests;
     # R14, the spec-agreement tables that adopting `GET /v2/tokens` moves;
-    # R15, the scripted test server's recorder, spec D17; and R16, the
-    # `ActivityType` set test that adopting `MIGRATION` (#67) moves.
-    assert {entry.row for entry in config.drift} <= {"R6", "R12", "R13", "R14", "R15", "R16"}
+    # R15, the scripted test server's recorder, spec D17; R16, the
+    # `ActivityType` set test that adopting `MIGRATION` (#67) moves; and R17,
+    # the perps tests and fixtures that adopting the perps drift (#56) moves.
+    assert {entry.row for entry in config.drift} <= {"R6", "R12", "R13", "R14", "R15", "R16", "R17"}
