@@ -113,6 +113,8 @@ impl fmt::Debug for Inner {
         f.debug_struct("Inner")
             .field("http", &self.http)
             .field("read", self.throttle.bucket())
+            .field("public", self.throttle.public_bucket())
+            .field("split", &self.throttle.splits_public_reads())
             .field("costs", &self.costs)
             .field("confirmed", &self.confirmation.initialized())
             .field("keyed", &self.auth.is_some())
@@ -306,5 +308,26 @@ mod tests {
         let kalshi = Predictions::new().unwrap();
         send(kalshi.exchange().status().send());
         send(kalshi.health().ping());
+    }
+
+    #[test]
+    fn the_printed_client_shows_both_read_buckets_and_the_split() {
+        let kalshi = Predictions::new().unwrap();
+        let text = format!("{kalshi:?}");
+        // The key's bucket at Basic's refill and the public one at the unsigned client's.
+        let read = text
+            .split("public:")
+            .next()
+            .expect("split always yields one");
+        assert!(read.contains("read: CapacityBucket"), "{text}");
+        assert!(read.contains("refill_per_sec: 200,"), "{text}");
+        let public = text
+            .split("public:")
+            .nth(1)
+            .unwrap_or_else(|| panic!("the public bucket is not printed: {text}"));
+        assert!(public.contains("CapacityBucket"), "{text}");
+        assert!(public.contains("refill_per_sec: 180,"), "{text}");
+        assert!(text.contains("split: false"), "{text}");
+        assert!(text.contains("keyed: false"), "{text}");
     }
 }
