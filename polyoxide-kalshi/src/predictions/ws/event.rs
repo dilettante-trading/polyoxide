@@ -19,8 +19,10 @@ use crate::predictions::{
 #[derive(Debug)]
 #[non_exhaustive]
 pub enum Event {
-    /// A market's whole book: the first frame of its subscription, and the first after
-    /// each reconnect.
+    /// A market's whole book: the first frame of its subscription, the first after each
+    /// reconnect, and the answer to a re-snapshot, whether the socket asked for it after
+    /// [`Resyncing`](Self::Resyncing) or the consumer did through
+    /// `PredictionsMembership::snapshot`.
     Snapshot(OrderbookSnapshot),
     /// One change to one price level of a book.
     Delta(OrderbookDelta),

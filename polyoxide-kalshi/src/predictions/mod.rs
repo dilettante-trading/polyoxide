@@ -3,9 +3,12 @@
 //! Client for Kalshi's Predictions exchange (`external-api.kalshi.com`), behind the `predictions`
 //! feature, which is on by default. What the module offers is in its namespaces.
 //!
-//! Every request runs on core's send loop and costs tokens from a Read throttle. The throttle
-//! starts at the size Kalshi gives its Basic tier, and a client confirms the account's own size
-//! when it first sends. The hosts are [`PRODUCTION`] and [`DEMO`], and keys do not cross between
+//! Every request runs on core's send loop and costs tokens from a Read throttle. A client with no
+//! key has one bucket of 600 tokens refilling 180 a second, a tenth under Basic's 200 a second,
+//! the highest rate Kalshi's unsigned reads were measured to serve clean. A client with a key
+//! sizes the key's bucket from the account's own limits when it first sends (until then it holds
+//! Basic's sizing), and sends its public reads from a second bucket sized as an unsigned
+//! client's, because a signed public read does not draw on the key's. The hosts are [`PRODUCTION`] and [`DEMO`], and keys do not cross between
 //! them.
 //!
 //! With the `predictions-ws` feature the module also has `ws`, the socket: it streams the order
