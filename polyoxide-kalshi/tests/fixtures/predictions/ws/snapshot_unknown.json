@@ -1,0 +1,11 @@
+{
+  "type": "orderbook_snapshot",
+  "id": 10,
+  "sid": 1,
+  "seq": 962,
+  "msg": {
+    "market_ticker": "KXNOSUCHMARKET-99XXX-T1",
+    "market_id": ""
+  },
+  "sending_ts_ms": 1792580952704
+}

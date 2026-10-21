@@ -1,0 +1,22 @@
+{
+  "type": "ticker",
+  "sid": 2,
+  "msg": {
+    "market_id": "01a15db1-3fd5-7098-a216-dbdf7859c8d3",
+    "market_ticker": "KXRAINSHARD2-26OCT22-NYC",
+    "price_dollars": "0.5200",
+    "yes_bid_dollars": "0.4800",
+    "yes_ask_dollars": "0.5200",
+    "volume_fp": "994.00",
+    "open_interest_fp": "104.00",
+    "dollar_volume": 497,
+    "dollar_open_interest": 52,
+    "yes_bid_size_fp": "200.00",
+    "yes_ask_size_fp": "200.00",
+    "last_trade_size_fp": "1.00",
+    "ts": 1792580893,
+    "ts_ms": 1792580893093,
+    "time": "2026-10-21T11:08:13.093Z"
+  },
+  "sending_ts_ms": 1792580893818
+}

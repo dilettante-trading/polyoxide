@@ -1,6 +1,6 @@
 # Polyoxide
 
-Multi-venue Rust SDK toolkit: Polymarket's APIs and Binance's USDⓈ-M futures market data, one
+Multi-venue Rust SDK toolkit: Polymarket's APIs, Binance's USDⓈ-M futures market data and Kalshi's event-contract market data, one
 crate per venue. It includes library crates for use in your projects, the `polyoxide` umbrella
 over them, and a standalone CLI.
 
@@ -12,11 +12,11 @@ over them, and a standalone CLI.
 <!-- generated:begin readme-crates -->
 | Crate | Description |
 |-------|-------------|
-| [polyoxide](./polyoxide) | The multi-venue umbrella: `polyoxide::polymarket` and `polyoxide::binance` behind features named for each venue and module, `polyoxide::venue` with the market-data traits, `polyoxide::parse_key` and a `prelude` |
+| [polyoxide](./polyoxide) | The multi-venue umbrella: `polyoxide::polymarket`, `polyoxide::binance` and `polyoxide::kalshi` behind features named for each venue and module, `polyoxide::venue` with the market-data traits, `polyoxide::parse_key` and a `prelude` |
 | [polyoxide-binance](./polyoxide-binance) | Client library for Binance's APIs, one feature per module: `usdm` (USDⓈ-M futures market data, with its streams under `usdm-ws`); re-exported by the umbrella as `polyoxide::binance` |
 | [polyoxide-cli](./polyoxide-cli) | CLI tool for querying Polymarket APIs and Binance USDⓈ-M market data |
 | [polyoxide-core](./polyoxide-core) | Core utilities and shared types |
-| [polyoxide-kalshi](./polyoxide-kalshi) | Client library for Kalshi's APIs, one feature per module: `predictions` (event-contract market data, with its order-book stream under `predictions-ws`); a walking skeleton, not published |
+| [polyoxide-kalshi](./polyoxide-kalshi) | Client library for Kalshi's APIs, one feature per module: `predictions` (event-contract market data, with its streams under `predictions-ws`); re-exported by the umbrella as `polyoxide::kalshi` |
 | [polyoxide-polymarket](./polyoxide-polymarket) | Client library for Polymarket's APIs, one feature per module: `clob` (order book, with its sockets under `clob-ws`), `gamma` (market data), `data` (user data, v1 and v2), `relay` (gasless transactions), `perps` (perpetual futures market data, with its sockets under `perps-ws`), `rtds` (crypto price streams) and `sports` (live sports scores), with the code the HTTP modules share in `shared` and, with `clob`, `gamma` and `data`, the unified `Polymarket` client; re-exported by the umbrella as `polyoxide::polymarket` |
 | [polyoxide-py](./polyoxide-py) | Python bindings via PyO3 (`publish = false`, wheels on PyPI) |
 | [polyoxide-test-support](./polyoxide-test-support) | Test toolkit: the failure tags the nightly classifier reads, the credential loaders, and the agreement, fixture and soak helpers (`publish = false`) |
@@ -32,8 +32,8 @@ over them, and a standalone CLI.
 cargo add polyoxide
 ```
 
-Its features are named for each venue and module, `polymarket-<module>` and `binance-<module>`,
-and its paths too: `polyoxide::polymarket` and `polyoxide::binance`. Or install individual APIs:
+Its features are named for each venue and module, `polymarket-<module>`, `binance-<module>` and `kalshi-<module>`,
+and its paths too: `polyoxide::polymarket`, `polyoxide::binance` and `polyoxide::kalshi`. Or install individual APIs:
 
 ```bash
 # Market data only
@@ -53,6 +53,9 @@ cargo add polyoxide --no-default-features --features polymarket-relay
 
 # Binance USDⓈ-M futures market data and its streams
 cargo add polyoxide --no-default-features --features binance-usdm-ws
+
+# Kalshi event-contract market data and its streams
+cargo add polyoxide --no-default-features --features kalshi-predictions-ws
 ```
 
 ### CLI

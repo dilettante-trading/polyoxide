@@ -4,7 +4,7 @@
 
 use polyoxide_kalshi::predictions::{
     key::Ticker,
-    types::{MarketStatusFilter, MveFilter},
+    types::{MarketStatusFilter, MveFilter, PeriodInterval},
     Predictions,
 };
 use polyoxide_test_support::query::{assert_cases, Case};
@@ -141,4 +141,96 @@ const CASES: &[Case] = &[
 #[tokio::test]
 async fn every_setter_sends_its_key_and_value_in_call_order() {
     assert_cases(CASES).await;
+}
+
+/// The candlestick builders: the required arguments first, in the order the route documents
+/// them, then `include_latest_before_start`. Each width sends its number of minutes.
+const CANDLE_CASES: &[Case] = &[
+    Case {
+        builder: "GetCandlesticks",
+        path: "/trade-api/v2/markets/candlesticks",
+        fire: |base| {
+            Box::pin(async move {
+                let _ = client(&base)
+                    .markets()
+                    .candlesticks(&ticker(), PeriodInterval::Hour1, 100, 200)
+                    .include_latest_before_start(true)
+                    .send()
+                    .await;
+            })
+        },
+        sends: &[
+            ("market_tickers", "KXTEST-1"),
+            ("start_ts", "100"),
+            ("end_ts", "200"),
+            ("period_interval", "60"),
+            ("include_latest_before_start", "true"),
+        ],
+    },
+    Case {
+        builder: "GetCandlesticks, one minute",
+        path: "/trade-api/v2/markets/candlesticks",
+        fire: |base| {
+            Box::pin(async move {
+                let _ = client(&base)
+                    .markets()
+                    .candlesticks(&ticker(), PeriodInterval::Minute1, 1, 2)
+                    .send()
+                    .await;
+            })
+        },
+        sends: &[
+            ("market_tickers", "KXTEST-1"),
+            ("start_ts", "1"),
+            ("end_ts", "2"),
+            ("period_interval", "1"),
+        ],
+    },
+    Case {
+        builder: "GetCandlesticks, one day, a setter called twice",
+        path: "/trade-api/v2/markets/candlesticks",
+        fire: |base| {
+            Box::pin(async move {
+                let _ = client(&base)
+                    .markets()
+                    .candlesticks(&ticker(), PeriodInterval::Day1, 3, 4)
+                    .include_latest_before_start(true)
+                    .include_latest_before_start(false)
+                    .send()
+                    .await;
+            })
+        },
+        sends: &[
+            ("market_tickers", "KXTEST-1"),
+            ("start_ts", "3"),
+            ("end_ts", "4"),
+            ("period_interval", "1440"),
+            ("include_latest_before_start", "false"),
+        ],
+    },
+    Case {
+        builder: "GetSeriesCandlesticks",
+        path: "/trade-api/v2/series/KXSER-1/markets/KXTEST-1/candlesticks",
+        fire: |base| {
+            Box::pin(async move {
+                let _ = client(&base)
+                    .markets()
+                    .series_candlesticks("KXSER-1", &ticker(), PeriodInterval::Hour1, 100, 200)
+                    .include_latest_before_start(true)
+                    .send()
+                    .await;
+            })
+        },
+        sends: &[
+            ("start_ts", "100"),
+            ("end_ts", "200"),
+            ("period_interval", "60"),
+            ("include_latest_before_start", "true"),
+        ],
+    },
+];
+
+#[tokio::test]
+async fn every_candle_setter_sends_its_key_and_value_in_call_order() {
+    assert_cases(CANDLE_CASES).await;
 }

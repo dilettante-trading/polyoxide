@@ -1,6 +1,6 @@
 //! Kalshi's predictions exchange through the venue-neutral market-data traits.
 //!
-//! [`Predictions`] implements `MarketData`, `Trades` and `EventGroups` over its
+//! [`Predictions`] implements `MarketData`, `Trades`, `Candles` and `EventGroups` over its
 //! own routes, keyed
 //! `kalshi.predictions:<TICKER>:yes` and `kalshi.predictions:<TICKER>:no` by the
 //! constructors in `predictions::key`: a key names one outcome of one market,
@@ -21,12 +21,36 @@
 //! A time Kalshi sends is RFC 3339 and is read into `UnixMillis`; one that does
 //! not parse is a `Decode` error naming the field, never a zero.
 //!
+//! `candles` reads one ticker from the batch candlestick route at the three widths
+//! Kalshi serves, one minute, one hour and one day (`intervals()`). Any other width
+//! is refused as `InvalidRequest` with nothing sent, since the route itself answers
+//! one it does not serve with `200` and the daily candles, which would silently read
+//! as daily: the refusal is the only guard. Kalshi selects a candlestick by
+//! the time it ends and the trait by the time it opens, so the request's span is
+//! the query's moved forward by one width: `start` rounded up to the second, and
+//! `end` (or now) rounded down to the second, each plus the width. A candle opens
+//! at its end less one width, and one opening outside the query is dropped. Kalshi
+//! refuses a request over 10,000 candlesticks rather than truncating it, so a span
+//! past 10,000 periods is clamped to its first 10,000 (`end` is sent no later than
+//! `start` plus 9,999 widths) and the rest is not read. Its
+//! prices are the trade prices, and a `no` key's are each turned into *1 - price*
+//! with its high and low swapped. A period with no trade closes at the last price
+//! before it (`previous`) and has no open, high or low, and a period with no
+//! `previous` either is left out. Its volume is the contracts traded in the period,
+//! in shares. `CandleExt` carries the YES bid and ask distributions and the open
+//! interest in YES terms whatever the key's outcome, and the mean trade price,
+//! turned over for a `no` key like the other prices. A market that settled before
+//! Kalshi's historical cutoff has candlesticks only on its historical route, which
+//! this client does not call: the live route's answer for it, an empty list or a
+//! refusal, is returned as the venue gave it.
+//!
 //! | Method | Route | Requests |
 //! | --- | --- | --- |
 //! | `instrument` | `GET /trade-api/v2/markets/{ticker}` | 1 |
 //! | `quote` | `GET /trade-api/v2/markets/{ticker}/orderbook`, `depth=1` | 1 |
 //! | `book` | `GET /trade-api/v2/markets/{ticker}/orderbook`, every level | 1 |
 //! | `trades` | `GET /trade-api/v2/markets/trades` for the ticker, 1000 rows | 1 |
+//! | `candles` | `GET /trade-api/v2/markets/candlesticks` for the ticker | 1 |
 //! | `event_group` | `GET /trade-api/v2/markets/{ticker}`, then `GET /trade-api/v2/events/{event}` with `with_nested_markets=true` | 2 |
 //!
 //! Each request costs its route's tokens on the client's Read layer, 10 today.
@@ -36,12 +60,16 @@ use polyoxide_venue::{
     Book, Class, ClassifiedError, Extensions, Instrument, Level, MarketData, MarketKey, NotListed,
     Quote, SizeUnit, UnixMillis,
 };
+use polyoxide_venue::{Candle, CandleInterval, CandleQuery, Candles};
 use polyoxide_venue::{EventGroup, EventGroups, EventOutcome};
 use polyoxide_venue::{Side, Trade, TradeId, Trades};
 use rust_decimal::Decimal;
 
 use super::key::{self, Outcome, OutcomeId, Ticker};
-use super::types::{self, MarketStatus, OrderbookFp, OutcomeSide, PriceRange};
+use super::types::{
+    self, BidAskDistribution, MarketCandlestick, MarketStatus, OrderbookFp, OutcomeSide,
+    PeriodInterval, PriceRange,
+};
 use super::{Predictions, PredictionsError};
 
 /// The smallest size step and the smallest order, in contracts: the
@@ -267,6 +295,203 @@ impl Trades for Predictions {
             .rev()
             .map(|row| trade(key, id.outcome, row))
             .collect()
+    }
+}
+
+/// The widths Kalshi's candlestick routes serve, shortest first: a minute, an hour and a day.
+const SERVED: &[CandleInterval] = &[
+    CandleInterval::Minute1,
+    CandleInterval::Hour1,
+    CandleInterval::Day1,
+];
+
+/// The most candlesticks Kalshi answers in one request: it refuses a request for more with a
+/// `400` ("max candlesticks: 10000") rather than truncating it.
+const MAX_PERIODS_PER_REQUEST: i64 = 10_000;
+
+/// The first, highest, lowest and last price of one side's offers over a candle's period, in
+/// dollars.
+#[derive(Debug, Clone, PartialEq)]
+#[non_exhaustive]
+pub struct Ohlc {
+    /// The price at the start of the period.
+    pub open: Decimal,
+    /// The highest price in the period.
+    pub high: Decimal,
+    /// The lowest price in the period.
+    pub low: Decimal,
+    /// The price at the end of the period.
+    pub close: Decimal,
+}
+
+/// Kalshi's facts about a candle, beside [`Candle`]'s fields.
+///
+/// The bid and ask distributions and the open interest are in YES terms as the venue sends them,
+/// whatever outcome the key names; the mean is turned over for a `no` key like the candle's
+/// prices.
+#[derive(Debug, Clone, PartialEq)]
+#[non_exhaustive]
+pub struct CandleExt {
+    /// Offers to buy YES over the period.
+    pub yes_bid: Ohlc,
+    /// Offers to sell YES over the period.
+    pub yes_ask: Ohlc,
+    /// Contracts bought, without netting, by the end of the period.
+    pub open_interest: Decimal,
+    /// The mean trade price of the period; `None` for a period with no trade.
+    pub mean: Option<Decimal>,
+}
+
+/// The wire width of a served interval.
+///
+/// A width outside [`SERVED`] is refused as `ensure_served` refuses it, with the same
+/// `UnservedInterval`, so the fallback arm reads as one refusal however it is reached.
+/// `Candles::candles` has already run `ensure_served`, so the arm is not reached from there;
+/// reaching its second error would mean `SERVED` lists a width this match does not map.
+fn wire_period(query: &CandleQuery) -> Result<PeriodInterval, ClassifiedError> {
+    match query.interval {
+        CandleInterval::Minute1 => Ok(PeriodInterval::Minute1),
+        CandleInterval::Hour1 => Ok(PeriodInterval::Hour1),
+        CandleInterval::Day1 => Ok(PeriodInterval::Day1),
+        other => {
+            query.ensure_served(SERVED)?;
+            Err(ClassifiedError::new(
+                Class::InvalidRequest,
+                format!("{other:?} is in SERVED but has no wire width"),
+            ))
+        }
+    }
+}
+
+/// A YES price as `outcome` sees it: itself for YES, `1 - price` for NO.
+fn for_outcome(outcome: Outcome, price: Decimal) -> Decimal {
+    match outcome {
+        Outcome::Yes => price,
+        Outcome::No => Decimal::ONE - price,
+    }
+}
+
+/// Unix seconds, rounded up.
+fn seconds_up(time: UnixMillis) -> i64 {
+    i64::try_from(time.0.div_ceil(1000)).unwrap_or(i64::MAX)
+}
+
+/// Unix seconds, rounded down.
+fn seconds_down(time: UnixMillis) -> i64 {
+    i64::try_from(time.0 / 1000).unwrap_or(i64::MAX)
+}
+
+fn ohlc(offers: &BidAskDistribution) -> Ohlc {
+    Ohlc {
+        open: offers.open_dollars,
+        high: offers.high_dollars,
+        low: offers.low_dollars,
+        close: offers.close_dollars,
+    }
+}
+
+/// The candle a row describes, for `outcome`, or `None` for a period with neither a trade nor a
+/// price before it.
+fn to_candle(
+    key: &MarketKey,
+    outcome: Outcome,
+    interval: CandleInterval,
+    width: i64,
+    row: &MarketCandlestick,
+) -> Result<Option<Candle>, ClassifiedError> {
+    let open_time = row
+        .end_period_ts
+        .checked_sub(width)
+        .and_then(|seconds| u64::try_from(seconds).ok())
+        .and_then(|seconds| seconds.checked_mul(1_000))
+        .map(UnixMillis)
+        .ok_or_else(|| {
+            ClassifiedError::new(
+                Class::Decode,
+                format!(
+                    "end_period_ts {} is less than one width after 1970",
+                    row.end_period_ts
+                ),
+            )
+        })?;
+    let shown = |price: Decimal| for_outcome(outcome, price);
+    let price = &row.price;
+    let (open, high, low, close) = match (price.close_dollars, price.previous_dollars) {
+        (Some(close), _) => {
+            // A NO key's high is the YES low turned over, and its low the YES high.
+            let (high, low) = match outcome {
+                Outcome::Yes => (price.high_dollars, price.low_dollars),
+                Outcome::No => (price.low_dollars, price.high_dollars),
+            };
+            (
+                price.open_dollars.map(shown),
+                high.map(shown),
+                low.map(shown),
+                shown(close),
+            )
+        }
+        (None, Some(previous)) => (None, None, None, shown(previous)),
+        (None, None) => return Ok(None),
+    };
+    let mut candle = Candle::new(key.clone(), interval, open_time, close);
+    candle.open = open;
+    candle.high = high;
+    candle.low = low;
+    candle.volume = Some(row.volume_fp);
+    candle.extensions = Extensions::of(CandleExt {
+        yes_bid: ohlc(&row.yes_bid),
+        yes_ask: ohlc(&row.yes_ask),
+        open_interest: row.open_interest_fp,
+        mean: price.mean_dollars.map(shown),
+    });
+    Ok(Some(candle))
+}
+
+impl Candles for Predictions {
+    fn intervals(&self) -> &'static [CandleInterval] {
+        SERVED
+    }
+
+    /// The market's candles of one served width opening in the query's span, oldest first, in
+    /// one request. Kalshi refuses a request over 10,000 candlesticks rather than truncating it,
+    /// so a span past 10,000 periods is clamped to its first 10,000 and the rest is not read.
+    async fn candles(
+        &self,
+        key: &MarketKey,
+        query: &CandleQuery,
+    ) -> Result<Vec<Candle>, ClassifiedError> {
+        let id = key::outcome(key)?;
+        query.ensure_served(self.intervals())?;
+        let period = wire_period(query)?;
+        let width = period.seconds();
+        let end = query.end.unwrap_or_else(UnixMillis::now);
+        let start_ts = seconds_up(query.start).saturating_add(width);
+        // 10,000 periods, both ends inclusive, are 9,999 widths apart.
+        let end_ts = seconds_down(end)
+            .saturating_add(width)
+            .min(start_ts.saturating_add(MAX_PERIODS_PER_REQUEST.saturating_sub(1) * width));
+        let response = self
+            .markets()
+            .candlesticks(&id.ticker, period, start_ts, end_ts)
+            .send()
+            .await?;
+        let Some(market) = response
+            .markets
+            .into_iter()
+            .find(|market| market.market_ticker == id.ticker.as_str())
+        else {
+            return Ok(Vec::new());
+        };
+        let mut candles = Vec::new();
+        for row in &market.candlesticks {
+            if let Some(candle) = to_candle(key, id.outcome, query.interval, width, row)? {
+                if candle.open_time >= query.start && candle.open_time <= end {
+                    candles.push(candle);
+                }
+            }
+        }
+        candles.sort_by_key(|candle| candle.open_time);
+        Ok(candles)
     }
 }
 

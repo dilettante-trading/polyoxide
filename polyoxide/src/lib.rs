@@ -6,10 +6,11 @@
 //! - `polyoxide::venue` is `polyoxide-venue`, the vocabulary every venue
 //!   shares, such as the error classes and the `Classify` trait. It is always
 //!   on. With any module that implements them (`polymarket-clob`,
-//!   `polymarket-perps`, `binance-usdm`) it also holds the market-data traits,
-//!   `MarketData` and its capabilities, which read every venue the same way:
-//!   `examples/venue_neutral.rs` reads the best bid and ask of the CLOB, perps
-//!   and USDⓈ-M with one function.
+//!   `polymarket-perps`, `binance-usdm`, `kalshi-predictions`) it also holds
+//!   the market-data traits, `MarketData` and its capabilities, which read
+//!   every venue the same way: `examples/venue_neutral.rs` reads the best bid
+//!   and ask of the CLOB, perps, USDⓈ-M and Kalshi's Predictions with one
+//!   function.
 //! - `polyoxide::polymarket` is `polyoxide-polymarket`, under `polymarket`
 //!   (its defaults: `clob`, `gamma` and `data`), on by default, or one
 //!   `polymarket-<module>` feature per module: `polymarket-clob`,
@@ -19,6 +20,8 @@
 //!   `data` all on it holds the unified client, `polymarket::Polymarket`.
 //! - `polyoxide::binance` is `polyoxide-binance`, under `binance` (its
 //!   defaults: `usdm`), `binance-usdm` or `binance-usdm-ws`.
+//! - `polyoxide::kalshi` is `polyoxide-kalshi`, under `kalshi` (its
+//!   defaults: `predictions`), `kalshi-predictions` or `kalshi-predictions-ws`.
 //! - `polyoxide::parse_key` reads a market key, `venue.product:id`, through
 //!   the constructors of whichever enabled product it names.
 //! - `polyoxide::prelude` re-exports a selection of the enabled modules'
@@ -124,10 +127,20 @@ pub use polyoxide_polymarket as polymarket;
 ))]
 pub use polyoxide_binance as binance;
 
+/// Kalshi's venue crate, `polyoxide-kalshi`: one module per
+/// `kalshi-<module>` feature.
+#[cfg(any(
+    feature = "kalshi",
+    feature = "kalshi-predictions",
+    feature = "kalshi-predictions-ws"
+))]
+pub use polyoxide_kalshi as kalshi;
+
 /// The key `raw` names, made by the constructors of its product, among the
 /// venues and modules this build enables: Polymarket's `clob` (with
 /// `polymarket-clob`, `-gamma` or `-data`) and `perps` (`polymarket-perps`),
-/// and Binance's `usdm` (`binance-usdm`).
+/// Binance's `usdm` (`binance-usdm`), and Kalshi's `predictions`
+/// (`kalshi-predictions`).
 ///
 /// Each product canonicalizes the id, so text read from configuration or a
 /// command line gives the key the product's own constructors give.
@@ -145,6 +158,22 @@ pub use polyoxide_binance as binance;
 /// # fn main() {}
 /// ```
 ///
+/// ```
+/// # #[cfg(feature = "kalshi-predictions")]
+/// # fn main() -> Result<(), polyoxide::venue::KeyError> {
+/// use polyoxide::venue::RawKey;
+///
+/// let raw = RawKey::parse("kalshi.predictions:kxtest-26oct18-t50.5:yes")?;
+/// assert_eq!(
+///     polyoxide::parse_key(&raw)?.to_string(),
+///     "kalshi.predictions:KXTEST-26OCT18-T50.5:yes"
+/// );
+/// # Ok(())
+/// # }
+/// # #[cfg(not(feature = "kalshi-predictions"))]
+/// # fn main() {}
+/// ```
+///
 /// # Errors
 ///
 /// [`KeyError::UnknownProduct`](venue::KeyError::UnknownProduct) when no
@@ -155,7 +184,8 @@ pub use polyoxide_binance as binance;
     feature = "polymarket-gamma",
     feature = "polymarket-data",
     feature = "polymarket-perps",
-    feature = "binance-usdm"
+    feature = "binance-usdm",
+    feature = "kalshi-predictions"
 ))]
 pub fn parse_key(raw: &venue::RawKey) -> Result<venue::MarketKey, venue::KeyError> {
     #[cfg(any(
@@ -170,6 +200,12 @@ pub fn parse_key(raw: &venue::RawKey) -> Result<venue::MarketKey, venue::KeyErro
     #[cfg(feature = "binance-usdm")]
     if raw.venue() == &binance::usdm::key::VENUE && raw.product() == &binance::usdm::key::PRODUCT {
         return binance::usdm::key::parse(raw);
+    }
+    #[cfg(feature = "kalshi-predictions")]
+    if raw.venue() == &kalshi::predictions::key::VENUE
+        && raw.product() == &kalshi::predictions::key::PRODUCT
+    {
+        return kalshi::predictions::key::parse(raw);
     }
     Err(venue::KeyError::unknown(raw))
 }
@@ -219,6 +255,20 @@ pub mod prelude {
     pub use polyoxide_binance::usdm::ws::{
         Event as UsdmEvent, StreamName, UsdmWs, UsdmWsBuilder, UsdmWsError,
     };
+
+    // Aliased: a bare `Credentials` is the CLOB's.
+    #[cfg(feature = "kalshi-predictions")]
+    pub use polyoxide_kalshi::predictions::{
+        Credentials as KalshiCredentials, Predictions, PredictionsBuilder, PredictionsError,
+    };
+
+    // Aliased as the other venues' streams are: a bare `Event`, `Books` or `Channel` names no
+    // venue.
+    #[cfg(feature = "kalshi-predictions-ws")]
+    pub use polyoxide_kalshi::predictions::ws::{
+        Books as PredictionsBooks, Channel as PredictionsChannel, Event as PredictionsEvent,
+        PredictionsMembership, PredictionsWsBuilder, PredictionsWsError, SupervisedPredictionsWs,
+    };
 }
 
 // Each passthrough names one type of its module through the path it opens,
@@ -246,6 +296,10 @@ const _: fn(crate::polymarket::sports::SportsWs) = drop;
 const _: fn(crate::binance::usdm::Usdm) = drop;
 #[cfg(feature = "binance-usdm-ws")]
 const _: fn(crate::binance::usdm::ws::UsdmWs) = drop;
+#[cfg(feature = "kalshi-predictions")]
+const _: fn(crate::kalshi::predictions::Predictions) = drop;
+#[cfg(feature = "kalshi-predictions-ws")]
+const _: fn(crate::kalshi::predictions::ws::PredictionsWsBuilder) = drop;
 
 // The same for each of the prelude's `cfg` blocks, gated on the feature it is
 // meant for, so a block whose `cfg` narrows fails here instead of emptying.
@@ -269,13 +323,18 @@ const _: fn(crate::prelude::SportsWs) = drop;
 const _: fn(crate::prelude::Usdm) = drop;
 #[cfg(feature = "binance-usdm-ws")]
 const _: fn(crate::prelude::UsdmWs) = drop;
+#[cfg(feature = "kalshi-predictions")]
+const _: fn(crate::prelude::Predictions) = drop;
+#[cfg(feature = "kalshi-predictions-ws")]
+const _: fn(crate::prelude::PredictionsWsBuilder) = drop;
 
 // The market-data traits are on `polyoxide::venue` with every module that
 // implements them, and `parse_key` with every module that names keys.
 #[cfg(any(
     feature = "polymarket-clob",
     feature = "polymarket-perps",
-    feature = "binance-usdm"
+    feature = "binance-usdm",
+    feature = "kalshi-predictions"
 ))]
 const _: fn(&crate::venue::DynMarketData<'static>) = |_| {};
 // `Trading` and its dyn wrapper come with the CLOB's sockets, and the CLOB
@@ -292,7 +351,8 @@ const _: fn() = || {
     feature = "polymarket-gamma",
     feature = "polymarket-data",
     feature = "polymarket-perps",
-    feature = "binance-usdm"
+    feature = "binance-usdm",
+    feature = "kalshi-predictions"
 ))]
 const _: fn(&crate::venue::RawKey) -> Result<crate::venue::MarketKey, crate::venue::KeyError> =
     crate::parse_key;

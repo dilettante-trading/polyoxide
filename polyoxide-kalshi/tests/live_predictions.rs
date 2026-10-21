@@ -216,7 +216,7 @@ async fn live_the_route_table_agrees_with_the_endpoint_costs() {
             );
         }
     }
-    assert_eq!(checked, 8, "the route table holds eight routes");
+    assert_eq!(checked, 10, "the route table holds ten routes");
 }
 
 /// Fetches a route's raw JSON, outside the client, for the key comparison.

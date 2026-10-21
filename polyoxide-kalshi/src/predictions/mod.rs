@@ -1,15 +1,18 @@
 //! # Predictions
 //!
 //! Client for Kalshi's Predictions exchange (`external-api.kalshi.com`), behind the `predictions`
-//! feature, which is on by default. The module is a walking skeleton: it grows a part at a time,
-//! and what it offers today is in its namespaces.
+//! feature, which is on by default. What the module offers is in its namespaces.
 //!
-//! Every request runs on core's send loop and costs tokens from a Read throttle. The throttle
-//! starts at the size Kalshi gives its Basic tier, and a client confirms the account's own size
-//! when it first sends. The hosts are [`PRODUCTION`] and [`DEMO`], and keys do not cross between
-//! them.
+//! Every request runs on core's send loop and costs tokens from a Read throttle. A client with no
+//! key has one bucket of 600 tokens refilling 180 a second, a tenth under Basic's 200 a second,
+//! the highest rate Kalshi's unsigned reads were measured to serve clean. A client with a key
+//! sizes the key's bucket from the account's own limits when it first sends (until then it holds
+//! Basic's sizing), and sends its public reads from a second bucket sized as an unsigned
+//! client's, because a signed public read does not draw on the key's. The hosts are
+//! [`PRODUCTION`] and [`DEMO`], and keys do not cross between them.
 //!
-//! With the `predictions-ws` feature the module also has `ws`, the order-book socket. Its
+//! With the `predictions-ws` feature the module also has `ws`, the socket: it streams the order
+//! book (a snapshot, then deltas, in YES pricing), the `ticker` and the `trade` channels. Its
 //! handshake needs `Credentials` even for public data, which the REST reads do not.
 
 pub mod api;
@@ -113,6 +116,8 @@ impl fmt::Debug for Inner {
         f.debug_struct("Inner")
             .field("http", &self.http)
             .field("read", self.throttle.bucket())
+            .field("public", self.throttle.public_bucket())
+            .field("split", &self.throttle.splits_public_reads())
             .field("costs", &self.costs)
             .field("confirmed", &self.confirmation.initialized())
             .field("keyed", &self.auth.is_some())
@@ -306,5 +311,26 @@ mod tests {
         let kalshi = Predictions::new().unwrap();
         send(kalshi.exchange().status().send());
         send(kalshi.health().ping());
+    }
+
+    #[test]
+    fn the_printed_client_shows_both_read_buckets_and_the_split() {
+        let kalshi = Predictions::new().unwrap();
+        let text = format!("{kalshi:?}");
+        // The key's bucket at Basic's refill and the public one at the unsigned client's.
+        let read = text
+            .split("public:")
+            .next()
+            .expect("split always yields one");
+        assert!(read.contains("read: CapacityBucket"), "{text}");
+        assert!(read.contains("refill_per_sec: 200,"), "{text}");
+        let public = text
+            .split("public:")
+            .nth(1)
+            .unwrap_or_else(|| panic!("the public bucket is not printed: {text}"));
+        assert!(public.contains("CapacityBucket"), "{text}");
+        assert!(public.contains("refill_per_sec: 180,"), "{text}");
+        assert!(text.contains("split: false"), "{text}");
+        assert!(text.contains("keyed: false"), "{text}");
     }
 }

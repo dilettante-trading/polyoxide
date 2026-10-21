@@ -4012,6 +4012,7 @@ dependencies = [
  "mockito",
  "polyoxide-binance",
  "polyoxide-core",
+ "polyoxide-kalshi",
  "polyoxide-polymarket",
  "polyoxide-test-support",
  "polyoxide-venue",

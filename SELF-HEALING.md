@@ -1,10 +1,10 @@
 # Self-Healing API Maintenance
 
-Polyoxide tracks venues it does not control. Polymarket and Binance ship schema
+Polyoxide tracks venues it does not control. Polymarket, Binance and Kalshi ship schema
 changes, new endpoints, and behavioral tweaks without notice; this document
 describes the machinery that detects that drift every night and reports it
 without a human in the loop. Polymarket publishes specs, so its drift shows two
-ways, in the live tests and against the vendored mirrors; Binance publishes none
+ways, in the live tests and against the vendored mirrors, and so does Kalshi's drift; Binance publishes none
 for USDⓈ-M, so its live suites are its only drift check.
 
 ## The loop at a glance
@@ -45,10 +45,10 @@ and that is when North American leagues and weekend soccer are on.
 | Crate | Test binaries |
 |-------|---------------|
 | polyoxide-binance | `live_usdm` (built with `--features usdm`), `live_usdm_ws` (built with `--features usdm-ws`) |
-| polyoxide-polymarket | `clob`: `live_clob` (built with `--features clob,gamma`), `live_clob_trading` (built with `--features clob-ws,data,gamma`), `live_clob_ws` (built with `--features clob-ws`); `clob-session-keys`: `live_clob_session_keys` (built with `--features clob,relay,gamma`; 40-minute budget in its own job, since its registry and transaction waits can take ~25 minutes); `gamma`: `live_gamma` (built with `--features gamma`); `data`: `live_data` (built with `--features data`); `relay`: `live_relay` (built with `--features relay`); `perps`: `live_perps` (built with `--features perps`), `live_perps_ws` (built with `--features perps-ws`); `rtds`: `live_rtds` (built with `--features rtds`); `sports`: `live_sports` (built with `--features sports`; 20-minute budget for its 180 s wire-agreement window) |
-| polyoxide | `live_venue` (built with `--features polymarket-clob,polymarket-perps,binance-usdm`) |
-| polyoxide-cli | `live_api` |
 | polyoxide-kalshi | `live_predictions` (built with `--features predictions`), `live_predictions_account` (built with `--features predictions`), `live_predictions_venue` (built with `--features predictions`), `live_predictions_ws` (built with `--features predictions-ws`) |
+| polyoxide-polymarket | `clob`: `live_clob` (built with `--features clob,gamma`), `live_clob_trading` (built with `--features clob-ws,data,gamma`), `live_clob_ws` (built with `--features clob-ws`); `clob-session-keys`: `live_clob_session_keys` (built with `--features clob,relay,gamma`; 40-minute budget in its own job, since its registry and transaction waits can take ~25 minutes); `gamma`: `live_gamma` (built with `--features gamma`); `data`: `live_data` (built with `--features data`); `relay`: `live_relay` (built with `--features relay`); `perps`: `live_perps` (built with `--features perps`), `live_perps_ws` (built with `--features perps-ws`); `rtds`: `live_rtds` (built with `--features rtds`); `sports`: `live_sports` (built with `--features sports`; 20-minute budget for its 180 s wire-agreement window) |
+| polyoxide | `live_venue` (built with `--features polymarket-clob,polymarket-perps,binance-usdm,kalshi-predictions`) |
+| polyoxide-cli | `live_api` |
 <!-- generated:end selfheal-behavioral -->
 
 Failures are classified by `.github/scripts/classify_failures.py`. It reads one
@@ -186,8 +186,8 @@ file a false-positive issue.
   (the repository-level setting answers `409 Conflict` while the org policy
   stands), and because one `curl` is all an adoption needs.
 - **Enabling authenticated coverage** (CLOB's authenticated tests, the
-  session-key round trip and relay's credentialed tests): set the
-  `POLYMARKET_*`, `BUILDER_*` and `RELAYER_*` repo secrets each target declares.
+  session-key round trip, relay's credentialed tests and Kalshi's demo-host tests): set the
+  `POLYMARKET_*`, `BUILDER_*`, `RELAYER_*` and `KALSHI_DEMO_*` repo secrets each target declares.
   The loaders find them and the tests light up with no other changes; until
   then each fails as `auth-gated` and is skipped.
 - **Adding a new spec to watch**: add a spec (`id`, `kind`, `url`,

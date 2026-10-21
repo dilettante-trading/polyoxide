@@ -1,0 +1,17 @@
+{
+  "type": "orderbook_snapshot",
+  "id": 9,
+  "sid": 1,
+  "seq": 909,
+  "msg": {
+    "market_ticker": "KXCS2GAME-26OCT210415EVOEXMETA-EVOE",
+    "market_id": "01a15dd1-692e-7c60-875a-c58f383e4a33",
+    "yes_dollars_fp": [
+      [
+        "0.0100",
+        "430.00"
+      ]
+    ]
+  },
+  "sending_ts_ms": 1792580950109
+}

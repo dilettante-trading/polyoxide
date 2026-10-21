@@ -9,6 +9,8 @@ pub use events::{Event, EventResponse};
 pub use exchange::{ExchangeIndexStatus, ExchangeStatus};
 pub use limits::{AccountLimits, ApiUsageGrant, BucketLimit};
 pub use markets::{
-    BookSide, Market, MarketResponse, MarketStatus, MarketStatusFilter, MarketsPage, MveFilter,
-    OrderbookFp, OrderbookResponse, OutcomeSide, PriceLevel, PriceRange, Trade, TradesPage,
+    BatchCandlesticksResponse, BidAskDistribution, BookSide, Market, MarketCandlestick,
+    MarketCandlesticks, MarketResponse, MarketStatus, MarketStatusFilter, MarketsPage, MveFilter,
+    OrderbookFp, OrderbookResponse, OutcomeSide, PeriodInterval, PriceDistribution, PriceLevel,
+    PriceRange, SeriesCandlesticksResponse, Trade, TradesPage,
 };

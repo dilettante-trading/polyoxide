@@ -24,7 +24,7 @@ rust-version = "1.91"
 
 [workspace.dependencies]
 polyoxide-core = { path = "polyoxide-core", version = "0.41.1" }
-polyoxide-kalshi = { path = "polyoxide-kalshi" }
+polyoxide-kalshi = { path = "polyoxide-kalshi", version = "0.41.1", default-features = false }
 polyoxide-binance = { path = "polyoxide-binance", version = "0.41.1", default-features = false }
 # Its defaults are `clob`, `gamma` and `data`; each member names the modules
 # it builds, so none builds the signing stack by accident.
@@ -274,7 +274,7 @@ exclude = "Not a Polymarket host, and Binance publishes no OpenAPI or AsyncAPI f
 name = "Kalshi"
 section = "other-venue"
 base_urls = ["https://external-api.kalshi.com", "https://external-api.demo.kalshi.co", "wss://external-api-ws.kalshi.com/trade-api/ws/v2", "wss://external-api-ws.demo.kalshi.co/trade-api/ws/v2"]
-description = "Event-contract market data and its order-book stream. A walking skeleton, in a crate that is not published"
+description = "Event-contract market data and its order-book, ticker and trade streams"
 
 [[workspace.metadata.polyoxide.mirrors.kalshi.specs]]
 id = "kalshi"
@@ -287,4 +287,4 @@ id = "kalshi-ws"
 kind = "asyncapi"
 url = "https://docs.kalshi.com/asyncapi.yaml"
 vendored = "docs/specs/kalshi/asyncapi.yaml"
-covers = "Trade API WebSocket (15 channels); `orderbook_delta` is implemented"
+covers = "Trade API WebSocket (15 channels); `orderbook_delta`, `ticker` and `trade` are implemented"

@@ -78,7 +78,7 @@ fn encode(param: &str) -> String {
     encoded
 }
 
-/// The eight routes of this module, by name. No later story adds one.
+/// The ten routes of this module, by name.
 pub(crate) mod routes {
     use super::Route;
 
@@ -90,6 +90,11 @@ pub(crate) mod routes {
     pub(crate) const EVENT: Route = Route::get("/trade-api/v2/events/:event_ticker");
     pub(crate) const ENDPOINT_COSTS: Route = Route::get("/trade-api/v2/account/endpoint_costs");
     pub(crate) const ACCOUNT_LIMITS: Route = Route::get("/trade-api/v2/account/limits");
+    /// The batch route: candlesticks for up to 100 markets, grouped by market.
+    pub(crate) const CANDLESTICKS: Route = Route::get("/trade-api/v2/markets/candlesticks");
+    /// One market's candlesticks, under its series.
+    pub(crate) const SERIES_CANDLESTICKS: Route =
+        Route::get("/trade-api/v2/series/:series_ticker/markets/:ticker/candlesticks");
 
     /// Every route above.
     pub(crate) const ALL: &[Route] = &[
@@ -101,6 +106,8 @@ pub(crate) mod routes {
         EVENT,
         ENDPOINT_COSTS,
         ACCOUNT_LIMITS,
+        CANDLESTICKS,
+        SERIES_CANDLESTICKS,
     ];
 }
 
@@ -236,7 +243,7 @@ mod tests {
     use super::*;
 
     #[test]
-    fn the_route_table_is_the_epics_eight_routes() {
+    fn the_route_table_is_the_epics_ten_routes() {
         let templates: Vec<(&str, &str)> = route_templates().collect();
         assert_eq!(
             templates,
@@ -249,6 +256,11 @@ mod tests {
                 ("GET", "/trade-api/v2/events/:event_ticker"),
                 ("GET", "/trade-api/v2/account/endpoint_costs"),
                 ("GET", "/trade-api/v2/account/limits"),
+                ("GET", "/trade-api/v2/markets/candlesticks"),
+                (
+                    "GET",
+                    "/trade-api/v2/series/:series_ticker/markets/:ticker/candlesticks"
+                ),
             ]
         );
     }
