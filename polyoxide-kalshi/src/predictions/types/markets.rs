@@ -368,9 +368,9 @@ pub struct TradesPage {
 
 polyoxide_venue::wire_enum! {
     /// The `period_interval` of the candlestick routes: a candlestick's width in minutes. Kalshi
-    /// serves these three. The batch route answers any other number with `200` and no rows and
-    /// the series route with a `400`, so the closed set is what keeps the native client from
-    /// sending one.
+    /// serves these three. The batch route answers any other number with `200` and the daily
+    /// candles, so an unserved width would silently read as daily, and the series route with a
+    /// `400`; the closed set is what keeps the native client from sending one.
     #[non_exhaustive]
     pub enum PeriodInterval {
         /// One minute: wire value `1`.
@@ -379,6 +379,17 @@ polyoxide_venue::wire_enum! {
         Hour1 => "60",
         /// One day: wire value `1440`.
         Day1 => "1440",
+    }
+}
+
+impl PeriodInterval {
+    /// The width in seconds.
+    pub(crate) fn seconds(self) -> i64 {
+        match self {
+            Self::Minute1 => 60,
+            Self::Hour1 => 3_600,
+            Self::Day1 => 86_400,
+        }
     }
 }
 
@@ -582,6 +593,14 @@ mod tests {
         );
         for other in ["0", "5", "15", "240", "10080", "hour"] {
             assert!(other.parse::<PeriodInterval>().is_err(), "{other}");
+        }
+    }
+
+    #[test]
+    fn a_period_interval_is_as_many_seconds_as_its_minutes() {
+        for width in PeriodInterval::ALL {
+            let minutes: i64 = width.as_str().parse().unwrap();
+            assert_eq!(width.seconds(), minutes * 60);
         }
     }
 }

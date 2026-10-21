@@ -17,14 +17,15 @@ use polyoxide_core::RetryConfig;
 use polyoxide_kalshi::predictions::{
     key::{self, Outcome, Ticker},
     types::{MarketStatus, PriceLevel},
-    venue::{EventGroupExt, InstrumentExt, TradeExt},
+    venue::{CandleExt, EventGroupExt, InstrumentExt, TradeExt},
     Predictions,
 };
-use polyoxide_test_support::fixtures;
+use polyoxide_test_support::{fixtures, query::pairs_sent};
 use polyoxide_venue::{
     Book, Class, ClassifiedError, DynMarketData, DynTrades, Instrument, KeySpace, Level,
     MarketData, NotListed, ProductId, SizeUnit, UnixMillis, VenueId,
 };
+use polyoxide_venue::{Candle, CandleInterval, CandleQuery, Candles, DynCandles};
 use polyoxide_venue::{DynEventGroups, EventGroups};
 use polyoxide_venue::{Side, TradeId, Trades};
 use rust_decimal::Decimal;
@@ -1107,4 +1108,535 @@ async fn a_key_of_another_venue_is_refused_by_event_group_with_nothing_sent() {
     let err = venue.event_group(&foreign_key()).await.unwrap_err();
     assert_eq!(err.class, Class::InvalidRequest);
     nothing.assert_async().await;
+}
+
+// ── candles ─────────────────────────────────────────────────────
+
+const CANDLES: &str = "/trade-api/v2/markets/candlesticks";
+
+/// A whole number of days after the epoch, so the candles of every served width open on a
+/// boundary of their own width.
+const T0: i64 = 1_799_971_200;
+
+/// Unix seconds as milliseconds.
+fn ms(seconds: i64) -> u64 {
+    u64::try_from(seconds).unwrap() * 1000
+}
+
+fn decimal(text: &str) -> Decimal {
+    text.parse().unwrap()
+}
+
+/// The batch route's query, in the order the client writes it.
+fn candles_query(ticker: &Ticker, start_ts: i64, end_ts: i64, minutes: u32) -> Matcher {
+    Matcher::Exact(format!(
+        "market_tickers={ticker}&start_ts={start_ts}&end_ts={end_ts}&period_interval={minutes}"
+    ))
+}
+
+/// One candlestick as Kalshi sends it, ending at `end` Unix seconds with the given trade prices.
+fn row(end: i64, price: Value) -> Value {
+    json!({
+        "end_period_ts": end,
+        "yes_bid": {
+            "open_dollars": "0.3800", "low_dollars": "0.3500",
+            "high_dollars": "0.4400", "close_dollars": "0.4000"
+        },
+        "yes_ask": {
+            "open_dollars": "0.4200", "low_dollars": "0.4000",
+            "high_dollars": "0.4800", "close_dollars": "0.4500"
+        },
+        "price": price,
+        "volume_fp": "12.00",
+        "open_interest_fp": "345.00",
+    })
+}
+
+/// A period with trades: YES open 0.40, low 0.38, high 0.45, close 0.42, mean 0.41.
+fn traded() -> Value {
+    json!({
+        "open_dollars": "0.4000", "low_dollars": "0.3800", "high_dollars": "0.4500",
+        "close_dollars": "0.4200", "mean_dollars": "0.4100", "previous_dollars": "0.3900"
+    })
+}
+
+fn batch_body(ticker: &Ticker, rows: Vec<Value>) -> String {
+    json!({"markets": [{"market_ticker": ticker.as_str(), "candlesticks": rows}]}).to_string()
+}
+
+/// `candles` on a mock server that serves `body` once, for the test ticker's `outcome`, and
+/// requires the request to be the one the span and width name.
+async fn candles_of(
+    body: String,
+    outcome: Outcome,
+    query: CandleQuery,
+    span: (i64, i64, u32),
+) -> Result<Vec<Candle>, ClassifiedError> {
+    candles_of_ticker(&test_ticker(), body, outcome, query, span).await
+}
+
+/// `candles_of` for the market `ticker` names: a capture is of its own market, not the test
+/// ticker.
+async fn candles_of_ticker(
+    ticker: &Ticker,
+    body: String,
+    outcome: Outcome,
+    query: CandleQuery,
+    (start_ts, end_ts, minutes): (i64, i64, u32),
+) -> Result<Vec<Candle>, ClassifiedError> {
+    let mut server = start().await;
+    let mock = route(
+        &mut server,
+        CANDLES,
+        candles_query(ticker, start_ts, end_ts, minutes),
+        &body,
+        1,
+    )
+    .await;
+    let venue: Arc<DynCandles<'static>> = DynCandles::new_arc(client(&server));
+    let candles = venue.candles(&key::key(ticker, outcome), &query).await;
+    mock.assert_async().await;
+    candles
+}
+
+#[tokio::test]
+async fn kalshi_serves_candles_of_a_minute_an_hour_and_a_day() {
+    let server = start().await;
+    let served = [
+        CandleInterval::Minute1,
+        CandleInterval::Hour1,
+        CandleInterval::Day1,
+    ];
+    assert_eq!(client(&server).intervals(), served);
+    let venue: Arc<DynCandles<'static>> = DynCandles::new_arc(client(&server));
+    assert_eq!(venue.intervals(), served);
+}
+
+#[tokio::test]
+async fn a_width_kalshi_does_not_serve_is_refused_with_nothing_sent() {
+    let (server, nothing) = silent().await;
+    let venue: Arc<DynCandles<'static>> = DynCandles::new_arc(client(&server));
+    let key = key::key(&test_ticker(), Outcome::Yes);
+    for width in [
+        CandleInterval::Minute5,
+        CandleInterval::Minute15,
+        CandleInterval::Hour4,
+        CandleInterval::Week1,
+    ] {
+        let err = venue
+            .candles(&key, &CandleQuery::new(width, UnixMillis(0)))
+            .await
+            .unwrap_err();
+        assert_eq!(err.class, Class::InvalidRequest, "{width:?}");
+        assert_eq!(
+            err.to_string(),
+            format!("`{width:?}` candles are not served; this venue serves Minute1, Hour1, Day1")
+        );
+    }
+    nothing.assert_async().await;
+}
+
+#[tokio::test]
+async fn a_key_of_another_venue_is_refused_by_candles_with_nothing_sent() {
+    let (server, nothing) = silent().await;
+    let venue: Arc<DynCandles<'static>> = DynCandles::new_arc(client(&server));
+    let err = venue
+        .candles(
+            &foreign_key(),
+            &CandleQuery::new(CandleInterval::Hour1, UnixMillis(0)),
+        )
+        .await
+        .unwrap_err();
+    assert_eq!(err.class, Class::InvalidRequest);
+    nothing.assert_async().await;
+}
+
+#[tokio::test]
+async fn the_span_is_the_query_rounded_inward_to_the_second_and_moved_forward_by_one_width() {
+    let ticker = test_ticker();
+    let key = key::key(&ticker, Outcome::Yes);
+    for (interval, width, minutes) in [
+        (CandleInterval::Minute1, 60, 1),
+        (CandleInterval::Hour1, 3_600, 60),
+        (CandleInterval::Day1, 86_400, 1440),
+    ] {
+        // The start is 1 ms into second T0 and rounds up to T0 + 1; the end is 999 ms into
+        // T0 + 3600 and rounds down to T0 + 3600. Kalshi selects by a candle's end, so both
+        // move forward by the width.
+        let mut server = start().await;
+        let mock = route(
+            &mut server,
+            CANDLES,
+            candles_query(&ticker, T0 + 1 + width, T0 + 3_600 + width, minutes),
+            &batch_body(&ticker, vec![]),
+            1,
+        )
+        .await;
+        let venue: Arc<DynCandles<'static>> = DynCandles::new_arc(client(&server));
+        let query = CandleQuery::new(interval, UnixMillis(ms(T0) + 1))
+            .end(UnixMillis(ms(T0 + 3_600) + 999));
+        let candles = venue.candles(&key, &query).await.unwrap();
+        mock.assert_async().await;
+        assert!(candles.is_empty(), "{interval:?}");
+    }
+}
+
+#[tokio::test]
+async fn a_query_with_no_end_reads_up_to_now_and_sends_no_latest_before_start() {
+    let key = key::key(&test_ticker(), Outcome::Yes);
+    let before = UnixMillis::now().0 / 1000;
+    let pairs = pairs_sent(CANDLES, |url| {
+        let key = key.clone();
+        async move {
+            let predictions = Predictions::builder()
+                .base_url(url)
+                .with_retry_config(once())
+                .build()
+                .unwrap();
+            let venue: Arc<DynCandles<'static>> = DynCandles::new_arc(predictions);
+            let query = CandleQuery::new(CandleInterval::Hour1, UnixMillis(ms(T0)));
+            // The body served is `{}`, which does not decode; only the request matters.
+            let _ = venue.candles(&key, &query).await;
+        }
+    })
+    .await;
+    let after = UnixMillis::now().0 / 1000;
+
+    let keys: Vec<&str> = pairs.iter().map(|(key, _)| key.as_str()).collect();
+    assert_eq!(
+        keys,
+        ["market_tickers", "start_ts", "end_ts", "period_interval"]
+    );
+    let value = |name: &str| -> u64 {
+        pairs
+            .iter()
+            .find(|(key, _)| key == name)
+            .map(|(_, value)| value.parse().unwrap())
+            .unwrap()
+    };
+    assert_eq!(value("start_ts"), u64::try_from(T0 + 3_600).unwrap());
+    assert!(
+        (before + 3_600..=after + 3_600).contains(&value("end_ts")),
+        "{pairs:?}"
+    );
+    assert_eq!(value("period_interval"), 60);
+}
+
+#[tokio::test]
+async fn a_traded_period_maps_its_trade_prices_and_an_untraded_one_closes_at_its_previous() {
+    let ticker = test_ticker();
+    // YES prices, then what a NO key sees: each price p is 1 - p, and high and low swap.
+    for (outcome, (open, high, low, close, mean, carried)) in [
+        (
+            Outcome::Yes,
+            ("0.40", "0.45", "0.38", "0.42", "0.41", "0.42"),
+        ),
+        (
+            Outcome::No,
+            ("0.60", "0.62", "0.55", "0.58", "0.59", "0.58"),
+        ),
+    ] {
+        let body = batch_body(
+            &ticker,
+            vec![
+                // Opens at T0, traded.
+                row(T0 + 3_600, traded()),
+                // Opens at T0 + 3600, no trade: carried by the price before it.
+                row(T0 + 7_200, json!({"previous_dollars": "0.4200"})),
+                // Opens at T0 + 7200, nothing traded before it either: left out.
+                row(T0 + 10_800, json!({})),
+                // Opens at T0 + 10800, traded.
+                row(T0 + 14_400, traded()),
+            ],
+        );
+        let query = CandleQuery::new(CandleInterval::Hour1, UnixMillis(ms(T0)))
+            .end(UnixMillis(ms(T0 + 10_800)));
+        let candles = candles_of(body, outcome, query, (T0 + 3_600, T0 + 14_400, 60))
+            .await
+            .unwrap();
+
+        let opens: Vec<u64> = candles.iter().map(|candle| candle.open_time.0).collect();
+        assert_eq!(
+            opens,
+            [ms(T0), ms(T0 + 3_600), ms(T0 + 10_800)],
+            "{outcome:?}"
+        );
+        let expected_key = key::key(&ticker, outcome);
+        for candle in &candles {
+            assert_eq!(candle.key, expected_key);
+            assert_eq!(candle.interval, CandleInterval::Hour1);
+            assert_eq!(candle.volume, Some(decimal("12")), "{outcome:?}");
+            assert_eq!(candle.notional, None);
+            assert_eq!(candle.trades, None);
+        }
+
+        let first = &candles[0];
+        assert_eq!(
+            (first.open, first.high, first.low, first.close),
+            (
+                Some(decimal(open)),
+                Some(decimal(high)),
+                Some(decimal(low)),
+                decimal(close)
+            ),
+            "{outcome:?}"
+        );
+        let ext = first.extensions.get::<CandleExt>().unwrap();
+        assert_eq!(ext.mean, Some(decimal(mean)), "{outcome:?}");
+        // The bid and ask distributions stay in YES terms for either key.
+        assert_eq!(
+            [
+                ext.yes_bid.open,
+                ext.yes_bid.high,
+                ext.yes_bid.low,
+                ext.yes_bid.close
+            ],
+            [
+                decimal("0.38"),
+                decimal("0.44"),
+                decimal("0.35"),
+                decimal("0.40")
+            ]
+        );
+        assert_eq!(
+            [
+                ext.yes_ask.open,
+                ext.yes_ask.high,
+                ext.yes_ask.low,
+                ext.yes_ask.close
+            ],
+            [
+                decimal("0.42"),
+                decimal("0.48"),
+                decimal("0.40"),
+                decimal("0.45")
+            ]
+        );
+        assert_eq!(ext.open_interest, decimal("345"));
+
+        // An untraded period: a close and nothing else, and no mean.
+        let carried_candle = &candles[1];
+        assert_eq!(
+            (
+                carried_candle.open,
+                carried_candle.high,
+                carried_candle.low,
+                carried_candle.close
+            ),
+            (None, None, None, decimal(carried)),
+            "{outcome:?}"
+        );
+        assert_eq!(carried_candle.volume, Some(decimal("12")));
+        let carried_ext = carried_candle.extensions.get::<CandleExt>().unwrap();
+        assert_eq!(carried_ext.mean, None);
+        assert_eq!(carried_ext.open_interest, decimal("345"));
+
+        assert_eq!(candles[2].close, decimal(close), "{outcome:?}");
+    }
+}
+
+#[tokio::test]
+async fn a_candle_opening_outside_the_query_is_dropped_and_the_rest_come_oldest_first() {
+    let ticker = test_ticker();
+    // Served newest first. Their open times are T0 + 7200 (after the query's end), T0 + 3600,
+    // T0, and T0 - 3600 (before its start); the span Kalshi selects by is sloppier than the
+    // query, so the client holds the line itself, ends inclusive.
+    let body = batch_body(
+        &ticker,
+        vec![
+            row(T0 + 10_800, traded()),
+            row(T0 + 7_200, traded()),
+            row(T0 + 3_600, traded()),
+            row(T0, traded()),
+        ],
+    );
+    let query =
+        CandleQuery::new(CandleInterval::Hour1, UnixMillis(ms(T0))).end(UnixMillis(ms(T0 + 3_600)));
+    let candles = candles_of(body, Outcome::Yes, query, (T0 + 3_600, T0 + 7_200, 60))
+        .await
+        .unwrap();
+    let opens: Vec<u64> = candles.iter().map(|candle| candle.open_time.0).collect();
+    assert_eq!(opens, [ms(T0), ms(T0 + 3_600)]);
+}
+
+#[tokio::test]
+async fn a_market_the_answer_does_not_list_has_no_candles() {
+    let query = || {
+        CandleQuery::new(CandleInterval::Hour1, UnixMillis(ms(T0))).end(UnixMillis(ms(T0 + 3_600)))
+    };
+    let span = (T0 + 3_600, T0 + 7_200, 60);
+    let none = candles_of(
+        json!({"markets": []}).to_string(),
+        Outcome::Yes,
+        query(),
+        span,
+    )
+    .await
+    .unwrap();
+    assert!(none.is_empty());
+
+    let other = json!({"markets": [{"market_ticker": "KXOTHER-1", "candlesticks": [
+        row(T0 + 3_600, traded())
+    ]}]})
+    .to_string();
+    let none = candles_of(other, Outcome::Yes, query(), span)
+        .await
+        .unwrap();
+    assert!(
+        none.is_empty(),
+        "another market's candles are not this one's"
+    );
+}
+
+#[tokio::test]
+async fn a_candle_that_ends_before_one_width_after_the_epoch_is_a_decode_failure() {
+    let ticker = test_ticker();
+    let body = batch_body(&ticker, vec![row(60, traded())]);
+    let query = CandleQuery::new(CandleInterval::Hour1, UnixMillis(0)).end(UnixMillis(ms(3_600)));
+    let err = candles_of(body, Outcome::Yes, query, (3_600, 7_200, 60))
+        .await
+        .unwrap_err();
+    assert_eq!(err.class, Class::Decode);
+    assert!(err.to_string().contains("end_period_ts"), "{err}");
+}
+
+#[tokio::test]
+async fn the_venues_refusal_passes_through_as_its_own() {
+    let mut server = start().await;
+    let _mock = server
+        .mock("GET", CANDLES)
+        .match_query(Matcher::Any)
+        .with_status(400)
+        .with_body(fixture("error_validation"))
+        .create_async()
+        .await;
+    let venue: Arc<DynCandles<'static>> = DynCandles::new_arc(client(&server));
+    let key = key::key(&test_ticker(), Outcome::Yes);
+    let err = venue
+        .candles(
+            &key,
+            &CandleQuery::new(CandleInterval::Hour1, UnixMillis(0)),
+        )
+        .await
+        .unwrap_err();
+    assert!(
+        matches!(err.class, Class::VenueRefusal { .. }),
+        "{:?}",
+        err.class
+    );
+}
+
+#[tokio::test]
+async fn each_captured_width_maps_row_by_row_for_both_outcomes() {
+    for (file, interval, width, minutes) in [
+        ("batch_1", CandleInterval::Minute1, 60, 1),
+        ("batch_60", CandleInterval::Hour1, 3_600, 60),
+        ("batch_1440", CandleInterval::Day1, 86_400, 1440),
+    ] {
+        let name = format!("candlesticks/{file}");
+        let sent = fixture_json(&name);
+        let ticker = Ticker::new(sent["markets"][0]["market_ticker"].as_str().unwrap()).unwrap();
+        let mut rows: Vec<&Value> = sent["markets"][0]["candlesticks"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .collect();
+        rows.sort_by_key(|row| row["end_period_ts"].as_i64().unwrap());
+        let first = rows[0]["end_period_ts"].as_i64().unwrap();
+        let last = rows[rows.len() - 1]["end_period_ts"].as_i64().unwrap();
+        // Half a second before the first open and just under one after the last one: rounded
+        // inward, they select exactly the captured span.
+        let query = CandleQuery::new(interval, UnixMillis(ms(first - width) - 500))
+            .end(UnixMillis(ms(last - width) + 999));
+
+        for outcome in [Outcome::Yes, Outcome::No] {
+            let candles = candles_of_ticker(
+                &ticker,
+                fixture(&name),
+                outcome,
+                query,
+                (first, last, minutes),
+            )
+            .await
+            .unwrap();
+            let flip = |price: Decimal| match outcome {
+                Outcome::Yes => price,
+                Outcome::No => Decimal::ONE - price,
+            };
+
+            let mut mapped = candles.iter();
+            let (mut traded_rows, mut carried_rows) = (0, 0);
+            for row in &rows {
+                let price = &row["price"];
+                let read = |field: &str| price[field].as_str().map(decimal);
+                let (open, high, low, close) =
+                    match (read("close_dollars"), read("previous_dollars")) {
+                        (Some(close), _) => {
+                            traded_rows += 1;
+                            let (high, low) = match outcome {
+                                Outcome::Yes => (read("high_dollars"), read("low_dollars")),
+                                Outcome::No => (read("low_dollars"), read("high_dollars")),
+                            };
+                            (
+                                read("open_dollars").map(flip),
+                                high.map(flip),
+                                low.map(flip),
+                                flip(close),
+                            )
+                        }
+                        (None, Some(previous)) => {
+                            carried_rows += 1;
+                            (None, None, None, flip(previous))
+                        }
+                        (None, None) => continue,
+                    };
+                let end = row["end_period_ts"].as_i64().unwrap();
+                let Some(candle) = mapped.next() else {
+                    panic!("{file}: no candle for the row ending {end}");
+                };
+                assert_eq!(candle.open_time, UnixMillis(ms(end - width)), "{file}");
+                assert_eq!(candle.interval, interval, "{file}");
+                assert_eq!(
+                    (candle.open, candle.high, candle.low, candle.close),
+                    (open, high, low, close),
+                    "{file} {outcome:?} ending {end}"
+                );
+                assert_eq!(
+                    candle.volume,
+                    Some(decimal(row["volume_fp"].as_str().unwrap())),
+                    "{file} ending {end}"
+                );
+                let ext = candle.extensions.get::<CandleExt>().unwrap();
+                assert_eq!(
+                    ext.open_interest,
+                    decimal(row["open_interest_fp"].as_str().unwrap()),
+                    "{file} ending {end}"
+                );
+                assert_eq!(
+                    ext.mean,
+                    read("mean_dollars").map(flip),
+                    "{file} {outcome:?} ending {end}"
+                );
+                for (side, offers) in [("yes_bid", &ext.yes_bid), ("yes_ask", &ext.yes_ask)] {
+                    for (field, value) in [
+                        ("open_dollars", offers.open),
+                        ("low_dollars", offers.low),
+                        ("high_dollars", offers.high),
+                        ("close_dollars", offers.close),
+                    ] {
+                        assert_eq!(
+                            value,
+                            decimal(row[side][field].as_str().unwrap()),
+                            "{file} {side}.{field} ending {end}"
+                        );
+                    }
+                }
+            }
+            assert!(mapped.next().is_none(), "{file}: a candle with no row");
+            assert!(
+                traded_rows > 0 && carried_rows > 0,
+                "{file}: the capture holds a traded period and an untraded one that carries previous"
+            );
+        }
+    }
 }
