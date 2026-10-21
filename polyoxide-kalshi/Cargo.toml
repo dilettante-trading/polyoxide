@@ -7,10 +7,13 @@ authors.workspace = true
 repository.workspace = true
 rust-version.workspace = true
 description = "Rust client library for Kalshi's event-contract market data and its order-book, ticker and trade streams"
+keywords = ["kalshi", "prediction-markets", "event-contracts", "market-data"]
+categories = ["api-bindings", "web-programming::http-client"]
 
 # One feature per module, as polyoxide-binance has: `predictions`, the REST client
-# for Kalshi's Predictions exchange and its Read throttle, with its order-book stream
-# under `predictions-ws`, whose handshake needs credentials even for public data.
+# for Kalshi's Predictions exchange and its Read throttle, with its three streams (order book,
+# `ticker` and `trade`) under `predictions-ws`, whose handshake needs credentials even for
+# public data.
 [features]
 default = ["predictions"]
 predictions = [
@@ -29,10 +32,10 @@ predictions = [
     "dep:url",
 ]
 
-# The order-book socket, `predictions::ws`, on the socket kit. It turns on `predictions` and
-# the kit, whose own manifest declares the tokio features the supervisor needs. This crate's
-# sources use no runtime or macro feature and no `futures-util`; the suites do, from
-# `[dev-dependencies]`.
+# The socket, `predictions::ws`, with its three channels (order book, `ticker` and `trade`), on
+# the socket kit. It turns on `predictions` and the kit, whose own manifest declares the tokio
+# features the supervisor needs. This crate's sources use no runtime or macro feature and no
+# `futures-util`; the suites do, from `[dev-dependencies]`.
 predictions-ws = ["predictions", "dep:polyoxide-ws"]
 
 [dependencies]
