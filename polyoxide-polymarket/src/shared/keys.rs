@@ -33,7 +33,7 @@ use polyoxide_venue::{KeyError, MarketKey, RawKey, VenueId};
     feature = "data",
     feature = "perps"
 ))]
-use polyoxide_venue::{KeySpace, ProductId};
+use polyoxide_venue::{KeySpace, ProductClass, ProductId};
 
 #[cfg(feature = "perps")]
 use crate::perps::types::InstrumentId;
@@ -114,6 +114,7 @@ pub struct ClobKeys;
 impl KeySpace for ClobKeys {
     const VENUE: VenueId = VENUE;
     const PRODUCT: ProductId = CLOB;
+    const CLASS: ProductClass = ProductClass::EventContract;
     type Id = TokenId;
 
     fn parse_id(text: &str) -> Result<TokenId, String> {
@@ -153,6 +154,7 @@ pub struct PerpsKeys;
 impl KeySpace for PerpsKeys {
     const VENUE: VenueId = VENUE;
     const PRODUCT: ProductId = PERPS;
+    const CLASS: ProductClass = ProductClass::PerpetualFuture;
     type Id = InstrumentId;
 
     fn parse_id(text: &str) -> Result<InstrumentId, String> {
@@ -229,6 +231,18 @@ mod tests {
                 .products
                 .iter()
                 .any(|product| product == PERPS.as_str()),
+            "{declared:?}"
+        );
+        #[cfg(any(feature = "clob", feature = "gamma", feature = "data"))]
+        assert_eq!(
+            declared.classes.get(CLOB.as_str()).map(String::as_str),
+            Some(ClobKeys::CLASS.as_str()),
+            "{declared:?}"
+        );
+        #[cfg(feature = "perps")]
+        assert_eq!(
+            declared.classes.get(PERPS.as_str()).map(String::as_str),
+            Some(PerpsKeys::CLASS.as_str()),
             "{declared:?}"
         );
     }

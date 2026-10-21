@@ -141,3 +141,17 @@ const _: fn() = || {
     fn is<T: polyoxide_venue::Classify>() {}
     is::<sports::SportsError>();
 };
+
+// Every product implements its class's bundle; one that drops a defining
+// capability fails the build here.
+#[cfg(feature = "perps")]
+const _: fn() = || {
+    fn bundle<T: polyoxide_venue::PerpetualMarket>() {}
+    bundle::<perps::Perps>();
+};
+
+#[cfg(all(feature = "clob", feature = "gamma"))]
+const _: fn() = || {
+    fn bundle<T: polyoxide_venue::EventContractMarket>() {}
+    bundle::<clob::Clob>();
+};

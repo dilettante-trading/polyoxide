@@ -146,6 +146,7 @@ features = ["usdm", "usdm-ws"]
 readme = "Client library for Binance's APIs, one feature per module: `usdm` (USDⓈ-M futures market data, with its streams under `usdm-ws`); re-exported by the umbrella as `polyoxide::binance`"
 venue = "binance"
 products = ["usdm"]
+classes = { usdm = "perpetual-future" }
 mirrors = ["binance"]
 identifiers = ["fapi", "fstream", "X-MBX"]
 

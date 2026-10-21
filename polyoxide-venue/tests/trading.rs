@@ -21,7 +21,7 @@ use futures_util::{FutureExt, StreamExt};
 use polyoxide_venue::{
     Balance, Class, ClassifiedError, ClientOrderId, DynTrading, Fill, FillId, KeyError, KeySpace,
     KillReason, Liquidity, MarketKey, Order, OrderId, OrderRequest, OrderStatus, Position,
-    ProductId, Side, TimeInForce, TradeId, Trading, TradingEvent, TradingEvents,
+    ProductClass, ProductId, Side, TimeInForce, TradeId, Trading, TradingEvent, TradingEvents,
     UndeclaredExtension, UnixMillis, VenueId,
 };
 use rust_decimal::Decimal;
@@ -32,6 +32,7 @@ struct Binary;
 impl KeySpace for Binary {
     const VENUE: VenueId = VenueId::from_static("acme");
     const PRODUCT: ProductId = ProductId::from_static("binary");
+    const CLASS: ProductClass = ProductClass::EventContract;
     type Id = String;
 
     fn parse_id(text: &str) -> Result<String, String> {
@@ -416,6 +417,7 @@ fn a_key_of_another_product_is_refused_before_sending() {
     impl KeySpace for Swap {
         const VENUE: VenueId = VenueId::from_static("acme");
         const PRODUCT: ProductId = ProductId::from_static("swap");
+        const CLASS: ProductClass = ProductClass::PerpetualFuture;
         type Id = String;
 
         fn parse_id(text: &str) -> Result<String, String> {

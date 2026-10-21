@@ -36,3 +36,11 @@ const _: fn() = || {
     #[cfg(feature = "usdm-ws")]
     is::<usdm::ws::InvalidStreamName>();
 };
+
+// Every product implements its class's bundle; one that drops a defining
+// capability fails the build here.
+#[cfg(feature = "usdm")]
+const _: fn() = || {
+    fn bundle<T: polyoxide_venue::PerpetualMarket>() {}
+    bundle::<usdm::Usdm>();
+};

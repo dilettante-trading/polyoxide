@@ -162,6 +162,7 @@ required-features = ["predictions"]
 readme = "Client library for Kalshi's APIs, one feature per module: `predictions` (event-contract market data, with its streams under `predictions-ws`); re-exported by the umbrella as `polyoxide::kalshi`"
 venue = "kalshi"
 products = ["predictions"]
+classes = { predictions = "event-contract" }
 mirrors = ["kalshi"]
 
 [package.metadata.polyoxide.live.live_predictions]

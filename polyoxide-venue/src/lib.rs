@@ -23,14 +23,17 @@
 //! - With the `keys` feature, `MarketKey` names one instrument as
 //!   `venue.product:id`. Only a product's `KeySpace` makes one, so two keys
 //!   are equal exactly when they name the same instrument; `RawKey` is text
-//!   split into its parts and checked by no product yet.
+//!   split into its parts and checked by no product yet. Each `KeySpace`
+//!   declares its product's `ProductClass`, which every key it makes carries.
 //! - With the `market` feature, the traits a venue's products implement so
 //!   market data reads the same on every venue: `MarketData`, which every
 //!   product implements, and the capability traits `Instruments`, `Trades`,
-//!   `Candles`, `Funding` and `EventGroups`, each with a `Dyn` wrapper. They
-//!   return the records market data is read into (`Instrument`, `Quote`,
-//!   `Book`, `Trade`, `Candle`, `FundingRate` and `EventGroup`), each carrying
-//!   `Extensions`, a venue's own facts on a shared record, one value per type.
+//!   `Candles`, `Funding` and `EventGroups`, each with a `Dyn` wrapper. The
+//!   class bundles `PerpetualMarket` and `EventContractMarket` name what every
+//!   product of a class offers. The traits return the records market data is
+//!   read into (`Instrument`, `Quote`, `Book`, `Trade`, `Candle`,
+//!   `FundingRate` and `EventGroup`), each carrying `Extensions`, a venue's own
+//!   facts on a shared record, one value per type.
 //! - With the `trading` feature, `Trading` places and cancels orders, reads
 //!   open orders, positions and balances, and streams a venue's
 //!   acknowledgements and fills as `TradingEvents`, which begins with a
@@ -90,11 +93,11 @@ pub use extensions::{DuplicateExtension, Extensions, UndeclaredExtension};
 #[cfg(feature = "trading")]
 pub use ids::{ClientOrderId, FillId, OrderId};
 #[cfg(feature = "keys")]
-pub use key::{KeyError, KeySpace, MarketKey, ProductId, RawKey, VenueId};
+pub use key::{KeyError, KeySpace, MarketKey, ProductClass, ProductId, RawKey, VenueId};
 #[cfg(feature = "market")]
 pub use market::{
     Candles, DynCandles, DynEventGroups, DynFunding, DynInstruments, DynMarketData, DynTrades,
-    EventGroups, Funding, Instruments, MarketData, Trades,
+    EventContractMarket, EventGroups, Funding, Instruments, MarketData, PerpetualMarket, Trades,
 };
 #[cfg(feature = "market")]
 pub use records::{

@@ -27,7 +27,9 @@
 use std::borrow::Cow;
 use std::fmt;
 
-use polyoxide_venue::{Class, Classify, KeyError, KeySpace, MarketKey, ProductId, RawKey, VenueId};
+use polyoxide_venue::{
+    Class, Classify, KeyError, KeySpace, MarketKey, ProductClass, ProductId, RawKey, VenueId,
+};
 use thiserror::Error;
 
 /// Kalshi's venue id, as the crate registers it.
@@ -160,6 +162,7 @@ pub struct PredictionsKeys;
 impl KeySpace for PredictionsKeys {
     const VENUE: VenueId = VENUE;
     const PRODUCT: ProductId = PRODUCT;
+    const CLASS: ProductClass = ProductClass::EventContract;
     type Id = OutcomeId;
 
     /// Splits the id at its last `:`: the ticker before it, uppercased and checked, and the
@@ -230,6 +233,11 @@ mod tests {
                 .products
                 .iter()
                 .any(|product| product == PRODUCT.as_str()),
+            "{declared:?}"
+        );
+        assert_eq!(
+            declared.classes.get(PRODUCT.as_str()).map(String::as_str),
+            Some(PredictionsKeys::CLASS.as_str()),
             "{declared:?}"
         );
     }

@@ -90,3 +90,36 @@ fn kalshis_other_products_and_unreadable_ids_are_refused() {
         );
     }
 }
+
+#[test]
+fn each_key_carries_the_class_its_product_declares() {
+    use polyoxide::binance::usdm::key::UsdmKeys;
+    use polyoxide::kalshi::predictions::key::PredictionsKeys;
+    use polyoxide::polymarket::shared::keys::{ClobKeys, PerpsKeys};
+    use polyoxide::venue::{KeySpace, ProductClass};
+
+    let token = "71321045679252212594626385532706912750332728571942532289631379312455583992563";
+    let clob = format!("polymarket.clob:{token}");
+    for (text, declared, class) in [
+        (clob.as_str(), ClobKeys::CLASS, ProductClass::EventContract),
+        (
+            "polymarket.perps:7",
+            PerpsKeys::CLASS,
+            ProductClass::PerpetualFuture,
+        ),
+        (
+            "binance.usdm:BTCUSDT",
+            UsdmKeys::CLASS,
+            ProductClass::PerpetualFuture,
+        ),
+        (
+            "kalshi.predictions:KXTEST-26OCT18-T50.5:yes",
+            PredictionsKeys::CLASS,
+            ProductClass::EventContract,
+        ),
+    ] {
+        let key = parse(text).unwrap();
+        assert_eq!(key.class(), declared, "{text}");
+        assert_eq!(key.class(), class, "{text}");
+    }
+}

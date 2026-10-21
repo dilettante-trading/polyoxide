@@ -23,7 +23,7 @@ use polyoxide_kalshi::predictions::{
 use polyoxide_test_support::{fixtures, query::pairs_sent};
 use polyoxide_venue::{
     Book, Class, ClassifiedError, DynMarketData, DynTrades, Instrument, KeySpace, Level,
-    MarketData, NotListed, ProductId, SizeUnit, UnixMillis, VenueId,
+    MarketData, NotListed, ProductClass, ProductId, SizeUnit, UnixMillis, VenueId,
 };
 use polyoxide_venue::{Candle, CandleInterval, CandleQuery, Candles, DynCandles};
 use polyoxide_venue::{DynEventGroups, EventGroups};
@@ -189,6 +189,7 @@ struct Other;
 impl KeySpace for Other {
     const VENUE: VenueId = VenueId::from_static("other");
     const PRODUCT: ProductId = ProductId::from_static("spot");
+    const CLASS: ProductClass = ProductClass::PerpetualFuture;
     type Id = String;
 
     fn parse_id(text: &str) -> Result<String, String> {

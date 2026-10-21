@@ -8,10 +8,15 @@ feature, the positional decimal serde of rows sent as bare arrays.
 
 Behind the `keys` feature, `MarketKey` names one instrument as
 `venue.product:id`, canonical because only a product's `KeySpace` makes one.
+Each product declares its `ProductClass`, event contract or perpetual future,
+and every key it makes carries it.
 Behind the `market` feature, the market-data traits (`MarketData`, which every
 venue product implements, and the capability traits `Instruments`, `Trades`,
 `Candles`, `Funding` and `EventGroups`, each with a `Dyn` wrapper) return the
-shared records, each carrying a venue's own facts in its `Extensions`.
+shared records, each carrying a venue's own facts in its `Extensions`. The
+class bundles `PerpetualMarket` and `EventContractMarket` name what every
+product of a class offers, so a function generic over one class needs one
+bound.
 Behind the `trading` feature, `Trading` places and cancels orders, reads open
 orders, positions and balances, and streams acknowledgements and fills as
 `TradingEvents`, which begins with a `Resync`; `Extensions::ensure_declared` is
