@@ -18,6 +18,11 @@
 //! carries a delta onto a snapshot from another connection. Between
 //! [`Event::Disconnected`] and [`Event::Reconnected`] the books stay as they were, and
 //! are stale.
+//!
+//! No event says that a market was unsubscribed, so a book outlives its market's
+//! unsubscription, as it was when the last frame for it arrived, until the next
+//! [`Event::Reconnected`] drops it. A consumer that unsubscribes a market and reads
+//! [`Books::get`] for it afterwards is reading a book that no longer changes.
 
 use std::collections::{BTreeMap, HashMap};
 
@@ -151,7 +156,7 @@ impl Books {
                 let side = match &delta.side {
                     BookSide::Bid => &mut book.bids,
                     BookSide::Ask => &mut book.asks,
-                    _ => return None,
+                    BookSide::Other(_) => return None,
                 };
                 add(side, delta.price, delta.delta);
                 Some(&*book)
@@ -168,7 +173,7 @@ impl Books {
             }
             // The events that carry no book: the ticker and trade channels, and the
             // outage marker.
-            _ => None,
+            Event::Ticker(_) | Event::Trade(_) | Event::Disconnected { .. } => None,
         }
     }
 
