@@ -235,6 +235,8 @@ Verdict: does not follow. The control throttled at 2.97 s, where a bucket that e
 
 At Basic's sizing the host refused about 0.3% of calls in both runs, spread over the market and event routes. At 180 it refused none in either run. The 12:48 run is the committed client.
 
+**Decision, a keyed client's public reads.** A signed public read does not draw on the key's bucket (the probe above, which ran on the demo host only: production was measured unsigned), so a keyed client charges every route but `GET /account/limits` to a second Read bucket, sized as an unsigned client's (Basic's 600 tokens refilling `UNSIGNED_READ_REFILL`, 180, a second), and keeps the key's bucket for the routes that need the key. The two buckets share one hold, so a 429 still holds every request. The split starts when the client's first send confirms, and the confirmation's own costs read is its first public read. An anonymous client never splits. The owner's third exception in the spec's section 13 (2026-10-21) allowed the two existing tests that used the public status route to show the key's bucket (`a_premier_account_is_admitted_a_cost_the_basic_bucket_would_refuse` and `the_bucket_takes_the_capacity_the_account_reports`) to be re-pointed at `GET /account/limits`.
+
 <!-- rate limits end -->
 
 <!-- epic 9 findings go above this line -->

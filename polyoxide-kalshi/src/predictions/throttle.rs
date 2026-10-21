@@ -10,6 +10,7 @@
 //! no capacity term and must not be given a depth.
 
 use std::collections::HashMap;
+use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::{Arc, RwLock};
 use std::time::Duration;
 
@@ -63,15 +64,26 @@ pub(crate) const UNSIGNED_READ_REFILL: u32 = after_reserve(UNSIGNED_CLEAN_RATE) 
 /// every hold this module's policy sets is the loop's own `retry_delay(0)`, which
 /// `RetryConfig::max_backoff_ms` bounds.
 ///
-/// A clone shares the bucket and the hold.
+/// A keyed client's public reads draw on a second bucket, sized as an unsigned client's, once its
+/// confirmation turns the split on: a signed public read does not draw on the key's bucket (the
+/// signed probe of `docs/specs/kalshi/OBSERVED.md`), so it must not spend the key's tokens. Both
+/// buckets share the one hold.
+///
+/// A clone shares the buckets, the split and the hold.
 #[derive(Debug, Clone)]
 pub(crate) struct PredictionsThrottle {
     read: CapacityBucket,
+    public: CapacityBucket,
+    split: Arc<AtomicBool>,
     hold: Hold,
 }
 
+/// The paths that need the key. Every other path is a public read.
+const PRIVATE_PATHS: [&str; 1] = [crate::predictions::request::routes::ACCOUNT_LIMITS.template];
+
 impl PredictionsThrottle {
-    /// A throttle with a full Read bucket at Basic's sizing.
+    /// A throttle with a full Read bucket at Basic's sizing and a public bucket at the unsigned
+    /// client's.
     pub(crate) fn new() -> Self {
         let hold = Hold::unbounded();
         Self {
@@ -81,6 +93,13 @@ impl PredictionsThrottle {
                 BASIC_READ_REFILL,
                 hold.clone(),
             ),
+            public: CapacityBucket::provisional(
+                READ,
+                BASIC_READ_CAPACITY,
+                UNSIGNED_READ_REFILL,
+                hold.clone(),
+            ),
+            split: Arc::new(AtomicBool::new(false)),
             hold,
         }
     }
@@ -89,20 +108,44 @@ impl PredictionsThrottle {
     pub(crate) fn bucket(&self) -> &CapacityBucket {
         &self.read
     }
+
+    /// The bucket a request for `path` is charged to: the public one once the split is on and
+    /// `path` is not a route that needs the key, else the Read bucket.
+    fn bucket_for(&self, path: &str) -> &CapacityBucket {
+        if self.split.load(Ordering::Acquire) && !PRIVATE_PATHS.contains(&path) {
+            &self.public
+        } else {
+            &self.read
+        }
+    }
+
+    /// The capacity of the bucket a request for `path` is charged to.
+    pub(crate) fn capacity_for(&self, path: &str) -> u32 {
+        self.bucket_for(path).capacity()
+    }
+
+    /// From now on a public read is charged to the public bucket, confirmed at its sizing, and
+    /// not to the Read bucket.
+    pub(crate) fn split_public_reads(&self) {
+        self.public.confirm();
+        self.split.store(true, Ordering::Release);
+    }
 }
 
 impl Throttle for PredictionsThrottle {
     /// Waits out the hold, charges each cost on the Read layer (a cost on any other layer is not
-    /// this throttle's), and waits out the hold again, since one set while the bucket made this
-    /// request wait for tokens still applies (AD-23).
+    /// this throttle's) to the bucket the request's path belongs to, and waits out the hold
+    /// again, since one set while the bucket made this request wait for tokens still applies
+    /// (AD-23).
     async fn acquire(&self, meta: &RequestMeta<'_>) -> Result<Charge, Refused> {
         self.hold.wait().await;
         let mut charge = Charge::none();
+        let bucket = self.bucket_for(meta.path);
         for cost in meta.costs {
             if cost.layer != READ {
                 continue;
             }
-            self.read.acquire(cost.units, cost.exact).await?;
+            bucket.acquire(cost.units, cost.exact).await?;
             charge = charge.with(LayerCharge {
                 layer: READ,
                 units: cost.units,
@@ -174,6 +217,12 @@ impl Inner {
     }
 
     async fn confirm(&self) {
+        if self.auth.is_some() {
+            // A signed public read does not draw on the key's bucket (the signed probe in
+            // `docs/specs/kalshi/OBSERVED.md`), so a keyed client charges its public reads to
+            // the public bucket from here on, this confirmation's costs read included.
+            self.throttle.split_public_reads();
+        }
         self.read_costs().await;
         self.read_limits().await;
     }
@@ -187,9 +236,10 @@ impl Inner {
     /// can bring, and every send would wait with it. The venue is told the real route, and
     /// charges what it charges; the cap only bounds what this client waits for.
     fn confirmation_request<T>(&self, route: &Route) -> Request<T, PredictionsError> {
+        let path = route.path(&[]);
         let mut cost = self.read_cost(route);
-        cost.units = cost.units.min(self.throttle.bucket().capacity());
-        let request = Request::new(self.http.clone(), route.path(&[])).with_cost(cost);
+        cost.units = cost.units.min(self.throttle.capacity_for(&path));
+        let request = Request::new(self.http.clone(), path).with_cost(cost);
         match &self.auth {
             Some(auth) => request.authenticator(Arc::clone(auth)),
             None => request,
